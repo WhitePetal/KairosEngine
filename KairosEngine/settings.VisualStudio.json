@@ -1,0 +1,5 @@
+/* Visual Studio Settings File */
+{
+  "languages.cpp.codeStyle.formatting.newLine.newlineFunctionBrace": "new_line",
+  "languages.cpp.codeStyle.formatting.newLine.newlineEmptyTypeCloseBrace": true
+}

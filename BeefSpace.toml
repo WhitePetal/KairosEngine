@@ -1,0 +1,5 @@
+FileVersion = 1
+Projects = {KairosEngine = {Path = "."}}
+
+[Workspace]
+StartupProject = "KairosEngine"
