@@ -1,14 +1,14 @@
 FileVersion = 1
 LastConfig = "Debug"
 LastPlatform = "Win64"
-RecentFilesList = ["src\\KairosEngine.bf"]
+RecentFilesList = ["src\\KairosEngine.bf", "d:\\Beef\\BeefLibs\\corlib\\src\\Attribute.bf"]
 
 [MainWindow]
-X = 169
-Y = 155
+X = 692
+Y = 325
 Width = 1795
 Height = 1167
-ShowKind = "ShowNormal"
+ShowKind = "ShowMaximized"
 
 [MainDockingFrame]
 Type = "DockingFrame"
@@ -49,7 +49,7 @@ TabWidth = 121.0
 TabIsPinned = false
 Type = "SourceViewPanel"
 FilePath = "src\\KairosEngine.bf"
-CursorPos = 659
+CursorPos = 679
 ProjectName = "KairosEngine"
 
 [[MainDockingFrame.DockedWidgets]]

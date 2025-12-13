@@ -1,31 +1,29 @@
 using System;
+using System.Numerics;
 
 namespace KairosEngine
 {
-	class KairosEngine
-	{
-
-	}
-
 	class Program
 	{
-		[Import("KairosEngine.dll"), LinkName("InitializeWindow")]
-		static extern bool InitializeWindow(Windows.HModule hInstance, int ShowWnd, int width, int height, bool fullScreen);
-
-		[Import("KairosEngine.dll"), LinkName("Kairos_MainLoop")]
-		static extern bool MainLoop();
-
 		public static void Main()
 		{
 			Console.WriteLine("KairosEngine Start");
+
 			var hInstance = Windows.GetModuleHandleW(null);
-			if(!InitializeWindow(hInstance, Windows.SW_SHOWDEFAULT, 800, 600, false))
+
+			WindowSystem windowSys = scope WindowSystem();
+			windowSys.Initialize();
+
+			int windId = windowSys.CreateWindow(hInstance, int32_4(0, 0, 800, 600), false);
+			if(windId < 0)
 			{
-				Console.WriteLine("Window Initialization - Failed");
+				windowSys.DeInitialize();
 				return;
 			}
 
-			MainLoop();
+			windowSys.Update();
+
+			windowSys.DeInitialize();
 			return;
 		}
 	}
