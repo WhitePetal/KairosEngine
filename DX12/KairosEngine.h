@@ -13,6 +13,8 @@
 #include <d3dcompiler.h>
 #include <DirectXMath.h>
 
+#define SAFE_RELEASE(p) { if ((p)) { (p)->Release(); (p) = 0; } }
+
 /// <summary>
 /// 窗口句柄
 /// </summary>
@@ -123,12 +125,12 @@ KAIROS_EXPORT_BEGIN
 /// <param name="height"></param>
 /// <param name="fullScreen"></param>
 /// <returns></returns>
-KAIROS_API bool InitializeWindow(HINSTANCE hInstance, int ShowWnd, int width, int height, bool fullScreen);
+bool KAIROS_API InitializeWindow(HINSTANCE hInstance, int ShowWnd, int width, int height, bool fullScreen);
 
 /// <summary>
 /// 主循环
 /// </summary>
-KAIROS_API void MainLoop();
+void KAIROS_API MainLoop();
 
 /// <summary>
 /// Windows消息回调函数
@@ -138,43 +140,43 @@ KAIROS_API void MainLoop();
 /// <param name="wParam"></param>
 /// <param name="lParam"></param>
 /// <returns></returns>
-KAIROS_API LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+LRESULT KAIROS_API CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 /// <summary>
 /// 初始化DX12
 /// </summary>
 /// <returns></returns>
-KAIROS_API bool InitD3D();
+bool KAIROS_API InitD3D();
 
 /// <summary>
 /// Update game logic
 /// </summary>
 /// <returns></returns>
-KAIROS_API void Update();
+void KAIROS_API Update();
 
 /// <summary>
 /// 更新d3d管线(更新命令列表)
 /// </summary>
 /// <returns></returns>
-KAIROS_API void UpdatePipeline();
+void KAIROS_API UpdatePipeline();
 
 /// <summary>
 /// 执行命令列表
 /// </summary>
 /// <returns></returns>
-KAIROS_API void Render();
+void KAIROS_API Render();
 
 /// <summary>
 /// 释放COM对象，释放内存
 /// </summary>
 /// <returns></returns>
-KAIROS_API void Cleanup();
+void KAIROS_API Cleanup();
 
 /// <summary>
 /// 等待GPU完成命令列表
 /// </summary>
 /// <returns></returns>
-KAIROS_API void WaitForPreviousFrame();
+void KAIROS_API WaitForPreviousFrame();
 
 KAIROS_EXPORT_END
 

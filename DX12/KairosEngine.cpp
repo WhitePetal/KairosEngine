@@ -36,7 +36,7 @@
 
 KAIROS_EXPORT_BEGIN
 
-KAIROS_API bool InitializeWindow(HINSTANCE hInstance, int ShowWnd, int width, int height, bool fullScreen)
+bool KAIROS_API InitializeWindow(HINSTANCE hInstance, int ShowWnd, int width, int height, bool fullScreen)
 {
 	if (fullScreen)
 	{
@@ -95,7 +95,7 @@ KAIROS_API bool InitializeWindow(HINSTANCE hInstance, int ShowWnd, int width, in
 	return true;
 }
 
-KAIROS_API void MainLoop()
+void KAIROS_API MainLoop()
 {
 	MSG msg;
 	ZeroMemory(&msg, sizeof(MSG));
@@ -113,27 +113,33 @@ KAIROS_API void MainLoop()
 		else
 		{
 			// 运行游戏代码
+			Update(); // 游戏逻辑
+			Render(); // 渲染逻辑
 		}
 	}
 }
 
-KAIROS_API LRESULT WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+LRESULT KAIROS_API WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	switch (msg)
 	{
 	case WM_KEYDOWN:
 		if (wParam == VK_ESCAPE)
 			if (MessageBox(0, L"Are you sure you want to exit?", L"Really?", MB_YESNO | MB_ICONQUESTION) == IDYES)
+			{
+				m_Running = false;
 				DestroyWindow(hWnd);
+			}
 		return 0;
 	case WM_DESTROY:
+		m_Running = false;
 		PostQuitMessage(0);
 		return 0;
 	}
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
-KAIROS_API bool InitD3D()
+bool KAIROS_API InitD3D()
 {
 	HRESULT hr;
 	
@@ -184,6 +190,9 @@ KAIROS_API bool InitD3D()
 
 	// 全部都使用默认值
 	D3D12_COMMAND_QUEUE_DESC cqDesc = {};
+	cqDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT; // DX12必须显式指定，否则默认值可能不兼容
+	cqDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+	cqDesc.Priority = 0;
 	// 创建命令队列
 	hr = m_Device->CreateCommandQueue(&cqDesc, IID_PPV_ARGS(&m_CommandQueue));
 	if (FAILED(hr))
@@ -200,19 +209,26 @@ KAIROS_API bool InitD3D()
 	// 描述多重采样，我们不需要多重采样，因此设置为1
 	DXGI_SAMPLE_DESC sampleDesc = {};
 	sampleDesc.Count = 1;
+	sampleDesc.Quality = 0;
 
 	// 描述和创建交换链
 	DXGI_SWAP_CHAIN_DESC swapChainDesc = {};
 	swapChainDesc.BufferDesc = backBufferDesc;
 	swapChainDesc.SampleDesc = sampleDesc;
-	swapChainDesc.BufferCount = 3;
+	swapChainDesc.BufferCount = k_FrameBufferCount;
 	swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-	swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+	swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;;
 	swapChainDesc.OutputWindow = m_Hwnd;
-	swapChainDesc.Windowed = true;
+	swapChainDesc.Windowed = !m_FullScreen;
+	swapChainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH; // 允许全屏切换
 
 	IDXGISwapChain* tempSwapChain;
-	dxgiFactory->CreateSwapChain(m_CommandQueue, &swapChainDesc, &tempSwapChain); // 交换链创建后 CommandQueue 会被刷新
+	hr = dxgiFactory->CreateSwapChain(m_CommandQueue, &swapChainDesc, &tempSwapChain); // 交换链创建后 CommandQueue 会被刷新
+	if (FAILED(hr))
+	{
+		MessageBox(0, L"Failed to CreateSwapChain", L"ERROR", MB_OK);
+		return false;
+	}
 	m_SwapChain = static_cast<IDXGISwapChain3*>(tempSwapChain);
 
 	m_FrameIndex = m_SwapChain->GetCurrentBackBufferIndex();
@@ -281,15 +297,124 @@ KAIROS_API bool InitD3D()
 	return true;
 }
 
-KAIROS_API void Update()
+void KAIROS_API Update()
 {
 	// do nothing now
 }
 
-KAIROS_API void UpdatePipeline()
+void KAIROS_API UpdatePipeline()
+{
+	// 重置命令分配器前，先等待GPU完成它
+	WaitForPreviousFrame();
+
+	HRESULT hr;
+	// 重置命令分配器。这会释放它占有的内存
+	hr = m_CommandAllocators[m_FrameIndex]->Reset();
+	if (FAILED(hr))
+		m_Running = false;
+
+	hr = m_CommandList->Reset(m_CommandAllocators[m_FrameIndex], NULL);
+	if (FAILED(hr))
+		m_Running = false;
+
+	// 把渲染目标资源从 PRESENT 状态转换为 RENDER_TARGET 状态
+	CD3DX12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_RenderTargets[m_FrameIndex], D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+	m_CommandList->ResourceBarrier(1, &barrier);
+	// 获取当前RTV描述符句柄
+	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_RTVDescroptorHeap->GetCPUDescriptorHandleForHeapStart(), m_FrameIndex, m_RTVDescriptorSize);
+	// 设置渲染目标到 OM stage
+	m_CommandList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
+
+	// 清空渲染目标
+	const float clearColor[] = { 0.0f, 0.2f, 0.4f, 1.0f };
+	m_CommandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+
+	// 把渲染目标切换回 PRESENT 状态，以便交换链呈现它
+	barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_RenderTargets[m_FrameIndex], D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+	m_CommandList->ResourceBarrier(1, &barrier);
+
+	hr = m_CommandList->Close();
+	if (FAILED(hr))
+		m_Running = false;
+}
+
+void KAIROS_API Render()
 {
 	HRESULT hr;
-	
+
+	UpdatePipeline();
+
+	// 创建一个命令列表数组
+	ID3D12CommandList* ppCommandList[] = { m_CommandList };
+
+	// 执行命令列表
+	m_CommandQueue->ExecuteCommandLists(_countof(ppCommandList), ppCommandList);
+
+	// 该命令会被插入到命令列表末尾
+	// 当GPU执行完前面的命令后，会设置屏障的值为fenceValue，这样我们就知道GPU已完成了当前帧任务
+	hr = m_CommandQueue->Signal(m_Fences[m_FrameIndex], m_FenceValues[m_FrameIndex]);
+	if (FAILED(hr))
+		m_Running = false;
+
+	// 呈现后台缓冲
+	hr = m_SwapChain->Present(0, 0);
+	if (FAILED(hr))
+		m_Running = false;
+}
+
+void KAIROS_API Cleanup()
+{
+	// 等待所有帧任务完成
+	for (int i = 0; i < k_FrameBufferCount; ++i)
+	{
+		m_FrameIndex = i;
+		WaitForPreviousFrame();
+	}
+
+	// 退出前将交换链退出全屏状态
+	BOOL fs = false;
+	HRESULT hr = m_SwapChain->GetFullscreenState(&fs, NULL);
+	if (FAILED(hr))
+		m_Running = false;
+	m_SwapChain->SetFullscreenState(false, NULL);
+
+	SAFE_RELEASE(m_Device);
+	SAFE_RELEASE(m_SwapChain);
+	SAFE_RELEASE(m_CommandQueue);
+	SAFE_RELEASE(m_RTVDescroptorHeap);
+	SAFE_RELEASE(m_CommandList);
+
+	for (int i = 0; i < k_FrameBufferCount; ++i)
+	{
+		SAFE_RELEASE(m_RenderTargets[i]);
+		SAFE_RELEASE(m_CommandAllocators[i]);
+		SAFE_RELEASE(m_Fences[i]);
+	}
+}
+
+void KAIROS_API WaitForPreviousFrame()
+{
+	HRESULT hr;
+
+	// 获取当前后台缓冲index
+	m_FrameIndex = m_SwapChain->GetCurrentBackBufferIndex();
+
+	// 如果屏障值小于预期值，发起屏障事件
+	if (m_Fences[m_FrameIndex]->GetCompletedValue() < m_FenceValues[m_FrameIndex])
+	{
+		hr = m_Fences[m_FrameIndex]->SetEventOnCompletion(m_FenceValues[m_FrameIndex], m_FenceEvent);
+		if (FAILED(hr))
+		{
+			m_Running = false;
+			return;
+		}
+
+		// 等待屏障事件被触发
+		WaitForSingleObject(m_FenceEvent, INFINITE);
+	}
+
+	// 自增屏障值
+	++m_FenceValues[m_FrameIndex];
 }
 
 KAIROS_EXPORT_END

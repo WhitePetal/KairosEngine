@@ -93,6 +93,7 @@ namespace KairosEngine
 			return id;
 		}
 
+		[DisableChecks]
 		private void ExpandWindowContainers()
 		{
 			WindowCapacity = WindowCapacity << 1;
@@ -117,6 +118,7 @@ namespace KairosEngine
 			Ids = newIds;
 		}
 
+		[DisableChecks]
 		private void ExpandIdToIndexContainers()
 		{
 			m_IdsCapacity = m_IdsCapacity << 1;

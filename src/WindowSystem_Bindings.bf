@@ -4,10 +4,10 @@ namespace KairosEngine
 {
 	extension WindowSystem
 	{
-		[Import("KairosEngine.dll"), LinkName("InitializeWindow")]
+		[Import("DX12Lib.lib"), CallingConvention(.Cdecl), LinkName("InitializeWindow")]
 		public static extern bool InitializeWindow(Windows.HModule hInstance, int ShowWnd, int width, int height, bool fullScreen);
 
-		[Import("KairosEngine.dll"), LinkName("MainLoop")]
+		[Import("DX12Lib.lib"), CallingConvention(.Cdecl), LinkName("MainLoop")]
 		public static extern bool MainLoop();
 	}
 }
