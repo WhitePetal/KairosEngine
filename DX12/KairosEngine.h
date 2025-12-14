@@ -6,12 +6,13 @@
 #endif
 
 #include "KairosEngineDefines.h"
-#include "d3dx12.h"
-#include <Windows.h>
+#include <windows.h>
 #include <d3d12.h>
 #include <dxgi1_4.h>
-#include <d3dcompiler.h>
+#include <D3Dcompiler.h>
 #include <DirectXMath.h>
+#include "d3dx12.h"
+#include <string>
 
 #define SAFE_RELEASE(p) { if ((p)) { (p)->Release(); (p) = 0; } }
 
@@ -114,7 +115,40 @@ int m_FrameIndex;
 /// </summary>
 int m_RTVDescriptorSize;
 
-KAIROS_EXPORT_BEGIN
+/// <summary>
+/// 管线状态对象
+/// </summary>
+ID3D12PipelineState* m_PipelineStateObject;
+
+/// <summary>
+/// 根签名
+/// </summary>
+ID3D12RootSignature* m_RootSignature;
+
+/// <summary>
+/// 视口
+/// </summary>
+D3D12_VIEWPORT m_ViewPort;
+
+/// <summary>
+/// 剪刀矩形
+/// </summary>
+D3D12_RECT m_ScissorRect;
+
+/// <summary>
+/// 顶点缓冲
+/// </summary>
+ID3D12Resource* m_VertexBuffer;
+
+/// <summary>
+/// 顶点缓冲视图描述符
+/// </summary>
+D3D12_VERTEX_BUFFER_VIEW m_VertexBufferView;
+
+struct Vertex
+{
+	DirectX::XMFLOAT3 pos;
+};
 
 /// <summary>
 /// 创建和初始化窗口
@@ -125,12 +159,12 @@ KAIROS_EXPORT_BEGIN
 /// <param name="height"></param>
 /// <param name="fullScreen"></param>
 /// <returns></returns>
-bool KAIROS_API InitializeWindow(HINSTANCE hInstance, int ShowWnd, int width, int height, bool fullScreen);
+bool InitializeWindow(HINSTANCE hInstance, int ShowWnd, int width, int height, bool fullScreen);
 
 /// <summary>
 /// 主循环
 /// </summary>
-void KAIROS_API MainLoop();
+void MainLoop();
 
 /// <summary>
 /// Windows消息回调函数
@@ -140,44 +174,42 @@ void KAIROS_API MainLoop();
 /// <param name="wParam"></param>
 /// <param name="lParam"></param>
 /// <returns></returns>
-LRESULT KAIROS_API CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+LRESULT CALLBACK WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 /// <summary>
 /// 初始化DX12
 /// </summary>
 /// <returns></returns>
-bool KAIROS_API InitD3D();
+bool InitD3D();
 
 /// <summary>
 /// Update game logic
 /// </summary>
 /// <returns></returns>
-void KAIROS_API Update();
+void Update();
 
 /// <summary>
 /// 更新d3d管线(更新命令列表)
 /// </summary>
 /// <returns></returns>
-void KAIROS_API UpdatePipeline();
+void UpdatePipeline();
 
 /// <summary>
 /// 执行命令列表
 /// </summary>
 /// <returns></returns>
-void KAIROS_API Render();
+void Render();
 
 /// <summary>
 /// 释放COM对象，释放内存
 /// </summary>
 /// <returns></returns>
-void KAIROS_API Cleanup();
+void Cleanup();
 
 /// <summary>
 /// 等待GPU完成命令列表
 /// </summary>
 /// <returns></returns>
-void KAIROS_API WaitForPreviousFrame();
-
-KAIROS_EXPORT_END
+void WaitForPreviousFrame();
 
 #endif

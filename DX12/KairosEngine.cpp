@@ -3,40 +3,38 @@
 
 
 
-//int WINAPI WinMain(HINSTANCE hInstance,    //Main windows function
-//	HINSTANCE hPrevInstance,
-//	LPSTR lpCmdLine,
-//	int nShowCmd)
-//{
-//	// 创建窗口
-//	if (!InitializeWindow(hInstance, nShowCmd, m_Width, m_Height, m_FullScreen))
-//	{
-//		MessageBox(0, L"Window Initialization - Failed", L"Error", MB_OK);
-//		return 0;
-//	}
-//
-//	// 初始化 direct3d
-//	if (!InitD3D())
-//	{
-//		MessageBox(0, L"Failed to initialize direct3d 12", L"ERROR", MB_OK);
-//		Cleanup();
-//		return 1;
-//	}
-//
-//	// 开启主循环
-//	MainLoop();
-//
-//	// 在释放所有东西之前，我们先等待GPU完成所有任务
-//	WaitForPreviousFrame();
-//
-//	// 关闭屏障事件
-//	CloseHandle(m_FenceEvent);
-//	return 0;
-//}
+int WINAPI WinMain(HINSTANCE hInstance,    //Main windows function
+	HINSTANCE hPrevInstance,
+	LPSTR lpCmdLine,
+	int nShowCmd)
+{
+	// 创建窗口
+	if (!InitializeWindow(hInstance, nShowCmd, m_Width, m_Height, m_FullScreen))
+	{
+		MessageBox(0, L"Window Initialization - Failed", L"Error", MB_OK);
+		return 0;
+	}
 
-KAIROS_EXPORT_BEGIN
+	// 初始化 direct3d
+	if (!InitD3D())
+	{
+		MessageBox(0, L"Failed to initialize direct3d 12", L"ERROR", MB_OK);
+		Cleanup();
+		return 1;
+	}
 
-bool KAIROS_API InitializeWindow(HINSTANCE hInstance, int ShowWnd, int width, int height, bool fullScreen)
+	// 开启主循环
+	MainLoop();
+
+	// 在释放所有东西之前，我们先等待GPU完成所有任务
+	WaitForPreviousFrame();
+
+	// 关闭屏障事件
+	CloseHandle(m_FenceEvent);
+	return 0;
+}
+
+bool InitializeWindow(HINSTANCE hInstance, int ShowWnd, int width, int height, bool fullScreen)
 {
 	if (fullScreen)
 	{
@@ -95,7 +93,7 @@ bool KAIROS_API InitializeWindow(HINSTANCE hInstance, int ShowWnd, int width, in
 	return true;
 }
 
-void KAIROS_API MainLoop()
+void MainLoop()
 {
 	MSG msg;
 	ZeroMemory(&msg, sizeof(MSG));
@@ -119,7 +117,7 @@ void KAIROS_API MainLoop()
 	}
 }
 
-LRESULT KAIROS_API WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+LRESULT WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	switch (msg)
 	{
@@ -139,7 +137,7 @@ LRESULT KAIROS_API WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
-bool KAIROS_API InitD3D()
+bool InitD3D()
 {
 	HRESULT hr;
 	
@@ -275,7 +273,6 @@ bool KAIROS_API InitD3D()
 	hr = m_Device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_CommandAllocators[0], NULL, IID_PPV_ARGS(&m_CommandList));
 	if (FAILED(hr))
 		return false;
-	m_CommandList->Close();
 
 	// 创建屏障和屏障事件
 
@@ -294,15 +291,181 @@ bool KAIROS_API InitD3D()
 	if (m_FenceEvent == nullptr)
 		return false;
 
+	// 创建根签名
+
+	CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
+	rootSignatureDesc.Init(0, nullptr, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+	
+	ID3DBlob* signature;
+	hr = D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, nullptr);
+	if (FAILED(hr))
+		return false;
+
+	hr = m_Device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&m_RootSignature));
+	if (FAILED(hr))
+		return false;
+
+	// 编译顶点着色器
+	ID3DBlob* vertexShader;
+	ID3DBlob* errorBuffer;
+	hr = D3DCompileFromFile(
+		L"./Shaders/VertexShader.hlsl",
+		nullptr, nullptr,
+		"main", "vs_5_0",
+		D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION,
+		0,
+		&vertexShader,
+		&errorBuffer
+	);
+	if (FAILED(hr))
+	{
+		OutputDebugStringA((char*)errorBuffer->GetBufferPointer());
+		return false;
+	}
+
+	// 填充 Shader字节码结构：Shader字节码指针 和 字节码大小
+	D3D12_SHADER_BYTECODE vertexShaderBytecode = {};
+	vertexShaderBytecode.pShaderBytecode = vertexShader->GetBufferPointer();
+	vertexShaderBytecode.BytecodeLength = vertexShader->GetBufferSize();
+
+	// 编译片元着色器
+	ID3DBlob* pixelShader;
+	hr = D3DCompileFromFile(
+		L"./Shaders/PixelShader.hlsl",
+		nullptr, nullptr,
+		"main", "ps_5_0",
+		D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION,
+		0,
+		&pixelShader,
+		&errorBuffer
+	);
+	if (FAILED(hr))
+	{
+		OutputDebugStringA((char*)errorBuffer->GetBufferPointer());
+		return false;
+	}
+	D3D12_SHADER_BYTECODE pixelShaderBytecode = {};
+	pixelShaderBytecode.pShaderBytecode = pixelShader->GetBufferPointer();
+	pixelShaderBytecode.BytecodeLength = pixelShader->GetBufferSize();
+
+	// 创建输入布局
+
+	D3D12_INPUT_ELEMENT_DESC inputLaytouts[] =
+	{
+		{"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
+	};
+	// 填充 input layout description 结构
+	D3D12_INPUT_LAYOUT_DESC inputLayoutDesc = {};
+	inputLayoutDesc.NumElements = sizeof(inputLaytouts) / sizeof(D3D12_INPUT_ELEMENT_DESC);
+	inputLayoutDesc.pInputElementDescs = inputLaytouts;
+
+	// 创建PSO
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+	psoDesc.InputLayout = inputLayoutDesc;
+	psoDesc.pRootSignature = m_RootSignature;
+	psoDesc.VS = vertexShaderBytecode;
+	psoDesc.PS = pixelShaderBytecode;
+	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+	psoDesc.SampleDesc = sampleDesc;
+	psoDesc.SampleMask = 0xffffffff;
+	psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+	psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+	psoDesc.NumRenderTargets = 1;
+
+	hr = m_Device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_PipelineStateObject));
+	if (FAILED(hr))
+		return false;
+
+	// 创建顶点缓冲
+
+	Vertex vList[] =
+	{
+		{{0.0f, 0.5f, 0.5f}},
+		{{0.5f, -0.5f, 0.5f}},
+		{{-0.5f, -0.5f, 0.5f}},
+	};
+
+	int vBufferSize = sizeof(vList);
+
+	// 创建默认堆
+	D3D12_HEAP_PROPERTIES heapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+	D3D12_RESOURCE_DESC heapDesc = CD3DX12_RESOURCE_DESC::Buffer(vBufferSize);
+	m_Device->CreateCommittedResource(
+		&heapProperties,
+		D3D12_HEAP_FLAG_NONE,
+		&heapDesc,
+		D3D12_RESOURCE_STATE_COPY_DEST,
+		nullptr,
+		IID_PPV_ARGS(&m_VertexBuffer)
+	);
+	m_VertexBuffer->SetName(L"Vertex Buffer Resource Heap");
+
+	// 创建上传堆
+	ID3D12Resource* vBufferUploadHeap;
+	heapProperties = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+	m_Device->CreateCommittedResource(
+		&heapProperties,
+		D3D12_HEAP_FLAG_NONE,
+		&heapDesc,
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr,
+		IID_PPV_ARGS(&vBufferUploadHeap)
+	);
+	vBufferUploadHeap->SetName(L"Vertex Buffer Upload Resource Heap");
+
+	// 将顶点数据传入上传堆
+	D3D12_SUBRESOURCE_DATA vertexData = {};
+	vertexData.pData = reinterpret_cast<BYTE*>(vList);
+	vertexData.SlicePitch = vBufferSize;
+
+	// 将上传堆数据复制到默认堆
+	UpdateSubresources(m_CommandList, m_VertexBuffer, vBufferUploadHeap, 0, 0, 1, &vertexData);
+
+	 //在数据复制完后，转换默认堆资源状态
+	D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_VertexBuffer, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+	m_CommandList->ResourceBarrier(1, &barrier);
+
+	// 执行命令列表上传资源
+	m_CommandList->Close();
+	ID3D12CommandList* ppCommandLists[] = { m_CommandList };
+	m_CommandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+
+	// 设置屏障，以让我们能够等待资源上传完成
+	++m_FenceValues[m_FrameIndex];
+	hr = m_CommandQueue->Signal(m_Fences[m_FrameIndex], m_FenceValues[m_FrameIndex]);
+	if (FAILED(hr))
+		m_Running = false;
+
+	// 创建 Vertex Buffer View 描述符
+	m_VertexBufferView.BufferLocation = m_VertexBuffer->GetGPUVirtualAddress();
+	m_VertexBufferView.StrideInBytes = sizeof(Vertex);
+	m_VertexBufferView.SizeInBytes = vBufferSize;
+
+	// 设置视口
+	m_ViewPort.TopLeftX = 0;
+	m_ViewPort.TopLeftY = 0;
+	m_ViewPort.Width = m_Width;
+	m_ViewPort.Height = m_Height;
+	m_ViewPort.MinDepth = 0.0f;
+	m_ViewPort.MaxDepth = 1.0f;
+
+	// 设置剪刀矩形
+	m_ScissorRect.left = 0;
+	m_ScissorRect.top = 0;
+	m_ScissorRect.right = m_Width;
+	m_ScissorRect.bottom = m_Height;
+
 	return true;
 }
 
-void KAIROS_API Update()
+void Update()
 {
 	// do nothing now
 }
 
-void KAIROS_API UpdatePipeline()
+void UpdatePipeline()
 {
 	// 重置命令分配器前，先等待GPU完成它
 	WaitForPreviousFrame();
@@ -313,7 +476,7 @@ void KAIROS_API UpdatePipeline()
 	if (FAILED(hr))
 		m_Running = false;
 
-	hr = m_CommandList->Reset(m_CommandAllocators[m_FrameIndex], NULL);
+	hr = m_CommandList->Reset(m_CommandAllocators[m_FrameIndex], m_PipelineStateObject);
 	if (FAILED(hr))
 		m_Running = false;
 
@@ -329,6 +492,13 @@ void KAIROS_API UpdatePipeline()
 	const float clearColor[] = { 0.0f, 0.2f, 0.4f, 1.0f };
 	m_CommandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 
+	m_CommandList->SetGraphicsRootSignature(m_RootSignature);
+	m_CommandList->RSSetViewports(1, &m_ViewPort);
+	m_CommandList->RSSetScissorRects(1, &m_ScissorRect);
+	m_CommandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	m_CommandList->IASetVertexBuffers(0, 1, &m_VertexBufferView);
+	m_CommandList->DrawInstanced(3, 1, 0, 0);
+
 	// 把渲染目标切换回 PRESENT 状态，以便交换链呈现它
 	barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_RenderTargets[m_FrameIndex], D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
 	m_CommandList->ResourceBarrier(1, &barrier);
@@ -338,7 +508,7 @@ void KAIROS_API UpdatePipeline()
 		m_Running = false;
 }
 
-void KAIROS_API Render()
+void Render()
 {
 	HRESULT hr;
 
@@ -362,7 +532,7 @@ void KAIROS_API Render()
 		m_Running = false;
 }
 
-void KAIROS_API Cleanup()
+void Cleanup()
 {
 	// 等待所有帧任务完成
 	for (int i = 0; i < k_FrameBufferCount; ++i)
@@ -390,9 +560,13 @@ void KAIROS_API Cleanup()
 		SAFE_RELEASE(m_CommandAllocators[i]);
 		SAFE_RELEASE(m_Fences[i]);
 	}
+
+	SAFE_RELEASE(m_PipelineStateObject);
+	SAFE_RELEASE(m_RootSignature);
+	SAFE_RELEASE(m_VertexBuffer);
 }
 
-void KAIROS_API WaitForPreviousFrame()
+void WaitForPreviousFrame()
 {
 	HRESULT hr;
 
@@ -416,5 +590,3 @@ void KAIROS_API WaitForPreviousFrame()
 	// 自增屏障值
 	++m_FenceValues[m_FrameIndex];
 }
-
-KAIROS_EXPORT_END

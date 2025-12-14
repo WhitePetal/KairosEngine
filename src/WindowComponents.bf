@@ -13,9 +13,10 @@ namespace KairosEngine
 		public int WindowCount;
 		public int WindowCapacity;
 
-		public int32_4[] Rects;
-		public WindowFlags[] Flags;
 		public int[] Ids;
+		public Windows.HWnd[] Hwnds;
+		public WindowFlags[] Flags;
+		public int32_4[] Rects;
 
 		private int m_IdsCount;
 		private int m_IdsCapacity;
@@ -30,9 +31,10 @@ namespace KairosEngine
 			WindowCount = 0;
 			WindowCapacity = k_InitializeWindowCapacity;
 
-			Rects = new int32_4[k_InitializeWindowCapacity];
-			Flags = new WindowFlags[k_InitializeWindowCapacity];
 			Ids = new int[k_InitializeWindowCapacity];
+			Hwnds = new Windows.HWnd[k_InitializeWindowCapacity];
+			Flags = new WindowFlags[k_InitializeWindowCapacity];
+			Rects = new int32_4[k_InitializeWindowCapacity];
 
 			m_IdsCount = 0;
 			m_IdsCapacity = k_InitializeIdsCapacity;
@@ -49,9 +51,10 @@ namespace KairosEngine
 
 			delete IdToIndex;
 
-			delete Ids;
-			delete Flags;
 			delete Rects;
+			delete Flags;
+			delete Hwnds;
+			delete Ids;
 		}
 
 		[Inline]
@@ -66,7 +69,7 @@ namespace KairosEngine
 			delete Instance;
 		}
 
-		public int CreateWindow(int32_4 rect, bool fullScreen)
+		public int CreateWindow(int32_4 rect, bool fullScreen, Windows.HWnd hwnd)
 		{
 			if(WindowCount >= WindowCapacity)
 				ExpandWindowContainers();
@@ -84,9 +87,10 @@ namespace KairosEngine
 
 			int index = WindowCount++;
 
-			Rects[index] = rect;
-			Flags[index] = fullScreen ? (WindowFlags.Enable | WindowFlags.FullScreen) : WindowFlags.Enable;
 			Ids[index] = id;
+			Hwnds[index] = hwnd;
+			Flags[index] = fullScreen ? (WindowFlags.Enable | WindowFlags.FullScreen) : WindowFlags.Enable;
+			Rects[index] = rect;
 
 			IdToIndex[id] = index;
 
@@ -98,24 +102,29 @@ namespace KairosEngine
 		{
 			WindowCapacity = WindowCapacity << 1;
 
-			var newRects = new int32_4[WindowCapacity];
-			var newFlags = new WindowFlags[WindowCapacity];
 			var newIds = new int[WindowCapacity];
+			var newHwnds = new Windows.HWnd[WindowCapacity];
+			var newFlags = new WindowFlags[WindowCapacity];
+			var newRects = new int32_4[WindowCapacity];
 
 			for(int i = 0; i < WindowCount; ++i)
 			{
-				newRects[i] = Rects[i];
-				newFlags[i] = Flags[i];
 				newIds[i] = Ids[i];
+				newHwnds[i] = Hwnds[i];
+				newFlags[i] = Flags[i];
+				newRects[i] = Rects[i];
 			}
 
-			delete Ids;
-			delete Flags;
 			delete Rects;
+			delete Flags;
+			delete Hwnds;
+			delete Ids;
 
-			Rects = newRects;
-			Flags = newFlags;
+
 			Ids = newIds;
+			Hwnds = newHwnds;
+			Flags = newFlags;
+			Rects = newRects;
 		}
 
 		[DisableChecks]
