@@ -62,4 +62,43 @@ HWND KAIROS_API KairosInitializeWindow(HINSTANCE hInstance, int ShowWnd, int wid
 	return hwnd;
 }
 
+int KAIROS_API KairosDefWindowProcW(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+	return DefWindowProcW(hWnd, msg, wParam, lParam);
+}
+
+void KAIROS_API KairosDestroyWindow(HWND hWnd)
+{
+	DestroyWindow(hWnd);
+}
+
+void KAIROS_API KairosPostQuitMessage(int nExitCode)
+{
+	PostQuitMessage(nExitCode);
+}
+
+void KAIROS_API KairosMainLoop()
+{
+	MSG msg;
+	ZeroMemory(&msg, sizeof(MSG));
+
+	while (true)
+	{
+		if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+		{
+			if (msg.message == WM_QUIT)
+				break;
+
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
+		else
+		{
+
+		}
+	}
+}
+
+
+
 KAIROS_EXPORT_END

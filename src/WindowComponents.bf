@@ -97,6 +97,22 @@ namespace KairosEngine
 			return id;
 		}
 
+		public void DestroyWindow(int id)
+		{
+			int index = IdToIndex[id];
+			int end = --WindowCount;
+
+			Ids[index] = Ids[end];
+			Hwnds[index] = Hwnds[end];
+			Flags[index] = Flags[end];
+			Rects[index] = Rects[end];
+
+			if(m_RecycleIdCount >= m_RecycleIdCapacity)
+				ExpandRecyleIdContainers();
+
+			m_RecycleIds[m_RecycleIdCount++] = id;
+		}
+
 		[DisableChecks]
 		private void ExpandWindowContainers()
 		{
@@ -142,6 +158,23 @@ namespace KairosEngine
 			delete IdToIndex;
 
 			IdToIndex = newIdToIndex;
+		}
+
+		[DisableChecks]
+		private void ExpandRecyleIdContainers()
+		{
+			m_RecycleIdCapacity = m_RecycleIdCapacity << 1;
+
+			var newRecyleIds = new int[m_RecycleIdCapacity];
+
+			for(int i = 0; i < m_RecycleIdCount; ++i)
+			{
+				newRecyleIds[i] = m_RecycleIds[i];
+			}
+
+			delete m_RecycleIds;
+
+			m_RecycleIds = newRecyleIds;
 		}
 	}
 }

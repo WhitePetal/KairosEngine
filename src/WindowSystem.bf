@@ -5,20 +5,23 @@ namespace KairosEngine
 {
 	public class WindowSystem
 	{
+		public static WindowSystem Instance;
 		private WindowComponents m_Components;
 
-		public void Initialize()
+		public static void Initialize()
 		{
 			WindowComponents.Initialize();
-			m_Components = WindowComponents.Instance;
+			Instance = new WindowSystem();
+			Instance.m_Components = WindowComponents.Instance;
 		}
 
 		public void DeInitialize()
 		{
 			m_Components.DeInitialize();
+			delete Instance;
 		}
 
-		public int CreateWindow(Windows.HModule hInstanc, int32_4 rect, bool fullScreen, String windowName, String windowTitle, WndProcDelegate wndProc)
+		public int CreateWindow(Windows.HModule hInstanc, int32_4 rect, bool fullScreen, String windowName, String windowTitle, Windows.WndProc wndProc)
 		{
 			Windows.HWnd hwnd = KairosInitializeWindow(hInstanc, Windows.SW_SHOWDEFAULT, rect.z, rect.w, fullScreen, windowName, windowTitle, wndProc);
 			if(hwnd == 0)
@@ -31,13 +34,14 @@ namespace KairosEngine
 			return id;
 		}
 
+		public void DestroyWindow(int id)
+		{
+
+		}
+
 		public void Update()
 		{
-			/*MainLoop();*/
-			/*for(int i = 0; i < m_Components.WindowCount; ++i)
-			{
-
-			}*/
+			KairosMainLoop();
 		}
 	}
 }
