@@ -14,8 +14,6 @@
 #include "d3dx12.h"
 #include <string>
 
-#define SAFE_RELEASE(p) { if ((p)) { (p)->Release(); (p) = 0; } }
-
 /// <summary>
 /// ´°¿Ú¾ä±ú
 /// </summary>

@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using KairosEngine.Editor;
+using KairosEngine.Graphics;
 
 namespace KairosEngine
 {
@@ -28,10 +29,15 @@ namespace KairosEngine
 			}
 			editorMainWnd.Id = windId;
 
+			GraphicsDevice device = GraphicsDevice();
+			device.Initialize();
+
 
 			WindowSystem.Instance.Update();
 
 			WindowSystem.Instance.DeInitialize();
+
+			device.DeInitialize();
 
 			return;
 		}

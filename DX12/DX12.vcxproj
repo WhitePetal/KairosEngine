@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -136,6 +136,7 @@
   <ItemGroup>
     <ClInclude Include="d3dx12.h" />
     <ClInclude Include="framework.h" />
+    <ClInclude Include="GraphicsDevice.h" />
     <ClInclude Include="KairosEngine.h" />
     <ClInclude Include="KairosEngineDefines.h" />
     <ClInclude Include="Resource.h" />
@@ -143,6 +144,7 @@
     <ClInclude Include="KairosWindow.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="GraphicsDevice.cpp" />
     <ClCompile Include="KairosEngine.cpp" />
     <ClCompile Include="KairosWindow.cpp" />
   </ItemGroup>

@@ -13,5 +13,7 @@
 #define KAIROS_API
 #endif
 
+#define SAFE_RELEASE(p) { if ((p)) { (p)->Release(); (p) = 0; } }
+
 #endif
 
