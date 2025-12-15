@@ -3,12 +3,13 @@
 
 #include "KairosEngineDefines.h"
 #include <Windows.h>
+#include <functional>
 
 KAIROS_EXPORT_BEGIN
 
-using KairosWndProcPtr = LRESULT(CALLBACK*)(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+using WndProcCallback = std::function <LRESULT(HWND, UINT, WPARAM, LPARAM)> ;
 
-HWND KAIROS_API KairosInitializeWindow(HINSTANCE hInstance, int ShowWnd, int width, int height, bool fullScreen, LPCWSTR windowName, LPCWSTR windowTitle, KairosWndProcPtr wndProc);
+HWND KAIROS_API KairosInitializeWindow(HINSTANCE hInstance, int ShowWnd, int width, int height, bool fullScreen, LPCWSTR windowName, LPCWSTR windowTitle, WndProcCallback* wndProc);
 
 int KAIROS_API KairosDefWindowProcW(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 

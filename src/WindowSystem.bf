@@ -21,9 +21,15 @@ namespace KairosEngine
 			delete Instance;
 		}
 
-		public int CreateWindow(Windows.HModule hInstanc, int32_4 rect, bool fullScreen, String windowName, String windowTitle, Windows.WndProc wndProc)
+		public int CreateWindow(Windows.HModule hInstanc, int32_4 rect, bool fullScreen, String windowName, String windowTitle, WndProcPtr wndProc)
 		{
-			Windows.HWnd hwnd = KairosInitializeWindow(hInstanc, Windows.SW_SHOWDEFAULT, rect.z, rect.w, fullScreen, windowName, windowTitle, wndProc);
+			char16* wndName;
+			char16* wndTitle;
+			TextUtils.Utf8ToUtf16Scope!(windowName, wndName);
+			TextUtils.Utf8ToUtf16Scope!(windowTitle, wndTitle);
+
+			Windows.HWnd hwnd = KairosInitializeWindow(hInstanc, Windows.SW_SHOWDEFAULT, rect.z, rect.w, fullScreen, wndName, wndTitle, wndProc);
+			Console.WriteLine($"Window hWnd: {(int)hwnd}");
 			if(hwnd == 0)
 			{
 				Console.WriteLine($"Window Initialization - Failed");

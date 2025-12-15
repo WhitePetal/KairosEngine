@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using System.Collections;
 
 namespace KairosEngine
 {
@@ -102,10 +103,14 @@ namespace KairosEngine
 			int index = IdToIndex[id];
 			int end = --WindowCount;
 
-			Ids[index] = Ids[end];
+			int endId = Ids[end];
+
+			Ids[index] = endId;
 			Hwnds[index] = Hwnds[end];
 			Flags[index] = Flags[end];
 			Rects[index] = Rects[end];
+
+			IdToIndex[endId] = index;
 
 			if(m_RecycleIdCount >= m_RecycleIdCapacity)
 				ExpandRecyleIdContainers();
