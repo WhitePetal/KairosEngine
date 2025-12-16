@@ -134,8 +134,10 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="CreateResult.h" />
     <ClInclude Include="d3dx12.h" />
     <ClInclude Include="framework.h" />
+    <ClInclude Include="GraphicsCommandQueue.h" />
     <ClInclude Include="GraphicsDevice.h" />
     <ClInclude Include="KairosEngine.h" />
     <ClInclude Include="KairosEngineDefines.h" />
@@ -144,6 +146,7 @@
     <ClInclude Include="KairosWindow.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="GraphicsCommandQueue.cpp" />
     <ClCompile Include="GraphicsDevice.cpp" />
     <ClCompile Include="KairosEngine.cpp" />
     <ClCompile Include="KairosWindow.cpp" />

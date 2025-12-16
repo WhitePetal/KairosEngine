@@ -30,15 +30,24 @@ namespace KairosEngine
 			editorMainWnd.Id = windId;
 
 			GraphicsDevice device = GraphicsDevice();
-			device.Initialize();
+			int hr = device.Create();
+			if(hr > 0)
+				Console.WriteLine("ERROR Create Graphics Device Failed");
+
+			Console.WriteLine("Device Created");
+
+			GraphicsCommandQueue commandQueue = device.CreateaCommandQueue(CommandListType.Direct, 0, CommandQueueFlags.None, 0u);
+			/*Console.WriteLine("CommandQueue Created");*/
 
 
 			WindowSystem.Instance.Update();
 
 			WindowSystem.Instance.DeInitialize();
 
-			device.DeInitialize();
-
+			commandQueue.Dispose();
+			device.Dispose();
+			/*delete device;*/
+			/*delete commandQueue;*/
 			return;
 		}
 	}

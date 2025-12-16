@@ -1,11 +1,11 @@
 FileVersion = 1
 LastConfig = "Release"
 LastPlatform = "Win64"
-RecentFilesList = ["src\\WindowSystem.bf", "src\\TextUtils.bf", "src\\KairosEngine.bf", "src\\WindowSystem_Bindings.bf", "src\\Editors\\Windows\\KairosEditorMainWindow.bf", "src\\WindowComponents.bf", "d:\\Beef\\BeefLibs\\corlib\\src\\Windows.bf", "Disassembly", "d:\\Beef\\BeefLibs\\corlib\\src\\Attribute.bf"]
+RecentFilesList = ["src\\KairosEngine.bf", "src\\WindowSystem.bf", "src\\Graphics\\GraphicsDevice_Bindings.bf", "src\\Graphics\\GraphicsDevice.bf", "src\\WindowSystem_Bindings.bf", "src\\TextUtils.bf", "src\\Editors\\Windows\\KairosEditorMainWindow.bf", "src\\WindowComponents.bf", "d:\\Beef\\BeefLibs\\corlib\\src\\Windows.bf", "Disassembly", "d:\\Beef\\BeefLibs\\corlib\\src\\Attribute.bf"]
 
 [MainWindow]
-X = 7
-Y = 40
+X = 299
+Y = 99
 Width = 1795
 Height = 1167
 ShowKind = "ShowNormal"
@@ -43,8 +43,26 @@ DefaultDocumentsTabbedView = true
 Type = "TabbedView"
 
 [[MainDockingFrame.DockedWidgets.DockedWidgets.Tabs]]
+TabLabel = "GraphicsDevice_Bindings.bf"
+TabWidth = 198.0
+TabIsPinned = false
+Type = "SourceViewPanel"
+FilePath = "src\\Graphics\\GraphicsDevice_Bindings.bf"
+CursorPos = 516
+ProjectName = "KairosEngine"
+
+[[MainDockingFrame.DockedWidgets.DockedWidgets.Tabs]]
+TabLabel = "GraphicsDevice.bf"
+TabWidth = 144.0
+TabIsPinned = false
+Type = "SourceViewPanel"
+FilePath = "src\\Graphics\\GraphicsDevice.bf"
+CursorPos = 338
+ProjectName = "KairosEngine"
+
+[[MainDockingFrame.DockedWidgets.DockedWidgets.Tabs]]
 TabLabel = "TextUtils.bf"
-TabWidth = 103.0
+TabWidth = 93.0
 TabIsPinned = false
 Type = "SourceViewPanel"
 FilePath = "src\\TextUtils.bf"
@@ -53,7 +71,7 @@ ProjectName = "KairosEngine"
 
 [[MainDockingFrame.DockedWidgets.DockedWidgets.Tabs]]
 TabLabel = "KairosEditorMainWindow.bf"
-TabWidth = 203.0
+TabWidth = 193.0
 TabIsPinned = false
 Type = "SourceViewPanel"
 FilePath = "src\\Editors\\Windows\\KairosEditorMainWindow.bf"
@@ -75,26 +93,27 @@ TabWidth = 187.0
 TabIsPinned = false
 Type = "SourceViewPanel"
 FilePath = "src\\WindowSystem_Bindings.bf"
-CursorPos = 446
+CursorPos = 196
 ProjectName = "KairosEngine"
 
 [[MainDockingFrame.DockedWidgets.DockedWidgets.Tabs]]
-Active = true
 TabLabel = "WindowSystem.bf"
 TabWidth = 133.0
 TabIsPinned = false
 Type = "SourceViewPanel"
 FilePath = "src\\WindowSystem.bf"
-CursorPos = 721
+CursorPos = 1075
+VertPos = 90.0
 ProjectName = "KairosEngine"
 
 [[MainDockingFrame.DockedWidgets.DockedWidgets.Tabs]]
+Active = true
 TabLabel = "KairosEngine.bf"
 TabWidth = 121.0
 TabIsPinned = false
 Type = "SourceViewPanel"
 FilePath = "src\\KairosEngine.bf"
-CursorPos = 512
+CursorPos = 814
 ProjectName = "KairosEngine"
 
 [[MainDockingFrame.DockedWidgets]]

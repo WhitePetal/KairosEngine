@@ -42,12 +42,24 @@
     <ClInclude Include="GraphicsDevice.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="GraphicsCommandQueue.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="CreateResult.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="KairosEngine.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="KairosWindow.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="GraphicsDevice.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="GraphicsCommandQueue.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
