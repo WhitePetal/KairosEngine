@@ -10,6 +10,11 @@ void GraphicsCommandQueue::Dispose()
 	SAFE_RELEASE(m_pCommandQueue);
 }
 
+ID3D12CommandQueue* GraphicsCommandQueue::GetInternalPtr()
+{
+	return m_pCommandQueue;
+}
+
 KAIROS_EXPORT_BEGIN
 
 void KAIROS_API GraphicsCommandQueue_Dispose(GraphicsCommandQueue* _this)

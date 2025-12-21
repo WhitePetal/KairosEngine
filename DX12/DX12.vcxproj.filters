@@ -48,6 +48,18 @@
     <ClInclude Include="CreateResult.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="GraphicsFactory.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ErrorCodes.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="GraphicsSwapChain.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="GraphicsRenderTarget.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="KairosEngine.cpp">
@@ -60,6 +72,15 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="GraphicsCommandQueue.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="GraphicsFactory.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="GraphicsSwapChain.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="GraphicsRenderTarget.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>

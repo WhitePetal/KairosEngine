@@ -136,9 +136,13 @@
   <ItemGroup>
     <ClInclude Include="CreateResult.h" />
     <ClInclude Include="d3dx12.h" />
+    <ClInclude Include="ErrorCodes.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="GraphicsCommandQueue.h" />
     <ClInclude Include="GraphicsDevice.h" />
+    <ClInclude Include="GraphicsFactory.h" />
+    <ClInclude Include="GraphicsRenderTarget.h" />
+    <ClInclude Include="GraphicsSwapChain.h" />
     <ClInclude Include="KairosEngine.h" />
     <ClInclude Include="KairosEngineDefines.h" />
     <ClInclude Include="Resource.h" />
@@ -148,6 +152,9 @@
   <ItemGroup>
     <ClCompile Include="GraphicsCommandQueue.cpp" />
     <ClCompile Include="GraphicsDevice.cpp" />
+    <ClCompile Include="GraphicsFactory.cpp" />
+    <ClCompile Include="GraphicsRenderTarget.cpp" />
+    <ClCompile Include="GraphicsSwapChain.cpp" />
     <ClCompile Include="KairosEngine.cpp" />
     <ClCompile Include="KairosWindow.cpp" />
   </ItemGroup>

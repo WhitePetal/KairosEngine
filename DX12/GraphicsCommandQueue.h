@@ -1,4 +1,5 @@
-#ifndef __KAIROS_GRAPHICS_COMMAND_QUEUE
+#ifndef __KAIROS_GRAPHICS_COMMAND_QUEUE__
+#define __KAIROS_GRAPHICS_COMMAND_QUEUE__
 
 #include "KairosEngineDefines.h"
 #include <d3d12.h>
@@ -13,6 +14,8 @@ public:
 	GraphicsCommandQueue(ID3D12CommandQueue* pQueue);
 
 	void Dispose();
+
+	ID3D12CommandQueue* GetInternalPtr();
 
 private:
 	ID3D12CommandQueue* m_pCommandQueue;

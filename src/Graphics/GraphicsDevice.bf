@@ -6,29 +6,22 @@ namespace KairosEngine.Graphics
 	{
 		private void* m_pDevice;
 
-		public this()
+		public this(void* pDevice)
 		{
-			m_pDevice = GraphicsDevice_Allocate();
-		}
-
-		public int Create()
-		{
-			return GraphicsDevice_Create(m_pDevice);
+			m_pDevice = pDevice;
 		}
 
 		public void Dispose()
 		{
-			GraphicsDevice_Dispose(m_pDevice);
+			if(m_pDevice != null)
+				GraphicsDevice_Dispose(m_pDevice);
 		}
 
-		public GraphicsCommandQueue CreateaCommandQueue(CommandListType type, int priority, CommandQueueFlags flags, uint nodeMask)
+		public (int hr, GraphicsCommandQueue queue) CreateaCommandQueue(CommandListType type, int priority, CommandQueueFlags flags, uint nodeMask)
 		{
 			CreateResult result = GraphicsDevice_CreateCommandQueue(m_pDevice, type, priority, flags, nodeMask);
-			if(result.HR > 0)
-				Console.WriteLine("ERROR:: Create CommandQueue Failed");
-			Console.WriteLine("Create CommandQueue Success");
 			GraphicsCommandQueue commandQueue = GraphicsCommandQueue(result.Ptr);
-			return commandQueue;
+			return (result.HR, commandQueue);
 		}
 	}
 }

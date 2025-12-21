@@ -1,6 +1,7 @@
 #ifndef __KAIROS_GRAPHICS_DEVICE__
 #define __KAIROS_GRAPHICS_DEVICE__
 
+#include "ErrorCodes.h"
 #include "KairosEngineDefines.h"
 #include "GraphicsCommandQueue.h"
 #include "CreateResult.h"
@@ -13,7 +14,7 @@
 class GraphicsDevice
 {
 public:
-	int Create();
+	GraphicsDevice(ID3D12Device* pDevice);
 	void Dispose();
 
 	CreateResult CreateaCommandQueue(D3D12_COMMAND_LIST_TYPE type, int priority, D3D12_COMMAND_QUEUE_FLAGS flags, UINT nodeMask);
@@ -23,10 +24,6 @@ private:
 };
 
 KAIROS_EXPORT_BEGIN
-
-GraphicsDevice* KAIROS_API GraphicsDevice_Allocate();
-
-int KAIROS_API GraphicsDevice_Create(GraphicsDevice* _this);
 
 void KAIROS_API GraphicsDevice_Dispose(GraphicsDevice* _this);
 

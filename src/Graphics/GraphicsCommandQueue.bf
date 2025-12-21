@@ -19,7 +19,13 @@ namespace KairosEngine.Graphics
 
 		public void Dispose()
 		{
-			GraphicsCommandQueue_Dispose(m_pCommandQueue);
+			if(m_pCommandQueue != null)
+			 	GraphicsCommandQueue_Dispose(m_pCommandQueue);
+		}
+
+		public void* GetInternalPtr()
+		{
+			return m_pCommandQueue;
 		}
 	}
 }

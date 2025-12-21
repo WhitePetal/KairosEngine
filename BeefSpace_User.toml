@@ -1,11 +1,11 @@
 FileVersion = 1
 LastConfig = "Release"
 LastPlatform = "Win64"
-RecentFilesList = ["src\\KairosEngine.bf", "src\\WindowSystem.bf", "src\\Graphics\\GraphicsDevice_Bindings.bf", "src\\Graphics\\GraphicsDevice.bf", "src\\WindowSystem_Bindings.bf", "src\\TextUtils.bf", "src\\Editors\\Windows\\KairosEditorMainWindow.bf", "src\\WindowComponents.bf", "d:\\Beef\\BeefLibs\\corlib\\src\\Windows.bf", "Disassembly", "d:\\Beef\\BeefLibs\\corlib\\src\\Attribute.bf"]
+RecentFilesList = ["src\\Graphics\\CreateResult.bf", "DX12\\GraphicsFactory.cpp", "src\\KairosEngine.bf", "src\\Graphics\\GraphicsDevice.bf", "src\\WindowSystem.bf", "src\\Graphics\\GraphicsDevice_Bindings.bf", "src\\Graphics\\GraphicsFactory_Bindings.bf", "src\\Graphics\\GraphicsFactory.bf", "src\\Graphics\\GraphicsCommandQueue.bf", "src\\WindowSystem_Bindings.bf", "src\\TextUtils.bf", "src\\Editors\\Windows\\KairosEditorMainWindow.bf", "src\\WindowComponents.bf", "d:\\Beef\\BeefLibs\\corlib\\src\\Windows.bf", "Disassembly", "d:\\Beef\\BeefLibs\\corlib\\src\\Attribute.bf"]
 
 [MainWindow]
-X = 299
-Y = 99
+X = 429
+Y = 195
 Width = 1795
 Height = 1167
 ShowKind = "ShowNormal"
@@ -43,21 +43,66 @@ DefaultDocumentsTabbedView = true
 Type = "TabbedView"
 
 [[MainDockingFrame.DockedWidgets.DockedWidgets.Tabs]]
+TabLabel = "GraphicsFactory.cpp"
+TabWidth = 158.0
+TabIsPinned = false
+Type = "SourceViewPanel"
+FilePath = "DX12\\GraphicsFactory.cpp"
+CursorPos = 410
+
+[[MainDockingFrame.DockedWidgets.DockedWidgets.Tabs]]
+Active = true
+TabLabel = "CreateResult.bf"
+TabWidth = 118.0
+TabIsPinned = false
+Type = "SourceViewPanel"
+FilePath = "src\\Graphics\\CreateResult.bf"
+CursorPos = 74
+ProjectName = "KairosEngine"
+
+[[MainDockingFrame.DockedWidgets.DockedWidgets.Tabs]]
+TabLabel = "GraphicsCommandQueue.bf"
+TabWidth = 194.0
+TabIsPinned = false
+Type = "SourceViewPanel"
+FilePath = "src\\Graphics\\GraphicsCommandQueue.bf"
+CursorPos = 343
+ProjectName = "KairosEngine"
+
+[[MainDockingFrame.DockedWidgets.DockedWidgets.Tabs]]
+TabLabel = "GraphicsFactory_Bindings.bf"
+TabWidth = 192.0
+TabIsPinned = false
+Type = "SourceViewPanel"
+FilePath = "src\\Graphics\\GraphicsFactory_Bindings.bf"
+CursorPos = 336
+ProjectName = "KairosEngine"
+
+[[MainDockingFrame.DockedWidgets.DockedWidgets.Tabs]]
+TabLabel = "GraphicsFactory.bf"
+TabWidth = 138.0
+TabIsPinned = false
+Type = "SourceViewPanel"
+FilePath = "src\\Graphics\\GraphicsFactory.bf"
+CursorPos = 189
+ProjectName = "KairosEngine"
+
+[[MainDockingFrame.DockedWidgets.DockedWidgets.Tabs]]
 TabLabel = "GraphicsDevice_Bindings.bf"
-TabWidth = 198.0
+TabWidth = 188.0
 TabIsPinned = false
 Type = "SourceViewPanel"
 FilePath = "src\\Graphics\\GraphicsDevice_Bindings.bf"
-CursorPos = 516
+CursorPos = 364
 ProjectName = "KairosEngine"
 
 [[MainDockingFrame.DockedWidgets.DockedWidgets.Tabs]]
 TabLabel = "GraphicsDevice.bf"
-TabWidth = 144.0
+TabWidth = 134.0
 TabIsPinned = false
 Type = "SourceViewPanel"
 FilePath = "src\\Graphics\\GraphicsDevice.bf"
-CursorPos = 338
+CursorPos = 434
 ProjectName = "KairosEngine"
 
 [[MainDockingFrame.DockedWidgets.DockedWidgets.Tabs]]
@@ -102,18 +147,17 @@ TabWidth = 133.0
 TabIsPinned = false
 Type = "SourceViewPanel"
 FilePath = "src\\WindowSystem.bf"
-CursorPos = 1075
-VertPos = 90.0
+CursorPos = 1007
 ProjectName = "KairosEngine"
 
 [[MainDockingFrame.DockedWidgets.DockedWidgets.Tabs]]
-Active = true
 TabLabel = "KairosEngine.bf"
 TabWidth = 121.0
 TabIsPinned = false
 Type = "SourceViewPanel"
 FilePath = "src\\KairosEngine.bf"
-CursorPos = 814
+CursorPos = 1165
+VertPos = 251.0
 ProjectName = "KairosEngine"
 
 [[MainDockingFrame.DockedWidgets]]
@@ -127,6 +171,13 @@ RequestedWidth = 250.0
 RequestedHeight = 250.0
 SizePriority = 0.4468314
 Type = "TabbedView"
+
+[[MainDockingFrame.DockedWidgets.DockedWidgets.Tabs]]
+Active = true
+TabLabel = "Console"
+TabWidth = 97.0
+TabIsPinned = false
+Type = "ConsolePanel"
 
 [[MainDockingFrame.DockedWidgets.DockedWidgets.Tabs]]
 TabLabel = "Profile"
@@ -159,13 +210,6 @@ TabIsPinned = false
 Type = "AutoWatchPanel"
 Columns = [{Width = 200.0}, {Width = 200.0}, {Width = 200.0}]
 
-[[MainDockingFrame.DockedWidgets.DockedWidgets.Tabs]]
-Active = true
-TabLabel = "Console"
-TabWidth = 97.0
-TabIsPinned = false
-Type = "ConsolePanel"
-
 [[MainDockingFrame.DockedWidgets.DockedWidgets]]
 RequestedWidth = 250.0
 RequestedHeight = 250.0
@@ -185,13 +229,13 @@ TabIsPinned = false
 Type = "CallStackPanel"
 
 [[MainDockingFrame.DockedWidgets.DockedWidgets.Tabs]]
+Active = true
 TabLabel = "Immediate"
 TabWidth = 111.0
 TabIsPinned = false
 Type = "ImmediatePanel"
 
 [[MainDockingFrame.DockedWidgets.DockedWidgets.Tabs]]
-Active = true
 TabLabel = "Output"
 TabWidth = 90.0
 TabIsPinned = false
