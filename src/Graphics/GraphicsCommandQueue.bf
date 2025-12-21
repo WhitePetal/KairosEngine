@@ -2,13 +2,13 @@ using System;
 
 namespace KairosEngine.Graphics
 {
-	enum CommandQueueFlags : uint
+	public enum CommandQueueFlags : uint
 	{
 		None = 0,
 		DisableGpuTimeout = 0x1
 	}
 
-	struct GraphicsCommandQueue : IDisposable
+	public struct GraphicsCommandQueue : IDisposable
 	{
 		private void* m_pCommandQueue;
 

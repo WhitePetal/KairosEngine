@@ -1,6 +1,6 @@
 namespace KairosEngine.Graphics
 {
-	struct GraphicsSwapChain
+	public struct GraphicsSwapChain
 	{
 		private void* m_pSwapChain;
 
@@ -18,6 +18,13 @@ namespace KairosEngine.Graphics
 		public uint GetCurrentBackBufferIndex()
 		{
 			return GraphicsSwapChain_GetCurrentBackBufferIndex(m_pSwapChain);
+		}
+
+		public (int hr, GraphicsRenderTarget renderTarget) GetRenderTarget(int index)
+		{
+			CreateResult result = GraphicsSwapChain_GetRenderTarget(m_pSwapChain, index);
+			GraphicsRenderTarget renderTarget  = GraphicsRenderTarget(result.Ptr);
+			return (result.HR, renderTarget);
 		}
 	}
 }

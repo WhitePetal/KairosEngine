@@ -15,9 +15,19 @@ class GraphicsRenderTarget
 public:
 	GraphicsRenderTarget(ID3D12Resource* pRenderTarget);
 
+	void Dispose();
+
+	ID3D12Resource* GetInternalPtr();
+
 private:
 	ID3D12Resource* m_pRenderTarget;
 
 };
+
+KAIROS_EXPORT_BEGIN
+
+void KAIROS_API GraphicsRenderTarget_Dispose(GraphicsRenderTarget* _this);
+
+KAIROS_EXPORT_END
 
 #endif

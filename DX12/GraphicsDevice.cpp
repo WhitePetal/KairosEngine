@@ -17,10 +17,40 @@ CreateResult GraphicsDevice::CreateaCommandQueue(D3D12_COMMAND_LIST_TYPE type, i
 	ID3D12CommandQueue* pQueue;
 	hr = m_pDevice->CreateCommandQueue(&desc, IID_PPV_ARGS(&pQueue));
 	if (FAILED(hr))
-		return CreateResult{ CreateCommandQueueFailed, new GraphicsCommandQueue(nullptr) };
-	GraphicsCommandQueue* pGraphicsQueue = new GraphicsCommandQueue(pQueue);
-	return CreateResult{ (int)GraphicsSuccess, pGraphicsQueue };
+		return CreateResult{ CreateCommandQueueFailed, new GraphicsCommandQueue{ nullptr } };
+	return CreateResult{ (int)GraphicsSuccess, new GraphicsCommandQueue{ pQueue } };
 }
+
+CreateResult GraphicsDevice::CreateDescriptorHeap(int count, D3D12_DESCRIPTOR_HEAP_TYPE type, D3D12_DESCRIPTOR_HEAP_FLAGS flags)
+{
+	D3D12_DESCRIPTOR_HEAP_DESC desc = { type, count, flags };
+	ID3D12DescriptorHeap* pDescriptorHeap;
+	HRESULT hr = m_pDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&pDescriptorHeap));
+	if (FAILED(hr))
+		return CreateResult{ CreateDescriptorHeapFailed, nullptr };
+
+	return CreateResult{ GraphicsSuccess, new GraphicsDescriptorHeap{ pDescriptorHeap } };
+}
+
+UINT GraphicsDevice::GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE descriptorHeapType)
+{
+	return m_pDevice->GetDescriptorHandleIncrementSize(descriptorHeapType);
+}
+
+void GraphicsDevice::CreateRenderTargetView(GraphicsRenderTarget* pRenderTarget, CD3DX12_CPU_DESCRIPTOR_HANDLE handle)
+{
+	m_pDevice->CreateRenderTargetView(pRenderTarget->GetInternalPtr(), nullptr, handle);
+}
+
+void GraphicsDevice::CreateRenderTargetView(GraphicsRenderTarget* pRenderTarget, GraphicsDescriptorHeap* pDescriptorHeap, int index)
+{
+	ID3D12DescriptorHeap* ipDescriptorHeap = pDescriptorHeap->GetInternalPtr();
+	UINT descriptorSize = m_pDevice->GetDescriptorHandleIncrementSize(ipDescriptorHeap->GetDesc().Type);
+	CD3DX12_CPU_DESCRIPTOR_HANDLE handle{ ipDescriptorHeap->GetCPUDescriptorHandleForHeapStart() };
+	handle.Offset(index, descriptorSize);
+	m_pDevice->CreateRenderTargetView(pRenderTarget->GetInternalPtr(), nullptr, handle);
+}
+
 
 KAIROS_EXPORT_BEGIN
 
@@ -33,6 +63,26 @@ void KAIROS_API GraphicsDevice_Dispose(GraphicsDevice* _this)
 CreateResult KAIROS_API GraphicsDevice_CreateCommandQueue(GraphicsDevice* _this, D3D12_COMMAND_LIST_TYPE type, int priority, D3D12_COMMAND_QUEUE_FLAGS flags, int nodeMask)
 {
 	return _this->CreateaCommandQueue(type, priority, flags, nodeMask);
+}
+
+CreateResult KAIROS_API GraphicsDevice_CreateDescriptorHeap(GraphicsDevice* _this, int count, D3D12_DESCRIPTOR_HEAP_TYPE type, D3D12_DESCRIPTOR_HEAP_FLAGS flags)
+{
+	return _this->CreateDescriptorHeap(count, type, flags);
+}
+
+UINT KAIROS_API GraphicsDevice_GetDescriptorHandleIncrementSize(GraphicsDevice* _this, D3D12_DESCRIPTOR_HEAP_TYPE descriptorHeapType)
+{
+	return _this->GetDescriptorHandleIncrementSize(descriptorHeapType);
+}
+
+void KAIROS_API GraphicsDevice_CreateRenderTargetViewByHandle(GraphicsDevice* _this, GraphicsRenderTarget* pRenderTarget, CD3DX12_CPU_DESCRIPTOR_HANDLE handle)
+{
+	_this->CreateRenderTargetView(pRenderTarget, handle);
+}
+
+void KAIROS_API GraphicsDevice_CreateRenderTargetViewByHeapIndex(GraphicsDevice* _this, GraphicsRenderTarget* pRenderTarget, GraphicsDescriptorHeap* pDescriptorHeap, int index)
+{
+	_this->CreateRenderTargetView(pRenderTarget, pDescriptorHeap, index);
 }
 
 KAIROS_EXPORT_END

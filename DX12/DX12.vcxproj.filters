@@ -60,6 +60,9 @@
     <ClInclude Include="GraphicsRenderTarget.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="GraphicsDescriptorHeap.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="KairosEngine.cpp">
@@ -81,6 +84,9 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="GraphicsRenderTarget.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="GraphicsDescriptorHeap.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>

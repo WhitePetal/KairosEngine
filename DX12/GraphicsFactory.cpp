@@ -55,7 +55,7 @@ CreateResult GraphicsFactory::CreateDevice()
 		return CreateResult{ CreateDeviceFailed, nullptr };
 	}
 
-	return CreateResult{ GraphicsSuccess, new GraphicsDevice(pDevice) };
+	return CreateResult{ GraphicsSuccess, new GraphicsDevice{ pDevice } };
 }
 
 CreateResult GraphicsFactory::CreateSwapChain(GraphicsCommandQueue* pCommandQueue, int width, int height, DXGI_FORMAT format, int msaa, int aaQuality, int bufferCount, HWND hwnd, BOOL windowed)
@@ -99,7 +99,7 @@ KAIROS_EXPORT_BEGIN
 
 GraphicsFactory* KAIROS_API GraphicsFactory_Allocate()
 {
-	return new GraphicsFactory();
+	return new GraphicsFactory{};
 }
 
 int KAIROS_API GraphicsFactory_Create(GraphicsFactory* _this)

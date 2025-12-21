@@ -55,11 +55,50 @@ namespace KairosEngine
 				return;
 			}
 
-			(hr, GraphicsSwapChain swapChain) = graphicsFactory.CreateSwapChain(commandQueue, wndRect.z, wndRect.w, RenderTargetFormats.R8G8B8A8_UNORM, 1, 0, 3, windId);
+			int backBufferCount = 3;
+
+			(hr, GraphicsSwapChain swapChain) = graphicsFactory.CreateSwapChain(commandQueue, wndRect.z, wndRect.w, RenderTargetFormat.R8G8B8A8_UNORM, 1, 0, backBufferCount, windId);
 			defer swapChain.Dispose();
 			if(hr > 0)
 			{
 				Console.WriteLine($"ERROR Create Swap Chain Failed");
+				return;
+			}
+
+			(hr, GraphicsDescriptorHeap rtvHeap) = device.CreateDescriptorHeap(backBufferCount, DescriptorHeapType.RTV, DescriptorHeapFlags.NONE);
+			defer rtvHeap.Dispose();
+			if(hr > 0)
+			{
+				Console.WriteLine($"ERROR Create RTV DescriptorHeap Failed");
+				return;
+			}
+
+			GraphicsCPUDescriptorHandle rtvHandle = rtvHeap.GetCPUDescriptorHandleForHeapStart();
+			uint rtvDescriptorSize = device.GetDescriptorHandleIncrementSize(DescriptorHeapType.RTV);
+
+			GraphicsRenderTarget[] renderTargets = scope GraphicsRenderTarget[backBufferCount](?);
+			int getRenderTargetCount = 0;
+			for(; getRenderTargetCount < backBufferCount; ++getRenderTargetCount)
+			{
+				(hr, renderTargets[getRenderTargetCount]) = swapChain.GetRenderTarget(getRenderTargetCount);
+				if(hr > 0)
+				{
+					++getRenderTargetCount;
+					break;
+				}
+				device.CreateRenderTargetView(renderTargets[getRenderTargetCount], rtvHandle);
+				rtvHandle.Offset(1, rtvDescriptorSize);
+			}
+			defer
+			{
+				for(int i = 0; i < getRenderTargetCount; ++i)
+				{
+					renderTargets[i].Dispose();
+				}
+			}
+			if(hr > 0)
+			{
+				Console.WriteLine("ERROR Get SwapChain RenderTarget Failed");
 				return;
 			}
 

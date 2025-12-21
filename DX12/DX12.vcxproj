@@ -139,6 +139,7 @@
     <ClInclude Include="ErrorCodes.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="GraphicsCommandQueue.h" />
+    <ClInclude Include="GraphicsDescriptorHeap.h" />
     <ClInclude Include="GraphicsDevice.h" />
     <ClInclude Include="GraphicsFactory.h" />
     <ClInclude Include="GraphicsRenderTarget.h" />
@@ -151,6 +152,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="GraphicsCommandQueue.cpp" />
+    <ClCompile Include="GraphicsDescriptorHeap.cpp" />
     <ClCompile Include="GraphicsDevice.cpp" />
     <ClCompile Include="GraphicsFactory.cpp" />
     <ClCompile Include="GraphicsRenderTarget.cpp" />

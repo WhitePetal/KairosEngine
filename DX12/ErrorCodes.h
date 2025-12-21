@@ -7,5 +7,7 @@
 #define CreateDeviceFailed 3
 #define CreateCommandQueueFailed 4
 #define CreateSwapChainFailed 5
+#define GetSwapChainRenderTargetFailed 6
+#define CreateDescriptorHeapFailed 7
 
 #endif

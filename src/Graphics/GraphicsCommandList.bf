@@ -1,6 +1,6 @@
 namespace KairosEngine.Graphics
 {
-	enum CommandListType : uint
+	public enum CommandListType : uint
 	{
 		Direct = 0,
 		Bundle = 1,
@@ -8,7 +8,7 @@ namespace KairosEngine.Graphics
 		Copy = 3
 	}
 
-	struct GraphicsCommandList
+	public struct GraphicsCommandList
 	{
 
 	}

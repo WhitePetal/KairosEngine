@@ -17,6 +17,6 @@ namespace KairosEngine.Graphics
 		private static extern CreateResult GraphicsFactory_CreateDevice(void* _this);
 
 		[Import("DX12.lib"), CallingConvention(.Cdecl), LinkName("GraphicsFactory_CreateSwapChain")]
-		private static extern CreateResult GraphicsFactory_CreateSwapChain(void* _this, void* pCommandQueue, int width, int height, RenderTargetFormats format, int msaa, int aaQuality, int bufferCount, Windows.HWnd hwnd, bool windowed);
+		private static extern CreateResult GraphicsFactory_CreateSwapChain(void* _this, void* pCommandQueue, int width, int height, RenderTargetFormat format, int msaa, int aaQuality, int bufferCount, Windows.HWnd hwnd, bool windowed);
 	}
 }

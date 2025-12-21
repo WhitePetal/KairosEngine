@@ -5,6 +5,8 @@
 #include "KairosEngineDefines.h"
 #include "GraphicsCommandQueue.h"
 #include "CreateResult.h"
+#include "GraphicsDescriptorHeap.h"
+#include "GraphicsRenderTarget.h"
 #include <d3d12.h>
 #include <dxgi1_4.h>
 #include <D3Dcompiler.h>
@@ -19,6 +21,14 @@ public:
 
 	CreateResult CreateaCommandQueue(D3D12_COMMAND_LIST_TYPE type, int priority, D3D12_COMMAND_QUEUE_FLAGS flags, UINT nodeMask);
 
+	CreateResult CreateDescriptorHeap(int count, D3D12_DESCRIPTOR_HEAP_TYPE type, D3D12_DESCRIPTOR_HEAP_FLAGS flags);
+
+	UINT GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE descriptorHeapType);
+
+	void CreateRenderTargetView(GraphicsRenderTarget* pRenderTarget, CD3DX12_CPU_DESCRIPTOR_HANDLE handle);
+
+	void CreateRenderTargetView(GraphicsRenderTarget* pRenderTarget, GraphicsDescriptorHeap* pDescriptorHeap, int index);
+
 private:
 	ID3D12Device* m_pDevice;
 };
@@ -28,6 +38,14 @@ KAIROS_EXPORT_BEGIN
 void KAIROS_API GraphicsDevice_Dispose(GraphicsDevice* _this);
 
 CreateResult KAIROS_API GraphicsDevice_CreateCommandQueue(GraphicsDevice* _this, D3D12_COMMAND_LIST_TYPE type, int priority, D3D12_COMMAND_QUEUE_FLAGS flags, int nodeMask);
+
+CreateResult KAIROS_API GraphicsDevice_CreateDescriptorHeap(GraphicsDevice* _this, int count, D3D12_DESCRIPTOR_HEAP_TYPE type, D3D12_DESCRIPTOR_HEAP_FLAGS flags);
+
+UINT KAIROS_API GraphicsDevice_GetDescriptorHandleIncrementSize(GraphicsDevice* _this, D3D12_DESCRIPTOR_HEAP_TYPE descriptorHeapType);
+
+void KAIROS_API GraphicsDevice_CreateRenderTargetViewByHandle(GraphicsDevice* _this, GraphicsRenderTarget* pRenderTarget, CD3DX12_CPU_DESCRIPTOR_HANDLE handle);
+
+void KAIROS_API GraphicsDevice_CreateRenderTargetViewByHeapIndex(GraphicsDevice* _this, GraphicsRenderTarget* pRenderTarget, GraphicsDescriptorHeap* pDescriptorHeap, int index);
 
 KAIROS_EXPORT_END
 
