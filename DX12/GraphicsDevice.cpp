@@ -51,6 +51,24 @@ void GraphicsDevice::CreateRenderTargetView(GraphicsRenderTarget* pRenderTarget,
 	m_pDevice->CreateRenderTargetView(pRenderTarget->GetInternalPtr(), nullptr, handle);
 }
 
+CreateResult GraphicsDevice::CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE type)
+{
+	ID3D12CommandAllocator* pCommandAllocator;
+	HRESULT hr = m_pDevice->CreateCommandAllocator(type, IID_PPV_ARGS(&pCommandAllocator));
+	if (FAILED(hr))
+		return CreateResult{ CreateCommandAllocatorFailed, nullptr };
+	return CreateResult{ GraphicsSuccess, new GraphicsCommandAllocator{pCommandAllocator} };
+}
+
+CreateResult GraphicsDevice::CreateCommandList(GraphicsCommandAllocator* pCommandAllocator, D3D12_COMMAND_LIST_TYPE type, UINT nodeMask)
+{
+	ID3D12CommandList* pCommandList;
+	HRESULT hr = m_pDevice->CreateCommandList(nodeMask, type, pCommandAllocator->GetInternalPtr(), NULL, IID_PPV_ARGS(&pCommandList));
+	if (FAILED(hr))
+		return CreateResult{ CreateCommandListFailed , nullptr };
+	return CreateResult{ GraphicsSuccess, new GraphicsCommandList{pCommandList} };
+}
+
 
 KAIROS_EXPORT_BEGIN
 
@@ -86,3 +104,13 @@ void KAIROS_API GraphicsDevice_CreateRenderTargetViewByHeapIndex(GraphicsDevice*
 }
 
 KAIROS_EXPORT_END
+
+CreateResult KAIROS_API GraphicsDevice_CreateCommandAllocator(GraphicsDevice* _this, D3D12_COMMAND_LIST_TYPE type)
+{
+	return _this->CreateCommandAllocator(type);
+}
+
+CreateResult KAIROS_API GraphicsDevice_CreateCommandList(GraphicsDevice* _this, GraphicsCommandAllocator* pCommandAllocator, D3D12_COMMAND_LIST_TYPE type, UINT nodeMask)
+{
+	return _this->CreateCommandList(pCommandAllocator, type, nodeMask);
+}

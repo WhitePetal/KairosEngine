@@ -10,11 +10,6 @@ void GraphicsDescriptorHeap::Dispose()
 	SAFE_RELEASE(m_pDescriptorHeap);
 }
 
-ID3D12DescriptorHeap* GraphicsDescriptorHeap::GetInternalPtr()
-{
-	return m_pDescriptorHeap;
-}
-
 SIZE_T GraphicsDescriptorHeap::GetCPUDescriptorHandleForHeapStart()
 {
 	return  m_pDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr;

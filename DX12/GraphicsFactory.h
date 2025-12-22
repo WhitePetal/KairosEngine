@@ -17,6 +17,7 @@ class GraphicsFactory
 {
 public:
 	int Create();
+
 	void Dispose();
 
 	CreateResult CreateDevice();

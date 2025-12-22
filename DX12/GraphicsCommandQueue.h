@@ -15,11 +15,16 @@ public:
 
 	void Dispose();
 
-	ID3D12CommandQueue* GetInternalPtr();
+	inline ID3D12CommandQueue* GetInternalPtr();
 
 private:
 	ID3D12CommandQueue* m_pCommandQueue;
 };
+
+inline ID3D12CommandQueue* GraphicsCommandQueue::GetInternalPtr()
+{
+	return m_pCommandQueue;
+}
 
 KAIROS_EXPORT_BEGIN
 

@@ -138,6 +138,8 @@
     <ClInclude Include="d3dx12.h" />
     <ClInclude Include="ErrorCodes.h" />
     <ClInclude Include="framework.h" />
+    <ClInclude Include="GraphicsCommandAllocator.h" />
+    <ClInclude Include="GraphicsCommandList.h" />
     <ClInclude Include="GraphicsCommandQueue.h" />
     <ClInclude Include="GraphicsDescriptorHeap.h" />
     <ClInclude Include="GraphicsDevice.h" />
@@ -151,6 +153,8 @@
     <ClInclude Include="KairosWindow.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="GraphicsCommandAllocator.cpp" />
+    <ClCompile Include="GraphicsCommandList.cpp" />
     <ClCompile Include="GraphicsCommandQueue.cpp" />
     <ClCompile Include="GraphicsDescriptorHeap.cpp" />
     <ClCompile Include="GraphicsDevice.cpp" />

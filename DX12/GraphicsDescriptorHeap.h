@@ -17,13 +17,18 @@ public:
 
 	void Dispose();
 
-	ID3D12DescriptorHeap* GetInternalPtr();
+	inline ID3D12DescriptorHeap* GetInternalPtr();
 
 	SIZE_T GetCPUDescriptorHandleForHeapStart();
 
 private:
 	ID3D12DescriptorHeap* m_pDescriptorHeap;
 };
+
+inline ID3D12DescriptorHeap* GraphicsDescriptorHeap::GetInternalPtr()
+{
+	return m_pDescriptorHeap;
+}
 
 KAIROS_EXPORT_BEGIN
 

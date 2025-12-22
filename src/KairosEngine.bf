@@ -102,7 +102,37 @@ namespace KairosEngine
 				return;
 			}
 
-			Console.WriteLine($"Current Back Buffer Index: {swapChain.GetCurrentBackBufferIndex()}");
+			GraphicsCommandAllocator[] commandAllocators = scope GraphicsCommandAllocator[backBufferCount](?);
+			int createCommandAllocatorCount = 0;
+			for(; createCommandAllocatorCount < backBufferCount; ++createCommandAllocatorCount)
+			{
+				(hr, commandAllocators[createCommandAllocatorCount]) = device.CreateCommandAllocator(CommandListType.Direct);
+				if(hr > 0)
+				{
+					++createCommandAllocatorCount;
+					break;
+				}
+			}
+			defer
+			{
+				for(int i = 0; i < createCommandAllocatorCount; ++i)
+				{
+					commandAllocators[i].Dispose();
+				}
+			}
+			if(hr > 0)
+			{
+				Console.WriteLine($"ERROR Create CommandAllocator Failed");
+				return;
+			}
+
+			(hr, GraphicsCommandList commandList) = device.CreateCommandList(commandAllocators[0], CommandListType.Direct, 0u);
+			defer commandList.Dispose();
+			if(hr > 0)
+			{
+				Console.WriteLine($"ERROR Create CommandList Failed");
+				return;
+			}
 
 
 			WindowSystem.Instance.Update();

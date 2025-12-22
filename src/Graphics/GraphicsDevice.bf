@@ -43,5 +43,17 @@ namespace KairosEngine.Graphics
 		{
 			GraphicsDevice_CreateRenderTargetView(m_pDevice, renderTarget.GetInternalPtr(), descriptorHeap.GetInternalPtr(), index);
 		}
+
+		public (int hr, GraphicsCommandAllocator commandAllocator) CreateCommandAllocator(CommandListType type)
+		{
+			CreateResult result = GraphicsDevice_CreateCommandAllocator(m_pDevice, type);
+			return (result.HR, GraphicsCommandAllocator(result.Ptr));
+		}
+
+		public (int hr, GraphicsCommandList commandList) CreateCommandList(GraphicsCommandAllocator commandAllocator, CommandListType type, uint nodeMask)
+		{
+			CreateResult result = GraphicsDevice_CreateCommandList(m_pDevice, commandAllocator.GetInternalPtr(), type, nodeMask);
+			return (result.HR, GraphicsCommandList(result.Ptr));
+		}
 	}
 }

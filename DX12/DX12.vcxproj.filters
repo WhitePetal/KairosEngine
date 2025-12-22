@@ -63,6 +63,12 @@
     <ClInclude Include="GraphicsDescriptorHeap.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="GraphicsCommandAllocator.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="GraphicsCommandList.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="KairosEngine.cpp">
@@ -87,6 +93,12 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="GraphicsDescriptorHeap.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="GraphicsCommandAllocator.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="GraphicsCommandList.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>

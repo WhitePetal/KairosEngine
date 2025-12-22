@@ -9,5 +9,7 @@
 #define CreateSwapChainFailed 5
 #define GetSwapChainRenderTargetFailed 6
 #define CreateDescriptorHeapFailed 7
+#define CreateCommandAllocatorFailed 8
+#define CreateCommandListFailed 9
 
 #endif

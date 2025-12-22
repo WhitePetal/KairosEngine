@@ -1,15 +1,18 @@
 namespace KairosEngine.Graphics
 {
-	public enum CommandListType : uint
-	{
-		Direct = 0,
-		Bundle = 1,
-		Compute = 2,
-		Copy = 3
-	}
-
 	public struct GraphicsCommandList
 	{
+		private void* m_pGraphicsCommandList;
 
+		public this(void* pGraphicsCommandList)
+		{
+			m_pGraphicsCommandList = pGraphicsCommandList;
+		}
+
+		public void Dispose()
+		{
+			if(m_pGraphicsCommandList != null)
+				GraphicsCommandList_Dispose(m_pGraphicsCommandList);
+		}
 	}
 }

@@ -20,6 +20,12 @@ namespace KairosEngine.Graphics
 		private static extern void GraphicsDevice_CreateRenderTargetView(void* _this, void* pRenderTarget, uint64 handle);
 
 		[Import("DX12.lib"), CallingConvention(.Cdecl), LinkName("GraphicsDevice_CreateRenderTargetViewByHeapIndex")]
-		private extern static void GraphicsDevice_CreateRenderTargetView(void* _this, void* pRenderTarget, void* pDescriptorHeap, int index);
+		private static extern void GraphicsDevice_CreateRenderTargetView(void* _this, void* pRenderTarget, void* pDescriptorHeap, int index);
+
+		[Import("DX12.lib"), CallingConvention(.Cdecl), LinkName("GraphicsDevice_CreateCommandAllocator")]
+		private static extern CreateResult GraphicsDevice_CreateCommandAllocator(void* _this, CommandListType type);
+
+		[Import("DX12.lib"), CallingConvention(.Cdecl), LinkName("GraphicsDevice_CreateCommandList")]
+		private static extern CreateResult GraphicsDevice_CreateCommandList(void* _this, void* pCommandAllocator, CommandListType type, uint nodeMask);
 	}
 }

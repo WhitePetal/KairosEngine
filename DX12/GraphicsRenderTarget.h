@@ -17,12 +17,17 @@ public:
 
 	void Dispose();
 
-	ID3D12Resource* GetInternalPtr();
+	inline ID3D12Resource* GetInternalPtr();
 
 private:
 	ID3D12Resource* m_pRenderTarget;
 
 };
+
+ID3D12Resource* GraphicsRenderTarget::GetInternalPtr()
+{
+	return m_pRenderTarget;
+}
 
 KAIROS_EXPORT_BEGIN
 

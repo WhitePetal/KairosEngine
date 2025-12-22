@@ -10,11 +10,6 @@ void GraphicsRenderTarget::Dispose()
 	SAFE_RELEASE(m_pRenderTarget);
 }
 
-ID3D12Resource* GraphicsRenderTarget::GetInternalPtr()
-{
-	return m_pRenderTarget;
-}
-
 KAIROS_EXPORT_BEGIN
 
 void KAIROS_API GraphicsRenderTarget_Dispose(GraphicsRenderTarget* _this)
