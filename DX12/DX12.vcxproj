@@ -148,10 +148,12 @@
     <ClInclude Include="GraphicsFenceEvent.h" />
     <ClInclude Include="GraphicsRenderTarget.h" />
     <ClInclude Include="GraphicsRootSignature.h" />
+    <ClInclude Include="GraphicsShader.h" />
     <ClInclude Include="GraphicsSwapChain.h" />
     <ClInclude Include="KairosEngine.h" />
     <ClInclude Include="KairosEngineDefines.h" />
     <ClInclude Include="Resource.h" />
+    <ClInclude Include="ShaderType.h" />
     <ClInclude Include="targetver.h" />
     <ClInclude Include="KairosWindow.h" />
   </ItemGroup>
@@ -166,6 +168,7 @@
     <ClCompile Include="GraphicsFenceEvent.cpp" />
     <ClCompile Include="GraphicsRenderTarget.cpp" />
     <ClCompile Include="GraphicsRootSignature.cpp" />
+    <ClCompile Include="GraphicsShader.cpp" />
     <ClCompile Include="GraphicsSwapChain.cpp" />
     <ClCompile Include="KairosEngine.cpp" />
     <ClCompile Include="KairosWindow.cpp" />

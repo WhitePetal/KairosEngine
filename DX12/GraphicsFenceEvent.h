@@ -3,7 +3,6 @@
 
 #include "ErrorCodes.h"
 #include "KairosEngineDefines.h"
-#include "CreateResult.h"
 #include <d3d12.h>
 
 typedef struct GraphicsFenceEvent

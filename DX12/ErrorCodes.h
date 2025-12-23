@@ -15,5 +15,6 @@
 #define CreateFenceEventFailed 11
 #define SerializeRootSignatureFailed 12
 #define CreateRootSignatureFailed 13
+#define CreateShaderError 14
 
 #endif

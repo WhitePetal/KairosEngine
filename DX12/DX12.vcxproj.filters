@@ -78,6 +78,12 @@
     <ClInclude Include="GraphicsRootSignature.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="GraphicsShader.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ShaderType.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="KairosEngine.cpp">
@@ -117,6 +123,9 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="GraphicsRootSignature.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="GraphicsShader.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>

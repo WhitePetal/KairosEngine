@@ -164,6 +164,23 @@ namespace KairosEngine
 				return;
 			}
 
+			GraphicsShader vertexShader = GraphicsShader();
+			hr = vertexShader.CreateWithoutErrorInfo("./Shaders/VertexShader.hlsl", ShaderType.VertexShader);
+			defer vertexShader.Dispose();
+			if(hr > 0)
+			{
+				Console.WriteLine($"ERROR Create Vertex Shader Failed");
+				return;
+			}
+			GraphicsShader fragmentShader = GraphicsShader();
+			fragmentShader.CreateWithoutErrorInfo("./Shaders/PixelShader.hlsl", ShaderType.FragmentShader);
+			defer fragmentShader.Dispose();
+			if(hr > 0)
+			{
+				Console.WriteLine($"ERROR Create Fragment Shader Failed");
+				return;
+			}
+
 			WindowSystem.Instance.Update();
 
 			WindowSystem.Instance.DeInitialize();

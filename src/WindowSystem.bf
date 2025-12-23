@@ -89,10 +89,7 @@ namespace KairosEngine
 				if(KairosPeekMessage(pMsg) == 1)
 				{
 					if(msg.message == 0x0012)
-					{
-						Console.WriteLine($"PeekMessage: 0x{msg.message:x4}");
 						break;
-					}
 
 					KairosTranslateMessage(pMsg);
 					KairosDispatchMessage(pMsg);
