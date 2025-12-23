@@ -10,23 +10,10 @@
 #include <DirectXMath.h>
 #include "d3dx12.h"
 
-class GraphicsCommandAllocator
+typedef struct GraphicsCommandAllocator
 {
-public:
-	GraphicsCommandAllocator(ID3D12CommandAllocator* pCommandAllocator);
-	
-	void Dispose();
-
-	inline ID3D12CommandAllocator* GetInternalPtr();
-
-private:
 	ID3D12CommandAllocator* m_pCommandAllocator;
-};
-
-inline ID3D12CommandAllocator* GraphicsCommandAllocator::GetInternalPtr()
-{
-	return m_pCommandAllocator;
-}
+} GraphicsCommandAllocator;
 
 KAIROS_EXPORT_BEGIN
 

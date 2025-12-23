@@ -10,17 +10,10 @@
 #include <DirectXMath.h>
 #include "d3dx12.h"
 
-class GraphicsRootSignature
-
+typedef struct GraphicsRootSignature
 {
-public:
-	GraphicsRootSignature(ID3D12RootSignature* pRootSignature);
-
-	void Dispose();
-
-private:
 	ID3D12RootSignature* m_pRootSignature;
-};
+} GraphicsRootSignature;
 
 KAIROS_EXPORT_BEGIN
 

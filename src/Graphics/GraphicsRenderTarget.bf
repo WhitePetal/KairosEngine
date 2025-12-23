@@ -1,23 +1,16 @@
+using System;
+
 namespace KairosEngine.Graphics
 {
+	[CRepr]
 	public struct GraphicsRenderTarget
 	{
 		private void* m_pRenderTarget;
 
-		public this(void* pRenderTarget)
-		{
-			m_pRenderTarget = pRenderTarget;
-		}
-
-		public void Dispose()
+		public void Dispose() mut
 		{
 			if(m_pRenderTarget != null)
-				GraphicsRenderTarget_Dispose(m_pRenderTarget);
-		}
-
-		public void* GetInternalPtr()
-		{
-			return m_pRenderTarget;
+				GraphicsRenderTarget_Dispose(&this);
 		}
 	}
 }

@@ -26,9 +26,9 @@ int KAIROS_API GraphicsFactory_Create(GraphicsFactory* _this);
 
 void KAIROS_API GraphicsFactory_Dispose(GraphicsFactory* _this);
 
-CreateResult KAIROS_API GraphicsFactory_CreateDevice(GraphicsFactory* _this);
+int KAIROS_API GraphicsFactory_CreateDevice(GraphicsFactory* _this, GraphicsDevice* pGraphicsDevice);
 
-CreateResult KAIROS_API GraphicsFactory_CreateSwapChain(GraphicsFactory* _this, GraphicsCommandQueue* pCommandQueue, int width, int height, DXGI_FORMAT format, int msaa, int aaQuality, int bufferCount, HWND hwnd, BOOL windowed);
+int KAIROS_API GraphicsFactory_CreateSwapChain(GraphicsFactory* _this, GraphicsCommandQueue* pCommandQueue, GraphicsSwapChain* pGraphicsSwapChain, int width, int height, DXGI_FORMAT format, int msaa, int aaQuality, int bufferCount, HWND hwnd, BOOL windowed);
 
 KAIROS_EXPORT_END
 

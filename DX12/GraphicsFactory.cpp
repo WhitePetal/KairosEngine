@@ -21,7 +21,7 @@ void KAIROS_API GraphicsFactory_Dispose(GraphicsFactory* _this)
 	SAFE_RELEASE(_this->m_pFactory);
 }
 
-CreateResult KAIROS_API GraphicsFactory_CreateDevice(GraphicsFactory* _this)
+int KAIROS_API GraphicsFactory_CreateDevice(GraphicsFactory* _this, GraphicsDevice* pGraphicsDevice)
 {
 	HRESULT hr;
 
@@ -50,20 +50,21 @@ CreateResult KAIROS_API GraphicsFactory_CreateDevice(GraphicsFactory* _this)
 
 	if (!adapterFound)
 	{
-		return CreateResult{ NoUsefulAdapter, nullptr };
+		return NoUsefulAdapter;
 	}
 
 	ID3D12Device* pDevice;
 	hr = D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&pDevice));
 	if (FAILED(hr))
 	{
-		return CreateResult{ CreateDeviceFailed, nullptr };
+		return CreateDeviceFailed;
 	}
 
-	return CreateResult{ GraphicsSuccess, new GraphicsDevice{ pDevice } };
+	pGraphicsDevice->m_pDevice = pDevice;
+	return GraphicsSuccess;
 }
 
-CreateResult KAIROS_API GraphicsFactory_CreateSwapChain(GraphicsFactory* _this, GraphicsCommandQueue* pCommandQueue, int width, int height, DXGI_FORMAT format, int msaa, int aaQuality, int bufferCount, HWND hwnd, BOOL windowed)
+int KAIROS_API GraphicsFactory_CreateSwapChain(GraphicsFactory* _this, GraphicsCommandQueue* pCommandQueue, GraphicsSwapChain* pGraphicsSwapChain, int width, int height, DXGI_FORMAT format, int msaa, int aaQuality, int bufferCount, HWND hwnd, BOOL windowed)
 {
 	HRESULT hr;
 	// 该结构描述我们的显示模式
@@ -89,15 +90,15 @@ CreateResult KAIROS_API GraphicsFactory_CreateSwapChain(GraphicsFactory* _this, 
 	swapChainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH; // 允许全屏切换
 
 	IDXGISwapChain* tempSwapChain;
-	hr = _this->m_pFactory->CreateSwapChain(pCommandQueue->GetInternalPtr(), &swapChainDesc, &tempSwapChain); // 交换链创建后 CommandQueue 会被刷新
+	hr = _this->m_pFactory->CreateSwapChain(pCommandQueue->m_pCommandQueue, &swapChainDesc, &tempSwapChain); // 交换链创建后 CommandQueue 会被刷新
 	if (FAILED(hr))
-	{
-		return CreateResult{ CreateSwapChainFailed, nullptr };
-	}
+		CreateSwapChainFailed;
+
 	IDXGISwapChain3* pSwpaChain;
 	pSwpaChain = static_cast<IDXGISwapChain3*>(tempSwapChain);
 
-	return CreateResult{ GraphicsSuccess, new GraphicsSwapChain(pSwpaChain) };
+	pGraphicsSwapChain->m_pSwapChain = pSwpaChain;
+	return GraphicsSuccess;
 }
 
 KAIROS_EXPORT_END

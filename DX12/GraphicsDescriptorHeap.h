@@ -10,25 +10,13 @@
 #include <DirectXMath.h>
 #include "d3dx12.h"
 
-class GraphicsDescriptorHeap
+typedef struct GraphicsDescriptorHeap
 {
-public:
-	GraphicsDescriptorHeap(ID3D12DescriptorHeap* pDescriptorHeap);
-
-	void Dispose();
-
-	inline ID3D12DescriptorHeap* GetInternalPtr();
-
-	SIZE_T GetCPUDescriptorHandleForHeapStart();
-
-private:
 	ID3D12DescriptorHeap* m_pDescriptorHeap;
-};
 
-inline ID3D12DescriptorHeap* GraphicsDescriptorHeap::GetInternalPtr()
-{
-	return m_pDescriptorHeap;
-}
+	D3D12_DESCRIPTOR_HEAP_TYPE m_Type;
+	D3D12_DESCRIPTOR_HEAP_FLAGS m_Flags;
+} GraphicsDescriptorHeap;
 
 KAIROS_EXPORT_BEGIN
 

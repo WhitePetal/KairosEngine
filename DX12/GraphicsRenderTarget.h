@@ -10,24 +10,10 @@
 #include <DirectXMath.h>
 #include "d3dx12.h"
 
-class GraphicsRenderTarget
+typedef struct GraphicsRenderTarget
 {
-public:
-	GraphicsRenderTarget(ID3D12Resource* pRenderTarget);
-
-	void Dispose();
-
-	inline ID3D12Resource* GetInternalPtr();
-
-private:
 	ID3D12Resource* m_pRenderTarget;
-
-};
-
-ID3D12Resource* GraphicsRenderTarget::GetInternalPtr()
-{
-	return m_pRenderTarget;
-}
+} GraphicsRenderTarget;
 
 KAIROS_EXPORT_BEGIN
 

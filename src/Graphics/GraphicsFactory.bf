@@ -15,7 +15,6 @@ namespace KairosEngine.Graphics
 
 		public void Dispose() mut
 		{
-			Console.WriteLine($"GraphicsFactory Native Ptr: {m_pFactory}");
 			if(m_pFactory != null)
 			{
 				GraphicsFactory_Dispose(&this);
@@ -24,8 +23,9 @@ namespace KairosEngine.Graphics
 
 		public (int hr, GraphicsDevice device) CreateDevice() mut
 		{
-			CreateResult result = GraphicsFactory_CreateDevice(&this);
-			return (result.HR, GraphicsDevice(result.Ptr));
+			GraphicsDevice device = GraphicsDevice();
+			int hr = GraphicsFactory_CreateDevice(&this, &device);
+			return (hr, device);
 		}
 
 		public (int hr, GraphicsSwapChain swapChain) CreateSwapChain(GraphicsCommandQueue commandQueue, int width, int height, RenderTargetFormat format, int msaa, int aaQuality, int bufferCount, int windowId) mut

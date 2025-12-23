@@ -5,12 +5,12 @@ namespace KairosEngine.Graphics
 	extension GraphicsSwapChain
 	{
 		[Import("DX12.lib"), CallingConvention(.Cdecl), LinkName("GraphicsSwapChain_Dispose")]
-		private static extern void GraphicsSwapChain_Dispose(void* _this);
+		private static extern void GraphicsSwapChain_Dispose(GraphicsSwapChain* _this);
 
 		[Import("DX12.lib"), CallingConvention(.Cdecl), LinkName("GraphicsSwapChain_GetCurrentBackBufferIndex")]
-		private static extern uint GraphicsSwapChain_GetCurrentBackBufferIndex(void* _this);
+		private static extern uint GraphicsSwapChain_GetCurrentBackBufferIndex(GraphicsSwapChain* _this);
 
 		[Import("DX12.lib"), CallingConvention(.Cdecl), LinkName("GraphicsSwapChain_GetRenderTarget")]
-		private static extern CreateResult GraphicsSwapChain_GetRenderTarget(void* _this, int index);
+		private static extern int GraphicsSwapChain_GetRenderTarget(GraphicsSwapChain* _this, GraphicsRenderTarget* pGraphicsRenderTarget, int index);
 	}
 }

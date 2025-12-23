@@ -8,23 +8,10 @@
 #include <DirectXMath.h>
 #include "d3dx12.h"
 
-class GraphicsCommandQueue
+typedef struct GraphicsCommandQueue
 {
-public:
-	GraphicsCommandQueue(ID3D12CommandQueue* pQueue);
-
-	void Dispose();
-
-	inline ID3D12CommandQueue* GetInternalPtr();
-
-private:
 	ID3D12CommandQueue* m_pCommandQueue;
-};
-
-inline ID3D12CommandQueue* GraphicsCommandQueue::GetInternalPtr()
-{
-	return m_pCommandQueue;
-}
+} GraphicsCommandQueue;
 
 KAIROS_EXPORT_BEGIN
 

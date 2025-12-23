@@ -2,70 +2,72 @@ using System;
 
 namespace KairosEngine.Graphics
 {
+	[CRepr]
 	public struct GraphicsDevice : IDisposable
 	{
 		private void* m_pDevice;
 
-		public this(void* pDevice)
-		{
-			m_pDevice = pDevice;
-		}
-
-		public void Dispose()
+		public void Dispose() mut
 		{
 			if(m_pDevice != null)
-				GraphicsDevice_Dispose(m_pDevice);
+				GraphicsDevice_Dispose(&this);
 		}
 
-		public (int hr, GraphicsCommandQueue queue) CreateaCommandQueue(CommandListType type, int priority, CommandQueueFlags flags, uint nodeMask)
+		public (int hr, GraphicsCommandQueue queue) CreateaCommandQueue(CommandListType type, int priority, CommandQueueFlags flags, uint nodeMask) mut
 		{
-			CreateResult result = GraphicsDevice_CreateCommandQueue(m_pDevice, type, priority, flags, nodeMask);
-			return (result.HR, GraphicsCommandQueue(result.Ptr));
+			GraphicsCommandQueue queue = GraphicsCommandQueue();
+			int hr = GraphicsDevice_CreateCommandQueue(&this, &queue, type, priority, flags, nodeMask);
+			return (hr, queue);
 		}
 
-		public (int hr, GraphicsDescriptorHeap heap) CreateDescriptorHeap(int count, DescriptorHeapType type, DescriptorHeapFlags flags)
+		public (int hr, GraphicsDescriptorHeap heap) CreateDescriptorHeap(int count, DescriptorHeapType type, DescriptorHeapFlags flags) mut
 		{
-			CreateResult result = GraphicsDevice_CreateDescriptorHeap(m_pDevice, count, type, flags);
-			return (result.HR, GraphicsDescriptorHeap(result.Ptr, type, flags));
+			GraphicsDescriptorHeap heap = GraphicsDescriptorHeap();
+			int hr = GraphicsDevice_CreateDescriptorHeap(&this, &heap, count, type, flags);
+			return (hr, heap);
 		}
 
-		public uint GetDescriptorHandleIncrementSize(DescriptorHeapType type)
+		public uint GetDescriptorHandleIncrementSize(DescriptorHeapType type) mut
 		{
-			return GraphicsDevice_GetDescriptorHandleIncrementSize(m_pDevice, type);
+			return GraphicsDevice_GetDescriptorHandleIncrementSize(&this, type);
 		}
 
-		public void CreateRenderTargetView(GraphicsRenderTarget renderTarget, GraphicsCPUDescriptorHandle handle)
+		public void CreateRenderTargetView(ref GraphicsRenderTarget renderTarget, GraphicsCPUDescriptorHandle handle) mut
 		{
-			GraphicsDevice_CreateRenderTargetView(m_pDevice, renderTarget.GetInternalPtr(), handle.Ptr);
+			GraphicsDevice_CreateRenderTargetView(&this, &renderTarget, handle.Ptr);
 		}
 
-		public void CreateRenderTargetView(GraphicsRenderTarget renderTarget, GraphicsDescriptorHeap descriptorHeap, int index)
+		public void CreateRenderTargetView(ref GraphicsRenderTarget renderTarget, ref GraphicsDescriptorHeap descriptorHeap, int index) mut
 		{
-			GraphicsDevice_CreateRenderTargetView(m_pDevice, renderTarget.GetInternalPtr(), descriptorHeap.GetInternalPtr(), index);
+			GraphicsDevice_CreateRenderTargetView(&this, &renderTarget, &descriptorHeap, index);
 		}
 
-		public (int hr, GraphicsCommandAllocator commandAllocator) CreateCommandAllocator(CommandListType type)
+		public (int hr, GraphicsCommandAllocator commandAllocator) CreateCommandAllocator(CommandListType type) mut
 		{
-			CreateResult result = GraphicsDevice_CreateCommandAllocator(m_pDevice, type);
-			return (result.HR, GraphicsCommandAllocator(result.Ptr));
+			GraphicsCommandAllocator commandAllocator = GraphicsCommandAllocator();
+			int hr = GraphicsDevice_CreateCommandAllocator(&this, &commandAllocator, type);
+			return (hr, commandAllocator);
 		}
 
-		public (int hr, GraphicsCommandList commandList) CreateCommandList(GraphicsCommandAllocator commandAllocator, CommandListType type, uint nodeMask)
+		public (int hr, GraphicsCommandList commandList) CreateCommandList(ref GraphicsCommandAllocator commandAllocator, CommandListType type, uint nodeMask) mut
 		{
-			CreateResult result = GraphicsDevice_CreateCommandList(m_pDevice, commandAllocator.GetInternalPtr(), type, nodeMask);
-			return (result.HR, GraphicsCommandList(result.Ptr));
+			GraphicsCommandList commandList = GraphicsCommandList();
+			int hr = GraphicsDevice_CreateCommandList(&this, &commandAllocator, &commandList, type, nodeMask);
+			return (hr, commandList);
 		}
 
-		public (int hr, GraphicsFence fence) CreateFence(uint64 initialValue, FenceFlags flags)
+		public (int hr, GraphicsFence fence) CreateFence(uint64 initialValue, FenceFlags flags) mut
 		{
-			CreateResult result = GraphicsDevice_CreateFence(m_pDevice, initialValue, flags);
-			return (result.HR, GraphicsFence(result.Ptr));
+			GraphicsFence fence = GraphicsFence();
+			int hr = GraphicsDevice_CreateFence(&this, &fence, initialValue, flags);
+			return (hr, fence);
 		}
 
-		public (int hr, GraphicsRootSignature rootSignature) CreateEmptyRootSignature(RootSignatureFlags flags)
+		public (int hr, GraphicsRootSignature rootSignature) CreateEmptyRootSignature(RootSignatureFlags flags) mut
 		{
-			CreateResult result = GraphicsDevice_CreateEmptyRootSignature(m_pDevice, flags);
-			return (result.HR, GraphicsRootSignature(result.Ptr));
+			GraphicsRootSignature rootSignature = GraphicsRootSignature();
+			int hr = GraphicsDevice_CreateEmptyRootSignature(&this, &rootSignature, flags);
+			return (hr, rootSignature);
 		}
 	}
 }

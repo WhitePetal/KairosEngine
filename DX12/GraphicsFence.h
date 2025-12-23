@@ -10,17 +10,10 @@
 #include <DirectXMath.h>
 #include "d3dx12.h"
 
-
-class GraphicsFence
+typedef struct GraphicsFence
 {
-public:
-	GraphicsFence(ID3D12Fence* pFence);
-
-	void Dispose();
-
-private:
 	ID3D12Fence* m_pFence;
-};
+} GraphicsFence;
 
 KAIROS_EXPORT_BEGIN
 

@@ -10,16 +10,10 @@
 #include <DirectXMath.h>
 #include "d3dx12.h"
 
-class GraphicsCommandList
+typedef struct GraphicsCommandList
 {
-public:
-	GraphicsCommandList(ID3D12CommandList* pCommandList);
-
-	void Dispose();
-
-private:
 	ID3D12CommandList* m_pCommandList;
-};
+} GraphicsCommandList;
 
 KAIROS_EXPORT_BEGIN
 

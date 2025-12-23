@@ -1,18 +1,16 @@
+using System;
+
 namespace KairosEngine.Graphics
 {
+	[CRepr]
 	public struct GraphicsFence
 	{
 		private void* m_pFence;
 
-		public this(void* pFence)
-		{
-			m_pFence = pFence;
-		}
-
-		public void Dispose()
+		public void Dispose() mut
 		{
 			if(m_pFence != null)
-				GraphicsFence_Dispose(m_pFence);
+				GraphicsFence_Dispose(&this);
 		}
 	}
 }

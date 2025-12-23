@@ -54,7 +54,7 @@ namespace KairosEngine
 
 			int backBufferCount = 3;
 
-			(hr, GraphicsSwapChain swapChain) = graphicsFactory.CreateSwapChain(commandQueue, wndRect.z, wndRect.w, RenderTargetFormat.R8G8B8A8_UNORM, 1, 0, backBufferCount, windId);
+			(hr, GraphicsSwapChain swapChain) = graphicsFactory.CreateSwapChain(ref commandQueue, wndRect.z, wndRect.w, RenderTargetFormat.R8G8B8A8_UNORM, 1, 0, backBufferCount, windId);
 			defer swapChain.Dispose();
 			if(hr > 0)
 			{
@@ -83,7 +83,7 @@ namespace KairosEngine
 					++successCount;
 					break;
 				}
-				device.CreateRenderTargetView(renderTargets[successCount], rtvHandle);
+				device.CreateRenderTargetView(ref renderTargets[successCount], rtvHandle);
 				rtvHandle.Offset(1, rtvDescriptorSize);
 			}
 			defer
@@ -118,7 +118,7 @@ namespace KairosEngine
 				return;
 			}
 
-			(hr, GraphicsCommandList commandList) = device.CreateCommandList(commandAllocators[0], CommandListType.DIRECT, 0u);
+			(hr, GraphicsCommandList commandList) = device.CreateCommandList(ref commandAllocators[0], CommandListType.DIRECT, 0u);
 			defer commandList.Dispose();
 			if(hr > 0)
 			{

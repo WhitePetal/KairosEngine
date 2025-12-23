@@ -1,23 +1,16 @@
+using System;
+
 namespace KairosEngine.Graphics
 {
+	[CRepr]
 	public struct GraphicsCommandAllocator
 	{
 		private void* m_pCommandAllocator;
 
-		public this(void* pCommandAllocator)
-		{
-			m_pCommandAllocator = pCommandAllocator;
-		}
-
-		public void Dispose()
+		public void Dispose() mut
 		{
 			if(m_pCommandAllocator != null)
-				GraphicsCommandAllocator_Dispose(m_pCommandAllocator);
-		}
-
-		public void* GetInternalPtr()
-		{
-			return m_pCommandAllocator;
+				GraphicsCommandAllocator_Dispose(&this);
 		}
 	}
 }

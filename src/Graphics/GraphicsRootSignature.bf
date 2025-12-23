@@ -1,18 +1,16 @@
+using System;
+
 namespace KairosEngine.Graphics
 {
+	[CRepr]
 	public struct GraphicsRootSignature
 	{
 		private void* m_pRootSignature;
 
-		public this(void* pRootSignature)
-		{
-			m_pRootSignature = pRootSignature;
-		}
-
-		public void Dispose()
+		public void Dispose() mut
 		{
 			if(m_pRootSignature != null)
-				GraphicsRootSignature_Dispose(m_pRootSignature);
+				GraphicsRootSignature_Dispose(&this);
 		}
 	}
 }

@@ -11,20 +11,10 @@
 #include <DirectXMath.h>
 #include "d3dx12.h"
 
-class GraphicsSwapChain
+typedef struct GraphicsSwapChain
 {
-public:
-	GraphicsSwapChain(IDXGISwapChain3* pSwapChain);
-
-	void Dispose();
-
-	UINT GetCurrentBackBufferIndex();
-
-	CreateResult GetRenderTarget(int index);
-
-private:
 	IDXGISwapChain3* m_pSwapChain;
-};
+} GraphicsSwapChain;
 
 KAIROS_EXPORT_BEGIN
 
@@ -32,7 +22,7 @@ void KAIROS_API GraphicsSwapChain_Dispose(GraphicsSwapChain* _this);
 
 UINT KAIROS_API GraphicsSwapChain_GetCurrentBackBufferIndex(GraphicsSwapChain* _this);
 
-CreateResult GraphicsSwapChain_GetRenderTarget(GraphicsSwapChain* _this, int index);
+int KAIROS_API GraphicsSwapChain_GetRenderTarget(GraphicsSwapChain* _this, GraphicsRenderTarget* pGraphicsRenderTarget, int index);
 
 KAIROS_EXPORT_END
 

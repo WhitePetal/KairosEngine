@@ -1,30 +1,28 @@
+using System;
+
 namespace KairosEngine.Graphics
 {
+	[CRepr]
 	public struct GraphicsSwapChain
 	{
 		private void* m_pSwapChain;
 
-		public this(void* pSwapChain)
-		{
-			m_pSwapChain = pSwapChain;
-		}
-
-		public void Dispose()
+		public void Dispose() mut
 		{
 			if(m_pSwapChain != null)
-				GraphicsSwapChain_Dispose(m_pSwapChain);
+				GraphicsSwapChain_Dispose(&this);
 		}
 
-		public uint GetCurrentBackBufferIndex()
+		public uint GetCurrentBackBufferIndex() mut
 		{
-			return GraphicsSwapChain_GetCurrentBackBufferIndex(m_pSwapChain);
+			return GraphicsSwapChain_GetCurrentBackBufferIndex(&this);
 		}
 
-		public (int hr, GraphicsRenderTarget renderTarget) GetRenderTarget(int index)
+		public (int hr, GraphicsRenderTarget renderTarget) GetRenderTarget(int index) mut
 		{
-			CreateResult result = GraphicsSwapChain_GetRenderTarget(m_pSwapChain, index);
-			GraphicsRenderTarget renderTarget  = GraphicsRenderTarget(result.Ptr);
-			return (result.HR, renderTarget);
+			GraphicsRenderTarget renderTarget = GraphicsRenderTarget();
+			int hr = GraphicsSwapChain_GetRenderTarget(&this, &renderTarget, index);
+			return (hr, renderTarget);
 		}
 	}
 }

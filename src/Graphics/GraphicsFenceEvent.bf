@@ -1,20 +1,22 @@
+using System;
+
 namespace KairosEngine.Graphics
 {
+	[CRepr]
 	public struct GraphicsFenceEvent
 	{
 		private void* m_pFenceEvent;
 
 		public int Create() mut
 		{
-			CreateResult result = GraphicsFenceEvent_Create();
-			m_pFenceEvent = result.Ptr;
-			return result.HR;
+			int hr = GraphicsFenceEvent_Create(&this);
+			return hr;
 		}
 
-		public void Dispose()
+		public void Dispose() mut
 		{
 			if(m_pFenceEvent != null)
-				GraphicsFenceEvent_Dispose(m_pFenceEvent);
+				GraphicsFenceEvent_Dispose(&this);
 		}
 	}
 }

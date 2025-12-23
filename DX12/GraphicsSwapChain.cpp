@@ -1,47 +1,26 @@
 #include "GraphicsSwapChain.h"
 
-GraphicsSwapChain::GraphicsSwapChain(IDXGISwapChain3* pSwapChain)
-{
-	m_pSwapChain = pSwapChain;
-}
-
-void GraphicsSwapChain::Dispose()
-{
-	SAFE_RELEASE(m_pSwapChain);
-}
-
-UINT GraphicsSwapChain::GetCurrentBackBufferIndex()
-{
-	return m_pSwapChain->GetCurrentBackBufferIndex();
-}
-
-CreateResult GraphicsSwapChain::GetRenderTarget(int index)
-{
-	ID3D12Resource* pRenderTarget;
-	HRESULT hr = m_pSwapChain->GetBuffer(index, IID_PPV_ARGS(&pRenderTarget));
-	if (FAILED(hr))
-		return CreateResult{ GetSwapChainRenderTargetFailed , nullptr };
-
-	return CreateResult{ GraphicsSuccess, new GraphicsRenderTarget{ pRenderTarget } };
-}
-
-
 KAIROS_EXPORT_BEGIN
 
 void KAIROS_API GraphicsSwapChain_Dispose(GraphicsSwapChain* _this)
 {
-	_this->Dispose();
-	delete _this;
+	SAFE_RELEASE(_this->m_pSwapChain);
 }
 
 UINT KAIROS_API GraphicsSwapChain_GetCurrentBackBufferIndex(GraphicsSwapChain* _this)
 {
-	return _this->GetCurrentBackBufferIndex();
+	return _this->m_pSwapChain->GetCurrentBackBufferIndex();
 }
 
-CreateResult GraphicsSwapChain_GetRenderTarget(GraphicsSwapChain* _this, int index)
+int KAIROS_API GraphicsSwapChain_GetRenderTarget(GraphicsSwapChain* _this, GraphicsRenderTarget* pGraphicsRenderTarget, int index)
 {
-	return _this->GetRenderTarget(index);
+	ID3D12Resource* pRenderTarget;
+	HRESULT hr = _this->m_pSwapChain->GetBuffer(index, IID_PPV_ARGS(&pRenderTarget));
+	if (FAILED(hr))
+		return GetSwapChainRenderTargetFailed;
+
+	pGraphicsRenderTarget->m_pRenderTarget = pRenderTarget;
+	return GraphicsSuccess;
 }
 
 

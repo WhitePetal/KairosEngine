@@ -6,20 +6,14 @@
 #include "CreateResult.h"
 #include <d3d12.h>
 
-class GraphicsFenceEvent
+typedef struct GraphicsFenceEvent
 {
-public:
-	int Create();
-
-	void Dispose();
-
-private:
 	HANDLE m_Handle;
-};
+} GraphicsFenceEvent;
 
 KAIROS_EXPORT_BEGIN
 
-CreateResult GraphicsFenceEvent_Create();
+int GraphicsFenceEvent_Create(GraphicsFenceEvent* _this);
 
 void KAIROS_API GraphicsFenceEvent_Dispose(GraphicsFenceEvent* _this);
 
