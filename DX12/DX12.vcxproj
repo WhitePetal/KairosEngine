@@ -144,7 +144,10 @@
     <ClInclude Include="GraphicsDescriptorHeap.h" />
     <ClInclude Include="GraphicsDevice.h" />
     <ClInclude Include="GraphicsFactory.h" />
+    <ClInclude Include="GraphicsFence.h" />
+    <ClInclude Include="GraphicsFenceEvent.h" />
     <ClInclude Include="GraphicsRenderTarget.h" />
+    <ClInclude Include="GraphicsRootSignature.h" />
     <ClInclude Include="GraphicsSwapChain.h" />
     <ClInclude Include="KairosEngine.h" />
     <ClInclude Include="KairosEngineDefines.h" />
@@ -159,7 +162,10 @@
     <ClCompile Include="GraphicsDescriptorHeap.cpp" />
     <ClCompile Include="GraphicsDevice.cpp" />
     <ClCompile Include="GraphicsFactory.cpp" />
+    <ClCompile Include="GraphicsFence.cpp" />
+    <ClCompile Include="GraphicsFenceEvent.cpp" />
     <ClCompile Include="GraphicsRenderTarget.cpp" />
+    <ClCompile Include="GraphicsRootSignature.cpp" />
     <ClCompile Include="GraphicsSwapChain.cpp" />
     <ClCompile Include="KairosEngine.cpp" />
     <ClCompile Include="KairosWindow.cpp" />

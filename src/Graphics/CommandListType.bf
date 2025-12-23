@@ -2,9 +2,9 @@ namespace KairosEngine.Graphics
 {
 	public enum CommandListType : uint
 	{
-		Direct = 0,
-		Bundle = 1,
-		Compute = 2,
-		Copy = 3
+		DIRECT = 0,
+		BUNDLE = 1,
+		COMPUTE = 2,
+		COPY = 3
 	}
 }

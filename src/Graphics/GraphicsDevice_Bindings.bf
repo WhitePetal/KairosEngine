@@ -27,5 +27,11 @@ namespace KairosEngine.Graphics
 
 		[Import("DX12.lib"), CallingConvention(.Cdecl), LinkName("GraphicsDevice_CreateCommandList")]
 		private static extern CreateResult GraphicsDevice_CreateCommandList(void* _this, void* pCommandAllocator, CommandListType type, uint nodeMask);
+
+		[Import("DX12.lib"), CallingConvention(.Cdecl), LinkName("GraphicsDevice_CreateFence")]
+		private static extern CreateResult GraphicsDevice_CreateFence(void* _this, uint64 initialValue, FenceFlags flags);
+
+		[Import("DX12.lib"), CallingConvention(.Cdecl), LinkName("GraphicsDevice_CreateEmptyRootSignature")]
+		private static extern CreateResult GraphicsDevice_CreateEmptyRootSignature(void* _this, RootSignatureFlags flags);
 	}
 }

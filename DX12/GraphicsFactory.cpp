@@ -1,29 +1,34 @@
 #include "GraphicsFactory.h"
 
-int GraphicsFactory::Create()
+
+KAIROS_EXPORT_BEGIN
+
+int KAIROS_API GraphicsFactory_Create(GraphicsFactory* _this)
 {
+
 	HRESULT hr;
 
-	hr = CreateDXGIFactory1(IID_PPV_ARGS(&m_pFactory));
+	hr = CreateDXGIFactory1(IID_PPV_ARGS(&_this->m_pFactory));
 	if (FAILED(hr))
-		return CreateDXGIFactoryFailed;
-
+	{
+		return CreateGraphicsFactoryFailed;
+	}
 	return GraphicsSuccess;
 }
 
-void GraphicsFactory::Dispose()
+void KAIROS_API GraphicsFactory_Dispose(GraphicsFactory* _this)
 {
-	SAFE_RELEASE(m_pFactory);
+	SAFE_RELEASE(_this->m_pFactory);
 }
 
-CreateResult GraphicsFactory::CreateDevice()
+CreateResult KAIROS_API GraphicsFactory_CreateDevice(GraphicsFactory* _this)
 {
 	HRESULT hr;
 
 	IDXGIAdapter1* adapter;
 	int adapterIndex = 0;
 	bool adapterFound = false;
-	while (m_pFactory->EnumAdapters1(adapterIndex, &adapter) != DXGI_ERROR_NOT_FOUND)
+	while (_this->m_pFactory->EnumAdapters1(adapterIndex, &adapter) != DXGI_ERROR_NOT_FOUND)
 	{
 		DXGI_ADAPTER_DESC1 desc;
 		adapter->GetDesc1(&desc);
@@ -58,7 +63,7 @@ CreateResult GraphicsFactory::CreateDevice()
 	return CreateResult{ GraphicsSuccess, new GraphicsDevice{ pDevice } };
 }
 
-CreateResult GraphicsFactory::CreateSwapChain(GraphicsCommandQueue* pCommandQueue, int width, int height, DXGI_FORMAT format, int msaa, int aaQuality, int bufferCount, HWND hwnd, BOOL windowed)
+CreateResult KAIROS_API GraphicsFactory_CreateSwapChain(GraphicsFactory* _this, GraphicsCommandQueue* pCommandQueue, int width, int height, DXGI_FORMAT format, int msaa, int aaQuality, int bufferCount, HWND hwnd, BOOL windowed)
 {
 	HRESULT hr;
 	// 该结构描述我们的显示模式
@@ -84,7 +89,7 @@ CreateResult GraphicsFactory::CreateSwapChain(GraphicsCommandQueue* pCommandQueu
 	swapChainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH; // 允许全屏切换
 
 	IDXGISwapChain* tempSwapChain;
-	hr = m_pFactory->CreateSwapChain(pCommandQueue->GetInternalPtr(), &swapChainDesc, &tempSwapChain); // 交换链创建后 CommandQueue 会被刷新
+	hr = _this->m_pFactory->CreateSwapChain(pCommandQueue->GetInternalPtr(), &swapChainDesc, &tempSwapChain); // 交换链创建后 CommandQueue 会被刷新
 	if (FAILED(hr))
 	{
 		return CreateResult{ CreateSwapChainFailed, nullptr };
@@ -93,34 +98,6 @@ CreateResult GraphicsFactory::CreateSwapChain(GraphicsCommandQueue* pCommandQueu
 	pSwpaChain = static_cast<IDXGISwapChain3*>(tempSwapChain);
 
 	return CreateResult{ GraphicsSuccess, new GraphicsSwapChain(pSwpaChain) };
-}
-
-KAIROS_EXPORT_BEGIN
-
-GraphicsFactory* KAIROS_API GraphicsFactory_Allocate()
-{
-	return new GraphicsFactory{};
-}
-
-int KAIROS_API GraphicsFactory_Create(GraphicsFactory* _this)
-{
-	return _this->Create();
-}
-
-void KAIROS_API GraphicsFactory_Dispose(GraphicsFactory* _this)
-{
-	_this->Dispose();
-	delete _this;
-}
-
-CreateResult KAIROS_API GraphicsFactory_CreateDevice(GraphicsFactory* _this)
-{
-	return _this->CreateDevice();
-}
-
-CreateResult KAIROS_API GraphicsFactory_CreateSwapChain(GraphicsFactory* _this, GraphicsCommandQueue* pCommandQueue, int width, int height, DXGI_FORMAT format, int msaa, int aaQuality, int bufferCount, HWND hwnd, BOOL windowed)
-{
-	return _this->CreateSwapChain(pCommandQueue, width, height, format, msaa, aaQuality, bufferCount, hwnd, windowed);
 }
 
 KAIROS_EXPORT_END

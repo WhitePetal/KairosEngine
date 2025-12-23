@@ -69,6 +69,35 @@ CreateResult GraphicsDevice::CreateCommandList(GraphicsCommandAllocator* pComman
 	return CreateResult{ GraphicsSuccess, new GraphicsCommandList{pCommandList} };
 }
 
+CreateResult GraphicsDevice::CreateFence(UINT64 initialValue, D3D12_FENCE_FLAGS flags)
+{
+	ID3D12Fence* pFence;
+	HRESULT hr = m_pDevice->CreateFence(initialValue, flags, IID_PPV_ARGS(&pFence));
+	if (FAILED(hr))
+		return CreateResult{ CreateFenceFailed, nullptr };
+	return CreateResult{ GraphicsSuccess, new GraphicsFence{pFence} };
+}
+
+CreateResult GraphicsDevice::CreateEmptyRootSignature(D3D12_ROOT_SIGNATURE_FLAGS flags)
+{
+	CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
+	rootSignatureDesc.Init(0, nullptr, 0, nullptr, flags);
+
+	HRESULT hr;
+	ID3DBlob* signature;
+	hr = D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, nullptr);
+	if (FAILED(hr))
+		return CreateResult{ SerializeRootSignatureFailed , nullptr };
+
+	ID3D12RootSignature* pRootSignature;
+	hr = m_pDevice->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&pRootSignature));
+	SAFE_RELEASE(signature);
+	if (FAILED(hr))
+		return CreateResult{ CreateRootSignatureFailed , nullptr };
+
+	return CreateResult{ GraphicsSuccess, new GraphicsRootSignature{pRootSignature} };
+}
+
 
 KAIROS_EXPORT_BEGIN
 
@@ -113,4 +142,14 @@ CreateResult KAIROS_API GraphicsDevice_CreateCommandAllocator(GraphicsDevice* _t
 CreateResult KAIROS_API GraphicsDevice_CreateCommandList(GraphicsDevice* _this, GraphicsCommandAllocator* pCommandAllocator, D3D12_COMMAND_LIST_TYPE type, UINT nodeMask)
 {
 	return _this->CreateCommandList(pCommandAllocator, type, nodeMask);
+}
+
+CreateResult KAIROS_API GraphicsDevice_CreateFence(GraphicsDevice* _this, UINT64 initialValue, D3D12_FENCE_FLAGS flags)
+{
+	return _this->CreateFence(initialValue, flags);
+}
+
+CreateResult KAIROS_API GraphicsDevice_CreateEmptyRootSignature(GraphicsDevice* _this, D3D12_ROOT_SIGNATURE_FLAGS flags)
+{
+	return _this->CreateEmptyRootSignature(flags);
 }

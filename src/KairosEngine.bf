@@ -16,13 +16,10 @@ namespace KairosEngine
 			WindowSystem.Initialize();
 
 			KairosEditorMainWindow editorMainWnd = new KairosEditorMainWindow();
-			WindowSystem.WndProcPtr wndProc = new => editorMainWnd.WndProc;
-
-			defer delete wndProc;
 			defer delete editorMainWnd;
 
 			int32_4 wndRect = int32_4(0, 0, 800, 600);
-			int windId = WindowSystem.Instance.CreateWindow(hInstance, wndRect, false, "KairosEngine", "Kairos Window", wndProc);
+			int windId = WindowSystem.Instance.CreateWindow(hInstance, wndRect, false, "KairosEngine", "Kairos Window");
 			if(windId < 0)
 			{
 				WindowSystem.Instance.DeInitialize();
@@ -31,8 +28,8 @@ namespace KairosEngine
 			editorMainWnd.Id = windId;
 
 			GraphicsFactory graphicsFactory = GraphicsFactory();
-			defer graphicsFactory.Dispose();
 			int hr = graphicsFactory.Create();
+			defer graphicsFactory.Dispose();
 			if(hr > 0)
 			{
 				Console.WriteLine("ERROR Create Graphics Factory Failed");
@@ -47,7 +44,7 @@ namespace KairosEngine
 				return;
 			}
 
-			(hr, GraphicsCommandQueue commandQueue) = device.CreateaCommandQueue(CommandListType.Direct, 0, CommandQueueFlags.None, 0u);
+			(hr, GraphicsCommandQueue commandQueue) = device.CreateaCommandQueue(CommandListType.DIRECT, 0, CommandQueueFlags.None, 0u);
 			defer commandQueue.Dispose();
 			if(hr > 0)
 			{
@@ -77,24 +74,22 @@ namespace KairosEngine
 			uint rtvDescriptorSize = device.GetDescriptorHandleIncrementSize(DescriptorHeapType.RTV);
 
 			GraphicsRenderTarget[] renderTargets = scope GraphicsRenderTarget[backBufferCount](?);
-			int getRenderTargetCount = 0;
-			for(; getRenderTargetCount < backBufferCount; ++getRenderTargetCount)
+			int successCount;
+			for(successCount = 0; successCount < backBufferCount; ++successCount)
 			{
-				(hr, renderTargets[getRenderTargetCount]) = swapChain.GetRenderTarget(getRenderTargetCount);
+				(hr, renderTargets[successCount]) = swapChain.GetRenderTarget(successCount);
 				if(hr > 0)
 				{
-					++getRenderTargetCount;
+					++successCount;
 					break;
 				}
-				device.CreateRenderTargetView(renderTargets[getRenderTargetCount], rtvHandle);
+				device.CreateRenderTargetView(renderTargets[successCount], rtvHandle);
 				rtvHandle.Offset(1, rtvDescriptorSize);
 			}
 			defer
 			{
-				for(int i = 0; i < getRenderTargetCount; ++i)
-				{
+				for(int i = 0; i < successCount; ++i)
 					renderTargets[i].Dispose();
-				}
 			}
 			if(hr > 0)
 			{
@@ -103,22 +98,19 @@ namespace KairosEngine
 			}
 
 			GraphicsCommandAllocator[] commandAllocators = scope GraphicsCommandAllocator[backBufferCount](?);
-			int createCommandAllocatorCount = 0;
-			for(; createCommandAllocatorCount < backBufferCount; ++createCommandAllocatorCount)
+			for(successCount = 0; successCount < backBufferCount; ++successCount)
 			{
-				(hr, commandAllocators[createCommandAllocatorCount]) = device.CreateCommandAllocator(CommandListType.Direct);
+				(hr, commandAllocators[successCount]) = device.CreateCommandAllocator(CommandListType.DIRECT);
 				if(hr > 0)
 				{
-					++createCommandAllocatorCount;
+					++successCount;
 					break;
 				}
 			}
 			defer
 			{
-				for(int i = 0; i < createCommandAllocatorCount; ++i)
-				{
+				for(int i = 0; i < successCount; ++i)
 					commandAllocators[i].Dispose();
-				}
 			}
 			if(hr > 0)
 			{
@@ -126,7 +118,7 @@ namespace KairosEngine
 				return;
 			}
 
-			(hr, GraphicsCommandList commandList) = device.CreateCommandList(commandAllocators[0], CommandListType.Direct, 0u);
+			(hr, GraphicsCommandList commandList) = device.CreateCommandList(commandAllocators[0], CommandListType.DIRECT, 0u);
 			defer commandList.Dispose();
 			if(hr > 0)
 			{
@@ -134,10 +126,49 @@ namespace KairosEngine
 				return;
 			}
 
+			GraphicsFence[] fences = scope GraphicsFence[backBufferCount](?);
+			for(successCount = 0; successCount < backBufferCount; ++successCount)
+			{
+				(hr, fences[successCount]) = device.CreateFence(0u, FenceFlags.NONE);
+				if(hr > 0)
+				{
+					++successCount;
+					break;
+				}
+			}
+			defer
+			{
+				for(int i = 0; i < successCount; ++i)
+					fences[i].Dispose();
+			}
+			if(hr > 0)
+			{
+				Console.WriteLine($"ERROR Create Fence Failed");
+				return;
+			}
+
+			GraphicsFenceEvent fenceEvent = GraphicsFenceEvent();
+			hr = fenceEvent.Create();
+			defer fenceEvent.Dispose();
+			if(hr > 0)
+			{
+				Console.WriteLine($"ERROR Create Fence Event Failed");
+				return;
+			}
+
+			(hr, GraphicsRootSignature rootSignature) = device.CreateEmptyRootSignature(RootSignatureFlags.ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+			defer rootSignature.Dispose();
+			if(hr > 0)
+			{
+				Console.WriteLine($"ERROR Create RootSignature Failed");
+				return;
+			}
 
 			WindowSystem.Instance.Update();
 
 			WindowSystem.Instance.DeInitialize();
+
+			Console.WriteLine($"KairosEngine Exit");
 
 			return;
 		}

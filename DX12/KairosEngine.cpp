@@ -29,6 +29,7 @@ int WINAPI WinMain(HINSTANCE hInstance,    //Main windows function
 	// 在释放所有东西之前，我们先等待GPU完成所有任务
 	WaitForPreviousFrame();
 
+	Cleanup();
 	// 关闭屏障事件
 	CloseHandle(m_FenceEvent);
 	return 0;

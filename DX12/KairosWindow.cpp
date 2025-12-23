@@ -2,31 +2,29 @@
 
 LRESULT CALLBACK ProxyWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
-	WndProcCallback* pCallback;
+	WndProcCallback pCallback;
 
 	if (msg == WM_NCCREATE)
 	{
 		CREATESTRUCT* pCreateStruct = reinterpret_cast<CREATESTRUCT*>(lparam);
-		pCallback = reinterpret_cast<WndProcCallback*>(pCreateStruct->lpCreateParams);
+		pCallback = reinterpret_cast<WndProcCallback>(pCreateStruct->lpCreateParams);
 		SetWindowLongPtr(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(pCallback));
 	}
 	else
 	{
-		pCallback = reinterpret_cast<WndProcCallback*>(
-			GetWindowLongPtr(hwnd, GWLP_USERDATA)
-			);
+		pCallback = reinterpret_cast<WndProcCallback>(GetWindowLongPtr(hwnd, GWLP_USERDATA));
 	}
 
-	if (pCallback && *pCallback)
+	if (pCallback != nullptr)
 	{
-		return (*pCallback)(hwnd, msg, wparam, lparam);
+		return pCallback(hwnd, msg, wparam, lparam);
 	}
 	return DefWindowProc(hwnd, msg, wparam, lparam);
 }
 
 KAIROS_EXPORT_BEGIN
 
-HWND KAIROS_API KairosInitializeWindow(HINSTANCE hInstance, int ShowWnd, int width, int height, bool fullScreen, LPCWSTR windowName, LPCWSTR windowTitle, WndProcCallback* wndProc)
+HWND KAIROS_API KairosInitializeWindow(HINSTANCE hInstance, int ShowWnd, int width, int height, bool fullScreen, LPCWSTR windowName, LPCWSTR windowTitle, WndProcCallback wndProc)
 {
 	HWND hwnd = {};
 	if (fullScreen)
@@ -121,6 +119,26 @@ void KAIROS_API KairosMainLoop()
 
 		}
 	}
+}
+
+void KAIROS_API KairosInitMSG(MSG* pMsg)
+{
+	ZeroMemory(pMsg, sizeof(MSG));
+}
+
+int KAIROS_API KairosPeekMessage(MSG* pMsg)
+{
+	return PeekMessage(pMsg, NULL, 0, 0, PM_REMOVE);
+}
+
+int KAIROS_API KairosTranslateMessage(MSG* pMsg)
+{
+	return TranslateMessage(pMsg);
+}
+
+LRESULT KAIROS_API KairosDispatchMessage(MSG* pMsg)
+{
+	return DispatchMessage(pMsg);
 }
 
 

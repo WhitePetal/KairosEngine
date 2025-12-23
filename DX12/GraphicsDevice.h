@@ -9,6 +9,8 @@
 #include "GraphicsRenderTarget.h"
 #include "GraphicsCommandAllocator.h"
 #include "GraphicsCommandList.h"
+#include "GraphicsFence.h"
+#include "GraphicsRootSignature.h"
 #include <d3d12.h>
 #include <dxgi1_4.h>
 #include <D3Dcompiler.h>
@@ -36,6 +38,10 @@ public:
 
 	CreateResult CreateCommandList(GraphicsCommandAllocator* pCommandAllocator, D3D12_COMMAND_LIST_TYPE type, UINT nodeMask);
 
+	CreateResult CreateFence(UINT64 initialValue, D3D12_FENCE_FLAGS flags);
+
+	CreateResult CreateEmptyRootSignature(D3D12_ROOT_SIGNATURE_FLAGS flags);
+
 private:
 	ID3D12Device* m_pDevice;
 };
@@ -57,6 +63,10 @@ void KAIROS_API GraphicsDevice_CreateRenderTargetViewByHeapIndex(GraphicsDevice*
 CreateResult KAIROS_API GraphicsDevice_CreateCommandAllocator(GraphicsDevice* _this, D3D12_COMMAND_LIST_TYPE type);
 
 CreateResult KAIROS_API GraphicsDevice_CreateCommandList(GraphicsDevice* _this, GraphicsCommandAllocator* pCommandAllocator, D3D12_COMMAND_LIST_TYPE type, UINT nodeMask);
+
+CreateResult KAIROS_API GraphicsDevice_CreateFence(GraphicsDevice* _this, UINT64 initialValue, D3D12_FENCE_FLAGS flags);
+
+CreateResult KAIROS_API GraphicsDevice_CreateEmptyRootSignature(GraphicsDevice* _this, D3D12_ROOT_SIGNATURE_FLAGS flags);
 
 KAIROS_EXPORT_END
 

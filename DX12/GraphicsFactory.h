@@ -13,25 +13,14 @@
 #include <DirectXMath.h>
 #include "d3dx12.h"
 
-class GraphicsFactory
+typedef struct GraphicsFactory
 {
-public:
-	int Create();
-
-	void Dispose();
-
-	CreateResult CreateDevice();
-
-	CreateResult CreateSwapChain(GraphicsCommandQueue* pCommandQueue, int width, int height, DXGI_FORMAT format, int msaa, int aaQuality, int bufferCount, HWND hwnd, BOOL windowed);
-
-private:
 	IDXGIFactory4* m_pFactory;
-};
+
+} GraphicsFactory;
 
 
 KAIROS_EXPORT_BEGIN
-
-GraphicsFactory* KAIROS_API GraphicsFactory_Allocate();
 
 int KAIROS_API GraphicsFactory_Create(GraphicsFactory* _this);
 

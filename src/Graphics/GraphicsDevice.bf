@@ -55,5 +55,17 @@ namespace KairosEngine.Graphics
 			CreateResult result = GraphicsDevice_CreateCommandList(m_pDevice, commandAllocator.GetInternalPtr(), type, nodeMask);
 			return (result.HR, GraphicsCommandList(result.Ptr));
 		}
+
+		public (int hr, GraphicsFence fence) CreateFence(uint64 initialValue, FenceFlags flags)
+		{
+			CreateResult result = GraphicsDevice_CreateFence(m_pDevice, initialValue, flags);
+			return (result.HR, GraphicsFence(result.Ptr));
+		}
+
+		public (int hr, GraphicsRootSignature rootSignature) CreateEmptyRootSignature(RootSignatureFlags flags)
+		{
+			CreateResult result = GraphicsDevice_CreateEmptyRootSignature(m_pDevice, flags);
+			return (result.HR, GraphicsRootSignature(result.Ptr));
+		}
 	}
 }
