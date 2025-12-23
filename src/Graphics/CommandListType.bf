@@ -1,6 +1,6 @@
 namespace KairosEngine.Graphics
 {
-	public enum CommandListType : uint
+	public enum CommandListType : uint32
 	{
 		DIRECT = 0,
 		BUNDLE = 1,

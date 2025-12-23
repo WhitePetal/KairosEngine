@@ -12,7 +12,7 @@ namespace KairosEngine
 	public struct MSG
 	{
 		public System.Windows.HWnd hwnd;
-		public uint message;
+		public uint32 message;
 		public uint64 wParam;
 		public int64 lParam;
 		public uint64 time;

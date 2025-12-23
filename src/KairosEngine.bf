@@ -14,12 +14,13 @@ namespace KairosEngine
 			var hInstance = Windows.GetModuleHandleW(null);
 
 			WindowSystem.Initialize();
+			defer WindowSystem.Instance.DeInitialize();
 
 			KairosEditorMainWindow editorMainWnd = new KairosEditorMainWindow();
 			defer delete editorMainWnd;
 
 			int32_4 wndRect = int32_4(0, 0, 800, 600);
-			int windId = WindowSystem.Instance.CreateWindow(hInstance, wndRect, false, "KairosEngine", "Kairos Window");
+			int32 windId = WindowSystem.Instance.CreateWindow(hInstance, wndRect, false, "KairosEngine", "Kairos Window");
 			if(windId < 0)
 			{
 				WindowSystem.Instance.DeInitialize();
@@ -28,7 +29,7 @@ namespace KairosEngine
 			editorMainWnd.Id = windId;
 
 			GraphicsFactory graphicsFactory = GraphicsFactory();
-			int hr = graphicsFactory.Create();
+			int32 hr = graphicsFactory.Create();
 			defer graphicsFactory.Dispose();
 			if(hr > 0)
 			{
@@ -52,7 +53,7 @@ namespace KairosEngine
 				return;
 			}
 
-			int backBufferCount = 3;
+			int32 backBufferCount = 3;
 
 			(hr, GraphicsSwapChain swapChain) = graphicsFactory.CreateSwapChain(ref commandQueue, wndRect.z, wndRect.w, RenderTargetFormat.R8G8B8A8_UNORM, 1, 0, backBufferCount, windId);
 			defer swapChain.Dispose();
@@ -71,10 +72,10 @@ namespace KairosEngine
 			}
 
 			GraphicsCPUDescriptorHandle rtvHandle = rtvHeap.GetCPUDescriptorHandleForHeapStart();
-			uint rtvDescriptorSize = device.GetDescriptorHandleIncrementSize(DescriptorHeapType.RTV);
+			uint32 rtvDescriptorSize = device.GetDescriptorHandleIncrementSize(DescriptorHeapType.RTV);
 
 			GraphicsRenderTarget[] renderTargets = scope GraphicsRenderTarget[backBufferCount](?);
-			int successCount;
+			int32 successCount;
 			for(successCount = 0; successCount < backBufferCount; ++successCount)
 			{
 				(hr, renderTargets[successCount]) = swapChain.GetRenderTarget(successCount);
@@ -88,7 +89,7 @@ namespace KairosEngine
 			}
 			defer
 			{
-				for(int i = 0; i < successCount; ++i)
+				for(int32 i = 0; i < successCount; ++i)
 					renderTargets[i].Dispose();
 			}
 			if(hr > 0)
@@ -109,7 +110,7 @@ namespace KairosEngine
 			}
 			defer
 			{
-				for(int i = 0; i < successCount; ++i)
+				for(int32 i = 0; i < successCount; ++i)
 					commandAllocators[i].Dispose();
 			}
 			if(hr > 0)
@@ -138,7 +139,7 @@ namespace KairosEngine
 			}
 			defer
 			{
-				for(int i = 0; i < successCount; ++i)
+				for(int32 i = 0; i < successCount; ++i)
 					fences[i].Dispose();
 			}
 			if(hr > 0)
@@ -181,9 +182,19 @@ namespace KairosEngine
 				return;
 			}
 
-			WindowSystem.Instance.Update();
+			GraphicsInputLayoutElement[] inputLayouts = scope GraphicsInputLayoutElement[]
+			{
+				GraphicsInputLayoutElement("POSITION", 0, InputLayoutElementFormat.R32G32B32_FLOAT, 0, 0, InputLayoutElementClass.PER_VERTEX_DATA, 0)
+			};
+			(hr, GraphicsPipelineState pipelineState) = device.CreatePipelineState(inputLayouts, ref rootSignature, ref vertexShader, ref fragmentShader, TopologyType.TRIANGLE, RenderTargetFormat.R8G8B8A8_UNORM, 1, 0, 0xffffffff);
+			defer pipelineState.Dispose();
+			if(hr > 0)
+			{
+				Console.WriteLine($"ERROR Create Pipeline State Failed");
+				return;
+			}
 
-			WindowSystem.Instance.DeInitialize();
+			WindowSystem.Instance.Update();
 
 			Console.WriteLine($"KairosEngine Exit");
 

@@ -13,15 +13,15 @@ namespace KairosEngine.Graphics
 				GraphicsSwapChain_Dispose(&this);
 		}
 
-		public uint GetCurrentBackBufferIndex() mut
+		public uint32 GetCurrentBackBufferIndex() mut
 		{
 			return GraphicsSwapChain_GetCurrentBackBufferIndex(&this);
 		}
 
-		public (int hr, GraphicsRenderTarget renderTarget) GetRenderTarget(int index) mut
+		public (int32 hr, GraphicsRenderTarget renderTarget) GetRenderTarget(int32 index) mut
 		{
 			GraphicsRenderTarget renderTarget = GraphicsRenderTarget();
-			int hr = GraphicsSwapChain_GetRenderTarget(&this, &renderTarget, index);
+			int32 hr = GraphicsSwapChain_GetRenderTarget(&this, &renderTarget, index);
 			return (hr, renderTarget);
 		}
 	}

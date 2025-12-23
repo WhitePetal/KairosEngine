@@ -10,7 +10,6 @@ void KAIROS_API GraphicsShader_Dispose(GraphicsShader* _this)
 int KAIROS_API GraphicsShader_CreateWithoutErrorInfo(GraphicsShader* _this, LPCWSTR path, ShaderType type, UINT compileFlags)
 {
 	ID3DBlob* pShader;
-	ID3DBlob* pError;
 	LPCSTR target;
 	switch (type)
 	{
@@ -30,12 +29,11 @@ int KAIROS_API GraphicsShader_CreateWithoutErrorInfo(GraphicsShader* _this, LPCW
 		compileFlags,
 		0,
 		&pShader,
-		&pError
+		nullptr
 	);
 	if (FAILED(hr))
-	{
 		return CreateShaderError;
-	}
+
 	_this->m_pShader = pShader;
 	return GraphicsSuccess;
 }

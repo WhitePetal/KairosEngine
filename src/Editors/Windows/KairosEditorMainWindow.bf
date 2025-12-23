@@ -4,7 +4,7 @@ namespace KairosEngine.Editor
 {
 	class KairosEditorMainWindow
 	{
-		public int Id;
+		public int32 Id;
 
 
 	}

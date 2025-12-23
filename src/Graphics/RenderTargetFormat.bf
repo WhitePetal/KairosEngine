@@ -1,13 +1,13 @@
 namespace KairosEngine.Graphics
 {
-	public enum RenderTargetFormat
+	public enum RenderTargetFormat : uint32
 	{
 		UnKnow = 0,
 		R8G8B8A8_UNORM = DXGI_FORMAT.R8G8B8A8_UNORM,
 		R8G8B8A8_UNORM_SRGB = DXGI_FORMAT.R8G8B8A8_UNORM_SRGB
 	}
 
-	public enum DXGI_FORMAT : uint
+	public enum DXGI_FORMAT : uint32
 	{
 		UnKnow	                                			= 0,
 		R32G32B32A32_TYPELESS                   			= 1,

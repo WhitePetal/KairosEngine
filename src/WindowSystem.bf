@@ -24,10 +24,10 @@ namespace KairosEngine
 			delete Instance;
 		}
 
-		public static int64 WndProc(Windows.HWnd hWnd, uint msg, uint64 wParam, int64 lParam)
+		public static int64 WndProc(Windows.HWnd hWnd, uint32 msg, uint64 wParam, int64 lParam)
 		{
-			int wndCount = WindowComponents.Instance.WindowCount;
-			for(int i = 0; i < wndCount; ++i)
+			int32 wndCount = WindowComponents.Instance.WindowCount;
+			for(int32 i = 0; i < wndCount; ++i)
 			{
 				if(WindowComponents.Instance.Hwnds[i] != hWnd)
 					continue;
@@ -37,7 +37,7 @@ namespace KairosEngine
 				case 0x0100:
 					if (wParam == 0x1B)
 					{
-						int id = WindowComponents.Instance.Ids[i];
+						int32 id = WindowComponents.Instance.Ids[i];
 						WindowSystem.Instance.DestroyWindow(id);
 						WindowSystem.Instance.Running = false;
 					}
@@ -51,7 +51,7 @@ namespace KairosEngine
 			return WindowSystem.KairosDefWindowProcW(hWnd, msg, wParam, lParam);
 		}
 
-		public int CreateWindow(Windows.HModule hInstanc, int32_4 rect, bool fullScreen, String windowName, String windowTitle)
+		public int32 CreateWindow(Windows.HModule hInstanc, int32_4 rect, bool fullScreen, String windowName, String windowTitle)
 		{
 			char16* wndName;
 			char16* wndTitle;
@@ -59,20 +59,20 @@ namespace KairosEngine
 			TextUtils.Utf8ToUtf16Scope!(windowTitle, wndTitle);
 
 			Windows.HWnd hwnd = KairosInitializeWindow(hInstanc, Windows.SW_SHOWDEFAULT, rect.z, rect.w, fullScreen, wndName, wndTitle, WndProcCallback);
-			Console.WriteLine($"Window hWnd: {(int)hwnd}");
+			Console.WriteLine($"Window hWnd: {(int32)hwnd}");
 			if(hwnd == 0)
 			{
 				Console.WriteLine($"Window Initialization - Failed");
 				return -1;
 			}
-			int id = m_Components.CreateWindow(rect, fullScreen, hwnd);
+			int32 id = m_Components.CreateWindow(rect, fullScreen, hwnd);
 
 			return id;
 		}
 
-		public void DestroyWindow(int id)
+		public void DestroyWindow(int32 id)
 		{
-			int index = m_Components.IdToIndex[id];
+			int32 index = m_Components.IdToIndex[id];
 			Windows.HWnd hwnd = m_Components.Hwnds[index];
 			m_Components.DestroyWindow(id);
 			KairosDestroyWindow(hwnd);

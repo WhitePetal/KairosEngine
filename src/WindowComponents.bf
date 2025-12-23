@@ -8,42 +8,42 @@ namespace KairosEngine
 	{
 		public static WindowComponents Instance;
 
-		public const int k_InitializeWindowCapacity = 8;
-		public const int k_InitializeIdsCapacity = 8;
+		public const int32 k_InitializeWindowCapacity = 8;
+		public const int32 k_InitializeIdsCapacity = 8;
 
-		public int WindowCount;
-		public int WindowCapacity;
+		public int32 WindowCount;
+		public int32 WindowCapacity;
 
-		public int[] Ids;
+		public int32[] Ids;
 		public Windows.HWnd[] Hwnds;
 		public WindowFlags[] Flags;
 		public int32_4[] Rects;
 
-		private int m_IdsCount;
-		private int m_IdsCapacity;
-		public int[] IdToIndex;
+		private int32 m_IdsCount;
+		private int32 m_IdsCapacity;
+		public int32[] IdToIndex;
 
-		private int m_RecycleIdCount;
-		private int m_RecycleIdCapacity;
-		private int[] m_RecycleIds;
+		private int32 m_RecycleIdCount;
+		private int32 m_RecycleIdCapacity;
+		private int32[] m_RecycleIds;
 
 		private this()
 		{
 			WindowCount = 0;
 			WindowCapacity = k_InitializeWindowCapacity;
 
-			Ids = new int[k_InitializeWindowCapacity];
+			Ids = new int32[k_InitializeWindowCapacity];
 			Hwnds = new Windows.HWnd[k_InitializeWindowCapacity];
 			Flags = new WindowFlags[k_InitializeWindowCapacity];
 			Rects = new int32_4[k_InitializeWindowCapacity];
 
 			m_IdsCount = 0;
 			m_IdsCapacity = k_InitializeIdsCapacity;
-			IdToIndex = new int[k_InitializeIdsCapacity];
+			IdToIndex = new int32[k_InitializeIdsCapacity];
 
 			m_RecycleIdCount = 0;
 			m_RecycleIdCapacity = k_InitializeIdsCapacity;
-			m_RecycleIds = new int[k_InitializeIdsCapacity];
+			m_RecycleIds = new int32[k_InitializeIdsCapacity];
 		}
 
 		private ~this()
@@ -70,12 +70,12 @@ namespace KairosEngine
 			delete Instance;
 		}
 
-		public int CreateWindow(int32_4 rect, bool fullScreen, Windows.HWnd hwnd)
+		public int32 CreateWindow(int32_4 rect, bool fullScreen, Windows.HWnd hwnd)
 		{
 			if(WindowCount >= WindowCapacity)
 				ExpandWindowContainers();
 
-			int id;
+			int32 id;
 			if(m_RecycleIdCount > 0)
 				id = m_RecycleIds[--m_RecycleIdCount];
 			else
@@ -86,7 +86,7 @@ namespace KairosEngine
 				id = m_IdsCount++;
 			}
 
-			int index = WindowCount++;
+			int32 index = WindowCount++;
 
 			Ids[index] = id;
 			Hwnds[index] = hwnd;
@@ -98,12 +98,12 @@ namespace KairosEngine
 			return id;
 		}
 
-		public void DestroyWindow(int id)
+		public void DestroyWindow(int32 id)
 		{
-			int index = IdToIndex[id];
-			int end = --WindowCount;
+			int32 index = IdToIndex[id];
+			int32 end = --WindowCount;
 
-			int endId = Ids[end];
+			int32 endId = Ids[end];
 
 			Ids[index] = endId;
 			Hwnds[index] = Hwnds[end];
@@ -123,12 +123,12 @@ namespace KairosEngine
 		{
 			WindowCapacity = WindowCapacity << 1;
 
-			var newIds = new int[WindowCapacity];
+			var newIds = new int32[WindowCapacity];
 			var newHwnds = new Windows.HWnd[WindowCapacity];
 			var newFlags = new WindowFlags[WindowCapacity];
 			var newRects = new int32_4[WindowCapacity];
 
-			for(int i = 0; i < WindowCount; ++i)
+			for(int32 i = 0; i < WindowCount; ++i)
 			{
 				newIds[i] = Ids[i];
 				newHwnds[i] = Hwnds[i];
@@ -153,9 +153,9 @@ namespace KairosEngine
 		{
 			m_IdsCapacity = m_IdsCapacity << 1;
 
-			var newIdToIndex = new int[m_IdsCapacity];
+			var newIdToIndex = new int32[m_IdsCapacity];
 
-			for(int i = 0; i < m_IdsCount; ++i)
+			for(int32 i = 0; i < m_IdsCount; ++i)
 			{
 				newIdToIndex[i] = IdToIndex[i];
 			}
@@ -170,9 +170,9 @@ namespace KairosEngine
 		{
 			m_RecycleIdCapacity = m_RecycleIdCapacity << 1;
 
-			var newRecyleIds = new int[m_RecycleIdCapacity];
+			var newRecyleIds = new int32[m_RecycleIdCapacity];
 
-			for(int i = 0; i < m_RecycleIdCount; ++i)
+			for(int32 i = 0; i < m_RecycleIdCount; ++i)
 			{
 				newRecyleIds[i] = m_RecycleIds[i];
 			}

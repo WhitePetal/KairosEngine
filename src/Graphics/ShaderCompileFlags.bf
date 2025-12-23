@@ -1,6 +1,6 @@
 namespace KairosEngine.Graphics
 {
-	public enum ShaderCompileFlags : uint
+	public enum ShaderCompileFlags : uint32
 	{
 		DEBUG                                = (1 << 0),
 		SKIP_VALIDATION                      = (1 << 1),

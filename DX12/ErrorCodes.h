@@ -16,5 +16,6 @@
 #define SerializeRootSignatureFailed 12
 #define CreateRootSignatureFailed 13
 #define CreateShaderError 14
+#define CreatePipelineStateError 15
 
 #endif

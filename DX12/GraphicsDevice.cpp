@@ -105,4 +105,45 @@ int KAIROS_API GraphicsDevice_CreateEmptyRootSignature(GraphicsDevice* _this, Gr
 	return GraphicsSuccess;
 }
 
+int KAIROS_API GraphicsDevice_CreatePipelineState(GraphicsDevice* _this, GraphicsPipelineState* pGraphicsPipelineState, D3D12_INPUT_ELEMENT_DESC* pInputLayout, UINT inputLayoutCount, GraphicsRootSignature* pGraphicsRootSignature,
+	GraphicsShader* pGraphicsVertexShader, GraphicsShader* pGraphicsFragmentShader, D3D12_PRIMITIVE_TOPOLOGY_TYPE topologyType, DXGI_FORMAT renderTargetFormat, UINT msaa, UINT aaQuality, UINT sampleMask)
+{
+	D3D12_SHADER_BYTECODE vertexShaderBytecode = {};
+	vertexShaderBytecode.pShaderBytecode = pGraphicsVertexShader->m_pShader->GetBufferPointer();
+	vertexShaderBytecode.BytecodeLength = pGraphicsVertexShader->m_pShader->GetBufferSize();
+
+	D3D12_SHADER_BYTECODE fragmentShaderBytecode = {};
+	fragmentShaderBytecode.pShaderBytecode = pGraphicsFragmentShader->m_pShader->GetBufferPointer();
+	fragmentShaderBytecode.BytecodeLength = pGraphicsFragmentShader->m_pShader->GetBufferSize();
+
+	DXGI_SAMPLE_DESC sampleDesc = {};
+	sampleDesc.Count = msaa;
+	sampleDesc.Quality = aaQuality;
+
+	D3D12_INPUT_LAYOUT_DESC inputLayoutDesc = {};
+	inputLayoutDesc.NumElements = inputLayoutCount;
+	inputLayoutDesc.pInputElementDescs = pInputLayout;
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+	psoDesc.InputLayout = inputLayoutDesc;
+	psoDesc.pRootSignature = pGraphicsRootSignature->m_pRootSignature;
+	psoDesc.VS = vertexShaderBytecode;
+	psoDesc.PS = fragmentShaderBytecode;
+	psoDesc.PrimitiveTopologyType = topologyType;
+	psoDesc.RTVFormats[0] = renderTargetFormat;
+	psoDesc.SampleDesc = sampleDesc;
+	psoDesc.SampleMask = sampleMask;
+	psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+	psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+	psoDesc.NumRenderTargets = 1;
+
+	ID3D12PipelineState* pPipelineState;
+	HRESULT hr = _this->m_pDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pPipelineState));
+	if (FAILED(hr))
+		return CreatePipelineStateError;
+
+	pGraphicsPipelineState->m_pPipelineState = pPipelineState;
+	return GraphicsSuccess;
+}
+
 KAIROS_EXPORT_END

@@ -7,9 +7,9 @@ namespace KairosEngine.Graphics
 	{
 		private void* m_pFenceEvent;
 
-		public int Create() mut
+		public int32 Create() mut
 		{
-			int hr = GraphicsFenceEvent_Create(&this);
+			int32 hr = GraphicsFenceEvent_Create(&this);
 			return hr;
 		}
 

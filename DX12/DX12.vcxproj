@@ -146,6 +146,7 @@
     <ClInclude Include="GraphicsFactory.h" />
     <ClInclude Include="GraphicsFence.h" />
     <ClInclude Include="GraphicsFenceEvent.h" />
+    <ClInclude Include="GraphicsPipelineState.h" />
     <ClInclude Include="GraphicsRenderTarget.h" />
     <ClInclude Include="GraphicsRootSignature.h" />
     <ClInclude Include="GraphicsShader.h" />
@@ -166,6 +167,7 @@
     <ClCompile Include="GraphicsFactory.cpp" />
     <ClCompile Include="GraphicsFence.cpp" />
     <ClCompile Include="GraphicsFenceEvent.cpp" />
+    <ClCompile Include="GraphicsPipelineState.cpp" />
     <ClCompile Include="GraphicsRenderTarget.cpp" />
     <ClCompile Include="GraphicsRootSignature.cpp" />
     <ClCompile Include="GraphicsShader.cpp" />

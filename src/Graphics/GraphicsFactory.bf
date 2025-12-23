@@ -7,9 +7,9 @@ namespace KairosEngine.Graphics
 	{
 		private void* m_pFactory;
 
-		public int Create() mut
+		public int32 Create() mut
 		{
-			int hr = GraphicsFactory_Create(&this);
+			int32 hr = GraphicsFactory_Create(&this);
 			return hr;
 		}
 
@@ -21,22 +21,23 @@ namespace KairosEngine.Graphics
 			}
 		}
 
-		public (int hr, GraphicsDevice device) CreateDevice() mut
+		public (int32 hr, GraphicsDevice device) CreateDevice() mut
 		{
 			GraphicsDevice device = GraphicsDevice();
-			int hr = GraphicsFactory_CreateDevice(&this, &device);
+			int32 hr = GraphicsFactory_CreateDevice(&this, &device);
 			return (hr, device);
 		}
 
-		public (int hr, GraphicsSwapChain swapChain) CreateSwapChain(GraphicsCommandQueue commandQueue, int width, int height, RenderTargetFormat format, int msaa, int aaQuality, int bufferCount, int windowId) mut
+		public (int32 hr, GraphicsSwapChain swapChain) CreateSwapChain(ref GraphicsCommandQueue commandQueue, int32 width, int32 height, RenderTargetFormat format, int32 msaa, int32 aaQuality, int32 bufferCount, int32 windowId) mut
 		{
 			var windowComponents = WindowComponents.Instance;
-			int wndIndex = windowComponents.IdToIndex[windowId];
+			int32 wndIndex = windowComponents.IdToIndex[windowId];
 			Windows.HWnd hwnd = windowComponents.Hwnds[wndIndex];
 			var flags = windowComponents.Flags[wndIndex];
 			bool windowed = (flags & WindowComponents.WindowFlags.FullScreen) > 0 ? false : true;
-			CreateResult result = GraphicsFactory_CreateSwapChain(&this, commandQueue.GetInternalPtr(), width, height, format, msaa, aaQuality, bufferCount, hwnd, windowed);
-			return (result.HR, GraphicsSwapChain(result.Ptr));
+			GraphicsSwapChain swapChain = GraphicsSwapChain();
+			int32 hr = GraphicsFactory_CreateSwapChain(&this, &commandQueue, &swapChain, width, height, format, msaa, aaQuality, bufferCount, hwnd, windowed);
+			return (hr, swapChain);
 		}
 	}
 }

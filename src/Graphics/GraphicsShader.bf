@@ -13,11 +13,11 @@ namespace KairosEngine.Graphics
 				GraphicsShader_Dispose(&this);
 		}
 
-		public int CreateWithoutErrorInfo(String path, ShaderType type) mut
+		public int32 CreateWithoutErrorInfo(String path, ShaderType type) mut
 		{
 			char16* pathUtf16;
 			TextUtils.Utf8ToUtf16Scope!(path, pathUtf16);
-			int hr = GraphicsShader_CreateWithoutErrorInfo(&this, pathUtf16, type, ShaderCompileFlags.DEBUG | ShaderCompileFlags.SKIP_OPTIMIZATION);
+			int32 hr = GraphicsShader_CreateWithoutErrorInfo(&this, pathUtf16, type, ShaderCompileFlags.DEBUG | ShaderCompileFlags.SKIP_OPTIMIZATION);
 			return hr;
 		}
 	}

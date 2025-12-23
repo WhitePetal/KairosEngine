@@ -1,6 +1,6 @@
 namespace KairosEngine.Graphics
 {
-	public enum FenceFlags : uint
+	public enum FenceFlags : uint32
 	{
 		NONE					= 0,
 		SHARED					= 0x1,
