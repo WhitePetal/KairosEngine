@@ -20,7 +20,7 @@ int KAIROS_API GraphicsShader_CreateWithoutErrorInfo(GraphicsShader* _this, LPCW
 		target = "ps_5_0";
 		break;
 	default:
-		return CreateShaderError;
+		return CreateShaderFailed;
 	}
 	HRESULT hr = D3DCompileFromFile(
 		path,
@@ -32,7 +32,7 @@ int KAIROS_API GraphicsShader_CreateWithoutErrorInfo(GraphicsShader* _this, LPCW
 		nullptr
 	);
 	if (FAILED(hr))
-		return CreateShaderError;
+		return CreateShaderFailed;
 
 	_this->m_pShader = pShader;
 	return GraphicsSuccess;

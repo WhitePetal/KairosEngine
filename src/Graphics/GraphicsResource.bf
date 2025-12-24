@@ -3,14 +3,14 @@ using System;
 namespace KairosEngine.Graphics
 {
 	[CRepr]
-	public struct GraphicsBuffer
+	public struct GraphicsResource
 	{
 		private void* m_pResource;
 
 		public void Dispose() mut
 		{
 			if(m_pResource != null)
-				GraphicsBuffer_Dispose(&this);
+				GraphicsResource_Dispose(&this);
 		}
 	}
 }

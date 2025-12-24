@@ -64,7 +64,7 @@ int KAIROS_API GraphicsDevice_CreateCommandAllocator(GraphicsDevice* _this, Grap
 
 int KAIROS_API GraphicsDevice_CreateCommandList(GraphicsDevice* _this, GraphicsCommandAllocator* pGraphicsCommandAllocator, GraphicsCommandList* pGraphicsCommandList, D3D12_COMMAND_LIST_TYPE type, UINT nodeMask)
 {
-	ID3D12CommandList* pCommandList;
+	ID3D12GraphicsCommandList* pCommandList;
 	HRESULT hr = _this->m_pDevice->CreateCommandList(nodeMask, type, pGraphicsCommandAllocator->m_pCommandAllocator, NULL, IID_PPV_ARGS(&pCommandList));
 	if (FAILED(hr))
 		return CreateCommandListFailed;
@@ -140,13 +140,13 @@ int KAIROS_API GraphicsDevice_CreatePipelineState(GraphicsDevice* _this, Graphic
 	ID3D12PipelineState* pPipelineState;
 	HRESULT hr = _this->m_pDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pPipelineState));
 	if (FAILED(hr))
-		return CreatePipelineStateError;
+		return CreatePipelineStateFailed;
 
 	pGraphicsPipelineState->m_pPipelineState = pPipelineState;
 	return GraphicsSuccess;
 }
 
-int KAIROS_API GraphicsDevice_CreateCommittedBufferResource(GraphicsDevice* _this, GraphicsBuffer* pGraphicsBuffer, D3D12_HEAP_TYPE heapType, UINT64 resourceSize, D3D12_HEAP_FLAGS heapFlags, D3D12_RESOURCE_STATES resourceStates)
+int KAIROS_API GraphicsDevice_CreateCommittedBufferResource(GraphicsDevice* _this, GraphicsResource* pGraphicsBuffer, D3D12_HEAP_TYPE heapType, UINT64 resourceSize, D3D12_HEAP_FLAGS heapFlags, D3D12_RESOURCE_STATES resourceStates)
 {
 	D3D12_HEAP_PROPERTIES heapProperties = CD3DX12_HEAP_PROPERTIES(heapType);
 	D3D12_RESOURCE_DESC heapDesc = CD3DX12_RESOURCE_DESC::Buffer(resourceSize);
@@ -160,9 +160,9 @@ int KAIROS_API GraphicsDevice_CreateCommittedBufferResource(GraphicsDevice* _thi
 		IID_PPV_ARGS(&pResource)
 	);
 	if (FAILED(hr))
-		return CreateCommittedResourceError;
+		return CreateCommittedResourceFailed;
 
-	pGraphicsBuffer->m_pBuffer = pResource;
+	pGraphicsBuffer->m_pResource = pResource;
 	return GraphicsSuccess;
 }
 

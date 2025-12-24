@@ -78,9 +78,9 @@ namespace KairosEngine.Graphics
 			return (hr, pipelineState);
 		}
 
-		public (int32 hr, GraphicsBuffer buffer) CreateCommittedBufferResource(HeapType heapType, int resourceSize, HeapFlags heapFlags, ResourceStates resourceStates) mut
+		public (int32 hr, GraphicsResource buffer) CreateCommittedBufferResource(HeapType heapType, int resourceSize, HeapFlags heapFlags, ResourceStates resourceStates) mut
 		{
-			GraphicsBuffer buffer = GraphicsBuffer();
+			GraphicsResource buffer = GraphicsResource();
 			int32 hr = GraphicsDevice_CreateCommittedBufferResource(&this, &buffer, heapType, (uint64)resourceSize, heapFlags, resourceStates);
 			return (hr, buffer);
 		}

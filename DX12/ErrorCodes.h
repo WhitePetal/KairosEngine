@@ -15,8 +15,11 @@
 #define CreateFenceEventFailed 11
 #define SerializeRootSignatureFailed 12
 #define CreateRootSignatureFailed 13
-#define CreateShaderError 14
-#define CreatePipelineStateError 15
-#define CreateCommittedResourceError 16
+#define CreateShaderFailed 14
+#define CreatePipelineStateFailed 15
+#define CreateCommittedResourceFailed 16
+#define UpdateSubBufferResourceFailed 17
+#define CloseCommandListFailed 18
+#define CommandQueueSignatureFailed 19
 
 #endif

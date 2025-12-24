@@ -63,6 +63,7 @@ namespace KairosEngine
 				Console.WriteLine($"ERROR Create Swap Chain Failed");
 				return;
 			}
+			uint32 frameIndex = swapChain.GetCurrentBackBufferIndex();
 
 			(hr, GraphicsDescriptorHeap rtvHeap) = device.CreateDescriptorHeap(backBufferCount, DescriptorHeapType.RTV, DescriptorHeapFlags.NONE);
 			defer rtvHeap.Dispose();
@@ -124,9 +125,11 @@ namespace KairosEngine
 			}
 
 			GraphicsFence[] fences = scope GraphicsFence[backBufferCount](?);
+			uint64[] fenceValues = scope uint64[backBufferCount](?);
 			for(successCount = 0; successCount < backBufferCount; ++successCount)
 			{
 				(hr, fences[successCount]) = device.CreateFence(0u, FenceFlags.NONE);
+				fenceValues[successCount] = 0u;
 				if(hr > 0)
 				{
 					++successCount;
@@ -176,9 +179,9 @@ namespace KairosEngine
 			}
 
 			GraphicsInputLayoutElement[] inputLayouts = scope GraphicsInputLayoutElement[]
-			{
+			(
 				GraphicsInputLayoutElement("POSITION", 0, InputLayoutElementFormat.R32G32B32_FLOAT, 0, 0, InputLayoutElementClass.PER_VERTEX_DATA, 0)
-			};
+			);
 			(hr, GraphicsPipelineState pipelineState) = device.CreatePipelineState(inputLayouts, ref rootSignature, ref vertexShader, ref fragmentShader, TopologyType.TRIANGLE, RenderTargetFormat.R8G8B8A8_UNORM, 1, 0, 0xffffffff);
 			defer pipelineState.Dispose();
 			if(hr > 0)
@@ -187,25 +190,45 @@ namespace KairosEngine
 				return;
 			}
 
-			float3[] vertices = scope float3[3]
-			{
+			float3[] vertices = scope float3[]
+			(
 				float3(0.0f, 0.5f, 0.5f), float3(0.5f, -0.5f, 0.5f), float3(-0.5f, -0.5f, 0.5f)
-			};
+			);
 			int verticesSize = vertices.Count * sizeof(float3);
-			(hr, GraphicsBuffer vertexBufferDefaultHeap) = device.CreateCommittedBufferResource(HeapType.DEFAULT, verticesSize, HeapFlags.NONE, ResourceStates.COPY_DEST);
+			(hr, GraphicsResource vertexBufferDefaultHeap) = device.CreateCommittedBufferResource(HeapType.DEFAULT, verticesSize, HeapFlags.NONE, ResourceStates.COPY_DEST);
 			defer vertexBufferDefaultHeap.Dispose();
 			if(hr > 0)
 			{
 				Console.WriteLine($"ERROR Create Vertex Buffer Default Heap Failed");
 				return;
 			}
-			(hr, GraphicsBuffer vertexBufferUploadHeap) = device.CreateCommittedBufferResource(HeapType.UPLOAD, verticesSize, HeapFlags.NONE, ResourceStates.GENERIC_READ);
+			(hr, GraphicsResource vertexBufferUploadHeap) = device.CreateCommittedBufferResource(HeapType.UPLOAD, verticesSize, HeapFlags.NONE, ResourceStates.GENERIC_READ);
 			defer vertexBufferUploadHeap.Dispose();
 			if(hr > 0)
 			{
 				Console.WriteLine($"ERROR Create Vertex Buffer Upload Heap Failed");
 				return;
 			}
+			hr = commandList.UpdateSubResources(ref vertexBufferDefaultHeap, ref vertexBufferUploadHeap, 0, 0, 1, vertices, verticesSize);
+			if(hr > 0)
+			{
+				Console.WriteLine($"ERROR Update VertexBuffer from upload heap to default heap Failed");
+				return;
+			}
+
+			commandList.ResourceBarrier(ref vertexBufferDefaultHeap, ResourceStates.COPY_DEST, ResourceStates.VERTEX_AND_CONSTANT_BUFFER);
+			commandList.Close();
+			GraphicsCommandList[] executeCommandLists = scope GraphicsCommandList[]( commandList );
+			commandQueue.ExecuteCommandLists(executeCommandLists, 1);
+
+			++fenceValues[frameIndex];
+			hr = commandQueue.Signal(ref fences[frameIndex], fenceValues[frameIndex]);
+			if(hr > 0)
+			{
+				Console.WriteLine($"ERROR CommandQueue Signal Failed");
+				return;
+			}
+
 			
 			WindowSystem.Instance.Update();
 

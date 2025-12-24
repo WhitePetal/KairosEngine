@@ -39,6 +39,6 @@ namespace KairosEngine.Graphics
 			GraphicsShader* pGraphicsVertexShader, GraphicsShader* pGraphicsFragmentShader, TopologyType topologyType, RenderTargetFormat renderTargetFormat, uint32 msaa, uint32 aaQuality, uint32 sampleMask);
 
 		[Import("DX12.lib"), CallingConvention(.Cdecl), LinkName("GraphicsDevice_CreateCommittedBufferResource")]
-		private static extern int32 GraphicsDevice_CreateCommittedBufferResource(GraphicsDevice* _this, GraphicsBuffer* pGraphicsBuffer, HeapType heapType, uint64 resourceSize, HeapFlags heapFlags, ResourceStates resourceStates);
+		private static extern int32 GraphicsDevice_CreateCommittedBufferResource(GraphicsDevice* _this, GraphicsResource* pGraphicsBuffer, HeapType heapType, uint64 resourceSize, HeapFlags heapFlags, ResourceStates resourceStates);
 	}
 }
