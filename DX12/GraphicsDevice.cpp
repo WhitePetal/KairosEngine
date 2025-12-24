@@ -146,4 +146,24 @@ int KAIROS_API GraphicsDevice_CreatePipelineState(GraphicsDevice* _this, Graphic
 	return GraphicsSuccess;
 }
 
+int KAIROS_API GraphicsDevice_CreateCommittedBufferResource(GraphicsDevice* _this, GraphicsBuffer* pGraphicsBuffer, D3D12_HEAP_TYPE heapType, UINT64 resourceSize, D3D12_HEAP_FLAGS heapFlags, D3D12_RESOURCE_STATES resourceStates)
+{
+	D3D12_HEAP_PROPERTIES heapProperties = CD3DX12_HEAP_PROPERTIES(heapType);
+	D3D12_RESOURCE_DESC heapDesc = CD3DX12_RESOURCE_DESC::Buffer(resourceSize);
+	ID3D12Resource* pResource;
+	HRESULT hr = _this->m_pDevice->CreateCommittedResource(
+		&heapProperties,
+		heapFlags,
+		&heapDesc,
+		resourceStates,
+		nullptr,
+		IID_PPV_ARGS(&pResource)
+	);
+	if (FAILED(hr))
+		return CreateCommittedResourceError;
+
+	pGraphicsBuffer->m_pBuffer = pResource;
+	return GraphicsSuccess;
+}
+
 KAIROS_EXPORT_END

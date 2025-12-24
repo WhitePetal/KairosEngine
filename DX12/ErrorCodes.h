@@ -17,5 +17,6 @@
 #define CreateRootSignatureFailed 13
 #define CreateShaderError 14
 #define CreatePipelineStateError 15
+#define CreateCommittedResourceError 16
 
 #endif

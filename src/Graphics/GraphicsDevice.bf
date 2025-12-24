@@ -77,5 +77,12 @@ namespace KairosEngine.Graphics
 			int32 hr = GraphicsDevice_CreatePipelineState(&this, &pipelineState, inputlayouts.Ptr, 1, &graphicsRootSignature, &graphicsVertexShader, &graphicsFragmentShader, topologyType, renderTargetFormat, msaa, aaQuality, sampleMask);
 			return (hr, pipelineState);
 		}
+
+		public (int32 hr, GraphicsBuffer buffer) CreateCommittedBufferResource(HeapType heapType, int resourceSize, HeapFlags heapFlags, ResourceStates resourceStates) mut
+		{
+			GraphicsBuffer buffer = GraphicsBuffer();
+			int32 hr = GraphicsDevice_CreateCommittedBufferResource(&this, &buffer, heapType, (uint64)resourceSize, heapFlags, resourceStates);
+			return (hr, buffer);
+		}
 	}
 }

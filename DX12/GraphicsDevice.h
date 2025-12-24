@@ -12,6 +12,7 @@
 #include "GraphicsRootSignature.h"
 #include "GraphicsPipelineState.h"
 #include "GraphicsShader.h"
+#include "GraphicsBuffer.h"
 #include <d3d12.h>
 #include <dxgi1_4.h>
 #include <D3Dcompiler.h>
@@ -47,6 +48,8 @@ int KAIROS_API GraphicsDevice_CreateEmptyRootSignature(GraphicsDevice* _this, Gr
 
 int KAIROS_API GraphicsDevice_CreatePipelineState(GraphicsDevice* _this, GraphicsPipelineState* pGraphicsPipelineState, D3D12_INPUT_ELEMENT_DESC* pInputLayout, UINT inputLayoutCount, GraphicsRootSignature* pGraphicsRootSignature,
 	GraphicsShader* pGraphicsVertexShader, GraphicsShader* pGraphicsFragmentShader, D3D12_PRIMITIVE_TOPOLOGY_TYPE topologyType, DXGI_FORMAT renderTargetFormat, UINT msaa, UINT aaQuality, UINT sampleMask);
+
+int KAIROS_API GraphicsDevice_CreateCommittedBufferResource(GraphicsDevice* _this, GraphicsBuffer* pGraphicsBuffer, D3D12_HEAP_TYPE heapType, UINT64 resourceSize, D3D12_HEAP_FLAGS heapFlags, D3D12_RESOURCE_STATES resourceStates);
 
 KAIROS_EXPORT_END
 

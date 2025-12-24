@@ -1,0 +1,26 @@
+using System;
+
+namespace KairosEngine.Graphics
+{
+	[AllowDuplicates]
+	public enum HeapFlags : uint32
+	{
+		NONE							= 0,
+		SHARED							= 0x1,
+		DENY_BUFFERS					= 0x4,
+		ALLOW_DISPLAY					= 0x8,
+		SHARED_CROSS_ADAPTER			= 0x20,
+		DENY_RT_DS_TEXTURES				= 0x40,
+		DENY_NON_RT_DS_TEXTURES			= 0x80,
+		HARDWARE_PROTECTED				= 0x100,
+		ALLOW_WRITE_WATCH				= 0x200,
+		ALLOW_SHADER_ATOMICS			= 0x400,
+		CREATE_NOT_RESIDENT				= 0x800,
+		CREATE_NOT_ZEROED				= 0x1000,
+		TOOLS_USE_MANUAL_WRITE_TRACKING	= 0x2000,
+		ALLOW_ALL_BUFFERS_AND_TEXTURES	= 0,
+		ALLOW_ONLY_BUFFERS				= 0xc0,
+		ALLOW_ONLY_NON_RT_DS_TEXTURES	= 0x44,
+		ALLOW_ONLY_RT_DS_TEXTURES		= 0x84
+	}
+}

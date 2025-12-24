@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using KairosEngine.Math;
 using KairosEngine.Editor;
 using KairosEngine.Graphics;
 
@@ -87,11 +88,9 @@ namespace KairosEngine
 				device.CreateRenderTargetView(ref renderTargets[successCount], rtvHandle);
 				rtvHandle.Offset(1, rtvDescriptorSize);
 			}
-			defer
-			{
-				for(int32 i = 0; i < successCount; ++i)
-					renderTargets[i].Dispose();
-			}
+			for(int32 i = 0; i < successCount; ++i)
+				defer::renderTargets[i].Dispose();
+
 			if(hr > 0)
 			{
 				Console.WriteLine("ERROR Get SwapChain RenderTarget Failed");
@@ -108,11 +107,8 @@ namespace KairosEngine
 					break;
 				}
 			}
-			defer
-			{
-				for(int32 i = 0; i < successCount; ++i)
-					commandAllocators[i].Dispose();
-			}
+			for(int32 i = 0; i < successCount; ++i)
+				defer::commandAllocators[i].Dispose();
 			if(hr > 0)
 			{
 				Console.WriteLine($"ERROR Create CommandAllocator Failed");
@@ -137,11 +133,8 @@ namespace KairosEngine
 					break;
 				}
 			}
-			defer
-			{
-				for(int32 i = 0; i < successCount; ++i)
-					fences[i].Dispose();
-			}
+			for(int32 i = 0; i < successCount; ++i)
+				defer::fences[i].Dispose();
 			if(hr > 0)
 			{
 				Console.WriteLine($"ERROR Create Fence Failed");
@@ -194,6 +187,26 @@ namespace KairosEngine
 				return;
 			}
 
+			float3[] vertices = scope float3[3]
+			{
+				float3(0.0f, 0.5f, 0.5f), float3(0.5f, -0.5f, 0.5f), float3(-0.5f, -0.5f, 0.5f)
+			};
+			int verticesSize = vertices.Count * sizeof(float3);
+			(hr, GraphicsBuffer vertexBufferDefaultHeap) = device.CreateCommittedBufferResource(HeapType.DEFAULT, verticesSize, HeapFlags.NONE, ResourceStates.COPY_DEST);
+			defer vertexBufferDefaultHeap.Dispose();
+			if(hr > 0)
+			{
+				Console.WriteLine($"ERROR Create Vertex Buffer Default Heap Failed");
+				return;
+			}
+			(hr, GraphicsBuffer vertexBufferUploadHeap) = device.CreateCommittedBufferResource(HeapType.UPLOAD, verticesSize, HeapFlags.NONE, ResourceStates.GENERIC_READ);
+			defer vertexBufferUploadHeap.Dispose();
+			if(hr > 0)
+			{
+				Console.WriteLine($"ERROR Create Vertex Buffer Upload Heap Failed");
+				return;
+			}
+			
 			WindowSystem.Instance.Update();
 
 			Console.WriteLine($"KairosEngine Exit");
