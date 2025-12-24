@@ -8,9 +8,6 @@ namespace KairosEngine
 		public static WindowSystem Instance;
 		private WindowComponents m_Components;
 
-		// TOOD: temp flag
-		public bool Running;
-
 		public static void Initialize()
 		{
 			WindowComponents.Initialize();
@@ -39,7 +36,7 @@ namespace KairosEngine
 					{
 						int32 id = WindowComponents.Instance.Ids[i];
 						WindowSystem.Instance.DestroyWindow(id);
-						WindowSystem.Instance.Running = false;
+						Program.Running = false;
 					}
 					return 0;
 				case 0x0002:

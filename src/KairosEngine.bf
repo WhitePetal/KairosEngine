@@ -8,6 +8,9 @@ namespace KairosEngine
 {
 	class Program
 	{
+		// TODO: temp flag
+		public static bool Running;
+
 		public static void Main()
 		{
 			Console.WriteLine("KairosEngine Start");
@@ -237,7 +240,7 @@ namespace KairosEngine
 			MSG msg = MSG();
 			MSG* pMsg = &msg;
 			Kernel.KairosInitMSG(pMsg);
-			bool running = true;
+			Running = true;
 
 			void WaitPresent()
 			{
@@ -251,7 +254,7 @@ namespace KairosEngine
 					if(hr > 0)
 					{
 						Console.WriteLine($"ERROR Set Fence Completion Event Failed");
-					 	running = false;
+					 	Running = false;
 						return;
 					}
 
@@ -269,14 +272,14 @@ namespace KairosEngine
 				if(hr > 0)
 				{
 					Console.WriteLine($"ERROR CommandAllocator Reset Failed");
-					running = false;
+					Running = false;
 					return;
 				}
 				hr = commandList.Reset(ref commandAllocators[frameIndex], ref pipelineState);
 				if(hr > 0)
 				{
 					Console.WriteLine($"ERROR CommandList Reset Failed");
-					running = false;
+					Running = false;
 					return;
 				}
 
@@ -288,7 +291,7 @@ namespace KairosEngine
 				if(hr > 0)
 				{
 					Console.WriteLine($"ERROR CommandList Close Failed");
-					running = false;
+					Running = false;
 					return;
 				}
 
@@ -298,7 +301,7 @@ namespace KairosEngine
 				if(hr > 0)
 				{
 					Console.WriteLine($"ERROR CommandQueue Signal Failed");
-					running = false;
+					Running = false;
 					return;
 				}
 
@@ -306,12 +309,12 @@ namespace KairosEngine
 				if(hr > 0)
 				{
 					Console.WriteLine($"ERROR SwapChain Present Failed");
-					running = false;
+					Running = false;
 					return;
 				}
 			}
 
-			while(running)
+			while(Running)
 			{
 				if(Kernel.KairosPeekMessage(pMsg) == 1)
 				{

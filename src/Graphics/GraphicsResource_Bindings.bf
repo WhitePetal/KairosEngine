@@ -7,7 +7,7 @@ namespace KairosEngine.Graphics
 		[Import("DX12.lib"), CallingConvention(.Cdecl), LinkName("GraphicsResource_Dispose")]
 		private static extern void GraphicsResource_Dispose(GraphicsResource* _this);
 
-		[Import("DX12.lib"), CallingConvention(.Cdecl), LinkName("[Import("DX12.lib"), CallingConvention(.Cdecl), LinkName("GraphicsResource_Dispose")]")]
+		[Import("DX12.lib"), CallingConvention(.Cdecl), LinkName("GraphicsResource_GetGPUVirtualAddress")]
 		private static extern uint64 GraphicsResource_GetGPUVirtualAddress(GraphicsResource* _this);
 	}
 }
