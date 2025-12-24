@@ -39,7 +39,7 @@ UINT KAIROS_API GraphicsDevice_GetDescriptorHandleIncrementSize(GraphicsDevice* 
 
 void KAIROS_API GraphicsDevice_CreateRenderTargetViewByHandle(GraphicsDevice* _this, GraphicsRenderTarget* pGraphicsRenderTarget, CD3DX12_CPU_DESCRIPTOR_HANDLE handle)
 {
-	_this->m_pDevice->CreateRenderTargetView(pGraphicsRenderTarget->m_pRenderTarget, nullptr, handle);
+	_this->m_pDevice->CreateRenderTargetView(pGraphicsRenderTarget->m_pResource, nullptr, handle);
 }
 
 void KAIROS_API GraphicsDevice_CreateRenderTargetViewByHeapIndex(GraphicsDevice* _this, GraphicsRenderTarget* pGraphicsRenderTarget, GraphicsDescriptorHeap* pDescriptorHeap, int index)
@@ -48,7 +48,7 @@ void KAIROS_API GraphicsDevice_CreateRenderTargetViewByHeapIndex(GraphicsDevice*
 	UINT descriptorSize = _this->m_pDevice->GetDescriptorHandleIncrementSize(ipDescriptorHeap->GetDesc().Type);
 	CD3DX12_CPU_DESCRIPTOR_HANDLE handle{ ipDescriptorHeap->GetCPUDescriptorHandleForHeapStart() };
 	handle.Offset(index, descriptorSize);
-	_this->m_pDevice->CreateRenderTargetView(pGraphicsRenderTarget->m_pRenderTarget, nullptr, handle);
+	_this->m_pDevice->CreateRenderTargetView(pGraphicsRenderTarget->m_pResource, nullptr, handle);
 }
 
 int KAIROS_API GraphicsDevice_CreateCommandAllocator(GraphicsDevice* _this, GraphicsCommandAllocator* pGraphicsCommandAllocator, D3D12_COMMAND_LIST_TYPE type)

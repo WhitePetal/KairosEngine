@@ -16,6 +16,11 @@ void KAIROS_API GraphicsFenceEvent_Dispose(GraphicsFenceEvent* _this)
     CloseHandle(_this->m_Handle);
 }
 
+DWORD KAIROS_API GraphicsFenceEvent_Wait(GraphicsFenceEvent* _this, DWORD dwMilliseconds)
+{
+    return WaitForSingleObject(_this->m_Handle, dwMilliseconds);
+}
+
 
 
 KAIROS_EXPORT_END

@@ -16,6 +16,8 @@ int GraphicsFenceEvent_Create(GraphicsFenceEvent* _this);
 
 void KAIROS_API GraphicsFenceEvent_Dispose(GraphicsFenceEvent* _this);
 
+DWORD KAIROS_API GraphicsFenceEvent_Wait(GraphicsFenceEvent* _this, DWORD dwMilliseconds);
+
 KAIROS_EXPORT_END
 
 

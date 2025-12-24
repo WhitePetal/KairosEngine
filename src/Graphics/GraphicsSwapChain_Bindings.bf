@@ -12,5 +12,8 @@ namespace KairosEngine.Graphics
 
 		[Import("DX12.lib"), CallingConvention(.Cdecl), LinkName("GraphicsSwapChain_GetRenderTarget")]
 		private static extern int32 GraphicsSwapChain_GetRenderTarget(GraphicsSwapChain* _this, GraphicsRenderTarget* pGraphicsRenderTarget, int32 index);
+
+		[Import("DX12.lib"), CallingConvention(.Cdecl), LinkName("GraphicsSwapChain_Present")]
+		private static extern int32 GraphicsSwapChain_Present(GraphicsSwapChain* _this, uint32 syncInternal, uint32 flags);
 	}
 }

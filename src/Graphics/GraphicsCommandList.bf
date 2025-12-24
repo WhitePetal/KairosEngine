@@ -1,4 +1,5 @@
 using System;
+using KairosEngine.Math;
 
 namespace KairosEngine.Graphics
 {
@@ -27,6 +28,21 @@ namespace KairosEngine.Graphics
 		public int32 Close() mut
 		{
 			return GraphicsCommandList_Close(&this);
+		}
+
+		public int32 Reset(ref GraphicsCommandAllocator commandAllocator, ref GraphicsPipelineState pso) mut
+		{
+			return GraphicsCommandList_Reset(&this, &commandAllocator, &pso);
+		}
+
+		public void OMSetRenderTargets(ref GraphicsDescriptorHeap descriptorHeap, uint32 descriptorOffset, uint32 descriptorSize, uint32 descriptorCount) mut
+		{
+			GraphicsCommandList_OMSetRenderTargets(&this, &descriptorHeap, descriptorOffset, descriptorSize, descriptorCount);
+		}
+
+		public void ClearRenderTargetView(ref GraphicsDescriptorHeap descriptorHeap, uint32 descriptorOffset, uint32 descriptorSize, ref float4 color, uint32 rectCount, Rect[] rects) mut
+		{
+			GraphicsCommandList_ClearRenderTargetView(&this, &descriptorHeap, descriptorOffset, descriptorSize, &color, rectCount, rectCount == 0 ? null : &rects[0]);
 		}
 	}
 }

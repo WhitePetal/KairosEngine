@@ -18,6 +18,8 @@ KAIROS_EXPORT_BEGIN
 
 void KAIROS_API GraphicsCommandAllocator_Dispose(GraphicsCommandAllocator* _this);
 
+int KAIROS_API GraphicsCommandAllocator_Reset(GraphicsCommandAllocator* _this);
+
 KAIROS_EXPORT_END
 
 #endif

@@ -234,14 +234,100 @@ namespace KairosEngine
 			ViewPort viewPort = ViewPort(0, 0, wndRect.z, wndRect.w, 0f, 1f);
 			Rect scissorRect = Rect(0, 0, wndRect.z, wndRect.w);
 
-			void RenderLoop()
+			MSG msg = MSG();
+			MSG* pMsg = &msg;
+			Kernel.KairosInitMSG(pMsg);
+			bool running = true;
+
+			void WaitPresent()
 			{
-				
+				frameIndex = swapChain.GetCurrentBackBufferIndex();
+
+				var fence = fences[frameIndex];
+				var fenceValue = fenceValues[frameIndex];
+				if(fence.GetCompletedValue() < fenceValue)
+				{
+					hr = fence.SetEventOnCompletion(ref fenceEvent, fenceValue);
+					if(hr > 0)
+					{
+						Console.WriteLine($"ERROR Set Fence Completion Event Failed");
+					 	running = false;
+						return;
+					}
+
+					fenceEvent.Wait(GraphicsFenceEvent.INFINITE_WAIT_TIME);
+				}
+
+				++fenceValues[frameIndex];
 			}
 
-			function void() renderLoopPtr = =>RenderLoop;
+			void RenderLoop()
+			{
+				WaitPresent();
 
-			WindowSystem.Instance.Update(renderLoopPtr);
+				hr = commandAllocators[frameIndex].Reset();
+				if(hr > 0)
+				{
+					Console.WriteLine($"ERROR CommandAllocator Reset Failed");
+					running = false;
+					return;
+				}
+				hr = commandList.Reset(ref commandAllocators[frameIndex], ref pipelineState);
+				if(hr > 0)
+				{
+					Console.WriteLine($"ERROR CommandList Reset Failed");
+					running = false;
+					return;
+				}
+
+				commandList.ResourceBarrier(ref renderTargets[frameIndex], ResourceStates.PRESENT, ResourceStates.RENDER_TARGET);
+				commandList.OMSetRenderTargets(ref rtvHeap, frameIndex, rtvDescriptorSize, 1);
+				commandList.ClearRenderTargetView(ref rtvHeap, frameIndex, rtvDescriptorSize, ref float4(0f, 0.2f, 0.4f, 1.0f), 0, null);
+				commandList.ResourceBarrier(ref renderTargets[frameIndex], ResourceStates.RENDER_TARGET, ResourceStates.PRESENT);
+				hr = commandList.Close();
+				if(hr > 0)
+				{
+					Console.WriteLine($"ERROR CommandList Close Failed");
+					running = false;
+					return;
+				}
+
+				GraphicsCommandList[] commandLists = scope GraphicsCommandList[](commandList);
+				commandQueue.ExecuteCommandLists(commandLists, 1);
+				hr = commandQueue.Signal(ref fences[frameIndex], fenceValues[frameIndex]);
+				if(hr > 0)
+				{
+					Console.WriteLine($"ERROR CommandQueue Signal Failed");
+					running = false;
+					return;
+				}
+
+				hr = swapChain.Present(0u, 0u);
+				if(hr > 0)
+				{
+					Console.WriteLine($"ERROR SwapChain Present Failed");
+					running = false;
+					return;
+				}
+			}
+
+			while(running)
+			{
+				if(Kernel.KairosPeekMessage(pMsg) == 1)
+				{
+					if(msg.message == 0x0012)
+						break;
+
+					Kernel.KairosTranslateMessage(pMsg);
+					Kernel.KairosDispatchMessage(pMsg);
+				}
+				else
+				{
+					// do game logic
+					WindowSystem.Instance.Update();
+					RenderLoop();
+				}
+			}
 
 			Console.WriteLine($"KairosEngine Exit");
 

@@ -23,6 +23,8 @@ UINT KAIROS_API GraphicsSwapChain_GetCurrentBackBufferIndex(GraphicsSwapChain* _
 
 int KAIROS_API GraphicsSwapChain_GetRenderTarget(GraphicsSwapChain* _this, GraphicsRenderTarget* pGraphicsRenderTarget, int index);
 
+int KAIROS_API GraphicsSwapChain_Present(GraphicsSwapChain* _this, UINT syncInternal, UINT flags);
+
 KAIROS_EXPORT_END
 
 #endif // !__KAIROS_GRAPHICS_SWAP_CHAIN__

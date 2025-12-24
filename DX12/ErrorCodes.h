@@ -21,5 +21,9 @@
 #define UpdateSubBufferResourceFailed 17
 #define CloseCommandListFailed 18
 #define CommandQueueSignatureFailed 19
+#define FenceSetCompletionEventFailed 20
+#define CommandAllocatorResetFailed 21
+#define CommandListResetFailed 22
+#define SwapChainPresentFailed 23
 
 #endif

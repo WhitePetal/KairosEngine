@@ -24,5 +24,10 @@ namespace KairosEngine.Graphics
 			int32 hr = GraphicsSwapChain_GetRenderTarget(&this, &renderTarget, index);
 			return (hr, renderTarget);
 		}
+
+		public int32 Present(uint32 syncInternal, uint32 flags) mut
+		{
+			return GraphicsSwapChain_Present(&this, syncInternal, flags);
+		}
 	}
 }

@@ -14,20 +14,5 @@ namespace KairosEngine
 
 		[Import("DX12.lib"), CallingConvention(.Cdecl), LinkName("KairosDestroyWindow")]
 		private static extern void KairosDestroyWindow(Windows.HWnd hWnd);
-
-		[Import("DX12.lib"), CallingConvention(.Cdecl), LinkName("KairosPostQuitMessage")]
-		private static extern void KairosPostQuitMessage(int32 nExitCode);
-
-		[Import("DX12.lib"), CallingConvention(.Cdecl), LinkName("KairosInitMSG")]
-		private static extern void KairosInitMSG(MSG* pMsg);
-
-		[Import("DX12.lib"), CallingConvention(.Cdecl), LinkName("KairosPeekMessage")]
-		private static extern int32 KairosPeekMessage(MSG* pMsg);
-
-		[Import("DX12.lib"), CallingConvention(.Cdecl), LinkName("KairosTranslateMessage")]
-		private static extern int32 KairosTranslateMessage(MSG* pMsg);
-
-		[Import("DX12.lib"), CallingConvention(.Cdecl), LinkName("KairosDispatchMessage")]
-		private static extern int64 KairosDispatchMessage(MSG* pMsg);
 	}
 }

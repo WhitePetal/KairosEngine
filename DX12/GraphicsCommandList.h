@@ -3,6 +3,9 @@
 
 #include "KairosEngineDefines.h"
 #include "GraphicsResource.h"
+#include "GraphicsCommandAllocator.h"
+#include "GraphicsPipelineState.h"
+#include "GraphicsDescriptorHeap.h"
 #include <windows.h>
 #include <d3d12.h>
 #include <dxgi1_4.h>
@@ -25,6 +28,12 @@ int KAIROS_API GraphicsCommandList_UpdateSubResources(GraphicsCommandList* _this
 void KAIROS_API GraphicsCommandList_ResourceBarrier(GraphicsCommandList* _this, GraphicsResource* pResource, D3D12_RESOURCE_STATES beforeStates, D3D12_RESOURCE_STATES afterStates);
 
 int KAIROS_API GraphicsCommandList_Close(GraphicsCommandList* _this);
+
+int KAIROS_API GraphicsCommandList_Reset(GraphicsCommandList* _this, GraphicsCommandAllocator* pGraphicsCommandAllocator, GraphicsPipelineState* pGraphicsPipelineState);
+
+void KAIROS_API GraphicsCommandList_OMSetRenderTargets(GraphicsCommandList* _this, GraphicsDescriptorHeap* pGraphicsDescriptorHeap, UINT descriptorOffset, UINT descriptorSize, UINT descriptorCount);
+
+void KAIROS_API GraphicsCommandList_ClearRenderTargetView(GraphicsCommandList* _this, GraphicsDescriptorHeap* pGraphicsDescriptorHeap, UINT descriptorOffset, UINT descriptorSize, FLOAT* pColor, UINT rectCount, D3D12_RECT* pRects);
 
 KAIROS_EXPORT_END
 

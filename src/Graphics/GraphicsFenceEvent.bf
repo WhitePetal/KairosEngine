@@ -5,6 +5,8 @@ namespace KairosEngine.Graphics
 	[CRepr]
 	public struct GraphicsFenceEvent
 	{
+		public const uint32 INFINITE_WAIT_TIME = 0xFFFFFFFF;
+
 		private void* m_pFenceEvent;
 
 		public int32 Create() mut
@@ -17,6 +19,11 @@ namespace KairosEngine.Graphics
 		{
 			if(m_pFenceEvent != null)
 				GraphicsFenceEvent_Dispose(&this);
+		}
+
+		public uint32 Wait(uint32 dwMilliseconds) mut
+		{
+			return GraphicsFenceEvent_Wait(&this, dwMilliseconds);
 		}
 	}
 }

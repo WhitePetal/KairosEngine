@@ -12,5 +12,10 @@ namespace KairosEngine.Graphics
 			if(m_pCommandAllocator != null)
 				GraphicsCommandAllocator_Dispose(&this);
 		}
+
+		public int32 Reset() mut
+		{
+			return GraphicsCommandAllocator_Reset(&this);
+		}
 	}
 }

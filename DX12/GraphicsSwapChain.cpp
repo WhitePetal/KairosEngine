@@ -19,7 +19,16 @@ int KAIROS_API GraphicsSwapChain_GetRenderTarget(GraphicsSwapChain* _this, Graph
 	if (FAILED(hr))
 		return GetSwapChainRenderTargetFailed;
 
-	pGraphicsRenderTarget->m_pRenderTarget = pRenderTarget;
+	pGraphicsRenderTarget->m_pResource = pRenderTarget;
+	return GraphicsSuccess;
+}
+
+int KAIROS_API GraphicsSwapChain_Present(GraphicsSwapChain* _this, UINT syncInternal, UINT flags)
+{
+	HRESULT hr = _this->m_pSwapChain->Present(syncInternal, flags);
+	if (FAILED(hr))
+		return SwapChainPresentFailed;
+
 	return GraphicsSuccess;
 }
 

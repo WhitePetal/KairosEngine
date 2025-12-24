@@ -3,6 +3,7 @@
 
 #include "ErrorCodes.h"
 #include "KairosEngineDefines.h"
+#include "GraphicsFenceEvent.h"
 #include <d3d12.h>
 #include <dxgi1_4.h>
 #include <D3Dcompiler.h>
@@ -17,6 +18,10 @@ typedef struct GraphicsFence
 KAIROS_EXPORT_BEGIN
 
 void KAIROS_API GraphicsFence_Dispose(GraphicsFence* _this);
+
+UINT64 KAIROS_API GraphicsFence_GetCompletedValue(GraphicsFence* _this);
+
+int KAIROS_API GraphicsFence_SetEventOnCompletion(GraphicsFence* _this, UINT64 fenceValue, GraphicsFenceEvent* pGraphicsFenceEvent);
 
 KAIROS_EXPORT_END
 

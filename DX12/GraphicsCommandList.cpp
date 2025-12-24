@@ -35,4 +35,25 @@ int KAIROS_API GraphicsCommandList_Close(GraphicsCommandList* _this)
 	return GraphicsSuccess;
 }
 
+int KAIROS_API GraphicsCommandList_Reset(GraphicsCommandList* _this, GraphicsCommandAllocator* pGraphicsCommandAllocator, GraphicsPipelineState* pGraphicsPipelineState)
+{
+	HRESULT hr = _this->m_pCommandList->Reset(pGraphicsCommandAllocator->m_pCommandAllocator, pGraphicsPipelineState->m_pPipelineState);
+	if (FAILED(hr))
+		return CommandListResetFailed;
+
+	return GraphicsSuccess;
+}
+
+void KAIROS_API GraphicsCommandList_OMSetRenderTargets(GraphicsCommandList* _this, GraphicsDescriptorHeap* pGraphicsDescriptorHeap, UINT descriptorOffset, UINT descriptorSize, UINT descriptorCount)
+{
+	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(pGraphicsDescriptorHeap->m_pDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), descriptorOffset, descriptorSize);
+	_this->m_pCommandList->OMSetRenderTargets(descriptorCount, &rtvHandle, FALSE, nullptr);
+}
+
+void KAIROS_API GraphicsCommandList_ClearRenderTargetView(GraphicsCommandList* _this, GraphicsDescriptorHeap* pGraphicsDescriptorHeap, UINT descriptorOffset, UINT descriptorSize, FLOAT* pColor, UINT rectCount, D3D12_RECT* pRects)
+{
+	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(pGraphicsDescriptorHeap->m_pDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), descriptorOffset, descriptorSize);
+	_this->m_pCommandList->ClearRenderTargetView(rtvHandle, pColor, rectCount, pRects);
+}
+
 KAIROS_EXPORT_END

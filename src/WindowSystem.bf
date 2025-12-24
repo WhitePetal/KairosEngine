@@ -43,7 +43,7 @@ namespace KairosEngine
 					}
 					return 0;
 				case 0x0002:
-					WindowSystem.KairosPostQuitMessage(0);
+					Kernel.KairosPostQuitMessage(0);
 					return 0;
 				}
 			}
@@ -78,28 +78,9 @@ namespace KairosEngine
 			KairosDestroyWindow(hwnd);
 		}
 
-		public void Update(function void() renderLoop)
+		public void Update()
 		{
-			MSG msg = MSG();
-			MSG* pMsg = &msg;
-			KairosInitMSG(pMsg);
-			Running = true;
-			while(Running)
-			{
-				if(KairosPeekMessage(pMsg) == 1)
-				{
-					if(msg.message == 0x0012)
-						break;
 
-					KairosTranslateMessage(pMsg);
-					KairosDispatchMessage(pMsg);
-				}
-				else
-				{
-					// do game logic
-					renderLoop();
-				}
-			}
 		}
 	}
 }

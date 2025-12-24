@@ -5,7 +5,7 @@ namespace KairosEngine.Graphics
 	[CRepr]
 	public struct GraphicsResource
 	{
-		private void* m_pResource;
+		protected void* m_pResource;
 
 		public void Dispose() mut
 		{
