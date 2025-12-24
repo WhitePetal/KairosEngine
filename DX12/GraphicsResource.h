@@ -20,6 +20,8 @@ KAIROS_EXPORT_BEGIN
 
 void KAIROS_API GraphicsResource_Dispose(GraphicsResource* _this);
 
+UINT64 KAIROS_API GraphicsResource_GetGPUVirtualAddress(GraphicsResource* _this);
+
 KAIROS_EXPORT_END
 
 #endif

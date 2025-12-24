@@ -229,8 +229,19 @@ namespace KairosEngine
 				return;
 			}
 
-			
-			WindowSystem.Instance.Update();
+			GraphicsVertexBufferView vertexBufferView = GraphicsVertexBufferView(vertexBufferDefaultHeap.GetGPUVirtualAddress(), sizeof(float3), verticesSize);
+
+			ViewPort viewPort = ViewPort(0, 0, wndRect.z, wndRect.w, 0f, 1f);
+			Rect scissorRect = Rect(0, 0, wndRect.z, wndRect.w);
+
+			void RenderLoop()
+			{
+				
+			}
+
+			function void() renderLoopPtr = =>RenderLoop;
+
+			WindowSystem.Instance.Update(renderLoopPtr);
 
 			Console.WriteLine($"KairosEngine Exit");
 

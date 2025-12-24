@@ -12,5 +12,10 @@ namespace KairosEngine.Graphics
 			if(m_pResource != null)
 				GraphicsResource_Dispose(&this);
 		}
+
+		public uint64 GetGPUVirtualAddress() mut
+		{
+			return GraphicsResource_GetGPUVirtualAddress(&this);
+		}
 	}
 }

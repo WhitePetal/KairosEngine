@@ -78,7 +78,7 @@ namespace KairosEngine
 			KairosDestroyWindow(hwnd);
 		}
 
-		public void Update()
+		public void Update(function void() renderLoop)
 		{
 			MSG msg = MSG();
 			MSG* pMsg = &msg;
@@ -97,6 +97,7 @@ namespace KairosEngine
 				else
 				{
 					// do game logic
+					renderLoop();
 				}
 			}
 		}
