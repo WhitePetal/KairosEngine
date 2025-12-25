@@ -1,0 +1,3 @@
+[submodule "ImGUIs/imgui-beef"]
+	path = ImGUIs/imgui-beef
+	url = git@github.com:WhitePetal/imgui-beef.git
