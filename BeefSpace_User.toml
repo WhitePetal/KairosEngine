@@ -1,14 +1,14 @@
 FileVersion = 1
 LastConfig = "Release"
 LastPlatform = "Win64"
-RecentFilesList = ["src\\WindowSystem.bf", "src\\KairosEngine.bf", "src\\Graphics\\GraphicsSwapChain.bf", "src\\Graphics\\GraphicsSwapChain_Bindings.bf", "src\\Graphics\\GraphicsRenderTarget.bf", "src\\Graphics\\GraphicsCommandQueue.bf", "src\\Graphics\\GraphicsCommandList.bf", "src\\Graphics\\GraphicsCommandList_Bindings.bf", "src\\Graphics\\GraphicsResource.bf", "src\\Graphics\\GraphicsCommandAllocator.bf", "src\\Graphics\\GraphicsCommandAllocator_Bindings.bf", "src\\Graphics\\GraphicsFenceEvent.bf", "src\\Kernel.bf", "src\\Graphics\\GraphicsFenceEvent_Bindings.bf", "src\\Graphics\\GraphicsFence.bf", "src\\Graphics\\GraphicsFence_Bindings.bf", "src\\WindowSystem_Bindings.bf", "src\\Graphics\\Rect.bf", "src\\Graphics\\ViewPort.bf", "src\\Graphics\\GraphicsVertexBufferView.bf"]
+RecentFilesList = ["src\\KairosEngine.bf", "src\\WindowSystem.bf", "src\\Graphics\\GraphicsCommandList_Bindings.bf", "src\\Graphics\\GraphicsCommandList.bf", "src\\WindowSystem_Bindings.bf", "src\\Graphics\\GraphicsResource_Bindings.bf", "src\\Graphics\\GraphicsResource.bf", "src\\Graphics\\GraphicsSwapChain.bf", "src\\Graphics\\GraphicsSwapChain_Bindings.bf", "src\\Graphics\\GraphicsRenderTarget.bf", "src\\Graphics\\GraphicsCommandQueue.bf", "src\\Graphics\\GraphicsCommandAllocator.bf", "src\\Graphics\\GraphicsCommandAllocator_Bindings.bf", "src\\Graphics\\GraphicsFenceEvent.bf", "src\\Kernel.bf", "src\\Graphics\\GraphicsFenceEvent_Bindings.bf", "src\\Graphics\\GraphicsFence.bf", "src\\Graphics\\GraphicsFence_Bindings.bf", "src\\Graphics\\Rect.bf", "src\\Graphics\\ViewPort.bf"]
 
 [MainWindow]
 X = 526
 Y = 166
 Width = 1200
 Height = 1024
-ShowKind = "ShowNormal"
+ShowKind = "ShowMaximized"
 
 [MainDockingFrame]
 Type = "DockingFrame"
@@ -111,7 +111,7 @@ TabWidth = 187.0
 TabIsPinned = false
 Type = "SourceViewPanel"
 FilePath = "src\\WindowSystem_Bindings.bf"
-CursorPos = 896
+CursorPos = 184
 ProjectName = "KairosEngine"
 
 [[MainDockingFrame.DockedWidgets.DockedWidgets.Tabs]]
@@ -142,14 +142,12 @@ CursorPos = 228
 ProjectName = "KairosEngine"
 
 [[MainDockingFrame.DockedWidgets.DockedWidgets.Tabs]]
-Active = true
 TabLabel = "WindowSystem.bf"
 TabWidth = 133.0
 TabIsPinned = false
 Type = "SourceViewPanel"
 FilePath = "src\\WindowSystem.bf"
-CursorPos = 473
-VertPos = 90.0
+CursorPos = 880
 ProjectName = "KairosEngine"
 
 [[MainDockingFrame.DockedWidgets.DockedWidgets.Tabs]]
@@ -185,7 +183,7 @@ TabWidth = 150.0
 TabIsPinned = false
 Type = "SourceViewPanel"
 FilePath = "src\\Graphics\\GraphicsResource.bf"
-CursorPos = 104
+CursorPos = 203
 ProjectName = "KairosEngine"
 
 [[MainDockingFrame.DockedWidgets.DockedWidgets.Tabs]]
@@ -221,7 +219,7 @@ TabWidth = 175.0
 TabIsPinned = false
 Type = "SourceViewPanel"
 FilePath = "src\\Graphics\\GraphicsCommandList.bf"
-CursorPos = 689
+CursorPos = 1650
 ProjectName = "KairosEngine"
 
 [[MainDockingFrame.DockedWidgets.DockedWidgets.Tabs]]
@@ -230,16 +228,17 @@ TabWidth = 229.0
 TabIsPinned = false
 Type = "SourceViewPanel"
 FilePath = "src\\Graphics\\GraphicsCommandList_Bindings.bf"
-CursorPos = 38
+CursorPos = 2024
 ProjectName = "KairosEngine"
 
 [[MainDockingFrame.DockedWidgets.DockedWidgets.Tabs]]
+Active = true
 TabLabel = "KairosEngine.bf"
 TabWidth = 121.0
 TabIsPinned = false
 Type = "SourceViewPanel"
 FilePath = "src\\KairosEngine.bf"
-CursorPos = 10203
+CursorPos = 9957
 ProjectName = "KairosEngine"
 
 [[MainDockingFrame.DockedWidgets]]
@@ -253,6 +252,13 @@ RequestedWidth = 250.0
 RequestedHeight = 250.0
 SizePriority = 1914.0
 Type = "TabbedView"
+
+[[MainDockingFrame.DockedWidgets.DockedWidgets.Tabs]]
+Active = true
+TabLabel = "Console"
+TabWidth = 97.0
+TabIsPinned = false
+Type = "ConsolePanel"
 
 [[MainDockingFrame.DockedWidgets.DockedWidgets.Tabs]]
 TabLabel = "Memory"
@@ -273,7 +279,6 @@ Columns = [{Width = 200.0}, {Width = 200.0}, {Width = 200.0}]
 EvalStr = ""
 
 [[MainDockingFrame.DockedWidgets.DockedWidgets.Tabs]]
-Active = true
 TabLabel = "Auto"
 TabWidth = 77.0
 TabIsPinned = false
