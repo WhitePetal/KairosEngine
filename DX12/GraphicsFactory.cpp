@@ -3,32 +3,24 @@
 
 KAIROS_EXPORT_BEGIN
 
-int KAIROS_API GraphicsFactory_Create(GraphicsFactory* _this)
+int KAIROS_API GraphicsFactory_Create(IDXGIFactory5** p_this)
 {
-
-	HRESULT hr;
-
-	hr = CreateDXGIFactory1(IID_PPV_ARGS(&_this->m_pFactory));
-	if (FAILED(hr))
-	{
-		return CreateGraphicsFactoryFailed;
-	}
-	return GraphicsSuccess;
+	return CreateDXGIFactory1(IID_PPV_ARGS(p_this));
 }
 
-void KAIROS_API GraphicsFactory_Dispose(GraphicsFactory* _this)
+void KAIROS_API GraphicsFactory_Dispose(IDXGIFactory5* _this)
 {
-	SAFE_RELEASE(_this->m_pFactory);
+	_this->Release();
 }
 
-int KAIROS_API GraphicsFactory_CreateDevice(GraphicsFactory* _this, GraphicsDevice* pGraphicsDevice)
+int KAIROS_API GraphicsFactory_CreateDevice(IDXGIFactory5* _this, ID3D12Device** ppDevice)
 {
 	HRESULT hr;
 
 	IDXGIAdapter1* adapter;
 	int adapterIndex = 0;
 	bool adapterFound = false;
-	while (_this->m_pFactory->EnumAdapters1(adapterIndex, &adapter) != DXGI_ERROR_NOT_FOUND)
+	while (_this->EnumAdapters1(adapterIndex, &adapter) != DXGI_ERROR_NOT_FOUND)
 	{
 		DXGI_ADAPTER_DESC1 desc;
 		adapter->GetDesc1(&desc);
@@ -50,21 +42,16 @@ int KAIROS_API GraphicsFactory_CreateDevice(GraphicsFactory* _this, GraphicsDevi
 
 	if (!adapterFound)
 	{
-		return NoUsefulAdapter;
+		return hr;
 	}
 
 	ID3D12Device* pDevice;
 	hr = D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&pDevice));
-	if (FAILED(hr))
-	{
-		return CreateDeviceFailed;
-	}
-
-	pGraphicsDevice->m_pDevice = pDevice;
-	return GraphicsSuccess;
+	*ppDevice = pDevice;
+	return hr;
 }
 
-int KAIROS_API GraphicsFactory_CreateSwapChain(GraphicsFactory* _this, GraphicsCommandQueue* pCommandQueue, GraphicsSwapChain* pGraphicsSwapChain, int width, int height, DXGI_FORMAT format, int msaa, int aaQuality, int bufferCount, HWND hwnd, BOOL windowed)
+int KAIROS_API GraphicsFactory_CreateSwapChain(IDXGIFactory5* _this, IDXGISwapChain3** ppSwapChain, ID3D12CommandQueue* pCommandQueue, int width, int height, DXGI_FORMAT format, int msaa, int aaQuality, int bufferCount, HWND hwnd, BOOL windowed)
 {
 	HRESULT hr;
 	// 该结构描述我们的显示模式
@@ -90,15 +77,19 @@ int KAIROS_API GraphicsFactory_CreateSwapChain(GraphicsFactory* _this, GraphicsC
 	swapChainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH; // 允许全屏切换
 
 	IDXGISwapChain* tempSwapChain;
-	hr = _this->m_pFactory->CreateSwapChain(pCommandQueue->m_pCommandQueue, &swapChainDesc, &tempSwapChain); // 交换链创建后 CommandQueue 会被刷新
+	hr = _this->CreateSwapChain(pCommandQueue, &swapChainDesc, &tempSwapChain); // 交换链创建后 CommandQueue 会被刷新
 	if (FAILED(hr))
-		CreateSwapChainFailed;
+		return hr;
 
 	IDXGISwapChain3* pSwpaChain;
 	pSwpaChain = static_cast<IDXGISwapChain3*>(tempSwapChain);
+	*ppSwapChain = pSwpaChain;
+	return hr;
+}
 
-	pGraphicsSwapChain->m_pSwapChain = pSwpaChain;
-	return GraphicsSuccess;
+int KAIROS_API GraphicsFactory_CheckFeatureSupport(IDXGIFactory5* _this, DXGI_FEATURE feature, void* pFeatureSupportData, UINT featureSupportDataSize)
+{
+	return _this->CheckFeatureSupport(feature, pFeatureSupportData, featureSupportDataSize);
 }
 
 KAIROS_EXPORT_END

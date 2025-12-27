@@ -2,20 +2,22 @@ using System;
 
 namespace KairosEngine.Graphics
 {
-	[CRepr]
-	public struct GraphicsCommandAllocator
+	public class GraphicsCommandAllocator
 	{
-		private void* m_pCommandAllocator;
+		public void* pInternalCommandAllocator;
 
-		public void Dispose() mut
+		public ~this()
 		{
-			if(m_pCommandAllocator != null)
-				GraphicsCommandAllocator_Dispose(&this);
+			if(pInternalCommandAllocator != null)
+			{
+				GraphicsCommandAllocator_Dispose(pInternalCommandAllocator);
+				pInternalCommandAllocator = null;
+			}
 		}
 
-		public int32 Reset() mut
+		public int32 Reset()
 		{
-			return GraphicsCommandAllocator_Reset(&this);
+			return GraphicsCommandAllocator_Reset(pInternalCommandAllocator);
 		}
 	}
 }

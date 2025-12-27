@@ -2,12 +2,12 @@
 
 KAIROS_EXPORT_BEGIN
 
-void KAIROS_API GraphicsShader_Dispose(GraphicsShader* _this)
+void KAIROS_API GraphicsShader_Dispose(ID3DBlob* _this)
 {
-	SAFE_RELEASE(_this->m_pShader);
+	_this->Release();
 }
 
-int KAIROS_API GraphicsShader_CreateWithoutErrorInfo(GraphicsShader* _this, LPCWSTR path, ShaderType type, UINT compileFlags)
+int KAIROS_API GraphicsShader_CreateWithoutErrorInfo(ID3DBlob** p_this, LPCWSTR path, ShaderType type, UINT compileFlags)
 {
 	ID3DBlob* pShader;
 	LPCSTR target;
@@ -20,7 +20,7 @@ int KAIROS_API GraphicsShader_CreateWithoutErrorInfo(GraphicsShader* _this, LPCW
 		target = "ps_5_0";
 		break;
 	default:
-		return CreateShaderFailed;
+		return 1;
 	}
 	HRESULT hr = D3DCompileFromFile(
 		path,
@@ -32,10 +32,10 @@ int KAIROS_API GraphicsShader_CreateWithoutErrorInfo(GraphicsShader* _this, LPCW
 		nullptr
 	);
 	if (FAILED(hr))
-		return CreateShaderFailed;
+		return hr;
 
-	_this->m_pShader = pShader;
-	return GraphicsSuccess;
+	*p_this = pShader;
+	return hr;
 }
 
 KAIROS_EXPORT_END

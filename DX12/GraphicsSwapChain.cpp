@@ -2,34 +2,28 @@
 
 KAIROS_EXPORT_BEGIN
 
-void KAIROS_API GraphicsSwapChain_Dispose(GraphicsSwapChain* _this)
+void KAIROS_API GraphicsSwapChain_Dispose(IDXGISwapChain3* _this)
 {
-	SAFE_RELEASE(_this->m_pSwapChain);
+	_this->Release();
 }
 
-UINT KAIROS_API GraphicsSwapChain_GetCurrentBackBufferIndex(GraphicsSwapChain* _this)
+UINT KAIROS_API GraphicsSwapChain_GetCurrentBackBufferIndex(IDXGISwapChain3* _this)
 {
-	return _this->m_pSwapChain->GetCurrentBackBufferIndex();
+	return _this->GetCurrentBackBufferIndex();
 }
 
-int KAIROS_API GraphicsSwapChain_GetRenderTarget(GraphicsSwapChain* _this, GraphicsRenderTarget* pGraphicsRenderTarget, int index)
+int KAIROS_API GraphicsSwapChain_GetRenderTarget(IDXGISwapChain3* _this, ID3D12Resource** ppRenderTarget, int index)
 {
 	ID3D12Resource* pRenderTarget;
-	HRESULT hr = _this->m_pSwapChain->GetBuffer(index, IID_PPV_ARGS(&pRenderTarget));
-	if (FAILED(hr))
-		return GetSwapChainRenderTargetFailed;
-
-	pGraphicsRenderTarget->m_pResource = pRenderTarget;
-	return GraphicsSuccess;
+	HRESULT hr = _this->GetBuffer(index, IID_PPV_ARGS(&pRenderTarget));
+	*ppRenderTarget = pRenderTarget;
+	return hr;
 }
 
-int KAIROS_API GraphicsSwapChain_Present(GraphicsSwapChain* _this, UINT syncInternal, UINT flags)
+int KAIROS_API GraphicsSwapChain_Present(IDXGISwapChain3* _this, UINT syncInternal, UINT flags)
 {
-	HRESULT hr = _this->m_pSwapChain->Present(syncInternal, flags);
-	if (FAILED(hr))
-		return SwapChainPresentFailed;
-
-	return GraphicsSuccess;
+	HRESULT hr = _this->Present(syncInternal, flags);
+	return hr;
 }
 
 

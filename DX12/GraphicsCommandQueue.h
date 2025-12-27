@@ -10,20 +10,13 @@
 #include <DirectXMath.h>
 #include "d3dx12.h"
 
-#define SUPPORT_MAX_EXECUTE_COMMAND_LIST_COUNT 8
-
-typedef struct GraphicsCommandQueue
-{
-	ID3D12CommandQueue* m_pCommandQueue;
-} GraphicsCommandQueue;
-
 KAIROS_EXPORT_BEGIN
 
-void KAIROS_API GraphicsCommandQueue_Dispose(GraphicsCommandQueue* _this);
+void KAIROS_API GraphicsCommandQueue_Dispose(ID3D12CommandQueue* _this);
 
-void KAIROS_API GraphicsCommandQueue_ExecuteCommandLists(GraphicsCommandQueue* _this, GraphicsCommandList* pGraphicsCommandLst, int executeCount);
+void KAIROS_API GraphicsCommandQueue_ExecuteCommandLists(ID3D12CommandQueue* _this, ID3D12CommandList** ppCommandLst, int executeCount);
 
-int KAIROS_API GraphicsCommandQueue_Signal(GraphicsCommandQueue* _this, GraphicsFence* pGraphicsFence, UINT64 fenceValue);
+int KAIROS_API GraphicsCommandQueue_Signal(ID3D12CommandQueue* _this, ID3D12Fence* pFence, UINT64 fenceValue);
 
 KAIROS_EXPORT_END
 

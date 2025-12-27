@@ -2,14 +2,20 @@
 
 KAIROS_EXPORT_BEGIN
 
-void KAIROS_API GraphicsResource_Dispose(GraphicsResource* _this)
+void KAIROS_API GraphicsResource_Dispose(ID3D12Resource* _this)
 {
-	SAFE_RELEASE(_this->m_pResource);
+	_this->Release();
 }
 
-UINT64 KAIROS_API GraphicsResource_GetGPUVirtualAddress(GraphicsResource* _this)
+UINT64 KAIROS_API GraphicsResource_GetGPUVirtualAddress(ID3D12Resource* _this)
 {
-	return _this->m_pResource->GetGPUVirtualAddress();
+	return _this->GetGPUVirtualAddress();
+}
+
+void KAIROS_API GraphicsResource_Unmap(ID3D12Resource* _this, UINT subResource, UINT64 begin, UINT64 end)
+{
+	D3D12_RANGE range = { begin, end };
+	_this->Unmap(subResource, &range);
 }
 
 KAIROS_EXPORT_END

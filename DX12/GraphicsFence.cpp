@@ -2,23 +2,20 @@
 
 KAIROS_EXPORT_BEGIN
 
-void KAIROS_API GraphicsFence_Dispose(GraphicsFence* _this)
+void KAIROS_API GraphicsFence_Dispose(ID3D12Fence* _this)
 {
-	SAFE_RELEASE(_this->m_pFence);
+	_this->Release();
 }
 
-UINT64 KAIROS_API GraphicsFence_GetCompletedValue(GraphicsFence* _this)
+UINT64 KAIROS_API GraphicsFence_GetCompletedValue(ID3D12Fence* _this)
 {
-	return _this->m_pFence->GetCompletedValue();
+	return _this->GetCompletedValue();
 }
 
-int KAIROS_API GraphicsFence_SetEventOnCompletion(GraphicsFence* _this, UINT64 fenceValue, GraphicsFenceEvent* pGraphicsFenceEvent)
+int KAIROS_API GraphicsFence_SetEventOnCompletion(ID3D12Fence* _this, UINT64 fenceValue, HANDLE* pFenceEvent)
 {
-	HRESULT hr = _this->m_pFence->SetEventOnCompletion(fenceValue, pGraphicsFenceEvent->m_Handle);
-	if (FAILED(hr))
-		return FenceSetCompletionEventFailed;
-
-	return GraphicsSuccess;
+	HRESULT hr = _this->SetEventOnCompletion(fenceValue, pFenceEvent);
+	return hr;
 }
 
 KAIROS_EXPORT_END

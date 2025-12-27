@@ -2,9 +2,9 @@
 
 KAIROS_EXPORT_BEGIN
 
-void KAIROS_API GraphicsRenderTarget_Dispose(GraphicsRenderTarget* _this)
+void KAIROS_API GraphicsRenderTarget_Dispose(ID3D12Resource* _this)
 {
-	SAFE_RELEASE(_this->m_pResource);
+	_this->Release();
 }
 
 KAIROS_EXPORT_END

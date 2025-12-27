@@ -3,7 +3,7 @@ using System;
 namespace KairosEngine.Graphics
 {
 	[CRepr]
-	public struct GraphicsCPUDescriptorHandle
+	public struct DescriptorGpuHandle
 	{
 		public uint64 Ptr;
 

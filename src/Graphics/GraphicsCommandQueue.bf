@@ -2,22 +2,31 @@ using System;
 
 namespace KairosEngine.Graphics
 {
-	[CRepr]
-	public struct GraphicsCommandQueue : IDisposable
+	public class GraphicsCommandQueue
 	{
 		public const int32 SUPPORT_MAX_EXECUTE_COMMAND_LIST_COUNT = 8;
 
-		private void* m_pCommandQueue;
+		public void* pInternalCommandQueue;
 
-		public void Dispose() mut
+		public ~this()
 		{
-			if(m_pCommandQueue != null)
-			 	GraphicsCommandQueue_Dispose(&this);
+			if(pInternalCommandQueue != null)
+			{
+				GraphicsCommandQueue_Dispose(pInternalCommandQueue);
+				pInternalCommandQueue = null;
+			}
 		}
 
-		public void ExecuteCommandLists(GraphicsCommandList[] lists, int32 executeCount) mut
+		public void ExecuteCommandLists(GraphicsCommandList[] lists, int32 executeCount)
 		{
-			if(executeCount > SUPPORT_MAX_EXECUTE_COMMAND_LIST_COUNT)
+			void*[] pCmdLists = scope void*[executeCount](?);
+			for(int32 i = 0; i < executeCount; ++i)
+			{
+				pCmdLists[i] = lists[i].pInternalCommandList;
+			}
+			GraphicsCommandQueue_ExecuteCommandLists(pInternalCommandQueue, pCmdLists.Ptr, executeCount);
+			// batch execute?
+			/*if(executeCount > SUPPORT_MAX_EXECUTE_COMMAND_LIST_COUNT)
 			{
 				GraphicsCommandList[] tempLists = scope GraphicsCommandList[SUPPORT_MAX_EXECUTE_COMMAND_LIST_COUNT];
 				int32 batchCount = executeCount / SUPPORT_MAX_EXECUTE_COMMAND_LIST_COUNT;
@@ -41,12 +50,12 @@ namespace KairosEngine.Graphics
 			else
 			{
 				GraphicsCommandQueue_ExecuteCommandLists(&this, &lists[0], executeCount);
-			}
+			}*/
 		}
 
-		public int32 Signal(ref GraphicsFence fence, uint64 fenceValue) mut
+		public int32 Signal(GraphicsFence fence, uint64 fenceValue)
 		{
-			return GraphicsCommandQueue_Signal(&this, &fence, fenceValue);
+			return GraphicsCommandQueue_Signal(pInternalCommandQueue, fence.pInternalFence, fenceValue);
 		}
 	}
 }

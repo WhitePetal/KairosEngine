@@ -1,7 +1,6 @@
 #ifndef __KAIROS_GRAPHICS_SWAP_CHAIN__
 #define __KAIROS_GRAPHICS_SWAP_CHAIN__
 
-#include "ErrorCodes.h"
 #include "KairosEngineDefines.h"
 #include "GraphicsRenderTarget.h"
 #include <d3d12.h>
@@ -10,20 +9,15 @@
 #include <DirectXMath.h>
 #include "d3dx12.h"
 
-typedef struct GraphicsSwapChain
-{
-	IDXGISwapChain3* m_pSwapChain;
-} GraphicsSwapChain;
-
 KAIROS_EXPORT_BEGIN
 
-void KAIROS_API GraphicsSwapChain_Dispose(GraphicsSwapChain* _this);
+void KAIROS_API GraphicsSwapChain_Dispose(IDXGISwapChain3* _this);
 
-UINT KAIROS_API GraphicsSwapChain_GetCurrentBackBufferIndex(GraphicsSwapChain* _this);
+UINT KAIROS_API GraphicsSwapChain_GetCurrentBackBufferIndex(IDXGISwapChain3* _this);
 
-int KAIROS_API GraphicsSwapChain_GetRenderTarget(GraphicsSwapChain* _this, GraphicsRenderTarget* pGraphicsRenderTarget, int index);
+int KAIROS_API GraphicsSwapChain_GetRenderTarget(IDXGISwapChain3* _this, ID3D12Resource** ppRenderTarget, int index);
 
-int KAIROS_API GraphicsSwapChain_Present(GraphicsSwapChain* _this, UINT syncInternal, UINT flags);
+int KAIROS_API GraphicsSwapChain_Present(IDXGISwapChain3* _this, UINT syncInternal, UINT flags);
 
 KAIROS_EXPORT_END
 

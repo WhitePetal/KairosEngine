@@ -1,7 +1,6 @@
 #ifndef __KAIROS_GRAPHICS_SHADER__
 #define __KAIROS_GRAPHICS_SHADER__
 
-#include "ErrorCodes.h"
 #include "KairosEngineDefines.h"
 #include "ShaderType.h"
 #include <d3d12.h>
@@ -10,16 +9,11 @@
 #include <DirectXMath.h>
 #include "d3dx12.h"
 
-typedef struct GraphicsShader
-{
-	ID3DBlob* m_pShader;
-} GraphicsShader;
-
 KAIROS_EXPORT_BEGIN
 
-void KAIROS_API GraphicsShader_Dispose(GraphicsShader* _this);
+void KAIROS_API GraphicsShader_Dispose(ID3DBlob* _this);
 
-int KAIROS_API GraphicsShader_CreateWithoutErrorInfo(GraphicsShader* _this, LPCWSTR path, ShaderType type, UINT compileFlags);
+int KAIROS_API GraphicsShader_CreateWithoutErrorInfo(ID3DBlob** p_this, LPCWSTR path, ShaderType type, UINT compileFlags);
 
 KAIROS_EXPORT_END
 

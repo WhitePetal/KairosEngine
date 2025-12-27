@@ -2,18 +2,14 @@
 
 KAIROS_EXPORT_BEGIN
 
-void KAIROS_API GraphicsCommandAllocator_Dispose(GraphicsCommandAllocator* _this)
+void KAIROS_API GraphicsCommandAllocator_Dispose(ID3D12CommandAllocator* _this)
 {
-	SAFE_RELEASE(_this->m_pCommandAllocator);
+	_this->Release();
 }
 
-int KAIROS_API GraphicsCommandAllocator_Reset(GraphicsCommandAllocator* _this)
+int KAIROS_API GraphicsCommandAllocator_Reset(ID3D12CommandAllocator* _this)
 {
-	HRESULT hr = _this->m_pCommandAllocator->Reset();
-	if (FAILED(hr))
-		return CommandAllocatorResetFailed;
-
-	return GraphicsSuccess;
+	return _this->Reset();
 }
 
 KAIROS_EXPORT_END

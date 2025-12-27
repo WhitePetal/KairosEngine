@@ -3,7 +3,7 @@ using System;
 namespace KairosEngine.Graphics
 {
 	[CRepr]
-	public struct GraphicsInputLayoutElement
+	public struct InputLayoutElement
 	{
 		public char8* SemanticName;
 		public uint32 SemanticIndex;

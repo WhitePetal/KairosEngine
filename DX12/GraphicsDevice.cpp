@@ -2,89 +2,74 @@
 
 KAIROS_EXPORT_BEGIN
 
-void KAIROS_API GraphicsDevice_Dispose(GraphicsDevice* _this)
+void KAIROS_API GraphicsDevice_Dispose(ID3D12Device* _this)
 {
-	SAFE_RELEASE(_this->m_pDevice);
+	_this->Release();
 }
 
-int KAIROS_API GraphicsDevice_CreateCommandQueue(GraphicsDevice* _this, GraphicsCommandQueue* pGraphicsCommandQueue, D3D12_COMMAND_LIST_TYPE type, int priority, D3D12_COMMAND_QUEUE_FLAGS flags, int nodeMask)
+int KAIROS_API GraphicsDevice_CreateCommandQueue(ID3D12Device* _this, ID3D12CommandQueue** ppCommandQueue, D3D12_COMMAND_LIST_TYPE type, int priority, D3D12_COMMAND_QUEUE_FLAGS flags, int nodeMask)
 {
 	HRESULT hr;
 	D3D12_COMMAND_QUEUE_DESC desc = { type, priority, flags, nodeMask };
 	ID3D12CommandQueue* pQueue;
-	hr = _this->m_pDevice->CreateCommandQueue(&desc, IID_PPV_ARGS(&pQueue));
-	if (FAILED(hr))
-		return CreateCommandQueueFailed;
-
-	pGraphicsCommandQueue->m_pCommandQueue = pQueue;
-	return GraphicsSuccess;
+	hr = _this->CreateCommandQueue(&desc, IID_PPV_ARGS(&pQueue));
+	*ppCommandQueue = pQueue;
+	return hr;
 }
 
-int KAIROS_API GraphicsDevice_CreateDescriptorHeap(GraphicsDevice* _this, GraphicsDescriptorHeap* pGraphicsDescriptorHeap, int count, D3D12_DESCRIPTOR_HEAP_TYPE type, D3D12_DESCRIPTOR_HEAP_FLAGS flags)
+int KAIROS_API GraphicsDevice_CreateDescriptorHeap(ID3D12Device* _this, ID3D12DescriptorHeap** ppDescriptorHeap, int count, D3D12_DESCRIPTOR_HEAP_TYPE type, D3D12_DESCRIPTOR_HEAP_FLAGS flags)
 {
 	D3D12_DESCRIPTOR_HEAP_DESC desc = { type, count, flags };
 	ID3D12DescriptorHeap* pDescriptorHeap;
-	HRESULT hr = _this->m_pDevice->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&pDescriptorHeap));
-	if (FAILED(hr))
-		return CreateDescriptorHeapFailed;
-
-	pGraphicsDescriptorHeap->m_pDescriptorHeap = pDescriptorHeap;
-	return GraphicsSuccess;
+	HRESULT hr = _this->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&pDescriptorHeap));
+	*ppDescriptorHeap = pDescriptorHeap;
+	return hr;
 }
 
-UINT KAIROS_API GraphicsDevice_GetDescriptorHandleIncrementSize(GraphicsDevice* _this, D3D12_DESCRIPTOR_HEAP_TYPE descriptorHeapType)
+UINT KAIROS_API GraphicsDevice_GetDescriptorHandleIncrementSize(ID3D12Device* _this, D3D12_DESCRIPTOR_HEAP_TYPE descriptorHeapType)
 {
-	return _this->m_pDevice->GetDescriptorHandleIncrementSize(descriptorHeapType);
+	return _this->GetDescriptorHandleIncrementSize(descriptorHeapType);
 }
 
-void KAIROS_API GraphicsDevice_CreateRenderTargetViewByHandle(GraphicsDevice* _this, GraphicsRenderTarget* pGraphicsRenderTarget, CD3DX12_CPU_DESCRIPTOR_HANDLE handle)
+void KAIROS_API GraphicsDevice_CreateRenderTargetViewByHandle(ID3D12Device* _this, ID3D12Resource* pRenderTarget, D3D12_CPU_DESCRIPTOR_HANDLE handle)
 {
-	_this->m_pDevice->CreateRenderTargetView(pGraphicsRenderTarget->m_pResource, nullptr, handle);
+	_this->CreateRenderTargetView(pRenderTarget, nullptr, handle);
 }
 
-void KAIROS_API GraphicsDevice_CreateRenderTargetViewByHeapIndex(GraphicsDevice* _this, GraphicsRenderTarget* pGraphicsRenderTarget, GraphicsDescriptorHeap* pDescriptorHeap, int index)
+void KAIROS_API GraphicsDevice_CreateRenderTargetViewByHeapIndex(ID3D12Device* _this, ID3D12Resource* pRenderTarget, ID3D12DescriptorHeap* pDescriptorHeap, int index)
 {
-	ID3D12DescriptorHeap* ipDescriptorHeap = pDescriptorHeap->m_pDescriptorHeap;
-	UINT descriptorSize = _this->m_pDevice->GetDescriptorHandleIncrementSize(ipDescriptorHeap->GetDesc().Type);
+	ID3D12DescriptorHeap* ipDescriptorHeap = pDescriptorHeap;
+	UINT descriptorSize = _this->GetDescriptorHandleIncrementSize(ipDescriptorHeap->GetDesc().Type);
 	CD3DX12_CPU_DESCRIPTOR_HANDLE handle{ ipDescriptorHeap->GetCPUDescriptorHandleForHeapStart() };
 	handle.Offset(index, descriptorSize);
-	_this->m_pDevice->CreateRenderTargetView(pGraphicsRenderTarget->m_pResource, nullptr, handle);
+	_this->CreateRenderTargetView(pRenderTarget, nullptr, handle);
 }
 
-int KAIROS_API GraphicsDevice_CreateCommandAllocator(GraphicsDevice* _this, GraphicsCommandAllocator* pGraphicsCommandAllocator, D3D12_COMMAND_LIST_TYPE type)
+int KAIROS_API GraphicsDevice_CreateCommandAllocator(ID3D12Device* _this, ID3D12CommandAllocator** ppCommandAllocator, D3D12_COMMAND_LIST_TYPE type)
 {
 	ID3D12CommandAllocator* pCommandAllocator;
-	HRESULT hr = _this->m_pDevice->CreateCommandAllocator(type, IID_PPV_ARGS(&pCommandAllocator));
-	if (FAILED(hr))
-		return CreateCommandAllocatorFailed;
-
-	pGraphicsCommandAllocator->m_pCommandAllocator = pCommandAllocator;
-	return GraphicsSuccess;
+	HRESULT hr = _this->CreateCommandAllocator(type, IID_PPV_ARGS(&pCommandAllocator));
+	*ppCommandAllocator = pCommandAllocator;
+	return hr;
 }
 
-int KAIROS_API GraphicsDevice_CreateCommandList(GraphicsDevice* _this, GraphicsCommandAllocator* pGraphicsCommandAllocator, GraphicsCommandList* pGraphicsCommandList, D3D12_COMMAND_LIST_TYPE type, UINT nodeMask)
+int KAIROS_API GraphicsDevice_CreateCommandList(ID3D12Device* _this, ID3D12CommandList** ppCommandList, ID3D12CommandAllocator* pCommandAllocator, D3D12_COMMAND_LIST_TYPE type, UINT nodeMask)
 {
 	ID3D12GraphicsCommandList* pCommandList;
-	HRESULT hr = _this->m_pDevice->CreateCommandList(nodeMask, type, pGraphicsCommandAllocator->m_pCommandAllocator, NULL, IID_PPV_ARGS(&pCommandList));
-	if (FAILED(hr))
-		return CreateCommandListFailed;
-
-	pGraphicsCommandList->m_pCommandList = pCommandList;
-	return GraphicsSuccess;
+	HRESULT hr = _this->CreateCommandList(nodeMask, type, pCommandAllocator, NULL, IID_PPV_ARGS(&pCommandList));
+	*ppCommandList = pCommandList;
+	return hr;
 }
 
-int KAIROS_API GraphicsDevice_CreateFence(GraphicsDevice* _this, GraphicsFence* pGraphicsFence, UINT64 initialValue, D3D12_FENCE_FLAGS flags)
+int KAIROS_API GraphicsDevice_CreateFence(ID3D12Device* _this, ID3D12Fence** ppFence, UINT64 initialValue, D3D12_FENCE_FLAGS flags)
 {
 	ID3D12Fence* pFence;
-	HRESULT hr = _this->m_pDevice->CreateFence(initialValue, flags, IID_PPV_ARGS(&pFence));
-	if (FAILED(hr))
-		return CreateFenceFailed;
-
-	pGraphicsFence->m_pFence = pFence;
-	return GraphicsSuccess;
+	HRESULT hr = _this->CreateFence(initialValue, flags, IID_PPV_ARGS(&pFence));
+	*ppFence = pFence;
+	return hr;
 }
 
-int KAIROS_API GraphicsDevice_CreateEmptyRootSignature(GraphicsDevice* _this, GraphicsRootSignature* pGraphicsRootSignature, D3D12_ROOT_SIGNATURE_FLAGS flags)
+int KAIROS_API GraphicsDevice_CreateEmptyRootSignature(ID3D12Device* _this, ID3D12RootSignature** ppRootSignature, D3D12_ROOT_SIGNATURE_FLAGS flags)
 {
 	CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
 	rootSignatureDesc.Init(0, nullptr, 0, nullptr, flags);
@@ -93,28 +78,39 @@ int KAIROS_API GraphicsDevice_CreateEmptyRootSignature(GraphicsDevice* _this, Gr
 	ID3DBlob* signature;
 	hr = D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, nullptr);
 	if (FAILED(hr))
-		return SerializeRootSignatureFailed;
+		return hr;
 
 	ID3D12RootSignature* pRootSignature;
-	hr = _this->m_pDevice->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&pRootSignature));
+	hr = _this->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&pRootSignature));
 	SAFE_RELEASE(signature);
-	if (FAILED(hr))
-		return CreateRootSignatureFailed;
-
-	pGraphicsRootSignature->m_pRootSignature = pRootSignature;
-	return GraphicsSuccess;
+	*ppRootSignature = pRootSignature;
+	return hr;
 }
 
-int KAIROS_API GraphicsDevice_CreatePipelineState(GraphicsDevice* _this, GraphicsPipelineState* pGraphicsPipelineState, D3D12_INPUT_ELEMENT_DESC* pInputLayout, UINT inputLayoutCount, GraphicsRootSignature* pGraphicsRootSignature,
-	GraphicsShader* pGraphicsVertexShader, GraphicsShader* pGraphicsFragmentShader, D3D12_PRIMITIVE_TOPOLOGY_TYPE topologyType, DXGI_FORMAT renderTargetFormat, UINT msaa, UINT aaQuality, UINT sampleMask)
+int KAIROS_API GraphicsDevice_CreateRootSignature(ID3D12Device* _this, ID3D12RootSignature** ppRootSignature, D3D12_ROOT_SIGNATURE_DESC* pDesc)
+{
+	HRESULT hr;
+	ID3DBlob* signature;
+	hr = D3D12SerializeRootSignature(pDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, nullptr);
+	if (FAILED(hr))
+		return hr;
+	ID3D12RootSignature* pRootSignature;
+	hr = _this->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&pRootSignature));
+	SAFE_RELEASE(signature);
+	*ppRootSignature = pRootSignature;
+	return hr;
+}
+
+int KAIROS_API GraphicsDevice_CreatePipelineState(ID3D12Device* _this, ID3D12PipelineState** ppPipelineState, D3D12_INPUT_ELEMENT_DESC* pInputLayout, UINT inputLayoutCount, ID3D12RootSignature* pRootSignature,
+	ID3DBlob* pVertexShader, ID3DBlob* pFragmentShader, D3D12_PRIMITIVE_TOPOLOGY_TYPE topologyType, DXGI_FORMAT renderTargetFormat, UINT msaa, UINT aaQuality, UINT sampleMask)
 {
 	D3D12_SHADER_BYTECODE vertexShaderBytecode = {};
-	vertexShaderBytecode.pShaderBytecode = pGraphicsVertexShader->m_pShader->GetBufferPointer();
-	vertexShaderBytecode.BytecodeLength = pGraphicsVertexShader->m_pShader->GetBufferSize();
+	vertexShaderBytecode.pShaderBytecode = pVertexShader->GetBufferPointer();
+	vertexShaderBytecode.BytecodeLength = pVertexShader->GetBufferSize();
 
 	D3D12_SHADER_BYTECODE fragmentShaderBytecode = {};
-	fragmentShaderBytecode.pShaderBytecode = pGraphicsFragmentShader->m_pShader->GetBufferPointer();
-	fragmentShaderBytecode.BytecodeLength = pGraphicsFragmentShader->m_pShader->GetBufferSize();
+	fragmentShaderBytecode.pShaderBytecode = pFragmentShader->GetBufferPointer();
+	fragmentShaderBytecode.BytecodeLength = pFragmentShader->GetBufferSize();
 
 	DXGI_SAMPLE_DESC sampleDesc = {};
 	sampleDesc.Count = msaa;
@@ -126,7 +122,7 @@ int KAIROS_API GraphicsDevice_CreatePipelineState(GraphicsDevice* _this, Graphic
 
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
 	psoDesc.InputLayout = inputLayoutDesc;
-	psoDesc.pRootSignature = pGraphicsRootSignature->m_pRootSignature;
+	psoDesc.pRootSignature = pRootSignature;
 	psoDesc.VS = vertexShaderBytecode;
 	psoDesc.PS = fragmentShaderBytecode;
 	psoDesc.PrimitiveTopologyType = topologyType;
@@ -138,20 +134,17 @@ int KAIROS_API GraphicsDevice_CreatePipelineState(GraphicsDevice* _this, Graphic
 	psoDesc.NumRenderTargets = 1;
 
 	ID3D12PipelineState* pPipelineState;
-	HRESULT hr = _this->m_pDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pPipelineState));
-	if (FAILED(hr))
-		return CreatePipelineStateFailed;
-
-	pGraphicsPipelineState->m_pPipelineState = pPipelineState;
-	return GraphicsSuccess;
+	HRESULT hr = _this->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pPipelineState));
+	*ppPipelineState = pPipelineState;
+	return hr;
 }
 
-int KAIROS_API GraphicsDevice_CreateCommittedBufferResource(GraphicsDevice* _this, GraphicsResource* pGraphicsBuffer, D3D12_HEAP_TYPE heapType, UINT64 resourceSize, D3D12_HEAP_FLAGS heapFlags, D3D12_RESOURCE_STATES resourceStates)
+int KAIROS_API GraphicsDevice_CreateCommittedBufferResource(ID3D12Device* _this, ID3D12Resource** ppBuffer, D3D12_HEAP_TYPE heapType, UINT64 resourceSize, D3D12_HEAP_FLAGS heapFlags, D3D12_RESOURCE_STATES resourceStates)
 {
 	D3D12_HEAP_PROPERTIES heapProperties = CD3DX12_HEAP_PROPERTIES(heapType);
 	D3D12_RESOURCE_DESC heapDesc = CD3DX12_RESOURCE_DESC::Buffer(resourceSize);
 	ID3D12Resource* pResource;
-	HRESULT hr = _this->m_pDevice->CreateCommittedResource(
+	HRESULT hr = _this->CreateCommittedResource(
 		&heapProperties,
 		heapFlags,
 		&heapDesc,
@@ -159,11 +152,8 @@ int KAIROS_API GraphicsDevice_CreateCommittedBufferResource(GraphicsDevice* _thi
 		nullptr,
 		IID_PPV_ARGS(&pResource)
 	);
-	if (FAILED(hr))
-		return CreateCommittedResourceFailed;
-
-	pGraphicsBuffer->m_pResource = pResource;
-	return GraphicsSuccess;
+	*ppBuffer = pResource;
+	return hr;
 }
 
 KAIROS_EXPORT_END

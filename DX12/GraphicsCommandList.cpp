@@ -2,58 +2,46 @@
 
 KAIROS_EXPORT_BEGIN
 
-void KAIROS_API GraphicsCommandList_Dispose(GraphicsCommandList* _this)
+void KAIROS_API GraphicsCommandList_Dispose(ID3D12GraphicsCommandList* _this)
 {
-	SAFE_RELEASE(_this->m_pCommandList);
+	_this->Release();
 }
 
-int KAIROS_API GraphicsCommandList_UpdateSubResources(GraphicsCommandList* _this, GraphicsResource* pDsfResource, GraphicsResource* pFromResource, UINT64 intermediateOffset, UINT firstSubResource, UINT numSubResource, void* pData, INT64 dataSize)
+UINT64 KAIROS_API GraphicsCommandList_UpdateSubResources(ID3D12GraphicsCommandList* _this, ID3D12Resource* pDstResource, ID3D12Resource* pFromResource, UINT64 intermediateOffset, UINT firstSubResource, UINT numSubResource, void* pData, INT64 dataSize)
 {
 	D3D12_SUBRESOURCE_DATA vertexData = {};
 	vertexData.pData = reinterpret_cast<BYTE*>(pData);
 	vertexData.SlicePitch = dataSize;
 
-	UINT64 requiredSize = UpdateSubresources(_this->m_pCommandList, pDsfResource->m_pResource, pFromResource->m_pResource, intermediateOffset, firstSubResource, numSubResource, &vertexData);
-	if (requiredSize <= 0)
-		return UpdateSubBufferResourceFailed;
-
-	return GraphicsSuccess;
+	return UpdateSubresources(_this, pDstResource, pFromResource, intermediateOffset, firstSubResource, numSubResource, &vertexData);
 }
 
-void KAIROS_API GraphicsCommandList_ResourceBarrier(GraphicsCommandList* _this, GraphicsResource* pResource, D3D12_RESOURCE_STATES beforeStates, D3D12_RESOURCE_STATES afterStates)
+void KAIROS_API GraphicsCommandList_ResourceBarrier(ID3D12GraphicsCommandList* _this, ID3D12Resource* pResource, D3D12_RESOURCE_STATES beforeStates, D3D12_RESOURCE_STATES afterStates)
 {
-	D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(pResource->m_pResource, beforeStates, afterStates);
-	_this->m_pCommandList->ResourceBarrier(1, &barrier);
+	D3D12_RESOURCE_BARRIER barrier = CD3DX12_RESOURCE_BARRIER::Transition(pResource, beforeStates, afterStates);
+	_this->ResourceBarrier(1, &barrier);
 }
 
-int KAIROS_API GraphicsCommandList_Close(GraphicsCommandList* _this)
+int KAIROS_API GraphicsCommandList_Close(ID3D12GraphicsCommandList* _this)
 {
-	HRESULT hr = _this->m_pCommandList->Close();
-	if (FAILED(hr))
-		return CloseCommandListFailed;
-
-	return GraphicsSuccess;
+	return _this->Close();
 }
 
-int KAIROS_API GraphicsCommandList_Reset(GraphicsCommandList* _this, GraphicsCommandAllocator* pGraphicsCommandAllocator, GraphicsPipelineState* pGraphicsPipelineState)
+int KAIROS_API GraphicsCommandList_Reset(ID3D12GraphicsCommandList* _this, ID3D12CommandAllocator* pCommandAllocator, ID3D12PipelineState* pPipelineState)
 {
-	HRESULT hr = _this->m_pCommandList->Reset(pGraphicsCommandAllocator->m_pCommandAllocator, pGraphicsPipelineState->m_pPipelineState);
-	if (FAILED(hr))
-		return CommandListResetFailed;
-
-	return GraphicsSuccess;
+	return _this->Reset(pCommandAllocator, pPipelineState);
 }
 
-void KAIROS_API GraphicsCommandList_OMSetRenderTargets(GraphicsCommandList* _this, GraphicsDescriptorHeap* pGraphicsDescriptorHeap, UINT descriptorOffset, UINT descriptorSize, UINT descriptorCount)
+void KAIROS_API GraphicsCommandList_OMSetRenderTargets(ID3D12GraphicsCommandList* _this, ID3D12DescriptorHeap* pDescriptorHeap, UINT descriptorOffset, UINT descriptorSize, UINT descriptorCount)
 {
-	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(pGraphicsDescriptorHeap->m_pDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), descriptorOffset, descriptorSize);
-	_this->m_pCommandList->OMSetRenderTargets(descriptorCount, &rtvHandle, FALSE, nullptr);
+	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(pDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), descriptorOffset, descriptorSize);
+	_this->OMSetRenderTargets(descriptorCount, &rtvHandle, FALSE, nullptr);
 }
 
-void KAIROS_API GraphicsCommandList_ClearRenderTargetView(GraphicsCommandList* _this, GraphicsDescriptorHeap* pGraphicsDescriptorHeap, UINT descriptorOffset, UINT descriptorSize, FLOAT* pColor, UINT rectCount, D3D12_RECT* pRects)
+void KAIROS_API GraphicsCommandList_ClearRenderTargetView(ID3D12GraphicsCommandList* _this, ID3D12DescriptorHeap* pDescriptorHeap, UINT descriptorOffset, UINT descriptorSize, FLOAT* pColor, UINT rectCount, D3D12_RECT* pRects)
 {
-	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(pGraphicsDescriptorHeap->m_pDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), descriptorOffset, descriptorSize);
-	_this->m_pCommandList->ClearRenderTargetView(rtvHandle, pColor, rectCount, pRects);
+	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(pDescriptorHeap->GetCPUDescriptorHandleForHeapStart(), descriptorOffset, descriptorSize);
+	_this->ClearRenderTargetView(rtvHandle, pColor, rectCount, pRects);
 }
 
 KAIROS_EXPORT_END

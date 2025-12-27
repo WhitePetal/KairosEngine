@@ -2,23 +2,32 @@ using System;
 
 namespace KairosEngine.Graphics
 {
-	[CRepr]
-	public struct GraphicsDescriptorHeap
+	public class GraphicsDescriptorHeap
 	{
-		private void* m_pDescriptorHeap;
+		public void* pInternalDescriptorHeap;
 
-		public DescriptorHeapType Type;
-		public DescriptorHeapFlags Flags;
-
-		public void Dispose() mut
+		public ~this()
 		{
-			if(m_pDescriptorHeap != null)
-				GraphicsDescriptorHeap_Dispose(&this);
+			if(pInternalDescriptorHeap != null)
+			{
+				GraphicsDescriptorHeap_Dispose(pInternalDescriptorHeap);
+				pInternalDescriptorHeap = null;
+			}
 		}
 
-		public GraphicsCPUDescriptorHandle GetCPUDescriptorHandleForHeapStart() mut
+		public DescriptorHeapDesc GetDesc()
 		{
-			return GraphicsCPUDescriptorHandle(GraphicsDescriptorHeap_GetCPUDescriptorHandleForHeapStart(&this));
+			return GraphicsDescriptorHeap_GetDesc(pInternalDescriptorHeap);
+		}
+
+		public DescriptorCpuHandle GetCPUDescriptorHandleForHeapStart()
+		{
+			return GraphicsDescriptorHeap_GetCPUDescriptorHandleForHeapStart(pInternalDescriptorHeap);
+		}
+
+		public DescriptorGpuHandle GetGPUDescriptorHandleForHeapStart()
+		{
+			return GraphicsDescriptorHeap_GetGPUDescriptorHandleForHeapStart(pInternalDescriptorHeap);
 		}
 	}
 }

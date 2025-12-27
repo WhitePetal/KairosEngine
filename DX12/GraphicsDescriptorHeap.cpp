@@ -2,14 +2,24 @@
 
 KAIROS_EXPORT_BEGIN
 
-void KAIROS_API GraphicsDescriptorHeap_Dispose(GraphicsDescriptorHeap* _this)
+void KAIROS_API GraphicsDescriptorHeap_Dispose(ID3D12DescriptorHeap* _this)
 {
-	SAFE_RELEASE(_this->m_pDescriptorHeap);
+	_this->Release();
 }
 
-SIZE_T KAIROS_API GraphicsDescriptorHeap_GetCPUDescriptorHandleForHeapStart(GraphicsDescriptorHeap* _this)
+D3D12_DESCRIPTOR_HEAP_DESC KAIROS_API GraphicsDescriptorHeap_GetDesc(ID3D12DescriptorHeap* _this)
 {
-	return _this->m_pDescriptorHeap->GetCPUDescriptorHandleForHeapStart().ptr;
+	return _this->GetDesc();
+}
+
+D3D12_CPU_DESCRIPTOR_HANDLE KAIROS_API GraphicsDescriptorHeap_GetCPUDescriptorHandleForHeapStart(ID3D12DescriptorHeap* _this)
+{
+	return _this->GetCPUDescriptorHandleForHeapStart();
+}
+
+D3D12_GPU_DESCRIPTOR_HANDLE KAIROS_API GraphicsDescriptorHeap_GetGPUDescriptorHandleForHeapStart(ID3D12DescriptorHeap* _this)
+{
+	return _this->GetGPUDescriptorHandleForHeapStart();
 }
 
 KAIROS_EXPORT_END

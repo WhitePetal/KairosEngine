@@ -2,15 +2,17 @@ using System;
 
 namespace KairosEngine.Graphics
 {
-	[CRepr]
-	public struct GraphicsPipelineState
+	public class GraphicsPipelineState
 	{
-		private void* m_pPipelineState;
+		public void* pInternalPipelineState;
 
-		public void Dispose() mut
+		public ~this()
 		{
-			if(m_pPipelineState != null)
-				GraphicsPipelineState_Dispose(&this);
+			if(pInternalPipelineState != null)
+			{
+				GraphicsPipelineState_Dispose(pInternalPipelineState);
+				pInternalPipelineState = null;
+			}
 		}
 	}
 }

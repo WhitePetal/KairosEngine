@@ -136,7 +136,6 @@
   <ItemGroup>
     <ClInclude Include="CreateResult.h" />
     <ClInclude Include="d3dx12.h" />
-    <ClInclude Include="ErrorCodes.h" />
     <ClInclude Include="framework.h" />
     <ClInclude Include="GraphicsCommandAllocator.h" />
     <ClInclude Include="GraphicsCommandList.h" />

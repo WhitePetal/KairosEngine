@@ -2,15 +2,17 @@ using System;
 
 namespace KairosEngine.Graphics
 {
-	[CRepr]
-	public struct GraphicsRootSignature
+	public class GraphicsRootSignature
 	{
-		private void* m_pRootSignature;
+		public void* pInternalRootSignature;
 
-		public void Dispose() mut
+		public ~this()
 		{
-			if(m_pRootSignature != null)
-				GraphicsRootSignature_Dispose(&this);
+			if(pInternalRootSignature != null)
+			{
+				GraphicsRootSignature_Dispose(pInternalRootSignature);
+				pInternalRootSignature = null;
+			}
 		}
 	}
 }

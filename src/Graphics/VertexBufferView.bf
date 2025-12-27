@@ -3,7 +3,7 @@ using System;
 namespace KairosEngine.Graphics
 {
 	[CRepr]
-	public struct GraphicsVertexBufferView
+	public struct VertexBufferView
 	{
 		public uint64 BufferLocation;
 		public uint32 SizeInBytes;

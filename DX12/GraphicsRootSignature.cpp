@@ -1,6 +1,6 @@
 #include "GraphicsRootSignature.h"
 
-void KAIROS_API GraphicsRootSignature_Dispose(GraphicsRootSignature* _this)
+void KAIROS_API GraphicsRootSignature_Dispose(ID3D12RootSignature* _this)
 {
-	SAFE_RELEASE(_this->m_pRootSignature);
+	_this->Release();
 }

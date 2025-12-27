@@ -14,26 +14,21 @@
 #include "d3dx12.h"
 #include <string>
 
-typedef struct GraphicsCommandList
-{
-	ID3D12GraphicsCommandList* m_pCommandList;
-} GraphicsCommandList;
-
 KAIROS_EXPORT_BEGIN
 
-void KAIROS_API GraphicsCommandList_Dispose(GraphicsCommandList* _this);
+void KAIROS_API GraphicsCommandList_Dispose(ID3D12GraphicsCommandList* _this);
 
-int KAIROS_API GraphicsCommandList_UpdateSubResources(GraphicsCommandList* _this, GraphicsResource* pDsfResource, GraphicsResource* pResource, UINT64 intermediateOffset, UINT firstSubResource, UINT numSubResource, void* pData, INT64 dataSize);
+UINT64 KAIROS_API GraphicsCommandList_UpdateSubResources(ID3D12GraphicsCommandList* _this, ID3D12Resource* pDstResource, ID3D12Resource* pFromResource, UINT64 intermediateOffset, UINT firstSubResource, UINT numSubResource, void* pData, INT64 dataSize);
 
-void KAIROS_API GraphicsCommandList_ResourceBarrier(GraphicsCommandList* _this, GraphicsResource* pResource, D3D12_RESOURCE_STATES beforeStates, D3D12_RESOURCE_STATES afterStates);
+void KAIROS_API GraphicsCommandList_ResourceBarrier(ID3D12GraphicsCommandList* _this, ID3D12Resource* pResource, D3D12_RESOURCE_STATES beforeStates, D3D12_RESOURCE_STATES afterStates);
 
-int KAIROS_API GraphicsCommandList_Close(GraphicsCommandList* _this);
+int KAIROS_API GraphicsCommandList_Close(ID3D12GraphicsCommandList* _this);
 
-int KAIROS_API GraphicsCommandList_Reset(GraphicsCommandList* _this, GraphicsCommandAllocator* pGraphicsCommandAllocator, GraphicsPipelineState* pGraphicsPipelineState);
+int KAIROS_API GraphicsCommandList_Reset(ID3D12GraphicsCommandList* _this, ID3D12CommandAllocator* pCommandAllocator, ID3D12PipelineState* pPipelineState);
 
-void KAIROS_API GraphicsCommandList_OMSetRenderTargets(GraphicsCommandList* _this, GraphicsDescriptorHeap* pGraphicsDescriptorHeap, UINT descriptorOffset, UINT descriptorSize, UINT descriptorCount);
+void KAIROS_API GraphicsCommandList_OMSetRenderTargets(ID3D12GraphicsCommandList* _this, ID3D12DescriptorHeap* pDescriptorHeap, UINT descriptorOffset, UINT descriptorSize, UINT descriptorCount);
 
-void KAIROS_API GraphicsCommandList_ClearRenderTargetView(GraphicsCommandList* _this, GraphicsDescriptorHeap* pGraphicsDescriptorHeap, UINT descriptorOffset, UINT descriptorSize, FLOAT* pColor, UINT rectCount, D3D12_RECT* pRects);
+void KAIROS_API GraphicsCommandList_ClearRenderTargetView(ID3D12GraphicsCommandList* _this, ID3D12DescriptorHeap* pDescriptorHeap, UINT descriptorOffset, UINT descriptorSize, FLOAT* pColor, UINT rectCount, D3D12_RECT* pRects);
 
 KAIROS_EXPORT_END
 

@@ -2,25 +2,27 @@ using System;
 
 namespace KairosEngine.Graphics
 {
-	[CRepr]
-	public struct GraphicsFence
+	public class GraphicsFence
 	{
-		private void* m_pFence;
+		public void* pInternalFence;
 
-		public void Dispose() mut
+		public ~this()
 		{
-			if(m_pFence != null)
-				GraphicsFence_Dispose(&this);
+			if(pInternalFence != null)
+			{
+				GraphicsFence_Dispose(pInternalFence);
+				pInternalFence = null;
+			}
 		}
 
-		public uint64 GetCompletedValue() mut
+		public uint64 GetCompletedValue()
 		{
-			return GraphicsFence_GetCompletedValue(&this);
+			return GraphicsFence_GetCompletedValue(pInternalFence);
 		}
 
-		public int32 SetEventOnCompletion(ref GraphicsFenceEvent event, uint64 fenceValue) mut
+		public int32 SetEventOnCompletion(FenceEvent event, uint64 fenceValue)
 		{
-			return GraphicsFence_SetEventOnCompletion(&this, fenceValue, &event);
+			return GraphicsFence_SetEventOnCompletion(pInternalFence, fenceValue, event.Handle);
 		}
 	}
 }

@@ -3,46 +3,47 @@ using KairosEngine.Math;
 
 namespace KairosEngine.Graphics
 {
-	[CRepr]
-	public struct GraphicsCommandList
+	public class GraphicsCommandList
 	{
-		private void* m_pGraphicsCommandList;
+		public void* pInternalCommandList;
 
-		public void Dispose() mut
+		~this()
 		{
-			if(m_pGraphicsCommandList != null)
-				GraphicsCommandList_Dispose(&this);
+			if(pInternalCommandList != null)
+			{
+				GraphicsCommandList_Dispose(pInternalCommandList);
+				pInternalCommandList = null;
+			}
 		}
 
-		public int32 UpdateSubResources<T>(ref GraphicsResource dstResource, ref GraphicsResource fromResource,
-			uint32 intermediateOffset, uint32 firstSubResource, uint32 numSubResource, T[] data, int dataSize) mut where T : struct
+		public uint64 UpdateSubResources<T>(GraphicsResource dstResource, GraphicsResource fromResource, uint32 intermediateOffset, uint32 firstSubResource, uint32 numSubResource, T[] data, int dataSize) where T : struct
 		{
-			return GraphicsCommandList_UpdateSubResources(&this, &dstResource, &fromResource, intermediateOffset, firstSubResource, numSubResource, &data[0], dataSize);
+			return GraphicsCommandList_UpdateSubResources(pInternalCommandList, dstResource.pInternalResource, &fromResource.pInternalResource, intermediateOffset, firstSubResource, numSubResource, &data[0], dataSize);
 		}
 
-		public void ResourceBarrier(ref GraphicsResource resource, ResourceStates beforeStates, ResourceStates afterStates) mut
+		public void ResourceBarrier(GraphicsResource resource, ResourceStates beforeStates, ResourceStates afterStates)
 		{
-			GraphicsCommandList_ResourceBarrier(&this, &resource, beforeStates, afterStates);
+			GraphicsCommandList_ResourceBarrier(pInternalCommandList, resource.pInternalResource, beforeStates, afterStates);
 		}
 
-		public int32 Close() mut
+		public int32 Close()
 		{
-			return GraphicsCommandList_Close(&this);
+			return GraphicsCommandList_Close(pInternalCommandList);
 		}
 
-		public int32 Reset(ref GraphicsCommandAllocator commandAllocator, ref GraphicsPipelineState pso) mut
+		public int32 Reset(GraphicsCommandAllocator commandAllocator, GraphicsPipelineState pso)
 		{
-			return GraphicsCommandList_Reset(&this, &commandAllocator, &pso);
+			return GraphicsCommandList_Reset(pInternalCommandList, commandAllocator.pInternalCommandAllocator, pso.pInternalPipelineState);
 		}
 
-		public void OMSetRenderTargets(ref GraphicsDescriptorHeap descriptorHeap, uint32 descriptorOffset, uint32 descriptorSize, uint32 descriptorCount) mut
+		public void OMSetRenderTargets(GraphicsDescriptorHeap descriptorHeap, uint32 descriptorOffset, uint32 descriptorSize, uint32 descriptorCount)
 		{
-			GraphicsCommandList_OMSetRenderTargets(&this, &descriptorHeap, descriptorOffset, descriptorSize, descriptorCount);
+			GraphicsCommandList_OMSetRenderTargets(pInternalCommandList, descriptorHeap.pInternalDescriptorHeap, descriptorOffset, descriptorSize, descriptorCount);
 		}
 
-		public void ClearRenderTargetView(ref GraphicsDescriptorHeap descriptorHeap, uint32 descriptorOffset, uint32 descriptorSize, ref float4 color, uint32 rectCount, Rect[] rects) mut
+		public void ClearRenderTargetView(GraphicsDescriptorHeap descriptorHeap, uint32 descriptorOffset, uint32 descriptorSize, ref float4 color, uint32 rectCount, Rect[] rects)
 		{
-			GraphicsCommandList_ClearRenderTargetView(&this, &descriptorHeap, descriptorOffset, descriptorSize, &color, rectCount, rectCount == 0 ? null : &rects[0]);
+			GraphicsCommandList_ClearRenderTargetView(pInternalCommandList, descriptorHeap.pInternalDescriptorHeap, descriptorOffset, descriptorSize, &color, rectCount, rectCount == 0 ? null : &rects[0]);
 		}
 	}
 }

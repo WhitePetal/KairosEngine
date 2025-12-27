@@ -2,28 +2,19 @@
 
 KAIROS_EXPORT_BEGIN
 
-void KAIROS_API GraphicsCommandQueue_Dispose(GraphicsCommandQueue* _this)
+void KAIROS_API GraphicsCommandQueue_Dispose(ID3D12CommandQueue* _this)
 {
-	SAFE_RELEASE(_this->m_pCommandQueue);
+	_this->Release();
 }
 
-void KAIROS_API GraphicsCommandQueue_ExecuteCommandLists(GraphicsCommandQueue* _this, GraphicsCommandList* pGraphicsCommandLst, int executeCount)
+void KAIROS_API GraphicsCommandQueue_ExecuteCommandLists(ID3D12CommandQueue* _this, ID3D12CommandList** ppCommandLst, int executeCount)
 {
-	ID3D12CommandList* ppCommandLists[SUPPORT_MAX_EXECUTE_COMMAND_LIST_COUNT];
-	for (int i = 0; i < executeCount; ++i)
-	{
-		ppCommandLists[i] = pGraphicsCommandLst->m_pCommandList;
-	}
-
-	_this->m_pCommandQueue->ExecuteCommandLists(executeCount, ppCommandLists);
+	_this->ExecuteCommandLists(executeCount, ppCommandLst);
 }
 
-int KAIROS_API GraphicsCommandQueue_Signal(GraphicsCommandQueue* _this, GraphicsFence* pGraphicsFence, UINT64 fenceValue)
+int KAIROS_API GraphicsCommandQueue_Signal(ID3D12CommandQueue* _this, ID3D12Fence* pFence, UINT64 fenceValue)
 {
-	HRESULT hr = _this->m_pCommandQueue->Signal(pGraphicsFence->m_pFence, fenceValue);
-	if (FAILED(hr))
-		return CommandQueueSignatureFailed;
-	return GraphicsSuccess;
+	return _this->Signal(pFence, fenceValue);
 }
 
 KAIROS_EXPORT_END

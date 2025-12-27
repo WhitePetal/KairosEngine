@@ -2,20 +2,27 @@ using System;
 
 namespace KairosEngine.Graphics
 {
-	[CRepr]
-	public struct GraphicsResource
+	public class GraphicsResource
 	{
-		protected void* m_pResource;
+		public void* pInternalResource;
 
-		public void Dispose() mut
+		public ~this()
 		{
-			if(m_pResource != null)
-				GraphicsResource_Dispose(&this);
+			if(pInternalResource != null)
+			{
+				GraphicsResource_Dispose(pInternalResource);
+				pInternalResource = null;
+			}
 		}
 
-		public uint64 GetGPUVirtualAddress() mut
+		public uint64 GetGPUVirtualAddress()
 		{
-			return GraphicsResource_GetGPUVirtualAddress(&this);
+			return GraphicsResource_GetGPUVirtualAddress(pInternalResource);
+		}
+
+		public void Unmap(uint32 subResource, uint64 begin, uint64 end)
+		{
+			GraphicsResource_Unmap(pInternalResource, subResource, begin, end);
 		}
 	}
 }
