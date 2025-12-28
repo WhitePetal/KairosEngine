@@ -38,4 +38,14 @@ int KAIROS_API GraphicsShader_CreateWithoutErrorInfo(ID3DBlob** p_this, LPCWSTR 
 	return hr;
 }
 
+void* KAIROS_API GraphicsShader_GetBufferPointer(ID3DBlob* _this)
+{
+	return _this->GetBufferPointer();
+}
+
+UINT64 KAIROS_API GraphicsShader_GetBufferSize(ID3DBlob* _this)
+{
+	return _this->GetBufferSize();
+}
+
 KAIROS_EXPORT_END

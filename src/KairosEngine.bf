@@ -4,6 +4,7 @@ using ImGui;
 using KairosEngine.Math;
 using KairosEngine.Editor;
 using KairosEngine.Graphics;
+using KairosEngine.Platform;
 using KairosEngine.ImGUI;
 
 namespace KairosEngine
@@ -27,13 +28,12 @@ namespace KairosEngine
 			defer delete editorMainWnd;
 
 			int32_4 wndRect = int32_4(0, 0, 800, 600);
-			int32 windId = WindowSystem.Instance.CreateWindow(hInstance, wndRect, false, "KairosEngine", "Kairos Window");
-			if(windId < 0)
+			(editorMainWnd.Id, editorMainWnd.hWnd) = WindowSystem.Instance.CreateWindow(hInstance, wndRect, false, "KairosEngine", "Kairos Window");
+			if(editorMainWnd.Id < 0)
 			{
 				WindowSystem.Instance.DeInitialize();
 				return;
 			}
-			editorMainWnd.Id = windId;
 
 			// =============== Init Graphics ========================
 
@@ -65,7 +65,7 @@ namespace KairosEngine
 			int32 backBufferCount = 3;
 
 			RenderTargetFormat renderTargetFormat = RenderTargetFormat.R8G8B8A8_UNORM;
-			(hr, GraphicsSwapChain swapChain) = graphicsFactory.CreateSwapChain(commandQueue, wndRect.z, wndRect.w, renderTargetFormat, 1, 0, backBufferCount, windId);
+			(hr, GraphicsSwapChain swapChain) = graphicsFactory.CreateSwapChain(commandQueue, wndRect.z, wndRect.w, renderTargetFormat, 1, 0, backBufferCount, editorMainWnd.Id);
 			defer delete swapChain;
 			if(hr > 0)
 			{
@@ -179,7 +179,7 @@ namespace KairosEngine
 				return;
 			}
 			GraphicsShader fragmentShader = new GraphicsShader();
-			fragmentShader.CreateWithoutErrorInfo("./Shaders/PixelShader.hlsl", ShaderType.FragmentShader);
+			fragmentShader.CreateWithoutErrorInfo("./Shaders/FragmentShader.hlsl", ShaderType.FragmentShader);
 			defer delete fragmentShader;
 			if(hr > 0)
 			{
@@ -187,11 +187,11 @@ namespace KairosEngine
 				return;
 			}
 
-			InputLayoutElement[] inputLayouts = scope InputLayoutElement[]
+			InputLayoutElementDesc[] inputLayouts = scope InputLayoutElementDesc[]
 			(
-				InputLayoutElement("POSITION", 0, InputLayoutElementFormat.R32G32B32_FLOAT, 0, 0, InputLayoutElementClass.PER_VERTEX_DATA, 0)
+				InputLayoutElementDesc("POSITION", 0, InputLayoutElementFormat.R32G32B32_FLOAT, 0, 0, InputLayoutElementClass.PER_VERTEX_DATA, 0)
 			);
-			(hr, GraphicsPipelineState pipelineState) = device.CreatePipelineState(inputLayouts, rootSignature, vertexShader, fragmentShader, TopologyType.TRIANGLE, RenderTargetFormat.R8G8B8A8_UNORM, 1, 0, 0xffffffff);
+			(hr, GraphicsPipelineState pipelineState) = device.CreatePipelineState(1, PipelineStateFlags.NONE, inputLayouts, rootSignature, vertexShader, fragmentShader, PrimitiveTopologyType.TRIANGLE, RenderTargetFormat.R8G8B8A8_UNORM, DepthStencilFormat.NONE, 1, 0, 0xffffffff);
 			defer delete pipelineState;
 			if(hr > 0)
 			{
@@ -245,74 +245,281 @@ namespace KairosEngine
 
 
 			// ================ Init ImGUI ========================
-			/*ImGui.CHECKVERSION();
+			ImGui.CHECKVERSION();
 			ImGui.CreateContext();
 			ImGui.IO* gui_io = ImGui.GetIO();
 			gui_io.ConfigFlags |= ImGui.ConfigFlags.NavEnableKeyboard;
-			gui_io.ConfigFlags |= ImGui.ConfigFlags.NavEnableGamepad;
-			defer ImGui.DestroyContext();
+			/*gui_io.ConfigFlags |= ImGui.ConfigFlags.NavEnableGamepad;*/
+			gui_io.ConfigFlags |= ImGui.ConfigFlags.DockingEnable;
+			gui_io.ConfigFlags |= ImGui.ConfigFlags.ViewportsEnable;
+			ImGui.StyleColorsDark();
 
-			(hr, GraphicsDescriptorHeap gui_srv_descriptor_heap) = device.CreateDescriptorHeap(64, DescriptorHeapType.CBV_SRV_UAV, DescriptorHeapFlags.SHADER_VISIBLE);
-			defer delete gui_srv_descriptor_heap;
-			if(hr > 0)
+			// init ImGui Win32
 			{
-				Console.WriteLine($"ERROR GUI SRV DescriptorHeap Create Failed");
-				return;
+				int64 perf_frequency = 0, pref_counter = 0;
+				if(!Kernel.QueryPerformanceFrequency(ref perf_frequency))
+				{
+					Console.WriteLine("ERROR Query PerformanceFrequency Failed");
+					return;
+				}
+				if(!Kernel.QueryPerformanceCounter(ref pref_counter))
+				{
+					Console.WriteLine("ERROR Query PerformanceCounter Failed");
+					return;
+				}
+			 	ImGuiWin32Data* gui_bd = new ImGuiWin32Data();
+				gui_io.BackendPlatformUserData = gui_bd;
+				gui_io.BackendPlatformName = "KairosEngine_Win32";
+				gui_io.BackendFlags |= ImGui.BackendFlags.HasMouseCursors;
+				gui_io.BackendFlags |= ImGui.BackendFlags.HasSetMousePos;
+				gui_io.BackendFlags |= ImGui.BackendFlags.PlatformHasViewports;
+				gui_io.BackendFlags |= ImGui.BackendFlags.HasMouseHoveredViewport;
+				gui_io.BackendFlags |= ImGui.BackendFlags.HasParentViewport;
+
+				gui_bd.hWnd = editorMainWnd.hWnd;
+				gui_bd.TicksPerSecond = perf_frequency;
+				gui_bd.Time = perf_frequency;
+				gui_bd.LastMouseCursor = ImGui.MouseCursor.COUNT;
+				if(Kernel.GetKeyboardCodePgae(ref gui_bd.KeyboardCodePage, sizeof(uint32)) == 0)
+					gui_bd.KeyboardCodePage = 0;
+
+				ImGui.PlatformIO* gui_platform_io = ImGui.GetPlatformIO();
+				gui_platform_io.Monitors.Resize(0);
+				/*ImGui.PlatformMonitor*/
 			}
-			ImGuiDescriptorHeapAllocator gui_srv_desc_heap_alloc = ImGuiDescriptorHeapAllocator();
-			gui_srv_desc_heap_alloc.Create(&device, &gui_srv_descriptor_heap);
 
-			ImGuiDX12InitInfo gui_init_info = ImGuiDX12InitInfo{};
-			gui_init_info.pDevice = &device;
-			gui_init_info.pCommandQueue = &commandQueue;
-			gui_init_info.NumFramesInFlight = backBufferCount;
-			gui_init_info.RTVFormat = renderTargetFormat;
-			gui_init_info.SrvDescriptorHeap = &gui_srv_descriptor_heap;
-			gui_init_info.SrvDescriptorAllocFn = scope [&](pInfo, pOutCpuHandle, pOutGpuHandle) =>
+			// init ImGui DX12
 			{
-				gui_srv_desc_heap_alloc.Alloc(pOutCpuHandle, pOutGpuHandle);
-			};
-			gui_init_info.SrvDescriptorFreeFn = scope [&](pInfo, cpuHandle, gpuHandle) =>
-			{
-				gui_srv_desc_heap_alloc.Free(cpuHandle, gpuHandle);
-			};
+				(hr, GraphicsDescriptorHeap gui_srv_descriptor_heap) = device.CreateDescriptorHeap(64, DescriptorHeapType.CBV_SRV_UAV, DescriptorHeapFlags.SHADER_VISIBLE);
+				if(hr > 0)
+				{
+					Console.WriteLine($"ERROR GUI SRV DescriptorHeap Create Failed");
+					return;
+				}
+				ImGuiDescriptorHeapAllocator gui_srv_desc_heap_alloc = ImGuiDescriptorHeapAllocator();
+				gui_srv_desc_heap_alloc.Create(device, gui_srv_descriptor_heap);
 
-			ImGuiDX12RenderBuffers[] gui_renderBuffers = scope ImGuiDX12RenderBuffers[backBufferCount](?);
-			for(int32 i = 0; i < backBufferCount; ++i)
-			{
-				ref ImGuiDX12RenderBuffers fr = ref gui_renderBuffers[i];
-				fr.pIndexBuffer = null;
-				fr.pVertexBuffer = null;
-				fr.IndexBufferSize = 10000;
-				fr.VertexBufferSize = 5000;
+				ImGuiDX12InitInfo gui_init_info = ImGuiDX12InitInfo{};
+				gui_init_info.Device = device;
+				gui_init_info.CommandQueue = commandQueue;
+				gui_init_info.NumFramesInFlight = backBufferCount;
+				gui_init_info.RTVFormat = renderTargetFormat;
+				gui_init_info.SrvDescriptorHeap = gui_srv_descriptor_heap;
+				gui_init_info.SrvDescriptorAllocFn = scope [&](pInfo, OutCpuHandle, OutGpuHandle) =>
+				{
+					gui_srv_desc_heap_alloc.Alloc(ref OutCpuHandle, ref OutGpuHandle);
+				};
+				gui_init_info.SrvDescriptorFreeFn = scope [&](pInfo, cpuHandle, gpuHandle) =>
+				{
+					gui_srv_desc_heap_alloc.Free(cpuHandle, gpuHandle);
+				};
+
+				ImGuiDX12Data* gui_bd = new ImGuiDX12Data();
+				gui_bd.InitInfo = gui_init_info;
+				gui_bd.Device = gui_init_info.Device;
+				gui_bd.CommandQueue = gui_init_info.CommandQueue;
+				gui_bd.RTVFormat = gui_init_info.RTVFormat;
+				gui_bd.DSVFormat = gui_init_info.DSVFormat;
+				gui_bd.NumFramesInFlight = uint32(gui_init_info.NumFramesInFlight);
+				gui_bd.SrvDescHeap = gui_init_info.SrvDescriptorHeap;
+
+				gui_bd.TearingSupport = false;
+
+				gui_io.BackendRendererUserData = gui_bd;
+				gui_io.BackendRendererName = "KairosEngine_DX12";
+				gui_io.BackendFlags |= ImGui.BackendFlags.RendererHasVtxOffset;
+				gui_io.BackendFlags |= ImGui.BackendFlags.RendererHasTextures;
+				/*gui_io.BackendFlags |= ImGui.BackendFlags.RendererHasViewports;*/
+
+				/*if((gui_io.ConfigFlags & ImGui.ConfigFlags.ViewportsEnable) != 0)*/
+					/*ImGuiDX12.InitMultiViewportSupport();*/
+
+				ImGui.Viewport* main_viewport = ImGui.GetMainViewport();
+				main_viewport.RendererUserData = System.Internal.UnsafeCastToPtr(new ImGuiDX12ViewPortData(gui_bd.NumFramesInFlight));
+
+				gui_bd.Factory = graphicsFactory;
+				bool allow_teraing = false;
+				gui_bd.Factory.CheckFeatureSupport(Feature.PRESENT_ALLOW_TEARING, &allow_teraing, sizeof(bool));
+				gui_bd.TearingSupport = allow_teraing;
+
+				// Create the gui root signature
+				{
+					DescriptorRange descRange = DescriptorRange
+					{
+						RangeType = DescriptorRangeType.SRV,
+						NumDescriptors = 1,
+						BaseShaderRegister = 0,
+						RegisterSpace = 0,
+						OffsetInDescriptorsFromTableStart = 0
+					};
+
+					RootParameter[] param = scope RootParameter[2](?);
+
+					param[0].ParameterType = RootParameterType._32BIT_CONSTANTS;
+					param[0].Unio.Constants.ShaderRegister = 0;
+					param[0].Unio.Constants.RegisterSpace = 0;
+					param[0].Unio.Constants.Num32BitValues = 16;
+					param[0].ShaderVisibility = ShaderVisibility.VERTEX;
+
+					param[1].ParameterType = RootParameterType.DESCRIPTOR_TABLE;
+					param[1].Unio.DescriptorTable.NumDescriptorRanges = 1;
+					param[1].Unio.DescriptorTable.pDescriptorRanges = &descRange;
+					param[1].ShaderVisibility = ShaderVisibility.FRAGMENT;
+
+					StaticSamplerDesc[] staticSampler = scope StaticSamplerDesc[1](?);
+					staticSampler[0].Filter = SamplerFilter.MIN_MAG_MIP_LINEAR;
+					staticSampler[0].AddressU = TextureAddressMode.CLAMP;
+					staticSampler[0].AddressV = TextureAddressMode.CLAMP;
+					staticSampler[0].AddressW = TextureAddressMode.CLAMP;
+					staticSampler[0].MipLODBias = 0.0f;
+					staticSampler[0].MaxAnisotropy = 0;
+					staticSampler[0].ComparisonFunc = ComparisonFunc.ALWAYS;
+					staticSampler[0].BorderColor = StaticBorderColor.TRANSPARENT_BLACK;
+					staticSampler[0].MinLOD = 0.0f;
+					staticSampler[0].MaxLOD = float.MaxValue;
+					staticSampler[0].ShaderRegister = 0;
+					staticSampler[0].RegisterSpace = 0;
+					staticSampler[0].ShaderVisibility = ShaderVisibility.FRAGMENT;
+
+					RootSignatureDesc desc = RootSignatureDesc
+					{
+						NumParameters = uint32(param.Count),
+						pParameters = param.Ptr,
+						NumStaticSamplers = 1,
+						pStaticSamplers = staticSampler.Ptr,
+						Flags =
+							RootSignatureFlags.ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT |
+							RootSignatureFlags.DENY_HULL_SHADER_ROOT_ACCESS |
+							RootSignatureFlags.DENY_DOMAIN_SHADER_ROOT_ACCESS |
+							RootSignatureFlags.DENY_GEOMETRY_SHADER_ROOT_ACCESS
+					};
+
+					(hr, gui_bd.RootSignature) = gui_bd.Device.CreateRootSignature(ref desc);
+					if(hr > 0)
+					{
+						Console.WriteLine($"ERROR Create ImGUI RootSignature Failed");
+						return;
+					}
+				}
+
+				// Create the gui pso
+				{
+					GraphicsShader gui_vertex_shader = new GraphicsShader();
+					hr = gui_vertex_shader.CreateWithoutErrorInfo("./Shaders/GuiVertexShader.hlsl", ShaderType.VertexShader);
+					defer delete gui_vertex_shader;
+					if(hr > 0)
+					{
+						Console.WriteLine($"ERROR Create Gui Vertex Shader Failed");
+						return;
+					}
+					GraphicsShader gui_fragment_shader = new GraphicsShader();
+					gui_fragment_shader.CreateWithoutErrorInfo("./Shaders/GuiFragmentShader.hlsl", ShaderType.FragmentShader);
+					defer delete gui_fragment_shader;
+					if(hr > 0)
+					{
+						Console.WriteLine($"ERROR Create Gui Fragment Shader Failed");
+						return;
+					}
+
+					InputLayoutElementDesc[] gui_inputLayouts = scope InputLayoutElementDesc[]
+					(
+						InputLayoutElementDesc("POSITION", 0, InputLayoutElementFormat.R32G32_FLOAT, 0, offsetof(ImGui.DrawVert, pos), InputLayoutElementClass.PER_VERTEX_DATA, 0),
+						InputLayoutElementDesc("TEXCOOR", 0, InputLayoutElementFormat.R32G32_FLOAT, 0, offsetof(ImGui.DrawVert, uv), InputLayoutElementClass.PER_VERTEX_DATA, 0),
+						InputLayoutElementDesc("COLOR", 0, InputLayoutElementFormat.R8G8B8A8_UNORMA, 0, offsetof(ImGui.DrawVert, col), InputLayoutElementClass.PER_VERTEX_DATA, 0),
+					);
+					InputLayoutDesc inputLayout = InputLayoutDesc(gui_inputLayouts, 3);
+
+					BlendDesc blendState = BlendDesc(false, ref RenderTargetBlendDesc
+					{
+						BlendEnable = false,
+						SrcBlend = Blend.SRC1_ALPHA,
+						DstBlend = Blend.INV_SRC_ALPHA,
+						BlendOp = BlendOp.ADD,
+						SrcBlendAlpha = Blend.ONE,
+						DstBlendAlpha = Blend.INV_SRC_ALPHA,
+						BlendOpAlpha = BlendOp.ADD,
+						RenderTargetWriteMask = uint8(ColorWriteEnable.ALL)
+					});
+
+					RasterizerDesc rasterState = RasterizerDesc
+					{
+						FillMode = FillMode.SOLID,
+						CullMode = CullMode.NONE,
+						FrontCounterClockwise = false,
+						DepthBias = 0,
+						DepthBiasClamp = 0f,
+						SlopeScaledDepthBias = 0f,
+						DepthClipEnable = true,
+						MultisampleEnable = false,
+						AntialiasedLineEnable = false,
+						ForcedSampleCount = 0,
+						ConservativeRaster = ConservativeRasterizationMode.OFF
+					};
+
+					DepthStencilDesc depthStencilState = DepthStencilDesc
+					{
+						DepthEnable = false,
+						DepthWriteMask = DepthWriteMask.ALL,
+						DepthFunc = ComparisonFunc.ALWAYS,
+						StencilEnable = false,
+						FrontFace = DepthStencilOpDesc
+						{
+							StencilFailOp = DepthStencilOp.KEEP,
+							StencilDepthFailOp = DepthStencilOp.KEEP,
+							StencilFunc = ComparisonFunc.ALWAYS
+						}
+					};
+					depthStencilState.BackFace = depthStencilState.FrontFace;
+
+					MsaaDesc aaDesc = MsaaDesc
+					{
+						Count = 1,
+						Quality = 0
+					};
+
+					PipelineStateDesc psoDesc = PipelineStateDesc(gui_bd.RootSignature, ref blendState, ref rasterState, ref depthStencilState, ref inputLayout, ref aaDesc,
+						ref gui_bd.RTVFormat, 1, gui_bd.DSVFormat, PrimitiveTopologyType.TRIANGLE, PipelineStateFlags.NONE, uint32.MaxValue, 1, gui_vertex_shader, gui_fragment_shader);
+					(hr, gui_bd.PipelineState) = gui_bd.Device.CreatePipelineState(ref psoDesc);
+					if(hr > 0)
+					{
+						Console.WriteLine("ERROR Create GUI PSO Failed");
+						return;
+					}
+				}
+
+				(hr, gui_bd.TexCmdAllocator) = gui_bd.Device.CreateCommandAllocator(CommandListType.DIRECT);
+				if(hr > 0)
+				{
+					Console.WriteLine("ERROR Create GUI Tex CommandAllocator Failed");
+					return;
+				}
+				(hr, gui_bd.TexCmdList) = gui_bd.Device.CreateCommandList(gui_bd.TexCmdAllocator, CommandListType.DIRECT, 0);
+				if(hr > 0)
+				{
+					Console.WriteLine("ERROR Create GUI Tex CommandList Failed");
+					return;
+				}
+				hr = gui_bd.TexCmdList.Close();
+				if(hr > 0)
+				{
+					Console.WriteLine("ERROR Close GUI Tex CommandList Failed");
+					return;
+				}
+
+				(hr, gui_bd.Fence) = gui_bd.Device.CreateFence(0, FenceFlags.NONE);
+				if(hr > 0)
+				{
+					Console.WriteLine("ERROR Create GUI Fence Failed");
+					return;
+				}
+				gui_bd.FenceEvent = FenceEvent();
 			}
-			ImGuiDX12Data gui_bd = ImGuiDX12Data();
-			gui_bd.InitInfo = gui_init_info;
-			gui_bd.pDevice = gui_init_info.pDevice;
-			gui_bd.pCommandQueue = gui_init_info.pCommandQueue;
-			gui_bd.RTVFormat = gui_init_info.RTVFormat;
-			gui_bd.DSVFormat = gui_init_info.DSVFormat;
-			gui_bd.NumFramesInFlight = uint32(gui_init_info.NumFramesInFlight);
-			gui_bd.pSrvDescHeap = gui_init_info.SrvDescriptorHeap;
-			gui_bd.TearingSupport = false;
-			gui_bd.FrameIndex = uint32.MaxValue;
-			gui_bd.pFrameResources = gui_renderBuffers.Ptr;
-
-			gui_io.BackendRendererUserData = &gui_bd;
-			gui_io.BackendRendererName = "KairosEngine_DX12";
-			gui_io.BackendFlags |= ImGui.BackendFlags.RendererHasVtxOffset;
-			gui_io.BackendFlags |= ImGui.BackendFlags.RendererHasTextures;
-			gui_io.BackendFlags |= ImGui.BackendFlags.RendererHasViewports;
-
-			if((gui_io.ConfigFlags & ImGui.ConfigFlags.ViewportsEnable) != 0)
-				ImGuiDX12.InitMultiViewportSupport();*/
-
 
 			// ================ Engine Loop =========================
 
 			MSG msg = MSG();
 			MSG* pMsg = &msg;
-			Kernel.KairosInitMSG(pMsg);
+			Kernel.InitMSG(pMsg);
 			Running = true;
 
 			void WaitPresent()
@@ -401,13 +608,13 @@ namespace KairosEngine
 
 			while(Running)
 			{
-				if(Kernel.KairosPeekMessage(pMsg) == 1)
+				if(Kernel.PeekMessage(pMsg) == 1)
 				{
 					if(msg.message == 0x0012)
 						break;
 
-					Kernel.KairosTranslateMessage(pMsg);
-					Kernel.KairosDispatchMessage(pMsg);
+					Kernel.TranslateMessage(pMsg);
+					Kernel.DispatchMessage(pMsg);
 				}
 				else
 				{

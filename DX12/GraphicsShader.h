@@ -15,6 +15,10 @@ void KAIROS_API GraphicsShader_Dispose(ID3DBlob* _this);
 
 int KAIROS_API GraphicsShader_CreateWithoutErrorInfo(ID3DBlob** p_this, LPCWSTR path, ShaderType type, UINT compileFlags);
 
+void* KAIROS_API GraphicsShader_GetBufferPointer(ID3DBlob* _this);
+
+UINT64 KAIROS_API GraphicsShader_GetBufferSize(ID3DBlob* _this);
+
 KAIROS_EXPORT_END
 
 #endif

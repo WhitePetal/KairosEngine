@@ -7,7 +7,7 @@ namespace KairosEngine.Graphics
 	{
 		public void* pInternalCommandList;
 
-		~this()
+		public ~this()
 		{
 			if(pInternalCommandList != null)
 			{

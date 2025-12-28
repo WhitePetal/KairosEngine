@@ -4,15 +4,15 @@ namespace KairosEngine.ImGUI
 {
 	public struct ImGuiDX12InitInfo
 	{
-		public GraphicsDevice* pDevice;
-		public GraphicsCommandQueue* pCommandQueue;
+		public GraphicsDevice Device;
+		public GraphicsCommandQueue CommandQueue;
 		public int32 NumFramesInFlight;
 		public RenderTargetFormat RTVFormat;
-		public RenderTargetFormat DSVFormat;
+		public DepthStencilFormat DSVFormat;
 		public void* pUserData;
 
-		public GraphicsDescriptorHeap* SrvDescriptorHeap;
-		public delegate void(ImGuiDX12InitInfo* pInfo, GraphicsCPUDescriptorHandle* pOutCpuHandle, GraphicsGPUDescriptorHandle* pOutGpuHandle) SrvDescriptorAllocFn;
-		public delegate void(ImGuiDX12InitInfo* pInfo, GraphicsCPUDescriptorHandle cpuHandle, GraphicsGPUDescriptorHandle gpuHandle) SrvDescriptorFreeFn;
+		public GraphicsDescriptorHeap SrvDescriptorHeap;
+		public delegate void(ImGuiDX12InitInfo* pInfo, ref DescriptorCpuHandle pOutCpuHandle, ref DescriptorGpuHandle pOutGpuHandle) SrvDescriptorAllocFn;
+		public delegate void(ImGuiDX12InitInfo* pInfo, DescriptorCpuHandle cpuHandle, DescriptorGpuHandle gpuHandle) SrvDescriptorFreeFn;
 	}
 }

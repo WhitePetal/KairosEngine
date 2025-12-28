@@ -38,8 +38,12 @@ namespace KairosEngine.Graphics
 		private static extern int32 GraphicsDevice_CreateRootSignature(void* _this, void** pRootSignature, RootSignatureDesc* pDesc);
 
 		[Import("DX12.lib"), CallingConvention(.Cdecl), LinkName("GraphicsDevice_CreatePipelineState")]
-		private static extern int32 GraphicsDevice_CreatePipelineState(void* _this, void** pPipelineState, InputLayoutElement* pInputlayouts, uint32 inputLayoutCount, void* pRootSignature,
-			void* pVertexShader, void* pFragmentShader, TopologyType topologyType, RenderTargetFormat renderTargetFormat, uint32 msaa, uint32 aaQuality, uint32 sampleMask);
+		private static extern int32 GraphicsDevice_CreatePipelineState(void* _this, void** pPipelineState, uint32 nodeMask, PipelineStateFlags flags,
+			InputLayoutElementDesc* pInputlayouts, uint32 inputLayoutCount, void* pRootSignature, void* pVertexShader, void* pFragmentShader,
+			PrimitiveTopologyType topologyType, RenderTargetFormat rtvFormat, DepthStencilFormat dsvFormat,  uint32 msaa, uint32 aaQuality, uint32 sampleMask);
+
+		[Import("DX12.lib"), CallingConvention(.Cdecl), LinkName("GraphicsDevice_CreatePipelineState")]
+		private static extern int32 GraphicsDevice_CreatePipelineState(void* _this, void** pPipelineState, PipelineStateDesc* pDesc);
 
 		[Import("DX12.lib"), CallingConvention(.Cdecl), LinkName("GraphicsDevice_CreateCommittedBufferResource")]
 		private static extern int32 GraphicsDevice_CreateCommittedBufferResource(void* _this, void** pBuffer, HeapType heapType, uint64 resourceSize, HeapFlags heapFlags, ResourceStates resourceStates);

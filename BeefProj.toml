@@ -1,5 +1,4 @@
 FileVersion = 1
-Dependencies = {corlib = "*", ImGui = "*"}
 
 [Project]
 Name = "KairosEngine"

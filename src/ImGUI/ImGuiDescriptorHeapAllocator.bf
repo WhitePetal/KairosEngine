@@ -6,21 +6,21 @@ namespace KairosEngine.ImGUI
 {
 	public struct ImGuiDescriptorHeapAllocator
 	{
-		public GraphicsDescriptorHeap* HeapPtr;
+		public GraphicsDescriptorHeap Heap;
 		public DescriptorHeapType HeapType;
-		public GraphicsCPUDescriptorHandle HeapStartCpu;
-		public GraphicsGPUDescriptorHandle HeapStartGpu;
+		public DescriptorCpuHandle HeapStartCpu;
+		public DescriptorGpuHandle HeapStartGpu;
 		public uint32 HeapHandleIncrement;
 		public ImGui.Vector<int32> FreeIndices;
 
-		public void Create(GraphicsDevice* pDevice, GraphicsDescriptorHeap* pHeap) mut
+		public void Create(GraphicsDevice device, GraphicsDescriptorHeap heap) mut
 		{
-			HeapPtr = pHeap;
-			var desc = pHeap.GetDesc();
+			Heap = heap;
+			var desc = Heap.GetDesc();
 			HeapType = desc.Type;
-			HeapStartCpu = HeapPtr.GetCPUDescriptorHandleForHeapStart();
-			HeapStartGpu = HeapPtr.GetGPUDescriptorHandleForHeapStart();
-			HeapHandleIncrement = pDevice.GetDescriptorHandleIncrementSize(HeapType);
+			HeapStartCpu = Heap.GetCPUDescriptorHandleForHeapStart();
+			HeapStartGpu = Heap.GetGPUDescriptorHandleForHeapStart();
+			HeapHandleIncrement = device.GetDescriptorHandleIncrementSize(HeapType);
 			int32 descriptorCount = int32(desc.NumDescriptors);
 			FreeIndices.Reserve(descriptorCount);
 			for(int32 n = descriptorCount; n > 0; --n)
@@ -29,11 +29,11 @@ namespace KairosEngine.ImGUI
 
 		public void Destroy() mut
 		{
-			HeapPtr = null;
+			Heap = null;
 			FreeIndices.Clear();
 		}
 
-		public void Alloc(GraphicsCPUDescriptorHandle* pOutCpuDescHandle, GraphicsGPUDescriptorHandle* pOutGpuDescHandle) mut
+		public void Alloc(ref DescriptorCpuHandle pOutCpuDescHandle, ref DescriptorGpuHandle pOutGpuDescHandle) mut
 		{
 			int32 idx = FreeIndices.Data[FreeIndices.Size - 1];
 			FreeIndices.PopBack();
@@ -41,7 +41,7 @@ namespace KairosEngine.ImGUI
 			pOutGpuDescHandle.Ptr = pOutCpuDescHandle.Ptr + (uint32(idx) * HeapHandleIncrement);
 		}
 
-		public void Free(GraphicsCPUDescriptorHandle outCpuDescHandle, GraphicsGPUDescriptorHandle outGpuDescHandle) mut
+		public void Free(DescriptorCpuHandle outCpuDescHandle, DescriptorGpuHandle outGpuDescHandle) mut
 		{
 			int32 cpu_idx = (int32)((outCpuDescHandle.Ptr - HeapStartCpu.Ptr) / HeapHandleIncrement);
 			int32 gpu_idx = (int32)((outGpuDescHandle.Ptr - HeapStartGpu.Ptr) / HeapHandleIncrement);

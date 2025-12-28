@@ -79,12 +79,20 @@ namespace KairosEngine.Graphics
 			return (hr, rootSignature);
 		}
 
-		public (int32 hr, GraphicsPipelineState pipelineState) CreatePipelineState(InputLayoutElement[] inputlayouts, GraphicsRootSignature graphicsRootSignature,
-			GraphicsShader graphicsVertexShader, GraphicsShader graphicsFragmentShader, TopologyType topologyType, RenderTargetFormat renderTargetFormat, uint32 msaa, uint32 aaQuality, uint32 sampleMask)
+		public (int32 hr, GraphicsPipelineState pipelineState) CreatePipelineState(uint32 nodeMask, PipelineStateFlags flags, InputLayoutElementDesc[] inputlayouts, GraphicsRootSignature graphicsRootSignature,
+			GraphicsShader graphicsVertexShader, GraphicsShader graphicsFragmentShader, PrimitiveTopologyType topologyType, RenderTargetFormat rtvFormat, DepthStencilFormat dsvFormat, uint32 msaa, uint32 aaQuality, uint32 sampleMask)
 		{
 			GraphicsPipelineState pipelineState = new GraphicsPipelineState();
-			int32 hr = GraphicsDevice_CreatePipelineState(pInternalDevice, &pipelineState.pInternalPipelineState, inputlayouts.Ptr, 1, graphicsRootSignature.pInternalRootSignature,
-				graphicsVertexShader.pInternalShader, graphicsFragmentShader.pInternalShader, topologyType, renderTargetFormat, msaa, aaQuality, sampleMask);
+			int32 hr = GraphicsDevice_CreatePipelineState(pInternalDevice, &pipelineState.pInternalPipelineState, nodeMask, flags,
+				inputlayouts.Ptr, uint32(inputlayouts.Count), graphicsRootSignature.pInternalRootSignature, graphicsVertexShader.pInternalShader, graphicsFragmentShader.pInternalShader,
+				topologyType, rtvFormat, dsvFormat, msaa, aaQuality, sampleMask);
+			return (hr, pipelineState);
+		}
+
+		public (int32 hr, GraphicsPipelineState pipelineState) CreatePipelineState(ref PipelineStateDesc desc)
+		{
+			GraphicsPipelineState pipelineState = new GraphicsPipelineState();
+			int32 hr = GraphicsDevice_CreatePipelineState(pInternalDevice, &pipelineState.pInternalPipelineState, &desc);
 			return (hr, pipelineState);
 		}
 

@@ -22,5 +22,15 @@ namespace KairosEngine.Graphics
 			int32 hr = GraphicsShader_CreateWithoutErrorInfo(&pInternalShader, pathUtf16, type, ShaderCompileFlags.DEBUG | ShaderCompileFlags.SKIP_OPTIMIZATION);
 			return hr;
 		}
+
+		public void* GetBufferPointer()
+		{
+			return GraphicsShader_GetBufferPointer(pInternalShader);
+		}
+
+		public uint64 GetBufferSize()
+		{
+			return GraphicsShader_GetBufferSize(pInternalShader);
+		}
 	}
 }

@@ -12,6 +12,7 @@
 #include "GraphicsPipelineState.h"
 #include "GraphicsShader.h"
 #include "GraphicsResource.h"
+#include "PipelineStateBaseDesc.h"
 #include <d3d12.h>
 #include <dxgi1_4.h>
 #include <D3Dcompiler.h>
@@ -43,8 +44,11 @@ int KAIROS_API GraphicsDevice_CreateEmptyRootSignature(ID3D12Device* _this, ID3D
 
 int KAIROS_API GraphicsDevice_CreateRootSignature(ID3D12Device* _this, ID3D12RootSignature** ppRootSignature, D3D12_ROOT_SIGNATURE_DESC* pDesc);
 
-int KAIROS_API GraphicsDevice_CreatePipelineState(ID3D12Device* _this, ID3D12PipelineState** ppPipelineState, D3D12_INPUT_ELEMENT_DESC* pInputLayout, UINT inputLayoutCount, ID3D12RootSignature* pRootSignature,
-	ID3DBlob* pVertexShader, ID3DBlob* pFragmentShader, D3D12_PRIMITIVE_TOPOLOGY_TYPE topologyType, DXGI_FORMAT renderTargetFormat, UINT msaa, UINT aaQuality, UINT sampleMask);
+int KAIROS_API GraphicsDevice_CreatePipelineState(ID3D12Device* _this, ID3D12PipelineState** ppPipelineState, UINT nodeMask, D3D12_PIPELINE_STATE_FLAGS flags,
+	D3D12_INPUT_ELEMENT_DESC* pInputLayout, UINT inputLayoutCount, ID3D12RootSignature* pRootSignature, ID3DBlob* pVertexShader, ID3DBlob* pFragmentShader,
+	D3D12_PRIMITIVE_TOPOLOGY_TYPE topologyType, DXGI_FORMAT rtvFormat, DXGI_FORMAT dsvFormat, UINT msaa, UINT aaQuality, UINT sampleMask);
+
+int KAIROS_API GraphicsDevice_CreatePipelineState(ID3D12Device* _this, ID3D12PipelineState** ppPipelineState, D3D12_GRAPHICS_PIPELINE_STATE_DESC* pDesc);
 
 int KAIROS_API GraphicsDevice_CreateCommittedBufferResource(ID3D12Device* _this, ID3D12Resource** ppBuffer, D3D12_HEAP_TYPE heapType, UINT64 resourceSize, D3D12_HEAP_FLAGS heapFlags, D3D12_RESOURCE_STATES resourceStates);
 

@@ -1,6 +1,6 @@
 namespace KairosEngine.Graphics
 {
-	public enum TopologyType : uint32
+	public enum PrimitiveTopologyType : uint32
 	{
 		UNDEFINED	= 0,
 		POINT		= 1,

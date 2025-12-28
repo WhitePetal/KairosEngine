@@ -1,5 +1,5 @@
 FileVersion = 1
-Projects = {KairosEngine = {Path = "."}, ImGui = {Path = "ImGUIs/imgui-beef"}}
+Projects = {KairosEngine = {Path = "."}}
 Unlocked = ["corlib"]
 
 [Workspace]

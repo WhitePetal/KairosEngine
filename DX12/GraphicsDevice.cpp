@@ -101,8 +101,9 @@ int KAIROS_API GraphicsDevice_CreateRootSignature(ID3D12Device* _this, ID3D12Roo
 	return hr;
 }
 
-int KAIROS_API GraphicsDevice_CreatePipelineState(ID3D12Device* _this, ID3D12PipelineState** ppPipelineState, D3D12_INPUT_ELEMENT_DESC* pInputLayout, UINT inputLayoutCount, ID3D12RootSignature* pRootSignature,
-	ID3DBlob* pVertexShader, ID3DBlob* pFragmentShader, D3D12_PRIMITIVE_TOPOLOGY_TYPE topologyType, DXGI_FORMAT renderTargetFormat, UINT msaa, UINT aaQuality, UINT sampleMask)
+int KAIROS_API GraphicsDevice_CreatePipelineState(ID3D12Device* _this, ID3D12PipelineState** ppPipelineState, UINT nodeMask, D3D12_PIPELINE_STATE_FLAGS flags,
+	D3D12_INPUT_ELEMENT_DESC* pInputLayout, UINT inputLayoutCount, ID3D12RootSignature* pRootSignature, ID3DBlob* pVertexShader, ID3DBlob* pFragmentShader, 
+	D3D12_PRIMITIVE_TOPOLOGY_TYPE topologyType, DXGI_FORMAT rtvFormat, DXGI_FORMAT dsvFormat, UINT msaa, UINT aaQuality, UINT sampleMask)
 {
 	D3D12_SHADER_BYTECODE vertexShaderBytecode = {};
 	vertexShaderBytecode.pShaderBytecode = pVertexShader->GetBufferPointer();
@@ -121,20 +122,31 @@ int KAIROS_API GraphicsDevice_CreatePipelineState(ID3D12Device* _this, ID3D12Pip
 	inputLayoutDesc.pInputElementDescs = pInputLayout;
 
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+	psoDesc.NodeMask = nodeMask;
 	psoDesc.InputLayout = inputLayoutDesc;
 	psoDesc.pRootSignature = pRootSignature;
 	psoDesc.VS = vertexShaderBytecode;
 	psoDesc.PS = fragmentShaderBytecode;
 	psoDesc.PrimitiveTopologyType = topologyType;
-	psoDesc.RTVFormats[0] = renderTargetFormat;
+	psoDesc.RTVFormats[0] = rtvFormat;
+	psoDesc.DSVFormat = dsvFormat;
 	psoDesc.SampleDesc = sampleDesc;
 	psoDesc.SampleMask = sampleMask;
 	psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
 	psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
 	psoDesc.NumRenderTargets = 1;
+	psoDesc.Flags = flags;
 
 	ID3D12PipelineState* pPipelineState;
 	HRESULT hr = _this->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pPipelineState));
+	*ppPipelineState = pPipelineState;
+	return hr;
+}
+
+int KAIROS_API GraphicsDevice_CreatePipelineState(ID3D12Device* _this, ID3D12PipelineState** ppPipelineState, D3D12_GRAPHICS_PIPELINE_STATE_DESC* pDesc)
+{
+	ID3D12PipelineState* pPipelineState;
+	HRESULT hr = _this->CreateGraphicsPipelineState(pDesc, IID_PPV_ARGS(&pPipelineState));
 	*ppPipelineState = pPipelineState;
 	return hr;
 }

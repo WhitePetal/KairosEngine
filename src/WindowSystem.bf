@@ -48,7 +48,7 @@ namespace KairosEngine
 			return WindowSystem.KairosDefWindowProcW(hWnd, msg, wParam, lParam);
 		}
 
-		public int32 CreateWindow(Windows.HModule hInstanc, int32_4 rect, bool fullScreen, String windowName, String windowTitle)
+		public (int32 id, Windows.HWnd hWnd) CreateWindow(Windows.HModule hInstanc, int32_4 rect, bool fullScreen, String windowName, String windowTitle)
 		{
 			char16* wndName;
 			char16* wndTitle;
@@ -60,11 +60,11 @@ namespace KairosEngine
 			if(hwnd == 0)
 			{
 				Console.WriteLine($"Window Initialization - Failed");
-				return -1;
+				return (-1, hwnd);
 			}
 			int32 id = m_Components.CreateWindow(rect, fullScreen, hwnd);
 
-			return id;
+			return (id, hwnd);
 		}
 
 		public void DestroyWindow(int32 id)

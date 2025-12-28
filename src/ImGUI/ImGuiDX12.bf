@@ -13,24 +13,24 @@ namespace KairosEngine.ImGUI
 		public static void InvalidateDeviceObjects()
 		{
 			ImGuiDX12Data* bd = GetBackendData();
-			if(bd == null || bd.pDevice == null)
+			if(bd == null || bd.Device == null)
 				return;
 
-			bd.pFactory.Dispose();
-			bd.pCommandQueue.Dispose();
+			Safty.DELETE!(bd.Factory);
+			Safty.DELETE!(bd.CommandQueue);
 			bd.CommandQueueOwned = false;
-			bd.pRootSignature.Dispose();
-			bd.pPipelineState.Dispose();
+			Safty.DELETE!(bd.RootSignature);
+			Safty.DELETE!(bd.PipelineState);
 			if(bd.pTexUploadBufferMapped != null)
 			{
-				bd.pTexUploadBuffer.Unmap(0, 0, bd.pTexUploadBufferSize);
+				bd.TexUploadBuffer.Unmap(0, 0, bd.pTexUploadBufferSize);
 				bd.pTexUploadBufferMapped = null;
 			}
-			bd.pTexUploadBuffer.Dispose();
-			bd.pTexCmdList.Dispose();
-			bd.pTexCmdAllocator.Dispose();
-			bd.pFence.Dispose();
-			bd.FenceEvent.Dispose();
+			Safty.DELETE!(bd.TexUploadBuffer);
+			Safty.DELETE!(bd.TexCmdList);
+			Safty.DELETE!(bd.TexCmdAllocator);
+			Safty.DELETE!(bd.Fence);
+			bd.FenceEvent.Close();
 			bd.FenceEvent = default;
 
 			// destroy all textures
@@ -41,13 +41,6 @@ namespace KairosEngine.ImGUI
 				if(tex.RefCount == 1)
 					DestroyTexture(tex);
 			}
-
-			for(uint32 i = 0; i < bd.NumFramesInFlight; ++i)
-			{
-				ImGuiDX12RenderBuffers* fr = &bd.pFrameResources[i];
-				fr.pIndexBuffer.Dispose();
-				fr.pVertexBuffer.Dispose();
-			}
 		}
 
 		public static void DestroyTexture(ImGui.TextureData* tex)
@@ -57,7 +50,7 @@ namespace KairosEngine.ImGUI
 			{
 				ImGuiDX12Data* bd = GetBackendData();
 				bd.InitInfo.SrvDescriptorFreeFn(&bd.InitInfo, backend_tex.FontSrvCpuDescHandle, backend_tex.FontSrvGpuDescHandle);
-				backend_tex.pTextureResource.Dispose();
+				Safty.DELETE!(backend_tex.TextureResource);
 				backend_tex.FontSrvCpuDescHandle.Ptr = 0;
 				backend_tex.FontSrvGpuDescHandle.Ptr = 0;
 				ImGui.MemFree(backend_tex);
@@ -71,23 +64,23 @@ namespace KairosEngine.ImGUI
 		public static int32 CreateDeviceObjects()
 		{
 			ImGuiDX12Data* bd = GetBackendData();
-			if(bd == null || bd.pDevice == null)
+			if(bd == null || bd.Device == null)
 				return 1;
-			if(bd.pPipelineState != null)
+			if(bd.PipelineState != null)
 				InvalidateDeviceObjects();
 
-			GraphicsFactory* pFactory = new GraphicsFactory();
-			int32 hr = pFactory.Create();
+			GraphicsFactory Factory = new GraphicsFactory();
+			int32 hr = Factory.Create();
 			if(hr > 0)
 				return hr;
 
 			bool allow_tearing = false;
-			bd.pFactory = pFactory;
-			bd.pFactory.CheckFeatureSupport(GraphicsFeature.PRESENT_ALLOW_TEARING, &allow_tearing, sizeof(bool));
+			bd.Factory = Factory;
+			bd.Factory.CheckFeatureSupport(Feature.PRESENT_ALLOW_TEARING, &allow_tearing, sizeof(bool));
 			bd.TearingSupport = allow_tearing;
 
 			// Create the root signature
-			GraphicsDescriptorRange descRange = GraphicsDescriptorRange
+			DescriptorRange descRange = DescriptorRange
 			{
 				RangeType = DescriptorRangeType.SRV,
 				NumDescriptors = 1,
@@ -96,7 +89,7 @@ namespace KairosEngine.ImGUI
 				OffsetInDescriptorsFromTableStart = 0
 			};
 
-			GraphicsRootParameter[] param = scope GraphicsRootParameter[2](?);
+			RootParameter[] param = scope RootParameter[2](?);
 
 			param[0].ParameterType = RootParameterType._32BIT_CONSTANTS;
 			param[0].Unio.Constants.ShaderRegister = 0;
@@ -109,7 +102,7 @@ namespace KairosEngine.ImGUI
 			param[1].Unio.DescriptorTable.pDescriptorRanges = &descRange;
 			param[1].ShaderVisibility = ShaderVisibility.FRAGMENT;
 
-			GraphicsStaticSamplerDesc[] staticSampler = scope GraphicsStaticSamplerDesc[1](?);
+			StaticSamplerDesc[] staticSampler = scope StaticSamplerDesc[1](?);
 			staticSampler[0].Filter = SamplerFilter.MIN_MAG_MIP_LINEAR;
 			staticSampler[0].AddressU = TextureAddressMode.CLAMP;
 			staticSampler[0].AddressV = TextureAddressMode.CLAMP;
@@ -124,7 +117,7 @@ namespace KairosEngine.ImGUI
 			staticSampler[0].RegisterSpace = 0;
 			staticSampler[0].ShaderVisibility = ShaderVisibility.FRAGMENT;
 
-			GraphicsRootSignatureDesc desc = GraphicsRootSignatureDesc
+			RootSignatureDesc desc = RootSignatureDesc
 			{
 				NumParameters = uint32(param.Count),
 				pParameters = param.Ptr,
@@ -137,27 +130,51 @@ namespace KairosEngine.ImGUI
 					RootSignatureFlags.DENY_GEOMETRY_SHADER_ROOT_ACCESS
 			};
 
-			(hr, )bd.pDevice.CreateRootSignature(ref desc);
-		}
-
-		public static int32 NewFrame()
-		{
-			TestA ta = new TestA();
-			TestA[] ar = new TestA[10](?);
-			ar[0] = ta;
-			ar[1] = TestA();
-			ImGuiDX12Data* bd = GetBackendData();
-			if(bd == null)
-				return int32(ErrorCodes.BackendDataIsNull);
-			if(bd.pPipelineState == null)
-				return CreateDeviceObjects();
-
-			return int32(ErrorCodes.ImGUI_Success);
+			/*(hr, )bd.pDevice.CreateRootSignature(ref desc);*/
+			return 0;
 		}
 
 		public static void InitMultiViewportSupport()
 		{
+			ImGui.PlatformIO* platform_io = ImGui.GetPlatformIO();
+		}
 
+		public static void InitDX12(ImGuiDX12InitInfo* pInitInfo)
+		{
+			ImGui.IO* io = ImGui.GetIO();
+			ImGuiDX12Data* bd = new ImGuiDX12Data();
+			bd.InitInfo = *pInitInfo;
+			bd.Device = pInitInfo.Device;
+			bd.CommandQueue = pInitInfo.CommandQueue;
+			bd.RTVFormat = pInitInfo.RTVFormat;
+			bd.DSVFormat = pInitInfo.DSVFormat;
+			bd.NumFramesInFlight = uint32(pInitInfo.NumFramesInFlight);
+			bd.SrvDescHeap = pInitInfo.SrvDescriptorHeap;
+
+			bd.TearingSupport = false;
+
+			io.BackendRendererUserData = bd;
+			io.BackendRendererName = "KairosEngine_DX12";
+			io.BackendFlags |= ImGui.BackendFlags.RendererHasVtxOffset;
+			io.BackendFlags |= ImGui.BackendFlags.RendererHasTextures;
+			io.BackendFlags |= ImGui.BackendFlags.RendererHasViewports;
+
+			if((io.ConfigFlags & ImGui.ConfigFlags.ViewportsEnable) != 0)
+				ImGuiDX12.InitMultiViewportSupport();
+
+			ImGui.Viewport* main_viewport = ImGui.GetMainViewport();
+			main_viewport.RendererUserData = System.Internal.UnsafeCastToPtr(new ImGuiDX12ViewPortData(bd.NumFramesInFlight));
+		}
+
+		public static int32 NewFrame()
+		{
+			ImGuiDX12Data* bd = GetBackendData();
+			if(bd == null)
+				return int32(ErrorCodes.BackendDataIsNull);
+			if(bd.PipelineState == null)
+				return CreateDeviceObjects();
+
+			return int32(ErrorCodes.ImGUI_Success);
 		}
 	}
 }
