@@ -1,3 +1,7 @@
+mod kairos_dialog;
+
+
+use egui::{Color32, FontFamily, FontId, Rect, UiBuilder, Vec2, Widget};
 use egui_wgpu_backend::{RenderPass, ScreenDescriptor};
 use egui_winit_platform::{Platform, PlatformDescriptor};
 use winit::{
@@ -8,13 +12,18 @@ use winit::{
     window::WindowAttributes,
 };
 
-fn main() -> anyhow::Result<()> {
+fn main() {
     env_logger::init();
 
-    let event_loop = EventLoop::new()?;
+    let event_loop = EventLoop::new().unwrap_or_else(|error| {
+        kairos_dialog::error_message_window("Init Failed", &format!("Create EventLoop Failed, error info:\n {error:?}"));
+        panic!("Create EventLoop Failed");
+    });
     let mut app = App::default();
-    event_loop.run_app(&mut app)?;
-    Ok(())
+    event_loop.run_app(&mut app).unwrap_or_else(|error| {
+        kairos_dialog::error_message_window("Init Failed", &format!("Run App Failed, error info:\n {error:?}"));
+        panic!("Run App Failed");
+    });
 }
 
 #[derive(Default)]
@@ -26,8 +35,11 @@ struct App {
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        let window = match event_loop
-            .create_window(WindowAttributes::default().with_title("KairosEngine"))
+        let window = match event_loop.create_window(
+            WindowAttributes::default()
+            .with_title("KairosEngine")
+            .with_decorations(false)
+        )
         {
             Ok(w) => w,
             Err(err) => {
@@ -207,10 +219,11 @@ impl State {
         let ctx = self.platform.context();
 
         egui::TopBottomPanel::top("top").show(&ctx, |ui| {
+            self.draw_title_bar(ui);
             ui.heading("Hello egui");
         });
         egui::CentralPanel::default().show(&ctx, |ui| {
-            ui.label(String::from("这是一个基于 egui_wgpu_backend + winit 的默认窗口示例。"));
+            ui.label(String::from("This is a Default Window Example base egui_wgpu_backend + winit."));
         });
 
         let full_output = self.platform.end_pass(Some(window));
@@ -281,5 +294,46 @@ impl State {
         output_frame.present();
 
         Ok(())
+    }
+
+    fn draw_title_bar(&mut self, ui: &mut egui::Ui) {
+        // 1. 设置顶部栏样式 (背景色、尺寸、圆角)
+        let title_bar_height = 32.0;
+        let title_bar_rect = Rect::from_min_size(
+            ui.min_rect().min, 
+            Vec2::new(ui.available_width(), title_bar_height)
+        );
+
+        // 绘制顶部栏背景
+        ui.painter().rect_filled(
+            title_bar_rect, 
+            0.0, // 圆角 (0.0 为直角)
+            Color32::from_rgb(40, 40, 40)
+        );
+
+        ui.scope_builder(
+            UiBuilder::new().id_salt("title_bar"), 
+            |ui| {
+                ui.set_height(title_bar_height);
+                ui.horizontal(|ui| {
+                    // 左对齐: 窗口标题
+                    ui.add_space(8.0); // 左边距
+                    ui.label(egui::RichText::new("Custome Title Bar Example")
+                        .font(FontId::new(14.0, FontFamily::Proportional))
+                        .color(Color32::WHITE));
+                    
+                    // 右对齐: 控制按钮 (最小化、关闭)
+                    ui.with_layout(
+                        egui::Layout::right_to_left(egui::Align::Center), 
+                        |ui| {
+                        // 最小化按钮
+                        if ui.button("-").clicked()
+                        {
+                                
+                        }
+                    })
+                }
+            )}
+        );
     }
 }
