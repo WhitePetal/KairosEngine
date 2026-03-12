@@ -4,17 +4,34 @@ mod math;
 mod egui_utils;
 mod consts;
 
-use eframe::{self, App, egui};
+use std::sync::Arc;
 
+use eframe::{self, egui};
+
+use crate::consts::KAIROS_ENGINE_VERSION;
 use crate::kairos_editor::main_window::MainEditorWindow;
 
 fn main() -> eframe::Result {
     const APP_NAME: &str = "KairosEngine";
-    let options = eframe::NativeOptions{
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([800.0, 600.0])
-            .with_decorations(false)
-            .with_transparent(false),
+    let window_title = format!("Kairos Engine {}", KAIROS_ENGINE_VERSION);
+    let icon = std::fs::read(kairos_editor::paths::PATH_ENGINE_ICON)
+        .ok()
+        .and_then(|bytes| eframe::icon_data::from_png_bytes(&bytes).ok())
+        .map(Arc::new);
+
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_inner_size([800.0, 600.0])
+        .with_decorations(true)
+        .with_transparent(false)
+        .with_title(window_title);
+
+    match icon {
+        Some(icon) => viewport = viewport.with_icon(icon),
+        None => {}
+    };
+
+    let options = eframe::NativeOptions {
+        viewport,
         ..Default::default()
     };
 

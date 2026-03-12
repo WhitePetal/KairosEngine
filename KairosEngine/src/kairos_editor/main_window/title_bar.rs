@@ -1,29 +1,32 @@
-use eframe::egui;
+//! 自定义TitleBar
+//! 目前处于弃用状态，转为使用原生系统标题栏
 
-use super::title_bar_model::TitleBarModel;
-use super::title_bar_view::TitleBarView;
+// use eframe::egui;
 
-pub struct TitleBar {
-    model: TitleBarModel,
-    view: TitleBarView
-}
+// use super::title_bar_model::TitleBarModel;
+// use super::title_bar_view::TitleBarView;
 
-impl TitleBar {
-    pub fn new(ctx: &egui::Context) -> Result<Self, Box<dyn std::error::Error>> {
-        let model = TitleBarModel::new(ctx)?;
-        let view = TitleBarView::new();
+// pub struct TitleBar {
+//     model: TitleBarModel,
+//     view: TitleBarView
+// }
 
-        Ok(Self{
-            model: model,
-            view: view
-        })
-    }
+// impl TitleBar {
+//     pub fn new(ctx: &egui::Context) -> Result<Self, Box<dyn std::error::Error>> {
+//         let model = TitleBarModel::new(ctx)?;
+//         let view = TitleBarView::new();
 
-    pub fn update(&self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame) {
-        self.view.draw(ctx, frame, &self.model);
-    }
+//         Ok(Self{
+//             model: model,
+//             view: view
+//         })
+//     }
 
-    pub fn get_height(&self) -> f32 {
-        self.model.style.height
-    }
-}
+//     pub fn update(&self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame) {
+//         self.view.draw(ctx, frame, &self.model);
+//     }
+
+//     pub fn get_height(&self) -> f32 {
+//         self.model.style.height
+//     }
+// }

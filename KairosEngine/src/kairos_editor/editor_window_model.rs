@@ -15,7 +15,6 @@ pub struct EditorWindowModel {
     pub style: EditorWindowStyle,
     pub title: String,
     pub is_maximized: bool,
-    pub title_bar_spaces: f32
 }
 
 impl EditorWindowStyle {
@@ -38,7 +37,6 @@ impl EditorWindowModel {
             style: style, 
             title: title.to_string(), 
             is_maximized: false,
-            title_bar_spaces: 32.0
         })
     }
 }

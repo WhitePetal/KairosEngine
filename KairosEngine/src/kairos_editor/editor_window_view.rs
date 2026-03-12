@@ -26,8 +26,6 @@ impl EditorWindowView {
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE.fill(model.style.central_panel_color.into()))
             .show(ctx, |ui| {
-                ui.add_space(model.title_bar_spaces);
-
                 ui.vertical_centered(|ui| {
                     ui.add_space(100.0);
                     ui.label(RichText::new("Main Content Area").size(24.0).color(Color32::LIGHT_GRAY));

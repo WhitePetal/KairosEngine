@@ -4,7 +4,8 @@
     "corner_radius": 0.0,
     "fill_color": "#262626",
     "icon_left_space": 4.0,
-    "icon_size": 16.0,
+    "icon_boader": 2.0,
+    "title_text_left_space": 0.0,
     "title_text_size": 16.0,
     "title_text_color": "#adadad",
     "title_text_font_size": 28.0
