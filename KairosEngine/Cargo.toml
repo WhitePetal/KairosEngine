@@ -1,7 +1,11 @@
+[build]
+rustflags = ["-C", "target-cpu=native"]
+
 [package]
 name = "KairosEngine"
 version = "0.1.0"
 edition = "2024"
+include = ["Preferences/**/*"]
 
 [dependencies]
 anyhow = "1.0"
@@ -9,8 +13,10 @@ winit = { version = "0.30", features = ["android-native-activity"] }
 env_logger = "0.10"
 log = "0.4"
 native-dialog = "0.9.6"
+serde = "1.0.228"
+sonic-rs = "0.5.7"
+image = { version = "0.25.10", features = ["png"] }
 wgpu = "28.0"
 pollster = "0.3"
-egui = "0.33.3"
-egui_wgpu_backend = "0.36.0"
-egui_winit_platform = "0.28.0"
+eframe = { version = "0.33.3", features = ["wgpu"] }
+egui_extras = { version = "0.33.3", features = ["all_loaders"] }
