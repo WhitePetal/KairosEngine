@@ -6,19 +6,19 @@
 // use eframe::egui::{self, TextureHandle};
 // use sonic_rs::{Deserialize, Serialize, from_str};
 
-// use crate::{consts, kairos_editor::paths, math::color};
+// use crate::{consts, kairos_editor::paths, math};
 
 // #[derive(Debug, Serialize, Deserialize)]
 // pub struct TitleBarStyle {
 //     pub height: f32,
 //     pub button_width: f32,
 //     pub corner_radius: f32,
-//     pub fill_color: color::Color32,
+//     pub fill_color: math::Color32,
 //     pub icon_left_space: f32,
 //     pub icon_boader: f32,
 //     pub title_text_left_space: f32,
 //     pub title_text_size: f32,
-//     pub title_text_color: color::Color32,
+//     pub title_text_color: math::Color32,
 //     pub title_text_font_size: f32
 // }
 

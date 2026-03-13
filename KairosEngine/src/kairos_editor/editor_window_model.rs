@@ -1,14 +1,14 @@
 use std::fs;
 
 use super::paths;
-use crate::{math::color};
+use crate::{math};
 use sonic_rs::{Deserialize, Serialize, from_str};
 
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EditorWindowStyle {
-    pub background_color: color::Color32,
-    pub central_panel_color: color::Color32
+    pub background_color: math::Color32,
+    pub central_panel_color: math::Color32
 }
 
 pub struct EditorWindowModel {
