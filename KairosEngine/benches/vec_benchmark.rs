@@ -31,7 +31,7 @@ impl _float4_simd {
     }
 
     #[inline(always)]
-    pub fn dot_simd(&self, other: &Self) -> f32 {
+    pub fn dot(&self, other: &Self) -> f32 {
         (self.0 * other.0).reduce_sum()
     }
 }
@@ -49,7 +49,14 @@ fn bench_float4_dot(c: &mut Criterion) {
             let vl = _float4_simd::new(*x, *y, *z, *w);
             let vr = _float4_simd::new(*w, *z, *y, *x);
             
-            black_box(_float4_simd::dot_simd(&vl, &vr));
+            black_box(_float4_simd::dot(&vl, &vr));
+        }));
+        group.bench_with_input(BenchmarkId::new("default", i), &(x, y, z, w), |b, input| b.iter(|| {
+            let (x, y, z, w) = *black_box(input);
+            let vl = _float4::new(*x, *y, *z, *w);
+            let vr = _float4::new(*w, *z, *y, *x);
+            
+            black_box(_float4::dot(&vl, &vr));
         }));
         group.bench_with_input(BenchmarkId::new("kairos", i), &(x, y, z, w), |b, input| b.iter(|| {
             let (x, y, z, w) = *black_box(input);
