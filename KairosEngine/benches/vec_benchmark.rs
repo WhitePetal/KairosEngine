@@ -1,7 +1,7 @@
-// #![feature(portable_simd)]
+#![feature(portable_simd)]
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use std::hint::black_box;
+use std::{hint::black_box, simd, simd::num::SimdFloat};
 use kairos_engine::math;
 // use std::simd::{f32x4, simd_swizzle};
 
@@ -12,11 +12,27 @@ struct _float4 {
     w: f32
 }
 impl _float4 {
+    #[inline]
     fn new(x: f32, y: f32, z: f32, w: f32) -> Self {
         Self { x, y, z, w }
     }
+    #[inline(always)]
     fn dot(&self, other: &Self) -> f32 {
         self.x * other.x + self.y * other.y + self.z * other.z + self.w * other.w
+    }
+}
+
+struct _float4_simd(simd::f32x4);
+
+impl _float4_simd {
+    #[inline]
+    pub fn new(x: f32, y: f32, z: f32, w: f32) -> Self {
+        Self(simd::f32x4::from_array([x, y, z, w]))
+    }
+
+    #[inline(always)]
+    pub fn dot_simd(&self, other: &Self) -> f32 {
+        (self.0 * other.0).reduce_sum()
     }
 }
 
@@ -27,22 +43,20 @@ fn bench_float4_dot(c: &mut Criterion) {
         (1.0, 2.0, 3.0, 4.0),
         (4.0, 5.0, 2.0, 3.0)
     ];
-    let mut i = 0;
-
-    for (x, y, z, w) in ar.iter() {
-        i += 1;
-
-        group.bench_with_input(BenchmarkId::new("leagcy", i), &(x, y, z, w), |b, i| b.iter(|| {
-            let vl = _float4::new(*x, *y, *z, *w);
-            let vr = _float4::new(*z, *w, *y, *x);
+    for (i, (x, y, z, w)) in ar.iter().enumerate() {
+        group.bench_with_input(BenchmarkId::new("simid", i), &(x, y, z, w), |b, input| b.iter(|| {
+            let (x, y, z, w) = *black_box(input);
+            let vl = _float4_simd::new(*x, *y, *z, *w);
+            let vr = _float4_simd::new(*w, *z, *y, *x);
             
-            black_box(_float4::dot(&vl, &vr));
+            black_box(_float4_simd::dot_simd(&vl, &vr));
         }));
-        group.bench_with_input(BenchmarkId::new("simid", i), &(x, y, z, w), |b, i| b.iter(|| {
+        group.bench_with_input(BenchmarkId::new("kairos", i), &(x, y, z, w), |b, input| b.iter(|| {
+            let (x, y, z, w) = *black_box(input);
             let vl = math::float4::new(*x, *y, *z, *w);
-            let vr = math::float4::new(*z, *w, *y, *x);
+            let vr = math::float4::new(*w, *z, *y, *x);
             
-            math::float4::dot(&vl, &vr);
+            black_box(math::float4::dot(&vl, &vr));
         }));
     }
 }

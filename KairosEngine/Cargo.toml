@@ -1,4 +1,9 @@
+cargo-features = ["profile-rustflags"]
+
 [build]
+rustflags = ["-C", "target-cpu=native"]
+
+[profile.bench]
 rustflags = ["-C", "target-cpu=native"]
 
 [package]
