@@ -1,9 +1,5 @@
-#![feature(test)]
-#![feature(portable_simd)]
-
 mod kairos_dialog;
 mod kairos_editor;
-mod math;
 mod egui_utils;
 mod consts;
 

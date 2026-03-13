@@ -2,10 +2,12 @@
 rustflags = ["-C", "target-cpu=native"]
 
 [package]
-name = "KairosEngine"
+name = "kairos_engine"
 version = "0.1.0"
 edition = "2024"
-include = ["Preferences/**/*"]
+
+[dev-dependencies]
+criterion = "0.8.2"
 
 [dependencies]
 anyhow = "1.0"
@@ -20,3 +22,7 @@ wgpu = "28.0"
 pollster = "0.3"
 eframe = { version = "0.33.3", features = ["wgpu"] }
 egui_extras = { version = "0.33.3", features = ["all_loaders"] }
+
+[[bench]]
+name = "vec_benchmark"
+harness = false
