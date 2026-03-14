@@ -3,10 +3,86 @@ mod tests;
 
 mod converts;
 
-use std::{ops::{Add, Div, Index, Mul, Sub}, simd::{f32x2, f32x4, num::SimdFloat, simd_swizzle}};
+use std::{ops::{Add, AddAssign, Div, DivAssign, Index, Mul, MulAssign, Sub, SubAssign}, simd::{f32x2, f32x4, num::SimdFloat, simd_swizzle}};
+
+pub trait Vector 
+    where
+        Self: Add<f32, Output = Self> + Sub<f32, Output = Self> + Mul<f32, Output = Self> + Div<f32, Output = Self>
+        + Add + Sub + Mul + Div
+        + AddAssign<f32> + SubAssign<f32> + MulAssign<f32> + DivAssign<f32>
+        + Index<usize>
+        + Clone + Copy + PartialEq
+{
+    fn dot(&self, r: &Self) -> f32;
+
+    type CrossOutput;
+    fn cross(&self, r: &Self) -> Self::CrossOutput;
+
+    #[inline(always)]
+    fn len_sq(&self) -> f32 {
+        self.dot(self)
+    }
+
+    #[inline(always)]
+    fn len(&self) -> f32 {
+        self.len_sq().sqrt()
+    }
+
+    #[inline(always)]
+    fn normalize(&self) -> Self {
+        *self / self.len()
+    }
+
+    #[inline(always)]
+    fn normalize_mut(&mut self) {
+        *self /= self.len();
+    }
+}
+
+#[inline(always)]
+pub fn dot<T>(l: &T, r: &T) -> f32
+    where T: Vector
+{
+    l.dot(r)
+}
+
+#[inline(always)]
+pub fn cross<T>(l: &T, r: &T) -> T::CrossOutput
+    where T: Vector
+{
+    l.cross(r)
+}
+
+#[inline(always)]
+pub fn length_sq<T>(v: &T) -> f32 
+    where T: Vector
+{
+    v.len_sq()
+}
+
+#[inline(always)]
+pub fn length<T>(v: &T) -> f32
+    where T: Vector
+{
+    v.len()
+}
+
+#[inline(always)]
+pub fn normalize<T>(v: &T) -> T 
+    where T: Vector
+{
+    v.normalize()
+}
+
+#[inline(always)]
+pub fn normalize_mut<T>(v: &mut T)
+    where T: Vector
+{
+    v.normalize_mut();
+}
 
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 #[allow(non_camel_case_types)]
 pub struct float2(pub f32x2);
 
@@ -16,38 +92,19 @@ impl float2 {
     pub fn new(x: f32, y: f32) -> Self {
         Self(f32x2::from_array([x, y]))
     }
+}
 
-    
+impl Vector for float2 {
     #[inline(always)]
-    pub fn len_sq(&self) -> f32 {
-        self.dot(&*self)
-    }
-    
-    
-    #[inline(always)]
-    pub fn len(&self) -> f32 {
-        self.len_sq().sqrt()
-    }
-
-    
-    #[inline(always)]
-    pub fn normalize(&self) -> Self {
-        let len = self.len();
-        Self(self.0 / f32x2::splat(len))
-    }
-
-    
-    #[inline(always)]
-    pub fn dot(&self, other: &Self) -> f32 {
+    fn dot(&self, other: &Self) -> f32 {
         (self.0 * other.0).reduce_sum()
     }
 
-    
+    type CrossOutput = f32;
     #[inline(always)]
-    pub fn cross(&self, other: &Self) -> f32 {
+    fn cross(&self, other: &Self) -> Self::CrossOutput {
         self.0[0] * other.0[1] - self.0[1] * other.0[0]
     }
-
 }
 
 impl Index<usize> for float2 {
@@ -67,12 +124,35 @@ impl Add<f32> for float2 {
         Self(self.0 + f32x2::splat(rhs))
     }
 }
+impl Add<f32> for &float2 {
+    type Output = float2;
+
+    #[inline(always)]
+    fn add(self, rhs: f32) -> Self::Output {
+        *self + rhs
+    }
+}
 impl Add<float2> for f32 {
     type Output = float2;
 
     #[inline(always)]
     fn add(self, rhs: float2) -> Self::Output {
         float2(f32x2::splat(self) + rhs.0)
+    }
+}
+impl Add<&float2> for f32 {
+    type Output = float2;
+
+    #[inline(always)]
+    fn add(self, rhs: &float2) -> Self::Output {
+        self + *rhs
+    }
+}
+impl AddAssign<f32> for float2 {
+
+    #[inline(always)]
+    fn add_assign(&mut self, rhs: f32) {
+        *self = *self + rhs;
     }
 }
 
@@ -84,6 +164,14 @@ impl Sub<f32> for float2 {
         Self(self.0 - f32x2::splat(rhs))
     }
 }
+impl Sub<f32> for &float2 {
+    type Output = float2;
+
+    #[inline(always)]
+    fn sub(self, rhs: f32) -> Self::Output {
+        *self - rhs
+    }
+}
 impl Sub<float2> for f32 {
     type Output = float2;
 
@@ -92,6 +180,20 @@ impl Sub<float2> for f32 {
         float2(f32x2::splat(self) - rhs.0)
     }
 }
+impl Sub<&float2> for f32 {
+    type Output = float2;
+
+    fn sub(self, rhs: &float2) -> Self::Output {
+        self - *rhs
+    }
+}
+impl SubAssign<f32> for float2 {
+    #[inline(always)]
+    fn sub_assign(&mut self, rhs: f32) {
+        *self = *self + rhs;
+    }
+}
+
 
 impl Mul<f32> for float2 {
     type Output = Self;
@@ -101,12 +203,34 @@ impl Mul<f32> for float2 {
         Self(self.0 * f32x2::splat(rhs))
     }
 }
+impl Mul<f32> for &float2 {
+    type Output = float2;
+
+    #[inline(always)]
+    fn mul(self, rhs: f32) -> Self::Output {
+        *self * rhs
+    }
+}
 impl Mul<float2> for f32 {
     type Output = float2;
 
     #[inline(always)]
     fn mul(self, rhs: float2) -> Self::Output {
         float2(f32x2::splat(self) * rhs.0)
+    }
+}
+impl Mul<&float2> for f32 {
+    type Output = float2;
+
+    #[inline(always)]
+    fn mul(self, rhs: &float2) -> Self::Output {
+        self * *rhs
+    }
+}
+impl MulAssign<f32> for float2 {
+    #[inline(always)]
+    fn mul_assign(&mut self, rhs: f32) {
+        *self = *self + rhs;
     }
 }
 
@@ -118,12 +242,33 @@ impl Div<f32> for float2 {
         Self(self.0 / f32x2::splat(rhs))
     }
 }
+impl Div<f32> for &float2 {
+    type Output = float2;
+
+    #[inline(always)]
+    fn div(self, rhs: f32) -> Self::Output {
+        *self / rhs
+    }
+}
 impl Div<float2> for f32 {
     type Output = float2;
 
     #[inline(always)]
     fn div(self, rhs: float2) -> Self::Output {
         float2(f32x2::splat(self) / rhs.0)
+    }
+}
+impl Div<&float2> for f32 {
+    type Output = float2;
+
+    fn div(self, rhs: &float2) -> Self::Output {
+        self / *rhs
+    }
+}
+impl DivAssign<f32> for float2 {
+    #[inline(always)]
+    fn div_assign(&mut self, rhs: f32) {
+        *self = *self / rhs;
     }
 }
 
@@ -135,6 +280,14 @@ impl Add for float2 {
         Self(self.0 + rhs.0)
     }
 }
+impl Add for &float2 {
+    type Output = float2;
+
+    #[inline(always)]
+    fn add(self, rhs: Self) -> Self::Output {
+        *self + *rhs
+    }
+}
 
 impl Sub for float2 {
     type Output = Self;
@@ -144,6 +297,15 @@ impl Sub for float2 {
         Self(self.0 - rhs.0)
     }
 }
+impl Sub for &float2 {
+    type Output = float2;
+
+    #[inline(always)]
+    fn sub(self, rhs: Self) -> Self::Output {
+        *self - *rhs
+    }
+}
+
 
 impl Mul for float2 {
     type Output = Self;
@@ -151,6 +313,14 @@ impl Mul for float2 {
     #[inline(always)]
     fn mul(self, rhs: Self) -> Self::Output {
         Self(self.0 * rhs.0)
+    }
+}
+impl Mul for &float2 {
+    type Output = float2;
+
+    #[inline(always)]
+    fn mul(self, rhs: Self) -> Self::Output {
+        *self * *rhs
     }
 }
 
@@ -162,10 +332,17 @@ impl Div for float2 {
         Self(self.0 / rhs.0)
     }
 }
+impl Div for &float2 {
+    type Output = float2;
+
+    #[inline(always)]
+    fn div(self, rhs: Self) -> Self::Output {
+        *self / *rhs
+    }
+}
 
 
-
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 #[allow(non_camel_case_types)]
 pub struct float3(pub f32x4);
 
@@ -175,30 +352,19 @@ impl float3 {
     pub fn new(x: f32, y: f32, z: f32) -> Self {
         Self(f32x4::from_array([x, y, z, 0.0]))
     }
+}
 
-    
+impl Vector for float3 {
     #[inline(always)]
-    pub fn len_sq(&self) -> f32 {
-        self.dot(&*self)
-    }
-
-    
-    #[inline(always)]
-    pub fn len(&self) -> f32 {
-        self.len_sq().sqrt()
-    }
-
-    
-    #[inline(always)]
-    pub fn dot(&self, other: &float3) -> f32 {
+    fn dot(&self, other: &Self) -> f32 {
         (self.0 * other.0).reduce_sum()
     }
 
-    
+    type CrossOutput = float3;    
     #[inline(always)]
-    pub fn cross(&self, other: &float3) -> float3 {
+    fn cross(&self, other: &Self) -> Self::CrossOutput {
         let a = self.0;
-        let b = self.0;
+        let b = other.0;
 
         let a_yzx = simd_swizzle!(a, [1, 2, 0, 3]);
         let a_zxy = simd_swizzle!(a, [2, 0, 1, 3]);
@@ -225,12 +391,34 @@ impl Add<f32> for float3 {
         Self(self.0 + f32x4::splat(rhs))
     }
 }
+impl Add<f32> for &float3 {
+    type Output = float3;
+    
+    #[inline(always)]
+    fn add(self, rhs: f32) -> Self::Output {
+        *self + rhs
+    }
+}
 impl Add<float3> for f32 {
     type Output = float3;
 
     #[inline(always)]
     fn add(self, rhs: float3) -> Self::Output {
         float3(f32x4::splat(self) + rhs.0)
+    }
+}
+impl Add<&float3> for f32 {
+    type Output = float3;
+
+    #[inline(always)]
+    fn add(self, rhs: &float3) -> Self::Output {
+        self + *rhs
+    }
+}
+impl AddAssign<f32> for float3 {
+    #[inline(always)]
+    fn add_assign(&mut self, rhs: f32) {
+        *self = *self + rhs;
     }
 }
 
@@ -242,12 +430,34 @@ impl Sub<f32> for float3 {
         Self(self.0 - f32x4::splat(rhs))
     }
 }
+impl Sub<f32> for &float3 {
+    type Output = float3;
+
+    #[inline(always)]
+    fn sub(self, rhs: f32) -> Self::Output {
+        *self - rhs
+    }
+}
 impl Sub<float3> for f32 {
     type Output = float3;
 
     #[inline(always)]
     fn sub(self, rhs: float3) -> Self::Output {
         float3(f32x4::splat(self) - rhs.0)
+    }
+}
+impl Sub<&float3> for f32 {
+    type Output = float3;
+
+    #[inline(always)]
+    fn sub(self, rhs: &float3) -> Self::Output {
+        self - *rhs
+    }
+}
+impl SubAssign<f32> for float3 {
+    #[inline(always)]
+    fn sub_assign(&mut self, rhs: f32) {
+        *self = *self - rhs
     }
 }
 
@@ -259,12 +469,34 @@ impl Mul<f32> for float3 {
         Self(self.0 * f32x4::splat(scalar))
     }
 }
+impl Mul<f32> for &float3 {
+    type Output = float3;
+
+    #[inline(always)]
+    fn mul(self, rhs: f32) -> Self::Output {
+        *self * rhs
+    }
+}
 impl Mul<float3> for f32 {
     type Output = float3;
 
     #[inline(always)]
     fn mul(self, rhs: float3) -> Self::Output {
         float3(f32x4::splat(self) * rhs.0)
+    }
+}
+impl Mul<&float3> for f32 {
+    type Output = float3;
+
+    #[inline(always)]
+    fn mul(self, rhs: &float3) -> Self::Output {
+        self * *rhs
+    }
+}
+impl MulAssign<f32> for float3 {
+    #[inline(always)]
+    fn mul_assign(&mut self, rhs: f32) {
+        *self = *self * rhs;
     }
 }
 
@@ -276,12 +508,34 @@ impl Div<f32> for float3 {
         Self(self.0 / f32x4::splat(scalar))
     }
 }
+impl Div<f32> for &float3 {
+    type Output = float3;
+
+    #[inline(always)]
+    fn div(self, rhs: f32) -> Self::Output {
+        *self / rhs
+    }
+}
 impl Div<float3> for f32 {
     type Output = float3;
 
     #[inline(always)]
     fn div(self, rhs: float3) -> Self::Output {
         float3(f32x4::splat(self) / rhs.0)
+    }
+}
+impl Div<&float3> for f32 {
+    type Output = float3;
+
+    #[inline(always)]
+    fn div(self, rhs: &float3) -> Self::Output {
+        self / *rhs
+    }
+}
+impl DivAssign<f32> for float3 {
+    #[inline(always)]
+    fn div_assign(&mut self, rhs: f32) {
+        *self = *self / rhs;
     }
 }
 
@@ -293,6 +547,14 @@ impl Add for float3 {
         Self(self.0 + rhs.0)
     }
 }
+impl Add for &float3 {
+    type Output = float3;
+
+    #[inline(always)]
+    fn add(self, rhs: Self) -> Self::Output {
+        *self + *rhs
+    }
+}
 
 impl Sub for float3 {
     type Output = Self;
@@ -300,6 +562,14 @@ impl Sub for float3 {
     #[inline(always)]
     fn sub(self, rhs: Self) -> Self::Output {
         Self(self.0 - rhs.0)
+    }
+}
+impl Sub for &float3 {
+    type Output = float3;
+
+    #[inline(always)]
+    fn sub(self, rhs: Self) -> Self::Output {
+        *self - *rhs
     }
 }
 
@@ -311,6 +581,14 @@ impl Mul for float3 {
         Self(self.0 * rhs.0)
     }
 }
+impl Mul for &float3 {
+    type Output = float3;
+
+    #[inline(always)]
+    fn mul(self, rhs: Self) -> Self::Output {
+        *self * *rhs
+    }
+}
 
 impl Div for float3 {
     type Output = Self;
@@ -320,9 +598,17 @@ impl Div for float3 {
         Self(self.0 / rhs.0)
     }
 }
+impl Div for &float3 {
+    type Output = float3;
+
+    #[inline(always)]
+    fn div(self, rhs: Self) -> Self::Output {
+        *self / *rhs
+    }
+}
 
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 #[allow(non_camel_case_types)]
 pub struct float4(pub f32x4);
 
@@ -333,51 +619,6 @@ impl float4 {
         Self(f32x4::from_array([x, y, z, w]))
     }
 
-    
-    #[inline(always)]
-    pub fn len_sq(&self) -> f32 {
-        self.dot(&*self)
-    }
-
-    
-    #[inline(always)]
-    pub fn len(&self) -> f32 {
-        self.len_sq().sqrt()
-    }
-
-    
-    #[inline(always)]
-    pub fn normalize(&self) -> Self {
-        let len = self.len();
-        Self(self.0 / f32x4::splat(len))
-    }
-
-    #[inline(always)]
-    pub fn dot(&self, other: &Self) -> f32 {
-        (self.0 * other.0).reduce_sum()
-    }
-
-    #[inline(always)]
-    pub fn cross(&self, other: &Self) -> Self {
-        let a = self.0;
-        let b = other.0;
-
-        let a_yzx = simd_swizzle!(a, [1, 2, 0, 3]);
-        let a_zxy = simd_swizzle!(a, [2, 0, 1, 3]);
-        let b_yzx = simd_swizzle!(b, [1, 2, 0, 3]);
-        let b_zxy = simd_swizzle!(b, [2, 0, 1, 3]);
-        
-        Self(a_yzx * b_zxy - a_zxy * b_yzx)
-        // (self * other.yzxx() - self.yzxx() * other()).yzxx()
-    }
-
-    #[inline(always)]
-    pub fn normalize_mut(&mut self) {
-        let len = self.len();
-        self.0 = self.0 / f32x4::splat(len)   
-    }
-
-    
     #[inline(always)]
     pub fn max(&self, other: &Self) -> Self {
         Self(self.0.simd_max(other.0))
@@ -846,6 +1087,28 @@ impl float4 {
     
 }
 
+impl Vector for float4 {
+    #[inline(always)]
+    fn dot(&self, other: &Self) -> f32 {
+        (self.0 * other.0).reduce_sum()
+    }
+
+    type CrossOutput = Self;
+    #[inline(always)]
+    fn cross(&self, other: &Self) -> Self::CrossOutput {
+        let a = self.0;
+        let b = other.0;
+
+        let a_yzx = simd_swizzle!(a, [1, 2, 0, 3]);
+        let a_zxy = simd_swizzle!(a, [2, 0, 1, 3]);
+        let b_yzx = simd_swizzle!(b, [1, 2, 0, 3]);
+        let b_zxy = simd_swizzle!(b, [2, 0, 1, 3]);
+        
+        Self(a_yzx * b_zxy - a_zxy * b_yzx)
+        // (self * other.yzxx() - self.yzxx() * other()).yzxx()
+    }
+}
+
 impl Index<usize> for float4 {
     type Output = f32;
 
@@ -863,12 +1126,34 @@ impl Add<f32> for float4 {
         Self(self.0 + f32x4::splat(rhs))
     }
 }
+impl Add<f32> for &float4 {
+    type Output = float4;
+
+    #[inline(always)]
+    fn add(self, rhs: f32) -> Self::Output {
+        *self + rhs
+    }
+}
 impl Add<float4> for f32 {
     type Output = float4;
 
     #[inline(always)]
     fn add(self, rhs: float4) -> Self::Output {
         float4(f32x4::splat(self) + rhs.0)
+    }
+}
+impl Add<&float4> for f32 {
+    type Output = float4;
+    
+    #[inline(always)]
+    fn add(self, rhs: &float4) -> Self::Output {
+        self + *rhs
+    }
+}
+impl AddAssign<f32> for float4 {
+    #[inline(always)]
+    fn add_assign(&mut self, rhs: f32) {
+        *self = *self + rhs;
     }
 }
 
@@ -880,12 +1165,34 @@ impl Sub<f32> for float4 {
         Self(self.0 - f32x4::splat(rhs))
     }
 }
+impl Sub<f32> for &float4 {
+    type Output = float4;
+    
+    #[inline(always)]
+    fn sub(self, rhs: f32) -> Self::Output {
+        *self - rhs
+    }
+}
 impl Sub<float4> for f32 {
     type Output = float4;
 
     #[inline(always)]
     fn sub(self, rhs: float4) -> Self::Output {
         float4(f32x4::splat(self) - rhs.0)
+    }
+}
+impl Sub<&float4> for f32 {
+    type Output = float4;
+
+    #[inline(always)]
+    fn sub(self, rhs: &float4) -> Self::Output {
+        self - *rhs
+    }
+}
+impl SubAssign<f32> for float4 {
+    #[inline(always)]
+    fn sub_assign(&mut self, rhs: f32) {
+        *self = *self - rhs;
     }
 }
 
@@ -897,12 +1204,34 @@ impl Mul<f32> for float4 {
         Self(self.0 * f32x4::splat(scalar))
     }
 }
+impl Mul<f32> for &float4 {
+    type Output = float4;
+
+    #[inline(always)]
+    fn mul(self, rhs: f32) -> Self::Output {
+        *self * rhs
+    }
+}
 impl Mul<float4> for f32 {
     type Output = float4;
 
     #[inline(always)]
     fn mul(self, rhs: float4) -> Self::Output {
         float4(f32x4::splat(self) * rhs.0)
+    }
+}
+impl Mul<&float4> for f32 {
+    type Output = float4;
+
+    #[inline(always)]
+    fn mul(self, rhs: &float4) -> Self::Output {
+        self * *rhs
+    }
+}
+impl MulAssign<f32> for float4 {
+    #[inline(always)]
+    fn mul_assign(&mut self, rhs: f32) {
+        *self = *self * rhs;
     }
 }
 
@@ -914,12 +1243,34 @@ impl Div<f32> for float4 {
         Self(self.0 / f32x4::splat(scalar))
     }
 }
+impl Div<f32> for &float4 {
+    type Output = float4;
+    
+    #[inline(always)]
+    fn div(self, rhs: f32) -> Self::Output {
+        *self / rhs
+    }
+}
 impl Div<float4> for f32 {
     type Output = float4;
 
     #[inline(always)]
     fn div(self, rhs: float4) -> Self::Output {
         float4(f32x4::splat(self) / rhs.0)
+    }
+}
+impl Div<&float4> for f32 {
+    type Output = float4;
+
+    #[inline(always)]
+    fn div(self, rhs: &float4) -> Self::Output {
+        self / *rhs
+    }
+}
+impl DivAssign<f32> for float4 {
+    #[inline(always)]
+    fn div_assign(&mut self, rhs: f32) {
+        *self = *self / rhs;
     }
 }
 
@@ -931,6 +1282,14 @@ impl Add for float4 {
         Self(self.0 + rhs.0)
     }
 }
+impl Add for &float4 {
+    type Output = float4;
+
+    #[inline(always)]
+    fn add(self, rhs: Self) -> Self::Output {
+        *self + *rhs
+    }
+}
 
 impl Sub for float4 {
     type Output = Self;
@@ -938,6 +1297,14 @@ impl Sub for float4 {
     #[inline(always)]
     fn sub(self, rhs: Self) -> Self::Output {
         Self(self.0 - rhs.0)
+    }
+}
+impl Sub for &float4 {
+    type Output = float4;
+
+    #[inline(always)]
+    fn sub(self, rhs: Self) -> Self::Output {
+        *self - *rhs
     }
 }
 
@@ -949,6 +1316,14 @@ impl Mul for float4 {
         Self(self.0 * rhs.0)
     }
 }
+impl Mul for &float4 {
+    type Output = float4;
+
+    #[inline(always)]
+    fn mul(self, rhs: Self) -> Self::Output {
+        *self * *rhs
+    }
+}
 
 impl Div for float4 {
     type Output = Self;
@@ -956,5 +1331,13 @@ impl Div for float4 {
     #[inline(always)]
     fn div(self, rhs: Self) -> Self::Output {
         Self(self.0 / rhs.0)
+    }
+}
+impl Div for &float4 {
+    type Output = float4;
+
+    #[inline(always)]
+    fn div(self, rhs: Self) -> Self::Output {
+        *self / *rhs
     }
 }

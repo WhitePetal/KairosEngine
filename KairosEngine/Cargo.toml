@@ -1,6 +1,6 @@
 cargo-features = ["profile-rustflags"]
 
-[build]
+[profile.release]
 rustflags = ["-C", "target-cpu=native"]
 
 [profile.bench]
@@ -10,6 +10,8 @@ rustflags = ["-C", "target-cpu=native"]
 name = "kairos_engine"
 version = "0.1.0"
 edition = "2024"
+description = "A Game Engine"
+license = "MIT OR Apache-2.0"
 
 [dev-dependencies]
 criterion = "0.8.2"

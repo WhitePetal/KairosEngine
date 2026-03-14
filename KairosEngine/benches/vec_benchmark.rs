@@ -1,8 +1,8 @@
 #![feature(portable_simd)]
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use std::{hint::black_box, ops::Div, simd::{self, num::SimdFloat, simd_swizzle}};
-use kairos_engine::math;
+use std::{hint::black_box, simd::{self, num::SimdFloat, simd_swizzle}};
+use kairos_engine::math::{self, Vector};
 // use std::simd::{f32x4, simd_swizzle};
 
 #[derive(Clone, Copy)]
