@@ -18,11 +18,11 @@ impl _float4 {
         Self { x, y, z, w }
     }
     #[inline(always)]
-    fn dot(&self, other: &Self) -> f32 {
+    const fn dot(&self, other: &Self) -> f32 {
         self.x * other.x + self.y * other.y + self.z * other.z + self.w * other.w
     }
     #[inline(always)]
-    fn cross(&self, other: &Self) -> Self {
+    const fn cross(&self, other: &Self) -> Self {
         Self{
             x: self.y * other.z - self.z * other.y,
             y: self.z * other.x - self.x * other.z,
@@ -31,7 +31,7 @@ impl _float4 {
         }
     }
     #[inline(always)]
-    pub fn len_sq(&self) -> f32 {
+    pub const fn len_sq(&self) -> f32 {
         self.dot(self)
     }
     #[inline(always)]

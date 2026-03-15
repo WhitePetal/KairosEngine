@@ -9,6 +9,7 @@ use eframe::{self, egui};
 
 use crate::consts::KAIROS_ENGINE_VERSION;
 use crate::kairos_editor::main_window::MainEditorWindow;
+use crate::kairos_editor::ui_message::Messager;
 
 fn main() -> eframe::Result {
     const APP_NAME: &str = "KairosEngine";
@@ -34,12 +35,14 @@ fn main() -> eframe::Result {
         ..Default::default()
     };
 
+    let ui_messager = Messager::new();
+
     eframe::run_native(
         APP_NAME, 
         options, 
         Box::new(|_cc| {
             egui_extras::install_image_loaders(&_cc.egui_ctx);
-            Ok(Box::new(MainEditorWindow::new(APP_NAME, _cc).unwrap_or_else(|error| {
+            Ok(Box::new(MainEditorWindow::new(APP_NAME, _cc, ui_messager).unwrap_or_else(|error| {
                     kairos_dialog::error_message_window("Init Failed", &format!("new MainEditorWindow struct Failed:\n {}", error));
                     panic!("new MainEditorWindow Failed: {}", error);
                 }

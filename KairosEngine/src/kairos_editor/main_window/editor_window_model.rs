@@ -1,6 +1,6 @@
 use std::fs;
 
-use super::paths;
+use crate::kairos_editor::paths;
 use kairos_engine::{math};
 use sonic_rs::{Deserialize, Serialize, from_str};
 
@@ -14,6 +14,7 @@ pub struct EditorWindowStyle {
 pub struct EditorWindowModel {
     pub style: EditorWindowStyle,
     pub title: String,
+    pub tool_bar_height: f32,
     pub is_maximized: bool,
 }
 
@@ -35,7 +36,8 @@ impl EditorWindowModel {
 
         Ok(Self { 
             style: style, 
-            title: title.to_string(), 
+            title: title.to_string(),
+            tool_bar_height: 0.0, 
             is_maximized: false,
         })
     }

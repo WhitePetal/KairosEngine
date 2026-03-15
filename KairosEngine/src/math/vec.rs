@@ -92,6 +92,10 @@ impl float2 {
     pub fn new(x: f32, y: f32) -> Self {
         Self(f32x2::from_array([x, y]))
     }
+    #[inline(always)]
+    pub fn from_array(arr: [f32; 2]) -> Self {
+        Self(f32x2::from_array(arr))
+    }
 }
 
 impl Vector for float2 {
@@ -351,6 +355,15 @@ impl float3 {
     #[inline(always)]
     pub fn new(x: f32, y: f32, z: f32) -> Self {
         Self(f32x4::from_array([x, y, z, 0.0]))
+    }
+    #[inline(always)]
+    pub fn from_array(arr: [f32; 3]) -> Self {
+        
+        Self(f32x4::from_array([arr[0], arr[1], arr[2], 0.0]))
+    }
+    #[inline(always)]
+    pub fn from_array_4(arr: [f32; 4]) -> Self {
+        Self(f32x4::from_array(arr))
     }
 }
 
@@ -615,8 +628,12 @@ pub struct float4(pub f32x4);
 impl float4 {
     
     #[inline(always)]
-    pub fn new(x: f32, y: f32, z: f32, w: f32) -> Self {
+    pub const fn new(x: f32, y: f32, z: f32, w: f32) -> Self {
         Self(f32x4::from_array([x, y, z, w]))
+    }
+    #[inline(always)]
+    pub const fn from_array(arr: [f32; 4]) -> Self {
+        Self(f32x4::from_array(arr))
     }
 
     #[inline(always)]
