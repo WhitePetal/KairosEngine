@@ -1,9 +1,9 @@
-use std::fs;
+use std::{fs, rc::Rc, sync::Arc};
 
-use eframe::egui::{self};
+use eframe::egui::{self, IconData, Image};
 use sonic_rs::{Deserialize, Serialize, from_str};
 
-use crate::{kairos_editor::paths};
+use crate::kairos_editor::{self, paths};
 use kairos_engine::math;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -31,9 +31,10 @@ impl ToolBarStyle {
 
 impl ToolBarModel {
     pub fn new(ctx: &egui::Context) -> Result<Self, Box<dyn std::error::Error>> {
-        let style = ToolBarStyle::new()?;
+        let style = ToolBarStyle::new()?;        
+
         Ok(Self { 
-            style: style,
+            style,
         })
     }
 }

@@ -1,6 +1,6 @@
-use eframe::egui::{self, AtomExt, Color32, Margin, Pos2, Rect, RichText, TopBottomPanel, Vec2, containers::menu::{self, MenuButton}, vec2};
+use eframe::egui::{self, Pos2, Rect, TopBottomPanel, Vec2, containers::menu};
 
-use crate::kairos_editor::paths;
+use crate::kairos_editor::{paths, ui_message::{Messager, tool_bar::ShowAboutWindow}};
 
 use super::tool_bar_model::ToolBarModel;
 
@@ -15,7 +15,7 @@ impl ToolBarView {
         Self {  }
     }
 
-    pub fn draw(&self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, model: &ToolBarModel) {
+    pub fn draw(&self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, model: &ToolBarModel, messager: &mut Messager) {
         // 工具栏区域
         let toolbar_rect = Rect::from_min_size(
             Pos2::new(0.0, 0.0), 
@@ -30,11 +30,30 @@ impl ToolBarView {
                     model.style.fill_color
                 );
                 
+                // Icon
+                let icon = egui::Image::new(paths::PATH_ENGINE_ICON_URI);
+                ui.menu_button(icon, |ui| {
+                    if ui.button("About Kairos").clicked() {
+                        messager.send(&ShowAboutWindow::new());
+                    }
+                    ui.separator();
+                    if ui.button("Quit").clicked() {
+
+                    }
+                });
+                // File
                 ui.menu_button("File", |ui| {
                     if ui.button("New Scene").clicked() {
                         todo!()
                     }
                 });
+                
+                // Editor
+                ui.menu_button("Edit", |ui| {
+                    if ui.button("Preferences").clicked() {
+                        todo!()
+                    }
+                })
             });
         });
     }

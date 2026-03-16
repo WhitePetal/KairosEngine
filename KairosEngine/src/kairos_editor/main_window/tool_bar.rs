@@ -27,6 +27,6 @@ impl ToolBar {
     }
 
     pub fn update(&self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut Messager) {
-        self.view.draw(ctx, frame, &self.model);
+        self.view.draw(ctx, frame, &self.model, messager);
     }
 }
