@@ -15,10 +15,6 @@ impl Message for SetToolBarHeightMessage {
     fn id(&self) -> TypeId {
         self.id
     }
-    
-    fn get_message_data(&self) -> &dyn std::any::Any {
-        self
-    }
 }
 
 impl SetToolBarHeightMessage {

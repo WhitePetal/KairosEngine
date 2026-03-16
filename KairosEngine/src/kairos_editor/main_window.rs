@@ -3,7 +3,7 @@ mod editor_window_view;
 
 mod tool_bar;
 
-use std::{cell::RefCell, rc::Rc};
+use std::{any::Any, cell::RefCell, rc::Rc};
 
 use editor_window_model::EditorWindowModel;
 use editor_window_view::EditorWindowView;
@@ -22,20 +22,20 @@ pub struct MainEditorWindow {
 
 impl MainEditorWindow {
     pub fn new(title: &str, _cc: &eframe::CreationContext, mut messager: Messager) -> Result<Self, Box<dyn std::error::Error>> {
-        let model = Rc::new(RefCell::new(EditorWindowModel::new(title)?));
-        
+        let model = Rc::new(RefCell::new(EditorWindowModel::new(title)?));        
         let view = EditorWindowView::new();
-        let tool_bar = ToolBar::new(&_cc.egui_ctx, &mut messager)?;
         
         let cmodel = Rc::clone(&model);
         messager.registe(ui_message::tool_bar::SetToolBarHeightMessage::get_id(), Box::new(
-            move |msg: &dyn Message| {
-                if let Some(set_tool_bar_msg)  = msg.get_message_data().downcast_ref::<ui_message::tool_bar::SetToolBarHeightMessage>() {
+            move |msg: &dyn Any| {
+                if let Some(set_tool_bar_msg)  = msg.downcast_ref::<ui_message::tool_bar::SetToolBarHeightMessage>() {
                     let mut model = cmodel.borrow_mut();
                     model.tool_bar_height = set_tool_bar_msg.height();
                 }
             }
         ));
+
+        let tool_bar = ToolBar::new(&_cc.egui_ctx, &mut messager)?;
 
         let controller = Self {
             model,

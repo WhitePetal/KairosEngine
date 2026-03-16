@@ -31,7 +31,6 @@ impl EditorWindowView {
             .show(ctx, |ui| {
                 ui.vertical_centered(|ui| {
                     ui.add_space(model.tool_bar_height);
-                    println!("ToolBarHeight: {}", model.tool_bar_height);
                     // ui.add_space(100.0);
                     ui.label(RichText::new("Main Content Area").size(24.0).color(Color32::LIGHT_GRAY));
                     ui.label(RichText::new("Custom titlebar demo").size(14.0).color(Color32::GRAY));

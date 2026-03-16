@@ -1,9 +1,9 @@
 use std::fs;
 
-use eframe::egui::{self, TextureHandle};
+use eframe::egui::{self};
 use sonic_rs::{Deserialize, Serialize, from_str};
 
-use crate::{consts, kairos_editor::paths};
+use crate::{kairos_editor::paths};
 use kairos_engine::math;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -12,17 +12,10 @@ pub struct ToolBarStyle {
     pub button_width: f32,
     pub corner_radius: f32,
     pub fill_color: math::Color32,
-    pub icon_left_space: f32,
-    pub icon_boader: f32,
-    pub title_text_left_space: f32,
-    pub title_text_size: f32,
-    pub title_text_color: math::Color32,
-    pub title_text_font_size: f32
 }
 
 pub struct ToolBarModel {
     pub style: ToolBarStyle,
-    pub title: String
 }
 
 impl ToolBarStyle {
@@ -39,10 +32,8 @@ impl ToolBarStyle {
 impl ToolBarModel {
     pub fn new(ctx: &egui::Context) -> Result<Self, Box<dyn std::error::Error>> {
         let style = ToolBarStyle::new()?;
-        let title = format!("Kairos Engine {}", consts::KAIROS_ENGINE_VERSION);
         Ok(Self { 
             style: style,
-            title: title
         })
     }
 }

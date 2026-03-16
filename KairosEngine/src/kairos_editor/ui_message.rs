@@ -2,16 +2,14 @@ pub mod tool_bar;
 
 use std::{any::{Any, TypeId}, collections::HashMap};
 
-pub trait Message{
+pub trait Message: Any + Send + Sync {
     fn get_id() -> TypeId where Self: Sized;
 
     fn id(&self) -> TypeId;
-
-    fn get_message_data(&self) -> &dyn Any;
 }
 
 pub struct Messager {
-    messages: HashMap<TypeId, Vec<Box<dyn FnMut(&dyn Message)>>>
+    messages: HashMap<TypeId, Vec<Box<dyn FnMut(&dyn Any)>>>
 }
 
 impl Messager {
@@ -19,7 +17,7 @@ impl Messager {
         Self { messages: HashMap::new() }
     }
 
-    pub fn registe(&mut self, id: TypeId, handler: Box<dyn FnMut(&dyn Message)>) {
+    pub fn registe(&mut self, id: TypeId, handler: Box<dyn FnMut(&dyn Any)>) {
         self.messages.entry(id).or_default().push(handler);
     }
 

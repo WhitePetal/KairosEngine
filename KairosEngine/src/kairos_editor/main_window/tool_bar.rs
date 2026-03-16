@@ -18,6 +18,8 @@ impl ToolBar {
         let model = ToolBarModel::new(ctx)?;
         let view = ToolBarView::new();
 
+        messager.send(&ui_message::tool_bar::SetToolBarHeightMessage::new(model.style.height));
+
         Ok(Self{
             model: model,
             view: view,
@@ -25,11 +27,6 @@ impl ToolBar {
     }
 
     pub fn update(&self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut Messager) {
-        messager.send(&ui_message::tool_bar::SetToolBarHeightMessage::new(self.model.style.height));
         self.view.draw(ctx, frame, &self.model);
-    }
-
-    pub fn get_height(&self) -> f32 {
-        self.model.style.height
     }
 }
