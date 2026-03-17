@@ -1,4 +1,4 @@
-use crate::kairos_editor::{about_window::{AboutWindow, AboutWindowModel}, main_content::{MainContent, MainContentModel}, tool_bar::{ToolBar, ToolBarModel}};
+use crate::kairos_editor::{about_window::{AboutWindow, AboutWindowModel}, main_content::{MainContent, MainContentModel}, preferences_window::{PreferencesModel, PreferencesWindow}, tool_bar::{ToolBar, ToolBarModel}};
 
 pub mod paths;
 pub mod consts;
@@ -7,6 +7,7 @@ pub mod ui_message;
 pub mod main_content;
 pub mod tool_bar;
 pub mod about_window;
+pub mod preferences_window;
 
 pub enum UIMessage {
     CreateMainContent(String),
@@ -14,6 +15,7 @@ pub enum UIMessage {
     SetToolBarHeight(f32),
     OpenAboutWindow,
     CloseAboutWindow,
+    OpenPreferenceWindow,
     QuitEngine,
 }
 
@@ -21,6 +23,7 @@ pub struct UIModel {
     main_content: Option<MainContentModel>,
     tool_bar: Option<ToolBarModel>,
     about_window: Option<AboutWindowModel>,
+    preferences_window: Option<PreferencesModel>,
 }
 
 impl UIModel {
@@ -29,6 +32,7 @@ impl UIModel {
             main_content: None,
             tool_bar: None,
             about_window: None,
+            preferences_window: None,
         }
     }
 }
@@ -109,8 +113,8 @@ impl UIContext {
                     }
                 },
                 UIMessage::OpenAboutWindow => {
-                    match self.model.about_window {
-                        Some(_) => todo!(),
+                    match &mut self.model.about_window {
+                        Some(model) => model.open = true,
                         None => {
                             let mut model = AboutWindowModel::new().unwrap_or_else(|error| {
                                 dialog::ui_model_load_error_window("AboutWindow", &error);
@@ -127,7 +131,26 @@ impl UIContext {
                 UIMessage::QuitEngine => {
                     ctx.send_viewport_cmd(eframe::egui::ViewportCommand::Close);
                 },
-                UIMessage::CloseAboutWindow => todo!(),
+                UIMessage::CloseAboutWindow => {
+                    if let Some(mode) = &mut self.model.about_window {
+                        mode.open = false;
+                    }
+                },
+                UIMessage::OpenPreferenceWindow => {
+                    match &mut self.model.preferences_window {
+                        Some(model) => model.open = true,
+                        None => {
+                            let mut model = PreferencesModel::new().unwrap_or_else(|error| {
+                                dialog::ui_model_load_error_window("PreferencesWindow", &error);
+                                panic!("Load PreferencesWindow UI Model Failed: {}", error)
+                            });
+                            model.open = true;
+                            self.model.preferences_window = Some(model);
+                            let drawer = Box::new(PreferencesWindow::new());
+                            self.ui_drawers.push(drawer);
+                        }
+                    }
+                },
             }
         }
 

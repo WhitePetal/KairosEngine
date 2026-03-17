@@ -54,26 +54,29 @@ impl AboutWindow {
 
 impl UIDrawer for AboutWindow {
     fn update(&self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut super::UIMessager, model: &super::UIModel) {
-        if let Some(model) = &model.about_window{
+        if let Some(model) = &model.about_window {
             let mut is_open = model.open;
-            egui::Window::new("About KairosEngine")
-                .default_width(model.style.width)
-                .default_height(model.style.height)
-                .open(&mut is_open)
-                .resizable([true, false])
-                .scroll(false)
-                .constrain_to(ctx.available_rect())
-                .show(ctx, |ui| {
-                    // TODO: Icon
-                    ui.heading("KairosEngine");
-                    ui.label(consts::VERSION);
-                    ui.separator();
-                    ui.label("KairosEngine is a game development engine that aims to be flexible and efficient.")
+            if is_open {
+                egui::Window::new("About KairosEngine")
+                    .default_width(model.style.width)
+                    .default_height(model.style.height)
+                    .open(&mut is_open)
+                    .resizable([true, false])
+                    .scroll(false)
+                    .constrain_to(ctx.available_rect())
+                    .show(ctx, |ui| {
+                        // TODO: Icon
+                        ui.heading("KairosEngine");
+                        ui.label(consts::VERSION);
+                        ui.separator();
+                        ui.label("KairosEngine is a game development engine that aims to be flexible and efficient.");
+                        ui.label("TODO: add icon...");
+                    }
+                );
+    
+                if !is_open {
+                    messager.send(super::UIMessage::CloseAboutWindow);
                 }
-            );
-
-            if !is_open {
-                messager.send(super::UIMessage::CloseAboutWindow);
             }
         }
     }
