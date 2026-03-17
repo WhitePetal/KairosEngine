@@ -1,6 +1,6 @@
 use eframe::egui::{self, Color32, RichText};
 
-use crate::kairos_editor::{UI, UIFactor, UIID, ui_message::Messager};
+use crate::kairos_editor::UIDrawer;
 
 
 
@@ -9,11 +9,13 @@ pub struct AboutWindow {
 }
 
 impl AboutWindow {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {  }
     }
+}
 
-    pub fn update(&self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &Messager) {
+impl UIDrawer for AboutWindow {
+    fn update(&self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut super::UIMessager, model: &super::UIModel) {
         egui::SidePanel::left("AboutWindow")
             .frame(egui::Frame::NONE.fill(Color32::BLUE))
             .show(ctx, |ui| {
@@ -25,15 +27,4 @@ impl AboutWindow {
             );
         });
     }
-}
-
-impl UIFactor for  AboutWindow {
-    fn new() -> UI
-    {
-        UI::AboutWindow(Self::new())
-    }
-    
-    fn id() -> UIID {
-        UIID::AboutWindow
-    }    
 }

@@ -2,7 +2,6 @@ use std::rc::Rc;
 
 use crate::kairos_editor::{UI};
 
-pub mod about_window;
 
 pub enum FloatingWindow {
     AboutWindow(Rc<UI>),

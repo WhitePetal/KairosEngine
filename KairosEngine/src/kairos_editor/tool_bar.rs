@@ -1,0 +1,101 @@
+use std::fs;
+
+use eframe::egui::{self, Pos2, Rect, TopBottomPanel, Vec2, containers::menu};
+use kairos_engine::math;
+use serde::{Deserialize, Serialize};
+use sonic_rs::from_str;
+
+use crate::kairos_editor::{UIDrawer, paths, ui_message::Message};
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ToolBarStyle {
+    pub height: f32,
+    pub button_width: f32,
+    pub corner_radius: f32,
+    pub fill_color: math::Color32,
+}
+
+pub struct ToolBarModel {
+    pub style: ToolBarStyle,
+}
+
+impl ToolBarStyle {
+    fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        let style_json = fs::read_to_string(paths::PATH_EDITOR_WINDO_TOOL_BAR_STYLE)
+            .map_err(|error| format!("Load MainWindow TitleBar Json Failed, path: {}, error: {}", paths::PATH_EDITOR_WINDO_TOOL_BAR_STYLE, error))?;
+        let style = from_str(&style_json)
+            .map_err(|error| format!("Deserialize MainWindow TitleBar Json Failed, error: {}", error))?;
+
+        Ok(style)
+    }
+}
+
+impl ToolBarModel {
+    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        let style = ToolBarStyle::new()?;        
+
+        Ok(Self { 
+            style,
+        })
+    }
+}
+
+pub struct ToolBar{
+
+}
+
+impl ToolBar {
+    pub fn new() -> Self {
+        Self{
+
+        }
+    }
+}
+
+impl UIDrawer for ToolBar {
+    fn update(&self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut super::UIMessager, model: &super::UIModel) {
+        let model = &model.tool_bar;
+        if let Some(model) = model {
+            // 工具栏区域
+            let toolbar_rect = Rect::from_min_size(
+                Pos2::new(0.0, 0.0), 
+                Vec2::new(ctx.content_rect().width(), model.style.height));
+
+            TopBottomPanel::top("toolbar").show(ctx, |ui|{
+                menu::MenuBar::new().ui(ui, |ui| {
+                    // 标题栏背景
+                    ui.painter().rect_filled(
+                        toolbar_rect, 
+                        model.style.corner_radius, 
+                        model.style.fill_color
+                    );
+                    
+                    // Icon
+                    let icon = egui::Image::new(paths::PATH_ENGINE_ICON_URI);
+                    ui.menu_button(icon, |ui| {
+                        if ui.button("About Kairos").clicked() {
+                            messager.send(Message::OpenAboutWindow);
+                        }
+                        ui.separator();
+                        if ui.button("Quit").clicked() {
+
+                        }
+                    });
+                    // File
+                    ui.menu_button("File", |ui| {
+                        if ui.button("New Scene").clicked() {
+                            todo!()
+                        }
+                    });
+                    
+                    // Editor
+                    ui.menu_button("Edit", |ui| {
+                        if ui.button("Preferences").clicked() {
+                            todo!()
+                        }
+                    })
+                });
+            });
+        }
+    }
+}
