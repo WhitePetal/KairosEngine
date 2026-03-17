@@ -1,31 +1,44 @@
 pub mod tool_bar;
 
-use std::{any::{Any, TypeId}, collections::HashMap};
+use std::{any::{Any, TypeId}, cell::RefCell, collections::HashMap, rc::Rc};
 
-pub trait Message: Any + Send + Sync {
-    fn get_id() -> TypeId where Self: Sized;
+pub enum Message {
+    SetToolBarHeight(f32),
+    OpenAboutWindow,
+}
 
-    fn id(&self) -> TypeId;
+#[derive(Debug, PartialEq, Eq, Hash)]
+pub enum MessageID {
+    SetToolBarHeight,
+    OpenAboutWindow
+}
+
+pub trait MessageHandler {
+    fn handle(&self, msg: &Message);
 }
 
 pub struct Messager {
-    messages: HashMap<TypeId, Vec<Box<dyn FnMut(&dyn Any)>>>
+    messages: RefCell<HashMap<MessageID, Vec<Rc<dyn MessageHandler>>>>
 }
 
 impl Messager {
     pub fn new() -> Self {
-        Self { messages: HashMap::new() }
+        Self { messages: RefCell::new(HashMap::new()) }
     }
 
-    pub fn registe(&mut self, id: TypeId, handler: Box<dyn FnMut(&dyn Any)>) {
-        self.messages.entry(id).or_default().push(handler);
+    pub fn registe(&self, id: MessageID, handler: Rc<dyn MessageHandler>) {
+        let mut messages = self.messages.borrow_mut();
+        messages.entry(id).or_default().push(handler);
     }
 
-    pub fn send(&mut self, msg: &dyn Message) {
-        let id = msg.id();
-        if let Some(handlers)  = self.messages.get_mut(&id) {
-            for handler in handlers.iter_mut() {
-                handler(msg);
+    pub fn send(&self, id: &MessageID, msg: &Message) {
+        let messages = self.messages.borrow();
+        println!("FK?: {:?}", id);
+        if let Some(handlers)  = messages.get(id) {
+            for handler in handlers.iter() {
+                let handler = Rc::clone(handler);
+                println!("FK");
+                handler.handle(msg);
             }
         }
     }

@@ -11,7 +11,7 @@ pub enum FloatingWindow {
 impl UI {
     pub fn to_floating_window(ui: Rc<UI>) -> Option<FloatingWindow> {
         match ui.as_ref() {
-            UI::AboutWindow(_) => Some(FloatingWindow::AboutWindow(Rc::clone(&ui))),
+            UI::AboutWindow(_) => Some(FloatingWindow::AboutWindow(ui)),
             _ => None
         }
     }    

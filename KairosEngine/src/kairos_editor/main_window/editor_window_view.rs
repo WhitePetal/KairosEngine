@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::{Ref}};
 
 use eframe::egui::{self, Color32, RichText};
 use super::editor_window_model::EditorWindowModel;
@@ -16,9 +16,8 @@ impl EditorWindowView {
 }
 
 impl EditorWindowView {
-    pub fn draw(&self, ctx: &egui::Context, frame: &mut eframe::Frame, model: &Rc<RefCell<EditorWindowModel>>)
+    pub fn draw(&self, ctx: &egui::Context, frame: &mut eframe::Frame, model: Ref<EditorWindowModel>)
     {
-        let model = model.borrow();
         // 设置整体背景色
         ctx.style_mut(|style| {
             style.visuals.window_fill = model.style.background_color.into();

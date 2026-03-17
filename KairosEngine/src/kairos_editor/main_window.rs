@@ -3,39 +3,76 @@ mod editor_window_view;
 
 mod tool_bar;
 
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::{RefCell}, rc::Rc};
 
 use editor_window_model::EditorWindowModel;
 use editor_window_view::EditorWindowView;
 use tool_bar::ToolBar;
 
-use crate::kairos_editor::{UI, UIFactor, UIID, floating_window::{FloatingWindow, about_window::AboutWindow}, ui_loader::UILoader, ui_message::{self, Message, Messager}};
+use crate::kairos_editor::{UI, UIID, floating_window::{FloatingWindow, about_window::AboutWindow}, ui_loader::UILoader, ui_message::{ Message, MessageHandler, MessageID, Messager}};
+
+struct FloatingWindowCollection {
+    windows: RefCell<Vec<FloatingWindow>>
+}
+
+impl FloatingWindowCollection {
+    pub fn new() -> Self {
+        Self { windows: RefCell::new(Vec::new()) }    
+    }
+
+    pub fn push(&self, window: FloatingWindow) {
+        let mut windows = self.windows.borrow_mut();
+        windows.push(window);
+    }
+
+    pub fn for_each<F: FnMut(&FloatingWindow)>(&self, f: F) {
+        let windows = self.windows.borrow();
+        windows.iter().for_each(f);
+    }
+}
 
 pub struct MainEditorWindow {
-    model: Rc<RefCell<EditorWindowModel>>,
+    model: RefCell<EditorWindowModel>,
     view: EditorWindowView,
 
     tool_bar: ToolBar,
 
     messager: Messager,
-    ui_loader: Rc<RefCell<UILoader>>,
+    ui_loader: RefCell<UILoader>,
 
-    floating_windows: Rc<RefCell<Vec<FloatingWindow>>>
+    floating_windows: FloatingWindowCollection
+}
+
+impl MessageHandler for MainEditorWindow {
+    fn handle(&self, msg: &Message) {
+        match msg {
+            Message::SetToolBarHeight(height) => self.model.borrow_mut().tool_bar_height = *height,
+            Message::OpenAboutWindow => {
+                println!("FK");
+                let mut ui_loader = self.ui_loader.borrow_mut();
+                let about_window= ui_loader.load_ui::<AboutWindow>(&UIID::AboutWindow);
+                match UI::to_floating_window(about_window) {
+                    Some(window) => self.floating_windows.push(window),
+                    None => ()
+                };
+            },
+        }
+    }
 }
 
 impl MainEditorWindow {
-    pub fn new(title: &str, _cc: &eframe::CreationContext, mut messager: Messager) -> Result<Self, Box<dyn std::error::Error>> {
-        let model = Rc::new(RefCell::new(EditorWindowModel::new(title)?));        
+    pub fn new(title: &str, _cc: &eframe::CreationContext, messager: Messager) -> Result<Rc<Self>, Box<dyn std::error::Error>> {
+        let model = RefCell::new(EditorWindowModel::new(title)?);        
         let view = EditorWindowView::new();
 
-        let floating_windows = Rc::new(RefCell::new(vec![]));
+        let floating_windows = FloatingWindowCollection::new();
 
-        let ui_loader = Rc::new(RefCell::new(UILoader::new()));
+        let ui_loader = RefCell::new(UILoader::new());
 
-        let tool_bar = ToolBar::new(&_cc.egui_ctx, &mut messager)?;
+        let tool_bar = ToolBar::new(&_cc.egui_ctx, &messager)?;
 
-        let mut controller = Self {
-            model: Rc::clone(&model),
+        let controller = Self {
+            model,
             view,
 
             tool_bar,
@@ -44,70 +81,58 @@ impl MainEditorWindow {
 
             ui_loader,
 
-            floating_windows: floating_windows
+            floating_windows
         };
-        
-        let model = Rc::clone(&model);
-        controller.messager.registe(ui_message::tool_bar::SetToolBarHeightMessage::get_id(), Box::new(
-            move |msg| {
-                if let Some(msg)  = msg.downcast_ref::<ui_message::tool_bar::SetToolBarHeightMessage>() {
-                    let model = Rc::clone(&model);
-                    let mut model = model.borrow_mut();
-                    model.tool_bar_height = msg.height();
-                }
-            }
-        ));
-        let ui_loader = Rc::clone(&controller.ui_loader);
-        let floating_windows = Rc::clone(&controller.floating_windows);
-        controller.messager.registe(ui_message::tool_bar::ShowAboutWindow::get_id(), Box::new(
-            move |msg| {
-                if let Some(_msg) = msg.downcast_ref::<ui_message::tool_bar::ShowAboutWindow>() {
-                    let mut ui_loader = ui_loader.borrow_mut();
-                    let about_window= ui_loader.load_ui::<AboutWindow>(&UIID::AboutWindow);
-                    match about_window.as_ref() {
-                        UI::AboutWindow(_) => {
-                            let mut floating_windows = floating_windows.borrow_mut();
-                            match UI::to_floating_window(about_window) {
-                                Some(window) => floating_windows.push(window),
-                                None => ()
-                            };
-                        }
-                        _ => ()
-                    }
-                }
-            }
-        ));
+
+        let controller = Rc::new(controller);
+        let handler = Rc::clone(&controller);
+        controller.messager.registe(MessageID::SetToolBarHeight, handler);
+        let handler = Rc::clone(&controller);
+        controller.messager.registe(MessageID::OpenAboutWindow, handler);
 
         Ok(controller)
     }
+
+    pub fn update(&self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame) {
+        self.floating_windows.for_each(|window| {
+            match window {
+                FloatingWindow::AboutWindow(ui) => {
+                    match ui.as_ref() {
+                        UI::AboutWindow(ui) => {
+                            ui.update(ctx, frame, &self.messager);
+                        },
+                        _ => ()
+                    }
+                }
+            };
+        });
+
+        self.tool_bar.update(ctx, frame, &self.messager);
+        self.view.draw(ctx, frame, self.model.borrow());
+    }
 }
 
-impl eframe::App for MainEditorWindow {
-    fn update(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame) {
-        // floating_windows 的处理需要在单独一个作用域内
-        // 因为其使用了 floating_windows 的 不可变引用
-        // 而在之后，其他 ui 可能会发起某个floating_window的创建事件
-        // 此时会创建 floating_windows 的 可变引用 来向其添加 window 元素
-        // 那么就会出现 不可变引用 + 可变引用 同时存在的情况，程序 painc
-        // 改成 try_borrow 也可以，但 单独作用域 更简洁
-        {
-            let floating_windows = Rc::clone(&self.floating_windows);
-            let floating_windows = floating_windows.borrow();
-            floating_windows.iter().for_each(|window| {
-                match window {
-                    FloatingWindow::AboutWindow(ui) => {
-                        match ui.as_ref() {
-                            UI::AboutWindow(ui) => {
-                                ui.update(ctx, frame, &mut self.messager);
-                            },
-                            _ => ()
-                        }
-                    }
-                };
-            });
-        }
+pub struct KairosEngine {
+    main_editor_window: Rc<MainEditorWindow>,
+}
 
-        self.tool_bar.update(ctx, frame, &mut self.messager);
-        self.view.draw(ctx, frame, &self.model);
+impl KairosEngine {
+    pub fn new(title: &str, _cc: &eframe::CreationContext, messager: Messager) -> Result<Self, Box<dyn std::error::Error>> {
+        let main_editor_window = MainEditorWindow::new(title, _cc, messager)?;
+        let main_editor_window = Rc::clone(&main_editor_window);
+        Ok(Self{
+            main_editor_window
+        })
+    }
+}
+
+impl eframe::App for KairosEngine {
+    fn update(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame) {
+        let main_editor_window = Rc::clone(&self.main_editor_window);
+        main_editor_window.update(ctx, frame);
+    }
+
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        
     }
 }

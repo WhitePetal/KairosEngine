@@ -13,7 +13,7 @@ impl AboutWindow {
         Self {  }
     }
 
-    pub fn update(&self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut Messager) {
+    pub fn update(&self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &Messager) {
         egui::SidePanel::left("AboutWindow")
             .frame(egui::Frame::NONE.fill(Color32::BLUE))
             .show(ctx, |ui| {

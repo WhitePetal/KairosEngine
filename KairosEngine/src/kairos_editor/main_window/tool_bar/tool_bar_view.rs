@@ -1,6 +1,6 @@
 use eframe::egui::{self, Pos2, Rect, TopBottomPanel, Vec2, containers::menu};
 
-use crate::kairos_editor::{paths, ui_message::{Messager, tool_bar::ShowAboutWindow}};
+use crate::kairos_editor::{paths, ui_message::{Message, MessageID, Messager}};
 
 use super::tool_bar_model::ToolBarModel;
 
@@ -15,7 +15,7 @@ impl ToolBarView {
         Self {  }
     }
 
-    pub fn draw(&self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, model: &ToolBarModel, messager: &mut Messager) {
+    pub fn draw(&self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, model: &ToolBarModel, messager: &Messager) {
         // 工具栏区域
         let toolbar_rect = Rect::from_min_size(
             Pos2::new(0.0, 0.0), 
@@ -34,7 +34,7 @@ impl ToolBarView {
                 let icon = egui::Image::new(paths::PATH_ENGINE_ICON_URI);
                 ui.menu_button(icon, |ui| {
                     if ui.button("About Kairos").clicked() {
-                        messager.send(&ShowAboutWindow::new());
+                        messager.send(&MessageID::OpenAboutWindow, &Message::OpenAboutWindow);
                     }
                     ui.separator();
                     if ui.button("Quit").clicked() {
