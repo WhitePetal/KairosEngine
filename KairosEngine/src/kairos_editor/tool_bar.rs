@@ -5,7 +5,7 @@ use kairos_engine::math;
 use serde::{Deserialize, Serialize};
 use sonic_rs::from_str;
 
-use crate::kairos_editor::{UIDrawer, paths, ui_message::Message};
+use crate::kairos_editor::{UIDrawer, UIMessage, paths};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ToolBarStyle {
@@ -71,14 +71,14 @@ impl UIDrawer for ToolBar {
                     );
                     
                     // Icon
-                    let icon = egui::Image::new(paths::PATH_ENGINE_ICON_URI);
+                    let icon = egui::Image::new(paths::URI_ENGINE_ICON);
                     ui.menu_button(icon, |ui| {
                         if ui.button("About Kairos").clicked() {
-                            messager.send(Message::OpenAboutWindow);
+                            messager.send(UIMessage::OpenAboutWindow);
                         }
                         ui.separator();
                         if ui.button("Quit").clicked() {
-
+                            messager.send(UIMessage::QuitEngine);
                         }
                     });
                     // File

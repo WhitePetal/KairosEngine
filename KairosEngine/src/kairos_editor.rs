@@ -1,41 +1,26 @@
-use crate::kairos_editor::{about_window::AboutWindow, main_content::{MainContent, MainContentModel}, tool_bar::{ToolBar, ToolBarModel}, ui_message::Message};
+use crate::kairos_editor::{about_window::{AboutWindow, AboutWindowModel}, main_content::{MainContent, MainContentModel}, tool_bar::{ToolBar, ToolBarModel}};
 
 pub mod paths;
+pub mod consts;
 pub mod dialog;
 pub mod ui_message;
-pub mod ui_loader;
 pub mod main_content;
 pub mod tool_bar;
 pub mod about_window;
-pub mod floating_window;
 
-struct OtherWindow {
-
-}
-
-pub trait UIFactor {
-    fn new() -> UI;
-    fn id() -> UIID;
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub enum UIID {
-    AboutWindow,
-    OtherWindow
-}
-
-pub enum UI {
-    AboutWindow(AboutWindow),
-    OtherWindow(OtherWindow),
-}
-
-pub enum FloatingWindow {
-    AboutWindow(AboutWindow)
+pub enum UIMessage {
+    CreateMainContent(String),
+    CreateToolbar,
+    SetToolBarHeight(f32),
+    OpenAboutWindow,
+    CloseAboutWindow,
+    QuitEngine,
 }
 
 pub struct UIModel {
     main_content: Option<MainContentModel>,
     tool_bar: Option<ToolBarModel>,
+    about_window: Option<AboutWindowModel>,
 }
 
 impl UIModel {
@@ -43,6 +28,7 @@ impl UIModel {
         Self {
             main_content: None,
             tool_bar: None,
+            about_window: None,
         }
     }
 }
@@ -52,7 +38,7 @@ pub trait UIDrawer {
 }
 
 pub struct UIMessager {
-    messages: Vec<Message>
+    messages: Vec<UIMessage>
 }
 
 impl UIMessager {
@@ -62,12 +48,8 @@ impl UIMessager {
         }
     }
 
-    pub fn send(&mut self, msg: Message) {
+    pub fn send(&mut self, msg: UIMessage) {
         self.messages.push(msg);
-    }
-
-    pub fn append(&mut self, msgs: &mut Vec<Message>) {
-        self.messages.append(msgs);
     }
 }
 
@@ -93,10 +75,10 @@ impl UIContext {
     }
 
     pub fn handle(&mut self, ctx: &eframe::egui::Context) {
-        let mut new_messages: Option<Vec<Message>> = None;
+        let mut new_messages: Option<Vec<UIMessage>> = None;
         for msg in self.messager.messages.drain(..) {
             match msg {
-                Message::CreateMainContent(title) => {
+                UIMessage::CreateMainContent(title) => {
                     let model = MainContentModel::new(&title).unwrap_or_else(|error| {
                         dialog::ui_model_load_error_window("MainContent", &error);
                         ctx.send_viewport_cmd(eframe::egui::ViewportCommand::Close);
@@ -106,13 +88,13 @@ impl UIContext {
                     let drawer = Box::new(MainContent::new());
                     self.ui_drawers.push(drawer);
                 },
-                Message::CreateToolbar => {
+                UIMessage::CreateToolbar => {
                     let model = ToolBarModel::new().unwrap_or_else(|error| {
                         dialog::ui_model_load_error_window("ToolBar", &error);
                         ctx.send_viewport_cmd(eframe::egui::ViewportCommand::Close);
                         panic!("Load ToolBar UI Model Failed: {}", error)
                     });
-                    let new_msg = Message::SetToolBarHeight(model.style.height);
+                    let new_msg = UIMessage::SetToolBarHeight(model.style.height);
                     match &mut new_messages {
                         Some(messages) => messages.push(new_msg),
                         None => new_messages = Some(vec![new_msg]),
@@ -121,15 +103,31 @@ impl UIContext {
                     let drawer = Box::new(ToolBar::new());
                     self.ui_drawers.push(drawer);
                 },
-                Message::SetToolBarHeight(height) => {
+                UIMessage::SetToolBarHeight(height) => {
                     if let Some(main_content_model) = &mut self.model.main_content {
                         main_content_model.tool_bar_height = height;
                     }
                 },
-                Message::OpenAboutWindow => {
-                    let drawer = Box::new(AboutWindow::new());
-                    self.ui_drawers.push(drawer);
+                UIMessage::OpenAboutWindow => {
+                    match self.model.about_window {
+                        Some(_) => todo!(),
+                        None => {
+                            let mut model = AboutWindowModel::new().unwrap_or_else(|error| {
+                                dialog::ui_model_load_error_window("AboutWindow", &error);
+                                ctx.send_viewport_cmd(eframe::egui::ViewportCommand::Close);
+                                panic!("Load AboutWindow UI Model Failed: {}", error)
+                            });
+                            model.open = true;
+                            self.model.about_window = Some(model);
+                            let drawer = Box::new(AboutWindow::new());
+                            self.ui_drawers.push(drawer);
+                        },
+                    }; 
                 },
+                UIMessage::QuitEngine => {
+                    ctx.send_viewport_cmd(eframe::egui::ViewportCommand::Close);
+                },
+                UIMessage::CloseAboutWindow => todo!(),
             }
         }
 
@@ -147,8 +145,8 @@ impl KairosEngine {
     pub fn new(title: &str, _cc: &eframe::CreationContext) -> Result<Self, Box<dyn std::error::Error>> {
 
         let mut ui_context = UIContext::new();
-        ui_context.messager.send(Message::CreateMainContent(title.to_string()));
-        ui_context.messager.send(Message::CreateToolbar);
+        ui_context.messager.send(UIMessage::CreateMainContent(title.to_string()));
+        ui_context.messager.send(UIMessage::CreateToolbar);
 
         Ok(Self{
             ui_context

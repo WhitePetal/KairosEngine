@@ -1,18 +1,16 @@
 mod kairos_dialog;
 mod kairos_editor;
 mod egui_utils;
-mod consts;
 
 use std::sync::Arc;
 
 use eframe::{self, egui};
 
-use crate::consts::KAIROS_ENGINE_VERSION;
-use crate::kairos_editor::KairosEngine;
+use crate::kairos_editor::{KairosEngine, consts::VERSION};
 
 fn main() -> eframe::Result {
     const APP_NAME: &str = "KairosEngine";
-    let window_title = format!("Kairos Engine {}", KAIROS_ENGINE_VERSION);
+    let window_title = format!("Kairos Engine {}", VERSION);
     let icon = std::fs::read(kairos_editor::paths::PATH_ENGINE_ICON)
         .ok()
         .and_then(|bytes| eframe::icon_data::from_png_bytes(&bytes).ok())

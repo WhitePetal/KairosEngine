@@ -5,7 +5,7 @@ use kairos_engine::math;
 use serde::{Deserialize, Serialize};
 use sonic_rs::from_str;
 
-use crate::kairos_editor::{UIDrawer, UIModel, floating_window::{FloatingWindow}, paths};
+use crate::kairos_editor::{UIDrawer, UIModel, paths};
 
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -23,8 +23,8 @@ pub struct MainContentModel {
 
 impl MainContentStyle {
     fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let style_json = fs::read_to_string(paths::PATH_EDITOR_WINDOW_STYLE)
-            .map_err(|e| format!("Loader EditorWindowStyle.json Failed: {}, Path: {}", e, paths::PATH_EDITOR_WINDOW_STYLE))?;
+        let style_json = fs::read_to_string(paths::PATH_MAIN_CONTENT_STYLE)
+            .map_err(|e| format!("Loader EditorWindowStyle.json Failed: {}, Path: {}", e, paths::PATH_MAIN_CONTENT_STYLE))?;
 
         let style = from_str(&style_json)
             .map_err(|e| format!("Desierialize Json Failed: {}", e))?;
@@ -81,25 +81,5 @@ impl UIDrawer for MainContent {
                 );
             });
         }
-    }
-}
-
-struct FloatingWindowCollection {
-    windows: RefCell<Vec<FloatingWindow>>
-}
-
-impl FloatingWindowCollection {
-    pub fn new() -> Self {
-        Self { windows: RefCell::new(Vec::new()) }    
-    }
-
-    pub fn push(&self, window: FloatingWindow) {
-        let mut windows = self.windows.borrow_mut();
-        windows.push(window);
-    }
-
-    pub fn for_each<F: FnMut(&FloatingWindow)>(&self, f: F) {
-        let windows = self.windows.borrow();
-        windows.iter().for_each(f);
     }
 }

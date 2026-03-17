@@ -1,2 +1,0 @@
-
-pub const KAIROS_ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
