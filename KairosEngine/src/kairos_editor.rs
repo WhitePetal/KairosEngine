@@ -16,6 +16,7 @@ pub enum UIMessage {
     OpenAboutWindow,
     CloseAboutWindow,
     OpenPreferenceWindow,
+    ClosePreferenceWindow,
     QuitEngine,
 }
 
@@ -132,8 +133,8 @@ impl UIContext {
                     ctx.send_viewport_cmd(eframe::egui::ViewportCommand::Close);
                 },
                 UIMessage::CloseAboutWindow => {
-                    if let Some(mode) = &mut self.model.about_window {
-                        mode.open = false;
+                    if let Some(model) = &mut self.model.about_window {
+                        model.open = false;
                     }
                 },
                 UIMessage::OpenPreferenceWindow => {
@@ -151,6 +152,11 @@ impl UIContext {
                         }
                     }
                 },
+                UIMessage::ClosePreferenceWindow => {
+                    if let Some(model) = &mut self.model.preferences_window {
+                        model.open = false;
+                    }
+                }
             }
         }
 

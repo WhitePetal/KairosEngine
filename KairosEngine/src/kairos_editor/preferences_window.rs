@@ -80,7 +80,7 @@ impl UIDrawer for PreferencesWindow {
                 );
     
                 if !is_open {
-                    messager.send(super::UIMessage::CloseAboutWindow);
+                    messager.send(super::UIMessage::ClosePreferenceWindow);
                 }
             }
         }
