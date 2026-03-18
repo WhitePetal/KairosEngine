@@ -37,7 +37,7 @@ fn main() -> eframe::Result {
         options, 
         Box::new(|_cc| {
             egui_extras::install_image_loaders(&_cc.egui_ctx);
-            Ok(Box::new(KairosEngine::new(APP_NAME, _cc).unwrap_or_else(|error| {
+            Ok(Box::new(KairosEngine::new(_cc).unwrap_or_else(|error| {
                     kairos_dialog::error_message_window("Init Failed", &format!("new MainEditorWindow struct Failed:\n {}", error));
                     panic!("new MainEditorWindow Failed: {}", error);
                 }

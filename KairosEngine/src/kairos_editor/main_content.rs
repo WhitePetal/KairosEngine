@@ -16,9 +16,6 @@ pub struct MainContentStyle {
 
 pub struct MainContentModel {
     style: MainContentStyle,
-    title: String,
-    pub tool_bar_height: f32,
-    is_maximized: bool,
 }
 
 impl MainContentStyle {
@@ -34,14 +31,11 @@ impl MainContentStyle {
 }
 
 impl MainContentModel {
-    pub fn new(title: &str) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let style = MainContentStyle::new()?;
 
         Ok(Self { 
-            style: style, 
-            title: title.to_string(),
-            tool_bar_height: 0.0, 
-            is_maximized: false,
+            style: style,
         })
     }
 }
@@ -73,7 +67,7 @@ impl UIDrawer for MainContent {
                 .frame(egui::Frame::NONE.fill(model.style.central_panel_color.into()))
                 .show(ctx, |ui| {
                     ui.vertical_centered(|ui| {
-                        ui.add_space(model.tool_bar_height);
+                        // ui.add_space(model.tool_bar_height);
                         // ui.add_space(100.0);
                         ui.label(RichText::new("Main Content Area").size(24.0).color(Color32::LIGHT_GRAY));
                         ui.label(RichText::new("Custom titlebar demo").size(14.0).color(Color32::GRAY));

@@ -10,9 +10,8 @@ pub mod about_window;
 pub mod preferences_window;
 
 pub enum UIMessage {
-    CreateMainContent(String),
+    CreateMainContent,
     CreateToolbar,
-    SetToolBarHeight(f32),
     OpenAboutWindow,
     CloseAboutWindow,
     OpenPreferenceWindow,
@@ -80,11 +79,11 @@ impl UIContext {
     }
 
     pub fn handle(&mut self, ctx: &eframe::egui::Context) {
-        let mut new_messages: Option<Vec<UIMessage>> = None;
+        let mut _messages: Option<Vec<UIMessage>> = None;
         for msg in self.messager.messages.drain(..) {
             match msg {
-                UIMessage::CreateMainContent(title) => {
-                    let model = MainContentModel::new(&title).unwrap_or_else(|error| {
+                UIMessage::CreateMainContent => {
+                    let model = MainContentModel::new().unwrap_or_else(|error| {
                         dialog::ui_model_load_error_window("MainContent", &error);
                         ctx.send_viewport_cmd(eframe::egui::ViewportCommand::Close);
                         panic!("Load MainContent UI Model Failed: {}", error)
@@ -99,19 +98,9 @@ impl UIContext {
                         ctx.send_viewport_cmd(eframe::egui::ViewportCommand::Close);
                         panic!("Load ToolBar UI Model Failed: {}", error)
                     });
-                    let new_msg = UIMessage::SetToolBarHeight(model.style.height);
-                    match &mut new_messages {
-                        Some(messages) => messages.push(new_msg),
-                        None => new_messages = Some(vec![new_msg]),
-                    }
                     self.model.tool_bar = Some(model);
                     let drawer = Box::new(ToolBar::new());
                     self.ui_drawers.push(drawer);
-                },
-                UIMessage::SetToolBarHeight(height) => {
-                    if let Some(main_content_model) = &mut self.model.main_content {
-                        main_content_model.tool_bar_height = height;
-                    }
                 },
                 UIMessage::OpenAboutWindow => {
                     match &mut self.model.about_window {
@@ -160,7 +149,7 @@ impl UIContext {
             }
         }
 
-        if let Some(messages) = new_messages {
+        if let Some(messages) = _messages {
             self.messager.messages = messages;
         }
     }
@@ -171,11 +160,11 @@ pub struct KairosEngine {
 }
 
 impl KairosEngine {
-    pub fn new(title: &str, _cc: &eframe::CreationContext) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(_cc: &eframe::CreationContext) -> Result<Self, Box<dyn std::error::Error>> {
 
         let mut ui_context = UIContext::new();
-        ui_context.messager.send(UIMessage::CreateMainContent(title.to_string()));
         ui_context.messager.send(UIMessage::CreateToolbar);
+        ui_context.messager.send(UIMessage::CreateMainContent);
 
         Ok(Self{
             ui_context
