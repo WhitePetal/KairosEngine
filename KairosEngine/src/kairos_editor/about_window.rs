@@ -43,41 +43,43 @@ impl AboutWindowModel {
 }
 
 pub struct AboutWindow {
-    
+    model: AboutWindowModel
 }
 
 impl AboutWindow {
-    pub fn new() -> Self {
-        Self {  }
+    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        let model = AboutWindowModel::new()?;
+        Ok(
+            Self { 
+                model
+            }   
+        )
     }
 }
 
 impl UIDrawer for AboutWindow {
-    fn update(&self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut super::UIMessager, model: &super::UIModel) {
-        if let Some(model) = &model.about_window {
-            let mut is_open = model.open;
-            if is_open {
-                egui::Window::new("About KairosEngine")
-                    .default_width(model.style.width)
-                    .default_height(model.style.height)
-                    .open(&mut is_open)
-                    .resizable([true, false])
-                    .scroll(false)
-                    .constrain_to(ctx.available_rect())
-                    .show(ctx, |ui| {
-                        // TODO: Icon
-                        ui.heading("KairosEngine");
-                        ui.label(consts::VERSION);
-                        ui.separator();
-                        ui.label("KairosEngine is a game development engine that aims to be flexible and efficient.");
-                        ui.label("TODO: add icon...");
-                    }
-                );
-    
-                if !is_open {
-                    messager.send(super::UIMessage::CloseAboutWindow);
-                }
+    fn update(&self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut super::UIMessager) {
+        let model = &self.model;
+        let mut is_open = true;
+        egui::Window::new("About KairosEngine")
+            .default_width(model.style.width)
+            .default_height(model.style.height)
+            .open(&mut is_open)
+            .resizable([true, false])
+            .scroll(false)
+            .constrain_to(ctx.available_rect())
+            .show(ctx, |ui| {
+                // TODO: Icon
+                ui.heading("KairosEngine");
+                ui.label(consts::VERSION);
+                ui.separator();
+                ui.label("KairosEngine is a game development engine that aims to be flexible and efficient.");
+                ui.label("TODO: add icon...");
             }
+        );
+
+        if !is_open {
+            messager.send(super::UIMessage::CloseAboutWindow);
         }
     }
 }

@@ -1,6 +1,6 @@
 use std::fs;
 
-use eframe::{Frame, egui::{self, Button, Color32, Pos2, Rect, Sense, TopBottomPanel, Vec2, Visuals, Widget, containers::menu}};
+use eframe::egui::{self, Pos2, Rect, TopBottomPanel, Vec2, containers::menu};
 use kairos_engine::math;
 use serde::{Deserialize, Serialize};
 use sonic_rs::from_str;
@@ -42,65 +42,64 @@ impl ToolBarModel {
 }
 
 pub struct ToolBar{
-
+    model: ToolBarModel
 }
 
 impl ToolBar {
-    pub fn new() -> Self {
-        Self{
+    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        let model = ToolBarModel::new()?;
 
-        }
+        Ok(
+            Self{
+                model
+            }   
+        )
     }
 }
 
 impl UIDrawer for ToolBar {
-    fn update(&self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut super::UIMessager, model: &super::UIModel) {
-        let model = &model.tool_bar;
-        if let Some(model) = model {
-            let mut visuals = Visuals::dark();
-            visuals.button_frame = true;
-            ctx.set_visuals(visuals);
-            TopBottomPanel::top("toolbar").show(ctx, |ui|{
-                ui.visuals_mut().override_text_color = Some(model.style.button_text_color.into());
-                menu::MenuBar::new().ui(ui, |ui| {
-                    // 工具栏区域
-                    let toolbar_rect = Rect::from_min_size(
-                        Pos2::new(0.0, 0.0), 
-                        Vec2::new(ctx.content_rect().width(), model.style.height));
+    fn update(&self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut super::UIMessager) {
+        let model = &self.model;
+        TopBottomPanel::top("toolbar").show(ctx, |ui|{
+            ui.visuals_mut().override_text_color = Some(model.style.button_text_color.into());
+            menu::MenuBar::new().ui(ui, |ui| {
+                // 工具栏区域
+                let toolbar_rect = Rect::from_min_size(
+                    Pos2::new(0.0, 0.0), 
+                    Vec2::new(ctx.content_rect().width(), model.style.height));
 
-                    // 工具栏背景
-                    ui.painter().rect_filled(
-                        toolbar_rect, 
-                        model.style.corner_radius, 
-                        model.style.fill_color
-                    );
-                    
-                    // Icon
-                    let icon = egui::Image::new(paths::URI_ENGINE_ICON);
-                    ui.menu_image_button(icon, |ui| {
-                        if ui.button("About Kairos").clicked() {
-                            messager.send(UIMessage::OpenAboutWindow);
-                        }
-                        ui.separator();
-                        if ui.button("Quit").clicked() {
-                            messager.send(UIMessage::QuitEngine);
-                        }
-                    });
-                    // File
-                    ui.menu_button("File", |ui| {
-                        if ui.button("New Scene").clicked() {
-                            todo!()
-                        }
-                    });
-                    
-                    // Editor
-                    ui.menu_button("Edit", |ui| {
-                        if ui.button("Preferences").clicked() {
-                            messager.send(UIMessage::OpenPreferenceWindow);
-                        }
-                    });
+                // 工具栏背景
+                ui.painter().rect_filled(
+                    toolbar_rect, 
+                    model.style.corner_radius, 
+                    model.style.fill_color
+                );
+                
+                // Icon
+                let icon = egui::Image::new(paths::URI_ENGINE_ICON);
+                ui.menu_image_button(icon, |ui| {
+                    if ui.button("About Kairos").clicked() {
+                        messager.send(UIMessage::OpenAboutWindow);
+                    }
+                    ui.separator();
+                    if ui.button("Quit").clicked() {
+                        messager.send(UIMessage::QuitEngine);
+                    }
+                });
+                // File
+                ui.menu_button("File", |ui| {
+                    if ui.button("New Scene").clicked() {
+                        todo!()
+                    }
+                });
+                
+                // Editor
+                ui.menu_button("Edit", |ui| {
+                    if ui.button("Preferences").clicked() {
+                        messager.send(UIMessage::OpenPreferenceWindow);
+                    }
                 });
             });
-        }
+        });
     }
 }

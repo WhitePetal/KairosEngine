@@ -48,41 +48,50 @@ impl PreferencesModel {
 }
 
 pub struct PreferencesWindow {
-    pub open: bool
+    model: PreferencesModel
 }
 
 impl PreferencesWindow {
-    pub fn new() -> Self {
-        Self {
-            open: false
-        }
+    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        let model = PreferencesModel::new()?;
+
+        Ok(
+            Self {
+                model
+            }   
+        )
     }
 }
 
 impl UIDrawer for PreferencesWindow {
-    fn update(&self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut super::UIMessager, model: &super::UIModel) {
-        if let Some(model) = &model.preferences_window {
-            let mut is_open = model.open;
-            if is_open {
-                egui::Window::new("KairosEngine Preferences")
-                    .default_width(320.0)
-                    .default_height(160.0)
-                    .open(&mut is_open)
-                    .resizable([true, false])
-                    .scroll(false)
-                    .constrain_to(ctx.available_rect())
-                    .show(ctx, |ui| {
-                        // TODO
-                        ui.heading("Preferences");
-                        ui.separator();
-                        ui.label("Prefercens demo. TODO..")
-                    }
-                );
-    
-                if !is_open {
-                    messager.send(super::UIMessage::ClosePreferenceWindow);
+    fn update(&self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut super::UIMessager) {
+        let model = &self.model;
+        let mut is_open = true;
+        if is_open {
+            egui::Window::new("KairosEngine Preferences")
+                .default_width(320.0)
+                .default_height(160.0)
+                .open(&mut is_open)
+                .resizable([true, false])
+                .scroll(false)
+                .constrain_to(ctx.available_rect())
+                .show(ctx, |ui| {
+                    // TODO
+                    ui.heading("Preferences");
+                    ui.separator();
+                    ui.label("Prefercens demo. TODO..")
                 }
+            );
+
+            if !is_open {
+                messager.send(super::UIMessage::ClosePreferenceWindow);
             }
         }
+    }
+}
+
+impl PreferencesWindow {
+    fn registe_ui_styles(&mut self, drawers: Vec<Box<dyn UIDrawer>>) {
+        
     }
 }

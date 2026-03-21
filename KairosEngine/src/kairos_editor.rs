@@ -1,4 +1,8 @@
-use crate::kairos_editor::{about_window::{AboutWindow, AboutWindowModel}, main_content::{MainContent, MainContentModel}, preferences_window::{PreferencesModel, PreferencesWindow}, tool_bar::{ToolBar, ToolBarModel}};
+use std::{any::{TypeId, type_name}, collections::HashMap};
+
+use eframe::egui::Visuals;
+
+use crate::kairos_editor::{about_window::AboutWindow, main_content::MainContent, preferences_window::PreferencesWindow, tool_bar::ToolBar};
 
 pub mod paths;
 pub mod consts;
@@ -12,33 +16,15 @@ pub mod preferences_window;
 pub enum UIMessage {
     CreateMainContent,
     CreateToolbar,
+    QuitEngine,
     OpenAboutWindow,
     CloseAboutWindow,
     OpenPreferenceWindow,
     ClosePreferenceWindow,
-    QuitEngine,
-}
-
-pub struct UIModel {
-    main_content: Option<MainContentModel>,
-    tool_bar: Option<ToolBarModel>,
-    about_window: Option<AboutWindowModel>,
-    preferences_window: Option<PreferencesModel>,
-}
-
-impl UIModel {
-    pub fn new() -> Self {
-        Self {
-            main_content: None,
-            tool_bar: None,
-            about_window: None,
-            preferences_window: None,
-        }
-    }
 }
 
 pub trait UIDrawer {
-    fn update(&self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut UIMessager, model: &UIModel);
+    fn update(&self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut UIMessager);
 }
 
 pub struct UIMessager {
@@ -58,100 +44,109 @@ impl UIMessager {
 }
 
 pub struct UIContext {
-    model : UIModel,
     messager: UIMessager,
-    ui_drawers: Vec<Box<dyn UIDrawer>>,
+    ids: HashMap<TypeId, usize>,
+    on_offs: Vec<bool>,
+    drawers: Vec<Box<dyn UIDrawer>>,
 }
 
 impl UIContext {
     pub fn new() -> Self {
         Self { 
-            model: UIModel::new(),
             messager: UIMessager::new(),
-            ui_drawers: Vec::new()
+            ids: HashMap::new(),
+            on_offs: Vec::new(),
+            drawers: Vec::new()
         }   
     }
 
     pub fn darw(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame) {
-        for ui in self.ui_drawers.iter() {
-            ui.update(ctx, frame, &mut self.messager, &self.model);
-        }
+        self.drawers.iter().zip(self.on_offs.iter()).filter(|(_, on_off)| **on_off).for_each(|(drawer, _)| {
+            drawer.update(ctx, frame, &mut self.messager);
+        });
     }
 
     pub fn handle(&mut self, ctx: &eframe::egui::Context) {
-        let mut _messages: Option<Vec<UIMessage>> = None;
-        for msg in self.messager.messages.drain(..) {
+        let mut _new_messages: Option<Vec<UIMessage>> = None;
+        let mut messages = std::mem::take(&mut self.messager.messages);
+        for msg in &messages {
             match msg {
                 UIMessage::CreateMainContent => {
-                    let model = MainContentModel::new().unwrap_or_else(|error| {
-                        dialog::ui_model_load_error_window("MainContent", &error);
-                        ctx.send_viewport_cmd(eframe::egui::ViewportCommand::Close);
-                        panic!("Load MainContent UI Model Failed: {}", error)
+                   let drawer = MainContent::new().unwrap_or_else(|error| {
+                        UIContext::create_ui_failed(ctx, type_name::<MainContent>(), error);
                     });
-                    self.model.main_content = Some(model);
-                    let drawer = Box::new(MainContent::new());
-                    self.ui_drawers.push(drawer);
+                    UIContext::push_drawer::<MainContent>(self, Box::new(drawer));
                 },
                 UIMessage::CreateToolbar => {
-                    let model = ToolBarModel::new().unwrap_or_else(|error| {
-                        dialog::ui_model_load_error_window("ToolBar", &error);
-                        ctx.send_viewport_cmd(eframe::egui::ViewportCommand::Close);
-                        panic!("Load ToolBar UI Model Failed: {}", error)
+                    let drawer = ToolBar::new().unwrap_or_else(|error| {
+                        UIContext::create_ui_failed(ctx, type_name::<ToolBar>(), error);
                     });
-                    self.model.tool_bar = Some(model);
-                    let drawer = Box::new(ToolBar::new());
-                    self.ui_drawers.push(drawer);
-                },
-                UIMessage::OpenAboutWindow => {
-                    match &mut self.model.about_window {
-                        Some(model) => model.open = true,
-                        None => {
-                            let mut model = AboutWindowModel::new().unwrap_or_else(|error| {
-                                dialog::ui_model_load_error_window("AboutWindow", &error);
-                                ctx.send_viewport_cmd(eframe::egui::ViewportCommand::Close);
-                                panic!("Load AboutWindow UI Model Failed: {}", error)
-                            });
-                            model.open = true;
-                            self.model.about_window = Some(model);
-                            let drawer = Box::new(AboutWindow::new());
-                            self.ui_drawers.push(drawer);
-                        },
-                    }; 
+                    self.push_drawer::<ToolBar>(Box::new(drawer));
                 },
                 UIMessage::QuitEngine => {
                     ctx.send_viewport_cmd(eframe::egui::ViewportCommand::Close);
                 },
+                UIMessage::OpenAboutWindow => {
+                    let type_id = TypeId::of::<AboutWindow>();
+                    match self.ids.get(&type_id) {
+                        Some(id) => self.on_offs[*id] = true,
+                        None => {
+                            let drawer = AboutWindow::new().unwrap_or_else(|error| {
+                                UIContext::create_ui_failed(ctx, type_name::<AboutWindow>(), error);
+                            });
+                            let id = self.push_drawer::<AboutWindow>(Box::new(drawer));
+                        },
+                    };
+                },
                 UIMessage::CloseAboutWindow => {
-                    if let Some(model) = &mut self.model.about_window {
-                        model.open = false;
+                    let type_id = TypeId::of::<AboutWindow>();
+                    if let Some(id) = self.ids.get(&type_id) {
+                        self.on_offs[*id] = false;
                     }
                 },
                 UIMessage::OpenPreferenceWindow => {
-                    match &mut self.model.preferences_window {
-                        Some(model) => model.open = true,
+                    let type_id = TypeId::of::<PreferencesWindow>();
+                    match self.ids.get(&type_id) {
+                        Some(id) => {
+                            self.on_offs[*id] = true;
+                        },
                         None => {
-                            let mut model = PreferencesModel::new().unwrap_or_else(|error| {
-                                dialog::ui_model_load_error_window("PreferencesWindow", &error);
-                                panic!("Load PreferencesWindow UI Model Failed: {}", error)
+                            let drawer = PreferencesWindow::new().unwrap_or_else(|error| {
+                                UIContext::create_ui_failed(ctx, type_name::<PreferencesWindow>(), error);
                             });
-                            model.open = true;
-                            self.model.preferences_window = Some(model);
-                            let drawer = Box::new(PreferencesWindow::new());
-                            self.ui_drawers.push(drawer);
+                            self.push_drawer::<PreferencesWindow>(Box::new(drawer));
                         }
-                    }
+                    };
                 },
                 UIMessage::ClosePreferenceWindow => {
-                    if let Some(model) = &mut self.model.preferences_window {
-                        model.open = false;
+                    let type_id = TypeId::of::<PreferencesWindow>();
+                    if let Some(id) = self.ids.get(&type_id) {
+                        self.on_offs[*id] = false;
                     }
                 }
             }
         }
+        messages.clear();
+        self.messager.messages = messages;
 
-        if let Some(messages) = _messages {
+        if let Some(messages) = _new_messages {
             self.messager.messages = messages;
         }
+    }
+
+    fn push_drawer<T>(&mut self, drawer: Box<dyn UIDrawer>) where T: 'static + UIDrawer
+    {
+        let id = self.drawers.len();
+        let type_id = TypeId::of::<T>();
+        self.ids.insert(type_id, id);
+        self.on_offs.push(true);
+        self.drawers.push(drawer);
+    }
+
+    fn create_ui_failed(ctx: &eframe::egui::Context, ui_name: &str, error: Box<dyn std::error::Error>) -> ! {
+        dialog::ui_create_error_window(ui_name, &error);
+        ctx.send_viewport_cmd(eframe::egui::ViewportCommand::Close);
+        panic!("Create {} UI Failed: {}", ui_name, error)
     }
 }
 
@@ -161,7 +156,6 @@ pub struct KairosEngine {
 
 impl KairosEngine {
     pub fn new(_cc: &eframe::CreationContext) -> Result<Self, Box<dyn std::error::Error>> {
-
         let mut ui_context = UIContext::new();
         ui_context.messager.send(UIMessage::CreateToolbar);
         ui_context.messager.send(UIMessage::CreateMainContent);
@@ -174,6 +168,9 @@ impl KairosEngine {
 
 impl eframe::App for KairosEngine {
     fn update(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame) {
+        let mut visuals = Visuals::dark();
+        visuals.button_frame = true;
+        ctx.set_visuals(visuals);
 
         self.ui_context.handle(ctx);
 
