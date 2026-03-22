@@ -1,11 +1,12 @@
-use std::fs;
+use core::error;
+use std::{any::type_name, fs::{self, File}, io::Write};
 
-use eframe::egui::{self, Pos2, Rect, TopBottomPanel, Vec2, containers::menu};
+use eframe::egui::{self, TopBottomPanel, containers::menu};
 use kairos_engine::math;
 use serde::{Deserialize, Serialize};
 use sonic_rs::from_str;
 
-use crate::kairos_editor::{UIDrawer, UIMessage, paths};
+use crate::{kairos_dialog, kairos_editor::{UIDrawer, UIMessage, paths, ui_style_fields::{ColorStyleField, FloatFieldEditViewType, FloatStyleField, StyleField}}};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ToolBarStyle {
@@ -17,7 +18,7 @@ pub struct ToolBarStyle {
 }
 
 pub struct ToolBarModel {
-    pub style: ToolBarStyle,
+    style: ToolBarStyle,
 }
 
 impl ToolBarStyle {
@@ -60,17 +61,15 @@ impl ToolBar {
 impl UIDrawer for ToolBar {
     fn update(&self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut super::UIMessager) {
         let model = &self.model;
-        TopBottomPanel::top("toolbar").show(ctx, |ui|{
+        TopBottomPanel::top("toolbar")
+            .default_height(model.style.height)
+            .show(ctx, |ui|{
             ui.visuals_mut().override_text_color = Some(model.style.button_text_color.into());
             menu::MenuBar::new().ui(ui, |ui| {
-                // 工具栏区域
-                let toolbar_rect = Rect::from_min_size(
-                    Pos2::new(0.0, 0.0), 
-                    Vec2::new(ctx.content_rect().width(), model.style.height));
-
+                ui.set_height(model.style.height);
                 // 工具栏背景
                 ui.painter().rect_filled(
-                    toolbar_rect, 
+                    ui.available_rect_before_wrap(), 
                     model.style.corner_radius, 
                     model.style.fill_color
                 );
@@ -101,5 +100,64 @@ impl UIDrawer for ToolBar {
                 });
             });
         });
+    }
+    
+    fn get_style_fileds(&self) -> Vec<StyleField> {
+        let mut fields = Vec::new();
+        let style = &self.model.style;
+
+        fields.push(StyleField::FloatStyleField(FloatStyleField::new("height", style.height, 0.0, f32::MAX, FloatFieldEditViewType::Field)));
+        fields.push(StyleField::FloatStyleField(FloatStyleField::new("button_width", style.button_width, 0.0, f32::MAX, FloatFieldEditViewType::Field)));
+        fields.push(StyleField::FloatStyleField(FloatStyleField::new("corrner_radius", style.corner_radius, 0.0, f32::MAX, FloatFieldEditViewType::Field)));
+        fields.push(StyleField::ColorStyleField(ColorStyleField::new("fill_color", style.fill_color)));
+        fields.push(StyleField::ColorStyleField(ColorStyleField::new("button_text_color", style.button_text_color)));
+
+        fields
+    }
+    
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+    
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+    
+    fn get_name(&self) -> &'static str {
+        type_name::<ToolBar>()
+    }
+    
+    fn update_style(&mut self, style_fields: &Vec<StyleField>) {
+        if let StyleField::FloatStyleField(field) = &style_fields[0] {
+            self.model.style.height = field.value;
+        }
+        if let StyleField::FloatStyleField(field) = &style_fields[1] {
+            self.model.style.button_width = field.value;
+        }
+        if let StyleField::FloatStyleField(field) = &style_fields[2] {
+            self.model.style.corner_radius = field.value;
+        }
+        if let StyleField::ColorStyleField(field) = &style_fields[3] {
+            self.model.style.fill_color = field.color;
+        }
+        if let StyleField::ColorStyleField(field) = &style_fields[4] {
+            self.model.style.button_text_color = field.color;
+        }
+
+        if let Ok(json ) = sonic_rs::to_string_pretty(&self.model.style) {
+            if let Ok(mut file )= File::create(paths::PATH_EDITOR_WINDO_TOOL_BAR_STYLE) {
+                match file.write_all(json.as_bytes()) {
+                    Ok(_) => (),
+                    Err(error) => {
+                        kairos_dialog::error_message_window("Write File Falied", &format!("Write the ToolBar json file Failed When Write, Error: {}", error));
+                    },
+                }
+            }
+            else {
+                kairos_dialog::error_message_window("Write File Failed", "Write the ToolBar json file Failed When Open");
+            }
+        } else {
+            kairos_dialog::error_message_window("Serialize Json Failed", "Serialize ToolBar Style to json Failed");
+        }
     }
 }

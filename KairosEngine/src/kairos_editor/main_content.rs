@@ -1,11 +1,11 @@
-use std::fs;
+use std::{any::type_name, fs};
 
 use eframe::egui::{self, Color32, RichText};
 use kairos_engine::math;
 use serde::{Deserialize, Serialize};
 use sonic_rs::from_str;
 
-use crate::kairos_editor::{UIDrawer, paths};
+use crate::kairos_editor::{UIDrawer, paths, ui_style_fields::{ColorStyleField, StyleField}};
 
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -74,5 +74,36 @@ impl UIDrawer for MainContent {
                 }
             );
         });
+    }
+    
+    fn get_style_fileds(&self) -> Vec<super::ui_style_fields::StyleField> {
+        let mut fields = Vec::new();
+        let style = &self.model.style;
+
+        fields.push(StyleField::ColorStyleField(ColorStyleField::new("background_color", style.background_color)));
+        fields.push(StyleField::ColorStyleField(ColorStyleField::new("central_panel_color", style.central_panel_color)));
+
+        fields
+    }
+
+    fn update_style(&mut self, style_fields: &Vec<StyleField>) {
+        if let StyleField::ColorStyleField(field) = &style_fields[0] {
+            self.model.style.background_color = field.color;
+        }
+        if let StyleField::ColorStyleField(field) = &style_fields[1] {
+            self.model.style.central_panel_color = field.color;
+        }
+    }
+    
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+    
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+    
+    fn get_name(&self) -> &'static str {
+        type_name::<MainContent>()
     }
 }

@@ -1,10 +1,10 @@
-use std::fs;
+use std::{any::type_name, fs};
 
 use eframe::egui;
 use serde::{Deserialize, Serialize};
 use sonic_rs::from_str;
 
-use crate::kairos_editor::{UIDrawer, consts, paths};
+use crate::kairos_editor::{UIDrawer, consts, paths, ui_style_fields::{FloatFieldEditViewType, FloatStyleField, StyleField}};
 
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -25,8 +25,7 @@ impl AboutWindowStyle {
 }
 
 pub struct AboutWindowModel {
-    pub style: AboutWindowStyle,
-    pub open: bool,
+    style: AboutWindowStyle,
 }
 
 impl AboutWindowModel {
@@ -36,7 +35,6 @@ impl AboutWindowModel {
         Ok(
             Self { 
                 style,
-                open: false,
             }
         )
     }
@@ -81,5 +79,36 @@ impl UIDrawer for AboutWindow {
         if !is_open {
             messager.send(super::UIMessage::CloseAboutWindow);
         }
+    }
+    
+    fn get_style_fileds(&self) -> Vec<super::ui_style_fields::StyleField> {
+        let mut fields = Vec::new();
+        let style = &self.model.style;
+
+        fields.push(StyleField::FloatStyleField(FloatStyleField::new("height", style.height, 0.0, f32::MAX, FloatFieldEditViewType::Field)));
+        fields.push(StyleField::FloatStyleField(FloatStyleField::new("width", style.width, 0.0, f32::MAX, FloatFieldEditViewType::Field)));
+
+        fields
+    }
+
+    fn update_style(&mut self, style_fields: &Vec<StyleField>) {
+        if let StyleField::FloatStyleField(field) = &style_fields[0] {
+            self.model.style.height = field.value;
+        }
+        if let StyleField::FloatStyleField(field) = &style_fields[1] {
+            self.model.style.width = field.value;
+        }
+    }
+    
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+    
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+    
+    fn get_name(&self) -> &'static str {
+        type_name::<AboutWindow>()
     }
 }

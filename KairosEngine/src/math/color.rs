@@ -20,12 +20,7 @@ impl Color32 {
     }
 
     pub fn to_hex(&self) -> String {
-        if self.a == 255 {
-            format!("${:02X}{:02X}{:02X}", self.r, self.g, self.b)
-        }
-        else {
-            format!("#{:02X}{:02X}{:02X}{:02x}", self.r, self.g, self.b, self.a)
-        }
+        format!("#{:02X}{:02X}{:02X}{:02x}", self.r, self.g, self.b, self.a)
     }
 
     pub fn from_hex(hex: &str) -> Result<Self, Color32ParseError> {
@@ -66,5 +61,3 @@ impl Color32 {
         }
     }
 }
-
-

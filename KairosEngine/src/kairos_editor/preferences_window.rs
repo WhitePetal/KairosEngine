@@ -1,12 +1,13 @@
 
 
-use std::fs;
+use std::{any::type_name, fs};
 
 use eframe::egui;
 use serde::{Deserialize, Serialize};
 use sonic_rs::from_str;
 
-use crate::kairos_editor::{UIDrawer, consts, paths};
+use crate::kairos_editor::{UIDrawer, UIMessage, consts, paths, ui_style_fields::StylePage};
+
 
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -30,8 +31,9 @@ impl PreferencesStyle {
 }
 
 pub struct PreferencesModel {
-    pub style: PreferencesStyle,
-    pub open: bool,
+    style: PreferencesStyle,
+    style_pages: Option<Vec<StylePage>>,
+    selected_id: Option<usize>,
 }
 
 impl PreferencesModel {
@@ -41,7 +43,8 @@ impl PreferencesModel {
         Ok(
             Self { 
                 style,
-                open: false,
+                style_pages: None,
+                selected_id: None,
             }
         )
     }
@@ -61,6 +64,10 @@ impl PreferencesWindow {
             }   
         )
     }
+
+    pub fn set_selected_id(&mut self, id: usize) {
+        self.model.selected_id = Some(id);
+    }
 }
 
 impl UIDrawer for PreferencesWindow {
@@ -72,14 +79,11 @@ impl UIDrawer for PreferencesWindow {
                 .default_width(320.0)
                 .default_height(160.0)
                 .open(&mut is_open)
-                .resizable([true, false])
+                .resizable(true)
                 .scroll(false)
                 .constrain_to(ctx.available_rect())
                 .show(ctx, |ui| {
-                    // TODO
-                    ui.heading("Preferences");
-                    ui.separator();
-                    ui.label("Prefercens demo. TODO..")
+                    self.ui(ui, messager);
                 }
             );
 
@@ -88,10 +92,107 @@ impl UIDrawer for PreferencesWindow {
             }
         }
     }
+    
+    fn get_style_fileds(&self) -> Vec<super::ui_style_fields::StyleField> {
+        let mut fileds = Vec::new();
+        let style = &self.model.style;
+
+        // fileds.push(StyleField::FloatStyleField(()));
+
+        fileds
+    }
+    
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+    
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+    
+    fn get_name(&self) -> &'static str {
+        type_name::<PreferencesWindow>()
+    }
+    
+    fn update_style(&mut self, style_fields: &Vec<super::ui_style_fields::StyleField>) {
+
+    }
 }
 
 impl PreferencesWindow {
-    fn registe_ui_styles(&mut self, drawers: Vec<Box<dyn UIDrawer>>) {
-        
+    pub fn registe_ui_styles(&mut self, style_pages: Vec<StylePage>) {
+        self.model.style_pages = Some(style_pages);
+    }
+
+    pub fn update_style_page(&mut self, style_page: &StylePage) {
+        if let Some(pages) = &mut self.model.style_pages {
+            let page = &mut pages[style_page.id];
+            page.fields.copy_from_slice(&style_page.fields);
+        }
+    }
+
+    fn ui(&self, ui: &mut egui::Ui, messager: &mut super::UIMessager) {
+        let model = &self.model;
+
+        let selected_id = &model.selected_id;
+
+        ui.horizontal(|ui| {
+            ui.vertical(|ui| {
+                if let Some(style_pages) = &model.style_pages {
+                    for page in style_pages {
+                        if ui.selectable_label(*selected_id == Some(page.id), page.name).clicked() {
+                            messager.send(UIMessage::SetPreferenceWindowSelectedId(page.id));
+                            break;
+                        }
+                    }
+                }
+            });
+
+            ui.add(egui::Separator::default().vertical());
+
+            ui.vertical_centered(|ui| {
+                if let Some(id) = selected_id {
+                    if let Some(style_pages) = &model.style_pages {
+                        let mut page = style_pages[*id].clone();
+
+                        ui.horizontal_top(|ui|{
+                            ui.heading(page.name);
+                        });
+
+                        ui.add(egui::Separator::default().horizontal());
+
+                        let ui_builder = egui::UiBuilder::new();
+                        ui.scope_builder(ui_builder, |ui| {
+                            egui::Grid::new("PreferenceWindow_Fields_Grid")
+                                .num_columns(2)
+                                .spacing([40.0, 4.0])
+                                .striped(true)
+                                .show(ui, |ui| {
+                                    let fields = &mut page.fields;
+                                    for field in fields {
+                                        match field {
+                                            super::ui_style_fields::StyleField::FloatStyleField(float_style_field) => {
+                                                ui.label(float_style_field.name);
+                                                ui.add(egui::DragValue::new(&mut float_style_field.value).range(float_style_field.min..=float_style_field.max));
+                                                ui.end_row();
+                                            },
+                                            super::ui_style_fields::StyleField::ColorStyleField(color_style_field) => {
+            
+                                            },
+                                        }
+                                    }
+                                })
+                        });
+                        
+                        messager.send(UIMessage::UpdateUIStyle(page));
+                    }
+                } else {
+                    ui.horizontal_top(|ui|{
+                        ui.label("Select a Setting...");
+                    });
+                }
+            });
+
+        });
     }
 }
