@@ -75,10 +75,9 @@ impl UIDrawer for PreferencesWindow {
         let model = &self.model;
         let mut is_open = true;
         egui::Window::new("KairosEngine Preferences")
-            .resizable([true, true])
-            .default_width(model.style.default_width)
-            .default_height(model.style.default_height)
-            .scroll(false)
+            .min_width(model.style.default_width)
+            .min_height(model.style.default_height)
+            .scroll([false, true])
             .open(&mut is_open)
             .show(ctx, |ui| {
                 self.ui(ui, messager);
