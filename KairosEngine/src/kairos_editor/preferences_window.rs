@@ -7,27 +7,26 @@ use kairos_engine::math;
 use serde::{Deserialize, Serialize};
 use sonic_rs::from_str;
 
-use crate::kairos_editor::{UIDrawer, UIMessage, consts, paths, ui_style_fields::StylePage};
+use crate::kairos_editor::{UIDrawer, UIMessage, paths, ui_style_fields::{FloatFieldEditViewType, FloatStyleField, StyleField, StylePage}};
 
 
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PreferencesStyle {
-    // pub height: f32,
-    // pub width: f32
+    pub default_width: f32,
+    pub default_height: f32,
+    pub grid_space_x: f32,
+    pub grid_space_y: f32,
 }
 
 impl PreferencesStyle {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        // let style_json = fs::read_to_string(paths::PATH_ABOUT_WINDOW_STYLE)
-        // .map_err(|error| format!("Load AboutWindow Model Json Failed, path: {}, error: {}", paths::PATH_ABOUT_WINDOW_STYLE, error))?;
-        // let style = from_str(&style_json)
-        //     .map_err(|error| format!("Deserialize AboutWindow Model Json Failed, error: {}", error))?;
+        let style_json = fs::read_to_string(paths::PATH_PREFERENCES_WINDOW_STYLE)
+            .map_err(|error| format!("Load Preferences Window Style Json Failed, path: {}, error: {}", paths::PATH_PREFERENCES_WINDOW_STYLE, error))?;
+        let style = from_str(&style_json)
+            .map_err(|error| format!("Deserialize Preferences Window Style Json Failed, error: {}", error))?;
 
-        // Ok(style)
-        Ok(
-            Self {  }
-        )
+        Ok(style)
     }
 }
 
@@ -72,25 +71,22 @@ impl PreferencesWindow {
 }
 
 impl UIDrawer for PreferencesWindow {
-    fn update(&self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut super::UIMessager) {
+    fn update(&self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame, messager: &mut super::UIMessager) {
         let model = &self.model;
         let mut is_open = true;
-        if is_open {
-            egui::Window::new("KairosEngine Preferences")
-                .default_width(320.0)
-                .default_height(160.0)
-                .open(&mut is_open)
-                .resizable(true)
-                .scroll(false)
-                .constrain_to(ctx.available_rect())
-                .show(ctx, |ui| {
-                    self.ui(ui, messager);
-                }
-            );
-
-            if !is_open {
-                messager.send(super::UIMessage::ClosePreferenceWindow);
+        egui::Window::new("KairosEngine Preferences")
+            .resizable([true, true])
+            .default_width(model.style.default_width)
+            .default_height(model.style.default_height)
+            .scroll(false)
+            .open(&mut is_open)
+            .show(ctx, |ui| {
+                self.ui(ui, messager);
             }
+        );
+
+        if !is_open {
+            messager.send(super::UIMessage::ClosePreferenceWindow);
         }
     }
     
@@ -98,7 +94,10 @@ impl UIDrawer for PreferencesWindow {
         let mut fileds = Vec::new();
         let style = &self.model.style;
 
-        // fileds.push(StyleField::FloatStyleField(()));
+        fileds.push(StyleField::FloatStyleField(FloatStyleField::new("default width", style.default_width, 0.0, f32::MAX, FloatFieldEditViewType::Field)));
+        fileds.push(StyleField::FloatStyleField(FloatStyleField::new("default height", style.default_height, 0.0, f32::MAX, FloatFieldEditViewType::Field)));
+        fileds.push(StyleField::FloatStyleField(FloatStyleField::new("grid space x", style.grid_space_x, 0.0, f32::MAX, FloatFieldEditViewType::Field)));
+        fileds.push(StyleField::FloatStyleField(FloatStyleField::new("grid space y", style.grid_space_y, 0.0, f32::MAX, FloatFieldEditViewType::Field)));
 
         fileds
     }
@@ -116,7 +115,18 @@ impl UIDrawer for PreferencesWindow {
     }
     
     fn update_style(&mut self, style_fields: &Vec<super::ui_style_fields::StyleField>) {
-
+        if let StyleField::FloatStyleField(field) = &style_fields[0] {
+            self.model.style.default_width = field.value;
+        }
+        if let StyleField::FloatStyleField(field) = &style_fields[1] {
+            self.model.style.default_height = field.value;
+        }
+        if let StyleField::FloatStyleField(field) = &style_fields[2] {
+            self.model.style.grid_space_x = field.value;
+        }
+        if let StyleField::FloatStyleField(field) = &style_fields[3] {
+            self.model.style.grid_space_y = field.value;
+        }
     }
 }
 
@@ -166,7 +176,7 @@ impl PreferencesWindow {
                         ui.scope_builder(ui_builder, |ui| {
                             egui::Grid::new("PreferenceWindow_Fields_Grid")
                                 .num_columns(2)
-                                .spacing([40.0, 4.0])
+                                .spacing([model.style.grid_space_x, model.style.grid_space_y])
                                 .striped(true)
                                 .show(ui, |ui| {
                                     let fields = &mut page.fields;
@@ -174,7 +184,10 @@ impl PreferencesWindow {
                                         match field {
                                             super::ui_style_fields::StyleField::FloatStyleField(float_style_field) => {
                                                 ui.label(float_style_field.name);
-                                                ui.add(egui::DragValue::new(&mut float_style_field.value).range(float_style_field.min..=float_style_field.max));
+                                                match float_style_field.view_type {
+                                                    FloatFieldEditViewType::Field => { ui.add(egui::DragValue::new(&mut float_style_field.value).range(float_style_field.min..=float_style_field.max)); },
+                                                    FloatFieldEditViewType::Slider => { ui.add(egui::Slider::new(&mut float_style_field.value, float_style_field.min..=float_style_field.max)); }
+                                                }
                                                 ui.end_row();
                                             },
                                             super::ui_style_fields::StyleField::ColorStyleField(color_style_field) => {
