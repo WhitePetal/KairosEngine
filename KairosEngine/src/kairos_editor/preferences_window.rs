@@ -3,6 +3,7 @@
 use std::{any::type_name, fs};
 
 use eframe::egui;
+use kairos_engine::math;
 use serde::{Deserialize, Serialize};
 use sonic_rs::from_str;
 
@@ -177,7 +178,12 @@ impl PreferencesWindow {
                                                 ui.end_row();
                                             },
                                             super::ui_style_fields::StyleField::ColorStyleField(color_style_field) => {
-            
+                                                ui.label(color_style_field.name);
+                                                let color = &color_style_field.color;
+                                                let mut color_data: [u8; 4] = [color.r, color.g, color.b, color.a];
+                                                ui.color_edit_button_srgba_premultiplied(&mut color_data);
+                                                color_style_field.color = math::Color32::new(color_data[0], color_data[1], color_data[2], color_data[3]);
+                                                ui.end_row();
                                             },
                                         }
                                     }
