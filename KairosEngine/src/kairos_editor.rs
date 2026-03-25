@@ -12,6 +12,7 @@ pub mod main_content;
 pub mod tool_bar;
 pub mod about_window;
 pub mod preferences_window;
+pub mod console_window;
 
 pub enum UIMessage {
     CreateMainContent,
@@ -24,10 +25,11 @@ pub enum UIMessage {
     RefershPreferenceWindow,
     SetPreferenceWindowSelectedId(usize),
     UpdateUIStyle(StylePage),
+    OpenConsoleWindow,
 }
 
 pub trait UIDrawer: Any {
-    fn update(&self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut UIMessager);
+    fn update(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut UIMessager);
 
     fn get_name(&self) -> &'static str;
 
@@ -72,7 +74,7 @@ impl UIContext {
     }
 
     pub fn darw(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame) {
-        self.drawers.iter().zip(self.on_offs.iter()).filter(|(_, on_off)| **on_off).for_each(|(drawer, _)| {
+        self.drawers.iter_mut().zip(self.on_offs.iter()).filter(|(_, on_off)| **on_off).for_each(|(drawer, _)| {
             drawer.update(ctx, frame, &mut self.messager);
         });
     }
@@ -196,6 +198,9 @@ impl UIContext {
 
                     let drawer = &mut self.drawers[style_page.id];
                     drawer.update_style(&style_page.fields);
+                },
+                UIMessage::OpenConsoleWindow => {
+                    todo!("OpenConsoleWindow")
                 },
             }
         }

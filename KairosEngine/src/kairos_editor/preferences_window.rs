@@ -71,7 +71,7 @@ impl PreferencesWindow {
 }
 
 impl UIDrawer for PreferencesWindow {
-    fn update(&self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame, messager: &mut super::UIMessager) {
+    fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame, messager: &mut super::UIMessager) {
         let model = &self.model;
         let mut is_open = true;
         egui::Window::new("KairosEngine Preferences")

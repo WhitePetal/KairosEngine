@@ -59,7 +59,7 @@ impl ToolBar {
 }
 
 impl UIDrawer for ToolBar {
-    fn update(&self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut super::UIMessager) {
+    fn update(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut super::UIMessager) {
         let model = &self.model;
         TopBottomPanel::top("toolbar")
             .default_height(model.style.height)
@@ -85,6 +85,7 @@ impl UIDrawer for ToolBar {
                         messager.send(UIMessage::QuitEngine);
                     }
                 });
+
                 // File
                 ui.menu_button("File", |ui| {
                     if ui.button("New Scene").clicked() {
@@ -98,6 +99,16 @@ impl UIDrawer for ToolBar {
                         messager.send(UIMessage::OpenPreferenceWindow);
                     }
                 });
+
+                // Window
+                ui.menu_button("Window", |ui| {
+                    // General
+                    ui.menu_button("General", |ui| {
+                        if ui.button("Console").clicked() {
+                            messager.send(UIMessage::OpenConsoleWindow);
+                        }
+                    })
+                })
             });
         });
     }
