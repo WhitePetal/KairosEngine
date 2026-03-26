@@ -19,7 +19,7 @@ impl ConsoleWindow {
 }
 
 impl Drawer for ConsoleWindow {
-    fn update(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut super::Messager) {
+    fn update(&self, _ctx: &eframe::egui::Context, _frame: &mut eframe::Frame, _messager: &mut super::Messager) {
         todo!()
     }
 

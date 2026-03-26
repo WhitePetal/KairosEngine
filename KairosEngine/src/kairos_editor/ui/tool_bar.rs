@@ -58,7 +58,7 @@ impl ToolBar {
 }
 
 impl Drawer for ToolBar {
-    fn update(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut super::Messager) {
+    fn update(&self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame, messager: &mut super::Messager) {
         let model = &self.model;
         TopBottomPanel::top("toolbar")
             .default_height(model.style.height)

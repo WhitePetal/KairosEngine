@@ -57,7 +57,7 @@ impl AboutWindow {
 }
 
 impl Drawer for AboutWindow {
-    fn update(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut super::Messager) {
+    fn update(&self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame, messager: &mut super::Messager) {
         let model = &self.model;
         let mut is_open = true;
         egui::Window::new("About KairosEngine")

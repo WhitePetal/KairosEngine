@@ -10,9 +10,7 @@ pub struct KairosEngine {
 
 impl KairosEngine {
     pub fn new(_cc: &eframe::CreationContext) -> Result<Self, Box<dyn std::error::Error>> {
-        let mut ui_context = ui::Context::new();
-        ui_context.messager.send(ui::Message::CreateToolbar);
-        ui_context.messager.send(ui::Message::CreateMainContent);
+        let ui_context = ui::Context::new();
 
         Ok(Self{
             ui_context

@@ -1,21 +1,19 @@
-use std::{any::{Any, TypeId, type_name}, collections::HashMap};
+use std::{any::{Any, TypeId, type_name, type_name_of_val}, collections::{HashMap, HashSet}};
 
 use eframe::egui::{self};
-use egui_dock::TabViewer;
+use egui_dock::{DockArea, DockState, NodeIndex, SurfaceIndex, TabViewer};
 
-use crate::{kairos_dialog, kairos_editor::ui::{about_window::AboutWindow, main_content::MainContent, preferences_window::PreferencesWindow, tool_bar::ToolBar, ui_style_fields::{StylePage, StyleField}}};
+use crate::{kairos_dialog, kairos_editor::ui::{about_window::AboutWindow, preferences_window::PreferencesWindow, tool_bar::ToolBar, ui_style_fields::{StylePage, StyleField}}};
 
 pub mod paths;
 pub mod dialog;
 pub mod ui_style_fields;
-pub mod main_content;
 pub mod tool_bar;
 pub mod about_window;
 pub mod preferences_window;
 pub mod console_window;
 
 pub enum Message {
-    CreateMainContent,
     CreateToolbar,
     QuitEngine,
     OpenAboutWindow,
@@ -28,8 +26,29 @@ pub enum Message {
     OpenConsoleWindow,
 }
 
+#[derive(PartialEq, Eq, Hash)]
+pub enum TabDrawerName
+{
+    Default,
+    Inspector,
+    Hierarchy,
+    Console,
+    Project
+}
+impl TabDrawerName {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TabDrawerName::Default => "Default",
+            TabDrawerName::Inspector => "Inspector",
+            TabDrawerName::Hierarchy => "Hierarchy",
+            TabDrawerName::Console => "Console",
+            TabDrawerName::Project => "Project",
+        }
+    }
+}
+
 pub trait Drawer: Any {
-    fn update(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut Messager);
+    fn update(&self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut Messager);
 
     fn get_name(&self) -> &'static str;
 
@@ -61,22 +80,72 @@ pub struct Context {
     ids: HashMap<TypeId, usize>,
     on_offs: Vec<bool>,
     drawers: Vec<Box<dyn Drawer>>,
+    doc_tab_viewer: DocTabViewer,
+    doc_tree: DockState<TabDrawerName>,
+
 }
 
 impl Context {
     pub fn new() -> Self {
+        let mut doc_tree = DockState::new(vec![TabDrawerName::Default]);
+        let [r_root, _] = doc_tree.main_surface_mut().split_right(
+            NodeIndex::root(), 
+            0.7,
+            vec![TabDrawerName::Inspector]
+        );
+        let [r_root, _] = doc_tree.main_surface_mut().split_below(
+            r_root, 
+            0.7,
+            vec![TabDrawerName::Project, TabDrawerName::Console] 
+        );
+        let [_, _] = doc_tree.main_surface_mut().split_left(
+            r_root, 
+            0.3,
+            vec![TabDrawerName::Hierarchy]
+        );
+        let mut open_tabs = HashSet::new();
+        for node in doc_tree[SurfaceIndex::main()].iter() {
+            if let Some(tabs) = node.tabs() {
+                for tab in tabs {
+                    open_tabs.insert(tab);
+                }
+            }
+        }
+        let doc_tab_viewer = DocTabViewer {
+
+        };
+
+        let mut messager = Messager::new();
+        messager.send(Message::CreateToolbar);
+
         Self { 
-            messager: Messager::new(),
+            messager,
             ids: HashMap::new(),
             on_offs: Vec::new(),
-            drawers: Vec::new()
+            drawers: Vec::new(),
+            doc_tree,
+            doc_tab_viewer,
         }   
     }
 
     pub fn darw(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame) {
-        self.drawers.iter_mut().zip(self.on_offs.iter()).filter(|(_, on_off)| **on_off).for_each(|(drawer, _)| {
+        self.drawers.iter().zip(self.on_offs.iter()).filter(|(_, on_off)| **on_off).for_each(|(drawer, _)| {
             drawer.update(ctx, frame, &mut self.messager);
         });
+
+        // 中央区域显示内容
+        egui::CentralPanel::default()
+            // .frame(egui::Frame::NONE.fill(model.style.central_panel_color.into()))
+            .show(ctx, |ui| {
+                // ui.vertical_centered(|ui| {
+                //     ui.label(RichText::new("Main Content Area").size(24.0).color(Color32::LIGHT_GRAY));
+                //     ui.label(RichText::new("Custom titlebar demo").size(14.0).color(Color32::GRAY));
+                // }
+
+                DockArea::new(&mut self.doc_tree)
+                    .show_inside(ui, &mut self.doc_tab_viewer);
+            }
+        );
     }
 
     pub fn handle(&mut self, ctx: &eframe::egui::Context) {
@@ -84,12 +153,6 @@ impl Context {
         let mut messages = std::mem::take(&mut self.messager.messages);
         for msg in &messages {
             match msg {
-                Message::CreateMainContent => {
-                   let drawer = MainContent::new().unwrap_or_else(|error| {
-                        Context::create_ui_failed(ctx, type_name::<MainContent>(), error);
-                    });
-                    Context::push_drawer::<MainContent>(self, Box::new(drawer));
-                },
                 Message::CreateToolbar => {
                     let drawer = ToolBar::new().unwrap_or_else(|error| {
                         Context::create_ui_failed(ctx, type_name::<ToolBar>(), error);
@@ -229,19 +292,45 @@ impl Context {
     }
 }
 
-struct UIDocTabViewer {
-    pub title: String,
+// impl Drawer for Context {
+//     fn update(&self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut Messager) {
+//         todo!()
+//     }
+
+//     fn get_name(&self) -> &'static str {
+//         todo!()
+//     }
+
+//     fn as_any(&self) -> &dyn Any {
+//         todo!()
+//     }
+
+//     fn as_any_mut(&mut self) -> &mut dyn Any {
+//         todo!()
+//     }
+
+//     fn get_style_fileds(&self) -> Vec<StyleField> {
+//         todo!()
+//     }
+
+//     fn update_style(&mut self, style_fields: &Vec<StyleField>) {
+//         todo!()
+//     }
+// }
+
+struct DocTabViewer {
+
 }
 
-impl TabViewer for UIDocTabViewer {
-    type Tab = String;
+impl TabViewer for DocTabViewer {
+    type Tab = TabDrawerName;
 
     fn title(&mut self, tab: &mut Self::Tab) -> egui::WidgetText {
         tab.as_str().into()
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab) {
-        match tab.as_str() {
+        match tab {
             _ => {
                 ui.label(tab.as_str());
             }
