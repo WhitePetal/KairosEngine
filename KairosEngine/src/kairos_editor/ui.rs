@@ -1,4 +1,4 @@
-use std::{any::{Any, TypeId, type_name, type_name_of_val}, collections::{HashMap, HashSet}};
+use std::{any::{Any, TypeId, type_name}, collections::{HashMap, HashSet}};
 
 use eframe::egui::{self};
 use egui_dock::{DockArea, DockState, NodeIndex, SurfaceIndex, TabViewer};
@@ -12,6 +12,7 @@ pub mod tool_bar;
 pub mod about_window;
 pub mod preferences_window;
 pub mod console_window;
+pub mod docking_tab;
 
 pub enum Message {
     CreateToolbar,
