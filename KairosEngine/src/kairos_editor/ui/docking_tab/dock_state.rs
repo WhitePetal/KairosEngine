@@ -1,15 +1,15 @@
-use crate::kairos_editor::ui::Drawer;
+use crate::kairos_editor::ui::docking_tab::{surfaces::{Surface, SurfaceIndex}, translations::Translations};
 
 
 
 pub mod tree;
 
-pub enum Surface {
-    Empty,
-    Main(Box<dyn Drawer>),
-    Window(Box<dyn Drawer>)
-}
 
-pub struct DockState {
 
+pub struct DockState<Drawer> {
+    surfaces: Vec<Surface<Drawer>>,
+    focused_surface: Option<SurfaceIndex>,
+
+    /// Contains translations of text shown in [`DockArea`](super::DockArea).
+    pub translations: Translations,
 }

@@ -1,8 +1,9 @@
-use crate::kairos_editor::ui::docking_tab::dock_state::tree::node::leaf_node::LeafNode;
+use crate::kairos_editor::ui::docking_tab::dock_state::tree::node::{leaf_node::LeafNode, split_node::SplitNode};
 
 
 
 pub mod leaf_node;
+pub mod split_node;
 
 
 
@@ -18,8 +19,8 @@ pub enum Node<Drawer> {
     Leaf(LeafNode<Drawer>),
 
     /// Parent node in the vertical orientation.
-    Vertical,
+    Vertical(SplitNode),
 
     /// Parent node in the horizontal orientation.
-    Horizontal,
+    Horizontal(SplitNode),
 }

@@ -1,9 +1,8 @@
 use std::{any::{Any, TypeId, type_name}, collections::{HashMap, HashSet}};
 
 use eframe::egui::{self};
-use egui_dock::{DockArea, DockState, NodeIndex, SurfaceIndex, TabViewer};
 
-use crate::{kairos_dialog, kairos_editor::ui::{about_window::AboutWindow, preferences_window::PreferencesWindow, tool_bar::ToolBar, ui_style_fields::{StylePage, StyleField}}};
+use crate::{kairos_dialog, kairos_editor::ui::{about_window::AboutWindow, docking_tab::dock_state::DockState, preferences_window::PreferencesWindow, tool_bar::ToolBar, ui_style_fields::{StyleField, StylePage}}};
 
 pub mod paths;
 pub mod dialog;
@@ -82,7 +81,7 @@ pub struct Context {
     on_offs: Vec<bool>,
     drawers: Vec<Box<dyn Drawer>>,
     doc_tab_viewer: DocTabViewer,
-    doc_tree: DockState<TabDrawerName>,
+    doc_tree: DockState<Box<dyn Drawer>>,
 
 }
 
