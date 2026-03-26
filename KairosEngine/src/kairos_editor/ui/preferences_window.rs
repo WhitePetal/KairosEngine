@@ -7,7 +7,7 @@ use kairos_engine::math;
 use serde::{Deserialize, Serialize};
 use sonic_rs::from_str;
 
-use crate::kairos_editor::{UIDrawer, UIMessage, paths, ui_style_fields::{FloatFieldEditViewType, FloatStyleField, StyleField, StylePage}};
+use crate::kairos_editor::ui::{Drawer, Message, paths, ui_style_fields::{FloatFieldEditViewType, FloatStyleField, StyleField, StylePage}};
 
 
 
@@ -70,8 +70,8 @@ impl PreferencesWindow {
     }
 }
 
-impl UIDrawer for PreferencesWindow {
-    fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame, messager: &mut super::UIMessager) {
+impl Drawer for PreferencesWindow {
+    fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame, messager: &mut super::Messager) {
         let model = &self.model;
         let mut is_open = true;
         egui::Window::new("KairosEngine Preferences")
@@ -85,7 +85,7 @@ impl UIDrawer for PreferencesWindow {
         );
 
         if !is_open {
-            messager.send(super::UIMessage::ClosePreferenceWindow);
+            messager.send(super::Message::ClosePreferenceWindow);
         }
     }
     
@@ -141,7 +141,7 @@ impl PreferencesWindow {
         }
     }
 
-    fn ui(&self, ui: &mut egui::Ui, messager: &mut super::UIMessager) {
+    fn ui(&self, ui: &mut egui::Ui, messager: &mut super::Messager) {
         let model = &self.model;
 
         let selected_id = &model.selected_id;
@@ -151,7 +151,7 @@ impl PreferencesWindow {
                 if let Some(style_pages) = &model.style_pages {
                     for page in style_pages {
                         if ui.selectable_label(*selected_id == Some(page.id), page.name).clicked() {
-                            messager.send(UIMessage::SetPreferenceWindowSelectedId(page.id));
+                            messager.send(Message::SetPreferenceWindowSelectedId(page.id));
                             break;
                         }
                     }
@@ -202,7 +202,7 @@ impl PreferencesWindow {
                                 })
                         });
                         
-                        messager.send(UIMessage::UpdateUIStyle(page));
+                        messager.send(Message::UpdateUIStyle(page));
                     }
                 } else {
                     ui.horizontal_top(|ui|{

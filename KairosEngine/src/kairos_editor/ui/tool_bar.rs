@@ -1,4 +1,3 @@
-use core::error;
 use std::{any::type_name, fs::{self, File}, io::Write};
 
 use eframe::egui::{self, TopBottomPanel, containers::menu};
@@ -6,7 +5,7 @@ use kairos_engine::math;
 use serde::{Deserialize, Serialize};
 use sonic_rs::from_str;
 
-use crate::{kairos_dialog, kairos_editor::{UIDrawer, UIMessage, paths, ui_style_fields::{ColorStyleField, FloatFieldEditViewType, FloatStyleField, StyleField}}};
+use crate::{kairos_dialog, kairos_editor::ui::{Drawer, Message, paths, ui_style_fields::{ColorStyleField, FloatFieldEditViewType, FloatStyleField, StyleField}}};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ToolBarStyle {
@@ -58,8 +57,8 @@ impl ToolBar {
     }
 }
 
-impl UIDrawer for ToolBar {
-    fn update(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut super::UIMessager) {
+impl Drawer for ToolBar {
+    fn update(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut super::Messager) {
         let model = &self.model;
         TopBottomPanel::top("toolbar")
             .default_height(model.style.height)
@@ -78,11 +77,11 @@ impl UIDrawer for ToolBar {
                 let icon = egui::Image::new(paths::URI_ENGINE_ICON);
                 ui.menu_image_button(icon, |ui| {
                     if ui.button("About Kairos").clicked() {
-                        messager.send(UIMessage::OpenAboutWindow);
+                        messager.send(Message::OpenAboutWindow);
                     }
                     ui.separator();
                     if ui.button("Quit").clicked() {
-                        messager.send(UIMessage::QuitEngine);
+                        messager.send(Message::QuitEngine);
                     }
                 });
 
@@ -96,7 +95,7 @@ impl UIDrawer for ToolBar {
                 // Editor
                 ui.menu_button("Edit", |ui| {
                     if ui.button("Preferences").clicked() {
-                        messager.send(UIMessage::OpenPreferenceWindow);
+                        messager.send(Message::OpenPreferenceWindow);
                     }
                 });
 
@@ -105,7 +104,7 @@ impl UIDrawer for ToolBar {
                     // General
                     ui.menu_button("General", |ui| {
                         if ui.button("Console").clicked() {
-                            messager.send(UIMessage::OpenConsoleWindow);
+                            messager.send(Message::OpenConsoleWindow);
                         }
                     })
                 })

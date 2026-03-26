@@ -4,7 +4,8 @@ use eframe::egui;
 use serde::{Deserialize, Serialize};
 use sonic_rs::from_str;
 
-use crate::kairos_editor::{UIDrawer, consts, paths, ui_style_fields::{FloatFieldEditViewType, FloatStyleField, StyleField}};
+use crate::kairos_editor::consts;
+use crate::kairos_editor::ui::{Drawer, paths, ui_style_fields::{FloatFieldEditViewType, FloatStyleField, StyleField}};
 
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -55,8 +56,8 @@ impl AboutWindow {
     }
 }
 
-impl UIDrawer for AboutWindow {
-    fn update(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut super::UIMessager) {
+impl Drawer for AboutWindow {
+    fn update(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut super::Messager) {
         let model = &self.model;
         let mut is_open = true;
         egui::Window::new("About KairosEngine")
@@ -77,7 +78,7 @@ impl UIDrawer for AboutWindow {
         );
 
         if !is_open {
-            messager.send(super::UIMessage::CloseAboutWindow);
+            messager.send(super::Message::CloseAboutWindow);
         }
     }
     

@@ -1,4 +1,4 @@
-use crate::kairos_editor::UIDrawer;
+use crate::kairos_editor::ui::Drawer;
 
 
 
@@ -18,8 +18,8 @@ impl ConsoleWindow {
     
 }
 
-impl UIDrawer for ConsoleWindow {
-    fn update(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut super::UIMessager) {
+impl Drawer for ConsoleWindow {
+    fn update(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut super::Messager) {
         todo!()
     }
 

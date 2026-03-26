@@ -1,12 +1,12 @@
 use std::{any::type_name, collections::HashSet, fs};
 
-use eframe::egui::{self, Color32, RichText};
-use egui_dock::{DockArea, DockState, NodeIndex, SurfaceIndex, TabViewer};
+use eframe::egui::{self};
+use egui_dock::{DockArea, DockState, NodeIndex, SurfaceIndex};
 use kairos_engine::math;
 use serde::{Deserialize, Serialize};
 use sonic_rs::from_str;
 
-use crate::kairos_editor::{UIDrawer, paths, ui_style_fields::{ColorStyleField, StyleField}};
+use crate::kairos_editor::ui::{UIDocTabViewer, Drawer, paths, ui_style_fields::{ColorStyleField, StyleField}};
 
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -41,33 +41,9 @@ impl MainContentModel {
     }
 }
 
-struct DocTabViewer {
-    pub title: String,
-}
-
-impl TabViewer for DocTabViewer {
-    type Tab = String;
-
-    fn title(&mut self, tab: &mut Self::Tab) -> egui::WidgetText {
-        tab.as_str().into()
-    }
-
-    fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab) {
-        match tab.as_str() {
-            _ => {
-                ui.label(tab.as_str());
-            }
-        }
-    }
-
-    fn is_closeable(&self, _tab: &Self::Tab) -> bool {
-        true
-    }
-}
-
 pub struct MainContent {
     model: MainContentModel,
-    doc_tab_viewer: DocTabViewer,
+    doc_tab_viewer: UIDocTabViewer,
     doc_tree: DockState<String>,
 }
 
@@ -98,7 +74,7 @@ impl MainContent {
                 }
             }
         }
-        let doc_tab_viewer = DocTabViewer {
+        let doc_tab_viewer = UIDocTabViewer {
             title: "SimpleDoc".to_string()
         };
         Ok(
@@ -111,8 +87,8 @@ impl MainContent {
     }
 }
 
-impl UIDrawer for MainContent {
-    fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame, _messager: &mut super::UIMessager) {
+impl Drawer for MainContent {
+    fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame, _messager: &mut super::Messager) {
         let model = &self.model;
         // 设置整体背景色
         ctx.style_mut(|style| {

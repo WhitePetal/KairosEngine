@@ -11,7 +11,7 @@ use crate::kairos_editor::{KairosEngine, consts::VERSION};
 fn main() -> eframe::Result {
     const APP_NAME: &str = "KairosEngine";
     let window_title = format!("Kairos Engine {}", VERSION);
-    let icon = std::fs::read(kairos_editor::paths::PATH_ENGINE_ICON)
+    let icon = std::fs::read(kairos_editor::ui::paths::PATH_ENGINE_ICON)
         .ok()
         .and_then(|bytes| eframe::icon_data::from_png_bytes(&bytes).ok())
         .map(Arc::new);
