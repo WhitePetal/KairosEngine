@@ -3,6 +3,26 @@
 最开始尝试使用C++ + Beef-lang, 现在转为了纯Rust 
 目标是 面向数据设计，ECS，高性能，高灵活性和可扩展性    
 
+# 计划
+## 模块计划
+- Graph 节点模块
+- AI Agent 模块
+- ...
+
+## 版本计划
+### 0.1.0
+- 引擎GUI界面
+- ECS base ENTT
+- Graphics
+- Physics
+- Audio
+
+### 0.2.0
+- Input System Graph
+- Terrain Editor
+- World Scenes Controller
+- ...
+
 # Third-Party Dependencies
 ## Libs
 - **Beef-lang**: MIT License | [https://github.com/beefytech/Beef](https://github.com/beefytech/Beef)
@@ -23,6 +43,7 @@
 - pollster
 - eframe
 - egui_extras
+- egui_dock
 
 # AIs
 - Kimi
