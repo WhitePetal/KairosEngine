@@ -17,6 +17,7 @@ pub struct TabContextMenuTranslations {
     pub eject_button: String,
 }
 
+#[derive(Debug, Clone)]
 pub struct LeafTranslations {
     /// Message in the tooltip shown while hovering over a grayed out X button of a leaf
     /// containing non-closable tabs.

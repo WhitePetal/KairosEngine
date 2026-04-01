@@ -2,7 +2,7 @@ use std::{any::{Any, TypeId, type_name}, collections::{HashMap, HashSet}};
 
 use eframe::egui::{self};
 
-use crate::{kairos_dialog, kairos_editor::ui::{about_window::AboutWindow, docking_tab::dock_state::DockState, preferences_window::PreferencesWindow, tool_bar::ToolBar, ui_style_fields::{StyleField, StylePage}}};
+use crate::{kairos_dialog, kairos_editor::ui::{about_window::AboutWindow, docking_tab::{DockArea, dock_state::{DockState, tree::NodeIndex}, surfaces::SurfaceIndex, tab_drawer::TabDrawer}, preferences_window::PreferencesWindow, tool_bar::ToolBar, ui_style_fields::{StyleField, StylePage}}};
 
 pub mod paths;
 pub mod dialog;
@@ -27,7 +27,7 @@ pub enum Message {
 }
 
 #[derive(PartialEq, Eq, Hash)]
-pub enum TabDrawerName
+pub enum TabDrawers
 {
     Default,
     Inspector,
@@ -35,14 +35,14 @@ pub enum TabDrawerName
     Console,
     Project
 }
-impl TabDrawerName {
+impl TabDrawers {
     pub fn as_str(&self) -> &'static str {
         match self {
-            TabDrawerName::Default => "Default",
-            TabDrawerName::Inspector => "Inspector",
-            TabDrawerName::Hierarchy => "Hierarchy",
-            TabDrawerName::Console => "Console",
-            TabDrawerName::Project => "Project",
+            TabDrawers::Default => "Default",
+            TabDrawers::Inspector => "Inspector",
+            TabDrawers::Hierarchy => "Hierarchy",
+            TabDrawers::Console => "Console",
+            TabDrawers::Project => "Project",
         }
     }
 }
@@ -80,28 +80,28 @@ pub struct Context {
     ids: HashMap<TypeId, usize>,
     on_offs: Vec<bool>,
     drawers: Vec<Box<dyn Drawer>>,
-    doc_tab_viewer: DocTabViewer,
-    doc_tree: DockState<Box<dyn Drawer>>,
+    doc_tab_viewer: DocTabDrawer,
+    doc_tree: DockState<TabDrawers>,
 
 }
 
 impl Context {
     pub fn new() -> Self {
-        let mut doc_tree = DockState::new(vec![TabDrawerName::Default]);
+        let mut doc_tree = DockState::new(vec![TabDrawers::Default]);
         let [r_root, _] = doc_tree.main_surface_mut().split_right(
             NodeIndex::root(), 
             0.7,
-            vec![TabDrawerName::Inspector]
+            vec![TabDrawers::Inspector]
         );
         let [r_root, _] = doc_tree.main_surface_mut().split_below(
             r_root, 
             0.7,
-            vec![TabDrawerName::Project, TabDrawerName::Console] 
+            vec![TabDrawers::Project, TabDrawers::Console] 
         );
         let [_, _] = doc_tree.main_surface_mut().split_left(
             r_root, 
             0.3,
-            vec![TabDrawerName::Hierarchy]
+            vec![TabDrawers::Hierarchy]
         );
         let mut open_tabs = HashSet::new();
         for node in doc_tree[SurfaceIndex::main()].iter() {
@@ -111,7 +111,7 @@ impl Context {
                 }
             }
         }
-        let doc_tab_viewer = DocTabViewer {
+        let doc_tab_viewer = DocTabDrawer {
 
         };
 
@@ -142,7 +142,7 @@ impl Context {
                 //     ui.label(RichText::new("Custom titlebar demo").size(14.0).color(Color32::GRAY));
                 // }
 
-                DockArea::new(&mut self.doc_tree)
+                DockArea::new("KairosEditor Main DockArea", &mut self.doc_tree)
                     .show_inside(ui, &mut self.doc_tab_viewer);
             }
         );
@@ -318,18 +318,18 @@ impl Context {
 //     }
 // }
 
-struct DocTabViewer {
+struct DocTabDrawer {
 
 }
 
-impl TabViewer for DocTabViewer {
-    type Tab = TabDrawerName;
+impl TabDrawer for DocTabDrawer {
+    type Tab = TabDrawers;
 
-    fn title(&mut self, tab: &mut Self::Tab) -> egui::WidgetText {
+    fn title(&self, tab: &mut Self::Tab) -> egui::WidgetText {
         tab.as_str().into()
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab) {
+    fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab, messager: &mut Messager) {
         match tab {
             _ => {
                 ui.label(tab.as_str());
