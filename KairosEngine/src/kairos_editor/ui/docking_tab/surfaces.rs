@@ -49,4 +49,13 @@ impl<Drawer> Surface<Drawer> {
             Surface::Window(tree, _) => Some(tree),
         }
     }
+
+    /// Get mutable access to the node tree of this surface.
+    pub fn node_tree_mut(&mut self) -> Option<&mut Tree<Drawer>> {
+        match self {
+            Surface::Empty => None,
+            Surface::Main(tree) => Some(tree),
+            Surface::Window(tree, _) => Some(tree),
+        }
+    }
 }

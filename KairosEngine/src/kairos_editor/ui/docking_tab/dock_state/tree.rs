@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{fmt, ops::{Index, IndexMut}};
 
 use eframe::egui::Rect;
 
@@ -105,10 +105,60 @@ impl<Drawer> fmt::Debug for Tree<Drawer> {
     }
 }
 
+impl<Drawer> Default for Tree<Drawer> {
+    fn default() -> Self {
+        Self {
+            nodes: Vec::new(),
+            focused_node: None,
+            collapsed: false,
+            collapsed_leaf_count: 0,
+        }
+    }
+}
+
+impl<Drawer> Index<NodeIndex> for Tree<Drawer> {
+    type Output = Node<Drawer>;
+
+    #[inline(always)]
+    fn index(&self, index: NodeIndex) -> &Self::Output {
+        &self.nodes[index.0]
+    }
+}
+
+impl<Drawer> IndexMut<NodeIndex> for Tree<Drawer> {
+    #[inline(always)]
+    fn index_mut(&mut self, index: NodeIndex) -> &mut Self::Output {
+        &mut self.nodes[index.0]
+    }
+}
+
+impl<Drawer> Tree<Drawer> {
+    /// Create a new ['Tree'] with a given 'Vec' of 'Tab's in its root node.
+    #[inline(always)]
+    pub fn new(tabs: Vec<Drawer>) -> Self {
+        let root = Node::leaf_with(tabs);
+        Self {
+            nodes: vec![root],
+            focused_node: None,
+            collapsed: false,
+            collapsed_leaf_count: 0,
+        }
+    }
+}
+
 
 impl NodeIndex {
     /// Returns the index of the root node.
     pub const fn root() -> Self {
         Self(0)
     }
+}
+
+/// A full path to locate a node in an entire dock state.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct NodePath {
+    /// Index of the surface owning the node.
+    pub surface: SurfaceIndex,
+    /// Index of the node in the surface tree.
+    pub node: NodeIndex,
 }

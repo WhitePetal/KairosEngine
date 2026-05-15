@@ -24,3 +24,11 @@ pub enum Node<Drawer> {
     /// Parent node in the horizontal orientation.
     Horizontal(SplitNode),
 }
+
+impl<Drawer> Node<Drawer> {
+    /// Constructs a leaf node with a given list of 'tabs'.
+    #[inline(always)]
+    pub fn leaf_with(tabs: Vec<Drawer>) -> Self {
+        Self::Leaf(LeafNode::new(tabs))
+    }
+}
