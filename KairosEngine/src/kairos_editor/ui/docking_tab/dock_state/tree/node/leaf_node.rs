@@ -12,7 +12,7 @@ pub struct LeafNode<Drawer> {
     pub viewport: Rect,
 
     /// All the tabs in this node.
-    pub tabs: Vec<Drawer>,
+    pub drawers: Vec<Drawer>,
 
     /// The opened Tab
     pub active: TabIndex,
@@ -26,11 +26,11 @@ pub struct LeafNode<Drawer> {
 
 impl<Drawer> LeafNode<Drawer> {
     /// Create New LeafNode with specified ``tabs``, all other internal values wiil be filled by "nothing" defaults.
-    pub fn new(tabs: Vec<Drawer>) -> Self {
+    pub fn new(drawers: Vec<Drawer>) -> Self {
         LeafNode {
             rect: Rect::NOTHING,
             viewport: Rect::NOTHING,
-            tabs,
+            drawers,
             active: TabIndex(0),
             scroll: 0.0,
             collapsed: false
@@ -51,12 +51,12 @@ impl<Drawer> LeafNode<Drawer> {
 
     /// Get the length of tab list in this [`LeafNode`]
     pub fn len(&self) -> usize {
-        self.tabs.len()
+        self.drawers.len()
     }
 
     /// Returns `true` wehn the [`LeafNode`] contains no tabs
     pub fn is_empty(&self) -> bool {
-        self.tabs.is_empty()
+        self.drawers.is_empty()
     }
 
     /// Get a [`Rect`] representing the area this [`LeafNode`] occupies on screen.
@@ -66,14 +66,14 @@ impl<Drawer> LeafNode<Drawer> {
 
     /// Get immutable access to the ``Tab``s of this [`LeafNode`]
     #[inline]
-    pub fn tabs(&self) -> &[Drawer] {
-        &self.tabs
+    pub fn drawers(&self) -> &[Drawer] {
+        &self.drawers
     }
 
     /// Get mutable access to the ``Tab``s of this [`LeafNode`]
     #[inline]
-    pub fn tabs_mut(&mut self) -> &mut [Drawer] {
-        &mut self.tabs
+    pub fn drawers_mut(&mut self) -> &mut [Drawer] {
+        &mut self.drawers
     }
 
     /// Append a ``Tab`` to the end of this [`LeafNode`]s tab list
@@ -81,9 +81,9 @@ impl<Drawer> LeafNode<Drawer> {
     /// This will also focus the added tab.
     #[track_caller]
     #[inline]
-    pub fn append_tab(&mut self, tab: Drawer) {
-        self.active = TabIndex(self.tabs.len());
-        self.tabs.push(tab);
+    pub fn append_drawer(&mut self, tab: Drawer) {
+        self.active = TabIndex(self.drawers.len());
+        self.drawers.push(tab);
     }
 
     /// Insert a ``Tab`` to this [`LeafNode`]s tab list at the specified [`TabIndex`]
@@ -95,9 +95,9 @@ impl<Drawer> LeafNode<Drawer> {
     /// if ``tab_index`` exceeds the leaf's tab list length
     #[track_caller]
     #[inline]
-    pub fn insert_tab(&mut self, tab_index: impl Into<TabIndex>, tab: Drawer) {
+    pub fn insert_drawer(&mut self, tab_index: impl Into<TabIndex>, tab: Drawer) {
         let tab_index = tab_index.into();
-        self.tabs.insert(tab_index.0, tab);
+        self.drawers.insert(tab_index.0, tab);
         self.active = tab_index;
     }
 
@@ -109,20 +109,20 @@ impl<Drawer> LeafNode<Drawer> {
     /// 
     /// if ``tab_index`` is out of bounds for the tab list
     #[inline]
-    pub fn remove_tab(&mut self, tab_index: impl Into<TabIndex>) -> Option<Drawer> {
+    pub fn remove_drawer(&mut self, tab_index: impl Into<TabIndex>) -> Option<Drawer> {
         let index = tab_index.into();
         if index <= self.active {
             self.active.0 = self.active.0.saturating_sub(1)
         }
-        Some(self.tabs.remove(index.0))
+        Some(self.drawers.remove(index.0))
     }
 
     /// Removes all tabs for which `predicate` returns `false`
-    pub fn retain_tabs<F>(&mut self, predicated: F)
+    pub fn retain_drawers<F>(&mut self, predicated: F)
         where 
             F: FnMut(&mut Drawer) -> bool,
     {
-        self.tabs.retain_mut(predicated);
+        self.drawers.retain_mut(predicated);
     }
 
     /// Return the area and tab which is currently representing this [`LeafNode`]
@@ -130,7 +130,7 @@ impl<Drawer> LeafNode<Drawer> {
     /// This may return ``None`` if the leaf conmtains 0 tabs.
     #[inline]
     pub fn active_focused(&mut self) -> Option<(Rect, &mut Drawer)> {
-        self.tabs
+        self.drawers
             .get_mut(self.active.0)
             .map(|tab| (self.viewport, tab))
     }

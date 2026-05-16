@@ -9,7 +9,7 @@ pub(super) struct State {
     pub drag_start: Option<Pos2>,
     pub last_hover_pos: Option<Pos2>,
     pub dnd: Option<DragDropState>,
-    pub window_state: Option<(f64, SurfaceIndex)>,
+    pub window_fade: Option<(f64, SurfaceIndex)>,
 }
 
 impl State {
@@ -19,7 +19,7 @@ impl State {
             drag_start: None,
             last_hover_pos: None,
             dnd: None,
-            window_state: None 
+            window_fade: None 
         }))
     }
 

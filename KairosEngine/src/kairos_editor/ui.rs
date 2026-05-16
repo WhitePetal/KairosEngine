@@ -105,7 +105,7 @@ impl Context {
         );
         let mut open_tabs = HashSet::new();
         for node in doc_tree[SurfaceIndex::main()].iter() {
-            if let Some(tabs) = node.tabs() {
+            if let Some(tabs) = node.drawers() {
                 for tab in tabs {
                     open_tabs.insert(tab);
                 }

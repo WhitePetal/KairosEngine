@@ -1,6 +1,6 @@
-use eframe::egui::{Id, Modifiers, Rect, Ui};
+use eframe::egui::{CentralPanel, Color32, Context, Frame, Id, Modifiers, Rect, Ui};
 
-use crate::kairos_editor::ui::docking_tab::{dock_state::{DockState, tree::{NodeIndex, TabDestination, TabIndex}}, state::State, styles::Style, surfaces::SurfaceIndex, tab_drawer::TabDrawer};
+use crate::kairos_editor::ui::docking_tab::{dock_state::{DockState, tree::{NodeIndex, TabDestination, TabIndex, node::{Node}}}, drag_and_drop::TreeComponent, state::State, styles::{OverlayType, Style}, surfaces::SurfaceIndex, tab_drawer::TabDrawer};
 
 pub mod window_state;
 pub mod dock_state;
@@ -11,12 +11,14 @@ pub mod styles;
 pub mod state;
 pub mod drag_and_drop;
 
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 pub enum AllowedSplits {
     /// Allow splits in any direction (horizontal and vertical).
+    #[default]
     All = 0b11,
 
     /// Only allow split in a horizontal directions.
-    LeafRightOnly = 0b10,
+    LeftRightOnly = 0b10,
 
     /// Only allow splits in a vertical directions.
     TopBottomOnly = 0b01,
@@ -24,17 +26,12 @@ pub enum AllowedSplits {
     /// Don't allow splits at all.
     None = 0b00,
 }
-impl Default for AllowedSplits {
-    #[inline(always)]
-    fn default() -> Self {
-        AllowedSplits::All
-    }
-}
+
 impl AllowedSplits {
     fn from_u8(u8: u8) -> Self {
         match u8 {
             0b11 => AllowedSplits::All,
-            0b10 => AllowedSplits::LeafRightOnly,
+            0b10 => AllowedSplits::LeftRightOnly,
             0b01 => AllowedSplits::TopBottomOnly,
             0b00 => AllowedSplits::None,
             _ => unreachable!("Provided an invalid value for allowed splits: {u8:0x}"),
@@ -114,7 +111,55 @@ impl<'tree, Drawer> DockArea<'tree, Drawer> {
             secondary_button_context_menu: true
         }
     }
+}
 
+impl<Drawer> std::fmt::Debug for DockArea<'_, Drawer> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DockArea").finish_non_exhaustive()
+    }
+}
+
+impl<Drawer> DockArea<'_, Drawer> {
+        /// Show the `DockArea` at the top level.
+    ///
+    /// This is the same as doing:
+    ///
+    /// ```
+    /// # use egui_dock::{DockArea, DockState};
+    /// # use egui::{CentralPanel, Frame};
+    /// # struct TabViewer {}
+    /// # impl egui_dock::TabViewer for TabViewer {
+    /// #     type Tab = String;
+    /// #     fn title(&mut self, tab: &mut Self::Tab) -> egui::WidgetText { (&*tab).into() }
+    /// #     fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab) {}
+    /// # }
+    /// # let mut tree: DockState<String> = DockState::new(vec![]);
+    /// # let mut tab_viewer = TabViewer {};
+    /// # egui::__run_test_ctx(|ctx| {
+    /// CentralPanel::default()
+    ///     .frame(Frame::central_panel(&ctx.style()).inner_margin(0.))
+    ///     .show(ctx, |ui| {
+    ///         DockArea::new(&mut tree).show_inside(ui, &mut tab_viewer);
+    ///     });
+    /// # });
+    /// ```
+    ///
+    /// So you can't use the [`CentralPanel::show`] when using `DockArea`'s one.
+    ///
+    /// See also [`show_inside`](Self::show_inside).
+    #[inline]
+    pub fn show(self, ctx: &Context, tab_viewer: &mut impl TabDrawer<Tab = Drawer>) {
+        CentralPanel::default()
+            .frame(
+                Frame::central_panel(&ctx.style())
+                    .inner_margin(0.)
+                    .fill(Color32::TRANSPARENT),
+            )
+            .show(ctx, |ui| {
+                self.show_inside(ui, tab_viewer);
+            });
+    }
+    
     /// Shows the docking hierarchy inside a [`Ui`].
     pub fn show_inside(mut self, ui: &mut Ui, tab_drawer: &mut impl TabDrawer<Tab = Drawer>) {
         self.style
@@ -141,37 +186,89 @@ impl<'tree, Drawer> DockArea<'tree, Drawer> {
         }
     }
 
+    /// Returns some when windows are fading, and what surface index is being hovered over
+    #[inline(always)]
+    fn hovered_window_surface(
+        &self,
+        state: &mut State,
+        hold_time: f32,
+        ctx: &Context,
+    ) -> Option<SurfaceIndex> {
+        if let Some(dnd_state) = &state.dnd {
+            if dnd_state.is_locked(self.style.as_ref().unwrap(), ctx) {
+                state.window_fade =
+                    Some((ctx.input(|i| i.time), dnd_state.hover.dst.surface_address()));
+            }
+        }
+
+        state.window_fade.and_then(|(time, surface)| {
+            ctx.request_repaint();
+            (hold_time > (ctx.input(|i| i.time) - time) as f32).then_some(surface)
+        })
+    }
+
     /// Resolve where a dragged tab would land given it's dropped this frame, returns `None` when the resulting drop is an invalid move.
     fn show_drag_drop_overlay(
         &mut self,
         ui: &Ui,
         state: &mut State,
-        tab_drawer: &impl TabDrawer<Tab = Drawer>
-    )  -> Option<TabDestination> {
+        tab_viewer: &impl TabDrawer<Tab = Drawer>,
+    ) -> Option<TabDestination> {
         let drag_state = state.dnd.as_mut().unwrap();
         let style = self.style.as_ref().unwrap();
 
-        let deserted_node =  {
+        let deserted_node = {
             match (
                 drag_state.drag.src.node_address(),
                 drag_state.hover.dst.node_address(),
             ) {
-                (
-                    (src_surf, Some(src_node)),
-                    (dst_surf, Some(dst_node))
-                ) => {
+                ((src_surf, Some(src_node)), (dst_surf, Some(dst_node))) => {
                     src_surf == dst_surf
                         && src_node == dst_node
-                        && self.dock_state[src_surf][src_node].take_count() == 1
+                        && self.dock_state[src_surf][src_node].drawers_count() == 1
                 }
                 _ => false,
-            };
+            }
         };
-    }
-}
 
-impl<Drawer> std::fmt::Debug for DockArea<'_, Drawer> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("DockArea").finish_non_exhaustive()
+        // Not all scenarios can house all splits.
+        let restricted_splits = if drag_state.hover.dst.is_surface() || deserted_node {
+            AllowedSplits::None
+        } else {
+            AllowedSplits::All
+        };
+        let allowed_splits = self.allowed_splits & restricted_splits;
+
+        let allowed_in_window = match drag_state.drag.src {
+            TreeComponent::Tab(surface, node, tab) => {
+                let Node::Leaf(leaf) = &mut self.dock_state[surface][node] else {
+                    unreachable!("tab drags can only come from leaf nodes")
+                };
+                tab_viewer.allowed_in_windows(&mut leaf.drawers[tab.0])
+            }
+            _ => todo!("collections of tabs, like nodes or surfaces, can't be dragged! (yet)"),
+        };
+
+        if let Some(pointer) = state.last_hover_pos {
+            drag_state.pointer = pointer;
+        }
+
+        let window_bounds = self.window_bounds.unwrap();
+        match (style.overlay.overlay_type, drag_state.is_on_title_bar()) {
+            (OverlayType::HighlightedAreas, _) | (_, true) => drag_state.resolve_traditional(
+                ui,
+                style,
+                allowed_splits,
+                allowed_in_window,
+                window_bounds,
+            ),
+            (OverlayType::Widgets, false) => drag_state.resolve_icon_based(
+                ui,
+                style,
+                allowed_splits,
+                allowed_in_window,
+                window_bounds,
+            ),
+        }
     }
 }
