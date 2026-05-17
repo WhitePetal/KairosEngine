@@ -6,14 +6,14 @@ use crate::kairos_editor::ui::docking_tab::{AllowedSplits, dock_state::tree::{No
 
 
 #[derive(Debug, Clone)]
-pub(super) enum TreeComponent {
+pub enum TreeComponent {
     Surface(SurfaceIndex),
     Node(SurfaceIndex, NodeIndex),
     Tab(SurfaceIndex, NodeIndex, TabIndex)
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct HoverData {
+pub struct HoverData {
     pub rect: Rect,
 
     pub dst: TreeComponent,
@@ -23,13 +23,13 @@ pub(super) struct HoverData {
 
 /// Specifies the location of a tab on the tree, used when moving tabs.
 #[derive(Debug, Clone)]
-pub(super) struct DragData {
+pub struct DragData {
     pub src: TreeComponent,
     pub rect: Rect
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct DragDropState {
+pub struct DragDropState {
     pub hover: HoverData, 
     pub drag: DragData,
     pub pointer: Pos2,
@@ -377,7 +377,7 @@ fn constrain_rect_to_area(ui: &Ui, rect: Rect, mut bounds: Rect) -> Rect {
 }
 
 impl TreeComponent {
-    pub(super) fn as_tab_destination(&self) -> TabDestination {
+    pub fn as_tab_destination(&self) -> TabDestination {
         match *self {
             TreeComponent::Surface(surface) => TabDestination::EmptySurface(surface),
             TreeComponent::Node(dst_surf, dst_node) => {
@@ -388,7 +388,7 @@ impl TreeComponent {
             },
         }
     }
-    pub(super) fn node_address(&self) -> (SurfaceIndex, Option<NodeIndex>) {
+    pub fn node_address(&self) -> (SurfaceIndex, Option<NodeIndex>) {
         match *self {
             TreeComponent::Surface(surface_index) => (surface_index, None),
             TreeComponent::Node(surface_index, node_index) => (surface_index, Some(node_index)),
@@ -396,7 +396,7 @@ impl TreeComponent {
         }
     }
 
-    pub(super) fn surface_address(&self) -> SurfaceIndex {
+    pub fn surface_address(&self) -> SurfaceIndex {
         match *self {
             TreeComponent::Surface(surface)
             | TreeComponent::Node(surface, _)
@@ -404,7 +404,7 @@ impl TreeComponent {
         }
     }
 
-    pub(super) fn is_surface(&self) -> bool {
+    pub fn is_surface(&self) -> bool {
         matches!(self, TreeComponent::Surface(_))
     }
 }

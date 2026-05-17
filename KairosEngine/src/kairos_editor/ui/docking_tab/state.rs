@@ -5,7 +5,7 @@ use crate::kairos_editor::ui::docking_tab::{drag_and_drop::{DragData, DragDropSt
 
 
 #[derive(Debug, Clone, Default)]
-pub(super) struct State {
+pub struct State {
     pub drag_start: Option<Pos2>,
     pub last_hover_pos: Option<Pos2>,
     pub dnd: Option<DragDropState>,

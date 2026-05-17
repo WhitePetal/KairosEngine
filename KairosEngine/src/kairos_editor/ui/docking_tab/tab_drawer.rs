@@ -54,6 +54,14 @@ pub trait TabDrawer {
         true
     }
 
+    /// Returns `true` if the user of your app should be able to close a given `_tab`.
+    ///
+    /// By default, `true` is always returned.
+    #[deprecated = "Use the `TabViewer::is_closeable` function instead."]
+    fn closeable(&mut self, _tab: &mut Self::Tab) -> bool {
+        true
+    }
+
     /// This is called every frame after [`ui`](Self::ui) is called, if the `_tab` is active.
     ///
     /// Returns `true` if the tab should be forced to close, `false` otherwise.

@@ -163,7 +163,7 @@ impl<Drawer> DockState<Drawer> {
     /// Returns true if the specified surface exists and isn't [`Empty`](Surface::Empty).
     #[inline]
     pub fn is_surface_valid(&self, surface: SurfaceIndex) -> bool {
-        self.surfaces.get(surface.0).is_some_and(|surface| surface.is_empty())
+        self.surfaces.get(surface.0).is_some_and(|surface| !surface.is_empty())
     }
 
     /// Returns a list of all valid [`SurfaceIndex`]es.

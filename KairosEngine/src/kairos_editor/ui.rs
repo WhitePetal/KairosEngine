@@ -1,8 +1,8 @@
-use std::{any::{Any, TypeId, type_name}, collections::{HashMap, HashSet}};
+use std::{any::{Any, TypeId, type_name}, collections::{HashMap, HashSet, VecDeque}};
 
-use eframe::egui::{self};
+use eframe::egui::{self, Id};
 
-use crate::{kairos_dialog, kairos_editor::ui::{about_window::AboutWindow, docking_tab::{DockArea, dock_state::{DockState, tree::NodeIndex}, surfaces::SurfaceIndex, tab_drawer::TabDrawer}, preferences_window::PreferencesWindow, tool_bar::ToolBar, ui_style_fields::{StyleField, StylePage}}};
+use crate::{kairos_dialog, kairos_editor::ui::{about_window::AboutWindow, console_window::ConsoleWindow, docking_tab::{DockArea, dock_state::{DockState, tree::NodeIndex}, styles::Style, surfaces::SurfaceIndex, tab_drawer::{OnCloseResponse, TabDrawer}}, preferences_window::PreferencesWindow, tool_bar::ToolBar, ui_style_fields::{StyleField, StylePage}}};
 
 pub mod paths;
 pub mod dialog;
@@ -52,26 +52,23 @@ pub trait Drawer: Any {
 
     fn get_name(&self) -> &'static str;
 
-    fn as_any(&self) -> &dyn Any;
-    fn as_any_mut(&mut self) -> &mut dyn Any;
-
     fn get_style_fileds(&self) -> Vec<StyleField>;
     fn update_style(&mut self, style_fields: &Vec<StyleField>);
 }
 
 pub struct Messager {
-    messages: Vec<Message>
+    messages: VecDeque<Message>
 }
 
 impl Messager {
     pub fn new() -> Self {
         Self{
-            messages: Vec::new()
+            messages: VecDeque::new()
         }
     }
 
     pub fn send(&mut self, msg: Message) {
-        self.messages.push(msg);
+        self.messages.push_back(msg);
     }
 }
 
@@ -82,7 +79,6 @@ pub struct Context {
     drawers: Vec<Box<dyn Drawer>>,
     doc_tab_viewer: DocTabDrawer,
     doc_tree: DockState<TabDrawers>,
-
 }
 
 impl Context {
@@ -111,8 +107,9 @@ impl Context {
                 }
             }
         }
-        let doc_tab_viewer = DocTabDrawer {
 
+        let doc_tab_viewer = DocTabDrawer {
+            // open_tabs
         };
 
         let mut messager = Messager::new();
@@ -143,9 +140,7 @@ impl Context {
     }
 
     pub fn handle(&mut self, ctx: &eframe::egui::Context) {
-        let mut _new_messages: Vec<Message> = Vec::new();
-        let mut messages = std::mem::take(&mut self.messager.messages);
-        for msg in &messages {
+        while let Some(msg) = self.messager.messages.pop_front() {
             match msg {
                 Message::CreateToolbar => {
                     let drawer = ToolBar::new().unwrap_or_else(|error| {
@@ -164,7 +159,7 @@ impl Context {
                             let drawer = AboutWindow::new().unwrap_or_else(|error| {
                                 Context::create_ui_failed(ctx, type_name::<AboutWindow>(), error);
                             });
-                            let id = self.push_drawer::<AboutWindow>(Box::new(drawer));
+                            self.push_drawer::<AboutWindow>(Box::new(drawer));
                         },
                     };
                 },
@@ -187,7 +182,7 @@ impl Context {
                             self.push_drawer::<PreferencesWindow>(Box::new(drawer));
                         }
                     };
-                    _new_messages.push(Message::RefershPreferenceWindow);
+                    self.messager.messages.push_back(Message::RefershPreferenceWindow);
                 },
                 Message::ClosePreferenceWindow => {
                     let type_id = TypeId::of::<PreferencesWindow>();
@@ -196,60 +191,34 @@ impl Context {
                     }
                 },
                 Message::RefershPreferenceWindow => {
-                    let type_id = TypeId::of::<PreferencesWindow>();
-                    match self.ids.get(&type_id) {
-                        Some(id) => {
-                            let drawers = &self.drawers;
-                            match drawers[*id].as_any().downcast_ref::<PreferencesWindow>() {
-                                Some(_) => {
-                                    let mut style_pages = Vec::new();
-                                    for (id, drawer) in self.drawers.iter().enumerate() {
-                                        let fields = drawer.get_style_fileds();
-                                        let page = StylePage::new(id, drawer.get_name(), fields);
-                                        style_pages.push(page);
-                                    }
-
-                                    let drawers = &mut self.drawers;
-                                    let drawer = drawers[*id].as_any_mut().downcast_mut::<PreferencesWindow>().unwrap();
-                                    drawer.registe_ui_styles(style_pages);
-                                },
-                                None => {
-                                    kairos_dialog::error_message_window("PreferenceWindow Error", "Refersh PreferenceWindow Failed");
-                                },
-                            }
-                        }
-                        None => {
-                            kairos_dialog::error_message_window("PreferenceWindow Error", "Can't Find PreferenceWindow obj");
+                    let mut style_pages = Vec::new();
+                    for (id, drawer) in self.drawers.iter().enumerate() {
+                        let fields = drawer.get_style_fileds();
+                        let page = StylePage::new(id, drawer.get_name(), fields);
+                        style_pages.push(page);
+                    }
+                    match self.get_preference_window_mut() {
+                        Some(preferences_window) => {
+                            preferences_window.registe_ui_styles(style_pages);
                         },
-                    } 
+                        None => {
+                            kairos_dialog::error_message_window("PreferenceWindow Error", "Get PreferenceWindow Failed")
+                        },
+                    }
                 },
                 Message::SetPreferenceWindowSelectedId(selected_id) => {
-                    let type_id = TypeId::of::<PreferencesWindow>();
-                    match self.ids.get(&type_id) {
-                        Some(id) => {
-                            if let Some(drawer) = self.drawers[*id].as_any_mut().downcast_mut::<PreferencesWindow>() {
-                                drawer.set_selected_id(*selected_id);
-                            } else {
-                                kairos_dialog::error_message_window("PreferenceWindow Error", "Downcast PreferenceWindow Failed");
-                            }
-                        },
+                    match self.get_preference_window_mut() {
+                        Some(preferences_window) => preferences_window.set_selected_id(selected_id),
                         None => {
-                            kairos_dialog::error_message_window("PreferenceWindow Error", "Can't Find PreferenceWindow obj");
+                            kairos_dialog::error_message_window("PreferenceWindow Error", "Get PreferenceWindow Failed");
                         },
                     }
                 },
                 Message::UpdateUIStyle(style_page) => {
-                    let type_id = TypeId::of::<PreferencesWindow>();
-                    match self.ids.get(&type_id) {
-                        Some(id) => {
-                            if let Some(drawer) = self.drawers[*id].as_any_mut().downcast_mut::<PreferencesWindow>() {
-                                drawer.update_style_page(style_page);
-                            } else {
-                                kairos_dialog::error_message_window("PreferenceWindow Error", "Downcast PreferenceWindow Failed");
-                            }
-                        },
+                    match self.get_preference_window_mut() {
+                        Some(preferences_window) => preferences_window.update_style_page(&style_page),
                         None => {
-                            kairos_dialog::error_message_window("PreferenceWindow Error", "Can't Find PreferenceWindow obj");
+                            kairos_dialog::error_message_window("PreferenceWindow Error", "Get PreferenceWindow Failed");
                         },
                     }
 
@@ -257,15 +226,19 @@ impl Context {
                     drawer.update_style(&style_page.fields);
                 },
                 Message::OpenConsoleWindow => {
-                    
+                    let type_id = TypeId::of::<ConsoleWindow>();
+                    match self.ids.get(&type_id) {
+                        Some(id) => self.on_offs[*id] = true,
+                        None => {
+                            let drawer = ConsoleWindow::new().unwrap_or_else(|error| {
+                                Context::create_ui_failed(ctx, type_name::<ConsoleWindow>(), error);
+                            });
+                            self.push_drawer::<ConsoleWindow>(Box::new(drawer));
+                        }
+                    }
+                    // self.doc_tree.push_to_focused_leaf(TabDrawers::Console);
                 },
             }
-        }
-        messages.clear();
-        self.messager.messages = messages;
-
-        if _new_messages.len() > 0 {
-            self.messager.messages = _new_messages;
         }
     }
 
@@ -283,6 +256,32 @@ impl Context {
         dialog::ui_create_error_window(ui_name, &error);
         ctx.send_viewport_cmd(eframe::egui::ViewportCommand::Close);
         panic!("Create {} UI Failed: {}", ui_name, error)
+    }
+
+    fn get_preference_window(&self) -> Option<&PreferencesWindow> {
+        let type_id = TypeId::of::<PreferencesWindow>();
+        match self.ids.get(&type_id) {
+            Some(id) => {
+                let drawer = self.drawers[*id].as_ref();
+                (drawer as &dyn  Any).downcast_ref::<PreferencesWindow>()
+            },
+            None => {
+                None
+            }
+        }
+    }
+
+    fn get_preference_window_mut(&mut self) -> Option<&mut PreferencesWindow> {
+        let type_id = TypeId::of::<PreferencesWindow>();
+        match self.ids.get(&type_id) {
+            Some(id) => {
+                let drawer = self.drawers[*id].as_mut();
+                (drawer as &mut dyn  Any).downcast_mut::<PreferencesWindow>()
+            },
+            None => {
+                None
+            }
+        }
     }
 }
 
@@ -313,7 +312,7 @@ impl Context {
 // }
 
 struct DocTabDrawer {
-
+    // open_tabs: HashSet<&'a TabDrawers>
 }
 
 impl TabDrawer for DocTabDrawer {
@@ -331,7 +330,7 @@ impl TabDrawer for DocTabDrawer {
         }
     }
 
-    fn is_closeable(&self, _tab: &Self::Tab) -> bool {
-        true
+    fn on_close(&mut self, _tab: &mut Self::Tab) -> OnCloseResponse {
+        OnCloseResponse::Close
     }
 }

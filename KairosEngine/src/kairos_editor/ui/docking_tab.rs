@@ -116,6 +116,20 @@ impl<'tree, Drawer> DockArea<'tree, Drawer> {
             secondary_button_context_menu: true
         }
     }
+
+    /// Sets the [`DockArea`] ID. Useful if you have more than one [`DockArea`].
+    #[inline(always)]
+    pub fn id(mut self, id: Id) -> Self {
+        self.id = id;
+        self
+    }
+
+    /// Sets the look and feel of the [`DockArea`].
+    #[inline(always)]
+    pub fn style(mut self, style: Style) -> Self {
+        self.style = Some(style);
+        self
+    }
 }
 
 impl<Drawer> std::fmt::Debug for DockArea<'_, Drawer> {
@@ -718,7 +732,7 @@ impl<Drawer> DockArea<'_, Drawer> {
 }
 
 impl<Drawer> DockArea<'_, Drawer> {
-    pub(super) fn show_window_surface(
+    pub fn show_window_surface(
         &mut self,
         ui: &Ui,
         messager: &mut Messager,

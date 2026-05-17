@@ -125,14 +125,6 @@ impl Drawer for ToolBar {
         fields
     }
     
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-    
     fn get_name(&self) -> &'static str {
         type_name::<ToolBar>()
     }

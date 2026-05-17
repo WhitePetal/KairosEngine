@@ -1,6 +1,6 @@
 
 
-use std::{any::type_name, fs};
+use std::{any::type_name, fs, ops::Deref};
 
 use eframe::egui;
 use kairos_engine::math;
@@ -99,14 +99,6 @@ impl Drawer for PreferencesWindow {
         fileds.push(StyleField::FloatStyleField(FloatStyleField::new("grid space y", style.grid_space_y, 0.0, f32::MAX, FloatFieldEditViewType::Field)));
 
         fileds
-    }
-    
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
     }
     
     fn get_name(&self) -> &'static str {
