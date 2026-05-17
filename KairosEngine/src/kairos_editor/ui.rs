@@ -77,52 +77,51 @@ pub struct Context {
     ids: HashMap<TypeId, usize>,
     on_offs: Vec<bool>,
     drawers: Vec<Box<dyn Drawer>>,
-    doc_tab_viewer: DocTabDrawer,
-    doc_tree: DockState<TabDrawers>,
+    tab_tree: DockState<usize>,
+    tab_viewer: KairosTabDrawer,
 }
 
 impl Context {
     pub fn new() -> Self {
-        let mut doc_tree = DockState::new(vec![TabDrawers::Default]);
-        let [r_root, _] = doc_tree.main_surface_mut().split_right(
-            NodeIndex::root(), 
-            0.7,
-            vec![TabDrawers::Inspector]
-        );
-        let [r_root, _] = doc_tree.main_surface_mut().split_below(
-            r_root, 
-            0.7,
-            vec![TabDrawers::Project, TabDrawers::Console] 
-        );
-        let [_, _] = doc_tree.main_surface_mut().split_left(
-            r_root, 
-            0.3,
-            vec![TabDrawers::Hierarchy]
-        );
-        let mut open_tabs = HashSet::new();
-        for node in doc_tree[SurfaceIndex::main()].iter() {
-            if let Some(tabs) = node.drawers() {
-                for tab in tabs {
-                    open_tabs.insert(tab);
-                }
-            }
-        }
-
-        let doc_tab_viewer = DocTabDrawer {
-            // open_tabs
-        };
+        let tab_tree = DockState::new(vec![]);
+        // let [r_root, _] = doc_tree.main_surface_mut().split_right(
+        //     NodeIndex::root(), 
+        //     0.7,
+        //     vec![TabDrawers::Inspector]
+        // );
+        // let [r_root, _] = doc_tree.main_surface_mut().split_below(
+        //     r_root, 
+        //     0.7,
+        //     vec![TabDrawers::Project, TabDrawers::Console] 
+        // );
+        // let [_, _] = doc_tree.main_surface_mut().split_left(
+        //     r_root, 
+        //     0.3,
+        //     vec![TabDrawers::Hierarchy]
+        // );
+        // let mut open_tabs = HashSet::new();
+        // for node in doc_tree[SurfaceIndex::main()].iter() {
+        //     if let Some(tabs) = node.drawers() {
+        //         for tab in tabs {
+        //             open_tabs.insert(tab);
+        //         }
+        //     }
+        // }
 
         let mut messager = Messager::new();
         messager.send(Message::CreateToolbar);
+        messager.send(Message::OpenConsoleWindow);
 
-        Self { 
+        let drawers = Vec::new();
+
+        Self {
             messager,
             ids: HashMap::new(),
             on_offs: Vec::new(),
-            drawers: Vec::new(),
-            doc_tree,
-            doc_tab_viewer,
-        }   
+            drawers,
+            tab_tree,
+            tab_viewer: KairosTabDrawer {  }
+        }
     }
 
     pub fn darw(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame) {
@@ -133,8 +132,8 @@ impl Context {
         // 中央区域显示内容
         egui::CentralPanel::default()
             .show(ctx, |ui| {
-                DockArea::new("KairosEditor Main DockArea", &mut self.doc_tree)
-                    .show_inside(ui, &mut self.messager, &mut self.doc_tab_viewer);
+                DockArea::new("KairosEditor Main DockArea", &mut self.tab_tree)
+                    .show_inside(ui, ctx, frame, &mut self.messager, &self.drawers, &mut self.tab_viewer);
             }
         );
     }
@@ -228,21 +227,27 @@ impl Context {
                 Message::OpenConsoleWindow => {
                     let type_id = TypeId::of::<ConsoleWindow>();
                     match self.ids.get(&type_id) {
-                        Some(id) => self.on_offs[*id] = true,
+                        Some(id) => self.on_offs[*id] = true, // TODO: 改为存储 (surface_index, node_index)，获取tab然后focus
                         None => {
                             let drawer = ConsoleWindow::new().unwrap_or_else(|error| {
                                 Context::create_ui_failed(ctx, type_name::<ConsoleWindow>(), error);
                             });
-                            self.push_drawer::<ConsoleWindow>(Box::new(drawer));
+                            // self.tab_tree.add_window(vec![Box::new(drawer)]);
+                            let id = self.push_drawer::<ConsoleWindow>(Box::new(drawer));
+                            let [_, node] = self.tab_tree.main_surface_mut().split_below(
+                                NodeIndex::root(), 
+                                0.7,
+                                vec![id] 
+                            );
+                            
                         }
                     }
-                    // self.doc_tree.push_to_focused_leaf(TabDrawers::Console);
                 },
             }
         }
     }
 
-    fn push_drawer<T>(&mut self, drawer: Box<dyn Drawer>)
+    fn push_drawer<T>(&mut self, drawer: Box<dyn Drawer>) -> usize
         where T: 'static + Drawer
     {
         let id = self.drawers.len();
@@ -250,6 +255,7 @@ impl Context {
         self.ids.insert(type_id, id);
         self.on_offs.push(true);
         self.drawers.push(drawer);
+        id
     }
 
     fn create_ui_failed(ctx: &eframe::egui::Context, ui_name: &str, error: Box<dyn std::error::Error>) -> ! {
@@ -285,52 +291,30 @@ impl Context {
     }
 }
 
-// impl Drawer for Context {
-//     fn update(&self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut Messager) {
-//         todo!()
-//     }
-
-//     fn get_name(&self) -> &'static str {
-//         todo!()
-//     }
-
-//     fn as_any(&self) -> &dyn Any {
-//         todo!()
-//     }
-
-//     fn as_any_mut(&mut self) -> &mut dyn Any {
-//         todo!()
-//     }
-
-//     fn get_style_fileds(&self) -> Vec<StyleField> {
-//         todo!()
-//     }
-
-//     fn update_style(&mut self, style_fields: &Vec<StyleField>) {
-//         todo!()
-//     }
-// }
-
-struct DocTabDrawer {
-    // open_tabs: HashSet<&'a TabDrawers>
+struct KairosTabDrawer {
+    // drawers: &'a Vec<Box<dyn Drawer>>,
 }
 
-impl TabDrawer for DocTabDrawer {
-    type Tab = TabDrawers;
+impl TabDrawer for KairosTabDrawer {
+    type Tab = usize;
 
     fn title(&self, tab: &mut Self::Tab) -> egui::WidgetText {
-        tab.as_str().into()
+        // let tab = &self.drawers[*tab];
+        // tab.get_name().into()
+        tab.to_string().into()
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab, messager: &mut Messager) {
-        match tab {
-            _ => {
-                ui.label(tab.as_str());
-            }
-        }
+    fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut Messager, drawers: &Vec<Box<dyn Drawer>>) {
+        let tab = &drawers[*tab];
+        tab.update(ctx, frame, messager);
     }
 
     fn on_close(&mut self, _tab: &mut Self::Tab) -> OnCloseResponse {
         OnCloseResponse::Close
     }
+
+    // fn on_add(&mut self, surface: SurfaceIndex, node: NodeIndex) {
+    //     println!("add tab: {0}, {1}", surface.0, node.0);
+    //     self.drawer_paths.push((surface, node));
+    // }
 }

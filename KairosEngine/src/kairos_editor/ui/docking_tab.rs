@@ -2,7 +2,7 @@ use std::ops::RangeInclusive;
 
 use eframe::{egui::{self, Align, Align2, Button, CentralPanel, Color32, Context, CornerRadius, CursorIcon, EventFilter, Frame, Id, Key, LayerId, Layout, Modifiers, NumExt, Order, Popup, PopupCloseBehavior, Pos2, Rect, Response, RichText, ScrollArea, Sense, Shape, Stroke, StrokeKind, TextStyle, Ui, UiBuilder, Vec2, Visuals, WidgetText, lerp, pos2, style::{WidgetVisuals, Widgets}, vec2}, emath::TSTransform, epaint::TextShape};
 
-use crate::kairos_editor::ui::{Messager, docking_tab::{dock_state::{DockState, tree::{NodeIndex, TabDestination, TabIndex, node::{Node, leaf_node::LeafNode}}}, drag_and_drop::{DragData, DragDropState, HoverData, TreeComponent}, state::State, styles::{ButtonsStyle, OverlayType, SeparatorStyle, Style, TabAddAlign, TabBarStyle, TabBodyStyle, TabInteractionStyle, TabStyle}, surfaces::SurfaceIndex, tab_drawer::{OnCloseResponse, TabDrawer}}};
+use crate::kairos_editor::{self, ui::{Drawer, Messager, docking_tab::{dock_state::{DockState, tree::{NodeIndex, TabDestination, TabIndex, node::{Node, leaf_node::LeafNode}}}, drag_and_drop::{DragData, DragDropState, HoverData, TreeComponent}, state::State, styles::{ButtonsStyle, OverlayType, SeparatorStyle, Style, TabAddAlign, TabBarStyle, TabBodyStyle, TabInteractionStyle, TabStyle}, surfaces::SurfaceIndex, tab_drawer::{OnCloseResponse, TabDrawer}}}};
 
 use duplicate::duplicate;
 use paste::paste;
@@ -167,7 +167,14 @@ impl<Drawer> DockArea<'_, Drawer> {
     ///
     /// See also [`show_inside`](Self::show_inside).
     #[inline]
-    pub fn show(self, ctx: &Context, messager: &mut Messager, tab_viewer: &mut impl TabDrawer<Tab = Drawer>) {
+    pub fn show(
+        self, 
+        ctx: &Context, 
+        frame: &mut eframe::Frame, 
+        messager: &mut Messager, 
+        drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
+        tab_viewer: &mut impl TabDrawer<Tab = Drawer>
+    ) {
         CentralPanel::default()
             .frame(
                 Frame::central_panel(&ctx.style())
@@ -175,14 +182,21 @@ impl<Drawer> DockArea<'_, Drawer> {
                     .fill(Color32::TRANSPARENT),
             )
             .show(ctx, |ui| {
-                self.show_inside(ui, messager, tab_viewer);
+                self.show_inside(ui, ctx, frame, messager, drawers, tab_viewer);
             });
     }
     
     /// Shows the docking hierarchy inside a [`Ui`].
-    pub fn show_inside(mut self, ui: &mut Ui, messager: &mut Messager, tab_drawer: &mut impl TabDrawer<Tab = Drawer>) {
+    pub fn show_inside(
+        mut self, 
+        ui: &mut Ui, 
+        ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut Messager, 
+        drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
+        tab_drawer: &mut impl TabDrawer<Tab = Drawer>,
+    ) {
         self.style
             .get_or_insert(Style::from_egui(ui.style().as_ref()));
+        self.window_bounds.get_or_insert(ui.ctx().content_rect());
 
         let mut state = State::load(ui.ctx(), self.id);
 
@@ -238,7 +252,10 @@ impl<Drawer> DockArea<'_, Drawer> {
             self.show_surface_inside(
                 surface_index,
                 ui,
+                ctx,
+                frame,
                 messager,
+                drawers,
                 tab_drawer,
                 &mut state,
                 fade_style.as_ref().map(|(style, factor)| {
@@ -410,22 +427,26 @@ impl<Drawer> DockArea<'_, Drawer> {
         &mut self,
         surf_index: SurfaceIndex,
         ui: &mut Ui,
+        ctx: &eframe::egui::Context, frame: &mut eframe::Frame,
         messager: &mut Messager,
+        drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
         tab_viewer: &mut impl TabDrawer<Tab = Drawer>,
         state: &mut State,
         fade_style: Option<(&Style, f32, SurfaceIndex)>,
     ) {
         if surf_index.is_main() {
-            self.show_root_surface_inside(ui, messager, tab_viewer, state);
+            self.show_root_surface_inside(ui, ctx, frame, messager, drawers, tab_viewer, state);
         } else {
-            self.show_window_surface(ui, messager, surf_index, tab_viewer, state, fade_style);
+            self.show_window_surface(ui, ctx, frame, messager, drawers, surf_index, tab_viewer, state, fade_style);
         }
     }
 
     fn render_nodes(
         &mut self,
         ui: &mut Ui,
+        ctx: &eframe::egui::Context, frame: &mut eframe::Frame,
         messager: &mut Messager,
+        drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
         tab_viewer: &mut impl TabDrawer<Tab = Drawer>,
         state: &mut State,
         surf_index: SurfaceIndex,
@@ -442,7 +463,7 @@ impl<Drawer> DockArea<'_, Drawer> {
         // Then, draw the bodies of each leaves.
         for node_index in self.dock_state[surf_index].breadth_first_index_iter() {
             if self.dock_state[surf_index][node_index].is_leaf() {
-                self.show_leaf(ui, messager, state, (surf_index, node_index), tab_viewer, fade_style);
+                self.show_leaf(ui, ctx, frame, messager, drawers, state, (surf_index, node_index), tab_viewer, fade_style);
             }
         }
 
@@ -703,7 +724,9 @@ impl<Drawer> DockArea<'_, Drawer> {
     pub(super) fn show_root_surface_inside(
         &mut self,
         ui: &mut Ui,
+        ctx: &eframe::egui::Context, frame: &mut eframe::Frame,
         messager: &mut Messager,
+        drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
         tab_viewer: &mut impl TabDrawer<Tab = Drawer>,
         state: &mut State,
     ) {
@@ -727,7 +750,7 @@ impl<Drawer> DockArea<'_, Drawer> {
             return;
         }
 
-        self.render_nodes(ui, messager, tab_viewer, state, surf_index, None);
+        self.render_nodes(ui, ctx, frame, messager, drawers, tab_viewer, state, surf_index, None);
     }
 }
 
@@ -735,7 +758,9 @@ impl<Drawer> DockArea<'_, Drawer> {
     pub fn show_window_surface(
         &mut self,
         ui: &Ui,
+        ctx: &eframe::egui::Context, eframe: &mut eframe::Frame,
         messager: &mut Messager,
+        drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
         surf_index: SurfaceIndex,
         tab_viewer: &mut impl TabDrawer<Tab = Drawer>,
         state: &mut State,
@@ -833,7 +858,7 @@ impl<Drawer> DockArea<'_, Drawer> {
                     tab_count,
                 )
             } else {
-                self.render_nodes(ui, messager, tab_viewer, state, surf_index, fade_style);
+                self.render_nodes(ui, ctx, eframe, messager, drawers, tab_viewer, state, surf_index, fade_style);
             }
         });
 
@@ -1014,7 +1039,9 @@ impl<Drawer> DockArea<'_, Drawer> {
     pub fn show_leaf(
         &mut self,
         ui: &mut Ui,
+        ctx: &eframe::egui::Context, frame: &mut eframe::Frame,
         messager: &mut Messager,
+        drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
         state: &mut State,
         (surface_index, node_index): (SurfaceIndex, NodeIndex),
         tab_viewer: &mut impl TabDrawer<Tab = Drawer>,
@@ -1049,7 +1076,10 @@ impl<Drawer> DockArea<'_, Drawer> {
         );
         self.drawer_body(
             ui,
+            ctx,
+            frame,
             messager,
+            drawers,
             state,
             (surface_index, node_index),
             tab_viewer,
@@ -2175,7 +2205,9 @@ impl<Drawer> DockArea<'_, Drawer> {
     fn drawer_body(
         &mut self,
         ui: &mut Ui,
+        ctx: &eframe::egui::Context, frame: &mut eframe::Frame,
         messager: &mut Messager,
+        drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
         state: &State,
         (surface_index, node_index): (SurfaceIndex, NodeIndex),
         tab_viewer: &mut impl TabDrawer<Tab = Drawer>,
@@ -2269,7 +2301,7 @@ impl<Drawer> DockArea<'_, Drawer> {
                             }
                             let available_rect = ui.available_rect_before_wrap();
                             ui.expand_to_include_rect(available_rect);
-                            tab_viewer.ui(ui, tab, messager);
+                            tab_viewer.ui(ui, tab, ctx, frame, messager, drawers);
                         });
                 });
             }

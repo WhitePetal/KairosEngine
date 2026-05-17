@@ -1,6 +1,6 @@
 use eframe::egui::{self, Id, Ui, WidgetText};
 
-use crate::kairos_editor::ui::{Messager, docking_tab::{dock_state::tree::NodeIndex, styles::TabStyle, surfaces::SurfaceIndex}};
+use crate::kairos_editor::ui::{Drawer, Messager, docking_tab::{dock_state::tree::NodeIndex, styles::TabStyle, surfaces::SurfaceIndex}};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OnCloseResponse {
@@ -17,7 +17,15 @@ pub trait TabDrawer {
 
     fn title(&self, tab: &mut Self::Tab) -> WidgetText;
 
-    fn ui(&mut self, ui: &mut Ui, tab: &mut Self::Tab, messager: &mut Messager);
+    fn ui(
+        &mut self, 
+        ui: &mut Ui, 
+        tab: &mut Self::Tab, 
+        ctx: &eframe::egui::Context, 
+        frame: &mut eframe::Frame, 
+        messager: &mut Messager,
+        drawers: &Vec<Box<dyn Drawer>>
+    );
 
     /// Content inside the context menu shown when the tab is right-clicked.
     ///
