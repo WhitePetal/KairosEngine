@@ -135,15 +135,9 @@ impl Context {
 
         // 中央区域显示内容
         egui::CentralPanel::default()
-            // .frame(egui::Frame::NONE.fill(model.style.central_panel_color.into()))
             .show(ctx, |ui| {
-                // ui.vertical_centered(|ui| {
-                //     ui.label(RichText::new("Main Content Area").size(24.0).color(Color32::LIGHT_GRAY));
-                //     ui.label(RichText::new("Custom titlebar demo").size(14.0).color(Color32::GRAY));
-                // }
-
                 DockArea::new("KairosEditor Main DockArea", &mut self.doc_tree)
-                    .show_inside(ui, &mut self.doc_tab_viewer);
+                    .show_inside(ui, &mut self.messager, &mut self.doc_tab_viewer);
             }
         );
     }
@@ -263,7 +257,7 @@ impl Context {
                     drawer.update_style(&style_page.fields);
                 },
                 Message::OpenConsoleWindow => {
-                    todo!("OpenConsoleWindow")
+                    
                 },
             }
         }

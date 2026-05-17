@@ -14,7 +14,7 @@ pub(super) struct State {
 
 impl State {
     #[inline(always)]
-    pub(super) fn load(ctx: &Context, id: Id) -> Self {
+    pub fn load(ctx: &Context, id: Id) -> Self {
         ctx.data_mut(|d| d.get_temp(id).unwrap_or(Self {
             drag_start: None,
             last_hover_pos: None,
@@ -23,13 +23,18 @@ impl State {
         }))
     }
 
-    fn is_drag_drop_locked(&self, ctx: &Context, style: &Style) -> bool {
-        self.dnd
-            .as_ref()
-            .is_some_and(|drag_drop_state| drag_drop_state.is_locked(style, ctx))
+    #[inline(always)]
+    pub fn store(self, ctx: &Context, id: Id) {
+        ctx.data_mut(|d| d.insert_temp(id, self));
     }
 
-    pub(super) fn set_drag_and_drop(
+    pub fn reset_drag(&mut self) {
+        self.dnd = None;
+        self.window_fade = None;
+        self.drag_start = None;
+    }
+
+    pub fn set_drag_and_drop(
         &mut self,
         drag: DragData,
         drop: HoverData,
@@ -44,5 +49,11 @@ impl State {
                 locked: None 
             })
         }
+    }
+
+    fn is_drag_drop_locked(&self, ctx: &Context, style: &Style) -> bool {
+        self.dnd
+            .as_ref()
+            .is_some_and(|drag_drop_state| drag_drop_state.is_locked(style, ctx))
     }
 }

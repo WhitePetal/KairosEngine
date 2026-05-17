@@ -2,7 +2,7 @@ use std::ops;
 
 use eframe::egui::Rect;
 
-use crate::kairos_editor::ui::docking_tab::{DockArea, dock_state::tree::{NodeIndex, NodePath, TabIndex, Tree, node::{self, Node}}, surfaces::{Surface, SurfaceIndex}, translations::Translations, window_state::WindowState};
+use crate::kairos_editor::ui::{Drawer, docking_tab::{DockArea, dock_state::tree::{NodeIndex, NodePath, Split, TabDestination, TabIndex, TabInsert, Tree, node::{self, Node, leaf_node::LeafNode}}, surfaces::{Surface, SurfaceIndex}, translations::Translations, window_state::WindowState}};
 
 
 
@@ -220,5 +220,434 @@ impl<Drawer> DockState<Drawer> {
             }
         }
         self.focused_surface = None;
+    }
+
+    /// Moves a tab from a node to another node.
+    /// You need to specify with [`TabDestination`] how the tab should be moved.
+    pub fn move_drawer(
+        &mut self,
+        (src_surface, src_node, src_tab): (SurfaceIndex, NodeIndex, TabIndex),
+        dst_tab: impl Into<TabDestination>,
+    ) {
+        match dst_tab.into() {
+            TabDestination::Window(position) => {
+                self.detach_drawer((src_surface, src_node, src_tab), position);
+                return;
+            }
+            TabDestination::Node(dst_surface, dst_node, dst_tab) => {
+                // Moving a single tab inside its own node is a no-op
+                if src_surface == dst_surface
+                    && src_node == dst_node
+                    && self[src_surface][src_node].drawers_count() == 1
+                {
+                    return;
+                }
+
+                // Call `Node::remove_tab` to avoid auto remove of the node by `Tree::remove_tab` from Tree.
+                let tab = self[src_surface][src_node].remove_drawer(src_tab).unwrap();
+                match dst_tab {
+                    TabInsert::Split(split) => {
+                        self[dst_surface].split(dst_node, split, 0.5, Node::leaf(tab));
+                    }
+
+                    TabInsert::Insert(index) => self[dst_surface][dst_node].insert_drawer(index, tab),
+                    TabInsert::Append => self[dst_surface][dst_node].append_drawer(tab),
+                }
+            }
+            TabDestination::EmptySurface(dst_surface) => {
+                assert!(self[dst_surface].is_empty());
+                let tab = self[src_surface][src_node].remove_drawer(src_tab).unwrap();
+                self[dst_surface] = Tree::new(vec![tab])
+            }
+        }
+        if self[src_surface][src_node].is_leaf() && self[src_surface][src_node].drawers_count() == 0 {
+            self[src_surface].remove_leaf(src_node);
+        }
+        if self[src_surface].is_empty() && !src_surface.is_main() {
+            self.remove_surface(src_surface);
+        }
+    }
+
+    /// Takes a tab out of its current surface and puts it in a new window.
+    /// Returns the surface index of the new window.
+    pub fn detach_drawer(
+        &mut self,
+        (src_surface, src_node, src_tab): (SurfaceIndex, NodeIndex, TabIndex),
+        window_rect: Rect,
+    ) -> SurfaceIndex {
+        // Remove the tab from the tree and it add to a new window.
+        let tab = self[src_surface][src_node].remove_drawer(src_tab).unwrap();
+        let surface_index = self.add_window(vec![tab]);
+
+        // Set the window size and position to match `window_rect`.
+        let state = self.get_window_state_mut(surface_index).unwrap();
+        state.set_position(window_rect.min);
+        if src_surface.is_main() {
+            state.set_size(window_rect.size() * 0.8);
+        } else {
+            state.set_size(window_rect.size());
+        }
+
+        // Clean up any empty leaves and surfaces which may be left behind from the detachment.
+        if self[src_surface][src_node].is_leaf() && self[src_surface][src_node].drawers_count() == 0 {
+            self[src_surface].remove_leaf(src_node);
+        }
+        if self[src_surface].is_empty() && !src_surface.is_main() {
+            self.remove_surface(src_surface);
+        }
+        surface_index
+    }
+
+    /// Currently focused leaf.
+    #[inline]
+    pub fn focused_leaf(&self) -> Option<(SurfaceIndex, NodeIndex)> {
+        let surface = self.focused_surface?;
+        self[surface].focused_leaf().map(|leaf| (surface, leaf))
+    }
+
+    /// Remove a tab at the specified surface, node, and tab index.
+    /// This method will yield the removed tab, or `None` if it doesn't exist.
+    pub fn remove_drawer(
+        &mut self,
+        (surface_index, node_index, tab_index): (SurfaceIndex, NodeIndex, TabIndex),
+    ) -> Option<Drawer> {
+        let removed_tab = self[surface_index].remove_drawer((node_index, tab_index));
+        if !surface_index.is_main() && self[surface_index].is_empty() {
+            self.remove_surface(surface_index);
+        }
+        removed_tab
+    }
+
+    /// Remove a leaf at the specified surface, and node index.
+    pub fn remove_leaf(&mut self, (surface_index, node_index): (SurfaceIndex, NodeIndex)) {
+        self[surface_index].remove_leaf(node_index);
+        if !surface_index.is_main() && self[surface_index].is_empty() {
+            self.remove_surface(surface_index);
+        }
+    }
+
+    /// Creates two new nodes by splitting a given `parent` node and assigns them as its children. The first (old) node
+    /// inherits content of the `parent` from before the split, and the second (new) has `tabs`.
+    ///
+    /// `fraction` (in range 0..=1) specifies how much of the `parent` node's area the old node will occupy after the
+    /// split.
+    ///
+    /// The new node is placed relatively to the old node, in the direction specified by `split`.
+    ///
+    /// Returns the indices of the old node and the new node.
+    pub fn split(
+        &mut self,
+        (surface, parent): (SurfaceIndex, NodeIndex),
+        split: Split,
+        fraction: f32,
+        new: Node<Drawer>,
+    ) -> [NodeIndex; 2] {
+        let index = self[surface].split(parent, split, fraction, new);
+        self.focused_surface = Some(surface);
+        index
+    }
+
+    /// Adds a window with its own list of tabs.
+    ///
+    /// Returns the [`SurfaceIndex`] of the new window, which will remain constant through the windows lifetime.
+    pub fn add_window(&mut self, tabs: Vec<Drawer>) -> SurfaceIndex {
+        let surface = Surface::Window(Tree::new(tabs), WindowState::new());
+        let index = self.find_empty_surface_index();
+        if index.0 < self.surfaces.len() {
+            self.surfaces[index.0] = surface;
+        } else {
+            self.surfaces.push(surface);
+        }
+        index
+    }
+
+    /// Finds the first empty surface index which may be used.
+    ///
+    /// **WARNING**: in cases where one isn't found, `SurfaceIndex(self.surfaces.len())` is used.
+    /// therefore it's not inherently safe to index the [`DockState`] with this index, as it may panic.
+    fn find_empty_surface_index(&self) -> SurfaceIndex {
+        // Find the first possible empty surface to insert our window into.
+        // Starts at 1 as 0 is always the main surface.
+        for i in 1..self.surfaces.len() {
+            if self.surfaces[i].is_empty() {
+                return SurfaceIndex(i);
+            }
+        }
+        SurfaceIndex(self.surfaces.len())
+    }
+
+    /// Ensures that the surface at `index` contains a [`Tree`]
+    ///
+    /// If the surface is [`Empty`](Surface::Empty), builds a [`Surface::Main`]
+    /// for the main surface or a [`Surface::Window`] for other surfaces.
+    ///
+    /// # Panics
+    /// If `index` is not a valid `SurfaceIndex`
+    fn ensure_tree(&mut self, index: SurfaceIndex) {
+        if matches!(self.surfaces[index.0], Surface::Empty) {
+            self.surfaces[index.0] = if index == SurfaceIndex::main() {
+                Surface::Main(Tree::new(vec![]))
+            } else {
+                Surface::Window(Tree::new(vec![]), WindowState::default())
+            }
+        }
+    }
+
+    /// Pushes `tab` to the currently focused leaf.
+    ///
+    /// If no leaf is focused it will be pushed to the first available leaf.
+    ///
+    /// If no leaf is available then a new leaf will be created.
+    pub fn push_to_focused_leaf(&mut self, tab: Drawer) {
+        let surface_index = self.focused_surface.unwrap_or(SurfaceIndex::main());
+        self.ensure_tree(surface_index);
+        self[surface_index].push_to_focused_leaf(tab)
+    }
+
+    /// Push a tab to the first available `Leaf` or create a new leaf if an `Empty` node is encountered.
+    pub fn push_to_first_leaf(&mut self, tab: Drawer) {
+        self.ensure_tree(SurfaceIndex::main());
+        self[SurfaceIndex::main()].push_to_first_leaf(tab);
+    }
+
+    /// Returns the current number of surfaces.
+    pub fn surfaces_count(&self) -> usize {
+        self.surfaces.len()
+    }
+
+    /// Returns an [`Iterator`] over all surfaces.
+    pub fn iter_surfaces(&self) -> impl Iterator<Item = &Surface<Drawer>> {
+        self.surfaces.iter()
+    }
+
+    /// Returns a mutable [`Iterator`] over all surfaces.
+    pub fn iter_surfaces_mut(&mut self) -> impl Iterator<Item = &mut Surface<Drawer>> {
+        self.surfaces.iter_mut()
+    }
+
+        /// Returns an [`Iterator`] of **all** underlying nodes in the dock state,
+    /// and the indices of containing surfaces.
+    pub fn iter_all_nodes(&self) -> impl Iterator<Item = (SurfaceIndex, &Node<Drawer>)> {
+        self.iter_surfaces()
+            .enumerate()
+            .flat_map(|(surface_index, surface)| {
+                surface
+                    .iter_nodes()
+                    .map(move |node| (surface_index.into(), node))
+            })
+    }
+
+    /// Returns a mutable [`Iterator`] of **all** underlying nodes in the dock state,
+    /// and the indices of containing surfaces.
+    pub fn iter_all_nodes_mut(&mut self) -> impl Iterator<Item = (SurfaceIndex, &mut Node<Drawer>)> {
+        self.iter_surfaces_mut()
+            .enumerate()
+            .flat_map(|(surface_index, surface)| {
+                surface
+                    .iter_nodes_mut()
+                    .map(move |node| (surface_index.into(), node))
+            })
+    }
+
+    /// Returns an [`Iterator`] of **all** tabs in the dock state,
+    /// and the indices of containing surfaces and nodes.
+    pub fn iter_all_drawers(&self) -> impl Iterator<Item = ((SurfaceIndex, NodeIndex), &Drawer)> {
+        self.iter_surfaces()
+            .enumerate()
+            .flat_map(|(surface_index, surface)| {
+                surface
+                    .iter_all_drawers()
+                    .map(move |(node_index, tab)| ((surface_index.into(), node_index), tab))
+            })
+    }
+
+    /// Returns a mutable [`Iterator`] of **all** tabs in the dock state,
+    /// and the indices of containing surfaces and nodes.
+    pub fn iter_all_drawers_mut(
+        &mut self,
+    ) -> impl Iterator<Item = ((SurfaceIndex, NodeIndex), &mut Drawer)> {
+        self.iter_surfaces_mut()
+            .enumerate()
+            .flat_map(|(surface_index, surface)| {
+                surface
+                    .iter_all_drawers_mut()
+                    .map(move |(node_index, tab)| ((surface_index.into(), node_index), tab))
+            })
+    }
+
+    /// Returns an [`Iterator`] of the underlying collection of nodes on the main surface.
+    #[deprecated = "Use `dock_state.main_surface().iter()` instead"]
+    pub fn iter_main_surface_nodes(&self) -> impl Iterator<Item = &Node<Drawer>> {
+        self[SurfaceIndex::main()].iter()
+    }
+
+    /// Returns a mutable [`Iterator`] of the underlying collection of nodes on the main surface.
+    #[deprecated = "Use `dock_state.main_surface_mut().iter_mut()` instead"]
+    pub fn iter_main_surface_nodes_mut(&mut self) -> impl Iterator<Item = &mut Node<Drawer>> {
+        self[SurfaceIndex::main()].iter_mut()
+    }
+
+    /// Returns an [`Iterator`] of **all** underlying nodes in the dock state and all subsequent trees.
+    #[deprecated = "Use `iter_all_nodes` instead"]
+    pub fn iter_nodes(&self) -> impl Iterator<Item = &Node<Drawer>> {
+        self.surfaces
+            .iter()
+            .filter_map(|surface| surface.node_tree())
+            .flat_map(|nodes| nodes.iter())
+    }
+
+    /// Returns an immutable [`Iterator`] of all [``LeafNode``]s in the dock state.
+    pub fn iter_leaves(&self) -> impl Iterator<Item = (SurfaceIndex, &LeafNode<Drawer>)> {
+        self.iter_all_nodes()
+            .filter_map(|(index, node)| node.get_leaf().map(|leaf| (index, leaf)))
+    }
+
+    /// Returns a mutable [`Iterator`] of all [``LeafNode``]s in the dock state.
+    pub fn iter_leaves_mut(&mut self) -> impl Iterator<Item = (SurfaceIndex, &mut LeafNode<Drawer>)> {
+        self.iter_all_nodes_mut()
+            .filter_map(|(index, node)| node.get_leaf_mut().map(|leaf| (index, leaf)))
+    }
+
+    /// Returns a new [`DockState`] while mapping and filtering the tab type.
+    /// Any remaining empty [`Node`]s and [`Surface`]s are removed.
+    ///
+    /// ```
+    /// # use egui_dock::{DockState, Node};
+    /// let dock_state = DockState::new(vec![1, 2, 3]);
+    /// let mapped_dock_state = dock_state.filter_map_drawers(|tab| (tab % 2 == 1).then(|| tab.to_string()));
+    ///
+    /// let tabs: Vec<_> = mapped_dock_state.iter_all_drawers().map(|(_, tab)| tab.to_owned()).collect();
+    /// assert_eq!(tabs, vec!["1".to_string(), "3".to_string()]);
+    /// ```
+    pub fn filter_map_drawers<F, NewTab>(&self, mut function: F) -> DockState<NewTab>
+    where
+        F: FnMut(&Drawer) -> Option<NewTab>,
+    {
+        let DockState {
+            surfaces,
+            focused_surface,
+            translations,
+        } = self;
+        let surfaces = surfaces
+            .iter()
+            .filter_map(|surface| {
+                let surface = surface.filter_map_drawers(&mut function);
+                (!surface.is_empty()).then_some(surface)
+            })
+            .collect();
+        DockState {
+            surfaces,
+            focused_surface: *focused_surface,
+            translations: translations.clone(),
+        }
+    }
+
+    /// Returns a new [`DockState`] while mapping the tab type.
+    ///
+    /// ```
+    /// # use egui_dock::{DockState, Node};
+    /// let dock_state = DockState::new(vec![1, 2, 3]);
+    /// let mapped_dock_state = dock_state.map_drawers(|tab| tab.to_string());
+    ///
+    /// let tabs: Vec<_> = mapped_dock_state.iter_all_drawers().map(|(_, tab)| tab.to_owned()).collect();
+    /// assert_eq!(tabs, vec!["1".to_string(), "2".to_string(), "3".to_string()]);
+    /// ```
+    pub fn map_drawers<F, NewTab>(&self, mut function: F) -> DockState<NewTab>
+    where
+        F: FnMut(&Drawer) -> NewTab,
+    {
+        self.filter_map_drawers(move |tab| Some(function(tab)))
+    }
+
+    /// Returns a new [`DockState`] while filtering the tab type.
+    /// Any remaining empty [`Node`]s and [`Surface`]s are removed.
+    ///
+    /// ```
+    /// # use egui_dock::{DockState, Node};
+    /// let dock_state = DockState::new(["tab1", "tab2", "outlier"].map(str::to_string).to_vec());
+    /// let filtered_dock_state = dock_state.filter_drawers(|tab| tab.starts_with("tab"));
+    ///
+    /// let tabs: Vec<_> = filtered_dock_state.iter_all_drawers().map(|(_, tab)| tab.to_owned()).collect();
+    /// assert_eq!(tabs, vec!["tab1".to_string(), "tab2".to_string()]);
+    /// ```
+    pub fn filter_tabs<F>(&self, mut predicate: F) -> DockState<Drawer>
+    where
+        F: FnMut(&Drawer) -> bool,
+        Drawer: Clone,
+    {
+        self.filter_map_drawers(move |tab| predicate(tab).then(|| tab.clone()))
+    }
+
+    /// Removes all tabs for which `predicate` returns `false`.
+    /// Any remaining empty [`Node`]s and [`Surface`]s are also removed.
+    ///
+    /// ```
+    /// # use egui_dock::{DockState, Node};
+    /// let mut dock_state = DockState::new(["tab1", "tab2", "outlier"].map(str::to_string).to_vec());
+    /// dock_state.retain_drawers(|tab| tab.starts_with("tab"));
+    ///
+    /// let tabs: Vec<_> = dock_state.iter_all_drawers().map(|(_, tab)| tab.to_owned()).collect();
+    /// assert_eq!(tabs, vec!["tab1".to_string(), "tab2".to_string()]);
+    /// ```
+    pub fn retain_drawers<F>(&mut self, mut predicate: F)
+    where
+        F: FnMut(&mut Drawer) -> bool,
+    {
+        let mut main_surface = true;
+        self.surfaces.retain_mut(|surface| {
+            surface.retain_drawers(&mut predicate);
+            std::mem::take(&mut main_surface) || !surface.is_empty()
+        });
+    }
+
+    /// Find a tab based on the conditions of a functino.
+    ///
+    /// Returns in which node and where in that node the tab is.
+    ///
+    /// The returned [`NodeIndex`] will always point to a [`Node::Leaf`].
+    ///
+    /// In case there are several hits, only the first is returned.
+    pub fn find_drawer_from(
+        &self,
+        predicate: impl Fn(&Drawer) -> bool,
+    ) -> Option<(SurfaceIndex, NodeIndex, TabIndex)> {
+        for &surface_index in self.valid_surface_indices().iter() {
+            if self.surfaces[surface_index.0].is_empty() {
+                continue;
+            }
+            if let Some((node_index, tab_index)) = self[surface_index].find_drawer_from(&predicate) {
+                return Some((surface_index, node_index, tab_index));
+            }
+        }
+        None
+    }
+}
+
+impl<Drawer> DockState<Drawer>
+where
+    Drawer: PartialEq,
+{
+    /// Find the given tab.
+    ///
+    /// Returns in which node and where in that node the tab is.
+    ///
+    /// The returned [`NodeIndex`] will always point to a [`Node::Leaf`].
+    ///
+    /// In case there are several hits, only the first is returned.
+    ///
+    /// See also: [`find_main_surface_tab`](DockState::find_main_surface_tab)
+    pub fn find_drawer(&self, needle_tab: &Drawer) -> Option<(SurfaceIndex, NodeIndex, TabIndex)> {
+        self.find_drawer_from(|tab| tab == needle_tab)
+    }
+
+    /// Find the given tab on the main surface.
+    ///
+    /// Returns which node and where in that node the tab is.
+    ///
+    /// The returned [`NodeIndex`] will always point to a [`Node::Leaf`].
+    ///
+    /// In case there are several hits, only the first is returned.
+    pub fn find_main_surface_drawer(&self, needle_tab: &Drawer) -> Option<(NodeIndex, TabIndex)> {
+        self[SurfaceIndex::main()].find_drawer(needle_tab)
     }
 }

@@ -325,7 +325,7 @@ impl<Drawer> Tree<Drawer> {
 
     /// Returns an [`Iterator`] of [`NodeIndex`] ordered in a breadth first manner.
     #[inline(always)]
-    pub fn breadth_first_index_iter(&self) -> impl Iterator<Item = NodeIndex> {
+    pub fn breadth_first_index_iter(&self) -> impl Iterator<Item = NodeIndex> + use<Drawer> {
         (0..self.nodes.len()).map(NodeIndex)
     }
 
@@ -1014,6 +1014,40 @@ impl<Drawer> Tree<Drawer> {
             }
         }
     }
+
+    /// Find a given tab based on ``predicate``.
+    ///
+    /// Returns the indices in where that node and tab is in this surface.
+    ///
+    /// The returned [`NodeIndex`] will always point to a [`Node::Leaf`].
+    ///
+    /// In case there are several hits, only the first is returned.
+    pub fn find_drawer_from(&self, predicate: impl Fn(&Drawer) -> bool) -> Option<(NodeIndex, TabIndex)> {
+        for (node_index, node) in self.nodes.iter().enumerate() {
+            if let Some(tabs) = node.drawers() {
+                for (tab_index, tab) in tabs.iter().enumerate() {
+                    if predicate(tab) {
+                        return Some((node_index.into(), tab_index.into()));
+                    }
+                }
+            };
+        }
+        None
+    }
 }
 
-
+impl<Drawer> Tree<Drawer>
+where
+Drawer: PartialEq,
+{
+    /// Find the given tab.
+    ///
+    /// Returns in which node and where in that node the tab is.
+    ///
+    /// The returned [`NodeIndex`] will always point to a [`Node::Leaf`].
+    ///
+    /// In case there are several hits, only the first is returned.
+    pub fn find_drawer(&self, needle_tab: &Drawer) -> Option<(NodeIndex, TabIndex)> {
+        self.find_drawer_from(|tab| tab == needle_tab)
+    }
+}
