@@ -5,32 +5,36 @@ use sonic_rs::from_str;
 
 use crate::kairos_editor::ui::{Drawer, Message, paths};
 
+
 #[derive(Debug, Serialize, Deserialize)]
-struct InspectorWindowStyle {
+struct HierarchyWindowStyle {
     pub title: String,
 }
 
-struct InspectorWindowModel {
-    style: InspectorWindowStyle,
+struct HierarchyWindowModel {
+    style: HierarchyWindowStyle,
 }
 
-pub struct InspectorWindow {
-    model: InspectorWindowModel,
+pub struct HierarchyWindow {
+    model: HierarchyWindowModel,
 }
 
-impl InspectorWindowStyle {
+impl HierarchyWindowStyle {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let style_json = fs::read_to_string(paths::PATH_INSPECTOR_WINDOW_STYLE)
-        .map_err(|error| format!("Load InspectorWindow Style Json Failed, path: {}, error: {}", paths::PATH_INSPECTOR_WINDOW_STYLE, error))?;
+        let style_json = fs::read_to_string(paths::PATH_HIERARCHY_WINDOW_STYLE)
+        .map_err(|error| format!("Load HierarchyWindow Style Json Failed, path: {}, error: {}", paths::PATH_HIERARCHY_WINDOW_STYLE, error))?;
         let style = from_str(&style_json)
-        .map_err(|error| format!("Deserialize InspectorWindow Style Json Failed, error: {}", error))?;
-        Ok(style)
+        .map_err(|error| format!("Deserialize HierarchyWindow Style Json Failed, error: {}", error))?;
+        
+        Ok(
+            style
+        )
     }
 }
 
-impl InspectorWindowModel {
+impl HierarchyWindowModel {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let style = InspectorWindowStyle::new()?;
+        let style = HierarchyWindowStyle::new()?;
         Ok(
             Self { 
                 style 
@@ -39,9 +43,9 @@ impl InspectorWindowModel {
     }
 }
 
-impl InspectorWindow {
+impl HierarchyWindow {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let model = InspectorWindowModel::new()?;
+        let model = HierarchyWindowModel::new()?;
         Ok(
             Self { 
                 model 
@@ -50,22 +54,22 @@ impl InspectorWindow {
     }
 }
 
-impl Drawer for InspectorWindow {
+impl Drawer for HierarchyWindow {
     fn show_window(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {
         
     }
 
     fn update(&self, ui: Option<&mut eframe::egui::Ui>, _ctx: &eframe::egui::Context, _frame: &mut eframe::Frame, _messager: &mut super::Messager) {
         let ui = ui.unwrap();
-        ui.label("TODO: Inspector");
+        ui.label("TODO: Hierarchy");
     }
 
     fn close(&self, messager: &mut super::Messager) {
-        messager.send(Message::CloseInspectorTab);
+        messager.send(Message::CloseHierarchyTab);
     }
 
     fn get_name(&self) -> &'static str {
-        type_name::<InspectorWindow>()
+        type_name::<HierarchyWindow>()
     }
 
     fn get_title(&self) -> eframe::egui::WidgetText {

@@ -69,7 +69,7 @@ impl Drawer for AboutWindow {
             },
         }
     }
-    fn update(&self, ui: Option<&mut egui::Ui>, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame, messager: &mut super::Messager) {
+    fn update(&self, ui: Option<&mut egui::Ui>, _ctx: &eframe::egui::Context, _frame: &mut eframe::Frame, _messager: &mut super::Messager) {
         let ui = ui.unwrap();
         // TODO: Icon
         ui.heading("KairosEngine");

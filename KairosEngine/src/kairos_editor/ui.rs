@@ -2,7 +2,7 @@ use std::{any::{Any, TypeId, type_name}, collections::{HashMap, VecDeque}, proce
 
 use eframe::egui::{self};
 
-use crate::{kairos_dialog, kairos_editor::ui::{about_window::AboutWindow, console_window::ConsoleWindow, docking_tab::{DockArea, dock_state::{DockState, tree::NodeIndex}, tab_drawer::{OnCloseResponse, TabDrawer}, window_state::WindowState}, inspector_window::InspectorWindow, preferences_window::PreferencesWindow, tool_bar::ToolBar, ui_style_fields::{StyleField, StylePage}}};
+use crate::{kairos_dialog, kairos_editor::ui::{about_window::AboutWindow, console_window::ConsoleWindow, docking_tab::{DockArea, dock_state::{DockState, tree::NodeIndex}, tab_drawer::{OnCloseResponse, TabDrawer}, window_state::WindowState}, hierarchy_window::HierarchyWindow, inspector_window::InspectorWindow, preferences_window::PreferencesWindow, project_window::ProjectWindow, tool_bar::ToolBar, ui_style_fields::{StyleField, StylePage}}};
 
 pub mod paths;
 pub mod dialog;
@@ -13,6 +13,8 @@ pub mod preferences_window;
 pub mod console_window;
 pub mod docking_tab;
 pub mod inspector_window;
+pub mod hierarchy_window;
+pub mod project_window;
 
 pub enum Message {
     CreateToolbar,
@@ -255,10 +257,37 @@ impl Context {
                 Message::CloseInspectorTab => {
                     self.close_drawer::<InspectorWindow>();
                 },
-                Message::OpenHierarchyTab => todo!(),
-                Message::CloseHierarchyTab => todo!(),
-                Message::OpenProjectTab => todo!(),
-                Message::CloseProjectTab => todo!(),
+                Message::OpenHierarchyTab => {
+                    self.show_tab::<HierarchyWindow, _>(
+                        ctx, 
+                        HierarchyWindow::new,
+                        |state, id| {
+                            state.main_surface_mut().split_left(
+                                NodeIndex::root(), 
+                                0.3, 
+                                vec![id]
+                            );
+                        }
+                    );
+                },
+                Message::CloseHierarchyTab => {
+                    self.close_drawer::<HierarchyWindow>();
+                },
+                Message::OpenProjectTab => {
+                    self.show_tab::<ProjectWindow, _>(
+                        ctx, 
+                        ProjectWindow::new,
+                        |state, id| {
+                            state.main_surface_mut().split_below(
+                                NodeIndex::root(), 
+                                0.7, 
+                                vec![id]);
+                        }
+                    );
+                },
+                Message::CloseProjectTab => {
+                    self.close_drawer::<ProjectWindow>();
+                },
             }
         }
     }

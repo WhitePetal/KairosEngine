@@ -9,3 +9,5 @@ pub const PATH_ABOUT_WINDOW_STYLE: &'static str = "Preferences/Styles/AboutWindo
 pub const PATH_PREFERENCES_WINDOW_STYLE: &'static str = "Preferences/Styles/PreferencesWindowStyle.json";
 pub const PATH_CONSOLE_WINDOW_STYLE: &'static str = "Preferences/Styles/ConsoleWindowStyle.json";
 pub const PATH_INSPECTOR_WINDOW_STYLE: &'static str = "Preferences/Styles/InspectorWindowStyle.json";
+pub const PATH_HIERARCHY_WINDOW_STYLE: &'static str = "Preferences/Styles/HierarchyWindowStyle.json";
+pub const PATH_PROJECT_WINDOW_STYLE: &'static str = "Preferences/Styles/ProjectWindowStyle.json";
