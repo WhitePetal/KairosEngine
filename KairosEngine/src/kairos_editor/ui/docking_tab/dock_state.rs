@@ -623,6 +623,12 @@ impl<Drawer> DockState<Drawer> {
     }
 }
 
+pub enum SurfaceLeftPanelLocation {
+    None,
+    Center((SurfaceIndex, NodeIndex)),
+    Left(SurfaceIndex, NodeIndex)
+}
+
 impl<Drawer> DockState<Drawer>
 where
     Drawer: PartialEq,
@@ -659,9 +665,68 @@ where
                     if !leaf_node.is_empty() {
                         let tab = &leaf_node.drawers[leaf_node.active.0];
                         let location = self.find_drawer(tab).unwrap();
-                        if location.1.is_right() {
-                            tab_location = Some((location.0, location.1));
-                            return;
+                        let parent_index = location.1.parent();
+                        if let Some(parent_index) = parent_index {
+                            if self[surface][parent_index].is_vertical() && location.1.is_right() {
+                                tab_location = Some((location.0, location.1));
+                                return;
+                            }
+                        }
+                    }
+                },
+                _ => {},
+            }
+        });
+        tab_location
+    }
+
+    pub fn find_surface_right_panel_location(&self, surface: SurfaceIndex) -> Option<(SurfaceIndex, NodeIndex)> {
+        let mut tab_location = None;
+        self[surface].iter().for_each(|node| {
+            match node {
+                Node::Leaf(leaf_node) => {
+                    if !leaf_node.is_empty() {
+                        let tab = &leaf_node.drawers[leaf_node.active.0];
+                        let location = self.find_drawer(tab).unwrap();
+                        let parent_index = location.1.parent();
+                        if let Some(parent_index) = parent_index {
+                            if self[surface][parent_index].is_horizontal() && location.1.is_right() {
+                                tab_location = Some((location.0, location.1));
+                                return;
+                            }
+                        }
+                    }
+                },
+                _ => {},
+            }
+        });
+        tab_location
+    }
+
+    pub fn find_surface_left_panel_location(&self, surface: SurfaceIndex) -> SurfaceLeftPanelLocation {
+        let mut tab_location = SurfaceLeftPanelLocation::None;
+        self[surface].iter().for_each(|node| {
+            match node {
+                Node::Leaf(leaf_node) => {
+                    if !leaf_node.is_empty() {
+                        let tab = &leaf_node.drawers[leaf_node.active.0];
+                        let location = self.find_drawer(tab).unwrap();
+                        let parent_index = location.1.parent();
+                        if let Some(parent_index) = parent_index {
+                            let g_parent_index = parent_index.parent();
+                            if let Some(g_parent_index) = g_parent_index {
+                                if self[surface][g_parent_index].is_vertical() 
+                                    && parent_index.is_left() 
+                                    && self[surface][parent_index].is_horizontal()
+                                    && location.1.is_left() {
+                                    tab_location = SurfaceLeftPanelLocation::Left(location.0, location.1);
+                                    return;
+                                }
+                            } else {
+                                if self[surface][parent_index].is_vertical() && location.1.is_left() {
+                                    tab_location = SurfaceLeftPanelLocation::Center((location.0, location.1));
+                                }
+                            }
                         }
                     }
                 },
