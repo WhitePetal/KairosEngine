@@ -2,7 +2,7 @@ use std::{any::{Any, TypeId, type_name}, collections::{HashMap, VecDeque}, proce
 
 use eframe::egui::{self};
 
-use crate::{kairos_dialog, kairos_editor::ui::{about_window::AboutWindow, console_window::ConsoleWindow, docking_tab::{DockArea, dock_state::{DockState, tree::NodeIndex}, surfaces::SurfaceIndex, tab_drawer::{OnCloseResponse, TabDrawer}, window_state::WindowState}, hierarchy_window::HierarchyWindow, inspector_window::InspectorWindow, preferences_window::PreferencesWindow, project_window::ProjectWindow, tool_bar::ToolBar, ui_style_fields::{StyleField, StylePage}}};
+use crate::{kairos_dialog, kairos_editor::ui::{about_window::AboutWindow, console_window::ConsoleWindow, docking_tab::{DockArea, dock_state::{DockState, SurfaceBottomPanelLocation, tree::NodeIndex}, surfaces::SurfaceIndex, tab_drawer::{OnCloseResponse, TabDrawer}, window_state::WindowState}, hierarchy_window::HierarchyWindow, inspector_window::InspectorWindow, preferences_window::PreferencesWindow, project_window::ProjectWindow, tool_bar::ToolBar, ui_style_fields::{StyleField, StylePage}}};
 
 pub mod paths;
 pub mod dialog;
@@ -216,11 +216,17 @@ impl Context {
                         ctx, 
                         ConsoleWindow::new, 
                         |state, id| {
-                            let location = state.find_surface_bottom_panel_location(SurfaceIndex::main());
-                            if let Some(location) = location {
-                                state[location.0][location.1].append_drawer(id);
-                            } else {                                
-                                state.main_surface_mut().split_below(NodeIndex::root(), 0.7, vec![id]);
+                            let location = state.find_surface_bottom_panel_location(SurfaceIndex::main(), NodeIndex::root());
+                            match location {
+                                SurfaceBottomPanelLocation::None => {
+                                    state.main_surface_mut().split_below(NodeIndex::root(), 0.7, vec![id]);
+                                },
+                                SurfaceBottomPanelLocation::Center(surface_index, node_index) => {
+                                    state[surface_index].split_below(node_index, 1.0, vec![id]);
+                                },
+                                SurfaceBottomPanelLocation::Bottom(surface_index, node_index) => {
+                                    state[surface_index][node_index].append_drawer(id);
+                                },
                             }
                         }
                     );
@@ -281,14 +287,17 @@ impl Context {
                         ctx, 
                         ProjectWindow::new,
                         |state, id| {
-                            let location = state.find_surface_bottom_panel_location(SurfaceIndex::main());
-                            if let Some(location) = location {
-                                state[location.0][location.1].append_drawer(id);
-                            } else {
-                                state.main_surface_mut().split_below(
-                                    NodeIndex::root(), 
-                                    0.7, 
-                                    vec![id]);
+                            let location = state.find_surface_bottom_panel_location(SurfaceIndex::main(), NodeIndex::root());
+                            match location {
+                                SurfaceBottomPanelLocation::None => {
+                                    state.main_surface_mut().split_below(NodeIndex::root(), 0.7, vec![id]);
+                                },
+                                SurfaceBottomPanelLocation::Center(surface_index, node_index) => {
+                                    state[surface_index].split_below(node_index, 0.7, vec![id]);
+                                },
+                                SurfaceBottomPanelLocation::Bottom(surface_index, node_index) => {
+                                    state[surface_index][node_index].append_drawer(id);
+                                },
                             }
                         }
                     );

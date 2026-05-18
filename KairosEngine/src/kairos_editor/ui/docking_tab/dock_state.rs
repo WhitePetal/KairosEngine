@@ -2,7 +2,7 @@ use std::ops;
 
 use eframe::egui::Rect;
 
-use crate::kairos_editor::ui::{Drawer, docking_tab::{DockArea, dock_state::tree::{NodeIndex, NodePath, Split, TabDestination, TabIndex, TabInsert, Tree, node::{self, Node, leaf_node::LeafNode}}, surfaces::{Surface, SurfaceIndex}, translations::Translations, window_state::WindowState}};
+use crate::kairos_editor::ui::{Drawer, docking_tab::{DockArea, dock_state::tree::{NodeIndex, NodePath, Split, TabDestination, TabIndex, TabInsert, Tree, node::{self, Node, leaf_node::{self, LeafNode}}}, surfaces::{Surface, SurfaceIndex}, translations::Translations, window_state::WindowState}};
 
 
 
@@ -623,6 +623,12 @@ impl<Drawer> DockState<Drawer> {
     }
 }
 
+pub enum SurfaceBottomPanelLocation {
+    None,
+    Center(SurfaceIndex, NodeIndex),
+    Bottom(SurfaceIndex, NodeIndex)
+}
+
 pub enum SurfaceLeftPanelLocation {
     None,
     Center(SurfaceIndex, NodeIndex),
@@ -657,26 +663,41 @@ where
         self[SurfaceIndex::main()].find_drawer(needle_tab)
     }
 
-    pub fn find_surface_bottom_panel_location(&self, surface: SurfaceIndex) -> Option<(SurfaceIndex, NodeIndex)> {
-        let mut tab_location = None;
-        self[surface].iter().for_each(|node| {
-            match node {
-                Node::Leaf(leaf_node) => {
-                    if !leaf_node.is_empty() {
-                        let tab = &leaf_node.drawers[leaf_node.active.0];
-                        let location = self.find_drawer(tab).unwrap();
-                        let parent_index = location.1.parent();
-                        if let Some(parent_index) = parent_index {
-                            if self[surface][parent_index].is_vertical() && location.1.is_right() {
-                                tab_location = Some((location.0, location.1));
-                                return;
+    pub fn find_surface_bottom_panel_location(&self, surface: SurfaceIndex, root_index: NodeIndex) -> SurfaceBottomPanelLocation {
+        let mut tab_location = SurfaceBottomPanelLocation::None;
+        if let Some(root) = self[surface].nodes.get(root_index.0) {
+             if root.is_horizontal() {
+                let left_node_index = root_index.left();
+                if let Some(left_node) = self[surface].nodes.get(left_node_index.0) {
+                    match left_node {
+                        Node::Empty | Node::Horizontal(_)  => {
+                            tab_location = SurfaceBottomPanelLocation::Center(surface, left_node_index)
+                        },
+                        Node::Leaf(leaf_node) => {
+                            if leaf_node.drawers_count() == 0 {
+                                tab_location = SurfaceBottomPanelLocation::Center(surface, left_node_index)
+                            } else {                                
+                                tab_location = SurfaceBottomPanelLocation::Bottom(surface, left_node_index)
                             }
+                        },
+                        Node::Vertical(_) => {
+                            tab_location = self.find_surface_bottom_panel_location(surface, left_node_index.right())
                         }
                     }
-                },
-                _ => {},
+                }
+                // tab_location = SurfaceBottomPanelLocation::Center(surface, NodeIndex::root().left());
+            } else if root.is_vertical() {
+                tab_location = SurfaceBottomPanelLocation::Bottom(surface, root_index.right());
+            } else if root.is_empty() {
+                tab_location = SurfaceBottomPanelLocation::Center(surface, root_index);
+            } else if root.is_leaf() {
+                if root.drawers_count() == 0 {
+                    tab_location = SurfaceBottomPanelLocation::Center(surface, root_index);
+                } else {
+                    tab_location = SurfaceBottomPanelLocation::Bottom(surface, root_index);
+                }
             }
-        });
+        }
         tab_location
     }
 

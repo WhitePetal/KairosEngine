@@ -70,6 +70,11 @@ impl<Drawer> LeafNode<Drawer> {
         &self.drawers
     }
 
+    #[inline]
+    pub fn drawers_count(&self) -> usize {
+        self.drawers.len()
+    }
+
     /// Get mutable access to the ``Tab``s of this [`LeafNode`]
     #[inline]
     pub fn drawers_mut(&mut self) -> &mut [Drawer] {
