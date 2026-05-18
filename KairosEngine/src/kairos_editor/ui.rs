@@ -2,7 +2,7 @@ use std::{any::{Any, TypeId, type_name}, collections::{HashMap, HashSet, VecDequ
 
 use eframe::egui::{self, Id};
 
-use crate::{kairos_dialog, kairos_editor::{KairosEngine, ui::{about_window::AboutWindow, console_window::ConsoleWindow, docking_tab::{DockArea, dock_state::{DockState, tree::NodeIndex}, styles::Style, surfaces::SurfaceIndex, tab_drawer::{OnCloseResponse, TabDrawer}}, preferences_window::PreferencesWindow, tool_bar::ToolBar, ui_style_fields::{StyleField, StylePage}}}};
+use crate::{kairos_dialog, kairos_editor::{KairosEngine, ui::{about_window::AboutWindow, console_window::ConsoleWindow, docking_tab::{DockArea, dock_state::{DockState, tree::NodeIndex}, styles::Style, surfaces::SurfaceIndex, tab_drawer::{OnCloseResponse, TabDrawer}, window_state::WindowState}, preferences_window::PreferencesWindow, tool_bar::ToolBar, ui_style_fields::{StyleField, StylePage}}}};
 
 pub mod paths;
 pub mod dialog;
@@ -61,7 +61,7 @@ impl TabDrawer for KairosTabDrawer {
 
     fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut Messager, drawers: &Vec<Box<dyn Drawer>>) {
         let tab = &drawers[*tab];
-        tab.update(ctx, frame, messager);
+        tab.update(Some(ui), ctx, frame, messager);
     }
 
     fn on_close(&mut self, _tab: &mut Self::Tab) -> OnCloseResponse {
@@ -75,7 +75,9 @@ impl TabDrawer for KairosTabDrawer {
 }
 
 pub trait Drawer: Any {
-    fn update(&self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut Messager);
+    fn show(&self, state: Option<&mut WindowState>);
+
+    fn update(&self, ui: Option<&mut egui::Ui>, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut Messager);
 
     fn get_name(&self) -> &'static str;
 
@@ -155,9 +157,11 @@ impl Context {
     }
 
     pub fn darw(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame) {
-        self.drawers.iter().zip(self.on_offs.iter()).filter(|(_, on_off)| **on_off).for_each(|(drawer, _)| {
-            drawer.update(ctx, frame, &mut self.messager);
-        });
+        // tool_bar
+        let tool_bar_type_id = TypeId::of::<ToolBar>();
+        if let Some(id) = self.ids.get(&tool_bar_type_id) {
+            self.drawers[*id].update(None, ctx, frame, &mut self.messager);
+        }
 
         // 中央区域显示内容
         egui::CentralPanel::default()
@@ -188,7 +192,9 @@ impl Context {
                             let drawer = AboutWindow::new().unwrap_or_else(|error| {
                                 Context::create_ui_failed(ctx, type_name::<AboutWindow>(), error);
                             });
-                            self.push_drawer::<AboutWindow>(Box::new(drawer));
+                            let id = self.push_drawer::<AboutWindow>(Box::new(drawer));
+                            let surface = self.tab_tree.add_window(vec![id]);
+                            self.drawers[id].show(self.tab_tree.get_window_state_mut(surface));
                         },
                     };
                 },

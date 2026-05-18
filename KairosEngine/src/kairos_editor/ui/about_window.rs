@@ -1,10 +1,11 @@
 use std::{any::type_name, fs};
 
-use eframe::egui;
+use eframe::egui::{self, Vec2};
 use serde::{Deserialize, Serialize};
 use sonic_rs::from_str;
 
 use crate::kairos_editor::consts;
+use crate::kairos_editor::ui::docking_tab::window_state::WindowState;
 use crate::kairos_editor::ui::{Drawer, paths, ui_style_fields::{FloatFieldEditViewType, FloatStyleField, StyleField}};
 
 
@@ -58,25 +59,36 @@ impl AboutWindow {
 }
 
 impl Drawer for AboutWindow {
-    fn update(&self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame, messager: &mut super::Messager) {
+    fn show(&self, state: Option<&mut WindowState>) {
+        match state {
+            Some(state) => {
+                state.set_size(Vec2::new(self.model.style.width, self.model.style.height));
+            },
+            None => {
+                println!("about window show failed, window state is none");
+            },
+        }
+    }
+    fn update(&self, ui: Option<&mut egui::Ui>, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame, messager: &mut super::Messager) {
+        let ui = ui.unwrap();
         let model = &self.model;
         let mut is_open = true;
-        egui::Window::new("About KairosEngine")
-            .default_width(model.style.width)
-            .default_height(model.style.height)
-            .open(&mut is_open)
-            .resizable([true, false])
-            .scroll(false)
-            .constrain_to(ctx.available_rect())
-            .show(ctx, |ui| {
+        // egui::Window::new("About KairosEngine")
+        //     .default_width(model.style.width)
+        //     .default_height(model.style.height)
+        //     .open(&mut is_open)
+        //     .resizable([true, false])
+        //     .scroll(false)
+        //     .constrain_to(ctx.available_rect())
+        //     .show(ctx, |ui| {
                 // TODO: Icon
                 ui.heading("KairosEngine");
                 ui.label(consts::VERSION);
                 ui.separator();
                 ui.label("KairosEngine is a game development engine that aims to be flexible and efficient.");
                 ui.label("TODO: add icon...");
-            }
-        );
+            // }
+        // );
 
         if !is_open {
             messager.send(super::Message::CloseAboutWindow);

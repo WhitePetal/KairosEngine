@@ -72,7 +72,11 @@ impl PreferencesWindow {
 }
 
 impl Drawer for PreferencesWindow {
-    fn update(&self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame, messager: &mut super::Messager) {
+    fn show(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {
+
+    }
+
+    fn update(&self, ui: Option<&mut egui::Ui>, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame, messager: &mut super::Messager) {
         let model = &self.model;
         let mut is_open = true;
         egui::Window::new("KairosEngine Preferences")

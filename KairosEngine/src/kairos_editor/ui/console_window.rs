@@ -1,5 +1,6 @@
 use std::{any::type_name, fs};
 
+use eframe::egui;
 use serde::{Deserialize, Serialize};
 use sonic_rs::from_str;
 
@@ -54,8 +55,13 @@ impl ConsoleWindow {
 }
 
 impl Drawer for ConsoleWindow {
-    fn update(&self, _ctx: &eframe::egui::Context, _frame: &mut eframe::Frame, _messager: &mut super::Messager) {
+    fn show(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {
 
+    }
+
+    fn update(&self, ui: Option<&mut egui::Ui>, _ctx: &eframe::egui::Context, _frame: &mut eframe::Frame, _messager: &mut super::Messager) {
+        let ui = ui.unwrap();
+        ui.label("TODO: Print Console");
     }
 
     fn get_name(&self) -> &'static str {
