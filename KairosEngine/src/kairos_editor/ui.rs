@@ -1,8 +1,8 @@
-use std::{any::{Any, TypeId, type_name}, collections::{HashMap, HashSet, VecDeque}};
+use std::{any::{Any, TypeId, type_name}, collections::{HashMap, VecDeque}};
 
-use eframe::egui::{self, Id};
+use eframe::egui::{self};
 
-use crate::{kairos_dialog, kairos_editor::{KairosEngine, ui::{about_window::AboutWindow, console_window::ConsoleWindow, docking_tab::{DockArea, dock_state::{DockState, tree::NodeIndex}, styles::Style, surfaces::SurfaceIndex, tab_drawer::{OnCloseResponse, TabDrawer}, window_state::WindowState}, preferences_window::PreferencesWindow, tool_bar::ToolBar, ui_style_fields::{StyleField, StylePage}}}};
+use crate::{kairos_dialog, kairos_editor::{ui::{about_window::AboutWindow, console_window::ConsoleWindow, docking_tab::{DockArea, dock_state::{DockState, tree::{NodeIndex}}, tab_drawer::{OnCloseResponse, TabDrawer}, window_state::WindowState}, preferences_window::PreferencesWindow, tool_bar::ToolBar, ui_style_fields::{StyleField, StylePage}}}};
 
 pub mod paths;
 pub mod dialog;
@@ -111,8 +111,8 @@ impl Messager {
 pub struct Context {
     pub messager: Messager,
     ids: HashMap<TypeId, usize>,
-    on_offs: Vec<bool>,
     drawers: Vec<Box<dyn Drawer>>,
+    on_offs: Vec<bool>,
     tab_tree: DockState<usize>,
     tab_viewer: KairosTabDrawer,
 }
@@ -153,8 +153,8 @@ impl Context {
         Self {
             messager,
             ids: HashMap::new(),
-            on_offs: Vec::new(),
             drawers,
+            on_offs: Vec::new(),
             tab_tree,
             tab_viewer: KairosTabDrawer {  }
         }
@@ -268,7 +268,20 @@ impl Context {
                 Message::OpenConsoleWindow => {
                     let type_id = TypeId::of::<ConsoleWindow>();
                     match self.ids.get(&type_id) {
-                        Some(id) => self.on_offs[*id] = true, // TODO: 改为存储 (surface_index, node_index)，获取tab然后focus
+                        Some(id) => {
+                            println!("open console window (exist)");
+                            if !self.on_offs[*id] {
+                                self.tab_tree.main_surface_mut().split_below(
+                                    NodeIndex::root(), 0.7, vec![*id]
+                                );
+                                self.on_offs[*id] = true;
+                            }
+                            else {
+                                if let Some(tab_location) = self.tab_tree.find_drawer(id) {
+                                    self.tab_tree.set_active_drawer(tab_location);
+                                }
+                            }
+                        }
                         None => {
                             let drawer = ConsoleWindow::new().unwrap_or_else(|error| {
                                 Context::create_ui_failed(ctx, type_name::<ConsoleWindow>(), error);
@@ -280,7 +293,6 @@ impl Context {
                                 0.7,
                                 vec![id] 
                             );
-                            
                         }
                     }
                 },
@@ -294,8 +306,8 @@ impl Context {
         let id = self.drawers.len();
         let type_id = TypeId::of::<T>();
         self.ids.insert(type_id, id);
-        self.on_offs.push(true);
         self.drawers.push(drawer);
+        self.on_offs.push(true);
         id
     }
 

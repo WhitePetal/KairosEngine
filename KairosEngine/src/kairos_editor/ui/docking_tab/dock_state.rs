@@ -216,7 +216,7 @@ impl<Drawer> DockState<Drawer> {
             if self[surface_index][node_index].is_leaf() {
                 self.focused_surface = Some(surface_index);
                 self[surface_index].set_focused_node(node_index);
-                return;;
+                return;
             }
         }
         self.focused_surface = None;
