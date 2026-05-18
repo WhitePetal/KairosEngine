@@ -1,4 +1,4 @@
-use std::{any::{Any, TypeId, type_name}, collections::{HashMap, VecDeque}};
+use std::{any::{Any, TypeId, type_name}, collections::{HashMap, VecDeque}, process::id};
 
 use eframe::egui::{self};
 
@@ -23,28 +23,14 @@ pub enum Message {
     RefershPreferenceWindow,
     SetPreferenceWindowSelectedId(usize),
     UpdateUIStyle(StylePage),
-    OpenConsoleWindow,
-}
-
-#[derive(PartialEq, Eq, Hash)]
-pub enum TabDrawers
-{
-    Default,
-    Inspector,
-    Hierarchy,
-    Console,
-    Project
-}
-impl TabDrawers {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            TabDrawers::Default => "Default",
-            TabDrawers::Inspector => "Inspector",
-            TabDrawers::Hierarchy => "Hierarchy",
-            TabDrawers::Console => "Console",
-            TabDrawers::Project => "Project",
-        }
-    }
+    OpenConsoleTab,
+    CloseConsoleTab,
+    OpenInspectorTab,
+    CloseInspectorTab,
+    OpenHierarchyTab,
+    CloseHierarchyTab,
+    OpenProjectTab,
+    CloseProjectTab,
 }
 
 struct KairosTabDrawer {
@@ -77,7 +63,7 @@ impl TabDrawer for KairosTabDrawer {
 }
 
 pub trait Drawer: Any {
-    fn show(&self, state: Option<&mut WindowState>);
+    fn show_window(&self, state: Option<&mut WindowState>);
 
     fn update(&self, ui: Option<&mut egui::Ui>, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut Messager);
 
@@ -112,7 +98,7 @@ pub struct Context {
     pub messager: Messager,
     ids: HashMap<TypeId, usize>,
     drawers: Vec<Box<dyn Drawer>>,
-    on_offs: Vec<bool>,
+    actives: Vec<bool>,
     tab_tree: DockState<usize>,
     tab_viewer: KairosTabDrawer,
 }
@@ -146,7 +132,7 @@ impl Context {
 
         let mut messager = Messager::new();
         messager.send(Message::CreateToolbar);
-        messager.send(Message::OpenConsoleWindow);
+        messager.send(Message::OpenConsoleTab);
 
         let drawers = Vec::new();
 
@@ -154,7 +140,7 @@ impl Context {
             messager,
             ids: HashMap::new(),
             drawers,
-            on_offs: Vec::new(),
+            actives: Vec::new(),
             tab_tree,
             tab_viewer: KairosTabDrawer {  }
         }
@@ -191,35 +177,52 @@ impl Context {
                 Message::OpenAboutWindow => {
                     let type_id = TypeId::of::<AboutWindow>();
                     match self.ids.get(&type_id) {
-                        Some(id) => self.on_offs[*id] = true,
+                        Some(id) => {
+                            if !self.actives[*id] {
+                                let surface = self.tab_tree.add_window(vec![*id]);
+                                self.drawers[*id].show_window(self.tab_tree.get_window_state_mut(surface));
+                                self.actives[*id] = true;
+                            }
+                            else {
+                                if let Some(tab_location) = self.tab_tree.find_drawer(id) {
+                                    self.tab_tree.set_active_drawer(tab_location);
+                                }
+                            }
+                        },
                         None => {
                             let drawer = AboutWindow::new().unwrap_or_else(|error| {
                                 Context::create_ui_failed(ctx, type_name::<AboutWindow>(), error);
                             });
-                            let id = self.push_drawer::<AboutWindow>(Box::new(drawer));
-                            let surface = self.tab_tree.add_window(vec![id]);
-                            self.drawers[id].show(self.tab_tree.get_window_state_mut(surface));
+                            self.add_window::<AboutWindow>(Box::new(drawer));
                         },
                     };
                 },
                 Message::CloseAboutWindow => {
                     let type_id = TypeId::of::<AboutWindow>();
                     if let Some(id) = self.ids.get(&type_id) {
-                        self.on_offs[*id] = false;
-                        // TODO: how destroy?
+                        self.actives[*id] = false;
                     }
                 },
                 Message::OpenPreferenceWindow => {
                     let type_id = TypeId::of::<PreferencesWindow>();
                     match self.ids.get(&type_id) {
                         Some(id) => {
-                            self.on_offs[*id] = true;
+                            if !self.actives[*id] {
+                                let surface = self.tab_tree.add_window(vec![*id]);
+                                self.drawers[*id].show_window(self.tab_tree.get_window_state_mut(surface));
+                                self.actives[*id] = true;
+                            }
+                            else {
+                                if let Some(tab_location) = self.tab_tree.find_drawer(id) {
+                                    self.tab_tree.set_active_drawer(tab_location);
+                                }
+                            }
                         },
                         None => {
                             let drawer = PreferencesWindow::new().unwrap_or_else(|error| {
                                 Context::create_ui_failed(ctx, type_name::<PreferencesWindow>(), error);
                             });
-                            self.push_drawer::<PreferencesWindow>(Box::new(drawer));
+                            self.add_window::<PreferencesWindow>(Box::new(drawer));
                         }
                     };
                     self.messager.messages.push_back(Message::RefershPreferenceWindow);
@@ -227,7 +230,7 @@ impl Context {
                 Message::ClosePreferenceWindow => {
                     let type_id = TypeId::of::<PreferencesWindow>();
                     if let Some(id) = self.ids.get(&type_id) {
-                        self.on_offs[*id] = false;
+                        self.actives[*id] = false;
                     }
                 },
                 Message::RefershPreferenceWindow => {
@@ -256,25 +259,25 @@ impl Context {
                 },
                 Message::UpdateUIStyle(style_page) => {
                     match self.get_preference_window_mut() {
-                        Some(preferences_window) => preferences_window.update_style_page(&style_page),
+                        Some(preferences_window) => {
+                            preferences_window.update_style_page(&style_page);
+                            let drawer = &mut self.drawers[style_page.id];
+                            drawer.update_style(&style_page.fields);
+                        },
                         None => {
                             kairos_dialog::error_message_window("PreferenceWindow Error", "Get PreferenceWindow Failed");
                         },
                     }
-
-                    let drawer = &mut self.drawers[style_page.id];
-                    drawer.update_style(&style_page.fields);
                 },
-                Message::OpenConsoleWindow => {
+                Message::OpenConsoleTab => {
                     let type_id = TypeId::of::<ConsoleWindow>();
                     match self.ids.get(&type_id) {
                         Some(id) => {
-                            println!("open console window (exist)");
-                            if !self.on_offs[*id] {
+                            if !self.actives[*id] {
                                 self.tab_tree.main_surface_mut().split_below(
                                     NodeIndex::root(), 0.7, vec![*id]
                                 );
-                                self.on_offs[*id] = true;
+                                self.actives[*id] = true;
                             }
                             else {
                                 if let Some(tab_location) = self.tab_tree.find_drawer(id) {
@@ -296,6 +299,18 @@ impl Context {
                         }
                     }
                 },
+                Message::CloseConsoleTab => {
+                    let type_id = TypeId::of::<ConsoleWindow>();
+                    if let Some(id) = self.ids.get(&type_id) {
+                        self.actives[*id] = false;
+                    }
+                },
+                Message::OpenInspectorTab => todo!(),
+                Message::CloseInspectorTab => todo!(),
+                Message::OpenHierarchyTab => todo!(),
+                Message::CloseHierarchyTab => todo!(),
+                Message::OpenProjectTab => todo!(),
+                Message::CloseProjectTab => todo!(),
             }
         }
     }
@@ -307,8 +322,16 @@ impl Context {
         let type_id = TypeId::of::<T>();
         self.ids.insert(type_id, id);
         self.drawers.push(drawer);
-        self.on_offs.push(true);
+        self.actives.push(true);
         id
+    }
+
+    fn add_window<T>(&mut self, drawer: Box<dyn Drawer>)
+        where T: 'static + Drawer
+    {
+        let id = self.push_drawer::<T>(drawer);
+        let surface = self.tab_tree.add_window(vec![id]);
+        self.drawers[id].show_window(self.tab_tree.get_window_state_mut(surface));
     }
 
     fn create_ui_failed(ctx: &eframe::egui::Context, ui_name: &str, error: Box<dyn std::error::Error>) -> ! {

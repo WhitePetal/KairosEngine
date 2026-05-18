@@ -58,7 +58,7 @@ impl ToolBar {
 }
 
 impl Drawer for ToolBar {
-    fn show(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {
+    fn show_window(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {
 
     }
 
@@ -107,8 +107,17 @@ impl Drawer for ToolBar {
                 ui.menu_button("Window", |ui| {
                     // General
                     ui.menu_button("General", |ui| {
+                        if ui.button("Inspector").clicked() {
+                            messager.send(Message::OpenInspectorTab);
+                        }
+                        if ui.button("Hierarchy").clicked() {
+                            messager.send(Message::OpenHierarchyTab);
+                        }
+                        if ui.button("Project").clicked() {
+                            messager.send(Message::OpenProjectTab);
+                        }
                         if ui.button("Console").clicked() {
-                            messager.send(Message::OpenConsoleWindow);
+                            messager.send(Message::OpenConsoleTab);
                         }
                     })
                 })

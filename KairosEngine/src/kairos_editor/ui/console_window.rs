@@ -4,7 +4,7 @@ use eframe::egui;
 use serde::{Deserialize, Serialize};
 use sonic_rs::from_str;
 
-use crate::kairos_editor::ui::{Drawer, paths};
+use crate::kairos_editor::ui::{Drawer, Message, paths};
 
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -55,7 +55,7 @@ impl ConsoleWindow {
 }
 
 impl Drawer for ConsoleWindow {
-    fn show(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {
+    fn show_window(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {
 
     }
 
@@ -64,8 +64,8 @@ impl Drawer for ConsoleWindow {
         ui.label("TODO: Print Console");
     }
 
-    fn close(&self, _messager: &mut super::Messager) {
-
+    fn close(&self, messager: &mut super::Messager) {
+        messager.send(Message::CloseConsoleTab);
     }
 
     fn get_name(&self) -> &'static str {
@@ -76,7 +76,7 @@ impl Drawer for ConsoleWindow {
         Vec::new()
     }
 
-    fn update_style(&mut self, style_fields: &Vec<super::ui_style_fields::StyleField>) {
+    fn update_style(&mut self, _style_fields: &Vec<super::ui_style_fields::StyleField>) {
 
     }
     

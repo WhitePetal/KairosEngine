@@ -2,7 +2,7 @@
 
 use std::{any::type_name, fs, ops::Deref};
 
-use eframe::egui;
+use eframe::egui::{self, Vec2};
 use kairos_engine::math;
 use serde::{Deserialize, Serialize};
 use sonic_rs::from_str;
@@ -72,8 +72,10 @@ impl PreferencesWindow {
 }
 
 impl Drawer for PreferencesWindow {
-    fn show(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {
-
+    fn show_window(&self, state: Option<&mut super::docking_tab::window_state::WindowState>) {
+        if let Some(state) = state {
+            state.set_size(Vec2::new(self.model.style.default_width, self.model.style.default_height));
+        }
     }
 
     fn update(&self, ui: Option<&mut egui::Ui>, _ctx: &eframe::egui::Context, _frame: &mut eframe::Frame, messager: &mut super::Messager) {

@@ -59,7 +59,7 @@ impl AboutWindow {
 }
 
 impl Drawer for AboutWindow {
-    fn show(&self, state: Option<&mut WindowState>) {
+    fn show_window(&self, state: Option<&mut WindowState>) {
         match state {
             Some(state) => {
                 state.set_size(Vec2::new(self.model.style.width, self.model.style.height));
