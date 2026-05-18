@@ -2,7 +2,7 @@ use std::{any::{Any, TypeId, type_name}, collections::{HashMap, VecDeque}, proce
 
 use eframe::egui::{self};
 
-use crate::{kairos_dialog, kairos_editor::{ui::{about_window::AboutWindow, console_window::ConsoleWindow, docking_tab::{DockArea, dock_state::{DockState, tree::{NodeIndex}}, tab_drawer::{OnCloseResponse, TabDrawer}, window_state::WindowState}, preferences_window::PreferencesWindow, tool_bar::ToolBar, ui_style_fields::{StyleField, StylePage}}}};
+use crate::{kairos_dialog, kairos_editor::ui::{about_window::AboutWindow, console_window::ConsoleWindow, docking_tab::{DockArea, dock_state::{DockState, tree::NodeIndex}, tab_drawer::{OnCloseResponse, TabDrawer}, window_state::WindowState}, inspector_window::InspectorWindow, preferences_window::PreferencesWindow, tool_bar::ToolBar, ui_style_fields::{StyleField, StylePage}}};
 
 pub mod paths;
 pub mod dialog;
@@ -12,6 +12,7 @@ pub mod about_window;
 pub mod preferences_window;
 pub mod console_window;
 pub mod docking_tab;
+pub mod inspector_window;
 
 pub enum Message {
     CreateToolbar,
@@ -133,6 +134,7 @@ impl Context {
         let mut messager = Messager::new();
         messager.send(Message::CreateToolbar);
         messager.send(Message::OpenConsoleTab);
+        messager.send(Message::OpenInspectorTab);
 
         let drawers = Vec::new();
 
@@ -291,7 +293,7 @@ impl Context {
                             });
                             // self.tab_tree.add_window(vec![Box::new(drawer)]);
                             let id = self.push_drawer::<ConsoleWindow>(Box::new(drawer));
-                            let [_, _] = self.tab_tree.main_surface_mut().split_below(
+                            self.tab_tree.main_surface_mut().split_below(
                                 NodeIndex::root(), 
                                 0.7,
                                 vec![id] 
@@ -305,8 +307,43 @@ impl Context {
                         self.actives[*id] = false;
                     }
                 },
-                Message::OpenInspectorTab => todo!(),
-                Message::CloseInspectorTab => todo!(),
+                Message::OpenInspectorTab => {
+                    let type_id = TypeId::of::<InspectorWindow>();
+                    match self.ids.get(&type_id) {
+                        Some(id) => {
+                            if !self.actives[*id] {
+                                self.tab_tree.main_surface_mut().split_right(
+                                    NodeIndex::root(), 
+                                    0.7, 
+                                    vec![*id]
+                                );
+                                self.actives[*id] = true;
+                            }
+                            else {
+                                if let Some(tab_location) = self.tab_tree.find_drawer(id) {
+                                    self.tab_tree.set_active_drawer(tab_location);
+                                }
+                            }
+                        }
+                        None => {
+                            let drawer = InspectorWindow::new().unwrap_or_else(|error| {
+                                Context::create_ui_failed(ctx, type_name::<InspectorWindow>(), error);
+                            });
+                            let id = self.push_drawer::<InspectorWindow>(Box::new(drawer));
+                            self.tab_tree.main_surface_mut().split_right(
+                                NodeIndex::root(),
+                                0.7, 
+                                vec![id]
+                            );
+                        }
+                    }
+                },
+                Message::CloseInspectorTab => {
+                    let type_id = TypeId::of::<InspectorWindow>();
+                    if let Some(id) = self.ids.get(&type_id) {
+                        self.actives[*id] = false;
+                    }
+                },
                 Message::OpenHierarchyTab => todo!(),
                 Message::CloseHierarchyTab => todo!(),
                 Message::OpenProjectTab => todo!(),

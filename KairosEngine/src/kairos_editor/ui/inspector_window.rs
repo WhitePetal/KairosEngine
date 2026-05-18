@@ -1,0 +1,82 @@
+use std::{any::type_name, fs};
+
+use serde::{Deserialize, Serialize};
+use sonic_rs::from_str;
+
+use crate::kairos_editor::ui::{Drawer, Message, paths};
+
+#[derive(Debug, Serialize, Deserialize)]
+struct InspectorWindowStyle {
+    pub title: String,
+}
+
+struct InspectorWindowModel {
+    style: InspectorWindowStyle,
+}
+
+pub struct InspectorWindow {
+    model: InspectorWindowModel,
+}
+
+impl InspectorWindowStyle {
+    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        let style_json = fs::read_to_string(paths::PATH_INSPECTOR_WINDOW_STYLE)
+        .map_err(|error| format!("Load InspectorWindow Style Json Failed, path: {}, error: {}", paths::PATH_INSPECTOR_WINDOW_STYLE, error))?;
+        let style = from_str(&style_json)
+        .map_err(|error| format!("Deserialize InspectorWindow Style Json Failed, error: {}", error))?;
+        Ok(style)
+    }
+}
+
+impl InspectorWindowModel {
+    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        let style = InspectorWindowStyle::new()?;
+        Ok(
+            Self { 
+                style 
+            }
+        )
+    }
+}
+
+impl InspectorWindow {
+    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        let model = InspectorWindowModel::new()?;
+        Ok(
+            Self { 
+                model 
+            }
+        )
+    }
+}
+
+impl Drawer for InspectorWindow {
+    fn show_window(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {
+        
+    }
+
+    fn update(&self, ui: Option<&mut eframe::egui::Ui>, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut super::Messager) {
+        let ui = ui.unwrap();
+        ui.label("TODO: Inspector");
+    }
+
+    fn close(&self, messager: &mut super::Messager) {
+        messager.send(Message::CloseInspectorTab);
+    }
+
+    fn get_name(&self) -> &'static str {
+        type_name::<InspectorWindow>()
+    }
+
+    fn get_title(&self) -> eframe::egui::WidgetText {
+        self.model.style.title.to_owned().into()
+    }
+
+    fn get_style_fileds(&self) -> Vec<super::ui_style_fields::StyleField> {
+        Vec::new()
+    }
+
+    fn update_style(&mut self, _style_fields: &Vec<super::ui_style_fields::StyleField>) {
+        
+    }
+}

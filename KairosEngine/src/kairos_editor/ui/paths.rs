@@ -8,3 +8,4 @@ pub const PATH_EDITOR_WINDO_TOOL_BAR_STYLE: &'static str = "Preferences/Styles/E
 pub const PATH_ABOUT_WINDOW_STYLE: &'static str = "Preferences/Styles/AboutWindowStyle.json";
 pub const PATH_PREFERENCES_WINDOW_STYLE: &'static str = "Preferences/Styles/PreferencesWindowStyle.json";
 pub const PATH_CONSOLE_WINDOW_STYLE: &'static str = "Preferences/Styles/ConsoleWindowStyle.json";
+pub const PATH_INSPECTOR_WINDOW_STYLE: &'static str = "Preferences/Styles/InspectorWindowStyle.json";
