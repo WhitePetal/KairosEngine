@@ -278,22 +278,8 @@ impl Context {
                         ctx, 
                         ProjectWindow::new,
                         |state, id| {
-                            let mut tab_location = None;
-                            state.main_surface().iter().for_each(|node| {
-                                match node {
-                                    docking_tab::dock_state::tree::node::Node::Leaf(leaf_node) => {
-                                        if !leaf_node.is_empty() {
-                                            let tab = leaf_node.drawers[leaf_node.active.0];
-                                            let location = state.find_drawer(&tab).unwrap();
-                                            if location.1.is_right() {
-                                                tab_location = Some(location);
-                                            }
-                                        }
-                                    },
-                                    _ => {},
-                                }
-                            });
-                            if let Some(location) = tab_location {
+                            let location = state.find_surface_bottom_panel_location(SurfaceIndex::main());
+                            if let Some(location) = location {
                                 state[location.0][location.1].append_drawer(id);
                             } else {
                                 state.main_surface_mut().split_below(

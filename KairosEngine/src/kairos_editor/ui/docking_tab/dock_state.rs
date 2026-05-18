@@ -650,4 +650,24 @@ where
     pub fn find_main_surface_drawer(&self, needle_tab: &Drawer) -> Option<(NodeIndex, TabIndex)> {
         self[SurfaceIndex::main()].find_drawer(needle_tab)
     }
+
+    pub fn find_surface_bottom_panel_location(&self, surface: SurfaceIndex) -> Option<(SurfaceIndex, NodeIndex)> {
+        let mut tab_location = None;
+        self[surface].iter().for_each(|node| {
+            match node {
+                Node::Leaf(leaf_node) => {
+                    if !leaf_node.is_empty() {
+                        let tab = &leaf_node.drawers[leaf_node.active.0];
+                        let location = self.find_drawer(tab).unwrap();
+                        if location.1.is_right() {
+                            tab_location = Some((location.0, location.1));
+                            return;
+                        }
+                    }
+                },
+                _ => {},
+            }
+        });
+        tab_location
+    }
 }
