@@ -162,4 +162,8 @@ impl Drawer for ToolBar {
             kairos_dialog::error_message_window("Serialize Json Failed", "Serialize ToolBar Style to json Failed");
         }
     }
+    
+    fn get_title(&self) -> egui::WidgetText {
+        "ToolBar".into()
+    }
 }

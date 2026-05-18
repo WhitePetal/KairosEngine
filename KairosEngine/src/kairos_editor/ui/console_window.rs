@@ -8,7 +8,7 @@ use crate::kairos_editor::ui::{Drawer, paths};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ConsoleWindowStyle {
-
+    pub title: String,
 }
 
 pub struct ConsoleWindowModel {
@@ -68,5 +68,9 @@ impl Drawer for ConsoleWindow {
 
     fn update_style(&mut self, style_fields: &Vec<super::ui_style_fields::StyleField>) {
 
+    }
+    
+    fn get_title(&self) -> eframe::egui::WidgetText {
+        self.model.style.title.to_owned().into()
     }
 }

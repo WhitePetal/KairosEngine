@@ -15,7 +15,7 @@ pub enum OnCloseResponse {
 pub trait TabDrawer {
     type Tab;
 
-    fn title(&self, tab: &mut Self::Tab) -> WidgetText;
+    fn title(&self, tab: &mut Self::Tab, drawers: &Vec<Box<dyn Drawer>>) -> WidgetText;
 
     fn ui(
         &mut self, 
@@ -43,8 +43,8 @@ pub trait TabDrawer {
     /// Unique ID for this tab.
     ///
     /// If not implemented, uses tab title text as an ID source.
-    fn id(&self, tab: &mut Self::Tab) -> Id {
-        Id::new(self.title(tab).text())
+    fn id(&self, tab: &mut Self::Tab, drawers: &Vec<Box<dyn Drawer>>) -> Id {
+        Id::new(self.title(tab, drawers).text())
     }
 
     /// Called after each tab button is shown, so you can add a tooltip, check for clicks, etc.

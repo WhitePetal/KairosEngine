@@ -13,6 +13,7 @@ use crate::kairos_editor::ui::{Drawer, Message, paths, ui_style_fields::{FloatFi
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PreferencesStyle {
+    pub title: String,
     pub default_width: f32,
     pub default_height: f32,
     pub grid_space_x: f32,
@@ -118,6 +119,10 @@ impl Drawer for PreferencesWindow {
         if let StyleField::FloatStyleField(field) = &style_fields[3] {
             self.model.style.grid_space_y = field.value;
         }
+    }
+    
+    fn get_title(&self) -> egui::WidgetText {
+        self.model.style.title.to_owned().into()
     }
 }
 

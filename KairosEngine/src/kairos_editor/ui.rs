@@ -2,7 +2,7 @@ use std::{any::{Any, TypeId, type_name}, collections::{HashMap, HashSet, VecDequ
 
 use eframe::egui::{self, Id};
 
-use crate::{kairos_dialog, kairos_editor::ui::{about_window::AboutWindow, console_window::ConsoleWindow, docking_tab::{DockArea, dock_state::{DockState, tree::NodeIndex}, styles::Style, surfaces::SurfaceIndex, tab_drawer::{OnCloseResponse, TabDrawer}}, preferences_window::PreferencesWindow, tool_bar::ToolBar, ui_style_fields::{StyleField, StylePage}}};
+use crate::{kairos_dialog, kairos_editor::{KairosEngine, ui::{about_window::AboutWindow, console_window::ConsoleWindow, docking_tab::{DockArea, dock_state::{DockState, tree::NodeIndex}, styles::Style, surfaces::SurfaceIndex, tab_drawer::{OnCloseResponse, TabDrawer}}, preferences_window::PreferencesWindow, tool_bar::ToolBar, ui_style_fields::{StyleField, StylePage}}}};
 
 pub mod paths;
 pub mod dialog;
@@ -47,12 +47,42 @@ impl TabDrawers {
     }
 }
 
+struct KairosTabDrawer {
+    // drawers: &'a Vec<Box<dyn Drawer>>,
+}
+
+impl TabDrawer for KairosTabDrawer {
+    type Tab = usize;
+
+    fn title(&self, tab: &mut Self::Tab, drawers: &Vec<Box<dyn Drawer>>) -> egui::WidgetText {
+        let tab = &drawers[*tab];
+        tab.get_title()
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut Messager, drawers: &Vec<Box<dyn Drawer>>) {
+        let tab = &drawers[*tab];
+        tab.update(ctx, frame, messager);
+    }
+
+    fn on_close(&mut self, _tab: &mut Self::Tab) -> OnCloseResponse {
+        OnCloseResponse::Close
+    }
+
+    // fn on_add(&mut self, surface: SurfaceIndex, node: NodeIndex) {
+    //     println!("add tab: {0}, {1}", surface.0, node.0);
+    //     self.drawer_paths.push((surface, node));
+    // }
+}
+
 pub trait Drawer: Any {
     fn update(&self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut Messager);
 
     fn get_name(&self) -> &'static str;
 
+    fn get_title(&self) -> egui::WidgetText;
+
     fn get_style_fileds(&self) -> Vec<StyleField>;
+
     fn update_style(&mut self, style_fields: &Vec<StyleField>);
 }
 
@@ -289,32 +319,4 @@ impl Context {
             }
         }
     }
-}
-
-struct KairosTabDrawer {
-    // drawers: &'a Vec<Box<dyn Drawer>>,
-}
-
-impl TabDrawer for KairosTabDrawer {
-    type Tab = usize;
-
-    fn title(&self, tab: &mut Self::Tab) -> egui::WidgetText {
-        // let tab = &self.drawers[*tab];
-        // tab.get_name().into()
-        tab.to_string().into()
-    }
-
-    fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut Messager, drawers: &Vec<Box<dyn Drawer>>) {
-        let tab = &drawers[*tab];
-        tab.update(ctx, frame, messager);
-    }
-
-    fn on_close(&mut self, _tab: &mut Self::Tab) -> OnCloseResponse {
-        OnCloseResponse::Close
-    }
-
-    // fn on_add(&mut self, surface: SurfaceIndex, node: NodeIndex) {
-    //     println!("add tab: {0}, {1}", surface.0, node.0);
-    //     self.drawer_paths.push((surface, node));
-    // }
 }

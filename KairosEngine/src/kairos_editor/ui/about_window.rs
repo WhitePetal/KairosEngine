@@ -10,6 +10,7 @@ use crate::kairos_editor::ui::{Drawer, paths, ui_style_fields::{FloatFieldEditVi
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AboutWindowStyle {
+    pub title: String,
     pub height: f32,
     pub width: f32
 }
@@ -103,5 +104,9 @@ impl Drawer for AboutWindow {
     
     fn get_name(&self) -> &'static str {
         type_name::<AboutWindow>()
+    }
+    
+    fn get_title(&self) -> egui::WidgetText {
+        self.model.style.title.to_owned().into()
     }
 }

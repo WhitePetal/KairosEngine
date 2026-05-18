@@ -802,7 +802,7 @@ impl<Drawer> DockArea<'_, Drawer> {
                 });
             let leaf = self.dock_state[surf_index][node_id].get_leaf_mut().unwrap();
             tab_viewer
-                .title(&mut leaf.drawers[leaf.active.0])
+                .title(&mut leaf.drawers[leaf.active.0], drawers)
                 .color(ui.visuals().widgets.noninteractive.fg_stroke.color)
         };
 
@@ -1069,6 +1069,7 @@ impl<Drawer> DockArea<'_, Drawer> {
         let tabbar_rect = self.drawer_bar(
             ui,
             state,
+            drawers,
             (surface_index, node_index),
             tab_viewer,
             fade_style.map(|(style, _)| style),
@@ -1108,6 +1109,7 @@ impl<Drawer> DockArea<'_, Drawer> {
         &mut self,
         ui: &mut Ui,
         state: &mut State,
+        drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
         (surface_index, node_index): (SurfaceIndex, NodeIndex),
         tab_viewer: &mut impl TabDrawer<Tab = Drawer>,
         fade_style: Option<&Style>,
@@ -1190,6 +1192,7 @@ impl<Drawer> DockArea<'_, Drawer> {
             let tab_hovered = self.drawers(
                 tabs_ui,
                 state,
+                drawers,
                 (surface_index, node_index),
                 tab_viewer,
                 tabbar_outer_rect,
@@ -1290,6 +1293,7 @@ impl<Drawer> DockArea<'_, Drawer> {
         &mut self,
         tabs_ui: &mut Ui,
         state: &mut State,
+        drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
         (surface_index, node_index): (SurfaceIndex, NodeIndex),
         tab_viewer: &mut impl TabDrawer<Tab = Drawer>,
         tabbar_outer_rect: Rect,
@@ -1331,7 +1335,7 @@ impl<Drawer> DockArea<'_, Drawer> {
                 let tab_style = tab_viewer.tab_style_override(&leaf.drawers[tab_index.0], &style.tab);
                 (
                     leaf.active == tab_index || is_being_dragged,
-                    tab_viewer.title(&mut leaf.drawers[tab_index.0]),
+                    tab_viewer.title(&mut leaf.drawers[tab_index.0], drawers),
                     tab_style.unwrap_or(style.tab.clone()),
                     tab_viewer.is_closeable(&leaf.drawers[tab_index.0]),
                 )
@@ -1411,7 +1415,7 @@ impl<Drawer> DockArea<'_, Drawer> {
                         .expect("This node must be a leaf");
                     let tab = &mut tabs[tab_index.0];
                     response = response.on_hover_ui(|ui| {
-                        ui.label(tab_viewer.title(tab));
+                        ui.label(tab_viewer.title(tab, drawers));
                     });
                 }
 
@@ -2265,7 +2269,7 @@ impl<Drawer> DockArea<'_, Drawer> {
                 // We are forced to use `Ui::new` because other methods (eg: push_id) always mix
                 // the provided id with their own which would cause tabs to change id when moved
                 // from node to node.
-                let id = self.id.with(tab_viewer.id(tab));
+                let id = self.id.with(tab_viewer.id(tab, drawers));
                 ui.ctx().check_for_id_clash(id, body_rect, "a tab with id");
                 let ui = &mut Ui::new(
                     ui.ctx().clone(),
