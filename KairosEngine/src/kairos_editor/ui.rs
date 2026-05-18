@@ -177,63 +177,23 @@ impl Context {
                     ctx.send_viewport_cmd(eframe::egui::ViewportCommand::Close);
                 },
                 Message::OpenAboutWindow => {
-                    let type_id = TypeId::of::<AboutWindow>();
-                    match self.ids.get(&type_id) {
-                        Some(id) => {
-                            if !self.actives[*id] {
-                                let surface = self.tab_tree.add_window(vec![*id]);
-                                self.drawers[*id].show_window(self.tab_tree.get_window_state_mut(surface));
-                                self.actives[*id] = true;
-                            }
-                            else {
-                                if let Some(tab_location) = self.tab_tree.find_drawer(id) {
-                                    self.tab_tree.set_active_drawer(tab_location);
-                                }
-                            }
-                        },
-                        None => {
-                            let drawer = AboutWindow::new().unwrap_or_else(|error| {
-                                Context::create_ui_failed(ctx, type_name::<AboutWindow>(), error);
-                            });
-                            self.add_window::<AboutWindow>(Box::new(drawer));
-                        },
-                    };
+                    self.show_window::<AboutWindow>(
+                        ctx, 
+                        AboutWindow::new
+                    );
                 },
                 Message::CloseAboutWindow => {
-                    let type_id = TypeId::of::<AboutWindow>();
-                    if let Some(id) = self.ids.get(&type_id) {
-                        self.actives[*id] = false;
-                    }
+                    self.close_drawer::<AboutWindow>();
                 },
                 Message::OpenPreferenceWindow => {
-                    let type_id = TypeId::of::<PreferencesWindow>();
-                    match self.ids.get(&type_id) {
-                        Some(id) => {
-                            if !self.actives[*id] {
-                                let surface = self.tab_tree.add_window(vec![*id]);
-                                self.drawers[*id].show_window(self.tab_tree.get_window_state_mut(surface));
-                                self.actives[*id] = true;
-                            }
-                            else {
-                                if let Some(tab_location) = self.tab_tree.find_drawer(id) {
-                                    self.tab_tree.set_active_drawer(tab_location);
-                                }
-                            }
-                        },
-                        None => {
-                            let drawer = PreferencesWindow::new().unwrap_or_else(|error| {
-                                Context::create_ui_failed(ctx, type_name::<PreferencesWindow>(), error);
-                            });
-                            self.add_window::<PreferencesWindow>(Box::new(drawer));
-                        }
-                    };
+                    self.show_window::<PreferencesWindow>(
+                        ctx, 
+                        PreferencesWindow::new
+                    );
                     self.messager.messages.push_back(Message::RefershPreferenceWindow);
                 },
                 Message::ClosePreferenceWindow => {
-                    let type_id = TypeId::of::<PreferencesWindow>();
-                    if let Some(id) = self.ids.get(&type_id) {
-                        self.actives[*id] = false;
-                    }
+                    self.close_drawer::<PreferencesWindow>();
                 },
                 Message::RefershPreferenceWindow => {
                     let mut style_pages = Vec::new();
@@ -272,77 +232,28 @@ impl Context {
                     }
                 },
                 Message::OpenConsoleTab => {
-                    let type_id = TypeId::of::<ConsoleWindow>();
-                    match self.ids.get(&type_id) {
-                        Some(id) => {
-                            if !self.actives[*id] {
-                                self.tab_tree.main_surface_mut().split_below(
-                                    NodeIndex::root(), 0.7, vec![*id]
-                                );
-                                self.actives[*id] = true;
-                            }
-                            else {
-                                if let Some(tab_location) = self.tab_tree.find_drawer(id) {
-                                    self.tab_tree.set_active_drawer(tab_location);
-                                }
-                            }
+                    self.show_tab::<ConsoleWindow, _>(
+                        ctx, 
+                        ConsoleWindow::new, 
+                        |state, id| {
+                            state.main_surface_mut().split_below(NodeIndex::root(), 0.7, vec![id]);
                         }
-                        None => {
-                            let drawer = ConsoleWindow::new().unwrap_or_else(|error| {
-                                Context::create_ui_failed(ctx, type_name::<ConsoleWindow>(), error);
-                            });
-                            // self.tab_tree.add_window(vec![Box::new(drawer)]);
-                            let id = self.push_drawer::<ConsoleWindow>(Box::new(drawer));
-                            self.tab_tree.main_surface_mut().split_below(
-                                NodeIndex::root(), 
-                                0.7,
-                                vec![id] 
-                            );
-                        }
-                    }
+                    );
                 },
                 Message::CloseConsoleTab => {
-                    let type_id = TypeId::of::<ConsoleWindow>();
-                    if let Some(id) = self.ids.get(&type_id) {
-                        self.actives[*id] = false;
-                    }
+                    self.close_drawer::<ConsoleWindow>();
                 },
                 Message::OpenInspectorTab => {
-                    let type_id = TypeId::of::<InspectorWindow>();
-                    match self.ids.get(&type_id) {
-                        Some(id) => {
-                            if !self.actives[*id] {
-                                self.tab_tree.main_surface_mut().split_right(
-                                    NodeIndex::root(), 
-                                    0.7, 
-                                    vec![*id]
-                                );
-                                self.actives[*id] = true;
-                            }
-                            else {
-                                if let Some(tab_location) = self.tab_tree.find_drawer(id) {
-                                    self.tab_tree.set_active_drawer(tab_location);
-                                }
-                            }
+                    self.show_tab::<InspectorWindow, _>(
+                        ctx, 
+                        InspectorWindow::new, 
+                        |state, id| {
+                            state.main_surface_mut().split_right(NodeIndex::root(), 0.7, vec![id]);
                         }
-                        None => {
-                            let drawer = InspectorWindow::new().unwrap_or_else(|error| {
-                                Context::create_ui_failed(ctx, type_name::<InspectorWindow>(), error);
-                            });
-                            let id = self.push_drawer::<InspectorWindow>(Box::new(drawer));
-                            self.tab_tree.main_surface_mut().split_right(
-                                NodeIndex::root(),
-                                0.7, 
-                                vec![id]
-                            );
-                        }
-                    }
+                    );
                 },
                 Message::CloseInspectorTab => {
-                    let type_id = TypeId::of::<InspectorWindow>();
-                    if let Some(id) = self.ids.get(&type_id) {
-                        self.actives[*id] = false;
-                    }
+                    self.close_drawer::<InspectorWindow>();
                 },
                 Message::OpenHierarchyTab => todo!(),
                 Message::CloseHierarchyTab => todo!(),
@@ -363,12 +274,63 @@ impl Context {
         id
     }
 
-    fn add_window<T>(&mut self, drawer: Box<dyn Drawer>)
-        where T: 'static + Drawer
-    {
-        let id = self.push_drawer::<T>(drawer);
-        let surface = self.tab_tree.add_window(vec![id]);
-        self.drawers[id].show_window(self.tab_tree.get_window_state_mut(surface));
+    fn show_window<T>(&mut self, ctx: &egui::Context, create: impl FnOnce() -> Result<T, Box<dyn std::error::Error>>)
+    where T: Drawer {
+        let type_id = TypeId::of::<T>();
+        match self.ids.get(&type_id) {
+            Some(id) => {
+                if !self.actives[*id] {
+                    let surface = self.tab_tree.add_window(vec![*id]);
+                    self.drawers[*id].show_window(self.tab_tree.get_window_state_mut(surface));
+                    self.actives[*id] = true;
+                }
+                else {
+                    if let Some(tab_location) = self.tab_tree.find_drawer(id) {
+                        self.tab_tree.set_active_drawer(tab_location);
+                    }
+                }
+            },
+            None => {
+                let drawer = create().unwrap_or_else(|error| {
+                    Context::create_ui_failed(ctx, type_name::<T>(), error);
+                });
+                let id = self.push_drawer::<T>(Box::new(drawer));
+                let surface = self.tab_tree.add_window(vec![id]);
+                self.drawers[id].show_window(self.tab_tree.get_window_state_mut(surface));
+            }
+        };
+    }
+
+    fn show_tab<T, F>(&mut self, ctx: &egui::Context, create: impl FnOnce() -> Result<T, Box<dyn std::error::Error>>, split: F)
+    where T: Drawer, F: FnOnce(&mut DockState<usize>, usize) {
+        let type_id = TypeId::of::<T>();
+        match self.ids.get(&type_id) {
+            Some(id) => {
+                if !self.actives[*id] {
+                    split(&mut self.tab_tree, *id);
+                    self.actives[*id] = true;
+                }
+                else {
+                    if let Some(tab_location) = self.tab_tree.find_drawer(id) {
+                        self.tab_tree.set_active_drawer(tab_location);
+                    }
+                }
+            }
+            None => {
+                let drawer = create().unwrap_or_else(|error| {
+                    Context::create_ui_failed(ctx, type_name::<T>(), error);
+                });
+                let id = self.push_drawer::<T>(Box::new(drawer));
+                split(&mut self.tab_tree, id);
+            }
+        }
+    }
+
+    fn close_drawer<T>(&mut self) where T: 'static + Drawer {
+        let type_id = TypeId::of::<T>();
+        if let Some(id) = self.ids.get(&type_id) {
+            self.actives[*id] = false;
+        }
     }
 
     fn create_ui_failed(ctx: &eframe::egui::Context, ui_name: &str, error: Box<dyn std::error::Error>) -> ! {
