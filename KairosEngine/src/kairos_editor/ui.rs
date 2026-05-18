@@ -2,7 +2,7 @@ use std::{any::{Any, TypeId, type_name}, collections::{HashMap, VecDeque}, proce
 
 use eframe::egui::{self};
 
-use crate::{kairos_dialog, kairos_editor::ui::{about_window::AboutWindow, console_window::ConsoleWindow, docking_tab::{DockArea, dock_state::{DockState, tree::NodeIndex}, tab_drawer::{OnCloseResponse, TabDrawer}, window_state::WindowState}, hierarchy_window::HierarchyWindow, inspector_window::InspectorWindow, preferences_window::PreferencesWindow, project_window::ProjectWindow, tool_bar::ToolBar, ui_style_fields::{StyleField, StylePage}}};
+use crate::{kairos_dialog, kairos_editor::ui::{about_window::AboutWindow, console_window::ConsoleWindow, docking_tab::{DockArea, dock_state::{DockState, tree::NodeIndex}, surfaces::SurfaceIndex, tab_drawer::{OnCloseResponse, TabDrawer}, window_state::WindowState}, hierarchy_window::HierarchyWindow, inspector_window::InspectorWindow, preferences_window::PreferencesWindow, project_window::ProjectWindow, tool_bar::ToolBar, ui_style_fields::{StyleField, StylePage}}};
 
 pub mod paths;
 pub mod dialog;
@@ -278,10 +278,29 @@ impl Context {
                         ctx, 
                         ProjectWindow::new,
                         |state, id| {
-                            state.main_surface_mut().split_below(
-                                NodeIndex::root(), 
-                                0.7, 
-                                vec![id]);
+                            let mut tab_location = None;
+                            state.main_surface().iter().for_each(|node| {
+                                match node {
+                                    docking_tab::dock_state::tree::node::Node::Leaf(leaf_node) => {
+                                        if !leaf_node.is_empty() {
+                                            let tab = leaf_node.drawers[leaf_node.active.0];
+                                            let location = state.find_drawer(&tab).unwrap();
+                                            if location.1.is_right() {
+                                                tab_location = Some(location);
+                                            }
+                                        }
+                                    },
+                                    _ => {},
+                                }
+                            });
+                            if let Some(location) = tab_location {
+                                state[location.0][location.1].append_drawer(id);
+                            } else {
+                                state.main_surface_mut().split_below(
+                                    NodeIndex::root(), 
+                                    0.7, 
+                                    vec![id]);
+                            }
                         }
                     );
                 },
