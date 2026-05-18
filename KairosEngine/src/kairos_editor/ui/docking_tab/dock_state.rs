@@ -625,7 +625,7 @@ impl<Drawer> DockState<Drawer> {
 
 pub enum SurfaceLeftPanelLocation {
     None,
-    Center((SurfaceIndex, NodeIndex)),
+    Center(SurfaceIndex, NodeIndex),
     Left(SurfaceIndex, NodeIndex)
 }
 
@@ -719,12 +719,16 @@ where
                                     && parent_index.is_left() 
                                     && self[surface][parent_index].is_horizontal()
                                     && location.1.is_left() {
+    
                                     tab_location = SurfaceLeftPanelLocation::Left(location.0, location.1);
                                     return;
                                 }
-                            } else {
-                                if self[surface][parent_index].is_vertical() && location.1.is_left() {
-                                    tab_location = SurfaceLeftPanelLocation::Center((location.0, location.1));
+                            } 
+                            if self[surface][parent_index].is_vertical() {
+                                if location.1.is_left() {
+                                    tab_location = SurfaceLeftPanelLocation::Center(location.0, location.1);
+                                } else {
+                                    tab_location = SurfaceLeftPanelLocation::Center(location.0, parent_index.left());
                                 }
                             }
                         }
