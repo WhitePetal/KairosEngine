@@ -76,22 +76,23 @@ impl Drawer for PreferencesWindow {
 
     }
 
-    fn update(&self, ui: Option<&mut egui::Ui>, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame, messager: &mut super::Messager) {
-        let model = &self.model;
-        let mut is_open = true;
-        egui::Window::new("KairosEngine Preferences")
-            .min_width(model.style.default_width)
-            .min_height(model.style.default_height)
-            .scroll([false, true])
-            .open(&mut is_open)
-            .show(ctx, |ui| {
+    fn update(&self, ui: Option<&mut egui::Ui>, _ctx: &eframe::egui::Context, _frame: &mut eframe::Frame, messager: &mut super::Messager) {
+        let ui = ui.unwrap();
+        // let model = &self.model;
+        // let mut is_open = true;
+        // egui::Window::new("KairosEngine Preferences")
+        //     .min_width(model.style.default_width)
+        //     .min_height(model.style.default_height)
+        //     .scroll([false, true])
+        //     .open(&mut is_open)
+        //     .show(ctx, |ui| {
                 self.ui(ui, messager);
-            }
-        );
+        //     }
+        // );
+    }
 
-        if !is_open {
-            messager.send(super::Message::ClosePreferenceWindow);
-        }
+    fn close(&self, messager: &mut super::Messager) {
+        messager.send(super::Message::ClosePreferenceWindow);
     }
     
     fn get_style_fileds(&self) -> Vec<super::ui_style_fields::StyleField> {

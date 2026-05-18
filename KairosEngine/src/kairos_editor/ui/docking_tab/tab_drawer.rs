@@ -51,7 +51,7 @@ pub trait TabDrawer {
     fn on_tab_button(&mut self, _tab: &mut Self::Tab, _response: &egui::Response) {
     }
 
-    fn on_close(&mut self, _tab: &mut Self::Tab) -> OnCloseResponse {
+    fn on_close(&mut self, _tab: &mut Self::Tab, _messager: &mut Messager, _drawers: &Vec<Box<dyn Drawer>>) -> OnCloseResponse {
         OnCloseResponse::Close
     }
 

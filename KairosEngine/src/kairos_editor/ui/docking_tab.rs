@@ -271,7 +271,7 @@ impl<Drawer> DockArea<'_, Drawer> {
                         self.dock_state.remove_drawer((surface, node, tab));
                     } else {
                         let leaf = &mut self.dock_state[surface][node].get_leaf_mut().unwrap();
-                        match tab_drawer.on_close(&mut leaf.drawers[tab.0]) {
+                        match tab_drawer.on_close(&mut leaf.drawers[tab.0], messager, drawers) {
                             OnCloseResponse::Close => {
                                 self.dock_state.remove_drawer((surface, node, tab));
                             }
@@ -289,7 +289,7 @@ impl<Drawer> DockArea<'_, Drawer> {
                     let mut all_tabs_are_closable = true;
                     for tab in self.dock_state[surface][node].iter_tabs_mut() {
                         if !(tab_drawer.is_closeable(tab)
-                            && matches!(tab_drawer.on_close(tab), OnCloseResponse::Close))
+                            && matches!(tab_drawer.on_close(tab, messager, drawers), OnCloseResponse::Close))
                         {
                             all_tabs_are_closable = false;
                         }
@@ -303,7 +303,7 @@ impl<Drawer> DockArea<'_, Drawer> {
                     for node in self.dock_state[surface].iter_mut() {
                         for tab in node.iter_tabs_mut() {
                             if !(tab_drawer.is_closeable(tab)
-                                && matches!(tab_drawer.on_close(tab), OnCloseResponse::Close))
+                                && matches!(tab_drawer.on_close(tab, messager, drawers), OnCloseResponse::Close))
                             {
                                 all_tabs_are_closable = false;
                             }
@@ -1069,6 +1069,7 @@ impl<Drawer> DockArea<'_, Drawer> {
         let tabbar_rect = self.drawer_bar(
             ui,
             state,
+            messager,
             drawers,
             (surface_index, node_index),
             tab_viewer,
@@ -1109,6 +1110,7 @@ impl<Drawer> DockArea<'_, Drawer> {
         &mut self,
         ui: &mut Ui,
         state: &mut State,
+        messager: &mut Messager,
         drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
         (surface_index, node_index): (SurfaceIndex, NodeIndex),
         tab_viewer: &mut impl TabDrawer<Tab = Drawer>,
@@ -1192,6 +1194,7 @@ impl<Drawer> DockArea<'_, Drawer> {
             let tab_hovered = self.drawers(
                 tabs_ui,
                 state,
+                messager,
                 drawers,
                 (surface_index, node_index),
                 tab_viewer,
@@ -1293,6 +1296,7 @@ impl<Drawer> DockArea<'_, Drawer> {
         &mut self,
         tabs_ui: &mut Ui,
         state: &mut State,
+        messager: &mut Messager,
         drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
         (surface_index, node_index): (SurfaceIndex, NodeIndex),
         tab_viewer: &mut impl TabDrawer<Tab = Drawer>,
@@ -1440,7 +1444,7 @@ impl<Drawer> DockArea<'_, Drawer> {
                             ui.close();
                         }
                         if show_close_button && ui.add(close_button).clicked() {
-                            match tab_viewer.on_close(tab) {
+                            match tab_viewer.on_close(tab, messager, drawers) {
                                 OnCloseResponse::Close => self.to_remove.push(TabRemoval::Tab(
                                     surface_index,
                                     node_index,

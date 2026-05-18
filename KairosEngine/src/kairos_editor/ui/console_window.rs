@@ -64,6 +64,10 @@ impl Drawer for ConsoleWindow {
         ui.label("TODO: Print Console");
     }
 
+    fn close(&self, _messager: &mut super::Messager) {
+
+    }
+
     fn get_name(&self) -> &'static str {
         type_name::<ConsoleWindow>()
     }

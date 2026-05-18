@@ -64,7 +64,9 @@ impl TabDrawer for KairosTabDrawer {
         tab.update(Some(ui), ctx, frame, messager);
     }
 
-    fn on_close(&mut self, _tab: &mut Self::Tab) -> OnCloseResponse {
+    fn on_close(&mut self, tab: &mut Self::Tab, messager: &mut Messager, drawers: &Vec<Box<dyn Drawer>>) -> OnCloseResponse {
+        let tab = &drawers[*tab];
+        tab.close(messager);
         OnCloseResponse::Close
     }
 
@@ -78,6 +80,8 @@ pub trait Drawer: Any {
     fn show(&self, state: Option<&mut WindowState>);
 
     fn update(&self, ui: Option<&mut egui::Ui>, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut Messager);
+
+    fn close(&self, messager: &mut Messager);
 
     fn get_name(&self) -> &'static str;
 
@@ -202,6 +206,7 @@ impl Context {
                     let type_id = TypeId::of::<AboutWindow>();
                     if let Some(id) = self.ids.get(&type_id) {
                         self.on_offs[*id] = false;
+                        // TODO: how destroy?
                     }
                 },
                 Message::OpenPreferenceWindow => {
@@ -270,7 +275,7 @@ impl Context {
                             });
                             // self.tab_tree.add_window(vec![Box::new(drawer)]);
                             let id = self.push_drawer::<ConsoleWindow>(Box::new(drawer));
-                            let [_, node] = self.tab_tree.main_surface_mut().split_below(
+                            let [_, _] = self.tab_tree.main_surface_mut().split_below(
                                 NodeIndex::root(), 
                                 0.7,
                                 vec![id] 

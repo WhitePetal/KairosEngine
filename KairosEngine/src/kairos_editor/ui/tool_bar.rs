@@ -115,6 +115,10 @@ impl Drawer for ToolBar {
             });
         });
     }
+
+    fn close(&self, _messager: &mut super::Messager) {
+
+    }
     
     fn get_style_fileds(&self) -> Vec<StyleField> {
         let mut fields = Vec::new();
