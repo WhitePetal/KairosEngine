@@ -2,7 +2,7 @@ use std::ops;
 
 use eframe::egui::Rect;
 
-use crate::kairos_editor::ui::{Drawer, docking_tab::{DockArea, dock_state::tree::{NodeIndex, NodePath, Split, TabDestination, TabIndex, TabInsert, Tree, node::{self, Node, leaf_node::{self, LeafNode}}}, surfaces::{Surface, SurfaceIndex}, translations::Translations, window_state::WindowState}};
+use crate::kairos_editor::ui::{Drawer, docking_tab::{DockArea, dock_state::tree::{NodeIndex, NodePath, Split, TabDestination, TabIndex, TabInsert, Tree, node::{self, Node, leaf_node::{self, LeafNode}}}, state, surfaces::{Surface, SurfaceIndex}, translations::Translations, window_state::WindowState}};
 
 
 
@@ -641,6 +641,12 @@ pub enum SurfaceLeftPanelLocation {
     Left(SurfaceIndex, NodeIndex)
 }
 
+pub enum SurfaceCenterPanelLocation {
+    None,
+    Above(SurfaceIndex, NodeIndex),
+    Center(SurfaceIndex, NodeIndex),
+}
+
 impl<Drawer> DockState<Drawer>
 where
     Drawer: PartialEq,
@@ -691,7 +697,6 @@ where
                         }
                     }
                 }
-                // tab_location = SurfaceBottomPanelLocation::Center(surface, NodeIndex::root().left());
             } else if root.is_vertical() {
                 tab_location = SurfaceBottomPanelLocation::Bottom(surface, root_index.right());
             } else if root.is_empty() {
@@ -758,10 +763,51 @@ where
             } else if root.is_empty() {
                 tab_location = SurfaceLeftPanelLocation::Center(surface, root_index);
             } else if root.is_leaf() {
-                if root.drawers_count() == 0 {
+                if let Some(parent_index) = root_index.parent() && let Some(parent) = self[surface].nodes.get(parent_index.0) {
+                    if parent.is_horizontal() {
+                        tab_location = SurfaceLeftPanelLocation::Left(surface, root_index);
+                    } else {
+                        tab_location = SurfaceLeftPanelLocation::Center(surface, root_index);
+                    }
+                } else {                    
                     tab_location = SurfaceLeftPanelLocation::Center(surface, root_index);
+                }
+            }
+        }
+        tab_location
+    }
+
+    pub fn find_surface_center_panel_location(&self, surface: SurfaceIndex, root_index: NodeIndex) -> SurfaceCenterPanelLocation {
+        let mut tab_location = SurfaceCenterPanelLocation::None;
+        if let Some(root) = self[surface].nodes.get(root_index.0) {
+            if root.is_horizontal() {
+                let left_node_index = root_index.left();
+                if let Some(left_node) = self[surface].nodes.get(left_node_index.0) {
+                    match left_node {
+                        Node::Empty | Node::Horizontal(_)  => {
+                            tab_location = SurfaceCenterPanelLocation::Above(surface, left_node_index);
+                        },
+                        Node::Leaf(leaf_node) => {
+                            if leaf_node.drawers_count() == 0 {
+                                tab_location = SurfaceCenterPanelLocation::Above(surface, left_node_index)
+                            } else {                                
+                                tab_location = SurfaceCenterPanelLocation::Center(surface, left_node_index)
+                            }
+                        },
+                        Node::Vertical(_) => {
+                            tab_location = self.find_surface_center_panel_location(surface, left_node_index.right())
+                        }
+                    }
+                }
+            } else if root.is_vertical() {
+                tab_location = self.find_surface_center_panel_location(surface, root_index.right());
+            } else if root.is_empty() {
+                tab_location = SurfaceCenterPanelLocation::Above(surface, root_index);
+            } else if root.is_leaf() {
+                if root.drawers_count() == 0 {
+                    tab_location = SurfaceCenterPanelLocation::Above(surface, root_index);
                 } else {
-                    tab_location = SurfaceLeftPanelLocation::Left(surface, root_index);
+                    tab_location = SurfaceCenterPanelLocation::Center(surface, root_index);
                 }
             }
         }

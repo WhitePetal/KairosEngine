@@ -1,38 +1,38 @@
 use std::{any::type_name, fs};
 
-use kairos_engine::log::Log;
 use serde::{Deserialize, Serialize};
 use sonic_rs::from_str;
 
 use crate::kairos_editor::ui::{Drawer, Message, paths};
 
 
+
 #[derive(Debug, Serialize, Deserialize)]
-struct ProjectWindowStyle {
+struct SceneWindowStyle {
     pub title: String,
 }
 
-struct ProjectWindowModel {
-    style: ProjectWindowStyle,
+struct SceneWindowModel {
+    style: SceneWindowStyle,
 }
 
-pub struct ProjectWindow {
-    model: ProjectWindowModel,
+pub struct SceneWindow {
+    model: SceneWindowModel,
 }
 
-impl ProjectWindowStyle {
+impl SceneWindowStyle {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let style_json = fs::read_to_string(paths::PATH_PROJECT_WINDOW_STYLE)
-            .map_err(|error| format!("Load ProjectWindow Style Json Failed, path: {}, error: {}", paths::PATH_PROJECT_WINDOW_STYLE, error))?;
+        let style_json = fs::read_to_string(paths::PATH_SCENE_WINDOW_STYLE)
+            .map_err(|error| format!("Load SceneWindow Style Json Failed, path: {}, error: {}", paths::PATH_SCENE_WINDOW_STYLE, error))?;
         let style = from_str(&style_json)
-            .map_err(|error| format!("Deserialize ProjectWindow Style Json Failed, error: {}", error))?;
+            .map_err(|error| format!("Deserialize SceneWindow Style Json Failed, error: {}", error))?;
         Ok(style)
     }
 }
 
-impl ProjectWindowModel {
+impl SceneWindowModel {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let style = ProjectWindowStyle::new()?;
+        let style = SceneWindowStyle::new()?;
         Ok(
             Self { 
                 style 
@@ -41,9 +41,9 @@ impl ProjectWindowModel {
     }
 }
 
-impl ProjectWindow {
+impl SceneWindow {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let model = ProjectWindowModel::new()?;
+        let model = SceneWindowModel::new()?;
         Ok(
             Self { 
                 model 
@@ -52,7 +52,7 @@ impl ProjectWindow {
     }
 }
 
-impl Drawer for ProjectWindow {
+impl Drawer for SceneWindow {
     fn show_window(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {
 
     }
@@ -63,18 +63,18 @@ impl Drawer for ProjectWindow {
         _ctx: &eframe::egui::Context, 
         _frame: &mut eframe::Frame, 
         _messager: &mut super::Messager,
-        _log: &mut Log
+        _log: &mut kairos_engine::log::Log
     ) {
         let ui = ui.unwrap();
-        ui.label("TODO: Project");
+        ui.label("TODO: Scene");
     }
 
     fn close(&self, messager: &mut super::Messager) {
-        messager.send(Message::CloseProjectTab);
+        messager.send(Message::CloseSceneTab);
     }
 
     fn get_name(&self) -> &'static str {
-        type_name::<ProjectWindow>()
+        type_name::<SceneWindow>()
     }
 
     fn get_title(&self) -> eframe::egui::WidgetText {
