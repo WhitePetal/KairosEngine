@@ -30,6 +30,7 @@ image = { version = "0.25.10", features = ["png"] }
 wgpu = "28.0"
 pollster = "0.3"
 eframe = { version = "0.33.3", features = ["wgpu"] }
+egui = "0.33.3"
 egui_extras = { version = "0.33.3", features = ["all_loaders"] }
 # egui_dock = "0.18.0"
 

@@ -317,7 +317,7 @@ pub struct KairosEngine {
 
 ```rust
 impl eframe::App for KairosEngine {
-    fn update(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         // res_mgr 与 ui_context 为不同字段，可同时 mut borrow
         self.ui_context.handle(ctx, &mut self.res_mgr);
         self.ui_context.darw(ctx, frame, &mut self.res_mgr);
@@ -351,7 +351,7 @@ Message::CreateToolbar => {
 pub trait Drawer: Any {
     fn update(
         &mut self,  // 建议 &mut self：缓存 Handle<T>、面板状态
-        ctx: &eframe::egui::Context,
+        ctx: &egui::Context,
         frame: &mut eframe::Frame,
         messager: &mut Messager,
         res_mgr: &mut ResourceManager,

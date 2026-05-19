@@ -1,6 +1,6 @@
 use std::{any::type_name, fs::{self, File}, io::Write};
 
-use eframe::egui::{self, TopBottomPanel, containers::menu};
+use egui::{self, TopBottomPanel, containers::menu};
 use kairos_engine::{log::Log, math};
 use serde::{Deserialize, Serialize};
 use sonic_rs::from_str;
@@ -65,7 +65,7 @@ impl Drawer for ToolBar {
     fn update(
         &self, 
         _ui: Option<&mut egui::Ui>, 
-        ctx: &eframe::egui::Context, 
+        ctx: &egui::Context, 
         _frame: &mut eframe::Frame, 
         messager: &mut super::Messager,
         _log: &mut Log,

@@ -1,6 +1,6 @@
 use std::{any::type_name, fs};
 
-use eframe::egui;
+use egui;
 use kairos_engine::log::Log;
 use serde::{Deserialize, Serialize};
 use sonic_rs::from_str;
@@ -63,7 +63,7 @@ impl Drawer for ConsoleWindow {
     fn update(
         &self, 
         ui: Option<&mut egui::Ui>, 
-        _ctx: &eframe::egui::Context, 
+        _ctx: &egui::Context, 
         _frame: &mut eframe::Frame, 
         _messager: &mut Messager,
         log: &mut Log,
@@ -92,7 +92,7 @@ impl Drawer for ConsoleWindow {
 
     }
     
-    fn get_title(&self) -> eframe::egui::WidgetText {
+    fn get_title(&self) -> egui::WidgetText {
         self.model.style.title.to_owned().into()
     }
 }

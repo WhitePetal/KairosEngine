@@ -1,4 +1,4 @@
-use eframe::egui::Visuals;
+use egui::Visuals;
 use kairos_engine::log::Log;
 
 
@@ -23,7 +23,7 @@ impl KairosEngine {
 }
 
 impl eframe::App for KairosEngine {
-    fn update(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         let mut visuals = Visuals::dark();
         visuals.button_frame = true;
         ctx.set_visuals(visuals);

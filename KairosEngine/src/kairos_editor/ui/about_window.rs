@@ -1,6 +1,6 @@
 use std::{any::type_name, fs};
 
-use eframe::egui::{self, Vec2};
+use egui::{self, Vec2};
 use kairos_engine::log::Log;
 use serde::{Deserialize, Serialize};
 use sonic_rs::from_str;
@@ -74,7 +74,7 @@ impl Drawer for AboutWindow {
     fn update(
         &self, 
         ui: Option<&mut egui::Ui>, 
-        _ctx: &eframe::egui::Context, 
+        _ctx: &egui::Context, 
         _frame: &mut eframe::Frame, 
         _messager: &mut Messager,
         log: &mut Log

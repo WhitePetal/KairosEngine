@@ -1,6 +1,6 @@
 use std::{cmp::max, collections::HashSet, fmt, ops::{Index, IndexMut, Range}, slice::{Iter, IterMut}};
 
-use eframe::egui::Rect;
+use egui::Rect;
 
 use crate::kairos_editor::ui::docking_tab::{dock_state::tree::node::Node, surfaces::SurfaceIndex};
 

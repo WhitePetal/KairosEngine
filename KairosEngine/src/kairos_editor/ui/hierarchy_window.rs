@@ -62,8 +62,8 @@ impl Drawer for HierarchyWindow {
 
     fn update(
         &self, 
-        ui: Option<&mut eframe::egui::Ui>, 
-        _ctx: &eframe::egui::Context, 
+        ui: Option<&mut egui::Ui>, 
+        _ctx: &egui::Context, 
         _frame: &mut eframe::Frame, 
         _messager: &mut super::Messager,
         _log: &mut Log
@@ -80,7 +80,7 @@ impl Drawer for HierarchyWindow {
         type_name::<HierarchyWindow>()
     }
 
-    fn get_title(&self) -> eframe::egui::WidgetText {
+    fn get_title(&self) -> egui::WidgetText {
         self.model.style.title.to_owned().into()
     }
 

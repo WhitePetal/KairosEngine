@@ -1,4 +1,4 @@
-use eframe::egui::Rect;
+use egui::Rect;
 
 use crate::kairos_editor::ui::docking_tab::dock_state::tree::{Split, TabIndex, node::{leaf_node::LeafNode, split_node::SplitNode}};
 

@@ -192,7 +192,7 @@ impl<Drawer> DockArea<'_, Drawer> {
     pub fn show_inside(
         mut self, 
         ui: &mut Ui, 
-        ctx: &eframe::egui::Context, 
+        ctx: &egui::Context, 
         frame: &mut eframe::Frame, 
         messager: &mut Messager, 
         log: &mut Log,
@@ -433,7 +433,7 @@ impl<Drawer> DockArea<'_, Drawer> {
         &mut self,
         surf_index: SurfaceIndex,
         ui: &mut Ui,
-        ctx: &eframe::egui::Context, frame: &mut eframe::Frame,
+        ctx: &egui::Context, frame: &mut eframe::Frame,
         messager: &mut Messager,
         log: &mut Log,
         drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
@@ -451,7 +451,7 @@ impl<Drawer> DockArea<'_, Drawer> {
     fn render_nodes(
         &mut self,
         ui: &mut Ui,
-        ctx: &eframe::egui::Context, frame: &mut eframe::Frame,
+        ctx: &egui::Context, frame: &mut eframe::Frame,
         messager: &mut Messager,
         log: &mut Log,
         drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
@@ -732,7 +732,7 @@ impl<Drawer> DockArea<'_, Drawer> {
     pub(super) fn show_root_surface_inside(
         &mut self,
         ui: &mut Ui,
-        ctx: &eframe::egui::Context, frame: &mut eframe::Frame,
+        ctx: &egui::Context, frame: &mut eframe::Frame,
         messager: &mut Messager,
         log: &mut Log,
         drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
@@ -767,7 +767,7 @@ impl<Drawer> DockArea<'_, Drawer> {
     pub fn show_window_surface(
         &mut self,
         ui: &Ui,
-        ctx: &eframe::egui::Context, eframe: &mut eframe::Frame,
+        ctx: &egui::Context, eframe: &mut eframe::Frame,
         messager: &mut Messager,
         log: &mut Log,
         drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
@@ -1049,7 +1049,7 @@ impl<Drawer> DockArea<'_, Drawer> {
     pub fn show_leaf(
         &mut self,
         ui: &mut Ui,
-        ctx: &eframe::egui::Context, frame: &mut eframe::Frame,
+        ctx: &egui::Context, frame: &mut eframe::Frame,
         messager: &mut Messager,
         log: &mut Log,
         drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
@@ -2225,7 +2225,7 @@ impl<Drawer> DockArea<'_, Drawer> {
     fn drawer_body(
         &mut self,
         ui: &mut Ui,
-        ctx: &eframe::egui::Context, frame: &mut eframe::Frame,
+        ctx: &egui::Context, frame: &mut eframe::Frame,
         messager: &mut Messager,
         log: &mut Log,
         drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,

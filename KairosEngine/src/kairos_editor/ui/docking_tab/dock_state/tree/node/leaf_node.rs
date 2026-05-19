@@ -1,4 +1,4 @@
-use eframe::egui::Rect;
+use egui::Rect;
 
 use super::super::TabIndex;
 

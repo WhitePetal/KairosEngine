@@ -1,4 +1,4 @@
-use eframe::egui::Rect;
+use egui::Rect;
 
 
 /// the inner data of a [``Node::Horizontal``](super::Node)/[``Node::Vertical``](super::Node), which splits into two further nodes.

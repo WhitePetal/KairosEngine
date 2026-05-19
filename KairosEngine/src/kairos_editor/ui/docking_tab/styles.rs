@@ -1,4 +1,4 @@
-use eframe::egui::{self, Color32, CornerRadius, Margin, Stroke, ecolor::tint_color_towards};
+use egui::{self, Color32, CornerRadius, Margin, Stroke, ecolor::tint_color_towards};
 
 
 

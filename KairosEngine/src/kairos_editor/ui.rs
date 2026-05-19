@@ -1,6 +1,6 @@
 use std::{any::{Any, TypeId, type_name}, collections::{HashMap, VecDeque}, process::id};
 
-use eframe::egui::{self};
+use egui::{self};
 use kairos_engine::log::Log;
 
 use crate::{kairos_dialog, kairos_editor::ui::{about_window::AboutWindow, console_window::ConsoleWindow, docking_tab::{DockArea, dock_state::{DockState, SurfaceBottomPanelLocation, SurfaceCenterPanelLocation, SurfaceLeftPanelLocation, SurfaceRightPanelLocation, tree::NodeIndex}, surfaces::SurfaceIndex, tab_drawer::{OnCloseResponse, TabDrawer}, window_state::WindowState}, hierarchy_window::HierarchyWindow, inspector_window::InspectorWindow, preferences_window::PreferencesWindow, project_window::ProjectWindow, scene_window::SceneWindow, tool_bar::ToolBar, ui_style_fields::{StyleField, StylePage}}};
@@ -56,7 +56,7 @@ impl TabDrawer for KairosTabDrawer {
         &mut self, 
         ui: &mut egui::Ui, 
         tab: &mut Self::Tab, 
-        ctx: &eframe::egui::Context, 
+        ctx: &egui::Context, 
         frame: &mut eframe::Frame, 
         messager: &mut Messager, 
         log: &mut Log,
@@ -84,7 +84,7 @@ pub trait Drawer: Any {
     fn update(
         &self, 
         ui: Option<&mut egui::Ui>, 
-        ctx: &eframe::egui::Context, 
+        ctx: &egui::Context, 
         frame: &mut eframe::Frame, 
         messager: &mut Messager,
         log: &mut Log
@@ -151,7 +151,7 @@ impl Context {
 
     pub fn darw(
         &mut self, 
-        ctx: &eframe::egui::Context, 
+        ctx: &egui::Context, 
         frame: &mut eframe::Frame, 
         log: &mut Log
     ) {
@@ -177,7 +177,7 @@ impl Context {
         );
     }
 
-    pub fn handle(&mut self, ctx: &eframe::egui::Context, log: &mut Log) {
+    pub fn handle(&mut self, ctx: &egui::Context, log: &mut Log) {
         while let Some(msg) = self.messager.messages.pop_front() {
             match msg {
                 Message::CreateToolbar => {
@@ -187,7 +187,7 @@ impl Context {
                     self.push_drawer::<ToolBar>(Box::new(drawer));
                 },
                 Message::QuitEngine => {
-                    ctx.send_viewport_cmd(eframe::egui::ViewportCommand::Close);
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                 },
                 Message::OpenAboutWindow => {
                     self.show_window::<AboutWindow>(
@@ -441,9 +441,9 @@ impl Context {
         }
     }
 
-    fn create_ui_failed(ctx: &eframe::egui::Context, ui_name: &str, error: Box<dyn std::error::Error>) -> ! {
+    fn create_ui_failed(ctx: &egui::Context, ui_name: &str, error: Box<dyn std::error::Error>) -> ! {
         dialog::ui_create_error_window(ui_name, &error);
-        ctx.send_viewport_cmd(eframe::egui::ViewportCommand::Close);
+        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         panic!("Create {} UI Failed: {}", ui_name, error)
     }
 

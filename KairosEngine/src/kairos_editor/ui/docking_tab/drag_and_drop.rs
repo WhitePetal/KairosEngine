@@ -315,7 +315,7 @@ fn draw_highlight_rect(rect: Rect, ui: &Ui, style: &Style) {
         style.overlay.hovered_leaf_highlight.corner_radius, 
         style.overlay.hovered_leaf_highlight.color, 
         style.overlay.hovered_leaf_highlight.stroke, 
-        eframe::egui::StrokeKind::Inside
+        egui::StrokeKind::Inside
     );
 }
 
@@ -343,7 +343,7 @@ fn draw_window_rect(rect: Rect, ui: &Ui, style: &Style) {
             style.overlay.selection_stroke_width,
             style.overlay.selection_color,
         ), 
-        eframe::egui::StrokeKind::Inside
+        egui::StrokeKind::Inside
     );
 }
 
