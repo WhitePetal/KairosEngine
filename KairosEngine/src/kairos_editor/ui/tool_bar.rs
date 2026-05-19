@@ -66,7 +66,6 @@ impl Drawer for ToolBar {
         &self, 
         _ui: Option<&mut egui::Ui>, 
         ctx: &egui::Context, 
-        _frame: &mut eframe::Frame, 
         messager: &mut super::Messager,
         _log: &mut Log,
     ) {

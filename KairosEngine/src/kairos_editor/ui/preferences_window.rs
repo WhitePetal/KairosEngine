@@ -82,7 +82,6 @@ impl Drawer for PreferencesWindow {
         &self, 
         ui: Option<&mut egui::Ui>, 
         _ctx: &egui::Context, 
-        _frame: &mut eframe::Frame, 
         messager: &mut super::Messager,
         _log: &mut Log
     ) {

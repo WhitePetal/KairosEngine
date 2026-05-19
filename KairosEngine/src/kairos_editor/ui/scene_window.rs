@@ -61,7 +61,6 @@ impl Drawer for SceneWindow {
         &self, 
         ui: Option<&mut egui::Ui>, 
         _ctx: &egui::Context, 
-        _frame: &mut eframe::Frame, 
         _messager: &mut super::Messager,
         _log: &mut kairos_engine::log::Log
     ) {

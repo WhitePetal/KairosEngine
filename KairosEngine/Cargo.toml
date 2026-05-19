@@ -27,7 +27,7 @@ sonic-rs = "0.5.7"
 duplicate = "2.0"
 paste = "1.0"
 image = { version = "0.25.10", features = ["png"] }
-wgpu = "28.0"
+wgpu = "27.0"
 pollster = "0.3"
 eframe = { version = "0.33.3", features = ["wgpu"] }
 egui = "0.33.3"

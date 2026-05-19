@@ -23,14 +23,14 @@ impl KairosEngine {
 }
 
 impl eframe::App for KairosEngine {
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let mut visuals = Visuals::dark();
         visuals.button_frame = true;
         ctx.set_visuals(visuals);
 
         self.ui_context.handle(ctx, &mut self.log);
 
-        self.ui_context.darw(ctx, frame, &mut self.log);
+        self.ui_context.darw(ctx, &mut self.log);
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {

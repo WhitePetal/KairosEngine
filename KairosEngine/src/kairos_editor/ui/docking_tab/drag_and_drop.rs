@@ -1,6 +1,8 @@
 use std::ops::BitOrAssign;
 
-use eframe::{egui::{Context, Id, LayerId, NumExt, Order, Painter, Pos2, Rect, Stroke, StrokeKind, Ui, Vec2, style, vec2}, emath::{GuiRounding, inverse_lerp}};
+use eframe::{emath::{GuiRounding, inverse_lerp}};
+use egui::{Context, Id, LayerId, NumExt, Order, Painter, Pos2, Rect, Stroke, StrokeKind, Ui, Vec2, vec2};
+
 
 use crate::kairos_editor::ui::docking_tab::{AllowedSplits, dock_state::tree::{NodeIndex, Split, TabDestination, TabIndex, TabInsert}, styles::Style, surfaces::SurfaceIndex};
 

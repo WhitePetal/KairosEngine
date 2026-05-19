@@ -64,7 +64,6 @@ impl Drawer for ConsoleWindow {
         &self, 
         ui: Option<&mut egui::Ui>, 
         _ctx: &egui::Context, 
-        _frame: &mut eframe::Frame, 
         _messager: &mut Messager,
         log: &mut Log,
     ) {

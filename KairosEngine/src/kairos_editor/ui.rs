@@ -57,13 +57,12 @@ impl TabDrawer for KairosTabDrawer {
         ui: &mut egui::Ui, 
         tab: &mut Self::Tab, 
         ctx: &egui::Context, 
-        frame: &mut eframe::Frame, 
         messager: &mut Messager, 
         log: &mut Log,
         drawers: &Vec<Box<dyn Drawer>>
     ) {
         let tab = &drawers[*tab];
-        tab.update(Some(ui), ctx, frame, messager, log);
+        tab.update(Some(ui), ctx, messager, log);
     }
 
     fn on_close(&mut self, tab: &mut Self::Tab, messager: &mut Messager, drawers: &Vec<Box<dyn Drawer>>) -> OnCloseResponse {
@@ -85,7 +84,6 @@ pub trait Drawer: Any {
         &self, 
         ui: Option<&mut egui::Ui>, 
         ctx: &egui::Context, 
-        frame: &mut eframe::Frame, 
         messager: &mut Messager,
         log: &mut Log
     );
@@ -151,14 +149,13 @@ impl Context {
 
     pub fn darw(
         &mut self, 
-        ctx: &egui::Context, 
-        frame: &mut eframe::Frame, 
+        ctx: &egui::Context,
         log: &mut Log
     ) {
         // tool_bar
         let tool_bar_type_id = TypeId::of::<ToolBar>();
         if let Some(id) = self.ids.get(&tool_bar_type_id) {
-            self.drawers[*id].update(None, ctx, frame, &mut self.messager, log);
+            self.drawers[*id].update(None, ctx, &mut self.messager, log);
         }
 
         // 中央区域显示内容
@@ -167,7 +164,7 @@ impl Context {
                 DockArea::new("KairosEditor Main DockArea", &mut self.tab_tree)
                     .show_inside(
                         ui, 
-                        ctx, frame, 
+                        ctx, 
                         &mut self.messager, 
                         log,
                         &self.drawers, 
