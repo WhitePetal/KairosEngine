@@ -629,6 +629,12 @@ pub enum SurfaceBottomPanelLocation {
     Bottom(SurfaceIndex, NodeIndex)
 }
 
+pub enum SurfaceRightPanelLocation {
+    None,
+    Center(SurfaceIndex, NodeIndex),
+    Right(SurfaceIndex, NodeIndex)
+}
+
 pub enum SurfaceLeftPanelLocation {
     None,
     Center(SurfaceIndex, NodeIndex),
@@ -701,63 +707,64 @@ where
         tab_location
     }
 
-    pub fn find_surface_right_panel_location(&self, surface: SurfaceIndex) -> Option<(SurfaceIndex, NodeIndex)> {
-        let mut tab_location = None;
-        self[surface].iter().for_each(|node| {
-            match node {
-                Node::Leaf(leaf_node) => {
-                    if !leaf_node.is_empty() {
-                        let tab = &leaf_node.drawers[leaf_node.active.0];
-                        let location = self.find_drawer(tab).unwrap();
-                        let parent_index = location.1.parent();
-                        if let Some(parent_index) = parent_index {
-                            if self[surface][parent_index].is_horizontal() && location.1.is_right() {
-                                tab_location = Some((location.0, location.1));
-                                return;
-                            }
-                        }
-                    }
-                },
-                _ => {},
+    pub fn find_surface_right_panel_location(&self, surface: SurfaceIndex, root_index: NodeIndex) -> SurfaceRightPanelLocation {
+        let mut tab_location = SurfaceRightPanelLocation::None;
+        if let Some(root) = self[surface].nodes.get(root_index.0) {
+            if root.is_vertical() {
+                tab_location = SurfaceRightPanelLocation::Center(surface, root_index);
+            } else if root.is_horizontal(){
+                tab_location = SurfaceRightPanelLocation::Right(surface, root_index.right());
+            } else if root.is_empty() {
+                tab_location = SurfaceRightPanelLocation::Center(surface, root_index);
+            } else if root.is_leaf() {
+                if root.drawers_count() == 0 {
+                    tab_location = SurfaceRightPanelLocation::Center(surface, root_index);
+                } else {
+                    tab_location = SurfaceRightPanelLocation::Right(surface, root_index);
+                }
             }
-        });
+        }
         tab_location
     }
 
-    pub fn find_surface_left_panel_location(&self, surface: SurfaceIndex) -> SurfaceLeftPanelLocation {
+    pub fn find_surface_left_panel_location(&self, surface: SurfaceIndex, root_index: NodeIndex) -> SurfaceLeftPanelLocation {
         let mut tab_location = SurfaceLeftPanelLocation::None;
-        self[surface].iter().for_each(|node| {
-            match node {
-                Node::Leaf(leaf_node) => {
-                    if !leaf_node.is_empty() {
-                        let tab = &leaf_node.drawers[leaf_node.active.0];
-                        let location = self.find_drawer(tab).unwrap();
-                        let parent_index = location.1.parent();
-                        if let Some(parent_index) = parent_index {
-                            let g_parent_index = parent_index.parent();
-                            if let Some(g_parent_index) = g_parent_index {
-                                if self[surface][g_parent_index].is_vertical() 
-                                    && parent_index.is_left() 
-                                    && self[surface][parent_index].is_horizontal()
-                                    && location.1.is_left() {
-    
-                                    tab_location = SurfaceLeftPanelLocation::Left(location.0, location.1);
-                                    return;
-                                }
-                            } 
-                            if self[surface][parent_index].is_vertical() {
-                                if location.1.is_left() {
-                                    tab_location = SurfaceLeftPanelLocation::Center(location.0, location.1);
-                                } else {
-                                    tab_location = SurfaceLeftPanelLocation::Center(location.0, parent_index.left());
-                                }
+        if let Some(root) = self[surface].nodes.get(root_index.0) {
+            if root.is_horizontal() {
+                let left_node_index = root_index.left();
+                if let Some(left_node) = self[surface].nodes.get(left_node_index.0) {
+                    match left_node {
+                        Node::Empty | Node::Horizontal(_)  => {
+                            tab_location = SurfaceLeftPanelLocation::Center(surface, left_node_index)
+                        },
+                        Node::Leaf(leaf_node) => {
+                            if leaf_node.drawers_count() == 0 {
+                                tab_location = SurfaceLeftPanelLocation::Center(surface, left_node_index)
+                            } else {
+                                tab_location = SurfaceLeftPanelLocation::Left(surface, left_node_index)
                             }
+                        },
+                        Node::Vertical(_) => {
+                            tab_location = self.find_surface_left_panel_location(surface, left_node_index.left())
                         }
                     }
-                },
-                _ => {},
+                }
+                
+            } else  if root.is_vertical() {
+                let left_node_index = root_index.left();
+                if let Some(_) = self[surface].nodes.get(left_node_index.0) {
+                    tab_location = SurfaceLeftPanelLocation::Center(surface, root_index.left());
+                }
+            } else if root.is_empty() {
+                tab_location = SurfaceLeftPanelLocation::Center(surface, root_index);
+            } else if root.is_leaf() {
+                if root.drawers_count() == 0 {
+                    tab_location = SurfaceLeftPanelLocation::Center(surface, root_index);
+                } else {
+                    tab_location = SurfaceLeftPanelLocation::Left(surface, root_index);
+                }
             }
-        });
+        }
         tab_location
     }
 }

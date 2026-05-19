@@ -3,7 +3,7 @@ use std::{any::{Any, TypeId, type_name}, collections::{HashMap, VecDeque}, proce
 use eframe::egui::{self};
 use kairos_engine::log::Log;
 
-use crate::{kairos_dialog, kairos_editor::ui::{about_window::AboutWindow, console_window::ConsoleWindow, docking_tab::{DockArea, dock_state::{DockState, SurfaceBottomPanelLocation, tree::NodeIndex}, surfaces::SurfaceIndex, tab_drawer::{OnCloseResponse, TabDrawer}, window_state::WindowState}, hierarchy_window::HierarchyWindow, inspector_window::InspectorWindow, preferences_window::PreferencesWindow, project_window::ProjectWindow, tool_bar::ToolBar, ui_style_fields::{StyleField, StylePage}}};
+use crate::{kairos_dialog, kairos_editor::ui::{about_window::AboutWindow, console_window::ConsoleWindow, docking_tab::{DockArea, dock_state::{DockState, SurfaceBottomPanelLocation, SurfaceLeftPanelLocation, SurfaceRightPanelLocation, tree::NodeIndex}, surfaces::SurfaceIndex, tab_drawer::{OnCloseResponse, TabDrawer}, window_state::WindowState}, hierarchy_window::HierarchyWindow, inspector_window::InspectorWindow, preferences_window::PreferencesWindow, project_window::ProjectWindow, tool_bar::ToolBar, ui_style_fields::{StyleField, StylePage}}};
 
 pub mod paths;
 pub mod dialog;
@@ -268,11 +268,17 @@ impl Context {
                         ctx, 
                         InspectorWindow::new, 
                         |state, id| {
-                            let location = state.find_surface_right_panel_location(SurfaceIndex::main());
-                            if let Some(location) = location {
-                                state[location.0][location.1].append_drawer(id);
-                            } else {
-                                state.main_surface_mut().split_right(NodeIndex::root(), 0.7, vec![id]);
+                            let location = state.find_surface_right_panel_location(SurfaceIndex::main(), NodeIndex::root());
+                            match location {
+                                SurfaceRightPanelLocation::None => {
+                                    state.main_surface_mut().split_right(NodeIndex::root(), 0.7, vec![id]);
+                                },
+                                SurfaceRightPanelLocation::Center(surface_index, node_index) => {
+                                    state[surface_index].split_right(node_index, 0.7, vec![id]);
+                                },
+                                SurfaceRightPanelLocation::Right(surface_index, node_index) => {
+                                    state[surface_index][node_index].append_drawer(id);
+                                },
                             }
                         }
                     );
@@ -285,23 +291,23 @@ impl Context {
                         ctx, 
                         HierarchyWindow::new,
                         |state, id| {
-                            let location = state.find_surface_left_panel_location(SurfaceIndex::main());
+                            let location = state.find_surface_left_panel_location(SurfaceIndex::main(), NodeIndex::root());
                             match location {
-                                docking_tab::dock_state::SurfaceLeftPanelLocation::None => {
+                                SurfaceLeftPanelLocation::None => {
                                     state.main_surface_mut().split_left(
                                         NodeIndex::root(), 
                                         0.3, 
                                         vec![id]
                                     );
                                 },
-                                docking_tab::dock_state::SurfaceLeftPanelLocation::Center(surfcade_index, node_index) => {
+                                SurfaceLeftPanelLocation::Center(surfcade_index, node_index) => {
                                     state[surfcade_index].split_left(
                                         node_index,
                                         0.3,
                                         vec![id]
                                     );
                                 },
-                                docking_tab::dock_state::SurfaceLeftPanelLocation::Left(surface_index, node_index) => {
+                                SurfaceLeftPanelLocation::Left(surface_index, node_index) => {
                                     state[surface_index][node_index].append_drawer(id);
                                 },
                             }
