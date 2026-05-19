@@ -1,10 +1,11 @@
 use std::{any::type_name, fs};
 
 use eframe::egui;
+use kairos_engine::log::Log;
 use serde::{Deserialize, Serialize};
 use sonic_rs::from_str;
 
-use crate::kairos_editor::ui::{Drawer, Message, paths};
+use crate::kairos_editor::ui::{Drawer, Message, Messager, paths};
 
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -59,12 +60,23 @@ impl Drawer for ConsoleWindow {
 
     }
 
-    fn update(&self, ui: Option<&mut egui::Ui>, _ctx: &eframe::egui::Context, _frame: &mut eframe::Frame, _messager: &mut super::Messager) {
+    fn update(
+        &self, 
+        ui: Option<&mut egui::Ui>, 
+        _ctx: &eframe::egui::Context, 
+        _frame: &mut eframe::Frame, 
+        _messager: &mut Messager,
+        log: &mut Log,
+    ) {
         let ui = ui.unwrap();
         ui.label("TODO: Print Console");
+        
+        while let Some(log) = log.pop_front() {
+            ui.label(log.message);
+        }
     }
 
-    fn close(&self, messager: &mut super::Messager) {
+    fn close(&self, messager: &mut Messager) {
         messager.send(Message::CloseConsoleTab);
     }
 

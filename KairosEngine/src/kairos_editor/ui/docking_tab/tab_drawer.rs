@@ -1,4 +1,5 @@
 use eframe::egui::{self, Id, Ui, WidgetText};
+use kairos_engine::log::Log;
 
 use crate::kairos_editor::ui::{Drawer, Messager, docking_tab::{dock_state::tree::NodeIndex, styles::TabStyle, surfaces::SurfaceIndex}};
 
@@ -24,6 +25,7 @@ pub trait TabDrawer {
         ctx: &eframe::egui::Context, 
         frame: &mut eframe::Frame, 
         messager: &mut Messager,
+        log: &mut Log,
         drawers: &Vec<Box<dyn Drawer>>
     );
 

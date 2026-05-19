@@ -1,6 +1,7 @@
 use std::{any::{Any, TypeId, type_name}, collections::{HashMap, VecDeque}, process::id};
 
 use eframe::egui::{self};
+use kairos_engine::log::Log;
 
 use crate::{kairos_dialog, kairos_editor::ui::{about_window::AboutWindow, console_window::ConsoleWindow, docking_tab::{DockArea, dock_state::{DockState, SurfaceBottomPanelLocation, tree::NodeIndex}, surfaces::SurfaceIndex, tab_drawer::{OnCloseResponse, TabDrawer}, window_state::WindowState}, hierarchy_window::HierarchyWindow, inspector_window::InspectorWindow, preferences_window::PreferencesWindow, project_window::ProjectWindow, tool_bar::ToolBar, ui_style_fields::{StyleField, StylePage}}};
 
@@ -48,9 +49,18 @@ impl TabDrawer for KairosTabDrawer {
         tab.get_title()
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut Messager, drawers: &Vec<Box<dyn Drawer>>) {
+    fn ui(
+        &mut self, 
+        ui: &mut egui::Ui, 
+        tab: &mut Self::Tab, 
+        ctx: &eframe::egui::Context, 
+        frame: &mut eframe::Frame, 
+        messager: &mut Messager, 
+        log: &mut Log,
+        drawers: &Vec<Box<dyn Drawer>>
+    ) {
         let tab = &drawers[*tab];
-        tab.update(Some(ui), ctx, frame, messager);
+        tab.update(Some(ui), ctx, frame, messager, log);
     }
 
     fn on_close(&mut self, tab: &mut Self::Tab, messager: &mut Messager, drawers: &Vec<Box<dyn Drawer>>) -> OnCloseResponse {
@@ -68,7 +78,14 @@ impl TabDrawer for KairosTabDrawer {
 pub trait Drawer: Any {
     fn show_window(&self, state: Option<&mut WindowState>);
 
-    fn update(&self, ui: Option<&mut egui::Ui>, ctx: &eframe::egui::Context, frame: &mut eframe::Frame, messager: &mut Messager);
+    fn update(
+        &self, 
+        ui: Option<&mut egui::Ui>, 
+        ctx: &eframe::egui::Context, 
+        frame: &mut eframe::Frame, 
+        messager: &mut Messager,
+        log: &mut Log
+    );
 
     fn close(&self, messager: &mut Messager);
 
@@ -128,23 +145,35 @@ impl Context {
         }
     }
 
-    pub fn darw(&mut self, ctx: &eframe::egui::Context, frame: &mut eframe::Frame) {
+    pub fn darw(
+        &mut self, 
+        ctx: &eframe::egui::Context, 
+        frame: &mut eframe::Frame, 
+        log: &mut Log
+    ) {
         // tool_bar
         let tool_bar_type_id = TypeId::of::<ToolBar>();
         if let Some(id) = self.ids.get(&tool_bar_type_id) {
-            self.drawers[*id].update(None, ctx, frame, &mut self.messager);
+            self.drawers[*id].update(None, ctx, frame, &mut self.messager, log);
         }
 
         // 中央区域显示内容
         egui::CentralPanel::default()
             .show(ctx, |ui| {
                 DockArea::new("KairosEditor Main DockArea", &mut self.tab_tree)
-                    .show_inside(ui, ctx, frame, &mut self.messager, &self.drawers, &mut self.tab_viewer);
+                    .show_inside(
+                        ui, 
+                        ctx, frame, 
+                        &mut self.messager, 
+                        log,
+                        &self.drawers, 
+                        &mut self.tab_viewer
+                    );
             }
         );
     }
 
-    pub fn handle(&mut self, ctx: &eframe::egui::Context) {
+    pub fn handle(&mut self, ctx: &eframe::egui::Context, log: &mut Log) {
         while let Some(msg) = self.messager.messages.pop_front() {
             match msg {
                 Message::CreateToolbar => {

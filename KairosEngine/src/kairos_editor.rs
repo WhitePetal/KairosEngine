@@ -1,4 +1,5 @@
 use eframe::egui::Visuals;
+use kairos_engine::log::Log;
 
 
 pub mod consts;
@@ -6,14 +7,17 @@ pub mod ui;
 
 pub struct KairosEngine {
     ui_context: ui::Context,
+    log: Log,
 }
 
 impl KairosEngine {
     pub fn new(_cc: &eframe::CreationContext) -> Result<Self, Box<dyn std::error::Error>> {
         let ui_context = ui::Context::new();
+        let log = Log::new();
 
         Ok(Self{
-            ui_context
+            ui_context,
+            log,
         })
     }
 }
@@ -24,9 +28,9 @@ impl eframe::App for KairosEngine {
         visuals.button_frame = true;
         ctx.set_visuals(visuals);
 
-        self.ui_context.handle(ctx);
+        self.ui_context.handle(ctx, &mut self.log);
 
-        self.ui_context.darw(ctx, frame);
+        self.ui_context.darw(ctx, frame, &mut self.log);
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {

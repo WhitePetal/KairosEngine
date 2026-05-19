@@ -1,5 +1,6 @@
 use std::{any::type_name, fs};
 
+use kairos_engine::log::Log;
 use serde::{Deserialize, Serialize};
 use sonic_rs::from_str;
 
@@ -59,7 +60,14 @@ impl Drawer for HierarchyWindow {
         
     }
 
-    fn update(&self, ui: Option<&mut eframe::egui::Ui>, _ctx: &eframe::egui::Context, _frame: &mut eframe::Frame, _messager: &mut super::Messager) {
+    fn update(
+        &self, 
+        ui: Option<&mut eframe::egui::Ui>, 
+        _ctx: &eframe::egui::Context, 
+        _frame: &mut eframe::Frame, 
+        _messager: &mut super::Messager,
+        _log: &mut Log
+    ) {
         let ui = ui.unwrap();
         ui.label("TODO: Hierarchy");
     }

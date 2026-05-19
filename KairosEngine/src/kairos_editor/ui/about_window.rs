@@ -1,10 +1,12 @@
 use std::{any::type_name, fs};
 
 use eframe::egui::{self, Vec2};
+use kairos_engine::log::Log;
 use serde::{Deserialize, Serialize};
 use sonic_rs::from_str;
 
 use crate::kairos_editor::consts;
+use crate::kairos_editor::ui::Messager;
 use crate::kairos_editor::ui::docking_tab::window_state::WindowState;
 use crate::kairos_editor::ui::{Drawer, paths, ui_style_fields::{FloatFieldEditViewType, FloatStyleField, StyleField}};
 
@@ -69,7 +71,16 @@ impl Drawer for AboutWindow {
             },
         }
     }
-    fn update(&self, ui: Option<&mut egui::Ui>, _ctx: &eframe::egui::Context, _frame: &mut eframe::Frame, _messager: &mut super::Messager) {
+    fn update(
+        &self, 
+        ui: Option<&mut egui::Ui>, 
+        _ctx: &eframe::egui::Context, 
+        _frame: &mut eframe::Frame, 
+        _messager: &mut Messager,
+        log: &mut Log
+    ) {
+        // TODO: test log
+        log.info("about_window update");
         let ui = ui.unwrap();
         // TODO: Icon
         ui.heading("KairosEngine");
@@ -79,7 +90,7 @@ impl Drawer for AboutWindow {
         ui.label("TODO: add icon...");
     }
 
-    fn close(&self, messager: &mut super::Messager) {
+    fn close(&self, messager: &mut Messager) {
         messager.send(super::Message::CloseAboutWindow);
     }
     

@@ -3,7 +3,7 @@
 use std::{any::type_name, fs, ops::Deref};
 
 use eframe::egui::{self, Vec2};
-use kairos_engine::math;
+use kairos_engine::{log::Log, math};
 use serde::{Deserialize, Serialize};
 use sonic_rs::from_str;
 
@@ -78,7 +78,14 @@ impl Drawer for PreferencesWindow {
         }
     }
 
-    fn update(&self, ui: Option<&mut egui::Ui>, _ctx: &eframe::egui::Context, _frame: &mut eframe::Frame, messager: &mut super::Messager) {
+    fn update(
+        &self, 
+        ui: Option<&mut egui::Ui>, 
+        _ctx: &eframe::egui::Context, 
+        _frame: &mut eframe::Frame, 
+        messager: &mut super::Messager,
+        _log: &mut Log
+    ) {
         let ui = ui.unwrap();
         self.ui(ui, messager);
     }
