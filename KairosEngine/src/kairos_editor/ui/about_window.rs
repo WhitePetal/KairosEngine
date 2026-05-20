@@ -1,9 +1,9 @@
 use std::{any::type_name, fs};
 
 use egui::{self, Vec2};
+use toml::from_str;
 use crate::log::Log;
 use serde::{Deserialize, Serialize};
-use sonic_rs::from_str;
 
 use crate::kairos_editor::consts;
 use crate::kairos_editor::ui::Messager;

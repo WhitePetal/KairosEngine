@@ -45,6 +45,8 @@
 - eframe
 - egui_extras
 - egui_dock
+- toml
+- tokio
 
 # AIs
 - Kimi

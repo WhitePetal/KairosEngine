@@ -1,9 +1,9 @@
 use std::{any::type_name, fs::{self, File}, io::Write};
 
 use egui::{self, TopBottomPanel, containers::menu};
+use toml::from_str;
 use crate::{log::Log, math};
 use serde::{Deserialize, Serialize};
-use sonic_rs::from_str;
 
 use crate::{kairos_dialog, kairos_editor::ui::{Drawer, Message, paths, ui_style_fields::{ColorStyleField, FloatFieldEditViewType, FloatStyleField, StyleField}}};
 

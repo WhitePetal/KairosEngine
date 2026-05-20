@@ -1,7 +1,7 @@
 use std::{any::type_name, fs};
 
 use serde::{Deserialize, Serialize};
-use sonic_rs::from_str;
+use toml::from_str;
 
 use crate::kairos_editor::ui::{Drawer, Message, paths};
 
