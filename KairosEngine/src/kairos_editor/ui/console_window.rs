@@ -3,7 +3,7 @@ use std::{any::type_name, fs};
 use egui;
 use kairos_engine::log::Log;
 use serde::{Deserialize, Serialize};
-use sonic_rs::from_str;
+use toml::from_str;
 
 use crate::kairos_editor::ui::{Drawer, Message, Messager, paths};
 
@@ -23,9 +23,9 @@ pub struct ConsoleWindow {
 
 impl ConsoleWindowStyle {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let style_json = fs::read_to_string(paths::PATH_CONSOLE_WINDOW_STYLE)
+        let style_toml = fs::read_to_string(paths::PATH_CONSOLE_WINDOW_STYLE)
             .map_err(|error| format!("Load ConsoleWindow Model Json Failed, path: {}, error: {}", paths::PATH_CONSOLE_WINDOW_STYLE, error))?;
-        let style = from_str(&style_json)
+        let style = from_str(&style_toml)
             .map_err(|error| format!("Deserialize ConsoleWindow Model Json Failed, error: {}", error))?;
 
         Ok(style)

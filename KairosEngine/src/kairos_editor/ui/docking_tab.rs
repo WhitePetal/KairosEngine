@@ -1,6 +1,7 @@
 use std::ops::RangeInclusive;
 
-use eframe::{emath::TSTransform, epaint::TextShape};
+use epaint::TextShape;
+use emath::TSTransform;
 use egui::{self, Align, Align2, Button, CentralPanel, Color32, Context, CornerRadius, CursorIcon, EventFilter, Frame, Id, Key, LayerId, Layout, Modifiers, NumExt, Order, Popup, PopupCloseBehavior, Pos2, Rect, Response, RichText, ScrollArea, Sense, Shape, Stroke, StrokeKind, TextStyle, Ui, UiBuilder, Vec2, Visuals, WidgetText, lerp, pos2, style::{WidgetVisuals, Widgets}, vec2};
 use kairos_engine::log::Log;
 

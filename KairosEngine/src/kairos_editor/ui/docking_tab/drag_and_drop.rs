@@ -1,6 +1,6 @@
 use std::ops::BitOrAssign;
 
-use eframe::{emath::{GuiRounding, inverse_lerp}};
+use emath::{GuiRounding, inverse_lerp};
 use egui::{Context, Id, LayerId, NumExt, Order, Painter, Pos2, Rect, Stroke, StrokeKind, Ui, Vec2, vec2};
 
 
