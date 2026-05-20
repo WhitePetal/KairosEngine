@@ -55,7 +55,7 @@ impl GpuState {
                 )
             })?;
 
-        let format = caps
+        caps
             .formats
             .iter()
             .copied()
@@ -215,7 +215,7 @@ impl KairosEditorRuntime {
         egui_extras::install_image_loaders(&egui_ctx);
 
         egui_ctx.set_request_repaint_callback(move |info| {
-            proxy.send_event(KairosEditorRuntimeEvent::RequestRepaint { 
+            let _ = proxy.send_event(KairosEditorRuntimeEvent::RequestRepaint { 
                 viewport_id: info.viewport_id, 
                 delay: info.delay
             });

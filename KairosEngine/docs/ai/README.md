@@ -15,3 +15,4 @@
 | [resource-manager-design.md](./resource-manager-design.md) | 资源管理器设计（TypeMap + Handle）及 `KairosEngine` → `ui::Context` 传递方案 |
 | [scene-window-wgpu-integration.md](./scene-window-wgpu-integration.md) | SceneWindow 中接入 wgpu 渲染，以及保留或移除 `eframe` 的架构取舍 |
 | [eframe-runtime-migration-notes.md](./eframe-runtime-migration-notes.md) | 剥离 `eframe`、迁移到 `winit + wgpu + egui-winit + egui-wgpu` 自有 runtime 的接力笔记 |
+| [runtime-code-walkthrough.md](./runtime-code-walkthrough.md) | 自有 runtime 代码走读：`main`、`new`、`resumed/create_window`、`redraw` 的逐段讲解 |
