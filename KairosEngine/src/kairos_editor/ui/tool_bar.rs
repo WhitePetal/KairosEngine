@@ -1,7 +1,7 @@
 use std::{any::type_name, fs::{self, File}, io::Write};
 
 use egui::{self, TopBottomPanel, containers::menu};
-use kairos_engine::{log::Log, math};
+use crate::{log::Log, math};
 use serde::{Deserialize, Serialize};
 use sonic_rs::from_str;
 

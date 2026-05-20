@@ -1,10 +1,5 @@
-mod kairos_dialog;
-mod kairos_editor;
-
-
+use kairos_engine::{kairos_dialog, kairos_editor::runtime::{KairosEditorRuntime, KairosEditorRuntimeEvent}};
 use winit::event_loop::EventLoop;
-
-use crate::kairos_editor::{runtime::{KairosEditorRuntime, KairosEditorRuntimeEvent}};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>>{

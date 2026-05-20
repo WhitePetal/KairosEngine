@@ -3,7 +3,7 @@
 use std::{any::type_name, fs};
 
 use egui::{self, Vec2};
-use kairos_engine::{log::Log, math};
+use crate::{log::Log, math};
 use serde::{Deserialize, Serialize};
 use sonic_rs::from_str;
 

@@ -1,5 +1,5 @@
 use egui::Visuals;
-use kairos_engine::log::Log;
+use crate::log::Log;
 
 
 pub mod consts;

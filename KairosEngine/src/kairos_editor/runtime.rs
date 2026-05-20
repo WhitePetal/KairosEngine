@@ -55,7 +55,7 @@ impl GpuState {
                 )
             })?;
 
-        caps
+        config.format = caps
             .formats
             .iter()
             .copied()

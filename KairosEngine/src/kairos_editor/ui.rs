@@ -1,7 +1,7 @@
 use std::{any::{Any, TypeId, type_name}, collections::{HashMap, VecDeque}, process::id};
 
 use egui::{self};
-use kairos_engine::log::Log;
+use crate::log::Log;
 
 use crate::{kairos_dialog, kairos_editor::ui::{about_window::AboutWindow, console_window::ConsoleWindow, docking_tab::{DockArea, dock_state::{DockState, SurfaceBottomPanelLocation, SurfaceCenterPanelLocation, SurfaceLeftPanelLocation, SurfaceRightPanelLocation, tree::NodeIndex}, surfaces::SurfaceIndex, tab_drawer::{OnCloseResponse, TabDrawer}, window_state::WindowState}, hierarchy_window::HierarchyWindow, inspector_window::InspectorWindow, preferences_window::PreferencesWindow, project_window::ProjectWindow, scene_window::SceneWindow, tool_bar::ToolBar, ui_style_fields::{StyleField, StylePage}}};
 

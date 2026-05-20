@@ -1,5 +1,5 @@
 use egui::{self, Id, Ui, WidgetText};
-use kairos_engine::log::Log;
+use crate::log::Log;
 
 use crate::kairos_editor::ui::{Drawer, Messager, docking_tab::{dock_state::tree::NodeIndex, styles::TabStyle, surfaces::SurfaceIndex}};
 

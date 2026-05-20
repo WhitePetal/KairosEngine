@@ -1,6 +1,6 @@
 use std::{any::type_name, fs};
 
-use kairos_engine::log::Log;
+use crate::log::Log;
 use serde::{Deserialize, Serialize};
 use sonic_rs::from_str;
 

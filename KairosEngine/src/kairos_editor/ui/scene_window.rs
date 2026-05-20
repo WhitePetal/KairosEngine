@@ -62,7 +62,7 @@ impl Drawer for SceneWindow {
         ui: Option<&mut egui::Ui>, 
         _ctx: &egui::Context, 
         _messager: &mut super::Messager,
-        _log: &mut kairos_engine::log::Log
+        _log: &mut crate::log::Log
     ) {
         let ui = ui.unwrap();
         ui.label("TODO: Scene");

@@ -1,7 +1,7 @@
 use std::{any::type_name, fs};
 
 use egui::{self, Vec2};
-use kairos_engine::log::Log;
+use crate::log::Log;
 use serde::{Deserialize, Serialize};
 use sonic_rs::from_str;
 

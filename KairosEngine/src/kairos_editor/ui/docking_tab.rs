@@ -3,7 +3,7 @@ use std::ops::RangeInclusive;
 use epaint::TextShape;
 use emath::TSTransform;
 use egui::{self, Align, Align2, Button, CentralPanel, Color32, Context, CornerRadius, CursorIcon, EventFilter, Frame, Id, Key, LayerId, Layout, Modifiers, NumExt, Order, Popup, PopupCloseBehavior, Pos2, Rect, Response, RichText, ScrollArea, Sense, Shape, Stroke, StrokeKind, TextStyle, Ui, UiBuilder, Vec2, Visuals, WidgetText, lerp, pos2, style::{WidgetVisuals, Widgets}, vec2};
-use kairos_engine::log::Log;
+use crate::log::Log;
 
 use crate::kairos_editor::{self, ui::{Messager, docking_tab::{dock_state::{DockState, tree::{NodeIndex, TabDestination, TabIndex, node::{Node, leaf_node::LeafNode}}}, drag_and_drop::{DragData, DragDropState, HoverData, TreeComponent}, state::State, styles::{ButtonsStyle, OverlayType, SeparatorStyle, Style, TabAddAlign, TabBarStyle, TabBodyStyle, TabInteractionStyle, TabStyle}, surfaces::SurfaceIndex, tab_drawer::{OnCloseResponse, TabDrawer}}}};
 
