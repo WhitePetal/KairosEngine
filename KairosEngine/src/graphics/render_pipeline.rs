@@ -1,10 +1,11 @@
 use std::{error::Error, sync::Arc};
 
 use wgpu::{
-    Adapter, BackendOptions, Backends, CommandEncoderDescriptor, Device, ExperimentalFeatures,
-    Features, InstanceFlags, Limits, LoadOp, MemoryBudgetThresholds, MemoryHints, Operations,
-    PowerPreference, PresentMode, Queue, RenderPassColorAttachment, RenderPassDescriptor,
-    RequestAdapterOptions, StoreOp, Surface, SurfaceConfiguration, SurfaceError, TextureUsages,
+    Adapter, BackendOptions, Backends, CommandEncoder, CommandEncoderDescriptor, Device,
+    ExperimentalFeatures, Features, InstanceFlags, Limits, LoadOp, MemoryBudgetThresholds,
+    MemoryHints, Operations, PowerPreference, PresentMode, Queue, RenderPass,
+    RenderPassColorAttachment, RenderPassDescriptor, RequestAdapterOptions, StoreOp, Surface,
+    SurfaceConfiguration, SurfaceError, SurfaceTexture, TextureUsages, TextureView,
     TextureViewDescriptor, Trace, wgt::DeviceDescriptor,
 };
 use winit::{dpi::PhysicalSize, window::Window};
@@ -78,42 +79,56 @@ impl RenderPipeline {
         })
     }
 
-    pub fn render(&mut self) -> Result<(), SurfaceError> {
+    pub fn get_command_encoder(
+        &mut self,
+    ) -> Result<(SurfaceTexture, TextureView, CommandEncoder), SurfaceError> {
+        if self.window_size_changed {
+            self.resize_surface();
+        }
+
         let output = self.surface.get_current_texture()?;
         let view = output
             .texture
             .create_view(&TextureViewDescriptor::default());
-        let mut encoder = self
+        let encoder = self
             .device
             .create_command_encoder(&CommandEncoderDescriptor {
                 label: Some("RenderPipeline Command Encoder"),
             });
 
-        {
-            let _render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
-                label: Some("Render Pass"),
-                color_attachments: &[Some(RenderPassColorAttachment {
-                    view: &view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: Operations {
-                        load: LoadOp::Clear(wgpu::Color {
-                            r: 0.1,
-                            g: 0.2,
-                            b: 0.3,
-                            a: 1.0,
-                        }),
-                        store: StoreOp::Store,
-                    },
-                })],
-                ..Default::default()
-            });
-        }
+        Ok((output, view, encoder))
+    }
 
+    pub fn render<'encoder>(
+        &mut self,
+        encoder: &'encoder mut CommandEncoder,
+        view: TextureView,
+    ) -> RenderPass<'encoder> {
+        let render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
+            label: Some("Render Pass"),
+            color_attachments: &[Some(RenderPassColorAttachment {
+                view: &view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: Operations {
+                    load: LoadOp::Clear(wgpu::Color {
+                        r: 0.1,
+                        g: 0.2,
+                        b: 0.3,
+                        a: 1.0,
+                    }),
+                    store: StoreOp::Store,
+                },
+            })],
+            ..Default::default()
+        });
+
+        render_pass
+    }
+
+    pub fn submit(&self, output: SurfaceTexture, encoder: CommandEncoder) {
         self.queue.submit(Some(encoder.finish()));
         output.present();
-
-        Ok(())
     }
 
     pub fn set_window_resize(&mut self, size: PhysicalSize<u32>) {

@@ -113,91 +113,6 @@ impl KairosEditorRuntime {
         Ok(())
     }
 
-    fn draw_egui(
-        render_pipeline: &RenderPipeline,
-        egui_renderer: &mut egui_wgpu::Renderer,
-        textures_delta: &egui::TexturesDelta,
-        clipped_primitives: &[egui::ClippedPrimitive],
-        pixels_per_point: f32,
-    ) -> Result<(), wgpu::SurfaceError> {
-        for (id, image_delta) in &textures_delta.set {
-            egui_renderer.update_texture(
-                &render_pipeline.device,
-                &render_pipeline.queue,
-                *id,
-                &image_delta,
-            );
-        }
-
-        let output_frame = render_pipeline.surface.get_current_texture()?;
-        let target_view = output_frame
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-
-        let screen_descriptor = egui_wgpu::ScreenDescriptor {
-            size_in_pixels: [
-                render_pipeline.surface_config.width,
-                render_pipeline.surface_config.height,
-            ],
-            pixels_per_point,
-        };
-
-        let mut encoder =
-            render_pipeline
-                .device
-                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("KairosEditor egui command encoder"),
-                });
-
-        let user_cmd_buffers = egui_renderer.update_buffers(
-            &render_pipeline.device,
-            &render_pipeline.queue,
-            &mut encoder,
-            &clipped_primitives,
-            &screen_descriptor,
-        );
-
-        {
-            let render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("KairosEditor egui render pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &target_view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.015,
-                            g: 0.015,
-                            b: 0.018,
-                            a: 1.0,
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                    depth_slice: None,
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
-
-            let mut render_pass = render_pass.forget_lifetime();
-            egui_renderer.render(&mut render_pass, clipped_primitives, &screen_descriptor);
-        }
-
-        render_pipeline.queue.submit(
-            user_cmd_buffers
-                .into_iter()
-                .chain(std::iter::once(encoder.finish())),
-        );
-
-        output_frame.present();
-
-        for id in &textures_delta.free {
-            egui_renderer.free_texture(id);
-        }
-
-        Ok(())
-    }
-
     fn redraw(&mut self, event_loop: &ActiveEventLoop) {
         let Some(window) = self.window.as_ref().cloned() else {
             return;
@@ -248,68 +163,99 @@ impl KairosEditorRuntime {
             self.shutdown(event_loop);
             return;
         }
-        let render_result = {
-            let mut render_pipeline = self.render_pipeline.lock();
-            let Some(render_pipeline) = render_pipeline.as_mut() else {
-                return;
-            };
-            render_pipeline.render()
-        };
-        self.handle_render_error(event_loop, window.clone(), render_result);
 
         if let Some(delay) = repaint_delay {
             self.set_repaint_delay_from_output(delay);
         }
 
-        // let draw_egui_result = {
-        //     let mut render_pipeline_gurad = self.render_pipeline.lock();
-        //     let Some(render_pipeline) = render_pipeline_gurad.as_mut() else {
-        //         return;
-        //     };
-        //     let Some(egui_renderer) = self.egui_renderer.as_mut() else {
-        //         return;
-        //     };
+        let render_error = {
+            let mut render_pipeline = self.render_pipeline.lock();
+            let Some(render_pipeline) = render_pipeline.as_mut() else {
+                return;
+            };
 
-        //     let clipped_primitives = self
-        //         .egui_ctx
-        //         .tessellate(full_output.shapes, full_output.pixels_per_point);
+            match render_pipeline.get_command_encoder() {
+                Ok((output, view, mut encoder)) => {
+                    let egui_renderer = self.egui_renderer.as_mut().unwrap();
+                    for (id, image_delta) in &full_output.textures_delta.set {
+                        egui_renderer.update_texture(
+                            &render_pipeline.device,
+                            &render_pipeline.queue,
+                            *id,
+                            &image_delta,
+                        );
+                    }
 
-        //     Self::draw_egui(
-        //         render_pipeline,
-        //         egui_renderer,
-        //         &full_output.textures_delta,
-        //         &clipped_primitives,
-        //         full_output.pixels_per_point,
-        //     )
-        // };
+                    let pixels_per_point = full_output.pixels_per_point;
 
-        // self.handle_render_error(event_loop, window.clone(), draw_egui_result);
-        window.request_redraw();
-    }
+                    let clipped_primitives = self
+                        .egui_ctx
+                        .tessellate(full_output.shapes, pixels_per_point);
 
-    fn handle_render_error(
-        &mut self,
-        event_loop: &ActiveEventLoop,
-        window: Arc<Window>,
-        result: Result<(), wgpu::SurfaceError>,
-    ) {
-        match result {
-            Ok(()) => {}
-            Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
-                if let Some(render_pipeline) = self.render_pipeline.lock().as_mut() {
-                    render_pipeline.set_window_resize(window.inner_size());
+                    let screen_descriptor = egui_wgpu::ScreenDescriptor {
+                        size_in_pixels: [
+                            render_pipeline.surface_config.width,
+                            render_pipeline.surface_config.height,
+                        ],
+                        pixels_per_point,
+                    };
+
+                    let user_cmd_buffers = egui_renderer.update_buffers(
+                        &render_pipeline.device,
+                        &render_pipeline.queue,
+                        &mut encoder,
+                        &clipped_primitives,
+                        &screen_descriptor,
+                    );
+
+                    {
+                        let mut render_pass =
+                            render_pipeline.render(&mut encoder, view).forget_lifetime();
+
+                        egui_renderer.render(
+                            &mut render_pass,
+                            &clipped_primitives,
+                            &screen_descriptor,
+                        );
+                    }
+
+                    render_pipeline.queue.submit(
+                        user_cmd_buffers
+                            .into_iter()
+                            .chain(std::iter::once(encoder.finish())),
+                    );
+
+                    output.present();
+
+                    for id in &full_output.textures_delta.free {
+                        egui_renderer.free_texture(id);
+                    }
+
+                    window.request_redraw();
+                    None
                 }
-                window.request_redraw();
+                Err(error) => Some(error),
             }
-            Err(wgpu::SurfaceError::OutOfMemory) => {
-                log::error!("wgpu surface out of memory");
-                self.shutdown(event_loop);
-            }
-            Err(wgpu::SurfaceError::Timeout) => {
-                log::warn!("wgpu surface timeout");
-            }
-            Err(wgpu::SurfaceError::Other) => {
-                log::warn!("wgpu surface error");
+        };
+
+        if let Some(render_error) = render_error {
+            match render_error {
+                wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated => {
+                    if let Some(render_pipeline) = self.render_pipeline.lock().as_mut() {
+                        render_pipeline.set_window_resize(window.inner_size());
+                    }
+                    window.request_redraw();
+                }
+                wgpu::SurfaceError::OutOfMemory => {
+                    log::error!("wgpu surface out of memory");
+                    self.shutdown(event_loop);
+                }
+                wgpu::SurfaceError::Timeout => {
+                    log::warn!("wgpu surface timeout");
+                }
+                wgpu::SurfaceError::Other => {
+                    log::warn!("wgpu surface error");
+                }
             }
         }
     }
