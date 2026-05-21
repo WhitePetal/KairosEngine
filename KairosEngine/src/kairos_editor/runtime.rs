@@ -10,7 +10,7 @@ use parking_lot::Mutex;
 use winit::{
     application::ApplicationHandler,
     dpi::{LogicalSize, PhysicalSize},
-    event::WindowEvent,
+    event::{KeyEvent, WindowEvent},
     event_loop::{ActiveEventLoop, ControlFlow, EventLoopProxy},
     window::{Icon, Window},
 };
@@ -248,37 +248,56 @@ impl KairosEditorRuntime {
             self.shutdown(event_loop);
             return;
         }
+        let render_result = {
+            let mut render_pipeline = self.render_pipeline.lock();
+            let Some(render_pipeline) = render_pipeline.as_mut() else {
+                return;
+            };
+            render_pipeline.render()
+        };
+        self.handle_render_error(event_loop, window.clone(), render_result);
 
         if let Some(delay) = repaint_delay {
             self.set_repaint_delay_from_output(delay);
         }
-        let draw_egui_result = {
-            let mut render_pipeline_gurad = self.render_pipeline.lock();
-            let Some(render_pipeline) = render_pipeline_gurad.as_mut() else {
-                return;
-            };
-            let Some(egui_renderer) = self.egui_renderer.as_mut() else {
-                return;
-            };
 
-            let clipped_primitives = self
-                .egui_ctx
-                .tessellate(full_output.shapes, full_output.pixels_per_point);
+        // let draw_egui_result = {
+        //     let mut render_pipeline_gurad = self.render_pipeline.lock();
+        //     let Some(render_pipeline) = render_pipeline_gurad.as_mut() else {
+        //         return;
+        //     };
+        //     let Some(egui_renderer) = self.egui_renderer.as_mut() else {
+        //         return;
+        //     };
 
-            Self::draw_egui(
-                render_pipeline,
-                egui_renderer,
-                &full_output.textures_delta,
-                &clipped_primitives,
-                full_output.pixels_per_point,
-            )
-        };
+        //     let clipped_primitives = self
+        //         .egui_ctx
+        //         .tessellate(full_output.shapes, full_output.pixels_per_point);
 
-        match draw_egui_result {
+        //     Self::draw_egui(
+        //         render_pipeline,
+        //         egui_renderer,
+        //         &full_output.textures_delta,
+        //         &clipped_primitives,
+        //         full_output.pixels_per_point,
+        //     )
+        // };
+
+        // self.handle_render_error(event_loop, window.clone(), draw_egui_result);
+        window.request_redraw();
+    }
+
+    fn handle_render_error(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        window: Arc<Window>,
+        result: Result<(), wgpu::SurfaceError>,
+    ) {
+        match result {
             Ok(()) => {}
             Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
                 if let Some(render_pipeline) = self.render_pipeline.lock().as_mut() {
-                    render_pipeline.resize(window.inner_size());
+                    render_pipeline.set_window_resize(window.inner_size());
                 }
                 window.request_redraw();
             }
@@ -404,12 +423,12 @@ impl ApplicationHandler<KairosEditorRuntimeEvent> for KairosEditorRuntime {
             }
             WindowEvent::Resized(physical_size) => {
                 if let Some(render_pipeline) = self.render_pipeline.lock().as_mut() {
-                    render_pipeline.resize(physical_size);
+                    render_pipeline.set_window_resize(physical_size);
                 }
             }
             WindowEvent::ScaleFactorChanged { .. } => {
                 if let Some(render_pipeline) = self.render_pipeline.lock().as_mut() {
-                    render_pipeline.resize(window.inner_size());
+                    render_pipeline.set_window_resize(window.inner_size());
                 }
             }
             WindowEvent::RedrawRequested => {

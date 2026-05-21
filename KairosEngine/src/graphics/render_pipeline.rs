@@ -1,12 +1,13 @@
 use std::{error::Error, sync::Arc};
 
 use wgpu::{
-    Adapter, BackendOptions, Backends, Device, ExperimentalFeatures, Features, InstanceFlags,
-    Limits, MemoryBudgetThresholds, MemoryHints, PowerPreference, PresentMode, Queue,
-    RequestAdapterOptions, Surface, SurfaceConfiguration, TextureUsages, Trace,
-    wgt::DeviceDescriptor,
+    Adapter, BackendOptions, Backends, CommandEncoderDescriptor, Device, ExperimentalFeatures,
+    Features, InstanceFlags, Limits, LoadOp, MemoryBudgetThresholds, MemoryHints, Operations,
+    PowerPreference, PresentMode, Queue, RenderPassColorAttachment, RenderPassDescriptor,
+    RequestAdapterOptions, StoreOp, Surface, SurfaceConfiguration, SurfaceError, TextureUsages,
+    TextureViewDescriptor, Trace, wgt::DeviceDescriptor,
 };
-use winit::{dpi::PhysicalSize, platform::pump_events, window::Window};
+use winit::{dpi::PhysicalSize, window::Window};
 
 pub struct RenderPipeline {
     window: Arc<Window>,
@@ -77,14 +78,58 @@ impl RenderPipeline {
         })
     }
 
-    pub fn resize(&mut self, size: PhysicalSize<u32>) {
+    pub fn render(&mut self) -> Result<(), SurfaceError> {
+        let output = self.surface.get_current_texture()?;
+        let view = output
+            .texture
+            .create_view(&TextureViewDescriptor::default());
+        let mut encoder = self
+            .device
+            .create_command_encoder(&CommandEncoderDescriptor {
+                label: Some("RenderPipeline Command Encoder"),
+            });
+
+        {
+            let _render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
+                label: Some("Render Pass"),
+                color_attachments: &[Some(RenderPassColorAttachment {
+                    view: &view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: Operations {
+                        load: LoadOp::Clear(wgpu::Color {
+                            r: 0.1,
+                            g: 0.2,
+                            b: 0.3,
+                            a: 1.0,
+                        }),
+                        store: StoreOp::Store,
+                    },
+                })],
+                ..Default::default()
+            });
+        }
+
+        self.queue.submit(Some(encoder.finish()));
+        output.present();
+
+        Ok(())
+    }
+
+    pub fn set_window_resize(&mut self, size: PhysicalSize<u32>) {
         if size.width == 0 || size.height == 0 {
             return;
         }
 
-        self.surface_config.width = size.width;
-        self.surface_config.height = size.height;
+        self.window_size = size;
+        self.window_size_changed = true;
+    }
+
+    pub fn resize_surface(&mut self) {
+        self.surface_config.width = self.window_size.width;
+        self.surface_config.height = self.window_size.height;
         self.surface.configure(&self.device, &self.surface_config);
+        self.window_size_changed = false;
     }
 
     pub fn max_texture_side(&self) -> usize {
