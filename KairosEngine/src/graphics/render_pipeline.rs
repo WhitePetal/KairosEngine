@@ -1,12 +1,7 @@
 use std::{error::Error, sync::Arc};
 
 use wgpu::{
-    Adapter, BackendOptions, Backends, CommandEncoder, CommandEncoderDescriptor, Device,
-    ExperimentalFeatures, Features, InstanceFlags, Limits, LoadOp, MemoryBudgetThresholds,
-    MemoryHints, Operations, PowerPreference, PresentMode, Queue, RenderPass,
-    RenderPassColorAttachment, RenderPassDescriptor, RequestAdapterOptions, StoreOp, Surface,
-    SurfaceConfiguration, SurfaceError, SurfaceTexture, TextureUsages, TextureView,
-    TextureViewDescriptor, Trace, wgt::DeviceDescriptor,
+    Adapter, BackendOptions, Backends, CommandEncoder, CommandEncoderDescriptor, Device, ExperimentalFeatures, Features, InstanceFlags, Limits, LoadOp, MemoryBudgetThresholds, MemoryHints, Operations, PowerPreference, PresentMode, Queue, RenderPass, RenderPassColorAttachment, RenderPassDescriptor, RequestAdapterOptions, ShaderModuleDescriptor, ShaderSource, StoreOp, Surface, SurfaceConfiguration, SurfaceError, SurfaceTexture, TextureUsages, TextureView, TextureViewDescriptor, Trace, wgt::DeviceDescriptor
 };
 use winit::{dpi::PhysicalSize, window::Window};
 
@@ -19,6 +14,7 @@ pub struct RenderPipeline {
     pub queue: Queue,
     window_size: PhysicalSize<u32>,
     window_size_changed: bool,
+    render_pipeline: wgpu::RenderPipeline
 }
 
 impl RenderPipeline {
@@ -66,6 +62,11 @@ impl RenderPipeline {
             view_formats: vec![],
         };
         surface.configure(&device, &surface_config);
+
+        let shader = device.create_shader_module(ShaderModuleDescriptor {
+            label: Some("Shader"),
+            source: ShaderSource::Wgsl(include_str!("../../res/shaders/shader.wgsl").into())
+        });
 
         Ok(Self {
             window,
