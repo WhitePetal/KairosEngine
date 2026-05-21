@@ -1,8 +1,10 @@
 use egui::{Context, Id, Pos2};
 
-use crate::kairos_editor::ui::docking_tab::{drag_and_drop::{DragData, DragDropState, HoverData}, styles::Style, surfaces::SurfaceIndex};
-
-
+use crate::kairos_editor::ui::docking_tab::{
+    drag_and_drop::{DragData, DragDropState, HoverData},
+    styles::Style,
+    surfaces::SurfaceIndex,
+};
 
 #[derive(Debug, Clone, Default)]
 pub struct State {
@@ -15,12 +17,14 @@ pub struct State {
 impl State {
     #[inline(always)]
     pub fn load(ctx: &Context, id: Id) -> Self {
-        ctx.data_mut(|d| d.get_temp(id).unwrap_or(Self {
-            drag_start: None,
-            last_hover_pos: None,
-            dnd: None,
-            window_fade: None 
-        }))
+        ctx.data_mut(|d| {
+            d.get_temp(id).unwrap_or(Self {
+                drag_start: None,
+                last_hover_pos: None,
+                dnd: None,
+                window_fade: None,
+            })
+        })
     }
 
     #[inline(always)]
@@ -39,14 +43,14 @@ impl State {
         drag: DragData,
         drop: HoverData,
         ctx: &Context,
-        style: &Style
+        style: &Style,
     ) {
         if !self.is_drag_drop_locked(ctx, style) {
             self.dnd = Some(DragDropState {
                 hover: drop,
                 drag,
                 pointer: ctx.pointer_hover_pos().unwrap_or(Pos2::ZERO),
-                locked: None 
+                locked: None,
             })
         }
     }

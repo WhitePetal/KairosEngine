@@ -1,7 +1,5 @@
 use egui::{self, Color32, CornerRadius, Margin, Stroke, ecolor::tint_color_towards};
 
-
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TabAddAlign {
     Left,

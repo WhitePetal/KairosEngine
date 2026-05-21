@@ -1,29 +1,40 @@
 use std::{any::type_name, fs};
 
-use egui::{self, Vec2};
-use toml::from_str;
 use crate::log::Log;
+use egui::{self, Vec2};
 use serde::{Deserialize, Serialize};
+use toml::from_str;
 
 use crate::kairos_editor::consts;
 use crate::kairos_editor::ui::Messager;
 use crate::kairos_editor::ui::docking_tab::window_state::WindowState;
-use crate::kairos_editor::ui::{Drawer, paths, ui_style_fields::{FloatFieldEditViewType, FloatStyleField, StyleField}};
-
+use crate::kairos_editor::ui::{
+    Drawer, paths,
+    ui_style_fields::{FloatFieldEditViewType, FloatStyleField, StyleField},
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AboutWindowStyle {
     pub title: String,
     pub height: f32,
-    pub width: f32
+    pub width: f32,
 }
 
 impl AboutWindowStyle {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let style_json = fs::read_to_string(paths::PATH_ABOUT_WINDOW_STYLE)
-        .map_err(|error| format!("Load AboutWindow Model Json Failed, path: {}, error: {}", paths::PATH_ABOUT_WINDOW_STYLE, error))?;
-        let style = from_str(&style_json)
-            .map_err(|error| format!("Deserialize AboutWindow Model Json Failed, error: {}", error))?;
+        let style_json = fs::read_to_string(paths::PATH_ABOUT_WINDOW_STYLE).map_err(|error| {
+            format!(
+                "Load AboutWindow Model Json Failed, path: {}, error: {}",
+                paths::PATH_ABOUT_WINDOW_STYLE,
+                error
+            )
+        })?;
+        let style = from_str(&style_json).map_err(|error| {
+            format!(
+                "Deserialize AboutWindow Model Json Failed, error: {}",
+                error
+            )
+        })?;
 
         Ok(style)
     }
@@ -37,26 +48,18 @@ impl AboutWindowModel {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let style = AboutWindowStyle::new()?;
 
-        Ok(
-            Self { 
-                style,
-            }
-        )
+        Ok(Self { style })
     }
 }
 
 pub struct AboutWindow {
-    model: AboutWindowModel
+    model: AboutWindowModel,
 }
 
 impl AboutWindow {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let model = AboutWindowModel::new()?;
-        Ok(
-            Self { 
-                model
-            }   
-        )
+        Ok(Self { model })
     }
 }
 
@@ -65,18 +68,18 @@ impl Drawer for AboutWindow {
         match state {
             Some(state) => {
                 state.set_size(Vec2::new(self.model.style.width, self.model.style.height));
-            },
+            }
             None => {
                 println!("about window show failed, window state is none");
-            },
+            }
         }
     }
     fn update(
-        &self, 
-        ui: Option<&mut egui::Ui>, 
-        _ctx: &egui::Context, 
+        &self,
+        ui: Option<&mut egui::Ui>,
+        _ctx: &egui::Context,
         _messager: &mut Messager,
-        log: &mut Log
+        log: &mut Log,
     ) {
         // TODO: test log
         log.info("about_window update");
@@ -85,20 +88,34 @@ impl Drawer for AboutWindow {
         ui.heading("KairosEngine");
         ui.label(consts::VERSION);
         ui.separator();
-        ui.label("KairosEngine is a game development engine that aims to be flexible and efficient.");
+        ui.label(
+            "KairosEngine is a game development engine that aims to be flexible and efficient.",
+        );
         ui.label("TODO: add icon...");
     }
 
     fn close(&self, messager: &mut Messager) {
         messager.send(super::Message::CloseAboutWindow);
     }
-    
+
     fn get_style_fileds(&self) -> Vec<super::ui_style_fields::StyleField> {
         let mut fields = Vec::new();
         let style = &self.model.style;
 
-        fields.push(StyleField::FloatStyleField(FloatStyleField::new("height", style.height, 0.0, f32::MAX, FloatFieldEditViewType::Field)));
-        fields.push(StyleField::FloatStyleField(FloatStyleField::new("width", style.width, 0.0, f32::MAX, FloatFieldEditViewType::Field)));
+        fields.push(StyleField::FloatStyleField(FloatStyleField::new(
+            "height",
+            style.height,
+            0.0,
+            f32::MAX,
+            FloatFieldEditViewType::Field,
+        )));
+        fields.push(StyleField::FloatStyleField(FloatStyleField::new(
+            "width",
+            style.width,
+            0.0,
+            f32::MAX,
+            FloatFieldEditViewType::Field,
+        )));
 
         fields
     }
@@ -111,11 +128,11 @@ impl Drawer for AboutWindow {
             self.model.style.width = field.value;
         }
     }
-    
+
     fn get_name(&self) -> &'static str {
         type_name::<AboutWindow>()
     }
-    
+
     fn get_title(&self) -> egui::WidgetText {
         self.model.style.title.to_owned().into()
     }

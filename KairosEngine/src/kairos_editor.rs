@@ -1,10 +1,9 @@
-use egui::Visuals;
 use crate::log::Log;
-
+use egui::Visuals;
 
 pub mod consts;
-pub mod ui;
 pub mod runtime;
+pub mod ui;
 
 pub struct KairosEngine {
     ui_context: ui::Context,
@@ -16,10 +15,7 @@ impl KairosEngine {
         let ui_context = ui::Context::new();
         let log = Log::new();
 
-        Ok(Self{
-            ui_context,
-            log,
-        })
+        Ok(Self { ui_context, log })
     }
 
     fn update(&mut self, ctx: &egui::Context) {
@@ -31,7 +27,5 @@ impl KairosEngine {
         self.ui_context.darw(ctx, &mut self.log);
     }
 
-    fn on_exit(&mut self) {
-        
-    }
+    fn on_exit(&mut self) {}
 }

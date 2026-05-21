@@ -6,7 +6,6 @@ use toml::from_str;
 
 use crate::kairos_editor::ui::{Drawer, Message, paths};
 
-
 #[derive(Debug, Serialize, Deserialize)]
 struct ProjectWindowStyle {
     pub title: String,
@@ -22,10 +21,19 @@ pub struct ProjectWindow {
 
 impl ProjectWindowStyle {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let style_json = fs::read_to_string(paths::PATH_PROJECT_WINDOW_STYLE)
-            .map_err(|error| format!("Load ProjectWindow Style Json Failed, path: {}, error: {}", paths::PATH_PROJECT_WINDOW_STYLE, error))?;
-        let style = from_str(&style_json)
-            .map_err(|error| format!("Deserialize ProjectWindow Style Json Failed, error: {}", error))?;
+        let style_json = fs::read_to_string(paths::PATH_PROJECT_WINDOW_STYLE).map_err(|error| {
+            format!(
+                "Load ProjectWindow Style Json Failed, path: {}, error: {}",
+                paths::PATH_PROJECT_WINDOW_STYLE,
+                error
+            )
+        })?;
+        let style = from_str(&style_json).map_err(|error| {
+            format!(
+                "Deserialize ProjectWindow Style Json Failed, error: {}",
+                error
+            )
+        })?;
         Ok(style)
     }
 }
@@ -33,36 +41,26 @@ impl ProjectWindowStyle {
 impl ProjectWindowModel {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let style = ProjectWindowStyle::new()?;
-        Ok(
-            Self { 
-                style 
-            }
-        )
+        Ok(Self { style })
     }
 }
 
 impl ProjectWindow {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let model = ProjectWindowModel::new()?;
-        Ok(
-            Self { 
-                model 
-            }
-        )
+        Ok(Self { model })
     }
 }
 
 impl Drawer for ProjectWindow {
-    fn show_window(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {
-
-    }
+    fn show_window(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {}
 
     fn update(
-        &self, 
-        ui: Option<&mut egui::Ui>, 
-        _ctx: &egui::Context, 
+        &self,
+        ui: Option<&mut egui::Ui>,
+        _ctx: &egui::Context,
         _messager: &mut super::Messager,
-        _log: &mut Log
+        _log: &mut Log,
     ) {
         let ui = ui.unwrap();
         ui.label("TODO: Project");
@@ -84,7 +82,5 @@ impl Drawer for ProjectWindow {
         Vec::new()
     }
 
-    fn update_style(&mut self, _style_fields: &Vec<super::ui_style_fields::StyleField>) {
-        
-    }
+    fn update_style(&mut self, _style_fields: &Vec<super::ui_style_fields::StyleField>) {}
 }

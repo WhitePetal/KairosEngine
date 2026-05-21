@@ -2,7 +2,6 @@ use egui::Rect;
 
 use super::super::TabIndex;
 
-
 #[derive(Clone, Debug)]
 pub struct LeafNode<Drawer> {
     /// The full rectangle - tab bar plus tab body.
@@ -33,7 +32,7 @@ impl<Drawer> LeafNode<Drawer> {
             drawers,
             active: TabIndex(0),
             scroll: 0.0,
-            collapsed: false
+            collapsed: false,
         }
     }
 
@@ -82,7 +81,7 @@ impl<Drawer> LeafNode<Drawer> {
     }
 
     /// Append a ``Tab`` to the end of this [`LeafNode`]s tab list
-    /// 
+    ///
     /// This will also focus the added tab.
     #[track_caller]
     #[inline]
@@ -92,11 +91,11 @@ impl<Drawer> LeafNode<Drawer> {
     }
 
     /// Insert a ``Tab`` to this [`LeafNode`]s tab list at the specified [`TabIndex`]
-    /// 
+    ///
     /// This will also focus the added tab.
-    /// 
+    ///
     /// # Paincs
-    /// 
+    ///
     /// if ``tab_index`` exceeds the leaf's tab list length
     #[track_caller]
     #[inline]
@@ -107,11 +106,11 @@ impl<Drawer> LeafNode<Drawer> {
     }
 
     /// Remove a ``Tab`` to this [`LeafNode`]s tab list at the specified [`TabIndex`].
-    /// 
+    ///
     /// This will also focus the added tab.
-    /// 
+    ///
     /// # Paincs
-    /// 
+    ///
     /// if ``tab_index`` is out of bounds for the tab list
     #[inline]
     pub fn remove_drawer(&mut self, tab_index: impl Into<TabIndex>) -> Option<Drawer> {
@@ -124,14 +123,14 @@ impl<Drawer> LeafNode<Drawer> {
 
     /// Removes all tabs for which `predicate` returns `false`
     pub fn retain_drawers<F>(&mut self, predicated: F)
-        where 
-            F: FnMut(&mut Drawer) -> bool,
+    where
+        F: FnMut(&mut Drawer) -> bool,
     {
         self.drawers.retain_mut(predicated);
     }
 
     /// Return the area and tab which is currently representing this [`LeafNode`]
-    /// 
+    ///
     /// This may return ``None`` if the leaf conmtains 0 tabs.
     #[inline]
     pub fn active_focused(&mut self) -> Option<(Rect, &mut Drawer)> {

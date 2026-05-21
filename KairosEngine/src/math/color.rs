@@ -1,22 +1,20 @@
-mod errors;
 mod converts;
+mod errors;
 mod serialies;
 
 use crate::math::color::errors::Color32ParseError;
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct Color32
-{
+pub struct Color32 {
     pub r: u8,
     pub g: u8,
     pub b: u8,
-    pub a: u8
+    pub a: u8,
 }
 
 impl Color32 {
     pub fn new(r: u8, g: u8, b: u8, a: u8) -> Self {
-        Self { r, g, b, a }    
+        Self { r, g, b, a }
     }
 
     pub fn to_hex(&self) -> String {
@@ -27,12 +25,12 @@ impl Color32 {
         if hex.is_empty() {
             return Err(Color32ParseError::EmptyString);
         }
-        
+
         let hex = match hex.strip_prefix('#') {
             Some(s) => s,
-            None => return  Err(Color32ParseError::NoHead)
+            None => return Err(Color32ParseError::NoHead),
         };
-        
+
         let len = hex.len();
         match len {
             6 => {
@@ -52,7 +50,7 @@ impl Color32 {
                     .map_err(|_| Color32ParseError::InvalidHexChar(hex[2..4].to_string()))?;
                 let b = u8::from_str_radix(&hex[4..6], 16)
                     .map_err(|_| Color32ParseError::InvalidHexChar(hex[4..6].to_string()))?;
-                let a= u8::from_str_radix(&hex[6..8], 16)
+                let a = u8::from_str_radix(&hex[6..8], 16)
                     .map_err(|_| Color32ParseError::InvalidHexChar(hex[6..8].to_string()))?;
 
                 Ok(Self::new(r, g, b, a))

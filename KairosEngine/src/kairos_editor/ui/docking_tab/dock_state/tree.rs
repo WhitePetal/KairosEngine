@@ -1,4 +1,10 @@
-use std::{cmp::max, collections::HashSet, fmt, ops::{Index, IndexMut, Range}, slice::{Iter, IterMut}};
+use std::{
+    cmp::max,
+    collections::HashSet,
+    fmt,
+    ops::{Index, IndexMut, Range},
+    slice::{Iter, IterMut},
+};
 
 use egui::Rect;
 
@@ -47,7 +53,7 @@ pub enum TabDestination {
     Node(SurfaceIndex, NodeIndex, TabInsert),
 
     /// Move to an empty surface.
-    EmptySurface(SurfaceIndex)
+    EmptySurface(SurfaceIndex),
 }
 
 impl From<(SurfaceIndex, NodeIndex, TabInsert)> for TabDestination {
@@ -66,7 +72,6 @@ impl TabDestination {
         matches!(self, Self::Window(_))
     }
 }
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TabIndex(pub usize);
@@ -172,7 +177,7 @@ pub struct NodePath {
 pub struct DrawerIter<'a, Drawer> {
     tree: &'a Tree<Drawer>,
     node_idx: usize,
-    tab_idx: usize
+    tab_idx: usize,
 }
 
 impl<'a, Drawer> DrawerIter<'a, Drawer> {
@@ -659,7 +664,7 @@ impl<Drawer> Tree<Drawer> {
     pub fn find_active_focused(&mut self) -> Option<(Rect, &mut Drawer)> {
         match self.focused_node.and_then(|idx| self.nodes.get_mut(idx.0)) {
             Some(Node::Leaf(leaf)) => leaf.active_focused(),
-            _ => None
+            _ => None,
         }
     }
 
@@ -705,7 +710,11 @@ impl<Drawer> Tree<Drawer> {
                 } else {
                     parent.left()
                 };
-                if self.nodes.get(node_index.0).is_some_and(|node_index| node_index.is_leaf()) {
+                if self
+                    .nodes
+                    .get(node_index.0)
+                    .is_some_and(|node_index| node_index.is_leaf())
+                {
                     self.focused_node = Some(next);
                     break;
                 }
@@ -843,7 +852,10 @@ impl<Drawer> Tree<Drawer> {
     /// If the node is emptied after the tab is removed, the node will also be removed.
     ///
     /// Returns the removed tab if it exists, or `None` otherwise.
-    pub fn remove_drawer(&mut self, (node_index, tab_index): (NodeIndex, TabIndex)) -> Option<Drawer> {
+    pub fn remove_drawer(
+        &mut self,
+        (node_index, tab_index): (NodeIndex, TabIndex),
+    ) -> Option<Drawer> {
         let node = &mut self[node_index];
         let tab = node.remove_drawer(tab_index);
         if node.drawers_count() == 0 {
@@ -1022,7 +1034,10 @@ impl<Drawer> Tree<Drawer> {
     /// The returned [`NodeIndex`] will always point to a [`Node::Leaf`].
     ///
     /// In case there are several hits, only the first is returned.
-    pub fn find_drawer_from(&self, predicate: impl Fn(&Drawer) -> bool) -> Option<(NodeIndex, TabIndex)> {
+    pub fn find_drawer_from(
+        &self,
+        predicate: impl Fn(&Drawer) -> bool,
+    ) -> Option<(NodeIndex, TabIndex)> {
         for (node_index, node) in self.nodes.iter().enumerate() {
             if let Some(tabs) = node.drawers() {
                 for (tab_index, tab) in tabs.iter().enumerate() {
@@ -1038,7 +1053,7 @@ impl<Drawer> Tree<Drawer> {
 
 impl<Drawer> Tree<Drawer>
 where
-Drawer: PartialEq,
+    Drawer: PartialEq,
 {
     /// Find the given tab.
     ///

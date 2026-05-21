@@ -1,15 +1,14 @@
-
-
 use std::{any::type_name, fs};
 
-use egui::{self, Vec2};
-use toml::from_str;
 use crate::{log::Log, math};
+use egui::{self, Vec2};
 use serde::{Deserialize, Serialize};
+use toml::from_str;
 
-use crate::kairos_editor::ui::{Drawer, Message, paths, ui_style_fields::{FloatFieldEditViewType, FloatStyleField, StyleField, StylePage}};
-
-
+use crate::kairos_editor::ui::{
+    Drawer, Message, paths,
+    ui_style_fields::{FloatFieldEditViewType, FloatStyleField, StyleField, StylePage},
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PreferencesStyle {
@@ -22,10 +21,20 @@ pub struct PreferencesStyle {
 
 impl PreferencesStyle {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let style_json = fs::read_to_string(paths::PATH_PREFERENCES_WINDOW_STYLE)
-            .map_err(|error| format!("Load Preferences Window Style Json Failed, path: {}, error: {}", paths::PATH_PREFERENCES_WINDOW_STYLE, error))?;
-        let style = from_str(&style_json)
-            .map_err(|error| format!("Deserialize Preferences Window Style Json Failed, error: {}", error))?;
+        let style_json =
+            fs::read_to_string(paths::PATH_PREFERENCES_WINDOW_STYLE).map_err(|error| {
+                format!(
+                    "Load Preferences Window Style Json Failed, path: {}, error: {}",
+                    paths::PATH_PREFERENCES_WINDOW_STYLE,
+                    error
+                )
+            })?;
+        let style = from_str(&style_json).map_err(|error| {
+            format!(
+                "Deserialize Preferences Window Style Json Failed, error: {}",
+                error
+            )
+        })?;
 
         Ok(style)
     }
@@ -41,29 +50,23 @@ impl PreferencesModel {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let style = PreferencesStyle::new()?;
 
-        Ok(
-            Self { 
-                style,
-                style_pages: None,
-                selected_id: None,
-            }
-        )
+        Ok(Self {
+            style,
+            style_pages: None,
+            selected_id: None,
+        })
     }
 }
 
 pub struct PreferencesWindow {
-    model: PreferencesModel
+    model: PreferencesModel,
 }
 
 impl PreferencesWindow {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let model = PreferencesModel::new()?;
 
-        Ok(
-            Self {
-                model
-            }   
-        )
+        Ok(Self { model })
     }
 
     pub fn set_selected_id(&mut self, id: usize) {
@@ -74,16 +77,19 @@ impl PreferencesWindow {
 impl Drawer for PreferencesWindow {
     fn show_window(&self, state: Option<&mut super::docking_tab::window_state::WindowState>) {
         if let Some(state) = state {
-            state.set_size(Vec2::new(self.model.style.default_width, self.model.style.default_height));
+            state.set_size(Vec2::new(
+                self.model.style.default_width,
+                self.model.style.default_height,
+            ));
         }
     }
 
     fn update(
-        &self, 
-        ui: Option<&mut egui::Ui>, 
-        _ctx: &egui::Context, 
+        &self,
+        ui: Option<&mut egui::Ui>,
+        _ctx: &egui::Context,
         messager: &mut super::Messager,
-        _log: &mut Log
+        _log: &mut Log,
     ) {
         let ui = ui.unwrap();
         self.ui(ui, messager);
@@ -92,23 +98,47 @@ impl Drawer for PreferencesWindow {
     fn close(&self, messager: &mut super::Messager) {
         messager.send(super::Message::ClosePreferenceWindow);
     }
-    
+
     fn get_style_fileds(&self) -> Vec<super::ui_style_fields::StyleField> {
         let mut fileds = Vec::new();
         let style = &self.model.style;
 
-        fileds.push(StyleField::FloatStyleField(FloatStyleField::new("default width", style.default_width, 0.0, f32::MAX, FloatFieldEditViewType::Field)));
-        fileds.push(StyleField::FloatStyleField(FloatStyleField::new("default height", style.default_height, 0.0, f32::MAX, FloatFieldEditViewType::Field)));
-        fileds.push(StyleField::FloatStyleField(FloatStyleField::new("grid space x", style.grid_space_x, 0.0, f32::MAX, FloatFieldEditViewType::Field)));
-        fileds.push(StyleField::FloatStyleField(FloatStyleField::new("grid space y", style.grid_space_y, 0.0, f32::MAX, FloatFieldEditViewType::Field)));
+        fileds.push(StyleField::FloatStyleField(FloatStyleField::new(
+            "default width",
+            style.default_width,
+            0.0,
+            f32::MAX,
+            FloatFieldEditViewType::Field,
+        )));
+        fileds.push(StyleField::FloatStyleField(FloatStyleField::new(
+            "default height",
+            style.default_height,
+            0.0,
+            f32::MAX,
+            FloatFieldEditViewType::Field,
+        )));
+        fileds.push(StyleField::FloatStyleField(FloatStyleField::new(
+            "grid space x",
+            style.grid_space_x,
+            0.0,
+            f32::MAX,
+            FloatFieldEditViewType::Field,
+        )));
+        fileds.push(StyleField::FloatStyleField(FloatStyleField::new(
+            "grid space y",
+            style.grid_space_y,
+            0.0,
+            f32::MAX,
+            FloatFieldEditViewType::Field,
+        )));
 
         fileds
     }
-    
+
     fn get_name(&self) -> &'static str {
         type_name::<PreferencesWindow>()
     }
-    
+
     fn update_style(&mut self, style_fields: &Vec<super::ui_style_fields::StyleField>) {
         if let StyleField::FloatStyleField(field) = &style_fields[0] {
             self.model.style.default_width = field.value;
@@ -123,7 +153,7 @@ impl Drawer for PreferencesWindow {
             self.model.style.grid_space_y = field.value;
         }
     }
-    
+
     fn get_title(&self) -> egui::WidgetText {
         self.model.style.title.to_owned().into()
     }
@@ -150,7 +180,10 @@ impl PreferencesWindow {
             ui.vertical(|ui| {
                 if let Some(style_pages) = &model.style_pages {
                     for page in style_pages {
-                        if ui.selectable_label(*selected_id == Some(page.id), page.name).clicked() {
+                        if ui
+                            .selectable_label(*selected_id == Some(page.id), page.name)
+                            .clicked()
+                        {
                             messager.send(Message::SetPreferenceWindowSelectedId(page.id));
                             break;
                         }
@@ -165,7 +198,7 @@ impl PreferencesWindow {
                     if let Some(style_pages) = &model.style_pages {
                         let mut page = style_pages[*id].clone();
 
-                        ui.horizontal_top(|ui|{
+                        ui.horizontal_top(|ui| {
                             ui.heading(page.name);
                         });
 
@@ -181,36 +214,63 @@ impl PreferencesWindow {
                                     let fields = &mut page.fields;
                                     for field in fields {
                                         match field {
-                                            super::ui_style_fields::StyleField::FloatStyleField(float_style_field) => {
+                                            super::ui_style_fields::StyleField::FloatStyleField(
+                                                float_style_field,
+                                            ) => {
                                                 ui.label(float_style_field.name);
                                                 match float_style_field.view_type {
-                                                    FloatFieldEditViewType::Field => { ui.add(egui::DragValue::new(&mut float_style_field.value).range(float_style_field.min..=float_style_field.max)); },
-                                                    FloatFieldEditViewType::Slider => { ui.add(egui::Slider::new(&mut float_style_field.value, float_style_field.min..=float_style_field.max)); }
+                                                    FloatFieldEditViewType::Field => {
+                                                        ui.add(
+                                                            egui::DragValue::new(
+                                                                &mut float_style_field.value,
+                                                            )
+                                                            .range(
+                                                                float_style_field.min
+                                                                    ..=float_style_field.max,
+                                                            ),
+                                                        );
+                                                    }
+                                                    FloatFieldEditViewType::Slider => {
+                                                        ui.add(egui::Slider::new(
+                                                            &mut float_style_field.value,
+                                                            float_style_field.min
+                                                                ..=float_style_field.max,
+                                                        ));
+                                                    }
                                                 }
                                                 ui.end_row();
-                                            },
-                                            super::ui_style_fields::StyleField::ColorStyleField(color_style_field) => {
+                                            }
+                                            super::ui_style_fields::StyleField::ColorStyleField(
+                                                color_style_field,
+                                            ) => {
                                                 ui.label(color_style_field.name);
                                                 let color = &color_style_field.color;
-                                                let mut color_data: [u8; 4] = [color.r, color.g, color.b, color.a];
-                                                ui.color_edit_button_srgba_premultiplied(&mut color_data);
-                                                color_style_field.color = math::Color32::new(color_data[0], color_data[1], color_data[2], color_data[3]);
+                                                let mut color_data: [u8; 4] =
+                                                    [color.r, color.g, color.b, color.a];
+                                                ui.color_edit_button_srgba_premultiplied(
+                                                    &mut color_data,
+                                                );
+                                                color_style_field.color = math::Color32::new(
+                                                    color_data[0],
+                                                    color_data[1],
+                                                    color_data[2],
+                                                    color_data[3],
+                                                );
                                                 ui.end_row();
-                                            },
+                                            }
                                         }
                                     }
                                 })
                         });
-                        
+
                         messager.send(Message::UpdateUIStyle(page));
                     }
                 } else {
-                    ui.horizontal_top(|ui|{
+                    ui.horizontal_top(|ui| {
                         ui.label("Select a Setting...");
                     });
                 }
             });
-
         });
     }
 }

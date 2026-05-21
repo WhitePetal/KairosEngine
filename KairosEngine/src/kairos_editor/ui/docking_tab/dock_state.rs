@@ -2,9 +2,15 @@ use std::ops;
 
 use egui::Rect;
 
-use crate::kairos_editor::ui::{docking_tab::{dock_state::tree::{NodeIndex, NodePath, Split, TabDestination, TabIndex, TabInsert, Tree, node::{Node, leaf_node::{LeafNode}}}, surfaces::{Surface, SurfaceIndex}, translations::Translations, window_state::WindowState}};
-
-
+use crate::kairos_editor::ui::docking_tab::{
+    dock_state::tree::{
+        NodeIndex, NodePath, Split, TabDestination, TabIndex, TabInsert, Tree,
+        node::{Node, leaf_node::LeafNode},
+    },
+    surfaces::{Surface, SurfaceIndex},
+    translations::Translations,
+    window_state::WindowState,
+};
 
 pub mod tree;
 
@@ -32,7 +38,7 @@ impl<Drawer> std::ops::Index<SurfaceIndex> for DockState<Drawer> {
             Some(tree) => tree,
             None => {
                 panic!("Tree did not exist a tree at surface index {}", index.0);
-            },
+            }
         }
     }
 }
@@ -61,7 +67,7 @@ impl<Drawer> ops::Index<NodePath> for DockState<Drawer> {
                     "There did not exist a tree at surface index {}",
                     index.surface.0
                 )
-            },
+            }
         }
     }
 }
@@ -76,7 +82,7 @@ impl<Drawer> ops::IndexMut<NodePath> for DockState<Drawer> {
                     "There did not exist a tree at surface index {}",
                     index.surface.0
                 )
-            },
+            }
         }
     }
 }
@@ -87,7 +93,7 @@ impl<Drawer> DockState<Drawer> {
         Self {
             surfaces: vec![Surface::Main(Tree::new(tabs))],
             focused_surface: None,
-            translations: Translations::english()
+            translations: Translations::english(),
         }
     }
 
@@ -138,14 +144,15 @@ impl<Drawer> DockState<Drawer> {
     pub fn get_window_state(&self, surface: SurfaceIndex) -> Option<&WindowState> {
         match &self.surfaces[surface.0] {
             Surface::Window(_, state) => Some(state),
-            _ => None
+            _ => None,
         }
     }
 
     /// Returns the viewport [`Rect`] and the `Tab` inside the focused leaf node or `None` if no node is in focus.
     #[inline]
     pub fn find_active_focused(&mut self) -> Option<(Rect, &mut Drawer)> {
-        self.focused_surface.and_then(|surface| self[surface].find_active_focused())
+        self.focused_surface
+            .and_then(|surface| self[surface].find_active_focused())
     }
 
     /// Get a mutable borrow to the raw surface from a surface index.
@@ -163,7 +170,9 @@ impl<Drawer> DockState<Drawer> {
     /// Returns true if the specified surface exists and isn't [`Empty`](Surface::Empty).
     #[inline]
     pub fn is_surface_valid(&self, surface: SurfaceIndex) -> bool {
-        self.surfaces.get(surface.0).is_some_and(|surface| !surface.is_empty())
+        self.surfaces
+            .get(surface.0)
+            .is_some_and(|surface| !surface.is_empty())
     }
 
     /// Returns a list of all valid [`SurfaceIndex`]es.
@@ -200,7 +209,7 @@ impl<Drawer> DockState<Drawer> {
     #[inline]
     pub fn set_active_drawer(
         &mut self,
-        (surface_index, node_index, tab_index) : (SurfaceIndex, NodeIndex, TabIndex)
+        (surface_index, node_index, tab_index): (SurfaceIndex, NodeIndex, TabIndex),
     ) {
         if let Some(Node::Leaf(leaf)) = self[surface_index].nodes.get_mut(node_index.0) {
             leaf.active = tab_index;
@@ -209,7 +218,7 @@ impl<Drawer> DockState<Drawer> {
 
     pub fn set_focused_node_and_surface(
         &mut self,
-        (surface_index, node_index) : (SurfaceIndex, NodeIndex)
+        (surface_index, node_index): (SurfaceIndex, NodeIndex),
     ) {
         if self.is_surface_valid(surface_index) && node_index.0 < self[surface_index].len() {
             // I don't want this code to be evaluated until im absolutely sure the surface index is valid.
@@ -250,7 +259,9 @@ impl<Drawer> DockState<Drawer> {
                         self[dst_surface].split(dst_node, split, 0.5, Node::leaf(tab));
                     }
 
-                    TabInsert::Insert(index) => self[dst_surface][dst_node].insert_drawer(index, tab),
+                    TabInsert::Insert(index) => {
+                        self[dst_surface][dst_node].insert_drawer(index, tab)
+                    }
                     TabInsert::Append => self[dst_surface][dst_node].append_drawer(tab),
                 }
             }
@@ -260,7 +271,8 @@ impl<Drawer> DockState<Drawer> {
                 self[dst_surface] = Tree::new(vec![tab])
             }
         }
-        if self[src_surface][src_node].is_leaf() && self[src_surface][src_node].drawers_count() == 0 {
+        if self[src_surface][src_node].is_leaf() && self[src_surface][src_node].drawers_count() == 0
+        {
             self[src_surface].remove_leaf(src_node);
         }
         if self[src_surface].is_empty() && !src_surface.is_main() {
@@ -289,7 +301,8 @@ impl<Drawer> DockState<Drawer> {
         }
 
         // Clean up any empty leaves and surfaces which may be left behind from the detachment.
-        if self[src_surface][src_node].is_leaf() && self[src_surface][src_node].drawers_count() == 0 {
+        if self[src_surface][src_node].is_leaf() && self[src_surface][src_node].drawers_count() == 0
+        {
             self[src_surface].remove_leaf(src_node);
         }
         if self[src_surface].is_empty() && !src_surface.is_main() {
@@ -425,7 +438,7 @@ impl<Drawer> DockState<Drawer> {
         self.surfaces.iter_mut()
     }
 
-        /// Returns an [`Iterator`] of **all** underlying nodes in the dock state,
+    /// Returns an [`Iterator`] of **all** underlying nodes in the dock state,
     /// and the indices of containing surfaces.
     pub fn iter_all_nodes(&self) -> impl Iterator<Item = (SurfaceIndex, &Node<Drawer>)> {
         self.iter_surfaces()
@@ -439,7 +452,9 @@ impl<Drawer> DockState<Drawer> {
 
     /// Returns a mutable [`Iterator`] of **all** underlying nodes in the dock state,
     /// and the indices of containing surfaces.
-    pub fn iter_all_nodes_mut(&mut self) -> impl Iterator<Item = (SurfaceIndex, &mut Node<Drawer>)> {
+    pub fn iter_all_nodes_mut(
+        &mut self,
+    ) -> impl Iterator<Item = (SurfaceIndex, &mut Node<Drawer>)> {
         self.iter_surfaces_mut()
             .enumerate()
             .flat_map(|(surface_index, surface)| {
@@ -503,7 +518,9 @@ impl<Drawer> DockState<Drawer> {
     }
 
     /// Returns a mutable [`Iterator`] of all [``LeafNode``]s in the dock state.
-    pub fn iter_leaves_mut(&mut self) -> impl Iterator<Item = (SurfaceIndex, &mut LeafNode<Drawer>)> {
+    pub fn iter_leaves_mut(
+        &mut self,
+    ) -> impl Iterator<Item = (SurfaceIndex, &mut LeafNode<Drawer>)> {
         self.iter_all_nodes_mut()
             .filter_map(|(index, node)| node.get_leaf_mut().map(|leaf| (index, leaf)))
     }
@@ -615,7 +632,8 @@ impl<Drawer> DockState<Drawer> {
             if self.surfaces[surface_index.0].is_empty() {
                 continue;
             }
-            if let Some((node_index, tab_index)) = self[surface_index].find_drawer_from(&predicate) {
+            if let Some((node_index, tab_index)) = self[surface_index].find_drawer_from(&predicate)
+            {
                 return Some((surface_index, node_index, tab_index));
             }
         }
@@ -626,19 +644,19 @@ impl<Drawer> DockState<Drawer> {
 pub enum SurfaceBottomPanelLocation {
     None,
     Center(SurfaceIndex, NodeIndex),
-    Bottom(SurfaceIndex, NodeIndex)
+    Bottom(SurfaceIndex, NodeIndex),
 }
 
 pub enum SurfaceRightPanelLocation {
     None,
     Center(SurfaceIndex, NodeIndex),
-    Right(SurfaceIndex, NodeIndex)
+    Right(SurfaceIndex, NodeIndex),
 }
 
 pub enum SurfaceLeftPanelLocation {
     None,
     Center(SurfaceIndex, NodeIndex),
-    Left(SurfaceIndex, NodeIndex)
+    Left(SurfaceIndex, NodeIndex),
 }
 
 pub enum SurfaceCenterPanelLocation {
@@ -675,25 +693,35 @@ where
         self[SurfaceIndex::main()].find_drawer(needle_tab)
     }
 
-    pub fn find_surface_bottom_panel_location(&self, surface: SurfaceIndex, root_index: NodeIndex) -> SurfaceBottomPanelLocation {
+    pub fn find_surface_bottom_panel_location(
+        &self,
+        surface: SurfaceIndex,
+        root_index: NodeIndex,
+    ) -> SurfaceBottomPanelLocation {
         let mut tab_location = SurfaceBottomPanelLocation::None;
         if let Some(root) = self[surface].nodes.get(root_index.0) {
-             if root.is_horizontal() {
+            if root.is_horizontal() {
                 let left_node_index = root_index.left();
                 if let Some(left_node) = self[surface].nodes.get(left_node_index.0) {
                     match left_node {
-                        Node::Empty | Node::Horizontal(_)  => {
-                            tab_location = SurfaceBottomPanelLocation::Center(surface, left_node_index)
-                        },
+                        Node::Empty | Node::Horizontal(_) => {
+                            tab_location =
+                                SurfaceBottomPanelLocation::Center(surface, left_node_index)
+                        }
                         Node::Leaf(leaf_node) => {
                             if leaf_node.drawers_count() == 0 {
-                                tab_location = SurfaceBottomPanelLocation::Center(surface, left_node_index)
-                            } else {                                
-                                tab_location = SurfaceBottomPanelLocation::Bottom(surface, left_node_index)
+                                tab_location =
+                                    SurfaceBottomPanelLocation::Center(surface, left_node_index)
+                            } else {
+                                tab_location =
+                                    SurfaceBottomPanelLocation::Bottom(surface, left_node_index)
                             }
-                        },
+                        }
                         Node::Vertical(_) => {
-                            tab_location = self.find_surface_bottom_panel_location(surface, left_node_index.right())
+                            tab_location = self.find_surface_bottom_panel_location(
+                                surface,
+                                left_node_index.right(),
+                            )
                         }
                     }
                 }
@@ -712,12 +740,16 @@ where
         tab_location
     }
 
-    pub fn find_surface_right_panel_location(&self, surface: SurfaceIndex, root_index: NodeIndex) -> SurfaceRightPanelLocation {
+    pub fn find_surface_right_panel_location(
+        &self,
+        surface: SurfaceIndex,
+        root_index: NodeIndex,
+    ) -> SurfaceRightPanelLocation {
         let mut tab_location = SurfaceRightPanelLocation::None;
         if let Some(root) = self[surface].nodes.get(root_index.0) {
             if root.is_vertical() {
                 tab_location = SurfaceRightPanelLocation::Center(surface, root_index);
-            } else if root.is_horizontal(){
+            } else if root.is_horizontal() {
                 tab_location = SurfaceRightPanelLocation::Right(surface, root_index.right());
             } else if root.is_empty() {
                 tab_location = SurfaceRightPanelLocation::Center(surface, root_index);
@@ -732,30 +764,37 @@ where
         tab_location
     }
 
-    pub fn find_surface_left_panel_location(&self, surface: SurfaceIndex, root_index: NodeIndex) -> SurfaceLeftPanelLocation {
+    pub fn find_surface_left_panel_location(
+        &self,
+        surface: SurfaceIndex,
+        root_index: NodeIndex,
+    ) -> SurfaceLeftPanelLocation {
         let mut tab_location = SurfaceLeftPanelLocation::None;
         if let Some(root) = self[surface].nodes.get(root_index.0) {
             if root.is_horizontal() {
                 let left_node_index = root_index.left();
                 if let Some(left_node) = self[surface].nodes.get(left_node_index.0) {
                     match left_node {
-                        Node::Empty | Node::Horizontal(_)  => {
-                            tab_location = SurfaceLeftPanelLocation::Center(surface, left_node_index)
-                        },
+                        Node::Empty | Node::Horizontal(_) => {
+                            tab_location =
+                                SurfaceLeftPanelLocation::Center(surface, left_node_index)
+                        }
                         Node::Leaf(leaf_node) => {
                             if leaf_node.drawers_count() == 0 {
-                                tab_location = SurfaceLeftPanelLocation::Center(surface, left_node_index)
+                                tab_location =
+                                    SurfaceLeftPanelLocation::Center(surface, left_node_index)
                             } else {
-                                tab_location = SurfaceLeftPanelLocation::Left(surface, left_node_index)
+                                tab_location =
+                                    SurfaceLeftPanelLocation::Left(surface, left_node_index)
                             }
-                        },
+                        }
                         Node::Vertical(_) => {
-                            tab_location = self.find_surface_left_panel_location(surface, left_node_index.left())
+                            tab_location = self
+                                .find_surface_left_panel_location(surface, left_node_index.left())
                         }
                     }
                 }
-                
-            } else  if root.is_vertical() {
+            } else if root.is_vertical() {
                 let left_node_index = root_index.left();
                 if let Some(_) = self[surface].nodes.get(left_node_index.0) {
                     tab_location = SurfaceLeftPanelLocation::Center(surface, root_index.left());
@@ -763,13 +802,15 @@ where
             } else if root.is_empty() {
                 tab_location = SurfaceLeftPanelLocation::Center(surface, root_index);
             } else if root.is_leaf() {
-                if let Some(parent_index) = root_index.parent() && let Some(parent) = self[surface].nodes.get(parent_index.0) {
+                if let Some(parent_index) = root_index.parent()
+                    && let Some(parent) = self[surface].nodes.get(parent_index.0)
+                {
                     if parent.is_horizontal() {
                         tab_location = SurfaceLeftPanelLocation::Left(surface, root_index);
                     } else {
                         tab_location = SurfaceLeftPanelLocation::Center(surface, root_index);
                     }
-                } else {                    
+                } else {
                     tab_location = SurfaceLeftPanelLocation::Center(surface, root_index);
                 }
             }
@@ -777,25 +818,35 @@ where
         tab_location
     }
 
-    pub fn find_surface_center_panel_location(&self, surface: SurfaceIndex, root_index: NodeIndex) -> SurfaceCenterPanelLocation {
+    pub fn find_surface_center_panel_location(
+        &self,
+        surface: SurfaceIndex,
+        root_index: NodeIndex,
+    ) -> SurfaceCenterPanelLocation {
         let mut tab_location = SurfaceCenterPanelLocation::None;
         if let Some(root) = self[surface].nodes.get(root_index.0) {
             if root.is_horizontal() {
                 let left_node_index = root_index.left();
                 if let Some(left_node) = self[surface].nodes.get(left_node_index.0) {
                     match left_node {
-                        Node::Empty | Node::Horizontal(_)  => {
-                            tab_location = SurfaceCenterPanelLocation::Above(surface, left_node_index);
-                        },
+                        Node::Empty | Node::Horizontal(_) => {
+                            tab_location =
+                                SurfaceCenterPanelLocation::Above(surface, left_node_index);
+                        }
                         Node::Leaf(leaf_node) => {
                             if leaf_node.drawers_count() == 0 {
-                                tab_location = SurfaceCenterPanelLocation::Above(surface, left_node_index)
-                            } else {                                
-                                tab_location = SurfaceCenterPanelLocation::Center(surface, left_node_index)
+                                tab_location =
+                                    SurfaceCenterPanelLocation::Above(surface, left_node_index)
+                            } else {
+                                tab_location =
+                                    SurfaceCenterPanelLocation::Center(surface, left_node_index)
                             }
-                        },
+                        }
                         Node::Vertical(_) => {
-                            tab_location = self.find_surface_center_panel_location(surface, left_node_index.right())
+                            tab_location = self.find_surface_center_panel_location(
+                                surface,
+                                left_node_index.right(),
+                            )
                         }
                     }
                 }

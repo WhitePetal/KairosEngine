@@ -1,141 +1,160 @@
-use std::{error::Error, io, sync::Arc, time::{Duration, Instant}};
+use std::{
+    error::Error,
+    io,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use egui::{ViewportCommand, ViewportId};
-use winit::{application::ApplicationHandler, dpi::{LogicalSize, PhysicalSize}, event::WindowEvent, event_loop::{self, ActiveEventLoop, ControlFlow, EventLoopProxy}, window::{Icon, Window}};
+use parking_lot::Mutex;
+use winit::{
+    application::ApplicationHandler,
+    dpi::{LogicalSize, PhysicalSize},
+    event::WindowEvent,
+    event_loop::{ActiveEventLoop, ControlFlow, EventLoopProxy},
+    window::{Icon, Window},
+};
 
-use crate::{kairos_dialog, kairos_editor::{KairosEngine, consts, ui::paths}};
+use crate::{
+    graphics::render_pipeline::RenderPipeline,
+    kairos_dialog,
+    kairos_editor::{KairosEngine, consts, ui::paths},
+};
 
-struct GpuState {
-    surface: wgpu::Surface<'static>,
-    adapter: wgpu::Adapter,
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    config: wgpu::SurfaceConfiguration,
-    renderer: egui_wgpu::Renderer,
+fn load_icon() -> Option<Icon> {
+    let bytes = std::fs::read(paths::PATH_ENGINE_ICON).ok()?;
+    let image = image::load_from_memory(&bytes).ok()?.into_rgba8();
+    let (width, height) = image.dimensions();
+
+    Icon::from_rgba(image.into_raw(), width, height).ok()
 }
 
-impl GpuState {
-    async fn new(window: Arc<Window>) -> RuntimeResult<Self> {
-        let size = window.inner_size();
+type RuntimeResult<T> = Result<T, Box<dyn Error>>;
 
-        let instance = wgpu::Instance::default();
-        let surface = instance.create_surface(window)?;
+#[derive(Debug, Clone)]
+pub enum KairosEditorRuntimeEvent {
+    RequestRepaint {
+        viewport_id: ViewportId,
+        delay: Duration,
+    },
+}
 
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: Some(&surface),
-                force_fallback_adapter: false,
-            })
-            .await?;
+pub struct KairosEditorRuntime {
+    window: Option<Arc<Window>>,
+    render_pipeline: Arc<Mutex<Option<RenderPipeline>>>,
+    egui_ctx: egui::Context,
+    egui_state: Option<egui_winit::State>,
+    egui_renderer: Option<egui_wgpu::Renderer>,
+    engine: KairosEngine,
+    repaint_at: Option<Instant>,
+    didi_exit: bool,
+}
 
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor {
-                label: Some("KairosEditor wgpu device"),
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits { 
-                    max_texture_dimension_2d: 8192, 
-                    ..wgpu::Limits::default()
-                },
-                ..Default::default()
-            })
-            .await?;
+impl KairosEditorRuntime {
+    pub fn new(proxy: EventLoopProxy<KairosEditorRuntimeEvent>) -> RuntimeResult<Self> {
+        let egui_ctx = egui::Context::default();
+        egui_extras::install_image_loaders(&egui_ctx);
 
-        let width = size.width.max(1);
-        let height = size.height.max(1);
+        egui_ctx.set_request_repaint_callback(move |info| {
+            let _ = proxy.send_event(KairosEditorRuntimeEvent::RequestRepaint {
+                viewport_id: info.viewport_id,
+                delay: info.delay,
+            });
+        });
 
-        let caps = surface.get_capabilities(&adapter);
+        Ok(Self {
+            window: None,
+            render_pipeline: Arc::new(Mutex::new(None)),
+            egui_ctx,
+            egui_state: None,
+            egui_renderer: None,
+            engine: KairosEngine::new()?,
+            repaint_at: None,
+            didi_exit: false,
+        })
+    }
 
-        let mut config = surface
-            .get_default_config(&adapter, width, height)
-            .ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::Other,
-                    "surface is not supported by the selected adapter",
-                )
-            })?;
+    fn create_window(&mut self, event_loop: &ActiveEventLoop) -> RuntimeResult<()> {
+        let title = format!("{} {}", consts::APP_NAME, consts::VERSION);
 
-        config.format = caps
-            .formats
-            .iter()
-            .copied()
-            .find(|format| format.is_srgb())
-            .unwrap_or(config.format);
+        let attrs = Window::default_attributes()
+            .with_title(title)
+            .with_inner_size(LogicalSize::new(800.0, 600.0))
+            .with_decorations(true)
+            .with_transparent(false)
+            .with_window_icon(load_icon());
 
-        if caps.present_modes.contains(&wgpu::PresentMode::Fifo) {
-            config.present_mode = wgpu::PresentMode::Fifo;
-        }
+        let window = Arc::new(event_loop.create_window(attrs)?);
 
-        surface.configure(&device, &config);
+        let mut egui_state = egui_winit::State::new(
+            self.egui_ctx.clone(),
+            ViewportId::ROOT,
+            event_loop,
+            Some(window.scale_factor() as f32),
+            window.theme(),
+            None,
+        );
 
-        let renderer = egui_wgpu::Renderer::new(
-            &device, 
-            config.format,
+        let render_pipeline = pollster::block_on(RenderPipeline::new(window.clone()))?;
+        egui_state.set_max_texture_side(render_pipeline.max_texture_side());
+        let egui_renderer = egui_wgpu::Renderer::new(
+            &render_pipeline.device,
+            render_pipeline.surface_config.format,
             egui_wgpu::RendererOptions::default(),
         );
 
-        Ok(
-            Self { 
-                surface, 
-                adapter, 
-                device, 
-                queue, 
-                config, 
-                renderer 
-            }
-        )
+        self.window = Some(window.clone());
+        self.render_pipeline.lock().replace(render_pipeline);
+        self.egui_state = Some(egui_state);
+        self.egui_renderer = Some(egui_renderer);
+
+        window.request_redraw();
+
+        Ok(())
     }
 
-    fn max_texture_side(&self) -> usize {
-        self.device.limits().max_texture_dimension_2d as usize
-    }
-
-    fn resize(&mut self, size: PhysicalSize<u32>) {
-        if size.width == 0 || size.height == 0 {
-            return;
-        }
-
-        self.config.width = size.width;
-        self.config.height = size.height;
-        self.surface.configure(&self.device, &self.config);
-    }
-
-    fn paint(
-        &mut self,
+    fn draw_egui(
+        render_pipeline: &RenderPipeline,
+        egui_renderer: &mut egui_wgpu::Renderer,
         textures_delta: &egui::TexturesDelta,
         clipped_primitives: &[egui::ClippedPrimitive],
         pixels_per_point: f32,
     ) -> Result<(), wgpu::SurfaceError> {
-        if self.config.width == 0 || self.config.height == 0 {
-            return Ok(());
-        }
-
         for (id, image_delta) in &textures_delta.set {
-            self.renderer
-                .update_texture(&self.device, &self.queue, *id, image_delta);
+            egui_renderer.update_texture(
+                &render_pipeline.device,
+                &render_pipeline.queue,
+                *id,
+                &image_delta,
+            );
         }
 
-        let output_frame = self.surface.get_current_texture()?;
+        let output_frame = render_pipeline.surface.get_current_texture()?;
         let target_view = output_frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
         let screen_descriptor = egui_wgpu::ScreenDescriptor {
-            size_in_pixels: [self.config.width, self.config.height],
+            size_in_pixels: [
+                render_pipeline.surface_config.width,
+                render_pipeline.surface_config.height,
+            ],
             pixels_per_point,
         };
 
-        let mut encoder = self.device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("KairosEditor egui command encoder"),
-            });
+        let mut encoder =
+            render_pipeline
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("KairosEditor egui command encoder"),
+                });
 
-        let user_cmd_buffers = self.renderer.update_buffers(
-            &self.device, 
-            &self.queue, 
-            &mut encoder, 
-            clipped_primitives, 
-            &screen_descriptor
+        let user_cmd_buffers = egui_renderer.update_buffers(
+            &render_pipeline.device,
+            &render_pipeline.queue,
+            &mut encoder,
+            &clipped_primitives,
+            &screen_descriptor,
         );
 
         {
@@ -157,117 +176,29 @@ impl GpuState {
                 })],
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
-                occlusion_query_set: None
+                occlusion_query_set: None,
             });
 
             let mut render_pass = render_pass.forget_lifetime();
-            self.renderer
-                .render(&mut render_pass, clipped_primitives, &screen_descriptor);
+            egui_renderer.render(&mut render_pass, clipped_primitives, &screen_descriptor);
         }
 
-        self.queue.submit(
+        render_pipeline.queue.submit(
             user_cmd_buffers
                 .into_iter()
-                .chain(std::iter::once(encoder.finish()))
+                .chain(std::iter::once(encoder.finish())),
         );
 
         output_frame.present();
 
         for id in &textures_delta.free {
-            self.renderer.free_texture(id);
+            egui_renderer.free_texture(id);
         }
 
         Ok(())
     }
-}
 
-fn load_icon() -> Option<Icon> {
-    let bytes = std::fs::read(paths::PATH_ENGINE_ICON).ok()?;
-    let image = image::load_from_memory(&bytes).ok()?.into_rgba8();
-    let (width, height) = image.dimensions();
-
-    Icon::from_rgba(image.into_raw(), width, height).ok()
-}
-
-type RuntimeResult<T> = Result<T, Box<dyn Error>>;
-
-#[derive(Debug, Clone)]
-pub enum KairosEditorRuntimeEvent {
-    RequestRepaint {
-        viewport_id: ViewportId,
-        delay: Duration,
-    }
-}
-
-pub struct KairosEditorRuntime {
-    engine: KairosEngine,
-    egui_ctx: egui::Context,
-    egui_state: Option<egui_winit::State>,
-    window: Option<Arc<Window>>,
-    gpu: Option<GpuState>,
-    repaint_at: Option<Instant>,
-    didi_exit: bool,
-}
-
-impl KairosEditorRuntime {
-    pub fn new(proxy: EventLoopProxy<KairosEditorRuntimeEvent>) -> RuntimeResult<Self> {
-        let egui_ctx = egui::Context::default();
-        egui_extras::install_image_loaders(&egui_ctx);
-
-        egui_ctx.set_request_repaint_callback(move |info| {
-            let _ = proxy.send_event(KairosEditorRuntimeEvent::RequestRepaint { 
-                viewport_id: info.viewport_id, 
-                delay: info.delay
-            });
-        });
-
-        Ok(
-            Self {
-                engine: KairosEngine::new()?,
-                egui_ctx,
-                egui_state: None,
-                window: None,
-                gpu: None,
-                repaint_at: None,
-                didi_exit: false,
-            }
-        )
-    }
-
-    fn create_window(&mut self, event_loop: &ActiveEventLoop) -> RuntimeResult<()> {
-        let title = format!("{} {}", consts::APP_NAME, consts::VERSION);
-
-        let attrs = Window::default_attributes()
-            .with_title(title)
-            .with_inner_size(LogicalSize::new(800.0, 600.0))
-            .with_decorations(true)
-            .with_transparent(false)
-            .with_window_icon(load_icon());
-
-        let window = Arc::new(event_loop.create_window(attrs)?);
-
-        let mut egui_state = egui_winit::State::new(
-            self.egui_ctx.clone(), 
-            ViewportId::ROOT, 
-            event_loop, 
-            Some(window.scale_factor() as f32), 
-            window.theme(), 
-            None
-        );
-
-        let gpu = pollster::block_on(GpuState::new(window.clone()))?;
-        egui_state.set_max_texture_side(gpu.max_texture_side());
-
-        self.window = Some(window.clone());
-        self.egui_state = Some(egui_state);
-        self.gpu = Some(gpu);
-
-        window.request_redraw();
-
-        Ok(())
-    }
-
-    fn redraw(&mut self, event_loop: &ActiveEventLoop){
+    fn redraw(&mut self, event_loop: &ActiveEventLoop) {
         let Some(window) = self.window.as_ref().cloned() else {
             return;
         };
@@ -290,7 +221,7 @@ impl KairosEditorRuntime {
                 .commands
                 .iter()
                 .any(|command| matches!(command, ViewportCommand::Close));
-            
+
             repaint_delay = Some(root_output.repaint_delay);
 
             let mut actions_requested = Vec::new();
@@ -301,11 +232,11 @@ impl KairosEditorRuntime {
                 .or_default();
 
             egui_winit::process_viewport_commands(
-                &self.egui_ctx, 
-                viewport_info, 
+                &self.egui_ctx,
+                viewport_info,
                 root_output.commands.iter().cloned(),
-                &window, 
-                &mut actions_requested
+                &window,
+                &mut actions_requested,
             );
 
             if !actions_requested.is_empty() {
@@ -321,17 +252,34 @@ impl KairosEditorRuntime {
         if let Some(delay) = repaint_delay {
             self.set_repaint_delay_from_output(delay);
         }
+        let draw_egui_result = {
+            let mut render_pipeline_gurad = self.render_pipeline.lock();
+            let Some(render_pipeline) = render_pipeline_gurad.as_mut() else {
+                return;
+            };
+            let Some(egui_renderer) = self.egui_renderer.as_mut() else {
+                return;
+            };
 
-        let clipped_primitives = self.egui_ctx.tessellate(full_output.shapes, full_output.pixels_per_point);
+            let clipped_primitives = self
+                .egui_ctx
+                .tessellate(full_output.shapes, full_output.pixels_per_point);
 
-        let Some(gpu) = self.gpu.as_mut() else {
-            return;
+            Self::draw_egui(
+                render_pipeline,
+                egui_renderer,
+                &full_output.textures_delta,
+                &clipped_primitives,
+                full_output.pixels_per_point,
+            )
         };
 
-        match gpu.paint(&full_output.textures_delta, &clipped_primitives, full_output.pixels_per_point) {
+        match draw_egui_result {
             Ok(()) => {}
             Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
-                gpu.resize(window.inner_size());
+                if let Some(render_pipeline) = self.render_pipeline.lock().as_mut() {
+                    render_pipeline.resize(window.inner_size());
+                }
                 window.request_redraw();
             }
             Err(wgpu::SurfaceError::OutOfMemory) => {
@@ -419,19 +367,13 @@ impl ApplicationHandler<KairosEditorRuntimeEvent> for KairosEditorRuntime {
         }
     }
 
-    fn user_event(
-        &mut self,
-        _event_loop: &ActiveEventLoop,
-        event: KairosEditorRuntimeEvent,
-    ) {
+    fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: KairosEditorRuntimeEvent) {
         match event {
-            KairosEditorRuntimeEvent::RequestRepaint { 
-                viewport_id, 
-                delay } => {
-                    if viewport_id == ViewportId::ROOT {
-                        self.queue_repaint_after(delay);
-                    }
-                },
+            KairosEditorRuntimeEvent::RequestRepaint { viewport_id, delay } => {
+                if viewport_id == ViewportId::ROOT {
+                    self.queue_repaint_after(delay);
+                }
+            }
         }
     }
 
@@ -459,20 +401,20 @@ impl ApplicationHandler<KairosEditorRuntimeEvent> for KairosEditorRuntime {
         match event {
             WindowEvent::CloseRequested => {
                 self.shutdown(event_loop);
-            },
+            }
             WindowEvent::Resized(physical_size) => {
-                if let Some(gpu) = self.gpu.as_mut() {
-                    gpu.resize(physical_size);
+                if let Some(render_pipeline) = self.render_pipeline.lock().as_mut() {
+                    render_pipeline.resize(physical_size);
                 }
-            },
+            }
             WindowEvent::ScaleFactorChanged { .. } => {
-                if let Some(gpu) = self.gpu.as_mut() {
-                    gpu.resize(window.inner_size());
+                if let Some(render_pipeline) = self.render_pipeline.lock().as_mut() {
+                    render_pipeline.resize(window.inner_size());
                 }
-            },
+            }
             WindowEvent::RedrawRequested => {
                 self.redraw(event_loop);
-            },
+            }
             _ => {}
         }
     }

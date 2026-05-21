@@ -1,22 +1,49 @@
-use std::{any::{Any, TypeId, type_name}, collections::{HashMap, VecDeque}, process::id};
+use std::{
+    any::{Any, TypeId, type_name},
+    collections::{HashMap, VecDeque},
+    process::id,
+};
 
-use egui::{self};
 use crate::log::Log;
+use egui::{self};
 
-use crate::{kairos_dialog, kairos_editor::ui::{about_window::AboutWindow, console_window::ConsoleWindow, docking_tab::{DockArea, dock_state::{DockState, SurfaceBottomPanelLocation, SurfaceCenterPanelLocation, SurfaceLeftPanelLocation, SurfaceRightPanelLocation, tree::NodeIndex}, surfaces::SurfaceIndex, tab_drawer::{OnCloseResponse, TabDrawer}, window_state::WindowState}, hierarchy_window::HierarchyWindow, inspector_window::InspectorWindow, preferences_window::PreferencesWindow, project_window::ProjectWindow, scene_window::SceneWindow, tool_bar::ToolBar, ui_style_fields::{StyleField, StylePage}}};
+use crate::{
+    kairos_dialog,
+    kairos_editor::ui::{
+        about_window::AboutWindow,
+        console_window::ConsoleWindow,
+        docking_tab::{
+            DockArea,
+            dock_state::{
+                DockState, SurfaceBottomPanelLocation, SurfaceCenterPanelLocation,
+                SurfaceLeftPanelLocation, SurfaceRightPanelLocation, tree::NodeIndex,
+            },
+            surfaces::SurfaceIndex,
+            tab_drawer::{OnCloseResponse, TabDrawer},
+            window_state::WindowState,
+        },
+        hierarchy_window::HierarchyWindow,
+        inspector_window::InspectorWindow,
+        preferences_window::PreferencesWindow,
+        project_window::ProjectWindow,
+        scene_window::SceneWindow,
+        tool_bar::ToolBar,
+        ui_style_fields::{StyleField, StylePage},
+    },
+};
 
-pub mod paths;
-pub mod dialog;
-pub mod ui_style_fields;
-pub mod tool_bar;
 pub mod about_window;
-pub mod preferences_window;
 pub mod console_window;
+pub mod dialog;
 pub mod docking_tab;
-pub mod inspector_window;
 pub mod hierarchy_window;
+pub mod inspector_window;
+pub mod paths;
+pub mod preferences_window;
 pub mod project_window;
 pub mod scene_window;
+pub mod tool_bar;
+pub mod ui_style_fields;
 
 pub enum Message {
     CreateToolbar,
@@ -53,19 +80,24 @@ impl TabDrawer for KairosTabDrawer {
     }
 
     fn ui(
-        &mut self, 
-        ui: &mut egui::Ui, 
-        tab: &mut Self::Tab, 
-        ctx: &egui::Context, 
-        messager: &mut Messager, 
+        &mut self,
+        ui: &mut egui::Ui,
+        tab: &mut Self::Tab,
+        ctx: &egui::Context,
+        messager: &mut Messager,
         log: &mut Log,
-        drawers: &Vec<Box<dyn Drawer>>
+        drawers: &Vec<Box<dyn Drawer>>,
     ) {
         let tab = &drawers[*tab];
         tab.update(Some(ui), ctx, messager, log);
     }
 
-    fn on_close(&mut self, tab: &mut Self::Tab, messager: &mut Messager, drawers: &Vec<Box<dyn Drawer>>) -> OnCloseResponse {
+    fn on_close(
+        &mut self,
+        tab: &mut Self::Tab,
+        messager: &mut Messager,
+        drawers: &Vec<Box<dyn Drawer>>,
+    ) -> OnCloseResponse {
         let tab = &drawers[*tab];
         tab.close(messager);
         OnCloseResponse::Close
@@ -81,11 +113,11 @@ pub trait Drawer: Any {
     fn show_window(&self, state: Option<&mut WindowState>);
 
     fn update(
-        &self, 
-        ui: Option<&mut egui::Ui>, 
-        ctx: &egui::Context, 
+        &self,
+        ui: Option<&mut egui::Ui>,
+        ctx: &egui::Context,
         messager: &mut Messager,
-        log: &mut Log
+        log: &mut Log,
     );
 
     fn close(&self, messager: &mut Messager);
@@ -100,13 +132,13 @@ pub trait Drawer: Any {
 }
 
 pub struct Messager {
-    messages: VecDeque<Message>
+    messages: VecDeque<Message>,
 }
 
 impl Messager {
     pub fn new() -> Self {
-        Self{
-            messages: VecDeque::new()
+        Self {
+            messages: VecDeque::new(),
         }
     }
 
@@ -143,15 +175,11 @@ impl Context {
             drawers,
             actives: Vec::new(),
             tab_tree,
-            tab_viewer: KairosTabDrawer {  }
+            tab_viewer: KairosTabDrawer {},
         }
     }
 
-    pub fn darw(
-        &mut self, 
-        ctx: &egui::Context,
-        log: &mut Log
-    ) {
+    pub fn darw(&mut self, ctx: &egui::Context, log: &mut Log) {
         // tool_bar
         let tool_bar_type_id = TypeId::of::<ToolBar>();
         if let Some(id) = self.ids.get(&tool_bar_type_id) {
@@ -159,19 +187,16 @@ impl Context {
         }
 
         // 中央区域显示内容
-        egui::CentralPanel::default()
-            .show(ctx, |ui| {
-                DockArea::new("KairosEditor Main DockArea", &mut self.tab_tree)
-                    .show_inside(
-                        ui, 
-                        ctx, 
-                        &mut self.messager, 
-                        log,
-                        &self.drawers, 
-                        &mut self.tab_viewer
-                    );
-            }
-        );
+        egui::CentralPanel::default().show(ctx, |ui| {
+            DockArea::new("KairosEditor Main DockArea", &mut self.tab_tree).show_inside(
+                ui,
+                ctx,
+                &mut self.messager,
+                log,
+                &self.drawers,
+                &mut self.tab_viewer,
+            );
+        });
     }
 
     pub fn handle(&mut self, ctx: &egui::Context, log: &mut Log) {
@@ -182,29 +207,25 @@ impl Context {
                         Context::create_ui_failed(ctx, type_name::<ToolBar>(), error);
                     });
                     self.push_drawer::<ToolBar>(Box::new(drawer));
-                },
+                }
                 Message::QuitEngine => {
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                },
+                }
                 Message::OpenAboutWindow => {
-                    self.show_window::<AboutWindow>(
-                        ctx, 
-                        AboutWindow::new
-                    );
-                },
+                    self.show_window::<AboutWindow>(ctx, AboutWindow::new);
+                }
                 Message::CloseAboutWindow => {
                     self.close_drawer::<AboutWindow>();
-                },
+                }
                 Message::OpenPreferenceWindow => {
-                    self.show_window::<PreferencesWindow>(
-                        ctx, 
-                        PreferencesWindow::new
-                    );
-                    self.messager.messages.push_back(Message::RefershPreferenceWindow);
-                },
+                    self.show_window::<PreferencesWindow>(ctx, PreferencesWindow::new);
+                    self.messager
+                        .messages
+                        .push_back(Message::RefershPreferenceWindow);
+                }
                 Message::ClosePreferenceWindow => {
                     self.close_drawer::<PreferencesWindow>();
-                },
+                }
                 Message::RefershPreferenceWindow => {
                     let mut style_pages = Vec::new();
                     for (id, drawer) in self.drawers.iter().enumerate() {
@@ -215,161 +236,174 @@ impl Context {
                     match self.get_preference_window_mut() {
                         Some(preferences_window) => {
                             preferences_window.registe_ui_styles(style_pages);
-                        },
-                        None => {
-                            kairos_dialog::error_message_window("PreferenceWindow Error", "Get PreferenceWindow Failed")
-                        },
+                        }
+                        None => kairos_dialog::error_message_window(
+                            "PreferenceWindow Error",
+                            "Get PreferenceWindow Failed",
+                        ),
                     }
-                },
+                }
                 Message::SetPreferenceWindowSelectedId(selected_id) => {
                     match self.get_preference_window_mut() {
                         Some(preferences_window) => preferences_window.set_selected_id(selected_id),
                         None => {
-                            kairos_dialog::error_message_window("PreferenceWindow Error", "Get PreferenceWindow Failed");
-                        },
+                            kairos_dialog::error_message_window(
+                                "PreferenceWindow Error",
+                                "Get PreferenceWindow Failed",
+                            );
+                        }
                     }
-                },
-                Message::UpdateUIStyle(style_page) => {
-                    match self.get_preference_window_mut() {
-                        Some(preferences_window) => {
-                            preferences_window.update_style_page(&style_page);
-                            let drawer = &mut self.drawers[style_page.id];
-                            drawer.update_style(&style_page.fields);
-                        },
-                        None => {
-                            kairos_dialog::error_message_window("PreferenceWindow Error", "Get PreferenceWindow Failed");
-                        },
+                }
+                Message::UpdateUIStyle(style_page) => match self.get_preference_window_mut() {
+                    Some(preferences_window) => {
+                        preferences_window.update_style_page(&style_page);
+                        let drawer = &mut self.drawers[style_page.id];
+                        drawer.update_style(&style_page.fields);
+                    }
+                    None => {
+                        kairos_dialog::error_message_window(
+                            "PreferenceWindow Error",
+                            "Get PreferenceWindow Failed",
+                        );
                     }
                 },
                 Message::OpenConsoleTab => {
-                    self.show_tab::<ConsoleWindow, _>(
-                        ctx, 
-                        ConsoleWindow::new, 
-                        |state, id| {
-                            let location = state.find_surface_bottom_panel_location(SurfaceIndex::main(), NodeIndex::root());
-                            match location {
-                                SurfaceBottomPanelLocation::None => {
-                                    state.main_surface_mut().split_below(NodeIndex::root(), 0.7, vec![id]);
-                                },
-                                SurfaceBottomPanelLocation::Center(surface_index, node_index) => {
-                                    state[surface_index].split_below(node_index, 1.0, vec![id]);
-                                },
-                                SurfaceBottomPanelLocation::Bottom(surface_index, node_index) => {
-                                    state[surface_index][node_index].append_drawer(id);
-                                },
+                    self.show_tab::<ConsoleWindow, _>(ctx, ConsoleWindow::new, |state, id| {
+                        let location = state.find_surface_bottom_panel_location(
+                            SurfaceIndex::main(),
+                            NodeIndex::root(),
+                        );
+                        match location {
+                            SurfaceBottomPanelLocation::None => {
+                                state.main_surface_mut().split_below(
+                                    NodeIndex::root(),
+                                    0.7,
+                                    vec![id],
+                                );
+                            }
+                            SurfaceBottomPanelLocation::Center(surface_index, node_index) => {
+                                state[surface_index].split_below(node_index, 1.0, vec![id]);
+                            }
+                            SurfaceBottomPanelLocation::Bottom(surface_index, node_index) => {
+                                state[surface_index][node_index].append_drawer(id);
                             }
                         }
-                    );
-                },
+                    });
+                }
                 Message::CloseConsoleTab => {
                     self.close_drawer::<ConsoleWindow>();
-                },
+                }
                 Message::OpenInspectorTab => {
-                    self.show_tab::<InspectorWindow, _>(
-                        ctx, 
-                        InspectorWindow::new, 
-                        |state, id| {
-                            let location = state.find_surface_right_panel_location(SurfaceIndex::main(), NodeIndex::root());
-                            match location {
-                                SurfaceRightPanelLocation::None => {
-                                    state.main_surface_mut().split_right(NodeIndex::root(), 0.7, vec![id]);
-                                },
-                                SurfaceRightPanelLocation::Center(surface_index, node_index) => {
-                                    state[surface_index].split_right(node_index, 0.7, vec![id]);
-                                },
-                                SurfaceRightPanelLocation::Right(surface_index, node_index) => {
-                                    state[surface_index][node_index].append_drawer(id);
-                                },
+                    self.show_tab::<InspectorWindow, _>(ctx, InspectorWindow::new, |state, id| {
+                        let location = state.find_surface_right_panel_location(
+                            SurfaceIndex::main(),
+                            NodeIndex::root(),
+                        );
+                        match location {
+                            SurfaceRightPanelLocation::None => {
+                                state.main_surface_mut().split_right(
+                                    NodeIndex::root(),
+                                    0.7,
+                                    vec![id],
+                                );
+                            }
+                            SurfaceRightPanelLocation::Center(surface_index, node_index) => {
+                                state[surface_index].split_right(node_index, 0.7, vec![id]);
+                            }
+                            SurfaceRightPanelLocation::Right(surface_index, node_index) => {
+                                state[surface_index][node_index].append_drawer(id);
                             }
                         }
-                    );
-                },
+                    });
+                }
                 Message::CloseInspectorTab => {
                     self.close_drawer::<InspectorWindow>();
-                },
+                }
                 Message::OpenHierarchyTab => {
-                    self.show_tab::<HierarchyWindow, _>(
-                        ctx, 
-                        HierarchyWindow::new,
-                        |state, id| {
-                            let location = state.find_surface_left_panel_location(SurfaceIndex::main(), NodeIndex::root());
-                            match location {
-                                SurfaceLeftPanelLocation::None => {
-                                    state.main_surface_mut().split_left(
-                                        NodeIndex::root(), 
-                                        0.3, 
-                                        vec![id]
-                                    );
-                                },
-                                SurfaceLeftPanelLocation::Center(surfcade_index, node_index) => {
-                                    state[surfcade_index].split_left(
-                                        node_index,
-                                        0.3,
-                                        vec![id]
-                                    );
-                                },
-                                SurfaceLeftPanelLocation::Left(surface_index, node_index) => {
-                                    state[surface_index][node_index].append_drawer(id);
-                                },
+                    self.show_tab::<HierarchyWindow, _>(ctx, HierarchyWindow::new, |state, id| {
+                        let location = state.find_surface_left_panel_location(
+                            SurfaceIndex::main(),
+                            NodeIndex::root(),
+                        );
+                        match location {
+                            SurfaceLeftPanelLocation::None => {
+                                state.main_surface_mut().split_left(
+                                    NodeIndex::root(),
+                                    0.3,
+                                    vec![id],
+                                );
+                            }
+                            SurfaceLeftPanelLocation::Center(surfcade_index, node_index) => {
+                                state[surfcade_index].split_left(node_index, 0.3, vec![id]);
+                            }
+                            SurfaceLeftPanelLocation::Left(surface_index, node_index) => {
+                                state[surface_index][node_index].append_drawer(id);
                             }
                         }
-                    );
-                },
+                    });
+                }
                 Message::CloseHierarchyTab => {
                     self.close_drawer::<HierarchyWindow>();
-                },
+                }
                 Message::OpenProjectTab => {
-                    self.show_tab::<ProjectWindow, _>(
-                        ctx, 
-                        ProjectWindow::new,
-                        |state, id| {
-                            let location = state.find_surface_bottom_panel_location(SurfaceIndex::main(), NodeIndex::root());
-                            match location {
-                                SurfaceBottomPanelLocation::None => {
-                                    state.main_surface_mut().split_below(NodeIndex::root(), 0.7, vec![id]);
-                                },
-                                SurfaceBottomPanelLocation::Center(surface_index, node_index) => {
-                                    state[surface_index].split_below(node_index, 0.7, vec![id]);
-                                },
-                                SurfaceBottomPanelLocation::Bottom(surface_index, node_index) => {
-                                    state[surface_index][node_index].append_drawer(id);
-                                },
+                    self.show_tab::<ProjectWindow, _>(ctx, ProjectWindow::new, |state, id| {
+                        let location = state.find_surface_bottom_panel_location(
+                            SurfaceIndex::main(),
+                            NodeIndex::root(),
+                        );
+                        match location {
+                            SurfaceBottomPanelLocation::None => {
+                                state.main_surface_mut().split_below(
+                                    NodeIndex::root(),
+                                    0.7,
+                                    vec![id],
+                                );
+                            }
+                            SurfaceBottomPanelLocation::Center(surface_index, node_index) => {
+                                state[surface_index].split_below(node_index, 0.7, vec![id]);
+                            }
+                            SurfaceBottomPanelLocation::Bottom(surface_index, node_index) => {
+                                state[surface_index][node_index].append_drawer(id);
                             }
                         }
-                    );
-                },
+                    });
+                }
                 Message::CloseProjectTab => {
                     self.close_drawer::<ProjectWindow>();
-                },
+                }
                 Message::OpenSceneTab => {
-                    self.show_tab::<SceneWindow, _>(
-                        ctx, 
-                        SceneWindow::new,
-                        |state, id| {
-                            let location = state.find_surface_center_panel_location(SurfaceIndex::main(), NodeIndex::root());
-                            match location {
-                                SurfaceCenterPanelLocation::None => {
-                                    state.main_surface_mut().split_above(NodeIndex::root(), 0.7, vec![id]);
-                                },
-                                SurfaceCenterPanelLocation::Above(surface_index, node_index) => {
-                                    state[surface_index].split_above(node_index, 0.7, vec![id]);
-                                },
-                                SurfaceCenterPanelLocation::Center(surface_index, node_index) => {
-                                    state[surface_index][node_index].append_drawer(id);
-                                },
+                    self.show_tab::<SceneWindow, _>(ctx, SceneWindow::new, |state, id| {
+                        let location = state.find_surface_center_panel_location(
+                            SurfaceIndex::main(),
+                            NodeIndex::root(),
+                        );
+                        match location {
+                            SurfaceCenterPanelLocation::None => {
+                                state.main_surface_mut().split_above(
+                                    NodeIndex::root(),
+                                    0.7,
+                                    vec![id],
+                                );
+                            }
+                            SurfaceCenterPanelLocation::Above(surface_index, node_index) => {
+                                state[surface_index].split_above(node_index, 0.7, vec![id]);
+                            }
+                            SurfaceCenterPanelLocation::Center(surface_index, node_index) => {
+                                state[surface_index][node_index].append_drawer(id);
                             }
                         }
-                    );
-                },
+                    });
+                }
                 Message::CloseSceneTab => {
                     self.close_drawer::<SceneWindow>();
-                },
+                }
             }
         }
     }
 
     fn push_drawer<T>(&mut self, drawer: Box<dyn Drawer>) -> usize
-        where T: 'static + Drawer
+    where
+        T: 'static + Drawer,
     {
         let id = self.drawers.len();
         let type_id = TypeId::of::<T>();
@@ -379,8 +413,13 @@ impl Context {
         id
     }
 
-    fn show_window<T>(&mut self, ctx: &egui::Context, create: impl FnOnce() -> Result<T, Box<dyn std::error::Error>>)
-    where T: Drawer {
+    fn show_window<T>(
+        &mut self,
+        ctx: &egui::Context,
+        create: impl FnOnce() -> Result<T, Box<dyn std::error::Error>>,
+    ) where
+        T: Drawer,
+    {
         let type_id = TypeId::of::<T>();
         match self.ids.get(&type_id) {
             Some(id) => {
@@ -388,13 +427,12 @@ impl Context {
                     let surface = self.tab_tree.add_window(vec![*id]);
                     self.drawers[*id].show_window(self.tab_tree.get_window_state_mut(surface));
                     self.actives[*id] = true;
-                }
-                else {
+                } else {
                     if let Some(tab_location) = self.tab_tree.find_drawer(id) {
                         self.tab_tree.set_active_drawer(tab_location);
                     }
                 }
-            },
+            }
             None => {
                 let drawer = create().unwrap_or_else(|error| {
                     Context::create_ui_failed(ctx, type_name::<T>(), error);
@@ -406,16 +444,22 @@ impl Context {
         };
     }
 
-    fn show_tab<T, F>(&mut self, ctx: &egui::Context, create: impl FnOnce() -> Result<T, Box<dyn std::error::Error>>, split: F)
-    where T: Drawer, F: FnOnce(&mut DockState<usize>, usize) {
+    fn show_tab<T, F>(
+        &mut self,
+        ctx: &egui::Context,
+        create: impl FnOnce() -> Result<T, Box<dyn std::error::Error>>,
+        split: F,
+    ) where
+        T: Drawer,
+        F: FnOnce(&mut DockState<usize>, usize),
+    {
         let type_id = TypeId::of::<T>();
         match self.ids.get(&type_id) {
             Some(id) => {
                 if !self.actives[*id] {
                     split(&mut self.tab_tree, *id);
                     self.actives[*id] = true;
-                }
-                else {
+                } else {
                     if let Some(tab_location) = self.tab_tree.find_drawer(id) {
                         self.tab_tree.set_active_drawer(tab_location);
                     }
@@ -431,14 +475,21 @@ impl Context {
         }
     }
 
-    fn close_drawer<T>(&mut self) where T: 'static + Drawer {
+    fn close_drawer<T>(&mut self)
+    where
+        T: 'static + Drawer,
+    {
         let type_id = TypeId::of::<T>();
         if let Some(id) = self.ids.get(&type_id) {
             self.actives[*id] = false;
         }
     }
 
-    fn create_ui_failed(ctx: &egui::Context, ui_name: &str, error: Box<dyn std::error::Error>) -> ! {
+    fn create_ui_failed(
+        ctx: &egui::Context,
+        ui_name: &str,
+        error: Box<dyn std::error::Error>,
+    ) -> ! {
         dialog::ui_create_error_window(ui_name, &error);
         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         panic!("Create {} UI Failed: {}", ui_name, error)
@@ -449,11 +500,9 @@ impl Context {
         match self.ids.get(&type_id) {
             Some(id) => {
                 let drawer = self.drawers[*id].as_ref();
-                (drawer as &dyn  Any).downcast_ref::<PreferencesWindow>()
-            },
-            None => {
-                None
+                (drawer as &dyn Any).downcast_ref::<PreferencesWindow>()
             }
+            None => None,
         }
     }
 
@@ -462,11 +511,9 @@ impl Context {
         match self.ids.get(&type_id) {
             Some(id) => {
                 let drawer = self.drawers[*id].as_mut();
-                (drawer as &mut dyn  Any).downcast_mut::<PreferencesWindow>()
-            },
-            None => {
-                None
+                (drawer as &mut dyn Any).downcast_mut::<PreferencesWindow>()
             }
+            None => None,
         }
     }
 }

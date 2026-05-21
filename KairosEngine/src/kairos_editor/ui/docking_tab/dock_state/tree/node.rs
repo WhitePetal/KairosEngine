@@ -1,15 +1,12 @@
 use egui::Rect;
 
-use crate::kairos_editor::ui::docking_tab::dock_state::tree::{Split, TabIndex, node::{leaf_node::LeafNode, split_node::SplitNode}};
-
-
+use crate::kairos_editor::ui::docking_tab::dock_state::tree::{
+    Split, TabIndex,
+    node::{leaf_node::LeafNode, split_node::SplitNode},
+};
 
 pub mod leaf_node;
 pub mod split_node;
-
-
-
-
 
 /// Represents an abstract node of a [`Tree`](crate::Tree).
 #[derive(Clone, Debug)]
@@ -38,7 +35,7 @@ impl<Drawer> Node<Drawer> {
     pub fn get_leaf(&self) -> Option<&LeafNode<Drawer>> {
         match self {
             Node::Leaf(leaf_node) => Some(leaf_node),
-            _ => None
+            _ => None,
         }
     }
 
@@ -46,13 +43,13 @@ impl<Drawer> Node<Drawer> {
     pub fn get_leaf_mut(&mut self) -> Option<&mut LeafNode<Drawer>> {
         match self {
             Node::Leaf(leaf_node) => Some(leaf_node),
-            _ => None
+            _ => None,
         }
     }
 
     /// Constructs a leaf node with a given list of `tabs`.
     #[inline(always)]
-    pub fn leaf_with(drawers: Vec<Drawer>) -> Self{
+    pub fn leaf_with(drawers: Vec<Drawer>) -> Self {
         Self::Leaf(LeafNode::new(drawers))
     }
 
@@ -178,7 +175,7 @@ impl<Drawer> Node<Drawer> {
     pub fn drawers(&self) -> Option<&[Drawer]> {
         match self {
             Node::Leaf(leaf) => Some(leaf.drawers()),
-            _ => None
+            _ => None,
         }
     }
 
@@ -293,7 +290,7 @@ impl<Drawer> Node<Drawer> {
     pub fn drawers_count(&self) -> usize {
         match self {
             Node::Leaf(leaf) => leaf.drawers.len(),
-            _ => Default::default()
+            _ => Default::default(),
         }
     }
 

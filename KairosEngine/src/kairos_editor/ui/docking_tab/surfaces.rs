@@ -1,6 +1,9 @@
 use std::ops::{Index, IndexMut};
 
-use crate::kairos_editor::ui::docking_tab::{dock_state::tree::{NodeIndex, Tree, node::Node}, window_state::WindowState};
+use crate::kairos_editor::ui::docking_tab::{
+    dock_state::tree::{NodeIndex, Tree, node::Node},
+    window_state::WindowState,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SurfaceIndex(pub usize);
@@ -34,7 +37,7 @@ impl SurfaceIndex {
 pub enum Surface<Drawer> {
     Empty,
     Main(Tree<Drawer>),
-    Window(Tree<Drawer>, WindowState)
+    Window(Tree<Drawer>, WindowState),
 }
 
 impl<Drawer> Index<NodeIndex> for Surface<Drawer> {

@@ -1,7 +1,5 @@
 use egui::{self, Id, Pos2, Rect, Vec2};
 
-
-
 #[derive(Debug, Clone)]
 pub struct WindowState {
     /// The [`Rect`] that this window was last taking up.

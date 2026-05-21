@@ -1,7 +1,10 @@
-use egui::{self, Id, Ui, WidgetText};
 use crate::log::Log;
+use egui::{self, Id, Ui, WidgetText};
 
-use crate::kairos_editor::ui::{Drawer, Messager, docking_tab::{dock_state::tree::NodeIndex, styles::TabStyle, surfaces::SurfaceIndex}};
+use crate::kairos_editor::ui::{
+    Drawer, Messager,
+    docking_tab::{dock_state::tree::NodeIndex, styles::TabStyle, surfaces::SurfaceIndex},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OnCloseResponse {
@@ -19,13 +22,13 @@ pub trait TabDrawer {
     fn title(&self, tab: &mut Self::Tab, drawers: &Vec<Box<dyn Drawer>>) -> WidgetText;
 
     fn ui(
-        &mut self, 
-        ui: &mut Ui, 
-        tab: &mut Self::Tab, 
-        ctx: &egui::Context, 
+        &mut self,
+        ui: &mut Ui,
+        tab: &mut Self::Tab,
+        ctx: &egui::Context,
         messager: &mut Messager,
         log: &mut Log,
-        drawers: &Vec<Box<dyn Drawer>>
+        drawers: &Vec<Box<dyn Drawer>>,
     );
 
     /// Content inside the context menu shown when the tab is right-clicked.
@@ -37,7 +40,7 @@ pub trait TabDrawer {
         _ui: &mut Ui,
         _tab: &mut Self::Tab,
         _surface: SurfaceIndex,
-        _node: NodeIndex
+        _node: NodeIndex,
     ) {
     }
 
@@ -49,10 +52,14 @@ pub trait TabDrawer {
     }
 
     /// Called after each tab button is shown, so you can add a tooltip, check for clicks, etc.
-    fn on_tab_button(&mut self, _tab: &mut Self::Tab, _response: &egui::Response) {
-    }
+    fn on_tab_button(&mut self, _tab: &mut Self::Tab, _response: &egui::Response) {}
 
-    fn on_close(&mut self, _tab: &mut Self::Tab, _messager: &mut Messager, _drawers: &Vec<Box<dyn Drawer>>) -> OnCloseResponse {
+    fn on_close(
+        &mut self,
+        _tab: &mut Self::Tab,
+        _messager: &mut Messager,
+        _drawers: &Vec<Box<dyn Drawer>>,
+    ) -> OnCloseResponse {
         OnCloseResponse::Close
     }
 
@@ -84,8 +91,7 @@ pub trait TabDrawer {
     ///
     /// `_surface` and `_node` specify which [`Surface`](super::surfaces::Surface) and on which
     /// [`Node`](super::dock_state::tree::node::Node) this particular add button was pressed.
-    fn on_add(&mut self, _surface: SurfaceIndex, _node: NodeIndex) {
-    }
+    fn on_add(&mut self, _surface: SurfaceIndex, _node: NodeIndex) {}
 
     /// Called when the rectangle of the tab content changes.
     ///
@@ -95,15 +101,13 @@ pub trait TabDrawer {
     ///
     /// This is useful for tabs that need to adjust their content based on the
     /// available space.
-    fn on_rect_changed(&mut self, _tab: &mut Self::Tab) {
-    }
+    fn on_rect_changed(&mut self, _tab: &mut Self::Tab) {}
 
     /// Content of the popup under the add button. Useful for selecting what type of tab to add.
     ///
     /// This requires that [`DockArea::show_add_buttons`](super::DockArea::show_add_buttons) and
     /// [`DockArea::show_add_popup`](crate::DockArea::show_add_popup) are set to `true`.
-    fn add_popup(&mut self, _ui: &mut Ui, _surface: SurfaceIndex, _node: NodeIndex) {
-    }
+    fn add_popup(&mut self, _ui: &mut Ui, _surface: SurfaceIndex, _node: NodeIndex) {}
 
     /// Sets custom style for given tab.
     fn tab_style_override(&self, _tab: &Self::Tab, _global_style: &TabStyle) -> Option<TabStyle> {

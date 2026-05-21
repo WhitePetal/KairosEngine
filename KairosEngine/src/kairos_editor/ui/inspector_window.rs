@@ -21,10 +21,20 @@ pub struct InspectorWindow {
 
 impl InspectorWindowStyle {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let style_json = fs::read_to_string(paths::PATH_INSPECTOR_WINDOW_STYLE)
-        .map_err(|error| format!("Load InspectorWindow Style Json Failed, path: {}, error: {}", paths::PATH_INSPECTOR_WINDOW_STYLE, error))?;
-        let style = from_str(&style_json)
-        .map_err(|error| format!("Deserialize InspectorWindow Style Json Failed, error: {}", error))?;
+        let style_json =
+            fs::read_to_string(paths::PATH_INSPECTOR_WINDOW_STYLE).map_err(|error| {
+                format!(
+                    "Load InspectorWindow Style Json Failed, path: {}, error: {}",
+                    paths::PATH_INSPECTOR_WINDOW_STYLE,
+                    error
+                )
+            })?;
+        let style = from_str(&style_json).map_err(|error| {
+            format!(
+                "Deserialize InspectorWindow Style Json Failed, error: {}",
+                error
+            )
+        })?;
         Ok(style)
     }
 }
@@ -32,36 +42,26 @@ impl InspectorWindowStyle {
 impl InspectorWindowModel {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let style = InspectorWindowStyle::new()?;
-        Ok(
-            Self { 
-                style 
-            }
-        )
+        Ok(Self { style })
     }
 }
 
 impl InspectorWindow {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let model = InspectorWindowModel::new()?;
-        Ok(
-            Self { 
-                model 
-            }
-        )
+        Ok(Self { model })
     }
 }
 
 impl Drawer for InspectorWindow {
-    fn show_window(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {
-        
-    }
+    fn show_window(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {}
 
     fn update(
-        &self, 
-        ui: Option<&mut egui::Ui>, 
-        _ctx: &egui::Context, 
+        &self,
+        ui: Option<&mut egui::Ui>,
+        _ctx: &egui::Context,
         _messager: &mut super::Messager,
-        _log: &mut Log
+        _log: &mut Log,
     ) {
         let ui = ui.unwrap();
         ui.label("TODO: Inspector");
@@ -83,7 +83,5 @@ impl Drawer for InspectorWindow {
         Vec::new()
     }
 
-    fn update_style(&mut self, _style_fields: &Vec<super::ui_style_fields::StyleField>) {
-        
-    }
+    fn update_style(&mut self, _style_fields: &Vec<super::ui_style_fields::StyleField>) {}
 }

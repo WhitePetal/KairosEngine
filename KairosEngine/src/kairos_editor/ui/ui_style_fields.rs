@@ -1,6 +1,5 @@
 use crate::math::Color32;
 
-
 #[derive(Clone, Copy)]
 pub enum StyleField {
     FloatStyleField(FloatStyleField),
@@ -11,23 +10,18 @@ pub enum StyleField {
 pub struct StylePage {
     pub id: usize,
     pub name: &'static str,
-    pub fields: Vec<StyleField>
+    pub fields: Vec<StyleField>,
 }
 impl StylePage {
     pub fn new(id: usize, name: &'static str, fields: Vec<StyleField>) -> Self {
-        Self {
-            id,
-            name,
-            fields
-        }
+        Self { id, name, fields }
     }
 }
-
 
 #[derive(Clone, Copy)]
 pub enum FloatFieldEditViewType {
     Field,
-    Slider
+    Slider,
 }
 
 #[derive(Clone, Copy)]
@@ -39,28 +33,30 @@ pub struct FloatStyleField {
     pub view_type: FloatFieldEditViewType,
 }
 impl FloatStyleField {
-    pub fn new(name: &'static str, value: f32, min: f32, max: f32, view_type: FloatFieldEditViewType) -> Self {
-        Self { 
+    pub fn new(
+        name: &'static str,
+        value: f32,
+        min: f32,
+        max: f32,
+        view_type: FloatFieldEditViewType,
+    ) -> Self {
+        Self {
             name,
-            value, 
+            value,
             min,
             max,
-            view_type
+            view_type,
         }
     }
 }
 
-
 #[derive(Clone, Copy)]
 pub struct ColorStyleField {
     pub name: &'static str,
-    pub color: Color32
+    pub color: Color32,
 }
 impl ColorStyleField {
     pub fn new(name: &'static str, color: Color32) -> Self {
-        Self {
-            name,
-            color
-        }
+        Self { name, color }
     }
 }

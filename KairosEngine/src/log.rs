@@ -1,6 +1,5 @@
 use std::{backtrace::Backtrace, collections::VecDeque};
 
-
 enum LogLevel {
     Info,
     Warning,
@@ -10,12 +9,16 @@ enum LogLevel {
 pub struct LogMessage {
     pub level: LogLevel,
     pub message: String,
-    pub backtrace: Backtrace
+    pub backtrace: Backtrace,
 }
 
 impl LogMessage {
     fn new(level: LogLevel, message: String, backtrace: Backtrace) -> Self {
-        Self { level, message, backtrace }
+        Self {
+            level,
+            message,
+            backtrace,
+        }
     }
 }
 
@@ -57,7 +60,8 @@ impl Log {
             message,
             backtrace
         );
-        self.logs.push_back(LogMessage::new(level, message, backtrace));
+        self.logs
+            .push_back(LogMessage::new(level, message, backtrace));
     }
 
     #[inline]

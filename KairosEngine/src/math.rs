@@ -1,5 +1,5 @@
 mod color;
-mod vec; 
+mod vec;
 
 pub use color::Color32;
 pub use vec::*;

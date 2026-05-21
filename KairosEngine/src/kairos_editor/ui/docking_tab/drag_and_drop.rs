@@ -1,17 +1,22 @@
 use std::ops::BitOrAssign;
 
+use egui::{
+    Context, Id, LayerId, NumExt, Order, Painter, Pos2, Rect, Stroke, StrokeKind, Ui, Vec2, vec2,
+};
 use emath::{GuiRounding, inverse_lerp};
-use egui::{Context, Id, LayerId, NumExt, Order, Painter, Pos2, Rect, Stroke, StrokeKind, Ui, Vec2, vec2};
 
-
-use crate::kairos_editor::ui::docking_tab::{AllowedSplits, dock_state::tree::{NodeIndex, Split, TabDestination, TabIndex, TabInsert}, styles::Style, surfaces::SurfaceIndex};
-
+use crate::kairos_editor::ui::docking_tab::{
+    AllowedSplits,
+    dock_state::tree::{NodeIndex, Split, TabDestination, TabIndex, TabInsert},
+    styles::Style,
+    surfaces::SurfaceIndex,
+};
 
 #[derive(Debug, Clone)]
 pub enum TreeComponent {
     Surface(SurfaceIndex),
     Node(SurfaceIndex, NodeIndex),
-    Tab(SurfaceIndex, NodeIndex, TabIndex)
+    Tab(SurfaceIndex, NodeIndex, TabIndex),
 }
 
 #[derive(Debug, Clone)]
@@ -27,12 +32,12 @@ pub struct HoverData {
 #[derive(Debug, Clone)]
 pub struct DragData {
     pub src: TreeComponent,
-    pub rect: Rect
+    pub rect: Rect,
 }
 
 #[derive(Debug, Clone)]
 pub struct DragDropState {
-    pub hover: HoverData, 
+    pub hover: HoverData,
     pub drag: DragData,
     pub pointer: Pos2,
     /// Is some when the pointer is over rect, f64 holds the time when the lock was last active.
@@ -147,7 +152,7 @@ impl DragDropState {
         window_bounds: Rect,
     ) -> Option<TabDestination> {
         // If windows are not allowed, any hover over a window is immediately disallowed.
-        if !windows_allowed &&self.hover.dst.surface_address() != SurfaceIndex::main() {
+        if !windows_allowed && self.hover.dst.surface_address() != SurfaceIndex::main() {
             return None;
         }
         draw_highlight_rect(self.hover.rect, ui, style);
@@ -172,17 +177,17 @@ impl DragDropState {
             // A reverse lerp of the pointers position relative to the hovered leaf rect.
             // Range is (-0.5, -0.5) to (0.5, 0.5)
             let a_pos = (Pos2::new(
-                inverse_lerp(hover_rect.x_range().into(), pointer.x).unwrap(), 
-                inverse_lerp(hover_rect.y_range().into(), pointer.y).unwrap()
+                inverse_lerp(hover_rect.x_range().into(), pointer.x).unwrap(),
+                inverse_lerp(hover_rect.y_range().into(), pointer.y).unwrap(),
             ) - Pos2::new(0.5, 0.5))
             .to_pos2();
 
             let center_drop_rect = Rect::from_center_size(
-                Pos2::ZERO, 
+                Pos2::ZERO,
                 Vec2::splat(style.overlay.feel.center_drop_coverage),
             );
             let window_drop_rect = Rect::from_center_size(
-                Pos2::ZERO, 
+                Pos2::ZERO,
                 Vec2::splat(style.overlay.feel.center_drop_coverage),
             );
 
@@ -225,7 +230,7 @@ impl DragDropState {
                         (false, false) => (
                             Some(TabInsert::Split(Split::Below)),
                             Rect::everything_below(center.y),
-                        )
+                        ),
                     }
                 }
             }
@@ -288,7 +293,7 @@ impl DragDropState {
                 ctx.request_repaint();
                 elapsed < style.overlay.feel.max_preference_time
             }
-            None => false
+            None => false,
         }
     }
 
@@ -313,11 +318,11 @@ const fn lerp_vec(split: Split, alpha: f32) -> Vec2 {
 fn draw_highlight_rect(rect: Rect, ui: &Ui, style: &Style) {
     let painter = make_overlay_painter(ui);
     painter.rect(
-        rect.expand(style.overlay.hovered_leaf_highlight.expansion), 
-        style.overlay.hovered_leaf_highlight.corner_radius, 
-        style.overlay.hovered_leaf_highlight.color, 
-        style.overlay.hovered_leaf_highlight.stroke, 
-        egui::StrokeKind::Inside
+        rect.expand(style.overlay.hovered_leaf_highlight.expansion),
+        style.overlay.hovered_leaf_highlight.corner_radius,
+        style.overlay.hovered_leaf_highlight.color,
+        style.overlay.hovered_leaf_highlight.stroke,
+        egui::StrokeKind::Inside,
     );
 }
 
@@ -339,13 +344,13 @@ fn draw_drop_rect(rect: Rect, ui: &Ui, style: &Style) {
 fn draw_window_rect(rect: Rect, ui: &Ui, style: &Style) {
     let painter = make_overlay_painter(ui);
     painter.rect_stroke(
-        rect, 
-        0.0, 
+        rect,
+        0.0,
         Stroke::new(
             style.overlay.selection_stroke_width,
             style.overlay.selection_color,
-        ), 
-        egui::StrokeKind::Inside
+        ),
+        egui::StrokeKind::Inside,
     );
 }
 
@@ -384,10 +389,10 @@ impl TreeComponent {
             TreeComponent::Surface(surface) => TabDestination::EmptySurface(surface),
             TreeComponent::Node(dst_surf, dst_node) => {
                 TabDestination::Node(dst_surf, dst_node, TabInsert::Append)
-            },
+            }
             TreeComponent::Tab(dst_surf, dst_node, tab_index) => {
                 TabDestination::Node(dst_surf, dst_node, TabInsert::Insert(tab_index))
-            },
+            }
         }
     }
     pub fn node_address(&self) -> (SurfaceIndex, Option<NodeIndex>) {

@@ -1,6 +1,5 @@
 use std::fmt;
 
-
 #[derive(Debug, Clone)]
 pub enum Color32ParseError {
     // 十六进制字符串长度错误（要求 6 或 8）
@@ -17,10 +16,18 @@ impl fmt::Display for Color32ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Color32ParseError::InvalidLength(len) => {
-                write!(f, "Invalide hexadecimal length: {}, only support 6(#RRGGBB) or 8(#RRGGBBAA) bit", len)
+                write!(
+                    f,
+                    "Invalide hexadecimal length: {}, only support 6(#RRGGBB) or 8(#RRGGBBAA) bit",
+                    len
+                )
             }
             Color32ParseError::InvalidHexChar(s) => {
-                write!(f, "Invalide hexadecimal char: {}, only support 0-9, A-F, a-f", s)
+                write!(
+                    f,
+                    "Invalide hexadecimal char: {}, only support 0-9, A-F, a-f",
+                    s
+                )
             }
             Color32ParseError::EmptyString => {
                 write!(f, "The hexadecimal string is null")
@@ -32,6 +39,4 @@ impl fmt::Display for Color32ParseError {
     }
 }
 
-impl std::error::Error for Color32ParseError {
-    
-}
+impl std::error::Error for Color32ParseError {}

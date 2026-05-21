@@ -38,6 +38,7 @@ emath = "0.33.3"
 epaint = "0.33.3"
 egui-winit = "0.33.3"
 egui-wgpu = "0.33.3"
+parking_lot = "0.12.5"
 # egui_dock = "0.18.0"
 
 [[bench]]

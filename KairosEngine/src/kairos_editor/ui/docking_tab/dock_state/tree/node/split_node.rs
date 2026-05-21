@@ -1,6 +1,5 @@
 use egui::Rect;
 
-
 /// the inner data of a [``Node::Horizontal``](super::Node)/[``Node::Vertical``](super::Node), which splits into two further nodes.
 #[derive(Debug, Clone)]
 pub struct SplitNode {
@@ -19,12 +18,17 @@ pub struct SplitNode {
 
 impl SplitNode {
     /// Create a new ``SplitNode``
-    pub const fn new(rect: Rect, fraction: f32, fully_collapsed: bool, collapsed_leaf_count: i32) -> Self {
-        Self { 
-            rect, 
-            fraction, 
-            fully_collapsed, 
-            collapsed_leaf_count 
+    pub const fn new(
+        rect: Rect,
+        fraction: f32,
+        fully_collapsed: bool,
+        collapsed_leaf_count: i32,
+    ) -> Self {
+        Self {
+            rect,
+            fraction,
+            fully_collapsed,
+            collapsed_leaf_count,
         }
     }
 

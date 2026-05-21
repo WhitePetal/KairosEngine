@@ -2,8 +2,6 @@ use std::error::Error;
 
 use native_dialog::{DialogBuilder, MessageLevel};
 
-
-
 /// 创建 UI Model 加载失败窗口
 pub fn ui_create_error_window(ui_name: &str, error: &Box<dyn Error>) {
     DialogBuilder::message()

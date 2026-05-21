@@ -1684,6 +1684,7 @@ dependencies = [
  "image",
  "log",
  "native-dialog",
+ "parking_lot",
  "paste",
  "pollster",
  "serde",

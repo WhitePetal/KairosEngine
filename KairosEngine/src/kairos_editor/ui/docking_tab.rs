@@ -1,23 +1,52 @@
 use std::ops::RangeInclusive;
 
-use epaint::TextShape;
-use emath::TSTransform;
-use egui::{self, Align, Align2, Button, CentralPanel, Color32, Context, CornerRadius, CursorIcon, EventFilter, Frame, Id, Key, LayerId, Layout, Modifiers, NumExt, Order, Popup, PopupCloseBehavior, Pos2, Rect, Response, RichText, ScrollArea, Sense, Shape, Stroke, StrokeKind, TextStyle, Ui, UiBuilder, Vec2, Visuals, WidgetText, lerp, pos2, style::{WidgetVisuals, Widgets}, vec2};
 use crate::log::Log;
+use egui::{
+    self, Align, Align2, Button, CentralPanel, Color32, Context, CornerRadius, CursorIcon,
+    EventFilter, Frame, Id, Key, LayerId, Layout, Modifiers, NumExt, Order, Popup,
+    PopupCloseBehavior, Pos2, Rect, Response, RichText, ScrollArea, Sense, Shape, Stroke,
+    StrokeKind, TextStyle, Ui, UiBuilder, Vec2, Visuals, WidgetText, lerp, pos2,
+    style::{WidgetVisuals, Widgets},
+    vec2,
+};
+use emath::TSTransform;
+use epaint::TextShape;
 
-use crate::kairos_editor::{self, ui::{Messager, docking_tab::{dock_state::{DockState, tree::{NodeIndex, TabDestination, TabIndex, node::{Node, leaf_node::LeafNode}}}, drag_and_drop::{DragData, DragDropState, HoverData, TreeComponent}, state::State, styles::{ButtonsStyle, OverlayType, SeparatorStyle, Style, TabAddAlign, TabBarStyle, TabBodyStyle, TabInteractionStyle, TabStyle}, surfaces::SurfaceIndex, tab_drawer::{OnCloseResponse, TabDrawer}}}};
+use crate::kairos_editor::{
+    self,
+    ui::{
+        Messager,
+        docking_tab::{
+            dock_state::{
+                DockState,
+                tree::{
+                    NodeIndex, TabDestination, TabIndex,
+                    node::{Node, leaf_node::LeafNode},
+                },
+            },
+            drag_and_drop::{DragData, DragDropState, HoverData, TreeComponent},
+            state::State,
+            styles::{
+                ButtonsStyle, OverlayType, SeparatorStyle, Style, TabAddAlign, TabBarStyle,
+                TabBodyStyle, TabInteractionStyle, TabStyle,
+            },
+            surfaces::SurfaceIndex,
+            tab_drawer::{OnCloseResponse, TabDrawer},
+        },
+    },
+};
 
 use duplicate::duplicate;
 use paste::paste;
 
-pub mod window_state;
 pub mod dock_state;
-pub mod surfaces;
-pub mod translations;
-pub mod tab_drawer;
-pub mod styles;
-pub mod state;
 pub mod drag_and_drop;
+pub mod state;
+pub mod styles;
+pub mod surfaces;
+pub mod tab_drawer;
+pub mod translations;
+pub mod window_state;
 
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 pub enum AllowedSplits {
@@ -93,7 +122,7 @@ pub struct DockArea<'tree, Drawer> {
 
 impl<'tree, Drawer> DockArea<'tree, Drawer> {
     pub fn new(id: impl Into<Id>, tree: &'tree mut DockState<Drawer>) -> DockArea<'tree, Drawer> {
-        Self { 
+        Self {
             id: id.into(),
             dock_state: tree,
             style: None,
@@ -116,7 +145,7 @@ impl<'tree, Drawer> DockArea<'tree, Drawer> {
             show_secondary_button_hint: true,
             secondary_button_modifiers: Modifiers::SHIFT,
             secondary_button_on_modifier: true,
-            secondary_button_context_menu: true
+            secondary_button_context_menu: true,
         }
     }
 
@@ -171,12 +200,12 @@ impl<Drawer> DockArea<'_, Drawer> {
     /// See also [`show_inside`](Self::show_inside).
     #[inline]
     pub fn show(
-        self, 
-        ctx: &Context, 
-        messager: &mut Messager, 
+        self,
+        ctx: &Context,
+        messager: &mut Messager,
         log: &mut Log,
         drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
-        tab_viewer: &mut impl TabDrawer<Tab = Drawer>
+        tab_viewer: &mut impl TabDrawer<Tab = Drawer>,
     ) {
         CentralPanel::default()
             .frame(
@@ -188,13 +217,13 @@ impl<Drawer> DockArea<'_, Drawer> {
                 self.show_inside(ui, ctx, messager, log, drawers, tab_viewer);
             });
     }
-    
+
     /// Shows the docking hierarchy inside a [`Ui`].
     pub fn show_inside(
-        mut self, 
-        ui: &mut Ui, 
-        ctx: &egui::Context, 
-        messager: &mut Messager, 
+        mut self,
+        ui: &mut Ui,
+        ctx: &egui::Context,
+        messager: &mut Messager,
         log: &mut Log,
         drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
         tab_drawer: &mut impl TabDrawer<Tab = Drawer>,
@@ -294,7 +323,10 @@ impl<Drawer> DockArea<'_, Drawer> {
                     let mut all_tabs_are_closable = true;
                     for tab in self.dock_state[surface][node].iter_tabs_mut() {
                         if !(tab_drawer.is_closeable(tab)
-                            && matches!(tab_drawer.on_close(tab, messager, drawers), OnCloseResponse::Close))
+                            && matches!(
+                                tab_drawer.on_close(tab, messager, drawers),
+                                OnCloseResponse::Close
+                            ))
                         {
                             all_tabs_are_closable = false;
                         }
@@ -308,7 +340,10 @@ impl<Drawer> DockArea<'_, Drawer> {
                     for node in self.dock_state[surface].iter_mut() {
                         for tab in node.iter_tabs_mut() {
                             if !(tab_drawer.is_closeable(tab)
-                                && matches!(tab_drawer.on_close(tab, messager, drawers), OnCloseResponse::Close))
+                                && matches!(
+                                    tab_drawer.on_close(tab, messager, drawers),
+                                    OnCloseResponse::Close
+                                ))
                             {
                                 all_tabs_are_closable = false;
                             }
@@ -443,7 +478,9 @@ impl<Drawer> DockArea<'_, Drawer> {
         if surf_index.is_main() {
             self.show_root_surface_inside(ui, ctx, messager, log, drawers, tab_viewer, state);
         } else {
-            self.show_window_surface(ui, ctx, messager, log, drawers, surf_index, tab_viewer, state, fade_style);
+            self.show_window_surface(
+                ui, ctx, messager, log, drawers, surf_index, tab_viewer, state, fade_style,
+            );
         }
     }
 
@@ -470,7 +507,17 @@ impl<Drawer> DockArea<'_, Drawer> {
         // Then, draw the bodies of each leaves.
         for node_index in self.dock_state[surf_index].breadth_first_index_iter() {
             if self.dock_state[surf_index][node_index].is_leaf() {
-                self.show_leaf(ui, ctx, messager, log,drawers, state, (surf_index, node_index), tab_viewer, fade_style);
+                self.show_leaf(
+                    ui,
+                    ctx,
+                    messager,
+                    log,
+                    drawers,
+                    state,
+                    (surf_index, node_index),
+                    tab_viewer,
+                    fade_style,
+                );
             }
         }
 
@@ -758,7 +805,9 @@ impl<Drawer> DockArea<'_, Drawer> {
             return;
         }
 
-        self.render_nodes(ui, ctx, messager, log, drawers, tab_viewer, state, surf_index, None);
+        self.render_nodes(
+            ui, ctx, messager, log, drawers, tab_viewer, state, surf_index, None,
+        );
     }
 }
 
@@ -867,7 +916,9 @@ impl<Drawer> DockArea<'_, Drawer> {
                     tab_count,
                 )
             } else {
-                self.render_nodes(ui, ctx, messager, log, drawers, tab_viewer, state, surf_index, fade_style);
+                self.render_nodes(
+                    ui, ctx, messager, log, drawers, tab_viewer, state, surf_index, fade_style,
+                );
             }
         });
 
@@ -1250,14 +1301,21 @@ impl<Drawer> DockArea<'_, Drawer> {
                 // Current leaf contains non-closable tabs.
                 let disabled = self.dock_state[surface_index][node_index]
                     .get_leaf_mut()
-                    .map(|leaf| !leaf.drawers.iter_mut().all(|tab| tab_viewer.is_closeable(tab)))
+                    .map(|leaf| {
+                        !leaf
+                            .drawers
+                            .iter_mut()
+                            .all(|tab| tab_viewer.is_closeable(tab))
+                    })
                     .expect("This node must be a leaf");
 
                 // Current window contains non-closable tabs.
                 let close_window_disabled = disabled
                     || !self.dock_state[surface_index].iter_mut().all(|node| {
                         node.get_leaf_mut().is_none_or(|leaf| {
-                            leaf.drawers.iter_mut().all(|tab| tab_viewer.is_closeable(tab))
+                            leaf.drawers
+                                .iter_mut()
+                                .all(|tab| tab_viewer.is_closeable(tab))
                         })
                     });
 
@@ -1346,7 +1404,8 @@ impl<Drawer> DockArea<'_, Drawer> {
                     .get_leaf_mut()
                     .expect("This node must be a leaf");
                 let style = fade.unwrap_or_else(|| self.style.as_ref().unwrap());
-                let tab_style = tab_viewer.tab_style_override(&leaf.drawers[tab_index.0], &style.tab);
+                let tab_style =
+                    tab_viewer.tab_style_override(&leaf.drawers[tab_index.0], &style.tab);
                 (
                     leaf.active == tab_index || is_being_dragged,
                     tab_viewer.title(&mut leaf.drawers[tab_index.0], drawers),
@@ -1753,7 +1812,7 @@ impl<Drawer> DockArea<'_, Drawer> {
             response = self.show_tooltip_hints(surface_index, response);
         }
     }
-    
+
     /// Draws the collapse button.
     fn drawer_collapse(
         &mut self,

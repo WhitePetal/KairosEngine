@@ -6,7 +6,6 @@ use toml::from_str;
 
 use crate::kairos_editor::ui::{Drawer, Message, paths};
 
-
 #[derive(Debug, Serialize, Deserialize)]
 struct HierarchyWindowStyle {
     pub title: String,
@@ -22,50 +21,48 @@ pub struct HierarchyWindow {
 
 impl HierarchyWindowStyle {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let style_json = fs::read_to_string(paths::PATH_HIERARCHY_WINDOW_STYLE)
-        .map_err(|error| format!("Load HierarchyWindow Style Json Failed, path: {}, error: {}", paths::PATH_HIERARCHY_WINDOW_STYLE, error))?;
-        let style = from_str(&style_json)
-        .map_err(|error| format!("Deserialize HierarchyWindow Style Json Failed, error: {}", error))?;
-        
-        Ok(
-            style
-        )
+        let style_json =
+            fs::read_to_string(paths::PATH_HIERARCHY_WINDOW_STYLE).map_err(|error| {
+                format!(
+                    "Load HierarchyWindow Style Json Failed, path: {}, error: {}",
+                    paths::PATH_HIERARCHY_WINDOW_STYLE,
+                    error
+                )
+            })?;
+        let style = from_str(&style_json).map_err(|error| {
+            format!(
+                "Deserialize HierarchyWindow Style Json Failed, error: {}",
+                error
+            )
+        })?;
+
+        Ok(style)
     }
 }
 
 impl HierarchyWindowModel {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let style = HierarchyWindowStyle::new()?;
-        Ok(
-            Self { 
-                style 
-            }
-        )
+        Ok(Self { style })
     }
 }
 
 impl HierarchyWindow {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let model = HierarchyWindowModel::new()?;
-        Ok(
-            Self { 
-                model 
-            }
-        )
+        Ok(Self { model })
     }
 }
 
 impl Drawer for HierarchyWindow {
-    fn show_window(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {
-        
-    }
+    fn show_window(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {}
 
     fn update(
-        &self, 
-        ui: Option<&mut egui::Ui>, 
-        _ctx: &egui::Context, 
+        &self,
+        ui: Option<&mut egui::Ui>,
+        _ctx: &egui::Context,
         _messager: &mut super::Messager,
-        _log: &mut Log
+        _log: &mut Log,
     ) {
         let ui = ui.unwrap();
         ui.label("TODO: Hierarchy");
@@ -87,7 +84,5 @@ impl Drawer for HierarchyWindow {
         Vec::new()
     }
 
-    fn update_style(&mut self, _style_fields: &Vec<super::ui_style_fields::StyleField>) {
-        
-    }
+    fn update_style(&mut self, _style_fields: &Vec<super::ui_style_fields::StyleField>) {}
 }

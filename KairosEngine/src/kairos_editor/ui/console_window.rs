@@ -1,12 +1,11 @@
 use std::{any::type_name, fs};
 
-use egui;
 use crate::log::Log;
+use egui;
 use serde::{Deserialize, Serialize};
 use toml::from_str;
 
 use crate::kairos_editor::ui::{Drawer, Message, Messager, paths};
-
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ConsoleWindowStyle {
@@ -23,10 +22,19 @@ pub struct ConsoleWindow {
 
 impl ConsoleWindowStyle {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let style_toml = fs::read_to_string(paths::PATH_CONSOLE_WINDOW_STYLE)
-            .map_err(|error| format!("Load ConsoleWindow Model Json Failed, path: {}, error: {}", paths::PATH_CONSOLE_WINDOW_STYLE, error))?;
-        let style = from_str(&style_toml)
-            .map_err(|error| format!("Deserialize ConsoleWindow Model Json Failed, error: {}", error))?;
+        let style_toml = fs::read_to_string(paths::PATH_CONSOLE_WINDOW_STYLE).map_err(|error| {
+            format!(
+                "Load ConsoleWindow Model Json Failed, path: {}, error: {}",
+                paths::PATH_CONSOLE_WINDOW_STYLE,
+                error
+            )
+        })?;
+        let style = from_str(&style_toml).map_err(|error| {
+            format!(
+                "Deserialize ConsoleWindow Model Json Failed, error: {}",
+                error
+            )
+        })?;
 
         Ok(style)
     }
@@ -36,40 +44,30 @@ impl ConsoleWindowModel {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let style = ConsoleWindowStyle::new()?;
 
-        Ok(
-            Self {
-                style
-            }
-        )
+        Ok(Self { style })
     }
 }
 
 impl ConsoleWindow {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let model = ConsoleWindowModel::new()?;
-        Ok(
-            Self {
-                model
-            }
-        )
+        Ok(Self { model })
     }
 }
 
 impl Drawer for ConsoleWindow {
-    fn show_window(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {
-
-    }
+    fn show_window(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {}
 
     fn update(
-        &self, 
-        ui: Option<&mut egui::Ui>, 
-        _ctx: &egui::Context, 
+        &self,
+        ui: Option<&mut egui::Ui>,
+        _ctx: &egui::Context,
         _messager: &mut Messager,
         log: &mut Log,
     ) {
         let ui = ui.unwrap();
         ui.label("TODO: Print Console");
-        
+
         while let Some(log) = log.pop_front() {
             ui.label(log.message);
         }
@@ -87,10 +85,8 @@ impl Drawer for ConsoleWindow {
         Vec::new()
     }
 
-    fn update_style(&mut self, _style_fields: &Vec<super::ui_style_fields::StyleField>) {
+    fn update_style(&mut self, _style_fields: &Vec<super::ui_style_fields::StyleField>) {}
 
-    }
-    
     fn get_title(&self) -> egui::WidgetText {
         self.model.style.title.to_owned().into()
     }

@@ -1,5 +1,3 @@
-
-
 #[derive(Debug, Clone)]
 pub struct Translations {
     /// Text overrides for buttons in tab context menus.
@@ -7,7 +5,6 @@ pub struct Translations {
     /// Text overrides for buttons in windows
     pub leaf: LeafTranslations,
 }
-
 
 #[derive(Debug, Clone)]
 pub struct TabContextMenuTranslations {
@@ -93,21 +90,21 @@ impl LeafTranslations {
             close_all_button: String::from("Close window"),
             close_all_button_menu_hint: String::from("Right click to close this window."),
             close_all_button_modifier_hint: String::from(
-                "Press modifier keys (Shift by default) to close this window."
+                "Press modifier keys (Shift by default) to close this window.",
             ),
             close_all_button_modifier_menu_hint: String::from(
-                "Press modifier keys (Shift by default) or right click to close this window."
+                "Press modifier keys (Shift by default) or right click to close this window.",
             ),
             close_all_button_disabled_tooltip: String::from(
-                "This window contains non-closable tabs."
+                "This window contains non-closable tabs.",
             ),
             minimize_button: String::from("Minimize window"),
             minimize_button_menu_hint: String::from("Right click to minimize this window."),
             minimize_button_modifier_hint: String::from(
-                "Press modifier keys (Shift by default) tho minimize this window."
+                "Press modifier keys (Shift by default) tho minimize this window.",
             ),
             minimize_button_modifier_menu_hint: String::from(
-                "Press modifier keys (Shift by default) or right click to minimize this window."
+                "Press modifier keys (Shift by default) or right click to minimize this window.",
             ),
         }
     }
@@ -119,12 +116,16 @@ impl LeafTranslations {
             close_all_button: String::from("关闭窗口"),
             close_all_button_menu_hint: String::from("右键单击以关闭此窗口。"),
             close_all_button_modifier_hint: String::from("按修饰键（默认Shift）关闭此窗口。"),
-            close_all_button_modifier_menu_hint: String::from("按修饰键（默认Shift）或右键单击以关闭此窗口。"),
+            close_all_button_modifier_menu_hint: String::from(
+                "按修饰键（默认Shift）或右键单击以关闭此窗口。",
+            ),
             close_all_button_disabled_tooltip: String::from("此窗口包含不可关闭的标签。"),
             minimize_button: String::from("最小化窗口"),
             minimize_button_menu_hint: String::from("右键单击以最小化此窗口。"),
             minimize_button_modifier_hint: String::from("按修饰键（默认Shift）最小化此窗口。"),
-            minimize_button_modifier_menu_hint: String::from("按修饰键（默认Shift）或右键单击以最小化此窗口。"),
+            minimize_button_modifier_menu_hint: String::from(
+                "按修饰键（默认Shift）或右键单击以最小化此窗口。",
+            ),
         }
     }
 }
