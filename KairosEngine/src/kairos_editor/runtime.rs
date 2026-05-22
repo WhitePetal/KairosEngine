@@ -1,17 +1,15 @@
 use std::{
     error::Error,
-    io,
     sync::Arc,
     time::{Duration, Instant},
 };
 
 use egui::{ViewportCommand, ViewportId};
-use log::error;
 use parking_lot::Mutex;
 use winit::{
     application::ApplicationHandler,
-    dpi::{LogicalSize, PhysicalSize},
-    event::{KeyEvent, WindowEvent},
+    dpi::LogicalSize,
+    event::WindowEvent,
     event_loop::{ActiveEventLoop, ControlFlow, EventLoopProxy},
     window::{Icon, Window},
 };
@@ -114,7 +112,7 @@ impl KairosEditorRuntime {
         render_pipeline
             .device
             .on_uncaptured_error(Arc::new(move |error| {
-                log::error!("Gpu out of memory: {error}");
+                log::error!("Gpu crash: {error}");
                 render_pipeline_event_proxy
                     .send_event(KairosEditorRuntimeEvent::RenderPipelineCrash)
                     .unwrap();
@@ -141,56 +139,11 @@ impl KairosEditorRuntime {
         let Some(window) = self.window.as_ref().cloned() else {
             return;
         };
-        let Some(egui_state) = self.egui_state.as_mut() else {
-            return;
-        };
 
-        let raw_input = egui_state.take_egui_input(&window);
-        let full_output = self.egui_ctx.run_ui(raw_input, |ui| {
-            self.engine.update(ui);
-        });
-
-        egui_state.handle_platform_output(&window, full_output.platform_output);
+        self.engine.update();
 
         let mut should_close = false;
         let mut repaint_delay = None;
-
-        if let Some(root_output) = full_output.viewport_output.get(&ViewportId::ROOT) {
-            should_close = root_output
-                .commands
-                .iter()
-                .any(|command| matches!(command, ViewportCommand::Close));
-
-            repaint_delay = Some(root_output.repaint_delay);
-
-            let mut actions_requested = Vec::new();
-            let viewport_info = egui_state
-                .egui_input_mut()
-                .viewports
-                .entry(ViewportId::ROOT)
-                .or_default();
-
-            egui_winit::process_viewport_commands(
-                &self.egui_ctx,
-                viewport_info,
-                root_output.commands.iter().cloned(),
-                &window,
-                &mut actions_requested,
-            );
-
-            if !actions_requested.is_empty() {
-                log::debug!("Ignored viewport actions: {actions_requested:?}");
-            }
-        }
-
-        if should_close {
-            self.shutdown(event_loop);
-            return;
-        }
-
-        if let Some(delay) = repaint_delay {
-            self.set_repaint_delay_from_output(delay);
-        }
 
         let render_error = {
             let mut render_pipeline = self.render_pipeline.lock();
@@ -198,9 +151,53 @@ impl KairosEditorRuntime {
                 return;
             };
 
-            match render_pipeline.get_command_encoder() {
+            match render_pipeline.get_window_surface() {
                 Ok((output, view, mut encoder)) => {
-                    let egui_renderer = self.egui_renderer.as_mut().unwrap();
+                    let Some(egui_state) = self.egui_state.as_mut() else {
+                        return;
+                    };
+
+                    let Some(egui_renderer) = self.egui_renderer.as_mut() else {
+                        return;
+                    };
+
+                    let raw_input = egui_state.take_egui_input(&window);
+                    let full_output = self.egui_ctx.run_ui(raw_input, |ui| {
+                        self.engine
+                            .draw_ui(ui, render_pipeline, &mut encoder, egui_renderer);
+                        self.engine.handle_ui(ui);
+                    });
+
+                    egui_state.handle_platform_output(&window, full_output.platform_output);
+
+                    if let Some(root_output) = full_output.viewport_output.get(&ViewportId::ROOT) {
+                        should_close = root_output
+                            .commands
+                            .iter()
+                            .any(|command| matches!(command, ViewportCommand::Close));
+
+                        repaint_delay = Some(root_output.repaint_delay);
+
+                        let mut actions_requested = Vec::new();
+                        let viewport_info = egui_state
+                            .egui_input_mut()
+                            .viewports
+                            .entry(ViewportId::ROOT)
+                            .or_default();
+
+                        egui_winit::process_viewport_commands(
+                            &self.egui_ctx,
+                            viewport_info,
+                            root_output.commands.iter().cloned(),
+                            &window,
+                            &mut actions_requested,
+                        );
+
+                        if !actions_requested.is_empty() {
+                            log::debug!("Ignored viewport actions: {actions_requested:?}");
+                        }
+                    }
+
                     for (id, image_delta) in &full_output.textures_delta.set {
                         egui_renderer.update_texture(
                             &render_pipeline.device,
@@ -233,8 +230,9 @@ impl KairosEditorRuntime {
                     );
 
                     {
-                        let mut render_pass =
-                            render_pipeline.render(&mut encoder, view).forget_lifetime();
+                        let mut render_pass = render_pipeline
+                            .render(&mut encoder, &view)
+                            .forget_lifetime();
 
                         egui_renderer.render(
                             &mut render_pass,
@@ -261,6 +259,15 @@ impl KairosEditorRuntime {
                 Err(error) => Some(error),
             }
         };
+
+        if should_close {
+            self.shutdown(event_loop);
+            return;
+        }
+
+        if let Some(delay) = repaint_delay {
+            self.set_repaint_delay_from_output(delay);
+        }
 
         if let Some(render_error) = render_error {
             match render_error {

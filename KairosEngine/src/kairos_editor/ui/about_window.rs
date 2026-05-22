@@ -1,5 +1,6 @@
 use std::{any::type_name, fs};
 
+use crate::graphics::render_pipeline::RenderPipeline;
 use crate::log::Log;
 use egui::{self, Vec2};
 use serde::{Deserialize, Serialize};
@@ -74,7 +75,15 @@ impl Drawer for AboutWindow {
             }
         }
     }
-    fn update(&self, ui: &mut egui::Ui, _messager: &mut Messager, log: &mut Log) {
+    fn ui(
+        &self,
+        ui: &mut egui::Ui,
+        _render_pipeline: &mut RenderPipeline,
+        _render_command_encoder: &mut wgpu::CommandEncoder,
+        _egui_renderer: &mut egui_wgpu::Renderer,
+        _messager: &mut Messager,
+        log: &mut Log,
+    ) {
         // TODO: test log
         log.info("about_window update");
         // TODO: Icon

@@ -1,6 +1,6 @@
 use std::{any::type_name, fs};
 
-use crate::log::Log;
+use crate::{graphics::render_pipeline::RenderPipeline, log::Log};
 use egui;
 use serde::{Deserialize, Serialize};
 use toml::from_str;
@@ -58,7 +58,15 @@ impl ConsoleWindow {
 impl Drawer for ConsoleWindow {
     fn show_window(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {}
 
-    fn update(&self, ui: &mut egui::Ui, _messager: &mut Messager, log: &mut Log) {
+    fn ui(
+        &self,
+        ui: &mut egui::Ui,
+        _render_pipeline: &mut RenderPipeline,
+        _render_command_encoder: &mut wgpu::CommandEncoder,
+        _egui_renderer: &mut egui_wgpu::Renderer,
+        _messager: &mut Messager,
+        log: &mut Log,
+    ) {
         ui.label("TODO: Print Console");
 
         while let Some(log) = log.pop_front() {

@@ -1,9 +1,14 @@
 use std::{any::type_name, fs};
 
+use egui::{Stroke, StrokeKind, pos2};
 use serde::{Deserialize, Serialize};
 use toml::from_str;
+use wgpu::SamplerDescriptor;
 
-use crate::kairos_editor::ui::{Drawer, Message, paths};
+use crate::{
+    graphics::render_pipeline::RenderPipeline,
+    kairos_editor::ui::{Drawer, Message, paths},
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct SceneWindowStyle {
@@ -12,6 +17,7 @@ struct SceneWindowStyle {
 
 struct SceneWindowModel {
     style: SceneWindowStyle,
+    rt_id: Option<egui::TextureId>,
 }
 
 pub struct SceneWindow {
@@ -40,7 +46,7 @@ impl SceneWindowStyle {
 impl SceneWindowModel {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let style = SceneWindowStyle::new()?;
-        Ok(Self { style })
+        Ok(Self { style, rt_id: None })
     }
 }
 
@@ -54,17 +60,55 @@ impl SceneWindow {
 impl Drawer for SceneWindow {
     fn show_window(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {}
 
-    fn update(
+    fn ui(
         &self,
         ui: &mut egui::Ui,
-        _messager: &mut super::Messager,
+        render_pipeline: &mut RenderPipeline,
+        render_command_encoder: &mut wgpu::CommandEncoder,
+        egui_renderer: &mut egui_wgpu::Renderer,
+        messager: &mut super::Messager,
         _log: &mut crate::log::Log,
     ) {
-        ui.label("TODO: Scene");
+        let available = ui.available_size_before_wrap();
+        let (rect, _) = ui.allocate_exact_size(available, egui::Sense::click_and_drag());
+        let pixels_per_point = ui.pixels_per_point();
+        let width = (rect.width() * pixels_per_point).round().max(1.0) as u32;
+        let height = (rect.height() * pixels_per_point).round().max(1.0) as u32;
+        let rt_view = render_pipeline.create_render_target("SceneView", width, height);
+        render_pipeline.render(render_command_encoder, &rt_view);
+
+        match self.model.rt_id {
+            Some(rt_id) => {
+                egui_renderer.update_egui_texture_from_wgpu_texture(
+                    &render_pipeline.device,
+                    &rt_view,
+                    wgpu::FilterMode::Linear,
+                    rt_id,
+                );
+                ui.painter().image(
+                    rt_id,
+                    rect,
+                    egui::Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
+                    egui::Color32::WHITE,
+                );
+            }
+            None => {
+                let rt_id = egui_renderer.register_native_texture(
+                    &render_pipeline.device,
+                    &rt_view,
+                    wgpu::FilterMode::Linear,
+                );
+                messager.send(Message::CreateSceneTabRt(rt_id));
+            }
+        }
     }
 
     fn close(&self, messager: &mut super::Messager) {
         messager.send(Message::CloseSceneTab);
+    }
+
+    fn scroll_bars(&self) -> [bool; 2] {
+        [false, false]
     }
 
     fn get_name(&self) -> &'static str {
@@ -80,4 +124,10 @@ impl Drawer for SceneWindow {
     }
 
     fn update_style(&mut self, _style_fields: &Vec<super::ui_style_fields::StyleField>) {}
+}
+
+impl SceneWindow {
+    pub fn set_rt_id(&mut self, rt_id: egui::TextureId) {
+        self.model.rt_id = Some(rt_id)
+    }
 }

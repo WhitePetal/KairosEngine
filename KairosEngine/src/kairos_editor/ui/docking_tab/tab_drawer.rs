@@ -1,4 +1,4 @@
-use crate::log::Log;
+use crate::{graphics::render_pipeline::RenderPipeline, log::Log};
 use egui::{self, Id, Ui, WidgetText};
 
 use crate::kairos_editor::ui::{
@@ -24,6 +24,9 @@ pub trait TabDrawer {
     fn ui(
         &mut self,
         ui: &mut Ui,
+        render_pipeline: &mut RenderPipeline,
+        render_command_encoder: &mut wgpu::CommandEncoder,
+        egui_renderer: &mut egui_wgpu::Renderer,
         tab: &mut Self::Tab,
         messager: &mut Messager,
         log: &mut Log,
@@ -129,7 +132,7 @@ pub trait TabDrawer {
     /// Returns `true` if the horizontal and vertical scroll bars will be shown for `tab`.
     ///
     /// By default, both scroll bars are shown.
-    fn scroll_bars(&self, _tab: &Self::Tab) -> [bool; 2] {
+    fn scroll_bars(&self, _tab: &Self::Tab, _drawers: &Vec<Box<dyn Drawer>>) -> [bool; 2] {
         [true, true]
     }
 }

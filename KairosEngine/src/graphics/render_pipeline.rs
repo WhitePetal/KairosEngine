@@ -3,16 +3,16 @@ use std::{error::Error, sync::Arc};
 use wgpu::{
     Adapter, BackendOptions, Backends, BlendState, Buffer, BufferUsages, ColorTargetState,
     ColorWrites, CommandEncoder, CommandEncoderDescriptor, CurrentSurfaceTexture, Device,
-    ExperimentalFeatures, Face, Features, FragmentState, FrontFace, InstanceFlags, Limits, LoadOp,
-    MemoryBudgetThresholds, MemoryHints, MultisampleState, Operations, PipelineCompilationOptions,
-    PipelineLayoutDescriptor, PolygonMode, PowerPreference, PresentMode, PrimitiveState,
-    PrimitiveTopology, Queue, RenderPass, RenderPassColorAttachment, RenderPassDescriptor,
-    RenderPipelineDescriptor, RequestAdapterOptions, ShaderModuleDescriptor, ShaderSource, StoreOp,
-    Surface, SurfaceConfiguration, SurfaceTexture, TextureUsages, TextureView,
-    TextureViewDescriptor, Trace, VertexAttribute, VertexBufferLayout, VertexFormat, VertexState,
-    VertexStepMode,
+    ExperimentalFeatures, Extent3d, Face, Features, FragmentState, FrontFace, InstanceFlags,
+    Limits, LoadOp, MemoryBudgetThresholds, MemoryHints, MultisampleState, Operations,
+    PipelineCompilationOptions, PipelineLayoutDescriptor, PolygonMode, PowerPreference,
+    PresentMode, PrimitiveState, PrimitiveTopology, Queue, RenderPass, RenderPassColorAttachment,
+    RenderPassDescriptor, RenderPipelineDescriptor, RequestAdapterOptions, ShaderModuleDescriptor,
+    ShaderSource, StoreOp, Surface, SurfaceConfiguration, SurfaceTexture, TextureUsages,
+    TextureView, TextureViewDescriptor, Trace, VertexAttribute, VertexBufferLayout, VertexFormat,
+    VertexState, VertexStepMode,
     util::{BufferInitDescriptor, DeviceExt},
-    wgt::DeviceDescriptor,
+    wgt::{DeviceDescriptor, TextureDescriptor},
 };
 use winit::{dpi::PhysicalSize, window::Window};
 
@@ -197,7 +197,7 @@ impl RenderPipeline {
         })
     }
 
-    pub fn get_command_encoder(
+    pub fn get_window_surface(
         &mut self,
     ) -> Result<(SurfaceTexture, TextureView, CommandEncoder), CurrentSurfaceTexture> {
         if self.window_size_changed {
@@ -220,15 +220,41 @@ impl RenderPipeline {
         }
     }
 
+    pub fn create_render_target(&mut self, label: &str, width: u32, height: u32) -> TextureView {
+        // match self.scene_view.clone() {
+        //     Some(scene_view) => {
+        //         scene_view
+        //     },
+        //     None => {
+        let texture = self.device.create_texture(&TextureDescriptor {
+            label: Some(label),
+            size: Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: self.surface_config.format,
+            usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+
+        texture.create_view(&TextureViewDescriptor::default())
+        // },
+        // }
+    }
+
     pub fn render<'encoder>(
         &mut self,
         encoder: &'encoder mut CommandEncoder,
-        view: TextureView,
+        view: &TextureView,
     ) -> RenderPass<'encoder> {
         let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
             label: Some("Render Pass"),
             color_attachments: &[Some(RenderPassColorAttachment {
-                view: &view,
+                view,
                 depth_slice: None,
                 resolve_target: None,
                 ops: Operations {

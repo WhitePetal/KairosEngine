@@ -1,10 +1,9 @@
 use std::{
     any::{Any, TypeId, type_name},
     collections::{HashMap, VecDeque},
-    process::id,
 };
 
-use crate::log::Log;
+use crate::{graphics::render_pipeline::RenderPipeline, log::Log};
 use egui::{self};
 
 use crate::{
@@ -65,6 +64,7 @@ pub enum Message {
     CloseProjectTab,
     OpenSceneTab,
     CloseSceneTab,
+    CreateSceneTabRt(egui::TextureId),
 }
 
 struct KairosTabDrawer {
@@ -82,13 +82,23 @@ impl TabDrawer for KairosTabDrawer {
     fn ui(
         &mut self,
         ui: &mut egui::Ui,
+        render_pipeline: &mut RenderPipeline,
+        render_command_encoder: &mut wgpu::CommandEncoder,
+        egui_renderer: &mut egui_wgpu::Renderer,
         tab: &mut Self::Tab,
         messager: &mut Messager,
         log: &mut Log,
         drawers: &Vec<Box<dyn Drawer>>,
     ) {
         let tab = &drawers[*tab];
-        tab.update(ui, messager, log);
+        tab.ui(
+            ui,
+            render_pipeline,
+            render_command_encoder,
+            egui_renderer,
+            messager,
+            log,
+        );
     }
 
     fn on_close(
@@ -102,6 +112,11 @@ impl TabDrawer for KairosTabDrawer {
         OnCloseResponse::Close
     }
 
+    fn scroll_bars(&self, tab: &Self::Tab, drawers: &Vec<Box<dyn Drawer>>) -> [bool; 2] {
+        let tab = &drawers[*tab];
+        tab.scroll_bars()
+    }
+
     // fn on_add(&mut self, surface: SurfaceIndex, node: NodeIndex) {
     //     println!("add tab: {0}, {1}", surface.0, node.0);
     //     self.drawer_paths.push((surface, node));
@@ -111,9 +126,21 @@ impl TabDrawer for KairosTabDrawer {
 pub trait Drawer: Any {
     fn show_window(&self, state: Option<&mut WindowState>);
 
-    fn update(&self, ui: &mut egui::Ui, messager: &mut Messager, log: &mut Log);
+    fn ui(
+        &self,
+        ui: &mut egui::Ui,
+        render_pipeline: &mut RenderPipeline,
+        render_command_encoder: &mut wgpu::CommandEncoder,
+        egui_renderer: &mut egui_wgpu::Renderer,
+        messager: &mut Messager,
+        log: &mut Log,
+    );
 
     fn close(&self, messager: &mut Messager);
+
+    fn scroll_bars(&self) -> [bool; 2] {
+        [true, true]
+    }
 
     fn get_name(&self) -> &'static str;
 
@@ -172,17 +199,34 @@ impl Context {
         }
     }
 
-    pub fn darw(&mut self, ui: &mut egui::Ui, log: &mut Log) {
+    pub fn darw(
+        &mut self,
+        ui: &mut egui::Ui,
+        render_pipeline: &mut RenderPipeline,
+        render_command_encoder: &mut wgpu::CommandEncoder,
+        egui_renderer: &mut egui_wgpu::Renderer,
+        log: &mut Log,
+    ) {
         // tool_bar
         let tool_bar_type_id = TypeId::of::<ToolBar>();
         if let Some(id) = self.ids.get(&tool_bar_type_id) {
-            self.drawers[*id].update(ui, &mut self.messager, log);
+            self.drawers[*id].ui(
+                ui,
+                render_pipeline,
+                render_command_encoder,
+                egui_renderer,
+                &mut self.messager,
+                log,
+            );
         }
 
         // 中央区域显示内容
         egui::CentralPanel::default().show_inside(ui, |ui| {
             DockArea::new("KairosEditor Main DockArea", &mut self.tab_tree).show_inside(
                 ui,
+                render_pipeline,
+                render_command_encoder,
+                egui_renderer,
                 &mut self.messager,
                 log,
                 &self.drawers,
@@ -388,6 +432,20 @@ impl Context {
                 }
                 Message::CloseSceneTab => {
                     self.close_drawer::<SceneWindow>();
+                }
+                Message::CreateSceneTabRt(rt_id) => {
+                    let type_id = TypeId::of::<SceneWindow>();
+                    match self.ids.get(&type_id) {
+                        Some(id) => {
+                            let drawer = self.drawers[*id].as_mut();
+                            if let Some(scene_window) =
+                                (drawer as &mut dyn Any).downcast_mut::<SceneWindow>()
+                            {
+                                scene_window.set_rt_id(rt_id);
+                            }
+                        }
+                        None => {}
+                    }
                 }
             }
         }

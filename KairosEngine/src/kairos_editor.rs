@@ -1,4 +1,4 @@
-use crate::log::Log;
+use crate::{graphics::render_pipeline::RenderPipeline, log::Log};
 use egui::Visuals;
 
 pub mod consts;
@@ -18,13 +18,30 @@ impl KairosEngine {
         Ok(Self { ui_context, log })
     }
 
-    fn update(&mut self, ui: &mut egui::Ui) {
+    fn update(&mut self) {}
+
+    fn handle_ui(&mut self, ui: &mut egui::Ui) {
+        self.ui_context.handle(ui, &mut self.log);
+    }
+
+    fn draw_ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        render_pipeline: &mut RenderPipeline,
+        render_command_encoder: &mut wgpu::CommandEncoder,
+        egui_renderer: &mut egui_wgpu::Renderer,
+    ) {
         let mut visuals = Visuals::dark();
         visuals.button_frame = true;
         ui.set_visuals(visuals);
 
-        self.ui_context.handle(ui, &mut self.log);
-        self.ui_context.darw(ui, &mut self.log);
+        self.ui_context.darw(
+            ui,
+            render_pipeline,
+            render_command_encoder,
+            egui_renderer,
+            &mut self.log,
+        );
     }
 
     fn on_exit(&mut self) {}
