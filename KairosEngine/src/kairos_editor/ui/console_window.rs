@@ -58,14 +58,7 @@ impl ConsoleWindow {
 impl Drawer for ConsoleWindow {
     fn show_window(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {}
 
-    fn update(
-        &self,
-        ui: Option<&mut egui::Ui>,
-        _ctx: &egui::Context,
-        _messager: &mut Messager,
-        log: &mut Log,
-    ) {
-        let ui = ui.unwrap();
+    fn update(&self, ui: &mut egui::Ui, _messager: &mut Messager, log: &mut Log) {
         ui.label("TODO: Print Console");
 
         while let Some(log) = log.pop_front() {

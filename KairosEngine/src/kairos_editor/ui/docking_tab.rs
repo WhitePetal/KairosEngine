@@ -201,7 +201,7 @@ impl<Drawer> DockArea<'_, Drawer> {
     #[inline]
     pub fn show(
         self,
-        ctx: &Context,
+        ui: &mut Ui,
         messager: &mut Messager,
         log: &mut Log,
         drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
@@ -209,12 +209,12 @@ impl<Drawer> DockArea<'_, Drawer> {
     ) {
         CentralPanel::default()
             .frame(
-                Frame::central_panel(&ctx.style())
+                Frame::central_panel(&ui.global_style())
                     .inner_margin(0.)
                     .fill(Color32::TRANSPARENT),
             )
-            .show(ctx, |ui| {
-                self.show_inside(ui, ctx, messager, log, drawers, tab_viewer);
+            .show_inside(ui, |ui| {
+                self.show_inside(ui, messager, log, drawers, tab_viewer);
             });
     }
 
@@ -222,7 +222,6 @@ impl<Drawer> DockArea<'_, Drawer> {
     pub fn show_inside(
         mut self,
         ui: &mut Ui,
-        ctx: &egui::Context,
         messager: &mut Messager,
         log: &mut Log,
         drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
@@ -286,7 +285,6 @@ impl<Drawer> DockArea<'_, Drawer> {
             self.show_surface_inside(
                 surface_index,
                 ui,
-                ctx,
                 messager,
                 log,
                 drawers,
@@ -467,7 +465,6 @@ impl<Drawer> DockArea<'_, Drawer> {
         &mut self,
         surf_index: SurfaceIndex,
         ui: &mut Ui,
-        ctx: &egui::Context,
         messager: &mut Messager,
         log: &mut Log,
         drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
@@ -476,10 +473,10 @@ impl<Drawer> DockArea<'_, Drawer> {
         fade_style: Option<(&Style, f32, SurfaceIndex)>,
     ) {
         if surf_index.is_main() {
-            self.show_root_surface_inside(ui, ctx, messager, log, drawers, tab_viewer, state);
+            self.show_root_surface_inside(ui, messager, log, drawers, tab_viewer, state);
         } else {
             self.show_window_surface(
-                ui, ctx, messager, log, drawers, surf_index, tab_viewer, state, fade_style,
+                ui, messager, log, drawers, surf_index, tab_viewer, state, fade_style,
             );
         }
     }
@@ -487,7 +484,6 @@ impl<Drawer> DockArea<'_, Drawer> {
     fn render_nodes(
         &mut self,
         ui: &mut Ui,
-        ctx: &egui::Context,
         messager: &mut Messager,
         log: &mut Log,
         drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
@@ -509,7 +505,6 @@ impl<Drawer> DockArea<'_, Drawer> {
             if self.dock_state[surf_index][node_index].is_leaf() {
                 self.show_leaf(
                     ui,
-                    ctx,
                     messager,
                     log,
                     drawers,
@@ -778,7 +773,6 @@ impl<Drawer> DockArea<'_, Drawer> {
     pub(super) fn show_root_surface_inside(
         &mut self,
         ui: &mut Ui,
-        ctx: &egui::Context,
         messager: &mut Messager,
         log: &mut Log,
         drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
@@ -806,7 +800,7 @@ impl<Drawer> DockArea<'_, Drawer> {
         }
 
         self.render_nodes(
-            ui, ctx, messager, log, drawers, tab_viewer, state, surf_index, None,
+            ui, messager, log, drawers, tab_viewer, state, surf_index, None,
         );
     }
 }
@@ -815,7 +809,6 @@ impl<Drawer> DockArea<'_, Drawer> {
     pub fn show_window_surface(
         &mut self,
         ui: &Ui,
-        ctx: &egui::Context,
         messager: &mut Messager,
         log: &mut Log,
         drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
@@ -917,7 +910,7 @@ impl<Drawer> DockArea<'_, Drawer> {
                 )
             } else {
                 self.render_nodes(
-                    ui, ctx, messager, log, drawers, tab_viewer, state, surf_index, fade_style,
+                    ui, messager, log, drawers, tab_viewer, state, surf_index, fade_style,
                 );
             }
         });
@@ -1099,7 +1092,6 @@ impl<Drawer> DockArea<'_, Drawer> {
     pub fn show_leaf(
         &mut self,
         ui: &mut Ui,
-        ctx: &egui::Context,
         messager: &mut Messager,
         log: &mut Log,
         drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
@@ -1139,7 +1131,6 @@ impl<Drawer> DockArea<'_, Drawer> {
         );
         self.drawer_body(
             ui,
-            ctx,
             messager,
             log,
             drawers,
@@ -2282,7 +2273,6 @@ impl<Drawer> DockArea<'_, Drawer> {
     fn drawer_body(
         &mut self,
         ui: &mut Ui,
-        ctx: &egui::Context,
         messager: &mut Messager,
         log: &mut Log,
         drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
@@ -2379,7 +2369,7 @@ impl<Drawer> DockArea<'_, Drawer> {
                             }
                             let available_rect = ui.available_rect_before_wrap();
                             ui.expand_to_include_rect(available_rect);
-                            tab_viewer.ui(ui, tab, ctx, messager, log, drawers);
+                            tab_viewer.ui(ui, tab, messager, log, drawers);
                         });
                 });
             }

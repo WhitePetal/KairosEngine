@@ -83,13 +83,12 @@ impl TabDrawer for KairosTabDrawer {
         &mut self,
         ui: &mut egui::Ui,
         tab: &mut Self::Tab,
-        ctx: &egui::Context,
         messager: &mut Messager,
         log: &mut Log,
         drawers: &Vec<Box<dyn Drawer>>,
     ) {
         let tab = &drawers[*tab];
-        tab.update(Some(ui), ctx, messager, log);
+        tab.update(ui, messager, log);
     }
 
     fn on_close(
@@ -112,13 +111,7 @@ impl TabDrawer for KairosTabDrawer {
 pub trait Drawer: Any {
     fn show_window(&self, state: Option<&mut WindowState>);
 
-    fn update(
-        &self,
-        ui: Option<&mut egui::Ui>,
-        ctx: &egui::Context,
-        messager: &mut Messager,
-        log: &mut Log,
-    );
+    fn update(&self, ui: &mut egui::Ui, messager: &mut Messager, log: &mut Log);
 
     fn close(&self, messager: &mut Messager);
 
@@ -179,18 +172,17 @@ impl Context {
         }
     }
 
-    pub fn darw(&mut self, ctx: &egui::Context, log: &mut Log) {
+    pub fn darw(&mut self, ui: &mut egui::Ui, log: &mut Log) {
         // tool_bar
         let tool_bar_type_id = TypeId::of::<ToolBar>();
         if let Some(id) = self.ids.get(&tool_bar_type_id) {
-            self.drawers[*id].update(None, ctx, &mut self.messager, log);
+            self.drawers[*id].update(ui, &mut self.messager, log);
         }
 
         // 中央区域显示内容
-        egui::CentralPanel::default().show(ctx, |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             DockArea::new("KairosEditor Main DockArea", &mut self.tab_tree).show_inside(
                 ui,
-                ctx,
                 &mut self.messager,
                 log,
                 &self.drawers,
@@ -199,26 +191,26 @@ impl Context {
         });
     }
 
-    pub fn handle(&mut self, ctx: &egui::Context, log: &mut Log) {
+    pub fn handle(&mut self, ui: &egui::Ui, log: &mut Log) {
         while let Some(msg) = self.messager.messages.pop_front() {
             match msg {
                 Message::CreateToolbar => {
                     let drawer = ToolBar::new().unwrap_or_else(|error| {
-                        Context::create_ui_failed(ctx, type_name::<ToolBar>(), error);
+                        Context::create_ui_failed(ui, type_name::<ToolBar>(), error);
                     });
                     self.push_drawer::<ToolBar>(Box::new(drawer));
                 }
                 Message::QuitEngine => {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    ui.send_viewport_cmd(egui::ViewportCommand::Close);
                 }
                 Message::OpenAboutWindow => {
-                    self.show_window::<AboutWindow>(ctx, AboutWindow::new);
+                    self.show_window::<AboutWindow>(ui, AboutWindow::new);
                 }
                 Message::CloseAboutWindow => {
                     self.close_drawer::<AboutWindow>();
                 }
                 Message::OpenPreferenceWindow => {
-                    self.show_window::<PreferencesWindow>(ctx, PreferencesWindow::new);
+                    self.show_window::<PreferencesWindow>(ui, PreferencesWindow::new);
                     self.messager
                         .messages
                         .push_back(Message::RefershPreferenceWindow);
@@ -268,7 +260,7 @@ impl Context {
                     }
                 },
                 Message::OpenConsoleTab => {
-                    self.show_tab::<ConsoleWindow, _>(ctx, ConsoleWindow::new, |state, id| {
+                    self.show_tab::<ConsoleWindow, _>(ui, ConsoleWindow::new, |state, id| {
                         let location = state.find_surface_bottom_panel_location(
                             SurfaceIndex::main(),
                             NodeIndex::root(),
@@ -294,7 +286,7 @@ impl Context {
                     self.close_drawer::<ConsoleWindow>();
                 }
                 Message::OpenInspectorTab => {
-                    self.show_tab::<InspectorWindow, _>(ctx, InspectorWindow::new, |state, id| {
+                    self.show_tab::<InspectorWindow, _>(ui, InspectorWindow::new, |state, id| {
                         let location = state.find_surface_right_panel_location(
                             SurfaceIndex::main(),
                             NodeIndex::root(),
@@ -320,7 +312,7 @@ impl Context {
                     self.close_drawer::<InspectorWindow>();
                 }
                 Message::OpenHierarchyTab => {
-                    self.show_tab::<HierarchyWindow, _>(ctx, HierarchyWindow::new, |state, id| {
+                    self.show_tab::<HierarchyWindow, _>(ui, HierarchyWindow::new, |state, id| {
                         let location = state.find_surface_left_panel_location(
                             SurfaceIndex::main(),
                             NodeIndex::root(),
@@ -346,7 +338,7 @@ impl Context {
                     self.close_drawer::<HierarchyWindow>();
                 }
                 Message::OpenProjectTab => {
-                    self.show_tab::<ProjectWindow, _>(ctx, ProjectWindow::new, |state, id| {
+                    self.show_tab::<ProjectWindow, _>(ui, ProjectWindow::new, |state, id| {
                         let location = state.find_surface_bottom_panel_location(
                             SurfaceIndex::main(),
                             NodeIndex::root(),
@@ -372,7 +364,7 @@ impl Context {
                     self.close_drawer::<ProjectWindow>();
                 }
                 Message::OpenSceneTab => {
-                    self.show_tab::<SceneWindow, _>(ctx, SceneWindow::new, |state, id| {
+                    self.show_tab::<SceneWindow, _>(ui, SceneWindow::new, |state, id| {
                         let location = state.find_surface_center_panel_location(
                             SurfaceIndex::main(),
                             NodeIndex::root(),
@@ -415,7 +407,7 @@ impl Context {
 
     fn show_window<T>(
         &mut self,
-        ctx: &egui::Context,
+        ui: &egui::Ui,
         create: impl FnOnce() -> Result<T, Box<dyn std::error::Error>>,
     ) where
         T: Drawer,
@@ -435,7 +427,7 @@ impl Context {
             }
             None => {
                 let drawer = create().unwrap_or_else(|error| {
-                    Context::create_ui_failed(ctx, type_name::<T>(), error);
+                    Context::create_ui_failed(ui, type_name::<T>(), error);
                 });
                 let id = self.push_drawer::<T>(Box::new(drawer));
                 let surface = self.tab_tree.add_window(vec![id]);
@@ -446,7 +438,7 @@ impl Context {
 
     fn show_tab<T, F>(
         &mut self,
-        ctx: &egui::Context,
+        ui: &egui::Ui,
         create: impl FnOnce() -> Result<T, Box<dyn std::error::Error>>,
         split: F,
     ) where
@@ -467,7 +459,7 @@ impl Context {
             }
             None => {
                 let drawer = create().unwrap_or_else(|error| {
-                    Context::create_ui_failed(ctx, type_name::<T>(), error);
+                    Context::create_ui_failed(ui, type_name::<T>(), error);
                 });
                 let id = self.push_drawer::<T>(Box::new(drawer));
                 split(&mut self.tab_tree, id);
@@ -485,13 +477,9 @@ impl Context {
         }
     }
 
-    fn create_ui_failed(
-        ctx: &egui::Context,
-        ui_name: &str,
-        error: Box<dyn std::error::Error>,
-    ) -> ! {
+    fn create_ui_failed(ui: &egui::Ui, ui_name: &str, error: Box<dyn std::error::Error>) -> ! {
         dialog::ui_create_error_window(ui_name, &error);
-        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        ui.send_viewport_cmd(egui::ViewportCommand::Close);
         panic!("Create {} UI Failed: {}", ui_name, error)
     }
 

@@ -84,14 +84,7 @@ impl Drawer for PreferencesWindow {
         }
     }
 
-    fn update(
-        &self,
-        ui: Option<&mut egui::Ui>,
-        _ctx: &egui::Context,
-        messager: &mut super::Messager,
-        _log: &mut Log,
-    ) {
-        let ui = ui.unwrap();
+    fn update(&self, ui: &mut egui::Ui, messager: &mut super::Messager, _log: &mut Log) {
         self.ui(ui, messager);
     }
 

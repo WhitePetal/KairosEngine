@@ -25,7 +25,6 @@ pub trait TabDrawer {
         &mut self,
         ui: &mut Ui,
         tab: &mut Self::Tab,
-        ctx: &egui::Context,
         messager: &mut Messager,
         log: &mut Log,
         drawers: &Vec<Box<dyn Drawer>>,

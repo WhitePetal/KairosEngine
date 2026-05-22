@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{log::Log, math};
-use egui::{self, TopBottomPanel, containers::menu};
+use egui::{self, Panel, containers::menu};
 use serde::{Deserialize, Serialize};
 use toml::from_str;
 
@@ -74,17 +74,11 @@ impl ToolBar {
 impl Drawer for ToolBar {
     fn show_window(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {}
 
-    fn update(
-        &self,
-        _ui: Option<&mut egui::Ui>,
-        ctx: &egui::Context,
-        messager: &mut super::Messager,
-        _log: &mut Log,
-    ) {
+    fn update(&self, ui: &mut egui::Ui, messager: &mut super::Messager, _log: &mut Log) {
         let model = &self.model;
-        TopBottomPanel::top("toolbar")
-            .default_height(model.style.height)
-            .show(ctx, |ui| {
+        Panel::top("toolbar")
+            .default_size(model.style.height)
+            .show_inside(ui, |ui| {
                 ui.visuals_mut().override_text_color = Some(model.style.button_text_color.into());
                 menu::MenuBar::new().ui(ui, |ui| {
                     ui.set_height(model.style.height);

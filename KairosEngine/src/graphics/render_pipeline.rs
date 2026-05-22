@@ -29,7 +29,8 @@ pub struct RenderPipeline {
     window_size_changed: bool,
     pipeline: wgpu::RenderPipeline,
     vertex_buffer: Buffer,
-    vertices_num: u32,
+    indices_buffer: Buffer,
+    indices_num: u32,
 }
 
 impl RenderPipeline {
@@ -91,18 +92,28 @@ impl RenderPipeline {
 
         const VERTICES: &[Vertex] = &[
             Vertex {
-                position: float4::new(0.0, 0.5, 0.0, 1.0),
-                color: float4::new(1.0, 0.0, 0.0, 0.0),
-            },
+                position: float4::new(-0.0868241, 0.49240386, 0.0, 1.0),
+                color: float4::new(0.5, 0.0, 0.5, 0.0),
+            }, // A
             Vertex {
-                position: float4::new(-0.5, -0.5, 0.0, 1.0),
-                color: float4::new(0.0, 1.0, 0.0, 0.0),
-            },
+                position: float4::new(-0.49513406, 0.06958647, 0.0, 1.0),
+                color: float4::new(0.5, 0.0, 0.5, 0.0),
+            }, // B
             Vertex {
-                position: float4::new(0.5, -0.5, 0.0, 1.0),
-                color: float4::new(0.0, 0.0, 1.0, 0.0),
-            },
+                position: float4::new(-0.21918549, -0.44939706, 0.0, 1.0),
+                color: float4::new(0.5, 0.0, 0.5, 0.0),
+            }, // C
+            Vertex {
+                position: float4::new(0.35966998, -0.3473291, 0.0, 1.0),
+                color: float4::new(0.5, 0.0, 0.5, 0.0),
+            }, // D
+            Vertex {
+                position: float4::new(0.44147372, 0.2347359, 0.0, 1.0),
+                color: float4::new(0.5, 0.0, 0.5, 0.0),
+            }, // E
         ];
+        const INDICES: &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4];
+
         let vertex_buffer = device.create_buffer_init(&BufferInitDescriptor {
             label: Some("Vertex Buffer"),
             contents: bytemuck::cast_slice(VERTICES),
@@ -124,7 +135,13 @@ impl RenderPipeline {
                 },
             ],
         };
-        let vertices_num = VERTICES.len() as u32;
+
+        let indices_buffer = device.create_buffer_init(&BufferInitDescriptor {
+            label: Some("Indices Buffer"),
+            contents: bytemuck::cast_slice(INDICES),
+            usage: BufferUsages::INDEX,
+        });
+        let indices_num = INDICES.len() as u32;
 
         let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
             label: Some("Render Pipeline"),
@@ -175,7 +192,8 @@ impl RenderPipeline {
             window_size_changed: false,
             pipeline,
             vertex_buffer,
-            vertices_num,
+            indices_buffer,
+            indices_num,
         })
     }
 
@@ -228,7 +246,8 @@ impl RenderPipeline {
 
         render_pass.set_pipeline(&self.pipeline);
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-        render_pass.draw(0..self.vertices_num, 0..1);
+        render_pass.set_index_buffer(self.indices_buffer.slice(..), wgpu::IndexFormat::Uint16);
+        render_pass.draw_indexed(0..self.indices_num, 0, 0..1);
 
         render_pass
     }

@@ -56,12 +56,10 @@ impl Drawer for SceneWindow {
 
     fn update(
         &self,
-        ui: Option<&mut egui::Ui>,
-        _ctx: &egui::Context,
+        ui: &mut egui::Ui,
         _messager: &mut super::Messager,
         _log: &mut crate::log::Log,
     ) {
-        let ui = ui.unwrap();
         ui.label("TODO: Scene");
     }
 

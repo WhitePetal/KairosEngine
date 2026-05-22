@@ -56,14 +56,7 @@ impl InspectorWindow {
 impl Drawer for InspectorWindow {
     fn show_window(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {}
 
-    fn update(
-        &self,
-        ui: Option<&mut egui::Ui>,
-        _ctx: &egui::Context,
-        _messager: &mut super::Messager,
-        _log: &mut Log,
-    ) {
-        let ui = ui.unwrap();
+    fn update(&self, ui: &mut egui::Ui, _messager: &mut super::Messager, _log: &mut Log) {
         ui.label("TODO: Inspector");
     }
 

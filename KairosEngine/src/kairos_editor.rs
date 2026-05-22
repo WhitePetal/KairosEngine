@@ -18,13 +18,13 @@ impl KairosEngine {
         Ok(Self { ui_context, log })
     }
 
-    fn update(&mut self, ctx: &egui::Context) {
+    fn update(&mut self, ui: &mut egui::Ui) {
         let mut visuals = Visuals::dark();
         visuals.button_frame = true;
-        ctx.set_visuals(visuals);
+        ui.set_visuals(visuals);
 
-        self.ui_context.handle(ctx, &mut self.log);
-        self.ui_context.darw(ctx, &mut self.log);
+        self.ui_context.handle(ui, &mut self.log);
+        self.ui_context.darw(ui, &mut self.log);
     }
 
     fn on_exit(&mut self) {}

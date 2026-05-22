@@ -107,7 +107,8 @@ impl KairosEditorRuntime {
             .set_device_lost_callback(move |reson, msg| {
                 log::error!("GPU device lost ({reson:?}): {msg}");
                 render_pipeline_event_proxy
-                    .send_event(KairosEditorRuntimeEvent::RenderPipelineCrash);
+                    .send_event(KairosEditorRuntimeEvent::RenderPipelineCrash)
+                    .unwrap();
             });
         let render_pipeline_event_proxy = self.event_proxy.clone();
         render_pipeline
@@ -115,7 +116,8 @@ impl KairosEditorRuntime {
             .on_uncaptured_error(Arc::new(move |error| {
                 log::error!("Gpu out of memory: {error}");
                 render_pipeline_event_proxy
-                    .send_event(KairosEditorRuntimeEvent::RenderPipelineCrash);
+                    .send_event(KairosEditorRuntimeEvent::RenderPipelineCrash)
+                    .unwrap();
             }));
 
         egui_state.set_max_texture_side(render_pipeline.max_texture_side());
@@ -144,8 +146,8 @@ impl KairosEditorRuntime {
         };
 
         let raw_input = egui_state.take_egui_input(&window);
-        let full_output = self.egui_ctx.run(raw_input, |ctx| {
-            self.engine.update(ctx);
+        let full_output = self.egui_ctx.run_ui(raw_input, |ui| {
+            self.engine.update(ui);
         });
 
         egui_state.handle_platform_output(&window, full_output.platform_output);
@@ -234,11 +236,11 @@ impl KairosEditorRuntime {
                         let mut render_pass =
                             render_pipeline.render(&mut encoder, view).forget_lifetime();
 
-                        // egui_renderer.render(
-                        //     &mut render_pass,
-                        //     &clipped_primitives,
-                        //     &screen_descriptor,
-                        // );
+                        egui_renderer.render(
+                            &mut render_pass,
+                            &clipped_primitives,
+                            &screen_descriptor,
+                        );
                     }
 
                     render_pipeline.queue.submit(
