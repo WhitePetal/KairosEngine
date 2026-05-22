@@ -1,21 +1,32 @@
+// enable f16;
 
-struct VertexOutput {
+struct a2v {
+    @location(0) vertex: vec4f,
+    @location(1) color: vec4f
+}
+
+struct v2f {
     @builtin(position) pos: vec4f,
+    @location(0) color: vec4f,
 };
 
 @vertex
-fn vs_main(@builtin(vertex_index) vi: u32) -> VertexOutput {
-    var out: VertexOutput;
+fn vs_main(v: a2v) -> v2f {
+    var out: v2f;
 
-    let x = f32(1 - i32(vi)) * 0.5;
-    let y = f32(i32(vi & 1u) * 2 - 1) * 0.5;
-
-    out.pos = vec4f(x, y, 0.0, 0.0);
+    out.pos = v.vertex;
+    out.color = v.color;
 
     return out;
 }
 
+struct gbuffer {
+    @location(0) color: vec4f
+}
+
 @fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4h {
-    return vec4h(0.3, 0.2, 0.1, 1.0);
+fn fs_main(i: v2f) -> gbuffer {
+    var out: gbuffer;
+    out.color = i.color;
+    return out;
 }

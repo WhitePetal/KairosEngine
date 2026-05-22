@@ -6,6 +6,7 @@ use std::{
 };
 
 use egui::{ViewportCommand, ViewportId};
+use log::error;
 use parking_lot::Mutex;
 use winit::{
     application::ApplicationHandler,
@@ -37,10 +38,12 @@ pub enum KairosEditorRuntimeEvent {
         viewport_id: ViewportId,
         delay: Duration,
     },
+    RenderPipelineCrash,
 }
 
 pub struct KairosEditorRuntime {
     window: Option<Arc<Window>>,
+    event_proxy: EventLoopProxy<KairosEditorRuntimeEvent>,
     render_pipeline: Arc<Mutex<Option<RenderPipeline>>>,
     egui_ctx: egui::Context,
     egui_state: Option<egui_winit::State>,
@@ -55,8 +58,9 @@ impl KairosEditorRuntime {
         let egui_ctx = egui::Context::default();
         egui_extras::install_image_loaders(&egui_ctx);
 
+        let egui_event_proxy = proxy.clone();
         egui_ctx.set_request_repaint_callback(move |info| {
-            let _ = proxy.send_event(KairosEditorRuntimeEvent::RequestRepaint {
+            let _ = egui_event_proxy.send_event(KairosEditorRuntimeEvent::RequestRepaint {
                 viewport_id: info.viewport_id,
                 delay: info.delay,
             });
@@ -64,6 +68,7 @@ impl KairosEditorRuntime {
 
         Ok(Self {
             window: None,
+            event_proxy: proxy,
             render_pipeline: Arc::new(Mutex::new(None)),
             egui_ctx,
             egui_state: None,
@@ -96,6 +101,23 @@ impl KairosEditorRuntime {
         );
 
         let render_pipeline = pollster::block_on(RenderPipeline::new(window.clone()))?;
+        let render_pipeline_event_proxy = self.event_proxy.clone();
+        render_pipeline
+            .device
+            .set_device_lost_callback(move |reson, msg| {
+                log::error!("GPU device lost ({reson:?}): {msg}");
+                render_pipeline_event_proxy
+                    .send_event(KairosEditorRuntimeEvent::RenderPipelineCrash);
+            });
+        let render_pipeline_event_proxy = self.event_proxy.clone();
+        render_pipeline
+            .device
+            .on_uncaptured_error(Arc::new(move |error| {
+                log::error!("Gpu out of memory: {error}");
+                render_pipeline_event_proxy
+                    .send_event(KairosEditorRuntimeEvent::RenderPipelineCrash);
+            }));
+
         egui_state.set_max_texture_side(render_pipeline.max_texture_side());
         let egui_renderer = egui_wgpu::Renderer::new(
             &render_pipeline.device,
@@ -212,11 +234,11 @@ impl KairosEditorRuntime {
                         let mut render_pass =
                             render_pipeline.render(&mut encoder, view).forget_lifetime();
 
-                        egui_renderer.render(
-                            &mut render_pass,
-                            &clipped_primitives,
-                            &screen_descriptor,
-                        );
+                        // egui_renderer.render(
+                        //     &mut render_pass,
+                        //     &clipped_primitives,
+                        //     &screen_descriptor,
+                        // );
                     }
 
                     render_pipeline.queue.submit(
@@ -240,21 +262,22 @@ impl KairosEditorRuntime {
 
         if let Some(render_error) = render_error {
             match render_error {
-                wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated => {
+                wgpu::CurrentSurfaceTexture::Lost | wgpu::CurrentSurfaceTexture::Outdated => {
                     if let Some(render_pipeline) = self.render_pipeline.lock().as_mut() {
                         render_pipeline.set_window_resize(window.inner_size());
                     }
                     window.request_redraw();
                 }
-                wgpu::SurfaceError::OutOfMemory => {
-                    log::error!("wgpu surface out of memory");
-                    self.shutdown(event_loop);
-                }
-                wgpu::SurfaceError::Timeout => {
+                wgpu::CurrentSurfaceTexture::Occluded => {}
+                wgpu::CurrentSurfaceTexture::Timeout => {
                     log::warn!("wgpu surface timeout");
                 }
-                wgpu::SurfaceError::Other => {
-                    log::warn!("wgpu surface error");
+                wgpu::CurrentSurfaceTexture::Validation => {
+                    log::warn!("wgpu surface validation error");
+                }
+                wgpu::CurrentSurfaceTexture::Success(_)
+                | wgpu::CurrentSurfaceTexture::Suboptimal(_) => {
+                    unreachable!("success variants are returned from Ok branch")
                 }
             }
         }
@@ -332,12 +355,15 @@ impl ApplicationHandler<KairosEditorRuntimeEvent> for KairosEditorRuntime {
         }
     }
 
-    fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: KairosEditorRuntimeEvent) {
+    fn user_event(&mut self, event_loop: &ActiveEventLoop, event: KairosEditorRuntimeEvent) {
         match event {
             KairosEditorRuntimeEvent::RequestRepaint { viewport_id, delay } => {
                 if viewport_id == ViewportId::ROOT {
                     self.queue_repaint_after(delay);
                 }
+            }
+            KairosEditorRuntimeEvent::RenderPipelineCrash => {
+                self.shutdown(event_loop);
             }
         }
     }

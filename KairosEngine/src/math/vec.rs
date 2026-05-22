@@ -632,6 +632,7 @@ impl Div for &float3 {
     }
 }
 
+#[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[allow(non_camel_case_types)]
 pub struct float4(pub f32x4);
@@ -640,10 +641,6 @@ impl float4 {
     #[inline(always)]
     pub const fn new(x: f32, y: f32, z: f32, w: f32) -> Self {
         Self(f32x4::from_array([x, y, z, w]))
-    }
-    #[inline(always)]
-    pub const fn from_array(arr: [f32; 4]) -> Self {
-        Self(f32x4::from_array(arr))
     }
 
     #[inline(always)]
@@ -654,31 +651,6 @@ impl float4 {
     #[inline(always)]
     pub fn min(&self, other: &Self) -> Self {
         Self(self.0.simd_min(other.0))
-    }
-
-    #[inline(always)]
-    pub fn from_float2_x2(xy: &float2, zw: &float2) -> Self {
-        Self(simd_swizzle!(xy.0, zw.0, [0, 1, 2, 3]))
-    }
-
-    #[inline(always)]
-    pub fn from_float2_s(xy: &float2, z: f32, w: f32) -> Self {
-        Self(simd_swizzle!(xy.0, f32x2::from_array([z, w]), [0, 1, 2, 3]))
-    }
-
-    #[inline(always)]
-    pub fn from_s_float2(x: f32, y: f32, zw: &float2) -> Self {
-        Self(simd_swizzle!(f32x2::from_array([x, y]), zw.0, [0, 1, 2, 3]))
-    }
-
-    #[inline(always)]
-    pub fn from_float3_s(xyz: &float3, w: f32) -> Self {
-        Self(simd_swizzle!(xyz.0, f32x4::splat(w), [0, 1, 2, 4]))
-    }
-
-    #[inline(always)]
-    pub fn from_s_float3(x: f32, yzw: &float3) -> Self {
-        Self(simd_swizzle!(f32x4::splat(x), yzw.0, [0, 4, 5, 6]))
     }
 
     #[inline(always)]
@@ -1123,6 +1095,46 @@ impl Vector for float4 {
         // (self * other.yzxx() - self.yzxx() * other()).yzxx()
     }
 }
+
+impl From<[f32; 4]> for float4 {
+    #[inline(always)]
+    fn from(arry: [f32; 4]) -> Self {
+        Self(f32x4::from_array(arry))
+    }
+}
+impl From<(float2, float2)> for float4 {
+    #[inline(always)]
+    fn from((xy, zw): (float2, float2)) -> Self {
+        Self(simd_swizzle!(xy.0, zw.0, [0, 1, 2, 3]))
+    }
+}
+impl From<(float2, f32, f32)> for float4 {
+    #[inline(always)]
+    fn from((xy, z, w): (float2, f32, f32)) -> Self {
+        Self(simd_swizzle!(xy.0, f32x2::from_array([z, w]), [0, 1, 2, 3]))
+    }
+}
+impl From<(f32, f32, float2)> for float4 {
+    #[inline(always)]
+    fn from((x, y, zw): (f32, f32, float2)) -> Self {
+        Self(simd_swizzle!(f32x2::from_array([x, y]), zw.0, [0, 1, 2, 3]))
+    }
+}
+impl From<(float3, f32)> for float4 {
+    #[inline(always)]
+    fn from((xyz, w): (float3, f32)) -> Self {
+        Self(simd_swizzle!(xyz.0, f32x4::splat(w), [0, 1, 2, 4]))
+    }
+}
+impl From<(f32, float3)> for float4 {
+    #[inline(always)]
+    fn from((x, yzw): (f32, float3)) -> Self {
+        Self(simd_swizzle!(f32x4::splat(x), yzw.0, [0, 4, 5, 6]))
+    }
+}
+
+unsafe impl bytemuck::Zeroable for float4 {}
+unsafe impl bytemuck::Pod for float4 {}
 
 impl Index<usize> for float4 {
     type Output = f32;

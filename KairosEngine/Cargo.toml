@@ -17,9 +17,12 @@ license = "MIT OR Apache-2.0"
 criterion = "0.8.2"
 
 [dependencies]
-tokio = { version = "1.52.3", features = ["full"] }
 toml = "1.1.2"
 anyhow = "1.0"
+tokio = { version = "1.52.3", features = ["full"] }
+rayon = "1.12.0"
+bytemuck = { version = "1.25.0", features = ["derive"] }
+# petgraph = "0.8.3"
 winit = { version = "0.30", features = ["android-native-activity"] }
 env_logger = "0.10"
 log = "0.4"
@@ -29,16 +32,17 @@ sonic-rs = "0.5.7"
 duplicate = "2.0"
 paste = "1.0"
 image = { version = "0.25.10", features = ["png"] }
-wgpu = "27.0"
+wgpu = "29.0.3"
 pollster = "0.3"
-# eframe = { version = "0.33.3", features = ["wgpu"] }
-egui = "0.33.3"
-egui_extras = { version = "0.33.3", features = ["all_loaders"] }
-emath = "0.33.3"
-epaint = "0.33.3"
-egui-winit = "0.33.3"
-egui-wgpu = "0.33.3"
+# eframe = { version = "0.34.2", features = ["wgpu"] }
+egui = "0.34.2"
+egui_extras = { version = "0.34.2", features = ["all_loaders"] }
+emath = "0.34.2"
+epaint = "0.34.2"
+egui-winit = "0.34.2"
+egui-wgpu = "0.34.2"
 parking_lot = "0.12.5"
+# rapier3d = { version = "0.32.0", features = [ "simd-nightly", "parallel", "serde-serialize" ] }
 # egui_dock = "0.18.0"
 
 [[bench]]
