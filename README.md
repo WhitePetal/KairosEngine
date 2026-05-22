@@ -1,27 +1,35 @@
 # 简介
 一个游戏引擎开发计划
 最开始尝试使用C++ + Beef-lang, 现在转为了纯Rust 
-目标是 面向数据设计，ECS，高性能，高灵活性和可扩展性    
+目标是 面向数据设计，ECS，高性能，高灵活性 和 高可扩展性    
 
-# 计划
-## 模块计划
-- Graph 节点模块
-- AI Agent 模块
-- ...
-
-## 版本计划
+# 版本计划
 ### 0.1.0
 - 引擎GUI界面
-- 基础渲染
-- ECS base ENTT
-- Graphics
-- Physics
-- Audio
+- Base Graphics
+- Base Input System
+- Base ECS base ENTT/Flecs
+- Base Physics System
+- Base Audio System
 
 ### 0.2.0
-- Input System Graph
+- Project/Asset System
 - Terrain Editor
-- World Scenes Controller
+- Render Graph
+- Input Graph System
+- World Scenes System
+
+### 0.3.0
+- State Machine
+- Animation System
+- GI System
+- Cinemachine
+- AI Agent
+
+...
+
+# 1.0.0
+- A Action Game Demo
 - ...
 
 # Third-Party Dependencies
@@ -31,24 +39,9 @@
 - **cimgui**: MIT License | [https://github.com/cimgui/cimgui](https://github.com/cimgui/cimgui)
 - **imgui-beef**: | [https://github.com/RogueMacro/imgui-beef](https://github.com/RogueMacro/imgui-beef)
 ## Creats
-- criterion
-- anyhow
-- winit
-- env_logger
-- log
-- native-dialog
-- serde
-- sonic-rs
-- image
-- wgpu
-- pollster
-- eframe
-- egui_extras
-- egui_dock
-- toml
-- tokio
+See the [Cargo.toml](KairosEngine/Cargo.toml)
 
-# AIs
+# Used AIs
 - Kimi
 - Cursor
 - 豆包
