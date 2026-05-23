@@ -1,22 +1,28 @@
 use std::{error::Error, sync::Arc};
 
 use wgpu::{
-    Adapter, BackendOptions, Backends, BlendState, Buffer, BufferUsages, ColorTargetState,
-    ColorWrites, CommandEncoder, CommandEncoderDescriptor, CurrentSurfaceTexture, Device,
-    ExperimentalFeatures, Extent3d, Face, Features, FragmentState, FrontFace, InstanceFlags,
-    Limits, LoadOp, MemoryBudgetThresholds, MemoryHints, MultisampleState, Operations,
-    PipelineCompilationOptions, PipelineLayoutDescriptor, PolygonMode, PowerPreference,
-    PresentMode, PrimitiveState, PrimitiveTopology, Queue, RenderPass, RenderPassColorAttachment,
-    RenderPassDescriptor, RenderPipelineDescriptor, RequestAdapterOptions, ShaderModuleDescriptor,
-    ShaderSource, StoreOp, Surface, SurfaceConfiguration, SurfaceTexture, TextureUsages,
-    TextureView, TextureViewDescriptor, Trace, VertexAttribute, VertexBufferLayout, VertexFormat,
-    VertexState, VertexStepMode,
+    Adapter, AddressMode, BackendOptions, Backends, BindGroup, BindGroupDescriptor, BindGroupEntry,
+    BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType, BlendState,
+    Buffer, BufferUsages, ColorTargetState, ColorWrites, CommandEncoder, CommandEncoderDescriptor,
+    CurrentSurfaceTexture, Device, ExperimentalFeatures, Extent3d, Face, Features, FilterMode,
+    FragmentState, FrontFace, InstanceFlags, Limits, LoadOp, MemoryBudgetThresholds, MemoryHints,
+    MipmapFilterMode, MultisampleState, Operations, Origin3d, PipelineCompilationOptions,
+    PipelineLayoutDescriptor, PolygonMode, PowerPreference, PresentMode, PrimitiveState,
+    PrimitiveTopology, Queue, RenderPass, RenderPassColorAttachment, RenderPassDescriptor,
+    RenderPipelineDescriptor, RequestAdapterOptions, SamplerBindingType, ShaderModuleDescriptor,
+    ShaderSource, ShaderStages, StoreOp, Surface, SurfaceConfiguration, SurfaceTexture,
+    TexelCopyBufferLayout, TexelCopyTextureInfo, TextureSampleType, TextureUsages, TextureView,
+    TextureViewDescriptor, TextureViewDimension, Trace, VertexAttribute, VertexBufferLayout,
+    VertexFormat, VertexState, VertexStepMode,
     util::{BufferInitDescriptor, DeviceExt},
-    wgt::{DeviceDescriptor, TextureDescriptor},
+    wgt::{DeviceDescriptor, SamplerDescriptor, TextureDescriptor},
 };
 use winit::{dpi::PhysicalSize, window::Window};
 
-use crate::{graphics::vertex::Vertex, math::float4};
+use crate::{
+    graphics::vertex::Vertex,
+    math::{float2, float4},
+};
 
 pub struct RenderPipeline {
     window: Arc<Window>,
@@ -31,6 +37,7 @@ pub struct RenderPipeline {
     vertex_buffer: Buffer,
     indices_buffer: Buffer,
     indices_num: u32,
+    texture_bind_group: BindGroup,
 }
 
 impl RenderPipeline {
@@ -80,13 +87,99 @@ impl RenderPipeline {
         };
         surface.configure(&device, &surface_config);
 
+        let texture_bytes = include_bytes!("../../res/textures/kairos_texture.png");
+        let texture_image = image::load_from_memory(texture_bytes)?;
+        let texture_data = texture_image.into_rgba8();
+        let texture_dimension = texture_data.dimensions();
+        let texture_size = Extent3d {
+            width: texture_dimension.0,
+            height: texture_dimension.1,
+            depth_or_array_layers: 1,
+        };
+        let texture = device.create_texture(&TextureDescriptor {
+            label: Some("Kairos Texture"),
+            size: texture_size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        queue.write_texture(
+            TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &texture_data,
+            TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(4 * texture_dimension.0),
+                rows_per_image: Some(texture_dimension.1),
+            },
+            texture_size,
+        );
+        let texture_view = texture.create_view(&TextureViewDescriptor::default());
+        let texture_sampler = device.create_sampler(&SamplerDescriptor {
+            label: Some("Texture Sampler"),
+            address_mode_u: AddressMode::Repeat,
+            address_mode_v: AddressMode::Repeat,
+            address_mode_w: AddressMode::Repeat,
+            mag_filter: FilterMode::Linear,
+            min_filter: FilterMode::Nearest,
+            mipmap_filter: MipmapFilterMode::Linear,
+            lod_min_clamp: 0f32,
+            lod_max_clamp: 0f32,
+            compare: None,
+            anisotropy_clamp: 1,
+            border_color: None,
+        });
+        let texture_bind_group_layout =
+            device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+                label: Some("Texture Bind Group Layout"),
+                entries: &[
+                    BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Texture {
+                            sample_type: TextureSampleType::Float { filterable: true },
+                            view_dimension: TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Sampler(SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
+        let texture_bind_group = device.create_bind_group(&BindGroupDescriptor {
+            label: Some("Texture Bind Group"),
+            layout: &texture_bind_group_layout,
+            entries: &[
+                BindGroupEntry {
+                    binding: 0,
+                    resource: BindingResource::TextureView(&texture_view),
+                },
+                BindGroupEntry {
+                    binding: 1,
+                    resource: BindingResource::Sampler(&texture_sampler),
+                },
+            ],
+        });
+
         let shader = device.create_shader_module(ShaderModuleDescriptor {
             label: Some("Shader"),
             source: ShaderSource::Wgsl(include_str!("../../res/shaders/shader.wgsl").into()),
         });
         let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
             label: Some("Render Pipeline Layout"),
-            bind_group_layouts: &[],
+            bind_group_layouts: &[Some(&texture_bind_group_layout)],
             immediate_size: 0,
         });
 
@@ -94,22 +187,27 @@ impl RenderPipeline {
             Vertex {
                 position: float4::new(-0.0868241, 0.49240386, 0.0, 1.0),
                 color: float4::new(0.5, 0.0, 0.5, 0.0),
+                texcoord: float2::new(0.4131759, 0.00759614),
             }, // A
             Vertex {
                 position: float4::new(-0.49513406, 0.06958647, 0.0, 1.0),
                 color: float4::new(0.5, 0.0, 0.5, 0.0),
+                texcoord: float2::new(0.0048659444, 0.43041354),
             }, // B
             Vertex {
                 position: float4::new(-0.21918549, -0.44939706, 0.0, 1.0),
                 color: float4::new(0.5, 0.0, 0.5, 0.0),
+                texcoord: float2::new(0.28081453, 0.949397),
             }, // C
             Vertex {
                 position: float4::new(0.35966998, -0.3473291, 0.0, 1.0),
                 color: float4::new(0.5, 0.0, 0.5, 0.0),
+                texcoord: float2::new(0.85967, 0.84732914),
             }, // D
             Vertex {
                 position: float4::new(0.44147372, 0.2347359, 0.0, 1.0),
                 color: float4::new(0.5, 0.0, 0.5, 0.0),
+                texcoord: float2::new(0.9414737, 0.2652641),
             }, // E
         ];
         const INDICES: &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4];
@@ -132,6 +230,11 @@ impl RenderPipeline {
                     offset: core::mem::size_of::<float4>() as wgpu::BufferAddress,
                     format: VertexFormat::Float32x4,
                     shader_location: 1,
+                },
+                VertexAttribute {
+                    offset: (core::mem::size_of::<float4>() * 2) as wgpu::BufferAddress,
+                    format: VertexFormat::Float32x2,
+                    shader_location: 2,
                 },
             ],
         };
@@ -194,6 +297,7 @@ impl RenderPipeline {
             vertex_buffer,
             indices_buffer,
             indices_num,
+            texture_bind_group,
         })
     }
 
@@ -271,6 +375,7 @@ impl RenderPipeline {
         });
 
         render_pass.set_pipeline(&self.pipeline);
+        render_pass.set_bind_group(0, &self.texture_bind_group, &[]);
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
         render_pass.set_index_buffer(self.indices_buffer.slice(..), wgpu::IndexFormat::Uint16);
         render_pass.draw_indexed(0..self.indices_num, 0, 0..1);

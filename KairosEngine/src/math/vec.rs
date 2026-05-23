@@ -101,13 +101,14 @@ where
     v.normalize_mut();
 }
 
+#[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[allow(non_camel_case_types)]
 pub struct float2(pub f32x2);
 
 impl float2 {
     #[inline(always)]
-    pub fn new(x: f32, y: f32) -> Self {
+    pub const fn new(x: f32, y: f32) -> Self {
         Self(f32x2::from_array([x, y]))
     }
     #[inline(always)]
@@ -128,6 +129,9 @@ impl Vector for float2 {
         self.0[0] * other.0[1] - self.0[1] * other.0[0]
     }
 }
+
+unsafe impl bytemuck::Zeroable for float2 {}
+unsafe impl bytemuck::Pod for float2 {}
 
 impl Index<usize> for float2 {
     type Output = f32;

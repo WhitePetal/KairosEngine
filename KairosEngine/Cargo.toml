@@ -39,11 +39,13 @@ egui = "0.34.2"
 egui_extras = { version = "0.34.2", features = ["all_loaders"] }
 emath = "0.34.2"
 epaint = "0.34.2"
+# egui_dock = "0.18.0"
 egui-winit = "0.34.2"
 egui-wgpu = "0.34.2"
 parking_lot = "0.12.5"
 # rapier3d = { version = "0.32.0", features = [ "simd-nightly", "parallel", "serde-serialize" ] }
-# egui_dock = "0.18.0"
+# kira = "0.12.0"
+# puffin = "0.20.0"
 
 [[bench]]
 name = "vec_benchmark"
