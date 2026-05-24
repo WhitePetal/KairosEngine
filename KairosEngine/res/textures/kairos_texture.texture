@@ -1,0 +1,7 @@
+[meta]
+source_path = "res/textures/kairos_texture.png"
+version = "0.1.0"
+
+[data]
+width = 2048
+height = 2048
