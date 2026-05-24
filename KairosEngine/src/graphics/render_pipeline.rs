@@ -20,6 +20,7 @@ use wgpu::{
 use winit::{dpi::PhysicalSize, window::Window};
 
 use crate::{
+    asset_loader::texture::TextureAssets,
     graphics::vertex::Vertex,
     math::{float2, float4},
 };
@@ -41,7 +42,10 @@ pub struct RenderPipeline {
 }
 
 impl RenderPipeline {
-    pub async fn new(window: Arc<Window>) -> Result<Self, Box<dyn Error>> {
+    pub async fn new(
+        window: Arc<Window>,
+        texture_assets: &mut TextureAssets,
+    ) -> Result<Self, Box<dyn Error>> {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: Backends::all(),
             flags: InstanceFlags::default(),
@@ -87,9 +91,10 @@ impl RenderPipeline {
         };
         surface.configure(&device, &surface_config);
 
-        let texture_bytes = include_bytes!("../../res/textures/kairos_texture.png");
-        let texture_image = image::load_from_memory(texture_bytes)?;
-        let texture_data = texture_image.into_rgba8();
+        let texture_handle = texture_assets.load("res/textures/kairos_texture.png".into())?;
+        let texture_handle = texture_handle.as_ref();
+        let texture_data = &texture_assets.get(texture_handle).ok_or("no tex")?.data;
+
         let texture_dimension = texture_data.dimensions();
         let texture_size = Extent3d {
             width: texture_dimension.0,
@@ -113,7 +118,7 @@ impl RenderPipeline {
                 origin: Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
-            &texture_data,
+            texture_data,
             TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(4 * texture_dimension.0),

@@ -19,9 +19,10 @@ criterion = "0.8.2"
 [dependencies]
 toml = "1.1.2"
 anyhow = "1.0"
+crossbeam-channel = "0.5.15"
+bytemuck = { version = "1.25.0", features = ["derive"] }
 tokio = { version = "1.52.3", features = ["full"] }
 rayon = "1.12.0"
-bytemuck = { version = "1.25.0", features = ["derive"] }
 # petgraph = "0.8.3"
 winit = { version = "0.30", features = ["android-native-activity"] }
 env_logger = "0.10"

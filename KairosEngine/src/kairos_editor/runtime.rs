@@ -15,6 +15,7 @@ use winit::{
 };
 
 use crate::{
+    asset_loader::texture::TextureAssets,
     graphics::render_pipeline::RenderPipeline,
     kairos_dialog,
     kairos_editor::{KairosEngine, consts, ui::paths},
@@ -47,6 +48,7 @@ pub struct KairosEditorRuntime {
     egui_state: Option<egui_winit::State>,
     egui_renderer: Option<egui_wgpu::Renderer>,
     engine: KairosEngine,
+    texture_assets: TextureAssets,
     repaint_at: Option<Instant>,
     didi_exit: bool,
 }
@@ -64,6 +66,8 @@ impl KairosEditorRuntime {
             });
         });
 
+        let texture_assets = TextureAssets::new(256);
+
         Ok(Self {
             window: None,
             event_proxy: proxy,
@@ -72,6 +76,7 @@ impl KairosEditorRuntime {
             egui_state: None,
             egui_renderer: None,
             engine: KairosEngine::new()?,
+            texture_assets,
             repaint_at: None,
             didi_exit: false,
         })
@@ -98,7 +103,10 @@ impl KairosEditorRuntime {
             None,
         );
 
-        let render_pipeline = pollster::block_on(RenderPipeline::new(window.clone()))?;
+        let render_pipeline = pollster::block_on(RenderPipeline::new(
+            window.clone(),
+            &mut self.texture_assets,
+        ))?;
         let render_pipeline_event_proxy = self.event_proxy.clone();
         render_pipeline
             .device
@@ -290,6 +298,8 @@ impl KairosEditorRuntime {
                 }
             }
         }
+
+        self.texture_assets.handle_recves();
     }
 
     fn queue_repaint_after(&mut self, delay: Duration) {

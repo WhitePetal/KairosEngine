@@ -1,5 +1,10 @@
-
-use crate::ecs::{consts::{ENTITY_MASK, ENTITY_MASK_OFFSET, FLAG_MASK, FLAG_MASK_LEN, SPARSE_PAGE_SIZE, VERSION_MASK, VERSION_MASK_OFFSET}, sparse_set::SparsePos};
+use crate::ecs::{
+    consts::{
+        ENTITY_MASK, ENTITY_MASK_OFFSET, FLAG_MASK, FLAG_MASK_LEN, SPARSE_PAGE_SIZE, VERSION_MASK,
+        VERSION_MASK_OFFSET,
+    },
+    sparse_set::SparsePos,
+};
 
 pub enum EntityFlag {
     Default = 0x0,
@@ -19,15 +24,15 @@ impl Entity {
     #[inline(always)]
     pub fn new(idx: u32, version: u32, flags: EntityFlag) -> Self {
         Self(
-            ((flags as u64) << VERSION_MASK_OFFSET) | ((version as u64) << ENTITY_MASK_OFFSET) | (idx as u64)
+            ((flags as u64) << VERSION_MASK_OFFSET)
+                | ((version as u64) << ENTITY_MASK_OFFSET)
+                | (idx as u64),
         )
     }
 
     #[inline(always)]
     pub fn combine(idx: u32, entity: &Entity) -> Self {
-        Self (
-            ((entity.0 >> ENTITY_MASK_OFFSET) << ENTITY_MASK_OFFSET) | (idx as u64)
-        )
+        Self(((entity.0 >> ENTITY_MASK_OFFSET) << ENTITY_MASK_OFFSET) | (idx as u64))
     }
 
     #[inline(always)]
@@ -52,7 +57,10 @@ impl Entity {
 
     #[inline(always)]
     pub fn replace_flags(&self, flags: EntityFlag) -> Self {
-        Self(((flags as u64 & FLAG_MASK) << VERSION_MASK_OFFSET) | ((self.0 << FLAG_MASK_LEN) >> FLAG_MASK_LEN))
+        Self(
+            ((flags as u64 & FLAG_MASK) << VERSION_MASK_OFFSET)
+                | ((self.0 << FLAG_MASK_LEN) >> FLAG_MASK_LEN),
+        )
     }
 
     #[inline(always)]
@@ -76,7 +84,7 @@ impl Entity {
         let index = entity as usize % SPARSE_PAGE_SIZE;
         index
     }
-    
+
     pub fn get_sparse_pos(&self) -> SparsePos {
         let entity = self.get_entity() as usize;
         let page = entity / SPARSE_PAGE_SIZE;
