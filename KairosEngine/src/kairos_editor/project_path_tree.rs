@@ -2,6 +2,8 @@ pub mod texture_path;
 
 use std::path::{Path, PathBuf};
 
+use base64::Engine;
+use image::EncodableLayout;
 use petgraph::{
     Directed, Graph,
     graph::{Edges, NodeIndex},
@@ -48,7 +50,7 @@ impl ProjectPathGraph {
                             match path.extension().and_then(|ext| ext.to_str()) {
                                 Some("texture") => {
                                     let file_name = path.file_name().unwrap().to_owned();
-                                    let tex = TexturePath::new(path.clone(), path, file_name);
+                                    let tex = TexturePath::new(path.clone(), path.clone(), file_name);
                                     Some(ProjectPath::Texture(tex))
                                 }
                                 Some("asset") => Some(ProjectPath::Asset(path)),

@@ -1538,6 +1538,7 @@ dependencies = [
  "ravif",
  "rayon",
  "rgb",
+ "serde",
  "tiff",
  "zune-core",
  "zune-jpeg",
@@ -1717,6 +1718,7 @@ name = "kairos_engine"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64",
  "bytemuck",
  "criterion",
  "crossbeam-channel",

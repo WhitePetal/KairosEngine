@@ -7,7 +7,7 @@ use std::{
 use anyhow::Error;
 use crossbeam_channel::{Receiver, Sender};
 
-use crate::graphics::texture::Texture;
+use crate::{graphics::texture::Texture, serialize_asset::TextureAsset};
 
 #[derive(Clone, Copy)]
 pub struct AssetIndex {
@@ -83,7 +83,7 @@ pub enum Entry<T> {
 }
 
 pub struct TextureAssets {
-    storages: Vec<Entry<Texture>>,
+    storages: Vec<Entry<TextureAsset>>,
     infos: Vec<Option<AssetInfo>>,
     recyled_indexs: Vec<RecyledAssetIndex>,
     path_to_index: HashMap<String, AssetIndex>,
@@ -148,10 +148,7 @@ impl TextureAssets {
         }
 
         let texture_bytes = fs::read(&path)?;
-        let texture_image = image::load_from_memory(&texture_bytes)?;
-        let texture_data = texture_image.into_rgba8();
-
-        let texture = Texture { data: texture_data };
+        let texture = toml::from_slice::<TextureAsset>(&texture_bytes)?;
         let sender = self.asset_drop_sender.clone();
         if let Some(index) = self.recyled_indexs.pop() {
             let index = index.into();
@@ -181,7 +178,7 @@ impl TextureAssets {
         }
     }
 
-    pub fn get(&self, handle: &TextureHandle) -> Option<&Texture> {
+    pub fn get(&self, handle: &TextureHandle) -> Option<&TextureAsset> {
         let entry = &self.storages[handle.index.index as usize];
         match entry {
             Entry::None => None,

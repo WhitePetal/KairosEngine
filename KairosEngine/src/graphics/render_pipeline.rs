@@ -1,5 +1,7 @@
 use std::{error::Error, sync::Arc};
 
+use base64::Engine;
+use image::RgbaImage;
 use wgpu::{
     Adapter, AddressMode, BackendOptions, Backends, BindGroup, BindGroupDescriptor, BindGroupEntry,
     BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType, BlendState,
@@ -91,11 +93,13 @@ impl RenderPipeline {
         };
         surface.configure(&device, &surface_config);
 
-        let texture_handle = texture_assets.load("res/textures/kairos_texture.png".into())?;
+        let texture_handle = texture_assets.load("res/textures/kairos_texture.texture".into())?;
         let texture_handle = texture_handle.as_ref();
-        let texture_data = &texture_assets.get(texture_handle).ok_or("no tex")?.data;
+        let texture_asset = &texture_assets.get(texture_handle).ok_or("no data")?.texture;
+        let texture_data = base64::engine::general_purpose::STANDARD.decode(&texture_asset.data)?;
 
-        let texture_dimension = texture_data.dimensions();
+        // let texture_dimension = texture_asset.dimensions();
+        let texture_dimension = (texture_asset.width, texture_asset.height);
         let texture_size = Extent3d {
             width: texture_dimension.0,
             height: texture_dimension.1,
@@ -118,7 +122,7 @@ impl RenderPipeline {
                 origin: Origin3d::ZERO,
                 aspect: wgpu::TextureAspect::All,
             },
-            texture_data,
+            &texture_data,
             TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(4 * texture_dimension.0),

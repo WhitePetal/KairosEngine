@@ -1,5 +1,8 @@
-use image::RgbaImage;
+use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Texture {
-    pub data: RgbaImage,
+    pub data: String, // base64
+    pub width: u32,
+    pub height: u32
 }

@@ -12,4 +12,5 @@ pub mod kairos_editor;
 pub mod ecs;
 pub mod graphics;
 
+pub mod serialize_asset;
 pub mod asset_loader;
