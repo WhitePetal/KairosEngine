@@ -1,3 +1,5 @@
+pub mod texture_path;
+
 use std::path::{Path, PathBuf};
 
 use petgraph::{
@@ -6,9 +8,11 @@ use petgraph::{
     visit::NodeIndexable,
 };
 
+use crate::kairos_editor::project_path_tree::texture_path::TexturePath;
+
 pub enum ProjectPath {
     Dir(PathBuf),
-    Texture(PathBuf),
+    Texture(TexturePath),
     Asset(PathBuf),
 }
 
@@ -43,8 +47,9 @@ impl ProjectPathGraph {
                         let pp = {
                             match path.extension().and_then(|ext| ext.to_str()) {
                                 Some("texture") => {
-                                    println!("find texture: {:?}", path);
-                                    Some(ProjectPath::Texture(path))
+                                    let file_name = path.file_name().unwrap().to_owned();
+                                    let tex = TexturePath::new(path.clone(), path, file_name);
+                                    Some(ProjectPath::Texture(tex))
                                 }
                                 Some("asset") => Some(ProjectPath::Asset(path)),
                                 _ => None,

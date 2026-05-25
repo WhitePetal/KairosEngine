@@ -1,9 +1,8 @@
 use std::{any::type_name, fs};
 
-use egui::{Stroke, StrokeKind, pos2};
+use egui::{pos2};
 use serde::{Deserialize, Serialize};
 use toml::from_str;
-use wgpu::SamplerDescriptor;
 
 use crate::{
     graphics::render_pipeline::RenderPipeline,
@@ -74,6 +73,18 @@ impl Drawer for SceneWindow {
         let pixels_per_point = ui.pixels_per_point();
         let width = (rect.width() * pixels_per_point).round().max(1.0) as u32;
         let height = (rect.height() * pixels_per_point).round().max(1.0) as u32;
+
+        // for fixed width / height
+        // let mut width = rect.width();
+        // let mut height = width * 0.45;
+        // if height > rect.height() {
+        //     height = rect.height();
+        //     width = height * 2.2222;
+        // }
+        // let rect = egui::Rect::from_center_size(rect.center(), egui::Vec2 { x: width, y: height });
+        // let width = (rect.width() * pixels_per_point).round().max(1.0) as u32;
+        // let height = (rect.height() * pixels_per_point).round().max(1.0) as u32;
+
         let rt_view = render_pipeline.create_render_target("SceneView", width, height);
         render_pipeline.render(render_command_encoder, &rt_view);
 

@@ -5,6 +5,7 @@ use crate::{
     kairos_editor::project_path_tree::{ProjectPath, ProjectPathGraph},
     log::Log,
 };
+use egui::{Button, WidgetText};
 use petgraph::visit::EdgeRef;
 use serde::{Deserialize, Serialize};
 use toml::from_str;
@@ -108,14 +109,28 @@ impl ProjectWindow {
             ProjectPath::Dir(path_buf) => {
                 // println!("TODO Draw Path Dir: {:?}", path_buf)
             }
-            ProjectPath::Texture(path_buf) => {
+            ProjectPath::Texture(texture_path) => {
                 let image_path = Path::new("file://");
-                let mut image_path = image_path.join(path_buf);
+                let mut image_path = image_path.join(&texture_path.path);
                 if image_path.set_extension("png") {
                     let p = image_path.to_string_lossy();
                     println!("p: {:?}", p);
-                    let icon = egui::ImageSource::Uri(p);
-                    if ui.button((icon, path_buf.display().to_string())).clicked() {}
+                    let icon = egui::Image::new(egui::ImageSource::Uri(p));
+                    let icon = icon.fit_to_exact_size(egui::Vec2 { x: 64.0, y: 64.0 });
+                    let text = match texture_path.file_name.to_str()  {
+                        Some(str) => {
+                            let rich_text = egui::RichText::new(str);
+                            let rich_text = rich_text.size(16.0);
+                            let text = WidgetText::from(rich_text);
+                            Some(text)
+                        },
+                        None => None,
+                    }; 
+                    let bt = Button::opt_image_and_text(Some(icon), text);
+                    let bt = ui.add(bt);
+                    if bt.clicked() {
+
+                    }
                 }
             }
             ProjectPath::Asset(path_buf) => {
