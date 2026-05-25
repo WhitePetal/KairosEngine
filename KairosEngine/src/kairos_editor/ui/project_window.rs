@@ -1,6 +1,11 @@
-use std::{any::type_name, fs};
+use std::{any::type_name, fs, path::Path};
 
-use crate::{graphics::render_pipeline::RenderPipeline, log::Log};
+use crate::{
+    graphics::render_pipeline::RenderPipeline,
+    kairos_editor::project_path_tree::{ProjectPath, ProjectPathGraph},
+    log::Log,
+};
+use petgraph::visit::EdgeRef;
 use serde::{Deserialize, Serialize};
 use toml::from_str;
 
@@ -13,6 +18,7 @@ struct ProjectWindowStyle {
 
 struct ProjectWindowModel {
     style: ProjectWindowStyle,
+    project_path_graph: ProjectPathGraph,
 }
 
 pub struct ProjectWindow {
@@ -41,7 +47,13 @@ impl ProjectWindowStyle {
 impl ProjectWindowModel {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let style = ProjectWindowStyle::new()?;
-        Ok(Self { style })
+
+        let project_path_graph = ProjectPathGraph::new();
+
+        Ok(Self {
+            style,
+            project_path_graph,
+        })
     }
 }
 
@@ -64,7 +76,7 @@ impl Drawer for ProjectWindow {
         _messager: &mut super::Messager,
         _log: &mut Log,
     ) {
-        ui.label("TODO: Project");
+        self.draw_dir(ui, self.model.project_path_graph.get_root_node());
     }
 
     fn close(&self, messager: &mut super::Messager) {
@@ -84,4 +96,37 @@ impl Drawer for ProjectWindow {
     }
 
     fn update_style(&mut self, _style_fields: &Vec<super::ui_style_fields::StyleField>) {}
+}
+
+impl ProjectWindow {
+    fn draw_dir(&self, ui: &mut egui::Ui, node: petgraph::graph::NodeIndex) {
+        let Some(pp) = self.model.project_path_graph.get_path(node) else {
+            return;
+        };
+
+        match pp {
+            ProjectPath::Dir(path_buf) => {
+                // println!("TODO Draw Path Dir: {:?}", path_buf)
+            }
+            ProjectPath::Texture(path_buf) => {
+                let image_path = Path::new("file://");
+                let mut image_path = image_path.join(path_buf);
+                if image_path.set_extension("png") {
+                    let p = image_path.to_string_lossy();
+                    println!("p: {:?}", p);
+                    let icon = egui::ImageSource::Uri(p);
+                    if ui.button((icon, path_buf.display().to_string())).clicked() {}
+                }
+            }
+            ProjectPath::Asset(path_buf) => {
+                // println!("TODO Draw Path Asset: {:?}", path_buf)
+            }
+        }
+
+        let edges = self.model.project_path_graph.get_edges(node);
+        edges.for_each(|edge| {
+            let target = edge.target();
+            self.draw_dir(ui, target);
+        });
+    }
 }

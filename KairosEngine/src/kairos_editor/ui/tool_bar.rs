@@ -24,6 +24,7 @@ pub struct ToolBarStyle {
     pub corner_radius: f32,
     pub fill_color: math::Color32,
     pub button_text_color: math::Color32,
+    pub about_icon_path: String,
 }
 
 pub struct ToolBarModel {
@@ -98,8 +99,8 @@ impl Drawer for ToolBar {
                     );
 
                     // Icon
-                    let icon = egui::Image::new(paths::URI_ENGINE_ICON);
-                    ui.menu_image_button(icon, |ui| {
+                    let about_icon = egui::Image::new(&model.style.about_icon_path);
+                    ui.menu_image_button(about_icon, |ui| {
                         if ui.button("About Kairos").clicked() {
                             messager.send(Message::OpenAboutWindow);
                         }

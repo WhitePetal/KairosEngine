@@ -3,3 +3,4 @@ button_width = 45.0
 corner_radius = 0.0
 fill_color = "#181818ff"
 button_text_color = "#BDBDBDff"
+about_icon_path = "file://Preferences/Textures/engine_icon.png"

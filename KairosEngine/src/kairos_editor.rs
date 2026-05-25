@@ -2,6 +2,7 @@ use crate::{graphics::render_pipeline::RenderPipeline, log::Log};
 use egui::Visuals;
 
 pub mod consts;
+pub mod project_path_tree;
 pub mod runtime;
 pub mod ui;
 

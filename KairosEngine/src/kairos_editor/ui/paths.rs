@@ -1,5 +1,3 @@
-pub const URI_ENGINE_ICON: &'static str = "file://Preferences/Textures/engine_icon.png";
-
 pub const PATH_ENGINE_ICON: &'static str = "Preferences/Textures/engine_icon.png";
 pub const PATH_EDITOR_WINDO_TOOL_BAR_STYLE: &'static str =
     "Preferences/Styles/EditorWindowToolBarStyle.toml";
