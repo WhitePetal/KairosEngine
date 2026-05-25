@@ -114,7 +114,6 @@ impl ProjectWindow {
                 let mut image_path = image_path.join(&texture_path.path);
                 if image_path.set_extension("png") {
                     let p = image_path.to_string_lossy();
-                    println!("p: {:?}", p);
                     let icon = egui::Image::new(egui::ImageSource::Uri(p));
                     let icon = icon.fit_to_exact_size(egui::Vec2 { x: 64.0, y: 64.0 });
                     let text = match texture_path.file_name.to_str()  {

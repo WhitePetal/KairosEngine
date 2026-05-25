@@ -19,3 +19,4 @@
 | [wgpu-learning-roadmap.md](./wgpu-learning-roadmap.md) | wgpu 学习路线：概念对照、分阶段教程与资料、SRP 类比及与本项目 runtime 的衔接 |
 | [wgpu-threading-render-graph-notes.md](./wgpu-threading-render-graph-notes.md) | wgpu 多线程渲染、Unity Main/Render Thread 类比、Render Thread 取舍与 Render Graph 设计笔记 |
 | [rust-crate-facade-and-workspace-split.md](./rust-crate-facade-and-workspace-split.md) | 统一 `Color32` 门面、IDE 补全噪音原因、rust-analyzer 缓解与 Workspace 拆 crate 分阶段方案 |
+| [texture-asset-toml-rkyv-hybrid-format.md](./texture-asset-toml-rkyv-hybrid-format.md) | `.texture` 资产 TOML + rkyv 混合格式：分隔符 split、memchr、预写 binary 偏移与加载方案 |
