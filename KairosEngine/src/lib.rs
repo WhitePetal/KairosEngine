@@ -13,4 +13,3 @@ pub mod ecs;
 pub mod graphics;
 
 pub mod asset_loader;
-pub mod serialize_asset;

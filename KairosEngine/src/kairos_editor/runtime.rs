@@ -1,5 +1,8 @@
 use std::{
-    error::Error, path::Path, sync::Arc, time::{Duration, Instant}
+    error::Error,
+    path::Path,
+    sync::Arc,
+    time::{Duration, Instant},
 };
 
 use egui::{ViewportCommand, ViewportId};
@@ -14,9 +17,9 @@ use winit::{
 
 use crate::{
     asset_loader::texture::TextureAssets,
-    graphics::render_pipeline::RenderPipeline,
+    graphics::{render_pipeline::RenderPipeline, texture::TextureAsset},
     kairos_dialog,
-    kairos_editor::{KairosEngine, consts, ui::paths}, serialize_asset::TextureAsset,
+    kairos_editor::{KairosEngine, consts, ui::paths},
 };
 
 fn load_icon() -> Option<Icon> {
@@ -81,36 +84,6 @@ impl KairosEditorRuntime {
     }
 
     fn create_window(&mut self, event_loop: &ActiveEventLoop) -> RuntimeResult<()> {
-        let texture_bytes = std::fs::read("res/textures/kairos_texture.png").unwrap();
-        let texture_image = image::load_from_memory(&texture_bytes).unwrap();
-        let texture_data = texture_image.into_rgba8();
-        let width = texture_data.width();
-        let height = texture_data.height();
-
-        let data = texture_data.into_raw();
-        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&data)?;
-
-        let texture = crate::graphics::texture::Texture { 
-            width: width, 
-            height: height,
-            data: vec![], 
-        };
-        let meta = crate::serialize_asset::Meta {
-            source_path: "res/textures/kairos_texture.texture".into()
-        };
-        let texture_asset = TextureAsset {
-            meta,
-            texture
-        };
-        let toml = toml::to_string(&texture_asset).unwrap();
-        println!("Buf Success");
-        let path = Path::new("res/textures/kairos_texture.texture");
-        let _ = std::fs::write( path, toml);
-        let bin_path = path.with_extension("texture_bin");
-        let _ = std::fs::write(bin_path, bytes);
-        println!("Write Texture Success");
-        println!("header toml: {:?}", toml::from_str::<u32>("0000000123".into()));
-
         let title = format!("{} {}", consts::APP_NAME, consts::VERSION);
 
         let attrs = Window::default_attributes()

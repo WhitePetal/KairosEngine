@@ -1,13 +1,14 @@
 use std::{
     collections::HashMap,
     fs,
+    path::Path,
     sync::{Arc, Weak},
 };
 
 use anyhow::Error;
 use crossbeam_channel::{Receiver, Sender};
 
-use crate::{graphics::texture::Texture, math::length, serialize_asset::TextureAsset};
+use crate::graphics::texture::TextureAsset;
 
 #[derive(Clone, Copy)]
 pub struct AssetIndex {
@@ -147,14 +148,8 @@ impl TextureAssets {
             }
         }
 
-        let toml_path = std::path::Path::new(&path);
-        let texture_toml_bytes = fs::read(toml_path)?;
-        let mut texture = toml::from_slice::<TextureAsset>(&texture_toml_bytes)?;
-        let bin_path = toml_path.with_extension("texture_bin");
-        let texture_data_bytes = fs::read(bin_path)?;
-        let data = rkyv::from_bytes::<Vec<u8>, rkyv::rancor::Error>(&texture_data_bytes)?;
-        println!("DeSerialize Texture Data Success");
-        texture.texture.data = data;
+        let texture = Self::load_asset(Path::new(&path))?;
+
         let sender = self.asset_drop_sender.clone();
         if let Some(index) = self.recyled_indexs.pop() {
             let index = index.into();
@@ -196,5 +191,16 @@ impl TextureAssets {
                 }
             }
         }
+    }
+
+    fn load_asset(path: &Path) -> Result<TextureAsset, Error> {
+        let toml_path = Path::new(&path);
+        let texture_toml_bytes = fs::read(toml_path)?;
+        let mut texture = toml::from_slice::<TextureAsset>(&texture_toml_bytes)?;
+        let bin_path = toml_path.with_extension("texture_bin");
+        let texture_data_bytes = fs::read(bin_path)?;
+        let data = rkyv::from_bytes::<Vec<u8>, rkyv::rancor::Error>(&texture_data_bytes)?;
+        texture.texture.data = data;
+        Ok(texture)
     }
 }
