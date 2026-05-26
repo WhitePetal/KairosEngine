@@ -193,22 +193,15 @@ impl TextureAssets {
     }
 
     async fn load_asset(path: &Path) -> Result<TextureAsset, Error> {
-        let toml_bytes = {
-            let mut toml_f = File::open(path).await?;
-            let mut toml_bytes = Vec::<u8>::new();
-            toml_f.read_to_end(&mut toml_bytes).await?;
-            toml_bytes
-        };
-        let mut texture = toml::from_slice::<TextureAsset>(&toml_bytes)?;
+        let path = path.to_path_buf();
 
-        let bin_bytes = {
-            let bin_path = path.with_extension("texture_bin");
-            let mut bin_f = File::open(bin_path).await?;
-            let mut bin_bytes = Vec::<u8>::new();
-            bin_f.read_to_end(&mut bin_bytes).await?;
-            bin_bytes
-        };
-        let data = rkyv::from_bytes::<Vec<u8>, rkyv::rancor::Error>(&bin_bytes)?;
+        let (toml_bytes, bin_bytes) = tokio::join!(
+                tokio::fs::read(&path),
+                tokio::fs::read(path.with_extension("texture_bin")),
+        );
+        let mut texture = toml::from_slice::<TextureAsset>(&toml_bytes?)?;
+        let data = rkyv::from_bytes::<Vec<u8>, rkyv::rancor::Error>(&bin_bytes?)?;
+        
         texture.texture.data = data;
         Ok(texture)
     }
