@@ -1,6 +1,5 @@
 use std::{
     error::Error,
-    path::Path,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -112,18 +111,27 @@ impl KairosEditorRuntime {
 
     fn create_window(&mut self, event_loop: &ActiveEventLoop) -> RuntimeResult<()> {
         let title = format!("{} {}", consts::APP_NAME, consts::VERSION);
+        let icon = load_icon();
 
         let attrs = Window::default_attributes()
             .with_title(title)
             .with_inner_size(LogicalSize::new(800.0, 600.0))
             .with_decorations(true)
             .with_transparent(false)
-            .with_window_icon(load_icon());
+            .with_visible(false)
+            .with_window_icon(icon.clone());
 
         let window = Arc::new(event_loop.create_window(attrs)?);
+        #[cfg(target_os = "windows")]
+        {
+            use winit::platform::windows::WindowExtWindows;
+            window.set_taskbar_icon(icon);
+        }
 
         #[cfg(target_os = "macos")]
-        Self::set_macos_dock_icon(paths::PATH_ENGINE_ICON);
+        {
+            Self::set_macos_dock_icon(paths::PATH_ENGINE_ICON);
+        }
 
         let mut egui_state = egui_winit::State::new(
             self.egui_ctx.clone(),
@@ -171,6 +179,7 @@ impl KairosEditorRuntime {
         self.egui_state = Some(egui_state);
         self.egui_renderer = Some(egui_renderer);
 
+        window.set_visible(true);
         window.request_redraw();
 
         Ok(())
