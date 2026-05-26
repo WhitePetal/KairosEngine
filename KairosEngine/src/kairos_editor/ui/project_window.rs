@@ -116,20 +116,18 @@ impl ProjectWindow {
                     let p = image_path.to_string_lossy();
                     let icon = egui::Image::new(egui::ImageSource::Uri(p));
                     let icon = icon.fit_to_exact_size(egui::Vec2 { x: 64.0, y: 64.0 });
-                    let text = match texture_path.file_name.to_str()  {
+                    let text = match texture_path.file_name.to_str() {
                         Some(str) => {
                             let rich_text = egui::RichText::new(str);
                             let rich_text = rich_text.size(16.0);
                             let text = WidgetText::from(rich_text);
                             Some(text)
-                        },
+                        }
                         None => None,
-                    }; 
+                    };
                     let bt = Button::opt_image_and_text(Some(icon), text);
                     let bt = ui.add(bt);
-                    if bt.clicked() {
-
-                    }
+                    if bt.clicked() {}
                 }
             }
             ProjectPath::Asset(path_buf) => {

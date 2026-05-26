@@ -1,6 +1,6 @@
 use std::{any::type_name, fs};
 
-use egui::{pos2};
+use egui::pos2;
 use serde::{Deserialize, Serialize};
 use toml::from_str;
 
