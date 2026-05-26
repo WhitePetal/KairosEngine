@@ -636,6 +636,8 @@ impl Div for &float3 {
     }
 }
 
+///
+/// column vector
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[allow(non_camel_case_types)]
@@ -645,6 +647,11 @@ impl float4 {
     #[inline(always)]
     pub const fn new(x: f32, y: f32, z: f32, w: f32) -> Self {
         Self(f32x4::from_array([x, y, z, w]))
+    }
+
+    #[inline(always)]
+    pub(crate) fn from_simd(v: f32x4) -> Self {
+        Self(v)
     }
 
     #[inline(always)]

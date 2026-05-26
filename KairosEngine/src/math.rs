@@ -1,7 +1,9 @@
 mod color;
+mod matrix;
 mod vec;
 
 pub use color::Color32;
+pub use matrix::*;
 pub use vec::*;
 
 pub fn float2(x: f32, y: f32) -> float2 {

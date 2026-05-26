@@ -196,12 +196,12 @@ impl TextureAssets {
         let path = path.to_path_buf();
 
         let (toml_bytes, bin_bytes) = tokio::join!(
-                tokio::fs::read(&path),
-                tokio::fs::read(path.with_extension("texture_bin")),
+            tokio::fs::read(&path),
+            tokio::fs::read(path.with_extension("texture_bin")),
         );
         let mut texture = toml::from_slice::<TextureAsset>(&toml_bytes?)?;
         let data = rkyv::from_bytes::<Vec<u8>, rkyv::rancor::Error>(&bin_bytes?)?;
-        
+
         texture.texture.data = data;
         Ok(texture)
     }
