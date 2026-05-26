@@ -70,7 +70,7 @@ impl Mul<float4> for float4x4 {
     /// |------------ Ml -----------|  *  |--r--|
     /// |  l1  |  l2  |  l3  |  l4  |  *  |  r  |
     /// ----------------------------------------|
-    /// | l1.x | l2.x | l3.x | l4.x |  *  | r.x | 
+    /// | l1.x | l2.x | l3.x | l4.x |  *  | r.x |
     /// | l1.y | l2.y | l3.y | l4.y |  *  | r.y |
     /// | l1.z | l2.z | l3.z | l4.z |  *  | r.z |
     /// | l1.w | l2.w | l3.w | l4.w |  *  | r.w |
@@ -84,10 +84,10 @@ impl Mul<float4> for float4x4 {
     #[inline(always)]
     fn mul(self, rhs: float4) -> Self::Output {
         float4::from_simd(
-            &self.0[0].0 * simd_swizzle!(rhs.0, [0, 0, 0, 0]) +
-            &self.0[1].0 * simd_swizzle!(rhs.0, [1, 1, 1, 1]) +
-            &self.0[2].0 * simd_swizzle!(rhs.0, [2, 2, 2, 2]) +
-            &self.0[3].0 * simd_swizzle!(rhs.0, [3, 3, 3, 3]),
+            &self.0[0].0 * simd_swizzle!(rhs.0, [0, 0, 0, 0])
+                + &self.0[1].0 * simd_swizzle!(rhs.0, [1, 1, 1, 1])
+                + &self.0[2].0 * simd_swizzle!(rhs.0, [2, 2, 2, 2])
+                + &self.0[3].0 * simd_swizzle!(rhs.0, [3, 3, 3, 3]),
         )
     }
 }

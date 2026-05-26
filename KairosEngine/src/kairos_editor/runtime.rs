@@ -83,6 +83,33 @@ impl KairosEditorRuntime {
         })
     }
 
+    #[cfg(target_os = "macos")]
+    fn set_macos_dock_icon(path: impl AsRef<Path>) {
+        use objc2::{AnyThread as _, MainThreadMarker};
+        use objc2_app_kit::{NSApplication, NSImage};
+        use objc2_foundation::NSString;
+
+        let Some(mtm) = MainThreadMarker::new() else {
+            log::warn!("Cannot set macOS Dock icon outside the main thread");
+            return;
+        };
+
+        let path = path.as_ref();
+        let path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+        let path = path.to_string_lossy();
+        let path = NSString::from_str(&path);
+
+        let Some(image) = NSImage::initWithContentsOfFile(NSImage::alloc(), &path) else {
+            log::warn!("Failed to load macOS Dock icon from {path}");
+            return;
+        };
+
+        let app = NSApplication::sharedApplication(mtm);
+
+        // SAFETY: AppKit owns the application object, and `image` is a valid NSImage.
+        unsafe { app.setApplicationIconImage(Some(&image)) };
+    }
+
     fn create_window(&mut self, event_loop: &ActiveEventLoop) -> RuntimeResult<()> {
         let title = format!("{} {}", consts::APP_NAME, consts::VERSION);
 
@@ -94,6 +121,9 @@ impl KairosEditorRuntime {
             .with_window_icon(load_icon());
 
         let window = Arc::new(event_loop.create_window(attrs)?);
+
+        #[cfg(target_os = "macos")]
+        Self::set_macos_dock_icon(paths::PATH_ENGINE_ICON);
 
         let mut egui_state = egui_winit::State::new(
             self.egui_ctx.clone(),

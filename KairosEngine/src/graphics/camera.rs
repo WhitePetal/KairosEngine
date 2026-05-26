@@ -1,6 +1,5 @@
 use crate::math::float3;
 
-
 pub struct Camera {
     pub position: float3,
     pub forward: float3,
@@ -12,7 +11,5 @@ pub struct Camera {
 }
 
 impl Camera {
-    pub fn get_view_matrix(&self) {
-        
-    }
+    pub fn get_view_matrix(&self) {}
 }
