@@ -17,7 +17,7 @@ use winit::{
 
 use crate::{
     asset_loader::texture::TextureAssets,
-    graphics::{render_pipeline::RenderPipeline, texture::TextureAsset},
+    graphics::render_pipeline::RenderPipeline,
     kairos_dialog,
     kairos_editor::{KairosEngine, consts, ui::paths},
 };
@@ -104,10 +104,12 @@ impl KairosEditorRuntime {
             None,
         );
 
+        println!("Will Create RenderPipeline");
         let render_pipeline = pollster::block_on(RenderPipeline::new(
             window.clone(),
             &mut self.texture_assets,
         ))?;
+        println!("End Create RenderPipeline");
         let render_pipeline_event_proxy = self.event_proxy.clone();
         render_pipeline
             .device

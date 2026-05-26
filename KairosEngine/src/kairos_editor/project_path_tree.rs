@@ -2,8 +2,6 @@ pub mod texture_path;
 
 use std::path::{Path, PathBuf};
 
-use base64::Engine;
-use image::EncodableLayout;
 use petgraph::{
     Directed, Graph,
     graph::{Edges, NodeIndex},

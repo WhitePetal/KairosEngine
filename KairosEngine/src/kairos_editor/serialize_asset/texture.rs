@@ -5,7 +5,7 @@ use anyhow::{Error, Ok};
 use crate::graphics::texture::{self, TextureAsset};
 
 impl TextureAsset {
-    pub fn conver_img_to_asset(path: &Path) -> Result<TextureAsset, Error> {
+    pub fn convert_img_to_asset(path: &Path) -> Result<TextureAsset, Error> {
         let texture_bytes = std::fs::read(path)?;
         let texture_image = image::load_from_memory(&texture_bytes)?;
         let texture_data = texture_image.into_rgba8();
@@ -37,7 +37,7 @@ impl TextureAsset {
 
         asset.texture.data = vec![];
 
-        let toml = toml::to_string(self)?;
+        let toml = toml::to_string(&asset)?;
         let path = path.with_extension("texture");
 
         let _ = std::fs::write(&path, toml);

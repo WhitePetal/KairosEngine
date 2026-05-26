@@ -1,6 +1,6 @@
 use std::{backtrace::Backtrace, collections::VecDeque};
 
-enum LogLevel {
+pub enum LogLevel {
     Info,
     Warning,
     Error,

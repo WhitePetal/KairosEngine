@@ -235,7 +235,7 @@ impl Context {
         });
     }
 
-    pub fn handle(&mut self, ui: &egui::Ui, log: &mut Log) {
+    pub fn handle(&mut self, ui: &egui::Ui, _log: &mut Log) {
         while let Some(msg) = self.messager.messages.pop_front() {
             match msg {
                 Message::CreateToolbar => {
@@ -541,7 +541,7 @@ impl Context {
         panic!("Create {} UI Failed: {}", ui_name, error)
     }
 
-    fn get_preference_window(&self) -> Option<&PreferencesWindow> {
+    fn _get_preference_window(&self) -> Option<&PreferencesWindow> {
         let type_id = TypeId::of::<PreferencesWindow>();
         match self.ids.get(&type_id) {
             Some(id) => {

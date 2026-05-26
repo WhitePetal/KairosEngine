@@ -62,7 +62,7 @@ impl RenderPipeline {
             })
             .await?;
 
-        let features = adapter.features();
+        let _ = adapter.features();
         let (device, queue) = adapter
             .request_device(&DeviceDescriptor {
                 label: None,
@@ -91,7 +91,9 @@ impl RenderPipeline {
         };
         surface.configure(&device, &surface_config);
 
-        let texture_handle = texture_assets.load("res/textures/kairos_texture.texture".into())?;
+        let texture_handle = texture_assets
+            .load("res/textures/kairos_texture.texture".into())
+            .await?;
         let texture_handle = texture_handle.as_ref();
         let texture_asset = &texture_assets.get(texture_handle).ok_or("no data")?.texture;
         let texture_data = &texture_asset.data;

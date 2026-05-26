@@ -106,7 +106,7 @@ impl ProjectWindow {
         };
 
         match pp {
-            ProjectPath::Dir(path_buf) => {
+            ProjectPath::Dir(_) => {
                 // println!("TODO Draw Path Dir: {:?}", path_buf)
             }
             ProjectPath::Texture(texture_path) => {
@@ -130,7 +130,7 @@ impl ProjectWindow {
                     if bt.clicked() {}
                 }
             }
-            ProjectPath::Asset(path_buf) => {
+            ProjectPath::Asset(_) => {
                 // println!("TODO Draw Path Asset: {:?}", path_buf)
             }
         }

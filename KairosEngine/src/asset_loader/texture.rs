@@ -1,12 +1,12 @@
 use std::{
     collections::HashMap,
-    fs,
     path::Path,
     sync::{Arc, Weak},
 };
 
 use anyhow::Error;
 use crossbeam_channel::{Receiver, Sender};
+use tokio::{fs::File, io::AsyncReadExt};
 
 use crate::graphics::texture::TextureAsset;
 
@@ -123,7 +123,7 @@ impl TextureAssets {
         }
     }
 
-    pub fn load(&mut self, path: String) -> Result<Arc<TextureHandle>, Error> {
+    pub async fn load(&mut self, path: String) -> Result<Arc<TextureHandle>, Error> {
         // let path: String = load_path.to_str().unwrap().into();
         if let Some(index) = self.path_to_index.get(&path) {
             let entry = &self.storages[index.index as usize];
@@ -148,8 +148,7 @@ impl TextureAssets {
             }
         }
 
-        let texture = Self::load_asset(Path::new(&path))?;
-
+        let texture = Self::load_asset(Path::new(&path)).await?;
         let sender = self.asset_drop_sender.clone();
         if let Some(index) = self.recyled_indexs.pop() {
             let index = index.into();
@@ -193,13 +192,23 @@ impl TextureAssets {
         }
     }
 
-    fn load_asset(path: &Path) -> Result<TextureAsset, Error> {
-        let toml_path = Path::new(&path);
-        let texture_toml_bytes = fs::read(toml_path)?;
-        let mut texture = toml::from_slice::<TextureAsset>(&texture_toml_bytes)?;
-        let bin_path = toml_path.with_extension("texture_bin");
-        let texture_data_bytes = fs::read(bin_path)?;
-        let data = rkyv::from_bytes::<Vec<u8>, rkyv::rancor::Error>(&texture_data_bytes)?;
+    async fn load_asset(path: &Path) -> Result<TextureAsset, Error> {
+        let toml_bytes = {
+            let mut toml_f = File::open(path).await?;
+            let mut toml_bytes = Vec::<u8>::new();
+            toml_f.read_to_end(&mut toml_bytes).await?;
+            toml_bytes
+        };
+        let mut texture = toml::from_slice::<TextureAsset>(&toml_bytes)?;
+
+        let bin_bytes = {
+            let bin_path = path.with_extension("texture_bin");
+            let mut bin_f = File::open(bin_path).await?;
+            let mut bin_bytes = Vec::<u8>::new();
+            bin_f.read_to_end(&mut bin_bytes).await?;
+            bin_bytes
+        };
+        let data = rkyv::from_bytes::<Vec<u8>, rkyv::rancor::Error>(&bin_bytes)?;
         texture.texture.data = data;
         Ok(texture)
     }
