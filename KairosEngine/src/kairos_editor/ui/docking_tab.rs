@@ -802,11 +802,13 @@ impl<Drawer> DockArea<'_, Drawer> {
                 // otherwise it may overlap on other separator / bodies when
                 // shrunk fast.
                 let range = rect.max.dim_point - rect.min.dim_point;
-                let min = (style.separator.extra / range).min(1.0);
-                let max = 1.0 - min;
-                let (min, max) = (min.min(max), max.max(min));
-                let delta = arrow_key_offset.unwrap_or(response.drag_delta()).dim_point;
-                split.fraction = (split.fraction + delta / range).clamp(min, max);
+                if range > 0.0 {
+                    let min = (style.separator.extra / range).min(1.0);
+                    let max = 1.0 - min;
+                    let (min, max) = (min.min(max), max.max(min));
+                    let delta = arrow_key_offset.unwrap_or(response.drag_delta()).dim_point;
+                    split.fraction = (split.fraction + delta / range).clamp(min, max);
+                }
 
                 if response.double_clicked() {
                     split.fraction = 0.5;
@@ -2271,7 +2273,9 @@ impl<Drawer> DockArea<'_, Drawer> {
         tab_hovered: bool,
         fade_style: Option<&Style>,
     ) {
-        assert_ne!(available_width, 0.0);
+        if available_width <= 0.0 {
+            return;
+        }
 
         let leaf = self.dock_state[surface_index][node_index]
             .get_leaf_mut()
