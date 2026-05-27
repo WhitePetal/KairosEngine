@@ -685,6 +685,11 @@ impl float4 {
     }
 
     #[inline(always)]
+    pub fn set_w(&mut self, w: f32) {
+        self.0[3] = w;
+    }
+
+    #[inline(always)]
     pub fn xx(&self) -> float2 {
         float2(simd_swizzle!(self.0, [0, 0]))
     }
@@ -1082,6 +1087,11 @@ impl float4 {
     #[inline(always)]
     pub fn www(&self) -> float3 {
         float3(simd_swizzle!(self.0, [3, 3, 3, 3]) * f32x4::from_array([1.0, 1.0, 1.0, 0.0]))
+    }
+
+    #[inline(always)]
+    pub fn to_array(self) -> [f32; 4] {
+        self.0.to_array()
     }
 }
 

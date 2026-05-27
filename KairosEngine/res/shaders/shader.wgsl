@@ -12,11 +12,14 @@ struct v2f {
     @location(1) uv: vec2f,
 };
 
+@group(1) @binding(0)
+var<uniform> matrix_vp: mat4x4f;
+
 @vertex
 fn vs_main(v: a2v) -> v2f {
     var o: v2f;
 
-    o.pos = v.vertex;
+    o.pos = matrix_vp * vec4f(v.vertex.xyz, 1.0);
     o.color = v.color;
     o.uv = v.texcoord;
 

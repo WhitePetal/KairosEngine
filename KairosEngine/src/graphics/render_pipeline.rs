@@ -21,8 +21,8 @@ use winit::{dpi::PhysicalSize, window::Window};
 
 use crate::{
     asset_loader::texture::TextureAssets,
-    graphics::vertex::Vertex,
-    math::{float2, float4},
+    graphics::{camera::Camera, vertex::Vertex},
+    math::{self, float2, float3, float4},
 };
 
 pub struct RenderPipeline {
@@ -39,6 +39,8 @@ pub struct RenderPipeline {
     indices_buffer: Buffer,
     indices_num: u32,
     texture_bind_group: BindGroup,
+    camera: Camera,
+    vp_bind_group: BindGroup,
 }
 
 impl RenderPipeline {
@@ -182,40 +184,88 @@ impl RenderPipeline {
             ],
         });
 
-        let shader = device.create_shader_module(ShaderModuleDescriptor {
-            label: Some("Shader"),
-            source: ShaderSource::Wgsl(include_str!("../../res/shaders/shader.wgsl").into()),
+        let cam_pos = float3::new(0., 1., -2.);
+        let cam_target = float3::new(0., 0., 0.);
+        let cam_fwd = math::normalize(&(cam_target - cam_pos));
+        let cam_rt = math::normalize(&math::cross(&float3::new(0., 1., 0.), &cam_fwd));
+
+        let camera = Camera::new(
+            cam_pos,
+            cam_fwd,
+            cam_rt,
+            45.,
+            surface_config.width as f32 / surface_config.height as f32,
+            0.1,
+            100.,
+        );
+
+        let vp = camera.get_view_projection_matrix();
+        let vp = [
+            vp.c0().to_array(),
+            vp.c1().to_array(),
+            vp.c2().to_array(),
+            vp.c3().to_array(),
+        ];
+        let vp_buffer = device.create_buffer_init(&BufferInitDescriptor {
+            label: Some("VP Buffer"),
+            contents: bytemuck::cast_slice(&vp),
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
         });
+        let vp_bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            label: Some("VP Buffer Bind Group Layout"),
+            entries: &[BindGroupLayoutEntry {
+                binding: 0,
+                visibility: ShaderStages::VERTEX,
+                ty: BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
+        let vp_bind_group = device.create_bind_group(&BindGroupDescriptor {
+            label: Some("VP Buffer Bind Group"),
+            layout: &vp_bind_group_layout,
+            entries: &[BindGroupEntry {
+                binding: 0,
+                resource: vp_buffer.as_entire_binding(),
+            }],
+        });
+
         let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
             label: Some("Render Pipeline Layout"),
-            bind_group_layouts: &[Some(&texture_bind_group_layout)],
+            bind_group_layouts: &[
+                Some(&texture_bind_group_layout),
+                Some(&vp_bind_group_layout),
+            ],
             immediate_size: 0,
         });
 
         const VERTICES: &[Vertex] = &[
             Vertex {
                 position: float4::new(-0.0868241, 0.49240386, 0.0, 1.0),
-                color: float4::new(0.5, 0.0, 0.5, 0.0),
+                color: float4::new(0.5, 0.0, 0.5, 1.0),
                 texcoord: float2::new(0.4131759, 0.00759614),
             }, // A
             Vertex {
                 position: float4::new(-0.49513406, 0.06958647, 0.0, 1.0),
-                color: float4::new(0.5, 0.0, 0.5, 0.0),
+                color: float4::new(0.5, 0.0, 0.5, 1.0),
                 texcoord: float2::new(0.0048659444, 0.43041354),
             }, // B
             Vertex {
                 position: float4::new(-0.21918549, -0.44939706, 0.0, 1.0),
-                color: float4::new(0.5, 0.0, 0.5, 0.0),
+                color: float4::new(0.5, 0.0, 0.5, 1.0),
                 texcoord: float2::new(0.28081453, 0.949397),
             }, // C
             Vertex {
                 position: float4::new(0.35966998, -0.3473291, 0.0, 1.0),
-                color: float4::new(0.5, 0.0, 0.5, 0.0),
+                color: float4::new(0.5, 0.0, 0.5, 1.0),
                 texcoord: float2::new(0.85967, 0.84732914),
             }, // D
             Vertex {
                 position: float4::new(0.44147372, 0.2347359, 0.0, 1.0),
-                color: float4::new(0.5, 0.0, 0.5, 0.0),
+                color: float4::new(0.5, 0.0, 0.5, 1.0),
                 texcoord: float2::new(0.9414737, 0.2652641),
             }, // E
         ];
@@ -254,6 +304,11 @@ impl RenderPipeline {
             usage: BufferUsages::INDEX,
         });
         let indices_num = INDICES.len() as u32;
+
+        let shader = device.create_shader_module(ShaderModuleDescriptor {
+            label: Some("Shader"),
+            source: ShaderSource::Wgsl(include_str!("../../res/shaders/shader.wgsl").into()),
+        });
 
         let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
             label: Some("Render Pipeline"),
@@ -307,6 +362,8 @@ impl RenderPipeline {
             indices_buffer,
             indices_num,
             texture_bind_group,
+            camera,
+            vp_bind_group,
         })
     }
 
@@ -385,6 +442,7 @@ impl RenderPipeline {
 
         render_pass.set_pipeline(&self.pipeline);
         render_pass.set_bind_group(0, &self.texture_bind_group, &[]);
+        render_pass.set_bind_group(1, &self.vp_bind_group, &[]);
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
         render_pass.set_index_buffer(self.indices_buffer.slice(..), wgpu::IndexFormat::Uint16);
         render_pass.draw_indexed(0..self.indices_num, 0, 0..1);
