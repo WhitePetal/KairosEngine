@@ -30,7 +30,7 @@ where
     fn dot(&self, r: &Self) -> f32;
 
     type CrossOutput;
-    fn cross(&self, r: &Self) -> Self::CrossOutput;
+    fn cross(&self, r: Self) -> Self::CrossOutput;
 
     #[inline(always)]
     fn len_sq(&self) -> f32 {
@@ -62,7 +62,7 @@ where
 }
 
 #[inline(always)]
-pub fn cross<T>(l: &T, r: &T) -> T::CrossOutput
+pub fn cross<T>(l: T, r: T) -> T::CrossOutput
 where
     T: Vector,
 {
@@ -86,7 +86,7 @@ where
 }
 
 #[inline(always)]
-pub fn normalize<T>(v: &T) -> T
+pub fn normalize<T>(v: T) -> T
 where
     T: Vector,
 {
@@ -94,7 +94,7 @@ where
 }
 
 #[inline(always)]
-pub fn normalize_mut<T>(v: &mut T)
+pub fn normalize_mut<T>(mut v: T)
 where
     T: Vector,
 {
@@ -125,7 +125,7 @@ impl Vector for float2 {
 
     type CrossOutput = f32;
     #[inline(always)]
-    fn cross(&self, other: &Self) -> Self::CrossOutput {
+    fn cross(&self, other: Self) -> Self::CrossOutput {
         self.0[0] * other.0[1] - self.0[1] * other.0[0]
     }
 }
@@ -391,7 +391,7 @@ impl Vector for float3 {
 
     type CrossOutput = float3;
     #[inline(always)]
-    fn cross(&self, other: &Self) -> Self::CrossOutput {
+    fn cross(&self, other: Self) -> Self::CrossOutput {
         let a = self.0;
         let b = other.0;
 
@@ -1103,7 +1103,7 @@ impl Vector for float4 {
 
     type CrossOutput = Self;
     #[inline(always)]
-    fn cross(&self, other: &Self) -> Self::CrossOutput {
+    fn cross(&self, other: Self) -> Self::CrossOutput {
         let a = self.0;
         let b = other.0;
 

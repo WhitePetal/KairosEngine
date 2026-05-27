@@ -5,6 +5,7 @@ pub struct Camera {
     pub forward: float3,
     pub right: float3,
     pub fov: f32,
+    /// width / height
     pub aspect: f32,
     pub near: f32,
     pub far: f32,
@@ -34,7 +35,7 @@ impl Camera {
     pub fn get_view_matrix(&self) -> float4x4 {
         let f = self.forward;
         let r = self.right;
-        let u = math::cross(&f, &r);
+        let u = math::cross(f, r);
 
         let v1 = float4::new(r[0], u[0], f[0], 0.);
         let v2 = float4::new(r[1], u[1], f[1], 0.);

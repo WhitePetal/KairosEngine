@@ -7,6 +7,7 @@ use std::{
 
 use egui::{ViewportCommand, ViewportId};
 use parking_lot::Mutex;
+use tokio::sync::mpsc;
 use winit::{
     application::ApplicationHandler,
     dpi::LogicalSize,
@@ -15,6 +16,13 @@ use winit::{
     window::{Icon, Window},
 };
 
+use crate::graphics::attachment::Attachment;
+use crate::graphics::camera::Camera;
+use crate::graphics::graphics_graph::{GraphicsCommand, GraphicsGraph};
+use crate::graphics::mesh::Mesh;
+use crate::graphics::render_pipeline;
+use crate::graphics::vertex::Vertex;
+use crate::math::{self, float2, float3, float4};
 use crate::{
     asset_loader::texture::TextureAssets,
     graphics::render_pipeline::RenderPipeline,
@@ -196,6 +204,67 @@ impl KairosEditorRuntime {
         let mut should_close = false;
         let mut repaint_delay = None;
 
+        let mut render_pipeline = self.render_pipeline.lock();
+        let Some(render_pipeline) = render_pipeline.as_mut() else {
+            return;
+        };
+
+
+
+        // let surface_cfg = &render_pipeline.surface_config;
+
+        // let mut graphics_command = GraphicsCommand::new(128);
+        // let frame_buffer = Attachment::new(surface_cfg.width, surface_cfg.height, render_pipeline.get_frame_buffer_format());
+        // let frame_buffer_id = graphics_command.create_attachment(frame_buffer);
+        // let cam_pos = float3::new(0.0, 1.0, -2.0);
+        // let cam_taget = float3::new(0.0, 0.0, 0.0);
+        // let cam_forward = math::normalize(cam_taget - cam_pos);
+        // let world_up = float3::new(0.0, 0.0, 0.0);
+        // let cam_right = math::cross(world_up, cam_forward);
+        // let camera = Camera::new(float3::new(0.0, 1.0, -2.0), cam_forward, cam_right, 45., surface_cfg.width as f32 / surface_cfg.height as f32, 0.3, 100.);
+        // let vp_id = graphics_command.set_view_projection_matrix(camera.get_view_projection_matrix());
+        // graphics_command.begin_render_pass(vec![frame_buffer_id], vp_id, true);
+
+        // let vertices = vec![
+        //     Vertex {
+        //         position: float4::new(-0.0868241, 0.49240386, 0.0, 1.0),
+        //         color: float4::new(0.5, 0.0, 0.5, 1.0),
+        //         texcoord: float2::new(0.4131759, 0.00759614),
+        //     }, // A
+        //     Vertex {
+        //         position: float4::new(-0.49513406, 0.06958647, 0.0, 1.0),
+        //         color: float4::new(0.5, 0.0, 0.5, 1.0),
+        //         texcoord: float2::new(0.0048659444, 0.43041354),
+        //     }, // B
+        //     Vertex {
+        //         position: float4::new(-0.21918549, -0.44939706, 0.0, 1.0),
+        //         color: float4::new(0.5, 0.0, 0.5, 1.0),
+        //         texcoord: float2::new(0.28081453, 0.949397),
+        //     }, // C
+        //     Vertex {
+        //         position: float4::new(0.35966998, -0.3473291, 0.0, 1.0),
+        //         color: float4::new(0.5, 0.0, 0.5, 1.0),
+        //         texcoord: float2::new(0.85967, 0.84732914),
+        //     }, // D
+        //     Vertex {
+        //         position: float4::new(0.44147372, 0.2347359, 0.0, 1.0),
+        //         color: float4::new(0.5, 0.0, 0.5, 1.0),
+        //         texcoord: float2::new(0.9414737, 0.2652641),
+        //     }, // E
+        // ];
+        // let indices= vec![0, 1, 4, 1, 2, 4, 2, 3, 4];
+
+        // let mesh = Mesh::new(vertices, indices);
+        // graphics_command.draw(mesh);
+        // graphics_command.end_render_pass();
+        // let (egui_bind_tex_sender, egui_bind_tex_recever) = mpsc::channel(2);
+        // graphics_command.bind_attachment_to_egui(frame_buffer_id, egui_bind_tex_sender);
+
+        // let graphics_graph = GraphicsGraph::from_commands(&[graphics_command]);
+
+
+
+
         let render_error = {
             let mut render_pipeline = self.render_pipeline.lock();
             let Some(render_pipeline) = render_pipeline.as_mut() else {
@@ -213,9 +282,11 @@ impl KairosEditorRuntime {
                     };
 
                     let raw_input = egui_state.take_egui_input(&window);
+
                     let full_output = self.egui_ctx.run_ui(raw_input, |ui| {
                         self.engine
                             .draw_ui(ui, render_pipeline, &mut encoder, egui_renderer);
+
                         self.engine.handle_ui(ui);
                     });
 

@@ -21,7 +21,7 @@ use winit::{dpi::PhysicalSize, window::Window};
 
 use crate::{
     asset_loader::texture::TextureAssets,
-    graphics::{camera::Camera, vertex::Vertex},
+    graphics::{attachment::AttachmentFormat, camera::Camera, vertex::Vertex},
     math::{self, float2, float3, float4},
 };
 
@@ -186,8 +186,8 @@ impl RenderPipeline {
 
         let cam_pos = float3::new(0., 1., -2.);
         let cam_target = float3::new(0., 0., 0.);
-        let cam_fwd = math::normalize(&(cam_target - cam_pos));
-        let cam_rt = math::normalize(&math::cross(&float3::new(0., 1., 0.), &cam_fwd));
+        let cam_fwd = math::normalize(cam_target - cam_pos);
+        let cam_rt = math::normalize(math::cross(float3::new(0., 1., 0.), cam_fwd));
 
         let camera = Camera::new(
             cam_pos,
@@ -473,5 +473,15 @@ impl RenderPipeline {
 
     pub fn max_texture_side(&self) -> usize {
         self.device.limits().max_texture_dimension_2d as usize
+    }
+
+    pub fn get_frame_buffer_format(&self) -> AttachmentFormat {
+        match self.surface_config.format {
+            wgpu::TextureFormat::Rgba8Unorm => AttachmentFormat::BGRA8Unorm,
+            wgpu::TextureFormat::Bgra8Unorm => AttachmentFormat::BGRA8Unorm,
+            wgpu::TextureFormat::Bgra8UnormSrgb => AttachmentFormat::BGRA8UnormSrgb,
+            wgpu::TextureFormat::Rg11b10Ufloat => AttachmentFormat::RG11B10UFloat,
+            _ => todo!(),
+        }
     }
 }

@@ -1,12 +1,9 @@
-// Graph.CreateAttachment(width, height, format) -> attachment_id
-// Graph.SetVPMatrix(matrix) -> vp_buffer_id
-// Graph.BeginRenderPass(attachment_ids, vp_buffer_id, force_clear)
-// Graph.Draw(mesh, material, )
-// Graph.Draw(mesh, material, ) ...
-// Graph.EndRenderPass()
-// Graph.CopyAttachmentToEGuiTexture(attachment_id, egui_texture_id)
+use tokio::sync::mpsc::Sender;
 
-use crate::{graphics::{attachment::Attachment, mesh::Mesh}, math::float4x4};
+use crate::{
+    graphics::{attachment::Attachment, mesh::Mesh},
+    math::float4x4,
+};
 
 enum GraphNode {
     CreateAttachment(CreateAttachmentNode),
@@ -14,7 +11,8 @@ enum GraphNode {
     BeginRenderPass(BeginRenderPassNode),
     EndRenderPass(EndRenderPassNode),
     Draw(DrawNode),
-    CopyAttachmentToEGuiTexture,
+    BindAttachmentToEgui(BindAttachmentToEguiNode),
+    CopyAttachmentToEGui(CopyAttachmentToEguiNode),
 }
 
 struct CreateAttachmentNode {
@@ -38,8 +36,15 @@ struct DrawNode {
     mesh: Mesh,
     render_pass_id: usize,
 }
+struct BindAttachmentToEguiNode {
+    attachment_id: usize,
+}
+struct CopyAttachmentToEguiNode {
+    attachment_id: usize,
+    egui_texture_id: egui::TextureId,
+}
 
-struct GraphicsCommand {
+pub struct GraphicsCommand {
     nodes: Vec<GraphNode>,
     attachment_count: usize,
     vp_buffer_count: usize,
@@ -120,7 +125,26 @@ impl GraphicsCommand {
 
         let render_pass_id = unsafe { self.cur_render_pass_id.unwrap_unchecked() };
 
-        self.nodes.push(GraphNode::Draw(DrawNode { mesh, render_pass_id }));
+        self.nodes.push(GraphNode::Draw(DrawNode {
+            mesh,
+            render_pass_id,
+        }));
+    }
+
+    pub fn bind_attachment_to_egui(&mut self, attachment_id: usize, sender: Sender<egui::TextureId>) {
+        self.nodes.push(GraphNode::BindAttachmentToEgui(BindAttachmentToEguiNode { attachment_id }));
+    }
+
+    pub fn copy_attachment_to_egui(
+        &mut self,
+        attachment_id: usize,
+        egui_texture_id: egui::TextureId,
+    ) {
+        self.nodes
+            .push(GraphNode::CopyAttachmentToEGui(CopyAttachmentToEguiNode {
+                attachment_id,
+                egui_texture_id,
+            }));
     }
 }
 
@@ -128,6 +152,20 @@ pub struct GraphicsGraph {}
 
 impl GraphicsGraph {
     pub fn from_commands(commands: &[GraphicsCommand]) -> Self {
+        let command = &commands[0];
+
+        let create_attachment_nodes_iter = command.nodes.iter().filter(|node| {
+            match node {
+                GraphNode::CreateAttachment(_) => true,
+                _ => false
+            }
+        });
+
+        // create_attacments 纯 output 
+        // begin_render_pass
+
+        // attachment_node -> root_node (begin_render_pass) -> draw_node 
+
         todo!()
     }
 }
