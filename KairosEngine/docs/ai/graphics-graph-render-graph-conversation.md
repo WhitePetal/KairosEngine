@@ -595,3 +595,1381 @@ pub struct EditorFrameCtx<'a> {
 把我们的这些对话保存为文档存入 docs/ai 目录，要求保留完整的对话内容
 ```
 
+## 对话 4：从 GraphicsCommand 节点构建完整 GraphicsGraph
+
+### User
+
+```text
+# Context from my IDE setup:
+
+## Active file: src/kairos_editor/runtime.rs
+
+## Open tabs:
+- runtime.rs: src/kairos_editor/runtime.rs
+- graphics_graph.rs: src/graphics/graphics_graph.rs
+- mesh.rs: src/graphics/mesh.rs
+- render_pipeline.rs: src/graphics/render_pipeline.rs
+- graphics.rs: src/graphics.rs
+
+## My request for Codex:
+现在我的GraphicsGraph构建了几个简单的节点。@runtime.rs (214-263) 这里注释的内容就是通过GraphicsCommand描述渲染过程，并向后台添加GraphicGraph的节点，我该通过怎么样的算法来通过这些节点构建完整的GraphicsGraph，并确定图入口以及如何根据图确定执行顺序并执行？
+```
+
+### Assistant 过程消息
+
+```text
+我先把现有 `GraphicsCommand`、`GraphicsGraph`、runtime 里那段注释和渲染入口读一遍，再给你一个贴合当前代码形状的算法方案。这里关键不是泛泛讲“拓扑排序”，而是看你现在节点和资源边到底长什么样。
+```
+
+```text
+我看到了：现在 `GraphicsCommand` 其实已经像一条“录制命令流”，而 `GraphicsGraph::from_commands` 还没落地。下一步我会再看现有渲染函数怎么拿 surface、encoder、egui renderer，这会决定图执行时哪些节点只是 CPU 资源准备，哪些节点必须在同一个 `wgpu::CommandEncoder` / render pass 生命周期里跑。
+```
+
+```text
+仓库里已经有一份 `docs/ai/graphics-graph-render-graph-conversation.md`，这个很可能是你之前对 render graph 的思路沉淀。我会把它也读一下，避免给出一个和你已有方向打架的方案。
+```
+
+```text
+当前这一版我会建议你先把 `BeginRenderPass / Draw / EndRenderPass` 编译成一个“可执行 pass”，而不是把 begin/end 当成能随便拓扑排序的独立 GPU 节点。wgpu 的生命周期限制决定了这一点：`RenderPass` 只能在 execute 时短作用域创建，用完立刻 drop。
+```
+
+```text
+还有一个实现前必须注意的小坑：`cargo check --locked` 现在会在 `runtime.rs` 的 redraw 里因为外层 `render_pipeline` guard 没提前 drop 而报 E0502。这个不影响图算法本身，但真正落地前要把那段外层锁收窄或移走，否则后续编译会被它挡住。
+```
+
+### Assistant
+
+```text
+<proposed_plan>
+# GraphicsCommand 到 GraphicsGraph 的编译算法
+
+## Summary
+
+当前不要把 `CreateAttachment -> BeginRenderPass -> Draw -> EndRenderPass` 直接当成可执行链。更稳的算法是：先把 [graphics_graph.rs](/Users/baiaoxiang/KairosEngine/KairosEngine/src/graphics/graphics_graph.rs:8) 里的命令流规范化成资源表、渲染 pass、输出 sink，再从最终输出反向裁剪活节点，最后对活的可执行节点做拓扑排序。
+
+图入口要分清两种概念：
+
+- **最终输出入口**：从 `BindAttachmentToEgui`、`CopyAttachmentToEGui`，以后还有 `PresentSwapchain` 这类 sink 开始倒推。
+- **执行入口**：裁剪后入度为 0 的 pass，由拓扑排序自动得到，不需要手动指定单个 root。
+
+## Key Changes
+
+- `GraphicsCommand` 保持录制语义，但 `from_commands` 改成 `Result<GraphicsGraph, GraphBuildError>`，验证嵌套 pass、未关闭 pass、非法 id、空输出。
+- 多个 command 的本地 id 必须重映射成全局 id，例如 `(command_index, local_attachment_id) -> GraphAttachmentId`，避免不同命令里的 `0` 撞在一起。
+- `CreateAttachment`、`SetVPMatrix` 是资源声明，不是 GPU 执行节点；`BeginRenderPass + Draw* + EndRenderPass` 编译成一个 `RenderPassNode`。
+- `Draw` 不单独拓扑排序，保留在所属 pass 的 `draws: Vec<DrawOp>` 中按录制顺序执行。
+- `BindAttachmentToEguiNode` 需要保存 sender 或改成返回 `TextureId` 结果；现在 [graphics_graph.rs](/Users/baiaoxiang/KairosEngine/KairosEngine/src/graphics/graphics_graph.rs:134) 的 `sender` 参数被丢掉了。
+
+## Algorithm
+
+1. **Parse Command Stream**
+   - 遍历所有 `GraphicsCommand.nodes`。
+   - 遇到 `CreateAttachment`，登记 attachment desc。
+   - 遇到 `SetVPMatrix`，登记 uniform/vp desc。
+   - 遇到 `BeginRenderPass`，打开一个 `PassBuilder`，记录 color attachments、vp、`force_clear`。
+   - 遇到 `Draw`，追加到当前 `PassBuilder.draws`。
+   - 遇到 `EndRenderPass`，关闭并生成 `RenderPassNode`。
+   - 遇到 `BindAttachmentToEgui` / `CopyAttachmentToEGui`，生成 sink node。
+
+2. **Build Dependency Edges**
+   - 对每个 pass，声明 `reads = [vp, mesh/material resources]`，`writes = [attachments]`。
+   - 对每个 sink，声明 `reads = [attachment]`。
+   - 维护 `last_writer[attachment]`。
+   - `A writes X, B reads X` 加边 `A -> B`。
+   - `A writes X, B writes X` 第一版也加边 `A -> B`，保证稳定顺序。
+   - `force_clear = false` 时，pass 对 attachment 还隐含读取旧内容，必须依赖前一个 writer；`force_clear = true` 时可视为覆盖写。
+
+3. **Determine Live Graph**
+   - 最终输出是所有 sink：当前注释里的 [runtime.rs](/Users/baiaoxiang/KairosEngine/KairosEngine/src/kairos_editor/runtime.rs:260) 就是 `BindAttachmentToEgui(frame_buffer_id, ...)`。
+   - 从这些 sink 沿反向边 DFS/BFS，标记所有对最终输出有贡献的 pass。
+   - 未被标记的 pass 和资源声明全部裁掉。
+
+4. **Topological Sort**
+   - 对活的可执行节点做 Kahn 拓扑排序。
+   - 入度为 0 的活节点就是执行入口，可能有多个。
+   - 同入度节点用原始录制顺序做稳定 tie-break。
+   - 排序结果数量少于活节点数量时，报 cycle error。
+
+5. **Execute**
+   - 执行前根据活资源创建或复用 GPU 资源：attachment 变成 `wgpu::Texture + TextureView`，VP 矩阵变成 uniform buffer/bind group。
+   - 一个 frame 只创建一个 `CommandEncoder`，传给 `GraphicsGraph::execute(ctx)`。
+   - 每个 `RenderPassNode` 在 execute 内短作用域调用 `encoder.begin_render_pass(...)`，执行全部 draw，然后 drop pass。
+   - Egui sink 不开启 render pass，只负责 `register_native_texture` 或 `update_egui_texture_from_wgpu_texture`，然后把 `egui::TextureId` 送回 UI 状态。
+   - 现有 [render_pipeline.rs](/Users/baiaoxiang/KairosEngine/KairosEngine/src/graphics/render_pipeline.rs:419) 的硬编码 demo draw 后续应拆成 `DemoSceneRenderer.draw(&mut RenderPass)`，由 graph pass 调用。
+
+## Test Plan
+
+- 单元测试：单 pass 写 attachment 后 bind 到 egui，排序应为 `ScenePass -> EguiSink`。
+- 单元测试：创建 attachment 但没有 sink，应被裁剪或返回 no-output error。
+- 单元测试：`Draw` 在 pass 外、嵌套 `BeginRenderPass`、缺失 `EndRenderPass` 都返回 build error。
+- 单元测试：两个 pass 写同一个 attachment，稳定生成 `first -> second`。
+- 集成验证：修掉 [runtime.rs](/Users/baiaoxiang/KairosEngine/KairosEngine/src/kairos_editor/runtime.rs:207) 外层 mutex guard 后跑 `cargo check --locked`；当前检查会先被 E0502 挡住。
+</proposed_plan>
+```
+
+## 对话 5：不修改代码，给出详细算法讲解和代码实现
+
+### User
+
+```text
+# Context from my IDE setup:
+
+## Active file: src/graphics/render_pipeline.rs
+
+## Open tabs:
+- render_pipeline.rs: src/graphics/render_pipeline.rs
+- runtime.rs: src/kairos_editor/runtime.rs
+- graphics_graph.rs: src/graphics/graphics_graph.rs
+- mesh.rs: src/graphics/mesh.rs
+- graphics.rs: src/graphics.rs
+
+## My request for Codex:
+不要修改我的代码，按照给出的方案给出详尽的讲解和代码实现
+```
+
+### Assistant
+
+可以，这里我不改你的代码，只按你现在的 `GraphicsCommand` 形状给一版“能落地的第一版实现”。核心思想先钉死：
+
+`CreateAttachment / SetVPMatrix` 不是执行节点，它们是资源声明。  
+`BeginRenderPass + Draw... + EndRenderPass` 才编译成一个真正的可执行 pass。  
+`BindAttachmentToEgui / CopyAttachmentToEGui` 是最终输出 sink，用它们反向确定哪些 pass 是活的。
+
+**1. 图结构**
+第一版建议先长这样：
+
+```rust
+type NodeId = usize;
+type AttachmentId = usize;
+type VpId = usize;
+type RenderPassId = usize;
+
+pub struct GraphicsGraph {
+    attachments: Vec<Attachment>,
+    vp_matrices: Vec<float4x4>,
+    passes: Vec<CompiledPass>,
+    sinks: Vec<GraphSink>,
+    order: Vec<NodeId>,
+}
+
+pub struct CompiledPass {
+    pub id: RenderPassId,
+    pub attachments: Vec<AttachmentId>,
+    pub vp_id: VpId,
+    pub force_clear: bool,
+    pub draws: Vec<DrawOp>,
+}
+
+pub struct DrawOp {
+    pub mesh: Mesh,
+}
+
+pub enum GraphSink {
+    BindAttachmentToEgui {
+        attachment_id: AttachmentId,
+        // 第一版要保留 sender，不能像现在那样丢掉
+        sender: tokio::sync::mpsc::Sender<egui::TextureId>,
+    },
+    CopyAttachmentToEgui {
+        attachment_id: AttachmentId,
+        egui_texture_id: egui::TextureId,
+    },
+}
+```
+
+这里 `passes` 是真正要排序和执行的节点。`attachments / vp_matrices` 只是资源表。
+
+**2. 从命令流编译 pass**
+伪代码大概是这样：
+
+```rust
+pub fn from_commands(commands: Vec<GraphicsCommand>) -> Result<GraphicsGraph, GraphBuildError> {
+    let mut attachments = Vec::new();
+    let mut vp_matrices = Vec::new();
+    let mut passes = Vec::new();
+    let mut sinks = Vec::new();
+
+    for command in commands {
+        let mut open_pass: Option<CompiledPass> = None;
+
+        for node in command.nodes {
+            match node {
+                GraphNode::CreateAttachment(n) => {
+                    ensure_id(n.id, attachments.len())?;
+                    attachments.push(n.attachment);
+                }
+
+                GraphNode::SetVPMatrix(n) => {
+                    ensure_id(n.id, vp_matrices.len())?;
+                    vp_matrices.push(n.matrix);
+                }
+
+                GraphNode::BeginRenderPass(n) => {
+                    if open_pass.is_some() {
+                        return Err(GraphBuildError::NestedRenderPass);
+                    }
+
+                    validate_attachments(&attachments, &n.attachments)?;
+                    validate_vp(&vp_matrices, n.vp_id)?;
+
+                    open_pass = Some(CompiledPass {
+                        id: n.id,
+                        attachments: n.attachments,
+                        vp_id: n.vp_id,
+                        force_clear: n.force_clear,
+                        draws: Vec::new(),
+                    });
+                }
+
+                GraphNode::Draw(n) => {
+                    let Some(pass) = open_pass.as_mut() else {
+                        return Err(GraphBuildError::DrawOutsideRenderPass);
+                    };
+
+                    if pass.id != n.render_pass_id {
+                        return Err(GraphBuildError::DrawPassMismatch);
+                    }
+
+                    pass.draws.push(DrawOp { mesh: n.mesh });
+                }
+
+                GraphNode::EndRenderPass(n) => {
+                    let Some(pass) = open_pass.take() else {
+                        return Err(GraphBuildError::EndWithoutBegin);
+                    };
+
+                    if pass.id != n.id {
+                        return Err(GraphBuildError::EndPassMismatch);
+                    }
+
+                    passes.push(pass);
+                }
+
+                GraphNode::BindAttachmentToEgui(n) => {
+                    validate_attachment(&attachments, n.attachment_id)?;
+                    sinks.push(GraphSink::BindAttachmentToEgui {
+                        attachment_id: n.attachment_id,
+                        sender: n.sender,
+                    });
+                }
+
+                GraphNode::CopyAttachmentToEGui(n) => {
+                    validate_attachment(&attachments, n.attachment_id)?;
+                    sinks.push(GraphSink::CopyAttachmentToEgui {
+                        attachment_id: n.attachment_id,
+                        egui_texture_id: n.egui_texture_id,
+                    });
+                }
+            }
+        }
+
+        if open_pass.is_some() {
+            return Err(GraphBuildError::UnclosedRenderPass);
+        }
+    }
+
+    let order = compile_order(&passes, &sinks)?;
+
+    Ok(GraphicsGraph {
+        attachments,
+        vp_matrices,
+        passes,
+        sinks,
+        order,
+    })
+}
+```
+
+你现在的 `BindAttachmentToEguiNode` 只有 `attachment_id`，但函数参数里有 `sender`。这说明 struct 应该改成：
+
+```rust
+struct BindAttachmentToEguiNode {
+    attachment_id: usize,
+    sender: Sender<egui::TextureId>,
+}
+```
+
+否则 graph 执行完没地方把 `TextureId` 送回 UI。
+
+**3. 构建依赖边**
+第一版只需要 attachment 依赖就够了：
+
+```rust
+fn build_edges(
+    passes: &[CompiledPass],
+    sinks: &[GraphSink],
+) -> Vec<(NodeId, NodeId)> {
+    let mut edges = Vec::new();
+    let mut last_writer: HashMap<AttachmentId, NodeId> = HashMap::new();
+
+    for (pass_index, pass) in passes.iter().enumerate() {
+        for &attachment in &pass.attachments {
+            if let Some(prev_writer) = last_writer.insert(attachment, pass_index) {
+                edges.push((prev_writer, pass_index));
+            }
+        }
+    }
+
+    let sink_base = passes.len();
+
+    for (sink_index, sink) in sinks.iter().enumerate() {
+        let sink_node = sink_base + sink_index;
+        let attachment_id = match sink {
+            GraphSink::BindAttachmentToEgui { attachment_id, .. } => *attachment_id,
+            GraphSink::CopyAttachmentToEgui { attachment_id, .. } => *attachment_id,
+        };
+
+        if let Some(writer) = last_writer.get(&attachment_id) {
+            edges.push((*writer, sink_node));
+        }
+    }
+
+    edges
+}
+```
+
+你现在这个例子里会形成：
+
+```text
+ScenePass writes frame_buffer
+BindAttachmentToEgui reads frame_buffer
+
+=> ScenePass -> BindAttachmentToEgui
+```
+
+所以执行顺序就是先画 scene，再注册或更新 egui texture。
+
+**4. 拓扑排序**
+入口不手写，入度为 0 的活节点就是入口：
+
+```rust
+fn topo_sort(node_count: usize, edges: &[(NodeId, NodeId)]) -> Result<Vec<NodeId>, GraphBuildError> {
+    let mut indegree = vec![0; node_count];
+    let mut nexts = vec![Vec::new(); node_count];
+
+    for &(from, to) in edges {
+        indegree[to] += 1;
+        nexts[from].push(to);
+    }
+
+    let mut queue = VecDeque::new();
+    for node in 0..node_count {
+        if indegree[node] == 0 {
+            queue.push_back(node);
+        }
+    }
+
+    let mut order = Vec::new();
+
+    while let Some(node) = queue.pop_front() {
+        order.push(node);
+
+        for &next in &nexts[node] {
+            indegree[next] -= 1;
+            if indegree[next] == 0 {
+                queue.push_back(next);
+            }
+        }
+    }
+
+    if order.len() != node_count {
+        return Err(GraphBuildError::Cycle);
+    }
+
+    Ok(order)
+}
+```
+
+真正更完整的一版，还要从 `sinks` 反向裁剪 dead pass。但你现在只有一个 scene pass，一个 egui sink，可以第二步再加。
+
+**5. 执行模型**
+执行时不要保存 `wgpu::RenderPass`。每个 pass 在 execute 里临时打开：
+
+```rust
+impl GraphicsGraph {
+    pub fn execute(&mut self, ctx: &mut GraphExecuteContext) -> Result<(), GraphExecuteError> {
+        for &node_id in &self.order {
+            if node_id < self.passes.len() {
+                self.execute_pass(node_id, ctx)?;
+            } else {
+                let sink_id = node_id - self.passes.len();
+                self.execute_sink(sink_id, ctx)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn execute_pass(
+        &self,
+        pass_id: usize,
+        ctx: &mut GraphExecuteContext,
+    ) -> Result<(), GraphExecuteError> {
+        let pass = &self.passes[pass_id];
+
+        let color_view = ctx.attachment_view(pass.attachments[0])?;
+        let mut render_pass = ctx.encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("GraphicsGraph Render Pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: color_view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: if pass.force_clear {
+                        wgpu::LoadOp::Clear(wgpu::Color::BLACK)
+                    } else {
+                        wgpu::LoadOp::Load
+                    },
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            ..Default::default()
+        });
+
+        ctx.demo_renderer.set_vp(pass.vp_id, &mut render_pass);
+
+        for draw in &pass.draws {
+            ctx.demo_renderer.draw_mesh(&mut render_pass, &draw.mesh);
+        }
+
+        Ok(())
+    }
+}
+```
+
+`GraphExecuteContext` 可以先简单点：
+
+```rust
+pub struct GraphExecuteContext<'a> {
+    pub device: &'a wgpu::Device,
+    pub queue: &'a wgpu::Queue,
+    pub encoder: &'a mut wgpu::CommandEncoder,
+    pub egui_renderer: &'a mut egui_wgpu::Renderer,
+    pub attachment_cache: &'a mut AttachmentCache,
+    pub demo_renderer: &'a mut DemoSceneRenderer,
+}
+```
+
+**6. 你这段注释对应的结果**
+`runtime.rs` 那段命令最终会被编译成：
+
+```text
+资源:
+  Attachment[0] = frame_buffer
+  VP[0] = camera view projection
+
+Pass:
+  Pass[0]:
+    write Attachment[0]
+    read VP[0]
+    draws = [mesh]
+
+Sink:
+  Sink[0]:
+    read Attachment[0]
+    bind/update to egui
+
+Order:
+  Pass[0] -> Sink[0]
+```
+
+这就是第一版 GraphicsGraph 的完整闭环。后面加后处理就是：
+
+```text
+ScenePass -> BloomPass -> ToneMappingPass -> EguiSink
+```
+
+加 picking 就是：
+
+```text
+SceneColorPass -> EguiSink
+PickingPass -> ReadbackSink
+```
+
+核心算法不变，只是资源读写边更多。
+
+## 对话 6：基于 petgraph 重新生成完整方案和代码实现
+
+### User
+
+```text
+# Context from my IDE setup:
+
+## Active file: src/graphics/graphics_graph.rs
+
+## Open tabs:
+- graphics_graph.rs: src/graphics/graphics_graph.rs
+- render_pipeline.rs: src/graphics/render_pipeline.rs
+- runtime.rs: src/kairos_editor/runtime.rs
+- mesh.rs: src/graphics/mesh.rs
+- graphics.rs: src/graphics.rs
+
+## My request for Codex:
+项目里有 petgraph crate, 基于此重新生成完整详尽的方案讲解和完整详尽的代码实现
+```
+
+### Assistant 过程消息
+
+```text
+我先重新读一下当前 `graphics_graph.rs` 和 `petgraph` 版本/API 形状。你这次明确提到要基于 `petgraph`，所以我会把方案收敛到“用 petgraph 表达依赖图，而不是自己手写拓扑排序”的版本。
+```
+
+```text
+我已经确认了：项目里是 `petgraph = "0.8.3"`，可以直接用 `petgraph::graph::DiGraph` 和 `petgraph::algo::toposort`。一个很重要的实现约束是你现在 `GraphicsCommand` 里 `DrawNode` 持有 `Mesh`，所以完整实现最好让 `from_commands` 消费 `Vec<GraphicsCommand>`，否则不能从 `&[GraphicsCommand]` 里把 mesh 安全搬进编译后的 graph。
+```
+
+### Assistant
+
+可以。下面这版是**基于 `petgraph` 的完整第一版设计**，我不会改你的代码，只给你一份可以对照实现的目标代码。
+
+核心变化是：`petgraph::DiGraph` 只表达“可执行节点之间的依赖”，而不是把每个资源也塞成图节点。也就是说：
+
+```text
+CreateAttachment / SetVPMatrix
+  -> 资源表
+
+BeginRenderPass + Draw* + EndRenderPass
+  -> 一个 RenderPass 执行节点
+
+BindAttachmentToEgui / CopyAttachmentToEGui
+  -> 输出 Sink 节点
+
+petgraph edge
+  -> A 必须在 B 之前执行
+```
+
+这样最贴合你当前的命令结构。
+
+**图入口**
+不要手写 root。算法是：
+
+1. 所有 `BindAttachmentToEgui / CopyAttachmentToEGui` 是最终输出。
+2. 从这些 sink 反向遍历依赖，得到 live nodes。
+3. live nodes 中没有 live incoming edge 的节点，就是图入口。
+4. 用 `petgraph::algo::toposort` 得到执行顺序。
+
+下面是完整目标实现草稿：
+
+```rust
+use std::{
+    collections::{HashMap, HashSet},
+    error::Error,
+    fmt,
+};
+
+use petgraph::{
+    algo::toposort,
+    graph::{DiGraph, NodeIndex},
+    Direction,
+};
+use tokio::sync::mpsc::Sender;
+
+use crate::{
+    graphics::{attachment::Attachment, mesh::Mesh},
+    math::float4x4,
+};
+
+pub type AttachmentId = usize;
+pub type VpMatrixId = usize;
+pub type RenderPassId = usize;
+
+enum GraphNode {
+    CreateAttachment(CreateAttachmentNode),
+    SetVPMatrix(SetVPMatrixNode),
+    BeginRenderPass(BeginRenderPassNode),
+    EndRenderPass(EndRenderPassNode),
+    Draw(DrawNode),
+    BindAttachmentToEgui(BindAttachmentToEguiNode),
+    CopyAttachmentToEGui(CopyAttachmentToEguiNode),
+}
+
+struct CreateAttachmentNode {
+    attachment: Attachment,
+    id: usize,
+}
+
+struct SetVPMatrixNode {
+    matrix: float4x4,
+    id: usize,
+}
+
+struct BeginRenderPassNode {
+    id: usize,
+    attachments: Vec<usize>,
+    vp_id: usize,
+    force_clear: bool,
+}
+
+struct EndRenderPassNode {
+    id: usize,
+}
+
+struct DrawNode {
+    mesh: Mesh,
+    render_pass_id: usize,
+}
+
+struct BindAttachmentToEguiNode {
+    attachment_id: usize,
+    sender: Sender<egui::TextureId>,
+}
+
+struct CopyAttachmentToEguiNode {
+    attachment_id: usize,
+    egui_texture_id: egui::TextureId,
+}
+
+pub struct GraphicsCommand {
+    nodes: Vec<GraphNode>,
+    attachment_count: usize,
+    vp_buffer_count: usize,
+    render_pass_count: usize,
+    cur_render_pass_id: Option<usize>,
+}
+
+impl GraphicsCommand {
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            nodes: Vec::with_capacity(capacity),
+            attachment_count: 0,
+            vp_buffer_count: 0,
+            render_pass_count: 0,
+            cur_render_pass_id: None,
+        }
+    }
+
+    pub fn create_attachment(&mut self, attachment: Attachment) -> AttachmentId {
+        let id = self.attachment_count;
+        self.attachment_count += 1;
+        self.nodes.push(GraphNode::CreateAttachment(CreateAttachmentNode {
+            attachment,
+            id,
+        }));
+        id
+    }
+
+    pub fn set_view_projection_matrix(&mut self, matrix: float4x4) -> VpMatrixId {
+        let id = self.vp_buffer_count;
+        self.vp_buffer_count += 1;
+        self.nodes.push(GraphNode::SetVPMatrix(SetVPMatrixNode {
+            matrix,
+            id,
+        }));
+        id
+    }
+
+    pub fn begin_render_pass(
+        &mut self,
+        attachments: Vec<AttachmentId>,
+        vp_id: VpMatrixId,
+        force_clear: bool,
+    ) {
+        debug_assert!(self.cur_render_pass_id.is_none());
+
+        if self.cur_render_pass_id.is_some() {
+            return;
+        }
+
+        let id = self.render_pass_count;
+        self.render_pass_count += 1;
+
+        self.nodes.push(GraphNode::BeginRenderPass(BeginRenderPassNode {
+            id,
+            attachments,
+            vp_id,
+            force_clear,
+        }));
+
+        self.cur_render_pass_id = Some(id);
+    }
+
+    pub fn end_render_pass(&mut self) {
+        debug_assert!(self.cur_render_pass_id.is_some());
+
+        let Some(id) = self.cur_render_pass_id.take() else {
+            return;
+        };
+
+        self.nodes
+            .push(GraphNode::EndRenderPass(EndRenderPassNode { id }));
+    }
+
+    pub fn draw(&mut self, mesh: Mesh) {
+        debug_assert!(self.cur_render_pass_id.is_some());
+
+        let Some(render_pass_id) = self.cur_render_pass_id else {
+            return;
+        };
+
+        self.nodes.push(GraphNode::Draw(DrawNode {
+            mesh,
+            render_pass_id,
+        }));
+    }
+
+    pub fn bind_attachment_to_egui(
+        &mut self,
+        attachment_id: AttachmentId,
+        sender: Sender<egui::TextureId>,
+    ) {
+        self.nodes
+            .push(GraphNode::BindAttachmentToEgui(BindAttachmentToEguiNode {
+                attachment_id,
+                sender,
+            }));
+    }
+
+    pub fn copy_attachment_to_egui(
+        &mut self,
+        attachment_id: AttachmentId,
+        egui_texture_id: egui::TextureId,
+    ) {
+        self.nodes
+            .push(GraphNode::CopyAttachmentToEGui(CopyAttachmentToEguiNode {
+                attachment_id,
+                egui_texture_id,
+            }));
+    }
+}
+
+pub struct GraphicsGraph {
+    attachments: Vec<Attachment>,
+    vp_matrices: Vec<float4x4>,
+    graph: DiGraph<GraphExecNode, DependencyEdge>,
+    sinks: Vec<NodeIndex>,
+    entries: Vec<NodeIndex>,
+    execution_order: Vec<NodeIndex>,
+}
+
+pub struct CompiledRenderPass {
+    pub id: RenderPassId,
+    pub attachments: Vec<AttachmentId>,
+    pub vp_id: VpMatrixId,
+    pub force_clear: bool,
+    pub draws: Vec<DrawOp>,
+    record_order: usize,
+}
+
+pub struct DrawOp {
+    pub mesh: Mesh,
+}
+
+pub enum GraphSink {
+    BindAttachmentToEgui {
+        attachment_id: AttachmentId,
+        sender: Sender<egui::TextureId>,
+    },
+    CopyAttachmentToEgui {
+        attachment_id: AttachmentId,
+        egui_texture_id: egui::TextureId,
+    },
+}
+
+enum GraphExecNode {
+    RenderPass(CompiledRenderPass),
+    Sink(GraphSinkNode),
+}
+
+struct GraphSinkNode {
+    sink: GraphSink,
+    record_order: usize,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum DependencyEdge {
+    AttachmentAccess { attachment_id: AttachmentId },
+}
+
+struct OpenPass {
+    local_id: usize,
+    pass: CompiledRenderPass,
+}
+
+#[derive(Default)]
+struct CommandRemap {
+    attachments: HashMap<usize, AttachmentId>,
+    vp_matrices: HashMap<usize, VpMatrixId>,
+}
+
+#[derive(Debug)]
+pub enum GraphicsGraphError {
+    EmptyCommands,
+    DuplicateAttachmentId { command: usize, id: usize },
+    DuplicateVpId { command: usize, id: usize },
+    InvalidAttachmentId { command: usize, id: usize },
+    InvalidVpId { command: usize, id: usize },
+    NestedRenderPass { command: usize },
+    DrawOutsideRenderPass { command: usize },
+    DrawPassMismatch { command: usize },
+    EndWithoutBegin { command: usize },
+    EndPassMismatch { command: usize },
+    UnclosedRenderPass { command: usize },
+    MissingOutput,
+    MissingWriterForSink { attachment_id: AttachmentId },
+    Cycle { node: NodeIndex },
+}
+
+impl fmt::Display for GraphicsGraphError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{self:?}")
+    }
+}
+
+impl Error for GraphicsGraphError {}
+
+impl GraphicsGraph {
+    pub fn from_commands(commands: Vec<GraphicsCommand>) -> Result<Self, GraphicsGraphError> {
+        if commands.is_empty() {
+            return Err(GraphicsGraphError::EmptyCommands);
+        }
+
+        let mut builder = GraphicsGraphBuilder::new();
+
+        for (command_index, command) in commands.into_iter().enumerate() {
+            builder.ingest_command(command_index, command)?;
+        }
+
+        builder.finish()
+    }
+
+    pub fn execution_order(&self) -> impl Iterator<Item = &GraphExecNode> {
+        self.execution_order.iter().map(|node| &self.graph[*node])
+    }
+
+    pub fn entries(&self) -> &[NodeIndex] {
+        &self.entries
+    }
+
+    pub fn execute<R>(&self, runner: &mut R) -> Result<(), R::Error>
+    where
+        R: GraphicsGraphRunner,
+    {
+        for (id, attachment) in self.attachments.iter().enumerate() {
+            runner.ensure_attachment(id, attachment)?;
+        }
+
+        for (id, matrix) in self.vp_matrices.iter().enumerate() {
+            runner.ensure_vp_matrix(id, matrix)?;
+        }
+
+        for node in &self.execution_order {
+            match &self.graph[*node] {
+                GraphExecNode::RenderPass(pass) => {
+                    runner.execute_render_pass(pass)?;
+                }
+                GraphExecNode::Sink(sink) => match &sink.sink {
+                    GraphSink::BindAttachmentToEgui {
+                        attachment_id,
+                        sender,
+                    } => {
+                        runner.bind_attachment_to_egui(*attachment_id, sender)?;
+                    }
+                    GraphSink::CopyAttachmentToEgui {
+                        attachment_id,
+                        egui_texture_id,
+                    } => {
+                        runner.copy_attachment_to_egui(*attachment_id, *egui_texture_id)?;
+                    }
+                },
+            }
+        }
+
+        Ok(())
+    }
+}
+
+pub trait GraphicsGraphRunner {
+    type Error;
+
+    fn ensure_attachment(
+        &mut self,
+        id: AttachmentId,
+        attachment: &Attachment,
+    ) -> Result<(), Self::Error>;
+
+    fn ensure_vp_matrix(
+        &mut self,
+        id: VpMatrixId,
+        matrix: &float4x4,
+    ) -> Result<(), Self::Error>;
+
+    fn execute_render_pass(&mut self, pass: &CompiledRenderPass) -> Result<(), Self::Error>;
+
+    fn bind_attachment_to_egui(
+        &mut self,
+        attachment_id: AttachmentId,
+        sender: &Sender<egui::TextureId>,
+    ) -> Result<(), Self::Error>;
+
+    fn copy_attachment_to_egui(
+        &mut self,
+        attachment_id: AttachmentId,
+        egui_texture_id: egui::TextureId,
+    ) -> Result<(), Self::Error>;
+}
+
+struct GraphicsGraphBuilder {
+    attachments: Vec<Attachment>,
+    vp_matrices: Vec<float4x4>,
+    graph: DiGraph<GraphExecNode, DependencyEdge>,
+    sinks: Vec<NodeIndex>,
+    last_access: HashMap<AttachmentId, NodeIndex>,
+    last_writer: HashMap<AttachmentId, NodeIndex>,
+    next_pass_id: usize,
+    next_record_order: usize,
+}
+
+impl GraphicsGraphBuilder {
+    fn new() -> Self {
+        Self {
+            attachments: Vec::new(),
+            vp_matrices: Vec::new(),
+            graph: DiGraph::new(),
+            sinks: Vec::new(),
+            last_access: HashMap::new(),
+            last_writer: HashMap::new(),
+            next_pass_id: 0,
+            next_record_order: 0,
+        }
+    }
+
+    fn ingest_command(
+        &mut self,
+        command_index: usize,
+        command: GraphicsCommand,
+    ) -> Result<(), GraphicsGraphError> {
+        let mut remap = CommandRemap::default();
+        let mut open_pass: Option<OpenPass> = None;
+
+        for node in command.nodes {
+            match node {
+                GraphNode::CreateAttachment(node) => {
+                    if remap.attachments.contains_key(&node.id) {
+                        return Err(GraphicsGraphError::DuplicateAttachmentId {
+                            command: command_index,
+                            id: node.id,
+                        });
+                    }
+
+                    let global_id = self.attachments.len();
+                    self.attachments.push(node.attachment);
+                    remap.attachments.insert(node.id, global_id);
+                }
+
+                GraphNode::SetVPMatrix(node) => {
+                    if remap.vp_matrices.contains_key(&node.id) {
+                        return Err(GraphicsGraphError::DuplicateVpId {
+                            command: command_index,
+                            id: node.id,
+                        });
+                    }
+
+                    let global_id = self.vp_matrices.len();
+                    self.vp_matrices.push(node.matrix);
+                    remap.vp_matrices.insert(node.id, global_id);
+                }
+
+                GraphNode::BeginRenderPass(node) => {
+                    if open_pass.is_some() {
+                        return Err(GraphicsGraphError::NestedRenderPass {
+                            command: command_index,
+                        });
+                    }
+
+                    let mut attachments = Vec::with_capacity(node.attachments.len());
+                    for local_id in node.attachments {
+                        let Some(&global_id) = remap.attachments.get(&local_id) else {
+                            return Err(GraphicsGraphError::InvalidAttachmentId {
+                                command: command_index,
+                                id: local_id,
+                            });
+                        };
+                        attachments.push(global_id);
+                    }
+
+                    let Some(&vp_id) = remap.vp_matrices.get(&node.vp_id) else {
+                        return Err(GraphicsGraphError::InvalidVpId {
+                            command: command_index,
+                            id: node.vp_id,
+                        });
+                    };
+
+                    let pass = CompiledRenderPass {
+                        id: self.next_pass_id,
+                        attachments,
+                        vp_id,
+                        force_clear: node.force_clear,
+                        draws: Vec::new(),
+                        record_order: self.alloc_record_order(),
+                    };
+
+                    self.next_pass_id += 1;
+
+                    open_pass = Some(OpenPass {
+                        local_id: node.id,
+                        pass,
+                    });
+                }
+
+                GraphNode::Draw(node) => {
+                    let Some(open_pass) = open_pass.as_mut() else {
+                        return Err(GraphicsGraphError::DrawOutsideRenderPass {
+                            command: command_index,
+                        });
+                    };
+
+                    if open_pass.local_id != node.render_pass_id {
+                        return Err(GraphicsGraphError::DrawPassMismatch {
+                            command: command_index,
+                        });
+                    }
+
+                    open_pass.pass.draws.push(DrawOp { mesh: node.mesh });
+                }
+
+                GraphNode::EndRenderPass(node) => {
+                    let Some(open_pass) = open_pass.take() else {
+                        return Err(GraphicsGraphError::EndWithoutBegin {
+                            command: command_index,
+                        });
+                    };
+
+                    if open_pass.local_id != node.id {
+                        return Err(GraphicsGraphError::EndPassMismatch {
+                            command: command_index,
+                        });
+                    }
+
+                    self.add_render_pass(open_pass.pass);
+                }
+
+                GraphNode::BindAttachmentToEgui(node) => {
+                    let Some(&attachment_id) = remap.attachments.get(&node.attachment_id) else {
+                        return Err(GraphicsGraphError::InvalidAttachmentId {
+                            command: command_index,
+                            id: node.attachment_id,
+                        });
+                    };
+
+                    self.add_sink(GraphSink::BindAttachmentToEgui {
+                        attachment_id,
+                        sender: node.sender,
+                    })?;
+                }
+
+                GraphNode::CopyAttachmentToEGui(node) => {
+                    let Some(&attachment_id) = remap.attachments.get(&node.attachment_id) else {
+                        return Err(GraphicsGraphError::InvalidAttachmentId {
+                            command: command_index,
+                            id: node.attachment_id,
+                        });
+                    };
+
+                    self.add_sink(GraphSink::CopyAttachmentToEgui {
+                        attachment_id,
+                        egui_texture_id: node.egui_texture_id,
+                    })?;
+                }
+            }
+        }
+
+        if open_pass.is_some() {
+            return Err(GraphicsGraphError::UnclosedRenderPass {
+                command: command_index,
+            });
+        }
+
+        Ok(())
+    }
+
+    fn add_render_pass(&mut self, pass: CompiledRenderPass) {
+        let attachments = pass.attachments.clone();
+        let node = self.graph.add_node(GraphExecNode::RenderPass(pass));
+
+        for attachment_id in attachments {
+            if let Some(previous) = self.last_access.insert(attachment_id, node) {
+                self.graph.add_edge(
+                    previous,
+                    node,
+                    DependencyEdge::AttachmentAccess { attachment_id },
+                );
+            }
+
+            self.last_writer.insert(attachment_id, node);
+        }
+    }
+
+    fn add_sink(&mut self, sink: GraphSink) -> Result<(), GraphicsGraphError> {
+        let attachment_id = match &sink {
+            GraphSink::BindAttachmentToEgui { attachment_id, .. } => *attachment_id,
+            GraphSink::CopyAttachmentToEgui { attachment_id, .. } => *attachment_id,
+        };
+
+        let Some(writer) = self.last_writer.get(&attachment_id).copied() else {
+            return Err(GraphicsGraphError::MissingWriterForSink { attachment_id });
+        };
+
+        let node = self.graph.add_node(GraphExecNode::Sink(GraphSinkNode {
+            sink,
+            record_order: self.alloc_record_order(),
+        }));
+
+        self.graph.add_edge(
+            writer,
+            node,
+            DependencyEdge::AttachmentAccess { attachment_id },
+        );
+
+        self.last_access.insert(attachment_id, node);
+        self.sinks.push(node);
+
+        Ok(())
+    }
+
+    fn finish(self) -> Result<GraphicsGraph, GraphicsGraphError> {
+        if self.sinks.is_empty() {
+            return Err(GraphicsGraphError::MissingOutput);
+        }
+
+        let live_nodes = collect_live_nodes(&self.graph, &self.sinks);
+        let sorted = toposort(&self.graph, None)
+            .map_err(|cycle| GraphicsGraphError::Cycle {
+                node: cycle.node_id(),
+            })?;
+
+        let execution_order = sorted
+            .into_iter()
+            .filter(|node| live_nodes.contains(node))
+            .collect::<Vec<_>>();
+
+        let mut entries = live_nodes
+            .iter()
+            .copied()
+            .filter(|node| {
+                self.graph
+                    .neighbors_directed(*node, Direction::Incoming)
+                    .all(|parent| !live_nodes.contains(&parent))
+            })
+            .collect::<Vec<_>>();
+
+        entries.sort_by_key(|node| record_order(&self.graph[*node]));
+
+        Ok(GraphicsGraph {
+            attachments: self.attachments,
+            vp_matrices: self.vp_matrices,
+            graph: self.graph,
+            sinks: self.sinks,
+            entries,
+            execution_order,
+        })
+    }
+
+    fn alloc_record_order(&mut self) -> usize {
+        let order = self.next_record_order;
+        self.next_record_order += 1;
+        order
+    }
+}
+
+fn collect_live_nodes(
+    graph: &DiGraph<GraphExecNode, DependencyEdge>,
+    sinks: &[NodeIndex],
+) -> HashSet<NodeIndex> {
+    let mut live = HashSet::new();
+    let mut stack = sinks.to_vec();
+
+    while let Some(node) = stack.pop() {
+        if !live.insert(node) {
+            continue;
+        }
+
+        for parent in graph.neighbors_directed(node, Direction::Incoming) {
+            stack.push(parent);
+        }
+    }
+
+    live
+}
+
+fn record_order(node: &GraphExecNode) -> usize {
+    match node {
+        GraphExecNode::RenderPass(pass) => pass.record_order,
+        GraphExecNode::Sink(sink) => sink.record_order,
+    }
+}
+```
+
+**这套代码怎么跑你的注释例子**
+
+你的命令流会被编译成：
+
+```text
+resources:
+  Attachment[0] = frame_buffer
+  VP[0] = camera matrix
+
+petgraph nodes:
+  NodeA = RenderPass {
+    writes: Attachment[0],
+    reads: VP[0],
+    draws: [mesh],
+  }
+
+  NodeB = BindAttachmentToEgui {
+    reads: Attachment[0],
+  }
+
+petgraph edges:
+  NodeA -> NodeB
+```
+
+`toposort` 结果就是：
+
+```text
+RenderPass -> BindAttachmentToEgui
+```
+
+`entries` 是：
+
+```text
+[RenderPass]
+```
+
+也就是说，入口不是你手动指定的 `root_node`，而是由“最终输出 sink 反向裁剪 + 入度判断”自动得到。
+
+**为什么不用资源节点**
+
+你可能会想做成：
+
+```text
+CreateAttachment -> BeginRenderPass -> Draw -> EndRenderPass -> BindEgui
+```
+
+但这在 render graph 里不够好。因为 `BeginRenderPass / EndRenderPass` 不是独立调度单元，wgpu 的 `RenderPass<'_>` 生命周期必须被限制在一次 execute 调用里。正确形状是：
+
+```text
+AttachmentDesc
+VpDesc
+MeshDraw
+
+合成一个 RenderPassNode
+```
+
+然后 graph 只调度：
+
+```text
+RenderPassNode -> SinkNode
+```
+
+这会让后面扩展后处理、picking、shadow 都简单很多。下一步真正接入 `wgpu` 时，只要实现 `GraphicsGraphRunner`，把 `execute_render_pass` 里转成 `encoder.begin_render_pass(...) + draw mesh` 就行。
+
+## 对话 7：保存 petgraph 后续对话到 docs/ai
+
+### User
+
+```text
+# Context from my IDE setup:
+
+## Active file: src/graphics/graphics_graph.rs
+
+## Open tabs:
+- graphics_graph.rs: src/graphics/graphics_graph.rs
+- render_pipeline.rs: src/graphics/render_pipeline.rs
+- runtime.rs: src/kairos_editor/runtime.rs
+- mesh.rs: src/graphics/mesh.rs
+- graphics.rs: src/graphics.rs
+
+## My request for Codex:
+把我们的对完完整的保存入docs/ai目录下
+```
+
+### Assistant 过程消息
+
+```text
+我先按你们项目里已有的 `docs/ai` 归档规则看一下 README 和相关 handoff 习惯。因为你说的是“完整保存”，我会把计划落成“新增一份对话归档 + 更新索引”的形式，但当前仍处在 Plan Mode，我不会直接写文件。
+```
+
+```text
+我找到了现有目标文档：`docs/ai/graphics-graph-render-graph-conversation.md` 已经是同一主题的完整对话归档，README 也已有索引。最干净的保存方式是追加本轮关于 `runtime.rs` 注释、图入口、执行顺序、以及 `petgraph` 版本实现的后续对话，而不是再开一个重复主题的新文件。
+```
+
+### Assistant
+
+```text
+<proposed_plan>
+# 保存 GraphicsGraph / petgraph 后续对话
+
+## Summary
+
+将本轮关于 `GraphicsCommand`、`GraphicsGraph`、图入口、执行顺序，以及基于 `petgraph` 的完整实现方案，追加保存到现有文档 `docs/ai/graphics-graph-render-graph-conversation.md`。该文档已经是同主题的完整对话归档，因此不新建重复文件。
+
+## Key Changes
+
+- 在 `docs/ai/graphics-graph-render-graph-conversation.md` 末尾追加后续对话：
+  - `对话 4`：从 `runtime.rs` 注释命令流出发，解释如何构建完整 `GraphicsGraph`、确定入口、拓扑排序与执行。
+  - `对话 5`：不改代码前提下，给出非 `petgraph` 版本的详细算法讲解和代码草案。
+  - `对话 6`：基于项目已有 `petgraph = "0.8.3"`，给出 `DiGraph + toposort` 的完整设计与代码实现。
+  - `对话 7`：记录本次“保存到 `docs/ai`”请求。
+- 保持现有归档风格：中文正文、按 User / Assistant 结构保存可见对话内容，省略终端工具原始输出，只把关键发现写入过程说明或正文。
+- 更新 `docs/ai/README.md` 现有索引行，将说明扩展为包含 `petgraph` 版本的 GraphicsGraph 编译/执行方案，避免未来检索时漏掉这次补充。
+
+## Test Plan
+
+- 检查新增内容只追加到目标文档尾部，未重写旧对话。
+- 检查 README 中 `graphics-graph-render-graph-conversation.md` 链接仍然有效。
+- 运行 `git diff -- docs/ai/graphics-graph-render-graph-conversation.md docs/ai/README.md`，确认改动范围只有本次归档和索引描述。
+- 文档变更不需要跑 `cargo check`。
+
+## Assumptions
+
+- 目标是“完整保留当前这轮可见对话”，不是整理成精简设计文档。
+- 使用现有 `graphics-graph-render-graph-conversation.md` 追加，而不是新建 `petgraph-graphics-graph.md`。
+- README 只更新同一行描述，不新增重复索引项。
+</proposed_plan>
+```
+
+### User
+
+```text
+# Context from my IDE setup:
+
+## Active file: src/graphics/graphics_graph.rs
+
+## Open tabs:
+- graphics_graph.rs: src/graphics/graphics_graph.rs
+- render_pipeline.rs: src/graphics/render_pipeline.rs
+- runtime.rs: src/kairos_editor/runtime.rs
+- mesh.rs: src/graphics/mesh.rs
+- graphics.rs: src/graphics.rs
+
+## My request for Codex:
+PLEASE IMPLEMENT THIS PLAN:
+# 保存 GraphicsGraph / petgraph 后续对话
+
+## Summary
+
+将本轮关于 `GraphicsCommand`、`GraphicsGraph`、图入口、执行顺序，以及基于 `petgraph` 的完整实现方案，追加保存到现有文档 `docs/ai/graphics-graph-render-graph-conversation.md`。该文档已经是同主题的完整对话归档，因此不新建重复文件。
+
+## Key Changes
+
+- 在 `docs/ai/graphics-graph-render-graph-conversation.md` 末尾追加后续对话：
+  - `对话 4`：从 `runtime.rs` 注释命令流出发，解释如何构建完整 `GraphicsGraph`、确定入口、拓扑排序与执行。
+  - `对话 5`：不改代码前提下，给出非 `petgraph` 版本的详细算法讲解和代码草案。
+  - `对话 6`：基于项目已有 `petgraph = "0.8.3"`，给出 `DiGraph + toposort` 的完整设计与代码实现。
+  - `对话 7`：记录本次“保存到 `docs/ai`”请求。
+- 保持现有归档风格：中文正文、按 User / Assistant 结构保存可见对话内容，省略终端工具原始输出，只把关键发现写入过程说明或正文。
+- 更新 `docs/ai/README.md` 现有索引行，将说明扩展为包含 `petgraph` 版本的 GraphicsGraph 编译/执行方案，避免未来检索时漏掉这次补充。
+
+## Test Plan
+
+- 检查新增内容只追加到目标文档尾部，未重写旧对话。
+- 检查 README 中 `graphics-graph-render-graph-conversation.md` 链接仍然有效。
+- 运行 `git diff -- docs/ai/graphics-graph-render-graph-conversation.md docs/ai/README.md`，确认改动范围只有本次归档和索引描述。
+- 文档变更不需要跑 `cargo check`。
+
+## Assumptions
+
+- 目标是“完整保留当前这轮可见对话”，不是整理成精简设计文档。
+- 使用现有 `graphics-graph-render-graph-conversation.md` 追加，而不是新建 `petgraph-graphics-graph.md`。
+- README 只更新同一行描述，不新增重复索引项。
+```

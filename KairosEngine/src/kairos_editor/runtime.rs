@@ -18,7 +18,7 @@ use winit::{
 
 use crate::graphics::attachment::Attachment;
 use crate::graphics::camera::Camera;
-use crate::graphics::graphics_graph::{GraphicsCommand, GraphicsGraph};
+use crate::graphics::graphics_graph::{GraphicsGraph};
 use crate::graphics::mesh::Mesh;
 use crate::graphics::render_pipeline;
 use crate::graphics::vertex::Vertex;
@@ -204,12 +204,13 @@ impl KairosEditorRuntime {
         let mut should_close = false;
         let mut repaint_delay = None;
 
-        let mut render_pipeline = self.render_pipeline.lock();
-        let Some(render_pipeline) = render_pipeline.as_mut() else {
-            return;
-        };
 
 
+
+        // let mut render_pipeline = self.render_pipeline.lock();
+        // let Some(render_pipeline) = render_pipeline.as_mut() else {
+        //     return;
+        // };
 
         // let surface_cfg = &render_pipeline.surface_config;
 
