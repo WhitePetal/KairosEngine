@@ -58,15 +58,7 @@ impl ConsoleWindow {
 impl Drawer for ConsoleWindow {
     fn show_window(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {}
 
-    fn ui(
-        &self,
-        ui: &mut egui::Ui,
-        _render_pipeline: &mut RenderPipeline,
-        _render_command_encoder: &mut wgpu::CommandEncoder,
-        _egui_renderer: &mut egui_wgpu::Renderer,
-        _messager: &mut Messager,
-        log: &mut Log,
-    ) {
+    fn ui(&self, ui: &mut egui::Ui, _messager: &mut Messager, log: &mut Log) {
         ui.label("TODO: Print Console");
 
         while let Some(log) = log.pop_front() {
@@ -90,5 +82,13 @@ impl Drawer for ConsoleWindow {
 
     fn get_title(&self) -> egui::WidgetText {
         self.model.style.title.to_owned().into()
+    }
+
+    fn render(
+        &self,
+        _messager: &mut Messager,
+        _render_pipeline: &RenderPipeline,
+    ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {
+        None
     }
 }

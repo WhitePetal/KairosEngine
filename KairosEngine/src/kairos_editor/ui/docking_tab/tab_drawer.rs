@@ -24,9 +24,6 @@ pub trait TabDrawer {
     fn ui(
         &mut self,
         ui: &mut Ui,
-        render_pipeline: &mut RenderPipeline,
-        render_command_encoder: &mut wgpu::CommandEncoder,
-        egui_renderer: &mut egui_wgpu::Renderer,
         tab: &mut Self::Tab,
         messager: &mut Messager,
         log: &mut Log,

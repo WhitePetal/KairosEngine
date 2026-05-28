@@ -29,9 +29,6 @@ impl KairosEngine {
     fn draw_ui(
         &mut self,
         ui: &mut egui::Ui,
-        render_pipeline: &mut RenderPipeline,
-        render_command_encoder: &mut wgpu::CommandEncoder,
-        egui_renderer: &mut egui_wgpu::Renderer,
     ) {
         let mut visuals = Visuals::dark();
         visuals.button_frame = true;
@@ -39,11 +36,12 @@ impl KairosEngine {
 
         self.ui_context.darw(
             ui,
-            render_pipeline,
-            render_command_encoder,
-            egui_renderer,
             &mut self.log,
         );
+    }
+
+    fn render_ui(&mut self, render_pipeline: &RenderPipeline) {
+        self.ui_context.render(render_pipeline);
     }
 
     fn on_exit(&mut self) {}

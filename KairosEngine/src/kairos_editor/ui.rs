@@ -3,8 +3,15 @@ use std::{
     collections::{HashMap, VecDeque},
 };
 
-use crate::{graphics::render_pipeline::RenderPipeline, log::Log};
+use crate::{
+    graphics::{
+        graphics_graph::{GraphicsCommand, GraphicsGraph},
+        render_pipeline::RenderPipeline,
+    },
+    log::Log,
+};
 use egui::{self};
+use tokio::sync::mpsc::Receiver;
 
 use crate::{
     kairos_dialog,
@@ -65,6 +72,10 @@ pub enum Message {
     OpenSceneTab,
     CloseSceneTab,
     CreateSceneTabRt(egui::TextureId),
+    /// (widht, height)
+    UpdateSceneWindowSize(u32, u32),
+    RegesiterSceneWindowViewBind(Receiver<egui::TextureId>),
+    SceneWindowTryReceive,
 }
 
 struct KairosTabDrawer {
@@ -82,23 +93,13 @@ impl TabDrawer for KairosTabDrawer {
     fn ui(
         &mut self,
         ui: &mut egui::Ui,
-        render_pipeline: &mut RenderPipeline,
-        render_command_encoder: &mut wgpu::CommandEncoder,
-        egui_renderer: &mut egui_wgpu::Renderer,
         tab: &mut Self::Tab,
         messager: &mut Messager,
         log: &mut Log,
         drawers: &Vec<Box<dyn Drawer>>,
     ) {
         let tab = &drawers[*tab];
-        tab.ui(
-            ui,
-            render_pipeline,
-            render_command_encoder,
-            egui_renderer,
-            messager,
-            log,
-        );
+        tab.ui(ui, messager, log);
     }
 
     fn on_close(
@@ -126,15 +127,9 @@ impl TabDrawer for KairosTabDrawer {
 pub trait Drawer: Any {
     fn show_window(&self, state: Option<&mut WindowState>);
 
-    fn ui(
-        &self,
-        ui: &mut egui::Ui,
-        render_pipeline: &mut RenderPipeline,
-        render_command_encoder: &mut wgpu::CommandEncoder,
-        egui_renderer: &mut egui_wgpu::Renderer,
-        messager: &mut Messager,
-        log: &mut Log,
-    );
+    fn ui(&self, ui: &mut egui::Ui, messager: &mut Messager, log: &mut Log);
+
+    fn render(&self, messager: &mut Messager, render_pipeline: &RenderPipeline) -> Option<GraphicsCommand>;
 
     fn close(&self, messager: &mut Messager);
 
@@ -199,34 +194,17 @@ impl Context {
         }
     }
 
-    pub fn darw(
-        &mut self,
-        ui: &mut egui::Ui,
-        render_pipeline: &mut RenderPipeline,
-        render_command_encoder: &mut wgpu::CommandEncoder,
-        egui_renderer: &mut egui_wgpu::Renderer,
-        log: &mut Log,
-    ) {
+    pub fn darw(&mut self, ui: &mut egui::Ui, log: &mut Log) {
         // tool_bar
         let tool_bar_type_id = TypeId::of::<ToolBar>();
         if let Some(id) = self.ids.get(&tool_bar_type_id) {
-            self.drawers[*id].ui(
-                ui,
-                render_pipeline,
-                render_command_encoder,
-                egui_renderer,
-                &mut self.messager,
-                log,
-            );
+            self.drawers[*id].ui(ui, &mut self.messager, log);
         }
 
         // 中央区域显示内容
         egui::CentralPanel::default().show_inside(ui, |ui| {
             DockArea::new("KairosEditor Main DockArea", &mut self.tab_tree).show_inside(
                 ui,
-                render_pipeline,
-                render_command_encoder,
-                egui_renderer,
                 &mut self.messager,
                 log,
                 &self.drawers,
@@ -269,19 +247,22 @@ impl Context {
                         let page = StylePage::new(id, drawer.get_name(), fields);
                         style_pages.push(page);
                     }
-                    match self.get_preference_window_mut() {
-                        Some(preferences_window) => {
-                            preferences_window.registe_ui_styles(style_pages);
-                        }
-                        None => kairos_dialog::error_message_window(
-                            "PreferenceWindow Error",
-                            "Get PreferenceWindow Failed",
-                        ),
+                    if let Some(preferences_window) = self.get_window_mut::<PreferencesWindow>() {
+                        preferences_window.registe_ui_styles(style_pages);
                     }
                 }
                 Message::SetPreferenceWindowSelectedId(selected_id) => {
-                    match self.get_preference_window_mut() {
-                        Some(preferences_window) => preferences_window.set_selected_id(selected_id),
+                    if let Some(preferences_window) = self.get_window_mut::<PreferencesWindow>() {
+                        preferences_window.set_selected_id(selected_id)
+                    }
+                }
+                Message::UpdateUIStyle(style_page) => {
+                    match self.get_window_mut::<PreferencesWindow>() {
+                        Some(preferences_window) => {
+                            preferences_window.update_style_page(&style_page);
+                            let drawer = &mut self.drawers[style_page.id];
+                            drawer.update_style(&style_page.fields);
+                        }
                         None => {
                             kairos_dialog::error_message_window(
                                 "PreferenceWindow Error",
@@ -290,19 +271,6 @@ impl Context {
                         }
                     }
                 }
-                Message::UpdateUIStyle(style_page) => match self.get_preference_window_mut() {
-                    Some(preferences_window) => {
-                        preferences_window.update_style_page(&style_page);
-                        let drawer = &mut self.drawers[style_page.id];
-                        drawer.update_style(&style_page.fields);
-                    }
-                    None => {
-                        kairos_dialog::error_message_window(
-                            "PreferenceWindow Error",
-                            "Get PreferenceWindow Failed",
-                        );
-                    }
-                },
                 Message::OpenConsoleTab => {
                     self.show_tab::<ConsoleWindow, _>(ui, ConsoleWindow::new, |state, id| {
                         let location = state.find_surface_bottom_panel_location(
@@ -434,21 +402,27 @@ impl Context {
                     self.close_drawer::<SceneWindow>();
                 }
                 Message::CreateSceneTabRt(rt_id) => {
-                    let type_id = TypeId::of::<SceneWindow>();
-                    match self.ids.get(&type_id) {
-                        Some(id) => {
-                            let drawer = self.drawers[*id].as_mut();
-                            if let Some(scene_window) =
-                                (drawer as &mut dyn Any).downcast_mut::<SceneWindow>()
-                            {
-                                scene_window.set_rt_id(rt_id);
-                            }
-                        }
-                        None => {}
+                    if let Some(scene_window) = self.get_window_mut::<SceneWindow>() {
+                        scene_window.set_rt_id(rt_id);
                     }
                 }
+                Message::UpdateSceneWindowSize(width, height) => {
+                    if let Some(scene_window) = self.get_window_mut::<SceneWindow>() {
+                        scene_window.update_size(width, height);
+                    }
+                }
+                Message::RegesiterSceneWindowViewBind(receiver) => {
+                    if let Some(scene_window) = self.get_window_mut::<SceneWindow>() {}
+                }
+                Message::SceneWindowTryReceive => todo!(),
             }
         }
+    }
+
+    pub fn render(&mut self, render_pipeline: &RenderPipeline) {
+        self.drawers.iter().for_each(|drawer| {
+            drawer.render(&mut self.messager, render_pipeline);
+        });
     }
 
     fn push_drawer<T>(&mut self, drawer: Box<dyn Drawer>) -> usize
@@ -541,23 +515,29 @@ impl Context {
         panic!("Create {} UI Failed: {}", ui_name, error)
     }
 
-    fn _get_preference_window(&self) -> Option<&PreferencesWindow> {
-        let type_id = TypeId::of::<PreferencesWindow>();
+    fn _get_window<T>(&self) -> Option<&T>
+    where
+        T: Drawer,
+    {
+        let type_id = TypeId::of::<T>();
         match self.ids.get(&type_id) {
             Some(id) => {
                 let drawer = self.drawers[*id].as_ref();
-                (drawer as &dyn Any).downcast_ref::<PreferencesWindow>()
+                (drawer as &dyn Any).downcast_ref::<T>()
             }
             None => None,
         }
     }
 
-    fn get_preference_window_mut(&mut self) -> Option<&mut PreferencesWindow> {
-        let type_id = TypeId::of::<PreferencesWindow>();
+    fn get_window_mut<T>(&mut self) -> Option<&mut T>
+    where
+        T: Drawer,
+    {
+        let type_id = TypeId::of::<T>();
         match self.ids.get(&type_id) {
             Some(id) => {
                 let drawer = self.drawers[*id].as_mut();
-                (drawer as &mut dyn Any).downcast_mut::<PreferencesWindow>()
+                (drawer as &mut dyn Any).downcast_mut::<T>()
             }
             None => None,
         }

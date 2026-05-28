@@ -202,9 +202,6 @@ impl<Drawer> DockArea<'_, Drawer> {
     pub fn show(
         self,
         ui: &mut Ui,
-        render_pipeline: &mut RenderPipeline,
-        render_command_encoder: &mut wgpu::CommandEncoder,
-        egui_renderer: &mut egui_wgpu::Renderer,
         messager: &mut Messager,
         log: &mut Log,
         drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
@@ -217,16 +214,7 @@ impl<Drawer> DockArea<'_, Drawer> {
                     .fill(Color32::TRANSPARENT),
             )
             .show_inside(ui, |ui| {
-                self.show_inside(
-                    ui,
-                    render_pipeline,
-                    render_command_encoder,
-                    egui_renderer,
-                    messager,
-                    log,
-                    drawers,
-                    tab_viewer,
-                );
+                self.show_inside(ui, messager, log, drawers, tab_viewer);
             });
     }
 
@@ -234,9 +222,6 @@ impl<Drawer> DockArea<'_, Drawer> {
     pub fn show_inside(
         mut self,
         ui: &mut Ui,
-        render_pipeline: &mut RenderPipeline,
-        render_command_encoder: &mut wgpu::CommandEncoder,
-        egui_renderer: &mut egui_wgpu::Renderer,
         messager: &mut Messager,
         log: &mut Log,
         drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
@@ -300,9 +285,6 @@ impl<Drawer> DockArea<'_, Drawer> {
             self.show_surface_inside(
                 surface_index,
                 ui,
-                render_pipeline,
-                render_command_encoder,
-                egui_renderer,
                 messager,
                 log,
                 drawers,
@@ -483,9 +465,6 @@ impl<Drawer> DockArea<'_, Drawer> {
         &mut self,
         surf_index: SurfaceIndex,
         ui: &mut Ui,
-        render_pipeline: &mut RenderPipeline,
-        render_command_encoder: &mut wgpu::CommandEncoder,
-        egui_renderer: &mut egui_wgpu::Renderer,
         messager: &mut Messager,
         log: &mut Log,
         drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
@@ -494,30 +473,10 @@ impl<Drawer> DockArea<'_, Drawer> {
         fade_style: Option<(&Style, f32, SurfaceIndex)>,
     ) {
         if surf_index.is_main() {
-            self.show_root_surface_inside(
-                ui,
-                render_pipeline,
-                render_command_encoder,
-                egui_renderer,
-                messager,
-                log,
-                drawers,
-                tab_viewer,
-                state,
-            );
+            self.show_root_surface_inside(ui, messager, log, drawers, tab_viewer, state);
         } else {
             self.show_window_surface(
-                ui,
-                render_pipeline,
-                render_command_encoder,
-                egui_renderer,
-                messager,
-                log,
-                drawers,
-                surf_index,
-                tab_viewer,
-                state,
-                fade_style,
+                ui, messager, log, drawers, surf_index, tab_viewer, state, fade_style,
             );
         }
     }
@@ -525,9 +484,6 @@ impl<Drawer> DockArea<'_, Drawer> {
     fn render_nodes(
         &mut self,
         ui: &mut Ui,
-        render_pipeline: &mut RenderPipeline,
-        render_command_encoder: &mut wgpu::CommandEncoder,
-        egui_renderer: &mut egui_wgpu::Renderer,
         messager: &mut Messager,
         log: &mut Log,
         drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
@@ -549,9 +505,6 @@ impl<Drawer> DockArea<'_, Drawer> {
             if self.dock_state[surf_index][node_index].is_leaf() {
                 self.show_leaf(
                     ui,
-                    render_pipeline,
-                    render_command_encoder,
-                    egui_renderer,
                     messager,
                     log,
                     drawers,
@@ -822,9 +775,6 @@ impl<Drawer> DockArea<'_, Drawer> {
     pub(super) fn show_root_surface_inside(
         &mut self,
         ui: &mut Ui,
-        render_pipeline: &mut RenderPipeline,
-        render_command_encoder: &mut wgpu::CommandEncoder,
-        egui_renderer: &mut egui_wgpu::Renderer,
         messager: &mut Messager,
         log: &mut Log,
         drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
@@ -852,17 +802,7 @@ impl<Drawer> DockArea<'_, Drawer> {
         }
 
         self.render_nodes(
-            ui,
-            render_pipeline,
-            render_command_encoder,
-            egui_renderer,
-            messager,
-            log,
-            drawers,
-            tab_viewer,
-            state,
-            surf_index,
-            None,
+            ui, messager, log, drawers, tab_viewer, state, surf_index, None,
         );
     }
 }
@@ -871,9 +811,6 @@ impl<Drawer> DockArea<'_, Drawer> {
     pub fn show_window_surface(
         &mut self,
         ui: &Ui,
-        render_pipeline: &mut RenderPipeline,
-        render_command_encoder: &mut wgpu::CommandEncoder,
-        egui_renderer: &mut egui_wgpu::Renderer,
         messager: &mut Messager,
         log: &mut Log,
         drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
@@ -975,17 +912,7 @@ impl<Drawer> DockArea<'_, Drawer> {
                 )
             } else {
                 self.render_nodes(
-                    ui,
-                    render_pipeline,
-                    render_command_encoder,
-                    egui_renderer,
-                    messager,
-                    log,
-                    drawers,
-                    tab_viewer,
-                    state,
-                    surf_index,
-                    fade_style,
+                    ui, messager, log, drawers, tab_viewer, state, surf_index, fade_style,
                 );
             }
         });
@@ -1167,9 +1094,6 @@ impl<Drawer> DockArea<'_, Drawer> {
     pub fn show_leaf(
         &mut self,
         ui: &mut Ui,
-        render_pipeline: &mut RenderPipeline,
-        render_command_encoder: &mut wgpu::CommandEncoder,
-        egui_renderer: &mut egui_wgpu::Renderer,
         messager: &mut Messager,
         log: &mut Log,
         drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
@@ -1209,9 +1133,6 @@ impl<Drawer> DockArea<'_, Drawer> {
         );
         self.drawer_body(
             ui,
-            render_pipeline,
-            render_command_encoder,
-            egui_renderer,
             messager,
             log,
             drawers,
@@ -2356,9 +2277,6 @@ impl<Drawer> DockArea<'_, Drawer> {
     fn drawer_body(
         &mut self,
         ui: &mut Ui,
-        render_pipeline: &mut RenderPipeline,
-        render_command_encoder: &mut wgpu::CommandEncoder,
-        egui_renderer: &mut egui_wgpu::Renderer,
         messager: &mut Messager,
         log: &mut Log,
         drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
@@ -2455,16 +2373,7 @@ impl<Drawer> DockArea<'_, Drawer> {
                             }
                             let available_rect = ui.available_rect_before_wrap();
                             ui.expand_to_include_rect(available_rect);
-                            tab_viewer.ui(
-                                ui,
-                                render_pipeline,
-                                render_command_encoder,
-                                egui_renderer,
-                                tab,
-                                messager,
-                                log,
-                                drawers,
-                            );
+                            tab_viewer.ui(ui, tab, messager, log, drawers);
                         });
                 });
             }

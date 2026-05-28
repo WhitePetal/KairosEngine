@@ -18,7 +18,7 @@ use winit::{
 
 use crate::graphics::attachment::Attachment;
 use crate::graphics::camera::Camera;
-use crate::graphics::graphics_graph::{GraphicsGraph};
+use crate::graphics::graphics_graph::{GraphicsCommand, GraphicsGraph};
 use crate::graphics::mesh::Mesh;
 use crate::graphics::render_pipeline;
 use crate::graphics::vertex::Vertex;
@@ -204,110 +204,53 @@ impl KairosEditorRuntime {
         let mut should_close = false;
         let mut repaint_delay = None;
 
-
-
-
-        // let mut render_pipeline = self.render_pipeline.lock();
-        // let Some(render_pipeline) = render_pipeline.as_mut() else {
-        //     return;
-        // };
-
-        // let surface_cfg = &render_pipeline.surface_config;
-
-        // let mut graphics_command = GraphicsCommand::new(128);
-        // let frame_buffer = Attachment::new(surface_cfg.width, surface_cfg.height, render_pipeline.get_frame_buffer_format());
-        // let frame_buffer_id = graphics_command.create_attachment(frame_buffer);
-        // let cam_pos = float3::new(0.0, 1.0, -2.0);
-        // let cam_taget = float3::new(0.0, 0.0, 0.0);
-        // let cam_forward = math::normalize(cam_taget - cam_pos);
-        // let world_up = float3::new(0.0, 0.0, 0.0);
-        // let cam_right = math::cross(world_up, cam_forward);
-        // let camera = Camera::new(float3::new(0.0, 1.0, -2.0), cam_forward, cam_right, 45., surface_cfg.width as f32 / surface_cfg.height as f32, 0.3, 100.);
-        // let vp_id = graphics_command.set_view_projection_matrix(camera.get_view_projection_matrix());
-        // graphics_command.begin_render_pass(vec![frame_buffer_id], vp_id, true);
-
-        // let vertices = vec![
-        //     Vertex {
-        //         position: float4::new(-0.0868241, 0.49240386, 0.0, 1.0),
-        //         color: float4::new(0.5, 0.0, 0.5, 1.0),
-        //         texcoord: float2::new(0.4131759, 0.00759614),
-        //     }, // A
-        //     Vertex {
-        //         position: float4::new(-0.49513406, 0.06958647, 0.0, 1.0),
-        //         color: float4::new(0.5, 0.0, 0.5, 1.0),
-        //         texcoord: float2::new(0.0048659444, 0.43041354),
-        //     }, // B
-        //     Vertex {
-        //         position: float4::new(-0.21918549, -0.44939706, 0.0, 1.0),
-        //         color: float4::new(0.5, 0.0, 0.5, 1.0),
-        //         texcoord: float2::new(0.28081453, 0.949397),
-        //     }, // C
-        //     Vertex {
-        //         position: float4::new(0.35966998, -0.3473291, 0.0, 1.0),
-        //         color: float4::new(0.5, 0.0, 0.5, 1.0),
-        //         texcoord: float2::new(0.85967, 0.84732914),
-        //     }, // D
-        //     Vertex {
-        //         position: float4::new(0.44147372, 0.2347359, 0.0, 1.0),
-        //         color: float4::new(0.5, 0.0, 0.5, 1.0),
-        //         texcoord: float2::new(0.9414737, 0.2652641),
-        //     }, // E
-        // ];
-        // let indices= vec![0, 1, 4, 1, 2, 4, 2, 3, 4];
-
-        // let mesh = Mesh::new(vertices, indices);
-        // graphics_command.draw(mesh);
-        // graphics_command.end_render_pass();
-        // let (egui_bind_tex_sender, egui_bind_tex_recever) = mpsc::channel(2);
-        // graphics_command.bind_attachment_to_egui(frame_buffer_id, egui_bind_tex_sender);
-
-        // let graphics_graph = GraphicsGraph::from_commands(&[graphics_command]);
-
-
-
-
-        let render_error = {
+        {
             let mut render_pipeline = self.render_pipeline.lock();
             let Some(render_pipeline) = render_pipeline.as_mut() else {
                 return;
             };
-
+    
+            let surface_cfg = &render_pipeline.surface_config;
+    
+            let mut graphics_commands = Vec::<GraphicsCommand>::new();
+    
             match render_pipeline.get_window_surface() {
-                Ok((output, view, mut encoder)) => {
+                Ok((output, view, encoder)) => {
                     let Some(egui_state) = self.egui_state.as_mut() else {
                         return;
                     };
-
+            
                     let Some(egui_renderer) = self.egui_renderer.as_mut() else {
                         return;
                     };
-
+            
                     let raw_input = egui_state.take_egui_input(&window);
-
+            
                     let full_output = self.egui_ctx.run_ui(raw_input, |ui| {
-                        self.engine
-                            .draw_ui(ui, render_pipeline, &mut encoder, egui_renderer);
-
                         self.engine.handle_ui(ui);
+            
+                        self.engine.render_ui(&render_pipeline);
+            
+                        self.engine.draw_ui(ui);
                     });
-
+            
                     egui_state.handle_platform_output(&window, full_output.platform_output);
-
+            
                     if let Some(root_output) = full_output.viewport_output.get(&ViewportId::ROOT) {
                         should_close = root_output
                             .commands
                             .iter()
                             .any(|command| matches!(command, ViewportCommand::Close));
-
+            
                         repaint_delay = Some(root_output.repaint_delay);
-
+            
                         let mut actions_requested = Vec::new();
                         let viewport_info = egui_state
                             .egui_input_mut()
                             .viewports
                             .entry(ViewportId::ROOT)
                             .or_default();
-
+            
                         egui_winit::process_viewport_commands(
                             &self.egui_ctx,
                             viewport_info,
@@ -315,12 +258,12 @@ impl KairosEditorRuntime {
                             &window,
                             &mut actions_requested,
                         );
-
+            
                         if !actions_requested.is_empty() {
                             log::debug!("Ignored viewport actions: {actions_requested:?}");
                         }
                     }
-
+            
                     for (id, image_delta) in &full_output.textures_delta.set {
                         egui_renderer.update_texture(
                             &render_pipeline.device,
@@ -329,13 +272,13 @@ impl KairosEditorRuntime {
                             &image_delta,
                         );
                     }
-
+            
                     let pixels_per_point = full_output.pixels_per_point;
-
+            
                     let clipped_primitives = self
                         .egui_ctx
                         .tessellate(full_output.shapes, pixels_per_point);
-
+            
                     let screen_descriptor = egui_wgpu::ScreenDescriptor {
                         size_in_pixels: [
                             render_pipeline.surface_config.width,
@@ -343,45 +286,74 @@ impl KairosEditorRuntime {
                         ],
                         pixels_per_point,
                     };
-
-                    let user_cmd_buffers = egui_renderer.update_buffers(
-                        &render_pipeline.device,
-                        &render_pipeline.queue,
-                        &mut encoder,
-                        &clipped_primitives,
-                        &screen_descriptor,
-                    );
-
-                    {
-                        let mut render_pass = render_pipeline
-                            .render(&mut encoder, &view)
-                            .forget_lifetime();
-
-                        egui_renderer.render(
-                            &mut render_pass,
-                            &clipped_primitives,
-                            &screen_descriptor,
-                        );
-                    }
-
-                    render_pipeline.queue.submit(
-                        user_cmd_buffers
-                            .into_iter()
-                            .chain(std::iter::once(encoder.finish())),
-                    );
-
-                    output.present();
-
+            
+                    let mut egui_graphics_command = GraphicsCommand::new(2, 0, 4);
+                    
+                    // let user_cmd_buffers = egui_renderer.update_buffers(
+                        //     &render_pipeline.device,
+                        //     &render_pipeline.queue,
+                        //     &mut encoder,
+                        //     &clipped_primitives,
+                        //     &screen_descriptor,
+                        // );
+                        
+                        // egui_graphics_command.update_egui_buffers();
+                    // egui_graphics_command.begin_render_pass(attachments, vp_id, darws_capacity, force_clear);
+                    // egui_graphics_command.draw_egui();
+                    // egui_graphics_command.end_render_pass();
+            
+                    graphics_commands.push(egui_graphics_command);
+    
+                    // {
+                    //     let mut render_pass = render_pipeline
+                    //         .render(&mut encoder, &view)
+                    //         .forget_lifetime();
+    
+                    //     egui_renderer.render(
+                    //         &mut render_pass,
+                    //         &clipped_primitives,
+                    //         &screen_descriptor,
+                    //     );
+                    // }
+    
+                    // render_pipeline.queue.submit(
+                    //     user_cmd_buffers
+                    //         .into_iter()
+                    //         .chain(std::iter::once(encoder.finish())),
+                    // );
+    
                     for id in &full_output.textures_delta.free {
                         egui_renderer.free_texture(id);
                     }
+    
+                    output.present();
+                },
+                Err(error) => {
+                    match error {
+                        wgpu::CurrentSurfaceTexture::Lost | wgpu::CurrentSurfaceTexture::Outdated => {
+                            render_pipeline.set_window_resize(window.inner_size());
+                        }
+                        wgpu::CurrentSurfaceTexture::Occluded => {}
+                        wgpu::CurrentSurfaceTexture::Timeout => {
+                            log::warn!("wgpu surface timeout");
+                        }
+                        wgpu::CurrentSurfaceTexture::Validation => {
+                            log::warn!("wgpu surface validation error");
+                        }
+                        wgpu::CurrentSurfaceTexture::Success(_)
+                        | wgpu::CurrentSurfaceTexture::Suboptimal(_) => {
+                            unreachable!("success variants are returned from Ok branch")
+                        }
+                    }
+                },
+            };
+    
+    
+            let graphics_graph = GraphicsGraph::build(graphics_commands);
+            // graphics_graph.run();
+        }
 
-                    window.request_redraw();
-                    None
-                }
-                Err(error) => Some(error),
-            }
-        };
+        window.request_redraw();
 
         if should_close {
             self.shutdown(event_loop);
@@ -390,28 +362,6 @@ impl KairosEditorRuntime {
 
         if let Some(delay) = repaint_delay {
             self.set_repaint_delay_from_output(delay);
-        }
-
-        if let Some(render_error) = render_error {
-            match render_error {
-                wgpu::CurrentSurfaceTexture::Lost | wgpu::CurrentSurfaceTexture::Outdated => {
-                    if let Some(render_pipeline) = self.render_pipeline.lock().as_mut() {
-                        render_pipeline.set_window_resize(window.inner_size());
-                    }
-                    window.request_redraw();
-                }
-                wgpu::CurrentSurfaceTexture::Occluded => {}
-                wgpu::CurrentSurfaceTexture::Timeout => {
-                    log::warn!("wgpu surface timeout");
-                }
-                wgpu::CurrentSurfaceTexture::Validation => {
-                    log::warn!("wgpu surface validation error");
-                }
-                wgpu::CurrentSurfaceTexture::Success(_)
-                | wgpu::CurrentSurfaceTexture::Suboptimal(_) => {
-                    unreachable!("success variants are returned from Ok branch")
-                }
-            }
         }
 
         self.texture_assets.handle_recves();

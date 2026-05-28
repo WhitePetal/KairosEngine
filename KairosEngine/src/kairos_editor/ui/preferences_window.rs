@@ -1,6 +1,6 @@
 use std::{any::type_name, fs};
 
-use crate::{graphics::render_pipeline::RenderPipeline, log::Log, math};
+use crate::{graphics::render_pipeline::RenderPipeline, kairos_editor::ui::Messager, log::Log, math};
 use egui::{self, Vec2};
 use serde::{Deserialize, Serialize};
 use toml::from_str;
@@ -84,15 +84,7 @@ impl Drawer for PreferencesWindow {
         }
     }
 
-    fn ui(
-        &self,
-        ui: &mut egui::Ui,
-        _render_pipeline: &mut RenderPipeline,
-        _render_command_encoder: &mut wgpu::CommandEncoder,
-        _egui_renderer: &mut egui_wgpu::Renderer,
-        messager: &mut super::Messager,
-        _log: &mut Log,
-    ) {
+    fn ui(&self, ui: &mut egui::Ui, messager: &mut super::Messager, _log: &mut Log) {
         self.ui(ui, messager);
     }
 
@@ -157,6 +149,14 @@ impl Drawer for PreferencesWindow {
 
     fn get_title(&self) -> egui::WidgetText {
         self.model.style.title.to_owned().into()
+    }
+
+    fn render(
+        &self,
+        _messager: &mut Messager,
+        _render_pipeline: &RenderPipeline,
+    ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {
+        None
     }
 }
 

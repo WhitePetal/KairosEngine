@@ -1,6 +1,6 @@
 use std::{any::type_name, fs};
 
-use crate::{graphics::render_pipeline::RenderPipeline, log::Log};
+use crate::{graphics::render_pipeline::RenderPipeline, kairos_editor::ui::Messager, log::Log};
 use serde::{Deserialize, Serialize};
 use toml::from_str;
 
@@ -56,15 +56,7 @@ impl InspectorWindow {
 impl Drawer for InspectorWindow {
     fn show_window(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {}
 
-    fn ui(
-        &self,
-        ui: &mut egui::Ui,
-        _render_pipeline: &mut RenderPipeline,
-        _render_command_encoder: &mut wgpu::CommandEncoder,
-        _egui_renderer: &mut egui_wgpu::Renderer,
-        _messager: &mut super::Messager,
-        _log: &mut Log,
-    ) {
+    fn ui(&self, ui: &mut egui::Ui, _messager: &mut super::Messager, _log: &mut Log) {
         ui.label("TODO: Inspector");
     }
 
@@ -85,4 +77,12 @@ impl Drawer for InspectorWindow {
     }
 
     fn update_style(&mut self, _style_fields: &Vec<super::ui_style_fields::StyleField>) {}
+
+    fn render(
+        &self,
+        _messager: &mut Messager,
+        _render_pipeline: &RenderPipeline,
+    ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {
+        None
+    }
 }

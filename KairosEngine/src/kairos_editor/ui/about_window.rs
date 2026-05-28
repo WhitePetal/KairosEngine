@@ -75,15 +75,7 @@ impl Drawer for AboutWindow {
             }
         }
     }
-    fn ui(
-        &self,
-        ui: &mut egui::Ui,
-        _render_pipeline: &mut RenderPipeline,
-        _render_command_encoder: &mut wgpu::CommandEncoder,
-        _egui_renderer: &mut egui_wgpu::Renderer,
-        _messager: &mut Messager,
-        log: &mut Log,
-    ) {
+    fn ui(&self, ui: &mut egui::Ui, _messager: &mut Messager, log: &mut Log) {
         // TODO: test log
         log.info("about_window update");
         // TODO: Icon
@@ -137,5 +129,13 @@ impl Drawer for AboutWindow {
 
     fn get_title(&self) -> egui::WidgetText {
         self.model.style.title.to_owned().into()
+    }
+
+    fn render(
+        &self,
+        _messager: &mut Messager,
+        _render_pipeline: &RenderPipeline,
+    ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {
+        None
     }
 }
