@@ -1,3 +1,4 @@
+#[repr(usize)]
 pub enum InternalAttachmentId {
     FrameBuffer_ColorAttachment,
     FrameBuffer_DepthStencilAttachment,
