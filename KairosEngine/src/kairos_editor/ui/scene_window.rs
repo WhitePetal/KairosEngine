@@ -141,12 +141,12 @@ impl Drawer for SceneWindow {
         let height = self.model.height;
         let mut graphics_command = GraphicsCommand::new(16, 4, 16);
         let frame_buffer =
-            Attachment::new(width, height, render_pipeline.get_frame_buffer_format());
+            Attachment::from_internal_id(crate::graphics::attachment::InternalAttachmentId::FrameBuffer_ColorAttachment);
         let frame_buffer_id = graphics_command.create_attachment(frame_buffer);
         let cam_pos = float3::new(0.0, 1.0, -2.0);
         let cam_taget = float3::new(0.0, 0.0, 0.0);
         let cam_forward = math::normalize(cam_taget - cam_pos);
-        let world_up = float3::new(0.0, 0.0, 0.0);
+        let world_up = float3::new(0.0, 1.0, 0.0);
         let cam_right = math::cross(world_up, cam_forward);
         let camera = Camera::new(
             float3::new(0.0, 1.0, -2.0),
@@ -159,7 +159,13 @@ impl Drawer for SceneWindow {
         );
         let vp_id =
             graphics_command.set_view_projection_matrix(camera.get_view_projection_matrix());
-        graphics_command.begin_render_pass(vec![frame_buffer_id], vp_id, 4, true);
+        graphics_command.begin_render_pass(
+            Some("SceneWindow Render Pass"),
+            vec![frame_buffer_id],
+            vp_id,
+            4,
+            true,
+        );
 
         let vertices = vec![
             Vertex {

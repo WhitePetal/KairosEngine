@@ -229,7 +229,7 @@ impl KairosEditorRuntime {
                     let full_output = self.egui_ctx.run_ui(raw_input, |ui| {
                         self.engine.handle_ui(ui);
 
-                        self.engine.render_ui(&render_pipeline);
+                        graphics_commands.append(&mut self.engine.render_ui(&render_pipeline));
 
                         self.engine.draw_ui(ui);
                     });
@@ -296,6 +296,7 @@ impl KairosEditorRuntime {
                     let vp_id =
                         egui_graphics_command.set_view_projection_matrix(float4x4::idenity());
                     egui_graphics_command.begin_render_pass(
+                        Some("Egui Graphics Render Pass"),
                         vec![frame_buffer_attachment_id],
                         vp_id,
                         0,
@@ -321,6 +322,7 @@ impl KairosEditorRuntime {
                     // }
                     egui_graphics_command.draw_egui(clipped_primitives, screen_descriptor);
                     egui_graphics_command.end_render_pass();
+                    egui_graphics_command.output_to_framebuffer(frame_buffer_attachment_id);
 
                     graphics_commands.push(egui_graphics_command);
 
@@ -334,7 +336,8 @@ impl KairosEditorRuntime {
                         egui_renderer.free_texture(id);
                     }
 
-                    output.present();
+                    let graphics_graph = GraphicsGraph::build(graphics_commands);
+                    render_pipeline.present(output, graphics_graph);
                 }
                 Err(error) => match error {
                     wgpu::CurrentSurfaceTexture::Lost | wgpu::CurrentSurfaceTexture::Outdated => {
@@ -353,9 +356,6 @@ impl KairosEditorRuntime {
                     }
                 },
             };
-
-            let graphics_graph = GraphicsGraph::build(graphics_commands);
-            // graphics_graph.run();
         }
 
         window.request_redraw();

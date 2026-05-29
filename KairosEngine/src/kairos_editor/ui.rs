@@ -423,10 +423,16 @@ impl Context {
         }
     }
 
-    pub fn render(&mut self, render_pipeline: &RenderPipeline) {
+    pub fn render(&mut self, render_pipeline: &RenderPipeline) -> Vec<GraphicsCommand> {
+        let mut commands = Vec::new();
         self.drawers.iter().for_each(|drawer| {
-            drawer.render(&mut self.messager, render_pipeline);
+            let cmd = drawer.render(&mut self.messager, render_pipeline);
+            if let Some(cmd) = cmd {
+                commands.push(cmd);
+            }
         });
+
+        commands
     }
 
     fn push_drawer<T>(&mut self, drawer: Box<dyn Drawer>) -> usize

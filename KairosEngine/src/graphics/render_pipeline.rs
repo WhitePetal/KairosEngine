@@ -1,21 +1,8 @@
 use std::{error::Error, sync::Arc};
 
+use petgraph::visit::{DfsEvent, Reversed, depth_first_search};
 use wgpu::{
-    Adapter, AddressMode, BackendOptions, Backends, BindGroup, BindGroupDescriptor, BindGroupEntry,
-    BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType, BlendState,
-    Buffer, BufferUsages, ColorTargetState, ColorWrites, CommandEncoder, CommandEncoderDescriptor,
-    CurrentSurfaceTexture, Device, ExperimentalFeatures, Extent3d, Face, Features, FilterMode,
-    FragmentState, FrontFace, InstanceFlags, Limits, LoadOp, MemoryBudgetThresholds, MemoryHints,
-    MipmapFilterMode, MultisampleState, Operations, Origin3d, PipelineCompilationOptions,
-    PipelineLayoutDescriptor, PolygonMode, PowerPreference, PresentMode, PrimitiveState,
-    PrimitiveTopology, Queue, RenderPass, RenderPassColorAttachment, RenderPassDescriptor,
-    RenderPipelineDescriptor, RequestAdapterOptions, SamplerBindingType, ShaderModuleDescriptor,
-    ShaderSource, ShaderStages, StoreOp, Surface, SurfaceConfiguration, SurfaceTexture,
-    TexelCopyBufferLayout, TexelCopyTextureInfo, TextureSampleType, TextureUsages, TextureView,
-    TextureViewDescriptor, TextureViewDimension, Trace, VertexAttribute, VertexBufferLayout,
-    VertexFormat, VertexState, VertexStepMode,
-    util::{BufferInitDescriptor, DeviceExt},
-    wgt::{DeviceDescriptor, SamplerDescriptor, TextureDescriptor},
+    Adapter, AddressMode, BackendOptions, Backends, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType, BlendState, BufferUsages, ColorTargetState, ColorWrites, CommandEncoder, CommandEncoderDescriptor, CurrentSurfaceTexture, Device, ExperimentalFeatures, Extent3d, Face, Features, FilterMode, FragmentState, FrontFace, InstanceFlags, Limits, LoadOp, MemoryBudgetThresholds, MemoryHints, MipmapFilterMode, MultisampleState, Operations, Origin3d, PipelineCompilationOptions, PipelineLayoutDescriptor, PolygonMode, PowerPreference, PresentMode, PrimitiveState, PrimitiveTopology, Queue, RenderPassColorAttachment, RenderPassDescriptor, RenderPipelineDescriptor, RequestAdapterOptions, SamplerBindingType, ShaderModuleDescriptor, ShaderSource, ShaderStages, StoreOp, Surface, SurfaceConfiguration, SurfaceTexture, TexelCopyBufferLayout, TexelCopyTextureInfo, TextureFormat, TextureSampleType, TextureUsages, TextureView, TextureViewDescriptor, TextureViewDimension, Trace, VertexAttribute, VertexBufferLayout, VertexFormat, VertexState, VertexStepMode, util::{BufferInitDescriptor, DeviceExt}, wgt::{DeviceDescriptor, SamplerDescriptor, TextureDescriptor}
 };
 use winit::{dpi::PhysicalSize, window::Window};
 
@@ -23,10 +10,10 @@ use crate::{
     asset_loader::texture::TextureAssets,
     graphics::{
         attachment::{AttachmentFormat, InternalAttachmentId},
-        camera::Camera,
+        graphics_graph::GraphicsGraph,
         vertex::Vertex,
     },
-    math::{self, float2, float3, float4},
+    math::float4,
 };
 
 pub struct RenderPipeline {
@@ -40,13 +27,8 @@ pub struct RenderPipeline {
     internal_texture_views: Vec<Option<TextureView>>,
     window_size: PhysicalSize<u32>,
     window_size_changed: bool,
-    pipeline: wgpu::RenderPipeline,
-    vertex_buffer: Buffer,
-    indices_buffer: Buffer,
-    indices_num: u32,
+    texture_bind_group_layout: BindGroupLayout,
     texture_bind_group: BindGroup,
-    camera: Camera,
-    vp_bind_group: BindGroup,
 }
 
 impl RenderPipeline {
@@ -190,170 +172,6 @@ impl RenderPipeline {
             ],
         });
 
-        let cam_pos = float3::new(0., 1., -2.);
-        let cam_target = float3::new(0., 0., 0.);
-        let cam_fwd = math::normalize(cam_target - cam_pos);
-        let cam_rt = math::normalize(math::cross(float3::new(0., 1., 0.), cam_fwd));
-
-        let camera = Camera::new(
-            cam_pos,
-            cam_fwd,
-            cam_rt,
-            45.,
-            surface_config.width as f32 / surface_config.height as f32,
-            0.1,
-            100.,
-        );
-
-        let vp = camera.get_view_projection_matrix();
-        let vp = [
-            vp.c0().to_array(),
-            vp.c1().to_array(),
-            vp.c2().to_array(),
-            vp.c3().to_array(),
-        ];
-        let vp_buffer = device.create_buffer_init(&BufferInitDescriptor {
-            label: Some("VP Buffer"),
-            contents: bytemuck::cast_slice(&vp),
-            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-        });
-        let vp_bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-            label: Some("VP Buffer Bind Group Layout"),
-            entries: &[BindGroupLayoutEntry {
-                binding: 0,
-                visibility: ShaderStages::VERTEX,
-                ty: BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
-        let vp_bind_group = device.create_bind_group(&BindGroupDescriptor {
-            label: Some("VP Buffer Bind Group"),
-            layout: &vp_bind_group_layout,
-            entries: &[BindGroupEntry {
-                binding: 0,
-                resource: vp_buffer.as_entire_binding(),
-            }],
-        });
-
-        let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
-            label: Some("Render Pipeline Layout"),
-            bind_group_layouts: &[
-                Some(&texture_bind_group_layout),
-                Some(&vp_bind_group_layout),
-            ],
-            immediate_size: 0,
-        });
-
-        const VERTICES: &[Vertex] = &[
-            Vertex {
-                position: float4::new(-0.0868241, 0.49240386, 0.0, 1.0),
-                color: float4::new(0.5, 0.0, 0.5, 1.0),
-                texcoord: float2::new(0.4131759, 0.00759614),
-            }, // A
-            Vertex {
-                position: float4::new(-0.49513406, 0.06958647, 0.0, 1.0),
-                color: float4::new(0.5, 0.0, 0.5, 1.0),
-                texcoord: float2::new(0.0048659444, 0.43041354),
-            }, // B
-            Vertex {
-                position: float4::new(-0.21918549, -0.44939706, 0.0, 1.0),
-                color: float4::new(0.5, 0.0, 0.5, 1.0),
-                texcoord: float2::new(0.28081453, 0.949397),
-            }, // C
-            Vertex {
-                position: float4::new(0.35966998, -0.3473291, 0.0, 1.0),
-                color: float4::new(0.5, 0.0, 0.5, 1.0),
-                texcoord: float2::new(0.85967, 0.84732914),
-            }, // D
-            Vertex {
-                position: float4::new(0.44147372, 0.2347359, 0.0, 1.0),
-                color: float4::new(0.5, 0.0, 0.5, 1.0),
-                texcoord: float2::new(0.9414737, 0.2652641),
-            }, // E
-        ];
-        const INDICES: &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4];
-
-        let vertex_buffer = device.create_buffer_init(&BufferInitDescriptor {
-            label: Some("Vertex Buffer"),
-            contents: bytemuck::cast_slice(VERTICES),
-            usage: BufferUsages::VERTEX,
-        });
-        let vertex_buffer_layout = VertexBufferLayout {
-            array_stride: core::mem::size_of::<Vertex>() as wgpu::BufferAddress,
-            step_mode: VertexStepMode::Vertex,
-            attributes: &[
-                VertexAttribute {
-                    offset: 0,
-                    format: VertexFormat::Float32x4,
-                    shader_location: 0,
-                },
-                VertexAttribute {
-                    offset: core::mem::size_of::<float4>() as wgpu::BufferAddress,
-                    format: VertexFormat::Float32x4,
-                    shader_location: 1,
-                },
-                VertexAttribute {
-                    offset: (core::mem::size_of::<float4>() * 2) as wgpu::BufferAddress,
-                    format: VertexFormat::Float32x2,
-                    shader_location: 2,
-                },
-            ],
-        };
-
-        let indices_buffer = device.create_buffer_init(&BufferInitDescriptor {
-            label: Some("Indices Buffer"),
-            contents: bytemuck::cast_slice(INDICES),
-            usage: BufferUsages::INDEX,
-        });
-        let indices_num = INDICES.len() as u32;
-
-        let shader = device.create_shader_module(ShaderModuleDescriptor {
-            label: Some("Shader"),
-            source: ShaderSource::Wgsl(include_str!("../../res/shaders/shader.wgsl").into()),
-        });
-
-        let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
-            label: Some("Render Pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                compilation_options: PipelineCompilationOptions::default(),
-                buffers: &[vertex_buffer_layout],
-            },
-            primitive: PrimitiveState {
-                topology: PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: FrontFace::Ccw,
-                cull_mode: Some(Face::Back),
-                unclipped_depth: false,
-                polygon_mode: PolygonMode::Fill,
-                conservative: false,
-            },
-            fragment: Some(FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                compilation_options: PipelineCompilationOptions::default(),
-                targets: &[Some(ColorTargetState {
-                    format: surface_config.format,
-                    blend: Some(BlendState::REPLACE),
-                    write_mask: ColorWrites::all(),
-                })],
-            }),
-            depth_stencil: None,
-            multisample: MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            multiview_mask: None,
-            cache: None,
-        });
-
         Ok(Self {
             window,
             device,
@@ -365,13 +183,8 @@ impl RenderPipeline {
             internal_texture_views: vec![None; InternalAttachmentId::End as usize],
             window_size,
             window_size_changed: false,
-            pipeline,
-            vertex_buffer,
-            indices_buffer,
-            indices_num,
+            texture_bind_group_layout,
             texture_bind_group,
-            camera,
-            vp_bind_group,
         })
     }
 
@@ -425,43 +238,283 @@ impl RenderPipeline {
         // }
     }
 
-    pub fn render<'encoder>(
-        &mut self,
-        encoder: &'encoder mut CommandEncoder,
-        view: &TextureView,
-    ) -> RenderPass<'encoder> {
-        let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
-            label: Some("Render Pass"),
-            color_attachments: &[Some(RenderPassColorAttachment {
-                view,
-                depth_slice: None,
-                resolve_target: None,
-                ops: Operations {
-                    load: LoadOp::Clear(wgpu::Color {
-                        r: 0.1,
-                        g: 0.2,
-                        b: 0.3,
-                        a: 1.0,
-                    }),
-                    store: StoreOp::Store,
-                },
-            })],
-            ..Default::default()
+    pub fn present(&mut self, output: SurfaceTexture, graphics_graph: GraphicsGraph) {
+        let Some(mut encoder) = self.encoder.take() else {
+            return;
+        };
+        let mut attachments = graphics_graph.attachments;
+        let vps = graphics_graph.vps;
+
+        let ending_nodes = graphics_graph.ending_nodes;
+        let mut graph = graphics_graph.graph;
+
+        let mut nodes_stack = Vec::with_capacity(graph.node_count());
+
+        depth_first_search(Reversed(&graph), ending_nodes, |event| {
+            if let DfsEvent::Discover(node, _) = event {
+                nodes_stack.push(node);
+            }
         });
 
-        render_pass.set_pipeline(&self.pipeline);
-        render_pass.set_bind_group(0, &self.texture_bind_group, &[]);
-        render_pass.set_bind_group(1, &self.vp_bind_group, &[]);
-        render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-        render_pass.set_index_buffer(self.indices_buffer.slice(..), wgpu::IndexFormat::Uint16);
-        render_pass.draw_indexed(0..self.indices_num, 0, 0..1);
+        while let Some(node) = nodes_stack.pop() {
+            let node = &mut graph[node];
+            match node {
+                super::graphics_graph::GraphNode::None => {}
+                super::graphics_graph::GraphNode::RenderPass(render_pass_node) => {
+                    let attachment_ids = &render_pass_node.attachments;
 
-        render_pass
-    }
+                    let mut color_attachments = Vec::with_capacity(attachment_ids.len());
+                    let mut color_attachment_views = Vec::with_capacity(attachment_ids.len());
+                    let mut color_attachment_format: TextureFormat = attachments[0].format.into();
+                    for a_id in attachment_ids {
+                        let attachment =
+                            unsafe { attachments.get_unchecked_mut(*a_id) };
 
-    pub fn submit(&self, output: SurfaceTexture, encoder: CommandEncoder) {
+                        // 绑了 internal id 的，就找有没有internal texture view，有则渲染到internal
+                        // TODO: 获取没有 internal texture view 时，我这里应该创建？
+                        if let Some(internal_attachement_id) = attachment.bind_internal_id {
+                            if let Some(internal_texture_view) = self
+                                .internal_texture_views
+                                .get(internal_attachement_id as usize)
+                                && let Some(internal_texture_view) = internal_texture_view
+                            {
+                                color_attachment_format = internal_texture_view.texture().format();
+                                let render_pass_color_attachment = RenderPassColorAttachment {
+                                    view: internal_texture_view,
+                                    depth_slice: None,
+                                    resolve_target: None,
+                                    ops: Operations {
+                                        load: LoadOp::Clear(wgpu::Color {
+                                            r: 0.1,
+                                            g: 0.2,
+                                            b: 0.3,
+                                            a: 1.0,
+                                        }),
+                                        store: StoreOp::Store,
+                                    },
+                                };
+                                color_attachments.push(Some(render_pass_color_attachment));
+                            }
+                            continue;
+                        }
+
+                        // create texture
+                        // 先写 再读
+                        let texture = self.device.create_texture(&TextureDescriptor {
+                            label: attachment.label,
+                            size: Extent3d {
+                                width: attachment.width,
+                                height: attachment.height,
+                                depth_or_array_layers: 1,
+                            },
+                            mip_level_count: 1,
+                            sample_count: 1,
+                            dimension: wgpu::TextureDimension::D2,
+                            format: attachment.format.into(),
+                            usage: TextureUsages::RENDER_ATTACHMENT
+                                | TextureUsages::TEXTURE_BINDING,
+                            view_formats: &[],
+                        });
+                        let view = texture.create_view(&TextureViewDescriptor::default());
+                        color_attachment_views.push(view);
+                        color_attachment_format = texture.format();
+                    }
+
+                    for view in &color_attachment_views {
+                        let render_pass_color_attachment = RenderPassColorAttachment {
+                            view,
+                            depth_slice: None,
+                            resolve_target: None,
+                            ops: Operations {
+                                load: LoadOp::Clear(wgpu::Color {
+                                    r: 0.1,
+                                    g: 0.2,
+                                    b: 0.3,
+                                    a: 1.0,
+                                }),
+                                store: StoreOp::Store,
+                            },
+                        };
+                        color_attachments.push(Some(render_pass_color_attachment));
+                    }
+
+                    let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
+                        label: render_pass_node.label,
+                        color_attachments: &color_attachments,
+                        ..Default::default()
+                    });
+
+                    // build pipeline
+                    let Some(vp) = vps.get(render_pass_node.vp_id) else {
+                        continue;
+                    };
+                    let vp = [
+                        vp.c0().to_array(),
+                        vp.c1().to_array(),
+                        vp.c2().to_array(),
+                        vp.c3().to_array(),
+                    ];
+                    let vp_buffer = self.device.create_buffer_init(&BufferInitDescriptor {
+                        label: Some("VP Buffer"),
+                        contents: bytemuck::cast_slice(&vp),
+                        usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+                    });
+                    let vp_bind_group_layout =
+                        self.device
+                            .create_bind_group_layout(&BindGroupLayoutDescriptor {
+                                label: Some("VP Buffer Bind Group Layout"),
+                                entries: &[BindGroupLayoutEntry {
+                                    binding: 0,
+                                    visibility: ShaderStages::VERTEX,
+                                    ty: BindingType::Buffer {
+                                        ty: wgpu::BufferBindingType::Uniform,
+                                        has_dynamic_offset: false,
+                                        min_binding_size: None,
+                                    },
+                                    count: None,
+                                }],
+                            });
+                    let vp_bind_group = self.device.create_bind_group(&BindGroupDescriptor {
+                        label: Some("VP Buffer Bind Group"),
+                        layout: &vp_bind_group_layout,
+                        entries: &[BindGroupEntry {
+                            binding: 0,
+                            resource: vp_buffer.as_entire_binding(),
+                        }],
+                    });
+
+                    let pipeline_layout =
+                        self.device
+                            .create_pipeline_layout(&PipelineLayoutDescriptor {
+                                label: Some("Render Pipeline Layout"),
+                                bind_group_layouts: &[
+                                    Some(&self.texture_bind_group_layout),
+                                    Some(&vp_bind_group_layout),
+                                ],
+                                immediate_size: 0,
+                            });
+
+                    render_pass.set_bind_group(0, &self.texture_bind_group, &[]);
+                    render_pass.set_bind_group(1, &vp_bind_group, &[]);
+
+                    let shader = self.device.create_shader_module(ShaderModuleDescriptor {
+                        label: Some("Shader"),
+                        source: ShaderSource::Wgsl(
+                            include_str!("../../res/shaders/shader.wgsl").into(),
+                        ),
+                    });
+
+                    let draws = &render_pass_node.draws;
+                    for draw in draws {
+                        let vertices = &draw.mesh.vertices;
+                        let indices = &draw.mesh.indices;
+
+                        let vertex_buffer = self.device.create_buffer_init(&BufferInitDescriptor {
+                            label: Some("Vertex Buffer"),
+                            contents: bytemuck::cast_slice(vertices),
+                            usage: BufferUsages::VERTEX,
+                        });
+                        let vertex_buffer_layout = VertexBufferLayout {
+                            array_stride: core::mem::size_of::<Vertex>() as wgpu::BufferAddress,
+                            step_mode: VertexStepMode::Vertex,
+                            attributes: &[
+                                VertexAttribute {
+                                    offset: 0,
+                                    format: VertexFormat::Float32x4,
+                                    shader_location: 0,
+                                },
+                                VertexAttribute {
+                                    offset: core::mem::size_of::<float4>() as wgpu::BufferAddress,
+                                    format: VertexFormat::Float32x4,
+                                    shader_location: 1,
+                                },
+                                VertexAttribute {
+                                    offset: (core::mem::size_of::<float4>() * 2)
+                                        as wgpu::BufferAddress,
+                                    format: VertexFormat::Float32x2,
+                                    shader_location: 2,
+                                },
+                            ],
+                        };
+
+                        let indices_buffer =
+                            self.device.create_buffer_init(&BufferInitDescriptor {
+                                label: Some("Indices Buffer"),
+                                contents: bytemuck::cast_slice(indices),
+                                usage: BufferUsages::INDEX,
+                            });
+                        let indices_num = indices.len() as u32;
+
+                        let pipeline =
+                            self.device
+                                .create_render_pipeline(&RenderPipelineDescriptor {
+                                    label: Some("Render Pipeline"),
+                                    layout: Some(&pipeline_layout),
+                                    vertex: VertexState {
+                                        module: &shader,
+                                        entry_point: Some("vs_main"),
+                                        compilation_options: PipelineCompilationOptions::default(),
+                                        buffers: &[vertex_buffer_layout],
+                                    },
+                                    primitive: PrimitiveState {
+                                        topology: PrimitiveTopology::TriangleList,
+                                        strip_index_format: None,
+                                        front_face: FrontFace::Ccw,
+                                        cull_mode: Some(Face::Back),
+                                        unclipped_depth: false,
+                                        polygon_mode: PolygonMode::Fill,
+                                        conservative: false,
+                                    },
+                                    fragment: Some(FragmentState {
+                                        module: &shader,
+                                        entry_point: Some("fs_main"),
+                                        compilation_options: PipelineCompilationOptions::default(),
+                                        targets: &[Some(ColorTargetState {
+                                            format: color_attachment_format,
+                                            blend: Some(BlendState::REPLACE),
+                                            write_mask: ColorWrites::all(),
+                                        })],
+                                    }),
+                                    depth_stencil: None,
+                                    multisample: MultisampleState {
+                                        count: 1,
+                                        mask: !0,
+                                        alpha_to_coverage_enabled: false,
+                                    },
+                                    multiview_mask: None,
+                                    cache: None,
+                                });
+
+                        render_pass.set_pipeline(&pipeline);
+                        render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+                        render_pass
+                            .set_index_buffer(indices_buffer.slice(..), wgpu::IndexFormat::Uint16);
+                        render_pass.draw_indexed(0..indices_num, 0, 0..1);
+                    }
+                }
+                super::graphics_graph::GraphNode::OutputToFrameBuffer(
+                    _output_to_frame_buffer_node,
+                ) => {
+
+                }
+                super::graphics_graph::GraphNode::BindAttachmentToEgui(
+                    _bind_attachment_to_egui_node,
+                ) => {}
+                super::graphics_graph::GraphNode::CopyAttachmentToEGui(
+                    _copy_attachment_to_egui_node,
+                ) => {}
+            }
+        }
+
         self.queue.submit(Some(encoder.finish()));
         output.present();
+
+        let encoder = self
+            .device
+            .create_command_encoder(&CommandEncoderDescriptor {
+                label: Some("RenderPipeline Command Encoder"),
+            });
+        self.encoder = Some(encoder);
     }
 
     pub fn set_window_resize(&mut self, size: PhysicalSize<u32>) {
@@ -486,7 +539,7 @@ impl RenderPipeline {
 
     pub fn get_frame_buffer_format(&self) -> AttachmentFormat {
         match self.surface_config.format {
-            wgpu::TextureFormat::Rgba8Unorm => AttachmentFormat::BGRA8Unorm,
+            wgpu::TextureFormat::Rgba8Unorm => AttachmentFormat::RGBA8UNorm,
             wgpu::TextureFormat::Bgra8Unorm => AttachmentFormat::BGRA8Unorm,
             wgpu::TextureFormat::Bgra8UnormSrgb => AttachmentFormat::BGRA8UnormSrgb,
             wgpu::TextureFormat::Rg11b10Ufloat => AttachmentFormat::RG11B10UFloat,

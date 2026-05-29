@@ -1,8 +1,8 @@
 use crate::graphics::vertex::Vertex;
 
 pub struct Mesh {
-    vertices: Vec<Vertex>,
-    indices: Vec<u16>,
+    pub vertices: Vec<Vertex>,
+    pub indices: Vec<u16>,
 }
 
 impl Mesh {

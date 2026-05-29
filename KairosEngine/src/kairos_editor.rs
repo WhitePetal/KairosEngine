@@ -1,4 +1,4 @@
-use crate::{graphics::render_pipeline::RenderPipeline, log::Log};
+use crate::{graphics::{graphics_graph::GraphicsCommand, render_pipeline::RenderPipeline}, log::Log};
 use egui::Visuals;
 
 pub mod consts;
@@ -34,8 +34,8 @@ impl KairosEngine {
         self.ui_context.darw(ui, &mut self.log);
     }
 
-    fn render_ui(&mut self, render_pipeline: &RenderPipeline) {
-        self.ui_context.render(render_pipeline);
+    fn render_ui(&mut self, render_pipeline: &RenderPipeline) -> Vec<GraphicsCommand> {
+        self.ui_context.render(render_pipeline)
     }
 
     fn on_exit(&mut self) {}
