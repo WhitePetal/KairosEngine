@@ -21,7 +21,11 @@ use winit::{dpi::PhysicalSize, window::Window};
 
 use crate::{
     asset_loader::texture::TextureAssets,
-    graphics::{attachment::AttachmentFormat, camera::Camera, vertex::Vertex},
+    graphics::{
+        attachment::{AttachmentFormat, InternalAttachmentId},
+        camera::Camera,
+        vertex::Vertex,
+    },
     math::{self, float2, float3, float4},
 };
 
@@ -32,6 +36,8 @@ pub struct RenderPipeline {
     pub surface_config: SurfaceConfiguration,
     pub adapter: Adapter,
     pub queue: Queue,
+    encoder: Option<CommandEncoder>,
+    internal_texture_views: Vec<Option<TextureView>>,
     window_size: PhysicalSize<u32>,
     window_size_changed: bool,
     pipeline: wgpu::RenderPipeline,
@@ -355,6 +361,8 @@ impl RenderPipeline {
             surface_config,
             adapter,
             queue,
+            encoder: None,
+            internal_texture_views: vec![None; InternalAttachmentId::End as usize],
             window_size,
             window_size_changed: false,
             pipeline,
@@ -367,9 +375,7 @@ impl RenderPipeline {
         })
     }
 
-    pub fn get_window_surface(
-        &mut self,
-    ) -> Result<(SurfaceTexture, TextureView, CommandEncoder), CurrentSurfaceTexture> {
+    pub fn get_window_surface(&mut self) -> Result<SurfaceTexture, CurrentSurfaceTexture> {
         if self.window_size_changed {
             self.resize_surface();
         }
@@ -384,7 +390,10 @@ impl RenderPipeline {
                     .create_command_encoder(&CommandEncoderDescriptor {
                         label: Some("RenderPipeline Command Encoder"),
                     });
-                Ok((output, view, encoder))
+                self.encoder = Some(encoder);
+                self.internal_texture_views
+                    [InternalAttachmentId::FrameBuffer_ColorAttachment as usize] = Some(view);
+                Ok(output)
             }
             err => Err(err),
         }

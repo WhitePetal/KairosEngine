@@ -8,12 +8,15 @@ use tokio::sync::mpsc::Sender;
 
 use crate::{
     graphics::{attachment::Attachment, mesh::Mesh},
-    kairos_editor::ui::docking_tab::dock_state::tree::node,
     math::float4x4,
 };
 
 struct BaseDraw {
     mesh: Mesh,
+}
+struct EguiDraw {
+    paint_jobs: Vec<egui::ClippedPrimitive>,
+    screen_descriptor: egui_wgpu::ScreenDescriptor,
 }
 
 enum GraphNode {
@@ -27,6 +30,7 @@ struct RenderPassNode {
     attachments: Vec<usize>,
     vp_id: usize,
     draws: Vec<BaseDraw>,
+    egui_draw: Option<EguiDraw>,
 }
 struct BindAttachmentToEguiNode {
     attachment_id: usize,
@@ -90,6 +94,7 @@ impl GraphicsCommand {
             attachments,
             vp_id,
             draws: Vec::with_capacity(darws_capacity),
+            egui_draw: None,
         };
 
         self.cur_render_pass = Some(render_pass_node)
@@ -116,6 +121,24 @@ impl GraphicsCommand {
         let render_pass = unsafe { self.cur_render_pass.as_mut().unwrap_unchecked() };
         let draw_call = BaseDraw { mesh };
         render_pass.draws.push(draw_call);
+    }
+
+    pub fn draw_egui(
+        &mut self,
+        paint_jobs: Vec<egui::ClippedPrimitive>,
+        screen_descriptor: egui_wgpu::ScreenDescriptor,
+    ) {
+        debug_assert!(
+            self.cur_render_pass.is_some(),
+            "draw while no render pass be opened"
+        );
+
+        let render_pass = unsafe { self.cur_render_pass.as_mut().unwrap_unchecked() };
+        let draw_call = EguiDraw {
+            paint_jobs,
+            screen_descriptor,
+        };
+        render_pass.egui_draw = Some(draw_call);
     }
 
     pub fn bind_attachment_to_egui(

@@ -1,3 +1,9 @@
+pub enum InternalAttachmentId {
+    FrameBuffer_ColorAttachment,
+    FrameBuffer_DepthStencilAttachment,
+    End,
+}
+
 pub enum AttachmentFormat {
     BGRA8Unorm,
     BGRA8UnormSrgb,
@@ -9,6 +15,7 @@ pub struct Attachment {
     pub width: u32,
     pub height: u32,
     pub format: AttachmentFormat,
+    pub bind_internal_id: Option<InternalAttachmentId>,
 }
 
 impl Attachment {
@@ -17,6 +24,16 @@ impl Attachment {
             width,
             height,
             format,
+            bind_internal_id: None,
+        }
+    }
+
+    pub fn from_internal_id(bind_internal_id: InternalAttachmentId) -> Self {
+        Self {
+            width: 1,
+            height: 1,
+            format: AttachmentFormat::RGBA8UNorm,
+            bind_internal_id: Some(bind_internal_id),
         }
     }
 }

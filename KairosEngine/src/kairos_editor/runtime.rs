@@ -16,13 +16,13 @@ use winit::{
     window::{Icon, Window},
 };
 
-use crate::graphics::attachment::Attachment;
+use crate::graphics::attachment::{Attachment, InternalAttachmentId};
 use crate::graphics::camera::Camera;
 use crate::graphics::graphics_graph::{GraphicsCommand, GraphicsGraph};
 use crate::graphics::mesh::Mesh;
 use crate::graphics::render_pipeline;
 use crate::graphics::vertex::Vertex;
-use crate::math::{self, float2, float3, float4};
+use crate::math::{self, float2, float3, float4, float4x4};
 use crate::{
     asset_loader::texture::TextureAssets,
     graphics::render_pipeline::RenderPipeline,
@@ -215,7 +215,7 @@ impl KairosEditorRuntime {
             let mut graphics_commands = Vec::<GraphicsCommand>::new();
 
             match render_pipeline.get_window_surface() {
-                Ok((output, view, encoder)) => {
+                Ok(output) => {
                     let Some(egui_state) = self.egui_state.as_mut() else {
                         return;
                     };
@@ -288,7 +288,19 @@ impl KairosEditorRuntime {
                     };
 
                     let mut egui_graphics_command = GraphicsCommand::new(2, 0, 4);
-
+                    let frame_buffer_attachment = Attachment::from_internal_id(
+                        InternalAttachmentId::FrameBuffer_ColorAttachment,
+                    );
+                    let frame_buffer_attachment_id =
+                        egui_graphics_command.create_attachment(frame_buffer_attachment);
+                    let vp_id =
+                        egui_graphics_command.set_view_projection_matrix(float4x4::idenity());
+                    egui_graphics_command.begin_render_pass(
+                        vec![frame_buffer_attachment_id],
+                        vp_id,
+                        0,
+                        false,
+                    );
                     // let user_cmd_buffers = egui_renderer.update_buffers(
                     //     &render_pipeline.device,
                     //     &render_pipeline.queue,
@@ -296,14 +308,6 @@ impl KairosEditorRuntime {
                     //     &clipped_primitives,
                     //     &screen_descriptor,
                     // );
-
-                    // egui_graphics_command.update_egui_buffers();
-                    // egui_graphics_command.begin_render_pass(attachments, vp_id, darws_capacity, force_clear);
-                    // egui_graphics_command.draw_egui();
-                    // egui_graphics_command.end_render_pass();
-
-                    graphics_commands.push(egui_graphics_command);
-
                     // {
                     //     let mut render_pass = render_pipeline
                     //         .render(&mut encoder, &view)
@@ -315,6 +319,10 @@ impl KairosEditorRuntime {
                     //         &screen_descriptor,
                     //     );
                     // }
+                    egui_graphics_command.draw_egui(clipped_primitives, screen_descriptor);
+                    egui_graphics_command.end_render_pass();
+
+                    graphics_commands.push(egui_graphics_command);
 
                     // render_pipeline.queue.submit(
                     //     user_cmd_buffers
