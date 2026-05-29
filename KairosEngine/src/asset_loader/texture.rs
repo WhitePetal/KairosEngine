@@ -80,6 +80,7 @@ impl AssetInfo {
 
 pub enum Entry<T> {
     None,
+    Loading { version: u32 },
     Some { value: T, version: u32 },
 }
 
@@ -129,7 +130,7 @@ impl TextureAssets {
             let entry = &self.storages[index.index as usize];
             match entry {
                 Entry::None => {}
-                Entry::Some { version, .. } => {
+                Entry::Some { version, .. } | Entry::Loading { version } => {
                     if index.version == *version {
                         if let Some(info) = self.infos[index.index as usize].as_mut() {
                             if let Some(arc) = info.weak.upgrade() {
@@ -148,40 +149,37 @@ impl TextureAssets {
             }
         }
 
-        let texture = Self::load_asset(Path::new(&path)).await?;
         let sender = self.asset_drop_sender.clone();
-        if let Some(index) = self.recyled_indexs.pop() {
-            let index = index.into();
-            let handle = TextureHandle::new(index, sender);
-            let handle = Arc::new(handle);
-            let info = Some(AssetInfo::new(Arc::downgrade(&handle), path.clone()));
-            self.storages[index.index as usize] = Entry::Some {
-                value: texture,
-                version: index.version,
-            };
-            self.infos[index.index as usize] = info;
-            self.path_to_index.insert(path, index);
-            Ok(handle)
-        } else {
-            let index = AssetIndex::new(self.head);
-            let handle = TextureHandle::new(index, sender);
-            let handle = Arc::new(handle);
-            let info = Some(AssetInfo::new(Arc::downgrade(&handle), path.clone()));
-            self.storages.push(Entry::Some {
-                value: texture,
-                version: index.version,
-            });
-            self.infos.push(info);
-            self.path_to_index.insert(path, index);
-            self.head = self.head + 1;
-            Ok(handle)
-        }
+        let (index, handle) = {
+            if let Some(index) = self.recyled_indexs.pop() {
+                let index = index.into();
+                let handle = TextureHandle::new(index, sender);
+                let handle = Arc::new(handle);
+                let info = Some(AssetInfo::new(Arc::downgrade(&handle), path.clone()));
+                self.infos[index.index as usize] = info;
+                self.path_to_index.insert(path.clone(), index);
+                (index, handle)
+            } else {
+                let index = AssetIndex::new(self.head);
+                let handle = TextureHandle::new(index, sender);
+                let handle = Arc::new(handle);
+                let info = Some(AssetInfo::new(Arc::downgrade(&handle), path.clone()));
+                self.storages.push(Entry::None);
+                self.infos.push(info);
+                self.path_to_index.insert(path.clone(), index);
+                self.head = self.head + 1;
+                (index, handle)
+            }
+        };
+        self.load_asset(Path::new(&path), index).await?;
+
+        Ok(handle)
     }
 
     pub fn get(&self, handle: &TextureHandle) -> Option<&TextureAsset> {
         let entry = &self.storages[handle.index.index as usize];
         match entry {
-            Entry::None => None,
+            Entry::None | Entry::Loading { .. } => None,
             Entry::Some { value, version } => {
                 if handle.index.version == *version {
                     Some(&value)
@@ -192,7 +190,7 @@ impl TextureAssets {
         }
     }
 
-    async fn load_asset(path: &Path) -> Result<TextureAsset, Error> {
+    async fn load_asset(&mut self, path: &Path, index: AssetIndex) -> Result<(), Error> {
         let path = path.to_path_buf();
 
         let (toml_bytes, bin_bytes) = tokio::join!(
@@ -203,6 +201,11 @@ impl TextureAssets {
         let data = rkyv::from_bytes::<Vec<u8>, rkyv::rancor::Error>(&bin_bytes?)?;
 
         texture.texture.data = data;
-        Ok(texture)
+
+        self.storages[index.index as usize] = Entry::Some {
+            value: texture,
+            version: index.version,
+        };
+        Ok(())
     }
 }

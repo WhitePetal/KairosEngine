@@ -26,18 +26,12 @@ impl KairosEngine {
         self.ui_context.handle(ui, &mut self.log);
     }
 
-    fn draw_ui(
-        &mut self,
-        ui: &mut egui::Ui,
-    ) {
+    fn draw_ui(&mut self, ui: &mut egui::Ui) {
         let mut visuals = Visuals::dark();
         visuals.button_frame = true;
         ui.set_visuals(visuals);
 
-        self.ui_context.darw(
-            ui,
-            &mut self.log,
-        );
+        self.ui_context.darw(ui, &mut self.log);
     }
 
     fn render_ui(&mut self, render_pipeline: &RenderPipeline) {

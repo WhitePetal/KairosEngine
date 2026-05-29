@@ -1,6 +1,8 @@
 use std::{any::type_name, fs};
 
-use crate::{graphics::render_pipeline::RenderPipeline, kairos_editor::ui::Messager, log::Log, math};
+use crate::{
+    graphics::render_pipeline::RenderPipeline, kairos_editor::ui::Messager, log::Log, math,
+};
 use egui::{self, Vec2};
 use serde::{Deserialize, Serialize};
 use toml::from_str;

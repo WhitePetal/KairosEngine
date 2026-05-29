@@ -219,14 +219,12 @@ impl SceneWindow {
     pub fn try_receive(&mut self) {
         let received = {
             match &mut self.model.recever {
-                Some(recever) => {
-                    match recever.try_recv() {
-                        Ok(texuter_id) => {
-                            self.model.rt_id = Some(texuter_id);
-                            true
-                        },
-                        Err(_) => false,
-                    } 
+                Some(recever) => match recever.try_recv() {
+                    Ok(texuter_id) => {
+                        self.model.rt_id = Some(texuter_id);
+                        true
+                    }
+                    Err(_) => false,
                 },
                 None => false,
             }

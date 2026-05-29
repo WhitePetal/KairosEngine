@@ -2,7 +2,10 @@ use std::{any::type_name, fs, path::Path};
 
 use crate::{
     graphics::render_pipeline::RenderPipeline,
-    kairos_editor::{project_path_tree::{ProjectPath, ProjectPathGraph}, ui::Messager},
+    kairos_editor::{
+        project_path_tree::{ProjectPath, ProjectPathGraph},
+        ui::Messager,
+    },
     log::Log,
 };
 use egui::{Button, WidgetText};
