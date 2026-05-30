@@ -242,6 +242,7 @@ impl RenderPipeline {
         let mut attachment_views = Vec::with_capacity(attachments.len());
         attachment_views.resize(attachments.len(), None);
         let vps = graphics_graph.vps;
+        let free_egui_textures = graphics_graph.free_egui_textures;
 
         let ending_nodes = graphics_graph.ending_nodes;
         let mut graph = graphics_graph.graph;
@@ -290,12 +291,11 @@ impl RenderPipeline {
                 super::graphics_graph::GraphNode::BindAttachmentToEgui(
                     mut bind_attachment_to_egui_node,
                 ) => {
-                    let view = unsafe {
-                        attachment_views
-                            .get_unchecked(bind_attachment_to_egui_node.attachment_id)
-                            .as_ref()
-                            .unwrap_unchecked()
-                    };
+                    let Some(Some(view)) = attachment_views
+                        .get(bind_attachment_to_egui_node.attachment_id)
+                        .as_ref() else {
+                            unreachable!()
+                        };
                     let rt_id = self.egui_renderer.register_native_texture(
                         &self.device,
                         view,
@@ -308,6 +308,7 @@ impl RenderPipeline {
                 super::graphics_graph::GraphNode::CopyAttachmentToEGui(
                     _copy_attachment_to_egui_node,
                 ) => {}
+                super::graphics_graph::GraphNode::FreeEguiTextureId(_) => unreachable!(),
             }
         }
 
@@ -322,11 +323,14 @@ impl RenderPipeline {
         }
 
         output.present();
-
+        
         if let Some(egui_free_textures) = egui_free_textures {
             for id in &egui_free_textures {
                 self.egui_renderer.free_texture(id);
             }
+        }
+        for id in &free_egui_textures {
+            self.egui_renderer.free_texture(id);
         }
     }
 
@@ -346,11 +350,9 @@ impl RenderPipeline {
     ) -> Option<Vec<CommandBuffer>> {
         let attachment_ids = &render_pass_node.attachments;
         let mut color_attachment_format = surface_format;
-        // 记录本次 pass 在共享视图列表中的起点，后面只取属于自己的那一段
-        let views_start = color_attachment_views.len();
 
         for a_id in attachment_ids {
-            let attachment = unsafe { attachments.get_unchecked(*a_id) };
+            let attachment = &attachments[*a_id];
 
             // 绑了 internal id 的，就找有没有internal texture view，有则渲染到internal
             // TODO: 获取没有 internal texture view 时，我这里应该创建？
@@ -361,12 +363,10 @@ impl RenderPipeline {
                 {
                     let internal_texture_view = internal_texture_view.clone();
                     color_attachment_format = internal_texture_view.texture().format();
-                    unsafe {
-                        let _ = std::mem::replace(
-                            color_attachment_views.get_unchecked_mut(*a_id),
-                            Some(internal_texture_view),
-                        );
-                    }
+                    let _ = std::mem::replace(
+                        &mut color_attachment_views[*a_id],
+                        Some(internal_texture_view),
+                    );
                 }
             } else {
                 // create texture
@@ -386,12 +386,10 @@ impl RenderPipeline {
                     view_formats: &[],
                 });
                 let view = texture.create_view(&TextureViewDescriptor::default());
-                unsafe {
-                    let _ = std::mem::replace(
-                        color_attachment_views.get_unchecked_mut(*a_id),
-                        Some(view),
-                    );
-                }
+                let _ = std::mem::replace(
+                    &mut color_attachment_views[*a_id],
+                    Some(view),
+                );
                 color_attachment_format = texture.format();
             }
         }
@@ -400,7 +398,7 @@ impl RenderPipeline {
             Vec::with_capacity(attachment_ids.len());
 
         for a_id in attachment_ids {
-            let view = unsafe { color_attachment_views.get_unchecked(*a_id) };
+            let view = &color_attachment_views[*a_id];
             let Some(view) = view else {
                 continue;
             };

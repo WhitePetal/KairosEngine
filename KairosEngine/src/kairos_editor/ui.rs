@@ -74,7 +74,7 @@ pub enum Message {
     /// (widht, height)
     UpdateSceneWindowSize(u32, u32),
     RegesiterSceneWindowViewBind(tokio::sync::oneshot::Receiver<egui::TextureId>),
-    SceneWindowTryReceive,
+    SceneWindowTryReceTextureId,
 }
 
 struct KairosTabDrawer {
@@ -419,9 +419,9 @@ impl Context {
                         scene_window.register_view_bind(recever);
                     }
                 }
-                Message::SceneWindowTryReceive => {
+                Message::SceneWindowTryReceTextureId => {
                     if let Some(scene_window) = self.get_window_mut::<SceneWindow>() {
-                        scene_window.try_receive();
+                        scene_window.try_rece_texture_id();
                     }
                 }
             }

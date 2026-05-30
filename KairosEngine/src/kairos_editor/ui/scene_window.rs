@@ -24,6 +24,7 @@ struct SceneWindowModel {
     width: u32,
     height: u32,
     recever: Option<tokio::sync::oneshot::Receiver<egui::TextureId>>,
+    drop_texture_id: Option<egui::TextureId>,
 }
 
 pub struct SceneWindow {
@@ -58,6 +59,7 @@ impl SceneWindowModel {
             width: 1,
             height: 1,
             recever: None,
+            drop_texture_id: None,
         })
     }
 }
@@ -84,7 +86,7 @@ impl Drawer for SceneWindow {
         }
 
         if self.model.recever.is_some() {
-            messager.send(Message::SceneWindowTryReceive);
+            messager.send(Message::SceneWindowTryReceTextureId);
         }
 
         if let Some(rt_id) = self.model.rt_id {
@@ -124,9 +126,15 @@ impl Drawer for SceneWindow {
         messager: &mut super::Messager,
         render_pipeline: &RenderPipeline,
     ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {
+        let mut graphics_command = GraphicsCommand::new(16, 4, 16);
+        // clear last rt_id
+        if let Some(drop_texture_id) = self.model.drop_texture_id {
+            graphics_command.free_egui_texture_id(drop_texture_id);
+        }
+
+        // draw
         let width = self.model.width;
         let height = self.model.height;
-        let mut graphics_command = GraphicsCommand::new(16, 4, 16);
         let scene_view = Attachment::new(
             Some("SceneWindow Attachment"),
             width,
@@ -208,21 +216,17 @@ impl SceneWindow {
         self.model.height = height;
     }
 
-    pub fn register_view_bind(&mut self, mut recever: tokio::sync::oneshot::Receiver<egui::TextureId>) {
-        match recever.try_recv() {
-            Ok(rt_id) => self.model.rt_id = Some(rt_id),
-            Err(_) => {
-                self.model.rt_id = None;
-                self.model.recever = Some(recever);
-            },
-        } 
+    pub fn register_view_bind(&mut self, recever: tokio::sync::oneshot::Receiver<egui::TextureId>) {
+        self.model.recever = Some(recever);
+        // self.try_rece_texture_id();
     }
 
-    pub fn try_receive(&mut self) {
+    pub fn try_rece_texture_id(&mut self) {
         let received = {
             match &mut self.model.recever {
                 Some(recever) => match recever.try_recv() {
                     Ok(texuter_id) => {
+                        self.model.drop_texture_id = self.model.rt_id.take();
                         self.model.rt_id = Some(texuter_id);
                         true
                     }

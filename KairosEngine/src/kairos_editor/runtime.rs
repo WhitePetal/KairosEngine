@@ -211,12 +211,11 @@ impl KairosEditorRuntime {
                     let raw_input = egui_state.take_egui_input(&window);
 
                     let full_output = self.egui_ctx.run_ui(raw_input, |ui| {
+                        graphics_commands.append(&mut self.engine.render_ui(&render_pipeline));
+
                         self.engine.handle_ui(ui);
                         
-                        graphics_commands.append(&mut self.engine.render_ui(&render_pipeline));
-                        
                         self.engine.draw_ui(ui);
-                        
                     });
 
                     egui_state.handle_platform_output(&window, full_output.platform_output);

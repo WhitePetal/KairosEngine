@@ -30,6 +30,7 @@ pub enum GraphNode {
     OutputToFrameBuffer(OutputToFrameBufferNode),
     BindAttachmentToEgui(BindAttachmentToEguiNode),
     CopyAttachmentToEGui(CopyAttachmentToEguiNode),
+    FreeEguiTextureId(egui::TextureId),
 }
 
 pub struct RenderPassNode {
@@ -71,6 +72,7 @@ pub struct GraphicsGraph {
     pub vps: Vec<float4x4>,
     pub graph: StableDiGraph<GraphNode, usize>,
     pub ending_nodes: Vec<NodeIndex>,
+    pub free_egui_textures: Vec<egui::TextureId>,
 }
 
 impl GraphicsCommand {
@@ -136,7 +138,7 @@ impl GraphicsCommand {
         let render_pass = std::mem::replace(&mut self.cur_render_pass, RenderPassState::Cloused);
 
         let RenderPassState::Writing(render_pass) = render_pass else {
-            unsafe { unreachable_unchecked() }
+            unreachable!()
         };
 
         self.nodes.push(GraphNode::RenderPass(render_pass));
@@ -149,7 +151,7 @@ impl GraphicsCommand {
         );
 
         let RenderPassState::Writing(render_pass) = &mut self.cur_render_pass else {
-            unsafe { unreachable_unchecked() }
+            unreachable!()
         };
 
         let draw_call = BaseDraw { mesh };
@@ -168,7 +170,7 @@ impl GraphicsCommand {
         );
 
         let RenderPassState::Writing(render_pass) = &mut self.cur_render_pass else {
-            unsafe { unreachable_unchecked() }
+            unreachable!()
         };
         let draw_call = EguiDraw {
             paint_jobs,
@@ -262,12 +264,17 @@ impl GraphicsCommand {
                 egui_free_textures,
             }));
     }
+
+    pub fn free_egui_texture_id(&mut self, texture_id: egui::TextureId) {
+        self.nodes.push(GraphNode::FreeEguiTextureId(texture_id));
+    }
 }
 
 impl GraphicsGraph {
     pub fn build(commands: Vec<GraphicsCommand>) -> Self {
         let mut graph_attachments = Vec::<Attachment>::new();
         let mut graph_vps = Vec::<float4x4>::new();
+        let mut graph_free_egui_textures = Vec::<egui::TextureId>::new();
 
         // build the graphs
         let mut graphics = Vec::with_capacity(commands.len());
@@ -336,6 +343,9 @@ impl GraphicsGraph {
                         graph.add_edge(*prev, node, 1usize);
                     }
                 }
+                GraphNode::FreeEguiTextureId(texture_id) => {
+                    graph_free_egui_textures.push(texture_id);
+                },
             });
 
             graphics.push(graph);
@@ -361,7 +371,7 @@ impl GraphicsGraph {
 
         // optimize the graph
         // 1. 合并render_pass
-        let mut ending_nodes = graph.externals(Outgoing).collect();
+        let ending_nodes = graph.externals(Outgoing).collect();
         Self::combine_nodes(&mut graph, &ending_nodes);
         // 2. 删除没有最终输出的链路
         Self::prune_graph(&mut graph, &ending_nodes);
@@ -382,6 +392,7 @@ impl GraphicsGraph {
             attachments: graph_attachments,
             vps: graph_vps,
             ending_nodes,
+            free_egui_textures: graph_free_egui_textures,
         }
     }
 
