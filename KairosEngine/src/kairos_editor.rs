@@ -1,4 +1,7 @@
-use crate::{graphics::{graphics_graph::GraphicsCommand, render_pipeline::RenderPipeline}, log::Log};
+use crate::{
+    graphics::{graphics_graph::GraphicsCommand, render_pipeline::RenderPipeline},
+    log::Log,
+};
 use egui::Visuals;
 
 pub mod consts;

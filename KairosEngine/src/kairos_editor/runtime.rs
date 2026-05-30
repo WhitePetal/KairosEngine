@@ -55,7 +55,6 @@ pub struct KairosEditorRuntime {
     render_pipeline: Arc<Mutex<Option<RenderPipeline>>>,
     egui_ctx: egui::Context,
     egui_state: Option<egui_winit::State>,
-    egui_renderer: Option<egui_wgpu::Renderer>,
     engine: KairosEngine,
     texture_assets: TextureAssets,
     repaint_at: Option<Instant>,
@@ -83,7 +82,6 @@ impl KairosEditorRuntime {
             render_pipeline: Arc::new(Mutex::new(None)),
             egui_ctx,
             egui_state: None,
-            egui_renderer: None,
             engine: KairosEngine::new()?,
             texture_assets,
             repaint_at: None,
@@ -151,12 +149,10 @@ impl KairosEditorRuntime {
             None,
         );
 
-        println!("Will Create RenderPipeline");
         let render_pipeline = pollster::block_on(RenderPipeline::new(
             window.clone(),
             &mut self.texture_assets,
         ))?;
-        println!("End Create RenderPipeline");
         let render_pipeline_event_proxy = self.event_proxy.clone();
         render_pipeline
             .device
@@ -177,16 +173,10 @@ impl KairosEditorRuntime {
             }));
 
         egui_state.set_max_texture_side(render_pipeline.max_texture_side());
-        let egui_renderer = egui_wgpu::Renderer::new(
-            &render_pipeline.device,
-            render_pipeline.surface_config.format,
-            egui_wgpu::RendererOptions::default(),
-        );
 
         self.window = Some(window.clone());
         self.render_pipeline.lock().replace(render_pipeline);
         self.egui_state = Some(egui_state);
-        self.egui_renderer = Some(egui_renderer);
 
         window.set_visible(true);
         window.request_redraw();
@@ -210,8 +200,6 @@ impl KairosEditorRuntime {
                 return;
             };
 
-            let surface_cfg = &render_pipeline.surface_config;
-
             let mut graphics_commands = Vec::<GraphicsCommand>::new();
 
             match render_pipeline.get_window_surface() {
@@ -220,18 +208,15 @@ impl KairosEditorRuntime {
                         return;
                     };
 
-                    let Some(egui_renderer) = self.egui_renderer.as_mut() else {
-                        return;
-                    };
-
                     let raw_input = egui_state.take_egui_input(&window);
 
                     let full_output = self.egui_ctx.run_ui(raw_input, |ui| {
                         self.engine.handle_ui(ui);
-
+                        
                         graphics_commands.append(&mut self.engine.render_ui(&render_pipeline));
-
+                        
                         self.engine.draw_ui(ui);
+                        
                     });
 
                     egui_state.handle_platform_output(&window, full_output.platform_output);
@@ -264,15 +249,6 @@ impl KairosEditorRuntime {
                         }
                     }
 
-                    for (id, image_delta) in &full_output.textures_delta.set {
-                        egui_renderer.update_texture(
-                            &render_pipeline.device,
-                            &render_pipeline.queue,
-                            *id,
-                            &image_delta,
-                        );
-                    }
-
                     let pixels_per_point = full_output.pixels_per_point;
 
                     let clipped_primitives = self
@@ -302,39 +278,19 @@ impl KairosEditorRuntime {
                         0,
                         false,
                     );
-                    // let user_cmd_buffers = egui_renderer.update_buffers(
-                    //     &render_pipeline.device,
-                    //     &render_pipeline.queue,
-                    //     &mut encoder,
-                    //     &clipped_primitives,
-                    //     &screen_descriptor,
-                    // );
-                    // {
-                    //     let mut render_pass = render_pipeline
-                    //         .render(&mut encoder, &view)
-                    //         .forget_lifetime();
 
-                    //     egui_renderer.render(
-                    //         &mut render_pass,
-                    //         &clipped_primitives,
-                    //         &screen_descriptor,
-                    //     );
-                    // }
-                    egui_graphics_command.draw_egui(clipped_primitives, screen_descriptor);
+                    egui_graphics_command.draw_egui(
+                        clipped_primitives,
+                        screen_descriptor,
+                        full_output.textures_delta.set,
+                    );
                     egui_graphics_command.end_render_pass();
-                    egui_graphics_command.output_to_framebuffer(frame_buffer_attachment_id);
+                    egui_graphics_command.output_to_framebuffer(
+                        frame_buffer_attachment_id,
+                        full_output.textures_delta.free,
+                    );
 
                     graphics_commands.push(egui_graphics_command);
-
-                    // render_pipeline.queue.submit(
-                    //     user_cmd_buffers
-                    //         .into_iter()
-                    //         .chain(std::iter::once(encoder.finish())),
-                    // );
-
-                    for id in &full_output.textures_delta.free {
-                        egui_renderer.free_texture(id);
-                    }
 
                     let graphics_graph = GraphicsGraph::build(graphics_commands);
                     render_pipeline.present(output, graphics_graph);

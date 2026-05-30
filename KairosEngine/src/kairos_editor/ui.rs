@@ -11,7 +11,6 @@ use crate::{
     log::Log,
 };
 use egui::{self};
-use tokio::sync::mpsc::Receiver;
 
 use crate::{
     kairos_dialog,
@@ -74,7 +73,7 @@ pub enum Message {
     CreateSceneTabRt(egui::TextureId),
     /// (widht, height)
     UpdateSceneWindowSize(u32, u32),
-    RegesiterSceneWindowViewBind(Receiver<egui::TextureId>),
+    RegesiterSceneWindowViewBind(tokio::sync::oneshot::Receiver<egui::TextureId>),
     SceneWindowTryReceive,
 }
 
@@ -415,10 +414,16 @@ impl Context {
                         scene_window.update_size(width, height);
                     }
                 }
-                Message::RegesiterSceneWindowViewBind(receiver) => {
-                    if let Some(scene_window) = self.get_window_mut::<SceneWindow>() {}
+                Message::RegesiterSceneWindowViewBind(recever) => {
+                    if let Some(scene_window) = self.get_window_mut::<SceneWindow>() {
+                        scene_window.register_view_bind(recever);
+                    }
                 }
-                Message::SceneWindowTryReceive => todo!(),
+                Message::SceneWindowTryReceive => {
+                    if let Some(scene_window) = self.get_window_mut::<SceneWindow>() {
+                        scene_window.try_receive();
+                    }
+                }
             }
         }
     }

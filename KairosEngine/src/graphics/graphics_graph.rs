@@ -9,7 +9,6 @@ use petgraph::{
     stable_graph::StableDiGraph,
     visit::EdgeRef,
 };
-use tokio::sync::mpsc::Sender;
 
 use crate::{
     graphics::{attachment::Attachment, mesh::Mesh},
@@ -19,9 +18,10 @@ use crate::{
 pub struct BaseDraw {
     pub mesh: Mesh,
 }
-struct EguiDraw {
-    paint_jobs: Vec<egui::ClippedPrimitive>,
-    screen_descriptor: egui_wgpu::ScreenDescriptor,
+pub struct EguiDraw {
+    pub paint_jobs: Vec<egui::ClippedPrimitive>,
+    pub screen_descriptor: egui_wgpu::ScreenDescriptor,
+    pub egui_update_textures: Vec<(epaint::TextureId, epaint::ImageDelta)>,
 }
 
 pub enum GraphNode {
@@ -41,11 +41,12 @@ pub struct RenderPassNode {
     pub egui_draw: Option<EguiDraw>,
 }
 pub struct OutputToFrameBufferNode {
-    attachment_id: usize,
+    pub attachment_id: usize,
+    pub egui_free_textures: Vec<epaint::TextureId>,
 }
 pub struct BindAttachmentToEguiNode {
-    attachment_id: usize,
-    sender: Sender<egui::TextureId>,
+    pub attachment_id: usize,
+    pub sender: Option<tokio::sync::oneshot::Sender<egui::TextureId>>,
 }
 pub struct CopyAttachmentToEguiNode {
     attachment_id: usize,
@@ -159,6 +160,7 @@ impl GraphicsCommand {
         &mut self,
         paint_jobs: Vec<egui::ClippedPrimitive>,
         screen_descriptor: egui_wgpu::ScreenDescriptor,
+        egui_update_textures: Vec<(egui::TextureId, epaint::ImageDelta)>,
     ) {
         debug_assert!(
             matches!(self.cur_render_pass, RenderPassState::Writing(_)),
@@ -171,6 +173,7 @@ impl GraphicsCommand {
         let draw_call = EguiDraw {
             paint_jobs,
             screen_descriptor,
+            egui_update_textures,
         };
         render_pass.egui_draw = Some(draw_call);
     }
@@ -178,7 +181,7 @@ impl GraphicsCommand {
     pub fn bind_attachment_to_egui(
         &mut self,
         attachment_id: usize,
-        sender: Sender<egui::TextureId>,
+        sender: tokio::sync::oneshot::Sender<egui::TextureId>,
     ) {
         debug_assert!(
             matches!(self.cur_render_pass, RenderPassState::Cloused),
@@ -198,7 +201,7 @@ impl GraphicsCommand {
         self.nodes
             .push(GraphNode::BindAttachmentToEgui(BindAttachmentToEguiNode {
                 attachment_id,
-                sender,
+                sender: Some(sender),
             }));
     }
 
@@ -233,7 +236,11 @@ impl GraphicsCommand {
             }));
     }
 
-    pub fn output_to_framebuffer(&mut self, attachment_id: usize) {
+    pub fn output_to_framebuffer(
+        &mut self,
+        attachment_id: usize,
+        egui_free_textures: Vec<epaint::TextureId>,
+    ) {
         debug_assert!(
             matches!(self.cur_render_pass, RenderPassState::Cloused),
             "Output to framebuffer but render pass not close"
@@ -252,6 +259,7 @@ impl GraphicsCommand {
         self.nodes
             .push(GraphNode::OutputToFrameBuffer(OutputToFrameBufferNode {
                 attachment_id,
+                egui_free_textures,
             }));
     }
 }
@@ -305,8 +313,10 @@ impl GraphicsGraph {
 
                     graph[node] = GraphNode::RenderPass(render_pass_node);
                 }
-                GraphNode::BindAttachmentToEgui(bind_attachment_to_egui_node) => {
+                GraphNode::BindAttachmentToEgui(mut bind_attachment_to_egui_node) => {
                     let prev = writed_attachments.get(&bind_attachment_to_egui_node.attachment_id);
+                    bind_attachment_to_egui_node.attachment_id += graph_attachments_start;
+
                     let node = graph.add_node(GraphNode::BindAttachmentToEgui(
                         bind_attachment_to_egui_node,
                     ));
@@ -345,17 +355,27 @@ impl GraphicsGraph {
             }
 
             for edge in edges {
-                graph.add_edge(edge.source, edge.target, edge.weight);
+                graph.add_edge(remap[&edge.source], remap[&edge.target], edge.weight);
             }
         });
 
         // optimize the graph
         // 1. 合并render_pass
-        let ending_nodes = graph.externals(Outgoing).collect();
+        let mut ending_nodes = graph.externals(Outgoing).collect();
         Self::combine_nodes(&mut graph, &ending_nodes);
         // 2. 删除没有最终输出的链路
         Self::prune_graph(&mut graph, &ending_nodes);
-        // 3. optimize per node in graph
+        // 3. TODO: optimize per node in graph
+
+        // 4. sort the ending nodes ?
+        // ending_nodes.sort_by_key(|node| match &graph[*node] {
+        //     GraphNode::None => 100,
+        //     GraphNode::RenderPass(render_pass_node) => 80,
+        //     GraphNode::OutputToFrameBuffer(output_to_frame_buffer_node) => 0,
+        //     GraphNode::BindAttachmentToEgui(bind_attachment_to_egui_node) => 200,
+        //     GraphNode::CopyAttachmentToEGui(copy_attachment_to_egui_node) => 100,
+        // });
+
 
         Self {
             graph,

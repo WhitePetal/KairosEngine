@@ -2,7 +2,6 @@ use std::{any::type_name, fs};
 
 use egui::pos2;
 use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc::{self, Receiver};
 use toml::from_str;
 
 use crate::{
@@ -24,7 +23,7 @@ struct SceneWindowModel {
     rt_id: Option<egui::TextureId>,
     width: u32,
     height: u32,
-    recever: Option<Receiver<egui::TextureId>>,
+    recever: Option<tokio::sync::oneshot::Receiver<egui::TextureId>>,
 }
 
 pub struct SceneWindow {
@@ -56,8 +55,8 @@ impl SceneWindowModel {
         Ok(Self {
             style,
             rt_id: None,
-            width: 0,
-            height: 0,
+            width: 1,
+            height: 1,
             recever: None,
         })
     }
@@ -96,18 +95,6 @@ impl Drawer for SceneWindow {
                 egui::Color32::WHITE,
             );
         }
-        // match self.model.rt_id {
-        //     Some(rt_id) => {
-        //     }
-        //     None => {
-        //         let rt_id = egui_renderer.register_native_texture(
-        //             &render_pipeline.device,
-        //             &rt_view,
-        //             wgpu::FilterMode::Linear,
-        //         );
-        //         messager.send(Message::CreateSceneTabRt(rt_id));
-        //     }
-        // }
     }
 
     fn close(&self, messager: &mut super::Messager) {
@@ -140,9 +127,13 @@ impl Drawer for SceneWindow {
         let width = self.model.width;
         let height = self.model.height;
         let mut graphics_command = GraphicsCommand::new(16, 4, 16);
-        let frame_buffer =
-            Attachment::from_internal_id(crate::graphics::attachment::InternalAttachmentId::FrameBuffer_ColorAttachment);
-        let frame_buffer_id = graphics_command.create_attachment(frame_buffer);
+        let scene_view = Attachment::new(
+            Some("SceneWindow Attachment"),
+            width,
+            height,
+            crate::graphics::attachment::AttachmentFormat::RGBA8UNorm,
+        );
+        let scene_view_id = graphics_command.create_attachment(scene_view);
         let cam_pos = float3::new(0.0, 1.0, -2.0);
         let cam_taget = float3::new(0.0, 0.0, 0.0);
         let cam_forward = math::normalize(cam_taget - cam_pos);
@@ -161,7 +152,7 @@ impl Drawer for SceneWindow {
             graphics_command.set_view_projection_matrix(camera.get_view_projection_matrix());
         graphics_command.begin_render_pass(
             Some("SceneWindow Render Pass"),
-            vec![frame_buffer_id],
+            vec![scene_view_id],
             vp_id,
             4,
             true,
@@ -199,9 +190,9 @@ impl Drawer for SceneWindow {
         let mesh = Mesh::new(vertices, indices);
         graphics_command.draw(mesh);
         graphics_command.end_render_pass();
-        let (egui_bind_tex_sender, egui_bind_tex_recever) = mpsc::channel(2);
+        let (egui_bind_tex_sender, egui_bind_tex_recever) = tokio::sync::oneshot::channel();
         messager.send(Message::RegesiterSceneWindowViewBind(egui_bind_tex_recever));
-        graphics_command.bind_attachment_to_egui(frame_buffer_id, egui_bind_tex_sender);
+        graphics_command.bind_attachment_to_egui(scene_view_id, egui_bind_tex_sender);
 
         Some(graphics_command)
     }
@@ -217,9 +208,14 @@ impl SceneWindow {
         self.model.height = height;
     }
 
-    pub fn register_view_bind(&mut self, recever: Receiver<egui::TextureId>) {
-        self.model.rt_id = None;
-        self.model.recever = Some(recever);
+    pub fn register_view_bind(&mut self, mut recever: tokio::sync::oneshot::Receiver<egui::TextureId>) {
+        match recever.try_recv() {
+            Ok(rt_id) => self.model.rt_id = Some(rt_id),
+            Err(_) => {
+                self.model.rt_id = None;
+                self.model.recever = Some(recever);
+            },
+        } 
     }
 
     pub fn try_receive(&mut self) {
@@ -235,7 +231,6 @@ impl SceneWindow {
                 None => false,
             }
         };
-
         if received {
             self.model.recever.take();
         }
