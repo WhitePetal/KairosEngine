@@ -3,10 +3,13 @@ mod tests;
 
 use std::{ops::Mul, simd::simd_swizzle};
 
-use crate::math::float4;
+use crate::math::{float3, float4};
+
+use super::quaternions::quaternion;
 
 ///
 /// matrix base column vector
+#[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[allow(non_camel_case_types)]
 pub struct float4x4([float4; 4]);
@@ -43,6 +46,28 @@ impl float4x4 {
             float4::new(0.0, 1.0, 0.0, 0.0),
             float4::new(0.0, 0.0, 1.0, 0.0),
             float4::new(0.0, 0.0, 0.0, 1.0),
+        ])
+    }
+
+    ///
+    /// ```
+    /// ---------------------------------
+    /// |   v1 |  v2  |  v3   |   v4   |
+    /// |  s.x |      |       |   t.x  |
+    /// |      |  s.y |       |   t.y  |
+    /// |      |      |  s.z  |   t.z  |
+    /// |  0   |  0   |   0   |    1   |
+    /// --------------------------------
+    /// ```
+    #[inline(always)]
+    pub fn trs(position: float3, rotation: quaternion, scale: float3) -> Self {
+        let r = rotation.to_float4x4();
+
+        Self([
+            r.c0() * scale.x(),
+            r.c1() * scale.y(),
+            r.c2() * scale.z(),
+            float4::new(position.x(), position.y(), position.z(), 1.0),
         ])
     }
 
@@ -122,3 +147,6 @@ impl Mul<float4> for float4x4 {
         )
     }
 }
+
+unsafe impl bytemuck::Zeroable for float4x4 {}
+unsafe impl bytemuck::Pod for float4x4 {}

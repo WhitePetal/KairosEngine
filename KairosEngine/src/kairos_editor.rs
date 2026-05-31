@@ -37,8 +37,8 @@ impl KairosEngine {
         self.ui_context.darw(ui, &mut self.log);
     }
 
-    fn render_ui(&mut self, render_pipeline: &RenderPipeline) -> Vec<GraphicsCommand> {
-        self.ui_context.render(render_pipeline)
+    fn render_ui(&mut self) -> Vec<GraphicsCommand> {
+        self.ui_context.render()
     }
 
     fn on_exit(&mut self) {}

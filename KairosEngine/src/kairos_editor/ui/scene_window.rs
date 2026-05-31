@@ -6,11 +6,10 @@ use toml::from_str;
 
 use crate::{
     graphics::{
-        attachment::Attachment, camera::Camera, graphics_graph::GraphicsCommand, mesh::Mesh,
-        render_pipeline::RenderPipeline, vertex::Vertex,
+        attachment::Attachment, camera::Camera, graphics_graph::GraphicsCommand, mesh::Mesh, render_pipeline::RenderPipeline, vertex::Vertex
     },
     kairos_editor::ui::{Drawer, Message, paths},
-    math::{self, float2, float3, float4},
+    math::{self, float2, float3, float4, float4x4, quaternion},
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -124,9 +123,8 @@ impl Drawer for SceneWindow {
     fn render(
         &self,
         messager: &mut super::Messager,
-        render_pipeline: &RenderPipeline,
     ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {
-        let mut graphics_command = GraphicsCommand::new(16, 4, 16);
+        let mut graphics_command = GraphicsCommand::new(16, 2, 4, 16);
         // clear last rt_id
         if let Some(drop_texture_id) = self.model.drop_texture_id {
             graphics_command.free_egui_texture_id(drop_texture_id);
@@ -141,7 +139,14 @@ impl Drawer for SceneWindow {
             height,
             crate::graphics::attachment::AttachmentFormat::RGBA8UNorm,
         );
-        let scene_view_id = graphics_command.create_attachment(scene_view);
+        let scene_depth_stencil = Attachment::new(
+            Some("SceneWindow DepthStencil"), 
+            width, 
+            height, 
+            crate::graphics::attachment::AttachmentFormat::D24S8,
+        );
+        let scene_view_id = graphics_command.create_color_attachment(scene_view);
+        let scene_depth_id = graphics_command.create_depth_attachment(scene_depth_stencil);
         let cam_pos = float3::new(0.0, 1.0, -2.0);
         let cam_taget = float3::new(0.0, 0.0, 0.0);
         let cam_forward = math::normalize(cam_taget - cam_pos);
@@ -161,6 +166,7 @@ impl Drawer for SceneWindow {
         graphics_command.begin_render_pass(
             Some("SceneWindow Render Pass"),
             vec![scene_view_id],
+            Some(scene_depth_id),
             vp_id,
             4,
             true,
@@ -195,8 +201,21 @@ impl Drawer for SceneWindow {
         ];
         let indices = vec![0, 1, 4, 1, 2, 4, 2, 3, 4];
 
-        let mesh = Mesh::new(vertices, indices);
-        graphics_command.draw(mesh);
+        let mesh = Mesh::new(0, vertices, indices);
+
+        const NUM_INSTANCES_PER_ROW: usize = 10;
+
+        for z in 0..NUM_INSTANCES_PER_ROW {
+            for x in 0..NUM_INSTANCES_PER_ROW {
+                let position = float3::new(x as f32, 0.0, z as f32);
+                let rotation = quaternion::identity();
+                let scale = float3::new(1.0, 1.0, 1.0);
+                
+                let local_to_world = float4x4::trs(position, rotation, scale);
+                graphics_command.draw(mesh.clone(), local_to_world);
+            }
+        };
+
         graphics_command.end_render_pass();
         let (egui_bind_tex_sender, egui_bind_tex_recever) = tokio::sync::oneshot::channel();
         messager.send(Message::RegesiterSceneWindowViewBind(egui_bind_tex_recever));

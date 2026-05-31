@@ -43,12 +43,12 @@ where
     }
 
     #[inline(always)]
-    fn normalize(&self) -> Self {
-        *self / self.len()
+    fn normalize(self) -> Self {
+        self / self.len()
     }
 
     #[inline(always)]
-    fn normalize_mut(&mut self) {
+    fn normalized(&mut self) {
         *self /= self.len();
     }
 }
@@ -94,11 +94,11 @@ where
 }
 
 #[inline(always)]
-pub fn normalize_mut<T>(mut v: T)
+pub fn normalized<T>(mut v: T)
 where
     T: Vector,
 {
-    v.normalize_mut();
+    v.normalized();
 }
 
 #[repr(transparent)]
@@ -380,6 +380,21 @@ impl float3 {
     #[inline(always)]
     pub fn from_array_4(arr: [f32; 4]) -> Self {
         Self(f32x4::from_array(arr))
+    }
+
+    #[inline(always)]
+    pub fn x(&self) -> f32 {
+        self[0]
+    }
+
+    #[inline(always)]
+    pub fn y(&self) -> f32 {
+        self[1]
+    }
+
+    #[inline(always)]
+    pub fn z(&self) -> f32 {
+        self[2]
     }
 }
 

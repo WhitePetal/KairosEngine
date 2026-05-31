@@ -7,7 +7,6 @@ use std::{
 
 use egui::{ViewportCommand, ViewportId};
 use parking_lot::Mutex;
-use tokio::sync::mpsc;
 use winit::{
     application::ApplicationHandler,
     dpi::LogicalSize,
@@ -17,12 +16,8 @@ use winit::{
 };
 
 use crate::graphics::attachment::{Attachment, InternalAttachmentId};
-use crate::graphics::camera::Camera;
 use crate::graphics::graphics_graph::{GraphicsCommand, GraphicsGraph};
-use crate::graphics::mesh::Mesh;
-use crate::graphics::render_pipeline;
-use crate::graphics::vertex::Vertex;
-use crate::math::{self, float2, float3, float4, float4x4};
+use crate::math::{float4x4};
 use crate::{
     asset_loader::texture::TextureAssets,
     graphics::render_pipeline::RenderPipeline,
@@ -211,10 +206,10 @@ impl KairosEditorRuntime {
                     let raw_input = egui_state.take_egui_input(&window);
 
                     let full_output = self.egui_ctx.run_ui(raw_input, |ui| {
-                        graphics_commands.append(&mut self.engine.render_ui(&render_pipeline));
+                        graphics_commands.append(&mut self.engine.render_ui());
 
                         self.engine.handle_ui(ui);
-                        
+
                         self.engine.draw_ui(ui);
                     });
 
@@ -262,17 +257,18 @@ impl KairosEditorRuntime {
                         pixels_per_point,
                     };
 
-                    let mut egui_graphics_command = GraphicsCommand::new(2, 0, 4);
+                    let mut egui_graphics_command = GraphicsCommand::new(2, 2, 0, 4);
                     let frame_buffer_attachment = Attachment::from_internal_id(
                         InternalAttachmentId::FrameBuffer_ColorAttachment,
                     );
                     let frame_buffer_attachment_id =
-                        egui_graphics_command.create_attachment(frame_buffer_attachment);
+                        egui_graphics_command.create_color_attachment(frame_buffer_attachment);
                     let vp_id =
                         egui_graphics_command.set_view_projection_matrix(float4x4::idenity());
                     egui_graphics_command.begin_render_pass(
                         Some("Egui Graphics Render Pass"),
                         vec![frame_buffer_attachment_id],
+                        None,
                         vp_id,
                         0,
                         false,

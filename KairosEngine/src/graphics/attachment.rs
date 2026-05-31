@@ -15,6 +15,7 @@ pub enum AttachmentFormat {
     #[default]
     RGBA8UNorm,
     RG11B10UFloat,
+    D24S8,
 }
 
 #[derive(Debug, Default)]
@@ -60,6 +61,7 @@ impl Into<TextureFormat> for AttachmentFormat {
             AttachmentFormat::BGRA8UnormSrgb => TextureFormat::Bgra8UnormSrgb,
             AttachmentFormat::RGBA8UNorm => TextureFormat::Rgba8Unorm,
             AttachmentFormat::RG11B10UFloat => TextureFormat::Rg11b10Ufloat,
+            AttachmentFormat::D24S8 => TextureFormat::Depth24PlusStencil8,
         }
     }
 }

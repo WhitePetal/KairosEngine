@@ -131,7 +131,6 @@ pub trait Drawer: Any {
     fn render(
         &self,
         messager: &mut Messager,
-        render_pipeline: &RenderPipeline,
     ) -> Option<GraphicsCommand>;
 
     fn close(&self, messager: &mut Messager);
@@ -428,10 +427,10 @@ impl Context {
         }
     }
 
-    pub fn render(&mut self, render_pipeline: &RenderPipeline) -> Vec<GraphicsCommand> {
+    pub fn render(&mut self) -> Vec<GraphicsCommand> {
         let mut commands = Vec::new();
         self.drawers.iter().for_each(|drawer| {
-            let cmd = drawer.render(&mut self.messager, render_pipeline);
+            let cmd = drawer.render(&mut self.messager);
             if let Some(cmd) = cmd {
                 commands.push(cmd);
             }

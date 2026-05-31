@@ -82,7 +82,6 @@ impl Drawer for HierarchyWindow {
     fn render(
         &self,
         _messager: &mut Messager,
-        _render_pipeline: &RenderPipeline,
     ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {
         None
     }
