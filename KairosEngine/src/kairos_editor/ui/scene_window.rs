@@ -138,7 +138,7 @@ fn load_mesh_from_primitive(
         });
     }
 
-    let mut indices = reader
+    let indices = reader
         .read_indices()
         .map(|indices| {
             indices
@@ -153,7 +153,7 @@ fn load_mesh_from_primitive(
                 .collect::<Result<Vec<_>, _>>()
                 .ok()
         })?;
-    
+
     // for triangle in indices.chunks_exact_mut(3) {
     //     triangle.swap(1, 2);
     // }
@@ -281,7 +281,7 @@ impl Drawer for SceneWindow {
         let cam_taget = float3::new(0.0, 0.0, 0.0);
         let cam_forward = math::normalize(cam_taget - cam_pos);
         let world_up = float3::new(0.0, 1.0, 0.0);
-        let cam_right = math::cross(world_up, cam_forward) * -1.0;
+        let cam_right = math::cross(cam_forward, world_up);
         let camera = Camera::new(
             float3::new(0.0, 1.0, -2.0),
             cam_forward,
