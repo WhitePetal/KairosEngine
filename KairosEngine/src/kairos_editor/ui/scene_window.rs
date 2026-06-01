@@ -203,10 +203,10 @@ impl Drawer for SceneWindow {
 
         let mesh = Mesh::new(0, vertices, indices);
 
-        const NUM_INSTANCES_PER_ROW: usize = 10;
+        const NUM_INSTANCES_PER_ROW: i32 = 5;
 
-        for z in 0..NUM_INSTANCES_PER_ROW {
-            for x in 0..NUM_INSTANCES_PER_ROW {
+        for z in -NUM_INSTANCES_PER_ROW..NUM_INSTANCES_PER_ROW {
+            for x in -NUM_INSTANCES_PER_ROW..NUM_INSTANCES_PER_ROW {
                 let position = float3::new(x as f32, 0.0, z as f32);
                 let rotation = quaternion::identity();
                 let scale = float3::new(1.0, 1.0, 1.0);
