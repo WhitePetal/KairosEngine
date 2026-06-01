@@ -14,8 +14,8 @@
 
 ### 0.2.0
 - Project/Asset System
-- Terrain Editor
-- Render Graph
+- Terrain System
+- Graphics Graph
 - Input Graph System
 - World Scenes System
 
@@ -23,7 +23,7 @@
 - State Machine
 - Animation System
 - GI System
-- Cinemachine
+- Cinemachine System
 - AI Agent
 
 ### ...
