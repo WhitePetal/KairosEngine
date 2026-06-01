@@ -662,7 +662,7 @@ impl RenderPipeline {
                 render_pass.set_pipeline(&pipeline);
                 render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
                 render_pass.set_vertex_buffer(1, instancing_buffer.slice(..));
-                render_pass.set_index_buffer(indices_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                render_pass.set_index_buffer(indices_buffer.slice(..), wgpu::IndexFormat::Uint16);
                 render_pass.draw_indexed(0..indices_num, 0, 0..draw.local_to_worlds.len() as u32);
             }
         };

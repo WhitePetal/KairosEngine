@@ -41,7 +41,7 @@ fn vs_main(v: a2v, instancing: InstanceInput) -> v2f {
         instancing.model_matrix_3,
     );
 
-    o.pos = matrix_vp * local_to_world * 0.0001 * vec4f(v.vertex.xyz, 1.0);
+    o.pos = matrix_vp * local_to_world * vec4f(v.vertex.xyz * 0.2, 1.0);
     var normal_world = normalize(local_to_world * vec4f(v.normal.xyz, 0.0));
     o.color = v.color;
     o.uv = v.texcoord;
@@ -59,7 +59,9 @@ fn fs_main(i: v2f) -> gbuffer {
     var out: gbuffer;
     let tex = textureSample(texture, s_texture, i.uv);
     let color = i.color * tex;
-    // out.color = color;
-    out.color = vec4f(i.normal * 0.5 + vec3f(0.5), 1.0);
+    let l = normalize(vec3f(0.0, 1.0, 1.0));
+    let ndotl = dot(i.normal, l) * 0.5 + 0.5;
+    // out.color = color * ndotl;
+    out.color = vec4f(ndotl);
     return out;
 }
