@@ -226,7 +226,7 @@ fn bench_float4_cross(c: &mut Criterion) {
                 math::float4::new(*x, *y, *z, *w),
                 math::float4::new(*w, *z, *y, *x),
             ],
-            |b, input| b.iter(|| black_box(math::float4::cross(&input[0], &input[1]))),
+            |b, input| b.iter(|| black_box(math::cross(input[0], input[1]))),
         );
     }
 }
