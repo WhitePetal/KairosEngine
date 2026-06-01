@@ -1,16 +1,16 @@
 mod color;
 mod consts;
 mod matrix;
+mod quaternions;
 mod trigonometric;
 mod vec;
-mod quaternions;
 
 pub use color::Color32;
 pub use consts::*;
 pub use matrix::*;
+pub use quaternions::*;
 pub use trigonometric::*;
 pub use vec::*;
-pub use quaternions::*;
 
 #[inline(always)]
 pub fn float2(x: f32, y: f32) -> float2 {

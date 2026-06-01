@@ -1,6 +1,14 @@
-use crate::{graphics::{attachment::Attachment, graphics_graph::graphics_node::{BaseDraw, BindAttachmentToEguiNode, ColorAttachmentId, CopyAttachmentToEguiNode, DepthAttachmentId, EguiDraw, GraphNode, OutputToFrameBufferNode, RenderPassNode, VPId}, mesh::Mesh}, math::float4x4};
-
-
+use crate::{
+    graphics::{
+        attachment::Attachment,
+        graphics_graph::graphics_node::{
+            BaseDraw, BindAttachmentToEguiNode, ColorAttachmentId, CopyAttachmentToEguiNode,
+            DepthAttachmentId, EguiDraw, GraphNode, OutputToFrameBufferNode, RenderPassNode, VPId,
+        },
+        mesh::Mesh,
+    },
+    math::float4x4,
+};
 
 enum RenderPassState {
     None,
@@ -113,7 +121,10 @@ impl GraphicsCommand {
             unreachable!()
         };
 
-        let draw_call = BaseDraw { mesh, local_to_world };
+        let draw_call = BaseDraw {
+            mesh,
+            local_to_world,
+        };
         render_pass.draws.push(draw_call);
     }
 

@@ -128,10 +128,7 @@ pub trait Drawer: Any {
 
     fn ui(&self, ui: &mut egui::Ui, messager: &mut Messager, log: &mut Log);
 
-    fn render(
-        &self,
-        messager: &mut Messager,
-    ) -> Option<GraphicsCommand>;
+    fn render(&self, messager: &mut Messager) -> Option<GraphicsCommand>;
 
     fn close(&self, messager: &mut Messager);
 

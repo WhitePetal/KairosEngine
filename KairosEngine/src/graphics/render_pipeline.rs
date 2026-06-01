@@ -2,7 +2,23 @@ use std::{error::Error, sync::Arc};
 
 use petgraph::visit::{DfsEvent, Reversed, depth_first_search};
 use wgpu::{
-    Adapter, AddressMode, BackendOptions, Backends, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType, BlendState, BufferUsages, ColorTargetState, ColorWrites, CommandBuffer, CommandEncoder, CommandEncoderDescriptor, CurrentSurfaceTexture, DepthBiasState, DepthStencilState, Device, ExperimentalFeatures, Extent3d, Face, Features, FilterMode, FragmentState, FrontFace, InstanceFlags, Limits, LoadOp, LoadOpDontCare, MemoryBudgetThresholds, MemoryHints, MipmapFilterMode, MultisampleState, Operations, Origin3d, PipelineCompilationOptions, PipelineLayoutDescriptor, PolygonMode, PowerPreference, PresentMode, PrimitiveState, PrimitiveTopology, Queue, RenderPassColorAttachment, RenderPassDepthStencilAttachment, RenderPassDescriptor, RenderPipelineDescriptor, RequestAdapterOptions, SamplerBindingType, ShaderModuleDescriptor, ShaderSource, ShaderStages, StencilState, StoreOp, Surface, SurfaceConfiguration, SurfaceTexture, TexelCopyBufferLayout, TexelCopyTextureInfo, TextureFormat, TextureSampleType, TextureUsages, TextureView, TextureViewDescriptor, TextureViewDimension, Trace, VertexAttribute, VertexBufferLayout, VertexFormat, VertexState, VertexStepMode, util::{BufferInitDescriptor, DeviceExt}, wgt::{DeviceDescriptor, SamplerDescriptor, TextureDescriptor}
+    Adapter, AddressMode, BackendOptions, Backends, BindGroup, BindGroupDescriptor, BindGroupEntry,
+    BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType,
+    BlendState, BufferUsages, ColorTargetState, ColorWrites, CommandBuffer, CommandEncoder,
+    CommandEncoderDescriptor, CurrentSurfaceTexture, DepthBiasState, DepthStencilState, Device,
+    ExperimentalFeatures, Extent3d, Face, Features, FilterMode, FragmentState, FrontFace,
+    InstanceFlags, Limits, LoadOp, LoadOpDontCare, MemoryBudgetThresholds, MemoryHints,
+    MipmapFilterMode, MultisampleState, Operations, Origin3d, PipelineCompilationOptions,
+    PipelineLayoutDescriptor, PolygonMode, PowerPreference, PresentMode, PrimitiveState,
+    PrimitiveTopology, Queue, RenderPassColorAttachment, RenderPassDepthStencilAttachment,
+    RenderPassDescriptor, RenderPipelineDescriptor, RequestAdapterOptions, SamplerBindingType,
+    ShaderModuleDescriptor, ShaderSource, ShaderStages, StencilState, StoreOp, Surface,
+    SurfaceConfiguration, SurfaceTexture, TexelCopyBufferLayout, TexelCopyTextureInfo,
+    TextureFormat, TextureSampleType, TextureUsages, TextureView, TextureViewDescriptor,
+    TextureViewDimension, Trace, VertexAttribute, VertexBufferLayout, VertexFormat, VertexState,
+    VertexStepMode,
+    util::{BufferInitDescriptor, DeviceExt},
+    wgt::{DeviceDescriptor, SamplerDescriptor, TextureDescriptor},
 };
 use winit::{dpi::PhysicalSize, window::Window};
 
@@ -13,7 +29,7 @@ use crate::{
         graphics_graph::{self, GraphicsGraph, graphics_node::RenderPassNode},
         vertex::Vertex,
     },
-    math::{float4, float4x4},
+    math::{float2, float3, float4, float4x4},
 };
 
 pub struct RenderPipeline {
@@ -238,8 +254,9 @@ impl RenderPipeline {
             // 绑了 internal id 的，就找有没有internal texture view，有则渲染到internal
             // TODO: 获取没有 internal texture view 时，我这里应该创建？
             if let Some(internal_attachement_id) = attachment.bind_internal_id {
-                if let Some(internal_texture_view) =
-                    self.internal_texture_views.get(internal_attachement_id as usize)
+                if let Some(internal_texture_view) = self
+                    .internal_texture_views
+                    .get(internal_attachement_id as usize)
                     && let Some(internal_texture_view) = internal_texture_view
                 {
                     let internal_texture_view = internal_texture_view.clone();
@@ -265,7 +282,7 @@ impl RenderPipeline {
             }
         }
         for view in &attachment_views {
-            let render_pass_color_attachment = RenderPassColorAttachment{
+            let render_pass_color_attachment = RenderPassColorAttachment {
                 view,
                 depth_slice: None,
                 resolve_target: None,
@@ -283,19 +300,19 @@ impl RenderPipeline {
         }
 
         for attachment in depth_attachments {
-            let depth = self.device.create_texture(&TextureDescriptor { 
-                label: attachment.label, 
+            let depth = self.device.create_texture(&TextureDescriptor {
+                label: attachment.label,
                 size: Extent3d {
                     width: attachment.width,
                     height: attachment.height,
                     depth_or_array_layers: 1,
-                }, 
-                mip_level_count: 1, 
-                sample_count: 1, 
-                dimension: wgpu::TextureDimension::D2, 
-                format: attachment.format.into(), 
-                usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING, 
-                view_formats: &[]
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: attachment.format.into(),
+                usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
             });
             let view = depth.create_view(&TextureViewDescriptor::default());
             depth_attachment_views.push(view);
@@ -303,18 +320,14 @@ impl RenderPipeline {
         for view in &depth_attachment_views {
             let attachment = RenderPassDepthStencilAttachment {
                 view: &view,
-                depth_ops: Some(
-                    Operations { 
-                        load: LoadOp::Clear(1.0), 
-                        store: StoreOp::Store
-                    }
-                ),
-                stencil_ops: Some(
-                    Operations { 
-                        load: LoadOp::DontCare(LoadOpDontCare::default()), 
-                        store: StoreOp::Store
-                    }
-                )
+                depth_ops: Some(Operations {
+                    load: LoadOp::Clear(1.0),
+                    store: StoreOp::Store,
+                }),
+                stencil_ops: Some(Operations {
+                    load: LoadOp::DontCare(LoadOpDontCare::default()),
+                    store: StoreOp::Store,
+                }),
             };
             render_pass_depth_attachments.push(attachment);
         }
@@ -332,19 +345,20 @@ impl RenderPipeline {
                 usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
             });
             let vp_bind_group_layout =
-                self.device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-                    label: Some("VP Buffer Bind Group Layout"),
-                    entries: &[BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: ShaderStages::VERTEX,
-                        ty: BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
-                            has_dynamic_offset: false,
-                            min_binding_size: None,
-                        },
-                        count: None,
-                    }],
-                });
+                self.device
+                    .create_bind_group_layout(&BindGroupLayoutDescriptor {
+                        label: Some("VP Buffer Bind Group Layout"),
+                        entries: &[BindGroupLayoutEntry {
+                            binding: 0,
+                            visibility: ShaderStages::VERTEX,
+                            ty: BindingType::Buffer {
+                                ty: wgpu::BufferBindingType::Uniform,
+                                has_dynamic_offset: false,
+                                min_binding_size: None,
+                            },
+                            count: None,
+                        }],
+                    });
             let vp_bind_group = self.device.create_bind_group(&BindGroupDescriptor {
                 label: Some("VP Buffer Bind Group"),
                 layout: &vp_bind_group_layout,
@@ -387,7 +401,7 @@ impl RenderPipeline {
                         &mut self.egui_renderer,
                         &self.texture_bind_group_layout,
                         &self.texture_bind_group,
-                        & render_pass_color_attachments,
+                        &render_pass_color_attachments,
                         &render_pass_depth_attachments,
                         &vp_bind_groups,
                         &render_pass_node,
@@ -464,9 +478,10 @@ impl RenderPipeline {
     ) -> Option<Vec<CommandBuffer>> {
         let attachment_ids = &render_pass_node.attachments;
 
-        let color_attachments = attachment_ids.iter().map(|id| {
-            Some(render_pass_color_attachments[id.0].clone())
-        }).collect::<Vec<_>>();
+        let color_attachments = attachment_ids
+            .iter()
+            .map(|id| Some(render_pass_color_attachments[id.0].clone()))
+            .collect::<Vec<_>>();
 
         let (depth_attachment, depth_state) = {
             if let Some(depth_index) = render_pass_node.depth_stencil_attachment {
@@ -476,7 +491,7 @@ impl RenderPipeline {
                     depth_write_enabled: Some(true),
                     depth_compare: Some(wgpu::CompareFunction::LessEqual),
                     stencil: StencilState::default(),
-                    bias: DepthBiasState::default()
+                    bias: DepthBiasState::default(),
                 };
                 (Some(depth_attachment), Some(depth_state))
             } else {
@@ -494,7 +509,9 @@ impl RenderPipeline {
             .forget_lifetime();
 
         // build pipeline
-        if let Some((vp_bind_group_layout, vp_bind_group)) = vp_bind_groups.get(render_pass_node.vp_id.0) {
+        if let Some((vp_bind_group_layout, vp_bind_group)) =
+            vp_bind_groups.get(render_pass_node.vp_id.0)
+        {
             let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
                 bind_group_layouts: &[Some(texture_bind_group_layout), Some(vp_bind_group_layout)],
@@ -515,25 +532,25 @@ impl RenderPipeline {
                     VertexAttribute {
                         offset: 0,
                         format: VertexFormat::Float32x4,
-                        shader_location: 5
+                        shader_location: 5,
                     },
                     VertexAttribute {
                         offset: std::mem::size_of::<float4>() as wgpu::BufferAddress,
                         format: VertexFormat::Float32x4,
-                        shader_location: 6
+                        shader_location: 6,
                     },
                     VertexAttribute {
                         offset: (std::mem::size_of::<float4>() * 2) as wgpu::BufferAddress,
                         format: VertexFormat::Float32x4,
-                        shader_location: 7
+                        shader_location: 7,
                     },
                     VertexAttribute {
                         offset: (std::mem::size_of::<float4>() * 3) as wgpu::BufferAddress,
                         format: VertexFormat::Float32x4,
-                        shader_location: 8
+                        shader_location: 8,
                     },
                 ],
-                step_mode: VertexStepMode::Instance
+                step_mode: VertexStepMode::Instance,
             };
 
             let draws = &render_pass_node.draw_instances;
@@ -565,6 +582,21 @@ impl RenderPipeline {
                             format: VertexFormat::Float32x2,
                             shader_location: 2,
                         },
+                        VertexAttribute {
+                            offset: (core::mem::size_of::<float4>() * 2
+                                + core::mem::size_of::<float2>())
+                                as wgpu::BufferAddress,
+                            format: VertexFormat::Float32x3,
+                            shader_location: 3,
+                        },
+                        VertexAttribute {
+                            offset: (core::mem::size_of::<float4>() * 2
+                                + core::mem::size_of::<float2>()
+                                + core::mem::size_of::<float3>())
+                                as wgpu::BufferAddress,
+                            format: VertexFormat::Float32x4,
+                            shader_location: 4,
+                        },
                     ],
                 };
 
@@ -578,7 +610,7 @@ impl RenderPipeline {
                 let instancing_buffer = device.create_buffer_init(&BufferInitDescriptor {
                     label: Some("Instancing Bufferr"),
                     contents: bytemuck::cast_slice(&draw.local_to_worlds),
-                    usage: BufferUsages::VERTEX
+                    usage: BufferUsages::VERTEX,
                 });
 
                 let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
@@ -588,7 +620,10 @@ impl RenderPipeline {
                         module: &shader,
                         entry_point: Some("vs_main"),
                         compilation_options: PipelineCompilationOptions::default(),
-                        buffers: &[vertex_buffer_layout, instancing_vertex_buffer_layout.clone()],
+                        buffers: &[
+                            vertex_buffer_layout,
+                            instancing_vertex_buffer_layout.clone(),
+                        ],
                     },
                     primitive: PrimitiveState {
                         topology: PrimitiveTopology::TriangleList,
@@ -604,7 +639,12 @@ impl RenderPipeline {
                         entry_point: Some("fs_main"),
                         compilation_options: PipelineCompilationOptions::default(),
                         targets: &[Some(ColorTargetState {
-                            format: color_attachments[0].as_ref().unwrap().view.texture().format(),
+                            format: color_attachments[0]
+                                .as_ref()
+                                .unwrap()
+                                .view
+                                .texture()
+                                .format(),
                             blend: Some(BlendState::REPLACE),
                             write_mask: ColorWrites::all(),
                         })],
@@ -622,7 +662,7 @@ impl RenderPipeline {
                 render_pass.set_pipeline(&pipeline);
                 render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
                 render_pass.set_vertex_buffer(1, instancing_buffer.slice(..));
-                render_pass.set_index_buffer(indices_buffer.slice(..), wgpu::IndexFormat::Uint16);
+                render_pass.set_index_buffer(indices_buffer.slice(..), wgpu::IndexFormat::Uint32);
                 render_pass.draw_indexed(0..indices_num, 0, 0..draw.local_to_worlds.len() as u32);
             }
         };

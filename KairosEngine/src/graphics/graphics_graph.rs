@@ -1,6 +1,6 @@
-pub mod graphics_node;
-mod graphics_command;
 mod graph;
+mod graphics_command;
+pub mod graphics_node;
 
-pub use graphics_command::*;
 pub use graph::*;
+pub use graphics_command::*;

@@ -1,6 +1,5 @@
 use crate::{graphics::mesh::Mesh, math::float4x4};
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ColorAttachmentId(pub usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

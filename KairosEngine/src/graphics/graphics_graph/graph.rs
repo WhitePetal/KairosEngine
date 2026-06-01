@@ -1,10 +1,22 @@
 use std::collections::{HashMap, HashSet};
 
-use petgraph::{Direction::{Incoming, Outgoing}, graph::NodeIndex, stable_graph::StableDiGraph, visit::EdgeRef};
+use petgraph::{
+    Direction::{Incoming, Outgoing},
+    graph::NodeIndex,
+    stable_graph::StableDiGraph,
+    visit::EdgeRef,
+};
 
-use crate::{graphics::{attachment::Attachment, graphics_graph::{GraphicsCommand, graphics_node::{GraphNode, InstancingDraw, RenderPassNode}}}, math::float4x4};
-
-
+use crate::{
+    graphics::{
+        attachment::Attachment,
+        graphics_graph::{
+            GraphicsCommand,
+            graphics_node::{GraphNode, InstancingDraw, RenderPassNode},
+        },
+    },
+    math::float4x4,
+};
 
 pub struct GraphicsGraph {
     pub attachments: Vec<Attachment>,
@@ -14,7 +26,6 @@ pub struct GraphicsGraph {
     pub ending_nodes: Vec<NodeIndex>,
     pub free_egui_textures: Vec<egui::TextureId>,
 }
-
 
 impl GraphicsGraph {
     pub fn build(commands: Vec<GraphicsCommand>) -> Self {
@@ -69,8 +80,11 @@ impl GraphicsGraph {
                             attachment.0 += graph_attachments_start;
                         });
 
-                    if let Some(depth_stencil_attachment) = &mut render_pass_node.depth_stencil_attachment {
-                        depth_stencil_attachment.0 = depth_stencil_attachment.0 + graph_depth_attachments_start;
+                    if let Some(depth_stencil_attachment) =
+                        &mut render_pass_node.depth_stencil_attachment
+                    {
+                        depth_stencil_attachment.0 =
+                            depth_stencil_attachment.0 + graph_depth_attachments_start;
                     }
 
                     render_pass_node.vp_id.0 += graph_vp_start;
@@ -78,7 +92,8 @@ impl GraphicsGraph {
                     graph[node] = GraphNode::RenderPass(render_pass_node);
                 }
                 GraphNode::BindAttachmentToEgui(mut bind_attachment_to_egui_node) => {
-                    let prev = writed_attachments.get(&bind_attachment_to_egui_node.attachment_id.0);
+                    let prev =
+                        writed_attachments.get(&bind_attachment_to_egui_node.attachment_id.0);
                     bind_attachment_to_egui_node.attachment_id.0 += graph_attachments_start;
 
                     let node = graph.add_node(GraphNode::BindAttachmentToEgui(
@@ -254,30 +269,29 @@ impl GraphicsGraph {
     }
 
     fn optimize_nodes(graph: &mut StableDiGraph<GraphNode, usize>) {
-        graph.node_weights_mut().for_each(|node| {
-            match node {
-                GraphNode::None => {},
-                GraphNode::RenderPass(render_pass_node) => {
-                    let mut mesh_id_to_instance = HashMap::<usize, InstancingDraw>::new();
-                    for draw in render_pass_node.draws.drain(..) {
-                        let mesh_id = draw.mesh.id;
-                        if let Some(instance) = mesh_id_to_instance.get_mut(&mesh_id) {
-                            instance.local_to_worlds.push(draw.local_to_world);
-                        } else {
-                            let instance = InstancingDraw {
-                                mesh: draw.mesh,
-                                local_to_worlds: vec![draw.local_to_world]
-                            };
-                            mesh_id_to_instance.insert(mesh_id, instance);
-                        }
+        graph.node_weights_mut().for_each(|node| match node {
+            GraphNode::None => {}
+            GraphNode::RenderPass(render_pass_node) => {
+                let mut mesh_id_to_instance = HashMap::<usize, InstancingDraw>::new();
+                for draw in render_pass_node.draws.drain(..) {
+                    let mesh_id = draw.mesh.id;
+                    if let Some(instance) = mesh_id_to_instance.get_mut(&mesh_id) {
+                        instance.local_to_worlds.push(draw.local_to_world);
+                    } else {
+                        let instance = InstancingDraw {
+                            mesh: draw.mesh,
+                            local_to_worlds: vec![draw.local_to_world],
+                        };
+                        mesh_id_to_instance.insert(mesh_id, instance);
                     }
-                    render_pass_node.draw_instances = mesh_id_to_instance.into_values().collect::<Vec<_>>();
-                },
-                GraphNode::OutputToFrameBuffer(_) => {},
-                GraphNode::BindAttachmentToEgui(_) => {},
-                GraphNode::CopyAttachmentToEGui(_) => {},
-                GraphNode::FreeEguiTextureId(_) => {},
+                }
+                render_pass_node.draw_instances =
+                    mesh_id_to_instance.into_values().collect::<Vec<_>>();
             }
+            GraphNode::OutputToFrameBuffer(_) => {}
+            GraphNode::BindAttachmentToEgui(_) => {}
+            GraphNode::CopyAttachmentToEGui(_) => {}
+            GraphNode::FreeEguiTextureId(_) => {}
         });
     }
 }

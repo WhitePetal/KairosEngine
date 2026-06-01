@@ -11,12 +11,15 @@ struct a2v {
     @location(0) vertex: vec4f,
     @location(1) color: vec4f,
     @location(2) texcoord: vec2f,
+    @location(3) normal: vec3f,
+    @location(4) tangent: vec4f,
 }
 
 struct v2f {
     @builtin(position) pos: vec4f,
     @location(0) color: vec4f,
     @location(1) uv: vec2f,
+    @location(2) normal: vec3f,
 };
 
 @group(0) @binding(0)
@@ -38,9 +41,11 @@ fn vs_main(v: a2v, instancing: InstanceInput) -> v2f {
         instancing.model_matrix_3,
     );
 
-    o.pos = matrix_vp * local_to_world * vec4f(v.vertex.xyz, 1.0);
+    o.pos = matrix_vp * local_to_world * 0.0001 * vec4f(v.vertex.xyz, 1.0);
+    var normal_world = normalize(local_to_world * vec4f(v.normal.xyz, 0.0));
     o.color = v.color;
     o.uv = v.texcoord;
+    o.normal = normal_world.xyz;
 
     return o;
 }
@@ -54,6 +59,7 @@ fn fs_main(i: v2f) -> gbuffer {
     var out: gbuffer;
     let tex = textureSample(texture, s_texture, i.uv);
     let color = i.color * tex;
-    out.color = color;
+    // out.color = color;
+    out.color = vec4f(i.normal * 0.5 + vec3f(0.5), 1.0);
     return out;
 }

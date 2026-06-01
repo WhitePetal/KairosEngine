@@ -6,11 +6,15 @@ use crate::graphics::vertex::Vertex;
 pub struct Mesh {
     pub id: usize,
     pub vertices: Vec<Vertex>,
-    pub indices: Vec<u16>,
+    pub indices: Vec<u32>,
 }
 
 impl Mesh {
-    pub fn new(id: usize, vertices: Vec<Vertex>, indices: Vec<u16>) -> Self {
-        Self { id, vertices, indices }
+    pub fn new(id: usize, vertices: Vec<Vertex>, indices: Vec<u32>) -> Self {
+        Self {
+            id,
+            vertices,
+            indices,
+        }
     }
 }

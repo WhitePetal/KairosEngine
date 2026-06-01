@@ -46,6 +46,7 @@ epaint = "0.34.2"
 egui-winit = "0.34.2"
 egui-wgpu = "0.34.2"
 parking_lot = "0.12.5"
+gltf = "1.4.1"
 # rapier3d = { version = "0.32.0", features = [ "simd-nightly", "parallel", "serde-serialize" ] }
 # kira = "0.12.0"
 # puffin = "0.20.0"

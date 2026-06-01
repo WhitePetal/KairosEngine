@@ -651,6 +651,13 @@ impl Div for &float3 {
     }
 }
 
+impl From<[f32; 3]> for float3 {
+    #[inline(always)]
+    fn from(value: [f32; 3]) -> Self {
+        Self::from_array(value)
+    }
+}
+
 ///
 /// column vector
 #[repr(transparent)]
