@@ -98,9 +98,11 @@ impl RenderPipeline {
         surface.configure(&device, &surface_config);
 
         let texture_handle = texture_assets
-            .load("res/textures/kairos_texture.texture".into())
-            .await?;
+            .load("res/textures/kairos_texture.texture".into());
         let texture_handle = texture_handle.as_ref();
+        while texture_assets.get(texture_handle).is_none() {
+            texture_assets.handle_recves();
+        }
         let texture_asset = &texture_assets.get(texture_handle).ok_or("no data")?.texture;
         let texture_data = &texture_asset.data;
 
