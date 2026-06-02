@@ -1,4 +1,4 @@
-use std::{any::type_name, fs};
+use std::{any::type_name, fs, path::PathBuf};
 
 use egui::pos2;
 use serde::{Deserialize, Serialize};
@@ -6,7 +6,7 @@ use toml::from_str;
 
 use crate::{
     graphics::{
-        attachment::Attachment, camera::Camera, graphics_graph::GraphicsCommand, mesh::Mesh,
+        attachment::Attachment, camera::Camera, graphics_graph::GraphicsCommand, mesh::{Mesh, MeshAsset, Meta},
         vertex::Vertex,
     },
     kairos_editor::ui::{Drawer, Message, paths},
@@ -154,11 +154,7 @@ fn load_mesh_from_primitive(
                 .ok()
         })?;
 
-    // for triangle in indices.chunks_exact_mut(3) {
-    //     triangle.swap(1, 2);
-    // }
-
-    Some(Mesh::new(0, vertices, indices))
+    Some(Mesh::new(vertices, indices))
 }
 
 fn load_mesh_from_node(

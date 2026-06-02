@@ -8,6 +8,8 @@ use std::{
     simd::{f32x2, f32x4, num::SimdFloat, simd_swizzle},
 };
 
+use serde::{Deserialize, Serialize};
+
 pub trait Vector
 where
     Self: Add<f32, Output = Self>
@@ -114,6 +116,10 @@ impl float2 {
     #[inline(always)]
     pub fn from_array(arr: [f32; 2]) -> Self {
         Self(f32x2::from_array(arr))
+    }
+    #[inline(always)]
+    pub fn to_array(&self) -> [f32; 2] {
+        self.0.to_array()
     }
 }
 
@@ -364,6 +370,22 @@ impl Div for &float2 {
     }
 }
 
+impl Serialize for float2 {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer {
+        self.to_array().serialize(serializer)
+    }
+}
+impl<'de> Deserialize<'de> for float2 {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de> {
+        let arry = <[f32;2]>::deserialize(deserializer)?;
+        Ok(Self::from_array(arry))
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[allow(non_camel_case_types)]
 pub struct float3(pub f32x4);
@@ -380,6 +402,10 @@ impl float3 {
     #[inline(always)]
     pub fn from_array_4(arr: [f32; 4]) -> Self {
         Self(f32x4::from_array(arr))
+    }
+    #[inline(always)]
+    pub fn to_array(&self) -> [f32;4] {
+        self.0.to_array()
     }
 
     #[inline(always)]
@@ -658,6 +684,22 @@ impl From<[f32; 3]> for float3 {
     }
 }
 
+impl Serialize for float3 {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer {
+        self.to_array().serialize(serializer)
+    }
+}
+impl<'de> Deserialize<'de> for float3 {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de> {
+        let arry = <[f32;4]>::deserialize(deserializer)?;
+        Ok(Self::from_array_4(arry))
+    }
+}
+
 ///
 /// column vector
 #[repr(transparent)]
@@ -674,6 +716,11 @@ impl float4 {
     #[inline(always)]
     pub(crate) fn from_simd(v: f32x4) -> Self {
         Self(v)
+    }
+
+    #[inline(always)]
+    pub fn from_array(array: [f32; 4]) -> Self {
+        Self::from_simd(f32x4::from_array(array))
     }
 
     #[inline(always)]
@@ -1409,5 +1456,22 @@ impl Div for &float4 {
     #[inline(always)]
     fn div(self, rhs: Self) -> Self::Output {
         *self / *rhs
+    }
+}
+
+impl Serialize for float4 {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer {
+        self.to_array().serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for float4 {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de> {
+        let arry = <[f32;4]>::deserialize(deserializer)?;
+        Ok(Self::from_array(arry))
     }
 }

@@ -274,7 +274,8 @@ impl GraphicsGraph {
             GraphNode::RenderPass(render_pass_node) => {
                 let mut mesh_id_to_instance = HashMap::<usize, InstancingDraw>::new();
                 for draw in render_pass_node.draws.drain(..) {
-                    let mesh_id = draw.mesh.id;
+                    todo!();
+                    let mesh_id = 0;
                     if let Some(instance) = mesh_id_to_instance.get_mut(&mesh_id) {
                         instance.local_to_worlds.push(draw.local_to_world);
                     } else {
