@@ -20,7 +20,6 @@ use crate::graphics::attachment::{Attachment, InternalAttachmentId};
 use crate::graphics::graphics_graph::{GraphicsCommand, GraphicsGraph};
 use crate::math::float4x4;
 use crate::{
-    asset_loader::texture::TextureAssets,
     graphics::render_pipeline::RenderPipeline,
     kairos_dialog,
     kairos_editor::{KairosEngine, consts, ui::paths},

@@ -291,12 +291,8 @@ impl Drawer for SceneWindow {
             100.,
         );
 
-        let (document, buffers, _images) = gltf::import("res/models/Suzanne.glb").unwrap();
-        let mesh = load_first_scene_mesh(&document, &buffers);
-
-        let Some(mesh) = mesh else {
-            return None;
-        };
+        let toml = std::fs::read("res/models/Suzanne.mesh").unwrap();
+        let mesh = toml::from_slice::<MeshAsset>(&toml).unwrap().mesh;
 
         let vp_id =
             graphics_command.set_view_projection_matrix(camera.get_view_projection_matrix());

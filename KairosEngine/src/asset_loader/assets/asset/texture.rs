@@ -16,14 +16,17 @@ pub struct LoadedEvent {
     asset: TextureAsset,
 }
 impl asset::LoadedEvent<TextureAsset> for LoadedEvent {
+    #[inline(always)]
     fn new(index: asset::AssetIndex, asset: TextureAsset) -> Self {
         Self { index, asset }
     }
 
+    #[inline(always)]
     fn get_index(&self) -> asset::AssetIndex {
         self.index
     }
 
+    #[inline(always)]
     fn get_asset(self) -> TextureAsset {
         self.asset
     }
@@ -33,10 +36,12 @@ pub struct DropEvent {
     index: AssetIndex,
 }
 impl asset::DropEvent for DropEvent {
+    #[inline(always)]
     fn new(index: AssetIndex) -> Self {
         Self { index }
     }
 
+    #[inline(always)]
     fn get_index(&self) -> AssetIndex {
         self.index
     }
@@ -107,14 +112,17 @@ impl TextureAssetsSystem {
 }
 
 impl AssetsHandler for TextureAssetsSystem {
+    #[inline(always)]
     fn handle_receves(&mut self) {
         self.assets.handle_receves();
     }
 
+    #[inline(always)]
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
 
+    #[inline(always)]
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }
@@ -129,12 +137,14 @@ impl AssetsSystem for TextureAssetsSystem {
 
     type Loader = Loader;
 
+    #[inline(always)]
     fn get_assets(
         &self,
     ) -> &super::Assets<Self::AssetType, Self::LoadedEvent, Self::DropEvent, Self::Loader> {
         &self.assets
     }
 
+    #[inline(always)]
     fn get_assets_mut(
         &mut self,
     ) -> &mut super::Assets<Self::AssetType, Self::LoadedEvent, Self::DropEvent, Self::Loader> {
