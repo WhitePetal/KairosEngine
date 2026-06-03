@@ -14,20 +14,17 @@ pub struct Mesh {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Meta {
-    pub source_path: PathBuf
+    pub source_path: PathBuf,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MeshAsset {
     pub meta: Meta,
-    pub mesh: Mesh
+    pub mesh: Mesh,
 }
 
 impl Mesh {
     pub fn new(vertices: Vec<Vertex>, indices: Vec<u16>) -> Self {
-        Self {
-            vertices,
-            indices,
-        }
+        Self { vertices, indices }
     }
 }

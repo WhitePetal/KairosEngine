@@ -7,7 +7,7 @@ use std::{
 use anyhow::Error;
 use tokio::sync::mpsc::{Receiver, Sender};
 
-use crate::{asset_loader::{consts}, graphics::texture::TextureAsset};
+use crate::{asset_loader::consts, graphics::texture::TextureAsset};
 
 #[derive(Clone, Copy)]
 pub struct AssetIndex {
@@ -91,7 +91,10 @@ pub enum Entry<T> {
 struct CountHeader(usize);
 impl CountHeader {
     fn next(&mut self) -> AssetIndex {
-        let index = AssetIndex { index: self.0, version: 0 };
+        let index = AssetIndex {
+            index: self.0,
+            version: 0,
+        };
         self.0 = self.0 + 1;
         index
     }
@@ -111,8 +114,10 @@ pub struct TextureAssets {
 
 impl TextureAssets {
     pub fn new(capacity: usize) -> Self {
-        let (asset_loaded_sender, asset_loaded_recever) = tokio::sync::mpsc::channel(consts::TEXTURE_ASSETS_LOADED_CHANNEL_BUFFER_SIZE);
-        let (asset_drop_sender, asset_drop_recever) = tokio::sync::mpsc::channel(consts::TEXTURE_ASSETS_DROP_CHANNEL_BUFFER_SIZE);
+        let (asset_loaded_sender, asset_loaded_recever) =
+            tokio::sync::mpsc::channel(consts::TEXTURE_ASSETS_LOADED_CHANNEL_BUFFER_SIZE);
+        let (asset_drop_sender, asset_drop_recever) =
+            tokio::sync::mpsc::channel(consts::TEXTURE_ASSETS_DROP_CHANNEL_BUFFER_SIZE);
         Self {
             storages: Vec::with_capacity(capacity),
             infos: Vec::with_capacity(capacity),
@@ -181,27 +186,39 @@ impl TextureAssets {
         match &self.storages[asset_index.index as usize] {
             Entry::None => {
                 let loaded_sender = self.asset_loaded_sender.clone();
-                tokio::spawn(Self::load_asset(PathBuf::from(path), asset_index, loaded_sender));
+                tokio::spawn(Self::load_asset(
+                    PathBuf::from(path),
+                    asset_index,
+                    loaded_sender,
+                ));
                 let (handle, info) = self.create_asset_handle(path, asset_index);
                 self.infos.push(info);
                 handle
-            },
-            Entry::Loading { version } | Entry::Some { version , ..} => {
+            }
+            Entry::Loading { version } | Entry::Some { version, .. } => {
                 if *version < asset_index.version {
                     let loaded_sender = self.asset_loaded_sender.clone();
-                     tokio::spawn(Self::load_asset(PathBuf::from(path), asset_index, loaded_sender));
+                    tokio::spawn(Self::load_asset(
+                        PathBuf::from(path),
+                        asset_index,
+                        loaded_sender,
+                    ));
                     let (handle, info) = self.create_asset_handle(path, asset_index);
                     self.infos[asset_index.index] = info;
                     handle
                 } else {
                     self.get_asset_handle(asset_index)
                 }
-            },
+            }
         }
     }
 
     #[inline(always)]
-    fn create_asset_handle(&mut self, path: &str, asset_index: AssetIndex) -> (Arc<TextureHandle>, AssetInfo) {
+    fn create_asset_handle(
+        &mut self,
+        path: &str,
+        asset_index: AssetIndex,
+    ) -> (Arc<TextureHandle>, AssetInfo) {
         let sender = self.asset_drop_sender.clone();
         let handle = TextureHandle::new(asset_index, sender);
         let handle = Arc::new(handle);
@@ -238,17 +255,23 @@ impl TextureAssets {
         }
     }
 
-    async fn load_asset(path: PathBuf, asset_index: AssetIndex, sender: Sender<LoadedEvent>) -> Result<(), Error> {
-        let (texture, data) = tokio::join!(
-            Self::load_toml(&path),
-            Self::load_bin(&path),
-        );
+    async fn load_asset(
+        path: PathBuf,
+        asset_index: AssetIndex,
+        sender: Sender<LoadedEvent>,
+    ) -> Result<(), Error> {
+        let (texture, data) = tokio::join!(Self::load_toml(&path), Self::load_bin(&path),);
         let mut texture = texture?;
         let data = data?;
 
         texture.texture.data = data;
 
-        sender.send(LoadedEvent { index: asset_index, asset: texture }).await?;
+        sender
+            .send(LoadedEvent {
+                index: asset_index,
+                asset: texture,
+            })
+            .await?;
         Ok(())
     }
 

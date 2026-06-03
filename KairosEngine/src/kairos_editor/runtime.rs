@@ -15,6 +15,7 @@ use winit::{
     window::{Icon, Window},
 };
 
+use crate::asset_loader::assets::{AssetsServer, TextureAssetsSystem};
 use crate::graphics::attachment::{Attachment, InternalAttachmentId};
 use crate::graphics::graphics_graph::{GraphicsCommand, GraphicsGraph};
 use crate::math::float4x4;
@@ -51,7 +52,7 @@ pub struct KairosEditorRuntime {
     egui_ctx: egui::Context,
     egui_state: Option<egui_winit::State>,
     engine: KairosEngine,
-    texture_assets: TextureAssets,
+    assets_server: AssetsServer,
     repaint_at: Option<Instant>,
     didi_exit: bool,
 }
@@ -69,7 +70,8 @@ impl KairosEditorRuntime {
             });
         });
 
-        let texture_assets = TextureAssets::new(256);
+        let mut assets_server = AssetsServer::new();
+        assets_server.push(TextureAssetsSystem::new());
 
         Ok(Self {
             window: None,
@@ -78,7 +80,7 @@ impl KairosEditorRuntime {
             egui_ctx,
             egui_state: None,
             engine: KairosEngine::new()?,
-            texture_assets,
+            assets_server,
             repaint_at: None,
             didi_exit: false,
         })
@@ -144,10 +146,8 @@ impl KairosEditorRuntime {
             None,
         );
 
-        let render_pipeline = pollster::block_on(RenderPipeline::new(
-            window.clone(),
-            &mut self.texture_assets,
-        ))?;
+        let render_pipeline =
+            pollster::block_on(RenderPipeline::new(window.clone(), &mut self.assets_server))?;
         let render_pipeline_event_proxy = self.event_proxy.clone();
         render_pipeline
             .device
@@ -320,7 +320,7 @@ impl KairosEditorRuntime {
             self.set_repaint_delay_from_output(delay);
         }
 
-        self.texture_assets.handle_recves();
+        self.assets_server.handle();
     }
 
     fn queue_repaint_after(&mut self, delay: Duration) {

@@ -6,7 +6,10 @@ use toml::from_str;
 
 use crate::{
     graphics::{
-        attachment::Attachment, camera::Camera, graphics_graph::GraphicsCommand, mesh::{Mesh, MeshAsset, Meta},
+        attachment::Attachment,
+        camera::Camera,
+        graphics_graph::GraphicsCommand,
+        mesh::{Mesh, MeshAsset, Meta},
         vertex::Vertex,
     },
     kairos_editor::ui::{Drawer, Message, paths},

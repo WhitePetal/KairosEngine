@@ -1,9 +1,14 @@
-use std::{any::Any, collections::HashMap, path::PathBuf, pin::Pin, sync::{Arc, Weak}};
+mod texture;
 
-use anyhow::Error;
-use tokio::sync::mpsc::{Sender, Receiver};
+use std::{
+    any::Any,
+    collections::HashMap,
+    path::PathBuf,
+    sync::{Arc, Weak},
+};
+use tokio::sync::mpsc::{Receiver, Sender};
 
-
+pub use texture::TextureAssetsSystem;
 
 #[derive(Clone, Copy)]
 pub struct AssetIndex {
@@ -34,7 +39,6 @@ impl From<AssetIndex> for RecyledAssetIndex {
     }
 }
 
-
 pub trait DropEvent {
     fn new(index: AssetIndex) -> Self;
 
@@ -48,30 +52,52 @@ pub trait LoadedEvent<T> {
     fn get_asset(self) -> T;
 }
 
-pub struct AssetHandle<T> where T: DropEvent {
+pub struct AssetHandle<T>
+where
+    T: DropEvent,
+{
     index: AssetIndex,
     drop_sender: Sender<T>,
 }
-impl<T> AssetHandle<T> where T: DropEvent {
+impl<T> AssetHandle<T>
+where
+    T: DropEvent,
+{
     pub fn new(index: AssetIndex, sender: Sender<T>) -> Self {
-        Self { index, drop_sender: sender }
+        Self {
+            index,
+            drop_sender: sender,
+        }
     }
 }
-impl<T> Drop for AssetHandle<T> where T: DropEvent {
+impl<T> Drop for AssetHandle<T>
+where
+    T: DropEvent,
+{
     fn drop(&mut self) {
         let index = self.index;
         let _ = self.drop_sender.send(T::new(index));
     }
 }
 
-struct AssetInfo<T> where T: DropEvent {
+struct AssetInfo<T>
+where
+    T: DropEvent,
+{
     weak: Weak<AssetHandle<T>>,
     relive_drops: usize,
     path: PathBuf,
 }
-impl<T> AssetInfo<T> where T: DropEvent {
+impl<T> AssetInfo<T>
+where
+    T: DropEvent,
+{
     pub fn new(weak: Weak<AssetHandle<T>>, path: PathBuf) -> Self {
-        Self { weak, relive_drops: 0, path }
+        Self {
+            weak,
+            relive_drops: 0,
+            path,
+        }
     }
 }
 
@@ -84,7 +110,10 @@ pub enum Entry<T> {
 struct CounterHeader(usize);
 impl CounterHeader {
     fn next(&mut self) -> AssetIndex {
-        let index = AssetIndex { index: self.0, version: 0 };
+        let index = AssetIndex {
+            index: self.0,
+            version: 0,
+        };
         self.0 = self.0 + 1;
         index
     }
@@ -103,16 +132,24 @@ pub trait AssetsSystem: AssetsHandler {
     type DropEvent: DropEvent;
     type Loader: AssetLoader<Self::LoadedEvent>;
 
-    fn get_assets(&self) -> &Assets<Self::AssetType, Self::LoadedEvent, Self::DropEvent, Self::Loader>;
-    fn get_assets_mut(&mut self) -> &mut Assets<Self::AssetType, Self::LoadedEvent, Self::DropEvent, Self::Loader>;
+    fn get_assets(
+        &self,
+    ) -> &Assets<Self::AssetType, Self::LoadedEvent, Self::DropEvent, Self::Loader>;
+    fn get_assets_mut(
+        &mut self,
+    ) -> &mut Assets<Self::AssetType, Self::LoadedEvent, Self::DropEvent, Self::Loader>;
 }
 
 pub trait AssetLoader<T> {
-    fn load_asset(&self, path: PathBuf, asset_index: AssetIndex, sender: Sender<T>) 
-        -> Pin<Box<dyn Future<Output = Result<(), Error>> + Send + 'static>>;
+    fn load_asset(&self, path: PathBuf, asset_index: AssetIndex, sender: Sender<T>);
 }
 
-pub struct Assets<V, L, D, Loader> where L: LoadedEvent<V>, D: DropEvent, Loader: AssetLoader<L> {
+pub struct Assets<V, L, D, Loader>
+where
+    L: LoadedEvent<V>,
+    D: DropEvent,
+    Loader: AssetLoader<L>,
+{
     storages: Vec<Entry<V>>,
     infos: Vec<AssetInfo<D>>,
     recyled_indexs: Vec<RecyledAssetIndex>,
@@ -125,10 +162,22 @@ pub struct Assets<V, L, D, Loader> where L: LoadedEvent<V>, D: DropEvent, Loader
     loader: Loader,
 }
 
-impl<V, L, D, Loader> Assets<V, L, D, Loader> where L: LoadedEvent<V>, D: DropEvent, Loader: AssetLoader<L> {
-    pub fn new(loader: Loader, capacity: usize, loaded_channel_buffer_size: usize, drop_channel_buffer_size: usize) -> Self {
-        let (asset_loaded_sender, asset_loaded_recever) = tokio::sync::mpsc::channel(loaded_channel_buffer_size);
-        let (asset_drop_sender, asset_drop_recever) = tokio::sync::mpsc::channel(drop_channel_buffer_size);
+impl<V, L, D, Loader> Assets<V, L, D, Loader>
+where
+    L: LoadedEvent<V>,
+    D: DropEvent,
+    Loader: AssetLoader<L>,
+{
+    pub fn new(
+        loader: Loader,
+        capacity: usize,
+        loaded_channel_buffer_size: usize,
+        drop_channel_buffer_size: usize,
+    ) -> Self {
+        let (asset_loaded_sender, asset_loaded_recever) =
+            tokio::sync::mpsc::channel(loaded_channel_buffer_size);
+        let (asset_drop_sender, asset_drop_recever) =
+            tokio::sync::mpsc::channel(drop_channel_buffer_size);
         Self {
             storages: Vec::with_capacity(capacity),
             infos: Vec::with_capacity(capacity),
@@ -139,7 +188,7 @@ impl<V, L, D, Loader> Assets<V, L, D, Loader> where L: LoadedEvent<V>, D: DropEv
             asset_drop_sender,
             asset_drop_recever,
             head: CounterHeader(0),
-            loader
+            loader,
         }
     }
 
@@ -195,31 +244,47 @@ impl<V, L, D, Loader> Assets<V, L, D, Loader> where L: LoadedEvent<V>, D: DropEv
         }
     }
 
-    fn load_asset_handle(&mut self, path: &PathBuf, asset_index: AssetIndex) -> Arc<AssetHandle<D>> {
+    fn load_asset_handle(
+        &mut self,
+        path: &PathBuf,
+        asset_index: AssetIndex,
+    ) -> Arc<AssetHandle<D>> {
         match &self.storages[asset_index.index] {
             Entry::None => {
                 let loaded_sender = self.asset_loaded_sender.clone();
-                tokio::spawn(self.loader.load_asset(PathBuf::from(path), asset_index, loaded_sender));
+                self.storages[asset_index.index] = Entry::Loading {
+                    version: asset_index.version,
+                };
+                self.loader
+                    .load_asset(PathBuf::from(path), asset_index, loaded_sender);
                 let (handle, info) = self.create_asset_handle(path, asset_index);
                 self.infos.push(info);
                 handle
-            },
-            Entry::Loading { version } | Entry::Some { version , ..} => {
+            }
+            Entry::Loading { version } | Entry::Some { version, .. } => {
                 if *version < asset_index.version {
                     let loaded_sender = self.asset_loaded_sender.clone();
-                     tokio::spawn(self.loader.load_asset(PathBuf::from(path), asset_index, loaded_sender));
+                    self.storages[asset_index.index] = Entry::Loading {
+                        version: asset_index.version,
+                    };
+                    self.loader
+                        .load_asset(PathBuf::from(path), asset_index, loaded_sender);
                     let (handle, info) = self.create_asset_handle(path, asset_index);
                     self.infos[asset_index.index] = info;
                     handle
                 } else {
                     self.get_asset_handle(asset_index)
                 }
-            },
+            }
         }
     }
 
     #[inline(always)]
-    fn create_asset_handle(&mut self, path: &PathBuf, asset_index: AssetIndex) -> (Arc<AssetHandle<D>>, AssetInfo<D>) {
+    fn create_asset_handle(
+        &mut self,
+        path: &PathBuf,
+        asset_index: AssetIndex,
+    ) -> (Arc<AssetHandle<D>>, AssetInfo<D>) {
         let sender = self.asset_drop_sender.clone();
         let handle = AssetHandle::new(asset_index, sender);
         let handle = Arc::new(handle);

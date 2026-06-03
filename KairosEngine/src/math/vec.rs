@@ -373,15 +373,17 @@ impl Div for &float2 {
 impl Serialize for float2 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer {
+        S: serde::Serializer,
+    {
         self.to_array().serialize(serializer)
     }
 }
 impl<'de> Deserialize<'de> for float2 {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: serde::Deserializer<'de> {
-        let arry = <[f32;2]>::deserialize(deserializer)?;
+        D: serde::Deserializer<'de>,
+    {
+        let arry = <[f32; 2]>::deserialize(deserializer)?;
         Ok(Self::from_array(arry))
     }
 }
@@ -404,7 +406,7 @@ impl float3 {
         Self(f32x4::from_array(arr))
     }
     #[inline(always)]
-    pub fn to_array(&self) -> [f32;4] {
+    pub fn to_array(&self) -> [f32; 4] {
         self.0.to_array()
     }
 
@@ -687,15 +689,17 @@ impl From<[f32; 3]> for float3 {
 impl Serialize for float3 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer {
+        S: serde::Serializer,
+    {
         self.to_array().serialize(serializer)
     }
 }
 impl<'de> Deserialize<'de> for float3 {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: serde::Deserializer<'de> {
-        let arry = <[f32;4]>::deserialize(deserializer)?;
+        D: serde::Deserializer<'de>,
+    {
+        let arry = <[f32; 4]>::deserialize(deserializer)?;
         Ok(Self::from_array_4(arry))
     }
 }
@@ -1462,7 +1466,8 @@ impl Div for &float4 {
 impl Serialize for float4 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer {
+        S: serde::Serializer,
+    {
         self.to_array().serialize(serializer)
     }
 }
@@ -1470,8 +1475,9 @@ impl Serialize for float4 {
 impl<'de> Deserialize<'de> for float4 {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: serde::Deserializer<'de> {
-        let arry = <[f32;4]>::deserialize(deserializer)?;
+        D: serde::Deserializer<'de>,
+    {
+        let arry = <[f32; 4]>::deserialize(deserializer)?;
         Ok(Self::from_array(arry))
     }
 }

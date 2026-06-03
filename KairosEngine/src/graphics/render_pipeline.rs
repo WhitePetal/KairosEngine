@@ -23,7 +23,10 @@ use wgpu::{
 use winit::{dpi::PhysicalSize, window::Window};
 
 use crate::{
-    asset_loader::texture::TextureAssets,
+    asset_loader::{
+        assets::{AssetsServer, TextureAssetsSystem},
+        texture::TextureAssets,
+    },
     graphics::{
         attachment::{Attachment, AttachmentFormat, InternalAttachmentId},
         graphics_graph::{self, GraphicsGraph, graphics_node::RenderPassNode},
@@ -51,7 +54,7 @@ pub struct RenderPipeline {
 impl RenderPipeline {
     pub async fn new(
         window: Arc<Window>,
-        texture_assets: &mut TextureAssets,
+        assets_server: &mut AssetsServer,
     ) -> Result<Self, Box<dyn Error>> {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: Backends::all(),
@@ -97,13 +100,19 @@ impl RenderPipeline {
         };
         surface.configure(&device, &surface_config);
 
-        let texture_handle = texture_assets
-            .load("res/textures/kairos_texture.texture".into());
+        let texture_handle =
+            assets_server.load::<TextureAssetsSystem>("res/textures/kairos_texture.texture".into());
         let texture_handle = texture_handle.as_ref();
-        while texture_assets.get(texture_handle).is_none() {
-            texture_assets.handle_recves();
+        while assets_server
+            .get::<TextureAssetsSystem>(texture_handle)
+            .is_none()
+        {
+            assets_server.handle();
         }
-        let texture_asset = &texture_assets.get(texture_handle).ok_or("no data")?.texture;
+        let texture_asset = &assets_server
+            .get::<TextureAssetsSystem>(texture_handle)
+            .unwrap()
+            .texture;
         let texture_data = &texture_asset.data;
 
         // let texture_dimension = texture_asset.dimensions();
