@@ -1,4 +1,6 @@
+mod material;
 mod mesh;
+mod shader;
 mod texture;
 
 use std::{
@@ -11,11 +13,12 @@ use tokio::sync::mpsc::{Receiver, Sender};
 
 pub use texture::TextureAssetsSystem;
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct AssetIndex {
     index: usize,
     version: u32,
 }
+#[derive(Debug)]
 pub struct RecyledAssetIndex(AssetIndex);
 impl AssetIndex {
     pub fn new(index: usize) -> Self {
@@ -53,18 +56,19 @@ pub trait LoadedEvent<T> {
     fn get_asset(self) -> T;
 }
 
+#[derive(Debug)]
 pub struct AssetHandle<T>
 where
-    T: DropEvent,
+    T: AssetsSystem,
 {
     index: AssetIndex,
-    drop_sender: Sender<T>,
+    drop_sender: Sender<T::DropEvent>,
 }
 impl<T> AssetHandle<T>
 where
-    T: DropEvent,
+    T: AssetsSystem,
 {
-    pub fn new(index: AssetIndex, sender: Sender<T>) -> Self {
+    pub fn new(index: AssetIndex, sender: Sender<T::DropEvent>) -> Self {
         Self {
             index,
             drop_sender: sender,
@@ -73,17 +77,18 @@ where
 }
 impl<T> Drop for AssetHandle<T>
 where
-    T: DropEvent,
+    T: AssetsSystem,
 {
     fn drop(&mut self) {
         let index = self.index;
-        let _ = self.drop_sender.send(T::new(index));
+        let _ = self.drop_sender.send(T::DropEvent::new(index));
     }
 }
 
+#[derive(Debug)]
 struct AssetInfo<T>
 where
-    T: DropEvent,
+    T: AssetsSystem,
 {
     weak: Weak<AssetHandle<T>>,
     relive_drops: usize,
@@ -91,7 +96,7 @@ where
 }
 impl<T> AssetInfo<T>
 where
-    T: DropEvent,
+    T: AssetsSystem,
 {
     pub fn new(weak: Weak<AssetHandle<T>>, path: PathBuf) -> Self {
         Self {
@@ -102,12 +107,14 @@ where
     }
 }
 
+#[derive(Debug)]
 pub enum Entry<T> {
     None,
     Loading { version: u32 },
     Some { value: T, version: u32 },
 }
 
+#[derive(Debug)]
 struct CounterHeader(usize);
 impl CounterHeader {
     fn next(&mut self) -> AssetIndex {
@@ -133,44 +140,41 @@ pub trait AssetsSystem: AssetsHandler {
     type DropEvent: DropEvent;
     type Loader: AssetLoader<Self::LoadedEvent>;
 
-    fn get_assets(
-        &self,
-    ) -> &Assets<Self::AssetType, Self::LoadedEvent, Self::DropEvent, Self::Loader>;
-    fn get_assets_mut(
-        &mut self,
-    ) -> &mut Assets<Self::AssetType, Self::LoadedEvent, Self::DropEvent, Self::Loader>;
+    fn get_assets(&self) -> &Assets<Self>
+    where
+        Self: Sized;
+    fn get_assets_mut(&mut self) -> &mut Assets<Self>
+    where
+        Self: Sized;
 }
 
 pub trait AssetLoader<T> {
     fn load_asset(&self, path: PathBuf, asset_index: AssetIndex, sender: Sender<T>);
 }
 
-pub struct Assets<V, L, D, Loader>
+#[derive(Debug)]
+pub struct Assets<System>
 where
-    L: LoadedEvent<V>,
-    D: DropEvent,
-    Loader: AssetLoader<L>,
+    System: AssetsSystem,
 {
-    storages: Vec<Entry<V>>,
-    infos: Vec<AssetInfo<D>>,
+    storages: Vec<Entry<System::AssetType>>,
+    infos: Vec<AssetInfo<System>>,
     recyled_indexs: Vec<RecyledAssetIndex>,
     path_to_index: HashMap<PathBuf, AssetIndex>,
-    asset_loaded_sender: Sender<L>,
-    asset_loaded_recever: Receiver<L>,
-    asset_drop_sender: Sender<D>,
-    asset_drop_recever: Receiver<D>,
+    asset_loaded_sender: Sender<System::LoadedEvent>,
+    asset_loaded_recever: Receiver<System::LoadedEvent>,
+    asset_drop_sender: Sender<System::DropEvent>,
+    asset_drop_recever: Receiver<System::DropEvent>,
     head: CounterHeader,
-    loader: Loader,
+    loader: System::Loader,
 }
 
-impl<V, L, D, Loader> Assets<V, L, D, Loader>
+impl<System> Assets<System>
 where
-    L: LoadedEvent<V>,
-    D: DropEvent,
-    Loader: AssetLoader<L>,
+    System: AssetsSystem,
 {
     pub fn new(
-        loader: Loader,
+        loader: System::Loader,
         capacity: usize,
         loaded_channel_buffer_size: usize,
         drop_channel_buffer_size: usize,
@@ -216,7 +220,7 @@ where
         }
     }
 
-    pub fn load(&mut self, path: PathBuf) -> Arc<AssetHandle<D>> {
+    pub fn load(&mut self, path: PathBuf) -> Arc<AssetHandle<System>> {
         let asset_index = self.load_asset_index(&path);
 
         let asset_handle = self.load_asset_handle(&path, asset_index);
@@ -249,7 +253,7 @@ where
         &mut self,
         path: &PathBuf,
         asset_index: AssetIndex,
-    ) -> Arc<AssetHandle<D>> {
+    ) -> Arc<AssetHandle<System>> {
         match &self.storages[asset_index.index] {
             Entry::None => {
                 let loaded_sender = self.asset_loaded_sender.clone();
@@ -285,7 +289,7 @@ where
         &mut self,
         path: &PathBuf,
         asset_index: AssetIndex,
-    ) -> (Arc<AssetHandle<D>>, AssetInfo<D>) {
+    ) -> (Arc<AssetHandle<System>>, AssetInfo<System>) {
         let sender = self.asset_drop_sender.clone();
         let handle = AssetHandle::new(asset_index, sender);
         let handle = Arc::new(handle);
@@ -294,21 +298,21 @@ where
     }
 
     #[inline(always)]
-    fn get_asset_handle(&mut self, asset_index: AssetIndex) -> Arc<AssetHandle<D>> {
+    fn get_asset_handle(&mut self, asset_index: AssetIndex) -> Arc<AssetHandle<System>> {
         let info = &mut self.infos[asset_index.index];
         if let Some(handle) = info.weak.upgrade() {
             handle
         } else {
             info.relive_drops = info.relive_drops + 1;
             let sender = self.asset_drop_sender.clone();
-            let handle = AssetHandle::<D>::new(asset_index, sender);
+            let handle = AssetHandle::<System>::new(asset_index, sender);
             let handle = Arc::new(handle);
             info.weak = Arc::downgrade(&handle);
             handle
         }
     }
 
-    pub fn get(&self, handle: &AssetHandle<D>) -> Option<&V> {
+    pub fn get(&self, handle: &AssetHandle<System>) -> Option<&System::AssetType> {
         let entry = &self.storages[handle.index.index];
         match entry {
             Entry::None | Entry::Loading { .. } => None,
@@ -322,7 +326,7 @@ where
         }
     }
 
-    pub fn get_mut(&mut self, handle: &AssetHandle<D>) -> Option<&mut V> {
+    pub fn get_mut(&mut self, handle: &AssetHandle<System>) -> Option<&mut System::AssetType> {
         let entry = &mut self.storages[handle.index.index];
         match entry {
             Entry::None | Entry::Loading { .. } => None,

@@ -8,45 +8,43 @@ use crate::{
         assets::asset::{self, AssetIndex, Assets, AssetsHandler, AssetsSystem},
         consts,
     },
-    graphics::mesh::MeshAsset,
+    graphics::shader::ShaderAsset,
 };
 
+#[derive(Debug)]
 pub struct LoadedEvent {
     index: AssetIndex,
-    asset: MeshAsset,
+    asset: ShaderAsset,
 }
-impl asset::LoadedEvent<MeshAsset> for LoadedEvent {
-    #[inline(always)]
-    fn new(index: AssetIndex, asset: MeshAsset) -> Self {
+impl asset::LoadedEvent<ShaderAsset> for LoadedEvent {
+    fn new(index: AssetIndex, asset: ShaderAsset) -> Self {
         Self { index, asset }
     }
 
-    #[inline(always)]
     fn get_index(&self) -> AssetIndex {
         self.index
     }
 
-    #[inline(always)]
-    fn get_asset(self) -> MeshAsset {
+    fn get_asset(self) -> ShaderAsset {
         self.asset
     }
 }
 
+#[derive(Debug)]
 pub struct DropEvent {
     index: AssetIndex,
 }
 impl asset::DropEvent for DropEvent {
-    #[inline(always)]
     fn new(index: AssetIndex) -> Self {
         Self { index }
     }
 
-    #[inline(always)]
     fn get_index(&self) -> AssetIndex {
         self.index
     }
 }
 
+#[derive(Debug)]
 pub struct Loader {}
 impl Loader {
     async fn load(
@@ -55,11 +53,11 @@ impl Loader {
         sender: Sender<LoadedEvent>,
     ) -> Result<(), Error> {
         let toml = tokio::fs::read(path).await?;
-        let mesh_asset = toml::from_slice(&toml)?;
+        let shader_asset = toml::from_slice(&toml)?;
         sender
             .send(LoadedEvent {
                 index: asset_index,
-                asset: mesh_asset,
+                asset: shader_asset,
             })
             .await?;
         Ok(())
@@ -71,41 +69,36 @@ impl asset::AssetLoader<LoadedEvent> for Loader {
     }
 }
 
-pub struct MeshAssetsSystem {
+pub struct ShaderAssetsSystem {
     assets: Assets<Self>,
 }
-impl MeshAssetsSystem {
+impl ShaderAssetsSystem {
     pub fn new() -> Self {
         let loader = Loader {};
         let assets = Assets::<Self>::new(
             loader,
-            consts::MESH_ASSETS_CAPACITY,
-            consts::MESH_ASSETS_LOADED_CHANNEL_BUFFER_SIZE,
-            consts::MESH_ASSETS_DROP_CHANNEL_BUFFER_SIZE,
+            consts::SHADER_ASSETS_CAPACITY,
+            consts::SHADER_ASSETS_LOADED_CHANNEL_BUFFER_SIZE,
+            consts::SHADER_ASSETS_DROP_CHANNEL_BUFFER_SIZE,
         );
         Self { assets }
     }
 }
-
-impl AssetsHandler for MeshAssetsSystem {
-    #[inline(always)]
+impl AssetsHandler for ShaderAssetsSystem {
     fn handle_receves(&mut self) {
         self.assets.handle_receves();
     }
 
-    #[inline(always)]
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
 
-    #[inline(always)]
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }
 }
-
-impl AssetsSystem for MeshAssetsSystem {
-    type AssetType = MeshAsset;
+impl AssetsSystem for ShaderAssetsSystem {
+    type AssetType = ShaderAsset;
 
     type LoadedEvent = LoadedEvent;
 
@@ -113,13 +106,17 @@ impl AssetsSystem for MeshAssetsSystem {
 
     type Loader = Loader;
 
-    #[inline(always)]
-    fn get_assets(&self) -> &Assets<Self> {
+    fn get_assets(&self) -> &Assets<Self>
+    where
+        Self: Sized,
+    {
         &self.assets
     }
 
-    #[inline(always)]
-    fn get_assets_mut(&mut self) -> &mut Assets<Self> {
+    fn get_assets_mut(&mut self) -> &mut Assets<Self>
+    where
+        Self: Sized,
+    {
         &mut self.assets
     }
 }

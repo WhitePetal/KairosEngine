@@ -25,7 +25,7 @@ impl AssetsServer {
         self.handlers.insert(type_id, Box::new(asset_handler));
     }
 
-    pub fn load<T>(&mut self, path: PathBuf) -> Arc<AssetHandle<T::DropEvent>>
+    pub fn load<T>(&mut self, path: PathBuf) -> Arc<AssetHandle<T>>
     where
         T: AssetsSystem + 'static,
     {
@@ -38,7 +38,7 @@ impl AssetsServer {
         assets.load(path)
     }
 
-    pub fn get<T>(&self, handle: &AssetHandle<T::DropEvent>) -> Option<&T::AssetType>
+    pub fn get<T>(&self, handle: &AssetHandle<T>) -> Option<&T::AssetType>
     where
         T: AssetsSystem + 'static,
     {
@@ -51,7 +51,7 @@ impl AssetsServer {
         assets.get(handle)
     }
 
-    pub fn get_mut<T>(&mut self, handle: &AssetHandle<T::DropEvent>) -> Option<&mut T::AssetType>
+    pub fn get_mut<T>(&mut self, handle: &AssetHandle<T>) -> Option<&mut T::AssetType>
     where
         T: AssetsSystem + 'static,
     {

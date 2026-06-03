@@ -11,6 +11,7 @@ use crate::{
     graphics::texture::TextureAsset,
 };
 
+#[derive(Debug)]
 pub struct LoadedEvent {
     index: AssetIndex,
     asset: TextureAsset,
@@ -32,6 +33,7 @@ impl asset::LoadedEvent<TextureAsset> for LoadedEvent {
     }
 }
 
+#[derive(Debug)]
 pub struct DropEvent {
     index: AssetIndex,
 }
@@ -47,6 +49,7 @@ impl asset::DropEvent for DropEvent {
     }
 }
 
+#[derive(Debug)]
 pub struct Loader {}
 impl Loader {
     async fn load_toml(path: &PathBuf) -> Result<TextureAsset, Error> {
@@ -94,14 +97,15 @@ impl asset::AssetLoader<LoadedEvent> for Loader {
     }
 }
 
+#[derive(Debug)]
 pub struct TextureAssetsSystem {
-    assets: Assets<TextureAsset, LoadedEvent, DropEvent, Loader>,
+    assets: Assets<Self>,
 }
 
 impl TextureAssetsSystem {
     pub fn new() -> Self {
         let loader = Loader {};
-        let assets = Assets::<TextureAsset, LoadedEvent, DropEvent, Loader>::new(
+        let assets = Assets::<Self>::new(
             loader,
             consts::TEXTURE_ASSETS_CAPACITY,
             consts::TEXTURE_ASSETS_LOADED_CHANNEL_BUFFER_SIZE,
@@ -138,16 +142,12 @@ impl AssetsSystem for TextureAssetsSystem {
     type Loader = Loader;
 
     #[inline(always)]
-    fn get_assets(
-        &self,
-    ) -> &super::Assets<Self::AssetType, Self::LoadedEvent, Self::DropEvent, Self::Loader> {
+    fn get_assets(&self) -> &super::Assets<Self> {
         &self.assets
     }
 
     #[inline(always)]
-    fn get_assets_mut(
-        &mut self,
-    ) -> &mut super::Assets<Self::AssetType, Self::LoadedEvent, Self::DropEvent, Self::Loader> {
+    fn get_assets_mut(&mut self) -> &mut super::Assets<Self> {
         &mut self.assets
     }
 }
