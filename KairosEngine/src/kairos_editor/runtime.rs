@@ -15,7 +15,7 @@ use winit::{
     window::{Icon, Window},
 };
 
-use crate::asset_loader::assets::{AssetsServer, TextureAssetsSystem};
+use crate::asset_loader::assets::{AssetsServer, MaterialAssetsSystem, MeshAssetsSystem, ShaderAssetsSystem, TextureAssetsSystem};
 use crate::graphics::attachment::{Attachment, InternalAttachmentId};
 use crate::graphics::graphics_graph::{GraphicsCommand, GraphicsGraph};
 use crate::math::float4x4;
@@ -71,6 +71,9 @@ impl KairosEditorRuntime {
 
         let mut assets_server = AssetsServer::new();
         assets_server.push(TextureAssetsSystem::new());
+        assets_server.push(ShaderAssetsSystem::new());
+        assets_server.push(MaterialAssetsSystem::new());
+        assets_server.push(MeshAssetsSystem::new());
 
         Ok(Self {
             window: None,

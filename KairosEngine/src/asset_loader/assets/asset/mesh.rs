@@ -1,11 +1,11 @@
 use std::path::PathBuf;
 
 use anyhow::{Error, Ok};
-use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::{self};
 
 use crate::{
     asset_loader::{
-        assets::asset::{self, AssetIndex, Assets, AssetsHandler, AssetsSystem},
+        assets::{DependencyLoadRequestEvent, asset::{self, AssetIndex, Assets, AssetsHandler, AssetsSystem}},
         consts,
     },
     graphics::mesh::MeshAsset,
@@ -52,7 +52,7 @@ impl Loader {
     async fn load(
         path: PathBuf,
         asset_index: AssetIndex,
-        sender: Sender<LoadedEvent>,
+        sender: mpsc::Sender<LoadedEvent>,
     ) -> Result<(), Error> {
         let toml = tokio::fs::read(path).await?;
         let mesh_asset = toml::from_slice(&toml)?;
@@ -66,7 +66,7 @@ impl Loader {
     }
 }
 impl asset::AssetLoader<LoadedEvent> for Loader {
-    fn load_asset(&self, path: PathBuf, asset_index: AssetIndex, sender: Sender<LoadedEvent>) {
+    fn load_asset(&self, path: PathBuf, asset_index: AssetIndex, sender: mpsc::Sender<LoadedEvent>, denpendency_request_sender: mpsc::Sender<DependencyLoadRequestEvent>) {
         tokio::spawn(Self::load(path, asset_index, sender));
     }
 }

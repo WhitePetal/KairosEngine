@@ -2,30 +2,30 @@ use std::{path::PathBuf, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 
-use crate::asset_loader::assets::{AssetHandle, TextureAssetsSystem};
+use crate::asset_loader::assets::{AssetHandle, ShaderAssetsSystem, TextureAssetsSystem};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Meta {
-    source_path: PathBuf,
-    texture_path: PathBuf,
-    shader_path: PathBuf,
+    pub source_path: PathBuf,
+    pub texture_path: PathBuf,
+    pub shader_path: PathBuf,
 }
 
 #[derive(Debug, Clone)]
 pub struct Material {
-    texture: Option<Arc<AssetHandle<TextureAssetsSystem>>>,
-    // shader: Arc<AssetHandle<S>>,
+    pub texture: Option<Arc<AssetHandle<TextureAssetsSystem>>>,
+    pub shader: Option<Arc<AssetHandle<ShaderAssetsSystem>>>,
 }
 
 impl Default for Material {
     fn default() -> Self {
-        Self { texture: None }
+        Self { texture: None, shader: None }
     }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MaterialAsset {
-    meta: Meta,
+    pub meta: Meta,
     #[serde(skip)]
-    material: Material,
+    pub material: Material,
 }

@@ -1,11 +1,11 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 
 use anyhow::{Error, Ok};
-use tokio::sync::mpsc::Sender;
+use tokio::sync::{mpsc::{self, Sender}, oneshot};
 
 use crate::{
     asset_loader::{
-        assets::asset::{self, AssetIndex, Assets, AssetsHandler, AssetsSystem},
+        assets::{AssetHandle, DependencyLoadRequest, DependencyLoadRequestEvent, TextureAssetsSystem, asset::{self, AssetIndex, Assets, AssetsHandler, AssetsSystem, shader::ShaderAssetsSystem}},
         consts,
     },
     graphics::material::MaterialAsset,
@@ -48,17 +48,33 @@ impl Loader {
         path: PathBuf,
         asset_index: AssetIndex,
         sender: Sender<LoadedEvent>,
+        denpendency_request_sender: mpsc::Sender<DependencyLoadRequestEvent>,
     ) -> Result<(), Error> {
         let toml = tokio::fs::read(path).await?;
-        let material_asset = toml::from_slice(&toml)?;
+        let mut material_asset: MaterialAsset = toml::from_slice(&toml)?;
         // load shader and texture
-        todo!();
+        let (shader_setback_sender, shader_setback_recever) = oneshot::channel::<Arc<AssetHandle<ShaderAssetsSystem>>>();
+        let (texture_setback_sender, texture_setback_recever) = oneshot::channel::<Arc<AssetHandle<TextureAssetsSystem>>>();
+
+        let _ = tokio::join!(
+            denpendency_request_sender.send(Box::new(DependencyLoadRequest::<ShaderAssetsSystem> {
+                dependency_path: material_asset.meta.shader_path.clone(),
+                setback_sender: shader_setback_sender
+            })),
+            denpendency_request_sender.send(Box::new(DependencyLoadRequest::<TextureAssetsSystem> {
+                dependency_path: material_asset.meta.texture_path.clone(),
+                setback_sender: texture_setback_sender
+            }))
+        );
+
+        material_asset.material.shader = Some(shader_setback_recever.await?);
+        material_asset.material.texture = Some(texture_setback_recever.await?);
+
         sender
             .send(LoadedEvent {
                 index: asset_index,
                 asset: material_asset,
-            })
-            .await?;
+            }).await?;
         Ok(())
     }
 }
@@ -68,8 +84,9 @@ impl asset::AssetLoader<LoadedEvent> for Loader {
         path: std::path::PathBuf,
         asset_index: AssetIndex,
         sender: tokio::sync::mpsc::Sender<LoadedEvent>,
+        denpendency_request_sender: mpsc::Sender<DependencyLoadRequestEvent>,
     ) {
-        tokio::spawn(Self::load(path, asset_index, sender));
+        tokio::spawn(Self::load(path, asset_index, sender, denpendency_request_sender));
     }
 }
 
@@ -91,7 +108,7 @@ impl MaterialAssetsSystem {
 
 impl AssetsHandler for MaterialAssetsSystem {
     fn handle_receves(&mut self) {
-        self.handle_receves();
+        self.assets.handle_receves();
     }
 
     fn as_any(&self) -> &dyn std::any::Any {

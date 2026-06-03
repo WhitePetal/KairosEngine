@@ -4,14 +4,16 @@ mod shader;
 mod texture;
 
 use std::{
-    any::Any,
-    collections::HashMap,
-    path::PathBuf,
-    sync::{Arc, Weak},
+    any::Any, collections::HashMap, path::PathBuf, sync::{Arc, Weak}
 };
-use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::mpsc::{self};
 
 pub use texture::TextureAssetsSystem;
+pub use shader::ShaderAssetsSystem;
+pub use material::MaterialAssetsSystem;
+pub use mesh::MeshAssetsSystem;
+
+use crate::asset_loader::assets::DependencyLoadRequestEvent;
 
 #[derive(Debug, Clone, Copy)]
 pub struct AssetIndex {
@@ -43,12 +45,12 @@ impl From<AssetIndex> for RecyledAssetIndex {
     }
 }
 
-pub trait DropEvent {
+pub trait DropEvent: Send {
     fn new(index: AssetIndex) -> Self;
 
     fn get_index(&self) -> AssetIndex;
 }
-pub trait LoadedEvent<T> {
+pub trait LoadedEvent<T>: Send {
     fn new(index: AssetIndex, asset: T) -> Self;
 
     fn get_index(&self) -> AssetIndex;
@@ -62,13 +64,13 @@ where
     T: AssetsSystem,
 {
     index: AssetIndex,
-    drop_sender: Sender<T::DropEvent>,
+    drop_sender: mpsc::Sender<T::DropEvent>,
 }
 impl<T> AssetHandle<T>
 where
     T: AssetsSystem,
 {
-    pub fn new(index: AssetIndex, sender: Sender<T::DropEvent>) -> Self {
+    pub fn new(index: AssetIndex, sender: mpsc::Sender<T::DropEvent>) -> Self {
         Self {
             index,
             drop_sender: sender,
@@ -149,7 +151,7 @@ pub trait AssetsSystem: AssetsHandler {
 }
 
 pub trait AssetLoader<T> {
-    fn load_asset(&self, path: PathBuf, asset_index: AssetIndex, sender: Sender<T>);
+    fn load_asset(&self, path: PathBuf, asset_index: AssetIndex, loaded_sender: mpsc::Sender<T>, denpendency_request_sender: mpsc::Sender<DependencyLoadRequestEvent>);
 }
 
 #[derive(Debug)]
@@ -161,10 +163,10 @@ where
     infos: Vec<AssetInfo<System>>,
     recyled_indexs: Vec<RecyledAssetIndex>,
     path_to_index: HashMap<PathBuf, AssetIndex>,
-    asset_loaded_sender: Sender<System::LoadedEvent>,
-    asset_loaded_recever: Receiver<System::LoadedEvent>,
-    asset_drop_sender: Sender<System::DropEvent>,
-    asset_drop_recever: Receiver<System::DropEvent>,
+    asset_loaded_sender: mpsc::Sender<System::LoadedEvent>,
+    asset_loaded_recever: mpsc::Receiver<System::LoadedEvent>,
+    asset_drop_sender: mpsc::Sender<System::DropEvent>,
+    asset_drop_recever: mpsc::Receiver<System::DropEvent>,
     head: CounterHeader,
     loader: System::Loader,
 }
@@ -220,10 +222,10 @@ where
         }
     }
 
-    pub fn load(&mut self, path: PathBuf) -> Arc<AssetHandle<System>> {
+    pub fn load(&mut self, path: PathBuf, denpendency_request_sender: mpsc::Sender<DependencyLoadRequestEvent>) -> Arc<AssetHandle<System>> {
         let asset_index = self.load_asset_index(&path);
 
-        let asset_handle = self.load_asset_handle(&path, asset_index);
+        let asset_handle = self.load_asset_handle(&path, asset_index, denpendency_request_sender);
 
         asset_handle
     }
@@ -253,6 +255,7 @@ where
         &mut self,
         path: &PathBuf,
         asset_index: AssetIndex,
+        denpendency_request_sender: mpsc::Sender<DependencyLoadRequestEvent>,
     ) -> Arc<AssetHandle<System>> {
         match &self.storages[asset_index.index] {
             Entry::None => {
@@ -261,7 +264,7 @@ where
                     version: asset_index.version,
                 };
                 self.loader
-                    .load_asset(PathBuf::from(path), asset_index, loaded_sender);
+                    .load_asset(PathBuf::from(path), asset_index, loaded_sender, denpendency_request_sender);
                 let (handle, info) = self.create_asset_handle(path, asset_index);
                 self.infos.push(info);
                 handle
@@ -273,7 +276,7 @@ where
                         version: asset_index.version,
                     };
                     self.loader
-                        .load_asset(PathBuf::from(path), asset_index, loaded_sender);
+                        .load_asset(PathBuf::from(path), asset_index, loaded_sender, denpendency_request_sender);
                     let (handle, info) = self.create_asset_handle(path, asset_index);
                     self.infos[asset_index.index] = info;
                     handle
