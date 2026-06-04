@@ -24,7 +24,7 @@ use winit::{dpi::PhysicalSize, window::Window};
 use crate::{
     asset_loader::assets::{AssetsServer, TextureAssetsSystem},
     graphics::{
-        attachment::{Attachment, AttachmentFormat, InternalAttachmentId},
+        attachment::{AttachmentFormat, InternalAttachmentId},
         graphics_graph::{self, GraphicsGraph, graphics_node::RenderPassNode},
         vertex::Vertex,
     },
@@ -535,11 +535,6 @@ impl RenderPipeline {
             render_pass.set_bind_group(0, texture_bind_group, &[]);
             render_pass.set_bind_group(1, vp_bind_group, &[]);
 
-            let shader = device.create_shader_module(ShaderModuleDescriptor {
-                label: Some("Shader"),
-                source: ShaderSource::Wgsl(include_str!("../../res/shaders/shader.wgsl").into()),
-            });
-
             let instancing_vertex_buffer_layout = VertexBufferLayout {
                 array_stride: core::mem::size_of::<float4x4>() as wgpu::BufferAddress,
                 attributes: &[
@@ -569,9 +564,24 @@ impl RenderPipeline {
 
             let draws = &render_pass_node.draw_instances;
             for draw in draws {
-                let Some(mesh_asset) = assets_server.get(&draw.mesh) else {
+                let Some(mesh_asset) = assets_server.get(&draw.renderer.mesh) else {
                     continue;
                 };
+                let Some(material_asset) = assets_server.get(&draw.renderer.material) else {
+                    continue;
+                };
+                let Some(shader) = &material_asset.material.shader else {
+                    unreachable!()
+                };
+                let Some(shader) = assets_server.get(shader) else {
+                    continue;
+                };
+
+                let shader = device.create_shader_module(ShaderModuleDescriptor {
+                    label: Some("Shader"),
+                    source: ShaderSource::Wgsl((&shader.shader_string).into()),
+                });
+
                 let vertices = &mesh_asset.mesh.vertices;
                 let indices = &mesh_asset.mesh.indices;
 

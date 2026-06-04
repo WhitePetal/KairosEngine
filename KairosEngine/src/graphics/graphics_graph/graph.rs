@@ -16,7 +16,7 @@ use crate::{
         attachment::Attachment,
         graphics_graph::{
             GraphicsCommand,
-            graphics_node::{GraphNode, InstancingDraw, RenderPassNode},
+            graphics_node::{GraphNode, InstancingDraw, InstancingRenderer, RenderPassNode},
         },
     },
     math::float4x4,
@@ -276,18 +276,20 @@ impl GraphicsGraph {
         graph.node_weights_mut().for_each(|node| match node {
             GraphNode::None => {}
             GraphNode::RenderPass(render_pass_node) => {
-                let mut mesh_id_to_instance =
-                    HashMap::<Arc<AssetHandle<MeshAssetsSystem>>, InstancingDraw>::new();
+                let mut mesh_id_to_instance = HashMap::<InstancingRenderer, InstancingDraw>::new();
                 for draw in render_pass_node.draws.drain(..) {
-                    let mesh_id = draw.mesh;
-                    if let Some(instance) = mesh_id_to_instance.get_mut(&mesh_id) {
+                    let renderer = InstancingRenderer {
+                        mesh: draw.mesh.clone(),
+                        material: draw.material.clone(),
+                    };
+                    if let Some(instance) = mesh_id_to_instance.get_mut(&renderer) {
                         instance.local_to_worlds.push(draw.local_to_world);
                     } else {
                         let instance = InstancingDraw {
-                            mesh: mesh_id.clone(),
+                            renderer: renderer.clone(),
                             local_to_worlds: vec![draw.local_to_world],
                         };
-                        mesh_id_to_instance.insert(mesh_id, instance);
+                        mesh_id_to_instance.insert(renderer, instance);
                     }
                 }
                 render_pass_node.draw_instances =

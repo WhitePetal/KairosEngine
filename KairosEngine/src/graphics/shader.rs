@@ -4,11 +4,11 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Meta {
-    source_path: PathBuf,
+    pub source_path: PathBuf,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShaderAsset {
-    meta: Meta,
-    shader_string: String,
+    pub meta: Meta,
+    pub shader_string: String,
 }

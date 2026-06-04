@@ -14,6 +14,7 @@ use crate::{
     graphics::mesh::MeshAsset,
 };
 
+#[derive(Debug)]
 pub struct LoadedEvent {
     index: AssetIndex,
     asset: MeshAsset,
@@ -35,6 +36,7 @@ impl asset::LoadedEvent<MeshAsset> for LoadedEvent {
     }
 }
 
+#[derive(Debug)]
 pub struct DropEvent {
     index: AssetIndex,
 }
@@ -50,6 +52,7 @@ impl asset::DropEvent for DropEvent {
     }
 }
 
+#[derive(Debug)]
 pub struct Loader {}
 impl Loader {
     async fn load(
@@ -80,6 +83,7 @@ impl asset::AssetLoader<LoadedEvent> for Loader {
     }
 }
 
+#[derive(Debug)]
 pub struct MeshAssetsSystem {
     assets: Assets<Self>,
 }

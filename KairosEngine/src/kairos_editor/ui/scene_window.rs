@@ -5,9 +5,13 @@ use serde::{Deserialize, Serialize};
 use toml::from_str;
 
 use crate::{
-    asset_loader::assets::{AssetHandle, AssetsServer, MeshAssetsSystem},
+    asset_loader::assets::{AssetHandle, AssetsServer, MaterialAssetsSystem, MeshAssetsSystem},
     graphics::{
-        attachment::Attachment, camera::Camera, graphics_graph::GraphicsCommand, mesh::Mesh,
+        attachment::Attachment,
+        camera::Camera,
+        graphics_graph::GraphicsCommand,
+        material::{self, Material, MaterialAsset},
+        mesh::Mesh,
         vertex::Vertex,
     },
     kairos_editor::ui::{Drawer, Message, paths},
@@ -27,6 +31,7 @@ struct SceneWindowModel {
     recever: Option<tokio::sync::oneshot::Receiver<egui::TextureId>>,
     drop_texture_id: Option<egui::TextureId>,
     mesh: Option<Arc<AssetHandle<MeshAssetsSystem>>>,
+    material: Option<Arc<AssetHandle<MaterialAssetsSystem>>>,
 }
 
 pub struct SceneWindow {
@@ -63,6 +68,7 @@ impl SceneWindowModel {
             recever: None,
             drop_texture_id: None,
             mesh: None,
+            material: None,
         })
     }
 }
@@ -210,7 +216,7 @@ impl Drawer for SceneWindow {
         let height = (rect.height() * pixels_per_point).round().max(1.0) as u32;
 
         if self.model.mesh.is_none() {
-            messager.send(Message::SceneWindowLoadMesh);
+            messager.send(Message::SceneWindowLoadRes);
         }
 
         if width != self.model.width || height != self.model.height {
@@ -259,6 +265,9 @@ impl Drawer for SceneWindow {
         messager: &mut super::Messager,
     ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {
         let Some(mesh) = &self.model.mesh else {
+            return None;
+        };
+        let Some(material) = &self.model.material else {
             return None;
         };
         let mut graphics_command = GraphicsCommand::new(16, 2, 4, 16);
@@ -319,7 +328,7 @@ impl Drawer for SceneWindow {
                 let scale = float3::new(1.0, 1.0, 1.0);
 
                 let local_to_world = float4x4::trs(position, rotation, scale);
-                graphics_command.draw(mesh.clone(), local_to_world);
+                graphics_command.draw(mesh.clone(), material.clone(), local_to_world);
             }
         }
 
@@ -366,8 +375,12 @@ impl SceneWindow {
         }
     }
 
-    pub fn load_mesh(&mut self, assets_server: &mut AssetsServer) {
+    pub fn load_res(&mut self, assets_server: &mut AssetsServer) {
         self.model.mesh =
             Some(assets_server.load::<MeshAssetsSystem>(PathBuf::from("res/models/Suzanne.mesh")));
+
+        self.model.material = Some(
+            assets_server.load::<MaterialAssetsSystem>(PathBuf::from("res/materials/material.mat")),
+        );
     }
 }

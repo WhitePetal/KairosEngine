@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
-    asset_loader::assets::{AssetHandle, MeshAssetsSystem},
+    asset_loader::assets::{AssetHandle, MaterialAssetsSystem, MeshAssetsSystem},
     graphics::{
         attachment::Attachment,
         graphics_graph::graphics_node::{
@@ -114,7 +114,12 @@ impl GraphicsCommand {
         self.nodes.push(GraphNode::RenderPass(render_pass));
     }
 
-    pub fn draw(&mut self, mesh: Arc<AssetHandle<MeshAssetsSystem>>, local_to_world: float4x4) {
+    pub fn draw(
+        &mut self,
+        mesh: Arc<AssetHandle<MeshAssetsSystem>>,
+        material: Arc<AssetHandle<MaterialAssetsSystem>>,
+        local_to_world: float4x4,
+    ) {
         debug_assert!(
             matches!(self.cur_render_pass, RenderPassState::Writing(_)),
             "draw while no render pass be opened"
@@ -126,6 +131,7 @@ impl GraphicsCommand {
 
         let draw_call = BaseDraw {
             mesh,
+            material,
             local_to_world,
         };
         render_pass.draws.push(draw_call);

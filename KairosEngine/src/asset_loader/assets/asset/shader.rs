@@ -11,7 +11,7 @@ use crate::{
         },
         consts,
     },
-    graphics::shader::ShaderAsset,
+    graphics::shader::{Meta, ShaderAsset},
 };
 
 #[derive(Debug)]
@@ -55,8 +55,12 @@ impl Loader {
         asset_index: AssetIndex,
         sender: mpsc::Sender<LoadedEvent>,
     ) -> Result<(), Error> {
-        let toml = tokio::fs::read(path).await?;
-        let shader_asset = toml::from_slice(&toml)?;
+        let file = tokio::fs::read(&path).await?;
+        let shader_string = String::from_utf8(file)?;
+        let shader_asset = ShaderAsset {
+            meta: Meta { source_path: path },
+            shader_string,
+        };
         sender
             .send(LoadedEvent {
                 index: asset_index,

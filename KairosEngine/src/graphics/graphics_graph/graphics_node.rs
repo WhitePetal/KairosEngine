@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
-    asset_loader::assets::{AssetHandle, MeshAssetsSystem},
-    graphics::mesh::Mesh,
+    asset_loader::assets::{AssetHandle, MaterialAssetsSystem, MeshAssetsSystem},
     math::float4x4,
 };
 
@@ -15,10 +14,16 @@ pub struct VPId(pub usize);
 
 pub struct BaseDraw {
     pub mesh: Arc<AssetHandle<MeshAssetsSystem>>,
+    pub material: Arc<AssetHandle<MaterialAssetsSystem>>,
     pub local_to_world: float4x4,
 }
-pub struct InstancingDraw {
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct InstancingRenderer {
     pub mesh: Arc<AssetHandle<MeshAssetsSystem>>,
+    pub material: Arc<AssetHandle<MaterialAssetsSystem>>,
+}
+pub struct InstancingDraw {
+    pub renderer: InstancingRenderer,
     pub local_to_worlds: Vec<float4x4>,
 }
 pub struct EguiDraw {
