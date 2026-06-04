@@ -22,7 +22,7 @@ use wgpu::{
 use winit::{dpi::PhysicalSize, window::Window};
 
 use crate::{
-    asset_loader::assets::{AssetsServer, TextureAssetsSystem},
+    asset_loader::assets::{AssetsServer},
     graphics::{
         attachment::{AttachmentFormat, InternalAttachmentId},
         graphics_graph::{self, GraphicsGraph, graphics_node::RenderPassNode},
@@ -48,7 +48,6 @@ pub struct RenderPipeline {
 impl RenderPipeline {
     pub async fn new(
         window: Arc<Window>,
-        assets_server: &mut AssetsServer,
     ) -> Result<Self, Box<dyn Error>> {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: Backends::all(),

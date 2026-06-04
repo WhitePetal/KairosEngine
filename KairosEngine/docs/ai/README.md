@@ -22,4 +22,5 @@
 | [texture-asset-toml-rkyv-hybrid-format.md](./texture-asset-toml-rkyv-hybrid-format.md) | `.texture` 资产 TOML + rkyv 混合格式：分隔符 split、memchr、预写 binary 偏移与加载方案 |
 | [coordinate-system-matrix-conventions.md](./coordinate-system-matrix-conventions.md) | 坐标系选择、DX/wgpu 风格 M/V/P 矩阵、列向量乘法与 SIMD 矩阵乘实现笔记 |
 | [graphics-graph-render-graph-conversation.md](./graphics-graph-render-graph-conversation.md) | GraphicsGraph / RenderGraph 渲染管线拆分设计讨论的完整对话记录，包含基于 `petgraph` 的编译、入口判定与执行顺序方案 |
+| [render-pipeline-resource-cache-conversation.md](./render-pipeline-resource-cache-conversation.md) | `render_pipeline.rs` 当前渲染路径中 GPU 资源、pipeline 状态、render target 与每帧临时对象的缓存边界讨论 |
 | [gltf-vertex-attribute-sets.md](./gltf-vertex-attribute-sets.md) | glTF 顶点颜色、UV 等属性集编号：`COLOR_n`、`TEXCOORD_n` 与 `gltf` reader 的 `set` 参数说明 |
