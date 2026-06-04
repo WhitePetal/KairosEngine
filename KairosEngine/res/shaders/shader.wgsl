@@ -61,7 +61,7 @@ fn fs_main(i: v2f) -> gbuffer {
     let color = i.color * tex;
     let l = normalize(vec3f(0.0, 1.0, 1.0));
     let ndotl = dot(i.normal, l) * 0.5 + 0.5;
-    // out.color = color * ndotl;
-    out.color = vec4f(ndotl);
+    out.color = color * ndotl;
+    // out.color = vec4f(ndotl);
     return out;
 }
