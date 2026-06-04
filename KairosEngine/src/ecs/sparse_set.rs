@@ -84,7 +84,8 @@ impl EntityStorage {
         );
 
         let index = self.sparse[sparse_pos.page].0[sparse_pos.slot].get_entity() as usize;
-        let target = self.head - 1;
+        self.head = self.head - 1;
+        let target = self.head;
         let will_remove = self.dense[index];
         let will_move = self.dense[target];
 
@@ -150,7 +151,8 @@ where
         );
 
         let index = self.sparse[sparse_pos.page].0[sparse_pos.slot].get_entity() as usize;
-        let target = self.head - 1;
+        self.head = self.head - 1;
+        let target = self.head;
         self.dense[target] = self.dense[index];
 
         let target_sparse_pos = SparsePos::from_entity(target);
