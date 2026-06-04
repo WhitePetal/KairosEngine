@@ -37,6 +37,36 @@ fn load_icon() -> Option<Icon> {
 
 type RuntimeResult<T> = Result<T, Box<dyn Error>>;
 
+struct FrameRateCounter {
+    last_report_at: Instant,
+    frames_since_report: u32,
+}
+
+impl FrameRateCounter {
+    fn new() -> Self {
+        Self {
+            last_report_at: Instant::now(),
+            frames_since_report: 0,
+        }
+    }
+
+    fn record_frame(&mut self) {
+        self.frames_since_report += 1;
+
+        let now = Instant::now();
+        let elapsed = now.duration_since(self.last_report_at);
+        if elapsed < Duration::from_secs(1) {
+            return;
+        }
+
+        let fps = self.frames_since_report as f64 / elapsed.as_secs_f64();
+        println!("FPS: {fps:.1}");
+
+        self.last_report_at = now;
+        self.frames_since_report = 0;
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum KairosEditorRuntimeEvent {
     RequestRepaint {
@@ -55,6 +85,7 @@ pub struct KairosEditorRuntime {
     engine: KairosEngine,
     assets_server: AssetsServer,
     repaint_at: Option<Instant>,
+    frame_rate_counter: FrameRateCounter,
     didi_exit: bool,
 }
 
@@ -86,6 +117,7 @@ impl KairosEditorRuntime {
             engine: KairosEngine::new()?,
             assets_server,
             repaint_at: None,
+            frame_rate_counter: FrameRateCounter::new(),
             didi_exit: false,
         })
     }
@@ -192,6 +224,7 @@ impl KairosEditorRuntime {
 
         let mut should_close = false;
         let mut repaint_delay = None;
+        let mut frame_presented = false;
 
         {
             let mut render_pipeline = self.render_pipeline.lock();
@@ -294,6 +327,7 @@ impl KairosEditorRuntime {
 
                     let graphics_graph = GraphicsGraph::build(graphics_commands);
                     render_pipeline.present(&mut self.assets_server, output, graphics_graph);
+                    frame_presented = true;
                 }
                 Err(error) => match error {
                     wgpu::CurrentSurfaceTexture::Lost | wgpu::CurrentSurfaceTexture::Outdated => {
@@ -312,6 +346,10 @@ impl KairosEditorRuntime {
                     }
                 },
             };
+        }
+
+        if frame_presented {
+            self.frame_rate_counter.record_frame();
         }
 
         window.request_redraw();
