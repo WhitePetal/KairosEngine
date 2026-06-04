@@ -15,7 +15,9 @@ use winit::{
     window::{Icon, Window},
 };
 
-use crate::asset_loader::assets::{AssetsServer, MaterialAssetsSystem, MeshAssetsSystem, ShaderAssetsSystem, TextureAssetsSystem};
+use crate::asset_loader::assets::{
+    AssetsServer, MaterialAssetsSystem, MeshAssetsSystem, ShaderAssetsSystem, TextureAssetsSystem,
+};
 use crate::graphics::attachment::{Attachment, InternalAttachmentId};
 use crate::graphics::graphics_graph::{GraphicsCommand, GraphicsGraph};
 use crate::math::float4x4;
@@ -208,7 +210,8 @@ impl KairosEditorRuntime {
                     let raw_input = egui_state.take_egui_input(&window);
 
                     let full_output = self.egui_ctx.run_ui(raw_input, |ui| {
-                        graphics_commands.append(&mut self.engine.render_ui());
+                        graphics_commands
+                            .append(&mut self.engine.render_ui(&mut self.assets_server));
 
                         self.engine.handle_ui(ui);
 
@@ -290,7 +293,7 @@ impl KairosEditorRuntime {
                     graphics_commands.push(egui_graphics_command);
 
                     let graphics_graph = GraphicsGraph::build(graphics_commands);
-                    render_pipeline.present(output, graphics_graph);
+                    render_pipeline.present(&mut self.assets_server, output, graphics_graph);
                 }
                 Err(error) => match error {
                     wgpu::CurrentSurfaceTexture::Lost | wgpu::CurrentSurfaceTexture::Outdated => {

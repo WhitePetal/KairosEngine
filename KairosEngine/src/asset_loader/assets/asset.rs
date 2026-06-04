@@ -4,18 +4,22 @@ mod shader;
 mod texture;
 
 use std::{
-    any::Any, collections::HashMap, path::PathBuf, sync::{Arc, Weak}
+    any::Any,
+    collections::HashMap,
+    hash::Hash,
+    path::PathBuf,
+    sync::{Arc, Weak},
 };
 use tokio::sync::mpsc::{self};
 
-pub use texture::TextureAssetsSystem;
-pub use shader::ShaderAssetsSystem;
 pub use material::MaterialAssetsSystem;
 pub use mesh::MeshAssetsSystem;
+pub use shader::ShaderAssetsSystem;
+pub use texture::TextureAssetsSystem;
 
 use crate::asset_loader::assets::DependencyLoadRequestEvent;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AssetIndex {
     index: usize,
     version: u32,
@@ -86,6 +90,23 @@ where
         let _ = self.drop_sender.send(T::DropEvent::new(index));
     }
 }
+impl<T> PartialEq for AssetHandle<T>
+where
+    T: AssetsSystem,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.index == other.index
+    }
+}
+impl<T> Eq for AssetHandle<T> where T: AssetsSystem {}
+impl<T> Hash for AssetHandle<T>
+where
+    T: AssetsSystem,
+{
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.index.hash(state);
+    }
+}
 
 #[derive(Debug)]
 struct AssetInfo<T>
@@ -151,7 +172,13 @@ pub trait AssetsSystem: AssetsHandler {
 }
 
 pub trait AssetLoader<T> {
-    fn load_asset(&self, path: PathBuf, asset_index: AssetIndex, loaded_sender: mpsc::Sender<T>, denpendency_request_sender: mpsc::Sender<DependencyLoadRequestEvent>);
+    fn load_asset(
+        &self,
+        path: PathBuf,
+        asset_index: AssetIndex,
+        loaded_sender: mpsc::Sender<T>,
+        denpendency_request_sender: mpsc::Sender<DependencyLoadRequestEvent>,
+    );
 }
 
 #[derive(Debug)]
@@ -222,7 +249,11 @@ where
         }
     }
 
-    pub fn load(&mut self, path: PathBuf, denpendency_request_sender: mpsc::Sender<DependencyLoadRequestEvent>) -> Arc<AssetHandle<System>> {
+    pub fn load(
+        &mut self,
+        path: PathBuf,
+        denpendency_request_sender: mpsc::Sender<DependencyLoadRequestEvent>,
+    ) -> Arc<AssetHandle<System>> {
         let asset_index = self.load_asset_index(&path);
 
         let asset_handle = self.load_asset_handle(&path, asset_index, denpendency_request_sender);
@@ -263,8 +294,12 @@ where
                 self.storages[asset_index.index] = Entry::Loading {
                     version: asset_index.version,
                 };
-                self.loader
-                    .load_asset(PathBuf::from(path), asset_index, loaded_sender, denpendency_request_sender);
+                self.loader.load_asset(
+                    PathBuf::from(path),
+                    asset_index,
+                    loaded_sender,
+                    denpendency_request_sender,
+                );
                 let (handle, info) = self.create_asset_handle(path, asset_index);
                 self.infos.push(info);
                 handle
@@ -275,8 +310,12 @@ where
                     self.storages[asset_index.index] = Entry::Loading {
                         version: asset_index.version,
                     };
-                    self.loader
-                        .load_asset(PathBuf::from(path), asset_index, loaded_sender, denpendency_request_sender);
+                    self.loader.load_asset(
+                        PathBuf::from(path),
+                        asset_index,
+                        loaded_sender,
+                        denpendency_request_sender,
+                    );
                     let (handle, info) = self.create_asset_handle(path, asset_index);
                     self.infos[asset_index.index] = info;
                     handle

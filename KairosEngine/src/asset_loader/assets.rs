@@ -4,10 +4,10 @@ use std::{any::TypeId, collections::HashMap, path::PathBuf, sync::Arc};
 use crate::asset_loader::assets::asset::{AssetsHandler, AssetsSystem};
 
 pub use asset::AssetHandle;
-pub use asset::TextureAssetsSystem;
-pub use asset::ShaderAssetsSystem;
 pub use asset::MaterialAssetsSystem;
 pub use asset::MeshAssetsSystem;
+pub use asset::ShaderAssetsSystem;
+pub use asset::TextureAssetsSystem;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
@@ -16,18 +16,22 @@ type DependencyLoadRequestEvent = Box<dyn DependencyLoadSetBack>;
 pub trait DependencyLoadSetBack: Send + Sync {
     fn set_back(self: Box<Self>, assets_server: &mut AssetsServer);
 }
-pub struct DependencyLoadRequest<T> where T: AssetsSystem {
+pub struct DependencyLoadRequest<T>
+where
+    T: AssetsSystem,
+{
     dependency_path: PathBuf,
     setback_sender: oneshot::Sender<Arc<AssetHandle<T>>>,
 }
-impl<T> DependencyLoadSetBack for DependencyLoadRequest<T> where T: AssetsSystem {
+impl<T> DependencyLoadSetBack for DependencyLoadRequest<T>
+where
+    T: AssetsSystem,
+{
     fn set_back(self: Box<Self>, assets_server: &mut AssetsServer) {
         let handle = assets_server.load::<T>(self.dependency_path);
         let _ = self.setback_sender.send(handle);
     }
 }
-
-
 
 pub struct AssetsServer {
     handlers: HashMap<TypeId, Box<dyn AssetsHandler>>,
@@ -37,7 +41,8 @@ pub struct AssetsServer {
 
 impl AssetsServer {
     pub fn new() -> Self {
-        let (dependency_request_sender, dependency_request_recever) = mpsc::channel::<DependencyLoadRequestEvent>(32);
+        let (dependency_request_sender, dependency_request_recever) =
+            mpsc::channel::<DependencyLoadRequestEvent>(32);
         Self {
             handlers: HashMap::new(),
             dependency_request_recever,
@@ -45,7 +50,9 @@ impl AssetsServer {
         }
     }
 
-    pub fn push<T>(&mut self, system: T) where T: AssetsSystem
+    pub fn push<T>(&mut self, system: T)
+    where
+        T: AssetsSystem,
     {
         let type_id = TypeId::of::<T>();
         self.handlers.insert(type_id, Box::new(system));

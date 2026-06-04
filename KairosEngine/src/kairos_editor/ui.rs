@@ -4,6 +4,7 @@ use std::{
 };
 
 use crate::{
+    asset_loader::assets::AssetsServer,
     graphics::{
         graphics_graph::{GraphicsCommand, GraphicsGraph},
         render_pipeline::RenderPipeline,
@@ -128,7 +129,11 @@ pub trait Drawer: Any {
 
     fn ui(&self, ui: &mut egui::Ui, messager: &mut Messager, log: &mut Log);
 
-    fn render(&self, messager: &mut Messager) -> Option<GraphicsCommand>;
+    fn render(
+        &self,
+        assets_sever: &mut AssetsServer,
+        messager: &mut Messager,
+    ) -> Option<GraphicsCommand>;
 
     fn close(&self, messager: &mut Messager);
 
@@ -424,10 +429,10 @@ impl Context {
         }
     }
 
-    pub fn render(&mut self) -> Vec<GraphicsCommand> {
+    pub fn render(&mut self, assets_server: &mut AssetsServer) -> Vec<GraphicsCommand> {
         let mut commands = Vec::new();
         self.drawers.iter().for_each(|drawer| {
-            let cmd = drawer.render(&mut self.messager);
+            let cmd = drawer.render(assets_server, &mut self.messager);
             if let Some(cmd) = cmd {
                 commands.push(cmd);
             }

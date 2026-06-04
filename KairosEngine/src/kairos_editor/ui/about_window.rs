@@ -1,6 +1,6 @@
 use std::{any::type_name, fs};
 
-use crate::graphics::render_pipeline::RenderPipeline;
+use crate::asset_loader::assets::AssetsServer;
 use crate::log::Log;
 use egui::{self, Vec2};
 use serde::{Deserialize, Serialize};
@@ -133,6 +133,7 @@ impl Drawer for AboutWindow {
 
     fn render(
         &self,
+        _assets_server: &mut AssetsServer,
         _messager: &mut Messager,
     ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {
         None

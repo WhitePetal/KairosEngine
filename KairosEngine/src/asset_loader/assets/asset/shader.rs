@@ -5,7 +5,10 @@ use tokio::sync::mpsc::{self};
 
 use crate::{
     asset_loader::{
-        assets::{DependencyLoadRequestEvent, asset::{self, AssetIndex, Assets, AssetsHandler, AssetsSystem}},
+        assets::{
+            DependencyLoadRequestEvent,
+            asset::{self, AssetIndex, Assets, AssetsHandler, AssetsSystem},
+        },
         consts,
     },
     graphics::shader::ShaderAsset,
@@ -64,7 +67,13 @@ impl Loader {
     }
 }
 impl asset::AssetLoader<LoadedEvent> for Loader {
-    fn load_asset(&self, path: PathBuf, asset_index: AssetIndex, sender: mpsc::Sender<LoadedEvent>, denpendency_request_sender: mpsc::Sender<DependencyLoadRequestEvent>) {
+    fn load_asset(
+        &self,
+        path: PathBuf,
+        asset_index: AssetIndex,
+        sender: mpsc::Sender<LoadedEvent>,
+        denpendency_request_sender: mpsc::Sender<DependencyLoadRequestEvent>,
+    ) {
         tokio::spawn(Self::load(path, asset_index, sender));
     }
 }

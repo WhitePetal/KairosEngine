@@ -5,7 +5,10 @@ use tokio::sync::mpsc::{self};
 
 use crate::{
     asset_loader::{
-        assets::{DependencyLoadRequestEvent, asset::{self, AssetIndex, Assets, AssetsHandler, AssetsSystem}},
+        assets::{
+            DependencyLoadRequestEvent,
+            asset::{self, AssetIndex, Assets, AssetsHandler, AssetsSystem},
+        },
         consts,
     },
     graphics::texture::TextureAsset,

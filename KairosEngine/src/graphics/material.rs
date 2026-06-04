@@ -19,7 +19,10 @@ pub struct Material {
 
 impl Default for Material {
     fn default() -> Self {
-        Self { texture: None, shader: None }
+        Self {
+            texture: None,
+            shader: None,
+        }
     }
 }
 

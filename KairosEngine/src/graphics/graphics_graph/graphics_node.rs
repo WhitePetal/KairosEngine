@@ -1,4 +1,10 @@
-use crate::{graphics::mesh::Mesh, math::float4x4};
+use std::sync::Arc;
+
+use crate::{
+    asset_loader::assets::{AssetHandle, MeshAssetsSystem},
+    graphics::mesh::Mesh,
+    math::float4x4,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ColorAttachmentId(pub usize);
@@ -8,11 +14,11 @@ pub struct DepthAttachmentId(pub usize);
 pub struct VPId(pub usize);
 
 pub struct BaseDraw {
-    pub mesh: Mesh,
+    pub mesh: Arc<AssetHandle<MeshAssetsSystem>>,
     pub local_to_world: float4x4,
 }
 pub struct InstancingDraw {
-    pub mesh: Mesh,
+    pub mesh: Arc<AssetHandle<MeshAssetsSystem>>,
     pub local_to_worlds: Vec<float4x4>,
 }
 pub struct EguiDraw {

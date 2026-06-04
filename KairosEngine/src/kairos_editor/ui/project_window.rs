@@ -1,7 +1,7 @@
 use std::{any::type_name, fs, path::Path};
 
 use crate::{
-    graphics::render_pipeline::RenderPipeline,
+    asset_loader::assets::AssetsServer,
     kairos_editor::{
         project_path_tree::{ProjectPath, ProjectPathGraph},
         ui::Messager,
@@ -95,6 +95,7 @@ impl Drawer for ProjectWindow {
 
     fn render(
         &self,
+        _assets_server: &mut AssetsServer,
         _messager: &mut Messager,
     ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {
         None

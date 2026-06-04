@@ -242,7 +242,12 @@ impl RenderPipeline {
         }
     }
 
-    pub fn present(&mut self, output: SurfaceTexture, graphics_graph: GraphicsGraph) {
+    pub fn present(
+        &mut self,
+        assets_server: &mut AssetsServer,
+        output: SurfaceTexture,
+        graphics_graph: GraphicsGraph,
+    ) {
         let Some(mut encoder) = self.encoder.take() else {
             return;
         };
@@ -412,6 +417,7 @@ impl RenderPipeline {
                         &render_pass_depth_attachments,
                         &vp_bind_groups,
                         &render_pass_node,
+                        assets_server,
                     );
                     if let Some(command_buffers) = &mut command_buffers {
                         more_command_buffers.append(command_buffers);
@@ -482,6 +488,7 @@ impl RenderPipeline {
         render_pass_depth_attachments: &Vec<RenderPassDepthStencilAttachment>,
         vp_bind_groups: &Vec<(BindGroupLayout, BindGroup)>,
         render_pass_node: &RenderPassNode,
+        assets_server: &mut AssetsServer,
     ) -> Option<Vec<CommandBuffer>> {
         let attachment_ids = &render_pass_node.attachments;
 
@@ -562,8 +569,11 @@ impl RenderPipeline {
 
             let draws = &render_pass_node.draw_instances;
             for draw in draws {
-                let vertices = &draw.mesh.vertices;
-                let indices = &draw.mesh.indices;
+                let Some(mesh_asset) = assets_server.get(&draw.mesh) else {
+                    continue;
+                };
+                let vertices = &mesh_asset.mesh.vertices;
+                let indices = &mesh_asset.mesh.indices;
 
                 let vertex_buffer = device.create_buffer_init(&BufferInitDescriptor {
                     label: Some("Vertex Buffer"),

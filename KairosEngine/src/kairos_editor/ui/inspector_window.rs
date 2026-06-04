@@ -1,6 +1,6 @@
 use std::{any::type_name, fs};
 
-use crate::{graphics::render_pipeline::RenderPipeline, kairos_editor::ui::Messager, log::Log};
+use crate::{asset_loader::assets::AssetsServer, kairos_editor::ui::Messager, log::Log};
 use serde::{Deserialize, Serialize};
 use toml::from_str;
 
@@ -80,6 +80,7 @@ impl Drawer for InspectorWindow {
 
     fn render(
         &self,
+        _assets_server: &mut AssetsServer,
         _messager: &mut Messager,
     ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {
         None

@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use petgraph::{
     Direction::{Incoming, Outgoing},
@@ -8,6 +11,7 @@ use petgraph::{
 };
 
 use crate::{
+    asset_loader::assets::{AssetHandle, MeshAssetsSystem},
     graphics::{
         attachment::Attachment,
         graphics_graph::{
@@ -272,15 +276,15 @@ impl GraphicsGraph {
         graph.node_weights_mut().for_each(|node| match node {
             GraphNode::None => {}
             GraphNode::RenderPass(render_pass_node) => {
-                let mut mesh_id_to_instance = HashMap::<usize, InstancingDraw>::new();
+                let mut mesh_id_to_instance =
+                    HashMap::<Arc<AssetHandle<MeshAssetsSystem>>, InstancingDraw>::new();
                 for draw in render_pass_node.draws.drain(..) {
-                    todo!();
-                    let mesh_id = 0;
+                    let mesh_id = draw.mesh;
                     if let Some(instance) = mesh_id_to_instance.get_mut(&mesh_id) {
                         instance.local_to_worlds.push(draw.local_to_world);
                     } else {
                         let instance = InstancingDraw {
-                            mesh: draw.mesh,
+                            mesh: mesh_id.clone(),
                             local_to_worlds: vec![draw.local_to_world],
                         };
                         mesh_id_to_instance.insert(mesh_id, instance);

@@ -1,4 +1,5 @@
 use crate::{
+    asset_loader::assets::AssetsServer,
     graphics::{graphics_graph::GraphicsCommand, render_pipeline::RenderPipeline},
     log::Log,
 };
@@ -37,8 +38,8 @@ impl KairosEngine {
         self.ui_context.darw(ui, &mut self.log);
     }
 
-    fn render_ui(&mut self) -> Vec<GraphicsCommand> {
-        self.ui_context.render()
+    fn render_ui(&mut self, assets_server: &mut AssetsServer) -> Vec<GraphicsCommand> {
+        self.ui_context.render(assets_server)
     }
 
     fn on_exit(&mut self) {}

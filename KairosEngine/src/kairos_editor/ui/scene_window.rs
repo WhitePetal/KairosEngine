@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use toml::from_str;
 
 use crate::{
+    asset_loader::assets::{AssetsServer, MeshAssetsSystem},
     graphics::{
         attachment::Attachment,
         camera::Camera,
@@ -251,6 +252,7 @@ impl Drawer for SceneWindow {
 
     fn render(
         &self,
+        assets_sever: &mut AssetsServer,
         messager: &mut super::Messager,
     ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {
         let mut graphics_command = GraphicsCommand::new(16, 2, 4, 16);
@@ -291,8 +293,7 @@ impl Drawer for SceneWindow {
             100.,
         );
 
-        let toml = std::fs::read("res/models/Suzanne.mesh").unwrap();
-        let mesh = toml::from_slice::<MeshAsset>(&toml).unwrap().mesh;
+        let mesh = assets_sever.load::<MeshAssetsSystem>(PathBuf::from("res/models/Suzanne.mesh"));
 
         let vp_id =
             graphics_command.set_view_projection_matrix(camera.get_view_projection_matrix());

@@ -1,6 +1,6 @@
 use std::{any::type_name, fs};
 
-use crate::{graphics::render_pipeline::RenderPipeline, log::Log};
+use crate::{asset_loader::assets::AssetsServer, log::Log};
 use egui;
 use serde::{Deserialize, Serialize};
 use toml::from_str;
@@ -86,6 +86,7 @@ impl Drawer for ConsoleWindow {
 
     fn render(
         &self,
+        _assets_server: &mut AssetsServer,
         _messager: &mut Messager,
     ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {
         None
