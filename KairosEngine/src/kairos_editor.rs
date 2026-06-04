@@ -26,8 +26,8 @@ impl KairosEngine {
 
     fn update(&mut self) {}
 
-    fn handle_ui(&mut self, ui: &mut egui::Ui) {
-        self.ui_context.handle(ui, &mut self.log);
+    fn handle_ui(&mut self, assets_server: &mut AssetsServer, ui: &mut egui::Ui) {
+        self.ui_context.handle(assets_server, ui, &mut self.log);
     }
 
     fn draw_ui(&mut self, ui: &mut egui::Ui) {

@@ -72,7 +72,7 @@ impl asset::AssetLoader<LoadedEvent> for Loader {
         path: PathBuf,
         asset_index: AssetIndex,
         sender: mpsc::Sender<LoadedEvent>,
-        denpendency_request_sender: mpsc::Sender<DependencyLoadRequestEvent>,
+        _denpendency_request_sender: mpsc::Sender<DependencyLoadRequestEvent>,
     ) {
         tokio::spawn(Self::load(path, asset_index, sender));
     }

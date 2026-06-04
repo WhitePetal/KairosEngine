@@ -76,6 +76,7 @@ pub enum Message {
     UpdateSceneWindowSize(u32, u32),
     RegesiterSceneWindowViewBind(tokio::sync::oneshot::Receiver<egui::TextureId>),
     SceneWindowTryReceTextureId,
+    SceneWindowLoadMesh,
 }
 
 struct KairosTabDrawer {
@@ -217,7 +218,7 @@ impl Context {
         });
     }
 
-    pub fn handle(&mut self, ui: &egui::Ui, _log: &mut Log) {
+    pub fn handle(&mut self, assets_server: &mut AssetsServer, ui: &egui::Ui, _log: &mut Log) {
         while let Some(msg) = self.messager.messages.pop_front() {
             match msg {
                 Message::CreateToolbar => {
@@ -423,6 +424,11 @@ impl Context {
                 Message::SceneWindowTryReceTextureId => {
                     if let Some(scene_window) = self.get_window_mut::<SceneWindow>() {
                         scene_window.try_rece_texture_id();
+                    }
+                }
+                Message::SceneWindowLoadMesh => {
+                    if let Some(scene_window) = self.get_window_mut::<SceneWindow>() {
+                        scene_window.load_mesh(assets_server);
                     }
                 }
             }

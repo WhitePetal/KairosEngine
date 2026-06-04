@@ -4,7 +4,7 @@ mod shader;
 mod texture;
 
 use std::{
-    any::Any,
+    any::{Any, TypeId, type_name},
     collections::HashMap,
     hash::Hash,
     path::PathBuf,
@@ -68,7 +68,7 @@ where
     T: AssetsSystem,
 {
     index: AssetIndex,
-    drop_sender: mpsc::Sender<T::DropEvent>,
+    drop_sender: Option<mpsc::Sender<T::DropEvent>>,
 }
 impl<T> AssetHandle<T>
 where
@@ -77,7 +77,7 @@ where
     pub fn new(index: AssetIndex, sender: mpsc::Sender<T::DropEvent>) -> Self {
         Self {
             index,
-            drop_sender: sender,
+            drop_sender: Some(sender),
         }
     }
 }
@@ -86,8 +86,12 @@ where
     T: AssetsSystem,
 {
     fn drop(&mut self) {
-        let index = self.index;
-        let _ = self.drop_sender.send(T::DropEvent::new(index));
+        if let Some(sender) = self.drop_sender.take() {
+            let index = self.index;
+            tokio::spawn(async move { sender.send(T::DropEvent::new(index)).await });
+        } else {
+            unreachable!()
+        }
     }
 }
 impl<T> PartialEq for AssetHandle<T>

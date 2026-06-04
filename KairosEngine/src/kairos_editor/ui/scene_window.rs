@@ -1,16 +1,13 @@
-use std::{any::type_name, fs, path::PathBuf};
+use std::{any::type_name, fs, path::PathBuf, sync::Arc};
 
 use egui::pos2;
 use serde::{Deserialize, Serialize};
 use toml::from_str;
 
 use crate::{
-    asset_loader::assets::{AssetsServer, MeshAssetsSystem},
+    asset_loader::assets::{AssetHandle, AssetsServer, MeshAssetsSystem},
     graphics::{
-        attachment::Attachment,
-        camera::Camera,
-        graphics_graph::GraphicsCommand,
-        mesh::{Mesh, MeshAsset, Meta},
+        attachment::Attachment, camera::Camera, graphics_graph::GraphicsCommand, mesh::Mesh,
         vertex::Vertex,
     },
     kairos_editor::ui::{Drawer, Message, paths},
@@ -29,6 +26,7 @@ struct SceneWindowModel {
     height: u32,
     recever: Option<tokio::sync::oneshot::Receiver<egui::TextureId>>,
     drop_texture_id: Option<egui::TextureId>,
+    mesh: Option<Arc<AssetHandle<MeshAssetsSystem>>>,
 }
 
 pub struct SceneWindow {
@@ -64,6 +62,7 @@ impl SceneWindowModel {
             height: 1,
             recever: None,
             drop_texture_id: None,
+            mesh: None,
         })
     }
 }
@@ -210,6 +209,10 @@ impl Drawer for SceneWindow {
         let width = (rect.width() * pixels_per_point).round().max(1.0) as u32;
         let height = (rect.height() * pixels_per_point).round().max(1.0) as u32;
 
+        if self.model.mesh.is_none() {
+            messager.send(Message::SceneWindowLoadMesh);
+        }
+
         if width != self.model.width || height != self.model.height {
             messager.send(Message::UpdateSceneWindowSize(width, height));
         }
@@ -252,9 +255,12 @@ impl Drawer for SceneWindow {
 
     fn render(
         &self,
-        assets_sever: &mut AssetsServer,
+        _assets_sever: &mut AssetsServer,
         messager: &mut super::Messager,
     ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {
+        let Some(mesh) = &self.model.mesh else {
+            return None;
+        };
         let mut graphics_command = GraphicsCommand::new(16, 2, 4, 16);
         // clear last rt_id
         if let Some(drop_texture_id) = self.model.drop_texture_id {
@@ -292,8 +298,6 @@ impl Drawer for SceneWindow {
             0.3,
             100.,
         );
-
-        let mesh = assets_sever.load::<MeshAssetsSystem>(PathBuf::from("res/models/Suzanne.mesh"));
 
         let vp_id =
             graphics_command.set_view_projection_matrix(camera.get_view_projection_matrix());
@@ -360,5 +364,10 @@ impl SceneWindow {
         if received {
             self.model.recever.take();
         }
+    }
+
+    pub fn load_mesh(&mut self, assets_server: &mut AssetsServer) {
+        self.model.mesh =
+            Some(assets_server.load::<MeshAssetsSystem>(PathBuf::from("res/models/Suzanne.mesh")));
     }
 }

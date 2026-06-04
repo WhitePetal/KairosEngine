@@ -246,7 +246,7 @@ impl KairosEditorRuntime {
                         graphics_commands
                             .append(&mut self.engine.render_ui(&mut self.assets_server));
 
-                        self.engine.handle_ui(ui);
+                        self.engine.handle_ui(&mut self.assets_server, ui);
 
                         self.engine.draw_ui(ui);
                     });
