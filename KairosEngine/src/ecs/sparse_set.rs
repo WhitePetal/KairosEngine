@@ -63,10 +63,12 @@ where
     }
 
     pub fn push_back(&mut self, id: I, value: V) {
+        debug_assert!(!self.has(id));
+
         if self.head == self.dense.len() {
             self.dense.push(value);
         } else {
-            self.dense[self.head - 1] = value;
+            self.dense[self.head] = value;
         }
 
         let sparse_pos = Self::get_sparse_pos(&id);
@@ -78,32 +80,59 @@ where
         self.head = self.head + 1;
     }
 
-    pub fn remove(&mut self, id: &I) -> V {
-        let sparse_pos = Self::get_sparse_pos(id);
+    pub fn remove(&mut self, remove_id: &I, end_id: &I) {
+        let sparse_pos = Self::get_sparse_pos(remove_id);
         debug_assert!(
             self.sparse.get(sparse_pos.page).is_some(),
             "No page when remove id: {:?}",
-            id
+            remove_id
         );
         debug_assert!(
             self.sparse[sparse_pos.page].0[sparse_pos.slot].is_avalide(),
             "Remove the id is not alive! id: {:?}",
-            id
+            remove_id
         );
 
-        let index = self.sparse[sparse_pos.page].0[sparse_pos.slot].get_idx() as usize;
-        let value = self.dense[index];
+        let index = self.sparse[sparse_pos.page].0[sparse_pos.slot];
+        debug_assert!(
+            index.get_version() == remove_id.get_version(),
+            "The id's version is invalided while remove the id! id: {:?}",
+            remove_id
+        );
+
         self.head = self.head - 1;
-        let target = self.head;
-        self.dense[target] = value;
+        let target = self.dense[self.head];
 
-        let target_sparse_pos = SparsePos::from_entity(target);
+        let index = index.get_idx() as usize;
+        let value = self.dense[index];
+
+        self.dense[index] = target;
+        self.dense[self.head] = value;
+
+        let target_sparse_pos = Self::get_sparse_pos(end_id);
+        debug_assert!(
+            self.sparse.get(target_sparse_pos.page).is_some(),
+            "Remove the id failed, the end_id is invalide! id: {:?}, end_id: {:?}",
+            remove_id,
+            end_id
+        );
+        debug_assert!(
+            self.sparse[target_sparse_pos.page].0[target_sparse_pos.slot].is_avalide(),
+            "Remove the id failed, the end_id is invalide! id: {:?}, end_id: {:?}",
+            remove_id,
+            end_id
+        );
         let target_entity = self.sparse[target_sparse_pos.page].0[target_sparse_pos.slot];
-        self.sparse[sparse_pos.page].0[sparse_pos.slot] = target_entity.replace_idx(index as u32);
-        self.sparse[target_sparse_pos.page].0[target_sparse_pos.slot] =
-            id.replace_flags(I::FlagType::get_invalide_flag());
+        debug_assert!(
+            target_entity.get_version() == end_id.get_version(),
+            "The end_id's version is invalided while remove the id! id: {:?}, end_id: {:?}",
+            remove_id,
+            end_id
+        );
 
-        value
+        self.sparse[sparse_pos.page].0[sparse_pos.slot] = target_entity;
+        self.sparse[target_sparse_pos.page].0[target_sparse_pos.slot] =
+            remove_id.replace_flags(I::FlagType::get_invalide_flag());
     }
 
     #[inline(always)]
@@ -120,6 +149,10 @@ where
     pub fn has(&self, id: I) -> bool {
         let sparse_pos = Self::get_sparse_pos(&id);
         if self.sparse.get(sparse_pos.page).is_none() {
+            return false;
+        }
+        let index = self.sparse[sparse_pos.page].0[sparse_pos.slot];
+        if index.get_version() != id.get_version() {
             return false;
         }
         self.sparse[sparse_pos.page].0[sparse_pos.slot].is_avalide()
@@ -155,8 +188,13 @@ where
             "The id is not alive! while get value, id: {:?}",
             id
         );
-        let index = self.sparse[sparse_pos.page].0[sparse_pos.slot].get_idx();
-        &self.dense[index as usize]
+        let index = self.sparse[sparse_pos.page].0[sparse_pos.slot];
+        debug_assert!(
+            id.get_version() == index.get_version(),
+            "The id's version is invalide! while get value, id: {:?}",
+            id
+        );
+        &self.dense[index.get_idx() as usize]
     }
 }
 
@@ -177,7 +215,12 @@ where
             "The id is not alive! while get value, id: {:?}",
             id
         );
-        let index = self.sparse[sparse_pos.page].0[sparse_pos.slot].get_idx();
-        &mut self.dense[index as usize]
+        let index = self.sparse[sparse_pos.page].0[sparse_pos.slot];
+        debug_assert!(
+            id.get_version() == index.get_version(),
+            "The id's version is invalide! while get value, id: {:?}",
+            id
+        );
+        &mut self.dense[index.get_idx() as usize]
     }
 }

@@ -199,7 +199,8 @@ pub struct ComponentTypeInfo {
 
 pub struct Table {
     types: SparseSet<ComponentId, ComponentTypeInfo>,
-    entities: SparseSet<Entity, EntityInfo>,
+    entities: Vec<Entity>,
+    entitiy_infos: SparseSet<Entity, EntityInfo>,
     components_table: ComponentTable,
 }
 
@@ -209,7 +210,8 @@ impl Table {
         component_ids: Vec<ComponentId>,
         component_metas: Vec<ComponentTypeMeta>,
     ) -> Self {
-        let entities = SparseSet::new(row_capacity);
+        let entities = Vec::with_capacity(row_capacity);
+        let entitiy_infos = SparseSet::new(row_capacity);
         let colum_capacity = component_ids.len();
         let mut types = SparseSet::new(colum_capacity);
         component_ids
@@ -223,14 +225,15 @@ impl Table {
         Self {
             types,
             entities,
+            entitiy_infos,
             components_table,
         }
     }
 
     pub fn write_value<T>(&mut self, entity: Entity, component_id: ComponentId, component: T) {
-        debug_assert!(self.entities.has(entity));
+        debug_assert!(self.entitiy_infos.has(entity));
         debug_assert!(self.types.has(component_id));
-        let entity_info = self.entities[entity];
+        let entity_info = self.entitiy_infos[entity];
         let component_type_info = self.types[component_id];
         self.components_table.write_value(
             entity_info.row_index,
@@ -240,18 +243,25 @@ impl Table {
     }
 
     pub fn push_row(&mut self, entity: Entity) {
-        debug_assert!(!self.entities.has(entity));
-        self.entities.push_back(
+        debug_assert!(!self.entitiy_infos.has(entity));
+        self.entitiy_infos.push_back(
             entity,
             EntityInfo {
-                row_index: self.entities.get_head(),
+                row_index: self.entitiy_infos.get_head(),
             },
         );
+        self.entities.push(entity);
         self.components_table.creat_row_slot();
     }
 
     pub fn remove_row(&mut self, entity: Entity) {
-        let entity_info = self.entities.remove(&entity);
+        debug_assert!(self.entities.len() > 0);
+        debug_assert!(self.entitiy_infos.has(entity));
+        let end_entity = self.entities.pop().unwrap();
+        let entity_info = self.entitiy_infos[entity];
+
+        self.entitiy_infos.remove(&entity, &end_entity);
         self.components_table.remove_row(entity_info.row_index);
+        self.entities[entity_info.row_index] = end_entity;
     }
 }
