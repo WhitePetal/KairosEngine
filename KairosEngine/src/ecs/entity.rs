@@ -1,8 +1,13 @@
-use crate::ecs::{consts::{FLAG_MASK, FLAG_MASK_LEN, IDX_MASK, IDX_MASK_OFFSET, VERSION_MASK, VERSION_MASK_OFFSET}, id::{Id, IdFlag}};
+use crate::ecs::{
+    consts::{
+        FLAG_MASK, FLAG_MASK_LEN, IDX_MASK, IDX_MASK_OFFSET, VERSION_MASK, VERSION_MASK_OFFSET,
+    },
+    id::{Id, IdFlag},
+};
 use num_enum::{FromPrimitive, IntoPrimitive};
 
 #[repr(u32)]
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, IntoPrimitive, FromPrimitive, )]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, IntoPrimitive, FromPrimitive)]
 pub enum EntityFlag {
     #[default]
     Default = 0x0,
@@ -14,7 +19,6 @@ impl IdFlag for EntityFlag {
         Self::Dead
     }
 }
-
 
 #[derive(Debug, Clone, Copy)]
 pub struct Entity(u64);
@@ -62,34 +66,8 @@ impl Id for Entity {
         )
     }
 
-    fn get_next_version(self) -> Self {
-        let flags = self.get_flags();
+    fn get_next_version(self, flags: Self::FlagType) -> Self {
         let version = self.get_version() + 1;
-        Self::new(self.get_idx(), version, flags.into())
+        Self::new(self.get_idx(), version, flags)
     }
-}
-impl Default for Entity {
-    fn default() -> Self {
-        Entity::new(0, 0, EntityFlag::Dead)
-    }
-}
-impl Entity {
-        // pub fn get_page_index(&self) -> usize {
-    //     let entity = self.get_entity();
-    //     let index = entity as usize / SPARSE_PAGE_SIZE;
-    //     index
-    // }
-
-    // pub fn get_slot_index(&self) -> usize {
-    //     let entity = self.get_entity();
-    //     let index = entity as usize % SPARSE_PAGE_SIZE;
-    //     index
-    // }
-
-    // pub fn get_sparse_pos(&self) -> SparsePos {
-    //     let entity = self.get_entity() as usize;
-    //     let page = entity / SPARSE_PAGE_SIZE;
-    //     let slot = entity % SPARSE_PAGE_SIZE;
-    //     SparsePos::new(page, slot)
-    // }
 }

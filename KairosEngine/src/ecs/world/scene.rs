@@ -1,5 +1,61 @@
+use std::collections::HashMap;
 
+use petgraph::graph::NodeIndex;
+
+use crate::ecs::{
+    compoent_register::ComponentRegister, component::ComponentId, component_tuple::ComponentsTuple,
+    entity::Entity, sparse_set::EntityStorage, table::Table, table_graph::TableGraph,
+};
 
 pub struct Scene {
-    
+    entities: EntityStorage,
+    table_graph: TableGraph,
+    components_id_to_table: HashMap<Vec<ComponentId>, NodeIndex>,
+    default_table_capacity: usize,
+}
+
+impl Scene {
+    pub fn new(
+        entity_capacity: usize,
+        table_graph_capacity: usize,
+        default_table_capacity: usize,
+    ) -> Self {
+        let entities = EntityStorage::new(entity_capacity);
+        let table_graph = TableGraph::new(table_graph_capacity);
+        let components_id_to_table = HashMap::with_capacity(table_graph_capacity);
+        Self {
+            entities,
+            table_graph,
+            components_id_to_table,
+            default_table_capacity,
+        }
+    }
+
+    pub fn create_entity<T: ComponentsTuple>(
+        &mut self,
+        component_register: &mut ComponentRegister,
+        components_tuple: T,
+    ) -> Entity {
+        let component_id_metas = T::to_ids(component_register);
+
+        let table_node_index = {
+            if let Some(table_node_index) = self.components_id_to_table.get(&component_id_metas.0) {
+                *table_node_index
+            } else {
+                // TODO: Build node edges
+                self.table_graph.graph.add_node(Table::new(
+                    self.default_table_capacity,
+                    component_id_metas.0,
+                    component_id_metas.1,
+                ))
+            }
+        };
+
+        let table = &mut self.table_graph.graph[table_node_index];
+        components_tuple.create_entity(component_register, &mut self.entities, table)
+    }
+
+    pub fn add_components_for_entity<T: ComponentsTuple>(entity: Entity, component_tuple: T) {
+        todo!()
+    }
 }

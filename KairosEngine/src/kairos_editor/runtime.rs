@@ -182,8 +182,7 @@ impl KairosEditorRuntime {
             None,
         );
 
-        let render_pipeline =
-            pollster::block_on(RenderPipeline::new(window.clone()))?;
+        let render_pipeline = pollster::block_on(RenderPipeline::new(window.clone()))?;
         let render_pipeline_event_proxy = self.event_proxy.clone();
         render_pipeline
             .device

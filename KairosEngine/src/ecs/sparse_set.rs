@@ -1,7 +1,13 @@
+use std::ops::{Index, IndexMut};
+
 use crate::ecs::{
     consts::SPARSE_PAGE_SIZE,
-    entity::{Entity, EntityFlag}, id::{Id, IdFlag},
+    id::{Id, IdFlag},
 };
+
+pub mod entity_stroge;
+
+pub use entity_stroge::*;
 
 pub struct SparsePos {
     pub page: usize,
@@ -24,13 +30,13 @@ impl SparsePos {
 
 struct Page<T>(Box<[T; SPARSE_PAGE_SIZE]>)
 where
-    T: Default + Copy;
+    T: Id + Copy;
 impl<T> Page<T>
 where
-    T: Default + Copy,
+    T: Id + Copy,
 {
     pub fn new() -> Self {
-        Self(Box::new([T::default(); SPARSE_PAGE_SIZE]))
+        Self(Box::new([T::get_invalide_id(); SPARSE_PAGE_SIZE]))
     }
 }
 
@@ -72,7 +78,7 @@ where
         self.head = self.head + 1;
     }
 
-    pub fn remove(&mut self, id: &I) {
+    pub fn remove(&mut self, id: &I) -> V {
         let sparse_pos = Self::get_sparse_pos(id);
         debug_assert!(
             self.sparse.get(sparse_pos.page).is_some(),
@@ -86,22 +92,92 @@ where
         );
 
         let index = self.sparse[sparse_pos.page].0[sparse_pos.slot].get_idx() as usize;
+        let value = self.dense[index];
         self.head = self.head - 1;
         let target = self.head;
-        self.dense[target] = self.dense[index];
+        self.dense[target] = value;
 
         let target_sparse_pos = SparsePos::from_entity(target);
         let target_entity = self.sparse[target_sparse_pos.page].0[target_sparse_pos.slot];
-        self.sparse[sparse_pos.page].0[sparse_pos.slot] =
-            target_entity.replace_idx(index as u32);
+        self.sparse[sparse_pos.page].0[sparse_pos.slot] = target_entity.replace_idx(index as u32);
         self.sparse[target_sparse_pos.page].0[target_sparse_pos.slot] =
             id.replace_flags(I::FlagType::get_invalide_flag());
+
+        value
     }
 
-    fn get_sparse_pos<T>(id: &T) -> SparsePos where T: Id {
+    #[inline(always)]
+    pub fn get_head(&self) -> usize {
+        self.head
+    }
+
+    #[inline(always)]
+    pub fn get_value(&self, id: I) -> V {
+        self[id]
+    }
+
+    #[inline(always)]
+    pub fn has(&self, id: I) -> bool {
+        let sparse_pos = Self::get_sparse_pos(&id);
+        if self.sparse.get(sparse_pos.page).is_none() {
+            return false;
+        }
+        self.sparse[sparse_pos.page].0[sparse_pos.slot].is_avalide()
+    }
+
+    fn get_sparse_pos<T>(id: &T) -> SparsePos
+    where
+        T: Id,
+    {
         let idx = id.get_idx() as usize;
         let page = idx / SPARSE_PAGE_SIZE;
         let slot = idx % SPARSE_PAGE_SIZE;
         SparsePos::new(page, slot)
+    }
+}
+
+impl<I, V> Index<I> for SparseSet<I, V>
+where
+    I: Id,
+    V: Copy,
+{
+    type Output = V;
+
+    fn index(&self, id: I) -> &Self::Output {
+        let sparse_pos = Self::get_sparse_pos(&id);
+        debug_assert!(
+            self.sparse.get(sparse_pos.page).is_some(),
+            "No page when get value, id: {:?}",
+            id
+        );
+        debug_assert!(
+            self.sparse[sparse_pos.page].0[sparse_pos.slot].is_avalide(),
+            "The id is not alive! while get value, id: {:?}",
+            id
+        );
+        let index = self.sparse[sparse_pos.page].0[sparse_pos.slot].get_idx();
+        &self.dense[index as usize]
+    }
+}
+
+impl<I, V> IndexMut<I> for SparseSet<I, V>
+where
+    I: Id,
+    V: Copy,
+{
+    fn index_mut(&mut self, id: I) -> &mut Self::Output {
+        let sparse_pos = Self::get_sparse_pos(&id);
+        debug_assert!(
+            self.sparse.get(sparse_pos.page).is_some(),
+            "No page when get value, id: {:?}",
+            id
+        );
+        debug_assert!(
+            self.sparse[sparse_pos.page].0[sparse_pos.slot].is_avalide(),
+            "The id is not alive! while get value, id: {:?}",
+            id
+        );
+        let index = self.sparse[sparse_pos.page].0[sparse_pos.slot].get_idx();
+        &mut self.dense[index as usize]
     }
 }
