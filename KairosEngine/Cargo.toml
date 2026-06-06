@@ -19,6 +19,7 @@ criterion = "0.8.2"
 [dependencies]
 toml = "1.1.2"
 anyhow = "1.0"
+num_enum = "0.7.6"
 crossbeam-channel = "0.5.15"
 bytemuck = { version = "1.25.0", features = ["derive"] }
 tokio = { version = "1.52.3", features = ["full"] }

@@ -1,6 +1,6 @@
 use crate::ecs::{
     consts::SPARSE_PAGE_SIZE,
-    entity::{Entity, EntityFlag},
+    entity::{Entity, EntityFlag}, id::{Id, IdFlag},
 };
 
 pub struct SparsePos {
@@ -34,83 +34,18 @@ where
     }
 }
 
-pub struct EntityStorage {
-    dense: Vec<Entity>,
-    sparse: Vec<Page<Entity>>,
-    head: usize,
-}
-
-impl EntityStorage {
-    pub fn new(capacity: usize) -> Self {
-        Self {
-            dense: Vec::with_capacity(capacity),
-            sparse: Vec::with_capacity(capacity),
-            head: 0,
-        }
-    }
-
-    pub fn create_entity(&mut self) -> Entity {
-        let entity = {
-            if self.head == self.dense.len() {
-                let entity = Entity::new(self.head as u32, 0, EntityFlag::Default);
-                self.dense.push(entity);
-                entity
-            } else {
-                let entity = self.dense[self.head - 1];
-                entity.get_next(EntityFlag::Default)
-            }
-        };
-        let sparse_pos = entity.get_sparse_pos();
-        if self.sparse.get(sparse_pos.page).is_none() {
-            self.sparse.push(Page::new());
-        }
-        self.sparse[sparse_pos.page].0[sparse_pos.slot] =
-            Entity::new(self.head as u32, entity.get_version(), EntityFlag::Default);
-        self.head = self.head + 1;
-        entity
-    }
-
-    pub fn remove_entity(&mut self, entity: &Entity) {
-        let sparse_pos = entity.get_sparse_pos();
-        debug_assert!(
-            self.sparse.get(sparse_pos.page).is_some(),
-            "No page when remove entity: {:?}",
-            entity
-        );
-        debug_assert!(
-            self.sparse[sparse_pos.page].0[sparse_pos.slot].is_alive(),
-            "Remove the entity is not alive! entity: {:?}",
-            entity
-        );
-
-        let index = self.sparse[sparse_pos.page].0[sparse_pos.slot].get_entity() as usize;
-        self.head = self.head - 1;
-        let target = self.head;
-        let will_remove = self.dense[index];
-        let will_move = self.dense[target];
-
-        let will_remove = will_remove
-            .replace_entity(target as u32)
-            .get_next(EntityFlag::Dead);
-        self.dense[target] = will_remove;
-        self.dense[index] = will_move;
-
-        self.sparse[sparse_pos.page].0[sparse_pos.slot] = will_move.replace_entity(index as u32);
-        let sparse_pos = will_remove.get_sparse_pos();
-        self.sparse[sparse_pos.page].0[sparse_pos.slot] = will_remove
-    }
-}
-
-pub struct SparseSet<V>
+pub struct SparseSet<I, V>
 where
+    I: Id,
     V: Copy,
 {
     dense: Vec<V>,
-    sparse: Vec<Page<Entity>>,
+    sparse: Vec<Page<I>>,
     head: usize,
 }
-impl<V> SparseSet<V>
+impl<I, V> SparseSet<I, V>
 where
+    I: Id,
     V: Copy,
 {
     pub fn new(capacity: usize) -> Self {
@@ -121,36 +56,36 @@ where
         }
     }
 
-    pub fn push_back(&mut self, entity: Entity, value: V) {
+    pub fn push_back(&mut self, id: I, value: V) {
         if self.head == self.dense.len() {
             self.dense.push(value);
         } else {
             self.dense[self.head - 1] = value;
         }
 
-        let sparse_pos = entity.get_sparse_pos();
+        let sparse_pos = Self::get_sparse_pos(&id);
         if self.sparse.get(sparse_pos.page).is_none() {
             self.sparse.push(Page::new());
         }
         self.sparse[sparse_pos.page].0[sparse_pos.slot] =
-            Entity::new(self.head as u32, entity.get_version(), EntityFlag::Default);
+            I::new(self.head as u32, id.get_version(), I::FlagType::default());
         self.head = self.head + 1;
     }
 
-    pub fn remove(&mut self, entity: &Entity) {
-        let sparse_pos = entity.get_sparse_pos();
+    pub fn remove(&mut self, id: &I) {
+        let sparse_pos = Self::get_sparse_pos(id);
         debug_assert!(
             self.sparse.get(sparse_pos.page).is_some(),
-            "No page when remove entity: {:?}",
-            entity
+            "No page when remove id: {:?}",
+            id
         );
         debug_assert!(
-            self.sparse[sparse_pos.page].0[sparse_pos.slot].is_alive(),
-            "Remove the entity is not alive! entity: {:?}",
-            entity
+            self.sparse[sparse_pos.page].0[sparse_pos.slot].is_avalide(),
+            "Remove the id is not alive! id: {:?}",
+            id
         );
 
-        let index = self.sparse[sparse_pos.page].0[sparse_pos.slot].get_entity() as usize;
+        let index = self.sparse[sparse_pos.page].0[sparse_pos.slot].get_idx() as usize;
         self.head = self.head - 1;
         let target = self.head;
         self.dense[target] = self.dense[index];
@@ -158,8 +93,15 @@ where
         let target_sparse_pos = SparsePos::from_entity(target);
         let target_entity = self.sparse[target_sparse_pos.page].0[target_sparse_pos.slot];
         self.sparse[sparse_pos.page].0[sparse_pos.slot] =
-            target_entity.replace_entity(index as u32);
+            target_entity.replace_idx(index as u32);
         self.sparse[target_sparse_pos.page].0[target_sparse_pos.slot] =
-            entity.replace_flags(EntityFlag::Dead);
+            id.replace_flags(I::FlagType::get_invalide_flag());
+    }
+
+    fn get_sparse_pos<T>(id: &T) -> SparsePos where T: Id {
+        let idx = id.get_idx() as usize;
+        let page = idx / SPARSE_PAGE_SIZE;
+        let slot = idx % SPARSE_PAGE_SIZE;
+        SparsePos::new(page, slot)
     }
 }

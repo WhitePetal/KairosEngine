@@ -1,28 +1,31 @@
-use crate::ecs::{consts::{FLAG_MASK, FLAG_MASK_LEN, IDX_MASK, IDX_MASK_OFFSET, VERSION_MASK, VERSION_MASK_OFFSET}, id::{Id, IdFlag}};
+use std::alloc::Layout;
+
 use num_enum::{FromPrimitive, IntoPrimitive};
 
-#[repr(u32)]
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, IntoPrimitive, FromPrimitive, )]
-pub enum EntityFlag {
-    #[default]
-    Default = 0x0,
-    Dead = 0x1,
-}
+use crate::ecs::{consts::{FLAG_MASK, FLAG_MASK_LEN, IDX_MASK, IDX_MASK_OFFSET, VERSION_MASK, VERSION_MASK_OFFSET}, id::{Id, IdFlag}};
 
-impl IdFlag for EntityFlag {
+
+#[repr(u32)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, IntoPrimitive, FromPrimitive)]
+pub enum ComponentFlag {
+    #[default]
+    Default,
+    Invalide
+}
+impl IdFlag for ComponentFlag {
     fn get_invalide_flag() -> Self {
-        Self::Dead
+        Self::Invalide
     }
 }
 
 
-#[derive(Debug, Clone, Copy)]
-pub struct Entity(u64);
 
-impl Id for Entity {
-    type FlagType = EntityFlag;
+#[derive(Default, Debug, Clone, Copy)]
+pub struct ComponentId(u64);
 
-    #[inline(always)]
+impl Id for ComponentId {
+    type FlagType = ComponentFlag;
+    
     fn new(idx: u32, version: u32, flags: Self::FlagType) -> Self {
         Self(
             ((flags as u64) << VERSION_MASK_OFFSET)
@@ -30,66 +33,37 @@ impl Id for Entity {
                 | (idx as u64),
         )
     }
-
-    #[inline(always)]
+    
     fn get_idx(&self) -> u32 {
         (self.0 & IDX_MASK) as u32
     }
-
-    #[inline(always)]
+    
     fn get_version(&self) -> u32 {
         ((self.0 >> IDX_MASK_OFFSET) & VERSION_MASK) as u32
     }
-
-    #[inline(always)]
+    
     fn get_flags(&self) -> Self::FlagType {
         Self::FlagType::from(((self.0 >> VERSION_MASK_OFFSET) & FLAG_MASK) as u32)
     }
-
+    
     fn from_other(idx: u32, other: &Self) -> Self {
         Self(((other.0 >> IDX_MASK_OFFSET) << IDX_MASK_OFFSET) | (idx as u64))
     }
-
-    #[inline(always)]
+    
     fn replace_idx(self, entity: u32) -> Self {
         Self::from_other(entity, &self)
     }
-
+    
     fn replace_flags(self, flags: Self::FlagType) -> Self {
         Self(
             ((flags as u64 & FLAG_MASK) << VERSION_MASK_OFFSET)
                 | ((self.0 << FLAG_MASK_LEN) >> FLAG_MASK_LEN),
         )
     }
-
+    
     fn get_next_version(self) -> Self {
         let flags = self.get_flags();
         let version = self.get_version() + 1;
         Self::new(self.get_idx(), version, flags.into())
     }
-}
-impl Default for Entity {
-    fn default() -> Self {
-        Entity::new(0, 0, EntityFlag::Dead)
-    }
-}
-impl Entity {
-        // pub fn get_page_index(&self) -> usize {
-    //     let entity = self.get_entity();
-    //     let index = entity as usize / SPARSE_PAGE_SIZE;
-    //     index
-    // }
-
-    // pub fn get_slot_index(&self) -> usize {
-    //     let entity = self.get_entity();
-    //     let index = entity as usize % SPARSE_PAGE_SIZE;
-    //     index
-    // }
-
-    // pub fn get_sparse_pos(&self) -> SparsePos {
-    //     let entity = self.get_entity() as usize;
-    //     let page = entity / SPARSE_PAGE_SIZE;
-    //     let slot = entity % SPARSE_PAGE_SIZE;
-    //     SparsePos::new(page, slot)
-    // }
 }
