@@ -4,7 +4,6 @@ use crate::ecs::{
     entity::Entity,
     sparse_set::EntityStorage,
     table::Table,
-    world::scene::Scene,
 };
 
 pub trait ComponentsTuple {
