@@ -225,3 +225,110 @@ where
         &mut self.dense_values[index.get_idx() as usize]
     }
 }
+
+pub struct SparseStroge<I> where I: Id {
+    dense: Vec<I>,
+    sparse: Vec<Page<I>>,
+    head: usize,
+}
+impl<I> SparseStroge<I>
+where
+    I: Id,
+{
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            dense: Vec::with_capacity(capacity),
+            sparse: Vec::with_capacity(capacity),
+            head: 0,
+        }
+    }
+
+    pub fn next(&mut self) -> I {
+        if self.head < self.dense.len() {
+            let entity = self.dense[self.head].clone();
+            let entity = entity.get_next_version(I::FlagType::default());
+            
+            let sparse_pos = Self::get_sparse_pos(&entity);
+            self.sparse[sparse_pos.page].0[sparse_pos.slot] = I::new(self.head as u32, entity.get_version(), entity.get_flags());
+            self.dense[self.head] = entity.clone();
+
+            self.head = self.head + 1;
+            
+            entity
+        } else {
+            let entity = I::new(self.head as u32, 0, I::FlagType::default());
+            
+            let sparse_pos = Self::get_sparse_pos(&entity);
+            if self.sparse.get(sparse_pos.page).is_none() {
+                self.sparse.push(Page::new());
+            }
+
+            self.sparse[sparse_pos.page].0[sparse_pos.slot] = I::new(self.head as u32, entity.get_version(), entity.get_flags());
+            self.dense.push(entity.clone());
+
+            self.head = self.head + 1;
+
+            entity
+        }
+    }
+
+    pub fn remove(&mut self, id: I) {
+        let sparse_pos = Self::get_sparse_pos(&id);
+        debug_assert!(
+            self.sparse.get(sparse_pos.page).is_some(),
+            "No page when remove id: {:?}",
+            id
+        );
+        debug_assert!(
+            self.sparse[sparse_pos.page].0[sparse_pos.slot].is_avalide(),
+            "Remove the id is not alive! id: {:?}",
+            id
+        );
+
+        let sparse_value = &self.sparse[sparse_pos.page].0[sparse_pos.slot];
+        debug_assert!(
+            sparse_value.get_version() == id.get_version(),
+            "The id's version is invalided while remove the id! id: {:?}",
+            id
+        );
+
+        self.head = self.head - 1;
+        let end_index = self.head;
+        let end_value = self.dense[end_index].clone();
+        let end_sparse_pos = Self::get_sparse_pos(&end_value);
+        let end_sparse_value = &self.sparse[end_sparse_pos.page].0[end_sparse_pos.slot];
+
+        let index = sparse_value.get_idx() as usize;
+        let value = self.dense[index].clone();
+
+        self.dense[index] = end_value;
+        self.dense[end_index] = value;
+
+        self.sparse[end_sparse_pos.page].0[end_sparse_pos.slot] =
+            I::from_other(sparse_value.get_idx(), &end_sparse_value);
+        self.sparse[sparse_pos.page].0[sparse_pos.slot] = I::get_invalide_id();
+    }
+
+    #[inline(always)]
+    pub fn has(&self, id: I) -> bool {
+        let sparse_pos = Self::get_sparse_pos(&id);
+        if self.sparse.get(sparse_pos.page).is_none() {
+            return false;
+        }
+        let index = &self.sparse[sparse_pos.page].0[sparse_pos.slot];
+        if index.get_version() != id.get_version() {
+            return false;
+        }
+        self.sparse[sparse_pos.page].0[sparse_pos.slot].is_avalide()
+    }
+
+    fn get_sparse_pos<T>(id: &T) -> SparsePos
+    where
+        T: Id,
+    {
+        let idx = id.get_idx() as usize;
+        let page = idx / SPARSE_PAGE_SIZE;
+        let slot = idx % SPARSE_PAGE_SIZE;
+        SparsePos::new(page, slot)
+    }
+}
