@@ -11,6 +11,14 @@ pub struct TransformComponent {
 impl Component for TransformComponent {}
 
 impl TransformComponent {
+    pub fn new(position: float3, rotation: quaternion, scale: float3) -> Self {
+        Self {
+            position,
+            rotation,
+            scale,
+        }
+    }
+
     pub fn get_local_to_world(&self) -> float4x4 {
         float4x4::trs(self.position, self.rotation, self.scale)
     }

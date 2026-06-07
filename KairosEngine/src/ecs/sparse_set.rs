@@ -89,7 +89,11 @@ where
 
     pub fn remove(&mut self, id: I) -> V {
         let sparse_pos = Self::get_sparse_pos(&id);
-        debug_assert!(self.dense_values.len() > 0, "The dense array is empty while remove element! id: {:?}", id);
+        debug_assert!(
+            self.dense_values.len() > 0,
+            "The dense array is empty while remove element! id: {:?}",
+            id
+        );
         debug_assert!(
             self.sparse.get(sparse_pos.page).is_some(),
             "No page when remove id: {:?}",

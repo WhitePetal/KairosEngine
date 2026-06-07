@@ -22,7 +22,7 @@ impl IdFlag for ComponentFlag {
     }
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ComponentId(u64);
 
 impl Id for ComponentId {

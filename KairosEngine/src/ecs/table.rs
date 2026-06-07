@@ -4,7 +4,9 @@ use std::{
 };
 
 use crate::ecs::{
-    compoent_register::ComponentTypeMeta, component::ComponentId, entity::Entity,
+    compoent_register::ComponentTypeMeta,
+    component::{Component, ComponentId},
+    entity::Entity,
     sparse_set::SparseSet,
 };
 
@@ -64,7 +66,7 @@ impl ComponentTable {
     }
 
     pub fn push_value<T>(&mut self, colum_index: usize, value: T) {
-        debug_assert!(colum_index < self.len);
+        debug_assert!(colum_index < self.infos.len());
 
         let info = &self.infos[colum_index];
         debug_assert_eq!(info.layout, Layout::new::<T>());
@@ -101,8 +103,8 @@ impl ComponentTable {
         self.len = self.len + 1;
     }
 
-    pub fn get_components<T>(&self, colum_index: usize) -> &[T] {
-        debug_assert!(colum_index < self.len);
+    pub fn get_colum<T>(&self, colum_index: usize) -> &[T] {
+        debug_assert!(colum_index < self.infos.len());
         let info = &self.infos[colum_index];
         debug_assert_eq!(info.layout, Layout::new::<T>());
 
@@ -112,8 +114,8 @@ impl ComponentTable {
         }
     }
 
-    pub fn get_components_mut<T>(&mut self, colum_index: usize) -> &mut [T] {
-        debug_assert!(colum_index < self.len);
+    pub fn get_colum_mut<T>(&mut self, colum_index: usize) -> &mut [T] {
+        debug_assert!(colum_index < self.infos.len());
         let info = &self.infos[colum_index];
         debug_assert_eq!(info.layout, Layout::new::<T>());
 
@@ -286,5 +288,39 @@ impl Table {
 
         self.components_table.remove_row(entity_info.row_index);
         self.entities[entity_info.row_index] = end_entity;
+    }
+
+    pub fn row_count(&self) -> usize {
+        self.entities.len()
+    }
+
+    pub fn has_component(&self, component_id: &ComponentId) -> bool {
+        self.types.has(component_id)
+    }
+
+    pub fn component_colum_index(&self, component_id: &ComponentId) -> usize {
+        debug_assert!(
+            self.types.has(component_id),
+            "No component id in the table! component_id: {:?}",
+            component_id
+        );
+
+        self.types.get_value(component_id).colum_index
+    }
+
+    pub fn contains_all_components(&self, component_ids: &[&ComponentId]) -> bool {
+        component_ids
+            .iter()
+            .all(|component_id| self.has_component(*component_id))
+    }
+
+    pub fn component_slice<T: Component>(&self, component_id: &ComponentId) -> &[T] {
+        let colum_index = self.component_colum_index(component_id);
+        self.components_table.get_colum::<T>(colum_index)
+    }
+
+    pub fn component_slice_mut<T: Component>(&mut self, component_id: &ComponentId) -> &mut [T] {
+        let colum_index = self.component_colum_index(component_id);
+        self.components_table.get_colum_mut::<T>(colum_index)
     }
 }

@@ -13,5 +13,6 @@ pub mod kairos_game;
 pub mod base_components;
 pub mod ecs;
 pub mod graphics;
+pub mod timer;
 
 pub mod asset_loader;

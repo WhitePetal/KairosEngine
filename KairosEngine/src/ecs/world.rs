@@ -1,10 +1,18 @@
 use crate::{
     asset_loader::assets::AssetsServer,
-    ecs::{compoent_register::ComponentRegister, component_tuple::ComponentsTuple, consts, entity::{Entity, EntityFlag}, id::{Id, IdFlag}, sparse_set::{SparseSet, SparseStroge}, world::scene::Scene},
+    ecs::{
+        compoent_register::ComponentRegister,
+        component_tuple::ComponentsTuple,
+        consts,
+        entity::{Entity, EntityFlag},
+        id::{Id, IdFlag},
+        sparse_set::{SparseSet, SparseStroge},
+        world::scene::Scene,
+    },
+    timer::Time,
 };
 
 pub mod scene;
-
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SceneId(Entity);
@@ -62,6 +70,7 @@ type SceneStroge = SparseStroge<SceneId>;
 
 pub struct World {
     pub assets_server: AssetsServer,
+    pub time: Time,
     scene_stroge: SceneStroge,
     scenes: SparseSet<SceneId, Scene>,
     component_register: ComponentRegister,
@@ -70,11 +79,13 @@ pub struct World {
 impl World {
     pub fn new() -> Self {
         let assets_server = AssetsServer::new();
+        let time = Time::new();
         let scene_stroge = SceneStroge::new(consts::WORLD_SCENE_CAPACITY);
         let scenes = SparseSet::new(consts::WORLD_SCENE_CAPACITY);
         let component_register = ComponentRegister::new(consts::COMPONENT_TYPE_CAPACITY);
         Self {
             assets_server,
+            time,
             scene_stroge,
             scenes,
             component_register,
@@ -93,7 +104,11 @@ impl World {
         self.scenes.get_value_mut(scene_id)
     }
 
-    pub fn create_entity<T: ComponentsTuple>(&mut self, scene_id: &SceneId, components_tuple: T) -> Entity {
+    pub fn create_entity<T: ComponentsTuple>(
+        &mut self,
+        scene_id: &SceneId,
+        components_tuple: T,
+    ) -> Entity {
         let scene = self.scenes.get_value_mut(scene_id);
         scene.create_entity(&mut self.component_register, components_tuple)
     }

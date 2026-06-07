@@ -3,7 +3,11 @@ use std::path::PathBuf;
 use crate::{
     asset_loader::assets::{
         MaterialAssetsSystem, MeshAssetsSystem, ShaderAssetsSystem, TextureAssetsSystem,
-    }, base_components::TransformComponent, ecs::world::{SceneId, World, scene::Scene}, math::{float3, quaternion}
+    },
+    base_components::TransformComponent,
+    ecs::world::{SceneId, World, scene::Scene},
+    graphics::{lod_mesh_component::LODMeshComponent, material_component::MaterialComponent},
+    math::{float3, quaternion},
 };
 
 pub struct KairosGame {
@@ -19,7 +23,8 @@ impl KairosGame {
         assets_server.push(MeshAssetsSystem::new());
 
         let mesh = assets_server.load::<MeshAssetsSystem>(PathBuf::from("res/models/Suzanne.mesh"));
-        let material = assets_server.load::<MaterialAssetsSystem>(PathBuf::from("res/materials/material.mat"));
+        let material =
+            assets_server.load::<MaterialAssetsSystem>(PathBuf::from("res/materials/material.mat"));
 
         let main_scene = world.push_scene(Scene::new(1024, 1024, 1024));
 
@@ -31,23 +36,21 @@ impl KairosGame {
                 let rotation = quaternion::identity();
                 let scale = float3::new(1.0, 1.0, 1.0);
 
-                world.create_entity(&main_scene, TransformComponent {
-                    position,
-                    rotation,
-                    scale
-                });
-
-                // let local_to_world = float4x4::trs(position, rotation, scale);
-                // graphics_command.draw(mesh.clone(), material.clone(), local_to_world);
+                world.create_entity(
+                    &main_scene,
+                    (
+                        TransformComponent::new(position, rotation, scale),
+                        LODMeshComponent::new(mesh.clone()),
+                        MaterialComponent::new(material.clone()),
+                    ),
+                );
             }
         }
 
-        Self {
-            main_scene
-        }
+        Self { main_scene }
     }
 
     pub fn update(&mut self, world: &mut World) {
-
+        // world.get_scene_mut(&self.main_scene).
     }
 }

@@ -56,6 +56,8 @@ impl Scene {
         components_tuple.create_entity(component_register, &mut self.entities, table)
     }
 
+    // pub fn get_components
+
     pub fn add_components_for_entity<T: ComponentsTuple>(entity: Entity, component_tuple: T) {
         todo!()
     }
