@@ -1,5 +1,3 @@
-use super::*;
-
 #[derive(Debug, Clone, Copy)]
 #[allow(non_camel_case_types)]
 struct float4 {

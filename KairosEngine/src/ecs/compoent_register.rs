@@ -32,7 +32,7 @@ impl ComponentRegister {
     pub fn get<T: Component>(&mut self) -> (ComponentId, ComponentTypeMeta) {
         let type_id = TypeId::of::<T>();
         if let Some(id) = self.component_type_to_id.get(&type_id) {
-            return (*id, self.component_metas[id.get_idx() as usize]);
+            return (id.clone(), self.component_metas[id.get_idx() as usize]);
         } else {
             let len = self.component_type_to_id.len();
             let id = ComponentId::new(len as u32, 0, ComponentFlag::Default);

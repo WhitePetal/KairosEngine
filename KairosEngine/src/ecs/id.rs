@@ -4,13 +4,16 @@ pub trait IdFlag: Debug + Default + Into<u32> {
     fn get_invalide_flag() -> Self;
 }
 
-pub trait Id: Debug + Copy {
+pub trait Id: Debug + Clone {
     type FlagType: IdFlag;
 
     fn new(idx: u32, version: u32, flags: Self::FlagType) -> Self;
 
     #[inline(always)]
-    fn get_invalide_id() -> Self {
+    fn get_invalide_id() -> Self
+    where
+        Self: Sized,
+    {
         Self::new(0, 0, Self::FlagType::get_invalide_flag())
     }
 
@@ -22,9 +25,11 @@ pub trait Id: Debug + Copy {
 
     fn from_other(idx: u32, other: &Self) -> Self;
 
-    fn replace_idx(self, entity: u32) -> Self;
+    fn replace_idx(&mut self, idx: u32);
 
-    fn replace_flags(self, flags: Self::FlagType) -> Self;
+    fn create_idx_variant(&self, idx: u32) -> Self;
+
+    fn replace_flags(&mut self, flags: Self::FlagType);
 
     fn get_next_version(self, flags: Self::FlagType) -> Self;
 

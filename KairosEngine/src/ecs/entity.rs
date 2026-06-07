@@ -20,7 +20,7 @@ impl IdFlag for EntityFlag {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Entity(u64);
 
 impl Id for Entity {
@@ -55,17 +55,24 @@ impl Id for Entity {
     }
 
     #[inline(always)]
-    fn replace_idx(self, entity: u32) -> Self {
-        Self::from_other(entity, &self)
+    fn replace_idx(&mut self, idx: u32) {
+        *self = Self::from_other(idx, &self);
     }
 
-    fn replace_flags(self, flags: Self::FlagType) -> Self {
-        Self(
+    #[inline(always)]
+    fn create_idx_variant(&self, idx: u32) -> Self {
+        Self::from_other(idx, &self)
+    }
+
+    #[inline(always)]
+    fn replace_flags(&mut self, flags: Self::FlagType) {
+        *self = Self(
             ((flags as u64 & FLAG_MASK) << VERSION_MASK_OFFSET)
                 | ((self.0 << FLAG_MASK_LEN) >> FLAG_MASK_LEN),
-        )
+        );
     }
 
+    #[inline(always)]
     fn get_next_version(self, flags: Self::FlagType) -> Self {
         let version = self.get_version() + 1;
         Self::new(self.get_idx(), version, flags)

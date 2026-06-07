@@ -22,12 +22,13 @@ impl IdFlag for ComponentFlag {
     }
 }
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ComponentId(u64);
 
 impl Id for ComponentId {
     type FlagType = ComponentFlag;
 
+    #[inline(always)]
     fn new(idx: u32, version: u32, flags: Self::FlagType) -> Self {
         Self(
             ((flags as u64) << VERSION_MASK_OFFSET)
@@ -36,33 +37,45 @@ impl Id for ComponentId {
         )
     }
 
+    #[inline(always)]
     fn get_idx(&self) -> u32 {
         (self.0 & IDX_MASK) as u32
     }
 
+    #[inline(always)]
     fn get_version(&self) -> u32 {
         ((self.0 >> IDX_MASK_OFFSET) & VERSION_MASK) as u32
     }
 
+    #[inline(always)]
     fn get_flags(&self) -> Self::FlagType {
         Self::FlagType::from(((self.0 >> VERSION_MASK_OFFSET) & FLAG_MASK) as u32)
     }
 
+    #[inline(always)]
     fn from_other(idx: u32, other: &Self) -> Self {
         Self(((other.0 >> IDX_MASK_OFFSET) << IDX_MASK_OFFSET) | (idx as u64))
     }
 
-    fn replace_idx(self, entity: u32) -> Self {
-        Self::from_other(entity, &self)
+    #[inline(always)]
+    fn replace_idx(&mut self, idx: u32) {
+        *self = Self::from_other(idx, &self);
     }
 
-    fn replace_flags(self, flags: Self::FlagType) -> Self {
-        Self(
+    #[inline(always)]
+    fn create_idx_variant(&self, idx: u32) -> Self {
+        Self::from_other(idx, &self)
+    }
+
+    #[inline(always)]
+    fn replace_flags(&mut self, flags: Self::FlagType) {
+        *self = Self(
             ((flags as u64 & FLAG_MASK) << VERSION_MASK_OFFSET)
                 | ((self.0 << FLAG_MASK_LEN) >> FLAG_MASK_LEN),
-        )
+        );
     }
 
+    #[inline(always)]
     fn get_next_version(self, flags: Self::FlagType) -> Self {
         let version = self.get_version() + 1;
         Self::new(self.get_idx(), version, flags)

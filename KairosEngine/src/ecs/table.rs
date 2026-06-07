@@ -231,8 +231,8 @@ impl Table {
     }
 
     pub fn write_value<T>(&mut self, entity: Entity, component_id: ComponentId, component: T) {
-        debug_assert!(self.entitiy_infos.has(entity));
-        debug_assert!(self.types.has(component_id));
+        debug_assert!(self.entitiy_infos.has(entity.clone()));
+        debug_assert!(self.types.has(component_id.clone()));
         let entity_info = self.entitiy_infos[entity];
         let component_type_info = self.types[component_id];
         self.components_table.write_value(
@@ -243,7 +243,7 @@ impl Table {
     }
 
     pub fn push_row(&mut self, entity: Entity) {
-        debug_assert!(!self.entitiy_infos.has(entity));
+        debug_assert!(!self.entitiy_infos.has(entity.clone()));
         self.entitiy_infos.insert(
             &entity,
             EntityInfo {
@@ -256,11 +256,10 @@ impl Table {
 
     pub fn remove_row(&mut self, entity: Entity) {
         debug_assert!(self.entities.len() > 0);
-        debug_assert!(self.entitiy_infos.has(entity));
+        debug_assert!(self.entitiy_infos.has(entity.clone()));
         let end_entity = self.entities.pop().unwrap();
-        let entity_info = self.entitiy_infos[entity];
+        let entity_info = self.entitiy_infos.remove(entity);
 
-        self.entitiy_infos.remove(entity);
         self.components_table.remove_row(entity_info.row_index);
         self.entities[entity_info.row_index] = end_entity;
     }

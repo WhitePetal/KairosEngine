@@ -31,8 +31,8 @@ impl<A: Component> ComponentsTuple for (A,) {
     ) -> Entity {
         let (a,) = self;
         let entity = entity_stroge.next();
-        components_table.push_row(entity);
-        components_table.write_value(entity, register.get::<A>().0, a);
+        components_table.push_row(entity.clone());
+        components_table.write_value(entity.clone(), register.get::<A>().0, a);
         entity
     }
 }
