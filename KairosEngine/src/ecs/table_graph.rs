@@ -2,8 +2,10 @@ use petgraph::graph::DiGraph;
 
 use crate::ecs::table::Table;
 
+#[derive(Debug)]
 pub struct TableEdge {}
 
+#[derive(Debug)]
 pub struct TableGraph {
     pub graph: DiGraph<Table, TableEdge>,
 }

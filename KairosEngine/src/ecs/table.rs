@@ -1,5 +1,5 @@
 use std::{
-    alloc::{Layout, alloc, handle_alloc_error},
+    alloc::{Layout, alloc, dealloc, handle_alloc_error},
     ptr::{self, NonNull},
 };
 
@@ -12,10 +12,12 @@ use crate::ecs::{
 pub struct ComponentInfo {
     pub head_offset: usize,
     pub layout: Layout,
+    pub drop_fn: unsafe fn(*mut u8),
 }
 
 ///
 /// 每个类型为一列，每列存储该类型的所有Components
+#[derive(Debug)]
 pub struct ComponentTable {
     colums: NonNull<u8>,
     infos: Vec<ComponentInfo>,
@@ -25,6 +27,7 @@ pub struct ComponentTable {
 }
 impl ComponentTable {
     pub fn new(component_metas: Vec<ComponentTypeMeta>, capacity: usize) -> Self {
+        let capacity = capacity.max(2);
         let mut infos = Vec::with_capacity(component_metas.len());
         let mut table_layout = Layout::from_size_align(0, 1).unwrap();
         for meta in component_metas {
@@ -36,6 +39,7 @@ impl ComponentTable {
             infos.push(ComponentInfo {
                 head_offset,
                 layout: layout,
+                drop_fn: meta.drop_fn,
             });
 
             table_layout = new_layout;
@@ -75,32 +79,26 @@ impl ComponentTable {
         }
     }
 
-    pub fn write_value<T>(&mut self, row_index: usize, colum_index: usize, value: T) {
-        let info = self.infos[colum_index];
-        unsafe {
-            let dst = self
-                .colums
-                .as_ptr()
-                .add(info.head_offset + row_index * info.layout.size())
-                .cast::<T>();
-            ptr::write::<T>(dst, value);
-        }
-    }
-
-    pub fn creat_row_slot(&mut self) -> usize {
+    fn creat_row<F>(&mut self, writer: Vec<F>)
+    where
+        F: FnOnce(*mut u8),
+    {
         if self.len >= self.capacity {
             self.resize();
         }
 
-        let len = self.len;
-        self.len = len + 1;
-        len
-    }
+        writer.into_iter().enumerate().for_each(|(colum, writer)| {
+            let info = &self.infos[colum];
+            unsafe {
+                let ptr = self
+                    .colums
+                    .as_ptr()
+                    .add(info.head_offset + self.len * info.layout.size());
+                writer(ptr);
+            }
+        });
 
-    pub fn pop_row_slot(&mut self) {
-        debug_assert!(self.len > 0);
-
-        self.len = self.len - 1;
+        self.len = self.len + 1;
     }
 
     pub fn get_components<T>(&self, colum_index: usize) -> &[T] {
@@ -136,7 +134,12 @@ impl ComponentTable {
                     .colums
                     .as_ptr()
                     .add(info.head_offset + (self.len - 1) * info.layout.size());
-                ptr::copy::<u8>(ending_ptr, remove_ptr, info.layout.size());
+
+                ((info.drop_fn)(remove_ptr));
+
+                if remove_ptr != ending_ptr {
+                    ptr::copy_nonoverlapping::<u8>(ending_ptr, remove_ptr, info.layout.size());
+                }
             }
         }
         self.len = self.len - 1;
@@ -157,6 +160,7 @@ impl ComponentTable {
             *info = ComponentInfo {
                 head_offset,
                 layout: info.layout,
+                drop_fn: info.drop_fn,
             };
 
             table_layout = new_layout
@@ -180,10 +184,38 @@ impl ComponentTable {
             }
         }
 
+        unsafe {
+            dealloc(self.colums.as_ptr(), self.layout);
+        }
+
         self.infos = infos;
         self.colums = colums;
         self.capacity = capacity;
         self.layout = table_layout;
+    }
+}
+
+impl Drop for ComponentTable {
+    fn drop(&mut self) {
+        if self.infos.len() <= 0 {
+            return;
+        }
+
+        for info in &self.infos {
+            for row in 0..self.len {
+                unsafe {
+                    let ptr = self
+                        .colums
+                        .as_ptr()
+                        .add(info.head_offset + row * info.layout.size());
+                    (info.drop_fn)(ptr)
+                }
+            }
+        }
+
+        unsafe {
+            dealloc(self.colums.as_ptr(), self.layout);
+        }
     }
 }
 
@@ -197,6 +229,7 @@ pub struct ComponentTypeInfo {
     pub colum_index: usize,
 }
 
+#[derive(Debug)]
 pub struct Table {
     types: SparseSet<ComponentId, ComponentTypeInfo>,
     entities: Vec<Entity>,
@@ -230,33 +263,24 @@ impl Table {
         }
     }
 
-    pub fn write_value<T>(&mut self, entity: Entity, component_id: ComponentId, component: T) {
-        debug_assert!(self.entitiy_infos.has(entity.clone()));
-        debug_assert!(self.types.has(component_id.clone()));
-        let entity_info = self.entitiy_infos[entity];
-        let component_type_info = self.types[component_id];
-        self.components_table.write_value(
-            entity_info.row_index,
-            component_type_info.colum_index,
-            component,
-        );
-    }
-
-    pub fn push_row(&mut self, entity: Entity) {
-        debug_assert!(!self.entitiy_infos.has(entity.clone()));
+    pub fn push_row<F>(&mut self, entity: &Entity, component_writes: Vec<F>)
+    where
+        F: FnOnce(*mut u8),
+    {
+        debug_assert!(!self.entitiy_infos.has(entity));
         self.entitiy_infos.insert(
-            &entity,
+            entity,
             EntityInfo {
-                row_index: self.entitiy_infos.get_head(),
+                row_index: self.entities.len(),
             },
         );
-        self.entities.push(entity);
-        self.components_table.creat_row_slot();
+        self.entities.push(entity.clone());
+        self.components_table.creat_row(component_writes);
     }
 
     pub fn remove_row(&mut self, entity: Entity) {
         debug_assert!(self.entities.len() > 0);
-        debug_assert!(self.entitiy_infos.has(entity.clone()));
+        debug_assert!(self.entitiy_infos.has(&entity));
         let end_entity = self.entities.pop().unwrap();
         let entity_info = self.entitiy_infos.remove(entity);
 

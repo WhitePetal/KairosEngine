@@ -1,7 +1,6 @@
 use crate::{
-    asset_loader::assets::AssetsServer,
-    graphics::{graphics_graph::GraphicsCommand, render_pipeline::RenderPipeline},
-    log::Log,
+    asset_loader::assets::AssetsServer, ecs::world::World,
+    graphics::graphics_graph::GraphicsCommand, kairos_game::KairosGame, log::Log,
 };
 use egui::Visuals;
 
@@ -12,22 +11,34 @@ pub mod serialize_asset;
 pub mod ui;
 
 pub struct KairosEngine {
+    world: World,
+    game: KairosGame,
     ui_context: ui::Context,
     log: Log,
 }
 
 impl KairosEngine {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        let mut world = World::new();
+        let game = KairosGame::new(&mut world);
         let ui_context = ui::Context::new();
         let log = Log::new();
 
-        Ok(Self { ui_context, log })
+        Ok(Self {
+            world,
+            game,
+            ui_context,
+            log,
+        })
     }
 
-    fn update(&mut self) {}
+    fn update(&mut self) {
+        self.game.update(&mut self.world);
+    }
 
-    fn handle_ui(&mut self, assets_server: &mut AssetsServer, ui: &mut egui::Ui) {
-        self.ui_context.handle(assets_server, ui, &mut self.log);
+    fn handle_ui(&mut self, ui: &mut egui::Ui) {
+        self.ui_context
+            .handle(&mut self.world.assets_server, ui, &mut self.log);
     }
 
     fn draw_ui(&mut self, ui: &mut egui::Ui) {
@@ -38,8 +49,12 @@ impl KairosEngine {
         self.ui_context.darw(ui, &mut self.log);
     }
 
-    fn render_ui(&mut self, assets_server: &mut AssetsServer) -> Vec<GraphicsCommand> {
-        self.ui_context.render(assets_server)
+    fn render_ui(&mut self) -> Vec<GraphicsCommand> {
+        self.ui_context.render(&mut self.world.assets_server)
+    }
+
+    fn handle_asset_server(&mut self) {
+        self.world.assets_server.handle();
     }
 
     fn on_exit(&mut self) {}

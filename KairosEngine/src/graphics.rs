@@ -8,3 +8,6 @@ pub mod vertex;
 
 pub mod attachment;
 pub mod graphics_graph;
+
+pub mod lod_mesh_component;
+pub mod material_component;

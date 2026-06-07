@@ -60,7 +60,7 @@ fn sparse_set() {
     debug_assert_eq!(entity_stroge.get_entity(&ea), &ea);
     debug_assert_eq!(entity_stroge.get_entity(&ec), &ec);
 
-    debug_assert_eq!(sparset_set.get_value(&ef), ef_value);
-    debug_assert_eq!(sparset_set.get_value(&ea), ea_value);
-    debug_assert_eq!(sparset_set.get_value(&ec), ec_value);
+    debug_assert_eq!(sparset_set.get_value(&ef), &ef_value);
+    debug_assert_eq!(sparset_set.get_value(&ea), &ea_value);
+    debug_assert_eq!(sparset_set.get_value(&ec), &ec_value);
 }

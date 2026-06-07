@@ -7,6 +7,7 @@ use crate::ecs::{
     entity::Entity, sparse_set::EntityStorage, table::Table, table_graph::TableGraph,
 };
 
+#[derive(Debug)]
 pub struct Scene {
     entities: EntityStorage,
     table_graph: TableGraph,
@@ -42,7 +43,7 @@ impl Scene {
             if let Some(table_node_index) = self.components_id_to_table.get(&component_id_metas.0) {
                 *table_node_index
             } else {
-                // TODO: Build node edges
+                // TODO: Build node edges?
                 self.table_graph.graph.add_node(Table::new(
                     self.default_table_capacity,
                     component_id_metas.0,

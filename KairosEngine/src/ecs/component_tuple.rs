@@ -1,3 +1,5 @@
+use std::ptr;
+
 use crate::ecs::{
     compoent_register::{ComponentRegister, ComponentTypeMeta},
     component::{Component, ComponentId},
@@ -17,7 +19,7 @@ pub trait ComponentsTuple {
     ) -> Entity;
 }
 
-impl<A: Component> ComponentsTuple for (A,) {
+impl<A: Component> ComponentsTuple for A {
     fn to_ids(register: &mut ComponentRegister) -> (Vec<ComponentId>, Vec<ComponentTypeMeta>) {
         let a = register.get::<A>();
         (vec![a.0], vec![a.1])
@@ -25,14 +27,19 @@ impl<A: Component> ComponentsTuple for (A,) {
 
     fn create_entity(
         self,
-        register: &mut ComponentRegister,
+        _register: &mut ComponentRegister,
         entity_stroge: &mut EntityStorage,
         components_table: &mut Table,
     ) -> Entity {
-        let (a,) = self;
+        let a = self;
         let entity = entity_stroge.next();
-        components_table.push_row(entity.clone());
-        components_table.write_value(entity.clone(), register.get::<A>().0, a);
+        components_table.push_row(
+            &entity,
+            vec![|dest: *mut u8| unsafe {
+                ptr::write::<A>(dest.cast::<A>(), a);
+            }],
+        );
+
         entity
     }
 }

@@ -29,6 +29,7 @@ impl SparsePos {
     }
 }
 
+#[derive(Debug)]
 struct Page<T>(Box<[T; SPARSE_PAGE_SIZE]>)
 where
     T: Id;
@@ -41,27 +42,24 @@ where
     }
 }
 
+#[derive(Debug)]
 pub struct SparseSet<I, V>
 where
     I: Id,
-    V: Clone,
 {
     dense_values: Vec<V>,
     dense_ids: Vec<I>,
     sparse: Vec<Page<I>>,
-    head: usize,
 }
 impl<I, V> SparseSet<I, V>
 where
     I: Id,
-    V: Clone,
 {
     pub fn new(capacity: usize) -> Self {
         Self {
             dense_values: Vec::with_capacity(capacity),
             dense_ids: Vec::with_capacity(capacity),
             sparse: Vec::with_capacity(capacity),
-            head: 0,
         }
     }
 
@@ -81,20 +79,17 @@ where
             self.dense_ids[sparse_value.get_idx() as usize] = id.clone();
             self.sparse[sparse_pos.page].0[sparse_pos.slot].replace_flags(id.get_flags());
         } else {
-            if self.head == self.dense_values.len() {
-                self.dense_values.push(value);
-                self.dense_ids.push(id.clone());
-            } else {
-                self.dense_values[self.head] = value;
-                self.dense_ids[self.head] = id.clone();
-            }
-            *sparse_value = I::from_other(self.head as u32, &id);
-            self.head = self.head + 1;
+            let end = self.dense_values.len();
+            self.dense_values.push(value);
+            self.dense_ids.push(id.clone());
+
+            *sparse_value = I::from_other(end as u32, &id);
         }
     }
 
     pub fn remove(&mut self, id: I) -> V {
         let sparse_pos = Self::get_sparse_pos(&id);
+        debug_assert!(self.dense_values.len() > 0, "The dense array is empty while remove element! id: {:?}", id);
         debug_assert!(
             self.sparse.get(sparse_pos.page).is_some(),
             "No page when remove id: {:?}",
@@ -108,47 +103,42 @@ where
 
         let sparse_value = &self.sparse[sparse_pos.page].0[sparse_pos.slot];
         debug_assert!(
-            sparse_value.get_version() == id.get_version(),
-            "The id's version is invalided while remove the id! id: {:?}",
+            sparse_value == &id,
+            "The id is invalided while remove the id! id: {:?}",
             id
         );
 
-        self.head = self.head - 1;
-        let end_index = self.head;
-        let end_id = self.dense_ids[end_index].clone();
-        let end_value = self.dense_values[end_index].clone();
-        let end_sparse_pos = Self::get_sparse_pos(&end_id);
+        let end_index = self.dense_values.len() - 1;
+        let end_id = &self.dense_ids[end_index];
+        let end_sparse_pos = Self::get_sparse_pos(end_id);
         let end_sparse_value = &self.sparse[end_sparse_pos.page].0[end_sparse_pos.slot];
 
         let index = sparse_value.get_idx() as usize;
-        let value = self.dense_values[index].clone();
 
-        self.dense_values[index] = end_value;
-        self.dense_values[end_index] = value;
-
-        self.dense_ids[index] = end_id;
-        self.dense_ids[end_index] = id;
+        self.dense_values.swap(index, end_index);
+        self.dense_ids.swap(index, end_index);
 
         self.sparse[end_sparse_pos.page].0[end_sparse_pos.slot] =
             I::from_other(sparse_value.get_idx(), &end_sparse_value);
         self.sparse[sparse_pos.page].0[sparse_pos.slot] = I::get_invalide_id();
 
-        self.dense_values[end_index].clone()
+        self.dense_ids.pop();
+        self.dense_values.pop().unwrap()
     }
 
     #[inline(always)]
-    pub fn get_head(&self) -> usize {
-        self.head
+    pub fn get_value(&self, id: &I) -> &V {
+        &self[id]
     }
 
     #[inline(always)]
-    pub fn get_value(&self, id: &I) -> V {
-        self[id.clone()].clone()
+    pub fn get_value_mut(&mut self, id: &I) -> &mut V {
+        &mut self[id]
     }
 
     #[inline(always)]
-    pub fn has(&self, id: I) -> bool {
-        let sparse_pos = Self::get_sparse_pos(&id);
+    pub fn has(&self, id: &I) -> bool {
+        let sparse_pos = Self::get_sparse_pos(id);
         if self.sparse.get(sparse_pos.page).is_none() {
             return false;
         }
@@ -170,15 +160,14 @@ where
     }
 }
 
-impl<I, V> Index<I> for SparseSet<I, V>
+impl<I, V> Index<&I> for SparseSet<I, V>
 where
     I: Id,
-    V: Clone,
 {
     type Output = V;
 
-    fn index(&self, id: I) -> &Self::Output {
-        let sparse_pos = Self::get_sparse_pos(&id);
+    fn index(&self, id: &I) -> &Self::Output {
+        let sparse_pos = Self::get_sparse_pos(id);
         debug_assert!(
             self.sparse.get(sparse_pos.page).is_some(),
             "No page when get value, id: {:?}",
@@ -199,13 +188,12 @@ where
     }
 }
 
-impl<I, V> IndexMut<I> for SparseSet<I, V>
+impl<I, V> IndexMut<&I> for SparseSet<I, V>
 where
     I: Id,
-    V: Clone,
 {
-    fn index_mut(&mut self, id: I) -> &mut Self::Output {
-        let sparse_pos = Self::get_sparse_pos(&id);
+    fn index_mut(&mut self, id: &I) -> &mut Self::Output {
+        let sparse_pos = Self::get_sparse_pos(id);
         debug_assert!(
             self.sparse.get(sparse_pos.page).is_some(),
             "No page when get value, id: {:?}",
@@ -226,7 +214,11 @@ where
     }
 }
 
-pub struct SparseStroge<I> where I: Id {
+#[derive(Debug)]
+pub struct SparseStroge<I>
+where
+    I: Id,
+{
     dense: Vec<I>,
     sparse: Vec<Page<I>>,
     head: usize,
@@ -247,23 +239,25 @@ where
         if self.head < self.dense.len() {
             let entity = self.dense[self.head].clone();
             let entity = entity.get_next_version(I::FlagType::default());
-            
+
             let sparse_pos = Self::get_sparse_pos(&entity);
-            self.sparse[sparse_pos.page].0[sparse_pos.slot] = I::new(self.head as u32, entity.get_version(), entity.get_flags());
+            self.sparse[sparse_pos.page].0[sparse_pos.slot] =
+                I::new(self.head as u32, entity.get_version(), entity.get_flags());
             self.dense[self.head] = entity.clone();
 
             self.head = self.head + 1;
-            
+
             entity
         } else {
             let entity = I::new(self.head as u32, 0, I::FlagType::default());
-            
+
             let sparse_pos = Self::get_sparse_pos(&entity);
             if self.sparse.get(sparse_pos.page).is_none() {
                 self.sparse.push(Page::new());
             }
 
-            self.sparse[sparse_pos.page].0[sparse_pos.slot] = I::new(self.head as u32, entity.get_version(), entity.get_flags());
+            self.sparse[sparse_pos.page].0[sparse_pos.slot] =
+                I::new(self.head as u32, entity.get_version(), entity.get_flags());
             self.dense.push(entity.clone());
 
             self.head = self.head + 1;
@@ -294,15 +288,13 @@ where
 
         self.head = self.head - 1;
         let end_index = self.head;
-        let end_value = self.dense[end_index].clone();
-        let end_sparse_pos = Self::get_sparse_pos(&end_value);
+        let end_id = &self.dense[end_index];
+        let end_sparse_pos = Self::get_sparse_pos(end_id);
         let end_sparse_value = &self.sparse[end_sparse_pos.page].0[end_sparse_pos.slot];
 
         let index = sparse_value.get_idx() as usize;
-        let value = self.dense[index].clone();
 
-        self.dense[index] = end_value;
-        self.dense[end_index] = value;
+        self.dense.swap(index, end_index);
 
         self.sparse[end_sparse_pos.page].0[end_sparse_pos.slot] =
             I::from_other(sparse_value.get_idx(), &end_sparse_value);

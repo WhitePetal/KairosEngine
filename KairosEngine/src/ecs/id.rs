@@ -1,10 +1,10 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, hash::Hash};
 
 pub trait IdFlag: Debug + Default + Into<u32> {
     fn get_invalide_flag() -> Self;
 }
 
-pub trait Id: Debug + Clone {
+pub trait Id: Debug + Clone + PartialEq + Eq + Hash {
     type FlagType: IdFlag;
 
     fn new(idx: u32, version: u32, flags: Self::FlagType) -> Self;

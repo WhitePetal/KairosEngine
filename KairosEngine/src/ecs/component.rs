@@ -13,8 +13,8 @@ pub trait Component: 'static {}
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, IntoPrimitive, FromPrimitive)]
 pub enum ComponentFlag {
     #[default]
-    Default,
-    Invalide,
+    Default = 0x1,
+    Invalide = 0x2,
 }
 impl IdFlag for ComponentFlag {
     fn get_invalide_flag() -> Self {
