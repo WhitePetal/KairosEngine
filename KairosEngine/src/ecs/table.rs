@@ -218,7 +218,7 @@ impl Table {
             .iter()
             .enumerate()
             .for_each(|(index, component_id)| {
-                types.push_back(*component_id, ComponentTypeInfo { colum_index: index });
+                types.insert(component_id, ComponentTypeInfo { colum_index: index });
             });
         let components_table = ComponentTable::new(component_metas, colum_capacity);
 
@@ -244,8 +244,8 @@ impl Table {
 
     pub fn push_row(&mut self, entity: Entity) {
         debug_assert!(!self.entitiy_infos.has(entity));
-        self.entitiy_infos.push_back(
-            entity,
+        self.entitiy_infos.insert(
+            &entity,
             EntityInfo {
                 row_index: self.entitiy_infos.get_head(),
             },
@@ -260,7 +260,7 @@ impl Table {
         let end_entity = self.entities.pop().unwrap();
         let entity_info = self.entitiy_infos[entity];
 
-        self.entitiy_infos.remove(&entity, &end_entity);
+        self.entitiy_infos.remove(entity);
         self.components_table.remove_row(entity_info.row_index);
         self.entities[entity_info.row_index] = end_entity;
     }

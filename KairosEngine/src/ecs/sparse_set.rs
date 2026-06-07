@@ -45,7 +45,8 @@ where
     I: Id,
     V: Copy,
 {
-    dense: Vec<V>,
+    dense_values: Vec<V>,
+    dense_ids: Vec<I>,
     sparse: Vec<Page<I>>,
     head: usize,
 }
@@ -56,83 +57,81 @@ where
 {
     pub fn new(capacity: usize) -> Self {
         Self {
-            dense: Vec::with_capacity(capacity),
+            dense_values: Vec::with_capacity(capacity),
+            dense_ids: Vec::with_capacity(capacity),
             sparse: Vec::with_capacity(capacity),
             head: 0,
         }
     }
 
-    pub fn push_back(&mut self, id: I, value: V) {
-        debug_assert!(!self.has(id));
-
-        if self.head == self.dense.len() {
-            self.dense.push(value);
-        } else {
-            self.dense[self.head] = value;
-        }
-
-        let sparse_pos = Self::get_sparse_pos(&id);
+    pub fn insert(&mut self, id: &I, value: V) {
+        let sparse_pos = Self::get_sparse_pos(id);
         if self.sparse.get(sparse_pos.page).is_none() {
             self.sparse.push(Page::new());
         }
-        self.sparse[sparse_pos.page].0[sparse_pos.slot] =
-            I::new(self.head as u32, id.get_version(), I::FlagType::default());
-        self.head = self.head + 1;
+        let sparse_value = &mut self.sparse[sparse_pos.page].0[sparse_pos.slot];
+        if sparse_value.is_avalide() {
+            debug_assert!(
+                sparse_value.get_version() == id.get_version(),
+                "Try insert a invalide version id! id: {:?}",
+                id
+            );
+            self.dense_values[sparse_value.get_idx() as usize] = value;
+            self.dense_ids[sparse_value.get_idx() as usize] = *id;
+            self.sparse[sparse_pos.page].0[sparse_pos.slot].replace_flags(id.get_flags());
+        } else {
+            if self.head == self.dense_values.len() {
+                self.dense_values.push(value);
+                self.dense_ids.push(*id);
+            } else {
+                self.dense_values[self.head] = value;
+                self.dense_ids[self.head] = *id;
+            }
+            *sparse_value = I::from_other(self.head as u32, id);
+            self.head = self.head + 1;
+        }
     }
 
-    pub fn remove(&mut self, remove_id: &I, end_id: &I) {
-        let sparse_pos = Self::get_sparse_pos(remove_id);
+    pub fn remove(&mut self, id: I) {
+        let sparse_pos = Self::get_sparse_pos(&id);
         debug_assert!(
             self.sparse.get(sparse_pos.page).is_some(),
             "No page when remove id: {:?}",
-            remove_id
+            id
         );
         debug_assert!(
             self.sparse[sparse_pos.page].0[sparse_pos.slot].is_avalide(),
             "Remove the id is not alive! id: {:?}",
-            remove_id
+            id
         );
 
-        let index = self.sparse[sparse_pos.page].0[sparse_pos.slot];
+        let sparse_value = self.sparse[sparse_pos.page].0[sparse_pos.slot];
         debug_assert!(
-            index.get_version() == remove_id.get_version(),
+            sparse_value.get_version() == id.get_version(),
             "The id's version is invalided while remove the id! id: {:?}",
-            remove_id
+            id
         );
 
         self.head = self.head - 1;
-        let target = self.dense[self.head];
+        let end_index = self.head;
+        let end_id = self.dense_ids[end_index];
+        let end_value = self.dense_values[end_index];
+        let end_sparse_pos = Self::get_sparse_pos(&end_id);
+        let end_sparse_value = self.sparse[end_sparse_pos.page].0[end_sparse_pos.slot];
 
-        let index = index.get_idx() as usize;
-        let value = self.dense[index];
+        let index = sparse_value.get_idx() as usize;
+        let value = self.dense_values[index];
 
-        self.dense[index] = target;
-        self.dense[self.head] = value;
+        self.dense_values[index] = end_value;
+        self.dense_values[end_index] = value;
 
-        let target_sparse_pos = Self::get_sparse_pos(end_id);
-        debug_assert!(
-            self.sparse.get(target_sparse_pos.page).is_some(),
-            "Remove the id failed, the end_id is invalide! id: {:?}, end_id: {:?}",
-            remove_id,
-            end_id
-        );
-        debug_assert!(
-            self.sparse[target_sparse_pos.page].0[target_sparse_pos.slot].is_avalide(),
-            "Remove the id failed, the end_id is invalide! id: {:?}, end_id: {:?}",
-            remove_id,
-            end_id
-        );
-        let target_entity = self.sparse[target_sparse_pos.page].0[target_sparse_pos.slot];
-        debug_assert!(
-            target_entity.get_version() == end_id.get_version(),
-            "The end_id's version is invalided while remove the id! id: {:?}, end_id: {:?}",
-            remove_id,
-            end_id
-        );
+        self.dense_ids[index] = end_id;
+        self.dense_ids[end_index] = id;
 
-        self.sparse[sparse_pos.page].0[sparse_pos.slot] = target_entity;
-        self.sparse[target_sparse_pos.page].0[target_sparse_pos.slot] =
-            remove_id.replace_flags(I::FlagType::get_invalide_flag());
+        self.sparse[end_sparse_pos.page].0[end_sparse_pos.slot] =
+            I::from_other(sparse_value.get_idx(), &end_sparse_value);
+        self.sparse[sparse_pos.page].0[sparse_pos.slot] =
+            I::from_other(end_sparse_value.get_idx(), &sparse_value);
     }
 
     #[inline(always)]
@@ -194,7 +193,7 @@ where
             "The id's version is invalide! while get value, id: {:?}",
             id
         );
-        &self.dense[index.get_idx() as usize]
+        &self.dense_values[index.get_idx() as usize]
     }
 }
 
@@ -221,6 +220,6 @@ where
             "The id's version is invalide! while get value, id: {:?}",
             id
         );
-        &mut self.dense[index.get_idx() as usize]
+        &mut self.dense_values[index.get_idx() as usize]
     }
 }
