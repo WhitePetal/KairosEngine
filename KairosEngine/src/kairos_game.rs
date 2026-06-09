@@ -6,7 +6,10 @@ use crate::{
     },
     base_components::TransformComponent,
     ecs::world::{SceneId, World, scene::Scene},
-    graphics::{graphics_graph::GraphicsCommand, lod_mesh_component::LODMeshComponent, material_component::MaterialComponent},
+    graphics::{
+        graphics_graph::GraphicsCommand, lod_mesh_component::LODMeshComponent,
+        material_component::MaterialComponent,
+    },
     math::{self, float3, float4, quaternion},
 };
 
@@ -64,8 +67,15 @@ impl KairosGame {
     }
 
     pub fn render(&self, world: &mut World, graphics_command: &mut GraphicsCommand) {
-        world.query::<(TransformComponent, LODMeshComponent, MaterialComponent), _>(&self.main_scene, |(trans, lod, mat)| {
-            graphics_command.draw(lod.lod0.clone(), mat.material.clone(), trans.get_local_to_world());
-        });
+        world.query::<(TransformComponent, LODMeshComponent, MaterialComponent), _>(
+            &self.main_scene,
+            |(trans, lod, mat)| {
+                graphics_command.draw(
+                    lod.lod0.clone(),
+                    mat.material.clone(),
+                    trans.get_local_to_world(),
+                );
+            },
+        );
     }
 }

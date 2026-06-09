@@ -4,10 +4,14 @@ use std::{
 };
 
 use crate::{
-    asset_loader::assets::AssetsServer, ecs::world::World, graphics::{
+    asset_loader::assets::AssetsServer,
+    ecs::world::World,
+    graphics::{
         graphics_graph::{GraphicsCommand, GraphicsGraph},
         render_pipeline::RenderPipeline,
-    }, kairos_game::KairosGame, log::Log
+    },
+    kairos_game::KairosGame,
+    log::Log,
 };
 use egui::{self};
 
@@ -434,7 +438,7 @@ impl Context {
         }
     }
 
-    pub fn render(&mut self, world: &mut World, game: &mut KairosGame,) -> Vec<GraphicsCommand> {
+    pub fn render(&mut self, world: &mut World, game: &mut KairosGame) -> Vec<GraphicsCommand> {
         let mut commands = Vec::new();
         self.drawers.iter().for_each(|drawer| {
             let cmd = drawer.render(world, game, &mut self.messager);

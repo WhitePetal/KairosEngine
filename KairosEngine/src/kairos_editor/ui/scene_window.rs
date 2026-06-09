@@ -5,14 +5,19 @@ use serde::{Deserialize, Serialize};
 use toml::from_str;
 
 use crate::{
-    asset_loader::assets::{AssetHandle, AssetsServer, MaterialAssetsSystem, MeshAssetsSystem}, ecs::world::World, graphics::{
+    asset_loader::assets::{AssetHandle, AssetsServer, MaterialAssetsSystem, MeshAssetsSystem},
+    ecs::world::World,
+    graphics::{
         attachment::Attachment,
         camera::Camera,
         graphics_graph::GraphicsCommand,
         material::{self, Material, MaterialAsset},
         mesh::Mesh,
         vertex::Vertex,
-    }, kairos_editor::ui::{Drawer, Message, paths}, kairos_game::KairosGame, math::{self, float2, float3, float4, float4x4, quaternion}
+    },
+    kairos_editor::ui::{Drawer, Message, paths},
+    kairos_game::KairosGame,
+    math::{self, float2, float3, float4, float4x4, quaternion},
 };
 
 #[derive(Debug, Serialize, Deserialize)]

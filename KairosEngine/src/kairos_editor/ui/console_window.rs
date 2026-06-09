@@ -1,6 +1,8 @@
 use std::{any::type_name, fs};
 
-use crate::{asset_loader::assets::AssetsServer, ecs::world::World, kairos_game::KairosGame, log::Log};
+use crate::{
+    asset_loader::assets::AssetsServer, ecs::world::World, kairos_game::KairosGame, log::Log,
+};
 use egui;
 use serde::{Deserialize, Serialize};
 use toml::from_str;

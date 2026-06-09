@@ -4,7 +4,10 @@ use std::{
     io::Write,
 };
 
-use crate::{asset_loader::assets::AssetsServer, ecs::world::World, kairos_editor::ui::Messager, kairos_game::KairosGame, log::Log, math};
+use crate::{
+    asset_loader::assets::AssetsServer, ecs::world::World, kairos_editor::ui::Messager,
+    kairos_game::KairosGame, log::Log, math,
+};
 use egui::{self, Panel, containers::menu};
 use serde::{Deserialize, Serialize};
 use toml::from_str;

@@ -1,10 +1,14 @@
 use std::{any::type_name, fs, path::Path};
 
 use crate::{
-    asset_loader::assets::AssetsServer, ecs::world::World, kairos_editor::{
+    asset_loader::assets::AssetsServer,
+    ecs::world::World,
+    kairos_editor::{
         project_path_tree::{ProjectPath, ProjectPathGraph},
         ui::Messager,
-    }, kairos_game::KairosGame, log::Log
+    },
+    kairos_game::KairosGame,
+    log::Log,
 };
 use egui::{Button, WidgetText};
 use petgraph::visit::EdgeRef;

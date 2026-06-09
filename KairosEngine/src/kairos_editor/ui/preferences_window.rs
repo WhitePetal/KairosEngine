@@ -1,6 +1,9 @@
 use std::{any::type_name, fs};
 
-use crate::{asset_loader::assets::AssetsServer, ecs::world::World, kairos_editor::ui::Messager, kairos_game::KairosGame, log::Log, math};
+use crate::{
+    asset_loader::assets::AssetsServer, ecs::world::World, kairos_editor::ui::Messager,
+    kairos_game::KairosGame, log::Log, math,
+};
 use egui::{self, Vec2};
 use serde::{Deserialize, Serialize};
 use toml::from_str;

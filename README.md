@@ -40,6 +40,8 @@
 - **imgui-beef**: | [https://github.com/RogueMacro/imgui-beef](https://github.com/RogueMacro/imgui-beef)
 ## Creats
 See the [Cargo.toml](KairosEngine/Cargo.toml)
+## Thanks/Indirect Dependencies
+See the [Thanks.md](Thanks.md)
 
 # Used AIs
 - Kimi
