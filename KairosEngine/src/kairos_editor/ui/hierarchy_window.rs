@@ -1,6 +1,6 @@
 use std::{any::type_name, fs};
 
-use crate::{asset_loader::assets::AssetsServer, kairos_editor::ui::Messager, log::Log};
+use crate::{asset_loader::assets::AssetsServer, ecs::world::World, kairos_editor::ui::Messager, kairos_game::KairosGame, log::Log};
 use serde::{Deserialize, Serialize};
 use toml::from_str;
 
@@ -81,7 +81,8 @@ impl Drawer for HierarchyWindow {
 
     fn render(
         &self,
-        _assets_server: &mut AssetsServer,
+        _world: &mut World,
+        _game: &mut KairosGame,
         _messager: &mut Messager,
     ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {
         None

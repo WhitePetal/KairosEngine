@@ -255,7 +255,7 @@ impl Table {
             .for_each(|(index, component_id)| {
                 types.insert(component_id, ComponentTypeInfo { colum_index: index });
             });
-        let components_table = ComponentTable::new(component_metas, colum_capacity);
+        let components_table = ComponentTable::new(component_metas, row_capacity);
 
         Self {
             types,

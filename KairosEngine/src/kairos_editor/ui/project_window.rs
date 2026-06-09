@@ -1,12 +1,10 @@
 use std::{any::type_name, fs, path::Path};
 
 use crate::{
-    asset_loader::assets::AssetsServer,
-    kairos_editor::{
+    asset_loader::assets::AssetsServer, ecs::world::World, kairos_editor::{
         project_path_tree::{ProjectPath, ProjectPathGraph},
         ui::Messager,
-    },
-    log::Log,
+    }, kairos_game::KairosGame, log::Log
 };
 use egui::{Button, WidgetText};
 use petgraph::visit::EdgeRef;
@@ -95,7 +93,8 @@ impl Drawer for ProjectWindow {
 
     fn render(
         &self,
-        _assets_server: &mut AssetsServer,
+        _world: &mut World,
+        _game: &mut KairosGame,
         _messager: &mut Messager,
     ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {
         None

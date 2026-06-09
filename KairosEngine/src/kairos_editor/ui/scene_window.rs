@@ -5,17 +5,14 @@ use serde::{Deserialize, Serialize};
 use toml::from_str;
 
 use crate::{
-    asset_loader::assets::{AssetHandle, AssetsServer, MaterialAssetsSystem, MeshAssetsSystem},
-    graphics::{
+    asset_loader::assets::{AssetHandle, AssetsServer, MaterialAssetsSystem, MeshAssetsSystem}, ecs::world::World, graphics::{
         attachment::Attachment,
         camera::Camera,
         graphics_graph::GraphicsCommand,
         material::{self, Material, MaterialAsset},
         mesh::Mesh,
         vertex::Vertex,
-    },
-    kairos_editor::ui::{Drawer, Message, paths},
-    math::{self, float2, float3, float4, float4x4, quaternion},
+    }, kairos_editor::ui::{Drawer, Message, paths}, kairos_game::KairosGame, math::{self, float2, float3, float4, float4x4, quaternion}
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -261,7 +258,8 @@ impl Drawer for SceneWindow {
 
     fn render(
         &self,
-        _assets_sever: &mut AssetsServer,
+        world: &mut World,
+        game: &mut KairosGame,
         messager: &mut super::Messager,
     ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {
         let Some(mesh) = &self.model.mesh else {
@@ -319,18 +317,7 @@ impl Drawer for SceneWindow {
             true,
         );
 
-        const NUM_INSTANCES_PER_ROW: i32 = 5;
-
-        for z in -NUM_INSTANCES_PER_ROW..NUM_INSTANCES_PER_ROW {
-            for x in -NUM_INSTANCES_PER_ROW..NUM_INSTANCES_PER_ROW {
-                let position = float3::new(x as f32, 0.0, z as f32);
-                let rotation = quaternion::identity();
-                let scale = float3::new(1.0, 1.0, 1.0);
-
-                let local_to_world = float4x4::trs(position, rotation, scale);
-                graphics_command.draw(mesh.clone(), material.clone(), local_to_world);
-            }
-        }
+        game.render(world, &mut graphics_command);
 
         graphics_command.end_render_pass();
         let (egui_bind_tex_sender, egui_bind_tex_recever) = tokio::sync::oneshot::channel();

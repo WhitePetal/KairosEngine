@@ -1,6 +1,6 @@
 use std::ops::RangeInclusive;
 
-use crate::{graphics::render_pipeline::RenderPipeline, log::Log};
+use crate::{log::Log};
 use egui::{
     self, Align, Align2, Button, CentralPanel, Color32, Context, CornerRadius, CursorIcon,
     EventFilter, Frame, Id, Key, LayerId, Layout, Modifiers, NumExt, Order, Popup,

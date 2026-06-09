@@ -9,19 +9,19 @@ pub trait ComponentQueryTuple {
 
     fn foreach<'a, F>(register: &mut ComponentRegister, table_graph: &'a TableGraph, f: F)
     where
-        F: Fn(Self::Item<'a>),
+        F: FnMut(Self::Item<'a>),
         Self: 'a;
 }
 
 impl<A: Component> ComponentQueryTuple for A {
     type Item<'a>
-        = (&'a A)
+        = &'a A
     where
         Self: 'a;
 
-    fn foreach<'a, F>(register: &mut ComponentRegister, table_graph: &'a TableGraph, f: F)
+    fn foreach<'a, F>(register: &mut ComponentRegister, table_graph: &'a TableGraph, mut f: F)
     where
-        F: Fn(Self::Item<'a>),
+        F: FnMut(Self::Item<'a>),
         Self: 'a,
     {
         let a_component_id = register.get::<A>().0;
@@ -44,9 +44,9 @@ impl<A: Component, B: Component> ComponentQueryTuple for (A, B) {
         A: 'a,
         B: 'a;
 
-    fn foreach<'a, F>(register: &mut ComponentRegister, table_graph: &'a TableGraph, f: F)
+    fn foreach<'a, F>(register: &mut ComponentRegister, table_graph: &'a TableGraph, mut f: F)
     where
-        F: Fn(Self::Item<'a>),
+        F: FnMut(Self::Item<'a>),
         Self: 'a,
     {
         let a_component_id = register.get::<A>().0;
@@ -83,9 +83,9 @@ impl<A: Component, B: Component, C: Component> ComponentQueryTuple for (A, B, C)
         B: 'a,
         C: 'a;
 
-    fn foreach<'a, F>(register: &mut ComponentRegister, table_graph: &'a TableGraph, f: F)
+    fn foreach<'a, F>(register: &mut ComponentRegister, table_graph: &'a TableGraph, mut f: F)
     where
-        F: Fn(Self::Item<'a>),
+        F: FnMut(Self::Item<'a>),
         Self: 'a,
     {
         let a_component_id = register.get::<A>().0;

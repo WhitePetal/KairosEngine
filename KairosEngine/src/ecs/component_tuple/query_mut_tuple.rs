@@ -14,10 +14,38 @@ pub trait ComponentQueryMutTuple {
         F: FnMut(Self::Item<'a>),
         Self: 'a;
 }
+impl<A: Component> ComponentQueryMutTuple for A {
+    type Item<'a>
+        = &'a mut A
+    where
+        A: 'a;
 
+    fn foreach<'a, F>(register: &mut ComponentRegister, table_graph: &'a mut TableGraph, mut f: F)
+    where
+        F: FnMut(Self::Item<'a>),
+        Self: 'a,
+    {
+        let a_component_id = register.get::<A>().0;
+        let component_ids = [&a_component_id];
+
+        for table in table_graph.graph.node_weights_mut() {
+            if !table.contains_all_components(&component_ids) {
+                continue;
+            }
+
+            let a = unsafe {
+                let table = ptr::from_mut(table);
+                let a = (*table).component_slice_mut::<A>(&a_component_id);
+                a
+            };
+
+            a.iter_mut().for_each(|a| f(a));
+        }
+    }
+}
 impl<A: Component, B: Component> ComponentQueryMutTuple for (A, B) {
     type Item<'a>
-        = (&'a A, &'a B)
+        = (&'a mut A, &'a mut B)
     where
         A: 'a,
         B: 'a;
@@ -56,7 +84,7 @@ impl<A: Component, B: Component> ComponentQueryMutTuple for (A, B) {
 }
 impl<A: Component, B: Component, C: Component> ComponentQueryMutTuple for (A, B, C) {
     type Item<'a>
-        = (&'a A, &'a B, &'a C)
+        = (&'a mut A, &'a mut B, &'a mut C)
     where
         A: 'a,
         B: 'a,

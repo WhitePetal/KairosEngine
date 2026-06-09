@@ -2,10 +2,10 @@ use crate::{
     asset_loader::assets::AssetsServer,
     ecs::{
         compoent_register::ComponentRegister,
-        component_tuple::ComponentsTuple,
+        component_tuple::{ComponentQueryMutTuple, ComponentQueryTuple, ComponentsTuple},
         consts,
         entity::{Entity, EntityFlag},
-        id::{Id, IdFlag},
+        id::Id,
         sparse_set::{SparseSet, SparseStroge},
         world::scene::Scene,
     },
@@ -71,7 +71,7 @@ type SceneStroge = SparseStroge<SceneId>;
 pub struct World {
     pub assets_server: AssetsServer,
     pub time: Time,
-    scene_stroge: SceneStroge,
+    pub scene_stroge: SceneStroge,
     scenes: SparseSet<SceneId, Scene>,
     component_register: ComponentRegister,
 }
@@ -100,6 +100,11 @@ impl World {
     }
 
     #[inline(always)]
+    pub fn get_scene(&self, scene_id: &SceneId) -> &Scene {
+        self.scenes.get_value(scene_id)
+    }
+
+    #[inline(always)]
     pub fn get_scene_mut(&mut self, scene_id: &SceneId) -> &mut Scene {
         self.scenes.get_value_mut(scene_id)
     }
@@ -111,5 +116,23 @@ impl World {
     ) -> Entity {
         let scene = self.scenes.get_value_mut(scene_id);
         scene.create_entity(&mut self.component_register, components_tuple)
+    }
+
+    pub fn query<'a, Q: ComponentQueryTuple + 'a, F: FnMut(Q::Item<'a>)>(
+        &'a mut self,
+        scene_id: &SceneId,
+        f: F,
+    ) {
+        let scene = self.scenes.get_value(scene_id);
+        scene.query::<Q, F>(&mut self.component_register, f);
+    }
+
+    pub fn query_mut<'a, Q: ComponentQueryMutTuple + 'a, F: FnMut(Q::Item<'a>)>(
+        &'a mut self,
+        scene_id: &SceneId,
+        f: F,
+    ) {
+        let scene = self.scenes.get_value_mut(scene_id);
+        scene.query_mut::<Q, F>(&mut self.component_register, f);
     }
 }

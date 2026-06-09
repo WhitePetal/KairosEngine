@@ -3,8 +3,14 @@ use std::collections::HashMap;
 use petgraph::graph::NodeIndex;
 
 use crate::ecs::{
-    compoent_register::ComponentRegister, component::ComponentId, component_tuple::ComponentsTuple,
-    entity::Entity, sparse_set::EntityStorage, table::Table, table_graph::TableGraph,
+    compoent_register::ComponentRegister,
+    component::ComponentId,
+    component_tuple::{ComponentQueryMutTuple, ComponentQueryTuple, ComponentsTuple},
+    entity::Entity,
+    sparse_set::EntityStorage,
+    table::Table,
+    table_graph::TableGraph,
+    world::World,
 };
 
 #[derive(Debug)]
@@ -56,7 +62,21 @@ impl Scene {
         components_tuple.create_entity(component_register, &mut self.entities, table)
     }
 
-    // pub fn get_components
+    pub fn query<'a, Q: ComponentQueryTuple + 'a, F: FnMut(Q::Item<'a>)>(
+        &'a self,
+        register: &mut ComponentRegister,
+        f: F,
+    ) {
+        Q::foreach(register, &self.table_graph, f);
+    }
+
+    pub fn query_mut<'a, Q: ComponentQueryMutTuple + 'a, F: FnMut(Q::Item<'a>)>(
+        &'a mut self,
+        register: &mut ComponentRegister,
+        f: F,
+    ) {
+        Q::foreach(register, &mut self.table_graph, f);
+    }
 
     pub fn add_components_for_entity<T: ComponentsTuple>(entity: Entity, component_tuple: T) {
         todo!()

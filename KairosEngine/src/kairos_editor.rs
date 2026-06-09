@@ -50,7 +50,7 @@ impl KairosEngine {
     }
 
     fn render_ui(&mut self) -> Vec<GraphicsCommand> {
-        self.ui_context.render(&mut self.world.assets_server)
+        self.ui_context.render(&mut self.world, &mut self.game)
     }
 
     fn handle_asset_server(&mut self) {

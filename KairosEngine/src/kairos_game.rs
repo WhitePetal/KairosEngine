@@ -6,8 +6,8 @@ use crate::{
     },
     base_components::TransformComponent,
     ecs::world::{SceneId, World, scene::Scene},
-    graphics::{lod_mesh_component::LODMeshComponent, material_component::MaterialComponent},
-    math::{float3, quaternion},
+    graphics::{graphics_graph::GraphicsCommand, lod_mesh_component::LODMeshComponent, material_component::MaterialComponent},
+    math::{self, float3, float4, quaternion},
 };
 
 pub struct KairosGame {
@@ -51,6 +51,21 @@ impl KairosGame {
     }
 
     pub fn update(&mut self, world: &mut World) {
-        // world.get_scene_mut(&self.main_scene).
+        world.time.update();
+
+        let total_time = world.time.total_time().as_secs_f32();
+
+        world.query_mut::<TransformComponent, _>(&self.main_scene, |trans| {
+            let position = &mut trans.position;
+            let x = position.x();
+            let y = (x + total_time).sin();
+            *position = float3::new(x, y, position.z());
+        });
+    }
+
+    pub fn render(&self, world: &mut World, graphics_command: &mut GraphicsCommand) {
+        world.query::<(TransformComponent, LODMeshComponent, MaterialComponent), _>(&self.main_scene, |(trans, lod, mat)| {
+            graphics_command.draw(lod.lod0.clone(), mat.material.clone(), trans.get_local_to_world());
+        });
     }
 }
