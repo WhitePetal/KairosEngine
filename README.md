@@ -33,11 +33,6 @@
 - ...
 
 # Third-Party Dependencies
-## Libs
-- **Beef-lang**: MIT License | [https://github.com/beefytech/Beef](https://github.com/beefytech/Beef)
-- **ImGui**: MIT License | [https://github.com/ocornut/imgui](https://github.com/ocornut/imgui)
-- **cimgui**: MIT License | [https://github.com/cimgui/cimgui](https://github.com/cimgui/cimgui)
-- **imgui-beef**: | [https://github.com/RogueMacro/imgui-beef](https://github.com/RogueMacro/imgui-beef)
 ## Creats
 See the [Cargo.toml](KairosEngine/Cargo.toml)
 ## Thanks/Indirect Dependencies
