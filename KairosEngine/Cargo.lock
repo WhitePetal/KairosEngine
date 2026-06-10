@@ -1816,6 +1816,7 @@ dependencies = [
  "emath",
  "env_logger",
  "epaint",
+ "foldhash 0.2.0",
  "gltf",
  "image",
  "log",

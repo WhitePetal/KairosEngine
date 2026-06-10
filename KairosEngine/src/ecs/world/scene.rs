@@ -1,41 +1,23 @@
-use std::collections::HashMap;
-
-use petgraph::graph::NodeIndex;
+use std::{collections::HashMap, fmt::Debug};
 
 use crate::ecs::{
-    compoent_register::ComponentRegister,
-    component::ComponentId,
     component_tuple::{ComponentQueryMutTuple, ComponentQueryTuple, ComponentsTuple},
     entity::Entity,
     sparse_set::EntityStorage,
     table::Table,
-    table_graph::TableGraph,
-    world::World,
+    table_graph::TableGraph, world::{SceneId, World},
 };
+
 
 #[derive(Debug)]
 pub struct Scene {
-    entities: EntityStorage,
-    table_graph: TableGraph,
-    components_id_to_table: HashMap<Vec<ComponentId>, NodeIndex>,
-    default_table_capacity: usize,
+
 }
 
+
 impl Scene {
-    pub fn new(
-        entity_capacity: usize,
-        table_graph_capacity: usize,
-        default_table_capacity: usize,
-    ) -> Self {
-        let entities = EntityStorage::new(entity_capacity);
-        let table_graph = TableGraph::new(table_graph_capacity);
-        let components_id_to_table = HashMap::with_capacity(table_graph_capacity);
-        Self {
-            entities,
-            table_graph,
-            components_id_to_table,
-            default_table_capacity,
-        }
+    pub fn new<F: FnMut(&SceneId, &mut World) -> () + 'static>(world: &'a mut World, update: F) -> Self {
+        Self { world, update_inner: Box::new(update) }
     }
 
     pub fn create_entity<T: ComponentsTuple>(

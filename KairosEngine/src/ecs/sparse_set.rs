@@ -1,6 +1,5 @@
 use std::{
-    array,
-    ops::{Index, IndexMut},
+    array, iter::Zip, ops::{Index, IndexMut}
 };
 
 use crate::ecs::{consts::SPARSE_PAGE_SIZE, id::Id};
@@ -215,6 +214,18 @@ where
             id
         );
         &mut self.dense_values[index.get_idx() as usize]
+    }
+}
+
+impl<I, V> SparseSet<I, V>
+where
+    I: Id,
+{
+    pub fn iter(&self) -> Zip<std::slice::Iter<'_, I>, std::slice::Iter<'_, V>> {
+        self.dense_ids.iter().zip(&self.dense_values)
+    }
+    pub fn iter_mut(&mut self) -> Zip<std::slice::Iter<'_, I>, std::slice::IterMut<'_, V>> {
+        self.dense_ids.iter().zip(&mut self.dense_values)
     }
 }
 

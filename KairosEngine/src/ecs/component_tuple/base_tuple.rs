@@ -1,36 +1,33 @@
-use std::ptr;
+use std::{ptr};
 
 use crate::ecs::{
-    compoent_register::{ComponentRegister, ComponentTypeMeta},
-    component::{Component, ComponentId},
+    component::{Component},
     entity::Entity,
     id::Id,
     sparse_set::EntityStorage,
-    table::Table,
+    table::{ComponentTypeInfo, Table},
 };
 
 type ComponentWriter = Box<dyn FnOnce(*mut u8)>;
 
 pub trait ComponentsTuple {
-    fn to_ids(register: &mut ComponentRegister) -> (Vec<ComponentId>, Vec<ComponentTypeMeta>);
+    fn to_ids() -> Box<[ComponentTypeInfo]>;
 
     fn create_entity(
         self,
-        register: &mut ComponentRegister,
         entity_stroge: &mut EntityStorage,
         components_table: &mut Table,
     ) -> Entity;
 }
 
 impl<A: Component> ComponentsTuple for A {
-    fn to_ids(register: &mut ComponentRegister) -> (Vec<ComponentId>, Vec<ComponentTypeMeta>) {
-        let a = register.get::<A>();
-        (vec![a.0], vec![a.1])
+    fn to_ids() -> Box<[ComponentTypeInfo]> {
+        let a = ComponentTypeInfo::of::<A>();
+        Box::new([a])
     }
 
     fn create_entity(
         self,
-        _register: &mut ComponentRegister,
         entity_stroge: &mut EntityStorage,
         components_table: &mut Table,
     ) -> Entity {
@@ -47,17 +44,16 @@ impl<A: Component> ComponentsTuple for A {
     }
 }
 impl<A: Component, B: Component> ComponentsTuple for (A, B) {
-    fn to_ids(register: &mut ComponentRegister) -> (Vec<ComponentId>, Vec<ComponentTypeMeta>) {
-        let a = register.get::<A>();
-        let b = register.get::<B>();
+    fn to_ids() -> Box<[ComponentTypeInfo]> {
+        let a = ComponentTypeInfo::of::<A>();
+        let b = ComponentTypeInfo::of::<B>();
         let mut components = [a, b];
-        components.sort_by_key(|(id, _)| id.get_idx());
-        components.into_iter().unzip()
+        components.sort();
+        Box::new(components)
     }
 
     fn create_entity(
         self,
-        register: &mut ComponentRegister,
         entity_stroge: &mut EntityStorage,
         components_table: &mut Table,
     ) -> Entity {

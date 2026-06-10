@@ -12,5 +12,9 @@ pub const FLAG_MASK_OFFSET: u32 = VERSION_MASK_OFFSET + FLAG_MASK_LEN;
 
 pub const SPARSE_PAGE_SIZE: usize = 4096;
 
+pub const WORLD_ENTITIES_CAPACITY: usize = 4096;
+pub const WORLD_TABLE_GRAPH_CAPACITY: usize = 128;
 pub const WORLD_SCENE_CAPACITY: usize = 64;
 pub const COMPONENT_TYPE_CAPACITY: usize = 1024;
+
+pub const TABLE_ROW_CAPACITY: usize = 64;

@@ -1,13 +1,7 @@
 use crate::{
     asset_loader::assets::AssetsServer,
     ecs::{
-        compoent_register::ComponentRegister,
-        component_tuple::{ComponentQueryMutTuple, ComponentQueryTuple, ComponentsTuple},
-        consts,
-        entity::{Entity, EntityFlag},
-        id::Id,
-        sparse_set::{SparseSet, SparseStroge},
-        world::scene::Scene,
+        component_tuple::{ComponentQueryMutTuple, ComponentQueryTuple, ComponentsTuple}, consts, entity::{Entity, EntityFlag}, id::Id, sparse_set::{EntityStorage, SparseSet, SparseStroge}, table_graph::TableGraph, world::scene::Scene
     },
     timer::Time,
 };
@@ -68,27 +62,38 @@ impl Id for SceneId {
 
 type SceneStroge = SparseStroge<SceneId>;
 
+#[derive(Debug)]
 pub struct World {
     pub assets_server: AssetsServer,
     pub time: Time,
+    
+    entities: EntityStorage,
+    table_graph: TableGraph,
+    // components_id_to_table: HashMap<Vec<ComponentId>, NodeIndex>,
+
+    // 后面这里的Scene概念应该会改为Chunk概念
+    // 由Game里的各个功能组件/System来做区块划分并通过类似TagComponent进行控制
     pub scene_stroge: SceneStroge,
     scenes: SparseSet<SceneId, Scene>,
-    component_register: ComponentRegister,
 }
 
 impl World {
     pub fn new() -> Self {
         let assets_server = AssetsServer::new();
         let time = Time::new();
+        
+        let entities = EntityStorage::new(consts::WORLD_ENTITIES_CAPACITY);
+        let table_graph = TableGraph::new(consts::WORLD_TABLE_GRAPH_CAPACITY);
+        
         let scene_stroge = SceneStroge::new(consts::WORLD_SCENE_CAPACITY);
         let scenes = SparseSet::new(consts::WORLD_SCENE_CAPACITY);
-        let component_register = ComponentRegister::new(consts::COMPONENT_TYPE_CAPACITY);
         Self {
             assets_server,
             time,
+            entities,
+            table_graph,
             scene_stroge,
             scenes,
-            component_register,
         }
     }
 

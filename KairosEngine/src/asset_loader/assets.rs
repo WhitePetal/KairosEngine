@@ -2,6 +2,7 @@ mod asset;
 use std::{any::TypeId, collections::HashMap, path::PathBuf, sync::Arc};
 
 use crate::asset_loader::assets::asset::{AssetsHandler, AssetsSystem};
+use crate::types::TypeIdMap;
 
 pub use asset::AssetHandle;
 pub use asset::MaterialAssetsSystem;
@@ -33,8 +34,9 @@ where
     }
 }
 
+#[derive(Debug)]
 pub struct AssetsServer {
-    handlers: HashMap<TypeId, Box<dyn AssetsHandler>>,
+    handlers: TypeIdMap<Box<dyn AssetsHandler>>,
     dependency_request_recever: mpsc::Receiver<DependencyLoadRequestEvent>,
     dependency_request_sender: mpsc::Sender<DependencyLoadRequestEvent>,
 }
@@ -44,7 +46,7 @@ impl AssetsServer {
         let (dependency_request_sender, dependency_request_recever) =
             mpsc::channel::<DependencyLoadRequestEvent>(32);
         Self {
-            handlers: HashMap::new(),
+            handlers: TypeIdMap::default(),
             dependency_request_recever,
             dependency_request_sender,
         }

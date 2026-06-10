@@ -7,5 +7,4 @@ pub mod sparse_set;
 pub mod table;
 pub mod table_graph;
 
-pub mod compoent_register;
 pub mod world;

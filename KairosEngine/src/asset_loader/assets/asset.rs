@@ -4,11 +4,7 @@ mod shader;
 mod texture;
 
 use std::{
-    any::{Any, TypeId, type_name},
-    collections::HashMap,
-    hash::Hash,
-    path::PathBuf,
-    sync::{Arc, Weak},
+    any::{Any, TypeId, type_name}, collections::HashMap, fmt::Debug, hash::Hash, path::PathBuf, sync::{Arc, Weak}
 };
 use tokio::sync::mpsc::{self};
 
@@ -154,7 +150,7 @@ impl CounterHeader {
     }
 }
 
-pub trait AssetsHandler: Any {
+pub trait AssetsHandler: Any + Debug {
     fn handle_receves(&mut self);
 
     fn as_any(&self) -> &dyn Any;

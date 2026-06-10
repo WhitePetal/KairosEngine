@@ -14,5 +14,6 @@ pub mod base_components;
 pub mod ecs;
 pub mod graphics;
 pub mod timer;
+pub mod types;
 
 pub mod asset_loader;

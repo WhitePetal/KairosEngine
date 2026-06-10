@@ -11,7 +11,7 @@ use crate::{
         render_pipeline::RenderPipeline,
     },
     kairos_game::KairosGame,
-    log::Log,
+    log::Log, types::TypeIdMap,
 };
 use egui::{self};
 
@@ -172,7 +172,7 @@ impl Messager {
 
 pub struct Context {
     pub messager: Messager,
-    ids: HashMap<TypeId, usize>,
+    ids: TypeIdMap<usize>,
     drawers: Vec<Box<dyn Drawer>>,
     actives: Vec<bool>,
     tab_tree: DockState<usize>,
@@ -194,7 +194,7 @@ impl Context {
 
         Self {
             messager,
-            ids: HashMap::new(),
+            ids: HashMap::default(),
             drawers,
             actives: Vec::new(),
             tab_tree,

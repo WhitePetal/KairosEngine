@@ -29,7 +29,7 @@ impl KairosGame {
         let material =
             assets_server.load::<MaterialAssetsSystem>(PathBuf::from("res/materials/material.mat"));
 
-        let main_scene = world.push_scene(Scene::new(1024, 1024, 1024));
+        let main_scene = world.push_scene(Scene {});
 
         const NUM_INSTANCES_PER_ROW: i32 = 5;
 
@@ -53,9 +53,7 @@ impl KairosGame {
         Self { main_scene }
     }
 
-    pub fn update(&mut self, world: &mut World) {
-        world.time.update();
-
+    pub fn update(&self, world: &mut World) {
         let total_time = world.time.total_time().as_secs_f32();
 
         world.query_mut::<TransformComponent, _>(&self.main_scene, |trans| {

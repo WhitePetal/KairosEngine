@@ -1,4 +1,6 @@
-use petgraph::graph::DiGraph;
+use std::{any::TypeId, collections::HashMap};
+
+use petgraph::{adj::NodeIndex, stable_graph::StableDiGraph};
 
 use crate::ecs::table::Table;
 
@@ -7,12 +9,14 @@ pub struct TableEdge {}
 
 #[derive(Debug)]
 pub struct TableGraph {
-    pub graph: DiGraph<Table, TableEdge>,
+    graph: StableDiGraph<Table, TableEdge>,
+    index: HashMap<Box<TypeId>, NodeIndex>,
 }
 
 impl TableGraph {
     pub fn new(table_capacity: usize) -> Self {
-        let graph = DiGraph::with_capacity(table_capacity, table_capacity << 2);
-        Self { graph }
+        let graph = StableDiGraph::with_capacity(table_capacity, table_capacity << 2);
+        let index = HashMap::with_capacity(table_capacity);
+        Self { graph, index }
     }
 }
