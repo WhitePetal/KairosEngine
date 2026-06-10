@@ -3,7 +3,7 @@ use std::{
 };
 
 use crate::{ecs::{
-    compoent_register::ComponentTypeMeta, component::Component, consts, entity::Entity, id::Id, sparse_set::SparseSet
+    component::Component, consts, entity::Entity, id::Id, sparse_set::SparseSet
 }, types::OrderedTypeIdMap};
 
 ///
@@ -179,6 +179,12 @@ impl ComponentTypeInfo {
     pub fn id(&self) -> TypeId {
         self.type_id
     }
+
+    pub fn drop(&self, ptr: *mut u8) {
+        unsafe {
+            (self.drop_fn)(ptr);
+        }
+    }
 }
 impl PartialEq for ComponentTypeInfo {
     fn eq(&self, other: &Self) -> bool {
@@ -266,16 +272,18 @@ impl Table {
         self.len = 0;
     }
 
-    pub fn allocate_entity(&mut self, entity: &Entity) {
+    pub fn allocate_entity(&mut self, entity: &Entity) -> usize {
         if self.len == self.entities.len() {
             self.grow(consts::TABLE_ROW_CAPACITY);
         }
 
+        let row_index = self.len;
         self.entitiy_infos.insert(entity, EntityInfo { 
-            row_index: self.len
+            row_index
         });
-        self.entities[self.len] = entity.clone();
-        self.len = self.len + 1;
+        self.entities[row_index] = entity.clone();
+        self.len = row_index + 1;
+        row_index
     }
 
     fn grow(&mut self, min_incement: usize) {
@@ -327,7 +335,7 @@ impl Table {
         }
     }
 
-    pub fn remove_entity(&mut self, entity: &Entity, drop: bool) {
+    pub fn remove_entity(&mut self, entity: &Entity, drop: bool) -> Option<Entity> {
         let end = self.len - 1;
         let row_index = self.entitiy_infos.remove(entity.clone()).row_index;
         let swap = row_index != end;
@@ -346,13 +354,43 @@ impl Table {
         }
         self.len = end;
         if swap {
-            self.entities[row_index] = self.entities[end].clone();
+            let moved = self.entities[end].clone();
+            self.entities[row_index] = moved.clone();
+            Some(moved)
+        } else {
+            None
         }
     }
 
     fn row_capacity(&self) -> usize {
         self.entities.len()
     }
+
+    pub fn types(&self) -> &[ComponentTypeInfo] {
+        &self.types
+    }
+
+    pub fn get_dynamice(&self, info: &ComponentTypeInfo, row_index: usize) -> Option<NonNull<u8>> {
+        debug_assert!(row_index <= self.len);
+        unsafe {
+            Some(NonNull::new_unchecked(
+                self.colums.get_unchecked(*self.colum_indexs.get(&info.type_id)?)
+                .data
+                .as_ptr()
+                .add(info.layout.size() * row_index)
+                .cast::<u8>()
+            ))
+        }
+    }
+
+    pub fn put_dynamic(&mut self, component: *mut u8, info: &ComponentTypeInfo, row_index: usize) {
+        unsafe {
+            let ptr = self.get_dynamice(info, row_index).unwrap().as_ptr().cast::<u8>();
+            ptr::copy_nonoverlapping(component, ptr, info.layout.size());
+        }
+    }
+
+
 
     pub fn push_row<F>(&mut self, entity: &Entity, component_writes: Vec<F>)
     where
