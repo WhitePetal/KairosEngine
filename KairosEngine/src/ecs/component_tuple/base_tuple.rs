@@ -31,6 +31,8 @@ pub trait ComponentsTuple {
 
     fn put<F: FnMut(*mut u8, ComponentTypeInfo)>(self, f: F);
 
+    fn with_ids<T, F: FnOnce(&[TypeId]) -> T>(&self, f: F) -> T;
+
     fn create_entity(
         self,
         entity_stroge: &mut EntityStorage,

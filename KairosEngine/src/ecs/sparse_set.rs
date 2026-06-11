@@ -1,5 +1,5 @@
 use std::{
-    array, iter::Zip, ops::{Index, IndexMut},
+    array, iter::Zip, ops::{Index, IndexMut, Range},
     sync::atomic::{AtomicUsize, Ordering},
 };
 
@@ -309,7 +309,8 @@ where
     /// 将所有通过 [`reserve_entity`](Self::reserve_entity) 预留的实体写入 sparse。
     ///
     /// 任何需要查询 sparse 的操作之前都应调用此方法。
-    pub fn flush(&mut self) {
+    /// return: flush_ids slice
+    fn flush_inner(&mut self) -> &[I] {
         let head = *self.head.get_mut();
         let dense_len = self.dense.len();
 
@@ -340,7 +341,17 @@ where
             self.dense.push(entity);
         }
 
+        let flushs = &self.dense[self.flushed_head..head];
         self.flushed_head = head;
+        flushs
+    }
+
+
+    pub fn flush<F: FnMut(&I) -> ()>(&mut self, mut flush_fn: F) {
+        let flushs = self.flush_inner();
+        flushs.iter().for_each(|entity| {
+            (flush_fn)(entity);
+        });
     }
 
     /// 是否需要 flush
@@ -349,33 +360,43 @@ where
         self.flushed_head != self.head.load(Ordering::Relaxed)
     }
 
+    fn verify_flushed(&mut self) {
+        debug_assert!(
+            !self.needs_flush(),
+            "flush() needs to be called before this operation is legal"
+        )
+    }
+
     /// 分配一个实体（单线程版本，内部调用 flush）。
     ///
     /// 等价于 `flush()` + 分配，用于不需要并发预留的场景。
     pub fn next(&mut self) -> I {
-        self.flush();
+        self.verify_flushed();
 
         let head = *self.head.get_mut();
-        let entity = if head < self.dense.len() {
-            // 复用 freelist：版本号已在 remove() 中递增好，直接取用
-            // 注意：不能再调 get_next_version，否则会双重递增版本号
-            let entity = self.dense[head].clone();
-
-            let sparse_pos = Self::get_sparse_pos(&entity);
-            self.sparse[sparse_pos.page].0[sparse_pos.slot] =
-                I::new(head as u32, entity.get_version(), entity.get_flags());
-            entity
-        } else {
-            // 全新实体，version = 0
-            let entity = I::new(head as u32, 0, I::FlagType::default());
-
-            let sparse_pos = Self::get_sparse_pos(&entity);
-            if self.sparse.get(sparse_pos.page).is_none() {
-                self.sparse.push(Page::new());
+        let entity = 
+        {
+            if head < self.dense.len() {
+                // 复用 freelist：版本号已在 remove() 中递增好，直接取用
+                // 注意：不能再调 get_next_version，否则会双重递增版本号
+                let entity = self.dense[head].clone();
+    
+                let sparse_pos = Self::get_sparse_pos(&entity);
+                self.sparse[sparse_pos.page].0[sparse_pos.slot] =
+                    I::new(head as u32, entity.get_version(), entity.get_flags());
+                entity
+            } else {
+                // 全新实体，version = 0
+                let entity = I::new(head as u32, 0, I::FlagType::default());
+    
+                let sparse_pos = Self::get_sparse_pos(&entity);
+                if self.sparse.get(sparse_pos.page).is_none() {
+                    self.sparse.push(Page::new());
+                }
+                self.sparse[sparse_pos.page].0[sparse_pos.slot] = entity.clone();
+                self.dense.push(entity.clone());
+                entity
             }
-            self.sparse[sparse_pos.page].0[sparse_pos.slot] = entity.clone();
-            self.dense.push(entity.clone());
-            entity
         };
 
         self.flushed_head = head + 1;
@@ -387,7 +408,7 @@ where
     ///
     /// **版本号在此时立即递增**，保证后续 `reserve_entity` 拿到的是新版本。
     pub fn remove(&mut self, id: I) {
-        self.flush();
+        self.flush_inner();
 
         let sparse_pos = Self::get_sparse_pos(&id);
         debug_assert!(

@@ -37,7 +37,8 @@ pub struct TableGraph {
 impl TableGraph {
     pub fn new(table_capacity: usize) -> Self {
         let edge_capacity = table_capacity << 1;
-        let graph = StableDiGraph::with_capacity(table_capacity, edge_capacity);
+        let mut graph = StableDiGraph::with_capacity(table_capacity, edge_capacity);
+        graph.add_node(Table::new(Box::new([])));
         let index = HashMap::with_capacity(table_capacity);
         Self { graph, index }
     }
@@ -106,6 +107,12 @@ impl TableGraph {
             let b = &mut self.graph[index1] as *mut Table;
             (&mut *a, &mut *b)
         }
+    }
+
+    pub fn get<T: Borrow<[TypeId]> + Into<Box<[TypeId]>>, F: FnOnce() -> Box<[ComponentTypeInfo]>>(&mut self, types: T, get_infos: F) -> NodeIndex {
+        self.index.get(types.borrow()).copied().unwrap_or_else(|| {
+            self.insert_table(types.into(), (get_infos)())
+        })
     }
 }
 
