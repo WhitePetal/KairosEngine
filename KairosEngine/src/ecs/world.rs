@@ -1,16 +1,29 @@
-use std::{any::TypeId, collections::{HashMap, hash_map::Entry}, hash::{BuildHasher, BuildHasherDefault, Hasher}, ops::Add, sync::Mutex};
+use std::{
+    any::TypeId,
+    collections::{HashMap, hash_map::Entry},
+    hash::{BuildHasher, BuildHasherDefault, Hasher},
+    ops::Add,
+    sync::Mutex,
+};
 
 use petgraph::graph::NodeIndex;
 
 use crate::{
     asset_loader::assets::AssetsServer,
     ecs::{
-        component_tuple::{ComponentQueryMutTuple, ComponentQueryTuple, ComponentTupleKey, ComponentsTuple}, consts, entity::{Entity, EntityFlag}, id::Id, sparse_set::{EntityStorage, SparseSet, SparseStroge}, table::ComponentTypeInfo, table_graph::{InsertTarget, TableGraph}, world::scene::Scene
+        component::ComponentError,
+        component_tuple::{
+            ComponentQueryMutTuple, ComponentQueryTuple, ComponentTuple, ComponentTupleKey,
+            StaticTypedComponentTuple,
+        },
+        consts,
+        entity::{Entity, EntityFlag},
+        id::Id,
+        sparse_set::{EntityStorage, SparseSet},
+        table_graph::{InsertTarget, TableGraph},
     },
     timer::Time,
 };
-
-pub mod scene;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SceneId(Entity);
@@ -64,12 +77,10 @@ impl Id for SceneId {
     }
 }
 
-type SceneStroge = SparseStroge<SceneId>;
-
 #[derive(Debug)]
 pub struct EntityData {
     table_index: NodeIndex,
-    row_index: usize
+    row_index: usize,
 }
 
 #[derive(Debug, Default)]
@@ -103,7 +114,7 @@ impl Hasher for TupleIdHasher {
     }
     fn write_u128(&mut self, i: u128) {
         debug_assert_eq!(self.0, 0);
-        
+
         // u64位数足够，直接downcast到u64
         self.0 = i as u64;
     }
@@ -120,31 +131,27 @@ impl Hasher for TupleIdHasher {
     }
 }
 
-
-pub type NodeIndexTupleIdMap<V> = HashMap<(NodeIndex, ComponentTupleKey), V, BuildHasherDefault<NodeIndexTupleIdHasher>>;
+pub type NodeIndexTupleIdMap<V> =
+    HashMap<(NodeIndex, ComponentTupleKey), V, BuildHasherDefault<NodeIndexTupleIdHasher>>;
 pub type TupleIdMap<V> = HashMap<ComponentTupleKey, V, BuildHasherDefault<TupleIdHasher>>;
-
-
 
 #[derive(Debug)]
 pub struct World {
     pub assets_server: AssetsServer,
     pub time: Time,
-    
+
     entities: EntityStorage,
     entity_datas: SparseSet<Entity, EntityData>,
     table_graph: TableGraph,
     // components_id_to_table: HashMap<Vec<ComponentId>, NodeIndex>,
-
     tuple_to_table: TupleIdMap<NodeIndex>,
     insert_edges: NodeIndexTupleIdMap<InsertTarget>,
     remove_edges: NodeIndexTupleIdMap<NodeIndex>,
 
     // 后面这里的Scene概念应该会改为Chunk概念
     // 由Game里的各个功能组件/System来做区块划分并通过类似TagComponent进行控制
-    pub scene_stroge: SceneStroge,
-    scenes: SparseSet<SceneId, Scene>,
-
+    // pub scene_stroge: SceneStroge,
+    // scenes: SparseSet<SceneId, Scene>,
     id: u64,
 }
 
@@ -160,17 +167,14 @@ impl World {
 
         let assets_server = AssetsServer::new();
         let time = Time::new();
-        
+
         let entities = EntityStorage::new(consts::WORLD_ENTITIES_CAPACITY);
         let entity_datas = SparseSet::new(consts::WORLD_ENTITIES_CAPACITY);
         let table_graph = TableGraph::new(consts::WORLD_TABLE_GRAPH_CAPACITY);
-        
+
         let tuple_to_table = TupleIdMap::default();
         let insert_edges = NodeIndexTupleIdMap::default();
         let remove_edges = NodeIndexTupleIdMap::default();
-
-        let scene_stroge = SceneStroge::new(consts::WORLD_SCENE_CAPACITY);
-        let scenes = SparseSet::new(consts::WORLD_SCENE_CAPACITY);
 
         Self {
             assets_server,
@@ -181,39 +185,12 @@ impl World {
             insert_edges,
             remove_edges,
             table_graph,
-            scene_stroge,
-            scenes,
             id,
         }
     }
 
-    #[inline(always)]
-    pub fn push_scene(&mut self, scene: Scene) -> SceneId {
-        let scene_id = self.scene_stroge.next();
-        self.scenes.insert(&scene_id, scene);
-        scene_id
-    }
-
-    #[inline(always)]
-    pub fn get_scene(&self, scene_id: &SceneId) -> &Scene {
-        self.scenes.get_value(scene_id)
-    }
-
-    #[inline(always)]
-    pub fn get_scene_mut(&mut self, scene_id: &SceneId) -> &mut Scene {
-        self.scenes.get_value_mut(scene_id)
-    }
-
-    pub fn create_entity<T: ComponentsTuple>(
-        &mut self,
-        components_tuple: T,
-    ) -> Entity {
-        let entity = self.entities.next();
-        todo!()
-        // scene.create_entity(&mut self.component_register, components_tuple)
-    }
-
-    pub fn insert<T: ComponentsTuple>(&mut self, entity: &Entity, components: T) {
+    /// 给一个实体添加组件
+    pub fn insert<T: ComponentTuple>(&mut self, entity: &Entity, components: T) {
         self.flush();
 
         let data = self.entity_datas.get_value(entity);
@@ -221,31 +198,27 @@ impl World {
         let row_index = data.row_index;
         let target;
         let target_ref = match components.key() {
-            Some(key) => {
-                match self.insert_edges.entry((src_table, key)) {
-                    Entry::Occupied(occupied_entry) => {
-                        occupied_entry.into_mut()
-                    },
-                    Entry::Vacant(vacant_entry) => {
-                        let target = self.table_graph.get_insert_target(src_table, &components);
-                        vacant_entry.insert(target)
-                    },
+            Some(key) => match self.insert_edges.entry((src_table, key)) {
+                Entry::Occupied(occupied_entry) => occupied_entry.into_mut(),
+                Entry::Vacant(vacant_entry) => {
+                    let target = self.table_graph.get_insert_target(src_table, &components);
+                    vacant_entry.insert(target)
                 }
             },
             None => {
                 target = self.table_graph.get_insert_target(src_table, &components);
                 &target
-            },
+            }
         };
 
         let source_table = &mut self.table_graph[src_table];
 
-        // drop老表的行
+        // drop老表中会被覆盖更新的行
         for ty in target_ref.get_need_updates() {
             let ptr = source_table.get_dynamice(ty, row_index).unwrap();
             ty.drop(ptr.as_ptr());
         }
-        
+
         // 表没变，直接把components的最新值写入老表
         if target_ref.get_node_index() == src_table {
             components.put(|ptr, info| {
@@ -254,7 +227,9 @@ impl World {
             return;
         }
 
-        let (source_table, target_table) = self.table_graph.index2(src_table, target_ref.get_node_index());
+        let (source_table, target_table) = self
+            .table_graph
+            .index2(src_table, target_ref.get_node_index());
 
         let target_row_index = target_table.allocate_entity(entity);
         let entity_data = self.entity_datas.get_value_mut(entity);
@@ -273,14 +248,13 @@ impl World {
         }
 
         // remove 老表的entity，并更新这里entity data 的 row_index
-        // 最开始我们以及drop了，因此这里 drop = false
+        // 会被覆盖更新的，我们在前面drop了老数据。其他数据相当于是移动到新表(转移所有权而非被销毁)，因此不需要drop
         if let Some(moved) = source_table.remove_entity(entity, false) {
             let moved_data = self.entity_datas.get_value_mut(&moved);
             moved_data.row_index = row_index;
         }
     }
 
-    ///
     /// 把预留但未挂在任何组件的entity放入根表中
     /// 在添加或删除组件或实体时，必须先调用该方法
     /// 例如 spawn, despawn, insert and remove
@@ -288,29 +262,31 @@ impl World {
         let root_node = NodeIndex::new(0);
         let root_table = &mut self.table_graph[root_node];
         self.entities.flush(|entity| {
-            self.entity_datas.insert(entity, EntityData { 
-                table_index: root_node,
-                row_index: root_table.allocate_entity(entity)
-            });
+            self.entity_datas.insert(
+                entity,
+                EntityData {
+                    table_index: root_node,
+                    row_index: root_table.allocate_entity(entity),
+                },
+            );
         });
     }
 
-    pub fn spawn<T: ComponentsTuple>(&mut self, components: T) -> Entity {
+    /// 创建带有组件的实体
+    pub fn spawn<T: ComponentTuple>(&mut self, components: T) -> Entity {
         self.flush();
-        
+
         let entity = self.entities.next();
         self.spawn_inner(&entity, components);
         entity
     }
 
-    fn spawn_inner<T: ComponentsTuple>(&mut self, entity: &Entity, components: T) {
+    fn spawn_inner<T: ComponentTuple>(&mut self, entity: &Entity, components: T) {
         let tables = &mut self.table_graph;
         let table_index = match components.key() {
-            Some(key) => {
-                *self.tuple_to_table.entry(key).or_insert(
-                    components.with_ids(|types| tables.get(types, || components.type_infos()))
-                )
-            },
+            Some(key) => *self.tuple_to_table.entry(key).or_insert(
+                components.with_ids(|types| tables.get(types, || components.type_infos())),
+            ),
             None => components.with_ids(|types| tables.get(types, || components.type_infos())),
         };
 
@@ -319,28 +295,57 @@ impl World {
         components.put(|ptr, info| {
             table.put_dynamic(ptr, &info, row_index);
         });
-        self.entity_datas.insert(entity, EntityData { 
-            table_index, 
-            row_index 
-        });
+        self.entity_datas.insert(
+            entity,
+            EntityData {
+                table_index,
+                row_index,
+            },
+        );
     }
 
+    /// 从实体身上移除组件
+    pub fn remove<T: StaticTypedComponentTuple + 'static>(
+        &mut self,
+        entity: Entity,
+    ) -> Result<T, ComponentError> {
+        self.flush();
 
-    pub fn query<'a, Q: ComponentQueryTuple + 'a, F: FnMut(Q::Item<'a>)>(
-        &'a mut self,
-        scene_id: &SceneId,
-        f: F,
-    ) {
-        let scene = self.scenes.get_value(scene_id);
-        scene.query::<Q, F>(&mut self.component_register, f);
+        let entity_data = self.entity_datas.get_value_mut(&entity);
+        let old_row_index = entity_data.row_index;
+        let source_table = &self.table_graph[entity_data.table_index];
+
+        let bundle = T::get(|info| source_table.get_dynamice(&info, old_row_index))?;
+
+        let target = Self::remove_target::<T>(
+            &mut self.table_graph,
+            &mut self.remove_edges,
+            entity_data.table_index,
+        );
+
+        todo!()
     }
 
-    pub fn query_mut<'a, Q: ComponentQueryMutTuple + 'a, F: FnMut(Q::Item<'a>)>(
-        &'a mut self,
-        scene_id: &SceneId,
-        f: F,
-    ) {
-        let scene = self.scenes.get_value_mut(scene_id);
-        scene.query_mut::<Q, F>(&mut self.component_register, f);
+    fn remove_target<T: StaticTypedComponentTuple + 'static>(
+        tables: &mut TableGraph,
+        remove_edges: &mut NodeIndexTupleIdMap<NodeIndex>,
+        old_table: NodeIndex,
+    ) -> NodeIndex {
+        match remove_edges.entry((old_table, ComponentTupleKey::from(TypeId::of::<T>()))) {
+            Entry::Occupied(occupied_entry) => *occupied_entry.into_mut(),
+            Entry::Vacant(vacant_entry) => {
+                let infos = T::with_static_type_info(|removed| {
+                    tables[old_table]
+                        .types()
+                        .iter()
+                        .filter(|x| removed.binary_search(x).is_err())
+                        .cloned()
+                        .collect::<Box<_>>()
+                });
+                let elements = infos.iter().map(|x| x.id()).collect::<Box<_>>();
+                let row_index = tables.get(elements, move || infos);
+                *vacant_entry.insert(row_index)
+            }
+        }
     }
 }

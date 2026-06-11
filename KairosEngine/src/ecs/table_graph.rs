@@ -1,9 +1,16 @@
-use std::{any::TypeId, borrow::Borrow, collections::{HashMap, hash_map::Entry}, hash::{BuildHasherDefault, Hasher}, ops::{Index, IndexMut}};
+use std::{
+    any::TypeId,
+    borrow::Borrow,
+    collections::HashMap,
+    ops::{Index, IndexMut},
+};
 
 use petgraph::{graph::NodeIndex, stable_graph::StableDiGraph};
 
-use crate::{ecs::{component_tuple::{ComponentTupleKey, ComponentsTuple}, table::{ComponentTypeInfo, Table}}};
-
+use crate::ecs::{
+    component_tuple::ComponentTuple,
+    table::{ComponentTypeInfo, Table},
+};
 
 #[derive(Debug)]
 pub struct TableEdge {}
@@ -43,7 +50,11 @@ impl TableGraph {
         Self { graph, index }
     }
 
-    pub fn get_insert_target<T: ComponentsTuple>(&mut self, source_table: NodeIndex, components: &T) -> InsertTarget {
+    pub fn get_insert_target<T: ComponentTuple>(
+        &mut self,
+        source_table: NodeIndex,
+        components: &T,
+    ) -> InsertTarget {
         let table = &mut self.graph[source_table];
         let mut infos = table.types().to_vec();
         let mut need_updates = Vec::new();
@@ -66,7 +77,7 @@ impl TableGraph {
                 need_updates.push(ty);
             }
             // src_table 中不存在，仅在 insert_components 中存在的类型
-            // 这些类型数据只需要用 insert_component 做创建 
+            // 这些类型数据只需要用 insert_component 做创建
             else {
                 infos.push(ty);
             }
@@ -79,16 +90,25 @@ impl TableGraph {
 
         let types = infos.iter().map(|info| info.id()).collect::<Box<_>>();
         let target = self.get_target_node_index(types, || infos);
-        InsertTarget { 
+        InsertTarget {
             need_updates,
             need_moves,
-            target
+            target,
         }
-
     }
 
-    fn get_target_node_index<T: Borrow<[TypeId]> + Into<Box<[TypeId]>>, F: FnOnce() -> Box<[ComponentTypeInfo]>>(&mut self, types: T, get_type_infos: F) -> NodeIndex {
-        self.index.get(types.borrow()).copied().unwrap_or_else(|| self.insert_table(types.into(), get_type_infos()))
+    fn get_target_node_index<
+        T: Borrow<[TypeId]> + Into<Box<[TypeId]>>,
+        F: FnOnce() -> Box<[ComponentTypeInfo]>,
+    >(
+        &mut self,
+        types: T,
+        get_type_infos: F,
+    ) -> NodeIndex {
+        self.index
+            .get(types.borrow())
+            .copied()
+            .unwrap_or_else(|| self.insert_table(types.into(), get_type_infos()))
     }
 
     fn insert_table(&mut self, types: Box<[TypeId]>, infos: Box<[ComponentTypeInfo]>) -> NodeIndex {
@@ -109,10 +129,19 @@ impl TableGraph {
         }
     }
 
-    pub fn get<T: Borrow<[TypeId]> + Into<Box<[TypeId]>>, F: FnOnce() -> Box<[ComponentTypeInfo]>>(&mut self, types: T, get_infos: F) -> NodeIndex {
-        self.index.get(types.borrow()).copied().unwrap_or_else(|| {
-            self.insert_table(types.into(), (get_infos)())
-        })
+    /// 通过types获取原型表，如果不存在该类原型表，那么就通过 get_infos 创建该类型原型表
+    pub fn get<
+        T: Borrow<[TypeId]> + Into<Box<[TypeId]>>,
+        F: FnOnce() -> Box<[ComponentTypeInfo]>,
+    >(
+        &mut self,
+        types: T,
+        get_infos: F,
+    ) -> NodeIndex {
+        self.index
+            .get(types.borrow())
+            .copied()
+            .unwrap_or_else(|| self.insert_table(types.into(), (get_infos)()))
     }
 }
 

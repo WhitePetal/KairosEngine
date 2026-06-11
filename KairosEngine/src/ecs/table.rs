@@ -1,10 +1,13 @@
 use std::{
-    alloc::{self, Layout, alloc, dealloc, handle_alloc_error}, any::TypeId, ptr::{self, NonNull}
+    alloc::{self, Layout, alloc, dealloc},
+    any::TypeId,
+    ptr::{self, NonNull},
 };
 
-use crate::{ecs::{
-    component::Component, consts, entity::Entity, id::Id, sparse_set::SparseSet
-}, types::OrderedTypeIdMap};
+use crate::{
+    ecs::{component::Component, consts, entity::Entity, id::Id, sparse_set::SparseSet},
+    types::OrderedTypeIdMap,
+};
 
 ///
 /// 每个类型为一列，每列存储该类型的所有Components
@@ -12,141 +15,6 @@ use crate::{ecs::{
 pub struct ComponentColum {
     data: NonNull<u8>,
 }
-impl ComponentTable {
-
-    pub fn push_value<T>(&mut self, colum_index: usize, value: T) {
-        debug_assert!(colum_index < self.infos.len());
-
-        let info = &self.infos[colum_index];
-        debug_assert_eq!(info.layout, Layout::new::<T>());
-
-        unsafe {
-            let dst = self
-                .colums
-                .as_ptr()
-                .add(info.head_offset + self.len * info.layout.size())
-                .cast::<T>();
-            ptr::write(dst, value);
-        }
-    }
-
-    fn creat_row<F>(&mut self, writer: Vec<F>)
-    where
-        F: FnOnce(*mut u8),
-    {
-        if self.len >= self.capacity {
-            self.resize();
-        }
-
-        writer.into_iter().enumerate().for_each(|(colum, writer)| {
-            let info = &self.infos[colum];
-            unsafe {
-                let ptr = self
-                    .colums
-                    .as_ptr()
-                    .add(info.head_offset + self.len * info.layout.size());
-                writer(ptr);
-            }
-        });
-
-        self.len = self.len + 1;
-    }
-
-    pub fn get_colum<T>(&self, colum_index: usize) -> &[T] {
-        debug_assert!(colum_index < self.infos.len());
-        let info = &self.infos[colum_index];
-        debug_assert_eq!(info.layout, Layout::new::<T>());
-
-        unsafe {
-            let ptr = self.colums.as_ptr().add(info.head_offset).cast::<T>();
-            std::slice::from_raw_parts(ptr, self.len)
-        }
-    }
-
-    pub fn get_colum_mut<T>(&mut self, colum_index: usize) -> &mut [T] {
-        debug_assert!(colum_index < self.infos.len());
-        let info = &self.infos[colum_index];
-        debug_assert_eq!(info.layout, Layout::new::<T>());
-
-        unsafe {
-            let ptr = self.colums.as_ptr().add(info.head_offset).cast::<T>();
-            std::slice::from_raw_parts_mut(ptr, self.len)
-        }
-    }
-
-    pub fn remove_row(&mut self, row_index: usize) {
-        for info in &self.infos {
-            unsafe {
-                let remove_ptr = self
-                    .colums
-                    .as_ptr()
-                    .add(info.head_offset + row_index * info.layout.size());
-                let ending_ptr = self
-                    .colums
-                    .as_ptr()
-                    .add(info.head_offset + (self.len - 1) * info.layout.size());
-
-                ((info.drop_fn)(remove_ptr));
-
-                if remove_ptr != ending_ptr {
-                    ptr::copy_nonoverlapping::<u8>(ending_ptr, remove_ptr, info.layout.size());
-                }
-            }
-        }
-        self.len = self.len - 1;
-    }
-
-    fn resize(&mut self) {
-        let mut infos = Vec::clone(&self.infos);
-        let mut table_layout = Layout::from_size_align(0, 1).unwrap();
-
-        let capacity = self.capacity << 1;
-
-        for info in &mut infos {
-            let colum_layout =
-                Layout::from_size_align(info.layout.size() * capacity, info.layout.align())
-                    .unwrap();
-            let (new_layout, head_offset) = table_layout.extend(colum_layout).unwrap();
-
-            *info = ComponentInfo {
-                head_offset,
-                layout: info.layout,
-                drop_fn: info.drop_fn,
-            };
-
-            table_layout = new_layout
-        }
-
-        table_layout = table_layout.pad_to_align();
-
-        let new_ptr = unsafe { alloc(table_layout) };
-        let Some(colums) = NonNull::new(new_ptr) else {
-            handle_alloc_error(table_layout);
-        };
-
-        for (old_info, new_info) in self.infos.iter().zip(infos.iter()) {
-            let bytes = old_info.layout.size() * self.len;
-
-            unsafe {
-                let src = self.colums.as_ptr().add(old_info.head_offset);
-                let dst = colums.as_ptr().add(new_info.head_offset);
-
-                ptr::copy_nonoverlapping(src, dst, bytes);
-            }
-        }
-
-        unsafe {
-            dealloc(self.colums.as_ptr(), self.layout);
-        }
-
-        self.infos = infos;
-        self.colums = colums;
-        self.capacity = capacity;
-        self.layout = table_layout;
-    }
-}
-
-
 
 #[derive(Debug, Clone, Copy)]
 pub struct EntityInfo {
@@ -163,7 +31,7 @@ pub struct ComponentTypeInfo {
     layout: Layout,
     drop_fn: unsafe fn(*mut u8),
     #[cfg(debug_assertions)]
-    type_name: &'static str
+    type_name: &'static str,
 }
 impl ComponentTypeInfo {
     pub fn of<T: Component>() -> Self {
@@ -191,9 +59,7 @@ impl PartialEq for ComponentTypeInfo {
         self.type_id == other.type_id
     }
 }
-impl Eq for ComponentTypeInfo {
-    
-}
+impl Eq for ComponentTypeInfo {}
 impl PartialOrd for ComponentTypeInfo {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
@@ -203,7 +69,11 @@ impl Ord for ComponentTypeInfo {
     // 主排序为：按照字节对齐降序排序(保证数据在Chunk中按照对齐降序分布，这样可以减少因为数据对齐产生的空位内存)
     // 次排序(字节对齐相同时)：按照TypeId升序排序，这样可以保证每次排序得到的结果是固定的(因为TypeId唯一)
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.layout.align().cmp(&other.layout.align()).reverse().then_with(|| self.type_id.cmp(&other.type_id))
+        self.layout
+            .align()
+            .cmp(&other.layout.align())
+            .reverse()
+            .then_with(|| self.type_id.cmp(&other.type_id))
     }
 }
 
@@ -224,22 +94,27 @@ pub struct Table {
 }
 
 impl Table {
-    pub fn new(
-        types: Box<[ComponentTypeInfo]>,
-    ) -> Self {
+    pub fn new(types: Box<[ComponentTypeInfo]>) -> Self {
         let entities = Box::new([]);
         let entitiy_infos = SparseSet::new(consts::TABLE_ROW_CAPACITY);
         let colum_capacity = types.len();
         let type_ids = types.iter().map(|ty| ty.type_id).collect();
-        let colum_indexs = OrderedTypeIdMap::new(types.iter().enumerate().map(|(index, ty)| (ty.type_id, index)));
+        let colum_indexs = OrderedTypeIdMap::new(
+            types
+                .iter()
+                .enumerate()
+                .map(|(index, ty)| (ty.type_id, index)),
+        );
         // NonNull 现在只是创建空的占位值。但Rust要求即使是占位置，也应该基于能够地址对齐来创建
         // 用 max_align 能保证所有 Type 都可以基于此对齐，因此先用这个快速创建NoneNull占位置
         // 在实际分配内存时，再按照各类型具体的对齐进行创建
         let max_align = types.first().map_or(1, |ty| ty.layout.align());
-        let colums = (0..colum_capacity).map(|_| ComponentColum {
-            // 将 max_align 转为 地址值(指针)，该地址一定基于 max_align 对齐 (addr(max_align) % max_align == 0)
-            data: NonNull::new(max_align as *mut u8).unwrap()
-        }).collect();
+        let colums = (0..colum_capacity)
+            .map(|_| ComponentColum {
+                // 将 max_align 转为 地址值(指针)，该地址一定基于 max_align 对齐 (addr(max_align) % max_align == 0)
+                data: NonNull::new(max_align as *mut u8).unwrap(),
+            })
+            .collect();
 
         Self {
             types,
@@ -278,9 +153,7 @@ impl Table {
         }
 
         let row_index = self.len;
-        self.entitiy_infos.insert(entity, EntityInfo { 
-            row_index
-        });
+        self.entitiy_infos.insert(entity, EntityInfo { row_index });
         self.entities[row_index] = entity.clone();
         self.len = row_index + 1;
         row_index
@@ -303,33 +176,44 @@ impl Table {
             .iter()
             .zip(&self.colums)
             .map(|(info, old_colum)| {
-                let storage = 
-                {
+                let storage = {
                     if info.layout.size() == 0 {
                         NonNull::new(info.layout.align() as *mut u8).unwrap()
                     } else {
-                        let layout = Layout::from_size_align(info.layout.size() * new_cap, info.layout.align()).unwrap();
+                        let layout = Layout::from_size_align(
+                            info.layout.size() * new_cap,
+                            info.layout.align(),
+                        )
+                        .unwrap();
                         unsafe {
                             let mem = alloc(layout);
-                            let mem = NonNull::new(mem).unwrap_or_else(|| alloc::handle_alloc_error(layout));
-                            ptr::copy_nonoverlapping(old_colum.data.as_ptr(), mem.as_ptr(), info.layout.size() * old_count);
+                            let mem = NonNull::new(mem)
+                                .unwrap_or_else(|| alloc::handle_alloc_error(layout));
+                            ptr::copy_nonoverlapping(
+                                old_colum.data.as_ptr(),
+                                mem.as_ptr(),
+                                info.layout.size() * old_count,
+                            );
                             mem
                         }
                     }
                 };
-                ComponentColum {
-                    data: storage
-                }
-            }).collect::<Box<[_]>>();
+                ComponentColum { data: storage }
+            })
+            .collect::<Box<[_]>>();
 
         if old_cap > 0 {
             for (info, colum) in self.types.iter().zip(&self.colums) {
                 if info.layout.size() == 0 {
-                    continue;;
+                    continue;
                 }
 
                 unsafe {
-                    dealloc(colum.data.as_ptr(), Layout::from_size_align(info.layout.size() * old_cap, info.layout.align()).unwrap());
+                    dealloc(
+                        colum.data.as_ptr(),
+                        Layout::from_size_align(info.layout.size() * old_cap, info.layout.align())
+                            .unwrap(),
+                    );
                 }
             }
         }
@@ -374,23 +258,26 @@ impl Table {
         debug_assert!(row_index <= self.len);
         unsafe {
             Some(NonNull::new_unchecked(
-                self.colums.get_unchecked(*self.colum_indexs.get(&info.type_id)?)
-                .data
-                .as_ptr()
-                .add(info.layout.size() * row_index)
-                .cast::<u8>()
+                self.colums
+                    .get_unchecked(*self.colum_indexs.get(&info.type_id)?)
+                    .data
+                    .as_ptr()
+                    .add(info.layout.size() * row_index)
+                    .cast::<u8>(),
             ))
         }
     }
 
     pub fn put_dynamic(&mut self, component: *mut u8, info: &ComponentTypeInfo, row_index: usize) {
         unsafe {
-            let ptr = self.get_dynamice(info, row_index).unwrap().as_ptr().cast::<u8>();
+            let ptr = self
+                .get_dynamice(info, row_index)
+                .unwrap()
+                .as_ptr()
+                .cast::<u8>();
             ptr::copy_nonoverlapping(component, ptr, info.layout.size());
         }
     }
-
-
 
     pub fn push_row<F>(&mut self, entity: &Entity, component_writes: Vec<F>)
     where
@@ -417,38 +304,10 @@ impl Table {
         self.entities[entity_info.row_index] = end_entity;
     }
 
-
     pub fn has_component(&self, component_type: &TypeId) -> bool {
         self.type_ids.contains(component_type)
     }
-
-    pub fn component_colum_index(&self, component_type: &TypeId) -> usize {
-        debug_assert!(
-            self.type_ids.contains(component_type),
-            "No component id in the table! component_id: {:?}",
-            component_type
-        );
-
-        self.types.get_value(component_id).colum_index
-    }
-
-    pub fn contains_all_components(&self, component_ids: &[&ComponentId]) -> bool {
-        component_ids
-            .iter()
-            .all(|component_id| self.has_component(*component_id))
-    }
-
-    pub fn component_slice<T: Component>(&self, component_id: &ComponentId) -> &[T] {
-        let colum_index = self.component_colum_index(component_id);
-        self.components_table.get_colum::<T>(colum_index)
-    }
-
-    pub fn component_slice_mut<T: Component>(&mut self, component_id: &ComponentId) -> &mut [T] {
-        let colum_index = self.component_colum_index(component_id);
-        self.components_table.get_colum_mut::<T>(colum_index)
-    }
 }
-
 
 impl Drop for Table {
     fn drop(&mut self) {
@@ -462,9 +321,12 @@ impl Drop for Table {
             if info.layout.size() != 0 {
                 unsafe {
                     dealloc(
-                        colum.data.as_ptr(), 
+                        colum.data.as_ptr(),
                         // colum构造时使用的checked方法，因此这里可以unchecked
-                        Layout::from_size_align_unchecked(info.layout.size() * row_count, info.layout.align())
+                        Layout::from_size_align_unchecked(
+                            info.layout.size() * row_count,
+                            info.layout.align(),
+                        ),
                     );
                 }
             }

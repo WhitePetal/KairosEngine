@@ -1,6 +1,8 @@
-use std::{any::TypeId, collections::HashMap, hash::{BuildHasher, BuildHasherDefault, Hasher}};
-
-
+use std::{
+    any::TypeId,
+    collections::HashMap,
+    hash::{BuildHasher, BuildHasherDefault, Hasher},
+};
 
 ///
 /// TypeId 本身就是一个哈希值，因此作为哈希表的Key时不需要被再次哈希
@@ -19,7 +21,7 @@ impl Hasher for TypeIdHasher {
     }
     fn write_u128(&mut self, i: u128) {
         debug_assert_eq!(self.hash, 0);
-        
+
         // u64位数足够，直接downcast到u64
         self.hash = i as u64;
     }
@@ -36,7 +38,7 @@ impl Hasher for TypeIdHasher {
     }
 }
 
-pub type TypeIdMap<V> = HashMap::<TypeId, V, BuildHasherDefault<TypeIdHasher>>;
+pub type TypeIdMap<V> = HashMap<TypeId, V, BuildHasherDefault<TypeIdHasher>>;
 
 #[derive(Debug)]
 pub struct OrderedTypeIdMap<V>(Box<[(TypeId, V)]>);

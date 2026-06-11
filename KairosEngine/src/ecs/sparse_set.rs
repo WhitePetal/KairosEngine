@@ -1,5 +1,7 @@
 use std::{
-    array, iter::Zip, ops::{Index, IndexMut, Range},
+    array,
+    iter::Zip,
+    ops::{Index, IndexMut, Range},
     sync::atomic::{AtomicUsize, Ordering},
 };
 
@@ -346,7 +348,6 @@ where
         flushs
     }
 
-
     pub fn flush<F: FnMut(&I) -> ()>(&mut self, mut flush_fn: F) {
         let flushs = self.flush_inner();
         flushs.iter().for_each(|entity| {
@@ -374,13 +375,12 @@ where
         self.verify_flushed();
 
         let head = *self.head.get_mut();
-        let entity = 
-        {
+        let entity = {
             if head < self.dense.len() {
                 // 复用 freelist：版本号已在 remove() 中递增好，直接取用
                 // 注意：不能再调 get_next_version，否则会双重递增版本号
                 let entity = self.dense[head].clone();
-    
+
                 let sparse_pos = Self::get_sparse_pos(&entity);
                 self.sparse[sparse_pos.page].0[sparse_pos.slot] =
                     I::new(head as u32, entity.get_version(), entity.get_flags());
@@ -388,7 +388,7 @@ where
             } else {
                 // 全新实体，version = 0
                 let entity = I::new(head as u32, 0, I::FlagType::default());
-    
+
                 let sparse_pos = Self::get_sparse_pos(&entity);
                 if self.sparse.get(sparse_pos.page).is_none() {
                     self.sparse.push(Page::new());

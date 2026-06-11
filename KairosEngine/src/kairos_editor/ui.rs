@@ -11,7 +11,8 @@ use crate::{
         render_pipeline::RenderPipeline,
     },
     kairos_game::KairosGame,
-    log::Log, types::TypeIdMap,
+    log::Log,
+    types::TypeIdMap,
 };
 use egui::{self};
 
