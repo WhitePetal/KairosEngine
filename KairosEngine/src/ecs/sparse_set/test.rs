@@ -20,25 +20,25 @@ impl EntityStorage {
 
         let sparse_value = &self.sparse[sparse_pos.page].0[sparse_pos.slot];
         debug_assert!(
-            sparse_value.get_version() == id.get_version(),
+            sparse_value.version() == id.version(),
             "The id's version is invalided while Index the id! id: {:?}",
             id
         );
 
-        &self.dense[sparse_value.get_idx() as usize]
+        &self.dense[sparse_value.idx() as usize]
     }
 }
 
 #[test]
 fn sparse_set() {
     let mut entity_stroge = EntityStorage::new(128);
-    let ea = entity_stroge.next();
+    let ea = entity_stroge.alloc();
     let ea_value = 10;
-    let eb = entity_stroge.next();
+    let eb = entity_stroge.alloc();
     let eb_value = 20;
-    let ec = entity_stroge.next();
+    let ec = entity_stroge.alloc();
     let ec_value = 30;
-    let ed = entity_stroge.next();
+    let ed = entity_stroge.alloc();
     let ed_value = 40;
 
     let mut sparset_set = SparseSet::new(128);
@@ -52,7 +52,7 @@ fn sparse_set() {
     sparset_set.remove(ed.clone());
     entity_stroge.remove(ed);
 
-    let ef = entity_stroge.next();
+    let ef = entity_stroge.alloc();
     let ef_value = 50;
     sparset_set.insert(&ef, ef_value);
 

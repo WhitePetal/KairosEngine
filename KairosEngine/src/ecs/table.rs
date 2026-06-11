@@ -44,8 +44,14 @@ impl ComponentTypeInfo {
         }
     }
 
+    #[inline(always)]
     pub fn id(&self) -> TypeId {
         self.type_id
+    }
+
+    #[inline(always)]
+    pub fn layout(&self) -> &Layout {
+        &self.layout
     }
 
     pub fn drop(&self, ptr: *mut u8) {
@@ -168,7 +174,7 @@ impl Table {
         let new_cap = old_cap + increment;
 
         let mut new_entities = vec![Entity::get_invalide_id(); new_cap].into_boxed_slice();
-        new_entities[0..old_count].copy_from_slice(&self.entities[0..old_count]);
+        new_entities[0..old_count].clone_from_slice(&self.entities[0..old_count]);
         self.entities = new_entities;
 
         let new_colums = self
@@ -217,6 +223,8 @@ impl Table {
                 }
             }
         }
+
+        self.colums = new_colums;
     }
 
     pub fn remove_entity(&mut self, entity: &Entity, drop: bool) -> Option<Entity> {
@@ -279,29 +287,30 @@ impl Table {
         }
     }
 
-    pub fn push_row<F>(&mut self, entity: &Entity, component_writes: Vec<F>)
-    where
-        F: FnOnce(*mut u8),
-    {
-        debug_assert!(!self.entitiy_infos.has(entity));
-        self.entitiy_infos.insert(
-            entity,
-            EntityInfo {
-                row_index: self.entities.len(),
-            },
-        );
-        self.entities.push(entity.clone());
-        self.components_table.creat_row(component_writes);
-    }
-
-    pub fn remove_row(&mut self, entity: Entity) {
-        debug_assert!(self.entities.len() > 0);
-        debug_assert!(self.entitiy_infos.has(&entity));
-        let end_entity = self.entities.pop().unwrap();
-        let entity_info = self.entitiy_infos.remove(entity);
-
-        self.components_table.remove_row(entity_info.row_index);
-        self.entities[entity_info.row_index] = end_entity;
+    /// 把 row_index 行数据通过 f 写入目标
+    pub fn move_to<F: FnMut(*mut u8, &ComponentTypeInfo) -> ()>(
+        &mut self,
+        row_index: usize,
+        mut f: F,
+    ) -> Option<Entity> {
+        let last = self.len - 1;
+        for (info, colum) in self.types.iter().zip(&self.colums) {
+            unsafe {
+                let moved_out = colum.data.as_ptr().add(row_index * info.layout.size());
+                (f)(moved_out, info);
+                if row_index != last {
+                    let moved = colum.data.as_ptr().add(last * info.layout.size());
+                    ptr::copy_nonoverlapping(moved, moved_out, info.layout.size());
+                }
+            }
+        }
+        self.len = self.len - 1;
+        if row_index != last {
+            self.entities[row_index] = self.entities[last].clone();
+            Some(self.entities[last].clone())
+        } else {
+            None
+        }
     }
 
     pub fn has_component(&self, component_type: &TypeId) -> bool {

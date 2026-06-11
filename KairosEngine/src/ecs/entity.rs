@@ -36,17 +36,17 @@ impl Id for Entity {
     }
 
     #[inline(always)]
-    fn get_idx(&self) -> u32 {
+    fn idx(&self) -> u32 {
         (self.0 & IDX_MASK) as u32
     }
 
     #[inline(always)]
-    fn get_version(&self) -> u32 {
+    fn version(&self) -> u32 {
         ((self.0 >> IDX_MASK_OFFSET) & VERSION_MASK) as u32
     }
 
     #[inline(always)]
-    fn get_flags(&self) -> Self::FlagType {
+    fn flags(&self) -> Self::FlagType {
         Self::FlagType::from(((self.0 >> VERSION_MASK_OFFSET) & FLAG_MASK) as u32)
     }
 
@@ -74,9 +74,9 @@ impl Id for Entity {
 
     #[inline(always)]
     fn get_next_version(self, flags: Self::FlagType) -> Self {
-        let version = self.get_version().wrapping_add(1);
+        let version = self.version().wrapping_add(1);
         // 0 是全新实体的版本号，回绕时跳过
         let version = if version == 0 { 1 } else { version };
-        Self::new(self.get_idx(), version, flags)
+        Self::new(self.idx(), version, flags)
     }
 }

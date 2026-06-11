@@ -17,11 +17,11 @@ pub trait Id: Debug + Clone + PartialEq + Eq + Hash {
         Self::new(0, 0, Self::FlagType::get_invalide_flag())
     }
 
-    fn get_idx(&self) -> u32;
+    fn idx(&self) -> u32;
 
-    fn get_version(&self) -> u32;
+    fn version(&self) -> u32;
 
-    fn get_flags(&self) -> Self::FlagType;
+    fn flags(&self) -> Self::FlagType;
 
     fn from_other(idx: u32, other: &Self) -> Self;
 
@@ -34,6 +34,6 @@ pub trait Id: Debug + Clone + PartialEq + Eq + Hash {
     fn get_next_version(self, flags: Self::FlagType) -> Self;
 
     fn is_avalide(&self) -> bool {
-        (self.get_flags().into() & (Self::FlagType::get_invalide_flag().into())) == 0u32
+        (self.flags().into() & (Self::FlagType::get_invalide_flag().into())) == 0u32
     }
 }

@@ -3,6 +3,7 @@ use std::{
     collections::{HashMap, hash_map::Entry},
     hash::{BuildHasher, BuildHasherDefault, Hasher},
     ops::Add,
+    ptr,
     sync::Mutex,
 };
 
@@ -11,76 +12,26 @@ use petgraph::graph::NodeIndex;
 use crate::{
     asset_loader::assets::AssetsServer,
     ecs::{
-        component::ComponentError,
-        component_tuple::{
-            ComponentQueryMutTuple, ComponentQueryTuple, ComponentTuple, ComponentTupleKey,
-            StaticTypedComponentTuple,
-        },
+        component::{Component, ComponentError},
+        component_tuple::{ComponentTuple, ComponentTupleKey, StaticTypedComponentTuple},
         consts,
         entity::{Entity, EntityFlag},
         id::Id,
-        sparse_set::{EntityStorage, SparseSet},
+        sparse_set::{self, EntityStorage, SparseSet},
         table_graph::{InsertTarget, TableGraph},
     },
     timer::Time,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct SceneId(Entity);
-
-impl Id for SceneId {
-    type FlagType = EntityFlag;
-
-    #[inline(always)]
-    fn new(idx: u32, version: u32, flags: Self::FlagType) -> Self {
-        Self(Entity::new(idx, version, flags))
-    }
-
-    #[inline(always)]
-    fn get_idx(&self) -> u32 {
-        self.0.get_idx()
-    }
-
-    #[inline(always)]
-    fn get_version(&self) -> u32 {
-        self.0.get_version()
-    }
-
-    #[inline(always)]
-    fn get_flags(&self) -> Self::FlagType {
-        self.0.get_flags()
-    }
-
-    #[inline(always)]
-    fn from_other(idx: u32, other: &Self) -> Self {
-        Self(Entity::from_other(idx, &other.0))
-    }
-
-    #[inline(always)]
-    fn replace_idx(&mut self, idx: u32) {
-        self.0.replace_idx(idx);
-    }
-
-    #[inline(always)]
-    fn create_idx_variant(&self, idx: u32) -> Self {
-        Self(self.0.create_idx_variant(idx))
-    }
-
-    #[inline(always)]
-    fn replace_flags(&mut self, flags: Self::FlagType) {
-        self.0.replace_flags(flags);
-    }
-
-    #[inline(always)]
-    fn get_next_version(self, flags: Self::FlagType) -> Self {
-        Self(self.0.get_next_version(flags))
-    }
-}
-
 #[derive(Debug)]
 pub struct EntityData {
     table_index: NodeIndex,
     row_index: usize,
+}
+impl Default for EntityData {
+    fn default() -> Self {
+        Self { table_index: NodeIndex::new(0), row_index: usize::MAX }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -98,7 +49,7 @@ impl Hasher for NodeIndexTupleIdHasher {
         todo!()
     }
 
-    fn write(&mut self, bytes: &[u8]) {
+    fn write(&mut self, _bytes: &[u8]) {
         unreachable!()
     }
 }
@@ -196,6 +147,16 @@ impl World {
         let data = self.entity_datas.get_value(entity);
         let src_table = data.table_index;
         let row_index = data.row_index;
+        self.insert_inner(entity, components, src_table, row_index);
+    }
+
+    fn insert_inner<T: ComponentTuple>(
+        &mut self,
+        entity: &Entity,
+        components: T,
+        src_table: NodeIndex,
+        row_index: usize,
+    ) {
         let target;
         let target_ref = match components.key() {
             Some(key) => match self.insert_edges.entry((src_table, key)) {
@@ -276,7 +237,7 @@ impl World {
     pub fn spawn<T: ComponentTuple>(&mut self, components: T) -> Entity {
         self.flush();
 
-        let entity = self.entities.next();
+        let entity = self.entities.alloc();
         self.spawn_inner(&entity, components);
         entity
     }
@@ -304,10 +265,37 @@ impl World {
         );
     }
 
-    /// 从实体身上移除组件
+    /// 给指定的实体重新分配组件
+    /// 如果Entity已存在，则会用传入的Entity覆盖， 并删除原本Entity的组件，然后用输入的新组件重新创建
+    /// 如果Entity不存在，则会创建这个指定的Entity，并添加输入的组件
+    pub fn spawn_at<T: ComponentTuple>(&mut self, entity: Entity, components: T) {
+        self.flush();
+
+        match self.entities.alloc_at(&entity) {
+            sparse_set::AllocAt::New(range) => {
+                for idx in range {
+                    self.entity_datas.insert(
+                        &Entity::new(idx as u32, 0, EntityFlag::Dead),
+                        EntityData::default(),
+                    );
+                }
+                self.entity_datas.insert(&entity, EntityData::default());
+            }
+            sparse_set::AllocAt::BeUsed => {},
+            sparse_set::AllocAt::Using => {
+                let entity_data = self.entity_datas.get_value(&entity);
+                if let Some(moved) = self.table_graph[entity_data.table_index].remove_entity(&entity, true) {
+                    self.entity_datas[&moved].row_index = entity_data.row_index
+                }
+            },
+        }
+        self.spawn_inner(&entity, components);
+    }
+
+    /// 从实体身上移除'T'组件
     pub fn remove<T: StaticTypedComponentTuple + 'static>(
         &mut self,
-        entity: Entity,
+        entity: &Entity,
     ) -> Result<T, ComponentError> {
         self.flush();
 
@@ -315,7 +303,7 @@ impl World {
         let old_row_index = entity_data.row_index;
         let source_table = &self.table_graph[entity_data.table_index];
 
-        let bundle = T::get(|info| source_table.get_dynamice(&info, old_row_index))?;
+        let tuple = T::get(|info| source_table.get_dynamice(&info, old_row_index))?;
 
         let target = Self::remove_target::<T>(
             &mut self.table_graph,
@@ -323,7 +311,24 @@ impl World {
             entity_data.table_index,
         );
 
-        todo!()
+        if entity_data.table_index != target {
+            let (source_table, target_table) =
+                self.table_graph.index2(entity_data.table_index, target);
+            let target_row_index = target_table.allocate_entity(&entity);
+            entity_data.table_index = target;
+            entity_data.row_index = target_row_index;
+            if let Some(moved) = unsafe {
+                source_table.move_to(old_row_index, |src, info| {
+                    if let Some(dst) = target_table.get_dynamice(info, target_row_index) {
+                        ptr::copy_nonoverlapping(src, dst.as_ptr(), info.layout().size());
+                    }
+                })
+            } {
+                self.entity_datas[&moved].row_index = old_row_index
+            }
+        }
+
+        Ok(tuple)
     }
 
     fn remove_target<T: StaticTypedComponentTuple + 'static>(
@@ -347,5 +352,44 @@ impl World {
                 *vacant_entry.insert(row_index)
             }
         }
+    }
+
+    /// 从实体身上移除单个'T'组件
+    pub fn remove_one<T: Component>(&mut self, entity: &Entity) -> Result<T, ComponentError> {
+        self.remove::<(T,)>(entity).map(|(x,)| x)
+    }
+
+    /// 从实体身上移除 'S' 组件, 然后添加 'T' 组件
+    pub fn exchange<S: StaticTypedComponentTuple + 'static, T: ComponentTuple>(
+        &mut self,
+        entity: &Entity,
+        components: T,
+    ) -> Result<S, ComponentError> {
+        self.flush();
+
+        let entity_data = self.entity_datas.get_value(entity);
+
+        let source_table = &self.table_graph[entity_data.table_index];
+
+        let tuple = S::get(|info| source_table.get_dynamice(&info, entity_data.row_index))?;
+
+        let intermediate = Self::remove_target::<S>(
+            &mut self.table_graph,
+            &mut self.remove_edges,
+            entity_data.table_index,
+        );
+        self.insert_inner(entity, components, intermediate, entity_data.row_index);
+
+        Ok(tuple)
+    }
+
+    /// 从实体身上移除单个 'S' 组件，然后添加单个 'T' 组件
+    pub fn exchange_one<S: Component, T: Component>(
+        &mut self,
+        entity: &Entity,
+        component: T,
+    ) -> Result<S, ComponentError> {
+        self.exchange::<(S,), (T,)>(entity, (component,))
+            .map(|(x,)| x)
     }
 }
