@@ -74,7 +74,9 @@ impl Id for Entity {
 
     #[inline(always)]
     fn get_next_version(self, flags: Self::FlagType) -> Self {
-        let version = self.get_version() + 1;
+        let version = self.get_version().wrapping_add(1);
+        // 0 是全新实体的版本号，回绕时跳过
+        let version = if version == 0 { 1 } else { version };
         Self::new(self.get_idx(), version, flags)
     }
 }
