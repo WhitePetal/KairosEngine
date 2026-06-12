@@ -153,6 +153,8 @@ impl Table {
         self.len = 0;
     }
 
+    /// 创建一个实体行
+    /// Return: row_index
     pub fn allocate_entity(&mut self, entity: &Entity) -> usize {
         if self.len == self.entities.len() {
             self.grow(consts::TABLE_ROW_CAPACITY);
@@ -315,6 +317,18 @@ impl Table {
 
     pub fn has_component(&self, component_type: &TypeId) -> bool {
         self.type_ids.contains(component_type)
+    }
+
+    pub fn reserve(&mut self, additional: usize) {
+        let free = self.capacity() - self.len;
+        if additional > free {
+            let increment = additional - free;
+            self.grow(increment.max(consts::TABLE_ROW_CAPACITY));
+        }
+    }
+
+    pub fn capacity(&self) -> usize {
+        self.entities.len()
     }
 }
 

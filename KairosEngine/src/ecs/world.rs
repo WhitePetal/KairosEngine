@@ -18,6 +18,7 @@ use crate::{
         entity::{Entity, EntityFlag},
         id::Id,
         sparse_set::{self, EntityStorage, SparseSet},
+        table::Table,
         table_graph::{InsertTarget, TableGraph},
     },
     timer::Time,
@@ -30,7 +31,10 @@ pub struct EntityData {
 }
 impl Default for EntityData {
     fn default() -> Self {
-        Self { table_index: NodeIndex::new(0), row_index: usize::MAX }
+        Self {
+            table_index: NodeIndex::new(0),
+            row_index: usize::MAX,
+        }
     }
 }
 
@@ -281,15 +285,74 @@ impl World {
                 }
                 self.entity_datas.insert(&entity, EntityData::default());
             }
-            sparse_set::AllocAt::BeUsed => {},
+            sparse_set::AllocAt::BeUsed => {}
             sparse_set::AllocAt::Using => {
                 let entity_data = self.entity_datas.get_value(&entity);
-                if let Some(moved) = self.table_graph[entity_data.table_index].remove_entity(&entity, true) {
+                if let Some(moved) =
+                    self.table_graph[entity_data.table_index].remove_entity(&entity, true)
+                {
                     self.entity_datas[&moved].row_index = entity_data.row_index
                 }
-            },
+            }
         }
         self.spawn_inner(&entity, components);
+    }
+
+    /// 通过组件迭代器批量创建带这些组件的实体
+    /// 调用后只会为这些实体预留分配内存，而不会创建实际的数据
+    /// 实际数据会在返回的迭代器中做懒创建
+    pub fn spawn_batch<I>(&mut self, iter: I) -> SpawnBatchIter<'_, I::IntoIter>
+    where
+        I: IntoIterator,
+        I::Item: StaticTypedComponentTuple + 'static,
+    {
+        self.flush();
+
+        let iter = iter.into_iter();
+        let (lower, upper) = iter.size_hint();
+        let table_index = self.reserve_inner::<I::Item>(
+            usize::try_from(upper.unwrap_or(lower)).expect("iterator too larget"),
+        );
+
+        SpawnBatchIter {
+            inner: iter,
+            entities: &mut self.entities,
+            entity_datas: &mut self.entity_datas,
+            table_index,
+            table: &mut self.table_graph[table_index],
+        }
+    }
+
+    /// 预留分配出 additional 个 带 'T' 组件的实体
+    /// 这会分配出数据的内存，但并不会创建有效数据，该方法主要用于需要批量spawn时，避免多个单次spawn导致的内存频繁realloc
+    pub fn reserve<T: StaticTypedComponentTuple + 'static>(&mut self, additional: usize) {
+        self.reserve_inner::<T>(additional);
+    }
+
+    fn reserve_inner<T: StaticTypedComponentTuple + 'static>(
+        &mut self,
+        additional: usize,
+    ) -> NodeIndex {
+        self.flush();
+
+        if let Some(shortfall) = self.entities.reserve(additional) {
+            self.entity_datas.reserve(shortfall);
+        }
+
+        let tables = &mut self.table_graph;
+        let table_id = *self
+            .tuple_to_table
+            .entry(ComponentTupleKey::from(TypeId::of::<T>()))
+            .or_insert_with(|| {
+                T::with_static_ids(|ids| {
+                    tables.get(ids, || {
+                        T::with_static_type_info(|info| info.iter().copied().collect::<Box<[_]>>())
+                    })
+                })
+            });
+
+        tables[table_id].reserve(additional);
+        table_id
     }
 
     /// 从实体身上移除'T'组件
@@ -391,5 +454,63 @@ impl World {
     ) -> Result<S, ComponentError> {
         self.exchange::<(S,), (T,)>(entity, (component,))
             .map(|(x,)| x)
+    }
+}
+
+/// [`World::spawn_batch`] 创建出来的迭代器
+/// spawn_batch的实体和其组件数据在该迭代器中实现懒创建
+pub struct SpawnBatchIter<'a, I>
+where
+    I: Iterator,
+    I::Item: StaticTypedComponentTuple,
+{
+    inner: I,
+    entities: &'a mut EntityStorage,
+    entity_datas: &'a mut SparseSet<Entity, EntityData>,
+    table_index: NodeIndex,
+    table: &'a mut Table,
+}
+
+impl<I> Iterator for SpawnBatchIter<'_, I>
+where
+    I: Iterator,
+    I::Item: StaticTypedComponentTuple,
+{
+    type Item = Entity;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let components = self.inner.next()?;
+        let entity = self.entities.alloc();
+        let row_index = self.table.allocate_entity(&entity);
+        components.put(|ptr, info| {
+            self.table.put_dynamic(ptr, &info, row_index);
+        });
+        self.entity_datas.insert(
+            &entity,
+            EntityData {
+                table_index: self.table_index,
+                row_index,
+            },
+        );
+        Some(entity)
+    }
+}
+impl<I, T> ExactSizeIterator for SpawnBatchIter<'_, I>
+where
+    I: ExactSizeIterator<Item = T>,
+    T: StaticTypedComponentTuple,
+{
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+}
+
+impl<I> Drop for SpawnBatchIter<'_, I>
+where
+    I: Iterator,
+    I::Item: StaticTypedComponentTuple,
+{
+    fn drop(&mut self) {
+        for _ in self {}
     }
 }
