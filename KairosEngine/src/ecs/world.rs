@@ -12,12 +12,13 @@ use petgraph::graph::NodeIndex;
 use crate::{
     asset_loader::assets::AssetsServer,
     ecs::{
+        batch::ColumBatch,
         component::{Component, ComponentError},
         component_tuple::{ComponentTuple, ComponentTupleKey, StaticTypedComponentTuple},
         consts,
         entity::{Entity, EntityFlag},
         id::Id,
-        sparse_set::{self, EntityStorage, SparseSet},
+        sparse_set::{self, AllocManyState, EntityStorage, SparseSet},
         table::Table,
         table_graph::{InsertTarget, TableGraph},
     },
@@ -275,7 +276,13 @@ impl World {
     pub fn spawn_at<T: ComponentTuple>(&mut self, entity: Entity, components: T) {
         self.flush();
 
-        match self.entities.alloc_at(&entity) {
+        let entity = self.alloc_at_inner(&entity);
+
+        self.spawn_inner(&entity, components);
+    }
+
+    fn alloc_at_inner(&mut self, entity: &Entity) -> Entity {
+        match self.entities.alloc_at(entity) {
             sparse_set::AllocAt::New(range) => {
                 for idx in range {
                     self.entity_datas.insert(
@@ -283,19 +290,23 @@ impl World {
                         EntityData::default(),
                     );
                 }
+                let entity = entity.clone();
                 self.entity_datas.insert(&entity, EntityData::default());
+                entity
             }
-            sparse_set::AllocAt::BeUsed => {}
+            sparse_set::AllocAt::BeUsed(entity) => { 
+                entity
+            }
             sparse_set::AllocAt::Using => {
-                let entity_data = self.entity_datas.get_value(&entity);
+                let entity_data = self.entity_datas.get_value(entity);
                 if let Some(moved) =
-                    self.table_graph[entity_data.table_index].remove_entity(&entity, true)
+                    self.table_graph[entity_data.table_index].remove_entity(entity, true)
                 {
-                    self.entity_datas[&moved].row_index = entity_data.row_index
+                    self.entity_datas[&moved].row_index = entity_data.row_index;
                 }
+                entity.clone()
             }
         }
-        self.spawn_inner(&entity, components);
     }
 
     /// 通过组件迭代器批量创建带这些组件的实体
@@ -320,6 +331,70 @@ impl World {
             entity_datas: &mut self.entity_datas,
             table_index,
             table: &mut self.table_graph[table_index],
+        }
+    }
+
+    /// 高效的生成 [`ColumBatch`] 中的内容
+    pub fn spawn_colum_batch(&mut self, batch: ColumBatch) -> SpawnColumnBatchIter {
+        self.flush();
+
+        let table = batch.0;
+        let entity_count = table.row_count();
+        let (table_index, mut start_row_index) = self.table_graph.insert_batch(table);
+
+        let table = &mut self.table_graph[table_index];
+        let entity_alloc_many = self.entities.alloc_many(entity_count);
+
+        for id in &self.entities.iter().as_slice()[entity_alloc_many.pending_range.clone()] {
+            self.entity_datas[id] = EntityData {
+                table_index,
+                row_index: start_row_index,
+            };
+            
+            table.set_entity_id(start_row_index, id.idx());
+            start_row_index = start_row_index + 1;
+        }
+
+        for index in entity_alloc_many.fresh.clone() {
+            self.entity_datas.insert(
+                &Entity::new(index as u32, 0, EntityFlag::Default),
+                EntityData {
+                    table_index,
+                    row_index: start_row_index,
+                },
+            );
+            table.set_entity_id(start_row_index, index as u32);
+            start_row_index = start_row_index + 1;
+        }
+
+        SpawnColumnBatchIter {
+            entity_alloc: entity_alloc_many,
+            entities: &mut self.entities
+        }
+    }
+
+    /// 生成 [`ColumBatch`] 的数据，并将其中的实体替换为输入的实体
+    /// 这要求输入的实体切片长度等于[`ColumBatch`]中的实体数量
+    pub fn spawn_colum_batch_at(&mut self, handles: &[Entity], batch: ColumBatch) {
+        let mut table = batch.0;
+        debug_assert_eq!(
+            handles.len(), 
+            table.row_count(), 
+            "number of entity {} must match number of entities {}",
+            handles.len(),
+            table.row_count()
+        );
+
+        for handle in handles {
+            let _ = self.alloc_at_inner(handle);
+        }
+
+        let (table_index, start_row_index) = self.table_graph.insert_batch(table);
+
+        let table = &mut self.table_graph[table_index];
+        for (handle, index) in handles.iter().zip(start_row_index as usize..) {
+            table.set_entity_id(index, handle.idx());
+            self.entity_datas.insert(handle, EntityData { table_index, row_index: index });
         }
     }
 
@@ -512,5 +587,35 @@ where
 {
     fn drop(&mut self) {
         for _ in self {}
+    }
+}
+
+
+pub struct SpawnColumnBatchIter<'a> {
+    entity_alloc: AllocManyState,
+    entities: &'a mut EntityStorage
+}
+
+impl ExactSizeIterator for SpawnColumnBatchIter<'_> {
+    fn len(&self) -> usize {
+        self.entity_alloc.len()
+    }
+}
+
+impl Iterator for SpawnColumnBatchIter<'_> {
+    type Item = Entity;
+    
+    fn next(&mut self) -> Option<Self::Item> {
+        let index = self.entity_alloc.next()?;
+        Some(self.entities.flush_alloc_many(index))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.len(), Some(self.len()))
+    }
+}
+impl Drop for SpawnColumnBatchIter<'_> {
+    fn drop(&mut self) {
+        self.entities.finish_alloc_many(&mut self.entity_alloc);
     }
 }

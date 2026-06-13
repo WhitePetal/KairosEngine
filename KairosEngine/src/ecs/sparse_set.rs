@@ -278,10 +278,29 @@ where
     head: AtomicUsize,
 }
 
-pub enum AllocAt {
+pub enum AllocAt<I> where I: Id {
     New(Range<usize>),
-    BeUsed,
+    BeUsed(I),
     Using,
+}
+
+#[derive(Debug, Clone)]
+pub struct AllocManyState {
+    pub pending_range: Range<usize>,
+    pub fresh: Range<usize>,
+}
+impl AllocManyState {
+    pub fn next(&mut self) -> Option<usize> {
+        if let Some(pending) = self.pending_range.next() {
+            Some(pending)
+        } else {
+            self.fresh.next()
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.fresh.len() + self.pending_range.len()
+    }
 }
 
 impl<I> SparseStroge<I>
@@ -424,9 +443,11 @@ where
     }
 
     /// 分配指定的Entity
+    /// 
     /// 如果Entity不存在，则创建该Entity
+    /// 
     /// 否则用输入的Entity覆盖
-    pub fn alloc_at(&mut self, entity: &I) -> AllocAt {
+    pub fn alloc_at(&mut self, entity: &I) -> AllocAt<I> {
         let idx = entity.idx() as usize;
         // Id 从未被创建过
         if idx as usize >= self.dense.len() {
@@ -452,17 +473,80 @@ where
             let index = sparse.idx() as usize;
             if !sparse.is_avalide() {
                 let head = *self.head.get_mut();
+                let mut entity = entity.clone();
+                entity.replace_flags(I::FlagType::default());
                 self.dense[index] = entity.clone();
                 self.swap_inner(head, index);
                 self.flushed_head = head;
                 *self.head.get_mut() = self.flushed_head;
-                AllocAt::BeUsed
+                AllocAt::BeUsed(entity)
             } else {
                 // Id 被创建过，但正在被使用
                 self.dense[index] = entity.clone();
                 *sparse = I::from_other(index as u32, entity);
                 AllocAt::Using
             }
+        }
+    }
+
+    /// 调用后必须再调用 flush_alloc_many 和 finish_alloc_many
+    pub fn alloc_many(&mut self, count: usize) -> AllocManyState {
+        self.verify_flushed();
+
+        // 计算需要实际额外创建多少个全新的Entity
+        let head = *self.head.get_mut();
+        let free_count = self.dense.len() - head;
+        let reused_count = free_count.min(count);
+        let fresh_count = count.saturating_sub(reused_count);
+        let fresh_start = self.dense.len();
+        debug_assert!(
+            ((head + count) < u32::MAX as usize),
+            "too many entities"
+        );
+        let pending_start = head;
+        let pending_end = pending_start + reused_count;
+        let pending_range = pending_start..pending_end;
+        for index in pending_range.clone() {
+            self.dense[index].replace_flags(I::FlagType::default());
+        }
+
+        *self.head.get_mut() = head + count;
+
+        AllocManyState {
+            pending_range,
+            fresh: fresh_start .. (fresh_start + fresh_count),
+        }
+    }
+
+    pub fn flush_alloc_many(&mut self, index: usize) -> I {
+        let head = self.len();
+        if self.dense.len() > index {
+            let entity = &mut self.dense[index];
+            let sparse_pos = Self::get_sparse_pos(entity.idx());
+            self.sparse[sparse_pos.page].0[sparse_pos.slot] = I::new(index as u32, entity.version(), entity.flags());
+            if index >= self.flushed_head {
+                self.flushed_head = self.flushed_head + 1;
+            }
+            entity.clone()
+        } else {
+            if head > self.dense.len() {
+                let entity = I::new(index as u32, 0, I::FlagType::default());
+                let sparse_pos = Self::get_sparse_pos(entity.idx());
+                if self.sparse.get(sparse_pos.page).is_none() {
+                    self.sparse.push(Page::new());
+                }
+                self.sparse[sparse_pos.page].0[sparse_pos.slot] = entity.clone();
+                self.dense.push(entity.clone());
+                entity
+            } else {                
+                panic!("entity id is out of range")
+            }
+        }
+    }
+
+    pub fn finish_alloc_many(&mut self, statte: &mut AllocManyState) {
+        while let Some(index) = statte.next() {
+            self.flush_alloc_many(index);
         }
     }
 
@@ -631,5 +715,30 @@ where
 
     fn index(&self, index: usize) -> &Self::Output {
         &self.dense[index]
+    }
+}
+
+impl<I> Index<I> for SparseStroge<I> where I: Id {
+    type Output = I;
+
+    fn index(&self, id: I) -> &Self::Output {
+        let sparse_pos = Self::get_sparse_pos(id.idx());
+        debug_assert!(
+            self.sparse.get(sparse_pos.page).is_some(),
+            "No page when get value, id: {:?}",
+            id
+        );
+        debug_assert!(
+            self.sparse[sparse_pos.page].0[sparse_pos.slot].is_avalide(),
+            "The id is not alive! while get value, id: {:?}",
+            id
+        );
+        let index = &self.sparse[sparse_pos.page].0[sparse_pos.slot];
+        debug_assert!(
+            id.version() == index.version(),
+            "The id's version is invalide! while get value, id: {:?}",
+            id
+        );
+        &self.dense[index.idx() as usize]
     }
 }

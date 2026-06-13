@@ -1,7 +1,7 @@
 use std::{
     any::TypeId,
     borrow::Borrow,
-    collections::HashMap,
+    collections::{HashMap, hash_map::Entry},
     ops::{Index, IndexMut},
 };
 
@@ -142,6 +142,36 @@ impl TableGraph {
             .get(types.borrow())
             .copied()
             .unwrap_or_else(|| self.insert_table(types.into(), (get_infos)()))
+    }
+
+    /// 插入整个Table
+    ///
+    /// - Return:
+    ///     - table_node_index
+    ///     - row_index: 插入的Table可能在Geaph已存在，此时会合并，并返回该Tabe entity在新 Table 中的起始row_index
+    ///         否则为0
+    pub fn insert_batch(&mut self, table: Table) -> (NodeIndex, usize) {
+        let types = table
+            .types()
+            .iter()
+            .map(|info| info.id())
+            .collect::<Box<[_]>>();
+
+        match self.index.entry(types) {
+            Entry::Occupied(occupied_entry) => {
+                // 已有该原型，合并
+                let existing = &mut self.graph[*occupied_entry.get()];
+                let base = existing.row_count();
+                existing.merge(table);
+                (*occupied_entry.get(), base)
+            }
+            Entry::Vacant(vacant_entry) => {
+                // 没有该原型，创建并插入新表
+                let id = self.graph.add_node(table);
+                vacant_entry.insert(id);
+                (id, 0)
+            }
+        }
     }
 }
 

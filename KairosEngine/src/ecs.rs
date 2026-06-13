@@ -1,3 +1,4 @@
+pub mod batch;
 pub mod component;
 pub mod component_tuple;
 pub mod consts;

@@ -330,6 +330,25 @@ impl Table {
     pub fn capacity(&self) -> usize {
         self.entities.len()
     }
+
+    /// 把 'other' Table 合并入当前Table (other 的数据 push 到当前table后面)
+    pub fn merge(&mut self, mut other: Table) {
+        self.reserve(other.row_count());
+        for ((info, dst), src) in self.types.iter().zip(&self.colums).zip(&other.colums) {
+            unsafe {
+                dst.data
+                    .as_ptr()
+                    .add(info.layout.size() * self.len)
+                    .copy_from_nonoverlapping(src.data.as_ptr(), other.len * info.layout.size());
+            }
+        }
+        self.len += other.len;
+        other.len = 0;
+    }
+
+    pub fn set_entity_id(&mut self, index: usize, id: u32) {
+        self.entities[index] = self.entities[index].create_idx_variant(id);
+    }
 }
 
 impl Drop for Table {
