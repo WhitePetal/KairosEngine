@@ -1,6 +1,10 @@
 use core::error;
 use std::{
-    array, fmt, iter::Zip, ops::{Index, IndexMut, Range}, slice::Iter, sync::atomic::{AtomicUsize, Ordering}
+    array, fmt,
+    iter::Zip,
+    ops::{Index, IndexMut, Range},
+    slice::Iter,
+    sync::atomic::{AtomicUsize, Ordering},
 };
 
 use crate::ecs::{
@@ -232,7 +236,10 @@ where
     head: AtomicUsize,
 }
 
-pub enum AllocAt<I> where I: Id {
+pub enum AllocAt<I>
+where
+    I: Id,
+{
     New(Range<usize>),
     BeUsed(I),
     Using,
@@ -397,9 +404,9 @@ where
     }
 
     /// 分配指定的Entity
-    /// 
+    ///
     /// 如果Entity不存在，则创建该Entity
-    /// 
+    ///
     /// 否则用输入的Entity覆盖
     pub fn alloc_at(&mut self, entity: &I) -> AllocAt<I> {
         let idx = entity.idx() as usize;
@@ -453,10 +460,7 @@ where
         let reused_count = free_count.min(count);
         let fresh_count = count.saturating_sub(reused_count);
         let fresh_start = self.dense.len();
-        debug_assert!(
-            ((head + count) < u32::MAX as usize),
-            "too many entities"
-        );
+        debug_assert!(((head + count) < u32::MAX as usize), "too many entities");
         let pending_start = head;
         let pending_end = pending_start + reused_count;
         let pending_range = pending_start..pending_end;
@@ -468,7 +472,7 @@ where
 
         AllocManyState {
             pending_range,
-            fresh: fresh_start .. (fresh_start + fresh_count),
+            fresh: fresh_start..(fresh_start + fresh_count),
         }
     }
 
@@ -477,7 +481,8 @@ where
         if self.dense.len() > index {
             let entity = &mut self.dense[index];
             let sparse_pos = Self::get_sparse_pos(entity.idx());
-            self.sparse[sparse_pos.page].0[sparse_pos.slot] = I::new(index as u32, entity.version(), entity.flags());
+            self.sparse[sparse_pos.page].0[sparse_pos.slot] =
+                I::new(index as u32, entity.version(), entity.flags());
             if index >= self.flushed_head {
                 self.flushed_head = self.flushed_head + 1;
             }
@@ -492,7 +497,7 @@ where
                 self.sparse[sparse_pos.page].0[sparse_pos.slot] = entity.clone();
                 self.dense.push(entity.clone());
                 entity
-            } else {                
+            } else {
                 panic!("entity id is out of range")
             }
         }
@@ -523,7 +528,7 @@ where
     /// **版本号在此时立即递增**，保证后续 `reserve_entity` 拿到的是新版本。
     pub fn free(&mut self, id: I) -> Result<(), NoSuchId> {
         self.verify_flushed();
-        
+
         let sparse_pos = Self::get_sparse_pos(id.idx());
         if self.sparse.get(sparse_pos.page).is_some() {
             return Err(NoSuchId);
@@ -674,7 +679,10 @@ where
     }
 }
 
-impl<I> Index<I> for SparseStroge<I> where I: Id {
+impl<I> Index<I> for SparseStroge<I>
+where
+    I: Id,
+{
     type Output = I;
 
     fn index(&self, id: I) -> &Self::Output {
@@ -698,7 +706,6 @@ impl<I> Index<I> for SparseStroge<I> where I: Id {
         &self.dense[index.idx() as usize]
     }
 }
-
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct NoSuchId;

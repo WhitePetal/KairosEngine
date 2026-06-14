@@ -1,5 +1,10 @@
 use std::{
-    any::TypeId, collections::{HashMap, hash_map::Entry}, hash::{BuildHasher, BuildHasherDefault, Hasher}, ops::Add, ptr, sync::Mutex
+    any::TypeId,
+    collections::{HashMap, hash_map::Entry},
+    hash::{BuildHasher, BuildHasherDefault, Hasher},
+    ops::Add,
+    ptr,
+    sync::Mutex,
 };
 
 use petgraph::graph::NodeIndex;
@@ -7,7 +12,15 @@ use petgraph::graph::NodeIndex;
 use crate::{
     asset_loader::assets::AssetsServer,
     ecs::{
-        batch::ColumBatch, component::{Component, ComponentError}, component_tuple::{ComponentTuple, ComponentTupleKey, StaticTypedComponentTuple}, consts, entity::{Entity, EntityFlag}, id::Id, sparse_set::{self, AllocManyState, EntityStorage, NoSuchId, SparseSet}, table::Table, table_graph::{InsertTarget, TableGraph}
+        batch::ColumBatch,
+        component::{Component, ComponentError},
+        component_tuple::{ComponentTuple, ComponentTupleKey, DynamicComponentTuple},
+        consts,
+        entity::{Entity, EntityFlag},
+        id::Id,
+        sparse_set::{self, AllocManyState, EntityStorage, NoSuchId, SparseSet},
+        table::Table,
+        table_graph::{InsertTarget, TableGraph},
     },
     timer::Time,
 };
@@ -133,7 +146,7 @@ impl World {
     }
 
     /// 给一个实体添加组件
-    pub fn insert<T: ComponentTuple>(&mut self, entity: &Entity, components: T) {
+    pub fn insert<T: DynamicComponentTuple>(&mut self, entity: &Entity, components: T) {
         self.flush();
 
         let data = self.entity_datas.get_value(entity);
@@ -142,7 +155,7 @@ impl World {
         self.insert_inner(entity, components, src_table, row_index);
     }
 
-    fn insert_inner<T: ComponentTuple>(
+    fn insert_inner<T: DynamicComponentTuple>(
         &mut self,
         entity: &Entity,
         components: T,
@@ -174,9 +187,11 @@ impl World {
 
         // 表没变，直接把components的最新值写入老表
         if target_ref.get_node_index() == src_table {
-            components.put(|ptr, info| {
-                source_table.put_dynamic(ptr, &info, row_index);
-            });
+            unsafe {
+                components.put(|ptr, info| {
+                    source_table.put_dynamic(ptr, &info, row_index);
+                });
+            }
             return;
         }
 
@@ -190,9 +205,11 @@ impl World {
         entity_data.row_index = target_row_index;
 
         // 写入components到新表
-        components.put(|ptr, info| {
-            target_table.put_dynamic(ptr, &info, target_row_index);
-        });
+        unsafe {
+            components.put(|ptr, info| {
+                target_table.put_dynamic(ptr, &info, target_row_index);
+            });
+        }
 
         // 转移需要转移的老表中的数据
         for info in target_ref.get_need_moves() {
@@ -226,7 +243,7 @@ impl World {
     }
 
     /// 创建带有组件的实体
-    pub fn spawn<T: ComponentTuple>(&mut self, components: T) -> Entity {
+    pub fn spawn<T: DynamicComponentTuple>(&mut self, components: T) -> Entity {
         self.flush();
 
         let entity = self.entities.alloc();
@@ -234,7 +251,7 @@ impl World {
         entity
     }
 
-    fn spawn_inner<T: ComponentTuple>(&mut self, entity: &Entity, components: T) {
+    fn spawn_inner<T: DynamicComponentTuple>(&mut self, entity: &Entity, components: T) {
         let tables = &mut self.table_graph;
         let table_index = match components.key() {
             Some(key) => *self.tuple_to_table.entry(key).or_insert(
@@ -245,9 +262,11 @@ impl World {
 
         let table = &mut tables[table_index];
         let row_index = table.allocate_entity(entity);
-        components.put(|ptr, info| {
-            table.put_dynamic(ptr, &info, row_index);
-        });
+        unsafe {
+            components.put(|ptr, info| {
+                table.put_dynamic(ptr, &info, row_index);
+            });
+        }
         self.entity_datas.insert(
             entity,
             EntityData {
@@ -260,7 +279,7 @@ impl World {
     /// 给指定的实体重新分配组件
     /// 如果Entity已存在，则会用传入的Entity覆盖， 并删除原本Entity的组件，然后用输入的新组件重新创建
     /// 如果Entity不存在，则会创建这个指定的Entity，并添加输入的组件
-    pub fn spawn_at<T: ComponentTuple>(&mut self, entity: Entity, components: T) {
+    pub fn spawn_at<T: DynamicComponentTuple>(&mut self, entity: Entity, components: T) {
         self.flush();
 
         let entity = self.alloc_at_inner(&entity);
@@ -281,9 +300,7 @@ impl World {
                 self.entity_datas.insert(&entity, EntityData::default());
                 entity
             }
-            sparse_set::AllocAt::BeUsed(entity) => { 
-                entity
-            }
+            sparse_set::AllocAt::BeUsed(entity) => entity,
             sparse_set::AllocAt::Using => {
                 let entity_data = self.entity_datas.get_value(entity);
                 if let Some(moved) =
@@ -302,7 +319,7 @@ impl World {
     pub fn spawn_batch<I>(&mut self, iter: I) -> SpawnBatchIter<'_, I::IntoIter>
     where
         I: IntoIterator,
-        I::Item: StaticTypedComponentTuple + 'static,
+        I::Item: ComponentTuple + 'static,
     {
         self.flush();
 
@@ -337,7 +354,7 @@ impl World {
                 table_index,
                 row_index: start_row_index,
             };
-            
+
             table.set_entity_id(start_row_index, id.idx());
             start_row_index = start_row_index + 1;
         }
@@ -356,7 +373,7 @@ impl World {
 
         SpawnColumnBatchIter {
             entity_alloc: entity_alloc_many,
-            entities: &mut self.entities
+            entities: &mut self.entities,
         }
     }
 
@@ -365,8 +382,8 @@ impl World {
     pub fn spawn_colum_batch_at(&mut self, handles: &[Entity], batch: ColumBatch) {
         let table = batch.0;
         debug_assert_eq!(
-            handles.len(), 
-            table.row_count(), 
+            handles.len(),
+            table.row_count(),
             "number of entity {} must match number of entities {}",
             handles.len(),
             table.row_count()
@@ -381,7 +398,13 @@ impl World {
         let table = &mut self.table_graph[table_index];
         for (handle, index) in handles.iter().zip(start_row_index as usize..) {
             table.set_entity_id(index, handle.idx());
-            self.entity_datas.insert(handle, EntityData { table_index, row_index: index });
+            self.entity_datas.insert(
+                handle,
+                EntityData {
+                    table_index,
+                    row_index: index,
+                },
+            );
         }
     }
 
@@ -391,14 +414,15 @@ impl World {
 
         self.entities.free(entity.clone())?;
         let entity_data = self.entity_datas.remove(entity.clone());
-        if let Some(moved) = self.table_graph[entity_data.table_index].remove_entity(&entity, true) {
+        if let Some(moved) = self.table_graph[entity_data.table_index].remove_entity(&entity, true)
+        {
             self.entity_datas[&moved].row_index = entity_data.row_index;
         }
         Ok(())
     }
 
     /// despawn 所有实体
-    /// 
+    ///
     /// 但会保留所有已分配的内存，以便后续可能的重用
     pub fn clear(&mut self) {
         for x in self.table_graph.get_tables_mut() {
@@ -410,14 +434,11 @@ impl World {
 
     /// 预留分配出 additional 个 带 'T' 组件的实体
     /// 这会分配出数据的内存，但并不会创建有效数据，该方法主要用于需要批量spawn时，避免多个单次spawn导致的内存频繁realloc
-    pub fn reserve<T: StaticTypedComponentTuple + 'static>(&mut self, additional: usize) {
+    pub fn reserve<T: ComponentTuple + 'static>(&mut self, additional: usize) {
         self.reserve_inner::<T>(additional);
     }
 
-    fn reserve_inner<T: StaticTypedComponentTuple + 'static>(
-        &mut self,
-        additional: usize,
-    ) -> NodeIndex {
+    fn reserve_inner<T: ComponentTuple + 'static>(&mut self, additional: usize) -> NodeIndex {
         self.flush();
 
         if let Some(shortfall) = self.entities.reserve(additional) {
@@ -445,7 +466,7 @@ impl World {
     }
 
     /// 从实体身上移除'T'组件
-    pub fn remove<T: StaticTypedComponentTuple + 'static>(
+    pub fn remove<T: ComponentTuple + 'static>(
         &mut self,
         entity: &Entity,
     ) -> Result<T, ComponentError> {
@@ -455,7 +476,7 @@ impl World {
         let old_row_index = entity_data.row_index;
         let source_table = &self.table_graph[entity_data.table_index];
 
-        let tuple = T::get(|info| source_table.get_dynamice(&info, old_row_index))?;
+        let tuple = unsafe { T::get(|info| source_table.get_dynamice(&info, old_row_index))? };
 
         let target = Self::remove_target::<T>(
             &mut self.table_graph,
@@ -483,7 +504,7 @@ impl World {
         Ok(tuple)
     }
 
-    fn remove_target<T: StaticTypedComponentTuple + 'static>(
+    fn remove_target<T: ComponentTuple + 'static>(
         tables: &mut TableGraph,
         remove_edges: &mut NodeIndexTupleIdMap<NodeIndex>,
         old_table: NodeIndex,
@@ -512,7 +533,7 @@ impl World {
     }
 
     /// 从实体身上移除 'S' 组件, 然后添加 'T' 组件
-    pub fn exchange<S: StaticTypedComponentTuple + 'static, T: ComponentTuple>(
+    pub fn exchange<S: ComponentTuple + 'static, T: DynamicComponentTuple>(
         &mut self,
         entity: &Entity,
         components: T,
@@ -523,7 +544,9 @@ impl World {
 
         let source_table = &self.table_graph[entity_data.table_index];
 
-        let tuple = S::get(|info| source_table.get_dynamice(&info, entity_data.row_index))?;
+        let tuple = unsafe {
+            S::get(|info| source_table.get_dynamice(&info, entity_data.row_index))? 
+        };
 
         let intermediate = Self::remove_target::<S>(
             &mut self.table_graph,
@@ -551,7 +574,7 @@ impl World {
 pub struct SpawnBatchIter<'a, I>
 where
     I: Iterator,
-    I::Item: StaticTypedComponentTuple,
+    I::Item: ComponentTuple,
 {
     inner: I,
     entities: &'a mut EntityStorage,
@@ -563,7 +586,7 @@ where
 impl<I> Iterator for SpawnBatchIter<'_, I>
 where
     I: Iterator,
-    I::Item: StaticTypedComponentTuple,
+    I::Item: ComponentTuple,
 {
     type Item = Entity;
 
@@ -571,9 +594,11 @@ where
         let components = self.inner.next()?;
         let entity = self.entities.alloc();
         let row_index = self.table.allocate_entity(&entity);
-        components.put(|ptr, info| {
-            self.table.put_dynamic(ptr, &info, row_index);
-        });
+        unsafe {
+            components.put(|ptr, info| {
+                self.table.put_dynamic(ptr, &info, row_index);
+            });
+        }
         self.entity_datas.insert(
             &entity,
             EntityData {
@@ -587,7 +612,7 @@ where
 impl<I, T> ExactSizeIterator for SpawnBatchIter<'_, I>
 where
     I: ExactSizeIterator<Item = T>,
-    T: StaticTypedComponentTuple,
+    T: ComponentTuple,
 {
     fn len(&self) -> usize {
         self.inner.len()
@@ -597,17 +622,16 @@ where
 impl<I> Drop for SpawnBatchIter<'_, I>
 where
     I: Iterator,
-    I::Item: StaticTypedComponentTuple,
+    I::Item: ComponentTuple,
 {
     fn drop(&mut self) {
         for _ in self {}
     }
 }
 
-
 pub struct SpawnColumnBatchIter<'a> {
     entity_alloc: AllocManyState,
-    entities: &'a mut EntityStorage
+    entities: &'a mut EntityStorage,
 }
 
 impl ExactSizeIterator for SpawnColumnBatchIter<'_> {
@@ -618,7 +642,7 @@ impl ExactSizeIterator for SpawnColumnBatchIter<'_> {
 
 impl Iterator for SpawnColumnBatchIter<'_> {
     type Item = Entity;
-    
+
     fn next(&mut self) -> Option<Self::Item> {
         let index = self.entity_alloc.next()?;
         Some(self.entities.flush_alloc_many(index))

@@ -34,6 +34,7 @@ pub trait Id: Debug + Clone + PartialEq + Eq + Hash {
     fn get_next_version(self, flags: Self::FlagType) -> Self;
 
     fn is_avalide(&self) -> bool {
-        (self.flags().into() & (Self::FlagType::get_invalide_flag().into())) == Self::FlagType::default().into()
+        (self.flags().into() & (Self::FlagType::get_invalide_flag().into()))
+            == Self::FlagType::default().into()
     }
 }

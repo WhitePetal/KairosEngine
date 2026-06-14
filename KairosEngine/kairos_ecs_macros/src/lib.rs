@@ -1,5 +1,10 @@
+extern crate proc_macro;
+
+mod tuple;
+mod common;
+
 use proc_macro::TokenStream;
-use syn::{parse_macro_input, DeriveInput};
+use syn::{DeriveInput, parse_macro_input};
 
 /// Derive macro for Bundle trait.
 ///
@@ -9,16 +14,19 @@ use syn::{parse_macro_input, DeriveInput};
 /// # Example
 ///
 /// ```ignore
-/// #[derive(Bundle)]
+/// #[derive(ComponentTuple)]
 /// struct PlayerBundle {
 ///     transform: Transform,
 ///     health: Health,
 ///     name: Name,
 /// }
 /// ```
-#[proc_macro_derive(Bundle)]
+#[proc_macro_derive(ComponentTuple)]
 pub fn derive_bundle(input: TokenStream) -> TokenStream {
-    let _input = parse_macro_input!(input as DeriveInput);
-    // TODO: implement Bundle derive
-    todo!("implement Bundle derive macro")
+    let input = parse_macro_input!(input as DeriveInput);
+    match tuple::derive(input) {
+        Ok(ts) => ts,
+        Err(e) => e.to_compile_error(),
+    }
+    .into()
 }

@@ -8,7 +8,7 @@ use std::{
 use petgraph::{graph::NodeIndex, stable_graph::StableDiGraph};
 
 use crate::ecs::{
-    component_tuple::ComponentTuple,
+    component_tuple::DynamicComponentTuple,
     table::{ComponentTypeInfo, Table},
 };
 
@@ -50,7 +50,7 @@ impl TableGraph {
         Self { graph, index }
     }
 
-    pub fn get_insert_target<T: ComponentTuple>(
+    pub fn get_insert_target<T: DynamicComponentTuple>(
         &mut self,
         source_table: NodeIndex,
         components: &T,
