@@ -349,6 +349,10 @@ impl Table {
     pub fn set_entity_id(&mut self, index: usize, id: u32) {
         self.entities[index] = self.entities[index].create_idx_variant(id);
     }
+
+    pub fn entities(&self) -> NonNull<Entity> {
+        unsafe { NonNull::new_unchecked(self.entities.as_ptr() as *mut _) }
+    }
 }
 
 impl Drop for Table {

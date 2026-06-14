@@ -1,119 +1,102 @@
-use crate::ecs::{
-    compoent_register::ComponentRegister, component::Component, table_graph::TableGraph,
-};
+use std::{any::TypeId, ptr::NonNull};
 
-pub trait ComponentQueryTuple {
-    type Item<'a>
-    where
-        Self: 'a;
+use crate::ecs::{entity::Entity, table::Table, world::EntityData};
 
-    fn foreach<'a, F>(register: &mut ComponentRegister, table_graph: &'a TableGraph, f: F)
-    where
-        F: FnMut(Self::Item<'a>),
-        Self: 'a;
+
+/// [`Query`] 对 [`Table`] 的访问类型
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Access {
+    /// 只读取实体Id，不读取组件
+    Iterate,
+    /// 读取组件
+    Read,
+    /// 读写组件
+    Write
 }
 
-impl<A: Component> ComponentQueryTuple for A {
-    type Item<'a>
-        = &'a A
-    where
-        Self: 'a;
+/// 组件列上的流式迭代器
+#[allow(clippy::missing_safety_doc)]
+pub unsafe trait Fetch: Clone + Sized + 'static {
+    /// Table 中 Fetch 需要访问的特定列的运行时关联状态
+    type State: Copy + Send + Sync;
 
-    fn foreach<'a, F>(register: &mut ComponentRegister, table_graph: &'a TableGraph, mut f: F)
-    where
-        F: FnMut(Self::Item<'a>),
-        Self: 'a,
-    {
-        let a_component_id = register.get::<A>().0;
-        let component_ids = [&a_component_id];
+    /// 对于不需要 `get` 的 query，返回的占位值
+    fn dangling() -> Self;
 
-        for table in table_graph.graph.node_weights() {
-            if !table.contains_all_components(&component_ids) {
-                continue;
-            }
+    /// 定义Query如何访问Table
+    fn access(table: &Table) -> Option<Access>;
 
-            let a_components = table.component_slice::<A>(&component_ids[0]);
-            a_components.iter().for_each(|a| f(a));
-        }
+    /// 从`table`获取动态借用
+    fn borrow(table: &Table, state: Self::State);
+    /// 遍历`table`前，先查询它的状态
+    fn prepare(table: &Table) -> Option<Self::State>;
+    /// 基于关联状态给`table`构造`Fetch`
+    fn execute(table: &Table, state: Self::State) -> Self;
+    /// 释放从`borrow`获取的动态借用
+    fn release(table: &Table, state: Self::State);
+
+    /// 用于编译期检查，检查Fetch中的所有借用关系
+    fn for_each_borrow<F: FnMut(TypeId, bool)>(f: F);
+}
+
+/// 从[`World`](crate::ecs::world::World)获取的组件类型集合
+pub trait Query {
+    /// 查询的结果类型
+    type Item<'a>;
+
+    type Fetch: Fetch;
+
+    /// 获取Table中第n行的数据
+    unsafe fn get<'a>(fetch: &Self::Fetch, n: usize) -> Self::Item<'a>;
+}
+
+/// 用于标记 Item 不会产出 &mut T 的 Query
+#[allow(clippy::missing_safety_doc)]
+pub unsafe trait QueryShared {}
+
+#[derive(Clone)]
+pub struct FetchEntity(NonNull<Entity>);
+unsafe impl Fetch for FetchEntity {
+    type State = ();
+
+    fn dangling() -> Self {
+        todo!()
+    }
+
+    fn access(table: &Table) -> Option<Access> {
+        todo!()
+    }
+
+    fn borrow(table: &Table, state: Self::State) {
+        todo!()
+    }
+
+    fn prepare(table: &Table) -> Option<Self::State> {
+        todo!()
+    }
+
+    fn execute(table: &Table, state: Self::State) -> Self {
+        Self(table.entities())
+    }
+
+    fn release(table: &Table, state: Self::State) {
+        todo!()
+    }
+
+    fn for_each_borrow<F: FnMut(TypeId, bool)>(f: F) {
+        todo!()
     }
 }
-impl<A: Component, B: Component> ComponentQueryTuple for (A, B) {
-    type Item<'a>
-        = (&'a A, &'a B)
-    where
-        A: 'a,
-        B: 'a;
 
-    fn foreach<'a, F>(register: &mut ComponentRegister, table_graph: &'a TableGraph, mut f: F)
-    where
-        F: FnMut(Self::Item<'a>),
-        Self: 'a,
-    {
-        let a_component_id = register.get::<A>().0;
-        let b_component_id = register.get::<B>().0;
-        let mut component_ids = [&a_component_id, &b_component_id];
-        component_ids.sort();
-
-        debug_assert!(
-            { component_ids.windows(2).all(|pair| pair[0] != pair[1]) },
-            "Query cant contain the same component type!, component_ids: {:?}",
-            component_ids
-        );
-
-        for table in table_graph.graph.node_weights() {
-            if !table.contains_all_components(&component_ids) {
-                continue;
-            }
-
-            let a_components = table.component_slice::<A>(&a_component_id);
-            let b_components = table.component_slice::<B>(&b_component_id);
-
-            a_components
-                .iter()
-                .zip(b_components)
-                .for_each(|(a, b)| f((a, b)));
-        }
+impl Query for EntityData {
+    type Item<'a> = Entity;
+    type Fetch = FetchEntity;
+    
+    #[allow(unsafe_op_in_unsafe_fn)]
+    unsafe fn get<'a>(fetch: &Self::Fetch, n: usize) -> Self::Item<'a> {
+        let entity = fetch.0.as_ptr().add(n).read();
+        entity
     }
-}
-impl<A: Component, B: Component, C: Component> ComponentQueryTuple for (A, B, C) {
-    type Item<'a>
-        = (&'a A, &'a B, &'a C)
-    where
-        A: 'a,
-        B: 'a,
-        C: 'a;
 
-    fn foreach<'a, F>(register: &mut ComponentRegister, table_graph: &'a TableGraph, mut f: F)
-    where
-        F: FnMut(Self::Item<'a>),
-        Self: 'a,
-    {
-        let a_component_id = register.get::<A>().0;
-        let b_component_id = register.get::<B>().0;
-        let c_component_id = register.get::<C>().0;
-        let mut component_ids = [&a_component_id, &b_component_id, &c_component_id];
-        component_ids.sort();
-
-        debug_assert!(
-            { component_ids.windows(2).all(|pair| pair[0] != pair[1]) },
-            "Query cant contain the same component type!, component_ids: {:?}",
-            component_ids
-        );
-
-        for table in table_graph.graph.node_weights() {
-            if !table.contains_all_components(&component_ids) {
-                continue;
-            }
-
-            let a_components = table.component_slice::<A>(&a_component_id);
-            let b_components = table.component_slice::<B>(&b_component_id);
-            let c_components = table.component_slice::<C>(&c_component_id);
-
-            a_components
-                .iter()
-                .zip(b_components)
-                .zip(c_components)
-                .for_each(|((a, b), c)| f((a, b, c)));
-        }
-    }
+    
 }
