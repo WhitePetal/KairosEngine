@@ -7,5 +7,6 @@ pub mod id;
 pub mod sparse_set;
 pub mod table;
 pub mod table_graph;
+pub mod macros;
 
 pub mod world;

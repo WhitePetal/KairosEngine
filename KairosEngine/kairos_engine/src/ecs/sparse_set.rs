@@ -1,9 +1,6 @@
+use core::error;
 use std::{
-    array,
-    iter::Zip,
-    ops::{Index, IndexMut, Range},
-    slice::Iter,
-    sync::atomic::{AtomicUsize, Ordering},
+    array, fmt, iter::Zip, ops::{Index, IndexMut, Range}, slice::Iter, sync::atomic::{AtomicUsize, Ordering}
 };
 
 use crate::ecs::{
@@ -95,28 +92,7 @@ where
 
     pub fn remove(&mut self, id: I) -> V {
         let sparse_pos = Self::get_sparse_pos(id.idx());
-        debug_assert!(
-            self.dense_values.len() > 0,
-            "The dense array is empty while remove element! id: {:?}",
-            id
-        );
-        debug_assert!(
-            self.sparse.get(sparse_pos.page).is_some(),
-            "No page when remove id: {:?}",
-            id
-        );
-        debug_assert!(
-            self.sparse[sparse_pos.page].0[sparse_pos.slot].is_avalide(),
-            "Remove the id is not alive! id: {:?}",
-            id
-        );
-
         let sparse_value = &self.sparse[sparse_pos.page].0[sparse_pos.slot];
-        debug_assert!(
-            sparse_value == &id,
-            "The id is invalided while remove the id! id: {:?}",
-            id
-        );
 
         let end_index = self.dense_values.len() - 1;
         let end_id = &self.dense_ids[end_index];
@@ -145,6 +121,14 @@ where
             for _ in 0..page_shorfall {
                 self.sparse.push(Page::new());
             }
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.dense_ids.clear();
+        self.dense_values.clear();
+        for page in &mut self.sparse {
+            page.0.fill(I::get_invalide_id());
         }
     }
 
@@ -187,22 +171,7 @@ where
 
     fn index(&self, id: &I) -> &Self::Output {
         let sparse_pos = Self::get_sparse_pos(id.idx());
-        debug_assert!(
-            self.sparse.get(sparse_pos.page).is_some(),
-            "No page when get value, id: {:?}",
-            id
-        );
-        debug_assert!(
-            self.sparse[sparse_pos.page].0[sparse_pos.slot].is_avalide(),
-            "The id is not alive! while get value, id: {:?}",
-            id
-        );
         let index = &self.sparse[sparse_pos.page].0[sparse_pos.slot];
-        debug_assert!(
-            id.version() == index.version(),
-            "The id's version is invalide! while get value, id: {:?}",
-            id
-        );
         &self.dense_values[index.idx() as usize]
     }
 }
@@ -213,22 +182,7 @@ where
 {
     fn index_mut(&mut self, id: &I) -> &mut Self::Output {
         let sparse_pos = Self::get_sparse_pos(id.idx());
-        debug_assert!(
-            self.sparse.get(sparse_pos.page).is_some(),
-            "No page when get value, id: {:?}",
-            id
-        );
-        debug_assert!(
-            self.sparse[sparse_pos.page].0[sparse_pos.slot].is_avalide(),
-            "The id is not alive! while get value, id: {:?}",
-            id
-        );
         let index = &self.sparse[sparse_pos.page].0[sparse_pos.slot];
-        debug_assert!(
-            id.version() == index.version(),
-            "The id's version is invalide! while get value, id: {:?}",
-            id
-        );
         &mut self.dense_values[index.idx() as usize]
     }
 }
@@ -567,27 +521,21 @@ where
     /// 删除实体，将其回收到 freelist。
     ///
     /// **版本号在此时立即递增**，保证后续 `reserve_entity` 拿到的是新版本。
-    pub fn remove(&mut self, id: I) {
-        self.flush_inner();
-
+    pub fn free(&mut self, id: I) -> Result<(), NoSuchId> {
+        self.verify_flushed();
+        
         let sparse_pos = Self::get_sparse_pos(id.idx());
-        debug_assert!(
-            self.sparse.get(sparse_pos.page).is_some(),
-            "No page when remove id: {:?}",
-            id
-        );
-        debug_assert!(
-            self.sparse[sparse_pos.page].0[sparse_pos.slot].is_avalide(),
-            "Remove the id is not alive! id: {:?}",
-            id
-        );
+        if self.sparse.get(sparse_pos.page).is_some() {
+            return Err(NoSuchId);
+        }
+        if self.sparse[sparse_pos.page].0[sparse_pos.slot].is_avalide() {
+            return Err(NoSuchId);
+        }
 
         let sparse_value = &self.sparse[sparse_pos.page].0[sparse_pos.slot];
-        debug_assert!(
-            sparse_value.version() == id.version(),
-            "The id's version is invalided while remove the id! id: {:?}",
-            id
-        );
+        if sparse_value.version() == id.version() {
+            return Err(NoSuchId);
+        }
 
         let head = *self.head.get_mut();
         let new_head = head - 1;
@@ -615,6 +563,7 @@ where
 
         *self.head.get_mut() = new_head;
         self.flushed_head = new_head;
+        Ok(())
     }
 
     /// 预留分配出 additional 个实体
@@ -647,11 +596,18 @@ where
         }
     }
 
+    pub fn clear(&mut self) {
+        self.dense.clear();
+        for page in &mut self.sparse {
+            page.0.fill(I::get_invalide_id());
+        }
+    }
+
     /// 检查实体是否存在。
     ///
     /// 注意：已通过 `reserve_entity` 预留但未 flush 的实体也返回 `true`。
     #[inline(always)]
-    pub fn has(&self, id: I) -> bool {
+    pub fn has(&self, id: &I) -> bool {
         let idx = id.idx() as usize;
         let dense_len = self.dense.len();
 
@@ -742,3 +698,13 @@ impl<I> Index<I> for SparseStroge<I> where I: Id {
         &self.dense[index.idx() as usize]
     }
 }
+
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct NoSuchId;
+impl fmt::Display for NoSuchId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.pad("no such Id")
+    }
+}
+impl error::Error for NoSuchId {}

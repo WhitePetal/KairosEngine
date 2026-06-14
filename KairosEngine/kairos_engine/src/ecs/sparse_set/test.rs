@@ -6,7 +6,7 @@ use crate::ecs::{
 
 impl EntityStorage {
     fn get_entity(&self, id: &Entity) -> &Entity {
-        let sparse_pos = Self::get_sparse_pos(id);
+        let sparse_pos = Self::get_sparse_pos(id.idx());
         debug_assert!(
             self.sparse.get(sparse_pos.page).is_some(),
             "No page when index id: {:?}",
@@ -48,9 +48,9 @@ fn sparse_set() {
     sparset_set.insert(&ed, ed_value);
 
     sparset_set.remove(eb.clone());
-    entity_stroge.remove(eb);
+    entity_stroge.free(eb);
     sparset_set.remove(ed.clone());
-    entity_stroge.remove(ed);
+    entity_stroge.free(ed);
 
     let ef = entity_stroge.alloc();
     let ef_value = 50;

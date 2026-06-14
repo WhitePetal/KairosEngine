@@ -173,6 +173,10 @@ impl TableGraph {
             }
         }
     }
+
+    pub fn get_tables_mut(&mut self) -> impl Iterator<Item = &mut Table> {
+        self.graph.node_weights_mut()
+    }
 }
 
 impl Index<NodeIndex> for TableGraph {

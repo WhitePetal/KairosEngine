@@ -1,10 +1,5 @@
 use std::{
-    any::TypeId,
-    collections::{HashMap, hash_map::Entry},
-    hash::{BuildHasher, BuildHasherDefault, Hasher},
-    ops::Add,
-    ptr,
-    sync::Mutex,
+    any::TypeId, collections::{HashMap, hash_map::Entry}, hash::{BuildHasher, BuildHasherDefault, Hasher}, ops::Add, ptr, sync::Mutex
 };
 
 use petgraph::graph::NodeIndex;
@@ -12,15 +7,7 @@ use petgraph::graph::NodeIndex;
 use crate::{
     asset_loader::assets::AssetsServer,
     ecs::{
-        batch::ColumBatch,
-        component::{Component, ComponentError},
-        component_tuple::{ComponentTuple, ComponentTupleKey, StaticTypedComponentTuple},
-        consts,
-        entity::{Entity, EntityFlag},
-        id::Id,
-        sparse_set::{self, AllocManyState, EntityStorage, SparseSet},
-        table::Table,
-        table_graph::{InsertTarget, TableGraph},
+        batch::ColumBatch, component::{Component, ComponentError}, component_tuple::{ComponentTuple, ComponentTupleKey, StaticTypedComponentTuple}, consts, entity::{Entity, EntityFlag}, id::Id, sparse_set::{self, AllocManyState, EntityStorage, NoSuchId, SparseSet}, table::Table, table_graph::{InsertTarget, TableGraph}
     },
     timer::Time,
 };
@@ -376,7 +363,7 @@ impl World {
     /// 生成 [`ColumBatch`] 的数据，并将其中的实体替换为输入的实体
     /// 这要求输入的实体切片长度等于[`ColumBatch`]中的实体数量
     pub fn spawn_colum_batch_at(&mut self, handles: &[Entity], batch: ColumBatch) {
-        let mut table = batch.0;
+        let table = batch.0;
         debug_assert_eq!(
             handles.len(), 
             table.row_count(), 
@@ -396,6 +383,29 @@ impl World {
             table.set_entity_id(index, handle.idx());
             self.entity_datas.insert(handle, EntityData { table_index, row_index: index });
         }
+    }
+
+    /// 销毁一个实体和它身上的所有组件
+    pub fn despawn(&mut self, entity: Entity) -> Result<(), NoSuchId> {
+        self.flush();
+
+        self.entities.free(entity.clone())?;
+        let entity_data = self.entity_datas.remove(entity.clone());
+        if let Some(moved) = self.table_graph[entity_data.table_index].remove_entity(&entity, true) {
+            self.entity_datas[&moved].row_index = entity_data.row_index;
+        }
+        Ok(())
+    }
+
+    /// despawn 所有实体
+    /// 
+    /// 但会保留所有已分配的内存，以便后续可能的重用
+    pub fn clear(&mut self) {
+        for x in self.table_graph.get_tables_mut() {
+            x.clear();
+        }
+        self.entities.clear();
+        self.entity_datas.clear();
     }
 
     /// 预留分配出 additional 个 带 'T' 组件的实体
@@ -428,6 +438,10 @@ impl World {
 
         tables[table_id].reserve(additional);
         table_id
+    }
+
+    pub fn contains(&self, entity: &Entity) -> bool {
+        self.entities.has(entity)
     }
 
     /// 从实体身上移除'T'组件
