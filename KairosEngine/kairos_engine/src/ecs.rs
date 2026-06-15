@@ -1,4 +1,5 @@
 pub mod batch;
+pub mod borrow;
 pub mod component;
 pub mod component_tuple;
 pub mod consts;

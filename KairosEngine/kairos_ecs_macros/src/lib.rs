@@ -1,7 +1,7 @@
 extern crate proc_macro;
 
-mod tuple;
 mod common;
+mod tuple;
 
 use proc_macro::TokenStream;
 use syn::{DeriveInput, parse_macro_input};

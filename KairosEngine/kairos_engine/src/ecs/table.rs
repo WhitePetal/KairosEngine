@@ -1,11 +1,14 @@
 use std::{
     alloc::{self, Layout, alloc, dealloc},
-    any::TypeId,
+    any::{TypeId, type_name},
     ptr::{self, NonNull},
 };
 
 use crate::{
-    ecs::{component::Component, consts, entity::Entity, id::Id, sparse_set::SparseSet},
+    ecs::{
+        borrow::AtomicBorrow, component::Component, consts, entity::Entity, id::Id,
+        sparse_set::SparseSet,
+    },
     types::OrderedTypeIdMap,
 };
 
@@ -14,6 +17,7 @@ use crate::{
 #[derive(Debug)]
 pub struct ComponentColum {
     data: NonNull<u8>,
+    state: AtomicBorrow,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -119,6 +123,7 @@ impl Table {
             .map(|_| ComponentColum {
                 // 将 max_align 转为 地址值(指针)，该地址一定基于 max_align 对齐 (addr(max_align) % max_align == 0)
                 data: NonNull::new(max_align as *mut u8).unwrap(),
+                state: AtomicBorrow::new(),
             })
             .collect();
 
@@ -206,7 +211,10 @@ impl Table {
                         }
                     }
                 };
-                ComponentColum { data: storage }
+                ComponentColum {
+                    data: storage,
+                    state: AtomicBorrow::new(),
+                }
             })
             .collect::<Box<[_]>>();
 
@@ -315,8 +323,12 @@ impl Table {
         }
     }
 
-    pub fn has_component(&self, component_type: &TypeId) -> bool {
-        self.type_ids.contains(component_type)
+    pub fn has_component_type_id(&self, component_type: TypeId) -> bool {
+        self.type_ids.contains(&component_type)
+    }
+
+    pub fn has_component_type<T: Component>(&self) -> bool {
+        self.has_component_type_id(TypeId::of::<T>())
     }
 
     pub fn reserve(&mut self, additional: usize) {
@@ -352,6 +364,52 @@ impl Table {
 
     pub fn entities(&self) -> NonNull<Entity> {
         unsafe { NonNull::new_unchecked(self.entities.as_ptr() as *mut _) }
+    }
+
+    pub fn borrow<T: Component>(&self, state: usize) {
+        debug_assert_eq!(self.types[state].type_id, TypeId::of::<T>());
+
+        if !self.colums[state].state.borrow() {
+            panic!("{} already borrowed uniquely", type_name::<T>());
+        }
+    }
+    pub fn borrow_raw(&self, state: usize) {
+        if !self.colums[state].state.borrow() {
+            panic!("state index {} already borrowed uniquely", state);
+        }
+    }
+    pub fn borrow_mut<T: Component>(&self, state: usize) {
+        assert_eq!(self.types[state].type_id, TypeId::of::<T>());
+
+        if !self.colums[state].state.borrow_mut() {
+            panic!("{} already borrowed", type_name::<T>());
+        }
+    }
+    pub fn release<T: Component>(&self, state: usize) {
+        assert_eq!(self.types[state].type_id, TypeId::of::<T>());
+        self.colums[state].state.release();
+    }
+    pub fn release_mut<T: Component>(&self, state: usize) {
+        assert_eq!(self.types[state].type_id, TypeId::of::<T>());
+        self.colums[state].state.release_mut();
+    }
+    pub fn release_raw(&self, state: usize) {
+        self.colums[state].state.release();
+    }
+    pub fn release_raw_mut(&self, state: usize) {
+        self.colums[state].state.release_mut();
+    }
+
+    pub fn get_state<T: Component>(&self) -> Option<usize> {
+        self.colum_indexs.get(&TypeId::of::<T>()).copied()
+    }
+
+    pub unsafe fn get_base<T: Component>(&self, state: usize) -> NonNull<T> {
+        debug_assert_eq!(self.types[state].type_id, TypeId::of::<T>());
+
+        unsafe {
+            NonNull::new_unchecked(self.colums.get_unchecked(state).data.as_ptr().cast::<T>())
+        }
     }
 }
 

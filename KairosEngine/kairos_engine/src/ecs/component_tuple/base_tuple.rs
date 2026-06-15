@@ -52,7 +52,6 @@ pub unsafe trait ComponentTuple: DynamicComponentTuple {
         Self: Sized;
 }
 
-
 macro_rules! count {
     () => { 0 };
     ($x: ident $(, $rest: ident)*) => { 1 + count!($($rest),*) };
@@ -151,7 +150,6 @@ macro_rules! smaller_tuples_too {
 }
 
 smaller_tuples_too!(tuple_impl, O, N, M, L, K, J, I, H, G, F, E, D, C, B, A);
-
 
 // struct Position {}
 // impl Component for Position {}

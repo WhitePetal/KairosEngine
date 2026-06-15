@@ -73,7 +73,7 @@ impl TableGraph {
             }
             // src_table 和 insert_components 中都存在的类型
             // 这些类型的数据需要用insert_component的数据做更新
-            if table.has_component(&ty.id()) {
+            if table.has_component_type_id(ty.id()) {
                 need_updates.push(ty);
             }
             // src_table 中不存在，仅在 insert_components 中存在的类型

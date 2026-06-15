@@ -544,9 +544,8 @@ impl World {
 
         let source_table = &self.table_graph[entity_data.table_index];
 
-        let tuple = unsafe {
-            S::get(|info| source_table.get_dynamice(&info, entity_data.row_index))? 
-        };
+        let tuple =
+            unsafe { S::get(|info| source_table.get_dynamice(&info, entity_data.row_index))? };
 
         let intermediate = Self::remove_target::<S>(
             &mut self.table_graph,
