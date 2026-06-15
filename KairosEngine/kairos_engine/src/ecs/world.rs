@@ -14,13 +14,13 @@ use crate::{
     ecs::{
         batch::ColumBatch,
         component::{Component, ComponentError},
-        component_tuple::{ComponentTuple, ComponentTupleKey, DynamicComponentTuple},
+        component_tuple::{ComponentTuple, ComponentTupleKey, DynamicComponentTuple, QueryCache},
         consts,
         entity::{Entity, EntityFlag},
         id::Id,
         sparse_set::{self, AllocManyState, EntityStorage, NoSuchId, SparseSet},
         table::Table,
-        table_graph::{InsertTarget, TableGraph},
+        table_graph::{InsertTarget, TableGraph, TableGraphGeneration},
     },
     timer::Time,
 };
@@ -104,6 +104,8 @@ pub struct World {
     insert_edges: NodeIndexTupleIdMap<InsertTarget>,
     remove_edges: NodeIndexTupleIdMap<NodeIndex>,
 
+    query_cache: QueryCache,
+
     // 后面这里的Scene概念应该会改为Chunk概念
     // 由Game里的各个功能组件/System来做区块划分并通过类似TagComponent进行控制
     // pub scene_stroge: SceneStroge,
@@ -141,6 +143,7 @@ impl World {
             insert_edges,
             remove_edges,
             table_graph,
+            query_cache: QueryCache::default(),
             id,
         }
     }
@@ -565,6 +568,18 @@ impl World {
     ) -> Result<S, ComponentError> {
         self.exchange::<(S,), (T,)>(entity, (component,))
             .map(|(x,)| x)
+    }
+
+    pub fn table_graph_generation(&self) -> TableGraphGeneration {
+        self.table_graph.gneeration()
+    }
+
+    pub fn table_graph(&self) -> impl ExactSizeIterator<Item = &'_ petgraph::graph::Node<Table>> + '_  {
+        self.table_graph.get_tables().iter()
+    }
+
+    pub fn query_cache(&self) -> &QueryCache {
+        &self.query_cache
     }
 }
 

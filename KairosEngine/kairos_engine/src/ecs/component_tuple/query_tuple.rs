@@ -1,6 +1,8 @@
-use std::{any::TypeId, ptr::NonNull};
+use std::{any::{Any, TypeId}, collections::hash_map::Entry, marker::PhantomData, ptr::NonNull, sync::{Arc, RwLock}};
 
-use crate::ecs::{component::Component, entity::Entity, table::Table};
+use petgraph::graph::NodeIndex;
+
+use crate::{ecs::{component::Component, entity::Entity, table::Table, table_graph::{TableGraph, TableGraphGeneration}, world::World}, types::TypeIdMap};
 
 /// [`Query`] 对 [`Table`] 的访问类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -203,7 +205,7 @@ impl<T: Component> Query for &'_ mut T {
 
     type Fetch = FetchWrite<T>;
 
-    unsafe fn get<'a>(fetch: &Self::Fetch, n: usize) -> Self::Item<'a> {
+    unsafe fn get<'q>(fetch: &Self::Fetch, n: usize) -> Self::Item<'q> {
         unsafe { &mut *fetch.0.as_ptr().add(n) }
     }
 }
@@ -253,7 +255,7 @@ impl<T: Query> Query for Option<T> {
     type Item<'q> = Option<T::Item<'q>>;
     type Fetch = TryFetch<T::Fetch>;
 
-    unsafe fn get<'a>(fetch: &Self::Fetch, n: usize) -> Self::Item<'a> {
+    unsafe fn get<'q>(fetch: &Self::Fetch, n: usize) -> Self::Item<'q> {
         unsafe { Some(T::get(fetch.0.as_ref()?, n)) }
     }
 }
@@ -384,7 +386,277 @@ impl<L: Query, R: Query> Query for Or<L, R> {
 
     type Fetch = FetchOr<L::Fetch, R::Fetch>;
 
-    unsafe fn get<'a>(fetch: &Self::Fetch, n: usize) -> Self::Item<'a> {
+    unsafe fn get<'q>(fetch: &Self::Fetch, n: usize) -> Self::Item<'q> {
         unsafe { fetch.0.as_ref().map(|l| L::get(l, n), |r| R::get(r, n)) }
+    }
+}
+
+/// 按Q进行查找，同时排出掉满足R查找条件的结果
+///
+// 因为只需要类型信息，因此使用 PhantomData (告诉编译器这里只需要类型信息，不存储实际数据)
+pub struct Without<Q, R>(PhantomData<(Q, fn(R))>);
+
+unsafe impl<Q: QueryShared, R> QueryShared for Without<Q, R> {}
+
+// fn(G) 是通过函数指针类型来限制G必须是静态类型
+// 并且因为这里只使用G类型本身，因此通过fn(G)，可以忽略G本身的一些类型条件
+// 例如：Send、Sync、'static 等，使得 FetchWithout 的类型条件只与F绑定
+pub struct FetchWithout<F, G>(F, PhantomData<fn(G)>);
+
+impl<F: Clone, G> Clone for FetchWithout<F, G> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone(), PhantomData)
+    }
+}
+
+unsafe impl<F: Fetch, G: Fetch> Fetch for FetchWithout<F, G> {
+    type State = F::State;
+
+    fn dangling() -> Self {
+        Self(F::dangling(), PhantomData)
+    }
+
+    fn access(table: &Table) -> Option<Access> {
+        if G::access(table).is_some() {
+            None
+        } else {
+            F::access(table)
+        }
+    }
+
+    fn borrow(table: &Table, state: Self::State) {
+        F::borrow(table, state);
+    }
+
+    fn prepare(table: &Table) -> Option<Self::State> {
+        if G::access(table).is_some() {
+            return None;
+        }
+        F::prepare(table)
+    }
+
+    fn execute(table: &Table, state: Self::State) -> Self {
+        Self(F::execute(table, state), PhantomData)
+    }
+
+    fn release(table: &Table, state: Self::State) {
+        F::release(table, state);
+    }
+
+    fn for_each_borrow<FF: FnMut(TypeId, bool)>(f: FF) {
+        F::for_each_borrow(f);
+    }
+}
+
+impl<Q: Query, R: Query> Query for Without<Q, R> {
+    type Item<'q> = Q::Item<'q>;
+    type Fetch = FetchWithout<Q::Fetch, R::Fetch>;
+
+    unsafe fn get<'q>(fetch: &Self::Fetch, n: usize) -> Self::Item<'q> {
+        unsafe { Q::get(&fetch.0, n) }
+    }
+}
+
+/// 按Q查找，同时还必须满足R的查找条件(但只查找Q的数据，R在查找中只作为类型条件)
+pub struct With<Q, R>(PhantomData<(Q, fn(R))>);
+
+unsafe impl<Q: QueryShared, R> QueryShared for With<Q, R> {}
+
+pub struct FetchWith<F, G>(F, PhantomData<fn(G)>);
+
+impl<F: Clone, G> Clone for FetchWith<F, G> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone(), PhantomData)
+    }
+}
+
+unsafe impl<F: Fetch, G: Fetch> Fetch for FetchWith<F, G> {
+    type State = F::State;
+
+    fn dangling() -> Self {
+        Self(F::dangling(), PhantomData)
+    }
+
+    fn access(table: &Table) -> Option<Access> {
+        if G::access(table).is_some() {
+            F::access(table)
+        } else {
+            None
+        }
+    }
+
+    fn borrow(table: &Table, state: Self::State) {
+        F::borrow(table, state);
+    }
+
+    fn prepare(table: &Table) -> Option<Self::State> {
+        G::access(table)?;
+        F::prepare(table)
+    }
+
+    fn execute(table: &Table, state: Self::State) -> Self {
+        Self(F::execute(table, state), PhantomData)
+    }
+
+    fn release(table: &Table, state: Self::State) {
+        F::release(table, state);
+    }
+
+    fn for_each_borrow<FF: FnMut(TypeId, bool)>(f: FF) {
+        F::for_each_borrow(f);
+    }
+}
+
+impl<Q: Query, R: Query> Query for With<Q, R> {
+    type Item<'q> = Q::Item<'q>;
+    type Fetch = FetchWith<Q::Fetch, R::Fetch>;
+
+    unsafe fn get<'q>(fetch: &Self::Fetch, n: usize) -> Self::Item<'q> {
+        unsafe { Q::get(&fetch.0, n) }
+    }
+}
+
+
+/// 用于检查查询结果是否满足Q的查询条件
+/// 
+/// 如果满足则返回true，不满足则返回false
+pub struct Satisfies<Q>(PhantomData<Q>);
+
+unsafe impl<Q> QueryShared for Satisfies<Q> {}
+
+pub struct FetchSatisfies<F>(bool, PhantomData<F>);
+
+impl<T> Clone for FetchSatisfies<T> {
+    fn clone(&self) -> Self {
+        Self(self.0, PhantomData)
+    }
+}
+
+unsafe impl<F: Fetch> Fetch for FetchSatisfies<F> {
+    type State = bool;
+    
+    fn dangling() -> Self {
+        Self(false, PhantomData)
+    }
+    
+    fn access(_table: &Table) -> Option<Access> {
+        Some(Access::Iterate)
+    }
+    
+    fn borrow(_table: &Table, _state: Self::State) {}
+    
+    fn prepare(table: &Table) -> Option<Self::State> {
+        Some(F::prepare(table).is_some())
+    }
+    
+    fn execute(_table: &Table, state: Self::State) -> Self {
+        Self(state, PhantomData)
+    }
+    
+    fn release(_table: &Table, _state: Self::State) {}
+    
+    fn for_each_borrow<FF: FnMut(TypeId, bool)>(_f: FF) {}
+}
+
+impl<Q: Query> Query for Satisfies<Q> {
+    type Item<'q> = bool;
+
+    type Fetch = FetchSatisfies<Q::Fetch>;
+    
+    unsafe fn get<'q>(fetch: &Self::Fetch, _n: usize) -> Self::Item<'q> {
+        fetch.0
+    }
+}
+
+
+
+pub type QueryCache = RwLock<TypeIdMap<Arc<dyn Any + Send + Sync>>>;
+
+struct CachedQueryInner<F: Fetch> {
+    states: Box<[(usize, F::State)]>,
+    // 当有新建表时，需要更新查找缓存，因为新建的表可能也满足查找条件
+    table_graph_generation: TableGraphGeneration,
+}
+
+impl<F: Fetch> CachedQueryInner<F> {
+    fn new(world: &World) -> Self {
+        Self { 
+            states: world
+                .table_graph()
+                .enumerate()
+                .filter_map(|(idx, x)| F::prepare(&x.weight).map(|state| (idx, state)))
+                .collect(), 
+            table_graph_generation: world.table_graph_generation()
+        }
+    }
+}
+
+pub struct CachedQuery<F: Fetch> {
+    inner: Arc<CachedQueryInner<F>>,
+}
+
+impl<F: Fetch> CachedQuery<F> {
+    pub fn get(world: &World) -> Self {
+        let existing_cache = world
+            .query_cache()
+            .read()
+            .unwrap()
+            .get(&TypeId::of::<F>())
+            .map(|x| Arc::downcast::<CachedQueryInner<F>>(x.clone()).unwrap())
+            .filter(|x| x.table_graph_generation == world.table_graph_generation());
+
+        let inner = existing_cache.unwrap_or_else(
+            // 告诉编译器这个闭包属于冷路径代码
+            // 这样该闭包不会被内联入调用方，并会将其代码布局到冷路径代码块
+            // 这样能够提高热路径代码指令的缓存命中率
+            #[cold]
+            || {
+                // 前面读锁结束后，到这里，中间可能有别的线程已经写入了新的cache
+                // 所以我们拿到写锁，然后重新判断一下cache是否存在
+                let mut cache = world.query_cache().write().unwrap();
+                let entry = cache.entry(TypeId::of::<F>());
+                let cached = match entry {
+                    Entry::Occupied(mut e) => {
+                        let value = Arc::downcast::<CachedQueryInner<F>>(e.get().clone()).unwrap();
+                        match value.table_graph_generation == world.table_graph_generation() {
+                            true => value,
+                            false => {
+                                let fresh = Arc::new(CachedQueryInner::<F>::new(world));
+                                e.insert(fresh.clone());
+                                fresh
+                            },
+                        }
+
+                    },
+                    Entry::Vacant(e) => {
+                        let fresh = Arc::new(CachedQueryInner::<F>::new(world));
+                        e.insert(fresh.clone());
+                        fresh
+                    },
+                };
+                cached
+            }
+        );
+        Self { inner }
+    }
+
+    fn table_count(&self) -> usize {
+        self.inner.states.len()
+    }
+
+    unsafe fn get_state<'a>(&self, table_graph: &'a TableGraph, index: usize) -> Option<(&'a Table, F::State)> {
+        unsafe {
+            let &(table_index, state) = self.inner.states.get_unchecked(index);
+            let table = &table_graph.get_table_node_unchecked(table_index).weight;
+            Some((table, state))
+        }
+    }
+
+    unsafe fn get_table<'a>(&self, table_graph: &'a TableGraph, index: usize) -> Option<&'a Table> {
+        unsafe {
+            let &(table_index, _) = self.inner.states.get_unchecked(index);
+            let table = &table_graph.get_table_node_unchecked(table_index).weight;
+            Some(table)
+        }
     }
 }

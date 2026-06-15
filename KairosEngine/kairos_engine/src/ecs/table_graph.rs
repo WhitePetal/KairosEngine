@@ -5,12 +5,15 @@ use std::{
     ops::{Index, IndexMut},
 };
 
-use petgraph::{graph::NodeIndex, stable_graph::StableDiGraph};
+use petgraph::graph::{DiGraph, Node, NodeIndex};
 
 use crate::ecs::{
     component_tuple::DynamicComponentTuple,
     table::{ComponentTypeInfo, Table},
 };
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct TableGraphGeneration(u32);
 
 #[derive(Debug)]
 pub struct TableEdge {}
@@ -37,14 +40,17 @@ impl InsertTarget {
 
 #[derive(Debug)]
 pub struct TableGraph {
-    graph: StableDiGraph<Table, TableEdge>,
+    // 我们让Table只create而不delete，因此其NodeIndex天然是稳定的
+    // 不需要引入StableDiGraph的安全检查，直接使用DiGraph
+    graph: DiGraph<Table, TableEdge>,
     index: HashMap<Box<[TypeId]>, NodeIndex>,
+
 }
 
 impl TableGraph {
     pub fn new(table_capacity: usize) -> Self {
         let edge_capacity = table_capacity << 1;
-        let mut graph = StableDiGraph::with_capacity(table_capacity, edge_capacity);
+        let mut graph = DiGraph::with_capacity(table_capacity, edge_capacity);
         graph.add_node(Table::new(Box::new([])));
         let index = HashMap::with_capacity(table_capacity);
         Self { graph, index }
@@ -176,6 +182,18 @@ impl TableGraph {
 
     pub fn get_tables_mut(&mut self) -> impl Iterator<Item = &mut Table> {
         self.graph.node_weights_mut()
+    }
+
+    pub fn get_tables(&self) -> &[Node<Table>] {
+        self.graph.raw_nodes()
+    }
+
+    pub unsafe fn get_table_node_unchecked(&self, index: usize) -> &Node<Table> {
+        unsafe { self.graph.raw_nodes().get_unchecked(index) }
+    }
+
+    pub fn gneeration(&self) -> TableGraphGeneration {
+        TableGraphGeneration(self.graph.node_count() as u32)
     }
 }
 
