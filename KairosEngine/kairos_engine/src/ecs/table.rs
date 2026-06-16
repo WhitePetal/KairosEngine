@@ -139,7 +139,7 @@ impl Table {
     }
 
     pub fn row_count(&self) -> usize {
-        self.entities.len()
+        self.len
     }
 
     pub fn colum_count(&self) -> usize {
@@ -410,6 +410,10 @@ impl Table {
         unsafe {
             NonNull::new_unchecked(self.colums.get_unchecked(state).data.as_ptr().cast::<T>())
         }
+    }
+
+    pub fn is_emptry(&self) -> bool {
+        self.len == 0
     }
 }
 

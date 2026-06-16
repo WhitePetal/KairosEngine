@@ -195,6 +195,10 @@ impl TableGraph {
     pub fn gneeration(&self) -> TableGraphGeneration {
         TableGraphGeneration(self.graph.node_count() as u32)
     }
+
+    pub fn node_count(&self) -> usize {
+        self.graph.node_count()
+    }
 }
 
 impl Index<NodeIndex> for TableGraph {

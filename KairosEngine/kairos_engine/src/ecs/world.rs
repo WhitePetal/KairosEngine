@@ -574,7 +574,11 @@ impl World {
         self.table_graph.gneeration()
     }
 
-    pub fn table_graph(&self) -> impl ExactSizeIterator<Item = &'_ petgraph::graph::Node<Table>> + '_  {
+    pub fn table_graph(&self) -> &TableGraph {
+        &self.table_graph
+    }
+
+    pub fn table_graph_iter(&self) -> impl ExactSizeIterator<Item = &'_ petgraph::graph::Node<Table>> + '_  {
         self.table_graph.get_tables().iter()
     }
 
