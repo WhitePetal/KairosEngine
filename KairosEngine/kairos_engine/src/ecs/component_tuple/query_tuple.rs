@@ -1,7 +1,5 @@
 use std::{any::{Any, TypeId}, collections::hash_map::Entry, marker::PhantomData, ops::Range, ptr::NonNull, sync::{Arc, RwLock}};
 
-use petgraph::graph::NodeIndex;
-
 use crate::{ecs::{component::Component, entity::Entity, table::Table, table_graph::{TableGraph, TableGraphGeneration}, world::World}, types::TypeIdMap};
 
 /// [`Query`] 对 [`Table`] 的访问类型
@@ -665,7 +663,7 @@ impl<F: Fetch> CachedQuery<F> {
             let table = unsafe {
                 table_graph.get_table_node_unchecked(*table)
             };
-            if (table.weight.is_emptry()) {
+            if table.weight.is_emptry() {
                 continue;
             }
             F::borrow(&table.weight, *state);
@@ -677,7 +675,7 @@ impl<F: Fetch> CachedQuery<F> {
             let table = unsafe {
                 table_graph.get_table_node_unchecked(*table)
             };
-            if (table.weight.is_emptry()) {
+            if table.weight.is_emptry() {
                 continue;
             }
             F::release(&table.weight, *state);
