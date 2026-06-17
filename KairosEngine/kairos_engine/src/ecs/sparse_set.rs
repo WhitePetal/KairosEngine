@@ -94,9 +94,9 @@ where
         }
     }
 
-    pub fn remove(&mut self, id: I) -> V {
+    pub fn remove(&mut self, id: I) -> Option<V> {
         let sparse_pos = Self::get_sparse_pos(id.idx());
-        let sparse_value = &self.sparse[sparse_pos.page].0[sparse_pos.slot];
+        let sparse_value = self.sparse.get(sparse_pos.page)?.0.get(sparse_pos.slot)?;
 
         let end_index = self.dense_values.len() - 1;
         let end_id = &self.dense_ids[end_index];
@@ -113,7 +113,7 @@ where
         self.sparse[sparse_pos.page].0[sparse_pos.slot] = I::get_invalide_id();
 
         self.dense_ids.pop();
-        self.dense_values.pop().unwrap()
+        self.dense_values.pop()
     }
 
     /// 直接扩容 additional 个单位
@@ -136,13 +136,31 @@ where
         }
     }
 
+    pub fn get(&self, entity: &I) -> Option<&V> {
+        let sparse_pos = Self::get_sparse_pos(entity.idx());
+        let index = self.sparse.get(sparse_pos.page)?.0.get(sparse_pos.slot)?;
+        if index.version() != entity.version() {
+            return None;
+        }
+        self.dense_values.get(index.idx() as usize)
+    }
+
+    pub fn get_mut(&mut self, entity: &I) -> Option<&mut V> {
+        let sparse_pos = Self::get_sparse_pos(entity.idx());
+        let index = self.sparse.get(sparse_pos.page)?.0.get(sparse_pos.slot)?;
+        if index.version() != entity.version() {
+            return None;
+        }
+        self.dense_values.get_mut(index.idx() as usize)
+    }
+
     #[inline(always)]
-    pub fn get_value(&self, id: &I) -> &V {
+    pub unsafe fn get_unchecked(&self, id: &I) -> &V {
         &self[id]
     }
 
     #[inline(always)]
-    pub fn get_value_mut(&mut self, id: &I) -> &mut V {
+    pub unsafe fn get_unchecked_mut(&mut self, id: &I) -> &mut V {
         &mut self[id]
     }
 
@@ -280,7 +298,7 @@ where
     /// 预留一个实体 ID（并发安全，只需要 `&self`）。
     ///
     /// 返回的实体句柄立即可用，但其 sparse 条目要等到 [`flush`](Self::flush) 后才会建立。
-    /// 在 flush 之前，查询 sparse 的操作（如 `SparseSet::get_value`）对该实体无效。
+    /// 在 flush 之前，查询 sparse 的操作（如 `SparseSet::get`）对该实体无效。
     pub fn reserve_entity(&self) -> I {
         let old_head = self.head.fetch_add(1, Ordering::Relaxed);
         if old_head < self.dense.len() {

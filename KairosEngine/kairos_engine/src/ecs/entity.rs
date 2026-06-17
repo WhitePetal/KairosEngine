@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use crate::ecs::{
     consts::{
         FLAG_MASK, FLAG_MASK_LEN, IDX_MASK, IDX_MASK_OFFSET, VERSION_MASK, VERSION_MASK_OFFSET,
@@ -12,6 +14,11 @@ pub enum EntityFlag {
     #[default]
     Default = 0x0,
     Dead = 0x1,
+}
+impl Display for EntityFlag {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self)
+    }
 }
 
 impl IdFlag for EntityFlag {
@@ -78,5 +85,11 @@ impl Id for Entity {
         // 0 是全新实体的版本号，回绕时跳过
         let version = if version == 0 { 1 } else { version };
         Self::new(self.idx(), version, flags)
+    }
+}
+
+impl Display for Entity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "total_value: {}, idx: {}, version: {}, flags: {}", self.0, self.idx(), self.version(), self.flags())
     }
 }

@@ -38,6 +38,17 @@ impl Default for EntityData {
         }
     }
 }
+impl EntityData {
+    #[inline(always)]
+    pub fn table_index(&self) -> NodeIndex {
+        self.table_index
+    }
+
+    #[inline(always)]
+    pub fn row_index(&self) -> usize {
+        self.row_index
+    }
+}
 
 #[derive(Debug, Default)]
 struct NodeIndexTupleIdHasher(u64);
@@ -152,10 +163,16 @@ impl World {
     pub fn insert<T: DynamicComponentTuple>(&mut self, entity: &Entity, components: T) {
         self.flush();
 
-        let data = self.entity_datas.get_value(entity);
-        let src_table = data.table_index;
-        let row_index = data.row_index;
-        self.insert_inner(entity, components, src_table, row_index);
+        match self.entity_datas.get(entity) {
+            Some(data) => {
+                let src_table = data.table_index;
+                let row_index = data.row_index;
+                self.insert_inner(entity, components, src_table, row_index);
+            },
+            None => {
+                debug_assert!(false, "Insert Component for a not exist entity: {}", entity);
+            },
+        }
     }
 
     fn insert_inner<T: DynamicComponentTuple>(
@@ -203,7 +220,7 @@ impl World {
             .index2(src_table, target_ref.get_node_index());
 
         let target_row_index = target_table.allocate_entity(entity);
-        let entity_data = self.entity_datas.get_value_mut(entity);
+        let entity_data = &mut self.entity_datas[entity];
         entity_data.table_index = target_ref.get_node_index();
         entity_data.row_index = target_row_index;
 
@@ -223,7 +240,7 @@ impl World {
         // remove 老表的entity，并更新这里entity data 的 row_index
         // 会被覆盖更新的，我们在前面drop了老数据。其他数据相当于是移动到新表(转移所有权而非被销毁)，因此不需要drop
         if let Some(moved) = source_table.remove_entity(entity, false) {
-            let moved_data = self.entity_datas.get_value_mut(&moved);
+            let moved_data = &mut self.entity_datas[&moved];
             moved_data.row_index = row_index;
         }
     }
@@ -305,7 +322,7 @@ impl World {
             }
             sparse_set::AllocAt::BeUsed(entity) => entity,
             sparse_set::AllocAt::Using => {
-                let entity_data = self.entity_datas.get_value(entity);
+                let entity_data = &self.entity_datas[entity];
                 if let Some(moved) =
                     self.table_graph[entity_data.table_index].remove_entity(entity, true)
                 {
@@ -416,12 +433,18 @@ impl World {
         self.flush();
 
         self.entities.free(entity.clone())?;
-        let entity_data = self.entity_datas.remove(entity.clone());
-        if let Some(moved) = self.table_graph[entity_data.table_index].remove_entity(&entity, true)
-        {
-            self.entity_datas[&moved].row_index = entity_data.row_index;
+        match self.entity_datas.remove(entity.clone()) {
+            Some(entity_data) => {
+                if let Some(moved) = self.table_graph[entity_data.table_index].remove_entity(&entity, true)
+                {
+                    self.entity_datas[&moved].row_index = entity_data.row_index;
+                }
+                Ok(())
+            },
+            None => {
+                Err(NoSuchId)
+            },
         }
-        Ok(())
     }
 
     /// despawn 所有实体
@@ -475,36 +498,43 @@ impl World {
     ) -> Result<T, ComponentError> {
         self.flush();
 
-        let entity_data = self.entity_datas.get_value_mut(&entity);
-        let old_row_index = entity_data.row_index;
-        let source_table = &self.table_graph[entity_data.table_index];
+        match self.entity_datas.get_mut(&entity) {
+            Some(entity_data) => {
+                let old_row_index = entity_data.row_index;
+                let source_table = &self.table_graph[entity_data.table_index];
 
-        let tuple = unsafe { T::get(|info| source_table.get_dynamice(&info, old_row_index))? };
+                let tuple = unsafe { T::get(|info| source_table.get_dynamice(&info, old_row_index))? };
 
-        let target = Self::remove_target::<T>(
-            &mut self.table_graph,
-            &mut self.remove_edges,
-            entity_data.table_index,
-        );
+                let target = Self::remove_target::<T>(
+                    &mut self.table_graph,
+                    &mut self.remove_edges,
+                    entity_data.table_index,
+                );
 
-        if entity_data.table_index != target {
-            let (source_table, target_table) =
-                self.table_graph.index2(entity_data.table_index, target);
-            let target_row_index = target_table.allocate_entity(&entity);
-            entity_data.table_index = target;
-            entity_data.row_index = target_row_index;
-            if let Some(moved) = unsafe {
-                source_table.move_to(old_row_index, |src, info| {
-                    if let Some(dst) = target_table.get_dynamice(info, target_row_index) {
-                        ptr::copy_nonoverlapping(src, dst.as_ptr(), info.layout().size());
+                if entity_data.table_index != target {
+                    let (source_table, target_table) =
+                        self.table_graph.index2(entity_data.table_index, target);
+                    let target_row_index = target_table.allocate_entity(&entity);
+                    entity_data.table_index = target;
+                    entity_data.row_index = target_row_index;
+                    if let Some(moved) = unsafe {
+                        source_table.move_to(old_row_index, |src, info| {
+                            if let Some(dst) = target_table.get_dynamice(info, target_row_index) {
+                                ptr::copy_nonoverlapping(src, dst.as_ptr(), info.layout().size());
+                            }
+                        })
+                    } {
+                        self.entity_datas[&moved].row_index = old_row_index
                     }
-                })
-            } {
-                self.entity_datas[&moved].row_index = old_row_index
-            }
-        }
+                }
 
-        Ok(tuple)
+                Ok(tuple)
+            },
+            None => {
+                Err(ComponentError::NoSuchEntity)
+            },
+        }
+        
     }
 
     fn remove_target<T: ComponentTuple + 'static>(
@@ -543,21 +573,26 @@ impl World {
     ) -> Result<S, ComponentError> {
         self.flush();
 
-        let entity_data = self.entity_datas.get_value(entity);
+        match self.entity_datas.get(entity) {
+            Some(entity_data) => {
+                let source_table = &self.table_graph[entity_data.table_index];
 
-        let source_table = &self.table_graph[entity_data.table_index];
+                let tuple =
+                    unsafe { S::get(|info| source_table.get_dynamice(&info, entity_data.row_index))? };
 
-        let tuple =
-            unsafe { S::get(|info| source_table.get_dynamice(&info, entity_data.row_index))? };
+                let intermediate = Self::remove_target::<S>(
+                    &mut self.table_graph,
+                    &mut self.remove_edges,
+                    entity_data.table_index,
+                );
+                self.insert_inner(entity, components, intermediate, entity_data.row_index);
 
-        let intermediate = Self::remove_target::<S>(
-            &mut self.table_graph,
-            &mut self.remove_edges,
-            entity_data.table_index,
-        );
-        self.insert_inner(entity, components, intermediate, entity_data.row_index);
-
-        Ok(tuple)
+                Ok(tuple)
+            },
+            None => {
+                Err(ComponentError::NoSuchEntity)
+            },
+        }
     }
 
     /// 从实体身上移除单个 'S' 组件，然后添加单个 'T' 组件

@@ -239,28 +239,33 @@ impl Table {
 
     pub fn remove_entity(&mut self, entity: &Entity, drop: bool) -> Option<Entity> {
         let end = self.len - 1;
-        let row_index = self.entitiy_infos.remove(entity.clone()).row_index;
-        let swap = row_index != end;
-        for (info, colum) in self.types.iter().zip(&self.colums) {
-            unsafe {
-                let layout_size = info.layout.size();
-                let removed = colum.data.as_ptr().add(row_index * layout_size);
-                if drop {
-                    (info.drop_fn)(removed);
+        match self.entitiy_infos.remove(entity.clone()) {
+            Some(entity_info) => {
+                let row_index = entity_info.row_index;
+                let swap = row_index != end;
+                for (info, colum) in self.types.iter().zip(&self.colums) {
+                    unsafe {
+                        let layout_size = info.layout.size();
+                        let removed = colum.data.as_ptr().add(row_index * layout_size);
+                        if drop {
+                            (info.drop_fn)(removed);
+                        }
+                        if swap {
+                            let moved = colum.data.as_ptr().add(end * layout_size);
+                            ptr::copy_nonoverlapping(moved, removed, layout_size);
+                        }
+                    }
                 }
+                self.len = end;
                 if swap {
-                    let moved = colum.data.as_ptr().add(end * layout_size);
-                    ptr::copy_nonoverlapping(moved, removed, layout_size);
+                    let moved = self.entities[end].clone();
+                    self.entities[row_index] = moved.clone();
+                    Some(moved)
+                } else {
+                    None
                 }
-            }
-        }
-        self.len = end;
-        if swap {
-            let moved = self.entities[end].clone();
-            self.entities[row_index] = moved.clone();
-            Some(moved)
-        } else {
-            None
+            },
+            None => None,
         }
     }
 

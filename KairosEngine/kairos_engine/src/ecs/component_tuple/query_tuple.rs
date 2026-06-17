@@ -1,6 +1,6 @@
 use std::{any::{Any, TypeId}, collections::hash_map::Entry, marker::PhantomData, ops::Range, ptr::NonNull, sync::{Arc, RwLock}};
 
-use crate::{ecs::{component::Component, entity::Entity, table::Table, table_graph::{TableGraph, TableGraphGeneration}, world::World}, types::TypeIdMap};
+use crate::{ecs::{component::Component, entity::Entity, sparse_set::SparseSet, table::Table, table_graph::{TableGraph, TableGraphGeneration}, world::{EntityData, World}}, types::TypeIdMap};
 
 /// [`Query`] 对 [`Table`] 的访问类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -699,6 +699,61 @@ impl<F: Fetch> Clone for CachedQuery<F> {
         Self { inner: self.inner.clone() }
     }
 }
+
+
+
+
+
+pub struct View<'q, Q: Query> {
+    entity_datas: &'q SparseSet<Entity, EntityData>,
+    tables: &'q TableGraph,
+    fetch: Box<[Option<Q::Fetch>]>,
+}
+
+unsafe impl<Q: Query> Send for View<'_, Q> where for<'a> Q::Item<'a>: Send {}
+unsafe impl<Q: Query> Sync for View<'_, Q> where for<'a> Q::Item<'a>: Sync {}
+
+impl<'q, Q: Query> View<'q, Q> {
+    pub unsafe fn new(entity_datas: &'q SparseSet<Entity, EntityData>, tables: &'q TableGraph, cache: CachedQuery<Q::Fetch>) -> Self {
+        Self {
+            entity_datas,
+            tables,
+            fetch: cache.fetch_all(tables)
+        }
+    }
+
+    pub fn get(&self, entity: &Entity) -> Option<Q::Item<'_>>
+    where 
+        Q: QueryShared,
+    {
+        unsafe { self.get_unchecked(entity) }
+    }
+
+    pub fn get_mut(&mut self, entity: &Entity) -> Option<Q::Item<'_>> {
+        unsafe { self.get_unchecked(entity) }
+    }
+
+    pub unsafe fn get_unchecked(&self, entity: &Entity) -> Option<Q::Item<'_>> {
+        match self.entity_datas.get(entity) {
+            Some(data) => {
+                self.fetch[data.table_index().index()]
+                    .as_ref()
+                    .map(|fetch| unsafe {
+                        Q::get(fetch, data.row_index())
+                    })
+            },
+            None => None,
+        }
+    }
+
+    pub fn contains(&self, entity: &Entity) -> bool {
+        let Some(data) = self.entity_datas.get(entity) else {
+            return false;
+        };
+        self.fetch[data.table_index().index()].is_some()
+    }
+}
+
 
 
 
