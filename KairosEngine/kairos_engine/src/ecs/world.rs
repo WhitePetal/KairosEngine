@@ -25,7 +25,7 @@ use crate::{
         id::Id,
         sparse_set::{self, AllocManyState, EntityStorage, NoSuchId, SparseSet},
         table::Table,
-        table_graph::{InsertTarget, TableGraph, TableGraphGeneration},
+        table_graph::{InsertTarget, TableGraph, TableGraphGeneration}, take::TakeEntity,
     },
     timer::Time,
 };
@@ -52,6 +52,11 @@ impl EntityData {
     #[inline(always)]
     pub fn row_index(&self) -> usize {
         self.row_index
+    }
+
+    #[inline(always)]
+    pub fn set_row_index(&mut self, row_index: usize) {
+        self.row_index = row_index
     }
 }
 
@@ -745,7 +750,22 @@ impl World {
     }
 
     pub fn iter(&self) -> Iter<'_> {
-        todo!()
+        Iter::new(&self.table_graph, &self.entity_datas)
+    }
+
+    pub fn take(&mut self, entity: Entity) -> Result<TakeEntity<'_>, NoSuchId> {
+        self.flush();
+
+        let loc = self.entity_datas.get(&entity).ok_or(NoSuchId)?;
+        let table = &mut self.table_graph[loc.table_index];
+        unsafe {
+            Ok(TakeEntity::new(
+                &mut self.entities, 
+                &mut self.entity_datas, 
+                entity, 
+                table
+            ))
+        }
     }
 }
 

@@ -282,6 +282,10 @@ impl Table {
         &self.types
     }
 
+    pub fn type_ids(&self) -> &Box<[TypeId]> {
+        &self.type_ids
+    }
+
     pub fn get_dynamice(&self, info: &ComponentTypeInfo, row_index: usize) -> Option<NonNull<u8>> {
         debug_assert!(row_index <= self.len);
         unsafe {

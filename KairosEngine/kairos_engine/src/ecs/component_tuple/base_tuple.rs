@@ -28,9 +28,13 @@ impl From<TypeId> for ComponentTupleKey {
 }
 
 pub unsafe trait DynamicComponentTuple {
-    fn has<T: Component>(&self) -> bool;
+    fn has<T: Component>(&self) -> bool {
+        self.with_ids(|types| types.contains(&TypeId::of::<T>()))
+    }
 
-    fn key(&self) -> Option<ComponentTupleKey>;
+    fn key(&self) -> Option<ComponentTupleKey> {
+        None
+    }
 
     fn type_infos(&self) -> Box<[ComponentTypeInfo]>;
 

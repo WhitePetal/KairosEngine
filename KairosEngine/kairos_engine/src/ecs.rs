@@ -10,5 +10,6 @@ pub mod macros;
 pub mod sparse_set;
 pub mod table;
 pub mod table_graph;
+pub mod take;
 
 pub mod world;
