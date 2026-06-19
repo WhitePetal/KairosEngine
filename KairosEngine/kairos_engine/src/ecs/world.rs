@@ -25,7 +25,8 @@ use crate::{
         id::Id,
         sparse_set::{self, AllocManyState, EntityStorage, NoSuchId, SparseSet},
         table::Table,
-        table_graph::{InsertTarget, TableGraph, TableGraphGeneration}, take::TakeEntity,
+        table_graph::{InsertTarget, TableGraph, TableGraphGeneration},
+        take::TakeEntity,
     },
     timer::Time,
 };
@@ -760,10 +761,10 @@ impl World {
         let table = &mut self.table_graph[loc.table_index];
         unsafe {
             Ok(TakeEntity::new(
-                &mut self.entities, 
-                &mut self.entity_datas, 
-                entity, 
-                table
+                &mut self.entities,
+                &mut self.entity_datas,
+                entity,
+                table,
             ))
         }
     }
