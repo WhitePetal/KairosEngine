@@ -168,10 +168,10 @@ impl World {
                 let src_table = data.table_index;
                 let row_index = data.row_index;
                 self.insert_inner(entity, components, src_table, row_index);
-            },
+            }
             None => {
                 debug_assert!(false, "Insert Component for a not exist entity: {}", entity);
-            },
+            }
         }
     }
 
@@ -432,18 +432,17 @@ impl World {
     pub fn despawn(&mut self, entity: Entity) -> Result<(), NoSuchId> {
         self.flush();
 
-        self.entities.free(entity.clone())?;
-        match self.entity_datas.remove(entity.clone()) {
+        let moved = self.entities.free(entity.clone())?;
+        match self.entity_datas.remove(entity.clone(), moved) {
             Some(entity_data) => {
-                if let Some(moved) = self.table_graph[entity_data.table_index].remove_entity(&entity, true)
+                if let Some(moved) =
+                    self.table_graph[entity_data.table_index].remove_entity(&entity, true)
                 {
                     self.entity_datas[&moved].row_index = entity_data.row_index;
                 }
                 Ok(())
-            },
-            None => {
-                Err(NoSuchId)
-            },
+            }
+            None => Err(NoSuchId),
         }
     }
 
@@ -503,7 +502,8 @@ impl World {
                 let old_row_index = entity_data.row_index;
                 let source_table = &self.table_graph[entity_data.table_index];
 
-                let tuple = unsafe { T::get(|info| source_table.get_dynamice(&info, old_row_index))? };
+                let tuple =
+                    unsafe { T::get(|info| source_table.get_dynamice(&info, old_row_index))? };
 
                 let target = Self::remove_target::<T>(
                     &mut self.table_graph,
@@ -529,12 +529,9 @@ impl World {
                 }
 
                 Ok(tuple)
-            },
-            None => {
-                Err(ComponentError::NoSuchEntity)
-            },
+            }
+            None => Err(ComponentError::NoSuchEntity),
         }
-        
     }
 
     fn remove_target<T: ComponentTuple + 'static>(
@@ -577,8 +574,9 @@ impl World {
             Some(entity_data) => {
                 let source_table = &self.table_graph[entity_data.table_index];
 
-                let tuple =
-                    unsafe { S::get(|info| source_table.get_dynamice(&info, entity_data.row_index))? };
+                let tuple = unsafe {
+                    S::get(|info| source_table.get_dynamice(&info, entity_data.row_index))?
+                };
 
                 let intermediate = Self::remove_target::<S>(
                     &mut self.table_graph,
@@ -588,10 +586,8 @@ impl World {
                 self.insert_inner(entity, components, intermediate, entity_data.row_index);
 
                 Ok(tuple)
-            },
-            None => {
-                Err(ComponentError::NoSuchEntity)
-            },
+            }
+            None => Err(ComponentError::NoSuchEntity),
         }
     }
 
@@ -613,13 +609,21 @@ impl World {
         &self.table_graph
     }
 
-    pub fn table_graph_iter(&self) -> impl ExactSizeIterator<Item = &'_ petgraph::graph::Node<Table>> + '_  {
+    pub fn table_graph_iter(
+        &self,
+    ) -> impl ExactSizeIterator<Item = &'_ petgraph::graph::Node<Table>> + '_ {
         self.table_graph.get_tables().iter()
     }
 
     pub fn query_cache(&self) -> &QueryCache {
         &self.query_cache
     }
+
+    pub fn entity_datas(&self) -> &SparseSet<Entity, EntityData> {
+        &self.entity_datas
+    }
+
+    // TODO: querys
 }
 
 /// [`World::spawn_batch`] 创建出来的迭代器

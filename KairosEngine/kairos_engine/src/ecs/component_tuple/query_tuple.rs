@@ -1,6 +1,29 @@
-use std::{any::{Any, TypeId}, collections::hash_map::Entry, marker::PhantomData, ops::Range, ptr::NonNull, sync::{Arc, RwLock}};
+use std::{
+    any::{Any, TypeId},
+    collections::hash_map::Entry,
+    marker::PhantomData,
+    ops::Range,
+    ptr::NonNull,
+    sync::{Arc, RwLock},
+    usize,
+};
 
-use crate::{ecs::{component::Component, entity::Entity, sparse_set::SparseSet, table::Table, table_graph::{TableGraph, TableGraphGeneration}, world::{EntityData, World}}, types::TypeIdMap};
+use petgraph::graph::{Node, NodeIndex};
+
+use crate::{
+    ecs::{
+        component::Component,
+        entity::Entity,
+        sparse_set::SparseSet,
+        table::Table,
+        table_graph::{TableGraph, TableGraphGeneration},
+        world::{EntityData, World},
+    },
+    types::TypeIdMap,
+};
+
+use core::slice::Iter as SliceIter;
+use super::tuple_macros::{reverse_apply, smaller_tuples_too};
 
 /// [`Query`] 对 [`Table`] 的访问类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -514,9 +537,8 @@ impl<Q: Query, R: Query> Query for With<Q, R> {
     }
 }
 
-
 /// 用于检查查询结果是否满足Q的查询条件
-/// 
+///
 /// 如果满足则返回true，不满足则返回false
 pub struct Satisfies<Q>(PhantomData<Q>);
 
@@ -532,27 +554,27 @@ impl<T> Clone for FetchSatisfies<T> {
 
 unsafe impl<F: Fetch> Fetch for FetchSatisfies<F> {
     type State = bool;
-    
+
     fn dangling() -> Self {
         Self(false, PhantomData)
     }
-    
+
     fn access(_table: &Table) -> Option<Access> {
         Some(Access::Iterate)
     }
-    
+
     fn borrow(_table: &Table, _state: Self::State) {}
-    
+
     fn prepare(table: &Table) -> Option<Self::State> {
         Some(F::prepare(table).is_some())
     }
-    
+
     fn execute(_table: &Table, state: Self::State) -> Self {
         Self(state, PhantomData)
     }
-    
+
     fn release(_table: &Table, _state: Self::State) {}
-    
+
     fn for_each_borrow<FF: FnMut(TypeId, bool)>(_f: FF) {}
 }
 
@@ -560,13 +582,11 @@ impl<Q: Query> Query for Satisfies<Q> {
     type Item<'q> = bool;
 
     type Fetch = FetchSatisfies<Q::Fetch>;
-    
+
     unsafe fn get<'q>(fetch: &Self::Fetch, _n: usize) -> Self::Item<'q> {
         fetch.0
     }
 }
-
-
 
 pub type QueryCache = RwLock<TypeIdMap<Arc<dyn Any + Send + Sync>>>;
 
@@ -578,13 +598,13 @@ struct CachedQueryInner<F: Fetch> {
 
 impl<F: Fetch> CachedQueryInner<F> {
     fn new(world: &World) -> Self {
-        Self { 
+        Self {
             states: world
                 .table_graph_iter()
                 .enumerate()
                 .filter_map(|(idx, x)| F::prepare(&x.weight).map(|state| (idx, state)))
-                .collect(), 
-            table_graph_generation: world.table_graph_generation()
+                .collect(),
+            table_graph_generation: world.table_graph_generation(),
         }
     }
 }
@@ -622,18 +642,17 @@ impl<F: Fetch> CachedQuery<F> {
                                 let fresh = Arc::new(CachedQueryInner::<F>::new(world));
                                 e.insert(fresh.clone());
                                 fresh
-                            },
+                            }
                         }
-
-                    },
+                    }
                     Entry::Vacant(e) => {
                         let fresh = Arc::new(CachedQueryInner::<F>::new(world));
                         e.insert(fresh.clone());
                         fresh
-                    },
+                    }
                 };
                 cached
-            }
+            },
         );
         Self { inner }
     }
@@ -642,7 +661,11 @@ impl<F: Fetch> CachedQuery<F> {
         self.inner.states.len()
     }
 
-    unsafe fn get_state<'a>(&self, table_graph: &'a TableGraph, index: usize) -> Option<(&'a Table, F::State)> {
+    unsafe fn get_state<'a>(
+        &self,
+        table_graph: &'a TableGraph,
+        index: usize,
+    ) -> Option<(&'a Table, F::State)> {
         unsafe {
             let &(table_index, state) = self.inner.states.get_unchecked(index);
             let table = &table_graph.get_table_node_unchecked(table_index).weight;
@@ -660,9 +683,7 @@ impl<F: Fetch> CachedQuery<F> {
 
     fn borrow(&self, table_graph: &TableGraph) {
         for (table, state) in &self.inner.states {
-            let table = unsafe {
-                table_graph.get_table_node_unchecked(*table)
-            };
+            let table = unsafe { table_graph.get_table_node_unchecked(*table) };
             if table.weight.is_emptry() {
                 continue;
             }
@@ -672,9 +693,7 @@ impl<F: Fetch> CachedQuery<F> {
 
     fn release_borrow(&self, table_graph: &TableGraph) {
         for (table, state) in &self.inner.states {
-            let table = unsafe {
-                table_graph.get_table_node_unchecked(*table)
-            };
+            let table = unsafe { table_graph.get_table_node_unchecked(*table) };
             if table.weight.is_emptry() {
                 continue;
             }
@@ -683,11 +702,11 @@ impl<F: Fetch> CachedQuery<F> {
     }
 
     fn fetch_all(&self, table_graph: &TableGraph) -> Box<[Option<F>]> {
-        let mut fetch = (0..table_graph.node_count()).map(|_| None).collect::<Box<[_]>>();
+        let mut fetch = (0..table_graph.node_count())
+            .map(|_| None)
+            .collect::<Box<[_]>>();
         for (table_index, state) in &self.inner.states {
-            let table = unsafe {
-                &table_graph.get_table_node_unchecked(*table_index).weight
-            };
+            let table = unsafe { &table_graph.get_table_node_unchecked(*table_index).weight };
             fetch[*table_index] = Some(F::execute(table, *state))
         }
         fetch
@@ -696,34 +715,65 @@ impl<F: Fetch> CachedQuery<F> {
 
 impl<F: Fetch> Clone for CachedQuery<F> {
     fn clone(&self) -> Self {
-        Self { inner: self.inner.clone() }
+        Self {
+            inner: self.inner.clone(),
+        }
     }
 }
-
-
-
-
 
 pub struct View<'q, Q: Query> {
     entity_datas: &'q SparseSet<Entity, EntityData>,
     tables: &'q TableGraph,
-    fetch: Box<[Option<Q::Fetch>]>,
+    fetches: Box<[Option<Q::Fetch>]>,
 }
 
 unsafe impl<Q: Query> Send for View<'_, Q> where for<'a> Q::Item<'a>: Send {}
 unsafe impl<Q: Query> Sync for View<'_, Q> where for<'a> Q::Item<'a>: Sync {}
 
+pub struct ViewIter<'a, Q: Query> {
+    entity_datas: &'a SparseSet<Entity, EntityData>,
+    tables: SliceIter<'a, Node<Table>>,
+    fetches: SliceIter<'a, Option<Q::Fetch>>,
+    iter: ChunkIter<Q>,
+}
+
+impl<'a, Q: Query> Iterator for ViewIter<'a, Q> {
+    type Item = Q::Item<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            match unsafe { self.iter.next() } {
+                Some(components) => {
+                    return Some(components);
+                }
+                None => {
+                    let table = self.tables.next()?;
+                    let fetch = self.fetches.next()?;
+                    self.iter = fetch.clone().map_or(ChunkIter::empty(), |fetch| {
+                        ChunkIter::new(&table.weight, fetch)
+                    });
+                    continue;
+                }
+            }
+        }
+    }
+}
+
 impl<'q, Q: Query> View<'q, Q> {
-    pub unsafe fn new(entity_datas: &'q SparseSet<Entity, EntityData>, tables: &'q TableGraph, cache: CachedQuery<Q::Fetch>) -> Self {
+    pub unsafe fn new(
+        entity_datas: &'q SparseSet<Entity, EntityData>,
+        tables: &'q TableGraph,
+        cache: CachedQuery<Q::Fetch>,
+    ) -> Self {
         Self {
             entity_datas,
             tables,
-            fetch: cache.fetch_all(tables)
+            fetches: cache.fetch_all(tables),
         }
     }
 
     pub fn get(&self, entity: &Entity) -> Option<Q::Item<'_>>
-    where 
+    where
         Q: QueryShared,
     {
         unsafe { self.get_unchecked(entity) }
@@ -735,13 +785,9 @@ impl<'q, Q: Query> View<'q, Q> {
 
     pub unsafe fn get_unchecked(&self, entity: &Entity) -> Option<Q::Item<'_>> {
         match self.entity_datas.get(entity) {
-            Some(data) => {
-                self.fetch[data.table_index().index()]
-                    .as_ref()
-                    .map(|fetch| unsafe {
-                        Q::get(fetch, data.row_index())
-                    })
-            },
+            Some(data) => self.fetches[data.table_index().index()]
+                .as_ref()
+                .map(|fetch| unsafe { Q::get(fetch, data.row_index()) }),
             None => None,
         }
     }
@@ -750,12 +796,106 @@ impl<'q, Q: Query> View<'q, Q> {
         let Some(data) = self.entity_datas.get(entity) else {
             return false;
         };
-        self.fetch[data.table_index().index()].is_some()
+        self.fetches[data.table_index().index()].is_some()
+    }
+
+    pub fn get_disjoint_mut<const N: usize>(
+        &mut self,
+        entities: [Entity; N],
+    ) -> [Option<Q::Item<'_>>; N] {
+        assert_distinct(&entities);
+
+        let mut items = [(); N].map(|()| None);
+
+        for (item, entity) in items.iter_mut().zip(entities) {
+            unsafe {
+                *item = self.get_unchecked(&entity);
+            }
+        }
+
+        items
+    }
+
+    pub fn iter_mut(&mut self) -> ViewIter<'_, Q> {
+        ViewIter {
+            entity_datas: self.entity_datas,
+            tables: self.tables.iter(),
+            fetches: self.fetches.iter(),
+            iter: ChunkIter::empty(),
+        }
     }
 }
 
+impl<'a, Q: Query> IntoIterator for &'a mut View<'_, Q> {
+    type IntoIter = ViewIter<'a, Q>;
+    type Item = Q::Item<'a>;
 
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_mut()
+    }
+}
 
+pub struct ViewBorrow<'w, Q: Query> {
+    view: View<'w, Q>,
+    cache: CachedQuery<Q::Fetch>,
+}
+
+impl<'w, Q: Query> ViewBorrow<'w, Q> {
+    pub fn new(world: &'w World) -> Self {
+        let cache = CachedQuery::get(world);
+        cache.borrow(world.table_graph());
+        let view =
+            unsafe { View::<Q>::new(world.entity_datas(), world.table_graph(), cache.clone()) };
+
+        Self { view, cache }
+    }
+
+    pub fn get(&self, entity: &Entity) -> Option<Q::Item<'_>>
+    where
+        Q: QueryShared,
+    {
+        self.view.get(entity)
+    }
+
+    pub fn get_mut(&mut self, entity: Entity) -> Option<Q::Item<'_>> {
+        self.view.get_mut(&entity)
+    }
+
+    pub fn contains(&self, entity: &Entity) -> bool {
+        self.view.contains(entity)
+    }
+
+    pub unsafe fn get_unchecked(&self, entity: &Entity) -> Option<Q::Item<'_>> {
+        unsafe { self.view.get_unchecked(entity) }
+    }
+
+    pub fn get_disjoint_mut<const N: usize>(
+        &mut self,
+        entities: [Entity; N],
+    ) -> [Option<Q::Item<'_>>; N] {
+        self.view.get_disjoint_mut(entities)
+    }
+
+    pub fn iter_mut(&mut self) -> ViewIter<'_, Q> {
+        self.view.iter_mut()
+    }
+}
+
+impl<Q: Query> Drop for ViewBorrow<'_, Q> {
+    fn drop(&mut self) {
+        self.cache.release_borrow(self.view.tables);
+    }
+}
+
+impl<'a, Q: Query> IntoIterator for &'a mut ViewBorrow<'_, Q> {
+    type IntoIter = ViewIter<'a, Q>;
+    type Item = Q::Item<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_mut()
+    }
+}
 
 struct ChunkIter<Q: Query> {
     fetch: Q::Fetch,
@@ -765,7 +905,11 @@ struct ChunkIter<Q: Query> {
 
 impl<Q: Query> ChunkIter<Q> {
     fn new(table: &Table, fetch: Q::Fetch) -> Self {
-        Self { fetch, position: 0, len: table.row_count() }
+        Self {
+            fetch,
+            position: 0,
+            len: table.row_count(),
+        }
     }
 
     fn empty() -> Self {
@@ -790,9 +934,6 @@ impl<Q: Query> ChunkIter<Q> {
     }
 }
 
-
-
-
 pub struct TableIter<Q: Query> {
     tables: Range<usize>,
     cache: CachedQuery<Q::Fetch>,
@@ -800,18 +941,18 @@ pub struct TableIter<Q: Query> {
 
 impl<Q: Query> TableIter<Q> {
     fn new(cache: CachedQuery<Q::Fetch>) -> Self {
-        Self { 
-            tables: 0..cache.table_count(), 
-            cache
+        Self {
+            tables: 0..cache.table_count(),
+            cache,
         }
     }
 
     unsafe fn next(&mut self, world: &World) -> Option<ChunkIter<Q>> {
         loop {
-            let Some((table, state)) = (unsafe { self
-                .cache
-                .get_state(world.table_graph(), self.tables.next()?) })
-            else {
+            let Some((table, state)) = (unsafe {
+                self.cache
+                    .get_state(world.table_graph(), self.tables.next()?)
+            }) else {
                 continue;
             };
 
@@ -823,13 +964,11 @@ impl<Q: Query> TableIter<Q> {
     fn entity_len(&self, world: &World) -> usize {
         self.tables
             .clone()
-            .filter_map(|x| unsafe {
-                self.cache.get_table(world.table_graph(), x)
-            }).map(|x| x.row_count()).sum()
+            .filter_map(|x| unsafe { self.cache.get_table(world.table_graph(), x) })
+            .map(|x| x.row_count())
+            .sum()
     }
 }
-
-
 
 /// 遍历`Q`查询到的组件集合迭代器
 pub struct QueryIter<'q, Q: Query> {
@@ -840,9 +979,9 @@ pub struct QueryIter<'q, Q: Query> {
 
 impl<'q, Q: Query> QueryIter<'q, Q> {
     unsafe fn new(world: &'q World, cache: CachedQuery<Q::Fetch>) -> Self {
-        Self { 
-            world, 
-            tables: TableIter::new(cache), 
+        Self {
+            world,
+            tables: TableIter::new(cache),
             iter: ChunkIter::empty(),
         }
     }
@@ -862,17 +1001,11 @@ impl<'q, Q: Query> Iterator for QueryIter<'q, Q> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            match unsafe {
-                self.iter.next()
-            } {
+            match unsafe { self.iter.next() } {
                 Some(components) => {
                     return Some(components);
-                },
-                None => {
-                    unsafe {
-                        self.iter = self.tables.next(self.world)?
-                    }
-                },
+                }
+                None => unsafe { self.iter = self.tables.next(self.world)? },
             }
         }
     }
@@ -883,17 +1016,95 @@ impl<'q, Q: Query> Iterator for QueryIter<'q, Q> {
     }
 }
 
+/// [`QueryIter`] 的 批处理版本
+pub struct BatchedIter<'q, Q: Query> {
+    _marker: PhantomData<&'q Q>,
+    entity_datas: &'q SparseSet<Entity, EntityData>,
+    tables: &'q TableGraph,
+    index_iter: Range<usize>,
+    batch_size: usize,
+    cache: CachedQuery<Q::Fetch>,
+    batch: usize,
+}
 
+pub struct Batch<'q, Q: Query> {
+    entity_datas: &'q SparseSet<Entity, EntityData>,
+    states: ChunkIter<Q>,
+}
 
+impl<'q, Q: Query> Iterator for Batch<'q, Q> {
+    type Item = Q::Item<'q>;
 
+    fn next(&mut self) -> Option<Self::Item> {
+        unsafe { self.states.next() }
+    }
+}
+
+unsafe impl<Q: Query> Send for Batch<'_, Q> where for<'a> Q::Item<'a>: Send {}
+unsafe impl<Q: Query> Sync for Batch<'_, Q> where for<'a> Q::Item<'a>: Sync {}
+
+impl<'q, Q: Query> BatchedIter<'q, Q> {
+    unsafe fn new(
+        entity_datas: &'q SparseSet<Entity, EntityData>,
+        tables: &'q TableGraph,
+        batch_size: usize,
+        cache: CachedQuery<Q::Fetch>,
+    ) -> Self {
+        Self {
+            _marker: PhantomData,
+            entity_datas,
+            tables,
+            index_iter: (0..cache.table_count()),
+            batch_size,
+            cache,
+            batch: 0,
+        }
+    }
+}
+
+unsafe impl<Q: Query> Send for BatchedIter<'_, Q> where for<'a> Q::Item<'a>: Send {}
+unsafe impl<Q: Query> Sync for BatchedIter<'_, Q> where for<'a> Q::Item<'a>: Sync {}
+
+impl<'q, Q: Query> Iterator for BatchedIter<'q, Q> {
+    type Item = Batch<'q, Q>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let mut indices = self.index_iter.clone();
+            let index = indices.next()?;
+            let Some((table, state)) = (unsafe { self.cache.get_state(self.tables, index) }) else {
+                self.index_iter = indices;
+                continue;
+            };
+            let offset = self.batch_size * self.batch;
+            if offset >= table.row_count() {
+                self.index_iter = indices;
+                self.batch = 0;
+                continue;
+            }
+            let fetch = Q::Fetch::execute(table, state);
+            self.batch += 1;
+            let mut states = ChunkIter::new(table, fetch);
+            states.position = offset as usize;
+            states.len = offset + self.batch_size.min(table.row_count() - offset);
+            return Some(Batch {
+                entity_datas: self.entity_datas,
+                states,
+            });
+        }
+    }
+}
 
 /// 借用 [`World`] 来执行查询`Q`
-/// 
+///
 /// 该对象被Drop时会释放借用
 pub struct QueryBorrow<'w, Q: Query> {
     world: &'w World,
     cache: Option<CachedQuery<Q::Fetch>>,
 }
+
+unsafe impl<Q: Query> Send for QueryBorrow<'_, Q> where for<'a> Q::Item<'a>: Send {}
+unsafe impl<Q: Query> Sync for QueryBorrow<'_, Q> where for<'a> Q::Item<'a>: Sync {}
 
 impl<'w, Q: Query> QueryBorrow<'w, Q> {
     pub fn new(world: &'w World) -> Self {
@@ -905,7 +1116,10 @@ impl<'w, Q: Query> QueryBorrow<'w, Q> {
         unsafe { QueryIter::new(self.world, cache) }
     }
 
-    // pub fn view(&mut self)
+    pub fn view(&mut self) -> View<'_, Q> {
+        let cache = self.borrow().clone();
+        unsafe { View::new(self.world.entity_datas(), self.world.table_graph(), cache) }
+    }
 
     fn borrow(&mut self) -> &CachedQuery<Q::Fetch> {
         self.cache.get_or_insert_with(|| {
@@ -914,4 +1128,545 @@ impl<'w, Q: Query> QueryBorrow<'w, Q> {
             cache
         })
     }
+
+    pub fn iter_batched(&mut self, batch_size: usize) -> BatchedIter<'_, Q> {
+        let cache = self.borrow().clone();
+        unsafe {
+            BatchedIter::new(
+                self.world.entity_datas(),
+                self.world.table_graph(),
+                batch_size,
+                cache,
+            )
+        }
+    }
+
+    fn transform<R: Query>(self) -> QueryBorrow<'w, R> {
+        QueryBorrow {
+            world: self.world,
+            cache: None
+        }
+    }
+
+    pub fn with<R: Query>(self) -> QueryBorrow<'w, With<Q, R>> {
+        self.transform()
+    }
+
+    pub fn without<R: Query>(self) -> QueryBorrow<'w, Without<Q, R>> {
+        self.transform()
+    }
 }
+
+impl<Q: Query> Drop for QueryBorrow<'_, Q> {
+    fn drop(&mut self) {
+        if let Some(cache) = &self.cache {
+            cache.release_borrow(self.world.table_graph());
+        }
+    }
+}
+
+impl<'q, Q: Query> IntoIterator for &'q mut QueryBorrow<'_, Q> {
+    type Item = Q::Item<'q>;
+    type IntoIter = QueryIter<'q, Q>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+pub struct PreparedQuery<Q: Query> {
+    tables_generation: TableGraphGeneration,
+    states: Box<[(NodeIndex, <Q::Fetch as Fetch>::State)]>,
+    fetches: Box<[Option<Q::Fetch>]>,
+}
+
+pub struct PreparedQueryBorrow<'q, Q: Query> {
+    entity_datas: &'q SparseSet<Entity, EntityData>,
+    tables: &'q TableGraph,
+    states: &'q [(NodeIndex, <Q::Fetch as Fetch>::State)],
+    fetches: &'q mut [Option<Q::Fetch>],
+}
+
+pub struct PreparedQueryIter<'q, Q: Query> {
+    entity_datas: &'q SparseSet<Entity, EntityData>,
+    tables: &'q TableGraph,
+    states: SliceIter<'q, (NodeIndex, <Q::Fetch as Fetch>::State)>,
+    iter: ChunkIter<Q>,
+}
+
+pub struct PreparedView<'q, Q: Query> {
+    entity_datas: &'q SparseSet<Entity, EntityData>,
+    tables: &'q TableGraph,
+    fetches: &'q mut [Option<Q::Fetch>],
+}
+
+unsafe impl<Q: Query> Send for PreparedView<'_, Q> where for<'a> Q::Item<'a>: Send {}
+unsafe impl<Q: Query> Sync for PreparedView<'_, Q> where for<'a> Q::Item<'a>: Sync {}
+
+impl<'q, Q: Query> PreparedView<'q, Q> {
+    unsafe fn new(
+        entity_datas: &'q SparseSet<Entity, EntityData>,
+        tables: &'q TableGraph,
+        states: SliceIter<'q, (NodeIndex, <Q::Fetch as Fetch>::State)>,
+        fetches: &'q mut [Option<Q::Fetch>],
+    ) -> Self {
+        fetches.iter_mut().for_each(|fetch| *fetch = None);
+
+        for (idx, state) in states {
+            let table = &tables[*idx];
+            fetches[idx.index()] = Some(Q::Fetch::execute(table, *state))
+        }
+
+        Self {
+            entity_datas,
+            tables,
+            fetches,
+        }
+    }
+
+    pub unsafe fn get_unchecked(&self, entity: &Entity) -> Option<Q::Item<'_>> {
+        let entity_data = self.entity_datas.get(entity)?;
+
+        self.fetches[entity_data.table_index().index()]
+            .as_ref()
+            .map(|fetch| unsafe { Q::get(fetch, entity_data.row_index()) })
+    }
+
+    pub fn get(&self, entity: &Entity) -> Option<Q::Item<'_>>
+    where
+        Q: QueryShared,
+    {
+        unsafe { self.get_unchecked(entity) }
+    }
+
+    pub fn get_mut(&mut self, entity: &Entity) -> Option<Q::Item<'_>> {
+        unsafe { self.get_unchecked(entity) }
+    }
+
+    pub fn get_disjoint_mut<const N: usize>(
+        &mut self,
+        entities: [Entity; N],
+    ) -> [Option<Q::Item<'_>>; N] {
+        assert_distinct(&entities);
+
+        let mut items = [(); N].map(|()| None);
+
+        for (item, entity) in items.iter_mut().zip(entities) {
+            unsafe {
+                *item = self.get_unchecked(&entity);
+            }
+        }
+
+        items
+    }
+
+    pub fn iter_mut(&mut self) -> ViewIter<'_, Q> {
+        ViewIter {
+            entity_datas: self.entity_datas,
+            tables: self.tables.iter(),
+            fetches: self.fetches.iter(),
+            iter: ChunkIter::empty(),
+        }
+    }
+}
+
+impl<'a, Q: Query> IntoIterator for &'a mut PreparedView<'_, Q> {
+    type IntoIter = ViewIter<'a, Q>;
+    type Item = Q::Item<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_mut()
+    }
+}
+
+unsafe impl<Q: Query> Send for PreparedQueryIter<'_, Q> where for<'a> Q::Item<'a>: Send {}
+unsafe impl<Q: Query> Sync for PreparedQueryIter<'_, Q> where for<'a> Q::Item<'a>: Sync {}
+
+impl<'q, Q: Query> PreparedQueryIter<'q, Q> {
+    unsafe fn new(
+        entity_datas: &'q SparseSet<Entity, EntityData>,
+        tables: &'q TableGraph,
+        states: SliceIter<'q, (NodeIndex, <Q::Fetch as Fetch>::State)>,
+    ) -> Self {
+        Self {
+            entity_datas,
+            tables: tables,
+            states,
+            iter: ChunkIter::empty(),
+        }
+    }
+}
+
+impl<Q: Query> ExactSizeIterator for PreparedQueryIter<'_, Q> {
+    fn len(&self) -> usize {
+        self.states
+            .clone()
+            .map(|(idx, _)| self.tables[*idx].row_count())
+            .sum::<usize>()
+            + self.iter.remaining()
+    }
+}
+
+impl<'q, Q: Query> Iterator for PreparedQueryIter<'q, Q> {
+    type Item = Q::Item<'q>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            match unsafe { self.iter.next() } {
+                Some(components) => {
+                    return Some(components);
+                }
+                None => {
+                    let (idx, state) = self.states.next()?;
+                    let table = &self.tables[*idx];
+                    self.iter = ChunkIter::new(table, Q::Fetch::execute(table, *state));
+                    continue;
+                }
+            }
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let n = self.len();
+        (n, Some(n))
+    }
+}
+
+impl<'q, Q: Query> PreparedQueryBorrow<'q, Q> {
+    fn new(
+        entity_datas: &'q SparseSet<Entity, EntityData>,
+        tables: &'q TableGraph,
+        states: &'q [(NodeIndex, <Q::Fetch as Fetch>::State)],
+        fetches: &'q mut [Option<Q::Fetch>],
+    ) -> Self {
+        for (idx, state) in states {
+            if tables[*idx].is_emptry() {
+                continue;
+            }
+            Q::Fetch::borrow(&tables[*idx], *state);
+        }
+
+        Self {
+            entity_datas,
+            tables,
+            states,
+            fetches,
+        }
+    }
+
+    pub fn iter(&mut self) -> PreparedQueryIter<'_, Q> {
+        unsafe { PreparedQueryIter::new(self.entity_datas, self.tables, self.states.iter()) }
+    }
+
+    pub fn view(&mut self) -> PreparedView<'_, Q> {
+        unsafe {
+            PreparedView::new(
+                self.entity_datas,
+                self.tables,
+                self.states.iter(),
+                self.fetches,
+            )
+        }
+    }
+}
+
+impl<Q: Query> Drop for PreparedQueryBorrow<'_, Q> {
+    fn drop(&mut self) {
+        for (idx, state) in self.states {
+            if self.tables[*idx].is_emptry() {
+                continue;
+            }
+
+            Q::Fetch::release(&self.tables[*idx], *state);
+        }
+    }
+}
+
+impl<Q: Query> PreparedQuery<Q> {
+    pub fn new() -> Self {
+        Self {
+            tables_generation: Default::default(),
+            states: Default::default(),
+            fetches: Default::default(),
+        }
+    }
+
+    fn prepare(world: &World) -> Self {
+        let tables_generation = world.table_graph().gneeration();
+
+        let states = world
+            .table_graph_iter()
+            .enumerate()
+            .filter_map(|(idx, x)| {
+                Q::Fetch::prepare(&x.weight).map(|state| (NodeIndex::new(idx), state))
+            })
+            .collect();
+
+        let fetches = world.table_graph_iter().map(|_| None).collect();
+
+        Self {
+            tables_generation,
+            states,
+            fetches,
+        }
+    }
+
+    pub fn query<'q>(&'q mut self, world: &'q World) -> PreparedQueryBorrow<'q, Q> {
+        if self.tables_generation != world.table_graph().gneeration() {
+            *self = Self::prepare(world);
+        }
+
+        let entity_datas = world.entity_datas();
+        let tables = world.table_graph();
+
+        PreparedQueryBorrow::new(entity_datas, tables, &self.states, &mut self.fetches)
+    }
+
+    pub fn query_mut<'q>(&'q mut self, world: &'q mut World) -> PreparedQueryIter<'q, Q> {
+        assert_borrow::<Q>();
+
+        if self.tables_generation != world.table_graph().gneeration() {
+            *self = Self::prepare(world)
+        }
+
+        let entity_datas = world.entity_datas();
+        let tables = world.table_graph();
+
+        unsafe { PreparedQueryIter::new(entity_datas, tables, self.states.iter()) }
+    }
+
+    pub fn view_mut<'q>(&'q mut self, world: &'q World) -> PreparedView<'q, Q> {
+        assert_borrow::<Q>();
+
+        if self.tables_generation != world.table_graph().gneeration() {
+            *self = Self::prepare(world)
+        }
+
+        let entity_datas = world.entity_datas();
+        let tables = world.table_graph();
+
+        unsafe { PreparedView::new(entity_datas, tables, self.states.iter(), &mut self.fetches) }
+    }
+}
+
+impl<Q: Query> Default for PreparedQuery<Q> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub struct QueryMut<'q, Q: Query> {
+    world: &'q mut World,
+    _marker: PhantomData<fn() -> Q>,
+}
+
+impl<'q, Q: Query> QueryMut<'q, Q> {
+    pub fn new(world: &'q mut World) -> Self {
+        assert_borrow::<Q>();
+
+        Self {
+            world,
+            _marker: PhantomData,
+        }
+    }
+
+    pub fn view(&mut self) -> View<'_, Q> {
+        let cache = CachedQuery::get(self.world);
+        unsafe { View::new(self.world.entity_datas(), self.world.table_graph(), cache) }
+    }
+
+    fn transform<R: Query>(self) -> QueryMut<'q, R> {
+        QueryMut {
+            world: self.world,
+            _marker: PhantomData,
+        }
+    }
+
+    pub fn with<R: Query>(self) -> QueryMut<'q, With<Q, R>> {
+        self.transform()
+    }
+
+    pub fn without<R: Query>(self) -> QueryMut<'q, Without<Q, R>> {
+        self.transform()
+    }
+
+    pub fn into_iter_batched(self, batch_size: usize) -> BatchedIter<'q, Q> {
+        let cache = CachedQuery::get(self.world);
+        unsafe {
+            BatchedIter::new(self.world.entity_datas(), self.world.table_graph(), batch_size, cache)
+        }
+    }
+}
+
+impl<'q, Q: Query> IntoIterator for QueryMut<'q, Q> {
+    type Item = <QueryIter<'q, Q> as Iterator >::Item;
+    type IntoIter = QueryIter<'q, Q>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let cache = CachedQuery::get(self.world);
+        unsafe { QueryIter::new(self.world, cache) }
+    }
+}
+
+
+
+
+
+pub fn assert_distinct<const N: usize>(entities: &[Entity; N]) {
+    match N {
+        1 => (),
+        2 => assert_ne!(entities[0], entities[1]),
+        3 => {
+            assert_ne!(entities[0], entities[1]);
+            assert_ne!(entities[1], entities[2]);
+            assert_ne!(entities[2], entities[0]);
+        }
+        _ => {
+            let mut entities = entities.clone();
+            entities.sort_unstable();
+            for index in 0..N - 1 {
+                assert_ne!(entities[index], entities[index + 1]);
+            }
+        }
+    }
+}
+
+pub fn assert_borrow<Q: Query>() {
+    let mut i = 0;
+    Q::Fetch::for_each_borrow(|a, unique| {
+        if unique {
+            let mut j = 0;
+            Q::Fetch::for_each_borrow(|b, _| {
+                if i != j {
+                    core::assert!(a != b, "query violates a unique borrow");
+                }
+                j += 1;
+            });
+        }
+        i += 1;
+    });
+}
+
+
+
+
+
+
+// unsafe impl<A: Fetch, B: Fetch> Fetch for (A, B) {
+//     type State = (A::State, B::State);
+
+//     fn dangling() -> Self {
+//         (A::dangling(), B::dangling())
+//     }
+
+//     fn access(table: &Table) -> Option<Access> {
+//         let mut acess = Access::Iterate;
+//         acess = acess.max(A::access(table)?);
+//         acess = acess.max(B::access(table)?);
+//         Some(acess)
+//     }
+
+//     fn borrow(table: &Table, state: Self::State) {
+//         let (a, b) = state;
+//         A::borrow(table, a);
+//         B::borrow(table, b);
+//     }
+
+//     fn prepare(table: &Table) -> Option<Self::State> {
+//         Some((A::prepare(table)?, B::prepare(table)?))
+//     }
+
+//     fn execute(table: &Table, state: Self::State) -> Self {
+//         let (a, b) = state;
+//         (A::execute(table, a), B::execute(table, b))
+//     }
+
+//     fn release(table: &Table, state: Self::State) {
+//         let (a, b) = state;
+//         A::release(table, a);
+//         B::release(table, b);
+//     }
+
+//     fn for_each_borrow<F: FnMut(TypeId, bool)>(mut f: F) {
+//         A::for_each_borrow(&mut f);
+//         B::for_each_borrow(&mut f);
+//     }
+// }
+
+// impl<A: Query, B: Query> Query for (A, B) {
+//     type Item<'a> = (A::Item<'a>, B::Item<'a>);
+
+//     type Fetch = (A::Fetch, B::Fetch);
+
+//     unsafe fn get<'a>(fetch: &Self::Fetch, n: usize) -> Self::Item<'a> {
+//         let (a, b) = fetch;
+//         (A::get(a, n), B::get(b, n))
+//     }
+// }
+
+
+macro_rules! tuple_impl {
+    ($($name: ident),*) => {
+        unsafe impl<$($name: Fetch),*> Fetch for ($($name,)*) {
+            type State = ($($name::State,)*);
+
+            #[allow(clippy::unused_unit)]
+            fn dangling() -> Self {
+                ($($name::dangling(),)*)
+            }
+
+            #[allow(unused_variables, unused_mut)]
+fn access(table: &Table) -> Option<Access> {
+                let mut access = Access::Iterate;
+                $(
+                    access = access.max($name::access(table)?);
+                )*
+                Some(access)
+            }
+
+            #[allow(unused_variables, non_snake_case, clippy::unused_unit)]
+            fn borrow(table: &Table, state: Self::State) {
+                let ($($name,)*) = state;
+                $($name::borrow(table, $name);)*
+            }
+            #[allow(unused_variables)]
+            #[cold]
+            fn prepare(table: &Table) -> Option<Self::State> {
+                Some(($($name::prepare(table)?,)*))
+            }
+            #[allow(unused_variables, non_snake_case, clippy::unused_unit)]
+            #[inline(always)]
+            fn execute(table: &Table, state: Self::State) -> Self {
+                let ($($name,)*) = state;
+                ($($name::execute(table, $name),)*)
+            }
+            #[allow(unused_variables, non_snake_case, clippy::unused_unit)]
+            fn release(table: &Table, state: Self::State) {
+                let ($($name,)*) = state;
+                $($name::release(table, $name);)*
+            }
+
+            #[allow(unused_variables, unused_mut, clippy::unused_unit)]
+            fn for_each_borrow<__F: FnMut(TypeId, bool)>(mut f: __F) {
+                $($name::for_each_borrow(&mut f);)*
+            }
+        }
+
+        impl<$($name: Query),*> Query for ($($name,)*) {
+            type Item<'q> = ($($name::Item<'q>,)*);
+
+            type Fetch = ($($name::Fetch,)*);
+
+            #[allow(unused_variables, clippy::unused_unit, unsafe_op_in_unsafe_fn)]
+            unsafe fn get<'q>(fetch: &Self::Fetch, n: usize) -> Self::Item<'q> {
+                #[allow(non_snake_case)]
+                let ($(ref $name,)*) = *fetch;
+                ($(unsafe { $name::get($name, n) },)*)
+            }
+        }
+
+        unsafe impl<$($name: QueryShared),*> QueryShared for ($($name,)*) {}
+    };
+}
+
+smaller_tuples_too!(tuple_impl, O, N, M, L, K, J, I, H, G, F, E, D, C, B, A);

@@ -47,10 +47,10 @@ fn sparse_set() {
     sparset_set.insert(&ec, ec_value);
     sparset_set.insert(&ed, ed_value);
 
-    sparset_set.remove(eb.clone());
-    entity_stroge.free(eb);
-    sparset_set.remove(ed.clone());
-    entity_stroge.free(ed);
+    let moved = entity_stroge.free(eb.clone()).unwrap();
+    sparset_set.remove(eb.clone(), moved);
+    let moved = entity_stroge.free(ed.clone()).unwrap();
+    sparset_set.remove(ed.clone(), moved);
 
     let ef = entity_stroge.alloc();
     let ef_value = 50;

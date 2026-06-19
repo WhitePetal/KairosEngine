@@ -30,6 +30,20 @@ impl IdFlag for EntityFlag {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Entity(u64);
 
+impl Ord for Entity {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.idx()
+            .cmp(&other.idx())
+            .then_with(|| self.version().cmp(&other.version()))
+    }
+}
+
+impl PartialOrd for Entity {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 impl Id for Entity {
     type FlagType = EntityFlag;
 
@@ -90,6 +104,13 @@ impl Id for Entity {
 
 impl Display for Entity {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "total_value: {}, idx: {}, version: {}, flags: {}", self.0, self.idx(), self.version(), self.flags())
+        write!(
+            f,
+            "total_value: {}, idx: {}, version: {}, flags: {}",
+            self.0,
+            self.idx(),
+            self.version(),
+            self.flags()
+        )
     }
 }

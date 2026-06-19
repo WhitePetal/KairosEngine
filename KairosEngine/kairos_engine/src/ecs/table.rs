@@ -238,8 +238,12 @@ impl Table {
     }
 
     pub fn remove_entity(&mut self, entity: &Entity, drop: bool) -> Option<Entity> {
+        if self.len == 0 {
+            return None;
+        }
         let end = self.len - 1;
-        match self.entitiy_infos.remove(entity.clone()) {
+        let moved = self.entities[end].clone();
+        match self.entitiy_infos.remove(entity.clone(), moved.clone()) {
             Some(entity_info) => {
                 let row_index = entity_info.row_index;
                 let swap = row_index != end;
@@ -258,13 +262,12 @@ impl Table {
                 }
                 self.len = end;
                 if swap {
-                    let moved = self.entities[end].clone();
                     self.entities[row_index] = moved.clone();
                     Some(moved)
                 } else {
                     None
                 }
-            },
+            }
             None => None,
         }
     }

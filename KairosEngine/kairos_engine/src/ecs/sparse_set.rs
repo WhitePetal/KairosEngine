@@ -55,7 +55,6 @@ where
     I: Id,
 {
     dense_values: Vec<V>,
-    dense_ids: Vec<I>,
     sparse: Vec<Page<I>>,
 }
 impl<I, V> SparseSet<I, V>
@@ -65,7 +64,6 @@ where
     pub fn new(capacity: usize) -> Self {
         Self {
             dense_values: Vec::with_capacity(capacity),
-            dense_ids: Vec::with_capacity(capacity),
             sparse: Vec::with_capacity(capacity),
         }
     }
@@ -83,42 +81,36 @@ where
                 id
             );
             self.dense_values[sparse_value.idx() as usize] = value;
-            self.dense_ids[sparse_value.idx() as usize] = id.clone();
             self.sparse[sparse_pos.page].0[sparse_pos.slot].replace_flags(id.flags());
         } else {
             let end = self.dense_values.len();
             self.dense_values.push(value);
-            self.dense_ids.push(id.clone());
 
             *sparse_value = I::from_other(end as u32, &id);
         }
     }
 
-    pub fn remove(&mut self, id: I) -> Option<V> {
+    pub fn remove(&mut self, id: I, moved_id: I) -> Option<V> {
         let sparse_pos = Self::get_sparse_pos(id.idx());
         let sparse_value = self.sparse.get(sparse_pos.page)?.0.get(sparse_pos.slot)?;
 
-        let end_index = self.dense_values.len() - 1;
-        let end_id = &self.dense_ids[end_index];
-        let end_sparse_pos = Self::get_sparse_pos(end_id.idx());
+        let end_sparse_pos = Self::get_sparse_pos(moved_id.idx());
         let end_sparse_value = &self.sparse[end_sparse_pos.page].0[end_sparse_pos.slot];
+        let end_index = end_sparse_value.idx() as usize;
 
         let index = sparse_value.idx() as usize;
 
         self.dense_values.swap(index, end_index);
-        self.dense_ids.swap(index, end_index);
 
         self.sparse[end_sparse_pos.page].0[end_sparse_pos.slot] =
             I::from_other(sparse_value.idx(), &end_sparse_value);
         self.sparse[sparse_pos.page].0[sparse_pos.slot] = I::get_invalide_id();
 
-        self.dense_ids.pop();
         self.dense_values.pop()
     }
 
     /// 直接扩容 additional 个单位
     pub fn reserve(&mut self, additional: (usize, Option<usize>)) {
-        self.dense_ids.reserve(additional.0);
         self.dense_values.reserve(additional.0);
         if let Some(page_shorfall) = additional.1 {
             self.sparse.reserve(page_shorfall);
@@ -129,7 +121,6 @@ where
     }
 
     pub fn clear(&mut self) {
-        self.dense_ids.clear();
         self.dense_values.clear();
         for page in &mut self.sparse {
             page.0.fill(I::get_invalide_id());
@@ -206,18 +197,6 @@ where
         let sparse_pos = Self::get_sparse_pos(id.idx());
         let index = &self.sparse[sparse_pos.page].0[sparse_pos.slot];
         &mut self.dense_values[index.idx() as usize]
-    }
-}
-
-impl<I, V> SparseSet<I, V>
-where
-    I: Id,
-{
-    pub fn iter(&self) -> Zip<std::slice::Iter<'_, I>, std::slice::Iter<'_, V>> {
-        self.dense_ids.iter().zip(&self.dense_values)
-    }
-    pub fn iter_mut(&mut self) -> Zip<std::slice::Iter<'_, I>, std::slice::IterMut<'_, V>> {
-        self.dense_ids.iter().zip(&mut self.dense_values)
     }
 }
 
@@ -544,7 +523,10 @@ where
     /// 删除实体，将其回收到 freelist。
     ///
     /// **版本号在此时立即递增**，保证后续 `reserve_entity` 拿到的是新版本。
-    pub fn free(&mut self, id: I) -> Result<(), NoSuchId> {
+    ///
+    /// Return
+    /// moved entity (end_entity)
+    pub fn free(&mut self, id: I) -> Result<I, NoSuchId> {
         self.verify_flushed();
 
         let sparse_pos = Self::get_sparse_pos(id.idx());
@@ -564,6 +546,7 @@ where
         let new_head = head - 1;
         let end_index = new_head; // 回收的目标位置
         let end_id = &self.dense[end_index];
+        let moved = end_id.clone();
         let end_sparse_pos = Self::get_sparse_pos(end_id.idx());
         let end_sparse_value = &self.sparse[end_sparse_pos.page].0[end_sparse_pos.slot];
 
@@ -586,7 +569,7 @@ where
 
         *self.head.get_mut() = new_head;
         self.flushed_head = new_head;
-        Ok(())
+        Ok(moved)
     }
 
     /// 预留分配出 additional 个实体

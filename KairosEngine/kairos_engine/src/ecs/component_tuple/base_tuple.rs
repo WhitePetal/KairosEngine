@@ -52,10 +52,7 @@ pub unsafe trait ComponentTuple: DynamicComponentTuple {
         Self: Sized;
 }
 
-macro_rules! count {
-    () => { 0 };
-    ($x: ident $(, $rest: ident)*) => { 1 + count!($($rest),*) };
-}
+use super::tuple_macros::{count, reverse_apply, smaller_tuples_too};
 
 macro_rules! tuple_impl {
     ($($name: ident), *) => {
@@ -126,26 +123,6 @@ macro_rules! tuple_impl {
                 Ok(($($name.read(),)*))
             }
         }
-    };
-}
-
-macro_rules! reverse_apply {
-    ($m: ident [] $($reversed:tt)*) => {
-        $m!{$($reversed),*}  // base case
-    };
-    ($m: ident [$first:tt $($rest:tt)*] $($reversed:tt)*) => {
-        reverse_apply!{$m [$($rest)*] $first $($reversed)*}
-    };
-}
-
-macro_rules! smaller_tuples_too {
-    ($m: ident, $next: tt) => {
-        $m!{}
-        $m!{$next}
-    };
-    ($m: ident, $next: tt, $($rest: tt),*) => {
-        smaller_tuples_too!{$m, $($rest),*}
-        reverse_apply!{$m [$next $($rest)*]}
     };
 }
 

@@ -5,7 +5,7 @@ use crate::{
         MaterialAssetsSystem, MeshAssetsSystem, ShaderAssetsSystem, TextureAssetsSystem,
     },
     base_components::TransformComponent,
-    ecs::world::{World},
+    ecs::world::World,
     graphics::{
         graphics_graph::GraphicsCommand, lod_mesh_component::LODMeshComponent,
         material_component::MaterialComponent,

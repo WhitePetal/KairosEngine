@@ -1,3 +1,4 @@
+use core::slice;
 use std::{
     any::TypeId,
     borrow::Borrow,
@@ -14,6 +15,12 @@ use crate::ecs::{
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct TableGraphGeneration(u32);
+
+impl Default for TableGraphGeneration {
+    fn default() -> Self {
+        Self(0)
+    }
+}
 
 #[derive(Debug)]
 pub struct TableEdge {}
@@ -44,7 +51,6 @@ pub struct TableGraph {
     // 不需要引入StableDiGraph的安全检查，直接使用DiGraph
     graph: DiGraph<Table, TableEdge>,
     index: HashMap<Box<[TypeId]>, NodeIndex>,
-
 }
 
 impl TableGraph {
@@ -198,6 +204,10 @@ impl TableGraph {
 
     pub fn node_count(&self) -> usize {
         self.graph.node_count()
+    }
+
+    pub fn iter(&self) -> slice::Iter<Node<Table>> {
+        self.graph.raw_nodes().iter()
     }
 }
 
