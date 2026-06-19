@@ -1,4 +1,10 @@
-use std::{any::type_name, fmt};
+use std::{
+    any::type_name,
+    error::Error,
+    fmt::{self, Display},
+};
+
+use crate::ecs::sparse_set::NoSuchId;
 
 pub trait Component: 'static {}
 
@@ -22,6 +28,23 @@ impl fmt::Display for MissingComponent {
 pub enum ComponentError {
     NoSuchEntity,
     MissingComponent(MissingComponent),
+}
+
+impl Error for ComponentError {}
+
+impl Display for ComponentError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ComponentError::NoSuchEntity => f.write_str("no such entity"),
+            ComponentError::MissingComponent(missing_component) => missing_component.fmt(f),
+        }
+    }
+}
+
+impl From<NoSuchId> for ComponentError {
+    fn from(value: NoSuchId) -> Self {
+        Self::NoSuchEntity
+    }
 }
 
 impl From<MissingComponent> for ComponentError {

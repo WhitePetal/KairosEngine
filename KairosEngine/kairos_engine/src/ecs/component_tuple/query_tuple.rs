@@ -1043,11 +1043,7 @@ unsafe impl<Q: Query> Send for Batch<'_, Q> where for<'a> Q::Item<'a>: Send {}
 unsafe impl<Q: Query> Sync for Batch<'_, Q> where for<'a> Q::Item<'a>: Sync {}
 
 impl<'q, Q: Query> BatchedIter<'q, Q> {
-    unsafe fn new(
-        tables: &'q TableGraph,
-        batch_size: usize,
-        cache: CachedQuery<Q::Fetch>,
-    ) -> Self {
+    unsafe fn new(tables: &'q TableGraph, batch_size: usize, cache: CachedQuery<Q::Fetch>) -> Self {
         Self {
             _marker: PhantomData,
             tables,
@@ -1128,13 +1124,7 @@ impl<'w, Q: Query> QueryBorrow<'w, Q> {
 
     pub fn iter_batched(&mut self, batch_size: usize) -> BatchedIter<'_, Q> {
         let cache = self.borrow().clone();
-        unsafe {
-            BatchedIter::new(
-                self.world.table_graph(),
-                batch_size,
-                cache,
-            )
-        }
+        unsafe { BatchedIter::new(self.world.table_graph(), batch_size, cache) }
     }
 
     fn transform<R: Query>(self) -> QueryBorrow<'w, R> {
@@ -1484,13 +1474,7 @@ impl<'q, Q: Query> QueryMut<'q, Q> {
 
     pub fn into_iter_batched(self, batch_size: usize) -> BatchedIter<'q, Q> {
         let cache = CachedQuery::get(self.world);
-        unsafe {
-            BatchedIter::new(
-                self.world.table_graph(),
-                batch_size,
-                cache,
-            )
-        }
+        unsafe { BatchedIter::new(self.world.table_graph(), batch_size, cache) }
     }
 }
 
@@ -1537,10 +1521,7 @@ pub struct QueryOne<'a, Q: Query> {
 }
 
 impl<'a, Q: Query> QueryOne<'a, Q> {
-    pub unsafe fn new(
-        table: &'a Table,
-        index: usize,
-    ) -> Self {
+    pub unsafe fn new(table: &'a Table, index: usize) -> Self {
         Self {
             table: Some(table),
             index,
@@ -1605,13 +1586,6 @@ impl<Q: Query> Drop for QueryOne<'_, Q> {
 
 unsafe impl<Q: Query> Send for QueryOne<'_, Q> {}
 unsafe impl<Q: Query> Sync for QueryOne<'_, Q> {}
-
-
-
-
-
-
-
 
 pub fn assert_distinct<const N: usize>(entities: &[Entity; N]) {
     match N {

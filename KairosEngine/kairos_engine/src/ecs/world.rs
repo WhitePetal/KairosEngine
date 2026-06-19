@@ -7,19 +7,21 @@ use std::{
     sync::Mutex,
 };
 
-use petgraph::graph::NodeIndex;
+use petgraph::graph::{Node, NodeIndex};
 
 use crate::{
     asset_loader::assets::AssetsServer,
     ecs::{
         batch::ColumBatch,
-        component::{Component, ComponentError},
+        component::{Component, ComponentError, MissingComponent},
         component_tuple::{
-            CachedQuery, ComponentTuple, ComponentTupleKey, DynamicComponentTuple, Query,
-            QueryBorrow, QueryCache, QueryMut, View, ViewBorrow, assert_borrow,
+            CachedQuery, ComponentTuple, ComponentTupleKey, DynamicComponentTuple, Fetch, Query,
+            QueryBorrow, QueryCache, QueryMut, QueryOne, QueryOneError, View, ViewBorrow,
+            assert_borrow, assert_distinct,
         },
         consts,
         entity::{Entity, EntityFlag},
+        entity_ref::{ComponentRef, EntityRef},
         id::Id,
         sparse_set::{self, AllocManyState, EntityStorage, NoSuchId, SparseSet},
         table::Table,
@@ -163,7 +165,11 @@ impl World {
     }
 
     /// 给一个实体添加组件
-    pub fn insert<T: DynamicComponentTuple>(&mut self, entity: &Entity, components: T) {
+    pub fn insert<T: DynamicComponentTuple>(
+        &mut self,
+        entity: &Entity,
+        components: T,
+    ) -> Result<(), NoSuchId> {
         self.flush();
 
         match self.entity_datas.get(entity) {
@@ -171,10 +177,9 @@ impl World {
                 let src_table = data.table_index;
                 let row_index = data.row_index;
                 self.insert_inner(entity, components, src_table, row_index);
+                Ok(())
             }
-            None => {
-                debug_assert!(false, "Insert Component for a not exist entity: {}", entity);
-            }
+            None => Err(NoSuchId),
         }
     }
 
@@ -246,6 +251,14 @@ impl World {
             let moved_data = &mut self.entity_datas[&moved];
             moved_data.row_index = row_index;
         }
+    }
+
+    pub fn insert_one<T: Component>(
+        &mut self,
+        entity: &Entity,
+        component: T,
+    ) -> Result<(), NoSuchId> {
+        self.insert(entity, (component,))
     }
 
     /// 把预留但未挂在任何组件的entity放入根表中
@@ -645,8 +658,151 @@ impl World {
         unsafe { View::<Q>::new(&self.entity_datas, &self.table_graph, cache) }
     }
 
-    pub fn query_one<Q: Query>(&self, entity: &Entity) {
+    pub fn query_one<Q: Query>(&self, entity: &Entity) -> QueryOne<'_, Q> {
+        let Some(loc) = self.entity_datas.get(entity) else {
+            return QueryOne::default();
+        };
+
+        unsafe { QueryOne::new(&self.table_graph[loc.table_index], loc.row_index) }
+    }
+
+    pub fn query_one_mut<Q: Query>(
+        &mut self,
+        entity: &Entity,
+    ) -> Result<Q::Item<'_>, QueryOneError> {
+        assert_borrow::<Q>();
+
+        let loc = self.entity_datas.get(entity).ok_or(NoSuchId)?;
+        let table = &self.table_graph[loc.table_index];
+        let state = Q::Fetch::prepare(table).ok_or(QueryOneError::Unsatisfield)?;
+        let fetch = Q::Fetch::execute(table, state);
+        unsafe { Ok(Q::get(&fetch, loc.row_index)) }
+    }
+
+    pub fn query_disjoint_mut<Q: Query, const N: usize>(
+        &mut self,
+        entities: [Entity; N],
+    ) -> [Result<Q::Item<'_>, QueryOneError>; N] {
+        assert_borrow::<Q>();
+        assert_distinct(&entities);
+
+        entities.map(|entity| {
+            let loc = self.entity_datas.get(&entity).ok_or(NoSuchId)?;
+            let table = &self.table_graph[loc.table_index];
+            let state = Q::Fetch::prepare(table).ok_or(QueryOneError::Unsatisfield)?;
+            let fetch = Q::Fetch::execute(table, state);
+            unsafe { Ok(Q::get(&fetch, loc.row_index)) }
+        })
+    }
+
+    pub fn entity_ref(&self, entity: &Entity) -> Result<EntityRef<'_>, NoSuchId> {
+        let loc = self.entity_datas.get(entity).ok_or(NoSuchId)?;
+        unsafe {
+            Ok(EntityRef::new(
+                &self.entity_datas,
+                &self.table_graph[loc.table_index],
+                loc.row_index,
+            ))
+        }
+    }
+
+    pub fn get<'a, T: ComponentRef<'a>>(
+        &'a self,
+        entity: &Entity,
+    ) -> Result<T::Ref, ComponentError> {
+        Ok(self
+            .entity_ref(entity)?
+            .get::<T>()
+            .ok_or_else(MissingComponent::new::<T::Component>)?)
+    }
+
+    pub unsafe fn get_unchecked<'a, T: ComponentRef<'a>>(
+        &'a self,
+        entity: &Entity,
+    ) -> Result<T, ComponentError> {
+        let loc = self.entity_datas.get(entity).ok_or(NoSuchId)?;
+        let table = &self.table_graph[loc.table_index];
+        let state = table
+            .get_state::<T::Component>()
+            .ok_or_else(MissingComponent::new::<T::Component>)?;
+        unsafe {
+            Ok(T::from_raw(
+                table
+                    .get_base::<T::Component>(state)
+                    .as_ptr()
+                    .add(loc.row_index),
+            ))
+        }
+    }
+
+    pub fn satisfies<Q: Query>(&self, entity: &Entity) -> bool {
+        self.entity_ref(entity)
+            .map_or(false, |e| e.satisfies::<Q>())
+    }
+
+    pub unsafe fn find_entity_from_id(&self, id: u32) -> Entity {
+        unsafe { self.entities.resolve_unknown_version(id) }
+    }
+
+    pub fn iter(&self) -> Iter<'_> {
         todo!()
+    }
+}
+
+pub struct Iter<'a> {
+    tables: core::slice::Iter<'a, Node<Table>>,
+    entity_datas: &'a SparseSet<Entity, EntityData>,
+    current: Option<&'a Node<Table>>,
+    row_index: usize,
+}
+
+unsafe impl Send for Iter<'_> {}
+unsafe impl Sync for Iter<'_> {}
+
+impl<'a> Iter<'a> {
+    fn new(tables: &'a TableGraph, entity_datas: &'a SparseSet<Entity, EntityData>) -> Self {
+        Self {
+            tables: tables.iter(),
+            entity_datas,
+            current: None,
+            row_index: 0,
+        }
+    }
+}
+
+impl ExactSizeIterator for Iter<'_> {
+    fn len(&self) -> usize {
+        self.entity_datas.len()
+    }
+}
+
+impl<'a> Iterator for Iter<'a> {
+    type Item = EntityRef<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            match self.current {
+                Some(current) => {
+                    if self.row_index == current.weight.row_count() {
+                        self.current = None;
+                        continue;
+                    }
+                    let row_index = self.row_index;
+                    self.row_index = self.row_index + 1;
+                    return Some(unsafe {
+                        EntityRef::new(self.entity_datas, &current.weight, row_index)
+                    });
+                }
+                None => {
+                    self.current = Some(self.tables.next()?);
+                    self.row_index = 0;
+                }
+            }
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.len(), Some(self.len()))
     }
 }
 
@@ -726,7 +882,7 @@ impl Iterator for SpawnColumnBatchIter<'_> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let index = self.entity_alloc.next()?;
-        Some(self.entities.flush_alloc_many(index))
+        Some(unsafe { self.entities.flush_alloc_many(index) })
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {

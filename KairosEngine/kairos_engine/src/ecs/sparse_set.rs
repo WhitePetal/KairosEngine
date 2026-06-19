@@ -174,6 +174,10 @@ where
         let slot = idx % SPARSE_PAGE_SIZE;
         SparsePos::new(page, slot)
     }
+
+    pub fn len(&self) -> usize {
+        self.dense_values.len()
+    }
 }
 
 impl<I, V> Index<&I> for SparseSet<I, V>
@@ -485,7 +489,7 @@ where
         }
     }
 
-    pub fn flush_alloc_many(&mut self, index: usize) -> I {
+    pub unsafe fn flush_alloc_many(&mut self, index: usize) -> I {
         let head = self.len();
         if self.dense.len() > index {
             let entity = &mut self.dense[index];
@@ -514,7 +518,19 @@ where
 
     pub fn finish_alloc_many(&mut self, statte: &mut AllocManyState) {
         while let Some(index) = statte.next() {
-            self.flush_alloc_many(index);
+            unsafe { self.flush_alloc_many(index) };
+        }
+    }
+
+    pub unsafe fn resolve_unknown_version(&self, id: u32) -> I {
+        let len = self.dense.len();
+
+        if len > id as usize {
+            let sparse_pos = Self::get_sparse_pos(id);
+            let index = &self.sparse[sparse_pos.page].0[sparse_pos.slot];
+            self.dense[index.idx() as usize].clone()
+        } else {
+            panic!("entity id is out of range")
         }
     }
 

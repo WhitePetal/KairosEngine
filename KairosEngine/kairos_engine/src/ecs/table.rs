@@ -1,6 +1,8 @@
 use std::{
     alloc::{self, Layout, alloc, dealloc},
     any::{TypeId, type_name},
+    fmt::{Debug, Display},
+    ops::{Deref, DerefMut},
     ptr::{self, NonNull},
 };
 
@@ -366,8 +368,12 @@ impl Table {
         other.len = 0;
     }
 
-    pub fn set_entity_id(&mut self, index: usize, id: u32) {
-        self.entities[index] = self.entities[index].create_idx_variant(id);
+    pub fn entity(&self, row_index: usize) -> Entity {
+        self.entities[row_index].clone()
+    }
+
+    pub fn set_entity_id(&mut self, row_index: usize, id: u32) {
+        self.entities[row_index] = self.entities[row_index].create_idx_variant(id);
     }
 
     pub fn entities(&self) -> NonNull<Entity> {
@@ -381,7 +387,7 @@ impl Table {
             panic!("{} already borrowed uniquely", type_name::<T>());
         }
     }
-    pub fn borrow_raw(&self, state: usize) {
+    pub unsafe fn borrow_raw(&self, state: usize) {
         if !self.colums[state].state.borrow() {
             panic!("state index {} already borrowed uniquely", state);
         }
@@ -401,10 +407,10 @@ impl Table {
         assert_eq!(self.types[state].type_id, TypeId::of::<T>());
         self.colums[state].state.release_mut();
     }
-    pub fn release_raw(&self, state: usize) {
+    pub unsafe fn release_raw(&self, state: usize) {
         self.colums[state].state.release();
     }
-    pub fn release_raw_mut(&self, state: usize) {
+    pub unsafe fn release_raw_mut(&self, state: usize) {
         self.colums[state].state.release_mut();
     }
 
@@ -447,5 +453,94 @@ impl Drop for Table {
                 }
             }
         }
+    }
+}
+
+pub struct TableColum<'a, T: Component> {
+    table: &'a Table,
+    colum: &'a [T],
+}
+
+impl<'a, T: Component> TableColum<'a, T> {
+    pub fn new(table: &'a Table) -> Option<Self> {
+        let state = table.get_state::<T>()?;
+        let ptr = unsafe { table.get_base::<T>(state) };
+        let colum = unsafe { core::slice::from_raw_parts(ptr.as_ptr(), table.row_count()) };
+        table.borrow::<T>(state);
+        Some(Self { table, colum })
+    }
+}
+
+impl<T: Component> Deref for TableColum<'_, T> {
+    type Target = [T];
+
+    fn deref(&self) -> &Self::Target {
+        self.colum
+    }
+}
+
+impl<T: Component> Drop for TableColum<'_, T> {
+    fn drop(&mut self) {
+        let state = self.table.get_state::<T>().unwrap();
+        self.table.release::<T>(state);
+    }
+}
+
+impl<T: Component> Clone for TableColum<'_, T> {
+    fn clone(&self) -> Self {
+        let state = self.table.get_state::<T>().unwrap();
+        self.table.borrow::<T>(state);
+        Self {
+            table: self.table,
+            colum: self.colum,
+        }
+    }
+}
+
+impl<T: Component + Debug> Debug for TableColum<'_, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.colum.fmt(f)
+    }
+}
+
+pub struct TableColumMut<'a, T: Component> {
+    table: &'a Table,
+    colum: &'a mut [T],
+}
+
+impl<'a, T: Component> TableColumMut<'a, T> {
+    pub fn new(table: &'a Table) -> Option<Self> {
+        let state = table.get_state::<T>()?;
+        let ptr = unsafe { table.get_base::<T>(state) };
+        let colum = unsafe { core::slice::from_raw_parts_mut(ptr.as_ptr(), table.row_count()) };
+        table.borrow_mut::<T>(state);
+        Some(Self { table, colum })
+    }
+}
+
+impl<T: Component> Deref for TableColumMut<'_, T> {
+    type Target = [T];
+
+    fn deref(&self) -> &Self::Target {
+        self.colum
+    }
+}
+
+impl<T: Component> DerefMut for TableColumMut<'_, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.colum
+    }
+}
+
+impl<T: Component> Drop for TableColumMut<'_, T> {
+    fn drop(&mut self) {
+        let state = self.table.get_state::<T>().unwrap();
+        self.table.release_mut::<T>(state);
+    }
+}
+
+impl<T: Component + Debug> Debug for TableColumMut<'_, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.colum.fmt(f)
     }
 }
