@@ -1,6 +1,8 @@
 use std::{
     any::{Any, TypeId},
     collections::hash_map::Entry,
+    error::Error,
+    fmt,
     marker::PhantomData,
     ops::Range,
     ptr::NonNull,
@@ -14,7 +16,7 @@ use crate::{
     ecs::{
         component::Component,
         entity::Entity,
-        sparse_set::SparseSet,
+        sparse_set::{NoSuchId, SparseSet},
         table::Table,
         table_graph::{TableGraph, TableGraphGeneration},
         world::{EntityData, World},
@@ -22,8 +24,8 @@ use crate::{
     types::TypeIdMap,
 };
 
-use core::slice::Iter as SliceIter;
 use super::tuple_macros::{reverse_apply, smaller_tuples_too};
+use core::slice::Iter as SliceIter;
 
 /// [`Query`] 对 [`Table`] 的访问类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -731,7 +733,6 @@ unsafe impl<Q: Query> Send for View<'_, Q> where for<'a> Q::Item<'a>: Send {}
 unsafe impl<Q: Query> Sync for View<'_, Q> where for<'a> Q::Item<'a>: Sync {}
 
 pub struct ViewIter<'a, Q: Query> {
-    entity_datas: &'a SparseSet<Entity, EntityData>,
     tables: SliceIter<'a, Node<Table>>,
     fetches: SliceIter<'a, Option<Q::Fetch>>,
     iter: ChunkIter<Q>,
@@ -818,7 +819,6 @@ impl<'q, Q: Query> View<'q, Q> {
 
     pub fn iter_mut(&mut self) -> ViewIter<'_, Q> {
         ViewIter {
-            entity_datas: self.entity_datas,
             tables: self.tables.iter(),
             fetches: self.fetches.iter(),
             iter: ChunkIter::empty(),
@@ -1019,7 +1019,6 @@ impl<'q, Q: Query> Iterator for QueryIter<'q, Q> {
 /// [`QueryIter`] 的 批处理版本
 pub struct BatchedIter<'q, Q: Query> {
     _marker: PhantomData<&'q Q>,
-    entity_datas: &'q SparseSet<Entity, EntityData>,
     tables: &'q TableGraph,
     index_iter: Range<usize>,
     batch_size: usize,
@@ -1028,7 +1027,7 @@ pub struct BatchedIter<'q, Q: Query> {
 }
 
 pub struct Batch<'q, Q: Query> {
-    entity_datas: &'q SparseSet<Entity, EntityData>,
+    _marker: PhantomData<Q::Item<'q>>,
     states: ChunkIter<Q>,
 }
 
@@ -1045,14 +1044,12 @@ unsafe impl<Q: Query> Sync for Batch<'_, Q> where for<'a> Q::Item<'a>: Sync {}
 
 impl<'q, Q: Query> BatchedIter<'q, Q> {
     unsafe fn new(
-        entity_datas: &'q SparseSet<Entity, EntityData>,
         tables: &'q TableGraph,
         batch_size: usize,
         cache: CachedQuery<Q::Fetch>,
     ) -> Self {
         Self {
             _marker: PhantomData,
-            entity_datas,
             tables,
             index_iter: (0..cache.table_count()),
             batch_size,
@@ -1088,7 +1085,7 @@ impl<'q, Q: Query> Iterator for BatchedIter<'q, Q> {
             states.position = offset as usize;
             states.len = offset + self.batch_size.min(table.row_count() - offset);
             return Some(Batch {
-                entity_datas: self.entity_datas,
+                _marker: PhantomData,
                 states,
             });
         }
@@ -1133,7 +1130,6 @@ impl<'w, Q: Query> QueryBorrow<'w, Q> {
         let cache = self.borrow().clone();
         unsafe {
             BatchedIter::new(
-                self.world.entity_datas(),
                 self.world.table_graph(),
                 batch_size,
                 cache,
@@ -1144,7 +1140,7 @@ impl<'w, Q: Query> QueryBorrow<'w, Q> {
     fn transform<R: Query>(self) -> QueryBorrow<'w, R> {
         QueryBorrow {
             world: self.world,
-            cache: None
+            cache: None,
         }
     }
 
@@ -1188,7 +1184,6 @@ pub struct PreparedQueryBorrow<'q, Q: Query> {
 }
 
 pub struct PreparedQueryIter<'q, Q: Query> {
-    entity_datas: &'q SparseSet<Entity, EntityData>,
     tables: &'q TableGraph,
     states: SliceIter<'q, (NodeIndex, <Q::Fetch as Fetch>::State)>,
     iter: ChunkIter<Q>,
@@ -1262,7 +1257,6 @@ impl<'q, Q: Query> PreparedView<'q, Q> {
 
     pub fn iter_mut(&mut self) -> ViewIter<'_, Q> {
         ViewIter {
-            entity_datas: self.entity_datas,
             tables: self.tables.iter(),
             fetches: self.fetches.iter(),
             iter: ChunkIter::empty(),
@@ -1284,12 +1278,10 @@ unsafe impl<Q: Query> Sync for PreparedQueryIter<'_, Q> where for<'a> Q::Item<'a
 
 impl<'q, Q: Query> PreparedQueryIter<'q, Q> {
     unsafe fn new(
-        entity_datas: &'q SparseSet<Entity, EntityData>,
         tables: &'q TableGraph,
         states: SliceIter<'q, (NodeIndex, <Q::Fetch as Fetch>::State)>,
     ) -> Self {
         Self {
-            entity_datas,
             tables: tables,
             states,
             iter: ChunkIter::empty(),
@@ -1355,7 +1347,7 @@ impl<'q, Q: Query> PreparedQueryBorrow<'q, Q> {
     }
 
     pub fn iter(&mut self) -> PreparedQueryIter<'_, Q> {
-        unsafe { PreparedQueryIter::new(self.entity_datas, self.tables, self.states.iter()) }
+        unsafe { PreparedQueryIter::new(self.tables, self.states.iter()) }
     }
 
     pub fn view(&mut self) -> PreparedView<'_, Q> {
@@ -1432,7 +1424,7 @@ impl<Q: Query> PreparedQuery<Q> {
         let entity_datas = world.entity_datas();
         let tables = world.table_graph();
 
-        unsafe { PreparedQueryIter::new(entity_datas, tables, self.states.iter()) }
+        unsafe { PreparedQueryIter::new(tables, self.states.iter()) }
     }
 
     pub fn view_mut<'q>(&'q mut self, world: &'q World) -> PreparedView<'q, Q> {
@@ -1493,13 +1485,17 @@ impl<'q, Q: Query> QueryMut<'q, Q> {
     pub fn into_iter_batched(self, batch_size: usize) -> BatchedIter<'q, Q> {
         let cache = CachedQuery::get(self.world);
         unsafe {
-            BatchedIter::new(self.world.entity_datas(), self.world.table_graph(), batch_size, cache)
+            BatchedIter::new(
+                self.world.table_graph(),
+                batch_size,
+                cache,
+            )
         }
     }
 }
 
 impl<'q, Q: Query> IntoIterator for QueryMut<'q, Q> {
-    type Item = <QueryIter<'q, Q> as Iterator >::Item;
+    type Item = <QueryIter<'q, Q> as Iterator>::Item;
     type IntoIter = QueryIter<'q, Q>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -1507,6 +1503,111 @@ impl<'q, Q: Query> IntoIterator for QueryMut<'q, Q> {
         unsafe { QueryIter::new(self.world, cache) }
     }
 }
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub enum QueryOneError {
+    /// 不存在该实体
+    NoSuchEntity,
+    /// 实体存在但没有匹配的查询结果
+    Unsatisfield,
+}
+
+impl fmt::Display for QueryOneError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            QueryOneError::NoSuchEntity => f.write_str("no such entity"),
+            QueryOneError::Unsatisfield => f.write_str("Unsatisfield"),
+        }
+    }
+}
+
+impl Error for QueryOneError {}
+
+impl From<NoSuchId> for QueryOneError {
+    fn from(_value: NoSuchId) -> Self {
+        QueryOneError::NoSuchEntity
+    }
+}
+
+pub struct QueryOne<'a, Q: Query> {
+    table: Option<&'a Table>,
+    index: usize,
+    borrowed: bool,
+    _marker: PhantomData<Q>,
+}
+
+impl<'a, Q: Query> QueryOne<'a, Q> {
+    pub unsafe fn new(
+        table: &'a Table,
+        index: usize,
+    ) -> Self {
+        Self {
+            table: Some(table),
+            index,
+            borrowed: false,
+            _marker: PhantomData,
+        }
+    }
+
+    pub fn get(&mut self) -> Result<Q::Item<'_>, QueryOneError> {
+        assert_borrow::<Q>();
+
+        if self.borrowed {
+            panic!("called QueryOne::get twice; construct a new query instead");
+        }
+        let table = self.table.as_ref().ok_or(QueryOneError::NoSuchEntity)?;
+        let state = Q::Fetch::prepare(table).ok_or(QueryOneError::Unsatisfield)?;
+        Q::Fetch::borrow(table, state);
+        let fetch = Q::Fetch::execute(table, state);
+        self.borrowed = true;
+        unsafe { Ok(Q::get(&fetch, self.index)) }
+    }
+
+    fn transform<R: Query>(mut self) -> QueryOne<'a, R> {
+        let x = QueryOne {
+            table: self.table,
+            index: self.index,
+            borrowed: self.borrowed,
+            _marker: PhantomData,
+        };
+        self.borrowed = false;
+        x
+    }
+
+    pub fn with<R: Query>(self) -> QueryOne<'a, With<Q, R>> {
+        self.transform()
+    }
+
+    pub fn without<R: Query>(self) -> QueryOne<'a, Without<Q, R>> {
+        self.transform()
+    }
+}
+
+impl<Q: Query> Default for QueryOne<'_, Q> {
+    fn default() -> Self {
+        Self {
+            table: None,
+            index: 0,
+            borrowed: false,
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<Q: Query> Drop for QueryOne<'_, Q> {
+    fn drop(&mut self) {
+        if self.borrowed {
+            let state = Q::Fetch::prepare(self.table.unwrap()).unwrap();
+            Q::Fetch::release(self.table.unwrap(), state);
+        }
+    }
+}
+
+unsafe impl<Q: Query> Send for QueryOne<'_, Q> {}
+unsafe impl<Q: Query> Sync for QueryOne<'_, Q> {}
+
+
+
 
 
 
@@ -1546,11 +1647,6 @@ pub fn assert_borrow<Q: Query>() {
         i += 1;
     });
 }
-
-
-
-
-
 
 // unsafe impl<A: Fetch, B: Fetch> Fetch for (A, B) {
 //     type State = (A::State, B::State);
@@ -1604,7 +1700,6 @@ pub fn assert_borrow<Q: Query>() {
 //     }
 // }
 
-
 macro_rules! tuple_impl {
     ($($name: ident),*) => {
         unsafe impl<$($name: Fetch),*> Fetch for ($($name,)*) {
@@ -1616,7 +1711,7 @@ macro_rules! tuple_impl {
             }
 
             #[allow(unused_variables, unused_mut)]
-fn access(table: &Table) -> Option<Access> {
+            fn access(table: &Table) -> Option<Access> {
                 let mut access = Access::Iterate;
                 $(
                     access = access.max($name::access(table)?);

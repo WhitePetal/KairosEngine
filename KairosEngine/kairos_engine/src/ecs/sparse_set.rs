@@ -200,6 +200,18 @@ where
     }
 }
 
+impl<I, V> Default for SparseSet<I, V>
+where
+    I: Id,
+{
+    fn default() -> Self {
+        Self {
+            dense_values: Default::default(),
+            sparse: Default::default(),
+        }
+    }
+}
+
 /// ID 分配器，支持并发预留。
 ///
 /// # 数据布局

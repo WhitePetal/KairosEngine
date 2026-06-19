@@ -14,7 +14,10 @@ use crate::{
     ecs::{
         batch::ColumBatch,
         component::{Component, ComponentError},
-        component_tuple::{ComponentTuple, ComponentTupleKey, DynamicComponentTuple, QueryCache},
+        component_tuple::{
+            CachedQuery, ComponentTuple, ComponentTupleKey, DynamicComponentTuple, Query,
+            QueryBorrow, QueryCache, QueryMut, View, ViewBorrow, assert_borrow,
+        },
         consts,
         entity::{Entity, EntityFlag},
         id::Id,
@@ -623,7 +626,28 @@ impl World {
         &self.entity_datas
     }
 
-    // TODO: querys
+    pub fn query<Q: Query>(&self) -> QueryBorrow<'_, Q> {
+        QueryBorrow::new(self)
+    }
+
+    pub fn view<Q: Query>(&self) -> ViewBorrow<'_, Q> {
+        ViewBorrow::new(self)
+    }
+
+    pub fn query_mut<Q: Query>(&mut self) -> QueryMut<'_, Q> {
+        QueryMut::new(self)
+    }
+
+    pub fn view_mut<Q: Query>(&mut self) -> View<'_, Q> {
+        assert_borrow::<Q>();
+
+        let cache = CachedQuery::get(self);
+        unsafe { View::<Q>::new(&self.entity_datas, &self.table_graph, cache) }
+    }
+
+    pub fn query_one<Q: Query>(&self, entity: &Entity) {
+        todo!()
+    }
 }
 
 /// [`World::spawn_batch`] 创建出来的迭代器
