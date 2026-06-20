@@ -10,12 +10,10 @@ use crate::{
         graphics_graph::GraphicsCommand, lod_mesh_component::LODMeshComponent,
         material_component::MaterialComponent,
     },
-    math::{self, float3, float4, quaternion},
+    math::{float3, quaternion},
 };
 
-pub struct KairosGame {
-    main_scene: SceneId,
-}
+pub struct KairosGame {}
 
 impl KairosGame {
     pub fn new(world: &mut World) -> Self {
@@ -29,34 +27,31 @@ impl KairosGame {
         let material =
             assets_server.load::<MaterialAssetsSystem>(PathBuf::from("res/materials/material.mat"));
 
-        let main_scene = world.push_scene(Scene {});
-
         const NUM_INSTANCES_PER_ROW: i32 = 5;
-
-        for z in -NUM_INSTANCES_PER_ROW..NUM_INSTANCES_PER_ROW {
-            for x in -NUM_INSTANCES_PER_ROW..NUM_INSTANCES_PER_ROW {
-                let position = float3::new(x as f32, 0.0, z as f32);
-                let rotation = quaternion::identity();
-                let scale = float3::new(1.0, 1.0, 1.0);
-
-                world.create_entity(
-                    &main_scene,
+        world.spawn_batch(
+            (-NUM_INSTANCES_PER_ROW..NUM_INSTANCES_PER_ROW)
+                .flat_map(|z| (-NUM_INSTANCES_PER_ROW..NUM_INSTANCES_PER_ROW).map(move |x| (x, z)))
+                .map(|(x, z)| {
+                    let position = float3::new(x as f32, 0.0, z as f32);
+                    let rotation = quaternion::identity();
+                    let scale = float3::new(1.0, 1.0, 1.0);
                     (
                         TransformComponent::new(position, rotation, scale),
                         LODMeshComponent::new(mesh.clone()),
                         MaterialComponent::new(material.clone()),
-                    ),
-                );
-            }
-        }
+                    )
+                }),
+        );
 
-        Self { main_scene }
+        Self {}
     }
 
     pub fn update(&self, world: &mut World) {
+        world.time.update();
         let total_time = world.time.total_time().as_secs_f32();
 
-        world.query_mut::<TransformComponent, _>(&self.main_scene, |trans| {
+        let transfoms = world.query_mut::<&mut TransformComponent>().into_iter();
+        transfoms.for_each(|trans| {
             let position = &mut trans.position;
             let x = position.x();
             let y = (x + total_time).sin();
@@ -65,15 +60,15 @@ impl KairosGame {
     }
 
     pub fn render(&self, world: &mut World, graphics_command: &mut GraphicsCommand) {
-        world.query::<(TransformComponent, LODMeshComponent, MaterialComponent), _>(
-            &self.main_scene,
-            |(trans, lod, mat)| {
-                graphics_command.draw(
-                    lod.lod0.clone(),
-                    mat.material.clone(),
-                    trans.get_local_to_world(),
-                );
-            },
-        );
+        let renderers = world
+            .query_mut::<(&TransformComponent, &LODMeshComponent, &MaterialComponent)>()
+            .into_iter();
+        renderers.for_each(|(trans, lod, mat)| {
+            graphics_command.draw(
+                lod.lod0.clone(),
+                mat.material.clone(),
+                trans.get_local_to_world(),
+            );
+        });
     }
 }

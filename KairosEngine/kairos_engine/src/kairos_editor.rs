@@ -1,5 +1,5 @@
 use crate::{
-    asset_loader::assets::AssetsServer, ecs::world::World,
+    ecs::world::World,
     graphics::graphics_graph::GraphicsCommand, kairos_game::KairosGame, log::Log,
 };
 use egui::Visuals;
