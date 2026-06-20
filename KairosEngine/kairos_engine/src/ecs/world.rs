@@ -1,17 +1,11 @@
 use std::{
-    any::TypeId,
-    collections::{HashMap, hash_map::Entry},
-    hash::{BuildHasher, BuildHasherDefault, Hasher},
-    ops::Add,
-    ptr,
-    sync::Mutex,
+    any::TypeId, collections::{HashMap, hash_map::Entry}, fmt::Debug, hash::{BuildHasher, BuildHasherDefault, Hasher}, ops::Add, ptr, sync::Mutex
 };
 
 use petgraph::graph::{Node, NodeIndex};
 
 use crate::{
-    asset_loader::assets::AssetsServer,
-    ecs::{
+    asset_loader::assets::AssetsServer, audio::AudioEngine, ecs::{
         batch::ColumBatch,
         component::{Component, ComponentError, MissingComponent},
         component_tuple::{
@@ -27,8 +21,7 @@ use crate::{
         table::Table,
         table_graph::{InsertTarget, TableGraph, TableGraphGeneration},
         take::TakeEntity,
-    },
-    timer::Time,
+    }, timer::Time
 };
 
 #[derive(Debug)]
@@ -127,6 +120,8 @@ pub struct World {
 
     query_cache: QueryCache,
 
+    audio_engine: Option<AudioEngine>,
+
     assets_server: AssetsServer,
 
     // 后面这里的Scene概念应该会改为Chunk概念
@@ -147,6 +142,7 @@ impl World {
         };
 
         let assets_server = AssetsServer::new();
+        let audio_engine = AudioEngine::new();
         let time = Time::new();
 
         let entities = EntityStorage::new(consts::WORLD_ENTITIES_CAPACITY);
@@ -166,6 +162,7 @@ impl World {
             remove_edges,
             table_graph,
             query_cache: QueryCache::default(),
+            audio_engine,
             assets_server,
             _id,
         }
@@ -781,6 +778,16 @@ impl World {
     #[inline(always)]
     pub fn handle_assets_server(&mut self) {
         self.assets_server.handle();
+    }
+
+    #[inline(always)]
+    pub fn audio_engine(&self) -> &Option<AudioEngine> {
+        &self.audio_engine
+    }
+
+    #[inline(always)]
+    pub fn audio_engine_mut(&mut self) -> &mut Option<AudioEngine> {
+        &mut self.audio_engine
     }
 }
 

@@ -43,6 +43,10 @@ impl KairosGame {
                 }),
         );
 
+        if let Some(audio_engine) = world.audio_engine_mut() {
+            audio_engine.play();
+        }
+
         Self {}
     }
 
