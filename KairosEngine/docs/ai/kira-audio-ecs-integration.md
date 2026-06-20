@@ -1123,3 +1123,6 @@ let stream_data = StreamingSoundData::from_file("res/audio/long_bgm.ogg")?;
 - [kira GitHub](https://github.com/tesselode/kira)
 - [kira 文档](https://docs.rs/kira/)
 - [Symphonia (音频解码)](https://github.com/pdeljanov/Symphonia)
+
+
+https://gdcvault.com/play/1027222/Big-World-Small-Team-Designing

@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
 use crate::{
     asset_loader::assets::{
@@ -13,7 +13,10 @@ use crate::{
     math::{float3, quaternion},
 };
 
-pub struct KairosGame {}
+pub struct KairosGame {
+    audio_tweener: Option<kira::modulator::tweener::TweenerHandle>,
+    audio_tweener_target: f64,
+}
 
 impl KairosGame {
     pub fn new(world: &mut World) -> Self {
@@ -43,16 +46,28 @@ impl KairosGame {
                 }),
         );
 
-        if let Some(audio_engine) = world.audio_engine_mut() {
-            audio_engine.play();
+        Self {
+            audio_tweener: world.audio_engine_mut().as_mut().and_then(|x| x.example1().ok()),
+            audio_tweener_target: 1.0,
         }
-
-        Self {}
     }
 
-    pub fn update(&self, world: &mut World) {
+    pub fn update(&mut self, world: &mut World) {
         world.time.update();
         let total_time = world.time.total_time().as_secs_f32();
+
+        let mod_time = total_time % 3.0;
+        if mod_time < 0.002 {
+            if let Some(audio_tweener) = &mut self.audio_tweener {
+                audio_tweener.set(self.audio_tweener_target, kira::Tween {
+                    duration: Duration::from_secs(3),
+                    ..Default::default()
+                });
+                self.audio_tweener_target = 1.0 - self.audio_tweener_target;
+                println!("change audio tweener target: {}", self.audio_tweener_target)
+            } 
+        }
+
 
         let transfoms = world.query_mut::<&mut TransformComponent>().into_iter();
         transfoms.for_each(|trans| {
