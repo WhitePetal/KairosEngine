@@ -162,14 +162,14 @@ impl Table {
 
     /// 创建一个实体行
     /// Return: row_index
-    pub fn allocate_entity(&mut self, entity: &Entity) -> usize {
+    pub fn allocate_entity(&mut self, entity: Entity) -> usize {
         if self.len == self.entities.len() {
             self.grow(consts::TABLE_ROW_CAPACITY);
         }
 
         let row_index = self.len;
         self.entitiy_infos.insert(entity, EntityInfo { row_index });
-        self.entities[row_index] = entity.clone();
+        self.entities[row_index] = entity;
         self.len = row_index + 1;
         row_index
     }
@@ -239,13 +239,13 @@ impl Table {
         self.colums = new_colums;
     }
 
-    pub fn remove_entity(&mut self, entity: &Entity, drop: bool) -> Option<Entity> {
+    pub fn remove_entity(&mut self, entity: Entity, drop: bool) -> Option<Entity> {
         if self.len == 0 {
             return None;
         }
         let end = self.len - 1;
-        let moved = self.entities[end].clone();
-        match self.entitiy_infos.remove(entity.clone(), moved.clone()) {
+        let moved = self.entities[end];
+        match self.entitiy_infos.remove(entity, moved) {
             Some(entity_info) => {
                 let row_index = entity_info.row_index;
                 let swap = row_index != end;
@@ -264,7 +264,7 @@ impl Table {
                 }
                 self.len = end;
                 if swap {
-                    self.entities[row_index] = moved.clone();
+                    self.entities[row_index] = moved;
                     Some(moved)
                 } else {
                     None
@@ -330,8 +330,8 @@ impl Table {
         }
         self.len = self.len - 1;
         if row_index != last {
-            self.entities[row_index] = self.entities[last].clone();
-            Some(self.entities[last].clone())
+            self.entities[row_index] = self.entities[last];
+            Some(self.entities[last])
         } else {
             None
         }
@@ -373,7 +373,7 @@ impl Table {
     }
 
     pub fn entity(&self, row_index: usize) -> Entity {
-        self.entities[row_index].clone()
+        self.entities[row_index]
     }
 
     pub fn set_entity_id(&mut self, row_index: usize, id: u32) {

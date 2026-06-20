@@ -4,7 +4,7 @@ pub trait IdFlag: Debug + Default + Into<u32> {
     fn get_invalide_flag() -> Self;
 }
 
-pub trait Id: Debug + Clone + PartialEq + Eq + Hash {
+pub trait Id: Debug + Clone + Copy + PartialEq + Eq + Hash {
     type FlagType: IdFlag;
 
     fn new(idx: u32, version: u32, flags: Self::FlagType) -> Self;
@@ -23,7 +23,7 @@ pub trait Id: Debug + Clone + PartialEq + Eq + Hash {
 
     fn flags(&self) -> Self::FlagType;
 
-    fn from_other(idx: u32, other: &Self) -> Self;
+    fn from_other(idx: u32, other: Self) -> Self;
 
     fn replace_idx(&mut self, idx: u32);
 

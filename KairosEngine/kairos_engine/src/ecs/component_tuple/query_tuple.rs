@@ -773,18 +773,18 @@ impl<'q, Q: Query> View<'q, Q> {
         }
     }
 
-    pub fn get(&self, entity: &Entity) -> Option<Q::Item<'_>>
+    pub fn get(&self, entity: Entity) -> Option<Q::Item<'_>>
     where
         Q: QueryShared,
     {
         unsafe { self.get_unchecked(entity) }
     }
 
-    pub fn get_mut(&mut self, entity: &Entity) -> Option<Q::Item<'_>> {
+    pub fn get_mut(&mut self, entity: Entity) -> Option<Q::Item<'_>> {
         unsafe { self.get_unchecked(entity) }
     }
 
-    pub unsafe fn get_unchecked(&self, entity: &Entity) -> Option<Q::Item<'_>> {
+    pub unsafe fn get_unchecked(&self, entity: Entity) -> Option<Q::Item<'_>> {
         match self.entity_datas.get(entity) {
             Some(data) => self.fetches[data.table_index().index()]
                 .as_ref()
@@ -793,7 +793,7 @@ impl<'q, Q: Query> View<'q, Q> {
         }
     }
 
-    pub fn contains(&self, entity: &Entity) -> bool {
+    pub fn contains(&self, entity: Entity) -> bool {
         let Some(data) = self.entity_datas.get(entity) else {
             return false;
         };
@@ -810,7 +810,7 @@ impl<'q, Q: Query> View<'q, Q> {
 
         for (item, entity) in items.iter_mut().zip(entities) {
             unsafe {
-                *item = self.get_unchecked(&entity);
+                *item = self.get_unchecked(entity);
             }
         }
 
@@ -851,7 +851,7 @@ impl<'w, Q: Query> ViewBorrow<'w, Q> {
         Self { view, cache }
     }
 
-    pub fn get(&self, entity: &Entity) -> Option<Q::Item<'_>>
+    pub fn get(&self, entity: Entity) -> Option<Q::Item<'_>>
     where
         Q: QueryShared,
     {
@@ -859,14 +859,14 @@ impl<'w, Q: Query> ViewBorrow<'w, Q> {
     }
 
     pub fn get_mut(&mut self, entity: Entity) -> Option<Q::Item<'_>> {
-        self.view.get_mut(&entity)
+        self.view.get_mut(entity)
     }
 
-    pub fn contains(&self, entity: &Entity) -> bool {
+    pub fn contains(&self, entity: Entity) -> bool {
         self.view.contains(entity)
     }
 
-    pub unsafe fn get_unchecked(&self, entity: &Entity) -> Option<Q::Item<'_>> {
+    pub unsafe fn get_unchecked(&self, entity: Entity) -> Option<Q::Item<'_>> {
         unsafe { self.view.get_unchecked(entity) }
     }
 
@@ -1209,7 +1209,7 @@ impl<'q, Q: Query> PreparedView<'q, Q> {
         }
     }
 
-    pub unsafe fn get_unchecked(&self, entity: &Entity) -> Option<Q::Item<'_>> {
+    pub unsafe fn get_unchecked(&self, entity: Entity) -> Option<Q::Item<'_>> {
         let entity_data = self.entity_datas.get(entity)?;
 
         self.fetches[entity_data.table_index().index()]
@@ -1217,14 +1217,14 @@ impl<'q, Q: Query> PreparedView<'q, Q> {
             .map(|fetch| unsafe { Q::get(fetch, entity_data.row_index()) })
     }
 
-    pub fn get(&self, entity: &Entity) -> Option<Q::Item<'_>>
+    pub fn get(&self, entity: Entity) -> Option<Q::Item<'_>>
     where
         Q: QueryShared,
     {
         unsafe { self.get_unchecked(entity) }
     }
 
-    pub fn get_mut(&mut self, entity: &Entity) -> Option<Q::Item<'_>> {
+    pub fn get_mut(&mut self, entity: Entity) -> Option<Q::Item<'_>> {
         unsafe { self.get_unchecked(entity) }
     }
 
@@ -1238,7 +1238,7 @@ impl<'q, Q: Query> PreparedView<'q, Q> {
 
         for (item, entity) in items.iter_mut().zip(entities) {
             unsafe {
-                *item = self.get_unchecked(&entity);
+                *item = self.get_unchecked(entity);
             }
         }
 

@@ -174,7 +174,7 @@ impl World {
     /// 给一个实体添加组件
     pub fn insert<T: DynamicComponentTuple>(
         &mut self,
-        entity: &Entity,
+        entity: Entity,
         components: T,
     ) -> Result<(), NoSuchId> {
         self.flush();
@@ -192,7 +192,7 @@ impl World {
 
     fn insert_inner<T: DynamicComponentTuple>(
         &mut self,
-        entity: &Entity,
+        entity: Entity,
         components: T,
         src_table: NodeIndex,
         row_index: usize,
@@ -255,14 +255,14 @@ impl World {
         // remove 老表的entity，并更新这里entity data 的 row_index
         // 会被覆盖更新的，我们在前面drop了老数据。其他数据相当于是移动到新表(转移所有权而非被销毁)，因此不需要drop
         if let Some(moved) = source_table.remove_entity(entity, false) {
-            let moved_data = &mut self.entity_datas[&moved];
+            let moved_data = &mut self.entity_datas[moved];
             moved_data.row_index = row_index;
         }
     }
 
     pub fn insert_one<T: Component>(
         &mut self,
-        entity: &Entity,
+        entity: Entity,
         component: T,
     ) -> Result<(), NoSuchId> {
         self.insert(entity, (component,))
@@ -290,11 +290,11 @@ impl World {
         self.flush();
 
         let entity = self.entities.alloc();
-        self.spawn_inner(&entity, components);
+        self.spawn_inner(entity, components);
         entity
     }
 
-    fn spawn_inner<T: DynamicComponentTuple>(&mut self, entity: &Entity, components: T) {
+    fn spawn_inner<T: DynamicComponentTuple>(&mut self, entity: Entity, components: T) {
         let tables = &mut self.table_graph;
         let table_index = match components.key() {
             Some(key) => *self.tuple_to_table.entry(key).or_insert(
@@ -325,22 +325,21 @@ impl World {
     pub fn spawn_at<T: DynamicComponentTuple>(&mut self, entity: Entity, components: T) {
         self.flush();
 
-        let entity = self.alloc_at_inner(&entity);
+        let entity = self.alloc_at_inner(entity);
 
-        self.spawn_inner(&entity, components);
+        self.spawn_inner(entity, components);
     }
 
-    fn alloc_at_inner(&mut self, entity: &Entity) -> Entity {
+    fn alloc_at_inner(&mut self, entity: Entity) -> Entity {
         match self.entities.alloc_at(entity) {
             sparse_set::AllocAt::New(range) => {
                 for idx in range {
                     self.entity_datas.insert(
-                        &Entity::new(idx as u32, 0, EntityFlag::Dead),
+                        Entity::new(idx as u32, 0, EntityFlag::Dead),
                         EntityData::default(),
                     );
                 }
-                let entity = entity.clone();
-                self.entity_datas.insert(&entity, EntityData::default());
+                self.entity_datas.insert(entity, EntityData::default());
                 entity
             }
             sparse_set::AllocAt::BeUsed(entity) => entity,
@@ -349,9 +348,9 @@ impl World {
                 if let Some(moved) =
                     self.table_graph[entity_data.table_index].remove_entity(entity, true)
                 {
-                    self.entity_datas[&moved].row_index = entity_data.row_index;
+                    self.entity_datas[moved].row_index = entity_data.row_index;
                 }
-                entity.clone()
+                entity
             }
         }
     }
@@ -392,7 +391,7 @@ impl World {
         let table = &mut self.table_graph[table_index];
         let entity_alloc_many = self.entities.alloc_many(entity_count);
 
-        for id in &self.entities.iter().as_slice()[entity_alloc_many.pending_range.clone()] {
+        for &id in &self.entities.iter().as_slice()[entity_alloc_many.pending_range.clone()] {
             self.entity_datas[id] = EntityData {
                 table_index,
                 row_index: start_row_index,
@@ -404,7 +403,7 @@ impl World {
 
         for index in entity_alloc_many.fresh.clone() {
             self.entity_datas.insert(
-                &Entity::new(index as u32, 0, EntityFlag::Default),
+                Entity::new(index as u32, 0, EntityFlag::Default),
                 EntityData {
                     table_index,
                     row_index: start_row_index,
@@ -433,7 +432,7 @@ impl World {
         );
 
         for handle in handles {
-            let _ = self.alloc_at_inner(handle);
+            let _ = self.alloc_at_inner(*handle);
         }
 
         let (table_index, start_row_index) = self.table_graph.insert_batch(table);
@@ -442,7 +441,7 @@ impl World {
         for (handle, index) in handles.iter().zip(start_row_index as usize..) {
             table.set_entity_id(index, handle.idx());
             self.entity_datas.insert(
-                handle,
+                *handle,
                 EntityData {
                     table_index,
                     row_index: index,
@@ -455,13 +454,13 @@ impl World {
     pub fn despawn(&mut self, entity: Entity) -> Result<(), NoSuchId> {
         self.flush();
 
-        let moved = self.entities.free(entity.clone())?;
-        match self.entity_datas.remove(entity.clone(), moved) {
+        let moved = self.entities.free(entity)?;
+        match self.entity_datas.remove(entity, moved) {
             Some(entity_data) => {
                 if let Some(moved) =
-                    self.table_graph[entity_data.table_index].remove_entity(&entity, true)
+                    self.table_graph[entity_data.table_index].remove_entity(entity, true)
                 {
-                    self.entity_datas[&moved].row_index = entity_data.row_index;
+                    self.entity_datas[moved].row_index = entity_data.row_index;
                 }
                 Ok(())
             }
@@ -509,18 +508,18 @@ impl World {
         table_id
     }
 
-    pub fn contains(&self, entity: &Entity) -> bool {
+    pub fn contains(&self, entity: Entity) -> bool {
         self.entities.has(entity)
     }
 
     /// 从实体身上移除'T'组件
     pub fn remove<T: ComponentTuple + 'static>(
         &mut self,
-        entity: &Entity,
+        entity: Entity,
     ) -> Result<T, ComponentError> {
         self.flush();
 
-        match self.entity_datas.get_mut(&entity) {
+        match self.entity_datas.get_mut(entity) {
             Some(entity_data) => {
                 let old_row_index = entity_data.row_index;
                 let source_table = &self.table_graph[entity_data.table_index];
@@ -537,7 +536,7 @@ impl World {
                 if entity_data.table_index != target {
                     let (source_table, target_table) =
                         self.table_graph.index2(entity_data.table_index, target);
-                    let target_row_index = target_table.allocate_entity(&entity);
+                    let target_row_index = target_table.allocate_entity(entity);
                     entity_data.table_index = target;
                     entity_data.row_index = target_row_index;
                     if let Some(moved) = unsafe {
@@ -547,7 +546,7 @@ impl World {
                             }
                         })
                     } {
-                        self.entity_datas[&moved].row_index = old_row_index
+                        self.entity_datas[moved].row_index = old_row_index
                     }
                 }
 
@@ -581,14 +580,14 @@ impl World {
     }
 
     /// 从实体身上移除单个'T'组件
-    pub fn remove_one<T: Component>(&mut self, entity: &Entity) -> Result<T, ComponentError> {
+    pub fn remove_one<T: Component>(&mut self, entity: Entity) -> Result<T, ComponentError> {
         self.remove::<(T,)>(entity).map(|(x,)| x)
     }
 
     /// 从实体身上移除 'S' 组件, 然后添加 'T' 组件
     pub fn exchange<S: ComponentTuple + 'static, T: DynamicComponentTuple>(
         &mut self,
-        entity: &Entity,
+        entity: Entity,
         components: T,
     ) -> Result<S, ComponentError> {
         self.flush();
@@ -617,7 +616,7 @@ impl World {
     /// 从实体身上移除单个 'S' 组件，然后添加单个 'T' 组件
     pub fn exchange_one<S: Component, T: Component>(
         &mut self,
-        entity: &Entity,
+        entity: Entity,
         component: T,
     ) -> Result<S, ComponentError> {
         self.exchange::<(S,), (T,)>(entity, (component,))
@@ -665,7 +664,7 @@ impl World {
         unsafe { View::<Q>::new(&self.entity_datas, &self.table_graph, cache) }
     }
 
-    pub fn query_one<Q: Query>(&self, entity: &Entity) -> QueryOne<'_, Q> {
+    pub fn query_one<Q: Query>(&self, entity: Entity) -> QueryOne<'_, Q> {
         let Some(loc) = self.entity_datas.get(entity) else {
             return QueryOne::default();
         };
@@ -675,7 +674,7 @@ impl World {
 
     pub fn query_one_mut<Q: Query>(
         &mut self,
-        entity: &Entity,
+        entity: Entity,
     ) -> Result<Q::Item<'_>, QueryOneError> {
         assert_borrow::<Q>();
 
@@ -694,7 +693,7 @@ impl World {
         assert_distinct(&entities);
 
         entities.map(|entity| {
-            let loc = self.entity_datas.get(&entity).ok_or(NoSuchId)?;
+            let loc = self.entity_datas.get(entity).ok_or(NoSuchId)?;
             let table = &self.table_graph[loc.table_index];
             let state = Q::Fetch::prepare(table).ok_or(QueryOneError::Unsatisfield)?;
             let fetch = Q::Fetch::execute(table, state);
@@ -702,7 +701,7 @@ impl World {
         })
     }
 
-    pub fn entity_ref(&self, entity: &Entity) -> Result<EntityRef<'_>, NoSuchId> {
+    pub fn entity_ref(&self, entity: Entity) -> Result<EntityRef<'_>, NoSuchId> {
         let loc = self.entity_datas.get(entity).ok_or(NoSuchId)?;
         unsafe {
             Ok(EntityRef::new(
@@ -714,7 +713,7 @@ impl World {
 
     pub fn get<'a, T: ComponentRef<'a>>(
         &'a self,
-        entity: &Entity,
+        entity: Entity,
     ) -> Result<T::Ref, ComponentError> {
         Ok(self
             .entity_ref(entity)?
@@ -724,7 +723,7 @@ impl World {
 
     pub unsafe fn get_unchecked<'a, T: ComponentRef<'a>>(
         &'a self,
-        entity: &Entity,
+        entity: Entity,
     ) -> Result<T, ComponentError> {
         let loc = self.entity_datas.get(entity).ok_or(NoSuchId)?;
         let table = &self.table_graph[loc.table_index];
@@ -741,7 +740,7 @@ impl World {
         }
     }
 
-    pub fn satisfies<Q: Query>(&self, entity: &Entity) -> bool {
+    pub fn satisfies<Q: Query>(&self, entity: Entity) -> bool {
         self.entity_ref(entity)
             .map_or(false, |e| e.satisfies::<Q>())
     }
@@ -757,7 +756,7 @@ impl World {
     pub fn take(&mut self, entity: Entity) -> Result<TakeEntity<'_>, NoSuchId> {
         self.flush();
 
-        let loc = self.entity_datas.get(&entity).ok_or(NoSuchId)?;
+        let loc = self.entity_datas.get(entity).ok_or(NoSuchId)?;
         let table = &mut self.table_graph[loc.table_index];
         unsafe {
             Ok(TakeEntity::new(
@@ -849,14 +848,14 @@ where
     fn next(&mut self) -> Option<Self::Item> {
         let components = self.inner.next()?;
         let entity = self.entities.alloc();
-        let row_index = self.table.allocate_entity(&entity);
+        let row_index = self.table.allocate_entity(entity);
         unsafe {
             components.put(|ptr, info| {
                 self.table.put_dynamic(ptr, &info, row_index);
             });
         }
         self.entity_datas.insert(
-            &entity,
+            entity,
             EntityData {
                 table_index: self.table_index,
                 row_index,
