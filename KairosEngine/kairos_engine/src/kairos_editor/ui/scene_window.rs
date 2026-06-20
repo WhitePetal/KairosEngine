@@ -1,18 +1,13 @@
-use std::{any::type_name, fs, path::PathBuf, sync::Arc};
+use std::{any::type_name, fs};
 
 use egui::pos2;
 use serde::{Deserialize, Serialize};
 use toml::from_str;
 
 use crate::{
-    asset_loader::assets::{AssetHandle, AssetsServer, MaterialAssetsSystem, MeshAssetsSystem},
     ecs::world::World,
     graphics::{
-        attachment::Attachment,
-        camera::Camera,
-        graphics_graph::GraphicsCommand,
-        material::{self, Material, MaterialAsset},
-        mesh::Mesh,
+        attachment::Attachment, camera::Camera, graphics_graph::GraphicsCommand, mesh::Mesh,
         vertex::Vertex,
     },
     kairos_editor::ui::{Drawer, Message, paths},
@@ -32,8 +27,6 @@ struct SceneWindowModel {
     height: u32,
     recever: Option<tokio::sync::oneshot::Receiver<egui::TextureId>>,
     drop_texture_id: Option<egui::TextureId>,
-    mesh: Option<Arc<AssetHandle<MeshAssetsSystem>>>,
-    material: Option<Arc<AssetHandle<MaterialAssetsSystem>>>,
 }
 
 pub struct SceneWindow {
@@ -69,8 +62,6 @@ impl SceneWindowModel {
             height: 1,
             recever: None,
             drop_texture_id: None,
-            mesh: None,
-            material: None,
         })
     }
 }
@@ -82,7 +73,7 @@ impl SceneWindow {
     }
 }
 
-fn node_transform_matrix(node: &gltf::Node<'_>) -> float4x4 {
+fn _node_transform_matrix(node: &gltf::Node<'_>) -> float4x4 {
     let (translation, rotation, scale) = node.transform().decomposed();
 
     float4x4::trs(
@@ -92,7 +83,7 @@ fn node_transform_matrix(node: &gltf::Node<'_>) -> float4x4 {
     )
 }
 
-fn load_mesh_from_primitive(
+fn _load_mesh_from_primitive(
     primitive: gltf::Primitive<'_>,
     node_to_world: float4x4,
     buffers: &[gltf::buffer::Data],
@@ -168,23 +159,23 @@ fn load_mesh_from_primitive(
     Some(Mesh::new(vertices, indices))
 }
 
-fn load_mesh_from_node(
+fn _load_mesh_from_node(
     node: gltf::Node<'_>,
     parent_to_world: float4x4,
     buffers: &[gltf::buffer::Data],
 ) -> Option<Mesh> {
-    let node_to_world = parent_to_world * node_transform_matrix(&node);
+    let node_to_world = parent_to_world * _node_transform_matrix(&node);
 
     if let Some(gltf_mesh) = node.mesh() {
         for primitive in gltf_mesh.primitives() {
-            if let Some(mesh) = load_mesh_from_primitive(primitive, node_to_world, buffers) {
+            if let Some(mesh) = _load_mesh_from_primitive(primitive, node_to_world, buffers) {
                 return Some(mesh);
             }
         }
     }
 
     for child in node.children() {
-        if let Some(mesh) = load_mesh_from_node(child, node_to_world, buffers) {
+        if let Some(mesh) = _load_mesh_from_node(child, node_to_world, buffers) {
             return Some(mesh);
         }
     }
@@ -192,13 +183,13 @@ fn load_mesh_from_node(
     None
 }
 
-fn load_first_scene_mesh(
+fn _load_first_scene_mesh(
     document: &gltf::Document,
     buffers: &[gltf::buffer::Data],
 ) -> Option<Mesh> {
     for scene in document.scenes() {
         for node in scene.nodes() {
-            if let Some(mesh) = load_mesh_from_node(node, float4x4::idenity(), buffers) {
+            if let Some(mesh) = _load_mesh_from_node(node, float4x4::idenity(), buffers) {
                 return Some(mesh);
             }
         }
@@ -216,10 +207,6 @@ impl Drawer for SceneWindow {
         let pixels_per_point = ui.pixels_per_point();
         let width = (rect.width() * pixels_per_point).round().max(1.0) as u32;
         let height = (rect.height() * pixels_per_point).round().max(1.0) as u32;
-
-        if self.model.mesh.is_none() {
-            messager.send(Message::SceneWindowLoadRes);
-        }
 
         if width != self.model.width || height != self.model.height {
             messager.send(Message::UpdateSceneWindowSize(width, height));
@@ -267,12 +254,6 @@ impl Drawer for SceneWindow {
         game: &mut KairosGame,
         messager: &mut super::Messager,
     ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {
-        let Some(mesh) = &self.model.mesh else {
-            return None;
-        };
-        let Some(material) = &self.model.material else {
-            return None;
-        };
         let mut graphics_command = GraphicsCommand::new(16, 2, 4, 16);
         // clear last rt_id
         if let Some(drop_texture_id) = self.model.drop_texture_id {
@@ -365,14 +346,5 @@ impl SceneWindow {
         if received {
             self.model.recever.take();
         }
-    }
-
-    pub fn load_res(&mut self, assets_server: &mut AssetsServer) {
-        self.model.mesh =
-            Some(assets_server.load::<MeshAssetsSystem>(PathBuf::from("res/models/Suzanne.mesh")));
-
-        self.model.material = Some(
-            assets_server.load::<MaterialAssetsSystem>(PathBuf::from("res/materials/material.mat")),
-        );
     }
 }

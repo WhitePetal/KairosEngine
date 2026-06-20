@@ -42,7 +42,7 @@ impl Display for ComponentError {
 }
 
 impl From<NoSuchId> for ComponentError {
-    fn from(value: NoSuchId) -> Self {
+    fn from(_value: NoSuchId) -> Self {
         Self::NoSuchEntity
     }
 }

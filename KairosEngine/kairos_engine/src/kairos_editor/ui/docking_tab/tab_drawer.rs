@@ -1,4 +1,4 @@
-use crate::{graphics::render_pipeline::RenderPipeline, log::Log};
+use crate::log::Log;
 use egui::{self, Id, Ui, WidgetText};
 
 use crate::kairos_editor::ui::{

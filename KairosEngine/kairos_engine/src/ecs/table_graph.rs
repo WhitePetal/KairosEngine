@@ -206,7 +206,7 @@ impl TableGraph {
         self.graph.node_count()
     }
 
-    pub fn iter(&self) -> slice::Iter<Node<Table>> {
+    pub fn iter(&self) -> slice::Iter<'_, Node<Table>> {
         self.graph.raw_nodes().iter()
     }
 }

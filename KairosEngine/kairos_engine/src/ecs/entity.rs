@@ -27,7 +27,7 @@ impl IdFlag for EntityFlag {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Entity(u64);
 
 impl Ord for Entity {
@@ -71,18 +71,18 @@ impl Id for Entity {
         Self::FlagType::from(((self.0 >> VERSION_MASK_OFFSET) & FLAG_MASK) as u32)
     }
 
-    fn from_other(idx: u32, other: &Self) -> Self {
+    fn from_other(idx: u32, other: Self) -> Self {
         Self(((other.0 >> IDX_MASK_OFFSET) << IDX_MASK_OFFSET) | (idx as u64))
     }
 
     #[inline(always)]
     fn replace_idx(&mut self, idx: u32) {
-        *self = Self::from_other(idx, &self);
+        *self = Self::from_other(idx, *self);
     }
 
     #[inline(always)]
     fn create_idx_variant(&self, idx: u32) -> Self {
-        Self::from_other(idx, &self)
+        Self::from_other(idx, *self)
     }
 
     #[inline(always)]

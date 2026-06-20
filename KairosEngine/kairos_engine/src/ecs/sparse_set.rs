@@ -1,7 +1,6 @@
 use core::error;
 use std::{
     array, fmt,
-    iter::Zip,
     ops::{Index, IndexMut, Range},
     slice::Iter,
     sync::atomic::{AtomicUsize, Ordering},
@@ -13,6 +12,8 @@ use crate::ecs::{
 };
 
 pub mod entity_stroge;
+
+#[cfg(test)]
 mod test;
 
 pub use entity_stroge::*;
@@ -68,25 +69,20 @@ where
         }
     }
 
-    pub fn insert(&mut self, id: &I, value: V) {
+    pub fn insert(&mut self, id: I, value: V) {
         let sparse_pos = Self::get_sparse_pos(id.idx());
         if self.sparse.get(sparse_pos.page).is_none() {
             self.sparse.push(Page::new());
         }
         let sparse_value = &mut self.sparse[sparse_pos.page].0[sparse_pos.slot];
         if sparse_value.is_avalide() {
-            debug_assert!(
-                sparse_value.version() == id.version(),
-                "Try insert a invalide version id! id: {:?}",
-                id
-            );
             self.dense_values[sparse_value.idx() as usize] = value;
             self.sparse[sparse_pos.page].0[sparse_pos.slot].replace_flags(id.flags());
         } else {
             let end = self.dense_values.len();
             self.dense_values.push(value);
 
-            *sparse_value = I::from_other(end as u32, &id);
+            *sparse_value = I::from_other(end as u32, id);
         }
     }
 
@@ -103,7 +99,7 @@ where
         self.dense_values.swap(index, end_index);
 
         self.sparse[end_sparse_pos.page].0[end_sparse_pos.slot] =
-            I::from_other(sparse_value.idx(), &end_sparse_value);
+            I::from_other(sparse_value.idx(), *end_sparse_value);
         self.sparse[sparse_pos.page].0[sparse_pos.slot] = I::get_invalide_id();
 
         self.dense_values.pop()
@@ -127,7 +123,7 @@ where
         }
     }
 
-    pub fn get(&self, entity: &I) -> Option<&V> {
+    pub fn get(&self, entity: I) -> Option<&V> {
         let sparse_pos = Self::get_sparse_pos(entity.idx());
         let index = self.sparse.get(sparse_pos.page)?.0.get(sparse_pos.slot)?;
         if index.version() != entity.version() {
@@ -136,7 +132,7 @@ where
         self.dense_values.get(index.idx() as usize)
     }
 
-    pub fn get_mut(&mut self, entity: &I) -> Option<&mut V> {
+    pub fn get_mut(&mut self, entity: I) -> Option<&mut V> {
         let sparse_pos = Self::get_sparse_pos(entity.idx());
         let index = self.sparse.get(sparse_pos.page)?.0.get(sparse_pos.slot)?;
         if index.version() != entity.version() {
@@ -146,17 +142,17 @@ where
     }
 
     #[inline(always)]
-    pub unsafe fn get_unchecked(&self, id: &I) -> &V {
+    pub unsafe fn get_unchecked(&self, id: I) -> &V {
         &self[id]
     }
 
     #[inline(always)]
-    pub unsafe fn get_unchecked_mut(&mut self, id: &I) -> &mut V {
+    pub unsafe fn get_unchecked_mut(&mut self, id: I) -> &mut V {
         &mut self[id]
     }
 
     #[inline(always)]
-    pub fn has(&self, id: &I) -> bool {
+    pub fn has(&self, id: I) -> bool {
         let sparse_pos = Self::get_sparse_pos(id.idx());
         if self.sparse.get(sparse_pos.page).is_none() {
             return false;
@@ -180,24 +176,24 @@ where
     }
 }
 
-impl<I, V> Index<&I> for SparseSet<I, V>
+impl<I, V> Index<I> for SparseSet<I, V>
 where
     I: Id,
 {
     type Output = V;
 
-    fn index(&self, id: &I) -> &Self::Output {
+    fn index(&self, id: I) -> &Self::Output {
         let sparse_pos = Self::get_sparse_pos(id.idx());
         let index = &self.sparse[sparse_pos.page].0[sparse_pos.slot];
         &self.dense_values[index.idx() as usize]
     }
 }
 
-impl<I, V> IndexMut<&I> for SparseSet<I, V>
+impl<I, V> IndexMut<I> for SparseSet<I, V>
 where
     I: Id,
 {
-    fn index_mut(&mut self, id: &I) -> &mut Self::Output {
+    fn index_mut(&mut self, id: I) -> &mut Self::Output {
         let sparse_pos = Self::get_sparse_pos(id.idx());
         let index = &self.sparse[sparse_pos.page].0[sparse_pos.slot];
         &mut self.dense_values[index.idx() as usize]
@@ -298,7 +294,7 @@ where
         let old_head = self.head.fetch_add(1, Ordering::Relaxed);
         if old_head < self.dense.len() {
             // 复用 freelist 中的槽位：版本号已在 remove 时递增好
-            self.dense[old_head].clone()
+            self.dense[old_head]
         } else {
             // 全新实体，version = 0
             I::new(old_head as u32, 0, I::FlagType::default())
@@ -312,7 +308,7 @@ where
         (old_head..(old_head + count))
             .map(|i| {
                 if i < dense_len {
-                    self.dense[i].clone()
+                    self.dense[i]
                 } else {
                     I::new(i as u32, 0, I::FlagType::default())
                 }
@@ -351,7 +347,7 @@ where
             if self.sparse.get(sparse_pos.page).is_none() {
                 self.sparse.push(Page::new());
             }
-            self.sparse[sparse_pos.page].0[sparse_pos.slot] = entity.clone();
+            self.sparse[sparse_pos.page].0[sparse_pos.slot] = entity;
             self.dense.push(entity);
         }
 
@@ -360,10 +356,10 @@ where
         flushs
     }
 
-    pub fn flush<F: FnMut(&I) -> ()>(&mut self, mut flush_fn: F) {
+    pub fn flush<F: FnMut(I) -> ()>(&mut self, mut flush_fn: F) {
         let flushs = self.flush_inner();
         flushs.iter().for_each(|entity| {
-            (flush_fn)(entity);
+            (flush_fn)(*entity);
         });
     }
 
@@ -391,7 +387,7 @@ where
             if head < self.dense.len() {
                 // 复用 freelist：版本号已在 remove() 中递增好，直接取用
                 // 注意：不能再调 get_next_version，否则会双重递增版本号
-                let entity = self.dense[head].clone();
+                let entity = self.dense[head];
 
                 let sparse_pos = Self::get_sparse_pos(entity.idx());
                 self.sparse[sparse_pos.page].0[sparse_pos.slot] =
@@ -405,8 +401,8 @@ where
                 if self.sparse.get(sparse_pos.page).is_none() {
                     self.sparse.push(Page::new());
                 }
-                self.sparse[sparse_pos.page].0[sparse_pos.slot] = entity.clone();
-                self.dense.push(entity.clone());
+                self.sparse[sparse_pos.page].0[sparse_pos.slot] = entity;
+                self.dense.push(entity);
                 entity
             }
         };
@@ -421,7 +417,7 @@ where
     /// 如果Entity不存在，则创建该Entity
     ///
     /// 否则用输入的Entity覆盖
-    pub fn alloc_at(&mut self, entity: &I) -> AllocAt<I> {
+    pub fn alloc_at(&mut self, entity: I) -> AllocAt<I> {
         let idx = entity.idx() as usize;
         // Id 从未被创建过
         if idx as usize >= self.dense.len() {
@@ -431,12 +427,12 @@ where
             );
             let head = *self.head.get_mut();
             self.dense.swap(head, idx);
-            self.dense[head] = entity.clone();
+            self.dense[head] = entity;
             let sparse_pos = Self::get_sparse_pos(entity.idx());
             if self.sparse.get(sparse_pos.page).is_none() {
                 self.sparse.push(Page::new());
             }
-            self.sparse[sparse_pos.page].0[sparse_pos.slot] = I::from_other(head as u32, &entity);
+            self.sparse[sparse_pos.page].0[sparse_pos.slot] = I::from_other(head as u32, entity);
             self.flushed_head = head + 1;
             *self.head.get_mut() = self.flushed_head;
             AllocAt::New(head..self.flushed_head)
@@ -447,16 +443,16 @@ where
             let index = sparse.idx() as usize;
             if !sparse.is_avalide() {
                 let head = *self.head.get_mut();
-                let mut entity = entity.clone();
+                let mut entity = entity;
                 entity.replace_flags(I::FlagType::default());
-                self.dense[index] = entity.clone();
+                self.dense[index] = entity;
                 self.swap_inner(head, index);
                 self.flushed_head = head;
                 *self.head.get_mut() = self.flushed_head;
                 AllocAt::BeUsed(entity)
             } else {
                 // Id 被创建过，但正在被使用
-                self.dense[index] = entity.clone();
+                self.dense[index] = entity;
                 *sparse = I::from_other(index as u32, entity);
                 AllocAt::Using
             }
@@ -499,7 +495,7 @@ where
             if index >= self.flushed_head {
                 self.flushed_head = self.flushed_head + 1;
             }
-            entity.clone()
+            *entity
         } else {
             if head > self.dense.len() {
                 let entity = I::new(index as u32, 0, I::FlagType::default());
@@ -507,8 +503,8 @@ where
                 if self.sparse.get(sparse_pos.page).is_none() {
                     self.sparse.push(Page::new());
                 }
-                self.sparse[sparse_pos.page].0[sparse_pos.slot] = entity.clone();
-                self.dense.push(entity.clone());
+                self.sparse[sparse_pos.page].0[sparse_pos.slot] = entity;
+                self.dense.push(entity);
                 entity
             } else {
                 panic!("entity id is out of range")
@@ -528,7 +524,7 @@ where
         if len > id as usize {
             let sparse_pos = Self::get_sparse_pos(id);
             let index = &self.sparse[sparse_pos.page].0[sparse_pos.slot];
-            self.dense[index.idx() as usize].clone()
+            self.dense[index.idx() as usize]
         } else {
             panic!("entity id is out of range")
         }
@@ -543,9 +539,9 @@ where
         let moved_sparse_pos = Self::get_sparse_pos(moved_value.idx());
 
         self.sparse[moved_sparse_pos.page].0[moved_sparse_pos.slot] =
-            I::from_other(src_value.idx(), moved_value);
+            I::from_other(src_value.idx(), *moved_value);
         self.sparse[sparse_pos.page].0[sparse_pos.slot] =
-            I::from_other(moved_value.idx(), src_value);
+            I::from_other(moved_value.idx(), *src_value);
     }
 
     /// 删除实体，将其回收到 freelist。
@@ -574,7 +570,7 @@ where
         let new_head = head - 1;
         let end_index = new_head; // 回收的目标位置
         let end_id = &self.dense[end_index];
-        let moved = end_id.clone();
+        let moved = *end_id;
         let end_sparse_pos = Self::get_sparse_pos(end_id.idx());
         let end_sparse_value = &self.sparse[end_sparse_pos.page].0[end_sparse_pos.slot];
 
@@ -584,15 +580,13 @@ where
 
         // 更新被 swap 移动的实体的 sparse 条目
         self.sparse[end_sparse_pos.page].0[end_sparse_pos.slot] =
-            I::from_other(sparse_value.idx(), &end_sparse_value);
+            I::from_other(sparse_value.idx(), *end_sparse_value);
 
         // 标记被删除实体的 sparse 为 INVALID
         self.sparse[sparse_pos.page].0[sparse_pos.slot] = I::get_invalide_id();
 
         // ★ 关键：立即递增版本号存入 dense[end_index]，供后续 reserve_entity 使用
-        let recycled = self.dense[end_index]
-            .clone()
-            .get_next_version(I::FlagType::default()); // 这里 flag 设为 default，通过 version 判断是否有效，避免 reserve 时需要 mut 改变Flag
+        let recycled = self.dense[end_index].get_next_version(I::FlagType::default()); // 这里 flag 设为 default，通过 version 判断是否有效，避免 reserve 时需要 mut 改变Flag
         self.dense[end_index] = recycled;
 
         *self.head.get_mut() = new_head;
@@ -641,7 +635,7 @@ where
     ///
     /// 注意：已通过 `reserve_entity` 预留但未 flush 的实体也返回 `true`。
     #[inline(always)]
-    pub fn has(&self, id: &I) -> bool {
+    pub fn has(&self, id: I) -> bool {
         let idx = id.idx() as usize;
         let dense_len = self.dense.len();
 

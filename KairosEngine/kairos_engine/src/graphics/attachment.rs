@@ -3,8 +3,8 @@ use wgpu::TextureFormat;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[repr(usize)]
 pub enum InternalAttachmentId {
-    FrameBuffer_ColorAttachment,
-    FrameBuffer_DepthStencilAttachment,
+    FrameBufferColorAttachment,
+    FrameBufferDepthStencilAttachment,
     End,
 }
 

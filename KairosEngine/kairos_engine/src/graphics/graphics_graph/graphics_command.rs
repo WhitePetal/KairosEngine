@@ -8,7 +8,6 @@ use crate::{
             BaseDraw, BindAttachmentToEguiNode, ColorAttachmentId, CopyAttachmentToEguiNode,
             DepthAttachmentId, EguiDraw, GraphNode, OutputToFrameBufferNode, RenderPassNode, VPId,
         },
-        mesh::Mesh,
     },
     math::float4x4,
 };

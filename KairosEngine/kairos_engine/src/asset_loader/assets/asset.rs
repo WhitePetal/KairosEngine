@@ -4,7 +4,7 @@ mod shader;
 mod texture;
 
 use std::{
-    any::{Any, TypeId, type_name},
+    any::Any,
     collections::HashMap,
     fmt::Debug,
     hash::Hash,
@@ -100,7 +100,9 @@ where
                 Err(tokio::sync::mpsc::error::TrySendError::Full(event)) => {
                     // Channel buffer is full (rare with adequate buffer size).
                     // Fall back to spawning a task to send later.
-                    tokio::spawn(async move { let _ = sender.send(event).await; });
+                    tokio::spawn(async move {
+                        let _ = sender.send(event).await;
+                    });
                 }
             }
         }

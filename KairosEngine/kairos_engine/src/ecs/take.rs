@@ -1,5 +1,3 @@
-use std::any::Any;
-
 use crate::ecs::{
     component_tuple::DynamicComponentTuple,
     entity::Entity,
@@ -35,10 +33,10 @@ impl<'a> TakeEntity<'a> {
 
 impl Drop for TakeEntity<'_> {
     fn drop(&mut self) {
-        if let Some(moved) = self.entities.free(self.entity.clone()).ok() {
-            if let Some(entity_data) = self.entity_datas.remove(self.entity.clone(), moved) {
-                if let Some(moved) = self.table.remove_entity(&self.entity, self.drop) {
-                    self.entity_datas[&moved].set_row_index(entity_data.row_index());
+        if let Some(moved) = self.entities.free(self.entity).ok() {
+            if let Some(entity_data) = self.entity_datas.remove(self.entity, moved) {
+                if let Some(moved) = self.table.remove_entity(self.entity, self.drop) {
+                    self.entity_datas[moved].set_row_index(entity_data.row_index());
                 }
             }
         }
@@ -52,7 +50,7 @@ unsafe impl DynamicComponentTuple for TakeEntity<'_> {
 
     unsafe fn put<F: FnMut(*mut u8, super::table::ComponentTypeInfo)>(mut self, mut f: F) {
         self.drop = false;
-        let loc = self.entity_datas.get(&self.entity).unwrap();
+        let loc = self.entity_datas.get(self.entity).unwrap();
         for ty in self.table.types() {
             let ptr = self.table.get_dynamice(ty, loc.row_index()).unwrap();
             f(ptr.as_ptr(), *ty)

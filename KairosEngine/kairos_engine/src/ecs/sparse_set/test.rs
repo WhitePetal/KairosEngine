@@ -42,25 +42,25 @@ fn sparse_set() {
     let ed_value = 40;
 
     let mut sparset_set = SparseSet::new(128);
-    sparset_set.insert(&ea, ea_value);
-    sparset_set.insert(&eb, eb_value);
-    sparset_set.insert(&ec, ec_value);
-    sparset_set.insert(&ed, ed_value);
+    sparset_set.insert(ea, ea_value);
+    sparset_set.insert(eb, eb_value);
+    sparset_set.insert(ec, ec_value);
+    sparset_set.insert(ed, ed_value);
 
-    let moved = entity_stroge.free(eb.clone()).unwrap();
-    sparset_set.remove(eb.clone(), moved);
-    let moved = entity_stroge.free(ed.clone()).unwrap();
-    sparset_set.remove(ed.clone(), moved);
+    let moved = entity_stroge.free(eb).unwrap();
+    sparset_set.remove(eb, moved);
+    let moved = entity_stroge.free(ed).unwrap();
+    sparset_set.remove(ed, moved);
 
     let ef = entity_stroge.alloc();
     let ef_value = 50;
-    sparset_set.insert(&ef, ef_value);
+    sparset_set.insert(ef, ef_value);
 
     debug_assert_eq!(ef, Entity::new(3, 1, EntityFlag::Default));
     debug_assert_eq!(entity_stroge.get_entity(&ea), &ea);
     debug_assert_eq!(entity_stroge.get_entity(&ec), &ec);
 
-    debug_assert_eq!(sparset_set.get(&ef), Some(&ef_value));
-    debug_assert_eq!(sparset_set.get(&ea), Some(&ea_value));
-    debug_assert_eq!(sparset_set.get(&ec), Some(&ec_value));
+    debug_assert_eq!(sparset_set.get(ef), Some(&ef_value));
+    debug_assert_eq!(sparset_set.get(ea), Some(&ea_value));
+    debug_assert_eq!(sparset_set.get(ec), Some(&ec_value));
 }
