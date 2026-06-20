@@ -109,13 +109,12 @@ impl Hasher for TupleIdHasher {
     }
 }
 
-pub type NodeIndexTupleIdMap<V> =
+type NodeIndexTupleIdMap<V> =
     HashMap<(NodeIndex, ComponentTupleKey), V, BuildHasherDefault<NodeIndexTupleIdHasher>>;
-pub type TupleIdMap<V> = HashMap<ComponentTupleKey, V, BuildHasherDefault<TupleIdHasher>>;
+type TupleIdMap<V> = HashMap<ComponentTupleKey, V, BuildHasherDefault<TupleIdHasher>>;
 
 #[derive(Debug)]
 pub struct World {
-    pub assets_server: AssetsServer,
     pub time: Time,
 
     entities: EntityStorage,
@@ -128,17 +127,19 @@ pub struct World {
 
     query_cache: QueryCache,
 
+    pub assets_server: AssetsServer,
+
     // 后面这里的Scene概念应该会改为Chunk概念
     // 由Game里的各个功能组件/System来做区块划分并通过类似TagComponent进行控制
     // pub scene_stroge: SceneStroge,
     // scenes: SparseSet<SceneId, Scene>,
-    id: u64,
+    _id: u64,
 }
 
 impl World {
     pub fn new() -> Self {
         static ID: Mutex<u64> = Mutex::new(1);
-        let id = {
+        let _id = {
             let mut id = ID.lock().unwrap();
             let next = id.add(1);
             *id = next;
@@ -157,7 +158,6 @@ impl World {
         let remove_edges = NodeIndexTupleIdMap::default();
 
         Self {
-            assets_server,
             time,
             entities,
             entity_datas,
@@ -166,7 +166,8 @@ impl World {
             remove_edges,
             table_graph,
             query_cache: QueryCache::default(),
-            id,
+            assets_server,
+            _id,
         }
     }
 
@@ -381,7 +382,7 @@ impl World {
     }
 
     /// 高效的生成 [`ColumBatch`] 中的内容
-    pub fn spawn_colum_batch(&mut self, batch: ColumBatch) -> SpawnColumnBatchIter {
+    pub fn spawn_colum_batch(&mut self, batch: ColumBatch) -> SpawnColumnBatchIter<'_> {
         self.flush();
 
         let table = batch.0;

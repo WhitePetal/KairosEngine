@@ -558,15 +558,15 @@ where
         self.verify_flushed();
 
         let sparse_pos = Self::get_sparse_pos(id.idx());
-        if self.sparse.get(sparse_pos.page).is_some() {
+        if self.sparse.get(sparse_pos.page).is_none() {
             return Err(NoSuchId);
         }
-        if self.sparse[sparse_pos.page].0[sparse_pos.slot].is_avalide() {
+        if !self.sparse[sparse_pos.page].0[sparse_pos.slot].is_avalide() {
             return Err(NoSuchId);
         }
 
         let sparse_value = &self.sparse[sparse_pos.page].0[sparse_pos.slot];
-        if sparse_value.version() == id.version() {
+        if sparse_value.version() != id.version() {
             return Err(NoSuchId);
         }
 

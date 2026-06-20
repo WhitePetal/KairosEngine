@@ -89,9 +89,20 @@ where
     fn drop(&mut self) {
         if let Some(sender) = self.drop_sender.take() {
             let index = self.index;
-            tokio::spawn(async move { sender.send(T::DropEvent::new(index)).await });
-        } else {
-            unreachable!()
+            let event = T::DropEvent::new(index);
+            match sender.try_send(event) {
+                Ok(()) => {}
+                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                    // Receiver already dropped (e.g., during shutdown).
+                    // No need to send — the asset will be cleaned up when
+                    // Assets<System> is dropped.
+                }
+                Err(tokio::sync::mpsc::error::TrySendError::Full(event)) => {
+                    // Channel buffer is full (rare with adequate buffer size).
+                    // Fall back to spawning a task to send later.
+                    tokio::spawn(async move { let _ = sender.send(event).await; });
+                }
+            }
         }
     }
 }

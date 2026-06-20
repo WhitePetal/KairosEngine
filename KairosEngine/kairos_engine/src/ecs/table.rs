@@ -150,7 +150,7 @@ impl Table {
 
     pub fn clear(&mut self) {
         for (ty, colum) in self.types.iter().zip(&self.colums) {
-            for row in 0..self.entities.len() {
+            for row in 0..self.len {
                 unsafe {
                     let removed = colum.data.as_ptr().add(row * ty.layout.size());
                     (ty.drop_fn)(removed);
@@ -437,10 +437,10 @@ impl Table {
 
 impl Drop for Table {
     fn drop(&mut self) {
-        let row_count = self.len;
+        let row_capacity = self.entities.len();
         self.clear();
         // 没有添加过Entity/Component
-        if row_count <= 0 {
+        if row_capacity <= 0 {
             return;
         }
         for (info, colum) in self.types.iter().zip(&self.colums) {
@@ -449,8 +449,9 @@ impl Drop for Table {
                     dealloc(
                         colum.data.as_ptr(),
                         // colum构造时使用的checked方法，因此这里可以unchecked
+                        // 内存是按照 capacity (entities.len()) 分配的，必须使用相同大小释放
                         Layout::from_size_align_unchecked(
-                            info.layout.size() * row_count,
+                            info.layout.size() * row_capacity,
                             info.layout.align(),
                         ),
                     );

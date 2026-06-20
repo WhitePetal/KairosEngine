@@ -57,5 +57,12 @@ impl KairosEngine {
         self.world.assets_server.handle();
     }
 
-    fn on_exit(&mut self) {}
+    fn on_exit(&mut self) {
+        // Clear all entities before shutdown to ensure AssetHandle::drop
+        // happens while the tokio runtime is still fully active.
+        // This avoids spawning tasks during World::drop when the runtime
+        // may be winding down, which can cause hangs.
+        self.world.clear();
+        self.world.assets_server.handle();
+    }
 }
