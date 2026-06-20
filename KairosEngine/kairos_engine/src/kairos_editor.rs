@@ -38,7 +38,7 @@ impl KairosEngine {
 
     fn handle_ui(&mut self, ui: &mut egui::Ui) {
         self.ui_context
-            .handle(&mut self.world.assets_server, ui, &mut self.log);
+            .handle(self.world.assets_server_mut(), ui, &mut self.log);
     }
 
     fn draw_ui(&mut self, ui: &mut egui::Ui) {
@@ -54,7 +54,7 @@ impl KairosEngine {
     }
 
     fn handle_asset_server(&mut self) {
-        self.world.assets_server.handle();
+        self.world.handle_assets_server();
     }
 
     fn on_exit(&mut self) {
@@ -63,6 +63,6 @@ impl KairosEngine {
         // This avoids spawning tasks during World::drop when the runtime
         // may be winding down, which can cause hangs.
         self.world.clear();
-        self.world.assets_server.handle();
+        self.world.handle_assets_server();
     }
 }

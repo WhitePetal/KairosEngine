@@ -17,7 +17,7 @@ pub struct KairosGame {}
 
 impl KairosGame {
     pub fn new(world: &mut World) -> Self {
-        let assets_server = &mut world.assets_server;
+        let assets_server = world.assets_server_mut();
         assets_server.push(TextureAssetsSystem::new());
         assets_server.push(ShaderAssetsSystem::new());
         assets_server.push(MaterialAssetsSystem::new());

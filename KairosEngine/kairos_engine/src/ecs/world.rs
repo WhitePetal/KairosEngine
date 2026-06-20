@@ -127,7 +127,7 @@ pub struct World {
 
     query_cache: QueryCache,
 
-    pub assets_server: AssetsServer,
+    assets_server: AssetsServer,
 
     // 后面这里的Scene概念应该会改为Chunk概念
     // 由Game里的各个功能组件/System来做区块划分并通过类似TagComponent进行控制
@@ -768,6 +768,21 @@ impl World {
                 table,
             ))
         }
+    }
+
+    #[inline(always)]
+    pub fn assets_server(&self) -> &AssetsServer {
+        &self.assets_server
+    }
+
+    #[inline(always)]
+    pub fn assets_server_mut(&mut self) -> &mut AssetsServer {
+        &mut self.assets_server
+    }
+
+    #[inline(always)]
+    pub fn handle_assets_server(&mut self) {
+        self.assets_server.handle();
     }
 }
 
