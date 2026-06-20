@@ -1,7 +1,7 @@
 use std::{
     alloc::{self, Layout, alloc, dealloc},
     any::{TypeId, type_name},
-    fmt::{Debug, Display},
+    fmt::Debug,
     ops::{Deref, DerefMut},
     ptr::{self, NonNull},
 };
@@ -37,7 +37,7 @@ pub struct ComponentTypeInfo {
     layout: Layout,
     drop_fn: unsafe fn(*mut u8),
     #[cfg(debug_assertions)]
-    type_name: &'static str,
+    _type_name: &'static str,
 }
 impl ComponentTypeInfo {
     pub fn of<T: Component>() -> Self {
@@ -46,7 +46,7 @@ impl ComponentTypeInfo {
             layout: Layout::new::<T>(),
             drop_fn: drop_component::<T>,
             #[cfg(debug_assertions)]
-            type_name: core::any::type_name::<T>(),
+            _type_name: core::any::type_name::<T>(),
         }
     }
 

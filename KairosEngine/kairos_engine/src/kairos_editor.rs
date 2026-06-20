@@ -1,6 +1,5 @@
 use crate::{
-    ecs::world::World,
-    graphics::graphics_graph::GraphicsCommand, kairos_game::KairosGame, log::Log,
+    ecs::world::World, graphics::graphics_graph::GraphicsCommand, kairos_game::KairosGame, log::Log,
 };
 use egui::Visuals;
 

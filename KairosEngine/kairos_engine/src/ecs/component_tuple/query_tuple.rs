@@ -1411,7 +1411,6 @@ impl<Q: Query> PreparedQuery<Q> {
             *self = Self::prepare(world)
         }
 
-        let entity_datas = world.entity_datas();
         let tables = world.table_graph();
 
         unsafe { PreparedQueryIter::new(tables, self.states.iter()) }

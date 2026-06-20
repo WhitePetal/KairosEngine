@@ -1,13 +1,9 @@
 use std::{any::TypeId, hash::Hash, ptr::NonNull};
 
-use kairos_ecs_macros::ComponentTuple;
-
 use crate::ecs::{
     component::{Component, MissingComponent},
     table::ComponentTypeInfo,
 };
-
-type ComponentWriter = Box<dyn FnOnce(*mut u8)>;
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct ComponentTupleKey(TypeId);

@@ -1,7 +1,6 @@
 use core::error;
 use std::{
     array, fmt,
-    iter::Zip,
     ops::{Index, IndexMut, Range},
     slice::Iter,
     sync::atomic::{AtomicUsize, Ordering},
@@ -13,6 +12,7 @@ use crate::ecs::{
 };
 
 pub mod entity_stroge;
+#[cfg(test)]
 mod test;
 
 pub use entity_stroge::*;

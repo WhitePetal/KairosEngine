@@ -1,7 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use std::collections::{HashMap, HashSet};
 
 use petgraph::{
     Direction::{Incoming, Outgoing},
@@ -11,7 +8,6 @@ use petgraph::{
 };
 
 use crate::{
-    asset_loader::assets::{AssetHandle, MeshAssetsSystem},
     graphics::{
         attachment::Attachment,
         graphics_graph::{

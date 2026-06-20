@@ -32,7 +32,7 @@ use crate::{
 };
 
 pub struct RenderPipeline {
-    window: Arc<Window>,
+    _window: Arc<Window>,
     pub device: Device,
     pub surface: Surface<'static>,
     pub surface_config: SurfaceConfiguration,
@@ -98,7 +98,7 @@ impl RenderPipeline {
         );
 
         Ok(Self {
-            window,
+            _window: window,
             device,
             surface,
             surface_config,
@@ -129,7 +129,7 @@ impl RenderPipeline {
                     });
                 self.encoder = Some(encoder);
                 self.internal_texture_views
-                    [InternalAttachmentId::FrameBuffer_ColorAttachment as usize] = Some(view);
+                    [InternalAttachmentId::FrameBufferColorAttachment as usize] = Some(view);
                 Ok(output)
             }
             err => Err(err),

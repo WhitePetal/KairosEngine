@@ -1,5 +1,5 @@
 mod asset;
-use std::{any::TypeId, collections::HashMap, path::PathBuf, sync::Arc};
+use std::{any::TypeId, path::PathBuf, sync::Arc};
 
 use crate::asset_loader::assets::asset::{AssetsHandler, AssetsSystem};
 use crate::types::TypeIdMap;

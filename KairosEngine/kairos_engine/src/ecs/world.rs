@@ -706,7 +706,6 @@ impl World {
         let loc = self.entity_datas.get(entity).ok_or(NoSuchId)?;
         unsafe {
             Ok(EntityRef::new(
-                &self.entity_datas,
                 &self.table_graph[loc.table_index],
                 loc.row_index,
             ))
@@ -811,9 +810,7 @@ impl<'a> Iterator for Iter<'a> {
                     }
                     let row_index = self.row_index;
                     self.row_index = self.row_index + 1;
-                    return Some(unsafe {
-                        EntityRef::new(self.entity_datas, &current.weight, row_index)
-                    });
+                    return Some(unsafe { EntityRef::new(&current.weight, row_index) });
                 }
                 None => {
                     self.current = Some(self.tables.next()?);

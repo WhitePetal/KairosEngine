@@ -10,9 +10,7 @@ use crate::ecs::{
     component::{Component, MissingComponent},
     component_tuple::{Fetch, Query, QueryOne},
     entity::Entity,
-    sparse_set::SparseSet,
     table::{Table, TableColum, TableColumMut},
-    world::EntityData,
 };
 
 struct ComponentBorrow<'a> {
@@ -284,22 +282,13 @@ impl<'a, T: Component> ComponentRefShared<'a> for &'a T {}
 /// 带组件的实体的句柄
 #[derive(Clone, Copy)]
 pub struct EntityRef<'a> {
-    entity_datas: &'a SparseSet<Entity, EntityData>,
     table: &'a Table,
     row_index: usize,
 }
 
 impl<'a> EntityRef<'a> {
-    pub unsafe fn new(
-        entity_datas: &'a SparseSet<Entity, EntityData>,
-        table: &'a Table,
-        row_index: usize,
-    ) -> Self {
-        Self {
-            entity_datas,
-            table,
-            row_index,
-        }
+    pub unsafe fn new(table: &'a Table, row_index: usize) -> Self {
+        Self { table, row_index }
     }
 
     pub fn entity(&self) -> Entity {

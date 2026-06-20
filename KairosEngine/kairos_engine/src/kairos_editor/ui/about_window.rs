@@ -1,6 +1,5 @@
 use std::{any::type_name, fs};
 
-use crate::asset_loader::assets::AssetsServer;
 use crate::ecs::world::World;
 use crate::kairos_game::KairosGame;
 use crate::log::Log;

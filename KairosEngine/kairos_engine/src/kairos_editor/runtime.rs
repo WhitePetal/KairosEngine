@@ -15,9 +15,6 @@ use winit::{
     window::{Icon, Window},
 };
 
-use crate::asset_loader::assets::{
-    AssetsServer, MaterialAssetsSystem, MeshAssetsSystem, ShaderAssetsSystem, TextureAssetsSystem,
-};
 use crate::graphics::attachment::{Attachment, InternalAttachmentId};
 use crate::graphics::graphics_graph::{GraphicsCommand, GraphicsGraph};
 use crate::math::float4x4;
@@ -287,7 +284,7 @@ impl KairosEditorRuntime {
 
                     let mut egui_graphics_command = GraphicsCommand::new(2, 2, 0, 4);
                     let frame_buffer_attachment = Attachment::from_internal_id(
-                        InternalAttachmentId::FrameBuffer_ColorAttachment,
+                        InternalAttachmentId::FrameBufferColorAttachment,
                     );
                     let frame_buffer_attachment_id =
                         egui_graphics_command.create_color_attachment(frame_buffer_attachment);
