@@ -1,3 +1,4 @@
+mod audio;
 mod material;
 mod mesh;
 mod shader;
@@ -13,6 +14,7 @@ use std::{
 };
 use tokio::sync::mpsc::{self};
 
+pub use audio::AudioAssetsSystem;
 pub use material::MaterialAssetsSystem;
 pub use mesh::MeshAssetsSystem;
 pub use shader::ShaderAssetsSystem;
@@ -56,8 +58,6 @@ pub trait DropEvent: Send {
     fn get_index(&self) -> AssetIndex;
 }
 pub trait LoadedEvent<T>: Send {
-    fn new(index: AssetIndex, asset: T) -> Self;
-
     fn get_index(&self) -> AssetIndex;
 
     fn get_asset(self) -> T;
@@ -179,7 +179,7 @@ pub trait AssetsSystem: AssetsHandler {
     type AssetType;
     type LoadedEvent: LoadedEvent<Self::AssetType>;
     type DropEvent: DropEvent;
-    type Loader: AssetLoader<Self::LoadedEvent>;
+    type Loader: AssetLoader<Self::LoadedEvent, Self::AssetType>;
 
     fn get_assets(&self) -> &Assets<Self>
     where
@@ -189,12 +189,13 @@ pub trait AssetsSystem: AssetsHandler {
         Self: Sized;
 }
 
-pub trait AssetLoader<T> {
+pub trait AssetLoader<T, A> {
     fn load_asset(
         &self,
         path: PathBuf,
         asset_index: AssetIndex,
         loaded_sender: mpsc::Sender<T>,
+        // on_completed: Option<impl FnOnce(&mut A) -> () + Send + Sync + 'static>,
         denpendency_request_sender: mpsc::Sender<DependencyLoadRequestEvent>,
     );
 }
@@ -270,11 +271,18 @@ where
     pub fn load(
         &mut self,
         path: PathBuf,
+        // on_completed: Option<impl FnOnce(&mut System::AssetType) -> () + Send + Sync + 'static>,
         denpendency_request_sender: mpsc::Sender<DependencyLoadRequestEvent>,
     ) -> Arc<AssetHandle<System>> {
         let asset_index = self.load_asset_index(&path);
 
-        let asset_handle = self.load_asset_handle(&path, asset_index, denpendency_request_sender);
+        let asset_handle =
+            self.load_asset_handle(
+                &path, 
+                asset_index, 
+                // on_completed, 
+                denpendency_request_sender
+            );
 
         asset_handle
     }
@@ -304,6 +312,7 @@ where
         &mut self,
         path: &PathBuf,
         asset_index: AssetIndex,
+        // on_completed: Option<impl FnOnce(&mut System::AssetType) -> () + Send + Sync + 'static>,
         denpendency_request_sender: mpsc::Sender<DependencyLoadRequestEvent>,
     ) -> Arc<AssetHandle<System>> {
         match &self.storages[asset_index.index] {
@@ -316,6 +325,7 @@ where
                     PathBuf::from(path),
                     asset_index,
                     loaded_sender,
+                    // on_completed,
                     denpendency_request_sender,
                 );
                 let (handle, info) = self.create_asset_handle(path, asset_index);
@@ -332,6 +342,7 @@ where
                         PathBuf::from(path),
                         asset_index,
                         loaded_sender,
+                        // on_completed,
                         denpendency_request_sender,
                     );
                     let (handle, info) = self.create_asset_handle(path, asset_index);

@@ -24,3 +24,7 @@ pub fn float3(x: f32, y: f32, z: f32) -> float3 {
 pub fn float4(x: f32, y: f32, z: f32, w: f32) -> float4 {
     float4::from([x, y, z, w])
 }
+#[inline(always)]
+pub fn sin(value: f32) -> f32 {
+    value.sin()
+}

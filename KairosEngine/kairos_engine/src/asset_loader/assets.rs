@@ -1,10 +1,14 @@
 mod asset;
+use std::any::type_name;
+use std::fmt::{Debug, Display};
+use std::marker::PhantomData;
 use std::{any::TypeId, path::PathBuf, sync::Arc};
 
 use crate::asset_loader::assets::asset::{AssetsHandler, AssetsSystem};
 use crate::types::TypeIdMap;
 
 pub use asset::AssetHandle;
+pub use asset::AudioAssetsSystem;
 pub use asset::MaterialAssetsSystem;
 pub use asset::MeshAssetsSystem;
 pub use asset::ShaderAssetsSystem;
@@ -29,8 +33,13 @@ where
     T: AssetsSystem,
 {
     fn set_back(self: Box<Self>, assets_server: &mut AssetsServer) {
-        let handle = assets_server.load::<T>(self.dependency_path);
-        let _ = self.setback_sender.send(handle);
+        let handle = assets_server.load::<T>(
+            self.dependency_path, 
+            // None::<fn(&mut T::AssetType)>
+        );
+        if let Ok(handle) = handle {
+            let _ = self.setback_sender.send(handle);
+        }
     }
 }
 
@@ -60,7 +69,11 @@ impl AssetsServer {
         self.handlers.insert(type_id, Box::new(system));
     }
 
-    pub fn load<T>(&mut self, path: PathBuf) -> Arc<AssetHandle<T>>
+    pub fn load<T>(
+        &mut self,
+        path: PathBuf,
+        // on_completed: Option<impl FnOnce(&mut T::AssetType) -> () + Send + Sync + 'static>,
+    ) -> Result<Arc<AssetHandle<T>>, NotRegisterAssetSystem<T>>
     where
         T: AssetsSystem + 'static,
     {
@@ -68,11 +81,15 @@ impl AssetsServer {
 
         let handler = self.get_handler_mut::<T>();
         let Some(handler) = handler else {
-            unreachable!()
+            return Err(NotRegisterAssetSystem::default());
         };
 
         let assets = handler.get_assets_mut();
-        assets.load(path, sender)
+        Ok(assets.load(
+            path, 
+            // on_completed, 
+            sender
+        ))
     }
 
     pub fn get<T>(&self, handle: &AssetHandle<T>) -> Option<&T::AssetType>
@@ -129,3 +146,25 @@ impl AssetsServer {
             .and_then(|handler| handler.as_any_mut().downcast_mut())
     }
 }
+
+pub struct NotRegisterAssetSystem<T> {
+    _phantom: PhantomData<T>,
+}
+impl<T> Default for NotRegisterAssetSystem<T> {
+    fn default() -> Self {
+        Self {
+            _phantom: Default::default(),
+        }
+    }
+}
+impl<T> Display for NotRegisterAssetSystem<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "not register the asset system: {}", type_name::<T>())
+    }
+}
+impl<T> Debug for NotRegisterAssetSystem<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(&self, f)
+    }
+}
+impl<T> std::error::Error for NotRegisterAssetSystem<T> {}

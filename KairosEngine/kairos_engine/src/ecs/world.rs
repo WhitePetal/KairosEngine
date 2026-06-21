@@ -1,11 +1,19 @@
 use std::{
-    any::TypeId, collections::{HashMap, hash_map::Entry}, fmt::Debug, hash::{BuildHasher, BuildHasherDefault, Hasher}, ops::Add, ptr, sync::Mutex
+    any::TypeId,
+    collections::{HashMap, hash_map::Entry},
+    fmt::Debug,
+    hash::{BuildHasher, BuildHasherDefault, Hasher},
+    ops::Add,
+    ptr,
+    sync::Mutex,
 };
 
 use petgraph::graph::{Node, NodeIndex};
 
 use crate::{
-    asset_loader::assets::AssetsServer, audio::AudioEngine, ecs::{
+    asset_loader::assets::AssetsServer,
+    audio::AudioEngine,
+    ecs::{
         batch::ColumBatch,
         component::{Component, ComponentError, MissingComponent},
         component_tuple::{
@@ -21,7 +29,8 @@ use crate::{
         table::Table,
         table_graph::{InsertTarget, TableGraph, TableGraphGeneration},
         take::TakeEntity,
-    }, timer::Time
+    },
+    timer::Time,
 };
 
 #[derive(Debug)]

@@ -41,7 +41,7 @@ fn vs_main(v: a2v, instancing: InstanceInput) -> v2f {
         instancing.model_matrix_3,
     );
 
-    o.pos = matrix_vp * local_to_world * vec4f(v.vertex.xyz * 0.2, 1.0);
+    o.pos = matrix_vp * local_to_world * vec4f(v.vertex.xyz, 1.0);
     var normal_world = normalize(local_to_world * vec4f(v.normal.xyz, 0.0));
     o.color = v.color;
     o.uv = v.texcoord;

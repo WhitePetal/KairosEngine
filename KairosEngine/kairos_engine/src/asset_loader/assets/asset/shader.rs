@@ -20,10 +20,6 @@ pub struct LoadedEvent {
     asset: ShaderAsset,
 }
 impl asset::LoadedEvent<ShaderAsset> for LoadedEvent {
-    fn new(index: AssetIndex, asset: ShaderAsset) -> Self {
-        Self { index, asset }
-    }
-
     fn get_index(&self) -> AssetIndex {
         self.index
     }
@@ -70,12 +66,13 @@ impl Loader {
         Ok(())
     }
 }
-impl asset::AssetLoader<LoadedEvent> for Loader {
+impl asset::AssetLoader<LoadedEvent, ShaderAsset> for Loader {
     fn load_asset(
         &self,
         path: PathBuf,
         asset_index: AssetIndex,
         sender: mpsc::Sender<LoadedEvent>,
+        // _on_completed: Option<impl FnOnce(&mut ShaderAsset) -> () + Send + Sync + 'static>,
         _denpendency_request_sender: mpsc::Sender<DependencyLoadRequestEvent>,
     ) {
         tokio::spawn(Self::load(path, asset_index, sender));
