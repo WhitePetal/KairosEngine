@@ -1,5 +1,7 @@
 use std::{path::PathBuf, time::Duration};
 
+use kira::{clock::{ClockHandle, ClockId, ClockTime}, modulator::lfo::LfoHandle, sound::static_sound::{StaticSoundData, StaticSoundHandle}};
+
 use crate::{
     asset_loader::assets::{
         AudioAssetsSystem, MaterialAssetsSystem, MeshAssetsSystem, ShaderAssetsSystem,
@@ -18,6 +20,10 @@ pub struct KairosGame {
     audio_tweener: Option<kira::modulator::tweener::TweenerHandle>,
     audio_change_time: f32,
     audio_tweener_target: f64,
+    lfo_handle: Option<LfoHandle>,
+    audio_clock: Option<ClockHandle>,
+    audio_clock_time: Option<ClockTime>,
+    score_auido: Option<StaticSoundHandle>,
 }
 
 impl KairosGame {
@@ -42,19 +48,6 @@ impl KairosGame {
             )
             .unwrap();
 
-        let audio = assets_server.load::<AudioAssetsSystem>(
-            PathBuf::from("res/audios/arp.ogg"),
-            // Some(|audio: &mut AudioAsset| {
-            //     println!("load audio b completed");
-            // }),
-        );
-        let audio = assets_server.load::<AudioAssetsSystem>(
-            PathBuf::from("res/audios/arp.ogg"),
-            // Some(|audio: &mut AudioAsset| {
-            //     println!("load audio a completed");
-            // }),
-        );
-
         const NUM_INSTANCES_PER_ROW: i32 = 10;
         world.spawn_batch(
             (-NUM_INSTANCES_PER_ROW..NUM_INSTANCES_PER_ROW)
@@ -71,19 +64,78 @@ impl KairosGame {
                 }),
         );
 
+        // Self {
+        //     audio_tweener: world
+        //         .audio_engine_mut()
+        //         .as_mut()
+        //         .and_then(|x| x.dynamic_music().ok()),
+        //     audio_change_time: 0.0,
+        //     audio_tweener_target: 1.0,
+        // }
+
+        // Self {
+        //     audio_tweener: None,
+        //     audio_change_time: 0.0,
+        //     audio_tweener_target: 1.0,
+        //     lfo_handle: world.audio_engine_mut().as_mut().and_then(|x| x.ghost_noise().ok())
+        // }
+
+        // let audio_clock = world.audio_engine_mut().as_mut().and_then(|x| x.metronome().ok());
+        // let audio_clock_time = audio_clock.as_ref().map(|x| {
+        //     ClockTime {
+        //         clock: x.id(),
+        //         ticks: 0,
+        //         fraction: 0.0
+        //     }
+        // });
+        // Self {
+        //     audio_tweener: None,
+        //     audio_change_time: 0.0,
+        //     audio_tweener_target: 1.0,
+        //     lfo_handle: None,
+        //     audio_clock,
+        //     audio_clock_time,
+        // }
+
+        // Self {
+        //     audio_tweener: None,
+        //     audio_change_time: 0.0,
+        //     audio_tweener_target: 1.0,
+        //     lfo_handle: None,
+        //     audio_clock: None,
+        //     audio_clock_time: None,
+        //     score_auido:  world.audio_engine_mut().as_mut().and_then(|x| x.score_counter().ok())
+        // }
+
+        if let Some(audio) = world.audio_engine_mut().as_mut() {
+            audio.seamless_loop_with_intro();
+        }
         Self {
-            audio_tweener: world
-                .audio_engine_mut()
-                .as_mut()
-                .and_then(|x| x.example1().ok()),
+            audio_tweener: None,
             audio_change_time: 0.0,
             audio_tweener_target: 1.0,
+            lfo_handle: None,
+            audio_clock: None,
+            audio_clock_time: None,
+            score_auido: None,
         }
     }
 
     pub fn update(&mut self, world: &mut World) {
         world.time.update();
         let total_time = world.time.total_time().as_secs_f32();
+
+        // if let Some(audio_clock) = self.audio_clock.as_ref() {
+        //     let pre_audio_clock_time = self.audio_clock_time.as_mut().unwrap();
+        //     if let Some(audio) = world.audio_engine_mut().as_mut() {
+        //         audio.metronome_update(pre_audio_clock_time, audio_clock);
+        //     }
+        // }
+        if let Some(audio) = world.audio_engine_mut().as_mut() {
+            if let Some(sound) = &mut self.score_auido {
+                audio.score_counter_update(sound, total_time);
+            }
+        }
 
         if (total_time - self.audio_change_time) > 10.0 {
             if let Some(audio_tweener) = &mut self.audio_tweener {
