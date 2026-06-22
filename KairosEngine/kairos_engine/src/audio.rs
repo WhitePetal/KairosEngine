@@ -50,9 +50,13 @@ impl AudioEngine {
         &mut self,
         transform: TransformComponent,
     ) -> Option<ListenerHandle> {
-        self.manager
-            .add_listener(transform.position, transform.rotation)
-            .ok()
+        match self.manager.add_listener(transform.position, transform.rotation) {
+            Ok(listener) => Some(listener),
+            Err(err) => {
+                println!("add listener error: {:?}", err);
+                None
+            },
+        }
     }
 
     pub fn update(&mut self, world: &mut World, assets_server: &mut AssetsServer) {

@@ -1,5 +1,5 @@
 use kira::{
-    listener::ListenerHandle,
+    listener::{ListenerHandle, ListenerId},
     sound::static_sound::StaticSoundHandle,
     track::{SpatialTrackBuilder, SpatialTrackHandle},
 };

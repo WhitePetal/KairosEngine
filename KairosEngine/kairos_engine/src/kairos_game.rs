@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use kira::listener::ListenerHandle;
 use smallvec::smallvec;
 
 use crate::{
@@ -16,7 +17,9 @@ use crate::{
     spatial::TransformComponent,
 };
 
-pub struct KairosGame {}
+pub struct KairosGame {
+    listener: ListenerHandle,
+}
 
 impl KairosGame {
     pub fn new(engine: &mut Engine) -> Self {
@@ -68,7 +71,9 @@ impl KairosGame {
                 }),
         );
 
-        Self {}
+        Self {
+            listener
+        }
     }
 
     pub fn update(&mut self, engine: &mut Engine) {
