@@ -3,12 +3,12 @@ use std::fmt::Debug;
 use kira::{
     AudioManager, AudioManagerSettings, Capacities, DefaultBackend, Tween,
     listener::ListenerHandle,
-    sound::PlaybackState,
-    track::{MainTrackBuilder, TrackHandle},
+    sound::{PlaybackState, static_sound::{StaticSoundData, StaticSoundHandle}},
+    track::{MainTrackBuilder, TrackBuilder, TrackHandle},
 };
 
 use crate::{
-    asset_loader::assets::AssetsServer,
+    asset_loader::assets::{AssetsServer, AudioAssetHandle},
     audio::spatial_audio_volume::{
         SpatialAudioVolumeComponent, SpatialAudioVolumeState, SpatialSoundHandle,
     },
@@ -21,7 +21,7 @@ pub mod spatial_audio_volume;
 
 pub struct AudioEngine {
     manager: AudioManager,
-    lead_track: Option<TrackHandle>,
+    handle: Option<StaticSoundHandle>,
 }
 
 impl Debug for AudioEngine {
@@ -32,7 +32,7 @@ impl Debug for AudioEngine {
 
 impl AudioEngine {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let manager = AudioManager::<DefaultBackend>::new(AudioManagerSettings {
+        let mut manager = AudioManager::<DefaultBackend>::new(AudioManagerSettings {
             capacities: Capacities {
                 sub_track_capacity: 1024,
                 ..Default::default()
@@ -42,7 +42,7 @@ impl AudioEngine {
         })?;
         Ok(Self {
             manager,
-            lead_track: None,
+            handle: None,
         })
     }
 
@@ -55,6 +55,20 @@ impl AudioEngine {
             Err(err) => {
                 println!("add listener error: {:?}", err);
                 None
+            },
+        }
+    }
+
+    pub fn play(&mut self, assets_server: &mut AssetsServer, audio: AudioAssetHandle) -> bool {
+        let audio = assets_server.get(&audio);
+        match audio {
+            Some(audio) => {
+                println!("play audio");
+                let _ = self.manager.play(audio.sound_data.clone());
+                true
+            },
+            None => {
+                false
             },
         }
     }
@@ -85,8 +99,7 @@ impl AudioEngine {
                                 match audio {
                                     Some(audio) => {
                                         let play =
-                                            // TODO: loop by settings
-                                            track.play(audio.sound_data.loop_region(..));
+                                            track.play(audio.sound_data.clone());
                                         match play {
                                             Ok(mut play) => {
                                                 play.pause(Tween::default());

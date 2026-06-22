@@ -28,3 +28,7 @@ pub fn float4(x: f32, y: f32, z: f32, w: f32) -> float4 {
 pub fn sin(value: f32) -> f32 {
     value.sin()
 }
+#[inline(always)]
+pub fn sqrt(value: f32) -> f32 {
+    value.sqrt()
+}

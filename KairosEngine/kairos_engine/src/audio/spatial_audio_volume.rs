@@ -42,10 +42,11 @@ impl SpatialAudioVolumeComponent {
         audios: SmallVec<[AudioAssetHandle; 4]>,
         auto_play: bool,
     ) -> Self {
+        // 创建时关闭衰减和空间化，避免空轨道消耗大量 CPU 做无用 spatialization 运算
         let track = match audio_engine.manager.add_spatial_sub_track(
             listener,
             transform.position,
-            SpatialTrackBuilder::new(),
+            SpatialTrackBuilder::new()
         ) {
             Ok(track) => Some(track),
             Err(err) => {
