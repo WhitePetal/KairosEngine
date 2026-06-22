@@ -1,0 +1,11 @@
+source_path = "res/audios/blip.ogg"
+
+[audio_asset_settings]
+sample_rate = 48000
+reverse = false
+volume = 0.0
+playback_rate = 1.0
+panning = 0.0
+loop_start_seconds = 0.0
+loop_end_seconds = 0.476
+start_position_seconds = 0.0

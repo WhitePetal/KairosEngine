@@ -12,7 +12,7 @@ use crate::{
         },
         consts,
     },
-    audio::audio::AudioAsset,
+    audio::audio::{AudioAsset, SerializedAudioAsset},
 };
 
 pub type AudioAssetHandle = Arc<AssetHandle<AudioAssetsSystem>>;
@@ -20,7 +20,6 @@ pub type AudioAssetHandle = Arc<AssetHandle<AudioAssetsSystem>>;
 pub struct LoadedEvent {
     index: AssetIndex,
     asset: AudioAsset,
-    // on_completed: Option<Box<dyn FnOnce(&mut AudioAsset) -> () + Send + Sync>>,
 }
 
 impl Debug for LoadedEvent {
@@ -35,10 +34,6 @@ impl asset::LoadedEvent<AudioAsset> for LoadedEvent {
     }
 
     fn get_asset(self) -> AudioAsset {
-        // if let Some(on_completed) = self.on_completed.take() {
-        //     println!("audio asset on_completed: {:?}", self.index);
-        //     on_completed(&mut self.asset);
-        // }
         self.asset
     }
 }
@@ -62,51 +57,60 @@ impl asset::DropEvent for DropEvent {
 pub struct Loader {}
 
 impl Loader {
-    async fn load(
+    /// Load an audio asset from a `.audio` TOML file.
+    /// The TOML contains `meta.source_path` pointing to the original audio file
+    /// and `settings` that are applied to the decoded sound data.
+    async fn load_asset(
         path: PathBuf,
         asset_index: AssetIndex,
-        // on_completed: Option<impl FnOnce(&mut AudioAsset) -> () + Send + Sync + 'static>,
         sender: mpsc::Sender<LoadedEvent>,
     ) -> Result<(), Error> {
-        let bytes = tokio::fs::read(&path).await?;
+        let toml_bytes = tokio::fs::read(&path).await?;
+        let serialized_asset =
+            tokio::task::spawn_blocking(move || toml::from_slice::<SerializedAudioAsset>(&toml_bytes))
+                .await??;
+
+        // Read the source audio file
+        let source_path = &serialized_asset.source_path;
+        let audio_bytes = tokio::fs::read(source_path).await?;
         let sound_data = tokio::task::spawn_blocking(move || {
-            let cursor = Cursor::new(bytes);
+            let cursor = Cursor::new(audio_bytes);
             let sound_data = StaticSoundData::from_cursor(cursor)?;
             Ok::<_, Error>(sound_data)
         })
         .await??;
-        // f(&mut sound_data);
-        let asset = AudioAsset::new(sound_data);
-        // let on_completed: Option<Box<dyn for<'a> FnOnce(&'a mut AudioAsset) -> () + Send + Sync>> =
-        //     match on_completed {
-        //         Some(x) => Some(Box::new(x)),
-        //         None => None,
-        // };
+
+        // Apply saved settings to the sound data
+        let sound_data = serialized_asset.audio_asset_settings.apply_to_static_sound_data(sound_data);
+        let asset = AudioAsset { sound_data };
+
         sender
             .send(LoadedEvent {
                 index: asset_index,
-                // on_completed,
                 asset,
             })
             .await?;
         Ok(())
     }
+
+    async fn load(
+        path: PathBuf,
+        asset_index: AssetIndex,
+        sender: mpsc::Sender<LoadedEvent>,
+    ) -> Result<(), Error> {
+        Self::load_asset(path, asset_index, sender).await
+    }
 }
+
 impl asset::AssetLoader<LoadedEvent, AudioAsset> for Loader {
     fn load_asset(
         &self,
         path: PathBuf,
         asset_index: AssetIndex,
         sender: mpsc::Sender<LoadedEvent>,
-        // on_completed: Option<impl FnOnce(&mut AudioAsset) -> () + Send + Sync + 'static>,
         _denpendency_request_sender: mpsc::Sender<DependencyLoadRequestEvent>,
     ) {
-        tokio::spawn(Self::load(
-            path,
-            asset_index,
-            // on_completed,
-            sender,
-        ));
+        tokio::spawn(Self::load(path, asset_index, sender));
     }
 }
 

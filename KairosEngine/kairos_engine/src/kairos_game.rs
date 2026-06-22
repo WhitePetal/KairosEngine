@@ -4,10 +4,9 @@ use smallvec::smallvec;
 
 use crate::{
     asset_loader::assets::{
-        AudioAssetsSystem, MaterialAssetsSystem, MeshAssetsSystem, ShaderAssetsSystem,
-        TextureAssetsSystem,
+        AudioAssetsSystem, MaterialAssetsSystem, MeshAssetsSystem,
     },
-    audio::spatial_audio_volume::SpatialAudioVolumeComponent,
+    audio::{spatial_audio_volume::SpatialAudioVolumeComponent},
     graphics::{
         graphics_graph::GraphicsCommand, lod_mesh_component::LODMeshComponent,
         material_component::MaterialComponent,
@@ -33,7 +32,7 @@ impl KairosGame {
         );
 
         let blip_audio =
-            assets_server.load::<AudioAssetsSystem>(PathBuf::from("res/audios/blip.ogg"));
+            assets_server.load::<AudioAssetsSystem>(PathBuf::from("res/audios/blip.audio"));
 
         let cam_trans = TransformComponent::new(
             float3::new(0.0, 1.0, -2.0),

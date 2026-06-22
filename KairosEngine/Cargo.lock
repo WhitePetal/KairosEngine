@@ -1943,6 +1943,7 @@ dependencies = [
  "pastey 0.2.3",
  "rtrb",
  "send_wrapper",
+ "serde",
  "symphonia",
  "triple_buffer",
 ]

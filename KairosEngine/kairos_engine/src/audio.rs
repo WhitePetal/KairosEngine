@@ -81,7 +81,8 @@ impl AudioEngine {
                                 match audio {
                                     Some(audio) => {
                                         let play =
-                                            track.play(audio.sound_data.clone().loop_region(..));
+                                            // TODO: loop by settings
+                                            track.play(audio.sound_data.loop_region(..));
                                         match play {
                                             Ok(mut play) => {
                                                 play.pause(Tween::default());

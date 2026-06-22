@@ -44,7 +44,7 @@ egui-wgpu = "0.34.2"
 parking_lot = "0.12.5"
 gltf = "1.4.1"
 foldhash = "0.2.0"
-kira = "0.12.0"
+kira = { version = "0.12.0", features = ["serde"] }
 mint = "0.5"
 # rapier3d = { version = "0.32.0", features = [ "simd-nightly", "parallel", "serde-serialize" ] }
 # puffin = "0.20.0"
