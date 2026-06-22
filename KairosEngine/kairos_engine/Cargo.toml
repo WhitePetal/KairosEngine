@@ -7,12 +7,14 @@ license = "MIT OR Apache-2.0"
 
 [dev-dependencies]
 criterion = "0.8.2"
+smallvec = { version = "1.15.2", features = ["malloc_size_of"] }
 
 [dependencies]
 kairos_ecs_macros = { path = "../kairos_ecs_macros" }
 toml = "1.1.2"
-anyhow = "1.0"
+anyhow = { version = "1.0" }
 num_enum = "0.7.6"
+smallvec = { version = "1.15.2", features = ["union", "serde", "const_new", "write"] }
 crossbeam-channel = "0.5.15"
 bytemuck = { version = "1.25.0", features = ["derive"] }
 tokio = { version = "1.52.3", features = ["full"] }
@@ -43,8 +45,10 @@ parking_lot = "0.12.5"
 gltf = "1.4.1"
 foldhash = "0.2.0"
 kira = "0.12.0"
+mint = "0.5"
 # rapier3d = { version = "0.32.0", features = [ "simd-nightly", "parallel", "serde-serialize" ] }
 # puffin = "0.20.0"
+
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.4"

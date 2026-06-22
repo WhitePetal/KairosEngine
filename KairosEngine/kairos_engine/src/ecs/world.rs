@@ -10,27 +10,22 @@ use std::{
 
 use petgraph::graph::{Node, NodeIndex};
 
-use crate::{
-    asset_loader::assets::AssetsServer,
-    audio::AudioEngine,
-    ecs::{
-        batch::ColumBatch,
-        component::{Component, ComponentError, MissingComponent},
-        component_tuple::{
-            CachedQuery, ComponentTuple, ComponentTupleKey, DynamicComponentTuple, Fetch, Query,
-            QueryBorrow, QueryCache, QueryMut, QueryOne, QueryOneError, View, ViewBorrow,
-            assert_borrow, assert_distinct,
-        },
-        consts,
-        entity::{Entity, EntityFlag},
-        entity_ref::{ComponentRef, EntityRef},
-        id::Id,
-        sparse_set::{self, AllocManyState, EntityStorage, NoSuchId, SparseSet},
-        table::Table,
-        table_graph::{InsertTarget, TableGraph, TableGraphGeneration},
-        take::TakeEntity,
+use crate::ecs::{
+    batch::ColumBatch,
+    component::{Component, ComponentError, MissingComponent},
+    component_tuple::{
+        CachedQuery, ComponentTuple, ComponentTupleKey, DynamicComponentTuple, Fetch, Query,
+        QueryBorrow, QueryCache, QueryMut, QueryOne, QueryOneError, View, ViewBorrow,
+        assert_borrow, assert_distinct,
     },
-    timer::Time,
+    consts,
+    entity::{Entity, EntityFlag},
+    entity_ref::{ComponentRef, EntityRef},
+    id::Id,
+    sparse_set::{self, AllocManyState, EntityStorage, NoSuchId, SparseSet},
+    table::Table,
+    table_graph::{InsertTarget, TableGraph, TableGraphGeneration},
+    take::TakeEntity,
 };
 
 #[derive(Debug)]
@@ -117,8 +112,6 @@ type TupleIdMap<V> = HashMap<ComponentTupleKey, V, BuildHasherDefault<TupleIdHas
 
 #[derive(Debug)]
 pub struct World {
-    pub time: Time,
-
     entities: EntityStorage,
     entity_datas: SparseSet<Entity, EntityData>,
     table_graph: TableGraph,
@@ -128,10 +121,6 @@ pub struct World {
     remove_edges: NodeIndexTupleIdMap<NodeIndex>,
 
     query_cache: QueryCache,
-
-    audio_engine: Option<AudioEngine>,
-
-    assets_server: AssetsServer,
 
     // 后面这里的Scene概念应该会改为Chunk概念
     // 由Game里的各个功能组件/System来做区块划分并通过类似TagComponent进行控制
@@ -150,10 +139,6 @@ impl World {
             next
         };
 
-        let assets_server = AssetsServer::new();
-        let audio_engine = AudioEngine::new();
-        let time = Time::new();
-
         let entities = EntityStorage::new(consts::WORLD_ENTITIES_CAPACITY);
         let entity_datas = SparseSet::new(consts::WORLD_ENTITIES_CAPACITY);
         let table_graph = TableGraph::new(consts::WORLD_TABLE_GRAPH_CAPACITY);
@@ -163,7 +148,6 @@ impl World {
         let remove_edges = NodeIndexTupleIdMap::default();
 
         Self {
-            time,
             entities,
             entity_datas,
             tuple_to_table,
@@ -171,8 +155,6 @@ impl World {
             remove_edges,
             table_graph,
             query_cache: QueryCache::default(),
-            audio_engine,
-            assets_server,
             _id,
         }
     }
@@ -772,31 +754,6 @@ impl World {
                 table,
             ))
         }
-    }
-
-    #[inline(always)]
-    pub fn assets_server(&self) -> &AssetsServer {
-        &self.assets_server
-    }
-
-    #[inline(always)]
-    pub fn assets_server_mut(&mut self) -> &mut AssetsServer {
-        &mut self.assets_server
-    }
-
-    #[inline(always)]
-    pub fn handle_assets_server(&mut self) {
-        self.assets_server.handle();
-    }
-
-    #[inline(always)]
-    pub fn audio_engine(&self) -> &Option<AudioEngine> {
-        &self.audio_engine
-    }
-
-    #[inline(always)]
-    pub fn audio_engine_mut(&mut self) -> &mut Option<AudioEngine> {
-        &mut self.audio_engine
     }
 }
 

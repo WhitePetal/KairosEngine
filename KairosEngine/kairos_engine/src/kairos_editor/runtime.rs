@@ -1,5 +1,6 @@
 use std::{
     error::Error,
+    path::Path,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -78,7 +79,7 @@ pub struct KairosEditorRuntime {
     render_pipeline: Arc<Mutex<Option<RenderPipeline>>>,
     egui_ctx: egui::Context,
     egui_state: Option<egui_winit::State>,
-    engine: KairosEngine,
+    kairos_engine: KairosEngine,
     repaint_at: Option<Instant>,
     frame_rate_counter: FrameRateCounter,
     didi_exit: bool,
@@ -103,7 +104,7 @@ impl KairosEditorRuntime {
             render_pipeline: Arc::new(Mutex::new(None)),
             egui_ctx,
             egui_state: None,
-            engine: KairosEngine::new()?,
+            kairos_engine: KairosEngine::new()?,
             repaint_at: None,
             frame_rate_counter: FrameRateCounter::new(),
             didi_exit: false,
@@ -207,7 +208,7 @@ impl KairosEditorRuntime {
             return;
         };
 
-        self.engine.update();
+        self.kairos_engine.update();
 
         let mut should_close = false;
         let mut repaint_delay = None;
@@ -230,11 +231,11 @@ impl KairosEditorRuntime {
                     let raw_input = egui_state.take_egui_input(&window);
 
                     let full_output = self.egui_ctx.run_ui(raw_input, |ui| {
-                        graphics_commands.append(&mut self.engine.render_ui());
+                        graphics_commands.append(&mut self.kairos_engine.render_ui());
 
-                        self.engine.handle_ui(ui);
+                        self.kairos_engine.handle_ui(ui);
 
-                        self.engine.draw_ui(ui);
+                        self.kairos_engine.draw_ui(ui);
                     });
 
                     egui_state.handle_platform_output(&window, full_output.platform_output);
@@ -313,7 +314,7 @@ impl KairosEditorRuntime {
 
                     let graphics_graph = GraphicsGraph::build(graphics_commands);
                     render_pipeline.present(
-                        self.engine.world.assets_server_mut(),
+                        &mut self.kairos_engine.engine.assets_server,
                         output,
                         graphics_graph,
                     );
@@ -353,7 +354,7 @@ impl KairosEditorRuntime {
             self.set_repaint_delay_from_output(delay);
         }
 
-        self.engine.handle_asset_server();
+        self.kairos_engine.handle_asset_server();
     }
 
     fn queue_repaint_after(&mut self, delay: Duration) {
@@ -404,7 +405,7 @@ impl KairosEditorRuntime {
 
     fn shutdown(&mut self, event_loop: &ActiveEventLoop) {
         if !self.didi_exit {
-            self.engine.on_exit();
+            self.kairos_engine.on_exit();
             self.didi_exit = true;
         }
 

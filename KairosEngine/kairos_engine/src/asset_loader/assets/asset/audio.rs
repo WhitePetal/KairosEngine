@@ -1,4 +1,4 @@
-use std::{fmt::Debug, io::Cursor, path::PathBuf};
+use std::{fmt::Debug, io::Cursor, path::PathBuf, sync::Arc};
 
 use anyhow::Error;
 use kira::sound::static_sound::StaticSoundData;
@@ -7,13 +7,15 @@ use tokio::sync::mpsc;
 use crate::{
     asset_loader::{
         assets::{
-            DependencyLoadRequestEvent,
+            AssetHandle, DependencyLoadRequestEvent,
             asset::{self, AssetIndex, Assets, AssetsHandler, AssetsSystem},
         },
         consts,
     },
     audio::audio::AudioAsset,
 };
+
+pub type AudioAssetHandle = Arc<AssetHandle<AudioAssetsSystem>>;
 
 pub struct LoadedEvent {
     index: AssetIndex,
@@ -32,7 +34,7 @@ impl asset::LoadedEvent<AudioAsset> for LoadedEvent {
         self.index
     }
 
-    fn get_asset(mut self) -> AudioAsset {
+    fn get_asset(self) -> AudioAsset {
         // if let Some(on_completed) = self.on_completed.take() {
         //     println!("audio asset on_completed: {:?}", self.index);
         //     on_completed(&mut self.asset);
@@ -100,10 +102,10 @@ impl asset::AssetLoader<LoadedEvent, AudioAsset> for Loader {
         _denpendency_request_sender: mpsc::Sender<DependencyLoadRequestEvent>,
     ) {
         tokio::spawn(Self::load(
-            path, 
-            asset_index, 
-            // on_completed, 
-            sender
+            path,
+            asset_index,
+            // on_completed,
+            sender,
         ));
     }
 }
@@ -139,6 +141,12 @@ impl AssetsHandler for AudioAssetsSystem {
     #[inline(always)]
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
+    }
+}
+
+impl Default for AudioAssetsSystem {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

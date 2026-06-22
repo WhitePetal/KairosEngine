@@ -108,6 +108,13 @@ impl AssetsHandler for ShaderAssetsSystem {
         self
     }
 }
+
+impl Default for ShaderAssetsSystem {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AssetsSystem for ShaderAssetsSystem {
     type AssetType = ShaderAsset;
 

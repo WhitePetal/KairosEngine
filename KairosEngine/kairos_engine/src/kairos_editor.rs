@@ -1,5 +1,6 @@
 use crate::{
-    ecs::world::World, graphics::graphics_graph::GraphicsCommand, kairos_game::KairosGame, log::Log,
+    asset_loader::assets::AssetsServer, audio::AudioEngine, ecs::world::World,
+    graphics::graphics_graph::GraphicsCommand, kairos_game::KairosGame, log::Log, timer::Time,
 };
 use egui::Visuals;
 
@@ -9,8 +10,31 @@ pub mod runtime;
 pub mod serialize_asset;
 pub mod ui;
 
+pub struct Engine {
+    pub time: Time,
+    pub world: World,
+    pub audio_engine: AudioEngine,
+    pub assets_server: AssetsServer,
+}
+
+impl Engine {
+    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        let time = Time::new();
+        let world = World::new();
+        let assets_server = AssetsServer::new();
+        let audio_engine = AudioEngine::new()?;
+
+        Ok(Self {
+            time,
+            world,
+            audio_engine,
+            assets_server,
+        })
+    }
+}
+
 pub struct KairosEngine {
-    world: World,
+    engine: Engine,
     game: KairosGame,
     ui_context: ui::Context,
     log: Log,
@@ -18,13 +42,13 @@ pub struct KairosEngine {
 
 impl KairosEngine {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let mut world = World::new();
-        let game = KairosGame::new(&mut world);
+        let mut engine = Engine::new()?;
+        let game = KairosGame::new(&mut engine);
         let ui_context = ui::Context::new();
         let log = Log::new();
 
         Ok(Self {
-            world,
+            engine,
             game,
             ui_context,
             log,
@@ -32,12 +56,12 @@ impl KairosEngine {
     }
 
     fn update(&mut self) {
-        self.game.update(&mut self.world);
+        self.game.update(&mut self.engine);
     }
 
     fn handle_ui(&mut self, ui: &mut egui::Ui) {
         self.ui_context
-            .handle(self.world.assets_server_mut(), ui, &mut self.log);
+            .handle(&mut self.engine.assets_server, ui, &mut self.log);
     }
 
     fn draw_ui(&mut self, ui: &mut egui::Ui) {
@@ -49,11 +73,11 @@ impl KairosEngine {
     }
 
     fn render_ui(&mut self) -> Vec<GraphicsCommand> {
-        self.ui_context.render(&mut self.world, &mut self.game)
+        self.ui_context.render(&mut self.engine, &mut self.game)
     }
 
     fn handle_asset_server(&mut self) {
-        self.world.handle_assets_server();
+        self.engine.assets_server.handle();
     }
 
     fn on_exit(&mut self) {
@@ -61,7 +85,7 @@ impl KairosEngine {
         // happens while the tokio runtime is still fully active.
         // This avoids spawning tasks during World::drop when the runtime
         // may be winding down, which can cause hangs.
-        self.world.clear();
-        self.world.handle_assets_server();
+        self.engine.world.clear();
+        self.engine.assets_server.handle();
     }
 }

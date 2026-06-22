@@ -14,6 +14,7 @@ use std::{
 };
 use tokio::sync::mpsc::{self};
 
+pub use audio::AudioAssetHandle;
 pub use audio::AudioAssetsSystem;
 pub use material::MaterialAssetsSystem;
 pub use mesh::MeshAssetsSystem;
@@ -175,7 +176,7 @@ pub trait AssetsHandler: Any + Debug {
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
-pub trait AssetsSystem: AssetsHandler {
+pub trait AssetsSystem: AssetsHandler + Default {
     type AssetType;
     type LoadedEvent: LoadedEvent<Self::AssetType>;
     type DropEvent: DropEvent;
@@ -276,13 +277,12 @@ where
     ) -> Arc<AssetHandle<System>> {
         let asset_index = self.load_asset_index(&path);
 
-        let asset_handle =
-            self.load_asset_handle(
-                &path, 
-                asset_index, 
-                // on_completed, 
-                denpendency_request_sender
-            );
+        let asset_handle = self.load_asset_handle(
+            &path,
+            asset_index,
+            // on_completed,
+            denpendency_request_sender,
+        );
 
         asset_handle
     }

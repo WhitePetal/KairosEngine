@@ -393,8 +393,10 @@ impl<'de> Deserialize<'de> for float2 {
 pub struct float3(pub f32x4);
 
 impl float3 {
+    pub const ONE: float3 = float3::new(1.0, 1.0, 1.0);
+
     #[inline(always)]
-    pub fn new(x: f32, y: f32, z: f32) -> Self {
+    pub const fn new(x: f32, y: f32, z: f32) -> Self {
         Self(f32x4::from_array([x, y, z, 0.0]))
     }
     #[inline(always)]

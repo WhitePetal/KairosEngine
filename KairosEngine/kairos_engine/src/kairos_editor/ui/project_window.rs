@@ -1,8 +1,8 @@
 use std::{any::type_name, fs, path::Path};
 
 use crate::{
-    ecs::world::World,
     kairos_editor::{
+        Engine,
         project_path_tree::{ProjectPath, ProjectPathGraph},
         ui::Messager,
     },
@@ -96,7 +96,7 @@ impl Drawer for ProjectWindow {
 
     fn render(
         &self,
-        _world: &mut World,
+        _engine: &mut Engine,
         _game: &mut KairosGame,
         _messager: &mut Messager,
     ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {

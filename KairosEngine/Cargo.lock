@@ -1892,6 +1892,7 @@ dependencies = [
  "kairos_ecs_macros",
  "kira",
  "log",
+ "mint",
  "native-dialog",
  "num_enum",
  "objc2 0.6.4",
@@ -1904,6 +1905,7 @@ dependencies = [
  "rayon",
  "rkyv",
  "serde",
+ "smallvec",
  "sonic-rs",
  "tokio",
  "toml",
@@ -2086,6 +2088,12 @@ checksum = "6a1b95cd5421ec55b445b5ae102f5ea0e768de1f82bd3001e11f426c269c3aea"
 dependencies = [
  "libc",
 ]
+
+[[package]]
+name = "malloc_size_of"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5d719de8b8f230028cf8192ae4c1b25267cd6b8a99d2747d345a70b8c81aa13"
 
 [[package]]
 name = "maybe-rayon"
@@ -3793,6 +3801,10 @@ name = "smallvec"
 version = "1.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ed6a63f02c8539c91a8685a86f4099661ba3da017932f6ebbea6de3f0fa7c90"
+dependencies = [
+ "malloc_size_of",
+ "serde",
+]
 
 [[package]]
 name = "smithay-client-toolkit"

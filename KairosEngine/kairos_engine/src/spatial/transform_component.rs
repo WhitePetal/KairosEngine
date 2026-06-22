@@ -3,6 +3,7 @@ use crate::{
     math::{float3, float4x4, quaternion},
 };
 
+#[derive(Debug, Clone, Copy)]
 pub struct TransformComponent {
     pub position: float3,
     pub rotation: quaternion,

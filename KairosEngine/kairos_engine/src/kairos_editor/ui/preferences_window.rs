@@ -1,7 +1,10 @@
 use std::{any::type_name, fs};
 
 use crate::{
-    ecs::world::World, kairos_editor::ui::Messager, kairos_game::KairosGame, log::Log, math,
+    kairos_editor::{Engine, ui::Messager},
+    kairos_game::KairosGame,
+    log::Log,
+    math,
 };
 use egui::{self, Vec2};
 use serde::{Deserialize, Serialize};
@@ -155,7 +158,7 @@ impl Drawer for PreferencesWindow {
 
     fn render(
         &self,
-        _world: &mut World,
+        _engine: &mut Engine,
         _game: &mut KairosGame,
         _messager: &mut Messager,
     ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {

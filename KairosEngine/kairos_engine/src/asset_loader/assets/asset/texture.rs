@@ -132,6 +132,12 @@ impl AssetsHandler for TextureAssetsSystem {
     }
 }
 
+impl Default for TextureAssetsSystem {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AssetsSystem for TextureAssetsSystem {
     type AssetType = TextureAsset;
 

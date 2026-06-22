@@ -141,6 +141,12 @@ impl AssetsHandler for MaterialAssetsSystem {
     }
 }
 
+impl Default for MaterialAssetsSystem {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AssetsSystem for MaterialAssetsSystem {
     type AssetType = MaterialAsset;
 

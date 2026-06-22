@@ -113,6 +113,12 @@ impl AssetsHandler for MeshAssetsSystem {
     }
 }
 
+impl Default for MeshAssetsSystem {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AssetsSystem for MeshAssetsSystem {
     type AssetType = MeshAsset;
 

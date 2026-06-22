@@ -1,19 +1,18 @@
 use std::{any::type_name, fs};
 
-use crate::ecs::world::World;
 use crate::kairos_game::KairosGame;
 use crate::log::Log;
 use egui::{self, Vec2};
 use serde::{Deserialize, Serialize};
 use toml::from_str;
 
-use crate::kairos_editor::consts;
 use crate::kairos_editor::ui::Messager;
 use crate::kairos_editor::ui::docking_tab::window_state::WindowState;
 use crate::kairos_editor::ui::{
     Drawer, paths,
     ui_style_fields::{FloatFieldEditViewType, FloatStyleField, StyleField},
 };
+use crate::kairos_editor::{Engine, consts};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AboutWindowStyle {
@@ -134,7 +133,7 @@ impl Drawer for AboutWindow {
 
     fn render(
         &self,
-        _world: &mut World,
+        _engine: &mut Engine,
         _game: &mut KairosGame,
         _messager: &mut Messager,
     ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {
