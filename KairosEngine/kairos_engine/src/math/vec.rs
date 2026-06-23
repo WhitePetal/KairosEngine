@@ -406,6 +406,7 @@ pub struct float3(pub f32x4);
 
 impl float3 {
     pub const ONE: float3 = float3::new(1.0, 1.0, 1.0);
+    pub const ZERO: float3 = float3::new(0.0, 0.0, 0.0);
 
     #[inline(always)]
     pub const fn new(x: f32, y: f32, z: f32) -> Self {

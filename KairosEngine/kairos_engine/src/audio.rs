@@ -1,22 +1,11 @@
 use std::fmt::Debug;
 
 use kira::{
-    AudioManager, AudioManagerSettings, Capacities, DefaultBackend, Tween,
-    listener::ListenerHandle,
-    sound::{
-        PlaybackState,
-        static_sound::{StaticSoundData, StaticSoundHandle},
-    },
-    track::{MainTrackBuilder, TrackBuilder, TrackHandle},
+    AudioManager, AudioManagerSettings, Capacities, DefaultBackend, listener::ListenerHandle, track::MainTrackBuilder,
 };
 
 use crate::{
-    asset_loader::assets::{AssetsServer, AudioAssetHandle},
-    audio::spatial_audio::{SpatialAudioConfig, SpatialAudioTracks, spatial_audio_listener::SpatialAudioListenerComponent, spatial_audio_volume::{
-        SpatialAudioVolumeComponent, SpatialAudioVolumeState, SpatialSoundHandle,
-    }},
-    ecs::world::World,
-    spatial::TransformComponent,
+    asset_loader::assets::AssetsServer, audio::spatial_audio::{SpatialAudioConfig, SpatialAudioTracks}, ecs::world::World, math::{float3, quaternion},
 };
 
 pub mod consts;
@@ -41,7 +30,8 @@ impl AudioEngine {
                 sub_track_capacity: 1024,
                 ..Default::default()
             },
-            main_track_builder: MainTrackBuilder::new().sound_capacity(1024),
+            internal_buffer_size: 2048,
+            main_track_builder: MainTrackBuilder::new().sound_capacity(2048),
             ..Default::default()
         })?;
         let spatial_audio_config = SpatialAudioConfig::new(consts::MAX_SPATIAL_TRACK_COUNT, consts::MAX_SPATIAL_LISTENER_COUNT, consts::SPATIAL_AUDIO_CUT_OFF_DISTANCE);
@@ -52,115 +42,12 @@ impl AudioEngine {
         })
     }
 
-    pub fn add_spatial_listener(
-        &mut self,
-        transform: TransformComponent,
-    ) -> Option<ListenerHandle> {
-        match self
-            .manager
-            .add_listener(transform.position, transform.rotation)
-        {
-            Ok(listener) => Some(listener),
-            Err(err) => {
-                println!("add listener error: {:?}", err);
-                None
-            }
-        }
+    pub fn create_listener(&mut self) -> Option<ListenerHandle> {
+        self.manager.add_listener(float3::ZERO, quaternion::IDENTITY).ok()
     }
 
-    pub fn update(&mut self, world: &mut World, assets_server: &mut AssetsServer) {
+    pub fn update(&mut self, assets_server: &mut AssetsServer, world: &mut World) {
         // spatial audio volumes system
-
-        let listeners = world.query_mut::<(&TransformComponent, &SpatialAudioListenerComponent)>().into_iter();
-        self.spatial_tracks.update_listeners(listeners);
-
-        let spatial_audio_volumes = world.query_mut::<(&TransformComponent, &mut SpatialAudioVolumeComponent)>().into_iter();
-        self.spatial_tracks.update_audios(spatial_audio_volumes);
-
-        // 状态机处理需要独立的可变 query（上一个 query 已随 update_audios 消费掉）
-        let spatial_audio_volumes = world.query_mut::<(&TransformComponent, &mut SpatialAudioVolumeComponent)>().into_iter();
-        for (trans, volume) in spatial_audio_volumes {
-            let Some(track) = &mut volume.track else {
-                continue;
-            };
-            match volume.state {
-                SpatialAudioVolumeState::Created => {
-                    if volume.auto_play {
-                        volume.state = SpatialAudioVolumeState::WaitLoading;
-                    }
-                }
-                SpatialAudioVolumeState::WaitLoading => {
-                    let mut loaded = true;
-                    let audios = &volume.audios;
-                    let audio_handles = &mut volume.audio_handles;
-                    for i in 0..audios.len() {
-                        let handle = &mut audio_handles[i];
-                        match handle {
-                            SpatialSoundHandle::None => {
-                                let audio = assets_server.get(&audios[i].clone());
-                                match audio {
-                                    Some(audio) => {
-                                        let play = track.play(audio.sound_data.clone());
-                                        match play {
-                                            Ok(mut play) => {
-                                                play.pause(Tween::default());
-                                                *handle = SpatialSoundHandle::Some(play);
-                                            }
-                                            Err(err) => {
-                                                println!("play sound error: {:?}", err);
-                                                *handle = SpatialSoundHandle::Err
-                                            }
-                                        }
-                                    }
-                                    None => {
-                                        loaded = false;
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-
-                    if loaded {
-                        for handle in audio_handles {
-                            match handle {
-                                SpatialSoundHandle::Some(handle) => {
-                                    handle.resume(Tween::default());
-                                }
-                                _ => {}
-                            }
-                        }
-                        volume.state = SpatialAudioVolumeState::Playing;
-                    }
-                }
-                SpatialAudioVolumeState::Playing => {
-                    let mut completed = true;
-                    let audio_handles = &mut volume.audio_handles;
-                    for handle in audio_handles {
-                        match handle {
-                            SpatialSoundHandle::Some(handle) => {
-                                if handle.state() != PlaybackState::Stopped {
-                                    completed = false;
-                                    break;
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                    if completed {
-                        volume.state = SpatialAudioVolumeState::Completed;
-                    } else {
-                        track.set_position(trans.position, Tween::default());
-                    }
-                }
-                SpatialAudioVolumeState::Paused => {
-                    todo!()
-                }
-                SpatialAudioVolumeState::Completed => {
-                    // no do nothing
-                    // TODO: if auto_destroy, do destroy now
-                }
-            }
-        }
+        self.spatial_tracks.update(assets_server, &mut self.manager,  world);
     }
 }

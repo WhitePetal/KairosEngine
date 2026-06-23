@@ -1,27 +1,17 @@
 use std::path::PathBuf;
 
-use kira::{listener::ListenerHandle, sound::static_sound::StaticSoundData};
 use smallvec::smallvec;
 
 use crate::{
     asset_loader::assets::{
-        AudioAssetHandle, AudioAssetsSystem, MaterialAssetsSystem, MeshAssetsSystem,
-    },
-    audio::spatial_audio::spatial_audio_volume::SpatialAudioVolumeComponent,
-    graphics::{
+        AudioAssetsSystem, MaterialAssetsSystem, MeshAssetsSystem,
+    }, audio::spatial_audio::{spatial_audio_listener::SpatialAudioListenerComponent, spatial_audio_volume::SpatialAudioVolumeComponent}, graphics::{
         graphics_graph::GraphicsCommand, lod_mesh_component::LODMeshComponent,
         material_component::MaterialComponent,
-    },
-    kairos_editor::Engine,
-    math::{self, float3, quaternion},
-    spatial::TransformComponent,
+    }, kairos_editor::Engine, math::{self, float3, quaternion}, spatial::TransformComponent,
 };
 
-pub struct KairosGame {
-    listener: ListenerHandle,
-    audio: AudioAssetHandle,
-    played: bool,
-}
+pub struct KairosGame {}
 
 impl KairosGame {
     pub fn new(engine: &mut Engine) -> Self {
@@ -70,9 +60,15 @@ impl KairosGame {
         let cam_rotation = q_forward * q_roll;
         let cam_trans =
             TransformComponent::new(float3::new(0.0, 1.0, -2.0), cam_rotation, float3::ONE);
-        let listener = engine.audio_engine.add_spatial_listener(cam_trans).unwrap();
 
-        const NUM_INSTANCES_PER_ROW: i32 = 1;
+        if let Some(listneer) = engine.audio_engine.create_listener() {
+            engine.world.spawn((cam_trans, SpatialAudioListenerComponent {
+                handle: listneer,
+                priority: 100
+            }));
+        }
+
+        const NUM_INSTANCES_PER_ROW: i32 = 20;
         engine.world.spawn_batch(
             (-NUM_INSTANCES_PER_ROW..NUM_INSTANCES_PER_ROW)
                 .flat_map(|z| (-NUM_INSTANCES_PER_ROW..NUM_INSTANCES_PER_ROW).map(move |x| (x, z)))
@@ -83,9 +79,6 @@ impl KairosGame {
                     let transform = TransformComponent::new(position, rotation, scale);
                     let audios = smallvec![blip_audio.clone()];
                     let spatial_audio_volume = SpatialAudioVolumeComponent::new(
-                        &mut engine.audio_engine,
-                        &listener,
-                        transform,
                         audios,
                         true,
                     );
@@ -99,11 +92,7 @@ impl KairosGame {
                 }),
         );
 
-        Self {
-            listener,
-            audio: blip_audio,
-            played: false,
-        }
+        Self {}
     }
 
     pub fn update(&mut self, engine: &mut Engine) {
@@ -116,18 +105,14 @@ impl KairosGame {
             .into_iter();
         transfoms.for_each(|trans| {
             let position = &mut trans.position;
-            let z = position.z();
-            let x = math::sin(z * 4.0 + total_time);
-            *position = float3::new(x, position.y(), z);
+            let x = position.x();
+            let y = math::sin(x * 4.0 + total_time);
+            *position = float3::new(x, y, position.z());
         });
-
-        // if !self.played {
-        //     self.played = engine.audio_engine.play(&mut engine.assets_server, self.audio.clone());
-        // }
 
         engine
             .audio_engine
-            .update(&mut engine.world, &mut engine.assets_server);
+            .update(&mut engine.assets_server, &mut engine.world);
     }
 
     pub fn render(&self, engine: &mut Engine, graphics_command: &mut GraphicsCommand) {
