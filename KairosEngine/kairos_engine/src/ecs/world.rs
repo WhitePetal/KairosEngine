@@ -712,19 +712,19 @@ impl World {
     pub unsafe fn get_unchecked<'a, T: ComponentRef<'a>>(
         &'a self,
         entity: Entity,
-    ) -> Result<T, ComponentError> {
-        let loc = self.entity_datas.get(entity).ok_or(NoSuchId)?;
+    ) -> T {
+        let loc = unsafe { self.entity_datas.get_unchecked(entity) };
         let table = &self.table_graph[loc.table_index];
-        let state = table
-            .get_state::<T::Component>()
-            .ok_or_else(MissingComponent::new::<T::Component>)?;
         unsafe {
-            Ok(T::from_raw(
+            let state = table
+                .get_state::<T::Component>()
+                .unwrap();
+            T::from_raw(
                 table
                     .get_base::<T::Component>(state)
                     .as_ptr()
                     .add(loc.row_index),
-            ))
+            )
         }
     }
 

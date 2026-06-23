@@ -66,9 +66,10 @@ impl Loader {
         sender: mpsc::Sender<LoadedEvent>,
     ) -> Result<(), Error> {
         let toml_bytes = tokio::fs::read(&path).await?;
-        let serialized_asset =
-            tokio::task::spawn_blocking(move || toml::from_slice::<SerializedAudioAsset>(&toml_bytes))
-                .await??;
+        let serialized_asset = tokio::task::spawn_blocking(move || {
+            toml::from_slice::<SerializedAudioAsset>(&toml_bytes)
+        })
+        .await??;
 
         // Read the source audio file
         let source_path = &serialized_asset.source_path;
@@ -81,7 +82,9 @@ impl Loader {
         .await??;
 
         // Apply saved settings to the sound data
-        let sound_data = serialized_asset.audio_asset_settings.apply_to_static_sound_data(sound_data);
+        let sound_data = serialized_asset
+            .audio_asset_settings
+            .apply_to_static_sound_data(sound_data);
         let asset = AudioAsset { sound_data };
 
         sender

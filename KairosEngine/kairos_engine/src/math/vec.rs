@@ -17,7 +17,7 @@ where
         + Mul<f32, Output = Self>
         + Div<f32, Output = Self>
         + Add
-        + Sub
+        + Sub<Self, Output = Self>
         + Mul
         + Div
         + AddAssign<f32>
@@ -52,6 +52,18 @@ where
     #[inline(always)]
     fn normalized(&mut self) {
         *self /= self.len();
+    }
+
+    #[inline(always)]
+    fn distance(l: Self, r: Self) -> f32 {
+        let v = l - r;
+        v.len()
+    }
+
+    #[inline(always)]
+    fn distance_sq(l: Self, r: Self) -> f32 {
+        let v = l - r;
+        v.len_sq()
     }
 }
 

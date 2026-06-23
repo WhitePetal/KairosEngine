@@ -1,5 +1,5 @@
 use kira::{
-    listener::{ListenerHandle, ListenerId},
+    listener::ListenerHandle,
     sound::static_sound::StaticSoundHandle,
     track::{SpatialTrackBuilder, SpatialTrackHandle},
 };
@@ -46,7 +46,7 @@ impl SpatialAudioVolumeComponent {
         let track = match audio_engine.manager.add_spatial_sub_track(
             listener,
             transform.position,
-            SpatialTrackBuilder::new()
+            SpatialTrackBuilder::new(),
         ) {
             Ok(track) => Some(track),
             Err(err) => {

@@ -3,25 +3,29 @@ use std::fmt::Debug;
 use kira::{
     AudioManager, AudioManagerSettings, Capacities, DefaultBackend, Tween,
     listener::ListenerHandle,
-    sound::{PlaybackState, static_sound::{StaticSoundData, StaticSoundHandle}},
+    sound::{
+        PlaybackState,
+        static_sound::{StaticSoundData, StaticSoundHandle},
+    },
     track::{MainTrackBuilder, TrackBuilder, TrackHandle},
 };
 
 use crate::{
     asset_loader::assets::{AssetsServer, AudioAssetHandle},
-    audio::spatial_audio_volume::{
+    audio::spatial_audio::{SpatialAudioConfig, SpatialAudioTracks, spatial_audio_listener::SpatialAudioListenerComponent, spatial_audio_volume::{
         SpatialAudioVolumeComponent, SpatialAudioVolumeState, SpatialSoundHandle,
-    },
+    }},
     ecs::world::World,
     spatial::TransformComponent,
 };
 
+pub mod consts;
 pub mod audio;
-pub mod spatial_audio_volume;
+pub mod spatial_audio;
 
 pub struct AudioEngine {
     manager: AudioManager,
-    handle: Option<StaticSoundHandle>,
+    spatial_tracks: SpatialAudioTracks,
 }
 
 impl Debug for AudioEngine {
@@ -32,7 +36,7 @@ impl Debug for AudioEngine {
 
 impl AudioEngine {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let mut manager = AudioManager::<DefaultBackend>::new(AudioManagerSettings {
+        let manager = AudioManager::<DefaultBackend>::new(AudioManagerSettings {
             capacities: Capacities {
                 sub_track_capacity: 1024,
                 ..Default::default()
@@ -40,9 +44,11 @@ impl AudioEngine {
             main_track_builder: MainTrackBuilder::new().sound_capacity(1024),
             ..Default::default()
         })?;
+        let spatial_audio_config = SpatialAudioConfig::new(consts::MAX_SPATIAL_TRACK_COUNT, consts::MAX_SPATIAL_LISTENER_COUNT, consts::SPATIAL_AUDIO_CUT_OFF_DISTANCE);
+        let spatial_tracks = SpatialAudioTracks::new(spatial_audio_config);
         Ok(Self {
             manager,
-            handle: None,
+            spatial_tracks,
         })
     }
 
@@ -50,34 +56,30 @@ impl AudioEngine {
         &mut self,
         transform: TransformComponent,
     ) -> Option<ListenerHandle> {
-        match self.manager.add_listener(transform.position, transform.rotation) {
+        match self
+            .manager
+            .add_listener(transform.position, transform.rotation)
+        {
             Ok(listener) => Some(listener),
             Err(err) => {
                 println!("add listener error: {:?}", err);
                 None
-            },
-        }
-    }
-
-    pub fn play(&mut self, assets_server: &mut AssetsServer, audio: AudioAssetHandle) -> bool {
-        let audio = assets_server.get(&audio);
-        match audio {
-            Some(audio) => {
-                println!("play audio");
-                let _ = self.manager.play(audio.sound_data.clone());
-                true
-            },
-            None => {
-                false
-            },
+            }
         }
     }
 
     pub fn update(&mut self, world: &mut World, assets_server: &mut AssetsServer) {
         // spatial audio volumes system
-        let spatial_audio_volumes =
-            world.query_mut::<(&TransformComponent, &mut SpatialAudioVolumeComponent)>();
-        for (trans, volume) in spatial_audio_volumes.into_iter() {
+
+        let listeners = world.query_mut::<(&TransformComponent, &SpatialAudioListenerComponent)>().into_iter();
+        self.spatial_tracks.update_listeners(listeners);
+
+        let spatial_audio_volumes = world.query_mut::<(&TransformComponent, &mut SpatialAudioVolumeComponent)>().into_iter();
+        self.spatial_tracks.update_audios(spatial_audio_volumes);
+
+        // 状态机处理需要独立的可变 query（上一个 query 已随 update_audios 消费掉）
+        let spatial_audio_volumes = world.query_mut::<(&TransformComponent, &mut SpatialAudioVolumeComponent)>().into_iter();
+        for (trans, volume) in spatial_audio_volumes {
             let Some(track) = &mut volume.track else {
                 continue;
             };
@@ -98,8 +100,7 @@ impl AudioEngine {
                                 let audio = assets_server.get(&audios[i].clone());
                                 match audio {
                                     Some(audio) => {
-                                        let play =
-                                            track.play(audio.sound_data.clone());
+                                        let play = track.play(audio.sound_data.clone());
                                         match play {
                                             Ok(mut play) => {
                                                 play.pause(Tween::default());
