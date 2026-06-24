@@ -66,9 +66,14 @@ impl Tracks {
             return;
         }
 
-        let end = self.used_track_count - 1;
-        self.tracks.swap(index as usize, end as usize);
-        self.used_track_count = end
+        if let Some(track) = self.tracks.get_mut(index as usize) {
+            if let Some(track) = track {
+                track.pause(Tween::default());
+            }
+            let end = self.used_track_count - 1;
+            self.tracks.swap(index as usize, end as usize);
+            self.used_track_count = end
+        }
     }
 
     pub fn use_track(
@@ -446,6 +451,12 @@ impl SpatialAudioTracks {
                 continue;
             }
 
+            for audio in &mut volume.audio_handles {
+                if let SpatialSoundHandle::Some(handle) = audio {
+                    handle.stop(Tween::default());
+                }
+            }
+
             listener.tracks.free_track(key.track_index);
         }
 
@@ -515,6 +526,7 @@ impl SpatialAudioTracks {
                     .get::<AudioAssetsSystem>(&volume.audios[i])
                     .unwrap();
                 track.set_position(trans.position, Tween::default());
+                println!("play audio");
                 match track.play(audio.sound_data.clone()) {
                     Ok(handle) => {
                         volume.audio_handles[i] = SpatialSoundHandle::Some(handle);
@@ -546,8 +558,7 @@ impl SpatialAudioTracks {
             }
 
             if let Some(track) = &mut listener.tracks.tracks[key.track_index as usize] {
-                track.set_volume(
-                    Decibels(-60.0),
+                track.pause(
                     Tween {
                         duration: Duration::from_secs_f32(fade_time),
                         ..Default::default()
