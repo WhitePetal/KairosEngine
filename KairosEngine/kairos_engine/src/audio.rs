@@ -42,8 +42,8 @@ impl AudioEngine {
         let spatial_audio_config = SpatialAudioConfig::new(
             consts::MAX_SPATIAL_TRACK_COUNT,
             consts::MAX_SPATIAL_LISTENER_COUNT,
-            consts::SPATIAL_AUDIO_CUT_OFF_DISTANCE,
-            3.0,
+            consts::SPATIAL_AUDIO_CUT_OFF_DISTANCE_SQ,
+            consts::SPATIAL_AUDIO_TRACK_LEAVING_DURATION,
         );
         let spatial_tracks = SpatialAudioTracks::new(spatial_audio_config);
         Ok(Self {

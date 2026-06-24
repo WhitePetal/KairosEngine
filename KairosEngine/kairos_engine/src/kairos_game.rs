@@ -77,17 +77,21 @@ impl KairosGame {
             ));
         }
 
-        const NUM_INSTANCES_PER_ROW: i32 = 1;
+        const NUM_INSTANCES_PER_ROW: i32 = 20;
         engine.world.spawn_batch(
             (-NUM_INSTANCES_PER_ROW..NUM_INSTANCES_PER_ROW)
-                .flat_map(|z| (-NUM_INSTANCES_PER_ROW..NUM_INSTANCES_PER_ROW).map(move |y| (y, z)))
-                .map(|(y, z)| {
+                .flat_map(|z| (-NUM_INSTANCES_PER_ROW..NUM_INSTANCES_PER_ROW).map(move |x| (x, z)))
+                .map(|(x, z)| {
                     let scale = float3::new(0.05, 0.05, 0.05);
-                    let position = float3::new(0.0, y as f32, z as f32) * scale * 2.0;
+                    let position = float3::new(x as f32, 0.0, z as f32) * scale * 2.0;
                     let rotation = quaternion::identity();
                     let transform = TransformComponent::new(position, rotation, scale);
                     let audios = smallvec![blip_audio.clone()];
-                    let spatial_audio_volume = SpatialAudioVolumeComponent::new(audios, true);
+                    let spatial_audio_volume = SpatialAudioVolumeComponent::new(
+                        audios,
+                        true,
+                        rand::random_range(0.0..5.0),
+                    );
 
                     (
                         transform,
@@ -112,8 +116,8 @@ impl KairosGame {
             .into_iter();
         transfoms.for_each(|trans| {
             let position = &mut trans.position;
-            let y = position.y();
-            let x = math::sin(y * 4.0 + total_time);
+            let x = position.x();
+            let y = math::sin(x + total_time * 0.5);
             *position = float3::new(x, y, position.z());
         });
 
