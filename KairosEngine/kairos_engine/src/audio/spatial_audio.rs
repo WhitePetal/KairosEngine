@@ -1,134 +1,309 @@
-use std::collections::HashSet;
+use std::{
+    collections::{HashMap, HashSet},
+    time::Duration,
+};
 
-use kira::{AudioManager, Decibels, Mapping, Tween, Value, listener::ListenerId, modulator::tweener::TweenerBuilder, sound::PlaybackState, track::{SpatialTrackBuilder, SpatialTrackHandle}};
+use kira::{
+    AudioManager, Decibels, Mapping, Tween, Value,
+    listener::{ListenerHandle, ListenerId},
+    modulator::tweener::TweenerBuilder,
+    sound::PlaybackState,
+    track::{SpatialTrackBuilder, SpatialTrackHandle},
+};
 
-use crate::{asset_loader::assets::AssetsServer, audio::spatial_audio::{spatial_audio_listener::SpatialAudioListenerComponent, spatial_audio_volume::{SpatialAudioVolumeComponent, SpatialAudioVolumeState, SpatialSoundHandle}}, ecs::{component_tuple::QueryIter, entity::Entity, world::World}, math::{self, Vector, float3}, spatial::TransformComponent};
+use crate::{
+    asset_loader::assets::{AssetsServer, AudioAssetsSystem},
+    audio::spatial_audio::{
+        spatial_audio_listener::SpatialAudioListenerComponent,
+        spatial_audio_volume::{
+            SpatialAudioVolumeComponent, SpatialAudioVolumeState, SpatialAudioVolumeTrackKey,
+            SpatialAudioVolumeTrackLeaving, SpatialAudioVolumeTrackState, SpatialSoundHandle,
+        },
+    },
+    ecs::{component_tuple::QueryIter, entity::Entity, world::World},
+    math::{self, Vector, float3, quaternion},
+    spatial::TransformComponent,
+};
 
-pub mod spatial_audio_volume;
 pub mod spatial_audio_listener;
+pub mod spatial_audio_volume;
 
 pub struct SpatialAudioConfig {
     max_track_count: u8,
     max_listener_count: u8,
     cut_off_distance: f32,
+    audio_volume_leaving_duration: f32,
 }
 impl SpatialAudioConfig {
-    pub fn new(max_track_count: u8, max_listener_count: u8, cut_off_distance: f32) -> Self {
+    pub fn new(
+        max_track_count: u8,
+        max_listener_count: u8,
+        cut_off_distance: f32,
+        audio_volume_leaving_duration: f32,
+    ) -> Self {
         Self {
             max_track_count,
             max_listener_count,
             cut_off_distance,
+            audio_volume_leaving_duration,
         }
     }
 }
 
+struct Tracks {
+    tracks: Vec<Option<SpatialTrackHandle>>,
+    used_track_count: u8,
+}
+impl Tracks {
+    pub fn new(per_listener_track_capacity: u8) -> Self {
+        Self {
+            tracks: Vec::with_capacity(per_listener_track_capacity as usize),
+            used_track_count: 0,
+        }
+    }
+    pub fn free_track(&mut self, index: u8) {
+        if self.used_track_count == 0 {
+            return;
+        }
+
+        let end = self.used_track_count - 1;
+        self.tracks.swap(index as usize, end as usize);
+        self.used_track_count = end
+    }
+
+    pub fn use_track(
+        &mut self,
+        manager: &mut AudioManager,
+        listener_id: ListenerId,
+    ) -> (usize, &mut Option<SpatialTrackHandle>) {
+        let len = self.tracks.len();
+        let index;
+        if self.used_track_count as usize == len {
+            let handle = manager
+                .add_spatial_sub_track(listener_id, float3::ZERO, SpatialTrackBuilder::new())
+                .ok();
+            self.tracks.push(handle);
+            index = len;
+        } else {
+            index = self.used_track_count as usize;
+        }
+        self.used_track_count = self.used_track_count + 1;
+        (len, &mut self.tracks[index])
+    }
+
+    pub fn capacity(&self) -> u8 {
+        self.tracks.len() as u8
+    }
+}
+
 struct ListenerInfo {
-    pub tracks: Vec<Option<SpatialTrackHandle>>,
+    pub tracks: Tracks,
     pub listener_id: ListenerId,
     pub position: float3,
 }
 
 pub struct SpatialAudioTracks {
-    per_listener_track_count: u8,
-    listeners: Vec<ListenerInfo>,
+    per_listener_track_capacity: u8,
+
+    all_listeners: HashMap<ListenerId, (ListenerHandle, bool)>,
+
+    listener_infos: Vec<ListenerInfo>,
     config: SpatialAudioConfig,
 }
 
 impl SpatialAudioTracks {
     pub fn new(config: SpatialAudioConfig) -> Self {
-        Self { 
-            per_listener_track_count: config.max_listener_count,
-            listeners: Vec::with_capacity(config.max_listener_count as usize),
+        Self {
+            per_listener_track_capacity: config.max_listener_count,
+            all_listeners: HashMap::with_capacity((config.max_listener_count as usize) << 1),
+            listener_infos: Vec::with_capacity(config.max_listener_count as usize),
             config,
         }
     }
 
-    pub fn update(&mut self, assets_server: &mut AssetsServer, manager: &mut AudioManager, world: &mut World) {
-        let listeners = world.query_mut::<(Entity, &TransformComponent, &SpatialAudioListenerComponent)>().into_iter();
-        if listeners.len() == 0 {
-            return;
-        }
-        let mut listener_entities = Vec::with_capacity(listeners.len());
-        for (entity, _, listener) in listeners {
-            listener_entities.push((entity, listener.priority));
-        }
-        let mut listener_capacity =  self.listeners.capacity();
-        if listener_entities.len() > listener_capacity  {
-            listener_entities.select_nth_unstable_by(listener_capacity, |x, y| {
-                y.1.cmp(&x.1)
-            });
+    pub fn create_listener(&mut self, manager: &mut AudioManager) -> Option<ListenerId> {
+        let handle = manager
+            .add_listener(float3::ZERO, quaternion::IDENTITY)
+            .ok();
+        if let Some(handle) = handle {
+            let id = handle.id();
+            self.all_listeners.insert(id, (handle, false));
+            Some(id)
         } else {
-            listener_capacity = listener_entities.len()
+            None
         }
-
-        self.update_listeners_inner(world, &listener_entities[0..listener_capacity]);
-
-        self.update_audios(assets_server, manager, world);
     }
 
-    fn update_listeners_inner(&mut self, world: &mut World, listener_entities: &[(Entity, u32)]) {
-        let len = listener_entities.len();
+    pub fn update(
+        &mut self,
+        assets_server: &mut AssetsServer,
+        manager: &mut AudioManager,
+        world: &mut World,
+        delta_time: f32,
+    ) {
+        let listeners_iter = world
+            .query_mut::<(&TransformComponent, &mut SpatialAudioListenerComponent)>()
+            .into_iter();
+        if listeners_iter.len() == 0 {
+            return;
+        }
+
+        let mut listeners = listeners_iter
+            .map(|(trans, listener)| (*trans, *listener))
+            .collect::<Box<_>>();
+        let mut listener_capacity = self.listener_infos.capacity();
+        if listeners.len() > listener_capacity {
+            listeners
+                .select_nth_unstable_by(listener_capacity, |x, y| y.1.priority.cmp(&x.1.priority));
+        } else {
+            listener_capacity = listeners.len()
+        }
+
+        self.update_listeners_inner(&mut listeners[0..listener_capacity]);
+
+        self.update_audios(assets_server, manager, world, delta_time);
+    }
+
+    fn update_listeners_inner(
+        &mut self,
+        listeners: &mut [(TransformComponent, SpatialAudioListenerComponent)],
+    ) {
+        let len = listeners.len();
         let per_listener_track_count = self.config.max_track_count / (len as u8);
-        if per_listener_track_count < self.per_listener_track_count {
-            for listnere in &mut self.listeners {
-                listnere.tracks.truncate(per_listener_track_count as usize);
+        // 如果有新增的listener，那么每个 listener 可使用的track数会变少
+        if per_listener_track_count < self.per_listener_track_capacity {
+            for listnere in &mut self.listener_infos {
+                listnere
+                    .tracks
+                    .tracks
+                    .truncate(per_listener_track_count as usize);
             }
         }
-        self.per_listener_track_count = per_listener_track_count;
+        self.per_listener_track_capacity = per_listener_track_count;
 
-        let entities = listener_entities.iter().map(|e| e.0);
-        let listeners = entities.clone().map(|entity| {
-            unsafe { world.get_unchecked::<&mut SpatialAudioListenerComponent>(entity) }
-        });
-        let ids = listeners.clone().map(|listener| {
-            listener.handle.id()
-        });
+        {
+            let ids = listeners.iter().map(|(_, listener)| listener.listener_id);
+            self.listener_infos
+                .retain(|info| ids.clone().any(|id| info.listener_id == id));
+        }
 
-        let listeners = listeners.zip(entities.map(|entity|{
-            unsafe {
-                world.get_unchecked::<&TransformComponent>(entity)
-            }
-        }));
+        let listeners = listeners.iter_mut();
 
-        self.listeners.retain(|info| ids.clone().any(|id| {
-            info.listener_id == id
-        }));
-        for (listener, trans) in listeners {
-            listener.handle.set_position(trans.position, Tween::default());
-            listener.handle.set_orientation(trans.rotation, Tween::default());
-            let id = listener.handle.id();
-            match self.listeners.iter_mut().find(|info| info.listener_id == id) {
+        for (_, be_ref) in &mut self.all_listeners.values_mut() {
+            *be_ref = false
+        }
+
+        for (trans, listener) in listeners {
+            let id = listener.listener_id;
+            let Some((handle, be_ref)) = self.all_listeners.get_mut(&id) else {
+                continue;
+            };
+            *be_ref = true;
+            handle.set_position(trans.position, Tween::default());
+            handle.set_orientation(trans.rotation, Tween::default());
+            match self
+                .listener_infos
+                .iter_mut()
+                .find(|info| info.listener_id == id)
+            {
                 Some(info) => {
                     info.position = trans.position;
-                },
+                }
                 None => {
                     let info = ListenerInfo {
-                        tracks: Vec::with_capacity(self.per_listener_track_count as usize),
+                        tracks: Tracks::new(self.per_listener_track_capacity),
                         listener_id: id,
                         position: trans.position,
                     };
-                    self.listeners.push(info);
-                },
+                    self.listener_infos.push(info);
+                }
             }
-        };
+        }
+
+        self.all_listeners.retain(|_, (_, be_ref)| *be_ref);
     }
 
-    fn update_audios(&mut self, assets_server: &mut AssetsServer, manager: &mut AudioManager, world: &mut World) {
-        let per_listener_track_count = self.per_listener_track_count;
-        for listener in &mut self.listeners {
-            let mut volumes = world.query_mut::<(&TransformComponent, &mut SpatialAudioVolumeComponent)>()
-                .into_iter()
-                .map(|(trans, audio)| {
-                    (float3::distance(listener.position, trans.position), trans.position, audio)
-                })
-                .collect::<Vec<_>>();
-            Self::update_listener_info(assets_server, manager, listener, &mut volumes, per_listener_track_count, self.config.cut_off_distance)
+    fn update_audios(
+        &mut self,
+        assets_server: &mut AssetsServer,
+        manager: &mut AudioManager,
+        world: &mut World,
+        delta_time: f32,
+    ) {
+        // 先更新 kairos engine 端的 audio volume 数据
+        let volumes = world
+            .query_mut::<(&TransformComponent, &mut SpatialAudioVolumeComponent)>()
+            .into_iter()
+            .map(|(_, volume)| volume);
+        for volume in volumes {
+            Self::update_audio_volume_state(
+                assets_server,
+                delta_time,
+                self.config.audio_volume_leaving_duration,
+                volume,
+            );
+        }
+
+        // 再对每个 listener 更新 volumes
+        // 分配 track、播放...
+        for listener in &mut self.listener_infos {
+            Self::update_listener_audios(
+                assets_server,
+                world,
+                self.config.audio_volume_leaving_duration,
+                self.per_listener_track_capacity,
+                manager,
+                listener,
+            )
         }
     }
 
-    fn update_listener_info(assets_server: &mut AssetsServer, manager: &mut AudioManager, listener: &mut ListenerInfo, volumes: &mut [(f32, float3, &mut SpatialAudioVolumeComponent)], per_listener_track_count: u8, cut_off: f32) {
+    fn update_listener_audios(
+        assets_server: &mut AssetsServer,
+        world: &mut World,
+        fade_time: f32,
+        per_listener_track_count: u8,
+        manager: &mut AudioManager,
+        listener: &mut ListenerInfo,
+    ) {
+        // ---------------------------------------------------------
+        // | track0 | track1 | track2 | ... | trackK | ... | trackN |
+        // | ------------- used track count ---------|-free tracks--|
+        // -------------------------tracks.len-----------------------
+        // free track: 与 used_track_count - 1 位置的 track 交换，--used_track_count
+        // use track: 返回 used_track_count 位置的 track, ++used_track_count
+        // 如果 used_track_count == tracks.len, 创建新的track push到 tracks里
+
+        // 首先，如果有 volume play completed 或者 leaved track
+        // 那么先让它们free掉持有的track
+        let volumes = world
+            .query_mut::<(&TransformComponent, &mut SpatialAudioVolumeComponent)>()
+            .into_iter()
+            .map(|(_, volume)| volume);
+        for volume in volumes {
+            Self::free_audio_volume_track(listener, volume);
+        }
+
+        // 找到前 k 个 距离 listener 最近的 可播放的 volumes
+        let mut volumes = world
+            .query_mut::<(&TransformComponent, &mut SpatialAudioVolumeComponent)>()
+            .into_iter()
+            .filter(|(_, volume)| match volume.state {
+                SpatialAudioVolumeState::Created => false,
+                SpatialAudioVolumeState::WaitLoading => false,
+                SpatialAudioVolumeState::Playing => true,
+                SpatialAudioVolumeState::Paused => true,
+                SpatialAudioVolumeState::Completed => false,
+            })
+            .map(|(trans, volume)| {
+                let dst_sq = float3::distance_sq(listener.position, trans.position);
+                (dst_sq, trans, volume)
+            })
+            .collect::<Vec<_>>();
+
         let track_count;
-        if volumes.len() > per_listener_track_count as usize {
+        let volumes_len = volumes.len();
+        if volumes_len > per_listener_track_count as usize {
             volumes.select_nth_unstable_by(per_listener_track_count as usize, |x, y| {
                 x.0.total_cmp(&y.0)
             });
@@ -137,224 +312,256 @@ impl SpatialAudioTracks {
             track_count = volumes.len() as u8;
         }
 
-        // create tracks
-        let reused_count = track_count.min(listener.tracks.len() as u8);
-        let need_push_count = track_count.saturating_sub(listener.tracks.len() as u8);
+        // 在 track 上 播放/更新 前k个 volumes
+        // 由于可能在k之外有的volume之前持有着track
+        // 因此这里 播放/更新的 volumes 数量可能少于k
+        let mut end = 0usize;
+        for (_, trans, volume) in &mut volumes[0..track_count as usize] {
+            if listener.tracks.capacity() >= per_listener_track_count {
+                break;
+            }
+            Self::play_audio_volume_in_track(assets_server, manager, listener, trans, volume);
+            end = end + 1;
+        }
 
-        for i in 0..reused_count {
-            let i = i as usize;
-            let pos = volumes[i].1;
-            match &mut listener.tracks[i] {
-                Some(track) => {
-                    track.set_position(pos, Tween::default());
-                },
-                None => {
-                    match manager.add_spatial_sub_track(listener.listener_id, listener.position, SpatialTrackBuilder::new()) {
-                        Ok(track) => {
-                            listener.tracks[i] = Some(track)
-                        },
-                        Err(err) => {
-                            println!("create spatial sub track failed: {:?}", err);
-                        },
-                    }
+        // 剩下的 volume，如果持有 track，则进入 leaving 状态
+        for (_, trans, volume) in &mut volumes[end..volumes_len] {
+            Self::leaving_audio_volume_in_track(fade_time, listener, trans, volume);
+        }
+    }
+
+    fn update_audio_volume_state(
+        assets_server: &mut AssetsServer,
+        delta_time: f32,
+        audio_volume_leaving_duration: f32,
+        volume: &mut SpatialAudioVolumeComponent,
+    ) {
+        match volume.state {
+            SpatialAudioVolumeState::Created => {
+                if volume.auto_play {
+                    volume.state = SpatialAudioVolumeState::WaitLoading;
                 }
             }
-        }
-        for i in reused_count .. reused_count + need_push_count {
-            match manager.add_spatial_sub_track(listener.listener_id, listener.position, SpatialTrackBuilder::new()) {
-                Ok(mut track) => {
-                    let pos: float3 = volumes[i as usize].1;
-                    track.set_position(pos, Tween::default());
-                    listener.tracks.push(Some(track));
-                },
-                Err(err) => {
-                    listener.tracks.push(None);
-                    println!("create spatial sub track failed: {:?}", err);
-                },
+            SpatialAudioVolumeState::WaitLoading => {
+                let mut loaded = true;
+                let audios = &volume.audios;
+                for i in 0..audios.len() {
+                    let audio = assets_server.get(&audios[i].clone());
+                    match audio {
+                        Some(_) => {}
+                        None => {
+                            loaded = false;
+                        }
+                    }
+                }
+
+                if loaded {
+                    volume.state = SpatialAudioVolumeState::Playing;
+                }
+            }
+            SpatialAudioVolumeState::Playing => {
+                volume.playimg_time = volume.playimg_time + delta_time;
+
+                let mut completed = true;
+                for track_state in &mut volume.track_states {
+                    completed = Self::update_audio_track_state(
+                        audio_volume_leaving_duration,
+                        delta_time,
+                        track_state,
+                    );
+                }
+
+                if !completed {
+                    let audio_handles = &mut volume.audio_handles;
+                    for handle in audio_handles {
+                        match handle {
+                            SpatialSoundHandle::Some(handle) => {
+                                if handle.state() != PlaybackState::Stopped {
+                                    completed = false;
+                                    break;
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+
+                if completed {
+                    volume.state = SpatialAudioVolumeState::Completed;
+                }
+            }
+            SpatialAudioVolumeState::Paused => {
+                todo!()
+            }
+            SpatialAudioVolumeState::Completed => {
+                volume.playimg_time = 0.0;
+                for track_state in &mut volume.track_states {
+                    match track_state {
+                        SpatialAudioVolumeTrackState::Playing(key) => {
+                            *track_state = SpatialAudioVolumeTrackState::Leaved(*key)
+                        }
+                        SpatialAudioVolumeTrackState::Leaving(leaving) => {
+                            *track_state = SpatialAudioVolumeTrackState::Leaved(leaving.track_key)
+                        }
+                        SpatialAudioVolumeTrackState::Leaved(_) => {}
+                    }
+                }
+                // TODO: if auto_destroy, do destroy now
             }
         }
+    }
 
-        let mut volumes = volumes.iter_mut();
-        listener.tracks[0..track_count as usize]
-            .iter_mut()
-            .zip(&mut volumes)
-            .for_each(|(track, (_, _, volume))| {
-                Self::play_in_track_audio(assets_server, track, volume);
-            });
+    fn update_audio_track_state(
+        audio_volume_leaving_duration: f32,
+        delta_time: f32,
+        track_state: &mut SpatialAudioVolumeTrackState,
+    ) -> bool {
+        let mut completed = true;
+        match track_state {
+            SpatialAudioVolumeTrackState::Playing(_) => {
+                completed = false;
+            }
+            SpatialAudioVolumeTrackState::Leaving(leaving) => {
+                leaving.timer = leaving.timer + delta_time;
+                if leaving.timer > audio_volume_leaving_duration {
+                    *track_state = SpatialAudioVolumeTrackState::Leaved(leaving.track_key);
+                } else {
+                    completed = false;
+                }
+            }
+            SpatialAudioVolumeTrackState::Leaved(_) => {}
+        }
+        completed
+    }
 
-
-        for (dst, pos, volume) in volumes {
-            let dst = *dst;
-            if dst > cut_off {
+    fn free_audio_volume_track(
+        listener: &mut ListenerInfo,
+        volume: &mut SpatialAudioVolumeComponent,
+    ) {
+        for track_state in &mut volume.track_states {
+            let SpatialAudioVolumeTrackState::Leaved(key) = track_state else {
+                continue;
+            };
+            if key.listener_id != listener.listener_id {
                 continue;
             }
 
-            let mut atten = 1.0 - dst / cut_off;
-            atten = atten * atten;
-            Self::play_in_background_audio(assets_server, manager, volume, atten);
+            listener.tracks.free_track(key.track_index);
         }
+
+        volume.track_states.retain(|state| {
+            if let SpatialAudioVolumeTrackState::Leaved(_) = state {
+                true
+            } else {
+                false
+            }
+        });
     }
 
-    fn play_in_track_audio(assets_server: &mut AssetsServer, track: &mut Option<SpatialTrackHandle>, volume: &mut SpatialAudioVolumeComponent) {
-        let Some(track) = track else {
+    fn play_audio_volume_in_track(
+        assets_server: &mut AssetsServer,
+        manager: &mut AudioManager,
+        listener: &mut ListenerInfo,
+        trans: &TransformComponent,
+        volume: &mut SpatialAudioVolumeComponent,
+    ) {
+        let mut using_track_index = None;
+        for track_state in &volume.track_states {
+            let using = match track_state {
+                SpatialAudioVolumeTrackState::Playing(key) => {
+                    if key.listener_id == listener.listener_id {
+                        Some(key.track_index)
+                    } else {
+                        None
+                    }
+                }
+                SpatialAudioVolumeTrackState::Leaving(leaving) => {
+                    if leaving.track_key.listener_id == listener.listener_id {
+                        Some(leaving.track_key.track_index)
+                    } else {
+                        None
+                    }
+                }
+                SpatialAudioVolumeTrackState::Leaved(_) => None,
+            };
+            if let Some(track) = using {
+                using_track_index = Some(track);
+                break;
+            }
+        }
+        if let Some(track_index) = using_track_index {
+            let track = &mut listener.tracks.tracks[track_index as usize];
+            if let Some(track) = track {
+                track.set_position(trans.position, Tween::default());
+            }
             return;
-        };
+        }
 
-        match volume.state {
-                SpatialAudioVolumeState::Created => {
-                    if volume.auto_play {
-                        volume.state = SpatialAudioVolumeState::WaitLoading;
-                    }
-                }
-                SpatialAudioVolumeState::WaitLoading => {
-                    let mut loaded = true;
-                    let audios = &volume.audios;
-                    let audio_handles = &mut volume.audio_handles;
-                    for i in 0..audios.len() {
-                        let handle = &mut audio_handles[i];
-                        match handle {
-                            SpatialSoundHandle::None => {
-                                let audio = assets_server.get(&audios[i].clone());
-                                match audio {
-                                    Some(audio) => {
-                                        let play = track.play(audio.sound_data.clone());
-                                        match play {
-                                            Ok(mut play) => {
-                                                play.pause(Tween::default());
-                                                *handle = SpatialSoundHandle::Some(play);
-                                            }
-                                            Err(err) => {
-                                                eprintln!("play sound error: {:?}, {:?}", err, "track play failed");
-                                                *handle = SpatialSoundHandle::Err
-                                            }
-                                        }
-                                    }
-                                    None => {
-                                        loaded = false;
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
+        let (track_index, track) = listener.tracks.use_track(manager, listener.listener_id);
+        volume
+            .track_states
+            .push(SpatialAudioVolumeTrackState::Playing(
+                SpatialAudioVolumeTrackKey {
+                    listener_id: listener.listener_id,
+                    track_index: track_index as u8,
+                },
+            ));
 
-                    if loaded {
-                        for handle in audio_handles {
-                            match handle {
-                                SpatialSoundHandle::Some(handle) => {
-                                    handle.resume(Tween::default());
-                                }
-                                _ => {}
-                            }
-                        }
-                        volume.state = SpatialAudioVolumeState::Playing;
+        if let SpatialAudioVolumeState::Playing = volume.state
+            && let Some(track) = track
+        {
+            for i in 0..volume.audios.len() {
+                let audio = assets_server
+                    .get::<AudioAssetsSystem>(&volume.audios[i])
+                    .unwrap();
+                track.set_position(trans.position, Tween::default());
+                match track.play(audio.sound_data.clone()) {
+                    Ok(handle) => {
+                        volume.audio_handles[i] = SpatialSoundHandle::Some(handle);
+                    }
+                    Err(err) => {
+                        println!(
+                            "play spatial audio failed, play_audio_volume_in_track: {:?}",
+                            err
+                        );
+                        volume.audio_handles[i] = SpatialSoundHandle::Err;
                     }
                 }
-                SpatialAudioVolumeState::Playing => {
-                    let mut completed = true;
-                    let audio_handles = &mut volume.audio_handles;
-                    for handle in audio_handles {
-                        match handle {
-                            SpatialSoundHandle::Some(handle) => {
-                                if handle.state() != PlaybackState::Stopped {
-                                    completed = false;
-                                    break;
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                    if completed {
-                        volume.state = SpatialAudioVolumeState::Completed;
-                    }
-                }
-                SpatialAudioVolumeState::Paused => {
-                    todo!()
-                }
-                SpatialAudioVolumeState::Completed => {
-                    // no do nothing
-                    // TODO: if auto_destroy, do destroy now
-                }
+            }
         }
     }
 
-    fn play_in_background_audio(assets_server: &mut AssetsServer, manager: &mut AudioManager, volume: &mut SpatialAudioVolumeComponent, atten: f32) {
-        match volume.state {
-                SpatialAudioVolumeState::Created => {
-                    if volume.auto_play {
-                        volume.state = SpatialAudioVolumeState::WaitLoading;
-                    }
-                }
-                SpatialAudioVolumeState::WaitLoading => {
-                    let mut loaded = true;
-                    let audios = &volume.audios;
-                    let audio_handles = &mut volume.audio_handles;
-                    for i in 0..audios.len() {
-                        let handle = &mut audio_handles[i];
-                        match handle {
-                            SpatialSoundHandle::None => {
-                                let audio = assets_server.get(&audios[i].clone());
-                                match audio {
-                                    Some(audio) => {
-                                        let db = Decibels(-60.0 * (1.0 - atten) - 60.0 * atten);
-                                        let play = manager.play(audio.sound_data.volume(Value::Fixed(db)));
-                                        match play {
-                                            Ok(mut play) => {
-                                                play.pause(Tween::default());
-                                                *handle = SpatialSoundHandle::Some(play);
-                                            }
-                                            Err(err) => {
-                                                println!("play sound error: {:?}, {:?}", err, "manager paly failed");
-                                                *handle = SpatialSoundHandle::Err
-                                            }
-                                        }
-                                    }
-                                    None => {
-                                        loaded = false;
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
+    fn leaving_audio_volume_in_track(
+        fade_time: f32,
+        listener: &mut ListenerInfo,
+        trans: &TransformComponent,
+        volume: &mut SpatialAudioVolumeComponent,
+    ) {
+        for track_state in &mut volume.track_states {
+            let SpatialAudioVolumeTrackState::Playing(key) = track_state else {
+                continue;
+            };
+            if key.listener_id != listener.listener_id {
+                continue;
+            }
 
-                    if loaded {
-                        for handle in audio_handles {
-                            match handle {
-                                SpatialSoundHandle::Some(handle) => {
-                                    handle.resume(Tween::default());
-                                }
-                                _ => {}
-                            }
-                        }
-                        volume.state = SpatialAudioVolumeState::Playing;
-                    }
-                }
-                SpatialAudioVolumeState::Playing => {
-                    let mut completed = true;
-                    let audio_handles = &mut volume.audio_handles;
-                    for handle in audio_handles {
-                        match handle {
-                            SpatialSoundHandle::Some(handle) => {
-                                if handle.state() != PlaybackState::Stopped {
-                                    completed = false;
-                                    break;
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                    if completed {
-                        volume.state = SpatialAudioVolumeState::Completed;
-                    }
-                }
-                SpatialAudioVolumeState::Paused => {
-                    todo!()
-                }
-                SpatialAudioVolumeState::Completed => {
-                    // no do nothing
-                    // TODO: if auto_destroy, do destroy now
-                }
+            if let Some(track) = &mut listener.tracks.tracks[key.track_index as usize] {
+                track.set_volume(
+                    Decibels(-60.0),
+                    Tween {
+                        duration: Duration::from_secs_f32(fade_time),
+                        ..Default::default()
+                    },
+                );
+                track.set_position(trans.position, Tween::default());
+            }
+
+            *track_state = SpatialAudioVolumeTrackState::Leaving(SpatialAudioVolumeTrackLeaving {
+                track_key: *key,
+                timer: 0.0,
+            });
+
+            break;
         }
     }
 }

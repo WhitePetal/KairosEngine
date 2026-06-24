@@ -1,15 +1,20 @@
 use std::fmt::Debug;
 
 use kira::{
-    AudioManager, AudioManagerSettings, Capacities, DefaultBackend, listener::ListenerHandle, track::MainTrackBuilder,
+    AudioManager, AudioManagerSettings, Capacities, DefaultBackend,
+    listener::{ListenerHandle, ListenerId},
+    track::MainTrackBuilder,
 };
 
 use crate::{
-    asset_loader::assets::AssetsServer, audio::spatial_audio::{SpatialAudioConfig, SpatialAudioTracks}, ecs::world::World, math::{float3, quaternion},
+    asset_loader::assets::AssetsServer,
+    audio::spatial_audio::{SpatialAudioConfig, SpatialAudioTracks},
+    ecs::world::World,
+    math::{float3, quaternion},
 };
 
-pub mod consts;
 pub mod audio;
+pub mod consts;
 pub mod spatial_audio;
 
 pub struct AudioEngine {
@@ -34,7 +39,12 @@ impl AudioEngine {
             main_track_builder: MainTrackBuilder::new().sound_capacity(2048),
             ..Default::default()
         })?;
-        let spatial_audio_config = SpatialAudioConfig::new(consts::MAX_SPATIAL_TRACK_COUNT, consts::MAX_SPATIAL_LISTENER_COUNT, consts::SPATIAL_AUDIO_CUT_OFF_DISTANCE);
+        let spatial_audio_config = SpatialAudioConfig::new(
+            consts::MAX_SPATIAL_TRACK_COUNT,
+            consts::MAX_SPATIAL_LISTENER_COUNT,
+            consts::SPATIAL_AUDIO_CUT_OFF_DISTANCE,
+            3.0,
+        );
         let spatial_tracks = SpatialAudioTracks::new(spatial_audio_config);
         Ok(Self {
             manager,
@@ -42,12 +52,13 @@ impl AudioEngine {
         })
     }
 
-    pub fn create_listener(&mut self) -> Option<ListenerHandle> {
-        self.manager.add_listener(float3::ZERO, quaternion::IDENTITY).ok()
+    pub fn create_listener(&mut self) -> Option<ListenerId> {
+        self.spatial_tracks.create_listener(&mut self.manager)
     }
 
-    pub fn update(&mut self, assets_server: &mut AssetsServer, world: &mut World) {
+    pub fn update(&mut self, assets_server: &mut AssetsServer, world: &mut World, delta_time: f32) {
         // spatial audio volumes system
-        self.spatial_tracks.update(assets_server, &mut self.manager,  world);
+        self.spatial_tracks
+            .update(assets_server, &mut self.manager, world, delta_time);
     }
 }

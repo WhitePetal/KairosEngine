@@ -14,7 +14,7 @@ pub struct quaternion(pub float4);
 
 impl quaternion {
     pub const IDENTITY: quaternion = quaternion::identity();
-    
+
     #[inline(always)]
     pub const fn new(x: f32, y: f32, z: f32, w: f32) -> Self {
         Self(float4::new(x, y, z, w))

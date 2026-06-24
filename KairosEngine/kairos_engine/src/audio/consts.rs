@@ -1,5 +1,3 @@
-
-
 pub const MAX_SPATIAL_TRACK_COUNT: u8 = 32;
 pub const MAX_SPATIAL_LISTENER_COUNT: u8 = 2;
 pub const SPATIAL_AUDIO_CUT_OFF_DISTANCE: f32 = 512.0;
