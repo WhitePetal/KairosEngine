@@ -6,15 +6,14 @@ use crate::{
     asset_loader::assets::{AudioAssetsSystem, MaterialAssetsSystem, MeshAssetsSystem},
     audio::spatial_audio::{
         spatial_audio_listener::SpatialAudioListenerComponent,
-        spatial_audio_volume::SpatialAudioVolumeComponent,
+        spatial_audio_volume::SpatialAudioVolume,
     },
     graphics::{
-        graphics_graph::GraphicsCommand, lod_mesh_component::LODMeshComponent,
-        material_component::MaterialComponent,
+        graphics_graph::GraphicsCommand, lod_mesh_component::LODMesh, material_component::Material,
     },
     kairos_editor::Engine,
     math::{self, float3, quaternion},
-    spatial::TransformComponent,
+    spatial::Transform,
 };
 
 pub struct KairosGame {}
@@ -64,8 +63,7 @@ impl KairosGame {
         // 2. 绕局部 forward 滚转 180°，把右耳从 +X 翻到 -X，对齐相机的 cross(forward,up)
         let q_roll = quaternion::new(0.0, 0.0, 1.0, 0.0); // 180° around local Z
         let cam_rotation = q_forward * q_roll;
-        let cam_trans =
-            TransformComponent::new(float3::new(0.0, 1.0, -2.0), cam_rotation, float3::ONE);
+        let cam_trans = Transform::new(float3::new(0.0, 1.0, -2.0), cam_rotation, float3::ONE);
 
         if let Some(listener_id) = engine.audio_engine.create_listener() {
             engine.world.spawn((
@@ -85,18 +83,15 @@ impl KairosGame {
                     let scale = float3::new(0.05, 0.05, 0.05);
                     let position = float3::new(x as f32, 0.0, z as f32) * scale * 2.0;
                     let rotation = quaternion::identity();
-                    let transform = TransformComponent::new(position, rotation, scale);
+                    let transform = Transform::new(position, rotation, scale);
                     let audios = smallvec![blip_audio.clone()];
-                    let spatial_audio_volume = SpatialAudioVolumeComponent::new(
-                        audios,
-                        true,
-                        rand::random_range(0.0..5.0),
-                    );
+                    let spatial_audio_volume =
+                        SpatialAudioVolume::new(audios, true, rand::random_range(0.0..5.0));
 
                     (
                         transform,
-                        LODMeshComponent::new(mesh.clone()),
-                        MaterialComponent::new(material.clone()),
+                        LODMesh::new(mesh.clone()),
+                        Material::new(material.clone()),
                         spatial_audio_volume,
                     )
                 }),
@@ -110,10 +105,7 @@ impl KairosGame {
         let total_time = engine.time.total_time().as_secs_f32();
         let delta_time = engine.time.delta_time().as_secs_f32();
 
-        let transfoms = engine
-            .world
-            .query_mut::<&mut TransformComponent>()
-            .into_iter();
+        let transfoms = engine.world.query_mut::<&mut Transform>().into_iter();
         transfoms.for_each(|trans| {
             let position = &mut trans.position;
             let x = position.x();
@@ -129,7 +121,7 @@ impl KairosGame {
     pub fn render(&self, engine: &mut Engine, graphics_command: &mut GraphicsCommand) {
         let renderers = engine
             .world
-            .query_mut::<(&TransformComponent, &LODMeshComponent, &MaterialComponent)>()
+            .query_mut::<(&Transform, &LODMesh, &Material)>()
             .into_iter();
         renderers.for_each(|(trans, lod, mat)| {
             graphics_command.draw(

@@ -5,12 +5,12 @@ use crate::{
     ecs::component::Component,
 };
 
-pub struct MaterialComponent {
+pub struct Material {
     pub material: Arc<AssetHandle<MaterialAssetsSystem>>,
 }
-impl Component for MaterialComponent {}
+impl Component for Material {}
 
-impl MaterialComponent {
+impl Material {
     pub fn new(material: Arc<AssetHandle<MaterialAssetsSystem>>) -> Self {
         Self { material }
     }

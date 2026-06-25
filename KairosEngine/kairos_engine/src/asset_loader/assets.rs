@@ -1,6 +1,5 @@
 mod asset;
-use std::any::type_name;
-use std::fmt::{Debug, Display};
+use std::fmt::Debug;
 use std::{any::TypeId, path::PathBuf, sync::Arc};
 
 use crate::asset_loader::assets::asset::{AssetsHandler, AssetsSystem};
@@ -78,7 +77,7 @@ impl AssetsServer {
         let sender = self.dependency_request_sender.clone();
 
         let handler = match self.handlers.entry(TypeId::of::<T>()) {
-            std::collections::hash_map::Entry::Occupied(mut occupied_entry) => occupied_entry
+            std::collections::hash_map::Entry::Occupied(occupied_entry) => occupied_entry
                 .into_mut()
                 .as_any_mut()
                 .downcast_mut::<T>()

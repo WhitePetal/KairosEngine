@@ -1,17 +1,12 @@
-use std::{
-    collections::{HashMap, HashSet},
-    time::Duration,
-};
+use std::{collections::HashMap, time::Duration};
 
 use kira::{
-    AudioManager, Decibels, Easing, Mapping, Mix, StartTime, Tween, Value,
+    AudioManager, Decibels, Easing, Mapping, Mix, Tween, Value,
     effect::reverb::{ReverbBuilder, ReverbHandle},
     listener::{ListenerHandle, ListenerId},
-    modulator::tweener::TweenerBuilder,
     sound::{PlaybackPosition, PlaybackState},
     track::{
         SendTrackBuilder, SendTrackHandle, SendTrackId, SpatialTrackBuilder, SpatialTrackHandle,
-        TrackPlaybackState,
     },
 };
 
@@ -20,16 +15,17 @@ use crate::{
     audio::spatial_audio::{
         spatial_audio_listener::SpatialAudioListenerComponent,
         spatial_audio_volume::{
-            SpatialAudioVolumeComponent, SpatialAudioVolumeState, SpatialAudioVolumeTrackKey,
+            SpatialAudioVolume, SpatialAudioVolumeState, SpatialAudioVolumeTrackKey,
             SpatialAudioVolumeTrackLeaving, SpatialAudioVolumeTrackState, SpatialSoundHandle,
         },
     },
-    ecs::{component_tuple::QueryIter, entity::Entity, world::World},
-    math::{self, Vector, float3, quaternion},
-    spatial::TransformComponent,
+    ecs::world::World,
+    math::{Vector, float3, quaternion},
+    spatial::Transform,
 };
 
 pub mod spatial_audio_listener;
+pub mod spatial_audio_reverb;
 pub mod spatial_audio_volume;
 
 pub struct SpatialAudioConfig {
@@ -134,7 +130,7 @@ pub struct SpatialAudioTracks {
 
     listener_infos: Vec<ListenerInfo>,
 
-    reverb_handle: ReverbHandle,
+    _reverb_handle: ReverbHandle,
     reverb_distance_mapping: Mapping<Decibels>,
     reverb_send_track: SendTrackHandle,
 
@@ -151,8 +147,11 @@ impl SpatialAudioTracks {
             reverb_builder.add_effect(ReverbBuilder::new().mix(Mix::WET).damping(0.5));
         let reverb_send_track = manager.add_send_track(reverb_builder)?;
         let reverb_distance_mapping = Mapping {
-            input_range: (0.0, 100.0),
-            output_range: (Decibels(-12.0), Decibels(24.0)),
+            input_range: (0.0, config.default_reverb_distance_range as f64),
+            output_range: (
+                Decibels(config.default_reverb_min_volume),
+                Decibels(config.default_reverb_max_volume),
+            ),
             easing: Easing::Linear,
         };
 
@@ -188,7 +187,7 @@ impl SpatialAudioTracks {
         delta_time: f32,
     ) {
         let listeners_iter = world
-            .query_mut::<(&TransformComponent, &mut SpatialAudioListenerComponent)>()
+            .query_mut::<(&Transform, &mut SpatialAudioListenerComponent)>()
             .into_iter();
         if listeners_iter.len() == 0 {
             return;
@@ -217,7 +216,7 @@ impl SpatialAudioTracks {
 
     fn update_listeners_inner(
         &mut self,
-        listeners: &mut [(TransformComponent, SpatialAudioListenerComponent)],
+        listeners: &mut [(Transform, SpatialAudioListenerComponent)],
     ) {
         let len = listeners.len();
         let per_listener_track_count = self.config.max_track_count / (len as u8);
@@ -283,7 +282,7 @@ impl SpatialAudioTracks {
     ) {
         // 先更新 kairos engine 端的 audio volume 数据
         let volumes = world
-            .query_mut::<(&TransformComponent, &mut SpatialAudioVolumeComponent)>()
+            .query_mut::<(&Transform, &mut SpatialAudioVolume)>()
             .into_iter()
             .map(|(_, volume)| volume);
         for volume in volumes {
@@ -323,18 +322,10 @@ impl SpatialAudioTracks {
         reverb_track: SendTrackId,
         reverb_mapping: Mapping<Decibels>,
     ) {
-        // ---------------------------------------------------------
-        // | track0 | track1 | track2 | ... | trackK | ... | trackN |
-        // | ------------- used track count ---------|-free tracks--|
-        // -------------------------tracks.len-----------------------
-        // free track: 与 used_track_count - 1 位置的 track 交换，--used_track_count
-        // use track: 返回 used_track_count 位置的 track, ++used_track_count
-        // 如果 used_track_count == tracks.len, 创建新的track push到 tracks里
-
         // 首先，如果有 volume play completed 或者 leaved track
         // 那么先让它们free掉持有的track
         let volumes = world
-            .query_mut::<(&TransformComponent, &mut SpatialAudioVolumeComponent)>()
+            .query_mut::<(&Transform, &mut SpatialAudioVolume)>()
             .into_iter()
             .map(|(_, volume)| volume);
         for volume in volumes {
@@ -343,7 +334,7 @@ impl SpatialAudioTracks {
 
         // 找到前 k 个 距离 listener 最近的 可播放的 volumes
         let mut volumes = world
-            .query_mut::<(&TransformComponent, &mut SpatialAudioVolumeComponent)>()
+            .query_mut::<(&Transform, &mut SpatialAudioVolume)>()
             .into_iter()
             .filter(|(_, volume)| match volume.state {
                 SpatialAudioVolumeState::Created => false,
@@ -398,7 +389,7 @@ impl SpatialAudioTracks {
         assets_server: &mut AssetsServer,
         delta_time: f32,
         audio_volume_leaving_duration: f32,
-        volume: &mut SpatialAudioVolumeComponent,
+        volume: &mut SpatialAudioVolume,
     ) {
         match volume.state {
             SpatialAudioVolumeState::Created => {
@@ -490,10 +481,7 @@ impl SpatialAudioTracks {
         }
     }
 
-    fn free_audio_volume_track(
-        listener: &mut ListenerInfo,
-        volume: &mut SpatialAudioVolumeComponent,
-    ) {
+    fn free_audio_volume_track(listener: &mut ListenerInfo, volume: &mut SpatialAudioVolume) {
         for track_state in &volume.track_states {
             let SpatialAudioVolumeTrackState::Leaved(key) = track_state else {
                 continue;
@@ -519,8 +507,8 @@ impl SpatialAudioTracks {
         assets_server: &mut AssetsServer,
         manager: &mut AudioManager,
         listener: &mut ListenerInfo,
-        trans: &TransformComponent,
-        volume: &mut SpatialAudioVolumeComponent,
+        trans: &Transform,
+        volume: &mut SpatialAudioVolume,
         per_listener_track_count: u8,
         reverb_track: SendTrackId,
         reverb_mapping: Mapping<Decibels>,
@@ -606,8 +594,8 @@ impl SpatialAudioTracks {
     fn leaving_audio_volume_in_track(
         fade_time: f32,
         listener: &mut ListenerInfo,
-        trans: &TransformComponent,
-        volume: &mut SpatialAudioVolumeComponent,
+        trans: &Transform,
+        volume: &mut SpatialAudioVolume,
     ) {
         for track_state in &mut volume.track_states {
             match track_state {

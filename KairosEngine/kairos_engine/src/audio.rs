@@ -1,17 +1,14 @@
 use std::fmt::Debug;
 
 use kira::{
-    AudioManager, AudioManagerSettings, Capacities, DefaultBackend, Mapping, Mix,
-    effect::reverb::{ReverbBuilder, ReverbHandle},
-    listener::{ListenerHandle, ListenerId},
-    track::{MainTrackBuilder, SendTrackBuilder, SendTrackHandle},
+    AudioManager, AudioManagerSettings, Capacities, DefaultBackend, listener::ListenerId,
+    track::MainTrackBuilder,
 };
 
 use crate::{
     asset_loader::assets::AssetsServer,
     audio::spatial_audio::{SpatialAudioConfig, SpatialAudioTracks},
     ecs::world::World,
-    math::{float3, quaternion},
 };
 
 pub mod audio;

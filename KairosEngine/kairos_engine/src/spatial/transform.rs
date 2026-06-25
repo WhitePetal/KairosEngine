@@ -4,14 +4,14 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Copy)]
-pub struct TransformComponent {
+pub struct Transform {
     pub position: float3,
     pub rotation: quaternion,
     pub scale: float3,
 }
-impl Component for TransformComponent {}
+impl Component for Transform {}
 
-impl TransformComponent {
+impl Transform {
     pub fn new(position: float3, rotation: quaternion, scale: float3) -> Self {
         Self {
             position,

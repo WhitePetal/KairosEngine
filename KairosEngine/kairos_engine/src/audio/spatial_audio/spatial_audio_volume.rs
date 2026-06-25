@@ -38,7 +38,7 @@ pub enum SpatialAudioVolumeTrackState {
     Leaved(SpatialAudioVolumeTrackKey),
 }
 
-pub struct SpatialAudioVolumeComponent {
+pub struct SpatialAudioVolume {
     pub audios: SmallVec<[AudioAssetHandle; SMALL_VEC_AUDIO_COUNT]>,
     pub audio_handles: SmallVec<[SpatialSoundHandle; SMALL_VEC_AUDIO_COUNT]>,
     pub auto_play: bool,
@@ -46,9 +46,9 @@ pub struct SpatialAudioVolumeComponent {
     pub track_states: Vec<SpatialAudioVolumeTrackState>,
     pub playing_time: f32,
 }
-impl Component for SpatialAudioVolumeComponent {}
+impl Component for SpatialAudioVolume {}
 
-impl SpatialAudioVolumeComponent {
+impl SpatialAudioVolume {
     pub fn new(audios: SmallVec<[AudioAssetHandle; 4]>, auto_play: bool, start_time: f32) -> Self {
         Self {
             audios,

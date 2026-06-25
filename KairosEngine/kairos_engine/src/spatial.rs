@@ -1,3 +1,5 @@
-pub mod transform_component;
+pub mod aabb;
+pub mod transform;
 
-pub use transform_component::*;
+pub use aabb::*;
+pub use transform::*;
