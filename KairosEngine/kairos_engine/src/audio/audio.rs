@@ -155,3 +155,12 @@ impl SerializedAudioAssetSettings {
 pub struct AudioAsset {
     pub sound_data: StaticSoundData,
 }
+
+#[derive(Debug, Clone, Copy)]
+pub enum AudioState {
+    Created,
+    WaitLoading,
+    Playing,
+    Paused,
+    Completed,
+}

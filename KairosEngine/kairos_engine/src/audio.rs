@@ -2,18 +2,23 @@ use std::fmt::Debug;
 
 use kira::{
     AudioManager, AudioManagerSettings, Capacities, DefaultBackend, listener::ListenerId,
-    track::MainTrackBuilder,
+    sound::PlaybackState, track::MainTrackBuilder,
 };
 
 use crate::{
     asset_loader::assets::AssetsServer,
-    audio::spatial_audio::{SpatialAudioConfig, SpatialAudioTracks},
+    audio::{
+        audio::AudioState,
+        background::BackgroundAudio,
+        spatial::{SpatialAudioConfig, SpatialAudioTracks},
+    },
     ecs::world::World,
 };
 
 pub mod audio;
+pub mod background;
 pub mod consts;
-pub mod spatial_audio;
+pub mod spatial;
 
 pub struct AudioEngine {
     manager: AudioManager,
@@ -58,5 +63,35 @@ impl AudioEngine {
         // spatial audio volumes system
         self.spatial_tracks
             .update(assets_server, &mut self.manager, world, delta_time);
+
+        // update backgroun
+        let background = world.query_mut::<&mut BackgroundAudio>().into_iter().next();
+        if let Some(background) = background {
+            match background.state {
+                AudioState::Created => {
+                    if background.auto_play {
+                        background.state = AudioState::WaitLoading;
+                    }
+                }
+                AudioState::WaitLoading => {
+                    let audio = assets_server.get(&background.audio);
+                    if let Some(audio) = audio {
+                        background.handle = self.manager.play(audio.sound_data.clone()).ok();
+                        background.state = AudioState::Playing;
+                    }
+                }
+                AudioState::Playing => {
+                    if let Some(handle) = &background.handle {
+                        if handle.state() == PlaybackState::Stopped {
+                            background.state = AudioState::Completed;
+                        }
+                    }
+                }
+                AudioState::Paused => todo!(),
+                AudioState::Completed => {
+                    // now do nothing
+                }
+            }
+        }
     }
 }

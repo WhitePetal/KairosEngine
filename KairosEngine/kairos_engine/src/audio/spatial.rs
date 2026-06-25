@@ -12,15 +12,18 @@ use kira::{
 
 use crate::{
     asset_loader::assets::{AssetsServer, AudioAssetsSystem},
-    audio::spatial_audio::{
-        spatial_audio_listener::SpatialAudioListenerComponent,
-        spatial_audio_reverb::{SpatialAudioReverb, SpatialAudioReverbBound},
-        spatial_audio_volume::{
-            SpatialAudioVolume, SpatialAudioVolumeState, SpatialAudioVolumeTrackKey,
-            SpatialAudioVolumeTrackLeaving, SpatialAudioVolumeTrackState, SpatialSoundHandle,
+    audio::{
+        audio::AudioState,
+        spatial::{
+            spatial_audio_listener::SpatialAudioListenerComponent,
+            spatial_audio_reverb::{SpatialAudioReverb, SpatialAudioReverbBound},
+            spatial_audio_volume::{
+                SpatialAudioVolume, SpatialAudioVolumeTrackKey, SpatialAudioVolumeTrackLeaving,
+                SpatialAudioVolumeTrackState, SpatialSoundHandle,
+            },
         },
     },
-    ecs::{component_tuple::QueryIter, world::World},
+    ecs::world::World,
     math::{Vector, float3, quaternion},
     spatial::Transform,
 };
@@ -354,11 +357,11 @@ impl SpatialAudioTracks {
             .query_mut::<(&Transform, &mut SpatialAudioVolume)>()
             .into_iter()
             .filter(|(_, volume)| match volume.state {
-                SpatialAudioVolumeState::Created => false,
-                SpatialAudioVolumeState::WaitLoading => false,
-                SpatialAudioVolumeState::Playing => true,
-                SpatialAudioVolumeState::Paused => true,
-                SpatialAudioVolumeState::Completed => false,
+                AudioState::Created => false,
+                AudioState::WaitLoading => false,
+                AudioState::Playing => true,
+                AudioState::Paused => true,
+                AudioState::Completed => false,
             })
             .map(|(trans, volume)| {
                 let dst_sq = float3::distance_sq(listener.position, trans.position);
@@ -408,12 +411,12 @@ impl SpatialAudioTracks {
         volume: &mut SpatialAudioVolume,
     ) {
         match volume.state {
-            SpatialAudioVolumeState::Created => {
+            AudioState::Created => {
                 if volume.auto_play {
-                    volume.state = SpatialAudioVolumeState::WaitLoading;
+                    volume.state = AudioState::WaitLoading;
                 }
             }
-            SpatialAudioVolumeState::WaitLoading => {
+            AudioState::WaitLoading => {
                 let mut loaded = true;
                 let audios = &volume.audios;
                 for i in 0..audios.len() {
@@ -427,10 +430,10 @@ impl SpatialAudioTracks {
                 }
 
                 if loaded {
-                    volume.state = SpatialAudioVolumeState::Playing;
+                    volume.state = AudioState::Playing;
                 }
             }
-            SpatialAudioVolumeState::Playing => {
+            AudioState::Playing => {
                 volume.playing_time = volume.playing_time + delta_time;
 
                 let mut completed = volume.audio_handles.len() == volume.audios.len();
@@ -456,13 +459,13 @@ impl SpatialAudioTracks {
                 }
 
                 if completed {
-                    volume.state = SpatialAudioVolumeState::Completed;
+                    volume.state = AudioState::Completed;
                 }
             }
-            SpatialAudioVolumeState::Paused => {
+            AudioState::Paused => {
                 todo!()
             }
-            SpatialAudioVolumeState::Completed => {
+            AudioState::Completed => {
                 volume.playing_time = 0.0;
                 for track_state in &mut volume.track_states {
                     match track_state {
@@ -577,7 +580,7 @@ impl SpatialAudioTracks {
                 },
             ));
 
-        if let SpatialAudioVolumeState::Playing = volume.state
+        if let AudioState::Playing = volume.state
             && let Some(track) = track
         {
             for i in 0..volume.audios.len() {

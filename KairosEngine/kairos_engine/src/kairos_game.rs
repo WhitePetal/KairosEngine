@@ -1,12 +1,17 @@
 use std::path::PathBuf;
 
+use kira::sound::static_sound::StaticSoundData;
 use smallvec::smallvec;
 
 use crate::{
     asset_loader::assets::{AudioAssetsSystem, MaterialAssetsSystem, MeshAssetsSystem},
-    audio::spatial_audio::{
-        spatial_audio_listener::SpatialAudioListenerComponent,
-        spatial_audio_reverb::SpatialAudioReverb, spatial_audio_volume::SpatialAudioVolume,
+    audio::{
+        audio::{SerializedAudioAsset, SerializedAudioAssetSettings},
+        background::BackgroundAudio,
+        spatial::{
+            spatial_audio_listener::SpatialAudioListenerComponent,
+            spatial_audio_reverb::SpatialAudioReverb, spatial_audio_volume::SpatialAudioVolume,
+        },
     },
     graphics::{
         graphics_graph::GraphicsCommand, lod_mesh_component::LODMesh, material_component::Material,
@@ -30,6 +35,17 @@ impl KairosGame {
             PathBuf::from("res/materials/material.mat"),
             // None::<fn(&mut MaterialAsset)>,
         );
+
+        // let pad_audio = StaticSoundData::from_file("res/audios/pad.ogg").unwrap().loop_region(..);
+
+        // let pad = SerializedAudioAsset {
+        //     source_path: PathBuf::from("res/audios/pad.ogg"),
+        //     audio_asset_settings: SerializedAudioAssetSettings::from_static_sound_data(&pad_audio)
+        // };
+        // let _ = pad.save_to_file();
+
+        let background_audio =
+            assets_server.load::<AudioAssetsSystem>(PathBuf::from("res/audios/pad.audio"));
 
         let blip_audio =
             assets_server.load::<AudioAssetsSystem>(PathBuf::from("res/audios/blip.audio"));
@@ -74,6 +90,9 @@ impl KairosGame {
                 },
             ));
         }
+
+        let background_audio = BackgroundAudio::new(background_audio, true);
+        engine.world.spawn((background_audio,));
 
         let spatial_audio_reverb = SpatialAudioReverb::new(
             20.0,
