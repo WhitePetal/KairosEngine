@@ -143,7 +143,7 @@ impl SpatialAudioTracks {
         config: SpatialAudioConfig,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let mut reverb_builder = SendTrackBuilder::new();
-        let reverb_handle =
+        let _reverb_handle =
             reverb_builder.add_effect(ReverbBuilder::new().mix(Mix::WET).damping(0.5));
         let reverb_send_track = manager.add_send_track(reverb_builder)?;
         let reverb_distance_mapping = Mapping {
@@ -159,7 +159,7 @@ impl SpatialAudioTracks {
             per_listener_track_capacity: config.max_listener_count,
             all_listeners: HashMap::with_capacity((config.max_listener_count as usize) << 1),
             listener_infos: Vec::with_capacity(config.max_listener_count as usize),
-            reverb_handle,
+            _reverb_handle,
             reverb_distance_mapping,
             reverb_send_track,
             config,
