@@ -14,12 +14,13 @@ use crate::{
     asset_loader::assets::{AssetsServer, AudioAssetsSystem},
     audio::spatial_audio::{
         spatial_audio_listener::SpatialAudioListenerComponent,
+        spatial_audio_reverb::{SpatialAudioReverb, SpatialAudioReverbBound},
         spatial_audio_volume::{
             SpatialAudioVolume, SpatialAudioVolumeState, SpatialAudioVolumeTrackKey,
             SpatialAudioVolumeTrackLeaving, SpatialAudioVolumeTrackState, SpatialSoundHandle,
         },
     },
-    ecs::world::World,
+    ecs::{component_tuple::QueryIter, world::World},
     math::{Vector, float3, quaternion},
     spatial::Transform,
 };
@@ -33,9 +34,6 @@ pub struct SpatialAudioConfig {
     max_listener_count: u8,
     cut_off_distance_sq: f32,
     audio_volume_leaving_duration: f32,
-    default_reverb_distance_range: f32,
-    default_reverb_min_volume: f32,
-    default_reverb_max_volume: f32,
 }
 impl SpatialAudioConfig {
     pub fn new(
@@ -43,18 +41,12 @@ impl SpatialAudioConfig {
         max_listener_count: u8,
         cut_off_distance_sq: f32,
         audio_volume_leaving_duration: f32,
-        default_reverb_distance_range: f32,
-        default_reverb_min_volume: f32,
-        default_reverb_max_volume: f32,
     ) -> Self {
         Self {
             max_track_count,
             max_listener_count,
             cut_off_distance_sq,
             audio_volume_leaving_duration,
-            default_reverb_distance_range,
-            default_reverb_min_volume,
-            default_reverb_max_volume,
         }
     }
 }
@@ -88,17 +80,15 @@ impl Tracks {
         &mut self,
         manager: &mut AudioManager,
         listener_id: ListenerId,
-        reverb_track: SendTrackId,
-        reverb_mapping: Mapping<Decibels>,
+        reverb_track: Option<SendTrackId>,
     ) -> (u8, &mut Option<SpatialTrackHandle>) {
         let index;
+        let mut track_builder = SpatialTrackBuilder::new();
+        if let Some(reverb) = reverb_track {
+            track_builder = track_builder.with_send(reverb, Value::Fixed(Decibels::IDENTITY));
+        }
         let handle = manager
-            .add_spatial_sub_track(
-                listener_id,
-                float3::ZERO,
-                SpatialTrackBuilder::new()
-                    .with_send(reverb_track, Value::FromListenerDistance(reverb_mapping)),
-            )
+            .add_spatial_sub_track(listener_id, float3::ZERO, track_builder)
             .ok();
         if self.free_slots.len() == 0 {
             index = self.tracks.len() as u8;
@@ -121,6 +111,9 @@ struct ListenerInfo {
     pub tracks: Tracks,
     pub listener_id: ListenerId,
     pub position: float3,
+
+    reverb_handle: ReverbHandle,
+    reverb_send_track: Option<SendTrackHandle>,
 }
 
 pub struct SpatialAudioTracks {
@@ -130,38 +123,15 @@ pub struct SpatialAudioTracks {
 
     listener_infos: Vec<ListenerInfo>,
 
-    _reverb_handle: ReverbHandle,
-    reverb_distance_mapping: Mapping<Decibels>,
-    reverb_send_track: SendTrackHandle,
-
     config: SpatialAudioConfig,
 }
 
 impl SpatialAudioTracks {
-    pub fn new(
-        manager: &mut AudioManager,
-        config: SpatialAudioConfig,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
-        let mut reverb_builder = SendTrackBuilder::new();
-        let _reverb_handle =
-            reverb_builder.add_effect(ReverbBuilder::new().mix(Mix::WET).damping(0.5));
-        let reverb_send_track = manager.add_send_track(reverb_builder)?;
-        let reverb_distance_mapping = Mapping {
-            input_range: (0.0, config.default_reverb_distance_range as f64),
-            output_range: (
-                Decibels(config.default_reverb_min_volume),
-                Decibels(config.default_reverb_max_volume),
-            ),
-            easing: Easing::Linear,
-        };
-
+    pub fn new(config: SpatialAudioConfig) -> Result<Self, Box<dyn std::error::Error>> {
         Ok(Self {
             per_listener_track_capacity: config.max_listener_count,
             all_listeners: HashMap::with_capacity((config.max_listener_count as usize) << 1),
             listener_infos: Vec::with_capacity(config.max_listener_count as usize),
-            _reverb_handle,
-            reverb_distance_mapping,
-            reverb_send_track,
             config,
         })
     }
@@ -204,7 +174,7 @@ impl SpatialAudioTracks {
             listener_capacity = listeners.len()
         }
 
-        self.update_listeners_inner(&mut listeners[0..listener_capacity]);
+        self.update_listeners_inner(manager, world, &mut listeners[0..listener_capacity]);
 
         self.update_audios(assets_server, manager, world, delta_time);
 
@@ -216,6 +186,8 @@ impl SpatialAudioTracks {
 
     fn update_listeners_inner(
         &mut self,
+        manager: &mut AudioManager,
+        world: &mut World,
         listeners: &mut [(Transform, SpatialAudioListenerComponent)],
     ) {
         let len = listeners.len();
@@ -258,19 +230,63 @@ impl SpatialAudioTracks {
             {
                 Some(info) => {
                     info.position = trans.position;
+                    Self::update_reverbs(info, world);
                 }
                 None => {
-                    let info = ListenerInfo {
+                    let mut reverb_builder = SendTrackBuilder::new();
+                    let reverb_handle =
+                        reverb_builder.add_effect(ReverbBuilder::new().mix(Mix::WET).damping(0.5));
+                    let reverb_send_track = manager.add_send_track(reverb_builder).ok();
+                    let mut info = ListenerInfo {
                         tracks: Tracks::new(self.per_listener_track_capacity),
                         listener_id: id,
                         position: trans.position,
+                        reverb_handle,
+                        reverb_send_track,
                     };
+                    Self::update_reverbs(&mut info, world);
                     self.listener_infos.push(info);
                 }
             }
         }
 
         self.all_listeners.retain(|_, (_, be_ref)| *be_ref);
+    }
+
+    fn update_reverbs(listener: &mut ListenerInfo, world: &mut World) {
+        let Some(reverb_track) = listener.reverb_send_track.as_mut() else {
+            return;
+        };
+
+        let reverbs = world
+            .query_mut::<(&SpatialAudioReverbBound, &SpatialAudioReverb)>()
+            .into_iter();
+        for (bound, reverb) in reverbs {
+            if !bound.contains_point(listener.position) {
+                continue;
+            }
+
+            let tween = Tween::default();
+
+            reverb_track.set_volume(
+                Value::FromListenerDistance(Mapping {
+                    input_range: (0.0, reverb.distance_range as f64),
+                    output_range: (Decibels(reverb.min_volume), Decibels(reverb.max_volume)),
+                    easing: Easing::Linear,
+                }),
+                tween,
+            );
+            listener
+                .reverb_handle
+                .set_feedback(Value::Fixed(reverb.feed_back as f64), tween);
+            listener
+                .reverb_handle
+                .set_damping(reverb.damping as f64, tween);
+            listener.reverb_handle.set_mix(Mix(reverb.mix), tween);
+            listener
+                .reverb_handle
+                .set_damping(reverb.damping as f64, tween);
+        }
     }
 
     fn update_audios(
@@ -305,8 +321,10 @@ impl SpatialAudioTracks {
                 self.per_listener_track_capacity,
                 manager,
                 listener,
-                self.reverb_send_track.id(),
-                self.reverb_distance_mapping,
+                listener
+                    .reverb_send_track
+                    .as_ref()
+                    .map(|handle| handle.id()),
             )
         }
     }
@@ -319,8 +337,7 @@ impl SpatialAudioTracks {
         per_listener_track_count: u8,
         manager: &mut AudioManager,
         listener: &mut ListenerInfo,
-        reverb_track: SendTrackId,
-        reverb_mapping: Mapping<Decibels>,
+        reverb_track: Option<SendTrackId>,
     ) {
         // 首先，如果有 volume play completed 或者 leaved track
         // 那么先让它们free掉持有的track
@@ -373,7 +390,6 @@ impl SpatialAudioTracks {
                 volume,
                 per_listener_track_count,
                 reverb_track,
-                reverb_mapping,
             ) {
                 Self::leaving_audio_volume_in_track(fade_time, listener, trans, volume);
             }
@@ -510,8 +526,7 @@ impl SpatialAudioTracks {
         trans: &Transform,
         volume: &mut SpatialAudioVolume,
         per_listener_track_count: u8,
-        reverb_track: SendTrackId,
-        reverb_mapping: Mapping<Decibels>,
+        reverb_track: Option<SendTrackId>,
     ) -> bool {
         let mut using_track_index = None;
         for track_state in &mut volume.track_states {
@@ -552,7 +567,7 @@ impl SpatialAudioTracks {
         let (track_index, track) =
             listener
                 .tracks
-                .use_track(manager, listener.listener_id, reverb_track, reverb_mapping);
+                .use_track(manager, listener.listener_id, reverb_track);
         volume
             .track_states
             .push(SpatialAudioVolumeTrackState::Playing(

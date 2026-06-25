@@ -28,7 +28,7 @@ impl Debug for AudioEngine {
 
 impl AudioEngine {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let mut manager = AudioManager::<DefaultBackend>::new(AudioManagerSettings {
+        let manager = AudioManager::<DefaultBackend>::new(AudioManagerSettings {
             capacities: Capacities {
                 sub_track_capacity: 1024,
                 ..Default::default()
@@ -42,11 +42,8 @@ impl AudioEngine {
             consts::MAX_SPATIAL_LISTENER_COUNT,
             consts::SPATIAL_AUDIO_CUT_OFF_DISTANCE_SQ,
             consts::SPATIAL_AUDIO_TRACK_LEAVING_DURATION,
-            consts::SPATIAL_REVERB_DEFAULT_DISTANCE_RANGE,
-            consts::SPATIAL_REVERB_DEFAULT_MIN_VOLUME,
-            consts::SPATIAL_REVERB_DEFAULT_MAX_VOLUME,
         );
-        let spatial_tracks = SpatialAudioTracks::new(&mut manager, spatial_audio_config)?;
+        let spatial_tracks = SpatialAudioTracks::new(spatial_audio_config)?;
         Ok(Self {
             manager,
             spatial_tracks,

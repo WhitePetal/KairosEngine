@@ -6,14 +6,14 @@ use crate::{
     asset_loader::assets::{AudioAssetsSystem, MaterialAssetsSystem, MeshAssetsSystem},
     audio::spatial_audio::{
         spatial_audio_listener::SpatialAudioListenerComponent,
-        spatial_audio_volume::SpatialAudioVolume,
+        spatial_audio_reverb::SpatialAudioReverb, spatial_audio_volume::SpatialAudioVolume,
     },
     graphics::{
         graphics_graph::GraphicsCommand, lod_mesh_component::LODMesh, material_component::Material,
     },
     kairos_editor::Engine,
     math::{self, float3, quaternion},
-    spatial::Transform,
+    spatial::{AABB, Transform},
 };
 
 pub struct KairosGame {}
@@ -74,6 +74,20 @@ impl KairosGame {
                 },
             ));
         }
+
+        let spatial_audio_reverb = SpatialAudioReverb::new(
+            20.0,
+            -12.0,
+            24.0,
+            0.2,
+            0.2,
+            0.6,
+            AABB {
+                min: float3::new(-20.0, -20.0, -20.0),
+                max: float3::new(20.0, 20.0, 20.0),
+            },
+        );
+        engine.world.spawn(spatial_audio_reverb);
 
         const NUM_INSTANCES_PER_ROW: i32 = 20;
         engine.world.spawn_batch(
