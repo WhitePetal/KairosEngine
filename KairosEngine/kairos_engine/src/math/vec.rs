@@ -17,7 +17,7 @@ where
         + Mul<f32, Output = Self>
         + Div<f32, Output = Self>
         + Add
-        + Sub
+        + Sub<Self, Output = Self>
         + Mul
         + Div
         + AddAssign<f32>
@@ -52,6 +52,18 @@ where
     #[inline(always)]
     fn normalized(&mut self) {
         *self /= self.len();
+    }
+
+    #[inline(always)]
+    fn distance(l: Self, r: Self) -> f32 {
+        let v = l - r;
+        v.len()
+    }
+
+    #[inline(always)]
+    fn distance_sq(l: Self, r: Self) -> f32 {
+        let v = l - r;
+        v.len_sq()
     }
 }
 
@@ -393,8 +405,11 @@ impl<'de> Deserialize<'de> for float2 {
 pub struct float3(pub f32x4);
 
 impl float3 {
+    pub const ONE: float3 = float3::new(1.0, 1.0, 1.0);
+    pub const ZERO: float3 = float3::new(0.0, 0.0, 0.0);
+
     #[inline(always)]
-    pub fn new(x: f32, y: f32, z: f32) -> Self {
+    pub const fn new(x: f32, y: f32, z: f32) -> Self {
         Self(f32x4::from_array([x, y, z, 0.0]))
     }
     #[inline(always)]

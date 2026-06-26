@@ -4,8 +4,8 @@ use std::{
 };
 
 use crate::{
-    asset_loader::assets::AssetsServer, ecs::world::World,
-    graphics::graphics_graph::GraphicsCommand, kairos_game::KairosGame, log::Log, types::TypeIdMap,
+    asset_loader::assets::AssetsServer, graphics::graphics_graph::GraphicsCommand,
+    kairos_editor::Engine, kairos_game::KairosGame, log::Log, types::TypeIdMap,
 };
 use egui::{self};
 
@@ -127,7 +127,7 @@ pub trait Drawer: Any {
 
     fn render(
         &self,
-        world: &mut World,
+        engine: &mut Engine,
         game: &mut KairosGame,
         messager: &mut Messager,
     ) -> Option<GraphicsCommand>;
@@ -426,10 +426,10 @@ impl Context {
         }
     }
 
-    pub fn render(&mut self, world: &mut World, game: &mut KairosGame) -> Vec<GraphicsCommand> {
+    pub fn render(&mut self, engine: &mut Engine, game: &mut KairosGame) -> Vec<GraphicsCommand> {
         let mut commands = Vec::new();
         self.drawers.iter().for_each(|drawer| {
-            let cmd = drawer.render(world, game, &mut self.messager);
+            let cmd = drawer.render(engine, game, &mut self.messager);
             if let Some(cmd) = cmd {
                 commands.push(cmd);
             }

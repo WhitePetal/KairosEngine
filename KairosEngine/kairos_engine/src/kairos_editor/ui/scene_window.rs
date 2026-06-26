@@ -5,12 +5,14 @@ use serde::{Deserialize, Serialize};
 use toml::from_str;
 
 use crate::{
-    ecs::world::World,
     graphics::{
         attachment::Attachment, camera::Camera, graphics_graph::GraphicsCommand, mesh::Mesh,
         vertex::Vertex,
     },
-    kairos_editor::ui::{Drawer, Message, paths},
+    kairos_editor::{
+        Engine,
+        ui::{Drawer, Message, paths},
+    },
     kairos_game::KairosGame,
     math::{self, float2, float3, float4, float4x4, quaternion},
 };
@@ -250,7 +252,7 @@ impl Drawer for SceneWindow {
 
     fn render(
         &self,
-        world: &mut World,
+        engine: &mut Engine,
         game: &mut KairosGame,
         messager: &mut super::Messager,
     ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {
@@ -303,7 +305,7 @@ impl Drawer for SceneWindow {
             true,
         );
 
-        game.render(world, &mut graphics_command);
+        game.render(engine, &mut graphics_command);
 
         graphics_command.end_render_pass();
         let (egui_bind_tex_sender, egui_bind_tex_recever) = tokio::sync::oneshot::channel();

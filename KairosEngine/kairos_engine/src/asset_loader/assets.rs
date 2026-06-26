@@ -1,10 +1,13 @@
 mod asset;
+use std::fmt::Debug;
 use std::{any::TypeId, path::PathBuf, sync::Arc};
 
 use crate::asset_loader::assets::asset::{AssetsHandler, AssetsSystem};
 use crate::types::TypeIdMap;
 
 pub use asset::AssetHandle;
+pub use asset::AudioAssetHandle;
+pub use asset::AudioAssetsSystem;
 pub use asset::MaterialAssetsSystem;
 pub use asset::MeshAssetsSystem;
 pub use asset::ShaderAssetsSystem;
@@ -29,7 +32,10 @@ where
     T: AssetsSystem,
 {
     fn set_back(self: Box<Self>, assets_server: &mut AssetsServer) {
-        let handle = assets_server.load::<T>(self.dependency_path);
+        let handle = assets_server.load::<T>(
+            self.dependency_path,
+            // None::<fn(&mut T::AssetType)>
+        );
         let _ = self.setback_sender.send(handle);
     }
 }
@@ -60,19 +66,37 @@ impl AssetsServer {
         self.handlers.insert(type_id, Box::new(system));
     }
 
-    pub fn load<T>(&mut self, path: PathBuf) -> Arc<AssetHandle<T>>
+    pub fn load<T>(
+        &mut self,
+        path: PathBuf,
+        // on_completed: Option<impl FnOnce(&mut T::AssetType) -> () + Send + Sync + 'static>,
+    ) -> Arc<AssetHandle<T>>
     where
         T: AssetsSystem + 'static,
     {
         let sender = self.dependency_request_sender.clone();
 
-        let handler = self.get_handler_mut::<T>();
-        let Some(handler) = handler else {
-            unreachable!()
+        let handler = match self.handlers.entry(TypeId::of::<T>()) {
+            std::collections::hash_map::Entry::Occupied(occupied_entry) => occupied_entry
+                .into_mut()
+                .as_any_mut()
+                .downcast_mut::<T>()
+                .unwrap(),
+            std::collections::hash_map::Entry::Vacant(vacant_entry) => {
+                let system = Box::new(T::default());
+                vacant_entry
+                    .insert(system)
+                    .as_any_mut()
+                    .downcast_mut::<T>()
+                    .unwrap()
+            }
         };
 
         let assets = handler.get_assets_mut();
-        assets.load(path, sender)
+        assets.load(
+            path, // on_completed,
+            sender,
+        )
     }
 
     pub fn get<T>(&self, handle: &AssetHandle<T>) -> Option<&T::AssetType>

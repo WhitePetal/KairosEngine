@@ -454,13 +454,13 @@ impl RenderPipeline {
                     continue;
                 };
                 let Some(shader) = &material_asset.material.shader else {
-                    unreachable!()
+                    continue;
                 };
                 let Some(shader) = assets_server.get(shader) else {
                     continue;
                 };
                 let Some(texture) = &material_asset.material.texture else {
-                    unreachable!()
+                    continue;
                 };
                 let Some(texture) = assets_server.get(texture) else {
                     continue;

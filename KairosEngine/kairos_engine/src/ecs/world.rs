@@ -1,6 +1,7 @@
 use std::{
     any::TypeId,
     collections::{HashMap, hash_map::Entry},
+    fmt::Debug,
     hash::{BuildHasher, BuildHasherDefault, Hasher},
     ops::Add,
     ptr,
@@ -9,26 +10,22 @@ use std::{
 
 use petgraph::graph::{Node, NodeIndex};
 
-use crate::{
-    asset_loader::assets::AssetsServer,
-    ecs::{
-        batch::ColumBatch,
-        component::{Component, ComponentError, MissingComponent},
-        component_tuple::{
-            CachedQuery, ComponentTuple, ComponentTupleKey, DynamicComponentTuple, Fetch, Query,
-            QueryBorrow, QueryCache, QueryMut, QueryOne, QueryOneError, View, ViewBorrow,
-            assert_borrow, assert_distinct,
-        },
-        consts,
-        entity::{Entity, EntityFlag},
-        entity_ref::{ComponentRef, EntityRef},
-        id::Id,
-        sparse_set::{self, AllocManyState, EntityStorage, NoSuchId, SparseSet},
-        table::Table,
-        table_graph::{InsertTarget, TableGraph, TableGraphGeneration},
-        take::TakeEntity,
+use crate::ecs::{
+    batch::ColumBatch,
+    component::{Component, ComponentError, MissingComponent},
+    component_tuple::{
+        CachedQuery, ComponentTuple, ComponentTupleKey, DynamicComponentTuple, Fetch, Query,
+        QueryBorrow, QueryCache, QueryMut, QueryOne, QueryOneError, View, ViewBorrow,
+        assert_borrow, assert_distinct,
     },
-    timer::Time,
+    consts,
+    entity::{Entity, EntityFlag},
+    entity_ref::{ComponentRef, EntityRef},
+    id::Id,
+    sparse_set::{self, AllocManyState, EntityStorage, NoSuchId, SparseSet},
+    table::Table,
+    table_graph::{InsertTarget, TableGraph, TableGraphGeneration},
+    take::TakeEntity,
 };
 
 #[derive(Debug)]
@@ -115,8 +112,6 @@ type TupleIdMap<V> = HashMap<ComponentTupleKey, V, BuildHasherDefault<TupleIdHas
 
 #[derive(Debug)]
 pub struct World {
-    pub time: Time,
-
     entities: EntityStorage,
     entity_datas: SparseSet<Entity, EntityData>,
     table_graph: TableGraph,
@@ -126,8 +121,6 @@ pub struct World {
     remove_edges: NodeIndexTupleIdMap<NodeIndex>,
 
     query_cache: QueryCache,
-
-    pub assets_server: AssetsServer,
 
     // 后面这里的Scene概念应该会改为Chunk概念
     // 由Game里的各个功能组件/System来做区块划分并通过类似TagComponent进行控制
@@ -146,9 +139,6 @@ impl World {
             next
         };
 
-        let assets_server = AssetsServer::new();
-        let time = Time::new();
-
         let entities = EntityStorage::new(consts::WORLD_ENTITIES_CAPACITY);
         let entity_datas = SparseSet::new(consts::WORLD_ENTITIES_CAPACITY);
         let table_graph = TableGraph::new(consts::WORLD_TABLE_GRAPH_CAPACITY);
@@ -158,7 +148,6 @@ impl World {
         let remove_edges = NodeIndexTupleIdMap::default();
 
         Self {
-            time,
             entities,
             entity_datas,
             tuple_to_table,
@@ -166,7 +155,6 @@ impl World {
             remove_edges,
             table_graph,
             query_cache: QueryCache::default(),
-            assets_server,
             _id,
         }
     }
@@ -721,22 +709,17 @@ impl World {
             .ok_or_else(MissingComponent::new::<T::Component>)?)
     }
 
-    pub unsafe fn get_unchecked<'a, T: ComponentRef<'a>>(
-        &'a self,
-        entity: Entity,
-    ) -> Result<T, ComponentError> {
-        let loc = self.entity_datas.get(entity).ok_or(NoSuchId)?;
+    pub unsafe fn get_unchecked<'a, T: ComponentRef<'a>>(&'a self, entity: Entity) -> T {
+        let loc = unsafe { self.entity_datas.get_unchecked(entity) };
         let table = &self.table_graph[loc.table_index];
-        let state = table
-            .get_state::<T::Component>()
-            .ok_or_else(MissingComponent::new::<T::Component>)?;
         unsafe {
-            Ok(T::from_raw(
+            let state = table.get_state::<T::Component>().unwrap();
+            T::from_raw(
                 table
                     .get_base::<T::Component>(state)
                     .as_ptr()
                     .add(loc.row_index),
-            ))
+            )
         }
     }
 

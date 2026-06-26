@@ -1,6 +1,10 @@
 use std::{any::type_name, fs};
 
-use crate::{ecs::world::World, kairos_editor::ui::Messager, kairos_game::KairosGame, log::Log};
+use crate::{
+    kairos_editor::{Engine, ui::Messager},
+    kairos_game::KairosGame,
+    log::Log,
+};
 use serde::{Deserialize, Serialize};
 use toml::from_str;
 
@@ -80,7 +84,7 @@ impl Drawer for InspectorWindow {
 
     fn render(
         &self,
-        _world: &mut World,
+        _engine: &mut Engine,
         _game: &mut KairosGame,
         _messager: &mut Messager,
     ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {

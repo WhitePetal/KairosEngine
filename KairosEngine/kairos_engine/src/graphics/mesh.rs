@@ -4,8 +4,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::graphics::vertex::Vertex;
 
-// TODO: to asset
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Mesh {
     pub vertices: Vec<Vertex>,

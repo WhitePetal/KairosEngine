@@ -25,10 +25,6 @@ pub struct LoadedEvent {
     asset: MaterialAsset,
 }
 impl asset::LoadedEvent<MaterialAsset> for LoadedEvent {
-    fn new(index: AssetIndex, asset: MaterialAsset) -> Self {
-        Self { index, asset }
-    }
-
     fn get_index(&self) -> AssetIndex {
         self.index
     }
@@ -96,12 +92,13 @@ impl Loader {
         Ok(())
     }
 }
-impl asset::AssetLoader<LoadedEvent> for Loader {
+impl asset::AssetLoader<LoadedEvent, MaterialAsset> for Loader {
     fn load_asset(
         &self,
         path: std::path::PathBuf,
         asset_index: AssetIndex,
         sender: tokio::sync::mpsc::Sender<LoadedEvent>,
+        // _on_completed: Option<impl FnOnce(&mut MaterialAsset) -> () + Send + Sync + 'static>,
         denpendency_request_sender: mpsc::Sender<DependencyLoadRequestEvent>,
     ) {
         tokio::spawn(Self::load(
@@ -141,6 +138,12 @@ impl AssetsHandler for MaterialAssetsSystem {
 
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
+    }
+}
+
+impl Default for MaterialAssetsSystem {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

@@ -3,14 +3,15 @@ use crate::{
     math::{float3, float4x4, quaternion},
 };
 
-pub struct TransformComponent {
+#[derive(Debug, Clone, Copy)]
+pub struct Transform {
     pub position: float3,
     pub rotation: quaternion,
     pub scale: float3,
 }
-impl Component for TransformComponent {}
+impl Component for Transform {}
 
-impl TransformComponent {
+impl Transform {
     pub fn new(position: float3, rotation: quaternion, scale: float3) -> Self {
         Self {
             position,

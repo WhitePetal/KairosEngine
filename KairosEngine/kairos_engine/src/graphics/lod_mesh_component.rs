@@ -6,12 +6,12 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub struct LODMeshComponent {
+pub struct LODMesh {
     pub lod0: Arc<AssetHandle<MeshAssetsSystem>>,
 }
-impl Component for LODMeshComponent {}
+impl Component for LODMesh {}
 
-impl LODMeshComponent {
+impl LODMesh {
     pub fn new(lod0: Arc<AssetHandle<MeshAssetsSystem>>) -> Self {
         Self { lod0 }
     }

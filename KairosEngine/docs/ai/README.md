@@ -24,4 +24,5 @@
 | [graphics-graph-render-graph-conversation.md](./graphics-graph-render-graph-conversation.md) | GraphicsGraph / RenderGraph 渲染管线拆分设计讨论的完整对话记录，包含基于 `petgraph` 的编译、入口判定与执行顺序方案 |
 | [render-pipeline-resource-cache-conversation.md](./render-pipeline-resource-cache-conversation.md) | `render_pipeline.rs` 当前渲染路径中 GPU 资源、pipeline 状态、render target 与每帧临时对象的缓存边界讨论 |
 | [gltf-vertex-attribute-sets.md](./gltf-vertex-attribute-sets.md) | glTF 顶点颜色、UV 等属性集编号：`COLOR_n`、`TEXCOORD_n` 与 `gltf` reader 的 `set` 参数说明 |
+| [ecs-spatial-cell-partitioning-design.md](./ecs-spatial-cell-partitioning-design.md) | 空间 Cell ID 作为 ECS Table 第二维分区键的方案设计：八叉树+ECS组合查询的缓存友好性分析、`query_disjoint_mut`不适用原因、CellId分区与UE5 World Partition的对应关系 |
 | [ecs-learning-resources-conversation.md](./ecs-learning-resources-conversation.md) | ECS 学习资料、Flecs/Bevy/EnTT/Shipyard/hecs 参考路线，以及 Kairos 自研 ECS 的分阶段落地建议 |
