@@ -133,6 +133,14 @@ impl float2 {
     pub fn to_array(&self) -> [f32; 2] {
         self.0.to_array()
     }
+
+    pub fn x(&self) -> f32 {
+        self[0]
+    }
+
+    pub fn y(&self) -> f32 {
+        self[1]
+    }
 }
 
 impl Vector for float2 {
@@ -397,6 +405,35 @@ impl<'de> Deserialize<'de> for float2 {
     {
         let arry = <[f32; 2]>::deserialize(deserializer)?;
         Ok(Self::from_array(arry))
+    }
+}
+
+impl rkyv::Archive for float2 {
+    type Archived = [rkyv::primitive::ArchivedF32; 2];
+    type Resolver = ();
+
+    fn resolve(&self, _: Self::Resolver, out: rkyv::Place<Self::Archived>) {
+        out.write([
+            rkyv::primitive::ArchivedF32::from_native(self.x()),
+            rkyv::primitive::ArchivedF32::from_native(self.y()),
+        ]);
+    }
+}
+
+impl<S: rkyv::rancor::Fallible + ?Sized> rkyv::Serialize<S> for float2 {
+    fn serialize(&self, _: &mut S) -> Result<Self::Resolver, S::Error> {
+        Ok(())
+    }
+}
+
+impl<D: rkyv::rancor::Fallible + ?Sized> rkyv::Deserialize<float2, D>
+    for <float2 as rkyv::Archive>::Archived
+{
+    fn deserialize(&self, _: &mut D) -> Result<float2, D::Error> {
+        Ok(float2::from_array([
+            self[0].to_native(),
+            self[1].to_native(),
+        ]))
     }
 }
 
@@ -716,6 +753,37 @@ impl<'de> Deserialize<'de> for float3 {
     {
         let arry = <[f32; 4]>::deserialize(deserializer)?;
         Ok(Self::from_array_4(arry))
+    }
+}
+
+impl rkyv::Archive for float3 {
+    type Archived = [rkyv::primitive::ArchivedF32; 3];
+    type Resolver = ();
+
+    fn resolve(&self, _: Self::Resolver, out: rkyv::Place<Self::Archived>) {
+        out.write([
+            rkyv::primitive::ArchivedF32::from_native(self.x()),
+            rkyv::primitive::ArchivedF32::from_native(self.y()),
+            rkyv::primitive::ArchivedF32::from_native(self.z()),
+        ]);
+    }
+}
+
+impl<S: rkyv::rancor::Fallible + ?Sized> rkyv::Serialize<S> for float3 {
+    fn serialize(&self, _: &mut S) -> Result<Self::Resolver, S::Error> {
+        Ok(())
+    }
+}
+
+impl<D: rkyv::rancor::Fallible + ?Sized> rkyv::Deserialize<float3, D>
+    for <float3 as rkyv::Archive>::Archived
+{
+    fn deserialize(&self, _: &mut D) -> Result<float3, D::Error> {
+        Ok(float3::from_array([
+            self[0].to_native(),
+            self[1].to_native(),
+            self[2].to_native(),
+        ]))
     }
 }
 
@@ -1494,5 +1562,38 @@ impl<'de> Deserialize<'de> for float4 {
     {
         let arry = <[f32; 4]>::deserialize(deserializer)?;
         Ok(Self::from_array(arry))
+    }
+}
+
+impl rkyv::Archive for float4 {
+    type Archived = [rkyv::primitive::ArchivedF32; 4];
+    type Resolver = ();
+
+    fn resolve(&self, _: Self::Resolver, out: rkyv::Place<Self::Archived>) {
+        out.write([
+            rkyv::primitive::ArchivedF32::from_native(self.x()),
+            rkyv::primitive::ArchivedF32::from_native(self.y()),
+            rkyv::primitive::ArchivedF32::from_native(self.z()),
+            rkyv::primitive::ArchivedF32::from_native(self.w()),
+        ]);
+    }
+}
+
+impl<S: rkyv::rancor::Fallible + ?Sized> rkyv::Serialize<S> for float4 {
+    fn serialize(&self, _: &mut S) -> Result<Self::Resolver, S::Error> {
+        Ok(())
+    }
+}
+
+impl<D: rkyv::rancor::Fallible + ?Sized> rkyv::Deserialize<float4, D>
+    for <float4 as rkyv::Archive>::Archived
+{
+    fn deserialize(&self, _: &mut D) -> Result<float4, D::Error> {
+        Ok(float4::from_array([
+            self[0].to_native(),
+            self[1].to_native(),
+            self[2].to_native(),
+            self[3].to_native(),
+        ]))
     }
 }

@@ -8,7 +8,7 @@ fn identity_matrix_multiply() {
         float4::new(9.0, 10.0, 11.0, 12.0),
         float4::new(13.0, 14.0, 15.0, 16.0),
     ]);
-    let identity = float4x4::idenity();
+    let identity = float4x4::IDENTITY;
 
     assert_eq!(identity * m, m);
     assert_eq!(m * identity, m);

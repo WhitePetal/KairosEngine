@@ -1,6 +1,7 @@
 use crate::{
     asset_loader::assets::AssetsServer, audio::AudioEngine, ecs::world::World,
-    graphics::graphics_graph::GraphicsCommand, kairos_game::KairosGame, log::Log, timer::Time,
+    graphics::graphics_graph::GraphicsCommand, kairos_game::KairosGame, log::Log,
+    physics::PhysicsEngine, timer::Time,
 };
 use egui::Visuals;
 
@@ -13,8 +14,9 @@ pub mod ui;
 pub struct Engine {
     pub time: Time,
     pub world: World,
-    pub audio_engine: AudioEngine,
     pub assets_server: AssetsServer,
+    pub audio_engine: AudioEngine,
+    pub physics_engine: PhysicsEngine,
 }
 
 impl Engine {
@@ -23,12 +25,14 @@ impl Engine {
         let world = World::new();
         let assets_server = AssetsServer::new();
         let audio_engine = AudioEngine::new()?;
+        let physics_engine = PhysicsEngine::new();
 
         Ok(Self {
             time,
             world,
-            audio_engine,
             assets_server,
+            audio_engine,
+            physics_engine,
         })
     }
 }

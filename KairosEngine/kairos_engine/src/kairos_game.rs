@@ -1,12 +1,10 @@
 use std::path::PathBuf;
 
-use kira::sound::static_sound::StaticSoundData;
 use smallvec::smallvec;
 
 use crate::{
     asset_loader::assets::{AudioAssetsSystem, MaterialAssetsSystem, MeshAssetsSystem},
     audio::{
-        audio::{SerializedAudioAsset, SerializedAudioAssetSettings},
         background::BackgroundAudio,
         spatial::{
             spatial_audio_listener::SpatialAudioListenerComponent,
@@ -14,10 +12,11 @@ use crate::{
         },
     },
     graphics::{
-        graphics_graph::GraphicsCommand, lod_mesh_component::LODMesh, material_component::Material,
+        graphics_graph::GraphicsCommand, lod_mesh_component::LODMesh, material_component::Material, mesh::SerializedMeshAsset,
     },
     kairos_editor::Engine,
     math::{self, float3, quaternion},
+    physics::{collider::Collider, rigid_body::RigidBody},
     spatial::{AABB, Transform},
 };
 
@@ -129,6 +128,36 @@ impl KairosGame {
                     )
                 }),
         );
+
+        let plane_collider = Collider::box_collider(&mut engine.physics_engine, 100.0, 0.1, 100.0);
+        let (ball_rigid_body, ball_collider) =
+            RigidBody::with_sphere_collider(&mut engine.physics_engine, 0.5);
+
+        SerializedMeshAsset::save_from_glb_file(PathBuf::from("res/models/Plane.glb"));
+
+        let plan_mesh_asset =
+            assets_server.load::<MeshAssetsSystem>(PathBuf::from("res/models/Plane.mesh"));
+        let ball_mesh_asset =
+            assets_server.load::<MeshAssetsSystem>(PathBuf::from("res/models/Ball.mesh"));
+        let plane_mesh = LODMesh::new(plan_mesh_asset);
+        let ball_mesh = LODMesh::new(ball_mesh_asset);
+        engine.world.spawn((
+            Transform::new(float3::ZERO, quaternion::IDENTITY, float3::ONE),
+            plane_collider,
+            plane_mesh,
+            Material::new(material.clone()),
+        ));
+        engine.world.spawn((
+            Transform::new(
+                float3::new(0.0, 10.0, 0.0),
+                quaternion::IDENTITY,
+                float3::ONE,
+            ),
+            ball_rigid_body,
+            ball_collider,
+            ball_mesh,
+            Material::new(material.clone()),
+        ));
 
         Self {}
     }

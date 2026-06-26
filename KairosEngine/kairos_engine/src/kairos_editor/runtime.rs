@@ -289,7 +289,7 @@ impl KairosEditorRuntime {
                     let frame_buffer_attachment_id =
                         egui_graphics_command.create_color_attachment(frame_buffer_attachment);
                     let vp_id =
-                        egui_graphics_command.set_view_projection_matrix(float4x4::idenity());
+                        egui_graphics_command.set_view_projection_matrix(float4x4::IDENTITY);
                     egui_graphics_command.begin_render_pass(
                         Some("Egui Graphics Render Pass"),
                         vec![frame_buffer_attachment_id],

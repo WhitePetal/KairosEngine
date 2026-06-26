@@ -19,3 +19,9 @@ impl From<float3> for mint::Vector3<f32> {
         }
     }
 }
+
+impl From<float3> for rapier3d::math::Vector3 {
+    fn from(value: float3) -> Self {
+        rapier3d::math::Vector3::new(value.x(), value.y(), value.z())
+    }
+}
