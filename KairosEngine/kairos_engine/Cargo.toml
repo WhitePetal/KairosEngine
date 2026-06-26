@@ -47,7 +47,7 @@ gltf = "1.4.1"
 foldhash = "0.2.0"
 kira = { version = "0.12.0", features = ["serde"] }
 mint = "0.5"
-# rapier3d = { version = "0.32.0", features = [ "simd-nightly", "parallel", "serde-serialize" ] }
+rapier3d = { version = "0.33.0", features = [ "simd-stable", "simd-nightly", "parallel", "serde-serialize", "enhanced-determinism", "wasm-bindgen" ] }
 # puffin = "0.20.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
