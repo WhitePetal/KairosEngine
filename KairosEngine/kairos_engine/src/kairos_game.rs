@@ -12,11 +12,15 @@ use crate::{
         },
     },
     graphics::{
-        graphics_graph::GraphicsCommand, lod_mesh_component::LODMesh, material_component::Material, mesh::SerializedMeshAsset,
+        graphics_graph::GraphicsCommand, lod_mesh_component::LODMesh, material_component::Material,
+        mesh::SerializedMeshAsset,
     },
     kairos_editor::Engine,
     math::{self, float3, quaternion},
-    physics::{collider::Collider, rigid_body::RigidBody},
+    physics::{
+        collider::{Collider, ColliderMaterial},
+        rigid_body::RigidBody,
+    },
     spatial::{AABB, Transform},
 };
 
@@ -25,6 +29,8 @@ pub struct KairosGame {}
 impl KairosGame {
     pub fn new(engine: &mut Engine) -> Self {
         let assets_server = &mut engine.assets_server;
+
+        SerializedMeshAsset::save_from_glb_file(PathBuf::from("res/models/Suzanne.glb"));
 
         let mesh = assets_server.load::<MeshAssetsSystem>(
             PathBuf::from("res/models/Suzanne.mesh"),
@@ -108,32 +114,44 @@ impl KairosGame {
         engine.world.spawn(spatial_audio_reverb);
 
         const NUM_INSTANCES_PER_ROW: i32 = 20;
-        engine.world.spawn_batch(
-            (-NUM_INSTANCES_PER_ROW..NUM_INSTANCES_PER_ROW)
-                .flat_map(|z| (-NUM_INSTANCES_PER_ROW..NUM_INSTANCES_PER_ROW).map(move |x| (x, z)))
-                .map(|(x, z)| {
-                    let scale = float3::new(0.05, 0.05, 0.05);
-                    let position = float3::new(x as f32, 0.0, z as f32) * scale * 2.0;
-                    let rotation = quaternion::identity();
-                    let transform = Transform::new(position, rotation, scale);
-                    let audios = smallvec![blip_audio.clone()];
-                    let spatial_audio_volume =
-                        SpatialAudioVolume::new(audios, true, rand::random_range(0.0..5.0));
+        // engine.world.spawn_batch(
+        //     (-NUM_INSTANCES_PER_ROW..NUM_INSTANCES_PER_ROW)
+        //         .flat_map(|z| (-NUM_INSTANCES_PER_ROW..NUM_INSTANCES_PER_ROW).map(move |x| (x, z)))
+        //         .map(|(x, z)| {
+        //             let scale = float3::new(0.05, 0.05, 0.05);
+        //             let position = float3::new(x as f32, 0.0, z as f32) * scale * 2.0;
+        //             let rotation = quaternion::identity();
+        //             let transform = Transform::new(position, rotation, scale);
+        //             let audios = smallvec![blip_audio.clone()];
+        //             let spatial_audio_volume =
+        //                 SpatialAudioVolume::new(audios, true, rand::random_range(0.0..5.0));
 
-                    (
-                        transform,
-                        LODMesh::new(mesh.clone()),
-                        Material::new(material.clone()),
-                        spatial_audio_volume,
-                    )
-                }),
-        );
+        //             (
+        //                 transform,
+        //                 LODMesh::new(mesh.clone()),
+        //                 Material::new(material.clone()),
+        //                 spatial_audio_volume,
+        //             )
+        //         }),
+        // );
 
+        let plane_transform = Transform::new(float3::ZERO, quaternion::IDENTITY, float3::ONE);
         let plane_collider = Collider::box_collider(&mut engine.physics_engine, 100.0, 0.1, 100.0);
-        let (ball_rigid_body, ball_collider) =
-            RigidBody::with_sphere_collider(&mut engine.physics_engine, 0.5);
+        plane_collider.set_position(&mut engine.physics_engine, plane_transform.position);
 
-        SerializedMeshAsset::save_from_glb_file(PathBuf::from("res/models/Plane.glb"));
+        let ball_transform = Transform::new(
+            float3::new(0.0, 10.0, 0.0),
+            quaternion::IDENTITY,
+            float3::ONE,
+        );
+        let ball_rigid_body = RigidBody::with_sphere_collider_with_material(
+            &mut engine.physics_engine,
+            0.5,
+            ColliderMaterial { restitution: 0.8 },
+        );
+        ball_rigid_body.set_position(&mut engine.physics_engine, ball_transform.position);
+
+        SerializedMeshAsset::save_from_glb_file(PathBuf::from("res/models/Ball.glb"));
 
         let plan_mesh_asset =
             assets_server.load::<MeshAssetsSystem>(PathBuf::from("res/models/Plane.mesh"));
@@ -142,19 +160,14 @@ impl KairosGame {
         let plane_mesh = LODMesh::new(plan_mesh_asset);
         let ball_mesh = LODMesh::new(ball_mesh_asset);
         engine.world.spawn((
-            Transform::new(float3::ZERO, quaternion::IDENTITY, float3::ONE),
+            plane_transform,
             plane_collider,
             plane_mesh,
             Material::new(material.clone()),
         ));
         engine.world.spawn((
-            Transform::new(
-                float3::new(0.0, 10.0, 0.0),
-                quaternion::IDENTITY,
-                float3::ONE,
-            ),
+            ball_transform,
             ball_rigid_body,
-            ball_collider,
             ball_mesh,
             Material::new(material.clone()),
         ));
@@ -167,17 +180,19 @@ impl KairosGame {
         let total_time = engine.time.total_time().as_secs_f32();
         let delta_time = engine.time.delta_time().as_secs_f32();
 
-        let transfoms = engine.world.query_mut::<&mut Transform>().into_iter();
-        transfoms.for_each(|trans| {
-            let position = &mut trans.position;
-            let x = position.x();
-            let y = math::sin(x + total_time * 0.5);
-            *position = float3::new(x, y, position.z());
-        });
+        // let transfoms = engine.world.query_mut::<&mut Transform>().into_iter();
+        // transfoms.for_each(|trans| {
+        //     let position = &mut trans.position;
+        //     let x = position.x();
+        //     let y = math::sin(x + total_time * 0.5);
+        //     *position = float3::new(x, y, position.z());
+        // });
 
         engine
             .audio_engine
             .update(&mut engine.assets_server, &mut engine.world, delta_time);
+
+        engine.physics_engine.update(&mut engine.world);
     }
 
     pub fn render(&self, engine: &mut Engine, graphics_command: &mut GraphicsCommand) {

@@ -51,16 +51,12 @@ impl asset::DropEvent for DropEvent {
 pub struct Loader {}
 impl Loader {
     async fn load_toml(path: &PathBuf) -> Result<TextureAsset, Error> {
-        println!("bef read toml");
         let toml = tokio::fs::read(path).await?;
-        println!("aft read toml");
         let texture = toml::from_slice::<TextureAsset>(&toml)?;
         Ok(texture)
     }
     async fn load_bin(path: &PathBuf) -> Result<Vec<u8>, Error> {
-        println!("bef read bin");
         let bytes = tokio::fs::read(path.with_extension("texture_bin")).await?;
-        println!("aft read bin");
         let data = rkyv::from_bytes::<Vec<u8>, rkyv::rancor::Error>(&bytes)?;
         Ok(data)
     }

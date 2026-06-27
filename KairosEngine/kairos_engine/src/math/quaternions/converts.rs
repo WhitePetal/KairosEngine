@@ -8,3 +8,9 @@ impl From<quaternion> for mint::Quaternion<f32> {
         }
     }
 }
+
+impl From<rapier3d::math::Rotation> for quaternion {
+    fn from(value: rapier3d::math::Rotation) -> Self {
+        Self::new(value.x, value.y, value.z, value.w)
+    }
+}

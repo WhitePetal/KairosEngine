@@ -16,7 +16,7 @@ pub struct float4x4([float4; 4]);
 
 impl float4x4 {
     pub const IDENTITY: float4x4 = float4x4::identity();
-    
+
     ///
     /// ```
     /// | v1 | v2 | v3 | v4 |

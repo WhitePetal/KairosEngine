@@ -7,7 +7,7 @@ use rapier3d::{
     pipeline::PhysicsPipeline,
 };
 
-use crate::math::float3;
+use crate::{ecs::world::World, math::float3, physics::rigid_body::RigidBody, spatial::Transform};
 
 pub mod collider;
 pub mod rigid_body;
@@ -63,7 +63,7 @@ impl PhysicsEngine {
         }
     }
 
-    pub fn update(&mut self) {
+    pub fn update(&mut self, word: &mut World) {
         self.physics_pipeline.step(
             self.gravity.into(),
             &self.integration_parameters,
@@ -78,5 +78,12 @@ impl PhysicsEngine {
             &self.physics_hooks,
             &self.event_handler,
         );
+
+        for (transform, rigid_body) in word.query_mut::<(&mut Transform, &RigidBody)>().into_iter()
+        {
+            let rigid_body = &self.rigid_body_set[rigid_body.handle];
+            transform.position = rigid_body.translation().into();
+            transform.rotation = (*rigid_body.rotation()).into();
+        }
     }
 }

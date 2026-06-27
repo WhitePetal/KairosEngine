@@ -25,3 +25,9 @@ impl From<float3> for rapier3d::math::Vector3 {
         rapier3d::math::Vector3::new(value.x(), value.y(), value.z())
     }
 }
+
+impl From<rapier3d::math::Vector3> for float3 {
+    fn from(value: rapier3d::math::Vector3) -> Self {
+        Self::new(value.x, value.y, value.z)
+    }
+}

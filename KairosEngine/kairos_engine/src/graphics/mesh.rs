@@ -4,7 +4,10 @@ use gltf::Gltf;
 use rkyv::Archive;
 use serde::{Deserialize, Serialize};
 
-use crate::{graphics::vertex::Vertex, math::{self, float2, float3, float4, float4x4, quaternion}};
+use crate::{
+    graphics::vertex::Vertex,
+    math::{self, float2, float3, float4, float4x4, quaternion},
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct Mesh {
@@ -36,13 +39,27 @@ impl SerializedMeshAsset {
             return;
         };
         let mut bin_path = path.clone();
-        bin_path.set_extension(".mesh_bin");
-        match std::fs::write(bin_path, bytes) {
-            Ok(_) => {},
+        bin_path.set_extension("mesh_bin");
+        match std::fs::write(bin_path.clone(), bytes) {
+            Ok(_) => {}
             Err(_) => {
-                println!("Save mesh bytes failed")
-            },
-        } 
+                println!("Save mesh bytes failed");
+            }
+        }
+        let serialized_mesh = SerializedMeshAsset {
+            source_path: bin_path.clone(),
+        };
+        let Ok(serialized_mesh_toml) = toml::to_string(&serialized_mesh) else {
+            println!("Serialize mesh toml failed");
+            return;
+        };
+        bin_path.set_extension("mesh");
+        match std::fs::write(bin_path, serialized_mesh_toml) {
+            Ok(_) => {}
+            Err(_) => {
+                println!("Save mesh toml failed");
+            }
+        };
     }
 
     fn node_transform_matrix(node: &gltf::Node<'_>) -> float4x4 {
@@ -99,8 +116,9 @@ impl SerializedMeshAsset {
             let position = (node_to_world * float4::from((float3::from(position), 1.0))).xyz();
             let normal = math::normalize((node_to_world * float4::from((normal, 0.0))).xyz());
             let tangent_xyz = math::normalize(
-                (node_to_world * float4::from((float3::new(tangent[0], tangent[1], tangent[2]), 0.0)))
-                    .xyz(),
+                (node_to_world
+                    * float4::from((float3::new(tangent[0], tangent[1], tangent[2]), 0.0)))
+                .xyz(),
             );
 
             vertices.push(Vertex {
@@ -140,7 +158,9 @@ impl SerializedMeshAsset {
 
         if let Some(gltf_mesh) = node.mesh() {
             for primitive in gltf_mesh.primitives() {
-                if let Some(mesh) = Self::load_mesh_from_primitive(primitive, node_to_world, buffers) {
+                if let Some(mesh) =
+                    Self::load_mesh_from_primitive(primitive, node_to_world, buffers)
+                {
                     return Some(mesh);
                 }
             }

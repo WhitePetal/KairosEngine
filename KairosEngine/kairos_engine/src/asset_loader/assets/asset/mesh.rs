@@ -11,7 +11,7 @@ use crate::{
         },
         consts,
     },
-    graphics::mesh::MeshAsset,
+    graphics::mesh::{Mesh, MeshAsset, SerializedMeshAsset},
 };
 
 #[derive(Debug)]
@@ -50,13 +50,26 @@ impl asset::DropEvent for DropEvent {
 #[derive(Debug)]
 pub struct Loader {}
 impl Loader {
+    async fn load_toml(path: &PathBuf) -> Result<SerializedMeshAsset, Error> {
+        let toml = tokio::fs::read(path).await?;
+        let serialized_mesh = toml::from_slice::<SerializedMeshAsset>(&toml)?;
+        Ok(serialized_mesh)
+    }
+    async fn load_bin(path: &PathBuf) -> Result<Mesh, Error> {
+        let bytes = tokio::fs::read(path.with_extension("mesh_bin")).await?;
+        let mesh = rkyv::from_bytes::<Mesh, rkyv::rancor::Error>(&bytes)?;
+        Ok(mesh)
+    }
     async fn load(
         path: PathBuf,
         asset_index: AssetIndex,
         sender: mpsc::Sender<LoadedEvent>,
     ) -> Result<(), Error> {
-        let toml = tokio::fs::read(path).await?;
-        let mesh_asset = toml::from_slice(&toml)?;
+        let (serialized_mesh, mesh) = tokio::join!(Self::load_toml(&path), Self::load_bin(&path),);
+        let _serialized_mesh = serialized_mesh?;
+        let mesh = mesh?;
+        let mesh_asset = MeshAsset { mesh };
+
         sender
             .send(LoadedEvent {
                 index: asset_index,

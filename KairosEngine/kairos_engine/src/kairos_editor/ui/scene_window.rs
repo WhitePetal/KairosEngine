@@ -5,9 +5,7 @@ use serde::{Deserialize, Serialize};
 use toml::from_str;
 
 use crate::{
-    graphics::{
-        attachment::Attachment, camera::Camera, graphics_graph::GraphicsCommand,
-    },
+    graphics::{attachment::Attachment, camera::Camera, graphics_graph::GraphicsCommand},
     kairos_editor::{
         Engine,
         ui::{Drawer, Message, paths},
