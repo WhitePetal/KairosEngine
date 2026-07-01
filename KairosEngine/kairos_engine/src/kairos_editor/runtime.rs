@@ -10,7 +10,7 @@ use parking_lot::Mutex;
 use winit::{
     application::ApplicationHandler,
     dpi::LogicalSize,
-    event::WindowEvent,
+    event::{KeyEvent, WindowEvent},
     event_loop::{ActiveEventLoop, ControlFlow, EventLoopProxy},
     window::{Icon, Window},
 };
@@ -201,6 +201,13 @@ impl KairosEditorRuntime {
         window.request_redraw();
 
         Ok(())
+    }
+
+    fn update_keyboard_input(&mut self, event: KeyEvent) {
+        if event.repeat {
+            return;
+        }
+        self.kairos_engine.update_keyboard_input(event)
     }
 
     fn redraw(&mut self, event_loop: &ActiveEventLoop) {
@@ -479,6 +486,9 @@ impl ApplicationHandler<KairosEditorRuntimeEvent> for KairosEditorRuntime {
             }
             WindowEvent::RedrawRequested => {
                 self.redraw(event_loop);
+            }
+            WindowEvent::KeyboardInput { device_id, event, is_synthetic } => {
+                self.update_keyboard_input(event);
             }
             _ => {}
         }

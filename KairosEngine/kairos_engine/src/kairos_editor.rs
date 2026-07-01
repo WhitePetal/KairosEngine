@@ -1,9 +1,8 @@
 use crate::{
-    asset_loader::assets::AssetsServer, audio::AudioEngine, ecs::world::World,
-    graphics::graphics_graph::GraphicsCommand, kairos_game::KairosGame, log::Log,
-    physics::PhysicsEngine, timer::Time,
+    asset_loader::assets::AssetsServer, audio::AudioEngine, ecs::world::World, graphics::graphics_graph::GraphicsCommand, inputs::InputEngine, kairos_game::KairosGame, log::Log, physics::PhysicsEngine, timer::Time
 };
 use egui::Visuals;
+use winit::event::KeyEvent;
 
 pub mod consts;
 pub mod project_path_tree;
@@ -17,6 +16,7 @@ pub struct Engine {
     pub assets_server: AssetsServer,
     pub audio_engine: AudioEngine,
     pub physics_engine: PhysicsEngine,
+    pub input_engine: InputEngine,
 }
 
 impl Engine {
@@ -26,6 +26,7 @@ impl Engine {
         let assets_server = AssetsServer::new();
         let audio_engine = AudioEngine::new()?;
         let physics_engine = PhysicsEngine::new();
+        let input_engine = InputEngine::new();
 
         Ok(Self {
             time,
@@ -33,6 +34,7 @@ impl Engine {
             assets_server,
             audio_engine,
             physics_engine,
+            input_engine,
         })
     }
 }
@@ -57,6 +59,10 @@ impl KairosEngine {
             ui_context,
             log,
         })
+    }
+
+    fn update_keyboard_input(&mut self, event: KeyEvent) {
+        self.engine.input_engine.update_keyboard_input(event)
     }
 
     fn update(&mut self) {
