@@ -10,7 +10,7 @@ use crate::{
         },
     },
     graphics::{
-        camera::Camera, graphics_graph::GraphicsCommand, lod_mesh_component::LODMesh, material_component::Material, mesh::SerializedMeshAsset
+        camera::Camera, graphics_graph::GraphicsCommand, lod_mesh_component::LODMesh, material_component::MaterialComponent, mesh::SerializedMeshAsset
     },
     inputs::Input,
     kairos_editor::Engine,
@@ -158,13 +158,13 @@ impl KairosGame {
             plane_transform,
             plane_collider,
             plane_mesh,
-            Material::new(material.clone()),
+            MaterialComponent::new(material.clone()),
         ));
         engine.world.spawn((
             ball_transform,
             ball_rigid_body,
             ball_mesh,
-            Material::new(material.clone()),
+            MaterialComponent::new(material.clone()),
         ));
 
         Self {}
@@ -195,7 +195,7 @@ impl KairosGame {
     pub fn render(&self, engine: &mut Engine, graphics_command: &mut GraphicsCommand) {
         let renderers = engine
             .world
-            .query_mut::<(&Transform, &LODMesh, &Material)>()
+            .query_mut::<(&Transform, &LODMesh, &MaterialComponent)>()
             .into_iter();
         renderers.for_each(|(trans, lod, mat)| {
             graphics_command.draw(

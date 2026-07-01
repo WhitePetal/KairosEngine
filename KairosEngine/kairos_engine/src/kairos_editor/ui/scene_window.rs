@@ -11,12 +11,14 @@ use crate::{
     },
     kairos_editor::{
         Engine,
-        ui::{Drawer, Message, paths},
+        ui::{Drawer, Message, paths, scene_window::gizmos::{GizmosModel, GizmosRenderer}},
     },
     kairos_game::KairosGame,
     math::float3,
     spatial::Transform,
 };
+
+mod gizmos;
 
 struct SceneCamera {
     transform: Transform,
@@ -43,10 +45,12 @@ struct SceneWindowModel {
     drop_texture_id: Option<egui::TextureId>,
 
     camera: SceneCamera,
+    gizmos: GizmosModel,
 }
 
 pub struct SceneWindow {
     model: SceneWindowModel,
+    gizmos_renderer: GizmosRenderer,
 }
 
 impl SceneWindowStyle {
@@ -82,6 +86,7 @@ impl SceneWindowModel {
             100.,
         );
         let scene_camera = SceneCamera { transform, camera };
+        let gizmos = GizmosModel::new();
 
         Ok(Self {
             style,
@@ -91,6 +96,7 @@ impl SceneWindowModel {
             recever: None,
             drop_texture_id: None,
             camera: scene_camera,
+            gizmos,
         })
     }
 }
@@ -98,7 +104,11 @@ impl SceneWindowModel {
 impl SceneWindow {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let model = SceneWindowModel::new()?;
-        Ok(Self { model })
+        let gizmos_renderer = GizmosRenderer::new();
+        Ok(Self { 
+            model,
+            gizmos_renderer,
+        })
     }
 }
 
@@ -194,8 +204,8 @@ impl Drawer for SceneWindow {
         );
 
         game.render(engine, &mut graphics_command);
-
-        self.render_gizmos(&mut graphics_command);
+        
+        self.gizmos_renderer.render_gizmos(&self.model.gizmos, &mut graphics_command);
 
         graphics_command.end_render_pass();
         let (egui_bind_tex_sender, egui_bind_tex_recever) = tokio::sync::oneshot::channel();

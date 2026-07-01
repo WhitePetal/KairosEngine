@@ -1,0 +1,3 @@
+[meta]
+source_path = "res/materials/gizmos/grid_plane.mat"
+shader_path = "res/shaders/gizmos/grid_plane.wgsl"

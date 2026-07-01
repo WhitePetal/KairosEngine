@@ -1,0 +1,46 @@
+use std::{path::PathBuf, sync::Arc};
+
+use crate::{asset_loader::assets::{AssetHandle, AssetsServer, MaterialAssetsSystem}, graphics::graphics_graph::GraphicsCommand, math::{float3, float4x4}};
+
+/// Grid gizmo draw data — vertices + indices for a quad on the XZ plane.
+pub struct GridPlaneQuad {
+    pub vertices: Vec<float3>,
+    pub indices: Vec<u16>,
+}
+
+pub struct GridPlaneModel {
+    material: Arc<AssetHandle<MaterialAssetsSystem>>,
+    mesh: GridPlaneQuad,
+}
+impl GridPlaneModel {
+    pub fn new(assets_server: &mut AssetsServer) -> Self {
+        let material = assets_server.load::<MaterialAssetsSystem>(PathBuf::from("res/materials/gizmos/grid_plane.mat"));
+        let half_extent = 100.0;
+        let vertices = vec![
+            float3::new(-half_extent, 0.0, -half_extent),
+            float3::new(half_extent, 0.0, -half_extent),
+            float3::new(-half_extent, 0.0, half_extent),
+            float3::new(half_extent, 0.0, half_extent),
+        ];
+        let indices = vec![0, 1, 2, 2, 1, 3];
+
+        let mesh = GridPlaneQuad { vertices, indices };
+        Self {  
+            material,
+            mesh,
+        }
+    }
+}
+
+pub struct GridPlaneRenderer {
+
+}
+impl GridPlaneRenderer {
+    pub fn new() -> Self {
+        Self {  }
+    }
+
+    pub fn render(&self, model: &GridPlaneModel, graphics_command: &mut GraphicsCommand) {
+        graphics_command.draw(mesh, model.material, float4x4::IDENTITY);
+    }
+}

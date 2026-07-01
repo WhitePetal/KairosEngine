@@ -444,7 +444,7 @@ pub struct float3(pub f32x4);
 impl float3 {
     pub const ZERO: float3 = float3::new(0.0, 0.0, 0.0);
     pub const ONE: float3 = float3::new(1.0, 1.0, 1.0);
-    
+
     // 右手系, Y up, -Z forward
     pub const RIGHT: float3 = float3::new(1.0, 0.0, 0.0);
     pub const LEFT: float3 = float3::new(-1.0, 0.0, 0.0);
@@ -738,6 +738,7 @@ impl Div for &float3 {
         *self / *rhs
     }
 }
+impl Eq for float3 {}
 
 impl From<[f32; 3]> for float3 {
     #[inline(always)]

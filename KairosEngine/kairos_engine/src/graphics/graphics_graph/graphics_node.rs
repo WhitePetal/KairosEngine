@@ -1,8 +1,8 @@
-use std::sync::Arc;
+use std::{hash::Hash, sync::Arc};
 
 use crate::{
     asset_loader::assets::{AssetHandle, MaterialAssetsSystem, MeshAssetsSystem},
-    math::float4x4,
+    math::{float3, float4x4},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -12,16 +12,45 @@ pub struct DepthAttachmentId(pub usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct VPId(pub usize);
 
+pub enum Drawer {
+    Base(BaseDraw),
+    SimpleMesh(SimpleMeshDrawer),
+}
+
 pub struct BaseDraw {
     pub mesh: Arc<AssetHandle<MeshAssetsSystem>>,
     pub material: Arc<AssetHandle<MaterialAssetsSystem>>,
     pub local_to_world: float4x4,
 }
+pub struct SimpleMeshDrawer {
+    pub vertices: Arc<Vec<float3>>,
+    pub indices: Arc<Vec<u16>>,
+    pub material: Arc<AssetHandle<MaterialAssetsSystem>>,
+    pub local_to_world: float4x4,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct InstancingRenderer {
+pub enum InstancingRenderer {
+    Base(BaseInstancingRenderer),
+    SimpleMesh(SimpleMeshInstancingRenderer),
+}
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct BaseInstancingRenderer {
     pub mesh: Arc<AssetHandle<MeshAssetsSystem>>,
     pub material: Arc<AssetHandle<MaterialAssetsSystem>>,
 }
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SimpleMeshInstancingRenderer {
+    pub vertices: Arc<Vec<float3>>,
+    pub indices: Arc<Vec<u16>>
+}
+impl Hash for SimpleMeshInstancingRenderer {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        (Arc::as_ptr(&self.indices) as usize).hash(state);
+        (Arc::as_ptr(&self.indices) as usize).hash(state);
+    }
+}
+
 pub struct InstancingDraw {
     pub renderer: InstancingRenderer,
     pub local_to_worlds: Vec<float4x4>,
@@ -41,31 +70,15 @@ pub enum GraphNode {
     FreeEguiTextureId(egui::TextureId),
 }
 
-/// Minimal vertex type for gizmo geometry (position only).
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct GizmoVertex {
-    pub position: [f32; 3],
-}
-unsafe impl bytemuck::Zeroable for GizmoVertex {}
-unsafe impl bytemuck::Pod for GizmoVertex {}
-
-/// Grid gizmo draw data — vertices + indices for a quad on the XZ plane.
-pub struct GizmoGridDraw {
-    pub vertices: Vec<GizmoVertex>,
-    pub indices: Vec<u16>,
-}
-
 pub struct RenderPassNode {
     pub label: Option<&'static str>,
     pub attachments: Vec<ColorAttachmentId>,
     pub depth_stencil_attachment: Option<DepthAttachmentId>,
     pub vp_id: VPId,
-    pub draws: Vec<BaseDraw>,
+    pub draws: Vec<Drawer>,
     pub draw_instances: Vec<InstancingDraw>,
     pub force_clear: bool,
     pub egui_draw: Option<EguiDraw>,
-    pub gizmo_grid: Option<GizmoGridDraw>,
 }
 pub struct OutputToFrameBufferNode {
     pub attachment_id: ColorAttachmentId,

@@ -15,7 +15,24 @@ use super::quaternions::quaternion;
 pub struct float4x4([float4; 4]);
 
 impl float4x4 {
-    pub const IDENTITY: float4x4 = float4x4::identity();
+    ///
+    /// ```
+    /// | v1 | v2 | v3 | v4 |
+    /// --------------------|
+    /// | 1  |  0 |  0 |  0 |
+    /// | 0  |  1 |  0 |  0 |
+    /// | 0  |  0 |  1 |  0 |
+    /// | 0  |  0 |  0 |  1 |
+    /// ---------------------
+    /// ```
+    pub const IDENTITY: float4x4 = float4x4(
+        [
+            float4::new(1.0, 0.0, 0.0, 0.0),
+            float4::new(0.0, 1.0, 0.0, 0.0),
+            float4::new(0.0, 0.0, 1.0, 0.0),
+            float4::new(0.0, 0.0, 0.0, 1.0),
+        ]
+    );
 
     ///
     /// ```
@@ -30,25 +47,6 @@ impl float4x4 {
     #[inline(always)]
     pub fn new(v1: float4, v2: float4, v3: float4, v4: float4) -> Self {
         Self([v1, v2, v3, v4])
-    }
-    ///
-    /// ```
-    /// | v1 | v2 | v3 | v4 |
-    /// --------------------|
-    /// | 1  |  0 |  0 |  0 |
-    /// | 0  |  1 |  0 |  0 |
-    /// | 0  |  0 |  1 |  0 |
-    /// | 0  |  0 |  0 |  1 |
-    /// ---------------------
-    /// ```
-    #[inline(always)]
-    pub const fn identity() -> Self {
-        Self([
-            float4::new(1.0, 0.0, 0.0, 0.0),
-            float4::new(0.0, 1.0, 0.0, 0.0),
-            float4::new(0.0, 0.0, 1.0, 0.0),
-            float4::new(0.0, 0.0, 0.0, 1.0),
-        ])
     }
 
     ///

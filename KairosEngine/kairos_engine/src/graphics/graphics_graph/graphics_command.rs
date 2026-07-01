@@ -5,9 +5,7 @@ use crate::{
     graphics::{
         attachment::Attachment,
         graphics_graph::graphics_node::{
-            BaseDraw, BindAttachmentToEguiNode, ColorAttachmentId, CopyAttachmentToEguiNode,
-            DepthAttachmentId, EguiDraw, GizmoGridDraw, GraphNode, OutputToFrameBufferNode,
-            RenderPassNode, VPId,
+            BaseDraw, BindAttachmentToEguiNode, ColorAttachmentId, CopyAttachmentToEguiNode, DepthAttachmentId, Drawer, EguiDraw, GraphNode, OutputToFrameBufferNode, RenderPassNode, VPId
         },
     },
     math::float4x4,
@@ -130,11 +128,11 @@ impl GraphicsCommand {
             unreachable!()
         };
 
-        let draw_call = BaseDraw {
+        let draw_call = Drawer::BaseDraw(BaseDraw {
             mesh,
             material,
             local_to_world,
-        };
+        });
         render_pass.draws.push(draw_call);
     }
 
