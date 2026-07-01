@@ -6,7 +6,8 @@ use crate::{
         attachment::Attachment,
         graphics_graph::graphics_node::{
             BaseDraw, BindAttachmentToEguiNode, ColorAttachmentId, CopyAttachmentToEguiNode,
-            DepthAttachmentId, EguiDraw, GraphNode, OutputToFrameBufferNode, RenderPassNode, VPId,
+            DepthAttachmentId, EguiDraw, GizmoGridDraw, GraphNode, OutputToFrameBufferNode,
+            RenderPassNode, VPId,
         },
     },
     math::float4x4,
@@ -93,6 +94,7 @@ impl GraphicsCommand {
             draws: Vec::with_capacity(darws_capacity),
             draw_instances: Vec::new(),
             egui_draw: None,
+            gizmo_grid: None,
         };
 
         self.cur_render_pass = RenderPassState::Writing(render_pass_node)
@@ -134,6 +136,18 @@ impl GraphicsCommand {
             local_to_world,
         };
         render_pass.draws.push(draw_call);
+    }
+
+    pub fn draw_gizmo_grid(&mut self, gizmo_grid: GizmoGridDraw) {
+        debug_assert!(
+            matches!(self.cur_render_pass, RenderPassState::Writing(_)),
+            "draw_gizmo_grid while no render pass be opened"
+        );
+
+        let RenderPassState::Writing(render_pass) = &mut self.cur_render_pass else {
+            unreachable!()
+        };
+        render_pass.gizmo_grid = Some(gizmo_grid);
     }
 
     pub fn draw_egui(

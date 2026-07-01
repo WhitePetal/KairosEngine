@@ -41,6 +41,21 @@ pub enum GraphNode {
     FreeEguiTextureId(egui::TextureId),
 }
 
+/// Minimal vertex type for gizmo geometry (position only).
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct GizmoVertex {
+    pub position: [f32; 3],
+}
+unsafe impl bytemuck::Zeroable for GizmoVertex {}
+unsafe impl bytemuck::Pod for GizmoVertex {}
+
+/// Grid gizmo draw data — vertices + indices for a quad on the XZ plane.
+pub struct GizmoGridDraw {
+    pub vertices: Vec<GizmoVertex>,
+    pub indices: Vec<u16>,
+}
+
 pub struct RenderPassNode {
     pub label: Option<&'static str>,
     pub attachments: Vec<ColorAttachmentId>,
@@ -50,6 +65,7 @@ pub struct RenderPassNode {
     pub draw_instances: Vec<InstancingDraw>,
     pub force_clear: bool,
     pub egui_draw: Option<EguiDraw>,
+    pub gizmo_grid: Option<GizmoGridDraw>,
 }
 pub struct OutputToFrameBufferNode {
     pub attachment_id: ColorAttachmentId,

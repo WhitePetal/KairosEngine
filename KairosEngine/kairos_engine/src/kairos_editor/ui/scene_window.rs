@@ -5,13 +5,17 @@ use serde::{Deserialize, Serialize};
 use toml::from_str;
 
 use crate::{
-    graphics::{attachment::Attachment, camera::Camera, graphics_graph::GraphicsCommand},
+    graphics::{
+        attachment::Attachment, camera::Camera, gizmos::grid,
+        graphics_graph::GraphicsCommand,
+    },
     kairos_editor::{
         Engine,
         ui::{Drawer, Message, paths},
     },
     kairos_game::KairosGame,
-    math::float3, spatial::Transform,
+    math::float3,
+    spatial::Transform,
 };
 
 struct SceneCamera {
@@ -191,6 +195,8 @@ impl Drawer for SceneWindow {
 
         game.render(engine, &mut graphics_command);
 
+        self.render_gizmos(&mut graphics_command);
+
         graphics_command.end_render_pass();
         let (egui_bind_tex_sender, egui_bind_tex_recever) = tokio::sync::oneshot::channel();
         messager.send(Message::RegisteSceneWindowViewBind(egui_bind_tex_recever));
@@ -201,6 +207,11 @@ impl Drawer for SceneWindow {
 }
 
 impl SceneWindow {
+    fn render_gizmos(&self, graphics_command: &mut GraphicsCommand) {
+        let grid = grid::create_grid_quad(100.0);
+        graphics_command.draw_gizmo_grid(grid);
+    }
+
     pub fn set_rt_id(&mut self, rt_id: egui::TextureId) {
         self.model.rt_id = Some(rt_id)
     }
@@ -234,4 +245,5 @@ impl SceneWindow {
             self.model.recever.take();
         }
     }
+
 }

@@ -25,7 +25,10 @@ use crate::{
     asset_loader::assets::AssetsServer,
     graphics::{
         attachment::{AttachmentFormat, InternalAttachmentId},
-        graphics_graph::{self, GraphicsGraph, graphics_node::RenderPassNode},
+        graphics_graph::{
+            self, GraphicsGraph,
+            graphics_node::{GizmoVertex, RenderPassNode},
+        },
         vertex::Vertex,
     },
     math::{float2, float3, float4, float4x4},
@@ -416,7 +419,7 @@ impl RenderPipeline {
         if let Some((vp_bind_group_layout, vp_bind_group)) =
             vp_bind_groups.get(render_pass_node.vp_id.0)
         {
-            render_pass.set_bind_group(1, vp_bind_group, &[]);
+            render_pass.set_bind_group(0, vp_bind_group, &[]);
 
             let instancing_vertex_buffer_layout = VertexBufferLayout {
                 array_stride: core::mem::size_of::<float4x4>() as wgpu::BufferAddress,
@@ -556,13 +559,13 @@ impl RenderPipeline {
                 let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
                     label: Some("Render Pipeline Layout"),
                     bind_group_layouts: &[
-                        Some(&texture_bind_group_layout),
                         Some(vp_bind_group_layout),
+                        Some(&texture_bind_group_layout),
                     ],
                     immediate_size: 0,
                 });
 
-                render_pass.set_bind_group(0, &texture_bind_group, &[]);
+                render_pass.set_bind_group(1, &texture_bind_group, &[]);
 
                 let shader = device.create_shader_module(ShaderModuleDescriptor {
                     label: Some("Shader"),
@@ -678,6 +681,106 @@ impl RenderPipeline {
                 render_pass.set_vertex_buffer(1, instancing_buffer.slice(..));
                 render_pass.set_index_buffer(indices_buffer.slice(..), wgpu::IndexFormat::Uint16);
                 render_pass.draw_indexed(0..indices_num, 0, 0..draw.local_to_worlds.len() as u32);
+            }
+
+            // --- Gizmo grid ---
+            if let Some(gizmo_grid) = &render_pass_node.gizmo_grid {
+                static GRID_SHADER_SRC: &str = include_str!("../../../res/shaders/grid.wgsl");
+                let grid_shader = device.create_shader_module(ShaderModuleDescriptor {
+                    label: Some("Grid Gizmo Shader"),
+                    source: ShaderSource::Wgsl(GRID_SHADER_SRC.into()),
+                });
+
+                let gizmo_vertex_buffer_layout = VertexBufferLayout {
+                    array_stride: core::mem::size_of::<GizmoVertex>() as wgpu::BufferAddress,
+                    step_mode: VertexStepMode::Vertex,
+                    attributes: &[VertexAttribute {
+                        offset: 0,
+                        format: VertexFormat::Float32x3,
+                        shader_location: 0,
+                    }],
+                };
+
+                let gizmo_pipeline_layout =
+                    device.create_pipeline_layout(&PipelineLayoutDescriptor {
+                        label: Some("Grid Gizmo Pipeline Layout"),
+                        bind_group_layouts: &[Some(vp_bind_group_layout)],
+                        immediate_size: 0,
+                    });
+
+                let color_format = color_attachments[0]
+                    .as_ref()
+                    .unwrap()
+                    .view
+                    .texture()
+                    .format();
+
+                let gizmo_pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
+                    label: Some("Grid Gizmo Pipeline"),
+                    layout: Some(&gizmo_pipeline_layout),
+                    vertex: VertexState {
+                        module: &grid_shader,
+                        entry_point: Some("vs_main"),
+                        compilation_options: PipelineCompilationOptions::default(),
+                        buffers: &[gizmo_vertex_buffer_layout],
+                    },
+                    primitive: PrimitiveState {
+                        topology: PrimitiveTopology::TriangleList,
+                        strip_index_format: None,
+                        front_face: FrontFace::Ccw,
+                        cull_mode: None, // draw from both sides
+                        unclipped_depth: false,
+                        polygon_mode: PolygonMode::Fill,
+                        conservative: false,
+                    },
+                    fragment: Some(FragmentState {
+                        module: &grid_shader,
+                        entry_point: Some("fs_main"),
+                        compilation_options: PipelineCompilationOptions::default(),
+                        targets: &[Some(ColorTargetState {
+                            format: color_format,
+                            blend: Some(BlendState::ALPHA_BLENDING),
+                            write_mask: ColorWrites::all(),
+                        })],
+                    }),
+                    depth_stencil: Some(DepthStencilState {
+                        format: depth_state
+                            .as_ref()
+                            .map(|ds| ds.format)
+                            .unwrap_or(wgpu::TextureFormat::Depth32Float),
+                        depth_write_enabled: Some(false), // grid is see-through
+                        depth_compare: Some(wgpu::CompareFunction::Always),
+                        stencil: StencilState::default(),
+                        bias: DepthBiasState::default(),
+                    }),
+                    multisample: MultisampleState {
+                        count: 1,
+                        mask: !0,
+                        alpha_to_coverage_enabled: false,
+                    },
+                    multiview_mask: None,
+                    cache: None,
+                });
+
+                let gizmo_vb = device.create_buffer_init(&BufferInitDescriptor {
+                    label: Some("Grid Gizmo Vertex Buffer"),
+                    contents: bytemuck::cast_slice(&gizmo_grid.vertices),
+                    usage: BufferUsages::VERTEX,
+                });
+                let gizmo_ib = device.create_buffer_init(&BufferInitDescriptor {
+                    label: Some("Grid Gizmo Index Buffer"),
+                    contents: bytemuck::cast_slice(&gizmo_grid.indices),
+                    usage: BufferUsages::INDEX,
+                });
+
+                render_pass.set_pipeline(&gizmo_pipeline);
+                render_pass.set_vertex_buffer(0, gizmo_vb.slice(..));
+                render_pass.set_index_buffer(gizmo_ib.slice(..), wgpu::IndexFormat::Uint16);
+                render_pass.draw_indexed(
+                    0..gizmo_grid.indices.len() as u32,
+                    0,
+                    0..1,
+                );
             }
         };
 

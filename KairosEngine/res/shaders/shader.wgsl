@@ -23,12 +23,13 @@ struct v2f {
 };
 
 @group(0) @binding(0)
-var texture: texture_2d<f32>;
-@group(0) @binding(1)
-var s_texture: sampler;
+var<uniform> matrix_vp: mat4x4f;
 
 @group(1) @binding(0)
-var<uniform> matrix_vp: mat4x4f;
+var texture: texture_2d<f32>;
+@group(1) @binding(1)
+var s_texture: sampler;
+
 
 @vertex
 fn vs_main(v: a2v, instancing: InstanceInput) -> v2f {
