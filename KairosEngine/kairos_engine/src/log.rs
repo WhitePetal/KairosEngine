@@ -51,7 +51,10 @@ impl Log {
     #[track_caller]
     fn push(&mut self, level: LogLevel, message: &str) {
         let caller = std::panic::Location::caller();
-        let backtrace = Backtrace::force_capture();
+        // capture() 遵循 RUST_BACKTRACE 环境变量:
+        //   RUST_BACKTRACE=0 (默认) → 不捕获，零开销
+        //   RUST_BACKTRACE=1        → 捕获完整调用栈
+        let backtrace = Backtrace::capture();
         let message = format!(
             "{}:{}:{}\n{}\n{}",
             caller.file(),

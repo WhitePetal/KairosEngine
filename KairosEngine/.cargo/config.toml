@@ -1,0 +1,23 @@
+# ============================================================
+# KairosEngine 构建配置
+# ============================================================
+
+# --- macOS 链接优化: 使用系统 lld 替代默认 linker ---
+# 如果你的 macOS 安装了 llvm/mold，取消注释下面几行可进一步加速链接:
+#   brew install llvm mold
+# [target.x86_64-apple-darwin]
+# rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+# [target.aarch64-apple-darwin]
+# rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+
+# --- 通用构建优化 ---
+[build]
+# 增量编译 (默认开启，显式声明)
+incremental = true
+
+# 当目标目录被删除时自动重新生成 build script 输出
+# target-dir 默认在 workspace 根目录的 target/
+
+[rustflags]
+# dev 模式下使用 unpacked 分割调试信息，减少链接时间
+# 注意: 这些 flags 会叠加到 profile 级别的 rustflags 上

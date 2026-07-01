@@ -9,11 +9,29 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 
+# ============================================================
+# Profile 策略:
+#   dev:     日常开发 — 自己的代码 opt-level=1(可调试), 依赖 opt-level=3
+#   release: 正式发布 — 全量优化 + ThinLTO
+#   bench:   基准测试 — 全量优化
+#
+# 使用方式:
+#   cargo run                    # dev 模式 (调试友好 + 运行时高效)
+#   cargo run --release          # 极致性能
+#   cargo run --profile bench    # benchmark 级性能
+# ============================================================
+
+[profile.dev]
+opt-level = 1        # 基础优化 (内联、简化控制流)，仍可正常断点调试
+debug = 1            # 仅行号表 (line tables)，大幅减少编译产物体积与链接时间
+
+[profile.dev.package."*"]
+opt-level = 3        # 依赖全量优化 — wgpu/egui/rapier3d 等
+debug = false        # 依赖不需要调试信息，加快编译
+
 [profile.release]
 rustflags = ["-C", "target-cpu=native"]
+lto = "thin"         # ThinLTO: 平衡运行时性能与编译速度
 
 [profile.bench]
 rustflags = ["-C", "target-cpu=native"]
-
-# [profile.dev.package."*"]
-# opt-level = 3

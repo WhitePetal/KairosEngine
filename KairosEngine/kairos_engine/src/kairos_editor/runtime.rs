@@ -487,7 +487,7 @@ impl ApplicationHandler<KairosEditorRuntimeEvent> for KairosEditorRuntime {
             WindowEvent::RedrawRequested => {
                 self.redraw(event_loop);
             }
-            WindowEvent::KeyboardInput { device_id, event, is_synthetic } => {
+            WindowEvent::KeyboardInput { device_id: _, event, is_synthetic: _ } => {
                 self.update_keyboard_input(event);
             }
             _ => {}
