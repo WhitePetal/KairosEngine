@@ -39,10 +39,8 @@ See the [Cargo.toml](KairosEngine/Cargo.toml)
 See the [Thanks.md](Thanks.md)
 
 # Used AIs
-- Kimi
-- Cursor
-- 豆包
 - DeepSeek
-- 千问
+- Cursor
+- GPT
+- Kimi
 - 即梦
-- CodeX
