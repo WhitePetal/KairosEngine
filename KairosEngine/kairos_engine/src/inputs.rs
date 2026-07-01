@@ -1,9 +1,8 @@
-use std::collections::{HashMap};
+use std::collections::HashMap;
 
 use winit::{event::KeyEvent, keyboard::PhysicalKey};
 
 use crate::math::float2;
-
 
 #[derive(Debug, Clone, Copy)]
 pub enum Input {
@@ -29,7 +28,6 @@ impl Input {
     }
 }
 
-
 #[derive(Debug, Clone, Copy)]
 pub enum InputState {
     None,
@@ -37,7 +35,6 @@ pub enum InputState {
     Holding(f32),
     Release,
 }
-
 
 pub struct InputEngine {
     inputs_map: HashMap<PhysicalKey, Input>,
@@ -47,26 +44,26 @@ pub struct InputEngine {
 
 impl InputEngine {
     pub fn new() -> Self {
-        Self { 
+        Self {
             inputs_map: HashMap::new(),
             input_indexs: HashMap::new(),
-            states: Vec::new()
+            states: Vec::new(),
         }
     }
 
     pub fn update(&mut self, delta_time: f32) {
         for state in &mut self.states {
             match state {
-                InputState::None => {},
+                InputState::None => {}
                 InputState::Presse => {
                     *state = InputState::Holding(0.0);
-                },
+                }
                 InputState::Holding(timer) => {
                     *state = InputState::Holding(*timer + delta_time);
-                },
+                }
                 InputState::Release => {
                     *state = InputState::None;
-                },
+                }
             }
         }
     }
@@ -82,15 +79,15 @@ impl InputEngine {
     }
 
     pub fn unregiste_input(&mut self, physics_input: PhysicalKey) {
-        match self.inputs_map.remove(&physics_input){
+        match self.inputs_map.remove(&physics_input) {
             Some(input) => {
                 let input_id = input.get_id();
                 let Some(input_index) = self.input_indexs.remove(&input_id) else {
                     return;
                 };
                 self.states[input_index] = InputState::None;
-            },
-            None => {},
+            }
+            None => {}
         }
     }
 
@@ -98,28 +95,24 @@ impl InputEngine {
         let Some(&input) = self.inputs_map.get(&event.physical_key) else {
             return;
         };
-        
+
         self.update_input_state(input, event.state);
     }
 
     fn update_input_state(&mut self, input: Input, state: winit::event::ElementState) {
         let input_state = &mut self.states[input.get_id()];
         match state {
-            winit::event::ElementState::Pressed => {
-                match input_state {
-                    InputState::None => *input_state = InputState::Presse,
-                    InputState::Presse => {},
-                    InputState::Holding(_) => {},
-                    InputState::Release => *input_state = InputState::Presse,
-                }
+            winit::event::ElementState::Pressed => match input_state {
+                InputState::None => *input_state = InputState::Presse,
+                InputState::Presse => {}
+                InputState::Holding(_) => {}
+                InputState::Release => *input_state = InputState::Presse,
             },
-            winit::event::ElementState::Released => {
-                match input_state {
-                    InputState::None => *input_state = InputState::Release,
-                    InputState::Presse => *input_state = InputState::Release,
-                    InputState::Holding(_) => *input_state = InputState::Release,
-                    InputState::Release => {},
-                }
+            winit::event::ElementState::Released => match input_state {
+                InputState::None => *input_state = InputState::Release,
+                InputState::Presse => *input_state = InputState::Release,
+                InputState::Holding(_) => *input_state = InputState::Release,
+                InputState::Release => {}
             },
         }
     }

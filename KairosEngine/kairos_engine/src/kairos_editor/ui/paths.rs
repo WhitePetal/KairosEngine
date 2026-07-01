@@ -11,3 +11,4 @@ pub const PATH_HIERARCHY_WINDOW_STYLE: &'static str =
     "Preferences/Styles/HierarchyWindowStyle.toml";
 pub const PATH_PROJECT_WINDOW_STYLE: &'static str = "Preferences/Styles/ProjectWindowStyle.toml";
 pub const PATH_SCENE_WINDOW_STYLE: &'static str = "Preferences/Styles/SceneWindowStyle.toml";
+pub const PATH_GAME_WINDOW_STYLE: &'static str = "Preferences/Styles/GameWindowStyle.toml";

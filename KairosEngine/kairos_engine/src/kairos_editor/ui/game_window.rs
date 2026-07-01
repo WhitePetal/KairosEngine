@@ -15,12 +15,12 @@ use crate::{
 };
 
 #[derive(Debug, Serialize, Deserialize)]
-struct SceneWindowStyle {
+struct GameWindowStyle {
     pub title: String,
 }
 
-struct SceneWindowModel {
-    style: SceneWindowStyle,
+struct GameWindowModel {
+    style: GameWindowStyle,
     rt_id: Option<egui::TextureId>,
     width: u32,
     height: u32,
@@ -28,32 +28,29 @@ struct SceneWindowModel {
     drop_texture_id: Option<egui::TextureId>,
 }
 
-pub struct SceneWindow {
-    model: SceneWindowModel,
+pub struct GameWindow {
+    model: GameWindowModel,
 }
 
-impl SceneWindowStyle {
+impl GameWindowStyle {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let style_json = fs::read_to_string(paths::PATH_SCENE_WINDOW_STYLE).map_err(|error| {
+        let style_json = fs::read_to_string(paths::PATH_GAME_WINDOW_STYLE).map_err(|error| {
             format!(
-                "Load SceneWindow Style Json Failed, path: {}, error: {}",
-                paths::PATH_SCENE_WINDOW_STYLE,
+                "Load GameWindow Style Json Failed, path: {}, error: {}",
+                paths::PATH_GAME_WINDOW_STYLE,
                 error
             )
         })?;
         let style = from_str(&style_json).map_err(|error| {
-            format!(
-                "Deserialize SceneWindow Style Json Failed, error: {}",
-                error
-            )
+            format!("Deserialize GameWindow Style Json Failed, error: {}", error)
         })?;
         Ok(style)
     }
 }
 
-impl SceneWindowModel {
+impl GameWindowModel {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let style = SceneWindowStyle::new()?;
+        let style = GameWindowStyle::new()?;
         Ok(Self {
             style,
             rt_id: None,
@@ -65,17 +62,54 @@ impl SceneWindowModel {
     }
 }
 
-impl SceneWindow {
+impl GameWindow {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let model = SceneWindowModel::new()?;
+        let model = GameWindowModel::new()?;
         Ok(Self { model })
     }
 }
 
-impl Drawer for SceneWindow {
+impl Drawer for GameWindow {
     fn show_window(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {}
 
     fn ui(&self, ui: &mut egui::Ui, messager: &mut super::Messager, _log: &mut crate::log::Log) {
+        egui::Frame::NONE
+            .inner_margin(egui::Margin::symmetric(4, 2))
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    // Display label
+                    ui.label("Display 1");
+                    ui.separator();
+
+                    // Aspect ratio dropdown (placeholder)
+                    egui::ComboBox::from_id_salt("game_aspect_ratio")
+                        .width(80.0)
+                        .selected_text("Free Aspect")
+                        .show_ui(ui, |ui| {
+                            ui.label("Free Aspect");
+                            ui.label("16:9");
+                            ui.label("4:3");
+                        });
+
+                    // Scale slider (placeholder)
+                    ui.add(
+                        egui::Slider::new(&mut 1.0_f32, 0.25..=2.0)
+                            .text("Scale")
+                            .fixed_decimals(1),
+                    );
+
+                    // Maximize on play toggle (placeholder)
+                    ui.checkbox(&mut false, "Maximize On Play");
+
+                    // Stats toggle (placeholder)
+                    ui.checkbox(&mut false, "Stats");
+
+                    // Gizmos toggle (placeholder)
+                    ui.checkbox(&mut true, "Gizmos");
+                });
+            });
+
+        // --- Render target area ---
         let available = ui.available_size_before_wrap();
         let (rect, _) = ui.allocate_exact_size(available, egui::Sense::click_and_drag());
         let pixels_per_point = ui.pixels_per_point();
@@ -83,11 +117,11 @@ impl Drawer for SceneWindow {
         let height = (rect.height() * pixels_per_point).round().max(1.0) as u32;
 
         if width != self.model.width || height != self.model.height {
-            messager.send(Message::UpdateSceneWindowSize(width, height));
+            messager.send(Message::UpdateGameWindowSize(width, height));
         }
 
         if self.model.recever.is_some() {
-            messager.send(Message::SceneWindowTryReceTextureId);
+            messager.send(Message::GameWindowTryReceTextureId);
         }
 
         if let Some(rt_id) = self.model.rt_id {
@@ -101,7 +135,7 @@ impl Drawer for SceneWindow {
     }
 
     fn close(&self, messager: &mut super::Messager) {
-        messager.send(Message::CloseSceneTab);
+        messager.send(Message::CloseGameTab);
     }
 
     fn scroll_bars(&self) -> [bool; 2] {
@@ -109,7 +143,7 @@ impl Drawer for SceneWindow {
     }
 
     fn get_name(&self) -> &'static str {
-        type_name::<SceneWindow>()
+        type_name::<GameWindow>()
     }
 
     fn get_title(&self) -> egui::WidgetText {
@@ -137,27 +171,30 @@ impl Drawer for SceneWindow {
         // draw
         let width = self.model.width;
         let height = self.model.height;
-        let scene_view = Attachment::new(
-            Some("SceneWindow Attachment"),
+        let game_view = Attachment::new(
+            Some("GameWindow Attachment"),
             width,
             height,
             crate::graphics::attachment::AttachmentFormat::RGBA8UNorm,
         );
-        let scene_depth_stencil = Attachment::new(
-            Some("SceneWindow DepthStencil"),
+        let game_depth_stencil = Attachment::new(
+            Some("GameWindow DepthStencil"),
             width,
             height,
             crate::graphics::attachment::AttachmentFormat::D24S8,
         );
-        let scene_view_id = graphics_command.create_color_attachment(scene_view);
-        let scene_depth_id = graphics_command.create_depth_attachment(scene_depth_stencil);
+        let game_view_id = graphics_command.create_color_attachment(game_view);
+        let game_depth_id = graphics_command.create_depth_attachment(game_depth_stencil);
+
+        // Game camera — uses the same default as SceneWindow for now,
+        // but will eventually be driven by the in-game camera (player camera).
         let cam_pos = float3::new(0.0, 1.0, -2.0);
-        let cam_taget = float3::new(0.0, 0.0, 0.0);
-        let cam_forward = math::normalize(cam_taget - cam_pos);
+        let cam_target = float3::new(0.0, 0.0, 0.0);
+        let cam_forward = math::normalize(cam_target - cam_pos);
         let world_up = float3::new(0.0, 1.0, 0.0);
         let cam_right = math::cross(cam_forward, world_up);
         let camera = Camera::new(
-            float3::new(0.0, 1.0, -2.0),
+            cam_pos,
             cam_forward,
             cam_right,
             45.,
@@ -169,9 +206,9 @@ impl Drawer for SceneWindow {
         let vp_id =
             graphics_command.set_view_projection_matrix(camera.get_view_projection_matrix());
         graphics_command.begin_render_pass(
-            Some("SceneWindow Render Pass"),
-            vec![scene_view_id],
-            Some(scene_depth_id),
+            Some("GameWindow Render Pass"),
+            vec![game_view_id],
+            Some(game_depth_id),
             vp_id,
             4,
             true,
@@ -181,14 +218,14 @@ impl Drawer for SceneWindow {
 
         graphics_command.end_render_pass();
         let (egui_bind_tex_sender, egui_bind_tex_recever) = tokio::sync::oneshot::channel();
-        messager.send(Message::RegisteSceneWindowViewBind(egui_bind_tex_recever));
-        graphics_command.bind_attachment_to_egui(scene_view_id, egui_bind_tex_sender);
+        messager.send(Message::RegisteGameWindowViewBind(egui_bind_tex_recever));
+        graphics_command.bind_attachment_to_egui(game_view_id, egui_bind_tex_sender);
 
         Some(graphics_command)
     }
 }
 
-impl SceneWindow {
+impl GameWindow {
     pub fn set_rt_id(&mut self, rt_id: egui::TextureId) {
         self.model.rt_id = Some(rt_id)
     }
@@ -200,16 +237,15 @@ impl SceneWindow {
 
     pub fn register_view_bind(&mut self, recever: tokio::sync::oneshot::Receiver<egui::TextureId>) {
         self.model.recever = Some(recever);
-        // self.try_rece_texture_id();
     }
 
     pub fn try_rece_texture_id(&mut self) {
         let received = {
             match &mut self.model.recever {
                 Some(recever) => match recever.try_recv() {
-                    Ok(texuter_id) => {
+                    Ok(texture_id) => {
                         self.model.drop_texture_id = self.model.rt_id.take();
-                        self.model.rt_id = Some(texuter_id);
+                        self.model.rt_id = Some(texture_id);
                         true
                     }
                     Err(_) => false,

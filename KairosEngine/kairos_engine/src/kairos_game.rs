@@ -1,19 +1,26 @@
 use std::path::PathBuf;
 
 use crate::{
-    asset_loader::assets::{AudioAssetsSystem, MaterialAssetsSystem, MeshAssetsSystem}, audio::{
+    asset_loader::assets::{AudioAssetsSystem, MaterialAssetsSystem, MeshAssetsSystem},
+    audio::{
         background::BackgroundAudio,
         spatial::{
             spatial_audio_listener::SpatialAudioListenerComponent,
             spatial_audio_reverb::SpatialAudioReverb,
         },
-    }, graphics::{
+    },
+    graphics::{
         graphics_graph::GraphicsCommand, lod_mesh_component::LODMesh, material_component::Material,
         mesh::SerializedMeshAsset,
-    }, inputs::Input, kairos_editor::Engine, math::{self, float3, quaternion}, physics::{
+    },
+    inputs::Input,
+    kairos_editor::Engine,
+    math::{self, float3, quaternion},
+    physics::{
         collider::{Collider, ColliderMaterial},
         rigid_body::RigidBody,
-    }, spatial::{AABB, Transform}
+    },
+    spatial::{AABB, Transform},
 };
 
 pub struct KairosGame {}
@@ -21,22 +28,21 @@ pub struct KairosGame {}
 impl KairosGame {
     pub fn new(engine: &mut Engine) -> Self {
         engine.input_engine.registe_input(
-            winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::KeyW), 
-            Input::W
+            winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::KeyW),
+            Input::W,
         );
         engine.input_engine.registe_input(
-            winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::KeyA), 
-            Input::A
+            winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::KeyA),
+            Input::A,
         );
         engine.input_engine.registe_input(
-            winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::KeyS), 
-            Input::S
+            winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::KeyS),
+            Input::S,
         );
         engine.input_engine.registe_input(
-            winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::KeyD), 
-            Input::D
+            winit::keyboard::PhysicalKey::Code(winit::keyboard::KeyCode::KeyD),
+            Input::D,
         );
-
 
         let assets_server = &mut engine.assets_server;
 
