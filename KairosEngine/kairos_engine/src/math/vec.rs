@@ -442,8 +442,16 @@ impl<D: rkyv::rancor::Fallible + ?Sized> rkyv::Deserialize<float2, D>
 pub struct float3(pub f32x4);
 
 impl float3 {
-    pub const ONE: float3 = float3::new(1.0, 1.0, 1.0);
     pub const ZERO: float3 = float3::new(0.0, 0.0, 0.0);
+    pub const ONE: float3 = float3::new(1.0, 1.0, 1.0);
+    
+    // 右手系, Y up, -Z forward
+    pub const RIGHT: float3 = float3::new(1.0, 0.0, 0.0);
+    pub const LEFT: float3 = float3::new(-1.0, 0.0, 0.0);
+    pub const UP: float3 = float3::new(0.0, 1.0, 0.0);
+    pub const DOWN: float3 = float3::new(0.0, -1.0, 0.0);
+    pub const FORWARD: float3 = float3::new(0.0, 0.0, -1.0);
+    pub const BACK: float3 = float3::new(0.0, 0.0, 1.0);
 
     #[inline(always)]
     pub const fn new(x: f32, y: f32, z: f32) -> Self {

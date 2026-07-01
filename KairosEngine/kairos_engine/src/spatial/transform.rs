@@ -1,6 +1,6 @@
 use crate::{
     ecs::component::Component,
-    math::{float3, float4x4, quaternion},
+    math::{self, float3, float4x4, quaternion},
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -17,6 +17,16 @@ impl Transform {
             position,
             rotation,
             scale,
+        }
+    }
+
+    pub fn look_at(eye: float3, target: float3, up: float3) -> Self {
+        let forward = math::normalize(target - eye);
+        let rotation = quaternion::from_look(forward, up);
+        Self {
+            position: eye,
+            rotation,
+            scale: float3::ONE
         }
     }
 

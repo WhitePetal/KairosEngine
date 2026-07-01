@@ -11,8 +11,19 @@ use crate::{
         ui::{Drawer, Message, paths},
     },
     kairos_game::KairosGame,
-    math::{self, float3},
+    math::float3, spatial::Transform,
 };
+
+struct SceneCamera {
+    transform: Transform,
+    camera: Camera,
+}
+
+impl SceneCamera {
+    pub fn get_view_projection_matrix(&self) -> crate::math::float4x4 {
+        self.camera.get_view_projection_matrix(self.transform)
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct SceneWindowStyle {
@@ -26,6 +37,8 @@ struct SceneWindowModel {
     height: u32,
     recever: Option<tokio::sync::oneshot::Receiver<egui::TextureId>>,
     drop_texture_id: Option<egui::TextureId>,
+
+    camera: SceneCamera,
 }
 
 pub struct SceneWindow {
@@ -54,6 +67,18 @@ impl SceneWindowStyle {
 impl SceneWindowModel {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let style = SceneWindowStyle::new()?;
+
+        let cam_pos = float3::new(0.0, 1.0, -2.0);
+        let cam_target = float3::new(0.0, 0.0, 0.0);
+        let transform = Transform::look_at(cam_pos, cam_target, float3::UP);
+        let camera = Camera::new(
+            45.0,
+            1.0,
+            0.3,
+            100.,
+        );
+        let scene_camera = SceneCamera { transform, camera };
+
         Ok(Self {
             style,
             rt_id: None,
@@ -61,6 +86,7 @@ impl SceneWindowModel {
             height: 1,
             recever: None,
             drop_texture_id: None,
+            camera: scene_camera,
         })
     }
 }
@@ -151,23 +177,9 @@ impl Drawer for SceneWindow {
         );
         let scene_view_id = graphics_command.create_color_attachment(scene_view);
         let scene_depth_id = graphics_command.create_depth_attachment(scene_depth_stencil);
-        let cam_pos = float3::new(0.0, 1.0, -2.0);
-        let cam_taget = float3::new(0.0, 0.0, 0.0);
-        let cam_forward = math::normalize(cam_taget - cam_pos);
-        let world_up = float3::new(0.0, 1.0, 0.0);
-        let cam_right = math::cross(cam_forward, world_up);
-        let camera = Camera::new(
-            float3::new(0.0, 1.0, -2.0),
-            cam_forward,
-            cam_right,
-            45.,
-            width as f32 / height as f32,
-            0.3,
-            100.,
-        );
 
         let vp_id =
-            graphics_command.set_view_projection_matrix(camera.get_view_projection_matrix());
+            graphics_command.set_view_projection_matrix(self.model.camera.get_view_projection_matrix());
         graphics_command.begin_render_pass(
             Some("SceneWindow Render Pass"),
             vec![scene_view_id],
@@ -196,6 +208,7 @@ impl SceneWindow {
     pub fn update_size(&mut self, width: u32, height: u32) {
         self.model.width = width;
         self.model.height = height;
+        self.model.camera.camera.aspect = width as f32 / height as f32;
     }
 
     pub fn register_view_bind(&mut self, recever: tokio::sync::oneshot::Receiver<egui::TextureId>) {

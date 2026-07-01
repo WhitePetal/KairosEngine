@@ -78,6 +78,77 @@ impl quaternion {
         (*self).normalized()
     }
 
+    /// Build a quaternion that rotates identity forward `(0,0,-1)` to `forward`,
+    /// using `up_world` as the world-up reference (e.g. `(0,1,0)`).
+    /// `forward` must be non-zero; `up_world` must not be parallel to `forward`.
+    #[inline(always)]
+    pub fn from_look(forward: float3, up_world: float3) -> Self {
+        let f = super::normalize(forward);
+        let mut r = super::cross(f, up_world);
+        let r_len = super::length(&r);
+
+        // Guard against forward ∥ up_world (gimbal-lock).
+        // Fall back: pick a different world-up (e.g. X or Z).
+        let (right, up) = if r_len < 1e-7 {
+            let alt_up = if up_world.y().abs() > 0.999 {
+                float3::new(1.0, 0.0, 0.0)
+            } else {
+                float3::new(0.0, 1.0, 0.0)
+            };
+            let right = super::normalize(super::cross(f, alt_up));
+            let up = super::cross(right, f);
+            (right, up)
+        } else {
+            r *= 1.0 / r_len; // normalize right in-place
+            let up = super::cross(r, f);
+            (r, up)
+        };
+
+        // Rotation matrix columns (column-major):
+        //   c0 = right, c1 = up, c2 = -forward
+        // (because local forward is (0,0,-1), so -forward = local +Z)
+        let m00 = right.x(); let m01 = up.x();   let m02 = -f.x();
+        let m10 = right.y(); let m11 = up.y();   let m12 = -f.y();
+        let m20 = right.z(); let m21 = up.z();   let m22 = -f.z();
+
+        // Matrix → quaternion (standard trace-based conversion)
+        let trace = m00 + m11 + m22;
+
+        if trace > 0.0 {
+            let s = super::sqrt(trace + 1.0) * 2.0;
+            Self(float4::new(
+                (m21 - m12) / s,
+                (m02 - m20) / s,
+                (m10 - m01) / s,
+                s * 0.25,
+            ))
+        } else if m00 > m11 && m00 > m22 {
+            let s = super::sqrt(1.0 + m00 - m11 - m22) * 2.0;
+            Self(float4::new(
+                s * 0.25,
+                (m01 + m10) / s,
+                (m02 + m20) / s,
+                (m21 - m12) / s,
+            ))
+        } else if m11 > m22 {
+            let s = super::sqrt(1.0 + m11 - m00 - m22) * 2.0;
+            Self(float4::new(
+                (m01 + m10) / s,
+                s * 0.25,
+                (m12 + m21) / s,
+                (m02 - m20) / s,
+            ))
+        } else {
+            let s = super::sqrt(1.0 + m22 - m00 - m11) * 2.0;
+            Self(float4::new(
+                (m02 + m20) / s,
+                (m12 + m21) / s,
+                s * 0.25,
+                (m10 - m01) / s,
+            ))
+        }
+    }
+
     #[inline(always)]
     pub fn to_float4x4(self) -> float4x4 {
         let q = self.normalized().0.0;

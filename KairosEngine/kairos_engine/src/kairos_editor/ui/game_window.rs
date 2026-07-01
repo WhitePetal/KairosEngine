@@ -11,7 +11,7 @@ use crate::{
         ui::{Drawer, Message, paths},
     },
     kairos_game::KairosGame,
-    math::{self, float3},
+    spatial::Transform,
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -186,40 +186,31 @@ impl Drawer for GameWindow {
         let game_view_id = graphics_command.create_color_attachment(game_view);
         let game_depth_id = graphics_command.create_depth_attachment(game_depth_stencil);
 
-        // Game camera — uses the same default as SceneWindow for now,
-        // but will eventually be driven by the in-game camera (player camera).
-        let cam_pos = float3::new(0.0, 1.0, -2.0);
-        let cam_target = float3::new(0.0, 0.0, 0.0);
-        let cam_forward = math::normalize(cam_target - cam_pos);
-        let world_up = float3::new(0.0, 1.0, 0.0);
-        let cam_right = math::cross(cam_forward, world_up);
-        let camera = Camera::new(
-            cam_pos,
-            cam_forward,
-            cam_right,
-            45.,
-            width as f32 / height as f32,
-            0.3,
-            100.,
-        );
+        if let Some((transform, camera)) = engine
+            .world
+            .query_mut::<(&Transform, &Camera)>()
+            .into_iter()
+            .next()
+        {
+            let vp_id = graphics_command
+                .set_view_projection_matrix(camera.get_view_projection_matrix(*transform));
+            graphics_command.begin_render_pass(
+                Some("GameWindow Render Pass"),
+                vec![game_view_id],
+                Some(game_depth_id),
+                vp_id,
+                4,
+                true,
+            );
 
-        let vp_id =
-            graphics_command.set_view_projection_matrix(camera.get_view_projection_matrix());
-        graphics_command.begin_render_pass(
-            Some("GameWindow Render Pass"),
-            vec![game_view_id],
-            Some(game_depth_id),
-            vp_id,
-            4,
-            true,
-        );
+            game.render(engine, &mut graphics_command);
 
-        game.render(engine, &mut graphics_command);
+            graphics_command.end_render_pass();
 
-        graphics_command.end_render_pass();
-        let (egui_bind_tex_sender, egui_bind_tex_recever) = tokio::sync::oneshot::channel();
-        messager.send(Message::RegisteGameWindowViewBind(egui_bind_tex_recever));
-        graphics_command.bind_attachment_to_egui(game_view_id, egui_bind_tex_sender);
+            let (egui_bind_tex_sender, egui_bind_tex_recever) = tokio::sync::oneshot::channel();
+            messager.send(Message::RegisteGameWindowViewBind(egui_bind_tex_recever));
+            graphics_command.bind_attachment_to_egui(game_view_id, egui_bind_tex_sender);
+        };
 
         Some(graphics_command)
     }

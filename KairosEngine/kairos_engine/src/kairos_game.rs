@@ -10,8 +10,7 @@ use crate::{
         },
     },
     graphics::{
-        graphics_graph::GraphicsCommand, lod_mesh_component::LODMesh, material_component::Material,
-        mesh::SerializedMeshAsset,
+        camera::Camera, graphics_graph::GraphicsCommand, lod_mesh_component::LODMesh, material_component::Material, mesh::SerializedMeshAsset
     },
     inputs::Input,
     kairos_editor::Engine,
@@ -70,37 +69,17 @@ impl KairosGame {
 
         let blip_audio =
             assets_server.load::<AudioAssetsSystem>(PathBuf::from("res/audios/blip.audio"));
-
-        // 与 scene_window 相机一致: pos (0,1,-2), target (0,0,0)
-        // 1. 从 identity forward (0,0,-1) 旋转到 cam_forward 的四元数
-        let identity_forward = float3::new(0.0, 0.0, -1.0);
-        let target_forward = math::normalize(float3::new(0.0, -1.0, 2.0));
-        let dot = math::dot(&identity_forward, &target_forward);
-        let (cam_forward, dot_abs) = if dot < 0.0 {
-            (
-                float3::new(
-                    -target_forward.x(),
-                    -target_forward.y(),
-                    -target_forward.z(),
-                ),
-                -dot,
-            )
-        } else {
-            (target_forward, dot)
-        };
-        let q_forward = if dot_abs > 0.9999 {
-            quaternion::identity()
-        } else {
-            let axis = math::cross(identity_forward, cam_forward);
-            let w = 1.0 + dot_abs;
-            let len =
-                math::sqrt(axis.x() * axis.x() + axis.y() * axis.y() + axis.z() * axis.z() + w * w);
-            quaternion::new(axis.x() / len, axis.y() / len, axis.z() / len, w / len)
-        };
-        // 2. 绕局部 forward 滚转 180°，把右耳从 +X 翻到 -X，对齐相机的 cross(forward,up)
-        let q_roll = quaternion::new(0.0, 0.0, 1.0, 0.0); // 180° around local Z
-        let cam_rotation = q_forward * q_roll;
-        let cam_trans = Transform::new(float3::new(0.0, 1.0, -2.0), cam_rotation, float3::ONE);
+        
+        let cam_pos = float3::new(0.0, 1.0, -2.0);
+        let cam_target = float3::new(0.0, 0.0, 0.0);
+        let cam_trans = Transform::look_at(cam_pos, cam_target, float3::UP);
+        let camera = Camera::new(
+            45.0,
+            16.0 / 9.0,
+            0.3,
+            100.,
+        );
+        engine.world.spawn((cam_trans, camera));
 
         if let Some(listener_id) = engine.audio_engine.create_listener() {
             engine.world.spawn((
