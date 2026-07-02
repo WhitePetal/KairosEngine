@@ -1,4 +1,4 @@
-mod asset;
+pub mod asset;
 use std::fmt::Debug;
 use std::{any::TypeId, path::PathBuf, sync::Arc};
 

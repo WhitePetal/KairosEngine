@@ -1,4 +1,4 @@
-use std::{error::Error, sync::Arc};
+use std::{collections::HashMap, error::Error, sync::Arc};
 
 use petgraph::visit::{DfsEvent, Reversed, depth_first_search};
 use wgpu::{
@@ -22,15 +22,22 @@ use wgpu::{
 use winit::{dpi::PhysicalSize, window::Window};
 
 use crate::{
-    asset_loader::assets::AssetsServer,
+    asset_loader::assets::{AssetsServer, asset::AssetIndex},
     graphics::{
         attachment::{AttachmentFormat, InternalAttachmentId},
         graphics_graph::{self, GraphicsGraph, graphics_node::RenderPassNode},
         material::Material,
+        render_state::RenderState,
         vertex::Vertex,
     },
     math::{float2, float3, float4, float4x4},
 };
+
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+struct PipelineKey {
+    shader_id: AssetIndex,
+    render_state: RenderState,
+}
 
 pub struct RenderPipeline {
     _window: Arc<Window>,
@@ -44,6 +51,8 @@ pub struct RenderPipeline {
     internal_texture_views: Vec<Option<TextureView>>,
     window_size: PhysicalSize<u32>,
     window_size_changed: bool,
+
+    pipeline_cache: HashMap<PipelineKey, wgpu::RenderPipeline>,
 }
 
 impl RenderPipeline {
@@ -110,6 +119,8 @@ impl RenderPipeline {
             internal_texture_views: vec![None; InternalAttachmentId::End as usize],
             window_size,
             window_size_changed: false,
+
+            pipeline_cache: HashMap::new(),
         })
     }
 
@@ -305,6 +316,7 @@ impl RenderPipeline {
                         &self.device,
                         &self.queue,
                         &mut encoder,
+                        &mut self.pipeline_cache,
                         &mut self.egui_renderer,
                         &render_pass_color_attachments,
                         &render_pass_depth_attachments,
@@ -330,7 +342,7 @@ impl RenderPipeline {
                     let Some(attachment) = render_pass_color_attachments
                         .get(bind_attachment_to_egui_node.attachment_id.0)
                     else {
-                        unreachable!()
+                        continue;
                     };
                     let rt_id = self.egui_renderer.register_native_texture(
                         &self.device,
@@ -374,6 +386,7 @@ impl RenderPipeline {
         device: &Device,
         queue: &Queue,
         encoder: &mut CommandEncoder,
+        pipeline_cache: &mut HashMap<PipelineKey, wgpu::RenderPipeline>,
         egui_renderer: &mut egui_wgpu::Renderer,
         render_pass_color_attachments: &Vec<RenderPassColorAttachment>,
         render_pass_depth_attachments: &Vec<RenderPassDepthStencilAttachment>,
@@ -457,11 +470,11 @@ impl RenderPipeline {
                     continue;
                 };
 
-                let Some(shader) = &material.shader else {
+                let Some(shader_asset) = &material.shader else {
                     // println!("fk shader asset is none! {:?}", draw);
                     continue;
                 };
-                let Some(shader) = assets_server.get(shader) else {
+                let Some(shader) = assets_server.get(shader_asset) else {
                     // println!("fk shader is none! {:?}", draw);
                     continue;
                 };
@@ -489,61 +502,132 @@ impl RenderPipeline {
                     render_pass.set_bind_group(1, &texture_bind_group, &[]);
                 }
 
-                let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
-                    label: Some("Render Pipeline Layout"),
-                    bind_group_layouts: &[
-                        Some(vp_bind_group_layout),
-                        texture_data.map(|(layout, ..)| layout).as_ref(),
-                    ],
-                    immediate_size: 0,
-                });
+                let pipeline_key = PipelineKey {
+                    shader_id: shader_asset.get_id(),
+                    render_state: material.render_state,
+                };
+                match pipeline_cache.entry(pipeline_key) {
+                    std::collections::hash_map::Entry::Occupied(occupied_entry) => {
+                        render_pass.set_pipeline(occupied_entry.get());
+                    }
+                    std::collections::hash_map::Entry::Vacant(vacant_entry) => {
+                        let pipeline_layout =
+                            device.create_pipeline_layout(&PipelineLayoutDescriptor {
+                                label: Some("Render Pipeline Layout"),
+                                bind_group_layouts: &[
+                                    Some(vp_bind_group_layout),
+                                    texture_data.map(|(layout, ..)| layout).as_ref(),
+                                ],
+                                immediate_size: 0,
+                            });
 
-                let shader = device.create_shader_module(ShaderModuleDescriptor {
-                    label: Some("Shader"),
-                    source: ShaderSource::Wgsl((&shader.shader_string).into()),
-                });
+                        let shader = device.create_shader_module(ShaderModuleDescriptor {
+                            label: Some("Shader"),
+                            source: ShaderSource::Wgsl((&shader.shader_string).into()),
+                        });
+
+                        let vertex_buffer_layout = VertexBufferLayout {
+                            array_stride: core::mem::size_of::<Vertex>() as wgpu::BufferAddress,
+                            step_mode: VertexStepMode::Vertex,
+                            attributes: &[
+                                VertexAttribute {
+                                    offset: 0,
+                                    format: VertexFormat::Float32x4,
+                                    shader_location: 0,
+                                },
+                                VertexAttribute {
+                                    offset: core::mem::size_of::<float4>() as wgpu::BufferAddress,
+                                    format: VertexFormat::Float32x4,
+                                    shader_location: 1,
+                                },
+                                VertexAttribute {
+                                    offset: (core::mem::size_of::<float4>() * 2)
+                                        as wgpu::BufferAddress,
+                                    format: VertexFormat::Float32x2,
+                                    shader_location: 2,
+                                },
+                                VertexAttribute {
+                                    offset: (core::mem::size_of::<float4>() * 2
+                                        + core::mem::size_of::<float2>())
+                                        as wgpu::BufferAddress,
+                                    format: VertexFormat::Float32x3,
+                                    shader_location: 3,
+                                },
+                                VertexAttribute {
+                                    offset: (core::mem::size_of::<float4>() * 2
+                                        + core::mem::size_of::<float2>()
+                                        + core::mem::size_of::<float3>())
+                                        as wgpu::BufferAddress,
+                                    format: VertexFormat::Float32x4,
+                                    shader_location: 4,
+                                },
+                            ],
+                        };
+
+                        let mut depth_state = depth_state.clone();
+                        if let Some(depth_state) = &mut depth_state {
+                            depth_state.depth_compare = pipeline_key.render_state.depth_test;
+                            depth_state.depth_write_enabled =
+                                Some(pipeline_key.render_state.depth_write);
+                        }
+
+                        let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
+                            label: Some("Render Pipeline"),
+                            layout: Some(&pipeline_layout),
+                            vertex: VertexState {
+                                module: &shader,
+                                entry_point: Some("vs_main"),
+                                compilation_options: PipelineCompilationOptions::default(),
+                                buffers: &[
+                                    vertex_buffer_layout,
+                                    instancing_vertex_buffer_layout.clone(),
+                                ],
+                            },
+                            primitive: PrimitiveState {
+                                topology: PrimitiveTopology::TriangleList,
+                                strip_index_format: None,
+                                front_face: FrontFace::Ccw,
+                                cull_mode: pipeline_key.render_state.cull_mod,
+                                unclipped_depth: false,
+                                polygon_mode: PolygonMode::Fill,
+                                conservative: false,
+                            },
+                            fragment: Some(FragmentState {
+                                module: &shader,
+                                entry_point: Some("fs_main"),
+                                compilation_options: PipelineCompilationOptions::default(),
+                                targets: &[Some(ColorTargetState {
+                                    format: color_attachments[0]
+                                        .as_ref()
+                                        .unwrap()
+                                        .view
+                                        .texture()
+                                        .format(),
+                                    blend: pipeline_key.render_state.blend_mod,
+                                    write_mask: ColorWrites::all(),
+                                })],
+                            }),
+                            depth_stencil: depth_state,
+                            multisample: MultisampleState {
+                                count: 1,
+                                mask: !0,
+                                alpha_to_coverage_enabled: false,
+                            },
+                            multiview_mask: None,
+                            cache: None,
+                        });
+
+                        render_pass.set_pipeline(&pipeline);
+
+                        vacant_entry.insert(pipeline);
+                    }
+                };
 
                 let vertex_buffer = device.create_buffer_init(&BufferInitDescriptor {
                     label: Some("Vertex Buffer"),
                     contents: bytemuck::cast_slice(vertices),
                     usage: BufferUsages::VERTEX,
                 });
-                let vertex_buffer_layout = VertexBufferLayout {
-                    array_stride: core::mem::size_of::<Vertex>() as wgpu::BufferAddress,
-                    step_mode: VertexStepMode::Vertex,
-                    attributes: &[
-                        VertexAttribute {
-                            offset: 0,
-                            format: VertexFormat::Float32x4,
-                            shader_location: 0,
-                        },
-                        VertexAttribute {
-                            offset: core::mem::size_of::<float4>() as wgpu::BufferAddress,
-                            format: VertexFormat::Float32x4,
-                            shader_location: 1,
-                        },
-                        VertexAttribute {
-                            offset: (core::mem::size_of::<float4>() * 2) as wgpu::BufferAddress,
-                            format: VertexFormat::Float32x2,
-                            shader_location: 2,
-                        },
-                        VertexAttribute {
-                            offset: (core::mem::size_of::<float4>() * 2
-                                + core::mem::size_of::<float2>())
-                                as wgpu::BufferAddress,
-                            format: VertexFormat::Float32x3,
-                            shader_location: 3,
-                        },
-                        VertexAttribute {
-                            offset: (core::mem::size_of::<float4>() * 2
-                                + core::mem::size_of::<float2>()
-                                + core::mem::size_of::<float3>())
-                                as wgpu::BufferAddress,
-                            format: VertexFormat::Float32x4,
-                            shader_location: 4,
-                        },
-                    ],
-                };
 
                 let indices_buffer = device.create_buffer_init(&BufferInitDescriptor {
                     label: Some("Indices Buffer"),
@@ -558,53 +642,6 @@ impl RenderPipeline {
                     usage: BufferUsages::VERTEX,
                 });
 
-                let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
-                    label: Some("Render Pipeline"),
-                    layout: Some(&pipeline_layout),
-                    vertex: VertexState {
-                        module: &shader,
-                        entry_point: Some("vs_main"),
-                        compilation_options: PipelineCompilationOptions::default(),
-                        buffers: &[
-                            vertex_buffer_layout,
-                            instancing_vertex_buffer_layout.clone(),
-                        ],
-                    },
-                    primitive: PrimitiveState {
-                        topology: PrimitiveTopology::TriangleList,
-                        strip_index_format: None,
-                        front_face: FrontFace::Ccw,
-                        cull_mode: Some(Face::Back),
-                        unclipped_depth: false,
-                        polygon_mode: PolygonMode::Fill,
-                        conservative: false,
-                    },
-                    fragment: Some(FragmentState {
-                        module: &shader,
-                        entry_point: Some("fs_main"),
-                        compilation_options: PipelineCompilationOptions::default(),
-                        targets: &[Some(ColorTargetState {
-                            format: color_attachments[0]
-                                .as_ref()
-                                .unwrap()
-                                .view
-                                .texture()
-                                .format(),
-                            blend: Some(BlendState::REPLACE),
-                            write_mask: ColorWrites::all(),
-                        })],
-                    }),
-                    depth_stencil: depth_state.clone(),
-                    multisample: MultisampleState {
-                        count: 1,
-                        mask: !0,
-                        alpha_to_coverage_enabled: false,
-                    },
-                    multiview_mask: None,
-                    cache: None,
-                });
-
-                render_pass.set_pipeline(&pipeline);
                 render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
                 render_pass.set_vertex_buffer(1, instancing_buffer.slice(..));
                 render_pass.set_index_buffer(indices_buffer.slice(..), wgpu::IndexFormat::Uint16);

@@ -16,20 +16,20 @@ use crate::{
         },
         consts,
     },
-    graphics::material::MaterialAsset,
+    graphics::material::{Material, SerializedMaterial},
 };
 
 #[derive(Debug)]
 pub struct LoadedEvent {
     index: AssetIndex,
-    asset: MaterialAsset,
+    asset: Material,
 }
-impl asset::LoadedEvent<MaterialAsset> for LoadedEvent {
+impl asset::LoadedEvent<Material> for LoadedEvent {
     fn get_index(&self) -> AssetIndex {
         self.index
     }
 
-    fn get_asset(self) -> MaterialAsset {
+    fn get_asset(self) -> Material {
         self.asset
     }
 }
@@ -58,19 +58,20 @@ impl Loader {
         denpendency_request_sender: mpsc::Sender<DependencyLoadRequestEvent>,
     ) -> Result<(), Error> {
         let toml = tokio::fs::read(path.clone()).await?;
-        let mut material_asset: MaterialAsset = toml::from_slice(&toml)?;
+        let serialized_material: SerializedMaterial = toml::from_slice(&toml)?;
         // load shader and texture
         let (shader_setback_sender, shader_setback_recever) =
             oneshot::channel::<Arc<AssetHandle<ShaderAssetsSystem>>>();
 
-        if let Some(texture_path) = &material_asset.meta.texture_path {
+        let mut material = Material::default();
+        if let Some(texture_path) = &serialized_material.texture_path {
             let (texture_setback_sender, texture_setback_recever) =
                 oneshot::channel::<Arc<AssetHandle<TextureAssetsSystem>>>();
             let _ = tokio::join!(
                 denpendency_request_sender.send(Box::new(DependencyLoadRequest::<
                     ShaderAssetsSystem,
                 > {
-                    dependency_path: material_asset.meta.shader_path.clone(),
+                    dependency_path: serialized_material.shader_path.clone(),
                     setback_sender: shader_setback_sender
                 })),
                 denpendency_request_sender.send(Box::new(DependencyLoadRequest::<
@@ -80,29 +81,30 @@ impl Loader {
                     setback_sender: texture_setback_sender
                 }))
             );
-            material_asset.material.texture = Some(texture_setback_recever.await?);
+            material.texture = Some(texture_setback_recever.await?);
         } else {
             denpendency_request_sender
                 .send(Box::new(DependencyLoadRequest::<ShaderAssetsSystem> {
-                    dependency_path: material_asset.meta.shader_path.clone(),
+                    dependency_path: serialized_material.shader_path.clone(),
                     setback_sender: shader_setback_sender,
                 }))
                 .await?;
-            material_asset.material.texture = None;
+            material.texture = None;
         }
 
-        material_asset.material.shader = Some(shader_setback_recever.await?);
+        material.shader = Some(shader_setback_recever.await?);
+        material.render_state = serialized_material.render_state;
 
         sender
             .send(LoadedEvent {
                 index: asset_index,
-                asset: material_asset,
+                asset: material,
             })
             .await?;
         Ok(())
     }
 }
-impl asset::AssetLoader<LoadedEvent, MaterialAsset> for Loader {
+impl asset::AssetLoader<LoadedEvent, Material> for Loader {
     fn load_asset(
         &self,
         path: std::path::PathBuf,
@@ -158,7 +160,7 @@ impl Default for MaterialAssetsSystem {
 }
 
 impl AssetsSystem for MaterialAssetsSystem {
-    type AssetType = MaterialAsset;
+    type AssetType = Material;
 
     type LoadedEvent = LoadedEvent;
 

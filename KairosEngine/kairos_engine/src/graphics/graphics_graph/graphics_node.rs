@@ -3,7 +3,7 @@ use std::{hash::Hash, sync::Arc};
 use crate::{
     asset_loader::assets::{AssetHandle, AssetsServer, MaterialAssetsSystem, MeshAssetsSystem},
     graphics::{material::Material, vertex::Vertex},
-    math::{float3, float4x4},
+    math::float4x4,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -77,10 +77,10 @@ impl BaseInstancingRenderer {
         Some((&mesh_asset.mesh.vertices, &mesh_asset.mesh.indices))
     }
     pub fn get_material<'a>(&'a self, assets_server: &'a AssetsServer) -> Option<&'a Material> {
-        let Some(material_asset) = assets_server.get(&self.material) else {
+        let Some(material) = assets_server.get(&self.material) else {
             return None;
         };
-        Some(&material_asset.material)
+        Some(material)
     }
 }
 #[derive(Debug, Clone, PartialEq)]
@@ -102,10 +102,10 @@ impl SimpleMeshInstancingRenderer {
         Some((&self.vertices, &self.indices))
     }
     pub fn get_material<'a>(&'a self, assets_server: &'a AssetsServer) -> Option<&'a Material> {
-        let Some(material_asset) = assets_server.get(&self.material) else {
+        let Some(material) = assets_server.get(&self.material) else {
             return None;
         };
-        Some(&material_asset.material)
+        Some(material)
     }
 }
 

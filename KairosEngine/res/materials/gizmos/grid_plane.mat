@@ -1,3 +1,16 @@
-[meta]
 source_path = "res/materials/gizmos/grid_plane.mat"
 shader_path = "res/shaders/gizmos/grid_plane.wgsl"
+
+[render_state]
+depth_test = "always"
+depth_write = false
+
+[render_state.blend_mod.color]
+srcFactor = "src-alpha"
+dstFactor = "one-minus-src-alpha"
+operation = "add"
+
+[render_state.blend_mod.alpha]
+srcFactor = "one"
+dstFactor = "one-minus-src-alpha"
+operation = "add"

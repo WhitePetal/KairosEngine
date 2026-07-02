@@ -82,6 +82,10 @@ where
             drop_sender: Some(sender),
         }
     }
+
+    pub fn get_id(&self) -> AssetIndex {
+        self.index
+    }
 }
 impl<T> Drop for AssetHandle<T>
 where
