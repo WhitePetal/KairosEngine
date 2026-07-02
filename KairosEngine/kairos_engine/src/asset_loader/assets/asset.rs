@@ -28,6 +28,17 @@ pub struct AssetIndex {
     index: usize,
     version: u32,
 }
+impl AssetIndex {
+    #[inline(always)]
+    pub fn index(&self) -> usize {
+        self.index
+    }
+
+    #[inline(always)]
+    pub fn version(&self) -> u32 {
+        self.version
+    }
+}
 #[derive(Debug)]
 pub struct RecyledAssetIndex(AssetIndex);
 impl AssetIndex {
@@ -83,7 +94,7 @@ where
         }
     }
 
-    pub fn get_id(&self) -> AssetIndex {
+    pub fn id(&self) -> AssetIndex {
         self.index
     }
 }

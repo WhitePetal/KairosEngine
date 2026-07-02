@@ -275,7 +275,8 @@ impl GraphicsGraph {
         graph.node_weights_mut().for_each(|node| match node {
             GraphNode::None => {}
             GraphNode::RenderPass(render_pass_node) => {
-                let mut mesh_id_to_instance = HashMap::<InstancingRenderer, InstancingDraw>::new();
+                let mut instances = HashMap::<InstancingRenderer, InstancingDraw>::new();
+                let mut instance_count = 0;
                 for draw in render_pass_node.draws.drain(..) {
                     let renderer;
                     let local_to_world;
@@ -297,18 +298,22 @@ impl GraphicsGraph {
                             local_to_world = simple_mesh_draw.local_to_world;
                         }
                     }
-                    if let Some(instance) = mesh_id_to_instance.get_mut(&renderer) {
+                    if let Some(instance) = instances.get_mut(&renderer) {
                         instance.local_to_worlds.push(local_to_world);
                     } else {
                         let instance = InstancingDraw {
                             renderer: renderer.clone(),
                             local_to_worlds: vec![local_to_world],
+                            sort_id: instance_count,
                         };
-                        mesh_id_to_instance.insert(renderer, instance);
+                        instance_count += 1;
+                        instances.insert(renderer, instance);
                     }
                 }
-                render_pass_node.draw_instances =
-                    mesh_id_to_instance.into_values().collect::<Vec<_>>();
+                let mut instances = instances.into_values().collect::<Vec<_>>();
+                instances.sort_unstable_by(|x, y| ::core::cmp::Ord::cmp(&x.sort_id, &y.sort_id));
+
+                render_pass_node.draw_instances = instances;
             }
             GraphNode::OutputToFrameBuffer(_) => {}
             GraphNode::BindAttachmentToEgui(_) => {}

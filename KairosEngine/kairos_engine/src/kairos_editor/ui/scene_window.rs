@@ -1,4 +1,4 @@
-use std::{any::type_name, fs, path::PathBuf};
+use std::{any::type_name, fs};
 
 use egui::pos2;
 use serde::{Deserialize, Serialize};
@@ -6,10 +6,7 @@ use toml::from_str;
 
 use crate::{
     asset_loader::assets::AssetsServer,
-    graphics::{
-        attachment::Attachment, camera::Camera, graphics_graph::GraphicsCommand,
-        material::SerializedMaterial, render_state::RenderState,
-    },
+    graphics::{attachment::Attachment, camera::Camera, graphics_graph::GraphicsCommand},
     kairos_editor::{
         Engine,
         ui::{

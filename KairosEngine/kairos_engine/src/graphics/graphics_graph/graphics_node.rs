@@ -113,6 +113,7 @@ impl SimpleMeshInstancingRenderer {
 pub struct InstancingDraw {
     pub renderer: InstancingRenderer,
     pub local_to_worlds: Vec<float4x4>,
+    pub sort_id: usize,
 }
 impl InstancingDraw {
     pub fn get_vertices_indices<'a>(

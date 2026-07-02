@@ -126,7 +126,11 @@ impl KairosGame {
         //         }),
         // );
 
-        let plane_transform = Transform::new(float3::ZERO, quaternion::IDENTITY, float3::ONE);
+        let plane_transform = Transform::new(
+            float3::new(0.0, -1.0, 0.0),
+            quaternion::IDENTITY,
+            float3::ONE,
+        );
         let plane_collider = Collider::box_collider(&mut engine.physics_engine, 100.0, 0.1, 100.0);
         plane_collider.set_position(&mut engine.physics_engine, plane_transform.position);
 

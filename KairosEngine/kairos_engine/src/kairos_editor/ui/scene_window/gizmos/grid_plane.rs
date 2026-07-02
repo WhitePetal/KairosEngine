@@ -20,7 +20,7 @@ impl GridPlaneModel {
     pub fn new(assets_server: &mut AssetsServer) -> Self {
         let material = assets_server
             .load::<MaterialAssetsSystem>(PathBuf::from("res/materials/gizmos/grid_plane.mat"));
-        let half_extent = 100.0;
+        let half_extent = 5.0;
         let vertices = vec![
             Vertex::with_position(float3::new(-half_extent, 0.0, half_extent)),
             Vertex::with_position(float3::new(half_extent, 0.0, half_extent)),
