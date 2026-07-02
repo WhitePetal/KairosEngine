@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
-use wgpu::{BlendState, CompareFunction, Face};
+use wgpu::{BlendState, CompareFunction, Face, PrimitiveTopology};
+
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct RenderState {
@@ -7,6 +8,7 @@ pub struct RenderState {
     pub depth_write: bool,
     pub cull_mod: Option<Face>,
     pub blend_mod: Option<BlendState>,
+    pub topology: PrimitiveTopology,
 }
 
 impl Default for RenderState {
@@ -16,6 +18,7 @@ impl Default for RenderState {
             depth_write: true,
             cull_mod: Some(Face::Back),
             blend_mod: Some(BlendState::REPLACE),
+            topology: PrimitiveTopology::TriangleList,
         }
     }
 }

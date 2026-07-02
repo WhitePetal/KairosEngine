@@ -809,7 +809,7 @@ impl RenderPipeline {
                 buffers: &[vertex_buffer_layout, instancing_vertex_buffer_layout],
             },
             primitive: PrimitiveState {
-                topology: PrimitiveTopology::TriangleList,
+                topology: render_state.topology,
                 strip_index_format: None,
                 front_face: FrontFace::Ccw,
                 cull_mode: render_state.cull_mod,

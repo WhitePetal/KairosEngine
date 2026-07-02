@@ -6,6 +6,7 @@ texture_path = "res/textures/kairos_texture.texture"
 depth_test = "less-equal"
 depth_write = true
 cull_mod = "back"
+topology = "triangle-list"
 
 [render_state.blend_mod.color]
 srcFactor = "one"
