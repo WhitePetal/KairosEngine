@@ -1,0 +1,17 @@
+source_path = "res/materials/gizmos/axes.mat"
+shader_path = "res/shaders/gizmos/axes.wgsl"
+
+[render_state]
+depth_test = "always"
+depth_write = true
+topology = "triangle-list"
+
+[render_state.blend_mod.color]
+srcFactor = "one"
+dstFactor = "zero"
+operation = "add"
+
+[render_state.blend_mod.alpha]
+srcFactor = "one"
+dstFactor = "zero"
+operation = "add"

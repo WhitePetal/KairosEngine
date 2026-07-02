@@ -1,7 +1,6 @@
 use serde::{Deserialize, Serialize};
 use wgpu::{BlendState, CompareFunction, Face, PrimitiveTopology};
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct RenderState {
     pub depth_test: Option<CompareFunction>,
