@@ -3,7 +3,7 @@
 // so density can later be adjusted via a uniform without regenerating geometry.
 
 struct a2v {
-    @location(0) position: vec3f,
+    @location(0) vertex: vec4f,
 }
 
 struct v2f {
@@ -18,8 +18,8 @@ var<uniform> matrix_vp: mat4x4f;
 fn vs_main(v: a2v) -> v2f {
     var o: v2f;
     // The quad vertices are already in world space (XZ plane, Y=0).
-    o.world_position = v.position;
-    o.pos = matrix_vp * vec4f(v.position, 1.0);
+    o.world_position = v.vertex.xyz;
+    o.pos = matrix_vp * vec4f(v.vertex.xyz, 1.0);
     return o;
 }
 
