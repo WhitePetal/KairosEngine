@@ -7,8 +7,8 @@ use crate::asset_loader::assets::{AssetHandle, ShaderAssetsSystem, TextureAssets
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Meta {
     pub source_path: PathBuf,
-    pub texture_path: PathBuf,
     pub shader_path: PathBuf,
+    pub texture_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]

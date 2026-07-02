@@ -5,7 +5,15 @@ use crate::math::{float2, float3, float4};
 
 #[repr(C)]
 #[derive(
-    Clone, Copy, Debug, Serialize, Deserialize, Archive, rkyv::Serialize, rkyv::Deserialize,
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Serialize,
+    Deserialize,
+    Archive,
+    rkyv::Serialize,
+    rkyv::Deserialize,
 )]
 pub struct Vertex {
     pub position: float4,
@@ -17,3 +25,15 @@ pub struct Vertex {
 
 unsafe impl bytemuck::Zeroable for Vertex {}
 unsafe impl bytemuck::Pod for Vertex {}
+
+impl Vertex {
+    pub fn with_position(position: float3) -> Self {
+        Self {
+            position: position.append(1.0),
+            color: float4::ONE,
+            texcoord: float2::ZERO,
+            normal: float3::ZERO,
+            tangent: float4::ZERO,
+        }
+    }
+}

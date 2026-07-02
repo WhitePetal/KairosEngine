@@ -5,13 +5,14 @@ use serde::{Deserialize, Serialize};
 use toml::from_str;
 
 use crate::{
-    graphics::{
-        attachment::Attachment, camera::Camera, gizmos::grid,
-        graphics_graph::GraphicsCommand,
-    },
+    asset_loader::assets::AssetsServer,
+    graphics::{attachment::Attachment, camera::Camera, graphics_graph::GraphicsCommand},
     kairos_editor::{
         Engine,
-        ui::{Drawer, Message, paths, scene_window::gizmos::{GizmosModel, GizmosRenderer}},
+        ui::{
+            Drawer, Message, paths,
+            scene_window::gizmos::{GizmosModel, GizmosRenderer},
+        },
     },
     kairos_game::KairosGame,
     math::float3,
@@ -73,20 +74,15 @@ impl SceneWindowStyle {
 }
 
 impl SceneWindowModel {
-    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(assets_server: &mut AssetsServer) -> Result<Self, Box<dyn std::error::Error>> {
         let style = SceneWindowStyle::new()?;
 
         let cam_pos = float3::new(0.0, 1.0, -2.0);
         let cam_target = float3::new(0.0, 0.0, 0.0);
         let transform = Transform::look_at(cam_pos, cam_target, float3::UP);
-        let camera = Camera::new(
-            45.0,
-            1.0,
-            0.3,
-            100.,
-        );
+        let camera = Camera::new(45.0, 1.0, 0.3, 100.);
         let scene_camera = SceneCamera { transform, camera };
-        let gizmos = GizmosModel::new();
+        let gizmos = GizmosModel::new(assets_server);
 
         Ok(Self {
             style,
@@ -102,10 +98,11 @@ impl SceneWindowModel {
 }
 
 impl SceneWindow {
-    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let model = SceneWindowModel::new()?;
+    #[inline(always)]
+    pub fn new(assets_server: &mut AssetsServer) -> Result<Self, Box<dyn std::error::Error>> {
+        let model = SceneWindowModel::new(assets_server)?;
         let gizmos_renderer = GizmosRenderer::new();
-        Ok(Self { 
+        Ok(Self {
             model,
             gizmos_renderer,
         })
@@ -113,6 +110,13 @@ impl SceneWindow {
 }
 
 impl Drawer for SceneWindow {
+    fn create(assets_server: &mut AssetsServer) -> Result<Self, Box<dyn std::error::Error>>
+    where
+        Self: Sized,
+    {
+        Self::new(assets_server)
+    }
+
     fn show_window(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {}
 
     fn ui(&self, ui: &mut egui::Ui, messager: &mut super::Messager, _log: &mut crate::log::Log) {
@@ -192,8 +196,8 @@ impl Drawer for SceneWindow {
         let scene_view_id = graphics_command.create_color_attachment(scene_view);
         let scene_depth_id = graphics_command.create_depth_attachment(scene_depth_stencil);
 
-        let vp_id =
-            graphics_command.set_view_projection_matrix(self.model.camera.get_view_projection_matrix());
+        let vp_id = graphics_command
+            .set_view_projection_matrix(self.model.camera.get_view_projection_matrix());
         graphics_command.begin_render_pass(
             Some("SceneWindow Render Pass"),
             vec![scene_view_id],
@@ -204,8 +208,9 @@ impl Drawer for SceneWindow {
         );
 
         game.render(engine, &mut graphics_command);
-        
-        self.gizmos_renderer.render_gizmos(&self.model.gizmos, &mut graphics_command);
+
+        self.gizmos_renderer
+            .render_gizmos(&self.model.gizmos, &mut graphics_command);
 
         graphics_command.end_render_pass();
         let (egui_bind_tex_sender, egui_bind_tex_recever) = tokio::sync::oneshot::channel();
@@ -217,11 +222,6 @@ impl Drawer for SceneWindow {
 }
 
 impl SceneWindow {
-    fn render_gizmos(&self, graphics_command: &mut GraphicsCommand) {
-        let grid = grid::create_grid_quad(100.0);
-        graphics_command.draw_gizmo_grid(grid);
-    }
-
     pub fn set_rt_id(&mut self, rt_id: egui::TextureId) {
         self.model.rt_id = Some(rt_id)
     }
@@ -255,5 +255,4 @@ impl SceneWindow {
             self.model.recever.take();
         }
     }
-
 }

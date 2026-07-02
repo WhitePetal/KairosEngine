@@ -57,31 +57,41 @@ impl Loader {
         sender: Sender<LoadedEvent>,
         denpendency_request_sender: mpsc::Sender<DependencyLoadRequestEvent>,
     ) -> Result<(), Error> {
-        let toml = tokio::fs::read(path).await?;
+        let toml = tokio::fs::read(path.clone()).await?;
         let mut material_asset: MaterialAsset = toml::from_slice(&toml)?;
         // load shader and texture
         let (shader_setback_sender, shader_setback_recever) =
             oneshot::channel::<Arc<AssetHandle<ShaderAssetsSystem>>>();
-        let (texture_setback_sender, texture_setback_recever) =
-            oneshot::channel::<Arc<AssetHandle<TextureAssetsSystem>>>();
 
-        let _ = tokio::join!(
-            denpendency_request_sender.send(Box::new(
-                DependencyLoadRequest::<ShaderAssetsSystem> {
+        if let Some(texture_path) = &material_asset.meta.texture_path {
+            let (texture_setback_sender, texture_setback_recever) =
+                oneshot::channel::<Arc<AssetHandle<TextureAssetsSystem>>>();
+            let _ = tokio::join!(
+                denpendency_request_sender.send(Box::new(DependencyLoadRequest::<
+                    ShaderAssetsSystem,
+                > {
                     dependency_path: material_asset.meta.shader_path.clone(),
                     setback_sender: shader_setback_sender
-                }
-            )),
-            denpendency_request_sender.send(Box::new(
-                DependencyLoadRequest::<TextureAssetsSystem> {
-                    dependency_path: material_asset.meta.texture_path.clone(),
+                })),
+                denpendency_request_sender.send(Box::new(DependencyLoadRequest::<
+                    TextureAssetsSystem,
+                > {
+                    dependency_path: texture_path.clone(),
                     setback_sender: texture_setback_sender
-                }
-            ))
-        );
+                }))
+            );
+            material_asset.material.texture = Some(texture_setback_recever.await?);
+        } else {
+            denpendency_request_sender
+                .send(Box::new(DependencyLoadRequest::<ShaderAssetsSystem> {
+                    dependency_path: material_asset.meta.shader_path.clone(),
+                    setback_sender: shader_setback_sender,
+                }))
+                .await?;
+            material_asset.material.texture = None;
+        }
 
         material_asset.material.shader = Some(shader_setback_recever.await?);
-        material_asset.material.texture = Some(texture_setback_recever.await?);
 
         sender
             .send(LoadedEvent {

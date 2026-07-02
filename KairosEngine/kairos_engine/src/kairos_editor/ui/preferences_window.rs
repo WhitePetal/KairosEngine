@@ -68,6 +68,7 @@ pub struct PreferencesWindow {
 }
 
 impl PreferencesWindow {
+    #[inline(always)]
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let model = PreferencesModel::new()?;
 
@@ -80,6 +81,15 @@ impl PreferencesWindow {
 }
 
 impl Drawer for PreferencesWindow {
+    fn create(
+        _assets_server: &mut crate::asset_loader::assets::AssetsServer,
+    ) -> Result<Self, Box<dyn std::error::Error>>
+    where
+        Self: Sized,
+    {
+        Self::new()
+    }
+
     fn show_window(&self, state: Option<&mut super::docking_tab::window_state::WindowState>) {
         if let Some(state) = state {
             state.set_size(Vec2::new(

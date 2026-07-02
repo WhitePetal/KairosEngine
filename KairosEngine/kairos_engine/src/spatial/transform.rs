@@ -26,7 +26,7 @@ impl Transform {
         Self {
             position: eye,
             rotation,
-            scale: float3::ONE
+            scale: float3::ONE,
         }
     }
 

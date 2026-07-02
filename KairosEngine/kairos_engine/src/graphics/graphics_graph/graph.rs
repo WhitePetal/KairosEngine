@@ -12,7 +12,10 @@ use crate::{
         attachment::Attachment,
         graphics_graph::{
             GraphicsCommand,
-            graphics_node::{GraphNode, InstancingDraw, InstancingRenderer, RenderPassNode},
+            graphics_node::{
+                BaseInstancingRenderer, GraphNode, InstancingDraw, InstancingRenderer,
+                RenderPassNode, SimpleMeshInstancingRenderer,
+            },
         },
     },
     math::float4x4,
@@ -274,16 +277,32 @@ impl GraphicsGraph {
             GraphNode::RenderPass(render_pass_node) => {
                 let mut mesh_id_to_instance = HashMap::<InstancingRenderer, InstancingDraw>::new();
                 for draw in render_pass_node.draws.drain(..) {
-                    let renderer = InstancingRenderer {
-                        mesh: draw.mesh.clone(),
-                        material: draw.material.clone(),
-                    };
+                    let renderer;
+                    let local_to_world;
+                    match draw {
+                        super::graphics_node::Drawer::Base(base_draw) => {
+                            renderer = InstancingRenderer::Base(BaseInstancingRenderer {
+                                mesh: base_draw.mesh.clone(),
+                                material: base_draw.material.clone(),
+                            });
+                            local_to_world = base_draw.local_to_world;
+                        }
+                        super::graphics_node::Drawer::SimpleMesh(simple_mesh_draw) => {
+                            renderer =
+                                InstancingRenderer::SimpleMesh(SimpleMeshInstancingRenderer {
+                                    vertices: simple_mesh_draw.vertices.clone(),
+                                    indices: simple_mesh_draw.indices.clone(),
+                                    material: simple_mesh_draw.material.clone(),
+                                });
+                            local_to_world = simple_mesh_draw.local_to_world;
+                        }
+                    }
                     if let Some(instance) = mesh_id_to_instance.get_mut(&renderer) {
-                        instance.local_to_worlds.push(draw.local_to_world);
+                        instance.local_to_worlds.push(local_to_world);
                     } else {
                         let instance = InstancingDraw {
                             renderer: renderer.clone(),
-                            local_to_worlds: vec![draw.local_to_world],
+                            local_to_worlds: vec![local_to_world],
                         };
                         mesh_id_to_instance.insert(renderer, instance);
                     }

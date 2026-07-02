@@ -121,6 +121,9 @@ where
 pub struct float2(pub f32x2);
 
 impl float2 {
+    pub const ONE: float2 = float2::new(1.0, 1.0);
+    pub const ZERO: float2 = float2::new(0.0, 0.0);
+
     #[inline(always)]
     pub const fn new(x: f32, y: f32) -> Self {
         Self(f32x2::from_array([x, y]))
@@ -484,6 +487,13 @@ impl float3 {
     pub fn z(&self) -> f32 {
         self[2]
     }
+
+    #[inline(always)]
+    pub fn append(&self, w: f32) -> float4 {
+        let mut v = self.0;
+        v[3] = w;
+        float4(v)
+    }
 }
 
 impl Vector for float3 {
@@ -804,6 +814,9 @@ impl<D: rkyv::rancor::Fallible + ?Sized> rkyv::Deserialize<float3, D>
 pub struct float4(pub f32x4);
 
 impl float4 {
+    pub const ONE: float4 = float4::new(1.0, 1.0, 1.0, 1.0);
+    pub const ZERO: float4 = float4::new(0.0, 0.0, 0.0, 0.0);
+
     #[inline(always)]
     pub const fn new(x: f32, y: f32, z: f32, w: f32) -> Self {
         Self(f32x4::from_array([x, y, z, w]))

@@ -1,7 +1,8 @@
 use std::{hash::Hash, sync::Arc};
 
 use crate::{
-    asset_loader::assets::{AssetHandle, MaterialAssetsSystem, MeshAssetsSystem},
+    asset_loader::assets::{AssetHandle, AssetsServer, MaterialAssetsSystem, MeshAssetsSystem},
+    graphics::{material::Material, vertex::Vertex},
     math::{float3, float4x4},
 };
 
@@ -14,7 +15,7 @@ pub struct VPId(pub usize);
 
 pub enum Drawer {
     Base(BaseDraw),
-    SimpleMesh(SimpleMeshDrawer),
+    SimpleMesh(SimpleMeshDraw),
 }
 
 pub struct BaseDraw {
@@ -22,8 +23,8 @@ pub struct BaseDraw {
     pub material: Arc<AssetHandle<MaterialAssetsSystem>>,
     pub local_to_world: float4x4,
 }
-pub struct SimpleMeshDrawer {
-    pub vertices: Arc<Vec<float3>>,
+pub struct SimpleMeshDraw {
+    pub vertices: Arc<Vec<Vertex>>,
     pub indices: Arc<Vec<u16>>,
     pub material: Arc<AssetHandle<MaterialAssetsSystem>>,
     pub local_to_world: float4x4,
@@ -34,27 +35,97 @@ pub enum InstancingRenderer {
     Base(BaseInstancingRenderer),
     SimpleMesh(SimpleMeshInstancingRenderer),
 }
+impl InstancingRenderer {
+    pub fn get_vertices_indices<'a>(
+        &'a self,
+        assets_server: &'a AssetsServer,
+    ) -> Option<(&'a Vec<Vertex>, &'a Vec<u16>)> {
+        match self {
+            InstancingRenderer::Base(base_instancing_renderer) => {
+                base_instancing_renderer.get_vertices_indices(assets_server)
+            }
+            InstancingRenderer::SimpleMesh(simple_mesh_instancing_renderer) => {
+                simple_mesh_instancing_renderer.get_vertices_indices()
+            }
+        }
+    }
+    pub fn get_material<'a>(&'a self, assets_server: &'a AssetsServer) -> Option<&'a Material> {
+        match self {
+            InstancingRenderer::Base(base_instancing_renderer) => {
+                base_instancing_renderer.get_material(assets_server)
+            }
+            InstancingRenderer::SimpleMesh(simple_mesh_instancing_renderer) => {
+                simple_mesh_instancing_renderer.get_material(assets_server)
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BaseInstancingRenderer {
     pub mesh: Arc<AssetHandle<MeshAssetsSystem>>,
     pub material: Arc<AssetHandle<MaterialAssetsSystem>>,
 }
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl BaseInstancingRenderer {
+    pub fn get_vertices_indices<'a>(
+        &'a self,
+        assets_server: &'a AssetsServer,
+    ) -> Option<(&'a Vec<Vertex>, &'a Vec<u16>)> {
+        let Some(mesh_asset) = assets_server.get(&self.mesh) else {
+            return None;
+        };
+        Some((&mesh_asset.mesh.vertices, &mesh_asset.mesh.indices))
+    }
+    pub fn get_material<'a>(&'a self, assets_server: &'a AssetsServer) -> Option<&'a Material> {
+        let Some(material_asset) = assets_server.get(&self.material) else {
+            return None;
+        };
+        Some(&material_asset.material)
+    }
+}
+#[derive(Debug, Clone, PartialEq)]
 pub struct SimpleMeshInstancingRenderer {
-    pub vertices: Arc<Vec<float3>>,
-    pub indices: Arc<Vec<u16>>
+    pub vertices: Arc<Vec<Vertex>>,
+    pub indices: Arc<Vec<u16>>,
+    pub material: Arc<AssetHandle<MaterialAssetsSystem>>,
 }
 impl Hash for SimpleMeshInstancingRenderer {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        (Arc::as_ptr(&self.vertices) as usize).hash(state);
         (Arc::as_ptr(&self.indices) as usize).hash(state);
-        (Arc::as_ptr(&self.indices) as usize).hash(state);
+        self.material.hash(state);
+    }
+}
+impl Eq for SimpleMeshInstancingRenderer {}
+impl SimpleMeshInstancingRenderer {
+    pub fn get_vertices_indices(&self) -> Option<(&Vec<Vertex>, &Vec<u16>)> {
+        Some((&self.vertices, &self.indices))
+    }
+    pub fn get_material<'a>(&'a self, assets_server: &'a AssetsServer) -> Option<&'a Material> {
+        let Some(material_asset) = assets_server.get(&self.material) else {
+            return None;
+        };
+        Some(&material_asset.material)
     }
 }
 
+#[derive(Debug)]
 pub struct InstancingDraw {
     pub renderer: InstancingRenderer,
     pub local_to_worlds: Vec<float4x4>,
 }
+impl InstancingDraw {
+    pub fn get_vertices_indices<'a>(
+        &'a self,
+        assets_server: &'a AssetsServer,
+    ) -> Option<(&'a Vec<Vertex>, &'a Vec<u16>)> {
+        self.renderer.get_vertices_indices(assets_server)
+    }
+    pub fn get_material<'a>(&'a self, assets_server: &'a AssetsServer) -> Option<&'a Material> {
+        self.renderer.get_material(assets_server)
+    }
+}
+
 pub struct EguiDraw {
     pub paint_jobs: Vec<egui::ClippedPrimitive>,
     pub screen_descriptor: egui_wgpu::ScreenDescriptor,

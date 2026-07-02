@@ -181,7 +181,7 @@ impl SerializedMeshAsset {
     ) -> Option<Mesh> {
         for scene in document.scenes() {
             for node in scene.nodes() {
-                if let Some(mesh) = Self::load_mesh_from_node(node, float4x4::identity(), buffers) {
+                if let Some(mesh) = Self::load_mesh_from_node(node, float4x4::IDENTITY, buffers) {
                     return Some(mesh);
                 }
             }

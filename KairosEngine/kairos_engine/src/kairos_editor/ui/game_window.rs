@@ -63,6 +63,7 @@ impl GameWindowModel {
 }
 
 impl GameWindow {
+    #[inline(always)]
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let model = GameWindowModel::new()?;
         Ok(Self { model })
@@ -70,6 +71,15 @@ impl GameWindow {
 }
 
 impl Drawer for GameWindow {
+    fn create(
+        _assets_server: &mut crate::asset_loader::assets::AssetsServer,
+    ) -> Result<Self, Box<dyn std::error::Error>>
+    where
+        Self: Sized,
+    {
+        Self::new()
+    }
+
     fn show_window(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {}
 
     fn ui(&self, ui: &mut egui::Ui, messager: &mut super::Messager, _log: &mut crate::log::Log) {

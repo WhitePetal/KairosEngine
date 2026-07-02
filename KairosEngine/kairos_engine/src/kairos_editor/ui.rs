@@ -139,6 +139,10 @@ impl TabDrawer for KairosTabDrawer {
 }
 
 pub trait Drawer: Any {
+    fn create(assets_server: &mut AssetsServer) -> Result<Self, Box<dyn std::error::Error>>
+    where
+        Self: Sized;
+
     fn show_window(&self, state: Option<&mut WindowState>);
 
     fn ui(&self, ui: &mut egui::Ui, messager: &mut Messager, log: &mut Log);
@@ -234,7 +238,7 @@ impl Context {
         });
     }
 
-    pub fn handle(&mut self, _assets_server: &mut AssetsServer, ui: &egui::Ui, _log: &mut Log) {
+    pub fn handle(&mut self, assets_server: &mut AssetsServer, ui: &egui::Ui, _log: &mut Log) {
         while let Some(msg) = self.messager.messages.pop_front() {
             match msg {
                 Message::CreateToolbar => {
@@ -326,31 +330,31 @@ impl Context {
                     }
                 }
                 Message::OpenConsoleTab => {
-                    self.show_tab::<ConsoleWindow>(ui, ConsoleWindow::new, self.layout.bottom);
+                    self.show_tab::<ConsoleWindow>(assets_server, ui, self.layout.bottom);
                 }
                 Message::CloseConsoleTab => {
                     self.close_drawer::<ConsoleWindow>();
                 }
                 Message::OpenInspectorTab => {
-                    self.show_tab::<InspectorWindow>(ui, InspectorWindow::new, self.layout.right);
+                    self.show_tab::<InspectorWindow>(assets_server, ui, self.layout.right);
                 }
                 Message::CloseInspectorTab => {
                     self.close_drawer::<InspectorWindow>();
                 }
                 Message::OpenHierarchyTab => {
-                    self.show_tab::<HierarchyWindow>(ui, HierarchyWindow::new, self.layout.left);
+                    self.show_tab::<HierarchyWindow>(assets_server, ui, self.layout.left);
                 }
                 Message::CloseHierarchyTab => {
                     self.close_drawer::<HierarchyWindow>();
                 }
                 Message::OpenProjectTab => {
-                    self.show_tab::<ProjectWindow>(ui, ProjectWindow::new, self.layout.bottom);
+                    self.show_tab::<ProjectWindow>(assets_server, ui, self.layout.bottom);
                 }
                 Message::CloseProjectTab => {
                     self.close_drawer::<ProjectWindow>();
                 }
                 Message::OpenSceneTab => {
-                    self.show_tab::<SceneWindow>(ui, SceneWindow::new, self.layout.center);
+                    self.show_tab::<SceneWindow>(assets_server, ui, self.layout.center);
                 }
                 Message::CloseSceneTab => {
                     self.close_drawer::<SceneWindow>();
@@ -376,7 +380,7 @@ impl Context {
                     }
                 }
                 Message::OpenGameTab => {
-                    self.show_tab::<GameWindow>(ui, GameWindow::new, self.layout.center);
+                    self.show_tab::<GameWindow>(assets_server, ui, self.layout.center);
                 }
                 Message::CloseGameTab => {
                     self.close_drawer::<GameWindow>();
@@ -455,12 +459,8 @@ impl Context {
         };
     }
 
-    fn show_tab<T>(
-        &mut self,
-        ui: &egui::Ui,
-        create: impl FnOnce() -> Result<T, Box<dyn std::error::Error>>,
-        zone: Zone,
-    ) where
+    fn show_tab<T>(&mut self, assets_server: &mut AssetsServer, ui: &egui::Ui, zone: Zone)
+    where
         T: Drawer,
     {
         let type_id = TypeId::of::<T>();
@@ -476,7 +476,7 @@ impl Context {
                 }
             }
             None => {
-                let drawer = create().unwrap_or_else(|error| {
+                let drawer = T::create(assets_server).unwrap_or_else(|error| {
                     Context::create_ui_failed(ui, type_name::<T>(), error);
                 });
                 let id = self.push_drawer::<T>(Box::new(drawer));

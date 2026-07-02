@@ -25,14 +25,12 @@ impl float4x4 {
     /// | 0  |  0 |  0 |  1 |
     /// ---------------------
     /// ```
-    pub const IDENTITY: float4x4 = float4x4(
-        [
-            float4::new(1.0, 0.0, 0.0, 0.0),
-            float4::new(0.0, 1.0, 0.0, 0.0),
-            float4::new(0.0, 0.0, 1.0, 0.0),
-            float4::new(0.0, 0.0, 0.0, 1.0),
-        ]
-    );
+    pub const IDENTITY: float4x4 = float4x4([
+        float4::new(1.0, 0.0, 0.0, 0.0),
+        float4::new(0.0, 1.0, 0.0, 0.0),
+        float4::new(0.0, 0.0, 1.0, 0.0),
+        float4::new(0.0, 0.0, 0.0, 1.0),
+    ]);
 
     ///
     /// ```

@@ -11,9 +11,9 @@ use wgpu::{
     MipmapFilterMode, MultisampleState, Operations, Origin3d, PipelineCompilationOptions,
     PipelineLayoutDescriptor, PolygonMode, PowerPreference, PresentMode, PrimitiveState,
     PrimitiveTopology, Queue, RenderPassColorAttachment, RenderPassDepthStencilAttachment,
-    RenderPassDescriptor, RenderPipelineDescriptor, RequestAdapterOptions, SamplerBindingType,
-    ShaderModuleDescriptor, ShaderSource, ShaderStages, StencilState, StoreOp, Surface,
-    SurfaceConfiguration, SurfaceTexture, TexelCopyBufferLayout, TexelCopyTextureInfo,
+    RenderPassDescriptor, RenderPipelineDescriptor, RequestAdapterOptions, Sampler,
+    SamplerBindingType, ShaderModuleDescriptor, ShaderSource, ShaderStages, StencilState, StoreOp,
+    Surface, SurfaceConfiguration, SurfaceTexture, TexelCopyBufferLayout, TexelCopyTextureInfo,
     TextureSampleType, TextureUsages, TextureView, TextureViewDescriptor, TextureViewDimension,
     Trace, VertexAttribute, VertexBufferLayout, VertexFormat, VertexState, VertexStepMode,
     util::{BufferInitDescriptor, DeviceExt},
@@ -25,10 +25,8 @@ use crate::{
     asset_loader::assets::AssetsServer,
     graphics::{
         attachment::{AttachmentFormat, InternalAttachmentId},
-        graphics_graph::{
-            self, GraphicsGraph,
-            graphics_node::{GizmoVertex, RenderPassNode},
-        },
+        graphics_graph::{self, GraphicsGraph, graphics_node::RenderPassNode},
+        material::Material,
         vertex::Vertex,
     },
     math::{float2, float3, float4, float4x4},
@@ -450,130 +448,60 @@ impl RenderPipeline {
 
             let draws = &render_pass_node.draw_instances;
             for draw in draws {
-                let Some(mesh_asset) = assets_server.get(&draw.renderer.mesh) else {
+                let Some((vertices, indices)) = draw.get_vertices_indices(assets_server) else {
+                    // println!("fk mesh is none! {:?}", draw);
                     continue;
                 };
-                let Some(material_asset) = assets_server.get(&draw.renderer.material) else {
+                let Some(material) = draw.get_material(assets_server) else {
+                    // println!("fk material is none! {:?}", draw);
                     continue;
                 };
-                let Some(shader) = &material_asset.material.shader else {
+
+                let Some(shader) = &material.shader else {
+                    // println!("fk shader asset is none! {:?}", draw);
                     continue;
                 };
                 let Some(shader) = assets_server.get(shader) else {
-                    continue;
-                };
-                let Some(texture) = &material_asset.material.texture else {
-                    continue;
-                };
-                let Some(texture) = assets_server.get(texture) else {
+                    // println!("fk shader is none! {:?}", draw);
                     continue;
                 };
 
-                let texture = &texture.texture;
-                let texture_data = &texture.data;
-
-                // let texture_dimension = texture_asset.dimensions();
-                let texture_dimension = (texture.width, texture.height);
-                let texture_size = Extent3d {
-                    width: texture_dimension.0,
-                    height: texture_dimension.1,
-                    depth_or_array_layers: 1,
-                };
-                let texture = device.create_texture(&TextureDescriptor {
-                    label: Some("Kairos Texture"),
-                    size: texture_size,
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    dimension: wgpu::TextureDimension::D2,
-                    format: wgpu::TextureFormat::Rgba8Unorm,
-                    usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
-                    view_formats: &[],
-                });
-                queue.write_texture(
-                    TexelCopyTextureInfo {
-                        texture: &texture,
-                        mip_level: 0,
-                        origin: Origin3d::ZERO,
-                        aspect: wgpu::TextureAspect::All,
-                    },
-                    &texture_data,
-                    TexelCopyBufferLayout {
-                        offset: 0,
-                        bytes_per_row: Some(4 * texture_dimension.0),
-                        rows_per_image: Some(texture_dimension.1),
-                    },
-                    texture_size,
-                );
-                let texture_view = texture.create_view(&TextureViewDescriptor::default());
-                let texture_sampler = device.create_sampler(&SamplerDescriptor {
-                    label: Some("Texture Sampler"),
-                    address_mode_u: AddressMode::Repeat,
-                    address_mode_v: AddressMode::Repeat,
-                    address_mode_w: AddressMode::Repeat,
-                    mag_filter: FilterMode::Linear,
-                    min_filter: FilterMode::Nearest,
-                    mipmap_filter: MipmapFilterMode::Linear,
-                    lod_min_clamp: 0f32,
-                    lod_max_clamp: 0f32,
-                    compare: None,
-                    anisotropy_clamp: 1,
-                    border_color: None,
-                });
-                let texture_bind_group_layout =
-                    device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-                        label: Some("Texture Bind Group Layout"),
+                let texture_data = Self::create_texture(device, queue, material, assets_server);
+                if let Some((texture_bind_group_layout, texture_view, texture_sampler)) =
+                    &texture_data
+                {
+                    let texture_bind_group_descriptor = BindGroupDescriptor {
+                        label: Some("Texture Bind Group"),
+                        layout: &texture_bind_group_layout,
                         entries: &[
-                            BindGroupLayoutEntry {
+                            BindGroupEntry {
                                 binding: 0,
-                                visibility: ShaderStages::FRAGMENT,
-                                ty: BindingType::Texture {
-                                    sample_type: TextureSampleType::Float { filterable: true },
-                                    view_dimension: TextureViewDimension::D2,
-                                    multisampled: false,
-                                },
-                                count: None,
+                                resource: BindingResource::TextureView(&texture_view),
                             },
-                            BindGroupLayoutEntry {
+                            BindGroupEntry {
                                 binding: 1,
-                                visibility: ShaderStages::FRAGMENT,
-                                ty: BindingType::Sampler(SamplerBindingType::Filtering),
-                                count: None,
+                                resource: BindingResource::Sampler(&texture_sampler),
                             },
                         ],
-                    });
-                let texture_bind_group = device.create_bind_group(&BindGroupDescriptor {
-                    label: Some("Texture Bind Group"),
-                    layout: &texture_bind_group_layout,
-                    entries: &[
-                        BindGroupEntry {
-                            binding: 0,
-                            resource: BindingResource::TextureView(&texture_view),
-                        },
-                        BindGroupEntry {
-                            binding: 1,
-                            resource: BindingResource::Sampler(&texture_sampler),
-                        },
-                    ],
-                });
+                    };
+                    let texture_bind_group =
+                        device.create_bind_group(&texture_bind_group_descriptor);
+                    render_pass.set_bind_group(1, &texture_bind_group, &[]);
+                }
 
                 let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
                     label: Some("Render Pipeline Layout"),
                     bind_group_layouts: &[
                         Some(vp_bind_group_layout),
-                        Some(&texture_bind_group_layout),
+                        texture_data.map(|(layout, ..)| layout).as_ref(),
                     ],
                     immediate_size: 0,
                 });
-
-                render_pass.set_bind_group(1, &texture_bind_group, &[]);
 
                 let shader = device.create_shader_module(ShaderModuleDescriptor {
                     label: Some("Shader"),
                     source: ShaderSource::Wgsl((&shader.shader_string).into()),
                 });
-
-                let vertices = &mesh_asset.mesh.vertices;
-                let indices = &mesh_asset.mesh.indices;
 
                 let vertex_buffer = device.create_buffer_init(&BufferInitDescriptor {
                     label: Some("Vertex Buffer"),
@@ -682,106 +610,6 @@ impl RenderPipeline {
                 render_pass.set_index_buffer(indices_buffer.slice(..), wgpu::IndexFormat::Uint16);
                 render_pass.draw_indexed(0..indices_num, 0, 0..draw.local_to_worlds.len() as u32);
             }
-
-            // --- Gizmo grid ---
-            if let Some(gizmo_grid) = &render_pass_node.gizmo_grid {
-                static GRID_SHADER_SRC: &str = include_str!("../../../res/shaders/grid.wgsl");
-                let grid_shader = device.create_shader_module(ShaderModuleDescriptor {
-                    label: Some("Grid Gizmo Shader"),
-                    source: ShaderSource::Wgsl(GRID_SHADER_SRC.into()),
-                });
-
-                let gizmo_vertex_buffer_layout = VertexBufferLayout {
-                    array_stride: core::mem::size_of::<GizmoVertex>() as wgpu::BufferAddress,
-                    step_mode: VertexStepMode::Vertex,
-                    attributes: &[VertexAttribute {
-                        offset: 0,
-                        format: VertexFormat::Float32x3,
-                        shader_location: 0,
-                    }],
-                };
-
-                let gizmo_pipeline_layout =
-                    device.create_pipeline_layout(&PipelineLayoutDescriptor {
-                        label: Some("Grid Gizmo Pipeline Layout"),
-                        bind_group_layouts: &[Some(vp_bind_group_layout)],
-                        immediate_size: 0,
-                    });
-
-                let color_format = color_attachments[0]
-                    .as_ref()
-                    .unwrap()
-                    .view
-                    .texture()
-                    .format();
-
-                let gizmo_pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
-                    label: Some("Grid Gizmo Pipeline"),
-                    layout: Some(&gizmo_pipeline_layout),
-                    vertex: VertexState {
-                        module: &grid_shader,
-                        entry_point: Some("vs_main"),
-                        compilation_options: PipelineCompilationOptions::default(),
-                        buffers: &[gizmo_vertex_buffer_layout],
-                    },
-                    primitive: PrimitiveState {
-                        topology: PrimitiveTopology::TriangleList,
-                        strip_index_format: None,
-                        front_face: FrontFace::Ccw,
-                        cull_mode: None, // draw from both sides
-                        unclipped_depth: false,
-                        polygon_mode: PolygonMode::Fill,
-                        conservative: false,
-                    },
-                    fragment: Some(FragmentState {
-                        module: &grid_shader,
-                        entry_point: Some("fs_main"),
-                        compilation_options: PipelineCompilationOptions::default(),
-                        targets: &[Some(ColorTargetState {
-                            format: color_format,
-                            blend: Some(BlendState::ALPHA_BLENDING),
-                            write_mask: ColorWrites::all(),
-                        })],
-                    }),
-                    depth_stencil: Some(DepthStencilState {
-                        format: depth_state
-                            .as_ref()
-                            .map(|ds| ds.format)
-                            .unwrap_or(wgpu::TextureFormat::Depth32Float),
-                        depth_write_enabled: Some(false), // grid is see-through
-                        depth_compare: Some(wgpu::CompareFunction::Always),
-                        stencil: StencilState::default(),
-                        bias: DepthBiasState::default(),
-                    }),
-                    multisample: MultisampleState {
-                        count: 1,
-                        mask: !0,
-                        alpha_to_coverage_enabled: false,
-                    },
-                    multiview_mask: None,
-                    cache: None,
-                });
-
-                let gizmo_vb = device.create_buffer_init(&BufferInitDescriptor {
-                    label: Some("Grid Gizmo Vertex Buffer"),
-                    contents: bytemuck::cast_slice(&gizmo_grid.vertices),
-                    usage: BufferUsages::VERTEX,
-                });
-                let gizmo_ib = device.create_buffer_init(&BufferInitDescriptor {
-                    label: Some("Grid Gizmo Index Buffer"),
-                    contents: bytemuck::cast_slice(&gizmo_grid.indices),
-                    usage: BufferUsages::INDEX,
-                });
-
-                render_pass.set_pipeline(&gizmo_pipeline);
-                render_pass.set_vertex_buffer(0, gizmo_vb.slice(..));
-                render_pass.set_index_buffer(gizmo_ib.slice(..), wgpu::IndexFormat::Uint16);
-                render_pass.draw_indexed(
-                    0..gizmo_grid.indices.len() as u32,
-                    0,
-                    0..1,
-                );
-            }
         };
 
         if let Some(egui_draw) = &render_pass_node.egui_draw {
@@ -836,5 +664,93 @@ impl RenderPipeline {
             wgpu::TextureFormat::Rg11b10Ufloat => AttachmentFormat::RG11B10UFloat,
             _ => todo!(),
         }
+    }
+
+    fn create_texture(
+        device: &Device,
+        queue: &Queue,
+        material: &Material,
+        assets_server: &AssetsServer,
+    ) -> Option<(BindGroupLayout, TextureView, Sampler)> {
+        if let Some(texture) = &material.texture {
+            if let Some(texture) = assets_server.get(texture) {
+                let texture = &texture.texture;
+                let texture_data = &texture.data;
+
+                // let texture_dimension = texture_asset.dimensions();
+                let texture_dimension = (texture.width, texture.height);
+                let texture_size = Extent3d {
+                    width: texture_dimension.0,
+                    height: texture_dimension.1,
+                    depth_or_array_layers: 1,
+                };
+                let texture = device.create_texture(&TextureDescriptor {
+                    label: Some("Kairos Texture"),
+                    size: texture_size,
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: wgpu::TextureFormat::Rgba8Unorm,
+                    usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
+                    view_formats: &[],
+                });
+                queue.write_texture(
+                    TexelCopyTextureInfo {
+                        texture: &texture,
+                        mip_level: 0,
+                        origin: Origin3d::ZERO,
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    &texture_data,
+                    TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(4 * texture_dimension.0),
+                        rows_per_image: Some(texture_dimension.1),
+                    },
+                    texture_size,
+                );
+                let texture_bind_group_layout =
+                    device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+                        label: Some("Texture Bind Group Layout"),
+                        entries: &[
+                            BindGroupLayoutEntry {
+                                binding: 0,
+                                visibility: ShaderStages::FRAGMENT,
+                                ty: BindingType::Texture {
+                                    sample_type: TextureSampleType::Float { filterable: true },
+                                    view_dimension: TextureViewDimension::D2,
+                                    multisampled: false,
+                                },
+                                count: None,
+                            },
+                            BindGroupLayoutEntry {
+                                binding: 1,
+                                visibility: ShaderStages::FRAGMENT,
+                                ty: BindingType::Sampler(SamplerBindingType::Filtering),
+                                count: None,
+                            },
+                        ],
+                    });
+
+                let texture_view = texture.create_view(&TextureViewDescriptor::default());
+                let texture_sampler = device.create_sampler(&SamplerDescriptor {
+                    label: Some("Texture Sampler"),
+                    address_mode_u: AddressMode::Repeat,
+                    address_mode_v: AddressMode::Repeat,
+                    address_mode_w: AddressMode::Repeat,
+                    mag_filter: FilterMode::Linear,
+                    min_filter: FilterMode::Nearest,
+                    mipmap_filter: MipmapFilterMode::Linear,
+                    lod_min_clamp: 0f32,
+                    lod_max_clamp: 0f32,
+                    compare: None,
+                    anisotropy_clamp: 1,
+                    border_color: None,
+                });
+
+                return Some((texture_bind_group_layout, texture_view, texture_sampler));
+            }
+        }
+        None
     }
 }

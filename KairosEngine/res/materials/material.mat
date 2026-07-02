@@ -1,4 +1,4 @@
 [meta]
 source_path = "res/materials/material.mat"
-texture_path = "res/textures/kairos_texture.texture"
 shader_path = "res/shaders/shader.wgsl"
+texture_path = "res/textures/kairos_texture.texture"

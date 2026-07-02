@@ -28,6 +28,15 @@ pub struct LayoutBottomContainer {}
 pub struct LayoutCenterContainer {}
 
 impl Drawer for LayoutLeftContainer {
+    fn create(
+        assets_server: &mut crate::asset_loader::assets::AssetsServer,
+    ) -> Result<Self, Box<dyn std::error::Error>>
+    where
+        Self: Sized,
+    {
+        Ok(Self {})
+    }
+
     fn show_window(&self, _state: Option<&mut WindowState>) {}
 
     fn ui(&self, _ui: &mut egui::Ui, _messager: &mut Messager, _log: &mut Log) {}
@@ -63,6 +72,15 @@ impl Drawer for LayoutLeftContainer {
     fn update_style(&mut self, _style_fields: &Vec<StyleField>) {}
 }
 impl Drawer for LayoutRightContainer {
+    fn create(
+        assets_server: &mut crate::asset_loader::assets::AssetsServer,
+    ) -> Result<Self, Box<dyn std::error::Error>>
+    where
+        Self: Sized,
+    {
+        Ok(Self {})
+    }
+
     fn show_window(&self, _state: Option<&mut WindowState>) {}
 
     fn ui(&self, _ui: &mut egui::Ui, _messager: &mut Messager, _log: &mut Log) {}
@@ -93,6 +111,15 @@ impl Drawer for LayoutRightContainer {
     fn update_style(&mut self, _style_fields: &Vec<StyleField>) {}
 }
 impl Drawer for LayoutBottomContainer {
+    fn create(
+        assets_server: &mut crate::asset_loader::assets::AssetsServer,
+    ) -> Result<Self, Box<dyn std::error::Error>>
+    where
+        Self: Sized,
+    {
+        Ok(Self {})
+    }
+
     fn show_window(&self, _state: Option<&mut WindowState>) {}
 
     fn ui(&self, _ui: &mut egui::Ui, _messager: &mut Messager, _log: &mut Log) {}
@@ -123,6 +150,15 @@ impl Drawer for LayoutBottomContainer {
     fn update_style(&mut self, _style_fields: &Vec<StyleField>) {}
 }
 impl Drawer for LayoutCenterContainer {
+    fn create(
+        _assets_server: &mut crate::asset_loader::assets::AssetsServer,
+    ) -> Result<Self, Box<dyn std::error::Error>>
+    where
+        Self: Sized,
+    {
+        Ok(Self {})
+    }
+
     fn show_window(&self, _state: Option<&mut WindowState>) {}
 
     fn ui(&self, _ui: &mut egui::Ui, _messager: &mut Messager, _log: &mut Log) {}

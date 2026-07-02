@@ -51,6 +51,7 @@ impl InspectorWindowModel {
 }
 
 impl InspectorWindow {
+    #[inline(always)]
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let model = InspectorWindowModel::new()?;
         Ok(Self { model })
@@ -58,6 +59,15 @@ impl InspectorWindow {
 }
 
 impl Drawer for InspectorWindow {
+    fn create(
+        _assets_server: &mut crate::asset_loader::assets::AssetsServer,
+    ) -> Result<Self, Box<dyn std::error::Error>>
+    where
+        Self: Sized,
+    {
+        Self::new()
+    }
+
     fn show_window(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {}
 
     fn ui(&self, ui: &mut egui::Ui, _messager: &mut super::Messager, _log: &mut Log) {

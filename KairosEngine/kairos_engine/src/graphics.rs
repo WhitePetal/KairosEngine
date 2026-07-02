@@ -7,7 +7,6 @@ pub mod texture;
 pub mod vertex;
 
 pub mod attachment;
-pub mod gizmos;
 pub mod graphics_graph;
 
 pub mod lod_mesh_component;

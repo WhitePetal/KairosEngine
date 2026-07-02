@@ -58,6 +58,7 @@ pub struct AboutWindow {
 }
 
 impl AboutWindow {
+    #[inline(always)]
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let model = AboutWindowModel::new()?;
         Ok(Self { model })
@@ -65,6 +66,15 @@ impl AboutWindow {
 }
 
 impl Drawer for AboutWindow {
+    fn create(
+        _assets_server: &mut crate::asset_loader::assets::AssetsServer,
+    ) -> Result<Self, Box<dyn std::error::Error>>
+    where
+        Self: Sized,
+    {
+        Self::new()
+    }
+
     fn show_window(&self, state: Option<&mut WindowState>) {
         match state {
             Some(state) => {

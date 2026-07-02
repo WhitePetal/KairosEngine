@@ -5,10 +5,13 @@ use crate::{
     graphics::{
         attachment::Attachment,
         graphics_graph::graphics_node::{
-            BaseDraw, BindAttachmentToEguiNode, ColorAttachmentId, CopyAttachmentToEguiNode, DepthAttachmentId, Drawer, EguiDraw, GraphNode, OutputToFrameBufferNode, RenderPassNode, VPId
+            BaseDraw, BindAttachmentToEguiNode, ColorAttachmentId, CopyAttachmentToEguiNode,
+            DepthAttachmentId, Drawer, EguiDraw, GraphNode, OutputToFrameBufferNode,
+            RenderPassNode, SimpleMeshDraw, VPId,
         },
+        vertex::Vertex,
     },
-    math::float4x4,
+    math::{float3, float4x4},
 };
 
 enum RenderPassState {
@@ -92,7 +95,6 @@ impl GraphicsCommand {
             draws: Vec::with_capacity(darws_capacity),
             draw_instances: Vec::new(),
             egui_draw: None,
-            gizmo_grid: None,
         };
 
         self.cur_render_pass = RenderPassState::Writing(render_pass_node)
@@ -119,16 +121,11 @@ impl GraphicsCommand {
         material: Arc<AssetHandle<MaterialAssetsSystem>>,
         local_to_world: float4x4,
     ) {
-        debug_assert!(
-            matches!(self.cur_render_pass, RenderPassState::Writing(_)),
-            "draw while no render pass be opened"
-        );
-
         let RenderPassState::Writing(render_pass) = &mut self.cur_render_pass else {
-            unreachable!()
+            return;
         };
 
-        let draw_call = Drawer::BaseDraw(BaseDraw {
+        let draw_call = Drawer::Base(BaseDraw {
             mesh,
             material,
             local_to_world,
@@ -136,16 +133,24 @@ impl GraphicsCommand {
         render_pass.draws.push(draw_call);
     }
 
-    pub fn draw_gizmo_grid(&mut self, gizmo_grid: GizmoGridDraw) {
-        debug_assert!(
-            matches!(self.cur_render_pass, RenderPassState::Writing(_)),
-            "draw_gizmo_grid while no render pass be opened"
-        );
-
+    pub fn draw_simple_mesh(
+        &mut self,
+        vertices: Arc<Vec<Vertex>>,
+        indices: Arc<Vec<u16>>,
+        material: Arc<AssetHandle<MaterialAssetsSystem>>,
+        local_to_world: float4x4,
+    ) {
         let RenderPassState::Writing(render_pass) = &mut self.cur_render_pass else {
-            unreachable!()
+            return;
         };
-        render_pass.gizmo_grid = Some(gizmo_grid);
+
+        let draw_call = Drawer::SimpleMesh(SimpleMeshDraw {
+            vertices,
+            indices,
+            material,
+            local_to_world,
+        });
+        render_pass.draws.push(draw_call);
     }
 
     pub fn draw_egui(

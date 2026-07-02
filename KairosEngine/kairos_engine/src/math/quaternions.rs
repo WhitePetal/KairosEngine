@@ -107,9 +107,15 @@ impl quaternion {
         // Rotation matrix columns (column-major):
         //   c0 = right, c1 = up, c2 = -forward
         // (because local forward is (0,0,-1), so -forward = local +Z)
-        let m00 = right.x(); let m01 = up.x();   let m02 = -f.x();
-        let m10 = right.y(); let m11 = up.y();   let m12 = -f.y();
-        let m20 = right.z(); let m21 = up.z();   let m22 = -f.z();
+        let m00 = right.x();
+        let m01 = up.x();
+        let m02 = -f.x();
+        let m10 = right.y();
+        let m11 = up.y();
+        let m12 = -f.y();
+        let m20 = right.z();
+        let m21 = up.z();
+        let m22 = -f.z();
 
         // Matrix → quaternion (standard trace-based conversion)
         let trace = m00 + m11 + m22;
