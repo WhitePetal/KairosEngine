@@ -30,6 +30,7 @@ use crate::{
         material::Material,
         render_state::RenderState,
         shader::ShaderAsset,
+        texture::TextureAsset,
         vertex::Vertex,
     },
     math::{float2, float3, float4, float4x4},
@@ -43,6 +44,11 @@ struct PipelineKey {
 struct PipelineCache {
     version: u32,
     pipeline: wgpu::RenderPipeline,
+}
+
+struct TextureCache {
+    version: u32,
+    bind_group: BindGroup,
 }
 
 pub struct RenderPipeline {
@@ -59,7 +65,9 @@ pub struct RenderPipeline {
     window_size_changed: bool,
 
     pipeline_cache: HashMap<PipelineKey, PipelineCache>,
-    vp_bind_group_layout: BindGroupLayout,
+    texture_cache: HashMap<usize, TextureCache>,
+    global_vp_bind_group_layout: BindGroupLayout,
+    global_texture_bind_group_layout: BindGroupLayout,
 }
 
 impl RenderPipeline {
@@ -114,7 +122,7 @@ impl RenderPipeline {
             egui_wgpu::RendererOptions::default(),
         );
 
-        let vp_bind_group_layout =
+        let global_vp_bind_group_layout =
             device.create_bind_group_layout(&BindGroupLayoutDescriptor {
                 label: Some("VP Bind Group Layout"),
                 entries: &[BindGroupLayoutEntry {
@@ -127,6 +135,28 @@ impl RenderPipeline {
                     },
                     count: None,
                 }],
+            });
+        let global_texture_bind_group_layout =
+            device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+                label: Some("Texture Bind Group Layout"),
+                entries: &[
+                    BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Texture {
+                            sample_type: TextureSampleType::Float { filterable: true },
+                            view_dimension: TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Sampler(SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
             });
 
         Ok(Self {
@@ -143,7 +173,9 @@ impl RenderPipeline {
             window_size_changed: false,
 
             pipeline_cache: HashMap::new(),
-            vp_bind_group_layout,
+            texture_cache: HashMap::new(),
+            global_vp_bind_group_layout,
+            global_texture_bind_group_layout,
         })
     }
 
@@ -303,7 +335,7 @@ impl RenderPipeline {
                     });
                     let vp_bind_group = self.device.create_bind_group(&BindGroupDescriptor {
                         label: Some("VP Bind Group"),
-                        layout: &self.vp_bind_group_layout,
+                        layout: &self.global_vp_bind_group_layout,
                         entries: &[BindGroupEntry {
                             binding: 0,
                             resource: vp_buffer.as_entire_binding(),
@@ -314,10 +346,12 @@ impl RenderPipeline {
                         &self.queue,
                         &mut encoder,
                         &mut self.pipeline_cache,
+                        &mut self.texture_cache,
                         &mut self.egui_renderer,
                         &render_pass_color_attachments,
                         &render_pass_depth_attachments,
-                        &self.vp_bind_group_layout,
+                        &self.global_vp_bind_group_layout,
+                        &self.global_texture_bind_group_layout,
                         &vp_bind_group,
                         &render_pass_node,
                         assets_server,
@@ -385,10 +419,12 @@ impl RenderPipeline {
         queue: &Queue,
         encoder: &mut CommandEncoder,
         pipeline_cache: &mut HashMap<PipelineKey, PipelineCache>,
+        texture_cache: &mut HashMap<usize, TextureCache>,
         egui_renderer: &mut egui_wgpu::Renderer,
         render_pass_color_attachments: &Vec<RenderPassColorAttachment>,
         render_pass_depth_attachments: &Vec<RenderPassDepthStencilAttachment>,
-        vp_bind_group_layout: &BindGroupLayout,
+        global_vp_bind_group_layout: &BindGroupLayout,
+        global_texture_bind_group_layout: &BindGroupLayout,
         vp_bind_group: &BindGroup,
         render_pass_node: &RenderPassNode,
         assets_server: &mut AssetsServer,
@@ -497,118 +533,114 @@ impl RenderPipeline {
             })
             .forget_lifetime();
 
-            render_pass.set_bind_group(0, vp_bind_group, &[]);
+        render_pass.set_bind_group(0, vp_bind_group, &[]);
 
-            let instancing_vertex_buffer_layout = VertexBufferLayout {
-                array_stride: core::mem::size_of::<float4x4>() as wgpu::BufferAddress,
-                attributes: &[
-                    VertexAttribute {
-                        offset: 0,
-                        format: VertexFormat::Float32x4,
-                        shader_location: 5,
-                    },
-                    VertexAttribute {
-                        offset: std::mem::size_of::<float4>() as wgpu::BufferAddress,
-                        format: VertexFormat::Float32x4,
-                        shader_location: 6,
-                    },
-                    VertexAttribute {
-                        offset: (std::mem::size_of::<float4>() * 2) as wgpu::BufferAddress,
-                        format: VertexFormat::Float32x4,
-                        shader_location: 7,
-                    },
-                    VertexAttribute {
-                        offset: (std::mem::size_of::<float4>() * 3) as wgpu::BufferAddress,
-                        format: VertexFormat::Float32x4,
-                        shader_location: 8,
-                    },
-                ],
-                step_mode: VertexStepMode::Instance,
+        let instancing_vertex_buffer_layout = VertexBufferLayout {
+            array_stride: core::mem::size_of::<float4x4>() as wgpu::BufferAddress,
+            attributes: &[
+                VertexAttribute {
+                    offset: 0,
+                    format: VertexFormat::Float32x4,
+                    shader_location: 5,
+                },
+                VertexAttribute {
+                    offset: std::mem::size_of::<float4>() as wgpu::BufferAddress,
+                    format: VertexFormat::Float32x4,
+                    shader_location: 6,
+                },
+                VertexAttribute {
+                    offset: (std::mem::size_of::<float4>() * 2) as wgpu::BufferAddress,
+                    format: VertexFormat::Float32x4,
+                    shader_location: 7,
+                },
+                VertexAttribute {
+                    offset: (std::mem::size_of::<float4>() * 3) as wgpu::BufferAddress,
+                    format: VertexFormat::Float32x4,
+                    shader_location: 8,
+                },
+            ],
+            step_mode: VertexStepMode::Instance,
+        };
+
+        let draws = &render_pass_node.draw_instances;
+        for draw in draws {
+            let Some((vertices, indices)) = draw.get_vertices_indices(assets_server) else {
+                // println!("fk mesh is none! {:?}", draw);
+                continue;
+            };
+            let Some(material) = draw.get_material(assets_server) else {
+                // println!("fk material is none! {:?}", draw);
+                continue;
             };
 
-            let draws = &render_pass_node.draw_instances;
-            for draw in draws {
-                let Some((vertices, indices)) = draw.get_vertices_indices(assets_server) else {
-                    // println!("fk mesh is none! {:?}", draw);
-                    continue;
-                };
-                let Some(material) = draw.get_material(assets_server) else {
-                    // println!("fk material is none! {:?}", draw);
-                    continue;
-                };
+            let Some(shader_asset) = &material.shader else {
+                // println!("fk shader asset is none! {:?}", draw);
+                continue;
+            };
+            let Some(shader) = assets_server.get(shader_asset) else {
+                // println!("fk shader is none! {:?}", draw);
+                continue;
+            };
 
-                let Some(shader_asset) = &material.shader else {
-                    // println!("fk shader asset is none! {:?}", draw);
-                    continue;
-                };
-                let Some(shader) = assets_server.get(shader_asset) else {
-                    // println!("fk shader is none! {:?}", draw);
-                    continue;
-                };
-
-                let texture_data = Self::create_texture(device, queue, material, assets_server);
-                if let Some((texture_bind_group_layout, texture_view, texture_sampler)) =
-                    &texture_data
-                {
-                    let texture_bind_group_descriptor = BindGroupDescriptor {
-                        label: Some("Texture Bind Group"),
-                        layout: &texture_bind_group_layout,
-                        entries: &[
-                            BindGroupEntry {
-                                binding: 0,
-                                resource: BindingResource::TextureView(&texture_view),
-                            },
-                            BindGroupEntry {
-                                binding: 1,
-                                resource: BindingResource::Sampler(&texture_sampler),
-                            },
-                        ],
-                    };
-                    let texture_bind_group =
-                        device.create_bind_group(&texture_bind_group_descriptor);
-                    render_pass.set_bind_group(1, &texture_bind_group, &[]);
-                }
-
-                let shader_id = shader_asset.id();
-                let pipeline_key = PipelineKey {
-                    shader_index: shader_id.index(),
-                    render_state: material.render_state,
-                };
-                let shader_version = shader_id.version();
-                match pipeline_cache.entry(pipeline_key) {
+            let mut texture_bind_group_layout = None;
+            if let Some(texture) = &material.texture
+                && let Some(texture_asset) = assets_server.get(&texture)
+            {
+                texture_bind_group_layout = Some(global_texture_bind_group_layout);
+                let texture_id = texture.id();
+                let key = texture_id.index();
+                let version = texture_id.version();
+                match texture_cache.entry(key) {
                     std::collections::hash_map::Entry::Occupied(mut entry) => {
                         let cache = entry.get();
-                        if cache.version == shader_version {
-                            render_pass.set_pipeline(&cache.pipeline);
+                        if cache.version == version {
+                            render_pass.set_bind_group(1, &cache.bind_group, &[]);
                         } else {
-                            let pipeline = Self::create_pipeline(
+                            let bind_group = Self::create_texture(
                                 device,
-                                vp_bind_group_layout,
-                                texture_data.map(|(layout, ..)| layout).as_ref(),
-                                shader,
-                                &depth_state,
-                                &pipeline_key.render_state,
-                                instancing_vertex_buffer_layout.clone(),
-                                color_attachments[0]
-                                    .as_ref()
-                                    .unwrap()
-                                    .view
-                                    .texture()
-                                    .format(),
+                                queue,
+                                global_texture_bind_group_layout,
+                                texture_asset,
                             );
-                            render_pass.set_pipeline(&pipeline);
-
-                            entry.insert(PipelineCache {
-                                version: shader_version,
-                                pipeline,
+                            render_pass.set_bind_group(1, &bind_group, &[]);
+                            entry.insert(TextureCache {
+                                version,
+                                bind_group,
                             });
                         }
                     }
                     std::collections::hash_map::Entry::Vacant(entry) => {
+                        let bind_group = Self::create_texture(
+                            device,
+                            queue,
+                            global_texture_bind_group_layout,
+                            texture_asset,
+                        );
+                        render_pass.set_bind_group(1, &bind_group, &[]);
+                        entry.insert(TextureCache {
+                            version,
+                            bind_group,
+                        });
+                    }
+                }
+            }
+
+            let shader_id = shader_asset.id();
+            let pipeline_key = PipelineKey {
+                shader_index: shader_id.index(),
+                render_state: material.render_state,
+            };
+            let shader_version = shader_id.version();
+            match pipeline_cache.entry(pipeline_key) {
+                std::collections::hash_map::Entry::Occupied(mut entry) => {
+                    let cache = entry.get();
+                    if cache.version == shader_version {
+                        render_pass.set_pipeline(&cache.pipeline);
+                    } else {
                         let pipeline = Self::create_pipeline(
                             device,
-                            vp_bind_group_layout,
-                            texture_data.map(|(layout, ..)| layout).as_ref(),
+                            global_vp_bind_group_layout,
+                            texture_bind_group_layout,
                             shader,
                             &depth_state,
                             &pipeline_key.render_state,
@@ -627,32 +659,56 @@ impl RenderPipeline {
                             pipeline,
                         });
                     }
-                };
+                }
+                std::collections::hash_map::Entry::Vacant(entry) => {
+                    let pipeline = Self::create_pipeline(
+                        device,
+                        global_vp_bind_group_layout,
+                        texture_bind_group_layout,
+                        shader,
+                        &depth_state,
+                        &pipeline_key.render_state,
+                        instancing_vertex_buffer_layout.clone(),
+                        color_attachments[0]
+                            .as_ref()
+                            .unwrap()
+                            .view
+                            .texture()
+                            .format(),
+                    );
+                    render_pass.set_pipeline(&pipeline);
 
-                let vertex_buffer = device.create_buffer_init(&BufferInitDescriptor {
-                    label: Some("Vertex Buffer"),
-                    contents: bytemuck::cast_slice(vertices),
-                    usage: BufferUsages::VERTEX,
-                });
+                    entry.insert(PipelineCache {
+                        version: shader_version,
+                        pipeline,
+                    });
+                }
+            };
 
-                let indices_buffer = device.create_buffer_init(&BufferInitDescriptor {
-                    label: Some("Indices Buffer"),
-                    contents: bytemuck::cast_slice(indices),
-                    usage: BufferUsages::INDEX,
-                });
-                let indices_num = indices.len() as u32;
+            let vertex_buffer = device.create_buffer_init(&BufferInitDescriptor {
+                label: Some("Vertex Buffer"),
+                contents: bytemuck::cast_slice(vertices),
+                usage: BufferUsages::VERTEX,
+            });
 
-                let instancing_buffer = device.create_buffer_init(&BufferInitDescriptor {
-                    label: Some("Instancing Bufferr"),
-                    contents: bytemuck::cast_slice(&draw.local_to_worlds),
-                    usage: BufferUsages::VERTEX,
-                });
+            let indices_buffer = device.create_buffer_init(&BufferInitDescriptor {
+                label: Some("Indices Buffer"),
+                contents: bytemuck::cast_slice(indices),
+                usage: BufferUsages::INDEX,
+            });
+            let indices_num = indices.len() as u32;
 
-                render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
-                render_pass.set_vertex_buffer(1, instancing_buffer.slice(..));
-                render_pass.set_index_buffer(indices_buffer.slice(..), wgpu::IndexFormat::Uint16);
-                render_pass.draw_indexed(0..indices_num, 0, 0..draw.local_to_worlds.len() as u32);
-            }
+            let instancing_buffer = device.create_buffer_init(&BufferInitDescriptor {
+                label: Some("Instancing Bufferr"),
+                contents: bytemuck::cast_slice(&draw.local_to_worlds),
+                usage: BufferUsages::VERTEX,
+            });
+
+            render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+            render_pass.set_vertex_buffer(1, instancing_buffer.slice(..));
+            render_pass.set_index_buffer(indices_buffer.slice(..), wgpu::IndexFormat::Uint16);
+            render_pass.draw_indexed(0..indices_num, 0, 0..draw.local_to_worlds.len() as u32);
+        }
 
         if let Some(egui_draw) = &render_pass_node.egui_draw {
             let clipped_primitives = &egui_draw.paint_jobs;
@@ -706,94 +762,6 @@ impl RenderPipeline {
             wgpu::TextureFormat::Rg11b10Ufloat => AttachmentFormat::RG11B10UFloat,
             _ => todo!(),
         }
-    }
-
-    fn create_texture(
-        device: &Device,
-        queue: &Queue,
-        material: &Material,
-        assets_server: &AssetsServer,
-    ) -> Option<(BindGroupLayout, TextureView, Sampler)> {
-        if let Some(texture) = &material.texture {
-            if let Some(texture) = assets_server.get(texture) {
-                let texture = &texture.texture;
-                let texture_data = &texture.data;
-
-                // let texture_dimension = texture_asset.dimensions();
-                let texture_dimension = (texture.width, texture.height);
-                let texture_size = Extent3d {
-                    width: texture_dimension.0,
-                    height: texture_dimension.1,
-                    depth_or_array_layers: 1,
-                };
-                let texture = device.create_texture(&TextureDescriptor {
-                    label: Some("Kairos Texture"),
-                    size: texture_size,
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    dimension: wgpu::TextureDimension::D2,
-                    format: wgpu::TextureFormat::Rgba8Unorm,
-                    usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
-                    view_formats: &[],
-                });
-                queue.write_texture(
-                    TexelCopyTextureInfo {
-                        texture: &texture,
-                        mip_level: 0,
-                        origin: Origin3d::ZERO,
-                        aspect: wgpu::TextureAspect::All,
-                    },
-                    &texture_data,
-                    TexelCopyBufferLayout {
-                        offset: 0,
-                        bytes_per_row: Some(4 * texture_dimension.0),
-                        rows_per_image: Some(texture_dimension.1),
-                    },
-                    texture_size,
-                );
-                let texture_bind_group_layout =
-                    device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-                        label: Some("Texture Bind Group Layout"),
-                        entries: &[
-                            BindGroupLayoutEntry {
-                                binding: 0,
-                                visibility: ShaderStages::FRAGMENT,
-                                ty: BindingType::Texture {
-                                    sample_type: TextureSampleType::Float { filterable: true },
-                                    view_dimension: TextureViewDimension::D2,
-                                    multisampled: false,
-                                },
-                                count: None,
-                            },
-                            BindGroupLayoutEntry {
-                                binding: 1,
-                                visibility: ShaderStages::FRAGMENT,
-                                ty: BindingType::Sampler(SamplerBindingType::Filtering),
-                                count: None,
-                            },
-                        ],
-                    });
-
-                let texture_view = texture.create_view(&TextureViewDescriptor::default());
-                let texture_sampler = device.create_sampler(&SamplerDescriptor {
-                    label: Some("Texture Sampler"),
-                    address_mode_u: AddressMode::Repeat,
-                    address_mode_v: AddressMode::Repeat,
-                    address_mode_w: AddressMode::Repeat,
-                    mag_filter: FilterMode::Linear,
-                    min_filter: FilterMode::Nearest,
-                    mipmap_filter: MipmapFilterMode::Linear,
-                    lod_min_clamp: 0f32,
-                    lod_max_clamp: 0f32,
-                    compare: None,
-                    anisotropy_clamp: 1,
-                    border_color: None,
-                });
-
-                return Some((texture_bind_group_layout, texture_view, texture_sampler));
-            }
-        }
-        None
     }
 
     fn create_pipeline(
@@ -898,5 +866,76 @@ impl RenderPipeline {
         });
 
         pipeline
+    }
+
+    fn create_texture(
+        device: &Device,
+        queue: &Queue,
+        layout: &BindGroupLayout,
+        texture_asset: &TextureAsset,
+    ) -> BindGroup {
+        // Miss or version mismatch: create GPU resources
+        let texture = &texture_asset.texture;
+        let texture_data = &texture.data;
+        let texture_dimension = (texture.width, texture.height);
+        let texture_size = Extent3d {
+            width: texture_dimension.0,
+            height: texture_dimension.1,
+            depth_or_array_layers: 1,
+        };
+        let gpu_texture = device.create_texture(&TextureDescriptor {
+            label: Some("Kairos Texture"),
+            size: texture_size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        queue.write_texture(
+            TexelCopyTextureInfo {
+                texture: &gpu_texture,
+                mip_level: 0,
+                origin: Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &texture_data,
+            TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(4 * texture_dimension.0),
+                rows_per_image: Some(texture_dimension.1),
+            },
+            texture_size,
+        );
+        let texture_view = gpu_texture.create_view(&TextureViewDescriptor::default());
+        let texture_sampler = device.create_sampler(&SamplerDescriptor {
+            label: Some("Texture Sampler"),
+            address_mode_u: AddressMode::Repeat,
+            address_mode_v: AddressMode::Repeat,
+            address_mode_w: AddressMode::Repeat,
+            mag_filter: FilterMode::Linear,
+            min_filter: FilterMode::Nearest,
+            mipmap_filter: MipmapFilterMode::Linear,
+            lod_min_clamp: 0f32,
+            lod_max_clamp: 0f32,
+            compare: None,
+            anisotropy_clamp: 1,
+            border_color: None,
+        });
+        device.create_bind_group(&BindGroupDescriptor {
+            label: Some("Texture Bind Group"),
+            layout,
+            entries: &[
+                BindGroupEntry {
+                    binding: 0,
+                    resource: BindingResource::TextureView(&texture_view),
+                },
+                BindGroupEntry {
+                    binding: 1,
+                    resource: BindingResource::Sampler(&texture_sampler),
+                },
+            ],
+        })
     }
 }
