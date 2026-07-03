@@ -125,6 +125,66 @@ impl AssetsServer {
         assets.get_mut(handle)
     }
 
+    /// Insert a runtime-created asset directly into the asset system.
+    /// Returns an `Arc<AssetHandle<T>>` that participates in the normal
+    /// lifecycle (ref-counting, drop, etc.).
+    ///
+    /// Each call creates a new asset. Use `insert_with_key` if you need
+    /// deduplication by a logical key.
+    pub fn insert<T>(&mut self, asset: T::AssetType) -> Arc<AssetHandle<T>>
+    where
+        T: AssetsSystem + 'static,
+    {
+        let handler = match self.handlers.entry(TypeId::of::<T>()) {
+            std::collections::hash_map::Entry::Occupied(occupied_entry) => occupied_entry
+                .into_mut()
+                .as_any_mut()
+                .downcast_mut::<T>()
+                .unwrap(),
+            std::collections::hash_map::Entry::Vacant(vacant_entry) => {
+                let system = Box::new(T::default());
+                vacant_entry
+                    .insert(system)
+                    .as_any_mut()
+                    .downcast_mut::<T>()
+                    .unwrap()
+            }
+        };
+
+        let assets = handler.get_assets_mut();
+        assets.insert(asset, None)
+    }
+
+    /// Insert a runtime-created asset with a logical key for deduplication.
+    /// Calling with the same key returns the existing `AssetHandle`.
+    pub fn insert_with_key<T>(
+        &mut self,
+        key: impl Into<String>,
+        asset: T::AssetType,
+    ) -> Arc<AssetHandle<T>>
+    where
+        T: AssetsSystem + 'static,
+    {
+        let handler = match self.handlers.entry(TypeId::of::<T>()) {
+            std::collections::hash_map::Entry::Occupied(occupied_entry) => occupied_entry
+                .into_mut()
+                .as_any_mut()
+                .downcast_mut::<T>()
+                .unwrap(),
+            std::collections::hash_map::Entry::Vacant(vacant_entry) => {
+                let system = Box::new(T::default());
+                vacant_entry
+                    .insert(system)
+                    .as_any_mut()
+                    .downcast_mut::<T>()
+                    .unwrap()
+            }
+        };
+
+        let assets = handler.get_assets_mut();
+        assets.insert(asset, Some(key.into()))
+    }
+
     pub fn handle(&mut self) {
         for handler in self.handlers.values_mut() {
             handler.handle_receves();
