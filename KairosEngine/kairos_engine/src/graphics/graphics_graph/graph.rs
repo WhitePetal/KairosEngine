@@ -9,7 +9,7 @@ use petgraph::{
 
 use crate::{
     graphics::{
-        attachment::Attachment,
+        attachment::{Attachment, AttachmentLoadAction},
         graphics_graph::{
             GraphicsCommand,
             graphics_node::{
@@ -224,11 +224,43 @@ impl GraphicsGraph {
     }
 
     fn can_merge_render_pass(pre_pass: &RenderPassNode, next_pass: &RenderPassNode) -> bool {
-        if pre_pass.depth_stencil_attachment != next_pass.depth_stencil_attachment {
+        // depth: must match by id, and next cannot LoadClear (would discard pre output)
+        match (
+            &pre_pass.depth_stencil_attachment,
+            &next_pass.depth_stencil_attachment,
+        ) {
+            (Some(pre_depth), Some(next_depth)) => {
+                if pre_depth.id != next_depth.id {
+                    return false;
+                }
+                if let Some((load, _)) = next_depth.depth_load_store_action
+                    && load == AttachmentLoadAction::LoadClear
+                {
+                    return false;
+                }
+                if let Some((load, _)) = next_depth.stencil_load_store_action
+                    && load == AttachmentLoadAction::LoadClear
+                {
+                    return false;
+                }
+            }
+            (None, None) => {}
+            _ => return false,
+        }
+
+        // color attachments: next must be a prefix of pre (same ids, same order)
+        if next_pass.attachments.len() > pre_pass.attachments.len() {
             return false;
         }
-        for need_attachment_id in &next_pass.attachments {
-            if !pre_pass.attachments.contains(need_attachment_id) {
+        for (pre_bind, next_bind) in pre_pass
+            .attachments
+            .iter()
+            .zip(next_pass.attachments.iter())
+        {
+            if pre_bind.id != next_bind.id {
+                return false;
+            }
+            if next_bind.load_action == AttachmentLoadAction::LoadClear {
                 return false;
             }
         }
