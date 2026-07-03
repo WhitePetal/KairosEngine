@@ -6,7 +6,14 @@ use toml::from_str;
 
 use crate::{
     asset_loader::assets::AssetsServer,
-    graphics::{attachment::Attachment, camera::Camera, graphics_graph::GraphicsCommand},
+    graphics::{
+        attachment::{Attachment, AttachmentLoadAction, AttachmentStoreAction},
+        camera::Camera,
+        graphics_graph::{
+            GraphicsCommand,
+            graphics_node::{ColorAttachmentBind, DepthAttachmentBind},
+        },
+    },
     kairos_editor::{
         Engine,
         ui::{
@@ -194,25 +201,68 @@ impl Drawer for SceneWindow {
             crate::graphics::attachment::AttachmentFormat::D24S8,
         );
         let scene_view_id = graphics_command.create_color_attachment(scene_view);
+        let scene_view_bind = ColorAttachmentBind::new(
+            scene_view_id,
+            AttachmentLoadAction::LoadClear,
+            AttachmentStoreAction::Store,
+        );
         let scene_depth_id = graphics_command.create_depth_attachment(scene_depth_stencil);
+        let scene_depth_bind = DepthAttachmentBind::new(
+            scene_depth_id,
+            Some((
+                AttachmentLoadAction::LoadClear,
+                AttachmentStoreAction::Store,
+            )),
+            Some((
+                AttachmentLoadAction::LoadClear,
+                AttachmentStoreAction::Store,
+            )),
+        );
 
         let vp_id = graphics_command
             .set_view_projection_matrix(self.model.camera.get_view_projection_matrix());
         graphics_command.begin_render_pass(
             Some("SceneWindow Render Pass"),
-            vec![scene_view_id],
-            Some(scene_depth_id),
+            vec![scene_view_bind],
+            Some(scene_depth_bind),
             vp_id,
             4,
-            true,
         );
 
         game.render(engine, &mut graphics_command);
+
+        graphics_command.end_render_pass();
+
+        let scene_view_gizmos_bind = ColorAttachmentBind::new(
+            scene_view_id,
+            AttachmentLoadAction::Load,
+            AttachmentStoreAction::Store,
+        );
+        let scene_depth_gizmos_bind = DepthAttachmentBind::new(
+            scene_depth_id,
+            Some((
+                AttachmentLoadAction::LoadClear,
+                AttachmentStoreAction::Store,
+            )),
+            Some((
+                AttachmentLoadAction::LoadClear,
+                AttachmentStoreAction::Store,
+            )),
+        );
+
+        graphics_command.begin_render_pass(
+            Some("SceneWindow Gizmos Render Pass"),
+            vec![scene_view_gizmos_bind],
+            Some(scene_depth_gizmos_bind),
+            vp_id,
+            4,
+        );
 
         self.gizmos_renderer
             .render_gizmos(&self.model.gizmos, &mut graphics_command);
 
         graphics_command.end_render_pass();
+
         let (egui_bind_tex_sender, egui_bind_tex_recever) = tokio::sync::oneshot::channel();
         messager.send(Message::RegisteSceneWindowViewBind(egui_bind_tex_recever));
         graphics_command.bind_attachment_to_egui(scene_view_id, egui_bind_tex_sender);

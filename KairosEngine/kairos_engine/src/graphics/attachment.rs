@@ -8,6 +8,22 @@ pub enum InternalAttachmentId {
     End,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum AttachmentLoadAction {
+    /// Load the existing contents of the attachment.
+    Load,
+    /// Clear the attachment to a specified value.
+    LoadClear,
+    /// The contents of the attachment are undefined.
+    DontCare,
+}
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum AttachmentStoreAction {
+    Store,
+    /// The contents of the attachment are undefined after the pass.
+    Discard,
+}
+
 #[derive(Debug, Default, Clone, Copy)]
 pub enum AttachmentFormat {
     BGRA8Unorm,

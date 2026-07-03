@@ -2,7 +2,7 @@ source_path = "res/materials/gizmos/axes.mat"
 shader_path = "res/shaders/gizmos/axes.wgsl"
 
 [render_state]
-depth_test = "always"
+depth_test = "less-equal"
 depth_write = true
 topology = "triangle-list"
 

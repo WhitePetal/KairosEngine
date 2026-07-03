@@ -2,14 +2,58 @@ use std::{hash::Hash, sync::Arc};
 
 use crate::{
     asset_loader::assets::{AssetHandle, AssetsServer, MaterialAssetsSystem, MeshAssetsSystem},
-    graphics::{material::Material, vertex::Vertex},
+    graphics::{
+        attachment::{AttachmentLoadAction, AttachmentStoreAction},
+        material::Material,
+        vertex::Vertex,
+    },
     math::float4x4,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ColorAttachmentId(pub usize);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ColorAttachmentBind {
+    pub id: ColorAttachmentId,
+    pub load_action: AttachmentLoadAction,
+    pub store_action: AttachmentStoreAction,
+}
+impl ColorAttachmentBind {
+    pub fn new(
+        id: ColorAttachmentId,
+        load: AttachmentLoadAction,
+        store: AttachmentStoreAction,
+    ) -> Self {
+        Self {
+            id,
+            load_action: load,
+            store_action: store,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DepthAttachmentId(pub usize);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct DepthAttachmentBind {
+    pub id: DepthAttachmentId,
+    pub depth_load_store_action: Option<(AttachmentLoadAction, AttachmentStoreAction)>,
+    pub stencil_load_store_action: Option<(AttachmentLoadAction, AttachmentStoreAction)>,
+}
+impl DepthAttachmentBind {
+    pub fn new(
+        id: DepthAttachmentId,
+        depth_load_store: Option<(AttachmentLoadAction, AttachmentStoreAction)>,
+        stencil_load_store: Option<(AttachmentLoadAction, AttachmentStoreAction)>,
+    ) -> Self {
+        Self {
+            id,
+            depth_load_store_action: depth_load_store,
+            stencil_load_store_action: stencil_load_store,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct VPId(pub usize);
 
@@ -144,12 +188,11 @@ pub enum GraphNode {
 
 pub struct RenderPassNode {
     pub label: Option<&'static str>,
-    pub attachments: Vec<ColorAttachmentId>,
-    pub depth_stencil_attachment: Option<DepthAttachmentId>,
+    pub attachments: Vec<ColorAttachmentBind>,
+    pub depth_stencil_attachment: Option<DepthAttachmentBind>,
     pub vp_id: VPId,
     pub draws: Vec<Drawer>,
     pub draw_instances: Vec<InstancingDraw>,
-    pub force_clear: bool,
     pub egui_draw: Option<EguiDraw>,
 }
 pub struct OutputToFrameBufferNode {

@@ -67,27 +67,27 @@ impl GraphicsGraph {
                 GraphNode::RenderPass(mut render_pass_node) => {
                     let node = graph.add_node(GraphNode::None);
 
-                    for need_attachment_id in &render_pass_node.attachments {
-                        let prev = writed_attachments.get(&need_attachment_id.0);
+                    for need_attachment_bind in &render_pass_node.attachments {
+                        let prev = writed_attachments.get(&need_attachment_bind.id.0);
                         if let Some(prev) = prev {
                             graph.add_edge(*prev, node, 1usize);
                         };
 
-                        writed_attachments.insert(need_attachment_id.0, node);
+                        writed_attachments.insert(need_attachment_bind.id.0, node);
                     }
 
                     render_pass_node
                         .attachments
                         .iter_mut()
                         .for_each(|attachment| {
-                            attachment.0 += graph_attachments_start;
+                            attachment.id.0 += graph_attachments_start;
                         });
 
                     if let Some(depth_stencil_attachment) =
                         &mut render_pass_node.depth_stencil_attachment
                     {
-                        depth_stencil_attachment.0 =
-                            depth_stencil_attachment.0 + graph_depth_attachments_start;
+                        depth_stencil_attachment.id.0 =
+                            depth_stencil_attachment.id.0 + graph_depth_attachments_start;
                     }
 
                     render_pass_node.vp_id.0 += graph_vp_start;

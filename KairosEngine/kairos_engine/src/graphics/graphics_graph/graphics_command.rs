@@ -1,17 +1,19 @@
 use std::sync::Arc;
 
+use wgpu::{Color, Operations};
+
 use crate::{
     asset_loader::assets::{AssetHandle, MaterialAssetsSystem, MeshAssetsSystem},
     graphics::{
         attachment::Attachment,
         graphics_graph::graphics_node::{
-            BaseDraw, BindAttachmentToEguiNode, ColorAttachmentId, CopyAttachmentToEguiNode,
-            DepthAttachmentId, Drawer, EguiDraw, GraphNode, OutputToFrameBufferNode,
-            RenderPassNode, SimpleMeshDraw, VPId,
+            BaseDraw, BindAttachmentToEguiNode, ColorAttachmentBind, ColorAttachmentId,
+            CopyAttachmentToEguiNode, DepthAttachmentBind, DepthAttachmentId, Drawer, EguiDraw,
+            GraphNode, OutputToFrameBufferNode, RenderPassNode, SimpleMeshDraw, VPId,
         },
         vertex::Vertex,
     },
-    math::{float3, float4x4},
+    math::float4x4,
 };
 
 enum RenderPassState {
@@ -65,11 +67,10 @@ impl GraphicsCommand {
     pub fn begin_render_pass(
         &mut self,
         label: Option<&'static str>,
-        attachments: Vec<ColorAttachmentId>,
-        depth_attachment: Option<DepthAttachmentId>,
+        attachments: Vec<ColorAttachmentBind>,
+        depth_attachment: Option<DepthAttachmentBind>,
         vp_id: VPId,
         darws_capacity: usize,
-        force_clear: bool,
     ) {
         debug_assert!(
             matches!(
@@ -91,7 +92,6 @@ impl GraphicsCommand {
             attachments,
             depth_stencil_attachment: depth_attachment,
             vp_id,
-            force_clear,
             draws: Vec::with_capacity(darws_capacity),
             draw_instances: Vec::new(),
             egui_draw: None,
@@ -187,9 +187,10 @@ impl GraphicsCommand {
         debug_assert!(
             {
                 match self.nodes.last() {
-                    Some(GraphNode::RenderPass(render_pass)) => {
-                        render_pass.attachments.contains(&attachment_id)
-                    }
+                    Some(GraphNode::RenderPass(render_pass)) => render_pass
+                        .attachments
+                        .iter()
+                        .any(|a| a.id == attachment_id),
                     _ => false,
                 }
             },
@@ -218,9 +219,10 @@ impl GraphicsCommand {
         debug_assert!(
             {
                 match self.nodes.last() {
-                    Some(GraphNode::RenderPass(render_pass)) => {
-                        render_pass.attachments.contains(&attachment_id)
-                    }
+                    Some(GraphNode::RenderPass(render_pass)) => render_pass
+                        .attachments
+                        .iter()
+                        .any(|a| a.id == attachment_id),
                     _ => false,
                 }
             },
@@ -245,9 +247,10 @@ impl GraphicsCommand {
         debug_assert!(
             {
                 match self.nodes.last() {
-                    Some(GraphNode::RenderPass(render_pass)) => {
-                        render_pass.attachments.contains(&attachment_id)
-                    }
+                    Some(GraphNode::RenderPass(render_pass)) => render_pass
+                        .attachments
+                        .iter()
+                        .any(|a| a.id == attachment_id),
                     _ => false,
                 }
             },

@@ -5,7 +5,14 @@ use serde::{Deserialize, Serialize};
 use toml::from_str;
 
 use crate::{
-    graphics::{attachment::Attachment, camera::Camera, graphics_graph::GraphicsCommand},
+    graphics::{
+        attachment::{Attachment, AttachmentLoadAction, AttachmentStoreAction},
+        camera::Camera,
+        graphics_graph::{
+            GraphicsCommand,
+            graphics_node::{ColorAttachmentBind, DepthAttachmentBind},
+        },
+    },
     kairos_editor::{
         Engine,
         ui::{Drawer, Message, paths},
@@ -194,7 +201,23 @@ impl Drawer for GameWindow {
             crate::graphics::attachment::AttachmentFormat::D24S8,
         );
         let game_view_id = graphics_command.create_color_attachment(game_view);
+        let game_view_bind = ColorAttachmentBind::new(
+            game_view_id,
+            AttachmentLoadAction::LoadClear,
+            AttachmentStoreAction::Store,
+        );
         let game_depth_id = graphics_command.create_depth_attachment(game_depth_stencil);
+        let game_depth_bind = DepthAttachmentBind::new(
+            game_depth_id,
+            Some((
+                AttachmentLoadAction::LoadClear,
+                AttachmentStoreAction::Store,
+            )),
+            Some((
+                AttachmentLoadAction::LoadClear,
+                AttachmentStoreAction::Store,
+            )),
+        );
 
         if let Some((transform, camera)) = engine
             .world
@@ -206,11 +229,10 @@ impl Drawer for GameWindow {
                 .set_view_projection_matrix(camera.get_view_projection_matrix(*transform));
             graphics_command.begin_render_pass(
                 Some("GameWindow Render Pass"),
-                vec![game_view_id],
-                Some(game_depth_id),
+                vec![game_view_bind],
+                Some(game_depth_bind),
                 vp_id,
                 4,
-                true,
             );
 
             game.render(engine, &mut graphics_command);

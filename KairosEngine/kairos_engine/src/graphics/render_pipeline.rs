@@ -23,7 +23,7 @@ use wgpu::{
 use winit::{dpi::PhysicalSize, window::Window};
 
 use crate::{
-    asset_loader::assets::{AssetsServer, asset::AssetIndex},
+    asset_loader::assets::AssetsServer,
     graphics::{
         attachment::{AttachmentFormat, InternalAttachmentId},
         graphics_graph::{self, GraphicsGraph, graphics_node::RenderPassNode},
@@ -404,12 +404,83 @@ impl RenderPipeline {
 
         let color_attachments = attachment_ids
             .iter()
-            .map(|id| Some(render_pass_color_attachments[id.0].clone()))
+            .map(|bind| {
+                let mut attachment = render_pass_color_attachments[bind.id.0].clone();
+                match bind.load_action {
+                    super::attachment::AttachmentLoadAction::Load => {
+                        attachment.ops.load = LoadOp::Load;
+                    }
+                    super::attachment::AttachmentLoadAction::LoadClear => {
+                        attachment.ops.load = LoadOp::Clear(wgpu::Color {
+                            r: 0.1,
+                            g: 0.2,
+                            b: 0.3,
+                            a: 1.0,
+                        });
+                    }
+                    super::attachment::AttachmentLoadAction::DontCare => {
+                        attachment.ops.load = LoadOp::DontCare(LoadOpDontCare::default());
+                    }
+                }
+                match bind.store_action {
+                    super::attachment::AttachmentStoreAction::Store => {
+                        attachment.ops.store = StoreOp::Store;
+                    }
+                    super::attachment::AttachmentStoreAction::Discard => {
+                        attachment.ops.store = StoreOp::Discard;
+                    }
+                }
+                // attachment.ops = load_stores[i];
+                Some(attachment)
+            })
             .collect::<Vec<_>>();
 
         let (depth_attachment, depth_state) = {
-            if let Some(depth_index) = render_pass_node.depth_stencil_attachment {
-                let depth_attachment = render_pass_depth_attachments[depth_index.0].clone();
+            if let Some(depth_bind) = render_pass_node.depth_stencil_attachment {
+                let mut depth_attachment = render_pass_depth_attachments[depth_bind.id.0].clone();
+                depth_attachment.depth_ops =
+                    depth_bind
+                        .depth_load_store_action
+                        .map(|(load_action, store_action)| {
+                            let load = match load_action {
+                                super::attachment::AttachmentLoadAction::Load => LoadOp::Load,
+                                super::attachment::AttachmentLoadAction::LoadClear => {
+                                    LoadOp::Clear(1.0)
+                                }
+                                super::attachment::AttachmentLoadAction::DontCare => {
+                                    LoadOp::DontCare(LoadOpDontCare::default())
+                                }
+                            };
+                            let store = match store_action {
+                                super::attachment::AttachmentStoreAction::Store => StoreOp::Store,
+                                super::attachment::AttachmentStoreAction::Discard => {
+                                    StoreOp::Discard
+                                }
+                            };
+                            Operations { load, store }
+                        });
+                depth_attachment.stencil_ops =
+                    depth_bind
+                        .stencil_load_store_action
+                        .map(|(load_action, store_action)| {
+                            let load = match load_action {
+                                super::attachment::AttachmentLoadAction::Load => LoadOp::Load,
+                                super::attachment::AttachmentLoadAction::LoadClear => {
+                                    LoadOp::Clear(0)
+                                }
+                                super::attachment::AttachmentLoadAction::DontCare => {
+                                    LoadOp::DontCare(LoadOpDontCare::default())
+                                }
+                            };
+                            let store = match store_action {
+                                super::attachment::AttachmentStoreAction::Store => StoreOp::Store,
+                                super::attachment::AttachmentStoreAction::Discard => {
+                                    StoreOp::Discard
+                                }
+                            };
+                            Operations { load, store }
+                        });
+
                 let depth_state = DepthStencilState {
                     format: depth_attachment.view.texture().format(),
                     depth_write_enabled: Some(true),
@@ -428,6 +499,7 @@ impl RenderPipeline {
                 label: render_pass_node.label,
                 color_attachments: &color_attachments,
                 depth_stencil_attachment: depth_attachment,
+
                 ..Default::default()
             })
             .forget_lifetime();

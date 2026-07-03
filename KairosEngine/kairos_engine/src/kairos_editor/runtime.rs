@@ -15,8 +15,11 @@ use winit::{
     window::{Icon, Window},
 };
 
-use crate::graphics::attachment::{Attachment, InternalAttachmentId};
 use crate::graphics::graphics_graph::{GraphicsCommand, GraphicsGraph};
+use crate::graphics::{
+    attachment::{Attachment, AttachmentLoadAction, AttachmentStoreAction, InternalAttachmentId},
+    graphics_graph::graphics_node::ColorAttachmentBind,
+};
 use crate::math::float4x4;
 use crate::{
     graphics::render_pipeline::RenderPipeline,
@@ -295,15 +298,19 @@ impl KairosEditorRuntime {
                     );
                     let frame_buffer_attachment_id =
                         egui_graphics_command.create_color_attachment(frame_buffer_attachment);
+                    let frame_buffer_attachment_bind = ColorAttachmentBind::new(
+                        frame_buffer_attachment_id,
+                        AttachmentLoadAction::LoadClear,
+                        AttachmentStoreAction::Store,
+                    );
                     let vp_id =
                         egui_graphics_command.set_view_projection_matrix(float4x4::IDENTITY);
                     egui_graphics_command.begin_render_pass(
                         Some("Egui Graphics Render Pass"),
-                        vec![frame_buffer_attachment_id],
+                        vec![frame_buffer_attachment_bind],
                         None,
                         vp_id,
                         0,
-                        false,
                     );
 
                     egui_graphics_command.draw_egui(
