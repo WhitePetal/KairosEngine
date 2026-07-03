@@ -70,6 +70,16 @@ impl float4x4 {
     }
 
     #[inline(always)]
+    pub fn to_array(&self) -> [[f32; 4]; 4] {
+        [
+            self.c0().to_array(),
+            self.c1().to_array(),
+            self.c2().to_array(),
+            self.c3().to_array(),
+        ]
+    }
+
+    #[inline(always)]
     pub fn c0(&self) -> float4 {
         self.0[0]
     }

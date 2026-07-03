@@ -59,6 +59,7 @@ pub struct RenderPipeline {
     window_size_changed: bool,
 
     pipeline_cache: HashMap<PipelineKey, PipelineCache>,
+    vp_bind_group_layout: BindGroupLayout,
 }
 
 impl RenderPipeline {
@@ -113,6 +114,21 @@ impl RenderPipeline {
             egui_wgpu::RendererOptions::default(),
         );
 
+        let vp_bind_group_layout =
+            device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+                label: Some("VP Bind Group Layout"),
+                entries: &[BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: ShaderStages::VERTEX,
+                    ty: BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+
         Ok(Self {
             _window: window,
             device,
@@ -127,6 +143,7 @@ impl RenderPipeline {
             window_size_changed: false,
 
             pipeline_cache: HashMap::new(),
+            vp_bind_group_layout,
         })
     }
 
@@ -171,7 +188,6 @@ impl RenderPipeline {
         let mut depth_attachment_views = Vec::with_capacity(depth_attachments.len());
         let mut render_pass_depth_attachments = Vec::with_capacity(depth_attachments.len());
         let vps = graphics_graph.vps;
-        let mut vp_bind_groups = Vec::with_capacity(vps.len());
 
         // create res
         for attachment in attachments {
@@ -256,45 +272,6 @@ impl RenderPipeline {
             render_pass_depth_attachments.push(attachment);
         }
 
-        for vp in vps {
-            let vp = [
-                vp.c0().to_array(),
-                vp.c1().to_array(),
-                vp.c2().to_array(),
-                vp.c3().to_array(),
-            ];
-            let vp_buffer = self.device.create_buffer_init(&BufferInitDescriptor {
-                label: Some("VP Buffer"),
-                contents: bytemuck::cast_slice(&vp),
-                usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-            });
-            let vp_bind_group_layout =
-                self.device
-                    .create_bind_group_layout(&BindGroupLayoutDescriptor {
-                        label: Some("VP Buffer Bind Group Layout"),
-                        entries: &[BindGroupLayoutEntry {
-                            binding: 0,
-                            visibility: ShaderStages::VERTEX,
-                            ty: BindingType::Buffer {
-                                ty: wgpu::BufferBindingType::Uniform,
-                                has_dynamic_offset: false,
-                                min_binding_size: None,
-                            },
-                            count: None,
-                        }],
-                    });
-            let vp_bind_group = self.device.create_bind_group(&BindGroupDescriptor {
-                label: Some("VP Buffer Bind Group"),
-                layout: &vp_bind_group_layout,
-                entries: &[BindGroupEntry {
-                    binding: 0,
-                    resource: vp_buffer.as_entire_binding(),
-                }],
-            });
-
-            vp_bind_groups.push((vp_bind_group_layout, vp_bind_group));
-        }
-
         let free_egui_textures = graphics_graph.free_egui_textures;
 
         let ending_nodes = graphics_graph.ending_nodes;
@@ -318,6 +295,20 @@ impl RenderPipeline {
             match node {
                 graphics_graph::graphics_node::GraphNode::None => {}
                 graphics_graph::graphics_node::GraphNode::RenderPass(render_pass_node) => {
+                    let vp = vps[render_pass_node.vp_id.0].to_array();
+                    let vp_buffer = self.device.create_buffer_init(&BufferInitDescriptor {
+                        label: Some("VP Buffer"),
+                        contents: bytemuck::cast_slice(&vp),
+                        usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+                    });
+                    let vp_bind_group = self.device.create_bind_group(&BindGroupDescriptor {
+                        label: Some("VP Bind Group"),
+                        layout: &self.vp_bind_group_layout,
+                        entries: &[BindGroupEntry {
+                            binding: 0,
+                            resource: vp_buffer.as_entire_binding(),
+                        }],
+                    });
                     let mut command_buffers = Self::handle_render_pass_node(
                         &self.device,
                         &self.queue,
@@ -326,7 +317,8 @@ impl RenderPipeline {
                         &mut self.egui_renderer,
                         &render_pass_color_attachments,
                         &render_pass_depth_attachments,
-                        &vp_bind_groups,
+                        &self.vp_bind_group_layout,
+                        &vp_bind_group,
                         &render_pass_node,
                         assets_server,
                     );
@@ -396,7 +388,8 @@ impl RenderPipeline {
         egui_renderer: &mut egui_wgpu::Renderer,
         render_pass_color_attachments: &Vec<RenderPassColorAttachment>,
         render_pass_depth_attachments: &Vec<RenderPassDepthStencilAttachment>,
-        vp_bind_groups: &Vec<(BindGroupLayout, BindGroup)>,
+        vp_bind_group_layout: &BindGroupLayout,
+        vp_bind_group: &BindGroup,
         render_pass_node: &RenderPassNode,
         assets_server: &mut AssetsServer,
     ) -> Option<Vec<CommandBuffer>> {
@@ -504,10 +497,6 @@ impl RenderPipeline {
             })
             .forget_lifetime();
 
-        // build pipeline
-        if let Some((vp_bind_group_layout, vp_bind_group)) =
-            vp_bind_groups.get(render_pass_node.vp_id.0)
-        {
             render_pass.set_bind_group(0, vp_bind_group, &[]);
 
             let instancing_vertex_buffer_layout = VertexBufferLayout {
@@ -664,7 +653,6 @@ impl RenderPipeline {
                 render_pass.set_index_buffer(indices_buffer.slice(..), wgpu::IndexFormat::Uint16);
                 render_pass.draw_indexed(0..indices_num, 0, 0..draw.local_to_worlds.len() as u32);
             }
-        };
 
         if let Some(egui_draw) = &render_pass_node.egui_draw {
             let clipped_primitives = &egui_draw.paint_jobs;
