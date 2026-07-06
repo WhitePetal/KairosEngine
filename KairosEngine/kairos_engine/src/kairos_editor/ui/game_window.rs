@@ -227,10 +227,11 @@ impl Drawer for GameWindow {
 
         if let Some((transform, camera)) = engine
             .world
-            .query_mut::<(&Transform, &Camera)>()
+            .query_mut::<(&Transform, &mut Camera)>()
             .into_iter()
             .next()
         {
+            camera.aspect = width as f32 / height as f32;
             let vp_id = graphics_command
                 .set_view_projection_matrix(camera.get_view_projection_matrix(*transform));
             graphics_command.begin_render_pass(

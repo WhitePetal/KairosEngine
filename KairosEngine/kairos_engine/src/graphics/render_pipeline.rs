@@ -27,7 +27,6 @@ use crate::{
     graphics::{
         attachment::{AttachmentFormat, InternalAttachmentId},
         graphics_graph::{self, GraphicsGraph, graphics_node::RenderPassNode},
-        material::Material,
         mesh::Mesh,
         render_state::RenderState,
         shader::ShaderAsset,
@@ -58,8 +57,26 @@ struct MeshBufferCache {
     index_buffer: wgpu::Buffer,
 }
 
+struct PreparedDrawCall {
+    pipeline: wgpu::RenderPipeline,
+    texture_bind_group: Option<wgpu::BindGroup>,
+    vertex_buffer: wgpu::Buffer,
+    index_buffer: wgpu::Buffer,
+    indices_count: u32,
+    instancing_buffer: wgpu::Buffer,
+    instance_count: u32,
+}
+
+struct AttachmentTextureCache {
+    texture: wgpu::Texture,
+    view: wgpu::TextureView,
+    width: u32,
+    height: u32,
+    format: crate::graphics::attachment::AttachmentFormat,
+}
+
 pub struct RenderPipeline {
-    _window: Arc<Window>,
+    window: Arc<Window>,
     pub device: Device,
     pub surface: Surface<'static>,
     pub surface_config: SurfaceConfiguration,
@@ -67,6 +84,7 @@ pub struct RenderPipeline {
     pub queue: Queue,
     encoder: Option<CommandEncoder>,
     egui_renderer: egui_wgpu::Renderer,
+    attachment_texture_cache: HashMap<String, AttachmentTextureCache>,
     internal_texture_views: Vec<Option<TextureView>>,
     window_size: PhysicalSize<u32>,
     window_size_changed: bool,
@@ -168,7 +186,7 @@ impl RenderPipeline {
             });
 
         Ok(Self {
-            _window: window,
+            window: window,
             device,
             surface,
             surface_config,
@@ -176,6 +194,7 @@ impl RenderPipeline {
             queue,
             encoder: None,
             egui_renderer,
+            attachment_texture_cache: HashMap::new(),
             internal_texture_views: vec![None; InternalAttachmentId::End as usize],
             window_size,
             window_size_changed: false,
@@ -244,22 +263,48 @@ impl RenderPipeline {
                     attachment_views.push(internal_texture_view);
                 }
             } else {
-                let texture = self.device.create_texture(&TextureDescriptor {
-                    label: attachment.label,
-                    size: Extent3d {
-                        width: attachment.width,
-                        height: attachment.height,
-                        depth_or_array_layers: 1,
-                    },
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    dimension: wgpu::TextureDimension::D2,
-                    format: attachment.format.into(),
-                    usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
-                    view_formats: &[],
-                });
-                let view = texture.create_view(&TextureViewDescriptor::default());
-                attachment_views.push(view);
+                let key = attachment
+                    .label
+                    .unwrap_or("unnamed_attachment")
+                    .to_string();
+                let need_create = match self.attachment_texture_cache.get(&key) {
+                    Some(cached) => {
+                        cached.width != attachment.width
+                            || cached.height != attachment.height
+                            || cached.format != attachment.format
+                    }
+                    None => true,
+                };
+                if need_create {
+                    let texture = self.device.create_texture(&TextureDescriptor {
+                        label: attachment.label,
+                        size: Extent3d {
+                            width: attachment.width,
+                            height: attachment.height,
+                            depth_or_array_layers: 1,
+                        },
+                        mip_level_count: 1,
+                        sample_count: 1,
+                        dimension: wgpu::TextureDimension::D2,
+                        format: attachment.format.into(),
+                        usage: TextureUsages::RENDER_ATTACHMENT
+                            | TextureUsages::TEXTURE_BINDING,
+                        view_formats: &[],
+                    });
+                    let view = texture.create_view(&TextureViewDescriptor::default());
+                    self.attachment_texture_cache.insert(
+                        key.clone(),
+                        AttachmentTextureCache {
+                            texture,
+                            view,
+                            width: attachment.width,
+                            height: attachment.height,
+                            format: attachment.format,
+                        },
+                    );
+                }
+                let cached = &self.attachment_texture_cache[&key];
+                attachment_views.push(cached.view.clone());
             }
         }
         for view in &attachment_views {
@@ -281,22 +326,47 @@ impl RenderPipeline {
         }
 
         for attachment in depth_attachments {
-            let depth = self.device.create_texture(&TextureDescriptor {
-                label: attachment.label,
-                size: Extent3d {
-                    width: attachment.width,
-                    height: attachment.height,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: attachment.format.into(),
-                usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
-                view_formats: &[],
-            });
-            let view = depth.create_view(&TextureViewDescriptor::default());
-            depth_attachment_views.push(view);
+            let key = format!(
+                "{}_depth",
+                attachment.label.unwrap_or("unnamed_attachment")
+            );
+            let need_create = match self.attachment_texture_cache.get(&key) {
+                Some(cached) => {
+                    cached.width != attachment.width
+                        || cached.height != attachment.height
+                        || cached.format != attachment.format
+                }
+                None => true,
+            };
+            if need_create {
+                let depth = self.device.create_texture(&TextureDescriptor {
+                    label: attachment.label,
+                    size: Extent3d {
+                        width: attachment.width,
+                        height: attachment.height,
+                        depth_or_array_layers: 1,
+                    },
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: attachment.format.into(),
+                    usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+                    view_formats: &[],
+                });
+                let view = depth.create_view(&TextureViewDescriptor::default());
+                self.attachment_texture_cache.insert(
+                    key.clone(),
+                    AttachmentTextureCache {
+                        texture: depth,
+                        view,
+                        width: attachment.width,
+                        height: attachment.height,
+                        format: attachment.format,
+                    },
+                );
+            }
+            let cached = &self.attachment_texture_cache[&key];
+            depth_attachment_views.push(cached.view.clone());
         }
         for view in &depth_attachment_views {
             let attachment = RenderPassDepthStencilAttachment {
@@ -412,6 +482,9 @@ impl RenderPipeline {
             self.queue.submit(Some(encoder.finish()));
         }
 
+        // Must be called before present() on Windows for vsync to work correctly.
+        // Tells DWM to prepare for the upcoming frame presentation.
+        self.window.pre_present_notify();
         output.present();
 
         if let Some(egui_free_textures) = egui_free_textures {
@@ -534,18 +607,7 @@ impl RenderPipeline {
             }
         };
 
-        let mut render_pass = encoder
-            .begin_render_pass(&RenderPassDescriptor {
-                label: render_pass_node.label,
-                color_attachments: &color_attachments,
-                depth_stencil_attachment: depth_attachment,
-
-                ..Default::default()
-            })
-            .forget_lifetime();
-
-        render_pass.set_bind_group(0, vp_bind_group, &[]);
-
+        // ---- Phase 1: Prepare all GPU resources before creating the render pass ----
         let instancing_vertex_buffer_layout = VertexBufferLayout {
             array_stride: core::mem::size_of::<float4x4>() as wgpu::BufferAddress,
             attributes: &[
@@ -573,29 +635,26 @@ impl RenderPipeline {
             step_mode: VertexStepMode::Instance,
         };
 
-        let draws = &render_pass_node.draw_instances;
-        for draw in draws {
+        let mut prepared_draws: Vec<PreparedDrawCall> = Vec::new();
+
+        for draw in &render_pass_node.draw_instances {
             let Some(mesh) = assets_server.get(&draw.renderer.mesh) else {
-                // println!("fk mesh is none! {:?}", draw);
                 continue;
             };
             let Some(material) = assets_server.get(&draw.renderer.material) else {
-                // println!("fk material is none! {:?}", draw);
                 continue;
             };
 
             let Some(shader_asset) = &material.shader else {
-                // println!("fk shader asset is none! {:?}", draw);
                 continue;
             };
             let Some(shader) = assets_server.get(shader_asset) else {
-                // println!("fk shader is none! {:?}", draw);
                 continue;
             };
 
+            // --- Texture bind group ---
             let mut texture_bind_group_layout = None;
-            if let Some(texture) = &material.texture
-            {
+            let texture_bind_group = if let Some(texture) = &material.texture {
                 let Some(texture_asset) = assets_server.get(&texture) else {
                     continue;
                 };
@@ -603,11 +662,11 @@ impl RenderPipeline {
                 let texture_id = texture.id();
                 let key = texture_id.index();
                 let version = texture_id.version();
-                match texture_cache.entry(key) {
+                Some(match texture_cache.entry(key) {
                     std::collections::hash_map::Entry::Occupied(mut entry) => {
                         let cache = entry.get();
                         if cache.version == version {
-                            render_pass.set_bind_group(1, &cache.bind_group, &[]);
+                            cache.bind_group.clone()
                         } else {
                             let bind_group = Self::create_texture(
                                 device,
@@ -615,11 +674,11 @@ impl RenderPipeline {
                                 global_texture_bind_group_layout,
                                 texture_asset,
                             );
-                            render_pass.set_bind_group(1, &bind_group, &[]);
                             entry.insert(TextureCache {
                                 version,
-                                bind_group,
+                                bind_group: bind_group.clone(),
                             });
+                            bind_group
                         }
                     }
                     std::collections::hash_map::Entry::Vacant(entry) => {
@@ -629,26 +688,29 @@ impl RenderPipeline {
                             global_texture_bind_group_layout,
                             texture_asset,
                         );
-                        render_pass.set_bind_group(1, &bind_group, &[]);
                         entry.insert(TextureCache {
                             version,
-                            bind_group,
+                            bind_group: bind_group.clone(),
                         });
+                        bind_group
                     }
-                }
-            }
+                })
+            } else {
+                None
+            };
 
+            // --- Pipeline ---
             let shader_id = shader_asset.id();
             let pipeline_key = PipelineKey {
                 shader_index: shader_id.index(),
                 render_state: material.render_state,
             };
             let shader_version = shader_id.version();
-            match pipeline_cache.entry(pipeline_key) {
+            let pipeline = match pipeline_cache.entry(pipeline_key) {
                 std::collections::hash_map::Entry::Occupied(mut entry) => {
                     let cache = entry.get();
                     if cache.version == shader_version {
-                        render_pass.set_pipeline(&cache.pipeline);
+                        cache.pipeline.clone()
                     } else {
                         let pipeline = Self::create_pipeline(
                             device,
@@ -665,12 +727,11 @@ impl RenderPipeline {
                                 .texture()
                                 .format(),
                         );
-                        render_pass.set_pipeline(&pipeline);
-
                         entry.insert(PipelineCache {
                             version: shader_version,
-                            pipeline,
+                            pipeline: pipeline.clone(),
                         });
+                        pipeline
                     }
                 }
                 std::collections::hash_map::Entry::Vacant(entry) => {
@@ -689,87 +750,149 @@ impl RenderPipeline {
                             .texture()
                             .format(),
                     );
-                    render_pass.set_pipeline(&pipeline);
-
                     entry.insert(PipelineCache {
                         version: shader_version,
-                        pipeline,
+                        pipeline: pipeline.clone(),
                     });
+                    pipeline
                 }
             };
 
+            // --- Mesh buffers ---
             let mesh_id = draw.renderer.mesh.id();
             let mesh_key = mesh_id.index();
             let mesh_version = mesh_id.version();
             let indices_num = mesh.indices.len() as u32;
-            match mesh_buffer_cache.entry(mesh_key) {
+            let (vertex_buffer, index_buffer) = match mesh_buffer_cache.entry(mesh_key) {
                 std::collections::hash_map::Entry::Occupied(mut entry) => {
                     let cache = entry.get();
                     if cache.version == mesh_version {
-                        render_pass.set_vertex_buffer(0, cache.vertex_buffer.slice(..));
-                        render_pass.set_index_buffer(
-                            cache.index_buffer.slice(..),
-                            wgpu::IndexFormat::Uint16,
-                        );
+                        (cache.vertex_buffer.clone(), cache.index_buffer.clone())
                     } else {
                         let (vb, ib) = Self::create_mesh(device, mesh);
-                        let mesh_buffer = entry.insert(MeshBufferCache {
+                        entry.insert(MeshBufferCache {
                             version: mesh_version,
-                            vertex_buffer: vb,
-                            index_buffer: ib,
+                            vertex_buffer: vb.clone(),
+                            index_buffer: ib.clone(),
                         });
-                        render_pass.set_vertex_buffer(0, mesh_buffer.vertex_buffer.slice(..));
-                        render_pass.set_index_buffer(
-                            mesh_buffer.index_buffer.slice(..),
-                            wgpu::IndexFormat::Uint16,
-                        );
+                        (vb, ib)
                     }
                 }
                 std::collections::hash_map::Entry::Vacant(entry) => {
                     let (vb, ib) = Self::create_mesh(device, mesh);
-                    let mesh_buffer = entry.insert(MeshBufferCache {
+                    entry.insert(MeshBufferCache {
                         version: mesh_version,
-                        vertex_buffer: vb,
-                        index_buffer: ib,
+                        vertex_buffer: vb.clone(),
+                        index_buffer: ib.clone(),
                     });
-                    render_pass.set_vertex_buffer(0, mesh_buffer.vertex_buffer.slice(..));
-                    render_pass.set_index_buffer(
-                        mesh_buffer.index_buffer.slice(..),
-                        wgpu::IndexFormat::Uint16,
-                    );
+                    (vb, ib)
                 }
-            }
+            };
 
+            // --- Instancing buffer (owned, lives until after render pass) ---
             let instancing_buffer = device.create_buffer_init(&BufferInitDescriptor {
-                label: Some("Instancing Bufferr"),
+                label: Some("Instancing Buffer"),
                 contents: bytemuck::cast_slice(&draw.local_to_worlds),
                 usage: BufferUsages::VERTEX,
             });
+            let instance_count = draw.local_to_worlds.len() as u32;
 
-            render_pass.set_vertex_buffer(1, instancing_buffer.slice(..));
-            render_pass.draw_indexed(0..indices_num, 0, 0..draw.local_to_worlds.len() as u32);
+            prepared_draws.push(PreparedDrawCall {
+                pipeline,
+                texture_bind_group,
+                vertex_buffer,
+                index_buffer,
+                indices_count: indices_num,
+                instancing_buffer,
+                instance_count,
+            });
         }
 
-        if let Some(egui_draw) = &render_pass_node.egui_draw {
-            let clipped_primitives = &egui_draw.paint_jobs;
-            let screen_descriptor = &egui_draw.screen_descriptor;
-
+        // --- Phase 1.5: egui update_buffers must happen before begin_render_pass ---
+        // because it borrows `encoder` mutably, and begin_render_pass also needs `encoder`.
+        let egui_commandbuffers = if let Some(egui_draw) = &render_pass_node.egui_draw {
             for (id, image_delta) in &egui_draw.egui_update_textures {
                 egui_renderer.update_texture(device, queue, *id, &image_delta);
             }
-
-            let egui_commandbuffers = egui_renderer.update_buffers(
+            let cb = egui_renderer.update_buffers(
                 device,
                 queue,
                 encoder,
-                &clipped_primitives,
-                &screen_descriptor,
+                &egui_draw.paint_jobs,
+                &egui_draw.screen_descriptor,
             );
+            Some((cb, &egui_draw.paint_jobs, &egui_draw.screen_descriptor))
+        } else {
+            None
+        };
 
-            egui_renderer.render(&mut render_pass, &clipped_primitives, &screen_descriptor);
+        // ---- Phase 2: Render pass ----
+        // egui_wgpu::Renderer::render requires RenderPass<'static>, so for egui passes
+        // we still need forget_lifetime(). This is safe because egui passes don't create
+        // instancing buffers inside the pass.
+        if render_pass_node.egui_draw.is_some() {
+            // Egui path — forget_lifetime() required by egui_wgpu API.
+            let mut render_pass = encoder
+                .begin_render_pass(&RenderPassDescriptor {
+                    label: render_pass_node.label,
+                    color_attachments: &color_attachments,
+                    depth_stencil_attachment: depth_attachment,
+                    ..Default::default()
+                })
+                .forget_lifetime();
 
-            return Some(egui_commandbuffers);
+            render_pass.set_bind_group(0, vp_bind_group, &[]);
+
+            // Also issue any prepared regular draws (in case graph merging combined them).
+            for p in &prepared_draws {
+                render_pass.set_pipeline(&p.pipeline);
+                if let Some(ref bg) = p.texture_bind_group {
+                    render_pass.set_bind_group(1, bg, &[]);
+                }
+                render_pass.set_vertex_buffer(0, p.vertex_buffer.slice(..));
+                render_pass.set_index_buffer(
+                    p.index_buffer.slice(..),
+                    wgpu::IndexFormat::Uint16,
+                );
+                render_pass.set_vertex_buffer(1, p.instancing_buffer.slice(..));
+                render_pass.draw_indexed(0..p.indices_count, 0, 0..p.instance_count);
+            }
+
+            if let Some((_, paint_jobs, screen_descriptor)) = &egui_commandbuffers {
+                egui_renderer.render(&mut render_pass, paint_jobs, screen_descriptor);
+            }
+
+            return egui_commandbuffers.map(|(cb, _, _)| cb);
         }
+
+        // Regular draws path — normal lifetime, no forget_lifetime().
+        // `prepared_draws` holds ownership of instancing_buffers, so they outlive
+        // the render pass and are safely dropped afterwards.
+        {
+            let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
+                label: render_pass_node.label,
+                color_attachments: &color_attachments,
+                depth_stencil_attachment: depth_attachment,
+                ..Default::default()
+            });
+
+            render_pass.set_bind_group(0, vp_bind_group, &[]);
+
+            for p in &prepared_draws {
+                render_pass.set_pipeline(&p.pipeline);
+                if let Some(ref bg) = p.texture_bind_group {
+                    render_pass.set_bind_group(1, bg, &[]);
+                }
+                render_pass.set_vertex_buffer(0, p.vertex_buffer.slice(..));
+                render_pass.set_index_buffer(
+                    p.index_buffer.slice(..),
+                    wgpu::IndexFormat::Uint16,
+                );
+                render_pass.set_vertex_buffer(1, p.instancing_buffer.slice(..));
+                render_pass.draw_indexed(0..p.indices_count, 0, 0..p.instance_count);
+            }
+        }
+        // `prepared_draws` dropped here — instancing_buffers safely released after render pass.
 
         None
     }

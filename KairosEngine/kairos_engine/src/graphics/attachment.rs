@@ -24,7 +24,7 @@ pub enum AttachmentStoreAction {
     Discard,
 }
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum AttachmentFormat {
     BGRA8Unorm,
     BGRA8UnormSrgb,

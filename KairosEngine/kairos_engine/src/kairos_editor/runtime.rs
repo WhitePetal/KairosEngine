@@ -85,6 +85,8 @@ pub struct KairosEditorRuntime {
     kairos_engine: KairosEngine,
     repaint_at: Option<Instant>,
     frame_rate_counter: FrameRateCounter,
+    frame_start: Instant,
+    min_frame_interval: Duration,
     didi_exit: bool,
 }
 
@@ -110,6 +112,8 @@ impl KairosEditorRuntime {
             kairos_engine: KairosEngine::new()?,
             repaint_at: None,
             frame_rate_counter: FrameRateCounter::new(),
+            frame_start: Instant::now(),
+            min_frame_interval: Duration::from_secs_f64(1.0 / 60.0),
             didi_exit: false,
         })
     }
@@ -201,6 +205,17 @@ impl KairosEditorRuntime {
         self.egui_state = Some(egui_state);
 
         window.set_visible(true);
+
+        // Query monitor refresh rate for frame rate limiting.
+        // On D3D12 flip-model swapchains, PresentMode::Fifo does not provide
+        // CPU-side back-pressure; the application must throttle itself.
+        if let Some(monitor) = window.current_monitor() {
+            if let Some(mhz) = monitor.refresh_rate_millihertz() {
+                let hz = mhz as f64 / 1000.0;
+                self.min_frame_interval = Duration::from_secs_f64(1.0 / hz);
+            }
+        }
+
         window.request_redraw();
 
         Ok(())
@@ -355,6 +370,14 @@ impl KairosEditorRuntime {
 
         if frame_presented {
             self.frame_rate_counter.record_frame();
+            // Throttle to monitor refresh rate. D3D12 flip-model swapchains
+            // do not block on get_current_texture(), so vsync does not provide
+            // CPU back-pressure. We sleep for the remainder of the frame budget.
+            let elapsed = self.frame_start.elapsed();
+            if elapsed < self.min_frame_interval {
+                std::thread::sleep(self.min_frame_interval - elapsed);
+            }
+            self.frame_start = Instant::now();
         }
 
         window.request_redraw();
