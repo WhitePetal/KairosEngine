@@ -93,8 +93,6 @@ pub enum Message {
 
     /// SceneCamera orbit (dx, dy) in pixels
     SceneCameraOrbit(f32, f32),
-    /// SceneCamera pan (dx, dy) in pixels
-    SceneCameraPan(f32, f32),
     /// Camera zoom delta
     CameraZoom(f32),
     /// Camera fly movement (right, forward) each in [-1, 0, 1]
@@ -412,12 +410,6 @@ impl Context {
                 Message::SceneCameraOrbit(dx, dy) => {
                     if let Some(scene_window) = self.get_window_mut::<SceneWindow>() {
                         scene_window.on_camera_orbit(dx, dy);
-                    }
-                }
-                Message::SceneCameraPan(dx, dy) => {
-                    println!("SceneCameraPan");
-                    if let Some(scene_window) = self.get_window_mut::<SceneWindow>() {
-                        scene_window.on_camera_pan(dx, dy);
                     }
                 }
                 Message::CameraZoom(delta) => {

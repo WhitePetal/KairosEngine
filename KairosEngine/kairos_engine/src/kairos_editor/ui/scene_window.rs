@@ -1,4 +1,4 @@
-use std::{any::type_name, fs};
+use std::{any::type_name, cell::Cell, fs};
 
 use egui::pos2;
 use serde::{Deserialize, Serialize};
@@ -44,6 +44,7 @@ struct SceneWindowModel {
 
     camera: SceneCamera,
     gizmos: GizmosModel,
+    dt: Cell<f32>,
 }
 
 pub struct SceneWindow {
@@ -88,6 +89,7 @@ impl SceneWindowModel {
             drop_texture_id: None,
             camera: scene_camera,
             gizmos,
+            dt: Cell::new(0.016),
         })
     }
 }
@@ -127,7 +129,7 @@ impl Drawer for SceneWindow {
             if response.dragged_by(egui::PointerButton::Secondary)
                 || response.dragged_by(egui::PointerButton::Middle)
             {
-                messager.send(Message::SceneCameraOrbit(delta.x, delta.y));
+                messager.send(Message::SceneCameraOrbit(-delta.x, -delta.y));
             }
             let scroll = ui.input(|i| i.smooth_scroll_delta);
             if scroll.y != 0.0 {
@@ -203,6 +205,9 @@ impl Drawer for SceneWindow {
         game: &mut KairosGame,
         messager: &mut super::Messager,
     ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {
+        // Store dt for camera movement (written by render, read by ui/controller)
+        self.model.dt.set(engine.time.delta_time().as_secs_f32());
+
         let mut graphics_command = GraphicsCommand::new(16, 2, 4, 16);
         // clear last rt_id
         if let Some(drop_texture_id) = self.model.drop_texture_id {
@@ -299,19 +304,18 @@ impl SceneWindow {
     // --- Camera controller (mutates model, called from Context::handle) ---
 
     pub fn on_camera_orbit(&mut self, dx: f32, dy: f32) {
-        self.model.camera.orbit(dx, dy);
-    }
-
-    pub fn on_camera_pan(&mut self, dx: f32, dy: f32) {
-        self.model.camera.pan(dx, dy);
+        let dt = self.model.dt.get();
+        self.model.camera.orbit(dx, dy, dt);
     }
 
     pub fn on_camera_zoom(&mut self, delta: f32) {
-        self.model.camera.zoom(delta);
+        let dt = self.model.dt.get();
+        self.model.camera.zoom(delta, dt);
     }
 
     pub fn on_camera_fly(&mut self, right: f32, forward: f32) {
-        self.model.camera.fly(right, forward);
+        let dt = self.model.dt.get();
+        self.model.camera.fly(right, forward, dt);
     }
 
     pub fn set_rt_id(&mut self, rt_id: egui::TextureId) {

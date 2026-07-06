@@ -22,6 +22,8 @@ pub struct SceneCamera {
     zoom_speed: f32,
     min_distance: f32,
     max_distance: f32,
+
+    fly_timer: f32,
 }
 
 impl SceneCamera {
@@ -51,38 +53,38 @@ impl SceneCamera {
             zoom_speed: 0.1,
             min_distance: 0.3,
             max_distance: 100.0,
+            fly_timer: 0.0,
         }
     }
 
     /// Drag delta in pixels → orbit around pivot.
-    pub fn orbit(&mut self, dx: f32, dy: f32) {
-        self.yaw -= dx * self.orbit_speed;
-        self.pitch -= dy * self.orbit_speed;
+    pub fn orbit(&mut self, dx: f32, dy: f32, dt: f32) {
+        self.yaw -= dx * self.orbit_speed * dt * 60.0;
+        self.pitch -= dy * self.orbit_speed * dt * 60.0;
         let limit = std::f32::consts::FRAC_PI_2 - 0.01;
         self.pitch = self.pitch.clamp(-limit, limit);
     }
 
-    /// Drag delta in pixels → pan (move pivot in camera plane).
-    pub fn pan(&mut self, dx: f32, dy: f32) {
-        let right = self.right();
-        let up = self.up();
-        let scale = self.distance * self.pan_speed;
-        self.pivot = self.pivot + right * (-dx * scale) + up * (dy * scale);
-    }
-
     /// Scroll delta → zoom in/out.
-    pub fn zoom(&mut self, delta: f32) {
-        self.distance -= delta * self.zoom_speed;
+    pub fn zoom(&mut self, delta: f32, dt: f32) {
+        self.distance -= delta * self.zoom_speed * dt * 60.0;
         self.distance = self.distance.clamp(self.min_distance, self.max_distance);
     }
 
-    /// WASD-style movement: `right` and `forward` in [-1, 0, 1].
-    /// Moves the pivot in camera-local space, scaled by distance.
-    pub fn fly(&mut self, right_amount: f32, forward_amount: f32) {
-        let speed = self.distance * 2.0;
+    /// WASD-style movement with smooth acceleration.
+    /// Call each frame with `dt`; speed ramps up while keys are held.
+    pub fn fly(&mut self, right_amount: f32, forward_amount: f32, dt: f32) {
+        let active = right_amount != 0.0 || forward_amount != 0.0;
+        if active {
+            self.fly_timer += dt;
+        } else {
+            self.fly_timer = 0.0;
+        }
+        let ramp = (self.fly_timer / 0.3).min(1.0); // 0.3s smooth ramp
+        let speed = self.distance * (0.8 + 4.2 * ramp);
         self.pivot = self.pivot
-            + self.right() * (right_amount * speed)
-            + self.forward() * (forward_amount * speed);
+            + self.right() * (right_amount * speed * dt)
+            + self.forward() * (forward_amount * speed * dt);
     }
 
     /// World-space position derived from orbit state.
