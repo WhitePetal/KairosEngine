@@ -5,10 +5,12 @@ mod converts;
 
 use std::{
     ops::{Add, AddAssign, Div, DivAssign, Index, Mul, MulAssign, Sub, SubAssign},
-    simd::{f32x2, f32x4, num::SimdFloat, simd_swizzle},
+    simd::{StdFloat, f32x2, f32x4, num::SimdFloat, simd_swizzle},
 };
 
 use serde::{Deserialize, Serialize};
+
+use crate::math::{Cos, Max, Min, Sin, Sqrt, Tan};
 
 pub trait Vector
 where
@@ -27,7 +29,13 @@ where
         + Index<usize>
         + Clone
         + Copy
-        + PartialEq,
+        + PartialEq
+        + Min
+        + Max
+        + Sin
+        + Cos
+        + Tan
+        + Sqrt,
 {
     fn dot(&self, r: &Self) -> f32;
 
@@ -147,12 +155,13 @@ impl float2 {
 }
 
 impl Vector for float2 {
+    type CrossOutput = f32;
+
     #[inline(always)]
     fn dot(&self, other: &Self) -> f32 {
         (self.0 * other.0).reduce_sum()
     }
 
-    type CrossOutput = f32;
     #[inline(always)]
     fn cross(&self, other: Self) -> Self::CrossOutput {
         self.0[0] * other.0[1] - self.0[1] * other.0[0]
@@ -390,6 +399,42 @@ impl Div for &float2 {
     #[inline(always)]
     fn div(self, rhs: Self) -> Self::Output {
         *self / *rhs
+    }
+}
+impl Min for float2 {
+    #[inline(always)]
+    fn min(self, other: Self) -> Self {
+        Self(self.0.simd_min(other.0))
+    }
+}
+impl Max for float2 {
+    #[inline(always)]
+    fn max(self, other: Self) -> Self {
+        Self(self.0.simd_max(other.0))
+    }
+}
+impl Sin for float2 {
+    #[inline(always)]
+    fn sin(self) -> Self {
+        Self(self.0.sin())
+    }
+}
+impl Cos for float2 {
+    #[inline(always)]
+    fn cos(self) -> Self {
+        Self(self.0.cos())
+    }
+}
+impl Tan for float2 {
+    #[inline(always)]
+    fn tan(self) -> Self {
+        Self::new(self.x().tan(), self.y().tan())
+    }
+}
+impl Sqrt for float2 {
+    #[inline(always)]
+    fn sqrt(self) -> Self {
+        Self(self.0.sqrt())
     }
 }
 
@@ -749,6 +794,44 @@ impl Div for &float3 {
     }
 }
 impl Eq for float3 {}
+
+impl Min for float3 {
+    #[inline(always)]
+    fn min(self, other: Self) -> Self {
+        Self(self.0.simd_min(other.0))
+    }
+}
+impl Max for float3 {
+    #[inline(always)]
+    fn max(self, other: Self) -> Self {
+        Self(self.0.simd_max(other.0))
+    }
+}
+impl Sin for float3 {
+    #[inline(always)]
+    fn sin(self) -> Self {
+        Self(self.0.sin())
+    }
+}
+impl Cos for float3 {
+    #[inline(always)]
+    fn cos(self) -> Self {
+        // cos(0) = 1, 需要把 w 通道清零防止影响 dot/length 等运算
+        Self(self.0.cos() * f32x4::from_array([1.0, 1.0, 1.0, 0.0]))
+    }
+}
+impl Tan for float3 {
+    #[inline(always)]
+    fn tan(self) -> Self {
+        Self::new(self.x().tan(), self.y().tan(), self.z().tan())
+    }
+}
+impl Sqrt for float3 {
+    #[inline(always)]
+    fn sqrt(self) -> Self {
+        Self(self.0.sqrt())
+    }
+}
 
 impl From<[f32; 3]> for float3 {
     #[inline(always)]
@@ -1565,6 +1648,48 @@ impl Div for &float4 {
     #[inline(always)]
     fn div(self, rhs: Self) -> Self::Output {
         *self / *rhs
+    }
+}
+
+impl Min for float4 {
+    #[inline(always)]
+    fn min(self, other: Self) -> Self {
+        Self(self.0.simd_min(other.0))
+    }
+}
+impl Max for float4 {
+    #[inline(always)]
+    fn max(self, other: Self) -> Self {
+        Self(self.0.simd_max(other.0))
+    }
+}
+impl Sin for float4 {
+    #[inline(always)]
+    fn sin(self) -> Self {
+        Self(self.0.sin())
+    }
+}
+impl Cos for float4 {
+    #[inline(always)]
+    fn cos(self) -> Self {
+        Self(self.0.cos())
+    }
+}
+impl Tan for float4 {
+    #[inline(always)]
+    fn tan(self) -> Self {
+        Self::new(
+            self.x().tan(),
+            self.y().tan(),
+            self.z().tan(),
+            self.w().tan(),
+        )
+    }
+}
+impl Sqrt for float4 {
+    #[inline(always)]
+    fn sqrt(self) -> Self {
+        Self(self.0.sqrt())
     }
 }
 

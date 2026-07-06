@@ -1,4 +1,4 @@
-use std::{any::type_name, cell::Cell, fs};
+use std::{any::type_name, fs};
 
 use egui::pos2;
 use serde::{Deserialize, Serialize};
@@ -18,10 +18,11 @@ use crate::{
         ui::{
             Drawer, Message, paths,
             scene_window::gizmos::{GizmosModel, GizmosRenderer},
+            ui_style_fields::{FloatFieldEditViewType, FloatStyleField, StyleField},
         },
     },
     kairos_game::KairosGame,
-    math::float3,
+    math::{self, float3},
 };
 
 mod gizmos;
@@ -32,6 +33,15 @@ use scene_camera::SceneCamera;
 #[derive(Debug, Serialize, Deserialize)]
 struct SceneWindowStyle {
     pub title: String,
+    pub cam_position: float3,
+    pub cam_target: float3,
+    pub cam_fov: f32,
+    pub cam_near: f32,
+    pub cam_far: f32,
+    pub cam_orbit_speed: f32,
+    pub cam_zoom_speed: f32,
+    pub cam_min_distance: f32,
+    pub cam_max_distance: f32,
 }
 
 struct SceneWindowModel {
@@ -74,9 +84,17 @@ impl SceneWindowModel {
     pub fn new(assets_server: &mut AssetsServer) -> Result<Self, Box<dyn std::error::Error>> {
         let style = SceneWindowStyle::new()?;
 
-        let cam_pos = float3::new(0.0, 1.0, -2.0);
-        let cam_target = float3::new(0.0, 0.0, 0.0);
-        let scene_camera = SceneCamera::new(cam_pos, cam_target, 45.0, 1.0, 0.3, 100.);
+        let scene_camera = SceneCamera::new(
+            style.cam_position,
+            style.cam_target,
+            style.cam_fov,
+            style.cam_near,
+            style.cam_far,
+            style.cam_orbit_speed,
+            style.cam_zoom_speed,
+            style.cam_min_distance,
+            style.cam_max_distance,
+        );
         let gizmos = GizmosModel::new(assets_server);
 
         Ok(Self {
@@ -199,7 +217,32 @@ impl Drawer for SceneWindow {
     }
 
     fn get_style_fileds(&self) -> Vec<super::ui_style_fields::StyleField> {
-        Vec::new()
+        let mut fields = Vec::new();
+        let style = &self.model.style;
+
+        fields.push(StyleField::FloatStyleField(FloatStyleField::new(
+            "cam_fov",
+            style.cam_fov,
+            0.0,
+            180.0,
+            FloatFieldEditViewType::Field,
+        )));
+        fields.push(StyleField::FloatStyleField(FloatStyleField::new(
+            "cam_near",
+            style.cam_near,
+            0.0001,
+            math::min(style.cam_far, 100000.0),
+            FloatFieldEditViewType::Field,
+        )));
+        fields.push(StyleField::FloatStyleField(FloatStyleField::new(
+            "cam_far",
+            style.cam_far,
+            math::max(style.cam_near, 0.0001),
+            100000.0,
+            FloatFieldEditViewType::Field,
+        )));
+
+        fields
     }
 
     fn update_style(&mut self, _style_fields: &Vec<super::ui_style_fields::StyleField>) {}

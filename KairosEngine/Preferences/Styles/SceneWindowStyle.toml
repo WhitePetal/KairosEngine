@@ -1,1 +1,11 @@
 title = "Scene"
+
+cam_position = [0.0, 1.0, -2.0, 0.0]
+cam_target = [0.0, 0.0, 0.0, 0.0]
+cam_fov = 45.0
+cam_near = 0.3
+cam_far = 100.0
+cam_orbit_speed = 0.005
+cam_zoom_speed = 0.1
+cam_min_distance = 0.3
+cam_max_distance = 100.0

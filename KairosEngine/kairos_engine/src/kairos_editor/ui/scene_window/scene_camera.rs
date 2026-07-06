@@ -1,9 +1,12 @@
+use serde::{Deserialize, Serialize};
+
 use crate::{
     math::{self, float3, float4x4},
     spatial::Transform,
 };
 
 /// Editor orbit camera — pure data + pure math, no egui dependency.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct SceneCamera {
     pub fov: f32,
     pub aspect: f32,
@@ -18,7 +21,6 @@ pub struct SceneCamera {
 
     // sensitivity
     orbit_speed: f32,
-    pan_speed: f32,
     zoom_speed: f32,
     min_distance: f32,
     max_distance: f32,
@@ -27,7 +29,17 @@ pub struct SceneCamera {
 }
 
 impl SceneCamera {
-    pub fn new(eye: float3, pivot: float3, fov: f32, aspect: f32, near: f32, far: f32) -> Self {
+    pub fn new(
+        eye: float3,
+        pivot: float3,
+        fov: f32,
+        near: f32,
+        far: f32,
+        orbit_speed: f32,
+        zoom_speed: f32,
+        min_distance: f32,
+        max_distance: f32,
+    ) -> Self {
         let offset = eye - pivot;
         let distance = math::length(&offset);
         let forward = if distance > 0.001 {
@@ -41,18 +53,17 @@ impl SceneCamera {
 
         Self {
             fov,
-            aspect,
+            aspect: 1.0,
             near,
             far,
             pivot,
             distance,
             yaw,
             pitch,
-            orbit_speed: 0.005,
-            pan_speed: 0.01,
-            zoom_speed: 0.1,
-            min_distance: 0.3,
-            max_distance: 100.0,
+            orbit_speed,
+            zoom_speed,
+            min_distance,
+            max_distance,
             fly_timer: 0.0,
         }
     }

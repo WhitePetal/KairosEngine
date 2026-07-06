@@ -1,35 +1,41 @@
-pub trait Trigonometric {
-    type Output;
-
-    fn cos(self) -> Self::Output;
-
-    fn tan(self) -> Self::Output;
+pub trait Sin {
+    fn sin(self) -> Self;
+}
+pub trait Cos {
+    fn cos(self) -> Self;
+}
+pub trait Tan {
+    fn tan(self) -> Self;
 }
 
 #[inline(always)]
-pub fn cos<T>(value: T) -> T::Output
-where
-    T: Trigonometric,
-{
+pub fn sin<T: Sin>(value: T) -> T {
+    value.sin()
+}
+#[inline(always)]
+pub fn cos<T: Cos>(value: T) -> T {
     value.cos()
 }
-
 #[inline(always)]
-pub fn tan<T>(value: T) -> T::Output
-where
-    T: Trigonometric,
-{
+pub fn tan<T: Tan>(value: T) -> T {
     value.tan()
 }
 
-impl Trigonometric for f32 {
-    type Output = f32;
-
-    fn cos(self) -> Self::Output {
-        f32::cos(self)
+impl Sin for f32 {
+    #[inline(always)]
+    fn sin(self) -> Self {
+        self.sin()
     }
-
-    fn tan(self) -> Self::Output {
-        f32::tan(self)
+}
+impl Cos for f32 {
+    #[inline(always)]
+    fn cos(self) -> Self {
+        self.cos()
+    }
+}
+impl Tan for f32 {
+    #[inline(always)]
+    fn tan(self) -> Self {
+        self.tan()
     }
 }
