@@ -13,16 +13,20 @@ use crate::{
             graphics_node::{ColorAttachmentBind, DepthAttachmentBind},
         },
     },
+    kairos_dialog,
     kairos_editor::{
         Engine,
         ui::{
             Drawer, Message, paths,
             scene_window::gizmos::{GizmosModel, GizmosRenderer},
-            ui_style_fields::{FloatFieldEditViewType, FloatStyleField, StyleField},
+            ui_style_fields::{
+                FloatFieldEditViewType, FloatStyleField, RangeStyleField, StyleField,
+                Vector3StyleField,
+            },
         },
     },
     kairos_game::KairosGame,
-    math::{self, float3},
+    math::{self, float2, float3},
 };
 
 mod gizmos;
@@ -33,15 +37,15 @@ use scene_camera::SceneCamera;
 #[derive(Debug, Serialize, Deserialize)]
 struct SceneWindowStyle {
     pub title: String,
-    pub cam_position: float3,
-    pub cam_target: float3,
-    pub cam_fov: f32,
-    pub cam_near: f32,
-    pub cam_far: f32,
-    pub cam_orbit_speed: f32,
-    pub cam_zoom_speed: f32,
-    pub cam_min_distance: f32,
-    pub cam_max_distance: f32,
+    pub cam_default_position: float3,
+    pub cam_default_target: float3,
+    pub cam_default_fov: f32,
+    pub cam_default_near: f32,
+    pub cam_default_far: f32,
+    pub cam_default_orbit_speed: f32,
+    pub cam_default_zoom_speed: f32,
+    pub cam_default_min_distance: f32,
+    pub cam_default_max_distance: f32,
 }
 
 struct SceneWindowModel {
@@ -85,15 +89,15 @@ impl SceneWindowModel {
         let style = SceneWindowStyle::new()?;
 
         let scene_camera = SceneCamera::new(
-            style.cam_position,
-            style.cam_target,
-            style.cam_fov,
-            style.cam_near,
-            style.cam_far,
-            style.cam_orbit_speed,
-            style.cam_zoom_speed,
-            style.cam_min_distance,
-            style.cam_max_distance,
+            style.cam_default_position,
+            style.cam_default_target,
+            style.cam_default_fov,
+            style.cam_default_near,
+            style.cam_default_far,
+            style.cam_default_orbit_speed,
+            style.cam_default_zoom_speed,
+            style.cam_default_min_distance,
+            style.cam_default_max_distance,
         );
         let gizmos = GizmosModel::new(assets_server);
 
@@ -220,32 +224,95 @@ impl Drawer for SceneWindow {
         let mut fields = Vec::new();
         let style = &self.model.style;
 
+        fields.push(StyleField::Vector3StyleField(Vector3StyleField::new(
+            "camera default position",
+            style.cam_default_position,
+            f32::MIN,
+            f32::MAX,
+        )));
+        fields.push(StyleField::Vector3StyleField(Vector3StyleField::new(
+            "camera default target",
+            style.cam_default_target,
+            f32::MIN,
+            f32::MAX,
+        )));
         fields.push(StyleField::FloatStyleField(FloatStyleField::new(
-            "cam_fov",
-            style.cam_fov,
+            "camera default fov",
+            style.cam_default_fov,
             0.0,
             180.0,
             FloatFieldEditViewType::Field,
         )));
         fields.push(StyleField::FloatStyleField(FloatStyleField::new(
-            "cam_near",
-            style.cam_near,
+            "camera default near",
+            style.cam_default_near,
             0.0001,
-            math::min(style.cam_far, 100000.0),
+            math::min(style.cam_default_far, 100000.0),
             FloatFieldEditViewType::Field,
         )));
         fields.push(StyleField::FloatStyleField(FloatStyleField::new(
-            "cam_far",
-            style.cam_far,
-            math::max(style.cam_near, 0.0001),
+            "camera default far",
+            style.cam_default_far,
+            math::max(style.cam_default_near, 0.0001),
             100000.0,
             FloatFieldEditViewType::Field,
+        )));
+        fields.push(StyleField::FloatStyleField(FloatStyleField::new(
+            "camera default orbit speed",
+            style.cam_default_orbit_speed,
+            0.0,
+            0.1,
+            FloatFieldEditViewType::Slider,
+        )));
+        fields.push(StyleField::FloatStyleField(FloatStyleField::new(
+            "camera default zoom speed",
+            style.cam_default_zoom_speed,
+            0.0,
+            1.0,
+            FloatFieldEditViewType::Slider,
+        )));
+        fields.push(StyleField::RangeStyleField(RangeStyleField::new(
+            "camera distance range",
+            float2::new(
+                style.cam_default_min_distance,
+                style.cam_default_max_distance,
+            ),
+            math::max(style.cam_default_near, 0.0001),
+            math::min(style.cam_default_far, 100000.0),
         )));
 
         fields
     }
 
-    fn update_style(&mut self, _style_fields: &Vec<super::ui_style_fields::StyleField>) {}
+    fn update_style(&mut self, style_fields: &Vec<super::ui_style_fields::StyleField>) {
+        if let StyleField::Vector3StyleField(field) = &style_fields[0] {
+            self.model.style.cam_default_position = field.value;
+        }
+
+        match toml::to_string(&self.model.style) {
+            Ok(toml) => match std::fs::write(paths::PATH_SCENE_WINDOW_STYLE, toml) {
+                Ok(_) => (),
+                Err(error) => {
+                    kairos_dialog::error_message_window(
+                        "Write File Falied",
+                        &format!(
+                            "Write the SceneWindowStyle toml file Failed, Error: {}",
+                            error
+                        ),
+                    );
+                }
+            },
+            Err(error) => {
+                kairos_dialog::error_message_window(
+                    "Serialize Data Failed",
+                    &format!(
+                        "Serialize the SceneWindowStyle toml file Failed, Erro: {}",
+                        error
+                    ),
+                );
+            }
+        }
+    }
 
     fn render(
         &self,

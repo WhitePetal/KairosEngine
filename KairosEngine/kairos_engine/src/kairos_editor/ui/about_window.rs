@@ -1,5 +1,6 @@
 use std::{any::type_name, fs};
 
+use crate::kairos_dialog;
 use crate::kairos_game::KairosGame;
 use crate::log::Log;
 use egui::{self, Vec2};
@@ -130,6 +131,30 @@ impl Drawer for AboutWindow {
         }
         if let StyleField::FloatStyleField(field) = &style_fields[1] {
             self.model.style.width = field.value;
+        }
+
+        match toml::to_string(&self.model.style) {
+            Ok(toml) => match std::fs::write(paths::PATH_ABOUT_WINDOW_STYLE, toml) {
+                Ok(_) => (),
+                Err(error) => {
+                    kairos_dialog::error_message_window(
+                        "Write File Falied",
+                        &format!(
+                            "Write the AboutWindowStyle toml file Failed, Error: {}",
+                            error
+                        ),
+                    );
+                }
+            },
+            Err(error) => {
+                kairos_dialog::error_message_window(
+                    "Serialize Data Failed",
+                    &format!(
+                        "Serialize the AboutWindowStyle toml file Failed, Erro: {}",
+                        error
+                    ),
+                );
+            }
         }
     }
 

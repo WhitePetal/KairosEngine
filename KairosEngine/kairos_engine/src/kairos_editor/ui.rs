@@ -47,6 +47,7 @@ pub mod about_window;
 pub mod console_window;
 pub mod dialog;
 pub mod docking_tab;
+pub mod egui_ext;
 pub mod game_window;
 pub mod hierarchy_window;
 pub mod inspector_window;

@@ -218,31 +218,25 @@ impl Drawer for ToolBar {
             self.model.style.button_text_color = field.color;
         }
 
-        if let Ok(json) = sonic_rs::to_string_pretty(&self.model.style) {
-            if let Ok(mut file) = File::create(paths::PATH_EDITOR_WINDO_TOOL_BAR_STYLE) {
-                match file.write_all(json.as_bytes()) {
-                    Ok(_) => (),
-                    Err(error) => {
-                        kairos_dialog::error_message_window(
-                            "Write File Falied",
-                            &format!(
-                                "Write the ToolBar json file Failed When Write, Error: {}",
-                                error
-                            ),
-                        );
-                    }
+        match toml::to_string(&self.model.style) {
+            Ok(toml) => match std::fs::write(paths::PATH_EDITOR_WINDO_TOOL_BAR_STYLE, toml) {
+                Ok(_) => (),
+                Err(error) => {
+                    kairos_dialog::error_message_window(
+                        "Write File Falied",
+                        &format!("Write the ToolBarStyle toml file Failed, Error: {}", error),
+                    );
                 }
-            } else {
+            },
+            Err(error) => {
                 kairos_dialog::error_message_window(
-                    "Write File Failed",
-                    "Write the ToolBar json file Failed When Open",
+                    "Serialize Data Failed",
+                    &format!(
+                        "Serialize the ToolBarStyle toml file Failed, Erro: {}",
+                        error
+                    ),
                 );
             }
-        } else {
-            kairos_dialog::error_message_window(
-                "Serialize Json Failed",
-                "Serialize ToolBar Style to json Failed",
-            );
         }
     }
 

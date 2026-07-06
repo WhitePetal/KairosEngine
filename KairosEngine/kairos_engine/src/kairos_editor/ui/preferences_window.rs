@@ -1,10 +1,13 @@
 use std::{any::type_name, fs};
 
 use crate::{
-    kairos_editor::{Engine, ui::Messager},
+    kairos_editor::{
+        Engine,
+        ui::{Messager, egui_ext::UiExt},
+    },
     kairos_game::KairosGame,
     log::Log,
-    math,
+    math::{self, float2},
 };
 use egui::{self, Vec2};
 use serde::{Deserialize, Serialize};
@@ -281,6 +284,124 @@ impl PreferencesWindow {
                                                 );
                                                 ui.end_row();
                                             }
+                                            super::ui_style_fields::StyleField::Vector2StyleField(
+                                                field,
+                                            ) => {
+                                                ui.label(field.name);
+                                                let mut arr = field.value.to_array();
+                                                ui.horizontal(|ui| {
+                                                    ui.label(
+                                                        egui::RichText::new("X")
+                                                            .color(egui::Color32::RED),
+                                                    );
+                                                    ui.add(
+                                                        egui::DragValue::new(&mut arr[0])
+                                                            .range(field.min..=field.max),
+                                                    );
+                                                    ui.label(
+                                                        egui::RichText::new("Y")
+                                                            .color(egui::Color32::GREEN),
+                                                    );
+                                                    ui.add(
+                                                        egui::DragValue::new(&mut arr[1])
+                                                            .range(field.min..=field.max),
+                                                    );
+                                                });
+                                                field.value = crate::math::float2::from_array(arr);
+                                                ui.end_row();
+                                            }
+                                            super::ui_style_fields::StyleField::Vector3StyleField(
+                                                field,
+                                            ) => {
+                                                ui.label(field.name);
+                                                let mut arr = field.value.to_array();
+                                                ui.horizontal(|ui| {
+                                                    ui.label(
+                                                        egui::RichText::new("X")
+                                                            .color(egui::Color32::RED),
+                                                    );
+                                                    ui.add(
+                                                        egui::DragValue::new(&mut arr[0])
+                                                            .range(field.min..=field.max),
+                                                    );
+                                                    ui.label(
+                                                        egui::RichText::new("Y")
+                                                            .color(egui::Color32::GREEN),
+                                                    );
+                                                    ui.add(
+                                                        egui::DragValue::new(&mut arr[1])
+                                                            .range(field.min..=field.max),
+                                                    );
+                                                    ui.label(
+                                                        egui::RichText::new("Z")
+                                                            .color(egui::Color32::BLUE),
+                                                    );
+                                                    ui.add(
+                                                        egui::DragValue::new(&mut arr[2])
+                                                            .range(field.min..=field.max),
+                                                    );
+                                                });
+                                                field.value =
+                                                    crate::math::float3::from_array_4(arr);
+                                                ui.end_row();
+                                            }
+                                            super::ui_style_fields::StyleField::Vector4StyleField(
+                                                field,
+                                            ) => {
+                                                ui.label(field.name);
+                                                let mut arr = [
+                                                    field.value.x(),
+                                                    field.value.y(),
+                                                    field.value.z(),
+                                                    field.value.w(),
+                                                ];
+                                                ui.horizontal(|ui| {
+                                                    ui.label(
+                                                        egui::RichText::new("X")
+                                                            .color(egui::Color32::RED),
+                                                    );
+                                                    ui.add(
+                                                        egui::DragValue::new(&mut arr[0])
+                                                            .range(field.min..=field.max),
+                                                    );
+                                                    ui.label(
+                                                        egui::RichText::new("Y")
+                                                            .color(egui::Color32::GREEN),
+                                                    );
+                                                    ui.add(
+                                                        egui::DragValue::new(&mut arr[1])
+                                                            .range(field.min..=field.max),
+                                                    );
+                                                    ui.label(
+                                                        egui::RichText::new("Z")
+                                                            .color(egui::Color32::BLUE),
+                                                    );
+                                                    ui.add(
+                                                        egui::DragValue::new(&mut arr[2])
+                                                            .range(field.min..=field.max),
+                                                    );
+                                                    ui.label(
+                                                        egui::RichText::new("W")
+                                                            .color(egui::Color32::GRAY),
+                                                    );
+                                                    ui.add(
+                                                        egui::DragValue::new(&mut arr[3])
+                                                            .range(field.min..=field.max),
+                                                    );
+                                                });
+                                                field.value = crate::math::float4::new(
+                                                    arr[0], arr[1], arr[2], arr[3],
+                                                );
+                                                ui.end_row();
+                                            }
+                                            StyleField::RangeStyleField(field) => {
+                                                ui.label(field.name);
+                                                let mut low = field.range.x();
+                                                let mut high = field.range.y();
+                                                ui.range_slider(&mut low, &mut high, field.min..=field.max);
+                                                field.range = float2::new(low, high);
+                                                ui.end_row();
+                                            },
                                         }
                                     }
                                 })
