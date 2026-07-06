@@ -81,7 +81,7 @@ impl KairosEngine {
         visuals.button_frame = true;
         ui.set_visuals(visuals);
 
-        self.ui_context.darw(ui, &mut self.log);
+        self.ui_context.darw(ui, &self.engine, &mut self.log);
     }
 
     fn render_ui(&mut self) -> Vec<GraphicsCommand> {

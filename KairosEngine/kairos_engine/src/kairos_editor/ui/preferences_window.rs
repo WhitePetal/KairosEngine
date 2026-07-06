@@ -99,7 +99,13 @@ impl Drawer for PreferencesWindow {
         }
     }
 
-    fn ui(&self, ui: &mut egui::Ui, messager: &mut super::Messager, _log: &mut Log) {
+    fn ui(
+        &self,
+        ui: &mut egui::Ui,
+        messager: &mut super::Messager,
+        _engine: &Engine,
+        _log: &mut Log,
+    ) {
         self.ui(ui, messager);
     }
 

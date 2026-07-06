@@ -89,7 +89,13 @@ impl Drawer for GameWindow {
 
     fn show_window(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {}
 
-    fn ui(&self, ui: &mut egui::Ui, messager: &mut super::Messager, _log: &mut crate::log::Log) {
+    fn ui(
+        &self,
+        ui: &mut egui::Ui,
+        messager: &mut super::Messager,
+        _engine: &Engine,
+        _log: &mut crate::log::Log,
+    ) {
         egui::Frame::NONE
             .inner_margin(egui::Margin::symmetric(4, 2))
             .show(ui, |ui| {

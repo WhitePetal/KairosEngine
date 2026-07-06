@@ -91,12 +91,12 @@ pub enum Message {
     RegisteGameWindowViewBind(tokio::sync::oneshot::Receiver<egui::TextureId>),
     GameWindowTryReceTextureId,
 
-    /// SceneCamera orbit (dx, dy) in pixels
-    SceneCameraOrbit(f32, f32),
-    /// Camera zoom delta
-    CameraZoom(f32),
-    /// Camera fly movement (right, forward) each in [-1, 0, 1]
-    CameraFly(f32, f32),
+    /// SceneCamera orbit (dx, dy, dt) in pixels
+    SceneCameraOrbit(f32, f32, f32),
+    /// Camera zoom (delta, dt)
+    CameraZoom(f32, f32),
+    /// Camera fly movement (right, forward, dt) each in [-1, 0, 1]
+    CameraFly(f32, f32, f32),
 }
 
 struct KairosTabDrawer {
@@ -116,11 +116,12 @@ impl TabDrawer for KairosTabDrawer {
         ui: &mut egui::Ui,
         tab: &mut Self::Tab,
         messager: &mut Messager,
+        engine: &Engine,
         log: &mut Log,
         drawers: &Vec<Box<dyn Drawer>>,
     ) {
         let tab = &drawers[*tab];
-        tab.ui(ui, messager, log);
+        tab.ui(ui, messager, engine, log);
     }
 
     fn on_close(
@@ -152,7 +153,7 @@ pub trait Drawer: Any {
 
     fn show_window(&self, state: Option<&mut WindowState>);
 
-    fn ui(&self, ui: &mut egui::Ui, messager: &mut Messager, log: &mut Log);
+    fn ui(&self, ui: &mut egui::Ui, messager: &mut Messager, engine: &Engine, log: &mut Log);
 
     fn render(
         &self,
@@ -226,11 +227,11 @@ impl Context {
         }
     }
 
-    pub fn darw(&mut self, ui: &mut egui::Ui, log: &mut Log) {
+    pub fn darw(&mut self, ui: &mut egui::Ui, engine: &Engine, log: &mut Log) {
         // tool_bar
         let tool_bar_type_id = TypeId::of::<ToolBar>();
         if let Some(id) = self.ids.get(&tool_bar_type_id) {
-            self.drawers[*id].ui(ui, &mut self.messager, log);
+            self.drawers[*id].ui(ui, &mut self.messager, engine, log);
         }
 
         // 中央区域显示内容
@@ -238,6 +239,7 @@ impl Context {
             DockArea::new("KairosEditor Main DockArea", &mut self.tab_tree).show_inside(
                 ui,
                 &mut self.messager,
+                engine,
                 log,
                 &self.drawers,
                 &mut self.tab_viewer,
@@ -407,19 +409,19 @@ impl Context {
                         game_window.try_rece_texture_id();
                     }
                 }
-                Message::SceneCameraOrbit(dx, dy) => {
+                Message::SceneCameraOrbit(dx, dy, dt) => {
                     if let Some(scene_window) = self.get_window_mut::<SceneWindow>() {
-                        scene_window.on_camera_orbit(dx, dy);
+                        scene_window.on_camera_orbit(dx, dy, dt);
                     }
                 }
-                Message::CameraZoom(delta) => {
+                Message::CameraZoom(delta, dt) => {
                     if let Some(scene_window) = self.get_window_mut::<SceneWindow>() {
-                        scene_window.on_camera_zoom(delta);
+                        scene_window.on_camera_zoom(delta, dt);
                     }
                 }
-                Message::CameraFly(right, forward) => {
+                Message::CameraFly(right, forward, dt) => {
                     if let Some(scene_window) = self.get_window_mut::<SceneWindow>() {
-                        scene_window.on_camera_fly(right, forward);
+                        scene_window.on_camera_fly(right, forward, dt);
                     }
                 }
             }

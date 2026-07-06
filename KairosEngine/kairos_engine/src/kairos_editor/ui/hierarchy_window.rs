@@ -71,7 +71,13 @@ impl Drawer for HierarchyWindow {
 
     fn show_window(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {}
 
-    fn ui(&self, ui: &mut egui::Ui, _messager: &mut super::Messager, _log: &mut Log) {
+    fn ui(
+        &self,
+        ui: &mut egui::Ui,
+        _messager: &mut super::Messager,
+        _engine: &Engine,
+        _log: &mut Log,
+    ) {
         ui.label("TODO: Hierarchy");
     }
 

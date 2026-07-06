@@ -44,7 +44,6 @@ struct SceneWindowModel {
 
     camera: SceneCamera,
     gizmos: GizmosModel,
-    dt: Cell<f32>,
 }
 
 pub struct SceneWindow {
@@ -89,7 +88,6 @@ impl SceneWindowModel {
             drop_texture_id: None,
             camera: scene_camera,
             gizmos,
-            dt: Cell::new(0.016),
         })
     }
 }
@@ -116,7 +114,13 @@ impl Drawer for SceneWindow {
 
     fn show_window(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {}
 
-    fn ui(&self, ui: &mut egui::Ui, messager: &mut super::Messager, _log: &mut crate::log::Log) {
+    fn ui(
+        &self,
+        ui: &mut egui::Ui,
+        messager: &mut super::Messager,
+        engine: &Engine,
+        _log: &mut crate::log::Log,
+    ) {
         let available = ui.available_size_before_wrap();
         let (rect, response) = ui.allocate_exact_size(available, egui::Sense::click_and_drag());
         let pixels_per_point = ui.pixels_per_point();
@@ -125,15 +129,16 @@ impl Drawer for SceneWindow {
 
         // --- Camera input (view: only sends messages, never mutates model) ---
         if response.hovered() {
+            let dt = engine.time.delta_time().as_secs_f32();
             let delta = response.drag_delta();
             if response.dragged_by(egui::PointerButton::Secondary)
                 || response.dragged_by(egui::PointerButton::Middle)
             {
-                messager.send(Message::SceneCameraOrbit(-delta.x, -delta.y));
+                messager.send(Message::SceneCameraOrbit(-delta.x, -delta.y, dt));
             }
             let scroll = ui.input(|i| i.smooth_scroll_delta);
             if scroll.y != 0.0 {
-                messager.send(Message::CameraZoom(scroll.y));
+                messager.send(Message::CameraZoom(scroll.y, dt));
             }
             // WASD movement
             let w = ui.input(|i| i.key_down(egui::Key::W));
@@ -155,7 +160,7 @@ impl Drawer for SceneWindow {
                 0.0
             };
             if forward != 0.0 || right != 0.0 {
-                messager.send(Message::CameraFly(right, forward));
+                messager.send(Message::CameraFly(right, forward, dt));
             }
         }
 
@@ -205,9 +210,6 @@ impl Drawer for SceneWindow {
         game: &mut KairosGame,
         messager: &mut super::Messager,
     ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {
-        // Store dt for camera movement (written by render, read by ui/controller)
-        self.model.dt.set(engine.time.delta_time().as_secs_f32());
-
         let mut graphics_command = GraphicsCommand::new(16, 2, 4, 16);
         // clear last rt_id
         if let Some(drop_texture_id) = self.model.drop_texture_id {
@@ -303,18 +305,15 @@ impl Drawer for SceneWindow {
 impl SceneWindow {
     // --- Camera controller (mutates model, called from Context::handle) ---
 
-    pub fn on_camera_orbit(&mut self, dx: f32, dy: f32) {
-        let dt = self.model.dt.get();
+    pub fn on_camera_orbit(&mut self, dx: f32, dy: f32, dt: f32) {
         self.model.camera.orbit(dx, dy, dt);
     }
 
-    pub fn on_camera_zoom(&mut self, delta: f32) {
-        let dt = self.model.dt.get();
+    pub fn on_camera_zoom(&mut self, delta: f32, dt: f32) {
         self.model.camera.zoom(delta, dt);
     }
 
-    pub fn on_camera_fly(&mut self, right: f32, forward: f32) {
-        let dt = self.model.dt.get();
+    pub fn on_camera_fly(&mut self, right: f32, forward: f32, dt: f32) {
         self.model.camera.fly(right, forward, dt);
     }
 

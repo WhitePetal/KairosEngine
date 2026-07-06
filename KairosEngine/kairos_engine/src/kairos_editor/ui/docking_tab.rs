@@ -1,6 +1,6 @@
 use std::ops::RangeInclusive;
 
-use crate::log::Log;
+use crate::{kairos_editor::Engine, log::Log};
 use egui::{
     self, Align, Align2, Button, CentralPanel, Color32, Context, CornerRadius, CursorIcon,
     EventFilter, Frame, Id, Key, LayerId, Layout, Modifiers, NumExt, Order, Popup,
@@ -203,6 +203,7 @@ impl<Drawer> DockArea<'_, Drawer> {
         self,
         ui: &mut Ui,
         messager: &mut Messager,
+        engine: &Engine,
         log: &mut Log,
         drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
         tab_viewer: &mut impl TabDrawer<Tab = Drawer>,
@@ -214,7 +215,7 @@ impl<Drawer> DockArea<'_, Drawer> {
                     .fill(Color32::TRANSPARENT),
             )
             .show_inside(ui, |ui| {
-                self.show_inside(ui, messager, log, drawers, tab_viewer);
+                self.show_inside(ui, messager, engine, log, drawers, tab_viewer);
             });
     }
 
@@ -223,6 +224,7 @@ impl<Drawer> DockArea<'_, Drawer> {
         mut self,
         ui: &mut Ui,
         messager: &mut Messager,
+        engine: &Engine,
         log: &mut Log,
         drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
         tab_drawer: &mut impl TabDrawer<Tab = Drawer>,
@@ -286,6 +288,7 @@ impl<Drawer> DockArea<'_, Drawer> {
                 surface_index,
                 ui,
                 messager,
+                engine,
                 log,
                 drawers,
                 tab_drawer,
@@ -466,6 +469,7 @@ impl<Drawer> DockArea<'_, Drawer> {
         surf_index: SurfaceIndex,
         ui: &mut Ui,
         messager: &mut Messager,
+        engine: &Engine,
         log: &mut Log,
         drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
         tab_viewer: &mut impl TabDrawer<Tab = Drawer>,
@@ -473,10 +477,10 @@ impl<Drawer> DockArea<'_, Drawer> {
         fade_style: Option<(&Style, f32, SurfaceIndex)>,
     ) {
         if surf_index.is_main() {
-            self.show_root_surface_inside(ui, messager, log, drawers, tab_viewer, state);
+            self.show_root_surface_inside(ui, messager, engine, log, drawers, tab_viewer, state);
         } else {
             self.show_window_surface(
-                ui, messager, log, drawers, surf_index, tab_viewer, state, fade_style,
+                ui, messager, engine, log, drawers, surf_index, tab_viewer, state, fade_style,
             );
         }
     }
@@ -485,6 +489,7 @@ impl<Drawer> DockArea<'_, Drawer> {
         &mut self,
         ui: &mut Ui,
         messager: &mut Messager,
+        engine: &Engine,
         log: &mut Log,
         drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
         tab_viewer: &mut impl TabDrawer<Tab = Drawer>,
@@ -506,6 +511,7 @@ impl<Drawer> DockArea<'_, Drawer> {
                 self.show_leaf(
                     ui,
                     messager,
+                    engine,
                     log,
                     drawers,
                     state,
@@ -776,6 +782,7 @@ impl<Drawer> DockArea<'_, Drawer> {
         &mut self,
         ui: &mut Ui,
         messager: &mut Messager,
+        engine: &Engine,
         log: &mut Log,
         drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
         tab_viewer: &mut impl TabDrawer<Tab = Drawer>,
@@ -802,7 +809,7 @@ impl<Drawer> DockArea<'_, Drawer> {
         }
 
         self.render_nodes(
-            ui, messager, log, drawers, tab_viewer, state, surf_index, None,
+            ui, messager, engine, log, drawers, tab_viewer, state, surf_index, None,
         );
     }
 }
@@ -812,6 +819,7 @@ impl<Drawer> DockArea<'_, Drawer> {
         &mut self,
         ui: &Ui,
         messager: &mut Messager,
+        engine: &Engine,
         log: &mut Log,
         drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
         surf_index: SurfaceIndex,
@@ -912,7 +920,7 @@ impl<Drawer> DockArea<'_, Drawer> {
                 )
             } else {
                 self.render_nodes(
-                    ui, messager, log, drawers, tab_viewer, state, surf_index, fade_style,
+                    ui, messager, engine, log, drawers, tab_viewer, state, surf_index, fade_style,
                 );
             }
         });
@@ -1095,6 +1103,7 @@ impl<Drawer> DockArea<'_, Drawer> {
         &mut self,
         ui: &mut Ui,
         messager: &mut Messager,
+        engine: &Engine,
         log: &mut Log,
         drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
         state: &mut State,
@@ -1134,6 +1143,7 @@ impl<Drawer> DockArea<'_, Drawer> {
         self.drawer_body(
             ui,
             messager,
+            engine,
             log,
             drawers,
             state,
@@ -2278,6 +2288,7 @@ impl<Drawer> DockArea<'_, Drawer> {
         &mut self,
         ui: &mut Ui,
         messager: &mut Messager,
+        engine: &Engine,
         log: &mut Log,
         drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
         state: &State,
@@ -2373,7 +2384,7 @@ impl<Drawer> DockArea<'_, Drawer> {
                             }
                             let available_rect = ui.available_rect_before_wrap();
                             ui.expand_to_include_rect(available_rect);
-                            tab_viewer.ui(ui, tab, messager, log, drawers);
+                            tab_viewer.ui(ui, tab, messager, engine, log, drawers);
                         });
                 });
             }

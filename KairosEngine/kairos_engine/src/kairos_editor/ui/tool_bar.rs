@@ -89,7 +89,13 @@ impl Drawer for ToolBar {
     }
     fn show_window(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {}
 
-    fn ui(&self, ui: &mut egui::Ui, messager: &mut super::Messager, _log: &mut Log) {
+    fn ui(
+        &self,
+        ui: &mut egui::Ui,
+        messager: &mut super::Messager,
+        _engine: &Engine,
+        _log: &mut Log,
+    ) {
         let model = &self.model;
         Panel::top("toolbar")
             .default_size(model.style.height)

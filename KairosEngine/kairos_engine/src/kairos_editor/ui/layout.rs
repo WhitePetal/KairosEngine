@@ -29,7 +29,7 @@ pub struct LayoutCenterContainer {}
 
 impl Drawer for LayoutLeftContainer {
     fn create(
-        assets_server: &mut crate::asset_loader::assets::AssetsServer,
+        _assets_server: &mut crate::asset_loader::assets::AssetsServer,
     ) -> Result<Self, Box<dyn std::error::Error>>
     where
         Self: Sized,
@@ -39,7 +39,7 @@ impl Drawer for LayoutLeftContainer {
 
     fn show_window(&self, _state: Option<&mut WindowState>) {}
 
-    fn ui(&self, _ui: &mut egui::Ui, _messager: &mut Messager, _log: &mut Log) {}
+    fn ui(&self, _ui: &mut egui::Ui, _messager: &mut Messager, _engine: &Engine, _log: &mut Log) {}
 
     fn render(
         &self,
@@ -73,7 +73,7 @@ impl Drawer for LayoutLeftContainer {
 }
 impl Drawer for LayoutRightContainer {
     fn create(
-        assets_server: &mut crate::asset_loader::assets::AssetsServer,
+        _assets_server: &mut crate::asset_loader::assets::AssetsServer,
     ) -> Result<Self, Box<dyn std::error::Error>>
     where
         Self: Sized,
@@ -83,7 +83,7 @@ impl Drawer for LayoutRightContainer {
 
     fn show_window(&self, _state: Option<&mut WindowState>) {}
 
-    fn ui(&self, _ui: &mut egui::Ui, _messager: &mut Messager, _log: &mut Log) {}
+    fn ui(&self, _ui: &mut egui::Ui, _messager: &mut Messager, _engine: &Engine, _log: &mut Log) {}
 
     fn render(
         &self,
@@ -112,7 +112,7 @@ impl Drawer for LayoutRightContainer {
 }
 impl Drawer for LayoutBottomContainer {
     fn create(
-        assets_server: &mut crate::asset_loader::assets::AssetsServer,
+        _assets_server: &mut crate::asset_loader::assets::AssetsServer,
     ) -> Result<Self, Box<dyn std::error::Error>>
     where
         Self: Sized,
@@ -122,7 +122,7 @@ impl Drawer for LayoutBottomContainer {
 
     fn show_window(&self, _state: Option<&mut WindowState>) {}
 
-    fn ui(&self, _ui: &mut egui::Ui, _messager: &mut Messager, _log: &mut Log) {}
+    fn ui(&self, _ui: &mut egui::Ui, _messager: &mut Messager, _engine: &Engine, _log: &mut Log) {}
 
     fn render(
         &self,
@@ -161,7 +161,7 @@ impl Drawer for LayoutCenterContainer {
 
     fn show_window(&self, _state: Option<&mut WindowState>) {}
 
-    fn ui(&self, _ui: &mut egui::Ui, _messager: &mut Messager, _log: &mut Log) {}
+    fn ui(&self, _ui: &mut egui::Ui, _messager: &mut Messager, _engine: &Engine, _log: &mut Log) {}
 
     fn render(
         &self,

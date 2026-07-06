@@ -1,4 +1,4 @@
-use crate::log::Log;
+use crate::{kairos_editor::Engine, log::Log};
 use egui::{self, Id, Ui, WidgetText};
 
 use crate::kairos_editor::ui::{
@@ -26,6 +26,7 @@ pub trait TabDrawer {
         ui: &mut Ui,
         tab: &mut Self::Tab,
         messager: &mut Messager,
+        engine: &Engine,
         log: &mut Log,
         drawers: &Vec<Box<dyn Drawer>>,
     );

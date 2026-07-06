@@ -68,7 +68,7 @@ impl Drawer for ConsoleWindow {
 
     fn show_window(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {}
 
-    fn ui(&self, ui: &mut egui::Ui, _messager: &mut Messager, log: &mut Log) {
+    fn ui(&self, ui: &mut egui::Ui, _messager: &mut Messager, _engine: &Engine, log: &mut Log) {
         ui.label("TODO: Print Console");
 
         while let Some(log) = log.pop_front() {
