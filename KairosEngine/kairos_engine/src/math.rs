@@ -9,6 +9,7 @@ pub use color::Color32;
 pub use consts::*;
 pub use matrix::*;
 pub use quaternions::*;
+use rapier3d::glamx::FloatExt;
 pub use trigonometric::*;
 pub use vec::*;
 
@@ -20,6 +21,14 @@ pub trait Max {
 }
 pub trait Sqrt {
     fn sqrt(self) -> Self;
+}
+pub trait LerpFactor<T> {
+    fn get_factor(self) -> T;
+}
+pub trait Lerp {
+    fn lerp(left: Self, right: Self, factor: impl LerpFactor<Self>) -> Self
+    where
+        Self: Sized;
 }
 
 #[inline(always)]
@@ -50,6 +59,10 @@ pub fn min<T: Min>(a: T, b: T) -> T {
 pub fn max<T: Max>(a: T, b: T) -> T {
     a.max(b)
 }
+#[inline(always)]
+pub fn lerp<T: Lerp>(left: T, right: T, factor: impl LerpFactor<T>) -> T {
+    T::lerp(left, right, factor)
+}
 
 impl Min for f32 {
     #[inline(always)]
@@ -67,5 +80,17 @@ impl Sqrt for f32 {
     #[inline(always)]
     fn sqrt(self) -> Self {
         self.sqrt()
+    }
+}
+impl LerpFactor<f32> for f32 {
+    #[inline(always)]
+    fn get_factor(self) -> f32 {
+        self
+    }
+}
+impl Lerp for f32 {
+    #[inline(always)]
+    fn lerp(left: Self, right: Self, factor: impl LerpFactor<f32>) -> Self {
+        left.lerp(right, factor.get_factor())
     }
 }

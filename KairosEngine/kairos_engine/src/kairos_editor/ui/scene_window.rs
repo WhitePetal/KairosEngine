@@ -44,6 +44,9 @@ struct SceneWindowStyle {
     pub cam_default_far: f32,
     pub cam_default_orbit_speed: f32,
     pub cam_default_zoom_speed: f32,
+    pub cam_default_fly_acce_duration: f32,
+    pub cam_default_fly_min_speed: f32,
+    pub cam_default_fly_max_speed: f32,
     pub cam_default_min_distance: f32,
     pub cam_default_max_distance: f32,
 }
@@ -96,6 +99,9 @@ impl SceneWindowModel {
             style.cam_default_far,
             style.cam_default_orbit_speed,
             style.cam_default_zoom_speed,
+            style.cam_default_fly_acce_duration,
+            style.cam_default_fly_min_speed,
+            style.cam_default_fly_max_speed,
             style.cam_default_min_distance,
             style.cam_default_max_distance,
         );
@@ -271,6 +277,22 @@ impl Drawer for SceneWindow {
             1.0,
             FloatFieldEditViewType::Slider,
         )));
+        fields.push(StyleField::FloatStyleField(FloatStyleField::new(
+            "camera default fly acceleration duration",
+            style.cam_default_fly_acce_duration,
+            0.01,
+            4.0,
+            FloatFieldEditViewType::Slider,
+        )));
+        fields.push(StyleField::RangeStyleField(RangeStyleField::new(
+            "camera default fly speed range",
+            float2::new(
+                style.cam_default_fly_min_speed,
+                style.cam_default_fly_max_speed,
+            ),
+            0.01,
+            40.0,
+        )));
         fields.push(StyleField::RangeStyleField(RangeStyleField::new(
             "camera distance range",
             float2::new(
@@ -287,6 +309,35 @@ impl Drawer for SceneWindow {
     fn update_style(&mut self, style_fields: &Vec<super::ui_style_fields::StyleField>) {
         if let StyleField::Vector3StyleField(field) = &style_fields[0] {
             self.model.style.cam_default_position = field.value;
+        }
+        if let StyleField::Vector3StyleField(field) = &style_fields[1] {
+            self.model.style.cam_default_target = field.value;
+        }
+        if let StyleField::FloatStyleField(field) = &style_fields[2] {
+            self.model.style.cam_default_fov = field.value;
+        }
+        if let StyleField::FloatStyleField(field) = &style_fields[3] {
+            self.model.style.cam_default_near = field.value;
+        }
+        if let StyleField::FloatStyleField(field) = &style_fields[4] {
+            self.model.style.cam_default_far = field.value;
+        }
+        if let StyleField::FloatStyleField(field) = &style_fields[5] {
+            self.model.style.cam_default_orbit_speed = field.value;
+        }
+        if let StyleField::FloatStyleField(field) = &style_fields[6] {
+            self.model.style.cam_default_zoom_speed = field.value;
+        }
+        if let StyleField::FloatStyleField(field) = &style_fields[7] {
+            self.model.style.cam_default_fly_acce_duration = field.value;
+        }
+        if let StyleField::RangeStyleField(field) = &style_fields[8] {
+            self.model.style.cam_default_fly_min_speed = field.range.x();
+            self.model.style.cam_default_fly_max_speed = field.range.y();
+        }
+        if let StyleField::RangeStyleField(field) = &style_fields[9] {
+            self.model.style.cam_default_min_distance = field.range.x();
+            self.model.style.cam_default_max_distance = field.range.y();
         }
 
         match toml::to_string(&self.model.style) {

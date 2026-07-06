@@ -22,6 +22,9 @@ pub struct SceneCamera {
     // sensitivity
     orbit_speed: f32,
     zoom_speed: f32,
+    fly_acce_duration: f32,
+    fly_min_speed: f32,
+    fly_max_speed: f32,
     min_distance: f32,
     max_distance: f32,
 
@@ -37,6 +40,9 @@ impl SceneCamera {
         far: f32,
         orbit_speed: f32,
         zoom_speed: f32,
+        fly_acce_duration: f32,
+        fly_min_speed: f32,
+        fly_max_speed: f32,
         min_distance: f32,
         max_distance: f32,
     ) -> Self {
@@ -62,6 +68,9 @@ impl SceneCamera {
             pitch,
             orbit_speed,
             zoom_speed,
+            fly_acce_duration,
+            fly_min_speed,
+            fly_max_speed,
             min_distance,
             max_distance,
             fly_timer: 0.0,
@@ -91,8 +100,8 @@ impl SceneCamera {
         } else {
             self.fly_timer = 0.0;
         }
-        let ramp = (self.fly_timer / 0.3).min(1.0); // 0.3s smooth ramp
-        let speed = self.distance * (0.8 + 4.2 * ramp);
+        let ramp = (self.fly_timer / self.fly_acce_duration).min(1.0); // smooth ramp
+        let speed = self.distance * math::lerp(self.fly_min_speed, self.fly_max_speed, ramp);
         self.pivot = self.pivot
             + self.right() * (right_amount * speed * dt)
             + self.forward() * (forward_amount * speed * dt);
@@ -118,7 +127,7 @@ impl SceneCamera {
     }
 
     /// Camera up direction.
-    pub fn up(&self) -> float3 {
+    pub fn _up(&self) -> float3 {
         math::cross(self.right(), self.forward())
     }
 

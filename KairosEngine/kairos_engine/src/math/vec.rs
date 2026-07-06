@@ -10,7 +10,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::math::{Cos, Max, Min, Sin, Sqrt, Tan};
+use crate::math::{Cos, Lerp, LerpFactor, Max, Min, Sin, Sqrt, Tan};
 
 pub trait Vector
 where
@@ -35,7 +35,8 @@ where
         + Sin
         + Cos
         + Tan
-        + Sqrt,
+        + Sqrt
+        + Lerp,
 {
     fn dot(&self, r: &Self) -> f32;
 
@@ -437,6 +438,24 @@ impl Sqrt for float2 {
         Self(self.0.sqrt())
     }
 }
+impl LerpFactor<float2> for f32 {
+    #[inline(always)]
+    fn get_factor(self) -> float2 {
+        float2(f32x2::splat(self))
+    }
+}
+impl LerpFactor<float2> for float2 {
+    #[inline(always)]
+    fn get_factor(self) -> float2 {
+        self
+    }
+}
+impl Lerp for float2 {
+    #[inline(always)]
+    fn lerp(left: Self, right: Self, factor: impl LerpFactor<float2>) -> Self {
+        float2((right.0 - left.0).mul_add(factor.get_factor().0, left.0))
+    }
+}
 
 impl Serialize for float2 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -830,6 +849,24 @@ impl Sqrt for float3 {
     #[inline(always)]
     fn sqrt(self) -> Self {
         Self(self.0.sqrt())
+    }
+}
+impl LerpFactor<float3> for f32 {
+    #[inline(always)]
+    fn get_factor(self) -> float3 {
+        float3(f32x4::splat(self))
+    }
+}
+impl LerpFactor<float3> for float3 {
+    #[inline(always)]
+    fn get_factor(self) -> float3 {
+        self
+    }
+}
+impl Lerp for float3 {
+    #[inline(always)]
+    fn lerp(left: Self, right: Self, factor: impl LerpFactor<float3>) -> Self {
+        float3((right.0 - left.0).mul_add(factor.get_factor().0, left.0))
     }
 }
 
@@ -1690,6 +1727,24 @@ impl Sqrt for float4 {
     #[inline(always)]
     fn sqrt(self) -> Self {
         Self(self.0.sqrt())
+    }
+}
+impl LerpFactor<float4> for f32 {
+    #[inline(always)]
+    fn get_factor(self) -> float4 {
+        float4(f32x4::splat(self))
+    }
+}
+impl LerpFactor<float4> for float4 {
+    #[inline(always)]
+    fn get_factor(self) -> float4 {
+        self
+    }
+}
+impl Lerp for float4 {
+    #[inline(always)]
+    fn lerp(left: Self, right: Self, factor: impl LerpFactor<float4>) -> Self {
+        float4((right.0 - left.0).mul_add(factor.get_factor().0, left.0))
     }
 }
 
