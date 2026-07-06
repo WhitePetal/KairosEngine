@@ -25,7 +25,14 @@ use winit::{dpi::PhysicalSize, window::Window};
 use crate::{
     asset_loader::assets::AssetsServer,
     graphics::{
-        attachment::{AttachmentFormat, InternalAttachmentId}, graphics_graph::{self, GraphicsGraph, graphics_node::RenderPassNode}, material::Material, mesh::Mesh, render_state::RenderState, shader::ShaderAsset, texture::TextureAsset, vertex::Vertex
+        attachment::{AttachmentFormat, InternalAttachmentId},
+        graphics_graph::{self, GraphicsGraph, graphics_node::RenderPassNode},
+        material::Material,
+        mesh::Mesh,
+        render_state::RenderState,
+        shader::ShaderAsset,
+        texture::TextureAsset,
+        vertex::Vertex,
     },
     math::{float2, float3, float4, float4x4},
 };
@@ -698,20 +705,37 @@ impl RenderPipeline {
                     let cache = entry.get();
                     if cache.version == mesh_version {
                         render_pass.set_vertex_buffer(0, cache.vertex_buffer.slice(..));
-                        render_pass.set_index_buffer(cache.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+                        render_pass.set_index_buffer(
+                            cache.index_buffer.slice(..),
+                            wgpu::IndexFormat::Uint16,
+                        );
                     } else {
                         let (vb, ib) = Self::create_mesh(device, mesh);
-                        let mesh_buffer = entry.insert(MeshBufferCache { version: mesh_version, vertex_buffer: vb, index_buffer: ib });
+                        let mesh_buffer = entry.insert(MeshBufferCache {
+                            version: mesh_version,
+                            vertex_buffer: vb,
+                            index_buffer: ib,
+                        });
                         render_pass.set_vertex_buffer(0, mesh_buffer.vertex_buffer.slice(..));
-                        render_pass.set_index_buffer(mesh_buffer.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+                        render_pass.set_index_buffer(
+                            mesh_buffer.index_buffer.slice(..),
+                            wgpu::IndexFormat::Uint16,
+                        );
                     }
-                },
+                }
                 std::collections::hash_map::Entry::Vacant(entry) => {
                     let (vb, ib) = Self::create_mesh(device, mesh);
-                    let mesh_buffer = entry.insert(MeshBufferCache { version: mesh_version, vertex_buffer: vb, index_buffer: ib });
+                    let mesh_buffer = entry.insert(MeshBufferCache {
+                        version: mesh_version,
+                        vertex_buffer: vb,
+                        index_buffer: ib,
+                    });
                     render_pass.set_vertex_buffer(0, mesh_buffer.vertex_buffer.slice(..));
-                    render_pass.set_index_buffer(mesh_buffer.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-                },
+                    render_pass.set_index_buffer(
+                        mesh_buffer.index_buffer.slice(..),
+                        wgpu::IndexFormat::Uint16,
+                    );
+                }
             }
 
             let instancing_buffer = device.create_buffer_init(&BufferInitDescriptor {

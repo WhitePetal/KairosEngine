@@ -8,7 +8,6 @@ use crate::{
     asset_loader::assets::AssetsServer,
     graphics::{
         attachment::{Attachment, AttachmentLoadAction, AttachmentStoreAction},
-        camera::Camera,
         graphics_graph::{
             GraphicsCommand,
             graphics_node::{ColorAttachmentBind, DepthAttachmentBind},
@@ -23,21 +22,12 @@ use crate::{
     },
     kairos_game::KairosGame,
     math::float3,
-    spatial::Transform,
 };
 
 mod gizmos;
+mod scene_camera;
 
-struct SceneCamera {
-    transform: Transform,
-    camera: Camera,
-}
-
-impl SceneCamera {
-    pub fn get_view_projection_matrix(&self) -> crate::math::float4x4 {
-        self.camera.get_view_projection_matrix(self.transform)
-    }
-}
+use scene_camera::SceneCamera;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct SceneWindowStyle {
@@ -86,9 +76,7 @@ impl SceneWindowModel {
 
         let cam_pos = float3::new(0.0, 1.0, -2.0);
         let cam_target = float3::new(0.0, 0.0, 0.0);
-        let transform = Transform::look_at(cam_pos, cam_target, float3::UP);
-        let camera = Camera::new(45.0, 1.0, 0.3, 100.);
-        let scene_camera = SceneCamera { transform, camera };
+        let scene_camera = SceneCamera::new(cam_pos, cam_target, 45.0, 1.0, 0.3, 100.);
         let gizmos = GizmosModel::new(assets_server);
 
         Ok(Self {
@@ -128,10 +116,46 @@ impl Drawer for SceneWindow {
 
     fn ui(&self, ui: &mut egui::Ui, messager: &mut super::Messager, _log: &mut crate::log::Log) {
         let available = ui.available_size_before_wrap();
-        let (rect, _) = ui.allocate_exact_size(available, egui::Sense::click_and_drag());
+        let (rect, response) = ui.allocate_exact_size(available, egui::Sense::click_and_drag());
         let pixels_per_point = ui.pixels_per_point();
         let width = (rect.width() * pixels_per_point).round().max(1.0) as u32;
         let height = (rect.height() * pixels_per_point).round().max(1.0) as u32;
+
+        // --- Camera input (view: only sends messages, never mutates model) ---
+        if response.hovered() {
+            let delta = response.drag_delta();
+            if response.dragged_by(egui::PointerButton::Secondary)
+                || response.dragged_by(egui::PointerButton::Middle)
+            {
+                messager.send(Message::SceneCameraOrbit(delta.x, delta.y));
+            }
+            let scroll = ui.input(|i| i.smooth_scroll_delta);
+            if scroll.y != 0.0 {
+                messager.send(Message::CameraZoom(scroll.y));
+            }
+            // WASD movement
+            let w = ui.input(|i| i.key_down(egui::Key::W));
+            let s = ui.input(|i| i.key_down(egui::Key::S));
+            let a = ui.input(|i| i.key_down(egui::Key::A));
+            let d = ui.input(|i| i.key_down(egui::Key::D));
+            let forward = if w {
+                1.0
+            } else if s {
+                -1.0
+            } else {
+                0.0
+            };
+            let right = if d {
+                1.0
+            } else if a {
+                -1.0
+            } else {
+                0.0
+            };
+            if forward != 0.0 || right != 0.0 {
+                messager.send(Message::CameraFly(right, forward));
+            }
+        }
 
         if width != self.model.width || height != self.model.height {
             messager.send(Message::UpdateSceneWindowSize(width, height));
@@ -219,8 +243,8 @@ impl Drawer for SceneWindow {
             )),
         );
 
-        let vp_id = graphics_command
-            .set_view_projection_matrix(self.model.camera.get_view_projection_matrix());
+        let vp_id =
+            graphics_command.set_view_projection_matrix(self.model.camera.view_projection());
         graphics_command.begin_render_pass(
             Some("SceneWindow Render Pass"),
             vec![scene_view_bind],
@@ -272,6 +296,24 @@ impl Drawer for SceneWindow {
 }
 
 impl SceneWindow {
+    // --- Camera controller (mutates model, called from Context::handle) ---
+
+    pub fn on_camera_orbit(&mut self, dx: f32, dy: f32) {
+        self.model.camera.orbit(dx, dy);
+    }
+
+    pub fn on_camera_pan(&mut self, dx: f32, dy: f32) {
+        self.model.camera.pan(dx, dy);
+    }
+
+    pub fn on_camera_zoom(&mut self, delta: f32) {
+        self.model.camera.zoom(delta);
+    }
+
+    pub fn on_camera_fly(&mut self, right: f32, forward: f32) {
+        self.model.camera.fly(right, forward);
+    }
+
     pub fn set_rt_id(&mut self, rt_id: egui::TextureId) {
         self.model.rt_id = Some(rt_id)
     }
@@ -279,7 +321,7 @@ impl SceneWindow {
     pub fn update_size(&mut self, width: u32, height: u32) {
         self.model.width = width;
         self.model.height = height;
-        self.model.camera.camera.aspect = width as f32 / height as f32;
+        self.model.camera.aspect = width as f32 / height as f32;
     }
 
     pub fn register_view_bind(&mut self, recever: tokio::sync::oneshot::Receiver<egui::TextureId>) {

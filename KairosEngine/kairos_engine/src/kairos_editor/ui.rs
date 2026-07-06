@@ -90,6 +90,15 @@ pub enum Message {
     UpdateGameWindowSize(u32, u32),
     RegisteGameWindowViewBind(tokio::sync::oneshot::Receiver<egui::TextureId>),
     GameWindowTryReceTextureId,
+
+    /// SceneCamera orbit (dx, dy) in pixels
+    SceneCameraOrbit(f32, f32),
+    /// SceneCamera pan (dx, dy) in pixels
+    SceneCameraPan(f32, f32),
+    /// Camera zoom delta
+    CameraZoom(f32),
+    /// Camera fly movement (right, forward) each in [-1, 0, 1]
+    CameraFly(f32, f32),
 }
 
 struct KairosTabDrawer {
@@ -398,6 +407,27 @@ impl Context {
                 Message::GameWindowTryReceTextureId => {
                     if let Some(game_window) = self.get_window_mut::<GameWindow>() {
                         game_window.try_rece_texture_id();
+                    }
+                }
+                Message::SceneCameraOrbit(dx, dy) => {
+                    if let Some(scene_window) = self.get_window_mut::<SceneWindow>() {
+                        scene_window.on_camera_orbit(dx, dy);
+                    }
+                }
+                Message::SceneCameraPan(dx, dy) => {
+                    println!("SceneCameraPan");
+                    if let Some(scene_window) = self.get_window_mut::<SceneWindow>() {
+                        scene_window.on_camera_pan(dx, dy);
+                    }
+                }
+                Message::CameraZoom(delta) => {
+                    if let Some(scene_window) = self.get_window_mut::<SceneWindow>() {
+                        scene_window.on_camera_zoom(delta);
+                    }
+                }
+                Message::CameraFly(right, forward) => {
+                    if let Some(scene_window) = self.get_window_mut::<SceneWindow>() {
+                        scene_window.on_camera_fly(right, forward);
                     }
                 }
             }
