@@ -187,7 +187,7 @@ impl KairosGame {
             .audio_engine
             .update(&mut engine.assets_server, &mut engine.world, delta_time);
 
-        engine.physics_engine.update(&mut engine.world);
+        engine.physics_engine.update(&mut engine.world, delta_time);
 
         engine.input_engine.update(delta_time);
     }

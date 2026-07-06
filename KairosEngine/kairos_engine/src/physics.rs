@@ -26,6 +26,7 @@ pub struct PhysicsEngine {
     physics_hooks: (),
     event_handler: (),
     physics_pipeline: PhysicsPipeline,
+    accumulator: f32,
 }
 
 impl PhysicsEngine {
@@ -60,24 +61,37 @@ impl PhysicsEngine {
             physics_hooks,
             event_handler,
             physics_pipeline,
+            accumulator: 0.0,
         }
     }
 
-    pub fn update(&mut self, word: &mut World) {
-        self.physics_pipeline.step(
-            self.gravity.into(),
-            &self.integration_parameters,
-            &mut self.island_manager,
-            &mut self.broad_phase,
-            &mut self.narrow_phase,
-            &mut self.rigid_body_set,
-            &mut self.collider_set,
-            &mut self.impulse_joint_set,
-            &mut self.multibody_joint_set,
-            &mut self.ccd_solver,
-            &self.physics_hooks,
-            &self.event_handler,
-        );
+    pub fn update(&mut self, word: &mut World, delta_time: f32) {
+        const FIXED_DT: f32 = 1.0 / 60.0;
+        const MAX_ACCUMULATOR: f32 = 0.25;
+
+        self.accumulator += delta_time;
+        if self.accumulator > MAX_ACCUMULATOR {
+            self.accumulator = MAX_ACCUMULATOR;
+        }
+
+        while self.accumulator >= FIXED_DT {
+            self.physics_pipeline.step(
+                self.gravity.into(),
+                &self.integration_parameters,
+                &mut self.island_manager,
+                &mut self.broad_phase,
+                &mut self.narrow_phase,
+                &mut self.rigid_body_set,
+                &mut self.collider_set,
+                &mut self.impulse_joint_set,
+                &mut self.multibody_joint_set,
+                &mut self.ccd_solver,
+                &self.physics_hooks,
+                &self.event_handler,
+            );
+
+            self.accumulator -= FIXED_DT;
+        }
 
         for (transform, rigid_body) in word.query_mut::<(&mut Transform, &RigidBody)>().into_iter()
         {

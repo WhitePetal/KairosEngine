@@ -595,8 +595,10 @@ impl RenderPipeline {
 
             let mut texture_bind_group_layout = None;
             if let Some(texture) = &material.texture
-                && let Some(texture_asset) = assets_server.get(&texture)
             {
+                let Some(texture_asset) = assets_server.get(&texture) else {
+                    continue;
+                };
                 texture_bind_group_layout = Some(global_texture_bind_group_layout);
                 let texture_id = texture.id();
                 let key = texture_id.index();
