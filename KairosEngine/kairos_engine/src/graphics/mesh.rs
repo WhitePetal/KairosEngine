@@ -191,11 +191,6 @@ impl SerializedMeshAsset {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MeshAsset {
-    pub mesh: Mesh,
-}
-
 impl Mesh {
     pub fn new(vertices: Vec<Vertex>, indices: Vec<u16>) -> Self {
         Self { vertices, indices }

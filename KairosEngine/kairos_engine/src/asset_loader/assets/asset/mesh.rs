@@ -11,22 +11,22 @@ use crate::{
         },
         consts,
     },
-    graphics::mesh::{Mesh, MeshAsset, SerializedMeshAsset},
+    graphics::mesh::{Mesh, SerializedMeshAsset},
 };
 
 #[derive(Debug)]
 pub struct LoadedEvent {
     index: AssetIndex,
-    asset: MeshAsset,
+    asset: Mesh,
 }
-impl asset::LoadedEvent<MeshAsset> for LoadedEvent {
+impl asset::LoadedEvent<Mesh> for LoadedEvent {
     #[inline(always)]
     fn get_index(&self) -> AssetIndex {
         self.index
     }
 
     #[inline(always)]
-    fn get_asset(self) -> MeshAsset {
+    fn get_asset(self) -> Mesh {
         self.asset
     }
 }
@@ -68,7 +68,7 @@ impl Loader {
         let (serialized_mesh, mesh) = tokio::join!(Self::load_toml(&path), Self::load_bin(&path),);
         let _serialized_mesh = serialized_mesh?;
         let mesh = mesh?;
-        let mesh_asset = MeshAsset { mesh };
+        let mesh_asset = mesh;
 
         sender
             .send(LoadedEvent {
@@ -79,7 +79,7 @@ impl Loader {
         Ok(())
     }
 }
-impl asset::AssetLoader<LoadedEvent, MeshAsset> for Loader {
+impl asset::AssetLoader<LoadedEvent, Mesh> for Loader {
     fn load_asset(
         &self,
         path: PathBuf,
@@ -133,7 +133,7 @@ impl Default for MeshAssetsSystem {
 }
 
 impl AssetsSystem for MeshAssetsSystem {
-    type AssetType = MeshAsset;
+    type AssetType = Mesh;
 
     type LoadedEvent = LoadedEvent;
 

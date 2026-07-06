@@ -1,17 +1,14 @@
 use std::sync::Arc;
 
-use wgpu::{Color, Operations};
-
 use crate::{
     asset_loader::assets::{AssetHandle, MaterialAssetsSystem, MeshAssetsSystem},
     graphics::{
         attachment::Attachment,
         graphics_graph::graphics_node::{
             BaseDraw, BindAttachmentToEguiNode, ColorAttachmentBind, ColorAttachmentId,
-            CopyAttachmentToEguiNode, DepthAttachmentBind, DepthAttachmentId, Drawer, EguiDraw,
-            GraphNode, OutputToFrameBufferNode, RenderPassNode, SimpleMeshDraw, VPId,
+            CopyAttachmentToEguiNode, DepthAttachmentBind, DepthAttachmentId, EguiDraw, GraphNode,
+            OutputToFrameBufferNode, RenderPassNode, VPId,
         },
-        vertex::Vertex,
     },
     math::float4x4,
 };
@@ -125,31 +122,11 @@ impl GraphicsCommand {
             return;
         };
 
-        let draw_call = Drawer::Base(BaseDraw {
+        let draw_call = BaseDraw {
             mesh,
             material,
             local_to_world,
-        });
-        render_pass.draws.push(draw_call);
-    }
-
-    pub fn draw_simple_mesh(
-        &mut self,
-        vertices: Arc<Vec<Vertex>>,
-        indices: Arc<Vec<u16>>,
-        material: Arc<AssetHandle<MaterialAssetsSystem>>,
-        local_to_world: float4x4,
-    ) {
-        let RenderPassState::Writing(render_pass) = &mut self.cur_render_pass else {
-            return;
         };
-
-        let draw_call = Drawer::SimpleMesh(SimpleMeshDraw {
-            vertices,
-            indices,
-            material,
-            local_to_world,
-        });
         render_pass.draws.push(draw_call);
     }
 

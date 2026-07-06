@@ -149,21 +149,17 @@ where
 {
     weak: Weak<AssetHandle<T>>,
     relive_drops: usize,
-    /// `Some(path)` for file-loaded assets, `None` for runtime-inserted assets.
-    path: Option<PathBuf>,
-    /// `Some(key)` for runtime-inserted assets with a logical key.
-    key: Option<String>,
+    path: PathBuf,
 }
 impl<T> AssetInfo<T>
 where
     T: AssetsSystem,
 {
-    pub fn new(weak: Weak<AssetHandle<T>>, path: Option<PathBuf>, key: Option<String>) -> Self {
+    pub fn new(weak: Weak<AssetHandle<T>>, path: PathBuf) -> Self {
         Self {
             weak,
             relive_drops: 0,
             path,
-            key,
         }
     }
 }
@@ -229,8 +225,6 @@ where
     infos: Vec<AssetInfo<System>>,
     recyled_indexs: Vec<RecyledAssetIndex>,
     path_to_index: HashMap<PathBuf, AssetIndex>,
-    /// Logical keys for runtime-inserted assets (not file paths). Supports dedup.
-    key_to_index: HashMap<String, AssetIndex>,
     asset_loaded_sender: mpsc::Sender<System::LoadedEvent>,
     asset_loaded_recever: mpsc::Receiver<System::LoadedEvent>,
     asset_drop_sender: mpsc::Sender<System::DropEvent>,
@@ -258,7 +252,6 @@ where
             infos: Vec::with_capacity(capacity),
             recyled_indexs: Vec::with_capacity(capacity),
             path_to_index: HashMap::with_capacity(capacity),
-            key_to_index: HashMap::with_capacity(16),
             asset_loaded_sender,
             asset_loaded_recever,
             asset_drop_sender,
@@ -279,12 +272,7 @@ where
             }
             self.storages[pos] = Entry::None;
             self.recyled_indexs.push(index.into());
-            if let Some(ref path) = info.path {
-                self.path_to_index.remove(path);
-            }
-            if let Some(ref key) = info.key {
-                self.key_to_index.remove(key);
-            }
+            self.path_to_index.remove(&info.path);
         }
 
         while let Ok(event) = self.asset_loaded_recever.try_recv() {
@@ -344,8 +332,7 @@ where
                     // on_completed,
                     denpendency_request_sender,
                 );
-                let (handle, info) =
-                    self.create_asset_handle(Some(PathBuf::from(path)), None, asset_index);
+                let (handle, info) = self.create_asset_handle(path, asset_index);
                 self.infos.push(info);
                 handle
             }
@@ -362,8 +349,7 @@ where
                         // on_completed,
                         denpendency_request_sender,
                     );
-                    let (handle, info) =
-                        self.create_asset_handle(Some(PathBuf::from(path)), None, asset_index);
+                    let (handle, info) = self.create_asset_handle(path, asset_index);
                     self.infos[asset_index.index] = info;
                     handle
                 } else {
@@ -376,14 +362,13 @@ where
     #[inline(always)]
     fn create_asset_handle(
         &mut self,
-        path: Option<PathBuf>,
-        key: Option<String>,
+        path: &PathBuf,
         asset_index: AssetIndex,
     ) -> (Arc<AssetHandle<System>>, AssetInfo<System>) {
         let sender = self.asset_drop_sender.clone();
         let handle = AssetHandle::new(asset_index, sender);
         let handle = Arc::new(handle);
-        let info = AssetInfo::new(Arc::downgrade(&handle), path, key);
+        let info = AssetInfo::new(Arc::downgrade(&handle), path.clone());
         (handle, info)
     }
 
@@ -446,16 +431,10 @@ where
     /// Returns an `Arc<AssetHandle>` that participates in the normal lifecycle.
     ///
     /// If `key` is provided, the same key always returns the same handle (dedup).
-    pub fn insert(
-        &mut self,
-        asset: System::AssetType,
-        key: Option<String>,
-    ) -> Arc<AssetHandle<System>> {
+    pub fn insert(&mut self, asset: System::AssetType, path: PathBuf) -> Arc<AssetHandle<System>> {
         // 1. If a key is provided and already exists, return existing handle.
-        if let Some(ref k) = key {
-            if let Some(&existing_index) = self.key_to_index.get(k) {
-                return self.get_asset_handle(existing_index);
-            }
+        if let Some(&existing_index) = self.path_to_index.get(&path) {
+            return self.get_asset_handle(existing_index);
         }
 
         // 2. Allocate a slot.
@@ -468,12 +447,10 @@ where
         };
 
         // 4. Register key if provided.
-        if let Some(ref k) = key {
-            self.key_to_index.insert(k.clone(), asset_index);
-        }
+        self.path_to_index.insert(path.clone(), asset_index);
 
         // 5. Create the handle and info (no path).
-        let (handle, info) = self.create_asset_handle(None, key, asset_index);
+        let (handle, info) = self.create_asset_handle(&path, asset_index);
         self.infos.push(info);
         handle
     }

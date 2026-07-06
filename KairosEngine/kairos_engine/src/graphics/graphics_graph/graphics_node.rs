@@ -57,100 +57,16 @@ impl DepthAttachmentBind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct VPId(pub usize);
 
-pub enum Drawer {
-    Base(BaseDraw),
-    SimpleMesh(SimpleMeshDraw),
-}
-
 pub struct BaseDraw {
     pub mesh: Arc<AssetHandle<MeshAssetsSystem>>,
     pub material: Arc<AssetHandle<MaterialAssetsSystem>>,
     pub local_to_world: float4x4,
 }
-pub struct SimpleMeshDraw {
-    pub vertices: Arc<Vec<Vertex>>,
-    pub indices: Arc<Vec<u16>>,
-    pub material: Arc<AssetHandle<MaterialAssetsSystem>>,
-    pub local_to_world: float4x4,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum InstancingRenderer {
-    Base(BaseInstancingRenderer),
-    SimpleMesh(SimpleMeshInstancingRenderer),
-}
-impl InstancingRenderer {
-    pub fn get_vertices_indices<'a>(
-        &'a self,
-        assets_server: &'a AssetsServer,
-    ) -> Option<(&'a Vec<Vertex>, &'a Vec<u16>)> {
-        match self {
-            InstancingRenderer::Base(base_instancing_renderer) => {
-                base_instancing_renderer.get_vertices_indices(assets_server)
-            }
-            InstancingRenderer::SimpleMesh(simple_mesh_instancing_renderer) => {
-                simple_mesh_instancing_renderer.get_vertices_indices()
-            }
-        }
-    }
-    pub fn get_material<'a>(&'a self, assets_server: &'a AssetsServer) -> Option<&'a Material> {
-        match self {
-            InstancingRenderer::Base(base_instancing_renderer) => {
-                base_instancing_renderer.get_material(assets_server)
-            }
-            InstancingRenderer::SimpleMesh(simple_mesh_instancing_renderer) => {
-                simple_mesh_instancing_renderer.get_material(assets_server)
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct BaseInstancingRenderer {
+pub struct InstancingRenderer {
     pub mesh: Arc<AssetHandle<MeshAssetsSystem>>,
     pub material: Arc<AssetHandle<MaterialAssetsSystem>>,
-}
-impl BaseInstancingRenderer {
-    pub fn get_vertices_indices<'a>(
-        &'a self,
-        assets_server: &'a AssetsServer,
-    ) -> Option<(&'a Vec<Vertex>, &'a Vec<u16>)> {
-        let Some(mesh_asset) = assets_server.get(&self.mesh) else {
-            return None;
-        };
-        Some((&mesh_asset.mesh.vertices, &mesh_asset.mesh.indices))
-    }
-    pub fn get_material<'a>(&'a self, assets_server: &'a AssetsServer) -> Option<&'a Material> {
-        let Some(material) = assets_server.get(&self.material) else {
-            return None;
-        };
-        Some(material)
-    }
-}
-#[derive(Debug, Clone, PartialEq)]
-pub struct SimpleMeshInstancingRenderer {
-    pub vertices: Arc<Vec<Vertex>>,
-    pub indices: Arc<Vec<u16>>,
-    pub material: Arc<AssetHandle<MaterialAssetsSystem>>,
-}
-impl Hash for SimpleMeshInstancingRenderer {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        (Arc::as_ptr(&self.vertices) as usize).hash(state);
-        (Arc::as_ptr(&self.indices) as usize).hash(state);
-        self.material.hash(state);
-    }
-}
-impl Eq for SimpleMeshInstancingRenderer {}
-impl SimpleMeshInstancingRenderer {
-    pub fn get_vertices_indices(&self) -> Option<(&Vec<Vertex>, &Vec<u16>)> {
-        Some((&self.vertices, &self.indices))
-    }
-    pub fn get_material<'a>(&'a self, assets_server: &'a AssetsServer) -> Option<&'a Material> {
-        let Some(material) = assets_server.get(&self.material) else {
-            return None;
-        };
-        Some(material)
-    }
 }
 
 #[derive(Debug)]
@@ -164,10 +80,18 @@ impl InstancingDraw {
         &'a self,
         assets_server: &'a AssetsServer,
     ) -> Option<(&'a Vec<Vertex>, &'a Vec<u16>)> {
-        self.renderer.get_vertices_indices(assets_server)
+        if let Some(mesh) = assets_server.get(&self.renderer.mesh) {
+            Some((&mesh.vertices, &mesh.indices))
+        } else {
+            None
+        }
     }
     pub fn get_material<'a>(&'a self, assets_server: &'a AssetsServer) -> Option<&'a Material> {
-        self.renderer.get_material(assets_server)
+        if let Some(material) = assets_server.get(&self.renderer.material) {
+            Some(material)
+        } else {
+            None
+        }
     }
 }
 
@@ -191,7 +115,7 @@ pub struct RenderPassNode {
     pub attachments: Vec<ColorAttachmentBind>,
     pub depth_stencil_attachment: Option<DepthAttachmentBind>,
     pub vp_id: VPId,
-    pub draws: Vec<Drawer>,
+    pub draws: Vec<BaseDraw>,
     pub draw_instances: Vec<InstancingDraw>,
     pub egui_draw: Option<EguiDraw>,
 }

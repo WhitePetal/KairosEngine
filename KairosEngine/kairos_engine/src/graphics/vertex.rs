@@ -36,4 +36,14 @@ impl Vertex {
             tangent: float4::ZERO,
         }
     }
+
+    pub fn with_position_color(position: float3, color: float4) -> Self {
+        Self {
+            position: position.append(1.0),
+            color,
+            texcoord: crate::math::float2::ZERO,
+            normal: float3::ZERO,
+            tangent: float4::new(0.0, 0.0, 0.0, 0.0),
+        }
+    }
 }
