@@ -75,25 +75,6 @@ pub struct InstancingDraw {
     pub local_to_worlds: Vec<float4x4>,
     pub sort_id: usize,
 }
-impl InstancingDraw {
-    pub fn get_vertices_indices<'a>(
-        &'a self,
-        assets_server: &'a AssetsServer,
-    ) -> Option<(&'a Vec<Vertex>, &'a Vec<u16>)> {
-        if let Some(mesh) = assets_server.get(&self.renderer.mesh) {
-            Some((&mesh.vertices, &mesh.indices))
-        } else {
-            None
-        }
-    }
-    pub fn get_material<'a>(&'a self, assets_server: &'a AssetsServer) -> Option<&'a Material> {
-        if let Some(material) = assets_server.get(&self.renderer.material) {
-            Some(material)
-        } else {
-            None
-        }
-    }
-}
 
 pub struct EguiDraw {
     pub paint_jobs: Vec<egui::ClippedPrimitive>,

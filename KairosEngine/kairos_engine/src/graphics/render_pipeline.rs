@@ -25,13 +25,7 @@ use winit::{dpi::PhysicalSize, window::Window};
 use crate::{
     asset_loader::assets::AssetsServer,
     graphics::{
-        attachment::{AttachmentFormat, InternalAttachmentId},
-        graphics_graph::{self, GraphicsGraph, graphics_node::RenderPassNode},
-        material::Material,
-        render_state::RenderState,
-        shader::ShaderAsset,
-        texture::TextureAsset,
-        vertex::Vertex,
+        attachment::{AttachmentFormat, InternalAttachmentId}, graphics_graph::{self, GraphicsGraph, graphics_node::RenderPassNode}, material::Material, mesh::Mesh, render_state::RenderState, shader::ShaderAsset, texture::TextureAsset, vertex::Vertex
     },
     math::{float2, float3, float4, float4x4},
 };
@@ -51,6 +45,12 @@ struct TextureCache {
     bind_group: BindGroup,
 }
 
+struct MeshBufferCache {
+    version: u32,
+    vertex_buffer: wgpu::Buffer,
+    index_buffer: wgpu::Buffer,
+}
+
 pub struct RenderPipeline {
     _window: Arc<Window>,
     pub device: Device,
@@ -66,6 +66,7 @@ pub struct RenderPipeline {
 
     pipeline_cache: HashMap<PipelineKey, PipelineCache>,
     texture_cache: HashMap<usize, TextureCache>,
+    mesh_buffer_cache: HashMap<usize, MeshBufferCache>,
     global_vp_bind_group_layout: BindGroupLayout,
     global_texture_bind_group_layout: BindGroupLayout,
 }
@@ -174,6 +175,7 @@ impl RenderPipeline {
 
             pipeline_cache: HashMap::new(),
             texture_cache: HashMap::new(),
+            mesh_buffer_cache: HashMap::new(),
             global_vp_bind_group_layout,
             global_texture_bind_group_layout,
         })
@@ -347,6 +349,7 @@ impl RenderPipeline {
                         &mut encoder,
                         &mut self.pipeline_cache,
                         &mut self.texture_cache,
+                        &mut self.mesh_buffer_cache,
                         &mut self.egui_renderer,
                         &render_pass_color_attachments,
                         &render_pass_depth_attachments,
@@ -420,6 +423,7 @@ impl RenderPipeline {
         encoder: &mut CommandEncoder,
         pipeline_cache: &mut HashMap<PipelineKey, PipelineCache>,
         texture_cache: &mut HashMap<usize, TextureCache>,
+        mesh_buffer_cache: &mut HashMap<usize, MeshBufferCache>,
         egui_renderer: &mut egui_wgpu::Renderer,
         render_pass_color_attachments: &Vec<RenderPassColorAttachment>,
         render_pass_depth_attachments: &Vec<RenderPassDepthStencilAttachment>,
@@ -564,11 +568,11 @@ impl RenderPipeline {
 
         let draws = &render_pass_node.draw_instances;
         for draw in draws {
-            let Some((vertices, indices)) = draw.get_vertices_indices(assets_server) else {
+            let Some(mesh) = assets_server.get(&draw.renderer.mesh) else {
                 // println!("fk mesh is none! {:?}", draw);
                 continue;
             };
-            let Some(material) = draw.get_material(assets_server) else {
+            let Some(material) = assets_server.get(&draw.renderer.material) else {
                 // println!("fk material is none! {:?}", draw);
                 continue;
             };
@@ -685,18 +689,30 @@ impl RenderPipeline {
                 }
             };
 
-            let vertex_buffer = device.create_buffer_init(&BufferInitDescriptor {
-                label: Some("Vertex Buffer"),
-                contents: bytemuck::cast_slice(vertices),
-                usage: BufferUsages::VERTEX,
-            });
-
-            let indices_buffer = device.create_buffer_init(&BufferInitDescriptor {
-                label: Some("Indices Buffer"),
-                contents: bytemuck::cast_slice(indices),
-                usage: BufferUsages::INDEX,
-            });
-            let indices_num = indices.len() as u32;
+            let mesh_id = draw.renderer.mesh.id();
+            let mesh_key = mesh_id.index();
+            let mesh_version = mesh_id.version();
+            let indices_num = mesh.indices.len() as u32;
+            match mesh_buffer_cache.entry(mesh_key) {
+                std::collections::hash_map::Entry::Occupied(mut entry) => {
+                    let cache = entry.get();
+                    if cache.version == mesh_version {
+                        render_pass.set_vertex_buffer(0, cache.vertex_buffer.slice(..));
+                        render_pass.set_index_buffer(cache.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+                    } else {
+                        let (vb, ib) = Self::create_mesh(device, mesh);
+                        let mesh_buffer = entry.insert(MeshBufferCache { version: mesh_version, vertex_buffer: vb, index_buffer: ib });
+                        render_pass.set_vertex_buffer(0, mesh_buffer.vertex_buffer.slice(..));
+                        render_pass.set_index_buffer(mesh_buffer.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+                    }
+                },
+                std::collections::hash_map::Entry::Vacant(entry) => {
+                    let (vb, ib) = Self::create_mesh(device, mesh);
+                    let mesh_buffer = entry.insert(MeshBufferCache { version: mesh_version, vertex_buffer: vb, index_buffer: ib });
+                    render_pass.set_vertex_buffer(0, mesh_buffer.vertex_buffer.slice(..));
+                    render_pass.set_index_buffer(mesh_buffer.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+                },
+            }
 
             let instancing_buffer = device.create_buffer_init(&BufferInitDescriptor {
                 label: Some("Instancing Bufferr"),
@@ -704,9 +720,7 @@ impl RenderPipeline {
                 usage: BufferUsages::VERTEX,
             });
 
-            render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
             render_pass.set_vertex_buffer(1, instancing_buffer.slice(..));
-            render_pass.set_index_buffer(indices_buffer.slice(..), wgpu::IndexFormat::Uint16);
             render_pass.draw_indexed(0..indices_num, 0, 0..draw.local_to_worlds.len() as u32);
         }
 
@@ -937,5 +951,19 @@ impl RenderPipeline {
                 },
             ],
         })
+    }
+
+    fn create_mesh(device: &Device, mesh: &Mesh) -> (wgpu::Buffer, wgpu::Buffer) {
+        let vb = device.create_buffer_init(&BufferInitDescriptor {
+            label: Some("Vertex Buffer"),
+            contents: bytemuck::cast_slice(&mesh.vertices),
+            usage: BufferUsages::VERTEX,
+        });
+        let ib = device.create_buffer_init(&BufferInitDescriptor {
+            label: Some("Index Buffer"),
+            contents: bytemuck::cast_slice(&mesh.indices),
+            usage: BufferUsages::INDEX,
+        });
+        (vb, ib)
     }
 }
