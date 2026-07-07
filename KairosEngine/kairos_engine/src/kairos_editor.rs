@@ -6,6 +6,7 @@ use crate::{
 use egui::Visuals;
 use winit::event::KeyEvent;
 
+pub mod asset_registry;
 pub mod consts;
 pub mod project_path_tree;
 pub mod runtime;

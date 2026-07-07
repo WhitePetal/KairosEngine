@@ -1,16 +1,18 @@
-use std::{any::type_name, fs, path::Path};
+pub mod hierarchy_panel;
+
+use std::{any::type_name, fs};
 
 use crate::{
+    asset_loader::assets::AssetsServer,
     kairos_editor::{
         Engine,
-        project_path_tree::{ProjectPath, ProjectPathGraph},
+        asset_registry::AssetRegistry,
+        project_path_tree::ProjectPathGraph,
         ui::Messager,
     },
     kairos_game::KairosGame,
     log::Log,
 };
-use egui::{Button, WidgetText};
-use petgraph::visit::EdgeRef;
 use serde::{Deserialize, Serialize};
 use toml::from_str;
 
@@ -23,6 +25,7 @@ struct ProjectWindowStyle {
 
 struct ProjectWindowModel {
     style: ProjectWindowStyle,
+    asset_registry: AssetRegistry,
     project_path_graph: ProjectPathGraph,
 }
 
@@ -53,10 +56,23 @@ impl ProjectWindowModel {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let style = ProjectWindowStyle::new()?;
 
-        let project_path_graph = ProjectPathGraph::new();
+        // 从磁盘加载已有 Registry（不存在则创建空表）
+        let mut asset_registry = AssetRegistry::load().unwrap_or_else(|e| {
+            log::warn!("Failed to load AssetRegistry, creating new one: {}", e);
+            AssetRegistry::new()
+        });
+
+        // 扫描项目目录，生成/复用 GUID
+        let project_path_graph = ProjectPathGraph::new(&mut asset_registry);
+
+        // 持久化 registry（确保新扫描到的文件 GUID 被保存）
+        if let Err(e) = asset_registry.save() {
+            log::warn!("Failed to save AssetRegistry: {}", e);
+        }
 
         Ok(Self {
             style,
+            asset_registry,
             project_path_graph,
         })
     }
@@ -72,7 +88,7 @@ impl ProjectWindow {
 
 impl Drawer for ProjectWindow {
     fn create(
-        _assets_server: &mut crate::asset_loader::assets::AssetsServer,
+        _assets_server: &mut AssetsServer,
     ) -> Result<Self, Box<dyn std::error::Error>>
     where
         Self: Sized,
@@ -89,7 +105,11 @@ impl Drawer for ProjectWindow {
         _engine: &Engine,
         _log: &mut Log,
     ) {
-        self.draw_dir(ui, self.model.project_path_graph.get_root_node());
+        hierarchy_panel::draw(
+            ui,
+            &self.model.project_path_graph,
+            &self.model.asset_registry,
+        );
     }
 
     fn close(&self, messager: &mut super::Messager) {
@@ -117,49 +137,5 @@ impl Drawer for ProjectWindow {
         _messager: &mut Messager,
     ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {
         None
-    }
-}
-
-impl ProjectWindow {
-    fn draw_dir(&self, ui: &mut egui::Ui, node: petgraph::graph::NodeIndex) {
-        let Some(pp) = self.model.project_path_graph.get_path(node) else {
-            return;
-        };
-
-        match pp {
-            ProjectPath::Dir(_) => {
-                // println!("TODO Draw Path Dir: {:?}", path_buf)
-            }
-            ProjectPath::Texture(texture_path) => {
-                let image_path = Path::new("file://");
-                let mut image_path = image_path.join(&texture_path.path);
-                if image_path.set_extension("png") {
-                    let p = image_path.to_string_lossy();
-                    let icon = egui::Image::new(egui::ImageSource::Uri(p));
-                    let icon = icon.fit_to_exact_size(egui::Vec2 { x: 64.0, y: 64.0 });
-                    let text = match texture_path.file_name.to_str() {
-                        Some(str) => {
-                            let rich_text = egui::RichText::new(str);
-                            let rich_text = rich_text.size(16.0);
-                            let text = WidgetText::from(rich_text);
-                            Some(text)
-                        }
-                        None => None,
-                    };
-                    let bt = Button::opt_image_and_text(Some(icon), text);
-                    let bt = ui.add(bt);
-                    if bt.clicked() {}
-                }
-            }
-            ProjectPath::Asset(_) => {
-                // println!("TODO Draw Path Asset: {:?}", path_buf)
-            }
-        }
-
-        let edges = self.model.project_path_graph.get_edges(node);
-        edges.for_each(|edge| {
-            let target = edge.target();
-            self.draw_dir(ui, target);
-        });
     }
 }
