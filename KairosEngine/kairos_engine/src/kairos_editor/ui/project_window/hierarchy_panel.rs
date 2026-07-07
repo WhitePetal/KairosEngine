@@ -129,6 +129,8 @@ fn kind_suffix(kind: &ProjectNodeKind) -> Option<&'static str> {
         ProjectNodeKind::Audio => Some(".audio"),
         ProjectNodeKind::Shader => Some(".wgsl"),
         ProjectNodeKind::GenericAsset => Some(".asset"),
+        ProjectNodeKind::Script => Some(".rs"),
+        ProjectNodeKind::Document => None, // .md/.txt 不加后缀，保持简洁
         ProjectNodeKind::Unknown => None,
     }
 }

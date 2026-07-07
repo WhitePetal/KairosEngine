@@ -22,6 +22,8 @@ use crate::kairos_editor::asset_registry::Guid;
 /// | `.audio`      | `Audio`           |
 /// | `.wgsl`       | `Shader`          |
 /// | `.asset`      | `GenericAsset`    |
+/// | `.rs`         | `Script`          |
+/// | `.md` / `.txt`| `Document`        |
 /// | 其他          | `Unknown`         |
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProjectNodeKind {
@@ -32,6 +34,8 @@ pub enum ProjectNodeKind {
     Audio,
     Shader,
     GenericAsset,
+    Script,
+    Document,
     Unknown,
 }
 
@@ -45,6 +49,8 @@ impl ProjectNodeKind {
             Some("audio") => Self::Audio,
             Some("wgsl") => Self::Shader,
             Some("asset") => Self::GenericAsset,
+            Some("rs") => Self::Script,
+            Some("md" | "txt") => Self::Document,
             _ => Self::Unknown,
         }
     }
