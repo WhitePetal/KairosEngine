@@ -31,7 +31,7 @@ struct GameWindowModel {
     rt_id: Option<egui::TextureId>,
     width: u32,
     height: u32,
-    recever: Option<tokio::sync::oneshot::Receiver<egui::TextureId>>,
+    egui_bind_tex_recever: Option<tokio::sync::oneshot::Receiver<egui::TextureId>>,
     drop_texture_id: Option<egui::TextureId>,
 }
 
@@ -63,7 +63,7 @@ impl GameWindowModel {
             rt_id: None,
             width: 1,
             height: 1,
-            recever: None,
+            egui_bind_tex_recever: None,
             drop_texture_id: None,
         })
     }
@@ -143,10 +143,6 @@ impl Drawer for GameWindow {
             messager.send(Message::UpdateGameWindowSize(width, height));
         }
 
-        if self.model.recever.is_some() {
-            messager.send(Message::GameWindowTryReceTextureId);
-        }
-
         if let Some(rt_id) = self.model.rt_id {
             ui.painter().image(
                 rt_id,
@@ -186,6 +182,11 @@ impl Drawer for GameWindow {
         messager: &mut super::Messager,
     ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {
         let mut graphics_command = GraphicsCommand::new(16, 2, 4, 16);
+
+        if self.model.egui_bind_tex_recever.is_some() {
+            messager.send(Message::GameWindowTryReceTextureId);
+        }
+
         // clear last rt_id
         if let Some(drop_texture_id) = self.model.drop_texture_id {
             graphics_command.free_egui_texture_id(drop_texture_id);
@@ -245,33 +246,29 @@ impl Drawer for GameWindow {
             game.render(engine, &mut graphics_command);
 
             graphics_command.end_render_pass();
-
-            let (egui_bind_tex_sender, egui_bind_tex_recever) = tokio::sync::oneshot::channel();
-            messager.send(Message::RegisteGameWindowViewBind(egui_bind_tex_recever));
-            graphics_command.bind_attachment_to_egui(game_view_id, egui_bind_tex_sender);
         };
+
+        let (egui_bind_tex_sender, egui_bind_tex_recever) = tokio::sync::oneshot::channel();
+        messager.send(Message::RegisteGameWindowViewBind(egui_bind_tex_recever));
+        graphics_command.bind_attachment_to_egui(game_view_id, egui_bind_tex_sender);
 
         Some(graphics_command)
     }
 }
 
 impl GameWindow {
-    pub fn set_rt_id(&mut self, rt_id: egui::TextureId) {
-        self.model.rt_id = Some(rt_id)
-    }
-
     pub fn update_size(&mut self, width: u32, height: u32) {
         self.model.width = width;
         self.model.height = height;
     }
 
     pub fn register_view_bind(&mut self, recever: tokio::sync::oneshot::Receiver<egui::TextureId>) {
-        self.model.recever = Some(recever);
+        self.model.egui_bind_tex_recever = Some(recever);
     }
 
     pub fn try_rece_texture_id(&mut self) {
         let received = {
-            match &mut self.model.recever {
+            match &mut self.model.egui_bind_tex_recever {
                 Some(recever) => match recever.try_recv() {
                     Ok(texture_id) => {
                         self.model.drop_texture_id = self.model.rt_id.take();
@@ -284,7 +281,7 @@ impl GameWindow {
             }
         };
         if received {
-            self.model.recever.take();
+            self.model.egui_bind_tex_recever.take();
         }
     }
 }

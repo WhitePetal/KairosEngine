@@ -1,4 +1,4 @@
-use std::{any::type_name, fs};
+use std::{any::type_name, cell::Cell, fs};
 
 use egui::pos2;
 use serde::{Deserialize, Serialize};
@@ -56,8 +56,8 @@ struct SceneWindowModel {
     rt_id: Option<egui::TextureId>,
     width: u32,
     height: u32,
-    recever: Option<tokio::sync::oneshot::Receiver<egui::TextureId>>,
-    drop_texture_id: Option<egui::TextureId>,
+    egui_bind_tex_recever: Option<tokio::sync::oneshot::Receiver<egui::TextureId>>,
+    drop_texture_id: Cell<Option<egui::TextureId>>,
 
     camera: SceneCamera,
     gizmos: GizmosModel,
@@ -112,8 +112,8 @@ impl SceneWindowModel {
             rt_id: None,
             width: 1,
             height: 1,
-            recever: None,
-            drop_texture_id: None,
+            egui_bind_tex_recever: None,
+            drop_texture_id: Cell::new(None),
             camera: scene_camera,
             gizmos,
         })
@@ -194,10 +194,6 @@ impl Drawer for SceneWindow {
 
         if width != self.model.width || height != self.model.height {
             messager.send(Message::UpdateSceneWindowSize(width, height));
-        }
-
-        if self.model.recever.is_some() {
-            messager.send(Message::SceneWindowTryReceTextureId);
         }
 
         if let Some(rt_id) = self.model.rt_id {
@@ -372,8 +368,13 @@ impl Drawer for SceneWindow {
         messager: &mut super::Messager,
     ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {
         let mut graphics_command = GraphicsCommand::new(16, 2, 4, 16);
-        // clear last rt_id
-        if let Some(drop_texture_id) = self.model.drop_texture_id {
+
+        if self.model.egui_bind_tex_recever.is_some() {
+            messager.send(Message::SceneWindowTryReceTextureId);
+        }
+
+        // Free previous texture exactly once, then clear.
+        if let Some(drop_texture_id) = self.model.drop_texture_id.take() {
             graphics_command.free_egui_texture_id(drop_texture_id);
         }
 
@@ -455,9 +456,12 @@ impl Drawer for SceneWindow {
 
         graphics_command.end_render_pass();
 
-        let (egui_bind_tex_sender, egui_bind_tex_recever) = tokio::sync::oneshot::channel();
-        messager.send(Message::RegisteSceneWindowViewBind(egui_bind_tex_recever));
-        graphics_command.bind_attachment_to_egui(scene_view_id, egui_bind_tex_sender);
+        // Only create a new egui bind if the previous one has been consumed.
+        if self.model.egui_bind_tex_recever.is_none() {
+            let (egui_bind_tex_sender, egui_bind_tex_recever) = tokio::sync::oneshot::channel();
+            messager.send(Message::RegisteSceneWindowViewBind(egui_bind_tex_recever));
+            graphics_command.bind_attachment_to_egui(scene_view_id, egui_bind_tex_sender);
+        }
 
         Some(graphics_command)
     }
@@ -478,10 +482,6 @@ impl SceneWindow {
         self.model.camera.fly(right, forward, dt);
     }
 
-    pub fn set_rt_id(&mut self, rt_id: egui::TextureId) {
-        self.model.rt_id = Some(rt_id)
-    }
-
     pub fn update_size(&mut self, width: u32, height: u32) {
         self.model.width = width;
         self.model.height = height;
@@ -489,16 +489,16 @@ impl SceneWindow {
     }
 
     pub fn register_view_bind(&mut self, recever: tokio::sync::oneshot::Receiver<egui::TextureId>) {
-        self.model.recever = Some(recever);
+        self.model.egui_bind_tex_recever = Some(recever);
         // self.try_rece_texture_id();
     }
 
     pub fn try_rece_texture_id(&mut self) {
         let received = {
-            match &mut self.model.recever {
+            match &mut self.model.egui_bind_tex_recever {
                 Some(recever) => match recever.try_recv() {
                     Ok(texuter_id) => {
-                        self.model.drop_texture_id = self.model.rt_id.take();
+                        self.model.drop_texture_id.set(self.model.rt_id.take());
                         self.model.rt_id = Some(texuter_id);
                         true
                     }
@@ -508,7 +508,7 @@ impl SceneWindow {
             }
         };
         if received {
-            self.model.recever.take();
+            self.model.egui_bind_tex_recever.take();
         }
     }
 }

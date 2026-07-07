@@ -48,7 +48,14 @@ fn draw_node(
 
     match &node_data.kind {
         ProjectNodeKind::Directory => draw_directory(
-            ui, graph, node, node_data, icons, colors, messager, selected_node,
+            ui,
+            graph,
+            node,
+            node_data,
+            icons,
+            colors,
+            messager,
+            selected_node,
         ),
         _ => draw_file(ui, node, node_data, icons, colors, messager, selected_node),
     }
@@ -111,8 +118,11 @@ fn draw_directory(
                 egui::pos2(header_right, row_y),
                 egui::pos2(row_width, row_y + row_height),
             );
-            let right_click =
-                ui.interact(right_rect, ui.id().with(("right", node.index())), egui::Sense::click());
+            let right_click = ui.interact(
+                right_rect,
+                ui.id().with(("right", node.index())),
+                egui::Sense::click(),
+            );
             clicked = right_click.clicked();
         }
     }
@@ -148,8 +158,8 @@ fn draw_file(
     // 2. 渲染内容（在背景上方）
     ui.horizontal(|ui| {
         let icon_path = format!("file://{}", icons.for_kind(node_data));
-        let icon = egui::Image::new(egui::ImageSource::Uri(icon_path.into()))
-            .fit_to_exact_size(icon_size);
+        let icon =
+            egui::Image::new(egui::ImageSource::Uri(icon_path.into())).fit_to_exact_size(icon_size);
         ui.add(icon);
 
         let name = node_name(node_data);
@@ -166,7 +176,11 @@ fn draw_file(
 
     // 3. 全宽点击覆盖层（后注册 = 优先响应点击）
     let row_rect = egui::Rect::from_min_size(row_start, egui::vec2(row_width, row_height));
-    let response = ui.interact(row_rect, ui.id().with(("row", node.index())), egui::Sense::click());
+    let response = ui.interact(
+        row_rect,
+        ui.id().with(("row", node.index())),
+        egui::Sense::click(),
+    );
     if response.clicked() {
         messager.send(Message::SelectProjectDirectoryNode(node.index()));
     }

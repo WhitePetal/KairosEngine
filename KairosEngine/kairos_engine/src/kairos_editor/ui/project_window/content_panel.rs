@@ -95,8 +95,7 @@ fn draw_cell(
     let is_selected = selected_node == Some(node);
 
     // 1. 分配空间
-    let (rect, _) =
-        ui.allocate_exact_size(Vec2::new(CELL_WIDTH, 90.0), egui::Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(CELL_WIDTH, 90.0), egui::Sense::hover());
 
     // 2. 选中背景（在内容下方）
     if is_selected {
@@ -114,8 +113,8 @@ fn draw_cell(
     let [iw, ih] = icons.size;
     let icon_size = Vec2::new(iw.max(CELL_WIDTH - 8.0), ih);
     let icon_path = format!("file://{}", icons.for_kind(node_data));
-    let icon = egui::Image::new(egui::ImageSource::Uri(icon_path.into()))
-        .fit_to_exact_size(icon_size);
+    let icon =
+        egui::Image::new(egui::ImageSource::Uri(icon_path.into())).fit_to_exact_size(icon_size);
     cell_ui.add(icon);
 
     let name = node_data.name.to_string_lossy();
@@ -123,7 +122,11 @@ fn draw_cell(
     cell_ui.label(label);
 
     // 4. 点击覆盖层（后注册 = 优先响应）
-    let response = ui.interact(rect, ui.id().with(("cell", node.index())), egui::Sense::click());
+    let response = ui.interact(
+        rect,
+        ui.id().with(("cell", node.index())),
+        egui::Sense::click(),
+    );
     if response.clicked() {
         messager.send(Message::SelectProjectDirectoryNode(node.index()));
     }

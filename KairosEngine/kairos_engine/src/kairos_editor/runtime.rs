@@ -355,10 +355,10 @@ impl KairosEditorRuntime {
                     }
                     wgpu::CurrentSurfaceTexture::Occluded => {}
                     wgpu::CurrentSurfaceTexture::Timeout => {
-                        log::warn!("wgpu surface timeout");
+                        println!("wgpu surface timeout");
                     }
                     wgpu::CurrentSurfaceTexture::Validation => {
-                        log::warn!("wgpu surface validation error");
+                        println!("wgpu surface validation error");
                     }
                     wgpu::CurrentSurfaceTexture::Success(_)
                     | wgpu::CurrentSurfaceTexture::Suboptimal(_) => {
@@ -373,14 +373,14 @@ impl KairosEditorRuntime {
             // Throttle to monitor refresh rate. D3D12 flip-model swapchains
             // do not block on get_current_texture(), so vsync does not provide
             // CPU back-pressure. We sleep for the remainder of the frame budget.
-            let elapsed = self.frame_start.elapsed();
-            if elapsed < self.min_frame_interval {
-                std::thread::sleep(self.min_frame_interval - elapsed);
-            }
-            self.frame_start = Instant::now();
+            // let elapsed = self.frame_start.elapsed();
+            // if elapsed < self.min_frame_interval {
+            //     std::thread::sleep(self.min_frame_interval - elapsed);
+            // }
+            // self.frame_start = Instant::now();
         }
-
         window.request_redraw();
+
 
         if should_close {
             self.shutdown(event_loop);
@@ -474,6 +474,7 @@ impl ApplicationHandler<KairosEditorRuntimeEvent> for KairosEditorRuntime {
                 }
             }
             KairosEditorRuntimeEvent::RenderPipelineCrash => {
+                println!("KairosEditorRuntimeEvent::RenderPipelineCrash");
                 self.shutdown(event_loop);
             }
         }

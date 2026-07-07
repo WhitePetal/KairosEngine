@@ -80,7 +80,6 @@ pub enum Message {
     CloseProjectTab,
     OpenSceneTab,
     CloseSceneTab,
-    CreateSceneTabRt(egui::TextureId),
     /// (widht, height)
     UpdateSceneWindowSize(u32, u32),
     RegisteSceneWindowViewBind(tokio::sync::oneshot::Receiver<egui::TextureId>),
@@ -370,16 +369,12 @@ impl Context {
                 }
                 Message::SelectProjectDirectoryNode(node_idx) => {
                     if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
-                        project_window.select_node(
-                            petgraph::graph::NodeIndex::new(node_idx),
-                        );
+                        project_window.select_node(petgraph::graph::NodeIndex::new(node_idx));
                     }
                 }
                 Message::NavigateToProjectDirectory(node_idx) => {
                     if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
-                        project_window.navigate_to(
-                            petgraph::graph::NodeIndex::new(node_idx),
-                        );
+                        project_window.navigate_to(petgraph::graph::NodeIndex::new(node_idx));
                     }
                 }
                 Message::OpenSceneTab => {
@@ -387,11 +382,6 @@ impl Context {
                 }
                 Message::CloseSceneTab => {
                     self.close_drawer::<SceneWindow>();
-                }
-                Message::CreateSceneTabRt(rt_id) => {
-                    if let Some(scene_window) = self.get_window_mut::<SceneWindow>() {
-                        scene_window.set_rt_id(rt_id);
-                    }
                 }
                 Message::UpdateSceneWindowSize(width, height) => {
                     if let Some(scene_window) = self.get_window_mut::<SceneWindow>() {

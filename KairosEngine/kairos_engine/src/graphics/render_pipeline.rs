@@ -17,7 +17,8 @@ use wgpu::{
     TextureViewDescriptor, TextureViewDimension, Trace, VertexAttribute, VertexBufferLayout,
     VertexFormat, VertexState, VertexStepMode,
     util::{BufferInitDescriptor, DeviceExt},
-    wgt::{DeviceDescriptor, SamplerDescriptor, TextureDescriptor},
+    wgt::{DeviceDescriptor, SamplerDescriptor},
+    TextureDescriptor,
 };
 use winit::{dpi::PhysicalSize, window::Window};
 
@@ -66,13 +67,6 @@ struct PreparedDrawCall {
     instance_count: u32,
 }
 
-struct AttachmentTextureCache {
-    view: wgpu::TextureView,
-    width: u32,
-    height: u32,
-    format: crate::graphics::attachment::AttachmentFormat,
-}
-
 pub struct RenderPipeline {
     window: Arc<Window>,
     pub device: Device,
@@ -82,7 +76,6 @@ pub struct RenderPipeline {
     pub queue: Queue,
     encoder: Option<CommandEncoder>,
     egui_renderer: egui_wgpu::Renderer,
-    attachment_texture_cache: HashMap<String, AttachmentTextureCache>,
     internal_texture_views: Vec<Option<TextureView>>,
     window_size: PhysicalSize<u32>,
     window_size_changed: bool,
@@ -125,17 +118,23 @@ impl RenderPipeline {
             .await?;
 
         let surface_caps = surface.get_capabilities(&adapter);
+        let format;
+        if surface_caps.formats.contains(&TextureFormat::Rgba8Unorm) {
+            format = TextureFormat::Rgba8Unorm;
+        } else {
+            format = surface_caps.formats[0];
+        }
         let window_size = window.inner_size();
         let width = window_size.width;
         let height = window_size.height;
         let surface_config = SurfaceConfiguration {
             usage: TextureUsages::RENDER_ATTACHMENT,
-            format: surface_caps.formats[0],
+            format,
             width,
             height,
             present_mode: PresentMode::Fifo,
             desired_maximum_frame_latency: 3,
-            alpha_mode: surface_caps.alpha_modes[0],
+            alpha_mode: wgpu::CompositeAlphaMode::Auto,
             view_formats: vec![],
         };
         surface.configure(&device, &surface_config);
@@ -192,7 +191,6 @@ impl RenderPipeline {
             queue,
             encoder: None,
             egui_renderer,
-            attachment_texture_cache: HashMap::new(),
             internal_texture_views: vec![None; InternalAttachmentId::End as usize],
             window_size,
             window_size_changed: false,
@@ -261,43 +259,23 @@ impl RenderPipeline {
                     attachment_views.push(internal_texture_view);
                 }
             } else {
-                let key = attachment.label.unwrap_or("unnamed_attachment").to_string();
-                let need_create = match self.attachment_texture_cache.get(&key) {
-                    Some(cached) => {
-                        cached.width != attachment.width
-                            || cached.height != attachment.height
-                            || cached.format != attachment.format
-                    }
-                    None => true,
+                let texture_desc = TextureDescriptor {
+                    label: attachment.label,
+                    size: Extent3d {
+                        width: attachment.width,
+                        height: attachment.height,
+                        depth_or_array_layers: 1,
+                    },
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: attachment.format.into(),
+                    usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+                    view_formats: &[],
                 };
-                if need_create {
-                    let texture = self.device.create_texture(&TextureDescriptor {
-                        label: attachment.label,
-                        size: Extent3d {
-                            width: attachment.width,
-                            height: attachment.height,
-                            depth_or_array_layers: 1,
-                        },
-                        mip_level_count: 1,
-                        sample_count: 1,
-                        dimension: wgpu::TextureDimension::D2,
-                        format: attachment.format.into(),
-                        usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
-                        view_formats: &[],
-                    });
-                    let view = texture.create_view(&TextureViewDescriptor::default());
-                    self.attachment_texture_cache.insert(
-                        key.clone(),
-                        AttachmentTextureCache {
-                            view,
-                            width: attachment.width,
-                            height: attachment.height,
-                            format: attachment.format,
-                        },
-                    );
-                }
-                let cached = &self.attachment_texture_cache[&key];
-                attachment_views.push(cached.view.clone());
+                let texture = self.device.create_texture(&texture_desc);
+                let view = texture.create_view(&TextureViewDescriptor::default());
+                attachment_views.push(view);
             }
         }
         for view in &attachment_views {
@@ -319,43 +297,23 @@ impl RenderPipeline {
         }
 
         for attachment in depth_attachments {
-            let key = format!("{}_depth", attachment.label.unwrap_or("unnamed_attachment"));
-            let need_create = match self.attachment_texture_cache.get(&key) {
-                Some(cached) => {
-                    cached.width != attachment.width
-                        || cached.height != attachment.height
-                        || cached.format != attachment.format
-                }
-                None => true,
+            let depth_desc = TextureDescriptor {
+                label: attachment.label,
+                size: Extent3d {
+                    width: attachment.width,
+                    height: attachment.height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: attachment.format.into(),
+                usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
             };
-            if need_create {
-                let depth = self.device.create_texture(&TextureDescriptor {
-                    label: attachment.label,
-                    size: Extent3d {
-                        width: attachment.width,
-                        height: attachment.height,
-                        depth_or_array_layers: 1,
-                    },
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    dimension: wgpu::TextureDimension::D2,
-                    format: attachment.format.into(),
-                    usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
-                    view_formats: &[],
-                });
-                let view = depth.create_view(&TextureViewDescriptor::default());
-                self.attachment_texture_cache.insert(
-                    key.clone(),
-                    AttachmentTextureCache {
-                        view,
-                        width: attachment.width,
-                        height: attachment.height,
-                        format: attachment.format,
-                    },
-                );
-            }
-            let cached = &self.attachment_texture_cache[&key];
-            depth_attachment_views.push(cached.view.clone());
+            let depth = self.device.create_texture(&depth_desc);
+            let view = depth.create_view(&TextureViewDescriptor::default());
+            depth_attachment_views.push(view);
         }
         for view in &depth_attachment_views {
             let attachment = RenderPassDepthStencilAttachment {
@@ -1030,7 +988,7 @@ impl RenderPipeline {
             height: texture_dimension.1,
             depth_or_array_layers: 1,
         };
-        let gpu_texture = device.create_texture(&TextureDescriptor {
+        let tex_desc = TextureDescriptor {
             label: Some("Kairos Texture"),
             size: texture_size,
             mip_level_count: 1,
@@ -1039,7 +997,8 @@ impl RenderPipeline {
             format: wgpu::TextureFormat::Rgba8Unorm,
             usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
             view_formats: &[],
-        });
+        };
+        let gpu_texture = device.create_texture(&tex_desc);
         queue.write_texture(
             TexelCopyTextureInfo {
                 texture: &gpu_texture,
