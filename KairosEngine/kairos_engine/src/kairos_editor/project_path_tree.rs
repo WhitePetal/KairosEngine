@@ -202,10 +202,13 @@ impl ProjectPathGraph {
                 return true;
             }
         }
-        // 跳过 target 构建目录
+        // 跳过 target 构建目录和 Library 引擎内部目录
         if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-            if name == "target" {
-                return true;
+            match name {
+                "target" | "Library" => {
+                    return true;
+                },
+                _ => {}
             }
         }
         false

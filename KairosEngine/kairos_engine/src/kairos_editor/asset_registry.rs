@@ -99,7 +99,7 @@ impl AssetRegistry {
 
     /// 将注册表持久化到磁盘。
     pub fn save(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let entries: Vec<AssetEntry> = self
+        let mut entries: Vec<AssetEntry> = self
             .guid_to_path
             .iter()
             .map(|(&guid, path)| AssetEntry {
@@ -108,9 +108,10 @@ impl AssetRegistry {
             })
             .collect();
 
-        let entries = SerializedAssetEntries {
-            entries
-        };
+        // 按路径排序，保证跨运行输出稳定（HashMap 迭代顺序不确定）
+        entries.sort_by(|a, b| a.path.cmp(&b.path));
+
+        let entries = SerializedAssetEntries { entries };
 
         let content = toml::to_string(&entries)
             .map_err(|e| format!("AssetRegistry: failed to serialize: {}", e))?;
