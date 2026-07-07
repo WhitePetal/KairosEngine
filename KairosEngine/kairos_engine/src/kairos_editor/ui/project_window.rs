@@ -4,10 +4,7 @@ use std::{any::type_name, fs};
 
 use crate::{
     asset_loader::assets::AssetsServer, kairos_editor::{
-        Engine,
-        asset_registry::AssetRegistry,
-        project_path_tree::ProjectPathGraph,
-        ui::Messager,
+        Engine, asset_registry::AssetRegistry, project_path_tree::{ProjectPathGraph, tree_node::ProjectTreeNode}, ui::Messager,
     }, kairos_game::KairosGame, log::Log, math,
 };
 use egui::Color32;
@@ -31,8 +28,6 @@ pub(super) struct ProjectWindowIcons {
     pub default: String,
     #[serde(default)]
     pub directory: Option<String>,
-    #[serde(default)]
-    pub texture: Option<String>,
     #[serde(default)]
     pub mesh: Option<String>,
     #[serde(default)]
@@ -60,10 +55,12 @@ fn default_icon_path() -> String {
 
 impl ProjectWindowIcons {
     /// 根据节点类型获取对应图标路径，未配置则回退到 `default`。
-    pub fn for_kind(&self, kind: &ProjectNodeKind) -> &str {
-        let opt = match kind {
+    pub fn for_kind<'a>(&'a self, node: &'a ProjectTreeNode) -> &'a str {
+        let opt = match node.kind {
             ProjectNodeKind::Directory => self.directory.as_deref(),
-            ProjectNodeKind::Texture => self.texture.as_deref(),
+            ProjectNodeKind::Texture => {
+                node.path.to_str()
+            },
             ProjectNodeKind::Mesh => self.mesh.as_deref(),
             ProjectNodeKind::Material => self.material.as_deref(),
             ProjectNodeKind::Audio => self.audio.as_deref(),

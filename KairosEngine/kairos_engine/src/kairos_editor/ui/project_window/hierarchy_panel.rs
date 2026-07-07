@@ -86,7 +86,7 @@ fn draw_file(
 
     ui.horizontal(|ui| {
         // 图标
-        let icon_path = format!("file://{}", icons.for_kind(&node_data.kind));
+        let icon_path = format!("file://{}", icons.for_kind(node_data));
         let icon = egui::Image::new(egui::ImageSource::Uri(icon_path.into()))
             .fit_to_exact_size(icon_size);
         ui.add(icon);
