@@ -1,1 +1,11 @@
 title = "Project"
+
+[icons]
+size = [18, 18]
+default = "res/textures/kairos_texture.png"
+shader = "Preferences/Textures/shader_icon.png"
+
+[colors]
+arrow = "#a0a0a0"
+directory = "#dcdcb4"
+file = "#c8c8c8"

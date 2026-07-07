@@ -3,28 +3,133 @@ pub mod hierarchy_panel;
 use std::{any::type_name, fs};
 
 use crate::{
-    asset_loader::assets::AssetsServer,
-    kairos_editor::{
-        Engine, asset_registry::AssetRegistry, project_path_tree::ProjectPathGraph, ui::Messager,
-    },
-    kairos_game::KairosGame,
-    log::Log,
+    asset_loader::assets::AssetsServer, kairos_editor::{
+        Engine,
+        asset_registry::AssetRegistry,
+        project_path_tree::ProjectPathGraph,
+        ui::Messager,
+    }, kairos_game::KairosGame, log::Log, math,
 };
+use egui::Color32;
 use serde::{Deserialize, Serialize};
 use toml::from_str;
 
-use crate::kairos_editor::ui::{Drawer, Message, paths};
+use crate::kairos_editor::{
+    project_path_tree::tree_node::ProjectNodeKind,
+    ui::{Drawer, Message, paths},
+};
+
+// ============================================================
+// Style — 从 ProjectWindowStyle.toml 反序列化
+// ============================================================
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub(super) struct ProjectWindowIcons {
+    #[serde(default = "default_icon_size")]
+    pub size: [f32; 2],
+    #[serde(default = "default_icon_path")]
+    pub default: String,
+    #[serde(default)]
+    pub directory: Option<String>,
+    #[serde(default)]
+    pub texture: Option<String>,
+    #[serde(default)]
+    pub mesh: Option<String>,
+    #[serde(default)]
+    pub material: Option<String>,
+    #[serde(default)]
+    pub audio: Option<String>,
+    #[serde(default)]
+    pub shader: Option<String>,
+    #[serde(default, alias = "generic_asset")]
+    pub generic_asset: Option<String>,
+    #[serde(default)]
+    pub script: Option<String>,
+    #[serde(default)]
+    pub document: Option<String>,
+}
+
+fn default_icon_size() -> [f32; 2] {
+    [18.0, 18.0]
+}
+fn default_icon_path() -> String {
+    paths::PATH_ENGINE_ICON.into()
+}
+
+impl ProjectWindowIcons {
+    /// 根据节点类型获取对应图标路径，未配置则回退到 `default`。
+    pub fn for_kind(&self, kind: &ProjectNodeKind) -> &str {
+        let opt = match kind {
+            ProjectNodeKind::Directory => self.directory.as_deref(),
+            ProjectNodeKind::Texture => self.texture.as_deref(),
+            ProjectNodeKind::Mesh => self.mesh.as_deref(),
+            ProjectNodeKind::Material => self.material.as_deref(),
+            ProjectNodeKind::Audio => self.audio.as_deref(),
+            ProjectNodeKind::Shader => self.shader.as_deref(),
+            ProjectNodeKind::GenericAsset => self.generic_asset.as_deref(),
+            ProjectNodeKind::Script => self.script.as_deref(),
+            ProjectNodeKind::Document => self.document.as_deref(),
+            ProjectNodeKind::Unknown => None,
+        };
+        opt.unwrap_or(&self.default)
+    }
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub(super) struct ProjectWindowColors {
+    #[serde(default = "default_arrow_color")]
+    pub arrow: math::Color32,
+    #[serde(default = "default_directory_color")]
+    pub directory: math::Color32,
+    #[serde(default = "default_file_color")]
+    pub file: math::Color32,
+}
+
+fn default_arrow_color() -> math::Color32 {
+    math::Color32::new(160, 160, 160, 255)
+}
+fn default_directory_color() -> math::Color32 {
+    math::Color32::new(220, 220, 180, 255)
+}
+fn default_file_color() -> math::Color32 {
+    math::Color32::new(200, 200, 200, 255)
+}
+
+impl ProjectWindowColors {
+    pub fn directory(&self) -> Color32 {
+        self.directory.into()
+    }
+    pub fn file(&self) -> Color32 {
+        self.file.into()
+    }
+    pub fn _arrow(&self) -> Color32 {
+        self.arrow.into()
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize)]
-struct ProjectWindowStyle {
+pub(super) struct ProjectWindowStyle {
     pub title: String,
+    #[serde(default)]
+    pub icons: ProjectWindowIcons,
+    #[serde(default)]
+    pub colors: ProjectWindowColors,
 }
+
+// ============================================================
+// Model
+// ============================================================
 
 struct ProjectWindowModel {
     style: ProjectWindowStyle,
+    #[allow(dead_code)]
     asset_registry: AssetRegistry,
     project_path_graph: ProjectPathGraph,
 }
+
+// ============================================================
+// Window
+// ============================================================
 
 pub struct ProjectWindow {
     model: ProjectWindowModel,
@@ -39,7 +144,7 @@ impl ProjectWindowStyle {
                 error
             )
         })?;
-        let style = from_str(&style_json).map_err(|error| {
+        let style: Self = from_str(&style_json).map_err(|error| {
             format!(
                 "Deserialize ProjectWindow Style Json Failed, error: {}",
                 error
@@ -53,16 +158,13 @@ impl ProjectWindowModel {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let style = ProjectWindowStyle::new()?;
 
-        // 从磁盘加载已有 Registry（不存在则创建空表）
         let mut asset_registry = AssetRegistry::load().unwrap_or_else(|e| {
             log::warn!("Failed to load AssetRegistry, creating new one: {}", e);
             AssetRegistry::new()
         });
 
-        // 扫描项目目录，生成/复用 GUID
         let project_path_graph = ProjectPathGraph::new(&mut asset_registry);
 
-        // 持久化 registry（确保新扫描到的文件 GUID 被保存）
         if let Err(e) = asset_registry.save() {
             log::warn!("Failed to save AssetRegistry: {}", e);
         }
@@ -84,7 +186,9 @@ impl ProjectWindow {
 }
 
 impl Drawer for ProjectWindow {
-    fn create(_assets_server: &mut AssetsServer) -> Result<Self, Box<dyn std::error::Error>>
+    fn create(
+        _assets_server: &mut AssetsServer,
+    ) -> Result<Self, Box<dyn std::error::Error>>
     where
         Self: Sized,
     {
@@ -103,7 +207,8 @@ impl Drawer for ProjectWindow {
         hierarchy_panel::draw(
             ui,
             &self.model.project_path_graph,
-            &self.model.asset_registry,
+            &self.model.style.icons,
+            &self.model.style.colors,
         );
     }
 
