@@ -67,8 +67,7 @@ fn draw_directory(
     let header_text = RichText::new(name).color(DIR_COLOR);
 
     // 使用 GUID 字符串作为 CollapsingHeader 的 Id，保证跨帧状态稳定
-    let header =
-        CollapsingHeader::new(header_text).id_salt(node_data.guid.to_string());
+    let header = CollapsingHeader::new(header_text).id_salt(node_data.guid.to_string());
 
     // 检查是否有子节点
     let has_children = graph.get_edges(node).count() > 0;

@@ -9,14 +9,13 @@ use wgpu::{
     ExperimentalFeatures, Extent3d, Features, FilterMode, FragmentState, FrontFace, InstanceFlags,
     Limits, LoadOp, LoadOpDontCare, MemoryBudgetThresholds, MemoryHints, MipmapFilterMode,
     MultisampleState, Operations, Origin3d, PipelineCompilationOptions, PipelineLayoutDescriptor,
-    PolygonMode, PowerPreference, PresentMode, PrimitiveState, PrimitiveTopology, Queue,
-    RenderPassColorAttachment, RenderPassDepthStencilAttachment, RenderPassDescriptor,
-    RenderPipelineDescriptor, RequestAdapterOptions, Sampler, SamplerBindingType,
-    ShaderModuleDescriptor, ShaderSource, ShaderStages, StencilState, StoreOp, Surface,
-    SurfaceConfiguration, SurfaceTexture, TexelCopyBufferLayout, TexelCopyTextureInfo,
-    TextureFormat, TextureSampleType, TextureUsages, TextureView, TextureViewDescriptor,
-    TextureViewDimension, Trace, VertexAttribute, VertexBufferLayout, VertexFormat, VertexState,
-    VertexStepMode,
+    PolygonMode, PowerPreference, PresentMode, PrimitiveState, Queue, RenderPassColorAttachment,
+    RenderPassDepthStencilAttachment, RenderPassDescriptor, RenderPipelineDescriptor,
+    RequestAdapterOptions, SamplerBindingType, ShaderModuleDescriptor, ShaderSource, ShaderStages,
+    StencilState, StoreOp, Surface, SurfaceConfiguration, SurfaceTexture, TexelCopyBufferLayout,
+    TexelCopyTextureInfo, TextureFormat, TextureSampleType, TextureUsages, TextureView,
+    TextureViewDescriptor, TextureViewDimension, Trace, VertexAttribute, VertexBufferLayout,
+    VertexFormat, VertexState, VertexStepMode,
     util::{BufferInitDescriptor, DeviceExt},
     wgt::{DeviceDescriptor, SamplerDescriptor, TextureDescriptor},
 };
@@ -68,7 +67,6 @@ struct PreparedDrawCall {
 }
 
 struct AttachmentTextureCache {
-    texture: wgpu::Texture,
     view: wgpu::TextureView,
     width: u32,
     height: u32,
@@ -263,10 +261,7 @@ impl RenderPipeline {
                     attachment_views.push(internal_texture_view);
                 }
             } else {
-                let key = attachment
-                    .label
-                    .unwrap_or("unnamed_attachment")
-                    .to_string();
+                let key = attachment.label.unwrap_or("unnamed_attachment").to_string();
                 let need_create = match self.attachment_texture_cache.get(&key) {
                     Some(cached) => {
                         cached.width != attachment.width
@@ -287,15 +282,13 @@ impl RenderPipeline {
                         sample_count: 1,
                         dimension: wgpu::TextureDimension::D2,
                         format: attachment.format.into(),
-                        usage: TextureUsages::RENDER_ATTACHMENT
-                            | TextureUsages::TEXTURE_BINDING,
+                        usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
                         view_formats: &[],
                     });
                     let view = texture.create_view(&TextureViewDescriptor::default());
                     self.attachment_texture_cache.insert(
                         key.clone(),
                         AttachmentTextureCache {
-                            texture,
                             view,
                             width: attachment.width,
                             height: attachment.height,
@@ -326,10 +319,7 @@ impl RenderPipeline {
         }
 
         for attachment in depth_attachments {
-            let key = format!(
-                "{}_depth",
-                attachment.label.unwrap_or("unnamed_attachment")
-            );
+            let key = format!("{}_depth", attachment.label.unwrap_or("unnamed_attachment"));
             let need_create = match self.attachment_texture_cache.get(&key) {
                 Some(cached) => {
                     cached.width != attachment.width
@@ -357,7 +347,6 @@ impl RenderPipeline {
                 self.attachment_texture_cache.insert(
                     key.clone(),
                     AttachmentTextureCache {
-                        texture: depth,
                         view,
                         width: attachment.width,
                         height: attachment.height,
@@ -635,7 +624,8 @@ impl RenderPipeline {
             step_mode: VertexStepMode::Instance,
         };
 
-        let mut prepared_draws: Vec<PreparedDrawCall> = Vec::new();
+        let mut prepared_draws: Vec<PreparedDrawCall> =
+            Vec::with_capacity(render_pass_node.draw_instances.len());
 
         for draw in &render_pass_node.draw_instances {
             let Some(mesh) = assets_server.get(&draw.renderer.mesh) else {
@@ -850,10 +840,7 @@ impl RenderPipeline {
                     render_pass.set_bind_group(1, bg, &[]);
                 }
                 render_pass.set_vertex_buffer(0, p.vertex_buffer.slice(..));
-                render_pass.set_index_buffer(
-                    p.index_buffer.slice(..),
-                    wgpu::IndexFormat::Uint16,
-                );
+                render_pass.set_index_buffer(p.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
                 render_pass.set_vertex_buffer(1, p.instancing_buffer.slice(..));
                 render_pass.draw_indexed(0..p.indices_count, 0, 0..p.instance_count);
             }
@@ -884,10 +871,7 @@ impl RenderPipeline {
                     render_pass.set_bind_group(1, bg, &[]);
                 }
                 render_pass.set_vertex_buffer(0, p.vertex_buffer.slice(..));
-                render_pass.set_index_buffer(
-                    p.index_buffer.slice(..),
-                    wgpu::IndexFormat::Uint16,
-                );
+                render_pass.set_index_buffer(p.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
                 render_pass.set_vertex_buffer(1, p.instancing_buffer.slice(..));
                 render_pass.draw_indexed(0..p.indices_count, 0, 0..p.instance_count);
             }

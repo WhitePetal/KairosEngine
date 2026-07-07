@@ -1,10 +1,7 @@
 pub mod texture_path;
 pub mod tree_node;
 
-use std::{
-    ffi::OsString,
-    path::Path,
-};
+use std::{ffi::OsString, path::Path};
 
 use petgraph::{
     Directed, Graph,
@@ -42,8 +39,12 @@ impl ProjectPathGraph {
             .ok()
             .and_then(|p| p.file_name().map(|n| n.to_os_string()))
             .unwrap_or_else(|| OsString::from("KairosEngine"));
-        let root_node_data =
-            ProjectTreeNode::new(root_guid, root_name, root_path.to_path_buf(), ProjectNodeKind::Directory);
+        let root_node_data = ProjectTreeNode::new(
+            root_guid,
+            root_name,
+            root_path.to_path_buf(),
+            ProjectNodeKind::Directory,
+        );
         let root_node = graph.add_node(root_node_data);
 
         // 递归扫描
@@ -65,8 +66,12 @@ impl ProjectPathGraph {
             .ok()
             .and_then(|p| p.file_name().map(|n| n.to_os_string()))
             .unwrap_or_else(|| OsString::from("KairosEngine"));
-        let root_node_data =
-            ProjectTreeNode::new(root_guid, root_name, root_path.to_path_buf(), ProjectNodeKind::Directory);
+        let root_node_data = ProjectTreeNode::new(
+            root_guid,
+            root_name,
+            root_path.to_path_buf(),
+            ProjectNodeKind::Directory,
+        );
         let root_node = self.graph.add_node(root_node_data);
 
         Self::scan_dir(root_path, root_node, &mut self.graph, registry);

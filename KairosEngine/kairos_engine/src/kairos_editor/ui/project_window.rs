@@ -5,10 +5,7 @@ use std::{any::type_name, fs};
 use crate::{
     asset_loader::assets::AssetsServer,
     kairos_editor::{
-        Engine,
-        asset_registry::AssetRegistry,
-        project_path_tree::ProjectPathGraph,
-        ui::Messager,
+        Engine, asset_registry::AssetRegistry, project_path_tree::ProjectPathGraph, ui::Messager,
     },
     kairos_game::KairosGame,
     log::Log,
@@ -87,9 +84,7 @@ impl ProjectWindow {
 }
 
 impl Drawer for ProjectWindow {
-    fn create(
-        _assets_server: &mut AssetsServer,
-    ) -> Result<Self, Box<dyn std::error::Error>>
+    fn create(_assets_server: &mut AssetsServer) -> Result<Self, Box<dyn std::error::Error>>
     where
         Self: Sized,
     {

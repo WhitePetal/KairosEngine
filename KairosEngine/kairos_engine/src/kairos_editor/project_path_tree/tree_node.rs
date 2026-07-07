@@ -1,7 +1,4 @@
-use std::{
-    ffi::OsString,
-    path::PathBuf,
-};
+use std::{ffi::OsString, path::PathBuf};
 
 use crate::kairos_editor::asset_registry::Guid;
 

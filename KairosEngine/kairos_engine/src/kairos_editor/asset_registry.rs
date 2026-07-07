@@ -103,9 +103,8 @@ impl AssetRegistry {
             })
             .collect();
 
-        let content = toml::to_string(&entries).map_err(|e| {
-            format!("AssetRegistry: failed to serialize: {}", e)
-        })?;
+        let content = toml::to_string(&entries)
+            .map_err(|e| format!("AssetRegistry: failed to serialize: {}", e))?;
 
         // 确保目录存在
         if let Some(parent) = Path::new(Self::REGISTRY_PATH).parent() {

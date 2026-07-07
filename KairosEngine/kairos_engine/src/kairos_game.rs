@@ -15,7 +15,7 @@ use crate::{
     },
     inputs::Input,
     kairos_editor::Engine,
-    math::{self, float3, quaternion},
+    math::{float3, quaternion},
     physics::{
         collider::{Collider, ColliderMaterial},
         rigid_body::RigidBody,

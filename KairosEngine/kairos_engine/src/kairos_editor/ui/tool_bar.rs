@@ -1,7 +1,6 @@
 use std::{
     any::type_name,
-    fs::{self, File},
-    io::Write,
+    fs::{self},
 };
 
 use crate::{
