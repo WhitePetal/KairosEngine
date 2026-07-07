@@ -1,13 +1,22 @@
+pub mod content_panel;
 pub mod hierarchy_panel;
 
 use std::{any::type_name, fs};
 
 use crate::{
-    asset_loader::assets::AssetsServer, kairos_editor::{
-        Engine, asset_registry::AssetRegistry, project_path_tree::{ProjectPathGraph, tree_node::ProjectTreeNode}, ui::Messager,
-    }, kairos_game::KairosGame, log::Log, math,
+    asset_loader::assets::AssetsServer,
+    kairos_editor::{
+        Engine,
+        asset_registry::AssetRegistry,
+        project_path_tree::{ProjectPathGraph, tree_node::ProjectTreeNode},
+        ui::Messager,
+    },
+    kairos_game::KairosGame,
+    log::Log,
+    math,
 };
 use egui::Color32;
+use petgraph::graph::NodeIndex;
 use serde::{Deserialize, Serialize};
 use toml::from_str;
 
@@ -58,9 +67,7 @@ impl ProjectWindowIcons {
     pub fn for_kind<'a>(&'a self, node: &'a ProjectTreeNode) -> &'a str {
         let opt = match node.kind {
             ProjectNodeKind::Directory => self.directory.as_deref(),
-            ProjectNodeKind::Texture => {
-                node.path.to_str()
-            },
+            ProjectNodeKind::Texture => node.path.to_str(),
             ProjectNodeKind::Mesh => self.mesh.as_deref(),
             ProjectNodeKind::Material => self.material.as_deref(),
             ProjectNodeKind::Audio => self.audio.as_deref(),
@@ -125,6 +132,8 @@ struct ProjectWindowModel {
     #[allow(dead_code)]
     asset_registry: AssetRegistry,
     project_path_graph: ProjectPathGraph,
+    /// 当前在 Hierarchy 中选中的目录节点
+    selected_node: Option<NodeIndex>,
 }
 
 // ============================================================
@@ -173,6 +182,7 @@ impl ProjectWindowModel {
             style,
             asset_registry,
             project_path_graph,
+            selected_node: None,
         })
     }
 }
@@ -183,12 +193,15 @@ impl ProjectWindow {
         let model = ProjectWindowModel::new()?;
         Ok(Self { model })
     }
+
+    /// 由 [`Message::SelectProjectDirectoryNode`] 触发，选中指定目录节点。
+    pub(super) fn select_node(&mut self, node: NodeIndex) {
+        self.model.selected_node = Some(node);
+    }
 }
 
 impl Drawer for ProjectWindow {
-    fn create(
-        _assets_server: &mut AssetsServer,
-    ) -> Result<Self, Box<dyn std::error::Error>>
+    fn create(_assets_server: &mut AssetsServer) -> Result<Self, Box<dyn std::error::Error>>
     where
         Self: Sized,
     {
@@ -200,16 +213,44 @@ impl Drawer for ProjectWindow {
     fn ui(
         &self,
         ui: &mut egui::Ui,
-        _messager: &mut super::Messager,
+        messager: &mut super::Messager,
         _engine: &Engine,
         _log: &mut Log,
     ) {
-        hierarchy_panel::draw(
-            ui,
-            &self.model.project_path_graph,
-            &self.model.style.icons,
-            &self.model.style.colors,
-        );
+        let selected = self.model.selected_node;
+
+        // 左侧：Hierarchy Panel
+        egui::Panel::left("project_window_hierachy_panel")
+            .resizable(true)
+            .show_inside(ui, |ui| {
+                egui::ScrollArea::both()
+                    .id_salt("hierarchy_scroll")
+                    .show(ui, |ui| {
+                        hierarchy_panel::draw(
+                            ui,
+                            &self.model.project_path_graph,
+                            &self.model.style.icons,
+                            &self.model.style.colors,
+                            messager,
+                            selected,
+                        );
+                    });
+            });
+
+        // 右侧：Content Panel（只垂直滚动，水平自然换行）
+        egui::CentralPanel::default().show_inside(ui, |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("content_scroll")
+                .show(ui, |ui| {
+                    content_panel::draw(
+                        ui,
+                        &self.model.project_path_graph,
+                        &self.model.style.icons,
+                        &self.model.style.colors,
+                        selected,
+                    );
+                });
+        });
     }
 
     fn close(&self, messager: &mut super::Messager) {

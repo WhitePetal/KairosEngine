@@ -10,6 +10,7 @@ toml = "Preferences/Textures/toml_icon.png"
 mesh = "Preferences/Textures/model_icon.png"
 material = "Preferences/Textures/material_icon.png"
 audio = "Preferences/Textures/audio_icon.png"
+directory = "Preferences/Textures/folder_icon.png"
 
 [colors]
 arrow = "#a0a0a0"

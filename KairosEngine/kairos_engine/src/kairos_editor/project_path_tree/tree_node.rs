@@ -83,12 +83,7 @@ pub struct ProjectTreeNode {
 }
 
 impl ProjectTreeNode {
-    pub fn new(
-        guid: Guid,
-        name: OsString,
-        path: PathBuf,
-        kind: ProjectNodeKind,
-    ) -> Self {
+    pub fn new(guid: Guid, name: OsString, path: PathBuf, kind: ProjectNodeKind) -> Self {
         Self {
             guid,
             name,

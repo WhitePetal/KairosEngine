@@ -98,6 +98,9 @@ pub enum Message {
     CameraZoom(f32, f32),
     /// Camera fly movement (right, forward, dt) each in [-1, 0, 1]
     CameraFly(f32, f32, f32),
+
+    /// ProjectWindow: 选中目录节点（NodeIndex::index()）
+    SelectProjectDirectoryNode(usize),
 }
 
 struct KairosTabDrawer {
@@ -362,6 +365,11 @@ impl Context {
                 }
                 Message::CloseProjectTab => {
                     self.close_drawer::<ProjectWindow>();
+                }
+                Message::SelectProjectDirectoryNode(node_idx) => {
+                    if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
+                        project_window.select_node(petgraph::graph::NodeIndex::new(node_idx));
+                    }
                 }
                 Message::OpenSceneTab => {
                     self.show_tab::<SceneWindow>(assets_server, ui, self.layout.center);

@@ -639,6 +639,10 @@ guid = "43096a4c-d025-40c3-91c8-7eb534020f88"
 path = "./kairos_engine/src/kairos_editor/ui/project_window"
 
 [[entries]]
+guid = "2e1973b8-36be-4e64-8855-f40b2736fe78"
+path = "./kairos_engine/src/kairos_editor/ui/project_window/content_panel.rs"
+
+[[entries]]
 guid = "bc1c58b0-047b-4ead-beae-ea2ed83366e4"
 path = "./kairos_engine/src/kairos_editor/ui/project_window/hierarchy_panel.rs"
 

@@ -149,7 +149,7 @@ impl ProjectPathGraph {
                         graph.add_edge(parent_node, child_node, ());
                     }
                     continue;
-                },
+                }
                 Some("glb") => {
                     let mesh_path = path.with_extension("mesh");
                     if mesh_path.exists() {
@@ -169,10 +169,10 @@ impl ProjectPathGraph {
                         graph.add_edge(parent_node, child_node, ());
                     }
                     continue;
-                },
+                }
                 Some("texture" | "texture_bin" | "mesh" | "mesh_bin") => {
                     continue;
-                },
+                }
                 _ => {}
             }
 
@@ -207,7 +207,7 @@ impl ProjectPathGraph {
             match name {
                 "target" | "Library" => {
                     return true;
-                },
+                }
                 _ => {}
             }
         }

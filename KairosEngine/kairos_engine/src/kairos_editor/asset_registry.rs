@@ -38,7 +38,7 @@ struct AssetEntry {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SerializedAssetEntries {
-    entries: Vec<AssetEntry>
+    entries: Vec<AssetEntry>,
 }
 
 // ============================================================

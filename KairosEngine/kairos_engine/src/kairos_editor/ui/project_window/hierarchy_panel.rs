@@ -6,7 +6,10 @@ use crate::kairos_editor::{
         ProjectPathGraph,
         tree_node::{ProjectNodeKind, ProjectTreeNode},
     },
-    ui::project_window::{ProjectWindowColors, ProjectWindowIcons},
+    ui::{
+        Message, Messager,
+        project_window::{ProjectWindowColors, ProjectWindowIcons},
+    },
 };
 
 // ============================================================
@@ -19,11 +22,11 @@ pub(super) fn draw(
     graph: &ProjectPathGraph,
     icons: &ProjectWindowIcons,
     colors: &ProjectWindowColors,
+    messager: &mut Messager,
+    selected_node: Option<NodeIndex>,
 ) {
-    egui::ScrollArea::both().show(ui, |ui| {
-        let root = graph.get_root_node();
-        draw_node(ui, graph, root, icons, colors);
-    });
+    let root = graph.get_root_node();
+    draw_node(ui, graph, root, icons, colors, messager, selected_node);
 }
 
 // ============================================================
@@ -36,13 +39,24 @@ fn draw_node(
     node: NodeIndex,
     icons: &ProjectWindowIcons,
     colors: &ProjectWindowColors,
+    messager: &mut Messager,
+    selected_node: Option<NodeIndex>,
 ) {
     let Some(node_data) = graph.get_node(node) else {
         return;
     };
 
     match &node_data.kind {
-        ProjectNodeKind::Directory => draw_directory(ui, graph, node, node_data, icons, colors),
+        ProjectNodeKind::Directory => draw_directory(
+            ui,
+            graph,
+            node,
+            node_data,
+            icons,
+            colors,
+            messager,
+            selected_node,
+        ),
         _ => draw_file(ui, node_data, icons, colors),
     }
 }
@@ -54,24 +68,41 @@ fn draw_directory(
     node_data: &ProjectTreeNode,
     icons: &ProjectWindowIcons,
     colors: &ProjectWindowColors,
+    messager: &mut Messager,
+    selected_node: Option<NodeIndex>,
 ) {
     let name = node_name(node_data);
-    let header_text = RichText::new(name).color(colors.directory());
+    let is_selected = selected_node == Some(node);
+    let header_text = if is_selected {
+        RichText::new(name).color(colors.directory()).strong()
+    } else {
+        RichText::new(name).color(colors.directory())
+    };
 
-    let header =
-        CollapsingHeader::new(header_text).id_salt(node_data.guid.to_string());
+    let header = CollapsingHeader::new(header_text).id_salt(node_data.guid.to_string());
 
     let has_children = graph.get_edges(node).count() > 0;
 
-    if has_children {
+    let response = if has_children {
         header.show(ui, |ui| {
             let children: Vec<_> = graph.get_edges(node).map(|e| e.target()).collect();
             for child in children {
-                draw_node(ui, graph, child, icons, colors);
+                draw_node(ui, graph, child, icons, colors, messager, selected_node);
             }
-        });
+        })
     } else {
-        header.show(ui, |_ui| {});
+        header.show(ui, |ui| {
+            ui.label(
+                RichText::new("(empty)")
+                    .size(11.0)
+                    .color(egui::Color32::from_rgb(120, 120, 120)),
+            );
+        })
+    };
+
+    // 点击目录文字区域 → 选中
+    if response.header_response.clicked() {
+        messager.send(Message::SelectProjectDirectoryNode(node.index()));
     }
 }
 
@@ -87,8 +118,8 @@ fn draw_file(
     ui.horizontal(|ui| {
         // 图标
         let icon_path = format!("file://{}", icons.for_kind(node_data));
-        let icon = egui::Image::new(egui::ImageSource::Uri(icon_path.into()))
-            .fit_to_exact_size(icon_size);
+        let icon =
+            egui::Image::new(egui::ImageSource::Uri(icon_path.into())).fit_to_exact_size(icon_size);
         ui.add(icon);
 
         // 文件名
