@@ -47,6 +47,8 @@ pub(super) struct ProjectWindowIcons {
     pub script: Option<String>,
     #[serde(default)]
     pub document: Option<String>,
+    #[serde(default)]
+    pub toml: Option<String>,
 }
 
 fn default_icon_size() -> [f32; 2] {
@@ -69,6 +71,7 @@ impl ProjectWindowIcons {
             ProjectNodeKind::GenericAsset => self.generic_asset.as_deref(),
             ProjectNodeKind::Script => self.script.as_deref(),
             ProjectNodeKind::Document => self.document.as_deref(),
+            ProjectNodeKind::Toml => self.toml.as_deref(),
             ProjectNodeKind::Unknown => None,
         };
         opt.unwrap_or(&self.default)
@@ -159,14 +162,14 @@ impl ProjectWindowModel {
         let style = ProjectWindowStyle::new()?;
 
         let mut asset_registry = AssetRegistry::load().unwrap_or_else(|e| {
-            log::warn!("Failed to load AssetRegistry, creating new one: {}", e);
+            println!("Failed to load AssetRegistry, creating new one: {}", e);
             AssetRegistry::new()
         });
 
         let project_path_graph = ProjectPathGraph::new(&mut asset_registry);
 
         if let Err(e) = asset_registry.save() {
-            log::warn!("Failed to save AssetRegistry: {}", e);
+            println!("Failed to save AssetRegistry: {}", e);
         }
 
         Ok(Self {

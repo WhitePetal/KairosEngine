@@ -33,6 +33,7 @@ pub enum ProjectNodeKind {
     GenericAsset,
     Script,
     Document,
+    Toml,
     Unknown,
 }
 
@@ -48,6 +49,7 @@ impl ProjectNodeKind {
             Some("asset") => Self::GenericAsset,
             Some("rs") => Self::Script,
             Some("md" | "txt") => Self::Document,
+            Some("toml") => Self::Toml,
             _ => Self::Unknown,
         }
     }

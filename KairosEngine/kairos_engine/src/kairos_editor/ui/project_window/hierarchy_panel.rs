@@ -125,6 +125,7 @@ fn kind_suffix(kind: &ProjectNodeKind) -> Option<&'static str> {
         ProjectNodeKind::GenericAsset => Some(".asset"),
         ProjectNodeKind::Script => Some(".rs"),
         ProjectNodeKind::Document => None,
+        ProjectNodeKind::Toml => Some(".toml"),
         ProjectNodeKind::Unknown => None,
     }
 }

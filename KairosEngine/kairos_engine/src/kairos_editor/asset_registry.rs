@@ -36,6 +36,11 @@ struct AssetEntry {
     path: PathBuf,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SerializedAssetEntries {
+    entries: Vec<AssetEntry>
+}
+
 // ============================================================
 // AssetRegistry — guid ↔ path 双向映射表
 // ============================================================
@@ -77,7 +82,7 @@ impl AssetRegistry {
             )
         })?;
 
-        let entries: Vec<AssetEntry> = toml::from_str(&content).map_err(|e| {
+        let entries: SerializedAssetEntries = toml::from_str(&content).map_err(|e| {
             format!(
                 "AssetRegistry: failed to parse '{}': {}",
                 Self::REGISTRY_PATH,
@@ -86,7 +91,7 @@ impl AssetRegistry {
         })?;
 
         let mut registry = Self::new();
-        for entry in entries {
+        for entry in entries.entries {
             registry.insert_entry(entry);
         }
         Ok(registry)
@@ -102,6 +107,10 @@ impl AssetRegistry {
                 path: path.clone(),
             })
             .collect();
+
+        let entries = SerializedAssetEntries {
+            entries
+        };
 
         let content = toml::to_string(&entries)
             .map_err(|e| format!("AssetRegistry: failed to serialize: {}", e))?;
