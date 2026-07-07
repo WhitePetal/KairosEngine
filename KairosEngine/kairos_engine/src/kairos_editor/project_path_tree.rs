@@ -237,6 +237,15 @@ impl ProjectPathGraph {
     pub fn node_count(&self) -> usize {
         self.graph.node_count()
     }
+
+    /// 获取节点的父节点索引（文件用于回退到所在目录）。
+    /// 文件被选中时 content_panel 应展示其所在目录的子节点。
+    pub fn get_parent(&self, node: NodeIndex) -> Option<NodeIndex> {
+        use petgraph::Direction;
+        self.graph
+            .neighbors_directed(node, Direction::Incoming)
+            .next()
+    }
 }
 
 // ============================================================

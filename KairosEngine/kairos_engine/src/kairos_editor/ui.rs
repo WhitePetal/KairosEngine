@@ -101,6 +101,8 @@ pub enum Message {
 
     /// ProjectWindow: 选中目录节点（NodeIndex::index()）
     SelectProjectDirectoryNode(usize),
+    /// ProjectWindow: 双击进入目录（NodeIndex::index()）
+    NavigateToProjectDirectory(usize),
 }
 
 struct KairosTabDrawer {
@@ -368,7 +370,16 @@ impl Context {
                 }
                 Message::SelectProjectDirectoryNode(node_idx) => {
                     if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
-                        project_window.select_node(petgraph::graph::NodeIndex::new(node_idx));
+                        project_window.select_node(
+                            petgraph::graph::NodeIndex::new(node_idx),
+                        );
+                    }
+                }
+                Message::NavigateToProjectDirectory(node_idx) => {
+                    if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
+                        project_window.navigate_to(
+                            petgraph::graph::NodeIndex::new(node_idx),
+                        );
                     }
                 }
                 Message::OpenSceneTab => {

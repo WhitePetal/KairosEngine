@@ -90,6 +90,8 @@ pub(super) struct ProjectWindowColors {
     pub directory: math::Color32,
     #[serde(default = "default_file_color")]
     pub file: math::Color32,
+    #[serde(default = "default_selection_color")]
+    pub selection: math::Color32,
 }
 
 fn default_arrow_color() -> math::Color32 {
@@ -101,6 +103,9 @@ fn default_directory_color() -> math::Color32 {
 fn default_file_color() -> math::Color32 {
     math::Color32::new(200, 200, 200, 255)
 }
+fn default_selection_color() -> math::Color32 {
+    math::Color32::new(60, 75, 100, 255)
+}
 
 impl ProjectWindowColors {
     pub fn directory(&self) -> Color32 {
@@ -111,6 +116,9 @@ impl ProjectWindowColors {
     }
     pub fn _arrow(&self) -> Color32 {
         self.arrow.into()
+    }
+    pub fn selection(&self) -> Color32 {
+        self.selection.into()
     }
 }
 
@@ -134,6 +142,8 @@ struct ProjectWindowModel {
     project_path_graph: ProjectPathGraph,
     /// 当前在 Hierarchy 中选中的目录节点
     selected_node: Option<NodeIndex>,
+    /// Content panel 当前展示的目录（双击目录进入时更新）
+    active_directory: Option<NodeIndex>,
 }
 
 // ============================================================
@@ -183,6 +193,7 @@ impl ProjectWindowModel {
             asset_registry,
             project_path_graph,
             selected_node: None,
+            active_directory: None,
         })
     }
 }
@@ -194,9 +205,15 @@ impl ProjectWindow {
         Ok(Self { model })
     }
 
-    /// 由 [`Message::SelectProjectDirectoryNode`] 触发，选中指定目录节点。
+    /// 点击选中节点（仅高亮，不改变 content_panel 展示内容）。
     pub(super) fn select_node(&mut self, node: NodeIndex) {
         self.model.selected_node = Some(node);
+    }
+
+    /// 双击目录进入（选中 + 更新 content_panel 展示的目录）。
+    pub(super) fn navigate_to(&mut self, node: NodeIndex) {
+        self.model.selected_node = Some(node);
+        self.model.active_directory = Some(node);
     }
 }
 
@@ -210,6 +227,10 @@ impl Drawer for ProjectWindow {
 
     fn show_window(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {}
 
+    fn scroll_bars(&self) -> [bool; 2] {
+        [false, false]
+    }
+
     fn ui(
         &self,
         ui: &mut egui::Ui,
@@ -218,6 +239,7 @@ impl Drawer for ProjectWindow {
         _log: &mut Log,
     ) {
         let selected = self.model.selected_node;
+        let active_dir = self.model.active_directory;
 
         // 左侧：Hierarchy Panel
         egui::Panel::left("project_window_hierachy_panel")
@@ -238,18 +260,21 @@ impl Drawer for ProjectWindow {
             });
 
         // 右侧：Content Panel（只垂直滚动，水平自然换行）
-        egui::CentralPanel::default().show_inside(ui, |ui| {
+        egui::CentralPanel::default()
+            .show_inside(ui, |ui| {
             egui::ScrollArea::vertical()
                 .id_salt("content_scroll")
                 .show(ui, |ui| {
-                    content_panel::draw(
-                        ui,
-                        &self.model.project_path_graph,
-                        &self.model.style.icons,
-                        &self.model.style.colors,
-                        selected,
-                    );
-                });
+                content_panel::draw(
+                    ui,
+                    &self.model.project_path_graph,
+                    &self.model.style.icons,
+                    &self.model.style.colors,
+                    messager,
+                    active_dir,
+                    selected,
+                );
+            });
         });
     }
 
