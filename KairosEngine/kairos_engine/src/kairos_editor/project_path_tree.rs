@@ -128,9 +128,57 @@ impl ProjectPathGraph {
         // 再处理文件
         for path in files {
             let ext = path.extension().and_then(|e| e.to_str());
+
+            match ext {
+                Some("png") => {
+                    let texture_path = path.with_extension("texture");
+                    if texture_path.exists() {
+                        let guid = registry.get_or_create_guid(&texture_path);
+                        let name = path
+                            .file_name()
+                            .map(|n| n.to_os_string())
+                            .unwrap_or_default();
+                        let node_data = ProjectTreeNode::with_asset_path(
+                            guid,
+                            name,
+                            path.clone(),
+                            texture_path,
+                            ProjectNodeKind::Texture,
+                        );
+                        let child_node = graph.add_node(node_data);
+                        graph.add_edge(parent_node, child_node, ());
+                    }
+                    continue;
+                },
+                Some("glb") => {
+                    let mesh_path = path.with_extension("mesh");
+                    if mesh_path.exists() {
+                        let guid = registry.get_or_create_guid(&mesh_path);
+                        let name = path
+                            .file_name()
+                            .map(|n| n.to_os_string())
+                            .unwrap_or_default();
+                        let node_data = ProjectTreeNode::with_asset_path(
+                            guid,
+                            name,
+                            path.clone(),
+                            mesh_path,
+                            ProjectNodeKind::Mesh,
+                        );
+                        let child_node = graph.add_node(node_data);
+                        graph.add_edge(parent_node, child_node, ());
+                    }
+                    continue;
+                },
+                Some("texture" | "texture_bin" | "mesh" | "mesh_bin") => {
+                    continue;
+                },
+                _ => {}
+            }
+
             let kind = ProjectNodeKind::from_extension(ext);
 
-            // 跳过无法识别的文件类型（.glb, .png, .ogg 等源文件不纳入资源树）
+            // 跳过无法识别的文件类型
             if kind == ProjectNodeKind::Unknown {
                 continue;
             }

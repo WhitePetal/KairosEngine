@@ -74,18 +74,43 @@ pub struct ProjectTreeNode {
     pub guid: Guid,
     /// 文件名（不含路径前缀）
     pub name: OsString,
-    /// 相对于项目根目录的完整路径
+    /// 相对于项目根目录的完整路径（对于 Texture 类型，指向 .png 展示路径）
     pub path: PathBuf,
+    /// 引擎资产路径（Texture: .texture 路径；其他: None 表示与 path 相同）
+    pub asset_path: Option<PathBuf>,
     /// 节点类型
     pub kind: ProjectNodeKind,
 }
 
 impl ProjectTreeNode {
-    pub fn new(guid: Guid, name: OsString, path: PathBuf, kind: ProjectNodeKind) -> Self {
+    pub fn new(
+        guid: Guid,
+        name: OsString,
+        path: PathBuf,
+        kind: ProjectNodeKind,
+    ) -> Self {
         Self {
             guid,
             name,
             path,
+            asset_path: None,
+            kind,
+        }
+    }
+
+    /// 创建带资产路径的节点（如 Texture：path=.png, asset_path=.texture）
+    pub fn with_asset_path(
+        guid: Guid,
+        name: OsString,
+        path: PathBuf,
+        asset_path: PathBuf,
+        kind: ProjectNodeKind,
+    ) -> Self {
+        Self {
+            guid,
+            name,
+            path,
+            asset_path: Some(asset_path),
             kind,
         }
     }
