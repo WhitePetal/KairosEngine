@@ -1,19 +1,27 @@
-use std::{
-    any::{Any, TypeId, type_name},
-    collections::VecDeque,
-};
-
 use crate::{
-    asset_loader::assets::AssetsServer, graphics::graphics_graph::GraphicsCommand, kairos_editor::{
-        Engine, ui::{
-            game_window::GameWindow, global_styles::GlobalStyles, layout::{
+    asset_loader::assets::AssetsServer,
+    graphics::graphics_graph::GraphicsCommand,
+    kairos_editor::{
+        Engine,
+        project_path_tree::tree_node::ProjectNodeKind,
+        ui::{
+            game_window::GameWindow,
+            global_styles::GlobalStyles,
+            layout::{
                 EditorLayout, LayoutBottomContainer, LayoutContainerIds, LayoutLeftContainer,
                 LayoutRightContainer, Zone,
             },
         },
-    }, kairos_game::KairosGame, log::Log, types::TypeIdMap,
+    },
+    kairos_game::KairosGame,
+    log::Log,
+    types::TypeIdMap,
 };
 use egui::{self};
+use std::{
+    any::{Any, TypeId, type_name},
+    collections::VecDeque,
+};
 
 use crate::{
     kairos_dialog,
@@ -36,13 +44,13 @@ use crate::{
     },
 };
 
-pub mod global_styles;
 pub mod about_window;
 pub mod console_window;
 pub mod dialog;
 pub mod docking_tab;
 pub mod egui_ext;
 pub mod game_window;
+pub mod global_styles;
 pub mod hierarchy_window;
 pub mod inspector_window;
 pub mod layout;
@@ -96,6 +104,12 @@ pub enum Message {
     SelectProjectDirectoryNode(usize),
     /// ProjectWindow: 双击进入目录（NodeIndex::index()）
     NavigateToProjectDirectory(usize),
+    /// ProjectWindow: 右键弹出上下文菜单 (node_idx, cursor_pos)
+    ShowProjectContextMenu(usize, egui::Pos2),
+    /// ProjectWindow: 创建节点 (parent_idx, name, kind)
+    CreateProjectNode(usize, String, ProjectNodeKind),
+    /// ProjectWindow: 关闭右键上下文菜单
+    CloseProjectContextMenu,
 }
 
 struct KairosTabDrawer {
@@ -153,7 +167,14 @@ pub trait Drawer: Any {
 
     fn show_window(&self, state: Option<&mut WindowState>);
 
-    fn ui(&self, ui: &mut egui::Ui, global_styles: &GlobalStyles, messager: &mut Messager, engine: &Engine, log: &mut Log);
+    fn ui(
+        &self,
+        ui: &mut egui::Ui,
+        global_styles: &GlobalStyles,
+        messager: &mut Messager,
+        engine: &Engine,
+        log: &mut Log,
+    );
 
     fn render(
         &self,
@@ -375,6 +396,26 @@ impl Context {
                 Message::NavigateToProjectDirectory(node_idx) => {
                     if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
                         project_window.navigate_to(petgraph::graph::NodeIndex::new(node_idx));
+                    }
+                }
+                Message::ShowProjectContextMenu(node_idx, pos) => {
+                    if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
+                        project_window
+                            .show_context_menu(petgraph::graph::NodeIndex::new(node_idx), pos);
+                    }
+                }
+                Message::CreateProjectNode(parent_idx, name, kind) => {
+                    if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
+                        project_window.create_node(
+                            petgraph::graph::NodeIndex::new(parent_idx),
+                            name,
+                            kind,
+                        );
+                    }
+                }
+                Message::CloseProjectContextMenu => {
+                    if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
+                        project_window.close_context_menu();
                     }
                 }
                 Message::OpenSceneTab => {

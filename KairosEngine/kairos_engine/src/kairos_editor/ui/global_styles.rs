@@ -3,13 +3,14 @@ use std::fs;
 use serde::{Deserialize, Serialize};
 use toml::from_str;
 
-use crate::kairos_editor::{project_path_tree::tree_node::{ProjectNodeKind, ProjectTreeNode}, ui::paths};
-
-
+use crate::kairos_editor::{
+    project_path_tree::tree_node::{ProjectNodeKind, ProjectTreeNode},
+    ui::paths,
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GlobalStyles {
-    pub project_node_icons: ProjectNodeIcons
+    pub project_node_icons: ProjectNodeIcons,
 }
 
 impl GlobalStyles {
@@ -21,12 +22,8 @@ impl GlobalStyles {
                 error
             )
         })?;
-        let style: Self = from_str(&style_json).map_err(|error| {
-            format!(
-                "Deserialize Global Style Toml Failed, error: {}",
-                error
-            )
-        })?;
+        let style: Self = from_str(&style_json)
+            .map_err(|error| format!("Deserialize Global Style Toml Failed, error: {}", error))?;
         Ok(style)
     }
 }

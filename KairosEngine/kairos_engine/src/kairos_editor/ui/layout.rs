@@ -1,9 +1,13 @@
 use std::any::type_name;
 
 use crate::{
-    graphics::graphics_graph::GraphicsCommand, kairos_editor::{
-        Engine, ui::{Drawer, Messager, global_styles::GlobalStyles},
-    }, kairos_game::KairosGame, log::Log,
+    graphics::graphics_graph::GraphicsCommand,
+    kairos_editor::{
+        Engine,
+        ui::{Drawer, Messager, global_styles::GlobalStyles},
+    },
+    kairos_game::KairosGame,
+    log::Log,
 };
 
 use super::{
@@ -35,7 +39,15 @@ impl Drawer for LayoutLeftContainer {
 
     fn show_window(&self, _state: Option<&mut WindowState>) {}
 
-    fn ui(&self, _ui: &mut egui::Ui, _global_styles: &GlobalStyles, _messager: &mut Messager, _engine: &Engine, _log: &mut Log) {}
+    fn ui(
+        &self,
+        _ui: &mut egui::Ui,
+        _global_styles: &GlobalStyles,
+        _messager: &mut Messager,
+        _engine: &Engine,
+        _log: &mut Log,
+    ) {
+    }
 
     fn render(
         &self,
@@ -79,7 +91,15 @@ impl Drawer for LayoutRightContainer {
 
     fn show_window(&self, _state: Option<&mut WindowState>) {}
 
-    fn ui(&self, _ui: &mut egui::Ui, _global_styles: &GlobalStyles, _messager: &mut Messager, _engine: &Engine, _log: &mut Log) {}
+    fn ui(
+        &self,
+        _ui: &mut egui::Ui,
+        _global_styles: &GlobalStyles,
+        _messager: &mut Messager,
+        _engine: &Engine,
+        _log: &mut Log,
+    ) {
+    }
 
     fn render(
         &self,
@@ -118,7 +138,15 @@ impl Drawer for LayoutBottomContainer {
 
     fn show_window(&self, _state: Option<&mut WindowState>) {}
 
-    fn ui(&self, _ui: &mut egui::Ui, _global_styles: &GlobalStyles, _messager: &mut Messager, _engine: &Engine, _log: &mut Log) {}
+    fn ui(
+        &self,
+        _ui: &mut egui::Ui,
+        _global_styles: &GlobalStyles,
+        _messager: &mut Messager,
+        _engine: &Engine,
+        _log: &mut Log,
+    ) {
+    }
 
     fn render(
         &self,
@@ -157,7 +185,15 @@ impl Drawer for LayoutCenterContainer {
 
     fn show_window(&self, _state: Option<&mut WindowState>) {}
 
-    fn ui(&self, _ui: &mut egui::Ui, _global_styles: &GlobalStyles, _messager: &mut Messager, _engine: &Engine, _log: &mut Log) {}
+    fn ui(
+        &self,
+        _ui: &mut egui::Ui,
+        _global_styles: &GlobalStyles,
+        _messager: &mut Messager,
+        _engine: &Engine,
+        _log: &mut Log,
+    ) {
+    }
 
     fn render(
         &self,

@@ -2,8 +2,12 @@ use std::{any::type_name, fs};
 
 use crate::{
     kairos_editor::{
-        Engine, ui::{Messager, egui_ext::UiExt, global_styles::GlobalStyles},
-    }, kairos_game::KairosGame, log::Log, math::{self, float2},
+        Engine,
+        ui::{Messager, egui_ext::UiExt, global_styles::GlobalStyles},
+    },
+    kairos_game::KairosGame,
+    log::Log,
+    math::{self, float2},
 };
 use egui::{self, Vec2};
 use serde::{Deserialize, Serialize};

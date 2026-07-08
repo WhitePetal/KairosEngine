@@ -2,14 +2,16 @@ use egui::{CollapsingHeader, RichText, Vec2};
 use petgraph::{graph::NodeIndex, visit::EdgeRef};
 use serde::{Deserialize, Serialize};
 
-use crate::{kairos_editor::{
-    project_path_tree::{
-        ProjectPathGraph,
-        tree_node::{ProjectNodeKind, ProjectTreeNode},
-    }, ui::{
-        Message, Messager, global_styles::GlobalStyles, project_window::ProjectWindowStyle,
+use crate::{
+    kairos_editor::{
+        project_path_tree::{
+            ProjectPathGraph,
+            tree_node::{ProjectNodeKind, ProjectTreeNode},
+        },
+        ui::{Message, Messager, global_styles::GlobalStyles, project_window::ProjectWindowStyle},
     },
-}, math};
+    math,
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct HierarchyStyle {
@@ -36,7 +38,15 @@ pub(super) fn draw(
     selected_node: Option<NodeIndex>,
 ) {
     let root = graph.get_root_node();
-    draw_node(ui, global_styles, graph, root, style, messager, selected_node);
+    draw_node(
+        ui,
+        global_styles,
+        graph,
+        root,
+        style,
+        messager,
+        selected_node,
+    );
 }
 
 // ============================================================
@@ -67,7 +77,15 @@ fn draw_node(
             messager,
             selected_node,
         ),
-        _ => draw_file(ui, global_styles, node, node_data, style, messager, selected_node),
+        _ => draw_file(
+            ui,
+            global_styles,
+            node,
+            node_data,
+            style,
+            messager,
+            selected_node,
+        ),
     }
 }
 
@@ -87,8 +105,7 @@ fn draw_directory(
     ui.visuals_mut().collapsing_header_frame = true;
 
     let header_text = RichText::new(name).color(style.hierachy.directory_header_color);
-    let header = CollapsingHeader::new(header_text)
-        .id_salt(node_data.guid.to_string());
+    let header = CollapsingHeader::new(header_text).id_salt(node_data.guid.to_string());
 
     let has_children = graph.get_edges(node).count() > 0;
 
@@ -96,7 +113,15 @@ fn draw_directory(
         header.show(ui, |ui| {
             let children = graph.get_edges(node).map(|e| e.target());
             for child in children {
-                draw_node(ui, global_styles, graph, child, style, messager, selected_node);
+                draw_node(
+                    ui,
+                    global_styles,
+                    graph,
+                    child,
+                    style,
+                    messager,
+                    selected_node,
+                );
             }
         })
     } else {
@@ -108,6 +133,7 @@ fn draw_directory(
             );
         })
     };
+    ui.visuals_mut().collapsing_header_frame = false;
 
     if is_selected {
         response.header_response = response.header_response.highlight();
@@ -117,6 +143,11 @@ fn draw_directory(
 
     if clicked {
         messager.send(Message::NavigateToProjectDirectory(node.index()));
+    }
+    if response.header_response.secondary_clicked() {
+        if let Some(pos) = response.header_response.interact_pointer_pos() {
+            messager.send(Message::ShowProjectContextMenu(node.index(), pos));
+        }
     }
 }
 
@@ -139,13 +170,19 @@ fn draw_file(
     // 1. 选中背景（优先绘制，在内容下方）
     if is_selected {
         let row_rect = egui::Rect::from_min_size(row_start, egui::vec2(row_width, row_height));
-        ui.painter()
-            .rect_filled(row_rect, egui::CornerRadius::same(style.hierachy.selected_file_background_corner_radius), style.hierachy.selected_file_background_color);
+        ui.painter().rect_filled(
+            row_rect,
+            egui::CornerRadius::same(style.hierachy.selected_file_background_corner_radius),
+            style.hierachy.selected_file_background_color,
+        );
     }
 
     // 2. 渲染内容（在背景上方）
     ui.horizontal(|ui| {
-        let icon_path = format!("file://{}", global_styles.project_node_icons.for_kind(node_data));
+        let icon_path = format!(
+            "file://{}",
+            global_styles.project_node_icons.for_kind(node_data)
+        );
         let icon =
             egui::Image::new(egui::ImageSource::Uri(icon_path.into())).fit_to_exact_size(icon_size);
         ui.add(icon);
@@ -171,5 +208,10 @@ fn draw_file(
     );
     if response.clicked() {
         messager.send(Message::SelectProjectDirectoryNode(node.index()));
+    }
+    if response.secondary_clicked() {
+        if let Some(pos) = response.interact_pointer_pos() {
+            messager.send(Message::ShowProjectContextMenu(node.index(), pos));
+        }
     }
 }

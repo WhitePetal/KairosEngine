@@ -1,7 +1,12 @@
 use std::{any::type_name, fs};
 
 use crate::{
-    kairos_editor::{Engine, ui::{Messager, global_styles::GlobalStyles}}, kairos_game::KairosGame, log::Log,
+    kairos_editor::{
+        Engine,
+        ui::{Messager, global_styles::GlobalStyles},
+    },
+    kairos_game::KairosGame,
+    log::Log,
 };
 use serde::{Deserialize, Serialize};
 use toml::from_str;

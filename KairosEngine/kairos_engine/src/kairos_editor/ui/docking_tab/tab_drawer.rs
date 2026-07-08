@@ -1,4 +1,7 @@
-use crate::{kairos_editor::{Engine, ui::global_styles::GlobalStyles}, log::Log};
+use crate::{
+    kairos_editor::{Engine, ui::global_styles::GlobalStyles},
+    log::Log,
+};
 use egui::{self, Id, Ui, WidgetText};
 
 use crate::kairos_editor::ui::{

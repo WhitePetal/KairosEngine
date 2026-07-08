@@ -87,7 +87,14 @@ impl Drawer for AboutWindow {
             }
         }
     }
-    fn ui(&self, ui: &mut egui::Ui, _global_styles: &GlobalStyles, _messager: &mut Messager, _engine: &Engine, log: &mut Log) {
+    fn ui(
+        &self,
+        ui: &mut egui::Ui,
+        _global_styles: &GlobalStyles,
+        _messager: &mut Messager,
+        _engine: &Engine,
+        log: &mut Log,
+    ) {
         // TODO: test log
         log.info("about_window update");
         // TODO: Icon

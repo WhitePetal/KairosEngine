@@ -15,6 +15,10 @@ guid = "9c8dc9b1-625c-4213-a723-e0b8a69dbdc4"
 path = "./Library/asset_registry.toml"
 
 [[entries]]
+guid = "5fb53260-6d04-4548-8594-025115ddb080"
+path = "./New Folder"
+
+[[entries]]
 guid = "44188a6d-364b-414b-be95-0dfddfa1ef80"
 path = "./Preferences"
 
@@ -73,6 +77,10 @@ path = "./Preferences/Textures"
 [[entries]]
 guid = "27441b77-f7e4-4fea-b7cd-d9b4f18e30e0"
 path = "./docs"
+
+[[entries]]
+guid = "190a3f64-592e-48c4-80b6-848ef9c388ce"
+path = "./docs/New Folder"
 
 [[entries]]
 guid = "813e8724-5100-4df7-9aa8-b35ea3890c8e"
@@ -177,6 +185,10 @@ path = "./kairos_ecs_macros/Cargo.toml"
 [[entries]]
 guid = "aaf69cf3-6893-440e-923f-8ed1872e4e08"
 path = "./kairos_ecs_macros/src"
+
+[[entries]]
+guid = "7ca085ac-fc4d-4012-ab4b-40b07c8ff420"
+path = "./kairos_ecs_macros/src/New Folder"
 
 [[entries]]
 guid = "5c259653-1def-4030-8baa-b0065e566182"
@@ -491,6 +503,10 @@ guid = "69b43378-17fe-42f5-8b70-8d456aec6596"
 path = "./kairos_engine/src/kairos_editor/project_path_tree"
 
 [[entries]]
+guid = "199cea14-ef2f-42e1-991c-b10272ae9257"
+path = "./kairos_engine/src/kairos_editor/project_path_tree/create_request.rs"
+
+[[entries]]
 guid = "13b4d18b-788f-4791-bc05-86804b0bef4c"
 path = "./kairos_engine/src/kairos_editor/project_path_tree/texture_path.rs"
 
@@ -649,6 +665,10 @@ path = "./kairos_engine/src/kairos_editor/ui/project_window"
 [[entries]]
 guid = "2e1973b8-36be-4e64-8855-f40b2736fe78"
 path = "./kairos_engine/src/kairos_editor/ui/project_window/content_panel.rs"
+
+[[entries]]
+guid = "cba9e0ec-e2a2-4143-8bc1-8eb5e707e161"
+path = "./kairos_engine/src/kairos_editor/ui/project_window/context_menu.rs"
 
 [[entries]]
 guid = "bc1c58b0-047b-4ead-beae-ea2ed83366e4"

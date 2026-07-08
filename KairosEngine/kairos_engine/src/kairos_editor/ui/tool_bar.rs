@@ -4,7 +4,13 @@ use std::{
 };
 
 use crate::{
-    kairos_editor::{Engine, ui::{Messager, global_styles::GlobalStyles}}, kairos_game::KairosGame, log::Log, math,
+    kairos_editor::{
+        Engine,
+        ui::{Messager, global_styles::GlobalStyles},
+    },
+    kairos_game::KairosGame,
+    log::Log,
+    math,
 };
 use egui::{self, Panel, containers::menu};
 use serde::{Deserialize, Serialize};

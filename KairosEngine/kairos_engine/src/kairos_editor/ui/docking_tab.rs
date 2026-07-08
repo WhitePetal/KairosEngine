@@ -1,6 +1,9 @@
 use std::ops::RangeInclusive;
 
-use crate::{kairos_editor::{Engine, ui::global_styles::GlobalStyles}, log::Log};
+use crate::{
+    kairos_editor::{Engine, ui::global_styles::GlobalStyles},
+    log::Log,
+};
 use egui::{
     self, Align, Align2, Button, CentralPanel, Color32, Context, CornerRadius, CursorIcon,
     EventFilter, Frame, Id, Key, LayerId, Layout, Modifiers, NumExt, Order, Popup,
@@ -216,7 +219,15 @@ impl<Drawer> DockArea<'_, Drawer> {
                     .fill(Color32::TRANSPARENT),
             )
             .show_inside(ui, |ui| {
-                self.show_inside(ui, global_styles, messager, engine, log, drawers, tab_viewer);
+                self.show_inside(
+                    ui,
+                    global_styles,
+                    messager,
+                    engine,
+                    log,
+                    drawers,
+                    tab_viewer,
+                );
             });
     }
 
@@ -481,10 +492,28 @@ impl<Drawer> DockArea<'_, Drawer> {
         fade_style: Option<(&Style, f32, SurfaceIndex)>,
     ) {
         if surf_index.is_main() {
-            self.show_root_surface_inside(ui, global_styles, messager, engine, log, drawers, tab_viewer, state);
+            self.show_root_surface_inside(
+                ui,
+                global_styles,
+                messager,
+                engine,
+                log,
+                drawers,
+                tab_viewer,
+                state,
+            );
         } else {
             self.show_window_surface(
-                ui, global_styles, messager, engine, log, drawers, surf_index, tab_viewer, state, fade_style,
+                ui,
+                global_styles,
+                messager,
+                engine,
+                log,
+                drawers,
+                surf_index,
+                tab_viewer,
+                state,
+                fade_style,
             );
         }
     }
@@ -816,7 +845,16 @@ impl<Drawer> DockArea<'_, Drawer> {
         }
 
         self.render_nodes(
-            ui, global_styles, messager, engine, log, drawers, tab_viewer, state, surf_index, None,
+            ui,
+            global_styles,
+            messager,
+            engine,
+            log,
+            drawers,
+            tab_viewer,
+            state,
+            surf_index,
+            None,
         );
     }
 }
@@ -928,7 +966,16 @@ impl<Drawer> DockArea<'_, Drawer> {
                 )
             } else {
                 self.render_nodes(
-                    ui, global_styles, messager, engine, log, drawers, tab_viewer, state, surf_index, fade_style,
+                    ui,
+                    global_styles,
+                    messager,
+                    engine,
+                    log,
+                    drawers,
+                    tab_viewer,
+                    state,
+                    surf_index,
+                    fade_style,
                 );
             }
         });

@@ -381,7 +381,6 @@ impl KairosEditorRuntime {
         }
         window.request_redraw();
 
-
         if should_close {
             self.shutdown(event_loop);
             return;

@@ -13,12 +13,11 @@ use wgpu::{
     RenderPassDepthStencilAttachment, RenderPassDescriptor, RenderPipelineDescriptor,
     RequestAdapterOptions, SamplerBindingType, ShaderModuleDescriptor, ShaderSource, ShaderStages,
     StencilState, StoreOp, Surface, SurfaceConfiguration, SurfaceTexture, TexelCopyBufferLayout,
-    TexelCopyTextureInfo, TextureFormat, TextureSampleType, TextureUsages, TextureView,
-    TextureViewDescriptor, TextureViewDimension, Trace, VertexAttribute, VertexBufferLayout,
-    VertexFormat, VertexState, VertexStepMode,
+    TexelCopyTextureInfo, TextureDescriptor, TextureFormat, TextureSampleType, TextureUsages,
+    TextureView, TextureViewDescriptor, TextureViewDimension, Trace, VertexAttribute,
+    VertexBufferLayout, VertexFormat, VertexState, VertexStepMode,
     util::{BufferInitDescriptor, DeviceExt},
     wgt::{DeviceDescriptor, SamplerDescriptor},
-    TextureDescriptor,
 };
 use winit::{dpi::PhysicalSize, window::Window};
 

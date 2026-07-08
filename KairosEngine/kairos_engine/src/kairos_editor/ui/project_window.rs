@@ -1,20 +1,31 @@
 pub mod content_panel;
+pub mod context_menu;
 pub mod hierarchy_panel;
 
 use std::{any::type_name, fs};
 
 use crate::{
-    asset_loader::assets::AssetsServer, kairos_editor::{
-        Engine, asset_registry::AssetRegistry, project_path_tree::ProjectPathGraph, ui::{Messager, global_styles::GlobalStyles, project_window::{content_panel::ContentStyle, hierarchy_panel::HierarchyStyle}},
-    }, kairos_game::KairosGame, log::Log,
+    asset_loader::assets::AssetsServer,
+    kairos_editor::{
+        Engine,
+        asset_registry::AssetRegistry,
+        project_path_tree::{
+            ProjectPathGraph, create_request::CreateRequest, tree_node::ProjectNodeKind,
+        },
+        ui::{
+            Messager,
+            global_styles::GlobalStyles,
+            project_window::{content_panel::ContentStyle, hierarchy_panel::HierarchyStyle},
+        },
+    },
+    kairos_game::KairosGame,
+    log::Log,
 };
-use petgraph::graph::NodeIndex;
+use petgraph::{graph::NodeIndex, visit::EdgeRef};
 use serde::{Deserialize, Serialize};
 use toml::from_str;
 
-use crate::kairos_editor::{
-    ui::{Drawer, Message, paths},
-};
+use crate::kairos_editor::ui::{Drawer, Message, paths};
 
 // ============================================================
 // Style — 从 ProjectWindowStyle.toml 反序列化
@@ -32,12 +43,14 @@ pub(super) struct ProjectWindowStyle {
 
 struct ProjectWindowModel {
     style: ProjectWindowStyle,
-    _asset_registry: AssetRegistry,
+    asset_registry: AssetRegistry,
     project_path_graph: ProjectPathGraph,
     /// 当前在 Hierarchy 中选中的目录节点
     selected_node: Option<NodeIndex>,
     /// Content panel 当前展示的目录（双击目录进入时更新）
     active_directory: Option<NodeIndex>,
+    /// 右键上下文菜单状态
+    context_menu: Option<context_menu::ContextMenuState>,
 }
 
 // ============================================================
@@ -84,10 +97,11 @@ impl ProjectWindowModel {
 
         Ok(Self {
             style,
-            _asset_registry: asset_registry,
+            asset_registry: asset_registry,
             project_path_graph,
             selected_node: None,
             active_directory: None,
+            context_menu: None,
         })
     }
 }
@@ -101,13 +115,79 @@ impl ProjectWindow {
 
     /// 点击选中节点（仅高亮，不改变 content_panel 展示内容）。
     pub(super) fn select_node(&mut self, node: NodeIndex) {
+        self.model.context_menu = None;
         self.model.selected_node = Some(node);
     }
 
     /// 双击目录进入（选中 + 更新 content_panel 展示的目录）。
     pub(super) fn navigate_to(&mut self, node: NodeIndex) {
+        self.model.context_menu = None;
         self.model.selected_node = Some(node);
         self.model.active_directory = Some(node);
+    }
+
+    pub(super) fn close_context_menu(&mut self) {
+        self.model.context_menu = None;
+    }
+
+    /// 右键弹出上下文菜单。
+    pub(super) fn show_context_menu(&mut self, node: NodeIndex, position: egui::Pos2) {
+        self.model.context_menu = Some(context_menu::ContextMenuState { node, position });
+    }
+
+    /// 在指定父目录下创建节点，成功后自动选中。
+    pub(super) fn create_node(&mut self, parent: NodeIndex, name: String, kind: ProjectNodeKind) {
+        let unique_name = self.unique_name(parent, &name);
+        let request = CreateRequest {
+            parent_node: parent,
+            name: unique_name,
+            kind,
+        };
+
+        match self
+            .model
+            .project_path_graph
+            .create_node(&mut self.model.asset_registry, request)
+        {
+            Ok(new_node) => {
+                self.model.selected_node = Some(new_node);
+                self.model.context_menu = None;
+                let _ = self.model.asset_registry.save();
+            }
+            Err(e) => {
+                log::warn!("Failed to create node: {e}");
+            }
+        }
+    }
+
+    /// 生成不重复的名称（"New Folder" → "New Folder (1)" → ...）
+    fn unique_name(&self, parent: NodeIndex, base: &str) -> String {
+        let exists = |name: &str| {
+            self.model.project_path_graph.get_edges(parent).any(|e| {
+                self.model
+                    .project_path_graph
+                    .get_node(e.target())
+                    .is_some_and(|n| n.name.to_string_lossy().eq_ignore_ascii_case(name))
+            })
+        };
+
+        if !exists(base) {
+            return base.to_string();
+        }
+        for i in 1..1000u32 {
+            let candidate = format!("{base} ({i})");
+            if !exists(&candidate) {
+                return candidate;
+            }
+        }
+        format!(
+            "{base} ({})",
+            uuid::Uuid::new_v4()
+                .to_string()
+                .chars()
+                .take(8)
+                .collect::<String>()
+        )
     }
 }
 
@@ -155,22 +235,26 @@ impl Drawer for ProjectWindow {
             });
 
         // 右侧：Content Panel（只垂直滚动，水平自然换行）
-        egui::CentralPanel::default()
-            .show_inside(ui, |ui| {
+        egui::CentralPanel::default().show_inside(ui, |ui| {
             egui::ScrollArea::vertical()
                 .id_salt("content_scroll")
                 .show(ui, |ui| {
-                content_panel::draw(
-                    ui,
-                    global_styles,
-                    &self.model.project_path_graph,
-                    &self.model.style,
-                    messager,
-                    active_dir,
-                    selected,
-                );
-            });
+                    content_panel::draw(
+                        ui,
+                        global_styles,
+                        &self.model.project_path_graph,
+                        &self.model.style,
+                        messager,
+                        active_dir,
+                        selected,
+                    );
+                });
         });
+
+        // Context Menu overlay（在面板之上绘制）
+        if let Some(ref ctx_menu) = self.model.context_menu {
+            context_menu::draw(ui, ctx_menu, messager);
+        }
     }
 
     fn close(&self, messager: &mut super::Messager) {

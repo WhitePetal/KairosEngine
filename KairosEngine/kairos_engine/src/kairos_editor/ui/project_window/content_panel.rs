@@ -2,14 +2,19 @@ use egui::{RichText, Vec2};
 use petgraph::{graph::NodeIndex, visit::EdgeRef};
 use serde::{Deserialize, Serialize};
 
-use crate::{kairos_editor::{
-    project_path_tree::{
-        ProjectPathGraph,
-        tree_node::{ProjectNodeKind, ProjectTreeNode},
-    }, ui::{
-        Message, Messager, egui_ext::UiExt, global_styles::GlobalStyles, project_window::ProjectWindowStyle,
+use crate::{
+    kairos_editor::{
+        project_path_tree::{
+            ProjectPathGraph,
+            tree_node::{ProjectNodeKind, ProjectTreeNode},
+        },
+        ui::{
+            Message, Messager, egui_ext::UiExt, global_styles::GlobalStyles,
+            project_window::ProjectWindowStyle,
+        },
     },
-}, math};
+    math,
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ContentStyle {
@@ -42,6 +47,19 @@ pub(super) fn draw(
     selected_node: Option<NodeIndex>,
 ) {
     let target = active_directory.unwrap_or_else(|| graph.get_root_node());
+
+    // 背景右键区域（先注册，cell 的 interact 后注册会优先响应）
+    let panel_rect = egui::Rect::from_min_size(ui.cursor().min, ui.available_size());
+    let bg_response = ui.interact(
+        panel_rect,
+        ui.id().with("content_panel_bg"),
+        egui::Sense::all(),
+    );
+    if bg_response.secondary_clicked() {
+        if let Some(pos) = bg_response.interact_pointer_pos() {
+            messager.send(Message::ShowProjectContextMenu(target.index(), pos));
+        }
+    }
 
     // 收集子节点：目录优先，文件按名称排序
     let mut children: Vec<NodeIndex> = graph.get_edges(target).map(|e| e.target()).collect();
@@ -111,10 +129,8 @@ fn draw_cell(
     // 1. 分配空间：icon + label 固定高度 + 垂直间隔
     let cell_content_height = icon_size + label_height;
     let alloc_height = cell_content_height + style.content.cell_spacing_y;
-    let (rect, response) = ui.allocate_exact_size(
-        Vec2::new(icon_size, alloc_height),
-        egui::Sense::all(),
-    );
+    let (rect, response) =
+        ui.allocate_exact_size(Vec2::new(icon_size, alloc_height), egui::Sense::all());
 
     // 2. 内容区域（不包含底部间隔）
     let content_rect =
@@ -138,7 +154,10 @@ fn draw_cell(
     cell_ui.set_clip_rect(content_rect);
 
     // Icon
-    let icon_path = format!("file://{}", global_styles.project_node_icons.for_kind(node_data));
+    let icon_path = format!(
+        "file://{}",
+        global_styles.project_node_icons.for_kind(node_data)
+    );
     let icon = egui::Image::new(egui::ImageSource::Uri(icon_path.into()))
         .fit_to_exact_size(Vec2::new(icon_size, icon_size))
         .show_loading_spinner(true);
@@ -157,11 +176,15 @@ fn draw_cell(
         .color(style.content.label_color);
     cell_ui.label(label);
 
-    // 5. 点击覆盖层
     if response.clicked() {
         messager.send(Message::SelectProjectDirectoryNode(node.index()));
     }
     if response.double_clicked() && node_data.kind == ProjectNodeKind::Directory {
         messager.send(Message::NavigateToProjectDirectory(node.index()));
+    }
+    if response.secondary_clicked() {
+        if let Some(pos) = response.interact_pointer_pos() {
+            messager.send(Message::ShowProjectContextMenu(node.index(), pos));
+        }
     }
 }
