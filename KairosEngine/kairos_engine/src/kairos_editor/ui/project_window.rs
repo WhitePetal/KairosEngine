@@ -15,7 +15,11 @@ use crate::{
         ui::{
             Messager,
             global_styles::GlobalStyles,
-            project_window::{content_panel::ContentStyle, hierarchy_panel::HierarchyStyle},
+            project_window::{
+                content_panel::{ContentPanel, ContentStyle},
+                context_menu::ContextMenuState,
+                hierarchy_panel::{HierarchyPanel, HierarchyStyle},
+            },
         },
     },
     kairos_game::KairosGame,
@@ -49,8 +53,6 @@ struct ProjectWindowModel {
     selected_node: Option<NodeIndex>,
     /// Content panel 当前展示的目录（双击目录进入时更新）
     active_directory: Option<NodeIndex>,
-    /// 右键上下文菜单状态
-    context_menu: Option<context_menu::ContextMenuState>,
 }
 
 // ============================================================
@@ -101,7 +103,6 @@ impl ProjectWindowModel {
             project_path_graph,
             selected_node: None,
             active_directory: None,
-            context_menu: None,
         })
     }
 }
@@ -115,24 +116,13 @@ impl ProjectWindow {
 
     /// 点击选中节点（仅高亮，不改变 content_panel 展示内容）。
     pub(super) fn select_node(&mut self, node: NodeIndex) {
-        self.model.context_menu = None;
         self.model.selected_node = Some(node);
     }
 
     /// 双击目录进入（选中 + 更新 content_panel 展示的目录）。
     pub(super) fn navigate_to(&mut self, node: NodeIndex) {
-        self.model.context_menu = None;
         self.model.selected_node = Some(node);
         self.model.active_directory = Some(node);
-    }
-
-    pub(super) fn close_context_menu(&mut self) {
-        self.model.context_menu = None;
-    }
-
-    /// 右键弹出上下文菜单。
-    pub(super) fn show_context_menu(&mut self, node: NodeIndex, position: egui::Pos2) {
-        self.model.context_menu = Some(context_menu::ContextMenuState { node, position });
     }
 
     /// 在指定父目录下创建节点，成功后自动选中。
@@ -151,7 +141,6 @@ impl ProjectWindow {
         {
             Ok(new_node) => {
                 self.model.selected_node = Some(new_node);
-                self.model.context_menu = None;
                 let _ = self.model.asset_registry.save();
             }
             Err(e) => {
@@ -223,7 +212,7 @@ impl Drawer for ProjectWindow {
                 egui::ScrollArea::both()
                     .id_salt("hierarchy_scroll")
                     .show(ui, |ui| {
-                        hierarchy_panel::draw(
+                        HierarchyPanel::draw(
                             ui,
                             global_styles,
                             &self.model.project_path_graph,
@@ -239,7 +228,7 @@ impl Drawer for ProjectWindow {
             egui::ScrollArea::vertical()
                 .id_salt("content_scroll")
                 .show(ui, |ui| {
-                    content_panel::draw(
+                    ContentPanel::draw(
                         ui,
                         global_styles,
                         &self.model.project_path_graph,
@@ -250,11 +239,6 @@ impl Drawer for ProjectWindow {
                     );
                 });
         });
-
-        // Context Menu overlay（在面板之上绘制）
-        if let Some(ref ctx_menu) = self.model.context_menu {
-            context_menu::draw(ui, ctx_menu, messager);
-        }
     }
 
     fn close(&self, messager: &mut super::Messager) {

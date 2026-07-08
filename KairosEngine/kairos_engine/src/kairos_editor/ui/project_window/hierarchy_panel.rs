@@ -8,7 +8,14 @@ use crate::{
             ProjectPathGraph,
             tree_node::{ProjectNodeKind, ProjectTreeNode},
         },
-        ui::{Message, Messager, global_styles::GlobalStyles, project_window::ProjectWindowStyle},
+        ui::{
+            Message, Messager,
+            global_styles::GlobalStyles,
+            project_window::{
+                ProjectWindowStyle,
+                context_menu::{ContextMenu, ContextMenuState},
+            },
+        },
     },
     math,
 };
@@ -24,194 +31,194 @@ pub struct HierarchyStyle {
     pub selected_file_background_corner_radius: u8,
 }
 
+pub struct HierarchyPanel {}
+
 // ============================================================
 // Hierarchy 面板入口
 // ============================================================
 
-/// 在 egui Ui 中绘制项目目录树（Hierarchy 面板）。
-pub(super) fn draw(
-    ui: &mut egui::Ui,
-    global_styles: &GlobalStyles,
-    graph: &ProjectPathGraph,
-    style: &ProjectWindowStyle,
-    messager: &mut Messager,
-    selected_node: Option<NodeIndex>,
-) {
-    let root = graph.get_root_node();
-    draw_node(
-        ui,
-        global_styles,
-        graph,
-        root,
-        style,
-        messager,
-        selected_node,
-    );
-}
-
-// ============================================================
-// 递归渲染
-// ============================================================
-
-fn draw_node(
-    ui: &mut egui::Ui,
-    global_styles: &GlobalStyles,
-    graph: &ProjectPathGraph,
-    node: NodeIndex,
-    style: &ProjectWindowStyle,
-    messager: &mut Messager,
-    selected_node: Option<NodeIndex>,
-) {
-    let Some(node_data) = graph.get_node(node) else {
-        return;
-    };
-
-    match &node_data.kind {
-        ProjectNodeKind::Directory => draw_directory(
+impl HierarchyPanel {
+    /// 在 egui Ui 中绘制项目目录树（Hierarchy 面板）。
+    pub fn draw(
+        ui: &mut egui::Ui,
+        global_styles: &GlobalStyles,
+        graph: &ProjectPathGraph,
+        style: &ProjectWindowStyle,
+        messager: &mut Messager,
+        selected_node: Option<NodeIndex>,
+    ) {
+        let root = graph.get_root_node();
+        Self::draw_node(
             ui,
             global_styles,
             graph,
-            node,
-            node_data,
+            root,
             style,
             messager,
             selected_node,
-        ),
-        _ => draw_file(
-            ui,
-            global_styles,
-            node,
-            node_data,
-            style,
-            messager,
-            selected_node,
-        ),
+        );
     }
-}
 
-fn draw_directory(
-    ui: &mut egui::Ui,
-    global_styles: &GlobalStyles,
-    graph: &ProjectPathGraph,
-    node: NodeIndex,
-    node_data: &ProjectTreeNode,
-    style: &ProjectWindowStyle,
-    messager: &mut Messager,
-    selected_node: Option<NodeIndex>,
-) {
-    let name = node_data.name();
-    let is_selected = selected_node == Some(node);
+    // ============================================================
+    // 递归渲染
+    // ============================================================
 
-    ui.visuals_mut().collapsing_header_frame = true;
+    fn draw_node(
+        ui: &mut egui::Ui,
+        global_styles: &GlobalStyles,
+        graph: &ProjectPathGraph,
+        node: NodeIndex,
+        style: &ProjectWindowStyle,
+        messager: &mut Messager,
+        selected_node: Option<NodeIndex>,
+    ) {
+        let Some(node_data) = graph.get_node(node) else {
+            return;
+        };
 
-    let header_text = RichText::new(name).color(style.hierachy.directory_header_color);
-    let header = CollapsingHeader::new(header_text).id_salt(node_data.guid.to_string());
+        match &node_data.kind {
+            ProjectNodeKind::Directory => Self::draw_directory(
+                ui,
+                global_styles,
+                graph,
+                node,
+                node_data,
+                style,
+                messager,
+                selected_node,
+            ),
+            _ => Self::draw_file(
+                ui,
+                global_styles,
+                node,
+                node_data,
+                style,
+                messager,
+                selected_node,
+            ),
+        }
+    }
 
-    let has_children = graph.get_edges(node).count() > 0;
+    fn draw_directory(
+        ui: &mut egui::Ui,
+        global_styles: &GlobalStyles,
+        graph: &ProjectPathGraph,
+        node: NodeIndex,
+        node_data: &ProjectTreeNode,
+        style: &ProjectWindowStyle,
+        messager: &mut Messager,
+        selected_node: Option<NodeIndex>,
+    ) {
+        let name = node_data.name();
+        let is_selected = selected_node == Some(node);
 
-    let mut response = if has_children {
-        header.show(ui, |ui| {
-            let children = graph.get_edges(node).map(|e| e.target());
-            for child in children {
-                draw_node(
-                    ui,
-                    global_styles,
-                    graph,
-                    child,
-                    style,
-                    messager,
-                    selected_node,
+        ui.visuals_mut().collapsing_header_frame = true;
+
+        let header_text = RichText::new(name).color(style.hierachy.directory_header_color);
+        let header = CollapsingHeader::new(header_text).id_salt(node_data.guid.to_string());
+
+        let has_children = graph.get_edges(node).count() > 0;
+
+        let mut response = if has_children {
+            header.show(ui, |ui| {
+                let children = graph.get_edges(node).map(|e| e.target());
+                for child in children {
+                    Self::draw_node(
+                        ui,
+                        global_styles,
+                        graph,
+                        child,
+                        style,
+                        messager,
+                        selected_node,
+                    );
+                }
+            })
+        } else {
+            header.show(ui, |ui| {
+                ui.label(
+                    RichText::new("(empty)")
+                        .size(style.hierachy.file_header_size)
+                        .color(style.hierachy.file_header_color),
+                );
+            })
+        };
+        ui.visuals_mut().collapsing_header_frame = false;
+
+        if is_selected {
+            response.header_response = response.header_response.highlight();
+        }
+
+        let clicked = response.header_response.clicked();
+
+        if clicked {
+            messager.send(Message::NavigateToProjectDirectory(node.index()));
+        }
+        response.header_response.context_menu(|ui| {
+            ContextMenu::show(ui, ContextMenuState::new(node), messager);
+        });
+    }
+
+    fn draw_file(
+        ui: &mut egui::Ui,
+        global_styles: &GlobalStyles,
+        node: NodeIndex,
+        node_data: &ProjectTreeNode,
+        style: &ProjectWindowStyle,
+        messager: &mut Messager,
+        selected_node: Option<NodeIndex>,
+    ) {
+        let is_selected = selected_node == Some(node);
+        let icon_size = style.hierachy.file_icon_size;
+        let icon_size = Vec2::new(icon_size, icon_size);
+        let row_height = ui.spacing().interact_size.y;
+        let row_start = ui.cursor().min;
+        let row_width = ui.available_width(); // 在 horizontal 消费前保存
+
+        // 1. 选中背景（优先绘制，在内容下方）
+        if is_selected {
+            let row_rect = egui::Rect::from_min_size(row_start, egui::vec2(row_width, row_height));
+            ui.painter().rect_filled(
+                row_rect,
+                egui::CornerRadius::same(style.hierachy.selected_file_background_corner_radius),
+                style.hierachy.selected_file_background_color,
+            );
+        }
+
+        // 2. 渲染内容（在背景上方）
+        ui.horizontal(|ui| {
+            let icon_path = format!(
+                "file://{}",
+                global_styles.project_node_icons.for_kind(node_data)
+            );
+            let icon = egui::Image::new(egui::ImageSource::Uri(icon_path.into()))
+                .fit_to_exact_size(icon_size);
+            ui.add(icon);
+
+            let name = node_data.name();
+            ui.label(RichText::new(name).color(style.hierachy.file_header_color));
+
+            if let Some(suffix) = node_data.kind.suffix() {
+                ui.label(
+                    RichText::new(suffix)
+                        .size(style.hierachy.file_header_size)
+                        .color(style.hierachy.file_suffix_color),
                 );
             }
-        })
-    } else {
-        header.show(ui, |ui| {
-            ui.label(
-                RichText::new("(empty)")
-                    .size(style.hierachy.file_header_size)
-                    .color(style.hierachy.file_header_color),
-            );
-        })
-    };
-    ui.visuals_mut().collapsing_header_frame = false;
+        });
 
-    if is_selected {
-        response.header_response = response.header_response.highlight();
-    }
-
-    let clicked = response.header_response.clicked();
-
-    if clicked {
-        messager.send(Message::NavigateToProjectDirectory(node.index()));
-    }
-    if response.header_response.secondary_clicked() {
-        if let Some(pos) = response.header_response.interact_pointer_pos() {
-            messager.send(Message::ShowProjectContextMenu(node.index(), pos));
-        }
-    }
-}
-
-fn draw_file(
-    ui: &mut egui::Ui,
-    global_styles: &GlobalStyles,
-    node: NodeIndex,
-    node_data: &ProjectTreeNode,
-    style: &ProjectWindowStyle,
-    messager: &mut Messager,
-    selected_node: Option<NodeIndex>,
-) {
-    let is_selected = selected_node == Some(node);
-    let icon_size = style.hierachy.file_icon_size;
-    let icon_size = Vec2::new(icon_size, icon_size);
-    let row_height = ui.spacing().interact_size.y;
-    let row_start = ui.cursor().min;
-    let row_width = ui.available_width(); // 在 horizontal 消费前保存
-
-    // 1. 选中背景（优先绘制，在内容下方）
-    if is_selected {
+        // 3. 全宽点击覆盖层（后注册 = 优先响应点击）
         let row_rect = egui::Rect::from_min_size(row_start, egui::vec2(row_width, row_height));
-        ui.painter().rect_filled(
+        let response = ui.interact(
             row_rect,
-            egui::CornerRadius::same(style.hierachy.selected_file_background_corner_radius),
-            style.hierachy.selected_file_background_color,
+            ui.id().with(("row", node.index())),
+            egui::Sense::click(),
         );
-    }
-
-    // 2. 渲染内容（在背景上方）
-    ui.horizontal(|ui| {
-        let icon_path = format!(
-            "file://{}",
-            global_styles.project_node_icons.for_kind(node_data)
-        );
-        let icon =
-            egui::Image::new(egui::ImageSource::Uri(icon_path.into())).fit_to_exact_size(icon_size);
-        ui.add(icon);
-
-        let name = node_data.name();
-        ui.label(RichText::new(name).color(style.hierachy.file_header_color));
-
-        if let Some(suffix) = node_data.kind.suffix() {
-            ui.label(
-                RichText::new(suffix)
-                    .size(style.hierachy.file_header_size)
-                    .color(style.hierachy.file_suffix_color),
-            );
+        if response.clicked() {
+            messager.send(Message::SelectProjectDirectoryNode(node.index()));
         }
-    });
-
-    // 3. 全宽点击覆盖层（后注册 = 优先响应点击）
-    let row_rect = egui::Rect::from_min_size(row_start, egui::vec2(row_width, row_height));
-    let response = ui.interact(
-        row_rect,
-        ui.id().with(("row", node.index())),
-        egui::Sense::click(),
-    );
-    if response.clicked() {
-        messager.send(Message::SelectProjectDirectoryNode(node.index()));
-    }
-    if response.secondary_clicked() {
-        if let Some(pos) = response.interact_pointer_pos() {
-            messager.send(Message::ShowProjectContextMenu(node.index(), pos));
-        }
+        response.context_menu(|ui| {
+            ContextMenu::show(ui, ContextMenuState::new(node), messager);
+        });
     }
 }

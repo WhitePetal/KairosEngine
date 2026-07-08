@@ -104,12 +104,8 @@ pub enum Message {
     SelectProjectDirectoryNode(usize),
     /// ProjectWindow: 双击进入目录（NodeIndex::index()）
     NavigateToProjectDirectory(usize),
-    /// ProjectWindow: 右键弹出上下文菜单 (node_idx, cursor_pos)
-    ShowProjectContextMenu(usize, egui::Pos2),
     /// ProjectWindow: 创建节点 (parent_idx, name, kind)
     CreateProjectNode(usize, String, ProjectNodeKind),
-    /// ProjectWindow: 关闭右键上下文菜单
-    CloseProjectContextMenu,
 }
 
 struct KairosTabDrawer {
@@ -398,12 +394,6 @@ impl Context {
                         project_window.navigate_to(petgraph::graph::NodeIndex::new(node_idx));
                     }
                 }
-                Message::ShowProjectContextMenu(node_idx, pos) => {
-                    if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
-                        project_window
-                            .show_context_menu(petgraph::graph::NodeIndex::new(node_idx), pos);
-                    }
-                }
                 Message::CreateProjectNode(parent_idx, name, kind) => {
                     if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
                         project_window.create_node(
@@ -411,11 +401,6 @@ impl Context {
                             name,
                             kind,
                         );
-                    }
-                }
-                Message::CloseProjectContextMenu => {
-                    if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
-                        project_window.close_context_menu();
                     }
                 }
                 Message::OpenSceneTab => {
