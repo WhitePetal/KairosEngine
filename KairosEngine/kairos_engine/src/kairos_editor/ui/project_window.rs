@@ -53,6 +53,10 @@ struct ProjectWindowModel {
     selected_node: Option<NodeIndex>,
     /// Content panel 当前展示的目录（双击目录进入时更新）
     active_directory: Option<NodeIndex>,
+    /// 需要强制展开的父目录（创建子节点后设置，下一帧由 Controller 清除）
+    pending_expand: Option<NodeIndex>,
+    /// 需要滚动到的新建节点（创建子节点后设置，下一帧由 Controller 清除）
+    pending_scroll: Option<NodeIndex>,
 }
 
 // ============================================================
@@ -103,6 +107,8 @@ impl ProjectWindowModel {
             project_path_graph,
             selected_node: None,
             active_directory: None,
+            pending_expand: None,
+            pending_scroll: None,
         })
     }
 }
@@ -125,7 +131,7 @@ impl ProjectWindow {
         self.model.active_directory = Some(node);
     }
 
-    /// 在指定父目录下创建节点，成功后自动选中。
+    /// 在指定父目录下创建节点，成功后自动导航到父目录并选中新节点。
     pub(super) fn create_node(&mut self, parent: NodeIndex, name: String, kind: ProjectNodeKind) {
         let unique_name = self.unique_name(parent, &name);
         let request = CreateRequest {
@@ -140,13 +146,24 @@ impl ProjectWindow {
             .create_node(&mut self.model.asset_registry, request)
         {
             Ok(new_node) => {
+                // 导航到父目录并选中新节点（文件和目录统一行为）
+                self.model.active_directory = Some(parent);
                 self.model.selected_node = Some(new_node);
+                // 通知 view：下一帧展开父节点并滚动到新节点
+                self.model.pending_expand = Some(parent);
+                self.model.pending_scroll = Some(new_node);
                 let _ = self.model.asset_registry.save();
             }
             Err(e) => {
                 log::warn!("Failed to create node: {e}");
             }
         }
+    }
+
+    /// 清除瞬时滚动/展开指令（由 Controller 在下一帧 handle 中调用）。
+    pub(super) fn clear_pending_scroll_expand(&mut self) {
+        self.model.pending_expand = None;
+        self.model.pending_scroll = None;
     }
 
     /// 生成不重复的名称（"New Folder" → "New Folder (1)" → ...）
@@ -204,6 +221,8 @@ impl Drawer for ProjectWindow {
     ) {
         let selected = self.model.selected_node;
         let active_dir = self.model.active_directory;
+        let pending_expand = self.model.pending_expand;
+        let pending_scroll = self.model.pending_scroll;
 
         // 左侧：Hierarchy Panel
         egui::Panel::left("project_window_hierachy_panel")
@@ -219,9 +238,16 @@ impl Drawer for ProjectWindow {
                             &self.model.style,
                             messager,
                             selected,
+                            pending_expand,
+                            pending_scroll,
                         );
                     });
             });
+
+        // 如果本帧消费了瞬时指令，通知 Controller 在下一帧清除
+        if pending_expand.is_some() {
+            messager.send(Message::ClearProjectScrollExpand);
+        }
 
         // 右侧：Content Panel（只垂直滚动，水平自然换行）
         egui::CentralPanel::default().show_inside(ui, |ui| {

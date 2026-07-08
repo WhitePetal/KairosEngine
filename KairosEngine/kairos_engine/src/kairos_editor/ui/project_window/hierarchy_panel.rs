@@ -46,6 +46,8 @@ impl HierarchyPanel {
         style: &ProjectWindowStyle,
         messager: &mut Messager,
         selected_node: Option<NodeIndex>,
+        expand_node: Option<NodeIndex>,
+        scroll_to_node: Option<NodeIndex>,
     ) {
         let root = graph.get_root_node();
         Self::draw_node(
@@ -56,6 +58,8 @@ impl HierarchyPanel {
             style,
             messager,
             selected_node,
+            expand_node,
+            scroll_to_node,
         );
     }
 
@@ -71,6 +75,8 @@ impl HierarchyPanel {
         style: &ProjectWindowStyle,
         messager: &mut Messager,
         selected_node: Option<NodeIndex>,
+        expand_node: Option<NodeIndex>,
+        scroll_to_node: Option<NodeIndex>,
     ) {
         let Some(node_data) = graph.get_node(node) else {
             return;
@@ -86,6 +92,8 @@ impl HierarchyPanel {
                 style,
                 messager,
                 selected_node,
+                expand_node,
+                scroll_to_node,
             ),
             _ => Self::draw_file(
                 ui,
@@ -108,14 +116,22 @@ impl HierarchyPanel {
         style: &ProjectWindowStyle,
         messager: &mut Messager,
         selected_node: Option<NodeIndex>,
+        expand_node: Option<NodeIndex>,
+        scroll_to_node: Option<NodeIndex>,
     ) {
         let name = node_data.name();
         let is_selected = selected_node == Some(node);
+        let force_open = expand_node == Some(node);
 
         ui.visuals_mut().collapsing_header_frame = true;
 
         let header_text = RichText::new(name).color(style.hierachy.directory_header_color);
-        let header = CollapsingHeader::new(header_text).id_salt(node_data.guid.to_string());
+        let mut header = CollapsingHeader::new(header_text).id_salt(node_data.guid.to_string());
+
+        // 如果本节点是需要强制展开的父目录，覆盖 egui 内部折叠状态
+        if force_open {
+            header = header.open(Some(true));
+        }
 
         let has_children = graph.get_edges(node).count() > 0;
 
@@ -131,6 +147,8 @@ impl HierarchyPanel {
                         style,
                         messager,
                         selected_node,
+                        expand_node,
+                        scroll_to_node,
                     );
                 }
             })
@@ -147,6 +165,11 @@ impl HierarchyPanel {
 
         if is_selected {
             response.header_response = response.header_response.highlight();
+        }
+
+        // 如果是新建节点，滚动到可见区域
+        if scroll_to_node == Some(node) {
+            response.header_response.scroll_to_me(Some(egui::Align::Center));
         }
 
         let clicked = response.header_response.clicked();

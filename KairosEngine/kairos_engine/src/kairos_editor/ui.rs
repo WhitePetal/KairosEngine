@@ -106,6 +106,8 @@ pub enum Message {
     NavigateToProjectDirectory(usize),
     /// ProjectWindow: 创建节点 (parent_idx, name, kind)
     CreateProjectNode(usize, String, ProjectNodeKind),
+    /// ProjectWindow: 清除瞬时滚动/展开指令（view 请求 controller 清除）
+    ClearProjectScrollExpand,
 }
 
 struct KairosTabDrawer {
@@ -401,6 +403,11 @@ impl Context {
                             name,
                             kind,
                         );
+                    }
+                }
+                Message::ClearProjectScrollExpand => {
+                    if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
+                        project_window.clear_pending_scroll_expand();
                     }
                 }
                 Message::OpenSceneTab => {
