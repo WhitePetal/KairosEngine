@@ -111,9 +111,9 @@ fn draw_cell(
     // 1. 分配空间：icon + label 固定高度 + 垂直间隔
     let cell_content_height = icon_size + label_height;
     let alloc_height = cell_content_height + style.content.cell_spacing_y;
-    let (rect, _) = ui.allocate_exact_size(
+    let (rect, response) = ui.allocate_exact_size(
         Vec2::new(icon_size, alloc_height),
-        egui::Sense::hover(),
+        egui::Sense::all(),
     );
 
     // 2. 内容区域（不包含底部间隔）
@@ -158,11 +158,6 @@ fn draw_cell(
     cell_ui.label(label);
 
     // 5. 点击覆盖层
-    let response = ui.interact(
-        content_rect,
-        ui.id().with(("cell", node.index())),
-        egui::Sense::click(),
-    );
     if response.clicked() {
         messager.send(Message::SelectProjectDirectoryNode(node.index()));
     }
