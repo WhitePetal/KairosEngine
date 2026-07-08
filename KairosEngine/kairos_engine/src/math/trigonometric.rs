@@ -9,7 +9,7 @@ pub trait Tan {
 }
 
 #[inline(always)]
-pub fn sin<T: Sin>(value: T) -> T {
+pub fn _sin<T: Sin>(value: T) -> T {
     value.sin()
 }
 #[inline(always)]

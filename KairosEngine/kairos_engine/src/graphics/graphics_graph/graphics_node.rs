@@ -1,12 +1,8 @@
 use std::{hash::Hash, sync::Arc};
 
 use crate::{
-    asset_loader::assets::{AssetHandle, AssetsServer, MaterialAssetsSystem, MeshAssetsSystem},
-    graphics::{
-        attachment::{AttachmentLoadAction, AttachmentStoreAction},
-        material::Material,
-        vertex::Vertex,
-    },
+    asset_loader::assets::{AssetHandle, MaterialAssetsSystem, MeshAssetsSystem},
+    graphics::attachment::{AttachmentLoadAction, AttachmentStoreAction},
     math::float4x4,
 };
 

@@ -35,7 +35,7 @@ use crate::kairos_editor::ui::{Drawer, Message, paths};
 // Style — 从 ProjectWindowStyle.toml 反序列化
 // ============================================================
 #[derive(Debug, Serialize, Deserialize)]
-pub(super) struct ProjectWindowStyle {
+pub struct ProjectWindowStyle {
     pub title: String,
     pub hierachy: HierarchyStyle,
     pub content: ContentStyle,

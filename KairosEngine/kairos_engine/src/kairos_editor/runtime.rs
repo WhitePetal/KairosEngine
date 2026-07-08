@@ -1,6 +1,5 @@
 use std::{
     error::Error,
-    path::Path,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -85,7 +84,7 @@ pub struct KairosEditorRuntime {
     kairos_engine: KairosEngine,
     repaint_at: Option<Instant>,
     frame_rate_counter: FrameRateCounter,
-    frame_start: Instant,
+    // frame_start: Instant,
     min_frame_interval: Duration,
     didi_exit: bool,
 }
@@ -112,7 +111,7 @@ impl KairosEditorRuntime {
             kairos_engine: KairosEngine::new()?,
             repaint_at: None,
             frame_rate_counter: FrameRateCounter::new(),
-            frame_start: Instant::now(),
+            // frame_start: Instant::now(),
             min_frame_interval: Duration::from_secs_f64(1.0 / 60.0),
             didi_exit: false,
         })

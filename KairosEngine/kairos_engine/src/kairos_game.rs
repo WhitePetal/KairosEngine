@@ -48,7 +48,7 @@ impl KairosGame {
 
         SerializedMeshAsset::save_from_glb_file(PathBuf::from("res/models/Suzanne.glb"));
 
-        let mesh = assets_server.load::<MeshAssetsSystem>(
+        let _mesh = assets_server.load::<MeshAssetsSystem>(
             PathBuf::from("res/models/Suzanne.mesh"),
             // None::<fn(&mut MeshAsset)>,
         );
@@ -68,7 +68,7 @@ impl KairosGame {
         let background_audio =
             assets_server.load::<AudioAssetsSystem>(PathBuf::from("res/audios/pad.audio"));
 
-        let blip_audio =
+        let _blip_audio =
             assets_server.load::<AudioAssetsSystem>(PathBuf::from("res/audios/blip.audio"));
 
         let cam_pos = float3::new(0.0, 1.0, -2.0);
@@ -104,7 +104,7 @@ impl KairosGame {
         );
         engine.world.spawn(spatial_audio_reverb);
 
-        const NUM_INSTANCES_PER_ROW: i32 = 20;
+        const _NUM_INSTANCES_PER_ROW: i32 = 20;
         // engine.world.spawn_batch(
         //     (-NUM_INSTANCES_PER_ROW..NUM_INSTANCES_PER_ROW)
         //         .flat_map(|z| (-NUM_INSTANCES_PER_ROW..NUM_INSTANCES_PER_ROW).map(move |x| (x, z)))
@@ -172,7 +172,7 @@ impl KairosGame {
 
     pub fn update(&mut self, engine: &mut Engine) {
         engine.time.update();
-        let total_time = engine.time.total_time().as_secs_f32();
+        let _total_time = engine.time.total_time().as_secs_f32();
         let delta_time = engine.time.delta_time().as_secs_f32();
 
         // let transfoms = engine.world.query_mut::<&mut Transform>().into_iter();

@@ -21,7 +21,7 @@ impl Input {
             Input::A => 1,
             Input::S => 2,
             Input::D => 3,
-            Input::Mouse(float2) => 4,
+            Input::Mouse(_) => 4,
             Input::MouseLClick => 5,
             Input::MouseRClick => 6,
         }
