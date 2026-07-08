@@ -4,10 +4,7 @@ use std::{
 };
 
 use crate::{
-    kairos_editor::{Engine, ui::Messager},
-    kairos_game::KairosGame,
-    log::Log,
-    math,
+    kairos_editor::{Engine, ui::{Messager, global_styles::GlobalStyles}}, kairos_game::KairosGame, log::Log, math,
 };
 use egui::{self, Panel, containers::menu};
 use serde::{Deserialize, Serialize};
@@ -91,6 +88,7 @@ impl Drawer for ToolBar {
     fn ui(
         &self,
         ui: &mut egui::Ui,
+        _global_styles: &GlobalStyles,
         messager: &mut super::Messager,
         _engine: &Engine,
         _log: &mut Log,

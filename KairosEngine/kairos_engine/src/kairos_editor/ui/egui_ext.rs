@@ -16,6 +16,14 @@ pub trait UiExt {
         high: &mut f32,
         range: RangeInclusive<f32>,
     ) -> Response;
+
+    fn truncate_text_to_height(
+        &self,
+        text: &str,
+        font_size: f32,
+        max_width: f32,
+        max_height: f32,
+    ) -> String;
 }
 
 impl UiExt for Ui {
@@ -157,5 +165,59 @@ impl UiExt for Ui {
             );
         })
         .response
+    }
+
+    /// 将文本截断到指定高度内，超出部分用 "..." 替代
+    fn truncate_text_to_height(
+        &self,
+        text: &str,
+        font_size: f32,
+        max_width: f32,
+        max_height: f32,
+    ) -> String {
+        let font_id = egui::TextStyle::Body.resolve(self.style());
+        let font_id = egui::FontId::new(font_size, font_id.family.clone());
+
+        let line_height = self.ctx().fonts_mut(|f| f.row_height(&font_id));
+        let max_lines = (max_height / line_height).floor().max(1.0) as usize;
+
+        // 逐行截断：保留前 max_lines 行，最后一行加 "..."
+        let galley = self.ctx().fonts_mut(|fonts| {
+            fonts.layout(
+                text.to_string(),
+                font_id.clone(),
+                egui::Color32::WHITE,
+                max_width,
+            )
+        });
+
+        if galley.rows.len() <= max_lines {
+            return text.to_string();
+        }
+
+        // 取前 max_lines 行的 glyphs，从最后一行末尾逐步回退
+        let ellipsis = "...";
+        let mut candidate = String::new();
+        for row in galley.rows.iter().take(max_lines) {
+            for glyph in &row.row.glyphs {
+                candidate.push(glyph.chr);
+            }
+        }
+
+        // 从末尾回退直到 "..." + candidate 能放进 max_width
+        while !candidate.is_empty() {
+            let test = format!("{}{}", candidate, ellipsis);
+            let w = self.ctx().fonts_mut(|f| {
+                f.layout(test, font_id.clone(), egui::Color32::WHITE, f32::INFINITY)
+                    .rect
+                    .width()
+            });
+            if w <= max_width {
+                return format!("{}{}", candidate, ellipsis);
+            }
+            candidate.pop();
+        }
+
+        ellipsis.to_string()
     }
 }

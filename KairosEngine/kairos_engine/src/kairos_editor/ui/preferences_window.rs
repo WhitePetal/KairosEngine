@@ -2,12 +2,8 @@ use std::{any::type_name, fs};
 
 use crate::{
     kairos_editor::{
-        Engine,
-        ui::{Messager, egui_ext::UiExt},
-    },
-    kairos_game::KairosGame,
-    log::Log,
-    math::{self, float2},
+        Engine, ui::{Messager, egui_ext::UiExt, global_styles::GlobalStyles},
+    }, kairos_game::KairosGame, log::Log, math::{self, float2},
 };
 use egui::{self, Vec2};
 use serde::{Deserialize, Serialize};
@@ -105,6 +101,7 @@ impl Drawer for PreferencesWindow {
     fn ui(
         &self,
         ui: &mut egui::Ui,
+        _global_styles: &GlobalStyles,
         messager: &mut super::Messager,
         _engine: &Engine,
         _log: &mut Log,

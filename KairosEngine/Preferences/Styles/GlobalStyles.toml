@@ -1,0 +1,10 @@
+[project_node_icons]
+default = "Preferences/Textures/engine_icon.png"
+shader = "Preferences/Textures/shader_icon.png"
+script = "Preferences/Textures/script_icon.png"
+document = "Preferences/Textures/doc_icon.png"
+toml = "Preferences/Textures/toml_icon.png"
+mesh = "Preferences/Textures/model_icon.png"
+material = "Preferences/Textures/material_icon.png"
+audio = "Preferences/Textures/audio_icon.png"
+directory = "Preferences/Textures/folder_icon.png"

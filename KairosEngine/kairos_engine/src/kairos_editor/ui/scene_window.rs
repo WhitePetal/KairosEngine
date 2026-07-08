@@ -5,28 +5,20 @@ use serde::{Deserialize, Serialize};
 use toml::from_str;
 
 use crate::{
-    asset_loader::assets::AssetsServer,
-    graphics::{
+    asset_loader::assets::AssetsServer, graphics::{
         attachment::{Attachment, AttachmentLoadAction, AttachmentStoreAction},
         graphics_graph::{
             GraphicsCommand,
             graphics_node::{ColorAttachmentBind, DepthAttachmentBind},
         },
-    },
-    kairos_dialog,
-    kairos_editor::{
-        Engine,
-        ui::{
-            Drawer, Message, paths,
-            scene_window::gizmos::{GizmosModel, GizmosRenderer},
-            ui_style_fields::{
+    }, kairos_dialog, kairos_editor::{
+        Engine, ui::{
+            Drawer, Message, global_styles::GlobalStyles, paths, scene_window::gizmos::{GizmosModel, GizmosRenderer}, ui_style_fields::{
                 FloatFieldEditViewType, FloatStyleField, RangeStyleField, StyleField,
                 Vector3StyleField,
             },
         },
-    },
-    kairos_game::KairosGame,
-    math::{self, float2, float3},
+    }, kairos_game::KairosGame, math::{self, float2, float3},
 };
 
 mod gizmos;
@@ -145,6 +137,7 @@ impl Drawer for SceneWindow {
     fn ui(
         &self,
         ui: &mut egui::Ui,
+        _global_styles: &GlobalStyles,
         messager: &mut super::Messager,
         engine: &Engine,
         _log: &mut crate::log::Log,

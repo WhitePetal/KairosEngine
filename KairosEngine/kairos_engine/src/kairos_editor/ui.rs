@@ -4,21 +4,14 @@ use std::{
 };
 
 use crate::{
-    asset_loader::assets::AssetsServer,
-    graphics::graphics_graph::GraphicsCommand,
-    kairos_editor::{
-        Engine,
-        ui::{
-            game_window::GameWindow,
-            layout::{
+    asset_loader::assets::AssetsServer, graphics::graphics_graph::GraphicsCommand, kairos_editor::{
+        Engine, ui::{
+            game_window::GameWindow, global_styles::GlobalStyles, layout::{
                 EditorLayout, LayoutBottomContainer, LayoutContainerIds, LayoutLeftContainer,
                 LayoutRightContainer, Zone,
             },
         },
-    },
-    kairos_game::KairosGame,
-    log::Log,
-    types::TypeIdMap,
+    }, kairos_game::KairosGame, log::Log, types::TypeIdMap,
 };
 use egui::{self};
 
@@ -43,6 +36,7 @@ use crate::{
     },
 };
 
+pub mod global_styles;
 pub mod about_window;
 pub mod console_window;
 pub mod dialog;
@@ -119,6 +113,7 @@ impl TabDrawer for KairosTabDrawer {
     fn ui(
         &mut self,
         ui: &mut egui::Ui,
+        global_styles: &GlobalStyles,
         tab: &mut Self::Tab,
         messager: &mut Messager,
         engine: &Engine,
@@ -126,7 +121,7 @@ impl TabDrawer for KairosTabDrawer {
         drawers: &Vec<Box<dyn Drawer>>,
     ) {
         let tab = &drawers[*tab];
-        tab.ui(ui, messager, engine, log);
+        tab.ui(ui, global_styles, messager, engine, log);
     }
 
     fn on_close(
@@ -158,7 +153,7 @@ pub trait Drawer: Any {
 
     fn show_window(&self, state: Option<&mut WindowState>);
 
-    fn ui(&self, ui: &mut egui::Ui, messager: &mut Messager, engine: &Engine, log: &mut Log);
+    fn ui(&self, ui: &mut egui::Ui, global_styles: &GlobalStyles, messager: &mut Messager, engine: &Engine, log: &mut Log);
 
     fn render(
         &self,
@@ -206,10 +201,11 @@ pub struct Context {
     actives: Vec<bool>,
     tab_tree: DockState<usize>,
     tab_viewer: KairosTabDrawer,
+    global_styles: GlobalStyles,
 }
 
 impl Context {
-    pub fn new() -> Self {
+    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let tab_tree = DockState::new(vec![]);
 
         let mut messager = Messager::new();
@@ -221,7 +217,9 @@ impl Context {
         messager.send(Message::OpenInspectorTab);
         messager.send(Message::OpenHierarchyTab);
 
-        Self {
+        let global_styles = GlobalStyles::new()?;
+
+        Ok(Self {
             messager,
             ids: TypeIdMap::default(),
             drawers: Vec::new(),
@@ -229,20 +227,22 @@ impl Context {
             tab_tree,
             tab_viewer: KairosTabDrawer {},
             layout: EditorLayout::new(),
-        }
+            global_styles: global_styles,
+        })
     }
 
     pub fn darw(&mut self, ui: &mut egui::Ui, engine: &Engine, log: &mut Log) {
         // tool_bar
         let tool_bar_type_id = TypeId::of::<ToolBar>();
         if let Some(id) = self.ids.get(&tool_bar_type_id) {
-            self.drawers[*id].ui(ui, &mut self.messager, engine, log);
+            self.drawers[*id].ui(ui, &self.global_styles, &mut self.messager, engine, log);
         }
 
         // 中央区域显示内容
         egui::CentralPanel::default().show_inside(ui, |ui| {
             DockArea::new("KairosEditor Main DockArea", &mut self.tab_tree).show_inside(
                 ui,
+                &self.global_styles,
                 &mut self.messager,
                 engine,
                 log,

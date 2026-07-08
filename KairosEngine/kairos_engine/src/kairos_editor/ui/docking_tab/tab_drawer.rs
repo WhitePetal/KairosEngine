@@ -1,4 +1,4 @@
-use crate::{kairos_editor::Engine, log::Log};
+use crate::{kairos_editor::{Engine, ui::global_styles::GlobalStyles}, log::Log};
 use egui::{self, Id, Ui, WidgetText};
 
 use crate::kairos_editor::ui::{
@@ -24,6 +24,7 @@ pub trait TabDrawer {
     fn ui(
         &mut self,
         ui: &mut Ui,
+        global_styles: &GlobalStyles,
         tab: &mut Self::Tab,
         messager: &mut Messager,
         engine: &Engine,

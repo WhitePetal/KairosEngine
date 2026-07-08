@@ -39,6 +39,10 @@ guid = "09b168e3-a202-4294-aba8-38a6d93d8d68"
 path = "./Preferences/Styles/GameWindowStyle.toml"
 
 [[entries]]
+guid = "a5c832ca-4b59-4952-b9df-6a9207e76c66"
+path = "./Preferences/Styles/GlobalStyles.toml"
+
+[[entries]]
 guid = "18c36abc-6318-463d-9ffb-d73855d71a2e"
 path = "./Preferences/Styles/HierarchyWindowStyle.toml"
 
@@ -613,6 +617,10 @@ path = "./kairos_engine/src/kairos_editor/ui/egui_ext.rs"
 [[entries]]
 guid = "447b4f4b-6938-4ee8-9fc2-8df4ccbffe6a"
 path = "./kairos_engine/src/kairos_editor/ui/game_window.rs"
+
+[[entries]]
+guid = "53c26a69-35ac-47e4-b2c5-a42ce3684844"
+path = "./kairos_engine/src/kairos_editor/ui/global_styles.rs"
 
 [[entries]]
 guid = "8155cb1a-994c-4bd4-a1cf-1c8148b67c2a"

@@ -1,6 +1,7 @@
 use std::{any::type_name, fs};
 
 use crate::kairos_dialog;
+use crate::kairos_editor::ui::global_styles::GlobalStyles;
 use crate::kairos_game::KairosGame;
 use crate::log::Log;
 use egui::{self, Vec2};
@@ -86,7 +87,7 @@ impl Drawer for AboutWindow {
             }
         }
     }
-    fn ui(&self, ui: &mut egui::Ui, _messager: &mut Messager, _engine: &Engine, log: &mut Log) {
+    fn ui(&self, ui: &mut egui::Ui, _global_styles: &GlobalStyles, _messager: &mut Messager, _engine: &Engine, log: &mut Log) {
         // TODO: test log
         log.info("about_window update");
         // TODO: Icon

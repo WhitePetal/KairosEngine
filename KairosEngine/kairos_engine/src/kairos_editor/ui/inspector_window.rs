@@ -1,9 +1,7 @@
 use std::{any::type_name, fs};
 
 use crate::{
-    kairos_editor::{Engine, ui::Messager},
-    kairos_game::KairosGame,
-    log::Log,
+    kairos_editor::{Engine, ui::{Messager, global_styles::GlobalStyles}}, kairos_game::KairosGame, log::Log,
 };
 use serde::{Deserialize, Serialize};
 use toml::from_str;
@@ -73,6 +71,7 @@ impl Drawer for InspectorWindow {
     fn ui(
         &self,
         ui: &mut egui::Ui,
+        _global_styles: &GlobalStyles,
         _messager: &mut super::Messager,
         _engine: &Engine,
         _log: &mut Log,

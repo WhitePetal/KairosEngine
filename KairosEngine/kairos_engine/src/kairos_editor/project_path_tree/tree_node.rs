@@ -58,6 +58,22 @@ impl ProjectNodeKind {
     pub fn is_expandable(&self) -> bool {
         matches!(self, Self::Directory)
     }
+
+    pub fn suffix(&self) -> Option<&'static str> {
+        match self {
+            ProjectNodeKind::Directory => None,
+            ProjectNodeKind::Texture => Some(".texture"),
+            ProjectNodeKind::Mesh => Some(".mesh"),
+            ProjectNodeKind::Material => Some(".mat"),
+            ProjectNodeKind::Audio => Some(".audio"),
+            ProjectNodeKind::Shader => Some(".wgsl"),
+            ProjectNodeKind::GenericAsset => Some(".asset"),
+            ProjectNodeKind::Script => Some(".rs"),
+            ProjectNodeKind::Document => None,
+            ProjectNodeKind::Toml => Some(".toml"),
+            ProjectNodeKind::Unknown => None,
+        }
+    }
 }
 
 // ============================================================
@@ -108,5 +124,9 @@ impl ProjectTreeNode {
             asset_path: Some(asset_path),
             kind,
         }
+    }
+
+    pub fn name(&self) -> String {
+        self.name.to_string_lossy().into_owned()
     }
 }

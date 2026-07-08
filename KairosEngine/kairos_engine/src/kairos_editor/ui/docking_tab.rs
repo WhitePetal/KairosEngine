@@ -1,6 +1,6 @@
 use std::ops::RangeInclusive;
 
-use crate::{kairos_editor::Engine, log::Log};
+use crate::{kairos_editor::{Engine, ui::global_styles::GlobalStyles}, log::Log};
 use egui::{
     self, Align, Align2, Button, CentralPanel, Color32, Context, CornerRadius, CursorIcon,
     EventFilter, Frame, Id, Key, LayerId, Layout, Modifiers, NumExt, Order, Popup,
@@ -202,6 +202,7 @@ impl<Drawer> DockArea<'_, Drawer> {
     pub fn show(
         self,
         ui: &mut Ui,
+        global_styles: &GlobalStyles,
         messager: &mut Messager,
         engine: &Engine,
         log: &mut Log,
@@ -215,7 +216,7 @@ impl<Drawer> DockArea<'_, Drawer> {
                     .fill(Color32::TRANSPARENT),
             )
             .show_inside(ui, |ui| {
-                self.show_inside(ui, messager, engine, log, drawers, tab_viewer);
+                self.show_inside(ui, global_styles, messager, engine, log, drawers, tab_viewer);
             });
     }
 
@@ -223,6 +224,7 @@ impl<Drawer> DockArea<'_, Drawer> {
     pub fn show_inside(
         mut self,
         ui: &mut Ui,
+        global_styles: &GlobalStyles,
         messager: &mut Messager,
         engine: &Engine,
         log: &mut Log,
@@ -287,6 +289,7 @@ impl<Drawer> DockArea<'_, Drawer> {
             self.show_surface_inside(
                 surface_index,
                 ui,
+                global_styles,
                 messager,
                 engine,
                 log,
@@ -468,6 +471,7 @@ impl<Drawer> DockArea<'_, Drawer> {
         &mut self,
         surf_index: SurfaceIndex,
         ui: &mut Ui,
+        global_styles: &GlobalStyles,
         messager: &mut Messager,
         engine: &Engine,
         log: &mut Log,
@@ -477,10 +481,10 @@ impl<Drawer> DockArea<'_, Drawer> {
         fade_style: Option<(&Style, f32, SurfaceIndex)>,
     ) {
         if surf_index.is_main() {
-            self.show_root_surface_inside(ui, messager, engine, log, drawers, tab_viewer, state);
+            self.show_root_surface_inside(ui, global_styles, messager, engine, log, drawers, tab_viewer, state);
         } else {
             self.show_window_surface(
-                ui, messager, engine, log, drawers, surf_index, tab_viewer, state, fade_style,
+                ui, global_styles, messager, engine, log, drawers, surf_index, tab_viewer, state, fade_style,
             );
         }
     }
@@ -488,6 +492,7 @@ impl<Drawer> DockArea<'_, Drawer> {
     fn render_nodes(
         &mut self,
         ui: &mut Ui,
+        global_styles: &GlobalStyles,
         messager: &mut Messager,
         engine: &Engine,
         log: &mut Log,
@@ -510,6 +515,7 @@ impl<Drawer> DockArea<'_, Drawer> {
             if self.dock_state[surf_index][node_index].is_leaf() {
                 self.show_leaf(
                     ui,
+                    global_styles,
                     messager,
                     engine,
                     log,
@@ -781,6 +787,7 @@ impl<Drawer> DockArea<'_, Drawer> {
     pub(super) fn show_root_surface_inside(
         &mut self,
         ui: &mut Ui,
+        global_styles: &GlobalStyles,
         messager: &mut Messager,
         engine: &Engine,
         log: &mut Log,
@@ -809,7 +816,7 @@ impl<Drawer> DockArea<'_, Drawer> {
         }
 
         self.render_nodes(
-            ui, messager, engine, log, drawers, tab_viewer, state, surf_index, None,
+            ui, global_styles, messager, engine, log, drawers, tab_viewer, state, surf_index, None,
         );
     }
 }
@@ -818,6 +825,7 @@ impl<Drawer> DockArea<'_, Drawer> {
     pub fn show_window_surface(
         &mut self,
         ui: &Ui,
+        global_styles: &GlobalStyles,
         messager: &mut Messager,
         engine: &Engine,
         log: &mut Log,
@@ -920,7 +928,7 @@ impl<Drawer> DockArea<'_, Drawer> {
                 )
             } else {
                 self.render_nodes(
-                    ui, messager, engine, log, drawers, tab_viewer, state, surf_index, fade_style,
+                    ui, global_styles, messager, engine, log, drawers, tab_viewer, state, surf_index, fade_style,
                 );
             }
         });
@@ -1102,6 +1110,7 @@ impl<Drawer> DockArea<'_, Drawer> {
     pub fn show_leaf(
         &mut self,
         ui: &mut Ui,
+        global_styles: &GlobalStyles,
         messager: &mut Messager,
         engine: &Engine,
         log: &mut Log,
@@ -1142,6 +1151,7 @@ impl<Drawer> DockArea<'_, Drawer> {
         );
         self.drawer_body(
             ui,
+            global_styles,
             messager,
             engine,
             log,
@@ -2283,10 +2293,10 @@ impl<Drawer> DockArea<'_, Drawer> {
         leaf.scroll = leaf.scroll.clamp(-overflow, 0.0);
     }
 
-    #[allow(clippy::too_many_arguments)]
     fn drawer_body(
         &mut self,
         ui: &mut Ui,
+        global_styles: &GlobalStyles,
         messager: &mut Messager,
         engine: &Engine,
         log: &mut Log,
@@ -2384,7 +2394,7 @@ impl<Drawer> DockArea<'_, Drawer> {
                             }
                             let available_rect = ui.available_rect_before_wrap();
                             ui.expand_to_include_rect(available_rect);
-                            tab_viewer.ui(ui, tab, messager, engine, log, drawers);
+                            tab_viewer.ui(ui, global_styles, tab, messager, engine, log, drawers);
                         });
                 });
             }

@@ -1,19 +1,20 @@
 title = "Project"
 
-[icons]
-size = [18, 18]
-default = "res/textures/kairos_texture.png"
-shader = "Preferences/Textures/shader_icon.png"
-script = "Preferences/Textures/script_icon.png"
-document = "Preferences/Textures/doc_icon.png"
-toml = "Preferences/Textures/toml_icon.png"
-mesh = "Preferences/Textures/model_icon.png"
-material = "Preferences/Textures/material_icon.png"
-audio = "Preferences/Textures/audio_icon.png"
-directory = "Preferences/Textures/folder_icon.png"
+[hierachy]
+directory_header_color = "#dcdcb4"
+file_header_color = "#c8c8c8"
+selected_file_background_color = "#3c4b64"
+file_suffix_color = "#787878"
+file_header_size = 11.0
+file_icon_size = 18.0
+selected_file_background_corner_radius = 4
 
-[colors]
-arrow = "#a0a0a0"
-directory = "#dcdcb4"
-file = "#c8c8c8"
-selection = "#3c4b64"
+[content]
+label_color = "#c8c8c8"
+selected_background_color = "#3c4b64"
+selected_background_corner_radius = 4
+icon_size = 40.0
+label_font_size = 11.0
+label_height = 28.0
+cell_spacing_x = 12.0
+cell_spacing_y = 8.0

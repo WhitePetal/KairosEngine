@@ -12,13 +12,9 @@ use crate::{
             GraphicsCommand,
             graphics_node::{ColorAttachmentBind, DepthAttachmentBind},
         },
-    },
-    kairos_editor::{
-        Engine,
-        ui::{Drawer, Message, paths},
-    },
-    kairos_game::KairosGame,
-    spatial::Transform,
+    }, kairos_editor::{
+        Engine, ui::{Drawer, Message, global_styles::GlobalStyles, paths},
+    }, kairos_game::KairosGame, spatial::Transform,
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -92,6 +88,7 @@ impl Drawer for GameWindow {
     fn ui(
         &self,
         ui: &mut egui::Ui,
+        _global_styles: &GlobalStyles,
         messager: &mut super::Messager,
         _engine: &Engine,
         _log: &mut crate::log::Log,
