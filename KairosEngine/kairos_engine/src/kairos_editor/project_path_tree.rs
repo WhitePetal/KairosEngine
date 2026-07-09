@@ -278,7 +278,7 @@ impl ProjectPathGraph {
         registry: &mut AssetRegistry,
         request: CreateRequest,
     ) -> Option<NodeIndex> {
-        let full_path;
+        let mut full_path;
         let name;
         let folder_node;
         match request.kind {
@@ -312,9 +312,49 @@ impl ProjectPathGraph {
             ProjectNodeKind::Mesh => todo!(),
             ProjectNodeKind::Material => todo!(),
             ProjectNodeKind::Audio => todo!(),
-            ProjectNodeKind::Shader => todo!(),
+            ProjectNodeKind::Shader => {
+                let Some(folder) = self.get_folder_node(request.base_node) else {
+                    kairos_dialog::error_message_window(
+                        "Create Shader Failed",
+                        "folder node not found in graph",
+                    );
+                    return None;
+                };
+                folder_node = folder.0;
+                let folder_data = folder.1;
+                name = self.unique_name(folder_node, &request.name);
+                full_path = folder_data.path.join(&name);
+                full_path.set_extension("wgsl");
+                if let Err(err) = std::fs::write(&full_path, Self::default_shader_content()) {
+                    kairos_dialog::error_message_window(
+                        "Create Shader Failed",
+                        &format!("failed to create file '{}': {err}", full_path.display()),
+                    );
+                    return None;
+                }
+            }
             ProjectNodeKind::GenericAsset => todo!(),
-            ProjectNodeKind::Script => todo!(),
+            ProjectNodeKind::Script => {
+                let Some(folder) = self.get_folder_node(request.base_node) else {
+                    kairos_dialog::error_message_window(
+                        "Create Script Failed",
+                        "folder node not found in graph",
+                    );
+                    return None;
+                };
+                folder_node = folder.0;
+                let folder_data = folder.1;
+                name = self.unique_name(folder_node, &request.name);
+                full_path = folder_data.path.join(&name);
+                full_path.set_extension("rs");
+                if let Err(err) = std::fs::write(&full_path, "") {
+                    kairos_dialog::error_message_window(
+                        "Create Script Failed",
+                        &format!("failed to create file '{}': {err}", full_path.display()),
+                    );
+                    return None;
+                }
+            }
             ProjectNodeKind::Document => {
                 let Some(folder) = self.get_folder_node(request.base_node) else {
                     kairos_dialog::error_message_window(
@@ -327,6 +367,7 @@ impl ProjectPathGraph {
                 let folder_data = folder.1;
                 name = self.unique_name(folder_node, &request.name);
                 full_path = folder_data.path.join(&name);
+                full_path.set_extension("md");
                 if let Err(err) = std::fs::write(&full_path, "") {
                     kairos_dialog::error_message_window(
                         "Create Document Failed",
@@ -347,6 +388,7 @@ impl ProjectPathGraph {
                 let folder_data = folder.1;
                 name = self.unique_name(folder_node, &request.name);
                 full_path = folder_data.path.join(&name);
+                full_path.set_extension("toml");
                 if let Err(err) = std::fs::write(&full_path, "") {
                     kairos_dialog::error_message_window(
                         "Create Toml Failed",
@@ -354,14 +396,11 @@ impl ProjectPathGraph {
                     );
                     return None;
                 }
-            },
+            }
             ProjectNodeKind::Unknown => {
-                kairos_dialog::error_message_window(
-                    "Create Failed",
-                    "Unknown Create Kind",
-                );
+                kairos_dialog::error_message_window("Create Failed", "Unknown Create Kind");
                 return None;
-            },
+            }
         }
 
         // ---- 4. 注册 GUID ----
@@ -412,6 +451,78 @@ impl ProjectPathGraph {
                 .get_parent(node)
                 .and_then(|node| self.get_node(node).map(|data| (node, data))),
         }
+    }
+
+    fn default_shader_content() -> &'static str {
+        "
+// enable f16;
+struct InstanceInput {
+    @location(5) model_matrix_0: vec4f,
+    @location(6) model_matrix_1: vec4f,
+    @location(7) model_matrix_2: vec4f,
+    @location(8) model_matrix_3: vec4f,
+};
+
+struct a2v {
+    @location(0) vertex: vec4f,
+    @location(1) color: vec4f,
+    @location(2) texcoord: vec2f,
+    @location(3) normal: vec3f,
+    @location(4) tangent: vec4f,
+}
+
+struct v2f {
+    @builtin(position) pos: vec4f,
+    @location(0) color: vec4f,
+    @location(1) uv: vec2f,
+    @location(2) normal: vec3f,
+};
+
+@group(0) @binding(0)
+var<uniform> matrix_vp: mat4x4f;
+
+@group(1) @binding(0)
+var texture: texture_2d<f32>;
+@group(1) @binding(1)
+var s_texture: sampler;
+
+
+@vertex
+fn vs_main(v: a2v, instancing: InstanceInput) -> v2f {
+    var o: v2f;
+
+    var local_to_world = mat4x4f(
+        instancing.model_matrix_0,
+        instancing.model_matrix_1,
+        instancing.model_matrix_2,
+        instancing.model_matrix_3,
+    );
+
+    o.pos = matrix_vp * local_to_world * vec4f(v.vertex.xyz, 1.0);
+    var normal_world = normalize(local_to_world * vec4f(v.normal.xyz, 0.0));
+    o.color = v.color;
+    o.uv = v.texcoord;
+    o.normal = normal_world.xyz;
+
+    return o;
+}
+
+struct gbuffer {
+    @location(0) color: vec4f
+}
+
+@fragment
+fn fs_main(i: v2f) -> gbuffer {
+    var out: gbuffer;
+    let tex = textureSample(texture, s_texture, i.uv);
+    let color = i.color * tex;
+    let l = normalize(vec3f(0.0, 1.0, 1.0));
+    let ndotl = dot(i.normal, l) * 0.5 + 0.5;
+    out.color = color * ndotl;
+    // out.color = vec4f(ndotl);
+    return out;
+}
+        "
     }
 }
 
