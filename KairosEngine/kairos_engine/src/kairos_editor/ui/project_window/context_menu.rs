@@ -35,6 +35,37 @@ impl ContextMenu {
                     ProjectNodeKind::Directory,
                 ));
             }
+
+            ui.separator();
+
+            if ui.button("Rust").clicked() {
+                messager.send(Message::CreateProjectNode(
+                    state.node.index(),
+                    "new_rust_script".into(),
+                    ProjectNodeKind::Script,
+                ));
+            }
+            if ui.button("Shader").clicked() {
+                messager.send(Message::CreateProjectNode(
+                    state.node.index(),
+                    "New Shader".into(),
+                    ProjectNodeKind::Shader,
+                ));
+            }
+            if ui.button("Toml").clicked() {
+                messager.send(Message::CreateProjectNode(
+                    state.node.index(),
+                    "New Toml".into(),
+                    ProjectNodeKind::Toml,
+                ));
+            }
+            if ui.button("Document").clicked() {
+                messager.send(Message::CreateProjectNode(
+                    state.node.index(),
+                    "New Toml".into(),
+                    ProjectNodeKind::Document,
+                ));
+            }
         });
         let btn_min_size = Vec2::new(ui.min_size().x, 0.0);
         if ui.add(Button::new("Open").min_size(btn_min_size)).clicked() {

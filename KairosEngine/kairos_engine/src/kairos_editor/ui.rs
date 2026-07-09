@@ -100,14 +100,14 @@ pub enum Message {
     /// Camera fly movement (right, forward, dt) each in [-1, 0, 1]
     CameraFly(f32, f32, f32),
 
-    /// ProjectWindow: 选中目录节点（NodeIndex::index()）
-    SelectProjectDirectoryNode(usize),
-    /// ProjectWindow: 双击进入目录（NodeIndex::index()）
+    /// ProjectWindow: 选中节点（NodeIndex::index()）
+    SelectProjectNode(usize),
+    /// ProjectWindow: Hierachy点击进入目录（NodeIndex::index()）
     NavigateToProjectDirectory(usize),
-    /// ProjectWindow: 创建节点 (parent_idx, name, kind)
+    /// ProjectWindow: Content双击进入目录并展开+滚动hierachy（content_panel 用）
+    NavigateToProjectDirectoryWithExpand(usize),
+    /// ProjectWindow: 创建节点(右键节点Idx node_idx, 要创建的节点名，节点类型)
     CreateProjectNode(usize, String, ProjectNodeKind),
-    /// ProjectWindow: 清除瞬时滚动/展开指令（view 请求 controller 清除）
-    ClearProjectScrollExpand,
 }
 
 struct KairosTabDrawer {
@@ -386,7 +386,7 @@ impl Context {
                 Message::CloseProjectTab => {
                     self.close_drawer::<ProjectWindow>();
                 }
-                Message::SelectProjectDirectoryNode(node_idx) => {
+                Message::SelectProjectNode(node_idx) => {
                     if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
                         project_window.select_node(petgraph::graph::NodeIndex::new(node_idx));
                     }
@@ -396,6 +396,12 @@ impl Context {
                         project_window.navigate_to(petgraph::graph::NodeIndex::new(node_idx));
                     }
                 }
+                Message::NavigateToProjectDirectoryWithExpand(node_idx) => {
+                    if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
+                        project_window
+                            .navigate_to_with_expand(petgraph::graph::NodeIndex::new(node_idx));
+                    }
+                }
                 Message::CreateProjectNode(parent_idx, name, kind) => {
                     if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
                         project_window.create_node(
@@ -403,11 +409,6 @@ impl Context {
                             name,
                             kind,
                         );
-                    }
-                }
-                Message::ClearProjectScrollExpand => {
-                    if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
-                        project_window.clear_pending_scroll_expand();
                     }
                 }
                 Message::OpenSceneTab => {

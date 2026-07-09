@@ -2,7 +2,7 @@ pub mod content_panel;
 pub mod context_menu;
 pub mod hierarchy_panel;
 
-use std::{any::type_name, fs};
+use std::{any::type_name, cell::Cell, fs};
 
 use crate::{
     asset_loader::assets::AssetsServer,
@@ -25,7 +25,7 @@ use crate::{
     kairos_game::KairosGame,
     log::Log,
 };
-use petgraph::{graph::NodeIndex, visit::EdgeRef};
+use petgraph::graph::NodeIndex;
 use serde::{Deserialize, Serialize};
 use toml::from_str;
 
@@ -53,10 +53,10 @@ struct ProjectWindowModel {
     selected_node: Option<NodeIndex>,
     /// Content panel 当前展示的目录（双击目录进入时更新）
     active_directory: Option<NodeIndex>,
-    /// 需要强制展开的父目录（创建子节点后设置，下一帧由 Controller 清除）
-    pending_expand: Option<NodeIndex>,
-    /// 需要滚动到的新建节点（创建子节点后设置，下一帧由 Controller 清除）
-    pending_scroll: Option<NodeIndex>,
+    /// 需要强制展开的父目录（下一帧消费并清除）
+    pending_expand: Cell<Option<NodeIndex>>,
+    /// 需要滚动到的节点（下一帧消费并清除）
+    pending_scroll: Cell<Option<NodeIndex>>,
 }
 
 // ============================================================
@@ -107,8 +107,8 @@ impl ProjectWindowModel {
             project_path_graph,
             selected_node: None,
             active_directory: None,
-            pending_expand: None,
-            pending_scroll: None,
+            pending_expand: Cell::new(None),
+            pending_scroll: Cell::new(None),
         })
     }
 }
@@ -121,79 +121,44 @@ impl ProjectWindow {
     }
 
     /// 点击选中节点（仅高亮，不改变 content_panel 展示内容）。
-    pub(super) fn select_node(&mut self, node: NodeIndex) {
+    pub fn select_node(&mut self, node: NodeIndex) {
         self.model.selected_node = Some(node);
     }
 
-    /// 双击目录进入（选中 + 更新 content_panel 展示的目录）。
-    pub(super) fn navigate_to(&mut self, node: NodeIndex) {
+    /// hierarchy 点击进入（选中 + 更新 content_panel 展示的目录）。
+    pub fn navigate_to(&mut self, node: NodeIndex) {
         self.model.selected_node = Some(node);
         self.model.active_directory = Some(node);
     }
 
-    /// 在指定父目录下创建节点，成功后自动导航到父目录并选中新节点。
-    pub(super) fn create_node(&mut self, parent: NodeIndex, name: String, kind: ProjectNodeKind) {
-        let unique_name = self.unique_name(parent, &name);
+    /// content_panel 双击目录：导航 + 强制 hierarchy 展开并滚动到该目录。
+    pub fn navigate_to_with_expand(&mut self, node: NodeIndex) {
+        self.navigate_to(node);
+        self.model.pending_expand.set(Some(node));
+        self.model.pending_scroll.set(Some(node));
+    }
+
+    /// 创建节点
+    /// `clicked_node` 是右键点击的节点（文件或目录）
+    pub fn create_node(&mut self, clicked_node: NodeIndex, name: String, kind: ProjectNodeKind) {
         let request = CreateRequest {
-            parent_node: parent,
-            name: unique_name,
+            base_node: clicked_node,
+            name,
             kind,
         };
 
-        match self
+        if let Some(new_node) = self
             .model
             .project_path_graph
             .create_node(&mut self.model.asset_registry, request)
         {
-            Ok(new_node) => {
-                // 导航到父目录并选中新节点（文件和目录统一行为）
-                self.model.active_directory = Some(parent);
-                self.model.selected_node = Some(new_node);
-                // 通知 view：下一帧展开父节点并滚动到新节点
-                self.model.pending_expand = Some(parent);
-                self.model.pending_scroll = Some(new_node);
-                let _ = self.model.asset_registry.save();
-            }
-            Err(e) => {
-                log::warn!("Failed to create node: {e}");
-            }
+            let parent = self.model.project_path_graph.get_parent(new_node);
+            self.model.active_directory = parent;
+            self.model.selected_node = Some(new_node);
+            self.model.pending_expand.set(parent);
+            self.model.pending_scroll.set(Some(new_node));
+            let _ = self.model.asset_registry.save();
         }
-    }
-
-    /// 清除瞬时滚动/展开指令（由 Controller 在下一帧 handle 中调用）。
-    pub(super) fn clear_pending_scroll_expand(&mut self) {
-        self.model.pending_expand = None;
-        self.model.pending_scroll = None;
-    }
-
-    /// 生成不重复的名称（"New Folder" → "New Folder (1)" → ...）
-    fn unique_name(&self, parent: NodeIndex, base: &str) -> String {
-        let exists = |name: &str| {
-            self.model.project_path_graph.get_edges(parent).any(|e| {
-                self.model
-                    .project_path_graph
-                    .get_node(e.target())
-                    .is_some_and(|n| n.name.to_string_lossy().eq_ignore_ascii_case(name))
-            })
-        };
-
-        if !exists(base) {
-            return base.to_string();
-        }
-        for i in 1..1000u32 {
-            let candidate = format!("{base} ({i})");
-            if !exists(&candidate) {
-                return candidate;
-            }
-        }
-        format!(
-            "{base} ({})",
-            uuid::Uuid::new_v4()
-                .to_string()
-                .chars()
-                .take(8)
-                .collect::<String>()
-        )
     }
 }
 
@@ -221,8 +186,8 @@ impl Drawer for ProjectWindow {
     ) {
         let selected = self.model.selected_node;
         let active_dir = self.model.active_directory;
-        let pending_expand = self.model.pending_expand;
-        let pending_scroll = self.model.pending_scroll;
+        let pending_expand = self.model.pending_expand.take();
+        let pending_scroll = self.model.pending_scroll.take();
 
         // 左侧：Hierarchy Panel
         egui::Panel::left("project_window_hierachy_panel")
@@ -243,11 +208,6 @@ impl Drawer for ProjectWindow {
                         );
                     });
             });
-
-        // 如果本帧消费了瞬时指令，通知 Controller 在下一帧清除
-        if pending_expand.is_some() {
-            messager.send(Message::ClearProjectScrollExpand);
-        }
 
         // 右侧：Content Panel（只垂直滚动，水平自然换行）
         egui::CentralPanel::default().show_inside(ui, |ui| {

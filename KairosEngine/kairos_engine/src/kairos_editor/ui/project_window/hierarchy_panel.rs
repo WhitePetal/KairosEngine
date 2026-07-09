@@ -121,7 +121,9 @@ impl HierarchyPanel {
     ) {
         let name = node_data.name();
         let is_selected = selected_node == Some(node);
-        let force_open = expand_node == Some(node);
+        let force_open = expand_node == Some(node)
+            || scroll_to_node == Some(node)
+            || scroll_to_node.is_some_and(|target| graph.get_ancestors(target).contains(&node));
 
         ui.visuals_mut().collapsing_header_frame = true;
 
@@ -169,7 +171,9 @@ impl HierarchyPanel {
 
         // 如果是新建节点，滚动到可见区域
         if scroll_to_node == Some(node) {
-            response.header_response.scroll_to_me(Some(egui::Align::Center));
+            response
+                .header_response
+                .scroll_to_me(Some(egui::Align::Center));
         }
 
         let clicked = response.header_response.clicked();
@@ -238,7 +242,7 @@ impl HierarchyPanel {
             egui::Sense::click(),
         );
         if response.clicked() {
-            messager.send(Message::SelectProjectDirectoryNode(node.index()));
+            messager.send(Message::SelectProjectNode(node.index()));
         }
         response.context_menu(|ui| {
             ContextMenu::show(ui, ContextMenuState::new(node), messager);

@@ -13,7 +13,7 @@ use petgraph::{
     visit::{EdgeRef, NodeIndexable},
 };
 
-use crate::kairos_editor::asset_registry::AssetRegistry;
+use crate::{kairos_dialog, kairos_editor::asset_registry::AssetRegistry};
 use create_request::CreateRequest;
 use tree_node::{ProjectNodeKind, ProjectTreeNode};
 
@@ -246,12 +246,23 @@ impl ProjectPathGraph {
     }
 
     /// 获取节点的父节点索引（文件用于回退到所在目录）。
-    /// 文件被选中时 content_panel 应展示其所在目录的子节点。
     pub fn get_parent(&self, node: NodeIndex) -> Option<NodeIndex> {
         use petgraph::Direction;
         self.graph
             .neighbors_directed(node, Direction::Incoming)
             .next()
+    }
+
+    /// 获取从根到该节点的所有祖先（不含自身），从根到父排列。
+    pub fn get_ancestors(&self, node: NodeIndex) -> Vec<NodeIndex> {
+        let mut ancestors = Vec::new();
+        let mut current = node;
+        while let Some(parent) = self.get_parent(current) {
+            ancestors.push(parent);
+            current = parent;
+        }
+        ancestors.reverse();
+        ancestors
     }
 
     // ----------------------------------------------------------
@@ -266,59 +277,95 @@ impl ProjectPathGraph {
         &mut self,
         registry: &mut AssetRegistry,
         request: CreateRequest,
-    ) -> Result<NodeIndex, String> {
-        // ---- 1. 校验父节点 ----
-        let parent_data = self
-            .graph
-            .node_weight(request.parent_node)
-            .ok_or_else(|| "parent node not found in graph".to_string())?;
-
-        if parent_data.kind != ProjectNodeKind::Directory {
-            return Err("parent node is not a directory".to_string());
-        }
-
-        // ---- 2. 校验无同名兄弟 ----
-        let name_exists = self.graph.edges(request.parent_node).any(|e| {
-            self.graph
-                .node_weight(e.target())
-                .is_some_and(|n| n.name.to_string_lossy().eq_ignore_ascii_case(&request.name))
-        });
-        if name_exists {
-            return Err(format!(
-                "'{}' already exists in '{}'",
-                request.name,
-                parent_data.name.to_string_lossy()
-            ));
-        }
-
-        // ---- 3. 构建路径 + 文件系统操作 ----
-        let full_path = parent_data.path.join(&request.name);
-
+    ) -> Option<NodeIndex> {
+        let full_path;
+        let name;
+        let parent_node;
         match request.kind {
             ProjectNodeKind::Directory => {
-                std::fs::create_dir(&full_path).map_err(|e| {
-                    format!("failed to create directory '{}': {e}", full_path.display())
-                })?;
+                // ---- 1. 获取parent节点数据 ----
+                parent_node = match self.get_node(request.base_node) {
+                    Some(data) if data.kind == ProjectNodeKind::Directory => request.base_node,
+                    _ => self
+                        .get_parent(request.base_node)
+                        .unwrap_or_else(|| self.get_root_node()),
+                };
+                let parent_data = self.graph.node_weight(parent_node);
+
+                let Some(parent_data) = parent_data else {
+                    kairos_dialog::error_message_window(
+                        "Create Node Failed",
+                        "parent node not found in graph",
+                    );
+                    return None;
+                };
+
+                name = self.unique_name(parent_node, &request.name);
+
+                // ---- 3. 构建路径 + 文件系统操作 ----
+                full_path = parent_data.path.join(&name);
+                if let Err(err) = std::fs::create_dir(&full_path) {
+                    kairos_dialog::error_message_window(
+                        "Create Node Failed",
+                        &format!(
+                            "failed to create directory '{}': {err}",
+                            full_path.display()
+                        ),
+                    );
+                    return None;
+                }
             }
-            _ => {
-                return Err(format!(
-                    "file creation ({:?}) is not yet implemented",
-                    request.kind
-                ));
-            }
+            ProjectNodeKind::Texture => todo!(),
+            ProjectNodeKind::Mesh => todo!(),
+            ProjectNodeKind::Material => todo!(),
+            ProjectNodeKind::Audio => todo!(),
+            ProjectNodeKind::Shader => todo!(),
+            ProjectNodeKind::GenericAsset => todo!(),
+            ProjectNodeKind::Script => todo!(),
+            ProjectNodeKind::Document => todo!(),
+            ProjectNodeKind::Toml => todo!(),
+            ProjectNodeKind::Unknown => todo!(),
         }
 
         // ---- 4. 注册 GUID ----
         let guid = registry.get_or_create_guid(&full_path);
-        let name = request.name.into();
+        let name = name.into();
         let kind = request.kind;
 
         // ---- 5. 更新图 ----
         let node_data = ProjectTreeNode::new(guid, name, full_path, kind);
         let new_node = self.graph.add_node(node_data);
-        self.graph.add_edge(request.parent_node, new_node, ());
+        self.graph.add_edge(parent_node, new_node, ());
 
-        Ok(new_node)
+        Some(new_node)
+    }
+
+    /// 生成不重复的名称（"New Folder" → "New Folder (1)" → ...）
+    fn unique_name(&self, parent: NodeIndex, base: &str) -> String {
+        let exists = |name: &str| {
+            self.get_edges(parent).any(|e| {
+                self.get_node(e.target())
+                    .is_some_and(|n| n.name.to_string_lossy().eq_ignore_ascii_case(name))
+            })
+        };
+
+        if !exists(base) {
+            return base.to_string();
+        }
+        for i in 1..1000u32 {
+            let candidate = format!("{base} ({i})");
+            if !exists(&candidate) {
+                return candidate;
+            }
+        }
+        format!(
+            "{base} ({})",
+            uuid::Uuid::new_v4()
+                .to_string()
+                .chars()
+                .take(8)
+                .collect::<String>()
+        )
     }
 }
 
@@ -394,13 +441,13 @@ mod tests {
         let result = graph.create_node(
             &mut registry,
             CreateRequest {
-                parent_node: root,
+                base_node: root,
                 name: "new_dir".into(),
                 kind: ProjectNodeKind::Directory,
             },
         );
 
-        assert!(result.is_ok(), "{result:?}");
+        assert!(result.is_some(), "{result:?}");
         let node = result.unwrap();
         let data = graph.get_node(node).unwrap();
         assert_eq!(data.kind, ProjectNodeKind::Directory);
@@ -414,30 +461,13 @@ mod tests {
         let root = graph.get_root_node();
 
         let req = CreateRequest {
-            parent_node: root,
+            base_node: root,
             name: "dup".into(),
             kind: ProjectNodeKind::Directory,
         };
         graph.create_node(&mut registry, req.clone()).unwrap();
         let result = graph.create_node(&mut registry, req);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn create_file_not_implemented() {
-        let (_tmp, mut graph, mut registry) = setup();
-        let root = graph.get_root_node();
-
-        let result = graph.create_node(
-            &mut registry,
-            CreateRequest {
-                parent_node: root,
-                name: "test.txt".into(),
-                kind: ProjectNodeKind::Document,
-            },
-        );
-        assert!(result.is_err());
-        assert!(result.unwrap_err().contains("not yet implemented"));
+        assert!(graph.get_node(result.unwrap()).unwrap().name == "dup (1)");
     }
 
     #[test]
@@ -448,12 +478,12 @@ mod tests {
         let result = graph.create_node(
             &mut registry,
             CreateRequest {
-                parent_node: bogus,
+                base_node: bogus,
                 name: "orphan".into(),
                 kind: ProjectNodeKind::Directory,
             },
         );
-        assert!(result.is_err());
+        assert!(result.is_none());
     }
 
     #[test]
@@ -465,7 +495,7 @@ mod tests {
             .create_node(
                 &mut registry,
                 CreateRequest {
-                    parent_node: root,
+                    base_node: root,
                     name: "subdir".into(),
                     kind: ProjectNodeKind::Directory,
                 },

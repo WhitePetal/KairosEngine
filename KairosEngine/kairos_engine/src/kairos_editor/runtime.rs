@@ -118,7 +118,7 @@ impl KairosEditorRuntime {
     }
 
     #[cfg(target_os = "macos")]
-    fn set_macos_dock_icon(path: impl AsRef<Path>) {
+    fn set_macos_dock_icon(path: impl AsRef<std::path::Path>) {
         use objc2::{AnyThread as _, MainThreadMarker};
         use objc2_app_kit::{NSApplication, NSImage};
         use objc2_foundation::NSString;

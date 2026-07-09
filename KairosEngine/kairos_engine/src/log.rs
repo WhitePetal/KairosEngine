@@ -63,6 +63,12 @@ impl Log {
             message,
             backtrace
         );
+        // 同步输出到终端 stderr
+        match level {
+            LogLevel::Info => eprintln!("[INFO] {}", message),
+            LogLevel::Warning => eprintln!("[WARN] {}", message),
+            LogLevel::Error => eprintln!("[ERROR] {}", message),
+        }
         self.logs
             .push_back(LogMessage::new(level, message, backtrace));
     }

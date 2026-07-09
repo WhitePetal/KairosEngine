@@ -180,10 +180,24 @@ impl ContentPanel {
         cell_ui.label(label);
 
         if response.clicked() {
-            messager.send(Message::SelectProjectDirectoryNode(node.index()));
+            messager.send(Message::SelectProjectNode(node.index()));
         }
-        if response.double_clicked() && node_data.kind == ProjectNodeKind::Directory {
-            messager.send(Message::NavigateToProjectDirectory(node.index()));
+        if response.double_clicked() {
+            match node_data.kind {
+                ProjectNodeKind::Directory => {
+                    messager.send(Message::NavigateToProjectDirectoryWithExpand(node.index()));
+                }
+                ProjectNodeKind::Texture => todo!(),
+                ProjectNodeKind::Mesh => todo!(),
+                ProjectNodeKind::Material => todo!(),
+                ProjectNodeKind::Audio => todo!(),
+                ProjectNodeKind::Shader => todo!(),
+                ProjectNodeKind::GenericAsset => todo!(),
+                ProjectNodeKind::Script => todo!(),
+                ProjectNodeKind::Document => todo!(),
+                ProjectNodeKind::Toml => todo!(),
+                ProjectNodeKind::Unknown => todo!(),
+            }
         }
         response.context_menu(|ui| {
             ContextMenu::show(ui, ContextMenuState::new(node), messager);
