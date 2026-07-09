@@ -62,7 +62,7 @@ impl ContextMenu {
             if ui.button("Document").clicked() {
                 messager.send(Message::CreateProjectNode(
                     state.node.index(),
-                    "New Toml".into(),
+                    "New Document".into(),
                     ProjectNodeKind::Document,
                 ));
             }

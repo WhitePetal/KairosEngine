@@ -280,30 +280,23 @@ impl ProjectPathGraph {
     ) -> Option<NodeIndex> {
         let full_path;
         let name;
-        let parent_node;
+        let folder_node;
         match request.kind {
             ProjectNodeKind::Directory => {
                 // ---- 1. 获取parent节点数据 ----
-                parent_node = match self.get_node(request.base_node) {
-                    Some(data) if data.kind == ProjectNodeKind::Directory => request.base_node,
-                    _ => self
-                        .get_parent(request.base_node)
-                        .unwrap_or_else(|| self.get_root_node()),
-                };
-                let parent_data = self.graph.node_weight(parent_node);
-
-                let Some(parent_data) = parent_data else {
+                let Some(folder) = self.get_folder_node(request.base_node) else {
                     kairos_dialog::error_message_window(
-                        "Create Node Failed",
-                        "parent node not found in graph",
+                        "Create Folder Failed",
+                        "folder node not found in graph",
                     );
                     return None;
                 };
-
-                name = self.unique_name(parent_node, &request.name);
+                folder_node = folder.0;
+                let folder_data = folder.1;
+                name = self.unique_name(folder_node, &request.name);
 
                 // ---- 3. 构建路径 + 文件系统操作 ----
-                full_path = parent_data.path.join(&name);
+                full_path = folder_data.path.join(&name);
                 if let Err(err) = std::fs::create_dir(&full_path) {
                     kairos_dialog::error_message_window(
                         "Create Node Failed",
@@ -322,7 +315,26 @@ impl ProjectPathGraph {
             ProjectNodeKind::Shader => todo!(),
             ProjectNodeKind::GenericAsset => todo!(),
             ProjectNodeKind::Script => todo!(),
-            ProjectNodeKind::Document => todo!(),
+            ProjectNodeKind::Document => {
+                let Some(folder) = self.get_folder_node(request.base_node) else {
+                    kairos_dialog::error_message_window(
+                        "Create Document Failed",
+                        "folder node not found in graph",
+                    );
+                    return None;
+                };
+                folder_node = folder.0;
+                let folder_data = folder.1;
+                name = self.unique_name(folder_node, &request.name);
+                full_path = folder_data.path.join(&name);
+                if let Err(err) = std::fs::write(&full_path, "") {
+                    kairos_dialog::error_message_window(
+                        "Create Document Failed",
+                        &format!("failed to create file '{}': {err}", full_path.display()),
+                    );
+                    return None;
+                }
+            }
             ProjectNodeKind::Toml => todo!(),
             ProjectNodeKind::Unknown => todo!(),
         }
@@ -335,7 +347,7 @@ impl ProjectPathGraph {
         // ---- 5. 更新图 ----
         let node_data = ProjectTreeNode::new(guid, name, full_path, kind);
         let new_node = self.graph.add_node(node_data);
-        self.graph.add_edge(parent_node, new_node, ());
+        self.graph.add_edge(folder_node, new_node, ());
 
         Some(new_node)
     }
@@ -366,6 +378,15 @@ impl ProjectPathGraph {
                 .take(8)
                 .collect::<String>()
         )
+    }
+
+    fn get_folder_node(&self, node: NodeIndex) -> Option<(NodeIndex, &ProjectTreeNode)> {
+        match self.get_node(node) {
+            Some(data) if data.kind == ProjectNodeKind::Directory => Some((node, data)),
+            _ => self
+                .get_parent(node)
+                .and_then(|node| self.get_node(node).map(|data| (node, data))),
+        }
     }
 }
 
