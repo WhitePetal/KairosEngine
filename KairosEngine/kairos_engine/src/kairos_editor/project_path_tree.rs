@@ -240,6 +240,24 @@ impl ProjectPathGraph {
         self.graph.edges(node)
     }
 
+    /// 获取节点的排序子节点列表：目录优先，同类型按名称排序。
+    pub fn sorted_children(&self, node: NodeIndex) -> Vec<(NodeIndex, &ProjectTreeNode)> {
+        let mut children: Vec<_> = self
+            .get_edges(node)
+            .filter_map(|e| self.get_node(e.target()).map(|n| (e.target(), n)))
+            .collect();
+        children.sort_by(|(_, a), (_, b)| {
+            let a_is_dir = a.kind == ProjectNodeKind::Directory;
+            let b_is_dir = b.kind == ProjectNodeKind::Directory;
+            if a_is_dir != b_is_dir {
+                b_is_dir.cmp(&a_is_dir) // 目录优先
+            } else {
+                a.name.cmp(&b.name)
+            }
+        });
+        children
+    }
+
     /// 返回图中节点总数。
     pub fn node_count(&self) -> usize {
         self.graph.node_count()
@@ -495,6 +513,67 @@ impl ProjectPathGraph {
             node_weight.name = new_name_os;
             node_weight.path = new_main_path;
         }
+
+        Ok(())
+    }
+
+    /// 删除节点及其关联文件。
+    ///
+    /// - 文件节点：删除主文件 + 关联文件（Texture: png/texture/texture_bin; Mesh: mesh/mesh_bin）
+    /// - 目录节点：先递归删除所有子节点，再删除目录本身
+    /// - 同步清理 registry
+    pub fn delete_node(
+        &mut self,
+        registry: &mut AssetRegistry,
+        node: NodeIndex,
+    ) -> Result<(), String> {
+        let node_data = self.graph.node_weight(node).ok_or("node not found")?;
+        self.get_parent(node).ok_or("cannot delete root")?;
+
+        let is_dir = node_data.kind == ProjectNodeKind::Directory;
+        let node_path = node_data.path.clone();
+        let node_kind = node_data.kind.clone();
+        // node_data 引用此后不再使用，后续 delete_node 调用可正常获取 &mut self
+
+        if is_dir {
+            // 1. 收集所有子节点（避免 borrow 冲突）
+            let children: Vec<NodeIndex> = self.get_edges(node).map(|e| e.target()).collect();
+
+            // 2. 递归删除子节点
+            for child in children {
+                self.delete_node(registry, child)?;
+            }
+
+            // 3. 删除目录（可能含有非 graph 管理的文件，如 .DS_Store）
+            let dir_path = node_path.clone();
+            std::fs::remove_dir_all(&dir_path)
+                .map_err(|e| format!("failed to delete directory '{}': {e}", dir_path.display()))?;
+            registry.unregister(&dir_path);
+        } else {
+            // 1. 收集所有关联文件路径
+            let related = node_kind.related_extensions();
+            if related.is_empty() {
+                let path = node_path.clone();
+                if path.exists() {
+                    std::fs::remove_file(&path)
+                        .map_err(|e| format!("failed to delete '{}': {e}", path.display()))?;
+                }
+                registry.unregister(&path);
+            } else {
+                for ext in related {
+                    let mut p = node_path.clone();
+                    p.set_extension(ext);
+                    if p.exists() {
+                        std::fs::remove_file(&p)
+                            .map_err(|e| format!("failed to delete '{}': {e}", p.display()))?;
+                    }
+                    registry.unregister(&p);
+                }
+            }
+        }
+
+        // 4. 从 graph 移除节点
+        self.graph.remove_node(node);
 
         Ok(())
     }
@@ -983,5 +1062,158 @@ mod tests {
 
         // 不应损坏
         assert!(old_path.exists());
+    }
+
+    // ---- delete_node ----
+
+    #[test]
+    fn delete_file_success() {
+        let (_tmp, mut graph, mut registry) = setup();
+        let root = graph.get_root_node();
+
+        let dir = graph
+            .create_node(
+                &mut registry,
+                CreateRequest {
+                    base_node: root,
+                    name: "scripts".into(),
+                    kind: ProjectNodeKind::Directory,
+                },
+            )
+            .unwrap();
+
+        let script = graph
+            .create_node(
+                &mut registry,
+                CreateRequest {
+                    base_node: dir,
+                    name: "hello".into(),
+                    kind: ProjectNodeKind::Script,
+                },
+            )
+            .unwrap();
+        let script_path = graph.get_node(script).unwrap().path.clone();
+        assert!(script_path.exists());
+
+        graph.delete_node(&mut registry, script).unwrap();
+
+        assert!(!script_path.exists());
+        assert!(graph.get_node(script).is_none());
+        assert!(registry.get_guid(&script_path).is_none());
+    }
+
+    #[test]
+    fn delete_texture_with_related_files() {
+        let (_tmp, mut graph, mut registry) = setup();
+        let root = graph.get_root_node();
+
+        let dir = graph
+            .create_node(
+                &mut registry,
+                CreateRequest {
+                    base_node: root,
+                    name: "textures".into(),
+                    kind: ProjectNodeKind::Directory,
+                },
+            )
+            .unwrap();
+        let dir_path = graph.get_node(dir).unwrap().path.clone();
+
+        let png = dir_path.join("player.png");
+        let texture = dir_path.join("player.texture");
+        let texture_bin = dir_path.join("player.texture_bin");
+        std::fs::write(&png, "fake").unwrap();
+        std::fs::write(&texture, "fake").unwrap();
+        std::fs::write(&texture_bin, "fake").unwrap();
+
+        let guid = registry.get_or_create_guid(&png);
+        registry.get_or_create_guid(&texture);
+        registry.get_or_create_guid(&texture_bin);
+
+        let node_data =
+            ProjectTreeNode::new(guid, "player".into(), png.clone(), ProjectNodeKind::Texture);
+        let tex_node = graph.graph.add_node(node_data);
+        graph.graph.add_edge(dir, tex_node, ());
+
+        graph.delete_node(&mut registry, tex_node).unwrap();
+
+        assert!(!png.exists());
+        assert!(!texture.exists());
+        assert!(!texture_bin.exists());
+        assert!(graph.get_node(tex_node).is_none());
+        assert!(registry.get_guid(&png).is_none());
+        assert!(registry.get_guid(&texture).is_none());
+        assert!(registry.get_guid(&texture_bin).is_none());
+    }
+
+    #[test]
+    fn delete_directory_recursive() {
+        let (_tmp, mut graph, mut registry) = setup();
+        let root = graph.get_root_node();
+
+        let parent = graph
+            .create_node(
+                &mut registry,
+                CreateRequest {
+                    base_node: root,
+                    name: "assets".into(),
+                    kind: ProjectNodeKind::Directory,
+                },
+            )
+            .unwrap();
+        let parent_path = graph.get_node(parent).unwrap().path.clone();
+
+        let child = graph
+            .create_node(
+                &mut registry,
+                CreateRequest {
+                    base_node: parent,
+                    name: "subdir".into(),
+                    kind: ProjectNodeKind::Directory,
+                },
+            )
+            .unwrap();
+        let child_path = graph.get_node(child).unwrap().path.clone();
+
+        let script = graph
+            .create_node(
+                &mut registry,
+                CreateRequest {
+                    base_node: child,
+                    name: "main".into(),
+                    kind: ProjectNodeKind::Script,
+                },
+            )
+            .unwrap();
+        let script_path = graph.get_node(script).unwrap().path.clone();
+
+        graph.delete_node(&mut registry, parent).unwrap();
+
+        assert!(!parent_path.exists());
+        assert!(!child_path.exists());
+        assert!(!script_path.exists());
+        assert!(graph.get_node(parent).is_none());
+        assert!(graph.get_node(child).is_none());
+        assert!(graph.get_node(script).is_none());
+    }
+
+    #[test]
+    fn delete_root_fails() {
+        let (_tmp, mut graph, mut registry) = setup();
+        let root = graph.get_root_node();
+
+        let result = graph.delete_node(&mut registry, root);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("cannot delete root"));
+    }
+
+    #[test]
+    fn delete_nonexistent_node_fails() {
+        let (_tmp, mut graph, mut registry) = setup();
+        let bogus = NodeIndex::new(99999);
+
+        let result = graph.delete_node(&mut registry, bogus);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("node not found"));
     }
 }

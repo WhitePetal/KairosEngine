@@ -102,7 +102,7 @@ pub enum Message {
     CameraFly(f32, f32, f32),
 
     /// ProjectWindow: 选中节点（NodeIndex::index()）
-    SelectProjectNode(usize),
+    SelectProjectNode(Option<petgraph::graph::NodeIndex>),
     /// ProjectWindow: Hierachy点击进入目录（NodeIndex::index()）
     NavigateToProjectDirectory(usize),
     /// ProjectWindow: Content双击进入目录并展开+滚动hierachy（content_panel 用）
@@ -115,6 +115,8 @@ pub enum Message {
     StartRenameProjectNode(usize, Option<RenameOrigin>),
     /// ProjectWindow: 取消重命名模式
     CancelRenameProjectNode,
+    /// ProjectWindow: 删除节点 (node_idx)
+    DeleteProjectNode(usize),
 }
 
 struct KairosTabDrawer {
@@ -395,7 +397,7 @@ impl Context {
                 }
                 Message::SelectProjectNode(node_idx) => {
                     if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
-                        project_window.select_node(petgraph::graph::NodeIndex::new(node_idx));
+                        project_window.select_node(node_idx);
                     }
                 }
                 Message::NavigateToProjectDirectory(node_idx) => {
@@ -434,6 +436,11 @@ impl Context {
                 Message::CancelRenameProjectNode => {
                     if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
                         project_window.cancel_rename();
+                    }
+                }
+                Message::DeleteProjectNode(node_idx) => {
+                    if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
+                        project_window.delete_node(petgraph::graph::NodeIndex::new(node_idx));
                     }
                 }
                 Message::OpenSceneTab => {

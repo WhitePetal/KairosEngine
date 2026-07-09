@@ -1,5 +1,5 @@
-use egui::{Label, RichText, TextEdit, Vec2};
-use petgraph::{graph::NodeIndex, visit::EdgeRef};
+use egui::{RichText, TextEdit, Vec2};
+use petgraph::graph::NodeIndex;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -58,13 +58,28 @@ impl ContentPanel {
     ) {
         let target = active_directory.unwrap_or_else(|| graph.get_root_node());
 
-        // 背景右键区域（先注册，cell 的 interact 后注册会优先响应）
-        let panel_rect = egui::Rect::from_min_size(ui.cursor().min, ui.available_size());
+        // 收集排序后的子节点
+        let sorted = graph.sorted_children(target);
+        let children: Vec<NodeIndex> = sorted.iter().map(|(idx, _)| *idx).collect();
+
+        // 根据可用宽度计算列数（icon + 水平间隔 = 单列占用宽度）
+        let cell_total_width = style.content.icon_size + style.content.cell_spacing_x;
+        let cols = (ui.available_width() / cell_total_width).floor().max(1.0) as usize;
+        let rows = (children.len() + cols - 1) / cols;
+        let cell_h =
+            style.content.icon_size + style.content.label_height + style.content.cell_spacing_y;
+        let total_h = rows as f32 * cell_h;
+
+        let panel_rect = egui::Rect::from_min_max(ui.cursor().min, ui.max_rect().max).union(
+            egui::Rect::from_min_size(ui.cursor().min, Vec2::new(ui.available_width(), total_h)),
+        );
+
         let bg_response = ui.interact(
             panel_rect,
             ui.id().with("content_panel_bg"),
             egui::Sense::all(),
         );
+
         bg_response.context_menu(|ui| {
             ContextMenu::show(
                 ui,
@@ -72,36 +87,6 @@ impl ContentPanel {
                 messager,
             );
         });
-
-        // 收集子节点：目录优先，文件按名称排序
-        let mut children: Vec<NodeIndex> = graph.get_edges(target).map(|e| e.target()).collect();
-        children.sort_by(|&a, &b| {
-            let na = graph.get_node(a);
-            let nb = graph.get_node(b);
-            match (na, nb) {
-                (Some(a), Some(b)) => {
-                    let a_is_dir = a.kind == ProjectNodeKind::Directory;
-                    let b_is_dir = b.kind == ProjectNodeKind::Directory;
-                    if a_is_dir != b_is_dir {
-                        b_is_dir.cmp(&a_is_dir)
-                    } else {
-                        a.name.cmp(&b.name)
-                    }
-                }
-                _ => std::cmp::Ordering::Equal,
-            }
-        });
-
-        if children.is_empty() {
-            ui.centered_and_justified(|ui| {
-                ui.label(RichText::new("empty").color(style.content.label_color));
-            });
-            return;
-        }
-
-        // 根据可用宽度计算列数（icon + 水平间隔 = 单列占用宽度）
-        let cell_total_width = style.content.icon_size + style.content.cell_spacing_x;
-        let cols = (ui.available_width() / cell_total_width).floor().max(1.0) as usize;
 
         ui.columns(cols, |columns| {
             for (i, child) in children.iter().enumerate() {
@@ -218,8 +203,11 @@ impl ContentPanel {
         }
 
         if !is_renaming {
+            if is_selected && response.clicked_elsewhere() {
+                messager.send(Message::SelectProjectNode(None));
+            }
             if response.clicked() || response.secondary_clicked() {
-                messager.send(Message::SelectProjectNode(node.index()));
+                messager.send(Message::SelectProjectNode(Some(node)));
             }
             if response.double_clicked() {
                 match node_data.kind {

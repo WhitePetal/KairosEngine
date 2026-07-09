@@ -1,5 +1,5 @@
 use egui::{CollapsingHeader, RichText, TextEdit, Vec2};
-use petgraph::{graph::NodeIndex, visit::EdgeRef};
+use petgraph::graph::NodeIndex;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -200,11 +200,11 @@ impl HierarchyPanel {
             });
 
             // 直接渲染子节点
-            let has_children = graph.get_edges(node).count() > 0;
+            let has_children = !graph.sorted_children(node).is_empty();
             if has_children {
                 ui.indent("rename_dir_children", |ui| {
-                    let children = graph.get_edges(node).map(|e| e.target());
-                    for child in children {
+                    let children = graph.sorted_children(node);
+                    for (child, _) in children {
                         Self::draw_node(
                             ui,
                             global_styles,
@@ -248,12 +248,12 @@ impl HierarchyPanel {
                 header = header.open(Some(true));
             }
 
-            let has_children = graph.get_edges(node).count() > 0;
+            let has_children = !graph.sorted_children(node).is_empty();
 
             let mut response = if has_children {
                 header.show(ui, |ui| {
-                    let children = graph.get_edges(node).map(|e| e.target());
-                    for child in children {
+                    let children = graph.sorted_children(node);
+                    for (child, _) in children {
                         Self::draw_node(
                             ui,
                             global_styles,
@@ -396,7 +396,7 @@ impl HierarchyPanel {
                 egui::Sense::click(),
             );
             if response.clicked() {
-                messager.send(Message::SelectProjectNode(node.index()));
+                messager.send(Message::SelectProjectNode(Some(node)));
             }
             response.context_menu(|ui| {
                 ContextMenu::show(

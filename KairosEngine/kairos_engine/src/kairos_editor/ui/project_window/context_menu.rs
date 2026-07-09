@@ -82,7 +82,7 @@ impl ContextMenu {
             .add(Button::new("Delete").min_size(btn_min_size))
             .clicked()
         {
-            todo!()
+            messager.send(Message::DeleteProjectNode(state.node.index()));
         }
         if ui
             .add(Button::new("Rename").min_size(btn_min_size))

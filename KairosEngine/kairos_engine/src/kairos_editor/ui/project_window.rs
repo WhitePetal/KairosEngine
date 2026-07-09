@@ -26,7 +26,6 @@ use crate::{
     log::Log,
 };
 use petgraph::graph::NodeIndex;
-use rapier3d::na;
 use serde::{Deserialize, Serialize};
 use toml::from_str;
 
@@ -141,8 +140,8 @@ impl ProjectWindow {
     }
 
     /// 点击选中节点（仅高亮，不改变 content_panel 展示内容）。
-    pub fn select_node(&mut self, node: NodeIndex) {
-        self.model.selected_node = Some(node);
+    pub fn select_node(&mut self, node: Option<NodeIndex>) {
+        self.model.selected_node = node;
     }
 
     /// hierarchy 点击进入（选中 + 更新 content_panel 展示的目录）。
@@ -236,6 +235,27 @@ impl ProjectWindow {
     pub fn cancel_rename(&self) {
         self.model.renaming_node.set(None);
         self.model.renaming_origin.set(None);
+    }
+
+    /// 删除节点。
+    pub fn delete_node(&mut self, node: NodeIndex) {
+        match self
+            .model
+            .project_path_graph
+            .delete_node(&mut self.model.asset_registry, node)
+        {
+            Ok(()) => {
+                // 如果删除的是选中节点或当前目录，清除选中状态
+                if self.model.selected_node == Some(node) {
+                    self.model.selected_node = None;
+                }
+                if self.model.active_directory == Some(node) {
+                    self.model.active_directory = None;
+                }
+                let _ = self.model.asset_registry.save();
+            }
+            Err(e) => log::warn!("Failed to delete node: {e}"),
+        }
     }
 }
 

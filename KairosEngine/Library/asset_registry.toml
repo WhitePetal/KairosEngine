@@ -15,10 +15,6 @@ guid = "9c8dc9b1-625c-4213-a723-e0b8a69dbdc4"
 path = "./Library/asset_registry.toml"
 
 [[entries]]
-guid = "5fb53260-6d04-4548-8594-025115ddb080"
-path = "./New Folder"
-
-[[entries]]
 guid = "44188a6d-364b-414b-be95-0dfddfa1ef80"
 path = "./Preferences"
 
