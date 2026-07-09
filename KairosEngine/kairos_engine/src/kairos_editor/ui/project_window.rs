@@ -2,7 +2,7 @@ pub mod content_panel;
 pub mod context_menu;
 pub mod hierarchy_panel;
 
-use std::{any::type_name, cell::Cell, fs};
+use std::{any::type_name, cell::Cell, cell::RefCell, fs};
 
 use crate::{
     asset_loader::assets::AssetsServer,
@@ -26,10 +26,21 @@ use crate::{
     log::Log,
 };
 use petgraph::graph::NodeIndex;
+use rapier3d::na;
 use serde::{Deserialize, Serialize};
 use toml::from_str;
 
 use crate::kairos_editor::ui::{Drawer, Message, paths};
+
+// ============================================================
+// RenameOrigin — 标记重命名从哪个面板发起
+// ============================================================
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum RenameOrigin {
+    Hierarchy,
+    Content,
+}
 
 // ============================================================
 // Style — 从 ProjectWindowStyle.toml 反序列化
@@ -57,6 +68,12 @@ struct ProjectWindowModel {
     pending_expand: Cell<Option<NodeIndex>>,
     /// 需要滚动到的节点（下一帧消费并清除）
     pending_scroll: Cell<Option<NodeIndex>>,
+    /// 创建或重命名时进入编辑状态的节点
+    pub(crate) renaming_node: Cell<Option<NodeIndex>>,
+    /// 重命名从哪个面板发起（None = 两边都显示，用于创建后自动重命名）
+    renaming_origin: Cell<Option<RenameOrigin>>,
+    /// 重命名时的文本缓冲区
+    rename_buffer: RefCell<String>,
 }
 
 // ============================================================
@@ -109,6 +126,9 @@ impl ProjectWindowModel {
             active_directory: None,
             pending_expand: Cell::new(None),
             pending_scroll: Cell::new(None),
+            renaming_node: Cell::new(None),
+            renaming_origin: Cell::new(None),
+            rename_buffer: RefCell::new(String::new()),
         })
     }
 }
@@ -140,7 +160,13 @@ impl ProjectWindow {
 
     /// 创建节点
     /// `clicked_node` 是右键点击的节点（文件或目录）
-    pub fn create_node(&mut self, clicked_node: NodeIndex, name: String, kind: ProjectNodeKind) {
+    pub fn create_node(
+        &mut self,
+        clicked_node: NodeIndex,
+        name: String,
+        kind: ProjectNodeKind,
+        origin: Option<RenameOrigin>,
+    ) {
         let request = CreateRequest {
             base_node: clicked_node,
             name,
@@ -157,8 +183,59 @@ impl ProjectWindow {
             self.model.selected_node = Some(new_node);
             self.model.pending_expand.set(parent);
             self.model.pending_scroll.set(Some(new_node));
+
+            // 预填 buffer（stem）并进入重命名
+            if let Some(data) = self.model.project_path_graph.get_node(new_node) {
+                let full = data.name();
+                let stem = std::path::Path::new(&full)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or(&full);
+                *self.model.rename_buffer.borrow_mut() = stem.to_owned();
+            }
+            self.model.renaming_node.set(Some(new_node));
+            self.model.renaming_origin.set(origin);
+
             let _ = self.model.asset_registry.save();
         }
+    }
+
+    /// 重命名节点。
+    pub fn rename_node(&mut self, node: NodeIndex, new_name: String) {
+        // 防止 hierarchy 和 content 同时发送消息导致重复处理
+        if self.model.renaming_node.get() != Some(node) {
+            return;
+        }
+
+        if let Ok(()) = self.model.project_path_graph.rename_node(
+            &mut self.model.asset_registry,
+            node,
+            &new_name,
+        ) {
+            let _ = self.model.asset_registry.save();
+        }
+        self.cancel_rename();
+    }
+
+    /// 进入重命名模式：预填当前名称（不含扩展名）到缓冲区。
+    /// `origin` — 从哪个面板发起；`None` 表示两边都显示（创建后自动重命名）。
+    pub fn start_rename(&self, node: NodeIndex, origin: Option<RenameOrigin>) {
+        if let Some(data) = self.model.project_path_graph.get_node(node) {
+            let full_name = data.name();
+            let stem = std::path::Path::new(&full_name)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or(&full_name);
+            *self.model.rename_buffer.borrow_mut() = stem.to_owned();
+            self.model.renaming_node.set(Some(node));
+            self.model.renaming_origin.set(origin);
+        }
+    }
+
+    /// 取消重命名模式。
+    pub fn cancel_rename(&self) {
+        self.model.renaming_node.set(None);
+        self.model.renaming_origin.set(None);
     }
 }
 
@@ -188,6 +265,9 @@ impl Drawer for ProjectWindow {
         let active_dir = self.model.active_directory;
         let pending_expand = self.model.pending_expand.take();
         let pending_scroll = self.model.pending_scroll.take();
+        let renaming_node = self.model.renaming_node.get();
+        let renaming_origin = self.model.renaming_origin.get();
+        let mut rename_buffer = self.model.rename_buffer.borrow_mut();
 
         // 左侧：Hierarchy Panel
         egui::Panel::left("project_window_hierachy_panel")
@@ -205,6 +285,9 @@ impl Drawer for ProjectWindow {
                             selected,
                             pending_expand,
                             pending_scroll,
+                            renaming_node,
+                            renaming_origin,
+                            &mut *rename_buffer,
                         );
                     });
             });
@@ -222,6 +305,9 @@ impl Drawer for ProjectWindow {
                         messager,
                         active_dir,
                         selected,
+                        renaming_node,
+                        renaming_origin,
+                        &mut *rename_buffer,
                     );
                 });
         });

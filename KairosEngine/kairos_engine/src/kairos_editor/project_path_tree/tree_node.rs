@@ -74,6 +74,16 @@ impl ProjectNodeKind {
             ProjectNodeKind::Unknown => None,
         }
     }
+
+    /// 重命名时需要同步的关联扩展名（不含点）。
+    /// Texture: png + texture + texture_bin；Mesh: mesh + mesh_bin；其余单文件。
+    pub fn related_extensions(&self) -> &[&str] {
+        match self {
+            ProjectNodeKind::Texture => &["png", "texture", "texture_bin"],
+            ProjectNodeKind::Mesh => &["mesh", "mesh_bin"],
+            _ => &[],
+        }
+    }
 }
 
 // ============================================================

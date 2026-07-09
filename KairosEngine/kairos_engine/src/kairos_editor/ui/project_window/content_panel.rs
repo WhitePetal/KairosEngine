@@ -1,4 +1,4 @@
-use egui::{RichText, Vec2};
+use egui::{Label, RichText, TextEdit, Vec2};
 use petgraph::{graph::NodeIndex, visit::EdgeRef};
 use serde::{Deserialize, Serialize};
 
@@ -12,7 +12,9 @@ use crate::{
             Message, Messager,
             egui_ext::UiExt,
             global_styles::GlobalStyles,
-            project_window::{ContextMenuState, ProjectWindowStyle, context_menu::ContextMenu},
+            project_window::{
+                ContextMenuState, ProjectWindowStyle, RenameOrigin, context_menu::ContextMenu,
+            },
         },
     },
     math,
@@ -50,6 +52,9 @@ impl ContentPanel {
         messager: &mut Messager,
         active_directory: Option<NodeIndex>,
         selected_node: Option<NodeIndex>,
+        renaming_node: Option<NodeIndex>,
+        renaming_origin: Option<RenameOrigin>,
+        rename_buffer: &mut String,
     ) {
         let target = active_directory.unwrap_or_else(|| graph.get_root_node());
 
@@ -61,7 +66,11 @@ impl ContentPanel {
             egui::Sense::all(),
         );
         bg_response.context_menu(|ui| {
-            ContextMenu::show(ui, ContextMenuState::new(target), messager);
+            ContextMenu::show(
+                ui,
+                ContextMenuState::new(target, RenameOrigin::Content),
+                messager,
+            );
         });
 
         // 收集子节点：目录优先，文件按名称排序
@@ -107,6 +116,9 @@ impl ContentPanel {
                     style,
                     messager,
                     selected_node,
+                    renaming_node,
+                    renaming_origin,
+                    rename_buffer,
                 );
             }
         });
@@ -124,8 +136,13 @@ impl ContentPanel {
         style: &ProjectWindowStyle,
         messager: &mut Messager,
         selected_node: Option<NodeIndex>,
+        renaming_node: Option<NodeIndex>,
+        renaming_origin: Option<RenameOrigin>,
+        rename_buffer: &mut String,
     ) {
         let is_selected = selected_node == Some(node);
+        let is_renaming = renaming_node == Some(node)
+            && (renaming_origin.is_none() || renaming_origin == Some(RenameOrigin::Content));
         let icon_size = style.content.icon_size;
         let label_height = style.content.label_height;
 
@@ -148,15 +165,9 @@ impl ContentPanel {
             );
         }
 
-        // 4. 渲染内容，clip 在 content_rect 内防止溢出
-        let mut cell_ui = ui.new_child(
-            egui::UiBuilder::new()
-                .max_rect(content_rect)
-                .layout(egui::Layout::top_down(egui::Align::Center)),
-        );
-        cell_ui.set_clip_rect(content_rect);
+        // 4. 渲染内容
 
-        // Icon
+        // Icon（两个分支共用）
         let icon_path = format!(
             "file://{}",
             global_styles.project_node_icons.for_kind(node_data)
@@ -164,43 +175,76 @@ impl ContentPanel {
         let icon = egui::Image::new(egui::ImageSource::Uri(icon_path.into()))
             .fit_to_exact_size(Vec2::new(icon_size, icon_size))
             .show_loading_spinner(true);
-        cell_ui.add(icon);
 
-        // Label — 预截断到固定高度内
-        let name = node_data.name.to_string_lossy();
-        let truncated_name = ui.truncate_text_to_height(
-            &name,
-            style.content.label_font_size,
-            icon_size,
-            label_height,
+        // 渲染内容，clip 在 content_rect 内防止溢出
+        let mut cell_ui = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(content_rect)
+                .layout(egui::Layout::top_down(egui::Align::Center)),
         );
-        let label = RichText::new(truncated_name)
-            .size(style.content.label_font_size)
-            .color(style.content.label_color);
-        cell_ui.label(label);
+        // cell_ui.shrink_clip_rect(content_rect);
 
-        if response.clicked() {
-            messager.send(Message::SelectProjectNode(node.index()));
-        }
-        if response.double_clicked() {
-            match node_data.kind {
-                ProjectNodeKind::Directory => {
-                    messager.send(Message::NavigateToProjectDirectoryWithExpand(node.index()));
-                }
-                ProjectNodeKind::Texture => todo!(),
-                ProjectNodeKind::Mesh => todo!(),
-                ProjectNodeKind::Material => todo!(),
-                ProjectNodeKind::Audio => todo!(),
-                ProjectNodeKind::Shader => todo!(),
-                ProjectNodeKind::GenericAsset => todo!(),
-                ProjectNodeKind::Script => todo!(),
-                ProjectNodeKind::Document => todo!(),
-                ProjectNodeKind::Toml => todo!(),
-                ProjectNodeKind::Unknown => todo!(),
+        cell_ui.add_sized(Vec2::new(icon_size, icon_size), icon);
+
+        if is_renaming {
+            let text_edit = TextEdit::singleline(rename_buffer).font(egui::FontId::new(
+                style.content.label_font_size,
+                egui::FontFamily::Proportional,
+            ));
+            let text_edit = cell_ui.add_sized(
+                Vec2::new(icon_size + style.content.cell_spacing_x, label_height),
+                text_edit,
+            );
+            text_edit.request_focus();
+            if text_edit.clicked_elsewhere() {
+                messager.send(Message::RenameProjectNode(
+                    node.index(),
+                    rename_buffer.clone(),
+                ));
             }
+        } else {
+            // Label — 预截断到固定高度内
+            let name = node_data.name.to_string_lossy();
+            let truncated_name = cell_ui.truncate_text_to_height(
+                &name,
+                style.content.label_font_size,
+                icon_size,
+                label_height,
+            );
+            let label = RichText::new(truncated_name)
+                .size(style.content.label_font_size)
+                .color(style.content.label_color);
+            cell_ui.label(label);
         }
-        response.context_menu(|ui| {
-            ContextMenu::show(ui, ContextMenuState::new(node), messager);
-        });
+
+        if !is_renaming {
+            if response.clicked() || response.secondary_clicked() {
+                messager.send(Message::SelectProjectNode(node.index()));
+            }
+            if response.double_clicked() {
+                match node_data.kind {
+                    ProjectNodeKind::Directory => {
+                        messager.send(Message::NavigateToProjectDirectoryWithExpand(node.index()));
+                    }
+                    ProjectNodeKind::Texture => todo!(),
+                    ProjectNodeKind::Mesh => todo!(),
+                    ProjectNodeKind::Material => todo!(),
+                    ProjectNodeKind::Audio => todo!(),
+                    ProjectNodeKind::Shader => todo!(),
+                    ProjectNodeKind::GenericAsset => todo!(),
+                    ProjectNodeKind::Script => todo!(),
+                    ProjectNodeKind::Document => todo!(),
+                    ProjectNodeKind::Toml => todo!(),
+                    ProjectNodeKind::Unknown => todo!(),
+                }
+            }
+            response.context_menu(|ui| {
+                ContextMenu::show(
+                    ui,
+                    ContextMenuState::new(node, RenameOrigin::Content),
+                    messager,
+                );
+            });
+        }
     }
 }
