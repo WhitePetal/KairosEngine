@@ -335,8 +335,33 @@ impl ProjectPathGraph {
                     return None;
                 }
             }
-            ProjectNodeKind::Toml => todo!(),
-            ProjectNodeKind::Unknown => todo!(),
+            ProjectNodeKind::Toml => {
+                let Some(folder) = self.get_folder_node(request.base_node) else {
+                    kairos_dialog::error_message_window(
+                        "Create Toml Failed",
+                        "folder node not found in graph",
+                    );
+                    return None;
+                };
+                folder_node = folder.0;
+                let folder_data = folder.1;
+                name = self.unique_name(folder_node, &request.name);
+                full_path = folder_data.path.join(&name);
+                if let Err(err) = std::fs::write(&full_path, "") {
+                    kairos_dialog::error_message_window(
+                        "Create Toml Failed",
+                        &format!("failed to create file '{}': {err}", full_path.display()),
+                    );
+                    return None;
+                }
+            },
+            ProjectNodeKind::Unknown => {
+                kairos_dialog::error_message_window(
+                    "Create Failed",
+                    "Unknown Create Kind",
+                );
+                return None;
+            },
         }
 
         // ---- 4. 注册 GUID ----
