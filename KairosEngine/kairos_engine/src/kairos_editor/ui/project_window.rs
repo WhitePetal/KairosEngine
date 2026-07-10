@@ -60,6 +60,8 @@ struct ProjectWindowModel {
     /// 一次性强制展开标记：下一帧 hierarchy 渲染时将展开到该节点的完整路径，
     /// 渲染后立即清除。用 `Cell` 使得 `ui(&self)` 中也能写入。
     force_expand_to: Cell<Option<NodeIndex>>,
+    /// 选中锁定：为 true 时不接受取消选中（InspectorWindow 交互时保持选中）
+    selected_locked: bool,
 }
 
 // ============================================================
@@ -113,6 +115,7 @@ impl ProjectWindowModel {
             renaming_node: None,
             renaming_buffer: None,
             force_expand_to: Cell::new(None),
+            selected_locked: false,
         })
     }
 }
@@ -125,8 +128,29 @@ impl ProjectWindow {
     }
 
     /// 点击选中节点（仅高亮，不改变 content_panel 展示内容）。
+    /// 锁定时拒绝取消选中（`None`）。
     pub fn select_node(&mut self, node: Option<NodeIndex>) {
+        if node.is_none() && self.model.selected_locked {
+            return;
+        }
         self.model.selected_node = node;
+    }
+
+    /// 设置选中锁定状态（InspectorWindow 交互时调用）。
+    pub fn set_selected_locked(&mut self, locked: bool) {
+        self.model.selected_locked = locked;
+    }
+
+    /// 获取当前选中节点的身份信息（供 InspectorWindow 使用）。
+    pub fn get_selected_node_info(&self) -> Option<super::inspector_window::InspectorNodeInfo> {
+        let node = self.model.selected_node?;
+        let data = self.model.project_path_graph.get_node(node)?;
+        Some(super::inspector_window::InspectorNodeInfo {
+            name: data.name(),
+            kind: data.kind.clone(),
+            path: data.path.clone(),
+            guid: data.guid,
+        })
     }
 
     /// hierarchy 点击进入（选中 + 更新 content_panel 展示的目录）。

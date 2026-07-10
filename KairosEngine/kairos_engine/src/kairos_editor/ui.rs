@@ -118,6 +118,8 @@ pub enum Message {
     OpenProjectNode(petgraph::graph::NodeIndex),
     /// ProjectWindow: 删除节点 (node_idx)
     DeleteProjectNode(petgraph::graph::NodeIndex),
+    /// ProjectWindow: 锁定/解锁选中（锁定时拒绝取消选中）
+    LockProjectSelection(bool),
 }
 
 struct KairosTabDrawer {
@@ -403,6 +405,10 @@ impl Context {
                 Message::SelectProjectNode(node) => {
                     if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
                         project_window.select_node(node);
+                        let info = project_window.get_selected_node_info();
+                        if let Some(inspector) = self.get_window_mut::<InspectorWindow>() {
+                            inspector.set_selected(info);
+                        }
                     }
                 }
                 Message::NavigateToProjectDirectory(node_idx) => {
@@ -443,6 +449,11 @@ impl Context {
                 Message::DeleteProjectNode(node_idx) => {
                     if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
                         project_window.delete_node(node_idx);
+                    }
+                }
+                Message::LockProjectSelection(locked) => {
+                    if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
+                        project_window.set_selected_locked(locked);
                     }
                 }
                 Message::OpenSceneTab => {
