@@ -53,7 +53,6 @@ impl ContentPanel {
         renaming_node: Option<NodeIndex>,
         renaming_buffer: &Option<String>,
     ) {
-        return;
         let target = active_directory.unwrap_or_else(|| graph.get_root_node());
 
         // 收集排序后的子节点

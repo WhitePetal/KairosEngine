@@ -5,7 +5,6 @@ use crate::{
         Engine,
         project_path_tree::tree_node::ProjectNodeKind,
         ui::{
-            self,
             game_window::GameWindow,
             global_styles::GlobalStyles,
             layout::{

@@ -1,4 +1,4 @@
-use egui::{CollapsingHeader, RichText, TextEdit, Vec2};
+use egui::{CollapsingHeader, RichText, Vec2};
 use petgraph::graph::NodeIndex;
 use serde::{Deserialize, Serialize};
 
