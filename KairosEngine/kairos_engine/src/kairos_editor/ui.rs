@@ -259,6 +259,10 @@ impl Context {
     }
 
     pub fn darw(&mut self, ui: &mut egui::Ui, engine: &Engine, log: &mut Log) {
+        ui.ctx().all_styles_mut(|style| {
+            style.debug.warn_if_rect_changes_id = false;
+        });
+        
         // tool_bar
         let tool_bar_type_id = TypeId::of::<ToolBar>();
         if let Some(id) = self.ids.get(&tool_bar_type_id) {

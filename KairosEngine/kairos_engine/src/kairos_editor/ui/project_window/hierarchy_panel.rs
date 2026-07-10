@@ -76,27 +76,29 @@ impl HierarchyPanel {
             return;
         };
 
-        match &node_data.kind {
-            ProjectNodeKind::Directory => Self::draw_directory(
-                ui,
-                global_styles,
-                graph,
-                node,
-                node_data,
-                style,
-                messager,
-                selected_node,
-            ),
-            _ => Self::draw_file(
-                ui,
-                global_styles,
-                node,
-                node_data,
-                style,
-                messager,
-                selected_node,
-            ),
-        }
+        ui.push_id(node_data.guid, |ui| {
+            match &node_data.kind {
+                ProjectNodeKind::Directory => Self::draw_directory(
+                    ui,
+                    global_styles,
+                    graph,
+                    node,
+                    node_data,
+                    style,
+                    messager,
+                    selected_node,
+                ),
+                _ => Self::draw_file(
+                    ui,
+                    global_styles,
+                    node,
+                    node_data,
+                    style,
+                    messager,
+                    selected_node,
+                ),
+            }
+        });
     }
 
     fn draw_directory(
@@ -115,7 +117,7 @@ impl HierarchyPanel {
         ui.visuals_mut().collapsing_header_frame = true;
 
         let header_text = RichText::new(name).color(style.hierachy.directory_header_color);
-        let header = CollapsingHeader::new(header_text).id_salt(node_data.guid);
+        let header = CollapsingHeader::new(header_text);
         let has_children = !graph.sorted_children(node).is_empty();
 
         let mut response = if has_children {
@@ -212,7 +214,7 @@ impl HierarchyPanel {
         let row_rect = egui::Rect::from_min_size(row_start, egui::vec2(row_width, row_height));
         let response = ui.interact(
             row_rect,
-            ui.id().with(("row", node.index())),
+            ui.id().with("row"),
             egui::Sense::click(),
         );
         if response.clicked() || response.secondary_clicked() {

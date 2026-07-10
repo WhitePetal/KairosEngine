@@ -86,17 +86,20 @@ impl ContentPanel {
                 let Some(node_data) = graph.get_node(*child) else {
                     continue;
                 };
-                Self::draw_cell(
-                    &mut columns[i % cols],
-                    global_styles,
-                    *child,
-                    node_data,
-                    style,
-                    messager,
-                    selected_node,
-                    renaming_node,
-                    renaming_buffer,
-                );
+                let ui = &mut columns[i % cols];
+                ui.push_id(node_data.guid, |ui|{
+                    Self::draw_cell(
+                        ui,
+                        global_styles,
+                        *child,
+                        node_data,
+                        style,
+                        messager,
+                        selected_node,
+                        renaming_node,
+                        renaming_buffer,
+                    );
+                });
             }
         });
     }

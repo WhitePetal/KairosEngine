@@ -263,7 +263,7 @@ impl Drawer for ProjectWindow {
         // 左侧：Hierarchy Panel
         egui::Panel::left("project_window_hierachy_panel")
             .resizable(true)
-            .show_inside(ui, |ui| {
+            .show(ui, |ui| {
                 egui::ScrollArea::both()
                     .id_salt("hierarchy_scroll")
                     .show(ui, |ui| {
@@ -279,23 +279,24 @@ impl Drawer for ProjectWindow {
             });
 
         // 右侧：Content Panel（只垂直滚动，水平自然换行）
-        egui::CentralPanel::default().show_inside(ui, |ui| {
-            egui::ScrollArea::vertical()
-                .id_salt("content_scroll")
-                .show(ui, |ui| {
-                    ContentPanel::draw(
-                        ui,
-                        global_styles,
-                        &self.model.project_path_graph,
-                        &self.model.style,
-                        messager,
-                        active_dir,
-                        selected,
-                        renaming_node,
-                        renaming_buffer,
-                    );
-                });
-        });
+        egui::CentralPanel::default()
+            .show(ui, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("content_scroll")
+                    .show(ui, |ui| {
+                        ContentPanel::draw(
+                            ui,
+                            global_styles,
+                            &self.model.project_path_graph,
+                            &self.model.style,
+                            messager,
+                            active_dir,
+                            selected,
+                            renaming_node,
+                            renaming_buffer,
+                        );
+                    });
+            });
     }
 
     fn close(&self, messager: &mut super::Messager) {

@@ -36,13 +36,13 @@ base64 = "0.22.1"
 wgpu = { version = "29.0.3", features = ["serde"] }
 pollster = "0.3"
 # eframe = { version = "0.34.2", features = ["wgpu"] }
-egui = "0.34.2"
-egui_extras = { version = "0.34.2", features = ["all_loaders"] }
-emath = "0.34.2"
-epaint = "0.34.2"
+egui = "0.35.0"
+egui_extras = { version = "0.35.0", features = ["all_loaders"] }
+emath = "0.35.0"
+epaint = "0.35.0"
 # egui_dock = "0.18.0"
-egui-winit = "0.34.2"
-egui-wgpu = "0.34.2"
+egui-winit = "0.35.0"
+egui-wgpu = "0.35.0"
 parking_lot = "0.12.5"
 gltf = "1.4.1"
 foldhash = "0.2.0"
