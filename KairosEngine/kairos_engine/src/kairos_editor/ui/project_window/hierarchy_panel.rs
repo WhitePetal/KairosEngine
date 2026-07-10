@@ -79,29 +79,27 @@ impl HierarchyPanel {
             return;
         };
 
-        ui.push_id(node_data.guid, |ui| {
-            match &node_data.kind {
-                ProjectNodeKind::Directory => Self::draw_directory(
-                    ui,
-                    global_styles,
-                    graph,
-                    node,
-                    node_data,
-                    style,
-                    messager,
-                    selected_node,
-                    force_expand_to,
-                ),
-                _ => Self::draw_file(
-                    ui,
-                    global_styles,
-                    node,
-                    node_data,
-                    style,
-                    messager,
-                    selected_node,
-                ),
-            }
+        ui.push_id(node_data.guid, |ui| match &node_data.kind {
+            ProjectNodeKind::Directory => Self::draw_directory(
+                ui,
+                global_styles,
+                graph,
+                node,
+                node_data,
+                style,
+                messager,
+                selected_node,
+                force_expand_to,
+            ),
+            _ => Self::draw_file(
+                ui,
+                global_styles,
+                node,
+                node_data,
+                style,
+                messager,
+                selected_node,
+            ),
         });
     }
 
@@ -121,9 +119,8 @@ impl HierarchyPanel {
         let name = node_data.name();
 
         // 仅在一次性标记有效时强制展开：当前节点是目标或其祖先
-        let should_force_open = force_expand_to.is_some_and(|target| {
-            target == node || graph.get_ancestors(target).contains(&node)
-        });
+        let should_force_open = force_expand_to
+            .is_some_and(|target| target == node || graph.get_ancestors(target).contains(&node));
 
         ui.visuals_mut().collapsing_header_frame = true;
 
@@ -228,11 +225,7 @@ impl HierarchyPanel {
 
         // 3. 全宽点击覆盖层
         let row_rect = egui::Rect::from_min_size(row_start, egui::vec2(row_width, row_height));
-        let response = ui.interact(
-            row_rect,
-            ui.id().with("row"),
-            egui::Sense::click(),
-        );
+        let response = ui.interact(row_rect, ui.id().with("row"), egui::Sense::click());
         if response.clicked() || response.secondary_clicked() {
             messager.send(Message::SelectProjectNode(Some(node)));
         }

@@ -4,10 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     kairos_editor::{
-        project_path_tree::{
-            ProjectPathGraph,
-            tree_node::ProjectTreeNode,
-        },
+        project_path_tree::{ProjectPathGraph, tree_node::ProjectTreeNode},
         ui::{
             Message, Messager,
             egui_ext::UiExt,
@@ -87,7 +84,7 @@ impl ContentPanel {
                     continue;
                 };
                 let ui = &mut columns[i % cols];
-                ui.push_id(node_data.guid, |ui|{
+                ui.push_id(node_data.guid, |ui| {
                     Self::draw_cell(
                         ui,
                         global_styles,

@@ -69,10 +69,7 @@ impl ContextMenu {
             }
         });
         let btn_min_size = Vec2::new(ui.min_size().x, 0.0);
-        if ui
-            .add(Button::new("Open").min_size(btn_min_size))
-            .clicked()
-        {
+        if ui.add(Button::new("Open").min_size(btn_min_size)).clicked() {
             messager.send(Message::OpenProjectNode(state.node));
         }
         if ui

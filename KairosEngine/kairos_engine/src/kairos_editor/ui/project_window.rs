@@ -241,27 +241,43 @@ impl ProjectWindow {
             ProjectNodeKind::Audio => {
                 log::info!("Open Audio is not yet implemented: {}", node_data.name());
             }
-            ProjectNodeKind::Shader => {
-                log::info!("Open Shader is not yet implemented: {}", node_data.name());
-            }
             ProjectNodeKind::GenericAsset => {
                 log::info!(
                     "Open GenericAsset is not yet implemented: {}",
                     node_data.name()
                 );
             }
-            ProjectNodeKind::Script => {
-                log::info!("Open Script is not yet implemented: {}", node_data.name());
-            }
-            ProjectNodeKind::Document => {
-                log::info!("Open Document is not yet implemented: {}", node_data.name());
-            }
-            ProjectNodeKind::Toml => {
-                log::info!("Open Toml is not yet implemented: {}", node_data.name());
+            ProjectNodeKind::Shader
+            | ProjectNodeKind::Script
+            | ProjectNodeKind::Document
+            | ProjectNodeKind::Toml => {
+                Self::open_file_in_vscode(&node_data.path);
             }
             ProjectNodeKind::Unknown => {
                 log::info!("Open Unknown is not yet implemented: {}", node_data.name());
             }
+        }
+    }
+
+    /// 通过 VS Code 打开文件。
+    /// 优先尝试 `code` 命令（终端环境），失败时回退到 macOS 完整路径。
+    /// `--reuse-window` 复用已有窗口。
+    fn open_file_in_vscode(path: &std::path::Path) {
+        let result = std::process::Command::new("code")
+            .arg(path)
+            .arg("--reuse-window")
+            .spawn()
+            .or_else(|_| {
+                std::process::Command::new(
+                    "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code",
+                )
+                .arg(path)
+                .arg("--reuse-window")
+                .spawn()
+            });
+
+        if let Err(e) = result {
+            log::warn!("Failed to open '{}' with VS Code: {e}", path.display());
         }
     }
 
@@ -339,24 +355,23 @@ impl Drawer for ProjectWindow {
         self.model.force_expand_to.set(None);
 
         // 右侧：Content Panel（只垂直滚动，水平自然换行）
-        egui::CentralPanel::default()
-            .show(ui, |ui| {
-                egui::ScrollArea::vertical()
-                    .id_salt("content_scroll")
-                    .show(ui, |ui| {
-                        ContentPanel::draw(
-                            ui,
-                            global_styles,
-                            &self.model.project_path_graph,
-                            &self.model.style,
-                            messager,
-                            active_dir,
-                            selected,
-                            renaming_node,
-                            renaming_buffer,
-                        );
-                    });
-            });
+        egui::CentralPanel::default().show(ui, |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("content_scroll")
+                .show(ui, |ui| {
+                    ContentPanel::draw(
+                        ui,
+                        global_styles,
+                        &self.model.project_path_graph,
+                        &self.model.style,
+                        messager,
+                        active_dir,
+                        selected,
+                        renaming_node,
+                        renaming_buffer,
+                    );
+                });
+        });
     }
 
     fn close(&self, messager: &mut super::Messager) {
