@@ -120,6 +120,10 @@ pub enum Message {
     DeleteProjectNode(petgraph::graph::NodeIndex),
     /// ProjectWindow: 锁定/解锁选中（锁定时拒绝取消选中）
     LockProjectSelection(bool),
+    /// InspectorWindow: 更新 TOML 字段值 (key_path, new_value)
+    UpdateInspectorTomlValue(Vec<String>, toml::Value),
+    /// InspectorWindow: 保存当前编辑的 TOML 文件
+    SaveInspectorToml,
 }
 
 struct KairosTabDrawer {
@@ -454,6 +458,16 @@ impl Context {
                 Message::LockProjectSelection(locked) => {
                     if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
                         project_window.set_selected_locked(locked);
+                    }
+                }
+                Message::UpdateInspectorTomlValue(path, value) => {
+                    if let Some(inspector) = self.get_window_mut::<InspectorWindow>() {
+                        inspector.update_toml_field(&path, value);
+                    }
+                }
+                Message::SaveInspectorToml => {
+                    if let Some(inspector) = self.get_window_mut::<InspectorWindow>() {
+                        inspector.save_toml();
                     }
                 }
                 Message::OpenSceneTab => {
