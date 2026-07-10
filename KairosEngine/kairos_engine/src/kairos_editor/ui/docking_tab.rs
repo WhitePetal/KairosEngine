@@ -218,7 +218,7 @@ impl<Drawer> DockArea<'_, Drawer> {
                     .inner_margin(0.)
                     .fill(Color32::TRANSPARENT),
             )
-            .show_inside(ui, |ui| {
+            .show(ui, |ui| {
                 self.show_inside(
                     ui,
                     global_styles,

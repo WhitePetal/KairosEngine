@@ -114,6 +114,8 @@ pub enum Message {
     StartRenameProjectNode(petgraph::graph::NodeIndex),
     /// ProjectWindow: 退出重命名模式
     ExitRenameProjectNode,
+    /// ProjectWindow: 打开节点（根据类型执行不同操作）
+    OpenProjectNode(petgraph::graph::NodeIndex),
     /// ProjectWindow: 删除节点 (node_idx)
     DeleteProjectNode(petgraph::graph::NodeIndex),
 }
@@ -262,7 +264,7 @@ impl Context {
         ui.ctx().all_styles_mut(|style| {
             style.debug.warn_if_rect_changes_id = false;
         });
-        
+
         // tool_bar
         let tool_bar_type_id = TypeId::of::<ToolBar>();
         if let Some(id) = self.ids.get(&tool_bar_type_id) {
@@ -270,7 +272,7 @@ impl Context {
         }
 
         // 中央区域显示内容
-        egui::CentralPanel::default().show_inside(ui, |ui| {
+        egui::CentralPanel::default().show(ui, |ui| {
             DockArea::new("KairosEditor Main DockArea", &mut self.tab_tree).show_inside(
                 ui,
                 &self.global_styles,
@@ -431,6 +433,11 @@ impl Context {
                 Message::ExitRenameProjectNode => {
                     if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
                         project_window.exit_rename();
+                    }
+                }
+                Message::OpenProjectNode(node_idx) => {
+                    if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
+                        project_window.open_node(node_idx);
                     }
                 }
                 Message::DeleteProjectNode(node_idx) => {

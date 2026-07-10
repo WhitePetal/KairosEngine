@@ -29,6 +29,7 @@ impl ContextMenu {
     pub fn show(ui: &mut egui::Ui, state: ContextMenuState, messager: &mut Messager) {
         ui.menu_button("Create", |ui| {
             if ui.button("Folder").clicked() {
+                messager.send(Message::OpenProjectNode(state.node));
                 messager.send(Message::CreateProjectNode(
                     state.node,
                     "New Folder".into(),
@@ -68,8 +69,11 @@ impl ContextMenu {
             }
         });
         let btn_min_size = Vec2::new(ui.min_size().x, 0.0);
-        if ui.add(Button::new("Open").min_size(btn_min_size)).clicked() {
-            todo!()
+        if ui
+            .add(Button::new("Open").min_size(btn_min_size))
+            .clicked()
+        {
+            messager.send(Message::OpenProjectNode(state.node));
         }
         if ui
             .add(Button::new("Delete").min_size(btn_min_size))

@@ -46,6 +46,7 @@ impl HierarchyPanel {
         style: &ProjectWindowStyle,
         messager: &mut Messager,
         selected_node: Option<NodeIndex>,
+        force_expand_to: Option<NodeIndex>,
     ) {
         let root = graph.get_root_node();
         Self::draw_node(
@@ -56,6 +57,7 @@ impl HierarchyPanel {
             style,
             messager,
             selected_node,
+            force_expand_to,
         );
     }
 
@@ -71,6 +73,7 @@ impl HierarchyPanel {
         style: &ProjectWindowStyle,
         messager: &mut Messager,
         selected_node: Option<NodeIndex>,
+        force_expand_to: Option<NodeIndex>,
     ) {
         let Some(node_data) = graph.get_node(node) else {
             return;
@@ -87,6 +90,7 @@ impl HierarchyPanel {
                     style,
                     messager,
                     selected_node,
+                    force_expand_to,
                 ),
                 _ => Self::draw_file(
                     ui,
@@ -110,14 +114,25 @@ impl HierarchyPanel {
         style: &ProjectWindowStyle,
         messager: &mut Messager,
         selected_node: Option<NodeIndex>,
+        force_expand_to: Option<NodeIndex>,
     ) {
         let is_selected = selected_node == Some(node);
 
         let name = node_data.name();
+
+        // 仅在一次性标记有效时强制展开：当前节点是目标或其祖先
+        let should_force_open = force_expand_to.is_some_and(|target| {
+            target == node || graph.get_ancestors(target).contains(&node)
+        });
+
         ui.visuals_mut().collapsing_header_frame = true;
 
         let header_text = RichText::new(name).color(style.hierachy.directory_header_color);
-        let header = CollapsingHeader::new(header_text);
+        let header = CollapsingHeader::new(header_text).open(if should_force_open {
+            Some(true)
+        } else {
+            None
+        });
         let has_children = !graph.sorted_children(node).is_empty();
 
         let mut response = if has_children {
@@ -132,6 +147,7 @@ impl HierarchyPanel {
                         style,
                         messager,
                         selected_node,
+                        force_expand_to,
                     );
                 }
             })

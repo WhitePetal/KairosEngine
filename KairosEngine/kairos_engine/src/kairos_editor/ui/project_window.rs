@@ -2,7 +2,7 @@ pub mod content_panel;
 pub mod context_menu;
 pub mod hierarchy_panel;
 
-use std::{any::type_name, fs};
+use std::{any::type_name, cell::Cell, fs};
 
 use crate::{
     asset_loader::assets::AssetsServer,
@@ -57,6 +57,9 @@ struct ProjectWindowModel {
     renaming_node: Option<NodeIndex>,
     /// 重命名字符串buffer
     renaming_buffer: Option<String>,
+    /// 一次性强制展开标记：下一帧 hierarchy 渲染时将展开到该节点的完整路径，
+    /// 渲染后立即清除。用 `Cell` 使得 `ui(&self)` 中也能写入。
+    force_expand_to: Cell<Option<NodeIndex>>,
 }
 
 // ============================================================
@@ -109,6 +112,7 @@ impl ProjectWindowModel {
             active_directory: None,
             renaming_node: None,
             renaming_buffer: None,
+            force_expand_to: Cell::new(None),
         })
     }
 }
@@ -126,6 +130,7 @@ impl ProjectWindow {
     }
 
     /// hierarchy 点击进入（选中 + 更新 content_panel 展示的目录）。
+    /// 不设置 force_expand_to —— CollapsingHeader 自己管理折叠/展开状态。
     pub fn navigate_to(&mut self, node: NodeIndex) {
         self.model.selected_node = Some(node);
         self.model.active_directory = Some(node);
@@ -147,6 +152,7 @@ impl ProjectWindow {
         {
             let parent = self.model.project_path_graph.get_parent(new_node);
             self.model.active_directory = parent;
+            self.model.force_expand_to.set(parent);
             self.model.selected_node = Some(new_node);
 
             // 预填 buffer（stem）并进入重命名
@@ -211,6 +217,54 @@ impl ProjectWindow {
         self.model.renaming_buffer = None;
     }
 
+    /// 打开节点。根据节点类型分发到不同的打开逻辑：
+    /// - `Directory`：进入该目录（等价于 `navigate_to`）
+    /// - 其他类型：预留扩展点，当前打印日志提示未实现
+    pub fn open_node(&mut self, node: NodeIndex) {
+        let Some(node_data) = self.model.project_path_graph.get_node(node) else {
+            return;
+        };
+        match node_data.kind {
+            ProjectNodeKind::Directory => {
+                self.navigate_to(node);
+                self.model.force_expand_to.set(Some(node));
+            }
+            ProjectNodeKind::Texture => {
+                log::info!("Open Texture is not yet implemented: {}", node_data.name());
+            }
+            ProjectNodeKind::Mesh => {
+                log::info!("Open Mesh is not yet implemented: {}", node_data.name());
+            }
+            ProjectNodeKind::Material => {
+                log::info!("Open Material is not yet implemented: {}", node_data.name());
+            }
+            ProjectNodeKind::Audio => {
+                log::info!("Open Audio is not yet implemented: {}", node_data.name());
+            }
+            ProjectNodeKind::Shader => {
+                log::info!("Open Shader is not yet implemented: {}", node_data.name());
+            }
+            ProjectNodeKind::GenericAsset => {
+                log::info!(
+                    "Open GenericAsset is not yet implemented: {}",
+                    node_data.name()
+                );
+            }
+            ProjectNodeKind::Script => {
+                log::info!("Open Script is not yet implemented: {}", node_data.name());
+            }
+            ProjectNodeKind::Document => {
+                log::info!("Open Document is not yet implemented: {}", node_data.name());
+            }
+            ProjectNodeKind::Toml => {
+                log::info!("Open Toml is not yet implemented: {}", node_data.name());
+            }
+            ProjectNodeKind::Unknown => {
+                log::info!("Open Unknown is not yet implemented: {}", node_data.name());
+            }
+        }
+    }
+
     /// 删除节点。
     pub fn delete_node(&mut self, node: NodeIndex) {
         match self
@@ -259,6 +313,8 @@ impl Drawer for ProjectWindow {
         let active_dir = self.model.active_directory;
         let renaming_node = self.model.renaming_node;
         let renaming_buffer = &self.model.renaming_buffer;
+        // 一次性强制展开标记：本帧使用后立即清除
+        let force_expand_to = self.model.force_expand_to.get();
 
         // 左侧：Hierarchy Panel
         egui::Panel::left("project_window_hierachy_panel")
@@ -274,9 +330,13 @@ impl Drawer for ProjectWindow {
                             &self.model.style,
                             messager,
                             selected,
+                            force_expand_to,
                         );
                     });
             });
+
+        // 清除一次性标记，下一帧不再强制展开
+        self.model.force_expand_to.set(None);
 
         // 右侧：Content Panel（只垂直滚动，水平自然换行）
         egui::CentralPanel::default()

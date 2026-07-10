@@ -102,7 +102,7 @@ impl Drawer for ToolBar {
         let model = &self.model;
         Panel::top("toolbar")
             .default_size(model.style.height)
-            .show_inside(ui, |ui| {
+            .show(ui, |ui| {
                 ui.visuals_mut().override_text_color = Some(model.style.button_text_color.into());
                 menu::MenuBar::new().ui(ui, |ui| {
                     ui.set_height(model.style.height);

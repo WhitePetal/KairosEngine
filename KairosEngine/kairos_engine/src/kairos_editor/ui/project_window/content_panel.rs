@@ -6,7 +6,7 @@ use crate::{
     kairos_editor::{
         project_path_tree::{
             ProjectPathGraph,
-            tree_node::{ProjectNodeKind, ProjectTreeNode},
+            tree_node::ProjectTreeNode,
         },
         ui::{
             Message, Messager,
@@ -207,21 +207,7 @@ impl ContentPanel {
                 messager.send(Message::SelectProjectNode(Some(node)));
             }
             if response.double_clicked() {
-                match node_data.kind {
-                    ProjectNodeKind::Directory => {
-                        messager.send(Message::NavigateToProjectDirectory(node));
-                    }
-                    ProjectNodeKind::Texture => todo!(),
-                    ProjectNodeKind::Mesh => todo!(),
-                    ProjectNodeKind::Material => todo!(),
-                    ProjectNodeKind::Audio => todo!(),
-                    ProjectNodeKind::Shader => todo!(),
-                    ProjectNodeKind::GenericAsset => todo!(),
-                    ProjectNodeKind::Script => todo!(),
-                    ProjectNodeKind::Document => todo!(),
-                    ProjectNodeKind::Toml => todo!(),
-                    ProjectNodeKind::Unknown => todo!(),
-                }
+                messager.send(Message::OpenProjectNode(node));
             }
             response.context_menu(|ui| {
                 ContextMenu::show(ui, ContextMenuState::new(node), messager);
