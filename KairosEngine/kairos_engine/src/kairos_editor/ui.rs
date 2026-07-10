@@ -5,6 +5,7 @@ use crate::{
         Engine,
         project_path_tree::tree_node::ProjectNodeKind,
         ui::{
+            self,
             game_window::GameWindow,
             global_styles::GlobalStyles,
             layout::{
@@ -38,7 +39,6 @@ use crate::{
         inspector_window::InspectorWindow,
         preferences_window::PreferencesWindow,
         project_window::ProjectWindow,
-        project_window::RenameOrigin,
         scene_window::SceneWindow,
         tool_bar::ToolBar,
         ui_style_fields::{StyleField, StylePage},
@@ -104,19 +104,19 @@ pub enum Message {
     /// ProjectWindow: 选中节点（NodeIndex::index()）
     SelectProjectNode(Option<petgraph::graph::NodeIndex>),
     /// ProjectWindow: Hierachy点击进入目录（NodeIndex::index()）
-    NavigateToProjectDirectory(usize),
-    /// ProjectWindow: Content双击进入目录并展开+滚动hierachy（content_panel 用）
-    NavigateToProjectDirectoryWithExpand(usize),
+    NavigateToProjectDirectory(petgraph::graph::NodeIndex),
     /// ProjectWindow: 创建节点(右键节点Idx, 名称, 类型, 来源面板)
-    CreateProjectNode(usize, String, ProjectNodeKind, Option<RenameOrigin>),
+    CreateProjectNode(petgraph::graph::NodeIndex, String, ProjectNodeKind),
     /// ProjectWindow: 重命名节点 (node_idx, new_name)
-    RenameProjectNode(usize, String),
+    RenameProjectNode(petgraph::graph::NodeIndex, String),
+    /// 更新重命名Buffer
+    UpdateProjectWindowRenamingBuffer(String),
     /// ProjectWindow: 进入重命名模式 (node_idx, origin)
-    StartRenameProjectNode(usize, Option<RenameOrigin>),
-    /// ProjectWindow: 取消重命名模式
-    CancelRenameProjectNode,
+    StartRenameProjectNode(petgraph::graph::NodeIndex),
+    /// ProjectWindow: 退出重命名模式
+    ExitRenameProjectNode,
     /// ProjectWindow: 删除节点 (node_idx)
-    DeleteProjectNode(usize),
+    DeleteProjectNode(petgraph::graph::NodeIndex),
 }
 
 struct KairosTabDrawer {
@@ -395,52 +395,44 @@ impl Context {
                 Message::CloseProjectTab => {
                     self.close_drawer::<ProjectWindow>();
                 }
-                Message::SelectProjectNode(node_idx) => {
+                Message::SelectProjectNode(node) => {
                     if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
-                        project_window.select_node(node_idx);
+                        project_window.select_node(node);
                     }
                 }
                 Message::NavigateToProjectDirectory(node_idx) => {
                     if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
-                        project_window.navigate_to(petgraph::graph::NodeIndex::new(node_idx));
+                        project_window.navigate_to(node_idx);
                     }
                 }
-                Message::NavigateToProjectDirectoryWithExpand(node_idx) => {
+                Message::CreateProjectNode(parent_idx, name, kind) => {
                     if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
-                        project_window
-                            .navigate_to_with_expand(petgraph::graph::NodeIndex::new(node_idx));
-                    }
-                }
-                Message::CreateProjectNode(parent_idx, name, kind, origin) => {
-                    if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
-                        project_window.create_node(
-                            petgraph::graph::NodeIndex::new(parent_idx),
-                            name,
-                            kind,
-                            origin,
-                        );
+                        project_window.create_node(parent_idx, name, kind);
                     }
                 }
                 Message::RenameProjectNode(node_idx, new_name) => {
                     if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
-                        project_window
-                            .rename_node(petgraph::graph::NodeIndex::new(node_idx), new_name);
+                        project_window.rename_node(node_idx, new_name);
                     }
                 }
-                Message::StartRenameProjectNode(node_idx, origin) => {
+                Message::UpdateProjectWindowRenamingBuffer(buffer) => {
                     if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
-                        project_window
-                            .start_rename(petgraph::graph::NodeIndex::new(node_idx), origin);
+                        project_window.update_renaming_buffer(buffer);
                     }
                 }
-                Message::CancelRenameProjectNode => {
+                Message::StartRenameProjectNode(node_idx) => {
                     if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
-                        project_window.cancel_rename();
+                        project_window.start_rename(node_idx);
+                    }
+                }
+                Message::ExitRenameProjectNode => {
+                    if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
+                        project_window.exit_rename();
                     }
                 }
                 Message::DeleteProjectNode(node_idx) => {
                     if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
-                        project_window.delete_node(petgraph::graph::NodeIndex::new(node_idx));
+                        project_window.delete_node(node_idx);
                     }
                 }
                 Message::OpenSceneTab => {
