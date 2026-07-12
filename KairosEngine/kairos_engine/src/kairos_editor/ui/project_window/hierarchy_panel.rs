@@ -203,10 +203,7 @@ impl HierarchyPanel {
 
         // 2. 渲染内容（在背景上方）
         ui.horizontal(|ui| {
-            let icon_path = format!(
-                "file://{}",
-                global_styles.project_node_icons.for_kind(node_data)
-            );
+            let icon_path = global_styles.project_node_icons.uri_for_kind(node_data, false);
             let icon = egui::Image::new(egui::ImageSource::Uri(icon_path.into()))
                 .fit_to_exact_size(icon_size);
             ui.add(icon);

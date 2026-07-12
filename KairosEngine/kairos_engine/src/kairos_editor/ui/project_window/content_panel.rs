@@ -90,6 +90,7 @@ impl ContentPanel {
                         global_styles,
                         *child,
                         node_data,
+                        graph.has_child(*child),
                         style,
                         messager,
                         selected_node,
@@ -110,6 +111,7 @@ impl ContentPanel {
         global_styles: &GlobalStyles,
         node: NodeIndex,
         node_data: &ProjectTreeNode,
+        has_child: bool,
         style: &ProjectWindowStyle,
         messager: &mut Messager,
         selected_node: Option<NodeIndex>,
@@ -142,12 +144,8 @@ impl ContentPanel {
 
         // 4. 渲染内容
 
-        // Icon（两个分支共用）
-        let icon_path = format!(
-            "file://{}",
-            global_styles.project_node_icons.for_kind(node_data)
-        );
-        let icon = egui::Image::new(egui::ImageSource::Uri(icon_path.into()))
+        // Icon
+        let icon = egui::Image::new(global_styles.project_node_icons.uri_for_kind(node_data, has_child))
             .fit_to_exact_size(Vec2::new(icon_size, icon_size))
             .show_loading_spinner(true);
 

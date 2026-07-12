@@ -263,6 +263,10 @@ impl ProjectPathGraph {
         self.graph.node_count()
     }
 
+    pub fn has_child(&self, node: NodeIndex) -> bool {
+        self.graph.edges(node).count() > 0
+    }
+
     /// 获取节点的父节点索引（文件用于回退到所在目录）。
     pub fn get_parent(&self, node: NodeIndex) -> Option<NodeIndex> {
         use petgraph::Direction;
@@ -685,50 +689,6 @@ fn fs_main(i: v2f) -> gbuffer {
     return out;
 }
         "
-    }
-}
-
-// ============================================================
-// 向后兼容 — 保留旧的 ProjectPath / TexturePath 访问方式
-// ============================================================
-
-/// 旧版 `ProjectPath` 枚举的替代访问 — 通过 `ProjectTreeNode` + `ProjectNodeKind`
-/// 提供等价信息。此模块在后续 UI 重写后将移除。
-pub mod compat {
-    use super::{
-        ProjectPathGraph,
-        tree_node::{ProjectNodeKind, ProjectTreeNode},
-    };
-    use crate::kairos_editor::project_path_tree::texture_path::TexturePath;
-
-    /// 从 `ProjectTreeNode` 构建 `TexturePath`（向后兼容）。
-    pub fn to_texture_path(node: &ProjectTreeNode) -> Option<TexturePath> {
-        if node.kind != ProjectNodeKind::Texture {
-            return None;
-        }
-        Some(TexturePath::new(
-            node.path.clone(),
-            node.path.clone(),
-            node.name.clone(),
-        ))
-    }
-
-    /// 便捷方法：通过图 + 节点索引获取 `TexturePath`。
-    pub fn get_texture_path(
-        graph: &ProjectPathGraph,
-        node: petgraph::graph::NodeIndex,
-    ) -> Option<TexturePath> {
-        graph.get_node(node).and_then(to_texture_path)
-    }
-
-    /// 判断节点是否为目录。
-    pub fn is_dir(node: &ProjectTreeNode) -> bool {
-        node.kind == ProjectNodeKind::Directory
-    }
-
-    /// 判断节点是否为通用资产。
-    pub fn is_asset(node: &ProjectTreeNode) -> bool {
-        node.kind == ProjectNodeKind::GenericAsset
     }
 }
 

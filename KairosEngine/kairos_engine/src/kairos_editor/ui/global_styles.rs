@@ -1,4 +1,4 @@
-use std::fs;
+use std::{fs, path::PathBuf};
 
 use serde::{Deserialize, Serialize};
 use toml::from_str;
@@ -35,6 +35,8 @@ pub struct ProjectNodeIcons {
     #[serde(default)]
     pub directory: Option<String>,
     #[serde(default)]
+    pub directory_fill: Option<String>,
+    #[serde(default)]
     pub mesh: Option<String>,
     #[serde(default)]
     pub material: Option<String>,
@@ -58,9 +60,15 @@ fn default_icon_path() -> String {
 
 impl ProjectNodeIcons {
     /// 根据节点类型获取对应图标路径，未配置则回退到 `default`。
-    pub fn for_kind<'a>(&'a self, node: &'a ProjectTreeNode) -> &'a str {
+    pub fn for_kind<'a>(&'a self, node: &'a ProjectTreeNode, has_child: bool) -> &'a str {
         let opt = match node.kind {
-            ProjectNodeKind::Directory => self.directory.as_deref(),
+            ProjectNodeKind::Directory => {
+                if has_child {
+                    self.directory_fill.as_deref()
+                } else {
+                    self.directory.as_deref()
+                }
+            },
             ProjectNodeKind::Texture => node.path.to_str(),
             ProjectNodeKind::Mesh => self.mesh.as_deref(),
             ProjectNodeKind::Material => self.material.as_deref(),
@@ -73,5 +81,25 @@ impl ProjectNodeIcons {
             ProjectNodeKind::Unknown => None,
         };
         opt.unwrap_or(&self.default)
+    }
+
+    /// 将相对图标路径转为 `file://` URI（跨平台）。
+    ///
+    /// Windows 上 `file://rel/path` 会被 `egui_extras::FileLoader` 误解析为 UNC，
+    /// 因此必须用 `std::path::absolute` 先转为绝对路径再构造 URI。
+    pub fn uri_for_kind(&self, node: &ProjectTreeNode, has_child: bool) -> String {
+        let relative = self.for_kind(node, has_child);
+        let abs_path =
+            std::path::absolute(relative).unwrap_or_else(|_| PathBuf::from(relative));
+
+        #[cfg(target_os = "windows")]
+        {
+            let s = abs_path.display().to_string().replace('\\', "/");
+            format!("file:///{}", s)
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            format!("file://{}", abs_path.display())
+        }
     }
 }
