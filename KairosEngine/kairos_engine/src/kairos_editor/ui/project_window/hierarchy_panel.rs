@@ -4,11 +4,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     kairos_editor::{
-        project_path_tree::{
-            ProjectPathGraph,
-            tree_node::{ProjectNodeKind, ProjectTreeNode},
-        },
-        ui::{
+        asset_registry::AssetKind, project_path_tree::{
+            ProjectPathGraph, tree_node::ProjectTreeNode,
+        }, ui::{
             Message, Messager,
             global_styles::GlobalStyles,
             project_window::{
@@ -16,8 +14,7 @@ use crate::{
                 context_menu::{ContextMenu, ContextMenuState},
             },
         },
-    },
-    math,
+    }, math,
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -80,7 +77,7 @@ impl HierarchyPanel {
         };
 
         ui.push_id(node_data.guid, |ui| match &node_data.kind {
-            ProjectNodeKind::Directory => Self::draw_directory(
+            AssetKind::Directory => Self::draw_directory(
                 ui,
                 global_styles,
                 graph,

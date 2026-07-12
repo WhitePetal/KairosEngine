@@ -5,14 +5,10 @@ pub mod hierarchy_panel;
 use std::{any::type_name, cell::Cell, fs};
 
 use crate::{
-    asset_loader::assets::AssetsServer,
-    kairos_editor::{
-        Engine,
-        asset_registry::AssetRegistry,
-        project_path_tree::{
-            ProjectPathGraph, create_request::CreateRequest, tree_node::ProjectNodeKind,
-        },
-        ui::{
+    asset_loader::assets::AssetsServer, kairos_editor::{
+        Engine, asset_registry::{AssetKind, AssetRegistry}, project_path_tree::{
+            ProjectPathGraph, create_request::CreateRequest,
+        }, ui::{
             Messager,
             global_styles::GlobalStyles,
             project_window::{
@@ -21,9 +17,7 @@ use crate::{
                 hierarchy_panel::{HierarchyPanel, HierarchyStyle},
             },
         },
-    },
-    kairos_game::KairosGame,
-    log::Log,
+    }, kairos_game::KairosGame, log::Log,
 };
 use petgraph::graph::NodeIndex;
 use serde::{Deserialize, Serialize};
@@ -162,7 +156,7 @@ impl ProjectWindow {
 
     /// 创建节点
     /// `clicked_node` 是右键点击的节点（文件或目录）
-    pub fn create_node(&mut self, clicked_node: NodeIndex, name: String, kind: ProjectNodeKind) {
+    pub fn create_node(&mut self, clicked_node: NodeIndex, name: String, kind: AssetKind) {
         let request = CreateRequest {
             base_node: clicked_node,
             name,
@@ -249,35 +243,35 @@ impl ProjectWindow {
             return;
         };
         match node_data.kind {
-            ProjectNodeKind::Directory => {
+            AssetKind::Directory => {
                 self.navigate_to(node);
                 self.model.force_expand_to.set(Some(node));
             }
-            ProjectNodeKind::Texture => {
+            AssetKind::Texture => {
                 log::info!("Open Texture is not yet implemented: {}", node_data.name());
             }
-            ProjectNodeKind::Mesh => {
+            AssetKind::Mesh => {
                 log::info!("Open Mesh is not yet implemented: {}", node_data.name());
             }
-            ProjectNodeKind::Material => {
+            AssetKind::Material => {
                 log::info!("Open Material is not yet implemented: {}", node_data.name());
             }
-            ProjectNodeKind::Audio => {
+            AssetKind::Audio => {
                 log::info!("Open Audio is not yet implemented: {}", node_data.name());
             }
-            ProjectNodeKind::GenericAsset => {
+            AssetKind::GenericAsset => {
                 log::info!(
                     "Open GenericAsset is not yet implemented: {}",
                     node_data.name()
                 );
             }
-            ProjectNodeKind::Shader
-            | ProjectNodeKind::Script
-            | ProjectNodeKind::Document
-            | ProjectNodeKind::Toml => {
+            AssetKind::Shader
+            | AssetKind::Script
+            | AssetKind::Document
+            | AssetKind::Toml => {
                 Self::open_file_in_vscode(&node_data.path);
             }
-            ProjectNodeKind::Unknown => {
+            AssetKind::Unknown => {
                 log::info!("Open Unknown is not yet implemented: {}", node_data.name());
             }
         }

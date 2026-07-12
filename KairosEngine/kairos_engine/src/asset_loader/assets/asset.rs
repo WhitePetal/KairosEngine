@@ -3,6 +3,7 @@ mod material;
 mod mesh;
 mod shader;
 mod texture;
+mod toml;
 
 use std::{
     any::Any,

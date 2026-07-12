@@ -1,6 +1,6 @@
 use petgraph::graph::NodeIndex;
 
-use super::tree_node::ProjectNodeKind;
+use crate::kairos_editor::asset_registry::AssetKind;
 
 // ============================================================
 // CreateRequest — 创建请求
@@ -14,5 +14,5 @@ pub struct CreateRequest {
     /// 节点名称（不含路径前缀，如 "new_folder" 或 "readme.md"）
     pub name: String,
     /// 节点类型（Directory / Document / Script / Material / ...）
-    pub kind: ProjectNodeKind,
+    pub kind: AssetKind,
 }

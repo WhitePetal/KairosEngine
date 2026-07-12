@@ -2,13 +2,8 @@ use std::{any::type_name, cell::Cell, fs, path::PathBuf};
 
 use crate::{
     kairos_editor::{
-        Engine,
-        asset_registry::Guid,
-        project_path_tree::tree_node::ProjectNodeKind,
-        ui::{Messager, global_styles::GlobalStyles},
-    },
-    kairos_game::KairosGame,
-    log::Log,
+        Engine, asset_registry::{AssetKind, Guid}, ui::{Messager, global_styles::GlobalStyles},
+    }, kairos_game::KairosGame, log::Log,
 };
 use serde::{Deserialize, Serialize};
 use toml::{from_str, Table, Value};
@@ -25,19 +20,9 @@ struct InspectorWindowStyle {
 #[derive(Debug, Clone)]
 pub struct InspectorNodeInfo {
     pub name: String,
-    pub kind: ProjectNodeKind,
+    pub kind: AssetKind,
     pub path: PathBuf,
     pub guid: Guid,
-}
-
-/// TOML 文件编辑缓存：加载到内存中的可编辑数据。
-struct TomlEditCache {
-    /// 文件路径，用于选中节点变化时判断缓存是否失效
-    path: PathBuf,
-    /// 解析后的可编辑表
-    table: Table,
-    /// 是否有未保存修改
-    dirty: bool,
 }
 
 struct InspectorWindowModel {
@@ -46,8 +31,6 @@ struct InspectorWindowModel {
     selected: Option<InspectorNodeInfo>,
     /// 上一帧指针是否在 Inspector 区域内（用于检测进入/离开）
     pointer_was_inside: Cell<bool>,
-    /// TOML 编辑缓存（仅选中 Toml 文件时存在）
-    toml_cache: Option<TomlEditCache>,
 }
 
 pub struct InspectorWindow {
@@ -81,7 +64,6 @@ impl InspectorWindowModel {
             style,
             selected: None,
             pointer_was_inside: Cell::new(false),
-            toml_cache: None,
         })
     }
 }
@@ -95,47 +77,7 @@ impl InspectorWindow {
 
     /// 接收来自 ProjectWindow 的选中节点信息。
     pub fn set_selected(&mut self, info: Option<InspectorNodeInfo>) {
-        // 选中节点变化 → 清空旧缓存
-        let needs_reload = match (&self.model.selected, &info) {
-            (Some(old), Some(new)) => old.path != new.path,
-            (None, Some(_)) => true,
-            _ => false,
-        };
-        if needs_reload {
-            self.model.toml_cache = None;
-        }
-
-        let is_toml = info.as_ref().is_some_and(|i| i.kind == ProjectNodeKind::Toml);
         self.model.selected = info;
-
-        // 新选中节点是 Toml → 加载文件到缓存
-        if is_toml {
-            let path = self.model.selected.as_ref().unwrap().path.clone();
-            self.load_toml_cache(&path);
-        }
-    }
-
-    /// 从磁盘加载 TOML 文件到编辑缓存。
-    fn load_toml_cache(&mut self, path: &std::path::Path) {
-        let content = match fs::read_to_string(path) {
-            Ok(c) => c,
-            Err(e) => {
-                log::warn!("Failed to load TOML '{}': {e}", path.display());
-                return;
-            }
-        };
-        let table: Table = match toml::from_str(&content) {
-            Ok(t) => t,
-            Err(e) => {
-                log::warn!("Failed to parse TOML '{}': {e}", path.display());
-                return;
-            }
-        };
-        self.model.toml_cache = Some(TomlEditCache {
-            path: path.to_path_buf(),
-            table,
-            dirty: false,
-        });
     }
 
     /// 更新缓存中指定路径的字段值。
@@ -485,9 +427,9 @@ impl Drawer for InspectorWindow {
 
         // ---- type-specific ----
         match info.kind {
-            ProjectNodeKind::Directory => Self::render_directory_section(ui, &info.path),
-            ProjectNodeKind::Toml => self.render_toml_section(ui, messager),
-            ProjectNodeKind::Script | ProjectNodeKind::Shader | ProjectNodeKind::Document => {
+            AssetKind::Directory => Self::render_directory_section(ui, &info.path),
+            AssetKind::Toml => self.render_toml_section(ui, messager),
+            AssetKind::Script | AssetKind::Shader | AssetKind::Document => {
                 Self::render_text_section(ui, &info.path)
             }
             _ => Self::render_file_meta(ui, &info.path),

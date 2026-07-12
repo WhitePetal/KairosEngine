@@ -4,8 +4,7 @@ use serde::{Deserialize, Serialize};
 use toml::from_str;
 
 use crate::kairos_editor::{
-    project_path_tree::tree_node::{ProjectNodeKind, ProjectTreeNode},
-    ui::paths,
+    asset_registry::AssetKind, project_path_tree::tree_node::ProjectTreeNode, ui::paths,
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -62,23 +61,23 @@ impl ProjectNodeIcons {
     /// 根据节点类型获取对应图标路径，未配置则回退到 `default`。
     pub fn for_kind<'a>(&'a self, node: &'a ProjectTreeNode, has_child: bool) -> &'a str {
         let opt = match node.kind {
-            ProjectNodeKind::Directory => {
+            AssetKind::Directory => {
                 if has_child {
                     self.directory_fill.as_deref()
                 } else {
                     self.directory.as_deref()
                 }
             },
-            ProjectNodeKind::Texture => node.path.to_str(),
-            ProjectNodeKind::Mesh => self.mesh.as_deref(),
-            ProjectNodeKind::Material => self.material.as_deref(),
-            ProjectNodeKind::Audio => self.audio.as_deref(),
-            ProjectNodeKind::Shader => self.shader.as_deref(),
-            ProjectNodeKind::GenericAsset => self.generic_asset.as_deref(),
-            ProjectNodeKind::Script => self.script.as_deref(),
-            ProjectNodeKind::Document => self.document.as_deref(),
-            ProjectNodeKind::Toml => self.toml.as_deref(),
-            ProjectNodeKind::Unknown => None,
+            AssetKind::Texture => node.path.to_str(),
+            AssetKind::Mesh => self.mesh.as_deref(),
+            AssetKind::Material => self.material.as_deref(),
+            AssetKind::Audio => self.audio.as_deref(),
+            AssetKind::Shader => self.shader.as_deref(),
+            AssetKind::GenericAsset => self.generic_asset.as_deref(),
+            AssetKind::Script => self.script.as_deref(),
+            AssetKind::Document => self.document.as_deref(),
+            AssetKind::Toml => self.toml.as_deref(),
+            AssetKind::Unknown => None,
         };
         opt.unwrap_or(&self.default)
     }

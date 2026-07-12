@@ -7,6 +7,95 @@ use std::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+
+/// 项目资源类型。
+///
+/// 通过文件扩展名映射：
+///
+/// | 扩展名        | 对应变体          |
+/// |---------------|-------------------|
+/// | (目录)        | `Directory`       |
+/// | `.texture`    | `Texture`         |
+/// | `.mesh`       | `Mesh`            |
+/// | `.mat`        | `Material`        |
+/// | `.audio`      | `Audio`           |
+/// | `.wgsl`       | `Shader`          |
+/// | `.asset`      | `GenericAsset`    |
+/// | `.rs`         | `Script`          |
+/// | `.md` / `.txt`| `Document`        |
+/// | 其他          | `Unknown`         |
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AssetKind {
+    Directory,
+    Texture,
+    Mesh,
+    Material,
+    Audio,
+    Shader,
+    GenericAsset,
+    Script,
+    Document,
+    Toml,
+    Unknown,
+}
+
+impl AssetKind {
+    /// 从文件扩展名映射到节点类型。
+    pub fn from_extension(ext: Option<&str>) -> Self {
+        match ext {
+            Some("texture") => Self::Texture,
+            Some("mesh") => Self::Mesh,
+            Some("mat") => Self::Material,
+            Some("audio") => Self::Audio,
+            Some("wgsl") => Self::Shader,
+            Some("asset") => Self::GenericAsset,
+            Some("rs") => Self::Script,
+            Some("md" | "txt") => Self::Document,
+            Some("toml") => Self::Toml,
+            _ => Self::Unknown,
+        }
+    }
+
+    /// 判断是否可展开（目录类型才有子节点）。
+    pub fn is_expandable(&self) -> bool {
+        matches!(self, Self::Directory)
+    }
+
+    pub const fn extension(&self) -> Option<&'static str> {
+        match self {
+            AssetKind::Directory => None,
+            AssetKind::Texture => Some("texture"),
+            AssetKind::Mesh => Some("mesh"),
+            AssetKind::Material => Some("mat"),
+            AssetKind::Audio => Some("audio"),
+            AssetKind::Shader => Some("wgsl"),
+            AssetKind::GenericAsset => Some("asset"),
+            AssetKind::Script => Some("rs"),
+            AssetKind::Document => None,
+            AssetKind::Toml => Some("toml"),
+            AssetKind::Unknown => None,
+        }
+    }
+
+    pub fn suffix(&self) -> Option<String> {
+        let extension = self.extension();
+        match extension {
+            Some(ext) => Some(format!(".{}", ext)),
+            None => None,
+        }
+    }
+
+    /// 重命名时需要同步的关联扩展名（不含点）。
+    /// Texture: png + texture + texture_bin；Mesh: mesh + mesh_bin；其余单文件。
+    pub fn related_extensions(&self) -> &[&str] {
+        match self {
+            AssetKind::Texture => &["png", "texture", "texture_bin"],
+            AssetKind::Mesh => &["mesh", "mesh_bin"],
+            _ => &[],
+        }
+    }
+}
+
 // ============================================================
 // Guid
 // ============================================================
