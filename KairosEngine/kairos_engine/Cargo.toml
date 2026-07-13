@@ -37,7 +37,7 @@ wgpu = { version = "29.0.3", features = ["serde"] }
 pollster = "0.3"
 # eframe = { version = "0.34.2", features = ["wgpu"] }
 egui = "0.35.0"
-egui_extras = { version = "0.35.0", features = ["all_loaders"] }
+egui_extras = { version = "0.35.0", features = ["all_loaders", "datepicker"] }
 emath = "0.35.0"
 epaint = "0.35.0"
 # egui_dock = "0.18.0"

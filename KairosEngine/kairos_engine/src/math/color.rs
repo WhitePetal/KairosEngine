@@ -58,4 +58,12 @@ impl Color32 {
             _ => Err(Color32ParseError::InvalidLength(len)),
         }
     }
+
+    pub fn to_rgb_array(&self) -> [u8; 3] {
+        [self.r, self.g, self.b]
+    }
+
+    pub fn to_rgba_array(&self) -> [u8; 4] {
+        [self.r, self.g, self.b, self.a]
+    }
 }

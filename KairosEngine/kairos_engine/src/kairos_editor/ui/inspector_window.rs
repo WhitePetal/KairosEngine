@@ -7,19 +7,18 @@ use crate::{
         ui::{
             Messager,
             global_styles::GlobalStyles,
-            inspector::{self, Inspector},
+            inspector::{Inspector},
         },
     },
     kairos_game::KairosGame,
     log::Log,
 };
 use serde::{Deserialize, Serialize};
-use toml::{Table, Value, from_str};
 
 use crate::kairos_editor::ui::{Drawer, Message, paths};
 
 #[derive(Debug, Serialize, Deserialize)]
-struct InspectorWindowStyle {
+pub struct InspectorWindowStyle {
     pub title: String,
 }
 
@@ -70,7 +69,7 @@ impl InspectorWindowStyle {
                     error
                 )
             })?;
-        let style = from_str(&style_json).map_err(|error| {
+        let style = toml::from_str(&style_json).map_err(|error| {
             format!(
                 "Deserialize InspectorWindow Style Json Failed, error: {}",
                 error
@@ -107,47 +106,6 @@ impl InspectorWindow {
             }
         }
         self.model.selected = info;
-    }
-
-    /// 更新缓存中指定路径的字段值。
-    pub fn update_toml_field(&mut self, path: &[String], value: Value) {
-        // let Some(cache) = &mut self.model.toml_cache else {
-        //     return;
-        // };
-        // let mut current: &mut Table = &mut cache.table;
-        // for (i, key) in path.iter().enumerate() {
-        //     if i == path.len() - 1 {
-        //         current.insert(key.clone(), value.clone());
-        //     } else {
-        //         let next = current.get_mut(key).and_then(|v| v.as_table_mut());
-        //         current = match next {
-        //             Some(t) => t,
-        //             None => return,
-        //         };
-        //     }
-        // }
-        // cache.dirty = true;
-    }
-
-    /// 将缓存中的 TOML 数据写回磁盘。
-    pub fn save_toml(&mut self) {
-        // let Some(cache) = &self.model.toml_cache else {
-        //     return;
-        // };
-        // let content = match toml::to_string_pretty(&cache.table) {
-        //     Ok(c) => c,
-        //     Err(e) => {
-        //         log::warn!("Failed to serialize TOML: {e}");
-        //         return;
-        //     }
-        // };
-        // if let Err(e) = fs::write(&cache.path, &content) {
-        //     log::warn!("Failed to write TOML '{}': {e}", cache.path.display());
-        // }
-        // // 更新缓存中的 dirty 标记
-        // if let Some(cache) = &mut self.model.toml_cache {
-        //     cache.dirty = false;
-        // }
     }
 
     /// 未实现详细 inspector 的文件类型：显示文件元数据
@@ -209,23 +167,7 @@ impl Drawer for InspectorWindow {
         ui.label(format!("Path: {}", info.path.display()));
         ui.label(format!("GUID: {}", info.guid));
 
-        // ---- type-specific ----
         info.inspector.draw(ui, messager, &engine.assets_server);
-        // match info.kind {
-        //     AssetKind::Directory => inspector::directory::draw(ui, &info.path),
-        //     AssetKind::Toml => {
-        //         inspector::toml::draw(ui, &self.model, messager, &info.path, &mut engine.assets_server);
-        //     },
-        //     AssetKind::Script | AssetKind::Shader | AssetKind::Document => {
-        //         inspector::text::draw(ui, &info.path);
-        //     }
-        //     AssetKind::Texture => Self::draw_unimpl(ui, &info.path),
-        //     AssetKind::Mesh => Self::draw_unimpl(ui, &info.path),
-        //     AssetKind::Material => Self::draw_unimpl(ui, &info.path),
-        //     AssetKind::Audio => Self::draw_unimpl(ui, &info.path),
-        //     AssetKind::GenericAsset => Self::draw_unimpl(ui, &info.path),
-        //     AssetKind::Unknown => Self::draw_unimpl(ui, &info.path),
-        // }
     }
 
     fn close(&self, messager: &mut super::Messager) {

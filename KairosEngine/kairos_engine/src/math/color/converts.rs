@@ -11,3 +11,14 @@ impl From<egui::Color32> for Color32 {
         Color32::new(c.r(), c.g(), c.b(), c.a())
     }
 }
+
+impl From<[u8; 3]> for Color32 {
+    fn from(ar: [u8; 3]) -> Self {
+        Color32::new(ar[0], ar[1], ar[2], 255)
+    }
+}
+impl From<[u8; 4]> for Color32 {
+    fn from(ar: [u8; 4]) -> Self {
+        Color32::new(ar[0], ar[1], ar[2], ar[3])
+    }
+}

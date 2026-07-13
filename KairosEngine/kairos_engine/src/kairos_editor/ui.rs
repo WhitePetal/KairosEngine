@@ -462,14 +462,10 @@ impl Context {
                     }
                 }
                 Message::UpdateInspectorTomlValue(path, value) => {
-                    if let Some(inspector) = self.get_window_mut::<InspectorWindow>() {
-                        inspector.update_toml_field(&path, value);
-                    }
+                    todo!()
                 }
                 Message::SaveInspectorToml => {
-                    if let Some(inspector) = self.get_window_mut::<InspectorWindow>() {
-                        inspector.save_toml();
-                    }
+                    todo!()
                 }
                 Message::OpenSceneTab => {
                     self.show_tab::<SceneWindow>(assets_server, ui, self.layout.center);
