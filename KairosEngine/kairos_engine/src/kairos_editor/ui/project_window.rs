@@ -133,6 +133,20 @@ impl ProjectWindow {
             return;
         }
         self.model.selected_node = node;
+        println!(
+            "selected a node: {:?}, locked: {:?}",
+            node, self.model.selected_locked
+        )
+    }
+
+    pub fn cancle_seleted(&mut self, node: NodeIndex) {
+        if self.model.selected_node == Some(node) {
+            self.model.selected_node = None
+        }
+        println!(
+            "cancle seletc a node: cancle_node: {:?}, select_node: {:?}",
+            node, self.model.selected_node
+        )
     }
 
     /// 设置选中锁定状态（InspectorWindow 交互时调用）。

@@ -200,7 +200,7 @@ impl ContentPanel {
 
         if !is_renaming {
             if is_selected && response.clicked_elsewhere() {
-                messager.send(Message::SelectProjectNode(None));
+                messager.send(Message::CancleSelectProjectNode(node));
             }
             if response.clicked() || response.secondary_clicked() {
                 messager.send(Message::SelectProjectNode(Some(node)));

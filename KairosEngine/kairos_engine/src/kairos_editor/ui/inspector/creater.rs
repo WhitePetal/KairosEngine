@@ -1,8 +1,10 @@
 use std::path::Path;
 
 use crate::{
-    asset_loader::assets::AssetsServer, kairos_editor::{
-        asset_registry::AssetKind, ui::inspector::{Inspector, directory::DirectoryInspector, toml::TomlTableInspector},
+    asset_loader::assets::AssetsServer,
+    kairos_editor::{
+        asset_registry::AssetKind,
+        ui::inspector::{Inspector, directory::DirectoryInspector, toml::TomlTableInspector},
     },
 };
 

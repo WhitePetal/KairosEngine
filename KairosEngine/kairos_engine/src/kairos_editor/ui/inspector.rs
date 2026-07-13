@@ -5,7 +5,7 @@ pub mod directory;
 pub mod text;
 pub mod toml;
 
-pub trait InspectorFieldKey {    
+pub trait InspectorFieldKey {
     fn get_key(&self) -> usize;
 }
 pub trait InspectorFieldValue {
@@ -14,7 +14,6 @@ pub trait InspectorFieldValue {
 
 pub trait InspectorField {
     fn get_key(&self) -> Box<dyn InspectorFieldKey>;
-
 }
 
 pub trait Inspector {
@@ -24,7 +23,5 @@ pub trait Inspector {
 
     fn draw(&self, ui: &mut egui::Ui, messager: &mut Messager, assets_server: &AssetsServer);
 
-    fn dirty(&self) -> bool;
-
-    fn set_dirty(&mut self, dirty: bool);
+    fn on_exit(&self);
 }

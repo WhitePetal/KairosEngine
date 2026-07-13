@@ -1,28 +1,37 @@
-use std::sync::Arc;
+use std::{cell::Cell, sync::Arc};
 
 use egui_extras::{Column, TableBuilder, TableRow};
 use toml::Value;
 
 use crate::{
-    asset_loader::assets::{AssetHandle, AssetsServer, TomlTableAssetsSystem}, kairos_editor::ui::{Message, Messager, inspector::Inspector}, math,
+    asset_loader::assets::{AssetHandle, AssetsServer, TomlTableAssetsSystem},
+    kairos_editor::ui::{Message, Messager, inspector::Inspector},
+    math,
 };
 
-pub struct TomlTableInspector {
+struct TomlTableInspectorModle {
     toml_handle: Arc<AssetHandle<TomlTableAssetsSystem>>,
-    dirty: bool,
+    dirty: Cell<bool>,
 }
+
+pub struct TomlTableInspector {
+    model: TomlTableInspectorModle,
+}
+
 impl Inspector for TomlTableInspector {
     fn create(path: &std::path::Path, assets_server: &mut AssetsServer) -> Self {
-        Self {
+        let model = TomlTableInspectorModle {
             toml_handle: assets_server.load::<TomlTableAssetsSystem>(path.to_path_buf()),
-            dirty: false,
-        }
+            dirty: Cell::new(false),
+        };
+
+        Self { model }
     }
 
     fn draw(&self, ui: &mut egui::Ui, messager: &mut Messager, assets_server: &AssetsServer) {
         ui.separator();
 
-        let table = assets_server.get(&self.toml_handle);
+        let table = assets_server.get(&self.model.toml_handle);
         match table {
             Some(table) => {
                 let mut table = table.clone();
@@ -36,12 +45,21 @@ impl Inspector for TomlTableInspector {
 
                 ui.separator();
 
+                if changed {
+                    messager.send(Message::UpdateInspectorToml(
+                        self.model.toml_handle.clone(),
+                        table,
+                    ));
+                    self.model.dirty.replace(true);
+                }
+
                 ui.horizontal(|ui| {
                     let save_btn = egui::Button::new("Save");
-                    if ui.add_enabled(changed, save_btn).clicked() {
+                    if ui.add_enabled(self.model.dirty.get(), save_btn).clicked() {
                         messager.send(Message::SaveInspectorToml);
+                        self.model.dirty.replace(false);
                     }
-                    if changed {
+                    if self.model.dirty.get() {
                         ui.label("* unsaved changes");
                     }
                 });
@@ -49,15 +67,14 @@ impl Inspector for TomlTableInspector {
             None => {
                 ui.label("loading toml");
             }
-        }        
+        }
     }
 
-    fn dirty(&self) -> bool {
-        self.dirty
-    }
-
-    fn set_dirty(&mut self, dirty: bool) {
-        self.dirty = dirty
+    fn on_exit(&self) {
+        if self.model.dirty.get() {
+            // TODO 弹窗提醒保存
+            log::debug!("TODO 弹窗提醒保存");
+        }
     }
 }
 
@@ -77,18 +94,17 @@ impl TomlTableInspector {
             .column(Column::auto())
             .column(Column::auto());
 
-        inspector_table
-            .body(|mut body| {
-                for (key, value) in table {
-                    let mut full_path = path.to_vec();
-                    full_path.push(key.clone());
-                    body.row(20.0, |mut row| {
-                        Self::render_toml_field(&mut row, messager, &full_path, key, value, changed);
-                    });
-                }
-            });
+        inspector_table.body(|mut body| {
+            for (key, value) in table {
+                let mut full_path = path.to_vec();
+                full_path.push(key.clone());
+                body.row(20.0, |mut row| {
+                    Self::render_toml_field(&mut row, messager, &full_path, key, value, changed);
+                });
+            }
+        });
     }
-    
+
     /// 渲染单个 TOML 字段（值类型分发）
     fn render_toml_field(
         row: &mut TableRow,
@@ -114,7 +130,7 @@ impl TomlTableInspector {
                             *s = math::Color32::from(color_ar).to_hex();
                             *changed = true;
                         }
-                    } else {                        
+                    } else {
                         let text_edit = egui::text_edit::TextEdit::singleline(s).clip_text(false);
                         let resp = ui.add(text_edit);
                         if resp.changed() || resp.lost_focus() {
@@ -157,7 +173,9 @@ impl TomlTableInspector {
                                     ui.label(format!("[{i}]"));
                                     let mut elem_path = path.to_vec();
                                     elem_path.push(i.to_string());
-                                    Self::render_toml_value(ui, messager, &elem_path, elem, changed);
+                                    Self::render_toml_value(
+                                        ui, messager, &elem_path, elem, changed,
+                                    );
                                 });
                             }
                         });
@@ -174,9 +192,15 @@ impl TomlTableInspector {
             }
         });
     }
-    
+
     /// 渲染单个 TOML 值（无 key 标签，用于数组元素）
-    fn render_toml_value(ui: &mut egui::Ui, messager: &mut Messager, path: &[String], value: &mut Value, changed: &mut bool) {
+    fn render_toml_value(
+        ui: &mut egui::Ui,
+        messager: &mut Messager,
+        path: &[String],
+        value: &mut Value,
+        changed: &mut bool,
+    ) {
         match value {
             Value::String(s) => {
                 if ui.text_edit_singleline(s).changed() {

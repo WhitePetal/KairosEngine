@@ -3,19 +3,28 @@ use std::fs;
 use crate::kairos_editor::ui::inspector::Inspector;
 
 pub struct DirectoryInspector {
-    path: std::path::PathBuf
+    path: std::path::PathBuf,
 }
 
 impl Inspector for DirectoryInspector {
-    fn create(path: &std::path::Path, _assets_server: &mut crate::asset_loader::assets::AssetsServer) -> Self
+    fn create(
+        path: &std::path::Path,
+        _assets_server: &mut crate::asset_loader::assets::AssetsServer,
+    ) -> Self
     where
-        Self: Sized {
-        Self { 
-            path: path.to_path_buf()
+        Self: Sized,
+    {
+        Self {
+            path: path.to_path_buf(),
         }
     }
 
-    fn draw(&self, ui: &mut egui::Ui, _messager: &mut crate::kairos_editor::ui::Messager, _assets_server: &crate::asset_loader::assets::AssetsServer) {
+    fn draw(
+        &self,
+        ui: &mut egui::Ui,
+        _messager: &mut crate::kairos_editor::ui::Messager,
+        _assets_server: &crate::asset_loader::assets::AssetsServer,
+    ) {
         ui.separator();
         match fs::read_dir(&self.path) {
             Ok(entries) => {
@@ -28,9 +37,5 @@ impl Inspector for DirectoryInspector {
         }
     }
 
-    fn dirty(&self) -> bool {
-        false
-    }
-
-    fn set_dirty(&mut self, _dirty: bool) {}
+    fn on_exit(&self) {}
 }
