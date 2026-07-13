@@ -7,7 +7,6 @@ use std::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-
 /// 项目资源类型。
 ///
 /// 通过文件扩展名映射：
@@ -24,7 +23,7 @@ use uuid::Uuid;
 /// | `.rs`         | `Script`          |
 /// | `.md` / `.txt`| `Document`        |
 /// | 其他          | `Unknown`         |
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AssetKind {
     Directory,
     Texture,

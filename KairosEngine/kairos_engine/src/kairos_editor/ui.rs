@@ -3,7 +3,7 @@ use crate::{
     graphics::graphics_graph::GraphicsCommand,
     kairos_editor::{
         Engine,
-        project_path_tree::tree_node::ProjectNodeKind,
+        asset_registry::AssetKind,
         ui::{
             game_window::GameWindow,
             global_styles::GlobalStyles,
@@ -52,6 +52,7 @@ pub mod egui_ext;
 pub mod game_window;
 pub mod global_styles;
 pub mod hierarchy_window;
+pub mod inspector;
 pub mod inspector_window;
 pub mod layout;
 pub mod paths;
@@ -105,7 +106,7 @@ pub enum Message {
     /// ProjectWindow: Hierachy点击进入目录（NodeIndex::index()）
     NavigateToProjectDirectory(petgraph::graph::NodeIndex),
     /// ProjectWindow: 创建节点(右键节点Idx, 名称, 类型, 来源面板)
-    CreateProjectNode(petgraph::graph::NodeIndex, String, ProjectNodeKind),
+    CreateProjectNode(petgraph::graph::NodeIndex, String, AssetKind),
     /// ProjectWindow: 重命名节点 (node_idx, new_name)
     RenameProjectNode(petgraph::graph::NodeIndex, String),
     /// 更新重命名Buffer
@@ -409,7 +410,7 @@ impl Context {
                 Message::SelectProjectNode(node) => {
                     if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
                         project_window.select_node(node);
-                        let info = project_window.get_selected_node_info();
+                        let info = project_window.get_selected_node_info(assets_server);
                         if let Some(inspector) = self.get_window_mut::<InspectorWindow>() {
                             inspector.set_selected(info);
                         }

@@ -4,9 +4,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     kairos_editor::{
-        asset_registry::AssetKind, project_path_tree::{
-            ProjectPathGraph, tree_node::ProjectTreeNode,
-        }, ui::{
+        asset_registry::AssetKind,
+        project_path_tree::{ProjectPathGraph, tree_node::ProjectTreeNode},
+        ui::{
             Message, Messager,
             global_styles::GlobalStyles,
             project_window::{
@@ -14,7 +14,8 @@ use crate::{
                 context_menu::{ContextMenu, ContextMenuState},
             },
         },
-    }, math,
+    },
+    math,
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -200,7 +201,9 @@ impl HierarchyPanel {
 
         // 2. 渲染内容（在背景上方）
         ui.horizontal(|ui| {
-            let icon_path = global_styles.project_node_icons.uri_for_kind(node_data, false);
+            let icon_path = global_styles
+                .project_node_icons
+                .uri_for_kind(node_data, false);
             let icon = egui::Image::new(egui::ImageSource::Uri(icon_path.into()))
                 .fit_to_exact_size(icon_size);
             ui.add(icon);

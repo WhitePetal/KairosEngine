@@ -1,7 +1,6 @@
 #[cfg(test)]
 mod tests;
 
-
 pub mod create_request;
 pub mod texture_path;
 pub mod tree_node;
@@ -17,9 +16,12 @@ use petgraph::{
     visit::{EdgeRef, NodeIndexable},
 };
 
-use crate::{kairos_dialog, kairos_editor::asset_registry::{AssetKind, AssetRegistry}};
+use crate::{
+    kairos_dialog,
+    kairos_editor::asset_registry::{AssetKind, AssetRegistry},
+};
 use create_request::CreateRequest;
-use tree_node::{ProjectTreeNode};
+use tree_node::ProjectTreeNode;
 
 // ============================================================
 // ProjectPathGraph — 项目目录树（基于 petgraph）
@@ -129,8 +131,7 @@ impl ProjectPathGraph {
                 .file_name()
                 .map(|n| n.to_os_string())
                 .unwrap_or_default();
-            let node_data =
-                ProjectTreeNode::new(guid, name, path.clone(), AssetKind::Directory);
+            let node_data = ProjectTreeNode::new(guid, name, path.clone(), AssetKind::Directory);
             let child_node = graph.add_node(node_data);
             graph.add_edge(parent_node, child_node, ());
             Self::scan_dir(&path, child_node, graph, registry);

@@ -2,7 +2,8 @@ use egui::{Button, Vec2};
 use petgraph::graph::NodeIndex;
 
 use crate::kairos_editor::{
-    asset_registry::AssetKind, ui::{Message, Messager},
+    asset_registry::AssetKind,
+    ui::{Message, Messager},
 };
 
 // ============================================================

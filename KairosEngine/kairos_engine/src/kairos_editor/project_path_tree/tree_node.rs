@@ -2,7 +2,6 @@ use std::{ffi::OsString, path::PathBuf};
 
 use crate::kairos_editor::asset_registry::{AssetKind, Guid};
 
-
 // ============================================================
 // ProjectTreeNode — 树节点数据
 // ============================================================

@@ -5,19 +5,24 @@ pub mod hierarchy_panel;
 use std::{any::type_name, cell::Cell, fs};
 
 use crate::{
-    asset_loader::assets::AssetsServer, kairos_editor::{
-        Engine, asset_registry::{AssetKind, AssetRegistry}, project_path_tree::{
-            ProjectPathGraph, create_request::CreateRequest,
-        }, ui::{
+    asset_loader::assets::AssetsServer,
+    kairos_editor::{
+        Engine,
+        asset_registry::{AssetKind, AssetRegistry},
+        project_path_tree::{ProjectPathGraph, create_request::CreateRequest},
+        ui::{
             Messager,
             global_styles::GlobalStyles,
+            inspector::creater::InspectorCreater,
             project_window::{
                 content_panel::{ContentPanel, ContentStyle},
                 context_menu::ContextMenuState,
                 hierarchy_panel::{HierarchyPanel, HierarchyStyle},
             },
         },
-    }, kairos_game::KairosGame, log::Log,
+    },
+    kairos_game::KairosGame,
+    log::Log,
 };
 use petgraph::graph::NodeIndex;
 use serde::{Deserialize, Serialize};
@@ -136,14 +141,22 @@ impl ProjectWindow {
     }
 
     /// 获取当前选中节点的身份信息（供 InspectorWindow 使用）。
-    pub fn get_selected_node_info(&self) -> Option<super::inspector_window::InspectorNodeInfo> {
+    pub fn get_selected_node_info(
+        &self,
+        assets_server: &mut AssetsServer,
+    ) -> Option<super::inspector_window::InspectorNodeInfo> {
         let node = self.model.selected_node?;
         let data = self.model.project_path_graph.get_node(node)?;
         Some(super::inspector_window::InspectorNodeInfo {
             name: data.name(),
-            kind: data.kind.clone(),
+            kind: data.kind,
             path: data.path.clone(),
             guid: data.guid,
+            inspector: InspectorCreater::create_from_asseet_kind(
+                data.kind,
+                &data.path,
+                assets_server,
+            ),
         })
     }
 
@@ -265,10 +278,7 @@ impl ProjectWindow {
                     node_data.name()
                 );
             }
-            AssetKind::Shader
-            | AssetKind::Script
-            | AssetKind::Document
-            | AssetKind::Toml => {
+            AssetKind::Shader | AssetKind::Script | AssetKind::Document | AssetKind::Toml => {
                 Self::open_file_in_vscode(&node_data.path);
             }
             AssetKind::Unknown => {

@@ -12,6 +12,8 @@ pub use asset::MaterialAssetsSystem;
 pub use asset::MeshAssetsSystem;
 pub use asset::ShaderAssetsSystem;
 pub use asset::TextureAssetsSystem;
+pub use asset::TomlTableAssetsSystem;
+
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 

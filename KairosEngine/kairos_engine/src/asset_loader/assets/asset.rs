@@ -21,6 +21,7 @@ pub use material::MaterialAssetsSystem;
 pub use mesh::MeshAssetsSystem;
 pub use shader::ShaderAssetsSystem;
 pub use texture::TextureAssetsSystem;
+pub use toml::TomlTableAssetsSystem;
 
 use crate::asset_loader::assets::DependencyLoadRequestEvent;
 

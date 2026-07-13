@@ -145,9 +145,13 @@ impl ContentPanel {
         // 4. 渲染内容
 
         // Icon
-        let icon = egui::Image::new(global_styles.project_node_icons.uri_for_kind(node_data, has_child))
-            .fit_to_exact_size(Vec2::new(icon_size, icon_size))
-            .show_loading_spinner(true);
+        let icon = egui::Image::new(
+            global_styles
+                .project_node_icons
+                .uri_for_kind(node_data, has_child),
+        )
+        .fit_to_exact_size(Vec2::new(icon_size, icon_size))
+        .show_loading_spinner(true);
 
         // 渲染内容，clip 在 content_rect 内防止溢出
         let mut cell_ui = ui.new_child(

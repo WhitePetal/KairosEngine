@@ -67,7 +67,7 @@ impl ProjectNodeIcons {
                 } else {
                     self.directory.as_deref()
                 }
-            },
+            }
             AssetKind::Texture => node.path.to_str(),
             AssetKind::Mesh => self.mesh.as_deref(),
             AssetKind::Material => self.material.as_deref(),
@@ -88,8 +88,7 @@ impl ProjectNodeIcons {
     /// 因此必须用 `std::path::absolute` 先转为绝对路径再构造 URI。
     pub fn uri_for_kind(&self, node: &ProjectTreeNode, has_child: bool) -> String {
         let relative = self.for_kind(node, has_child);
-        let abs_path =
-            std::path::absolute(relative).unwrap_or_else(|_| PathBuf::from(relative));
+        let abs_path = std::path::absolute(relative).unwrap_or_else(|_| PathBuf::from(relative));
 
         #[cfg(target_os = "windows")]
         {

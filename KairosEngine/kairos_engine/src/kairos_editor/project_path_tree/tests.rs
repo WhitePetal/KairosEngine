@@ -84,10 +84,7 @@ fn parent_must_be_directory() {
         )
         .unwrap();
 
-    assert_eq!(
-        graph.get_node(dir).unwrap().kind,
-        AssetKind::Directory
-    );
+    assert_eq!(graph.get_node(dir).unwrap().kind, AssetKind::Directory);
 }
 
 // ---- rename_node ----
@@ -215,12 +212,7 @@ fn rename_mesh_sync_related_files() {
     let guid = registry.get_or_create_guid(&mesh_path);
     registry.get_or_create_guid(&mesh_bin_path);
 
-    let node_data = ProjectTreeNode::new(
-        guid,
-        "cube".into(),
-        mesh_path.clone(),
-        AssetKind::Mesh,
-    );
+    let node_data = ProjectTreeNode::new(guid, "cube".into(), mesh_path.clone(), AssetKind::Mesh);
     let mesh_node = graph.graph.add_node(node_data);
     graph.graph.add_edge(dir, mesh_node, ());
 
@@ -393,8 +385,7 @@ fn delete_texture_with_related_files() {
     registry.get_or_create_guid(&texture);
     registry.get_or_create_guid(&texture_bin);
 
-    let node_data =
-        ProjectTreeNode::new(guid, "player".into(), png.clone(), AssetKind::Texture);
+    let node_data = ProjectTreeNode::new(guid, "player".into(), png.clone(), AssetKind::Texture);
     let tex_node = graph.graph.add_node(node_data);
     graph.graph.add_edge(dir, tex_node, ());
 
