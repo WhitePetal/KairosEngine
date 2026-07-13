@@ -1,10 +1,8 @@
 use std::path::Path;
 
 use crate::{
-    asset_loader::assets::AssetsServer,
-    kairos_editor::{
-        asset_registry::AssetKind,
-        ui::inspector::{Inspector, toml::TomlTableInspector},
+    asset_loader::assets::AssetsServer, kairos_editor::{
+        asset_registry::AssetKind, ui::inspector::{Inspector, directory::DirectoryInspector, toml::TomlTableInspector},
     },
 };
 
@@ -17,7 +15,7 @@ impl InspectorCreater {
         assets_server: &mut AssetsServer,
     ) -> Box<dyn Inspector> {
         match asset_kind {
-            AssetKind::Directory => todo!(),
+            AssetKind::Directory => Box::new(DirectoryInspector::create(path, assets_server)),
             AssetKind::Texture => todo!(),
             AssetKind::Mesh => todo!(),
             AssetKind::Material => todo!(),

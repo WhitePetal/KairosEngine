@@ -100,9 +100,11 @@ impl InspectorWindow {
 
     /// 接收来自 ProjectWindow 的选中节点信息。
     pub fn set_selected(&mut self, info: Option<InspectorNodeInfo>) {
-        if self.model.selected != info {
-            // TODO: 弹窗提醒是否保存
-            log::debug!("TODO: 弹窗提醒是否保存: {:?}", info);
+        if self.model.selected != info && let Some(selected) = &self.model.selected {
+            if selected.inspector.dirty() { 
+                // TODO: 弹窗提醒是否保存
+                log::debug!("TODO: 弹窗提醒是否保存: {:?}", info);
+            }
         }
         self.model.selected = info;
     }
