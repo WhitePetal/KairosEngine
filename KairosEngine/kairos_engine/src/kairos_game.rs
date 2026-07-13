@@ -49,11 +49,11 @@ impl KairosGame {
         SerializedMeshAsset::save_from_glb_file(PathBuf::from("res/models/Suzanne.glb"));
 
         let _mesh = assets_server.load::<MeshAssetsSystem>(
-            PathBuf::from("res/models/Suzanne.mesh"),
+            &PathBuf::from("res/models/Suzanne.mesh"),
             // None::<fn(&mut MeshAsset)>,
         );
         let material = assets_server.load::<MaterialAssetsSystem>(
-            PathBuf::from("res/materials/material.mat"),
+            &PathBuf::from("res/materials/material.mat"),
             // None::<fn(&mut MaterialAsset)>,
         );
 
@@ -66,10 +66,10 @@ impl KairosGame {
         // let _ = pad.save_to_file();
 
         let background_audio =
-            assets_server.load::<AudioAssetsSystem>(PathBuf::from("res/audios/pad.audio"));
+            assets_server.load::<AudioAssetsSystem>(&PathBuf::from("res/audios/pad.audio"));
 
         let _blip_audio =
-            assets_server.load::<AudioAssetsSystem>(PathBuf::from("res/audios/blip.audio"));
+            assets_server.load::<AudioAssetsSystem>(&PathBuf::from("res/audios/blip.audio"));
 
         let cam_pos = float3::new(0.0, 1.0, -2.0);
         let cam_target = float3::new(0.0, 0.0, 0.0);
@@ -149,9 +149,9 @@ impl KairosGame {
         SerializedMeshAsset::save_from_glb_file(PathBuf::from("res/models/Ball.glb"));
 
         let plan_mesh_asset =
-            assets_server.load::<MeshAssetsSystem>(PathBuf::from("res/models/Plane.mesh"));
+            assets_server.load::<MeshAssetsSystem>(&PathBuf::from("res/models/Plane.mesh"));
         let ball_mesh_asset =
-            assets_server.load::<MeshAssetsSystem>(PathBuf::from("res/models/Ball.mesh"));
+            assets_server.load::<MeshAssetsSystem>(&PathBuf::from("res/models/Ball.mesh"));
         let plane_mesh = LODMesh::new(plan_mesh_asset);
         let ball_mesh = LODMesh::new(ball_mesh_asset);
         engine.world.spawn((

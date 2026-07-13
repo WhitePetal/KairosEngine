@@ -47,8 +47,6 @@ pub struct InspectorWindowModel {
     pub style: InspectorWindowStyle,
     /// 当前选中的节点信息，None 表示无选中
     pub selected: Option<InspectorNodeInfo>,
-    /// 上一帧指针是否在 Inspector 区域内（用于检测进入/离开）
-    pub pointer_was_inside: Cell<bool>,
 }
 
 pub struct InspectorWindow {
@@ -81,7 +79,6 @@ impl InspectorWindowModel {
         Ok(Self {
             style,
             selected: None,
-            pointer_was_inside: Cell::new(false),
         })
     }
 }
@@ -138,14 +135,6 @@ impl Drawer for InspectorWindow {
         engine: &Engine,
         _log: &mut Log,
     ) {
-        // 检测指针进入/离开 Inspector 区域，发送锁定/解锁消息
-        let now_inside = ui.rect_contains_pointer(ui.max_rect());
-        let was_inside = self.model.pointer_was_inside.get();
-        if now_inside != was_inside {
-            messager.send(Message::LockProjectSelection(now_inside));
-            self.model.pointer_was_inside.set(now_inside);
-        }
-
         let Some(info) = &self.model.selected else {
             ui.centered_and_justified(|ui| {
                 ui.label("Select a node in Project Window");

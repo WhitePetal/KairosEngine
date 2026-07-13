@@ -21,6 +21,7 @@ use egui::{self};
 use std::{
     any::{Any, TypeId, type_name},
     collections::VecDeque,
+    path::PathBuf,
     sync::Arc,
 };
 
@@ -104,8 +105,6 @@ pub enum Message {
 
     /// ProjectWindow: 选中节点（NodeIndex::index()）
     SelectProjectNode(Option<petgraph::graph::NodeIndex>),
-    /// ProjectWindow: 取消选中节点（NodeIndex::index()）
-    CancleSelectProjectNode(petgraph::graph::NodeIndex),
     /// ProjectWindow: Hierachy点击进入目录（NodeIndex::index()）
     NavigateToProjectDirectory(petgraph::graph::NodeIndex),
     /// ProjectWindow: 创建节点(右键节点Idx, 名称, 类型, 来源面板)
@@ -122,12 +121,10 @@ pub enum Message {
     OpenProjectNode(petgraph::graph::NodeIndex),
     /// ProjectWindow: 删除节点 (node_idx)
     DeleteProjectNode(petgraph::graph::NodeIndex),
-    /// ProjectWindow: 锁定/解锁选中（锁定时拒绝取消选中）
-    LockProjectSelection(bool),
     /// InspectorWindow: 更新 TOML 字段值 (key_path, new_value)
     UpdateInspectorToml(Arc<AssetHandle<TomlTableAssetsSystem>>, toml::Table),
     /// InspectorWindow: 保存当前编辑的 TOML 文件
-    SaveInspectorToml,
+    SaveInspectorToml(Arc<AssetHandle<TomlTableAssetsSystem>>, PathBuf),
 }
 
 struct KairosTabDrawer {
@@ -419,15 +416,6 @@ impl Context {
                         }
                     }
                 }
-                Message::CancleSelectProjectNode(node) => {
-                    if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
-                        project_window.cancle_seleted(node);
-                        let info = project_window.get_selected_node_info(assets_server);
-                        if let Some(inspector) = self.get_window_mut::<InspectorWindow>() {
-                            inspector.set_selected(None);
-                        }
-                    }
-                }
                 Message::NavigateToProjectDirectory(node_idx) => {
                     if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
                         project_window.navigate_to(node_idx);
@@ -468,16 +456,11 @@ impl Context {
                         project_window.delete_node(node_idx);
                     }
                 }
-                Message::LockProjectSelection(locked) => {
-                    if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
-                        project_window.set_selected_locked(locked);
-                    }
-                }
                 Message::UpdateInspectorToml(handle, table) => {
-                    todo!()
+                    inspector::toml::TomlTableInspector::update_table(handle, table, assets_server);
                 }
-                Message::SaveInspectorToml => {
-                    todo!()
+                Message::SaveInspectorToml(handle, path) => {
+                    inspector::toml::TomlTableInspector::save(handle, path, assets_server);
                 }
                 Message::OpenSceneTab => {
                     self.show_tab::<SceneWindow>(assets_server, ui, self.layout.center);

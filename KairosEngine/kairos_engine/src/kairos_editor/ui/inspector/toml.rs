@@ -1,16 +1,45 @@
-use std::{cell::Cell, sync::Arc};
+use std::{cell::Cell, fs, path::PathBuf, sync::Arc};
 
+use egui::Vec2;
 use egui_extras::{Column, TableBuilder, TableRow};
+use serde::{Deserialize, Serialize};
 use toml::Value;
 
 use crate::{
     asset_loader::assets::{AssetHandle, AssetsServer, TomlTableAssetsSystem},
-    kairos_editor::ui::{Message, Messager, inspector::Inspector},
+    kairos_editor::ui::{Message, Messager, inspector::Inspector, paths},
     math,
 };
 
+#[derive(Debug, Serialize, Deserialize)]
+struct TomlTableInspectorStyle {
+    row_height: f32,      // 20.0
+    save_btn_height: f32, // 10.0
+}
+impl TomlTableInspectorStyle {
+    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        let style_json =
+            fs::read_to_string(paths::PATH_TOML_TABLE_INSPECTOR_STYLE).map_err(|error| {
+                format!(
+                    "Load TomlTableInspector Style Toml Failed, path: {}, error: {}",
+                    paths::PATH_TOML_TABLE_INSPECTOR_STYLE,
+                    error
+                )
+            })?;
+        let style: Self = toml::from_str(&style_json).map_err(|error| {
+            format!(
+                "Deserialize TomlTableInspector Style Toml Failed, error: {}",
+                error
+            )
+        })?;
+        Ok(style)
+    }
+}
+
 struct TomlTableInspectorModle {
+    style: TomlTableInspectorStyle,
     toml_handle: Arc<AssetHandle<TomlTableAssetsSystem>>,
+    path: PathBuf,
     dirty: Cell<bool>,
 }
 
@@ -19,13 +48,20 @@ pub struct TomlTableInspector {
 }
 
 impl Inspector for TomlTableInspector {
-    fn create(path: &std::path::Path, assets_server: &mut AssetsServer) -> Self {
+    fn create(
+        path: &std::path::Path,
+        assets_server: &mut AssetsServer,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let style = TomlTableInspectorStyle::new()?;
+        let path = path.to_path_buf();
         let model = TomlTableInspectorModle {
-            toml_handle: assets_server.load::<TomlTableAssetsSystem>(path.to_path_buf()),
+            style,
+            toml_handle: assets_server.load::<TomlTableAssetsSystem>(&path),
+            path,
             dirty: Cell::new(false),
         };
 
-        Self { model }
+        Ok(Self { model })
     }
 
     fn draw(&self, ui: &mut egui::Ui, messager: &mut Messager, assets_server: &AssetsServer) {
@@ -37,10 +73,16 @@ impl Inspector for TomlTableInspector {
                 let mut table = table.clone();
                 let mut changed = false;
                 egui::ScrollArea::vertical()
-                    .id_salt("inspector_toml_edit")
-                    .max_height(400.0)
+                    .max_height(ui.available_height() - self.model.style.save_btn_height)
                     .show(ui, |ui| {
-                        Self::render_toml_table(ui, messager, &[], &mut table, &mut changed);
+                        Self::render_toml_table(
+                            ui,
+                            self.model.style.row_height,
+                            messager,
+                            &[],
+                            &mut table,
+                            &mut changed,
+                        );
                     });
 
                 ui.separator();
@@ -53,10 +95,16 @@ impl Inspector for TomlTableInspector {
                     self.model.dirty.replace(true);
                 }
 
-                ui.horizontal(|ui| {
-                    let save_btn = egui::Button::new("Save");
+                ui.vertical_centered(|ui| {
+                    let save_btn = egui::Button::new("Save").min_size(Vec2::new(
+                        ui.available_width(),
+                        self.model.style.save_btn_height,
+                    ));
                     if ui.add_enabled(self.model.dirty.get(), save_btn).clicked() {
-                        messager.send(Message::SaveInspectorToml);
+                        messager.send(Message::SaveInspectorToml(
+                            self.model.toml_handle.clone(),
+                            self.model.path.clone(),
+                        ));
                         self.model.dirty.replace(false);
                     }
                     if self.model.dirty.get() {
@@ -79,27 +127,62 @@ impl Inspector for TomlTableInspector {
 }
 
 impl TomlTableInspector {
+    pub fn update_table(
+        handle: Arc<AssetHandle<TomlTableAssetsSystem>>,
+        table: toml::Table,
+        assets_server: &mut AssetsServer,
+    ) {
+        let origion = assets_server.get_mut(&handle);
+        if let Some(origion) = origion {
+            *origion = table
+        }
+    }
+
+    pub fn save(
+        handle: Arc<AssetHandle<TomlTableAssetsSystem>>,
+        path: PathBuf,
+        assets_server: &AssetsServer,
+    ) {
+        let Some(table) = assets_server.get(&handle) else {
+            return;
+        };
+
+        let content = match toml::to_string_pretty(&table) {
+            Ok(c) => c,
+            Err(e) => {
+                log::warn!("Failed to serialize TOML: {e}");
+                return;
+            }
+        };
+        if let Err(e) = fs::write(&path, &content) {
+            log::warn!("Failed to write TOML '{}': {e}", path.display());
+        }
+    }
+
     /// 递归渲染 TOML Table
     fn render_toml_table(
         ui: &mut egui::Ui,
+        row_height: f32,
         messager: &mut Messager,
         path: &[String],
         table: &mut toml::Table,
         changed: &mut bool,
     ) {
         let inspector_table = TableBuilder::new(ui)
-            .striped(false)
             .resizable(true)
+            .striped(true)
             .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
             .column(Column::auto())
-            .column(Column::auto());
+            .column(Column::remainder());
 
         inspector_table.body(|mut body| {
             for (key, value) in table {
                 let mut full_path = path.to_vec();
                 full_path.push(key.clone());
-                body.row(20.0, |mut row| {
-                    Self::render_toml_field(&mut row, messager, &full_path, key, value, changed);
+                body.row(row_height, |mut row| {
+                    Self::render_toml_field(
+                        &mut row, row_height, messager, &full_path, key, value, changed,
+                    );
                 });
             }
         });
@@ -108,6 +191,7 @@ impl TomlTableInspector {
     /// 渲染单个 TOML 字段（值类型分发）
     fn render_toml_field(
         row: &mut TableRow,
+        row_height: f32,
         messager: &mut Messager,
         path: &[String],
         key: &str,
@@ -171,11 +255,7 @@ impl TomlTableInspector {
                             for (i, elem) in arr.iter_mut().enumerate() {
                                 ui.horizontal(|ui| {
                                     ui.label(format!("[{i}]"));
-                                    let mut elem_path = path.to_vec();
-                                    elem_path.push(i.to_string());
-                                    Self::render_toml_value(
-                                        ui, messager, &elem_path, elem, changed,
-                                    );
+                                    Self::render_toml_value(ui, elem, changed);
                                 });
                             }
                         });
@@ -186,7 +266,7 @@ impl TomlTableInspector {
                     egui::CollapsingHeader::new(key)
                         .default_open(false)
                         .show(ui, |ui| {
-                            Self::render_toml_table(ui, messager, path, t, changed);
+                            Self::render_toml_table(ui, row_height, messager, path, t, changed);
                         });
                 }
             }
@@ -194,13 +274,7 @@ impl TomlTableInspector {
     }
 
     /// 渲染单个 TOML 值（无 key 标签，用于数组元素）
-    fn render_toml_value(
-        ui: &mut egui::Ui,
-        messager: &mut Messager,
-        path: &[String],
-        value: &mut Value,
-        changed: &mut bool,
-    ) {
+    fn render_toml_value(ui: &mut egui::Ui, value: &mut Value, changed: &mut bool) {
         match value {
             Value::String(s) => {
                 if ui.text_edit_singleline(s).changed() {

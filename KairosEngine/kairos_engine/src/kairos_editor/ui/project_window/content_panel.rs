@@ -78,6 +78,10 @@ impl ContentPanel {
             ContextMenu::show(ui, ContextMenuState::new(target), messager);
         });
 
+        if bg_response.clicked() {
+            messager.send(Message::SelectProjectNode(None));
+        }
+
         ui.columns(cols, |columns| {
             for (i, child) in children.iter().enumerate() {
                 let Some(node_data) = graph.get_node(*child) else {
@@ -199,9 +203,6 @@ impl ContentPanel {
         }
 
         if !is_renaming {
-            if is_selected && response.clicked_elsewhere() {
-                messager.send(Message::CancleSelectProjectNode(node));
-            }
             if response.clicked() || response.secondary_clicked() {
                 messager.send(Message::SelectProjectNode(Some(node)));
             }

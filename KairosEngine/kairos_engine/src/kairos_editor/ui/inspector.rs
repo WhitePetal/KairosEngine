@@ -17,7 +17,10 @@ pub trait InspectorField {
 }
 
 pub trait Inspector {
-    fn create(path: &std::path::Path, assets_server: &mut AssetsServer) -> Self
+    fn create(
+        path: &std::path::Path,
+        assets_server: &mut AssetsServer,
+    ) -> Result<Self, Box<dyn std::error::Error>>
     where
         Self: Sized;
 

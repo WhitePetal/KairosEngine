@@ -288,14 +288,14 @@ where
 
     pub fn load(
         &mut self,
-        path: PathBuf,
+        path: &PathBuf,
         // on_completed: Option<impl FnOnce(&mut System::AssetType) -> () + Send + Sync + 'static>,
         denpendency_request_sender: mpsc::Sender<DependencyLoadRequestEvent>,
     ) -> Arc<AssetHandle<System>> {
-        let asset_index = self.load_asset_index(&path);
+        let asset_index = self.load_asset_index(path);
 
         let asset_handle = self.load_asset_handle(
-            &path,
+            path,
             asset_index,
             // on_completed,
             denpendency_request_sender,

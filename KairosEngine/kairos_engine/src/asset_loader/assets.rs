@@ -35,7 +35,7 @@ where
 {
     fn set_back(self: Box<Self>, assets_server: &mut AssetsServer) {
         let handle = assets_server.load::<T>(
-            self.dependency_path,
+            &self.dependency_path,
             // None::<fn(&mut T::AssetType)>
         );
         let _ = self.setback_sender.send(handle);
@@ -70,7 +70,7 @@ impl AssetsServer {
 
     pub fn load<T>(
         &mut self,
-        path: PathBuf,
+        path: &PathBuf,
         // on_completed: Option<impl FnOnce(&mut T::AssetType) -> () + Send + Sync + 'static>,
     ) -> Arc<AssetHandle<T>>
     where

@@ -130,7 +130,7 @@ pub struct AxesIndicatorModel {
 impl AxesIndicatorModel {
     pub fn new(assets_server: &mut AssetsServer) -> Self {
         let material = assets_server
-            .load::<MaterialAssetsSystem>(PathBuf::from("res/materials/gizmos/axes.mat"));
+            .load::<MaterialAssetsSystem>(&PathBuf::from("res/materials/gizmos/axes.mat"));
         let mesh = build_axes_arrows(3.0, 0.08);
         let mesh = assets_server.insert(
             mesh,

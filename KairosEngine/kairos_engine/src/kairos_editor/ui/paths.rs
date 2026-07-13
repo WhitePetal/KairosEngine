@@ -13,3 +13,6 @@ pub const PATH_HIERARCHY_WINDOW_STYLE: &'static str =
 pub const PATH_PROJECT_WINDOW_STYLE: &'static str = "Preferences/Styles/ProjectWindowStyle.toml";
 pub const PATH_SCENE_WINDOW_STYLE: &'static str = "Preferences/Styles/SceneWindowStyle.toml";
 pub const PATH_GAME_WINDOW_STYLE: &'static str = "Preferences/Styles/GameWindowStyle.toml";
+
+pub const PATH_TOML_TABLE_INSPECTOR_STYLE: &'static str =
+    "Preferences/Styles/Inspectors/TomlTable.toml";

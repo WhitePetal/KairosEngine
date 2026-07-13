@@ -49,7 +49,7 @@ fn build_grid_lines(half_extent: i32) -> Mesh {
 impl GridPlaneModel {
     pub fn new(assets_server: &mut AssetsServer) -> Self {
         let material = assets_server
-            .load::<MaterialAssetsSystem>(PathBuf::from("res/materials/gizmos/grid_plane.mat"));
+            .load::<MaterialAssetsSystem>(&PathBuf::from("res/materials/gizmos/grid_plane.mat"));
         let mesh = build_grid_lines(100);
         let mesh = assets_server.insert::<MeshAssetsSystem>(
             mesh,

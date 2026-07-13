@@ -15,9 +15,9 @@ impl InspectorCreater {
         asset_kind: AssetKind,
         path: &Path,
         assets_server: &mut AssetsServer,
-    ) -> Box<dyn Inspector> {
+    ) -> Result<Box<dyn Inspector>, Box<dyn std::error::Error>> {
         match asset_kind {
-            AssetKind::Directory => Box::new(DirectoryInspector::create(path, assets_server)),
+            AssetKind::Directory => Ok(Box::new(DirectoryInspector::create(path, assets_server)?)),
             AssetKind::Texture => todo!(),
             AssetKind::Mesh => todo!(),
             AssetKind::Material => todo!(),
@@ -26,7 +26,7 @@ impl InspectorCreater {
             AssetKind::GenericAsset => todo!(),
             AssetKind::Script => todo!(),
             AssetKind::Document => todo!(),
-            AssetKind::Toml => Box::new(TomlTableInspector::create(path, assets_server)),
+            AssetKind::Toml => Ok(Box::new(TomlTableInspector::create(path, assets_server)?)),
             AssetKind::Unknown => todo!(),
         }
     }

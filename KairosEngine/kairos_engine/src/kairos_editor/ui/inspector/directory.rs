@@ -10,13 +10,13 @@ impl Inspector for DirectoryInspector {
     fn create(
         path: &std::path::Path,
         _assets_server: &mut crate::asset_loader::assets::AssetsServer,
-    ) -> Self
+    ) -> Result<Self, Box<dyn std::error::Error>>
     where
         Self: Sized,
     {
-        Self {
+        Ok(Self {
             path: path.to_path_buf(),
-        }
+        })
     }
 
     fn draw(
