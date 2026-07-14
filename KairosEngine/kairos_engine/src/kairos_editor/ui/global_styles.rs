@@ -30,26 +30,17 @@ impl GlobalStyles {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ProjectNodeIcons {
-    #[serde(default = "default_icon_path")]
     pub default: String,
-    #[serde(default)]
     pub directory: Option<String>,
-    #[serde(default)]
     pub directory_fill: Option<String>,
-    #[serde(default)]
     pub mesh: Option<String>,
-    #[serde(default)]
     pub material: Option<String>,
-    #[serde(default)]
     pub audio: Option<String>,
-    #[serde(default)]
     pub shader: Option<String>,
-    #[serde(default)]
     pub script: Option<String>,
-    #[serde(default)]
     pub document: Option<String>,
-    #[serde(default)]
     pub toml: Option<String>,
+    pub font: Option<String>,
 }
 
 fn default_icon_path() -> String {
@@ -75,6 +66,7 @@ impl ProjectNodeIcons {
             AssetKind::Script => self.script.as_deref(),
             AssetKind::Document => self.document.as_deref(),
             AssetKind::Toml => self.toml.as_deref(),
+            AssetKind::Font => self.font.as_deref(),
             AssetKind::Unknown => None,
         };
         opt.unwrap_or(&self.default)
@@ -99,7 +91,6 @@ impl ProjectNodeIcons {
         }
     }
 }
-
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum FontPriority {

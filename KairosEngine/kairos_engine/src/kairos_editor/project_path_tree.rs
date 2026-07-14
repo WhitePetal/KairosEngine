@@ -57,6 +57,7 @@ impl ProjectPathGraph {
             root_guid,
             root_name,
             root_path.to_path_buf(),
+            None,
             AssetKind::Directory,
         );
         let root_node = graph.add_node(root_node_data);
@@ -83,6 +84,7 @@ impl ProjectPathGraph {
             root_guid,
             root_name,
             root_path.clone(),
+            None,
             AssetKind::Directory,
         );
         let root_node = self.graph.add_node(root_node_data);
@@ -131,7 +133,7 @@ impl ProjectPathGraph {
                 .file_name()
                 .map(|n| n.to_os_string())
                 .unwrap_or_default();
-            let node_data = ProjectTreeNode::new(guid, name, path.clone(), AssetKind::Directory);
+            let node_data = ProjectTreeNode::new(guid, name, path.clone(), None, AssetKind::Directory);
             let child_node = graph.add_node(node_data);
             graph.add_edge(parent_node, child_node, ());
             Self::scan_dir(&path, child_node, graph, registry);
@@ -139,68 +141,16 @@ impl ProjectPathGraph {
 
         // 再处理文件
         for path in files {
-            let ext = path.extension().and_then(|e| e.to_str());
-
-            match ext {
-                Some("png") => {
-                    let texture_path = path.with_extension("texture");
-                    if texture_path.exists() {
-                        let guid = registry.get_or_create_guid(&texture_path);
-                        let name = path
-                            .file_name()
-                            .map(|n| n.to_os_string())
-                            .unwrap_or_default();
-                        let node_data = ProjectTreeNode::with_asset_path(
-                            guid,
-                            name,
-                            path.clone(),
-                            texture_path,
-                            AssetKind::Texture,
-                        );
-                        let child_node = graph.add_node(node_data);
-                        graph.add_edge(parent_node, child_node, ());
-                    }
-                    continue;
-                }
-                Some("glb") => {
-                    let mesh_path = path.with_extension("mesh");
-                    if mesh_path.exists() {
-                        let guid = registry.get_or_create_guid(&mesh_path);
-                        let name = path
-                            .file_name()
-                            .map(|n| n.to_os_string())
-                            .unwrap_or_default();
-                        let node_data = ProjectTreeNode::with_asset_path(
-                            guid,
-                            name,
-                            path.clone(),
-                            mesh_path,
-                            AssetKind::Mesh,
-                        );
-                        let child_node = graph.add_node(node_data);
-                        graph.add_edge(parent_node, child_node, ());
-                    }
-                    continue;
-                }
-                Some("texture" | "texture_bin" | "mesh" | "mesh_bin") => {
-                    continue;
-                }
-                _ => {}
-            }
-
-            let kind = AssetKind::from_extension(ext);
-
-            // 跳过无法识别的文件类型
-            if kind == AssetKind::Unknown {
+            let Some((kind, guid, asset_path)) = registry.analyse_path(&path) else {
                 continue;
-            }
+            };
 
-            let guid = registry.get_or_create_guid(&path);
             let name = path
-                .file_name()
+                .file_prefix()
                 .map(|n| n.to_os_string())
                 .unwrap_or_default();
-            let node_data = ProjectTreeNode::new(guid, name, path.clone(), kind);
+
+            let node_data = ProjectTreeNode::new(guid, name, path.clone(), asset_path, kind);
             let child_node = graph.add_node(node_data);
             graph.add_edge(parent_node, child_node, ());
         }
@@ -344,10 +294,14 @@ impl ProjectPathGraph {
             AssetKind::Mesh => todo!(),
             AssetKind::Material => todo!(),
             AssetKind::Audio => todo!(),
-            AssetKind::Shader => {
+            AssetKind::Font => todo!(),
+            AssetKind::Shader
+            | AssetKind::Script
+            | AssetKind::Document
+            | AssetKind::Toml => {
                 let Some(folder) = self.get_folder_node(request.base_node) else {
                     kairos_dialog::error_message_window(
-                        "Create Shader Failed",
+                        "Create File Failed",
                         "folder node not found in graph",
                     );
                     return None;
@@ -356,73 +310,16 @@ impl ProjectPathGraph {
                 let folder_data = folder.1;
                 name = self.unique_name(folder_node, &request.name);
                 full_path = folder_data.path.join(&name);
-                full_path.set_extension("wgsl");
-                if let Err(err) = std::fs::write(&full_path, Self::default_shader_content()) {
-                    kairos_dialog::error_message_window(
-                        "Create Shader Failed",
-                        &format!("failed to create file '{}': {err}", full_path.display()),
-                    );
-                    return None;
+                if let Some(ext) = request.kind.extension() {
+                    full_path.set_extension(ext);
                 }
-            }
-            AssetKind::Script => {
-                let Some(folder) = self.get_folder_node(request.base_node) else {
-                    kairos_dialog::error_message_window(
-                        "Create Script Failed",
-                        "folder node not found in graph",
-                    );
-                    return None;
+                let content: &str = match request.kind {
+                    AssetKind::Shader => Self::default_shader_content(),
+                    _ => "",
                 };
-                folder_node = folder.0;
-                let folder_data = folder.1;
-                name = self.unique_name(folder_node, &request.name);
-                full_path = folder_data.path.join(&name);
-                full_path.set_extension("rs");
-                if let Err(err) = std::fs::write(&full_path, "") {
+                if let Err(err) = std::fs::write(&full_path, content) {
                     kairos_dialog::error_message_window(
-                        "Create Script Failed",
-                        &format!("failed to create file '{}': {err}", full_path.display()),
-                    );
-                    return None;
-                }
-            }
-            AssetKind::Document => {
-                let Some(folder) = self.get_folder_node(request.base_node) else {
-                    kairos_dialog::error_message_window(
-                        "Create Document Failed",
-                        "folder node not found in graph",
-                    );
-                    return None;
-                };
-                folder_node = folder.0;
-                let folder_data = folder.1;
-                name = self.unique_name(folder_node, &request.name);
-                full_path = folder_data.path.join(&name);
-                full_path.set_extension("md");
-                if let Err(err) = std::fs::write(&full_path, "") {
-                    kairos_dialog::error_message_window(
-                        "Create Document Failed",
-                        &format!("failed to create file '{}': {err}", full_path.display()),
-                    );
-                    return None;
-                }
-            }
-            AssetKind::Toml => {
-                let Some(folder) = self.get_folder_node(request.base_node) else {
-                    kairos_dialog::error_message_window(
-                        "Create Toml Failed",
-                        "folder node not found in graph",
-                    );
-                    return None;
-                };
-                folder_node = folder.0;
-                let folder_data = folder.1;
-                name = self.unique_name(folder_node, &request.name);
-                full_path = folder_data.path.join(&name);
-                full_path.set_extension("toml");
-                if let Err(err) = std::fs::write(&full_path, "") {
-                    kairos_dialog::error_message_window(
-                        "Create Toml Failed",
+                        "Create File Failed",
                         &format!("failed to create file '{}': {err}", full_path.display()),
                     );
                     return None;
@@ -440,7 +337,7 @@ impl ProjectPathGraph {
         let kind = request.kind;
 
         // ---- 5. 更新图 ----
-        let node_data = ProjectTreeNode::new(guid, name, full_path, kind);
+        let node_data = ProjectTreeNode::new(guid, name, full_path, None, kind);
         let new_node = self.graph.add_node(node_data);
         self.graph.add_edge(folder_node, new_node, ());
 
@@ -478,7 +375,7 @@ impl ProjectPathGraph {
             vec![old_path.clone()]
         } else {
             let mut paths = Vec::new();
-            for ext in related {
+            for ext in &related {
                 let mut p = old_path.clone();
                 p.set_extension(ext);
                 if p.exists() {

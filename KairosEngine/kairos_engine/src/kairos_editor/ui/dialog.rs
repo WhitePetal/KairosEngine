@@ -53,7 +53,8 @@ where
                         return DialogState::Closed;
                     }
                     DialogState::Opening
-                }).inner
+                })
+                .inner
             })
             .inner
     }

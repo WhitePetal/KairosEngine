@@ -29,6 +29,7 @@ impl InspectorCreater {
             AssetKind::Script => Ok(Box::new(TextInspector::create(path, assets_server)?)),
             AssetKind::Document => Ok(Box::new(DocumentInspector::create(path, assets_server)?)),
             AssetKind::Toml => Ok(Box::new(TomlTableInspector::create(path, assets_server)?)),
+            AssetKind::Font => todo!(),
             AssetKind::Unknown => Ok(Box::new(UnknownInspector::create(path, assets_server)?)),
         }
     }

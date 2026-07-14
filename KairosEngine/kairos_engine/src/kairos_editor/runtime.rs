@@ -14,7 +14,7 @@ use winit::{
     window::{Icon, Window},
 };
 
-use crate::{graphics::graphics_graph::{GraphicsCommand, GraphicsGraph}};
+use crate::graphics::graphics_graph::{GraphicsCommand, GraphicsGraph};
 use crate::graphics::{
     attachment::{Attachment, AttachmentLoadAction, AttachmentStoreAction, InternalAttachmentId},
     graphics_graph::graphics_node::ColorAttachmentBind,

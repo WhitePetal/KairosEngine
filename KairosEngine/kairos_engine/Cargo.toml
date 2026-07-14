@@ -29,6 +29,7 @@ log = "0.4"
 native-dialog = "0.9.6"
 serde = "1.0.228"
 sonic-rs = "0.5.7"
+strum = { version = "0.26", features = ["derive"] }
 duplicate = "2.0"
 paste = "1.0"
 image = { version = "0.25.10", features = ["rayon", "serde", "png"] }

@@ -25,29 +25,12 @@ pub struct ProjectTreeNode {
 }
 
 impl ProjectTreeNode {
-    pub fn new(guid: Guid, name: OsString, path: PathBuf, kind: AssetKind) -> Self {
+    pub fn new(guid: Guid, name: OsString, path: PathBuf, asset_path: Option<PathBuf>, kind: AssetKind) -> Self {
         Self {
             guid,
             name,
             path,
-            asset_path: None,
-            kind,
-        }
-    }
-
-    /// 创建带资产路径的节点（如 Texture：path=.png, asset_path=.texture）
-    pub fn with_asset_path(
-        guid: Guid,
-        name: OsString,
-        path: PathBuf,
-        asset_path: PathBuf,
-        kind: AssetKind,
-    ) -> Self {
-        Self {
-            guid,
-            name,
-            path,
-            asset_path: Some(asset_path),
+            asset_path,
             kind,
         }
     }

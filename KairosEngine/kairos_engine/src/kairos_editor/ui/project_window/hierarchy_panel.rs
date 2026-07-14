@@ -89,16 +89,16 @@ impl HierarchyPanel {
                 selected_node,
                 force_expand_to,
             ),
-                _ => Self::draw_file(
-                    ui,
-                    global_styles,
-                    graph,
-                    node,
-                    node_data,
-                    style,
-                    messager,
-                    selected_node,
-                ),
+            _ => Self::draw_file(
+                ui,
+                global_styles,
+                graph,
+                node,
+                node_data,
+                style,
+                messager,
+                selected_node,
+            ),
         });
     }
 
