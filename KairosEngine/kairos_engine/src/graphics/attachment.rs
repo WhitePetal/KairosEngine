@@ -1,11 +1,11 @@
+use strum::{EnumCount, EnumIter};
 use wgpu::TextureFormat;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumIter, EnumCount)]
 #[repr(usize)]
 pub enum InternalAttachmentId {
     FrameBufferColorAttachment,
     FrameBufferDepthStencilAttachment,
-    End,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]

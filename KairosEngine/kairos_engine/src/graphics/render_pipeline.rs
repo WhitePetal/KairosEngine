@@ -1,6 +1,7 @@
 use std::{collections::HashMap, error::Error, sync::Arc};
 
 use petgraph::visit::{DfsEvent, Reversed, depth_first_search};
+use strum::EnumCount;
 use wgpu::{
     Adapter, AddressMode, BackendOptions, Backends, BindGroup, BindGroupDescriptor, BindGroupEntry,
     BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType,
@@ -190,7 +191,7 @@ impl RenderPipeline {
             queue,
             encoder: None,
             egui_renderer,
-            internal_texture_views: vec![None; InternalAttachmentId::End as usize],
+            internal_texture_views: vec![None; InternalAttachmentId::COUNT],
             window_size,
             window_size_changed: false,
 
