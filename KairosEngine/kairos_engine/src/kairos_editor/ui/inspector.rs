@@ -1,9 +1,14 @@
-use crate::{asset_loader::assets::AssetsServer, kairos_editor::ui::Messager};
+use crate::{
+    asset_loader::assets::AssetsServer,
+    kairos_editor::ui::{Messager, dialog::Dialog},
+};
 
 pub mod creater;
 pub mod directory;
+pub mod document;
 pub mod text;
 pub mod toml;
+pub mod unknown;
 
 pub trait InspectorFieldKey {
     fn get_key(&self) -> usize;
@@ -26,5 +31,5 @@ pub trait Inspector {
 
     fn draw(&self, ui: &mut egui::Ui, messager: &mut Messager, assets_server: &AssetsServer);
 
-    fn on_exit(&self);
+    fn on_exit(&self, assets_server: &AssetsServer) -> Option<Box<dyn Dialog>>;
 }

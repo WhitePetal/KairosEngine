@@ -1,16 +1,16 @@
-use std::fs;
+use std::{fs, path::PathBuf};
 
 use crate::{asset_loader::assets::AssetsServer, kairos_editor::ui::{dialog::Dialog, inspector::Inspector}};
 
-struct TextInspectorModel {
-    content: String,
+struct UnknownInspectorModel {
+    path: PathBuf,
 }
 
-pub struct TextInspector {
-    model: TextInspectorModel,
+pub struct UnknownInspector {
+    model: UnknownInspectorModel,
 }
 
-impl Inspector for TextInspector {
+impl Inspector for UnknownInspector {
     fn create(
         path: &std::path::Path,
         _assets_server: &mut crate::asset_loader::assets::AssetsServer,
@@ -18,8 +18,9 @@ impl Inspector for TextInspector {
     where
         Self: Sized,
     {
-        let content = fs::read_to_string(path)?;
-        let model = TextInspectorModel { content };
+        let model = UnknownInspectorModel {
+            path: path.to_path_buf(),
+        };
 
         Ok(Self { model })
     }
@@ -31,16 +32,15 @@ impl Inspector for TextInspector {
         _assets_server: &crate::asset_loader::assets::AssetsServer,
     ) {
         ui.separator();
-        ui.label("Preview:");
-        let content = &self.model.content;
-        let line_count = content.lines().count();
-        ui.label(format!("Lines: {line_count}"));
-        egui::ScrollArea::vertical()
-            .id_salt("inspector_text_preview")
-            .max_height(300.0)
-            .show(ui, |ui| {
-                ui.monospace(content);
-            });
+        ui.label("not implement inspector");
+        match fs::metadata(&self.model.path) {
+            Ok(meta) => {
+                ui.label(format!("Size: {} bytes", meta.len()));
+            }
+            Err(e) => {
+                ui.label(format!("Failed to read metadata: {e}"));
+            }
+        }
     }
 
     fn on_exit(&self, _assets_server: &AssetsServer) -> Option<Box<dyn Dialog>> {

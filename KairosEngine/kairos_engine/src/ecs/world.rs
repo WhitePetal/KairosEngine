@@ -70,7 +70,7 @@ impl Hasher for NodeIndexTupleIdHasher {
     }
 
     fn finish(&self) -> u64 {
-        todo!()
+        self.0
     }
 
     fn write(&mut self, _bytes: &[u8]) {

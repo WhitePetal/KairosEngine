@@ -265,12 +265,6 @@ impl ProjectWindow {
             AssetKind::Audio => {
                 log::info!("Open Audio is not yet implemented: {}", node_data.name());
             }
-            AssetKind::GenericAsset => {
-                log::info!(
-                    "Open GenericAsset is not yet implemented: {}",
-                    node_data.name()
-                );
-            }
             AssetKind::Shader | AssetKind::Script | AssetKind::Document | AssetKind::Toml => {
                 Self::open_file_in_vscode(&node_data.path);
             }

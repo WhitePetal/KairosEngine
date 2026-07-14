@@ -365,7 +365,6 @@ impl ProjectPathGraph {
                     return None;
                 }
             }
-            AssetKind::GenericAsset => todo!(),
             AssetKind::Script => {
                 let Some(folder) = self.get_folder_node(request.base_node) else {
                     kairos_dialog::error_message_window(

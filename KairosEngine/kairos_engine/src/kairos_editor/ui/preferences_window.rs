@@ -11,7 +11,6 @@ use crate::{
 };
 use egui::{self, Vec2};
 use serde::{Deserialize, Serialize};
-use toml::from_str;
 
 use crate::kairos_editor::ui::{
     Drawer, Message, paths,
@@ -29,7 +28,7 @@ pub struct PreferencesStyle {
 
 impl PreferencesStyle {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let style_json =
+        let style_toml =
             fs::read_to_string(paths::PATH_PREFERENCES_WINDOW_STYLE).map_err(|error| {
                 format!(
                     "Load Preferences Window Style Json Failed, path: {}, error: {}",
@@ -37,7 +36,7 @@ impl PreferencesStyle {
                     error
                 )
             })?;
-        let style = from_str(&style_json).map_err(|error| {
+        let style = toml::from_str(&style_toml).map_err(|error| {
             format!(
                 "Deserialize Preferences Window Style Json Failed, error: {}",
                 error

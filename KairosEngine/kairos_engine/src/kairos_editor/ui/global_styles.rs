@@ -43,8 +43,6 @@ pub struct ProjectNodeIcons {
     pub audio: Option<String>,
     #[serde(default)]
     pub shader: Option<String>,
-    #[serde(default, alias = "generic_asset")]
-    pub generic_asset: Option<String>,
     #[serde(default)]
     pub script: Option<String>,
     #[serde(default)]
@@ -73,7 +71,6 @@ impl ProjectNodeIcons {
             AssetKind::Material => self.material.as_deref(),
             AssetKind::Audio => self.audio.as_deref(),
             AssetKind::Shader => self.shader.as_deref(),
-            AssetKind::GenericAsset => self.generic_asset.as_deref(),
             AssetKind::Script => self.script.as_deref(),
             AssetKind::Document => self.document.as_deref(),
             AssetKind::Toml => self.toml.as_deref(),

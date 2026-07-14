@@ -125,8 +125,8 @@ impl Drawer for ToolBar {
                         }
                     });
 
-                    // File
-                    ui.menu_button("File", |ui| {
+                    // Scene
+                    ui.menu_button("Scene", |ui| {
                         if ui.button("New Scene").clicked() {
                             todo!()
                         }

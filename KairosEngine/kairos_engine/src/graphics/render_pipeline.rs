@@ -864,7 +864,7 @@ impl RenderPipeline {
             wgpu::TextureFormat::Bgra8Unorm => AttachmentFormat::BGRA8Unorm,
             wgpu::TextureFormat::Bgra8UnormSrgb => AttachmentFormat::BGRA8UnormSrgb,
             wgpu::TextureFormat::Rg11b10Ufloat => AttachmentFormat::RG11B10UFloat,
-            _ => todo!(),
+            _ => todo!("Not impl frame buffer format -> attachment format convert"),
         }
     }
 

@@ -1,16 +1,18 @@
 use std::fs;
 
+use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
+
 use crate::{asset_loader::assets::AssetsServer, kairos_editor::ui::{dialog::Dialog, inspector::Inspector}};
 
-struct TextInspectorModel {
+struct DocumentModel {
     content: String,
 }
 
-pub struct TextInspector {
-    model: TextInspectorModel,
+pub struct DocumentInspector {
+    model: DocumentModel,
 }
 
-impl Inspector for TextInspector {
+impl Inspector for DocumentInspector {
     fn create(
         path: &std::path::Path,
         _assets_server: &mut crate::asset_loader::assets::AssetsServer,
@@ -19,7 +21,7 @@ impl Inspector for TextInspector {
         Self: Sized,
     {
         let content = fs::read_to_string(path)?;
-        let model = TextInspectorModel { content };
+        let model = DocumentModel { content };
 
         Ok(Self { model })
     }
@@ -34,12 +36,16 @@ impl Inspector for TextInspector {
         ui.label("Preview:");
         let content = &self.model.content;
         let line_count = content.lines().count();
-        ui.label(format!("Lines: {line_count}"));
         egui::ScrollArea::vertical()
             .id_salt("inspector_text_preview")
             .max_height(300.0)
             .show(ui, |ui| {
-                ui.monospace(content);
+                ui.label(format!("Lines: {line_count}"));
+                CommonMarkViewer::new().show(
+                    ui,
+                    &mut CommonMarkCache::default(),
+                    &self.model.content,
+                );
             });
     }
 

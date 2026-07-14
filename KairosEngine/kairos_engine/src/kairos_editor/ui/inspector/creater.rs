@@ -4,7 +4,10 @@ use crate::{
     asset_loader::assets::AssetsServer,
     kairos_editor::{
         asset_registry::AssetKind,
-        ui::inspector::{Inspector, directory::DirectoryInspector, toml::TomlTableInspector},
+        ui::inspector::{
+            Inspector, directory::DirectoryInspector, document::DocumentInspector,
+            text::TextInspector, toml::TomlTableInspector, unknown::UnknownInspector,
+        },
     },
 };
 
@@ -22,12 +25,11 @@ impl InspectorCreater {
             AssetKind::Mesh => todo!(),
             AssetKind::Material => todo!(),
             AssetKind::Audio => todo!(),
-            AssetKind::Shader => todo!(),
-            AssetKind::GenericAsset => todo!(),
-            AssetKind::Script => todo!(),
-            AssetKind::Document => todo!(),
+            AssetKind::Shader => Ok(Box::new(TextInspector::create(path, assets_server)?)),
+            AssetKind::Script => Ok(Box::new(TextInspector::create(path, assets_server)?)),
+            AssetKind::Document => Ok(Box::new(DocumentInspector::create(path, assets_server)?)),
             AssetKind::Toml => Ok(Box::new(TomlTableInspector::create(path, assets_server)?)),
-            AssetKind::Unknown => todo!(),
+            AssetKind::Unknown => Ok(Box::new(UnknownInspector::create(path, assets_server)?)),
         }
     }
 }

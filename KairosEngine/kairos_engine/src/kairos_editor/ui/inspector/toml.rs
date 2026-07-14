@@ -7,7 +7,12 @@ use toml::Value;
 
 use crate::{
     asset_loader::assets::{AssetHandle, AssetsServer, TomlTableAssetsSystem},
-    kairos_editor::ui::{Message, Messager, inspector::Inspector, paths},
+    kairos_editor::ui::{
+        Message, Messager,
+        dialog::{ConfirmDialogWindow, Dialog},
+        inspector::Inspector,
+        paths,
+    },
     math,
 };
 
@@ -101,10 +106,7 @@ impl Inspector for TomlTableInspector {
                         self.model.style.save_btn_height,
                     ));
                     if ui.add_enabled(self.model.dirty.get(), save_btn).clicked() {
-                        messager.send(Message::SaveInspectorToml(
-                            self.model.toml_handle.clone(),
-                            self.model.path.clone(),
-                        ));
+                        Self::save(self.model.toml_handle.clone(), &self.model.path, assets_server);
                         self.model.dirty.replace(false);
                     }
                     if self.model.dirty.get() {
@@ -118,10 +120,25 @@ impl Inspector for TomlTableInspector {
         }
     }
 
-    fn on_exit(&self) {
+    fn on_exit(&self, assets_server: &AssetsServer) -> Option<Box<dyn Dialog>> {
         if self.model.dirty.get() {
-            // TODO 弹窗提醒保存
-            log::debug!("TODO 弹窗提醒保存");
+            let table = assets_server.get(&self.model.toml_handle).cloned();
+            let path = self.model.path.clone();
+            let dialog = ConfirmDialogWindow::new(
+                "have modify not save".into(),
+                "save the modify?".into(),
+                "save".into(),
+                "cancel".into(),
+                Some(move || {
+                    if let Some(table) = table {
+                        Self::save_table(&path, &table);
+                    }
+                }),
+                None::<fn()>,
+            );
+            Some(Box::new(dialog))
+        } else {
+            None
         }
     }
 }
@@ -140,14 +157,18 @@ impl TomlTableInspector {
 
     pub fn save(
         handle: Arc<AssetHandle<TomlTableAssetsSystem>>,
-        path: PathBuf,
+        path: &PathBuf,
         assets_server: &AssetsServer,
     ) {
         let Some(table) = assets_server.get(&handle) else {
             return;
         };
 
-        let content = match toml::to_string_pretty(&table) {
+        Self::save_table(path, table);
+    }
+
+    pub fn save_table(path: &PathBuf, table: &toml::Table) {
+        let content = match toml::to_string_pretty(table) {
             Ok(c) => c,
             Err(e) => {
                 log::warn!("Failed to serialize TOML: {e}");

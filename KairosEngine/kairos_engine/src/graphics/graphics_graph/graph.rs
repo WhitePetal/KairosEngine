@@ -104,7 +104,7 @@ impl GraphicsGraph {
                     }
                 }
                 GraphNode::CopyAttachmentToEGui(_) => {
-                    todo!()
+                    todo!("Not impl CopyAttachmentToEGui")
                 }
                 GraphNode::None => {}
                 GraphNode::OutputToFrameBuffer(output_to_frame_buffer_node) => {

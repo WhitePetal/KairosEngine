@@ -1,6 +1,6 @@
 use std::fs;
 
-use crate::kairos_editor::ui::inspector::Inspector;
+use crate::{asset_loader::assets::AssetsServer, kairos_editor::ui::{dialog::Dialog, inspector::Inspector}};
 
 pub struct DirectoryInspector {
     path: std::path::PathBuf,
@@ -37,5 +37,7 @@ impl Inspector for DirectoryInspector {
         }
     }
 
-    fn on_exit(&self) {}
+    fn on_exit(&self, _assets_server: &AssetsServer) -> Option<Box<dyn Dialog>> {
+        None
+    }
 }

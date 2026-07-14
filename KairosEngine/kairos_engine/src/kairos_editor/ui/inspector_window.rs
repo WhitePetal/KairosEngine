@@ -1,13 +1,11 @@
-use std::{any::type_name, cell::Cell, fmt::Debug, fs, path::PathBuf};
+use std::{any::type_name, fmt::Debug, fs, path::PathBuf};
 
 use crate::{
-    kairos_editor::{
+    asset_loader::assets::AssetsServer, kairos_editor::{
         Engine,
         asset_registry::{AssetKind, Guid},
-        ui::{Messager, global_styles::GlobalStyles, inspector::Inspector},
-    },
-    kairos_game::KairosGame,
-    log::Log,
+        ui::{Messager, dialog::Dialog, global_styles::GlobalStyles, inspector::Inspector},
+    }, kairos_game::KairosGame, log::Log,
 };
 use serde::{Deserialize, Serialize};
 
@@ -91,27 +89,19 @@ impl InspectorWindow {
     }
 
     /// 接收来自 ProjectWindow 的选中节点信息。
-    pub fn set_selected(&mut self, info: Option<InspectorNodeInfo>) {
+    pub fn set_selected(
+        &mut self,
+        assets_server: &AssetsServer,
+        info: Option<InspectorNodeInfo>,
+    ) -> Option<Box<dyn Dialog>> {
+        let mut dialog = None;
         if self.model.selected != info
             && let Some(selected) = &self.model.selected
         {
-            selected.inspector.on_exit();
+            dialog = selected.inspector.on_exit(assets_server);
         }
         self.model.selected = info;
-    }
-
-    /// 未实现详细 inspector 的文件类型：显示文件元数据
-    fn draw_unimpl(ui: &mut egui::Ui, path: &std::path::Path) {
-        ui.separator();
-        ui.label("not implement inspector");
-        match fs::metadata(path) {
-            Ok(meta) => {
-                ui.label(format!("Size: {} bytes", meta.len()));
-            }
-            Err(e) => {
-                ui.label(format!("Failed to read metadata: {e}"));
-            }
-        }
+        dialog
     }
 }
 

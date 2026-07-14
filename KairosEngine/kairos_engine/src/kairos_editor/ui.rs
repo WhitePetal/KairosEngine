@@ -57,6 +57,7 @@ pub mod hierarchy_window;
 pub mod inspector;
 pub mod inspector_window;
 pub mod layout;
+pub mod native_dialog;
 pub mod paths;
 pub mod preferences_window;
 pub mod project_window;
@@ -123,8 +124,6 @@ pub enum Message {
     DeleteProjectNode(petgraph::graph::NodeIndex),
     /// InspectorWindow: 更新 TOML 字段值 (key_path, new_value)
     UpdateInspectorToml(Arc<AssetHandle<TomlTableAssetsSystem>>, toml::Table),
-    /// InspectorWindow: 保存当前编辑的 TOML 文件
-    SaveInspectorToml(Arc<AssetHandle<TomlTableAssetsSystem>>, PathBuf),
 }
 
 struct KairosTabDrawer {
@@ -237,6 +236,7 @@ pub struct Context {
     actives: Vec<bool>,
     tab_tree: DockState<usize>,
     tab_viewer: KairosTabDrawer,
+    dialogs: Vec<Box<dyn dialog::Dialog>>,
     global_styles: GlobalStyles,
 }
 
@@ -263,6 +263,7 @@ impl Context {
             tab_tree,
             tab_viewer: KairosTabDrawer {},
             layout: EditorLayout::new(),
+            dialogs: Vec::new(),
             global_styles: global_styles,
         })
     }
@@ -289,6 +290,15 @@ impl Context {
                 &self.drawers,
                 &mut self.tab_viewer,
             );
+        });
+
+        // dialogs
+        self.dialogs.retain(|dialog| {
+            let state = dialog.draw(ui);
+            match state {
+                dialog::DialogState::Opening => true,
+                dialog::DialogState::Closed => false,
+            }
         });
     }
 
@@ -412,7 +422,9 @@ impl Context {
                         project_window.select_node(node);
                         let info = project_window.get_selected_node_info(assets_server);
                         if let Some(inspector) = self.get_window_mut::<InspectorWindow>() {
-                            inspector.set_selected(info);
+                            if let Some(dialog) = inspector.set_selected(assets_server, info) {
+                                self.dialogs.push(dialog);
+                            }
                         }
                     }
                 }
@@ -458,9 +470,6 @@ impl Context {
                 }
                 Message::UpdateInspectorToml(handle, table) => {
                     inspector::toml::TomlTableInspector::update_table(handle, table, assets_server);
-                }
-                Message::SaveInspectorToml(handle, path) => {
-                    inspector::toml::TomlTableInspector::save(handle, path, assets_server);
                 }
                 Message::OpenSceneTab => {
                     self.show_tab::<SceneWindow>(assets_server, ui, self.layout.center);
@@ -615,7 +624,7 @@ impl Context {
     }
 
     fn create_ui_failed(ui: &egui::Ui, ui_name: &str, error: Box<dyn std::error::Error>) -> ! {
-        dialog::ui_create_error_window(ui_name, &error);
+        native_dialog::ui_create_error_window(ui_name, &error);
         ui.send_viewport_cmd(egui::ViewportCommand::Close);
         panic!("Create {} UI Failed: {}", ui_name, error)
     }
