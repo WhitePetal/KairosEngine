@@ -89,15 +89,16 @@ impl HierarchyPanel {
                 selected_node,
                 force_expand_to,
             ),
-            _ => Self::draw_file(
-                ui,
-                global_styles,
-                node,
-                node_data,
-                style,
-                messager,
-                selected_node,
-            ),
+                _ => Self::draw_file(
+                    ui,
+                    global_styles,
+                    graph,
+                    node,
+                    node_data,
+                    style,
+                    messager,
+                    selected_node,
+                ),
         });
     }
 
@@ -175,6 +176,7 @@ impl HierarchyPanel {
     fn draw_file(
         ui: &mut egui::Ui,
         global_styles: &GlobalStyles,
+        graph: &ProjectPathGraph,
         node: NodeIndex,
         node_data: &ProjectTreeNode,
         style: &ProjectWindowStyle,
@@ -225,6 +227,11 @@ impl HierarchyPanel {
         let response = ui.interact(row_rect, ui.id().with("row"), egui::Sense::click());
         if response.clicked() || response.secondary_clicked() {
             messager.send(Message::SelectProjectNode(Some(node)));
+            // 点击文件时同时导航到其父目录，更新 ContentPanel
+            if let Some(parent) = graph.get_parent(node) {
+                messager.send(Message::NavigateToProjectDirectory(parent));
+                messager.send(Message::SelectProjectNode(Some(node)));
+            }
         }
         response.context_menu(|ui| {
             ContextMenu::show(ui, ContextMenuState::new(node), messager);
