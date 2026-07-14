@@ -1,6 +1,9 @@
 use std::{fs, path::PathBuf};
 
-use crate::{asset_loader::assets::AssetsServer, kairos_editor::ui::{dialog::Dialog, inspector::Inspector}};
+use crate::{
+    asset_loader::assets::AssetsServer,
+    kairos_editor::ui::{dialog::Dialog, inspector::Inspector},
+};
 
 struct UnknownInspectorModel {
     path: PathBuf,

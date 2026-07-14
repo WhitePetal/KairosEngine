@@ -1,6 +1,9 @@
 use std::fs;
 
-use crate::{asset_loader::assets::AssetsServer, kairos_editor::ui::{dialog::Dialog, inspector::Inspector}};
+use crate::{
+    asset_loader::assets::AssetsServer,
+    kairos_editor::ui::{dialog::Dialog, inspector::Inspector},
+};
 
 struct TextInspectorModel {
     content: String,
@@ -37,7 +40,6 @@ impl Inspector for TextInspector {
         ui.label(format!("Lines: {line_count}"));
         egui::ScrollArea::vertical()
             .id_salt("inspector_text_preview")
-            .max_height(300.0)
             .show(ui, |ui| {
                 ui.monospace(content);
             });

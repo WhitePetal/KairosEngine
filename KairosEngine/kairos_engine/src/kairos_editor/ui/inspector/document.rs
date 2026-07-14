@@ -2,7 +2,10 @@ use std::fs;
 
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 
-use crate::{asset_loader::assets::AssetsServer, kairos_editor::ui::{dialog::Dialog, inspector::Inspector}};
+use crate::{
+    asset_loader::assets::AssetsServer,
+    kairos_editor::ui::{dialog::Dialog, inspector::Inspector},
+};
 
 struct DocumentModel {
     content: String,
@@ -37,8 +40,7 @@ impl Inspector for DocumentInspector {
         let content = &self.model.content;
         let line_count = content.lines().count();
         egui::ScrollArea::vertical()
-            .id_salt("inspector_text_preview")
-            .max_height(300.0)
+            .id_salt("inspector_document_preview")
             .show(ui, |ui| {
                 ui.label(format!("Lines: {line_count}"));
                 CommonMarkViewer::new().show(

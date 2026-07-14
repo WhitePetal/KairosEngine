@@ -1,6 +1,9 @@
 use std::fs;
 
-use crate::{asset_loader::assets::AssetsServer, kairos_editor::ui::{dialog::Dialog, inspector::Inspector}};
+use crate::{
+    asset_loader::assets::AssetsServer,
+    kairos_editor::ui::{dialog::Dialog, inspector::Inspector},
+};
 
 pub struct DirectoryInspector {
     path: std::path::PathBuf,

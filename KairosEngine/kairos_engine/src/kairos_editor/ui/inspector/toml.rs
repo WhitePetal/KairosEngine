@@ -106,7 +106,11 @@ impl Inspector for TomlTableInspector {
                         self.model.style.save_btn_height,
                     ));
                     if ui.add_enabled(self.model.dirty.get(), save_btn).clicked() {
-                        Self::save(self.model.toml_handle.clone(), &self.model.path, assets_server);
+                        Self::save(
+                            self.model.toml_handle.clone(),
+                            &self.model.path,
+                            assets_server,
+                        );
                         self.model.dirty.replace(false);
                     }
                     if self.model.dirty.get() {

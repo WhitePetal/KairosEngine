@@ -39,19 +39,21 @@ where
         egui::Modal::new(ui.id().with(&self.model.title))
             .show(ui.ctx(), |ui| {
                 ui.label(self.model.content.as_ref());
-                if ui.button(self.model.confirm_name.as_ref()).clicked() {
-                    if let Some(on_confirm) = self.model.on_confirm.take() {
-                        on_confirm();
+                ui.horizontal(|ui| {
+                    if ui.button(self.model.confirm_name.as_ref()).clicked() {
+                        if let Some(on_confirm) = self.model.on_confirm.take() {
+                            on_confirm();
+                        }
+                        return DialogState::Closed;
                     }
-                    return DialogState::Closed;
-                }
-                if ui.button(self.model.cancel_name.as_ref()).clicked() {
-                    if let Some(on_cancle) = self.model.on_cancel.take() {
-                        on_cancle();
+                    if ui.button(self.model.cancel_name.as_ref()).clicked() {
+                        if let Some(on_cancle) = self.model.on_cancel.take() {
+                            on_cancle();
+                        }
+                        return DialogState::Closed;
                     }
-                    return DialogState::Closed;
-                }
-                DialogState::Opening
+                    DialogState::Opening
+                }).inner
             })
             .inner
     }

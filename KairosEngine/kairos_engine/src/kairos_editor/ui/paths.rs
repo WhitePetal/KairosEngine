@@ -1,4 +1,5 @@
 pub const PATH_ENGINE_ICON: &'static str = "Preferences/Textures/engine_icon.png";
+pub const PATH_CHINESE_FONT: &'static str = "Preferences/Fonts/NotoSansSC-Regular.ttf";
 pub const PATH_GLOABL_STYLE: &'static str = "Preferences/Styles/GlobalStyles.toml";
 pub const PATH_EDITOR_WINDO_TOOL_BAR_STYLE: &'static str =
     "Preferences/Styles/EditorWindowToolBarStyle.toml";

@@ -1,11 +1,14 @@
 use std::{any::type_name, fmt::Debug, fs, path::PathBuf};
 
 use crate::{
-    asset_loader::assets::AssetsServer, kairos_editor::{
+    asset_loader::assets::AssetsServer,
+    kairos_editor::{
         Engine,
         asset_registry::{AssetKind, Guid},
         ui::{Messager, dialog::Dialog, global_styles::GlobalStyles, inspector::Inspector},
-    }, kairos_game::KairosGame, log::Log,
+    },
+    kairos_game::KairosGame,
+    log::Log,
 };
 use serde::{Deserialize, Serialize};
 
