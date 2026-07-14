@@ -9,6 +9,7 @@ use crate::kairos_editor::{
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GlobalStyles {
+    pub fonts: FontsConfig,
     pub project_node_icons: ProjectNodeIcons,
 }
 
@@ -97,4 +98,24 @@ impl ProjectNodeIcons {
             format!("file://{}", abs_path.display())
         }
     }
+}
+
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum FontPriority {
+    First,
+    Push,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FontDataConfig {
+    pub name: String,
+    pub path: PathBuf,
+    pub priority: FontPriority,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FontsConfig {
+    pub proportional: Vec<FontDataConfig>,
+    pub monospace: Vec<FontDataConfig>,
 }

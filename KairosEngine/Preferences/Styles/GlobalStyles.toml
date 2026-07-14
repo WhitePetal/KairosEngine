@@ -1,3 +1,15 @@
+[fonts]
+
+[[fonts.proportional]]
+name = "NotoSansSC"
+path = "Preferences/Fonts/NotoSansSC-Regular.ttf"
+priority = "First"
+
+[[fonts.monospace]]
+name = "NotoSansSC"
+path = "Preferences/Fonts/NotoSansSC-Regular.ttf"
+priority = "Push"
+
 [project_node_icons]
 default = "Preferences/Textures/engine_icon.png"
 shader = "Preferences/Textures/shader_icon.png"

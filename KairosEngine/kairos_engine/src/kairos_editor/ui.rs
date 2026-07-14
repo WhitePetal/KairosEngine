@@ -1,27 +1,17 @@
 use crate::{
-    asset_loader::assets::{AssetHandle, AssetsServer, TomlTableAssetsSystem},
-    graphics::graphics_graph::GraphicsCommand,
-    kairos_editor::{
-        Engine,
-        asset_registry::AssetKind,
-        ui::{
-            game_window::GameWindow,
-            global_styles::GlobalStyles,
-            layout::{
+    asset_loader::assets::{AssetHandle, AssetsServer, TomlTableAssetsSystem}, graphics::graphics_graph::GraphicsCommand, kairos_editor::{
+        Engine, asset_registry::AssetKind, ui::{
+            game_window::GameWindow, global_styles::{FontDataConfig, FontsConfig, GlobalStyles}, layout::{
                 EditorLayout, LayoutBottomContainer, LayoutContainerIds, LayoutLeftContainer,
                 LayoutRightContainer, Zone,
             },
         },
-    },
-    kairos_game::KairosGame,
-    log::Log,
-    types::TypeIdMap,
+    }, kairos_game::KairosGame, log::Log, types::TypeIdMap,
 };
 use egui::{self};
 use std::{
     any::{Any, TypeId, type_name},
     collections::VecDeque,
-    path::PathBuf,
     sync::Arc,
 };
 
@@ -241,7 +231,7 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(egui_ctx: &egui::Context) -> Result<Self, Box<dyn std::error::Error>> {
         let tab_tree = DockState::new(vec![]);
 
         let mut messager = Messager::new();
@@ -254,6 +244,8 @@ impl Context {
         messager.send(Message::OpenHierarchyTab);
 
         let global_styles = GlobalStyles::new()?;
+        
+        Self::setup_font(egui_ctx, &global_styles.fonts);
 
         Ok(Self {
             messager,
@@ -655,5 +647,44 @@ impl Context {
             }
             None => None,
         }
+    }
+
+    fn set_up_font_to_family(fonts: &mut egui::FontDefinitions, family: &egui::FontFamily, font_datas: &Vec<FontDataConfig>) {
+        for font in font_datas {
+            let font_data = match std::fs::read(&font.path) {
+                Ok(data) => data,
+                Err(e) => {
+                    log::warn!("Failed to load font from {:?}: {}", font.path, e);
+                    return;
+                }
+            };
+            fonts.font_data.insert(
+                font.name.to_owned(),
+                std::sync::Arc::new(egui::FontData::from_owned(font_data)),
+            );
+            match fonts.families.get_mut(family) {
+                Some(family) => {
+                    match font.priority {
+                        super::ui::global_styles::FontPriority::First => {
+                            family.insert(0, font.name.to_owned());
+                        },
+                        super::ui::global_styles::FontPriority::Push => {
+                            family.push(font.name.to_owned());
+                        },
+                    }
+                },
+                None => {
+                    log::warn!("Failed to get font family: {}", family)
+                },
+            }
+        }
+    }
+
+    fn setup_font(ctx: &egui::Context, fonts_cfg: &FontsConfig) {
+        let mut fonts = egui::FontDefinitions::default();
+        Self::set_up_font_to_family(&mut fonts, &egui::FontFamily::Proportional, &fonts_cfg.proportional);
+        Self::set_up_font_to_family(&mut fonts, &egui::FontFamily::Monospace, &fonts_cfg.monospace);
+
+        ctx.set_fonts(fonts);
     }
 }

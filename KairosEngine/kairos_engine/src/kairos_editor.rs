@@ -50,10 +50,10 @@ pub struct KairosEngine {
 }
 
 impl KairosEngine {
-    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(egui_ctx: &egui::Context) -> Result<Self, Box<dyn std::error::Error>> {
         let mut engine = Engine::new()?;
         let game = KairosGame::new(&mut engine);
-        let ui_context = ui::Context::new()?;
+        let ui_context = ui::Context::new(egui_ctx)?;
         let log = Log::new();
 
         Ok(Self {

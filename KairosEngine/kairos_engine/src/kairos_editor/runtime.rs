@@ -14,7 +14,7 @@ use winit::{
     window::{Icon, Window},
 };
 
-use crate::graphics::graphics_graph::{GraphicsCommand, GraphicsGraph};
+use crate::{graphics::graphics_graph::{GraphicsCommand, GraphicsGraph}};
 use crate::graphics::{
     attachment::{Attachment, AttachmentLoadAction, AttachmentStoreAction, InternalAttachmentId},
     graphics_graph::graphics_node::ColorAttachmentBind,
@@ -25,39 +25,6 @@ use crate::{
     kairos_dialog,
     kairos_editor::{KairosEngine, consts, ui::paths},
 };
-
-fn setup_chinese_font(ctx: &egui::Context) {
-    let font_path = paths::PATH_CHINESE_FONT;
-    let font_data = match std::fs::read(font_path) {
-        Ok(data) => data,
-        Err(e) => {
-            log::warn!("Failed to load Chinese font from {font_path}: {e}");
-            return;
-        }
-    };
-
-    let mut fonts = egui::FontDefinitions::default();
-    fonts.font_data.insert(
-        "NotoSansSC".to_owned(),
-        std::sync::Arc::new(egui::FontData::from_owned(font_data)),
-    );
-
-    // 将中文字体放到 Proportional 字体族最前面，优先用于中文文本
-    fonts
-        .families
-        .get_mut(&egui::FontFamily::Proportional)
-        .unwrap()
-        .insert(0, "NotoSansSC".to_owned());
-
-    // Monospace 也添加中文支持（用于代码/控制台等等宽场景）
-    fonts
-        .families
-        .get_mut(&egui::FontFamily::Monospace)
-        .unwrap()
-        .push("NotoSansSC".to_owned());
-
-    ctx.set_fonts(fonts);
-}
 
 fn load_icon() -> Option<Icon> {
     let bytes = std::fs::read(paths::PATH_ENGINE_ICON).ok()?;
@@ -112,9 +79,9 @@ pub struct KairosEditorRuntime {
     window: Option<Arc<Window>>,
     event_proxy: EventLoopProxy<KairosEditorRuntimeEvent>,
     render_pipeline: Arc<Mutex<Option<RenderPipeline>>>,
+    kairos_engine: KairosEngine,
     egui_ctx: egui::Context,
     egui_state: Option<egui_winit::State>,
-    kairos_engine: KairosEngine,
     repaint_at: Option<Instant>,
     frame_rate_counter: FrameRateCounter,
     // frame_start: Instant,
@@ -126,7 +93,6 @@ impl KairosEditorRuntime {
     pub fn new(proxy: EventLoopProxy<KairosEditorRuntimeEvent>) -> RuntimeResult<Self> {
         let egui_ctx = egui::Context::default();
         egui_extras::install_image_loaders(&egui_ctx);
-        setup_chinese_font(&egui_ctx);
 
         let egui_event_proxy = proxy.clone();
         egui_ctx.set_request_repaint_callback(move |info| {
@@ -140,9 +106,9 @@ impl KairosEditorRuntime {
             window: None,
             event_proxy: proxy,
             render_pipeline: Arc::new(Mutex::new(None)),
+            kairos_engine: KairosEngine::new(&egui_ctx)?,
             egui_ctx,
             egui_state: None,
-            kairos_engine: KairosEngine::new()?,
             repaint_at: None,
             frame_rate_counter: FrameRateCounter::new(),
             // frame_start: Instant::now(),
