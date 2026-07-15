@@ -1,0 +1,21 @@
+default_font_size = 14.0
+example_content = """
+The quick brown fox jumps over the lazy dog.
+ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz
+0123456789 !@#$%^&*()_+-=[]{};':",./<>?
+一二三四五六七八九十
+
+　『西江月』 苏轼
+　　世事一场大梦，人生几度秋凉？
+　　夜来风叶已鸣廊，看取眉头鬓上。
+　　酒贱常愁客少，月明多被云妨。
+　　中秋谁与共孤光，把盏凄然北望。
+
+　ABCDEFGHIJKLMNOPQRSTUVWXYZ 甲乙丙丁戊己庚辛壬癸
+　　天地玄黄 宇宙洪荒 日月盈昃 辰宿列张 寒来暑往 秋收冬藏
+
+　àáâäãåā æ ç èéêëē ğ ìíîïī ı ñ òóôöõō œ ùúûüū ÿ
+　АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ абвгдеёжзийклмнопрстуфхцчшщъыьэюя
+
+←↑→↓ ↔ ↵ ⇒⇐⇑⇓ «» ‹› "' †‡•… ‰€£¥$ ¢₹ ₽₩ ₿
+"""

@@ -423,7 +423,9 @@ impl Context {
                         project_window.select_node(node);
                         let info = project_window.get_selected_node_info(assets_server);
                         if let Some(inspector) = self.get_window_mut::<InspectorWindow>() {
-                            if let Some(dialog) = inspector.set_selected(assets_server, info) {
+                            if let Some(dialog) =
+                                inspector.set_selected(ui.ctx(), assets_server, info)
+                            {
                                 self.dialogs.push(dialog);
                             }
                         }

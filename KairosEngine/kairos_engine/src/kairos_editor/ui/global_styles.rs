@@ -43,10 +43,6 @@ pub struct ProjectNodeIcons {
     pub font: Option<String>,
 }
 
-fn default_icon_path() -> String {
-    paths::PATH_ENGINE_ICON.into()
-}
-
 impl ProjectNodeIcons {
     /// 根据节点类型获取对应图标路径，未配置则回退到 `default`。
     pub fn for_kind<'a>(&'a self, node: &'a ProjectTreeNode, has_child: bool) -> &'a str {

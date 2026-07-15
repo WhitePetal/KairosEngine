@@ -25,7 +25,13 @@ pub struct ProjectTreeNode {
 }
 
 impl ProjectTreeNode {
-    pub fn new(guid: Guid, name: OsString, path: PathBuf, asset_path: Option<PathBuf>, kind: AssetKind) -> Self {
+    pub fn new(
+        guid: Guid,
+        name: OsString,
+        path: PathBuf,
+        asset_path: Option<PathBuf>,
+        kind: AssetKind,
+    ) -> Self {
         Self {
             guid,
             name,

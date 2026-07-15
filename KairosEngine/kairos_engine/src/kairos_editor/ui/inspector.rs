@@ -6,6 +6,7 @@ use crate::{
 pub mod creater;
 pub mod directory;
 pub mod document;
+pub mod font;
 pub mod text;
 pub mod toml;
 pub mod unknown;
@@ -31,5 +32,6 @@ pub trait Inspector {
 
     fn draw(&self, ui: &mut egui::Ui, messager: &mut Messager, assets_server: &AssetsServer);
 
-    fn on_exit(&self, assets_server: &AssetsServer) -> Option<Box<dyn Dialog>>;
+    fn on_exit(&self, ctx: &egui::Context, assets_server: &AssetsServer)
+    -> Option<Box<dyn Dialog>>;
 }

@@ -1,4 +1,5 @@
 mod audio;
+mod font;
 mod material;
 mod mesh;
 mod shader;
@@ -17,6 +18,7 @@ use tokio::sync::mpsc::{self};
 
 pub use audio::AudioAssetHandle;
 pub use audio::AudioAssetsSystem;
+pub use font::FontAssetsSystem;
 pub use material::MaterialAssetsSystem;
 pub use mesh::MeshAssetsSystem;
 pub use shader::ShaderAssetsSystem;

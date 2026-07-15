@@ -124,7 +124,11 @@ impl Inspector for TomlTableInspector {
         }
     }
 
-    fn on_exit(&self, assets_server: &AssetsServer) -> Option<Box<dyn Dialog>> {
+    fn on_exit(
+        &self,
+        _ctx: &egui::Context,
+        assets_server: &AssetsServer,
+    ) -> Option<Box<dyn Dialog>> {
         if self.model.dirty.get() {
             let table = assets_server.get(&self.model.toml_handle).cloned();
             let path = self.model.path.clone();

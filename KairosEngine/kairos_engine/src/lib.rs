@@ -10,6 +10,7 @@ pub mod log;
 
 pub mod kairos_editor;
 pub mod kairos_game;
+pub mod kairos_ui;
 
 pub mod asset_loader;
 pub mod audio;

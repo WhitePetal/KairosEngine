@@ -46,7 +46,11 @@ impl Inspector for UnknownInspector {
         }
     }
 
-    fn on_exit(&self, _assets_server: &AssetsServer) -> Option<Box<dyn Dialog>> {
+    fn on_exit(
+        &self,
+        _ctx: &egui::Context,
+        _assets_server: &AssetsServer,
+    ) -> Option<Box<dyn Dialog>> {
         None
     }
 }

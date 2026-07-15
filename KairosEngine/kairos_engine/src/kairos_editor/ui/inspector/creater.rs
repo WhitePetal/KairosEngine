@@ -6,7 +6,8 @@ use crate::{
         asset_registry::AssetKind,
         ui::inspector::{
             Inspector, directory::DirectoryInspector, document::DocumentInspector,
-            text::TextInspector, toml::TomlTableInspector, unknown::UnknownInspector,
+            font::FontInspector, text::TextInspector, toml::TomlTableInspector,
+            unknown::UnknownInspector,
         },
     },
 };
@@ -29,7 +30,7 @@ impl InspectorCreater {
             AssetKind::Script => Ok(Box::new(TextInspector::create(path, assets_server)?)),
             AssetKind::Document => Ok(Box::new(DocumentInspector::create(path, assets_server)?)),
             AssetKind::Toml => Ok(Box::new(TomlTableInspector::create(path, assets_server)?)),
-            AssetKind::Font => todo!(),
+            AssetKind::Font => Ok(Box::new(FontInspector::create(path, assets_server)?)),
             AssetKind::Unknown => Ok(Box::new(UnknownInspector::create(path, assets_server)?)),
         }
     }

@@ -94,6 +94,7 @@ impl InspectorWindow {
     /// 接收来自 ProjectWindow 的选中节点信息。
     pub fn set_selected(
         &mut self,
+        ctx: &egui::Context,
         assets_server: &AssetsServer,
         info: Option<InspectorNodeInfo>,
     ) -> Option<Box<dyn Dialog>> {
@@ -101,7 +102,7 @@ impl InspectorWindow {
         if self.model.selected != info
             && let Some(selected) = &self.model.selected
         {
-            dialog = selected.inspector.on_exit(assets_server);
+            dialog = selected.inspector.on_exit(ctx, assets_server);
         }
         self.model.selected = info;
         dialog

@@ -133,7 +133,8 @@ impl ProjectPathGraph {
                 .file_name()
                 .map(|n| n.to_os_string())
                 .unwrap_or_default();
-            let node_data = ProjectTreeNode::new(guid, name, path.clone(), None, AssetKind::Directory);
+            let node_data =
+                ProjectTreeNode::new(guid, name, path.clone(), None, AssetKind::Directory);
             let child_node = graph.add_node(node_data);
             graph.add_edge(parent_node, child_node, ());
             Self::scan_dir(&path, child_node, graph, registry);
@@ -295,10 +296,7 @@ impl ProjectPathGraph {
             AssetKind::Material => todo!(),
             AssetKind::Audio => todo!(),
             AssetKind::Font => todo!(),
-            AssetKind::Shader
-            | AssetKind::Script
-            | AssetKind::Document
-            | AssetKind::Toml => {
+            AssetKind::Shader | AssetKind::Script | AssetKind::Document | AssetKind::Toml => {
                 let Some(folder) = self.get_folder_node(request.base_node) else {
                     kairos_dialog::error_message_window(
                         "Create File Failed",

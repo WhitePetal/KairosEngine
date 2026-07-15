@@ -67,6 +67,10 @@ guid = "2105b999-3d64-4d86-bbea-bd99ea840c31"
 path = "./Preferences/Styles/Inspectors"
 
 [[entries]]
+guid = "cb946120-6962-4366-91bb-7378266c8fac"
+path = "./Preferences/Styles/Inspectors/Font.toml"
+
+[[entries]]
 guid = "686e3907-bd4b-4618-a95b-da396fc7c913"
 path = "./Preferences/Styles/Inspectors/TomlTable.toml"
 
@@ -89,6 +93,10 @@ path = "./Preferences/Styles/SceneWindowStyle.toml"
 [[entries]]
 guid = "10096a62-116f-40ba-a9cb-82662b66cd39"
 path = "./Preferences/Textures"
+
+[[entries]]
+guid = "5b986d41-fa6e-4c95-8798-54ec8d375a08"
+path = "./deny.toml"
 
 [[entries]]
 guid = "27441b77-f7e4-4fea-b7cd-d9b4f18e30e0"
@@ -257,6 +265,10 @@ path = "./kairos_engine/src/asset_loader/assets/asset"
 [[entries]]
 guid = "84c65305-b360-4971-82fe-b0a85906ca72"
 path = "./kairos_engine/src/asset_loader/assets/asset/audio.rs"
+
+[[entries]]
+guid = "ca063cc3-f95d-46dc-998c-6f5a52ed0bf7"
+path = "./kairos_engine/src/asset_loader/assets/asset/font.rs"
 
 [[entries]]
 guid = "eed83cd6-cfee-4ded-8fd6-d9e48e59efca"
@@ -691,6 +703,10 @@ guid = "c78c4d0d-e35a-4dc7-8836-4ef9f5f690c5"
 path = "./kairos_engine/src/kairos_editor/ui/inspector/document.rs"
 
 [[entries]]
+guid = "522653b2-418b-44cb-be44-10a4725bba5f"
+path = "./kairos_engine/src/kairos_editor/ui/inspector/font.rs"
+
+[[entries]]
 guid = "30260743-ab86-4096-88f6-9c7571fa18f5"
 path = "./kairos_engine/src/kairos_editor/ui/inspector/text.rs"
 
@@ -793,6 +809,18 @@ path = "./kairos_engine/src/kairos_editor.rs"
 [[entries]]
 guid = "e090eefb-17b3-478e-8d4e-77a999a3a06b"
 path = "./kairos_engine/src/kairos_game.rs"
+
+[[entries]]
+guid = "8e96b471-7acd-4427-a346-e5214a13236c"
+path = "./kairos_engine/src/kairos_ui"
+
+[[entries]]
+guid = "9c254f24-05bb-434b-8d88-1a12f089c6ac"
+path = "./kairos_engine/src/kairos_ui/font.rs"
+
+[[entries]]
+guid = "462d3e89-9d29-4363-acca-baf62cb34a39"
+path = "./kairos_engine/src/kairos_ui.rs"
 
 [[entries]]
 guid = "15b3e9c1-cc6a-4afe-8dfe-679dca5546c3"

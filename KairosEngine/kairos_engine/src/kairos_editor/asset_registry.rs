@@ -8,8 +8,6 @@ use serde::{Deserialize, Serialize};
 use strum::{EnumIter, IntoEnumIterator};
 use uuid::Uuid;
 
-use crate::inputs::Input::S;
-
 /// 项目资源类型。
 ///
 /// 通过文件扩展名映射：
