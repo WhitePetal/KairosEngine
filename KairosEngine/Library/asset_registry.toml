@@ -23,8 +23,28 @@ guid = "1e674b9a-3de6-43ff-aec2-14cdd264b088"
 path = "./Preferences/Fonts"
 
 [[entries]]
+guid = "c58a8ecb-c28d-4ce9-b77b-c94470186607"
+path = "./Preferences/Fonts/LXGWWenKaiTC-Bold.ttf"
+
+[[entries]]
+guid = "dd1ea0cd-408d-4842-8da0-dd6705d64c9e"
+path = "./Preferences/Fonts/LXGWWenKaiTC-Light.ttf"
+
+[[entries]]
+guid = "55cd206b-736b-40a8-8b8b-f59ea8fffd3b"
+path = "./Preferences/Fonts/LXGWWenKaiTC-Regular.ttf"
+
+[[entries]]
 guid = "2885f4cf-2bc7-4747-93df-5b27a6efa888"
 path = "./Preferences/Fonts/NotoSansSC-Regular.ttf"
+
+[[entries]]
+guid = "5b6ffa6e-9cd5-41e4-9af3-f03b07063a09"
+path = "./Preferences/Fonts/SmileySans-Oblique.ttf"
+
+[[entries]]
+guid = "609e6e02-1797-4a47-aa80-b75ba82855ae"
+path = "./Preferences/Fonts/fusion-pixel-12px-monospaced-zh_hans.ttf"
 
 [[entries]]
 guid = "9cab8d21-1d04-443e-a601-3dbfda18b973"
