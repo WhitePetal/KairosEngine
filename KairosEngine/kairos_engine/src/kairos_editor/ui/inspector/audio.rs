@@ -4,17 +4,15 @@ use egui::{Color32, Pos2, Rect, RichText, Stroke, Vec2};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    asset_loader::assets::AssetsServer,
-    audio::{
+    asset_loader::assets::AssetsServer, audio::{
         audio::SerializedAudioAsset,
         spectrum::{FrequencyBin, compute_spectrum},
         waveform::{PcmData, WaveformPeak, compute_peaks},
-    },
-    kairos_editor::ui::{
+    }, kairos_editor::ui::{
         dialog::Dialog,
         inspector::Inspector,
         paths,
-    },
+    }, math,
 };
 
 // ============================================================
@@ -32,13 +30,13 @@ struct AudioInspectorStyle {
     /// FFT window size (power of 2).
     fft_size: usize, // 2048
     /// Background color for the waveform area (RGBA hex).
-    waveform_bg: String, // "#1E1E1E"
+    waveform_bg: math::Color32, // "#1E1E1E"
     /// Waveform line color (RGBA hex).
-    waveform_color: String, // "#4FC3F7"
+    waveform_color: math::Color32, // "#4FC3F7"
     /// Spectrum bar color (RGBA hex).
-    spectrum_color: String, // "#81C784"
+    spectrum_color: math::Color32, // "#81C784"
     /// Grid line color (RGBA hex).
-    grid_color: String, // "#3A3A3A"
+    grid_color: math::Color32, // "#3A3A3A"
 }
 
 impl AudioInspectorStyle {
@@ -55,29 +53,6 @@ impl AudioInspectorStyle {
         })?;
         Ok(style)
     }
-}
-
-impl Default for AudioInspectorStyle {
-    fn default() -> Self {
-        Self {
-            waveform_height: 120.0,
-            spectrum_height: 100.0,
-            waveform_buckets: 1024,
-            fft_size: 2048,
-            waveform_bg: "#1E1E1E".into(),
-            waveform_color: "#4FC3F7".into(),
-            spectrum_color: "#81C784".into(),
-            grid_color: "#3A3A3A".into(),
-        }
-    }
-}
-
-fn parse_color(hex: &str) -> Color32 {
-    let hex = hex.trim_start_matches('#');
-    let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0x1E);
-    let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0x1E);
-    let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0x1E);
-    Color32::from_rgb(r, g, b)
 }
 
 // ============================================================
@@ -115,7 +90,7 @@ impl Inspector for AudioInspector {
         path: &std::path::Path,
         _assets_server: &mut AssetsServer,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let style = AudioInspectorStyle::new().unwrap_or_default();
+        let style = AudioInspectorStyle::new()?;
         let asset_path = path.to_path_buf();
 
         let (pcm_data, peaks, load_error) = match Self::load_audio_data(&asset_path) {
@@ -147,7 +122,7 @@ impl Inspector for AudioInspector {
         _assets_server: &AssetsServer,
     ) {
         ui.separator();
-
+        
         // ---- info header ----
         if let Some(ref pcm) = self.model.pcm_data {
             ui.label(format!(
@@ -210,21 +185,19 @@ impl AudioInspector {
         let rect = resp.rect;
 
         // Background
-        let bg = parse_color(&style.waveform_bg);
-        painter.rect_filled(rect, 0.0, bg);
+        painter.rect_filled(rect, 0.0, style.waveform_bg);
 
         // Center line
         let mid_y = rect.center().y;
-        let grid = parse_color(&style.grid_color);
         painter.line_segment(
             [Pos2::new(rect.left(), mid_y), Pos2::new(rect.right(), mid_y)],
-            Stroke::new(1.0, grid),
+            Stroke::new(1.0, style.grid_color),
         );
 
         // Draw peaks
         if !self.model.peaks.is_empty() {
             let bar_width = rect.width() / self.model.peaks.len() as f32;
-            let wave_color = parse_color(&style.waveform_color);
+            let wave_color = style.waveform_color;
             let half_h = rect.height() * 0.45;
 
             for (i, peak) in self.model.peaks.iter().enumerate() {
@@ -296,8 +269,7 @@ impl AudioInspector {
         let rect = resp.rect;
 
         // Background
-        let bg = parse_color(&style.waveform_bg);
-        painter.rect_filled(rect, 0.0, bg);
+        painter.rect_filled(rect, 0.0, style.waveform_bg);
 
         // Compute or retrieve cached spectrum
         let bins = self.get_or_compute_spectrum();
@@ -317,7 +289,7 @@ impl AudioInspector {
         let max_display_bins = 512usize;
         let step = (bins.len() / max_display_bins).max(1);
         let bar_width = rect.width() / (bins.len() / step) as f32;
-        let spec_color = parse_color(&style.spectrum_color);
+        let spec_color = style.spectrum_color;
 
         for (i, chunk) in bins.chunks(step).enumerate() {
             // Max magnitude within this chunk
