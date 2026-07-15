@@ -6,11 +6,12 @@
 # 版本计划
 ### 0.1.0
 - 引擎GUI界面
-- Base Graphics
-- Base Input System
-- Base ECS base ENTT/Flecs
-- Base Physics System
-- Base Audio System
+- Base Graphics ✅
+- Base Input System ✅
+- Base ECS base ENTT/Flecs ✅
+- Base Physics System ✅
+- Base Audio System ✅
+- Demo: Football Game
 
 ### 0.2.0
 - Project/Asset System
@@ -18,6 +19,7 @@
 - Graphics Graph
 - Input Graph System
 - World Scenes System
+- Demo: Car Race Game
 
 ### 0.3.0
 - State Machine
@@ -25,12 +27,13 @@
 - GI System
 - Cinemachine System
 - AI Agent
+- Demo: Action Game
 
 ### ...
 
 ### 1.0.0
-- A Action Game Demo
 - ...
+- Demo: ...
 
 # Third-Party Dependencies
 ## Creats

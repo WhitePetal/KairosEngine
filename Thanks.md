@@ -6,3 +6,4 @@
 * [hecs](https://github.com/Ralith/hecs)
 * [Entt](https://github.com/skypjack/entt)
 * [Flecs](https://www.flecs.dev/flecs/)
+* [NotoSansSC-Regular Font](https://fonts.google.com/noto/specimen/Noto+Sans+SC?preview.script=Hans)

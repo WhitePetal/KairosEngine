@@ -3,6 +3,7 @@ name = "kairos_ecs_macros"
 version = "0.1.0"
 edition = "2024"
 description = "Proc macros for Kairos ECS"
+license = "MIT OR Apache-2.0"
 
 [lib]
 proc-macro = true

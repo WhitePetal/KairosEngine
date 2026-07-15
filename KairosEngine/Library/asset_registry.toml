@@ -19,6 +19,14 @@ guid = "44188a6d-364b-414b-be95-0dfddfa1ef80"
 path = "./Preferences"
 
 [[entries]]
+guid = "1e674b9a-3de6-43ff-aec2-14cdd264b088"
+path = "./Preferences/Fonts"
+
+[[entries]]
+guid = "2885f4cf-2bc7-4747-93df-5b27a6efa888"
+path = "./Preferences/Fonts/NotoSansSC-Regular.ttf"
+
+[[entries]]
 guid = "9cab8d21-1d04-443e-a601-3dbfda18b973"
 path = "./Preferences/Styles"
 
@@ -29,6 +37,10 @@ path = "./Preferences/Styles/AboutWindowStyle.toml"
 [[entries]]
 guid = "44f5c78d-268a-434a-8e21-075288d4fef0"
 path = "./Preferences/Styles/ConsoleWindowStyle.toml"
+
+[[entries]]
+guid = "f2c1fe29-388f-4fb1-976a-4e98ca2ae0d8"
+path = "./Preferences/Styles/DialogWindowStyle.toml"
 
 [[entries]]
 guid = "67088157-1a81-4b61-a27d-beca6a7530ef"
@@ -49,6 +61,14 @@ path = "./Preferences/Styles/HierarchyWindowStyle.toml"
 [[entries]]
 guid = "aad9488a-97bc-4e92-a6ad-e78a118e1425"
 path = "./Preferences/Styles/InspectorWindowStyle.toml"
+
+[[entries]]
+guid = "2105b999-3d64-4d86-bbea-bd99ea840c31"
+path = "./Preferences/Styles/Inspectors"
+
+[[entries]]
+guid = "686e3907-bd4b-4618-a95b-da396fc7c913"
+path = "./Preferences/Styles/Inspectors/TomlTable.toml"
 
 [[entries]]
 guid = "176e8faf-7bd5-4d48-94e3-3e3a79fd57cf"
@@ -89,6 +109,10 @@ path = "./docs/ai/README.md"
 [[entries]]
 guid = "c7049e44-1b41-4bcc-9709-7c2570e62365"
 path = "./docs/ai/coordinate-system-matrix-conventions.md"
+
+[[entries]]
+guid = "a3fa6567-d521-44fe-ada3-71ccd7b7711b"
+path = "./docs/ai/ecs-collision-callback-design.md"
 
 [[entries]]
 guid = "37b3ca86-15c2-4b10-a116-1f30f6197fe8"
@@ -249,6 +273,10 @@ path = "./kairos_engine/src/asset_loader/assets/asset/shader.rs"
 [[entries]]
 guid = "21aec5e2-c999-4d16-bba2-0964a7809483"
 path = "./kairos_engine/src/asset_loader/assets/asset/texture.rs"
+
+[[entries]]
+guid = "ec7f3053-4a45-485b-b991-d4e28f2793b4"
+path = "./kairos_engine/src/asset_loader/assets/asset/toml.rs"
 
 [[entries]]
 guid = "dc70caf3-7b6d-40b3-b7f0-cf0b7d537912"
@@ -503,6 +531,10 @@ guid = "199cea14-ef2f-42e1-991c-b10272ae9257"
 path = "./kairos_engine/src/kairos_editor/project_path_tree/create_request.rs"
 
 [[entries]]
+guid = "54f00062-a545-4fbd-ae60-5f64fb90fb9f"
+path = "./kairos_engine/src/kairos_editor/project_path_tree/tests.rs"
+
+[[entries]]
 guid = "13b4d18b-788f-4791-bc05-86804b0bef4c"
 path = "./kairos_engine/src/kairos_editor/project_path_tree/texture_path.rs"
 
@@ -553,6 +585,10 @@ path = "./kairos_engine/src/kairos_editor/ui/console_window.rs"
 [[entries]]
 guid = "5b0d5b71-476f-40c7-9077-47d83832055b"
 path = "./kairos_engine/src/kairos_editor/ui/dialog.rs"
+
+[[entries]]
+guid = "0c62bb43-7713-4aa3-9b5a-842f2454a798"
+path = "./kairos_engine/src/kairos_editor/ui/dialog_window.rs"
 
 [[entries]]
 guid = "371fa07b-f7d2-4f8b-a645-95c64b21c063"
@@ -639,12 +675,48 @@ guid = "8155cb1a-994c-4bd4-a1cf-1c8148b67c2a"
 path = "./kairos_engine/src/kairos_editor/ui/hierarchy_window.rs"
 
 [[entries]]
+guid = "8d0a7167-4508-4946-afcf-3f77bca3ae4f"
+path = "./kairos_engine/src/kairos_editor/ui/inspector"
+
+[[entries]]
+guid = "c6b0dbdd-b09c-4597-ab3f-4f097baed913"
+path = "./kairos_engine/src/kairos_editor/ui/inspector/creater.rs"
+
+[[entries]]
+guid = "2e3b4164-9ff8-4b15-8a78-2738a4a02ee6"
+path = "./kairos_engine/src/kairos_editor/ui/inspector/directory.rs"
+
+[[entries]]
+guid = "c78c4d0d-e35a-4dc7-8836-4ef9f5f690c5"
+path = "./kairos_engine/src/kairos_editor/ui/inspector/document.rs"
+
+[[entries]]
+guid = "30260743-ab86-4096-88f6-9c7571fa18f5"
+path = "./kairos_engine/src/kairos_editor/ui/inspector/text.rs"
+
+[[entries]]
+guid = "587ee851-2745-4270-af4e-a9a05c26c3c4"
+path = "./kairos_engine/src/kairos_editor/ui/inspector/toml.rs"
+
+[[entries]]
+guid = "dd1c80ee-b7eb-492d-97c3-8b68bbdec8ae"
+path = "./kairos_engine/src/kairos_editor/ui/inspector/unknown.rs"
+
+[[entries]]
+guid = "cb6a0ba2-afdc-4554-ab10-f0b3a5a30932"
+path = "./kairos_engine/src/kairos_editor/ui/inspector.rs"
+
+[[entries]]
 guid = "52ac2d33-bf3a-468e-914b-27fb6648d306"
 path = "./kairos_engine/src/kairos_editor/ui/inspector_window.rs"
 
 [[entries]]
 guid = "b8ca7ae4-d6c4-4a36-be6f-d8ece32c39ea"
 path = "./kairos_engine/src/kairos_editor/ui/layout.rs"
+
+[[entries]]
+guid = "09b62b1e-8465-4c37-955f-37c8238ac20f"
+path = "./kairos_engine/src/kairos_editor/ui/native_dialog.rs"
 
 [[entries]]
 guid = "9639513b-ff6c-448f-b264-3267ea4c0ae6"
