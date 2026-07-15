@@ -19,6 +19,8 @@ pub mod audio;
 pub mod background;
 pub mod consts;
 pub mod spatial;
+pub mod spectrum;
+pub mod waveform;
 
 pub struct AudioEngine {
     manager: AudioManager,

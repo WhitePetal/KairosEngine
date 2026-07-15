@@ -49,6 +49,8 @@ gltf = "1.4.1"
 foldhash = "0.2.0"
 uuid = { version = "1", features = ["v4", "serde"] }
 kira = { version = "0.12.0", features = ["serde"] }
+symphonia = { version = "0.5", default-features = false, features = ["mp3", "wav", "flac", "ogg", "isomp4"] }
+rustfft = "6"
 mint = "0.5"
 rapier3d = { version = "0.33.0", features = [ "simd-nightly", "parallel", "serde-serialize"] }
 egui_commonmark = "0.24.0"

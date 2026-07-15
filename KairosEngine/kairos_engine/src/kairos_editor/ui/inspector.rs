@@ -3,6 +3,7 @@ use crate::{
     kairos_editor::ui::{Messager, dialog::Dialog},
 };
 
+pub mod audio;
 pub mod creater;
 pub mod directory;
 pub mod document;

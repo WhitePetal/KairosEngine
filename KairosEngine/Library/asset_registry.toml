@@ -87,6 +87,10 @@ guid = "2105b999-3d64-4d86-bbea-bd99ea840c31"
 path = "./Preferences/Styles/Inspectors"
 
 [[entries]]
+guid = "2cc18e99-bbfa-4fa8-89ad-64ee31c1759b"
+path = "./Preferences/Styles/Inspectors/Audio.toml"
+
+[[entries]]
 guid = "cb946120-6962-4366-91bb-7378266c8fac"
 path = "./Preferences/Styles/Inspectors/Font.toml"
 
@@ -365,6 +369,14 @@ path = "./kairos_engine/src/audio/spatial.rs"
 [[entries]]
 guid = "077a0535-8f5d-471c-b22d-9ce73c8be801"
 path = "./kairos_engine/src/audio/spatial_audio_listener.rs"
+
+[[entries]]
+guid = "da5fc37f-0c1b-4ed1-9db1-b9de9189250c"
+path = "./kairos_engine/src/audio/spectrum.rs"
+
+[[entries]]
+guid = "1f63bdb2-b628-4bf8-bc59-119b4f2b0469"
+path = "./kairos_engine/src/audio/waveform.rs"
 
 [[entries]]
 guid = "1083f51d-70b6-4ae7-bdf6-73e38c11ce38"
@@ -709,6 +721,10 @@ path = "./kairos_engine/src/kairos_editor/ui/hierarchy_window.rs"
 [[entries]]
 guid = "8d0a7167-4508-4946-afcf-3f77bca3ae4f"
 path = "./kairos_engine/src/kairos_editor/ui/inspector"
+
+[[entries]]
+guid = "9f8262a1-f9c7-41ae-b1a9-eeb6036f9b70"
+path = "./kairos_engine/src/kairos_editor/ui/inspector/audio.rs"
 
 [[entries]]
 guid = "c6b0dbdd-b09c-4597-ab3f-4f097baed913"

@@ -5,9 +5,9 @@ use crate::{
     kairos_editor::{
         asset_registry::AssetKind,
         ui::inspector::{
-            Inspector, directory::DirectoryInspector, document::DocumentInspector,
-            font::FontInspector, text::TextInspector, toml::TomlTableInspector,
-            unknown::UnknownInspector,
+            Inspector, audio::AudioInspector, directory::DirectoryInspector,
+            document::DocumentInspector, font::FontInspector, text::TextInspector,
+            toml::TomlTableInspector, unknown::UnknownInspector,
         },
     },
 };
@@ -25,7 +25,7 @@ impl InspectorCreater {
             AssetKind::Texture => todo!(),
             AssetKind::Mesh => todo!(),
             AssetKind::Material => todo!(),
-            AssetKind::Audio => todo!(),
+            AssetKind::Audio => Ok(Box::new(AudioInspector::create(path, assets_server)?)),
             AssetKind::Shader => Ok(Box::new(TextInspector::create(path, assets_server)?)),
             AssetKind::Script => Ok(Box::new(TextInspector::create(path, assets_server)?)),
             AssetKind::Document => Ok(Box::new(DocumentInspector::create(path, assets_server)?)),

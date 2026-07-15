@@ -1,0 +1,13 @@
+# Audio Inspector Style
+# Waveform + Spectrum visualization settings
+
+waveform_height = 120.0
+spectrum_height = 100.0
+waveform_buckets = 1024
+fft_size = 2048
+
+# Colors (RGBA hex: #RRGGBB or #RRGGBBAA)
+waveform_bg = "#1E1E1E"
+waveform_color = "#4FC3F7"
+spectrum_color = "#81C784"
+grid_color = "#3A3A3A"
