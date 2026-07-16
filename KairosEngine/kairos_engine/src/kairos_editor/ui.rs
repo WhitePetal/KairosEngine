@@ -1,5 +1,7 @@
 use crate::{
-    asset_loader::assets::{AssetHandle, AssetsServer, asset::TextAssetsSystem},
+    asset_loader::assets::{
+        AssetHandle, AssetsServer, TomlTableAssetsSystem, asset::TextAssetsSystem,
+    },
     graphics::graphics_graph::GraphicsCommand,
     kairos_editor::{
         Engine,
@@ -7,7 +9,7 @@ use crate::{
         ui::{
             game_window::GameWindow,
             global_styles::{FontDataConfig, FontsConfig, GlobalStyles},
-            inspector::document::DocumentInspector,
+            inspector::{document::DocumentInspector, toml::TomlTableInspector},
             layout::{
                 EditorLayout, LayoutBottomContainer, LayoutContainerIds, LayoutLeftContainer,
                 LayoutRightContainer, Zone,
@@ -126,6 +128,11 @@ pub enum Message {
         PathBuf,
         Arc<AssetHandle<TextAssetsSystem>>,
         Arc<parking_lot::Mutex<Option<String>>>,
+    ),
+    TomlInspectorSave(
+        PathBuf,
+        Arc<AssetHandle<TomlTableAssetsSystem>>,
+        Arc<parking_lot::Mutex<Option<toml::Table>>>,
     ),
     /// Audio Inspector: toggle play/pause preview.
     ToggleAudioPreview,
@@ -565,6 +572,9 @@ impl Context {
                         handle,
                         content,
                     );
+                }
+                Message::TomlInspectorSave(path, handle, table) => {
+                    TomlTableInspector::save_table(&mut engine.assets_server, &path, handle, table);
                 }
             }
 

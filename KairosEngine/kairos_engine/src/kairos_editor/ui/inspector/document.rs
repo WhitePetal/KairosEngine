@@ -1,7 +1,7 @@
 use std::{
     cell::Cell,
     fs,
-    ops::{Deref, DerefMut},
+    ops::{DerefMut},
     path::PathBuf,
     sync::Arc,
 };
@@ -59,7 +59,6 @@ impl Inspector for DocumentInspector {
             let content_mut = content_mut.deref_mut();
             if content_mut.is_none() {
                 if let Some(content) = assets_server.get(&self.model.handle) {
-                    println!("wtf");
                     *content_mut = Some(content.clone());
                 }
                 ui.label("Document is Loading...");
@@ -140,13 +139,13 @@ impl DocumentInspector {
         handle: Arc<AssetHandle<TextAssetsSystem>>,
         content: Arc<Mutex<Option<String>>>,
     ) {
-        let content = content.lock();
-        if let Some(content) = content.deref() {
-            if let Some(doc_res) = assets_server.get_mut(&handle) {
-                doc_res.clone_from(content);
-            }
-            if let Err(e) = fs::write(path, content) {
+        let mut content = content.lock();
+        if let Some(content) = content.deref_mut().take() {
+            if let Err(e) = fs::write(path, &content) {
                 log::warn!("Failed to write Document '{}': {e}", path.display());
+            }
+            if let Some(doc_res) = assets_server.get_mut(&handle) {
+                *doc_res = content;
             }
         }
     }

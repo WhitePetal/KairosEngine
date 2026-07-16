@@ -1,8 +1,6 @@
 use std::fs;
 
-use crate::{
-    kairos_editor::ui::{dialog::Dialog, inspector::Inspector},
-};
+use crate::kairos_editor::ui::{dialog::Dialog, inspector::Inspector};
 
 struct TextInspectorModel {
     content: String,

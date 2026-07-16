@@ -1,7 +1,7 @@
 use std::{
     cell::Cell,
     fs,
-    ops::{Deref, DerefMut},
+    ops::{DerefMut},
     path::PathBuf,
     sync::Arc,
 };
@@ -10,12 +10,12 @@ use egui::Vec2;
 use egui_extras::{Column, TableBuilder, TableRow};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
-use toml::{Value, map::Map};
+use toml::{Table, Value};
 
 use crate::{
-    asset_loader::assets::AssetsServer,
+    asset_loader::assets::{AssetHandle, AssetsServer, TomlTableAssetsSystem},
     kairos_editor::ui::{
-        Messager,
+        Message, Messager,
         dialog::{ConfirmDialogWindow, Dialog},
         inspector::Inspector,
         paths,
@@ -50,7 +50,8 @@ impl TomlTableInspectorStyle {
 
 struct TomlTableInspectorModle {
     style: TomlTableInspectorStyle,
-    table: Arc<Mutex<Map<String, Value>>>,
+    handle: Arc<AssetHandle<TomlTableAssetsSystem>>,
+    table: Arc<Mutex<Option<Table>>>,
     path: PathBuf,
     dirty: Cell<bool>,
 }
@@ -62,15 +63,15 @@ pub struct TomlTableInspector {
 impl Inspector for TomlTableInspector {
     fn create(
         path: &std::path::Path,
-        _assets_server: &mut AssetsServer,
+        assets_server: &mut AssetsServer,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let style = TomlTableInspectorStyle::new()?;
-        let toml = fs::read(path)?;
-        let table = toml::from_slice(&toml)?;
         let path = path.to_path_buf();
+        let handle = assets_server.load(&path);
         let model = TomlTableInspectorModle {
             style,
-            table: Arc::new(Mutex::new(table)),
+            handle,
+            table: Arc::new(Mutex::new(None)),
             path,
             dirty: Cell::new(false),
         };
@@ -78,14 +79,27 @@ impl Inspector for TomlTableInspector {
         Ok(Self { model })
     }
 
-    fn draw(&self, ui: &mut egui::Ui, _messager: &mut Messager, _assets_server: &AssetsServer) {
+    fn draw(&self, ui: &mut egui::Ui, messager: &mut Messager, assets_server: &AssetsServer) {
+        {
+            let mut table_mut = self.model.table.lock();
+            let table_mut = table_mut.deref_mut();
+            if table_mut.is_none() {
+                if let Some(table) = assets_server.get(&self.model.handle) {
+                    *table_mut = Some(table.clone());
+                }
+                ui.label("Toml is Loading...");
+                return;
+            }
+        }
+
         ui.separator();
         let mut changed = false;
-
         {
             let table_ref = self.model.table.clone();
             let mut table_mut = table_ref.lock();
-            let table_mut = table_mut.deref_mut();
+            let Some(table_mut) = table_mut.deref_mut() else {
+                return;
+            };
 
             egui::ScrollArea::vertical()
                 .max_height(ui.available_height() - self.model.style.save_btn_height)
@@ -112,7 +126,11 @@ impl Inspector for TomlTableInspector {
                 self.model.style.save_btn_height,
             ));
             if ui.add_enabled(self.model.dirty.get(), save_btn).clicked() {
-                self.save();
+                messager.send(Message::TomlInspectorSave(
+                    self.model.path.clone(),
+                    self.model.handle.clone(),
+                    self.model.table.clone(),
+                ));
                 self.model.dirty.replace(false);
             }
             if self.model.dirty.get() {
@@ -123,6 +141,7 @@ impl Inspector for TomlTableInspector {
 
     fn on_exit(&mut self, _ctx: &egui::Context) -> Option<Box<dyn Dialog>> {
         if self.model.dirty.get() {
+            let handle = self.model.handle.clone();
             let table = self.model.table.clone();
             let path = self.model.path.clone();
             let dialog = ConfirmDialogWindow::new(
@@ -130,12 +149,9 @@ impl Inspector for TomlTableInspector {
                 "save the modify?".into(),
                 "save".into(),
                 "cancel".into(),
+                Some(Message::TomlInspectorSave(path, handle, table)),
                 None,
-                None,
-                Some(move || {
-                    let table = table.lock();
-                    Self::save_table(&path, table.deref());
-                }),
+                None::<fn()>,
                 None::<fn()>,
             );
             Some(Box::new(dialog))
@@ -146,22 +162,27 @@ impl Inspector for TomlTableInspector {
 }
 
 impl TomlTableInspector {
-    fn save(&self) {
-        let table = self.model.table.clone();
-        let table = table.lock();
-        Self::save_table(&self.model.path, table.deref());
-    }
-
-    pub fn save_table(path: &PathBuf, table: &toml::Table) {
-        let content = match toml::to_string_pretty(table) {
-            Ok(c) => c,
-            Err(e) => {
-                log::warn!("Failed to serialize TOML: {e}");
-                return;
+    pub fn save_table(
+        assets_server: &mut AssetsServer,
+        path: &PathBuf,
+        handle: Arc<AssetHandle<TomlTableAssetsSystem>>,
+        table: Arc<Mutex<Option<Table>>>,
+    ) {
+        let mut table = table.lock();
+        if let Some(table) = table.deref_mut().take() {
+            let content = match toml::to_string_pretty(&table) {
+                Ok(content) => content,
+                Err(e) => {
+                    log::warn!("Failed to serialize TOML: {e}");
+                    return;
+                }
+            };
+            if let Err(e) = fs::write(&path, &content) {
+                log::warn!("Failed to write TOML '{}': {e}", path.display());
             }
-        };
-        if let Err(e) = fs::write(&path, &content) {
-            log::warn!("Failed to write TOML '{}': {e}", path.display());
+            if let Some(table_res) = assets_server.get_mut(&handle) {
+                *table_res = table;
+            }
         }
     }
 

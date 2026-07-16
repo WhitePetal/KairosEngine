@@ -48,9 +48,7 @@ impl Loader {
         sender: tokio::sync::mpsc::Sender<LoadedEvent>,
         _denpendency_request_sender: tokio::sync::mpsc::Sender<DependencyLoadRequestEvent>,
     ) -> Result<(), Error> {
-        println!("load text");
         let content = tokio::fs::read_to_string(path.clone()).await?;
-        println!("load text success");
 
         sender
             .send(LoadedEvent {
