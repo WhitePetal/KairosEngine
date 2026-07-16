@@ -194,6 +194,7 @@ impl Drawer for InspectorWindow {
         // ---- common ----
         ui.label(format!("Path: {}", info.path.display()));
         ui.label(format!("GUID: {}", info.guid));
+        ui.separator();
 
         info.inspector.draw(ui, messager, &engine.assets_server);
     }
@@ -208,6 +209,10 @@ impl Drawer for InspectorWindow {
 
     fn get_title(&self) -> egui::WidgetText {
         self.model.style.title.to_owned().into()
+    }
+
+    fn scroll_bars(&self) -> [bool; 2] {
+        [true, false]
     }
 
     fn get_style_fileds(&self) -> Vec<super::ui_style_fields::StyleField> {

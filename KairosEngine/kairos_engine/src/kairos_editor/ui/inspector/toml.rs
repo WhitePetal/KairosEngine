@@ -74,7 +74,6 @@ impl Inspector for TomlTableInspector {
     }
 
     fn draw(&self, ui: &mut egui::Ui, messager: &mut Messager, assets_server: &AssetsServer) {
-        ui.separator();
         {
             let mut table_mut = self.model.table.lock();
             let table_mut = table_mut.deref_mut();
@@ -96,7 +95,7 @@ impl Inspector for TomlTableInspector {
             };
 
             egui::ScrollArea::vertical()
-                .max_height(ui.available_height() - self.model.style.save_btn_height)
+                .max_height(ui.available_height() - self.model.style.save_btn_height - 50.0)
                 .show(ui, |ui| {
                     Self::render_toml_table(
                         ui,

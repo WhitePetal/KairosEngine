@@ -146,8 +146,6 @@ impl Inspector for AudioInspector {
         messager: &mut crate::kairos_editor::ui::Messager,
         _assets_server: &AssetsServer,
     ) {
-        ui.separator();
-
         // ---- info header ----
         if let Some(ref pcm) = self.model.pcm_data {
             ui.label(format!(

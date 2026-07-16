@@ -220,6 +220,7 @@ pub trait Drawer: Any {
 
     fn close(&self, messager: &mut Messager);
 
+    /// [horizontal, vertical]
     fn scroll_bars(&self) -> [bool; 2] {
         [true, true]
     }

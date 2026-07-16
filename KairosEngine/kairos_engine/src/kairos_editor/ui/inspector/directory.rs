@@ -25,7 +25,6 @@ impl Inspector for DirectoryInspector {
         _messager: &mut crate::kairos_editor::ui::Messager,
         _assets_server: &crate::asset_loader::assets::AssetsServer,
     ) {
-        ui.separator();
         match fs::read_dir(&self.path) {
             Ok(entries) => {
                 let count = entries.filter_map(|e| e.ok()).count();

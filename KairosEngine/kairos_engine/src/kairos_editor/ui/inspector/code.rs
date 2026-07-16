@@ -45,7 +45,6 @@ impl Inspector for CodeInspector {
     }
 
     fn draw(&self, ui: &mut egui::Ui, messager: &mut Messager, assets_server: &AssetsServer) {
-        ui.separator();
         {
             let mut content_mut = self.model.content.lock();
             let content_mut = content_mut.deref_mut();
@@ -80,7 +79,7 @@ impl Inspector for CodeInspector {
             };
 
             egui::ScrollArea::vertical()
-                .max_height(ui.available_height() - 20.0)
+                .max_height(ui.available_height() - 20.0 - 50.0)
                 .show(ui, |ui| {
                     let editor = egui::TextEdit::multiline(content)
                         .font(egui::TextStyle::Monospace) // for cursor height
