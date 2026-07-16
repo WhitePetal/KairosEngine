@@ -1,4 +1,10 @@
-use std::{cell::Cell, fs, ops::DerefMut, path::PathBuf, sync::Arc};
+use std::{
+    cell::Cell,
+    fs,
+    ops::{Deref, DerefMut},
+    path::PathBuf,
+    sync::Arc,
+};
 
 use egui::Vec2;
 use egui_extras::{Column, TableBuilder, TableRow};
@@ -7,9 +13,9 @@ use serde::{Deserialize, Serialize};
 use toml::{Value, map::Map};
 
 use crate::{
-    asset_loader::assets::{AssetHandle, AssetsServer, TomlTableAssetsSystem},
+    asset_loader::assets::AssetsServer,
     kairos_editor::ui::{
-        Message, Messager,
+        Messager,
         dialog::{ConfirmDialogWindow, Dialog},
         inspector::Inspector,
         paths,
@@ -44,8 +50,7 @@ impl TomlTableInspectorStyle {
 
 struct TomlTableInspectorModle {
     style: TomlTableInspectorStyle,
-    toml_handle: Arc<AssetHandle<TomlTableAssetsSystem>>,
-    table: Arc<Mutex<Option<Map<String, Value>>>>,
+    table: Arc<Mutex<Map<String, Value>>>,
     path: PathBuf,
     dirty: Cell<bool>,
 }
@@ -57,14 +62,15 @@ pub struct TomlTableInspector {
 impl Inspector for TomlTableInspector {
     fn create(
         path: &std::path::Path,
-        assets_server: &mut AssetsServer,
+        _assets_server: &mut AssetsServer,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let style = TomlTableInspectorStyle::new()?;
+        let toml = fs::read(path)?;
+        let table = toml::from_slice(&toml)?;
         let path = path.to_path_buf();
         let model = TomlTableInspectorModle {
             style,
-            toml_handle: assets_server.load::<TomlTableAssetsSystem>(&path),
-            table: Arc::new(Mutex::new(None)),
+            table: Arc::new(Mutex::new(table)),
             path,
             dirty: Cell::new(false),
         };
@@ -72,82 +78,63 @@ impl Inspector for TomlTableInspector {
         Ok(Self { model })
     }
 
-    fn draw(&self, ui: &mut egui::Ui, messager: &mut Messager, assets_server: &AssetsServer) {
+    fn draw(&self, ui: &mut egui::Ui, _messager: &mut Messager, _assets_server: &AssetsServer) {
+        ui.separator();
+        let mut changed = false;
+
+        {
+            let table_ref = self.model.table.clone();
+            let mut table_mut = table_ref.lock();
+            let table_mut = table_mut.deref_mut();
+
+            egui::ScrollArea::vertical()
+                .max_height(ui.available_height() - self.model.style.save_btn_height)
+                .show(ui, |ui| {
+                    Self::render_toml_table(
+                        ui,
+                        self.model.style.row_height,
+                        &[],
+                        table_mut,
+                        &mut changed,
+                    );
+                });
+        }
+
         ui.separator();
 
-        let table_ref = self.model.table.clone();
-        let mut table_mut = table_ref.lock();
-        let table_mut = table_mut.deref_mut();
-        if table_mut.is_none() {
-            *table_mut = assets_server.get(&self.model.toml_handle).cloned();
+        if changed {
+            self.model.dirty.replace(true);
         }
-        match table_mut {
-            Some(table) => {
-                let mut changed = false;
-                egui::ScrollArea::vertical()
-                    .max_height(ui.available_height() - self.model.style.save_btn_height)
-                    .show(ui, |ui| {
-                        Self::render_toml_table(
-                            ui,
-                            self.model.style.row_height,
-                            messager,
-                            &[],
-                            table,
-                            &mut changed,
-                        );
-                    });
 
-                ui.separator();
-
-                if changed {
-                    messager.send(Message::UpdateInspectorToml(
-                        self.model.toml_handle.clone(),
-                        table_ref.clone(),
-                    ));
-                    self.model.dirty.replace(true);
-                }
-
-                ui.vertical_centered(|ui| {
-                    let save_btn = egui::Button::new("Save").min_size(Vec2::new(
-                        ui.available_width(),
-                        self.model.style.save_btn_height,
-                    ));
-                    if ui.add_enabled(self.model.dirty.get(), save_btn).clicked() {
-                        Self::save(
-                            self.model.toml_handle.clone(),
-                            &self.model.path,
-                            assets_server,
-                        );
-                        self.model.dirty.replace(false);
-                    }
-                    if self.model.dirty.get() {
-                        ui.label("* unsaved changes");
-                    }
-                });
+        ui.vertical_centered(|ui| {
+            let save_btn = egui::Button::new("Save").min_size(Vec2::new(
+                ui.available_width(),
+                self.model.style.save_btn_height,
+            ));
+            if ui.add_enabled(self.model.dirty.get(), save_btn).clicked() {
+                self.save();
+                self.model.dirty.replace(false);
             }
-            None => {
-                ui.label("loading toml");
+            if self.model.dirty.get() {
+                ui.label("* unsaved changes");
             }
-        }
+        });
     }
 
-    fn on_exit(
-        &mut self,
-        _ctx: &egui::Context,
-        assets_server: &AssetsServer,
-    ) -> Option<Box<dyn Dialog>> {
+    fn on_exit(&mut self, _ctx: &egui::Context) -> Option<Box<dyn Dialog>> {
         if self.model.dirty.get() {
-            let table = assets_server.get(&self.model.toml_handle).cloned();
+            let table = self.model.table.clone();
             let path = self.model.path.clone();
             let dialog = ConfirmDialogWindow::new(
                 "have modify not save".into(),
                 "save the modify?".into(),
                 "save".into(),
                 "cancel".into(),
+                None,
+                None,
                 Some(move || {
-                    if let Some(table) = table {
-                        Self::save_table(&path, &table);
-                    }
+                    let table = table.lock();
+                    Self::save_table(&path, table.deref());
                 }),
                 None::<fn()>,
             );
@@ -159,30 +146,10 @@ impl Inspector for TomlTableInspector {
 }
 
 impl TomlTableInspector {
-    pub fn update_table(
-        handle: Arc<AssetHandle<TomlTableAssetsSystem>>,
-        table: Arc<Mutex<Option<toml::Table>>>,
-        assets_server: &mut AssetsServer,
-    ) {
-        let origion = assets_server.get_mut(&handle);
-        if let Some(origion) = origion {
-            let mut table = table.lock();
-            if let Some(table) = table.take() {
-                *origion = table;
-            }
-        }
-    }
-
-    pub fn save(
-        handle: Arc<AssetHandle<TomlTableAssetsSystem>>,
-        path: &PathBuf,
-        assets_server: &AssetsServer,
-    ) {
-        let Some(table) = assets_server.get(&handle) else {
-            return;
-        };
-
-        Self::save_table(path, table);
+    fn save(&self) {
+        let table = self.model.table.clone();
+        let table = table.lock();
+        Self::save_table(&self.model.path, table.deref());
     }
 
     pub fn save_table(path: &PathBuf, table: &toml::Table) {
@@ -202,7 +169,6 @@ impl TomlTableInspector {
     fn render_toml_table(
         ui: &mut egui::Ui,
         row_height: f32,
-        messager: &mut Messager,
         path: &[String],
         table: &mut toml::Table,
         changed: &mut bool,
@@ -219,9 +185,7 @@ impl TomlTableInspector {
                 let mut full_path = path.to_vec();
                 full_path.push(key.clone());
                 body.row(row_height, |mut row| {
-                    Self::render_toml_field(
-                        &mut row, row_height, messager, &full_path, key, value, changed,
-                    );
+                    Self::render_toml_field(&mut row, row_height, &full_path, key, value, changed);
                 });
             }
         });
@@ -231,7 +195,6 @@ impl TomlTableInspector {
     fn render_toml_field(
         row: &mut TableRow,
         row_height: f32,
-        messager: &mut Messager,
         path: &[String],
         key: &str,
         value: &mut Value,
@@ -249,14 +212,14 @@ impl TomlTableInspector {
                     if let Ok(color) = math::Color32::from_hex(s) {
                         let mut color_ar = color.to_rgb_array();
                         let resp = ui.color_edit_button_srgb(&mut color_ar);
-                        if resp.changed() || resp.lost_focus() {
+                        if resp.changed() {
                             *s = math::Color32::from(color_ar).to_hex();
                             *changed = true;
                         }
                     } else {
                         let text_edit = egui::text_edit::TextEdit::singleline(s).clip_text(false);
                         let resp = ui.add(text_edit);
-                        if resp.changed() || resp.lost_focus() {
+                        if resp.changed() {
                             *changed = true;
                         }
                     }
@@ -305,7 +268,7 @@ impl TomlTableInspector {
                     egui::CollapsingHeader::new(key)
                         .default_open(false)
                         .show(ui, |ui| {
-                            Self::render_toml_table(ui, row_height, messager, path, t, changed);
+                            Self::render_toml_table(ui, row_height, path, t, changed);
                         });
                 }
             }

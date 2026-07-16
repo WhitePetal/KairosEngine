@@ -35,9 +35,5 @@ pub trait Inspector: Any {
 
     fn draw(&self, ui: &mut egui::Ui, messager: &mut Messager, assets_server: &AssetsServer);
 
-    fn on_exit(
-        &mut self,
-        ctx: &egui::Context,
-        assets_server: &AssetsServer,
-    ) -> Option<Box<dyn Dialog>>;
+    fn on_exit(&mut self, ctx: &egui::Context) -> Option<Box<dyn Dialog>>;
 }

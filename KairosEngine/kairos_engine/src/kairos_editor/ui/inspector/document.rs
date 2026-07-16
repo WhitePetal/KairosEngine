@@ -11,8 +11,9 @@ use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use parking_lot::Mutex;
 
 use crate::{
-    asset_loader::assets::AssetsServer,
+    asset_loader::assets::{AssetHandle, AssetsServer, asset::TextAssetsSystem},
     kairos_editor::ui::{
+        Message, Messager,
         dialog::{ConfirmDialogWindow, Dialog},
         inspector::Inspector,
     },
@@ -20,6 +21,7 @@ use crate::{
 
 struct DocumentModel {
     path: PathBuf,
+    handle: Arc<AssetHandle<TextAssetsSystem>>,
     content: Arc<Mutex<Option<String>>>,
 }
 
@@ -31,14 +33,17 @@ pub struct DocumentInspector {
 impl Inspector for DocumentInspector {
     fn create(
         path: &std::path::Path,
-        _assets_server: &mut crate::asset_loader::assets::AssetsServer,
+        assets_server: &mut AssetsServer,
     ) -> Result<Self, Box<dyn std::error::Error>>
     where
         Self: Sized,
     {
-        let content = Arc::new(Mutex::new(Some(fs::read_to_string(path)?)));
+        let path = path.to_path_buf();
+        let handle = assets_server.load(&path);
+        let content = Arc::new(Mutex::new(None));
         let model = DocumentModel {
-            path: path.to_path_buf(),
+            path,
+            handle,
             content,
         };
 
@@ -48,19 +53,31 @@ impl Inspector for DocumentInspector {
         })
     }
 
-    fn draw(
-        &self,
-        ui: &mut egui::Ui,
-        _messager: &mut crate::kairos_editor::ui::Messager,
-        _assets_server: &crate::asset_loader::assets::AssetsServer,
-    ) {
+    fn draw(&self, ui: &mut egui::Ui, messager: &mut Messager, assets_server: &AssetsServer) {
+        {
+            let mut content_mut = self.model.content.lock();
+            let content_mut = content_mut.deref_mut();
+            if content_mut.is_none() {
+                if let Some(content) = assets_server.get(&self.model.handle) {
+                    println!("wtf");
+                    *content_mut = Some(content.clone());
+                }
+                ui.label("Document is Loading...");
+                return;
+            }
+        }
+
         ui.separator();
         ui.vertical_centered(|ui| {
             if self.editing.get() {
                 let btn = egui::Button::new("Save").min_size(Vec2::new(ui.available_width(), 20.0));
                 if ui.add(btn).clicked() {
                     self.editing.replace(false);
-                    self.save();
+                    messager.send(Message::DocumentInspectorSave(
+                        self.model.path.clone(),
+                        self.model.handle.clone(),
+                        self.model.content.clone(),
+                    ));
                 }
             } else {
                 let btn = egui::Button::new("Edit").min_size(Vec2::new(ui.available_width(), 20.0));
@@ -79,7 +96,9 @@ impl Inspector for DocumentInspector {
                 .show(ui, |ui| {
                     ui.label(format!("Lines: {line_count}"));
                     if self.editing.get() {
-                        ui.text_edit_multiline(content_mut);
+                        let editor =
+                            egui::TextEdit::multiline(content_mut).min_size(ui.available_size());
+                        ui.add(editor);
                     } else {
                         CommonMarkViewer::new().show(
                             ui,
@@ -91,23 +110,20 @@ impl Inspector for DocumentInspector {
         }
     }
 
-    fn on_exit(
-        &mut self,
-        _ctx: &egui::Context,
-        _assets_server: &AssetsServer,
-    ) -> Option<Box<dyn Dialog>> {
+    fn on_exit(&mut self, _ctx: &egui::Context) -> Option<Box<dyn Dialog>> {
         if self.editing.get() {
             self.editing.replace(false);
             let content = self.model.content.clone();
             let path = self.model.path.clone();
+            let handle = self.model.handle.clone();
             let dialog = ConfirmDialogWindow::new(
                 "have modify not save".into(),
                 "save the modify?".into(),
                 "save".into(),
                 "cancel".into(),
-                Some(move || {
-                    Self::save_content(&path, content);
-                }),
+                Some(Message::DocumentInspectorSave(path, handle, content)),
+                None,
+                None::<fn()>,
                 None::<fn()>,
             );
             Some(Box::new(dialog))
@@ -118,14 +134,17 @@ impl Inspector for DocumentInspector {
 }
 
 impl DocumentInspector {
-    fn save(&self) {
-        let content = self.model.content.clone();
-        Self::save_content(&self.model.path, content);
-    }
-
-    fn save_content(path: &PathBuf, content: Arc<Mutex<Option<String>>>) {
+    pub fn save_content(
+        assets_server: &mut AssetsServer,
+        path: &PathBuf,
+        handle: Arc<AssetHandle<TextAssetsSystem>>,
+        content: Arc<Mutex<Option<String>>>,
+    ) {
         let content = content.lock();
         if let Some(content) = content.deref() {
+            if let Some(doc_res) = assets_server.get_mut(&handle) {
+                doc_res.clone_from(content);
+            }
             if let Err(e) = fs::write(path, content) {
                 log::warn!("Failed to write Document '{}': {e}", path.display());
             }

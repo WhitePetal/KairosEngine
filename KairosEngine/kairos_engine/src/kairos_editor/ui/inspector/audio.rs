@@ -175,11 +175,7 @@ impl Inspector for AudioInspector {
         self.draw_spectrum(ui);
     }
 
-    fn on_exit(
-        &mut self,
-        _ctx: &egui::Context,
-        _assets_server: &AssetsServer,
-    ) -> Option<Box<dyn Dialog>> {
+    fn on_exit(&mut self, _ctx: &egui::Context) -> Option<Box<dyn Dialog>> {
         self.stop_playback();
         None
     }

@@ -307,6 +307,10 @@ guid = "3103aaf6-f332-465c-879b-7a8e5ef3cf73"
 path = "./kairos_engine/src/asset_loader/assets/asset/shader.rs"
 
 [[entries]]
+guid = "c5f6bc80-17f0-40e3-8ba0-e0692df78ce2"
+path = "./kairos_engine/src/asset_loader/assets/asset/text.rs"
+
+[[entries]]
 guid = "21aec5e2-c999-4d16-bba2-0964a7809483"
 path = "./kairos_engine/src/asset_loader/assets/asset/texture.rs"
 

@@ -1,7 +1,6 @@
 use std::fs;
 
 use crate::{
-    asset_loader::assets::AssetsServer,
     kairos_editor::ui::{dialog::Dialog, inspector::Inspector},
 };
 
@@ -47,11 +46,7 @@ impl Inspector for TextInspector {
             });
     }
 
-    fn on_exit(
-        &mut self,
-        _ctx: &egui::Context,
-        _assets_server: &AssetsServer,
-    ) -> Option<Box<dyn Dialog>> {
+    fn on_exit(&mut self, _ctx: &egui::Context) -> Option<Box<dyn Dialog>> {
         None
     }
 }

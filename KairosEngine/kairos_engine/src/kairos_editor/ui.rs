@@ -1,5 +1,5 @@
 use crate::{
-    asset_loader::assets::{AssetHandle, AssetsServer, TomlTableAssetsSystem},
+    asset_loader::assets::{AssetHandle, AssetsServer, asset::TextAssetsSystem},
     graphics::graphics_graph::GraphicsCommand,
     kairos_editor::{
         Engine,
@@ -7,6 +7,7 @@ use crate::{
         ui::{
             game_window::GameWindow,
             global_styles::{FontDataConfig, FontsConfig, GlobalStyles},
+            inspector::document::DocumentInspector,
             layout::{
                 EditorLayout, LayoutBottomContainer, LayoutContainerIds, LayoutLeftContainer,
                 LayoutRightContainer, Zone,
@@ -21,6 +22,7 @@ use egui::{self};
 use std::{
     any::{Any, TypeId, type_name},
     collections::VecDeque,
+    path::PathBuf,
     sync::Arc,
 };
 
@@ -119,10 +121,11 @@ pub enum Message {
     OpenProjectNode(petgraph::graph::NodeIndex),
     /// ProjectWindow: 删除节点 (node_idx)
     DeleteProjectNode(petgraph::graph::NodeIndex),
-    /// InspectorWindow: 更新 TOML 字段值 (key_path, new_value)
-    UpdateInspectorToml(
-        Arc<AssetHandle<TomlTableAssetsSystem>>,
-        Arc<parking_lot::Mutex<Option<toml::Table>>>,
+
+    DocumentInspectorSave(
+        PathBuf,
+        Arc<AssetHandle<TextAssetsSystem>>,
+        Arc<parking_lot::Mutex<Option<String>>>,
     ),
     /// Audio Inspector: toggle play/pause preview.
     ToggleAudioPreview,
@@ -300,7 +303,7 @@ impl Context {
 
         // dialogs
         self.dialogs.retain(|dialog| {
-            let state = dialog.draw(ui);
+            let state = dialog.draw(ui, &mut self.messager);
             match state {
                 dialog::DialogState::Opening => true,
                 dialog::DialogState::Closed => false,
@@ -447,9 +450,7 @@ impl Context {
                         project_window.select_node(node);
                         let info = project_window.get_selected_node_info(&mut engine.assets_server);
                         if let Some(inspector) = self.get_window_mut::<InspectorWindow>() {
-                            if let Some(dialog) =
-                                inspector.set_selected(ui.ctx(), &mut engine.assets_server, info)
-                            {
+                            if let Some(dialog) = inspector.set_selected(ui.ctx(), info) {
                                 self.dialogs.push(dialog);
                             }
                         }
@@ -489,13 +490,6 @@ impl Context {
                     if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
                         project_window.delete_node(node_idx);
                     }
-                }
-                Message::UpdateInspectorToml(handle, table) => {
-                    inspector::toml::TomlTableInspector::update_table(
-                        handle,
-                        table,
-                        &mut engine.assets_server,
-                    );
                 }
                 Message::ToggleAudioPreview => {
                     if let Some(inspector_window) = self.get_window_mut::<InspectorWindow>() {
@@ -563,6 +557,14 @@ impl Context {
                     if let Some(scene_window) = self.get_window_mut::<SceneWindow>() {
                         scene_window.on_camera_fly(right, forward, dt);
                     }
+                }
+                Message::DocumentInspectorSave(path, handle, content) => {
+                    DocumentInspector::save_content(
+                        &mut engine.assets_server,
+                        &path,
+                        handle,
+                        content,
+                    );
                 }
             }
 

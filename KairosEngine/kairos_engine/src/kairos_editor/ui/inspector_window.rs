@@ -6,7 +6,6 @@ use std::{
 };
 
 use crate::{
-    asset_loader::assets::AssetsServer,
     kairos_editor::{
         Engine,
         asset_registry::{AssetKind, Guid},
@@ -105,14 +104,13 @@ impl InspectorWindow {
     pub fn set_selected(
         &mut self,
         ctx: &egui::Context,
-        assets_server: &AssetsServer,
         info: Option<InspectorNodeInfo>,
     ) -> Option<Box<dyn Dialog>> {
         let mut dialog = None;
         if self.model.selected != info
             && let Some(selected) = &mut self.model.selected
         {
-            dialog = selected.inspector.on_exit(ctx, assets_server);
+            dialog = selected.inspector.on_exit(ctx);
         }
         self.model.selected = info;
         dialog

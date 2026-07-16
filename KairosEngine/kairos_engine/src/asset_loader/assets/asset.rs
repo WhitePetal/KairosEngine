@@ -3,6 +3,7 @@ mod font;
 mod material;
 mod mesh;
 mod shader;
+mod text;
 mod texture;
 mod toml;
 
@@ -22,6 +23,7 @@ pub use font::FontAssetsSystem;
 pub use material::MaterialAssetsSystem;
 pub use mesh::MeshAssetsSystem;
 pub use shader::ShaderAssetsSystem;
+pub use text::TextAssetsSystem;
 pub use texture::TextureAssetsSystem;
 pub use toml::TomlTableAssetsSystem;
 

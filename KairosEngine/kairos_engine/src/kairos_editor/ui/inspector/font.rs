@@ -136,7 +136,6 @@ impl Inspector for FontInspector {
     fn on_exit(
         &mut self,
         ctx: &egui::Context,
-        _assets_server: &AssetsServer,
     ) -> Option<Box<dyn crate::kairos_editor::ui::dialog::Dialog>> {
         self.unregister(ctx);
         None
