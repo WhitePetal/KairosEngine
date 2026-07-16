@@ -10,7 +10,6 @@ pub mod creater;
 pub mod directory;
 pub mod document;
 pub mod font;
-pub mod text;
 pub mod toml;
 pub mod unknown;
 
