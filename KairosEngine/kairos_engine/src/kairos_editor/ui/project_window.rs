@@ -5,24 +5,15 @@ pub mod hierarchy_panel;
 use std::{any::type_name, cell::Cell, fs, ops::Deref, sync::Arc};
 
 use crate::{
-    asset_loader::assets::AssetsServer,
-    kairos_editor::{
-        Engine,
-        asset_registry::{AssetKind, AssetRegistry},
-        project_path_tree::{ProjectPathGraph, create_request::CreateRequest},
-        ui::{
-            Messager,
-            global_styles::GlobalStyles,
-            inspector::creater::InspectorCreater,
-            project_window::{
+    asset_loader::assets::AssetsServer, kairos_editor::{
+        Engine, asset_registry::{AssetKind, AssetRegistry}, project_path_tree::{ProjectPathGraph, create_request::CreateRequest}, ui::{
+            self, Messager, global_styles::GlobalStyles, inspector::creater::InspectorCreater, project_window::{
                 content_panel::{ContentPanel, ContentStyle},
                 context_menu::ContextMenuState,
                 hierarchy_panel::{HierarchyPanel, HierarchyStyle},
             },
         },
-    },
-    kairos_game::KairosGame,
-    log::Log,
+    }, kairos_game::KairosGame, log::Log,
 };
 use parking_lot::Mutex;
 use petgraph::graph::NodeIndex;
@@ -306,6 +297,25 @@ impl ProjectWindow {
         }
     }
 
+    /// 绘制底部栏：当有文件节点被选中时，展示选中文件的路径。
+    fn draw_bottom_bar(
+        ui: &mut egui::Ui,
+        graph: &ProjectPathGraph,
+        style: &ProjectWindowStyle,
+        selected_node: Option<NodeIndex>,
+    ) {
+        if let Some(node) = selected_node {
+            if let Some(data) = graph.get_node(node) && let Some(path) = data.path.to_str() {
+                ui.label(
+                    egui::RichText::new(path)
+                        .size(style.content.bottom_bar_font_size)
+                        .color(style.content.bottom_bar_text_color),
+                );
+            }
+
+        }
+    }
+
     /// 删除节点。
     pub fn delete_node(&mut self, node: NodeIndex) {
         match self
@@ -379,10 +389,11 @@ impl Drawer for ProjectWindow {
         // 清除一次性标记，下一帧不再强制展开
         self.model.force_expand_to.set(None);
 
-        // 右侧：Content Panel（只垂直滚动，水平自然换行）
+        // 右侧：Content Panel
         egui::CentralPanel::default().show(ui, |ui| {
             egui::ScrollArea::vertical()
                 .id_salt("content_scroll")
+                .max_height(ui.available_height() - self.model.style.content.bottom_bar_height - ui::DEFAULT_SPEATOR_HEIGHT)
                 .show(ui, |ui| {
                     ContentPanel::draw(
                         ui,
@@ -395,6 +406,10 @@ impl Drawer for ProjectWindow {
                         renaming_node,
                         renaming_buffer,
                     );
+                });
+                ui.separator();
+                ui.vertical(|ui| {
+                    Self::draw_bottom_bar(ui, &self.model.project_path_graph, &self.model.style, self.model.selected_node);
                 });
         });
     }

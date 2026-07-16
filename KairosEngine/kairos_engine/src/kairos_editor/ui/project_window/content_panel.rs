@@ -31,6 +31,11 @@ pub struct ContentStyle {
     pub cell_spacing_x: f32,
     /// cell 之间的垂直间隔
     pub cell_spacing_y: f32,
+    // ---- 底部栏（选中文件路径）----
+    pub bottom_bar_height: f32,
+    pub bottom_bar_background_color: math::Color32,
+    pub bottom_bar_text_color: math::Color32,
+    pub bottom_bar_font_size: f32,
 }
 
 pub struct ContentPanel {}
