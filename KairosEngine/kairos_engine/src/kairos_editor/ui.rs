@@ -70,6 +70,9 @@ pub mod scene_window;
 pub mod tool_bar;
 pub mod ui_style_fields;
 
+pub const DEFAULT_SPEATOR_HEIGHT: f32 = 20.0;
+pub const DEFAULT_LABEL_HEIGHT: f32 = 30.0;
+
 pub enum Message {
     CreateToolbar,
     InitLayout,

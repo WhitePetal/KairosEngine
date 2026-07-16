@@ -9,7 +9,7 @@ use toml::{Table, Value};
 use crate::{
     asset_loader::assets::{AssetHandle, AssetsServer, TomlTableAssetsSystem},
     kairos_editor::ui::{
-        Message, Messager,
+        self, Message, Messager,
         dialog::{ConfirmDialogWindow, Dialog},
         inspector::Inspector,
         paths,
@@ -95,7 +95,12 @@ impl Inspector for TomlTableInspector {
             };
 
             egui::ScrollArea::vertical()
-                .max_height(ui.available_height() - self.model.style.save_btn_height - 50.0)
+                .max_height(
+                    ui.available_height()
+                        - self.model.style.save_btn_height
+                        - ui::DEFAULT_SPEATOR_HEIGHT
+                        - ui::DEFAULT_LABEL_HEIGHT,
+                )
                 .show(ui, |ui| {
                     Self::render_toml_table(
                         ui,

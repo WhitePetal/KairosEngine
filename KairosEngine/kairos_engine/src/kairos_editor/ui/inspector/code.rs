@@ -2,17 +2,36 @@ use std::{cell::Cell, fs, ops::DerefMut, path::PathBuf, sync::Arc};
 
 use egui::Vec2;
 use parking_lot::Mutex;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     asset_loader::assets::{AssetHandle, AssetsServer, asset::TextAssetsSystem},
     kairos_editor::ui::{
-        Message, Messager,
+        self, Message, Messager,
         dialog::{ConfirmDialogWindow, Dialog},
         inspector::Inspector,
+        paths,
     },
+    math,
 };
 
+#[derive(Debug, Serialize, Deserialize)]
+struct CodeStyle {
+    save_button_height: f32,
+    desired_rows: usize,
+    dark_background_color: math::Color32,
+    bright_background_color: math::Color32,
+}
+impl CodeStyle {
+    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        let bytes = fs::read(paths::PATH_CODE_INSPECTOR_STYLE)?;
+        let style = toml::from_slice(&bytes)?;
+        Ok(style)
+    }
+}
+
 struct CodeModel {
+    style: CodeStyle,
     path: PathBuf,
     handle: Arc<AssetHandle<TextAssetsSystem>>,
     content: Arc<Mutex<Option<String>>>,
@@ -31,10 +50,12 @@ impl Inspector for CodeInspector {
     where
         Self: Sized,
     {
+        let style = CodeStyle::new()?;
         let path = path.to_path_buf();
         let handle = assets_server.load(&path);
         let content = Arc::new(Mutex::new(None));
         let model = CodeModel {
+            style,
             path,
             handle,
             content,
@@ -79,23 +100,27 @@ impl Inspector for CodeInspector {
             };
 
             egui::ScrollArea::vertical()
-                .max_height(ui.available_height() - 20.0 - 50.0)
+                .max_height(
+                    ui.available_height()
+                        - self.model.style.save_button_height
+                        - ui::DEFAULT_SPEATOR_HEIGHT
+                        - ui::DEFAULT_LABEL_HEIGHT,
+                )
                 .show(ui, |ui| {
                     let editor = egui::TextEdit::multiline(content)
                         .font(egui::TextStyle::Monospace) // for cursor height
                         .code_editor()
-                        .desired_rows(10)
+                        .desired_rows(self.model.style.desired_rows)
                         .lock_focus(true)
                         .desired_width(f32::INFINITY)
                         .layouter(&mut layouter);
                     let editor = {
-                        use egui::Color32;
                         let background_color = if theme.is_dark() {
-                            Color32::BLACK
+                            self.model.style.dark_background_color
                         } else {
-                            Color32::WHITE
+                            self.model.style.bright_background_color
                         };
-                        editor.background_color(background_color)
+                        editor.background_color(background_color.into())
                     };
                     let edit = ui.add(editor);
                     if edit.changed() {

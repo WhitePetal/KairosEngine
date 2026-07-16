@@ -19,3 +19,6 @@ pub const PATH_TOML_TABLE_INSPECTOR_STYLE: &'static str =
     "Preferences/Styles/Inspectors/TomlTable.toml";
 pub const PATH_FONT_INSPECTOR_STYLE: &'static str = "Preferences/Styles/Inspectors/Font.toml";
 pub const PATH_AUDIO_INSPECTOR_STYLE: &'static str = "Preferences/Styles/Inspectors/Audio.toml";
+pub const PATH_DOCUMENT_INSPECTOR_STYLE: &'static str =
+    "Preferences/Styles/Inspectors/Document.toml";
+pub const PATH_CODE_INSPECTOR_STYLE: &'static str = "Preferences/Styles/Inspectors/Code.toml";

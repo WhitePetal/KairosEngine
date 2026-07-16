@@ -91,6 +91,14 @@ guid = "2cc18e99-bbfa-4fa8-89ad-64ee31c1759b"
 path = "./Preferences/Styles/Inspectors/Audio.toml"
 
 [[entries]]
+guid = "3ac74790-8e17-45a8-bd2b-e6ec9a8b16ac"
+path = "./Preferences/Styles/Inspectors/Code.toml"
+
+[[entries]]
+guid = "67ae827e-6c17-423b-ab9e-d44ed11ac564"
+path = "./Preferences/Styles/Inspectors/Document.toml"
+
+[[entries]]
 guid = "cb946120-6962-4366-91bb-7378266c8fac"
 path = "./Preferences/Styles/Inspectors/Font.toml"
 

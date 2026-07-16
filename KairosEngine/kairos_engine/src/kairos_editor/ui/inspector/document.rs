@@ -3,6 +3,7 @@ use std::{cell::Cell, fs, ops::DerefMut, path::PathBuf, sync::Arc};
 use egui::Vec2;
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use parking_lot::Mutex;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     asset_loader::assets::{AssetHandle, AssetsServer, asset::TextAssetsSystem},
@@ -10,10 +11,24 @@ use crate::{
         Message, Messager,
         dialog::{ConfirmDialogWindow, Dialog},
         inspector::Inspector,
+        paths,
     },
 };
 
+#[derive(Debug, Serialize, Deserialize)]
+struct DocumentStyle {
+    button_height: f32,
+}
+impl DocumentStyle {
+    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        let bytes = fs::read(paths::PATH_DOCUMENT_INSPECTOR_STYLE)?;
+        let style = toml::from_slice(&bytes)?;
+        Ok(style)
+    }
+}
+
 struct DocumentModel {
+    style: DocumentStyle,
     path: PathBuf,
     handle: Arc<AssetHandle<TextAssetsSystem>>,
     content: Arc<Mutex<Option<String>>>,
@@ -32,10 +47,12 @@ impl Inspector for DocumentInspector {
     where
         Self: Sized,
     {
+        let style = DocumentStyle::new()?;
         let path = path.to_path_buf();
         let handle = assets_server.load(&path);
         let content = Arc::new(Mutex::new(None));
         let model = DocumentModel {
+            style,
             path,
             handle,
             content,
@@ -62,7 +79,10 @@ impl Inspector for DocumentInspector {
 
         ui.vertical_centered(|ui| {
             if self.editing.get() {
-                let btn = egui::Button::new("Save").min_size(Vec2::new(ui.available_width(), 20.0));
+                let btn = egui::Button::new("Save").min_size(Vec2::new(
+                    ui.available_width(),
+                    self.model.style.button_height,
+                ));
                 if ui.add(btn).clicked() {
                     self.editing.replace(false);
                     messager.send(Message::DocumentInspectorSave(
@@ -72,7 +92,10 @@ impl Inspector for DocumentInspector {
                     ));
                 }
             } else {
-                let btn = egui::Button::new("Edit").min_size(Vec2::new(ui.available_width(), 20.0));
+                let btn = egui::Button::new("Edit").min_size(Vec2::new(
+                    ui.available_width(),
+                    self.model.style.button_height,
+                ));
                 if ui.add(btn).clicked() {
                     self.editing.replace(true);
                 }
