@@ -1,10 +1,4 @@
-use std::{
-    cell::Cell,
-    fs,
-    ops::{DerefMut},
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{cell::Cell, fs, ops::DerefMut, path::PathBuf, sync::Arc};
 
 use egui::Vec2;
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
@@ -54,6 +48,7 @@ impl Inspector for DocumentInspector {
     }
 
     fn draw(&self, ui: &mut egui::Ui, messager: &mut Messager, assets_server: &AssetsServer) {
+        ui.separator();
         {
             let mut content_mut = self.model.content.lock();
             let content_mut = content_mut.deref_mut();
@@ -66,7 +61,6 @@ impl Inspector for DocumentInspector {
             }
         }
 
-        ui.separator();
         ui.vertical_centered(|ui| {
             if self.editing.get() {
                 let btn = egui::Button::new("Save").min_size(Vec2::new(ui.available_width(), 20.0));

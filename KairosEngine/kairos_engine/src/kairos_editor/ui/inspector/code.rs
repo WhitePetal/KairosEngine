@@ -1,0 +1,170 @@
+use std::{cell::Cell, fs, ops::DerefMut, path::PathBuf, sync::Arc};
+
+use egui::Vec2;
+use parking_lot::Mutex;
+
+use crate::{
+    asset_loader::assets::{AssetHandle, AssetsServer, asset::TextAssetsSystem},
+    kairos_editor::ui::{
+        Message, Messager,
+        dialog::{ConfirmDialogWindow, Dialog},
+        inspector::Inspector,
+    },
+};
+
+struct CodeModel {
+    path: PathBuf,
+    handle: Arc<AssetHandle<TextAssetsSystem>>,
+    content: Arc<Mutex<Option<String>>>,
+    dirty: Cell<bool>,
+}
+
+pub struct CodeInspector {
+    model: CodeModel,
+}
+
+impl Inspector for CodeInspector {
+    fn create(
+        path: &std::path::Path,
+        assets_server: &mut AssetsServer,
+    ) -> Result<Self, Box<dyn std::error::Error>>
+    where
+        Self: Sized,
+    {
+        let path = path.to_path_buf();
+        let handle = assets_server.load(&path);
+        let content = Arc::new(Mutex::new(None));
+        let model = CodeModel {
+            path,
+            handle,
+            content,
+            dirty: Cell::new(false),
+        };
+
+        Ok(Self { model })
+    }
+
+    fn draw(&self, ui: &mut egui::Ui, messager: &mut Messager, assets_server: &AssetsServer) {
+        ui.separator();
+        {
+            let mut content_mut = self.model.content.lock();
+            let content_mut = content_mut.deref_mut();
+            if content_mut.is_none() {
+                if let Some(content) = assets_server.get(&self.model.handle) {
+                    *content_mut = Some(content.clone());
+                }
+                ui.label("Rust File is Loading...");
+                return;
+            }
+        }
+
+        let mut changed = false;
+        {
+            let mut content_mut = self.model.content.lock();
+            let Some(content) = content_mut.deref_mut() else {
+                return;
+            };
+            let theme =
+                egui_extras::syntax_highlighting::CodeTheme::from_memory(ui.ctx(), ui.style());
+
+            let mut layouter = |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap_width: f32| {
+                let mut layout_job = egui_extras::syntax_highlighting::highlight(
+                    ui.ctx(),
+                    ui.style(),
+                    &theme,
+                    buf.as_str(),
+                    "rust",
+                );
+                layout_job.wrap.max_width = wrap_width;
+                ui.fonts_mut(|f| f.layout_job(layout_job))
+            };
+
+            egui::ScrollArea::vertical()
+                .max_height(ui.available_height() - 20.0)
+                .show(ui, |ui| {
+                    let editor = egui::TextEdit::multiline(content)
+                        .font(egui::TextStyle::Monospace) // for cursor height
+                        .code_editor()
+                        .desired_rows(10)
+                        .lock_focus(true)
+                        .desired_width(f32::INFINITY)
+                        .layouter(&mut layouter);
+                    let editor = {
+                        use egui::Color32;
+                        let background_color = if theme.is_dark() {
+                            Color32::BLACK
+                        } else {
+                            Color32::WHITE
+                        };
+                        editor.background_color(background_color)
+                    };
+                    let edit = ui.add(editor);
+                    if edit.changed() {
+                        changed = true;
+                    }
+                });
+        }
+
+        ui.separator();
+
+        if changed {
+            self.model.dirty.replace(true);
+        }
+
+        ui.vertical_centered(|ui| {
+            let save_btn =
+                egui::Button::new("Save").min_size(Vec2::new(ui.available_width(), 20.0));
+            if ui.add_enabled(self.model.dirty.get(), save_btn).clicked() {
+                messager.send(Message::CodeInspectorSave(
+                    self.model.path.clone(),
+                    self.model.handle.clone(),
+                    self.model.content.clone(),
+                ));
+                self.model.dirty.replace(false);
+            }
+            if self.model.dirty.get() {
+                ui.label("* unsaved changes");
+            }
+        });
+    }
+
+    fn on_exit(&mut self, _ctx: &egui::Context) -> Option<Box<dyn Dialog>> {
+        if self.model.dirty.get() {
+            let handle = self.model.handle.clone();
+            let content = self.model.content.clone();
+            let path = self.model.path.clone();
+            let dialog = ConfirmDialogWindow::new(
+                "have modify not save".into(),
+                "save the modify?".into(),
+                "save".into(),
+                "cancel".into(),
+                Some(Message::CodeInspectorSave(path, handle, content)),
+                None,
+                None::<fn()>,
+                None::<fn()>,
+            );
+            Some(Box::new(dialog))
+        } else {
+            None
+        }
+    }
+}
+
+impl CodeInspector {
+    pub fn save_code(
+        assets_server: &mut AssetsServer,
+        path: &PathBuf,
+        handle: Arc<AssetHandle<TextAssetsSystem>>,
+        content: Arc<Mutex<Option<String>>>,
+    ) {
+        let mut content = content.lock();
+        if let Some(content) = content.deref_mut().take() {
+            if let Err(e) = fs::write(path, &content) {
+                log::warn!("Failed to write Document '{}': {e}", path.display());
+            }
+            if let Some(doc_res) = assets_server.get_mut(&handle) {
+                *doc_res = content;
+            }
+        }
+    }
+}

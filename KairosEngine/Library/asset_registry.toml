@@ -731,6 +731,10 @@ guid = "9f8262a1-f9c7-41ae-b1a9-eeb6036f9b70"
 path = "./kairos_engine/src/kairos_editor/ui/inspector/audio.rs"
 
 [[entries]]
+guid = "3c7a3f12-0ace-4a2b-b412-d49741d4380a"
+path = "./kairos_engine/src/kairos_editor/ui/inspector/code.rs"
+
+[[entries]]
 guid = "c6b0dbdd-b09c-4597-ab3f-4f097baed913"
 path = "./kairos_engine/src/kairos_editor/ui/inspector/creater.rs"
 

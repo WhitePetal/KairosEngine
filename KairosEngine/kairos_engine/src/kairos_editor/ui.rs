@@ -9,7 +9,9 @@ use crate::{
         ui::{
             game_window::GameWindow,
             global_styles::{FontDataConfig, FontsConfig, GlobalStyles},
-            inspector::{document::DocumentInspector, toml::TomlTableInspector},
+            inspector::{
+                code::CodeInspector, document::DocumentInspector, toml::TomlTableInspector,
+            },
             layout::{
                 EditorLayout, LayoutBottomContainer, LayoutContainerIds, LayoutLeftContainer,
                 LayoutRightContainer, Zone,
@@ -125,6 +127,11 @@ pub enum Message {
     DeleteProjectNode(petgraph::graph::NodeIndex),
 
     DocumentInspectorSave(
+        PathBuf,
+        Arc<AssetHandle<TextAssetsSystem>>,
+        Arc<parking_lot::Mutex<Option<String>>>,
+    ),
+    CodeInspectorSave(
         PathBuf,
         Arc<AssetHandle<TextAssetsSystem>>,
         Arc<parking_lot::Mutex<Option<String>>>,
@@ -575,6 +582,9 @@ impl Context {
                 }
                 Message::TomlInspectorSave(path, handle, table) => {
                     TomlTableInspector::save_table(&mut engine.assets_server, &path, handle, table);
+                }
+                Message::CodeInspectorSave(path, handle, content) => {
+                    CodeInspector::save_code(&mut engine.assets_server, &path, handle, content);
                 }
             }
 

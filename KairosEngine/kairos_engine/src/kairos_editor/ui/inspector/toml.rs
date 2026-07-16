@@ -1,10 +1,4 @@
-use std::{
-    cell::Cell,
-    fs,
-    ops::{DerefMut},
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{cell::Cell, fs, ops::DerefMut, path::PathBuf, sync::Arc};
 
 use egui::Vec2;
 use egui_extras::{Column, TableBuilder, TableRow};
@@ -80,6 +74,7 @@ impl Inspector for TomlTableInspector {
     }
 
     fn draw(&self, ui: &mut egui::Ui, messager: &mut Messager, assets_server: &AssetsServer) {
+        ui.separator();
         {
             let mut table_mut = self.model.table.lock();
             let table_mut = table_mut.deref_mut();
@@ -92,7 +87,6 @@ impl Inspector for TomlTableInspector {
             }
         }
 
-        ui.separator();
         let mut changed = false;
         {
             let table_ref = self.model.table.clone();

@@ -6,6 +6,7 @@ use crate::{
 };
 
 pub mod audio;
+pub mod code;
 pub mod creater;
 pub mod directory;
 pub mod document;
