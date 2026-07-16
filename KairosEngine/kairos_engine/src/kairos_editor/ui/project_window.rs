@@ -2,7 +2,7 @@ pub mod content_panel;
 pub mod context_menu;
 pub mod hierarchy_panel;
 
-use std::{any::type_name, cell::Cell, fs};
+use std::{any::type_name, cell::Cell, fs, ops::Deref, sync::Arc};
 
 use crate::{
     asset_loader::assets::AssetsServer,
@@ -24,6 +24,7 @@ use crate::{
     kairos_game::KairosGame,
     log::Log,
 };
+use parking_lot::Mutex;
 use petgraph::graph::NodeIndex;
 use serde::{Deserialize, Serialize};
 use toml::from_str;
@@ -55,7 +56,7 @@ struct ProjectWindowModel {
     /// 创建或重命名时进入编辑状态的节点
     renaming_node: Option<NodeIndex>,
     /// 重命名字符串buffer
-    renaming_buffer: Option<String>,
+    renaming_buffer: Option<Arc<Mutex<String>>>,
     /// 一次性强制展开标记：下一帧 hierarchy 渲染时将展开到该节点的完整路径，
     /// 渲染后立即清除。用 `Cell` 使得 `ui(&self)` 中也能写入。
     force_expand_to: Cell<Option<NodeIndex>>,
@@ -187,9 +188,9 @@ impl ProjectWindow {
                     .and_then(|s| s.to_str())
                     .unwrap_or(&full);
 
-                self.model.renaming_buffer = Some(stem.to_owned());
+                self.model.renaming_buffer = Some(Arc::new(Mutex::new(stem.to_owned())));
             } else {
-                self.model.renaming_buffer = Some(String::new());
+                self.model.renaming_buffer = Some(Arc::new(Mutex::new(String::new())));
             }
 
             self.model.renaming_node = Some(new_node);
@@ -201,23 +202,26 @@ impl ProjectWindow {
     }
 
     /// 重命名节点。
-    pub fn rename_node(&mut self, node: NodeIndex, new_name: String) {
+    pub fn rename_node(&mut self, node: NodeIndex, new_name: Arc<Mutex<String>>) {
         // 防止 hierarchy 和 content 同时发送消息导致重复处理
         if self.model.renaming_node != Some(node) {
             return;
         }
 
+        let new_name = new_name.lock();
+        let new_name = new_name.deref();
+
         if let Ok(()) = self.model.project_path_graph.rename_node(
             &mut self.model.asset_registry,
             node,
-            &new_name,
+            new_name,
         ) {
             let _ = self.model.asset_registry.save();
         }
         self.exit_rename();
     }
 
-    pub fn update_renaming_buffer(&mut self, buffer: String) {
+    pub fn update_renaming_buffer(&mut self, buffer: Arc<Mutex<String>>) {
         self.model.renaming_buffer = Some(buffer);
     }
 
@@ -230,8 +234,11 @@ impl ProjectWindow {
                 .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or(&full_name);
-            self.model.renaming_buffer = Some(stem.to_owned());
+            self.model.renaming_buffer = Some(Arc::new(Mutex::new(stem.to_owned())));
             self.model.renaming_node = Some(node);
+        }
+        if let Some(parent) = self.model.project_path_graph.get_parent(node) {
+            self.navigate_to(parent);
         }
     }
 

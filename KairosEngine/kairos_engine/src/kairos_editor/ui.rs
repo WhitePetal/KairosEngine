@@ -110,9 +110,9 @@ pub enum Message {
     /// ProjectWindow: 创建节点(右键节点Idx, 名称, 类型, 来源面板)
     CreateProjectNode(petgraph::graph::NodeIndex, String, AssetKind),
     /// ProjectWindow: 重命名节点 (node_idx, new_name)
-    RenameProjectNode(petgraph::graph::NodeIndex, String),
+    RenameProjectNode(petgraph::graph::NodeIndex, Arc<parking_lot::Mutex<String>>),
     /// 更新重命名Buffer
-    UpdateProjectWindowRenamingBuffer(String),
+    UpdateProjectWindowRenamingBuffer(Arc<parking_lot::Mutex<String>>),
     /// ProjectWindow: 进入重命名模式 (node_idx, origin)
     StartRenameProjectNode(petgraph::graph::NodeIndex),
     /// ProjectWindow: 退出重命名模式
@@ -122,7 +122,10 @@ pub enum Message {
     /// ProjectWindow: 删除节点 (node_idx)
     DeleteProjectNode(petgraph::graph::NodeIndex),
     /// InspectorWindow: 更新 TOML 字段值 (key_path, new_value)
-    UpdateInspectorToml(Arc<AssetHandle<TomlTableAssetsSystem>>, toml::Table),
+    UpdateInspectorToml(
+        Arc<AssetHandle<TomlTableAssetsSystem>>,
+        Arc<parking_lot::Mutex<Option<toml::Table>>>,
+    ),
     /// Audio Inspector: toggle play/pause preview.
     ToggleAudioPreview,
     /// Audio Inspector: seek to position (seconds) and start playback.

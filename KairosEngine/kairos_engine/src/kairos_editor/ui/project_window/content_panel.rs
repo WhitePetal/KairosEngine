@@ -1,4 +1,7 @@
+use std::{ops::DerefMut, sync::Arc};
+
 use egui::{RichText, TextEdit, Vec2};
+use parking_lot::Mutex;
 use petgraph::graph::NodeIndex;
 use serde::{Deserialize, Serialize};
 
@@ -48,7 +51,7 @@ impl ContentPanel {
         active_directory: Option<NodeIndex>,
         selected_node: Option<NodeIndex>,
         renaming_node: Option<NodeIndex>,
-        renaming_buffer: &Option<String>,
+        renaming_buffer: &Option<Arc<Mutex<String>>>,
     ) {
         let target = active_directory.unwrap_or_else(|| graph.get_root_node());
 
@@ -120,7 +123,7 @@ impl ContentPanel {
         messager: &mut Messager,
         selected_node: Option<NodeIndex>,
         renaming_node: Option<NodeIndex>,
-        rename_buffer: &Option<String>,
+        rename_buffer: &Option<Arc<Mutex<String>>>,
     ) {
         let is_selected = selected_node == Some(node);
         let is_renaming = renaming_node == Some(node);
@@ -168,8 +171,10 @@ impl ContentPanel {
 
         if is_renaming {
             if let Some(renaming_buffer) = rename_buffer {
-                let mut renaming_buffer = renaming_buffer.clone();
-                let text_edit = TextEdit::singleline(&mut renaming_buffer).font(egui::FontId::new(
+                let renaming_buffer = renaming_buffer.clone();
+                let mut renaming_buffer_mut = renaming_buffer.lock();
+                let renaming_buffer_mut = renaming_buffer_mut.deref_mut();
+                let text_edit = TextEdit::singleline(renaming_buffer_mut).font(egui::FontId::new(
                     style.content.label_font_size,
                     egui::FontFamily::Proportional,
                 ));
@@ -183,7 +188,9 @@ impl ContentPanel {
                         renaming_buffer.clone(),
                     ));
                 }
-                if text_edit.clicked_elsewhere() {
+                if text_edit.clicked_elsewhere()
+                    || cell_ui.input(|i| i.key_pressed(egui::Key::Enter))
+                {
                     messager.send(Message::RenameProjectNode(node, renaming_buffer.clone()));
                 }
             }

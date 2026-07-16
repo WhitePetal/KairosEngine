@@ -41,6 +41,8 @@ impl Inspector for TextInspector {
         egui::ScrollArea::vertical()
             .id_salt("inspector_text_preview")
             .show(ui, |ui| {
+                // TODO: code editor
+                // https://github.com/emilk/egui/blob/main/crates/egui_demo_lib/src/demo/code_editor.rs
                 ui.monospace(content);
             });
     }

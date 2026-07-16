@@ -1,9 +1,16 @@
-use std::{cell::Cell, fs, path::PathBuf, sync::Arc};
+use std::{
+    cell::Cell,
+    fs,
+    ops::{DerefMut},
+    path::PathBuf,
+    sync::Arc,
+};
 
 use egui::Vec2;
 use egui_extras::{Column, TableBuilder, TableRow};
+use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
-use toml::Value;
+use toml::{Value, map::Map};
 
 use crate::{
     asset_loader::assets::{AssetHandle, AssetsServer, TomlTableAssetsSystem},
@@ -44,6 +51,7 @@ impl TomlTableInspectorStyle {
 struct TomlTableInspectorModle {
     style: TomlTableInspectorStyle,
     toml_handle: Arc<AssetHandle<TomlTableAssetsSystem>>,
+    table: Arc<Mutex<Option<Map<String, Value>>>>,
     path: PathBuf,
     dirty: Cell<bool>,
 }
@@ -62,6 +70,7 @@ impl Inspector for TomlTableInspector {
         let model = TomlTableInspectorModle {
             style,
             toml_handle: assets_server.load::<TomlTableAssetsSystem>(&path),
+            table: Arc::new(Mutex::new(None)),
             path,
             dirty: Cell::new(false),
         };
@@ -72,10 +81,14 @@ impl Inspector for TomlTableInspector {
     fn draw(&self, ui: &mut egui::Ui, messager: &mut Messager, assets_server: &AssetsServer) {
         ui.separator();
 
-        let table = assets_server.get(&self.model.toml_handle);
-        match table {
+        let table_ref = self.model.table.clone();
+        let mut table_mut = table_ref.lock();
+        let table_mut = table_mut.deref_mut();
+        if table_mut.is_none() {
+            *table_mut = assets_server.get(&self.model.toml_handle).cloned();
+        }
+        match table_mut {
             Some(table) => {
-                let mut table = table.clone();
                 let mut changed = false;
                 egui::ScrollArea::vertical()
                     .max_height(ui.available_height() - self.model.style.save_btn_height)
@@ -85,7 +98,7 @@ impl Inspector for TomlTableInspector {
                             self.model.style.row_height,
                             messager,
                             &[],
-                            &mut table,
+                            table,
                             &mut changed,
                         );
                     });
@@ -95,7 +108,7 @@ impl Inspector for TomlTableInspector {
                 if changed {
                     messager.send(Message::UpdateInspectorToml(
                         self.model.toml_handle.clone(),
-                        table,
+                        table_ref.clone(),
                     ));
                     self.model.dirty.replace(true);
                 }
@@ -154,12 +167,15 @@ impl Inspector for TomlTableInspector {
 impl TomlTableInspector {
     pub fn update_table(
         handle: Arc<AssetHandle<TomlTableAssetsSystem>>,
-        table: toml::Table,
+        table: Arc<Mutex<Option<toml::Table>>>,
         assets_server: &mut AssetsServer,
     ) {
         let origion = assets_server.get_mut(&handle);
         if let Some(origion) = origion {
-            *origion = table
+            let mut table = table.lock();
+            if let Some(table) = table.take() {
+                *origion = table;
+            }
         }
     }
 
