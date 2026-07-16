@@ -183,15 +183,10 @@ impl ContentPanel {
                     text_edit,
                 );
                 text_edit.request_focus();
-                if text_edit.changed() {
-                    messager.send(Message::UpdateProjectWindowRenamingBuffer(
-                        renaming_buffer.clone(),
-                    ));
-                }
                 if text_edit.clicked_elsewhere()
                     || cell_ui.input(|i| i.key_pressed(egui::Key::Enter))
                 {
-                    messager.send(Message::RenameProjectNode(node, renaming_buffer.clone()));
+                    messager.send(Message::RenameProjectNode);
                 }
             }
         } else {

@@ -202,13 +202,16 @@ impl ProjectWindow {
     }
 
     /// 重命名节点。
-    pub fn rename_node(&mut self, node: NodeIndex, new_name: Arc<Mutex<String>>) {
+    pub fn rename_node(&mut self) {
         // 防止 hierarchy 和 content 同时发送消息导致重复处理
-        if self.model.renaming_node != Some(node) {
+        let Some(node) = self.model.renaming_node else {
             return;
-        }
+        };
 
-        let new_name = new_name.lock();
+        let Some(reanme_buffer) = self.model.renaming_buffer.clone() else {
+            return;
+        };
+        let new_name = reanme_buffer.lock();
         let new_name = new_name.deref();
 
         if let Ok(()) = self.model.project_path_graph.rename_node(
@@ -219,10 +222,6 @@ impl ProjectWindow {
             let _ = self.model.asset_registry.save();
         }
         self.exit_rename();
-    }
-
-    pub fn update_renaming_buffer(&mut self, buffer: Arc<Mutex<String>>) {
-        self.model.renaming_buffer = Some(buffer);
     }
 
     /// 进入重命名模式：预填当前名称（不含扩展名）到缓冲区。

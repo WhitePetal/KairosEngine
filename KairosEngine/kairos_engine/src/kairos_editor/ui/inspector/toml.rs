@@ -1,10 +1,4 @@
-use std::{
-    cell::Cell,
-    fs,
-    ops::{DerefMut},
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{cell::Cell, fs, ops::DerefMut, path::PathBuf, sync::Arc};
 
 use egui::Vec2;
 use egui_extras::{Column, TableBuilder, TableRow};

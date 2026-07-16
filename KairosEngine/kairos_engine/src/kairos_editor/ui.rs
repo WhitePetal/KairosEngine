@@ -110,9 +110,7 @@ pub enum Message {
     /// ProjectWindow: 创建节点(右键节点Idx, 名称, 类型, 来源面板)
     CreateProjectNode(petgraph::graph::NodeIndex, String, AssetKind),
     /// ProjectWindow: 重命名节点 (node_idx, new_name)
-    RenameProjectNode(petgraph::graph::NodeIndex, Arc<parking_lot::Mutex<String>>),
-    /// 更新重命名Buffer
-    UpdateProjectWindowRenamingBuffer(Arc<parking_lot::Mutex<String>>),
+    RenameProjectNode,
     /// ProjectWindow: 进入重命名模式 (node_idx, origin)
     StartRenameProjectNode(petgraph::graph::NodeIndex),
     /// ProjectWindow: 退出重命名模式
@@ -467,14 +465,9 @@ impl Context {
                         project_window.create_node(parent_idx, name, kind);
                     }
                 }
-                Message::RenameProjectNode(node_idx, new_name) => {
+                Message::RenameProjectNode => {
                     if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
-                        project_window.rename_node(node_idx, new_name);
-                    }
-                }
-                Message::UpdateProjectWindowRenamingBuffer(buffer) => {
-                    if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
-                        project_window.update_renaming_buffer(buffer);
+                        project_window.rename_node();
                     }
                 }
                 Message::StartRenameProjectNode(node_idx) => {
