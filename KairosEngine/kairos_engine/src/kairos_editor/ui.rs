@@ -123,6 +123,10 @@ pub enum Message {
     DeleteProjectNode(petgraph::graph::NodeIndex),
     /// InspectorWindow: 更新 TOML 字段值 (key_path, new_value)
     UpdateInspectorToml(Arc<AssetHandle<TomlTableAssetsSystem>>, toml::Table),
+    /// Audio Inspector: toggle play/pause preview.
+    ToggleAudioPreview,
+    /// Audio Inspector: seek to position (seconds) and start playback.
+    SeekAudioPreview(f32),
 }
 
 struct KairosTabDrawer {
@@ -303,7 +307,7 @@ impl Context {
         });
     }
 
-    pub fn handle(&mut self, assets_server: &mut AssetsServer, ui: &egui::Ui, _log: &mut Log) {
+    pub fn handle(&mut self, engine: &mut Engine, ui: &egui::Ui, _log: &mut Log) {
         while let Some(msg) = self.messager.messages.pop_front() {
             match msg {
                 Message::CreateToolbar => {
@@ -395,25 +399,44 @@ impl Context {
                     }
                 }
                 Message::OpenConsoleTab => {
-                    self.show_tab::<ConsoleWindow>(assets_server, ui, self.layout.bottom);
+                    self.show_tab::<ConsoleWindow>(
+                        &mut engine.assets_server,
+                        ui,
+                        self.layout.bottom,
+                    );
                 }
                 Message::CloseConsoleTab => {
                     self.close_drawer::<ConsoleWindow>();
                 }
                 Message::OpenInspectorTab => {
-                    self.show_tab::<InspectorWindow>(assets_server, ui, self.layout.right);
+                    self.show_tab::<InspectorWindow>(
+                        &mut engine.assets_server,
+                        ui,
+                        self.layout.right,
+                    );
                 }
                 Message::CloseInspectorTab => {
+                    if let Some(inspector_window) = self.get_window_mut::<InspectorWindow>() {
+                        inspector_window.stop_audio_preview();
+                    }
                     self.close_drawer::<InspectorWindow>();
                 }
                 Message::OpenHierarchyTab => {
-                    self.show_tab::<HierarchyWindow>(assets_server, ui, self.layout.left);
+                    self.show_tab::<HierarchyWindow>(
+                        &mut engine.assets_server,
+                        ui,
+                        self.layout.left,
+                    );
                 }
                 Message::CloseHierarchyTab => {
                     self.close_drawer::<HierarchyWindow>();
                 }
                 Message::OpenProjectTab => {
-                    self.show_tab::<ProjectWindow>(assets_server, ui, self.layout.bottom);
+                    self.show_tab::<ProjectWindow>(
+                        &mut engine.assets_server,
+                        ui,
+                        self.layout.bottom,
+                    );
                 }
                 Message::CloseProjectTab => {
                     self.close_drawer::<ProjectWindow>();
@@ -421,10 +444,10 @@ impl Context {
                 Message::SelectProjectNode(node) => {
                     if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
                         project_window.select_node(node);
-                        let info = project_window.get_selected_node_info(assets_server);
+                        let info = project_window.get_selected_node_info(&mut engine.assets_server);
                         if let Some(inspector) = self.get_window_mut::<InspectorWindow>() {
                             if let Some(dialog) =
-                                inspector.set_selected(ui.ctx(), assets_server, info)
+                                inspector.set_selected(ui.ctx(), &mut engine.assets_server, info)
                             {
                                 self.dialogs.push(dialog);
                             }
@@ -472,10 +495,24 @@ impl Context {
                     }
                 }
                 Message::UpdateInspectorToml(handle, table) => {
-                    inspector::toml::TomlTableInspector::update_table(handle, table, assets_server);
+                    inspector::toml::TomlTableInspector::update_table(
+                        handle,
+                        table,
+                        &mut engine.assets_server,
+                    );
+                }
+                Message::ToggleAudioPreview => {
+                    if let Some(inspector_window) = self.get_window_mut::<InspectorWindow>() {
+                        inspector_window.toggle_audio_preview(engine);
+                    }
+                }
+                Message::SeekAudioPreview(position) => {
+                    if let Some(inspector_window) = self.get_window_mut::<InspectorWindow>() {
+                        inspector_window.seek_audio_preview(engine, position);
+                    }
                 }
                 Message::OpenSceneTab => {
-                    self.show_tab::<SceneWindow>(assets_server, ui, self.layout.center);
+                    self.show_tab::<SceneWindow>(&mut engine.assets_server, ui, self.layout.center);
                 }
                 Message::CloseSceneTab => {
                     self.close_drawer::<SceneWindow>();
@@ -496,7 +533,7 @@ impl Context {
                     }
                 }
                 Message::OpenGameTab => {
-                    self.show_tab::<GameWindow>(assets_server, ui, self.layout.center);
+                    self.show_tab::<GameWindow>(&mut engine.assets_server, ui, self.layout.center);
                 }
                 Message::CloseGameTab => {
                     self.close_drawer::<GameWindow>();
@@ -531,6 +568,11 @@ impl Context {
                         scene_window.on_camera_fly(right, forward, dt);
                     }
                 }
+            }
+
+            // ---- per-frame: tick audio playback position ----
+            if let Some(inspector_window) = self.get_window_mut::<InspectorWindow>() {
+                inspector_window.tick_audio_preview();
             }
         }
     }

@@ -73,8 +73,7 @@ impl KairosEngine {
     }
 
     fn handle_ui(&mut self, ui: &mut egui::Ui) {
-        self.ui_context
-            .handle(&mut self.engine.assets_server, ui, &mut self.log);
+        self.ui_context.handle(&mut self.engine, ui, &mut self.log);
     }
 
     fn draw_ui(&mut self, ui: &mut egui::Ui) {

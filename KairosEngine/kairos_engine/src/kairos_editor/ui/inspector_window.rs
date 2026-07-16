@@ -1,11 +1,21 @@
-use std::{any::type_name, fmt::Debug, fs, path::PathBuf};
+use std::{
+    any::{Any, type_name},
+    fmt::Debug,
+    fs,
+    path::PathBuf,
+};
 
 use crate::{
     asset_loader::assets::AssetsServer,
     kairos_editor::{
         Engine,
         asset_registry::{AssetKind, Guid},
-        ui::{Messager, dialog::Dialog, global_styles::GlobalStyles, inspector::Inspector},
+        ui::{
+            Messager,
+            dialog::Dialog,
+            global_styles::GlobalStyles,
+            inspector::{Inspector, audio::AudioInspector},
+        },
     },
     kairos_game::KairosGame,
     log::Log,
@@ -100,12 +110,54 @@ impl InspectorWindow {
     ) -> Option<Box<dyn Dialog>> {
         let mut dialog = None;
         if self.model.selected != info
-            && let Some(selected) = &self.model.selected
+            && let Some(selected) = &mut self.model.selected
         {
             dialog = selected.inspector.on_exit(ctx, assets_server);
         }
         self.model.selected = info;
         dialog
+    }
+
+    pub fn get_inspector<T: Inspector>(&self) -> Option<&T> {
+        self.model
+            .selected
+            .as_ref()
+            .and_then(|info| (info.inspector.as_ref() as &dyn Any).downcast_ref::<T>())
+    }
+
+    pub fn get_inspector_mut<T: Inspector>(&mut self) -> Option<&mut T> {
+        self.model
+            .selected
+            .as_mut()
+            .and_then(|info| (info.inspector.as_mut() as &mut dyn Any).downcast_mut::<T>())
+    }
+
+    /// Called from Context::handle() when ToggleAudioPreview message is received.
+    pub fn toggle_audio_preview(&mut self, engine: &mut Engine) {
+        if let Some(audio) = self.get_inspector_mut::<AudioInspector>() {
+            audio.toggle_playback(engine);
+        }
+    }
+
+    /// Called from Context::handle() every frame to update the playback position.
+    pub fn tick_audio_preview(&mut self) {
+        if let Some(audio) = self.get_inspector_mut::<AudioInspector>() {
+            audio.tick_playback();
+        }
+    }
+
+    /// Called from Context::handle() when SeekAudioPreview message is received.
+    pub fn seek_audio_preview(&mut self, engine: &mut Engine, position: f32) {
+        if let Some(audio) = self.get_inspector_mut::<AudioInspector>() {
+            audio.seek_and_play(engine, position);
+        }
+    }
+
+    /// Called when closing the inspector tab to stop any playing audio.
+    pub fn stop_audio_preview(&mut self) {
+        if let Some(audio) = self.get_inspector_mut::<AudioInspector>() {
+            audio.stop_playback();
+        }
     }
 }
 

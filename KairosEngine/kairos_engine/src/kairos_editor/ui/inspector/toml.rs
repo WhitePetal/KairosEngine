@@ -125,7 +125,7 @@ impl Inspector for TomlTableInspector {
     }
 
     fn on_exit(
-        &self,
+        &mut self,
         _ctx: &egui::Context,
         assets_server: &AssetsServer,
     ) -> Option<Box<dyn Dialog>> {

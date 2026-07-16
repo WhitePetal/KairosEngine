@@ -46,7 +46,7 @@ impl Inspector for TextInspector {
     }
 
     fn on_exit(
-        &self,
+        &mut self,
         _ctx: &egui::Context,
         _assets_server: &AssetsServer,
     ) -> Option<Box<dyn Dialog>> {

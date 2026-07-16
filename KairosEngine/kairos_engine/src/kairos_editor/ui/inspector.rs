@@ -1,3 +1,5 @@
+use std::any::Any;
+
 use crate::{
     asset_loader::assets::AssetsServer,
     kairos_editor::ui::{Messager, dialog::Dialog},
@@ -23,7 +25,7 @@ pub trait InspectorField {
     fn get_key(&self) -> Box<dyn InspectorFieldKey>;
 }
 
-pub trait Inspector {
+pub trait Inspector: Any {
     fn create(
         path: &std::path::Path,
         assets_server: &mut AssetsServer,
@@ -33,6 +35,9 @@ pub trait Inspector {
 
     fn draw(&self, ui: &mut egui::Ui, messager: &mut Messager, assets_server: &AssetsServer);
 
-    fn on_exit(&self, ctx: &egui::Context, assets_server: &AssetsServer)
-    -> Option<Box<dyn Dialog>>;
+    fn on_exit(
+        &mut self,
+        ctx: &egui::Context,
+        assets_server: &AssetsServer,
+    ) -> Option<Box<dyn Dialog>>;
 }

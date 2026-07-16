@@ -1,8 +1,10 @@
 use std::fmt::Debug;
 
 use kira::{
-    AudioManager, AudioManagerSettings, Capacities, DefaultBackend, listener::ListenerId,
-    sound::PlaybackState, track::MainTrackBuilder,
+    AudioManager, AudioManagerSettings, Capacities, DefaultBackend,
+    listener::ListenerId,
+    sound::{PlaybackState, static_sound::StaticSoundData},
+    track::MainTrackBuilder,
 };
 
 use crate::{
@@ -59,6 +61,16 @@ impl AudioEngine {
 
     pub fn create_listener(&mut self) -> Option<ListenerId> {
         self.spatial_tracks.create_listener(&mut self.manager)
+    }
+
+    /// Play a static sound for preview purposes.
+    /// Returns a handle that can be used to query state/position.
+    pub fn play_sound(
+        &mut self,
+        sound_data: StaticSoundData,
+    ) -> Result<kira::sound::static_sound::StaticSoundHandle, Box<dyn std::error::Error>> {
+        let handle = self.manager.play(sound_data)?;
+        Ok(handle)
     }
 
     pub fn update(&mut self, assets_server: &mut AssetsServer, world: &mut World, delta_time: f32) {

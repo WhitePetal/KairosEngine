@@ -2,12 +2,9 @@ use std::path::PathBuf;
 
 use crate::{
     asset_loader::assets::{AudioAssetsSystem, MaterialAssetsSystem, MeshAssetsSystem},
-    audio::{
-        background::BackgroundAudio,
-        spatial::{
-            spatial_audio_listener::SpatialAudioListenerComponent,
-            spatial_audio_reverb::SpatialAudioReverb,
-        },
+    audio::spatial::{
+        spatial_audio_listener::SpatialAudioListenerComponent,
+        spatial_audio_reverb::SpatialAudioReverb,
     },
     graphics::{
         camera::Camera, graphics_graph::GraphicsCommand, lod_mesh_component::LODMesh,
@@ -65,7 +62,7 @@ impl KairosGame {
         // };
         // let _ = pad.save_to_file();
 
-        let background_audio =
+        let _background_audio =
             assets_server.load::<AudioAssetsSystem>(&PathBuf::from("res/audios/pad.audio"));
 
         let _blip_audio =
@@ -87,8 +84,8 @@ impl KairosGame {
             ));
         }
 
-        let background_audio = BackgroundAudio::new(background_audio, true);
-        engine.world.spawn((background_audio,));
+        // let background_audio = BackgroundAudio::new(background_audio, true);
+        // engine.world.spawn((background_audio,));
 
         let spatial_audio_reverb = SpatialAudioReverb::new(
             20.0,

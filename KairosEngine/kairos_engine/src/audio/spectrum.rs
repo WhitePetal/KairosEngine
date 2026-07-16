@@ -64,10 +64,7 @@ pub fn compute_spectrum(samples: &[f32], sample_rate: u32, fft_size: usize) -> V
         .collect();
 
     // Normalize to 0..1
-    let max_mag = bins
-        .iter()
-        .map(|b| b.magnitude)
-        .fold(0.0f32, f32::max);
+    let max_mag = bins.iter().map(|b| b.magnitude).fold(0.0f32, f32::max);
     if max_mag > 0.0 {
         for bin in &mut bins {
             bin.magnitude /= max_mag;
@@ -139,10 +136,7 @@ mod tests {
         let bins = compute_spectrum(&samples, 44100, 2048);
 
         // Max magnitude should be exactly 1.0 after normalization
-        let max_mag = bins
-            .iter()
-            .map(|b| b.magnitude)
-            .fold(0.0f32, f32::max);
+        let max_mag = bins.iter().map(|b| b.magnitude).fold(0.0f32, f32::max);
         assert!((max_mag - 1.0).abs() < 0.001);
     }
 
@@ -172,6 +166,9 @@ mod tests {
         let bins = compute_spectrum(&samples, 44100, 2048);
 
         let sum: f32 = bins.iter().map(|b| b.magnitude).sum();
-        assert!(sum < 0.01, "silence should have near-zero spectrum, sum={sum}");
+        assert!(
+            sum < 0.01,
+            "silence should have near-zero spectrum, sum={sum}"
+        );
     }
 }

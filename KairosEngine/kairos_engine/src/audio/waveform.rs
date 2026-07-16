@@ -1,12 +1,8 @@
 use std::{fs::File, path::Path, time::Duration};
 
 use symphonia::core::{
-    audio::SampleBuffer,
-    codecs::DecoderOptions,
-    formats::FormatOptions,
-    io::MediaSourceStream,
-    meta::MetadataOptions,
-    probe::Hint,
+    audio::SampleBuffer, codecs::DecoderOptions, formats::FormatOptions, io::MediaSourceStream,
+    meta::MetadataOptions, probe::Hint,
 };
 
 // ============================================================
@@ -34,7 +30,8 @@ impl PcmData {
     ///
     /// Supports MP3, WAV, FLAC, OGG (Vorbis) via symphonia.
     pub fn from_path(path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
-        let file = File::open(path).map_err(|e| format!("open audio file '{}': {e}", path.display()))?;
+        let file =
+            File::open(path).map_err(|e| format!("open audio file '{}': {e}", path.display()))?;
         let mss = MediaSourceStream::new(Box::new(file), Default::default());
 
         // Probe the format
@@ -59,18 +56,13 @@ impl PcmData {
         let codec_params = track.codec_params.clone();
         let sample_rate = codec_params.sample_rate.ok_or("unknown sample rate")?;
 
-        let mut decoder = symphonia::default::get_codecs().make(
-            &codec_params,
-            &DecoderOptions::default(),
-        )?;
+        let mut decoder =
+            symphonia::default::get_codecs().make(&codec_params, &DecoderOptions::default())?;
 
         // Decode all packets
         let mut all_samples: Vec<f32> = Vec::new();
         let mut num_channels: usize = 0;
-        let max_frames = codec_params
-            .n_frames
-            .unwrap_or(u64::MAX)
-            .min(50_000_000); // cap at ~20min @ 44100 to avoid OOM
+        let max_frames = codec_params.n_frames.unwrap_or(u64::MAX).min(50_000_000); // cap at ~20min @ 44100 to avoid OOM
 
         let mut frame_count = 0u64;
         loop {
@@ -152,11 +144,7 @@ impl PcmData {
     }
 
     /// Create PcmData from raw samples (useful for testing).
-    pub fn from_raw(
-        sample_rate: u32,
-        num_channels: usize,
-        samples: Vec<f32>,
-    ) -> Self {
+    pub fn from_raw(sample_rate: u32, num_channels: usize, samples: Vec<f32>) -> Self {
         let num_samples = if num_channels == 0 {
             0
         } else {
@@ -341,11 +329,15 @@ mod tests {
 
     #[test]
     fn mono_stereo_average() {
-        let pcm = PcmData::from_raw(44100, 2, vec![
-            0.4, 0.6,   // frame 0
-            -0.2, 0.2,  // frame 1
-            1.0, -0.5,  // frame 2
-        ]);
+        let pcm = PcmData::from_raw(
+            44100,
+            2,
+            vec![
+                0.4, 0.6, // frame 0
+                -0.2, 0.2, // frame 1
+                1.0, -0.5, // frame 2
+            ],
+        );
         let mono = pcm.mono_samples();
         assert_eq!(mono.len(), 3);
         assert!((mono[0] - 0.5).abs() < 0.001);
@@ -380,8 +372,8 @@ mod tests {
         let pcm = PcmData::from_raw(44100, 2, vec![0.4, 0.6, 0.9]);
         let mono = pcm.mono_samples();
         assert_eq!(mono.len(), 2);
-        assert!((mono[0] - 0.5).abs() < 0.001);  // (0.4+0.6)/2
-        assert!((mono[1] - 0.9).abs() < 0.001);  // single sample
+        assert!((mono[0] - 0.5).abs() < 0.001); // (0.4+0.6)/2
+        assert!((mono[1] - 0.9).abs() < 0.001); // single sample
     }
 
     // ----------------------------------------------------------
@@ -507,7 +499,10 @@ mod tests {
         assert_eq!(peaks.len(), 1024);
         // For a pure sine, peaks should be approximately [-1, 1]
         let global_min = peaks.iter().map(|p| p.min).fold(f32::INFINITY, f32::min);
-        let global_max = peaks.iter().map(|p| p.max).fold(f32::NEG_INFINITY, f32::max);
+        let global_max = peaks
+            .iter()
+            .map(|p| p.max)
+            .fold(f32::NEG_INFINITY, f32::max);
         assert!(global_min < -0.9, "expected min < -0.9, got {global_min}");
         assert!(global_max > 0.9, "expected max > 0.9, got {global_max}");
 
