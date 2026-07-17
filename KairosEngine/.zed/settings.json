@@ -1,0 +1,32 @@
+{
+  "terminal": {
+    "shell": {
+      "with_arguments": {
+        "program": "powershell.exe",
+        "args": []
+      }
+    }
+  },
+  "document_symbols": "off",
+  "document_folding_ranges": "off",
+  "semantic_tokens": "combined",
+  "colorize_brackets": false,
+  "remove_trailing_whitespace_on_save": true,
+  "auto_indent": "syntax_aware",
+  "indent_guides": {
+    "background_coloring": "disabled",
+    "active_line_width": 2,
+    "line_width": 1,
+    "enabled": true,
+    "coloring": "indent_aware"
+  },
+  "inlay_hints": {
+    "enabled": true
+  },
+  "format_on_save": "off",
+  "prettier": {
+    "parser": "",
+    "allowed": false
+  },
+  "show_edit_predictions": false
+}
