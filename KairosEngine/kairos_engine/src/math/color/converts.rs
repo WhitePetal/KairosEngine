@@ -22,3 +22,14 @@ impl From<[u8; 4]> for Color32 {
         Color32::new(ar[0], ar[1], ar[2], ar[3])
     }
 }
+
+impl From<Color32> for syntect::highlighting::Color {
+    fn from(value: Color32) -> Self {
+        Self {
+            r: value.r,
+            g: value.g,
+            b: value.b,
+            a: value.a,
+        }
+    }
+}

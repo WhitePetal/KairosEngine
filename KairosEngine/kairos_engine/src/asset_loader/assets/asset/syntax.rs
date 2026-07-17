@@ -3,12 +3,15 @@ use std::path::PathBuf;
 use anyhow::Error;
 use serde::Deserialize;
 
-use crate::asset_loader::{
-    assets::{
-        DependencyLoadRequestEvent,
-        asset::{self, AssetIndex, AssetLoader, Assets, AssetsHandler, AssetsSystem},
+use crate::{
+    asset_loader::{
+        assets::{
+            DependencyLoadRequestEvent,
+            asset::{self, AssetIndex, AssetLoader, Assets, AssetsHandler, AssetsSystem},
+        },
+        consts,
     },
-    consts,
+    math,
 };
 
 // ---------------------------------------------------------------------------
@@ -86,67 +89,61 @@ pub struct SyntaxConfig {
     /// When absent the loader falls back to syntect's built-in syntaxes
     /// (suitable for Rust, TOML, C++, …).
     #[serde(default)]
-    pub sublime_syntax: Option<String>,
+    pub sublime_syntax: Option<PathBuf>,
 
     pub theme: SyntaxThemeSection,
 }
 
-
 #[derive(Debug, Clone, Deserialize)]
 pub struct SyntaxThemeSection {
     /// Theme name, stored in the generated syntect theme.
-    #[serde(default = "default_theme_name")]
     pub name: String,
 
     #[serde(default = "SyntaxThemeColorFields::default_values")]
     pub colors: SyntaxThemeColorFields,
 }
 
-fn default_theme_name() -> String {
-    "Kairos Custom".into()
-}
-
 #[derive(Debug, Clone, Deserialize)]
 pub struct SyntaxThemeColorFields {
     /// Default text color.
     #[serde(default = "default_foreground")]
-    pub foreground: String,
+    pub foreground: math::Color32,
     /// Editor background color.
     #[serde(default = "default_background")]
-    pub background: String,
+    pub background: math::Color32,
     /// Keywords: `fn`, `let`, `if`, `return`, …
     #[serde(default = "default_keyword")]
-    pub keyword: String,
+    pub keyword: math::Color32,
     /// Types: `f32`, `vec3`, `bool`, `texture_2d`, …
     #[serde(default = "default_type")]
-    pub r#type: String,
+    pub r#type: math::Color32,
     /// Built-in functions: `dot`, `normalize`, `textureSample`, …
     #[serde(default = "default_function")]
-    pub function: String,
+    pub function: math::Color32,
     /// String literals.
     #[serde(default = "default_string")]
-    pub string: String,
+    pub string: math::Color32,
     /// Comments.
     #[serde(default = "default_comment")]
-    pub comment: String,
+    pub comment: math::Color32,
     /// Numeric literals.
     #[serde(default = "default_number")]
-    pub number: String,
+    pub number: math::Color32,
     /// Attributes / decorators: `@vertex`, `@group`, `#[derive(…)]`, …
     #[serde(default = "default_attribute")]
-    pub attribute: String,
+    pub attribute: math::Color32,
     /// Built-in variables: `position`, `vertex_index`, …
     #[serde(default = "default_builtin")]
-    pub builtin_variable: String,
+    pub builtin_variable: math::Color32,
     /// User-defined variables / identifiers.
     #[serde(default = "default_variable")]
-    pub variable: String,
+    pub variable: math::Color32,
     /// Operators: `+`, `-`, `&&`, `==`, …
     #[serde(default = "default_operator")]
-    pub operator: String,
+    pub operator: math::Color32,
     /// Punctuation: `{ } ( ) [ ] ; , .`
     #[serde(default = "default_punctuation")]
-    pub punctuation: String,
+    pub punctuation: math::Color32,
 }
 
 impl SyntaxThemeColorFields {
@@ -171,47 +168,55 @@ impl SyntaxThemeColorFields {
 
 // ---- defaults (dark theme) ------------------------------------------------
 
-fn default_foreground() -> String { "#D0D0D0".into() }
-fn default_background() -> String { "#1E1E1E".into() }
-fn default_keyword() -> String { "#FF6464".into() }
-fn default_type() -> String { "#57A5AB".into() }
-fn default_function() -> String { "#6D93E2".into() }
-fn default_string() -> String { "#6D93E2".into() }
-fn default_comment() -> String { "#787878".into() }
-fn default_number() -> String { "#57A5AB".into() }
-fn default_attribute() -> String { "#FFD700".into() }
-fn default_builtin() -> String { "#DCDCAA".into() }
-fn default_variable() -> String { "#D0D0D0".into() }
-fn default_operator() -> String { "#D0D0D0".into() }
-fn default_punctuation() -> String { "#C0C0C0".into() }
+fn default_foreground() -> math::Color32 {
+    math::Color32::from_hex("#D0D0D0").unwrap_or_default()
+}
+fn default_background() -> math::Color32 {
+    math::Color32::from_hex("#1E1E1E").unwrap_or_default()
+}
+fn default_keyword() -> math::Color32 {
+    math::Color32::from_hex("#FF6464").unwrap_or_default()
+}
+fn default_type() -> math::Color32 {
+    math::Color32::from_hex("#57A5AB").unwrap_or_default()
+}
+fn default_function() -> math::Color32 {
+    math::Color32::from_hex("#6D93E2").unwrap_or_default()
+}
+fn default_string() -> math::Color32 {
+    math::Color32::from_hex("#6D93E2").unwrap_or_default()
+}
+fn default_comment() -> math::Color32 {
+    math::Color32::from_hex("#787878").unwrap_or_default()
+}
+fn default_number() -> math::Color32 {
+    math::Color32::from_hex("#1E1E1E").unwrap_or_default()
+}
+fn default_attribute() -> math::Color32 {
+    math::Color32::from_hex("#FFD700").unwrap_or_default()
+}
+fn default_builtin() -> math::Color32 {
+    math::Color32::from_hex("#DCDCAA").unwrap_or_default()
+}
+fn default_variable() -> math::Color32 {
+    math::Color32::from_hex("#909090").unwrap_or_default()
+}
+fn default_operator() -> math::Color32 {
+    math::Color32::from_hex("#D0D0D0").unwrap_or_default()
+}
+fn default_punctuation() -> math::Color32 {
+    math::Color32::from_hex("#C0C0C0").unwrap_or_default()
+}
 
 // ---------------------------------------------------------------------------
 // TOML → syntect::highlighting::Theme
 // ---------------------------------------------------------------------------
 
-fn parse_hex_color(hex: &str) -> Option<syntect::highlighting::Color> {
-    let hex = hex.trim().trim_start_matches('#');
-    if hex.len() != 6 {
-        return None;
-    }
-    let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
-    let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
-    let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
-    Some(syntect::highlighting::Color { r, g, b, a: 0xFF })
-}
-
-fn fg(hex: &str) -> Option<syntect::highlighting::Color> {
-    parse_hex_color(hex)
-}
-
-fn scope_item(
-    scope_str: &str,
-    color: &str,
-) -> syntect::highlighting::ThemeItem {
+fn scope_item(scope_str: &str, color: math::Color32) -> syntect::highlighting::ThemeItem {
     syntect::highlighting::ThemeItem {
         scope: std::str::FromStr::from_str(scope_str).unwrap_or_default(),
         style: syntect::highlighting::StyleModifier {
-            foreground: fg(color),
+            foreground: Some(color.into()),
             background: None,
             font_style: None,
         },
@@ -224,41 +229,41 @@ fn build_syntect_theme(cfg: &SyntaxConfig) -> syntect::highlighting::Theme {
 
     let scopes: Vec<syntect::highlighting::ThemeItem> = vec![
         // ---- keyword ----
-        scope_item("keyword", &c.keyword),
+        scope_item("keyword", c.keyword),
         // ---- type ----
-        scope_item("storage.type", &c.r#type),
-        scope_item("entity.name.type", &c.r#type),
-        scope_item("support.type", &c.r#type),
+        scope_item("storage.type", c.r#type),
+        scope_item("entity.name.type", c.r#type),
+        scope_item("support.type", c.r#type),
         // ---- function ----
-        scope_item("support.function", &c.function),
-        scope_item("entity.name.function", &c.function),
+        scope_item("support.function", c.function),
+        scope_item("entity.name.function", c.function),
         // ---- string ----
-        scope_item("string", &c.string),
+        scope_item("string", c.string),
         // ---- comment ----
-        scope_item("comment", &c.comment),
+        scope_item("comment", c.comment),
         // ---- number ----
-        scope_item("constant.numeric", &c.number),
+        scope_item("constant.numeric", c.number),
         // ---- attribute / modifier ----
-        scope_item("storage.modifier", &c.attribute),
-        scope_item("meta.annotation", &c.attribute),
-        scope_item("meta.attribute", &c.attribute),
+        scope_item("storage.modifier", c.attribute),
+        scope_item("meta.annotation", c.attribute),
+        scope_item("meta.attribute", c.attribute),
         // ---- built-in variable ----
-        scope_item("variable.language", &c.builtin_variable),
-        scope_item("support.variable", &c.builtin_variable),
+        scope_item("variable.language", c.builtin_variable),
+        scope_item("support.variable", c.builtin_variable),
         // ---- user variable ----
-        scope_item("variable.other", &c.variable),
-        scope_item("variable", &c.variable),
+        scope_item("variable.other", c.variable),
+        scope_item("variable", c.variable),
         // ---- operator ----
-        scope_item("keyword.operator", &c.operator),
+        scope_item("keyword.operator", c.operator),
         // ---- punctuation ----
-        scope_item("punctuation", &c.punctuation),
+        scope_item("punctuation", c.punctuation),
     ];
 
     syntect::highlighting::Theme {
         name: Some(cfg.theme.name.clone()),
         settings: syntect::highlighting::ThemeSettings {
-            foreground: fg(&c.foreground),
-            background: fg(&c.background),
+            foreground: Some(c.foreground.into()),
+            background: Some(c.background.into()),
             ..Default::default()
         },
         scopes,
@@ -323,10 +328,8 @@ impl Loader {
         // If a custom sublime-syntax is declared, load and add it.
         // The path is relative to the engine root (working directory),
         // consistent with all other asset paths in the engine.
-        if let Some(ref syntax_rel_path) = cfg.sublime_syntax {
-            let syntax_path = std::path::PathBuf::from(syntax_rel_path);
-
-            let yaml_str = tokio::fs::read_to_string(&syntax_path).await?;
+        if let Some(syntax_path) = &cfg.sublime_syntax {
+            let yaml_str = tokio::fs::read_to_string(syntax_path).await?;
             let syntax_def = syntect::parsing::SyntaxDefinition::load_from_str(
                 &yaml_str,
                 true,

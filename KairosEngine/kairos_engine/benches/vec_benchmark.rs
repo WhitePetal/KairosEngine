@@ -9,6 +9,7 @@ use std::{
 // use std::simd::{f32x4, simd_swizzle};
 
 #[derive(Clone, Copy)]
+#[allow(non_camel_case_types)]
 struct _float4 {
     x: f32,
     y: f32,
@@ -54,6 +55,7 @@ impl _float4 {
 }
 
 #[derive(Clone, Copy)]
+#[allow(non_camel_case_types)]
 struct _float4_simd(simd::f32x4);
 
 impl _float4_simd {
