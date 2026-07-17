@@ -1,0 +1,4 @@
+save_button_height = 20.0
+desired_rows = 10
+dark_background_color = "#1b1b1b"
+bright_background_color = "#dddddd"

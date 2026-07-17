@@ -103,6 +103,10 @@ guid = "cb946120-6962-4366-91bb-7378266c8fac"
 path = "./Preferences/Styles/Inspectors/Font.toml"
 
 [[entries]]
+guid = "796aa37f-f7ab-4897-a88b-41bdecd7eec2"
+path = "./Preferences/Styles/Inspectors/Shader.toml"
+
+[[entries]]
 guid = "686e3907-bd4b-4618-a95b-da396fc7c913"
 path = "./Preferences/Styles/Inspectors/TomlTable.toml"
 
@@ -121,6 +125,22 @@ path = "./Preferences/Styles/ProjectWindowStyle.toml"
 [[entries]]
 guid = "9292bbb7-e103-4f40-8584-c58b560ef573"
 path = "./Preferences/Styles/SceneWindowStyle.toml"
+
+[[entries]]
+guid = "18b75bd7-b18b-4917-bb2b-2240e4cd273f"
+path = "./Preferences/Styles/SyntaxTheme.toml"
+
+[[entries]]
+guid = "6be3392e-0aaa-4d53-bd50-104993f685c1"
+path = "./Preferences/SublimeSyntax"
+
+[[entries]]
+guid = "48f26f2b-9893-4a4d-9cbc-cf3905e13501"
+path = "./Preferences/SublimeSyntax/rust_syntax.toml"
+
+[[entries]]
+guid = "ed724591-00b6-4d7c-8bff-bb8b6de48af8"
+path = "./Preferences/SublimeSyntax/wgsl_syntax.toml"
 
 [[entries]]
 guid = "10096a62-116f-40ba-a9cb-82662b66cd39"
@@ -271,6 +291,14 @@ guid = "ee3269ce-a72d-47bc-b769-acb3bcd38939"
 path = "./kairos_engine/Cargo.toml"
 
 [[entries]]
+guid = "5fc2ebf4-e23e-4ff9-a2ce-6ddb741f5dab"
+path = "./kairos_engine/assets"
+
+[[entries]]
+guid = "d5b76adf-3e44-4099-a906-9fe975f241c1"
+path = "./kairos_engine/assets/syntaxes"
+
+[[entries]]
 guid = "2456c072-d66c-4507-8115-96440af86321"
 path = "./kairos_engine/benches"
 
@@ -313,6 +341,10 @@ path = "./kairos_engine/src/asset_loader/assets/asset/mesh.rs"
 [[entries]]
 guid = "3103aaf6-f332-465c-879b-7a8e5ef3cf73"
 path = "./kairos_engine/src/asset_loader/assets/asset/shader.rs"
+
+[[entries]]
+guid = "3b8a995b-01ba-4d21-abbe-fe1db3d05113"
+path = "./kairos_engine/src/asset_loader/assets/asset/syntax.rs"
 
 [[entries]]
 guid = "c5f6bc80-17f0-40e3-8ba0-e0692df78ce2"
@@ -757,6 +789,10 @@ path = "./kairos_engine/src/kairos_editor/ui/inspector/document.rs"
 [[entries]]
 guid = "522653b2-418b-44cb-be44-10a4725bba5f"
 path = "./kairos_engine/src/kairos_editor/ui/inspector/font.rs"
+
+[[entries]]
+guid = "150e139a-7ec0-4e4b-8f5f-ee3706c6f616"
+path = "./kairos_engine/src/kairos_editor/ui/inspector/shader.rs"
 
 [[entries]]
 guid = "30260743-ab86-4096-88f6-9c7571fa18f5"

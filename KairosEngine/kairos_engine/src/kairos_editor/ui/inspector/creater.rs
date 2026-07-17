@@ -1,13 +1,9 @@
 use std::path::Path;
 
 use crate::{
-    asset_loader::assets::AssetsServer,
-    kairos_editor::{
-        asset_registry::AssetKind,
-        ui::inspector::{
-            Inspector, audio::AudioInspector, code::CodeInspector, directory::DirectoryInspector,
-            document::DocumentInspector, font::FontInspector, toml::TomlTableInspector,
-            unknown::UnknownInspector,
+    asset_loader::assets::AssetsServer, kairos_editor::{
+        asset_registry::AssetKind, ui::inspector::{
+            Inspector, audio::AudioInspector, code::CodeInspector, directory::DirectoryInspector, document::DocumentInspector, font::FontInspector, shader::ShaderInspector, toml::TomlTableInspector, unknown::UnknownInspector,
         },
     },
 };
@@ -26,7 +22,7 @@ impl InspectorCreater {
             AssetKind::Mesh => todo!(),
             AssetKind::Material => todo!(),
             AssetKind::Audio => Ok(Box::new(AudioInspector::create(path, assets_server)?)),
-            AssetKind::Shader => Ok(Box::new(DocumentInspector::create(path, assets_server)?)),
+            AssetKind::Shader => Ok(Box::new(ShaderInspector::create(path, assets_server)?)),
             AssetKind::Script => Ok(Box::new(CodeInspector::create(path, assets_server)?)),
             AssetKind::Document => Ok(Box::new(DocumentInspector::create(path, assets_server)?)),
             AssetKind::Toml => Ok(Box::new(TomlTableInspector::create(path, assets_server)?)),

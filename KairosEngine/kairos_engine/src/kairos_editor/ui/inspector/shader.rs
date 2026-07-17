@@ -6,8 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     asset_loader::assets::{
-        AssetHandle, AssetsServer, SyntaxAssetsSystem,
-        asset::TextAssetsSystem,
+        AssetHandle, AssetsServer, SyntaxAssetsSystem, asset::TextAssetsSystem,
     },
     kairos_editor::ui::{
         self, Message, Messager,
@@ -19,35 +18,35 @@ use crate::{
 };
 
 #[derive(Debug, Serialize, Deserialize)]
-struct CodeStyle {
+struct ShaderStyle {
     save_button_height: f32,
     desired_rows: usize,
     dark_background_color: math::Color32,
     bright_background_color: math::Color32,
 }
-impl CodeStyle {
+impl ShaderStyle {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let bytes = fs::read(paths::PATH_CODE_INSPECTOR_STYLE)?;
+        let bytes = fs::read(paths::PATH_SHADER_INSPECTOR_STYLE)?;
         let style = toml::from_slice(&bytes)?;
         Ok(style)
     }
 }
 
-struct CodeModel {
-    style: CodeStyle,
+struct ShaderModel {
+    style: ShaderStyle,
     path: PathBuf,
     handle: Arc<AssetHandle<TextAssetsSystem>>,
     content: Arc<Mutex<Option<String>>>,
     dirty: Cell<bool>,
-    /// Syntax highlighting settings (per-language theme), loaded via the asset system.
+    /// WGSL syntax highlighting settings, loaded via the asset system.
     syntax_handle: Arc<AssetHandle<SyntaxAssetsSystem>>,
 }
 
-pub struct CodeInspector {
-    model: CodeModel,
+pub struct ShaderInspector {
+    model: ShaderModel,
 }
 
-impl Inspector for CodeInspector {
+impl Inspector for ShaderInspector {
     fn create(
         path: &std::path::Path,
         assets_server: &mut AssetsServer,
@@ -55,16 +54,18 @@ impl Inspector for CodeInspector {
     where
         Self: Sized,
     {
-        let style = CodeStyle::new()?;
+        let style = ShaderStyle::new()?;
         let path = path.to_path_buf();
         let handle = assets_server.load(&path);
 
         // Load the per-language syntax+theme config through the asset system.
-        let syntax_path: PathBuf = paths::PATH_RUST_SYNTAX_CONFIG.into();
+        // This is async — the inspector will show a "Loading…" label
+        // until the SyntaxSet is built (first frame).
+        let syntax_path: PathBuf = paths::PATH_WGSL_SYNTAX_CONFIG.into();
         let syntax_handle = assets_server.load::<SyntaxAssetsSystem>(&syntax_path);
 
         let content = Arc::new(Mutex::new(None));
-        let model = CodeModel {
+        let model = ShaderModel {
             style,
             path,
             handle,
@@ -84,14 +85,16 @@ impl Inspector for CodeInspector {
                 if let Some(content) = assets_server.get(&self.model.handle) {
                     *content_mut = Some(content.clone());
                 }
-                ui.label("Rust File is Loading...");
+                ui.label("Shader File is Loading...");
                 return;
             }
         }
 
         // Wait until the syntax settings are loaded.
-        let Some(syntax_settings) = assets_server.get::<SyntaxAssetsSystem>(&self.model.syntax_handle) else {
-            ui.label("Rust syntax highlighting is loading...");
+        let Some(syntax_settings) =
+            assets_server.get::<SyntaxAssetsSystem>(&self.model.syntax_handle)
+        else {
+            ui.label("WGSL syntax highlighting is loading...");
             return;
         };
 
@@ -104,7 +107,8 @@ impl Inspector for CodeInspector {
             let theme =
                 egui_extras::syntax_highlighting::CodeTheme::from_memory(ui.ctx(), ui.style());
 
-            // Use the per-language settings (custom theme) from the asset system.
+            // `highlight_with` memos by reference address, so passing a stable
+            // `&SyntectSettings` from the asset system avoids recomputation.
             let settings = &syntax_settings.settings;
             let language_name: &str = &syntax_settings.language_name;
 
@@ -161,7 +165,7 @@ impl Inspector for CodeInspector {
             let save_btn =
                 egui::Button::new("Save").min_size(Vec2::new(ui.available_width(), 20.0));
             if ui.add_enabled(self.model.dirty.get(), save_btn).clicked() {
-                messager.send(Message::CodeInspectorSave(
+                messager.send(Message::ShaderInspectorSave(
                     self.model.path.clone(),
                     self.model.handle.clone(),
                     self.model.content.clone(),
@@ -196,8 +200,8 @@ impl Inspector for CodeInspector {
     }
 }
 
-impl CodeInspector {
-    pub fn save_code(
+impl ShaderInspector {
+    pub fn save_shader(
         assets_server: &mut AssetsServer,
         path: &PathBuf,
         handle: Arc<AssetHandle<TextAssetsSystem>>,

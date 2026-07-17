@@ -1,0 +1,52 @@
+# ============================================================
+# Kairos Engine — WGSL Syntax Highlighting Config
+#
+# This TOML links the WGSL sublime-syntax definition with
+# its theme colours.  Edit this file to customise the WGSL
+# code/shader editor colours, then re-open the editor tab.
+# ============================================================
+
+language_name = "WGSL"
+sublime_syntax = "Preferences/SublimeSyntax/wgsl.sublime-syntax"
+
+[theme]
+name = "Kairos Dark - WGSL"
+
+[theme.colors]
+# Default text colour
+foreground = "#D0D0D0"
+# Editor background
+background = "#1E1E1E"
+
+# Keywords: fn var let return if else for while struct enum …
+keyword = "#FF6464"
+
+# Types: f32 vec3 bool texture_2d sampler String i32 …
+type = "#57A5AB"
+
+# Built-in functions: dot normalize textureSample abs clamp …
+function = "#6D93E2"
+
+# String literals: "hello"
+string = "#6D93E2"
+
+# Comments: // ... or /* ... */
+comment = "#787878"
+
+# Numeric literals: 42 3.14 0xFF
+number = "#57A5AB"
+
+# Attributes / decorators: @vertex @group #[derive(…)]
+attribute = "#FFD700"
+
+# Built-in variables: position vertex_index workgroup_id …
+builtin_variable = "#DCDCAA"
+
+# User-defined variables / identifiers
+variable = "#D0D0D0"
+
+# Operators: + - * / && || == != …
+operator = "#D0D0D0"
+
+# Punctuation: { } ( ) [ ] ; , .
+punctuation = "#C0C0C0"

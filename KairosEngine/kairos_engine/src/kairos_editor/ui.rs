@@ -1,26 +1,16 @@
 use crate::{
     asset_loader::assets::{
         AssetHandle, AssetsServer, TomlTableAssetsSystem, asset::TextAssetsSystem,
-    },
-    graphics::graphics_graph::GraphicsCommand,
-    kairos_editor::{
-        Engine,
-        asset_registry::AssetKind,
-        ui::{
-            game_window::GameWindow,
-            global_styles::{FontDataConfig, FontsConfig, GlobalStyles},
-            inspector::{
-                code::CodeInspector, document::DocumentInspector, toml::TomlTableInspector,
-            },
-            layout::{
+    }, graphics::graphics_graph::GraphicsCommand, kairos_editor::{
+        Engine, asset_registry::AssetKind, ui::{
+            game_window::GameWindow, global_styles::{FontDataConfig, FontsConfig, GlobalStyles}, inspector::{
+                code::CodeInspector, document::DocumentInspector, shader::ShaderInspector, toml::TomlTableInspector,
+            }, layout::{
                 EditorLayout, LayoutBottomContainer, LayoutContainerIds, LayoutLeftContainer,
                 LayoutRightContainer, Zone,
             },
         },
-    },
-    kairos_game::KairosGame,
-    log::Log,
-    types::TypeIdMap,
+    }, kairos_game::KairosGame, log::Log, types::TypeIdMap,
 };
 use egui::{self};
 use std::{
@@ -143,6 +133,11 @@ pub enum Message {
         PathBuf,
         Arc<AssetHandle<TomlTableAssetsSystem>>,
         Arc<parking_lot::Mutex<Option<toml::Table>>>,
+    ),
+    ShaderInspectorSave(
+        PathBuf,
+        Arc<AssetHandle<TextAssetsSystem>>,
+        Arc<parking_lot::Mutex<Option<String>>>,
     ),
     /// Audio Inspector: toggle play/pause preview.
     ToggleAudioPreview,
@@ -590,6 +585,9 @@ impl Context {
                 Message::CodeInspectorSave(path, handle, content) => {
                     CodeInspector::save_code(&mut engine.assets_server, &path, handle, content);
                 }
+                Message::ShaderInspectorSave(path, handle, content) => {
+                    ShaderInspector::save_shader(&mut engine.assets_server, &path, handle, content);
+                },
             }
 
             // ---- per-frame: tick audio playback position ----

@@ -11,6 +11,8 @@ pub use asset::AudioAssetsSystem;
 pub use asset::MaterialAssetsSystem;
 pub use asset::MeshAssetsSystem;
 pub use asset::ShaderAssetsSystem;
+pub use asset::SyntaxAssetsSystem;
+pub use asset::syntax::SyntaxHighlightSettings;
 pub use asset::TextureAssetsSystem;
 pub use asset::TomlTableAssetsSystem;
 

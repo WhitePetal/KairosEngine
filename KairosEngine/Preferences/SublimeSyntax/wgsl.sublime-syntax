@@ -1,0 +1,75 @@
+%YAML 1.2
+---
+# WGSL Syntax Highlighting for Kairos Engine
+# https://www.w3.org/TR/WGSL/
+name: WGSL
+file_extensions:
+  - wgsl
+scope: source.wgsl
+contexts:
+  main:
+    # Comments
+    - match: '//.*$'
+      scope: comment.line.double-slash.wgsl
+    - match: /\*
+      push: block_comment
+
+    # Attributes
+    - match: '@\w+'
+      scope: storage.modifier.attribute.wgsl
+
+    # Strings (not really in WGSL, but for potential extensions)
+    - match: '"'
+      push: double_quoted_string
+
+    # Numbers
+    - match: '\b(0[xX][0-9a-fA-F]+|[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?)(u|i|f)?\b'
+      scope: constant.numeric.wgsl
+
+    # Keywords
+    - match: '\b(fn|var|let|const|return|if|else|for|while|loop|break|continue|switch|case|default|struct|enable|requires|alias|override|discard|fallthrough)\b'
+      scope: keyword.control.wgsl
+
+    # Storage modifiers
+    - match: '\b(read|write|read_write|function|private|storage|uniform|workgroup|handle|push_constant)\b'
+      scope: storage.modifier.wgsl
+
+    # Types
+    - match: '\b(bool|i32|u32|f32|f16|vec2|vec3|vec4|mat2x2|mat2x3|mat2x4|mat3x2|mat3x3|mat3x4|mat4x2|mat4x3|mat4x4|mat2x2f|mat2x3f|mat2x4f|mat3x2f|mat3x3f|mat3x4f|mat4x2f|mat4x3f|mat4x4f|array|texture_1d|texture_2d|texture_3d|texture_cube|texture_depth_2d|texture_depth_cube|texture_multisampled_2d|texture_storage_1d|texture_storage_2d|texture_storage_3d|sampler|sampler_comparison|ptr|atomic|void|bool2|bool3|bool4|i8|u8|i16|u16|i64|u64|vec2i|vec3i|vec4i|vec2u|vec3u|vec4u|vec2f|vec3f|vec4f|vec2h|vec3h|vec4h)\b'
+      scope: storage.type.wgsl
+
+    # Built-in variables
+    - match: '\b(vertex_index|instance_index|position|frag_coord|front_facing|sample_index|sample_mask|frag_depth|local_invocation_id|global_invocation_id|workgroup_id|num_workgroups|local_invocation_index)\b'
+      scope: variable.language.wgsl
+
+    # Built-in functions
+    - match: '\b(abs|acos|asin|atan|atan2|ceil|clamp|cos|cosh|cross|degrees|determinant|distance|dot|exp|exp2|faceForward|floor|fma|fract|frexp|inverseSqrt|ldexp|length|log|log2|max|min|mix|modf|normalize|pow|radians|reflect|refract|round|saturate|sign|sin|sinh|smoothstep|sqrt|step|tan|tanh|transpose|trunc|countLeadingZeros|countOneBits|countTrailingZeros|extractBits|firstLeadingBit|firstTrailingBit|insertBits|reverseBits|all|any|select|arrayLength|atomicAdd|atomicAnd|atomicCompareExchangeWeak|atomicExchange|atomicLoad|atomicMax|atomicMin|atomicOr|atomicStore|atomicSub|atomicXor|dpdx|dpdxCoarse|dpdxFine|dpdy|dpdyCoarse|dpdyFine|fwidth|fwidthCoarse|fwidthFine|textureDimensions|textureGather|textureGatherCompare|textureLoad|textureNumLayers|textureNumLevels|textureNumSamples|textureSample|textureSampleBias|textureSampleCompare|textureSampleGrad|textureSampleLevel|textureSampleBaseClampToEdge|textureStore|storageBarrier|workgroupBarrier|workgroupUniformLoad|unpack2x16float|unpack2x16snorm|unpack2x16unorm|unpack4x8snorm|unpack4x8unorm|pack2x16float|pack2x16snorm|pack2x16unorm|pack4x8snorm|pack4x8unorm|quantizeToF16)\b'
+      scope: support.function.wgsl
+
+    # Operators
+    - match: '(&&|\|\||==|!=|<=|>=|->|<<|>>|\+\+|--|[+\-*/%&|^<>!=]=?|@)'
+      scope: keyword.operator.wgsl
+
+    # Punctuation
+    - match: '[{}()\[\];:.,]'
+      scope: punctuation.wgsl
+
+    # Identifiers
+    - match: '\b[a-zA-Z_][a-zA-Z0-9_]*\b'
+      scope: variable.other.wgsl
+
+  block_comment:
+    - match: /\*
+      push: block_comment
+    - match: \*/
+      pop: true
+    - match: .
+      scope: comment.block.wgsl
+
+  double_quoted_string:
+    - match: '\\.'
+      scope: constant.character.escape.wgsl
+    - match: '"'
+      pop: true
+    - match: .
+      scope: string.quoted.double.wgsl

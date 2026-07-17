@@ -1,0 +1,51 @@
+# ============================================================
+# Kairos Engine — Rust Syntax Highlighting Config
+#
+# Rust syntax is built into syntect, so no custom
+# .sublime-syntax file is needed.  This TOML only
+# customises the colour theme for Rust source files.
+# ============================================================
+
+language_name = "Rust"
+
+[theme]
+name = "Kairos Dark - Rust"
+
+[theme.colors]
+# Default text colour
+foreground = "#D0D0D0"
+# Editor background
+background = "#1E1E1E"
+
+# Keywords: fn let return if else for while struct enum impl pub …
+keyword = "#FF6464"
+
+# Types: f32 vec3 bool i32 u32 String Option Result …
+type = "#57A5AB"
+
+# Function names
+function = "#6D93E2"
+
+# String literals: "hello"
+string = "#6D93E2"
+
+# Comments: // ... or /* ... */
+comment = "#787878"
+
+# Numeric literals: 42 3.14 0xFF
+number = "#57A5AB"
+
+# Attributes / decorators: #[derive(…)] #[allow(…)]
+attribute = "#FFD700"
+
+# Built-in variables: self, None, Some, Ok, Err, …
+builtin_variable = "#DCDCAA"
+
+# User-defined variables / identifiers
+variable = "#D0D0D0"
+
+# Operators: + - * / && || == != …
+operator = "#D0D0D0"
+
+# Punctuation: { } ( ) [ ] ; , .
+punctuation = "#C0C0C0"

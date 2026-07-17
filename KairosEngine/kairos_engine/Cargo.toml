@@ -38,7 +38,7 @@ wgpu = { version = "29.0.3", features = ["serde"] }
 pollster = "0.3"
 # eframe = { version = "0.34.2", features = ["wgpu"] }
 egui = "0.35.0"
-egui_extras = { version = "0.35.0", features = ["all_loaders", "datepicker"] }
+egui_extras = { version = "0.35.0", features = ["all_loaders", "datepicker", "syntect"] }
 emath = "0.35.0"
 epaint = "0.35.0"
 # egui_dock = "0.18.0"
@@ -54,6 +54,7 @@ rustfft = "6"
 mint = "0.5"
 rapier3d = { version = "0.33.0", features = [ "simd-nightly", "parallel", "serde-serialize"] }
 egui_commonmark = "0.24.0"
+syntect = { version = "5.3", default-features = false, features = ["default-fancy"] }
 # puffin = "0.20.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
