@@ -292,7 +292,10 @@ impl Context {
 
     pub fn darw(&mut self, ui: &mut egui::Ui, engine: &Engine, log: &mut Log) {
         ui.ctx().all_styles_mut(|style| {
-            style.debug.warn_if_rect_changes_id = false;
+            #[cfg(debug_assertions)]
+            {
+                style.debug.warn_if_rect_changes_id = false;
+            }
         });
 
         // tool_bar
