@@ -13,7 +13,7 @@ use crate::{
             Messager,
             dialog::Dialog,
             global_styles::GlobalStyles,
-            inspector::{Inspector, audio::AudioInspector},
+            inspector::{Inspector},
         },
     },
     kairos_game::KairosGame,
@@ -130,31 +130,9 @@ impl InspectorWindow {
             .and_then(|info| (info.inspector.as_mut() as &mut dyn Any).downcast_mut::<T>())
     }
 
-    /// Called from Context::handle() when ToggleAudioPreview message is received.
-    pub fn toggle_audio_preview(&mut self, engine: &mut Engine) {
-        if let Some(audio) = self.get_inspector_mut::<AudioInspector>() {
-            audio.toggle_playback(engine);
-        }
-    }
-
-    /// Called from Context::handle() every frame to update the playback position.
-    pub fn tick_audio_preview(&mut self) {
-        if let Some(audio) = self.get_inspector_mut::<AudioInspector>() {
-            audio.tick_playback();
-        }
-    }
-
-    /// Called from Context::handle() when SeekAudioPreview message is received.
-    pub fn seek_audio_preview(&mut self, engine: &mut Engine, position: f32) {
-        if let Some(audio) = self.get_inspector_mut::<AudioInspector>() {
-            audio.seek_and_play(engine, position);
-        }
-    }
-
-    /// Called when closing the inspector tab to stop any playing audio.
-    pub fn stop_audio_preview(&mut self) {
-        if let Some(audio) = self.get_inspector_mut::<AudioInspector>() {
-            audio.stop_playback();
+    pub fn on_close(&mut self, ctx: &egui::Context) {
+        if let Some(info) = &mut self.model.selected {
+            info.inspector.on_exit(ctx);
         }
     }
 }

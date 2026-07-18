@@ -11,6 +11,7 @@ pub mod consts;
 pub mod project_path_tree;
 pub mod runtime;
 pub mod serialize_asset;
+pub mod syntax;
 pub mod ui;
 
 pub struct Engine {

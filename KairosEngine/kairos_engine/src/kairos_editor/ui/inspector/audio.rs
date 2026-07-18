@@ -1,22 +1,148 @@
-use std::{fs, path::PathBuf, time::Instant};
+use std::{cell::Cell, fs, sync::Arc, time::Instant};
 
 use egui::{Color32, Pos2, Rect, RichText, Stroke, Vec2};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    asset_loader::assets::AssetsServer,
-    audio::{
-        audio::SerializedAudioAsset,
-        spectrum::{FrequencyBin, compute_spectrum},
-        waveform::{PcmData, WaveformPeak, compute_peaks},
-    },
-    kairos_editor::{
-        Engine,
-        ui::{dialog::Dialog, inspector::Inspector, paths},
-    },
-    math,
+    asset_loader::assets::{AssetHandle, AssetsServer, asset::AudioExtAssetsSystem}, audio::{
+        audio_ext::{pcm::PcmData},
+    }, kairos_editor::{
+        Engine, ui::{Message, dialog::Dialog, inspector::Inspector, paths},
+    }, math,
 };
 use kira::sound::static_sound::StaticSoundHandle;
+
+
+// ============================================================
+// WaveformPeak — Unity-style amplitude bucket
+// ============================================================
+
+/// One bucket in the waveform overview: min and max amplitude within a time window.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WaveformPeak {
+    pub min: f32,
+    pub max: f32,
+}
+
+/// Compute waveform peaks from mono f32 PCM samples using min/max bucketing
+/// (same approach as Unity's Audio Inspector waveform preview).
+///
+/// - `samples`: mono f32 PCM, normalized to `[-1, 1]`.
+/// - `num_buckets`: typically matches the pixel width of the widget.
+///
+/// Returns one `WaveformPeak` per bucket.
+pub fn compute_peaks(samples: &[f32], num_buckets: usize) -> Vec<WaveformPeak> {
+    if samples.is_empty() || num_buckets == 0 {
+        return Vec::new();
+    }
+
+    let bucket_size = (samples.len() / num_buckets).max(1);
+
+    (0..num_buckets)
+        .map(|i| {
+            let start = i * bucket_size;
+            if start >= samples.len() {
+                return WaveformPeak { min: 0.0, max: 0.0 };
+            }
+            let end = ((i + 1) * bucket_size).min(samples.len());
+            let slice = &samples[start..end];
+
+            let mut min = f32::INFINITY;
+            let mut max = f32::NEG_INFINITY;
+            for &s in slice {
+                if s < min {
+                    min = s;
+                }
+                if s > max {
+                    max = s;
+                }
+            }
+            // Guard against empty slice (shouldn't happen, but be safe)
+            if min == f32::INFINITY {
+                min = 0.0;
+                max = 0.0;
+            }
+            WaveformPeak { min, max }
+        })
+        .collect()
+}
+
+use rustfft::{FftPlanner, num_complex::Complex};
+
+/// One frequency bin: frequency in Hz + magnitude (linear, 0.0–1.0).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FrequencyBin {
+    pub frequency: f32,
+    pub magnitude: f32,
+}
+
+/// Compute the magnitude spectrum from a slice of mono f32 PCM samples.
+///
+/// - `samples`: mono PCM, normalized to `[-1, 1]`.
+/// - `sample_rate`: sample rate in Hz.
+/// - `fft_size`: FFT window size (power of 2, e.g. 2048). Larger = finer resolution.
+///
+/// Returns frequency bins up to Nyquist (`sample_rate / 2`).
+/// Magnitudes are normalized so the max bin = 1.0.
+pub fn compute_spectrum(samples: &[f32], sample_rate: u32, fft_size: usize) -> Vec<FrequencyBin> {
+    let n = samples.len().min(fft_size);
+    if n < 2 {
+        // Need at least 2 samples for a meaningful spectrum (and to avoid
+        // division-by-zero in the Hann window formula when n=1).
+        return Vec::new();
+    }
+
+    // Apply Hann window
+    let n_minus_1 = (n - 1) as f32;
+    let windowed: Vec<f32> = samples[..n]
+        .iter()
+        .enumerate()
+        .map(|(i, &s)| {
+            let w = 0.5 * (1.0 - (2.0 * std::f32::consts::PI * i as f32 / n_minus_1).cos());
+            s * w
+        })
+        .collect();
+
+    // Prepare FFT: zero-pad to fft_size
+    let mut planner = FftPlanner::<f32>::new();
+    let fft = planner.plan_fft_forward(fft_size);
+    let mut buffer: Vec<Complex<f32>> = (0..fft_size)
+        .map(|i| {
+            if i < n {
+                Complex::new(windowed[i], 0.0)
+            } else {
+                Complex::new(0.0, 0.0)
+            }
+        })
+        .collect();
+
+    fft.process(&mut buffer);
+
+    // Only first half (up to Nyquist)
+    let num_bins = fft_size / 2;
+    let freq_resolution = sample_rate as f32 / fft_size as f32;
+
+    let mut bins: Vec<FrequencyBin> = (0..num_bins)
+        .map(|i| {
+            let magnitude = (buffer[i].norm_sqr()).sqrt() / n as f32;
+            FrequencyBin {
+                frequency: i as f32 * freq_resolution,
+                magnitude,
+            }
+        })
+        .collect();
+
+    // Normalize to 0..1
+    let max_mag = bins.iter().map(|b| b.magnitude).fold(0.0f32, f32::max);
+    if max_mag > 0.0 {
+        for bin in &mut bins {
+            bin.magnitude /= max_mag;
+        }
+    }
+
+    bins
+}
+
 
 // ============================================================
 // Style (loaded from TOML, matching project pattern)
@@ -67,17 +193,8 @@ impl AudioInspectorStyle {
 
 struct AudioInspectorModel {
     style: AudioInspectorStyle,
-    /// Path to the .audio TOML file.
-    asset_path: PathBuf,
-    /// Decoded PCM data.
-    pcm_data: Option<PcmData>,
-    /// Precomputed spectrum bins.
-    spectrum_bins: Option<Vec<FrequencyBin>>,
-    /// Precomputed waveform peaks.
-    peaks: Vec<WaveformPeak>,
-    /// Error message if loading failed.
-    load_error: Option<String>,
-
+    audio_ext_handle: Arc<AssetHandle<AudioExtAssetsSystem>>,
+    audio_handle: Option<StaticSoundHandle>,
     // ---- playback state (all plain fields, mutated via messages) ----
     /// Whether audio preview is currently playing.
     is_playing: bool,
@@ -89,9 +206,6 @@ struct AudioInspectorModel {
     play_start_position: f32,
     /// Accumulated playback time from previous play segments (used for pause/resume).
     play_accumulated: f32,
-    /// Kira handle for the currently playing sound. `None` when not playing.
-    /// Stored so we can explicitly `.stop()` on pause.
-    play_handle: Option<StaticSoundHandle>,
 }
 
 // ============================================================
@@ -100,77 +214,81 @@ struct AudioInspectorModel {
 
 pub struct AudioInspector {
     model: AudioInspectorModel,
+    /// Precomputed waveform peaks.
+    peaks: Cell<Option<Vec<WaveformPeak>>>,
+    /// Precomputed spectrum bins.
+    spectrum_bins: Cell<Option<Vec<FrequencyBin>>>,
 }
 
 impl Inspector for AudioInspector {
     fn create(
         path: &std::path::Path,
-        _assets_server: &mut AssetsServer,
+        assets_server: &mut AssetsServer,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let style = AudioInspectorStyle::new()?;
         let asset_path = path.to_path_buf();
-
-        let (pcm_data, peaks, spectrum_bins, load_error) = match Self::load_audio_data(&asset_path)
-        {
-            Ok(pcm) => {
-                let mono = pcm.mono_samples();
-                let peaks = compute_peaks(&mono, style.waveform_buckets);
-                let slice = &mono[..];
-                let bins = compute_spectrum(slice, pcm.sample_rate, style.fft_size);
-                (Some(pcm), peaks, Some(bins), None)
-            }
-            Err(e) => (None, Vec::new(), None, Some(e.to_string())),
-        };
+        let audio_ext_handle = assets_server.load(&asset_path);
 
         let model = AudioInspectorModel {
             style,
-            asset_path,
-            pcm_data,
-            spectrum_bins,
-            peaks,
-            load_error,
+            audio_ext_handle,
+            audio_handle: None,
             is_playing: false,
             playback_position: 0.0,
             play_start_instant: None,
             play_start_position: 0.0,
             play_accumulated: 0.0,
-            play_handle: None,
         };
 
-        Ok(Self { model })
+        Ok(Self {
+            model,
+            peaks: Cell::new(None),
+            spectrum_bins: Cell::new(None),
+        })
     }
 
     fn draw(
         &self,
         ui: &mut egui::Ui,
         messager: &mut crate::kairos_editor::ui::Messager,
-        _assets_server: &AssetsServer,
+        assets_server: &AssetsServer,
     ) {
-        // ---- info header ----
-        if let Some(ref pcm) = self.model.pcm_data {
-            ui.label(format!(
-                "Sample Rate: {} Hz  |  Channels: {}  |  Duration: {:.2}s  |  Samples: {}",
-                pcm.sample_rate,
-                pcm.num_channels,
-                pcm.duration.as_secs_f32(),
-                pcm.num_samples
-            ));
-        }
-
-        if let Some(ref err) = self.model.load_error {
-            ui.colored_label(ui.visuals().error_fg_color, format!("Error: {err}"));
+        let Some(pcm) = self.get_pcm(assets_server) else {
+            ui.label("Audio is Loading...");
             return;
+        };
+
+        let mut peaks = self.peaks.take();
+        if peaks.is_none() {
+            let mono = pcm.mono_samples();
+            peaks = Some(compute_peaks(&mono, self.model.style.waveform_buckets));
+            let bins = Some(compute_spectrum(&mono, pcm.sample_rate, self.model.style.fft_size));
+            self.spectrum_bins.set(bins);
         }
+        self.peaks.set(peaks);
+
+        // ---- info header ----
+        ui.label(format!(
+            "Sample Rate: {} Hz  |  Channels: {}  |  Duration: {:.2}s  |  Samples: {}",
+            pcm.sample_rate,
+            pcm.num_channels,
+            pcm.duration.as_secs_f32(),
+            pcm.num_samples
+        ));
 
         ui.separator();
 
         // ---- waveform panel (with play button + playhead) ----
-        self.draw_waveform(ui, messager);
+        self.draw_waveform(ui, pcm, messager);
 
         ui.separator();
 
         // ---- spectrum panel ----
         self.draw_spectrum(ui);
+
+        if self.model.is_playing {
+            messager.send(Message::AudioInspectorTick);
+        }
     }
 
     fn on_exit(&mut self, _ctx: &egui::Context) -> Option<Box<dyn Dialog>> {
@@ -187,10 +305,6 @@ impl AudioInspector {
     /// Called when ToggleAudioPreview message is received.
     /// Has `&mut self` + `&mut Engine` → can start/stop kira playback.
     pub fn toggle_playback(&mut self, engine: &mut Engine) {
-        if self.model.pcm_data.is_none() {
-            return;
-        }
-
         if self.model.is_playing {
             self.pause();
         } else {
@@ -201,11 +315,11 @@ impl AudioInspector {
     /// Called when SeekAudioPreview message is received.
     /// Seeks to `position` (seconds) and starts/resumes playback.
     pub fn seek_and_play(&mut self, engine: &mut Engine, position: f32) {
-        if self.model.pcm_data.is_none() {
-            return;
-        }
         // Clamp to valid range
-        let duration = self.model.pcm_data.as_ref().unwrap().duration.as_secs_f32();
+        let Some(pcm) = self.get_pcm(&engine.assets_server) else {
+            return;
+        };
+        let duration = pcm.duration.as_secs_f32();
         let position = position.clamp(0.0, duration);
 
         // Stop current playback if any
@@ -231,11 +345,7 @@ impl AudioInspector {
     }
 
     /// Called every frame by Context::handle() to update playback position.
-    pub fn tick_playback(&mut self) {
-        if !self.model.is_playing {
-            return;
-        }
-
+    pub fn tick_playback(&mut self, assets_server: &mut AssetsServer) {
         let Some(instant) = self.model.play_start_instant else {
             return;
         };
@@ -245,7 +355,7 @@ impl AudioInspector {
             self.model.play_start_position + self.model.play_accumulated + elapsed;
 
         // Check if past duration
-        if let Some(ref pcm) = self.model.pcm_data {
+        if let Some(pcm) = self.get_pcm(assets_server) {
             let duration = pcm.duration.as_secs_f32();
             if self.model.playback_position >= duration {
                 self.stop_kira_handle();
@@ -264,41 +374,35 @@ impl AudioInspector {
 // ============================================================
 
 impl AudioInspector {
+    fn get_pcm<'a>(&'a self, assets_server: &'a AssetsServer) -> Option<&'a PcmData> {
+        let Some(audio_ext) = assets_server.get(&self.model.audio_ext_handle) else {
+            return None;
+        };
+        let Some(pcm_handle) = &audio_ext.pcm else {
+            return None;
+        };
+        assets_server.get(pcm_handle)
+    }
+
     fn play(&mut self, engine: &mut Engine) {
-        if self.model.pcm_data.is_none() {
+        let Some(audio_ext) = engine.assets_server.get(&self.model.audio_ext_handle) else {
+            return;
+        };
+        let Some(audio_handle) = &audio_ext.audio else {
+            return;
+        };
+        let Some(audio) = engine.assets_server.get(audio_handle) else {
             return;
         };
 
-        // Load the audio asset and play via kira
-        let toml_str = match fs::read_to_string(&self.model.asset_path) {
-            Ok(s) => s,
-            Err(_) => return,
-        };
-        let serialized: SerializedAudioAsset = match toml::from_str(&toml_str) {
-            Ok(a) => a,
-            Err(_) => return,
-        };
-
-        let bytes = match std::fs::read(&serialized.source_path) {
-            Ok(b) => b,
-            Err(_) => return,
-        };
-
-        let sound_data = match kira::sound::static_sound::StaticSoundData::from_cursor(
-            std::io::Cursor::new(bytes),
-        ) {
-            Ok(d) => d,
-            Err(_) => return,
-        };
+        let mut sound_data = audio.sound_data.clone();
 
         // If resuming, set start_position to the current position
-        let mut sound_data = sound_data;
         let resume_pos = self.model.play_accumulated;
         if resume_pos > 0.0 {
             use kira::sound::PlaybackPosition;
-            let mut settings = sound_data.settings;
+            let settings = &mut sound_data.settings;
             settings.start_position = PlaybackPosition::Seconds(resume_pos as f64);
-            sound_data.settings = settings;
         }
 
         // Stop any existing playback before starting a new one
@@ -310,7 +414,7 @@ impl AudioInspector {
             Ok(h) => h,
             Err(_) => return,
         };
-        self.model.play_handle = Some(handle);
+        self.model.audio_handle = Some(handle);
 
         self.model.is_playing = true;
         self.model.play_start_instant = Some(Instant::now());
@@ -332,10 +436,10 @@ impl AudioInspector {
 
     /// Stop the kira handle if one is active and clear it.
     fn stop_kira_handle(&mut self) {
-        if let Some(ref mut handle) = self.model.play_handle {
+        if let Some(ref mut handle) = self.model.audio_handle {
             handle.stop(kira::Tween::default());
         }
-        self.model.play_handle = None;
+        self.model.audio_handle = None;
     }
 }
 
@@ -344,18 +448,11 @@ impl AudioInspector {
 // ============================================================
 
 impl AudioInspector {
-    /// Read the `.audio` TOML, get the source audio path, decode to PcmData.
-    fn load_audio_data(asset_path: &PathBuf) -> Result<PcmData, Box<dyn std::error::Error>> {
-        let toml_str = fs::read_to_string(asset_path)?;
-        let serialized: SerializedAudioAsset = toml::from_str(&toml_str)?;
-        PcmData::from_path(&serialized.source_path)
-    }
-
     // ----------------------------------------------------------
     // Waveform rendering (with play button + playhead)
     // ----------------------------------------------------------
 
-    fn draw_waveform(&self, ui: &mut egui::Ui, messager: &mut crate::kairos_editor::ui::Messager) {
+    fn draw_waveform(&self, ui: &mut egui::Ui, pcm: &PcmData, messager: &mut crate::kairos_editor::ui::Messager) {
         let style = &self.model.style;
 
         // ---- header: label + play/pause button ----
@@ -365,7 +462,7 @@ impl AudioInspector {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let btn_text = if self.model.is_playing { "⏸" } else { "▶" };
                 if ui.button(btn_text).clicked() {
-                    messager.send(crate::kairos_editor::ui::Message::ToggleAudioPreview);
+                    messager.send(crate::kairos_editor::ui::Message::AudioInspectorTogglePreview);
                 }
             });
         });
@@ -388,12 +485,7 @@ impl AudioInspector {
         );
 
         // ---- played region overlay ----
-        let duration = self
-            .model
-            .pcm_data
-            .as_ref()
-            .map(|p| p.duration.as_secs_f32())
-            .unwrap_or(0.0);
+        let duration = pcm.duration.as_secs_f32();
 
         if duration > 0.0 && self.model.playback_position > 0.0 {
             let played_x = rect.left() + (self.model.playback_position / duration) * rect.width();
@@ -405,11 +497,12 @@ impl AudioInspector {
         }
 
         // ---- waveform peaks ----
-        if !self.model.peaks.is_empty() {
-            let bar_width = rect.width() / self.model.peaks.len() as f32;
+        let peaks_data = self.peaks.take();
+        if let Some(peaks) = &peaks_data && !peaks.is_empty() {
+            let bar_width = rect.width() / peaks.len() as f32;
             let half_h = rect.height() * 0.45;
 
-            for (i, peak) in self.model.peaks.iter().enumerate() {
+            for (i, peak) in peaks.iter().enumerate() {
                 let x = rect.left() + i as f32 * bar_width + bar_width * 0.5;
                 let y_min = mid_y - peak.min * half_h;
                 let y_max = mid_y - peak.max * half_h;
@@ -427,6 +520,7 @@ impl AudioInspector {
                 Color32::GRAY,
             );
         }
+        self.peaks.set(peaks_data);
 
         // ---- playhead cursor ----
         if duration > 0.0 {
@@ -478,7 +572,7 @@ impl AudioInspector {
             if let Some(pos) = resp.interact_pointer_pos() {
                 let t = ((pos.x - rect.left()) / rect.width()).clamp(0.0, 1.0);
                 let seek_time = t * duration;
-                messager.send(crate::kairos_editor::ui::Message::SeekAudioPreview(
+                messager.send(crate::kairos_editor::ui::Message::AudioInspectorSeekPreview(
                     seek_time,
                 ));
             }
@@ -490,9 +584,11 @@ impl AudioInspector {
     // ----------------------------------------------------------
 
     fn draw_spectrum(&self, ui: &mut egui::Ui) {
-        let Some(bins) = &self.model.spectrum_bins else {
+        let bins_data = self.spectrum_bins.take();
+        let Some(bins) = &bins_data else {
             return;
         };
+
         let style = &self.model.style;
 
         ui.label(RichText::new("Spectrum (Frequency Analysis)").strong());
@@ -512,49 +608,49 @@ impl AudioInspector {
                 egui::FontId::proportional(12.0),
                 Color32::GRAY,
             );
-            return;
-        }
+        } else {
+            // Draw spectrum bars
+            let max_display_bins = 512usize;
+            let step = (bins.len() / max_display_bins).max(1);
+            let bar_width = rect.width() / (bins.len() / step) as f32;
 
-        // Draw spectrum bars
-        let max_display_bins = 512usize;
-        let step = (bins.len() / max_display_bins).max(1);
-        let bar_width = rect.width() / (bins.len() / step) as f32;
+            for (i, chunk) in bins.chunks(step).enumerate() {
+                let mag = chunk.iter().map(|b| b.magnitude).fold(0.0f32, f32::max);
+                let bar_h = mag * rect.height();
+                let x = rect.left() + i as f32 * bar_width;
+                painter.rect_filled(
+                    Rect::from_min_size(
+                        Pos2::new(x, rect.bottom() - bar_h),
+                        Vec2::new(bar_width.max(1.0), bar_h),
+                    ),
+                    0.0,
+                    style.spectrum_color,
+                );
+            }
 
-        for (i, chunk) in bins.chunks(step).enumerate() {
-            let mag = chunk.iter().map(|b| b.magnitude).fold(0.0f32, f32::max);
-            let bar_h = mag * rect.height();
-            let x = rect.left() + i as f32 * bar_width;
-            painter.rect_filled(
-                Rect::from_min_size(
-                    Pos2::new(x, rect.bottom() - bar_h),
-                    Vec2::new(bar_width.max(1.0), bar_h),
-                ),
-                0.0,
-                style.spectrum_color,
-            );
+            // Frequency axis labels
+            if let Some(first) = bins.first() {
+                let max_freq = bins.last().map(|b| b.frequency).unwrap_or(22050.0);
+                painter.text(
+                    Pos2::new(rect.left() + 4.0, rect.bottom() - 14.0),
+                    egui::Align2::LEFT_BOTTOM,
+                    format!("{}Hz", first.frequency as u32),
+                    egui::FontId::monospace(10.0),
+                    Color32::GRAY,
+                );
+                painter.text(
+                    Pos2::new(rect.right() - 4.0, rect.bottom() - 14.0),
+                    egui::Align2::RIGHT_BOTTOM,
+                    if max_freq >= 1000.0 {
+                        format!("{:.1}kHz", max_freq / 1000.0)
+                    } else {
+                        format!("{}Hz", max_freq as u32)
+                    },
+                    egui::FontId::monospace(10.0),
+                    Color32::GRAY,
+                );
+            }
         }
-
-        // Frequency axis labels
-        if let Some(first) = bins.first() {
-            let max_freq = bins.last().map(|b| b.frequency).unwrap_or(22050.0);
-            painter.text(
-                Pos2::new(rect.left() + 4.0, rect.bottom() - 14.0),
-                egui::Align2::LEFT_BOTTOM,
-                format!("{}Hz", first.frequency as u32),
-                egui::FontId::monospace(10.0),
-                Color32::GRAY,
-            );
-            painter.text(
-                Pos2::new(rect.right() - 4.0, rect.bottom() - 14.0),
-                egui::Align2::RIGHT_BOTTOM,
-                if max_freq >= 1000.0 {
-                    format!("{:.1}kHz", max_freq / 1000.0)
-                } else {
-                    format!("{}Hz", max_freq as u32)
-                },
-                egui::FontId::monospace(10.0),
-                Color32::GRAY,
-            );
-        }
+        self.spectrum_bins.set(bins_data);
     }
 }

@@ -6,8 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     asset_loader::assets::{
-        AssetHandle, AssetsServer, SyntaxAssetsSystem,
-        asset::TextAssetsSystem,
+        AssetHandle, AssetsServer, SyntaxAssetsSystem, asset::TextAssetsSystem,
     },
     kairos_editor::ui::{
         self, Message, Messager,
@@ -90,7 +89,9 @@ impl Inspector for CodeInspector {
         }
 
         // Wait until the syntax settings are loaded.
-        let Some(syntax_settings) = assets_server.get::<SyntaxAssetsSystem>(&self.model.syntax_handle) else {
+        let Some(syntax_settings) =
+            assets_server.get::<SyntaxAssetsSystem>(&self.model.syntax_handle)
+        else {
             ui.label("Rust syntax highlighting is loading...");
             return;
         };

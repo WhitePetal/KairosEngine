@@ -11,9 +11,9 @@ pub mod creater;
 pub mod directory;
 pub mod document;
 pub mod font;
+pub mod shader;
 pub mod toml;
 pub mod unknown;
-pub mod shader;
 
 pub trait InspectorFieldKey {
     fn get_key(&self) -> usize;

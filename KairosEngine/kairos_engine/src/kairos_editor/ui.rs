@@ -4,7 +4,7 @@ use crate::{
     }, graphics::graphics_graph::GraphicsCommand, kairos_editor::{
         Engine, asset_registry::AssetKind, ui::{
             game_window::GameWindow, global_styles::{FontDataConfig, FontsConfig, GlobalStyles}, inspector::{
-                code::CodeInspector, document::DocumentInspector, shader::ShaderInspector, toml::TomlTableInspector,
+                audio::AudioInspector, code::CodeInspector, document::DocumentInspector, shader::ShaderInspector, toml::TomlTableInspector,
             }, layout::{
                 EditorLayout, LayoutBottomContainer, LayoutContainerIds, LayoutLeftContainer,
                 LayoutRightContainer, Zone,
@@ -139,10 +139,11 @@ pub enum Message {
         Arc<AssetHandle<TextAssetsSystem>>,
         Arc<parking_lot::Mutex<Option<String>>>,
     ),
+    AudioInspectorTick,
     /// Audio Inspector: toggle play/pause preview.
-    ToggleAudioPreview,
+    AudioInspectorTogglePreview,
     /// Audio Inspector: seek to position (seconds) and start playback.
-    SeekAudioPreview(f32),
+    AudioInspectorSeekPreview(f32),
 }
 
 struct KairosTabDrawer {
@@ -436,8 +437,8 @@ impl Context {
                     );
                 }
                 Message::CloseInspectorTab => {
-                    if let Some(inspector_window) = self.get_window_mut::<InspectorWindow>() {
-                        inspector_window.stop_audio_preview();
+                    if let Some(inspector) = self.get_window_mut::<InspectorWindow>() {
+                        inspector.on_close(ui.ctx());
                     }
                     self.close_drawer::<InspectorWindow>();
                 }
@@ -507,14 +508,14 @@ impl Context {
                         project_window.delete_node(node_idx);
                     }
                 }
-                Message::ToggleAudioPreview => {
-                    if let Some(inspector_window) = self.get_window_mut::<InspectorWindow>() {
-                        inspector_window.toggle_audio_preview(engine);
+                Message::AudioInspectorTogglePreview => {
+                    if let Some(inspector) = self.get_window_mut::<InspectorWindow>() && let Some(audio) = inspector.get_inspector_mut::<AudioInspector>() {
+                        audio.toggle_playback(engine);
                     }
                 }
-                Message::SeekAudioPreview(position) => {
-                    if let Some(inspector_window) = self.get_window_mut::<InspectorWindow>() {
-                        inspector_window.seek_audio_preview(engine, position);
+                Message::AudioInspectorSeekPreview(position) => {
+                    if let Some(inspector) = self.get_window_mut::<InspectorWindow>() && let Some(audio) = inspector.get_inspector_mut::<AudioInspector>() {
+                        audio.seek_and_play(engine, position);
                     }
                 }
                 Message::OpenSceneTab => {
@@ -590,12 +591,12 @@ impl Context {
                 }
                 Message::ShaderInspectorSave(path, handle, content) => {
                     ShaderInspector::save_shader(&mut engine.assets_server, &path, handle, content);
-                },
-            }
-
-            // ---- per-frame: tick audio playback position ----
-            if let Some(inspector_window) = self.get_window_mut::<InspectorWindow>() {
-                inspector_window.tick_audio_preview();
+                }
+                Message::AudioInspectorTick => {
+                    if let Some(inspector) = self.get_window_mut::<InspectorWindow>() && let Some(audio) = inspector.get_inspector_mut::<AudioInspector>() {
+                        audio.tick_playback(&mut engine.assets_server);
+                    }
+                }
             }
         }
     }

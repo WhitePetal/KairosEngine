@@ -5,15 +5,24 @@ pub mod hierarchy_panel;
 use std::{any::type_name, cell::Cell, fs, ops::Deref, sync::Arc};
 
 use crate::{
-    asset_loader::assets::AssetsServer, kairos_editor::{
-        Engine, asset_registry::{AssetKind, AssetRegistry}, project_path_tree::{ProjectPathGraph, create_request::CreateRequest}, ui::{
-            self, Messager, global_styles::GlobalStyles, inspector::creater::InspectorCreater, project_window::{
+    asset_loader::assets::AssetsServer,
+    kairos_editor::{
+        Engine,
+        asset_registry::{AssetKind, AssetRegistry},
+        project_path_tree::{ProjectPathGraph, create_request::CreateRequest},
+        ui::{
+            self, Messager,
+            global_styles::GlobalStyles,
+            inspector::creater::InspectorCreater,
+            project_window::{
                 content_panel::{ContentPanel, ContentStyle},
                 context_menu::ContextMenuState,
                 hierarchy_panel::{HierarchyPanel, HierarchyStyle},
             },
         },
-    }, kairos_game::KairosGame, log::Log,
+    },
+    kairos_game::KairosGame,
+    log::Log,
 };
 use parking_lot::Mutex;
 use petgraph::graph::NodeIndex;
@@ -305,14 +314,15 @@ impl ProjectWindow {
         selected_node: Option<NodeIndex>,
     ) {
         if let Some(node) = selected_node {
-            if let Some(data) = graph.get_node(node) && let Some(path) = data.path.to_str() {
+            if let Some(data) = graph.get_node(node)
+                && let Some(path) = data.path.to_str()
+            {
                 ui.label(
                     egui::RichText::new(path)
                         .size(style.content.bottom_bar_font_size)
                         .color(style.content.bottom_bar_text_color),
                 );
             }
-
         }
     }
 
@@ -393,7 +403,11 @@ impl Drawer for ProjectWindow {
         egui::CentralPanel::default().show(ui, |ui| {
             egui::ScrollArea::vertical()
                 .id_salt("content_scroll")
-                .max_height(ui.available_height() - self.model.style.content.bottom_bar_height - ui::DEFAULT_SPEATOR_HEIGHT)
+                .max_height(
+                    ui.available_height()
+                        - self.model.style.content.bottom_bar_height
+                        - ui::DEFAULT_SPEATOR_HEIGHT,
+                )
                 .show(ui, |ui| {
                     ContentPanel::draw(
                         ui,
@@ -407,10 +421,15 @@ impl Drawer for ProjectWindow {
                         renaming_buffer,
                     );
                 });
-                ui.separator();
-                ui.vertical(|ui| {
-                    Self::draw_bottom_bar(ui, &self.model.project_path_graph, &self.model.style, self.model.selected_node);
-                });
+            ui.separator();
+            ui.vertical(|ui| {
+                Self::draw_bottom_bar(
+                    ui,
+                    &self.model.project_path_graph,
+                    &self.model.style,
+                    self.model.selected_node,
+                );
+            });
         });
     }
 

@@ -50,7 +50,6 @@ impl Loader {
         path: PathBuf,
         asset_index: AssetIndex,
         sender: mpsc::Sender<LoadedEvent>,
-        _denpendency_request_sender: mpsc::Sender<DependencyLoadRequestEvent>,
     ) -> Result<(), Error> {
         let bytes = tokio::fs::read(path.clone()).await?;
         let font = Font { bytes };
@@ -71,14 +70,9 @@ impl asset::AssetLoader<LoadedEvent, Font> for Loader {
         asset_index: AssetIndex,
         sender: mpsc::Sender<LoadedEvent>,
         // _on_completed: Option<impl FnOnce(&mut MaterialAsset) -> () + Send + Sync + 'static>,
-        denpendency_request_sender: mpsc::Sender<DependencyLoadRequestEvent>,
+        _denpendency_request_sender: mpsc::Sender<DependencyLoadRequestEvent>,
     ) {
-        tokio::spawn(Self::load(
-            path,
-            asset_index,
-            sender,
-            denpendency_request_sender,
-        ));
+        tokio::spawn(Self::load(path, asset_index, sender));
     }
 }
 

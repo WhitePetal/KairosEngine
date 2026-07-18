@@ -33,12 +33,8 @@ impl quaternion {
         let sv = glam::Vec4::new(sx, cx, cx, cx);
         let cv = glam::Vec4::new(cx, sx, sx, sx);
 
-        let a = sv
-            * glam::Vec4::new(cy, sy, cy, cy)
-            * glam::Vec4::new(cz, cz, sz, cz);
-        let b = cv
-            * glam::Vec4::new(sy, cy, sy, sy)
-            * glam::Vec4::new(sz, sz, cz, sz);
+        let a = sv * glam::Vec4::new(cy, sy, cy, cy) * glam::Vec4::new(cz, cz, sz, cz);
+        let b = cv * glam::Vec4::new(sy, cy, sy, sy) * glam::Vec4::new(sz, sz, cz, sz);
 
         Self(float4::from_inner(
             a + b * glam::Vec4::new(-1.0, 1.0, -1.0, 1.0),
@@ -190,9 +186,7 @@ impl Mul for quaternion {
         let xyz = (aw * bv + bw * av + cross) * mask;
         let w = self.0.w() * rhs.0.w() - av.dot(bv);
 
-        Self(float4::from_inner(
-            xyz + glam::Vec4::new(0.0, 0.0, 0.0, w),
-        ))
+        Self(float4::from_inner(xyz + glam::Vec4::new(0.0, 0.0, 0.0, w)))
     }
 }
 

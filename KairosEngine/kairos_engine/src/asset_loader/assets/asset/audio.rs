@@ -15,6 +15,12 @@ use crate::{
     audio::audio::{AudioAsset, SerializedAudioAsset},
 };
 
+mod pcm;
+mod audio_ext;
+
+pub use pcm::PcmAssetsSystem;
+pub use audio_ext::AudioExtAssetsSystem;
+
 pub type AudioAssetHandle = Arc<AssetHandle<AudioAssetsSystem>>;
 
 pub struct LoadedEvent {

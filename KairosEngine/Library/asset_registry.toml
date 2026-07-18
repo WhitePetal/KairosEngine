@@ -327,6 +327,18 @@ guid = "2bdd7c00-46b0-4258-8e28-665d5eafde8b"
 path = "./kairos_engine/src/asset_loader/assets/asset"
 
 [[entries]]
+guid = "e893595c-e3fa-41f9-aeca-a8b1f665a221"
+path = './kairos_engine\src\asset_loader\assets\asset\audio'
+
+[[entries]]
+guid = "ca22f06b-5ff4-4b5d-8a66-47a3850f7b1b"
+path = './kairos_engine\src\asset_loader\assets\asset\audio\audio_ext.rs'
+
+[[entries]]
+guid = "a234fd24-b672-441e-9136-26bdddfad515"
+path = './kairos_engine\src\asset_loader\assets\asset\audio\pcm.rs'
+
+[[entries]]
 guid = "84c65305-b360-4971-82fe-b0a85906ca72"
 path = "./kairos_engine/src/asset_loader/assets/asset/audio.rs"
 
@@ -385,6 +397,18 @@ path = "./kairos_engine/src/audio"
 [[entries]]
 guid = "66cd8ff7-bfa5-4b43-a225-daaca2e10a60"
 path = "./kairos_engine/src/audio/audio.rs"
+
+[[entries]]
+guid = "ee1cd688-4304-49fe-9973-b58e3742210a"
+path = './kairos_engine\src\audio\audio_ext'
+
+[[entries]]
+guid = "a2c21d32-e7db-4f26-9457-af08dfffe7c4"
+path = './kairos_engine\src\audio\audio_ext\pcm.rs'
+
+[[entries]]
+guid = "c829538e-a59a-43c9-aa59-cf920c7df899"
+path = './kairos_engine\src\audio\audio_ext.rs'
 
 [[entries]]
 guid = "955ecedd-3631-460f-b812-6f061fe9c2df"
@@ -661,6 +685,10 @@ path = "./kairos_engine/src/kairos_editor/serialize_asset/texture.rs"
 [[entries]]
 guid = "b7a97f55-1c95-4243-9df8-5644a3916232"
 path = "./kairos_engine/src/kairos_editor/serialize_asset.rs"
+
+[[entries]]
+guid = "f07bb45a-8ed8-4d65-a443-aa7d10d1971b"
+path = './kairos_engine\src\kairos_editor\syntax.rs'
 
 [[entries]]
 guid = "3d027b3d-fd32-496a-a596-fbf609891ff0"

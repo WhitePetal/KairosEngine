@@ -28,7 +28,5 @@ pub const PATH_SHADER_INSPECTOR_STYLE: &'static str = "Preferences/Styles/Inspec
 //   - language_name  (e.g. "WGSL", "Rust")
 //   - sublime_syntax (optional path to a .sublime-syntax file)
 //   - [theme]        (color overrides for this language)
-pub const PATH_WGSL_SYNTAX_CONFIG: &'static str =
-    "Preferences/SublimeSyntax/wgsl_syntax.toml";
-pub const PATH_RUST_SYNTAX_CONFIG: &'static str =
-    "Preferences/SublimeSyntax/rust_syntax.toml";
+pub const PATH_WGSL_SYNTAX_CONFIG: &'static str = "Preferences/SublimeSyntax/wgsl_syntax.toml";
+pub const PATH_RUST_SYNTAX_CONFIG: &'static str = "Preferences/SublimeSyntax/rust_syntax.toml";

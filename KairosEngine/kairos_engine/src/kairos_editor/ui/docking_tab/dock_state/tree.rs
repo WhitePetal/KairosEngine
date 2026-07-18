@@ -221,8 +221,6 @@ impl<Drawer> std::fmt::Debug for DrawerIter<'_, Drawer> {
     }
 }
 
-
-
 #[derive(Clone)]
 pub struct Tree<Drawer> {
     // Binary tree vector

@@ -18,11 +18,10 @@ use crate::{
 };
 
 pub mod audio;
+pub mod audio_ext;
 pub mod background;
 pub mod consts;
 pub mod spatial;
-pub mod spectrum;
-pub mod waveform;
 
 pub struct AudioEngine {
     manager: AudioManager,

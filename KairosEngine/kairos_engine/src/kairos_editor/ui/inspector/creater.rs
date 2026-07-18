@@ -1,9 +1,13 @@
 use std::path::Path;
 
 use crate::{
-    asset_loader::assets::AssetsServer, kairos_editor::{
-        asset_registry::AssetKind, ui::inspector::{
-            Inspector, audio::AudioInspector, code::CodeInspector, directory::DirectoryInspector, document::DocumentInspector, font::FontInspector, shader::ShaderInspector, toml::TomlTableInspector, unknown::UnknownInspector,
+    asset_loader::assets::AssetsServer,
+    kairos_editor::{
+        asset_registry::AssetKind,
+        ui::inspector::{
+            Inspector, audio::AudioInspector, code::CodeInspector, directory::DirectoryInspector,
+            document::DocumentInspector, font::FontInspector, shader::ShaderInspector,
+            toml::TomlTableInspector, unknown::UnknownInspector,
         },
     },
 };

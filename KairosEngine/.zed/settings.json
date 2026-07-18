@@ -21,6 +21,8 @@
     "coloring": "indent_aware"
   },
   "inlay_hints": {
+    "show_other_hints": true,
+    "show_value_hints": true,
     "enabled": true
   },
   "format_on_save": "off",

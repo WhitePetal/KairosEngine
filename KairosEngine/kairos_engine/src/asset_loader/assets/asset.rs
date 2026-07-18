@@ -3,7 +3,7 @@ mod font;
 mod material;
 mod mesh;
 mod shader;
-pub mod syntax;
+mod syntax;
 mod text;
 mod texture;
 mod toml;
@@ -20,6 +20,8 @@ use tokio::sync::mpsc::{self};
 
 pub use audio::AudioAssetHandle;
 pub use audio::AudioAssetsSystem;
+pub use audio::PcmAssetsSystem;
+pub use audio::AudioExtAssetsSystem;
 pub use font::FontAssetsSystem;
 pub use material::MaterialAssetsSystem;
 pub use mesh::MeshAssetsSystem;

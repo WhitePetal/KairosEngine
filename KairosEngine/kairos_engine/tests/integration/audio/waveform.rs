@@ -138,7 +138,7 @@ fn mono_stereo_average() {
         44100,
         2,
         vec![
-            0.4, 0.6,  // frame 0
+            0.4, 0.6, // frame 0
             -0.2, 0.2, // frame 1
             1.0, -0.5, // frame 2
         ],

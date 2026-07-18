@@ -3,9 +3,7 @@ use tempfile::TempDir;
 use kairos_engine::kairos_editor::{
     asset_registry::{AssetKind, AssetRegistry},
     project_path_tree::{
-        ProjectPathGraph,
-        create_request::CreateRequest,
-        tree_node::ProjectTreeNode,
+        ProjectPathGraph, create_request::CreateRequest, tree_node::ProjectTreeNode,
     },
 };
 use petgraph::graph::NodeIndex;

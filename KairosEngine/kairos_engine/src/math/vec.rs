@@ -986,91 +986,331 @@ impl float4 {
     }
 
     // ── Swizzles returning float2 ──
-    #[inline(always)] pub fn xx(&self) -> float2 { float2(self.0.xx()) }
-    #[inline(always)] pub fn xy(&self) -> float2 { float2(self.0.xy()) }
-    #[inline(always)] pub fn xz(&self) -> float2 { float2(self.0.xz()) }
-    #[inline(always)] pub fn xw(&self) -> float2 { float2(self.0.xw()) }
-    #[inline(always)] pub fn yx(&self) -> float2 { float2(self.0.yx()) }
-    #[inline(always)] pub fn yy(&self) -> float2 { float2(self.0.yy()) }
-    #[inline(always)] pub fn yz(&self) -> float2 { float2(self.0.yz()) }
-    #[inline(always)] pub fn yw(&self) -> float2 { float2(self.0.yw()) }
-    #[inline(always)] pub fn zx(&self) -> float2 { float2(self.0.zx()) }
-    #[inline(always)] pub fn zy(&self) -> float2 { float2(self.0.zy()) }
-    #[inline(always)] pub fn zz(&self) -> float2 { float2(self.0.zz()) }
-    #[inline(always)] pub fn zw(&self) -> float2 { float2(self.0.zw()) }
-    #[inline(always)] pub fn wx(&self) -> float2 { float2(self.0.wx()) }
-    #[inline(always)] pub fn wy(&self) -> float2 { float2(self.0.wy()) }
-    #[inline(always)] pub fn wz(&self) -> float2 { float2(self.0.wz()) }
-    #[inline(always)] pub fn ww(&self) -> float2 { float2(self.0.ww()) }
+    #[inline(always)]
+    pub fn xx(&self) -> float2 {
+        float2(self.0.xx())
+    }
+    #[inline(always)]
+    pub fn xy(&self) -> float2 {
+        float2(self.0.xy())
+    }
+    #[inline(always)]
+    pub fn xz(&self) -> float2 {
+        float2(self.0.xz())
+    }
+    #[inline(always)]
+    pub fn xw(&self) -> float2 {
+        float2(self.0.xw())
+    }
+    #[inline(always)]
+    pub fn yx(&self) -> float2 {
+        float2(self.0.yx())
+    }
+    #[inline(always)]
+    pub fn yy(&self) -> float2 {
+        float2(self.0.yy())
+    }
+    #[inline(always)]
+    pub fn yz(&self) -> float2 {
+        float2(self.0.yz())
+    }
+    #[inline(always)]
+    pub fn yw(&self) -> float2 {
+        float2(self.0.yw())
+    }
+    #[inline(always)]
+    pub fn zx(&self) -> float2 {
+        float2(self.0.zx())
+    }
+    #[inline(always)]
+    pub fn zy(&self) -> float2 {
+        float2(self.0.zy())
+    }
+    #[inline(always)]
+    pub fn zz(&self) -> float2 {
+        float2(self.0.zz())
+    }
+    #[inline(always)]
+    pub fn zw(&self) -> float2 {
+        float2(self.0.zw())
+    }
+    #[inline(always)]
+    pub fn wx(&self) -> float2 {
+        float2(self.0.wx())
+    }
+    #[inline(always)]
+    pub fn wy(&self) -> float2 {
+        float2(self.0.wy())
+    }
+    #[inline(always)]
+    pub fn wz(&self) -> float2 {
+        float2(self.0.wz())
+    }
+    #[inline(always)]
+    pub fn ww(&self) -> float2 {
+        float2(self.0.ww())
+    }
 
     // ── Swizzles returning float3 ──
-    #[inline(always)] pub fn xxx(&self) -> float3 { float3(self.0.xxx().into()) }
-    #[inline(always)] pub fn xxy(&self) -> float3 { float3(self.0.xxy().into()) }
-    #[inline(always)] pub fn xxz(&self) -> float3 { float3(self.0.xxz().into()) }
-    #[inline(always)] pub fn xxw(&self) -> float3 { float3(self.0.xxw().into()) }
-    #[inline(always)] pub fn xyx(&self) -> float3 { float3(self.0.xyx().into()) }
-    #[inline(always)] pub fn xyy(&self) -> float3 { float3(self.0.xyy().into()) }
-    #[inline(always)] pub fn xyz(&self) -> float3 { float3(self.0.xyz().into()) }
-    #[inline(always)] pub fn xyw(&self) -> float3 { float3(self.0.xyw().into()) }
-    #[inline(always)] pub fn xzx(&self) -> float3 { float3(self.0.xzx().into()) }
-    #[inline(always)] pub fn xzy(&self) -> float3 { float3(self.0.xzy().into()) }
-    #[inline(always)] pub fn xzz(&self) -> float3 { float3(Vec3A::new(self.x(), self.z(), self.z())) }
-    #[inline(always)] pub fn xzw(&self) -> float3 { float3(self.0.xzw().into()) }
-    #[inline(always)] pub fn xwx(&self) -> float3 { float3(self.0.xwx().into()) }
-    #[inline(always)] pub fn xwy(&self) -> float3 { float3(self.0.xwy().into()) }
-    #[inline(always)] pub fn xwz(&self) -> float3 { float3(self.0.xwz().into()) }
-    #[inline(always)] pub fn xww(&self) -> float3 { float3(Vec3A::new(self.x(), self.w(), self.w())) }
+    #[inline(always)]
+    pub fn xxx(&self) -> float3 {
+        float3(self.0.xxx().into())
+    }
+    #[inline(always)]
+    pub fn xxy(&self) -> float3 {
+        float3(self.0.xxy().into())
+    }
+    #[inline(always)]
+    pub fn xxz(&self) -> float3 {
+        float3(self.0.xxz().into())
+    }
+    #[inline(always)]
+    pub fn xxw(&self) -> float3 {
+        float3(self.0.xxw().into())
+    }
+    #[inline(always)]
+    pub fn xyx(&self) -> float3 {
+        float3(self.0.xyx().into())
+    }
+    #[inline(always)]
+    pub fn xyy(&self) -> float3 {
+        float3(self.0.xyy().into())
+    }
+    #[inline(always)]
+    pub fn xyz(&self) -> float3 {
+        float3(self.0.xyz().into())
+    }
+    #[inline(always)]
+    pub fn xyw(&self) -> float3 {
+        float3(self.0.xyw().into())
+    }
+    #[inline(always)]
+    pub fn xzx(&self) -> float3 {
+        float3(self.0.xzx().into())
+    }
+    #[inline(always)]
+    pub fn xzy(&self) -> float3 {
+        float3(self.0.xzy().into())
+    }
+    #[inline(always)]
+    pub fn xzz(&self) -> float3 {
+        float3(Vec3A::new(self.x(), self.z(), self.z()))
+    }
+    #[inline(always)]
+    pub fn xzw(&self) -> float3 {
+        float3(self.0.xzw().into())
+    }
+    #[inline(always)]
+    pub fn xwx(&self) -> float3 {
+        float3(self.0.xwx().into())
+    }
+    #[inline(always)]
+    pub fn xwy(&self) -> float3 {
+        float3(self.0.xwy().into())
+    }
+    #[inline(always)]
+    pub fn xwz(&self) -> float3 {
+        float3(self.0.xwz().into())
+    }
+    #[inline(always)]
+    pub fn xww(&self) -> float3 {
+        float3(Vec3A::new(self.x(), self.w(), self.w()))
+    }
 
-    #[inline(always)] pub fn yxx(&self) -> float3 { float3(self.0.yxx().into()) }
-    #[inline(always)] pub fn yxy(&self) -> float3 { float3(self.0.yxy().into()) }
-    #[inline(always)] pub fn yxz(&self) -> float3 { float3(self.0.yxz().into()) }
-    #[inline(always)] pub fn yxw(&self) -> float3 { float3(self.0.yxw().into()) }
-    #[inline(always)] pub fn yyx(&self) -> float3 { float3(self.0.yyx().into()) }
-    #[inline(always)] pub fn yyy(&self) -> float3 { float3(self.0.yyy().into()) }
-    #[inline(always)] pub fn yyz(&self) -> float3 { float3(self.0.yyz().into()) }
-    #[inline(always)] pub fn yyw(&self) -> float3 { float3(self.0.yyw().into()) }
-    #[inline(always)] pub fn yzx(&self) -> float3 { float3(self.0.yzx().into()) }
-    #[inline(always)] pub fn yzy(&self) -> float3 { float3(self.0.yzy().into()) }
-    #[inline(always)] pub fn yzz(&self) -> float3 { float3(Vec3A::new(self.y(), self.z(), self.z())) }
-    #[inline(always)] pub fn yzw(&self) -> float3 { float3(self.0.yzw().into()) }
-    #[inline(always)] pub fn ywx(&self) -> float3 { float3(self.0.ywx().into()) }
-    #[inline(always)] pub fn ywy(&self) -> float3 { float3(self.0.ywy().into()) }
-    #[inline(always)] pub fn ywz(&self) -> float3 { float3(self.0.ywz().into()) }
-    #[inline(always)] pub fn yww(&self) -> float3 { float3(Vec3A::new(self.y(), self.w(), self.w())) }
+    #[inline(always)]
+    pub fn yxx(&self) -> float3 {
+        float3(self.0.yxx().into())
+    }
+    #[inline(always)]
+    pub fn yxy(&self) -> float3 {
+        float3(self.0.yxy().into())
+    }
+    #[inline(always)]
+    pub fn yxz(&self) -> float3 {
+        float3(self.0.yxz().into())
+    }
+    #[inline(always)]
+    pub fn yxw(&self) -> float3 {
+        float3(self.0.yxw().into())
+    }
+    #[inline(always)]
+    pub fn yyx(&self) -> float3 {
+        float3(self.0.yyx().into())
+    }
+    #[inline(always)]
+    pub fn yyy(&self) -> float3 {
+        float3(self.0.yyy().into())
+    }
+    #[inline(always)]
+    pub fn yyz(&self) -> float3 {
+        float3(self.0.yyz().into())
+    }
+    #[inline(always)]
+    pub fn yyw(&self) -> float3 {
+        float3(self.0.yyw().into())
+    }
+    #[inline(always)]
+    pub fn yzx(&self) -> float3 {
+        float3(self.0.yzx().into())
+    }
+    #[inline(always)]
+    pub fn yzy(&self) -> float3 {
+        float3(self.0.yzy().into())
+    }
+    #[inline(always)]
+    pub fn yzz(&self) -> float3 {
+        float3(Vec3A::new(self.y(), self.z(), self.z()))
+    }
+    #[inline(always)]
+    pub fn yzw(&self) -> float3 {
+        float3(self.0.yzw().into())
+    }
+    #[inline(always)]
+    pub fn ywx(&self) -> float3 {
+        float3(self.0.ywx().into())
+    }
+    #[inline(always)]
+    pub fn ywy(&self) -> float3 {
+        float3(self.0.ywy().into())
+    }
+    #[inline(always)]
+    pub fn ywz(&self) -> float3 {
+        float3(self.0.ywz().into())
+    }
+    #[inline(always)]
+    pub fn yww(&self) -> float3 {
+        float3(Vec3A::new(self.y(), self.w(), self.w()))
+    }
 
-    #[inline(always)] pub fn zxx(&self) -> float3 { float3(self.0.zxx().into()) }
-    #[inline(always)] pub fn zxy(&self) -> float3 { float3(self.0.zxy().into()) }
-    #[inline(always)] pub fn zxz(&self) -> float3 { float3(self.0.zxz().into()) }
-    #[inline(always)] pub fn zxw(&self) -> float3 { float3(self.0.zxw().into()) }
-    #[inline(always)] pub fn zyx(&self) -> float3 { float3(self.0.zyx().into()) }
-    #[inline(always)] pub fn zyy(&self) -> float3 { float3(self.0.zyy().into()) }
-    #[inline(always)] pub fn zyz(&self) -> float3 { float3(self.0.zyz().into()) }
-    #[inline(always)] pub fn zyw(&self) -> float3 { float3(self.0.zyw().into()) }
-    #[inline(always)] pub fn zzx(&self) -> float3 { float3(self.0.zzx().into()) }
-    #[inline(always)] pub fn zzy(&self) -> float3 { float3(self.0.zzy().into()) }
-    #[inline(always)] pub fn zzz(&self) -> float3 { float3(self.0.zzz().into()) }
-    #[inline(always)] pub fn zzw(&self) -> float3 { float3(self.0.zzw().into()) }
-    #[inline(always)] pub fn zwx(&self) -> float3 { float3(self.0.zwx().into()) }
-    #[inline(always)] pub fn zwy(&self) -> float3 { float3(self.0.zwy().into()) }
-    #[inline(always)] pub fn zwz(&self) -> float3 { float3(self.0.zwz().into()) }
-    #[inline(always)] pub fn zww(&self) -> float3 { float3(Vec3A::new(self.z(), self.w(), self.w())) }
+    #[inline(always)]
+    pub fn zxx(&self) -> float3 {
+        float3(self.0.zxx().into())
+    }
+    #[inline(always)]
+    pub fn zxy(&self) -> float3 {
+        float3(self.0.zxy().into())
+    }
+    #[inline(always)]
+    pub fn zxz(&self) -> float3 {
+        float3(self.0.zxz().into())
+    }
+    #[inline(always)]
+    pub fn zxw(&self) -> float3 {
+        float3(self.0.zxw().into())
+    }
+    #[inline(always)]
+    pub fn zyx(&self) -> float3 {
+        float3(self.0.zyx().into())
+    }
+    #[inline(always)]
+    pub fn zyy(&self) -> float3 {
+        float3(self.0.zyy().into())
+    }
+    #[inline(always)]
+    pub fn zyz(&self) -> float3 {
+        float3(self.0.zyz().into())
+    }
+    #[inline(always)]
+    pub fn zyw(&self) -> float3 {
+        float3(self.0.zyw().into())
+    }
+    #[inline(always)]
+    pub fn zzx(&self) -> float3 {
+        float3(self.0.zzx().into())
+    }
+    #[inline(always)]
+    pub fn zzy(&self) -> float3 {
+        float3(self.0.zzy().into())
+    }
+    #[inline(always)]
+    pub fn zzz(&self) -> float3 {
+        float3(self.0.zzz().into())
+    }
+    #[inline(always)]
+    pub fn zzw(&self) -> float3 {
+        float3(self.0.zzw().into())
+    }
+    #[inline(always)]
+    pub fn zwx(&self) -> float3 {
+        float3(self.0.zwx().into())
+    }
+    #[inline(always)]
+    pub fn zwy(&self) -> float3 {
+        float3(self.0.zwy().into())
+    }
+    #[inline(always)]
+    pub fn zwz(&self) -> float3 {
+        float3(self.0.zwz().into())
+    }
+    #[inline(always)]
+    pub fn zww(&self) -> float3 {
+        float3(Vec3A::new(self.z(), self.w(), self.w()))
+    }
 
-    #[inline(always)] pub fn wxx(&self) -> float3 { float3(self.0.wxx().into()) }
-    #[inline(always)] pub fn wxy(&self) -> float3 { float3(self.0.wxy().into()) }
-    #[inline(always)] pub fn wxz(&self) -> float3 { float3(self.0.wxz().into()) }
-    #[inline(always)] pub fn wxw(&self) -> float3 { float3(self.0.wxw().into()) }
-    #[inline(always)] pub fn wyx(&self) -> float3 { float3(self.0.wyx().into()) }
-    #[inline(always)] pub fn wyy(&self) -> float3 { float3(self.0.wyy().into()) }
-    #[inline(always)] pub fn wyz(&self) -> float3 { float3(self.0.wyz().into()) }
-    #[inline(always)] pub fn wyw(&self) -> float3 { float3(self.0.wyw().into()) }
-    #[inline(always)] pub fn wzx(&self) -> float3 { float3(self.0.wzx().into()) }
-    #[inline(always)] pub fn wzy(&self) -> float3 { float3(self.0.wzy().into()) }
-    #[inline(always)] pub fn wzz(&self) -> float3 { float3(Vec3A::new(self.w(), self.z(), self.z())) }
-    #[inline(always)] pub fn wzw(&self) -> float3 { float3(self.0.wzw().into()) }
-    #[inline(always)] pub fn wwx(&self) -> float3 { float3(self.0.wwx().into()) }
-    #[inline(always)] pub fn wwy(&self) -> float3 { float3(self.0.wwy().into()) }
-    #[inline(always)] pub fn wwz(&self) -> float3 { float3(self.0.wwz().into()) }
-    #[inline(always)] pub fn www(&self) -> float3 { float3(self.0.www().into()) }
+    #[inline(always)]
+    pub fn wxx(&self) -> float3 {
+        float3(self.0.wxx().into())
+    }
+    #[inline(always)]
+    pub fn wxy(&self) -> float3 {
+        float3(self.0.wxy().into())
+    }
+    #[inline(always)]
+    pub fn wxz(&self) -> float3 {
+        float3(self.0.wxz().into())
+    }
+    #[inline(always)]
+    pub fn wxw(&self) -> float3 {
+        float3(self.0.wxw().into())
+    }
+    #[inline(always)]
+    pub fn wyx(&self) -> float3 {
+        float3(self.0.wyx().into())
+    }
+    #[inline(always)]
+    pub fn wyy(&self) -> float3 {
+        float3(self.0.wyy().into())
+    }
+    #[inline(always)]
+    pub fn wyz(&self) -> float3 {
+        float3(self.0.wyz().into())
+    }
+    #[inline(always)]
+    pub fn wyw(&self) -> float3 {
+        float3(self.0.wyw().into())
+    }
+    #[inline(always)]
+    pub fn wzx(&self) -> float3 {
+        float3(self.0.wzx().into())
+    }
+    #[inline(always)]
+    pub fn wzy(&self) -> float3 {
+        float3(self.0.wzy().into())
+    }
+    #[inline(always)]
+    pub fn wzz(&self) -> float3 {
+        float3(Vec3A::new(self.w(), self.z(), self.z()))
+    }
+    #[inline(always)]
+    pub fn wzw(&self) -> float3 {
+        float3(self.0.wzw().into())
+    }
+    #[inline(always)]
+    pub fn wwx(&self) -> float3 {
+        float3(self.0.wwx().into())
+    }
+    #[inline(always)]
+    pub fn wwy(&self) -> float3 {
+        float3(self.0.wwy().into())
+    }
+    #[inline(always)]
+    pub fn wwz(&self) -> float3 {
+        float3(self.0.wwz().into())
+    }
+    #[inline(always)]
+    pub fn www(&self) -> float3 {
+        float3(self.0.www().into())
+    }
 
     #[inline(always)]
     pub fn to_array(self) -> [f32; 4] {
@@ -1391,13 +1631,23 @@ impl Max for float4 {
 impl Sin for float4 {
     #[inline(always)]
     fn sin(self) -> Self {
-        Self::new(self.x().sin(), self.y().sin(), self.z().sin(), self.w().sin())
+        Self::new(
+            self.x().sin(),
+            self.y().sin(),
+            self.z().sin(),
+            self.w().sin(),
+        )
     }
 }
 impl Cos for float4 {
     #[inline(always)]
     fn cos(self) -> Self {
-        Self::new(self.x().cos(), self.y().cos(), self.z().cos(), self.w().cos())
+        Self::new(
+            self.x().cos(),
+            self.y().cos(),
+            self.z().cos(),
+            self.w().cos(),
+        )
     }
 }
 impl Tan for float4 {
@@ -1414,7 +1664,12 @@ impl Tan for float4 {
 impl Sqrt for float4 {
     #[inline(always)]
     fn sqrt(self) -> Self {
-        Self::new(self.x().sqrt(), self.y().sqrt(), self.z().sqrt(), self.w().sqrt())
+        Self::new(
+            self.x().sqrt(),
+            self.y().sqrt(),
+            self.z().sqrt(),
+            self.w().sqrt(),
+        )
     }
 }
 impl LerpFactor<float4> for f32 {
