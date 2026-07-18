@@ -1,6 +1,6 @@
-use std::path::Path;
+use std::{path::Path, time::Duration};
 
-use kairos_engine::audio::waveform::*;
+use kairos_engine::{audio::audio_ext::pcm::PcmData, kairos_editor::ui::inspector::audio::compute_peaks};
 
 // ----------------------------------------------------------
 // Helpers
@@ -187,7 +187,24 @@ fn mono_trailing_partial_frame() {
 
 #[test]
 fn from_raw_duration() {
-    let pcm = PcmData::from_raw(44100, 1, vec![0.0; 44100]);
+    let pcm = {
+        let sample_rate = 44100;
+        let num_channels = 1;
+        let samples = vec![0.0; 44100];
+        let num_samples = if num_channels == 0 {
+                0
+            } else {
+                samples.len() / num_channels
+            };
+        let duration = Duration::from_secs_f64(num_samples as f64 / sample_rate as f64);
+        PcmData {
+                sample_rate,
+                num_samples,
+                num_channels,
+                duration,
+                samples,
+            }
+    };
     assert!((pcm.duration.as_secs_f32() - 1.0).abs() < 0.01);
     assert_eq!(pcm.num_samples, 44100);
     assert_eq!(pcm.num_channels, 1);

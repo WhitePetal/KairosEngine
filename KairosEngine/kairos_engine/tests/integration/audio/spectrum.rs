@@ -1,4 +1,4 @@
-use kairos_engine::audio::spectrum::*;
+use kairos_engine::kairos_editor::ui::inspector::audio::compute_spectrum;
 
 /// Generate a sine wave: `sin(2π * freq * i / sample_rate)`.
 fn sine_wave(freq: f32, sample_rate: u32, num_samples: usize) -> Vec<f32> {
