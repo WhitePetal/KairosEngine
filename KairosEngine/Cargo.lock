@@ -1571,6 +1571,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "898f5a568a84989b6c0f8caa50a93074b97dbdc58fc6d9543157bb4562758933"
 dependencies = [
  "approx",
+ "bytemuck",
  "libm",
  "mint",
  "serde_core",
@@ -2188,6 +2189,7 @@ dependencies = [
  "env_logger",
  "epaint",
  "foldhash 0.2.0",
+ "glam 0.33.1",
  "gltf",
  "image",
  "kairos_ecs_macros",
