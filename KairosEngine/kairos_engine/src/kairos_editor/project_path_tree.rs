@@ -1,6 +1,3 @@
-#[cfg(test)]
-mod tests;
-
 pub mod create_request;
 pub mod texture_path;
 pub mod tree_node;
@@ -32,7 +29,7 @@ use tree_node::ProjectTreeNode;
 /// 节点权重为 [`ProjectTreeNode`]，边权重为 `()`。
 /// 每个节点通过 [`AssetRegistry`] 持有持久化的 GUID。
 pub struct ProjectPathGraph {
-    graph: Graph<ProjectTreeNode, ()>,
+    pub graph: Graph<ProjectTreeNode, ()>,
 }
 
 impl ProjectPathGraph {

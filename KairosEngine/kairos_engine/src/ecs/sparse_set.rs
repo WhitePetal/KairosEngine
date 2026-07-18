@@ -13,9 +13,6 @@ use crate::ecs::{
 
 pub mod entity_stroge;
 
-#[cfg(test)]
-mod test;
-
 pub use entity_stroge::*;
 
 pub struct SparsePos {

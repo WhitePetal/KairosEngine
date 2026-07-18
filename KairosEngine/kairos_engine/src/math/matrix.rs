@@ -1,5 +1,4 @@
-#[cfg(test)]
-mod tests;
+
 
 use std::{ops::Mul, simd::simd_swizzle};
 

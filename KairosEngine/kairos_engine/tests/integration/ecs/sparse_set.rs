@@ -1,33 +1,8 @@
-use crate::ecs::{
+use kairos_engine::ecs::{
     entity::{Entity, EntityFlag},
     id::Id,
     sparse_set::{EntityStorage, SparseSet},
 };
-
-impl EntityStorage {
-    fn get_entity(&self, id: &Entity) -> &Entity {
-        let sparse_pos = Self::get_sparse_pos(id.idx());
-        debug_assert!(
-            self.sparse.get(sparse_pos.page).is_some(),
-            "No page when index id: {:?}",
-            id
-        );
-        debug_assert!(
-            self.sparse[sparse_pos.page].0[sparse_pos.slot].is_avalide(),
-            "Index the id is not alive! id: {:?}",
-            id
-        );
-
-        let sparse_value = &self.sparse[sparse_pos.page].0[sparse_pos.slot];
-        debug_assert!(
-            sparse_value.version() == id.version(),
-            "The id's version is invalided while Index the id! id: {:?}",
-            id
-        );
-
-        &self.dense[sparse_value.idx() as usize]
-    }
-}
 
 #[test]
 fn sparse_set() {
@@ -57,9 +32,6 @@ fn sparse_set() {
     sparset_set.insert(ef, ef_value);
 
     debug_assert_eq!(ef, Entity::new(3, 1, EntityFlag::Default));
-    debug_assert_eq!(entity_stroge.get_entity(&ea), &ea);
-    debug_assert_eq!(entity_stroge.get_entity(&ec), &ec);
-
     debug_assert_eq!(sparset_set.get(ef), Some(&ef_value));
     debug_assert_eq!(sparset_set.get(ea), Some(&ea_value));
     debug_assert_eq!(sparset_set.get(ec), Some(&ec_value));

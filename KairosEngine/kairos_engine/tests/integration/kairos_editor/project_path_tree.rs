@@ -1,9 +1,14 @@
-// ============================================================
-// 测试
-// ============================================================
 use tempfile::TempDir;
 
-use super::*;
+use kairos_engine::kairos_editor::{
+    asset_registry::{AssetKind, AssetRegistry},
+    project_path_tree::{
+        ProjectPathGraph,
+        create_request::CreateRequest,
+        tree_node::ProjectTreeNode,
+    },
+};
+use petgraph::graph::NodeIndex;
 
 /// 在临时目录下构造一个以该目录为根的 ProjectPathGraph。
 fn setup() -> (TempDir, ProjectPathGraph, AssetRegistry) {
@@ -317,7 +322,6 @@ fn rename_noop_same_name() {
     let old_path = graph.get_node(dir).unwrap().path.clone();
 
     // 重命名为同名 —— 由于 duplicate check 会对比同名，这会失败
-    // 这里我们验证行为：同名 rename 应该被 dupe check 拦截
     let result = graph.rename_node(&mut registry, dir, "keep");
     // 由于父目录下已有名为 "keep" 的节点（就是它自己），dupe check 会触发
     assert!(result.is_err());
