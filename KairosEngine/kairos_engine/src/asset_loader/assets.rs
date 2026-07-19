@@ -18,7 +18,7 @@ pub use asset::TomlTableAssetsSystem;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
-type DependencyLoadRequestEvent = Box<dyn DependencyLoadSetBack>;
+pub type DependencyLoadRequestEvent = Box<dyn DependencyLoadSetBack>;
 
 pub trait DependencyLoadSetBack: Send + Sync {
     fn set_back(self: Box<Self>, assets_server: &mut AssetsServer);
@@ -27,8 +27,8 @@ pub struct DependencyLoadRequest<T>
 where
     T: AssetsSystem,
 {
-    dependency_path: PathBuf,
-    setback_sender: oneshot::Sender<Arc<AssetHandle<T>>>,
+    pub dependency_path: PathBuf,
+    pub setback_sender: oneshot::Sender<Arc<AssetHandle<T>>>,
 }
 impl<T> DependencyLoadSetBack for DependencyLoadRequest<T>
 where

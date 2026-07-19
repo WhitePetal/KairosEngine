@@ -1,10 +1,12 @@
 use crate::{
     asset_loader::assets::{
-        AssetHandle, AssetsServer, TomlTableAssetsSystem, asset::TextAssetsSystem,
-    }, graphics::graphics_graph::GraphicsCommand, kairos_editor::{
-        Engine, asset_registry::AssetKind, ui::{
+        AssetHandle, AssetsServer, TomlTableAssetsSystem,
+        asset::TextAssetsSystem,
+    }, graphics::{graphics_graph::GraphicsCommand}, kairos_editor::{
+        Engine, asset_registry::AssetKind, editor_assets::{TextureExt, TextureExtAssetsSystem}, ui::{
             game_window::GameWindow, global_styles::{FontDataConfig, FontsConfig, GlobalStyles}, inspector::{
-                audio::AudioInspector, code::CodeInspector, document::DocumentInspector, shader::ShaderInspector, toml::TomlTableInspector,
+                audio::AudioInspector, code::CodeInspector, document::DocumentInspector,
+                shader::ShaderInspector, texture::TextureInspector, toml::TomlTableInspector,
             }, layout::{
                 EditorLayout, LayoutBottomContainer, LayoutContainerIds, LayoutLeftContainer,
                 LayoutRightContainer, Zone,
@@ -144,6 +146,8 @@ pub enum Message {
     AudioInspectorTogglePreview,
     /// Audio Inspector: seek to position (seconds) and start playback.
     AudioInspectorSeekPreview(f32),
+    /// Texture Inspector: apply size settings.
+    TextureInspectorApply(PathBuf, Arc<AssetHandle<TextureExtAssetsSystem>>, Arc<parking_lot::Mutex<Option<TextureExt>>>),
 }
 
 struct KairosTabDrawer {
@@ -591,6 +595,12 @@ impl Context {
                 }
                 Message::ShaderInspectorSave(path, handle, content) => {
                     ShaderInspector::save_shader(&mut engine.assets_server, &path, handle, content);
+                }
+                Message::TextureInspectorApply(path, handle, ext) => {
+                    if let Some(inspector) = self.get_window_mut::<InspectorWindow>() && let Some(texture) = inspector.get_inspector_mut::<TextureInspector>() {
+                        texture.apply();
+                    }
+                    TextureInspector::save_texture(&mut engine.assets_server, &path, handle, ext);
                 }
                 Message::AudioInspectorTick => {
                     if let Some(inspector) = self.get_window_mut::<InspectorWindow>() && let Some(audio) = inspector.get_inspector_mut::<AudioInspector>() {

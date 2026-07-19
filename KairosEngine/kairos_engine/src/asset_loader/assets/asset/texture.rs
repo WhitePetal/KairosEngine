@@ -11,22 +11,22 @@ use crate::{
         },
         consts,
     },
-    graphics::texture::TextureAsset,
+    graphics::texture::{SerializedTexture, Texture},
 };
 
 #[derive(Debug)]
 pub struct LoadedEvent {
     index: AssetIndex,
-    asset: TextureAsset,
+    asset: Texture,
 }
-impl asset::LoadedEvent<TextureAsset> for LoadedEvent {
+impl asset::LoadedEvent<Texture> for LoadedEvent {
     #[inline(always)]
     fn get_index(&self) -> asset::AssetIndex {
         self.index
     }
 
     #[inline(always)]
-    fn get_asset(self) -> TextureAsset {
+    fn get_asset(self) -> Texture {
         self.asset
     }
 }
@@ -50,9 +50,9 @@ impl asset::DropEvent for DropEvent {
 #[derive(Debug)]
 pub struct Loader {}
 impl Loader {
-    async fn load_toml(path: &PathBuf) -> Result<TextureAsset, Error> {
+    async fn load_toml(path: &PathBuf) -> Result<SerializedTexture, Error> {
         let toml = tokio::fs::read(path).await?;
-        let texture = toml::from_slice::<TextureAsset>(&toml)?;
+        let texture = toml::from_slice::<SerializedTexture>(&toml)?;
         Ok(texture)
     }
     async fn load_bin(path: &PathBuf) -> Result<Vec<u8>, Error> {
@@ -65,11 +65,16 @@ impl Loader {
         asset_index: AssetIndex,
         sender: tokio::sync::mpsc::Sender<LoadedEvent>,
     ) -> Result<(), Error> {
-        let (texture, data) = tokio::join!(Self::load_toml(&path), Self::load_bin(&path),);
-        let mut texture = texture?;
+        let (serialized, data) =
+            tokio::join!(Self::load_toml(&path), Self::load_bin(&path),);
+        let serialized = serialized?;
         let data = data?;
 
-        texture.texture.data = data;
+        let texture = Texture {
+            width: serialized.width,
+            height: serialized.height,
+            data,
+        };
 
         sender
             .send(LoadedEvent {
@@ -80,13 +85,12 @@ impl Loader {
         Ok(())
     }
 }
-impl asset::AssetLoader<LoadedEvent, TextureAsset> for Loader {
+impl asset::AssetLoader<LoadedEvent, Texture> for Loader {
     fn load_asset(
         &self,
         path: std::path::PathBuf,
         asset_index: AssetIndex,
         sender: mpsc::Sender<LoadedEvent>,
-        // _on_completed: Option<impl FnOnce(&mut TextureAsset) -> () + Send + Sync + 'static>,
         _denpendency_request_sender: mpsc::Sender<DependencyLoadRequestEvent>,
     ) {
         tokio::spawn(Self::load(path, asset_index, sender));
@@ -135,7 +139,7 @@ impl Default for TextureAssetsSystem {
 }
 
 impl AssetsSystem for TextureAssetsSystem {
-    type AssetType = TextureAsset;
+    type AssetType = Texture;
 
     type LoadedEvent = LoadedEvent;
 

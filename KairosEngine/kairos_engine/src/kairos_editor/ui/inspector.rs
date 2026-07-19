@@ -12,6 +12,7 @@ pub mod directory;
 pub mod document;
 pub mod font;
 pub mod shader;
+pub mod texture;
 pub mod toml;
 pub mod unknown;
 

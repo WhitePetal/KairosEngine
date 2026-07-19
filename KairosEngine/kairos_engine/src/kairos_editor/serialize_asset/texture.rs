@@ -2,10 +2,11 @@ use std::path::Path;
 
 use anyhow::{Error, Ok};
 
-use crate::graphics::texture::{self, TextureAsset};
+use crate::graphics::texture::SerializedTexture;
 
-impl TextureAsset {
-    pub fn convert_img_to_asset(path: &Path) -> Result<TextureAsset, Error> {
+impl SerializedTexture {
+    /// Convert a source image file into a `SerializedTexture` + raw RGBA pixel data.
+    pub fn convert_img_to_asset(path: &Path) -> Result<(SerializedTexture, Vec<u8>), Error> {
         let texture_bytes = std::fs::read(path)?;
         let texture_image = image::load_from_memory(&texture_bytes)?;
         let texture_data = texture_image.into_rgba8();
@@ -14,33 +15,30 @@ impl TextureAsset {
 
         let data = texture_data.into_raw();
 
-        let texture = crate::graphics::texture::Texture {
-            width: width,
-            height: height,
+        Ok((
+            SerializedTexture {
+                source_path: path.to_path_buf(),
+                width,
+                height,
+            },
             data,
-        };
-        let meta = texture::Meta {
-            source_path: path.to_path_buf(),
-        };
-        let texture_asset = TextureAsset { meta, texture };
-        Ok(texture_asset)
+        ))
     }
 
-    pub fn save_to_file(&self) -> Result<(), Error> {
-        let mut asset = self.clone();
+    /// Write the `.texture` TOML and `.texture_bin` companion files.
+    pub fn save_to_file(&self, data: &Vec<u8>) -> Result<(), Error> {
+        let path = &self.source_path;
 
-        let path = &asset.meta.source_path;
+        // Write .texture_bin (rkyv)
         let bin_path = path.with_extension("texture_bin");
-        let data = &asset.texture.data;
-        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(data)?;
-        let _ = std::fs::write(bin_path, bytes);
+        let bin_bytes = rkyv::to_bytes::<rkyv::rancor::Error>(data)?;
+        std::fs::write(&bin_path, bin_bytes)?;
 
-        asset.texture.data = vec![];
+        // Write .texture TOML (data excluded via SerializedTexture having no data field)
+        let toml_content = toml::to_string(self)?;
+        let toml_path = path.with_extension("texture");
+        std::fs::write(&toml_path, toml_content)?;
 
-        let toml = toml::to_string(&asset)?;
-        let path = path.with_extension("texture");
-
-        let _ = std::fs::write(&path, toml);
         Ok(())
     }
 }

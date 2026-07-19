@@ -30,7 +30,7 @@ use crate::{
         mesh::Mesh,
         render_state::RenderState,
         shader::ShaderAsset,
-        texture::TextureAsset,
+        texture::Texture,
         vertex::Vertex,
     },
     math::{float2, float3, float4, float4x4},
@@ -977,12 +977,11 @@ impl RenderPipeline {
         device: &Device,
         queue: &Queue,
         layout: &BindGroupLayout,
-        texture_asset: &TextureAsset,
+        texture_asset: &Texture,
     ) -> BindGroup {
         // Miss or version mismatch: create GPU resources
-        let texture = &texture_asset.texture;
-        let texture_data = &texture.data;
-        let texture_dimension = (texture.width, texture.height);
+        let texture_dimension = (texture_asset.width, texture_asset.height);
+        let texture_data = &texture_asset.data;
         let texture_size = Extent3d {
             width: texture_dimension.0,
             height: texture_dimension.1,

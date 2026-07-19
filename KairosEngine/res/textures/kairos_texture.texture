@@ -1,7 +1,3 @@
-[meta]
 source_path = "res/textures/kairos_texture.png"
-
-[texture]
 width = 2048
 height = 2048
-data = []

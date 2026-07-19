@@ -7,7 +7,7 @@ use crate::{
         ui::inspector::{
             Inspector, audio::AudioInspector, code::CodeInspector, directory::DirectoryInspector,
             document::DocumentInspector, font::FontInspector, shader::ShaderInspector,
-            toml::TomlTableInspector, unknown::UnknownInspector,
+            texture::TextureInspector, toml::TomlTableInspector, unknown::UnknownInspector,
         },
     },
 };
@@ -22,7 +22,7 @@ impl InspectorCreater {
     ) -> Result<Box<dyn Inspector>, Box<dyn std::error::Error>> {
         match asset_kind {
             AssetKind::Directory => Ok(Box::new(DirectoryInspector::create(path, assets_server)?)),
-            AssetKind::Texture => todo!(),
+            AssetKind::Texture => Ok(Box::new(TextureInspector::create(path, assets_server)?)),
             AssetKind::Mesh => todo!(),
             AssetKind::Material => todo!(),
             AssetKind::Audio => Ok(Box::new(AudioInspector::create(path, assets_server)?)),
