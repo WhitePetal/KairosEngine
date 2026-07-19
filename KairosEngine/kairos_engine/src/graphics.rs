@@ -5,6 +5,7 @@ pub mod render_pipeline;
 pub mod render_state;
 pub mod shader;
 pub mod texture;
+pub mod texture_format;
 pub mod vertex;
 
 pub mod attachment;

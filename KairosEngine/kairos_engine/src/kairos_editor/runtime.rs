@@ -22,6 +22,7 @@ use crate::graphics::{
 use crate::math::float4x4;
 use crate::{
     graphics::render_pipeline::RenderPipeline,
+    graphics::texture_format::EngineSettings,
     kairos_dialog,
     kairos_editor::{KairosEngine, consts, ui::paths},
 };
@@ -32,6 +33,14 @@ fn load_icon() -> Option<Icon> {
     let (width, height) = image.dimensions();
 
     Icon::from_rgba(image.into_raw(), width, height).ok()
+}
+
+fn load_engine_settings() -> EngineSettings {
+    let path = "Preferences/Engine/engine.toml";
+    match std::fs::read_to_string(path) {
+        Ok(s) => toml::from_str(&s).unwrap_or_default(),
+        Err(_) => EngineSettings::default(),
+    }
 }
 
 type RuntimeResult<T> = Result<T, Box<dyn Error>>;
@@ -177,7 +186,9 @@ impl KairosEditorRuntime {
             None,
         );
 
-        let render_pipeline = pollster::block_on(RenderPipeline::new(window.clone()))?;
+        let settings = load_engine_settings();
+        let render_pipeline =
+            pollster::block_on(RenderPipeline::new(window.clone(), &settings.texture_compression))?;
         let render_pipeline_event_proxy = self.event_proxy.clone();
         render_pipeline
             .device

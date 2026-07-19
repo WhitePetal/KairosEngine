@@ -73,6 +73,7 @@ impl Loader {
         let texture = Texture {
             width: serialized.width,
             height: serialized.height,
+            format: serialized.format,
             data,
         };
 

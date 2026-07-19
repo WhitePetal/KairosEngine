@@ -635,6 +635,10 @@ guid = "9dd136fa-e850-4c1e-b63b-5ee55cdce680"
 path = "./kairos_engine/src/graphics/texture.rs"
 
 [[entries]]
+guid = "75ae2e22-c410-4614-8c25-e3660ca03d34"
+path = './kairos_engine\src\graphics\texture_format.rs'
+
+[[entries]]
 guid = "96ecd4e1-e7ec-4f3b-94a7-66f1bb2832ff"
 path = "./kairos_engine/src/graphics/vertex.rs"
 
@@ -725,6 +729,10 @@ path = "./kairos_engine/src/kairos_editor/serialize_asset.rs"
 [[entries]]
 guid = "f07bb45a-8ed8-4d65-a443-aa7d10d1971b"
 path = './kairos_engine\src\kairos_editor\syntax.rs'
+
+[[entries]]
+guid = "246a50fd-48a0-4cf9-9695-3e72d7b47477"
+path = './kairos_engine\src\kairos_editor\texture_compression.rs'
 
 [[entries]]
 guid = "3d027b3d-fd32-496a-a596-fbf609891ff0"

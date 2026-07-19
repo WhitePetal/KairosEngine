@@ -2,6 +2,8 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::graphics::texture_format::TextureFormat;
+
 /// TOML-serializable form stored in `.texture` files.
 ///
 /// Contains the source image path and the texture dimensions.
@@ -14,6 +16,8 @@ pub struct SerializedTexture {
     pub width: u32,
     /// Output height in pixels.
     pub height: u32,
+    /// GPU texture format.
+    pub format: TextureFormat,
 }
 
 /// Runtime form held by `TextureAssetsSystem`.
@@ -26,6 +30,8 @@ pub struct Texture {
     pub width: u32,
     /// Texture height in pixels.
     pub height: u32,
+    /// GPU texture format.
+    pub format: TextureFormat,
     /// RGBA8 pixel data.
     pub data: Vec<u8>,
 }

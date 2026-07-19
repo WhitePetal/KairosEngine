@@ -13,6 +13,7 @@ pub mod runtime;
 pub mod serialize_asset;
 pub mod syntax;
 pub mod editor_assets;
+pub mod texture_compression;
 pub mod ui;
 
 pub struct Engine {

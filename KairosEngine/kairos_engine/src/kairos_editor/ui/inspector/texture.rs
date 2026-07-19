@@ -6,8 +6,13 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    asset_loader::assets::{AssetHandle, AssetsServer, TextureAssetsSystem}, graphics::texture::{Texture}, kairos_editor::{
-        editor_assets::{TextureExt, TextureExtAssetsSystem}, ui::{
+    asset_loader::assets::{AssetHandle, AssetsServer, TextureAssetsSystem}, graphics::{
+        texture::Texture,
+        texture_format::{EngineSettings, TextureCompressionConfig, TextureFormat},
+    }, kairos_editor::{
+        editor_assets::{TextureExt, TextureExtAssetsSystem},
+        texture_compression,
+        ui::{
             Message, Messager,
             dialog::{ConfirmDialogWindow, Dialog},
             inspector::Inspector,
@@ -57,6 +62,8 @@ struct TextureInspectorModel {
     /// Handle to the editor runtime resource (loaded asynchronously).
     handle: Arc<AssetHandle<TextureExtAssetsSystem>>,
     texture_ext: Arc<Mutex<Option<TextureExt>>>,
+    /// Compression feature flags from `Preferences/texture_compression.toml`.
+    compression_config: TextureCompressionConfig,
 }
 
 // ============================================================
@@ -169,7 +176,7 @@ impl TextureInspector {
         let (orig_w, orig_h) = (ext.original_width, ext.original_height);
         let original_rgba = ext.original_rgba.clone();
 
-        // 1. Resize from cached original RGBA
+        // 1. Resize from cached original RGBA (always RGBA8 intermediate)
         let rgba_data = if new_w == orig_w && new_h == orig_h {
             original_rgba
         } else {
@@ -190,8 +197,26 @@ impl TextureInspector {
             }
         };
 
-        // 2. Save to file
-        match ext.serialized.save_to_file(&rgba_data) {
+        // 2. Encode to target GPU format
+        let encoded = match texture_compression::encode_rgba(
+            &rgba_data,
+            new_w,
+            new_h,
+            ext.serialized.format,
+        ) {
+            Some(data) => data,
+            None => {
+                log::error!(
+                    "Unsupported texture format for encoding: {:?}, texture_path: {:?}",
+                    ext.serialized.format,
+                    path
+                );
+                return;
+            }
+        };
+
+        // 3. Save to file
+        match ext.serialized.save_to_file(&encoded) {
             Ok(_) => {},
             Err(err) => {
                 log::error!("Failed to save texture, error: {}, texture_path: {:?}", err, path);
@@ -199,11 +224,12 @@ impl TextureInspector {
             },
         }
 
-        // 3. Update in-memory asset
+        // 4. Update in-memory asset
         let texture_asset = Texture {
             width: new_w,
             height: new_h,
-            data: rgba_data,
+            format: ext.serialized.format,
+            data: encoded,
         };
         if let Some(asset) = assets_server.get_mut(&ext.texture) {
             *asset = texture_asset;
@@ -230,11 +256,14 @@ impl Inspector for TextureInspector {
         let handle =
             assets_server.load::<TextureExtAssetsSystem>(&texture_path);
 
+        let compression_config = load_compression_config();
+
         let model = TextureInspectorModel {
             style,
             texture_path,
             handle,
             texture_ext: Arc::new(Mutex::new(None)),
+            compression_config,
         };
 
         Ok(Self {
@@ -328,13 +357,31 @@ impl Inspector for TextureInspector {
                         });
                     });
 
-                    // Pixel Format
+                    // Texture Format
                     body.row(row_h, |mut row| {
                         row.col(|ui| {
-                            ui.label("Pixel Format:");
+                            ui.label("Texture Format:");
                         });
                         row.col(|ui| {
-                            ui.label("RGBA8");
+                            ComboBox::from_id_salt("texture_format")
+                                .width(180.0)
+                                .selected_text(format!("{:?}", ext.serialized.format))
+                                .show_ui(ui, |ui| {
+                                    for format in <TextureFormat as strum::IntoEnumIterator>::iter() {
+                                        ui.add_enabled_ui(format.is_available(&self.model.compression_config), |ui| {
+                                            if ui
+                                                .selectable_value(
+                                                    &mut ext.serialized.format,
+                                                    format,
+                                                    format!("{format:?}"),
+                                                )
+                                                .changed()
+                                            {
+                                                self.dirty.set(true);
+                                            }
+                                        });
+                                    }
+                                });
                         });
                     });
                 });
@@ -394,4 +441,12 @@ fn find_size_level(width: u32, height: u32) -> u32 {
         }
     }
     max_side
+}
+
+fn load_compression_config() -> TextureCompressionConfig {
+    let path = "Preferences/Engine/engine.toml";
+    match std::fs::read_to_string(path).ok().and_then(|s| toml::from_str::<EngineSettings>(&s).ok()) {
+        Some(settings) => settings.texture_compression,
+        None => TextureCompressionConfig::default(),
+    }
 }

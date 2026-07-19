@@ -2,7 +2,7 @@ use std::path::Path;
 
 use anyhow::{Error, Ok};
 
-use crate::graphics::texture::SerializedTexture;
+use crate::graphics::{texture::SerializedTexture, texture_format::TextureFormat};
 
 impl SerializedTexture {
     /// Convert a source image file into a `SerializedTexture` + raw RGBA pixel data.
@@ -20,6 +20,7 @@ impl SerializedTexture {
                 source_path: path.to_path_buf(),
                 width,
                 height,
+                format: TextureFormat::Rgba8Unorm,
             },
             data,
         ))

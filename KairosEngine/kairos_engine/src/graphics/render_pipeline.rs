@@ -7,7 +7,7 @@ use wgpu::{
     BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType,
     BufferUsages, ColorTargetState, ColorWrites, CommandBuffer, CommandEncoder,
     CommandEncoderDescriptor, CurrentSurfaceTexture, DepthBiasState, DepthStencilState, Device,
-    ExperimentalFeatures, Extent3d, Features, FilterMode, FragmentState, FrontFace, InstanceFlags,
+    ExperimentalFeatures, Extent3d, FilterMode, FragmentState, FrontFace, InstanceFlags,
     Limits, LoadOp, LoadOpDontCare, MemoryBudgetThresholds, MemoryHints, MipmapFilterMode,
     MultisampleState, Operations, Origin3d, PipelineCompilationOptions, PipelineLayoutDescriptor,
     PolygonMode, PowerPreference, PresentMode, PrimitiveState, Queue, RenderPassColorAttachment,
@@ -31,6 +31,7 @@ use crate::{
         render_state::RenderState,
         shader::ShaderAsset,
         texture::Texture,
+        texture_format::TextureCompressionConfig,
         vertex::Vertex,
     },
     math::{float2, float3, float4, float4x4},
@@ -88,7 +89,10 @@ pub struct RenderPipeline {
 }
 
 impl RenderPipeline {
-    pub async fn new(window: Arc<Window>) -> Result<Self, Box<dyn Error>> {
+    pub async fn new(
+        window: Arc<Window>,
+        compression_config: &TextureCompressionConfig,
+    ) -> Result<Self, Box<dyn Error>> {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: Backends::all(),
             flags: InstanceFlags::default(),
@@ -105,11 +109,13 @@ impl RenderPipeline {
             })
             .await?;
 
-        let _ = adapter.features();
+        let adapter_features = adapter.features();
+        let required_features = compression_config.adapter_features(adapter_features);
+
         let (device, queue) = adapter
             .request_device(&DeviceDescriptor {
                 label: None,
-                required_features: Features::empty(),
+                required_features,
                 required_limits: Limits::default(),
                 experimental_features: ExperimentalFeatures::default(),
                 memory_hints: MemoryHints::default(),
@@ -608,7 +614,7 @@ impl RenderPipeline {
                 };
                 texture_bind_group_layout = Some(global_texture_bind_group_layout);
                 let texture_id = texture.id();
-                let key = texture_id.index();
+                let key = texture_id.index() as usize;
                 let version = texture_id.version();
                 Some(match texture_cache.entry(key) {
                     std::collections::hash_map::Entry::Occupied(mut entry) => {
@@ -993,7 +999,7 @@ impl RenderPipeline {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8Unorm,
+            format: texture_asset.format.into(),
             usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
             view_formats: &[],
         };
