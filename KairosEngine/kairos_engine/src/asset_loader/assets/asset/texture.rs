@@ -65,8 +65,7 @@ impl Loader {
         asset_index: AssetIndex,
         sender: tokio::sync::mpsc::Sender<LoadedEvent>,
     ) -> Result<(), Error> {
-        let (serialized, data) =
-            tokio::join!(Self::load_toml(&path), Self::load_bin(&path),);
+        let (serialized, data) = tokio::join!(Self::load_toml(&path), Self::load_bin(&path),);
         let serialized = serialized?;
         let data = data?;
 

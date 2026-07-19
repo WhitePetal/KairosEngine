@@ -14,18 +14,23 @@ use winit::{
     window::{Icon, Window},
 };
 
-use crate::graphics::graphics_graph::{GraphicsCommand, GraphicsGraph};
 use crate::graphics::{
     attachment::{Attachment, AttachmentLoadAction, AttachmentStoreAction, InternalAttachmentId},
     graphics_graph::graphics_node::ColorAttachmentBind,
 };
 use crate::math::float4x4;
 use crate::{
+    graphics::graphics_graph::{GraphicsCommand, GraphicsGraph},
+    kairos_paths,
+    kairos_settings::EngineSettings,
+};
+use crate::{
     graphics::render_pipeline::RenderPipeline,
-    graphics::texture_format::EngineSettings,
     kairos_dialog,
     kairos_editor::{KairosEngine, consts, ui::paths},
 };
+
+type RuntimeResult<T> = Result<T, Box<dyn Error>>;
 
 fn load_icon() -> Option<Icon> {
     let bytes = std::fs::read(paths::PATH_ENGINE_ICON).ok()?;
@@ -35,15 +40,10 @@ fn load_icon() -> Option<Icon> {
     Icon::from_rgba(image.into_raw(), width, height).ok()
 }
 
-fn load_engine_settings() -> EngineSettings {
-    let path = "Preferences/Engine/engine.toml";
-    match std::fs::read_to_string(path) {
-        Ok(s) => toml::from_str(&s).unwrap_or_default(),
-        Err(_) => EngineSettings::default(),
-    }
+fn load_engine_settings() -> RuntimeResult<EngineSettings> {
+    let bytes = std::fs::read(kairos_paths::PATH_KAIROS_SETTINGS)?;
+    toml::from_slice::<EngineSettings>(&bytes).map_err(|e| e.into())
 }
-
-type RuntimeResult<T> = Result<T, Box<dyn Error>>;
 
 struct FrameRateCounter {
     last_report_at: Instant,
@@ -186,9 +186,11 @@ impl KairosEditorRuntime {
             None,
         );
 
-        let settings = load_engine_settings();
-        let render_pipeline =
-            pollster::block_on(RenderPipeline::new(window.clone(), &settings.texture_compression))?;
+        let settings = load_engine_settings()?;
+        let render_pipeline = pollster::block_on(RenderPipeline::new(
+            window.clone(),
+            &settings.texture_compression,
+        ))?;
         let render_pipeline_event_proxy = self.event_proxy.clone();
         render_pipeline
             .device

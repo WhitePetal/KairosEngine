@@ -9,12 +9,7 @@ use crate::{
     kairos_editor::{
         Engine,
         asset_registry::{AssetKind, Guid},
-        ui::{
-            Messager,
-            dialog::Dialog,
-            global_styles::GlobalStyles,
-            inspector::{Inspector},
-        },
+        ui::{Messager, dialog::Dialog, global_styles::GlobalStyles, inspector::Inspector},
     },
     kairos_game::KairosGame,
     log::Log,

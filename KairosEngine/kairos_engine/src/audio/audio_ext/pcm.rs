@@ -4,7 +4,10 @@
 
 use std::{fs::File, path::Path, time::Duration};
 
-use symphonia::core::{audio::SampleBuffer, codecs::DecoderOptions, formats::FormatOptions, io::MediaSourceStream, meta::MetadataOptions, probe::Hint};
+use symphonia::core::{
+    audio::SampleBuffer, codecs::DecoderOptions, formats::FormatOptions, io::MediaSourceStream,
+    meta::MetadataOptions, probe::Hint,
+};
 
 /// Decoded PCM audio data, normalized to `[-1.0, 1.0]` f32.
 /// Samples are interleaved when multi-channel.
@@ -40,7 +43,6 @@ impl PcmData {
             })
             .collect()
     }
-
 
     /// Create PcmData from raw samples (useful for testing).
     pub fn from_raw(sample_rate: u32, num_channels: usize, samples: Vec<f32>) -> Self {

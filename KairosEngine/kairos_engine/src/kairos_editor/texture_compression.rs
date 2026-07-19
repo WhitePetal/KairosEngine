@@ -12,12 +12,7 @@ use crate::graphics::texture_format::TextureFormat;
 /// Encode RGBA8 pixel data into `format`.
 ///
 /// Returns `None` when the format is not yet supported for encoding.
-pub fn encode_rgba(
-    rgba: &[u8],
-    width: u32,
-    height: u32,
-    format: TextureFormat,
-) -> Option<Vec<u8>> {
+pub fn encode_rgba(rgba: &[u8], width: u32, height: u32, format: TextureFormat) -> Option<Vec<u8>> {
     let w = width as usize;
     let h = height as usize;
 
@@ -46,9 +41,7 @@ pub fn encode_rgba(
                 TextureFormat::Bc3RgbaUnorm | TextureFormat::Bc3RgbaUnormSrgb => {
                     texpresso::Format::Bc3
                 }
-                TextureFormat::Bc4RUnorm | TextureFormat::Bc4RSnorm => {
-                    texpresso::Format::Bc4
-                }
+                TextureFormat::Bc4RUnorm | TextureFormat::Bc4RSnorm => texpresso::Format::Bc4,
                 _ => texpresso::Format::Bc5,
             };
 

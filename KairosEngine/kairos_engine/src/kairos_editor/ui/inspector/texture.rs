@@ -6,10 +6,12 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    asset_loader::assets::{AssetHandle, AssetsServer, TextureAssetsSystem}, graphics::{
+    asset_loader::assets::{AssetHandle, AssetsServer, TextureAssetsSystem},
+    graphics::{
         texture::Texture,
-        texture_format::{EngineSettings, TextureCompressionConfig, TextureFormat},
-    }, kairos_editor::{
+        texture_format::{TextureCompressionConfig, TextureFormat},
+    },
+    kairos_editor::{
         editor_assets::{TextureExt, TextureExtAssetsSystem},
         texture_compression,
         ui::{
@@ -19,6 +21,8 @@ use crate::{
             paths,
         },
     },
+    kairos_paths,
+    kairos_settings::EngineSettings,
 };
 
 // ============================================================
@@ -113,8 +117,7 @@ impl TextureInspector {
             return;
         }
 
-        let color_image =
-            egui::ColorImage::from_rgba_unmultiplied([w, h], &texture.data);
+        let color_image = egui::ColorImage::from_rgba_unmultiplied([w, h], &texture.data);
         let texture_handle = ui.ctx().load_texture(
             "texture_inspector_preview",
             color_image,
@@ -131,8 +134,7 @@ impl TextureInspector {
             return;
         };
 
-        let available_size =
-            Vec2::new(ui.available_width(), self.model.style.preview_min_height);
+        let available_size = Vec2::new(ui.available_width(), self.model.style.preview_min_height);
 
         let tex_mgr = ui.ctx().tex_manager();
         let tex_mgr = tex_mgr.read();
@@ -151,9 +153,10 @@ impl TextureInspector {
         }
 
         ui.centered_and_justified(|ui| {
-            ui.image(egui::ImageSource::Texture(
-                egui::load::SizedTexture::new(texture_id, display_size),
-            ));
+            ui.image(egui::ImageSource::Texture(egui::load::SizedTexture::new(
+                texture_id,
+                display_size,
+            )));
         });
     }
 
@@ -166,7 +169,12 @@ impl TextureInspector {
         self.preview_texture.lock().take();
     }
 
-    pub fn save_texture(assets_server: &mut AssetsServer, path: &PathBuf, handle: Arc<AssetHandle<TextureExtAssetsSystem>>, ext: Arc<Mutex<Option<TextureExt>>>) {
+    pub fn save_texture(
+        assets_server: &mut AssetsServer,
+        path: &PathBuf,
+        handle: Arc<AssetHandle<TextureExtAssetsSystem>>,
+        ext: Arc<Mutex<Option<TextureExt>>>,
+    ) {
         let mut ext_guard = ext.lock();
         let Some(ext) = ext_guard.deref_mut().take() else {
             return;
@@ -189,39 +197,43 @@ impl TextureInspector {
                         image::imageops::FilterType::Lanczos3,
                     );
                     filtered.into_vec()
-                },
+                }
                 None => {
-                    log::error!("Failed to reconstruct source image from cached data, texture_path: {:?}", path);
+                    log::error!(
+                        "Failed to reconstruct source image from cached data, texture_path: {:?}",
+                        path
+                    );
                     Vec::new()
-                },
+                }
             }
         };
 
         // 2. Encode to target GPU format
-        let encoded = match texture_compression::encode_rgba(
-            &rgba_data,
-            new_w,
-            new_h,
-            ext.serialized.format,
-        ) {
-            Some(data) => data,
-            None => {
+        let encoded =
+            match texture_compression::encode_rgba(&rgba_data, new_w, new_h, ext.serialized.format)
+            {
+                Some(data) => data,
+                None => {
+                    log::error!(
+                        "Unsupported texture format for encoding: {:?}, texture_path: {:?}",
+                        ext.serialized.format,
+                        path
+                    );
+                    return;
+                }
+            };
+
+        // 3. Save to file
+        match ext.serialized.save_to_file(&encoded) {
+            Ok(_) => {}
+            Err(err) => {
                 log::error!(
-                    "Unsupported texture format for encoding: {:?}, texture_path: {:?}",
-                    ext.serialized.format,
+                    "Failed to save texture, error: {}, texture_path: {:?}",
+                    err,
                     path
                 );
                 return;
             }
-        };
-
-        // 3. Save to file
-        match ext.serialized.save_to_file(&encoded) {
-            Ok(_) => {},
-            Err(err) => {
-                log::error!("Failed to save texture, error: {}, texture_path: {:?}", err, path);
-                return;
-            },
         }
 
         // 4. Update in-memory asset
@@ -253,10 +265,9 @@ impl Inspector for TextureInspector {
 
         // Load the editor runtime resource asynchronously.
         // `TextureExtAssetsSystem` will auto-register on first use.
-        let handle =
-            assets_server.load::<TextureExtAssetsSystem>(&texture_path);
+        let handle = assets_server.load::<TextureExtAssetsSystem>(&texture_path);
 
-        let compression_config = load_compression_config();
+        let compression_config = load_compression_config()?;
 
         let model = TextureInspectorModel {
             style,
@@ -342,14 +353,19 @@ impl Inspector for TextureInspector {
                                             continue;
                                         }
                                         if ui
-                                            .selectable_value(&mut selected_size, size, size.to_string())
+                                            .selectable_value(
+                                                &mut selected_size,
+                                                size,
+                                                size.to_string(),
+                                            )
                                             .changed()
                                         {
-                                            (ext.serialized.width, ext.serialized.height) = Self::compute_target_size(
-                                                ext.original_width,
-                                                ext.original_height,
-                                                selected_size,
-                                            );
+                                            (ext.serialized.width, ext.serialized.height) =
+                                                Self::compute_target_size(
+                                                    ext.original_width,
+                                                    ext.original_height,
+                                                    selected_size,
+                                                );
                                             self.dirty.set(true);
                                         }
                                     }
@@ -367,19 +383,23 @@ impl Inspector for TextureInspector {
                                 .width(180.0)
                                 .selected_text(format!("{:?}", ext.serialized.format))
                                 .show_ui(ui, |ui| {
-                                    for format in <TextureFormat as strum::IntoEnumIterator>::iter() {
-                                        ui.add_enabled_ui(format.is_available(&self.model.compression_config), |ui| {
-                                            if ui
-                                                .selectable_value(
-                                                    &mut ext.serialized.format,
-                                                    format,
-                                                    format!("{format:?}"),
-                                                )
-                                                .changed()
-                                            {
-                                                self.dirty.set(true);
-                                            }
-                                        });
+                                    for format in <TextureFormat as strum::IntoEnumIterator>::iter()
+                                    {
+                                        ui.add_enabled_ui(
+                                            format.is_available(&self.model.compression_config),
+                                            |ui| {
+                                                if ui
+                                                    .selectable_value(
+                                                        &mut ext.serialized.format,
+                                                        format,
+                                                        format!("{format:?}"),
+                                                    )
+                                                    .changed()
+                                                {
+                                                    self.dirty.set(true);
+                                                }
+                                            },
+                                        );
                                     }
                                 });
                         });
@@ -396,7 +416,11 @@ impl Inspector for TextureInspector {
             ));
 
             if ui.add_enabled(changed, apply_btn).clicked() {
-                messager.send(Message::TextureInspectorApply(self.model.texture_path.clone(), self.model.handle.clone(), self.model.texture_ext.clone()));
+                messager.send(Message::TextureInspectorApply(
+                    self.model.texture_path.clone(),
+                    self.model.handle.clone(),
+                    self.model.texture_ext.clone(),
+                ));
             }
             if changed {
                 ui.label("* unsaved changes");
@@ -422,7 +446,11 @@ impl Inspector for TextureInspector {
             "Apply the changes before leaving?".into(),
             "Apply".into(),
             "Discard".into(),
-            Some(Message::TextureInspectorApply(self.model.texture_path.clone(), self.model.handle.clone(), self.model.texture_ext.clone())),
+            Some(Message::TextureInspectorApply(
+                self.model.texture_path.clone(),
+                self.model.handle.clone(),
+                self.model.texture_ext.clone(),
+            )),
             None,
             None::<fn()>,
             None::<fn()>,
@@ -443,10 +471,8 @@ fn find_size_level(width: u32, height: u32) -> u32 {
     max_side
 }
 
-fn load_compression_config() -> TextureCompressionConfig {
-    let path = "Preferences/Engine/engine.toml";
-    match std::fs::read_to_string(path).ok().and_then(|s| toml::from_str::<EngineSettings>(&s).ok()) {
-        Some(settings) => settings.texture_compression,
-        None => TextureCompressionConfig::default(),
-    }
+fn load_compression_config() -> Result<TextureCompressionConfig, Box<dyn std::error::Error>> {
+    let bytes = std::fs::read(kairos_paths::PATH_KAIROS_SETTINGS)?;
+    let engine_settings = toml::from_slice::<EngineSettings>(&bytes)?;
+    Ok(engine_settings.texture_compression)
 }

@@ -15,11 +15,11 @@ use crate::{
     audio::audio::{AudioAsset, SerializedAudioAsset},
 };
 
-mod pcm;
 mod audio_ext;
+mod pcm;
 
-pub use pcm::PcmAssetsSystem;
 pub use audio_ext::AudioExtAssetsSystem;
+pub use pcm::PcmAssetsSystem;
 
 pub type AudioAssetHandle = Arc<AssetHandle<AudioAssetsSystem>>;
 

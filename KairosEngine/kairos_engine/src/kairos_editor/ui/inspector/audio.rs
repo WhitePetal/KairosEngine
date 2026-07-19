@@ -4,14 +4,15 @@ use egui::{Color32, Pos2, Rect, RichText, Stroke, Vec2};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    asset_loader::assets::{AssetHandle, AssetsServer, asset::AudioExtAssetsSystem}, audio::{
-        audio_ext::{pcm::PcmData},
-    }, kairos_editor::{
-        Engine, ui::{Message, dialog::Dialog, inspector::Inspector, paths},
-    }, math,
+    asset_loader::assets::{AssetHandle, AssetsServer, asset::AudioExtAssetsSystem},
+    audio::audio_ext::pcm::PcmData,
+    kairos_editor::{
+        Engine,
+        ui::{Message, dialog::Dialog, inspector::Inspector, paths},
+    },
+    math,
 };
 use kira::sound::static_sound::StaticSoundHandle;
-
 
 // ============================================================
 // WaveformPeak — Unity-style amplitude bucket
@@ -143,7 +144,6 @@ pub fn compute_spectrum(samples: &[f32], sample_rate: u32, fft_size: usize) -> V
     bins
 }
 
-
 // ============================================================
 // Style (loaded from TOML, matching project pattern)
 // ============================================================
@@ -262,7 +262,11 @@ impl Inspector for AudioInspector {
         if peaks.is_none() {
             let mono = pcm.mono_samples();
             peaks = Some(compute_peaks(&mono, self.model.style.waveform_buckets));
-            let bins = Some(compute_spectrum(&mono, pcm.sample_rate, self.model.style.fft_size));
+            let bins = Some(compute_spectrum(
+                &mono,
+                pcm.sample_rate,
+                self.model.style.fft_size,
+            ));
             self.spectrum_bins.set(bins);
         }
         self.peaks.set(peaks);
@@ -452,7 +456,12 @@ impl AudioInspector {
     // Waveform rendering (with play button + playhead)
     // ----------------------------------------------------------
 
-    fn draw_waveform(&self, ui: &mut egui::Ui, pcm: &PcmData, messager: &mut crate::kairos_editor::ui::Messager) {
+    fn draw_waveform(
+        &self,
+        ui: &mut egui::Ui,
+        pcm: &PcmData,
+        messager: &mut crate::kairos_editor::ui::Messager,
+    ) {
         let style = &self.model.style;
 
         // ---- header: label + play/pause button ----
@@ -498,7 +507,9 @@ impl AudioInspector {
 
         // ---- waveform peaks ----
         let peaks_data = self.peaks.take();
-        if let Some(peaks) = &peaks_data && !peaks.is_empty() {
+        if let Some(peaks) = &peaks_data
+            && !peaks.is_empty()
+        {
             let bar_width = rect.width() / peaks.len() as f32;
             let half_h = rect.height() * 0.45;
 
@@ -572,9 +583,8 @@ impl AudioInspector {
             if let Some(pos) = resp.interact_pointer_pos() {
                 let t = ((pos.x - rect.left()) / rect.width()).clamp(0.0, 1.0);
                 let seek_time = t * duration;
-                messager.send(crate::kairos_editor::ui::Message::AudioInspectorSeekPreview(
-                    seek_time,
-                ));
+                messager
+                    .send(crate::kairos_editor::ui::Message::AudioInspectorSeekPreview(seek_time));
             }
         }
     }

@@ -4,26 +4,15 @@ use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
 // ============================================================
-// EngineSettings — top-level project config
-// ============================================================
-
-/// Top-level engine configuration loaded from `Preferences/Engine/engine.toml`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EngineSettings {
-    pub texture_compression: TextureCompressionConfig,
-}
-
-impl Default for EngineSettings {
-    fn default() -> Self {
-        Self {
-            texture_compression: TextureCompressionConfig::default(),
-        }
-    }
-}
-
-// ============================================================
 // TextureCompressionConfig — data-driven feature list
 // ============================================================
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, PartialOrd, Eq, Ord)]
+pub enum TextureCompressFeature {
+    BC,
+    ETC2,
+    ASTC,
+}
 
 /// Data-driven compression config.
 ///
@@ -33,23 +22,13 @@ impl Default for EngineSettings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TextureCompressionConfig {
     /// Feature-family → enabled.  Example: `{ "BC": true, "ETC2": true }`.
-    pub features: BTreeMap<String, bool>,
-}
-
-impl Default for TextureCompressionConfig {
-    fn default() -> Self {
-        let mut features = BTreeMap::new();
-        features.insert("BC".into(), true);
-        features.insert("ETC2".into(), true);
-        features.insert("ASTC".into(), false);
-        Self { features }
-    }
+    pub features: BTreeMap<TextureCompressFeature, bool>,
 }
 
 impl TextureCompressionConfig {
     /// Whether `family` is enabled in this config.
-    pub fn is_enabled(&self, family: &str) -> bool {
-        self.features.get(family).copied().unwrap_or(false)
+    pub fn is_enabled(&self, family: TextureCompressFeature) -> bool {
+        self.features.get(&family).copied().unwrap_or(false)
     }
 
     /// Build the set of `wgpu::Features` to request from the adapter.
@@ -58,22 +37,23 @@ impl TextureCompressionConfig {
     pub fn adapter_features(&self, available: wgpu::Features) -> wgpu::Features {
         let mut features = wgpu::Features::empty();
 
-        for (name, &enabled) in &self.features {
+        for (feature, &enabled) in &self.features {
             if !enabled {
                 continue;
             }
-            match feature_to_wgpu(name) {
+            match feature_to_wgpu(feature) {
                 Some(wgpu_feature) => {
                     if available.contains(wgpu_feature) {
                         features |= wgpu_feature;
                     } else {
                         log::warn!(
-                            "Texture compression ({name}) enabled in config but not supported by adapter"
+                            "Texture compression ({:?}) enabled in config but not supported by adapter",
+                            feature
                         );
                     }
                 }
                 None => {
-                    log::warn!("Unknown compression feature in config: {name}");
+                    log::warn!("Unknown compression feature in config: {:?}", feature);
                 }
             }
         }
@@ -83,15 +63,13 @@ impl TextureCompressionConfig {
 }
 
 /// Map a feature-family name to its `wgpu::Features` bitflag.
-pub fn feature_to_wgpu(name: &str) -> Option<wgpu::Features> {
-    match name {
-        "BC" => Some(wgpu::Features::TEXTURE_COMPRESSION_BC),
-        "ETC2" => Some(wgpu::Features::TEXTURE_COMPRESSION_ETC2),
-        "ASTC" => Some(
-            wgpu::Features::TEXTURE_COMPRESSION_ASTC
-                | wgpu::Features::TEXTURE_COMPRESSION_ASTC_HDR,
+pub fn feature_to_wgpu(feature: &TextureCompressFeature) -> Option<wgpu::Features> {
+    match feature {
+        TextureCompressFeature::BC => Some(wgpu::Features::TEXTURE_COMPRESSION_BC),
+        TextureCompressFeature::ETC2 => Some(wgpu::Features::TEXTURE_COMPRESSION_ETC2),
+        TextureCompressFeature::ASTC => Some(
+            wgpu::Features::TEXTURE_COMPRESSION_ASTC | wgpu::Features::TEXTURE_COMPRESSION_ASTC_HDR,
         ),
-        _ => None,
     }
 }
 
@@ -103,49 +81,116 @@ pub fn feature_to_wgpu(name: &str) -> Option<wgpu::Features> {
 ///
 /// Only includes formats suitable for sampled 2D textures (no depth/stencil).
 /// ASTC formats are flattened into individual variants for TOML serialization.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, EnumIter,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, EnumIter)]
 pub enum TextureFormat {
     // ---- Uncompressed ----
-    R8Unorm, R8Snorm, R8Uint, R8Sint,
-    R16Uint, R16Sint, R16Float,
-    Rg8Unorm, Rg8Snorm, Rg8Uint, Rg8Sint,
-    R32Uint, R32Sint, R32Float,
-    Rg16Uint, Rg16Sint, Rg16Float,
-    Rgba8Unorm, Rgba8UnormSrgb, Rgba8Snorm, Rgba8Uint, Rgba8Sint,
-    Bgra8Unorm, Bgra8UnormSrgb,
-    Rgb10a2Unorm, Rg11b10Ufloat,
-    Rg32Uint, Rg32Sint, Rg32Float,
-    Rgba16Uint, Rgba16Sint, Rgba16Float,
-    Rgba32Uint, Rgba32Sint, Rgba32Float,
+    R8Unorm,
+    R8Snorm,
+    R8Uint,
+    R8Sint,
+    R16Uint,
+    R16Sint,
+    R16Float,
+    Rg8Unorm,
+    Rg8Snorm,
+    Rg8Uint,
+    Rg8Sint,
+    R32Uint,
+    R32Sint,
+    R32Float,
+    Rg16Uint,
+    Rg16Sint,
+    Rg16Float,
+    Rgba8Unorm,
+    Rgba8UnormSrgb,
+    Rgba8Snorm,
+    Rgba8Uint,
+    Rgba8Sint,
+    Bgra8Unorm,
+    Bgra8UnormSrgb,
+    Rgb10a2Unorm,
+    Rg11b10Ufloat,
+    Rg32Uint,
+    Rg32Sint,
+    Rg32Float,
+    Rgba16Uint,
+    Rgba16Sint,
+    Rgba16Float,
+    Rgba32Uint,
+    Rgba32Sint,
+    Rgba32Float,
 
     // ---- BC ----
-    Bc1RgbaUnorm, Bc1RgbaUnormSrgb, Bc2RgbaUnorm, Bc2RgbaUnormSrgb,
-    Bc3RgbaUnorm, Bc3RgbaUnormSrgb, Bc4RUnorm, Bc4RSnorm,
-    Bc5RgUnorm, Bc5RgSnorm, Bc6hRgbUfloat, Bc6hRgbFloat,
-    Bc7RgbaUnorm, Bc7RgbaUnormSrgb,
+    Bc1RgbaUnorm,
+    Bc1RgbaUnormSrgb,
+    Bc2RgbaUnorm,
+    Bc2RgbaUnormSrgb,
+    Bc3RgbaUnorm,
+    Bc3RgbaUnormSrgb,
+    Bc4RUnorm,
+    Bc4RSnorm,
+    Bc5RgUnorm,
+    Bc5RgSnorm,
+    Bc6hRgbUfloat,
+    Bc6hRgbFloat,
+    Bc7RgbaUnorm,
+    Bc7RgbaUnormSrgb,
 
     // ---- ETC2 ----
-    Etc2Rgb8Unorm, Etc2Rgb8UnormSrgb, Etc2Rgb8A1Unorm, Etc2Rgb8A1UnormSrgb,
-    Etc2Rgba8Unorm, Etc2Rgba8UnormSrgb,
-    EacR11Unorm, EacR11Snorm, EacRg11Unorm, EacRg11Snorm,
+    Etc2Rgb8Unorm,
+    Etc2Rgb8UnormSrgb,
+    Etc2Rgb8A1Unorm,
+    Etc2Rgb8A1UnormSrgb,
+    Etc2Rgba8Unorm,
+    Etc2Rgba8UnormSrgb,
+    EacR11Unorm,
+    EacR11Snorm,
+    EacRg11Unorm,
+    EacRg11Snorm,
 
     // ---- ASTC ----
-    Astc4x4Unorm, Astc4x4UnormSrgb, Astc4x4Hdr,
-    Astc5x4Unorm, Astc5x4UnormSrgb, Astc5x4Hdr,
-    Astc5x5Unorm, Astc5x5UnormSrgb, Astc5x5Hdr,
-    Astc6x5Unorm, Astc6x5UnormSrgb, Astc6x5Hdr,
-    Astc6x6Unorm, Astc6x6UnormSrgb, Astc6x6Hdr,
-    Astc8x5Unorm, Astc8x5UnormSrgb, Astc8x5Hdr,
-    Astc8x6Unorm, Astc8x6UnormSrgb, Astc8x6Hdr,
-    Astc8x8Unorm, Astc8x8UnormSrgb, Astc8x8Hdr,
-    Astc10x5Unorm, Astc10x5UnormSrgb, Astc10x5Hdr,
-    Astc10x6Unorm, Astc10x6UnormSrgb, Astc10x6Hdr,
-    Astc10x8Unorm, Astc10x8UnormSrgb, Astc10x8Hdr,
-    Astc10x10Unorm, Astc10x10UnormSrgb, Astc10x10Hdr,
-    Astc12x10Unorm, Astc12x10UnormSrgb, Astc12x10Hdr,
-    Astc12x12Unorm, Astc12x12UnormSrgb, Astc12x12Hdr,
+    Astc4x4Unorm,
+    Astc4x4UnormSrgb,
+    Astc4x4Hdr,
+    Astc5x4Unorm,
+    Astc5x4UnormSrgb,
+    Astc5x4Hdr,
+    Astc5x5Unorm,
+    Astc5x5UnormSrgb,
+    Astc5x5Hdr,
+    Astc6x5Unorm,
+    Astc6x5UnormSrgb,
+    Astc6x5Hdr,
+    Astc6x6Unorm,
+    Astc6x6UnormSrgb,
+    Astc6x6Hdr,
+    Astc8x5Unorm,
+    Astc8x5UnormSrgb,
+    Astc8x5Hdr,
+    Astc8x6Unorm,
+    Astc8x6UnormSrgb,
+    Astc8x6Hdr,
+    Astc8x8Unorm,
+    Astc8x8UnormSrgb,
+    Astc8x8Hdr,
+    Astc10x5Unorm,
+    Astc10x5UnormSrgb,
+    Astc10x5Hdr,
+    Astc10x6Unorm,
+    Astc10x6UnormSrgb,
+    Astc10x6Hdr,
+    Astc10x8Unorm,
+    Astc10x8UnormSrgb,
+    Astc10x8Hdr,
+    Astc10x10Unorm,
+    Astc10x10UnormSrgb,
+    Astc10x10Hdr,
+    Astc12x10Unorm,
+    Astc12x10UnormSrgb,
+    Astc12x10Hdr,
+    Astc12x12Unorm,
+    Astc12x12UnormSrgb,
+    Astc12x12Hdr,
 }
 
 impl TextureFormat {
@@ -155,41 +200,122 @@ impl TextureFormat {
         }
         matches!(
             self,
-            Self::Bc1RgbaUnorm | Self::Bc1RgbaUnormSrgb | Self::Bc2RgbaUnorm
-                | Self::Bc2RgbaUnormSrgb | Self::Bc3RgbaUnorm | Self::Bc3RgbaUnormSrgb
-                | Self::Bc4RUnorm | Self::Bc4RSnorm | Self::Bc5RgUnorm | Self::Bc5RgSnorm
+            Self::Bc1RgbaUnorm
+                | Self::Bc1RgbaUnormSrgb
+                | Self::Bc2RgbaUnorm
+                | Self::Bc2RgbaUnormSrgb
+                | Self::Bc3RgbaUnorm
+                | Self::Bc3RgbaUnormSrgb
+                | Self::Bc4RUnorm
+                | Self::Bc4RSnorm
+                | Self::Bc5RgUnorm
+                | Self::Bc5RgSnorm
         )
     }
 
-    pub fn compression_family(&self) -> Option<&'static str> {
+    pub fn compression_family(&self) -> Option<TextureCompressFeature> {
         match self {
-            Self::Rgba8Unorm | Self::Rgba8UnormSrgb => None,
-            Self::Bc1RgbaUnorm | Self::Bc1RgbaUnormSrgb | Self::Bc2RgbaUnorm
-            | Self::Bc2RgbaUnormSrgb | Self::Bc3RgbaUnorm | Self::Bc3RgbaUnormSrgb
-            | Self::Bc4RUnorm | Self::Bc4RSnorm | Self::Bc5RgUnorm | Self::Bc5RgSnorm
-            | Self::Bc6hRgbUfloat | Self::Bc6hRgbFloat | Self::Bc7RgbaUnorm
-            | Self::Bc7RgbaUnormSrgb => Some("BC"),
-            Self::Etc2Rgb8Unorm | Self::Etc2Rgb8UnormSrgb | Self::Etc2Rgb8A1Unorm
-            | Self::Etc2Rgb8A1UnormSrgb | Self::Etc2Rgba8Unorm | Self::Etc2Rgba8UnormSrgb
-            | Self::EacR11Unorm | Self::EacR11Snorm | Self::EacRg11Unorm
-            | Self::EacRg11Snorm => Some("ETC2"),
-            Self::Astc4x4Unorm | Self::Astc4x4UnormSrgb | Self::Astc4x4Hdr
-            | Self::Astc5x4Unorm | Self::Astc5x4UnormSrgb | Self::Astc5x4Hdr
-            | Self::Astc5x5Unorm | Self::Astc5x5UnormSrgb | Self::Astc5x5Hdr
-            | Self::Astc6x5Unorm | Self::Astc6x5UnormSrgb | Self::Astc6x5Hdr
-            | Self::Astc6x6Unorm | Self::Astc6x6UnormSrgb | Self::Astc6x6Hdr
-            | Self::Astc8x5Unorm | Self::Astc8x5UnormSrgb | Self::Astc8x5Hdr
-            | Self::Astc8x6Unorm | Self::Astc8x6UnormSrgb | Self::Astc8x6Hdr
-            | Self::Astc8x8Unorm | Self::Astc8x8UnormSrgb | Self::Astc8x8Hdr
-            | Self::Astc10x5Unorm | Self::Astc10x5UnormSrgb | Self::Astc10x5Hdr
-            | Self::Astc10x6Unorm | Self::Astc10x6UnormSrgb | Self::Astc10x6Hdr
-            | Self::Astc10x8Unorm | Self::Astc10x8UnormSrgb | Self::Astc10x8Hdr
-            | Self::Astc10x10Unorm | Self::Astc10x10UnormSrgb | Self::Astc10x10Hdr
-            | Self::Astc12x10Unorm | Self::Astc12x10UnormSrgb | Self::Astc12x10Hdr
-            | Self::Astc12x12Unorm | Self::Astc12x12UnormSrgb | Self::Astc12x12Hdr => {
-                Some("ASTC")
-            }
-            _ => None,
+            Self::Rgba8Unorm
+            | Self::Rgba8UnormSrgb
+            | Self::R8Unorm
+            | Self::R8Snorm
+            | Self::R8Uint
+            | Self::R8Sint
+            | Self::R16Uint
+            | Self::R16Sint
+            | Self::R16Float
+            | Self::Rg8Unorm
+            | Self::Rg8Snorm
+            | Self::Rg8Uint
+            | Self::Rg8Sint
+            | Self::R32Sint
+            | Self::R32Float
+            | Self::Rg16Uint
+            | Self::Rg16Sint
+            | Self::Rg16Float
+            | Self::Rgba8Snorm
+            | Self::Rgba8Uint
+            | Self::Rgba8Sint
+            | Self::Bgra8Unorm
+            | Self::Bgra8UnormSrgb
+            | Self::Rgb10a2Unorm
+            | Self::Rg11b10Ufloat
+            | Self::Rg32Uint
+            | Self::Rg32Sint
+            | Self::Rg32Float
+            | Self::Rgba16Uint
+            | Self::Rgba16Sint
+            | Self::Rgba16Float
+            | Self::Rgba32Uint
+            | Self::Rgba32Sint
+            | Self::Rgba32Float
+            | Self::R32Uint => None,
+            Self::Bc1RgbaUnorm
+            | Self::Bc1RgbaUnormSrgb
+            | Self::Bc2RgbaUnorm
+            | Self::Bc2RgbaUnormSrgb
+            | Self::Bc3RgbaUnorm
+            | Self::Bc3RgbaUnormSrgb
+            | Self::Bc4RUnorm
+            | Self::Bc4RSnorm
+            | Self::Bc5RgUnorm
+            | Self::Bc5RgSnorm
+            | Self::Bc6hRgbUfloat
+            | Self::Bc6hRgbFloat
+            | Self::Bc7RgbaUnorm
+            | Self::Bc7RgbaUnormSrgb => Some(TextureCompressFeature::BC),
+            Self::Etc2Rgb8Unorm
+            | Self::Etc2Rgb8UnormSrgb
+            | Self::Etc2Rgb8A1Unorm
+            | Self::Etc2Rgb8A1UnormSrgb
+            | Self::Etc2Rgba8Unorm
+            | Self::Etc2Rgba8UnormSrgb
+            | Self::EacR11Unorm
+            | Self::EacR11Snorm
+            | Self::EacRg11Unorm
+            | Self::EacRg11Snorm => Some(TextureCompressFeature::ETC2),
+            Self::Astc4x4Unorm
+            | Self::Astc4x4UnormSrgb
+            | Self::Astc4x4Hdr
+            | Self::Astc5x4Unorm
+            | Self::Astc5x4UnormSrgb
+            | Self::Astc5x4Hdr
+            | Self::Astc5x5Unorm
+            | Self::Astc5x5UnormSrgb
+            | Self::Astc5x5Hdr
+            | Self::Astc6x5Unorm
+            | Self::Astc6x5UnormSrgb
+            | Self::Astc6x5Hdr
+            | Self::Astc6x6Unorm
+            | Self::Astc6x6UnormSrgb
+            | Self::Astc6x6Hdr
+            | Self::Astc8x5Unorm
+            | Self::Astc8x5UnormSrgb
+            | Self::Astc8x5Hdr
+            | Self::Astc8x6Unorm
+            | Self::Astc8x6UnormSrgb
+            | Self::Astc8x6Hdr
+            | Self::Astc8x8Unorm
+            | Self::Astc8x8UnormSrgb
+            | Self::Astc8x8Hdr
+            | Self::Astc10x5Unorm
+            | Self::Astc10x5UnormSrgb
+            | Self::Astc10x5Hdr
+            | Self::Astc10x6Unorm
+            | Self::Astc10x6UnormSrgb
+            | Self::Astc10x6Hdr
+            | Self::Astc10x8Unorm
+            | Self::Astc10x8UnormSrgb
+            | Self::Astc10x8Hdr
+            | Self::Astc10x10Unorm
+            | Self::Astc10x10UnormSrgb
+            | Self::Astc10x10Hdr
+            | Self::Astc12x10Unorm
+            | Self::Astc12x10UnormSrgb
+            | Self::Astc12x10Hdr
+            | Self::Astc12x12Unorm
+            | Self::Astc12x12UnormSrgb
+            | Self::Astc12x12Hdr => Some(TextureCompressFeature::ASTC),
         }
     }
 
@@ -202,7 +328,8 @@ impl TextureFormat {
             None => true,
         }
     }
-}impl From<TextureFormat> for wgpu::TextureFormat {
+}
+impl From<TextureFormat> for wgpu::TextureFormat {
     fn from(value: TextureFormat) -> Self {
         use wgpu::TextureFormat as Wgpu;
         match value {
@@ -265,48 +392,174 @@ impl TextureFormat {
             TextureFormat::EacR11Snorm => Wgpu::EacR11Snorm,
             TextureFormat::EacRg11Unorm => Wgpu::EacRg11Unorm,
             TextureFormat::EacRg11Snorm => Wgpu::EacRg11Snorm,
-            TextureFormat::Astc4x4Unorm => Wgpu::Astc { block: wgpu::AstcBlock::B4x4, channel: wgpu::AstcChannel::Unorm },
-            TextureFormat::Astc4x4UnormSrgb => Wgpu::Astc { block: wgpu::AstcBlock::B4x4, channel: wgpu::AstcChannel::UnormSrgb },
-            TextureFormat::Astc4x4Hdr => Wgpu::Astc { block: wgpu::AstcBlock::B4x4, channel: wgpu::AstcChannel::Hdr },
-            TextureFormat::Astc5x4Unorm => Wgpu::Astc { block: wgpu::AstcBlock::B5x4, channel: wgpu::AstcChannel::Unorm },
-            TextureFormat::Astc5x4UnormSrgb => Wgpu::Astc { block: wgpu::AstcBlock::B5x4, channel: wgpu::AstcChannel::UnormSrgb },
-            TextureFormat::Astc5x4Hdr => Wgpu::Astc { block: wgpu::AstcBlock::B5x4, channel: wgpu::AstcChannel::Hdr },
-            TextureFormat::Astc5x5Unorm => Wgpu::Astc { block: wgpu::AstcBlock::B5x5, channel: wgpu::AstcChannel::Unorm },
-            TextureFormat::Astc5x5UnormSrgb => Wgpu::Astc { block: wgpu::AstcBlock::B5x5, channel: wgpu::AstcChannel::UnormSrgb },
-            TextureFormat::Astc5x5Hdr => Wgpu::Astc { block: wgpu::AstcBlock::B5x5, channel: wgpu::AstcChannel::Hdr },
-            TextureFormat::Astc6x5Unorm => Wgpu::Astc { block: wgpu::AstcBlock::B6x5, channel: wgpu::AstcChannel::Unorm },
-            TextureFormat::Astc6x5UnormSrgb => Wgpu::Astc { block: wgpu::AstcBlock::B6x5, channel: wgpu::AstcChannel::UnormSrgb },
-            TextureFormat::Astc6x5Hdr => Wgpu::Astc { block: wgpu::AstcBlock::B6x5, channel: wgpu::AstcChannel::Hdr },
-            TextureFormat::Astc6x6Unorm => Wgpu::Astc { block: wgpu::AstcBlock::B6x6, channel: wgpu::AstcChannel::Unorm },
-            TextureFormat::Astc6x6UnormSrgb => Wgpu::Astc { block: wgpu::AstcBlock::B6x6, channel: wgpu::AstcChannel::UnormSrgb },
-            TextureFormat::Astc6x6Hdr => Wgpu::Astc { block: wgpu::AstcBlock::B6x6, channel: wgpu::AstcChannel::Hdr },
-            TextureFormat::Astc8x5Unorm => Wgpu::Astc { block: wgpu::AstcBlock::B8x5, channel: wgpu::AstcChannel::Unorm },
-            TextureFormat::Astc8x5UnormSrgb => Wgpu::Astc { block: wgpu::AstcBlock::B8x5, channel: wgpu::AstcChannel::UnormSrgb },
-            TextureFormat::Astc8x5Hdr => Wgpu::Astc { block: wgpu::AstcBlock::B8x5, channel: wgpu::AstcChannel::Hdr },
-            TextureFormat::Astc8x6Unorm => Wgpu::Astc { block: wgpu::AstcBlock::B8x6, channel: wgpu::AstcChannel::Unorm },
-            TextureFormat::Astc8x6UnormSrgb => Wgpu::Astc { block: wgpu::AstcBlock::B8x6, channel: wgpu::AstcChannel::UnormSrgb },
-            TextureFormat::Astc8x6Hdr => Wgpu::Astc { block: wgpu::AstcBlock::B8x6, channel: wgpu::AstcChannel::Hdr },
-            TextureFormat::Astc8x8Unorm => Wgpu::Astc { block: wgpu::AstcBlock::B8x8, channel: wgpu::AstcChannel::Unorm },
-            TextureFormat::Astc8x8UnormSrgb => Wgpu::Astc { block: wgpu::AstcBlock::B8x8, channel: wgpu::AstcChannel::UnormSrgb },
-            TextureFormat::Astc8x8Hdr => Wgpu::Astc { block: wgpu::AstcBlock::B8x8, channel: wgpu::AstcChannel::Hdr },
-            TextureFormat::Astc10x5Unorm => Wgpu::Astc { block: wgpu::AstcBlock::B10x5, channel: wgpu::AstcChannel::Unorm },
-            TextureFormat::Astc10x5UnormSrgb => Wgpu::Astc { block: wgpu::AstcBlock::B10x5, channel: wgpu::AstcChannel::UnormSrgb },
-            TextureFormat::Astc10x5Hdr => Wgpu::Astc { block: wgpu::AstcBlock::B10x5, channel: wgpu::AstcChannel::Hdr },
-            TextureFormat::Astc10x6Unorm => Wgpu::Astc { block: wgpu::AstcBlock::B10x6, channel: wgpu::AstcChannel::Unorm },
-            TextureFormat::Astc10x6UnormSrgb => Wgpu::Astc { block: wgpu::AstcBlock::B10x6, channel: wgpu::AstcChannel::UnormSrgb },
-            TextureFormat::Astc10x6Hdr => Wgpu::Astc { block: wgpu::AstcBlock::B10x6, channel: wgpu::AstcChannel::Hdr },
-            TextureFormat::Astc10x8Unorm => Wgpu::Astc { block: wgpu::AstcBlock::B10x8, channel: wgpu::AstcChannel::Unorm },
-            TextureFormat::Astc10x8UnormSrgb => Wgpu::Astc { block: wgpu::AstcBlock::B10x8, channel: wgpu::AstcChannel::UnormSrgb },
-            TextureFormat::Astc10x8Hdr => Wgpu::Astc { block: wgpu::AstcBlock::B10x8, channel: wgpu::AstcChannel::Hdr },
-            TextureFormat::Astc10x10Unorm => Wgpu::Astc { block: wgpu::AstcBlock::B10x10, channel: wgpu::AstcChannel::Unorm },
-            TextureFormat::Astc10x10UnormSrgb => Wgpu::Astc { block: wgpu::AstcBlock::B10x10, channel: wgpu::AstcChannel::UnormSrgb },
-            TextureFormat::Astc10x10Hdr => Wgpu::Astc { block: wgpu::AstcBlock::B10x10, channel: wgpu::AstcChannel::Hdr },
-            TextureFormat::Astc12x10Unorm => Wgpu::Astc { block: wgpu::AstcBlock::B12x10, channel: wgpu::AstcChannel::Unorm },
-            TextureFormat::Astc12x10UnormSrgb => Wgpu::Astc { block: wgpu::AstcBlock::B12x10, channel: wgpu::AstcChannel::UnormSrgb },
-            TextureFormat::Astc12x10Hdr => Wgpu::Astc { block: wgpu::AstcBlock::B12x10, channel: wgpu::AstcChannel::Hdr },
-            TextureFormat::Astc12x12Unorm => Wgpu::Astc { block: wgpu::AstcBlock::B12x12, channel: wgpu::AstcChannel::Unorm },
-            TextureFormat::Astc12x12UnormSrgb => Wgpu::Astc { block: wgpu::AstcBlock::B12x12, channel: wgpu::AstcChannel::UnormSrgb },
-            TextureFormat::Astc12x12Hdr => Wgpu::Astc { block: wgpu::AstcBlock::B12x12, channel: wgpu::AstcChannel::Hdr },
+            TextureFormat::Astc4x4Unorm => Wgpu::Astc {
+                block: wgpu::AstcBlock::B4x4,
+                channel: wgpu::AstcChannel::Unorm,
+            },
+            TextureFormat::Astc4x4UnormSrgb => Wgpu::Astc {
+                block: wgpu::AstcBlock::B4x4,
+                channel: wgpu::AstcChannel::UnormSrgb,
+            },
+            TextureFormat::Astc4x4Hdr => Wgpu::Astc {
+                block: wgpu::AstcBlock::B4x4,
+                channel: wgpu::AstcChannel::Hdr,
+            },
+            TextureFormat::Astc5x4Unorm => Wgpu::Astc {
+                block: wgpu::AstcBlock::B5x4,
+                channel: wgpu::AstcChannel::Unorm,
+            },
+            TextureFormat::Astc5x4UnormSrgb => Wgpu::Astc {
+                block: wgpu::AstcBlock::B5x4,
+                channel: wgpu::AstcChannel::UnormSrgb,
+            },
+            TextureFormat::Astc5x4Hdr => Wgpu::Astc {
+                block: wgpu::AstcBlock::B5x4,
+                channel: wgpu::AstcChannel::Hdr,
+            },
+            TextureFormat::Astc5x5Unorm => Wgpu::Astc {
+                block: wgpu::AstcBlock::B5x5,
+                channel: wgpu::AstcChannel::Unorm,
+            },
+            TextureFormat::Astc5x5UnormSrgb => Wgpu::Astc {
+                block: wgpu::AstcBlock::B5x5,
+                channel: wgpu::AstcChannel::UnormSrgb,
+            },
+            TextureFormat::Astc5x5Hdr => Wgpu::Astc {
+                block: wgpu::AstcBlock::B5x5,
+                channel: wgpu::AstcChannel::Hdr,
+            },
+            TextureFormat::Astc6x5Unorm => Wgpu::Astc {
+                block: wgpu::AstcBlock::B6x5,
+                channel: wgpu::AstcChannel::Unorm,
+            },
+            TextureFormat::Astc6x5UnormSrgb => Wgpu::Astc {
+                block: wgpu::AstcBlock::B6x5,
+                channel: wgpu::AstcChannel::UnormSrgb,
+            },
+            TextureFormat::Astc6x5Hdr => Wgpu::Astc {
+                block: wgpu::AstcBlock::B6x5,
+                channel: wgpu::AstcChannel::Hdr,
+            },
+            TextureFormat::Astc6x6Unorm => Wgpu::Astc {
+                block: wgpu::AstcBlock::B6x6,
+                channel: wgpu::AstcChannel::Unorm,
+            },
+            TextureFormat::Astc6x6UnormSrgb => Wgpu::Astc {
+                block: wgpu::AstcBlock::B6x6,
+                channel: wgpu::AstcChannel::UnormSrgb,
+            },
+            TextureFormat::Astc6x6Hdr => Wgpu::Astc {
+                block: wgpu::AstcBlock::B6x6,
+                channel: wgpu::AstcChannel::Hdr,
+            },
+            TextureFormat::Astc8x5Unorm => Wgpu::Astc {
+                block: wgpu::AstcBlock::B8x5,
+                channel: wgpu::AstcChannel::Unorm,
+            },
+            TextureFormat::Astc8x5UnormSrgb => Wgpu::Astc {
+                block: wgpu::AstcBlock::B8x5,
+                channel: wgpu::AstcChannel::UnormSrgb,
+            },
+            TextureFormat::Astc8x5Hdr => Wgpu::Astc {
+                block: wgpu::AstcBlock::B8x5,
+                channel: wgpu::AstcChannel::Hdr,
+            },
+            TextureFormat::Astc8x6Unorm => Wgpu::Astc {
+                block: wgpu::AstcBlock::B8x6,
+                channel: wgpu::AstcChannel::Unorm,
+            },
+            TextureFormat::Astc8x6UnormSrgb => Wgpu::Astc {
+                block: wgpu::AstcBlock::B8x6,
+                channel: wgpu::AstcChannel::UnormSrgb,
+            },
+            TextureFormat::Astc8x6Hdr => Wgpu::Astc {
+                block: wgpu::AstcBlock::B8x6,
+                channel: wgpu::AstcChannel::Hdr,
+            },
+            TextureFormat::Astc8x8Unorm => Wgpu::Astc {
+                block: wgpu::AstcBlock::B8x8,
+                channel: wgpu::AstcChannel::Unorm,
+            },
+            TextureFormat::Astc8x8UnormSrgb => Wgpu::Astc {
+                block: wgpu::AstcBlock::B8x8,
+                channel: wgpu::AstcChannel::UnormSrgb,
+            },
+            TextureFormat::Astc8x8Hdr => Wgpu::Astc {
+                block: wgpu::AstcBlock::B8x8,
+                channel: wgpu::AstcChannel::Hdr,
+            },
+            TextureFormat::Astc10x5Unorm => Wgpu::Astc {
+                block: wgpu::AstcBlock::B10x5,
+                channel: wgpu::AstcChannel::Unorm,
+            },
+            TextureFormat::Astc10x5UnormSrgb => Wgpu::Astc {
+                block: wgpu::AstcBlock::B10x5,
+                channel: wgpu::AstcChannel::UnormSrgb,
+            },
+            TextureFormat::Astc10x5Hdr => Wgpu::Astc {
+                block: wgpu::AstcBlock::B10x5,
+                channel: wgpu::AstcChannel::Hdr,
+            },
+            TextureFormat::Astc10x6Unorm => Wgpu::Astc {
+                block: wgpu::AstcBlock::B10x6,
+                channel: wgpu::AstcChannel::Unorm,
+            },
+            TextureFormat::Astc10x6UnormSrgb => Wgpu::Astc {
+                block: wgpu::AstcBlock::B10x6,
+                channel: wgpu::AstcChannel::UnormSrgb,
+            },
+            TextureFormat::Astc10x6Hdr => Wgpu::Astc {
+                block: wgpu::AstcBlock::B10x6,
+                channel: wgpu::AstcChannel::Hdr,
+            },
+            TextureFormat::Astc10x8Unorm => Wgpu::Astc {
+                block: wgpu::AstcBlock::B10x8,
+                channel: wgpu::AstcChannel::Unorm,
+            },
+            TextureFormat::Astc10x8UnormSrgb => Wgpu::Astc {
+                block: wgpu::AstcBlock::B10x8,
+                channel: wgpu::AstcChannel::UnormSrgb,
+            },
+            TextureFormat::Astc10x8Hdr => Wgpu::Astc {
+                block: wgpu::AstcBlock::B10x8,
+                channel: wgpu::AstcChannel::Hdr,
+            },
+            TextureFormat::Astc10x10Unorm => Wgpu::Astc {
+                block: wgpu::AstcBlock::B10x10,
+                channel: wgpu::AstcChannel::Unorm,
+            },
+            TextureFormat::Astc10x10UnormSrgb => Wgpu::Astc {
+                block: wgpu::AstcBlock::B10x10,
+                channel: wgpu::AstcChannel::UnormSrgb,
+            },
+            TextureFormat::Astc10x10Hdr => Wgpu::Astc {
+                block: wgpu::AstcBlock::B10x10,
+                channel: wgpu::AstcChannel::Hdr,
+            },
+            TextureFormat::Astc12x10Unorm => Wgpu::Astc {
+                block: wgpu::AstcBlock::B12x10,
+                channel: wgpu::AstcChannel::Unorm,
+            },
+            TextureFormat::Astc12x10UnormSrgb => Wgpu::Astc {
+                block: wgpu::AstcBlock::B12x10,
+                channel: wgpu::AstcChannel::UnormSrgb,
+            },
+            TextureFormat::Astc12x10Hdr => Wgpu::Astc {
+                block: wgpu::AstcBlock::B12x10,
+                channel: wgpu::AstcChannel::Hdr,
+            },
+            TextureFormat::Astc12x12Unorm => Wgpu::Astc {
+                block: wgpu::AstcBlock::B12x12,
+                channel: wgpu::AstcChannel::Unorm,
+            },
+            TextureFormat::Astc12x12UnormSrgb => Wgpu::Astc {
+                block: wgpu::AstcBlock::B12x12,
+                channel: wgpu::AstcChannel::UnormSrgb,
+            },
+            TextureFormat::Astc12x12Hdr => Wgpu::Astc {
+                block: wgpu::AstcBlock::B12x12,
+                channel: wgpu::AstcChannel::Hdr,
+            },
         }
     }
 }

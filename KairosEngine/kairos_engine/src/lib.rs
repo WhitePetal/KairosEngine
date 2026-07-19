@@ -7,6 +7,8 @@ pub mod log;
 
 pub mod kairos_editor;
 pub mod kairos_game;
+pub mod kairos_paths;
+pub mod kairos_settings;
 pub mod kairos_ui;
 
 pub mod asset_loader;

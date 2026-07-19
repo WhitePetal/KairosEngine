@@ -80,8 +80,7 @@ impl Loader {
         // 1. Read .texture TOML → SerializedTexture
         let toml_bytes = tokio::fs::read(&path).await?;
         let serialized: SerializedTexture =
-            tokio::task::spawn_blocking(move || toml::from_slice(&toml_bytes))
-                .await??;
+            tokio::task::spawn_blocking(move || toml::from_slice(&toml_bytes)).await??;
 
         // 2. Request TextureAssetsSystem dependency (loads .texture_bin)
         let (texture_setback_sender, texture_setback_receiver) =
@@ -97,19 +96,17 @@ impl Loader {
         // 3. Read original PNG to cache dimensions + RGBA data
         let source_path = serialized.source_path.clone();
         let (original_width, original_height, original_rgba) =
-            tokio::task::spawn_blocking(move || {
-                match image::open(&source_path) {
-                    Ok(img) => {
-                        let (w, h) = (img.width(), img.height());
-                        (w, h, img.into_rgba8().into_vec())
-                    }
-                    Err(e) => {
-                        log::warn!(
-                            "TextureExt: failed to open source PNG '{}': {e}",
-                            source_path.display()
-                        );
-                        (0, 0, Vec::new())
-                    }
+            tokio::task::spawn_blocking(move || match image::open(&source_path) {
+                Ok(img) => {
+                    let (w, h) = (img.width(), img.height());
+                    (w, h, img.into_rgba8().into_vec())
+                }
+                Err(e) => {
+                    log::warn!(
+                        "TextureExt: failed to open source PNG '{}': {e}",
+                        source_path.display()
+                    );
+                    (0, 0, Vec::new())
                 }
             })
             .await?;

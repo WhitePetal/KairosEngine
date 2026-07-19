@@ -23,6 +23,14 @@ guid = "44188a6d-364b-414b-be95-0dfddfa1ef80"
 path = "./Preferences"
 
 [[entries]]
+guid = "f4dc6188-c71c-40d2-9cae-c2253a80ab0f"
+path = './Preferences\Engine'
+
+[[entries]]
+guid = "a4df7c92-2ae8-44fa-a8aa-cca6471fbe29"
+path = './Preferences\Engine\engine.toml'
+
+[[entries]]
 guid = "1e674b9a-3de6-43ff-aec2-14cdd264b088"
 path = "./Preferences/Fonts"
 
@@ -977,6 +985,10 @@ path = "./kairos_engine/src/kairos_editor.rs"
 [[entries]]
 guid = "e090eefb-17b3-478e-8d4e-77a999a3a06b"
 path = "./kairos_engine/src/kairos_game.rs"
+
+[[entries]]
+guid = "e1a5c235-a61f-4ac7-801e-d214122f1822"
+path = './kairos_engine\src\kairos_settings.rs'
 
 [[entries]]
 guid = "8e96b471-7acd-4427-a346-e5214a13236c"

@@ -1,18 +1,28 @@
 use crate::{
     asset_loader::assets::{
-        AssetHandle, AssetsServer, TomlTableAssetsSystem,
-        asset::TextAssetsSystem,
-    }, graphics::{graphics_graph::GraphicsCommand}, kairos_editor::{
-        Engine, asset_registry::AssetKind, editor_assets::{TextureExt, TextureExtAssetsSystem}, ui::{
-            game_window::GameWindow, global_styles::{FontDataConfig, FontsConfig, GlobalStyles}, inspector::{
+        AssetHandle, AssetsServer, TomlTableAssetsSystem, asset::TextAssetsSystem,
+    },
+    graphics::graphics_graph::GraphicsCommand,
+    kairos_editor::{
+        Engine,
+        asset_registry::AssetKind,
+        editor_assets::{TextureExt, TextureExtAssetsSystem},
+        ui::{
+            game_window::GameWindow,
+            global_styles::{FontDataConfig, FontsConfig, GlobalStyles},
+            inspector::{
                 audio::AudioInspector, code::CodeInspector, document::DocumentInspector,
                 shader::ShaderInspector, texture::TextureInspector, toml::TomlTableInspector,
-            }, layout::{
+            },
+            layout::{
                 EditorLayout, LayoutBottomContainer, LayoutContainerIds, LayoutLeftContainer,
                 LayoutRightContainer, Zone,
             },
         },
-    }, kairos_game::KairosGame, log::Log, types::TypeIdMap,
+    },
+    kairos_game::KairosGame,
+    log::Log,
+    types::TypeIdMap,
 };
 use egui::{self};
 use std::{
@@ -147,7 +157,11 @@ pub enum Message {
     /// Audio Inspector: seek to position (seconds) and start playback.
     AudioInspectorSeekPreview(f32),
     /// Texture Inspector: apply size settings.
-    TextureInspectorApply(PathBuf, Arc<AssetHandle<TextureExtAssetsSystem>>, Arc<parking_lot::Mutex<Option<TextureExt>>>),
+    TextureInspectorApply(
+        PathBuf,
+        Arc<AssetHandle<TextureExtAssetsSystem>>,
+        Arc<parking_lot::Mutex<Option<TextureExt>>>,
+    ),
 }
 
 struct KairosTabDrawer {
@@ -513,12 +527,16 @@ impl Context {
                     }
                 }
                 Message::AudioInspectorTogglePreview => {
-                    if let Some(inspector) = self.get_window_mut::<InspectorWindow>() && let Some(audio) = inspector.get_inspector_mut::<AudioInspector>() {
+                    if let Some(inspector) = self.get_window_mut::<InspectorWindow>()
+                        && let Some(audio) = inspector.get_inspector_mut::<AudioInspector>()
+                    {
                         audio.toggle_playback(engine);
                     }
                 }
                 Message::AudioInspectorSeekPreview(position) => {
-                    if let Some(inspector) = self.get_window_mut::<InspectorWindow>() && let Some(audio) = inspector.get_inspector_mut::<AudioInspector>() {
+                    if let Some(inspector) = self.get_window_mut::<InspectorWindow>()
+                        && let Some(audio) = inspector.get_inspector_mut::<AudioInspector>()
+                    {
                         audio.seek_and_play(engine, position);
                     }
                 }
@@ -597,13 +615,17 @@ impl Context {
                     ShaderInspector::save_shader(&mut engine.assets_server, &path, handle, content);
                 }
                 Message::TextureInspectorApply(path, handle, ext) => {
-                    if let Some(inspector) = self.get_window_mut::<InspectorWindow>() && let Some(texture) = inspector.get_inspector_mut::<TextureInspector>() {
+                    if let Some(inspector) = self.get_window_mut::<InspectorWindow>()
+                        && let Some(texture) = inspector.get_inspector_mut::<TextureInspector>()
+                    {
                         texture.apply();
                     }
                     TextureInspector::save_texture(&mut engine.assets_server, &path, handle, ext);
                 }
                 Message::AudioInspectorTick => {
-                    if let Some(inspector) = self.get_window_mut::<InspectorWindow>() && let Some(audio) = inspector.get_inspector_mut::<AudioInspector>() {
+                    if let Some(inspector) = self.get_window_mut::<InspectorWindow>()
+                        && let Some(audio) = inspector.get_inspector_mut::<AudioInspector>()
+                    {
                         audio.tick_playback(&mut engine.assets_server);
                     }
                 }

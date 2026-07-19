@@ -1,4 +1,4 @@
 source_path = "res/textures/kairos_texture.png"
 width = 2048
 height = 2048
-format = "Bc2RgbaUnorm"
+format = "Rgba8Unorm"

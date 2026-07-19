@@ -20,8 +20,8 @@ use tokio::sync::mpsc::{self};
 
 pub use audio::AudioAssetHandle;
 pub use audio::AudioAssetsSystem;
-pub use audio::PcmAssetsSystem;
 pub use audio::AudioExtAssetsSystem;
+pub use audio::PcmAssetsSystem;
 pub use font::FontAssetsSystem;
 pub use material::MaterialAssetsSystem;
 pub use mesh::MeshAssetsSystem;

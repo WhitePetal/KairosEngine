@@ -10,9 +10,7 @@ use crate::{
     asset_loader::{
         assets::{
             AssetHandle, AudioAssetsSystem, DependencyLoadRequest, DependencyLoadRequestEvent,
-            asset::{
-                self, AssetIndex, Assets, AssetsHandler, AssetsSystem, PcmAssetsSystem,
-            },
+            asset::{self, AssetIndex, Assets, AssetsHandler, AssetsSystem, PcmAssetsSystem},
         },
         consts,
     },

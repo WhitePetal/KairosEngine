@@ -1,5 +1,7 @@
 use std::{
-    any::type_name, fs::{self}, path::PathBuf,
+    any::type_name,
+    fs::{self},
+    path::PathBuf,
 };
 
 use parking_lot::Mutex;
@@ -97,10 +99,7 @@ impl ToolBar {
                     let (orig_w, orig_h) = (img.width(), img.height());
                     let icon_size = model.style.icon_size;
                     let (w, h) = if orig_h > icon_size {
-                        (
-                            icon_size,
-                            icon_size,
-                        )
+                        (icon_size, icon_size)
                     } else {
                         (orig_w, orig_h)
                     };
