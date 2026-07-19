@@ -988,6 +988,7 @@ impl RenderPipeline {
         // Miss or version mismatch: create GPU resources
         let texture_dimension = (texture_asset.width, texture_asset.height);
         let texture_data = &texture_asset.data;
+        let wgpu_fmt: wgpu::TextureFormat = texture_asset.format.into();
         let texture_size = Extent3d {
             width: texture_dimension.0,
             height: texture_dimension.1,
@@ -999,11 +1000,20 @@ impl RenderPipeline {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: texture_asset.format.into(),
+            format: wgpu_fmt,
             usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
             view_formats: &[],
         };
         let gpu_texture = device.create_texture(&tex_desc);
+
+        // Compute bytes_per_row based on texture format.
+        let block_bytes = wgpu_fmt
+            .block_copy_size(Some(wgpu::TextureAspect::All))
+            .unwrap_or(4);
+        let (block_w, _) = texture_asset.format.block_dimensions();
+        let blocks_per_row = (texture_dimension.0 + block_w - 1) / block_w;
+        let bytes_per_row = block_bytes * blocks_per_row;
+
         queue.write_texture(
             TexelCopyTextureInfo {
                 texture: &gpu_texture,
@@ -1014,7 +1024,7 @@ impl RenderPipeline {
             &texture_data,
             TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(4 * texture_dimension.0),
+                bytes_per_row: Some(bytes_per_row),
                 rows_per_image: Some(texture_dimension.1),
             },
             texture_size,

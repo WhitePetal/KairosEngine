@@ -200,7 +200,7 @@ impl TextureFormat {
     pub fn supports_encoding(&self) -> bool {
         match self {
             TextureFormat::R8Unorm => true,
-            TextureFormat::R8Snorm => false,
+            TextureFormat::R8Snorm => true,
             TextureFormat::R8Uint => false,
             TextureFormat::R8Sint => false,
             TextureFormat::R16Uint => false,
@@ -416,6 +416,51 @@ impl TextureFormat {
         match self.compression_feature() {
             Some(feature) => config.is_enabled(feature),
             None => true,
+        }
+    }
+
+    /// Block dimensions (width, height) for this format.
+    /// Uncompressed → (1, 1), BC/ETC → (4, 4), ASTC → varies.
+    pub fn block_dimensions(&self) -> (u32, u32) {
+        match self {
+            Self::Astc4x4Unorm | Self::Astc4x4UnormSrgb | Self::Astc4x4Hdr => (4, 4),
+            Self::Astc5x4Unorm | Self::Astc5x4UnormSrgb | Self::Astc5x4Hdr => (5, 4),
+            Self::Astc5x5Unorm | Self::Astc5x5UnormSrgb | Self::Astc5x5Hdr => (5, 5),
+            Self::Astc6x5Unorm | Self::Astc6x5UnormSrgb | Self::Astc6x5Hdr => (6, 5),
+            Self::Astc6x6Unorm | Self::Astc6x6UnormSrgb | Self::Astc6x6Hdr => (6, 6),
+            Self::Astc8x5Unorm | Self::Astc8x5UnormSrgb | Self::Astc8x5Hdr => (8, 5),
+            Self::Astc8x6Unorm | Self::Astc8x6UnormSrgb | Self::Astc8x6Hdr => (8, 6),
+            Self::Astc8x8Unorm | Self::Astc8x8UnormSrgb | Self::Astc8x8Hdr => (8, 8),
+            Self::Astc10x5Unorm | Self::Astc10x5UnormSrgb | Self::Astc10x5Hdr => (10, 5),
+            Self::Astc10x6Unorm | Self::Astc10x6UnormSrgb | Self::Astc10x6Hdr => (10, 6),
+            Self::Astc10x8Unorm | Self::Astc10x8UnormSrgb | Self::Astc10x8Hdr => (10, 8),
+            Self::Astc10x10Unorm | Self::Astc10x10UnormSrgb | Self::Astc10x10Hdr => (10, 10),
+            Self::Astc12x10Unorm | Self::Astc12x10UnormSrgb | Self::Astc12x10Hdr => (12, 10),
+            Self::Astc12x12Unorm | Self::Astc12x12UnormSrgb | Self::Astc12x12Hdr => (12, 12),
+
+            Self::R8Unorm | Self::R8Snorm | Self::R8Uint
+            | Self::R8Sint | Self::R16Uint | Self::R16Sint
+            | Self::R16Float | Self::Rg8Unorm | Self::Rg8Snorm
+            | Self::Rg8Uint | Self::Rg8Sint | Self::R32Uint
+            | Self::R32Sint | Self::R32Float | Self::Rg16Uint
+            | Self::Rg16Sint | Self::Rg16Float | Self::Rgba8Unorm
+            | Self::Rgba8UnormSrgb | Self::Rgba8Snorm | Self::Rgba8Uint
+            | Self::Rgba8Sint | Self::Bgra8Unorm | Self::Bgra8UnormSrgb
+            | Self::Rgb10a2Unorm | Self::Rg11b10Ufloat | Self::Rg32Uint
+            | Self::Rg32Sint | Self::Rg32Float | Self::Rgba16Uint
+            | Self::Rgba16Sint | Self::Rgba16Float | Self::Rgba32Uint
+            | Self::Rgba32Sint | Self::Rgba32Float => (1, 1),
+
+            Self::Bc1RgbaUnorm | Self::Bc1RgbaUnormSrgb | Self::Bc2RgbaUnorm
+            | Self::Bc2RgbaUnormSrgb | Self::Bc3RgbaUnorm | Self::Bc3RgbaUnormSrgb
+            | Self::Bc4RUnorm | Self::Bc4RSnorm | Self::Bc5RgUnorm
+            | Self::Bc5RgSnorm | Self::Bc6hRgbUfloat | Self::Bc6hRgbFloat
+            | Self::Bc7RgbaUnorm | Self::Bc7RgbaUnormSrgb => (4, 4),
+
+            Self::Etc2Rgb8Unorm | Self::Etc2Rgb8UnormSrgb | Self::Etc2Rgb8A1Unorm
+            | Self::Etc2Rgb8A1UnormSrgb | Self::Etc2Rgba8Unorm | Self::Etc2Rgba8UnormSrgb
+            | Self::EacR11Unorm | Self::EacR11Snorm | Self::EacRg11Unorm
+            | Self::EacRg11Snorm => (4, 4),
         }
     }
 }
@@ -667,7 +712,7 @@ pub fn encode_rgba(rgba: &[u8], width: u32, height: u32, format: TextureFormat) 
         TextureFormat::Bc4RUnorm | TextureFormat::Bc4RSnorm => bc::encode_bc4(rgba, w, h),
         TextureFormat::Bc5RgUnorm | TextureFormat::Bc5RgSnorm => bc::encode_bc5(rgba, w, h),
         TextureFormat::R8Unorm => uncompressed::encode_r8u(rgba, w, h),
-        TextureFormat::R8Snorm => todo!(),
+        TextureFormat::R8Snorm => uncompressed::encode_r8s(rgba, w, h),
         TextureFormat::R8Uint => todo!(),
         TextureFormat::R8Sint => todo!(),
         TextureFormat::R16Uint => todo!(),
@@ -770,7 +815,7 @@ pub fn decode_to_rgba8(data: &[u8], width: u32, height: u32, format: TextureForm
         TextureFormat::Bc4RUnorm | TextureFormat::Bc4RSnorm => bc::decode_bc4(data, w, h),
         TextureFormat::Bc5RgUnorm | TextureFormat::Bc5RgSnorm => bc::decode_bc5(data, w, h),
         TextureFormat::R8Unorm => uncompressed::decode_r8u(data, w, h, true, true, true),
-        TextureFormat::R8Snorm => todo!(),
+        TextureFormat::R8Snorm => uncompressed::decode_r8s(data, w, h, true, true, true),
         TextureFormat::R8Uint => todo!(),
         TextureFormat::R8Sint => todo!(),
         TextureFormat::R16Uint => todo!(),
