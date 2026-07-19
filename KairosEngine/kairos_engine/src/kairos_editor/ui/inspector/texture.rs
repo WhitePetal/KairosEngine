@@ -1,6 +1,7 @@
-use std::{cell::Cell, fs, ops::{DerefMut}, path::PathBuf, sync::Arc};
+use std::{cell::Cell, fs, ops::DerefMut, path::PathBuf, sync::Arc};
 
 use egui::{ComboBox, Vec2};
+use egui_extras::{Column, TableBuilder};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
@@ -21,9 +22,9 @@ use crate::{
 
 #[derive(Debug, Serialize, Deserialize)]
 struct TextureInspectorStyle {
+    row_height: f32,
     apply_button_height: f32,
     preview_min_height: f32,
-    label_width: f32,
 }
 
 impl TextureInspectorStyle {
@@ -87,22 +88,7 @@ impl TextureInspector {
         (new_w.max(1), new_h.max(1))
     }
 
-    /// Helper: draw a labelled row with a fixed-width label column.
-    fn labelled_row(
-        ui: &mut egui::Ui,
-        label: &str,
-        label_width: f32,
-        value: impl Into<egui::WidgetText>,
-    ) {
-        ui.horizontal(|ui| {
-            ui.add_sized(
-                [label_width, ui.spacing().interact_size.y],
-                egui::Label::new(label),
-            );
-            ui.label(value);
-        });
-    }
-
+    /// Draw the texture preview panel.
     /// Build and cache an egui texture from the current asset's RGBA8 data.
     fn ensure_preview(&self, ui: &mut egui::Ui, texture: &Texture) {
         {
@@ -260,7 +246,6 @@ impl Inspector for TextureInspector {
 
     fn draw(&self, ui: &mut egui::Ui, messager: &mut Messager, assets_server: &AssetsServer) {
         let texture;
-        let label_w = self.model.style.label_width;
         {
             // Wait for the TextureExt resource to load asynchronously.
             let mut ext_guard = self.model.texture_ext.lock();
@@ -279,65 +264,81 @@ impl Inspector for TextureInspector {
             };
             texture = texture_inner;
 
-            // ---- Info section ----
+            // ---- Source ----
             ui.label(format!("Source: {}", ext.serialized.source_path.display()));
-            ui.separator();
 
-            Self::labelled_row(
-                ui,
-                "Original Size:",
-                label_w,
-                format!("{} × {}", ext.original_width, ext.original_height),
-            );
-
-            Self::labelled_row(
-                ui,
-                "Current Size:",
-                label_w,
-                format!("{} × {}", texture.width, texture.height),
-            );
-
-            ui.separator();
-
-            // ---- Size selector ----
+            // ---- Properties table ----
+            let row_h = self.model.style.row_height;
             let original_max = ext.original_width.max(ext.original_height);
             let mut selected_size = find_size_level(ext.serialized.width, ext.serialized.height);
 
-            ui.horizontal(|ui| {
-                ui.add_sized(
-                    [label_w, ui.spacing().interact_size.y],
-                    egui::Label::new("Max Size:"),
-                );
-                ComboBox::from_id_salt("texture_max_size")
-                    .width(120.0)
-                    .selected_text(selected_size.to_string())
-                    .show_ui(ui, |ui| {
-                        for &size in Self::SIZE_OPTIONS {
-                            if size > original_max {
-                                continue;
-                            }
-                            if ui
-                                .selectable_value(&mut selected_size, size, size.to_string())
-                                .changed()
-                            {
-                                (ext.serialized.width, ext.serialized.height) = Self::compute_target_size(
-                                    ext.original_width,
-                                    ext.original_height,
-                                    selected_size,
-                                );
-                                self.dirty.set(true);
-                            }
-                        }
+            TableBuilder::new(ui)
+                .striped(true)
+                .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+                .column(Column::auto())
+                .column(Column::remainder())
+                .body(|mut body| {
+                    // Original Size
+                    body.row(row_h, |mut row| {
+                        row.col(|ui| {
+                            ui.label("Original Size:");
+                        });
+                        row.col(|ui| {
+                            ui.label(format!("{} × {}", ext.original_width, ext.original_height));
+                        });
                     });
-            });
+
+                    // Current Size
+                    body.row(row_h, |mut row| {
+                        row.col(|ui| {
+                            ui.label("Current Size:");
+                        });
+                        row.col(|ui| {
+                            ui.label(format!("{} × {}", texture.width, texture.height));
+                        });
+                    });
+
+                    // Max Size (ComboBox)
+                    body.row(row_h, |mut row| {
+                        row.col(|ui| {
+                            ui.label("Max Size:");
+                        });
+                        row.col(|ui| {
+                            ComboBox::from_id_salt("texture_max_size")
+                                .width(120.0)
+                                .selected_text(selected_size.to_string())
+                                .show_ui(ui, |ui| {
+                                    for &size in Self::SIZE_OPTIONS {
+                                        if size > original_max {
+                                            continue;
+                                        }
+                                        if ui
+                                            .selectable_value(&mut selected_size, size, size.to_string())
+                                            .changed()
+                                        {
+                                            (ext.serialized.width, ext.serialized.height) = Self::compute_target_size(
+                                                ext.original_width,
+                                                ext.original_height,
+                                                selected_size,
+                                            );
+                                            self.dirty.set(true);
+                                        }
+                                    }
+                                });
+                        });
+                    });
+
+                    // Pixel Format
+                    body.row(row_h, |mut row| {
+                        row.col(|ui| {
+                            ui.label("Pixel Format:");
+                        });
+                        row.col(|ui| {
+                            ui.label("RGBA8");
+                        });
+                    });
+                });
         }
-
-        ui.separator();
-
-        // ---- Pixel format ----
-        Self::labelled_row(ui, "Pixel Format:", label_w, "RGBA8");
-
-        ui.separator();
 
         // ---- Apply button ----
         let changed = self.dirty.get();
