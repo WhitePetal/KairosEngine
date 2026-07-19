@@ -28,12 +28,8 @@ pub fn encode_rgba(rgba: &[u8], width: u32, height: u32, format: TextureFormat) 
         TextureFormat::Bc3RgbaUnorm | TextureFormat::Bc3RgbaUnormSrgb => {
             Some(bc::compress_bc3(rgba, w, h))
         }
-        TextureFormat::Bc4RUnorm | TextureFormat::Bc4RSnorm => {
-            Some(bc::compress_bc4(rgba, w, h))
-        }
-        TextureFormat::Bc5RgUnorm | TextureFormat::Bc5RgSnorm => {
-            Some(bc::compress_bc5(rgba, w, h))
-        }
+        TextureFormat::Bc4RUnorm | TextureFormat::Bc4RSnorm => Some(bc::compress_bc4(rgba, w, h)),
+        TextureFormat::Bc5RgUnorm | TextureFormat::Bc5RgSnorm => Some(bc::compress_bc5(rgba, w, h)),
 
         _ => None,
     }
@@ -137,7 +133,13 @@ mod bc {
     // ---- Helpers ----
 
     /// Extract a 4×4 pixel block. Pixels outside the image are black transparent.
-    fn extract_block(rgba: &[u8], width: usize, height: usize, x: usize, y: usize) -> [[u8; 4]; 16] {
+    fn extract_block(
+        rgba: &[u8],
+        width: usize,
+        height: usize,
+        x: usize,
+        y: usize,
+    ) -> [[u8; 4]; 16] {
         let mut block = [[0u8; 4]; 16];
         for py in 0..4 {
             for px in 0..4 {
@@ -276,11 +278,10 @@ mod bc {
         let c0_888 = rgb565_to_888(c0_565);
         let c1_888 = rgb565_to_888(c1_565);
 
-        ([c0_888[0], c0_888[1], c0_888[2]], [
-            c1_888[0],
-            c1_888[1],
-            c1_888[2],
-        ])
+        (
+            [c0_888[0], c0_888[1], c0_888[2]],
+            [c1_888[0], c1_888[1], c1_888[2]],
+        )
     }
 
     /// Compute 2-bit indices per pixel (0-3) mapping to the palette.
@@ -330,6 +331,304 @@ mod bc {
         let r = ((c >> 11) & 0x1F) as u8;
         let g = ((c >> 5) & 0x3F) as u8;
         let b = (c & 0x1F) as u8;
-        [(r << 3) | (r >> 2), (g << 2) | (g >> 4), (b << 3) | (b >> 2)]
+        [
+            (r << 3) | (r >> 2),
+            (g << 2) | (g >> 4),
+            (b << 3) | (b >> 2),
+        ]
+    }
+
+    // ---- Decompressors (for inspector preview) ----
+
+    pub fn decompress_bc1(data: &[u8], width: usize, height: usize) -> Vec<u8> {
+        decompress_blocks(data, width, height, 8, |blk, out| {
+            let c0 = u16::from_le_bytes([blk[0], blk[1]]);
+            let c1 = u16::from_le_bytes([blk[2], blk[3]]);
+            let palette = bc1_palette(c0, c1);
+            for i in 0..16 {
+                let byte = blk[4 + i / 4];
+                let idx = ((byte >> (2 * (i % 4))) & 3) as usize;
+                out[i * 4] = palette[idx][0];
+                out[i * 4 + 1] = palette[idx][1];
+                out[i * 4 + 2] = palette[idx][2];
+                out[i * 4 + 3] = 255;
+            }
+        })
+    }
+
+    pub fn decompress_bc2(data: &[u8], width: usize, height: usize) -> Vec<u8> {
+        decompress_blocks(data, width, height, 16, |blk, out| {
+            // Alpha block (bytes 0-7)
+            for i in 0..16 {
+                let byte = blk[i / 2];
+                let a = if i % 2 == 0 { byte & 0xF } else { byte >> 4 };
+                out[i * 4 + 3] = (a as u16 * 255 / 15) as u8;
+            }
+            // Color block (bytes 8-15)
+            let c0 = u16::from_le_bytes([blk[8], blk[9]]);
+            let c1 = u16::from_le_bytes([blk[10], blk[11]]);
+            let palette = bc1_palette(c0, c1);
+            for i in 0..16 {
+                let byte = blk[12 + i / 4];
+                let idx = ((byte >> (2 * (i % 4))) & 3) as usize;
+                out[i * 4] = palette[idx][0];
+                out[i * 4 + 1] = palette[idx][1];
+                out[i * 4 + 2] = palette[idx][2];
+            }
+        })
+    }
+
+    pub fn decompress_bc3(data: &[u8], width: usize, height: usize) -> Vec<u8> {
+        decompress_blocks(data, width, height, 16, |blk, out| {
+            // Alpha BC4 block (bytes 0-7)
+            let alpha = bc4_decode8(&blk[0..8]);
+            // Color BC1 block (bytes 8-15)
+            let c0 = u16::from_le_bytes([blk[8], blk[9]]);
+            let c1 = u16::from_le_bytes([blk[10], blk[11]]);
+            let palette = bc1_palette(c0, c1);
+            for i in 0..16 {
+                let byte = blk[12 + i / 4];
+                let idx = ((byte >> (2 * (i % 4))) & 3) as usize;
+                out[i * 4] = palette[idx][0];
+                out[i * 4 + 1] = palette[idx][1];
+                out[i * 4 + 2] = palette[idx][2];
+                out[i * 4 + 3] = alpha[i];
+            }
+        })
+    }
+
+    pub fn decompress_bc4(data: &[u8], width: usize, height: usize) -> Vec<u8> {
+        decompress_blocks(data, width, height, 8, |blk, out| {
+            let r = bc4_decode8(blk);
+            for i in 0..16 {
+                out[i * 4] = r[i];
+                out[i * 4 + 1] = r[i];
+                out[i * 4 + 2] = r[i];
+                out[i * 4 + 3] = 255;
+            }
+        })
+    }
+
+    pub fn decompress_bc5(data: &[u8], width: usize, height: usize) -> Vec<u8> {
+        decompress_blocks(data, width, height, 16, |blk, out| {
+            let r = bc4_decode8(&blk[0..8]);
+            let g = bc4_decode8(&blk[8..16]);
+            for i in 0..16 {
+                out[i * 4] = r[i];
+                out[i * 4 + 1] = g[i];
+                out[i * 4 + 2] = 0;
+                out[i * 4 + 3] = 255;
+            }
+        })
+    }
+
+    fn bc1_palette(c0: u16, c1: u16) -> [[u8; 3]; 4] {
+        let c0_888 = rgb565_to_888(c0);
+        let c1_888 = rgb565_to_888(c1);
+        if c0 > c1 {
+            [
+                c0_888,
+                c1_888,
+                [
+                    ((2 * c0_888[0] as u16 + c1_888[0] as u16) / 3) as u8,
+                    ((2 * c0_888[1] as u16 + c1_888[1] as u16) / 3) as u8,
+                    ((2 * c0_888[2] as u16 + c1_888[2] as u16) / 3) as u8,
+                ],
+                [
+                    ((c0_888[0] as u16 + 2 * c1_888[0] as u16) / 3) as u8,
+                    ((c0_888[1] as u16 + 2 * c1_888[1] as u16) / 3) as u8,
+                    ((c0_888[2] as u16 + 2 * c1_888[2] as u16) / 3) as u8,
+                ],
+            ]
+        } else {
+            [
+                c0_888,
+                c1_888,
+                [
+                    ((c0_888[0] as u16 + c1_888[0] as u16) / 2) as u8,
+                    ((c0_888[1] as u16 + c1_888[1] as u16) / 2) as u8,
+                    ((c0_888[2] as u16 + c1_888[2] as u16) / 2) as u8,
+                ],
+                [0, 0, 0], // transparent black
+            ]
+        }
+    }
+
+    fn bc4_decode8(blk: &[u8]) -> [u8; 16] {
+        let a0 = blk[0] as u32;
+        let a1 = blk[1] as u32;
+        let mut vals = [0u8; 16];
+        if a0 > a1 {
+            for i in 0..16 {
+                let byte = blk[2 + (3 * i) / 8];
+                let idx = ((byte >> ((3 * i) % 8)) & 7) as u32;
+                vals[i] = match idx {
+                    0 => a0 as u8,
+                    1 => a1 as u8,
+                    idx => (((8 - idx) * a0 + (idx - 1) * a1 + 3) / 7) as u8,
+                };
+            }
+        } else {
+            for i in 0..16 {
+                let byte = blk[2 + (3 * i) / 8];
+                let idx = ((byte >> ((3 * i) % 8)) & 7) as u32;
+                vals[i] = match idx {
+                    0 => a0 as u8,
+                    1 => a1 as u8,
+                    2..=5 => (((6 - idx) * a0 + (idx - 1) * a1 + 2) / 5) as u8,
+                    6 => 0,
+                    _ => 255,
+                };
+            }
+        }
+        vals
+    }
+
+    fn decompress_blocks(
+        data: &[u8],
+        width: usize,
+        height: usize,
+        block_size: usize,
+        decode: impl Fn(&[u8], &mut [u8; 64]),
+    ) -> Vec<u8> {
+        let blocks_x = (width + 3) / 4;
+        let blocks_y = (height + 3) / 4;
+        let mut out = vec![0u8; width * height * 4];
+
+        for by in 0..blocks_y {
+            for bx in 0..blocks_x {
+                let offset = (by * blocks_x + bx) * block_size;
+                let mut pixels = [0u8; 64];
+                decode(&data[offset..offset + block_size], &mut pixels);
+                for py in 0..4 {
+                    for px in 0..4 {
+                        let sx = bx * 4 + px;
+                        let sy = by * 4 + py;
+                        if sx < width && sy < height {
+                            let dst = (sy * width + sx) * 4;
+                            let src = (py * 4 + px) * 4;
+                            out[dst..dst + 4].copy_from_slice(&pixels[src..src + 4]);
+                        }
+                    }
+                }
+            }
+        }
+        out
+    }
+} // mod bc
+
+/// Decode compressed texture data back to RGBA8 for preview.
+pub fn decode_to_rgba8(
+    data: &[u8],
+    width: u32,
+    height: u32,
+    format: TextureFormat,
+) -> Option<Vec<u8>> {
+    let w = width as usize;
+    let h = height as usize;
+    match format {
+        TextureFormat::Rgba8Unorm | TextureFormat::Rgba8UnormSrgb => Some(data.to_vec()),
+        TextureFormat::Bc1RgbaUnorm | TextureFormat::Bc1RgbaUnormSrgb => {
+            Some(bc::decompress_bc1(data, w, h))
+        }
+        TextureFormat::Bc2RgbaUnorm | TextureFormat::Bc2RgbaUnormSrgb => {
+            Some(bc::decompress_bc2(data, w, h))
+        }
+        TextureFormat::Bc3RgbaUnorm | TextureFormat::Bc3RgbaUnormSrgb => {
+            Some(bc::decompress_bc3(data, w, h))
+        }
+        TextureFormat::Bc4RUnorm | TextureFormat::Bc4RSnorm => Some(bc::decompress_bc4(data, w, h)),
+        TextureFormat::Bc5RgUnorm | TextureFormat::Bc5RgSnorm => {
+            Some(bc::decompress_bc5(data, w, h))
+        }
+        TextureFormat::R8Unorm => todo!(),
+        TextureFormat::R8Snorm => todo!(),
+        TextureFormat::R8Uint => todo!(),
+        TextureFormat::R8Sint => todo!(),
+        TextureFormat::R16Uint => todo!(),
+        TextureFormat::R16Sint => todo!(),
+        TextureFormat::R16Float => todo!(),
+        TextureFormat::Rg8Unorm => todo!(),
+        TextureFormat::Rg8Snorm => todo!(),
+        TextureFormat::Rg8Uint => todo!(),
+        TextureFormat::Rg8Sint => todo!(),
+        TextureFormat::R32Uint => todo!(),
+        TextureFormat::R32Sint => todo!(),
+        TextureFormat::R32Float => todo!(),
+        TextureFormat::Rg16Uint => todo!(),
+        TextureFormat::Rg16Sint => todo!(),
+        TextureFormat::Rg16Float => todo!(),
+        TextureFormat::Rgba8Snorm => todo!(),
+        TextureFormat::Rgba8Uint => todo!(),
+        TextureFormat::Rgba8Sint => todo!(),
+        TextureFormat::Bgra8Unorm => todo!(),
+        TextureFormat::Bgra8UnormSrgb => todo!(),
+        TextureFormat::Rgb10a2Unorm => todo!(),
+        TextureFormat::Rg11b10Ufloat => todo!(),
+        TextureFormat::Rg32Uint => todo!(),
+        TextureFormat::Rg32Sint => todo!(),
+        TextureFormat::Rg32Float => todo!(),
+        TextureFormat::Rgba16Uint => todo!(),
+        TextureFormat::Rgba16Sint => todo!(),
+        TextureFormat::Rgba16Float => todo!(),
+        TextureFormat::Rgba32Uint => todo!(),
+        TextureFormat::Rgba32Sint => todo!(),
+        TextureFormat::Rgba32Float => todo!(),
+        TextureFormat::Bc6hRgbUfloat => todo!(),
+        TextureFormat::Bc6hRgbFloat => todo!(),
+        TextureFormat::Bc7RgbaUnorm => todo!(),
+        TextureFormat::Bc7RgbaUnormSrgb => todo!(),
+        TextureFormat::Etc2Rgb8Unorm => todo!(),
+        TextureFormat::Etc2Rgb8UnormSrgb => todo!(),
+        TextureFormat::Etc2Rgb8A1Unorm => todo!(),
+        TextureFormat::Etc2Rgb8A1UnormSrgb => todo!(),
+        TextureFormat::Etc2Rgba8Unorm => todo!(),
+        TextureFormat::Etc2Rgba8UnormSrgb => todo!(),
+        TextureFormat::EacR11Unorm => todo!(),
+        TextureFormat::EacR11Snorm => todo!(),
+        TextureFormat::EacRg11Unorm => todo!(),
+        TextureFormat::EacRg11Snorm => todo!(),
+        TextureFormat::Astc4x4Unorm => todo!(),
+        TextureFormat::Astc4x4UnormSrgb => todo!(),
+        TextureFormat::Astc4x4Hdr => todo!(),
+        TextureFormat::Astc5x4Unorm => todo!(),
+        TextureFormat::Astc5x4UnormSrgb => todo!(),
+        TextureFormat::Astc5x4Hdr => todo!(),
+        TextureFormat::Astc5x5Unorm => todo!(),
+        TextureFormat::Astc5x5UnormSrgb => todo!(),
+        TextureFormat::Astc5x5Hdr => todo!(),
+        TextureFormat::Astc6x5Unorm => todo!(),
+        TextureFormat::Astc6x5UnormSrgb => todo!(),
+        TextureFormat::Astc6x5Hdr => todo!(),
+        TextureFormat::Astc6x6Unorm => todo!(),
+        TextureFormat::Astc6x6UnormSrgb => todo!(),
+        TextureFormat::Astc6x6Hdr => todo!(),
+        TextureFormat::Astc8x5Unorm => todo!(),
+        TextureFormat::Astc8x5UnormSrgb => todo!(),
+        TextureFormat::Astc8x5Hdr => todo!(),
+        TextureFormat::Astc8x6Unorm => todo!(),
+        TextureFormat::Astc8x6UnormSrgb => todo!(),
+        TextureFormat::Astc8x6Hdr => todo!(),
+        TextureFormat::Astc8x8Unorm => todo!(),
+        TextureFormat::Astc8x8UnormSrgb => todo!(),
+        TextureFormat::Astc8x8Hdr => todo!(),
+        TextureFormat::Astc10x5Unorm => todo!(),
+        TextureFormat::Astc10x5UnormSrgb => todo!(),
+        TextureFormat::Astc10x5Hdr => todo!(),
+        TextureFormat::Astc10x6Unorm => todo!(),
+        TextureFormat::Astc10x6UnormSrgb => todo!(),
+        TextureFormat::Astc10x6Hdr => todo!(),
+        TextureFormat::Astc10x8Unorm => todo!(),
+        TextureFormat::Astc10x8UnormSrgb => todo!(),
+        TextureFormat::Astc10x8Hdr => todo!(),
+        TextureFormat::Astc10x10Unorm => todo!(),
+        TextureFormat::Astc10x10UnormSrgb => todo!(),
+        TextureFormat::Astc10x10Hdr => todo!(),
+        TextureFormat::Astc12x10Unorm => todo!(),
+        TextureFormat::Astc12x10UnormSrgb => todo!(),
+        TextureFormat::Astc12x10Hdr => todo!(),
+        TextureFormat::Astc12x12Unorm => todo!(),
+        TextureFormat::Astc12x12UnormSrgb => todo!(),
+        TextureFormat::Astc12x12Hdr => todo!(),
     }
 }

@@ -109,15 +109,19 @@ impl TextureInspector {
             }
         }
 
+        // Decode compressed data to RGBA8 for the egui preview.
+        let Some(rgba) = texture_compression::decode_to_rgba8(
+            &texture.data,
+            texture.width,
+            texture.height,
+            texture.format,
+        ) else {
+            return;
+        };
+
         let w = texture.width as usize;
         let h = texture.height as usize;
-        let expected_len = w * h * 4;
-
-        if texture.data.len() != expected_len {
-            return;
-        }
-
-        let color_image = egui::ColorImage::from_rgba_unmultiplied([w, h], &texture.data);
+        let color_image = egui::ColorImage::from_rgba_unmultiplied([w, h], &rgba);
         let texture_handle = ui.ctx().load_texture(
             "texture_inspector_preview",
             color_image,
