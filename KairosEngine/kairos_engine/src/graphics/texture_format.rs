@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
 mod bc;
+mod uncompressed;
 
 // ============================================================
 // TextureCompressionConfig — data-driven feature list
@@ -28,9 +29,9 @@ pub struct TextureCompressionConfig {
 }
 
 impl TextureCompressionConfig {
-    /// Whether `family` is enabled in this config.
-    pub fn is_enabled(&self, family: TextureCompressFeature) -> bool {
-        self.features.get(&family).copied().unwrap_or(false)
+    /// Whether `feature` is enabled in this config.
+    pub fn is_enabled(&self, feature: TextureCompressFeature) -> bool {
+        self.features.get(&feature).copied().unwrap_or(false)
     }
 
     /// Build the set of `wgpu::Features` to request from the adapter.
@@ -198,7 +199,7 @@ pub enum TextureFormat {
 impl TextureFormat {
     pub fn supports_encoding(&self) -> bool {
         match self {
-            TextureFormat::R8Unorm => false,
+            TextureFormat::R8Unorm => true,
             TextureFormat::R8Snorm => false,
             TextureFormat::R8Uint => false,
             TextureFormat::R8Sint => false,
@@ -302,7 +303,7 @@ impl TextureFormat {
         }
     }
 
-    pub fn compression_family(&self) -> Option<TextureCompressFeature> {
+    pub fn compression_feature(&self) -> Option<TextureCompressFeature> {
         match self {
             Self::Rgba8Unorm
             | Self::Rgba8UnormSrgb
@@ -412,8 +413,8 @@ impl TextureFormat {
         if !self.supports_encoding() {
             return false;
         }
-        match self.compression_family() {
-            Some(family) => config.is_enabled(family),
+        match self.compression_feature() {
+            Some(feature) => config.is_enabled(feature),
             None => true,
         }
     }
@@ -655,23 +656,17 @@ impl From<TextureFormat> for wgpu::TextureFormat {
 
 /// Encode RGBA8 pixel data into the given format.
 /// Returns `None` when the format is not yet supported for encoding.
-pub fn encode_rgba(rgba: &[u8], width: u32, height: u32, format: TextureFormat) -> Option<Vec<u8>> {
+pub fn encode_rgba(rgba: &[u8], width: u32, height: u32, format: TextureFormat) -> Vec<u8> {
     let w = width as usize;
     let h = height as usize;
     match format {
-        TextureFormat::Rgba8Unorm | TextureFormat::Rgba8UnormSrgb => Some(rgba.to_vec()),
-        TextureFormat::Bc1RgbaUnorm | TextureFormat::Bc1RgbaUnormSrgb => {
-            Some(bc::compress_bc1(rgba, w, h))
-        }
-        TextureFormat::Bc2RgbaUnorm | TextureFormat::Bc2RgbaUnormSrgb => {
-            Some(bc::compress_bc2(rgba, w, h))
-        }
-        TextureFormat::Bc3RgbaUnorm | TextureFormat::Bc3RgbaUnormSrgb => {
-            Some(bc::compress_bc3(rgba, w, h))
-        }
-        TextureFormat::Bc4RUnorm | TextureFormat::Bc4RSnorm => Some(bc::compress_bc4(rgba, w, h)),
-        TextureFormat::Bc5RgUnorm | TextureFormat::Bc5RgSnorm => Some(bc::compress_bc5(rgba, w, h)),
-        TextureFormat::R8Unorm => todo!(),
+        TextureFormat::Rgba8Unorm | TextureFormat::Rgba8UnormSrgb => rgba.to_vec(),
+        TextureFormat::Bc1RgbaUnorm | TextureFormat::Bc1RgbaUnormSrgb => bc::encode_bc1(rgba, w, h),
+        TextureFormat::Bc2RgbaUnorm | TextureFormat::Bc2RgbaUnormSrgb => bc::encode_bc2(rgba, w, h),
+        TextureFormat::Bc3RgbaUnorm | TextureFormat::Bc3RgbaUnormSrgb => bc::encode_bc3(rgba, w, h),
+        TextureFormat::Bc4RUnorm | TextureFormat::Bc4RSnorm => bc::encode_bc4(rgba, w, h),
+        TextureFormat::Bc5RgUnorm | TextureFormat::Bc5RgSnorm => bc::encode_bc5(rgba, w, h),
+        TextureFormat::R8Unorm => uncompressed::encode_r8u(rgba, w, h),
         TextureFormat::R8Snorm => todo!(),
         TextureFormat::R8Uint => todo!(),
         TextureFormat::R8Sint => todo!(),
@@ -764,30 +759,17 @@ pub fn encode_rgba(rgba: &[u8], width: u32, height: u32, format: TextureFormat) 
 }
 
 /// Decode compressed texture data back to RGBA8 for preview.
-pub fn decode_to_rgba8(
-    data: &[u8],
-    width: u32,
-    height: u32,
-    format: TextureFormat,
-) -> Option<Vec<u8>> {
+pub fn decode_to_rgba8(data: &[u8], width: u32, height: u32, format: TextureFormat) -> Vec<u8> {
     let w = width as usize;
     let h = height as usize;
     match format {
-        TextureFormat::Rgba8Unorm | TextureFormat::Rgba8UnormSrgb => Some(data.to_vec()),
-        TextureFormat::Bc1RgbaUnorm | TextureFormat::Bc1RgbaUnormSrgb => {
-            Some(bc::decompress_bc1(data, w, h))
-        }
-        TextureFormat::Bc2RgbaUnorm | TextureFormat::Bc2RgbaUnormSrgb => {
-            Some(bc::decompress_bc2(data, w, h))
-        }
-        TextureFormat::Bc3RgbaUnorm | TextureFormat::Bc3RgbaUnormSrgb => {
-            Some(bc::decompress_bc3(data, w, h))
-        }
-        TextureFormat::Bc4RUnorm | TextureFormat::Bc4RSnorm => Some(bc::decompress_bc4(data, w, h)),
-        TextureFormat::Bc5RgUnorm | TextureFormat::Bc5RgSnorm => {
-            Some(bc::decompress_bc5(data, w, h))
-        }
-        TextureFormat::R8Unorm => todo!(),
+        TextureFormat::Rgba8Unorm | TextureFormat::Rgba8UnormSrgb => data.to_vec(),
+        TextureFormat::Bc1RgbaUnorm | TextureFormat::Bc1RgbaUnormSrgb => bc::decode_bc1(data, w, h),
+        TextureFormat::Bc2RgbaUnorm | TextureFormat::Bc2RgbaUnormSrgb => bc::decode_bc2(data, w, h),
+        TextureFormat::Bc3RgbaUnorm | TextureFormat::Bc3RgbaUnormSrgb => bc::decode_bc3(data, w, h),
+        TextureFormat::Bc4RUnorm | TextureFormat::Bc4RSnorm => bc::decode_bc4(data, w, h),
+        TextureFormat::Bc5RgUnorm | TextureFormat::Bc5RgSnorm => bc::decode_bc5(data, w, h),
+        TextureFormat::R8Unorm => uncompressed::decode_r8u(data, w, h, true, true, true),
         TextureFormat::R8Snorm => todo!(),
         TextureFormat::R8Uint => todo!(),
         TextureFormat::R8Sint => todo!(),

@@ -3,10 +3,10 @@
 use rayon::prelude::*;
 
 // ============================================================
-// Compressors
+// Compressors/Encode
 // ============================================================
 
-macro_rules! compress_fn {
+macro_rules! encode_fn {
     ($name:ident, $block_size:expr, $block_fn:ident) => {
         pub fn $name(rgba: &[u8], width: usize, height: usize) -> Vec<u8> {
             let bx = (width + 3) / 4;
@@ -25,33 +25,33 @@ macro_rules! compress_fn {
     };
 }
 
-compress_fn!(compress_bc1, 8, bc1_block);
-compress_fn!(compress_bc2, 16, bc2_block);
-compress_fn!(compress_bc3, 16, bc3_block);
-compress_fn!(compress_bc4, 8, bc4_block);
-compress_fn!(compress_bc5, 16, bc5_block);
+encode_fn!(encode_bc1, 8, bc1_block);
+encode_fn!(encode_bc2, 16, bc2_block);
+encode_fn!(encode_bc3, 16, bc3_block);
+encode_fn!(encode_bc4, 8, bc4_block);
+encode_fn!(encode_bc5, 16, bc5_block);
 
 // ============================================================
-// Decompressors
+// Decompressors/Deocde
 // ============================================================
 
-pub fn decompress_bc1(data: &[u8], width: usize, height: usize) -> Vec<u8> {
-    decompress_blocks(data, width, height, 8, decode_bc1_block)
+pub fn decode_bc1(data: &[u8], width: usize, height: usize) -> Vec<u8> {
+    decode_blocks(data, width, height, 8, decode_bc1_block)
 }
-pub fn decompress_bc2(data: &[u8], width: usize, height: usize) -> Vec<u8> {
-    decompress_blocks(data, width, height, 16, decode_bc2_block)
+pub fn decode_bc2(data: &[u8], width: usize, height: usize) -> Vec<u8> {
+    decode_blocks(data, width, height, 16, decode_bc2_block)
 }
-pub fn decompress_bc3(data: &[u8], width: usize, height: usize) -> Vec<u8> {
-    decompress_blocks(data, width, height, 16, decode_bc3_block)
+pub fn decode_bc3(data: &[u8], width: usize, height: usize) -> Vec<u8> {
+    decode_blocks(data, width, height, 16, decode_bc3_block)
 }
-pub fn decompress_bc4(data: &[u8], width: usize, height: usize) -> Vec<u8> {
-    decompress_blocks(data, width, height, 8, decode_bc4_block)
+pub fn decode_bc4(data: &[u8], width: usize, height: usize) -> Vec<u8> {
+    decode_blocks(data, width, height, 8, decode_bc4_block)
 }
-pub fn decompress_bc5(data: &[u8], width: usize, height: usize) -> Vec<u8> {
-    decompress_blocks(data, width, height, 16, decode_bc5_block)
+pub fn decode_bc5(data: &[u8], width: usize, height: usize) -> Vec<u8> {
+    decode_blocks(data, width, height, 16, decode_bc5_block)
 }
 
-fn decompress_blocks(
+fn decode_blocks(
     data: &[u8],
     width: usize,
     height: usize,
@@ -81,11 +81,7 @@ fn decompress_blocks(
                     // SAFETY: each (sx, sy) pair is unique across all blocks,
                     // so no two threads write to the same output location.
                     unsafe {
-                        std::ptr::copy_nonoverlapping(
-                            pixels[src..].as_ptr(),
-                            out_ptr.add(dst),
-                            4,
-                        );
+                        std::ptr::copy_nonoverlapping(pixels[src..].as_ptr(), out_ptr.add(dst), 4);
                     }
                 }
             }
@@ -99,11 +95,30 @@ fn decompress_blocks(
 // Block encode helpers
 // ============================================================
 
-fn bc1_block(block: &[[u8; 4]; 16]) -> [u8; 8] { encode_bc1_color(block) }
-fn bc2_block(block: &[[u8; 4]; 16]) -> [u8; 16] { let mut o = [0u8; 16]; o[..8].copy_from_slice(&bc2_alpha_block(block)); o[8..].copy_from_slice(&bc1_block(block)); o }
-fn bc3_block(block: &[[u8; 4]; 16]) -> [u8; 16] { let mut o = [0u8; 16]; o[..8].copy_from_slice(&bc4_channel(block, 3)); o[8..].copy_from_slice(&bc1_block(block)); o }
-fn bc4_block(block: &[[u8; 4]; 16]) -> [u8; 8] { bc4_channel(block, 0) }
-fn bc5_block(block: &[[u8; 4]; 16]) -> [u8; 16] { let mut o = [0u8; 16]; o[..8].copy_from_slice(&bc4_channel(block, 0)); o[8..].copy_from_slice(&bc4_channel(block, 1)); o }
+fn bc1_block(block: &[[u8; 4]; 16]) -> [u8; 8] {
+    encode_bc1_color(block)
+}
+fn bc2_block(block: &[[u8; 4]; 16]) -> [u8; 16] {
+    let mut o = [0u8; 16];
+    o[..8].copy_from_slice(&bc2_alpha_block(block));
+    o[8..].copy_from_slice(&bc1_block(block));
+    o
+}
+fn bc3_block(block: &[[u8; 4]; 16]) -> [u8; 16] {
+    let mut o = [0u8; 16];
+    o[..8].copy_from_slice(&bc4_channel(block, 3));
+    o[8..].copy_from_slice(&bc1_block(block));
+    o
+}
+fn bc4_block(block: &[[u8; 4]; 16]) -> [u8; 8] {
+    bc4_channel(block, 0)
+}
+fn bc5_block(block: &[[u8; 4]; 16]) -> [u8; 16] {
+    let mut o = [0u8; 16];
+    o[..8].copy_from_slice(&bc4_channel(block, 0));
+    o[8..].copy_from_slice(&bc4_channel(block, 1));
+    o
+}
 
 // ============================================================
 // Block decode helpers
@@ -207,7 +222,13 @@ fn encode_bc1_color(block: &[[u8; 4]; 16]) -> [u8; 8] {
     } else {
         let mut flipped = [0u8; 16];
         for (i, &idx) in indices.iter().enumerate() {
-            flipped[i] = if idx == 0 { 1 } else if idx == 1 { 0 } else { idx };
+            flipped[i] = if idx == 0 {
+                1
+            } else if idx == 1 {
+                0
+            } else {
+                idx
+            };
         }
         (c1_565, c0_565, flipped)
     };
@@ -226,8 +247,11 @@ fn bc2_alpha_block(block: &[[u8; 4]; 16]) -> [u8; 8] {
     let mut out = [0u8; 8];
     for (i, p) in block.iter().enumerate() {
         let a4 = ((p[3] as u16 * 15 + 128) / 255) as u8;
-        if i % 2 == 0 { out[i / 2] = a4; }
-        else { out[i / 2] |= a4 << 4; }
+        if i % 2 == 0 {
+            out[i / 2] = a4;
+        } else {
+            out[i / 2] |= a4 << 4;
+        }
     }
     out
 }
@@ -244,7 +268,10 @@ fn bc4_channel(block: &[[u8; 4]; 16], ch: usize) -> [u8; 8] {
             match i {
                 0 => max_val,
                 1 => min_val,
-                _ => (((8 - i) as u32 * max_val as u32 + (i - 1) as u32 * min_val as u32 + 3) / 7) as u8,
+                _ => {
+                    (((8 - i) as u32 * max_val as u32 + (i - 1) as u32 * min_val as u32 + 3) / 7)
+                        as u8
+                }
             }
         };
         let mut indices: u64 = 0;
@@ -254,7 +281,10 @@ fn bc4_channel(block: &[[u8; 4]; 16], ch: usize) -> [u8; 8] {
             let mut best_err = u16::MAX;
             for idx in 0..8u8 {
                 let err = (v as i16 - interp(idx) as i16).unsigned_abs();
-                if err < best_err { best_err = err; best = idx; }
+                if err < best_err {
+                    best_err = err;
+                    best = idx;
+                }
             }
             indices |= (best as u64) << (i * 3);
         }
@@ -268,9 +298,12 @@ fn optimal_endpoints(block: &[[u8; 4]; 16]) -> ([u8; 3], [u8; 3]) {
     let (mut g_min, mut g_max) = (255u8, 0u8);
     let (mut b_min, mut b_max) = (255u8, 0u8);
     for p in block {
-        r_min = r_min.min(p[0]); r_max = r_max.max(p[0]);
-        g_min = g_min.min(p[1]); g_max = g_max.max(p[1]);
-        b_min = b_min.min(p[2]); b_max = b_max.max(p[2]);
+        r_min = r_min.min(p[0]);
+        r_max = r_max.max(p[0]);
+        g_min = g_min.min(p[1]);
+        g_max = g_max.max(p[1]);
+        b_min = b_min.min(p[2]);
+        b_max = b_max.max(p[2]);
     }
     let c0_565 = rgb_to_565([r_max, g_max, b_max]);
     let c1_565 = rgb_to_565([r_min, g_min, b_min]);
@@ -298,7 +331,10 @@ fn compute_indices(block: &[[u8; 4]; 16], c0: [u8; 3], c1: [u8; 3]) -> [u8; 16] 
             let dg = px[1] as i32 - pal[1] as i32;
             let db = px[2] as i32 - pal[2] as i32;
             let err = (dr * dr + dg * dg + db * db) as u32;
-            if err < best_err { best_err = err; best = idx as u8; }
+            if err < best_err {
+                best_err = err;
+                best = idx as u8;
+            }
         }
         indices[i] = best;
     }
@@ -313,26 +349,42 @@ fn rgb565_to_888(c: u16) -> [u8; 3] {
     let r = ((c >> 11) & 0x1F) as u8;
     let g = ((c >> 5) & 0x3F) as u8;
     let b = (c & 0x1F) as u8;
-    [(r << 3) | (r >> 2), (g << 2) | (g >> 4), (b << 3) | (b >> 2)]
+    [
+        (r << 3) | (r >> 2),
+        (g << 2) | (g >> 4),
+        (b << 3) | (b >> 2),
+    ]
 }
 
 fn bc1_palette(c0: u16, c1: u16) -> [[u8; 3]; 4] {
     let c0_888 = rgb565_to_888(c0);
     let c1_888 = rgb565_to_888(c1);
     if c0 > c1 {
-        [c0_888, c1_888,
-            [((2 * c0_888[0] as u16 + c1_888[0] as u16) / 3) as u8,
-             ((2 * c0_888[1] as u16 + c1_888[1] as u16) / 3) as u8,
-             ((2 * c0_888[2] as u16 + c1_888[2] as u16) / 3) as u8],
-            [((c0_888[0] as u16 + 2 * c1_888[0] as u16) / 3) as u8,
-             ((c0_888[1] as u16 + 2 * c1_888[1] as u16) / 3) as u8,
-             ((c0_888[2] as u16 + 2 * c1_888[2] as u16) / 3) as u8]]
+        [
+            c0_888,
+            c1_888,
+            [
+                ((2 * c0_888[0] as u16 + c1_888[0] as u16) / 3) as u8,
+                ((2 * c0_888[1] as u16 + c1_888[1] as u16) / 3) as u8,
+                ((2 * c0_888[2] as u16 + c1_888[2] as u16) / 3) as u8,
+            ],
+            [
+                ((c0_888[0] as u16 + 2 * c1_888[0] as u16) / 3) as u8,
+                ((c0_888[1] as u16 + 2 * c1_888[1] as u16) / 3) as u8,
+                ((c0_888[2] as u16 + 2 * c1_888[2] as u16) / 3) as u8,
+            ],
+        ]
     } else {
-        [c0_888, c1_888,
-            [((c0_888[0] as u16 + c1_888[0] as u16) / 2) as u8,
-             ((c0_888[1] as u16 + c1_888[1] as u16) / 2) as u8,
-             ((c0_888[2] as u16 + c1_888[2] as u16) / 2) as u8],
-            [0, 0, 0]]
+        [
+            c0_888,
+            c1_888,
+            [
+                ((c0_888[0] as u16 + c1_888[0] as u16) / 2) as u8,
+                ((c0_888[1] as u16 + c1_888[1] as u16) / 2) as u8,
+                ((c0_888[2] as u16 + c1_888[2] as u16) / 2) as u8,
+            ],
+            [0, 0, 0],
+        ]
     }
 }
 
@@ -345,7 +397,8 @@ fn bc4_decode8(blk: &[u8]) -> [u8; 16] {
             let b = blk[2 + (3 * i) / 8];
             let idx = ((b >> ((3 * i) % 8)) & 7) as u32;
             vals[i] = match idx {
-                0 => a0 as u8, 1 => a1 as u8,
+                0 => a0 as u8,
+                1 => a1 as u8,
                 idx => (((8 - idx) * a0 + (idx - 1) * a1 + 3) / 7) as u8,
             };
         }
@@ -354,9 +407,11 @@ fn bc4_decode8(blk: &[u8]) -> [u8; 16] {
             let b = blk[2 + (3 * i) / 8];
             let idx = ((b >> ((3 * i) % 8)) & 7) as u32;
             vals[i] = match idx {
-                0 => a0 as u8, 1 => a1 as u8,
+                0 => a0 as u8,
+                1 => a1 as u8,
                 2..=5 => (((6 - idx) * a0 + (idx - 1) * a1 + 2) / 5) as u8,
-                6 => 0, _ => 255,
+                6 => 0,
+                _ => 255,
             };
         }
     }

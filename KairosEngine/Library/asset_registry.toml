@@ -655,6 +655,10 @@ guid = "d642cbab-a90c-45ae-9837-ac6d397795c9"
 path = './kairos_engine\src\graphics\texture_format\bc.rs'
 
 [[entries]]
+guid = "8c69fe96-1f89-40de-b657-900c8cf335e7"
+path = './kairos_engine\src\graphics\texture_format\uncompressed.rs'
+
+[[entries]]
 guid = "75ae2e22-c410-4614-8c25-e3660ca03d34"
 path = './kairos_engine\src\graphics\texture_format.rs'
 

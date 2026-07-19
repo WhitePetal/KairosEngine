@@ -109,14 +109,12 @@ impl TextureInspector {
         }
 
         // Decode compressed data to RGBA8 for the egui preview.
-        let Some(rgba) = crate::graphics::texture_format::decode_to_rgba8(
+        let rgba = crate::graphics::texture_format::decode_to_rgba8(
             &texture.data,
             texture.width,
             texture.height,
             texture.format,
-        ) else {
-            return;
-        };
+        );
 
         let w = texture.width as usize;
         let h = texture.height as usize;
@@ -212,22 +210,12 @@ impl TextureInspector {
         };
 
         // 2. Encode to target GPU format
-        let encoded = match crate::graphics::texture_format::encode_rgba(
+        let encoded = crate::graphics::texture_format::encode_rgba(
             &rgba_data,
             new_w,
             new_h,
             ext.serialized.format,
-        ) {
-            Some(data) => data,
-            None => {
-                log::error!(
-                    "Unsupported texture format for encoding: {:?}, texture_path: {:?}",
-                    ext.serialized.format,
-                    path
-                );
-                return;
-            }
-        };
+        );
 
         // 3. Save to file
         match ext.serialized.save_to_file(&encoded) {
