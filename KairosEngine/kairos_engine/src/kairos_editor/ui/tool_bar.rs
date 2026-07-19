@@ -1,7 +1,8 @@
 use std::{
-    any::type_name,
-    fs::{self},
+    any::type_name, fs::{self}, path::PathBuf,
 };
+
+use parking_lot::Mutex;
 
 use crate::{
     kairos_editor::{
@@ -29,6 +30,7 @@ pub struct ToolBarStyle {
     pub height: f32,
     pub button_width: f32,
     pub corner_radius: f32,
+    pub icon_size: u32,
     pub fill_color: math::Color32,
     pub button_text_color: math::Color32,
     pub about_icon_path: String,
@@ -67,16 +69,65 @@ impl ToolBarModel {
     }
 }
 
+/// Pre-loaded icon data, scaled to toolbar height.
+struct IconData {
+    /// RGBA pixel data, already resized.
+    rgba: Vec<u8>,
+    /// Icon display size in pixels.
+    width: usize,
+    height: usize,
+}
+
 pub struct ToolBar {
     model: ToolBarModel,
+    /// Pre-loaded RGBA icon data. None if the icon couldn't be loaded.
+    icon_data: Option<IconData>,
+    /// Cached egui texture handle for the icon (set on first frame).
+    icon_texture: Mutex<Option<egui::TextureHandle>>,
 }
 
 impl ToolBar {
-    #[inline(always)]
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let model = ToolBarModel::new()?;
 
-        Ok(Self { model })
+        // Load the icon once at startup — scale to toolbar height (~24 px).
+        let icon_data = match std::fs::read(PathBuf::from(&model.style.about_icon_path)) {
+            Ok(bytes) => match image::load_from_memory(&bytes) {
+                Ok(img) => {
+                    let (orig_w, orig_h) = (img.width(), img.height());
+                    let icon_size = model.style.icon_size;
+                    let (w, h) = if orig_h > icon_size {
+                        (
+                            icon_size,
+                            icon_size,
+                        )
+                    } else {
+                        (orig_w, orig_h)
+                    };
+                    let resized = img.resize_exact(w, h, image::imageops::FilterType::Lanczos3);
+                    let rgba = resized.into_rgba8();
+                    Some(IconData {
+                        rgba: rgba.into_vec(),
+                        width: w as usize,
+                        height: h as usize,
+                    })
+                }
+                Err(e) => {
+                    log::warn!("Failed to decode engine icon: {e}");
+                    None
+                }
+            },
+            Err(e) => {
+                log::warn!("Failed to read engine icon: {e}");
+                None
+            }
+        };
+
+        Ok(Self {
+            model,
+            icon_data,
+            icon_texture: Mutex::new(None),
+        })
     }
 }
 
@@ -113,9 +164,8 @@ impl Drawer for ToolBar {
                         model.style.fill_color,
                     );
 
-                    // Icon
-                    let about_icon = egui::Image::new(&model.style.about_icon_path);
-                    ui.menu_image_button(about_icon, |ui| {
+                    // Shared menu content — only one branch executes, so FnMut is fine.
+                    let menu_content = |ui: &mut egui::Ui| {
                         if ui.button("About Kairos").clicked() {
                             messager.send(Message::OpenAboutWindow);
                         }
@@ -123,7 +173,43 @@ impl Drawer for ToolBar {
                         if ui.button("Quit").clicked() {
                             messager.send(Message::QuitEngine);
                         }
-                    });
+                    };
+
+                    if let Some(icon) = &self.icon_data {
+                        // Build egui texture lazily on first frame — keep the
+                        // TextureHandle alive so egui doesn't free the texture.
+                        {
+                            let mut guard = self.icon_texture.lock();
+                            if guard.is_none() {
+                                let color_image = egui::ColorImage::from_rgba_unmultiplied(
+                                    [icon.width, icon.height],
+                                    &icon.rgba,
+                                );
+                                let handle = ui.ctx().load_texture(
+                                    "toolbar_engine_icon",
+                                    color_image,
+                                    egui::TextureOptions::LINEAR,
+                                );
+                                *guard = Some(handle);
+                            }
+                        }
+
+                        let tex_id = {
+                            let guard = self.icon_texture.lock();
+                            guard.as_ref().map(|h| h.id())
+                        };
+                        if let Some(tex_id) = tex_id {
+                            ui.menu_image_button(
+                                egui::Image::from_texture(egui::load::SizedTexture::new(
+                                    tex_id,
+                                    [icon.width as f32, icon.height as f32],
+                                )),
+                                menu_content,
+                            );
+                        }
+                    } else {
+                        ui.menu_button("Kairos", menu_content);
+                    }
 
                     // Scene
                     ui.menu_button("Scene", |ui| {

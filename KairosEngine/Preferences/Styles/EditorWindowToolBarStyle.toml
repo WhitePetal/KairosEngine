@@ -1,6 +1,7 @@
 height = 23.0
 button_width = 45.0
 corner_radius = 0.0
+icon_size = 24
 fill_color = "#181818ff"
 button_text_color = "#BDBDBDff"
-about_icon_path = "file://Preferences/Textures/engine_icon.png"
+about_icon_path = "Preferences/Textures/engine_icon.png"
