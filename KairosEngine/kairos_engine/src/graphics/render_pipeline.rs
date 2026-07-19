@@ -14,7 +14,7 @@ use wgpu::{
     RenderPassDepthStencilAttachment, RenderPassDescriptor, RenderPipelineDescriptor,
     RequestAdapterOptions, SamplerBindingType, ShaderModuleDescriptor, ShaderSource, ShaderStages,
     StencilState, StoreOp, Surface, SurfaceConfiguration, SurfaceTexture, TexelCopyBufferLayout,
-    TexelCopyTextureInfo, TextureDescriptor, TextureFormat, TextureSampleType, TextureUsages,
+    TexelCopyTextureInfo, TextureDescriptor, TextureFormat, TextureUsages,
     TextureView, TextureViewDescriptor, TextureViewDimension, Trace, VertexAttribute,
     VertexBufferLayout, VertexFormat, VertexState, VertexStepMode,
     util::{BufferInitDescriptor, DeviceExt},
@@ -41,6 +41,8 @@ use crate::{
 struct PipelineKey {
     shader_index: usize,
     render_state: RenderState,
+    /// 0=Float, 1=Uint, 2=Sint
+    sample_type: u8,
 }
 struct PipelineCache {
     version: u32,
@@ -50,6 +52,7 @@ struct PipelineCache {
 struct TextureCache {
     version: u32,
     bind_group: BindGroup,
+    layout: BindGroupLayout,
 }
 
 struct MeshBufferCache {
@@ -85,7 +88,6 @@ pub struct RenderPipeline {
     texture_cache: HashMap<usize, TextureCache>,
     mesh_buffer_cache: HashMap<usize, MeshBufferCache>,
     global_vp_bind_group_layout: BindGroupLayout,
-    global_texture_bind_group_layout: BindGroupLayout,
 }
 
 impl RenderPipeline {
@@ -165,28 +167,6 @@ impl RenderPipeline {
                     count: None,
                 }],
             });
-        let global_texture_bind_group_layout =
-            device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-                label: Some("Texture Bind Group Layout"),
-                entries: &[
-                    BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: ShaderStages::FRAGMENT,
-                        ty: BindingType::Texture {
-                            sample_type: TextureSampleType::Float { filterable: true },
-                            view_dimension: TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: ShaderStages::FRAGMENT,
-                        ty: BindingType::Sampler(SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                ],
-            });
 
         Ok(Self {
             window: window,
@@ -205,7 +185,6 @@ impl RenderPipeline {
             texture_cache: HashMap::new(),
             mesh_buffer_cache: HashMap::new(),
             global_vp_bind_group_layout,
-            global_texture_bind_group_layout,
         })
     }
 
@@ -384,7 +363,6 @@ impl RenderPipeline {
                         &render_pass_color_attachments,
                         &render_pass_depth_attachments,
                         &self.global_vp_bind_group_layout,
-                        &self.global_texture_bind_group_layout,
                         &vp_bind_group,
                         &render_pass_node,
                         assets_server,
@@ -461,7 +439,6 @@ impl RenderPipeline {
         render_pass_color_attachments: &Vec<RenderPassColorAttachment>,
         render_pass_depth_attachments: &Vec<RenderPassDepthStencilAttachment>,
         global_vp_bind_group_layout: &BindGroupLayout,
-        global_texture_bind_group_layout: &BindGroupLayout,
         vp_bind_group: &BindGroup,
         render_pass_node: &RenderPassNode,
         assets_server: &mut AssetsServer,
@@ -607,14 +584,14 @@ impl RenderPipeline {
             };
 
             // --- Texture bind group ---
-            let mut texture_bind_group_layout = None;
+            let mut texture_key = 0usize;
             let texture_bind_group = if let Some(texture) = &material.texture {
                 let Some(texture_asset) = assets_server.get(&texture) else {
                     continue;
                 };
-                texture_bind_group_layout = Some(global_texture_bind_group_layout);
                 let texture_id = texture.id();
                 let key = texture_id.index() as usize;
+                texture_key = key;
                 let version = texture_id.version();
                 Some(match texture_cache.entry(key) {
                     std::collections::hash_map::Entry::Occupied(mut entry) => {
@@ -622,33 +599,40 @@ impl RenderPipeline {
                         if cache.version == version {
                             cache.bind_group.clone()
                         } else {
-                            let bind_group = Self::create_texture(
+                            let (bind_group, layout) = Self::create_texture(
                                 device,
                                 queue,
-                                global_texture_bind_group_layout,
                                 texture_asset,
                             );
                             entry.insert(TextureCache {
                                 version,
                                 bind_group: bind_group.clone(),
+                                layout,
                             });
                             bind_group
                         }
                     }
                     std::collections::hash_map::Entry::Vacant(entry) => {
-                        let bind_group = Self::create_texture(
+                        let (bind_group, layout) = Self::create_texture(
                             device,
                             queue,
-                            global_texture_bind_group_layout,
                             texture_asset,
                         );
                         entry.insert(TextureCache {
                             version,
                             bind_group: bind_group.clone(),
+                            layout,
                         });
                         bind_group
                     }
                 })
+            } else {
+                None
+            };
+
+            // Look up the layout from the cache (must exist after above).
+            let texture_bind_group_layout = if texture_bind_group.is_some() {
+                texture_cache.get(&texture_key).map(|c| &c.layout)
             } else {
                 None
             };
@@ -658,6 +642,7 @@ impl RenderPipeline {
             let pipeline_key = PipelineKey {
                 shader_index: shader_id.index(),
                 render_state: material.render_state,
+                sample_type: 0,
             };
             let shader_version = shader_id.version();
             let pipeline = match pipeline_cache.entry(pipeline_key) {
@@ -982,9 +967,8 @@ impl RenderPipeline {
     fn create_texture(
         device: &Device,
         queue: &Queue,
-        layout: &BindGroupLayout,
         texture_asset: &Texture,
-    ) -> BindGroup {
+    ) -> (BindGroup, BindGroupLayout) {
         // Miss or version mismatch: create GPU resources
         let texture_dimension = (texture_asset.width, texture_asset.height);
         let texture_data = &texture_asset.data;
@@ -1030,23 +1014,59 @@ impl RenderPipeline {
             texture_size,
         );
         let texture_view = gpu_texture.create_view(&TextureViewDescriptor::default());
+
+        let sample_type = texture_asset.format.wgpu_sample_type();
+        let sampler_type = match sample_type {
+            wgpu::TextureSampleType::Float { .. } => SamplerBindingType::Filtering,
+            _ => SamplerBindingType::NonFiltering,
+        };
+        let layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            label: Some("Texture Bind Group Layout"),
+            entries: &[
+                BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Texture {
+                        sample_type,
+                        view_dimension: TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Sampler(sampler_type),
+                    count: None,
+                },
+            ],
+        });
+
         let texture_sampler = device.create_sampler(&SamplerDescriptor {
             label: Some("Texture Sampler"),
             address_mode_u: AddressMode::Repeat,
             address_mode_v: AddressMode::Repeat,
             address_mode_w: AddressMode::Repeat,
-            mag_filter: FilterMode::Linear,
+            mag_filter: if matches!(sample_type, wgpu::TextureSampleType::Float { .. }) {
+                FilterMode::Linear
+            } else {
+                FilterMode::Nearest
+            },
             min_filter: FilterMode::Nearest,
-            mipmap_filter: MipmapFilterMode::Linear,
+            mipmap_filter: if matches!(sample_type, wgpu::TextureSampleType::Float { .. }) {
+                MipmapFilterMode::Linear
+            } else {
+                MipmapFilterMode::Nearest
+            },
             lod_min_clamp: 0f32,
             lod_max_clamp: 0f32,
             compare: None,
             anisotropy_clamp: 1,
             border_color: None,
         });
-        device.create_bind_group(&BindGroupDescriptor {
+        let bind_group = device.create_bind_group(&BindGroupDescriptor {
             label: Some("Texture Bind Group"),
-            layout,
+            layout: &layout,
             entries: &[
                 BindGroupEntry {
                     binding: 0,
@@ -1057,7 +1077,8 @@ impl RenderPipeline {
                     resource: BindingResource::Sampler(&texture_sampler),
                 },
             ],
-        })
+        });
+        (bind_group, layout)
     }
 
     fn create_mesh(device: &Device, mesh: &Mesh) -> (wgpu::Buffer, wgpu::Buffer) {

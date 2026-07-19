@@ -201,8 +201,8 @@ impl TextureFormat {
         match self {
             TextureFormat::R8Unorm => true,
             TextureFormat::R8Snorm => true,
-            TextureFormat::R8Uint => false,
-            TextureFormat::R8Sint => false,
+            TextureFormat::R8Uint => true,
+            TextureFormat::R8Sint => true,
             TextureFormat::R16Uint => false,
             TextureFormat::R16Sint => false,
             TextureFormat::R16Float => false,
@@ -459,8 +459,23 @@ impl TextureFormat {
 
             Self::Etc2Rgb8Unorm | Self::Etc2Rgb8UnormSrgb | Self::Etc2Rgb8A1Unorm
             | Self::Etc2Rgb8A1UnormSrgb | Self::Etc2Rgba8Unorm | Self::Etc2Rgba8UnormSrgb
-            | Self::EacR11Unorm | Self::EacR11Snorm | Self::EacRg11Unorm
-            | Self::EacRg11Snorm => (4, 4),
+            | Self::EacR11Unorm | Self::EacR11Snorm
+            | Self::EacRg11Unorm | Self::EacRg11Snorm => (4, 4),
+        }
+    }
+
+    /// The `wgpu::TextureSampleType` for bind group compatibility.
+    pub fn wgpu_sample_type(&self) -> wgpu::TextureSampleType {
+        match self {
+            Self::R8Uint | Self::R16Uint | Self::Rg8Uint | Self::Rg16Uint
+            | Self::R32Uint | Self::Rg32Uint | Self::Rgba8Uint | Self::Rgba16Uint
+            | Self::Rgba32Uint => {
+                wgpu::TextureSampleType::Uint
+            }
+            Self::R8Sint | Self::R16Sint | Self::Rg8Sint | Self::Rg16Sint
+            | Self::R32Sint | Self::Rg32Sint | Self::Rgba8Sint | Self::Rgba16Sint
+            | Self::Rgba32Sint => wgpu::TextureSampleType::Sint,
+            _ => wgpu::TextureSampleType::Float { filterable: true },
         }
     }
 }
@@ -713,8 +728,8 @@ pub fn encode_rgba(rgba: &[u8], width: u32, height: u32, format: TextureFormat) 
         TextureFormat::Bc5RgUnorm | TextureFormat::Bc5RgSnorm => bc::encode_bc5(rgba, w, h),
         TextureFormat::R8Unorm => uncompressed::encode_r8u(rgba, w, h),
         TextureFormat::R8Snorm => uncompressed::encode_r8s(rgba, w, h),
-        TextureFormat::R8Uint => todo!(),
-        TextureFormat::R8Sint => todo!(),
+        TextureFormat::R8Uint => uncompressed::encode_r8ui(rgba, w, h),
+        TextureFormat::R8Sint => uncompressed::encode_r8si(rgba, w, h),
         TextureFormat::R16Uint => todo!(),
         TextureFormat::R16Sint => todo!(),
         TextureFormat::R16Float => todo!(),
@@ -816,8 +831,8 @@ pub fn decode_to_rgba8(data: &[u8], width: u32, height: u32, format: TextureForm
         TextureFormat::Bc5RgUnorm | TextureFormat::Bc5RgSnorm => bc::decode_bc5(data, w, h),
         TextureFormat::R8Unorm => uncompressed::decode_r8u(data, w, h, true, true, true),
         TextureFormat::R8Snorm => uncompressed::decode_r8s(data, w, h, true, true, true),
-        TextureFormat::R8Uint => todo!(),
-        TextureFormat::R8Sint => todo!(),
+        TextureFormat::R8Uint => uncompressed::decode_r8ui(data, w, h, true, true, true),
+        TextureFormat::R8Sint => uncompressed::decode_r8si(data, w, h, true, true, true),
         TextureFormat::R16Uint => todo!(),
         TextureFormat::R16Sint => todo!(),
         TextureFormat::R16Float => todo!(),
