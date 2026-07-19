@@ -13,7 +13,6 @@ use crate::{
     },
     kairos_editor::{
         editor_assets::{TextureExt, TextureExtAssetsSystem},
-        texture_compression,
         ui::{
             Message, Messager,
             dialog::{ConfirmDialogWindow, Dialog},
@@ -110,7 +109,7 @@ impl TextureInspector {
         }
 
         // Decode compressed data to RGBA8 for the egui preview.
-        let Some(rgba) = texture_compression::decode_to_rgba8(
+        let Some(rgba) = crate::graphics::texture_format::decode_to_rgba8(
             &texture.data,
             texture.width,
             texture.height,
@@ -213,19 +212,22 @@ impl TextureInspector {
         };
 
         // 2. Encode to target GPU format
-        let encoded =
-            match texture_compression::encode_rgba(&rgba_data, new_w, new_h, ext.serialized.format)
-            {
-                Some(data) => data,
-                None => {
-                    log::error!(
-                        "Unsupported texture format for encoding: {:?}, texture_path: {:?}",
-                        ext.serialized.format,
-                        path
-                    );
-                    return;
-                }
-            };
+        let encoded = match crate::graphics::texture_format::encode_rgba(
+            &rgba_data,
+            new_w,
+            new_h,
+            ext.serialized.format,
+        ) {
+            Some(data) => data,
+            None => {
+                log::error!(
+                    "Unsupported texture format for encoding: {:?}, texture_path: {:?}",
+                    ext.serialized.format,
+                    path
+                );
+                return;
+            }
+        };
 
         // 3. Save to file
         match ext.serialized.save_to_file(&encoded) {

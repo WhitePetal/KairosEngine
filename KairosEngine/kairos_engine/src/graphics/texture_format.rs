@@ -3,6 +3,8 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
+mod bc;
+
 // ============================================================
 // TextureCompressionConfig — data-driven feature list
 // ============================================================
@@ -195,22 +197,109 @@ pub enum TextureFormat {
 
 impl TextureFormat {
     pub fn supports_encoding(&self) -> bool {
-        if matches!(self, Self::Rgba8Unorm | Self::Rgba8UnormSrgb) {
-            return true;
+        match self {
+            TextureFormat::R8Unorm => false,
+            TextureFormat::R8Snorm => false,
+            TextureFormat::R8Uint => false,
+            TextureFormat::R8Sint => false,
+            TextureFormat::R16Uint => false,
+            TextureFormat::R16Sint => false,
+            TextureFormat::R16Float => false,
+            TextureFormat::Rg8Unorm => false,
+            TextureFormat::Rg8Snorm => false,
+            TextureFormat::Rg8Uint => false,
+            TextureFormat::Rg8Sint => false,
+            TextureFormat::R32Uint => false,
+            TextureFormat::R32Sint => false,
+            TextureFormat::R32Float => false,
+            TextureFormat::Rg16Uint => false,
+            TextureFormat::Rg16Sint => false,
+            TextureFormat::Rg16Float => false,
+            TextureFormat::Rgba8Unorm => true,
+            TextureFormat::Rgba8UnormSrgb => true,
+            TextureFormat::Rgba8Snorm => false,
+            TextureFormat::Rgba8Uint => false,
+            TextureFormat::Rgba8Sint => false,
+            TextureFormat::Bgra8Unorm => false,
+            TextureFormat::Bgra8UnormSrgb => false,
+            TextureFormat::Rgb10a2Unorm => false,
+            TextureFormat::Rg11b10Ufloat => false,
+            TextureFormat::Rg32Uint => false,
+            TextureFormat::Rg32Sint => false,
+            TextureFormat::Rg32Float => false,
+            TextureFormat::Rgba16Uint => false,
+            TextureFormat::Rgba16Sint => false,
+            TextureFormat::Rgba16Float => false,
+            TextureFormat::Rgba32Uint => false,
+            TextureFormat::Rgba32Sint => false,
+            TextureFormat::Rgba32Float => false,
+            TextureFormat::Bc1RgbaUnorm => true,
+            TextureFormat::Bc1RgbaUnormSrgb => true,
+            TextureFormat::Bc2RgbaUnorm => true,
+            TextureFormat::Bc2RgbaUnormSrgb => true,
+            TextureFormat::Bc3RgbaUnorm => true,
+            TextureFormat::Bc3RgbaUnormSrgb => true,
+            TextureFormat::Bc4RUnorm => true,
+            TextureFormat::Bc4RSnorm => true,
+            TextureFormat::Bc5RgUnorm => true,
+            TextureFormat::Bc5RgSnorm => true,
+            TextureFormat::Bc6hRgbUfloat => false,
+            TextureFormat::Bc6hRgbFloat => false,
+            TextureFormat::Bc7RgbaUnorm => false,
+            TextureFormat::Bc7RgbaUnormSrgb => false,
+            TextureFormat::Etc2Rgb8Unorm => false,
+            TextureFormat::Etc2Rgb8UnormSrgb => false,
+            TextureFormat::Etc2Rgb8A1Unorm => false,
+            TextureFormat::Etc2Rgb8A1UnormSrgb => false,
+            TextureFormat::Etc2Rgba8Unorm => false,
+            TextureFormat::Etc2Rgba8UnormSrgb => false,
+            TextureFormat::EacR11Unorm => false,
+            TextureFormat::EacR11Snorm => false,
+            TextureFormat::EacRg11Unorm => false,
+            TextureFormat::EacRg11Snorm => false,
+            TextureFormat::Astc4x4Unorm => false,
+            TextureFormat::Astc4x4UnormSrgb => false,
+            TextureFormat::Astc4x4Hdr => false,
+            TextureFormat::Astc5x4Unorm => false,
+            TextureFormat::Astc5x4UnormSrgb => false,
+            TextureFormat::Astc5x4Hdr => false,
+            TextureFormat::Astc5x5Unorm => false,
+            TextureFormat::Astc5x5UnormSrgb => false,
+            TextureFormat::Astc5x5Hdr => false,
+            TextureFormat::Astc6x5Unorm => false,
+            TextureFormat::Astc6x5UnormSrgb => false,
+            TextureFormat::Astc6x5Hdr => false,
+            TextureFormat::Astc6x6Unorm => false,
+            TextureFormat::Astc6x6UnormSrgb => false,
+            TextureFormat::Astc6x6Hdr => false,
+            TextureFormat::Astc8x5Unorm => false,
+            TextureFormat::Astc8x5UnormSrgb => false,
+            TextureFormat::Astc8x5Hdr => false,
+            TextureFormat::Astc8x6Unorm => false,
+            TextureFormat::Astc8x6UnormSrgb => false,
+            TextureFormat::Astc8x6Hdr => false,
+            TextureFormat::Astc8x8Unorm => false,
+            TextureFormat::Astc8x8UnormSrgb => false,
+            TextureFormat::Astc8x8Hdr => false,
+            TextureFormat::Astc10x5Unorm => false,
+            TextureFormat::Astc10x5UnormSrgb => false,
+            TextureFormat::Astc10x5Hdr => false,
+            TextureFormat::Astc10x6Unorm => false,
+            TextureFormat::Astc10x6UnormSrgb => false,
+            TextureFormat::Astc10x6Hdr => false,
+            TextureFormat::Astc10x8Unorm => false,
+            TextureFormat::Astc10x8UnormSrgb => false,
+            TextureFormat::Astc10x8Hdr => false,
+            TextureFormat::Astc10x10Unorm => false,
+            TextureFormat::Astc10x10UnormSrgb => false,
+            TextureFormat::Astc10x10Hdr => false,
+            TextureFormat::Astc12x10Unorm => false,
+            TextureFormat::Astc12x10UnormSrgb => false,
+            TextureFormat::Astc12x10Hdr => false,
+            TextureFormat::Astc12x12Unorm => false,
+            TextureFormat::Astc12x12UnormSrgb => false,
+            TextureFormat::Astc12x12Hdr => false,
         }
-        matches!(
-            self,
-            Self::Bc1RgbaUnorm
-                | Self::Bc1RgbaUnormSrgb
-                | Self::Bc2RgbaUnorm
-                | Self::Bc2RgbaUnormSrgb
-                | Self::Bc3RgbaUnorm
-                | Self::Bc3RgbaUnormSrgb
-                | Self::Bc4RUnorm
-                | Self::Bc4RSnorm
-                | Self::Bc5RgUnorm
-                | Self::Bc5RgSnorm
-        )
     }
 
     pub fn compression_family(&self) -> Option<TextureCompressFeature> {
@@ -561,5 +650,231 @@ impl From<TextureFormat> for wgpu::TextureFormat {
                 channel: wgpu::AstcChannel::Hdr,
             },
         }
+    }
+}
+
+/// Encode RGBA8 pixel data into the given format.
+/// Returns `None` when the format is not yet supported for encoding.
+pub fn encode_rgba(rgba: &[u8], width: u32, height: u32, format: TextureFormat) -> Option<Vec<u8>> {
+    let w = width as usize;
+    let h = height as usize;
+    match format {
+        TextureFormat::Rgba8Unorm | TextureFormat::Rgba8UnormSrgb => Some(rgba.to_vec()),
+        TextureFormat::Bc1RgbaUnorm | TextureFormat::Bc1RgbaUnormSrgb => {
+            Some(bc::compress_bc1(rgba, w, h))
+        }
+        TextureFormat::Bc2RgbaUnorm | TextureFormat::Bc2RgbaUnormSrgb => {
+            Some(bc::compress_bc2(rgba, w, h))
+        }
+        TextureFormat::Bc3RgbaUnorm | TextureFormat::Bc3RgbaUnormSrgb => {
+            Some(bc::compress_bc3(rgba, w, h))
+        }
+        TextureFormat::Bc4RUnorm | TextureFormat::Bc4RSnorm => Some(bc::compress_bc4(rgba, w, h)),
+        TextureFormat::Bc5RgUnorm | TextureFormat::Bc5RgSnorm => Some(bc::compress_bc5(rgba, w, h)),
+        TextureFormat::R8Unorm => todo!(),
+        TextureFormat::R8Snorm => todo!(),
+        TextureFormat::R8Uint => todo!(),
+        TextureFormat::R8Sint => todo!(),
+        TextureFormat::R16Uint => todo!(),
+        TextureFormat::R16Sint => todo!(),
+        TextureFormat::R16Float => todo!(),
+        TextureFormat::Rg8Unorm => todo!(),
+        TextureFormat::Rg8Snorm => todo!(),
+        TextureFormat::Rg8Uint => todo!(),
+        TextureFormat::Rg8Sint => todo!(),
+        TextureFormat::R32Uint => todo!(),
+        TextureFormat::R32Sint => todo!(),
+        TextureFormat::R32Float => todo!(),
+        TextureFormat::Rg16Uint => todo!(),
+        TextureFormat::Rg16Sint => todo!(),
+        TextureFormat::Rg16Float => todo!(),
+        TextureFormat::Rgba8Snorm => todo!(),
+        TextureFormat::Rgba8Uint => todo!(),
+        TextureFormat::Rgba8Sint => todo!(),
+        TextureFormat::Bgra8Unorm => todo!(),
+        TextureFormat::Bgra8UnormSrgb => todo!(),
+        TextureFormat::Rgb10a2Unorm => todo!(),
+        TextureFormat::Rg11b10Ufloat => todo!(),
+        TextureFormat::Rg32Uint => todo!(),
+        TextureFormat::Rg32Sint => todo!(),
+        TextureFormat::Rg32Float => todo!(),
+        TextureFormat::Rgba16Uint => todo!(),
+        TextureFormat::Rgba16Sint => todo!(),
+        TextureFormat::Rgba16Float => todo!(),
+        TextureFormat::Rgba32Uint => todo!(),
+        TextureFormat::Rgba32Sint => todo!(),
+        TextureFormat::Rgba32Float => todo!(),
+        TextureFormat::Bc6hRgbUfloat => todo!(),
+        TextureFormat::Bc6hRgbFloat => todo!(),
+        TextureFormat::Bc7RgbaUnorm => todo!(),
+        TextureFormat::Bc7RgbaUnormSrgb => todo!(),
+        TextureFormat::Etc2Rgb8Unorm => todo!(),
+        TextureFormat::Etc2Rgb8UnormSrgb => todo!(),
+        TextureFormat::Etc2Rgb8A1Unorm => todo!(),
+        TextureFormat::Etc2Rgb8A1UnormSrgb => todo!(),
+        TextureFormat::Etc2Rgba8Unorm => todo!(),
+        TextureFormat::Etc2Rgba8UnormSrgb => todo!(),
+        TextureFormat::EacR11Unorm => todo!(),
+        TextureFormat::EacR11Snorm => todo!(),
+        TextureFormat::EacRg11Unorm => todo!(),
+        TextureFormat::EacRg11Snorm => todo!(),
+        TextureFormat::Astc4x4Unorm => todo!(),
+        TextureFormat::Astc4x4UnormSrgb => todo!(),
+        TextureFormat::Astc4x4Hdr => todo!(),
+        TextureFormat::Astc5x4Unorm => todo!(),
+        TextureFormat::Astc5x4UnormSrgb => todo!(),
+        TextureFormat::Astc5x4Hdr => todo!(),
+        TextureFormat::Astc5x5Unorm => todo!(),
+        TextureFormat::Astc5x5UnormSrgb => todo!(),
+        TextureFormat::Astc5x5Hdr => todo!(),
+        TextureFormat::Astc6x5Unorm => todo!(),
+        TextureFormat::Astc6x5UnormSrgb => todo!(),
+        TextureFormat::Astc6x5Hdr => todo!(),
+        TextureFormat::Astc6x6Unorm => todo!(),
+        TextureFormat::Astc6x6UnormSrgb => todo!(),
+        TextureFormat::Astc6x6Hdr => todo!(),
+        TextureFormat::Astc8x5Unorm => todo!(),
+        TextureFormat::Astc8x5UnormSrgb => todo!(),
+        TextureFormat::Astc8x5Hdr => todo!(),
+        TextureFormat::Astc8x6Unorm => todo!(),
+        TextureFormat::Astc8x6UnormSrgb => todo!(),
+        TextureFormat::Astc8x6Hdr => todo!(),
+        TextureFormat::Astc8x8Unorm => todo!(),
+        TextureFormat::Astc8x8UnormSrgb => todo!(),
+        TextureFormat::Astc8x8Hdr => todo!(),
+        TextureFormat::Astc10x5Unorm => todo!(),
+        TextureFormat::Astc10x5UnormSrgb => todo!(),
+        TextureFormat::Astc10x5Hdr => todo!(),
+        TextureFormat::Astc10x6Unorm => todo!(),
+        TextureFormat::Astc10x6UnormSrgb => todo!(),
+        TextureFormat::Astc10x6Hdr => todo!(),
+        TextureFormat::Astc10x8Unorm => todo!(),
+        TextureFormat::Astc10x8UnormSrgb => todo!(),
+        TextureFormat::Astc10x8Hdr => todo!(),
+        TextureFormat::Astc10x10Unorm => todo!(),
+        TextureFormat::Astc10x10UnormSrgb => todo!(),
+        TextureFormat::Astc10x10Hdr => todo!(),
+        TextureFormat::Astc12x10Unorm => todo!(),
+        TextureFormat::Astc12x10UnormSrgb => todo!(),
+        TextureFormat::Astc12x10Hdr => todo!(),
+        TextureFormat::Astc12x12Unorm => todo!(),
+        TextureFormat::Astc12x12UnormSrgb => todo!(),
+        TextureFormat::Astc12x12Hdr => todo!(),
+    }
+}
+
+/// Decode compressed texture data back to RGBA8 for preview.
+pub fn decode_to_rgba8(
+    data: &[u8],
+    width: u32,
+    height: u32,
+    format: TextureFormat,
+) -> Option<Vec<u8>> {
+    let w = width as usize;
+    let h = height as usize;
+    match format {
+        TextureFormat::Rgba8Unorm | TextureFormat::Rgba8UnormSrgb => Some(data.to_vec()),
+        TextureFormat::Bc1RgbaUnorm | TextureFormat::Bc1RgbaUnormSrgb => {
+            Some(bc::decompress_bc1(data, w, h))
+        }
+        TextureFormat::Bc2RgbaUnorm | TextureFormat::Bc2RgbaUnormSrgb => {
+            Some(bc::decompress_bc2(data, w, h))
+        }
+        TextureFormat::Bc3RgbaUnorm | TextureFormat::Bc3RgbaUnormSrgb => {
+            Some(bc::decompress_bc3(data, w, h))
+        }
+        TextureFormat::Bc4RUnorm | TextureFormat::Bc4RSnorm => Some(bc::decompress_bc4(data, w, h)),
+        TextureFormat::Bc5RgUnorm | TextureFormat::Bc5RgSnorm => {
+            Some(bc::decompress_bc5(data, w, h))
+        }
+        TextureFormat::R8Unorm => todo!(),
+        TextureFormat::R8Snorm => todo!(),
+        TextureFormat::R8Uint => todo!(),
+        TextureFormat::R8Sint => todo!(),
+        TextureFormat::R16Uint => todo!(),
+        TextureFormat::R16Sint => todo!(),
+        TextureFormat::R16Float => todo!(),
+        TextureFormat::Rg8Unorm => todo!(),
+        TextureFormat::Rg8Snorm => todo!(),
+        TextureFormat::Rg8Uint => todo!(),
+        TextureFormat::Rg8Sint => todo!(),
+        TextureFormat::R32Uint => todo!(),
+        TextureFormat::R32Sint => todo!(),
+        TextureFormat::R32Float => todo!(),
+        TextureFormat::Rg16Uint => todo!(),
+        TextureFormat::Rg16Sint => todo!(),
+        TextureFormat::Rg16Float => todo!(),
+        TextureFormat::Rgba8Snorm => todo!(),
+        TextureFormat::Rgba8Uint => todo!(),
+        TextureFormat::Rgba8Sint => todo!(),
+        TextureFormat::Bgra8Unorm => todo!(),
+        TextureFormat::Bgra8UnormSrgb => todo!(),
+        TextureFormat::Rgb10a2Unorm => todo!(),
+        TextureFormat::Rg11b10Ufloat => todo!(),
+        TextureFormat::Rg32Uint => todo!(),
+        TextureFormat::Rg32Sint => todo!(),
+        TextureFormat::Rg32Float => todo!(),
+        TextureFormat::Rgba16Uint => todo!(),
+        TextureFormat::Rgba16Sint => todo!(),
+        TextureFormat::Rgba16Float => todo!(),
+        TextureFormat::Rgba32Uint => todo!(),
+        TextureFormat::Rgba32Sint => todo!(),
+        TextureFormat::Rgba32Float => todo!(),
+        TextureFormat::Bc6hRgbUfloat => todo!(),
+        TextureFormat::Bc6hRgbFloat => todo!(),
+        TextureFormat::Bc7RgbaUnorm => todo!(),
+        TextureFormat::Bc7RgbaUnormSrgb => todo!(),
+        TextureFormat::Etc2Rgb8Unorm => todo!(),
+        TextureFormat::Etc2Rgb8UnormSrgb => todo!(),
+        TextureFormat::Etc2Rgb8A1Unorm => todo!(),
+        TextureFormat::Etc2Rgb8A1UnormSrgb => todo!(),
+        TextureFormat::Etc2Rgba8Unorm => todo!(),
+        TextureFormat::Etc2Rgba8UnormSrgb => todo!(),
+        TextureFormat::EacR11Unorm => todo!(),
+        TextureFormat::EacR11Snorm => todo!(),
+        TextureFormat::EacRg11Unorm => todo!(),
+        TextureFormat::EacRg11Snorm => todo!(),
+        TextureFormat::Astc4x4Unorm => todo!(),
+        TextureFormat::Astc4x4UnormSrgb => todo!(),
+        TextureFormat::Astc4x4Hdr => todo!(),
+        TextureFormat::Astc5x4Unorm => todo!(),
+        TextureFormat::Astc5x4UnormSrgb => todo!(),
+        TextureFormat::Astc5x4Hdr => todo!(),
+        TextureFormat::Astc5x5Unorm => todo!(),
+        TextureFormat::Astc5x5UnormSrgb => todo!(),
+        TextureFormat::Astc5x5Hdr => todo!(),
+        TextureFormat::Astc6x5Unorm => todo!(),
+        TextureFormat::Astc6x5UnormSrgb => todo!(),
+        TextureFormat::Astc6x5Hdr => todo!(),
+        TextureFormat::Astc6x6Unorm => todo!(),
+        TextureFormat::Astc6x6UnormSrgb => todo!(),
+        TextureFormat::Astc6x6Hdr => todo!(),
+        TextureFormat::Astc8x5Unorm => todo!(),
+        TextureFormat::Astc8x5UnormSrgb => todo!(),
+        TextureFormat::Astc8x5Hdr => todo!(),
+        TextureFormat::Astc8x6Unorm => todo!(),
+        TextureFormat::Astc8x6UnormSrgb => todo!(),
+        TextureFormat::Astc8x6Hdr => todo!(),
+        TextureFormat::Astc8x8Unorm => todo!(),
+        TextureFormat::Astc8x8UnormSrgb => todo!(),
+        TextureFormat::Astc8x8Hdr => todo!(),
+        TextureFormat::Astc10x5Unorm => todo!(),
+        TextureFormat::Astc10x5UnormSrgb => todo!(),
+        TextureFormat::Astc10x5Hdr => todo!(),
+        TextureFormat::Astc10x6Unorm => todo!(),
+        TextureFormat::Astc10x6UnormSrgb => todo!(),
+        TextureFormat::Astc10x6Hdr => todo!(),
+        TextureFormat::Astc10x8Unorm => todo!(),
+        TextureFormat::Astc10x8UnormSrgb => todo!(),
+        TextureFormat::Astc10x8Hdr => todo!(),
+        TextureFormat::Astc10x10Unorm => todo!(),
+        TextureFormat::Astc10x10UnormSrgb => todo!(),
+        TextureFormat::Astc10x10Hdr => todo!(),
+        TextureFormat::Astc12x10Unorm => todo!(),
+        TextureFormat::Astc12x10UnormSrgb => todo!(),
+        TextureFormat::Astc12x10Hdr => todo!(),
+        TextureFormat::Astc12x12Unorm => todo!(),
+        TextureFormat::Astc12x12UnormSrgb => todo!(),
+        TextureFormat::Astc12x12Hdr => todo!(),
     }
 }

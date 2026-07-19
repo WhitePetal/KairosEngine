@@ -647,6 +647,14 @@ guid = "9dd136fa-e850-4c1e-b63b-5ee55cdce680"
 path = "./kairos_engine/src/graphics/texture.rs"
 
 [[entries]]
+guid = "8385c46a-1a40-4bb6-89f3-c8e6bdf65ad4"
+path = './kairos_engine\src\graphics\texture_format'
+
+[[entries]]
+guid = "d642cbab-a90c-45ae-9837-ac6d397795c9"
+path = './kairos_engine\src\graphics\texture_format\bc.rs'
+
+[[entries]]
 guid = "75ae2e22-c410-4614-8c25-e3660ca03d34"
 path = './kairos_engine\src\graphics\texture_format.rs'
 
