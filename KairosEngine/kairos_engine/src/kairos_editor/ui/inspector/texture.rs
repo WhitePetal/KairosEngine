@@ -99,6 +99,15 @@ impl TextureInspector {
         // Poll until the texture asset is loaded (async loading)
         for _ in 0..200 {
             assets_server.handle();
+            // Populate texture_ext from handle (normally done lazily in draw())
+            {
+                let mut guard = self.model.texture_ext.lock();
+                if guard.is_none() {
+                    if let Some(ext_source) = assets_server.get(&self.model.handle) {
+                        *guard = Some(ext_source.clone());
+                    }
+                }
+            }
             let guard = self.model.texture_ext.lock();
             if guard.is_some() {
                 break;
@@ -114,6 +123,30 @@ impl TextureInspector {
             }
             None => Err("texture asset not loaded yet".into()),
         }
+    }
+
+    /// Access the model (for test harness save flow).
+    #[cfg(feature = "test-harness")]
+    pub(crate) fn model(&self) -> &TextureInspectorModel {
+        &self.model
+    }
+
+    /// Get the texture path for save (for test harness).
+    #[cfg(feature = "test-harness")]
+    pub(crate) fn texture_path(&self) -> &PathBuf {
+        &self.model.texture_path
+    }
+
+    /// Get the asset handle for save (for test harness).
+    #[cfg(feature = "test-harness")]
+    pub(crate) fn asset_handle(&self) -> &Arc<AssetHandle<TextureExtAssetsSystem>> {
+        &self.model.handle
+    }
+
+    /// Get the texture ext ref for save (for test harness).
+    #[cfg(feature = "test-harness")]
+    pub(crate) fn texture_ext_ref(&self) -> &Arc<Mutex<Option<TextureExt>>> {
+        &self.model.texture_ext
     }
 
     /// Compute the target (width, height) after proportional scaling

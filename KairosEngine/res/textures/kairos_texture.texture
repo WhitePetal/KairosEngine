@@ -1,7 +1,7 @@
 source_path = "res/textures/kairos_texture.png"
 width = 2048
 height = 2048
-format = "Rgba8Unorm"
+format = "R8Unorm"
 
 [sampler]
 filter_mode = "Linear"

@@ -168,10 +168,14 @@ impl KairosEngine {
         use crate::kairos_editor::ui::inspector::texture::TextureInspector;
         use crate::kairos_editor::ui::inspector_window::InspectorWindow;
 
-        let inspector = self.ui_context.get_window_mut::<InspectorWindow>()
-            .and_then(|w| w.get_inspector_mut::<TextureInspector>())
-            .ok_or("TextureInspector is not active")?;
-        inspector.apply();
+        let (path, handle, ext) = {
+            let inspector = self.ui_context.get_window_mut::<InspectorWindow>()
+                .and_then(|w| w.get_inspector_mut::<TextureInspector>())
+                .ok_or("TextureInspector is not active")?;
+            inspector.apply();
+            (inspector.texture_path().clone(), inspector.asset_handle().clone(), inspector.texture_ext_ref().clone())
+        };
+        TextureInspector::save_texture(&mut self.engine.assets_server, &path, handle, ext);
         Ok(())
     }
 
