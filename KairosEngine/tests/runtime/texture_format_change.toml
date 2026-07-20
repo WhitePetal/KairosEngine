@@ -1,0 +1,36 @@
+# Case 1: Texture Inspector — Format Change Validation
+#
+# Verifies the harness can detect whether the texture inspector correctly
+# applies a format change to the underlying .texture file.
+#
+# Preconditions:
+#   - Engine running in windowed mode (NOT --headless)
+#   - InspectorWindow is open with a .texture asset selected
+#   - The asset exists at res/textures/test.texture
+#
+# To verify harness effectiveness:
+#   1. Run with a correct inspector → test PASSES
+#   2. Introduce a bug (e.g., comment out set_format logic) → test FAILS
+
+[[step]]
+action = "call"
+target = "texture_inspector.set_format"
+args = { format = "R8Unorm" }
+
+[[step]]
+action = "assert"
+target = "no_crash"
+
+[[step]]
+action = "call"
+target = "texture_inspector.apply"
+
+[[step]]
+action = "assert"
+target = "no_crash"
+
+# Verify the .texture file was actually updated
+[[step]]
+action = "assert"
+target = "toml_value_equals"
+args = { file = "res/textures/test.texture", key = "format", value = "R8Unorm" }
