@@ -18,6 +18,8 @@ args = { ... }
 |------|------|------|------|
 | `system.ping` | 连通性测试命令，始终返回成功 | 无 | both |
 | `system.query_widget` | 查询指定 ID 的 widget 屏幕坐标（需要 windowed 模式） | id (string) | windowed |
+| `texture_inspector.set_format` | 设置纹理格式（例如 BC7, R8Unorm） | format (string) | windowed |
+| `texture_inspector.apply` | 应用 inspector 中的修改并保存到文件 | 无 | windowed |
 
 ### 可用 Call 命令
 
@@ -47,6 +49,32 @@ target = "system.query_widget"
 args = { id (string) }
 ```
 
+#### `texture_inspector.set_format`
+
+设置纹理格式（例如 BC7, R8Unorm）。
+
+- **模式**: windowed
+- **参数**: format (string)
+
+```toml
+[[step]]
+action = "call"
+target = "texture_inspector.set_format"
+args = { format (string) }
+```
+
+#### `texture_inspector.apply`
+
+应用 inspector 中的修改并保存到文件。
+
+- **模式**: windowed
+
+```toml
+[[step]]
+action = "call"
+target = "texture_inspector.apply"
+```
+
 ## Assert 命令 (`action = "assert"`)
 
 用于验证引擎状态。在 TOML 中：
@@ -65,6 +93,7 @@ args = { ... }
 | `resource_exists` | 断言指定路径的文件或资源存在 | path (string) | both |
 | `log_contains` | 断言引擎日志缓冲区包含指定模式字符串 | pattern (string) | both |
 | `wgpu_valid` | 断言 GPU 资源有效。v1 为 stub，始终通过 | resource_type (string, 可选) | windowed |
+| `toml_value_equals` | 断言 TOML 文件中指定 key 的值等于期望值 | file (string), key (string), value (string) | both |
 
 ### 可用 Assert 命令
 
@@ -135,6 +164,20 @@ args = { pattern = "error message" }
 action = "assert"
 target = "wgpu_valid"
 args = { resource_type = "Texture" }
+```
+
+#### `toml_value_equals`
+
+断言 TOML 文件中指定 key 的值等于期望值。
+
+- **模式**: both
+- **参数**: file (string), key (string), value (string)
+
+```toml
+[[step]]
+action = "assert"
+target = "toml_value_equals"
+args = { file = "path/to/file.texture", key = "format", value = "BC7" }
 ```
 
 ## Input 命令 (`action = "input"`)

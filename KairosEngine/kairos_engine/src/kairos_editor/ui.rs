@@ -744,7 +744,7 @@ impl Context {
         }
     }
 
-    fn get_window_mut<T>(&mut self) -> Option<&mut T>
+    pub(crate) fn get_window_mut<T>(&mut self) -> Option<&mut T>
     where
         T: Drawer,
     {

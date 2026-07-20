@@ -136,4 +136,10 @@ impl KairosEngine {
     pub(crate) fn widget_rect(&self, id: &str) -> Option<egui::Rect> {
         self.widget_rects.get(id).copied()
     }
+
+    /// Access the UI context (crate-visible for test harness dispatching).
+    #[cfg(feature = "test-harness")]
+    pub(crate) fn ui_context_mut(&mut self) -> &mut ui::Context {
+        &mut self.ui_context
+    }
 }

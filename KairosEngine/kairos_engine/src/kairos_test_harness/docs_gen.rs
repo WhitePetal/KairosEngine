@@ -80,6 +80,7 @@ pub fn generate() -> Result<(), Box<dyn std::error::Error>> {
         ("resource_exists", "断言指定路径的文件或资源存在", "path (string)", "both"),
         ("log_contains", "断言引擎日志缓冲区包含指定模式字符串", "pattern (string)", "both"),
         ("wgpu_valid", "断言 GPU 资源有效。v1 为 stub，始终通过", "resource_type (string, 可选)", "windowed"),
+        ("toml_value_equals", "断言 TOML 文件中指定 key 的值等于期望值", "file (string), key (string), value (string)", "both"),
     ];
 
     md.push_str("| 断言 | 描述 | 参数 | 模式 |\n");
@@ -106,6 +107,7 @@ pub fn generate() -> Result<(), Box<dyn std::error::Error>> {
                 "resource_exists" => "args = { path = \"path/to/file.asset\" }\n",
                 "log_contains" => "args = { pattern = \"error message\" }\n",
                 "wgpu_valid" => "args = { resource_type = \"Texture\" }\n",
+                "toml_value_equals" => "args = { file = \"path/to/file.texture\", key = \"format\", value = \"BC7\" }\n",
                 _ => "",
             };
             if !example_arg.is_empty() {
@@ -175,6 +177,18 @@ fn all_commands() -> Vec<CommandDoc> {
             name: "system.query_widget",
             description: "查询指定 ID 的 widget 屏幕坐标（需要 windowed 模式）",
             args: Some("id (string)"),
+            mode: "windowed",
+        },
+        CommandDoc {
+            name: "texture_inspector.set_format",
+            description: "设置纹理格式（例如 BC7, R8Unorm）",
+            args: Some("format (string)"),
+            mode: "windowed",
+        },
+        CommandDoc {
+            name: "texture_inspector.apply",
+            description: "应用 inspector 中的修改并保存到文件",
+            args: None,
             mode: "windowed",
         },
         // Future commands will be added here as they are registered

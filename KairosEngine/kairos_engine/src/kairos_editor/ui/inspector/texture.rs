@@ -93,6 +93,20 @@ pub struct TextureInspector {
 }
 
 impl TextureInspector {
+    /// Set the texture format (for test harness).
+    #[cfg(feature = "test-harness")]
+    pub(crate) fn set_format(&mut self, format: crate::graphics::texture::format::TextureFormat) -> Result<(), String> {
+        let mut guard = self.model.texture_ext.lock();
+        match guard.as_mut() {
+            Some(ext) => {
+                ext.serialized.format = format;
+                self.dirty.set(true);
+                Ok(())
+            }
+            None => Err("texture asset not loaded yet".into()),
+        }
+    }
+
     /// Compute the target (width, height) after proportional scaling
     /// so that the larger side is <= `max_size`.
     fn compute_target_size(orig_w: u32, orig_h: u32, max_size: u32) -> (u32, u32) {
@@ -414,6 +428,8 @@ impl Inspector for TextureInspector {
                             ui.label("Texture Format:");
                         });
                         row.col(|ui| {
+                            // Tag for test harness
+                            ui.push_id("format_dropdown", |ui| {
                             ComboBox::from_id_salt("texture_format")
                                 .width(w_format)
                                 .selected_text(format!("{:?}", ext.serialized.format))
@@ -445,6 +461,7 @@ impl Inspector for TextureInspector {
                                         );
                                     }
                                 });
+                            }); // push_id("format_dropdown")
                         });
                     });
 
@@ -605,6 +622,8 @@ impl Inspector for TextureInspector {
         // ---- Apply button ----
         let changed = self.dirty.get();
         ui.vertical_centered(|ui| {
+            // Tag for test harness: widget rect collection
+            ui.push_id("apply_button", |ui| {
             let apply_btn = egui::Button::new("Apply").min_size(Vec2::new(
                 ui.available_width(),
                 self.model.style.apply_button_height,
@@ -620,6 +639,7 @@ impl Inspector for TextureInspector {
             if changed {
                 ui.label("* unsaved changes");
             }
+            }); // push_id("apply_button")
         });
 
         ui.separator();

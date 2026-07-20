@@ -97,6 +97,51 @@ pub fn assert_wgpu_valid(_args: &toml::Value) -> StepResult {
     StepResult::ok()
 }
 
+/// Assert that a key in a TOML file matches an expected value.
+///
+/// args: `file` (path to TOML file), `key` (top-level key name), `value` (expected string).
+pub fn assert_toml_value_equals(args: &toml::Value) -> StepResult {
+    let file = match args.get("file").and_then(|v| v.as_str()) {
+        Some(f) => f,
+        None => return StepResult::err("toml_value_equals requires 'file' argument"),
+    };
+    let key = match args.get("key").and_then(|v| v.as_str()) {
+        Some(k) => k,
+        None => return StepResult::err("toml_value_equals requires 'key' argument"),
+    };
+    let expected = match args.get("value").and_then(|v| v.as_str()) {
+        Some(v) => v,
+        None => return StepResult::err("toml_value_equals requires 'value' argument"),
+    };
+
+    let content = match std::fs::read_to_string(file) {
+        Ok(c) => c,
+        Err(e) => return StepResult::err(format!("failed to read file '{file}': {e}")),
+    };
+
+    let table: toml::Table = match toml::from_str(&content) {
+        Ok(t) => t,
+        Err(e) => return StepResult::err(format!("failed to parse TOML '{file}': {e}")),
+    };
+
+    let actual = match table.get(key) {
+        Some(v) => format!("{}", v),
+        None => return StepResult::err(format!("key '{key}' not found in '{file}'")),
+    };
+
+    // Compare: TOML values are displayed without quotes for strings
+    let actual_normalized = actual.trim().trim_matches('"');
+    let expected_normalized = expected.trim().trim_matches('"');
+
+    if actual_normalized == expected_normalized {
+        StepResult::ok()
+    } else {
+        StepResult::err(format!(
+            "toml_value_equals failed: key '{key}' expected '{expected_normalized}', got '{actual_normalized}'"
+        ))
+    }
+}
+
 /// Parse and evaluate a count condition like "count >= 1" or "count == 0".
 fn evaluate_count_condition(actual: usize, condition: &str) -> StepResult {
     let condition = condition.trim();
@@ -276,5 +321,50 @@ mod tests {
     fn count_condition_eq() {
         assert!(evaluate_count_condition(3, "count == 3").ok);
         assert!(!evaluate_count_condition(4, "count == 3").ok);
+    }
+
+    // --- toml_value_equals ---
+
+    #[test]
+    fn toml_value_equals_match() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.texture");
+        std::fs::write(&path, "format = \"BC7\"\nwidth = 256\n").unwrap();
+
+        let args: toml::Value = toml::from_str(&format!(
+            "file = '{}'\nkey = 'format'\nvalue = 'BC7'",
+            path.display().to_string().replace('\\', "/")
+        )).unwrap();
+        let result = assert_toml_value_equals(&args);
+        assert!(result.ok, "{}", result.message);
+    }
+
+    #[test]
+    fn toml_value_equals_mismatch() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.texture");
+        std::fs::write(&path, "format = \"R8Unorm\"\n").unwrap();
+
+        let args: toml::Value = toml::from_str(&format!(
+            "file = '{}'\nkey = 'format'\nvalue = 'BC7'",
+            path.display().to_string().replace('\\', "/")
+        )).unwrap();
+        let result = assert_toml_value_equals(&args);
+        assert!(!result.ok);
+    }
+
+    #[test]
+    fn toml_value_equals_key_not_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.texture");
+        std::fs::write(&path, "width = 256\n").unwrap();
+
+        let args: toml::Value = toml::from_str(&format!(
+            "file = '{}'\nkey = 'format'\nvalue = 'BC7'",
+            path.display().to_string().replace('\\', "/")
+        )).unwrap();
+        let result = assert_toml_value_equals(&args);
+        assert!(!result.ok);
+        assert!(result.message.contains("not found"));
     }
 }
