@@ -1,10 +1,11 @@
 use crate::kairos_editor::KairosEngine;
 use crate::kairos_test_harness::{bridge::Bridge, test_runner, ws_server};
 
-/// Parsed command-line arguments for the headless test mode.
+/// Parsed command-line arguments for the test harness.
 pub struct CliArgs {
     pub headless: bool,
     pub test_file: Option<String>,
+    pub gen_docs: bool,
 }
 
 /// Parse CLI arguments manually (no dependency on clap).
@@ -13,12 +14,14 @@ pub fn parse_args() -> CliArgs {
     let mut result = CliArgs {
         headless: false,
         test_file: None,
+        gen_docs: false,
     };
 
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
             "--headless" => result.headless = true,
+            "--gen-docs" => result.gen_docs = true,
             "--test-file" => {
                 i += 1;
                 if i < args.len() {

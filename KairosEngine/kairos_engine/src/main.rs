@@ -16,6 +16,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "test-harness")]
     {
         let cli = kairos_test_harness::headless::parse_args();
+
+        if cli.gen_docs {
+            kairos_test_harness::docs_gen::generate()?;
+            println!("Generated docs/ai/test-harness-commands.md");
+            return Ok(());
+        }
+
         if cli.headless {
             return kairos_test_harness::headless::run(cli).await;
         }
