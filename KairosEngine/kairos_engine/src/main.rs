@@ -1,9 +1,9 @@
+#[cfg(feature = "test-harness")]
+use kairos_engine::kairos_test_harness;
 use kairos_engine::{
     kairos_dialog,
     kairos_editor::runtime::{KairosEditorRuntime, KairosEditorRuntimeEvent},
 };
-#[cfg(feature = "test-harness")]
-use kairos_engine::kairos_test_harness;
 use winit::event_loop::EventLoop;
 
 #[tokio::main]
@@ -13,6 +13,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     )
     .init();
 
+    #[cfg(feature = "test-harness")]
+    {
+        let cli = kairos_test_harness::headless::parse_args();
+        if cli.headless {
+            return kairos_test_harness::headless::run(cli).await;
+        }
+    }
+
+    // --- Windowed (normal editor) mode ---
     let event_loop = EventLoop::<KairosEditorRuntimeEvent>::with_user_event().build()?;
     let proxy = event_loop.create_proxy();
     let mut runtime = KairosEditorRuntime::new(proxy).unwrap_or_else(|error| {
