@@ -315,6 +315,7 @@ impl Inspector for TextureInspector {
     }
 
     fn draw(&self, ui: &mut egui::Ui, messager: &mut Messager, assets_server: &AssetsServer) {
+        egui::ScrollArea::vertical().show(ui, |ui| {
         let texture;
         {
             // Wait for the TextureExt resource to load asynchronously.
@@ -531,6 +532,9 @@ impl Inspector for TextureInspector {
                                                 .changed()
                                             {
                                                 mip.filter = current;
+                                                if current == MipmapFilter::Nearest {
+                                                    mip.anisotropy_clamp = 1;
+                                                }
                                                 self.dirty.set(true);
                                             }
                                         }
@@ -544,11 +548,15 @@ impl Inspector for TextureInspector {
                                 ui.label("  Anisotropic:");
                             });
                             row.col(|ui| {
-                                let mut aniso_on = mip.anisotropy_clamp > 1;
-                                if ui.checkbox(&mut aniso_on, "").changed() {
-                                    mip.anisotropy_clamp = if aniso_on { AnisotropyLevel::Level4.as_u16() } else { 1 };
-                                    self.dirty.set(true);
-                                }
+                                let can_aniso = ext.serialized.sampler.filter_mode == FilterMode::Linear
+                                    && mip.filter == MipmapFilter::Linear;
+                                let mut aniso_on = mip.anisotropy_clamp > 1 && can_aniso;
+                                ui.add_enabled_ui(can_aniso, |ui| {
+                                    if ui.checkbox(&mut aniso_on, "").changed() {
+                                        mip.anisotropy_clamp = if aniso_on { AnisotropyLevel::Level4.as_u16() } else { 1 };
+                                        self.dirty.set(true);
+                                    }
+                                });
                                 if aniso_on {
                                     let mut level = AnisotropyLevel::from_u16(mip.anisotropy_clamp)
                                         .unwrap_or(AnisotropyLevel::Level4);
@@ -619,6 +627,7 @@ impl Inspector for TextureInspector {
         // ---- Preview panel ----
         self.ensure_preview(ui, texture);
         self.draw_preview(ui);
+        });
     }
 
     fn on_exit(&mut self, _ctx: &egui::Context) -> Option<Box<dyn Dialog>> {
