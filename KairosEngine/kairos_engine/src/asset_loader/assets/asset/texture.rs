@@ -55,10 +55,14 @@ impl Loader {
         let texture = toml::from_slice::<SerializedTexture>(&toml)?;
         Ok(texture)
     }
-    async fn load_bin(path: &PathBuf) -> Result<Vec<u8>, Error> {
+    async fn load_bin(path: &PathBuf) -> Result<Vec<Vec<u8>>, Error> {
         let bytes = tokio::fs::read(path.with_extension("texture_bin")).await?;
+        // Try new multi-level format first, fall back to old single-level.
+        if let Ok(data) = rkyv::from_bytes::<Vec<Vec<u8>>, rkyv::rancor::Error>(&bytes) {
+            return Ok(data);
+        }
         let data = rkyv::from_bytes::<Vec<u8>, rkyv::rancor::Error>(&bytes)?;
-        Ok(data)
+        Ok(vec![data])
     }
     async fn load(
         path: PathBuf,

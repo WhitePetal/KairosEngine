@@ -6,14 +6,30 @@ use crate::ecs::{
     },
     id::{Id, IdFlag},
 };
-use num_enum::{FromPrimitive, IntoPrimitive};
 
 #[repr(u32)]
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, IntoPrimitive, FromPrimitive)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EntityFlag {
     #[default]
     Default = 0x0,
     Dead = 0x1,
+}
+
+impl From<EntityFlag> for u32 {
+    fn from(value: EntityFlag) -> Self {
+        value as u32
+    }
+}
+
+impl TryFrom<u32> for EntityFlag {
+    type Error = ();
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            0x0 => Ok(EntityFlag::Default),
+            0x1 => Ok(EntityFlag::Dead),
+            _ => Err(()),
+        }
+    }
 }
 impl Display for EntityFlag {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -68,7 +84,8 @@ impl Id for Entity {
 
     #[inline(always)]
     fn flags(&self) -> Self::FlagType {
-        Self::FlagType::from(((self.0 >> VERSION_MASK_OFFSET) & FLAG_MASK) as u32)
+        let raw = ((self.0 >> VERSION_MASK_OFFSET) & FLAG_MASK) as u32;
+        Self::FlagType::try_from(raw).unwrap_or_default()
     }
 
     fn from_other(idx: u32, other: Self) -> Self {

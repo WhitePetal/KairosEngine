@@ -1025,7 +1025,7 @@ impl RenderPipeline {
 
         let mut depth_state = depth_state.clone();
         if let Some(depth_state) = &mut depth_state {
-            depth_state.depth_compare = render_state.depth_test;
+            depth_state.depth_compare = render_state.depth_test.map(|cmp| cmp.into());
             depth_state.depth_write_enabled = Some(render_state.depth_write);
         }
 
@@ -1077,7 +1077,6 @@ impl RenderPipeline {
     ) -> (BindGroup, BindGroupLayout) {
         // Miss or version mismatch: create GPU resources
         let texture_dimension = (texture_asset.width, texture_asset.height);
-        let texture_data = &texture_asset.data;
         let wgpu_fmt: wgpu::TextureFormat = texture_asset.format.into();
         let texture_size = Extent3d {
             width: texture_dimension.0,
@@ -1087,12 +1086,7 @@ impl RenderPipeline {
         let tex_desc = TextureDescriptor {
             label: Some("Kairos Texture"),
             size: texture_size,
-            mip_level_count: if texture_asset.sampler.mipmap.is_some() {
-                let max_dim = texture_dimension.0.max(texture_dimension.1);
-                (max_dim as f32).log2().floor() as u32 + 1
-            } else {
-                1
-            },
+            mip_level_count: texture_asset.data.len() as u32,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu_fmt,
@@ -1101,29 +1095,39 @@ impl RenderPipeline {
         };
         let gpu_texture = device.create_texture(&tex_desc);
 
-        // Compute bytes_per_row based on texture format.
-        let block_bytes = wgpu_fmt
-            .block_copy_size(Some(wgpu::TextureAspect::All))
-            .unwrap_or(4);
-        let (block_w, _) = texture_asset.format.block_dimensions();
-        let blocks_per_row = (texture_dimension.0 + block_w - 1) / block_w;
-        let bytes_per_row = block_bytes * blocks_per_row;
+        // Write each mip level.
+        let wgpu_fmt: wgpu::TextureFormat = texture_asset.format.into();
+        for (level, level_data) in texture_asset.data.iter().enumerate() {
+            let level = level as u32;
+            let level_w = (texture_dimension.0 >> level).max(1);
+            let level_h = (texture_dimension.1 >> level).max(1);
+            let block_bytes = wgpu_fmt
+                .block_copy_size(Some(wgpu::TextureAspect::All))
+                .unwrap_or(4);
+            let (block_w, _) = texture_asset.format.block_dimensions();
+            let blocks_per_row = (level_w + block_w - 1) / block_w;
+            let bytes_per_row = block_bytes * blocks_per_row;
 
-        queue.write_texture(
-            TexelCopyTextureInfo {
-                texture: &gpu_texture,
-                mip_level: 0,
-                origin: Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &texture_data,
-            TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(bytes_per_row),
-                rows_per_image: Some(texture_dimension.1),
-            },
-            texture_size,
-        );
+            queue.write_texture(
+                TexelCopyTextureInfo {
+                    texture: &gpu_texture,
+                    mip_level: level,
+                    origin: Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                level_data,
+                TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(bytes_per_row),
+                    rows_per_image: Some(level_h),
+                },
+                Extent3d {
+                    width: level_w,
+                    height: level_h,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
         let texture_view = gpu_texture.create_view(&TextureViewDescriptor::default());
 
         let sample_type = texture_asset.format.wgpu_sample_type();

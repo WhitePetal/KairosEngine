@@ -1,3 +1,7 @@
 row_height = 20.0
 apply_button_height = 20.0
 preview_min_height = 150.0
+combo_width_default = 140.0
+combo_width_narrow = 120.0
+combo_width_anisotropy = 80.0
+combo_width_format = 180.0

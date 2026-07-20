@@ -2,7 +2,7 @@ source_path = "res/materials/gizmos/grid_plane.mat"
 shader_path = "res/shaders/gizmos/grid_plane.wgsl"
 
 [render_state]
-depth_test = "less-equal"
+depth_test = "LessEqual"
 depth_write = false
 topology = "line-list"
 

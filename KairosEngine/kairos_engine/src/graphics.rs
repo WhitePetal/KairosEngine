@@ -8,6 +8,7 @@ pub mod texture;
 pub mod vertex;
 
 pub mod attachment;
+pub mod compare_function;
 pub mod graphics_graph;
 
 pub mod lod_mesh_component;

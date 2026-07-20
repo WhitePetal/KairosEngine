@@ -4,14 +4,16 @@ use egui::{ComboBox, Vec2, Widget};
 use egui_extras::{Column, TableBuilder};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
+use strum::IntoEnumIterator;
 
 use crate::{
     asset_loader::assets::{AssetHandle, AssetsServer, TextureAssetsSystem},
     graphics::{
-        texture::Texture,
+        compare_function::CompareFunction,
+        texture::{Texture, TextureMaxSize, find_texture_max_size},
         texture::{
             format::{TextureCompressionConfig, TextureFormat},
-            sampler::{AddressMode, FilterMode, MipmapFilter},
+            sampler::{AddressMode, AnisotropyLevel, BorderColor, FilterMode, MipmapFilter},
         },
     },
     kairos_editor::{
@@ -36,6 +38,10 @@ struct TextureInspectorStyle {
     row_height: f32,
     apply_button_height: f32,
     preview_min_height: f32,
+    combo_width_default: f32,
+    combo_width_narrow: f32,
+    combo_width_anisotropy: f32,
+    combo_width_format: f32,
 }
 
 impl TextureInspectorStyle {
@@ -82,12 +88,11 @@ pub struct TextureInspector {
     preview_texture: parking_lot::Mutex<Option<egui::TextureHandle>>,
     /// Whether the user has changed settings that haven't been applied.
     dirty: Cell<bool>,
+    /// Whether the address-mode UI is in per-axis editing mode.
+    per_axis_mode: Cell<bool>,
 }
 
 impl TextureInspector {
-    /// Available size options for the max-size ComboBox.
-    const SIZE_OPTIONS: &[u32] = &[2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096];
-
     /// Compute the target (width, height) after proportional scaling
     /// so that the larger side is <= `max_size`.
     fn compute_target_size(orig_w: u32, orig_h: u32, max_size: u32) -> (u32, u32) {
@@ -113,7 +118,7 @@ impl TextureInspector {
 
         // Decode compressed data to RGBA8 for the egui preview.
         let rgba = crate::graphics::texture::format::decode_to_rgba8(
-            &texture.data,
+            &texture.data[0],
             texture.width,
             texture.height,
             texture.format,
@@ -190,9 +195,9 @@ impl TextureInspector {
 
         // 1. Resize from cached original RGBA (always RGBA8 intermediate)
         let rgba_data = if new_w == orig_w && new_h == orig_h {
-            original_rgba
+            original_rgba.clone()
         } else {
-            match image::RgbaImage::from_raw(orig_w, orig_h, original_rgba) {
+            match image::RgbaImage::from_raw(orig_w, orig_h, original_rgba.clone()) {
                 Some(source_image) => {
                     let filtered = image::imageops::resize(
                         &source_image,
@@ -212,16 +217,42 @@ impl TextureInspector {
             }
         };
 
-        // 2. Encode to target GPU format
-        let encoded = crate::graphics::texture::format::encode_rgba(
-            &rgba_data,
-            new_w,
-            new_h,
-            ext.serialized.format,
-        );
+        // 2. Encode base level + generate cascading mip-chain.
+        let mip_data: Vec<Vec<u8>> = if let Some(ref mip) = ext.serialized.sampler.mipmap {
+            let max_possible = (new_w.max(new_h) as f32).log2().floor() as u32;
+            let end_level = (mip.lod_max_clamp.floor() as u32).min(max_possible);
+            let total_levels = end_level + 1;
+            let mut levels = Vec::with_capacity(total_levels as usize);
+            let mut current_w = new_w;
+            let mut current_h = new_h;
+            let mut current_rgba = rgba_data;
+
+            for _ in 0..total_levels {
+                levels.push(crate::graphics::texture::format::encode_rgba(
+                    &current_rgba, current_w, current_h, ext.serialized.format,
+                ));
+                let prev_w = current_w;
+                let prev_h = current_h;
+                current_w = (current_w / 2).max(1);
+                current_h = (current_h / 2).max(1);
+                if let Some(source) = image::RgbaImage::from_raw(prev_w, prev_h, current_rgba) {
+                    current_rgba = image::imageops::resize(
+                        &source, current_w, current_h,
+                        image::imageops::FilterType::Lanczos3,
+                    ).into_vec();
+                } else {
+                    break;
+                }
+            }
+            levels
+        } else {
+            vec![crate::graphics::texture::format::encode_rgba(
+                &rgba_data, new_w, new_h, ext.serialized.format,
+            )]
+        };
 
         // 3. Save to file
-        match ext.serialized.save_to_file(&encoded) {
+        match ext.serialized.save_to_file(&mip_data) {
             Ok(_) => {}
             Err(err) => {
                 log::error!(
@@ -238,7 +269,7 @@ impl TextureInspector {
             width: new_w,
             height: new_h,
             format: ext.serialized.format,
-            data: encoded,
+            data: mip_data,
             sampler: ext.serialized.sampler.clone(),
         };
         if let Some(asset) = assets_server.get_mut(&ext.texture) {
@@ -279,6 +310,7 @@ impl Inspector for TextureInspector {
             model,
             preview_texture: parking_lot::Mutex::new(None),
             dirty: Cell::new(false),
+            per_axis_mode: Cell::new(false),
         })
     }
 
@@ -307,8 +339,12 @@ impl Inspector for TextureInspector {
 
             // ---- Properties table ----
             let row_h = self.model.style.row_height;
+            let w_default = self.model.style.combo_width_default;
+            let w_narrow = self.model.style.combo_width_narrow;
+            let w_aniso = self.model.style.combo_width_anisotropy;
+            let w_format = self.model.style.combo_width_format;
             let original_max = ext.original_width.max(ext.original_height);
-            let mut selected_size = find_size_level(ext.serialized.width, ext.serialized.height);
+            let mut selected_size = find_texture_max_size(ext.serialized.width, ext.serialized.height);
 
             TableBuilder::new(ui)
                 .striped(true)
@@ -343,18 +379,18 @@ impl Inspector for TextureInspector {
                         });
                         row.col(|ui| {
                             ComboBox::from_id_salt("texture_max_size")
-                                .width(120.0)
-                                .selected_text(selected_size.to_string())
+                                .width(w_narrow)
+                                .selected_text(selected_size.as_u32().to_string())
                                 .show_ui(ui, |ui| {
-                                    for &size in Self::SIZE_OPTIONS {
-                                        if size > original_max {
+                                    for size in TextureMaxSize::iter() {
+                                        if size.as_u32() > original_max {
                                             continue;
                                         }
                                         if ui
                                             .selectable_value(
                                                 &mut selected_size,
                                                 size,
-                                                size.to_string(),
+                                                size.as_u32().to_string(),
                                             )
                                             .changed()
                                         {
@@ -362,7 +398,7 @@ impl Inspector for TextureInspector {
                                                 Self::compute_target_size(
                                                     ext.original_width,
                                                     ext.original_height,
-                                                    selected_size,
+                                                    selected_size.as_u32(),
                                                 );
                                             self.dirty.set(true);
                                         }
@@ -378,10 +414,10 @@ impl Inspector for TextureInspector {
                         });
                         row.col(|ui| {
                             ComboBox::from_id_salt("texture_format")
-                                .width(180.0)
+                                .width(w_format)
                                 .selected_text(format!("{:?}", ext.serialized.format))
                                 .show_ui(ui, |ui| {
-                                    for format in <TextureFormat as strum::IntoEnumIterator>::iter()
+                                    for format in TextureFormat::iter()
                                     {
                                         ui.add_enabled_ui(
                                             format.is_available(&self.model.compression_config),
@@ -418,22 +454,26 @@ impl Inspector for TextureInspector {
                             ui.label("Filter Mode:");
                         });
                         row.col(|ui| {
-                            sampler_combo(
-                                ui,
-                                "texture_filter_mode",
-                                &["Nearest", "Linear"],
-                                ext.serialized.sampler.filter_mode as usize,
-                                |idx| {
-                                    ext.serialized.sampler.filter_mode =
-                                        if idx == 0 { FilterMode::Nearest } else { FilterMode::Linear };
-                                    self.dirty.set(true);
-                                },
-                            );
+                            let mut current = ext.serialized.sampler.filter_mode;
+                            egui::ComboBox::from_id_salt("texture_filter_mode")
+                                .width(w_narrow)
+                                .selected_text(current.label())
+                                .show_ui(ui, |ui| {
+                                    for mode in FilterMode::iter() {
+                                        if ui
+                                            .selectable_value(&mut current, mode, mode.label())
+                                            .changed()
+                                        {
+                                            ext.serialized.sampler.filter_mode = current;
+                                            self.dirty.set(true);
+                                        }
+                                    }
+                                });
                         });
                     });
 
                     // Address Mode (with per-axis support)
-                    draw_address_mode_rows(&mut body, row_h, &mut ext.serialized, &self.dirty);
+                    draw_address_mode_rows(&mut body, row_h, w_default, &mut ext.serialized, &self.dirty, &self.per_axis_mode);
 
                     // Mipmap toggle
                     body.row(row_h, |mut row| {
@@ -449,7 +489,7 @@ impl Inspector for TextureInspector {
                                     ext.serialized.sampler.mipmap = Some(
                                         crate::graphics::texture::sampler::MipmapConfig {
                                             filter: MipmapFilter::Linear,
-                                            anisotropy_clamp: 2,
+                                            anisotropy_clamp: AnisotropyLevel::Level2.as_u16(),
                                             lod_min_clamp: 0.0,
                                             lod_max_clamp: max_level,
                                         },
@@ -473,20 +513,21 @@ impl Inspector for TextureInspector {
                                 ui.label("  Mipmap Filter:");
                             });
                             row.col(|ui| {
-                                sampler_combo(
-                                    ui,
-                                    "texture_mipmap_filter",
-                                    &["Nearest", "Linear"],
-                                    mip.filter as usize,
-                                    |idx| {
-                                        mip.filter = if idx == 0 {
-                                            MipmapFilter::Nearest
-                                        } else {
-                                            MipmapFilter::Linear
-                                        };
-                                        self.dirty.set(true);
-                                    },
-                                );
+                                let mut current = mip.filter;
+                                egui::ComboBox::from_id_salt("texture_mipmap_filter")
+                                    .width(w_narrow)
+                                    .selected_text(current.label())
+                                    .show_ui(ui, |ui| {
+                                        for mode in MipmapFilter::iter() {
+                                            if ui
+                                                .selectable_value(&mut current, mode, mode.label())
+                                                .changed()
+                                            {
+                                                mip.filter = current;
+                                                self.dirty.set(true);
+                                            }
+                                        }
+                                    });
                             });
                         });
 
@@ -498,45 +539,26 @@ impl Inspector for TextureInspector {
                             row.col(|ui| {
                                 let mut aniso_on = mip.anisotropy_clamp > 1;
                                 if ui.checkbox(&mut aniso_on, "").changed() {
-                                    mip.anisotropy_clamp = if aniso_on { 4 } else { 1 };
+                                    mip.anisotropy_clamp = if aniso_on { AnisotropyLevel::Level4.as_u16() } else { 1 };
                                     self.dirty.set(true);
                                 }
                                 if aniso_on {
+                                    let mut level = AnisotropyLevel::from_u16(mip.anisotropy_clamp)
+                                        .unwrap_or(AnisotropyLevel::Level4);
                                     egui::ComboBox::from_id_salt("texture_anisotropy")
-                                        .width(80.0)
-                                        .selected_text(mip.anisotropy_clamp.to_string())
+                                        .width(w_aniso)
+                                        .selected_text(level.as_u16().to_string())
                                         .show_ui(ui, |ui| {
-                                            for &level in &[2u16, 4, 8, 16] {
+                                            for l in AnisotropyLevel::iter() {
                                                 if ui
-                                                    .selectable_value(
-                                                        &mut mip.anisotropy_clamp,
-                                                        level,
-                                                        level.to_string(),
-                                                    )
+                                                    .selectable_value(&mut level, l, l.as_u16().to_string())
                                                     .changed()
                                                 {
+                                                    mip.anisotropy_clamp = level.as_u16();
                                                     self.dirty.set(true);
                                                 }
                                             }
                                         });
-                                }
-                            });
-                        });
-
-                        // LOD Min
-                        body.row(row_h, |mut row| {
-                            row.col(|ui| {
-                                ui.label("  LOD Min:");
-                            });
-                            row.col(|ui| {
-                                let mut val = mip.lod_min_clamp;
-                                if egui::Slider::new(&mut val, 0.0f32..=max_level)
-                                    .text("lod_min")
-                                    .ui(ui)
-                                    .changed()
-                                {
-                                    mip.lod_min_clamp = val.min(mip.lod_max_clamp);
-                                    self.dirty.set(true);
                                 }
                             });
                         });
@@ -553,7 +575,7 @@ impl Inspector for TextureInspector {
                                     .ui(ui)
                                     .changed()
                                 {
-                                    mip.lod_max_clamp = val.max(mip.lod_min_clamp);
+                                    mip.lod_max_clamp = val.max(0.0);
                                     self.dirty.set(true);
                                 }
                             });
@@ -561,7 +583,7 @@ impl Inspector for TextureInspector {
                     }
 
                     // Compare
-                    draw_compare_row(&mut body, row_h, &mut ext.serialized, &self.dirty);
+                    draw_compare_row(&mut body, row_h, w_default, &mut ext.serialized, &self.dirty);
                 });
         }
 
@@ -617,18 +639,6 @@ impl Inspector for TextureInspector {
     }
 }
 
-/// Pick a sensible default max-size: the smallest SIZE_OPTIONS entry
-/// that is >= the original's larger side.
-fn find_size_level(width: u32, height: u32) -> u32 {
-    let max_side = width.max(height);
-    for &size in TextureInspector::SIZE_OPTIONS {
-        if size >= max_side {
-            return size;
-        }
-    }
-    max_side
-}
-
 fn load_compression_config() -> Result<TextureCompressionConfig, Box<dyn std::error::Error>> {
     let bytes = std::fs::read(kairos_paths::PATH_KAIROS_SETTINGS)?;
     let engine_settings = toml::from_slice::<EngineSettings>(&bytes)?;
@@ -639,54 +649,26 @@ fn load_compression_config() -> Result<TextureCompressionConfig, Box<dyn std::er
 // Sampler UI helpers
 // ============================================================
 
-/// Simple two-option ComboBox (used for FilterMode, MipmapFilter).
-fn sampler_combo(
-    ui: &mut egui::Ui,
-    id: &str,
-    labels: &[&str],
-    current: usize,
-    mut on_change: impl FnMut(usize),
-) {
-    let mut selected = current;
-    egui::ComboBox::from_id_salt(id)
-        .width(120.0)
-        .selected_text(labels[selected])
-        .show_ui(ui, |ui| {
-            for (i, label) in labels.iter().enumerate() {
-                if ui.selectable_value(&mut selected, i, *label).changed() {
-                    on_change(i);
-                }
-            }
-        });
-}
-
 /// Draw the address-mode row: quick-select ComboBox + optional per-axis sub-rows.
 fn draw_address_mode_rows(
     body: &mut egui_extras::TableBody,
     row_h: f32,
+    combo_width: f32,
     serialized: &mut crate::graphics::texture::SerializedTexture,
     dirty: &Cell<bool>,
+    per_axis_mode: &Cell<bool>,
 ) {
+    use strum::IntoEnumIterator;
+
     let s = &mut serialized.sampler;
     let modes_equal =
         s.address_mode_u == s.address_mode_v && s.address_mode_v == s.address_mode_w;
+    let is_per_axis = per_axis_mode.get();
 
-    const MODE_VALUES: &[AddressMode] = &[
-        AddressMode::ClampToEdge,
-        AddressMode::Repeat,
-        AddressMode::MirrorRepeat,
-        AddressMode::ClampToBorder,
-    ];
-
-    let current_label = if modes_equal {
-        match s.address_mode_u {
-            AddressMode::ClampToEdge => "ClampToEdge",
-            AddressMode::Repeat => "Repeat",
-            AddressMode::MirrorRepeat => "MirrorRepeat",
-            AddressMode::ClampToBorder => "ClampToBorder",
-        }
-    } else {
+    let current_label = if is_per_axis || !modes_equal {
         "Per Axis"
+    } else {
+        s.address_mode_u.label()
     };
 
     body.row(row_h, |mut row| {
@@ -695,43 +677,28 @@ fn draw_address_mode_rows(
         });
         row.col(|ui| {
             egui::ComboBox::from_id_salt("texture_address_mode")
-                .width(140.0)
+                .width(combo_width)
                 .selected_text(current_label)
                 .show_ui(ui, |ui| {
-                    for &mode in MODE_VALUES {
-                        let label = match mode {
-                            AddressMode::ClampToEdge => "ClampToEdge",
-                            AddressMode::Repeat => "Repeat",
-                            AddressMode::MirrorRepeat => "MirrorRepeat",
-                            AddressMode::ClampToBorder => "ClampToBorder",
-                        };
-                        if ui
-                            .selectable_label(s.address_mode_u == mode && modes_equal, label)
-                            .clicked()
-                        {
+                    for mode in AddressMode::iter() {
+                        let selected = !is_per_axis && modes_equal && s.address_mode_u == mode;
+                        if ui.selectable_label(selected, mode.label()).clicked() {
                             s.address_mode_u = mode;
                             s.address_mode_v = mode;
                             s.address_mode_w = mode;
+                            per_axis_mode.set(false);
                             dirty.set(true);
                         }
                     }
-                    if ui.selectable_label(!modes_equal, "Per Axis").clicked() {
-                        // Force per-axis mode by making the axes differ.
-                        if modes_equal {
-                            let alt = match s.address_mode_u {
-                                AddressMode::Repeat => AddressMode::ClampToEdge,
-                                _ => AddressMode::Repeat,
-                            };
-                            s.address_mode_v = alt;
-                            dirty.set(true);
-                        }
+                    if ui.selectable_label(is_per_axis, "Per Axis").clicked() {
+                        per_axis_mode.set(true);
                     }
                 });
         });
     });
 
-    // Per-axis sub-rows
-    if !modes_equal {
+    // Per-axis sub-rows — shown only in per-axis mode.
+    if is_per_axis {
         for (label, ptr) in [
             ("  U:", &mut s.address_mode_u),
             ("  V:", &mut s.address_mode_v),
@@ -743,18 +710,12 @@ fn draw_address_mode_rows(
                 });
                 row.col(|ui| {
                     egui::ComboBox::from_id_salt(format!("addr_{}", label))
-                        .width(140.0)
-                        .selected_text(format!("{:?}", *ptr))
+                        .width(combo_width)
+                        .selected_text(ptr.label())
                         .show_ui(ui, |ui| {
-                            for &mode in MODE_VALUES {
-                                let mode_label = match mode {
-                                    AddressMode::ClampToEdge => "ClampToEdge",
-                                    AddressMode::Repeat => "Repeat",
-                                    AddressMode::MirrorRepeat => "MirrorRepeat",
-                                    AddressMode::ClampToBorder => "ClampToBorder",
-                                };
+                            for mode in AddressMode::iter() {
                                 if ui
-                                    .selectable_label(*ptr == mode, mode_label)
+                                    .selectable_label(*ptr == mode, mode.label())
                                     .clicked()
                                 {
                                     *ptr = mode;
@@ -773,32 +734,27 @@ fn draw_address_mode_rows(
         || s.address_mode_w == AddressMode::ClampToBorder;
 
     if needs_border {
-        const BORDER_LABELS: &[&str] =
-            &["None", "TransparentBlack", "OpaqueBlack", "OpaqueWhite", "Zero"];
-        const BORDER_VALUES: &[Option<wgpu::SamplerBorderColor>] = &[
-            None,
-            Some(wgpu::SamplerBorderColor::TransparentBlack),
-            Some(wgpu::SamplerBorderColor::OpaqueBlack),
-            Some(wgpu::SamplerBorderColor::OpaqueWhite),
-            Some(wgpu::SamplerBorderColor::Zero),
-        ];
-
         body.row(row_h, |mut row| {
             row.col(|ui| {
                 ui.label("  Border Color:");
             });
             row.col(|ui| {
-                let current_idx = BORDER_VALUES
-                    .iter()
-                    .position(|v| *v == s.border_color)
-                    .unwrap_or(0);
+                let mut current = s.border_color;
+                let label = current.map_or("None", |c| c.label());
                 egui::ComboBox::from_id_salt("texture_border_color")
-                    .width(140.0)
-                    .selected_text(BORDER_LABELS[current_idx])
+                    .width(combo_width)
+                    .selected_text(label)
                     .show_ui(ui, |ui| {
-                        for (i, label) in BORDER_LABELS.iter().enumerate() {
-                            if ui.selectable_label(i == current_idx, *label).clicked() {
-                                s.border_color = BORDER_VALUES[i];
+                        if ui.selectable_label(current.is_none(), "None").clicked() {
+                            s.border_color = None;
+                            dirty.set(true);
+                        }
+                        for color in BorderColor::iter() {
+                            if ui
+                                .selectable_value(&mut current, Some(color), color.label())
+                                .changed()
+                            {
+                                s.border_color = Some(color);
                                 dirty.set(true);
                             }
                         }
@@ -812,42 +768,31 @@ fn draw_address_mode_rows(
 fn draw_compare_row(
     body: &mut egui_extras::TableBody,
     row_h: f32,
+    combo_width: f32,
     serialized: &mut crate::graphics::texture::SerializedTexture,
     dirty: &Cell<bool>,
 ) {
-    use wgpu::CompareFunction;
-    const COMPARE_LABELS: &[&str] = &[
-        "None", "Never", "Less", "Equal", "LessEqual", "Greater", "NotEqual", "GreaterEqual",
-        "Always",
-    ];
-    const COMPARE_VALUES: &[Option<CompareFunction>] = &[
-        None,
-        Some(CompareFunction::Never),
-        Some(CompareFunction::Less),
-        Some(CompareFunction::Equal),
-        Some(CompareFunction::LessEqual),
-        Some(CompareFunction::Greater),
-        Some(CompareFunction::NotEqual),
-        Some(CompareFunction::GreaterEqual),
-        Some(CompareFunction::Always),
-    ];
-
     body.row(row_h, |mut row| {
         row.col(|ui| {
             ui.label("Compare:");
         });
         row.col(|ui| {
-            let current_idx = COMPARE_VALUES
-                .iter()
-                .position(|v| *v == serialized.sampler.compare)
-                .unwrap_or(0);
+            let mut current = serialized.sampler.compare;
+            let label = current.map_or("None", |c| c.label());
             egui::ComboBox::from_id_salt("texture_compare")
-                .width(140.0)
-                .selected_text(COMPARE_LABELS[current_idx])
+                .width(combo_width)
+                .selected_text(label)
                 .show_ui(ui, |ui| {
-                    for (i, label) in COMPARE_LABELS.iter().enumerate() {
-                        if ui.selectable_label(i == current_idx, *label).clicked() {
-                            serialized.sampler.compare = COMPARE_VALUES[i];
+                    if ui.selectable_label(current.is_none(), "None").clicked() {
+                        serialized.sampler.compare = None;
+                        dirty.set(true);
+                    }
+                    for func in CompareFunction::iter() {
+                        if ui
+                            .selectable_value(&mut current, Some(func), func.label())
+                            .changed()
+                        {
+                            serialized.sampler.compare = Some(func);
                             dirty.set(true);
                         }
                     }

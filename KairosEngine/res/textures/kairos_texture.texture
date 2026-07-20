@@ -4,7 +4,13 @@ height = 2048
 format = "Rgba8Unorm"
 
 [sampler]
-filter_mode = "Nearest"
+filter_mode = "Linear"
 address_mode_u = "Repeat"
 address_mode_v = "Repeat"
 address_mode_w = "Repeat"
+
+[sampler.mipmap]
+filter = "Linear"
+anisotropy_clamp = 2
+lod_min_clamp = 0.0
+lod_max_clamp = 11.0

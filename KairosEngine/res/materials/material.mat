@@ -3,7 +3,7 @@ shader_path = "res/shaders/shader.wgsl"
 texture_path = "res/textures/kairos_texture.texture"
 
 [render_state]
-depth_test = "less-equal"
+depth_test = "LessEqual"
 depth_write = true
 cull_mod = "back"
 topology = "triangle-list"

@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
-use wgpu::{BlendState, CompareFunction, Face, PrimitiveTopology};
+use wgpu::{BlendState, Face, PrimitiveTopology};
+
+use crate::graphics::compare_function::CompareFunction;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct RenderState {

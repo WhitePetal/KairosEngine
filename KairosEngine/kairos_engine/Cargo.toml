@@ -14,7 +14,6 @@ tempfile = "3"
 kairos_ecs_macros = { path = "../kairos_ecs_macros" }
 toml = "1.1.2"
 anyhow = { version = "1.0" }
-num_enum = "0.7.6"
 rand = "0.10.1"
 smallvec = { version = "1.15.2", features = ["union", "serde", "const_new", "write"] }
 crossbeam-channel = "0.5.15"

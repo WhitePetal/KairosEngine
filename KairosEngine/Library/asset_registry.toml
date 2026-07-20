@@ -627,6 +627,10 @@ guid = "2e43e9cc-66c5-498a-90dc-737a93f84616"
 path = "./kairos_engine/src/graphics/camera.rs"
 
 [[entries]]
+guid = "36054e4f-6318-4e48-9375-97d4a06ff4da"
+path = "./kairos_engine/src/graphics/compare_function.rs"
+
+[[entries]]
 guid = "c5ebf337-bf53-4f93-9aad-de98c695f6b3"
 path = "./kairos_engine/src/graphics/graphics_graph"
 

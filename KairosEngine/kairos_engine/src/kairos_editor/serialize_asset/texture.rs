@@ -5,21 +5,21 @@ use anyhow::{Error, Ok};
 use crate::graphics::texture::{
     format::TextureFormat,
     sampler::{
-        AddressMode, FilterMode, MipmapConfig, MipmapFilter, SamplerConfig,
+        AddressMode, AnisotropyLevel, FilterMode, MipmapConfig, MipmapFilter, SamplerConfig,
     },
     SerializedTexture,
 };
 
 impl SerializedTexture {
     /// Convert a source image file into a `SerializedTexture` + raw RGBA pixel data.
-    pub fn convert_img_to_asset(path: &Path) -> Result<(SerializedTexture, Vec<u8>), Error> {
+    pub fn convert_img_to_asset(path: &Path) -> Result<(SerializedTexture, Vec<Vec<u8>>), Error> {
         let texture_bytes = std::fs::read(path)?;
         let texture_image = image::load_from_memory(&texture_bytes)?;
         let texture_data = texture_image.into_rgba8();
         let width = texture_data.width();
         let height = texture_data.height();
 
-        let data = texture_data.into_raw();
+        let data = vec![texture_data.into_raw()];
 
         Ok((
             SerializedTexture {
@@ -34,7 +34,7 @@ impl SerializedTexture {
                     address_mode_w: AddressMode::Repeat,
                     mipmap: Some(MipmapConfig {
                         filter: MipmapFilter::Linear,
-                        anisotropy_clamp: 2,
+                        anisotropy_clamp: AnisotropyLevel::Level2.as_u16(),
                         lod_min_clamp: 0.0,
                         lod_max_clamp: (width.max(height) as f32).log2().floor(),
                     }),
@@ -47,7 +47,7 @@ impl SerializedTexture {
     }
 
     /// Write the `.texture` TOML and `.texture_bin` companion files.
-    pub fn save_to_file(&self, data: &Vec<u8>) -> Result<(), Error> {
+    pub fn save_to_file(&self, data: &Vec<Vec<u8>>) -> Result<(), Error> {
         let path = &self.source_path;
 
         // Write .texture_bin (rkyv)
