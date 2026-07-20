@@ -48,8 +48,6 @@ pub struct MipmapConfig {
 /// Complete sampler configuration for a texture.
 ///
 /// Stored alongside the texture format in `.texture` TOML files.
-/// Does not implement `Default` — defaults are set explicitly
-/// when creating new textures (see `SerializedTexture::convert_img_to_asset`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SamplerConfig {
     /// Magnification + minification filter.

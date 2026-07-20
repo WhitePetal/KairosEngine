@@ -2,3 +2,9 @@ source_path = "res/textures/kairos_texture.png"
 width = 2048
 height = 2048
 format = "Rgba8Unorm"
+
+[sampler]
+filter_mode = "Nearest"
+address_mode_u = "Repeat"
+address_mode_v = "Repeat"
+address_mode_w = "Repeat"

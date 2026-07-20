@@ -77,7 +77,7 @@ impl Loader {
         sender: mpsc::Sender<LoadedEvent>,
         denpendency_request_sender: mpsc::Sender<DependencyLoadRequestEvent>,
     ) -> Result<(), Error> {
-        // 1. Read .texture TOML → SerializedTexture
+        // 1. Read .texture TOML -> SerializedTexture
         let toml_bytes = tokio::fs::read(&path).await?;
         let serialized: SerializedTexture =
             tokio::task::spawn_blocking(move || toml::from_slice(&toml_bytes)).await??;

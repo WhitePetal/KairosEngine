@@ -74,7 +74,7 @@ impl Loader {
             height: serialized.height,
             format: serialized.format,
             data,
-            sampler: serialized.sampler,
+            sampler: serialized.sampler.clone(),
         };
 
         sender

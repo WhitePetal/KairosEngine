@@ -18,7 +18,7 @@ use wgpu::{
     TextureView, TextureViewDescriptor, TextureViewDimension, Trace, VertexAttribute,
     VertexBufferLayout, VertexFormat, VertexState, VertexStepMode,
     util::{BufferInitDescriptor, DeviceExt},
-    wgt::DeviceDescriptor,
+    wgt::{DeviceDescriptor, SamplerDescriptor},
 };
 use winit::{dpi::PhysicalSize, window::Window};
 
@@ -63,7 +63,7 @@ struct MeshBufferCache {
 
 struct PreparedDrawCall {
     pipeline: wgpu::RenderPipeline,
-    texture_bind_group: Option<wgpu::BindGroup>,
+    texture_bind_group: Option<BindGroup>,
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     indices_count: u32,
@@ -88,6 +88,10 @@ pub struct RenderPipeline {
     texture_cache: HashMap<usize, TextureCache>,
     mesh_buffer_cache: HashMap<usize, MeshBufferCache>,
     global_vp_bind_group_layout: BindGroupLayout,
+
+    // #1: purple fallback for errored materials.
+    purple_fallback: Option<(BindGroup, BindGroupLayout)>,
+    error_material_indices: std::collections::HashSet<usize>,
 }
 
 impl RenderPipeline {
@@ -168,6 +172,9 @@ impl RenderPipeline {
                 }],
             });
 
+        // #1: create purple fallback texture for errored materials.
+        let purple_fb = Self::create_purple_fallback(&device, &queue);
+
         Ok(Self {
             window: window,
             device,
@@ -185,6 +192,8 @@ impl RenderPipeline {
             texture_cache: HashMap::new(),
             mesh_buffer_cache: HashMap::new(),
             global_vp_bind_group_layout,
+            purple_fallback: Some(purple_fb),
+            error_material_indices: std::collections::HashSet::new(),
         })
     }
 
@@ -366,6 +375,8 @@ impl RenderPipeline {
                         &vp_bind_group,
                         &render_pass_node,
                         assets_server,
+                        &mut self.error_material_indices,
+                        &self.purple_fallback,
                     );
                     if let Some(command_buffers) = &mut command_buffers {
                         more_command_buffers.append(command_buffers);
@@ -442,6 +453,8 @@ impl RenderPipeline {
         vp_bind_group: &BindGroup,
         render_pass_node: &RenderPassNode,
         assets_server: &mut AssetsServer,
+        error_material_indices: &mut std::collections::HashSet<usize>,
+        purple_fallback: &Option<(BindGroup, BindGroupLayout)>,
     ) -> Option<Vec<CommandBuffer>> {
         let attachment_ids = &render_pass_node.attachments;
 
@@ -576,6 +589,9 @@ impl RenderPipeline {
                 continue;
             };
 
+            let material_index = draw.renderer.material.id().index() as usize;
+            let material_errored = error_material_indices.contains(&material_index);
+
             let Some(shader_asset) = &material.shader else {
                 continue;
             };
@@ -585,7 +601,9 @@ impl RenderPipeline {
 
             // --- Texture bind group ---
             let mut texture_key = 0usize;
-            let texture_bind_group = if let Some(texture) = &material.texture {
+            let texture_bind_group = if material_errored {
+                purple_fallback.as_ref().map(|(bg, _)| bg.clone())
+            } else if let Some(texture) = &material.texture {
                 let Some(texture_asset) = assets_server.get(&texture) else {
                     continue;
                 };
@@ -858,6 +876,94 @@ impl RenderPipeline {
             wgpu::TextureFormat::Rg11b10Ufloat => AttachmentFormat::RG11B10UFloat,
             _ => todo!("Not impl frame buffer format -> attachment format convert"),
         }
+    }
+
+    fn create_purple_fallback(
+        device: &Device,
+        queue: &Queue,
+    ) -> (BindGroup, BindGroupLayout) {
+        let size = Extent3d {
+            width: 1,
+            height: 1,
+            depth_or_array_layers: 1,
+        };
+        let tex = device.create_texture(&TextureDescriptor {
+            label: Some("Purple Fallback"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: TextureUsages::TEXTURE_BINDING | TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let purple: [u8; 4] = [128, 0, 128, 255];
+        queue.write_texture(
+            TexelCopyTextureInfo {
+                texture: &tex,
+                mip_level: 0,
+                origin: Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &purple,
+            TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(4),
+                rows_per_image: Some(1),
+            },
+            size,
+        );
+        let view = tex.create_view(&TextureViewDescriptor::default());
+        let sampler = device.create_sampler(&SamplerDescriptor {
+            label: Some("Purple Fallback Sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Nearest,
+            min_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+        let layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            label: Some("Purple Fallback Layout"),
+            entries: &[
+                BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: ShaderStages::FRAGMENT,
+                    ty: BindingType::Sampler(SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
+        });
+        let bind_group = device.create_bind_group(&BindGroupDescriptor {
+            label: Some("Purple Fallback Bind Group"),
+            layout: &layout,
+            entries: &[
+                BindGroupEntry {
+                    binding: 0,
+                    resource: BindingResource::TextureView(&view),
+                },
+                BindGroupEntry {
+                    binding: 1,
+                    resource: BindingResource::Sampler(&sampler),
+                },
+            ],
+        });
+        (bind_group, layout)
+    }
+
+    /// #1: Clear error state for a material, re-enabling its real texture.
+    pub fn clear_material_error(&mut self, material_index: usize) {
+        self.error_material_indices.remove(&material_index);
     }
 
     fn create_pipeline(
