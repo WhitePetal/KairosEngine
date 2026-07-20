@@ -1,5 +1,6 @@
 use crate::{
     asset_loader::assets::AssetsServer, audio::AudioEngine, ecs::world::World,
+    graphics::texture::format::TextureFormat,
     graphics::graphics_graph::GraphicsCommand, inputs::InputEngine, kairos_game::KairosGame,
     log::Log, physics::PhysicsEngine, timer::Time,
 };
@@ -141,5 +142,53 @@ impl KairosEngine {
     #[cfg(feature = "test-harness")]
     pub(crate) fn ui_context_mut(&mut self) -> &mut ui::Context {
         &mut self.ui_context
+    }
+
+    /// Open the inspector tab (for test harness). Combines ui_context and assets_server access.
+    #[cfg(feature = "test-harness")]
+    pub(crate) fn open_inspector(&mut self) {
+        self.ui_context.open_inspector_tab(&mut self.engine.assets_server);
+    }
+
+    /// Set the texture format via the inspector (for test harness).
+    #[cfg(feature = "test-harness")]
+    pub(crate) fn texture_inspector_set_format(&mut self, format: TextureFormat) -> Result<(), String> {
+        use crate::kairos_editor::ui::inspector::texture::TextureInspector;
+        use crate::kairos_editor::ui::inspector_window::InspectorWindow;
+
+        let inspector = self.ui_context.get_window_mut::<InspectorWindow>()
+            .and_then(|w| w.get_inspector_mut::<TextureInspector>())
+            .ok_or("TextureInspector is not active")?;
+        inspector.set_format(format, &mut self.engine.assets_server)
+    }
+
+    /// Apply inspector changes and save (for test harness).
+    #[cfg(feature = "test-harness")]
+    pub(crate) fn texture_inspector_apply(&mut self) -> Result<(), String> {
+        use crate::kairos_editor::ui::inspector::texture::TextureInspector;
+        use crate::kairos_editor::ui::inspector_window::InspectorWindow;
+
+        let inspector = self.ui_context.get_window_mut::<InspectorWindow>()
+            .and_then(|w| w.get_inspector_mut::<TextureInspector>())
+            .ok_or("TextureInspector is not active")?;
+        inspector.apply();
+        Ok(())
+    }
+
+    /// Select an asset and populate the inspector (for test harness).
+    #[cfg(feature = "test-harness")]
+    pub(crate) fn select_asset(&mut self, path: &std::path::Path) -> Result<(), String> {
+        use crate::kairos_editor::ui::project_window::ProjectWindow;
+        use crate::kairos_editor::ui::inspector_window::InspectorWindow;
+
+        let project = self.ui_context.get_window_mut::<ProjectWindow>()
+            .ok_or("ProjectWindow is not open")?;
+        project.select_node_by_path(path)?;
+        let info = project.get_selected_node_info(&mut self.engine.assets_server);
+        if let Some(inspector) = self.ui_context.get_window_mut::<InspectorWindow>() {
+            let ctx = egui::Context::default();
+            inspector.set_selected(&ctx, info);
+        }
+        Ok(())
     }
 }

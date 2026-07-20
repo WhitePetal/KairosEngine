@@ -1,7 +1,5 @@
+use crate::graphics::texture::format::TextureFormat;
 use crate::kairos_editor::KairosEngine;
-use crate::kairos_editor::ui::inspector::texture::TextureInspector;
-use crate::kairos_editor::ui::inspector_window::InspectorWindow;
-use crate::kairos_editor::ui::project_window::ProjectWindow;
 use crate::kairos_test_harness::{
     assertions::{self, CrashTracker},
     input_injector,
@@ -43,35 +41,45 @@ pub fn dispatch_call(step: &TestStep, engine: &mut KairosEngine) -> StepResult {
                 Some(f) => f,
                 None => return StepResult::err("set_format requires 'format' argument"),
             };
-            let format_toml = format!("\"{}\"", format_str);
-            let format: crate::graphics::texture::format::TextureFormat = match toml::from_str(&format_toml) {
-                Ok(f) => f,
-                Err(_) => return StepResult::err(format!("unknown texture format: '{}'", format_str)),
+            let format = match format_str {
+                "R8Unorm" => TextureFormat::R8Unorm,
+                "R8Snorm" => TextureFormat::R8Snorm,
+                "R8Uint" => TextureFormat::R8Uint,
+                "R8Sint" => TextureFormat::R8Sint,
+                "Rgba8Unorm" => TextureFormat::Rgba8Unorm,
+                "Rgba8UnormSrgb" => TextureFormat::Rgba8UnormSrgb,
+                "BC7" => TextureFormat::Bc7RgbaUnorm,
+                "BC7Srgb" => TextureFormat::Bc7RgbaUnormSrgb,
+                other => return StepResult::err(format!("unknown texture format: '{other}'")),
             };
-            match get_texture_inspector(engine) {
-                Some(inspector) => match inspector.set_format(format) {
-                    Ok(()) => StepResult::ok(),
-                    Err(msg) => StepResult::err(msg),
-                },
-                None => StepResult::err("TextureInspector is not active"),
+            match engine.texture_inspector_set_format(format) {
+                Ok(()) => StepResult::ok(),
+                Err(e) => StepResult::err(e),
             }
         }
         "texture_inspector.apply" => {
-            match get_texture_inspector(engine) {
-                Some(inspector) => {
-                    inspector.apply();
-                    StepResult::ok()
-                }
-                None => StepResult::err("TextureInspector is not active"),
+            match engine.texture_inspector_apply() {
+                Ok(()) => StepResult::ok(),
+                Err(e) => StepResult::err(e),
             }
         }
         "ui.open_inspector" => {
-            let ui_ctx = engine.ui_context_mut();
-            if ui_ctx.get_window_mut::<InspectorWindow>().is_some() {
-                StepResult::ok()
-            } else {
-                StepResult::err("InspectorWindow is not open. Open it via View > Inspector first.")
+            engine.open_inspector();
+            StepResult::ok()
+        }
+        "system.wait_frames" => {
+            let args = match step.args.as_ref() {
+                Some(a) => a,
+                None => return StepResult::err("wait_frames requires args with 'count' field"),
+            };
+            let count: usize = match args.get("count").and_then(|v| v.as_integer()) {
+                Some(n) if n > 0 => n as usize,
+                _ => return StepResult::err("wait_frames requires 'count' > 0"),
+            };
+            for _ in 0..count {
+                engine.engine_mut().assets_server.handle();
             }
+            StepResult::ok()
         }
         "project.select_asset" => {
             let args = match step.args.as_ref() {
@@ -83,13 +91,9 @@ pub fn dispatch_call(step: &TestStep, engine: &mut KairosEngine) -> StepResult {
                 None => return StepResult::err("select_asset requires 'path' argument"),
             };
             let path = std::path::Path::new(path_str);
-            let ui_ctx = engine.ui_context_mut();
-            match ui_ctx.get_window_mut::<ProjectWindow>() {
-                Some(project) => match project.select_node_by_path(path) {
-                    Ok(()) => StepResult::ok(),
-                    Err(e) => StepResult::err(e),
-                },
-                None => StepResult::err("ProjectWindow is not open"),
+            match engine.select_asset(path) {
+                Ok(()) => StepResult::ok(),
+                Err(e) => StepResult::err(e),
             }
         }
         "" => StepResult::err("call step missing 'target' field"),
@@ -146,13 +150,6 @@ pub fn dispatch_assert(
         "" => StepResult::err("assert step missing 'target' field"),
         other => StepResult::err(format!("unknown assertion: '{other}'")),
     }
-}
-
-fn get_texture_inspector(engine: &mut KairosEngine) -> Option<&mut TextureInspector> {
-    engine
-        .ui_context_mut()
-        .get_window_mut::<InspectorWindow>()
-        .and_then(|w| w.get_inspector_mut::<TextureInspector>())
 }
 
 /// Dispatch a test step's `input` action to inject keyboard/mouse events.

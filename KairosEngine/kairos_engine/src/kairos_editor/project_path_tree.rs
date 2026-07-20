@@ -190,9 +190,14 @@ impl ProjectPathGraph {
 
     /// 根据相对路径查找节点索引（用于 test harness 定位资产）。
     pub fn find_by_path(&self, path: &Path) -> Option<NodeIndex> {
+        // Normalize the search needle to forward slashes for comparison
+        let needle = path.to_string_lossy().replace('\\', "/");
+
         for idx in self.graph.node_indices() {
             if let Some(node) = self.graph.node_weight(idx) {
-                if node.path == path {
+                let stored = node.path.to_string_lossy().replace('\\', "/");
+                // Match if stored path ends with the needle (handles ./ prefix variation)
+                if stored.ends_with(&needle) || stored == needle {
                     return Some(idx);
                 }
             }

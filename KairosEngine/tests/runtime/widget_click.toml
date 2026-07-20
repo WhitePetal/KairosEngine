@@ -11,7 +11,7 @@ target = "ui.open_inspector"
 [[step]]
 action = "call"
 target = "project.select_asset"
-args = { path = "res/textures/test.texture" }
+args = { path = "res/textures/kairos_texture.png" }
 
 # --- Query the egui viewport to know the window dimensions ---
 [[step]]

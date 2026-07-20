@@ -95,7 +95,16 @@ pub struct TextureInspector {
 impl TextureInspector {
     /// Set the texture format (for test harness).
     #[cfg(feature = "test-harness")]
-    pub(crate) fn set_format(&mut self, format: crate::graphics::texture::format::TextureFormat) -> Result<(), String> {
+    pub(crate) fn set_format(&mut self, format: crate::graphics::texture::format::TextureFormat, assets_server: &mut crate::asset_loader::assets::AssetsServer) -> Result<(), String> {
+        // Poll until the texture asset is loaded (async loading)
+        for _ in 0..200 {
+            assets_server.handle();
+            let guard = self.model.texture_ext.lock();
+            if guard.is_some() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(16));
+        }
         let mut guard = self.model.texture_ext.lock();
         match guard.as_mut() {
             Some(ext) => {
