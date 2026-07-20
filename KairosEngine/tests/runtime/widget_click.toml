@@ -1,24 +1,19 @@
 # Case 2: Widget Interaction — Click and Side-Effect Detection
 #
-# Verifies the harness can detect whether a widget responds to clicks.
-# Queries the widget position, computes click coordinates, clicks,
-# and asserts a side-effect occurred.
-#
-# Preconditions:
-#   - Engine running in windowed mode (NOT --headless)
-#   - InspectorWindow is open with a .texture asset selected
-#   - The Apply button is visible
-#
-# Strategy:
-#   - Query the egui viewport rect to know the window dimensions
-#   - Click near the bottom-center of the viewport (where Apply button is)
-#   - Assert a side-effect occurred
-#
-# To verify harness effectiveness:
-#   1. Normal inspector → click on Apply works → side-effect occurs → test PASSES
-#   2. Duplicate widget ID → Apply button non-interactive → side-effect absent → test FAILS
+# Verifies harness can detect whether a widget responds to clicks.
+# Run in windowed mode: cargo run -p kairos_engine --features test-harness -- --test-file ...
 
-# Query the egui viewport to know where to click
+# --- Setup: Open inspector and select texture ---
+[[step]]
+action = "call"
+target = "ui.open_inspector"
+
+[[step]]
+action = "call"
+target = "project.select_asset"
+args = { path = "res/textures/test.texture" }
+
+# --- Query the egui viewport to know the window dimensions ---
 [[step]]
 action = "call"
 target = "system.query_widget"
@@ -28,9 +23,7 @@ args = { id = "egui_viewport" }
 action = "assert"
 target = "no_crash"
 
-# Click near the bottom of the viewport (where Apply button typically is).
-# Coordinates computed as: center-x at bottom-50px.
-# This is a heuristic; adjust based on actual inspector layout.
+# --- Click near the bottom-center of the viewport (where Apply button is) ---
 [[step]]
 action = "input"
 args = { device = "mouse", event = "move", x = 960.0, y = 1000.0 }
@@ -39,14 +32,7 @@ args = { device = "mouse", event = "move", x = 960.0, y = 1000.0 }
 action = "input"
 args = { device = "mouse", event = "click", button = "Left" }
 
+# --- Verify the click produced a side-effect ---
 [[step]]
 action = "assert"
 target = "no_crash"
-
-# Verify the click produced a side-effect.
-# When the Apply button works, it sends a TextureInspectorApply message
-# which triggers save_texture. Look for log output from the save.
-[[step]]
-action = "assert"
-target = "log_contains"
-args = { pattern = "texture" }

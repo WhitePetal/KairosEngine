@@ -1,6 +1,7 @@
 use crate::kairos_editor::KairosEngine;
 use crate::kairos_editor::ui::inspector::texture::TextureInspector;
 use crate::kairos_editor::ui::inspector_window::InspectorWindow;
+use crate::kairos_editor::ui::project_window::ProjectWindow;
 use crate::kairos_test_harness::{
     assertions::{self, CrashTracker},
     input_injector,
@@ -62,6 +63,33 @@ pub fn dispatch_call(step: &TestStep, engine: &mut KairosEngine) -> StepResult {
                     StepResult::ok()
                 }
                 None => StepResult::err("TextureInspector is not active"),
+            }
+        }
+        "ui.open_inspector" => {
+            let ui_ctx = engine.ui_context_mut();
+            if ui_ctx.get_window_mut::<InspectorWindow>().is_some() {
+                StepResult::ok()
+            } else {
+                StepResult::err("InspectorWindow is not open. Open it via View > Inspector first.")
+            }
+        }
+        "project.select_asset" => {
+            let args = match step.args.as_ref() {
+                Some(a) => a,
+                None => return StepResult::err("select_asset requires args with 'path' field"),
+            };
+            let path_str = match args.get("path").and_then(|v| v.as_str()) {
+                Some(p) => p,
+                None => return StepResult::err("select_asset requires 'path' argument"),
+            };
+            let path = std::path::Path::new(path_str);
+            let ui_ctx = engine.ui_context_mut();
+            match ui_ctx.get_window_mut::<ProjectWindow>() {
+                Some(project) => match project.select_node_by_path(path) {
+                    Ok(()) => StepResult::ok(),
+                    Err(e) => StepResult::err(e),
+                },
+                None => StepResult::err("ProjectWindow is not open"),
             }
         }
         "" => StepResult::err("call step missing 'target' field"),

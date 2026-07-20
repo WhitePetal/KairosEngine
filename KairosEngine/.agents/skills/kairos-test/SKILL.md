@@ -82,12 +82,46 @@ the dispatch table.
 ### Running TOML tests
 
 ```bash
-# Headless mode (CI-safe, no window)
-cargo run --features test-harness -- --headless --test-file tests/runtime/my_feature.toml
+# Headless mode (CI-safe, no window) — for logic-only tests
+cargo run -p kairos_engine --features test-harness -- --headless --test-file tests/runtime/my_feature.toml
+
+# Windowed mode (full UI) — for tests that need egui, inspector, or widget interaction
+cargo run -p kairos_engine --features test-harness -- --test-file tests/runtime/my_feature.toml
 
 # With supervisor (captures crash logs)
 cargo run -p kairos_supervisor -- \
   target/debug/kairos_engine.exe --features test-harness -- --headless --test-file tests/runtime/my_feature.toml
+```
+
+**Which mode to use:**
+
+| Mode | When |
+|---|---|
+| `--headless` | Tests that only need call/assert commands, no UI interaction. CI-safe. |
+| Windowed (no flag) | Tests that need inspector commands, widget rect queries, or input injection against egui widgets. Requires a display. |
+
+When running in windowed mode, the TOML test MUST include setup steps:
+
+```toml
+# Open necessary panels
+[[step]]
+action = "call"
+target = "ui.open_inspector"
+
+# Select the asset to work on
+[[step]]
+action = "call"
+target = "project.select_asset"
+args = { path = "res/textures/my_asset.texture" }
+```
+
+### Triggering tests via WebSocket
+
+The WS server runs on port 9999 in both modes. The agent can connect and
+send `run_test` commands interactively without restarting the engine:
+
+```json
+{"cmd": "run_test", "file": "tests/runtime/my_feature.toml"}
 ```
 
 ### Extending the harness

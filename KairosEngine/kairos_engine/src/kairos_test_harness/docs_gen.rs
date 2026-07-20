@@ -191,6 +191,18 @@ fn all_commands() -> Vec<CommandDoc> {
             args: None,
             mode: "windowed",
         },
+        CommandDoc {
+            name: "ui.open_inspector",
+            description: "检查 Inspector 窗口是否已打开",
+            args: None,
+            mode: "windowed",
+        },
+        CommandDoc {
+            name: "project.select_asset",
+            description: "在项目树中按路径选中资产",
+            args: Some("path (string)"),
+            mode: "windowed",
+        },
         // Future commands will be added here as they are registered
         // in the dispatch table. Also see the `input` action below which
         // is a dedicated action type (not a call target).

@@ -188,6 +188,18 @@ impl ProjectPathGraph {
         self.graph.node_weight(node)
     }
 
+    /// 根据相对路径查找节点索引（用于 test harness 定位资产）。
+    pub fn find_by_path(&self, path: &Path) -> Option<NodeIndex> {
+        for idx in self.graph.node_indices() {
+            if let Some(node) = self.graph.node_weight(idx) {
+                if node.path == path {
+                    return Some(idx);
+                }
+            }
+        }
+        None
+    }
+
     /// 获取节点的所有出边（即子节点列表）。
     pub fn get_edges(&self, node: NodeIndex) -> Edges<'_, (), Directed> {
         self.graph.edges(node)
