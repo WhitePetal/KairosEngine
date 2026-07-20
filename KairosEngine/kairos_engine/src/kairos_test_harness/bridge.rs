@@ -73,6 +73,7 @@ fn execute_step(
     match step.action.as_str() {
         "call" => dispatch::dispatch_call(step, engine),
         "assert" => dispatch::dispatch_assert(step, engine, crash_tracker),
+        "input" => dispatch::dispatch_input(step, engine),
         other => StepResult::err(format!("unknown action: '{other}'")),
     }
 }

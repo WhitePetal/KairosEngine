@@ -116,4 +116,39 @@ impl InputEngine {
             },
         }
     }
+
+    /// Inject an input event directly (for test harness use).
+    /// Auto-registers the input if not already registered.
+    pub fn inject_input(&mut self, input: Input, pressed: bool) {
+        let input_id = input.get_id();
+        // Ensure the states vec has capacity for this input ID
+        while self.states.len() <= input_id {
+            self.states.push(InputState::None);
+        }
+
+        let state = if pressed {
+            winit::event::ElementState::Pressed
+        } else {
+            winit::event::ElementState::Released
+        };
+        self.update_input_state(input, state);
+    }
+
+    /// Inject a mouse position (for test harness use).
+    pub fn inject_mouse_position(&mut self, pos: float2) {
+        let input_id = Input::Mouse(pos).get_id();
+        while self.states.len() <= input_id {
+            self.states.push(InputState::None);
+        }
+        self.states[input_id] = InputState::Holding(0.0);
+    }
+
+    /// Query the current state of an input (for test harness assertions).
+    pub fn get_input_state(&self, input: Input) -> InputState {
+        let input_id = input.get_id();
+        match self.input_indexs.get(&input_id) {
+            Some(&idx) => self.states[idx],
+            None => InputState::None,
+        }
+    }
 }

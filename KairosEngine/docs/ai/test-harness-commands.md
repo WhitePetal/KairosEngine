@@ -122,3 +122,58 @@ target = "wgpu_valid"
 args = { resource_type = "Texture" }
 ```
 
+## Input 命令 (`action = "input"`)
+
+用于向引擎注入键盘/鼠标事件。在 TOML 中：
+
+```toml
+[[step]]
+action = "input"
+args = { device = "...", event = "...", ... }
+```
+
+### 键盘输入
+
+| 参数 | 值 | 说明 |
+|------|-----|------|
+| `device` | `"keyboard"` | 设备类型 |
+| `event` | `"press"` / `"release"` | 按下或释放 |
+| `key` | `"W"`, `"A"`, `"S"`, `"D"` | 按键名 |
+
+```toml
+[[step]]
+action = "input"
+args = { device = "keyboard", event = "press", key = "W" }
+```
+
+### 鼠标输入
+
+**点击：**
+
+| 参数 | 值 | 说明 |
+|------|-----|------|
+| `device` | `"mouse"` | 设备类型 |
+| `event` | `"click"` | 点击事件 |
+| `button` | `"Left"` / `"Right"` | 鼠标按键 |
+
+```toml
+[[step]]
+action = "input"
+args = { device = "mouse", event = "click", button = "Left" }
+```
+
+**移动：**
+
+| 参数 | 值 | 说明 |
+|------|-----|------|
+| `device` | `"mouse"` | 设备类型 |
+| `event` | `"move"` | 移动事件 |
+| `x` | 数值 | 屏幕 X 坐标 |
+| `y` | 数值 | 屏幕 Y 坐标 |
+
+```toml
+[[step]]
+action = "input"
+args = { device = "mouse", event = "move", x = 320.0, y = 240.0 }
+```
+

@@ -115,6 +115,40 @@ pub fn generate() -> Result<(), Box<dyn std::error::Error>> {
         md.push_str("```\n\n");
     }
 
+    // Input commands
+    md.push_str("## Input 命令 (`action = \"input\"`)\n\n");
+    md.push_str("用于向引擎注入键盘/鼠标事件。在 TOML 中：\n\n");
+    md.push_str("```toml\n[[step]]\naction = \"input\"\nargs = { device = \"...\", event = \"...\", ... }\n```\n\n");
+
+    md.push_str("### 键盘输入\n\n");
+    md.push_str("| 参数 | 值 | 说明 |\n");
+    md.push_str("|------|-----|------|\n");
+    md.push_str("| `device` | `\"keyboard\"` | 设备类型 |\n");
+    md.push_str("| `event` | `\"press\"` / `\"release\"` | 按下或释放 |\n");
+    md.push_str("| `key` | `\"W\"`, `\"A\"`, `\"S\"`, `\"D\"` | 按键名 |\n\n");
+
+    md.push_str("```toml\n[[step]]\naction = \"input\"\nargs = { device = \"keyboard\", event = \"press\", key = \"W\" }\n```\n\n");
+
+    md.push_str("### 鼠标输入\n\n");
+    md.push_str("**点击：**\n\n");
+    md.push_str("| 参数 | 值 | 说明 |\n");
+    md.push_str("|------|-----|------|\n");
+    md.push_str("| `device` | `\"mouse\"` | 设备类型 |\n");
+    md.push_str("| `event` | `\"click\"` | 点击事件 |\n");
+    md.push_str("| `button` | `\"Left\"` / `\"Right\"` | 鼠标按键 |\n\n");
+
+    md.push_str("```toml\n[[step]]\naction = \"input\"\nargs = { device = \"mouse\", event = \"click\", button = \"Left\" }\n```\n\n");
+
+    md.push_str("**移动：**\n\n");
+    md.push_str("| 参数 | 值 | 说明 |\n");
+    md.push_str("|------|-----|------|\n");
+    md.push_str("| `device` | `\"mouse\"` | 设备类型 |\n");
+    md.push_str("| `event` | `\"move\"` | 移动事件 |\n");
+    md.push_str("| `x` | 数值 | 屏幕 X 坐标 |\n");
+    md.push_str("| `y` | 数值 | 屏幕 Y 坐标 |\n\n");
+
+    md.push_str("```toml\n[[step]]\naction = \"input\"\nargs = { device = \"mouse\", event = \"move\", x = 320.0, y = 240.0 }\n```\n\n");
+
     // Write to file
     let out_dir = std::path::Path::new("docs/ai");
     std::fs::create_dir_all(out_dir)?;
@@ -138,6 +172,7 @@ fn all_commands() -> Vec<CommandDoc> {
             mode: "both",
         },
         // Future commands will be added here as they are registered
-        // in the dispatch table.
+        // in the dispatch table. Also see the `input` action below which
+        // is a dedicated action type (not a call target).
     ]
 }

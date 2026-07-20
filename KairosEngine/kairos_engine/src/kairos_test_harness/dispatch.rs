@@ -1,6 +1,7 @@
 use crate::kairos_editor::KairosEngine;
 use crate::kairos_test_harness::{
     assertions::{self, CrashTracker},
+    input_injector,
     types::{StepResult, TestStep},
 };
 
@@ -57,4 +58,14 @@ pub fn dispatch_assert(
         "" => StepResult::err("assert step missing 'target' field"),
         other => StepResult::err(format!("unknown assertion: '{other}'")),
     }
+}
+
+/// Dispatch a test step's `input` action to inject keyboard/mouse events.
+pub fn dispatch_input(step: &TestStep, engine: &mut KairosEngine) -> StepResult {
+    let args = match step.args.as_ref() {
+        Some(a) => a,
+        None => return StepResult::err("input step requires args"),
+    };
+    let input_engine = &mut engine.engine_mut().input_engine;
+    input_injector::inject(args, input_engine)
 }
