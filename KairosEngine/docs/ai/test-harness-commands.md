@@ -17,6 +17,7 @@ args = { ... }
 | 命令 | 描述 | 参数 | 模式 |
 |------|------|------|------|
 | `system.ping` | 连通性测试命令，始终返回成功 | 无 | both |
+| `system.query_widget` | 查询指定 ID 的 widget 屏幕坐标（需要 windowed 模式） | id (string) | windowed |
 
 ### 可用 Call 命令
 
@@ -30,6 +31,20 @@ args = { ... }
 [[step]]
 action = "call"
 target = "system.ping"
+```
+
+#### `system.query_widget`
+
+查询指定 ID 的 widget 屏幕坐标（需要 windowed 模式）。
+
+- **模式**: windowed
+- **参数**: id (string)
+
+```toml
+[[step]]
+action = "call"
+target = "system.query_widget"
+args = { id (string) }
 ```
 
 ## Assert 命令 (`action = "assert"`)

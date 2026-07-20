@@ -49,6 +49,8 @@ pub struct KairosEngine {
     game: KairosGame,
     ui_context: ui::Context,
     log: Log,
+    #[cfg(feature = "test-harness")]
+    widget_rects: std::collections::HashMap<String, egui::Rect>,
 }
 
 impl KairosEngine {
@@ -62,6 +64,8 @@ impl KairosEngine {
             game,
             ui_context,
             log,
+            #[cfg(feature = "test-harness")]
+            widget_rects: std::collections::HashMap::new(),
         })
     }
 
@@ -112,5 +116,24 @@ impl KairosEngine {
     #[cfg(feature = "test-harness")]
     pub(crate) fn log_mut(&mut self) -> &mut Log {
         &mut self.log
+    }
+
+    /// Record a widget's screen-space rectangle for the current frame.
+    /// Called from the egui draw callback.
+    #[cfg(feature = "test-harness")]
+    pub(crate) fn record_widget_rect(&mut self, id: impl Into<String>, rect: egui::Rect) {
+        self.widget_rects.insert(id.into(), rect);
+    }
+
+    /// Clear widget rects at the start of a new frame.
+    #[cfg(feature = "test-harness")]
+    pub(crate) fn clear_widget_rects(&mut self) {
+        self.widget_rects.clear();
+    }
+
+    /// Query a widget's screen-space rectangle by ID.
+    #[cfg(feature = "test-harness")]
+    pub(crate) fn widget_rect(&self, id: &str) -> Option<egui::Rect> {
+        self.widget_rects.get(id).copied()
     }
 }

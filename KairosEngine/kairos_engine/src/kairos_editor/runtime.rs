@@ -259,6 +259,9 @@ impl KairosEditorRuntime {
 
         self.kairos_engine.update();
 
+        #[cfg(feature = "test-harness")]
+        self.kairos_engine.clear_widget_rects();
+
         let mut should_close = false;
         let mut repaint_delay = None;
         let mut frame_presented = false;
@@ -286,6 +289,18 @@ impl KairosEditorRuntime {
 
                         self.kairos_engine.draw_ui(ui);
                     });
+
+                    // Record the egui viewport for widget querying
+                    #[cfg(feature = "test-harness")]
+                    {
+                        let size = window.inner_size();
+                        let rect = egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            egui::vec2(size.width as f32, size.height as f32),
+                        );
+                        self.kairos_engine
+                            .record_widget_rect("egui_viewport", rect);
+                    }
 
                     egui_state.handle_platform_output(&window, full_output.platform_output);
 

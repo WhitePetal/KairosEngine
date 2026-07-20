@@ -171,6 +171,12 @@ fn all_commands() -> Vec<CommandDoc> {
             args: None,
             mode: "both",
         },
+        CommandDoc {
+            name: "system.query_widget",
+            description: "查询指定 ID 的 widget 屏幕坐标（需要 windowed 模式）",
+            args: Some("id (string)"),
+            mode: "windowed",
+        },
         // Future commands will be added here as they are registered
         // in the dispatch table. Also see the `input` action below which
         // is a dedicated action type (not a call target).

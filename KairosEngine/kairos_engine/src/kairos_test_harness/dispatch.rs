@@ -6,11 +6,31 @@ use crate::kairos_test_harness::{
 };
 
 /// Dispatch a test step's `call` action to the appropriate engine function.
-pub fn dispatch_call(step: &TestStep, _engine: &mut KairosEngine) -> StepResult {
+pub fn dispatch_call(step: &TestStep, engine: &mut KairosEngine) -> StepResult {
     let target = step.target.as_deref().unwrap_or("");
 
     match target {
         "system.ping" => StepResult::ok(),
+        "system.query_widget" => {
+            let args = match step.args.as_ref() {
+                Some(a) => a,
+                None => return StepResult::err("query_widget requires args with 'id' field"),
+            };
+            let id = match args.get("id").and_then(|v| v.as_str()) {
+                Some(id) => id,
+                None => return StepResult::err("query_widget requires 'id' argument"),
+            };
+            match engine.widget_rect(id) {
+                Some(rect) => {
+                    let json = format!(
+                        r#"{{"x_min":{:.1},"y_min":{:.1},"x_max":{:.1},"y_max":{:.1}}}"#,
+                        rect.min.x, rect.min.y, rect.max.x, rect.max.y
+                    );
+                    StepResult { ok: true, message: json }
+                }
+                None => StepResult::err(format!("widget not found: '{id}'")),
+            }
+        }
         "" => StepResult::err("call step missing 'target' field"),
         other => StepResult::err(format!("unknown call target: '{other}'")),
     }
