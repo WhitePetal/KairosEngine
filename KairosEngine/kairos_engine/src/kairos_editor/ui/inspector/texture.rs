@@ -481,13 +481,24 @@ impl Inspector for TextureInspector {
                                         ui.add_enabled_ui(
                                             format.is_available(&self.model.compression_config),
                                             |ui| {
-                                                if ui
+                                                let resp = ui
                                                     .selectable_value(
                                                         &mut ext.serialized.format,
                                                         format,
                                                         format!("{format:?}"),
-                                                        )
-                                                        .changed()
+                                                        );
+                                                // Record each format option rect for test harness
+                                                #[cfg(feature = "test-harness")]
+                                                ui.ctx().data_mut(|d| {
+                                                    let rects = d.get_temp_mut_or_default::<
+                                                        std::collections::HashMap<String, egui::Rect>,
+                                                    >(egui::Id::new("__kairos_widget_rects"));
+                                                    rects.insert(
+                                                        format!("format_option_{format:?}"),
+                                                        resp.rect,
+                                                    );
+                                                });
+                                                if resp.changed()
                                                     {
                                                         // #2: auto-adjust sampler for non-filterable formats.
                                                         if !format.is_filterable() {
@@ -503,6 +514,20 @@ impl Inspector for TextureInspector {
                                         );
                                     }
                                 });
+
+                            // Record rect + egui Id for test harness
+                            #[cfg(feature = "test-harness")]
+                            ui.ctx().data_mut(|d| {
+                                let rects = d.get_temp_mut_or_default::<
+                                    std::collections::HashMap<String, egui::Rect>,
+                                >(egui::Id::new("__kairos_widget_rects"));
+                                rects.insert("format_dropdown".into(), combo_resp.response.rect);
+                                let ids = d.get_temp_mut_or_default::<
+                                    std::collections::HashMap<String, egui::Id>,
+                                >(egui::Id::new("__kairos_widget_egui_ids"));
+                                ids.insert("format_dropdown".into(), combo_resp.response.id);
+                            });
+
                             }); // push_id("format_dropdown")
                         });
                     });
@@ -671,7 +696,22 @@ impl Inspector for TextureInspector {
                 self.model.style.apply_button_height,
             ));
 
-            if ui.add_enabled(changed, apply_btn).clicked() {
+            let resp = ui.add_enabled(changed, apply_btn);
+
+            // Record rect + egui Id for test harness
+            #[cfg(feature = "test-harness")]
+            ui.ctx().data_mut(|d| {
+                let rects = d.get_temp_mut_or_default::<
+                    std::collections::HashMap<String, egui::Rect>,
+                >(egui::Id::new("__kairos_widget_rects"));
+                rects.insert("apply_button".into(), resp.rect);
+                let ids = d.get_temp_mut_or_default::<
+                    std::collections::HashMap<String, egui::Id>,
+                >(egui::Id::new("__kairos_widget_egui_ids"));
+                ids.insert("apply_button".into(), resp.id);
+            });
+
+            if resp.clicked() {
                 messager.send(Message::TextureInspectorApply(
                     self.model.texture_path.clone(),
                     self.model.handle.clone(),

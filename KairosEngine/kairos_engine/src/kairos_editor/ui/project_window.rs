@@ -132,14 +132,8 @@ impl ProjectWindow {
 
     /// 根据文件路径查找并选中节点（for test harness）。
     #[cfg(feature = "test-harness")]
-    pub(crate) fn select_node_by_path(&mut self, path: &std::path::Path) -> Result<(), String> {
-        match self.model.project_path_graph.find_by_path(path) {
-            Some(idx) => {
-                self.model.selected_node = Some(idx);
-                Ok(())
-            }
-            None => Err(format!("asset not found in project tree: {}", path.display())),
-        }
+    pub(crate) fn find_node_by_path(&self, path: &std::path::Path) -> Option<NodeIndex> {
+        self.model.project_path_graph.find_by_path(path)
     }
 
     /// 获取当前选中节点的身份信息（供 InspectorWindow 使用）。

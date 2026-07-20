@@ -712,29 +712,6 @@ impl Context {
         }
     }
 
-    /// Open the inspector tab without needing an egui::Ui (for test harness dispatch).
-    #[cfg(feature = "test-harness")]
-    pub(crate) fn open_inspector_tab(&mut self, assets_server: &mut AssetsServer) {
-        use crate::kairos_editor::ui::inspector_window::InspectorWindow;
-        let type_id = TypeId::of::<InspectorWindow>();
-        match self.ids.get(&type_id) {
-            Some(id) => {
-                if !self.actives[*id] {
-                    self.tab_tree[self.layout.right.surface][self.layout.right.node].append_drawer(*id);
-                    self.actives[*id] = true;
-                } else if let Some(tab_location) = self.tab_tree.find_drawer(id) {
-                    self.tab_tree.set_active_drawer(tab_location);
-                }
-            }
-            None => {
-                let drawer = InspectorWindow::create(assets_server)
-                    .unwrap_or_else(|_| panic!("Failed to create InspectorWindow"));
-                let id = self.push_drawer::<InspectorWindow>(Box::new(drawer));
-                self.tab_tree[self.layout.right.surface][self.layout.right.node].append_drawer(id);
-            }
-        }
-    }
-
     fn close_drawer<T>(&mut self)
     where
         T: 'static + Drawer,

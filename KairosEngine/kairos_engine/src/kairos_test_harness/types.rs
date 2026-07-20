@@ -16,6 +16,10 @@ pub struct StepResult {
     pub ok: bool,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub message: String,
+    /// When > 0, the bridge should pause draining for this many frames
+    /// (engine continues to run normally). Used by system.wait_frames.
+    #[serde(skip)]
+    pub wait_frames: usize,
 }
 
 impl StepResult {
@@ -23,6 +27,7 @@ impl StepResult {
         Self {
             ok: true,
             message: String::new(),
+            wait_frames: 0,
         }
     }
 
@@ -30,6 +35,16 @@ impl StepResult {
         Self {
             ok: false,
             message: msg.into(),
+            wait_frames: 0,
+        }
+    }
+
+    /// Create a result that also pauses the bridge for N frames.
+    pub fn with_wait_frames(count: usize) -> Self {
+        Self {
+            ok: true,
+            message: String::new(),
+            wait_frames: count,
         }
     }
 }

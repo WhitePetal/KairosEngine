@@ -22,6 +22,9 @@ pub struct Bridge {
     tx: mpsc::Sender<EngineCommand>,
     rx: mpsc::Receiver<EngineCommand>,
     crash_tracker: CrashTracker,
+    /// Remaining frames to wait before draining new commands.
+    /// Set by system.wait_frames; the engine's frame loop counts down.
+    pending_wait_frames: usize,
 }
 
 impl Bridge {
@@ -31,6 +34,7 @@ impl Bridge {
             tx,
             rx,
             crash_tracker: CrashTracker::new(),
+            pending_wait_frames: 0,
         }
     }
 
@@ -38,11 +42,21 @@ impl Bridge {
         self.tx.clone()
     }
 
-    /// Drain all pending commands from the queue.
-    /// Called every frame by the main thread, with access to engine state.
+    /// Drain pending commands from the queue.
+    /// Called at the END of each frame so widget rects are already recorded.
+    /// If system.wait_frames set a delay, we skip draining until it counts down.
     pub fn drain(&mut self, engine: &mut KairosEngine) {
+        if self.pending_wait_frames > 0 {
+            self.pending_wait_frames -= 1;
+            return;
+        }
         while let Ok(cmd) = self.rx.try_recv() {
             self.handle(cmd, engine);
+            // If a step requested a frame wait, stop draining so the engine
+            // can run those frames before the next command arrives.
+            if self.pending_wait_frames > 0 {
+                break;
+            }
         }
     }
 
@@ -54,6 +68,10 @@ impl Bridge {
             }
             EngineCommand::ExecuteStep { step, response } => {
                 let result = execute_step(&step, engine, &mut self.crash_tracker);
+                // Apply any frame-wait requested by the step.
+                if result.wait_frames > 0 {
+                    self.pending_wait_frames = result.wait_frames;
+                }
                 // Track errors for no_crash assertion
                 if !result.ok {
                     self.crash_tracker.mark_error();

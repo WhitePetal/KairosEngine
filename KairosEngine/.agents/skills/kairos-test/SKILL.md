@@ -5,6 +5,12 @@ description: Write tests after implementing a feature. Use Rust unit/integration
 
 # Kairos Test
 
+> ⚠️ **STATUS: Test harness needs refactoring.**
+> The TOML runtime test harness has known limitations with egui popup/Area widget interaction
+> (ComboBox dropdowns, floating menus, etc.). See [#27](https://github.com/WhitePetal/KairosEngine/issues/27).
+> **Do not write new TOML tests that depend on ComboBox dropdown interaction until the harness is refactored.**
+> Normal widgets (Buttons, Labels, rect queries) and keyboard event injection are functional.
+
 After implementing a feature, write tests to verify correctness. Choose the right test
 type based on what you're validating, and extend the test harness when it's missing
 capabilities you need.

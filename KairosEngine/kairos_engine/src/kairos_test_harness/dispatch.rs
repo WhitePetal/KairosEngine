@@ -1,5 +1,5 @@
-use crate::graphics::texture::format::TextureFormat;
 use crate::kairos_editor::KairosEngine;
+use crate::kairos_editor::ui::Message;
 use crate::kairos_test_harness::{
     assertions::{self, CrashTracker},
     input_injector,
@@ -27,58 +27,13 @@ pub fn dispatch_call(step: &TestStep, engine: &mut KairosEngine) -> StepResult {
                         r#"{{"x_min":{:.1},"y_min":{:.1},"x_max":{:.1},"y_max":{:.1}}}"#,
                         rect.min.x, rect.min.y, rect.max.x, rect.max.y
                     );
-                    StepResult { ok: true, message: json }
+                    StepResult { ok: true, message: json, wait_frames: 0 }
                 }
                 None => StepResult::err(format!("widget not found: '{id}'")),
             }
         }
-        "texture_inspector.set_format" => {
-            let args = match step.args.as_ref() {
-                Some(a) => a,
-                None => return StepResult::err("set_format requires args with 'format' field"),
-            };
-            let format_str = match args.get("format").and_then(|v| v.as_str()) {
-                Some(f) => f,
-                None => return StepResult::err("set_format requires 'format' argument"),
-            };
-            let format = match format_str {
-                "R8Unorm" => TextureFormat::R8Unorm,
-                "R8Snorm" => TextureFormat::R8Snorm,
-                "R8Uint" => TextureFormat::R8Uint,
-                "R8Sint" => TextureFormat::R8Sint,
-                "Rgba8Unorm" => TextureFormat::Rgba8Unorm,
-                "Rgba8UnormSrgb" => TextureFormat::Rgba8UnormSrgb,
-                "BC7" => TextureFormat::Bc7RgbaUnorm,
-                "BC7Srgb" => TextureFormat::Bc7RgbaUnormSrgb,
-                other => return StepResult::err(format!("unknown texture format: '{other}'")),
-            };
-            match engine.texture_inspector_set_format(format) {
-                Ok(()) => StepResult::ok(),
-                Err(e) => StepResult::err(e),
-            }
-        }
-        "texture_inspector.apply" => {
-            match engine.texture_inspector_apply() {
-                Ok(()) => StepResult::ok(),
-                Err(e) => StepResult::err(e),
-            }
-        }
         "ui.open_inspector" => {
-            engine.open_inspector();
-            StepResult::ok()
-        }
-        "system.wait_frames" => {
-            let args = match step.args.as_ref() {
-                Some(a) => a,
-                None => return StepResult::err("wait_frames requires args with 'count' field"),
-            };
-            let count: usize = match args.get("count").and_then(|v| v.as_integer()) {
-                Some(n) if n > 0 => n as usize,
-                _ => return StepResult::err("wait_frames requires 'count' > 0"),
-            };
-            for _ in 0..count {
-                engine.engine_mut().assets_server.handle();
-            }
+            engine.push_ui_message(Message::OpenInspectorTab);
             StepResult::ok()
         }
         "project.select_asset" => {
@@ -91,9 +46,49 @@ pub fn dispatch_call(step: &TestStep, engine: &mut KairosEngine) -> StepResult {
                 None => return StepResult::err("select_asset requires 'path' argument"),
             };
             let path = std::path::Path::new(path_str);
-            match engine.select_asset(path) {
-                Ok(()) => StepResult::ok(),
-                Err(e) => StepResult::err(e),
+            let node_idx = {
+                use crate::kairos_editor::ui::project_window::ProjectWindow;
+                let ui_ctx = engine.ui_context_mut();
+                let project = match ui_ctx.get_window_mut::<ProjectWindow>() {
+                    Some(p) => p,
+                    None => return StepResult::err("ProjectWindow is not open"),
+                };
+                match project.find_node_by_path(path) {
+                    Some(idx) => idx,
+                    None => return StepResult::err(format!("asset not found: {}", path.display())),
+                }
+            };
+            engine.push_ui_message(Message::SelectProjectNode(Some(node_idx)));
+            StepResult::ok()
+        }
+        "system.wait_frames" => {
+            let args = match step.args.as_ref() {
+                Some(a) => a,
+                None => return StepResult::err("wait_frames requires args with 'count' field"),
+            };
+            let count: usize = match args.get("count").and_then(|v| v.as_integer()) {
+                Some(n) if n > 0 => n as usize,
+                _ => return StepResult::err("wait_frames requires 'count' > 0"),
+            };
+            StepResult::with_wait_frames(count)
+        }
+        "ui.focus_widget" => {
+            let args = match step.args.as_ref() {
+                Some(a) => a,
+                None => return StepResult::err("focus_widget requires args with 'id' field"),
+            };
+            let id = match args.get("id").and_then(|v| v.as_str()) {
+                Some(id) => id,
+                None => return StepResult::err("focus_widget requires 'id' argument"),
+            };
+            match engine.widget_egui_id(id) {
+                Some(egui_id) => {
+                    engine.request_focus(egui_id);
+                    StepResult::ok()
+                }
+                None => StepResult::err(format!(
+                    "widget egui ID not found: '{id}'. Widget may not have been rendered yet."
+                )),
             }
         }
         "" => StepResult::err("call step missing 'target' field"),
@@ -158,6 +153,78 @@ pub fn dispatch_input(step: &TestStep, engine: &mut KairosEngine) -> StepResult 
         Some(a) => a,
         None => return StepResult::err("input step requires args"),
     };
+
+    // Handle click_widget: query widget rect and click at center (or center + offset)
+    if args.get("event").and_then(|v| v.as_str()) == Some("click_widget") {
+        let id = match args.get("id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => return StepResult::err("click_widget requires 'id' argument"),
+        };
+        let dx = args.get("dx").and_then(|v| v.as_float()).unwrap_or(0.0) as f32;
+        let dy = args.get("dy").and_then(|v| v.as_float()).unwrap_or(0.0) as f32;
+        let rect = match engine.widget_rect(id) {
+            Some(r) => r,
+            None => return StepResult::err(format!("widget not found: '{id}'")),
+        };
+        let pos = egui::pos2(
+            (rect.min.x + rect.max.x) / 2.0 + dx,
+            (rect.min.y + rect.max.y) / 2.0 + dy,
+        );
+        // Inject events into egui's input pipeline so the click actually
+        // reaches egui widgets (not just the game InputEngine).
+        engine.push_egui_event(egui::Event::PointerMoved(pos));
+        engine.push_egui_event(egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::default(),
+        });
+        engine.push_egui_event(egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: egui::Modifiers::default(),
+        });
+        return StepResult::ok();
+    }
+
+    // Handle keyboard events: inject into egui for UI navigation (arrow keys, enter, etc.)
+    if args.get("device").and_then(|v| v.as_str()) == Some("keyboard") {
+        let key_str = match args.get("key").and_then(|v| v.as_str()) {
+            Some(k) => k,
+            None => return StepResult::err("keyboard input requires 'key' argument"),
+        };
+        let pressed = match args.get("event").and_then(|v| v.as_str()) {
+            Some("press") => true,
+            Some("release") => false,
+            _ => return StepResult::err("keyboard requires 'event' = 'press' or 'release'"),
+        };
+        let egui_key = match key_str {
+            "ArrowUp" => egui::Key::ArrowUp,
+            "ArrowDown" => egui::Key::ArrowDown,
+            "ArrowLeft" => egui::Key::ArrowLeft,
+            "ArrowRight" => egui::Key::ArrowRight,
+            "Enter" => egui::Key::Enter,
+            "Escape" => egui::Key::Escape,
+            "Tab" => egui::Key::Tab,
+            "Home" => egui::Key::Home,
+            "End" => egui::Key::End,
+            _ => {
+                // Fall through to InputEngine for game keys (W, A, S, D, etc.)
+                let input_engine = &mut engine.engine_mut().input_engine;
+                return input_injector::inject(args, input_engine);
+            }
+        };
+        engine.push_egui_event(egui::Event::Key {
+            key: egui_key,
+            repeat: false,
+            pressed,
+            modifiers: egui::Modifiers::default(),
+            physical_key: None,
+        });
+        return StepResult::ok();
+    }
+
     let input_engine = &mut engine.engine_mut().input_engine;
     input_injector::inject(args, input_engine)
 }

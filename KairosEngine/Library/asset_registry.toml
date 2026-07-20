@@ -31,12 +31,12 @@ guid = "f4dc6188-c71c-40d2-9cae-c2253a80ab0f"
 path = './Preferences\Engine'
 
 [[entries]]
-guid = "716ab311-85c9-4ab2-8d5a-73bda297f0b5"
-path = './Preferences\Engine\KairosSettings.toml'
-
-[[entries]]
 guid = "a930780b-6033-4b4a-8c57-86f9915b37b8"
 path = "./Preferences/Engine/KairosSettings.toml"
+
+[[entries]]
+guid = "716ab311-85c9-4ab2-8d5a-73bda297f0b5"
+path = './Preferences\Engine\KairosSettings.toml'
 
 [[entries]]
 guid = "a4df7c92-2ae8-44fa-a8aa-cca6471fbe29"
@@ -135,12 +135,12 @@ guid = "796aa37f-f7ab-4897-a88b-41bdecd7eec2"
 path = "./Preferences/Styles/Inspectors/Shader.toml"
 
 [[entries]]
-guid = "090cc445-fb6a-42fb-a4c4-08a5b82a8b4e"
-path = "./Preferences/Styles/Inspectors/Texture.toml"
-
-[[entries]]
 guid = "31d28807-0b7b-4932-bad0-3b79201801b1"
 path = './Preferences\Styles\Inspectors\Texture.toml'
+
+[[entries]]
+guid = "090cc445-fb6a-42fb-a4c4-08a5b82a8b4e"
+path = "./Preferences/Styles/Inspectors/Texture.toml"
 
 [[entries]]
 guid = "686e3907-bd4b-4618-a95b-da396fc7c913"
@@ -195,20 +195,20 @@ guid = "190a3f64-592e-48c4-80b6-848ef9c388ce"
 path = "./docs/New Folder"
 
 [[entries]]
-guid = "936ecec1-13ad-49aa-809e-8b39621589b2"
-path = "./docs/agents"
-
-[[entries]]
 guid = "40e3e178-7fba-4f0f-a4e1-97d8922912c3"
 path = './docs\agents'
 
 [[entries]]
-guid = "417f1698-a34e-431b-bb78-d7ff18507c21"
-path = './docs\agents\domain.md'
+guid = "936ecec1-13ad-49aa-809e-8b39621589b2"
+path = "./docs/agents"
 
 [[entries]]
 guid = "240a34b1-a8cc-4e84-a8d4-cdd97d743063"
 path = "./docs/agents/domain.md"
+
+[[entries]]
+guid = "417f1698-a34e-431b-bb78-d7ff18507c21"
+path = './docs\agents\domain.md'
 
 [[entries]]
 guid = "120f2059-d027-47cc-8cdd-df825d4b81b9"
@@ -415,20 +415,20 @@ guid = "e893595c-e3fa-41f9-aeca-a8b1f665a221"
 path = './kairos_engine\src\asset_loader\assets\asset\audio'
 
 [[entries]]
-guid = "ca22f06b-5ff4-4b5d-8a66-47a3850f7b1b"
-path = './kairos_engine\src\asset_loader\assets\asset\audio\audio_ext.rs'
-
-[[entries]]
 guid = "e687045a-dbe4-4be1-bf9b-4001f524f314"
 path = "./kairos_engine/src/asset_loader/assets/asset/audio/audio_ext.rs"
 
 [[entries]]
-guid = "a234fd24-b672-441e-9136-26bdddfad515"
-path = './kairos_engine\src\asset_loader\assets\asset\audio\pcm.rs'
+guid = "ca22f06b-5ff4-4b5d-8a66-47a3850f7b1b"
+path = './kairos_engine\src\asset_loader\assets\asset\audio\audio_ext.rs'
 
 [[entries]]
 guid = "e7808c80-dd49-4cfc-8b46-3481477a915b"
 path = "./kairos_engine/src/asset_loader/assets/asset/audio/pcm.rs"
+
+[[entries]]
+guid = "a234fd24-b672-441e-9136-26bdddfad515"
+path = './kairos_engine\src\asset_loader\assets\asset\audio\pcm.rs'
 
 [[entries]]
 guid = "84c65305-b360-4971-82fe-b0a85906ca72"
@@ -803,12 +803,12 @@ guid = "8307f32d-b2e0-46a7-8e9b-5fb91cc706eb"
 path = './kairos_engine\src\kairos_editor\editor_assets\texture_ext.rs'
 
 [[entries]]
-guid = "07902f31-d231-41f3-b1ba-215c397f3526"
-path = './kairos_engine\src\kairos_editor\editor_assets.rs'
-
-[[entries]]
 guid = "3476e1fc-6810-49a3-ac8f-2c53bdecd79c"
 path = "./kairos_engine/src/kairos_editor/editor_assets.rs"
+
+[[entries]]
+guid = "07902f31-d231-41f3-b1ba-215c397f3526"
+path = './kairos_engine\src\kairos_editor\editor_assets.rs'
 
 [[entries]]
 guid = "69b43378-17fe-42f5-8b70-8d456aec6596"
@@ -1015,12 +1015,12 @@ guid = "30260743-ab86-4096-88f6-9c7571fa18f5"
 path = "./kairos_engine/src/kairos_editor/ui/inspector/text.rs"
 
 [[entries]]
-guid = "66783186-c701-4eb5-b678-3817c6a86a34"
-path = './kairos_engine\src\kairos_editor\ui\inspector\texture.rs'
-
-[[entries]]
 guid = "f8db7c80-cc79-4c6d-89fc-6af51f37b3a0"
 path = "./kairos_engine/src/kairos_editor/ui/inspector/texture.rs"
+
+[[entries]]
+guid = "66783186-c701-4eb5-b678-3817c6a86a34"
+path = './kairos_engine\src\kairos_editor\ui\inspector\texture.rs'
 
 [[entries]]
 guid = "587ee851-2745-4270-af4e-a9a05c26c3c4"
@@ -1131,12 +1131,12 @@ guid = "c7c7f447-fcae-4e46-aa04-628d8dc5a06c"
 path = './kairos_engine\src\kairos_paths.rs'
 
 [[entries]]
-guid = "e1a5c235-a61f-4ac7-801e-d214122f1822"
-path = './kairos_engine\src\kairos_settings.rs'
-
-[[entries]]
 guid = "c97bf405-eeaf-4a21-b42a-c8afa5f13cd6"
 path = "./kairos_engine/src/kairos_settings.rs"
+
+[[entries]]
+guid = "e1a5c235-a61f-4ac7-801e-d214122f1822"
+path = './kairos_engine\src\kairos_settings.rs'
 
 [[entries]]
 guid = "24caf40a-31c8-437a-b52f-17c06db8dcbe"
@@ -1355,28 +1355,28 @@ guid = "17d0e84a-58da-4e03-9f7b-e7dd4e0d261b"
 path = './kairos_engine\tests\integration\audio\spectrum.rs'
 
 [[entries]]
-guid = "b8577c78-cd3a-4e32-a121-b3ed57defddd"
-path = './kairos_engine\tests\integration\audio\waveform.rs'
-
-[[entries]]
 guid = "8aa51647-26aa-4690-8cfa-0dcdc8fde8d6"
 path = "./kairos_engine/tests/integration/audio/waveform.rs"
 
 [[entries]]
-guid = "d5e6f01e-0b67-454c-81c8-18ad938ce141"
-path = "./kairos_engine/tests/integration/audio.rs"
+guid = "b8577c78-cd3a-4e32-a121-b3ed57defddd"
+path = './kairos_engine\tests\integration\audio\waveform.rs'
 
 [[entries]]
 guid = "b6221906-71e5-4693-9d71-d0291e038596"
 path = './kairos_engine\tests\integration\audio.rs'
 
 [[entries]]
-guid = "3dab799c-2862-4b25-a454-49fa0703b3b3"
-path = "./kairos_engine/tests/integration/ecs"
+guid = "d5e6f01e-0b67-454c-81c8-18ad938ce141"
+path = "./kairos_engine/tests/integration/audio.rs"
 
 [[entries]]
 guid = "4c85c95f-e81a-4be6-9930-4e579333aff7"
 path = './kairos_engine\tests\integration\ecs'
+
+[[entries]]
+guid = "3dab799c-2862-4b25-a454-49fa0703b3b3"
+path = "./kairos_engine/tests/integration/ecs"
 
 [[entries]]
 guid = "79ab3735-3845-4cf7-93fb-1bf02383ef88"
@@ -1387,12 +1387,12 @@ guid = "202c83bb-1769-4faa-bdbb-66ec979361a9"
 path = "./kairos_engine/tests/integration/ecs/sparse_set.rs"
 
 [[entries]]
-guid = "aebf62ff-2f92-419c-963f-d24ddb25527c"
-path = "./kairos_engine/tests/integration/ecs.rs"
-
-[[entries]]
 guid = "109883cf-a1ee-4879-b1a1-3ff81d840a97"
 path = './kairos_engine\tests\integration\ecs.rs'
+
+[[entries]]
+guid = "aebf62ff-2f92-419c-963f-d24ddb25527c"
+path = "./kairos_engine/tests/integration/ecs.rs"
 
 [[entries]]
 guid = "32efab7d-32c6-4790-a5b8-b7568d936fd1"
@@ -1403,28 +1403,28 @@ guid = "7432de17-e196-400d-b530-b88c69f20858"
 path = './kairos_engine\tests\integration\kairos_editor'
 
 [[entries]]
-guid = "894fd018-b6dc-43c5-809f-4f747a8d7d64"
-path = './kairos_engine\tests\integration\kairos_editor\project_path_tree.rs'
-
-[[entries]]
 guid = "3812330b-95df-4587-b715-89d9e3634930"
 path = "./kairos_engine/tests/integration/kairos_editor/project_path_tree.rs"
 
 [[entries]]
-guid = "a9d5182b-39f1-480e-b4bd-c1dfbd992cb2"
-path = './kairos_engine\tests\integration\kairos_editor\ui'
+guid = "894fd018-b6dc-43c5-809f-4f747a8d7d64"
+path = './kairos_engine\tests\integration\kairos_editor\project_path_tree.rs'
 
 [[entries]]
 guid = "73ec9dfb-49f0-40df-aec5-3e06009c6c2b"
 path = "./kairos_engine/tests/integration/kairos_editor/ui"
 
 [[entries]]
-guid = "95093592-205a-40c0-8b3b-833b48615816"
-path = "./kairos_engine/tests/integration/kairos_editor/ui/docking_tab"
+guid = "a9d5182b-39f1-480e-b4bd-c1dfbd992cb2"
+path = './kairos_engine\tests\integration\kairos_editor\ui'
 
 [[entries]]
 guid = "5dfa7cac-28f8-4d2d-8f8c-a0fd671ea0bf"
 path = './kairos_engine\tests\integration\kairos_editor\ui\docking_tab'
+
+[[entries]]
+guid = "95093592-205a-40c0-8b3b-833b48615816"
+path = "./kairos_engine/tests/integration/kairos_editor/ui/docking_tab"
 
 [[entries]]
 guid = "d7a57f3d-b199-46ed-aef8-e9b0c20809d5"
@@ -1435,28 +1435,28 @@ guid = "e4353d1e-739c-4122-9536-8bb9afea7fef"
 path = "./kairos_engine/tests/integration/kairos_editor/ui/docking_tab/dock_state"
 
 [[entries]]
-guid = "c4343410-d610-41a4-a871-b65d5d0a38f7"
-path = "./kairos_engine/tests/integration/kairos_editor/ui/docking_tab/dock_state/tree.rs"
-
-[[entries]]
 guid = "545eb5f4-68a4-4061-ab48-742ba6f9efab"
 path = './kairos_engine\tests\integration\kairos_editor\ui\docking_tab\dock_state\tree.rs'
 
 [[entries]]
-guid = "77902f69-f3fd-4100-810b-94b88426cfc0"
-path = './kairos_engine\tests\integration\kairos_editor\ui\docking_tab\dock_state.rs'
+guid = "c4343410-d610-41a4-a871-b65d5d0a38f7"
+path = "./kairos_engine/tests/integration/kairos_editor/ui/docking_tab/dock_state/tree.rs"
 
 [[entries]]
 guid = "dc8b128f-2139-4b43-982c-10b45002e5eb"
 path = "./kairos_engine/tests/integration/kairos_editor/ui/docking_tab/dock_state.rs"
 
 [[entries]]
-guid = "3a15cf5e-5bb4-4837-a83b-1d9f2a3bbe66"
-path = "./kairos_engine/tests/integration/kairos_editor/ui/docking_tab.rs"
+guid = "77902f69-f3fd-4100-810b-94b88426cfc0"
+path = './kairos_engine\tests\integration\kairos_editor\ui\docking_tab\dock_state.rs'
 
 [[entries]]
 guid = "9fcb55b2-2a02-4558-80f2-6d636e0ec368"
 path = './kairos_engine\tests\integration\kairos_editor\ui\docking_tab.rs'
+
+[[entries]]
+guid = "3a15cf5e-5bb4-4837-a83b-1d9f2a3bbe66"
+path = "./kairos_engine/tests/integration/kairos_editor/ui/docking_tab.rs"
 
 [[entries]]
 guid = "38d78e7e-f078-4c11-a1df-9199e3c1686c"
@@ -1467,52 +1467,52 @@ guid = "68f4b271-1cdd-4426-b1f5-b120e08bb18d"
 path = './kairos_engine\tests\integration\kairos_editor\ui.rs'
 
 [[entries]]
-guid = "488153de-1c69-483e-9f5c-955b43b465b3"
-path = "./kairos_engine/tests/integration/kairos_editor.rs"
-
-[[entries]]
 guid = "30902b59-f93c-4489-8105-7d417ef2f515"
 path = './kairos_engine\tests\integration\kairos_editor.rs'
 
 [[entries]]
-guid = "ed72288c-8c32-47a6-a397-20ac32b574d7"
-path = "./kairos_engine/tests/integration/main.rs"
+guid = "488153de-1c69-483e-9f5c-955b43b465b3"
+path = "./kairos_engine/tests/integration/kairos_editor.rs"
 
 [[entries]]
 guid = "5f02b49a-269b-4562-aeb2-74740182196c"
 path = './kairos_engine\tests\integration\main.rs'
 
 [[entries]]
-guid = "eeaf7374-4961-444f-9ad1-4db40586e423"
-path = './kairos_engine\tests\integration\math'
+guid = "ed72288c-8c32-47a6-a397-20ac32b574d7"
+path = "./kairos_engine/tests/integration/main.rs"
 
 [[entries]]
 guid = "1ff03e44-daaa-4c58-8997-7c3d81ba9926"
 path = "./kairos_engine/tests/integration/math"
 
 [[entries]]
-guid = "68dd467b-c504-4ae7-a855-7bf618cda656"
-path = "./kairos_engine/tests/integration/math/matrix.rs"
+guid = "eeaf7374-4961-444f-9ad1-4db40586e423"
+path = './kairos_engine\tests\integration\math'
 
 [[entries]]
 guid = "9ed12c65-8234-44ab-b6d6-67e6ba7a7017"
 path = './kairos_engine\tests\integration\math\matrix.rs'
 
 [[entries]]
-guid = "255dda76-6ab8-4c0f-962d-b070c2b97c61"
-path = './kairos_engine\tests\integration\math\vec.rs'
+guid = "68dd467b-c504-4ae7-a855-7bf618cda656"
+path = "./kairos_engine/tests/integration/math/matrix.rs"
 
 [[entries]]
 guid = "ea753087-0224-4e8e-97d8-b444998bf44e"
 path = "./kairos_engine/tests/integration/math/vec.rs"
 
 [[entries]]
-guid = "17116122-1e3a-403b-ba92-46aafb239b77"
-path = "./kairos_engine/tests/integration/math.rs"
+guid = "255dda76-6ab8-4c0f-962d-b070c2b97c61"
+path = './kairos_engine\tests\integration\math\vec.rs'
 
 [[entries]]
 guid = "d7b9001c-4198-4329-b5d9-0a30147b5059"
 path = './kairos_engine\tests\integration\math.rs'
+
+[[entries]]
+guid = "17116122-1e3a-403b-ba92-46aafb239b77"
+path = "./kairos_engine/tests/integration/math.rs"
 
 [[entries]]
 guid = "be3eeaed-1b97-4f38-99d0-f8c569a00fd4"

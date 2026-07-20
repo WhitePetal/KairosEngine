@@ -1,6 +1,5 @@
 use crate::{
     asset_loader::assets::AssetsServer, audio::AudioEngine, ecs::world::World,
-    graphics::texture::format::TextureFormat,
     graphics::graphics_graph::GraphicsCommand, inputs::InputEngine, kairos_game::KairosGame,
     log::Log, physics::PhysicsEngine, timer::Time,
 };
@@ -52,6 +51,15 @@ pub struct KairosEngine {
     log: Log,
     #[cfg(feature = "test-harness")]
     widget_rects: std::collections::HashMap<String, egui::Rect>,
+    /// Widget name → egui Id mapping for focus operations.
+    #[cfg(feature = "test-harness")]
+    widget_egui_ids: std::collections::HashMap<String, egui::Id>,
+    /// Egui events to inject into RawInput on the next frame.
+    #[cfg(feature = "test-harness")]
+    pending_egui_events: Vec<egui::Event>,
+    /// Pending focus requests for the next draw_ui.
+    #[cfg(feature = "test-harness")]
+    pending_focus_requests: Vec<egui::Id>,
 }
 
 impl KairosEngine {
@@ -67,6 +75,12 @@ impl KairosEngine {
             log,
             #[cfg(feature = "test-harness")]
             widget_rects: std::collections::HashMap::new(),
+            #[cfg(feature = "test-harness")]
+            widget_egui_ids: std::collections::HashMap::new(),
+            #[cfg(feature = "test-harness")]
+            pending_egui_events: Vec::new(),
+            #[cfg(feature = "test-harness")]
+            pending_focus_requests: Vec::new(),
         })
     }
 
@@ -86,7 +100,6 @@ impl KairosEngine {
         let mut visuals = Visuals::dark();
         visuals.button_frame = true;
         ui.set_visuals(visuals);
-
         self.ui_context.darw(ui, &self.engine, &mut self.log);
     }
 
@@ -99,100 +112,67 @@ impl KairosEngine {
     }
 
     fn on_exit(&mut self) {
-        // Clear all entities before shutdown to ensure AssetHandle::drop
-        // happens while the tokio runtime is still fully active.
-        // This avoids spawning tasks during World::drop when the runtime
-        // may be winding down, which can cause hangs.
         self.engine.world.clear();
         self.engine.assets_server.handle();
     }
 
-    /// Access the underlying `Engine` (crate-visible for test harness).
     #[cfg(feature = "test-harness")]
-    pub(crate) fn engine_mut(&mut self) -> &mut Engine {
-        &mut self.engine
-    }
+    pub(crate) fn engine_mut(&mut self) -> &mut Engine { &mut self.engine }
 
-    /// Access the log buffer (crate-visible for test harness).
     #[cfg(feature = "test-harness")]
-    pub(crate) fn log_mut(&mut self) -> &mut Log {
-        &mut self.log
-    }
+    pub(crate) fn log_mut(&mut self) -> &mut Log { &mut self.log }
 
-    /// Record a widget's screen-space rectangle for the current frame.
-    /// Called from the egui draw callback.
     #[cfg(feature = "test-harness")]
     pub(crate) fn record_widget_rect(&mut self, id: impl Into<String>, rect: egui::Rect) {
         self.widget_rects.insert(id.into(), rect);
     }
 
-    /// Clear widget rects at the start of a new frame.
     #[cfg(feature = "test-harness")]
     pub(crate) fn clear_widget_rects(&mut self) {
         self.widget_rects.clear();
+        self.widget_egui_ids.clear();
     }
 
-    /// Query a widget's screen-space rectangle by ID.
     #[cfg(feature = "test-harness")]
     pub(crate) fn widget_rect(&self, id: &str) -> Option<egui::Rect> {
         self.widget_rects.get(id).copied()
     }
 
-    /// Access the UI context (crate-visible for test harness dispatching).
     #[cfg(feature = "test-harness")]
-    pub(crate) fn ui_context_mut(&mut self) -> &mut ui::Context {
-        &mut self.ui_context
+    pub(crate) fn record_widget_egui_id(&mut self, id: impl Into<String>, egui_id: egui::Id) {
+        self.widget_egui_ids.insert(id.into(), egui_id);
     }
 
-    /// Open the inspector tab (for test harness). Combines ui_context and assets_server access.
     #[cfg(feature = "test-harness")]
-    pub(crate) fn open_inspector(&mut self) {
-        self.ui_context.open_inspector_tab(&mut self.engine.assets_server);
+    pub(crate) fn widget_egui_id(&self, id: &str) -> Option<egui::Id> {
+        self.widget_egui_ids.get(id).copied()
     }
 
-    /// Set the texture format via the inspector (for test harness).
     #[cfg(feature = "test-harness")]
-    pub(crate) fn texture_inspector_set_format(&mut self, format: TextureFormat) -> Result<(), String> {
-        use crate::kairos_editor::ui::inspector::texture::TextureInspector;
-        use crate::kairos_editor::ui::inspector_window::InspectorWindow;
-
-        let inspector = self.ui_context.get_window_mut::<InspectorWindow>()
-            .and_then(|w| w.get_inspector_mut::<TextureInspector>())
-            .ok_or("TextureInspector is not active")?;
-        inspector.set_format(format, &mut self.engine.assets_server)
+    pub(crate) fn request_focus(&mut self, egui_id: egui::Id) {
+        self.pending_focus_requests.push(egui_id);
     }
 
-    /// Apply inspector changes and save (for test harness).
     #[cfg(feature = "test-harness")]
-    pub(crate) fn texture_inspector_apply(&mut self) -> Result<(), String> {
-        use crate::kairos_editor::ui::inspector::texture::TextureInspector;
-        use crate::kairos_editor::ui::inspector_window::InspectorWindow;
-
-        let (path, handle, ext) = {
-            let inspector = self.ui_context.get_window_mut::<InspectorWindow>()
-                .and_then(|w| w.get_inspector_mut::<TextureInspector>())
-                .ok_or("TextureInspector is not active")?;
-            inspector.apply();
-            (inspector.texture_path().clone(), inspector.asset_handle().clone(), inspector.texture_ext_ref().clone())
-        };
-        TextureInspector::save_texture(&mut self.engine.assets_server, &path, handle, ext);
-        Ok(())
+    pub(crate) fn drain_focus_requests(&mut self) -> Vec<egui::Id> {
+        std::mem::take(&mut self.pending_focus_requests)
     }
 
-    /// Select an asset and populate the inspector (for test harness).
     #[cfg(feature = "test-harness")]
-    pub(crate) fn select_asset(&mut self, path: &std::path::Path) -> Result<(), String> {
-        use crate::kairos_editor::ui::project_window::ProjectWindow;
-        use crate::kairos_editor::ui::inspector_window::InspectorWindow;
+    pub(crate) fn ui_context_mut(&mut self) -> &mut ui::Context { &mut self.ui_context }
 
-        let project = self.ui_context.get_window_mut::<ProjectWindow>()
-            .ok_or("ProjectWindow is not open")?;
-        project.select_node_by_path(path)?;
-        let info = project.get_selected_node_info(&mut self.engine.assets_server);
-        if let Some(inspector) = self.ui_context.get_window_mut::<InspectorWindow>() {
-            let ctx = egui::Context::default();
-            inspector.set_selected(&ctx, info);
-        }
-        Ok(())
+    #[cfg(feature = "test-harness")]
+    pub(crate) fn push_ui_message(&mut self, msg: crate::kairos_editor::ui::Message) {
+        self.ui_context.messager.send(msg);
+    }
+
+    #[cfg(feature = "test-harness")]
+    pub(crate) fn push_egui_event(&mut self, event: egui::Event) {
+        self.pending_egui_events.push(event);
+    }
+
+    #[cfg(feature = "test-harness")]
+    pub(crate) fn drain_egui_events(&mut self) -> Vec<egui::Event> {
+        std::mem::take(&mut self.pending_egui_events)
     }
 }

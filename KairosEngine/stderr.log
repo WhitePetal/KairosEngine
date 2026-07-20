@@ -1,4 +1,0 @@
-[2026-07-20T15:36:56Z INFO  kairos_engine::kairos_test_harness::ws_server] Test harness WS server listening on ws://127.0.0.1:9999
-[2026-07-20T15:36:57Z WARN  kairos_engine::graphics::texture::format] Texture compression (ETC2) enabled in config but not supported by adapter
-[2026-07-20T15:37:01Z DEBUG kairos_engine::kairos_test_harness::ws_server] WS connection from 127.0.0.1:53711
-[2026-07-20T15:37:01Z DEBUG kairos_engine::kairos_editor::project_path_tree] find_by_path searching for 'res/textures/kairos_texture.texture' among 342 nodes: ["./", "./docs", "./docs\\agents", "./docs\\agents\\domain.md", "./docs\\agents\\issue-tracker.md"]
