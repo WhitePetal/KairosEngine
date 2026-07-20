@@ -478,7 +478,14 @@ impl TextureFormat {
             _ => wgpu::TextureSampleType::Float { filterable: true },
         }
     }
+
+    /// Whether this format supports hardware texture filtering (Linear).
+    /// Uint/Sint formats do not — they require Nearest filtering.
+    pub fn is_filterable(&self) -> bool {
+        matches!(self.wgpu_sample_type(), wgpu::TextureSampleType::Float { .. })
+    }
 }
+
 impl From<TextureFormat> for wgpu::TextureFormat {
     fn from(value: TextureFormat) -> Self {
         use wgpu::TextureFormat as Wgpu;

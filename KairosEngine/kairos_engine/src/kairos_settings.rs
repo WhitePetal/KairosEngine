@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::graphics::texture_format::TextureCompressionConfig;
+use crate::graphics::texture::format::TextureCompressionConfig;
 
 /// Top-level engine configuration loaded from `Preferences/Engine/KairosEngine.toml`.
 #[derive(Debug, Clone, Serialize, Deserialize)]

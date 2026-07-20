@@ -3,12 +3,12 @@ use std::{collections::HashMap, error::Error, sync::Arc};
 use petgraph::visit::{DfsEvent, Reversed, depth_first_search};
 use strum::EnumCount;
 use wgpu::{
-    Adapter, AddressMode, BackendOptions, Backends, BindGroup, BindGroupDescriptor, BindGroupEntry,
+    Adapter, BackendOptions, Backends, BindGroup, BindGroupDescriptor, BindGroupEntry,
     BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType,
     BufferUsages, ColorTargetState, ColorWrites, CommandBuffer, CommandEncoder,
     CommandEncoderDescriptor, CurrentSurfaceTexture, DepthBiasState, DepthStencilState, Device,
-    ExperimentalFeatures, Extent3d, FilterMode, FragmentState, FrontFace, InstanceFlags, Limits,
-    LoadOp, LoadOpDontCare, MemoryBudgetThresholds, MemoryHints, MipmapFilterMode,
+    ExperimentalFeatures, Extent3d, FragmentState, FrontFace, InstanceFlags, Limits,
+    LoadOp, LoadOpDontCare, MemoryBudgetThresholds, MemoryHints,
     MultisampleState, Operations, Origin3d, PipelineCompilationOptions, PipelineLayoutDescriptor,
     PolygonMode, PowerPreference, PresentMode, PrimitiveState, Queue, RenderPassColorAttachment,
     RenderPassDepthStencilAttachment, RenderPassDescriptor, RenderPipelineDescriptor,
@@ -18,7 +18,7 @@ use wgpu::{
     TextureView, TextureViewDescriptor, TextureViewDimension, Trace, VertexAttribute,
     VertexBufferLayout, VertexFormat, VertexState, VertexStepMode,
     util::{BufferInitDescriptor, DeviceExt},
-    wgt::{DeviceDescriptor, SamplerDescriptor},
+    wgt::DeviceDescriptor,
 };
 use winit::{dpi::PhysicalSize, window::Window};
 
@@ -31,7 +31,7 @@ use crate::{
         render_state::RenderState,
         shader::ShaderAsset,
         texture::Texture,
-        texture_format::TextureCompressionConfig,
+        texture::format::TextureCompressionConfig,
         vertex::Vertex,
     },
     math::{float2, float3, float4, float4x4},
@@ -981,7 +981,12 @@ impl RenderPipeline {
         let tex_desc = TextureDescriptor {
             label: Some("Kairos Texture"),
             size: texture_size,
-            mip_level_count: 1,
+            mip_level_count: if texture_asset.sampler.mipmap.is_some() {
+                let max_dim = texture_dimension.0.max(texture_dimension.1);
+                (max_dim as f32).log2().floor() as u32 + 1
+            } else {
+                1
+            },
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu_fmt,
@@ -1042,28 +1047,8 @@ impl RenderPipeline {
             ],
         });
 
-        let texture_sampler = device.create_sampler(&SamplerDescriptor {
-            label: Some("Texture Sampler"),
-            address_mode_u: AddressMode::Repeat,
-            address_mode_v: AddressMode::Repeat,
-            address_mode_w: AddressMode::Repeat,
-            mag_filter: if matches!(sample_type, wgpu::TextureSampleType::Float { .. }) {
-                FilterMode::Linear
-            } else {
-                FilterMode::Nearest
-            },
-            min_filter: FilterMode::Nearest,
-            mipmap_filter: if matches!(sample_type, wgpu::TextureSampleType::Float { .. }) {
-                MipmapFilterMode::Linear
-            } else {
-                MipmapFilterMode::Nearest
-            },
-            lod_min_clamp: 0f32,
-            lod_max_clamp: 0f32,
-            compare: None,
-            anisotropy_clamp: 1,
-            border_color: None,
-        });
+        let texture_sampler =
+            device.create_sampler(&texture_asset.sampler.to_wgpu_descriptor("Texture Sampler"));
         let bind_group = device.create_bind_group(&BindGroupDescriptor {
             label: Some("Texture Bind Group"),
             layout: &layout,

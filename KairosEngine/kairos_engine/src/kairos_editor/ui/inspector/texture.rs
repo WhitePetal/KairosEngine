@@ -9,7 +9,7 @@ use crate::{
     asset_loader::assets::{AssetHandle, AssetsServer, TextureAssetsSystem},
     graphics::{
         texture::Texture,
-        texture_format::{TextureCompressionConfig, TextureFormat},
+        texture::format::{TextureCompressionConfig, TextureFormat},
     },
     kairos_editor::{
         editor_assets::{TextureExt, TextureExtAssetsSystem},
@@ -109,7 +109,7 @@ impl TextureInspector {
         }
 
         // Decode compressed data to RGBA8 for the egui preview.
-        let rgba = crate::graphics::texture_format::decode_to_rgba8(
+        let rgba = crate::graphics::texture::format::decode_to_rgba8(
             &texture.data,
             texture.width,
             texture.height,
@@ -210,7 +210,7 @@ impl TextureInspector {
         };
 
         // 2. Encode to target GPU format
-        let encoded = crate::graphics::texture_format::encode_rgba(
+        let encoded = crate::graphics::texture::format::encode_rgba(
             &rgba_data,
             new_w,
             new_h,
@@ -236,6 +236,7 @@ impl TextureInspector {
             height: new_h,
             format: ext.serialized.format,
             data: encoded,
+            sampler: ext.serialized.sampler.clone(),
         };
         if let Some(asset) = assets_server.get_mut(&ext.texture) {
             *asset = texture_asset;

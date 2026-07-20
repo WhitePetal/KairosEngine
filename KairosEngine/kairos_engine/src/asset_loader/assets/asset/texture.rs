@@ -74,6 +74,7 @@ impl Loader {
             height: serialized.height,
             format: serialized.format,
             data,
+            sampler: serialized.sampler,
         };
 
         sender

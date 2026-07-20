@@ -2,7 +2,13 @@ use std::path::Path;
 
 use anyhow::{Error, Ok};
 
-use crate::graphics::{texture::SerializedTexture, texture_format::TextureFormat};
+use crate::graphics::texture::{
+    format::TextureFormat,
+    sampler::{
+        AddressMode, FilterMode, MipmapConfig, MipmapFilter, SamplerConfig,
+    },
+    SerializedTexture,
+};
 
 impl SerializedTexture {
     /// Convert a source image file into a `SerializedTexture` + raw RGBA pixel data.
@@ -21,6 +27,20 @@ impl SerializedTexture {
                 width,
                 height,
                 format: TextureFormat::Rgba8Unorm,
+                sampler: SamplerConfig {
+                    filter_mode: FilterMode::Linear,
+                    address_mode_u: AddressMode::Repeat,
+                    address_mode_v: AddressMode::Repeat,
+                    address_mode_w: AddressMode::Repeat,
+                    mipmap: Some(MipmapConfig {
+                        filter: MipmapFilter::Linear,
+                        anisotropy_clamp: 2,
+                        lod_min_clamp: 0.0,
+                        lod_max_clamp: (width.max(height) as f32).log2().floor(),
+                    }),
+                    compare: None,
+                    border_color: None,
+                },
             },
             data,
         ))

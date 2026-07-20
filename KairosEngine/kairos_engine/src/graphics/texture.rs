@@ -2,11 +2,16 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::graphics::texture_format::TextureFormat;
+pub mod format;
+pub mod sampler;
+
+use format::TextureFormat;
+use sampler::SamplerConfig;
 
 /// TOML-serializable form stored in `.texture` files.
 ///
-/// Contains the source image path and the texture dimensions.
+/// Contains the source image path, texture dimensions, format,
+/// and sampler configuration.
 /// The pixel data is stored separately in the companion `.texture_bin` file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SerializedTexture {
@@ -18,12 +23,14 @@ pub struct SerializedTexture {
     pub height: u32,
     /// GPU texture format.
     pub format: TextureFormat,
+    /// Sampler configuration (filter, wrap, mipmap, etc.).
+    pub sampler: SamplerConfig,
 }
 
 /// Runtime form held by `TextureAssetsSystem`.
 ///
-/// Contains the resolved dimensions and the RGBA8 pixel data loaded
-/// from `.texture_bin`.
+/// Contains the resolved dimensions, the RGBA8 pixel data loaded
+/// from `.texture_bin`, and the sampler configuration.
 #[derive(Debug, Clone)]
 pub struct Texture {
     /// Texture width in pixels.
@@ -34,4 +41,6 @@ pub struct Texture {
     pub format: TextureFormat,
     /// RGBA8 pixel data.
     pub data: Vec<u8>,
+    /// Sampler configuration (filter, wrap, mipmap, etc.).
+    pub sampler: SamplerConfig,
 }
