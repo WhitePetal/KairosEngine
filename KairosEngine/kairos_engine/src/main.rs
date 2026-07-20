@@ -2,6 +2,8 @@ use kairos_engine::{
     kairos_dialog,
     kairos_editor::runtime::{KairosEditorRuntime, KairosEditorRuntimeEvent},
 };
+#[cfg(feature = "test-harness")]
+use kairos_engine::kairos_test_harness;
 use winit::event_loop::EventLoop;
 
 #[tokio::main]
@@ -20,6 +22,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
         panic!("new MainEditorWindow Failed: {}", error);
     });
+
+    #[cfg(feature = "test-harness")]
+    if let Some(sender) = runtime.test_bridge_sender() {
+        tokio::spawn(async move {
+            kairos_test_harness::ws_server::start(sender, 9999).await;
+        });
+    }
+
     event_loop.run_app(&mut runtime)?;
 
     Ok(())

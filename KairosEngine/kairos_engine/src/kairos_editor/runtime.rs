@@ -96,6 +96,8 @@ pub struct KairosEditorRuntime {
     // frame_start: Instant,
     min_frame_interval: Duration,
     didi_exit: bool,
+    #[cfg(feature = "test-harness")]
+    test_bridge: Option<crate::kairos_test_harness::bridge::Bridge>,
 }
 
 impl KairosEditorRuntime {
@@ -123,7 +125,16 @@ impl KairosEditorRuntime {
             // frame_start: Instant::now(),
             min_frame_interval: Duration::from_secs_f64(1.0 / 60.0),
             didi_exit: false,
+            #[cfg(feature = "test-harness")]
+            test_bridge: Some(crate::kairos_test_harness::bridge::Bridge::new(256)),
         })
+    }
+
+    /// Return a clone of the bridge sender for spawning the WS server.
+    /// Returns `None` when the test-harness feature is not active.
+    #[cfg(feature = "test-harness")]
+    pub fn test_bridge_sender(&self) -> Option<tokio::sync::mpsc::Sender<crate::kairos_test_harness::bridge::EngineCommand>> {
+        self.test_bridge.as_ref().map(|b| b.sender())
     }
 
     #[cfg(target_os = "macos")]
@@ -240,6 +251,11 @@ impl KairosEditorRuntime {
         let Some(window) = self.window.as_ref().cloned() else {
             return;
         };
+
+        #[cfg(feature = "test-harness")]
+        if let Some(bridge) = &mut self.test_bridge {
+            bridge.drain();
+        }
 
         self.kairos_engine.update();
 

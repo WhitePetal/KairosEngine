@@ -19,3 +19,6 @@ pub mod inputs;
 pub mod physics;
 pub mod spatial;
 pub mod timer;
+
+#[cfg(feature = "test-harness")]
+pub mod kairos_test_harness;

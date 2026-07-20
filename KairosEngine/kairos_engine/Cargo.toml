@@ -10,6 +10,9 @@ criterion = { version = "0.8.2", features = ["html_reports"] }
 smallvec = { version = "1.15.2", features = ["malloc_size_of"] }
 tempfile = "3"
 
+[features]
+test-harness = ["dep:tokio-tungstenite", "dep:futures-util"]
+
 [dependencies]
 kairos_ecs_macros = { path = "../kairos_ecs_macros" }
 toml = "1.1.2"
@@ -56,6 +59,8 @@ glam = { version = "0.33", features = ["bytemuck"] }
 egui_commonmark = "0.24.0"
 syntect = { version = "5.3", default-features = false, features = ["default-fancy"] }
 # puffin = "0.20.0"
+tokio-tungstenite = { version = "0.24", optional = true }
+futures-util = { version = "0.3", optional = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.4"
