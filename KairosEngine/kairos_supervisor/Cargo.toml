@@ -1,0 +1,6 @@
+[package]
+name = "kairos_supervisor"
+version = "0.1.0"
+edition = "2024"
+description = "Thin watchdog process for KairosEngine test harness crash monitoring"
+license = "MIT OR Apache-2.0"
