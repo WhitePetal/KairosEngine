@@ -200,14 +200,10 @@ impl KairosEditorRuntime {
                     .send_event(KairosEditorRuntimeEvent::RenderPipelineCrash)
                     .unwrap();
             });
-        let render_pipeline_event_proxy = self.event_proxy.clone();
         render_pipeline
             .device
             .on_uncaptured_error(Arc::new(move |error| {
-                log::error!("Gpu crash: {error}");
-                render_pipeline_event_proxy
-                    .send_event(KairosEditorRuntimeEvent::RenderPipelineCrash)
-                    .unwrap();
+                log::error!("Uncaptured GPU error: {error}");
             }));
 
         egui_state.set_max_texture_side(render_pipeline.max_texture_side());

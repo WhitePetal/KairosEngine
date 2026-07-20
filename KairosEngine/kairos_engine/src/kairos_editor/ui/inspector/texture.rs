@@ -435,6 +435,7 @@ impl Inspector for TextureInspector {
                                                             ext.serialized.sampler.filter_mode = FilterMode::Nearest;
                                                             if let Some(ref mut mip) = ext.serialized.sampler.mipmap {
                                                                 mip.filter = MipmapFilter::Nearest;
+                                                                mip.anisotropy_clamp = 1;
                                                             }
                                                         }
                                                         self.dirty.set(true);
@@ -465,6 +466,12 @@ impl Inspector for TextureInspector {
                                             .changed()
                                         {
                                             ext.serialized.sampler.filter_mode = current;
+                                            // Anisotropy requires Linear filtering.
+                                            if current == FilterMode::Nearest {
+                                                if let Some(ref mut mip) = ext.serialized.sampler.mipmap {
+                                                    mip.anisotropy_clamp = 1;
+                                                }
+                                            }
                                             self.dirty.set(true);
                                         }
                                     }

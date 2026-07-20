@@ -41,8 +41,6 @@ use crate::{
 struct PipelineKey {
     shader_index: usize,
     render_state: RenderState,
-    /// 0=Float, 1=Uint, 2=Sint
-    sample_type: u8,
 }
 struct PipelineCache {
     version: u32,
@@ -617,11 +615,16 @@ impl RenderPipeline {
                         if cache.version == version {
                             cache.bind_group.clone()
                         } else {
+                            let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
                             let (bind_group, layout) = Self::create_texture(
                                 device,
                                 queue,
                                 texture_asset,
                             );
+                            if let Some(e) = pollster::block_on(scope.pop()) {
+                                log::error!("Texture #{} create error: {e}", material_index);
+                                error_material_indices.insert(material_index);
+                            }
                             entry.insert(TextureCache {
                                 version,
                                 bind_group: bind_group.clone(),
@@ -631,11 +634,16 @@ impl RenderPipeline {
                         }
                     }
                     std::collections::hash_map::Entry::Vacant(entry) => {
+                        let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
                         let (bind_group, layout) = Self::create_texture(
                             device,
                             queue,
                             texture_asset,
                         );
+                        if let Some(e) = pollster::block_on(scope.pop()) {
+                            log::error!("Texture #{} create error: {e}", material_index);
+                            error_material_indices.insert(material_index);
+                        }
                         entry.insert(TextureCache {
                             version,
                             bind_group: bind_group.clone(),
@@ -660,7 +668,6 @@ impl RenderPipeline {
             let pipeline_key = PipelineKey {
                 shader_index: shader_id.index(),
                 render_state: material.render_state,
-                sample_type: 0,
             };
             let shader_version = shader_id.version();
             let pipeline = match pipeline_cache.entry(pipeline_key) {
@@ -669,6 +676,35 @@ impl RenderPipeline {
                     if cache.version == shader_version {
                         cache.pipeline.clone()
                     } else {
+                        let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
+                        let pipeline = Self::create_pipeline(
+                            device,
+                            global_vp_bind_group_layout,
+                            texture_bind_group_layout,
+                            shader,
+                            &depth_state,
+                            &pipeline_key.render_state,
+                            instancing_vertex_buffer_layout.clone(),
+                            color_attachments[0]
+                                .as_ref()
+                                .unwrap()
+                                .view
+                                .texture()
+                                .format(),
+                            );
+                            if let Some(e) = pollster::block_on(scope.pop()) {
+                                log::error!("Material #{} pipeline error: {e}", material_index);
+                            error_material_indices.insert(material_index);
+                            }
+                            entry.insert(PipelineCache {
+                                version: shader_version,
+                                pipeline: pipeline.clone(),
+                            });
+                            pipeline
+                        }
+                    }
+                    std::collections::hash_map::Entry::Vacant(entry) => {
+                        let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
                         let pipeline = Self::create_pipeline(
                             device,
                             global_vp_bind_group_layout,
@@ -684,30 +720,11 @@ impl RenderPipeline {
                                 .texture()
                                 .format(),
                         );
+                        if let Some(e) = pollster::block_on(scope.pop()) {
+                            log::error!("Material #{} pipeline error: {e}", material_index);
+                            error_material_indices.insert(material_index);
+                        }
                         entry.insert(PipelineCache {
-                            version: shader_version,
-                            pipeline: pipeline.clone(),
-                        });
-                        pipeline
-                    }
-                }
-                std::collections::hash_map::Entry::Vacant(entry) => {
-                    let pipeline = Self::create_pipeline(
-                        device,
-                        global_vp_bind_group_layout,
-                        texture_bind_group_layout,
-                        shader,
-                        &depth_state,
-                        &pipeline_key.render_state,
-                        instancing_vertex_buffer_layout.clone(),
-                        color_attachments[0]
-                            .as_ref()
-                            .unwrap()
-                            .view
-                            .texture()
-                            .format(),
-                    );
-                    entry.insert(PipelineCache {
                         version: shader_version,
                         pipeline: pipeline.clone(),
                     });
@@ -1130,7 +1147,7 @@ impl RenderPipeline {
         }
         let texture_view = gpu_texture.create_view(&TextureViewDescriptor::default());
 
-        let sample_type = texture_asset.format.wgpu_sample_type();
+        let sample_type = texture_asset.format.sample_type().into();
         let sampler_type = match sample_type {
             wgpu::TextureSampleType::Float { .. } => SamplerBindingType::Filtering,
             _ => SamplerBindingType::NonFiltering,

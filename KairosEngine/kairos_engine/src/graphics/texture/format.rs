@@ -80,6 +80,26 @@ pub fn feature_to_wgpu(feature: &TextureCompressFeature) -> Option<wgpu::Feature
 // TextureFormat
 // ============================================================
 
+/// Texture sample type for pipeline/bind-group compatibility.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SampleType {
+    Float,
+    Uint,
+    Sint,
+}
+
+impl From<SampleType> for wgpu::TextureSampleType {
+    fn from(value: SampleType) -> Self {
+        match value {
+            SampleType::Float => wgpu::TextureSampleType::Float { filterable: true },
+            SampleType::Uint => wgpu::TextureSampleType::Uint,
+            SampleType::Sint => wgpu::TextureSampleType::Sint,
+        }
+    }
+}
+
+/// Project texture format — maps to `wgpu::TextureFormat` at the GPU boundary.
+
 /// Project texture format — maps to `wgpu::TextureFormat` at the GPU boundary.
 ///
 /// Only includes formats suitable for sampled 2D textures (no depth/stencil).
@@ -464,25 +484,23 @@ impl TextureFormat {
         }
     }
 
-    /// The `wgpu::TextureSampleType` for bind group compatibility.
-    pub fn wgpu_sample_type(&self) -> wgpu::TextureSampleType {
+    /// The texture sample type for pipeline/bind-group compatibility.
+    pub fn sample_type(&self) -> SampleType {
         match self {
             Self::R8Uint | Self::R16Uint | Self::Rg8Uint | Self::Rg16Uint
             | Self::R32Uint | Self::Rg32Uint | Self::Rgba8Uint | Self::Rgba16Uint
-            | Self::Rgba32Uint => {
-                wgpu::TextureSampleType::Uint
-            }
+            | Self::Rgba32Uint => SampleType::Uint,
             Self::R8Sint | Self::R16Sint | Self::Rg8Sint | Self::Rg16Sint
             | Self::R32Sint | Self::Rg32Sint | Self::Rgba8Sint | Self::Rgba16Sint
-            | Self::Rgba32Sint => wgpu::TextureSampleType::Sint,
-            _ => wgpu::TextureSampleType::Float { filterable: true },
+            | Self::Rgba32Sint => SampleType::Sint,
+            _ => SampleType::Float,
         }
     }
 
     /// Whether this format supports hardware texture filtering (Linear).
     /// Uint/Sint formats do not — they require Nearest filtering.
     pub fn is_filterable(&self) -> bool {
-        matches!(self.wgpu_sample_type(), wgpu::TextureSampleType::Float { .. })
+  		self.sample_type() == SampleType::Float
     }
 }
 
