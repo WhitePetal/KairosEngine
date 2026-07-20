@@ -2284,6 +2284,7 @@ dependencies = [
  "rkyv",
  "rustfft",
  "serde",
+ "serde_json",
  "smallvec",
  "sonic-rs",
  "strum",

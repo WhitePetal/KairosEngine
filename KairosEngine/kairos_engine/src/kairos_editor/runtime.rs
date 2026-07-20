@@ -254,7 +254,7 @@ impl KairosEditorRuntime {
 
         #[cfg(feature = "test-harness")]
         if let Some(bridge) = &mut self.test_bridge {
-            bridge.drain();
+            bridge.drain(&mut self.kairos_engine);
         }
 
         self.kairos_engine.update();
