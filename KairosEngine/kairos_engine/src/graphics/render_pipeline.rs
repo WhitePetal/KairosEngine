@@ -23,7 +23,7 @@ use wgpu::{
 use winit::{dpi::PhysicalSize, window::Window};
 
 use crate::{
-    asset_loader::assets::AssetsServer,
+    asset_loader::assets::{asset::AssetIndex, AssetsServer},
     graphics::{
         attachment::{AttachmentFormat, InternalAttachmentId},
         graphics_graph::{self, GraphicsGraph, graphics_node::RenderPassNode},
@@ -89,7 +89,7 @@ pub struct RenderPipeline {
 
     // #1: purple fallback for errored materials.
     purple_fallback: Option<(BindGroup, BindGroupLayout)>,
-    error_material_indices: std::collections::HashSet<usize>,
+    error_material_indices: std::collections::HashSet<AssetIndex>,
 }
 
 impl RenderPipeline {
@@ -338,6 +338,7 @@ impl RenderPipeline {
         let mut more_command_buffers = Vec::new();
         let mut egui_free_textures = None;
 
+        let mut all_error_scopes: Vec<(AssetIndex, wgpu::ErrorScopeGuard)> = Vec::new();
         while let Some(node) = nodes_stack.pop() {
             let Some(node) = graph.remove_node(node) else {
                 continue;
@@ -375,6 +376,7 @@ impl RenderPipeline {
                         assets_server,
                         &mut self.error_material_indices,
                         &self.purple_fallback,
+                        &mut all_error_scopes,
                     );
                     if let Some(command_buffers) = &mut command_buffers {
                         more_command_buffers.append(command_buffers);
@@ -422,6 +424,16 @@ impl RenderPipeline {
             self.queue.submit(Some(encoder.finish()));
         }
 
+        // Process pending error scopes after GPU work is submitted.
+        // Scopes must be popped in reverse-push (LIFO) order.
+        all_error_scopes.reverse();
+        for (material_id, scope) in all_error_scopes.drain(..) {
+            if let Some(error) = pollster::block_on(scope.pop()) {
+                log::error!("Material #{:?} error: {error}", material_id);
+                self.error_material_indices.insert(material_id);
+            }
+        }
+
         // Must be called before present() on Windows for vsync to work correctly.
         // Tells DWM to prepare for the upcoming frame presentation.
         self.window.pre_present_notify();
@@ -451,8 +463,9 @@ impl RenderPipeline {
         vp_bind_group: &BindGroup,
         render_pass_node: &RenderPassNode,
         assets_server: &mut AssetsServer,
-        error_material_indices: &mut std::collections::HashSet<usize>,
+        error_material_indices: &mut std::collections::HashSet<AssetIndex>,
         purple_fallback: &Option<(BindGroup, BindGroupLayout)>,
+        error_scopes: &mut Vec<(AssetIndex, wgpu::ErrorScopeGuard)>,
     ) -> Option<Vec<CommandBuffer>> {
         let attachment_ids = &render_pass_node.attachments;
 
@@ -587,8 +600,8 @@ impl RenderPipeline {
                 continue;
             };
 
-            let material_index = draw.renderer.material.id().index() as usize;
-            let material_errored = error_material_indices.contains(&material_index);
+            let material_id = draw.renderer.material.id();
+            let material_errored = error_material_indices.contains(&material_id);
 
             let Some(shader_asset) = &material.shader else {
                 continue;
@@ -598,69 +611,53 @@ impl RenderPipeline {
             };
 
             // --- Texture bind group ---
-            let mut texture_key = 0usize;
-            let texture_bind_group = if material_errored {
-                purple_fallback.as_ref().map(|(bg, _)| bg.clone())
+            let texture_bind_group: Option<BindGroup>;
+            let texture_bind_group_layout: Option<&BindGroupLayout>;
+
+            if material_errored {
+                if let Some((bg, layout)) = purple_fallback.as_ref() {
+                    texture_bind_group = Some(bg.clone());
+                    texture_bind_group_layout = Some(layout);
+                } else {
+                    texture_bind_group = None;
+                    texture_bind_group_layout = None;
+                }
             } else if let Some(texture) = &material.texture {
                 let Some(texture_asset) = assets_server.get(&texture) else {
                     continue;
                 };
                 let texture_id = texture.id();
                 let key = texture_id.index() as usize;
-                texture_key = key;
                 let version = texture_id.version();
-                Some(match texture_cache.entry(key) {
+                let result = {
+                    error_scopes.push((material_id, device.push_error_scope(wgpu::ErrorFilter::Validation)));
+                    match texture_cache.entry(key) {
                     std::collections::hash_map::Entry::Occupied(mut entry) => {
                         let cache = entry.get();
                         if cache.version == version {
                             cache.bind_group.clone()
                         } else {
-                            let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
                             let (bind_group, layout) = Self::create_texture(
-                                device,
-                                queue,
-                                texture_asset,
+                                device, queue, texture_asset,
                             );
-                            if let Some(e) = pollster::block_on(scope.pop()) {
-                                log::error!("Texture #{} create error: {e}", material_index);
-                                error_material_indices.insert(material_index);
-                            }
-                            entry.insert(TextureCache {
-                                version,
-                                bind_group: bind_group.clone(),
-                                layout,
-                            });
+                            entry.insert(TextureCache { version, bind_group: bind_group.clone(), layout });
                             bind_group
                         }
                     }
                     std::collections::hash_map::Entry::Vacant(entry) => {
-                        let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
                         let (bind_group, layout) = Self::create_texture(
-                            device,
-                            queue,
-                            texture_asset,
+                            device, queue, texture_asset,
                         );
-                        if let Some(e) = pollster::block_on(scope.pop()) {
-                            log::error!("Texture #{} create error: {e}", material_index);
-                            error_material_indices.insert(material_index);
-                        }
-                        entry.insert(TextureCache {
-                            version,
-                            bind_group: bind_group.clone(),
-                            layout,
-                        });
+                        entry.insert(TextureCache { version, bind_group: bind_group.clone(), layout });
                         bind_group
                     }
-                })
+                }
+                };
+                texture_bind_group = Some(result);
+                texture_bind_group_layout = texture_cache.get(&key).map(|c| &c.layout);
             } else {
-                None
-            };
-
-            // Look up the layout from the cache (must exist after above).
-            let texture_bind_group_layout = if texture_bind_group.is_some() {
-                texture_cache.get(&texture_key).map(|c| &c.layout)
-            } else {
-                None
+                texture_bind_group = None;
+                texture_bind_group_layout = None;
             };
 
             // --- Pipeline ---
@@ -676,58 +673,26 @@ impl RenderPipeline {
                     if cache.version == shader_version {
                         cache.pipeline.clone()
                     } else {
-                        let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
+                        error_scopes.push((material_id, device.push_error_scope(wgpu::ErrorFilter::Validation)));
                         let pipeline = Self::create_pipeline(
-                            device,
-                            global_vp_bind_group_layout,
-                            texture_bind_group_layout,
-                            shader,
-                            &depth_state,
-                            &pipeline_key.render_state,
+                            device, global_vp_bind_group_layout, texture_bind_group_layout,
+                            shader, &depth_state, &pipeline_key.render_state,
                             instancing_vertex_buffer_layout.clone(),
-                            color_attachments[0]
-                                .as_ref()
-                                .unwrap()
-                                .view
-                                .texture()
-                                .format(),
-                            );
-                            if let Some(e) = pollster::block_on(scope.pop()) {
-                                log::error!("Material #{} pipeline error: {e}", material_index);
-                            error_material_indices.insert(material_index);
-                            }
-                            entry.insert(PipelineCache {
-                                version: shader_version,
-                                pipeline: pipeline.clone(),
-                            });
-                            pipeline
-                        }
-                    }
-                    std::collections::hash_map::Entry::Vacant(entry) => {
-                        let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
-                        let pipeline = Self::create_pipeline(
-                            device,
-                            global_vp_bind_group_layout,
-                            texture_bind_group_layout,
-                            shader,
-                            &depth_state,
-                            &pipeline_key.render_state,
-                            instancing_vertex_buffer_layout.clone(),
-                            color_attachments[0]
-                                .as_ref()
-                                .unwrap()
-                                .view
-                                .texture()
-                                .format(),
+                            color_attachments[0].as_ref().unwrap().view.texture().format(),
                         );
-                        if let Some(e) = pollster::block_on(scope.pop()) {
-                            log::error!("Material #{} pipeline error: {e}", material_index);
-                            error_material_indices.insert(material_index);
-                        }
-                        entry.insert(PipelineCache {
-                        version: shader_version,
-                        pipeline: pipeline.clone(),
-                    });
+                        entry.insert(PipelineCache { version: shader_version, pipeline: pipeline.clone() });
+                        pipeline
+                    }
+                }
+                std::collections::hash_map::Entry::Vacant(entry) => {
+                    error_scopes.push((material_id, device.push_error_scope(wgpu::ErrorFilter::Validation)));
+                    let pipeline = Self::create_pipeline(
+                        device, global_vp_bind_group_layout, texture_bind_group_layout,
+                        shader, &depth_state, &pipeline_key.render_state,
+                        instancing_vertex_buffer_layout.clone(),
+                        color_attachments[0].as_ref().unwrap().view.texture().format(),
+                    );
+                    entry.insert(PipelineCache { version: shader_version, pipeline: pipeline.clone() });
                     pipeline
                 }
             };
@@ -979,8 +944,8 @@ impl RenderPipeline {
     }
 
     /// #1: Clear error state for a material, re-enabling its real texture.
-    pub fn clear_material_error(&mut self, material_index: usize) {
-        self.error_material_indices.remove(&material_index);
+    pub fn clear_material_error(&mut self, material_id: AssetIndex) {
+        self.error_material_indices.remove(&material_id);
     }
 
     fn create_pipeline(
