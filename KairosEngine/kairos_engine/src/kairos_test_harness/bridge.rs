@@ -1,5 +1,5 @@
 use crate::kairos_editor::KairosEngine;
-use crate::kairos_test_harness::{dispatch, types::StepResult};
+use crate::kairos_test_harness::{assertions::CrashTracker, dispatch, types::StepResult};
 use crate::kairos_test_harness::types::TestStep;
 use tokio::sync::{mpsc, oneshot};
 
@@ -21,12 +21,17 @@ pub enum EngineCommand {
 pub struct Bridge {
     tx: mpsc::Sender<EngineCommand>,
     rx: mpsc::Receiver<EngineCommand>,
+    crash_tracker: CrashTracker,
 }
 
 impl Bridge {
     pub fn new(buffer: usize) -> Self {
         let (tx, rx) = mpsc::channel(buffer);
-        Self { tx, rx }
+        Self {
+            tx,
+            rx,
+            crash_tracker: CrashTracker::new(),
+        }
     }
 
     pub fn sender(&self) -> mpsc::Sender<EngineCommand> {
@@ -41,14 +46,18 @@ impl Bridge {
         }
     }
 
-    fn handle(&self, cmd: EngineCommand, engine: &mut KairosEngine) {
+    fn handle(&mut self, cmd: EngineCommand, engine: &mut KairosEngine) {
         match cmd {
             EngineCommand::Echo { message, response } => {
                 let echoed = format!("echo: {message}");
                 let _ = response.send(echoed);
             }
             EngineCommand::ExecuteStep { step, response } => {
-                let result = execute_step(&step, engine);
+                let result = execute_step(&step, engine, &mut self.crash_tracker);
+                // Track errors for no_crash assertion
+                if !result.ok {
+                    self.crash_tracker.mark_error();
+                }
                 let _ = response.send(result);
             }
         }
@@ -56,9 +65,14 @@ impl Bridge {
 }
 
 /// Route a test step to the appropriate handler based on its action.
-fn execute_step(step: &TestStep, engine: &mut KairosEngine) -> StepResult {
+fn execute_step(
+    step: &TestStep,
+    engine: &mut KairosEngine,
+    crash_tracker: &mut CrashTracker,
+) -> StepResult {
     match step.action.as_str() {
         "call" => dispatch::dispatch_call(step, engine),
+        "assert" => dispatch::dispatch_assert(step, engine, crash_tracker),
         other => StepResult::err(format!("unknown action: '{other}'")),
     }
 }

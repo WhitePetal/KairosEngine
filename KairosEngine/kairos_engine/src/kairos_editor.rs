@@ -101,4 +101,16 @@ impl KairosEngine {
         self.engine.world.clear();
         self.engine.assets_server.handle();
     }
+
+    /// Access the underlying `Engine` (crate-visible for test harness).
+    #[cfg(feature = "test-harness")]
+    pub(crate) fn engine_mut(&mut self) -> &mut Engine {
+        &mut self.engine
+    }
+
+    /// Access the log buffer (crate-visible for test harness).
+    #[cfg(feature = "test-harness")]
+    pub(crate) fn log_mut(&mut self) -> &mut Log {
+        &mut self.log
+    }
 }
