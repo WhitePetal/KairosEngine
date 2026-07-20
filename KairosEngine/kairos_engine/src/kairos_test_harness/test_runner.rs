@@ -105,4 +105,23 @@ args = { format = "BC7" }
         let result: Result<TestFile, _> = toml::from_str(toml_str);
         assert!(result.is_err());
     }
+
+    #[test]
+    fn parse_real_e2e_tests() {
+        // Resolve paths relative to workspace root
+        let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let workspace_root = manifest_dir.parent().unwrap();
+        let files = [
+            workspace_root.join("tests/runtime/smoke_test.toml"),
+            workspace_root.join("tests/runtime/texture_format_change.toml"),
+            workspace_root.join("tests/runtime/widget_click.toml"),
+        ];
+        for path in &files {
+            let content = std::fs::read_to_string(path)
+                .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
+            let test: TestFile = toml::from_str(&content)
+                .unwrap_or_else(|e| panic!("failed to parse {}: {e}", path.display()));
+            assert!(!test.step.is_empty(), "{} has no steps", path.display());
+        }
+    }
 }
