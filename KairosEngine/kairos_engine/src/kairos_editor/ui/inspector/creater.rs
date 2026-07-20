@@ -6,7 +6,8 @@ use crate::{
         asset_registry::AssetKind,
         ui::inspector::{
             Inspector, audio::AudioInspector, code::CodeInspector, directory::DirectoryInspector,
-            document::DocumentInspector, font::FontInspector, shader::ShaderInspector,
+            document::DocumentInspector, font::FontInspector, mesh::MeshInspector,
+            shader::ShaderInspector,
             texture::TextureInspector, toml::TomlTableInspector, unknown::UnknownInspector,
         },
     },
@@ -23,7 +24,7 @@ impl InspectorCreater {
         match asset_kind {
             AssetKind::Directory => Ok(Box::new(DirectoryInspector::create(path, assets_server)?)),
             AssetKind::Texture => Ok(Box::new(TextureInspector::create(path, assets_server)?)),
-            AssetKind::Mesh => todo!(),
+            AssetKind::Mesh => Ok(Box::new(MeshInspector::create(path, assets_server)?)),
             AssetKind::Material => todo!(),
             AssetKind::Audio => Ok(Box::new(AudioInspector::create(path, assets_server)?)),
             AssetKind::Shader => Ok(Box::new(ShaderInspector::create(path, assets_server)?)),

@@ -115,6 +115,10 @@ guid = "cb946120-6962-4366-91bb-7378266c8fac"
 path = "./Preferences/Styles/Inspectors/Font.toml"
 
 [[entries]]
+guid = "0664c7d6-7390-447d-aef0-0d0521168e7d"
+path = "./Preferences/Styles/Inspectors/Mesh.toml"
+
+[[entries]]
 guid = "796aa37f-f7ab-4897-a88b-41bdecd7eec2"
 path = "./Preferences/Styles/Inspectors/Shader.toml"
 
@@ -929,6 +933,10 @@ path = "./kairos_engine/src/kairos_editor/ui/inspector/document.rs"
 [[entries]]
 guid = "522653b2-418b-44cb-be44-10a4725bba5f"
 path = "./kairos_engine/src/kairos_editor/ui/inspector/font.rs"
+
+[[entries]]
+guid = "c720a7f3-67d5-4b34-b43f-b659da9bd715"
+path = "./kairos_engine/src/kairos_editor/ui/inspector/mesh.rs"
 
 [[entries]]
 guid = "150e139a-7ec0-4e4b-8f5f-ee3706c6f616"

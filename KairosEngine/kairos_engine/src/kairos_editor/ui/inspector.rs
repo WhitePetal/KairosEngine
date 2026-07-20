@@ -2,6 +2,7 @@ use std::any::Any;
 
 use crate::{
     asset_loader::assets::AssetsServer,
+    graphics::graphics_graph::GraphicsCommand,
     kairos_editor::ui::{Messager, dialog::Dialog},
 };
 
@@ -11,6 +12,7 @@ pub mod creater;
 pub mod directory;
 pub mod document;
 pub mod font;
+pub mod mesh;
 pub mod shader;
 pub mod texture;
 pub mod toml;
@@ -38,4 +40,10 @@ pub trait Inspector: Any {
     fn draw(&self, ui: &mut egui::Ui, messager: &mut Messager, assets_server: &AssetsServer);
 
     fn on_exit(&mut self, ctx: &egui::Context) -> Option<Box<dyn Dialog>>;
+
+    /// Optional: return preview render commands (e.g., 3D model preview).
+    /// Called during `Context::render()` alongside other Drawer::render() calls.
+    fn render_preview(&self) -> Vec<GraphicsCommand> {
+        Vec::new()
+    }
 }

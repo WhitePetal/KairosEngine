@@ -57,7 +57,6 @@ impl KairosEngine {
         let game = KairosGame::new(&mut engine);
         let ui_context = ui::Context::new(egui_ctx)?;
         let log = Log::new();
-
         Ok(Self {
             engine,
             game,

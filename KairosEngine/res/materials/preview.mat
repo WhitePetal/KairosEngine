@@ -1,0 +1,8 @@
+source_path = "res/materials/preview.mat"
+shader_path = "res/shaders/preview.wgsl"
+
+[render_state]
+depth_test = "LessEqual"
+depth_write = true
+cull_mod = "back"
+topology = "triangle-list"

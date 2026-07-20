@@ -200,6 +200,9 @@ impl Drawer for InspectorWindow {
         _game: &mut KairosGame,
         _messager: &mut Messager,
     ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {
-        None
+        self.model
+            .selected
+            .as_ref()
+            .and_then(|info| info.inspector.render_preview().into_iter().next())
     }
 }
