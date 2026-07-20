@@ -47,3 +47,5 @@ See the [Thanks.md](Thanks.md)
 - GPT
 - Kimi
 - 即梦
+
+![](https://komarev.com/ghpvc/?username=WhitePetal)
