@@ -287,10 +287,18 @@ where
 
         while let Ok(event) = self.asset_loaded_recever.try_recv() {
             let index = event.get_index();
-            self.storages[index.index] = Entry::Some {
-                value: event.get_asset(),
-                version: index.version,
-            };
+            // Guard against stale completions: when a slot is recycled for a
+            // different asset, the old async load may still complete and send a
+            // LoadedEvent carrying the old AssetIndex (lower version). Only
+            // accept the event if the storage is in Loading state with a
+            // matching version — otherwise it's a stale event from a previous
+            // load on a recycled slot.
+            if matches!(&self.storages[index.index], Entry::Loading { version } if *version == index.version) {
+                self.storages[index.index] = Entry::Some {
+                    value: event.get_asset(),
+                    version: index.version,
+                };
+            }
         }
     }
 
