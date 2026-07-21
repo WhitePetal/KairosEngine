@@ -351,7 +351,11 @@ where
                     denpendency_request_sender,
                 );
                 let (handle, info) = self.create_asset_handle(path, asset_index);
-                self.infos.push(info);
+                if asset_index.index < self.infos.len() {
+                    self.infos[asset_index.index] = info;
+                } else {
+                    self.infos.push(info);
+                }
                 handle
             }
             Entry::Loading { version } | Entry::Some { version, .. } => {
@@ -474,7 +478,11 @@ where
 
         // 5. Create the handle and info (no path).
         let (handle, info) = self.create_asset_handle(&path, asset_index);
-        self.infos.push(info);
+        if asset_index.index < self.infos.len() {
+            self.infos[asset_index.index] = info;
+        } else {
+            self.infos.push(info);
+        }
         handle
     }
 }

@@ -211,8 +211,7 @@ impl Inspector for MeshInspector {
                 paths::PATH_MESH_INSPECTOR_PREVIEW_WIREFRAME_MATERIAL,
             ));
 
-        let mut wireframe_mesh_path = mesh_path.clone();
-        wireframe_mesh_path.set_extension(".wireframe_mesh");
+        let wireframe_mesh_path = mesh_path.with_added_extension(".wireframe_mesh");
 
         let model = MeshInspectorModel {
             style,
