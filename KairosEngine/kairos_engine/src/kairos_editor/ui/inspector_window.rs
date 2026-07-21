@@ -169,7 +169,12 @@ impl Drawer for InspectorWindow {
         ui.label(format!("GUID: {}", info.guid));
         ui.separator();
 
-        info.inspector.draw(ui, messager, &engine.assets_server, engine.time.delta_time_secs());
+        info.inspector.draw(
+            ui,
+            messager,
+            &engine.assets_server,
+            engine.time.delta_time_secs(),
+        );
     }
 
     fn close(&self, messager: &mut super::Messager) {

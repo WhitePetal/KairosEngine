@@ -383,254 +383,198 @@ impl Inspector for TextureInspector {
         })
     }
 
-    fn draw(&self, ui: &mut egui::Ui, messager: &mut Messager, assets_server: &AssetsServer, _dt: f32) {
+    fn draw(
+        &self,
+        ui: &mut egui::Ui,
+        messager: &mut Messager,
+        assets_server: &AssetsServer,
+        _dt: f32,
+    ) {
         egui::ScrollArea::vertical().show(ui, |ui| {
-        let texture;
-        {
-            // Wait for the TextureExt resource to load asynchronously.
-            let mut ext_guard = self.model.texture_ext.lock();
-            let Some(ext) = ext_guard.deref_mut() else {
-                if let Some(ext_source) = assets_server.get(&self.model.handle) {
-                    *ext_guard = Some(ext_source.clone());
-                }
-                ui.label("Texture is Loading...");
-                return;
-            };
+            let texture;
+            {
+                // Wait for the TextureExt resource to load asynchronously.
+                let mut ext_guard = self.model.texture_ext.lock();
+                let Some(ext) = ext_guard.deref_mut() else {
+                    if let Some(ext_source) = assets_server.get(&self.model.handle) {
+                        *ext_guard = Some(ext_source.clone());
+                    }
+                    ui.label("Texture is Loading...");
+                    return;
+                };
 
-            // Also wait for the runtime Texture (pixel data) to be ready.
-            let Some(texture_inner) = assets_server.get::<TextureAssetsSystem>(&ext.texture) else {
-                ui.label("Texture data is Loading...");
-                return;
-            };
-            texture = texture_inner;
+                // Also wait for the runtime Texture (pixel data) to be ready.
+                let Some(texture_inner) = assets_server.get::<TextureAssetsSystem>(&ext.texture) else {
+                    ui.label("Texture data is Loading...");
+                    return;
+                };
+                texture = texture_inner;
 
-            // ---- Source ----
-            ui.label(format!("Source: {}", ext.serialized.source_path.display()));
+                // ---- Source ----
+                ui.label(format!("Source: {}", ext.serialized.source_path.display()));
 
-            // ---- Properties table ----
-            let row_h = self.model.style.row_height;
-            let w_default = self.model.style.combo_width_default;
-            let w_narrow = self.model.style.combo_width_narrow;
-            let w_aniso = self.model.style.combo_width_anisotropy;
-            let w_format = self.model.style.combo_width_format;
-            let original_max = ext.original_width.max(ext.original_height);
-            let mut selected_size = find_texture_max_size(ext.serialized.width, ext.serialized.height);
+                // ---- Properties table ----
+                let row_h = self.model.style.row_height;
+                let w_default = self.model.style.combo_width_default;
+                let w_narrow = self.model.style.combo_width_narrow;
+                let w_aniso = self.model.style.combo_width_anisotropy;
+                let w_format = self.model.style.combo_width_format;
+                let original_max = ext.original_width.max(ext.original_height);
+                let mut selected_size = find_texture_max_size(ext.serialized.width, ext.serialized.height);
 
-            TableBuilder::new(ui)
-                .striped(true)
-                .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-                .column(Column::auto())
-                .column(Column::remainder())
-                .body(|mut body| {
-                    // Original Size
-                    body.row(row_h, |mut row| {
-                        row.col(|ui| {
-                            ui.label("Original Size:");
-                        });
-                        row.col(|ui| {
-                            ui.label(format!("{} x {}", ext.original_width, ext.original_height));
-                        });
-                    });
-
-                    // Current Size
-                    body.row(row_h, |mut row| {
-                        row.col(|ui| {
-                            ui.label("Current Size:");
-                        });
-                        row.col(|ui| {
-                            ui.label(format!("{} x {}", texture.width, texture.height));
-                        });
-                    });
-
-                    // Max Size (ComboBox)
-                    body.row(row_h, |mut row| {
-                        row.col(|ui| {
-                            ui.label("Max Size:");
-                        });
-                        row.col(|ui| {
-                            ComboBox::from_id_salt("texture_max_size")
-                                .width(w_narrow)
-                                .selected_text(selected_size.as_u32().to_string())
-                                .show_ui(ui, |ui| {
-                                    for size in TextureMaxSize::iter() {
-                                        if size.as_u32() > original_max {
-                                            continue;
-                                        }
-                                        if ui
-                                            .selectable_value(
-                                                &mut selected_size,
-                                                size,
-                                                size.as_u32().to_string(),
-                                            )
-                                            .changed()
-                                        {
-                                            (ext.serialized.width, ext.serialized.height) =
-                                                Self::compute_target_size(
-                                                    ext.original_width,
-                                                    ext.original_height,
-                                                    selected_size.as_u32(),
-                                                );
-                                            self.dirty.set(true);
-                                        }
-                                    }
-                                });
-                        });
-                    });
-
-                    // Texture Format
-                    body.row(row_h, |mut row| {
-                        row.col(|ui| {
-                            ui.label("Texture Format:");
-                        });
-                        row.col(|ui| {
-                            // Tag for test harness
-                            ui.push_id("format_dropdown", |ui| {
-                            ComboBox::from_id_salt("texture_format")
-                                .width(w_format)
-                                .selected_text(format!("{:?}", ext.serialized.format))
-                                .show_ui(ui, |ui| {
-                                    for format in TextureFormat::iter()
-                                    {
-                                        ui.add_enabled_ui(
-                                            format.is_available(&self.model.compression_config),
-                                            |ui| {
-                                                let resp = ui
-                                                    .selectable_value(
-                                                        &mut ext.serialized.format,
-                                                        format,
-                                                        format!("{format:?}"),
-                                                        );
-                                                // Record each format option rect for test harness
-                                                #[cfg(feature = "test-harness")]
-                                                ui.ctx().data_mut(|d| {
-                                                    let rects = d.get_temp_mut_or_default::<
-                                                        std::collections::HashMap<String, egui::Rect>,
-                                                    >(egui::Id::new("__kairos_widget_rects"));
-                                                    rects.insert(
-                                                        format!("format_option_{format:?}"),
-                                                        resp.rect,
-                                                    );
-                                                });
-                                                if resp.changed()
-                                                    {
-                                                        // #2: auto-adjust sampler for non-filterable formats.
-                                                        if !format.is_filterable() {
-                                                            ext.serialized.sampler.filter_mode = FilterMode::Nearest;
-                                                            if let Some(ref mut mip) = ext.serialized.sampler.mipmap {
-                                                                mip.filter = MipmapFilter::Nearest;
-                                                                mip.anisotropy_clamp = 1;
-                                                            }
-                                                        }
-                                                        self.dirty.set(true);
-                                                    }
-                                                },
-                                        );
-                                    }
-                                });
-
-                            // Record rect + egui Id for test harness
-                            #[cfg(feature = "test-harness")]
-                            ui.ctx().data_mut(|d| {
-                                let rects = d.get_temp_mut_or_default::<
-                                    std::collections::HashMap<String, egui::Rect>,
-                                >(egui::Id::new("__kairos_widget_rects"));
-                                rects.insert("format_dropdown".into(), combo_resp.response.rect);
-                                let ids = d.get_temp_mut_or_default::<
-                                    std::collections::HashMap<String, egui::Id>,
-                                >(egui::Id::new("__kairos_widget_egui_ids"));
-                                ids.insert("format_dropdown".into(), combo_resp.response.id);
-                            });
-
-                            }); // push_id("format_dropdown")
-                        });
-                    });
-
-                    // ---- Sampler settings ----
-
-                    // Filter Mode
-                    body.row(row_h, |mut row| {
-                        row.col(|ui| {
-                            ui.label("Filter Mode:");
-                        });
-                        row.col(|ui| {
-                            let mut current = ext.serialized.sampler.filter_mode;
-                            egui::ComboBox::from_id_salt("texture_filter_mode")
-                                .width(w_narrow)
-                                .selected_text(current.label())
-                                .show_ui(ui, |ui| {
-                                    for mode in FilterMode::iter() {
-                                        if ui
-                                            .selectable_value(&mut current, mode, mode.label())
-                                            .changed()
-                                        {
-                                            ext.serialized.sampler.filter_mode = current;
-                                            // Anisotropy requires Linear filtering.
-                                            if current == FilterMode::Nearest {
-                                                if let Some(ref mut mip) = ext.serialized.sampler.mipmap {
-                                                    mip.anisotropy_clamp = 1;
-                                                }
-                                            }
-                                            self.dirty.set(true);
-                                        }
-                                    }
-                                });
-                        });
-                    });
-
-                    // Address Mode (with per-axis support)
-                    draw_address_mode_rows(&mut body, row_h, w_default, &mut ext.serialized, &self.dirty, &self.per_axis_mode);
-
-                    // Mipmap toggle
-                    body.row(row_h, |mut row| {
-                        row.col(|ui| {
-                            ui.label("Enable Mipmap:");
-                        });
-                        row.col(|ui| {
-                            let mut enabled = ext.serialized.sampler.mipmap.is_some();
-                            if ui.checkbox(&mut enabled, "").changed() {
-                                if enabled {
-                                    let max_dim = ext.serialized.width.max(ext.serialized.height);
-                                    let max_level = (max_dim as f32).log2().floor();
-                                    ext.serialized.sampler.mipmap = Some(
-                                        crate::graphics::texture::sampler::MipmapConfig {
-                                            filter: MipmapFilter::Linear,
-                                            anisotropy_clamp: AnisotropyLevel::Level2.as_u16(),
-                                            lod_min_clamp: 0.0,
-                                            lod_max_clamp: max_level,
-                                        },
-                                    );
-                                } else {
-                                    ext.serialized.sampler.mipmap = None;
-                                }
-                                self.dirty.set(true);
-                            }
-                        });
-                    });
-
-                    // Pre-compute LOD bounds before mutably borrowing sampler.
-                    let max_dim = ext.serialized.width.max(ext.serialized.height);
-                    let max_level = (max_dim as f32).log2().floor();
-
-                    if let Some(ref mut mip) = ext.serialized.sampler.mipmap {
-                        // Mipmap Filter
+                TableBuilder::new(ui)
+                    .striped(true)
+                    .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+                    .column(Column::auto())
+                    .column(Column::remainder())
+                    .body(|mut body| {
+                        // Original Size
                         body.row(row_h, |mut row| {
                             row.col(|ui| {
-                                ui.label("  Mipmap Filter:");
+                                ui.label("Original Size:");
                             });
                             row.col(|ui| {
-                                let mut current = mip.filter;
-                                egui::ComboBox::from_id_salt("texture_mipmap_filter")
+                                ui.label(format!("{} x {}", ext.original_width, ext.original_height));
+                            });
+                        });
+
+                        // Current Size
+                        body.row(row_h, |mut row| {
+                            row.col(|ui| {
+                                ui.label("Current Size:");
+                            });
+                            row.col(|ui| {
+                                ui.label(format!("{} x {}", texture.width, texture.height));
+                            });
+                        });
+
+                        // Max Size (ComboBox)
+                        body.row(row_h, |mut row| {
+                            row.col(|ui| {
+                                ui.label("Max Size:");
+                            });
+                            row.col(|ui| {
+                                ComboBox::from_id_salt("texture_max_size")
+                                    .width(w_narrow)
+                                    .selected_text(selected_size.as_u32().to_string())
+                                    .show_ui(ui, |ui| {
+                                        for size in TextureMaxSize::iter() {
+                                            if size.as_u32() > original_max {
+                                                continue;
+                                            }
+                                            if ui
+                                                .selectable_value(
+                                                    &mut selected_size,
+                                                    size,
+                                                    size.as_u32().to_string(),
+                                                )
+                                                .changed()
+                                            {
+                                                (ext.serialized.width, ext.serialized.height) =
+                                                    Self::compute_target_size(
+                                                        ext.original_width,
+                                                        ext.original_height,
+                                                        selected_size.as_u32(),
+                                                    );
+                                                self.dirty.set(true);
+                                            }
+                                        }
+                                    });
+                            });
+                        });
+
+                        // Texture Format
+                        body.row(row_h, |mut row| {
+                            row.col(|ui| {
+                                ui.label("Texture Format:");
+                            });
+                            row.col(|ui| {
+                                // Tag for test harness
+                                ui.push_id("format_dropdown", |ui| {
+                                ComboBox::from_id_salt("texture_format")
+                                    .width(w_format)
+                                    .selected_text(format!("{:?}", ext.serialized.format))
+                                    .show_ui(ui, |ui| {
+                                        for format in TextureFormat::iter()
+                                        {
+                                            ui.add_enabled_ui(
+                                                format.is_available(&self.model.compression_config),
+                                                |ui| {
+                                                    let resp = ui
+                                                        .selectable_value(
+                                                            &mut ext.serialized.format,
+                                                            format,
+                                                            format!("{format:?}"),
+                                                            );
+                                                    // Record each format option rect for test harness
+                                                    #[cfg(feature = "test-harness")]
+                                                    ui.ctx().data_mut(|d| {
+                                                        let rects = d.get_temp_mut_or_default::<
+                                                            std::collections::HashMap<String, egui::Rect>,
+                                                        >(egui::Id::new("__kairos_widget_rects"));
+                                                        rects.insert(
+                                                            format!("format_option_{format:?}"),
+                                                            resp.rect,
+                                                        );
+                                                    });
+                                                    if resp.changed()
+                                                        {
+                                                            // #2: auto-adjust sampler for non-filterable formats.
+                                                            if !format.is_filterable() {
+                                                                ext.serialized.sampler.filter_mode = FilterMode::Nearest;
+                                                                if let Some(ref mut mip) = ext.serialized.sampler.mipmap {
+                                                                    mip.filter = MipmapFilter::Nearest;
+                                                                    mip.anisotropy_clamp = 1;
+                                                                }
+                                                            }
+                                                            self.dirty.set(true);
+                                                        }
+                                                    },
+                                            );
+                                        }
+                                    });
+
+                                // Record rect + egui Id for test harness
+                                #[cfg(feature = "test-harness")]
+                                ui.ctx().data_mut(|d| {
+                                    let rects = d.get_temp_mut_or_default::<
+                                        std::collections::HashMap<String, egui::Rect>,
+                                    >(egui::Id::new("__kairos_widget_rects"));
+                                    rects.insert("format_dropdown".into(), combo_resp.response.rect);
+                                    let ids = d.get_temp_mut_or_default::<
+                                        std::collections::HashMap<String, egui::Id>,
+                                    >(egui::Id::new("__kairos_widget_egui_ids"));
+                                    ids.insert("format_dropdown".into(), combo_resp.response.id);
+                                });
+
+                                }); // push_id("format_dropdown")
+                            });
+                        });
+
+                        // ---- Sampler settings ----
+
+                        // Filter Mode
+                        body.row(row_h, |mut row| {
+                            row.col(|ui| {
+                                ui.label("Filter Mode:");
+                            });
+                            row.col(|ui| {
+                                let mut current = ext.serialized.sampler.filter_mode;
+                                egui::ComboBox::from_id_salt("texture_filter_mode")
                                     .width(w_narrow)
                                     .selected_text(current.label())
                                     .show_ui(ui, |ui| {
-                                        for mode in MipmapFilter::iter() {
+                                        for mode in FilterMode::iter() {
                                             if ui
                                                 .selectable_value(&mut current, mode, mode.label())
                                                 .changed()
                                             {
-                                                mip.filter = current;
-                                                if current == MipmapFilter::Nearest {
-                                                    mip.anisotropy_clamp = 1;
+                                                ext.serialized.sampler.filter_mode = current;
+                                                // Anisotropy requires Linear filtering.
+                                                if current == FilterMode::Nearest {
+                                                    if let Some(ref mut mip) = ext.serialized.sampler.mipmap {
+                                                        mip.anisotropy_clamp = 1;
+                                                    }
                                                 }
                                                 self.dirty.set(true);
                                             }
@@ -639,109 +583,171 @@ impl Inspector for TextureInspector {
                             });
                         });
 
-                        // Anisotropic
-                        body.row(row_h, |mut row| {
-                            row.col(|ui| {
-                                ui.label("  Anisotropic:");
-                            });
-                            row.col(|ui| {
-                                let can_aniso = ext.serialized.sampler.filter_mode == FilterMode::Linear
-                                    && mip.filter == MipmapFilter::Linear;
-                                let mut aniso_on = mip.anisotropy_clamp > 1 && can_aniso;
-                                ui.add_enabled_ui(can_aniso, |ui| {
-                                    if ui.checkbox(&mut aniso_on, "").changed() {
-                                        mip.anisotropy_clamp = if aniso_on { AnisotropyLevel::Level4.as_u16() } else { 1 };
-                                        self.dirty.set(true);
-                                    }
-                                });
-                                if aniso_on {
-                                    let mut level = AnisotropyLevel::from_u16(mip.anisotropy_clamp)
-                                        .unwrap_or(AnisotropyLevel::Level4);
-                                    egui::ComboBox::from_id_salt("texture_anisotropy")
-                                        .width(w_aniso)
-                                        .selected_text(level.as_u16().to_string())
-                                        .show_ui(ui, |ui| {
-                                            for l in AnisotropyLevel::iter() {
-                                                if ui
-                                                    .selectable_value(&mut level, l, l.as_u16().to_string())
-                                                    .changed()
-                                                {
-                                                    mip.anisotropy_clamp = level.as_u16();
-                                                    self.dirty.set(true);
-                                                }
-                                            }
-                                        });
-                                }
-                            });
-                        });
+                        // Address Mode (with per-axis support)
+                        draw_address_mode_rows(&mut body, row_h, w_default, &mut ext.serialized, &self.dirty, &self.per_axis_mode);
 
-                        // LOD Max
+                        // Mipmap toggle
                         body.row(row_h, |mut row| {
                             row.col(|ui| {
-                                ui.label("  LOD Max:");
+                                ui.label("Enable Mipmap:");
                             });
                             row.col(|ui| {
-                                let mut val = mip.lod_max_clamp;
-                                if egui::Slider::new(&mut val, 0.0f32..=max_level)
-                                    .text("lod_max")
-                                    .ui(ui)
-                                    .changed()
-                                {
-                                    mip.lod_max_clamp = val.max(0.0);
+                                let mut enabled = ext.serialized.sampler.mipmap.is_some();
+                                if ui.checkbox(&mut enabled, "").changed() {
+                                    if enabled {
+                                        let max_dim = ext.serialized.width.max(ext.serialized.height);
+                                        let max_level = (max_dim as f32).log2().floor();
+                                        ext.serialized.sampler.mipmap = Some(
+                                            crate::graphics::texture::sampler::MipmapConfig {
+                                                filter: MipmapFilter::Linear,
+                                                anisotropy_clamp: AnisotropyLevel::Level2.as_u16(),
+                                                lod_min_clamp: 0.0,
+                                                lod_max_clamp: max_level,
+                                            },
+                                        );
+                                    } else {
+                                        ext.serialized.sampler.mipmap = None;
+                                    }
                                     self.dirty.set(true);
                                 }
                             });
                         });
-                    }
 
-                    // Compare
-                    draw_compare_row(&mut body, row_h, w_default, &mut ext.serialized, &self.dirty);
+                        // Pre-compute LOD bounds before mutably borrowing sampler.
+                        let max_dim = ext.serialized.width.max(ext.serialized.height);
+                        let max_level = (max_dim as f32).log2().floor();
+
+                        if let Some(ref mut mip) = ext.serialized.sampler.mipmap {
+                            // Mipmap Filter
+                            body.row(row_h, |mut row| {
+                                row.col(|ui| {
+                                    ui.label("  Mipmap Filter:");
+                                });
+                                row.col(|ui| {
+                                    let mut current = mip.filter;
+                                    egui::ComboBox::from_id_salt("texture_mipmap_filter")
+                                        .width(w_narrow)
+                                        .selected_text(current.label())
+                                        .show_ui(ui, |ui| {
+                                            for mode in MipmapFilter::iter() {
+                                                if ui
+                                                    .selectable_value(&mut current, mode, mode.label())
+                                                    .changed()
+                                                {
+                                                    mip.filter = current;
+                                                    if current == MipmapFilter::Nearest {
+                                                        mip.anisotropy_clamp = 1;
+                                                    }
+                                                    self.dirty.set(true);
+                                                }
+                                            }
+                                        });
+                                });
+                            });
+
+                            // Anisotropic
+                            body.row(row_h, |mut row| {
+                                row.col(|ui| {
+                                    ui.label("  Anisotropic:");
+                                });
+                                row.col(|ui| {
+                                    let can_aniso = ext.serialized.sampler.filter_mode == FilterMode::Linear
+                                        && mip.filter == MipmapFilter::Linear;
+                                    let mut aniso_on = mip.anisotropy_clamp > 1 && can_aniso;
+                                    ui.add_enabled_ui(can_aniso, |ui| {
+                                        if ui.checkbox(&mut aniso_on, "").changed() {
+                                            mip.anisotropy_clamp = if aniso_on { AnisotropyLevel::Level4.as_u16() } else { 1 };
+                                            self.dirty.set(true);
+                                        }
+                                    });
+                                    if aniso_on {
+                                        let mut level = AnisotropyLevel::from_u16(mip.anisotropy_clamp)
+                                            .unwrap_or(AnisotropyLevel::Level4);
+                                        egui::ComboBox::from_id_salt("texture_anisotropy")
+                                            .width(w_aniso)
+                                            .selected_text(level.as_u16().to_string())
+                                            .show_ui(ui, |ui| {
+                                                for l in AnisotropyLevel::iter() {
+                                                    if ui
+                                                        .selectable_value(&mut level, l, l.as_u16().to_string())
+                                                        .changed()
+                                                    {
+                                                        mip.anisotropy_clamp = level.as_u16();
+                                                        self.dirty.set(true);
+                                                    }
+                                                }
+                                            });
+                                    }
+                                });
+                            });
+
+                            // LOD Max
+                            body.row(row_h, |mut row| {
+                                row.col(|ui| {
+                                    ui.label("  LOD Max:");
+                                });
+                                row.col(|ui| {
+                                    let mut val = mip.lod_max_clamp;
+                                    if egui::Slider::new(&mut val, 0.0f32..=max_level)
+                                        .text("lod_max")
+                                        .ui(ui)
+                                        .changed()
+                                    {
+                                        mip.lod_max_clamp = val.max(0.0);
+                                        self.dirty.set(true);
+                                    }
+                                });
+                            });
+                        }
+
+                        // Compare
+                        draw_compare_row(&mut body, row_h, w_default, &mut ext.serialized, &self.dirty);
+                    });
+            }
+
+            // ---- Apply button ----
+            let changed = self.dirty.get();
+            ui.vertical_centered(|ui| {
+                // Tag for test harness: widget rect collection
+                ui.push_id("apply_button", |ui| {
+                let apply_btn = egui::Button::new("Apply").min_size(Vec2::new(
+                    ui.available_width(),
+                    self.model.style.apply_button_height,
+                ));
+
+                let resp = ui.add_enabled(changed, apply_btn);
+
+                // Record rect + egui Id for test harness
+                #[cfg(feature = "test-harness")]
+                ui.ctx().data_mut(|d| {
+                    let rects = d.get_temp_mut_or_default::<
+                        std::collections::HashMap<String, egui::Rect>,
+                    >(egui::Id::new("__kairos_widget_rects"));
+                    rects.insert("apply_button".into(), resp.rect);
+                    let ids = d.get_temp_mut_or_default::<
+                        std::collections::HashMap<String, egui::Id>,
+                    >(egui::Id::new("__kairos_widget_egui_ids"));
+                    ids.insert("apply_button".into(), resp.id);
                 });
-        }
 
-        // ---- Apply button ----
-        let changed = self.dirty.get();
-        ui.vertical_centered(|ui| {
-            // Tag for test harness: widget rect collection
-            ui.push_id("apply_button", |ui| {
-            let apply_btn = egui::Button::new("Apply").min_size(Vec2::new(
-                ui.available_width(),
-                self.model.style.apply_button_height,
-            ));
-
-            let resp = ui.add_enabled(changed, apply_btn);
-
-            // Record rect + egui Id for test harness
-            #[cfg(feature = "test-harness")]
-            ui.ctx().data_mut(|d| {
-                let rects = d.get_temp_mut_or_default::<
-                    std::collections::HashMap<String, egui::Rect>,
-                >(egui::Id::new("__kairos_widget_rects"));
-                rects.insert("apply_button".into(), resp.rect);
-                let ids = d.get_temp_mut_or_default::<
-                    std::collections::HashMap<String, egui::Id>,
-                >(egui::Id::new("__kairos_widget_egui_ids"));
-                ids.insert("apply_button".into(), resp.id);
+                if resp.clicked() {
+                    messager.send(Message::TextureInspectorApply(
+                        self.model.texture_path.clone(),
+                        self.model.handle.clone(),
+                        self.model.texture_ext.clone(),
+                    ));
+                }
+                if changed {
+                    ui.label("* unsaved changes");
+                }
+                }); // push_id("apply_button")
             });
 
-            if resp.clicked() {
-                messager.send(Message::TextureInspectorApply(
-                    self.model.texture_path.clone(),
-                    self.model.handle.clone(),
-                    self.model.texture_ext.clone(),
-                ));
-            }
-            if changed {
-                ui.label("* unsaved changes");
-            }
-            }); // push_id("apply_button")
-        });
+            ui.separator();
 
-        ui.separator();
-
-        // ---- Preview panel ----
-        self.ensure_preview(ui, texture);
-        self.draw_preview(ui);
+            // ---- Preview panel ----
+            self.ensure_preview(ui, texture);
+            self.draw_preview(ui);
         });
     }
 

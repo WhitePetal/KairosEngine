@@ -127,10 +127,8 @@ pub struct MeshInspector {
 impl MeshInspector {
     fn draw_preview(&self, ui: &mut egui::Ui, mesh: &Mesh, dt: f32) {
         let mut guard = self.model.preview.lock();
-        let preview = guard.get_or_insert(
-            PreviewState::new(mesh.compute_aabb(), &self.model.style)
-        );
-
+        let preview =
+            guard.get_or_insert(PreviewState::new(mesh.compute_aabb(), &self.model.style));
 
         // Try to receive a new egui texture id from a completed bind.
         if let Some(receiver) = &mut preview.bind_receiver {
@@ -198,8 +196,9 @@ impl Inspector for MeshInspector {
         let style = MeshInspectorStyle::new()?;
         let mesh_path = path.to_path_buf();
         let mesh_handle = assets_server.load::<MeshAssetsSystem>(&mesh_path);
-        let material_handle =
-            assets_server.load::<MaterialAssetsSystem>(&PathBuf::from(paths::PATH_MESH_INSPECTOR_PREVIEW_MATERIAL));
+        let material_handle = assets_server.load::<MaterialAssetsSystem>(&PathBuf::from(
+            paths::PATH_MESH_INSPECTOR_PREVIEW_MATERIAL,
+        ));
 
         let model = MeshInspectorModel {
             style,
@@ -212,144 +211,152 @@ impl Inspector for MeshInspector {
         Ok(Self { model })
     }
 
-    fn draw(&self, ui: &mut egui::Ui, _messager: &mut Messager, assets_server: &AssetsServer, dt: f32) {
-        let Some(mesh) = assets_server.get(&self.model.mesh_handle) else {
-            ui.label("Mesh is Loading...");
-            return;
-        };
+    fn draw(
+        &self,
+        ui: &mut egui::Ui,
+        _messager: &mut Messager,
+        assets_server: &AssetsServer,
+        dt: f32,
+    ) {
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            let Some(mesh) = assets_server.get(&self.model.mesh_handle) else {
+                ui.label("Mesh is Loading...");
+                return;
+            };
 
-        // ---- Source ----
-        ui.label(format!("Source: {}", self.model.mesh_path.display()));
-        // ---- Properties table ----
-        let row_h = self.model.style.row_height;
-        let total_bytes =
-            mesh.vertices.len() * std::mem::size_of::<crate::graphics::vertex::Vertex>();
+            // ---- Source ----
+            ui.label(format!("Source: {}", self.model.mesh_path.display()));
+            // ---- Properties table ----
+            let row_h = self.model.style.row_height;
+            let total_bytes =
+                mesh.vertices.len() * std::mem::size_of::<crate::graphics::vertex::Vertex>();
 
-        TableBuilder::new(ui)
-            .id_salt("mesh_properties")
-            .striped(true)
-            .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-            .column(Column::auto())
-            .column(Column::remainder())
-            .body(|mut body| {
-                body.row(row_h, |mut row| {
-                    row.col(|ui| {
-                        ui.label("Vertices:");
+            TableBuilder::new(ui)
+                .id_salt("mesh_properties")
+                .striped(true)
+                .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+                .column(Column::auto())
+                .column(Column::remainder())
+                .body(|mut body| {
+                    body.row(row_h, |mut row| {
+                        row.col(|ui| {
+                            ui.label("Vertices:");
+                        });
+                        row.col(|ui| {
+                            ui.label(mesh.vertices.len().to_string());
+                        });
                     });
-                    row.col(|ui| {
-                        ui.label(mesh.vertices.len().to_string());
+                    body.row(row_h, |mut row| {
+                        row.col(|ui| {
+                            ui.label("Indices:");
+                        });
+                        row.col(|ui| {
+                            ui.label(mesh.indices.len().to_string());
+                        });
+                    });
+                    body.row(row_h, |mut row| {
+                        row.col(|ui| {
+                            ui.label("Triangles:");
+                        });
+                        row.col(|ui| {
+                            ui.label((mesh.indices.len() / 3).to_string());
+                        });
+                    });
+                    body.row(row_h, |mut row| {
+                        row.col(|ui| {
+                            ui.label("Total Size:");
+                        });
+                        row.col(|ui| {
+                            ui.label(format!("{} bytes", total_bytes));
+                        });
                     });
                 });
-                body.row(row_h, |mut row| {
-                    row.col(|ui| {
-                        ui.label("Indices:");
-                    });
-                    row.col(|ui| {
-                        ui.label(mesh.indices.len().to_string());
-                    });
-                });
-                body.row(row_h, |mut row| {
-                    row.col(|ui| {
-                        ui.label("Triangles:");
-                    });
-                    row.col(|ui| {
-                        ui.label((mesh.indices.len() / 3).to_string());
-                    });
-                });
-                body.row(row_h, |mut row| {
-                    row.col(|ui| {
-                        ui.label("Total Size:");
-                    });
-                    row.col(|ui| {
-                        ui.label(format!("{} bytes", total_bytes));
-                    });
-                });
-            });
 
-        ui.separator();
+            ui.separator();
 
-        // ---- Attribute table ----
-        ui.label("Vertex Attributes:");
-        TableBuilder::new(ui)
-            .id_salt("mesh_attributes")
-            .striped(true)
-            .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
-            .column(Column::auto())
-            .column(Column::auto())
-            .column(Column::remainder())
-            .header(row_h, |mut header| {
-                header.col(|ui| {
-                    ui.label("Name");
+            // ---- Attribute table ----
+            ui.label("Vertex Attributes:");
+            TableBuilder::new(ui)
+                .id_salt("mesh_attributes")
+                .striped(true)
+                .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+                .column(Column::auto())
+                .column(Column::auto())
+                .column(Column::remainder())
+                .header(row_h, |mut header| {
+                    header.col(|ui| {
+                        ui.label("Name");
+                    });
+                    header.col(|ui| {
+                        ui.label("Type");
+                    });
+                    header.col(|ui| {
+                        ui.label("Bytes");
+                    });
+                })
+                .body(|mut body| {
+                    body.row(row_h, |mut row| {
+                        row.col(|ui| {
+                            ui.label("Position");
+                        });
+                        row.col(|ui| {
+                            ui.label("float4");
+                        });
+                        row.col(|ui| {
+                            ui.label(std::mem::size_of::<float4>().to_string());
+                        });
+                    });
+                    body.row(row_h, |mut row| {
+                        row.col(|ui| {
+                            ui.label("Color");
+                        });
+                        row.col(|ui| {
+                            ui.label("float4");
+                        });
+                        row.col(|ui| {
+                            ui.label(std::mem::size_of::<float4>().to_string());
+                        });
+                    });
+                    body.row(row_h, |mut row| {
+                        row.col(|ui| {
+                            ui.label("Texcoord");
+                        });
+                        row.col(|ui| {
+                            ui.label("float2");
+                        });
+                        row.col(|ui| {
+                            ui.label(std::mem::size_of::<float2>().to_string());
+                        });
+                    });
+                    body.row(row_h, |mut row| {
+                        row.col(|ui| {
+                            ui.label("Normal");
+                        });
+                        row.col(|ui| {
+                            ui.label("float3");
+                        });
+                        row.col(|ui| {
+                            ui.label(std::mem::size_of::<float3>().to_string());
+                        });
+                    });
+                    body.row(row_h, |mut row| {
+                        row.col(|ui| {
+                            ui.label("Tangent");
+                        });
+                        row.col(|ui| {
+                            ui.label("float4");
+                        });
+                        row.col(|ui| {
+                            ui.label(std::mem::size_of::<float4>().to_string());
+                        });
+                    });
                 });
-                header.col(|ui| {
-                    ui.label("Type");
-                });
-                header.col(|ui| {
-                    ui.label("Bytes");
-                });
-            })
-            .body(|mut body| {
-                body.row(row_h, |mut row| {
-                    row.col(|ui| {
-                        ui.label("Position");
-                    });
-                    row.col(|ui| {
-                        ui.label("float4");
-                    });
-                    row.col(|ui| {
-                        ui.label(std::mem::size_of::<float4>().to_string());
-                    });
-                });
-                body.row(row_h, |mut row| {
-                    row.col(|ui| {
-                        ui.label("Color");
-                    });
-                    row.col(|ui| {
-                        ui.label("float4");
-                    });
-                    row.col(|ui| {
-                        ui.label(std::mem::size_of::<float4>().to_string());
-                    });
-                });
-                body.row(row_h, |mut row| {
-                    row.col(|ui| {
-                        ui.label("Texcoord");
-                    });
-                    row.col(|ui| {
-                        ui.label("float2");
-                    });
-                    row.col(|ui| {
-                        ui.label(std::mem::size_of::<float2>().to_string());
-                    });
-                });
-                body.row(row_h, |mut row| {
-                    row.col(|ui| {
-                        ui.label("Normal");
-                    });
-                    row.col(|ui| {
-                        ui.label("float3");
-                    });
-                    row.col(|ui| {
-                        ui.label(std::mem::size_of::<float3>().to_string());
-                    });
-                });
-                body.row(row_h, |mut row| {
-                    row.col(|ui| {
-                        ui.label("Tangent");
-                    });
-                    row.col(|ui| {
-                        ui.label("float4");
-                    });
-                    row.col(|ui| {
-                        ui.label(std::mem::size_of::<float4>().to_string());
-                    });
-                });
-            });
 
-        ui.separator();
+            ui.separator();
 
-        // ---- Preview ----
-        self.draw_preview(ui, mesh, dt);
+            // ---- Preview ----
+            self.draw_preview(ui, mesh, dt);
+        });
     }
 
     fn render(&self) -> Option<GraphicsCommand> {

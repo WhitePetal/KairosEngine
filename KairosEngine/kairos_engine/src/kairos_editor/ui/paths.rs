@@ -34,4 +34,5 @@ pub const PATH_MESH_INSPECTOR_STYLE: &'static str = "Preferences/Styles/Inspecto
 pub const PATH_WGSL_SYNTAX_CONFIG: &'static str = "Preferences/SublimeSyntax/wgsl_syntax.toml";
 pub const PATH_RUST_SYNTAX_CONFIG: &'static str = "Preferences/SublimeSyntax/rust_syntax.toml";
 
-pub const PATH_MESH_INSPECTOR_PREVIEW_MATERIAL: &'static str = "res/materials/gizmos/mesh_inspector/preview.mat";
+pub const PATH_MESH_INSPECTOR_PREVIEW_MATERIAL: &'static str =
+    "res/materials/gizmos/mesh_inspector/preview.mat";

@@ -73,7 +73,13 @@ impl Inspector for TomlTableInspector {
         Ok(Self { model })
     }
 
-    fn draw(&self, ui: &mut egui::Ui, messager: &mut Messager, assets_server: &AssetsServer, _dt: f32) {
+    fn draw(
+        &self,
+        ui: &mut egui::Ui,
+        messager: &mut Messager,
+        assets_server: &AssetsServer,
+        _dt: f32,
+    ) {
         {
             let mut table_mut = self.model.table.lock();
             let table_mut = table_mut.deref_mut();
