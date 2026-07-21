@@ -1,4 +1,12 @@
-use std::{fs, ops::DerefMut, path::PathBuf, sync::Arc};
+use std::{
+    cell::Cell,
+    fs,
+    ops::DerefMut,
+    path::PathBuf,
+    sync::Arc,
+};
+
+use strum::{Display, EnumIter};
 
 use egui::Vec2;
 use egui_extras::{Column, TableBuilder};
@@ -21,6 +29,19 @@ use crate::{
     math::{Vector, float2, float3, float4, float4x4},
     spatial::AABB,
 };
+
+// ============================================================
+// Preview mode
+// ============================================================
+
+#[derive(Debug, Clone, Copy, PartialEq, Display, EnumIter)]
+#[repr(usize)]
+enum PreviewMode {
+    Shaded,
+    Normal,
+    Tangent,
+    VertexColor,
+}
 
 // ============================================================
 // Style
@@ -114,9 +135,11 @@ struct MeshInspectorModel {
     wireframe_mesh_path: PathBuf,
     style: MeshInspectorStyle,
     mesh_handle: Arc<AssetHandle<MeshAssetsSystem>>,
-    material_handle: Arc<AssetHandle<MaterialAssetsSystem>>,
     wireframe_material_handle: Arc<AssetHandle<MaterialAssetsSystem>>,
     wireframe_mesh_handle: Option<Arc<AssetHandle<MeshAssetsSystem>>>,
+    mode_material_handles: [Arc<AssetHandle<MaterialAssetsSystem>>; 4],
+    preview_mode: Cell<PreviewMode>,
+    show_wireframe: Cell<bool>,
     preview: Mutex<Option<PreviewState>>,
 }
 
@@ -155,7 +178,10 @@ impl MeshInspector {
             return;
         };
 
-        // Take all remaining space (like SceneWindow), but enforce a minimum height.
+        // ---- Controls toolbar (flush top) ----
+        self.draw_preview_toolbar(ui);
+
+        // ---- 3D Preview image (remaining space) ----
         let available = ui.available_size_before_wrap();
         let min_h = self.model.style.preview_min_height;
         let size = Vec2::new(available.x, available.y.max(min_h));
@@ -169,8 +195,6 @@ impl MeshInspector {
         preview.camera.aspect = width as f32 / height as f32;
 
         // ---- Orbit: mouse drag ------
-        // SceneWindow negates the delta before sending to orbit(); combined
-        // with yaw -= (-dx) that gives yaw += dx. We follow the same convention.
         if response.dragged() {
             let delta = -response.drag_delta();
             preview.camera.orbit(delta.x, delta.y, dt);
@@ -190,6 +214,41 @@ impl MeshInspector {
             egui::Color32::WHITE,
         );
     }
+
+    fn draw_preview_toolbar(&self, ui: &mut egui::Ui) {
+        use strum::IntoEnumIterator;
+
+        let current_mode = self.model.preview_mode.get();
+        let current_wireframe = self.model.show_wireframe.get();
+
+        let mut mode = current_mode;
+        let mut wireframe = current_wireframe;
+
+        ui.horizontal(|ui| {
+            // Preview mode combo.
+            egui::ComboBox::from_id_salt("preview_mode")
+                .selected_text(current_mode.to_string())
+                .width(120.0)
+                .show_ui(ui, |ui| {
+                    ui.style_mut().visuals.button_frame = true;
+                    for variant in PreviewMode::iter() {
+                        if ui
+                            .selectable_value(&mut mode, variant, variant.to_string())
+                            .changed()
+                        {
+                            self.model.preview_mode.set(mode);
+                        }
+                    }
+                });
+
+            ui.separator();
+
+            // Wireframe toggle.
+            if ui.checkbox(&mut wireframe, "Wireframe").changed() {
+                self.model.show_wireframe.set(wireframe);
+            }
+        });
+    }
 }
 
 impl Inspector for MeshInspector {
@@ -203,9 +262,6 @@ impl Inspector for MeshInspector {
         let style = MeshInspectorStyle::new()?;
         let mesh_path = path.to_path_buf();
         let mesh_handle = assets_server.load::<MeshAssetsSystem>(&mesh_path);
-        let material_handle = assets_server.load::<MaterialAssetsSystem>(&PathBuf::from(
-            paths::PATH_MESH_INSPECTOR_PREVIEW_MATERIAL,
-        ));
         let wireframe_material_handle =
             assets_server.load::<MaterialAssetsSystem>(&PathBuf::from(
                 paths::PATH_MESH_INSPECTOR_PREVIEW_WIREFRAME_MATERIAL,
@@ -213,14 +269,31 @@ impl Inspector for MeshInspector {
 
         let wireframe_mesh_path = mesh_path.with_added_extension(".wireframe_mesh");
 
+        let mode_material_handles = [
+            assets_server.load::<MaterialAssetsSystem>(&PathBuf::from(
+                paths::PATH_MESH_INSPECTOR_PREVIEW_SHADED_MATERIAL,
+            )),
+            assets_server.load::<MaterialAssetsSystem>(&PathBuf::from(
+                paths::PATH_MESH_INSPECTOR_PREVIEW_NORMAL_MATERIAL,
+            )),
+            assets_server.load::<MaterialAssetsSystem>(&PathBuf::from(
+                paths::PATH_MESH_INSPECTOR_PREVIEW_TANGENT_MATERIAL,
+            )),
+            assets_server.load::<MaterialAssetsSystem>(&PathBuf::from(
+                paths::PATH_MESH_INSPECTOR_PREVIEW_VERTEX_COLOR_MATERIAL,
+            )),
+        ];
+
         let model = MeshInspectorModel {
             style,
             mesh_path,
             wireframe_mesh_path,
             mesh_handle,
-            material_handle,
             wireframe_material_handle,
             wireframe_mesh_handle: None,
+            mode_material_handles,
+            preview_mode: Cell::new(PreviewMode::Shaded),
+            show_wireframe: Cell::new(true),
             preview: Mutex::new(None),
         };
 
@@ -447,20 +520,28 @@ impl Inspector for MeshInspector {
             2,
         );
 
-        // Draw solid preview mesh.
+        // Select the material for the current preview mode.
+        let mode_material = {
+            let idx = self.model.preview_mode.get() as usize;
+            self.model.mode_material_handles[idx].clone()
+        };
+
+        // Draw solid preview mesh with the selected mode material.
         command.draw(
             self.model.mesh_handle.clone(),
-            self.model.material_handle.clone(),
+            mode_material,
             float4x4::IDENTITY,
         );
 
         // Draw wireframe overlay on top (line-list, no depth write).
-        if let Some(wireframe_mesh_handle) = self.model.wireframe_mesh_handle.clone() {
-            command.draw(
-                wireframe_mesh_handle,
-                self.model.wireframe_material_handle.clone(),
-                float4x4::IDENTITY,
-            );
+        if self.model.show_wireframe.get() {
+            if let Some(wireframe_mesh_handle) = self.model.wireframe_mesh_handle.clone() {
+                command.draw(
+                    wireframe_mesh_handle,
+                    self.model.wireframe_material_handle.clone(),
+                    float4x4::IDENTITY,
+                );
+            }
         }
 
         command.end_render_pass();

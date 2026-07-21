@@ -1,0 +1,8 @@
+source_path = "res/materials/gizmos/mesh_inspector/preview_shaded.mat"
+shader_path = "res/shaders/gizmos/mesh_inspector/preview_shaded.wgsl"
+
+[render_state]
+depth_test = "LessEqual"
+depth_write = true
+cull_mod = "back"
+topology = "triangle-list"

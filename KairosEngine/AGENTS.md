@@ -1,3 +1,13 @@
+<!-- CODEGRAPH_START -->
+## ⚡ First: use CodeGraph before any grep / read_file
+
+If `.codegraph/` exists at the repo root, **your first step for ANY code-understanding or code-locating task must be** `codegraph explore "<what you're looking for>"` (shell) or the MCP `codegraph_explore` tool — BEFORE you reach for grep, find_path, or read_file.
+
+CodeGraph gives you verbatim source + call paths in one call, including dynamic-dispatch hops grep can't follow. It's faster and more complete than piecing answers together from multiple reads.
+
+If there is no `.codegraph/` directory, skip CodeGraph entirely.
+<!-- CODEGRAPH_END -->
+
 ## Agent skills
 
 ### Issue tracker
@@ -20,14 +30,3 @@ After implementing a feature or fixing a bug, always verify correctness through 
 - **Kairos Test Harness TOML tests** (`tests/runtime/`) — for runtime interactions (GPU, egui, physics, ECS scheduling, input paths) that can't be exercised by `cargo test`.
 
 If the test harness lacks a needed command, assertion, or input type, extend it first (see the skill for extension points), then write the TOML test.
-
-<!-- CODEGRAPH_START -->
-## CodeGraph
-
-In repositories indexed by CodeGraph (a `.codegraph/` directory exists at the repo root), reach for it BEFORE grep/find or reading files when you need to understand or locate code:
-
-- **MCP tool** (when available): `codegraph_explore` answers most code questions in one call — the relevant symbols' verbatim source plus the call paths between them, including dynamic-dispatch hops grep can't follow. Name a file or symbol in the query to read its current line-numbered source. If it's listed but deferred, load it by name via tool search.
-- **Shell** (always works): `codegraph explore "<symbol names or question>"` prints the same output.
-
-If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is the user's decision.
-<!-- CODEGRAPH_END -->

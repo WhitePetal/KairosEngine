@@ -1647,6 +1647,22 @@ guid = "af07b138-d821-4aaf-984e-7e038b013a51"
 path = "./res/materials/gizmos/mesh_inspector/preview.mat"
 
 [[entries]]
+guid = "c886b4a4-cd2f-416e-a4f1-737297426770"
+path = "./res/materials/gizmos/mesh_inspector/preview_normal.mat"
+
+[[entries]]
+guid = "1afcf028-5dd9-4130-a9cc-c43ec0e14319"
+path = "./res/materials/gizmos/mesh_inspector/preview_shaded.mat"
+
+[[entries]]
+guid = "66a33273-3928-4a96-8c0a-43d316ca613b"
+path = "./res/materials/gizmos/mesh_inspector/preview_tangent.mat"
+
+[[entries]]
+guid = "bd1c09d2-919c-457d-872b-105518e00c8c"
+path = "./res/materials/gizmos/mesh_inspector/preview_vertex_color.mat"
+
+[[entries]]
 guid = "0b3623f5-7ca6-43ed-b2b3-049cf1590fa6"
 path = "./res/materials/gizmos/mesh_inspector/preview_wireframe.mat"
 
@@ -1697,6 +1713,22 @@ path = "./res/shaders/gizmos/mesh_inspector"
 [[entries]]
 guid = "3bfc93c9-9b57-4ce7-b91b-c1aa313e3b4c"
 path = "./res/shaders/gizmos/mesh_inspector/preview.wgsl"
+
+[[entries]]
+guid = "6f8b538a-9ab0-4fbe-9a0c-3ab69afc5076"
+path = "./res/shaders/gizmos/mesh_inspector/preview_normal.wgsl"
+
+[[entries]]
+guid = "51a7d669-8a87-407a-8e6c-2de42a309a94"
+path = "./res/shaders/gizmos/mesh_inspector/preview_shaded.wgsl"
+
+[[entries]]
+guid = "af257a27-8355-4189-b1b6-5e2e598a26a0"
+path = "./res/shaders/gizmos/mesh_inspector/preview_tangent.wgsl"
+
+[[entries]]
+guid = "9b96e6d2-2826-4588-a38c-65dd748bc325"
+path = "./res/shaders/gizmos/mesh_inspector/preview_vertex_color.wgsl"
 
 [[entries]]
 guid = "15613f90-387d-4518-b6dc-88642f12e40d"
