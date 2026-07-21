@@ -134,7 +134,7 @@ impl AxesIndicatorModel {
         let mesh = build_axes_arrows(3.0, 0.08);
         let mesh = assets_server.insert(
             mesh,
-            PathBuf::from("runtime/scene_windo/gizmos/axes_arrows"),
+            &PathBuf::from("runtime/scene_windo/gizmos/axes_arrows"),
         );
 
         Self { material, mesh }

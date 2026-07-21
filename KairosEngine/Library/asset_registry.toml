@@ -683,6 +683,14 @@ guid = "2bd4f955-c867-4b93-a577-976223f9c940"
 path = "./kairos_engine/src/graphics/material_component.rs"
 
 [[entries]]
+guid = "90bce5b2-6fab-4e63-a609-1019913f4a46"
+path = "./kairos_engine/src/graphics/mesh"
+
+[[entries]]
+guid = "993d0563-bca1-4d32-b068-76e94b78f6b4"
+path = "./kairos_engine/src/graphics/mesh/wireframe.rs"
+
+[[entries]]
 guid = "36655b30-2d4c-42ad-a77b-58d1ec1a2642"
 path = "./kairos_engine/src/graphics/mesh.rs"
 
@@ -1639,6 +1647,10 @@ guid = "af07b138-d821-4aaf-984e-7e038b013a51"
 path = "./res/materials/gizmos/mesh_inspector/preview.mat"
 
 [[entries]]
+guid = "0b3623f5-7ca6-43ed-b2b3-049cf1590fa6"
+path = "./res/materials/gizmos/mesh_inspector/preview_wireframe.mat"
+
+[[entries]]
 guid = "e1a1992f-320d-48b4-b468-fcd5390a0a67"
 path = "./res/materials/material.mat"
 
@@ -1679,12 +1691,28 @@ guid = "abe6a1f1-ee44-4922-86e4-7a34830e67f0"
 path = "./res/shaders/gizmos/grid_plane.wgsl"
 
 [[entries]]
+guid = "b764b872-e77c-40e4-a257-f4bb1e3f1d3c"
+path = "./res/shaders/gizmos/mesh_inspector"
+
+[[entries]]
+guid = "3bfc93c9-9b57-4ce7-b91b-c1aa313e3b4c"
+path = "./res/shaders/gizmos/mesh_inspector/preview.wgsl"
+
+[[entries]]
 guid = "15613f90-387d-4518-b6dc-88642f12e40d"
 path = "./res/shaders/preview.wgsl"
 
 [[entries]]
+guid = "7c21cfda-2277-44e6-98b1-4439cc8e23ac"
+path = "./res/shaders/preview_wireframe.wgsl"
+
+[[entries]]
 guid = "212cfa59-9c99-4d5b-bed6-d5f94f7009df"
 path = "./res/shaders/shader.wgsl"
+
+[[entries]]
+guid = "79fc6a7e-87e1-413d-8339-9c8d3485289c"
+path = "./res/shaders/wireframe.wgsl"
 
 [[entries]]
 guid = "f95c08d3-f096-43c8-9479-70c4efcf72d3"

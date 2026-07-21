@@ -134,7 +134,7 @@ impl AssetsServer {
     ///
     /// Each call creates a new asset. Use `insert_with_key` if you need
     /// deduplication by a logical key.
-    pub fn insert<T>(&mut self, asset: T::AssetType, path: PathBuf) -> Arc<AssetHandle<T>>
+    pub fn insert<T>(&mut self, asset: T::AssetType, path: &PathBuf) -> Arc<AssetHandle<T>>
     where
         T: AssetsSystem + 'static,
     {
@@ -155,7 +155,7 @@ impl AssetsServer {
         };
 
         let assets = handler.get_assets_mut();
-        assets.insert(asset, path)
+        assets.insert(asset, path.clone())
     }
 
     pub fn handle(&mut self) {

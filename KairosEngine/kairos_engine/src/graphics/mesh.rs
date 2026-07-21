@@ -10,6 +10,8 @@ use crate::{
     spatial::AABB,
 };
 
+pub mod wireframe;
+
 #[derive(Debug, Clone, Serialize, Deserialize, Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct Mesh {
     pub vertices: Vec<Vertex>,
@@ -217,5 +219,17 @@ impl Mesh {
             );
 
         AABB { max, min }
+    }
+
+    /// Access the vertex slice (read-only).
+    #[inline(always)]
+    pub fn vertices(&self) -> &[Vertex] {
+        &self.vertices
+    }
+
+    /// Access the index slice (read-only).
+    #[inline(always)]
+    pub fn indices(&self) -> &[u16] {
+        &self.indices
     }
 }

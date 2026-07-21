@@ -450,9 +450,14 @@ where
     ///
     /// If `key` is provided, the same key always returns the same handle (dedup).
     pub fn insert(&mut self, asset: System::AssetType, path: PathBuf) -> Arc<AssetHandle<System>> {
-        // 1. If a key is provided and already exists, return existing handle.
+        // 1. If a key is provided and already exists, set the asset and return existing handle.
         if let Some(&existing_index) = self.path_to_index.get(&path) {
-            return self.get_asset_handle(existing_index);
+            let handle = self.get_asset_handle(existing_index);
+            self.storages[existing_index.index] = Entry::Some {
+                value: asset,
+                version: existing_index.version,
+            };
+            return handle;
         }
 
         // 2. Allocate a slot.

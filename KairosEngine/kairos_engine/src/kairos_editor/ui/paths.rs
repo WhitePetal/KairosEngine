@@ -36,3 +36,5 @@ pub const PATH_RUST_SYNTAX_CONFIG: &'static str = "Preferences/SublimeSyntax/rus
 
 pub const PATH_MESH_INSPECTOR_PREVIEW_MATERIAL: &'static str =
     "res/materials/gizmos/mesh_inspector/preview.mat";
+pub const PATH_MESH_INSPECTOR_PREVIEW_WIREFRAME_MATERIAL: &'static str =
+    "res/materials/gizmos/mesh_inspector/preview_wireframe.mat";

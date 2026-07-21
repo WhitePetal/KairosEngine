@@ -13,10 +13,10 @@ use crate::{
             GraphicsCommand,
             graphics_node::{ColorAttachmentBind, DepthAttachmentBind},
         },
-        mesh::Mesh,
+        mesh::{Mesh, wireframe},
     },
     kairos_editor::ui::{
-        Messager, dialog::Dialog, inspector::Inspector, paths, scene_camera::SceneCamera,
+        Message, Messager, dialog::Dialog, inspector::Inspector, paths, scene_camera::SceneCamera
     },
     math::{Vector, float2, float3, float4, float4x4},
     spatial::AABB,
@@ -94,6 +94,7 @@ impl PreviewState {
             style.camera_min_distance,
             style.camera_max_distance,
         );
+
         let size = style.preview_default_size.max(1);
         Self {
             size: (size, size),
@@ -110,9 +111,12 @@ impl PreviewState {
 
 struct MeshInspectorModel {
     mesh_path: PathBuf,
+    wireframe_mesh_path: PathBuf,
     style: MeshInspectorStyle,
     mesh_handle: Arc<AssetHandle<MeshAssetsSystem>>,
     material_handle: Arc<AssetHandle<MaterialAssetsSystem>>,
+    wireframe_material_handle: Arc<AssetHandle<MaterialAssetsSystem>>,
+    wireframe_mesh_handle: Option<Arc<AssetHandle<MeshAssetsSystem>>>,
     preview: Mutex<Option<PreviewState>>,
 }
 
@@ -125,10 +129,13 @@ pub struct MeshInspector {
 }
 
 impl MeshInspector {
+    pub fn create_wireframe_mesh(&mut self, assets_server: &mut AssetsServer, mesh: Mesh) {
+        self.model.wireframe_mesh_handle = Some(assets_server.insert::<MeshAssetsSystem>(mesh, &self.model.wireframe_mesh_path));
+    }
+
     fn draw_preview(&self, ui: &mut egui::Ui, mesh: &Mesh, dt: f32) {
         let mut guard = self.model.preview.lock();
-        let preview =
-            guard.get_or_insert(PreviewState::new(mesh.compute_aabb(), &self.model.style));
+        let preview = guard.get_or_insert(PreviewState::new(mesh.compute_aabb(), &self.model.style));
 
         // Try to receive a new egui texture id from a completed bind.
         if let Some(receiver) = &mut preview.bind_receiver {
@@ -199,12 +206,22 @@ impl Inspector for MeshInspector {
         let material_handle = assets_server.load::<MaterialAssetsSystem>(&PathBuf::from(
             paths::PATH_MESH_INSPECTOR_PREVIEW_MATERIAL,
         ));
+        let wireframe_material_handle =
+            assets_server.load::<MaterialAssetsSystem>(&PathBuf::from(
+                paths::PATH_MESH_INSPECTOR_PREVIEW_WIREFRAME_MATERIAL,
+            ));
+
+        let mut wireframe_mesh_path = mesh_path.clone();
+        wireframe_mesh_path.set_extension(".wireframe_mesh");
 
         let model = MeshInspectorModel {
             style,
             mesh_path,
+            wireframe_mesh_path,
             mesh_handle,
             material_handle,
+            wireframe_material_handle,
+            wireframe_mesh_handle: None,
             preview: Mutex::new(None),
         };
 
@@ -214,7 +231,7 @@ impl Inspector for MeshInspector {
     fn draw(
         &self,
         ui: &mut egui::Ui,
-        _messager: &mut Messager,
+        messager: &mut Messager,
         assets_server: &AssetsServer,
         dt: f32,
     ) {
@@ -223,6 +240,9 @@ impl Inspector for MeshInspector {
                 ui.label("Mesh is Loading...");
                 return;
             };
+            if self.model.wireframe_mesh_handle.is_none() {
+                messager.send(Message::ModelInspectorCreateWireframeMesh(wireframe::create_wireframe_mesh(mesh)));
+            }
 
             // ---- Source ----
             ui.label(format!("Source: {}", self.model.mesh_path.display()));
@@ -381,7 +401,7 @@ impl Inspector for MeshInspector {
 
         let vp = preview.camera.view_projection();
 
-        let mut command = GraphicsCommand::new(3, 2, 1, 5);
+        let mut command = GraphicsCommand::new(3, 2, 1, 6);
 
         // Free old texture.
         if let Some(id) = drop_id {
@@ -425,15 +445,24 @@ impl Inspector for MeshInspector {
             vec![preview_bind],
             Some(preview_depth_bind),
             vp_id,
-            1,
+            2,
         );
 
-        // Draw the mesh (handle resolves asynchronously via the render pipeline).
+        // Draw solid preview mesh.
         command.draw(
             self.model.mesh_handle.clone(),
             self.model.material_handle.clone(),
             float4x4::IDENTITY,
         );
+
+        // Draw wireframe overlay on top (line-list, no depth write).
+        if let Some(wireframe_mesh_handle) = self.model.wireframe_mesh_handle.clone() {
+            command.draw(
+                wireframe_mesh_handle,
+                self.model.wireframe_material_handle.clone(),
+                float4x4::IDENTITY,
+            );
+        }
 
         command.end_render_pass();
 

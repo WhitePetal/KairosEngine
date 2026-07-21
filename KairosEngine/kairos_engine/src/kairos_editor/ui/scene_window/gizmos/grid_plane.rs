@@ -53,7 +53,7 @@ impl GridPlaneModel {
         let mesh = build_grid_lines(100);
         let mesh = assets_server.insert::<MeshAssetsSystem>(
             mesh,
-            PathBuf::from("runtime/scene_window/gizmos/grid_plane"),
+            &PathBuf::from("runtime/scene_window/gizmos/grid_plane"),
         );
 
         Self { material, mesh }

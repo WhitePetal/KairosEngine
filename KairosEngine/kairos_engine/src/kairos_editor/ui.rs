@@ -2,7 +2,7 @@ use crate::{
     asset_loader::assets::{
         AssetHandle, AssetsServer, TomlTableAssetsSystem, asset::TextAssetsSystem,
     },
-    graphics::graphics_graph::GraphicsCommand,
+    graphics::{graphics_graph::GraphicsCommand, mesh::Mesh},
     kairos_editor::{
         Engine,
         asset_registry::AssetKind,
@@ -11,8 +11,7 @@ use crate::{
             game_window::GameWindow,
             global_styles::{FontDataConfig, FontsConfig, GlobalStyles},
             inspector::{
-                audio::AudioInspector, code::CodeInspector, document::DocumentInspector,
-                shader::ShaderInspector, texture::TextureInspector, toml::TomlTableInspector,
+                audio::AudioInspector, code::CodeInspector, document::DocumentInspector, mesh::MeshInspector, shader::ShaderInspector, texture::TextureInspector, toml::TomlTableInspector
             },
             layout::{
                 EditorLayout, LayoutBottomContainer, LayoutContainerIds, LayoutLeftContainer,
@@ -163,6 +162,7 @@ pub enum Message {
         Arc<AssetHandle<TextureExtAssetsSystem>>,
         Arc<parking_lot::Mutex<Option<TextureExt>>>,
     ),
+    ModelInspectorCreateWireframeMesh(Mesh),
 }
 
 struct KairosTabDrawer {
@@ -628,6 +628,13 @@ impl Context {
                         && let Some(audio) = inspector.get_inspector_mut::<AudioInspector>()
                     {
                         audio.tick_playback(&mut engine.assets_server);
+                    }
+                }
+                Message::ModelInspectorCreateWireframeMesh(mesh) => {
+                    if let Some(inspector) = self.get_window_mut::<InspectorWindow>()
+                        && let Some(mesh_inspector) = inspector.get_inspector_mut::<MeshInspector>()
+                    {
+                        mesh_inspector.create_wireframe_mesh(&mut engine.assets_server, mesh);
                     }
                 }
             }
