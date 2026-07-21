@@ -2,6 +2,8 @@
 一个游戏引擎开发计划
 最开始尝试使用C++ + Beef-lang, 现在转为了纯Rust 
 目标是 面向数据设计，ECS，高性能，高灵活性 和 高可扩展性    
+如果你有任何想法和问题，欢迎在 Discussions 中讨论 (https://github.com/WhitePetal/KairosEngine/discussions)
+也可以直接在 B站(Bilibili) 私信我(https://space.bilibili.com/232017781)
 
 # 版本计划
 ### 0.1.0

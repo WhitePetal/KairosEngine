@@ -319,6 +319,14 @@ guid = "21b85cde-a406-45fe-86de-aa99c8956ec3"
 path = "./docs/ai/wgsl-shader-compilation-optimization.md"
 
 [[entries]]
+guid = "7990ccb3-e3f9-4820-b660-e8cb7c564e75"
+path = "./docs/design"
+
+[[entries]]
+guid = "3544cf00-a49a-42dc-931c-82a240399757"
+path = "./docs/design/material-inspector.md"
+
+[[entries]]
 guid = "40e3e178-7fba-4f0f-a4e1-97d8922912c3"
 path = './docs\agents'
 
