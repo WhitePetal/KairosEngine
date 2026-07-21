@@ -20,6 +20,7 @@ use crate::{
             Drawer, Message,
             global_styles::GlobalStyles,
             paths,
+            scene_camera::SceneCamera,
             scene_window::gizmos::{GizmosModel, GizmosRenderer},
             ui_style_fields::{
                 FloatFieldEditViewType, FloatStyleField, RangeStyleField, StyleField,
@@ -32,9 +33,6 @@ use crate::{
 };
 
 mod gizmos;
-mod scene_camera;
-
-use scene_camera::SceneCamera;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct SceneWindowStyle {

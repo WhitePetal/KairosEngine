@@ -2,6 +2,7 @@
 name = "kairos_engine"
 version = "0.1.0"
 edition = "2024"
+default-run = "kairos_engine"
 description = "A Game Engine"
 license = "MIT OR Apache-2.0"
 

@@ -24,11 +24,7 @@ pub fn inject(args: &toml::Value, input_engine: &mut InputEngine) -> StepResult 
     }
 }
 
-fn inject_keyboard(
-    event: &str,
-    args: &toml::Value,
-    input_engine: &mut InputEngine,
-) -> StepResult {
+fn inject_keyboard(event: &str, args: &toml::Value, input_engine: &mut InputEngine) -> StepResult {
     let key = match args.get("key").and_then(|v| v.as_str()) {
         Some(k) => k,
         None => return StepResult::err("missing 'key' field for keyboard input"),
@@ -48,11 +44,7 @@ fn inject_keyboard(
     StepResult::ok()
 }
 
-fn inject_mouse(
-    event: &str,
-    args: &toml::Value,
-    input_engine: &mut InputEngine,
-) -> StepResult {
+fn inject_mouse(event: &str, args: &toml::Value, input_engine: &mut InputEngine) -> StepResult {
     match event {
         "click" => {
             let button = match args.get("button").and_then(|v| v.as_str()) {
@@ -74,14 +66,8 @@ fn inject_mouse(
             StepResult::ok()
         }
         "move" => {
-            let x = args
-                .get("x")
-                .and_then(|v| v.as_float())
-                .unwrap_or(0.0) as f32;
-            let y = args
-                .get("y")
-                .and_then(|v| v.as_float())
-                .unwrap_or(0.0) as f32;
+            let x = args.get("x").and_then(|v| v.as_float()).unwrap_or(0.0) as f32;
+            let y = args.get("y").and_then(|v| v.as_float()).unwrap_or(0.0) as f32;
 
             input_engine.inject_mouse_position(crate::math::float2::new(x, y));
             StepResult::ok()
@@ -111,10 +97,8 @@ mod tests {
 
     #[test]
     fn inject_keyboard_press() {
-        let args: toml::Value = toml::from_str(
-            "device = 'keyboard'\nevent = 'press'\nkey = 'W'",
-        )
-        .unwrap();
+        let args: toml::Value =
+            toml::from_str("device = 'keyboard'\nevent = 'press'\nkey = 'W'").unwrap();
         let mut engine = make_engine();
         let result = inject(&args, &mut engine);
         assert!(result.ok);
@@ -122,10 +106,8 @@ mod tests {
 
     #[test]
     fn inject_keyboard_release() {
-        let args: toml::Value = toml::from_str(
-            "device = 'keyboard'\nevent = 'release'\nkey = 'D'",
-        )
-        .unwrap();
+        let args: toml::Value =
+            toml::from_str("device = 'keyboard'\nevent = 'release'\nkey = 'D'").unwrap();
         let mut engine = make_engine();
         let result = inject(&args, &mut engine);
         assert!(result.ok);
@@ -133,10 +115,8 @@ mod tests {
 
     #[test]
     fn inject_keyboard_unknown_key_fails() {
-        let args: toml::Value = toml::from_str(
-            "device = 'keyboard'\nevent = 'press'\nkey = 'Z'",
-        )
-        .unwrap();
+        let args: toml::Value =
+            toml::from_str("device = 'keyboard'\nevent = 'press'\nkey = 'Z'").unwrap();
         let mut engine = make_engine();
         let result = inject(&args, &mut engine);
         assert!(!result.ok);
@@ -145,10 +125,8 @@ mod tests {
 
     #[test]
     fn inject_mouse_click_left() {
-        let args: toml::Value = toml::from_str(
-            "device = 'mouse'\nevent = 'click'\nbutton = 'Left'",
-        )
-        .unwrap();
+        let args: toml::Value =
+            toml::from_str("device = 'mouse'\nevent = 'click'\nbutton = 'Left'").unwrap();
         let mut engine = make_engine();
         let result = inject(&args, &mut engine);
         assert!(result.ok);
@@ -156,10 +134,8 @@ mod tests {
 
     #[test]
     fn inject_mouse_move() {
-        let args: toml::Value = toml::from_str(
-            "device = 'mouse'\nevent = 'move'\nx = 100.0\ny = 200.0",
-        )
-        .unwrap();
+        let args: toml::Value =
+            toml::from_str("device = 'mouse'\nevent = 'move'\nx = 100.0\ny = 200.0").unwrap();
         let mut engine = make_engine();
         let result = inject(&args, &mut engine);
         assert!(result.ok);

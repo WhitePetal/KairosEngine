@@ -103,7 +103,7 @@ impl Inspector for FontInspector {
         })
     }
 
-    fn draw(&self, ui: &mut egui::Ui, _messager: &mut Messager, assets_server: &AssetsServer) {
+    fn draw(&self, ui: &mut egui::Ui, _messager: &mut Messager, assets_server: &AssetsServer, _dt: f32) {
         if !self.is_registered(ui.ctx()) {
             if let Some(font) = assets_server.get(&self.model.font_handle) {
                 self.register(ui.ctx(), &font.bytes);

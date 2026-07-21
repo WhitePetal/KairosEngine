@@ -95,7 +95,11 @@ pub struct TextureInspector {
 impl TextureInspector {
     /// Set the texture format (for test harness).
     #[cfg(feature = "test-harness")]
-    pub(crate) fn set_format(&mut self, format: crate::graphics::texture::format::TextureFormat, assets_server: &mut crate::asset_loader::assets::AssetsServer) -> Result<(), String> {
+    pub(crate) fn set_format(
+        &mut self,
+        format: crate::graphics::texture::format::TextureFormat,
+        assets_server: &mut crate::asset_loader::assets::AssetsServer,
+    ) -> Result<(), String> {
         // Poll until the texture asset is loaded (async loading)
         for _ in 0..200 {
             assets_server.handle();
@@ -285,7 +289,10 @@ impl TextureInspector {
 
             for _ in 0..total_levels {
                 levels.push(crate::graphics::texture::format::encode_rgba(
-                    &current_rgba, current_w, current_h, ext.serialized.format,
+                    &current_rgba,
+                    current_w,
+                    current_h,
+                    ext.serialized.format,
                 ));
                 let prev_w = current_w;
                 let prev_h = current_h;
@@ -293,9 +300,12 @@ impl TextureInspector {
                 current_h = (current_h / 2).max(1);
                 if let Some(source) = image::RgbaImage::from_raw(prev_w, prev_h, current_rgba) {
                     current_rgba = image::imageops::resize(
-                        &source, current_w, current_h,
+                        &source,
+                        current_w,
+                        current_h,
                         image::imageops::FilterType::Lanczos3,
-                    ).into_vec();
+                    )
+                    .into_vec();
                 } else {
                     break;
                 }
@@ -303,7 +313,10 @@ impl TextureInspector {
             levels
         } else {
             vec![crate::graphics::texture::format::encode_rgba(
-                &rgba_data, new_w, new_h, ext.serialized.format,
+                &rgba_data,
+                new_w,
+                new_h,
+                ext.serialized.format,
             )]
         };
 
@@ -370,7 +383,7 @@ impl Inspector for TextureInspector {
         })
     }
 
-    fn draw(&self, ui: &mut egui::Ui, messager: &mut Messager, assets_server: &AssetsServer) {
+    fn draw(&self, ui: &mut egui::Ui, messager: &mut Messager, assets_server: &AssetsServer, _dt: f32) {
         egui::ScrollArea::vertical().show(ui, |ui| {
         let texture;
         {
@@ -779,8 +792,7 @@ fn draw_address_mode_rows(
     use strum::IntoEnumIterator;
 
     let s = &mut serialized.sampler;
-    let modes_equal =
-        s.address_mode_u == s.address_mode_v && s.address_mode_v == s.address_mode_w;
+    let modes_equal = s.address_mode_u == s.address_mode_v && s.address_mode_v == s.address_mode_w;
     let is_per_axis = per_axis_mode.get();
 
     let current_label = if is_per_axis || !modes_equal {
@@ -832,10 +844,7 @@ fn draw_address_mode_rows(
                         .selected_text(ptr.label())
                         .show_ui(ui, |ui| {
                             for mode in AddressMode::iter() {
-                                if ui
-                                    .selectable_label(*ptr == mode, mode.label())
-                                    .clicked()
-                                {
+                                if ui.selectable_label(*ptr == mode, mode.label()).clicked() {
                                     *ptr = mode;
                                     dirty.set(true);
                                 }

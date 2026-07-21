@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     graphics::vertex::Vertex,
     math::{self, float2, float3, float4, float4x4, quaternion},
+    spatial::AABB,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, Archive, rkyv::Serialize, rkyv::Deserialize)]
@@ -194,5 +195,27 @@ impl SerializedMeshAsset {
 impl Mesh {
     pub fn new(vertices: Vec<Vertex>, indices: Vec<u16>) -> Self {
         Self { vertices, indices }
+    }
+
+    pub fn compute_aabb(&self) -> AABB {
+        use crate::math::{Max, Min};
+        use rayon::prelude::*;
+
+        let (min, max) = self
+            .vertices
+            .par_iter()
+            .map(|v| v.position.xyz())
+            .map(|p| (p, p))
+            .reduce(
+                || {
+                    (
+                        float3::new(f32::MAX, f32::MAX, f32::MAX),
+                        float3::new(f32::MIN, f32::MIN, f32::MIN),
+                    )
+                },
+                |(min1, max1), (min2, max2)| (min1.min(min2), max1.max(max2)),
+            );
+
+        AABB { max, min }
     }
 }

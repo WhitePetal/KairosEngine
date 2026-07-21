@@ -140,7 +140,9 @@ impl KairosEditorRuntime {
     /// Return a clone of the bridge sender for spawning the WS server.
     /// Returns `None` when the test-harness feature is not active.
     #[cfg(feature = "test-harness")]
-    pub fn test_bridge_sender(&self) -> Option<tokio::sync::mpsc::Sender<crate::kairos_test_harness::bridge::EngineCommand>> {
+    pub fn test_bridge_sender(
+        &self,
+    ) -> Option<tokio::sync::mpsc::Sender<crate::kairos_test_harness::bridge::EngineCommand>> {
         self.test_bridge.as_ref().map(|b| b.sender())
     }
 
@@ -300,13 +302,15 @@ impl KairosEditorRuntime {
                     }
 
                     #[cfg(feature = "test-harness")]
-                    let collected: std::rc::Rc<std::cell::RefCell<Option<std::collections::HashMap<String, egui::Rect>>>> =
-                        std::rc::Rc::new(std::cell::RefCell::new(None));
+                    let collected: std::rc::Rc<
+                        std::cell::RefCell<Option<std::collections::HashMap<String, egui::Rect>>>,
+                    > = std::rc::Rc::new(std::cell::RefCell::new(None));
                     #[cfg(feature = "test-harness")]
                     let collected_clone = collected.clone();
                     #[cfg(feature = "test-harness")]
-                    let collected_ids: std::rc::Rc<std::cell::RefCell<Option<std::collections::HashMap<String, egui::Id>>>> =
-                        std::rc::Rc::new(std::cell::RefCell::new(None));
+                    let collected_ids: std::rc::Rc<
+                        std::cell::RefCell<Option<std::collections::HashMap<String, egui::Id>>>,
+                    > = std::rc::Rc::new(std::cell::RefCell::new(None));
                     #[cfg(feature = "test-harness")]
                     let collected_ids_clone = collected_ids.clone();
 

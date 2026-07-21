@@ -1,6 +1,6 @@
 use crate::kairos_editor::KairosEngine;
-use crate::kairos_test_harness::{assertions::CrashTracker, dispatch, types::StepResult};
 use crate::kairos_test_harness::types::TestStep;
+use crate::kairos_test_harness::{assertions::CrashTracker, dispatch, types::StepResult};
 use tokio::sync::{mpsc, oneshot};
 
 /// Commands sent from the WebSocket server (tokio) to the main thread.

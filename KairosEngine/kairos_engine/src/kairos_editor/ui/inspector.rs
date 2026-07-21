@@ -37,13 +37,13 @@ pub trait Inspector: Any {
     where
         Self: Sized;
 
-    fn draw(&self, ui: &mut egui::Ui, messager: &mut Messager, assets_server: &AssetsServer);
+    fn draw(&self, ui: &mut egui::Ui, messager: &mut Messager, assets_server: &AssetsServer, dt: f32);
 
     fn on_exit(&mut self, ctx: &egui::Context) -> Option<Box<dyn Dialog>>;
 
     /// Optional: return preview render commands (e.g., 3D model preview).
     /// Called during `Context::render()` alongside other Drawer::render() calls.
-    fn render_preview(&self) -> Vec<GraphicsCommand> {
-        Vec::new()
+    fn render(&self) -> Option<GraphicsCommand> {
+        None
     }
 }

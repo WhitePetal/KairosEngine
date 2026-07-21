@@ -117,10 +117,14 @@ impl KairosEngine {
     }
 
     #[cfg(feature = "test-harness")]
-    pub(crate) fn engine_mut(&mut self) -> &mut Engine { &mut self.engine }
+    pub(crate) fn engine_mut(&mut self) -> &mut Engine {
+        &mut self.engine
+    }
 
     #[cfg(feature = "test-harness")]
-    pub(crate) fn log_mut(&mut self) -> &mut Log { &mut self.log }
+    pub(crate) fn log_mut(&mut self) -> &mut Log {
+        &mut self.log
+    }
 
     #[cfg(feature = "test-harness")]
     pub(crate) fn record_widget_rect(&mut self, id: impl Into<String>, rect: egui::Rect) {
@@ -159,7 +163,9 @@ impl KairosEngine {
     }
 
     #[cfg(feature = "test-harness")]
-    pub(crate) fn ui_context_mut(&mut self) -> &mut ui::Context { &mut self.ui_context }
+    pub(crate) fn ui_context_mut(&mut self) -> &mut ui::Context {
+        &mut self.ui_context
+    }
 
     #[cfg(feature = "test-harness")]
     pub(crate) fn push_ui_message(&mut self, msg: crate::kairos_editor::ui::Message) {

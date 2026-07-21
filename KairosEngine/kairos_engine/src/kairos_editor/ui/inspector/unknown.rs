@@ -30,6 +30,7 @@ impl Inspector for UnknownInspector {
         ui: &mut egui::Ui,
         _messager: &mut crate::kairos_editor::ui::Messager,
         _assets_server: &crate::asset_loader::assets::AssetsServer,
+        _dt: f32,
     ) {
         ui.label("not implement inspector");
         match fs::metadata(&self.model.path) {

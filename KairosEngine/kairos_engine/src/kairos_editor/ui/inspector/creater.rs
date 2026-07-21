@@ -7,8 +7,8 @@ use crate::{
         ui::inspector::{
             Inspector, audio::AudioInspector, code::CodeInspector, directory::DirectoryInspector,
             document::DocumentInspector, font::FontInspector, mesh::MeshInspector,
-            shader::ShaderInspector,
-            texture::TextureInspector, toml::TomlTableInspector, unknown::UnknownInspector,
+            shader::ShaderInspector, texture::TextureInspector, toml::TomlTableInspector,
+            unknown::UnknownInspector,
         },
     },
 };

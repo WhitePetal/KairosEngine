@@ -1,5 +1,5 @@
-use crate::{ecs::world::World, log::Log};
 use crate::kairos_test_harness::types::StepResult;
+use crate::{ecs::world::World, log::Log};
 
 /// Tracks whether the engine has crashed since the last `no_crash` check.
 #[derive(Debug, Default)]
@@ -85,7 +85,9 @@ pub fn assert_ecs_query(world: &World, args: &toml::Value) -> StepResult {
             let count = world.iter().count();
             evaluate_count_condition(count, expect)
         }
-        other => StepResult::err(format!("unsupported query type: '{other}'. v1 supports: 'all'")),
+        other => StepResult::err(format!(
+            "unsupported query type: '{other}'. v1 supports: 'all'"
+        )),
     }
 }
 
@@ -158,10 +160,7 @@ fn evaluate_count_condition(actual: usize, condition: &str) -> StepResult {
     let expected: usize = match parts[2].parse() {
         Ok(n) => n,
         Err(_) => {
-            return StepResult::err(format!(
-                "invalid number in expect: '{}'",
-                parts[2]
-            ));
+            return StepResult::err(format!("invalid number in expect: '{}'", parts[2]));
         }
     };
 
@@ -172,9 +171,7 @@ fn evaluate_count_condition(actual: usize, condition: &str) -> StepResult {
         "<" => actual < expected,
         "<=" => actual <= expected,
         _ => {
-            return StepResult::err(format!(
-                "unknown operator '{op}' in expect: '{condition}'"
-            ));
+            return StepResult::err(format!("unknown operator '{op}' in expect: '{condition}'"));
         }
     };
 
@@ -240,8 +237,7 @@ mod tests {
 
     #[test]
     fn resource_exists_fails_for_missing_file() {
-        let args: toml::Value =
-            toml::from_str("path = '/nonexistent/path/xyz.asset'").unwrap();
+        let args: toml::Value = toml::from_str("path = '/nonexistent/path/xyz.asset'").unwrap();
         let result = assert_resource_exists(&args);
         assert!(!result.ok);
         assert!(result.message.contains("resource not found"));
@@ -263,8 +259,7 @@ mod tests {
         log.info("Texture loaded: cat.png");
         log.warning("Memory usage high");
 
-        let args: toml::Value =
-            toml::from_str("pattern = 'Texture loaded'").unwrap();
+        let args: toml::Value = toml::from_str("pattern = 'Texture loaded'").unwrap();
         let result = assert_log_contains(&log, &args);
         assert!(result.ok);
     }
@@ -284,8 +279,7 @@ mod tests {
     #[test]
     fn ecs_query_counts_empty_world() {
         let world = World::new();
-        let args: toml::Value =
-            toml::from_str("query = 'all'\nexpect = 'count == 0'").unwrap();
+        let args: toml::Value = toml::from_str("query = 'all'\nexpect = 'count == 0'").unwrap();
         let result = assert_ecs_query(&world, &args);
         assert!(result.ok);
     }
@@ -293,8 +287,7 @@ mod tests {
     #[test]
     fn ecs_query_fails_when_count_mismatch() {
         let world = World::new();
-        let args: toml::Value =
-            toml::from_str("query = 'all'\nexpect = 'count >= 1'").unwrap();
+        let args: toml::Value = toml::from_str("query = 'all'\nexpect = 'count >= 1'").unwrap();
         let result = assert_ecs_query(&world, &args);
         assert!(!result.ok);
     }
@@ -334,7 +327,8 @@ mod tests {
         let args: toml::Value = toml::from_str(&format!(
             "file = '{}'\nkey = 'format'\nvalue = 'BC7'",
             path.display().to_string().replace('\\', "/")
-        )).unwrap();
+        ))
+        .unwrap();
         let result = assert_toml_value_equals(&args);
         assert!(result.ok, "{}", result.message);
     }
@@ -348,7 +342,8 @@ mod tests {
         let args: toml::Value = toml::from_str(&format!(
             "file = '{}'\nkey = 'format'\nvalue = 'BC7'",
             path.display().to_string().replace('\\', "/")
-        )).unwrap();
+        ))
+        .unwrap();
         let result = assert_toml_value_equals(&args);
         assert!(!result.ok);
     }
@@ -362,7 +357,8 @@ mod tests {
         let args: toml::Value = toml::from_str(&format!(
             "file = '{}'\nkey = 'format'\nvalue = 'BC7'",
             path.display().to_string().replace('\\', "/")
-        )).unwrap();
+        ))
+        .unwrap();
         let result = assert_toml_value_equals(&args);
         assert!(!result.ok);
         assert!(result.message.contains("not found"));

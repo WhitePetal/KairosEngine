@@ -199,12 +199,7 @@ impl SamplerConfig {
                 mip.lod_max_clamp,
                 mip.anisotropy_clamp,
             ),
-            None => (
-                wgpu::MipmapFilterMode::Nearest,
-                0.0f32,
-                0.0f32,
-                1u16,
-            ),
+            None => (wgpu::MipmapFilterMode::Nearest, 0.0f32, 0.0f32, 1u16),
         };
 
         wgpu::SamplerDescriptor {

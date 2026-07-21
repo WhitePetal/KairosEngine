@@ -169,7 +169,7 @@ impl Drawer for InspectorWindow {
         ui.label(format!("GUID: {}", info.guid));
         ui.separator();
 
-        info.inspector.draw(ui, messager, &engine.assets_server);
+        info.inspector.draw(ui, messager, &engine.assets_server, engine.time.delta_time_secs());
     }
 
     fn close(&self, messager: &mut super::Messager) {
@@ -203,6 +203,6 @@ impl Drawer for InspectorWindow {
         self.model
             .selected
             .as_ref()
-            .and_then(|info| info.inspector.render_preview().into_iter().next())
+            .and_then(|info| info.inspector.render())
     }
 }

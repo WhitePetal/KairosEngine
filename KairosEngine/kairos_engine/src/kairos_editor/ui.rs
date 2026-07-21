@@ -68,6 +68,7 @@ pub mod native_dialog;
 pub mod paths;
 pub mod preferences_window;
 pub mod project_window;
+pub mod scene_camera;
 pub mod scene_window;
 pub mod tool_bar;
 pub mod ui_style_fields;

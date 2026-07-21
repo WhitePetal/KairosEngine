@@ -56,6 +56,11 @@ impl Time {
     }
 
     #[inline(always)]
+    pub fn delta_time_secs(&self) -> f32 {
+        self.delta_time().as_secs_f32()
+    }
+
+    #[inline(always)]
     pub fn total_frame(&self) -> u64 {
         self.total_frame
     }

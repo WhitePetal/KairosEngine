@@ -41,12 +41,10 @@ pub fn parse_args() -> CliArgs {
 /// prints the result as JSON to stdout, and exits with the appropriate
 /// exit code (0 on pass, 1 on failure).
 pub async fn run(cli: CliArgs) -> Result<(), Box<dyn std::error::Error>> {
-    let test_file = cli
-        .test_file
-        .unwrap_or_else(|| {
-            eprintln!("Error: --test-file is required in headless mode");
-            std::process::exit(1);
-        });
+    let test_file = cli.test_file.unwrap_or_else(|| {
+        eprintln!("Error: --test-file is required in headless mode");
+        std::process::exit(1);
+    });
 
     log::info!("KairosEngine headless mode — running test: {test_file}");
 
@@ -69,9 +67,8 @@ pub async fn run(cli: CliArgs) -> Result<(), Box<dyn std::error::Error>> {
 
     // --- Test runner ---
     let test_tx = bridge.sender();
-    let test_handle = tokio::spawn(async move {
-        test_runner::run_test_file(&test_file, test_tx).await
-    });
+    let test_handle =
+        tokio::spawn(async move { test_runner::run_test_file(&test_file, test_tx).await });
 
     // --- Main loop: drain bridge until test completes ---
     loop {
@@ -94,8 +91,8 @@ pub async fn run(cli: CliArgs) -> Result<(), Box<dyn std::error::Error>> {
         .await
         .map_err(|e| format!("test runner panicked: {e}"))?;
 
-    let json = serde_json::to_string_pretty(&test_result)
-        .unwrap_or_else(|_| format!("{:?}", test_result));
+    let json =
+        serde_json::to_string_pretty(&test_result).unwrap_or_else(|_| format!("{:?}", test_result));
     println!("{json}");
 
     if test_result.status == "passed" {

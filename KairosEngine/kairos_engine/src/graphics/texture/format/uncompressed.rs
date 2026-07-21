@@ -89,11 +89,27 @@ fn decode_r8(
     out
 }
 
-pub fn encode_r8u(rgba: &[u8], w: usize, h: usize) -> Vec<u8> { encode_r8(rgba, w, h) }
-pub fn encode_r8s(rgba: &[u8], w: usize, h: usize) -> Vec<u8> { encode_r8(rgba, w, h) }
-pub fn encode_r8ui(rgba: &[u8], w: usize, h: usize) -> Vec<u8> { encode_r8(rgba, w, h) }
-pub fn encode_r8si(rgba: &[u8], w: usize, h: usize) -> Vec<u8> { encode_r8(rgba, w, h) }
-pub fn decode_r8u(data: &[u8], w: usize, h: usize, g: bool, b: bool, a: bool) -> Vec<u8> { decode_r8(data, w, h, g, b, a) }
-pub fn decode_r8s(data: &[u8], w: usize, h: usize, g: bool, b: bool, a: bool) -> Vec<u8> { decode_r8(data, w, h, g, b, a) }
-pub fn decode_r8ui(data: &[u8], w: usize, h: usize, g: bool, b: bool, a: bool) -> Vec<u8> { decode_r8(data, w, h, g, b, a) }
-pub fn decode_r8si(data: &[u8], w: usize, h: usize, g: bool, b: bool, a: bool) -> Vec<u8> { decode_r8(data, w, h, g, b, a) }
+pub fn encode_r8u(rgba: &[u8], w: usize, h: usize) -> Vec<u8> {
+    encode_r8(rgba, w, h)
+}
+pub fn encode_r8s(rgba: &[u8], w: usize, h: usize) -> Vec<u8> {
+    encode_r8(rgba, w, h)
+}
+pub fn encode_r8ui(rgba: &[u8], w: usize, h: usize) -> Vec<u8> {
+    encode_r8(rgba, w, h)
+}
+pub fn encode_r8si(rgba: &[u8], w: usize, h: usize) -> Vec<u8> {
+    encode_r8(rgba, w, h)
+}
+pub fn decode_r8u(data: &[u8], w: usize, h: usize, g: bool, b: bool, a: bool) -> Vec<u8> {
+    decode_r8(data, w, h, g, b, a)
+}
+pub fn decode_r8s(data: &[u8], w: usize, h: usize, g: bool, b: bool, a: bool) -> Vec<u8> {
+    decode_r8(data, w, h, g, b, a)
+}
+pub fn decode_r8ui(data: &[u8], w: usize, h: usize, g: bool, b: bool, a: bool) -> Vec<u8> {
+    decode_r8(data, w, h, g, b, a)
+}
+pub fn decode_r8si(data: &[u8], w: usize, h: usize, g: bool, b: bool, a: bool) -> Vec<u8> {
+    decode_r8(data, w, h, g, b, a)
+}

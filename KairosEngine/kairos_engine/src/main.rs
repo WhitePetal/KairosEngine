@@ -55,7 +55,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Some(sender) = runtime.test_bridge_sender() {
             let proxy = proxy.clone();
             tokio::spawn(async move {
-                let result = kairos_test_harness::test_runner::run_test_file(&test_file, sender).await;
+                let result =
+                    kairos_test_harness::test_runner::run_test_file(&test_file, sender).await;
                 let json = serde_json::to_string_pretty(&result)
                     .unwrap_or_else(|_| format!("{:?}", result));
                 let passed = result.status == "passed";

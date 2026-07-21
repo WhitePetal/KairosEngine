@@ -64,7 +64,7 @@ impl Inspector for DocumentInspector {
         })
     }
 
-    fn draw(&self, ui: &mut egui::Ui, messager: &mut Messager, assets_server: &AssetsServer) {
+    fn draw(&self, ui: &mut egui::Ui, messager: &mut Messager, assets_server: &AssetsServer, _dt: f32) {
         {
             let mut content_mut = self.model.content.lock();
             let content_mut = content_mut.deref_mut();

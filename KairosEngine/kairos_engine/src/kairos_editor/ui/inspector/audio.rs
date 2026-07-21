@@ -252,6 +252,7 @@ impl Inspector for AudioInspector {
         ui: &mut egui::Ui,
         messager: &mut crate::kairos_editor::ui::Messager,
         assets_server: &AssetsServer,
+        _dt: f32,
     ) {
         let Some(pcm) = self.get_pcm(assets_server) else {
             ui.label("Audio is Loading...");

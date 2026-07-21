@@ -7,23 +7,23 @@ use wgpu::{
     BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType,
     BufferUsages, ColorTargetState, ColorWrites, CommandBuffer, CommandEncoder,
     CommandEncoderDescriptor, CurrentSurfaceTexture, DepthBiasState, DepthStencilState, Device,
-    ExperimentalFeatures, Extent3d, FragmentState, FrontFace, InstanceFlags, Limits,
-    LoadOp, LoadOpDontCare, MemoryBudgetThresholds, MemoryHints,
-    MultisampleState, Operations, Origin3d, PipelineCompilationOptions, PipelineLayoutDescriptor,
-    PolygonMode, PowerPreference, PresentMode, PrimitiveState, Queue, RenderPassColorAttachment,
+    ExperimentalFeatures, Extent3d, FragmentState, FrontFace, InstanceFlags, Limits, LoadOp,
+    LoadOpDontCare, MemoryBudgetThresholds, MemoryHints, MultisampleState, Operations, Origin3d,
+    PipelineCompilationOptions, PipelineLayoutDescriptor, PolygonMode, PowerPreference,
+    PresentMode, PrimitiveState, Queue, RenderPassColorAttachment,
     RenderPassDepthStencilAttachment, RenderPassDescriptor, RenderPipelineDescriptor,
     RequestAdapterOptions, SamplerBindingType, ShaderModuleDescriptor, ShaderSource, ShaderStages,
     StencilState, StoreOp, Surface, SurfaceConfiguration, SurfaceTexture, TexelCopyBufferLayout,
-    TexelCopyTextureInfo, TextureDescriptor, TextureFormat, TextureUsages,
-    TextureView, TextureViewDescriptor, TextureViewDimension, Trace, VertexAttribute,
-    VertexBufferLayout, VertexFormat, VertexState, VertexStepMode,
+    TexelCopyTextureInfo, TextureDescriptor, TextureFormat, TextureUsages, TextureView,
+    TextureViewDescriptor, TextureViewDimension, Trace, VertexAttribute, VertexBufferLayout,
+    VertexFormat, VertexState, VertexStepMode,
     util::{BufferInitDescriptor, DeviceExt},
     wgt::{DeviceDescriptor, SamplerDescriptor},
 };
 use winit::{dpi::PhysicalSize, window::Window};
 
 use crate::{
-    asset_loader::assets::{asset::AssetIndex, AssetsServer},
+    asset_loader::assets::{AssetsServer, asset::AssetIndex},
     graphics::{
         attachment::{AttachmentFormat, InternalAttachmentId},
         graphics_graph::{self, GraphicsGraph, graphics_node::RenderPassNode},
@@ -34,7 +34,7 @@ use crate::{
         texture::format::TextureCompressionConfig,
         vertex::Vertex,
     },
-    math::{float2, float3, float4, float4x4},
+    math::{float4, float4x4},
 };
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
@@ -630,28 +630,37 @@ impl RenderPipeline {
                 let key = texture_id.index() as usize;
                 let version = texture_id.version();
                 let result = {
-                    error_scopes.push((material_id, device.push_error_scope(wgpu::ErrorFilter::Validation)));
+                    error_scopes.push((
+                        material_id,
+                        device.push_error_scope(wgpu::ErrorFilter::Validation),
+                    ));
                     match texture_cache.entry(key) {
-                    std::collections::hash_map::Entry::Occupied(mut entry) => {
-                        let cache = entry.get();
-                        if cache.version == version {
-                            cache.bind_group.clone()
-                        } else {
-                            let (bind_group, layout) = Self::create_texture(
-                                device, queue, texture_asset,
-                            );
-                            entry.insert(TextureCache { version, bind_group: bind_group.clone(), layout });
+                        std::collections::hash_map::Entry::Occupied(mut entry) => {
+                            let cache = entry.get();
+                            if cache.version == version {
+                                cache.bind_group.clone()
+                            } else {
+                                let (bind_group, layout) =
+                                    Self::create_texture(device, queue, texture_asset);
+                                entry.insert(TextureCache {
+                                    version,
+                                    bind_group: bind_group.clone(),
+                                    layout,
+                                });
+                                bind_group
+                            }
+                        }
+                        std::collections::hash_map::Entry::Vacant(entry) => {
+                            let (bind_group, layout) =
+                                Self::create_texture(device, queue, texture_asset);
+                            entry.insert(TextureCache {
+                                version,
+                                bind_group: bind_group.clone(),
+                                layout,
+                            });
                             bind_group
                         }
                     }
-                    std::collections::hash_map::Entry::Vacant(entry) => {
-                        let (bind_group, layout) = Self::create_texture(
-                            device, queue, texture_asset,
-                        );
-                        entry.insert(TextureCache { version, bind_group: bind_group.clone(), layout });
-                        bind_group
-                    }
-                }
                 };
                 texture_bind_group = Some(result);
                 texture_bind_group_layout = texture_cache.get(&key).map(|c| &c.layout);
@@ -673,26 +682,56 @@ impl RenderPipeline {
                     if cache.version == shader_version {
                         cache.pipeline.clone()
                     } else {
-                        error_scopes.push((material_id, device.push_error_scope(wgpu::ErrorFilter::Validation)));
+                        error_scopes.push((
+                            material_id,
+                            device.push_error_scope(wgpu::ErrorFilter::Validation),
+                        ));
                         let pipeline = Self::create_pipeline(
-                            device, global_vp_bind_group_layout, texture_bind_group_layout,
-                            shader, &depth_state, &pipeline_key.render_state,
+                            device,
+                            global_vp_bind_group_layout,
+                            texture_bind_group_layout,
+                            shader,
+                            &depth_state,
+                            &pipeline_key.render_state,
                             instancing_vertex_buffer_layout.clone(),
-                            color_attachments[0].as_ref().unwrap().view.texture().format(),
+                            color_attachments[0]
+                                .as_ref()
+                                .unwrap()
+                                .view
+                                .texture()
+                                .format(),
                         );
-                        entry.insert(PipelineCache { version: shader_version, pipeline: pipeline.clone() });
+                        entry.insert(PipelineCache {
+                            version: shader_version,
+                            pipeline: pipeline.clone(),
+                        });
                         pipeline
                     }
                 }
                 std::collections::hash_map::Entry::Vacant(entry) => {
-                    error_scopes.push((material_id, device.push_error_scope(wgpu::ErrorFilter::Validation)));
+                    error_scopes.push((
+                        material_id,
+                        device.push_error_scope(wgpu::ErrorFilter::Validation),
+                    ));
                     let pipeline = Self::create_pipeline(
-                        device, global_vp_bind_group_layout, texture_bind_group_layout,
-                        shader, &depth_state, &pipeline_key.render_state,
+                        device,
+                        global_vp_bind_group_layout,
+                        texture_bind_group_layout,
+                        shader,
+                        &depth_state,
+                        &pipeline_key.render_state,
                         instancing_vertex_buffer_layout.clone(),
-                        color_attachments[0].as_ref().unwrap().view.texture().format(),
+                        color_attachments[0]
+                            .as_ref()
+                            .unwrap()
+                            .view
+                            .texture()
+                            .format(),
                     );
-                    entry.insert(PipelineCache { version: shader_version, pipeline: pipeline.clone() });
+                    entry.insert(PipelineCache {
+                        version: shader_version,
+                        pipeline: pipeline.clone(),
+                    });
                     pipeline
                 }
             };
@@ -860,10 +899,7 @@ impl RenderPipeline {
         }
     }
 
-    fn create_purple_fallback(
-        device: &Device,
-        queue: &Queue,
-    ) -> (BindGroup, BindGroupLayout) {
+    fn create_purple_fallback(device: &Device, queue: &Queue) -> (BindGroup, BindGroupLayout) {
         let size = Extent3d {
             width: 1,
             height: 1,
@@ -989,16 +1025,12 @@ impl RenderPipeline {
                     shader_location: 2,
                 },
                 VertexAttribute {
-                    offset: (core::mem::size_of::<float4>() * 2 + core::mem::size_of::<float2>())
-                        as wgpu::BufferAddress,
+                    offset: std::mem::offset_of!(Vertex, normal) as wgpu::BufferAddress,
                     format: VertexFormat::Float32x3,
                     shader_location: 3,
                 },
                 VertexAttribute {
-                    offset: (core::mem::size_of::<float4>() * 2
-                        + core::mem::size_of::<float2>()
-                        + core::mem::size_of::<float3>())
-                        as wgpu::BufferAddress,
+                    offset: std::mem::offset_of!(Vertex, tangent) as wgpu::BufferAddress,
                     format: VertexFormat::Float32x4,
                     shader_location: 4,
                 },

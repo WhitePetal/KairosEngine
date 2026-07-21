@@ -458,40 +458,90 @@ impl TextureFormat {
             Self::Astc12x10Unorm | Self::Astc12x10UnormSrgb | Self::Astc12x10Hdr => (12, 10),
             Self::Astc12x12Unorm | Self::Astc12x12UnormSrgb | Self::Astc12x12Hdr => (12, 12),
 
-            Self::R8Unorm | Self::R8Snorm | Self::R8Uint
-            | Self::R8Sint | Self::R16Uint | Self::R16Sint
-            | Self::R16Float | Self::Rg8Unorm | Self::Rg8Snorm
-            | Self::Rg8Uint | Self::Rg8Sint | Self::R32Uint
-            | Self::R32Sint | Self::R32Float | Self::Rg16Uint
-            | Self::Rg16Sint | Self::Rg16Float | Self::Rgba8Unorm
-            | Self::Rgba8UnormSrgb | Self::Rgba8Snorm | Self::Rgba8Uint
-            | Self::Rgba8Sint | Self::Bgra8Unorm | Self::Bgra8UnormSrgb
-            | Self::Rgb10a2Unorm | Self::Rg11b10Ufloat | Self::Rg32Uint
-            | Self::Rg32Sint | Self::Rg32Float | Self::Rgba16Uint
-            | Self::Rgba16Sint | Self::Rgba16Float | Self::Rgba32Uint
-            | Self::Rgba32Sint | Self::Rgba32Float => (1, 1),
+            Self::R8Unorm
+            | Self::R8Snorm
+            | Self::R8Uint
+            | Self::R8Sint
+            | Self::R16Uint
+            | Self::R16Sint
+            | Self::R16Float
+            | Self::Rg8Unorm
+            | Self::Rg8Snorm
+            | Self::Rg8Uint
+            | Self::Rg8Sint
+            | Self::R32Uint
+            | Self::R32Sint
+            | Self::R32Float
+            | Self::Rg16Uint
+            | Self::Rg16Sint
+            | Self::Rg16Float
+            | Self::Rgba8Unorm
+            | Self::Rgba8UnormSrgb
+            | Self::Rgba8Snorm
+            | Self::Rgba8Uint
+            | Self::Rgba8Sint
+            | Self::Bgra8Unorm
+            | Self::Bgra8UnormSrgb
+            | Self::Rgb10a2Unorm
+            | Self::Rg11b10Ufloat
+            | Self::Rg32Uint
+            | Self::Rg32Sint
+            | Self::Rg32Float
+            | Self::Rgba16Uint
+            | Self::Rgba16Sint
+            | Self::Rgba16Float
+            | Self::Rgba32Uint
+            | Self::Rgba32Sint
+            | Self::Rgba32Float => (1, 1),
 
-            Self::Bc1RgbaUnorm | Self::Bc1RgbaUnormSrgb | Self::Bc2RgbaUnorm
-            | Self::Bc2RgbaUnormSrgb | Self::Bc3RgbaUnorm | Self::Bc3RgbaUnormSrgb
-            | Self::Bc4RUnorm | Self::Bc4RSnorm | Self::Bc5RgUnorm
-            | Self::Bc5RgSnorm | Self::Bc6hRgbUfloat | Self::Bc6hRgbFloat
-            | Self::Bc7RgbaUnorm | Self::Bc7RgbaUnormSrgb => (4, 4),
+            Self::Bc1RgbaUnorm
+            | Self::Bc1RgbaUnormSrgb
+            | Self::Bc2RgbaUnorm
+            | Self::Bc2RgbaUnormSrgb
+            | Self::Bc3RgbaUnorm
+            | Self::Bc3RgbaUnormSrgb
+            | Self::Bc4RUnorm
+            | Self::Bc4RSnorm
+            | Self::Bc5RgUnorm
+            | Self::Bc5RgSnorm
+            | Self::Bc6hRgbUfloat
+            | Self::Bc6hRgbFloat
+            | Self::Bc7RgbaUnorm
+            | Self::Bc7RgbaUnormSrgb => (4, 4),
 
-            Self::Etc2Rgb8Unorm | Self::Etc2Rgb8UnormSrgb | Self::Etc2Rgb8A1Unorm
-            | Self::Etc2Rgb8A1UnormSrgb | Self::Etc2Rgba8Unorm | Self::Etc2Rgba8UnormSrgb
-            | Self::EacR11Unorm | Self::EacR11Snorm
-            | Self::EacRg11Unorm | Self::EacRg11Snorm => (4, 4),
+            Self::Etc2Rgb8Unorm
+            | Self::Etc2Rgb8UnormSrgb
+            | Self::Etc2Rgb8A1Unorm
+            | Self::Etc2Rgb8A1UnormSrgb
+            | Self::Etc2Rgba8Unorm
+            | Self::Etc2Rgba8UnormSrgb
+            | Self::EacR11Unorm
+            | Self::EacR11Snorm
+            | Self::EacRg11Unorm
+            | Self::EacRg11Snorm => (4, 4),
         }
     }
 
     /// The texture sample type for pipeline/bind-group compatibility.
     pub fn sample_type(&self) -> SampleType {
         match self {
-            Self::R8Uint | Self::R16Uint | Self::Rg8Uint | Self::Rg16Uint
-            | Self::R32Uint | Self::Rg32Uint | Self::Rgba8Uint | Self::Rgba16Uint
+            Self::R8Uint
+            | Self::R16Uint
+            | Self::Rg8Uint
+            | Self::Rg16Uint
+            | Self::R32Uint
+            | Self::Rg32Uint
+            | Self::Rgba8Uint
+            | Self::Rgba16Uint
             | Self::Rgba32Uint => SampleType::Uint,
-            Self::R8Sint | Self::R16Sint | Self::Rg8Sint | Self::Rg16Sint
-            | Self::R32Sint | Self::Rg32Sint | Self::Rgba8Sint | Self::Rgba16Sint
+            Self::R8Sint
+            | Self::R16Sint
+            | Self::Rg8Sint
+            | Self::Rg16Sint
+            | Self::R32Sint
+            | Self::Rg32Sint
+            | Self::Rgba8Sint
+            | Self::Rgba16Sint
             | Self::Rgba32Sint => SampleType::Sint,
             _ => SampleType::Float,
         }
@@ -500,7 +550,7 @@ impl TextureFormat {
     /// Whether this format supports hardware texture filtering (Linear).
     /// Uint/Sint formats do not — they require Nearest filtering.
     pub fn is_filterable(&self) -> bool {
-  		self.sample_type() == SampleType::Float
+        self.sample_type() == SampleType::Float
     }
 }
 

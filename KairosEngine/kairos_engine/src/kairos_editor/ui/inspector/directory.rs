@@ -24,6 +24,7 @@ impl Inspector for DirectoryInspector {
         ui: &mut egui::Ui,
         _messager: &mut crate::kairos_editor::ui::Messager,
         _assets_server: &crate::asset_loader::assets::AssetsServer,
+        _dt: f32,
     ) {
         match fs::read_dir(&self.path) {
             Ok(entries) => {

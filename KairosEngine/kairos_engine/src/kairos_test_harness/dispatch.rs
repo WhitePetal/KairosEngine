@@ -27,7 +27,11 @@ pub fn dispatch_call(step: &TestStep, engine: &mut KairosEngine) -> StepResult {
                         r#"{{"x_min":{:.1},"y_min":{:.1},"x_max":{:.1},"y_max":{:.1}}}"#,
                         rect.min.x, rect.min.y, rect.max.x, rect.max.y
                     );
-                    StepResult { ok: true, message: json, wait_frames: 0 }
+                    StepResult {
+                        ok: true,
+                        message: json,
+                        wait_frames: 0,
+                    }
                 }
                 None => StepResult::err(format!("widget not found: '{id}'")),
             }

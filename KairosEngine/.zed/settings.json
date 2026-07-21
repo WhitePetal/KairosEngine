@@ -1,4 +1,5 @@
 {
+  "hard_tabs": false,
   "terminal": {
     "shell": {
       "with_arguments": {

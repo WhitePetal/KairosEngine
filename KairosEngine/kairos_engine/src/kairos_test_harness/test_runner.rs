@@ -8,10 +8,7 @@ use tokio::sync::{mpsc, oneshot};
 ///
 /// Reads the file, parses it, and sends each step to the main thread
 /// via the bridge sender. Collects results and returns a `TestResult`.
-pub async fn run_test_file(
-    file_path: &str,
-    sender: mpsc::Sender<EngineCommand>,
-) -> TestResult {
+pub async fn run_test_file(file_path: &str, sender: mpsc::Sender<EngineCommand>) -> TestResult {
     let content = match tokio::fs::read_to_string(file_path).await {
         Ok(c) => c,
         Err(e) => {
@@ -32,10 +29,7 @@ pub async fn run_test_file(
         let (tx, rx) = oneshot::channel();
 
         if sender
-            .send(EngineCommand::ExecuteStep {
-                step,
-                response: tx,
-            })
+            .send(EngineCommand::ExecuteStep { step, response: tx })
             .await
             .is_err()
         {
@@ -77,8 +71,7 @@ target = "system.ping"
 action = "call"
 target = "system.ping"
 "#;
-        let test: TestFile =
-            toml::from_str(toml_str).expect("valid TOML should parse");
+        let test: TestFile = toml::from_str(toml_str).expect("valid TOML should parse");
         assert_eq!(test.step.len(), 2);
         assert_eq!(test.step[0].action, "call");
         assert_eq!(test.step[0].target.as_deref(), Some("system.ping"));
@@ -92,8 +85,7 @@ action = "call"
 target = "texture_inspector.select_format"
 args = { format = "BC7" }
 "#;
-        let test: TestFile =
-            toml::from_str(toml_str).expect("TOML with args should parse");
+        let test: TestFile = toml::from_str(toml_str).expect("TOML with args should parse");
         assert_eq!(test.step.len(), 1);
         let args = test.step[0].args.as_ref().unwrap();
         assert_eq!(args["format"].as_str(), Some("BC7"));

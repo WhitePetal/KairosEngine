@@ -3,11 +3,11 @@ use std::path::Path;
 use anyhow::{Error, Ok};
 
 use crate::graphics::texture::{
+    SerializedTexture,
     format::TextureFormat,
     sampler::{
         AddressMode, AnisotropyLevel, FilterMode, MipmapConfig, MipmapFilter, SamplerConfig,
     },
-    SerializedTexture,
 };
 
 impl SerializedTexture {
