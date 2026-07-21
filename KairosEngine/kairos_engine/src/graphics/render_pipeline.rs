@@ -1053,10 +1053,10 @@ impl RenderPipeline {
                 buffers: &[vertex_buffer_layout, instancing_vertex_buffer_layout],
             },
             primitive: PrimitiveState {
-                topology: render_state.topology,
+                topology: render_state.topology.into(),
                 strip_index_format: None,
                 front_face: FrontFace::Ccw,
-                cull_mode: render_state.cull_mod,
+                cull_mode: render_state.cull_mod.into(),
                 unclipped_depth: false,
                 polygon_mode: PolygonMode::Fill,
                 conservative: false,
@@ -1067,7 +1067,7 @@ impl RenderPipeline {
                 compilation_options: PipelineCompilationOptions::default(),
                 targets: &[Some(ColorTargetState {
                     format: render_target_format,
-                    blend: render_state.blend_mod,
+                    blend: render_state.blend_mod.into(),
                     write_mask: ColorWrites::all(),
                 })],
             }),
