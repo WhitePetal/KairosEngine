@@ -1,0 +1,10 @@
+source_path = "res/textures/white.texture"
+width = 2
+height = 2
+format = "Rgba8Unorm"
+
+[sampler]
+filter_mode = "Nearest"
+address_mode_u = "Repeat"
+address_mode_v = "Repeat"
+address_mode_w = "Repeat"
