@@ -1,8 +1,7 @@
 use std::{cell::Cell, fs, ops::Deref, path::PathBuf, sync::Arc};
 
 use egui::{
-    Vec2,
-    menu::{MenuConfig, SubMenuButton},
+    Vec2, menu::{MenuConfig, SubMenuButton},
 };
 use egui_extras::{Column, TableBuilder};
 use parking_lot::Mutex;
@@ -257,13 +256,15 @@ impl MaterialInspector {
             let current_texture_path = texture_guard.deref();
 
             if let Some(Some(texture_path)) = current_texture_path {
-                ui.label(texture_path.to_string_lossy());
-            }
-
-            if ui.button("X").clicked() {
-                messager.send(Message::MaterialInspectorClearTexture(
-                    self.model.path.clone(),
-                ));
+                if ui.button("X").clicked() {
+                    messager.send(Message::MaterialInspectorClearTexture(
+                        self.model.path.clone(),
+                    ));
+                }
+                ui.add(egui::Label::new(
+                    texture_path.to_string_lossy(),
+                )
+                .extend());
             }
         });
     }
@@ -523,7 +524,6 @@ impl Inspector for MaterialInspector {
 
         // ---- Table 区域----
         let table = TableBuilder::new(ui)
-            .resizable(true)
             .striped(true)
             .cell_layout(egui::Layout::left_to_right(egui::Align::LEFT))
             .column(Column::auto())

@@ -1531,6 +1531,10 @@ guid = "b07fb578-5d65-442f-a156-e238b8935b62"
 path = "res/textures/kairos_texture.texture"
 
 [[entries]]
+guid = "16248376-3763-45f3-b666-aa295821920d"
+path = "res/textures/white.texture"
+
+[[entries]]
 guid = "d095dc2a-d3ea-4b66-b7d3-e8c418d63171"
 path = "tests"
 
