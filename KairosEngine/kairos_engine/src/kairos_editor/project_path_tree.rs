@@ -44,7 +44,8 @@ impl ProjectPathGraph {
     pub fn new_at_root(root_path: &Path, registry: &mut AssetRegistry) -> Self {
         let mut graph = Graph::new();
 
-        let root_guid = registry.get_or_create_guid(root_path);
+        let root_path = Self::normalize_path(root_path.to_path_buf());
+        let root_guid = registry.get_or_create_guid(&root_path);
         let root_name = root_path
             .canonicalize()
             .ok()
@@ -53,13 +54,19 @@ impl ProjectPathGraph {
         let root_node_data = ProjectTreeNode::new(
             root_guid,
             root_name,
-            root_path.to_path_buf(),
+            root_path.clone(),
             None,
             AssetKind::Directory,
         );
         let root_node = graph.add_node(root_node_data);
 
-        Self::scan_dir(root_path, root_node, &mut graph, registry);
+        // root_path 归一化后可能为空（原 `./`），但 read_dir 需要有效路径
+        let scan_root = if root_path.as_os_str().is_empty() {
+            Path::new(".")
+        } else {
+            &root_path
+        };
+        Self::scan_dir(scan_root, root_node, &mut graph, registry);
 
         Self { graph }
     }
@@ -71,8 +78,15 @@ impl ProjectPathGraph {
         let root_path = self
             .graph
             .node_weight(self.get_root_node())
-            .map(|n| n.path.clone())
+            .map(|n| Self::normalize_path(n.path.clone()))
             .unwrap_or_else(|| PathBuf::from("./"));
+
+        // normalize the root path, but keep `./` for read_dir
+        let root_path_for_read = if root_path.as_os_str().is_empty() {
+            PathBuf::from("./")
+        } else {
+            root_path.clone()
+        };
 
         self.graph.clear();
         let root_guid = registry.get_or_create_guid(&root_path);
@@ -80,13 +94,13 @@ impl ProjectPathGraph {
         let root_node_data = ProjectTreeNode::new(
             root_guid,
             root_name,
-            root_path.clone(),
+            root_path,
             None,
             AssetKind::Directory,
         );
         let root_node = self.graph.add_node(root_node_data);
 
-        Self::scan_dir(&root_path, root_node, &mut self.graph, registry);
+        Self::scan_dir(&root_path_for_read, root_node, &mut self.graph, registry);
     }
 
     // ----------------------------------------------------------
@@ -109,7 +123,7 @@ impl ProjectPathGraph {
 
         for entry in read_dir {
             let Ok(entry) = entry else { continue };
-            let path = entry.path();
+            let path = Self::normalize_path(entry.path());
 
             // 跳过隐藏文件/目录和 target 目录
             if Self::should_skip(&path) {
@@ -152,6 +166,19 @@ impl ProjectPathGraph {
             let child_node = graph.add_node(node_data);
             graph.add_edge(parent_node, child_node, ());
         }
+    }
+
+    /// 归一化路径：去掉前导 `./`，并将所有分隔符统一为 `/`（POSIX 风格），
+    /// 与 `.mat` 等资产文件的内部路径格式保持一致。
+    fn normalize_path(path: PathBuf) -> PathBuf {
+        let path: PathBuf = path
+            .components()
+            .filter(|c| !matches!(c, std::path::Component::CurDir))
+            .collect();
+
+        // 统一路径分隔符为 `/`，保证跨平台一致性
+        let s = path.to_string_lossy().replace('\\', "/");
+        PathBuf::from(s)
     }
 
     /// 判断路径是否应跳过扫描。

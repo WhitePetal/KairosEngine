@@ -5,26 +5,17 @@ pub mod hierarchy_panel;
 use std::{any::type_name, cell::Cell, fs, ops::Deref, path::PathBuf, sync::Arc};
 
 use crate::{
-    asset_loader::assets::AssetsServer,
-    kairos_editor::{
-        Engine,
-        asset_registry::{AssetKind, AssetRegistry},
-        project_path_tree::{
+    asset_loader::assets::AssetsServer, kairos_editor::{
+        Engine, asset_registry::{AssetKind, AssetRegistry}, project_path_tree::{
             ProjectPathGraph, create_request::CreateRequest, tree_node::ProjectTreeNode,
-        },
-        ui::{
-            self, Messager, UIReader,
-            global_styles::GlobalStyles,
-            inspector::creater::InspectorCreater,
-            project_window::{
+        }, ui::{
+            self, Messager, UIReader, drag::Drag, global_styles::GlobalStyles, inspector::creater::InspectorCreater, project_window::{
                 content_panel::{ContentPanel, ContentStyle},
                 context_menu::ContextMenuState,
                 hierarchy_panel::{HierarchyPanel, HierarchyStyle},
             },
         },
-    },
-    kairos_game::KairosGame,
-    log::Log,
+    }, kairos_game::KairosGame, log::Log,
 };
 use egui::{RichText, Vec2};
 use parking_lot::Mutex;
@@ -63,7 +54,7 @@ struct ProjectWindowModel {
     /// 一次性强制展开标记：下一帧 hierarchy 渲染时将展开到该节点的完整路径，
     /// 渲染后立即清除。用 `Cell` 使得 `ui(&self)` 中也能写入。
     force_expand_to: Cell<Option<NodeIndex>>,
-    dragging: Option<PathBuf>,
+    drag: Option<Drag<PathBuf>>,
 }
 
 // ============================================================
@@ -117,7 +108,7 @@ impl ProjectWindowModel {
             renaming_node: None,
             renaming_buffer: None,
             force_expand_to: Cell::new(None),
-            dragging: None,
+            drag: None,
         })
     }
 }
@@ -301,22 +292,8 @@ impl ProjectWindow {
         }
     }
 
-    pub fn get_dragging<'a>(&'a self) -> &'a Option<PathBuf> {
-        &self.model.dragging
-    }
-
-    pub fn drag_start(&mut self, node_idx: NodeIndex) {
-        if let Some(data) = self.model.project_path_graph.get_node(node_idx) {
-            if let Some(asset_path) = &data.asset_path {
-                self.model.dragging = Some(asset_path.clone());
-            } else {
-                self.model.dragging = Some(data.path.clone());
-            }
-        }
-    }
-
-    pub fn drag_stop(&mut self) {
-        self.model.dragging = None
+    pub fn get_dragging<'a>(&'a self) -> &'a Option<Drag<PathBuf>> {
+        &self.model.drag
     }
 
     /// 使用系统上已安装的 IDE 打开文件（自动检测优先级最高的 IDE）。
@@ -367,6 +344,28 @@ impl ProjectWindow {
             }
             Err(e) => log::warn!("Failed to delete node: {e}"),
         }
+    }
+
+    pub fn drag_start(&mut self, node_idx: NodeIndex) {
+        if let Some(data) = self.model.project_path_graph.get_node(node_idx) {
+            if let Some(asset_path) = &data.asset_path {
+                self.model.drag = Some(Drag::Draging(asset_path.clone()));
+            } else {
+                self.model.drag = Some(Drag::Draging(data.path.clone()));
+            }
+        }
+    }
+
+    pub fn drag_stop(&mut self) {
+        if let Some(drag) = self.model.drag.take() {
+            if let Drag::Draging(drag) = drag {
+                self.model.drag = Some(Drag::Stoped(drag));
+            }
+        }
+    }
+
+    pub fn drag_consume(&mut self) {
+        self.model.drag = None;
     }
 
     pub fn draw_drag(
@@ -454,6 +453,10 @@ impl Drawer for ProjectWindow {
         _engine: &Engine,
         _log: &mut Log,
     ) {
+        if let Some(Drag::Stoped(_)) = self.model.drag {
+            messager.send(Message::DragConsumeProjectNode);
+        }
+
         let selected = self.model.selected_node;
         let active_dir = self.model.active_directory;
         let renaming_node = self.model.renaming_node;

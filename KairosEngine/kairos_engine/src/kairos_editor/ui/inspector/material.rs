@@ -1,4 +1,4 @@
-use std::{cell::Cell, fs, path::PathBuf, sync::Arc};
+use std::{cell::Cell, fs, ops::Deref, path::PathBuf, sync::Arc};
 
 use egui::{
     Vec2,
@@ -12,18 +12,11 @@ use crate::{
     asset_loader::assets::{
         AssetHandle, AssetsServer, MaterialAssetsSystem, SerializedMaterialAssetsSystem,
         ShaderAssetsSystem, TextureAssetsSystem,
-    },
-    kairos_editor::{
-        asset_registry::AssetKind,
-        project_path_tree::ProjectPathGraph,
-        ui::{
-            Message, Messager, UIReader,
-            dialog::{ConfirmDialogWindow, Dialog},
-            inspector::Inspector,
-            paths,
-            project_window::ProjectWindow,
+    }, kairos_editor::{
+        asset_registry::AssetKind, project_path_tree::ProjectPathGraph, ui::{
+            Message, Messager, UIReader, dialog::{ConfirmDialogWindow, Dialog}, drag::Drag, inspector::Inspector, paths, project_window::ProjectWindow,
         },
-    },
+    }, math,
 };
 
 // ============================================================
@@ -36,10 +29,15 @@ struct MaterialInspectorStyle {
     shader_selector_menu_border: f32,
     shader_selector_menu_min_width: f32,
     shader_selector_submenu_width_factor: f32,
-    texture_drop_target_height: f32,
-    texture_clear_button_width: f32,
-    texture_path_font_size: f32,
-    texture_drag_prompt: String,
+
+    texture_label_height: f32,
+    texture_background_color:  math::Color32,
+    texture_drag_hover_background_color: math::Color32,
+    texture_empty_stroke_color: math::Color32,
+    texture_fill_stroke_color: math::Color32,
+    texture_drag_hover_stroke_color: math::Color32,
+    texture_corner_radius: u8,
+    texture_stroke_width: f32,
 }
 
 impl MaterialInspectorStyle {
@@ -77,10 +75,11 @@ fn build_shader_menu_tree(shader_list: &[(String, PathBuf)]) -> Vec<ShaderMenuNo
     for (name, path) in shader_list {
         let parent = path.parent().unwrap_or(std::path::Path::new(""));
         let components: Vec<&str> = parent
-            .to_str()
-            .unwrap_or("")
-            .split('/')
-            .filter(|s| !s.is_empty() && *s != ".")
+            .components()
+            .filter_map(|c| match c {
+                std::path::Component::Normal(s) => s.to_str(),
+                _ => None,
+            })
             .collect();
         insert_shader_node(&mut roots, &components, name, path);
     }
@@ -133,7 +132,7 @@ fn render_shader_menu(
     for node in nodes {
         if let Some(ref shader_path) = node.full_path {
             // Leaf — shader 文件
-            let is_selected = *shader_path == *current_path;
+            let is_selected = shader_path == current_path;
             if ui
                 .selectable_label(is_selected, &node.display_name)
                 .clicked()
@@ -167,53 +166,21 @@ fn render_shader_menu(
 // Texture 拖拽相关（跨帧持久化）
 // ============================================================
 
-/// 跨帧持久化的 drag payload 键。使用 `insert_persisted` / `get_persisted`
-/// 因为 `insert_temp` 在每帧开始被清除，无法跨帧传递。
-const DROP_HOVER_KEY: &str = "__material_texture_drop_hover";
-
-/// 检查 payload 是否为有效的 .texture 文件。
-fn is_valid_texture_drag(payload: &PathBuf) -> bool {
-    payload.extension().and_then(|e| e.to_str()) == AssetKind::Texture.extension()
-}
-
 /// 在 drop target 区域检查是否发生了拖放操作。
 /// 返回值：Some(texture_path) 表示拖放有效，None 表示无操作。
 fn check_texture_drop(
     ui: &egui::Ui,
-    dragging: &PathBuf,
+    drag: &Drag<PathBuf>,
     target_rect: egui::Rect,
 ) -> Option<PathBuf> {
     let pointer_pos = ui.input(|i| i.pointer.interact_pos())?;
     if !target_rect.contains(pointer_pos) {
-        // 指针不在目标区域，清除悬停状态
-        ui.ctx().data_mut(|d| {
-            d.insert_persisted(egui::Id::new(DROP_HOVER_KEY), false);
-        });
         return None;
     }
 
-    let pointer_down = ui.input(|i| i.pointer.any_down());
-
-    if pointer_down {
-        // 正在拖拽悬停
-        ui.ctx().data_mut(|d| {
-            d.insert_persisted(egui::Id::new(DROP_HOVER_KEY), true);
-        });
-        None
-    } else {
-        // 按钮已释放
-        let was_hovering = ui
-            .ctx()
-            .data_mut(|d| d.get_persisted::<bool>(egui::Id::new(DROP_HOVER_KEY)))
-            .unwrap_or(false);
-        ui.ctx().data_mut(|d| {
-            d.insert_persisted(egui::Id::new(DROP_HOVER_KEY), false);
-        });
-        if was_hovering {
-            Some(dragging.clone())
-        } else {
-            None
-        }
+    match drag {
+        Drag::Draging(_) => None,
+        Drag::Stoped(path) => Some(path.clone()),
     }
 }
 
@@ -223,7 +190,7 @@ fn check_texture_drop(
 
 /// 缓存最近的纹理缩略图 egui handle。
 /// Tuple: (纹理路径, egui::TextureHandle)
-struct ThumbnailCache {
+struct Thumbnail {
     path: PathBuf,
     handle: egui::TextureHandle,
 }
@@ -270,7 +237,7 @@ struct MaterialInspectorModel {
     /// 用户是否修改了（未保存）
     dirty: Cell<bool>,
     /// 缩略图缓存
-    thumbnail: Arc<Mutex<Option<ThumbnailCache>>>,
+    thumbnail: Arc<Mutex<Option<Thumbnail>>>,
 }
 
 // ============================================================
@@ -279,6 +246,150 @@ struct MaterialInspectorModel {
 
 pub struct MaterialInspector {
     model: MaterialInspectorModel,
+}
+
+impl MaterialInspector {
+    fn draw_texture_col(&self, ui: &mut egui::Ui, reader: &UIReader, messager: &mut Messager, assets_server: &AssetsServer) {
+        ui.horizontal(|ui| {
+            self.draw_texture_rect(ui, reader, messager, assets_server);
+
+            let texture_guard = self.model.current_texture_path.lock();
+            let current_texture_path = texture_guard.deref();
+
+            if let Some(Some(texture_path)) = current_texture_path {
+                ui.label(texture_path.to_string_lossy());
+            }
+
+            if ui.button("X").clicked() {
+                messager.send(Message::MaterialInspectorClearTexture(
+                    self.model.path.clone(),
+                ));
+            }
+        });
+    }
+
+    fn draw_texture_rect(&self, ui: &mut egui::Ui, reader: &UIReader, messager: &mut Messager, assets_server: &AssetsServer) {
+        let texture_size = self.model.style.texture_label_height;
+        let texture_size = Vec2::new(texture_size, texture_size);
+        let texture_rect = egui::Rect::from_min_size(ui.cursor().min, texture_size);
+
+        let dragging = reader
+            .get_drawer::<ProjectWindow>()
+            .and_then(|d| d.get_dragging().as_ref());
+        let mut drop_path = None;
+        let is_valid_drag = dragging.is_some_and(|d| {
+            let valid = d.get().extension().and_then(|e| e.to_str()) == AssetKind::Texture.extension();
+            if valid {
+                drop_path = check_texture_drop(ui, d, texture_rect);
+            }
+            valid
+        });
+
+        // 处理拖放结果
+        if let Some(texture_path) = drop_path {
+            // 清除缩略图缓存，下次 draw 会重新生成
+            *self.model.thumbnail.lock() = None;
+            messager.send(Message::MaterialInspectorDropTexture(
+                self.model.path.clone(),
+                texture_path,
+            ));
+        }
+
+        // let pointer_down = ui.input(|i| i.pointer.any_down());
+        let pointer_over = ui.input(|i| i.pointer.interact_pos()).map_or(false, |p| {
+            texture_rect.contains(p)
+        });
+        let is_drag_hover = pointer_over && is_valid_drag;
+
+        // ── 背景 + 边框 ──
+        let bg_color = if is_drag_hover {
+            self.model.style.texture_drag_hover_background_color
+        } else {
+            self.model.style.texture_background_color
+        };
+
+        let texture_guard = self.model.current_texture_path.lock();
+        let current_texture_path = texture_guard.deref();
+
+        let stroke_color = if is_drag_hover {
+            self.model.style.texture_drag_hover_stroke_color
+        } else if current_texture_path.is_some() {
+            self.model.style.texture_fill_stroke_color
+        } else {
+            self.model.style.texture_empty_stroke_color
+        };
+
+        let (_texture_response, painter) = ui.allocate_painter(
+            texture_size,
+            egui::Sense::click(),
+        );
+        painter.rect(
+            texture_rect,
+            egui::CornerRadius::same(self.model.style.texture_corner_radius),
+            bg_color,
+            egui::Stroke::new(self.model.style.texture_stroke_width, stroke_color),
+            egui::StrokeKind::Middle,
+        );
+
+        let padding = 2.0;
+        let thumb_size = texture_size.x - padding - padding;
+        let thumb_rect = egui::Rect::from_min_size(
+            egui::pos2(
+                texture_rect.min.x + padding,
+                texture_rect.min.y + padding,
+            ),
+            Vec2::splat(thumb_size),
+        );
+        if let Some(Some(texture_path)) = current_texture_path {
+            // ── 缩略图 ──
+            // 尝试从缓存或 assets_server 取缩略图
+            let mut thumb_guard = self.model.thumbnail.lock();
+            let thumb_mismatch = thumb_guard
+                .as_ref()
+                .map_or(true, |thumb| thumb.path != *texture_path);
+
+            if thumb_mismatch {
+                // 路径变了，重新生成
+                *thumb_guard = None;
+                // 异步加载 texture 并生成缩略图
+                if let Some(mat) =
+                    assets_server.get::<MaterialAssetsSystem>(&self.model.material_handle)
+                {
+                    if let Some(tex_handle) = &mat.texture {
+                        if let Some(texture) = assets_server.get::<TextureAssetsSystem>(tex_handle)
+                        {
+                            let handle = build_texture_thumbnail(ui, texture);
+                            *thumb_guard = Some(Thumbnail {
+                                path: texture_path.clone(),
+                                handle,
+                            });
+                        }
+                    }
+                }
+            }
+
+            if let Some(ref thumb) = *thumb_guard {
+                // 缩略图可用 → 绘制
+                ui.painter().image(
+                    thumb.handle.id(),
+                    thumb_rect,
+                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                    egui::Color32::WHITE,
+                );
+
+                return;
+            }
+        }
+
+        // 缩略图不可用 → 占位色块
+        if !is_drag_hover {
+            ui.painter().rect_filled(
+                thumb_rect,
+                egui::CornerRadius::same(self.model.style.texture_corner_radius),
+                egui::Color32::from_gray(10),
+            );
+        }
+    }
 }
 
 impl Inspector for MaterialInspector {
@@ -353,11 +464,6 @@ impl Inspector for MaterialInspector {
             guard.clone().unwrap()
         };
 
-        let current_texture_path = {
-            let guard = self.model.current_texture_path.lock();
-            guard.clone().unwrap()
-        };
-
         // ---- Source path ----
         ui.label(format!("Source: {}", self.model.path.display()));
         ui.separator();
@@ -373,11 +479,12 @@ impl Inspector for MaterialInspector {
             .striped(true)
             .cell_layout(egui::Layout::left_to_right(egui::Align::LEFT))
             .column(Column::auto())
-            .column(Column::remainder());
+            .column(Column::remainder())
+            .id_salt("shader");
         shader_selecter.body(|mut body| {
             body.row(self.model.style.shader_selector_height, |mut row| {
                 row.col(|ui| {
-                    ui.label("Shader: ");
+                    ui.label("Shader");
                 });
                 row.col(|ui| {
                     let mut menu = SubMenuButton::new(current_shader_name);
@@ -414,221 +521,25 @@ impl Inspector for MaterialInspector {
 
         ui.separator();
 
-        // ---- Texture 区域----
-        let thumbbail_size = 48.0;
-        let clear_btn_w = self.model.style.texture_clear_button_width;
-        let padding = 6.0;
-        let total_height = self.model.style.texture_drop_target_height;
-        let available_width = ui.available_width();
-
-        let full_target_rect =
-            egui::Rect::from_min_size(ui.cursor().min, Vec2::new(available_width, total_height));
-
-        // 读完拖拽状态之后再清理非活跃拖拽
-        let dragging = reader
-            .get_drawer::<ProjectWindow>()
-            .and_then(|d| d.get_dragging().as_ref());
-        let mut drop_path = None;
-        let is_valid_drag = dragging.is_some_and(|d| {
-            let valid = is_valid_texture_drag(d);
-            if valid {
-                drop_path = check_texture_drop(ui, d, full_target_rect);
-            }
-            valid
+        // ---- Table 区域----
+        let table = TableBuilder::new(ui)
+            .resizable(true)
+            .striped(true)
+            .cell_layout(egui::Layout::left_to_right(egui::Align::LEFT))
+            .column(Column::auto())
+            .column(Column::remainder())
+            .id_salt("table");
+        table.body(|mut body| {
+            let texture_size = self.model.style.texture_label_height;
+            body.row(texture_size, |mut row| {
+                row.col(|ui| {
+                    ui.label("Texture");
+                });
+                row.col(|ui| {
+                    self.draw_texture_col(ui, reader, messager, assets_server);
+                });
+            });
         });
-        let pointer_down = ui.input(|i| i.pointer.any_down());
-        let pointer_over = ui.input(|i| i.pointer.interact_pos()).map_or(false, |p| {
-            let full_rect = egui::Rect::from_min_size(
-                ui.cursor().min,
-                Vec2::new(available_width, total_height),
-            );
-            full_rect.contains(p)
-        });
-
-        let is_drag_hover = pointer_down && pointer_over && is_valid_drag;
-
-        // ── 背景 + 边框 ──
-        let bg_color = if is_drag_hover {
-            egui::Color32::from_rgba_premultiplied(0, 80, 200, 50)
-        } else {
-            egui::Color32::from_rgba_premultiplied(50, 50, 50, 120)
-        };
-        let stroke_color = if is_drag_hover {
-            egui::Color32::from_rgb(70, 150, 255)
-        } else if current_texture_path.is_some() {
-            egui::Color32::from_gray(90)
-        } else {
-            egui::Color32::from_gray(70)
-        };
-
-        // 分配空间
-        let (_id, _response) = ui.allocate_painter(
-            Vec2::new(available_width, total_height),
-            egui::Sense::click(),
-        );
-
-        ui.painter().rect(
-            full_target_rect,
-            egui::CornerRadius::same(4),
-            bg_color,
-            egui::Stroke::new(1.0, stroke_color),
-            egui::StrokeKind::Middle,
-        );
-
-        if let Some(ref tex_path) = current_texture_path {
-            // ═══ 有纹理：缩略图 | 路径文字 | × 清除 ═══
-
-            // ── 缩略图 ──
-            let thumb_rect = egui::Rect::from_min_size(
-                egui::pos2(
-                    full_target_rect.min.x + padding,
-                    full_target_rect.min.y + padding,
-                ),
-                Vec2::splat(thumbbail_size),
-            );
-
-            // 尝试从缓存或 assets_server 取缩略图
-            let mut thumb_guard = self.model.thumbnail.lock();
-            let thumb_mismatch = thumb_guard
-                .as_ref()
-                .map_or(true, |cached| cached.path != *tex_path);
-
-            if thumb_mismatch {
-                // 路径变了，重新生成
-                *thumb_guard = None;
-                // 异步加载 texture 并生成缩略图
-                if let Some(mat) =
-                    assets_server.get::<MaterialAssetsSystem>(&self.model.material_handle)
-                {
-                    if let Some(tex_handle) = &mat.texture {
-                        if let Some(texture) = assets_server.get::<TextureAssetsSystem>(tex_handle)
-                        {
-                            let handle = build_texture_thumbnail(ui, texture);
-                            *thumb_guard = Some(ThumbnailCache {
-                                path: tex_path.clone(),
-                                handle,
-                            });
-                        }
-                    }
-                }
-            }
-
-            if let Some(ref cache) = *thumb_guard {
-                // 缩略图可用 → 绘制
-                ui.painter().image(
-                    cache.handle.id(),
-                    thumb_rect,
-                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                    egui::Color32::WHITE,
-                );
-            } else {
-                // 缩略图不可用 → 占位色块
-                ui.painter().rect_filled(
-                    thumb_rect,
-                    egui::CornerRadius::same(2),
-                    egui::Color32::from_gray(40),
-                );
-            }
-
-            // ── 路径文字 ──
-            let text_x = thumb_rect.max.x + padding;
-            let text_w = full_target_rect.max.x - clear_btn_w - text_x - padding;
-            let text_rect = egui::Rect::from_min_size(
-                egui::pos2(text_x, full_target_rect.min.y),
-                Vec2::new(text_w, total_height),
-            );
-            let display_path = tex_path.to_string_lossy();
-            ui.painter().text(
-                egui::pos2(text_rect.min.x + 2.0, text_rect.center().y),
-                egui::Align2::LEFT_CENTER,
-                &*display_path,
-                egui::FontId::proportional(self.model.style.texture_path_font_size),
-                egui::Color32::from_gray(200),
-            );
-
-            // ── 清除 × 按钮 ──
-            let clear_btn_rect = egui::Rect::from_min_size(
-                egui::pos2(full_target_rect.max.x - clear_btn_w, full_target_rect.min.y),
-                Vec2::new(clear_btn_w, total_height),
-            );
-            let clear_resp = ui.interact(
-                clear_btn_rect,
-                egui::Id::new("material_tex_clear"),
-                egui::Sense::click(),
-            );
-            if clear_resp.clicked() {
-                messager.send(Message::MaterialInspectorClearTexture(
-                    self.model.path.clone(),
-                ));
-            }
-            if clear_resp.hovered() {
-                ui.painter().rect_filled(
-                    clear_btn_rect,
-                    egui::CornerRadius::same(4),
-                    egui::Color32::from_rgba_premultiplied(200, 50, 50, 120),
-                );
-            }
-            ui.painter().text(
-                clear_btn_rect.center(),
-                egui::Align2::CENTER_CENTER,
-                "×",
-                egui::FontId::proportional(18.0),
-                egui::Color32::WHITE,
-            );
-
-            // ── "Texture" label 在左上方 ──
-            let label_pos = egui::pos2(full_target_rect.min.x + 2.0, full_target_rect.min.y - 14.0);
-            ui.painter().text(
-                label_pos,
-                egui::Align2::LEFT_BOTTOM,
-                "Texture",
-                egui::FontId::proportional(12.0),
-                egui::Color32::from_gray(140),
-            );
-        } else {
-            // ═══ 无纹理：居中占位文字 ═══
-            let prompt = if is_drag_hover {
-                "Drop .texture here"
-            } else {
-                &self.model.style.texture_drag_prompt
-            };
-            ui.painter().text(
-                full_target_rect.center(),
-                egui::Align2::CENTER_CENTER,
-                prompt,
-                egui::FontId::proportional(self.model.style.texture_path_font_size),
-                if is_drag_hover {
-                    egui::Color32::WHITE
-                } else {
-                    egui::Color32::from_gray(120)
-                },
-            );
-
-            // label
-            let label_pos = egui::pos2(full_target_rect.min.x + 2.0, full_target_rect.min.y - 14.0);
-            ui.painter().text(
-                label_pos,
-                egui::Align2::LEFT_BOTTOM,
-                "Texture",
-                egui::FontId::proportional(12.0),
-                egui::Color32::from_gray(140),
-            );
-        }
-
-        // 处理拖放结果
-        if let Some(texture_path) = drop_path {
-            // 清除缩略图缓存，下次 draw 会重新生成
-            *self.model.thumbnail.lock() = None;
-            messager.send(Message::MaterialInspectorDropTexture(
-                self.model.path.clone(),
-                texture_path,
-            ));
-        }
-
-        // 留空隙，让下一个 separator 不贴边
-        ui.allocate_space(Vec2::new(available_width, 4.0 + 14.0));
-
-        ui.separator();
 
         // ---- Dirty indicator ----
         if self.model.dirty.get() {

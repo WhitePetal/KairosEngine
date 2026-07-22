@@ -59,6 +59,7 @@ pub mod console_window;
 pub mod dialog;
 pub mod docking_tab;
 pub mod egui_ext;
+pub mod drag;
 pub mod game_window;
 pub mod global_styles;
 pub mod ide_detection;
@@ -137,6 +138,8 @@ pub enum Message {
     DragStartProjectNode(petgraph::graph::NodeIndex),
     /// ProjectWindow: 拖拽节点 结束事件
     DragStopProjectNode,
+    /// ProjectWindow: 拖拽节点 消费事件
+    DragConsumeProjectNode,
 
     DocumentInspectorSave(
         PathBuf,
@@ -576,6 +579,11 @@ impl Context {
                 Message::DragStopProjectNode => {
                     if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
                         project_window.drag_stop();
+                    }
+                }
+                Message::DragConsumeProjectNode => {
+                    if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
+                        project_window.drag_consume();
                     }
                 }
                 Message::AudioInspectorTogglePreview => {
