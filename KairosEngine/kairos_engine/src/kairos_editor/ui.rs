@@ -11,7 +11,9 @@ use crate::{
             game_window::GameWindow,
             global_styles::{FontDataConfig, FontsConfig, GlobalStyles},
             inspector::{
-                audio::AudioInspector, code::CodeInspector, document::DocumentInspector, mesh::MeshInspector, shader::ShaderInspector, texture::TextureInspector, toml::TomlTableInspector
+                audio::AudioInspector, code::CodeInspector, document::DocumentInspector,
+                material::MaterialInspector, mesh::MeshInspector, shader::ShaderInspector,
+                texture::TextureInspector, toml::TomlTableInspector,
             },
             layout::{
                 EditorLayout, LayoutBottomContainer, LayoutContainerIds, LayoutLeftContainer,
@@ -163,6 +165,9 @@ pub enum Message {
         Arc<parking_lot::Mutex<Option<TextureExt>>>,
     ),
     ModelInspectorCreateWireframeMesh(Mesh),
+    /// Material Inspector: user selected a different shader.
+    /// Carries (.mat path, new shader path).
+    MaterialInspectorChangeShader(PathBuf, PathBuf),
 }
 
 struct KairosTabDrawer {
@@ -636,6 +641,18 @@ impl Context {
                     {
                         mesh_inspector.create_wireframe_mesh(&mut engine.assets_server, mesh);
                     }
+                }
+                Message::MaterialInspectorChangeShader(_mat_path, shader_path) => {
+                    if let Some(inspector) = self.get_window_mut::<InspectorWindow>()
+                        && let Some(material_inspector) =
+                            inspector.get_inspector_mut::<MaterialInspector>()
+                    {
+                        material_inspector.change_shader(
+                            &mut engine.assets_server,
+                            shader_path,
+                        );
+                    }
+                    // .mat file save will be added in a future sprint
                 }
             }
         }

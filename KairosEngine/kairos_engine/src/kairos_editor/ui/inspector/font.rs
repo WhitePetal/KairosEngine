@@ -88,6 +88,7 @@ impl Inspector for FontInspector {
     fn create(
         path: &std::path::Path,
         assets_server: &mut AssetsServer,
+        _project_graph: &crate::kairos_editor::project_path_tree::ProjectPathGraph,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let handle = assets_server.load(&path.to_path_buf());
         let name = path

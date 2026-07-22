@@ -3,7 +3,10 @@ use std::any::Any;
 use crate::{
     asset_loader::assets::AssetsServer,
     graphics::graphics_graph::GraphicsCommand,
-    kairos_editor::ui::{Messager, dialog::Dialog},
+    kairos_editor::{
+        project_path_tree::ProjectPathGraph,
+        ui::{Messager, dialog::Dialog},
+    },
 };
 
 pub mod audio;
@@ -16,6 +19,7 @@ pub mod mesh;
 pub mod shader;
 pub mod texture;
 pub mod toml;
+pub mod material;
 pub mod unknown;
 
 pub trait InspectorFieldKey {
@@ -33,6 +37,7 @@ pub trait Inspector: Any {
     fn create(
         path: &std::path::Path,
         assets_server: &mut AssetsServer,
+        _project_graph: &ProjectPathGraph,
     ) -> Result<Self, Box<dyn std::error::Error>>
     where
         Self: Sized;

@@ -58,6 +58,7 @@ impl Inspector for TomlTableInspector {
     fn create(
         path: &std::path::Path,
         assets_server: &mut AssetsServer,
+        _project_graph: &crate::kairos_editor::project_path_tree::ProjectPathGraph,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let style = TomlTableInspectorStyle::new()?;
         let path = path.to_path_buf();

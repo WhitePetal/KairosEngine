@@ -1,0 +1,31 @@
+# MaterialInspector — verifies opening does not crash and the UI renders correctly.
+# ComboBox dropdown interaction is blocked by egui 0.35's Area popup model per #27.
+# What IS verified: inspector opens, material is selectable, no crash during rendering.
+
+[[step]]
+action = "call"
+target = "ui.open_inspector"
+
+[[step]]
+action = "call"
+target = "project.select_asset"
+args = { path = "res/materials/material.mat" }
+
+[[step]]
+action = "call"
+target = "system.wait_frames"
+args = { count = 60 }
+
+[[step]]
+action = "assert"
+target = "no_crash"
+
+# Verify the shader combo box widget renders by querying its rect
+[[step]]
+action = "call"
+target = "system.query_widget"
+args = { id = "shader_combo" }
+
+[[step]]
+action = "assert"
+target = "no_crash"

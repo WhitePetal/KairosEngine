@@ -14,6 +14,7 @@ impl Inspector for UnknownInspector {
     fn create(
         path: &std::path::Path,
         _assets_server: &mut crate::asset_loader::assets::AssetsServer,
+        _project_graph: &crate::kairos_editor::project_path_tree::ProjectPathGraph,
     ) -> Result<Self, Box<dyn std::error::Error>>
     where
         Self: Sized,
