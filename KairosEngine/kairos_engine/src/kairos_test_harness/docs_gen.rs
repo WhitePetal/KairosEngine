@@ -252,6 +252,12 @@ fn all_commands() -> Vec<CommandDoc> {
             args: Some("texture (string)"),
             mode: "windowed",
         },
+        CommandDoc {
+            name: "material_inspector.clear_texture",
+            description: "清除当前打开的 MaterialInspector 的纹理（运行时材质降级为 white.texture）",
+            args: None,
+            mode: "windowed",
+        },
         // Future commands will be added here as they are registered
         // in the dispatch table. Also see the `input` action below which
         // is a dedicated action type (not a call target).

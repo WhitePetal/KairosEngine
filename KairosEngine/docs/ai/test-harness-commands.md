@@ -23,6 +23,7 @@ args = { ... }
 | `ui.open_inspector` | 检查 Inspector 窗口是否已打开 | 无 | windowed |
 | `project.select_asset` | 在项目树中按路径选中资产 | path (string) | windowed |
 | `material_inspector.assign_texture` | 向当前打开的 MaterialInspector 赋值纹理（等价于拖入 .texture；可传不存在的路径以验证 white.texture 降级） | texture (string) | windowed |
+| `material_inspector.clear_texture` | 清除当前打开的 MaterialInspector 的纹理（运行时材质降级为 white.texture） | 无 | windowed |
 
 ### 可用 Call 命令
 
@@ -116,6 +117,18 @@ args = { path (string) }
 action = "call"
 target = "material_inspector.assign_texture"
 args = { texture (string) }
+```
+
+#### `material_inspector.clear_texture`
+
+清除当前打开的 MaterialInspector 的纹理（运行时材质降级为 white.texture）。
+
+- **模式**: windowed
+
+```toml
+[[step]]
+action = "call"
+target = "material_inspector.clear_texture"
 ```
 
 ## Assert 命令 (`action = "assert"`)

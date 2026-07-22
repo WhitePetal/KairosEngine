@@ -1,0 +1,73 @@
+# MaterialInspector clear-texture fallback (issue #34)
+#
+# Clearing the texture must NOT leave the runtime Material with a None
+# texture handle: the engine's shaders unconditionally sample the group(1)
+# texture, so None loses the bind group and breaks the material's rendering
+# (材质纹理丢失). The runtime handle must degrade to the 2x2 white fallback
+# while the inspector UI still shows an empty slot.
+# Also covers the clear → re-assign recovery path.
+
+[[step]]
+action = "call"
+target = "ui.open_inspector"
+
+[[step]]
+action = "call"
+target = "project.select_asset"
+args = { path = "res/materials/material.mat" }
+
+[[step]]
+action = "call"
+target = "system.wait_frames"
+args = { count = 60 }
+
+# The .mat's own texture (kairos_texture) is loaded — real texture, no dims pin
+[[step]]
+action = "assert"
+target = "material_inspector.texture_loaded"
+
+[[step]]
+action = "assert"
+target = "no_crash"
+
+# Clear the texture → runtime Material must degrade to the 2x2 white fallback
+[[step]]
+action = "call"
+target = "material_inspector.clear_texture"
+
+[[step]]
+action = "call"
+target = "system.wait_frames"
+args = { count = 30 }
+
+[[step]]
+action = "assert"
+target = "material_inspector.texture_loaded"
+args = { width = 2, height = 2 }
+
+[[step]]
+action = "assert"
+target = "no_crash"
+
+# Re-assign a real texture after clearing → material recovers
+[[step]]
+action = "call"
+target = "material_inspector.assign_texture"
+args = { texture = "res/textures/kairos_texture.texture" }
+
+[[step]]
+action = "call"
+target = "system.wait_frames"
+args = { count = 30 }
+
+[[step]]
+action = "assert"
+target = "material_inspector.texture_loaded"
+
+[[step]]
+action = "assert"
+target = "no_crash"
+
+[[step]]
+action = "assert"
+target = "wgpu_valid"

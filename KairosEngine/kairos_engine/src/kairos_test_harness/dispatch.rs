@@ -64,6 +64,14 @@ pub fn dispatch_call(step: &TestStep, engine: &mut KairosEngine) -> StepResult {
             ));
             StepResult::ok()
         }
+        "material_inspector.clear_texture" => {
+            // The message handler resolves the currently open MaterialInspector
+            // itself, so the .mat path slot is an unused placeholder.
+            engine.push_ui_message(Message::MaterialInspectorClearTexture(
+                std::path::PathBuf::new(),
+            ));
+            StepResult::ok()
+        }
         "project.select_asset" => {
             let args = match step.args.as_ref() {
                 Some(a) => a,

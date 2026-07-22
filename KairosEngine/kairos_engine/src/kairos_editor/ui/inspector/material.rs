@@ -334,7 +334,7 @@ impl MaterialInspector {
 
         let stroke_color = if is_drag_hover {
             self.model.style.texture_drag_hover_stroke_color
-        } else if current_texture_path.is_some() {
+        } else if matches!(current_texture_path, Some(Some(_))) {
             self.model.style.texture_fill_stroke_color
         } else {
             self.model.style.texture_empty_stroke_color
@@ -520,6 +520,14 @@ impl Inspector for MaterialInspector {
                                 .close_behavior(egui::PopupCloseBehavior::CloseOnClick),
                         )
                         .ui(ui, |_ui| {});
+                    // Record the shader selector rect for the test harness.
+                    #[cfg(feature = "test-harness")]
+                    ui.ctx().data_mut(|d| {
+                        let rects = d.get_temp_mut_or_default::<
+                            std::collections::HashMap<String, egui::Rect>,
+                        >(egui::Id::new("__kairos_widget_rects"));
+                        rects.insert("shader_combo".into(), shader_response.rect);
+                    });
                     egui::Popup::menu(&shader_response)
                         .gap(4.0)
                         .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
@@ -652,18 +660,27 @@ impl MaterialInspector {
         &self.model.material_handle
     }
 
-    /// 清除纹理：清空运行时 Material 的 texture → 标记 dirty
+    /// 清除纹理：运行时 Material 降级为 white.texture → 标记 dirty
+    ///
+    /// 缺失路径降级（issue #34）同样覆盖清除流程：引擎 shader 无条件采样
+    /// group(1) 纹理，`material.texture = None` 会导致渲染时缺少 bind group、
+    /// 材质纹理丢失。因此清除后运行时 handle 降级为 white.texture（语义上
+    /// "无纹理" = 乘白色）；`current_texture_path` 仍记录为 None（空槽），
+    /// 持久化时按用户意图写回 .mat。
     pub fn clear_texture(&mut self, assets_server: &mut AssetsServer) {
-        // 1. 更新运行时 Material
+        // 1. 运行时 Material 降级为 white.texture（引擎初始化时已预加载，立即解析）
+        let fallback_handle = assets_server.load::<TextureAssetsSystem>(&PathBuf::from(
+            paths::PATH_MATERIAL_INSPECTOR_FALLBACK_TEXTURE,
+        ));
         let material = assets_server.get_mut(&self.model.material_handle);
         if let Some(material) = material {
-            material.texture = None;
+            material.texture = Some(fallback_handle);
         }
 
         // 2. 清除缩略图缓存
         *self.model.thumbnail.lock() = None;
 
-        // 3. 更新数据状态
+        // 3. 更新数据状态（空槽）
         *self.model.current_texture_path.lock() = Some(None);
         self.model.dirty.set(true);
     }
