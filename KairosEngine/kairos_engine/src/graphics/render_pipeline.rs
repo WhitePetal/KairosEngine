@@ -1067,7 +1067,7 @@ impl RenderPipeline {
                 compilation_options: PipelineCompilationOptions::default(),
                 targets: &[Some(ColorTargetState {
                     format: render_target_format,
-                    blend: render_state.blend_mod.into(),
+                    blend: render_state.blend_mod.map(|v| v.into()),
                     write_mask: ColorWrites::all(),
                 })],
             }),

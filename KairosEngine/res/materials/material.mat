@@ -5,15 +5,5 @@ texture_path = "res/textures/kairos_texture.texture"
 [render_state]
 depth_test = "LessEqual"
 depth_write = true
-cull_mod = "back"
-topology = "triangle-list"
-
-[render_state.blend_mod.color]
-srcFactor = "one"
-dstFactor = "zero"
-operation = "add"
-
-[render_state.blend_mod.alpha]
-srcFactor = "one"
-dstFactor = "zero"
-operation = "add"
+cull_mod = "Back"
+topology = "TriangleList"

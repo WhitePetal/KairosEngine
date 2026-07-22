@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use wgpu::BlendState;
 
 use crate::graphics::compare_function::CompareFunction;
 
@@ -7,10 +6,8 @@ use crate::graphics::compare_function::CompareFunction;
 // CullMode — project-level back-face culling control
 // ============================================================
 
-/// Replaces `Option<Face>`. Serialized as lowercase for backward compatibility
-/// with existing `.mat` files that used wgpu's `Face` serde format.
+/// Replaces `Option<Face>`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
 pub enum CullMode {
     /// No face culling.
     None,
@@ -32,6 +29,7 @@ impl CullMode {
 }
 
 impl From<CullMode> for Option<wgpu::Face> {
+    #[inline(always)]
     fn from(value: CullMode) -> Self {
         match value {
             CullMode::None => None,
@@ -42,6 +40,7 @@ impl From<CullMode> for Option<wgpu::Face> {
 }
 
 impl From<Option<wgpu::Face>> for CullMode {
+    #[inline(always)]
     fn from(value: Option<wgpu::Face>) -> Self {
         match value {
             None => CullMode::None,
@@ -52,14 +51,12 @@ impl From<Option<wgpu::Face>> for CullMode {
 }
 
 // ============================================================
-// WrappedPrimitiveTopology — project-level topology
+// PrimitiveTopology — project-level topology
 // ============================================================
 
-/// Replaces `PrimitiveTopology`. Serialized as kebab-case for backward
-/// compatibility with existing `.mat` files.
+/// Replaces `wgpu::PrimitiveTopology`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum WrappedPrimitiveTopology {
+pub enum PrimitiveTopology {
     PointList,
     LineList,
     LineStrip,
@@ -68,194 +65,51 @@ pub enum WrappedPrimitiveTopology {
     TriangleStrip,
 }
 
-impl WrappedPrimitiveTopology {
+impl PrimitiveTopology {
     pub fn label(&self) -> &'static str {
         match self {
-            Self::PointList => "Point List",
-            Self::LineList => "Line List",
-            Self::LineStrip => "Line Strip",
-            Self::TriangleList => "Triangle List",
-            Self::TriangleStrip => "Triangle Strip",
+            Self::PointList => "PointList",
+            Self::LineList => "LineList",
+            Self::LineStrip => "LineStrip",
+            Self::TriangleList => "TriangleList",
+            Self::TriangleStrip => "TriangleStrip",
         }
     }
 }
 
-impl From<WrappedPrimitiveTopology> for wgpu::PrimitiveTopology {
-    fn from(value: WrappedPrimitiveTopology) -> Self {
+impl From<PrimitiveTopology> for wgpu::PrimitiveTopology {
+    #[inline(always)]
+    fn from(value: PrimitiveTopology) -> Self {
         match value {
-            WrappedPrimitiveTopology::PointList => wgpu::PrimitiveTopology::PointList,
-            WrappedPrimitiveTopology::LineList => wgpu::PrimitiveTopology::LineList,
-            WrappedPrimitiveTopology::LineStrip => wgpu::PrimitiveTopology::LineStrip,
-            WrappedPrimitiveTopology::TriangleList => wgpu::PrimitiveTopology::TriangleList,
-            WrappedPrimitiveTopology::TriangleStrip => wgpu::PrimitiveTopology::TriangleStrip,
+            PrimitiveTopology::PointList => wgpu::PrimitiveTopology::PointList,
+            PrimitiveTopology::LineList => wgpu::PrimitiveTopology::LineList,
+            PrimitiveTopology::LineStrip => wgpu::PrimitiveTopology::LineStrip,
+            PrimitiveTopology::TriangleList => wgpu::PrimitiveTopology::TriangleList,
+            PrimitiveTopology::TriangleStrip => wgpu::PrimitiveTopology::TriangleStrip,
         }
     }
 }
 
-impl From<wgpu::PrimitiveTopology> for WrappedPrimitiveTopology {
+impl From<wgpu::PrimitiveTopology> for PrimitiveTopology {
+    #[inline(always)]
     fn from(value: wgpu::PrimitiveTopology) -> Self {
         match value {
-            wgpu::PrimitiveTopology::PointList => WrappedPrimitiveTopology::PointList,
-            wgpu::PrimitiveTopology::LineList => WrappedPrimitiveTopology::LineList,
-            wgpu::PrimitiveTopology::LineStrip => WrappedPrimitiveTopology::LineStrip,
-            wgpu::PrimitiveTopology::TriangleList => WrappedPrimitiveTopology::TriangleList,
-            wgpu::PrimitiveTopology::TriangleStrip => WrappedPrimitiveTopology::TriangleStrip,
+            wgpu::PrimitiveTopology::PointList => PrimitiveTopology::PointList,
+            wgpu::PrimitiveTopology::LineList => PrimitiveTopology::LineList,
+            wgpu::PrimitiveTopology::LineStrip => PrimitiveTopology::LineStrip,
+            wgpu::PrimitiveTopology::TriangleList => PrimitiveTopology::TriangleList,
+            wgpu::PrimitiveTopology::TriangleStrip => PrimitiveTopology::TriangleStrip,
         }
     }
 }
 
 // ============================================================
-// BlendPreset — high-level blend mode with Custom escape hatch
+// BlendFactor — project-level blend factor
 // ============================================================
 
-/// Replaces `Option<BlendState>`. The serialized format is identical to
-/// wgpu's `BlendState` so that existing `.mat` files remain valid.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum BlendPreset {
-    /// `BlendState::REPLACE` — src * 1 + dst * 0
-    Replace,
-    /// Additive blending: src * SrcAlpha + dst * 1
-    Add,
-    /// Multiplicative blending: src * Dst + dst * 0
-    Multiply,
-    /// Standard alpha blending: `BlendState::ALPHA_BLENDING`
-    AlphaBlend,
-    /// Fully custom blend state (6 sub-fields: color.src, color.dst, color.op,
-    /// alpha.src, alpha.dst, alpha.op).
-    Custom(BlendState),
-}
-
-impl BlendPreset {
-    pub fn label(&self) -> &'static str {
-        match self {
-            Self::Replace => "Replace",
-            Self::Add => "Add",
-            Self::Multiply => "Multiply",
-            Self::AlphaBlend => "Alpha Blend",
-            Self::Custom(_) => "Custom",
-        }
-    }
-
-    /// Convert the preset into its equivalent `wgpu::BlendState`.
-    pub(crate) fn to_blend_state(&self) -> BlendState {
-        match self {
-            Self::Replace => BlendState::REPLACE,
-            Self::Add => BlendState {
-                color: wgpu::BlendComponent {
-                    src_factor: wgpu::BlendFactor::SrcAlpha,
-                    dst_factor: wgpu::BlendFactor::One,
-                    operation: wgpu::BlendOperation::Add,
-                },
-                alpha: wgpu::BlendComponent {
-                    src_factor: wgpu::BlendFactor::One,
-                    dst_factor: wgpu::BlendFactor::One,
-                    operation: wgpu::BlendOperation::Add,
-                },
-            },
-            Self::Multiply => BlendState {
-                color: wgpu::BlendComponent {
-                    src_factor: wgpu::BlendFactor::Dst,
-                    dst_factor: wgpu::BlendFactor::Zero,
-                    operation: wgpu::BlendOperation::Add,
-                },
-                alpha: wgpu::BlendComponent {
-                    src_factor: wgpu::BlendFactor::One,
-                    dst_factor: wgpu::BlendFactor::Zero,
-                    operation: wgpu::BlendOperation::Add,
-                },
-            },
-            Self::AlphaBlend => BlendState::ALPHA_BLENDING,
-            Self::Custom(state) => *state,
-        }
-    }
-
-    /// Try to match a `BlendState` against a known preset.
-    fn from_blend_state(state: BlendState) -> Self {
-        if state == BlendState::REPLACE {
-            return Self::Replace;
-        }
-        if state == BlendState::ALPHA_BLENDING {
-            return Self::AlphaBlend;
-        }
-        let additive = BlendState {
-            color: wgpu::BlendComponent {
-                src_factor: wgpu::BlendFactor::SrcAlpha,
-                dst_factor: wgpu::BlendFactor::One,
-                operation: wgpu::BlendOperation::Add,
-            },
-            alpha: wgpu::BlendComponent {
-                src_factor: wgpu::BlendFactor::One,
-                dst_factor: wgpu::BlendFactor::One,
-                operation: wgpu::BlendOperation::Add,
-            },
-        };
-        if state == additive {
-            return Self::Add;
-        }
-        let multiply = BlendState {
-            color: wgpu::BlendComponent {
-                src_factor: wgpu::BlendFactor::Dst,
-                dst_factor: wgpu::BlendFactor::Zero,
-                operation: wgpu::BlendOperation::Add,
-            },
-            alpha: wgpu::BlendComponent {
-                src_factor: wgpu::BlendFactor::One,
-                dst_factor: wgpu::BlendFactor::Zero,
-                operation: wgpu::BlendOperation::Add,
-            },
-        };
-        if state == multiply {
-            return Self::Multiply;
-        }
-        Self::Custom(state)
-    }
-}
-
-impl Default for BlendPreset {
-    fn default() -> Self {
-        Self::Replace
-    }
-}
-
-impl From<BlendPreset> for Option<BlendState> {
-    fn from(value: BlendPreset) -> Self {
-        Some(value.to_blend_state())
-    }
-}
-
-impl From<Option<BlendState>> for BlendPreset {
-    fn from(value: Option<BlendState>) -> Self {
-        match value {
-            None => BlendPreset::Replace,
-            Some(state) => BlendPreset::from_blend_state(state),
-        }
-    }
-}
-
-// Custom serde for BlendPreset — serializes as Option<BlendState> for
-// full backward compatibility with existing `.mat` files.
-impl Serialize for BlendPreset {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let blend_state = Some(self.to_blend_state());
-        blend_state.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for BlendPreset {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let opt: Option<BlendState> = Option::deserialize(deserializer)?;
-        Ok(BlendPreset::from(opt))
-    }
-}
-
-// ============================================================
-// WrappedBlendFactor — project-level blend factor
-// ============================================================
-
-/// Follows the `CompareFunction` pattern. Serializes as kebab-case like wgpu.
+/// Follows the `CompareFunction` pattern.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::EnumIter)]
-#[serde(rename_all = "kebab-case")]
-pub enum WrappedBlendFactor {
+pub enum BlendFactor {
     Zero,
     One,
     Src,
@@ -275,86 +129,87 @@ pub enum WrappedBlendFactor {
     OneMinusSrc1Alpha,
 }
 
-impl WrappedBlendFactor {
+impl BlendFactor {
     pub fn label(&self) -> &'static str {
         match self {
             Self::Zero => "Zero",
             Self::One => "One",
             Self::Src => "Src",
-            Self::OneMinusSrc => "1 - Src",
-            Self::SrcAlpha => "Src Alpha",
-            Self::OneMinusSrcAlpha => "1 - Src Alpha",
+            Self::OneMinusSrc => "OneMinusSrc",
+            Self::SrcAlpha => "SrcAlpha",
+            Self::OneMinusSrcAlpha => "OneMinusSrcAlpha",
             Self::Dst => "Dst",
-            Self::OneMinusDst => "1 - Dst",
-            Self::DstAlpha => "Dst Alpha",
-            Self::OneMinusDstAlpha => "1 - Dst Alpha",
-            Self::SrcAlphaSaturated => "Src Alpha Saturated",
+            Self::OneMinusDst => "OneMinusDst",
+            Self::DstAlpha => "DstAlpha",
+            Self::OneMinusDstAlpha => "OneMinusDstAlpha",
+            Self::SrcAlphaSaturated => "SrcAlphaSaturated",
             Self::Constant => "Constant",
-            Self::OneMinusConstant => "1 - Constant",
+            Self::OneMinusConstant => "OneMinusConstant",
             Self::Src1 => "Src1",
-            Self::OneMinusSrc1 => "1 - Src1",
-            Self::Src1Alpha => "Src1 Alpha",
-            Self::OneMinusSrc1Alpha => "1 - Src1 Alpha",
+            Self::OneMinusSrc1 => "OneMinusSrc1",
+            Self::Src1Alpha => "Src1Alpha",
+            Self::OneMinusSrc1Alpha => "OneMinusSrc1Alpha",
         }
     }
 }
 
-impl From<WrappedBlendFactor> for wgpu::BlendFactor {
-    fn from(value: WrappedBlendFactor) -> Self {
+impl From<BlendFactor> for wgpu::BlendFactor {
+    #[inline(always)]
+    fn from(value: BlendFactor) -> Self {
         match value {
-            WrappedBlendFactor::Zero => wgpu::BlendFactor::Zero,
-            WrappedBlendFactor::One => wgpu::BlendFactor::One,
-            WrappedBlendFactor::Src => wgpu::BlendFactor::Src,
-            WrappedBlendFactor::OneMinusSrc => wgpu::BlendFactor::OneMinusSrc,
-            WrappedBlendFactor::SrcAlpha => wgpu::BlendFactor::SrcAlpha,
-            WrappedBlendFactor::OneMinusSrcAlpha => wgpu::BlendFactor::OneMinusSrcAlpha,
-            WrappedBlendFactor::Dst => wgpu::BlendFactor::Dst,
-            WrappedBlendFactor::OneMinusDst => wgpu::BlendFactor::OneMinusDst,
-            WrappedBlendFactor::DstAlpha => wgpu::BlendFactor::DstAlpha,
-            WrappedBlendFactor::OneMinusDstAlpha => wgpu::BlendFactor::OneMinusDstAlpha,
-            WrappedBlendFactor::SrcAlphaSaturated => wgpu::BlendFactor::SrcAlphaSaturated,
-            WrappedBlendFactor::Constant => wgpu::BlendFactor::Constant,
-            WrappedBlendFactor::OneMinusConstant => wgpu::BlendFactor::OneMinusConstant,
-            WrappedBlendFactor::Src1 => wgpu::BlendFactor::Src1,
-            WrappedBlendFactor::OneMinusSrc1 => wgpu::BlendFactor::OneMinusSrc1,
-            WrappedBlendFactor::Src1Alpha => wgpu::BlendFactor::Src1Alpha,
-            WrappedBlendFactor::OneMinusSrc1Alpha => wgpu::BlendFactor::OneMinusSrc1Alpha,
+            BlendFactor::Zero => wgpu::BlendFactor::Zero,
+            BlendFactor::One => wgpu::BlendFactor::One,
+            BlendFactor::Src => wgpu::BlendFactor::Src,
+            BlendFactor::OneMinusSrc => wgpu::BlendFactor::OneMinusSrc,
+            BlendFactor::SrcAlpha => wgpu::BlendFactor::SrcAlpha,
+            BlendFactor::OneMinusSrcAlpha => wgpu::BlendFactor::OneMinusSrcAlpha,
+            BlendFactor::Dst => wgpu::BlendFactor::Dst,
+            BlendFactor::OneMinusDst => wgpu::BlendFactor::OneMinusDst,
+            BlendFactor::DstAlpha => wgpu::BlendFactor::DstAlpha,
+            BlendFactor::OneMinusDstAlpha => wgpu::BlendFactor::OneMinusDstAlpha,
+            BlendFactor::SrcAlphaSaturated => wgpu::BlendFactor::SrcAlphaSaturated,
+            BlendFactor::Constant => wgpu::BlendFactor::Constant,
+            BlendFactor::OneMinusConstant => wgpu::BlendFactor::OneMinusConstant,
+            BlendFactor::Src1 => wgpu::BlendFactor::Src1,
+            BlendFactor::OneMinusSrc1 => wgpu::BlendFactor::OneMinusSrc1,
+            BlendFactor::Src1Alpha => wgpu::BlendFactor::Src1Alpha,
+            BlendFactor::OneMinusSrc1Alpha => wgpu::BlendFactor::OneMinusSrc1Alpha,
         }
     }
 }
 
-impl From<wgpu::BlendFactor> for WrappedBlendFactor {
+impl From<wgpu::BlendFactor> for BlendFactor {
+    #[inline(always)]
     fn from(value: wgpu::BlendFactor) -> Self {
         match value {
-            wgpu::BlendFactor::Zero => WrappedBlendFactor::Zero,
-            wgpu::BlendFactor::One => WrappedBlendFactor::One,
-            wgpu::BlendFactor::Src => WrappedBlendFactor::Src,
-            wgpu::BlendFactor::OneMinusSrc => WrappedBlendFactor::OneMinusSrc,
-            wgpu::BlendFactor::SrcAlpha => WrappedBlendFactor::SrcAlpha,
-            wgpu::BlendFactor::OneMinusSrcAlpha => WrappedBlendFactor::OneMinusSrcAlpha,
-            wgpu::BlendFactor::Dst => WrappedBlendFactor::Dst,
-            wgpu::BlendFactor::OneMinusDst => WrappedBlendFactor::OneMinusDst,
-            wgpu::BlendFactor::DstAlpha => WrappedBlendFactor::DstAlpha,
-            wgpu::BlendFactor::OneMinusDstAlpha => WrappedBlendFactor::OneMinusDstAlpha,
-            wgpu::BlendFactor::SrcAlphaSaturated => WrappedBlendFactor::SrcAlphaSaturated,
-            wgpu::BlendFactor::Constant => WrappedBlendFactor::Constant,
-            wgpu::BlendFactor::OneMinusConstant => WrappedBlendFactor::OneMinusConstant,
-            wgpu::BlendFactor::Src1 => WrappedBlendFactor::Src1,
-            wgpu::BlendFactor::OneMinusSrc1 => WrappedBlendFactor::OneMinusSrc1,
-            wgpu::BlendFactor::Src1Alpha => WrappedBlendFactor::Src1Alpha,
-            wgpu::BlendFactor::OneMinusSrc1Alpha => WrappedBlendFactor::OneMinusSrc1Alpha,
+            wgpu::BlendFactor::Zero => BlendFactor::Zero,
+            wgpu::BlendFactor::One => BlendFactor::One,
+            wgpu::BlendFactor::Src => BlendFactor::Src,
+            wgpu::BlendFactor::OneMinusSrc => BlendFactor::OneMinusSrc,
+            wgpu::BlendFactor::SrcAlpha => BlendFactor::SrcAlpha,
+            wgpu::BlendFactor::OneMinusSrcAlpha => BlendFactor::OneMinusSrcAlpha,
+            wgpu::BlendFactor::Dst => BlendFactor::Dst,
+            wgpu::BlendFactor::OneMinusDst => BlendFactor::OneMinusDst,
+            wgpu::BlendFactor::DstAlpha => BlendFactor::DstAlpha,
+            wgpu::BlendFactor::OneMinusDstAlpha => BlendFactor::OneMinusDstAlpha,
+            wgpu::BlendFactor::SrcAlphaSaturated => BlendFactor::SrcAlphaSaturated,
+            wgpu::BlendFactor::Constant => BlendFactor::Constant,
+            wgpu::BlendFactor::OneMinusConstant => BlendFactor::OneMinusConstant,
+            wgpu::BlendFactor::Src1 => BlendFactor::Src1,
+            wgpu::BlendFactor::OneMinusSrc1 => BlendFactor::OneMinusSrc1,
+            wgpu::BlendFactor::Src1Alpha => BlendFactor::Src1Alpha,
+            wgpu::BlendFactor::OneMinusSrc1Alpha => BlendFactor::OneMinusSrc1Alpha,
         }
     }
 }
 
 // ============================================================
-// WrappedBlendOperation — project-level blend operation
+// BlendOperation — project-level blend operation
 // ============================================================
 
-/// Follows the `CompareFunction` pattern. Serializes as kebab-case like wgpu.
+/// Follows the `CompareFunction` pattern.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, strum::EnumIter)]
-#[serde(rename_all = "kebab-case")]
-pub enum WrappedBlendOperation {
+pub enum BlendOperation {
     Add,
     Subtract,
     ReverseSubtract,
@@ -362,44 +217,280 @@ pub enum WrappedBlendOperation {
     Max,
 }
 
-impl WrappedBlendOperation {
+impl BlendOperation {
     pub fn label(&self) -> &'static str {
         match self {
             Self::Add => "Add",
             Self::Subtract => "Subtract",
-            Self::ReverseSubtract => "Reverse Subtract",
+            Self::ReverseSubtract => "ReverseSubtract",
             Self::Min => "Min",
             Self::Max => "Max",
         }
     }
 }
 
-impl From<WrappedBlendOperation> for wgpu::BlendOperation {
-    fn from(value: WrappedBlendOperation) -> Self {
+impl From<BlendOperation> for wgpu::BlendOperation {
+    #[inline(always)]
+    fn from(value: BlendOperation) -> Self {
         match value {
-            WrappedBlendOperation::Add => wgpu::BlendOperation::Add,
-            WrappedBlendOperation::Subtract => wgpu::BlendOperation::Subtract,
-            WrappedBlendOperation::ReverseSubtract => wgpu::BlendOperation::ReverseSubtract,
-            WrappedBlendOperation::Min => wgpu::BlendOperation::Min,
-            WrappedBlendOperation::Max => wgpu::BlendOperation::Max,
+            BlendOperation::Add => wgpu::BlendOperation::Add,
+            BlendOperation::Subtract => wgpu::BlendOperation::Subtract,
+            BlendOperation::ReverseSubtract => wgpu::BlendOperation::ReverseSubtract,
+            BlendOperation::Min => wgpu::BlendOperation::Min,
+            BlendOperation::Max => wgpu::BlendOperation::Max,
         }
     }
 }
 
-impl From<wgpu::BlendOperation> for WrappedBlendOperation {
+impl From<wgpu::BlendOperation> for BlendOperation {
+    #[inline(always)]
     fn from(value: wgpu::BlendOperation) -> Self {
         match value {
-            wgpu::BlendOperation::Add => WrappedBlendOperation::Add,
-            wgpu::BlendOperation::Subtract => WrappedBlendOperation::Subtract,
-            wgpu::BlendOperation::ReverseSubtract => WrappedBlendOperation::ReverseSubtract,
-            wgpu::BlendOperation::Min => WrappedBlendOperation::Min,
-            wgpu::BlendOperation::Max => WrappedBlendOperation::Max,
+            wgpu::BlendOperation::Add => BlendOperation::Add,
+            wgpu::BlendOperation::Subtract => BlendOperation::Subtract,
+            wgpu::BlendOperation::ReverseSubtract => BlendOperation::ReverseSubtract,
+            wgpu::BlendOperation::Min => BlendOperation::Min,
+            wgpu::BlendOperation::Max => BlendOperation::Max,
         }
     }
 }
 
 // ============================================================
-// RenderState — updated to use project-level wrapper types
+// BlendComponent — project-level blend component
+// ============================================================
+
+/// Mirrors `wgpu::BlendComponent` using project-level wrapper types.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct BlendComponent {
+    pub src_factor: BlendFactor,
+    pub dst_factor: BlendFactor,
+    pub operation: BlendOperation,
+}
+
+impl From<BlendComponent> for wgpu::BlendComponent {
+    #[inline(always)]
+    fn from(value: BlendComponent) -> Self {
+        wgpu::BlendComponent {
+            src_factor: value.src_factor.into(),
+            dst_factor: value.dst_factor.into(),
+            operation: value.operation.into(),
+        }
+    }
+}
+
+impl From<wgpu::BlendComponent> for BlendComponent {
+    #[inline(always)]
+    fn from(value: wgpu::BlendComponent) -> Self {
+        BlendComponent {
+            src_factor: value.src_factor.into(),
+            dst_factor: value.dst_factor.into(),
+            operation: value.operation.into(),
+        }
+    }
+}
+
+// ============================================================
+// BlendState — project-level wrapper that mirrors wgpu::BlendState
+// ============================================================
+
+/// Mirrors `wgpu::BlendState` using project-level wrapper types.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct BlendState {
+    pub color: BlendComponent,
+    pub alpha: BlendComponent,
+}
+
+impl BlendState {
+    /// `BlendState::REPLACE` — src * 1 + dst * 0
+    pub const REPLACE: Self = Self {
+        color: BlendComponent {
+            src_factor: BlendFactor::One,
+            dst_factor: BlendFactor::Zero,
+            operation: BlendOperation::Add,
+        },
+        alpha: BlendComponent {
+            src_factor: BlendFactor::One,
+            dst_factor: BlendFactor::Zero,
+            operation: BlendOperation::Add,
+        },
+    };
+
+    /// Standard alpha blending: `BlendState::ALPHA_BLENDING`
+    pub const ALPHA_BLENDING: Self = Self {
+        color: BlendComponent {
+            src_factor: BlendFactor::SrcAlpha,
+            dst_factor: BlendFactor::OneMinusSrcAlpha,
+            operation: BlendOperation::Add,
+        },
+        alpha: BlendComponent {
+            src_factor: BlendFactor::One,
+            dst_factor: BlendFactor::OneMinusSrcAlpha,
+            operation: BlendOperation::Add,
+        },
+    };
+}
+
+impl Default for BlendState {
+    fn default() -> Self {
+        Self::REPLACE
+    }
+}
+
+impl From<BlendState> for Option<wgpu::BlendState> {
+    #[inline(always)]
+    fn from(value: BlendState) -> Self {
+        Some(wgpu::BlendState {
+            color: value.color.into(),
+            alpha: value.alpha.into(),
+        })
+    }
+}
+
+impl From<BlendState> for wgpu::BlendState {
+    #[inline(always)]
+    fn from(value: BlendState) -> Self {
+        wgpu::BlendState {
+            color: value.color.into(),
+            alpha: value.alpha.into(),
+        }
+    }
+}
+
+impl From<wgpu::BlendState> for BlendState {
+    #[inline(always)]
+    fn from(value: wgpu::BlendState) -> Self {
+        BlendState {
+            color: value.color.into(),
+            alpha: value.alpha.into(),
+        }
+    }
+}
+
+// ============================================================
+// BlendPreset — high-level blend mode helper (for material inspector)
+// ============================================================
+
+/// Helper for the material inspector: provides a set of named blend presets
+/// (plus a Custom escape hatch) for displaying options and constructing
+/// [`BlendState`] values. Not used directly in [`RenderState`]; use
+/// [`BlendState`] there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum BlendPreset {
+    /// `BlendState::REPLACE` — src * 1 + dst * 0
+    Replace,
+    /// Additive blending: src * SrcAlpha + dst * 1
+    Add,
+    /// Multiplicative blending: src * Dst + dst * 0
+    Multiply,
+    /// Standard alpha blending: `BlendState::ALPHA_BLENDING`
+    AlphaBlend,
+    /// Fully custom blend state
+    Custom(BlendState),
+}
+
+impl BlendPreset {
+    /// Human-readable label for the material inspector.
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Replace => "Replace",
+            Self::Add => "Add",
+            Self::Multiply => "Multiply",
+            Self::AlphaBlend => "AlphaBlend",
+            Self::Custom(_) => "Custom",
+        }
+    }
+
+    /// Convert the preset into a [`BlendState`] suitable for [`RenderState`].
+    pub fn to_blend_state(&self) -> BlendState {
+        match self {
+            Self::Replace => BlendState::REPLACE,
+            Self::Add => BlendState {
+                color: BlendComponent {
+                    src_factor: BlendFactor::SrcAlpha,
+                    dst_factor: BlendFactor::One,
+                    operation: BlendOperation::Add,
+                },
+                alpha: BlendComponent {
+                    src_factor: BlendFactor::One,
+                    dst_factor: BlendFactor::One,
+                    operation: BlendOperation::Add,
+                },
+            },
+            Self::Multiply => BlendState {
+                color: BlendComponent {
+                    src_factor: BlendFactor::Dst,
+                    dst_factor: BlendFactor::Zero,
+                    operation: BlendOperation::Add,
+                },
+                alpha: BlendComponent {
+                    src_factor: BlendFactor::One,
+                    dst_factor: BlendFactor::Zero,
+                    operation: BlendOperation::Add,
+                },
+            },
+            Self::AlphaBlend => BlendState::ALPHA_BLENDING,
+            Self::Custom(state) => *state,
+        }
+    }
+
+    /// Try to match a [`BlendState`] against a known preset.
+    /// Returns `Custom` if no preset matches.
+    pub fn from_blend_state(state: BlendState) -> Self {
+        if state == BlendState::REPLACE {
+            return Self::Replace;
+        }
+        if state == BlendState::ALPHA_BLENDING {
+            return Self::AlphaBlend;
+        }
+        let additive = BlendState {
+            color: BlendComponent {
+                src_factor: BlendFactor::SrcAlpha,
+                dst_factor: BlendFactor::One,
+                operation: BlendOperation::Add,
+            },
+            alpha: BlendComponent {
+                src_factor: BlendFactor::One,
+                dst_factor: BlendFactor::One,
+                operation: BlendOperation::Add,
+            },
+        };
+        if state == additive {
+            return Self::Add;
+        }
+        let multiply = BlendState {
+            color: BlendComponent {
+                src_factor: BlendFactor::Dst,
+                dst_factor: BlendFactor::Zero,
+                operation: BlendOperation::Add,
+            },
+            alpha: BlendComponent {
+                src_factor: BlendFactor::One,
+                dst_factor: BlendFactor::Zero,
+                operation: BlendOperation::Add,
+            },
+        };
+        if state == multiply {
+            return Self::Multiply;
+        }
+        Self::Custom(state)
+    }
+}
+
+impl Default for BlendPreset {
+    fn default() -> Self {
+        Self::Replace
+    }
+}
+
+impl From<BlendPreset> for BlendState {
+    #[inline(always)]
+    fn from(value: BlendPreset) -> Self {
+        value.to_blend_state()
+    }
+}
+
+// ============================================================
+// RenderState
 // ============================================================
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -409,9 +500,9 @@ pub struct RenderState {
     #[serde(default)]
     pub cull_mod: CullMode,
     #[serde(default)]
-    pub blend_mod: BlendPreset,
+    pub blend_mod: Option<BlendState>,
     #[serde(default)]
-    pub topology: WrappedPrimitiveTopology,
+    pub topology: PrimitiveTopology,
 }
 
 impl Default for RenderState {
@@ -420,8 +511,8 @@ impl Default for RenderState {
             depth_test: Some(CompareFunction::LessEqual),
             depth_write: true,
             cull_mod: CullMode::Back,
-            blend_mod: BlendPreset::Replace,
-            topology: WrappedPrimitiveTopology::TriangleList,
+            blend_mod: None,
+            topology: PrimitiveTopology::TriangleList,
         }
     }
 }

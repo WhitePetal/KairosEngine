@@ -4,14 +4,15 @@ shader_path = "res/shaders/gizmos/grid_plane.wgsl"
 [render_state]
 depth_test = "LessEqual"
 depth_write = false
-topology = "line-list"
+cull_mod = "Back"
+topology = "LineList"
 
 [render_state.blend_mod.color]
-srcFactor = "src-alpha"
-dstFactor = "one-minus-src-alpha"
-operation = "add"
+src_factor = "SrcAlpha"
+dst_factor = "OneMinusSrcAlpha"
+operation = "Add"
 
 [render_state.blend_mod.alpha]
-srcFactor = "one"
-dstFactor = "one-minus-src-alpha"
-operation = "add"
+src_factor = "One"
+dst_factor = "OneMinusSrcAlpha"
+operation = "Add"

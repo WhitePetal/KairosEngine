@@ -4,4 +4,5 @@ shader_path = "res/shaders/wireframe.wgsl"
 [render_state]
 depth_test = "LessEqual"
 depth_write = false
-topology = "line-list"
+cull_mod = "Back"
+topology = "LineList"

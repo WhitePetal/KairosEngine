@@ -30,6 +30,7 @@ impl CompareFunction {
 }
 
 impl From<CompareFunction> for wgpu::CompareFunction {
+    #[inline(always)]
     fn from(value: CompareFunction) -> Self {
         match value {
             CompareFunction::Never => wgpu::CompareFunction::Never,
