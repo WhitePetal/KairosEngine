@@ -3,7 +3,7 @@ use std::{any::type_name, fs};
 use crate::{
     kairos_editor::{
         Engine,
-        ui::{Messager, egui_ext::UiExt, global_styles::GlobalStyles},
+        ui::{Messager, UIReader, egui_ext::UiExt},
     },
     kairos_game::KairosGame,
     log::Log,
@@ -104,7 +104,7 @@ impl Drawer for PreferencesWindow {
     fn ui(
         &self,
         ui: &mut egui::Ui,
-        _global_styles: &GlobalStyles,
+        _reader: &UIReader,
         messager: &mut super::Messager,
         _engine: &Engine,
         _log: &mut Log,

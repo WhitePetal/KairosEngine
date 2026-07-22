@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     asset_loader::assets::{AssetHandle, AssetsServer, asset::FontAssetsSystem},
-    kairos_editor::ui::{Messager, inspector::Inspector, paths},
+    kairos_editor::ui::{Messager, UIReader, inspector::Inspector, paths},
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -107,6 +107,7 @@ impl Inspector for FontInspector {
     fn draw(
         &self,
         ui: &mut egui::Ui,
+        _reader: &UIReader,
         _messager: &mut Messager,
         assets_server: &AssetsServer,
         _dt: f32,

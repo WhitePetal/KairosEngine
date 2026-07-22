@@ -5,7 +5,7 @@ use crate::{
     graphics::graphics_graph::GraphicsCommand,
     kairos_editor::{
         project_path_tree::ProjectPathGraph,
-        ui::{Messager, dialog::Dialog},
+        ui::{Messager, UIReader, dialog::Dialog},
     },
 };
 
@@ -45,6 +45,7 @@ pub trait Inspector: Any {
     fn draw(
         &self,
         ui: &mut egui::Ui,
+        reader: &UIReader,
         messager: &mut Messager,
         assets_server: &AssetsServer,
         dt: f32,

@@ -1,5 +1,5 @@
 use crate::{
-    kairos_editor::{Engine, ui::global_styles::GlobalStyles},
+    kairos_editor::{Engine, ui::UIReader},
     log::Log,
 };
 use egui::{self, Id, Ui, WidgetText};
@@ -27,12 +27,11 @@ pub trait TabDrawer {
     fn ui(
         &mut self,
         ui: &mut Ui,
-        global_styles: &GlobalStyles,
+        reader: &UIReader,
         tab: &mut Self::Tab,
         messager: &mut Messager,
         engine: &Engine,
         log: &mut Log,
-        drawers: &Vec<Box<dyn Drawer>>,
     );
 
     /// Content inside the context menu shown when the tab is right-clicked.

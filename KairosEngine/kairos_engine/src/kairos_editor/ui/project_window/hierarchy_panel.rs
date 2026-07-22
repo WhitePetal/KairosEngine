@@ -10,7 +10,7 @@ use crate::{
             Message, Messager,
             global_styles::GlobalStyles,
             project_window::{
-                ProjectWindowStyle,
+                ProjectWindow, ProjectWindowStyle,
                 context_menu::{ContextMenu, ContextMenuState},
             },
         },
@@ -171,6 +171,16 @@ impl HierarchyPanel {
         response.header_response.context_menu(|ui| {
             ContextMenu::show(ui, ContextMenuState::new(node), messager);
         });
+
+        ProjectWindow::draw_drag(
+            ui,
+            messager,
+            node,
+            node_data,
+            &response.header_response,
+            global_styles,
+            style,
+        );
     }
 
     fn draw_file(
@@ -237,58 +247,15 @@ impl HierarchyPanel {
             ContextMenu::show(ui, ContextMenuState::new(node), messager);
         });
 
-        // ---- Drag source: 将文件节点注册为可拖拽 ----
-        if response.drag_started() {
-            let file_path = node_data.path.to_string_lossy().to_string();
-            ui.ctx().data_mut(|d| {
-                d.insert_persisted(
-                    egui::Id::new("__kairos_drag_payload"),
-                    file_path,
-                );
-            });
-        }
-
-        // 拖拽视觉反馈：光标 + 幽灵图
-        if ui.ctx().is_being_dragged(response.id) {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
-            if let Some(pos) = ui.ctx().pointer_interact_pos() {
-                let ghost_id = ui.id().with("drag_ghost");
-                let ghost_pos = pos + egui::vec2(12.0, 12.0);
-                egui::Area::new(ghost_id)
-                    .fixed_pos(ghost_pos)
-                    .order(egui::Order::Foreground)
-                    .show(ui.ctx(), |ui| {
-                        let ghost_frame = egui::Frame {
-                            fill: egui::Color32::from_black_alpha(180),
-                            corner_radius: egui::CornerRadius::same(4),
-                            inner_margin: egui::Margin::symmetric(6, 3).into(),
-                            ..Default::default()
-                        };
-                        ghost_frame.show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                let ghost_icon = egui::Image::new(
-                                    global_styles
-                                        .project_node_icons
-                                        .uri_for_kind(node_data, false),
-                                )
-                                .fit_to_exact_size(icon_size);
-                                ui.add(ghost_icon);
-                                ui.label(
-                                    RichText::new(node_data.name())
-                                        .size(style.hierachy.file_header_size)
-                                        .color(egui::Color32::WHITE),
-                                );
-                                if let Some(suffix) = node_data.kind.suffix() {
-                                    ui.label(
-                                        RichText::new(suffix)
-                                            .size(style.hierachy.file_header_size)
-                                            .color(style.hierachy.file_suffix_color),
-                                    );
-                                }
-                            });
-                        });
-                    });
-            }
-        }
+        // ---- Drag source ----
+        ProjectWindow::draw_drag(
+            ui,
+            messager,
+            node,
+            node_data,
+            &response,
+            global_styles,
+            style,
+        );
     }
 }

@@ -7,13 +7,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     kairos_editor::{
-        asset_registry::AssetKind,
         project_path_tree::{ProjectPathGraph, tree_node::ProjectTreeNode},
         ui::{
             Message, Messager,
             egui_ext::UiExt,
             global_styles::GlobalStyles,
-            project_window::{ContextMenuState, ProjectWindowStyle, context_menu::ContextMenu},
+            project_window::{
+                ContextMenuState, ProjectWindow, ProjectWindowStyle, context_menu::ContextMenu,
+            },
         },
     },
     math,
@@ -211,64 +212,25 @@ impl ContentPanel {
         }
 
         if !is_renaming {
-                if response.clicked() || response.secondary_clicked() {
-                    messager.send(Message::SelectProjectNode(Some(node)));
-                }
-                if response.double_clicked() {
-                    messager.send(Message::OpenProjectNode(node));
-                }
-                response.context_menu(|ui| {
-                    ContextMenu::show(ui, ContextMenuState::new(node), messager);
-                });
-
-                // ---- Drag source: 将文件节点注册为可拖拽（仅非目录节点） ----
-                if node_data.kind != AssetKind::Directory {
-                    if response.drag_started() {
-                        let file_path = node_data.path.to_string_lossy().to_string();
-                        ui.ctx().data_mut(|d| {
-                            d.insert_persisted(
-                                egui::Id::new("__kairos_drag_payload"),
-                                file_path,
-                            );
-                        });
-                    }
-
-                    // 拖拽视觉反馈：光标 + 幽灵图
-                    if ui.ctx().is_being_dragged(response.id) {
-                        ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
-                        if let Some(pos) = ui.ctx().pointer_interact_pos() {
-                            let ghost_id = ui.id().with("drag_ghost");
-                            let ghost_pos = pos + egui::vec2(12.0, 12.0);
-                            egui::Area::new(ghost_id)
-                                .fixed_pos(ghost_pos)
-                                .order(egui::Order::Foreground)
-                                .show(ui.ctx(), |ui| {
-                                    let ghost_frame = egui::Frame {
-                                        fill: egui::Color32::from_black_alpha(180),
-                                        corner_radius: egui::CornerRadius::same(4),
-                                        inner_margin: egui::Margin::symmetric(6, 3).into(),
-                                        ..Default::default()
-                                    };
-                                    ghost_frame.show(ui, |ui| {
-                                        ui.horizontal(|ui| {
-                                            let ghost_icon = egui::Image::new(
-                                                global_styles
-                                                    .project_node_icons
-                                                    .uri_for_kind(node_data, false),
-                                            )
-                                            .fit_to_exact_size(Vec2::new(16.0, 16.0));
-                                            ui.add(ghost_icon);
-                                            ui.label(
-                                                RichText::new(node_data.name())
-                                                    .size(style.content.label_font_size)
-                                                    .color(egui::Color32::WHITE),
-                                            );
-                                        });
-                                    });
-                                });
-                        }
-                    }
-                }
+            if response.clicked() || response.secondary_clicked() {
+                messager.send(Message::SelectProjectNode(Some(node)));
             }
+            if response.double_clicked() {
+                messager.send(Message::OpenProjectNode(node));
+            }
+            response.context_menu(|ui| {
+                ContextMenu::show(ui, ContextMenuState::new(node), messager);
+            });
+
+            ProjectWindow::draw_drag(
+                ui,
+                messager,
+                node,
+                node_data,
+                &response,
+                global_styles,
+                style,
+            );
+        }
     }
 }

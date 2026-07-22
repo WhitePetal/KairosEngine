@@ -17,9 +17,7 @@ use crate::{
     kairos_editor::{
         Engine,
         ui::{
-            Drawer, Message,
-            global_styles::GlobalStyles,
-            paths,
+            Drawer, Message, UIReader, paths,
             scene_camera::SceneCamera,
             scene_window::gizmos::{GizmosModel, GizmosRenderer},
             ui_style_fields::{
@@ -145,7 +143,7 @@ impl Drawer for SceneWindow {
     fn ui(
         &self,
         ui: &mut egui::Ui,
-        _global_styles: &GlobalStyles,
+        _reader: &UIReader,
         messager: &mut super::Messager,
         engine: &Engine,
         _log: &mut crate::log::Log,

@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     asset_loader::assets::{AssetHandle, AssetsServer, asset::TextAssetsSystem},
     kairos_editor::ui::{
-        Message, Messager,
+        Message, Messager, UIReader,
         dialog::{ConfirmDialogWindow, Dialog},
         inspector::Inspector,
         paths,
@@ -68,6 +68,7 @@ impl Inspector for DocumentInspector {
     fn draw(
         &self,
         ui: &mut egui::Ui,
+        _reader: &UIReader,
         messager: &mut Messager,
         assets_server: &AssetsServer,
         _dt: f32,

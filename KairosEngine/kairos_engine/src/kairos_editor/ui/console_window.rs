@@ -1,7 +1,7 @@
 use std::{any::type_name, fs};
 
 use crate::{
-    kairos_editor::{Engine, ui::global_styles::GlobalStyles},
+    kairos_editor::{Engine, ui::UIReader},
     kairos_game::KairosGame,
     log::Log,
 };
@@ -75,7 +75,7 @@ impl Drawer for ConsoleWindow {
     fn ui(
         &self,
         ui: &mut egui::Ui,
-        _global_styles: &GlobalStyles,
+        _reader: &UIReader,
         _messager: &mut Messager,
         _engine: &Engine,
         log: &mut Log,

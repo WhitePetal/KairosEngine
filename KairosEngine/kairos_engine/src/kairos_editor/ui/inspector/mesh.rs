@@ -18,7 +18,8 @@ use crate::{
         mesh::{Mesh, wireframe},
     },
     kairos_editor::ui::{
-        Message, Messager, dialog::Dialog, inspector::Inspector, paths, scene_camera::SceneCamera,
+        Message, Messager, UIReader, dialog::Dialog, inspector::Inspector, paths,
+        scene_camera::SceneCamera,
     },
     math::{Vector, float2, float3, float4, float4x4},
     spatial::AABB,
@@ -299,6 +300,7 @@ impl Inspector for MeshInspector {
     fn draw(
         &self,
         ui: &mut egui::Ui,
+        _reader: &UIReader,
         messager: &mut Messager,
         assets_server: &AssetsServer,
         dt: f32,

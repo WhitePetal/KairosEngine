@@ -9,7 +9,7 @@ use toml::{Table, Value};
 use crate::{
     asset_loader::assets::{AssetHandle, AssetsServer, TomlTableAssetsSystem},
     kairos_editor::ui::{
-        self, Message, Messager,
+        self, Message, Messager, UIReader,
         dialog::{ConfirmDialogWindow, Dialog},
         inspector::Inspector,
         paths,
@@ -77,6 +77,7 @@ impl Inspector for TomlTableInspector {
     fn draw(
         &self,
         ui: &mut egui::Ui,
+        _reader: &UIReader,
         messager: &mut Messager,
         assets_server: &AssetsServer,
         _dt: f32,

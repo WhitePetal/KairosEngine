@@ -2,16 +2,18 @@ pub mod content_panel;
 pub mod context_menu;
 pub mod hierarchy_panel;
 
-use std::{any::type_name, cell::Cell, fs, ops::Deref, sync::Arc};
+use std::{any::type_name, cell::Cell, fs, ops::Deref, path::PathBuf, sync::Arc};
 
 use crate::{
     asset_loader::assets::AssetsServer,
     kairos_editor::{
         Engine,
         asset_registry::{AssetKind, AssetRegistry},
-        project_path_tree::{ProjectPathGraph, create_request::CreateRequest},
+        project_path_tree::{
+            ProjectPathGraph, create_request::CreateRequest, tree_node::ProjectTreeNode,
+        },
         ui::{
-            self, Messager,
+            self, Messager, UIReader,
             global_styles::GlobalStyles,
             inspector::creater::InspectorCreater,
             project_window::{
@@ -24,6 +26,7 @@ use crate::{
     kairos_game::KairosGame,
     log::Log,
 };
+use egui::{RichText, Vec2};
 use parking_lot::Mutex;
 use petgraph::graph::NodeIndex;
 use serde::{Deserialize, Serialize};
@@ -60,6 +63,7 @@ struct ProjectWindowModel {
     /// 一次性强制展开标记：下一帧 hierarchy 渲染时将展开到该节点的完整路径，
     /// 渲染后立即清除。用 `Cell` 使得 `ui(&self)` 中也能写入。
     force_expand_to: Cell<Option<NodeIndex>>,
+    dragging: Option<PathBuf>,
 }
 
 // ============================================================
@@ -113,6 +117,7 @@ impl ProjectWindowModel {
             renaming_node: None,
             renaming_buffer: None,
             force_expand_to: Cell::new(None),
+            dragging: None,
         })
     }
 }
@@ -296,6 +301,24 @@ impl ProjectWindow {
         }
     }
 
+    pub fn get_dragging<'a>(&'a self) -> &'a Option<PathBuf> {
+        &self.model.dragging
+    }
+
+    pub fn drag_start(&mut self, node_idx: NodeIndex) {
+        if let Some(data) = self.model.project_path_graph.get_node(node_idx) {
+            if let Some(asset_path) = &data.asset_path {
+                self.model.dragging = Some(asset_path.clone());
+            } else {
+                self.model.dragging = Some(data.path.clone());
+            }
+        }
+    }
+
+    pub fn drag_stop(&mut self) {
+        self.model.dragging = None
+    }
+
     /// 通过 VS Code 打开文件。
     /// 优先尝试 `code` 命令（终端环境），失败时回退到 macOS 完整路径。
     /// `--reuse-window` 复用已有窗口。
@@ -358,6 +381,68 @@ impl ProjectWindow {
             Err(e) => log::warn!("Failed to delete node: {e}"),
         }
     }
+
+    pub fn draw_drag(
+        ui: &mut egui::Ui,
+        messager: &mut Messager,
+        node: NodeIndex,
+        node_data: &ProjectTreeNode,
+        response: &egui::Response,
+        global_styles: &GlobalStyles,
+        style: &ProjectWindowStyle,
+    ) {
+        if response.drag_started() {
+            messager.send(Message::DragStartProjectNode(node));
+        }
+        if response.drag_stopped() {
+            messager.send(Message::DragStopProjectNode);
+        }
+        // 拖拽视觉反馈：光标 + 幽灵图
+        if ui.ctx().is_being_dragged(response.id) {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+            if let Some(pos) = ui.ctx().pointer_interact_pos() {
+                let ghost_id = ui.id().with("drag_ghost");
+                let ghost_pos = pos + egui::vec2(12.0, 12.0);
+                egui::Area::new(ghost_id)
+                    .fixed_pos(ghost_pos)
+                    .order(egui::Order::Foreground)
+                    .show(ui.ctx(), |ui| {
+                        let ghost_frame = egui::Frame {
+                            fill: egui::Color32::from_black_alpha(180),
+                            corner_radius: egui::CornerRadius::same(4),
+                            inner_margin: egui::Margin::symmetric(6, 3).into(),
+                            ..Default::default()
+                        };
+                        ghost_frame.show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                let ghost_icon = egui::Image::new(
+                                    global_styles
+                                        .project_node_icons
+                                        .uri_for_kind(node_data, false),
+                                )
+                                .fit_to_exact_size(Vec2::new(
+                                    style.hierachy.file_icon_size,
+                                    style.hierachy.file_icon_size,
+                                ));
+                                ui.add(ghost_icon);
+                                ui.label(
+                                    RichText::new(node_data.name())
+                                        .size(style.hierachy.file_header_size)
+                                        .color(egui::Color32::WHITE),
+                                );
+                                if let Some(suffix) = node_data.kind.suffix() {
+                                    ui.label(
+                                        RichText::new(suffix)
+                                            .size(style.hierachy.file_header_size)
+                                            .color(style.hierachy.file_suffix_color),
+                                    );
+                                }
+                            });
+                        });
+                    });
+            }
+        }
+    }
 }
 
 impl Drawer for ProjectWindow {
@@ -377,7 +462,7 @@ impl Drawer for ProjectWindow {
     fn ui(
         &self,
         ui: &mut egui::Ui,
-        global_styles: &GlobalStyles,
+        reader: &UIReader,
         messager: &mut super::Messager,
         _engine: &Engine,
         _log: &mut Log,
@@ -398,7 +483,7 @@ impl Drawer for ProjectWindow {
                     .show(ui, |ui| {
                         HierarchyPanel::draw(
                             ui,
-                            global_styles,
+                            reader.global_style,
                             &self.model.project_path_graph,
                             &self.model.style,
                             messager,
@@ -423,7 +508,7 @@ impl Drawer for ProjectWindow {
                 .show(ui, |ui| {
                     ContentPanel::draw(
                         ui,
-                        global_styles,
+                        reader.global_style,
                         &self.model.project_path_graph,
                         &self.model.style,
                         messager,

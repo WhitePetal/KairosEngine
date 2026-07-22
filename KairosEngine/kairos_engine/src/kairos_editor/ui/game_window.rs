@@ -15,7 +15,7 @@ use crate::{
     },
     kairos_editor::{
         Engine,
-        ui::{Drawer, Message, global_styles::GlobalStyles, paths},
+        ui::{Drawer, Message, UIReader, paths},
     },
     kairos_game::KairosGame,
     spatial::Transform,
@@ -92,7 +92,7 @@ impl Drawer for GameWindow {
     fn ui(
         &self,
         ui: &mut egui::Ui,
-        _global_styles: &GlobalStyles,
+        _reader: &UIReader,
         messager: &mut super::Messager,
         _engine: &Engine,
         _log: &mut crate::log::Log,

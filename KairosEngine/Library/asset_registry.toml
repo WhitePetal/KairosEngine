@@ -1067,6 +1067,10 @@ guid = "aee4193a-7655-41d4-bc86-4abd3015559b"
 path = "./kairos_engine/src/kairos_editor/ui/docking_tab.rs"
 
 [[entries]]
+guid = "70e63788-2eed-409f-bb11-baba5457e2c6"
+path = "./kairos_engine/src/kairos_editor/ui/drag.rs"
+
+[[entries]]
 guid = "3133207b-63d3-4883-93c1-dae7bd32f6b7"
 path = "./kairos_engine/src/kairos_editor/ui/egui_ext.rs"
 

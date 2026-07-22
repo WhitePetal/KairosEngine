@@ -10,8 +10,8 @@ use crate::{
     asset_loader::assets::{AssetHandle, AssetsServer, TextureAssetsSystem},
     graphics::{
         compare_function::CompareFunction,
-        texture::{Texture, TextureMaxSize, find_texture_max_size},
         texture::{
+            Texture, TextureMaxSize, find_texture_max_size,
             format::{TextureCompressionConfig, TextureFormat},
             sampler::{AddressMode, AnisotropyLevel, BorderColor, FilterMode, MipmapFilter},
         },
@@ -19,7 +19,7 @@ use crate::{
     kairos_editor::{
         editor_assets::{TextureExt, TextureExtAssetsSystem},
         ui::{
-            Message, Messager,
+            Message, Messager, UIReader,
             dialog::{ConfirmDialogWindow, Dialog},
             inspector::Inspector,
             paths,
@@ -387,6 +387,7 @@ impl Inspector for TextureInspector {
     fn draw(
         &self,
         ui: &mut egui::Ui,
+        _reader: &UIReader,
         messager: &mut Messager,
         assets_server: &AssetsServer,
         _dt: f32,

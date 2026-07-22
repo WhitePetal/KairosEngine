@@ -1,7 +1,7 @@
 use std::ops::RangeInclusive;
 
 use crate::{
-    kairos_editor::{Engine, ui::global_styles::GlobalStyles},
+    kairos_editor::{Engine, ui::UIReader},
     log::Log,
 };
 use egui::{
@@ -187,11 +187,10 @@ impl<Drawer> DockArea<'_, Drawer> {
     pub fn show(
         self,
         ui: &mut Ui,
-        global_styles: &GlobalStyles,
+        reader: &UIReader,
         messager: &mut Messager,
         engine: &Engine,
         log: &mut Log,
-        drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
         tab_viewer: &mut impl TabDrawer<Tab = Drawer>,
     ) {
         CentralPanel::default()
@@ -201,15 +200,7 @@ impl<Drawer> DockArea<'_, Drawer> {
                     .fill(Color32::TRANSPARENT),
             )
             .show(ui, |ui| {
-                self.show_inside(
-                    ui,
-                    global_styles,
-                    messager,
-                    engine,
-                    log,
-                    drawers,
-                    tab_viewer,
-                );
+                self.show_inside(ui, reader, messager, engine, log, tab_viewer);
             });
     }
 
@@ -217,11 +208,10 @@ impl<Drawer> DockArea<'_, Drawer> {
     pub fn show_inside(
         mut self,
         ui: &mut Ui,
-        global_styles: &GlobalStyles,
+        reader: &UIReader,
         messager: &mut Messager,
         engine: &Engine,
         log: &mut Log,
-        drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
         tab_drawer: &mut impl TabDrawer<Tab = Drawer>,
     ) {
         self.style
@@ -282,11 +272,10 @@ impl<Drawer> DockArea<'_, Drawer> {
             self.show_surface_inside(
                 surface_index,
                 ui,
-                global_styles,
+                reader,
                 messager,
                 engine,
                 log,
-                drawers,
                 tab_drawer,
                 &mut state,
                 fade_style.as_ref().map(|(style, factor)| {
@@ -302,7 +291,11 @@ impl<Drawer> DockArea<'_, Drawer> {
                         self.dock_state.remove_drawer((surface, node, tab));
                     } else {
                         let leaf = &mut self.dock_state[surface][node].get_leaf_mut().unwrap();
-                        match tab_drawer.on_close(&mut leaf.drawers[tab.0], messager, drawers) {
+                        match tab_drawer.on_close(
+                            &mut leaf.drawers[tab.0],
+                            messager,
+                            reader.drawers,
+                        ) {
                             OnCloseResponse::Close => {
                                 self.dock_state.remove_drawer((surface, node, tab));
                             }
@@ -321,7 +314,7 @@ impl<Drawer> DockArea<'_, Drawer> {
                     for tab in self.dock_state[surface][node].iter_tabs_mut() {
                         if !(tab_drawer.is_closeable(tab)
                             && matches!(
-                                tab_drawer.on_close(tab, messager, drawers),
+                                tab_drawer.on_close(tab, messager, reader.drawers),
                                 OnCloseResponse::Close
                             ))
                         {
@@ -338,7 +331,7 @@ impl<Drawer> DockArea<'_, Drawer> {
                         for tab in node.iter_tabs_mut() {
                             if !(tab_drawer.is_closeable(tab)
                                 && matches!(
-                                    tab_drawer.on_close(tab, messager, drawers),
+                                    tab_drawer.on_close(tab, messager, reader.drawers),
                                     OnCloseResponse::Close
                                 ))
                             {
@@ -464,38 +457,19 @@ impl<Drawer> DockArea<'_, Drawer> {
         &mut self,
         surf_index: SurfaceIndex,
         ui: &mut Ui,
-        global_styles: &GlobalStyles,
+        reader: &UIReader,
         messager: &mut Messager,
         engine: &Engine,
         log: &mut Log,
-        drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
         tab_viewer: &mut impl TabDrawer<Tab = Drawer>,
         state: &mut State,
         fade_style: Option<(&Style, f32, SurfaceIndex)>,
     ) {
         if surf_index.is_main() {
-            self.show_root_surface_inside(
-                ui,
-                global_styles,
-                messager,
-                engine,
-                log,
-                drawers,
-                tab_viewer,
-                state,
-            );
+            self.show_root_surface_inside(ui, reader, messager, engine, log, tab_viewer, state);
         } else {
             self.show_window_surface(
-                ui,
-                global_styles,
-                messager,
-                engine,
-                log,
-                drawers,
-                surf_index,
-                tab_viewer,
-                state,
-                fade_style,
+                ui, reader, messager, engine, log, surf_index, tab_viewer, state, fade_style,
             );
         }
     }
@@ -503,11 +477,10 @@ impl<Drawer> DockArea<'_, Drawer> {
     fn render_nodes(
         &mut self,
         ui: &mut Ui,
-        global_styles: &GlobalStyles,
+        reader: &UIReader,
         messager: &mut Messager,
         engine: &Engine,
         log: &mut Log,
-        drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
         tab_viewer: &mut impl TabDrawer<Tab = Drawer>,
         state: &mut State,
         surf_index: SurfaceIndex,
@@ -526,11 +499,10 @@ impl<Drawer> DockArea<'_, Drawer> {
             if self.dock_state[surf_index][node_index].is_leaf() {
                 self.show_leaf(
                     ui,
-                    global_styles,
+                    reader,
                     messager,
                     engine,
                     log,
-                    drawers,
                     state,
                     (surf_index, node_index),
                     tab_viewer,
@@ -798,11 +770,10 @@ impl<Drawer> DockArea<'_, Drawer> {
     pub(super) fn show_root_surface_inside(
         &mut self,
         ui: &mut Ui,
-        global_styles: &GlobalStyles,
+        reader: &UIReader,
         messager: &mut Messager,
         engine: &Engine,
         log: &mut Log,
-        drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
         tab_viewer: &mut impl TabDrawer<Tab = Drawer>,
         state: &mut State,
     ) {
@@ -827,16 +798,7 @@ impl<Drawer> DockArea<'_, Drawer> {
         }
 
         self.render_nodes(
-            ui,
-            global_styles,
-            messager,
-            engine,
-            log,
-            drawers,
-            tab_viewer,
-            state,
-            surf_index,
-            None,
+            ui, reader, messager, engine, log, tab_viewer, state, surf_index, None,
         );
     }
 }
@@ -845,11 +807,10 @@ impl<Drawer> DockArea<'_, Drawer> {
     pub fn show_window_surface(
         &mut self,
         ui: &Ui,
-        global_styles: &GlobalStyles,
+        reader: &UIReader,
         messager: &mut Messager,
         engine: &Engine,
         log: &mut Log,
-        drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
         surf_index: SurfaceIndex,
         tab_viewer: &mut impl TabDrawer<Tab = Drawer>,
         state: &mut State,
@@ -891,7 +852,7 @@ impl<Drawer> DockArea<'_, Drawer> {
                 });
             let leaf = self.dock_state[surf_index][node_id].get_leaf_mut().unwrap();
             tab_viewer
-                .title(&mut leaf.drawers[leaf.active.0], drawers)
+                .title(&mut leaf.drawers[leaf.active.0], reader.drawers)
                 .color(ui.visuals().widgets.noninteractive.fg_stroke.color)
         };
 
@@ -948,16 +909,7 @@ impl<Drawer> DockArea<'_, Drawer> {
                 )
             } else {
                 self.render_nodes(
-                    ui,
-                    global_styles,
-                    messager,
-                    engine,
-                    log,
-                    drawers,
-                    tab_viewer,
-                    state,
-                    surf_index,
-                    fade_style,
+                    ui, reader, messager, engine, log, tab_viewer, state, surf_index, fade_style,
                 );
             }
         });
@@ -1139,11 +1091,10 @@ impl<Drawer> DockArea<'_, Drawer> {
     pub fn show_leaf(
         &mut self,
         ui: &mut Ui,
-        global_styles: &GlobalStyles,
+        reader: &UIReader,
         messager: &mut Messager,
         engine: &Engine,
         log: &mut Log,
-        drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
         state: &mut State,
         (surface_index, node_index): (SurfaceIndex, NodeIndex),
         tab_viewer: &mut impl TabDrawer<Tab = Drawer>,
@@ -1172,7 +1123,7 @@ impl<Drawer> DockArea<'_, Drawer> {
             ui,
             state,
             messager,
-            drawers,
+            reader.drawers,
             (surface_index, node_index),
             tab_viewer,
             fade_style.map(|(style, _)| style),
@@ -1180,11 +1131,10 @@ impl<Drawer> DockArea<'_, Drawer> {
         );
         self.drawer_body(
             ui,
-            global_styles,
+            reader,
             messager,
             engine,
             log,
-            drawers,
             state,
             (surface_index, node_index),
             tab_viewer,
@@ -2325,11 +2275,10 @@ impl<Drawer> DockArea<'_, Drawer> {
     fn drawer_body(
         &mut self,
         ui: &mut Ui,
-        global_styles: &GlobalStyles,
+        reader: &UIReader,
         messager: &mut Messager,
         engine: &Engine,
         log: &mut Log,
-        drawers: &Vec<Box<dyn kairos_editor::ui::Drawer>>,
         state: &State,
         (surface_index, node_index): (SurfaceIndex, NodeIndex),
         tab_viewer: &mut impl TabDrawer<Tab = Drawer>,
@@ -2387,7 +2336,7 @@ impl<Drawer> DockArea<'_, Drawer> {
                 // We are forced to use `Ui::new` because other methods (eg: push_id) always mix
                 // the provided id with their own which would cause tabs to change id when moved
                 // from node to node.
-                let id = self.id.with(tab_viewer.id(tab, drawers));
+                let id = self.id.with(tab_viewer.id(tab, reader.drawers));
                 ui.ctx().check_for_id_clash(id, body_rect, "a tab with id");
                 let ui = &mut Ui::new(
                     ui.ctx().clone(),
@@ -2414,7 +2363,7 @@ impl<Drawer> DockArea<'_, Drawer> {
                     StrokeKind::Inside,
                 );
 
-                ScrollArea::new(tab_viewer.scroll_bars(tab, drawers)).show(ui, |ui| {
+                ScrollArea::new(tab_viewer.scroll_bars(tab, reader.drawers)).show(ui, |ui| {
                     Frame::new()
                         .inner_margin(tabs_style.tab_body.inner_margin)
                         .show(ui, |ui| {
@@ -2423,7 +2372,7 @@ impl<Drawer> DockArea<'_, Drawer> {
                             }
                             let available_rect = ui.available_rect_before_wrap();
                             ui.expand_to_include_rect(available_rect);
-                            tab_viewer.ui(ui, global_styles, tab, messager, engine, log, drawers);
+                            tab_viewer.ui(ui, reader, tab, messager, engine, log);
                         });
                 });
             }

@@ -3,7 +3,7 @@ use std::{any::type_name, fs};
 use crate::{
     kairos_editor::{
         Engine,
-        ui::{Messager, global_styles::GlobalStyles},
+        ui::{Messager, UIReader},
     },
     kairos_game::KairosGame,
     log::Log,
@@ -77,7 +77,7 @@ impl Drawer for HierarchyWindow {
     fn ui(
         &self,
         ui: &mut egui::Ui,
-        _global_styles: &GlobalStyles,
+        _reader: &UIReader,
         _messager: &mut super::Messager,
         _engine: &Engine,
         _log: &mut Log,

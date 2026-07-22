@@ -9,7 +9,7 @@ use crate::{
     kairos_editor::{
         Engine,
         asset_registry::{AssetKind, Guid},
-        ui::{Messager, dialog::Dialog, global_styles::GlobalStyles, inspector::Inspector},
+        ui::{Messager, UIReader, dialog::Dialog, inspector::Inspector},
     },
     kairos_game::KairosGame,
     log::Log,
@@ -147,7 +147,7 @@ impl Drawer for InspectorWindow {
     fn ui(
         &self,
         ui: &mut egui::Ui,
-        _global_styles: &GlobalStyles,
+        reader: &UIReader,
         messager: &mut super::Messager,
         engine: &Engine,
         _log: &mut Log,
@@ -171,6 +171,7 @@ impl Drawer for InspectorWindow {
 
         info.inspector.draw(
             ui,
+            reader,
             messager,
             &engine.assets_server,
             engine.time.delta_time_secs(),

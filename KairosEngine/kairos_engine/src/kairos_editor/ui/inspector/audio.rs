@@ -8,7 +8,7 @@ use crate::{
     audio::audio_ext::pcm::PcmData,
     kairos_editor::{
         Engine,
-        ui::{Message, dialog::Dialog, inspector::Inspector, paths},
+        ui::{Message, UIReader, dialog::Dialog, inspector::Inspector, paths},
     },
     math,
 };
@@ -251,6 +251,7 @@ impl Inspector for AudioInspector {
     fn draw(
         &self,
         ui: &mut egui::Ui,
+        _reader: &UIReader,
         messager: &mut crate::kairos_editor::ui::Messager,
         assets_server: &AssetsServer,
         _dt: f32,

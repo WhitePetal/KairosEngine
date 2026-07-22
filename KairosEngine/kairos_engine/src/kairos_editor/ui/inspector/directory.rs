@@ -1,6 +1,6 @@
 use std::fs;
 
-use crate::kairos_editor::ui::{dialog::Dialog, inspector::Inspector};
+use crate::kairos_editor::ui::{UIReader, dialog::Dialog, inspector::Inspector};
 
 pub struct DirectoryInspector {
     path: std::path::PathBuf,
@@ -23,6 +23,7 @@ impl Inspector for DirectoryInspector {
     fn draw(
         &self,
         ui: &mut egui::Ui,
+        _reader: &UIReader,
         _messager: &mut crate::kairos_editor::ui::Messager,
         _assets_server: &crate::asset_loader::assets::AssetsServer,
         _dt: f32,

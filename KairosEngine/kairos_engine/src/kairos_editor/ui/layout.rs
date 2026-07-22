@@ -4,7 +4,7 @@ use crate::{
     graphics::graphics_graph::GraphicsCommand,
     kairos_editor::{
         Engine,
-        ui::{Drawer, Messager, global_styles::GlobalStyles},
+        ui::{Drawer, Messager, UIReader},
     },
     kairos_game::KairosGame,
     log::Log,
@@ -42,7 +42,7 @@ impl Drawer for LayoutLeftContainer {
     fn ui(
         &self,
         _ui: &mut egui::Ui,
-        _global_styles: &GlobalStyles,
+        _reader: &UIReader,
         _messager: &mut Messager,
         _engine: &Engine,
         _log: &mut Log,
@@ -94,7 +94,7 @@ impl Drawer for LayoutRightContainer {
     fn ui(
         &self,
         _ui: &mut egui::Ui,
-        _global_styles: &GlobalStyles,
+        _reader: &UIReader,
         _messager: &mut Messager,
         _engine: &Engine,
         _log: &mut Log,
@@ -141,7 +141,7 @@ impl Drawer for LayoutBottomContainer {
     fn ui(
         &self,
         _ui: &mut egui::Ui,
-        _global_styles: &GlobalStyles,
+        _reader: &UIReader,
         _messager: &mut Messager,
         _engine: &Engine,
         _log: &mut Log,
@@ -188,7 +188,7 @@ impl Drawer for LayoutCenterContainer {
     fn ui(
         &self,
         _ui: &mut egui::Ui,
-        _global_styles: &GlobalStyles,
+        _reader: &UIReader,
         _messager: &mut Messager,
         _engine: &Engine,
         _log: &mut Log,

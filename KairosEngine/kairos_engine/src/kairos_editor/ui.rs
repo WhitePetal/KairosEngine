@@ -132,6 +132,10 @@ pub enum Message {
     OpenProjectNode(petgraph::graph::NodeIndex),
     /// ProjectWindow: 删除节点 (node_idx)
     DeleteProjectNode(petgraph::graph::NodeIndex),
+    /// ProjectWindow: 拖拽节点 开始事件
+    DragStartProjectNode(petgraph::graph::NodeIndex),
+    /// ProjectWindow: 拖拽节点 结束事件
+    DragStopProjectNode,
 
     DocumentInspectorSave(
         PathBuf,
@@ -191,15 +195,14 @@ impl TabDrawer for KairosTabDrawer {
     fn ui(
         &mut self,
         ui: &mut egui::Ui,
-        global_styles: &GlobalStyles,
+        reader: &UIReader,
         tab: &mut Self::Tab,
         messager: &mut Messager,
         engine: &Engine,
         log: &mut Log,
-        drawers: &Vec<Box<dyn Drawer>>,
     ) {
-        let tab = &drawers[*tab];
-        tab.ui(ui, global_styles, messager, engine, log);
+        let tab = &reader.drawers[*tab];
+        tab.ui(ui, reader, messager, engine, log);
     }
 
     fn on_close(
@@ -234,7 +237,7 @@ pub trait Drawer: Any {
     fn ui(
         &self,
         ui: &mut egui::Ui,
-        global_styles: &GlobalStyles,
+        reader: &UIReader,
         messager: &mut Messager,
         engine: &Engine,
         log: &mut Log,
@@ -276,6 +279,27 @@ impl Messager {
 
     pub fn send(&mut self, msg: Message) {
         self.messages.push_back(msg);
+    }
+}
+
+pub struct UIReader<'a> {
+    pub global_style: &'a GlobalStyles,
+    ids: &'a TypeIdMap<usize>,
+    drawers: &'a Vec<Box<dyn Drawer>>,
+}
+impl<'a> UIReader<'a> {
+    pub(crate) fn get_drawer<T>(&self) -> Option<&T>
+    where
+        T: Drawer,
+    {
+        let type_id = TypeId::of::<T>();
+        match self.ids.get(&type_id) {
+            Some(id) => {
+                let drawer = self.drawers[*id].as_ref();
+                (drawer as &dyn Any).downcast_ref::<T>()
+            }
+            None => None,
+        }
     }
 }
 
@@ -329,21 +353,26 @@ impl Context {
             }
         });
 
+        let reader = UIReader {
+            global_style: &self.global_styles,
+            ids: &self.ids,
+            drawers: &self.drawers,
+        };
+
         // tool_bar
         let tool_bar_type_id = TypeId::of::<ToolBar>();
         if let Some(id) = self.ids.get(&tool_bar_type_id) {
-            self.drawers[*id].ui(ui, &self.global_styles, &mut self.messager, engine, log);
+            self.drawers[*id].ui(ui, &reader, &mut self.messager, engine, log);
         }
 
         // 中央区域显示内容
         egui::CentralPanel::default().show(ui, |ui| {
             DockArea::new("KairosEditor Main DockArea", &mut self.tab_tree).show_inside(
                 ui,
-                &self.global_styles,
+                &reader,
                 &mut self.messager,
                 engine,
                 log,
-                &self.drawers,
                 &mut self.tab_viewer,
             );
         });
@@ -538,6 +567,16 @@ impl Context {
                         project_window.delete_node(node_idx);
                     }
                 }
+                Message::DragStartProjectNode(node_idx) => {
+                    if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
+                        project_window.drag_start(node_idx);
+                    }
+                }
+                Message::DragStopProjectNode => {
+                    if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
+                        project_window.drag_stop();
+                    }
+                }
                 Message::AudioInspectorTogglePreview => {
                     if let Some(inspector) = self.get_window_mut::<InspectorWindow>()
                         && let Some(audio) = inspector.get_inspector_mut::<AudioInspector>()
@@ -662,8 +701,7 @@ impl Context {
                         && let Some(material_inspector) =
                             inspector.get_inspector_mut::<MaterialInspector>()
                     {
-                        material_inspector
-                            .drop_texture(&mut engine.assets_server, texture_path);
+                        material_inspector.drop_texture(&mut engine.assets_server, texture_path);
                     }
                 }
                 Message::MaterialInspectorClearTexture(_mat_path) => {

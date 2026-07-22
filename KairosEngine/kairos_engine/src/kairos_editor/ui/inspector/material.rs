@@ -17,10 +17,11 @@ use crate::{
         asset_registry::AssetKind,
         project_path_tree::ProjectPathGraph,
         ui::{
-            Message, Messager,
+            Message, Messager, UIReader,
             dialog::{ConfirmDialogWindow, Dialog},
             inspector::Inspector,
             paths,
+            project_window::ProjectWindow,
         },
     },
 };
@@ -168,46 +169,26 @@ fn render_shader_menu(
 
 /// 跨帧持久化的 drag payload 键。使用 `insert_persisted` / `get_persisted`
 /// 因为 `insert_temp` 在每帧开始被清除，无法跨帧传递。
-const DRAG_PAYLOAD_KEY: &str = "__kairos_drag_payload";
 const DROP_HOVER_KEY: &str = "__material_texture_drop_hover";
 
-/// 从持久化存储读取拖拽 payload。
-fn read_drag_payload(ui: &egui::Ui) -> Option<PathBuf> {
-    let payload: Option<String> = ui
-        .ctx()
-        .data_mut(|d| d.get_persisted(egui::Id::new(DRAG_PAYLOAD_KEY)));
-    let payload = payload.filter(|s| !s.is_empty());
-    payload.map(PathBuf::from)
-}
-
 /// 检查 payload 是否为有效的 .texture 文件。
-fn is_valid_texture_drag(payload: &Option<PathBuf>) -> bool {
-    payload
-        .as_ref()
-        .is_some_and(|p| p.extension().and_then(|e| e.to_str()) == Some("texture"))
-}
-
-/// 清除跨帧持久化的拖拽 payload（在拖拽结束或 drop 消费后调用）。
-fn clear_drag_payload(ui: &egui::Ui) {
-    ui.ctx().data_mut(|d| {
-        d.insert_persisted(egui::Id::new(DRAG_PAYLOAD_KEY), String::new());
-    });
+fn is_valid_texture_drag(payload: &PathBuf) -> bool {
+    payload.extension().and_then(|e| e.to_str()) == AssetKind::Texture.extension()
 }
 
 /// 在 drop target 区域检查是否发生了拖放操作。
 /// 返回值：Some(texture_path) 表示拖放有效，None 表示无操作。
-fn check_texture_drop(ui: &egui::Ui, target_rect: egui::Rect) -> Option<PathBuf> {
+fn check_texture_drop(
+    ui: &egui::Ui,
+    dragging: &PathBuf,
+    target_rect: egui::Rect,
+) -> Option<PathBuf> {
     let pointer_pos = ui.input(|i| i.pointer.interact_pos())?;
     if !target_rect.contains(pointer_pos) {
         // 指针不在目标区域，清除悬停状态
         ui.ctx().data_mut(|d| {
             d.insert_persisted(egui::Id::new(DROP_HOVER_KEY), false);
         });
-        return None;
-    }
-
-    let payload = read_drag_payload(ui)?;
-    if !is_valid_texture_drag(&Some(payload.clone())) {
         return None;
     }
 
@@ -229,8 +210,7 @@ fn check_texture_drop(ui: &egui::Ui, target_rect: egui::Rect) -> Option<PathBuf>
             d.insert_persisted(egui::Id::new(DROP_HOVER_KEY), false);
         });
         if was_hovering {
-            clear_drag_payload(ui);
-            Some(payload)
+            Some(dragging.clone())
         } else {
             None
         }
@@ -249,7 +229,10 @@ struct ThumbnailCache {
 }
 
 /// 为 Texture 创建 48x48 缩略图的 egui handle。
-fn build_texture_thumbnail(ui: &egui::Ui, texture: &crate::graphics::texture::Texture) -> egui::TextureHandle {
+fn build_texture_thumbnail(
+    ui: &egui::Ui,
+    texture: &crate::graphics::texture::Texture,
+) -> egui::TextureHandle {
     let rgba = crate::graphics::texture::format::decode_to_rgba8(
         &texture.data[0],
         texture.width,
@@ -339,6 +322,7 @@ impl Inspector for MaterialInspector {
     fn draw(
         &self,
         ui: &mut egui::Ui,
+        reader: &UIReader,
         messager: &mut Messager,
         assets_server: &AssetsServer,
         _dt: f32,
@@ -430,46 +414,38 @@ impl Inspector for MaterialInspector {
 
         ui.separator();
 
-        // ---- Texture 区域（Unity 风格缩略图 + 路径 + 清除 ×）----
+        // ---- Texture 区域----
         let thumbbail_size = 48.0;
         let clear_btn_w = self.model.style.texture_clear_button_width;
         let padding = 6.0;
         let total_height = self.model.style.texture_drop_target_height;
         let available_width = ui.available_width();
 
+        let full_target_rect =
+            egui::Rect::from_min_size(ui.cursor().min, Vec2::new(available_width, total_height));
+
         // 读完拖拽状态之后再清理非活跃拖拽
-        let drag_payload = read_drag_payload(ui);
-        let is_valid_drag = is_valid_texture_drag(&drag_payload);
+        let dragging = reader
+            .get_drawer::<ProjectWindow>()
+            .and_then(|d| d.get_dragging().as_ref());
+        let mut drop_path = None;
+        let is_valid_drag = dragging.is_some_and(|d| {
+            let valid = is_valid_texture_drag(d);
+            if valid {
+                drop_path = check_texture_drop(ui, d, full_target_rect);
+            }
+            valid
+        });
         let pointer_down = ui.input(|i| i.pointer.any_down());
-        let pointer_over = ui
-            .input(|i| i.pointer.interact_pos())
-            .map_or(false, |p| {
-                let full_rect = egui::Rect::from_min_size(
-                    ui.cursor().min,
-                    Vec2::new(available_width, total_height),
-                );
-                full_rect.contains(p)
-            });
+        let pointer_over = ui.input(|i| i.pointer.interact_pos()).map_or(false, |p| {
+            let full_rect = egui::Rect::from_min_size(
+                ui.cursor().min,
+                Vec2::new(available_width, total_height),
+            );
+            full_rect.contains(p)
+        });
 
         let is_drag_hover = pointer_down && pointer_over && is_valid_drag;
-
-        // 检查拖放（必须在清理 payload 之前，因为 check_texture_drop 需要读取 payload）
-        let full_target_rect = egui::Rect::from_min_size(
-            ui.cursor().min,
-            Vec2::new(available_width, total_height),
-        );
-        let drop_path = check_texture_drop(ui, full_target_rect);
-
-        // 拖拽已结束（按钮弹起）且 drop 没有被消费 → 清理残留 payload
-        if drop_path.is_none() && !pointer_down {
-            let payload_exists: bool = ui
-                .ctx()
-                .data_mut(|d| d.get_persisted::<String>(egui::Id::new(DRAG_PAYLOAD_KEY)))
-                .map_or(false, |s| !s.is_empty());
-            if payload_exists {
-                clear_drag_payload(ui);
-            }
-        }
 
         // ── 背景 + 边框 ──
         let bg_color = if is_drag_hover {
@@ -504,7 +480,10 @@ impl Inspector for MaterialInspector {
 
             // ── 缩略图 ──
             let thumb_rect = egui::Rect::from_min_size(
-                egui::pos2(full_target_rect.min.x + padding, full_target_rect.min.y + padding),
+                egui::pos2(
+                    full_target_rect.min.x + padding,
+                    full_target_rect.min.y + padding,
+                ),
                 Vec2::splat(thumbbail_size),
             );
 
@@ -518,9 +497,12 @@ impl Inspector for MaterialInspector {
                 // 路径变了，重新生成
                 *thumb_guard = None;
                 // 异步加载 texture 并生成缩略图
-                if let Some(mat) = assets_server.get::<MaterialAssetsSystem>(&self.model.material_handle) {
+                if let Some(mat) =
+                    assets_server.get::<MaterialAssetsSystem>(&self.model.material_handle)
+                {
                     if let Some(tex_handle) = &mat.texture {
-                        if let Some(texture) = assets_server.get::<TextureAssetsSystem>(tex_handle) {
+                        if let Some(texture) = assets_server.get::<TextureAssetsSystem>(tex_handle)
+                        {
                             let handle = build_texture_thumbnail(ui, texture);
                             *thumb_guard = Some(ThumbnailCache {
                                 path: tex_path.clone(),
@@ -693,11 +675,7 @@ impl MaterialInspector {
     }
 
     /// 拖入 / 设置纹理：加载 texture → 更新运行时 Material → 标记 dirty
-    pub fn drop_texture(
-        &mut self,
-        assets_server: &mut AssetsServer,
-        texture_path: PathBuf,
-    ) {
+    pub fn drop_texture(&mut self, assets_server: &mut AssetsServer, texture_path: PathBuf) {
         // 1. 加载 texture（异步，句柄立即返回）
         let texture_handle = assets_server.load::<TextureAssetsSystem>(&texture_path);
 

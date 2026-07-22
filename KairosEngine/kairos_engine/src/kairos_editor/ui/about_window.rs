@@ -1,19 +1,18 @@
 use std::{any::type_name, fs};
 
 use crate::kairos_dialog;
-use crate::kairos_editor::ui::global_styles::GlobalStyles;
 use crate::kairos_game::KairosGame;
 use crate::log::Log;
 use egui::{self, Vec2};
 use serde::{Deserialize, Serialize};
 use toml::from_str;
 
-use crate::kairos_editor::ui::Messager;
 use crate::kairos_editor::ui::docking_tab::window_state::WindowState;
 use crate::kairos_editor::ui::{
     Drawer, paths,
     ui_style_fields::{FloatFieldEditViewType, FloatStyleField, StyleField},
 };
+use crate::kairos_editor::ui::{Messager, UIReader};
 use crate::kairos_editor::{Engine, consts};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -90,7 +89,7 @@ impl Drawer for AboutWindow {
     fn ui(
         &self,
         ui: &mut egui::Ui,
-        _global_styles: &GlobalStyles,
+        _reader: &UIReader,
         _messager: &mut Messager,
         _engine: &Engine,
         log: &mut Log,

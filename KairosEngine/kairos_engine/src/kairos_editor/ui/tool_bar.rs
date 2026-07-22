@@ -9,7 +9,7 @@ use parking_lot::Mutex;
 use crate::{
     kairos_editor::{
         Engine,
-        ui::{Messager, global_styles::GlobalStyles},
+        ui::{Messager, UIReader},
     },
     kairos_game::KairosGame,
     log::Log,
@@ -144,7 +144,7 @@ impl Drawer for ToolBar {
     fn ui(
         &self,
         ui: &mut egui::Ui,
-        _global_styles: &GlobalStyles,
+        _rader: &UIReader,
         messager: &mut super::Messager,
         _engine: &Engine,
         _log: &mut Log,
