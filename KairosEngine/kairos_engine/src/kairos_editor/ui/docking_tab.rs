@@ -176,27 +176,9 @@ impl<Drawer> std::fmt::Debug for DockArea<'_, Drawer> {
 impl<Drawer> DockArea<'_, Drawer> {
     /// Show the `DockArea` at the top level.
     ///
-    /// This is the same as doing:
+    /// This is the same as calling [`show_inside`](Self::show_inside) inside a [`CentralPanel`].
     ///
-    /// ```
-    /// # use egui_dock::{DockArea, DockState};
-    /// # use egui::{CentralPanel, Frame};
-    /// # struct TabViewer {}
-    /// # impl egui_dock::TabViewer for TabViewer {
-    /// #     type Tab = String;
-    /// #     fn title(&mut self, tab: &mut Self::Tab) -> egui::WidgetText { (&*tab).into() }
-    /// #     fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab) {}
-    /// # }
-    /// # let mut tree: DockState<String> = DockState::new(vec![]);
-    /// # let mut tab_viewer = TabViewer {};
-    /// # egui::__run_test_ctx(|ctx| {
-    /// CentralPanel::default()
-    ///     .frame(Frame::central_panel(&ctx.style()).inner_margin(0.))
-    ///     .show(ctx, |ui| {
-    ///         DockArea::new(&mut tree).show_inside(ui, &mut tab_viewer);
-    ///     });
-    /// # });
-    /// ```
+    /// [`CentralPanel`]: egui::CentralPanel
     ///
     /// So you can't use the [`CentralPanel::show`] when using `DockArea`'s one.
     ///

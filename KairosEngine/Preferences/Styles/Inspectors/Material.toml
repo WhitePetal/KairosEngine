@@ -2,3 +2,8 @@ shader_selector_height = 20.0
 shader_selector_menu_border = 10.0
 shader_selector_menu_min_width = 10.0
 shader_selector_submenu_width_factor = 0.7
+
+texture_drop_target_height = 60.0
+texture_clear_button_width = 20.0
+texture_path_font_size = 14.0
+texture_drag_prompt = "Drag .texture here"

@@ -222,9 +222,9 @@ impl HierarchyPanel {
             }
         });
 
-        // 3. 全宽点击覆盖层
+        // 3. 全宽交互覆盖层（点击 + 拖拽）
         let row_rect = egui::Rect::from_min_size(row_start, egui::vec2(row_width, row_height));
-        let response = ui.interact(row_rect, ui.id().with("row"), egui::Sense::click());
+        let response = ui.interact(row_rect, ui.id().with("row"), egui::Sense::click_and_drag());
         if response.clicked() || response.secondary_clicked() {
             messager.send(Message::SelectProjectNode(Some(node)));
             // 点击文件时同时导航到其父目录，更新 ContentPanel
@@ -236,5 +236,59 @@ impl HierarchyPanel {
         response.context_menu(|ui| {
             ContextMenu::show(ui, ContextMenuState::new(node), messager);
         });
+
+        // ---- Drag source: 将文件节点注册为可拖拽 ----
+        if response.drag_started() {
+            let file_path = node_data.path.to_string_lossy().to_string();
+            ui.ctx().data_mut(|d| {
+                d.insert_persisted(
+                    egui::Id::new("__kairos_drag_payload"),
+                    file_path,
+                );
+            });
+        }
+
+        // 拖拽视觉反馈：光标 + 幽灵图
+        if ui.ctx().is_being_dragged(response.id) {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+            if let Some(pos) = ui.ctx().pointer_interact_pos() {
+                let ghost_id = ui.id().with("drag_ghost");
+                let ghost_pos = pos + egui::vec2(12.0, 12.0);
+                egui::Area::new(ghost_id)
+                    .fixed_pos(ghost_pos)
+                    .order(egui::Order::Foreground)
+                    .show(ui.ctx(), |ui| {
+                        let ghost_frame = egui::Frame {
+                            fill: egui::Color32::from_black_alpha(180),
+                            corner_radius: egui::CornerRadius::same(4),
+                            inner_margin: egui::Margin::symmetric(6, 3).into(),
+                            ..Default::default()
+                        };
+                        ghost_frame.show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                let ghost_icon = egui::Image::new(
+                                    global_styles
+                                        .project_node_icons
+                                        .uri_for_kind(node_data, false),
+                                )
+                                .fit_to_exact_size(icon_size);
+                                ui.add(ghost_icon);
+                                ui.label(
+                                    RichText::new(node_data.name())
+                                        .size(style.hierachy.file_header_size)
+                                        .color(egui::Color32::WHITE),
+                                );
+                                if let Some(suffix) = node_data.kind.suffix() {
+                                    ui.label(
+                                        RichText::new(suffix)
+                                            .size(style.hierachy.file_header_size)
+                                            .color(style.hierachy.file_suffix_color),
+                                    );
+                                }
+                            });
+                        });
+                    });
+            }
+        }
     }
 }

@@ -168,6 +168,12 @@ pub enum Message {
     /// Material Inspector: user selected a different shader.
     /// Carries (.mat path, new shader path).
     MaterialInspectorChangeShader(PathBuf, PathBuf),
+    /// Material Inspector: user dropped a .texture file on the texture target.
+    /// Carries (.mat path, texture path).
+    MaterialInspectorDropTexture(PathBuf, PathBuf),
+    /// Material Inspector: user clicked the clear texture button.
+    /// Carries (.mat path).
+    MaterialInspectorClearTexture(PathBuf),
 }
 
 struct KairosTabDrawer {
@@ -649,6 +655,23 @@ impl Context {
                     {
                         material_inspector.change_shader(&mut engine.assets_server, shader_path);
                         // material_inspector.save_file will be added in a future sprint
+                    }
+                }
+                Message::MaterialInspectorDropTexture(_mat_path, texture_path) => {
+                    if let Some(inspector) = self.get_window_mut::<InspectorWindow>()
+                        && let Some(material_inspector) =
+                            inspector.get_inspector_mut::<MaterialInspector>()
+                    {
+                        material_inspector
+                            .drop_texture(&mut engine.assets_server, texture_path);
+                    }
+                }
+                Message::MaterialInspectorClearTexture(_mat_path) => {
+                    if let Some(inspector) = self.get_window_mut::<InspectorWindow>()
+                        && let Some(material_inspector) =
+                            inspector.get_inspector_mut::<MaterialInspector>()
+                    {
+                        material_inspector.clear_texture(&mut engine.assets_server);
                     }
                 }
             }

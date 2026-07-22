@@ -167,9 +167,10 @@ impl<Drawer> Node<Drawer> {
     /// # Examples
     ///
     /// ```rust
-    /// # use egui_dock::{DockState, NodeIndex};
+    /// /// ```rust
+    /// use kairos_engine::kairos_editor::ui::docking_tab::dock_state::DockState;
     /// let mut dock_state = DockState::new(vec![1, 2, 3, 4, 5, 6]);
-    /// assert!(dock_state.main_surface().root_node().unwrap().tabs().unwrap().contains(&4));
+    /// assert!(dock_state.main_surface().root_node().unwrap().drawers().unwrap().contains(&4));
     /// ```
     #[inline]
     pub fn drawers(&self) -> Option<&[Drawer]> {
@@ -187,7 +188,7 @@ impl<Drawer> Node<Drawer> {
     ///
     /// Modifying tabs inside a node:
     /// ```rust
-    /// # use egui_dock::{DockState, NodeIndex};
+    /// use kairos_engine::kairos_editor::ui::docking_tab::dock_state::DockState;
     /// let mut dock_state = DockState::new(vec![1, 2, 3, 4, 5, 6]);
     /// let mut tabs = dock_state
     ///     .main_surface_mut()
@@ -242,12 +243,12 @@ impl<Drawer> Node<Drawer> {
     /// # Examples
     ///
     /// ```rust
-    /// # use egui_dock::{DockState, NodeIndex};
+    /// use kairos_engine::kairos_editor::ui::docking_tab::dock_state::DockState;
     /// let mut dock_state = DockState::new(vec!["a tab"]);
-    /// assert_eq!(dock_state.main_surface().root_node().unwrap().tabs_count(), 1);
+    /// assert_eq!(dock_state.main_surface().root_node().unwrap().drawers_count(), 1);
     ///
     /// dock_state.main_surface_mut().root_node_mut().unwrap().append_drawer("another tab");
-    /// assert_eq!(dock_state.main_surface().root_node().unwrap().tabs_count(), 2);
+    /// assert_eq!(dock_state.main_surface().root_node().unwrap().drawers_count(), 2);
     /// ```
     #[track_caller]
     #[inline]

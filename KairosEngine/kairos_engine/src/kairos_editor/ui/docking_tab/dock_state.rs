@@ -122,8 +122,8 @@ impl<Drawer> DockState<Drawer> {
     /// # Examples
     ///
     /// ```rust
-    /// # use egui_dock::DockState;
-    /// # use egui::{Vec2, Pos2};
+    /// use kairos_engine::kairos_editor::ui::docking_tab::dock_state::DockState;
+    /// use egui::{Vec2, Pos2};
     /// let mut dock_state = DockState::new(vec![]);
     /// let mut surface_index = dock_state.add_window(vec!["Window Tab".to_string()]);
     /// let window_state = dock_state.get_window_state_mut(surface_index).unwrap();
@@ -529,7 +529,7 @@ impl<Drawer> DockState<Drawer> {
     /// Any remaining empty [`Node`]s and [`Surface`]s are removed.
     ///
     /// ```
-    /// # use egui_dock::{DockState, Node};
+    /// use kairos_engine::kairos_editor::ui::docking_tab::dock_state::DockState;
     /// let dock_state = DockState::new(vec![1, 2, 3]);
     /// let mapped_dock_state = dock_state.filter_map_drawers(|tab| (tab % 2 == 1).then(|| tab.to_string()));
     ///
@@ -562,7 +562,7 @@ impl<Drawer> DockState<Drawer> {
     /// Returns a new [`DockState`] while mapping the tab type.
     ///
     /// ```
-    /// # use egui_dock::{DockState, Node};
+    /// use kairos_engine::kairos_editor::ui::docking_tab::dock_state::DockState;
     /// let dock_state = DockState::new(vec![1, 2, 3]);
     /// let mapped_dock_state = dock_state.map_drawers(|tab| tab.to_string());
     ///
@@ -580,9 +580,9 @@ impl<Drawer> DockState<Drawer> {
     /// Any remaining empty [`Node`]s and [`Surface`]s are removed.
     ///
     /// ```
-    /// # use egui_dock::{DockState, Node};
+    /// # use kairos_engine::kairos_editor::ui::docking_tab::dock_state::DockState;
     /// let dock_state = DockState::new(["tab1", "tab2", "outlier"].map(str::to_string).to_vec());
-    /// let filtered_dock_state = dock_state.filter_drawers(|tab| tab.starts_with("tab"));
+    /// let filtered_dock_state = dock_state.filter_tabs(|tab| tab.starts_with("tab"));
     ///
     /// let tabs: Vec<_> = filtered_dock_state.iter_all_drawers().map(|(_, tab)| tab.to_owned()).collect();
     /// assert_eq!(tabs, vec!["tab1".to_string(), "tab2".to_string()]);
@@ -599,7 +599,7 @@ impl<Drawer> DockState<Drawer> {
     /// Any remaining empty [`Node`]s and [`Surface`]s are also removed.
     ///
     /// ```
-    /// # use egui_dock::{DockState, Node};
+    /// # use kairos_engine::kairos_editor::ui::docking_tab::dock_state::DockState;
     /// let mut dock_state = DockState::new(["tab1", "tab2", "outlier"].map(str::to_string).to_vec());
     /// dock_state.retain_drawers(|tab| tab.starts_with("tab"));
     ///

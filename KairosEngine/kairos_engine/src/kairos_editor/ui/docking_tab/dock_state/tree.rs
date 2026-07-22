@@ -324,15 +324,15 @@ impl<Drawer> Tree<Drawer> {
     /// # Examples
     ///
     /// ```rust
-    /// # use egui_dock::{DockState, NodeIndex, TabIndex};
+    /// use kairos_engine::kairos_editor::ui::docking_tab::{dock_state::DockState, dock_state::tree::NodeIndex};
     /// let mut dock_state = DockState::new(vec!["node 1", "node 2", "node 3"]);
-    /// assert_eq!(dock_state.main_surface().num_tabs(), 3);
+    /// assert_eq!(dock_state.main_surface().num_drawers(), 3);
     ///
     /// let [a, b] = dock_state.main_surface_mut().split_left(NodeIndex::root(), 0.5, vec!["tab 4", "tab 5"]);
-    /// assert_eq!(dock_state.main_surface().num_tabs(), 5);
+    /// assert_eq!(dock_state.main_surface().num_drawers(), 5);
     ///
     /// dock_state.main_surface_mut().remove_leaf(a);
-    /// assert_eq!(dock_state.main_surface().num_tabs(), 2);
+    /// assert_eq!(dock_state.main_surface().num_drawers(), 2);
     /// ```
     #[inline]
     pub fn num_drawers(&self) -> usize {
@@ -351,11 +351,11 @@ impl<Drawer> Tree<Drawer> {
     /// # Examples
     ///
     /// ```rust
-    /// # use egui_dock::DockState;
+    /// use kairos_engine::kairos_editor::ui::docking_tab::dock_state::DockState;
     /// let mut dock_state = DockState::new(vec!["single tab"]);
     /// let root_node = dock_state.main_surface().root_node().unwrap();
     ///
-    /// assert_eq!(root_node.tabs(), Some(["single tab"].as_slice()));
+    /// assert_eq!(root_node.drawers(), Some(["single tab"].as_slice()));
     /// ```
     pub fn root_node(&self) -> Option<&Node<Drawer>> {
         self.nodes.first()
@@ -367,13 +367,13 @@ impl<Drawer> Tree<Drawer> {
     /// # Examples
     ///
     /// ```rust
-    /// # use egui_dock::{DockState, LeafNode};
+    /// use kairos_engine::kairos_editor::ui::docking_tab::dock_state::DockState;
     /// let mut dock_state = DockState::new(vec!["single tab"]);
     /// let root_node = dock_state.main_surface_mut().root_node_mut().unwrap();
     /// let root_as_leaf = root_node.get_leaf_mut().unwrap();
-    /// root_as_leaf.tabs.push("partner tab");
+    /// root_as_leaf.drawers.push("partner tab");
     ///
-    /// assert_eq!(root_node.tabs(), Some(["single tab", "partner tab"].as_slice()));
+    /// assert_eq!(root_node.drawers(), Some(["single tab", "partner tab"].as_slice()));
     /// ```
     pub fn root_node_mut(&mut self) -> Option<&mut Node<Drawer>> {
         self.nodes.first_mut()
@@ -396,7 +396,7 @@ impl<Drawer> Tree<Drawer> {
     /// # Example
     ///
     /// ```rust
-    /// # use egui_dock::{DockState, SurfaceIndex, NodeIndex, Split};
+    /// use kairos_engine::kairos_editor::ui::docking_tab::{dock_state::DockState, dock_state::tree::{NodeIndex, Split}, surfaces::SurfaceIndex};
     /// let mut dock_state = DockState::new(vec!["tab 1", "tab 2"]);
     ///
     /// // At this point, the main surface only contains the leaf with tab 1 and 2.
@@ -404,7 +404,7 @@ impl<Drawer> Tree<Drawer> {
     ///
     /// // Split the node, giving 50% of the space to the new nodes and 50% to the old ones.
     /// let [old, new] = dock_state.main_surface_mut()
-    ///     .split_tabs(NodeIndex::root(), Split::Below, 0.5, vec!["tab 3"]);
+    ///     .split_drawers(NodeIndex::root(), Split::Below, 0.5, vec!["tab 3"]);
     ///
     /// assert!(dock_state.main_surface().root_node().unwrap().is_parent());
     /// assert!(dock_state[SurfaceIndex::main()][old].is_leaf());
@@ -544,7 +544,7 @@ impl<Drawer> Tree<Drawer> {
     /// # Example
     ///
     /// ```rust
-    /// # use egui_dock::{DockState, SurfaceIndex, NodeIndex, Split, Node};
+    /// use kairos_engine::kairos_editor::ui::docking_tab::{dock_state::DockState, dock_state::tree::{NodeIndex, Split, node::Node}, surfaces::SurfaceIndex};
     /// let mut dock_state = DockState::new(vec!["tab 1", "tab 2"]);
     ///
     /// // At this point, the main surface only contains the leaf with tab 1 and 2.

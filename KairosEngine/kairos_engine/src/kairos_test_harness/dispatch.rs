@@ -192,6 +192,52 @@ pub fn dispatch_input(step: &TestStep, engine: &mut KairosEngine) -> StepResult 
         return StepResult::ok();
     }
 
+    // Handle drag_drop: simulate dragging from source widget to target widget.
+    if args.get("event").and_then(|v| v.as_str()) == Some("drag_drop") {
+        let source_id = match args.get("source_id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => return StepResult::err("drag_drop requires 'source_id' argument"),
+        };
+        let target_id = match args.get("target_id").and_then(|v| v.as_str()) {
+            Some(id) => id,
+            None => return StepResult::err("drag_drop requires 'target_id' argument"),
+        };
+        let source_rect = match engine.widget_rect(source_id) {
+            Some(r) => r,
+            None => return StepResult::err(format!("source widget not found: '{source_id}'")),
+        };
+        let target_rect = match engine.widget_rect(target_id) {
+            Some(r) => r,
+            None => return StepResult::err(format!("target widget not found: '{target_id}'")),
+        };
+        let source_center = egui::pos2(
+            (source_rect.min.x + source_rect.max.x) / 2.0,
+            (source_rect.min.y + source_rect.max.y) / 2.0,
+        );
+        let target_center = egui::pos2(
+            (target_rect.min.x + target_rect.max.x) / 2.0,
+            (target_rect.min.y + target_rect.max.y) / 2.0,
+        );
+
+        // Clear any existing drag payload
+        // Inject egui events to simulate drag: move to source → press → move to target → release
+        engine.push_egui_event(egui::Event::PointerMoved(source_center));
+        engine.push_egui_event(egui::Event::PointerButton {
+            pos: source_center,
+            button: egui::PointerButton::Primary,
+            pressed: true,
+            modifiers: egui::Modifiers::default(),
+        });
+        engine.push_egui_event(egui::Event::PointerMoved(target_center));
+        engine.push_egui_event(egui::Event::PointerButton {
+            pos: target_center,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: egui::Modifiers::default(),
+        });
+        return StepResult::ok();
+    }
+
     // Handle keyboard events: inject into egui for UI navigation (arrow keys, enter, etc.)
     if args.get("device").and_then(|v| v.as_str()) == Some("keyboard") {
         let key_str = match args.get("key").and_then(|v| v.as_str()) {
