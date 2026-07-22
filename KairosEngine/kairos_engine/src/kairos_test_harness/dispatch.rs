@@ -1,7 +1,10 @@
+use crate::asset_loader::assets::{MaterialAssetsSystem, TextureAssetsSystem};
 use crate::kairos_editor::KairosEngine;
 use crate::kairos_editor::ui::Message;
+use crate::kairos_editor::ui::inspector::material::MaterialInspector;
+use crate::kairos_editor::ui::inspector_window::InspectorWindow;
 use crate::kairos_test_harness::{
-    assertions::{self, CrashTracker},
+    assertions::{self, CrashTracker, MaterialInspectorTextureState},
     input_injector,
     types::{StepResult, TestStep},
 };
@@ -38,6 +41,27 @@ pub fn dispatch_call(step: &TestStep, engine: &mut KairosEngine) -> StepResult {
         }
         "ui.open_inspector" => {
             engine.push_ui_message(Message::OpenInspectorTab);
+            StepResult::ok()
+        }
+        "material_inspector.assign_texture" => {
+            let args = match step.args.as_ref() {
+                Some(a) => a,
+                None => {
+                    return StepResult::err(
+                        "assign_texture requires args with 'texture' field",
+                    )
+                }
+            };
+            let texture = match args.get("texture").and_then(|v| v.as_str()) {
+                Some(t) => t,
+                None => return StepResult::err("assign_texture requires 'texture' argument"),
+            };
+            // The message handler resolves the currently open MaterialInspector
+            // itself, so the .mat path slot is an unused placeholder.
+            engine.push_ui_message(Message::MaterialInspectorDropTexture(
+                std::path::PathBuf::new(),
+                std::path::PathBuf::from(texture),
+            ));
             StepResult::ok()
         }
         "project.select_asset" => {
@@ -100,6 +124,44 @@ pub fn dispatch_call(step: &TestStep, engine: &mut KairosEngine) -> StepResult {
     }
 }
 
+/// Snapshot the open MaterialInspector's runtime-material texture state.
+///
+/// Reads the *actual* runtime `Material` asset (not the inspector's UI
+/// state), so the `material_inspector.texture_loaded` assertion verifies the
+/// same handle the renderer will use — including the white.texture fallback
+/// handle assigned for missing texture paths (issue #34).
+fn gather_material_inspector_texture_state(
+    engine: &mut KairosEngine,
+) -> MaterialInspectorTextureState {
+    // Clone the runtime material handle out of the open inspector first,
+    // ending the ui_context borrow before touching the assets server.
+    let material_handle = {
+        let ui_ctx = engine.ui_context_mut();
+        ui_ctx
+            .get_window_mut::<InspectorWindow>()
+            .and_then(|window| window.get_inspector::<MaterialInspector>())
+            .map(|inspector| inspector.material_handle().clone())
+    };
+    let Some(material_handle) = material_handle else {
+        return MaterialInspectorTextureState::NoInspector;
+    };
+
+    let assets = &engine.engine_mut().assets_server;
+    let Some(material) = assets.get::<MaterialAssetsSystem>(&material_handle) else {
+        return MaterialInspectorTextureState::MaterialNotLoaded;
+    };
+    let Some(texture_handle) = &material.texture else {
+        return MaterialInspectorTextureState::NoTexture;
+    };
+    match assets.get::<TextureAssetsSystem>(texture_handle) {
+        Some(texture) => MaterialInspectorTextureState::Loaded {
+            width: texture.width,
+            height: texture.height,
+        },
+        None => MaterialInspectorTextureState::TextureUnresolved,
+    }
+}
+
 /// Dispatch a test step's `assert` action to the appropriate assertion function.
 pub fn dispatch_assert(
     step: &TestStep,
@@ -145,6 +207,12 @@ pub fn dispatch_assert(
                 None => return StepResult::err("toml_value_equals requires args"),
             };
             assertions::assert_toml_value_equals(args)
+        }
+        "material_inspector.texture_loaded" => {
+            let default_args = toml::Value::Table(toml::Table::new());
+            let args = args.unwrap_or(&default_args);
+            let state = gather_material_inspector_texture_state(engine);
+            assertions::assert_material_inspector_texture_loaded(state, args)
         }
         "" => StepResult::err("assert step missing 'target' field"),
         other => StepResult::err(format!("unknown assertion: '{other}'")),

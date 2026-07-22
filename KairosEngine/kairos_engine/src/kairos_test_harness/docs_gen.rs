@@ -115,6 +115,12 @@ pub fn generate() -> Result<(), Box<dyn std::error::Error>> {
             "file (string), key (string), value (string)",
             "both",
         ),
+        (
+            "material_inspector.texture_loaded",
+            "断言当前打开的 MaterialInspector 运行时材质的纹理句柄已解析为已加载纹理，可选校验宽高（如 2x2 白色降级纹理）",
+            "width (int, 可选), height (int, 可选)",
+            "windowed",
+        ),
     ];
 
     md.push_str("| 断言 | 描述 | 参数 | 模式 |\n");
@@ -144,6 +150,7 @@ pub fn generate() -> Result<(), Box<dyn std::error::Error>> {
                 "toml_value_equals" => {
                     "args = { file = \"path/to/file.texture\", key = \"format\", value = \"BC7\" }\n"
                 }
+                "material_inspector.texture_loaded" => "args = { width = 2, height = 2 }\n",
                 _ => "",
             };
             if !example_arg.is_empty() {
@@ -237,6 +244,12 @@ fn all_commands() -> Vec<CommandDoc> {
             name: "project.select_asset",
             description: "在项目树中按路径选中资产",
             args: Some("path (string)"),
+            mode: "windowed",
+        },
+        CommandDoc {
+            name: "material_inspector.assign_texture",
+            description: "向当前打开的 MaterialInspector 赋值纹理（等价于拖入 .texture；可传不存在的路径以验证 white.texture 降级）",
+            args: Some("texture (string)"),
             mode: "windowed",
         },
         // Future commands will be added here as they are registered

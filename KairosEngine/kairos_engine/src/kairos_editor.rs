@@ -1,7 +1,16 @@
+use std::path::PathBuf;
+use std::sync::Arc;
+
 use crate::{
-    asset_loader::assets::AssetsServer, audio::AudioEngine, ecs::world::World,
-    graphics::graphics_graph::GraphicsCommand, inputs::InputEngine, kairos_game::KairosGame,
-    log::Log, physics::PhysicsEngine, timer::Time,
+    asset_loader::assets::{AssetHandle, AssetsServer, TextureAssetsSystem},
+    audio::AudioEngine,
+    ecs::world::World,
+    graphics::graphics_graph::GraphicsCommand,
+    inputs::InputEngine,
+    kairos_game::KairosGame,
+    log::Log,
+    physics::PhysicsEngine,
+    timer::Time,
 };
 use egui::Visuals;
 use winit::event::KeyEvent;
@@ -49,6 +58,10 @@ pub struct KairosEngine {
     game: KairosGame,
     ui_context: ui::Context,
     log: Log,
+    /// Material Inspector 纹理降级资源（white.texture）的保活句柄。
+    /// 引擎初始化时预加载（issue #34），保证缺失纹理降级时句柄立即可解析；
+    /// 丢弃 Arc 会触发资产卸载，因此必须随引擎生命周期持有。
+    _material_fallback_texture: Arc<AssetHandle<TextureAssetsSystem>>,
     #[cfg(feature = "test-harness")]
     widget_rects: std::collections::HashMap<String, egui::Rect>,
     /// Widget name → egui Id mapping for focus operations.
@@ -65,6 +78,13 @@ pub struct KairosEngine {
 impl KairosEngine {
     pub fn new(egui_ctx: &egui::Context) -> Result<Self, Box<dyn std::error::Error>> {
         let mut engine = Engine::new()?;
+        // 预加载 Material Inspector 的纹理降级资源（issue #34）：
+        // 缺失纹理赋值降级为 white.texture 时句柄可以立即解析。
+        let material_fallback_texture = engine
+            .assets_server
+            .load::<TextureAssetsSystem>(&PathBuf::from(
+                ui::paths::PATH_MATERIAL_INSPECTOR_FALLBACK_TEXTURE,
+            ));
         let game = KairosGame::new(&mut engine);
         let ui_context = ui::Context::new(egui_ctx)?;
         let log = Log::new();
@@ -73,6 +93,7 @@ impl KairosEngine {
             game,
             ui_context,
             log,
+            _material_fallback_texture: material_fallback_texture,
             #[cfg(feature = "test-harness")]
             widget_rects: std::collections::HashMap::new(),
             #[cfg(feature = "test-harness")]

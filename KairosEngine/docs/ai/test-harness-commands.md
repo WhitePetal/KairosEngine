@@ -20,6 +20,9 @@ args = { ... }
 | `system.query_widget` | 查询指定 ID 的 widget 屏幕坐标（需要 windowed 模式） | id (string) | windowed |
 | `texture_inspector.set_format` | 设置纹理格式（例如 BC7, R8Unorm） | format (string) | windowed |
 | `texture_inspector.apply` | 应用 inspector 中的修改并保存到文件 | 无 | windowed |
+| `ui.open_inspector` | 检查 Inspector 窗口是否已打开 | 无 | windowed |
+| `project.select_asset` | 在项目树中按路径选中资产 | path (string) | windowed |
+| `material_inspector.assign_texture` | 向当前打开的 MaterialInspector 赋值纹理（等价于拖入 .texture；可传不存在的路径以验证 white.texture 降级） | texture (string) | windowed |
 
 ### 可用 Call 命令
 
@@ -75,6 +78,46 @@ action = "call"
 target = "texture_inspector.apply"
 ```
 
+#### `ui.open_inspector`
+
+检查 Inspector 窗口是否已打开。
+
+- **模式**: windowed
+
+```toml
+[[step]]
+action = "call"
+target = "ui.open_inspector"
+```
+
+#### `project.select_asset`
+
+在项目树中按路径选中资产。
+
+- **模式**: windowed
+- **参数**: path (string)
+
+```toml
+[[step]]
+action = "call"
+target = "project.select_asset"
+args = { path (string) }
+```
+
+#### `material_inspector.assign_texture`
+
+向当前打开的 MaterialInspector 赋值纹理（等价于拖入 .texture；可传不存在的路径以验证 white.texture 降级）。
+
+- **模式**: windowed
+- **参数**: texture (string)
+
+```toml
+[[step]]
+action = "call"
+target = "material_inspector.assign_texture"
+args = { texture (string) }
+```
+
 ## Assert 命令 (`action = "assert"`)
 
 用于验证引擎状态。在 TOML 中：
@@ -94,6 +137,7 @@ args = { ... }
 | `log_contains` | 断言引擎日志缓冲区包含指定模式字符串 | pattern (string) | both |
 | `wgpu_valid` | 断言 GPU 资源有效。v1 为 stub，始终通过 | resource_type (string, 可选) | windowed |
 | `toml_value_equals` | 断言 TOML 文件中指定 key 的值等于期望值 | file (string), key (string), value (string) | both |
+| `material_inspector.texture_loaded` | 断言当前打开的 MaterialInspector 运行时材质的纹理句柄已解析为已加载纹理，可选校验宽高（如 2x2 白色降级纹理） | width (int, 可选), height (int, 可选) | windowed |
 
 ### 可用 Assert 命令
 
@@ -178,6 +222,20 @@ args = { resource_type = "Texture" }
 action = "assert"
 target = "toml_value_equals"
 args = { file = "path/to/file.texture", key = "format", value = "BC7" }
+```
+
+#### `material_inspector.texture_loaded`
+
+断言当前打开的 MaterialInspector 运行时材质的纹理句柄已解析为已加载纹理，可选校验宽高（如 2x2 白色降级纹理）。
+
+- **模式**: windowed
+- **参数**: width (int, 可选), height (int, 可选)
+
+```toml
+[[step]]
+action = "assert"
+target = "material_inspector.texture_loaded"
+args = { width = 2, height = 2 }
 ```
 
 ## Input 命令 (`action = "input"`)

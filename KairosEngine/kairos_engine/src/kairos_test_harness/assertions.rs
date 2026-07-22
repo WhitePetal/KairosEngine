@@ -144,6 +144,68 @@ pub fn assert_toml_value_equals(args: &toml::Value) -> StepResult {
     }
 }
 
+/// Snapshot of the open MaterialInspector's runtime-material texture state.
+///
+/// Gathered by the dispatch layer (which has engine access) and handed to
+/// [`assert_material_inspector_texture_loaded`] as plain data so the
+/// assertion itself stays pure and unit-testable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MaterialInspectorTextureState {
+    /// No MaterialInspector is currently open.
+    NoInspector,
+    /// The runtime Material asset has not finished loading yet.
+    MaterialNotLoaded,
+    /// The runtime Material has no texture assigned.
+    NoTexture,
+    /// A texture handle is assigned but the texture asset never resolved
+    /// (e.g. the referenced file does not exist on disk).
+    TextureUnresolved,
+    /// The texture handle resolves to a loaded texture with these dimensions.
+    Loaded { width: u32, height: u32 },
+}
+
+/// Assert that the open MaterialInspector's runtime Material has a texture
+/// handle that resolves to a loaded texture.
+///
+/// Optional integer args `width` / `height` additionally pin the loaded
+/// texture's dimensions (e.g. the 2x2 white fallback texture).
+pub fn assert_material_inspector_texture_loaded(
+    state: MaterialInspectorTextureState,
+    args: &toml::Value,
+) -> StepResult {
+    let expected_width = args
+        .get("width")
+        .and_then(|v| v.as_integer())
+        .map(|v| v as u32);
+    let expected_height = args
+        .get("height")
+        .and_then(|v| v.as_integer())
+        .map(|v| v as u32);
+
+    match state {
+        MaterialInspectorTextureState::Loaded { width, height } => {
+            if let Some(expected) = expected_width
+                && expected != width
+            {
+                return StepResult::err(format!(
+                    "material_inspector.texture_loaded: expected texture width {expected}, got {width}"
+                ));
+            }
+            if let Some(expected) = expected_height
+                && expected != height
+            {
+                return StepResult::err(format!(
+                    "material_inspector.texture_loaded: expected texture height {expected}, got {height}"
+                ));
+            }
+            StepResult::ok()
+        }
+        other => StepResult::err(format!(
+            "material_inspector.texture_loaded: runtime material texture is not loaded (state: {other:?})"
+        )),
+    }
+}
+
 /// Parse and evaluate a count condition like "count >= 1" or "count == 0".
 fn evaluate_count_condition(actual: usize, condition: &str) -> StepResult {
     let condition = condition.trim();
@@ -362,5 +424,67 @@ mod tests {
         let result = assert_toml_value_equals(&args);
         assert!(!result.ok);
         assert!(result.message.contains("not found"));
+    }
+
+    // --- material_inspector.texture_loaded ---
+
+    #[test]
+    fn material_texture_loaded_passes_with_matching_dims() {
+        let state = MaterialInspectorTextureState::Loaded {
+            width: 2,
+            height: 2,
+        };
+        let args: toml::Value = toml::from_str("width = 2\nheight = 2").unwrap();
+        let result = assert_material_inspector_texture_loaded(state, &args);
+        assert!(result.ok, "{}", result.message);
+    }
+
+    #[test]
+    fn material_texture_loaded_passes_without_dims() {
+        let state = MaterialInspectorTextureState::Loaded {
+            width: 64,
+            height: 64,
+        };
+        let args = toml::Value::Table(toml::Table::new());
+        let result = assert_material_inspector_texture_loaded(state, &args);
+        assert!(result.ok, "{}", result.message);
+    }
+
+    #[test]
+    fn material_texture_loaded_fails_on_width_mismatch() {
+        let state = MaterialInspectorTextureState::Loaded {
+            width: 2,
+            height: 2,
+        };
+        let args: toml::Value = toml::from_str("width = 4").unwrap();
+        let result = assert_material_inspector_texture_loaded(state, &args);
+        assert!(!result.ok);
+        assert!(result.message.contains("width"));
+    }
+
+    #[test]
+    fn material_texture_loaded_fails_on_height_mismatch() {
+        let state = MaterialInspectorTextureState::Loaded {
+            width: 2,
+            height: 2,
+        };
+        let args: toml::Value = toml::from_str("height = 4").unwrap();
+        let result = assert_material_inspector_texture_loaded(state, &args);
+        assert!(!result.ok);
+        assert!(result.message.contains("height"));
+    }
+
+    #[test]
+    fn material_texture_loaded_fails_when_not_resolved() {
+        let args = toml::Value::Table(toml::Table::new());
+        for state in [
+            MaterialInspectorTextureState::NoInspector,
+            MaterialInspectorTextureState::MaterialNotLoaded,
+            MaterialInspectorTextureState::NoTexture,
+            MaterialInspectorTextureState::TextureUnresolved,
+        ] {
+            let result = assert_material_inspector_texture_loaded(state, &args);
+            assert!(!result.ok, "state {state:?} should not pass");
+        }
     }
 }

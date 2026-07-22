@@ -493,7 +493,7 @@ impl Inspector for TextureInspector {
                             row.col(|ui| {
                                 // Tag for test harness
                                 ui.push_id("format_dropdown", |ui| {
-                                ComboBox::from_id_salt("texture_format")
+                                let _combo_resp = ComboBox::from_id_salt("texture_format")
                                     .width(w_format)
                                     .selected_text(format!("{:?}", ext.serialized.format))
                                     .show_ui(ui, |ui| {
@@ -542,11 +542,11 @@ impl Inspector for TextureInspector {
                                     let rects = d.get_temp_mut_or_default::<
                                         std::collections::HashMap<String, egui::Rect>,
                                     >(egui::Id::new("__kairos_widget_rects"));
-                                    rects.insert("format_dropdown".into(), combo_resp.response.rect);
+                                    rects.insert("format_dropdown".into(), _combo_resp.response.rect);
                                     let ids = d.get_temp_mut_or_default::<
                                         std::collections::HashMap<String, egui::Id>,
                                     >(egui::Id::new("__kairos_widget_egui_ids"));
-                                    ids.insert("format_dropdown".into(), combo_resp.response.id);
+                                    ids.insert("format_dropdown".into(), _combo_resp.response.id);
                                 });
 
                                 }); // push_id("format_dropdown")

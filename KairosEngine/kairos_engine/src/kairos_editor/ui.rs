@@ -391,7 +391,7 @@ impl Context {
         });
     }
 
-    pub fn handle(&mut self, engine: &mut Engine, ui: &egui::Ui, _log: &mut Log) {
+    pub fn handle(&mut self, engine: &mut Engine, ui: &egui::Ui, log: &mut Log) {
         while let Some(msg) = self.messager.messages.pop_front() {
             match msg {
                 Message::CreateToolbar => {
@@ -710,7 +710,11 @@ impl Context {
                         && let Some(material_inspector) =
                             inspector.get_inspector_mut::<MaterialInspector>()
                     {
-                        material_inspector.drop_texture(&mut engine.assets_server, texture_path);
+                        material_inspector.drop_texture(
+                            &mut engine.assets_server,
+                            texture_path,
+                            log,
+                        );
                     }
                 }
                 Message::MaterialInspectorClearTexture(_mat_path) => {

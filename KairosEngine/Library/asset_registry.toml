@@ -1351,6 +1351,10 @@ guid = "57f10d2d-6a0e-4291-85c1-eb4d47a745ff"
 path = "kairos_engine/tests/integration/main.rs"
 
 [[entries]]
+guid = "f25fda2d-070b-4909-bb09-3d565690cf23"
+path = "kairos_engine/tests/integration/material_inspector.rs"
+
+[[entries]]
 guid = "52de672a-0be1-4975-8d3e-4887a71ffe27"
 path = "kairos_engine/tests/integration/math"
 
@@ -1545,6 +1549,10 @@ path = "tests/runtime"
 [[entries]]
 guid = "0ac34c1b-bfbe-455a-ba76-e4ba26d36df3"
 path = "tests/runtime/material_inspector.toml"
+
+[[entries]]
+guid = "b68a6f1b-6a46-4153-9b23-88117e8593db"
+path = "tests/runtime/material_inspector_texture_fallback.toml"
 
 [[entries]]
 guid = "88e757fb-de12-4731-bee9-9061a8a0cfda"

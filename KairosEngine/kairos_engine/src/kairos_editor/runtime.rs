@@ -288,7 +288,7 @@ impl KairosEditorRuntime {
                         return;
                     };
 
-                    let raw_input = egui_state.take_egui_input(&window);
+                    let mut raw_input = egui_state.take_egui_input(&window);
 
                     // Inject egui events from the test harness (e.g. click_widget)
                     // so they are processed by egui during this frame's run_ui.
