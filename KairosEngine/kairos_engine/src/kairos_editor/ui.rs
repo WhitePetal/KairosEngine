@@ -61,6 +61,7 @@ pub mod docking_tab;
 pub mod egui_ext;
 pub mod game_window;
 pub mod global_styles;
+pub mod ide_detection;
 pub mod hierarchy_window;
 pub mod inspector;
 pub mod inspector_window;

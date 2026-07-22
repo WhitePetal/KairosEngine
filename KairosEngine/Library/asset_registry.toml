@@ -1087,6 +1087,10 @@ guid = "8155cb1a-994c-4bd4-a1cf-1c8148b67c2a"
 path = "./kairos_engine/src/kairos_editor/ui/hierarchy_window.rs"
 
 [[entries]]
+guid = "7f5eaa58-3022-4555-b75a-d1c6ba46f1bf"
+path = "./kairos_engine/src/kairos_editor/ui/ide_detection.rs"
+
+[[entries]]
 guid = "8d0a7167-4508-4946-afcf-3f77bca3ae4f"
 path = "./kairos_engine/src/kairos_editor/ui/inspector"
 

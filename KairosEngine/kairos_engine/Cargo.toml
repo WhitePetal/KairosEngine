@@ -29,6 +29,7 @@ petgraph = "0.8.3"
 winit = { version = "0.30", features = ["android-native-activity"] }
 env_logger = "0.10"
 log = "0.4"
+open = "5.4.0"
 native-dialog = "0.9.6"
 serde = "1.0.228"
 sonic-rs = "0.5.7"

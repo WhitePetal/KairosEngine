@@ -319,25 +319,12 @@ impl ProjectWindow {
         self.model.dragging = None
     }
 
-    /// 通过 VS Code 打开文件。
-    /// 优先尝试 `code` 命令（终端环境），失败时回退到 macOS 完整路径。
-    /// `--reuse-window` 复用已有窗口。
+    /// 使用系统上已安装的 IDE 打开文件（自动检测优先级最高的 IDE）。
     fn open_file_in_vscode(path: &std::path::Path) {
-        let result = std::process::Command::new("code")
-            .arg(path)
-            .arg("--reuse-window")
-            .spawn()
-            .or_else(|_| {
-                std::process::Command::new(
-                    "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code",
-                )
-                .arg(path)
-                .arg("--reuse-window")
-                .spawn()
-            });
-
-        if let Err(e) = result {
-            log::warn!("Failed to open '{}' with VS Code: {e}", path.display());
+        if !super::ide_detection::open_file(path) {
+            log::warn!(
+                "No supported IDE detected. Install one of: VS Code, Zed, Cursor, etc."
+            );
         }
     }
 
