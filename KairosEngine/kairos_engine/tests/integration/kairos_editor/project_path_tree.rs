@@ -480,3 +480,152 @@ fn delete_nonexistent_node_fails() {
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("node not found"));
 }
+
+// ---- find_assets_by_kind ----
+
+#[test]
+fn find_assets_by_kind_returns_matching_nodes() {
+    let (_tmp, mut graph, mut registry) = setup();
+    let root = graph.get_root_node();
+
+    // Create shader nodes (supported by create_node)
+    graph
+        .create_node(
+            &mut registry,
+            CreateRequest {
+                base_node: root,
+                name: "default".into(),
+                kind: AssetKind::Shader,
+            },
+        )
+        .unwrap();
+    graph
+        .create_node(
+            &mut registry,
+            CreateRequest {
+                base_node: root,
+                name: "ui".into(),
+                kind: AssetKind::Shader,
+            },
+        )
+        .unwrap();
+
+    // Create a Script node (should NOT be returned when filtering for Shader)
+    graph
+        .create_node(
+            &mut registry,
+            CreateRequest {
+                base_node: root,
+                name: "main".into(),
+                kind: AssetKind::Script,
+            },
+        )
+        .unwrap();
+
+    let shaders = graph.find_assets_by_kind(AssetKind::Shader);
+    assert_eq!(shaders.len(), 2, "should find exactly 2 shader nodes");
+
+    let names: Vec<String> = shaders.iter().map(|n| n.name()).collect();
+    assert!(names.contains(&"default".into()));
+    assert!(names.contains(&"ui".into()));
+}
+
+#[test]
+fn find_assets_by_kind_empty_when_no_match() {
+    let (_tmp, mut graph, mut registry) = setup();
+    let root = graph.get_root_node();
+
+    // Only create directories (no shaders)
+    graph
+        .create_node(
+            &mut registry,
+            CreateRequest {
+                base_node: root,
+                name: "subdir".into(),
+                kind: AssetKind::Directory,
+            },
+        )
+        .unwrap();
+
+    let shaders = graph.find_assets_by_kind(AssetKind::Shader);
+    assert!(shaders.is_empty(), "no shader nodes should be found");
+}
+
+#[test]
+fn find_assets_by_kind_only_directories() {
+    let (_tmp, mut graph, mut registry) = setup();
+    let root = graph.get_root_node();
+
+    graph
+        .create_node(
+            &mut registry,
+            CreateRequest {
+                base_node: root,
+                name: "assets".into(),
+                kind: AssetKind::Directory,
+            },
+        )
+        .unwrap();
+    graph
+        .create_node(
+            &mut registry,
+            CreateRequest {
+                base_node: root,
+                name: "scripts".into(),
+                kind: AssetKind::Directory,
+            },
+        )
+        .unwrap();
+
+    let dirs = graph.find_assets_by_kind(AssetKind::Directory);
+    // Root dir + the two newly created
+    assert_eq!(dirs.len(), 3, "should find 3 directory nodes");
+}
+
+#[test]
+fn find_assets_by_kind_nested_nodes() {
+    let (_tmp, mut graph, mut registry) = setup();
+    let root = graph.get_root_node();
+
+    // Create a nested structure: root/shaders/vertex
+    let shaders_dir = graph
+        .create_node(
+            &mut registry,
+            CreateRequest {
+                base_node: root,
+                name: "shaders".into(),
+                kind: AssetKind::Directory,
+            },
+        )
+        .unwrap();
+
+    graph
+        .create_node(
+            &mut registry,
+            CreateRequest {
+                base_node: shaders_dir,
+                name: "vertex".into(),
+                kind: AssetKind::Shader,
+            },
+        )
+        .unwrap();
+
+    // Also create a shader at root level
+    graph
+        .create_node(
+            &mut registry,
+            CreateRequest {
+                base_node: root,
+                name: "fragment".into(),
+                kind: AssetKind::Shader,
+            },
+        )
+        .unwrap();
+
+    let shaders = graph.find_assets_by_kind(AssetKind::Shader);
+    assert_eq!(shaders.len(), 2, "should find shaders at any depth");
+
+    let names: Vec<String> = shaders.iter().map(|n| n.name()).collect();
+    assert!(names.contains(&"vertex".into()));
+    assert!(names.contains(&"fragment".into()));
+}

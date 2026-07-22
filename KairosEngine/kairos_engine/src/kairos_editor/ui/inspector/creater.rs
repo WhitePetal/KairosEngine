@@ -4,6 +4,7 @@ use crate::{
     asset_loader::assets::AssetsServer,
     kairos_editor::{
         asset_registry::AssetKind,
+        project_path_tree::ProjectPathGraph,
         ui::inspector::{
             Inspector, audio::AudioInspector, code::CodeInspector, directory::DirectoryInspector,
             document::DocumentInspector, font::FontInspector, mesh::MeshInspector,
@@ -20,6 +21,7 @@ impl InspectorCreater {
         asset_kind: AssetKind,
         path: &Path,
         assets_server: &mut AssetsServer,
+        _project_graph: &ProjectPathGraph,
     ) -> Result<Box<dyn Inspector>, Box<dyn std::error::Error>> {
         match asset_kind {
             AssetKind::Directory => Ok(Box::new(DirectoryInspector::create(path, assets_server)?)),

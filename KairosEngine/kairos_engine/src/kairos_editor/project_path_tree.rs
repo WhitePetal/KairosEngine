@@ -205,6 +205,17 @@ impl ProjectPathGraph {
         None
     }
 
+    /// 按 [`AssetKind`] 过滤所有节点，返回匹配的节点引用。
+    ///
+    /// 遍历图中所有节点，筛选出 `kind` 与指定类型相匹配的节点。
+    /// 用于 MaterialInspector 的 shader 下拉列表等项目树查询场景。
+    pub fn find_assets_by_kind(&self, kind: AssetKind) -> Vec<&ProjectTreeNode> {
+        self.graph
+            .node_weights()
+            .filter(|node| node.kind == kind)
+            .collect()
+    }
+
     /// 获取节点的所有出边（即子节点列表）。
     pub fn get_edges(&self, node: NodeIndex) -> Edges<'_, (), Directed> {
         self.graph.edges(node)

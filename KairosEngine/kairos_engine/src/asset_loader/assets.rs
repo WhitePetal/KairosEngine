@@ -10,6 +10,7 @@ pub use asset::AudioAssetHandle;
 pub use asset::AudioAssetsSystem;
 pub use asset::MaterialAssetsSystem;
 pub use asset::MeshAssetsSystem;
+pub use asset::SerializedMaterialAssetsSystem;
 pub use asset::ShaderAssetsSystem;
 pub use asset::SyntaxAssetsSystem;
 pub use asset::TextureAssetsSystem;
