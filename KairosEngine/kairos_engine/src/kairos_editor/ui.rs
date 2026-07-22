@@ -647,12 +647,9 @@ impl Context {
                         && let Some(material_inspector) =
                             inspector.get_inspector_mut::<MaterialInspector>()
                     {
-                        material_inspector.change_shader(
-                            &mut engine.assets_server,
-                            shader_path,
-                        );
+                        material_inspector.change_shader(&mut engine.assets_server, shader_path);
+                        // material_inspector.save_file will be added in a future sprint
                     }
-                    // .mat file save will be added in a future sprint
                 }
             }
         }

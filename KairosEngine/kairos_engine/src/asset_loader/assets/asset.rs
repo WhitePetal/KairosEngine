@@ -295,7 +295,8 @@ where
             // accept the event if the storage is in Loading state with a
             // matching version — otherwise it's a stale event from a previous
             // load on a recycled slot.
-            if matches!(&self.storages[index.index], Entry::Loading { version } if *version == index.version) {
+            if matches!(&self.storages[index.index], Entry::Loading { version } if *version == index.version)
+            {
                 self.storages[index.index] = Entry::Some {
                     value: event.get_asset(),
                     version: index.version,

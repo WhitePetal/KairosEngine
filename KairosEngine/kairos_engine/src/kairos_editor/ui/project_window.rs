@@ -145,8 +145,12 @@ impl ProjectWindow {
         let data = self.model.project_path_graph.get_node(node)?;
         // Use the asset path for imported types (Texture → .texture, not .png).
         let inspector_path = data.asset_path.as_ref().unwrap_or(&data.path);
-        let inspector =
-            InspectorCreater::create_from_asseet_kind(data.kind, inspector_path, assets_server, &self.model.project_path_graph);
+        let inspector = InspectorCreater::create_from_asseet_kind(
+            data.kind,
+            inspector_path,
+            assets_server,
+            &self.model.project_path_graph,
+        );
         match inspector {
             Ok(inspector) => Some(super::inspector_window::InspectorNodeInfo {
                 name: data.name(),

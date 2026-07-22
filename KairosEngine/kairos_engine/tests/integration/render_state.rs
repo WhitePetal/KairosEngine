@@ -1,10 +1,12 @@
 use std::path::PathBuf;
 
 use kairos_engine::graphics::{
-    compare_function::CompareFunction, material::SerializedMaterial, render_state::{
+    compare_function::CompareFunction,
+    material::SerializedMaterial,
+    render_state::{
         BlendComponent, BlendFactor, BlendOperation, BlendPreset, BlendState, CullMode,
         PrimitiveTopology, RenderState,
-    }
+    },
 };
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
@@ -256,10 +258,7 @@ fn blend_preset_label() {
     assert_eq!(BlendPreset::Add.label(), "Add");
     assert_eq!(BlendPreset::Multiply.label(), "Multiply");
     assert_eq!(BlendPreset::AlphaBlend.label(), "AlphaBlend");
-    assert_eq!(
-        BlendPreset::Custom(BlendState::REPLACE).label(),
-        "Custom"
-    );
+    assert_eq!(BlendPreset::Custom(BlendState::REPLACE).label(), "Custom");
 }
 
 #[test]
@@ -370,10 +369,7 @@ fn all_existing_mat_files_deserialize() {
         .expect("workspace root")
         .join("res/materials");
     if !mats_dir.exists() {
-        panic!(
-            "materials directory not found at: {}",
-            mats_dir.display()
-        );
+        panic!("materials directory not found at: {}", mats_dir.display());
     }
     let mut failures = Vec::new();
     verify_mat_files(&mats_dir, &mut failures);

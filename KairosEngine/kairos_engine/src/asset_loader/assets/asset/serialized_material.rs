@@ -5,11 +5,7 @@ use tokio::sync::mpsc::{self, Sender};
 
 use crate::{
     asset_loader::{
-        assets::{
-            asset::{
-                self, AssetIndex, Assets, AssetsHandler, AssetsSystem,
-            },
-        },
+        assets::asset::{self, AssetIndex, Assets, AssetsHandler, AssetsSystem},
         consts,
     },
     graphics::material::SerializedMaterial,
@@ -82,13 +78,11 @@ impl asset::AssetLoader<LoadedEvent, SerializedMaterial> for Loader {
         path: std::path::PathBuf,
         asset_index: AssetIndex,
         sender: tokio::sync::mpsc::Sender<LoadedEvent>,
-        _denpendency_request_sender: mpsc::Sender<crate::asset_loader::assets::DependencyLoadRequestEvent>,
+        _denpendency_request_sender: mpsc::Sender<
+            crate::asset_loader::assets::DependencyLoadRequestEvent,
+        >,
     ) {
-        tokio::spawn(Self::load(
-            path,
-            asset_index,
-            sender,
-        ));
+        tokio::spawn(Self::load(path, asset_index, sender));
     }
 }
 

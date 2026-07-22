@@ -1,2 +1,4 @@
-label_width = 80.0
-combo_width = 250.0
+shader_selector_height = 20.0
+shader_selector_menu_border = 10.0
+shader_selector_menu_min_width = 10.0
+shader_selector_submenu_width_factor = 0.7

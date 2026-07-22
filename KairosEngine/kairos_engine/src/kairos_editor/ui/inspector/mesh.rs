@@ -1,10 +1,4 @@
-use std::{
-    cell::Cell,
-    fs,
-    ops::DerefMut,
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{cell::Cell, fs, ops::DerefMut, path::PathBuf, sync::Arc};
 
 use strum::{Display, EnumIter};
 
@@ -24,7 +18,7 @@ use crate::{
         mesh::{Mesh, wireframe},
     },
     kairos_editor::ui::{
-        Message, Messager, dialog::Dialog, inspector::Inspector, paths, scene_camera::SceneCamera
+        Message, Messager, dialog::Dialog, inspector::Inspector, paths, scene_camera::SceneCamera,
     },
     math::{Vector, float2, float3, float4, float4x4},
     spatial::AABB,
@@ -153,12 +147,14 @@ pub struct MeshInspector {
 
 impl MeshInspector {
     pub fn create_wireframe_mesh(&mut self, assets_server: &mut AssetsServer, mesh: Mesh) {
-        self.model.wireframe_mesh_handle = Some(assets_server.insert::<MeshAssetsSystem>(mesh, &self.model.wireframe_mesh_path));
+        self.model.wireframe_mesh_handle =
+            Some(assets_server.insert::<MeshAssetsSystem>(mesh, &self.model.wireframe_mesh_path));
     }
 
     fn draw_preview(&self, ui: &mut egui::Ui, mesh: &Mesh, dt: f32) {
         let mut guard = self.model.preview.lock();
-        let preview = guard.get_or_insert(PreviewState::new(mesh.compute_aabb(), &self.model.style));
+        let preview =
+            guard.get_or_insert(PreviewState::new(mesh.compute_aabb(), &self.model.style));
 
         // Try to receive a new egui texture id from a completed bind.
         if let Some(receiver) = &mut preview.bind_receiver {
@@ -263,10 +259,9 @@ impl Inspector for MeshInspector {
         let style = MeshInspectorStyle::new()?;
         let mesh_path = path.to_path_buf();
         let mesh_handle = assets_server.load::<MeshAssetsSystem>(&mesh_path);
-        let wireframe_material_handle =
-            assets_server.load::<MaterialAssetsSystem>(&PathBuf::from(
-                paths::PATH_MESH_INSPECTOR_PREVIEW_WIREFRAME_MATERIAL,
-            ));
+        let wireframe_material_handle = assets_server.load::<MaterialAssetsSystem>(&PathBuf::from(
+            paths::PATH_MESH_INSPECTOR_PREVIEW_WIREFRAME_MATERIAL,
+        ));
 
         let wireframe_mesh_path = mesh_path.with_added_extension(".wireframe_mesh");
 
@@ -314,7 +309,9 @@ impl Inspector for MeshInspector {
                 return;
             };
             if self.model.wireframe_mesh_handle.is_none() {
-                messager.send(Message::ModelInspectorCreateWireframeMesh(wireframe::create_wireframe_mesh(mesh)));
+                messager.send(Message::ModelInspectorCreateWireframeMesh(
+                    wireframe::create_wireframe_mesh(mesh),
+                ));
             }
 
             // ---- Source ----

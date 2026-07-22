@@ -327,6 +327,18 @@ guid = "4ff036ec-9eda-4a89-82f7-4b5eb4cbbeab"
 path = "./docs/ai/render-pipeline-resource-cache-conversation.md"
 
 [[entries]]
+guid = "ad46d6b6-40a6-4226-a3c1-1790e8f8cad3"
+path = "./docs/ai/research"
+
+[[entries]]
+guid = "ed83c761-0976-485b-9c58-cafe5c96890f"
+path = "./docs/ai/research/egui-menu-ring-components.md"
+
+[[entries]]
+guid = "0d00dcaa-b9a2-46a0-ae9a-dc61eb96c08f"
+path = "./docs/ai/research/egui-popup-menu-ring.md"
+
+[[entries]]
 guid = "e8196c52-0e4e-432e-a246-65fda4af5d2c"
 path = "./docs/ai/resource-manager-design.md"
 
@@ -1413,6 +1425,10 @@ path = "./kairos_engine/src/timer.rs"
 [[entries]]
 guid = "32a1ce2e-4da9-47cd-a253-af748fd9a743"
 path = "./kairos_engine/src/types.rs"
+
+[[entries]]
+guid = "426d13d2-f5ac-4948-ac5c-60fca2b39541"
+path = "./kairos_engine/test.wgsl"
 
 [[entries]]
 guid = "7dcc5fee-d0b1-4694-9772-cd224288336e"

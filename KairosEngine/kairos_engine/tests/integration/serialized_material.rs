@@ -1,10 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use kairos_engine::{
-    asset_loader::assets::{
-        AssetsServer, SerializedMaterialAssetsSystem,
-    },
-};
+use kairos_engine::asset_loader::assets::{AssetsServer, SerializedMaterialAssetsSystem};
 use tempfile::TempDir;
 
 fn create_mat_toml(dir: &Path, name: &str, shader_path: &str) -> PathBuf {
@@ -119,7 +115,11 @@ async fn serialized_material_nonexistent_file_returns_loading_handle() {
     let handle = assets.load::<SerializedMaterialAssetsSystem>(&fake_path);
 
     // Before handle(), the asset should still be Loading (not yet available)
-    assert!(assets.get::<SerializedMaterialAssetsSystem>(&handle).is_none());
+    assert!(
+        assets
+            .get::<SerializedMaterialAssetsSystem>(&handle)
+            .is_none()
+    );
 
     // After handle(), the load task will have failed, but the slot stays in Loading
     // (the asset system doesn't clear failed loads — that's acceptable behavior)

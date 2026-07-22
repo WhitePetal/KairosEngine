@@ -25,7 +25,8 @@ pub const PATH_DOCUMENT_INSPECTOR_STYLE: &'static str =
 pub const PATH_CODE_INSPECTOR_STYLE: &'static str = "Preferences/Styles/Inspectors/Code.toml";
 pub const PATH_SHADER_INSPECTOR_STYLE: &'static str = "Preferences/Styles/Inspectors/Shader.toml";
 pub const PATH_TEXTURE_INSPECTOR_STYLE: &'static str = "Preferences/Styles/Inspectors/Texture.toml";
-pub const PATH_MATERIAL_INSPECTOR_STYLE: &'static str = "Preferences/Styles/Inspectors/Material.toml";
+pub const PATH_MATERIAL_INSPECTOR_STYLE: &'static str =
+    "Preferences/Styles/Inspectors/Material.toml";
 pub const PATH_MESH_INSPECTOR_STYLE: &'static str = "Preferences/Styles/Inspectors/Mesh.toml";
 
 // Per-language syntax+theme configs.  Each TOML declares:

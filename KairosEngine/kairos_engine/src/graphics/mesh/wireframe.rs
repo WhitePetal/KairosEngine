@@ -84,12 +84,32 @@ pub fn create_wireframe_mesh_quads(mesh: &Mesh) -> Mesh {
                 // Absolute vertex offset for this triangle's first vertex.
                 let tri_vo = vert_offset + (t - start) * VERTS_PER_TRI;
 
-                emit_edge_quad(&mesh.vertices, i0, i1, half_thick, tri_vo, &mut verts, &mut idxs);
                 emit_edge_quad(
-                    &mesh.vertices, i1, i2, half_thick, tri_vo + VERTS_PER_EDGE, &mut verts, &mut idxs,
+                    &mesh.vertices,
+                    i0,
+                    i1,
+                    half_thick,
+                    tri_vo,
+                    &mut verts,
+                    &mut idxs,
                 );
                 emit_edge_quad(
-                    &mesh.vertices, i2, i0, half_thick, tri_vo + VERTS_PER_EDGE * 2, &mut verts, &mut idxs,
+                    &mesh.vertices,
+                    i1,
+                    i2,
+                    half_thick,
+                    tri_vo + VERTS_PER_EDGE,
+                    &mut verts,
+                    &mut idxs,
+                );
+                emit_edge_quad(
+                    &mesh.vertices,
+                    i2,
+                    i0,
+                    half_thick,
+                    tri_vo + VERTS_PER_EDGE * 2,
+                    &mut verts,
+                    &mut idxs,
                 );
             }
 
