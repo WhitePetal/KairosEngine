@@ -5,17 +5,27 @@ pub mod hierarchy_panel;
 use std::{any::type_name, cell::Cell, fs, ops::Deref, path::PathBuf, sync::Arc};
 
 use crate::{
-    asset_loader::assets::AssetsServer, kairos_editor::{
-        Engine, asset_registry::{AssetKind, AssetRegistry}, project_path_tree::{
+    asset_loader::assets::AssetsServer,
+    kairos_editor::{
+        Engine,
+        asset_registry::{AssetKind, AssetRegistry},
+        project_path_tree::{
             ProjectPathGraph, create_request::CreateRequest, tree_node::ProjectTreeNode,
-        }, ui::{
-            self, Messager, UIReader, drag::Drag, global_styles::GlobalStyles, inspector::creater::InspectorCreater, project_window::{
+        },
+        ui::{
+            self, Messager, UIReader,
+            drag::Drag,
+            global_styles::GlobalStyles,
+            inspector::creater::InspectorCreater,
+            project_window::{
                 content_panel::{ContentPanel, ContentStyle},
                 context_menu::ContextMenuState,
                 hierarchy_panel::{HierarchyPanel, HierarchyStyle},
             },
         },
-    }, kairos_game::KairosGame, log::Log,
+    },
+    kairos_game::KairosGame,
+    log::Log,
 };
 use egui::{RichText, Vec2};
 use parking_lot::Mutex;
@@ -299,9 +309,7 @@ impl ProjectWindow {
     /// 使用系统上已安装的 IDE 打开文件（自动检测优先级最高的 IDE）。
     fn open_file_in_vscode(path: &std::path::Path) {
         if !super::ide_detection::open_file(path) {
-            log::warn!(
-                "No supported IDE detected. Install one of: VS Code, Zed, Cursor, etc."
-            );
+            log::warn!("No supported IDE detected. Install one of: VS Code, Zed, Cursor, etc.");
         }
     }
 

@@ -47,9 +47,7 @@ pub fn dispatch_call(step: &TestStep, engine: &mut KairosEngine) -> StepResult {
             let args = match step.args.as_ref() {
                 Some(a) => a,
                 None => {
-                    return StepResult::err(
-                        "assign_texture requires args with 'texture' field",
-                    )
+                    return StepResult::err("assign_texture requires args with 'texture' field");
                 }
             };
             let texture = match args.get("texture").and_then(|v| v.as_str()) {

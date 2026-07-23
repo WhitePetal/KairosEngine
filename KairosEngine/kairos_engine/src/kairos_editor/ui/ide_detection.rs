@@ -90,9 +90,7 @@ const KNOWN_IDES: &[IdeDescriptor] = &[
     IdeDescriptor {
         name: "Fleet",
         cli: "fleet",
-        fallbacks: &[
-            "/Applications/Fleet.app/Contents/MacOS/fleet",
-        ],
+        fallbacks: &["/Applications/Fleet.app/Contents/MacOS/fleet"],
     },
 ];
 
@@ -202,7 +200,11 @@ pub fn open_file(path: &Path) -> bool {
         log::warn!(
             "No supported IDE detected on this system. \
              Supported: {}",
-            KNOWN_IDES.iter().map(|i| i.name).collect::<Vec<_>>().join(", ")
+            KNOWN_IDES
+                .iter()
+                .map(|i| i.name)
+                .collect::<Vec<_>>()
+                .join(", ")
         );
         return false;
     }
@@ -251,7 +253,11 @@ pub fn open_file_with(path: &Path, ide_name: &str) -> bool {
     match target {
         Some(ide) => match open::with_detached(&abs_path, &ide.binary) {
             Ok(()) => {
-                log::info!("Opened '{}' with {} (by name)", abs_path.display(), ide.name);
+                log::info!(
+                    "Opened '{}' with {} (by name)",
+                    abs_path.display(),
+                    ide.name
+                );
                 true
             }
             Err(e) => {

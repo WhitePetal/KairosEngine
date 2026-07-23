@@ -1,5 +1,3 @@
-
-
 pub enum Drag<T> {
     Draging(T),
     Stoped(T),

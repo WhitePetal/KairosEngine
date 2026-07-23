@@ -1,13 +1,7 @@
 use crate::{
-    asset_loader::assets::{AssetsServer},
-    audio::AudioEngine,
-    ecs::world::World,
-    graphics::graphics_graph::GraphicsCommand,
-    inputs::InputEngine,
-    kairos_game::KairosGame,
-    log::Log,
-    physics::PhysicsEngine,
-    timer::Time,
+    asset_loader::assets::AssetsServer, audio::AudioEngine, ecs::world::World,
+    graphics::graphics_graph::GraphicsCommand, inputs::InputEngine, kairos_game::KairosGame,
+    log::Log, physics::PhysicsEngine, timer::Time,
 };
 use egui::Visuals;
 use winit::event::KeyEvent;

@@ -1,7 +1,8 @@
-use std::{cell::Cell, fs, ops::Deref, path::{PathBuf}, sync::Arc};
+use std::{cell::Cell, fs, ops::DerefMut, path::PathBuf, sync::Arc};
 
 use egui::{
-    Vec2, menu::{MenuConfig, SubMenuButton},
+    Vec2,
+    menu::{MenuConfig, SubMenuButton},
 };
 use egui_extras::{Column, TableBuilder};
 use parking_lot::Mutex;
@@ -12,15 +13,28 @@ use crate::{
     asset_loader::assets::{
         AssetHandle, AssetsServer, MaterialAssetsSystem, SerializedMaterialAssetsSystem,
         ShaderAssetsSystem, TextureAssetsSystem,
-    }, graphics::{
+    },
+    graphics::{
         compare_function::CompareFunction,
         material::SerializedMaterial,
-        render_state::{BlendFactor, BlendOperation, BlendPreset, BlendState, CullMode, PrimitiveTopology, RenderState},
-    }, kairos_editor::{
-        asset_registry::AssetKind, project_path_tree::ProjectPathGraph, ui::{
-            Message, Messager, UIReader, dialog::{ConfirmDialogWindow, Dialog}, drag::Drag, inspector::Inspector, paths, project_window::ProjectWindow,
+        render_state::{
+            BlendFactor, BlendOperation, BlendPreset, BlendState, CullMode, PrimitiveTopology,
+            RenderState,
         },
-    }, math,
+    },
+    kairos_editor::{
+        asset_registry::AssetKind,
+        project_path_tree::ProjectPathGraph,
+        ui::{
+            Message, Messager, UIReader,
+            dialog::{ConfirmDialogWindow, Dialog},
+            drag::Drag,
+            inspector::Inspector,
+            paths,
+            project_window::ProjectWindow,
+        },
+    },
+    math,
 };
 
 // ============================================================
@@ -35,7 +49,7 @@ struct MaterialInspectorStyle {
     shader_selector_submenu_width_factor: f32,
 
     texture_label_height: f32,
-    texture_background_color:  math::Color32,
+    texture_background_color: math::Color32,
     texture_drag_hover_background_color: math::Color32,
     texture_empty_stroke_color: math::Color32,
     texture_fill_stroke_color: math::Color32,
@@ -158,7 +172,10 @@ impl Thumbnail {
             egui::TextureOptions::LINEAR,
         );
 
-        Self { path: path.clone(), handle }
+        Self {
+            path: path.clone(),
+            handle,
+        }
     }
 }
 
@@ -168,26 +185,19 @@ impl Thumbnail {
 
 struct MaterialInspectorModel {
     style: MaterialInspectorStyle,
-    /// .mat 文件的磁盘路径
-    path: PathBuf,
-    /// SerializedMaterial 异步句柄（通过 assets_server.load 获取）
     serialized_handle: Arc<AssetHandle<SerializedMaterialAssetsSystem>>,
+    /// SerializedMaterial
+    serialized_material: Arc<Mutex<Option<SerializedMaterial>>>,
     /// 运行时 Material 句柄（通过 assets_server.load 获取）
     material_handle: Arc<AssetHandle<MaterialAssetsSystem>>,
     /// 按目录层级组织的 shader 菜单树
     shader_menu_tree: Vec<ShaderMenuNode>,
-    /// 当前选中的 shader 路径，首次 draw 时从 SerializedMaterial 异步加载
-    current_shader_path: Arc<Mutex<Option<PathBuf>>>,
-    /// 当前选中的 texture 路径，首次 draw 时从 SerializedMaterial 异步加载
-    current_texture_path: Arc<Mutex<Option<Option<PathBuf>>>>,
-    /// 用户是否修改了（未保存）
-    dirty: Cell<bool>,
     /// 缩略图缓存
     thumbnail: Arc<Mutex<Option<Thumbnail>>>,
-    /// 当前的 RenderState，首次 draw 时从 SerializedMaterial 异步加载
-    current_render_state: Arc<Mutex<Option<RenderState>>>,
     /// 用户在 blend 下拉中显式选择了 Custom（即使当前值仍命中某个预设也展开子字段）
     blend_custom_expanded: Cell<bool>,
+    /// 用户是否修改了（未保存）
+    dirty: Cell<bool>,
 }
 
 // ============================================================
@@ -312,28 +322,34 @@ impl MaterialInspector {
         }
     }
 
-    fn draw_texture_col(&self, ui: &mut egui::Ui, reader: &UIReader, messager: &mut Messager, assets_server: &AssetsServer) {
+    fn draw_texture_col(
+        &self,
+        ui: &mut egui::Ui,
+        reader: &UIReader,
+        messager: &mut Messager,
+        assets_server: &AssetsServer,
+        current_texture_path: &Option<PathBuf>,
+    ) {
         ui.horizontal(|ui| {
-            self.draw_texture_rect(ui, reader, messager, assets_server);
+            self.draw_texture_rect(ui, reader, messager, assets_server, current_texture_path);
 
-            let texture_guard = self.model.current_texture_path.lock();
-            let current_texture_path = texture_guard.deref();
-
-            if let Some(Some(texture_path)) = current_texture_path {
+            if let Some(texture_path) = current_texture_path {
                 if ui.button("X").clicked() {
-                    messager.send(Message::MaterialInspectorClearTexture(
-                        self.model.path.clone(),
-                    ));
+                    messager.send(Message::MaterialInspectorClearTexture);
                 }
-                ui.add(egui::Label::new(
-                    texture_path.to_string_lossy(),
-                )
-                .extend());
+                ui.add(egui::Label::new(texture_path.to_string_lossy()).extend());
             }
         });
     }
 
-    fn draw_texture_rect(&self, ui: &mut egui::Ui, reader: &UIReader, messager: &mut Messager, assets_server: &AssetsServer) {
+    fn draw_texture_rect(
+        &self,
+        ui: &mut egui::Ui,
+        reader: &UIReader,
+        messager: &mut Messager,
+        assets_server: &AssetsServer,
+        current_texture_path: &Option<PathBuf>,
+    ) {
         let texture_size = self.model.style.texture_label_height;
         let texture_size = Vec2::new(texture_size, texture_size);
         let texture_rect = egui::Rect::from_min_size(ui.cursor().min, texture_size);
@@ -343,7 +359,8 @@ impl MaterialInspector {
             .and_then(|d| d.get_dragging().as_ref());
         let mut drop_path = None;
         let is_valid_drag = dragging.is_some_and(|d| {
-            let valid = d.get().extension().and_then(|e| e.to_str()) == AssetKind::Texture.extension();
+            let valid =
+                d.get().extension().and_then(|e| e.to_str()) == AssetKind::Texture.extension();
             if valid {
                 drop_path = Self::check_texture_drop(ui, d, texture_rect);
             }
@@ -354,16 +371,13 @@ impl MaterialInspector {
         if let Some(texture_path) = drop_path {
             // 清除缩略图缓存，下次 draw 会重新生成
             *self.model.thumbnail.lock() = None;
-            messager.send(Message::MaterialInspectorDropTexture(
-                self.model.path.clone(),
-                texture_path,
-            ));
+            messager.send(Message::MaterialInspectorDropTexture(texture_path));
         }
 
         // let pointer_down = ui.input(|i| i.pointer.any_down());
-        let pointer_over = ui.input(|i| i.pointer.interact_pos()).map_or(false, |p| {
-            texture_rect.contains(p)
-        });
+        let pointer_over = ui
+            .input(|i| i.pointer.interact_pos())
+            .map_or(false, |p| texture_rect.contains(p));
         let is_drag_hover = pointer_over && is_valid_drag;
 
         // ── 背景 + 边框 ──
@@ -373,21 +387,15 @@ impl MaterialInspector {
             self.model.style.texture_background_color
         };
 
-        let texture_guard = self.model.current_texture_path.lock();
-        let current_texture_path = texture_guard.deref();
-
         let stroke_color = if is_drag_hover {
             self.model.style.texture_drag_hover_stroke_color
-        } else if matches!(current_texture_path, Some(Some(_))) {
+        } else if matches!(current_texture_path, Some(_)) {
             self.model.style.texture_fill_stroke_color
         } else {
             self.model.style.texture_empty_stroke_color
         };
 
-        let (_texture_response, painter) = ui.allocate_painter(
-            texture_size,
-            egui::Sense::click(),
-        );
+        let (_texture_response, painter) = ui.allocate_painter(texture_size, egui::Sense::click());
         painter.rect(
             texture_rect,
             egui::CornerRadius::same(self.model.style.texture_corner_radius),
@@ -399,13 +407,10 @@ impl MaterialInspector {
         let padding = 2.0;
         let thumb_size = texture_size.x - padding - padding;
         let thumb_rect = egui::Rect::from_min_size(
-            egui::pos2(
-                texture_rect.min.x + padding,
-                texture_rect.min.y + padding,
-            ),
+            egui::pos2(texture_rect.min.x + padding, texture_rect.min.y + padding),
             Vec2::splat(thumb_size),
         );
-        if let Some(Some(texture_path)) = current_texture_path {
+        if let Some(texture_path) = current_texture_path {
             // ── 缩略图 ──
             // 尝试从缓存或 assets_server 取缩略图
             let mut thumb_guard = self.model.thumbnail.lock();
@@ -470,36 +475,32 @@ impl MaterialInspector {
                     .selectable_label(is_selected, &node.display_name)
                     .clicked()
                 {
-                    messager.send(Message::MaterialInspectorChangeShader(
-                        self.model.path.clone(),
-                        shader_path.clone(),
-                    ));
+                    messager.send(Message::MaterialInspectorChangeShader(shader_path.clone()));
                 }
             } else {
                 // Directory — 子菜单
                 let mut menu = SubMenuButton::new(&node.display_name);
                 menu.button = menu.button.min_size(Vec2::new(min_menu_width, menu_height));
-                menu.config(MenuConfig::new().close_behavior(egui::PopupCloseBehavior::CloseOnClick))
-                    .ui(ui, |ui| {
-                        self.draw_shader_menu(
-                            ui,
-                            &node.children,
-                            current_path,
-                            messager,
-                            min_menu_width,
-                            menu_height,
-                        );
-                    });
+                menu.config(
+                    MenuConfig::new().close_behavior(egui::PopupCloseBehavior::CloseOnClick),
+                )
+                .ui(ui, |ui| {
+                    self.draw_shader_menu(
+                        ui,
+                        &node.children,
+                        current_path,
+                        messager,
+                        min_menu_width,
+                        menu_height,
+                    );
+                });
             }
         }
     }
 
     /// 发送 RenderState 变更消息（由 Context::handle 回写运行时 Material + 缓存 + dirty）
     fn send_render_state(&self, messager: &mut Messager, new_state: RenderState) {
-        messager.send(Message::MaterialInspectorChangeRenderState(
-            self.model.path.clone(),
-            new_state,
-        ));
+        messager.send(Message::MaterialInspectorChangeRenderState(new_state));
     }
 
     /// 以 `effective_blend` 为底应用一处子字段修改，发送新的 RenderState。
@@ -525,16 +526,12 @@ impl MaterialInspector {
     /// depth_test（None + CompareFunction）/ depth_write / cull_mode /
     /// blend_mode（预设 + Custom 展开 6 子字段）/ topology。
     /// 每次修改发送 Message 回写运行时 Material 并标记 dirty。
-    fn draw_render_state_section(&self, ui: &mut egui::Ui, messager: &mut Messager) {
-        let render_state = {
-            let guard = self.model.current_render_state.lock();
-            guard.clone()
-        };
-        let Some(render_state) = render_state else {
-            ui.label("Render state is loading...");
-            return;
-        };
-
+    fn draw_render_state_section(
+        &self,
+        ui: &mut egui::Ui,
+        messager: &mut Messager,
+        render_state: &RenderState,
+    ) {
         let row_h = self.model.style.render_state_row_height;
         TableBuilder::new(ui)
             .striped(true)
@@ -558,7 +555,7 @@ impl MaterialInspector {
                                         messager,
                                         RenderState {
                                             depth_test: None,
-                                            ..render_state
+                                            ..*render_state
                                         },
                                     );
                                 }
@@ -571,7 +568,7 @@ impl MaterialInspector {
                                             messager,
                                             RenderState {
                                                 depth_test: Some(cf),
-                                                ..render_state
+                                                ..*render_state
                                             },
                                         );
                                     }
@@ -595,7 +592,7 @@ impl MaterialInspector {
                                     messager,
                                     RenderState {
                                         depth_write: checked,
-                                        ..render_state
+                                        ..*render_state
                                     },
                                 );
                             }
@@ -622,7 +619,7 @@ impl MaterialInspector {
                                             messager,
                                             RenderState {
                                                 cull_mod: mode,
-                                                ..render_state
+                                                ..*render_state
                                             },
                                         );
                                     }
@@ -660,7 +657,11 @@ impl MaterialInspector {
                                     Some(BlendPreset::Custom(effective_blend)),
                                 ] {
                                     if ui
-                                        .selectable_value(&mut selected, option, option_label(option))
+                                        .selectable_value(
+                                            &mut selected,
+                                            option,
+                                            option_label(option),
+                                        )
                                         .changed()
                                     {
                                         match option {
@@ -671,13 +672,13 @@ impl MaterialInspector {
                                                     messager,
                                                     RenderState {
                                                         blend_mod: Some(effective_blend),
-                                                        ..render_state
+                                                        ..*render_state
                                                     },
                                                 );
                                             }
                                             other => {
                                                 self.model.blend_custom_expanded.set(false);
-                                                let mut new_state = render_state;
+                                                let mut new_state = *render_state;
                                                 Self::apply_blend_option(&mut new_state, other);
                                                 self.send_render_state(messager, new_state);
                                             }
@@ -771,7 +772,7 @@ impl MaterialInspector {
                                             messager,
                                             RenderState {
                                                 topology,
-                                                ..render_state
+                                                ..*render_state
                                             },
                                         );
                                     }
@@ -808,16 +809,13 @@ impl Inspector for MaterialInspector {
 
         let model = MaterialInspectorModel {
             style,
-            path: mat_path,
             serialized_handle,
+            serialized_material: Arc::new(Mutex::new(None)),
             material_handle,
             shader_menu_tree,
-            current_shader_path: Arc::new(Mutex::new(None)),
-            current_texture_path: Arc::new(Mutex::new(None)),
-            dirty: Cell::new(false),
             thumbnail: Arc::new(Mutex::new(None)),
-            current_render_state: Arc::new(Mutex::new(None)),
             blend_custom_expanded: Cell::new(false),
+            dirty: Cell::new(false),
         };
 
         Ok(Self { model })
@@ -834,42 +832,25 @@ impl Inspector for MaterialInspector {
         // ---- Cmd/Ctrl+S 快捷键触发 Apply（issue #36，ADR §4.5.2）----
         // modifiers.command：macOS = ⌘、Windows/Linux = Ctrl，跨平台保存习惯一致
         // 与 Apply 按钮走同一条消息路径，仅在有未保存修改时触发
-        if self.model.dirty.get() && ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::S)) {
+        if self.model.dirty.get()
+            && ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::S))
+        {
             messager.send(self.apply_message());
         }
 
-        // ---- 异步加载 SerializedMaterial，获取 shader_path / texture_path / render_state ----
-        {
-            let mut current_shader = self.model.current_shader_path.lock();
-            let mut current_texture = self.model.current_texture_path.lock();
-            let mut current_render_state = self.model.current_render_state.lock();
-            if current_shader.is_none() || current_texture.is_none() || current_render_state.is_none() {
-                if let Some(serialized) = assets_server
-                    .get::<SerializedMaterialAssetsSystem>(&self.model.serialized_handle)
-                {
-                    if current_shader.is_none() {
-                        *current_shader = Some(serialized.shader_path.clone());
-                    }
-                    if current_texture.is_none() {
-                        *current_texture = Some(serialized.texture_path.clone());
-                    }
-                    if current_render_state.is_none() {
-                        *current_render_state = Some(serialized.render_state);
-                    }
-                } else {
-                    ui.label("Material is loading...");
-                    return;
-                }
+        let mut serialize_mat = self.model.serialized_material.lock();
+        let Some(serialize_mat) = serialize_mat.deref_mut() else {
+            if let Some(serialized) = assets_server.get(&self.model.serialized_handle) {
+                *serialize_mat = Some(serialized.clone());
             }
-        }
-
-        let current_shader_path = {
-            let guard = self.model.current_shader_path.lock();
-            guard.clone().unwrap()
+            ui.label("Material is loading...");
+            return;
         };
 
+        let current_shader_path = &serialize_mat.shader_path;
+
         // ---- Source path ----
-        ui.label(format!("Source: {}", self.model.path.display()));
+        ui.label(format!("Source: {:?}", serialize_mat.source_path));
         ui.separator();
 
         // ---- Shader 层级下拉菜单 ----
@@ -938,7 +919,13 @@ impl Inspector for MaterialInspector {
                     ui.label("Texture");
                 });
                 row.col(|ui| {
-                    self.draw_texture_col(ui, reader, messager, assets_server);
+                    self.draw_texture_col(
+                        ui,
+                        reader,
+                        messager,
+                        assets_server,
+                        &serialize_mat.texture_path,
+                    );
                 });
             });
         });
@@ -946,7 +933,7 @@ impl Inspector for MaterialInspector {
         ui.separator();
 
         // ---- Render State 编辑区域（issue #33）----
-        self.draw_render_state_section(ui, messager);
+        self.draw_render_state_section(ui, messager, &serialize_mat.render_state);
 
         ui.separator();
 
@@ -960,19 +947,6 @@ impl Inspector for MaterialInspector {
                     self.model.style.apply_button_height,
                 ));
                 let resp = ui.add_enabled(changed, apply_btn);
-
-                // Record rect + egui Id for test harness
-                #[cfg(feature = "test-harness")]
-                ui.ctx().data_mut(|d| {
-                    let rects = d.get_temp_mut_or_default::<
-                        std::collections::HashMap<String, egui::Rect>,
-                    >(egui::Id::new("__kairos_widget_rects"));
-                    rects.insert("apply_button".into(), resp.rect);
-                    let ids = d.get_temp_mut_or_default::<
-                        std::collections::HashMap<String, egui::Id>,
-                    >(egui::Id::new("__kairos_widget_egui_ids"));
-                    ids.insert("apply_button".into(), resp.id);
-                });
 
                 if resp.clicked() {
                     messager.send(self.apply_message());
@@ -1018,16 +992,14 @@ impl MaterialInspector {
         }
 
         // 3. 更新数据状态
-        *self.model.current_shader_path.lock() = Some(new_shader_path);
+        if let Some(serialized) = self.model.serialized_material.lock().deref_mut() {
+            serialized.shader_path = new_shader_path;
+        }
         self.model.dirty.set(true);
     }
 
     /// 拖入 / 设置纹理：加载 texture → 更新运行时 Material → 标记 dirty
-    pub fn drop_texture(
-        &mut self,
-        assets_server: &mut AssetsServer,
-        texture_path: PathBuf,
-    ) {
+    pub fn drop_texture(&mut self, assets_server: &mut AssetsServer, texture_path: PathBuf) {
         // 加载 texture（异步，句柄立即返回）
         let texture_handle = assets_server.load::<TextureAssetsSystem>(&texture_path);
 
@@ -1040,8 +1012,10 @@ impl MaterialInspector {
         // 清除缩略图缓存（下次 draw 重新生成）
         *self.model.thumbnail.lock() = None;
 
-        // 更新数据状态（保留用户赋值的原始路径，持久化时写回 .mat）
-        *self.model.current_texture_path.lock() = Some(Some(texture_path));
+        // 更新数据状态
+        if let Some(serialized) = self.model.serialized_material.lock().deref_mut() {
+            serialized.texture_path = Some(texture_path);
+        }
         self.model.dirty.set(true);
     }
 
@@ -1058,7 +1032,9 @@ impl MaterialInspector {
         }
 
         // 2. 更新数据状态
-        *self.model.current_render_state.lock() = Some(new_render_state);
+        if let Some(serialized) = self.model.serialized_material.lock().deref_mut() {
+            serialized.render_state = new_render_state;
+        }
         self.model.dirty.set(true);
     }
 
@@ -1072,8 +1048,10 @@ impl MaterialInspector {
         // 清除缩略图缓存
         *self.model.thumbnail.lock() = None;
 
-        // 更新数据状态（空槽）
-        *self.model.current_texture_path.lock() = Some(None);
+        // 更新数据状态
+        if let Some(serialized) = self.model.serialized_material.lock().deref_mut() {
+            serialized.texture_path = None;
+        }
         self.model.dirty.set(true);
     }
 
@@ -1082,11 +1060,8 @@ impl MaterialInspector {
     /// 保存仍作用于发起时的数据（同 TextureInspectorApply 模式）。
     fn apply_message(&self) -> Message {
         Message::MaterialInspectorApply(
-            self.model.path.clone(),
             self.model.serialized_handle.clone(),
-            self.model.current_shader_path.clone(),
-            self.model.current_texture_path.clone(),
-            self.model.current_render_state.clone(),
+            self.model.serialized_material.clone(),
         )
     }
 
@@ -1095,7 +1070,6 @@ impl MaterialInspector {
     /// 还原仍作用于发起时的资产。
     fn discard_message(&self) -> Message {
         Message::MaterialInspectorDiscard(
-            self.model.path.clone(),
             self.model.serialized_handle.clone(),
             self.model.material_handle.clone(),
         )
@@ -1108,7 +1082,6 @@ impl MaterialInspector {
     /// 与初始加载语义一致（None 纹理槽由渲染管线走 white.texture 降级）。
     pub fn discard_changes(
         assets_server: &mut AssetsServer,
-        path: &PathBuf,
         serialized_handle: &Arc<AssetHandle<SerializedMaterialAssetsSystem>>,
         material_handle: &Arc<AssetHandle<MaterialAssetsSystem>>,
     ) {
@@ -1117,10 +1090,6 @@ impl MaterialInspector {
             .get::<SerializedMaterialAssetsSystem>(serialized_handle)
             .cloned()
         else {
-            log::error!(
-                "Failed to discard material changes: serialized material not loaded, material_path: {:?}",
-                path
-            );
             return;
         };
 
@@ -1137,12 +1106,8 @@ impl MaterialInspector {
         }
     }
 
-    /// 保存成功后重置 dirty。仅当保存的 .mat 路径与当前 Inspector 匹配时生效
-    /// （关闭确认对话框触发 Apply 时，当前 Inspector 可能已是另一个资产）。
-    pub fn apply(&mut self, path: &std::path::Path) {
-        if self.model.path.as_path() == path {
-            self.model.dirty.set(false);
-        }
+    pub fn apply(&mut self) {
+        self.model.dirty.set(false);
     }
 
     /// 将当前编辑状态写回 .mat 文件（issue #36）。
@@ -1151,30 +1116,12 @@ impl MaterialInspector {
     /// SerializedMaterial，避免重新打开 Inspector 时读到过期数据。
     pub fn save_material(
         assets_server: &mut AssetsServer,
-        path: &PathBuf,
         serialized_handle: &Arc<AssetHandle<SerializedMaterialAssetsSystem>>,
-        shader_path: &Arc<Mutex<Option<PathBuf>>>,
-        texture_path: &Arc<Mutex<Option<Option<PathBuf>>>>,
-        render_state: &Arc<Mutex<Option<RenderState>>>,
-    ) -> bool {
-        let serialized = {
-            let shader_guard = shader_path.lock();
-            let texture_guard = texture_path.lock();
-            let render_state_guard = render_state.lock();
-            let (Some(shader_path), Some(texture_path), Some(render_state)) = (
-                shader_guard.clone(),
-                texture_guard.clone(),
-                *render_state_guard,
-            ) else {
-                // 状态尚未加载完成，无可保存内容
-                return false;
-            };
-            SerializedMaterial {
-                source_path: path.clone(),
-                shader_path,
-                texture_path,
-                render_state,
-            }
+        serizlied_mat: &Arc<Mutex<Option<SerializedMaterial>>>,
+    ) {
+        let mut guard = serizlied_mat.lock();
+        let Some(serialized) = guard.take() else {
+            return;
         };
 
         // 写回磁盘；失败静默打 log（不崩溃）
@@ -1182,9 +1129,9 @@ impl MaterialInspector {
             log::error!(
                 "Failed to save material, error: {}, material_path: {:?}",
                 err,
-                path
+                serialized.source_path
             );
-            return false;
+            return;
         }
 
         // 同步内存缓存，保持与磁盘一致
@@ -1193,6 +1140,5 @@ impl MaterialInspector {
         {
             *asset = serialized;
         }
-        true
     }
 }

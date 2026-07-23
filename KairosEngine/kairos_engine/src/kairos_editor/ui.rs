@@ -3,7 +3,10 @@ use crate::{
         AssetHandle, AssetsServer, MaterialAssetsSystem, SerializedMaterialAssetsSystem,
         TomlTableAssetsSystem, asset::TextAssetsSystem,
     },
-    graphics::{graphics_graph::GraphicsCommand, mesh::Mesh, render_state::RenderState},
+    graphics::{
+        graphics_graph::GraphicsCommand, material::SerializedMaterial, mesh::Mesh,
+        render_state::RenderState,
+    },
     kairos_editor::{
         Engine,
         asset_registry::AssetKind,
@@ -59,12 +62,12 @@ pub mod about_window;
 pub mod console_window;
 pub mod dialog;
 pub mod docking_tab;
-pub mod egui_ext;
 pub mod drag;
+pub mod egui_ext;
 pub mod game_window;
 pub mod global_styles;
-pub mod ide_detection;
 pub mod hierarchy_window;
+pub mod ide_detection;
 pub mod inspector;
 pub mod inspector_window;
 pub mod layout;
@@ -175,33 +178,28 @@ pub enum Message {
     ),
     ModelInspectorCreateWireframeMesh(Mesh),
     /// Material Inspector: user selected a different shader.
-    /// Carries (.mat path, new shader path).
-    MaterialInspectorChangeShader(PathBuf, PathBuf),
+    /// Carries (new shader path).
+    MaterialInspectorChangeShader(PathBuf),
     /// Material Inspector: user dropped a .texture file on the texture target.
-    /// Carries (.mat path, texture path).
-    MaterialInspectorDropTexture(PathBuf, PathBuf),
+    /// Carries (texture path).
+    MaterialInspectorDropTexture(PathBuf),
     /// Material Inspector: user clicked the clear texture button.
-    /// Carries (.mat path).
-    MaterialInspectorClearTexture(PathBuf),
+    MaterialInspectorClearTexture,
     /// Material Inspector: user edited a render-state field.
-    /// Carries (.mat path, new render state).
-    MaterialInspectorChangeRenderState(PathBuf, RenderState),
+    /// Carries (new render state).
+    MaterialInspectorChangeRenderState(RenderState),
     /// Material Inspector: apply (save) the current edits to the .mat file.
     /// Carries (.mat path, serialized handle, shader path, texture path, render
     /// state) as shared snapshots so the save targets the right data even if the
     /// inspector has since been replaced (same pattern as TextureInspectorApply).
     MaterialInspectorApply(
-        PathBuf,
         Arc<AssetHandle<SerializedMaterialAssetsSystem>>,
-        Arc<parking_lot::Mutex<Option<PathBuf>>>,
-        Arc<parking_lot::Mutex<Option<Option<PathBuf>>>>,
-        Arc<parking_lot::Mutex<Option<RenderState>>>,
+        Arc<parking_lot::Mutex<Option<SerializedMaterial>>>,
     ),
     /// Material Inspector: user clicked Discard on the unsaved-changes dialog.
     /// Restores the runtime Material to the persisted (.mat) state, undoing the
     /// edit-in-place changes. Carries (.mat path, serialized handle, material handle).
     MaterialInspectorDiscard(
-        PathBuf,
         Arc<AssetHandle<SerializedMaterialAssetsSystem>>,
         Arc<AssetHandle<MaterialAssetsSystem>>,
     ),
@@ -719,7 +717,7 @@ impl Context {
                         mesh_inspector.create_wireframe_mesh(&mut engine.assets_server, mesh);
                     }
                 }
-                Message::MaterialInspectorChangeShader(_mat_path, shader_path) => {
+                Message::MaterialInspectorChangeShader(shader_path) => {
                     if let Some(inspector) = self.get_window_mut::<InspectorWindow>()
                         && let Some(material_inspector) =
                             inspector.get_inspector_mut::<MaterialInspector>()
@@ -727,18 +725,15 @@ impl Context {
                         material_inspector.change_shader(&mut engine.assets_server, shader_path);
                     }
                 }
-                Message::MaterialInspectorDropTexture(_mat_path, texture_path) => {
+                Message::MaterialInspectorDropTexture(texture_path) => {
                     if let Some(inspector) = self.get_window_mut::<InspectorWindow>()
                         && let Some(material_inspector) =
                             inspector.get_inspector_mut::<MaterialInspector>()
                     {
-                        material_inspector.drop_texture(
-                            &mut engine.assets_server,
-                            texture_path,
-                        );
+                        material_inspector.drop_texture(&mut engine.assets_server, texture_path);
                     }
                 }
-                Message::MaterialInspectorClearTexture(_mat_path) => {
+                Message::MaterialInspectorClearTexture => {
                     if let Some(inspector) = self.get_window_mut::<InspectorWindow>()
                         && let Some(material_inspector) =
                             inspector.get_inspector_mut::<MaterialInspector>()
@@ -746,7 +741,7 @@ impl Context {
                         material_inspector.clear_texture(&mut engine.assets_server);
                     }
                 }
-                Message::MaterialInspectorChangeRenderState(_mat_path, render_state) => {
+                Message::MaterialInspectorChangeRenderState(render_state) => {
                     if let Some(inspector) = self.get_window_mut::<InspectorWindow>()
                         && let Some(material_inspector) =
                             inspector.get_inspector_mut::<MaterialInspector>()
@@ -755,34 +750,22 @@ impl Context {
                             .change_render_state(&mut engine.assets_server, render_state);
                     }
                 }
-                Message::MaterialInspectorApply(
-                    path,
-                    serialized_handle,
-                    shader_path,
-                    texture_path,
-                    render_state,
-                ) => {
-                    let saved = MaterialInspector::save_material(
-                        &mut engine.assets_server,
-                        &path,
-                        &serialized_handle,
-                        &shader_path,
-                        &texture_path,
-                        &render_state,
-                    );
-                    // 保存成功才重置 dirty；失败保留未保存标记
-                    if saved
-                        && let Some(inspector) = self.get_window_mut::<InspectorWindow>()
+                Message::MaterialInspectorApply(serialized_handle, serialized_mat) => {
+                    if let Some(inspector) = self.get_window_mut::<InspectorWindow>()
                         && let Some(material_inspector) =
                             inspector.get_inspector_mut::<MaterialInspector>()
                     {
-                        material_inspector.apply(&path);
+                        material_inspector.apply();
                     }
+                    MaterialInspector::save_material(
+                        &mut engine.assets_server,
+                        &serialized_handle,
+                        &serialized_mat,
+                    );
                 }
-                Message::MaterialInspectorDiscard(path, serialized_handle, material_handle) => {
+                Message::MaterialInspectorDiscard(serialized_handle, material_handle) => {
                     MaterialInspector::discard_changes(
                         &mut engine.assets_server,
-                        &path,
                         &serialized_handle,
                         &material_handle,
                     );

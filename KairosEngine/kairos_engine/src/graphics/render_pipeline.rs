@@ -23,7 +23,8 @@ use wgpu::{
 use winit::{dpi::PhysicalSize, window::Window};
 
 use crate::{
-    asset_loader::assets::{AssetHandle, AssetsServer, TextureAssetsSystem, asset::AssetIndex}, graphics::{
+    asset_loader::assets::{AssetHandle, AssetsServer, TextureAssetsSystem, asset::AssetIndex},
+    graphics::{
         attachment::{AttachmentFormat, InternalAttachmentId},
         graphics_graph::{self, GraphicsGraph, graphics_node::RenderPassNode},
         mesh::Mesh,
@@ -31,7 +32,9 @@ use crate::{
         shader::ShaderAsset,
         texture::{Texture, format::TextureCompressionConfig},
         vertex::Vertex,
-    }, kairos_paths, math::{float4, float4x4}
+    },
+    kairos_paths,
+    math::{float4, float4x4},
 };
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
@@ -191,7 +194,8 @@ impl RenderPipeline {
             global_vp_bind_group_layout,
             purple_fallback: Some(purple_fb),
             error_material_indices: std::collections::HashSet::new(),
-            white_texture_fallback: assets_server.load(&PathBuf::from(kairos_paths::PATH_WHITE_TEXTURE)),
+            white_texture_fallback: assets_server
+                .load(&PathBuf::from(kairos_paths::PATH_WHITE_TEXTURE)),
         })
     }
 

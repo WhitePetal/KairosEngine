@@ -458,9 +458,10 @@ mod tests {
             ("render_state.depth_write", "false"),
             ("shader_path", "a.wgsl"),
         ] {
-            let args: toml::Value =
-                toml::from_str(&format!("file = '{file}'\nkey = '{key}'\nvalue = '{value}'"))
-                    .unwrap();
+            let args: toml::Value = toml::from_str(&format!(
+                "file = '{file}'\nkey = '{key}'\nvalue = '{value}'"
+            ))
+            .unwrap();
             let result = assert_toml_value_equals(&args);
             assert!(result.ok, "key {key}: {}", result.message);
         }

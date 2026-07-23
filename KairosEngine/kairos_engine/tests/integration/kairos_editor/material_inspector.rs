@@ -139,7 +139,10 @@ async fn save_material_updates_cached_serialized_material() {
         Some(PathBuf::from("res/textures/new.texture"))
     );
     assert_eq!(cached.render_state.cull_mod, CullMode::Front);
-    assert_eq!(cached.render_state.topology, PrimitiveTopology::TriangleStrip);
+    assert_eq!(
+        cached.render_state.topology,
+        PrimitiveTopology::TriangleStrip
+    );
     assert_eq!(cached.render_state.depth_test, Some(CompareFunction::Less));
     assert!(!cached.render_state.depth_write);
 }
@@ -329,7 +332,12 @@ async fn discard_changes_restores_runtime_material_to_persisted_state() {
     }
 
     // ---- Discard：还原为持久化状态 ----
-    MaterialInspector::discard_changes(&mut assets, &mat_path, &serialized_handle, &material_handle);
+    MaterialInspector::discard_changes(
+        &mut assets,
+        &mat_path,
+        &serialized_handle,
+        &material_handle,
+    );
 
     let material = assets
         .get::<MaterialAssetsSystem>(&material_handle)
@@ -371,7 +379,12 @@ async fn discard_changes_restores_empty_texture_slot() {
         material.texture = Some(edited_texture);
     }
 
-    MaterialInspector::discard_changes(&mut assets, &mat_path, &serialized_handle, &material_handle);
+    MaterialInspector::discard_changes(
+        &mut assets,
+        &mat_path,
+        &serialized_handle,
+        &material_handle,
+    );
 
     let material = assets
         .get::<MaterialAssetsSystem>(&material_handle)
@@ -400,5 +413,10 @@ async fn discard_changes_no_crash_when_serialized_unloaded() {
             .is_none(),
         "serialized should stay unloaded for a missing file"
     );
-    MaterialInspector::discard_changes(&mut assets, &mat_path, &serialized_handle, &material_handle);
+    MaterialInspector::discard_changes(
+        &mut assets,
+        &mat_path,
+        &serialized_handle,
+        &material_handle,
+    );
 }

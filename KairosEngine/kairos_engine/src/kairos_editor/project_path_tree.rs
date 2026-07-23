@@ -91,13 +91,8 @@ impl ProjectPathGraph {
         self.graph.clear();
         let root_guid = registry.get_or_create_guid(&root_path);
         let root_name = OsString::from("KairosEngine");
-        let root_node_data = ProjectTreeNode::new(
-            root_guid,
-            root_name,
-            root_path,
-            None,
-            AssetKind::Directory,
-        );
+        let root_node_data =
+            ProjectTreeNode::new(root_guid, root_name, root_path, None, AssetKind::Directory);
         let root_node = self.graph.add_node(root_node_data);
 
         Self::scan_dir(&root_path_for_read, root_node, &mut self.graph, registry);
