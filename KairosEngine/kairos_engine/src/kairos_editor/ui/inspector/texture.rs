@@ -93,66 +93,6 @@ pub struct TextureInspector {
 }
 
 impl TextureInspector {
-    /// Set the texture format (for test harness).
-    #[cfg(feature = "test-harness")]
-    pub(crate) fn set_format(
-        &mut self,
-        format: crate::graphics::texture::format::TextureFormat,
-        assets_server: &mut crate::asset_loader::assets::AssetsServer,
-    ) -> Result<(), String> {
-        // Poll until the texture asset is loaded (async loading)
-        for _ in 0..200 {
-            assets_server.handle();
-            // Populate texture_ext from handle (normally done lazily in draw())
-            {
-                let mut guard = self.model.texture_ext.lock();
-                if guard.is_none() {
-                    if let Some(ext_source) = assets_server.get(&self.model.handle) {
-                        *guard = Some(ext_source.clone());
-                    }
-                }
-            }
-            let guard = self.model.texture_ext.lock();
-            if guard.is_some() {
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(16));
-        }
-        let mut guard = self.model.texture_ext.lock();
-        match guard.as_mut() {
-            Some(ext) => {
-                ext.serialized.format = format;
-                self.dirty.set(true);
-                Ok(())
-            }
-            None => Err("texture asset not loaded yet".into()),
-        }
-    }
-
-    /// Access the model (for test harness save flow).
-    #[cfg(feature = "test-harness")]
-    pub(crate) fn model(&self) -> &TextureInspectorModel {
-        &self.model
-    }
-
-    /// Get the texture path for save (for test harness).
-    #[cfg(feature = "test-harness")]
-    pub(crate) fn texture_path(&self) -> &PathBuf {
-        &self.model.texture_path
-    }
-
-    /// Get the asset handle for save (for test harness).
-    #[cfg(feature = "test-harness")]
-    pub(crate) fn asset_handle(&self) -> &Arc<AssetHandle<TextureExtAssetsSystem>> {
-        &self.model.handle
-    }
-
-    /// Get the texture ext ref for save (for test harness).
-    #[cfg(feature = "test-harness")]
-    pub(crate) fn texture_ext_ref(&self) -> &Arc<Mutex<Option<TextureExt>>> {
-        &self.model.texture_ext
-    }
-
     /// Compute the target (width, height) after proportional scaling
     /// so that the larger side is <= `max_size`.
     fn compute_target_size(orig_w: u32, orig_h: u32, max_size: u32) -> (u32, u32) {
@@ -508,17 +448,6 @@ impl Inspector for TextureInspector {
                                                             format,
                                                             format!("{format:?}"),
                                                             );
-                                                    // Record each format option rect for test harness
-                                                    #[cfg(feature = "test-harness")]
-                                                    ui.ctx().data_mut(|d| {
-                                                        let rects = d.get_temp_mut_or_default::<
-                                                            std::collections::HashMap<String, egui::Rect>,
-                                                        >(egui::Id::new("__kairos_widget_rects"));
-                                                        rects.insert(
-                                                            format!("format_option_{format:?}"),
-                                                            resp.rect,
-                                                        );
-                                                    });
                                                     if resp.changed()
                                                         {
                                                             // #2: auto-adjust sampler for non-filterable formats.
@@ -535,20 +464,6 @@ impl Inspector for TextureInspector {
                                             );
                                         }
                                     });
-
-                                // Record rect + egui Id for test harness
-                                #[cfg(feature = "test-harness")]
-                                ui.ctx().data_mut(|d| {
-                                    let rects = d.get_temp_mut_or_default::<
-                                        std::collections::HashMap<String, egui::Rect>,
-                                    >(egui::Id::new("__kairos_widget_rects"));
-                                    rects.insert("format_dropdown".into(), _combo_resp.response.rect);
-                                    let ids = d.get_temp_mut_or_default::<
-                                        std::collections::HashMap<String, egui::Id>,
-                                    >(egui::Id::new("__kairos_widget_egui_ids"));
-                                    ids.insert("format_dropdown".into(), _combo_resp.response.id);
-                                });
-
                                 }); // push_id("format_dropdown")
                             });
                         });
@@ -718,19 +633,6 @@ impl Inspector for TextureInspector {
                 ));
 
                 let resp = ui.add_enabled(changed, apply_btn);
-
-                // Record rect + egui Id for test harness
-                #[cfg(feature = "test-harness")]
-                ui.ctx().data_mut(|d| {
-                    let rects = d.get_temp_mut_or_default::<
-                        std::collections::HashMap<String, egui::Rect>,
-                    >(egui::Id::new("__kairos_widget_rects"));
-                    rects.insert("apply_button".into(), resp.rect);
-                    let ids = d.get_temp_mut_or_default::<
-                        std::collections::HashMap<String, egui::Id>,
-                    >(egui::Id::new("__kairos_widget_egui_ids"));
-                    ids.insert("apply_button".into(), resp.id);
-                });
 
                 if resp.clicked() {
                     messager.send(Message::TextureInspectorApply(

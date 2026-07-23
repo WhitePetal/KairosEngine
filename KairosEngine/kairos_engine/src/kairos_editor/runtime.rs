@@ -82,13 +82,6 @@ pub enum KairosEditorRuntimeEvent {
         delay: Duration,
     },
     RenderPipelineCrash,
-    /// Fired when a TOML test file completes in windowed mode.
-    /// The engine should exit after handling this.
-    #[cfg(feature = "test-harness")]
-    TestCompleted {
-        passed: bool,
-        message: String,
-    },
 }
 
 pub struct KairosEditorRuntime {
@@ -103,8 +96,6 @@ pub struct KairosEditorRuntime {
     // frame_start: Instant,
     min_frame_interval: Duration,
     didi_exit: bool,
-    #[cfg(feature = "test-harness")]
-    test_bridge: Option<crate::kairos_test_harness::bridge::Bridge>,
 }
 
 impl KairosEditorRuntime {
@@ -132,18 +123,7 @@ impl KairosEditorRuntime {
             // frame_start: Instant::now(),
             min_frame_interval: Duration::from_secs_f64(1.0 / 60.0),
             didi_exit: false,
-            #[cfg(feature = "test-harness")]
-            test_bridge: Some(crate::kairos_test_harness::bridge::Bridge::new(256)),
         })
-    }
-
-    /// Return a clone of the bridge sender for spawning the WS server.
-    /// Returns `None` when the test-harness feature is not active.
-    #[cfg(feature = "test-harness")]
-    pub fn test_bridge_sender(
-        &self,
-    ) -> Option<tokio::sync::mpsc::Sender<crate::kairos_test_harness::bridge::EngineCommand>> {
-        self.test_bridge.as_ref().map(|b| b.sender())
     }
 
     #[cfg(target_os = "macos")]
@@ -268,9 +248,6 @@ impl KairosEditorRuntime {
         // this frame (e.g. for widget rect recording).
         self.kairos_engine.handle_asset_server();
 
-        #[cfg(feature = "test-harness")]
-        self.kairos_engine.clear_widget_rects();
-
         let mut should_close = false;
         let mut repaint_delay = None;
         let mut frame_presented = false;
@@ -291,44 +268,7 @@ impl KairosEditorRuntime {
 
                     let raw_input = egui_state.take_egui_input(&window);
 
-                    // Inject egui events from the test harness (e.g. click_widget)
-                    // so they are processed by egui during this frame's run_ui.
-                    #[cfg(feature = "test-harness")]
-                    {
-                        let events = self.kairos_engine.drain_egui_events();
-                        if !events.is_empty() {
-                            raw_input.focused = true;
-                        }
-                        raw_input.events.extend(events);
-                    }
-
-                    #[cfg(feature = "test-harness")]
-                    let collected: std::rc::Rc<
-                        std::cell::RefCell<Option<std::collections::HashMap<String, egui::Rect>>>,
-                    > = std::rc::Rc::new(std::cell::RefCell::new(None));
-                    #[cfg(feature = "test-harness")]
-                    let collected_clone = collected.clone();
-                    #[cfg(feature = "test-harness")]
-                    let collected_ids: std::rc::Rc<
-                        std::cell::RefCell<Option<std::collections::HashMap<String, egui::Id>>>,
-                    > = std::rc::Rc::new(std::cell::RefCell::new(None));
-                    #[cfg(feature = "test-harness")]
-                    let collected_ids_clone = collected_ids.clone();
-
                     let full_output = self.egui_ctx.run_ui(raw_input, |ui| {
-                        // Inject empty rect/id collectors into egui temp data at frame start
-                        #[cfg(feature = "test-harness")]
-                        ui.ctx().data_mut(|d| {
-                            d.insert_temp(
-                                egui::Id::new("__kairos_widget_rects"),
-                                std::collections::HashMap::<String, egui::Rect>::new(),
-                            );
-                            d.insert_temp(
-                                egui::Id::new("__kairos_widget_egui_ids"),
-                                std::collections::HashMap::<String, egui::Id>::new(),
-                            );
-                        });
-
                         graphics_commands.append(&mut self.kairos_engine.render_ui());
 
                         self.kairos_engine.handle_ui(ui);
@@ -337,66 +277,8 @@ impl KairosEditorRuntime {
                         // needs them (e.g. widget rect recording in inspectors).
                         self.kairos_engine.handle_asset_server();
 
-                        // Apply pending focus requests so widgets receive keyboard events
-                        // during this frame's draw_ui.
-                        #[cfg(feature = "test-harness")]
-                        {
-                            for egui_id in self.kairos_engine.drain_focus_requests() {
-                                ui.ctx().memory_mut(|mem| mem.request_focus(egui_id));
-                            }
-                        }
-
                         self.kairos_engine.draw_ui(ui);
-
-                        // Extract rects and ids before run_ui finishes (temp data cleared on return)
-                        #[cfg(feature = "test-harness")]
-                        {
-                            let rects = ui.ctx().data_mut(|d| {
-                                d.remove_temp::<std::collections::HashMap<String, egui::Rect>>(
-                                    egui::Id::new("__kairos_widget_rects"),
-                                )
-                                .unwrap_or_default()
-                            });
-                            *collected_clone.borrow_mut() = Some(rects);
-                            let ids = ui.ctx().data_mut(|d| {
-                                d.remove_temp::<std::collections::HashMap<String, egui::Id>>(
-                                    egui::Id::new("__kairos_widget_egui_ids"),
-                                )
-                                .unwrap_or_default()
-                            });
-                            *collected_ids_clone.borrow_mut() = Some(ids);
-                        }
                     });
-
-                    // Merge collected rects and egui IDs into KairosEngine
-                    #[cfg(feature = "test-harness")]
-                    {
-                        if let Some(rects) = collected.borrow_mut().take() {
-                            for (id, rect) in rects {
-                                self.kairos_engine.record_widget_rect(id, rect);
-                            }
-                        }
-                        if let Some(ids) = collected_ids.borrow_mut().take() {
-                            for (name, egui_id) in ids {
-                                self.kairos_engine.record_widget_egui_id(name, egui_id);
-                            }
-                        }
-                        let size = window.inner_size();
-                        self.kairos_engine.record_widget_rect(
-                            "egui_viewport",
-                            egui::Rect::from_min_size(
-                                egui::Pos2::ZERO,
-                                egui::vec2(size.width as f32, size.height as f32),
-                            ),
-                        );
-                    }
-
-                    // Drain test harness commands at end of frame so widget
-                    // rects recorded by draw_ui are available for click_widget.
-                    #[cfg(feature = "test-harness")]
-                    if let Some(bridge) = &mut self.test_bridge {
-                        bridge.drain(&mut self.kairos_engine);
-                    }
 
                     egui_state.handle_platform_output(&window, full_output.platform_output);
 
@@ -610,14 +492,6 @@ impl ApplicationHandler<KairosEditorRuntimeEvent> for KairosEditorRuntime {
             KairosEditorRuntimeEvent::RenderPipelineCrash => {
                 println!("KairosEditorRuntimeEvent::RenderPipelineCrash");
                 self.shutdown(event_loop);
-            }
-            #[cfg(feature = "test-harness")]
-            KairosEditorRuntimeEvent::TestCompleted { passed, message } => {
-                println!("{message}");
-                if !passed {
-                    std::process::exit(1);
-                }
-                event_loop.exit();
             }
         }
     }

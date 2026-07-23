@@ -42,7 +42,6 @@ enum PreviewMode {
 #[derive(Debug, Serialize, Deserialize)]
 struct MeshInspectorStyle {
     row_height: f32,
-    preview_min_height: f32,
     preview_default_size: u32,
     camera_fov: f32,
     camera_direction: float3,
@@ -61,9 +60,8 @@ impl MeshInspectorStyle {
                 error
             )
         })?;
-        let mut style = toml::from_slice::<Self>(&bytes)
+        let style = toml::from_slice::<Self>(&bytes)
             .map_err(|error| format!("Deserialize MeshInspector Style Failed, error: {}", error))?;
-        style.preview_min_height = style.preview_min_height.max(1.0);
         Ok(style)
     }
 }
@@ -171,10 +169,9 @@ impl MeshInspector {
         self.draw_preview_toolbar(ui);
 
         // ---- 3D Preview image (remaining space) ----
-        let available = ui.available_size_before_wrap();
-        let min_h = self.model.style.preview_min_height;
-        let size = Vec2::new(available.x, available.y.max(min_h));
-        let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click_and_drag());
+        let width = ui.available_width();
+        let size = Vec2::new(width, width);
+        let (rect, response) = ui.allocate_at_least(size, egui::Sense::click_and_drag());
 
         // Update attachment dimensions for the next render_preview cycle.
         let pixels_per_point = ui.pixels_per_point();

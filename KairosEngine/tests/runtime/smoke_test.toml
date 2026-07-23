@@ -1,7 +1,0 @@
-[[step]]
-action = "call"
-target = "system.ping"
-
-[[step]]
-action = "assert"
-target = "no_crash"

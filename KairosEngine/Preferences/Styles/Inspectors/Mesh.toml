@@ -1,5 +1,4 @@
 row_height = 20.0
-preview_min_height = 150.0
 preview_default_size = 512
 camera_fov = 60.0
 camera_direction = [0.0, -0.6, 1.0, 0.0]
