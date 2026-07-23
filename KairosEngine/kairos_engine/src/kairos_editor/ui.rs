@@ -2,7 +2,7 @@ use crate::{
     asset_loader::assets::{
         AssetHandle, AssetsServer, TomlTableAssetsSystem, asset::TextAssetsSystem,
     },
-    graphics::{graphics_graph::GraphicsCommand, mesh::Mesh},
+    graphics::{graphics_graph::GraphicsCommand, mesh::Mesh, render_state::RenderState},
     kairos_editor::{
         Engine,
         asset_registry::AssetKind,
@@ -182,6 +182,9 @@ pub enum Message {
     /// Material Inspector: user clicked the clear texture button.
     /// Carries (.mat path).
     MaterialInspectorClearTexture(PathBuf),
+    /// Material Inspector: user edited a render-state field.
+    /// Carries (.mat path, new render state).
+    MaterialInspectorChangeRenderState(PathBuf, RenderState),
 }
 
 struct KairosTabDrawer {
@@ -722,6 +725,15 @@ impl Context {
                             inspector.get_inspector_mut::<MaterialInspector>()
                     {
                         material_inspector.clear_texture(&mut engine.assets_server);
+                    }
+                }
+                Message::MaterialInspectorChangeRenderState(_mat_path, render_state) => {
+                    if let Some(inspector) = self.get_window_mut::<InspectorWindow>()
+                        && let Some(material_inspector) =
+                            inspector.get_inspector_mut::<MaterialInspector>()
+                    {
+                        material_inspector
+                            .change_render_state(&mut engine.assets_server, render_state);
                     }
                 }
             }

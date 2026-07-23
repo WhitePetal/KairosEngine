@@ -6,11 +6,15 @@ use egui::{
 use egui_extras::{Column, TableBuilder};
 use parking_lot::Mutex;
 use serde::Deserialize;
+use strum::IntoEnumIterator;
 
 use crate::{
     asset_loader::assets::{
         AssetHandle, AssetsServer, MaterialAssetsSystem, SerializedMaterialAssetsSystem,
         ShaderAssetsSystem, TextureAssetsSystem,
+    }, graphics::{
+        compare_function::CompareFunction,
+        render_state::{BlendFactor, BlendOperation, BlendPreset, BlendState, CullMode, PrimitiveTopology, RenderState},
     }, kairos_editor::{
         asset_registry::AssetKind, project_path_tree::ProjectPathGraph, ui::{
             Message, Messager, UIReader, dialog::{ConfirmDialogWindow, Dialog}, drag::Drag, inspector::Inspector, paths, project_window::ProjectWindow,
@@ -37,6 +41,8 @@ struct MaterialInspectorStyle {
     texture_drag_hover_stroke_color: math::Color32,
     texture_corner_radius: u8,
     texture_stroke_width: f32,
+
+    render_state_row_height: f32,
 }
 
 impl MaterialInspectorStyle {
@@ -162,6 +168,26 @@ fn render_shader_menu(
 }
 
 // ============================================================
+// Blend 预设映射（issue #33）
+// ============================================================
+
+/// 从 RenderState 推导当前应显示的 BlendPreset。
+/// `blend_mod = None` 与 wgpu 语义一致 —— 不混合，等价于 Replace。
+fn current_blend_preset(render_state: &RenderState) -> BlendPreset {
+    BlendPreset::from_blend_state(render_state.blend_mod.unwrap_or(BlendState::REPLACE))
+}
+
+/// 将选中的 BlendPreset 写回 RenderState。
+/// Replace 写回 `None`（与序列化默认形式保持一致的 canonical 表示），
+/// 其余预设写回 `Some(BlendState)`。
+fn apply_blend_preset(render_state: &mut RenderState, preset: BlendPreset) {
+    match preset {
+        BlendPreset::Replace => render_state.blend_mod = None,
+        other => render_state.blend_mod = Some(other.to_blend_state()),
+    }
+}
+
+// ============================================================
 // Texture 拖拽相关（跨帧持久化）
 // ============================================================
 
@@ -216,6 +242,74 @@ fn build_texture_thumbnail(
 }
 
 // ============================================================
+// RenderState 编辑行（issue #33）
+// ============================================================
+
+/// BlendFactor 下拉行。返回 Some(new_value) 表示用户修改了该字段。
+fn blend_factor_combo_row(
+    body: &mut egui_extras::TableBody,
+    row_h: f32,
+    label: &str,
+    id_salt: &str,
+    current: BlendFactor,
+) -> Option<BlendFactor> {
+    let mut changed_to = None;
+    body.row(row_h, |mut row| {
+        row.col(|ui| {
+            ui.label(label);
+        });
+        row.col(|ui| {
+            let mut selected = current;
+            egui::ComboBox::from_id_salt(id_salt)
+                .selected_text(current.label())
+                .show_ui(ui, |ui| {
+                    for factor in BlendFactor::iter() {
+                        if ui
+                            .selectable_value(&mut selected, factor, factor.label())
+                            .changed()
+                        {
+                            changed_to = Some(factor);
+                        }
+                    }
+                });
+        });
+    });
+    changed_to
+}
+
+/// BlendOperation 下拉行。返回 Some(new_value) 表示用户修改了该字段。
+fn blend_operation_combo_row(
+    body: &mut egui_extras::TableBody,
+    row_h: f32,
+    label: &str,
+    id_salt: &str,
+    current: BlendOperation,
+) -> Option<BlendOperation> {
+    let mut changed_to = None;
+    body.row(row_h, |mut row| {
+        row.col(|ui| {
+            ui.label(label);
+        });
+        row.col(|ui| {
+            let mut selected = current;
+            egui::ComboBox::from_id_salt(id_salt)
+                .selected_text(current.label())
+                .show_ui(ui, |ui| {
+                    for operation in BlendOperation::iter() {
+                        if ui
+                            .selectable_value(&mut selected, operation, operation.label())
+                            .changed()
+                        {
+                            changed_to = Some(operation);
+                        }
+                    }
+                });
+        });
+    });
+    changed_to
+}
+
+// ============================================================
 // Model
 // ============================================================
 
@@ -237,6 +331,10 @@ struct MaterialInspectorModel {
     dirty: Cell<bool>,
     /// 缩略图缓存
     thumbnail: Arc<Mutex<Option<Thumbnail>>>,
+    /// 当前的 RenderState，首次 draw 时从 SerializedMaterial 异步加载
+    current_render_state: Arc<Mutex<Option<RenderState>>>,
+    /// 用户在 blend 下拉中显式选择了 Custom（即使当前值仍命中某个预设也展开子字段）
+    blend_custom_expanded: Cell<bool>,
 }
 
 // ============================================================
@@ -391,6 +489,293 @@ impl MaterialInspector {
             );
         }
     }
+
+    /// 发送 RenderState 变更消息（由 Context::handle 回写运行时 Material + 缓存 + dirty）
+    fn send_render_state(&self, messager: &mut Messager, new_state: RenderState) {
+        messager.send(Message::MaterialInspectorChangeRenderState(
+            self.model.path.clone(),
+            new_state,
+        ));
+    }
+
+    /// 以 `effective_blend` 为底应用一处子字段修改，发送新的 RenderState。
+    fn send_blend_edit(
+        &self,
+        messager: &mut Messager,
+        render_state: &RenderState,
+        effective_blend: BlendState,
+        edit: impl FnOnce(&mut BlendState),
+    ) {
+        let mut blend = effective_blend;
+        edit(&mut blend);
+        self.send_render_state(
+            messager,
+            RenderState {
+                blend_mod: Some(blend),
+                ..*render_state
+            },
+        );
+    }
+
+    /// Render State 编辑区域（issue #33）：
+    /// depth_test（None + CompareFunction）/ depth_write / cull_mode /
+    /// blend_mode（预设 + Custom 展开 6 子字段）/ topology。
+    /// 每次修改发送 Message 回写运行时 Material 并标记 dirty。
+    fn draw_render_state_section(&self, ui: &mut egui::Ui, messager: &mut Messager) {
+        let render_state = {
+            let guard = self.model.current_render_state.lock();
+            guard.clone()
+        };
+        let Some(render_state) = render_state else {
+            ui.label("Render state is loading...");
+            return;
+        };
+
+        let row_h = self.model.style.render_state_row_height;
+        TableBuilder::new(ui)
+            .striped(true)
+            .cell_layout(egui::Layout::left_to_right(egui::Align::LEFT))
+            .column(Column::auto())
+            .column(Column::remainder())
+            .id_salt("render_state")
+            .body(|mut body| {
+                // ---- Depth Test：None + CompareFunction 各选项 ----
+                body.row(row_h, |mut row| {
+                    row.col(|ui| {
+                        ui.label("Depth Test");
+                    });
+                    row.col(|ui| {
+                        let mut selected = render_state.depth_test;
+                        egui::ComboBox::from_id_salt("mat_depth_test")
+                            .selected_text(selected.map_or("None", |cf| cf.label()))
+                            .show_ui(ui, |ui| {
+                                if ui.selectable_value(&mut selected, None, "None").changed() {
+                                    self.send_render_state(
+                                        messager,
+                                        RenderState {
+                                            depth_test: None,
+                                            ..render_state
+                                        },
+                                    );
+                                }
+                                for cf in CompareFunction::iter() {
+                                    if ui
+                                        .selectable_value(&mut selected, Some(cf), cf.label())
+                                        .changed()
+                                    {
+                                        self.send_render_state(
+                                            messager,
+                                            RenderState {
+                                                depth_test: Some(cf),
+                                                ..render_state
+                                            },
+                                        );
+                                    }
+                                }
+                            });
+                    });
+                });
+
+                // ---- Depth Write ----
+                body.row(row_h, |mut row| {
+                    row.col(|ui| {
+                        ui.label("Depth Write");
+                    });
+                    row.col(|ui| {
+                        let mut checked = render_state.depth_write;
+                        if ui.checkbox(&mut checked, "").changed() {
+                            self.send_render_state(
+                                messager,
+                                RenderState {
+                                    depth_write: checked,
+                                    ..render_state
+                                },
+                            );
+                        }
+                    });
+                });
+
+                // ---- Cull Mode ----
+                body.row(row_h, |mut row| {
+                    row.col(|ui| {
+                        ui.label("Cull Mode");
+                    });
+                    row.col(|ui| {
+                        let mut selected = render_state.cull_mod;
+                        egui::ComboBox::from_id_salt("mat_cull_mode")
+                            .selected_text(selected.label())
+                            .show_ui(ui, |ui| {
+                                for mode in CullMode::iter() {
+                                    if ui
+                                        .selectable_value(&mut selected, mode, mode.label())
+                                        .changed()
+                                    {
+                                        self.send_render_state(
+                                            messager,
+                                            RenderState {
+                                                cull_mod: mode,
+                                                ..render_state
+                                            },
+                                        );
+                                    }
+                                }
+                            });
+                    });
+                });
+
+                // ---- Blend Mode：预设下拉，Custom 时展开 6 个子字段 ----
+                let effective_blend = render_state.blend_mod.unwrap_or(BlendState::REPLACE);
+                let preset = current_blend_preset(&render_state);
+                let show_custom = matches!(preset, BlendPreset::Custom(_))
+                    || self.model.blend_custom_expanded.get();
+                body.row(row_h, |mut row| {
+                    row.col(|ui| {
+                        ui.label("Blend Mode");
+                    });
+                    row.col(|ui| {
+                        let mut selected = if show_custom {
+                            BlendPreset::Custom(effective_blend)
+                        } else {
+                            preset
+                        };
+                        egui::ComboBox::from_id_salt("mat_blend_mode")
+                            .selected_text(selected.label())
+                            .show_ui(ui, |ui| {
+                                for option in [
+                                    BlendPreset::Replace,
+                                    BlendPreset::Add,
+                                    BlendPreset::Multiply,
+                                    BlendPreset::AlphaBlend,
+                                    BlendPreset::Custom(effective_blend),
+                                ] {
+                                    if ui
+                                        .selectable_value(&mut selected, option, option.label())
+                                        .changed()
+                                    {
+                                        match option {
+                                            BlendPreset::Custom(_) => {
+                                                // 展开子字段编辑；blend 值本身不变
+                                                self.model.blend_custom_expanded.set(true);
+                                                self.send_render_state(
+                                                    messager,
+                                                    RenderState {
+                                                        blend_mod: Some(effective_blend),
+                                                        ..render_state
+                                                    },
+                                                );
+                                            }
+                                            preset_option => {
+                                                self.model.blend_custom_expanded.set(false);
+                                                let mut new_state = render_state;
+                                                apply_blend_preset(&mut new_state, preset_option);
+                                                self.send_render_state(messager, new_state);
+                                            }
+                                        }
+                                    }
+                                }
+                            });
+                    });
+                });
+
+                // ---- Custom 展开：color/alpha 的 srcFactor / dstFactor / operation ----
+                if show_custom {
+                    if let Some(factor) = blend_factor_combo_row(
+                        &mut body,
+                        row_h,
+                        "Color Src Factor",
+                        "mat_blend_color_src_factor",
+                        effective_blend.color.src_factor,
+                    ) {
+                        self.send_blend_edit(messager, &render_state, effective_blend, |b| {
+                            b.color.src_factor = factor
+                        });
+                    }
+                    if let Some(factor) = blend_factor_combo_row(
+                        &mut body,
+                        row_h,
+                        "Color Dst Factor",
+                        "mat_blend_color_dst_factor",
+                        effective_blend.color.dst_factor,
+                    ) {
+                        self.send_blend_edit(messager, &render_state, effective_blend, |b| {
+                            b.color.dst_factor = factor
+                        });
+                    }
+                    if let Some(operation) = blend_operation_combo_row(
+                        &mut body,
+                        row_h,
+                        "Color Operation",
+                        "mat_blend_color_operation",
+                        effective_blend.color.operation,
+                    ) {
+                        self.send_blend_edit(messager, &render_state, effective_blend, |b| {
+                            b.color.operation = operation
+                        });
+                    }
+                    if let Some(factor) = blend_factor_combo_row(
+                        &mut body,
+                        row_h,
+                        "Alpha Src Factor",
+                        "mat_blend_alpha_src_factor",
+                        effective_blend.alpha.src_factor,
+                    ) {
+                        self.send_blend_edit(messager, &render_state, effective_blend, |b| {
+                            b.alpha.src_factor = factor
+                        });
+                    }
+                    if let Some(factor) = blend_factor_combo_row(
+                        &mut body,
+                        row_h,
+                        "Alpha Dst Factor",
+                        "mat_blend_alpha_dst_factor",
+                        effective_blend.alpha.dst_factor,
+                    ) {
+                        self.send_blend_edit(messager, &render_state, effective_blend, |b| {
+                            b.alpha.dst_factor = factor
+                        });
+                    }
+                    if let Some(operation) = blend_operation_combo_row(
+                        &mut body,
+                        row_h,
+                        "Alpha Operation",
+                        "mat_blend_alpha_operation",
+                        effective_blend.alpha.operation,
+                    ) {
+                        self.send_blend_edit(messager, &render_state, effective_blend, |b| {
+                            b.alpha.operation = operation
+                        });
+                    }
+                }
+
+                // ---- Topology ----
+                body.row(row_h, |mut row| {
+                    row.col(|ui| {
+                        ui.label("Topology");
+                    });
+                    row.col(|ui| {
+                        let mut selected = render_state.topology;
+                        egui::ComboBox::from_id_salt("mat_topology")
+                            .selected_text(selected.label())
+                            .show_ui(ui, |ui| {
+                                for topology in PrimitiveTopology::iter() {
+                                    if ui
+                                        .selectable_value(&mut selected, topology, topology.label())
+                                        .changed()
+                                    {
+                                        self.send_render_state(
+                                            messager,
+                                            RenderState {
+                                                topology,
+                                                ..render_state
+                                            },
+                                        );
+                                    }
+                                }
+                            });
+                    });
+                });
+            });
+    }
 }
 
 impl Inspector for MaterialInspector {
@@ -426,6 +811,8 @@ impl Inspector for MaterialInspector {
             current_texture_path: Arc::new(Mutex::new(None)),
             dirty: Cell::new(false),
             thumbnail: Arc::new(Mutex::new(None)),
+            current_render_state: Arc::new(Mutex::new(None)),
+            blend_custom_expanded: Cell::new(false),
         };
 
         Ok(Self { model })
@@ -439,11 +826,12 @@ impl Inspector for MaterialInspector {
         assets_server: &AssetsServer,
         _dt: f32,
     ) {
-        // ---- 异步加载 SerializedMaterial，获取 shader_path 和 texture_path ----
+        // ---- 异步加载 SerializedMaterial，获取 shader_path / texture_path / render_state ----
         {
             let mut current_shader = self.model.current_shader_path.lock();
             let mut current_texture = self.model.current_texture_path.lock();
-            if current_shader.is_none() || current_texture.is_none() {
+            let mut current_render_state = self.model.current_render_state.lock();
+            if current_shader.is_none() || current_texture.is_none() || current_render_state.is_none() {
                 if let Some(serialized) = assets_server
                     .get::<SerializedMaterialAssetsSystem>(&self.model.serialized_handle)
                 {
@@ -452,6 +840,9 @@ impl Inspector for MaterialInspector {
                     }
                     if current_texture.is_none() {
                         *current_texture = Some(serialized.texture_path.clone());
+                    }
+                    if current_render_state.is_none() {
+                        *current_render_state = Some(serialized.render_state);
                     }
                 } else {
                     ui.label("Material is loading...");
@@ -541,6 +932,12 @@ impl Inspector for MaterialInspector {
             });
         });
 
+        ui.separator();
+
+        // ---- Render State 编辑区域（issue #33）----
+        ui.label("Render State");
+        self.draw_render_state_section(ui, messager);
+
         // ---- Dirty indicator ----
         if self.model.dirty.get() {
             ui.label("* unsaved changes");
@@ -608,6 +1005,23 @@ impl MaterialInspector {
         self.model.dirty.set(true);
     }
 
+    /// 修改 RenderState：更新运行时 Material → 更新缓存 → 标记 dirty（issue #33）
+    pub fn change_render_state(
+        &mut self,
+        assets_server: &mut AssetsServer,
+        new_render_state: RenderState,
+    ) {
+        // 1. 更新运行时 Material（edit-in-place，立即反映到渲染）
+        let material = assets_server.get_mut(&self.model.material_handle);
+        if let Some(material) = material {
+            material.render_state = new_render_state;
+        }
+
+        // 2. 更新数据状态
+        *self.model.current_render_state.lock() = Some(new_render_state);
+        self.model.dirty.set(true);
+    }
+
     /// 清除纹理
     pub fn clear_texture(&mut self, assets_server: &mut AssetsServer) {
         let material = assets_server.get_mut(&self.model.material_handle);
@@ -621,5 +1035,101 @@ impl MaterialInspector {
         // 更新数据状态（空槽）
         *self.model.current_texture_path.lock() = Some(None);
         self.model.dirty.set(true);
+    }
+}
+
+// ============================================================
+// Tests（issue #33 — blend 预设映射）
+// ============================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::graphics::render_state::{BlendComponent, BlendOperation};
+
+    #[test]
+    fn none_blend_maps_to_replace_preset() {
+        let rs = RenderState {
+            blend_mod: None,
+            ..Default::default()
+        };
+        assert_eq!(current_blend_preset(&rs), BlendPreset::Replace);
+    }
+
+    #[test]
+    fn preset_blend_maps_to_matching_preset() {
+        let rs = RenderState {
+            blend_mod: Some(BlendState::ALPHA_BLENDING),
+            ..Default::default()
+        };
+        assert_eq!(current_blend_preset(&rs), BlendPreset::AlphaBlend);
+    }
+
+    #[test]
+    fn non_preset_blend_maps_to_custom() {
+        let mut state = BlendState::REPLACE;
+        state.color.operation = BlendOperation::Subtract;
+        let rs = RenderState {
+            blend_mod: Some(state),
+            ..Default::default()
+        };
+        match current_blend_preset(&rs) {
+            BlendPreset::Custom(s) => assert_eq!(s, state),
+            other => panic!("expected Custom, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn apply_replace_preset_writes_none() {
+        let mut rs = RenderState {
+            blend_mod: Some(BlendState::ALPHA_BLENDING),
+            ..Default::default()
+        };
+        apply_blend_preset(&mut rs, BlendPreset::Replace);
+        assert_eq!(rs.blend_mod, None);
+    }
+
+    #[test]
+    fn apply_non_replace_preset_writes_some() {
+        let mut rs = RenderState::default();
+        apply_blend_preset(&mut rs, BlendPreset::Add);
+        assert_eq!(rs.blend_mod, Some(BlendPreset::Add.to_blend_state()));
+
+        apply_blend_preset(&mut rs, BlendPreset::Multiply);
+        assert_eq!(rs.blend_mod, Some(BlendPreset::Multiply.to_blend_state()));
+    }
+
+    #[test]
+    fn apply_custom_preset_writes_its_state() {
+        let custom_state = BlendState {
+            color: BlendComponent {
+                src_factor: BlendFactor::SrcAlpha,
+                dst_factor: BlendFactor::DstAlpha,
+                operation: BlendOperation::Subtract,
+            },
+            alpha: BlendComponent {
+                src_factor: BlendFactor::One,
+                dst_factor: BlendFactor::Zero,
+                operation: BlendOperation::Min,
+            },
+        };
+        let mut rs = RenderState::default();
+        apply_blend_preset(&mut rs, BlendPreset::Custom(custom_state));
+        assert_eq!(rs.blend_mod, Some(custom_state));
+    }
+
+    #[test]
+    fn preset_roundtrip_preserves_effective_state() {
+        // preset → RenderState → 再次推导 preset，应回到同一预设
+        for preset in [
+            BlendPreset::Replace,
+            BlendPreset::Add,
+            BlendPreset::Multiply,
+            BlendPreset::AlphaBlend,
+        ] {
+            let mut rs = RenderState::default();
+            apply_blend_preset(&mut rs, preset);
+            assert_eq!(current_blend_preset(&rs), preset);
+        }
     }
 }

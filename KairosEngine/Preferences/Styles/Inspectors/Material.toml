@@ -11,3 +11,5 @@ texture_fill_stroke_color = "#5a5a5a"
 texture_drag_hover_stroke_color = "#4696ff"
 texture_corner_radius = 4
 texture_stroke_width = 1.0
+
+render_state_row_height = 20.0

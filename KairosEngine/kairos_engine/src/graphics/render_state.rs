@@ -7,7 +7,7 @@ use crate::graphics::compare_function::CompareFunction;
 // ============================================================
 
 /// Replaces `Option<Face>`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize, strum::EnumIter)]
 pub enum CullMode {
     /// No face culling.
     None,
@@ -55,7 +55,7 @@ impl From<Option<wgpu::Face>> for CullMode {
 // ============================================================
 
 /// Replaces `wgpu::PrimitiveTopology`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize, strum::EnumIter)]
 pub enum PrimitiveTopology {
     PointList,
     LineList,
