@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     asset_loader::assets::{AssetHandle, AssetsServer, asset::FontAssetsSystem},
-    kairos_editor::ui::{Messager, UIReader, inspector::Inspector, paths},
+    kairos_editor::ui::{Messager, UIReader, dialog::Dialog, inspector::Inspector, paths},
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -144,7 +144,7 @@ impl Inspector for FontInspector {
     fn on_exit(
         &mut self,
         ctx: &egui::Context,
-    ) -> Option<Box<dyn crate::kairos_editor::ui::dialog::Dialog>> {
+    ) -> Option<Box<dyn Dialog>> {
         self.unregister(ctx);
         None
     }

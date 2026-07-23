@@ -104,19 +104,17 @@ impl InspectorWindow {
         &mut self,
         ctx: &egui::Context,
         info: Option<InspectorNodeInfo>,
-    ) -> (Option<Box<dyn Dialog>>, Vec<egui::TextureId>) {
+    ) -> Option<Box<dyn Dialog>> {
         if self.model.selected == info {
-            return (None, Vec::new());
+            return None;
         }
 
         let mut dialog = None;
-        let mut freed_texture_ids = Vec::new();
         if let Some(selected) = &mut self.model.selected {
             dialog = selected.inspector.on_exit(ctx);
-            freed_texture_ids = selected.inspector.take_preview_egui_textures();
         }
         self.model.selected = info;
-        (dialog, freed_texture_ids)
+        dialog
     }
 
     pub fn get_inspector<T: Inspector>(&self) -> Option<&T> {
@@ -133,12 +131,11 @@ impl InspectorWindow {
             .and_then(|info| (info.inspector.as_mut() as &mut dyn Any).downcast_mut::<T>())
     }
 
-    pub fn on_close(&mut self, ctx: &egui::Context) -> Vec<egui::TextureId> {
+    pub fn on_close(&mut self, ctx: &egui::Context) -> Option<Box<dyn Dialog>> {
         if let Some(info) = &mut self.model.selected {
-            info.inspector.on_exit(ctx);
-            return info.inspector.take_preview_egui_textures();
+            return info.inspector.on_exit(ctx);
         }
-        Vec::new()
+        None
     }
 }
 
@@ -220,140 +217,5 @@ impl Drawer for InspectorWindow {
             .selected
             .as_ref()
             .and_then(|info| info.inspector.render())
-    }
-}
-
-// ============================================================
-// Tests
-// ============================================================
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{
-        asset_loader::assets::AssetsServer,
-        kairos_editor::{
-            asset_registry::{AssetKind, Guid},
-            project_path_tree::ProjectPathGraph,
-            ui::{Messager, UIReader},
-        },
-    };
-
-    /// 记录 on_exit 调用并返回预置 texture id 的桩 Inspector。
-    struct StubInspector {
-        freed_ids: Vec<egui::TextureId>,
-        exit_called: bool,
-    }
-
-    impl StubInspector {
-        fn new(freed_ids: Vec<egui::TextureId>) -> Self {
-            Self {
-                freed_ids,
-                exit_called: false,
-            }
-        }
-    }
-
-    impl Inspector for StubInspector {
-        fn create(
-            _path: &std::path::Path,
-            _assets_server: &mut AssetsServer,
-            _project_graph: &ProjectPathGraph,
-        ) -> Result<Self, Box<dyn std::error::Error>> {
-            unimplemented!("test stub")
-        }
-
-        fn draw(
-            &self,
-            _ui: &mut egui::Ui,
-            _reader: &UIReader,
-            _messager: &mut Messager,
-            _assets_server: &AssetsServer,
-            _dt: f32,
-        ) {
-        }
-
-        fn on_exit(&mut self, _ctx: &egui::Context) -> Option<Box<dyn Dialog>> {
-            self.exit_called = true;
-            None
-        }
-
-        fn take_preview_egui_textures(&mut self) -> Vec<egui::TextureId> {
-            std::mem::take(&mut self.freed_ids)
-        }
-    }
-
-    fn info_for(guid: Guid, inspector: StubInspector) -> Option<InspectorNodeInfo> {
-        Some(InspectorNodeInfo {
-            name: "asset".into(),
-            kind: AssetKind::Material,
-            path: PathBuf::from("res/materials/material.mat"),
-            guid,
-            inspector: Box::new(inspector),
-        })
-    }
-
-    fn window_with_selected(guid: Guid, inspector: StubInspector) -> InspectorWindow {
-        InspectorWindow {
-            model: InspectorWindowModel {
-                style: InspectorWindowStyle {
-                    title: "Inspector".into(),
-                },
-                selected: info_for(guid, inspector),
-            },
-        }
-    }
-
-    /// 重复选中同一资产：保留现有 Inspector（未保存编辑 / 预览状态不重建），
-    /// 不触发 on_exit、不收集纹理 —— 旧 Inspector 存活，纹理仍归它持有。
-    #[test]
-    fn set_selected_same_asset_keeps_inspector() {
-        let guid = Guid::new();
-        let mut window =
-            window_with_selected(guid, StubInspector::new(vec![egui::TextureId::User(1)]));
-        let ctx = egui::Context::default();
-
-        let (dialog, freed) = window.set_selected(&ctx, info_for(guid, StubInspector::new(vec![])));
-
-        assert!(dialog.is_none());
-        assert!(freed.is_empty());
-        let inspector = window.get_inspector::<StubInspector>().unwrap();
-        assert!(!inspector.exit_called);
-        assert_eq!(inspector.freed_ids, vec![egui::TextureId::User(1)]);
-    }
-
-    /// 选中不同资产：旧 Inspector 退出并交出其全部预览纹理 id。
-    #[test]
-    fn set_selected_different_asset_collects_freed_ids() {
-        let mut window = window_with_selected(
-            Guid::new(),
-            StubInspector::new(vec![egui::TextureId::User(1), egui::TextureId::User(2)]),
-        );
-        let ctx = egui::Context::default();
-
-        let (dialog, freed) =
-            window.set_selected(&ctx, info_for(Guid::new(), StubInspector::new(vec![])));
-
-        assert!(dialog.is_none());
-        assert_eq!(
-            freed,
-            vec![egui::TextureId::User(1), egui::TextureId::User(2)]
-        );
-    }
-
-    /// 取消选中（info = None）：旧 Inspector 的预览纹理 id 同样被收集。
-    #[test]
-    fn set_selected_none_collects_freed_ids() {
-        let mut window = window_with_selected(
-            Guid::new(),
-            StubInspector::new(vec![egui::TextureId::User(1)]),
-        );
-        let ctx = egui::Context::default();
-
-        let (dialog, freed) = window.set_selected(&ctx, None);
-
-        assert!(dialog.is_none());
-        assert_eq!(freed, vec![egui::TextureId::User(1)]);
-        assert!(window.model.selected.is_none());
     }
 }

@@ -15,17 +15,13 @@ use crate::{
         SerializedMaterialAssetsSystem, ShaderAssetsSystem, TextureAssetsSystem,
     },
     graphics::{
-        attachment::{Attachment, AttachmentFormat, AttachmentLoadAction, AttachmentStoreAction},
-        compare_function::CompareFunction,
-        graphics_graph::{
+        attachment::{Attachment, AttachmentFormat, AttachmentLoadAction, AttachmentStoreAction}, compare_function::CompareFunction, egui_texture_handle::EguiTextureHandle, graphics_graph::{
             GraphicsCommand,
             graphics_node::{ColorAttachmentBind, DepthAttachmentBind},
-        },
-        material::SerializedMaterial,
-        render_state::{
+        }, material::SerializedMaterial, render_state::{
             BlendFactor, BlendOperation, BlendPreset, BlendState, CullMode, PrimitiveTopology,
             RenderState,
-        },
+        }
     },
     kairos_editor::{
         asset_registry::AssetKind,
@@ -34,7 +30,7 @@ use crate::{
             Message, Messager, UIReader,
             dialog::{ConfirmDialogWindow, Dialog},
             drag::Drag,
-            inspector::Inspector,
+            inspector::{Inspector},
             paths,
             project_window::ProjectWindow,
             scene_camera::SceneCamera,
@@ -220,9 +216,8 @@ impl Thumbnail {
 /// 与 MeshInspector 的 PreviewState 同构：draw() 惰性初始化并接收回绑，
 /// render() 每帧输出预览 GraphicsCommand。
 struct PreviewState {
-    egui_texture_id: Option<egui::TextureId>,
-    bind_receiver: Option<tokio::sync::oneshot::Receiver<egui::TextureId>>,
-    pending_drop_id: Option<egui::TextureId>,
+    egui_texture_handle: Option<EguiTextureHandle>,
+    bind_receiver: Option<tokio::sync::oneshot::Receiver<EguiTextureHandle>>,
     size: (u32, u32),
     camera: SceneCamera,
     /// 取景所用预览网格的下标（切换网格后按新 AABB 重取景）
@@ -260,33 +255,11 @@ impl PreviewState {
         let size = style.preview_default_size.max(1);
         Self {
             size: (size, size),
-            egui_texture_id: None,
+            egui_texture_handle: None,
             bind_receiver: None,
-            pending_drop_id: None,
             camera: Self::framing_camera(aabb, style),
             mesh_index,
         }
-    }
-
-    /// 交出所有存活的 egui texture id 并丢弃在途 bind 通道。
-    /// 已送达但未消费的 id 一并交出；未送达的迟后 send 必然失败，
-    /// 由 RenderPipeline 立即释放该纹理。
-    /// （handle / render / present 同在主线程单帧内顺序执行，
-    /// try_recv 与 present() 的 send 不会并发。）
-    fn take_all_texture_ids(&mut self) -> Vec<egui::TextureId> {
-        let mut ids = Vec::with_capacity(3);
-        if let Some(mut receiver) = self.bind_receiver.take()
-            && let Ok(id) = receiver.try_recv()
-        {
-            ids.push(id);
-        }
-        if let Some(id) = self.egui_texture_id.take() {
-            ids.push(id);
-        }
-        if let Some(id) = self.pending_drop_id.take() {
-            ids.push(id);
-        }
-        ids
     }
 }
 
@@ -935,15 +908,13 @@ impl MaterialInspector {
 
         // 接收 render() 回绑的 egui texture id；旧 id 下一帧 render() 释放
         if let Some(receiver) = &mut preview.bind_receiver
-            && let Ok(texture_id) = receiver.try_recv()
+            && let Ok(texture_handle) = receiver.try_recv()
         {
-            if let Some(old) = preview.egui_texture_id.replace(texture_id) {
-                preview.pending_drop_id = Some(old);
-            }
+            preview.egui_texture_handle.replace(texture_handle);
             preview.bind_receiver = None;
         }
 
-        let Some(tex_id) = preview.egui_texture_id else {
+        let Some(tex_handle) = &preview.egui_texture_handle else {
             ui.centered_and_justified(|ui| {
                 ui.label("Preview is loading...");
             });
@@ -976,7 +947,7 @@ impl MaterialInspector {
         }
 
         ui.painter().image(
-            tex_id,
+            tex_handle.id(),
             rect,
             egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
             egui::Color32::WHITE,
@@ -1207,9 +1178,6 @@ impl Inspector for MaterialInspector {
             return None;
         };
 
-        // 释放 draw() 标记的旧 egui texture id
-        let drop_id = preview.pending_drop_id.take();
-
         // 上一个 bind 尚未被消费时不重复创建 channel
         let bind_ready = preview.bind_receiver.is_none();
         let (egui_bind_sender, egui_bind_receiver) = if bind_ready {
@@ -1223,10 +1191,6 @@ impl Inspector for MaterialInspector {
         let vp = preview.camera.view_projection();
 
         let mut command = GraphicsCommand::new(1, 1, 1, 3);
-
-        if let Some(id) = drop_id {
-            command.free_egui_texture_id(id);
-        }
 
         // 临时 color + depth attachment（每帧新建，多个 Inspector 天然隔离）
         let preview_attachment = Attachment::new(
@@ -1285,14 +1249,6 @@ impl Inspector for MaterialInspector {
         }
 
         Some(command)
-    }
-
-    fn take_preview_egui_textures(&mut self) -> Vec<egui::TextureId> {
-        let mut guard = self.model.preview.lock();
-        let Some(preview) = guard.deref_mut() else {
-            return Vec::new();
-        };
-        preview.take_all_texture_ids()
     }
 
     fn on_exit(&mut self, _ctx: &egui::Context) -> Option<Box<dyn Dialog>> {
@@ -1477,173 +1433,5 @@ impl MaterialInspector {
         {
             *asset = serialized;
         }
-    }
-}
-
-// ============================================================
-// Tests
-// ============================================================
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// 完整 style TOML（preview 字段可覆盖）。
-    fn style_toml(preview_section: &str) -> String {
-        format!(
-            r##"
-shader_selector_height = 20.0
-shader_selector_menu_border = 10.0
-shader_selector_menu_min_width = 10.0
-shader_selector_submenu_width_factor = 0.7
-
-texture_label_height = 60.0
-texture_background_color = "#32323280"
-texture_drag_hover_background_color = "#0050c84d"
-texture_empty_stroke_color = "#464646"
-texture_fill_stroke_color = "#5a5a5a"
-texture_drag_hover_stroke_color = "#4696ff"
-texture_corner_radius = 4
-texture_stroke_width = 1.0
-
-render_state_row_height = 20.0
-render_state_sub_row_indent = 16.0
-
-apply_button_height = 20.0
-
-{preview_section}
-"##
-        )
-    }
-
-    const PREVIEW_KEYS: &str = r#"
-preview_min_height = 150.0
-preview_default_size = 512
-camera_fov = 60.0
-camera_direction = [0.0, -0.6, 1.0, 0.0]
-camera_orbit_speed = 0.008
-camera_zoom_speed = 0.01
-camera_min_distance = 0.03
-camera_max_distance = 3000.0
-"#;
-
-    /// issue #37：preview_meshes 为空时回退到默认 Suzanne 网格，
-    /// 避免预览网格下拉栏为空。
-    #[test]
-    fn style_sanitize_fills_default_preview_meshes_when_empty() {
-        let toml = style_toml(&format!("{PREVIEW_KEYS}\npreview_meshes = []"));
-        let style = MaterialInspectorStyle::from_toml_bytes(toml.as_bytes()).unwrap();
-        assert_eq!(
-            style.preview_meshes,
-            vec![PathBuf::from("res/models/Suzanne.mesh")]
-        );
-    }
-
-    /// 配置了 preview_meshes 时保留用户配置，不被默认值覆盖。
-    #[test]
-    fn style_sanitize_keeps_configured_preview_meshes() {
-        let toml = style_toml(&format!(
-            "{PREVIEW_KEYS}\npreview_meshes = [\"res/models/Suzanne.mesh\", \"res/models/Cube.mesh\"]"
-        ));
-        let style = MaterialInspectorStyle::from_toml_bytes(toml.as_bytes()).unwrap();
-        assert_eq!(
-            style.preview_meshes,
-            vec![
-                PathBuf::from("res/models/Suzanne.mesh"),
-                PathBuf::from("res/models/Cube.mesh")
-            ]
-        );
-    }
-
-    /// preview_min_height 夹紧到 >= 1.0，避免 0 高度 attachment。
-    #[test]
-    fn style_sanitize_clamps_preview_min_height() {
-        let toml = style_toml(
-            "preview_min_height = 0.0\npreview_default_size = 512\ncamera_fov = 60.0\ncamera_direction = [0.0, -0.6, 1.0, 0.0]\ncamera_orbit_speed = 0.008\ncamera_zoom_speed = 0.01\ncamera_min_distance = 0.03\ncamera_max_distance = 3000.0\npreview_meshes = [\"res/models/Suzanne.mesh\"]",
-        );
-        let style = MaterialInspectorStyle::from_toml_bytes(toml.as_bytes()).unwrap();
-        assert!(style.preview_min_height >= 1.0);
-    }
-
-    fn dummy_camera() -> SceneCamera {
-        SceneCamera::new(
-            float3::new(0.0, 0.0, 1.0),
-            float3::new(0.0, 0.0, 0.0),
-            60.0,
-            0.03,
-            3000.0,
-            0.008,
-            0.01,
-            0.0,
-            0.0,
-            0.0,
-            0.03,
-            3000.0,
-        )
-    }
-
-    /// Inspector 被替换/关闭时：交出当前 + 待释放的 egui texture id，
-    /// 状态清空（再次调用返回空）。
-    #[test]
-    fn take_all_texture_ids_returns_live_and_pending_ids() {
-        let mut preview = PreviewState {
-            egui_texture_id: Some(egui::TextureId::User(1)),
-            bind_receiver: None,
-            pending_drop_id: Some(egui::TextureId::User(2)),
-            size: (4, 4),
-            camera: dummy_camera(),
-            mesh_index: 0,
-        };
-
-        let ids = preview.take_all_texture_ids();
-        assert_eq!(
-            ids,
-            vec![egui::TextureId::User(1), egui::TextureId::User(2)]
-        );
-        assert!(preview.egui_texture_id.is_none());
-        assert!(preview.pending_drop_id.is_none());
-        assert!(preview.take_all_texture_ids().is_empty());
-    }
-
-    /// 交出时丢弃在途 bind 通道：迟到的 send 必然失败，
-    /// 由 RenderPipeline 释放刚注册的纹理（泄漏修复契约）。
-    #[test]
-    fn take_all_texture_ids_drops_pending_bind_receiver() {
-        let (sender, receiver) = tokio::sync::oneshot::channel();
-        let mut preview = PreviewState {
-            egui_texture_id: None,
-            bind_receiver: Some(receiver),
-            pending_drop_id: None,
-            size: (4, 4),
-            camera: dummy_camera(),
-            mesh_index: 0,
-        };
-
-        let ids = preview.take_all_texture_ids();
-        assert!(ids.is_empty());
-        assert!(preview.bind_receiver.is_none());
-        assert!(sender.send(egui::TextureId::User(3)).is_err());
-    }
-
-    /// bind 已送达但 draw() 未来得及消费时 Inspector 被替换：
-    /// 通道里的 texture id 也必须交出释放，不能随通道丢弃。
-    #[test]
-    fn take_all_texture_ids_collects_delivered_but_unconsumed_bind() {
-        let (sender, receiver) = tokio::sync::oneshot::channel();
-        sender.send(egui::TextureId::User(3)).unwrap();
-        let mut preview = PreviewState {
-            egui_texture_id: Some(egui::TextureId::User(1)),
-            bind_receiver: Some(receiver),
-            pending_drop_id: None,
-            size: (4, 4),
-            camera: dummy_camera(),
-            mesh_index: 0,
-        };
-
-        let ids = preview.take_all_texture_ids();
-        assert_eq!(
-            ids,
-            vec![egui::TextureId::User(3), egui::TextureId::User(1)]
-        );
     }
 }

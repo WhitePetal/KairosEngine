@@ -2,7 +2,7 @@ use std::{hash::Hash, sync::Arc};
 
 use crate::{
     asset_loader::assets::{AssetHandle, MaterialAssetsSystem, MeshAssetsSystem},
-    graphics::attachment::{AttachmentLoadAction, AttachmentStoreAction},
+    graphics::{attachment::{AttachmentLoadAction, AttachmentStoreAction}, egui_texture_handle::EguiTextureHandle},
     math::float4x4,
 };
 
@@ -84,7 +84,6 @@ pub enum GraphNode {
     OutputToFrameBuffer(OutputToFrameBufferNode),
     BindAttachmentToEgui(BindAttachmentToEguiNode),
     CopyAttachmentToEGui(CopyAttachmentToEguiNode),
-    FreeEguiTextureId(egui::TextureId),
 }
 
 pub struct RenderPassNode {
@@ -102,7 +101,7 @@ pub struct OutputToFrameBufferNode {
 }
 pub struct BindAttachmentToEguiNode {
     pub attachment_id: ColorAttachmentId,
-    pub sender: Option<tokio::sync::oneshot::Sender<egui::TextureId>>,
+    pub sender: Option<tokio::sync::oneshot::Sender<EguiTextureHandle>>,
 }
 pub struct CopyAttachmentToEguiNode {
     pub attachment_id: ColorAttachmentId,

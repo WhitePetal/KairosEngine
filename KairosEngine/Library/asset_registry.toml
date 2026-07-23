@@ -671,6 +671,10 @@ guid = "996de805-64ec-405c-b66e-639f4978cce4"
 path = "kairos_engine/src/graphics/compare_function.rs"
 
 [[entries]]
+guid = "060ca622-0473-4a70-a763-b7bc8b3cca77"
+path = "kairos_engine/src/graphics/egui_texture_handle.rs"
+
+[[entries]]
 guid = "3b3ac4ce-12c8-4668-87c8-cb5b81df8f5e"
 path = "kairos_engine/src/graphics/graphics_graph"
 

@@ -24,7 +24,6 @@ pub struct GraphicsGraph {
     pub vps: Vec<float4x4>,
     pub graph: StableDiGraph<GraphNode, usize>,
     pub ending_nodes: Vec<NodeIndex>,
-    pub free_egui_textures: Vec<egui::TextureId>,
 }
 
 impl GraphicsGraph {
@@ -32,7 +31,6 @@ impl GraphicsGraph {
         let mut graph_attachments = Vec::<Attachment>::new();
         let mut graph_depth_attachments = Vec::<Attachment>::new();
         let mut graph_vps = Vec::<float4x4>::new();
-        let mut graph_free_egui_textures = Vec::<egui::TextureId>::new();
 
         // build the graphs
         let mut graphics = Vec::with_capacity(commands.len());
@@ -115,9 +113,6 @@ impl GraphicsGraph {
                         graph.add_edge(*prev, node, 1usize);
                     }
                 }
-                GraphNode::FreeEguiTextureId(texture_id) => {
-                    graph_free_egui_textures.push(texture_id);
-                }
             });
 
             graphics.push(graph);
@@ -165,7 +160,6 @@ impl GraphicsGraph {
             depth_attachments: graph_depth_attachments,
             vps: graph_vps,
             ending_nodes,
-            free_egui_textures: graph_free_egui_textures,
         }
     }
 
@@ -334,34 +328,6 @@ impl GraphicsGraph {
             GraphNode::OutputToFrameBuffer(_) => {}
             GraphNode::BindAttachmentToEgui(_) => {}
             GraphNode::CopyAttachmentToEGui(_) => {}
-            GraphNode::FreeEguiTextureId(_) => {}
         });
-    }
-}
-
-// ============================================================
-// Tests
-// ============================================================
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Inspector 预览清理路径依赖的行为：仅含 free_egui_texture_id 节点的
-    /// GraphicsCommand（无 render pass、无 attachment）经 build 后 id 折叠进
-    /// free_egui_textures，present 末尾统一释放。
-    #[test]
-    fn build_folds_free_egui_texture_nodes_without_render_pass() {
-        let mut command = GraphicsCommand::new(0, 0, 0, 2);
-        command.free_egui_texture_id(egui::TextureId::User(7));
-        command.free_egui_texture_id(egui::TextureId::User(9));
-
-        let graph = GraphicsGraph::build(vec![command]);
-
-        assert_eq!(
-            graph.free_egui_textures,
-            vec![egui::TextureId::User(7), egui::TextureId::User(9)]
-        );
-        assert_eq!(graph.graph.node_count(), 0);
     }
 }

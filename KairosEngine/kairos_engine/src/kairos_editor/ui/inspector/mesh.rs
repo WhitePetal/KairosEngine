@@ -10,16 +10,13 @@ use serde::{Deserialize, Serialize};
 use crate::{
     asset_loader::assets::{AssetHandle, AssetsServer, MaterialAssetsSystem, MeshAssetsSystem},
     graphics::{
-        attachment::{Attachment, AttachmentFormat, AttachmentLoadAction, AttachmentStoreAction},
-        graphics_graph::{
+        attachment::{Attachment, AttachmentFormat, AttachmentLoadAction, AttachmentStoreAction}, egui_texture_handle::EguiTextureHandle, graphics_graph::{
             GraphicsCommand,
             graphics_node::{ColorAttachmentBind, DepthAttachmentBind},
-        },
-        mesh::{Mesh, wireframe},
+        }, mesh::{Mesh, wireframe}
     },
     kairos_editor::ui::{
-        Message, Messager, UIReader, dialog::Dialog, inspector::Inspector, paths,
-        scene_camera::SceneCamera,
+        Message, Messager, UIReader, dialog::Dialog, inspector::Inspector, paths, scene_camera::SceneCamera
     },
     math::{Vector, float2, float3, float4, float4x4},
     spatial::AABB,
@@ -78,9 +75,8 @@ impl MeshInspectorStyle {
 /// Tracks the egui texture handle, async bind channel, and camera rotation/zoom
 /// for the 3D preview panel.
 struct PreviewState {
-    egui_texture_id: Option<egui::TextureId>,
-    bind_receiver: Option<tokio::sync::oneshot::Receiver<egui::TextureId>>,
-    pending_drop_id: Option<egui::TextureId>,
+    egui_texture_handle: Option<EguiTextureHandle>,
+    bind_receiver: Option<tokio::sync::oneshot::Receiver<EguiTextureHandle>>,
     size: (u32, u32),
     camera: SceneCamera,
 }
@@ -114,32 +110,10 @@ impl PreviewState {
         let size = style.preview_default_size.max(1);
         Self {
             size: (size, size),
-            egui_texture_id: None,
+            egui_texture_handle: None,
             bind_receiver: None,
-            pending_drop_id: None,
             camera,
         }
-    }
-
-    /// 交出所有存活的 egui texture id 并丢弃在途 bind 通道。
-    /// 已送达但未消费的 id 一并交出；未送达的迟后 send 必然失败，
-    /// 由 RenderPipeline 立即释放该纹理。
-    /// （handle / render / present 同在主线程单帧内顺序执行，
-    /// try_recv 与 present() 的 send 不会并发。）
-    fn take_all_texture_ids(&mut self) -> Vec<egui::TextureId> {
-        let mut ids = Vec::with_capacity(3);
-        if let Some(mut receiver) = self.bind_receiver.take()
-            && let Ok(id) = receiver.try_recv()
-        {
-            ids.push(id);
-        }
-        if let Some(id) = self.egui_texture_id.take() {
-            ids.push(id);
-        }
-        if let Some(id) = self.pending_drop_id.take() {
-            ids.push(id);
-        }
-        ids
     }
 }
 // ============================================================
@@ -180,16 +154,13 @@ impl MeshInspector {
 
         // Try to receive a new egui texture id from a completed bind.
         if let Some(receiver) = &mut preview.bind_receiver {
-            if let Ok(texture_id) = receiver.try_recv() {
-                // Free the old texture id on the next render_preview cycle.
-                if let Some(old) = preview.egui_texture_id.replace(texture_id) {
-                    preview.pending_drop_id = Some(old);
-                }
+            if let Ok(texture_handle) = receiver.try_recv() {
+                preview.egui_texture_handle.replace(texture_handle);
                 preview.bind_receiver = None;
             }
         }
 
-        let Some(tex_id) = preview.egui_texture_id else {
+        let Some(tex_handle) = &preview.egui_texture_handle else {
             ui.centered_and_justified(|ui| {
                 ui.label("Preview is loading...");
             });
@@ -226,7 +197,7 @@ impl MeshInspector {
 
         // Draw the preview texture over the allocated rect.
         ui.painter().image(
-            tex_id,
+            tex_handle.id(),
             rect,
             egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
             egui::Color32::WHITE,
@@ -478,9 +449,6 @@ impl Inspector for MeshInspector {
             return None;
         };
 
-        // Free the old egui texture id if one was marked for drop.
-        let drop_id = preview.pending_drop_id.take();
-
         // Only bind a new attachment if no receiver is pending.
         let bind_ready = preview.bind_receiver.is_none();
         let (egui_bind_sender, egui_bind_receiver) = if bind_ready {
@@ -495,11 +463,6 @@ impl Inspector for MeshInspector {
         let vp = preview.camera.view_projection();
 
         let mut command = GraphicsCommand::new(3, 2, 1, 6);
-
-        // Free old texture.
-        if let Some(id) = drop_id {
-            command.free_egui_texture_id(id);
-        }
 
         // Create preview color attachment.
         let preview_attachment = Attachment::new(
@@ -576,103 +539,7 @@ impl Inspector for MeshInspector {
         Some(command)
     }
 
-    fn take_preview_egui_textures(&mut self) -> Vec<egui::TextureId> {
-        let mut guard = self.model.preview.lock();
-        let Some(preview) = guard.deref_mut() else {
-            return Vec::new();
-        };
-        preview.take_all_texture_ids()
-    }
-
     fn on_exit(&mut self, _ctx: &egui::Context) -> Option<Box<dyn Dialog>> {
         None
-    }
-}
-
-// ============================================================
-// Tests
-// ============================================================
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn dummy_camera() -> SceneCamera {
-        SceneCamera::new(
-            float3::new(0.0, 0.0, 1.0),
-            float3::new(0.0, 0.0, 0.0),
-            60.0,
-            0.03,
-            3000.0,
-            0.008,
-            0.01,
-            0.0,
-            0.0,
-            0.0,
-            0.03,
-            3000.0,
-        )
-    }
-
-    /// Inspector 被替换/关闭时：交出当前 + 待释放的 egui texture id，
-    /// 状态清空（再次调用返回空）。
-    #[test]
-    fn take_all_texture_ids_returns_live_and_pending_ids() {
-        let mut preview = PreviewState {
-            egui_texture_id: Some(egui::TextureId::User(1)),
-            bind_receiver: None,
-            pending_drop_id: Some(egui::TextureId::User(2)),
-            size: (4, 4),
-            camera: dummy_camera(),
-        };
-
-        let ids = preview.take_all_texture_ids();
-        assert_eq!(
-            ids,
-            vec![egui::TextureId::User(1), egui::TextureId::User(2)]
-        );
-        assert!(preview.egui_texture_id.is_none());
-        assert!(preview.pending_drop_id.is_none());
-        assert!(preview.take_all_texture_ids().is_empty());
-    }
-
-    /// 交出时丢弃在途 bind 通道：迟到的 send 必然失败，
-    /// 由 RenderPipeline 释放刚注册的纹理（泄漏修复契约）。
-    #[test]
-    fn take_all_texture_ids_drops_pending_bind_receiver() {
-        let (sender, receiver) = tokio::sync::oneshot::channel();
-        let mut preview = PreviewState {
-            egui_texture_id: None,
-            bind_receiver: Some(receiver),
-            pending_drop_id: None,
-            size: (4, 4),
-            camera: dummy_camera(),
-        };
-
-        let ids = preview.take_all_texture_ids();
-        assert!(ids.is_empty());
-        assert!(preview.bind_receiver.is_none());
-        assert!(sender.send(egui::TextureId::User(3)).is_err());
-    }
-
-    /// bind 已送达但 draw() 未来得及消费时 Inspector 被替换：
-    /// 通道里的 texture id 也必须交出释放，不能随通道丢弃。
-    #[test]
-    fn take_all_texture_ids_collects_delivered_but_unconsumed_bind() {
-        let (sender, receiver) = tokio::sync::oneshot::channel();
-        sender.send(egui::TextureId::User(3)).unwrap();
-        let mut preview = PreviewState {
-            egui_texture_id: Some(egui::TextureId::User(1)),
-            bind_receiver: Some(receiver),
-            pending_drop_id: None,
-            size: (4, 4),
-            camera: dummy_camera(),
-        };
-
-        let ids = preview.take_all_texture_ids();
-        assert_eq!(
-            ids,
-            vec![egui::TextureId::User(3), egui::TextureId::User(1)]
-        );
     }
 }

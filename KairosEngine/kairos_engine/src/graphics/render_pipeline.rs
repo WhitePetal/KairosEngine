@@ -25,13 +25,7 @@ use winit::{dpi::PhysicalSize, window::Window};
 use crate::{
     asset_loader::assets::{AssetHandle, AssetsServer, TextureAssetsSystem, asset::AssetIndex},
     graphics::{
-        attachment::{AttachmentFormat, InternalAttachmentId},
-        graphics_graph::{self, GraphicsGraph, graphics_node::RenderPassNode},
-        mesh::Mesh,
-        render_state::RenderState,
-        shader::ShaderAsset,
-        texture::{Texture, format::TextureCompressionConfig},
-        vertex::Vertex,
+        attachment::{AttachmentFormat, InternalAttachmentId}, egui_texture_handle::EguiTextureHandle, graphics_graph::{self, GraphicsGraph, graphics_node::RenderPassNode}, mesh::Mesh, render_state::RenderState, shader::ShaderAsset, texture::{Texture, format::TextureCompressionConfig}, vertex::Vertex
     },
     kairos_paths,
     math::{float4, float4x4},
@@ -86,6 +80,9 @@ pub struct RenderPipeline {
     texture_cache: HashMap<usize, TextureCache>,
     mesh_buffer_cache: HashMap<usize, MeshBufferCache>,
     global_vp_bind_group_layout: BindGroupLayout,
+
+    egui_texture_free_sender: std::sync::mpsc::Sender<egui::TextureId>,
+    egui_texture_free_reciver: std::sync::mpsc::Receiver<egui::TextureId>,
 
     // #1: purple fallback for errored materials.
     purple_fallback: Option<(BindGroup, BindGroupLayout)>,
@@ -175,6 +172,8 @@ impl RenderPipeline {
         // #1: create purple fallback texture for errored materials.
         let purple_fb = Self::create_purple_fallback(&device, &queue);
 
+        let egui_texture_free_channel = std::sync::mpsc::channel::<egui::TextureId>();
+
         Ok(Self {
             window: window,
             device,
@@ -187,6 +186,9 @@ impl RenderPipeline {
             internal_texture_views: vec![None; InternalAttachmentId::COUNT],
             window_size,
             window_size_changed: false,
+
+            egui_texture_free_sender: egui_texture_free_channel.0,
+            egui_texture_free_reciver: egui_texture_free_channel.1,
 
             pipeline_cache: HashMap::new(),
             texture_cache: HashMap::new(),
@@ -229,6 +231,10 @@ impl RenderPipeline {
         output: SurfaceTexture,
         graphics_graph: GraphicsGraph,
     ) {
+        while let Ok(free_id) = self.egui_texture_free_reciver.try_recv() {
+            self.egui_renderer.free_texture(&free_id);
+        }
+
         let Some(mut encoder) = self.encoder.take() else {
             return;
         };
@@ -326,8 +332,6 @@ impl RenderPipeline {
             render_pass_depth_attachments.push(attachment);
         }
 
-        let free_egui_textures = graphics_graph.free_egui_textures;
-
         let ending_nodes = graphics_graph.ending_nodes;
         let mut graph = graphics_graph.graph;
 
@@ -408,18 +412,15 @@ impl RenderPipeline {
                         attachment.view,
                         wgpu::FilterMode::Linear,
                     );
+                    let free_sender = self.egui_texture_free_sender.clone();
                     if let Some(sender) = bind_attachment_to_egui_node.sender.take() {
-                        // 接收方（如已关闭的 Inspector 预览）被丢弃时 send 失败：
-                        // 立即释放刚注册的纹理，避免泄漏在 egui renderer 中
-                        if let Err(rt_id) = sender.send(rt_id) {
-                            self.egui_renderer.free_texture(&rt_id);
-                        }
+                        let rt_handle = EguiTextureHandle::new(rt_id, free_sender);
+                        let _ = sender.send(rt_handle);
                     }
                 }
                 graphics_graph::graphics_node::GraphNode::CopyAttachmentToEGui(
                     _copy_attachment_to_egui_node,
                 ) => {}
-                graphics_graph::graphics_node::GraphNode::FreeEguiTextureId(_) => unreachable!(),
             }
         }
 
@@ -452,9 +453,6 @@ impl RenderPipeline {
             for id in &egui_free_textures {
                 self.egui_renderer.free_texture(id);
             }
-        }
-        for id in &free_egui_textures {
-            self.egui_renderer.free_texture(id);
         }
     }
 

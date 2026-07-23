@@ -1,4 +1,4 @@
-use std::{any::type_name, cell::Cell, fs};
+use std::{any::type_name, fs};
 
 use egui::pos2;
 use serde::{Deserialize, Serialize};
@@ -7,11 +7,10 @@ use toml::from_str;
 use crate::{
     asset_loader::assets::AssetsServer,
     graphics::{
-        attachment::{Attachment, AttachmentLoadAction, AttachmentStoreAction},
-        graphics_graph::{
+        attachment::{Attachment, AttachmentLoadAction, AttachmentStoreAction}, egui_texture_handle::EguiTextureHandle, graphics_graph::{
             GraphicsCommand,
             graphics_node::{ColorAttachmentBind, DepthAttachmentBind},
-        },
+        }
     },
     kairos_dialog,
     kairos_editor::{
@@ -51,11 +50,10 @@ struct SceneWindowStyle {
 
 struct SceneWindowModel {
     style: SceneWindowStyle,
-    rt_id: Option<egui::TextureId>,
+    rt_handle: Option<EguiTextureHandle>,
     width: u32,
     height: u32,
-    egui_bind_tex_recever: Option<tokio::sync::oneshot::Receiver<egui::TextureId>>,
-    drop_texture_id: Cell<Option<egui::TextureId>>,
+    egui_bind_tex_recever: Option<tokio::sync::oneshot::Receiver<EguiTextureHandle>>,
 
     camera: SceneCamera,
     gizmos: GizmosModel,
@@ -107,11 +105,10 @@ impl SceneWindowModel {
 
         Ok(Self {
             style,
-            rt_id: None,
+            rt_handle: None,
             width: 1,
             height: 1,
             egui_bind_tex_recever: None,
-            drop_texture_id: Cell::new(None),
             camera: scene_camera,
             gizmos,
         })
@@ -195,9 +192,9 @@ impl Drawer for SceneWindow {
             messager.send(Message::UpdateSceneWindowSize(width, height));
         }
 
-        if let Some(rt_id) = self.model.rt_id {
+        if let Some(rt_handle) = &self.model.rt_handle {
             ui.painter().image(
-                rt_id,
+                rt_handle.id(),
                 rect,
                 egui::Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
                 egui::Color32::WHITE,
@@ -372,11 +369,6 @@ impl Drawer for SceneWindow {
             messager.send(Message::SceneWindowTryReceTextureId);
         }
 
-        // Free previous texture exactly once, then clear.
-        if let Some(drop_texture_id) = self.model.drop_texture_id.take() {
-            graphics_command.free_egui_texture_id(drop_texture_id);
-        }
-
         // draw
         let width = self.model.width;
         let height = self.model.height;
@@ -487,7 +479,7 @@ impl SceneWindow {
         self.model.camera.aspect = width as f32 / height as f32;
     }
 
-    pub fn register_view_bind(&mut self, recever: tokio::sync::oneshot::Receiver<egui::TextureId>) {
+    pub fn register_view_bind(&mut self, recever: tokio::sync::oneshot::Receiver<EguiTextureHandle>) {
         self.model.egui_bind_tex_recever = Some(recever);
         // self.try_rece_texture_id();
     }
@@ -497,8 +489,7 @@ impl SceneWindow {
             match &mut self.model.egui_bind_tex_recever {
                 Some(recever) => match recever.try_recv() {
                     Ok(texuter_id) => {
-                        self.model.drop_texture_id.set(self.model.rt_id.take());
-                        self.model.rt_id = Some(texuter_id);
+                        self.model.rt_handle.replace(texuter_id);
                         true
                     }
                     Err(_) => false,

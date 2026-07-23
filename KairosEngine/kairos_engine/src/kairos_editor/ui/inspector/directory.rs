@@ -1,6 +1,6 @@
 use std::fs;
 
-use crate::kairos_editor::ui::{UIReader, dialog::Dialog, inspector::Inspector};
+use crate::kairos_editor::ui::{UIReader, inspector::{Inspector}};
 
 pub struct DirectoryInspector {
     path: std::path::PathBuf,
@@ -37,9 +37,5 @@ impl Inspector for DirectoryInspector {
                 ui.label(format!("Failed to read directory: {e}"));
             }
         }
-    }
-
-    fn on_exit(&mut self, _ctx: &egui::Context) -> Option<Box<dyn Dialog>> {
-        None
     }
 }

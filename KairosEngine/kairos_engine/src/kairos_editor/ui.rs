@@ -4,8 +4,7 @@ use crate::{
         TomlTableAssetsSystem, asset::TextAssetsSystem,
     },
     graphics::{
-        graphics_graph::GraphicsCommand, material::SerializedMaterial, mesh::Mesh,
-        render_state::RenderState,
+        egui_texture_handle::EguiTextureHandle, graphics_graph::GraphicsCommand, material::SerializedMaterial, mesh::Mesh, render_state::RenderState
     },
     kairos_editor::{
         Engine,
@@ -106,13 +105,13 @@ pub enum Message {
     CloseSceneTab,
     /// (widht, height)
     UpdateSceneWindowSize(u32, u32),
-    RegisteSceneWindowViewBind(tokio::sync::oneshot::Receiver<egui::TextureId>),
+    RegisteSceneWindowViewBind(tokio::sync::oneshot::Receiver<EguiTextureHandle>),
     SceneWindowTryReceTextureId,
     OpenGameTab,
     CloseGameTab,
     /// (width, height)
     UpdateGameWindowSize(u32, u32),
-    RegisteGameWindowViewBind(tokio::sync::oneshot::Receiver<egui::TextureId>),
+    RegisteGameWindowViewBind(tokio::sync::oneshot::Receiver<EguiTextureHandle>),
     GameWindowTryReceTextureId,
 
     /// SceneCamera orbit (dx, dy, dt) in pixels
@@ -338,9 +337,6 @@ pub struct Context {
     tab_viewer: KairosTabDrawer,
     dialogs: Vec<Box<dyn dialog::Dialog>>,
     global_styles: GlobalStyles,
-    /// 被替换 / 关闭的 Inspector 交出的预览 egui texture id，
-    /// 在随后的 render() 以仅含 free 节点的 GraphicsCommand 统一释放
-    pending_free_egui_textures: Vec<egui::TextureId>,
 }
 
 impl Context {
@@ -370,7 +366,6 @@ impl Context {
             layout: EditorLayout::new(),
             dialogs: Vec::new(),
             global_styles: global_styles,
-            pending_free_egui_textures: Vec::new(),
         })
     }
 
@@ -526,8 +521,10 @@ impl Context {
                 }
                 Message::CloseInspectorTab => {
                     if let Some(inspector) = self.get_window_mut::<InspectorWindow>() {
-                        let freed = inspector.on_close(ui.ctx());
-                        self.pending_free_egui_textures.extend(freed);
+                        let dialog = inspector.on_close(ui.ctx());
+                        if let Some(dialog) = dialog {
+                            self.dialogs.push(dialog);
+                        }
                     }
                     self.close_drawer::<InspectorWindow>();
                 }
@@ -556,8 +553,7 @@ impl Context {
                         project_window.select_node(node);
                         let info = project_window.get_selected_node_info(&mut engine.assets_server);
                         if let Some(inspector) = self.get_window_mut::<InspectorWindow>() {
-                            let (dialog, freed) = inspector.set_selected(ui.ctx(), info);
-                            self.pending_free_egui_textures.extend(freed);
+                            let dialog= inspector.set_selected(ui.ctx(), info);
                             if let Some(dialog) = dialog {
                                 self.dialogs.push(dialog);
                             }
@@ -789,16 +785,6 @@ impl Context {
                 commands.push(cmd);
             }
         });
-
-        // 释放被替换 / 关闭的 Inspector 交出的预览纹理：仅含 free 节点的命令即可，
-        // GraphicsGraph::build 会将其折叠进 free_egui_textures，present 末尾统一释放
-        if !self.pending_free_egui_textures.is_empty() {
-            let mut command = GraphicsCommand::new(0, 0, 0, self.pending_free_egui_textures.len());
-            for id in self.pending_free_egui_textures.drain(..) {
-                command.free_egui_texture_id(id);
-            }
-            commands.push(command);
-        }
 
         commands
     }

@@ -3,12 +3,11 @@ use std::sync::Arc;
 use crate::{
     asset_loader::assets::{AssetHandle, MaterialAssetsSystem, MeshAssetsSystem},
     graphics::{
-        attachment::Attachment,
-        graphics_graph::graphics_node::{
+        attachment::Attachment, egui_texture_handle::EguiTextureHandle, graphics_graph::graphics_node::{
             BaseDraw, BindAttachmentToEguiNode, ColorAttachmentBind, ColorAttachmentId,
             CopyAttachmentToEguiNode, DepthAttachmentBind, DepthAttachmentId, EguiDraw, GraphNode,
             OutputToFrameBufferNode, RenderPassNode, VPId,
-        },
+        }
     },
     math::float4x4,
 };
@@ -155,7 +154,7 @@ impl GraphicsCommand {
     pub fn bind_attachment_to_egui(
         &mut self,
         attachment_id: ColorAttachmentId,
-        sender: tokio::sync::oneshot::Sender<egui::TextureId>,
+        sender: tokio::sync::oneshot::Sender<EguiTextureHandle>,
     ) {
         debug_assert!(
             matches!(self.cur_render_pass, RenderPassState::Cloused),
@@ -238,9 +237,5 @@ impl GraphicsCommand {
                 attachment_id,
                 egui_free_textures,
             }));
-    }
-
-    pub fn free_egui_texture_id(&mut self, texture_id: egui::TextureId) {
-        self.nodes.push(GraphNode::FreeEguiTextureId(texture_id));
     }
 }

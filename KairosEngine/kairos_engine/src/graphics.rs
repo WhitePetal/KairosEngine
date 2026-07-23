@@ -7,6 +7,7 @@ pub mod shader;
 pub mod texture;
 pub mod vertex;
 
+pub mod egui_texture_handle;
 pub mod attachment;
 pub mod compare_function;
 pub mod graphics_graph;
