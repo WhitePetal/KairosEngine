@@ -1567,6 +1567,10 @@ guid = "40260f67-a409-424a-b8c9-530c47f76ed0"
 path = "tests/runtime/material_inspector_clear_texture.toml"
 
 [[entries]]
+guid = "93bce36f-f966-41fc-9216-4ff0cfa602d7"
+path = "tests/runtime/material_inspector_preview.toml"
+
+[[entries]]
 guid = "b68a6f1b-6a46-4153-9b23-88117e8593db"
 path = "tests/runtime/material_inspector_texture_fallback.toml"
 

@@ -409,7 +409,11 @@ impl RenderPipeline {
                         wgpu::FilterMode::Linear,
                     );
                     if let Some(sender) = bind_attachment_to_egui_node.sender.take() {
-                        let _ = sender.send(rt_id);
+                        // 接收方（如已关闭的 Inspector 预览）被丢弃时 send 失败：
+                        // 立即释放刚注册的纹理，避免泄漏在 egui renderer 中
+                        if let Err(rt_id) = sender.send(rt_id) {
+                            self.egui_renderer.free_texture(&rt_id);
+                        }
                     }
                 }
                 graphics_graph::graphics_node::GraphNode::CopyAttachmentToEGui(

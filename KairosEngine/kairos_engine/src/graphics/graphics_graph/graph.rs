@@ -338,3 +338,30 @@ impl GraphicsGraph {
         });
     }
 }
+
+// ============================================================
+// Tests
+// ============================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Inspector 预览清理路径依赖的行为：仅含 free_egui_texture_id 节点的
+    /// GraphicsCommand（无 render pass、无 attachment）经 build 后 id 折叠进
+    /// free_egui_textures，present 末尾统一释放。
+    #[test]
+    fn build_folds_free_egui_texture_nodes_without_render_pass() {
+        let mut command = GraphicsCommand::new(0, 0, 0, 2);
+        command.free_egui_texture_id(egui::TextureId::User(7));
+        command.free_egui_texture_id(egui::TextureId::User(9));
+
+        let graph = GraphicsGraph::build(vec![command]);
+
+        assert_eq!(
+            graph.free_egui_textures,
+            vec![egui::TextureId::User(7), egui::TextureId::User(9)]
+        );
+        assert_eq!(graph.graph.node_count(), 0);
+    }
+}

@@ -58,4 +58,11 @@ pub trait Inspector: Any {
     fn render(&self) -> Option<GraphicsCommand> {
         None
     }
+
+    /// Inspector 被替换 / 关闭时调用：交出仍持有的预览 egui texture id，
+    /// 由 Context 统一在下一帧 render() 释放（否则泄漏在 egui_wgpu renderer 中）。
+    /// 默认实现：无预览纹理。
+    fn take_preview_egui_textures(&mut self) -> Vec<egui::TextureId> {
+        Vec::new()
+    }
 }
