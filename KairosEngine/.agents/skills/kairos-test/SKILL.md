@@ -5,6 +5,25 @@ description: Write tests after implementing a feature. Use Rust unit/integration
 
 # Kairos Test
 
+## Rust integration tests
+
+Location: `kairos_engine/tests/integration/`
+
+Follow the existing test structure — one module per tested area (e.g., `audio/`,
+`ecs/`, `kairos_editor/`). Use `#[test]` for pure logic tests, or `#[tokio::test]`
+when tokio runtime is needed.
+
+Tests go here when:
+- Validating data transformations, serialization, math, ECS component logic
+- Testing pure functions that don't need a live engine loop
+- Anything `cargo test` can run without a GPU
+
+Requirements:
+- Follow the project's domain vocabulary from `CONTEXT.md` (if it exists)
+- Test through public interfaces, not internal implementation details
+
+## Kairos Test Harness (runtime tests)
+
 > ⚠️ **STATUS: 当前 Test Harness 存在Bug, 未来会完全重构，不要使用 Test Harness 进行测试**
 > The TOML runtime test harness has known limitations with egui popup/Area widget interaction
 > (ComboBox dropdowns, floating menus, etc.). See [#27](https://github.com/WhitePetal/KairosEngine/issues/27).
@@ -31,24 +50,6 @@ Feature implemented
              First extend the harness, then write the TOML test
 ```
 
-## Rust integration tests
-
-Location: `kairos_engine/tests/integration/`
-
-Follow the existing test structure — one module per tested area (e.g., `audio/`,
-`ecs/`, `kairos_editor/`). Use `#[test]` for pure logic tests, or `#[tokio::test]`
-when tokio runtime is needed.
-
-Tests go here when:
-- Validating data transformations, serialization, math, ECS component logic
-- Testing pure functions that don't need a live engine loop
-- Anything `cargo test` can run without a GPU
-
-Requirements:
-- Follow the project's domain vocabulary from `CONTEXT.md` (if it exists)
-- Test through public interfaces, not internal implementation details
-
-## Kairos Test Harness (runtime tests)
 > ⚠️ **STATUS: 当前 Test Harness 存在Bug, 未来会完全重构，不要使用 Test Harness 进行测试**
 
 Location: `tests/runtime/` — TOML files executed by the engine.

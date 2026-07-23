@@ -1045,7 +1045,7 @@ impl RenderPipeline {
             depth_state.depth_compare = render_state.depth_test.map(|cmp| cmp.into());
             // wgpu: depth_write_enabled = Some(true) 要求 depth_compare 为 Some
             // （MissingDepthCompare），effective_depth_write 负责该约束。
-            depth_state.depth_write_enabled = Some(render_state.effective_depth_write());
+            depth_state.depth_write_enabled = Some(render_state.depth_write_enable());
         }
 
         let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {

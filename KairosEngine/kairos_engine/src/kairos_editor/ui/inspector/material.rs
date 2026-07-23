@@ -74,136 +74,56 @@ struct ShaderMenuNode {
     children: Vec<ShaderMenuNode>,
 }
 
-/// 将扁平的 (name, path) 列表按目录层级组织为树。
-fn build_shader_menu_tree(shader_list: &[(String, PathBuf)]) -> Vec<ShaderMenuNode> {
-    let mut roots: Vec<ShaderMenuNode> = Vec::new();
+impl ShaderMenuNode {
+    /// 将扁平的 (name, path) 列表按目录层级组织为树。
+    pub fn build_tree(shader_list: &[(String, PathBuf)]) -> Vec<Self> {
+        let mut roots: Vec<ShaderMenuNode> = Vec::new();
 
-    for (name, path) in shader_list {
-        let parent = path.parent().unwrap_or(std::path::Path::new(""));
-        let components: Vec<&str> = parent
-            .components()
-            .filter_map(|c| match c {
-                std::path::Component::Normal(s) => s.to_str(),
-                _ => None,
-            })
-            .collect();
-        insert_shader_node(&mut roots, &components, name, path);
-    }
-
-    roots
-}
-
-fn insert_shader_node(
-    nodes: &mut Vec<ShaderMenuNode>,
-    components: &[&str],
-    shader_name: &str,
-    shader_path: &PathBuf,
-) {
-    if components.is_empty() {
-        // 根级 shader，直接添加为叶子节点
-        nodes.push(ShaderMenuNode {
-            display_name: shader_name.to_string(),
-            full_path: Some(shader_path.clone()),
-            children: Vec::new(),
-        });
-        return;
-    }
-
-    let dir_name = components[0];
-    let rest = &components[1..];
-
-    let pos = nodes.iter().position(|n| n.display_name == dir_name);
-    let pos = pos.unwrap_or_else(|| {
-        nodes.push(ShaderMenuNode {
-            display_name: dir_name.to_string(),
-            full_path: None,
-            children: Vec::new(),
-        });
-        nodes.len() - 1
-    });
-
-    insert_shader_node(&mut nodes[pos].children, rest, shader_name, shader_path);
-}
-
-/// 递归渲染 shader 层级菜单。
-fn render_shader_menu(
-    ui: &mut egui::Ui,
-    nodes: &[ShaderMenuNode],
-    current_path: &PathBuf,
-    messager: &mut Messager,
-    mat_path: &PathBuf,
-    min_menu_width: f32,
-    menu_height: f32,
-) {
-    for node in nodes {
-        if let Some(ref shader_path) = node.full_path {
-            // Leaf — shader 文件
-            let is_selected = shader_path == current_path;
-            if ui
-                .selectable_label(is_selected, &node.display_name)
-                .clicked()
-            {
-                messager.send(Message::MaterialInspectorChangeShader(
-                    mat_path.clone(),
-                    shader_path.clone(),
-                ));
-            }
-        } else {
-            // Directory — 子菜单
-            let mut menu = SubMenuButton::new(&node.display_name);
-            menu.button = menu.button.min_size(Vec2::new(min_menu_width, menu_height));
-            menu.config(MenuConfig::new().close_behavior(egui::PopupCloseBehavior::CloseOnClick))
-                .ui(ui, |ui| {
-                    render_shader_menu(
-                        ui,
-                        &node.children,
-                        current_path,
-                        messager,
-                        mat_path,
-                        min_menu_width,
-                        menu_height,
-                    );
-                });
+        for (name, path) in shader_list {
+            let parent = path.parent().unwrap_or(std::path::Path::new(""));
+            let components: Vec<&str> = parent
+                .components()
+                .filter_map(|c| match c {
+                    std::path::Component::Normal(s) => s.to_str(),
+                    _ => None,
+                })
+                .collect();
+            Self::insert_shader_node(&mut roots, &components, name, path);
         }
-    }
-}
 
-// ============================================================
-// Blend 预设映射（issue #33）
-// ============================================================
-
-/// 从 RenderState 推导当前应显示的 blend 选项。
-/// `blend_mod = None`（不混合）→ None 选项；
-/// `Some(state)` 匹配预设，不匹配任何预设时为 Custom。
-fn current_blend_option(render_state: &RenderState) -> Option<BlendPreset> {
-    render_state.blend_mod.map(BlendPreset::from_blend_state)
-}
-
-/// 将选中的 blend 选项写回 RenderState。
-/// None 选项写回 `blend_mod = None`；预设 / Custom 写回 `Some(BlendState)`。
-fn apply_blend_option(render_state: &mut RenderState, option: Option<BlendPreset>) {
-    render_state.blend_mod = option.map(|preset| preset.to_blend_state());
-}
-
-// ============================================================
-// Texture 拖拽相关（跨帧持久化）
-// ============================================================
-
-/// 在 drop target 区域检查是否发生了拖放操作。
-/// 返回值：Some(texture_path) 表示拖放有效，None 表示无操作。
-fn check_texture_drop(
-    ui: &egui::Ui,
-    drag: &Drag<PathBuf>,
-    target_rect: egui::Rect,
-) -> Option<PathBuf> {
-    let pointer_pos = ui.input(|i| i.pointer.interact_pos())?;
-    if !target_rect.contains(pointer_pos) {
-        return None;
+        roots
     }
 
-    match drag {
-        Drag::Draging(_) => None,
-        Drag::Stoped(path) => Some(path.clone()),
+    fn insert_shader_node(
+        nodes: &mut Vec<ShaderMenuNode>,
+        components: &[&str],
+        shader_name: &str,
+        shader_path: &PathBuf,
+    ) {
+        if components.is_empty() {
+            // 根级 shader，直接添加为叶子节点
+            nodes.push(ShaderMenuNode {
+                display_name: shader_name.to_string(),
+                full_path: Some(shader_path.clone()),
+                children: Vec::new(),
+            });
+            return;
+        }
+
+        let dir_name = components[0];
+        let rest = &components[1..];
+
+        let pos = nodes.iter().position(|n| n.display_name == dir_name);
+        let pos = pos.unwrap_or_else(|| {
+            nodes.push(ShaderMenuNode {
+                display_name: dir_name.to_string(),
+                full_path: None,
+                children: Vec::new(),
+            });
+            nodes.len() - 1
+        });
+
+        Self::insert_shader_node(&mut nodes[pos].children, rest, shader_name, shader_path);
     }
 }
 
@@ -218,101 +138,25 @@ struct Thumbnail {
     handle: egui::TextureHandle,
 }
 
-/// 为 Texture 创建 48x48 缩略图的 egui handle。
-fn build_texture_thumbnail(
-    ui: &egui::Ui,
-    texture: &crate::graphics::texture::Texture,
-) -> egui::TextureHandle {
-    let rgba = crate::graphics::texture::format::decode_to_rgba8(
-        &texture.data[0],
-        texture.width,
-        texture.height,
-        texture.format,
-    );
-    let w = texture.width as usize;
-    let h = texture.height as usize;
-    let color_image = egui::ColorImage::from_rgba_unmultiplied([w, h], &rgba);
-    ui.ctx().load_texture(
-        "material_tex_thumb",
-        color_image,
-        egui::TextureOptions::LINEAR,
-    )
-}
+impl Thumbnail {
+    pub fn new(ui: &egui::Ui, path: &PathBuf, texture: &crate::graphics::texture::Texture) -> Self {
+        let rgba = crate::graphics::texture::format::decode_to_rgba8(
+            &texture.data[0],
+            texture.width,
+            texture.height,
+            texture.format,
+        );
+        let w = texture.width as usize;
+        let h = texture.height as usize;
+        let color_image = egui::ColorImage::from_rgba_unmultiplied([w, h], &rgba);
+        let handle = ui.ctx().load_texture(
+            "material_tex_thumb",
+            color_image,
+            egui::TextureOptions::LINEAR,
+        );
 
-// ============================================================
-// RenderState 编辑行（issue #33）
-// ============================================================
-
-/// BlendFactor 下拉行。返回 Some(new_value) 表示用户修改了该字段。
-fn blend_factor_combo_row(
-    body: &mut egui_extras::TableBody,
-    row_h: f32,
-    indent: f32,
-    label: &str,
-    id_salt: &str,
-    current: BlendFactor,
-) -> Option<BlendFactor> {
-    let mut changed_to = None;
-    body.row(row_h, |mut row| {
-        row.col(|ui| {
-            ui.horizontal(|ui| {
-                ui.add_space(indent);
-                ui.label(label);
-            });
-        });
-        row.col(|ui| {
-            let mut selected = current;
-            egui::ComboBox::from_id_salt(id_salt)
-                .selected_text(current.label())
-                .show_ui(ui, |ui| {
-                    for factor in BlendFactor::iter() {
-                        if ui
-                            .selectable_value(&mut selected, factor, factor.label())
-                            .changed()
-                        {
-                            changed_to = Some(factor);
-                        }
-                    }
-                });
-        });
-    });
-    changed_to
-}
-
-/// BlendOperation 下拉行。返回 Some(new_value) 表示用户修改了该字段。
-fn blend_operation_combo_row(
-    body: &mut egui_extras::TableBody,
-    row_h: f32,
-    indent: f32,
-    label: &str,
-    id_salt: &str,
-    current: BlendOperation,
-) -> Option<BlendOperation> {
-    let mut changed_to = None;
-    body.row(row_h, |mut row| {
-        row.col(|ui| {
-            ui.horizontal(|ui| {
-                ui.add_space(indent);
-                ui.label(label);
-            });
-        });
-        row.col(|ui| {
-            let mut selected = current;
-            egui::ComboBox::from_id_salt(id_salt)
-                .selected_text(current.label())
-                .show_ui(ui, |ui| {
-                    for operation in BlendOperation::iter() {
-                        if ui
-                            .selectable_value(&mut selected, operation, operation.label())
-                            .changed()
-                        {
-                            changed_to = Some(operation);
-                        }
-                    }
-                });
-        });
-    });
-    changed_to
+        Self { path: path.clone(), handle }
+    }
 }
 
 // ============================================================
@@ -352,6 +196,119 @@ pub struct MaterialInspector {
 }
 
 impl MaterialInspector {
+    // ============================================================
+    // Blend 预设映射（issue #33）
+    // ============================================================
+
+    /// 从 RenderState 推导当前应显示的 blend 选项。
+    /// `blend_mod = None`（不混合）→ None 选项；
+    /// `Some(state)` 匹配预设，不匹配任何预设时为 Custom。
+    fn current_blend_option(render_state: &RenderState) -> Option<BlendPreset> {
+        render_state.blend_mod.map(BlendPreset::from_blend_state)
+    }
+
+    /// 将选中的 blend 选项写回 RenderState。
+    /// None 选项写回 `blend_mod = None`；预设 / Custom 写回 `Some(BlendState)`。
+    fn apply_blend_option(render_state: &mut RenderState, option: Option<BlendPreset>) {
+        render_state.blend_mod = option.map(|preset| preset.to_blend_state());
+    }
+
+    // ============================================================
+    // RenderState 编辑行（issue #33）
+    // ============================================================
+
+    /// BlendFactor 下拉行。返回 Some(new_value) 表示用户修改了该字段。
+    fn draw_blend_factor_combo_row(
+        &self,
+        body: &mut egui_extras::TableBody,
+        label: &str,
+        id_salt: &str,
+        current: BlendFactor,
+    ) -> Option<BlendFactor> {
+        let mut changed_to = None;
+        body.row(self.model.style.render_state_row_height, |mut row| {
+            row.col(|ui| {
+                ui.horizontal(|ui| {
+                    ui.add_space(self.model.style.render_state_sub_row_indent);
+                    ui.label(label);
+                });
+            });
+            row.col(|ui| {
+                let mut selected = current;
+                egui::ComboBox::from_id_salt(id_salt)
+                    .selected_text(current.label())
+                    .show_ui(ui, |ui| {
+                        for factor in BlendFactor::iter() {
+                            if ui
+                                .selectable_value(&mut selected, factor, factor.label())
+                                .changed()
+                            {
+                                changed_to = Some(factor);
+                            }
+                        }
+                    });
+            });
+        });
+        changed_to
+    }
+
+    /// BlendOperation 下拉行。返回 Some(new_value) 表示用户修改了该字段。
+    fn draw_blend_operation_combo_row(
+        &self,
+        body: &mut egui_extras::TableBody,
+        label: &str,
+        id_salt: &str,
+        current: BlendOperation,
+    ) -> Option<BlendOperation> {
+        let mut changed_to = None;
+        body.row(self.model.style.render_state_row_height, |mut row| {
+            row.col(|ui| {
+                ui.horizontal(|ui| {
+                    ui.add_space(self.model.style.render_state_sub_row_indent);
+                    ui.label(label);
+                });
+            });
+            row.col(|ui| {
+                let mut selected = current;
+                egui::ComboBox::from_id_salt(id_salt)
+                    .selected_text(current.label())
+                    .show_ui(ui, |ui| {
+                        for operation in BlendOperation::iter() {
+                            if ui
+                                .selectable_value(&mut selected, operation, operation.label())
+                                .changed()
+                            {
+                                changed_to = Some(operation);
+                            }
+                        }
+                    });
+            });
+        });
+        changed_to
+    }
+
+    // ============================================================
+    // Texture 拖拽相关（跨帧持久化）
+    // ============================================================
+
+    /// 在 drop target 区域检查是否发生了拖放操作。
+    /// 返回值：Some(texture_path) 表示拖放有效，None 表示无操作。
+    fn check_texture_drop(
+        ui: &egui::Ui,
+        drag: &Drag<PathBuf>,
+        target_rect: egui::Rect,
+    ) -> Option<PathBuf> {
+        let pointer_pos = ui.input(|i| i.pointer.interact_pos())?;
+        if !target_rect.contains(pointer_pos) {
+            return None;
+        }
+
+        match drag {
+            Drag::Draging(_) => None,
+            Drag::Stoped(path) => Some(path.clone()),
+        }
+    }
+
     fn draw_texture_col(&self, ui: &mut egui::Ui, reader: &UIReader, messager: &mut Messager, assets_server: &AssetsServer) {
         ui.horizontal(|ui| {
             self.draw_texture_rect(ui, reader, messager, assets_server);
@@ -385,7 +342,7 @@ impl MaterialInspector {
         let is_valid_drag = dragging.is_some_and(|d| {
             let valid = d.get().extension().and_then(|e| e.to_str()) == AssetKind::Texture.extension();
             if valid {
-                drop_path = check_texture_drop(ui, d, texture_rect);
+                drop_path = Self::check_texture_drop(ui, d, texture_rect);
             }
             valid
         });
@@ -463,11 +420,7 @@ impl MaterialInspector {
                     if let Some(tex_handle) = &mat.texture {
                         if let Some(texture) = assets_server.get::<TextureAssetsSystem>(tex_handle)
                         {
-                            let handle = build_texture_thumbnail(ui, texture);
-                            *thumb_guard = Some(Thumbnail {
-                                path: texture_path.clone(),
-                                handle,
-                            });
+                            *thumb_guard = Some(Thumbnail::new(ui, texture_path, texture));
                         }
                     }
                 }
@@ -493,6 +446,48 @@ impl MaterialInspector {
                 egui::CornerRadius::same(self.model.style.texture_corner_radius),
                 egui::Color32::from_gray(10),
             );
+        }
+    }
+
+    /// 递归渲染 shader 层级菜单。
+    fn draw_shader_menu(
+        &self,
+        ui: &mut egui::Ui,
+        nodes: &[ShaderMenuNode],
+        current_path: &PathBuf,
+        messager: &mut Messager,
+        min_menu_width: f32,
+        menu_height: f32,
+    ) {
+        for node in nodes {
+            if let Some(ref shader_path) = node.full_path {
+                // Leaf — shader 文件
+                let is_selected = shader_path == current_path;
+                if ui
+                    .selectable_label(is_selected, &node.display_name)
+                    .clicked()
+                {
+                    messager.send(Message::MaterialInspectorChangeShader(
+                        self.model.path.clone(),
+                        shader_path.clone(),
+                    ));
+                }
+            } else {
+                // Directory — 子菜单
+                let mut menu = SubMenuButton::new(&node.display_name);
+                menu.button = menu.button.min_size(Vec2::new(min_menu_width, menu_height));
+                menu.config(MenuConfig::new().close_behavior(egui::PopupCloseBehavior::CloseOnClick))
+                    .ui(ui, |ui| {
+                        self.draw_shader_menu(
+                            ui,
+                            &node.children,
+                            current_path,
+                            messager,
+                            min_menu_width,
+                            menu_height,
+                        );
+                    });
+            }
         }
     }
 
@@ -590,7 +585,7 @@ impl MaterialInspector {
                     row.col(|ui| {
                         // 显示生效值：depth_test = None 时强制为 false，
                         // 避免“勾选但不可用”的困惑；存储值保持不变
-                        let mut checked = render_state.effective_depth_write();
+                        let mut checked = render_state.depth_write_enable();
                         ui.add_enabled_ui(render_state.depth_test.is_some(), |ui| {
                             if ui.checkbox(&mut checked, "").changed() {
                                 self.send_render_state(
@@ -635,7 +630,7 @@ impl MaterialInspector {
 
                 // ---- Blend Mode：None + 预设下拉，Custom 时展开 6 个子字段 ----
                 let effective_blend = render_state.blend_mod.unwrap_or(BlendState::REPLACE);
-                let current_option = current_blend_option(&render_state);
+                let current_option = Self::current_blend_option(&render_state);
                 let show_custom = matches!(current_option, Some(BlendPreset::Custom(_)))
                     || self.model.blend_custom_expanded.get();
                 let option_label =
@@ -680,7 +675,7 @@ impl MaterialInspector {
                                             other => {
                                                 self.model.blend_custom_expanded.set(false);
                                                 let mut new_state = render_state;
-                                                apply_blend_option(&mut new_state, other);
+                                                Self::apply_blend_option(&mut new_state, other);
                                                 self.send_render_state(messager, new_state);
                                             }
                                         }
@@ -692,11 +687,8 @@ impl MaterialInspector {
 
                 // ---- Custom 展开：color/alpha 的 srcFactor / dstFactor / operation（缩进表达附属）----
                 if show_custom {
-                    let indent = self.model.style.render_state_sub_row_indent;
-                    if let Some(factor) = blend_factor_combo_row(
+                    if let Some(factor) = self.draw_blend_factor_combo_row(
                         &mut body,
-                        row_h,
-                        indent,
                         "Color Src Factor",
                         "mat_blend_color_src_factor",
                         effective_blend.color.src_factor,
@@ -705,10 +697,8 @@ impl MaterialInspector {
                             b.color.src_factor = factor
                         });
                     }
-                    if let Some(factor) = blend_factor_combo_row(
+                    if let Some(factor) = self.draw_blend_factor_combo_row(
                         &mut body,
-                        row_h,
-                        indent,
                         "Color Dst Factor",
                         "mat_blend_color_dst_factor",
                         effective_blend.color.dst_factor,
@@ -717,10 +707,8 @@ impl MaterialInspector {
                             b.color.dst_factor = factor
                         });
                     }
-                    if let Some(operation) = blend_operation_combo_row(
+                    if let Some(operation) = self.draw_blend_operation_combo_row(
                         &mut body,
-                        row_h,
-                        indent,
                         "Color Operation",
                         "mat_blend_color_operation",
                         effective_blend.color.operation,
@@ -729,10 +717,8 @@ impl MaterialInspector {
                             b.color.operation = operation
                         });
                     }
-                    if let Some(factor) = blend_factor_combo_row(
+                    if let Some(factor) = self.draw_blend_factor_combo_row(
                         &mut body,
-                        row_h,
-                        indent,
                         "Alpha Src Factor",
                         "mat_blend_alpha_src_factor",
                         effective_blend.alpha.src_factor,
@@ -741,10 +727,8 @@ impl MaterialInspector {
                             b.alpha.src_factor = factor
                         });
                     }
-                    if let Some(factor) = blend_factor_combo_row(
+                    if let Some(factor) = self.draw_blend_factor_combo_row(
                         &mut body,
-                        row_h,
-                        indent,
                         "Alpha Dst Factor",
                         "mat_blend_alpha_dst_factor",
                         effective_blend.alpha.dst_factor,
@@ -753,10 +737,8 @@ impl MaterialInspector {
                             b.alpha.dst_factor = factor
                         });
                     }
-                    if let Some(operation) = blend_operation_combo_row(
+                    if let Some(operation) = self.draw_blend_operation_combo_row(
                         &mut body,
-                        row_h,
-                        indent,
                         "Alpha Operation",
                         "mat_blend_alpha_operation",
                         effective_blend.alpha.operation,
@@ -819,7 +801,7 @@ impl Inspector for MaterialInspector {
             .iter()
             .map(|node| (node.name(), node.path.clone()))
             .collect();
-        let shader_menu_tree = build_shader_menu_tree(&shader_list);
+        let shader_menu_tree = ShaderMenuNode::build_tree(&shader_list);
 
         let model = MaterialInspectorModel {
             style,
@@ -915,12 +897,11 @@ impl Inspector for MaterialInspector {
                         .gap(4.0)
                         .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
                         .show(|ui| {
-                            render_shader_menu(
+                            self.draw_shader_menu(
                                 ui,
                                 &self.model.shader_menu_tree,
                                 &current_shader_path,
                                 messager,
-                                &self.model.path,
                                 (menu_width
                                     * self.model.style.shader_selector_submenu_width_factor)
                                     .max(self.model.style.shader_selector_menu_min_width),
@@ -955,7 +936,6 @@ impl Inspector for MaterialInspector {
         ui.separator();
 
         // ---- Render State 编辑区域（issue #33）----
-        ui.label("Render State");
         self.draw_render_state_section(ui, messager);
 
         // ---- Dirty indicator ----
@@ -1055,119 +1035,5 @@ impl MaterialInspector {
         // 更新数据状态（空槽）
         *self.model.current_texture_path.lock() = Some(None);
         self.model.dirty.set(true);
-    }
-}
-
-// ============================================================
-// Tests（issue #33 — blend 预设映射）
-// ============================================================
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::graphics::render_state::{BlendComponent, BlendOperation};
-
-    #[test]
-    fn none_blend_maps_to_none_option() {
-        let rs = RenderState {
-            blend_mod: None,
-            ..Default::default()
-        };
-        assert_eq!(current_blend_option(&rs), None);
-    }
-
-    #[test]
-    fn preset_blend_maps_to_matching_preset() {
-        let rs = RenderState {
-            blend_mod: Some(BlendState::ALPHA_BLENDING),
-            ..Default::default()
-        };
-        assert_eq!(current_blend_option(&rs), Some(BlendPreset::AlphaBlend));
-    }
-
-    #[test]
-    fn replace_blend_is_distinct_from_none_option() {
-        // Some(REPLACE) → Replace 预设；None → None 选项，两者不可混淆
-        let rs = RenderState {
-            blend_mod: Some(BlendState::REPLACE),
-            ..Default::default()
-        };
-        assert_eq!(current_blend_option(&rs), Some(BlendPreset::Replace));
-    }
-
-    #[test]
-    fn non_preset_blend_maps_to_custom() {
-        let mut state = BlendState::REPLACE;
-        state.color.operation = BlendOperation::Subtract;
-        let rs = RenderState {
-            blend_mod: Some(state),
-            ..Default::default()
-        };
-        match current_blend_option(&rs) {
-            Some(BlendPreset::Custom(s)) => assert_eq!(s, state),
-            other => panic!("expected Custom, got {:?}", other),
-        }
-    }
-
-    #[test]
-    fn apply_none_option_writes_none() {
-        let mut rs = RenderState {
-            blend_mod: Some(BlendState::ALPHA_BLENDING),
-            ..Default::default()
-        };
-        apply_blend_option(&mut rs, None);
-        assert_eq!(rs.blend_mod, None);
-    }
-
-    #[test]
-    fn apply_replace_preset_writes_some_replace() {
-        let mut rs = RenderState::default();
-        apply_blend_option(&mut rs, Some(BlendPreset::Replace));
-        assert_eq!(rs.blend_mod, Some(BlendState::REPLACE));
-    }
-
-    #[test]
-    fn apply_non_replace_preset_writes_some() {
-        let mut rs = RenderState::default();
-        apply_blend_option(&mut rs, Some(BlendPreset::Add));
-        assert_eq!(rs.blend_mod, Some(BlendPreset::Add.to_blend_state()));
-
-        apply_blend_option(&mut rs, Some(BlendPreset::Multiply));
-        assert_eq!(rs.blend_mod, Some(BlendPreset::Multiply.to_blend_state()));
-    }
-
-    #[test]
-    fn apply_custom_preset_writes_its_state() {
-        let custom_state = BlendState {
-            color: BlendComponent {
-                src_factor: BlendFactor::SrcAlpha,
-                dst_factor: BlendFactor::DstAlpha,
-                operation: BlendOperation::Subtract,
-            },
-            alpha: BlendComponent {
-                src_factor: BlendFactor::One,
-                dst_factor: BlendFactor::Zero,
-                operation: BlendOperation::Min,
-            },
-        };
-        let mut rs = RenderState::default();
-        apply_blend_option(&mut rs, Some(BlendPreset::Custom(custom_state)));
-        assert_eq!(rs.blend_mod, Some(custom_state));
-    }
-
-    #[test]
-    fn option_roundtrip_preserves_effective_state() {
-        // 选项 → RenderState → 再次推导选项，应回到同一选项
-        for option in [
-            None,
-            Some(BlendPreset::Replace),
-            Some(BlendPreset::Add),
-            Some(BlendPreset::Multiply),
-            Some(BlendPreset::AlphaBlend),
-        ] {
-            let mut rs = RenderState::default();
-            apply_blend_option(&mut rs, option);
-            assert_eq!(current_blend_option(&rs), option);
-        }
     }
 }

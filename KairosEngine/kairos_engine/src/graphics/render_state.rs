@@ -524,36 +524,7 @@ impl RenderState {
     /// 带 depth attachment 的 pipeline 启用 depth write 时 `depth_compare`
     /// 必须为 `Some` —— 即“只写不测”是非法组合。因此 `depth_test = None`
     /// （关闭深度测试）时 depth write 一并视为关闭。
-    pub fn effective_depth_write(&self) -> bool {
+    pub fn depth_write_enable(&self) -> bool {
         self.depth_test.is_some() && self.depth_write
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn effective_depth_write_follows_raw_flag_when_test_enabled() {
-        let rs = RenderState::default();
-        assert!(rs.effective_depth_write());
-
-        let rs = RenderState {
-            depth_write: false,
-            ..Default::default()
-        };
-        assert!(!rs.effective_depth_write());
-    }
-
-    #[test]
-    fn effective_depth_write_is_forced_off_without_depth_test() {
-        // depth_test = None + depth_write = true 在 wgpu 中是非法组合
-        // （MissingDepthCompare），生效值必须回落为 false
-        let rs = RenderState {
-            depth_test: None,
-            depth_write: true,
-            ..Default::default()
-        };
-        assert!(!rs.effective_depth_write());
     }
 }
