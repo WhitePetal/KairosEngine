@@ -582,13 +582,15 @@ impl MaterialInspector {
                     });
                 });
 
-                // ---- Depth Write（depth_test = None 时 wgpu 不允许 write，禁用表达该约束）----
+                // ---- Depth Write（depth_test = None 时 wgpu 不允许 write：禁用并显示生效值 false）----
                 body.row(row_h, |mut row| {
                     row.col(|ui| {
                         ui.label("Depth Write");
                     });
                     row.col(|ui| {
-                        let mut checked = render_state.depth_write;
+                        // 显示生效值：depth_test = None 时强制为 false，
+                        // 避免“勾选但不可用”的困惑；存储值保持不变
+                        let mut checked = render_state.effective_depth_write();
                         ui.add_enabled_ui(render_state.depth_test.is_some(), |ui| {
                             if ui.checkbox(&mut checked, "").changed() {
                                 self.send_render_state(
