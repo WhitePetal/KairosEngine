@@ -49,6 +49,7 @@ Requirements:
 - Test through public interfaces, not internal implementation details
 
 ## Kairos Test Harness (runtime tests)
+> ⚠️ **STATUS: 当前 Test Harness 存在Bug, 未来会完全重构，不要使用 Test Harness 进行测试**
 
 Location: `tests/runtime/` — TOML files executed by the engine.
 
@@ -60,6 +61,7 @@ Tests go here when:
 - Any path that `cargo test` cannot exercise
 
 ### Writing a TOML test
+> ⚠️ **STATUS: 当前 Test Harness 存在Bug, 未来会完全重构，不要使用 Test Harness 进行测试**
 
 ```toml
 # tests/runtime/my_feature.toml
@@ -86,6 +88,7 @@ Regenerate with `cargo run --features test-harness -- --gen-docs` after extendin
 the dispatch table.
 
 ### Running TOML tests
+> ⚠️ **STATUS: 当前 Test Harness 存在Bug, 未来会完全重构，不要使用 Test Harness 进行测试**
 
 ```bash
 # Headless mode (CI-safe, no window) — for logic-only tests
@@ -131,6 +134,7 @@ send `run_test` commands interactively without restarting the engine:
 ```
 
 ### Extending the harness
+> ⚠️ **STATUS: 当前 Test Harness 存在Bug, 未来会完全重构，不要使用 Test Harness 进行测试**
 
 When a needed capability is missing, extend the harness before writing the TOML test.
 There are four extension points, each in `kairos_engine/src/kairos_test_harness/`:
