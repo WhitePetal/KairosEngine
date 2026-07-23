@@ -6,6 +6,7 @@ use kairos_engine::asset_loader::assets::{
     TextureAssetsSystem,
 };
 use kairos_engine::graphics::compare_function::CompareFunction;
+use kairos_engine::graphics::material::SerializedMaterial;
 use kairos_engine::graphics::render_state::{CullMode, PrimitiveTopology, RenderState};
 use kairos_engine::kairos_editor::ui::inspector::material::MaterialInspector;
 use parking_lot::Mutex;
@@ -31,24 +32,26 @@ topology = "TriangleList"
     path
 }
 
-type SharedShaderPath = Arc<Mutex<Option<PathBuf>>>;
-type SharedTexturePath = Arc<Mutex<Option<Option<PathBuf>>>>;
-type SharedRenderState = Arc<Mutex<Option<RenderState>>>;
+type SharedSerializedMaterial = Arc<Mutex<Option<SerializedMaterial>>>;
 
-fn loaded_state() -> (SharedShaderPath, SharedTexturePath, SharedRenderState) {
-    (
-        Arc::new(Mutex::new(Some(PathBuf::from("res/shaders/new.wgsl")))),
-        Arc::new(Mutex::new(Some(Some(PathBuf::from(
-            "res/textures/new.texture",
-        ))))),
-        Arc::new(Mutex::new(Some(RenderState {
+/// 用户编辑后的目标状态（与 create_mat_toml 写入磁盘的初始状态不同）。
+fn edited_material(source_path: &Path) -> SerializedMaterial {
+    SerializedMaterial {
+        source_path: source_path.to_path_buf(),
+        shader_path: PathBuf::from("res/shaders/new.wgsl"),
+        render_state: RenderState {
             depth_test: Some(CompareFunction::Less),
             depth_write: false,
             cull_mod: CullMode::Front,
             blend_mod: None,
             topology: PrimitiveTopology::TriangleStrip,
-        }))),
-    )
+        },
+        texture_path: Some(PathBuf::from("res/textures/new.texture")),
+    }
+}
+
+fn shared_state(serialized: SerializedMaterial) -> SharedSerializedMaterial {
+    Arc::new(Mutex::new(Some(serialized)))
 }
 
 // ============================================================
@@ -73,16 +76,8 @@ async fn save_material_writes_current_state_to_mat_file() {
         "SerializedMaterial should be loaded"
     );
 
-    let (shader_path, texture_path, render_state) = loaded_state();
-    let saved = MaterialInspector::save_material(
-        &mut assets,
-        &mat_path,
-        &handle,
-        &shader_path,
-        &texture_path,
-        &render_state,
-    );
-    assert!(saved, "save_material should report success");
+    let shared = shared_state(edited_material(&mat_path));
+    MaterialInspector::save_material(&mut assets, &handle, &shared);
 
     // toml_value_equals 等价验证：磁盘文件的字段已更新
     let content = std::fs::read_to_string(&mat_path).unwrap();
@@ -105,6 +100,9 @@ async fn save_material_writes_current_state_to_mat_file() {
         "Less"
     );
     assert!(!value["render_state"]["depth_write"].as_bool().unwrap());
+
+    // 保存后共享快照被取走，Inspector 下一帧从资产缓存重新同步
+    assert!(shared.lock().is_none());
 }
 
 /// 保存成功后，资产系统缓存的 SerializedMaterial 与磁盘保持一致，
@@ -119,16 +117,8 @@ async fn save_material_updates_cached_serialized_material() {
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     assets.handle();
 
-    let (shader_path, texture_path, render_state) = loaded_state();
-    let saved = MaterialInspector::save_material(
-        &mut assets,
-        &mat_path,
-        &handle,
-        &shader_path,
-        &texture_path,
-        &render_state,
-    );
-    assert!(saved);
+    let shared = shared_state(edited_material(&mat_path));
+    MaterialInspector::save_material(&mut assets, &handle, &shared);
 
     let cached = assets
         .get::<SerializedMaterialAssetsSystem>(&handle)
@@ -158,20 +148,10 @@ async fn save_material_writes_empty_texture_slot() {
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     assets.handle();
 
-    let shader_path: SharedShaderPath =
-        Arc::new(Mutex::new(Some(PathBuf::from("res/shaders/new.wgsl"))));
-    let texture_path: SharedTexturePath = Arc::new(Mutex::new(Some(None)));
-    let render_state: SharedRenderState = Arc::new(Mutex::new(Some(RenderState::default())));
-
-    let saved = MaterialInspector::save_material(
-        &mut assets,
-        &mat_path,
-        &handle,
-        &shader_path,
-        &texture_path,
-        &render_state,
-    );
-    assert!(saved);
+    let mut edited = edited_material(&mat_path);
+    edited.texture_path = None;
+    let shared = shared_state(edited);
+    MaterialInspector::save_material(&mut assets, &handle, &shared);
 
     let content = std::fs::read_to_string(&mat_path).unwrap();
     let value: toml::Value = toml::from_str(&content).unwrap();
@@ -181,31 +161,24 @@ async fn save_material_writes_empty_texture_slot() {
     );
 }
 
-/// 保存失败（目标目录不存在）时不崩溃、返回 false，调用方据此保留 dirty。
+/// 保存失败（目标目录不存在）时不崩溃、不创建文件，调用方据此保留 dirty。
 #[tokio::test]
-async fn save_material_returns_false_on_write_failure() {
+async fn save_material_does_not_create_file_on_write_failure() {
     let tmp = TempDir::new().unwrap();
     let bad_path = tmp.path().join("missing_dir").join("material.mat");
 
     let mut assets = AssetsServer::new();
     let handle = assets.load::<SerializedMaterialAssetsSystem>(&bad_path);
 
-    let (shader_path, texture_path, render_state) = loaded_state();
-    let saved = MaterialInspector::save_material(
-        &mut assets,
-        &bad_path,
-        &handle,
-        &shader_path,
-        &texture_path,
-        &render_state,
-    );
-    assert!(!saved, "write failure should be reported as false");
+    let shared = shared_state(edited_material(&bad_path));
+    MaterialInspector::save_material(&mut assets, &handle, &shared);
+
     assert!(!bad_path.exists(), "no file should be created on failure");
 }
 
-/// 编辑状态尚未从资产系统加载完成时不写盘、返回 false。
+/// 编辑状态尚未从资产系统加载完成时不写盘，磁盘文件保持原样。
 #[tokio::test]
-async fn save_material_returns_false_when_state_unloaded() {
+async fn save_material_noop_when_state_unloaded() {
     let tmp = TempDir::new().unwrap();
     let mat_path = create_mat_toml(tmp.path(), "material", "res/shaders/old.wgsl");
 
@@ -214,19 +187,8 @@ async fn save_material_returns_false_when_state_unloaded() {
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     assets.handle();
 
-    let shader_path: SharedShaderPath = Arc::new(Mutex::new(None));
-    let texture_path: SharedTexturePath = Arc::new(Mutex::new(None));
-    let render_state: SharedRenderState = Arc::new(Mutex::new(None));
-
-    let saved = MaterialInspector::save_material(
-        &mut assets,
-        &mat_path,
-        &handle,
-        &shader_path,
-        &texture_path,
-        &render_state,
-    );
-    assert!(!saved);
+    let shared: SharedSerializedMaterial = Arc::new(Mutex::new(None));
+    MaterialInspector::save_material(&mut assets, &handle, &shared);
 
     // 磁盘文件保持原样
     let content = std::fs::read_to_string(&mat_path).unwrap();
@@ -332,12 +294,7 @@ async fn discard_changes_restores_runtime_material_to_persisted_state() {
     }
 
     // ---- Discard：还原为持久化状态 ----
-    MaterialInspector::discard_changes(
-        &mut assets,
-        &mat_path,
-        &serialized_handle,
-        &material_handle,
-    );
+    MaterialInspector::discard_changes(&mut assets, &serialized_handle, &material_handle);
 
     let material = assets
         .get::<MaterialAssetsSystem>(&material_handle)
@@ -379,12 +336,7 @@ async fn discard_changes_restores_empty_texture_slot() {
         material.texture = Some(edited_texture);
     }
 
-    MaterialInspector::discard_changes(
-        &mut assets,
-        &mat_path,
-        &serialized_handle,
-        &material_handle,
-    );
+    MaterialInspector::discard_changes(&mut assets, &serialized_handle, &material_handle);
 
     let material = assets
         .get::<MaterialAssetsSystem>(&material_handle)
@@ -413,10 +365,5 @@ async fn discard_changes_no_crash_when_serialized_unloaded() {
             .is_none(),
         "serialized should stay unloaded for a missing file"
     );
-    MaterialInspector::discard_changes(
-        &mut assets,
-        &mat_path,
-        &serialized_handle,
-        &material_handle,
-    );
+    MaterialInspector::discard_changes(&mut assets, &serialized_handle, &material_handle);
 }
