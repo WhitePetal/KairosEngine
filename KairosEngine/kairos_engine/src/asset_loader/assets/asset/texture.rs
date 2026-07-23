@@ -58,13 +58,15 @@ impl Loader {
     }
     async fn load_bin(path: &PathBuf, format: TextureFormat) -> Result<Vec<PixelDatas>, Error> {
         let bytes = tokio::fs::read(path.with_extension("texture_bin")).await?;
-        // Try custom format first.
-        if let Ok(data) = crate::kairos_editor::serialize_asset::texture::deserialize_pixel_datas(&bytes, format) {
-            return Ok(data);
+        // Existing files are rkyv — try that first.
+        if let Ok(data) = rkyv::from_bytes::<Vec<u8>, rkyv::rancor::Error>(&bytes) {
+            return Ok(vec![PixelDatas::U8(data)]);
         }
-        // Fallback: try old rkyv single-level format.
-        let data = rkyv::from_bytes::<Vec<u8>, rkyv::rancor::Error>(&bytes)?;
-        Ok(vec![PixelDatas::U8(data)])
+        if let Ok(data) = rkyv::from_bytes::<Vec<Vec<u8>>, rkyv::rancor::Error>(&bytes) {
+            return Ok(data.into_iter().map(PixelDatas::U8).collect());
+        }
+        // New custom binary format.
+        crate::kairos_editor::serialize_asset::texture::deserialize_pixel_datas(&bytes, format)
     }
     async fn load(
         path: PathBuf,

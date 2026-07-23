@@ -223,12 +223,17 @@ impl TextureInspector {
             let max_possible = (new_w.max(new_h) as f32).log2().floor() as u32;
             let end_level = (mip.lod_max_clamp.floor() as u32).min(max_possible);
             let total_levels = end_level + 1;
+            let (block_w, block_h) = ext.serialized.format.block_dimensions();
             let mut levels = Vec::with_capacity(total_levels as usize);
             let mut current_w = new_w;
             let mut current_h = new_h;
             let mut current_rgba = rgba_data;
 
             for _ in 0..total_levels {
+                // Block-compressed formats require dimensions >= block size.
+                if current_w < block_w || current_h < block_h {
+                    break;
+                }
                 let pixels = crate::graphics::texture::PixelDatas::U8(current_rgba.clone());
                 let encoded = crate::graphics::texture::format::encode(
                     &pixels,

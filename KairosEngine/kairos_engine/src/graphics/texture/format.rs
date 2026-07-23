@@ -1055,3 +1055,85 @@ pub fn decode(data: &PixelDatas, width: u32, height: u32, format: TextureFormat)
         _ => todo!("decode not yet implemented for {format:?}"),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Create a simple 4×4 RGBA8 gradient test image.
+    fn make_test_rgba(w: usize, h: usize) -> Vec<u8> {
+        let mut rgba = vec![0u8; w * h * 4];
+        for y in 0..h {
+            for x in 0..w {
+                let i = (y * w + x) * 4;
+                rgba[i] = (x * 255 / w.max(1)) as u8;
+                rgba[i + 1] = (y * 255 / h.max(1)) as u8;
+                rgba[i + 2] = 128;
+                rgba[i + 3] = 255;
+            }
+        }
+        rgba
+    }
+
+    #[test]
+    fn bc1_roundtrip_4x4() {
+        let w = 4;
+        let h = 4;
+        let rgba = make_test_rgba(w, h);
+        let input = PixelDatas::U8(rgba.clone());
+        let encoded = encode(&input, w as u32, h as u32, TextureFormat::Bc1RgbaUnorm);
+        let encoded_bytes = match &encoded {
+            PixelDatas::U8(b) => b,
+            _ => panic!("expected U8"),
+        };
+        // 4×4 → one 4×4 block → 8 bytes
+        assert_eq!(encoded_bytes.len(), 8, "BC1 4x4 should produce 8 bytes");
+        let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Bc1RgbaUnorm);
+        let decoded_bytes = match &decoded {
+            PixelDatas::U8(b) => b.as_slice(),
+            _ => panic!("expected U8"),
+        };
+        assert_eq!(decoded_bytes.len(), rgba.len());
+    }
+
+    #[test]
+    fn bc3_roundtrip_8x8() {
+        let w = 8;
+        let h = 8;
+        let rgba = make_test_rgba(w, h);
+        let input = PixelDatas::U8(rgba.clone());
+        let encoded = encode(&input, w as u32, h as u32, TextureFormat::Bc3RgbaUnorm);
+        // 8x8 → 2×2 = 4 blocks, 16 bytes each → 64 bytes
+        assert_eq!(encoded.as_bytes().len(), 64);
+        let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Bc3RgbaUnorm);
+        assert_eq!(decoded.as_bytes().len(), rgba.len());
+    }
+
+    #[test]
+    fn r8_encode_decode() {
+        let rgba = make_test_rgba(16, 16);
+        let input = PixelDatas::U8(rgba.clone());
+        let encoded = encode(&input, 16, 16, TextureFormat::R8Unorm);
+        assert_eq!(encoded.as_bytes().len(), 256); // 16×16 = 256 bytes for R8
+        let decoded = decode(&encoded, 16, 16, TextureFormat::R8Unorm);
+        assert_eq!(decoded.as_bytes().len(), 1024); // 16×16×4 = 1024 bytes decoded
+    }
+
+    #[test]
+    fn rgba8_pass_through() {
+        let rgba = make_test_rgba(8, 8);
+        let input = PixelDatas::U8(rgba.clone());
+        let encoded = encode(&input, 8, 8, TextureFormat::Rgba8Unorm);
+        // RGBA8 pass-through preserves bytes
+        assert_eq!(encoded.as_bytes(), rgba.as_slice());
+    }
+
+    #[test]
+    fn bc_encode_preserves_variant() {
+        // BC encoding should return U8 variant.
+        let rgba = make_test_rgba(4, 4);
+        let input = PixelDatas::U8(rgba);
+        let encoded = encode(&input, 4, 4, TextureFormat::Bc1RgbaUnorm);
+        assert!(matches!(encoded, PixelDatas::U8(_)));
+    }
+}

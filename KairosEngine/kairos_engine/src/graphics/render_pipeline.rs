@@ -1129,8 +1129,9 @@ impl RenderPipeline {
             let block_bytes = wgpu_fmt
                 .block_copy_size(Some(wgpu::TextureAspect::All))
                 .unwrap_or(4);
-            let (block_w, _) = texture_asset.format.block_dimensions();
+            let (block_w, block_h) = texture_asset.format.block_dimensions();
             let blocks_per_row = (level_w + block_w - 1) / block_w;
+            let blocks_per_column = (level_h + block_h - 1) / block_h;
             let bytes_per_row = block_bytes * blocks_per_row;
 
             // Get raw bytes from any PixelDatas variant (pure, never panics).
@@ -1147,7 +1148,7 @@ impl RenderPipeline {
                 TexelCopyBufferLayout {
                     offset: 0,
                     bytes_per_row: Some(bytes_per_row),
-                    rows_per_image: Some(level_h),
+                    rows_per_image: Some(blocks_per_column),
                 },
                 Extent3d {
                     width: level_w,

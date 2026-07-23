@@ -1,4 +1,4 @@
 [texture_compression.features]
 BC = true
-ETC2 = true
+ETC2 = false
 ASTC = false
