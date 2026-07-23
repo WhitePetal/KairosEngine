@@ -1,7 +1,7 @@
 use crate::{
     asset_loader::assets::{
-        AssetHandle, AssetsServer, SerializedMaterialAssetsSystem, TomlTableAssetsSystem,
-        asset::TextAssetsSystem,
+        AssetHandle, AssetsServer, MaterialAssetsSystem, SerializedMaterialAssetsSystem,
+        TomlTableAssetsSystem, asset::TextAssetsSystem,
     },
     graphics::{graphics_graph::GraphicsCommand, mesh::Mesh, render_state::RenderState},
     kairos_editor::{
@@ -196,6 +196,14 @@ pub enum Message {
         Arc<parking_lot::Mutex<Option<PathBuf>>>,
         Arc<parking_lot::Mutex<Option<Option<PathBuf>>>>,
         Arc<parking_lot::Mutex<Option<RenderState>>>,
+    ),
+    /// Material Inspector: user clicked Discard on the unsaved-changes dialog.
+    /// Restores the runtime Material to the persisted (.mat) state, undoing the
+    /// edit-in-place changes. Carries (.mat path, serialized handle, material handle).
+    MaterialInspectorDiscard(
+        PathBuf,
+        Arc<AssetHandle<SerializedMaterialAssetsSystem>>,
+        Arc<AssetHandle<MaterialAssetsSystem>>,
     ),
 }
 
@@ -770,6 +778,14 @@ impl Context {
                     {
                         material_inspector.apply(&path);
                     }
+                }
+                Message::MaterialInspectorDiscard(path, serialized_handle, material_handle) => {
+                    MaterialInspector::discard_changes(
+                        &mut engine.assets_server,
+                        &path,
+                        &serialized_handle,
+                        &material_handle,
+                    );
                 }
             }
         }

@@ -591,13 +591,17 @@ fn on_exit(&mut self, _ctx: &egui::Context) -> Option<Box<dyn Dialog>> {
     if !self.model.dirty.get() {
         return None;
     }
+    // 确认 = Apply（保存后关闭），取消 = Discard（丢弃修改）
+    // Discard 携带 MaterialInspectorDiscard 消息：编辑是 edit-in-place，
+    // 必须将运行时 Material 还原为持久化状态（SerializedMaterial 缓存
+    // 仅在保存成功时同步，始终与磁盘一致，作为还原源）
     let dialog = ConfirmDialogWindow::new(
         "Unsaved material changes".into(),
         "Apply the changes before leaving?".into(),
         "Apply".into(),
         "Discard".into(),
         Some(self.apply_message()),
-        None,
+        Some(self.discard_message()),
         None::<fn()>,
         None::<fn()>,
     );

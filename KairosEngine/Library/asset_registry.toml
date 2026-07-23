@@ -1315,6 +1315,10 @@ guid = "3b9dc1bd-1a95-450e-86c6-3a9e5400036a"
 path = "kairos_engine/tests/integration/kairos_editor"
 
 [[entries]]
+guid = "5510403d-77a4-41fb-8f41-fdc8a126108c"
+path = "kairos_engine/tests/integration/kairos_editor/material_inspector.rs"
+
+[[entries]]
 guid = "f749bcd1-8b58-4ec4-b3c0-ed44bf9a90ec"
 path = "kairos_engine/tests/integration/kairos_editor/project_path_tree.rs"
 
@@ -1553,6 +1557,10 @@ path = "tests/runtime"
 [[entries]]
 guid = "0ac34c1b-bfbe-455a-ba76-e4ba26d36df3"
 path = "tests/runtime/material_inspector.toml"
+
+[[entries]]
+guid = "041625d1-f239-41e9-b444-cdbda0e20044"
+path = "tests/runtime/material_inspector_apply.toml"
 
 [[entries]]
 guid = "40260f67-a409-424a-b8c9-530c47f76ed0"

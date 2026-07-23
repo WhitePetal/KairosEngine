@@ -989,13 +989,14 @@ impl Inspector for MaterialInspector {
         }
 
         // 同 TextureInspector 模式：确认 = Apply（保存后关闭），取消 = Discard（丢弃修改）
+        // Discard 同时还原运行时 Material 的内存改动（编辑是 edit-in-place）
         let dialog = ConfirmDialogWindow::new(
             "Unsaved material changes".into(),
             "Apply the changes before leaving?".into(),
             "Apply".into(),
             "Discard".into(),
             Some(self.apply_message()),
-            None,
+            Some(self.discard_message()),
             None::<fn()>,
             None::<fn()>,
         );
@@ -1086,6 +1087,53 @@ impl MaterialInspector {
             self.model.current_texture_path.clone(),
             self.model.current_render_state.clone(),
         )
+    }
+
+    /// 构造 Discard 消息（关闭确认对话框的 Discard 按钮）。
+    /// 携带 serialized / material 句柄：即使 Inspector 之后被替换，
+    /// 还原仍作用于发起时的资产。
+    fn discard_message(&self) -> Message {
+        Message::MaterialInspectorDiscard(
+            self.model.path.clone(),
+            self.model.serialized_handle.clone(),
+            self.model.material_handle.clone(),
+        )
+    }
+
+    /// Discard：将运行时 Material 还原为磁盘持久化状态。
+    /// Inspector 的编辑是 edit-in-place（立即写入运行时 Material 以实时预览），
+    /// 用户点击 Discard 后必须撤销这些内存改动。SerializedMaterial 缓存仅在
+    /// 保存成功时同步、始终与磁盘一致，作为还原源；句柄按路径缓存加载，
+    /// 与初始加载语义一致（None 纹理槽由渲染管线走 white.texture 降级）。
+    pub fn discard_changes(
+        assets_server: &mut AssetsServer,
+        path: &PathBuf,
+        serialized_handle: &Arc<AssetHandle<SerializedMaterialAssetsSystem>>,
+        material_handle: &Arc<AssetHandle<MaterialAssetsSystem>>,
+    ) {
+        // 读取持久化状态（clone 出数据后再可变借用 assets_server）
+        let Some(persisted) = assets_server
+            .get::<SerializedMaterialAssetsSystem>(serialized_handle)
+            .cloned()
+        else {
+            log::error!(
+                "Failed to discard material changes: serialized material not loaded, material_path: {:?}",
+                path
+            );
+            return;
+        };
+
+        let shader_handle = assets_server.load::<ShaderAssetsSystem>(&persisted.shader_path);
+        let texture_handle = persisted
+            .texture_path
+            .as_ref()
+            .map(|p| assets_server.load::<TextureAssetsSystem>(p));
+
+        if let Some(material) = assets_server.get_mut::<MaterialAssetsSystem>(material_handle) {
+            material.shader = Some(shader_handle);
+            material.texture = texture_handle;
+            material.render_state = persisted.render_state;
+        }
     }
 
     /// 保存成功后重置 dirty。仅当保存的 .mat 路径与当前 Inspector 匹配时生效
