@@ -1,0 +1,128 @@
+# MaterialInspector Apply persistence (issue #36)
+#
+# ⚠️ BLOCKED — DO NOT RUN YET: the test harness is disabled (commit 27f68ac)
+# and currently does not compile under `--features test-harness`; it will be
+# fully rewritten (see #27). This file only uses commands from the functional
+# set (click_widget on normal Buttons, toml_value_equals) and should pass once
+# the harness lands:
+#   cargo run -p kairos_engine --features test-harness -- --test-file tests/runtime/material_inspector_apply.toml
+# Until then, equivalent coverage lives in Rust integration tests:
+#   kairos_engine/tests/integration/kairos_editor/material_inspector.rs
+#
+# Note: Ctrl+S cannot be injected — the harness keyboard injector has no
+# modifier-key support; the button click below exercises the same
+# apply_message() path.
+#
+# Flow: make the inspector dirty (assign a different texture) → click the
+# Apply button → toml_value_equals verifies texture_path/shader_path/
+# render_state were written back to disk → restore the original texture and
+# Apply again so the repo asset is left unchanged.
+
+[[step]]
+action = "call"
+target = "ui.open_inspector"
+
+[[step]]
+action = "call"
+target = "project.select_asset"
+args = { path = "res/materials/material.mat" }
+
+[[step]]
+action = "call"
+target = "system.wait_frames"
+args = { count = 60 }
+
+[[step]]
+action = "assert"
+target = "no_crash"
+
+# Baseline: on-disk values before the edit
+[[step]]
+action = "assert"
+target = "toml_value_equals"
+args = { file = "res/materials/material.mat", key = "shader_path", value = "res/shaders/shader.wgsl" }
+
+[[step]]
+action = "assert"
+target = "toml_value_equals"
+args = { file = "res/materials/material.mat", key = "texture_path", value = "res/textures/kairos_texture.texture" }
+
+# Make the inspector dirty: assign the white fallback texture
+[[step]]
+action = "call"
+target = "material_inspector.assign_texture"
+args = { texture = "res/textures/white.texture" }
+
+[[step]]
+action = "call"
+target = "system.wait_frames"
+args = { count = 30 }
+
+# Click the Apply button (normal Button widget — supported per #27)
+[[step]]
+action = "input"
+args = { event = "click_widget", id = "apply_button" }
+
+[[step]]
+action = "call"
+target = "system.wait_frames"
+args = { count = 10 }
+
+[[step]]
+action = "assert"
+target = "no_crash"
+
+# Apply persisted the edit to disk
+[[step]]
+action = "assert"
+target = "toml_value_equals"
+args = { file = "res/materials/material.mat", key = "texture_path", value = "res/textures/white.texture" }
+
+# shader_path / render_state round-trip through Apply unchanged
+[[step]]
+action = "assert"
+target = "toml_value_equals"
+args = { file = "res/materials/material.mat", key = "shader_path", value = "res/shaders/shader.wgsl" }
+
+[[step]]
+action = "assert"
+target = "toml_value_equals"
+args = { file = "res/materials/material.mat", key = "render_state.cull_mod", value = "Back" }
+
+[[step]]
+action = "assert"
+target = "toml_value_equals"
+args = { file = "res/materials/material.mat", key = "render_state.depth_write", value = "true" }
+
+# --- Restore the original texture so the repo asset is left unchanged ---
+[[step]]
+action = "call"
+target = "material_inspector.assign_texture"
+args = { texture = "res/textures/kairos_texture.texture" }
+
+[[step]]
+action = "call"
+target = "system.wait_frames"
+args = { count = 30 }
+
+[[step]]
+action = "input"
+args = { event = "click_widget", id = "apply_button" }
+
+[[step]]
+action = "call"
+target = "system.wait_frames"
+args = { count = 10 }
+
+[[step]]
+action = "assert"
+target = "toml_value_equals"
+args = { file = "res/materials/material.mat", key = "texture_path", value = "res/textures/kairos_texture.texture" }
+
+[[step]]
+action = "assert"
+target = "no_crash"
+
+[[step]]
+action = "assert"
+target = "wgpu_valid"

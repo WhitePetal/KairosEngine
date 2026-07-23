@@ -126,7 +126,7 @@ pub fn assert_toml_value_equals(args: &toml::Value) -> StepResult {
         Err(e) => return StepResult::err(format!("failed to parse TOML '{file}': {e}")),
     };
 
-    let actual = match table.get(key) {
+    let actual = match lookup_dotted(&table, key) {
         Some(v) => format!("{}", v),
         None => return StepResult::err(format!("key '{key}' not found in '{file}'")),
     };
@@ -142,6 +142,22 @@ pub fn assert_toml_value_equals(args: &toml::Value) -> StepResult {
             "toml_value_equals failed: key '{key}' expected '{expected_normalized}', got '{actual_normalized}'"
         ))
     }
+}
+
+/// Traverse a TOML table by dotted key path (e.g. "render_state.cull_mod").
+/// Single-segment keys behave like a plain `table.get(key)`.
+fn lookup_dotted<'a>(table: &'a toml::Table, key: &str) -> Option<&'a toml::Value> {
+    let mut current = table;
+    let mut segments = key.split('.').peekable();
+    while let Some(segment) = segments.next() {
+        let is_last = segments.peek().is_none();
+        match current.get(segment) {
+            Some(toml::Value::Table(inner)) if !is_last => current = inner,
+            Some(value) if is_last => return Some(value),
+            _ => return None,
+        }
+    }
+    None
 }
 
 /// Snapshot of the open MaterialInspector's runtime-material texture state.
@@ -418,6 +434,61 @@ mod tests {
 
         let args: toml::Value = toml::from_str(&format!(
             "file = '{}'\nkey = 'format'\nvalue = 'BC7'",
+            path.display().to_string().replace('\\', "/")
+        ))
+        .unwrap();
+        let result = assert_toml_value_equals(&args);
+        assert!(!result.ok);
+        assert!(result.message.contains("not found"));
+    }
+
+    #[test]
+    fn toml_value_equals_dotted_key_match() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.mat");
+        std::fs::write(
+            &path,
+            "shader_path = \"a.wgsl\"\n[render_state]\ncull_mod = \"Front\"\ndepth_write = false\n",
+        )
+        .unwrap();
+
+        let file = path.display().to_string().replace('\\', "/");
+        for (key, value) in [
+            ("render_state.cull_mod", "Front"),
+            ("render_state.depth_write", "false"),
+            ("shader_path", "a.wgsl"),
+        ] {
+            let args: toml::Value =
+                toml::from_str(&format!("file = '{file}'\nkey = '{key}'\nvalue = '{value}'"))
+                    .unwrap();
+            let result = assert_toml_value_equals(&args);
+            assert!(result.ok, "key {key}: {}", result.message);
+        }
+    }
+
+    #[test]
+    fn toml_value_equals_dotted_key_mismatch() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.mat");
+        std::fs::write(&path, "[render_state]\ncull_mod = \"Back\"\n").unwrap();
+
+        let args: toml::Value = toml::from_str(&format!(
+            "file = '{}'\nkey = 'render_state.cull_mod'\nvalue = 'Front'",
+            path.display().to_string().replace('\\', "/")
+        ))
+        .unwrap();
+        let result = assert_toml_value_equals(&args);
+        assert!(!result.ok);
+    }
+
+    #[test]
+    fn toml_value_equals_dotted_key_through_non_table() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.mat");
+        std::fs::write(&path, "shader_path = \"a.wgsl\"\n").unwrap();
+
+        let args: toml::Value = toml::from_str(&format!(
+            "file = '{}'\nkey = 'shader_path.cull_mod'\nvalue = 'Front'",
             path.display().to_string().replace('\\', "/")
         ))
         .unwrap();

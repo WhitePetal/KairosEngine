@@ -14,6 +14,7 @@ use crate::{
         ShaderAssetsSystem, TextureAssetsSystem,
     }, graphics::{
         compare_function::CompareFunction,
+        material::SerializedMaterial,
         render_state::{BlendFactor, BlendOperation, BlendPreset, BlendState, CullMode, PrimitiveTopology, RenderState},
     }, kairos_editor::{
         asset_registry::AssetKind, project_path_tree::ProjectPathGraph, ui::{
@@ -44,6 +45,8 @@ struct MaterialInspectorStyle {
 
     render_state_row_height: f32,
     render_state_sub_row_indent: f32,
+
+    apply_button_height: f32,
 }
 
 impl MaterialInspectorStyle {
@@ -828,6 +831,12 @@ impl Inspector for MaterialInspector {
         assets_server: &AssetsServer,
         _dt: f32,
     ) {
+        // ---- Ctrl+S 快捷键触发 Apply（issue #36，ADR §4.5.2）----
+        // 与 Apply 按钮走同一条消息路径，仅在有未保存修改时触发
+        if self.model.dirty.get() && ui.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::S)) {
+            messager.send(self.apply_message());
+        }
+
         // ---- 异步加载 SerializedMaterial，获取 shader_path / texture_path / render_state ----
         {
             let mut current_shader = self.model.current_shader_path.lock();
@@ -938,30 +947,59 @@ impl Inspector for MaterialInspector {
         // ---- Render State 编辑区域（issue #33）----
         self.draw_render_state_section(ui, messager);
 
-        // ---- Dirty indicator ----
-        if self.model.dirty.get() {
-            ui.label("* unsaved changes");
-        }
+        ui.separator();
+
+        // ---- Apply 按钮（issue #36）----
+        let changed = self.model.dirty.get();
+        ui.vertical_centered(|ui| {
+            // Tag for test harness: widget rect collection
+            ui.push_id("apply_button", |ui| {
+                let apply_btn = egui::Button::new("Apply").min_size(Vec2::new(
+                    ui.available_width(),
+                    self.model.style.apply_button_height,
+                ));
+                let resp = ui.add_enabled(changed, apply_btn);
+
+                // Record rect + egui Id for test harness
+                #[cfg(feature = "test-harness")]
+                ui.ctx().data_mut(|d| {
+                    let rects = d.get_temp_mut_or_default::<
+                        std::collections::HashMap<String, egui::Rect>,
+                    >(egui::Id::new("__kairos_widget_rects"));
+                    rects.insert("apply_button".into(), resp.rect);
+                    let ids = d.get_temp_mut_or_default::<
+                        std::collections::HashMap<String, egui::Id>,
+                    >(egui::Id::new("__kairos_widget_egui_ids"));
+                    ids.insert("apply_button".into(), resp.id);
+                });
+
+                if resp.clicked() {
+                    messager.send(self.apply_message());
+                }
+                if changed {
+                    ui.label("* unsaved changes");
+                }
+            }); // push_id("apply_button")
+        });
     }
 
     fn on_exit(&mut self, _ctx: &egui::Context) -> Option<Box<dyn Dialog>> {
-        if self.model.dirty.get() {
-            let _path = self.model.path.clone();
-            // TODO: MaterialInspector save will be implemented in a future sprint.
-            let dialog = ConfirmDialogWindow::new(
-                "Unsaved Material Changes".into(),
-                "Material has unsaved changes. Discard?".into(),
-                "Discard".into(),
-                "Cancel".into(),
-                None::<Message>,
-                None,
-                None::<fn()>,
-                None::<fn()>,
-            );
-            Some(Box::new(dialog))
-        } else {
-            None
+        if !self.model.dirty.get() {
+            return None;
         }
+
+        // 同 TextureInspector 模式：确认 = Apply（保存后关闭），取消 = Discard（丢弃修改）
+        let dialog = ConfirmDialogWindow::new(
+            "Unsaved material changes".into(),
+            "Apply the changes before leaving?".into(),
+            "Apply".into(),
+            "Discard".into(),
+            Some(self.apply_message()),
+            None,
+            None::<fn()>,
+            None::<fn()>,
+        );
+        Some(Box::new(dialog))
     }
 }
 
@@ -1035,5 +1073,77 @@ impl MaterialInspector {
         // 更新数据状态（空槽）
         *self.model.current_texture_path.lock() = Some(None);
         self.model.dirty.set(true);
+    }
+
+    /// 构造 Apply 消息（Apply 按钮 / Ctrl+S / 关闭确认对话框共用）。
+    /// 携带共享状态快照与 serialized 句柄：即使 Inspector 之后被替换，
+    /// 保存仍作用于发起时的数据（同 TextureInspectorApply 模式）。
+    fn apply_message(&self) -> Message {
+        Message::MaterialInspectorApply(
+            self.model.path.clone(),
+            self.model.serialized_handle.clone(),
+            self.model.current_shader_path.clone(),
+            self.model.current_texture_path.clone(),
+            self.model.current_render_state.clone(),
+        )
+    }
+
+    /// 保存成功后重置 dirty。仅当保存的 .mat 路径与当前 Inspector 匹配时生效
+    /// （关闭确认对话框触发 Apply 时，当前 Inspector 可能已是另一个资产）。
+    pub fn apply(&mut self, path: &std::path::Path) {
+        if self.model.path.as_path() == path {
+            self.model.dirty.set(false);
+        }
+    }
+
+    /// 将当前编辑状态写回 .mat 文件（issue #36）。
+    /// 返回 true 表示保存成功；状态未加载完成或写盘失败时返回 false，
+    /// 失败静默打 log、不崩溃。成功后同步更新资产系统缓存的
+    /// SerializedMaterial，避免重新打开 Inspector 时读到过期数据。
+    pub fn save_material(
+        assets_server: &mut AssetsServer,
+        path: &PathBuf,
+        serialized_handle: &Arc<AssetHandle<SerializedMaterialAssetsSystem>>,
+        shader_path: &Arc<Mutex<Option<PathBuf>>>,
+        texture_path: &Arc<Mutex<Option<Option<PathBuf>>>>,
+        render_state: &Arc<Mutex<Option<RenderState>>>,
+    ) -> bool {
+        let serialized = {
+            let shader_guard = shader_path.lock();
+            let texture_guard = texture_path.lock();
+            let render_state_guard = render_state.lock();
+            let (Some(shader_path), Some(texture_path), Some(render_state)) = (
+                shader_guard.clone(),
+                texture_guard.clone(),
+                *render_state_guard,
+            ) else {
+                // 状态尚未加载完成，无可保存内容
+                return false;
+            };
+            SerializedMaterial {
+                source_path: path.clone(),
+                shader_path,
+                texture_path,
+                render_state,
+            }
+        };
+
+        // 写回磁盘；失败静默打 log（不崩溃）
+        if let Err(err) = serialized.save_to_file() {
+            log::error!(
+                "Failed to save material, error: {}, material_path: {:?}",
+                err,
+                path
+            );
+            return false;
+        }
+
+        // 同步内存缓存，保持与磁盘一致
+        if let Some(asset) =
+            assets_server.get_mut::<SerializedMaterialAssetsSystem>(serialized_handle)
+        {
+            *asset = serialized;
+        }
+        true
     }
 }

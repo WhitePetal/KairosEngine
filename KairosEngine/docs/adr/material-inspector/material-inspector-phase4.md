@@ -520,16 +520,35 @@ fn draw_render_state(&self, ui: &mut egui::Ui, assets_server: &AssetsServer, mes
 
 ## 4.5 Module E：持久化与脏标记
 
+> **按实际实现修订（issue #36）**：初稿中 `MaterialInspectorApply` 为无参单元变体、由 handler
+> 回读 Inspector 当前数据。实际实现改为**携带共享状态快照的负载变体**（见 §4.8），原因：
+> `set_selected` 在弹出 on_exit 确认对话框时会**立即替换** Inspector，对话框里的 "Apply"
+> 点击发生时，handler 通过 `get_inspector_mut` 解析到的已是新 Inspector —— 单元变体会把
+> 新 Inspector 的数据写盘（或静默丢失旧编辑）。负载变体携带旧 Inspector 的
+> `Arc<Mutex<...>>` 状态克隆，保存始终作用于发起时的数据（同 `TextureInspectorApply` 模式）。
+
 ### 4.5.1 Apply 按钮
 
+按实际实现（`draw()` 底部，仅 dirty 时可用，注册 test-harness widget rect）：
+
 ```rust
-fn draw_apply_button(&self, ui: &mut egui::Ui, messager: &mut Messager) {
-    if self.model.dirty.get() {
-        if ui.button("Apply").clicked() || /* Ctrl+S */ {
-            messager.send(Message::MaterialInspectorApply);
+let changed = self.model.dirty.get();
+ui.vertical_centered(|ui| {
+    ui.push_id("apply_button", |ui| {
+        let apply_btn = egui::Button::new("Apply").min_size(Vec2::new(
+            ui.available_width(),
+            self.model.style.apply_button_height,
+        ));
+        let resp = ui.add_enabled(changed, apply_btn);
+        // #[cfg(feature = "test-harness")] 记录 rect/egui Id（同 TextureInspector）
+        if resp.clicked() {
+            messager.send(self.apply_message());
         }
-    }
-}
+        if changed {
+            ui.label("* unsaved changes");
+        }
+    });
+});
 ```
 
 ### 4.5.2 Ctrl+S 快捷键
@@ -537,25 +556,30 @@ fn draw_apply_button(&self, ui: &mut egui::Ui, messager: &mut Messager) {
 在 `draw()` 顶部检测：
 
 ```rust
-if ui.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::S)) {
-    if self.model.dirty.get() {
-        messager.send(Message::MaterialInspectorApply);
-    }
+if self.model.dirty.get() && ui.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::S)) {
+    messager.send(self.apply_message());
 }
 ```
 
 ### 4.5.3 Apply 消息处理
 
-在 `Context::handle()` 中：
+在 `Context::handle()` 中（按实际实现）：
 
 ```rust
-Message::MaterialInspectorApply => {
-    let drawer = self.get_window_mut::<MaterialInspector>();
-    if let Some(inspector) = drawer {
-        // 1. 从 SerializedMaterialAssetsSystem 获取当前数据
-        // 2. 调用 SerializedMaterial::save_to_file()
-        // 3. dirty = false
-        // 失败时打 log
+Message::MaterialInspectorApply(path, serialized_handle, shader_path, texture_path, render_state) => {
+    // 静态方法：从快照构造 SerializedMaterial → save_to_file()，
+    // 成功后同步资产系统缓存；失败静默打 log、返回 false
+    let saved = MaterialInspector::save_material(
+        &mut engine.assets_server, &path, &serialized_handle,
+        &shader_path, &texture_path, &render_state,
+    );
+    // 仅保存成功才重置 dirty；且仅当前 Inspector 路径匹配时
+    // （对话框触发时当前 Inspector 可能已是另一个资产）
+    if saved
+        && let Some(inspector) = self.get_window_mut::<InspectorWindow>()
+        && let Some(material_inspector) = inspector.get_inspector_mut::<MaterialInspector>()
+    {
+        material_inspector.apply(&path);
     }
 }
 ```
@@ -572,7 +596,7 @@ fn on_exit(&mut self, _ctx: &egui::Context) -> Option<Box<dyn Dialog>> {
         "Apply the changes before leaving?".into(),
         "Apply".into(),
         "Discard".into(),
-        Some(Message::MaterialInspectorApply),
+        Some(self.apply_message()),
         None,
         None::<fn()>,
         None::<fn()>,
@@ -688,7 +712,16 @@ pub enum Message {
     // ... 现有消息 ...
 
     // Material Inspector
-    MaterialInspectorApply,
+    // 携带 (.mat 路径, serialized 句柄, shader 路径, 纹理路径, render_state)
+    // 共享快照：即使 Inspector 之后被替换，保存仍作用于发起时的数据
+    // （同 TextureInspectorApply 模式；取代初稿的无参单元变体）
+    MaterialInspectorApply(
+        PathBuf,
+        Arc<AssetHandle<SerializedMaterialAssetsSystem>>,
+        Arc<parking_lot::Mutex<Option<PathBuf>>>,
+        Arc<parking_lot::Mutex<Option<Option<PathBuf>>>>,
+        Arc<parking_lot::Mutex<Option<RenderState>>>,
+    ),
     MaterialInspectorChangeShader(usize),           // 新 shader 索引
     MaterialInspectorChangeTexture(Option<PathBuf>), // 新纹理路径 / None=清除
     MaterialInspectorChangeRenderState(Box<RenderState>),

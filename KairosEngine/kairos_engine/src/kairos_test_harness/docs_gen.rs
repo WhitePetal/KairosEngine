@@ -111,7 +111,7 @@ pub fn generate() -> Result<(), Box<dyn std::error::Error>> {
         ),
         (
             "toml_value_equals",
-            "断言 TOML 文件中指定 key 的值等于期望值",
+            "断言 TOML 文件中指定 key 的值等于期望值（支持点号嵌套 key，如 render_state.cull_mod）",
             "file (string), key (string), value (string)",
             "both",
         ),

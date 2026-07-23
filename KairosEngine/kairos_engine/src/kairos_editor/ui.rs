@@ -1,6 +1,7 @@
 use crate::{
     asset_loader::assets::{
-        AssetHandle, AssetsServer, TomlTableAssetsSystem, asset::TextAssetsSystem,
+        AssetHandle, AssetsServer, SerializedMaterialAssetsSystem, TomlTableAssetsSystem,
+        asset::TextAssetsSystem,
     },
     graphics::{graphics_graph::GraphicsCommand, mesh::Mesh, render_state::RenderState},
     kairos_editor::{
@@ -185,6 +186,17 @@ pub enum Message {
     /// Material Inspector: user edited a render-state field.
     /// Carries (.mat path, new render state).
     MaterialInspectorChangeRenderState(PathBuf, RenderState),
+    /// Material Inspector: apply (save) the current edits to the .mat file.
+    /// Carries (.mat path, serialized handle, shader path, texture path, render
+    /// state) as shared snapshots so the save targets the right data even if the
+    /// inspector has since been replaced (same pattern as TextureInspectorApply).
+    MaterialInspectorApply(
+        PathBuf,
+        Arc<AssetHandle<SerializedMaterialAssetsSystem>>,
+        Arc<parking_lot::Mutex<Option<PathBuf>>>,
+        Arc<parking_lot::Mutex<Option<Option<PathBuf>>>>,
+        Arc<parking_lot::Mutex<Option<RenderState>>>,
+    ),
 }
 
 struct KairosTabDrawer {
@@ -705,7 +717,6 @@ impl Context {
                             inspector.get_inspector_mut::<MaterialInspector>()
                     {
                         material_inspector.change_shader(&mut engine.assets_server, shader_path);
-                        // material_inspector.save_file will be added in a future sprint
                     }
                 }
                 Message::MaterialInspectorDropTexture(_mat_path, texture_path) => {
@@ -734,6 +745,30 @@ impl Context {
                     {
                         material_inspector
                             .change_render_state(&mut engine.assets_server, render_state);
+                    }
+                }
+                Message::MaterialInspectorApply(
+                    path,
+                    serialized_handle,
+                    shader_path,
+                    texture_path,
+                    render_state,
+                ) => {
+                    let saved = MaterialInspector::save_material(
+                        &mut engine.assets_server,
+                        &path,
+                        &serialized_handle,
+                        &shader_path,
+                        &texture_path,
+                        &render_state,
+                    );
+                    // 保存成功才重置 dirty；失败保留未保存标记
+                    if saved
+                        && let Some(inspector) = self.get_window_mut::<InspectorWindow>()
+                        && let Some(material_inspector) =
+                            inspector.get_inspector_mut::<MaterialInspector>()
+                    {
+                        material_inspector.apply(&path);
                     }
                 }
             }

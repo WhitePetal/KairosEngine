@@ -149,7 +149,7 @@ args = { ... }
 | `resource_exists` | 断言指定路径的文件或资源存在 | path (string) | both |
 | `log_contains` | 断言引擎日志缓冲区包含指定模式字符串 | pattern (string) | both |
 | `wgpu_valid` | 断言 GPU 资源有效。v1 为 stub，始终通过 | resource_type (string, 可选) | windowed |
-| `toml_value_equals` | 断言 TOML 文件中指定 key 的值等于期望值 | file (string), key (string), value (string) | both |
+| `toml_value_equals` | 断言 TOML 文件中指定 key 的值等于期望值（支持点号嵌套 key，如 render_state.cull_mod） | file (string), key (string), value (string) | both |
 | `material_inspector.texture_loaded` | 断言当前打开的 MaterialInspector 运行时材质的纹理句柄已解析为已加载纹理，可选校验宽高（如 2x2 白色降级纹理） | width (int, 可选), height (int, 可选) | windowed |
 
 ### 可用 Assert 命令
@@ -225,7 +225,7 @@ args = { resource_type = "Texture" }
 
 #### `toml_value_equals`
 
-断言 TOML 文件中指定 key 的值等于期望值。
+断言 TOML 文件中指定 key 的值等于期望值（支持点号嵌套 key，如 render_state.cull_mod）。
 
 - **模式**: both
 - **参数**: file (string), key (string), value (string)
