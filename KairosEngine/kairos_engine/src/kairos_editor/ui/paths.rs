@@ -27,11 +27,6 @@ pub const PATH_SHADER_INSPECTOR_STYLE: &'static str = "Preferences/Styles/Inspec
 pub const PATH_TEXTURE_INSPECTOR_STYLE: &'static str = "Preferences/Styles/Inspectors/Texture.toml";
 pub const PATH_MATERIAL_INSPECTOR_STYLE: &'static str =
     "Preferences/Styles/Inspectors/Material.toml";
-
-/// Material Inspector 的纹理降级资源（issue #34）：当赋值的 texture 路径在
-/// 磁盘上不存在时，运行时 Material 改用该白色纹理，保证渲染不被跳过。
-pub const PATH_MATERIAL_INSPECTOR_FALLBACK_TEXTURE: &'static str =
-    "res/textures/white.texture";
 pub const PATH_MESH_INSPECTOR_STYLE: &'static str = "Preferences/Styles/Inspectors/Mesh.toml";
 
 // Per-language syntax+theme configs.  Each TOML declares:

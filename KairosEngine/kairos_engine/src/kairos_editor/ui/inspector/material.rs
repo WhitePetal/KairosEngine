@@ -1,4 +1,4 @@
-use std::{cell::Cell, fs, ops::Deref, path::{Path, PathBuf}, sync::Arc};
+use std::{cell::Cell, fs, ops::Deref, path::{PathBuf}, sync::Arc};
 
 use egui::{
     Vec2, menu::{MenuConfig, SubMenuButton},
@@ -158,26 +158,6 @@ fn render_shader_menu(
                     );
                 });
         }
-    }
-}
-
-// ============================================================
-// Texture 路径缺失降级（issue #34）
-// ============================================================
-
-/// 解析纹理赋值时实际用于加载的路径。
-///
-/// - `texture_path` 在磁盘上存在 → 原样返回；
-/// - 不存在 → 返回 `fallback_path`（white.texture），保证运行时 Material
-///   始终拿到可解析的 texture handle，预览和场景渲染不会因缺失纹理被跳过。
-///
-/// 该函数是单次映射、不递归：即使 fallback 资源本身缺失，其句柄也只是
-/// 永远处于 Loading 状态（渲染端按未加载处理），不会再次降级或循环。
-pub fn resolve_texture_load_path(texture_path: &Path, fallback_path: &Path) -> PathBuf {
-    if texture_path.exists() {
-        texture_path.to_path_buf()
-    } else {
-        fallback_path.to_path_buf()
     }
 }
 
@@ -520,14 +500,6 @@ impl Inspector for MaterialInspector {
                                 .close_behavior(egui::PopupCloseBehavior::CloseOnClick),
                         )
                         .ui(ui, |_ui| {});
-                    // Record the shader selector rect for the test harness.
-                    #[cfg(feature = "test-harness")]
-                    ui.ctx().data_mut(|d| {
-                        let rects = d.get_temp_mut_or_default::<
-                            std::collections::HashMap<String, egui::Rect>,
-                        >(egui::Id::new("__kairos_widget_rects"));
-                        rects.insert("shader_combo".into(), shader_response.rect);
-                    });
                     egui::Popup::menu(&shader_response)
                         .gap(4.0)
                         .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
@@ -614,73 +586,39 @@ impl MaterialInspector {
     }
 
     /// 拖入 / 设置纹理：加载 texture → 更新运行时 Material → 标记 dirty
-    ///
-    /// 缺失路径降级（issue #34）：当 `texture_path` 在磁盘上不存在时，运行时
-    /// Material 的 texture handle 改用 white.texture，保证预览和场景渲染始终
-    /// 拿到可解析的纹理；`current_texture_path` 仍记录用户赋值的原始路径。
     pub fn drop_texture(
         &mut self,
         assets_server: &mut AssetsServer,
         texture_path: PathBuf,
-        log: &mut crate::log::Log,
     ) {
-        // 1. 缺失路径 → 降级为 white.texture（单次映射，不存在递归 fallback）
-        let load_path = resolve_texture_load_path(
-            &texture_path,
-            Path::new(paths::PATH_MATERIAL_INSPECTOR_FALLBACK_TEXTURE),
-        );
-        if load_path != texture_path {
-            log.warning(&format!(
-                "MaterialInspector: texture '{}' not found on disk, falling back to '{}'",
-                texture_path.display(),
-                load_path.display()
-            ));
-        }
+        // 加载 texture（异步，句柄立即返回）
+        let texture_handle = assets_server.load::<TextureAssetsSystem>(&texture_path);
 
-        // 2. 加载 texture（异步，句柄立即返回）
-        let texture_handle = assets_server.load::<TextureAssetsSystem>(&load_path);
-
-        // 3. 更新运行时 Material
+        // 更新运行时 Material
         let material = assets_server.get_mut(&self.model.material_handle);
         if let Some(material) = material {
             material.texture = Some(texture_handle);
         }
 
-        // 4. 清除缩略图缓存（下次 draw 重新生成）
+        // 清除缩略图缓存（下次 draw 重新生成）
         *self.model.thumbnail.lock() = None;
 
-        // 5. 更新数据状态（保留用户赋值的原始路径，持久化时写回 .mat）
+        // 更新数据状态（保留用户赋值的原始路径，持久化时写回 .mat）
         *self.model.current_texture_path.lock() = Some(Some(texture_path));
         self.model.dirty.set(true);
     }
 
-    /// 运行时 Material 的句柄（for test harness — 检查运行时材质状态）。
-    #[cfg(feature = "test-harness")]
-    pub(crate) fn material_handle(&self) -> &Arc<AssetHandle<MaterialAssetsSystem>> {
-        &self.model.material_handle
-    }
-
-    /// 清除纹理：运行时 Material 降级为 white.texture → 标记 dirty
-    ///
-    /// 缺失路径降级（issue #34）同样覆盖清除流程：引擎 shader 无条件采样
-    /// group(1) 纹理，`material.texture = None` 会导致渲染时缺少 bind group、
-    /// 材质纹理丢失。因此清除后运行时 handle 降级为 white.texture（语义上
-    /// "无纹理" = 乘白色）；`current_texture_path` 仍记录为 None（空槽），
-    /// 持久化时按用户意图写回 .mat。
+    /// 清除纹理
     pub fn clear_texture(&mut self, assets_server: &mut AssetsServer) {
-        // 1. 运行时 Material 降级为 white.texture（引擎初始化时已预加载，立即解析）
-        let fallback_handle = assets_server.load::<TextureAssetsSystem>(&PathBuf::from(
-            paths::PATH_MATERIAL_INSPECTOR_FALLBACK_TEXTURE,
-        ));
         let material = assets_server.get_mut(&self.model.material_handle);
         if let Some(material) = material {
-            material.texture = Some(fallback_handle);
+            material.texture = None;
         }
 
-        // 2. 清除缩略图缓存
+        // 清除缩略图缓存
         *self.model.thumbnail.lock() = None;
 
-        // 3. 更新数据状态（空槽）
+        // 更新数据状态（空槽）
         *self.model.current_texture_path.lock() = Some(None);
         self.model.dirty.set(true);
     }

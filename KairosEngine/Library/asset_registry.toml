@@ -291,6 +291,10 @@ guid = "a463b531-b154-42a7-8584-cd9bc265baf5"
 path = "docs/ai/render-pipeline-resource-cache-conversation.md"
 
 [[entries]]
+guid = "d94f39f1-bcc3-46ab-91d8-119de4947698"
+path = "docs/ai/research"
+
+[[entries]]
 guid = "d3343f21-92a8-47c4-9604-1bf6f412376c"
 path = "docs/ai/resource-manager-design.md"
 

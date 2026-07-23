@@ -210,6 +210,7 @@ impl KairosEditorRuntime {
         let render_pipeline = pollster::block_on(RenderPipeline::new(
             window.clone(),
             &settings.texture_compression,
+            &mut self.kairos_engine.engine.assets_server,
         ))?;
         let render_pipeline_event_proxy = self.event_proxy.clone();
         render_pipeline
@@ -288,7 +289,7 @@ impl KairosEditorRuntime {
                         return;
                     };
 
-                    let mut raw_input = egui_state.take_egui_input(&window);
+                    let raw_input = egui_state.take_egui_input(&window);
 
                     // Inject egui events from the test harness (e.g. click_widget)
                     // so they are processed by egui during this frame's run_ui.

@@ -1,8 +1,5 @@
-use std::path::PathBuf;
-use std::sync::Arc;
-
 use crate::{
-    asset_loader::assets::{AssetHandle, AssetsServer, TextureAssetsSystem},
+    asset_loader::assets::{AssetsServer},
     audio::AudioEngine,
     ecs::world::World,
     graphics::graphics_graph::GraphicsCommand,
@@ -58,33 +55,11 @@ pub struct KairosEngine {
     game: KairosGame,
     ui_context: ui::Context,
     log: Log,
-    /// Material Inspector 纹理降级资源（white.texture）的保活句柄。
-    /// 引擎初始化时预加载（issue #34），保证缺失纹理降级时句柄立即可解析；
-    /// 丢弃 Arc 会触发资产卸载，因此必须随引擎生命周期持有。
-    _material_fallback_texture: Arc<AssetHandle<TextureAssetsSystem>>,
-    #[cfg(feature = "test-harness")]
-    widget_rects: std::collections::HashMap<String, egui::Rect>,
-    /// Widget name → egui Id mapping for focus operations.
-    #[cfg(feature = "test-harness")]
-    widget_egui_ids: std::collections::HashMap<String, egui::Id>,
-    /// Egui events to inject into RawInput on the next frame.
-    #[cfg(feature = "test-harness")]
-    pending_egui_events: Vec<egui::Event>,
-    /// Pending focus requests for the next draw_ui.
-    #[cfg(feature = "test-harness")]
-    pending_focus_requests: Vec<egui::Id>,
 }
 
 impl KairosEngine {
     pub fn new(egui_ctx: &egui::Context) -> Result<Self, Box<dyn std::error::Error>> {
         let mut engine = Engine::new()?;
-        // 预加载 Material Inspector 的纹理降级资源（issue #34）：
-        // 缺失纹理赋值降级为 white.texture 时句柄可以立即解析。
-        let material_fallback_texture = engine
-            .assets_server
-            .load::<TextureAssetsSystem>(&PathBuf::from(
-                ui::paths::PATH_MATERIAL_INSPECTOR_FALLBACK_TEXTURE,
-            ));
         let game = KairosGame::new(&mut engine);
         let ui_context = ui::Context::new(egui_ctx)?;
         let log = Log::new();
@@ -93,15 +68,6 @@ impl KairosEngine {
             game,
             ui_context,
             log,
-            _material_fallback_texture: material_fallback_texture,
-            #[cfg(feature = "test-harness")]
-            widget_rects: std::collections::HashMap::new(),
-            #[cfg(feature = "test-harness")]
-            widget_egui_ids: std::collections::HashMap::new(),
-            #[cfg(feature = "test-harness")]
-            pending_egui_events: Vec::new(),
-            #[cfg(feature = "test-harness")]
-            pending_focus_requests: Vec::new(),
         })
     }
 
@@ -114,7 +80,7 @@ impl KairosEngine {
     }
 
     fn handle_ui(&mut self, ui: &mut egui::Ui) {
-        self.ui_context.handle(&mut self.engine, ui, &mut self.log);
+        self.ui_context.handle(&mut self.engine, ui);
     }
 
     fn draw_ui(&mut self, ui: &mut egui::Ui) {
@@ -135,71 +101,5 @@ impl KairosEngine {
     fn on_exit(&mut self) {
         self.engine.world.clear();
         self.engine.assets_server.handle();
-    }
-
-    #[cfg(feature = "test-harness")]
-    pub(crate) fn engine_mut(&mut self) -> &mut Engine {
-        &mut self.engine
-    }
-
-    #[cfg(feature = "test-harness")]
-    pub(crate) fn log_mut(&mut self) -> &mut Log {
-        &mut self.log
-    }
-
-    #[cfg(feature = "test-harness")]
-    pub(crate) fn record_widget_rect(&mut self, id: impl Into<String>, rect: egui::Rect) {
-        self.widget_rects.insert(id.into(), rect);
-    }
-
-    #[cfg(feature = "test-harness")]
-    pub(crate) fn clear_widget_rects(&mut self) {
-        self.widget_rects.clear();
-        self.widget_egui_ids.clear();
-    }
-
-    #[cfg(feature = "test-harness")]
-    pub(crate) fn widget_rect(&self, id: &str) -> Option<egui::Rect> {
-        self.widget_rects.get(id).copied()
-    }
-
-    #[cfg(feature = "test-harness")]
-    pub(crate) fn record_widget_egui_id(&mut self, id: impl Into<String>, egui_id: egui::Id) {
-        self.widget_egui_ids.insert(id.into(), egui_id);
-    }
-
-    #[cfg(feature = "test-harness")]
-    pub(crate) fn widget_egui_id(&self, id: &str) -> Option<egui::Id> {
-        self.widget_egui_ids.get(id).copied()
-    }
-
-    #[cfg(feature = "test-harness")]
-    pub(crate) fn request_focus(&mut self, egui_id: egui::Id) {
-        self.pending_focus_requests.push(egui_id);
-    }
-
-    #[cfg(feature = "test-harness")]
-    pub(crate) fn drain_focus_requests(&mut self) -> Vec<egui::Id> {
-        std::mem::take(&mut self.pending_focus_requests)
-    }
-
-    #[cfg(feature = "test-harness")]
-    pub(crate) fn ui_context_mut(&mut self) -> &mut ui::Context {
-        &mut self.ui_context
-    }
-
-    #[cfg(feature = "test-harness")]
-    pub(crate) fn push_ui_message(&mut self, msg: crate::kairos_editor::ui::Message) {
-        self.ui_context.messager.send(msg);
-    }
-
-    #[cfg(feature = "test-harness")]
-    pub(crate) fn push_egui_event(&mut self, event: egui::Event) {
-        self.pending_egui_events.push(event);
-    }
-
-    #[cfg(feature = "test-harness")]
-    pub(crate) fn drain_egui_events(&mut self) -> Vec<egui::Event> {
-        std::mem::take(&mut self.pending_egui_events)
     }
 }

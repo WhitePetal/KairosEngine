@@ -1,4 +1,4 @@
-use std::{collections::HashMap, error::Error, sync::Arc};
+use std::{collections::HashMap, error::Error, path::PathBuf, sync::Arc};
 
 use petgraph::visit::{DfsEvent, Reversed, depth_first_search};
 use strum::EnumCount;
@@ -23,18 +23,15 @@ use wgpu::{
 use winit::{dpi::PhysicalSize, window::Window};
 
 use crate::{
-    asset_loader::assets::{AssetsServer, asset::AssetIndex},
-    graphics::{
+    asset_loader::assets::{AssetHandle, AssetsServer, TextureAssetsSystem, asset::AssetIndex}, graphics::{
         attachment::{AttachmentFormat, InternalAttachmentId},
         graphics_graph::{self, GraphicsGraph, graphics_node::RenderPassNode},
         mesh::Mesh,
         render_state::RenderState,
         shader::ShaderAsset,
-        texture::Texture,
-        texture::format::TextureCompressionConfig,
+        texture::{Texture, format::TextureCompressionConfig},
         vertex::Vertex,
-    },
-    math::{float4, float4x4},
+    }, kairos_paths, math::{float4, float4x4}
 };
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
@@ -90,12 +87,14 @@ pub struct RenderPipeline {
     // #1: purple fallback for errored materials.
     purple_fallback: Option<(BindGroup, BindGroupLayout)>,
     error_material_indices: std::collections::HashSet<AssetIndex>,
+    white_texture_fallback: Arc<AssetHandle<TextureAssetsSystem>>,
 }
 
 impl RenderPipeline {
     pub async fn new(
         window: Arc<Window>,
         compression_config: &TextureCompressionConfig,
+        assets_server: &mut AssetsServer,
     ) -> Result<Self, Box<dyn Error>> {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: Backends::all(),
@@ -192,6 +191,7 @@ impl RenderPipeline {
             global_vp_bind_group_layout,
             purple_fallback: Some(purple_fb),
             error_material_indices: std::collections::HashSet::new(),
+            white_texture_fallback: assets_server.load(&PathBuf::from(kairos_paths::PATH_WHITE_TEXTURE)),
         })
     }
 
@@ -377,6 +377,7 @@ impl RenderPipeline {
                         &mut self.error_material_indices,
                         &self.purple_fallback,
                         &mut all_error_scopes,
+                        &self.white_texture_fallback,
                     );
                     if let Some(command_buffers) = &mut command_buffers {
                         more_command_buffers.append(command_buffers);
@@ -462,10 +463,11 @@ impl RenderPipeline {
         global_vp_bind_group_layout: &BindGroupLayout,
         vp_bind_group: &BindGroup,
         render_pass_node: &RenderPassNode,
-        assets_server: &mut AssetsServer,
+        assets_server: &AssetsServer,
         error_material_indices: &mut std::collections::HashSet<AssetIndex>,
         purple_fallback: &Option<(BindGroup, BindGroupLayout)>,
         error_scopes: &mut Vec<(AssetIndex, wgpu::ErrorScopeGuard)>,
+        white_texture_fallback: &Arc<AssetHandle<TextureAssetsSystem>>,
     ) -> Option<Vec<CommandBuffer>> {
         let attachment_ids = &render_pass_node.attachments;
 
@@ -599,6 +601,10 @@ impl RenderPipeline {
             let Some(material) = assets_server.get(&draw.renderer.material) else {
                 continue;
             };
+            let texture_handle = match &material.texture {
+                Some(texture) => texture,
+                None => white_texture_fallback,
+            };
 
             let material_id = draw.renderer.material.id();
             let material_errored = error_material_indices.contains(&material_id);
@@ -622,11 +628,11 @@ impl RenderPipeline {
                     texture_bind_group = None;
                     texture_bind_group_layout = None;
                 }
-            } else if let Some(texture) = &material.texture {
-                let Some(texture_asset) = assets_server.get(&texture) else {
+            } else {
+                let Some(texture_asset) = assets_server.get(texture_handle) else {
                     continue;
                 };
-                let texture_id = texture.id();
+                let texture_id = texture_handle.id();
                 let key = texture_id.index() as usize;
                 let version = texture_id.version();
                 let result = {
@@ -664,9 +670,6 @@ impl RenderPipeline {
                 };
                 texture_bind_group = Some(result);
                 texture_bind_group_layout = texture_cache.get(&key).map(|c| &c.layout);
-            } else {
-                texture_bind_group = None;
-                texture_bind_group_layout = None;
             };
 
             // --- Pipeline ---
