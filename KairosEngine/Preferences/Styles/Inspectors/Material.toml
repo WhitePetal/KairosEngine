@@ -16,3 +16,14 @@ render_state_row_height = 20.0
 render_state_sub_row_indent = 16.0
 
 apply_button_height = 20.0
+
+# 3D 预览面板（issue #37）
+preview_min_height = 150.0
+preview_default_size = 512
+camera_fov = 60.0
+camera_direction = [0.0, -0.6, 1.0, 0.0]
+camera_orbit_speed = 0.008
+camera_zoom_speed = 0.01
+camera_min_distance = 0.03
+camera_max_distance = 3000.0
+preview_meshes = ["res/models/Suzanne.mesh"]

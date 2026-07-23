@@ -1,0 +1,45 @@
+# MaterialInspector 3D 预览（issue #37）
+#
+# 打开材质 Inspector 后，底部 3D 预览面板每帧经 Inspector::render() 输出
+# GraphicsCommand：临时 color + depth attachment → begin_render_pass 用当前
+# 材质的运行时数据（shader + texture + render state）绘制预览网格 →
+# bind_attachment_to_egui 回绑到 egui。本测试持续多帧驱动整条预览渲染路径，
+# 验证不崩溃、无 GPU 报错。
+#
+# 注 1：`wgpu_valid` 当前为 stub（恒通过），本用例的实际断言是预览路径
+# 持续渲染 120 帧后 no_crash；harness 重构后 wgpu_valid 落地即自动生效。
+# 注 2：预览网格下拉栏为 ComboBox，弹层交互受 #27 阻塞，这里验证默认网格
+# （Style TOML preview_meshes 首项，Suzanne）的预览渲染。
+
+[[step]]
+action = "call"
+target = "ui.open_inspector"
+
+[[step]]
+action = "call"
+target = "project.select_asset"
+args = { path = "res/materials/material.mat" }
+
+# 等待材质与预览网格异步加载、首次 bind_attachment_to_egui 完成
+[[step]]
+action = "call"
+target = "system.wait_frames"
+args = { count = 60 }
+
+[[step]]
+action = "assert"
+target = "no_crash"
+
+# 预览渲染持续若干帧（attachment 随面板尺寸重建）后仍不崩溃
+[[step]]
+action = "call"
+target = "system.wait_frames"
+args = { count = 60 }
+
+[[step]]
+action = "assert"
+target = "wgpu_valid"
+
+[[step]]
+action = "assert"
+target = "no_crash"

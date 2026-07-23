@@ -11,11 +11,16 @@ use strum::IntoEnumIterator;
 
 use crate::{
     asset_loader::assets::{
-        AssetHandle, AssetsServer, MaterialAssetsSystem, SerializedMaterialAssetsSystem,
-        ShaderAssetsSystem, TextureAssetsSystem,
+        AssetHandle, AssetsServer, MaterialAssetsSystem, MeshAssetsSystem,
+        SerializedMaterialAssetsSystem, ShaderAssetsSystem, TextureAssetsSystem,
     },
     graphics::{
+        attachment::{Attachment, AttachmentFormat, AttachmentLoadAction, AttachmentStoreAction},
         compare_function::CompareFunction,
+        graphics_graph::{
+            GraphicsCommand,
+            graphics_node::{ColorAttachmentBind, DepthAttachmentBind},
+        },
         material::SerializedMaterial,
         render_state::{
             BlendFactor, BlendOperation, BlendPreset, BlendState, CullMode, PrimitiveTopology,
@@ -32,9 +37,11 @@ use crate::{
             inspector::Inspector,
             paths,
             project_window::ProjectWindow,
+            scene_camera::SceneCamera,
         },
     },
-    math,
+    math::{self, Vector, float3, float4x4},
+    spatial::AABB,
 };
 
 // ============================================================
@@ -61,7 +68,21 @@ struct MaterialInspectorStyle {
     render_state_sub_row_indent: f32,
 
     apply_button_height: f32,
+
+    // ---- 3D 预览（issue #37）----
+    preview_min_height: f32,
+    preview_default_size: u32,
+    camera_fov: f32,
+    camera_direction: float3,
+    camera_orbit_speed: f32,
+    camera_zoom_speed: f32,
+    camera_min_distance: f32,
+    camera_max_distance: f32,
+    preview_meshes: Vec<PathBuf>,
 }
+
+/// preview_meshes 为空时的回退预览网格（issue #37 默认配置）。
+const DEFAULT_PREVIEW_MESH: &str = "res/models/Suzanne.mesh";
 
 impl MaterialInspectorStyle {
     fn new() -> Result<Self, Box<dyn std::error::Error>> {
@@ -72,7 +93,19 @@ impl MaterialInspectorStyle {
                 error
             )
         })?;
-        let style = toml::from_slice(&bytes)?;
+        Self::from_toml_bytes(&bytes)
+    }
+
+    /// 从 TOML 字节解析并清洗：preview_min_height 夹紧到 >= 1.0；
+    /// preview_meshes 为空时回退到默认 Suzanne，保证下拉栏不为空。
+    fn from_toml_bytes(bytes: &[u8]) -> Result<Self, Box<dyn std::error::Error>> {
+        let mut style: Self = toml::from_slice(bytes)?;
+        style.preview_min_height = style.preview_min_height.max(1.0);
+        if style.preview_meshes.is_empty() {
+            style
+                .preview_meshes
+                .push(PathBuf::from(DEFAULT_PREVIEW_MESH));
+        }
         Ok(style)
     }
 }
@@ -180,6 +213,63 @@ impl Thumbnail {
 }
 
 // ============================================================
+// 3D 预览状态（issue #37）
+// ============================================================
+
+/// 跟踪 egui texture 绑定通道与预览相机（orbit / zoom）。
+/// 与 MeshInspector 的 PreviewState 同构：draw() 惰性初始化并接收回绑，
+/// render() 每帧输出预览 GraphicsCommand。
+struct PreviewState {
+    egui_texture_id: Option<egui::TextureId>,
+    bind_receiver: Option<tokio::sync::oneshot::Receiver<egui::TextureId>>,
+    pending_drop_id: Option<egui::TextureId>,
+    size: (u32, u32),
+    camera: SceneCamera,
+    /// 取景所用预览网格的下标（切换网格后按新 AABB 重取景）
+    mesh_index: usize,
+}
+
+impl PreviewState {
+    /// 由网格 AABB 计算取景相机（创建与切换网格重取景共用）。
+    fn framing_camera(aabb: AABB, style: &MaterialInspectorStyle) -> SceneCamera {
+        let center = (aabb.min + aabb.max) * 0.5;
+        let size = aabb.max - aabb.min;
+        let max_extent = size.x().max(size.y()).max(size.z()).max(0.001);
+        let fov_rad = style.camera_fov.to_radians();
+        let distance = max_extent / (2.0 * (fov_rad * 0.5).tan()) * 1.5;
+        let direction = style.camera_direction.normalize();
+        let eye = center - direction * distance;
+
+        SceneCamera::new(
+            eye,
+            center,
+            style.camera_fov,
+            0.03,
+            3000.0,
+            style.camera_orbit_speed,
+            style.camera_zoom_speed,
+            0.0,
+            0.0,
+            0.0,
+            style.camera_min_distance,
+            style.camera_max_distance,
+        )
+    }
+
+    fn new(mesh_index: usize, aabb: AABB, style: &MaterialInspectorStyle) -> Self {
+        let size = style.preview_default_size.max(1);
+        Self {
+            size: (size, size),
+            egui_texture_id: None,
+            bind_receiver: None,
+            pending_drop_id: None,
+            camera: Self::framing_camera(aabb, style),
+            mesh_index,
+        }
+    }
+}
+
+// ============================================================
 // Model
 // ============================================================
 
@@ -198,6 +288,12 @@ struct MaterialInspectorModel {
     blend_custom_expanded: Cell<bool>,
     /// 用户是否修改了（未保存）
     dirty: Cell<bool>,
+    /// 预览网格候选（Style TOML preview_meshes，create 时全部异步加载）
+    preview_mesh_handles: Vec<(PathBuf, Arc<AssetHandle<MeshAssetsSystem>>)>,
+    /// 当前预览网格下标（预览工具栏下拉切换）
+    preview_mesh_index: Cell<usize>,
+    /// 3D 预览状态（egui texture 绑定通道 + 相机）
+    preview: Mutex<Option<PreviewState>>,
 }
 
 // ============================================================
@@ -782,6 +878,117 @@ impl MaterialInspector {
                 });
             });
     }
+
+    // ============================================================
+    // 3D 预览面板（issue #37）
+    // ============================================================
+
+    /// Inspector 底部 3D 预览：
+    /// 下拉栏切换预览网格 → 面板 resize 更新 attachment 尺寸 →
+    /// 拖拽 orbit / 滚轮 zoom 相机 → painter.image 显示 render() 回绑的纹理。
+    fn draw_preview(&self, ui: &mut egui::Ui, assets_server: &AssetsServer, dt: f32) {
+        let mut guard = self.model.preview.lock();
+
+        // 工具栏始终绘制：网格加载失败时用户仍可切换其他网格
+        self.draw_preview_toolbar(ui);
+
+        let (_, mesh_handle) =
+            &self.model.preview_mesh_handles[self.model.preview_mesh_index.get()];
+
+        // 预览网格未加载完成时无法计算 AABB 初始化相机
+        let Some(mesh) = assets_server.get(mesh_handle) else {
+            ui.centered_and_justified(|ui| {
+                ui.label("Preview is loading...");
+            });
+            return;
+        };
+        let current_index = self.model.preview_mesh_index.get();
+        let preview = guard.get_or_insert_with(|| {
+            PreviewState::new(current_index, mesh.compute_aabb(), &self.model.style)
+        });
+        // 切换网格后按新网格 AABB 重新取景（相机重置，egui 绑定通道保留）
+        if preview.mesh_index != current_index {
+            preview.camera = PreviewState::framing_camera(mesh.compute_aabb(), &self.model.style);
+            preview.mesh_index = current_index;
+        }
+
+        // 接收 render() 回绑的 egui texture id；旧 id 下一帧 render() 释放
+        if let Some(receiver) = &mut preview.bind_receiver
+            && let Ok(texture_id) = receiver.try_recv()
+        {
+            if let Some(old) = preview.egui_texture_id.replace(texture_id) {
+                preview.pending_drop_id = Some(old);
+            }
+            preview.bind_receiver = None;
+        }
+
+        let Some(tex_id) = preview.egui_texture_id else {
+            ui.centered_and_justified(|ui| {
+                ui.label("Preview is loading...");
+            });
+            return;
+        };
+
+        // ---- 3D 预览图像（占满剩余空间，跟随面板 resize）----
+        let available = ui.available_size_before_wrap();
+        let min_h = self.model.style.preview_min_height;
+        let size = Vec2::new(available.x, available.y.max(min_h));
+        let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click_and_drag());
+
+        // 更新下一帧 render() 的 attachment 尺寸与相机宽高比
+        let pixels_per_point = ui.pixels_per_point();
+        let width = (rect.width() * pixels_per_point).round().max(1.0) as u32;
+        let height = (rect.height() * pixels_per_point).round().max(1.0) as u32;
+        preview.size = (width, height);
+        preview.camera.aspect = width as f32 / height as f32;
+
+        // ---- Orbit：拖拽旋转 ----
+        if response.dragged() {
+            let delta = -response.drag_delta();
+            preview.camera.orbit(delta.x, delta.y, dt);
+        }
+
+        // ---- Zoom：滚轮缩放 ----
+        let scroll_delta = ui.input(|i| i.smooth_scroll_delta);
+        if response.hovered() && scroll_delta.y != 0.0 {
+            preview.camera.zoom(scroll_delta.y, dt);
+        }
+
+        ui.painter().image(
+            tex_id,
+            rect,
+            egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+            egui::Color32::WHITE,
+        );
+    }
+
+    /// 预览网格下拉栏：切换 Style TOML preview_meshes 中配置的网格。
+    fn draw_preview_toolbar(&self, ui: &mut egui::Ui) {
+        let mesh_name = |path: &PathBuf| {
+            path.file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("Unknown")
+                .to_string()
+        };
+        let current = self.model.preview_mesh_index.get();
+        let current_name = mesh_name(&self.model.preview_mesh_handles[current].0);
+
+        ui.horizontal(|ui| {
+            ui.label("Mesh");
+            egui::ComboBox::from_id_salt("material_preview_mesh")
+                .selected_text(current_name)
+                .show_ui(ui, |ui| {
+                    for (index, (path, _)) in self.model.preview_mesh_handles.iter().enumerate() {
+                        if ui
+                            .selectable_label(index == current, mesh_name(path))
+                            .clicked()
+                        {
+                            self.model.preview_mesh_index.set(index);
+                        }
+                    }
+                });
+        });
+    }
 }
 
 impl Inspector for MaterialInspector {
@@ -807,6 +1014,13 @@ impl Inspector for MaterialInspector {
             .collect();
         let shader_menu_tree = ShaderMenuNode::build_tree(&shader_list);
 
+        // 预览网格候选全部预加载（句柄立即返回，资产异步就绪）
+        let preview_mesh_handles = style
+            .preview_meshes
+            .iter()
+            .map(|path| (path.clone(), assets_server.load::<MeshAssetsSystem>(path)))
+            .collect();
+
         let model = MaterialInspectorModel {
             style,
             serialized_handle,
@@ -816,6 +1030,9 @@ impl Inspector for MaterialInspector {
             thumbnail: Arc::new(Mutex::new(None)),
             blend_custom_expanded: Cell::new(false),
             dirty: Cell::new(false),
+            preview_mesh_handles,
+            preview_mesh_index: Cell::new(0),
+            preview: Mutex::new(None),
         };
 
         Ok(Self { model })
@@ -827,7 +1044,7 @@ impl Inspector for MaterialInspector {
         reader: &UIReader,
         messager: &mut Messager,
         assets_server: &AssetsServer,
-        _dt: f32,
+        dt: f32,
     ) {
         // ---- Cmd/Ctrl+S 快捷键触发 Apply（issue #36，ADR §4.5.2）----
         // modifiers.command：macOS = ⌘、Windows/Linux = Ctrl，跨平台保存习惯一致
@@ -956,6 +1173,97 @@ impl Inspector for MaterialInspector {
                 }
             }); // push_id("apply_button")
         });
+
+        ui.separator();
+
+        // ---- 3D 预览面板（issue #37）----
+        self.draw_preview(ui, assets_server, dt);
+    }
+
+    fn render(&self) -> Option<GraphicsCommand> {
+        let mut guard = self.model.preview.lock();
+        let Some(preview) = guard.deref_mut() else {
+            return None;
+        };
+
+        // 释放 draw() 标记的旧 egui texture id
+        let drop_id = preview.pending_drop_id.take();
+
+        // 上一个 bind 尚未被消费时不重复创建 channel
+        let bind_ready = preview.bind_receiver.is_none();
+        let (egui_bind_sender, egui_bind_receiver) = if bind_ready {
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            (Some(tx), Some(rx))
+        } else {
+            (None, None)
+        };
+
+        let (width, height) = preview.size;
+        let vp = preview.camera.view_projection();
+
+        let mut command = GraphicsCommand::new(1, 1, 1, 3);
+
+        if let Some(id) = drop_id {
+            command.free_egui_texture_id(id);
+        }
+
+        // 临时 color + depth attachment（每帧新建，多个 Inspector 天然隔离）
+        let preview_attachment = Attachment::new(
+            Some("MaterialPreview Color"),
+            width,
+            height,
+            AttachmentFormat::RGBA8UNorm,
+        );
+        let preview_attachment_id = command.create_color_attachment(preview_attachment);
+        let preview_bind = ColorAttachmentBind::new(
+            preview_attachment_id,
+            AttachmentLoadAction::LoadClear,
+            AttachmentStoreAction::Store,
+        );
+
+        let preview_depth = Attachment::new(
+            Some("MaterialPreview Depth"),
+            width,
+            height,
+            AttachmentFormat::D24S8,
+        );
+        let preview_depth_id = command.create_depth_attachment(preview_depth);
+        let preview_depth_bind = DepthAttachmentBind::new(
+            preview_depth_id,
+            Some((
+                AttachmentLoadAction::LoadClear,
+                AttachmentStoreAction::Store,
+            )),
+            None,
+        );
+
+        let vp_id = command.set_view_projection_matrix(vp);
+        command.begin_render_pass(
+            Some("MaterialPreview Render Pass"),
+            vec![preview_bind],
+            Some(preview_depth_bind),
+            vp_id,
+            1,
+        );
+
+        // 用当前材质的运行时数据（shader + texture + render state）绘制预览网格
+        let (_, mesh_handle) =
+            &self.model.preview_mesh_handles[self.model.preview_mesh_index.get()];
+        command.draw(
+            mesh_handle.clone(),
+            self.model.material_handle.clone(),
+            float4x4::IDENTITY,
+        );
+
+        command.end_render_pass();
+
+        // 回绑 color attachment 到 egui，供 draw() 中 painter.image 显示
+        if let (Some(sender), Some(receiver)) = (egui_bind_sender, egui_bind_receiver) {
+            command.bind_attachment_to_egui(preview_attachment_id, sender);
+            preview.bind_receiver = Some(receiver);
+        }
+
+        Some(command)
     }
 
     fn on_exit(&mut self, _ctx: &egui::Context) -> Option<Box<dyn Dialog>> {
@@ -1140,5 +1448,91 @@ impl MaterialInspector {
         {
             *asset = serialized;
         }
+    }
+}
+
+// ============================================================
+// Tests
+// ============================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 完整 style TOML（preview 字段可覆盖）。
+    fn style_toml(preview_section: &str) -> String {
+        format!(
+            r##"
+shader_selector_height = 20.0
+shader_selector_menu_border = 10.0
+shader_selector_menu_min_width = 10.0
+shader_selector_submenu_width_factor = 0.7
+
+texture_label_height = 60.0
+texture_background_color = "#32323280"
+texture_drag_hover_background_color = "#0050c84d"
+texture_empty_stroke_color = "#464646"
+texture_fill_stroke_color = "#5a5a5a"
+texture_drag_hover_stroke_color = "#4696ff"
+texture_corner_radius = 4
+texture_stroke_width = 1.0
+
+render_state_row_height = 20.0
+render_state_sub_row_indent = 16.0
+
+apply_button_height = 20.0
+
+{preview_section}
+"##
+        )
+    }
+
+    const PREVIEW_KEYS: &str = r#"
+preview_min_height = 150.0
+preview_default_size = 512
+camera_fov = 60.0
+camera_direction = [0.0, -0.6, 1.0, 0.0]
+camera_orbit_speed = 0.008
+camera_zoom_speed = 0.01
+camera_min_distance = 0.03
+camera_max_distance = 3000.0
+"#;
+
+    /// issue #37：preview_meshes 为空时回退到默认 Suzanne 网格，
+    /// 避免预览网格下拉栏为空。
+    #[test]
+    fn style_sanitize_fills_default_preview_meshes_when_empty() {
+        let toml = style_toml(&format!("{PREVIEW_KEYS}\npreview_meshes = []"));
+        let style = MaterialInspectorStyle::from_toml_bytes(toml.as_bytes()).unwrap();
+        assert_eq!(
+            style.preview_meshes,
+            vec![PathBuf::from("res/models/Suzanne.mesh")]
+        );
+    }
+
+    /// 配置了 preview_meshes 时保留用户配置，不被默认值覆盖。
+    #[test]
+    fn style_sanitize_keeps_configured_preview_meshes() {
+        let toml = style_toml(&format!(
+            "{PREVIEW_KEYS}\npreview_meshes = [\"res/models/Suzanne.mesh\", \"res/models/Cube.mesh\"]"
+        ));
+        let style = MaterialInspectorStyle::from_toml_bytes(toml.as_bytes()).unwrap();
+        assert_eq!(
+            style.preview_meshes,
+            vec![
+                PathBuf::from("res/models/Suzanne.mesh"),
+                PathBuf::from("res/models/Cube.mesh")
+            ]
+        );
+    }
+
+    /// preview_min_height 夹紧到 >= 1.0，避免 0 高度 attachment。
+    #[test]
+    fn style_sanitize_clamps_preview_min_height() {
+        let toml = style_toml(
+            "preview_min_height = 0.0\npreview_default_size = 512\ncamera_fov = 60.0\ncamera_direction = [0.0, -0.6, 1.0, 0.0]\ncamera_orbit_speed = 0.008\ncamera_zoom_speed = 0.01\ncamera_min_distance = 0.03\ncamera_max_distance = 3000.0\npreview_meshes = [\"res/models/Suzanne.mesh\"]",
+        );
+        let style = MaterialInspectorStyle::from_toml_bytes(toml.as_bytes()).unwrap();
+        assert!(style.preview_min_height >= 1.0);
     }
 }

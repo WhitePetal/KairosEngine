@@ -657,6 +657,14 @@ fn render(&self) -> Option<GraphicsCommand> {
 //   更新 model.mesh_handle
 ```
 
+> **实现修正（issue #37）**：实际实现改为 `create()` 时预加载全部
+> `preview_meshes` 句柄 + 下拉栏直接写本地 `Cell<usize>` 索引（同
+> MeshInspector `preview_mode` 的本地 Cell 模式），不走
+> `MaterialInspectorChangePreviewMesh` 消息。原因：预览网格集合在 create 时
+> 即可确定，预加载后切换无异步空窗，也无需 Context::handle 往返；§4.8 中的
+> `MaterialInspectorChangePreviewMesh(usize)` 变体因此未加入 Message 枚举。
+> 另外，切换网格时会按新网格 AABB 重新取景（预览相机重置为默认朝向）。
+
 ---
 
 ## 4.7 Module G：降级资源

@@ -367,3 +367,79 @@ async fn discard_changes_no_crash_when_serialized_unloaded() {
     );
     MaterialInspector::discard_changes(&mut assets, &serialized_handle, &material_handle);
 }
+
+// ============================================================
+// 3D 预览 Style TOML 配置（issue #37）
+// ============================================================
+
+fn workspace_root() -> &'static Path {
+    // CARGO_MANIFEST_DIR = kairos_engine/，Preferences/ 在工作区根（上一级）
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("workspace root")
+}
+
+fn material_style_toml() -> toml::Value {
+    let path = workspace_root().join("Preferences/Styles/Inspectors/Material.toml");
+    let content = std::fs::read_to_string(&path).expect("read Material.toml style");
+    toml::from_str(&content).expect("parse Material.toml style")
+}
+
+/// 验收条件：Style TOML 必须提供预览面板与相机的全部配置键。
+/// 缺少任何一键都会导致 MaterialInspectorStyle 反序列化失败、Inspector 打不开。
+#[test]
+fn material_inspector_style_toml_has_preview_config() {
+    let value = material_style_toml();
+
+    for key in [
+        "preview_min_height",
+        "preview_default_size",
+        "camera_fov",
+        "camera_direction",
+        "camera_orbit_speed",
+        "camera_zoom_speed",
+        "camera_min_distance",
+        "camera_max_distance",
+        "preview_meshes",
+    ] {
+        assert!(value.get(key).is_some(), "missing style key: {key}");
+    }
+
+    assert!(value["preview_min_height"].as_float().is_some());
+    assert!(value["preview_default_size"].as_integer().is_some());
+    assert!(value["camera_fov"].as_float().is_some());
+    assert!(value["camera_direction"].as_array().is_some());
+    assert!(value["camera_orbit_speed"].as_float().is_some());
+    assert!(value["camera_zoom_speed"].as_float().is_some());
+    assert!(value["camera_min_distance"].as_float().is_some());
+    assert!(value["camera_max_distance"].as_float().is_some());
+
+    let meshes = value["preview_meshes"]
+        .as_array()
+        .expect("preview_meshes must be a list");
+    assert!(!meshes.is_empty(), "preview_meshes must not be empty");
+    // issue #37：默认预览网格为 Suzanne
+    assert!(
+        meshes
+            .iter()
+            .any(|m| m.as_str() == Some("res/models/Suzanne.mesh")),
+        "default preview mesh should include Suzanne, got: {meshes:?}"
+    );
+}
+
+/// 验收条件：预览网格下拉栏中的每个配置路径都必须真实存在，
+/// 否则下拉栏会给用户一个永远加载不出来的选项。
+#[test]
+fn material_inspector_preview_meshes_exist_on_disk() {
+    let root = workspace_root();
+    let value = material_style_toml();
+    let meshes = value["preview_meshes"]
+        .as_array()
+        .expect("preview_meshes must be a list");
+    for mesh in meshes {
+        let mesh = mesh
+            .as_str()
+            .expect("preview_meshes entries must be strings");
+        assert!(root.join(mesh).exists(), "preview mesh not found: {mesh}");
+    }
+}
