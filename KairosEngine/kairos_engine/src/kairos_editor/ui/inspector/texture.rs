@@ -117,16 +117,17 @@ impl TextureInspector {
         }
 
         // Decode compressed data to RGBA8 for the egui preview.
-        let rgba = crate::graphics::texture::format::decode_to_rgba8(
+        let rgba = crate::graphics::texture::format::decode(
             &texture.data[0],
             texture.width,
             texture.height,
             texture.format,
         );
+        let rgba_bytes = rgba.as_bytes().to_vec();
 
         let w = texture.width as usize;
         let h = texture.height as usize;
-        let color_image = egui::ColorImage::from_rgba_unmultiplied([w, h], &rgba);
+        let color_image = egui::ColorImage::from_rgba_unmultiplied([w, h], &rgba_bytes);
         let texture_handle = ui.ctx().load_texture(
             "texture_inspector_preview",
             color_image,
@@ -218,7 +219,7 @@ impl TextureInspector {
         };
 
         // 2. Encode base level + generate cascading mip-chain.
-        let mip_data: Vec<Vec<u8>> = if let Some(ref mip) = ext.serialized.sampler.mipmap {
+        let mip_data: Vec<crate::graphics::texture::PixelDatas> = if let Some(ref mip) = ext.serialized.sampler.mipmap {
             let max_possible = (new_w.max(new_h) as f32).log2().floor() as u32;
             let end_level = (mip.lod_max_clamp.floor() as u32).min(max_possible);
             let total_levels = end_level + 1;
@@ -228,12 +229,14 @@ impl TextureInspector {
             let mut current_rgba = rgba_data;
 
             for _ in 0..total_levels {
-                levels.push(crate::graphics::texture::format::encode_rgba(
-                    &current_rgba,
+                let pixels = crate::graphics::texture::PixelDatas::U8(current_rgba.clone());
+                let encoded = crate::graphics::texture::format::encode(
+                    &pixels,
                     current_w,
                     current_h,
                     ext.serialized.format,
-                ));
+                );
+                levels.push(encoded);
                 let prev_w = current_w;
                 let prev_h = current_h;
                 current_w = (current_w / 2).max(1);
@@ -252,12 +255,14 @@ impl TextureInspector {
             }
             levels
         } else {
-            vec![crate::graphics::texture::format::encode_rgba(
-                &rgba_data,
+            let pixels = crate::graphics::texture::PixelDatas::U8(rgba_data);
+            let encoded = crate::graphics::texture::format::encode(
+                &pixels,
                 new_w,
                 new_h,
                 ext.serialized.format,
-            )]
+            );
+            vec![encoded]
         };
 
         // 3. Save to file

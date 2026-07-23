@@ -183,15 +183,16 @@ struct Thumbnail {
 
 impl Thumbnail {
     pub fn new(ui: &egui::Ui, path: &PathBuf, texture: &crate::graphics::texture::Texture) -> Self {
-        let rgba = crate::graphics::texture::format::decode_to_rgba8(
+        let rgba = crate::graphics::texture::format::decode(
             &texture.data[0],
             texture.width,
             texture.height,
             texture.format,
         );
+        let rgba_bytes = rgba.as_bytes().to_vec();
         let w = texture.width as usize;
         let h = texture.height as usize;
-        let color_image = egui::ColorImage::from_rgba_unmultiplied([w, h], &rgba);
+        let color_image = egui::ColorImage::from_rgba_unmultiplied([w, h], &rgba_bytes);
         let handle = ui.ctx().load_texture(
             "material_tex_thumb",
             color_image,

@@ -4,17 +4,17 @@
 
 **文件：** `../CONTEXT.md`
 
-定义了 PixelData、Encode/Decode、SDR/HDR、source_srgb、Output color space 等 9 个核心术语。
+定义了 PixelDatas、Encode/Decode、SDR/HDR、source_srgb、Output color space 等 9 个核心术语。
 
 ---
 
 ## ADR（架构决策记录）
 
-### ADR-0001：PixelData enum wraps whole arrays, not per-element variants
+### ADR-0001：PixelDatas enum wraps whole arrays, not per-element variants
 
 **文件：** `../adr/texture-encoding/0001-pixeldata-enum-over-arrays.md`
 
-PixelData 枚举包装整个 `Vec<T>` 缓冲区（U8/F16/F32），而非逐像素枚举。这样 heap 内存大小不变，stack overhead 仅每个 mip level ~32 bytes，可以零开销 reinterpret 为 `&[u8]` 传给 wgpu。
+PixelDatas 枚举包装整个 `Vec<T>` 缓冲区（U8/F16/F32），而非逐像素枚举。这样 heap 内存大小不变，stack overhead 仅每个 mip level ~32 bytes，可以零开销 reinterpret 为 `&[u8]` 传给 wgpu。
 
 ---
 
@@ -84,14 +84,14 @@ wgpu 在 upload 时不做 sRGB 转换。sRGB↔linear 只在 shader 采样时由
 
 ```rust
 // encode/decode 入口 (format.rs)
-pub fn encode(pixels: &PixelData, width: u32, height: u32,
+pub fn encode(pixels: &PixelDatas, width: u32, height: u32,
               format: TextureFormat, source_srgb: bool) -> Vec<u8>;
 
 pub fn decode(data: &[u8], width: u32, height: u32,
-              format: TextureFormat) -> PixelData;
+              format: TextureFormat) -> PixelDatas;
 
 // 数据容器
-pub enum PixelData {
+pub enum PixelDatas {
     U8(Vec<u8>),
     F16(Vec<u16>),
     F32(Vec<f32>),
@@ -99,7 +99,7 @@ pub enum PixelData {
 
 // Texture 结构体
 pub struct Texture {
-    pub data: Vec<PixelData>,  // 每个 mip level 一个
+    pub data: Vec<PixelDatas>,  // 每个 mip level 一个
     // ... width, height, format, sampler
 }
 ```

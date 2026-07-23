@@ -4,7 +4,7 @@
 
 | # | Title | File |
 |---|-------|------|
-| 0001 | PixelData enum wraps whole arrays, not per-element variants | `texture-encoding/0001-pixeldata-enum-over-arrays.md` |
+| 0001 | PixelDatas enum wraps whole arrays, not per-element variants | `texture-encoding/0001-pixeldata-enum-over-arrays.md` |
 | 0002 | sRGB conversion is handled inside encode via `source_srgb` flag | `texture-encoding/0002-srgb-handling-in-encode.md` |
 | 0003 | Encode/Decode implementation plan — 6 groups, ordered by dependency | `texture-encoding/0003-encode-decode-implementation-plan.md` |
 

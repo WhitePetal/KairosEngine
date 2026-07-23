@@ -1,4 +1,4 @@
-# ADR-0001: PixelData enum wraps whole arrays, not per-element variants
+# ADR-0001: PixelDatas enum wraps whole arrays, not per-element variants
 
 Texture formats have different bit depths (8-bit, 16-bit f16, 32-bit f32). The encode/decode API needs to accept both SDR and HDR pixel data. Rather than creating separate function pairs (`encode_rgba` / `encode_rgba_f16`) or a generic trait, we use an enum whose variants wrap entire `Vec<T>` buffers.
 

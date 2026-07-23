@@ -1133,6 +1133,9 @@ impl RenderPipeline {
             let blocks_per_row = (level_w + block_w - 1) / block_w;
             let bytes_per_row = block_bytes * blocks_per_row;
 
+            // Get raw bytes from any PixelDatas variant (pure, never panics).
+            let raw_bytes = level_data.as_bytes();
+
             queue.write_texture(
                 TexelCopyTextureInfo {
                     texture: &gpu_texture,
@@ -1140,7 +1143,7 @@ impl RenderPipeline {
                     origin: Origin3d::ZERO,
                     aspect: wgpu::TextureAspect::All,
                 },
-                level_data,
+                raw_bytes,
                 TexelCopyBufferLayout {
                     offset: 0,
                     bytes_per_row: Some(bytes_per_row),

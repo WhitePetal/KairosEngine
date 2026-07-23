@@ -11,7 +11,8 @@ use crate::{
         },
         consts,
     },
-    graphics::texture::{SerializedTexture, Texture},
+    graphics::texture::{PixelDatas, SerializedTexture, Texture},
+    graphics::texture::format::TextureFormat,
 };
 
 #[derive(Debug)]
@@ -55,23 +56,23 @@ impl Loader {
         let texture = toml::from_slice::<SerializedTexture>(&toml)?;
         Ok(texture)
     }
-    async fn load_bin(path: &PathBuf) -> Result<Vec<Vec<u8>>, Error> {
+    async fn load_bin(path: &PathBuf, format: TextureFormat) -> Result<Vec<PixelDatas>, Error> {
         let bytes = tokio::fs::read(path.with_extension("texture_bin")).await?;
-        // Try new multi-level format first, fall back to old single-level.
-        if let Ok(data) = rkyv::from_bytes::<Vec<Vec<u8>>, rkyv::rancor::Error>(&bytes) {
+        // Try custom format first.
+        if let Ok(data) = crate::kairos_editor::serialize_asset::texture::deserialize_pixel_datas(&bytes, format) {
             return Ok(data);
         }
+        // Fallback: try old rkyv single-level format.
         let data = rkyv::from_bytes::<Vec<u8>, rkyv::rancor::Error>(&bytes)?;
-        Ok(vec![data])
+        Ok(vec![PixelDatas::U8(data)])
     }
     async fn load(
         path: PathBuf,
         asset_index: AssetIndex,
         sender: tokio::sync::mpsc::Sender<LoadedEvent>,
     ) -> Result<(), Error> {
-        let (serialized, data) = tokio::join!(Self::load_toml(&path), Self::load_bin(&path),);
-        let serialized = serialized?;
-        let data = data?;
+        let serialized = Self::load_toml(&path).await?;
+        let data = Self::load_bin(&path, serialized.format).await?;
 
         let texture = Texture {
             width: serialized.width,

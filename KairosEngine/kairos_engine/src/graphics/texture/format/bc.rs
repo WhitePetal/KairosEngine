@@ -1,123 +1,91 @@
 //! BCn (Block Compression) pure-Rust encoder/decoder.
+//!
+//! Uses the shared `encode_blocks!` macro and `decode_blocks` function
+//! from `super` for block-parallel processing.
 
 use rayon::prelude::*;
+
+use crate::encode_blocks;
+use crate::graphics::texture::format::{BlockLayout, PixelDatas};
 
 // ============================================================
 // Compressors/Encode
 // ============================================================
 
-macro_rules! encode_fn {
-    ($name:ident, $block_size:expr, $block_fn:ident) => {
-        pub fn $name(rgba: &[u8], width: usize, height: usize) -> Vec<u8> {
-            let bx = (width + 3) / 4;
-            let by = (height + 3) / 4;
-            let mut out = vec![0u8; bx * by * $block_size];
-            out.par_chunks_mut($block_size)
-                .enumerate()
-                .for_each(|(i, chunk)| {
-                    let bx_i = i % bx;
-                    let by_i = i / bx;
-                    let block = extract_block(rgba, width, height, bx_i * 4, by_i * 4);
-                    chunk.copy_from_slice(&$block_fn(&block));
-                });
-            out
-        }
-    };
-}
-
-encode_fn!(encode_bc1, 8, bc1_block);
-encode_fn!(encode_bc2, 16, bc2_block);
-encode_fn!(encode_bc3, 16, bc3_block);
-encode_fn!(encode_bc4, 8, bc4_block);
-encode_fn!(encode_bc5, 16, bc5_block);
+encode_blocks!(encode_bc1, U8, 4, 4, 8, bc1_block);
+encode_blocks!(encode_bc2, U8, 4, 4, 16, bc2_block);
+encode_blocks!(encode_bc3, U8, 4, 4, 16, bc3_block);
+encode_blocks!(encode_bc4, U8, 4, 4, 8, bc4_block);
+encode_blocks!(encode_bc5, U8, 4, 4, 16, bc5_block);
 
 // ============================================================
-// Decompressors/Deocde
+// Decompressors/Decode — all BC uses 4×4 block layout
 // ============================================================
 
-pub fn decode_bc1(data: &[u8], width: usize, height: usize) -> Vec<u8> {
-    decode_blocks(data, width, height, 8, decode_bc1_block)
-}
-pub fn decode_bc2(data: &[u8], width: usize, height: usize) -> Vec<u8> {
-    decode_blocks(data, width, height, 16, decode_bc2_block)
-}
-pub fn decode_bc3(data: &[u8], width: usize, height: usize) -> Vec<u8> {
-    decode_blocks(data, width, height, 16, decode_bc3_block)
-}
-pub fn decode_bc4(data: &[u8], width: usize, height: usize) -> Vec<u8> {
-    decode_blocks(data, width, height, 8, decode_bc4_block)
-}
-pub fn decode_bc5(data: &[u8], width: usize, height: usize) -> Vec<u8> {
-    decode_blocks(data, width, height, 16, decode_bc5_block)
-}
+const BC1_LAYOUT: BlockLayout = BlockLayout::new(4, 4, 8);
+const BC2_LAYOUT: BlockLayout = BlockLayout::new(4, 4, 16);
+const BC3_LAYOUT: BlockLayout = BlockLayout::new(4, 4, 16);
+const BC4_LAYOUT: BlockLayout = BlockLayout::new(4, 4, 8);
+const BC5_LAYOUT: BlockLayout = BlockLayout::new(4, 4, 16);
 
-fn decode_blocks(
-    data: &[u8],
-    width: usize,
-    height: usize,
-    block_size: usize,
-    decode: impl Fn(&[u8], &mut [u8; 64]) + Sync,
-) -> Vec<u8> {
-    let bx = (width + 3) / 4;
-    let by = (height + 3) / 4;
-    let total = bx * by;
-    let mut out = vec![0u8; width * height * 4];
-    let out_addr = out.as_mut_ptr() as usize;
-
-    (0..total).into_par_iter().for_each(|i| {
-        let out_ptr = out_addr as *mut u8;
-        let bx_i = i % bx;
-        let by_i = i / bx;
-        let off = i * block_size;
-        let mut pixels = [0u8; 64];
-        decode(&data[off..off + block_size], &mut pixels);
-        for py in 0..4 {
-            for px in 0..4 {
-                let sx = bx_i * 4 + px;
-                let sy = by_i * 4 + py;
-                if sx < width && sy < height {
-                    let dst = (sy * width + sx) * 4;
-                    let src = (py * 4 + px) * 4;
-                    // SAFETY: each (sx, sy) pair is unique across all blocks,
-                    // so no two threads write to the same output location.
-                    unsafe {
-                        std::ptr::copy_nonoverlapping(pixels[src..].as_ptr(), out_ptr.add(dst), 4);
-                    }
-                }
-            }
-        }
-    });
-
-    out
+pub fn decode_bc1(data: &PixelDatas, width: usize, height: usize) -> PixelDatas {
+    super::decode_blocks(data, width, height, BC1_LAYOUT, decode_bc1_block)
+}
+pub fn decode_bc2(data: &PixelDatas, width: usize, height: usize) -> PixelDatas {
+    super::decode_blocks(data, width, height, BC2_LAYOUT, decode_bc2_block)
+}
+pub fn decode_bc3(data: &PixelDatas, width: usize, height: usize) -> PixelDatas {
+    super::decode_blocks(data, width, height, BC3_LAYOUT, decode_bc3_block)
+}
+pub fn decode_bc4(data: &PixelDatas, width: usize, height: usize) -> PixelDatas {
+    super::decode_blocks(data, width, height, BC4_LAYOUT, decode_bc4_block)
+}
+pub fn decode_bc5(data: &PixelDatas, width: usize, height: usize) -> PixelDatas {
+    super::decode_blocks(data, width, height, BC5_LAYOUT, decode_bc5_block)
 }
 
 // ============================================================
 // Block encode helpers
 // ============================================================
 
-fn bc1_block(block: &[[u8; 4]; 16]) -> [u8; 8] {
-    encode_bc1_color(block)
+fn bc1_block(block: &[[u8; 4]]) -> [u8; 8] {
+    let block_16 = to_block_16(block);
+    encode_bc1_color(&block_16)
 }
-fn bc2_block(block: &[[u8; 4]; 16]) -> [u8; 16] {
+fn bc2_block(block: &[[u8; 4]]) -> [u8; 16] {
+    let block_16 = to_block_16(block);
     let mut o = [0u8; 16];
-    o[..8].copy_from_slice(&bc2_alpha_block(block));
+    o[..8].copy_from_slice(&bc2_alpha_block(&block_16));
     o[8..].copy_from_slice(&bc1_block(block));
     o
 }
-fn bc3_block(block: &[[u8; 4]; 16]) -> [u8; 16] {
+fn bc3_block(block: &[[u8; 4]]) -> [u8; 16] {
+    let block_16 = to_block_16(block);
     let mut o = [0u8; 16];
-    o[..8].copy_from_slice(&bc4_channel(block, 3));
+    o[..8].copy_from_slice(&bc4_channel(&block_16, 3));
     o[8..].copy_from_slice(&bc1_block(block));
     o
 }
-fn bc4_block(block: &[[u8; 4]; 16]) -> [u8; 8] {
-    bc4_channel(block, 0)
+fn bc4_block(block: &[[u8; 4]]) -> [u8; 8] {
+    let block_16 = to_block_16(block);
+    bc4_channel(&block_16, 0)
 }
-fn bc5_block(block: &[[u8; 4]; 16]) -> [u8; 16] {
+fn bc5_block(block: &[[u8; 4]]) -> [u8; 16] {
+    let block_16 = to_block_16(block);
     let mut o = [0u8; 16];
-    o[..8].copy_from_slice(&bc4_channel(block, 0));
-    o[8..].copy_from_slice(&bc4_channel(block, 1));
+    o[..8].copy_from_slice(&bc4_channel(&block_16, 0));
+    o[8..].copy_from_slice(&bc4_channel(&block_16, 1));
     o
+}
+
+/// Convert a `Vec<[u8;4]>` (dynamic size) to `[[u8;4]; 16]` (BC fixed size).
+/// Panics if the input length is not 16.
+fn to_block_16(block: &[[u8; 4]]) -> [[u8; 4]; 16] {
+    let mut out = [[0u8; 4]; 16];
+    for (i, px) in block.iter().enumerate().take(16) {
+        out[i] = *px;
+    }
+    out
 }
 
 // ============================================================
@@ -195,21 +163,6 @@ fn decode_bc5_block(blk: &[u8], out: &mut [u8; 64]) {
 // ============================================================
 // Low-level helpers
 // ============================================================
-
-fn extract_block(rgba: &[u8], w: usize, h: usize, x: usize, y: usize) -> [[u8; 4]; 16] {
-    let mut block = [[0u8; 4]; 16];
-    for py in 0..4 {
-        for px in 0..4 {
-            let sx = x + px;
-            let sy = y + py;
-            if sx < w && sy < h {
-                let i = (sy * w + sx) * 4;
-                block[py * 4 + px] = [rgba[i], rgba[i + 1], rgba[i + 2], rgba[i + 3]];
-            }
-        }
-    }
-    block
-}
 
 fn encode_bc1_color(block: &[[u8; 4]; 16]) -> [u8; 8] {
     let (c0, c1) = optimal_endpoints(block);

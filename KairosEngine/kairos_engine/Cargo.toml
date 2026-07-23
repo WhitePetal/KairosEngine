@@ -55,6 +55,7 @@ uuid = { version = "1", features = ["v4", "serde"] }
 kira = { version = "0.12.0", features = ["serde"] }
 symphonia = { version = "0.5", default-features = false, features = ["mp3", "wav", "flac", "ogg", "isomp4"] }
 rustfft = "6"
+half = { version = "2.4", features = ["bytemuck"] }
 mint = "0.5"
 rapier3d = { version = "0.33.0", features = [ "simd-stable", "parallel", "serde-serialize"] }
 glam = { version = "0.33", features = ["bytemuck"] }

@@ -4,7 +4,222 @@ use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
 mod bc;
+mod srgb;
 mod uncompressed;
+
+use rayon::prelude::*;
+
+// ============================================================
+// PixelDatas — universal pixel container
+// ============================================================
+
+/// Pixel data for a single mip level.
+///
+/// The variant is chosen by the texture format's bit depth:
+/// - `U8` for 8-bit/channel SDR formats and BC compression
+/// - `F16` for half-float HDR formats (BC6h, ASTC HDR, R16F, etc.)
+/// - `F32` for native 32-bit float formats (R32F, Rg32F, Rgba32F)
+///
+/// Never mixed within a single mip level.
+#[derive(Debug, Clone)]
+pub enum PixelDatas {
+    /// 8-bit unsigned integer pixel data (e.g. RGBA8, BC compressed).
+    U8(Vec<u8>),
+    /// 16-bit half-float pixel data.
+    F16(Vec<half::f16>),
+    /// 32-bit full-float pixel data.
+    F32(Vec<f32>),
+}
+
+impl PixelDatas {
+    /// View the inner storage as raw bytes (`&[u8]`), regardless of variant.
+    /// Pure — never panics.
+    pub fn as_bytes(&self) -> &[u8] {
+        match self {
+            PixelDatas::U8(data) => data.as_slice(),
+            PixelDatas::F16(data) => bytemuck::cast_slice(data),
+            PixelDatas::F32(data) => bytemuck::cast_slice(data),
+        }
+    }
+
+    /// View inner storage as `&[u8]` when the variant is known to be U8.
+    /// Returns `None` for non-U8 variants — pure, never panics.
+    pub fn try_u8_bytes(&self) -> Option<&[u8]> {
+        match self {
+            PixelDatas::U8(data) => Some(data.as_slice()),
+            _ => None,
+        }
+    }
+
+    /// Return the byte length of the inner storage.
+    pub fn byte_len(&self) -> usize {
+        self.as_bytes().len()
+    }
+}
+
+/// Dimensions and byte-size of a compression block.
+#[derive(Debug, Clone, Copy)]
+pub struct BlockLayout {
+    pub w: usize,
+    pub h: usize,
+    pub bytes: usize,
+}
+
+impl BlockLayout {
+    pub const BC: BlockLayout = BlockLayout { w: 4, h: 4, bytes: 0 };
+
+    pub const fn new(w: usize, h: usize, bytes: usize) -> Self {
+        Self { w, h, bytes }
+    }
+}
+
+/// Extract a rectangular block of RGBA8 pixels from a full image.
+/// Out-of-bounds pixels are filled with zeros.
+pub fn extract_block(rgba: &[u8], w: usize, h: usize, x: usize, y: usize, block_w: usize, block_h: usize) -> Vec<[u8; 4]> {
+    let mut block = Vec::with_capacity(block_w * block_h);
+    for py in 0..block_h {
+        for px in 0..block_w {
+            let sx = x + px;
+            let sy = y + py;
+            if sx < w && sy < h {
+                let i = (sy * w + sx) * 4;
+                block.push([rgba[i], rgba[i + 1], rgba[i + 2], rgba[i + 3]]);
+            } else {
+                block.push([0u8; 4]);
+            }
+        }
+    }
+    block
+}
+
+/// Extract a block of F16 RGBA pixels from a full image.
+/// Half-float pixels are packed as `[f16; 4]` per pixel.
+/// Out-of-bounds pixels are filled with zero.
+pub fn extract_block_f16(rgba: &[half::f16], w: usize, h: usize, x: usize, y: usize, block_w: usize, block_h: usize) -> Vec<[half::f16; 4]> {
+    let mut block = Vec::with_capacity(block_w * block_h);
+    for py in 0..block_h {
+        for px in 0..block_w {
+            let sx = x + px;
+            let sy = y + py;
+            if sx < w && sy < h {
+                let i = (sy * w + sx) * 4;
+                block.push([rgba[i], rgba[i + 1], rgba[i + 2], rgba[i + 3]]);
+            } else {
+                block.push([half::f16::ZERO; 4]);
+            }
+        }
+    }
+    block
+}
+
+/// Shared block-parallel encoding macro for compressed formats.
+///
+/// Destructures the input `PixelDatas` variant explicitly — each caller
+/// must specify the variant (`U8`, `F16`, or `F32`). The macro selects
+/// the correct `extract_block` function and output wrapping based on the
+/// variant.
+///
+/// # Panics
+/// Panics at compile time if the variant is not recognized.
+#[macro_export]
+macro_rules! encode_blocks {
+    // U8 variant: for BC1-5, BC7, ETC2, ASTC LDR
+    ($name:ident, U8, $block_w:expr, $block_h:expr, $block_size:expr, $block_fn:ident) => {
+        pub fn $name(pixels: &$crate::graphics::texture::format::PixelDatas, width: usize, height: usize) -> $crate::graphics::texture::format::PixelDatas {
+            let $crate::graphics::texture::format::PixelDatas::U8(rgba) = pixels else {
+                panic!("encode_blocks! U8 called on non-U8 variant");
+            };
+            let bx = (width + $block_w - 1) / $block_w;
+            let by = (height + $block_h - 1) / $block_h;
+            let mut out = vec![0u8; bx * by * $block_size];
+            out.par_chunks_mut($block_size)
+                .enumerate()
+                .for_each(|(i, chunk): (usize, &mut [u8])| {
+                    let bx_i = i % bx;
+                    let by_i = i / bx;
+                    let block = $crate::graphics::texture::format::extract_block(
+                        rgba, width, height,
+                        bx_i * $block_w, by_i * $block_h,
+                        $block_w, $block_h,
+                    );
+                    let encoded = $block_fn(&block);
+                    chunk.copy_from_slice(&encoded);
+                });
+            $crate::graphics::texture::format::PixelDatas::U8(out)
+        }
+    };
+    // F16 variant: for BC6h, ASTC HDR
+    ($name:ident, F16, $block_w:expr, $block_h:expr, $block_size:expr, $block_fn:ident) => {
+        pub fn $name(pixels: &$crate::graphics::texture::format::PixelDatas, width: usize, height: usize) -> $crate::graphics::texture::format::PixelDatas {
+            let $crate::graphics::texture::format::PixelDatas::F16(rgba) = pixels else {
+                panic!("encode_blocks! F16 called on non-F16 variant");
+            };
+            let bx = (width + $block_w - 1) / $block_w;
+            let by = (height + $block_h - 1) / $block_h;
+            let mut out = vec![0u8; bx * by * $block_size];
+            out.par_chunks_mut($block_size)
+                .enumerate()
+                .for_each(|(i, chunk): (usize, &mut [u8])| {
+                    let bx_i = i % bx;
+                    let by_i = i / bx;
+                    let block = $crate::graphics::texture::format::extract_block_f16(
+                        rgba, width, height,
+                        bx_i * $block_w, by_i * $block_h,
+                        $block_w, $block_h,
+                    );
+                    let encoded = $block_fn(&block);
+                    chunk.copy_from_slice(&encoded);
+                });
+            $crate::graphics::texture::format::PixelDatas::F16(out)
+        }
+    };
+}
+
+/// Shared block-parallel decoding function for compressed formats.
+///
+/// Processes blocks in parallel, calls `decode` per block (which writes
+/// RGBA8 pixels), and returns the result as `PixelDatas::U8`.
+pub fn decode_blocks(
+    data: &PixelDatas,
+    width: usize,
+    height: usize,
+    layout: BlockLayout,
+    decode: impl Fn(&[u8], &mut [u8; 64]) + Sync,
+) -> PixelDatas {
+    let raw = data.as_bytes();
+    let BlockLayout { w: block_w, h: block_h, bytes: block_size } = layout;
+    let bx = (width + block_w - 1) / block_w;
+    let by = (height + block_h - 1) / block_h;
+    let total = bx * by;
+    let mut out = vec![0u8; width * height * 4];
+    let out_addr = out.as_mut_ptr() as usize;
+
+    (0..total).into_par_iter().for_each(|i| {
+        let out_ptr = out_addr as *mut u8;
+        let bx_i = i % bx;
+        let by_i = i / bx;
+        let off = i * block_size;
+        let mut pixels = [0u8; 64];
+        decode(&raw[off..off + block_size], &mut pixels);
+        for py in 0..block_h {
+            for px in 0..block_w {
+                let sx = bx_i * block_w + px;
+                let sy = by_i * block_h + py;
+                if sx < width && sy < height {
+                    let dst = (sy * width + sx) * 4;
+                    let src = (py * block_w + px) * 4;
+                    // SAFETY: each (sx, sy) pair is unique across all blocks,
+                    // so no two threads write to the same output location.
+                    unsafe {
+                        std::ptr::copy_nonoverlapping(pixels[src..].as_ptr(), out_ptr.add(dst), 4);
+                    }
+                }
+            }
+        }
+    });
+
+    PixelDatas::U8(out)
+}
 
 // ============================================================
 // TextureCompressionConfig — data-driven feature list
@@ -789,209 +1004,54 @@ impl From<TextureFormat> for wgpu::TextureFormat {
     }
 }
 
-/// Encode RGBA8 pixel data into the given format.
-/// Returns `None` when the format is not yet supported for encoding.
-pub fn encode_rgba(rgba: &[u8], width: u32, height: u32, format: TextureFormat) -> Vec<u8> {
+/// Encode pixel data into the given format's native GPU layout.
+///
+/// Accepts and returns `PixelDatas`. For the existing 10 SDR formats,
+/// both input and output are `PixelDatas::U8`. Future HDR formats will
+/// use `F16` / `F32` variants.
+///
+/// # Panics
+/// Panics if the format is not yet supported for encoding, or if the
+/// `PixelDatas` variant does not match what the format expects.
+pub fn encode(pixels: &PixelDatas, width: u32, height: u32, format: TextureFormat) -> PixelDatas {
     let w = width as usize;
     let h = height as usize;
     match format {
-        TextureFormat::Rgba8Unorm | TextureFormat::Rgba8UnormSrgb => rgba.to_vec(),
-        TextureFormat::Bc1RgbaUnorm | TextureFormat::Bc1RgbaUnormSrgb => bc::encode_bc1(rgba, w, h),
-        TextureFormat::Bc2RgbaUnorm | TextureFormat::Bc2RgbaUnormSrgb => bc::encode_bc2(rgba, w, h),
-        TextureFormat::Bc3RgbaUnorm | TextureFormat::Bc3RgbaUnormSrgb => bc::encode_bc3(rgba, w, h),
-        TextureFormat::Bc4RUnorm | TextureFormat::Bc4RSnorm => bc::encode_bc4(rgba, w, h),
-        TextureFormat::Bc5RgUnorm | TextureFormat::Bc5RgSnorm => bc::encode_bc5(rgba, w, h),
-        TextureFormat::R8Unorm => uncompressed::encode_r8u(rgba, w, h),
-        TextureFormat::R8Snorm => uncompressed::encode_r8s(rgba, w, h),
-        TextureFormat::R8Uint => uncompressed::encode_r8ui(rgba, w, h),
-        TextureFormat::R8Sint => uncompressed::encode_r8si(rgba, w, h),
-        TextureFormat::R16Uint => todo!(),
-        TextureFormat::R16Sint => todo!(),
-        TextureFormat::R16Float => todo!(),
-        TextureFormat::Rg8Unorm => todo!(),
-        TextureFormat::Rg8Snorm => todo!(),
-        TextureFormat::Rg8Uint => todo!(),
-        TextureFormat::Rg8Sint => todo!(),
-        TextureFormat::R32Uint => todo!(),
-        TextureFormat::R32Sint => todo!(),
-        TextureFormat::R32Float => todo!(),
-        TextureFormat::Rg16Uint => todo!(),
-        TextureFormat::Rg16Sint => todo!(),
-        TextureFormat::Rg16Float => todo!(),
-        TextureFormat::Rgba8Snorm => todo!(),
-        TextureFormat::Rgba8Uint => todo!(),
-        TextureFormat::Rgba8Sint => todo!(),
-        TextureFormat::Bgra8Unorm => todo!(),
-        TextureFormat::Bgra8UnormSrgb => todo!(),
-        TextureFormat::Rgb10a2Unorm => todo!(),
-        TextureFormat::Rg11b10Ufloat => todo!(),
-        TextureFormat::Rg32Uint => todo!(),
-        TextureFormat::Rg32Sint => todo!(),
-        TextureFormat::Rg32Float => todo!(),
-        TextureFormat::Rgba16Uint => todo!(),
-        TextureFormat::Rgba16Sint => todo!(),
-        TextureFormat::Rgba16Float => todo!(),
-        TextureFormat::Rgba32Uint => todo!(),
-        TextureFormat::Rgba32Sint => todo!(),
-        TextureFormat::Rgba32Float => todo!(),
-        TextureFormat::Bc6hRgbUfloat => todo!(),
-        TextureFormat::Bc6hRgbFloat => todo!(),
-        TextureFormat::Bc7RgbaUnorm => todo!(),
-        TextureFormat::Bc7RgbaUnormSrgb => todo!(),
-        TextureFormat::Etc2Rgb8Unorm => todo!(),
-        TextureFormat::Etc2Rgb8UnormSrgb => todo!(),
-        TextureFormat::Etc2Rgb8A1Unorm => todo!(),
-        TextureFormat::Etc2Rgb8A1UnormSrgb => todo!(),
-        TextureFormat::Etc2Rgba8Unorm => todo!(),
-        TextureFormat::Etc2Rgba8UnormSrgb => todo!(),
-        TextureFormat::EacR11Unorm => todo!(),
-        TextureFormat::EacR11Snorm => todo!(),
-        TextureFormat::EacRg11Unorm => todo!(),
-        TextureFormat::EacRg11Snorm => todo!(),
-        TextureFormat::Astc4x4Unorm => todo!(),
-        TextureFormat::Astc4x4UnormSrgb => todo!(),
-        TextureFormat::Astc4x4Hdr => todo!(),
-        TextureFormat::Astc5x4Unorm => todo!(),
-        TextureFormat::Astc5x4UnormSrgb => todo!(),
-        TextureFormat::Astc5x4Hdr => todo!(),
-        TextureFormat::Astc5x5Unorm => todo!(),
-        TextureFormat::Astc5x5UnormSrgb => todo!(),
-        TextureFormat::Astc5x5Hdr => todo!(),
-        TextureFormat::Astc6x5Unorm => todo!(),
-        TextureFormat::Astc6x5UnormSrgb => todo!(),
-        TextureFormat::Astc6x5Hdr => todo!(),
-        TextureFormat::Astc6x6Unorm => todo!(),
-        TextureFormat::Astc6x6UnormSrgb => todo!(),
-        TextureFormat::Astc6x6Hdr => todo!(),
-        TextureFormat::Astc8x5Unorm => todo!(),
-        TextureFormat::Astc8x5UnormSrgb => todo!(),
-        TextureFormat::Astc8x5Hdr => todo!(),
-        TextureFormat::Astc8x6Unorm => todo!(),
-        TextureFormat::Astc8x6UnormSrgb => todo!(),
-        TextureFormat::Astc8x6Hdr => todo!(),
-        TextureFormat::Astc8x8Unorm => todo!(),
-        TextureFormat::Astc8x8UnormSrgb => todo!(),
-        TextureFormat::Astc8x8Hdr => todo!(),
-        TextureFormat::Astc10x5Unorm => todo!(),
-        TextureFormat::Astc10x5UnormSrgb => todo!(),
-        TextureFormat::Astc10x5Hdr => todo!(),
-        TextureFormat::Astc10x6Unorm => todo!(),
-        TextureFormat::Astc10x6UnormSrgb => todo!(),
-        TextureFormat::Astc10x6Hdr => todo!(),
-        TextureFormat::Astc10x8Unorm => todo!(),
-        TextureFormat::Astc10x8UnormSrgb => todo!(),
-        TextureFormat::Astc10x8Hdr => todo!(),
-        TextureFormat::Astc10x10Unorm => todo!(),
-        TextureFormat::Astc10x10UnormSrgb => todo!(),
-        TextureFormat::Astc10x10Hdr => todo!(),
-        TextureFormat::Astc12x10Unorm => todo!(),
-        TextureFormat::Astc12x10UnormSrgb => todo!(),
-        TextureFormat::Astc12x10Hdr => todo!(),
-        TextureFormat::Astc12x12Unorm => todo!(),
-        TextureFormat::Astc12x12UnormSrgb => todo!(),
-        TextureFormat::Astc12x12Hdr => todo!(),
+        TextureFormat::Rgba8Unorm | TextureFormat::Rgba8UnormSrgb => {
+            PixelDatas::U8(pixels.as_bytes().to_vec())
+        }
+        TextureFormat::Bc1RgbaUnorm | TextureFormat::Bc1RgbaUnormSrgb => bc::encode_bc1(pixels, w, h),
+        TextureFormat::Bc2RgbaUnorm | TextureFormat::Bc2RgbaUnormSrgb => bc::encode_bc2(pixels, w, h),
+        TextureFormat::Bc3RgbaUnorm | TextureFormat::Bc3RgbaUnormSrgb => bc::encode_bc3(pixels, w, h),
+        TextureFormat::Bc4RUnorm | TextureFormat::Bc4RSnorm => bc::encode_bc4(pixels, w, h),
+        TextureFormat::Bc5RgUnorm | TextureFormat::Bc5RgSnorm => bc::encode_bc5(pixels, w, h),
+        TextureFormat::R8Unorm => uncompressed::encode_r8(pixels, w, h),
+        TextureFormat::R8Snorm => uncompressed::encode_r8(pixels, w, h),
+        TextureFormat::R8Uint => uncompressed::encode_r8(pixels, w, h),
+        TextureFormat::R8Sint => uncompressed::encode_r8(pixels, w, h),
+        _ => todo!("encode not yet implemented for {format:?}"),
     }
 }
 
-/// Decode compressed texture data back to RGBA8 for preview.
-pub fn decode_to_rgba8(data: &[u8], width: u32, height: u32, format: TextureFormat) -> Vec<u8> {
+/// Decode encoded texture data back to `PixelDatas` (RGBA8).
+///
+/// For SDR formats this returns `PixelDatas::U8`. Future HDR formats
+/// will return `F16` or `F32`.
+pub fn decode(data: &PixelDatas, width: u32, height: u32, format: TextureFormat) -> PixelDatas {
+    let raw = data.as_bytes();
     let w = width as usize;
     let h = height as usize;
     match format {
-        TextureFormat::Rgba8Unorm | TextureFormat::Rgba8UnormSrgb => data.to_vec(),
+        TextureFormat::Rgba8Unorm | TextureFormat::Rgba8UnormSrgb => PixelDatas::U8(raw.to_vec()),
         TextureFormat::Bc1RgbaUnorm | TextureFormat::Bc1RgbaUnormSrgb => bc::decode_bc1(data, w, h),
         TextureFormat::Bc2RgbaUnorm | TextureFormat::Bc2RgbaUnormSrgb => bc::decode_bc2(data, w, h),
         TextureFormat::Bc3RgbaUnorm | TextureFormat::Bc3RgbaUnormSrgb => bc::decode_bc3(data, w, h),
         TextureFormat::Bc4RUnorm | TextureFormat::Bc4RSnorm => bc::decode_bc4(data, w, h),
         TextureFormat::Bc5RgUnorm | TextureFormat::Bc5RgSnorm => bc::decode_bc5(data, w, h),
-        TextureFormat::R8Unorm => uncompressed::decode_r8u(data, w, h, true, true, true),
-        TextureFormat::R8Snorm => uncompressed::decode_r8s(data, w, h, true, true, true),
-        TextureFormat::R8Uint => uncompressed::decode_r8ui(data, w, h, true, true, true),
-        TextureFormat::R8Sint => uncompressed::decode_r8si(data, w, h, true, true, true),
-        TextureFormat::R16Uint => todo!(),
-        TextureFormat::R16Sint => todo!(),
-        TextureFormat::R16Float => todo!(),
-        TextureFormat::Rg8Unorm => todo!(),
-        TextureFormat::Rg8Snorm => todo!(),
-        TextureFormat::Rg8Uint => todo!(),
-        TextureFormat::Rg8Sint => todo!(),
-        TextureFormat::R32Uint => todo!(),
-        TextureFormat::R32Sint => todo!(),
-        TextureFormat::R32Float => todo!(),
-        TextureFormat::Rg16Uint => todo!(),
-        TextureFormat::Rg16Sint => todo!(),
-        TextureFormat::Rg16Float => todo!(),
-        TextureFormat::Rgba8Snorm => todo!(),
-        TextureFormat::Rgba8Uint => todo!(),
-        TextureFormat::Rgba8Sint => todo!(),
-        TextureFormat::Bgra8Unorm => todo!(),
-        TextureFormat::Bgra8UnormSrgb => todo!(),
-        TextureFormat::Rgb10a2Unorm => todo!(),
-        TextureFormat::Rg11b10Ufloat => todo!(),
-        TextureFormat::Rg32Uint => todo!(),
-        TextureFormat::Rg32Sint => todo!(),
-        TextureFormat::Rg32Float => todo!(),
-        TextureFormat::Rgba16Uint => todo!(),
-        TextureFormat::Rgba16Sint => todo!(),
-        TextureFormat::Rgba16Float => todo!(),
-        TextureFormat::Rgba32Uint => todo!(),
-        TextureFormat::Rgba32Sint => todo!(),
-        TextureFormat::Rgba32Float => todo!(),
-        TextureFormat::Bc6hRgbUfloat => todo!(),
-        TextureFormat::Bc6hRgbFloat => todo!(),
-        TextureFormat::Bc7RgbaUnorm => todo!(),
-        TextureFormat::Bc7RgbaUnormSrgb => todo!(),
-        TextureFormat::Etc2Rgb8Unorm => todo!(),
-        TextureFormat::Etc2Rgb8UnormSrgb => todo!(),
-        TextureFormat::Etc2Rgb8A1Unorm => todo!(),
-        TextureFormat::Etc2Rgb8A1UnormSrgb => todo!(),
-        TextureFormat::Etc2Rgba8Unorm => todo!(),
-        TextureFormat::Etc2Rgba8UnormSrgb => todo!(),
-        TextureFormat::EacR11Unorm => todo!(),
-        TextureFormat::EacR11Snorm => todo!(),
-        TextureFormat::EacRg11Unorm => todo!(),
-        TextureFormat::EacRg11Snorm => todo!(),
-        TextureFormat::Astc4x4Unorm => todo!(),
-        TextureFormat::Astc4x4UnormSrgb => todo!(),
-        TextureFormat::Astc4x4Hdr => todo!(),
-        TextureFormat::Astc5x4Unorm => todo!(),
-        TextureFormat::Astc5x4UnormSrgb => todo!(),
-        TextureFormat::Astc5x4Hdr => todo!(),
-        TextureFormat::Astc5x5Unorm => todo!(),
-        TextureFormat::Astc5x5UnormSrgb => todo!(),
-        TextureFormat::Astc5x5Hdr => todo!(),
-        TextureFormat::Astc6x5Unorm => todo!(),
-        TextureFormat::Astc6x5UnormSrgb => todo!(),
-        TextureFormat::Astc6x5Hdr => todo!(),
-        TextureFormat::Astc6x6Unorm => todo!(),
-        TextureFormat::Astc6x6UnormSrgb => todo!(),
-        TextureFormat::Astc6x6Hdr => todo!(),
-        TextureFormat::Astc8x5Unorm => todo!(),
-        TextureFormat::Astc8x5UnormSrgb => todo!(),
-        TextureFormat::Astc8x5Hdr => todo!(),
-        TextureFormat::Astc8x6Unorm => todo!(),
-        TextureFormat::Astc8x6UnormSrgb => todo!(),
-        TextureFormat::Astc8x6Hdr => todo!(),
-        TextureFormat::Astc8x8Unorm => todo!(),
-        TextureFormat::Astc8x8UnormSrgb => todo!(),
-        TextureFormat::Astc8x8Hdr => todo!(),
-        TextureFormat::Astc10x5Unorm => todo!(),
-        TextureFormat::Astc10x5UnormSrgb => todo!(),
-        TextureFormat::Astc10x5Hdr => todo!(),
-        TextureFormat::Astc10x6Unorm => todo!(),
-        TextureFormat::Astc10x6UnormSrgb => todo!(),
-        TextureFormat::Astc10x6Hdr => todo!(),
-        TextureFormat::Astc10x8Unorm => todo!(),
-        TextureFormat::Astc10x8UnormSrgb => todo!(),
-        TextureFormat::Astc10x8Hdr => todo!(),
-        TextureFormat::Astc10x10Unorm => todo!(),
-        TextureFormat::Astc10x10UnormSrgb => todo!(),
-        TextureFormat::Astc10x10Hdr => todo!(),
-        TextureFormat::Astc12x10Unorm => todo!(),
-        TextureFormat::Astc12x10UnormSrgb => todo!(),
-        TextureFormat::Astc12x10Hdr => todo!(),
-        TextureFormat::Astc12x12Unorm => todo!(),
-        TextureFormat::Astc12x12UnormSrgb => todo!(),
-        TextureFormat::Astc12x12Hdr => todo!(),
+        TextureFormat::R8Unorm => uncompressed::decode_r8(data, w, h, true, true, true),
+        TextureFormat::R8Snorm => uncompressed::decode_r8(data, w, h, true, true, true),
+        TextureFormat::R8Uint => uncompressed::decode_r8(data, w, h, true, true, true),
+        TextureFormat::R8Sint => uncompressed::decode_r8(data, w, h, true, true, true),
+        _ => todo!("decode not yet implemented for {format:?}"),
     }
 }

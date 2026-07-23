@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 pub mod format;
 pub mod sampler;
 
-use format::TextureFormat;
+pub use format::{PixelDatas, TextureFormat};
 use sampler::SamplerConfig;
 
 /// Power-of-two size presets for texture dimensions.
@@ -75,8 +75,8 @@ pub struct Texture {
     pub height: u32,
     /// GPU texture format.
     pub format: TextureFormat,
-    /// RGBA8 pixel data per mip level. `data[0]` = base level.
-    pub data: Vec<Vec<u8>>,
+    /// Pixel data per mip level. `data[0]` = base level.
+    pub data: Vec<PixelDatas>,
     /// Sampler configuration (filter, wrap, mipmap, etc.).
     pub sampler: SamplerConfig,
 }

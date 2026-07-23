@@ -3,8 +3,8 @@
 ## 功能分组与执行顺序
 
 ### 前提条件（所有组之前）
-- 定义 `PixelData` enum（U8/F16/F32）
-- 修改 `Texture.data` 为 `Vec<PixelData>`
+- 定义 `PixelDatas` enum（U8/F16/F32）
+- 修改 `Texture.data` 为 `Vec<PixelDatas>`
 - 实现 sRGB 转换工具函数
 - 更新 `TextureFormat::encode_rgba` / `decode_to_rgba8` 签名为新 API
 - 定义 `format::uncompressed.rs` 中的通用辅助函数（channel extract/insert）
@@ -24,7 +24,7 @@
 - `Rg16Uint`, `Rg16Sint`, `Rg16Float`
 - `Rgba16Uint`, `Rgba16Sint`, `Rgba16Float`
 **技巧点：** f16 ↔ f32 转换（half crate），宽整数的 reinterpret cast
-**依赖：** `PixelData::F16`
+**依赖：** `PixelDatas::F16`
 **交付物：** 同上
 
 ### Group C：补齐 Uncompressed packed + f32（~9 格式）
@@ -34,7 +34,7 @@
 - `R32Uint`, `R32Sint`, `R32Float`
 - `Rg32Uint`, `Rg32Sint`, `Rg32Float`
 - `Rgba32Uint`, `Rgba32Sint`, `Rgba32Float`
-**技巧点：** 位操作解包/打包，`PixelData::F32`
+**技巧点：** 位操作解包/打包，`PixelDatas::F32`
 **交付物：** 同上
 
 ### Group D：BC6h + BC7（2 格式，6 变体）
@@ -63,12 +63,12 @@
 ## 技术选型记录
 
 ### F16 处理：使用 `half` crate
-所有涉及 half-float 的格式（R16Float, Rg16Float, Rgba16Float, BC6h, ASTC HDR）统一使用 `half` crate 的 `f16` 类型。`Vec<half::f16>` 直接对应 `PixelData::F16`，reinterpret 为 `&[u8]` 后可安全传给 wgpu。
+所有涉及 half-float 的格式（R16Float, Rg16Float, Rgba16Float, BC6h, ASTC HDR）统一使用 `half` crate 的 `f16` 类型。`Vec<half::f16>` 直接对应 `PixelDatas::F16`，reinterpret 为 `&[u8]` 后可安全传给 wgpu。
 
 ### 模块结构
 ```
 texture/
-├── format.rs           — TextureFormat + PixelData + encode()/decode() 入口
+├── format.rs           — TextureFormat + PixelDatas + encode()/decode() 入口
 ├── format/
 │   ├── bc.rs           — 已有 BC1-5，扩展 BC6h/BC7
 │   ├── etc.rs          — ETC2 + EAC
@@ -84,7 +84,7 @@ texture/
 // 编码模式
 macro_rules! encode_blocks {
     ($name:ident, $block_w:expr, $block_h:expr, $block_size:expr, $block_fn:ident) => {
-        pub fn $name(rgba: &PixelData, width: usize, height: usize) -> Vec<u8> {
+        pub fn $name(rgba: &PixelDatas, width: usize, height: usize) -> Vec<u8> {
             let bx = div_ceil(width, $block_w);
             let by = div_ceil(height, $block_h);
             let mut out = vec![0u8; bx * by * $block_size];
@@ -110,7 +110,7 @@ fn decode_blocks(
     block_h: usize,
     block_size: usize,
     decode: impl Fn(&[u8]) -> [u8; <MAX_BLOCK_PIXELS * 4>] + Sync,
-) -> PixelData {
+) -> PixelDatas {
     let bx = div_ceil(width, block_w);
     let by = div_ceil(height, block_h);
     let out = vec![0u8; width * height * 4];
@@ -124,7 +124,7 @@ fn decode_blocks(
         write_block_to_output(&pixels, width, height, bx_i * block_w, by_i * block_h,
                               block_w, block_h, &mut out);
     });
-    PixelData::U8(out)
+    PixelDatas::U8(out)
 }
 ```
 
@@ -173,7 +173,7 @@ fn decode_blocks(
 - 精度损失在 2-bit alpha 上是符合预期的
 
 **Rg11b10Ufloat**：4 bytes/pixel，bits 分布 R:11/G:11/B:10（无符号浮点）
-- Encode: PixelData::F16 → 提取 exponent/mantissa → RG11B10 Ufloat
+- Encode: PixelDatas::F16 → 提取 exponent/mantissa → RG11B10 Ufloat
 - Decode: RG11B10 Ufloat → f16
 - 参考实现：Khronos Data Format Specification §20.6
 
@@ -184,13 +184,13 @@ encode/decode 对于 uncompressed 格式只做**通道布局变换**，不做数
 - 这条原则适用于所有非压缩格式（Group A/B/C）
 
 ### 宽格式输入精度约定
-| 输入 PixelData | 适用的格式类型 |
+| 输入 PixelDatas | 适用的格式类型 |
 |:--------------:|---------------|
-| `PixelData::U8` | 所有 8-bit/通道 SDR 格式 + 16-bit Uint/Sint（zero-extend） |
-| `PixelData::F16` | 所有 f16 格式（R16F, Rg16F, Rgba16F, BC6h, ASTC HDR） |
-| `PixelData::F32` | 原生 f32 格式（R32F, Rg32F, Rgba32F） |
+| `PixelDatas::U8` | 所有 8-bit/通道 SDR 格式 + 16-bit Uint/Sint（zero-extend） |
+| `PixelDatas::F16` | 所有 f16 格式（R16F, Rg16F, Rgba16F, BC6h, ASTC HDR） |
+| `PixelDatas::F32` | 原生 f32 格式（R32F, Rg32F, Rgba32F） |
 
-16-bit 整数源（如 16-bit PNG）暂不支持，后续可加 `PixelData::U16` 变体。
+16-bit 整数源（如 16-bit PNG）暂不支持，后续可加 `PixelDatas::U16` 变体。
 
 ### sRGB 转换实现方案
 SDR 路径使用 256-entry u8 LUT（512 bytes，零运行时计算）：
@@ -198,9 +198,9 @@ SDR 路径使用 256-entry u8 LUT（512 bytes，零运行时计算）：
 - `LINEAR_TO_SRGB: [u8; 256]` — 8-bit linear → 8-bit sRGB
 
 HDR 数据（F16/F32）不涉及 sRGB 转换，`source_srgb` 通常为 false。
-当 `source_srgb = true` 且数据为 `PixelData::F16` 时，不会 panic，但结果精度不保证——此组合在实际中不会出现。
+当 `source_srgb = true` 且数据为 `PixelDatas::F16` 时，不会 panic，但结果精度不保证——此组合在实际中不会出现。
 
-### PixelData 序列化
+### PixelDatas 序列化
 `.texture_bin` 使用自定义二进制格式，不依赖 rkyv：
 ```
 [mip_count: 4 bytes]       u32 LE
@@ -224,7 +224,7 @@ HDR 数据（F16/F32）不涉及 sRGB 转换，`source_srgb` 通常为 false。
 ### 文件/API 迁移策略
 直接重构，不保留旧 API：
 - 旧 `encode_rgba` / `decode_to_rgba8` 替换为新 `encode` / `decode`
-- `Texture.data` 从 `Vec<Vec<u8>>` 改为 `Vec<PixelData>`
+- `Texture.data` 从 `Vec<Vec<u8>>` 改为 `Vec<PixelDatas>`
 - `.texture_bin` 从 rkyv 格式改为自定义格式
 - 不保留向后兼容——项目纹理资源极少（目前仅一个），直接用新算法重新生成
 

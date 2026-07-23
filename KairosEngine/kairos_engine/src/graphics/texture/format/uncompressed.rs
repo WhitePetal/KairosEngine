@@ -1,13 +1,12 @@
 use rayon::prelude::*;
 
+use crate::graphics::texture::format::PixelDatas;
+
 /// Encode RGBA8 to single-channel R8 by extracting the R channel.
 ///
-/// The same encoding is used for both Unorm and Snorm — the byte
-/// values are identical; only the GPU sampling interpretation differs.
-///
-/// # Panics
-/// Panics if `rgba.len() < width * height * 4`.
-fn encode_r8(rgba: &[u8], width: usize, height: usize) -> Vec<u8> {
+/// The same encoding is used for Unorm, Snorm, Uint, and Sint —
+/// the byte values are identical; only the GPU sampling interpretation differs.
+fn encode_r8_impl(rgba: &[u8], width: usize, height: usize) -> Vec<u8> {
     const CHUNK_SIZE: usize = 4096;
     let mut out = vec![0u8; width * height];
     out.par_chunks_mut(CHUNK_SIZE)
@@ -26,11 +25,8 @@ fn encode_r8(rgba: &[u8], width: usize, height: usize) -> Vec<u8> {
 /// `fill_g` / `fill_b` / `fill_a` control which output channels receive
 /// the source value (channel 0 / R always does).
 ///
-/// The same decoding is used for both Unorm and Snorm.
-///
-/// # Panics
-/// Panics if `data.len() < width * height`.
-fn decode_r8(
+/// The same decoding is used for Unorm, Snorm, Uint, and Sint.
+fn decode_r8_impl(
     data: &[u8],
     width: usize,
     height: usize,
@@ -89,27 +85,21 @@ fn decode_r8(
     out
 }
 
-pub fn encode_r8u(rgba: &[u8], w: usize, h: usize) -> Vec<u8> {
-    encode_r8(rgba, w, h)
+// ============================================================
+// Public API — single encode / decode pair for all R8 variants
+// ============================================================
+
+pub fn encode_r8(pixels: &PixelDatas, w: usize, h: usize) -> PixelDatas {
+    PixelDatas::U8(encode_r8_impl(pixels.as_bytes(), w, h))
 }
-pub fn encode_r8s(rgba: &[u8], w: usize, h: usize) -> Vec<u8> {
-    encode_r8(rgba, w, h)
-}
-pub fn encode_r8ui(rgba: &[u8], w: usize, h: usize) -> Vec<u8> {
-    encode_r8(rgba, w, h)
-}
-pub fn encode_r8si(rgba: &[u8], w: usize, h: usize) -> Vec<u8> {
-    encode_r8(rgba, w, h)
-}
-pub fn decode_r8u(data: &[u8], w: usize, h: usize, g: bool, b: bool, a: bool) -> Vec<u8> {
-    decode_r8(data, w, h, g, b, a)
-}
-pub fn decode_r8s(data: &[u8], w: usize, h: usize, g: bool, b: bool, a: bool) -> Vec<u8> {
-    decode_r8(data, w, h, g, b, a)
-}
-pub fn decode_r8ui(data: &[u8], w: usize, h: usize, g: bool, b: bool, a: bool) -> Vec<u8> {
-    decode_r8(data, w, h, g, b, a)
-}
-pub fn decode_r8si(data: &[u8], w: usize, h: usize, g: bool, b: bool, a: bool) -> Vec<u8> {
-    decode_r8(data, w, h, g, b, a)
+
+pub fn decode_r8(
+    data: &PixelDatas,
+    w: usize,
+    h: usize,
+    fill_g: bool,
+    fill_b: bool,
+    fill_a: bool,
+) -> PixelDatas {
+    PixelDatas::U8(decode_r8_impl(data.as_bytes(), w, h, fill_g, fill_b, fill_a))
 }
