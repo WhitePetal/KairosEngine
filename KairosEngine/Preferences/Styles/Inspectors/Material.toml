@@ -13,3 +13,4 @@ texture_corner_radius = 4
 texture_stroke_width = 1.0
 
 render_state_row_height = 20.0
+render_state_sub_row_indent = 16.0

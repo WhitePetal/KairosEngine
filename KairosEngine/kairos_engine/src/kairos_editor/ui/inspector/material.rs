@@ -43,6 +43,7 @@ struct MaterialInspectorStyle {
     texture_stroke_width: f32,
 
     render_state_row_height: f32,
+    render_state_sub_row_indent: f32,
 }
 
 impl MaterialInspectorStyle {
@@ -171,20 +172,17 @@ fn render_shader_menu(
 // Blend 预设映射（issue #33）
 // ============================================================
 
-/// 从 RenderState 推导当前应显示的 BlendPreset。
-/// `blend_mod = None` 与 wgpu 语义一致 —— 不混合，等价于 Replace。
-fn current_blend_preset(render_state: &RenderState) -> BlendPreset {
-    BlendPreset::from_blend_state(render_state.blend_mod.unwrap_or(BlendState::REPLACE))
+/// 从 RenderState 推导当前应显示的 blend 选项。
+/// `blend_mod = None`（不混合）→ None 选项；
+/// `Some(state)` 匹配预设，不匹配任何预设时为 Custom。
+fn current_blend_option(render_state: &RenderState) -> Option<BlendPreset> {
+    render_state.blend_mod.map(BlendPreset::from_blend_state)
 }
 
-/// 将选中的 BlendPreset 写回 RenderState。
-/// Replace 写回 `None`（与序列化默认形式保持一致的 canonical 表示），
-/// 其余预设写回 `Some(BlendState)`。
-fn apply_blend_preset(render_state: &mut RenderState, preset: BlendPreset) {
-    match preset {
-        BlendPreset::Replace => render_state.blend_mod = None,
-        other => render_state.blend_mod = Some(other.to_blend_state()),
-    }
+/// 将选中的 blend 选项写回 RenderState。
+/// None 选项写回 `blend_mod = None`；预设 / Custom 写回 `Some(BlendState)`。
+fn apply_blend_option(render_state: &mut RenderState, option: Option<BlendPreset>) {
+    render_state.blend_mod = option.map(|preset| preset.to_blend_state());
 }
 
 // ============================================================
@@ -249,6 +247,7 @@ fn build_texture_thumbnail(
 fn blend_factor_combo_row(
     body: &mut egui_extras::TableBody,
     row_h: f32,
+    indent: f32,
     label: &str,
     id_salt: &str,
     current: BlendFactor,
@@ -256,7 +255,10 @@ fn blend_factor_combo_row(
     let mut changed_to = None;
     body.row(row_h, |mut row| {
         row.col(|ui| {
-            ui.label(label);
+            ui.horizontal(|ui| {
+                ui.add_space(indent);
+                ui.label(label);
+            });
         });
         row.col(|ui| {
             let mut selected = current;
@@ -281,6 +283,7 @@ fn blend_factor_combo_row(
 fn blend_operation_combo_row(
     body: &mut egui_extras::TableBody,
     row_h: f32,
+    indent: f32,
     label: &str,
     id_salt: &str,
     current: BlendOperation,
@@ -288,7 +291,10 @@ fn blend_operation_combo_row(
     let mut changed_to = None;
     body.row(row_h, |mut row| {
         row.col(|ui| {
-            ui.label(label);
+            ui.horizontal(|ui| {
+                ui.add_space(indent);
+                ui.label(label);
+            });
         });
         row.col(|ui| {
             let mut selected = current;
@@ -576,22 +582,24 @@ impl MaterialInspector {
                     });
                 });
 
-                // ---- Depth Write ----
+                // ---- Depth Write（depth_test = None 时 wgpu 不允许 write，禁用表达该约束）----
                 body.row(row_h, |mut row| {
                     row.col(|ui| {
                         ui.label("Depth Write");
                     });
                     row.col(|ui| {
                         let mut checked = render_state.depth_write;
-                        if ui.checkbox(&mut checked, "").changed() {
-                            self.send_render_state(
-                                messager,
-                                RenderState {
-                                    depth_write: checked,
-                                    ..render_state
-                                },
-                            );
-                        }
+                        ui.add_enabled_ui(render_state.depth_test.is_some(), |ui| {
+                            if ui.checkbox(&mut checked, "").changed() {
+                                self.send_render_state(
+                                    messager,
+                                    RenderState {
+                                        depth_write: checked,
+                                        ..render_state
+                                    },
+                                );
+                            }
+                        });
                     });
                 });
 
@@ -623,37 +631,40 @@ impl MaterialInspector {
                     });
                 });
 
-                // ---- Blend Mode：预设下拉，Custom 时展开 6 个子字段 ----
+                // ---- Blend Mode：None + 预设下拉，Custom 时展开 6 个子字段 ----
                 let effective_blend = render_state.blend_mod.unwrap_or(BlendState::REPLACE);
-                let preset = current_blend_preset(&render_state);
-                let show_custom = matches!(preset, BlendPreset::Custom(_))
+                let current_option = current_blend_option(&render_state);
+                let show_custom = matches!(current_option, Some(BlendPreset::Custom(_)))
                     || self.model.blend_custom_expanded.get();
+                let option_label =
+                    |option: Option<BlendPreset>| option.map_or("None", |preset| preset.label());
                 body.row(row_h, |mut row| {
                     row.col(|ui| {
                         ui.label("Blend Mode");
                     });
                     row.col(|ui| {
                         let mut selected = if show_custom {
-                            BlendPreset::Custom(effective_blend)
+                            Some(BlendPreset::Custom(effective_blend))
                         } else {
-                            preset
+                            current_option
                         };
                         egui::ComboBox::from_id_salt("mat_blend_mode")
-                            .selected_text(selected.label())
+                            .selected_text(option_label(selected))
                             .show_ui(ui, |ui| {
                                 for option in [
-                                    BlendPreset::Replace,
-                                    BlendPreset::Add,
-                                    BlendPreset::Multiply,
-                                    BlendPreset::AlphaBlend,
-                                    BlendPreset::Custom(effective_blend),
+                                    None,
+                                    Some(BlendPreset::Replace),
+                                    Some(BlendPreset::Add),
+                                    Some(BlendPreset::Multiply),
+                                    Some(BlendPreset::AlphaBlend),
+                                    Some(BlendPreset::Custom(effective_blend)),
                                 ] {
                                     if ui
-                                        .selectable_value(&mut selected, option, option.label())
+                                        .selectable_value(&mut selected, option, option_label(option))
                                         .changed()
                                     {
                                         match option {
-                                            BlendPreset::Custom(_) => {
+                                            Some(BlendPreset::Custom(_)) => {
                                                 // 展开子字段编辑；blend 值本身不变
                                                 self.model.blend_custom_expanded.set(true);
                                                 self.send_render_state(
@@ -664,10 +675,10 @@ impl MaterialInspector {
                                                     },
                                                 );
                                             }
-                                            preset_option => {
+                                            other => {
                                                 self.model.blend_custom_expanded.set(false);
                                                 let mut new_state = render_state;
-                                                apply_blend_preset(&mut new_state, preset_option);
+                                                apply_blend_option(&mut new_state, other);
                                                 self.send_render_state(messager, new_state);
                                             }
                                         }
@@ -677,11 +688,13 @@ impl MaterialInspector {
                     });
                 });
 
-                // ---- Custom 展开：color/alpha 的 srcFactor / dstFactor / operation ----
+                // ---- Custom 展开：color/alpha 的 srcFactor / dstFactor / operation（缩进表达附属）----
                 if show_custom {
+                    let indent = self.model.style.render_state_sub_row_indent;
                     if let Some(factor) = blend_factor_combo_row(
                         &mut body,
                         row_h,
+                        indent,
                         "Color Src Factor",
                         "mat_blend_color_src_factor",
                         effective_blend.color.src_factor,
@@ -693,6 +706,7 @@ impl MaterialInspector {
                     if let Some(factor) = blend_factor_combo_row(
                         &mut body,
                         row_h,
+                        indent,
                         "Color Dst Factor",
                         "mat_blend_color_dst_factor",
                         effective_blend.color.dst_factor,
@@ -704,6 +718,7 @@ impl MaterialInspector {
                     if let Some(operation) = blend_operation_combo_row(
                         &mut body,
                         row_h,
+                        indent,
                         "Color Operation",
                         "mat_blend_color_operation",
                         effective_blend.color.operation,
@@ -715,6 +730,7 @@ impl MaterialInspector {
                     if let Some(factor) = blend_factor_combo_row(
                         &mut body,
                         row_h,
+                        indent,
                         "Alpha Src Factor",
                         "mat_blend_alpha_src_factor",
                         effective_blend.alpha.src_factor,
@@ -726,6 +742,7 @@ impl MaterialInspector {
                     if let Some(factor) = blend_factor_combo_row(
                         &mut body,
                         row_h,
+                        indent,
                         "Alpha Dst Factor",
                         "mat_blend_alpha_dst_factor",
                         effective_blend.alpha.dst_factor,
@@ -737,6 +754,7 @@ impl MaterialInspector {
                     if let Some(operation) = blend_operation_combo_row(
                         &mut body,
                         row_h,
+                        indent,
                         "Alpha Operation",
                         "mat_blend_alpha_operation",
                         effective_blend.alpha.operation,
@@ -1048,12 +1066,12 @@ mod tests {
     use crate::graphics::render_state::{BlendComponent, BlendOperation};
 
     #[test]
-    fn none_blend_maps_to_replace_preset() {
+    fn none_blend_maps_to_none_option() {
         let rs = RenderState {
             blend_mod: None,
             ..Default::default()
         };
-        assert_eq!(current_blend_preset(&rs), BlendPreset::Replace);
+        assert_eq!(current_blend_option(&rs), None);
     }
 
     #[test]
@@ -1062,7 +1080,17 @@ mod tests {
             blend_mod: Some(BlendState::ALPHA_BLENDING),
             ..Default::default()
         };
-        assert_eq!(current_blend_preset(&rs), BlendPreset::AlphaBlend);
+        assert_eq!(current_blend_option(&rs), Some(BlendPreset::AlphaBlend));
+    }
+
+    #[test]
+    fn replace_blend_is_distinct_from_none_option() {
+        // Some(REPLACE) → Replace 预设；None → None 选项，两者不可混淆
+        let rs = RenderState {
+            blend_mod: Some(BlendState::REPLACE),
+            ..Default::default()
+        };
+        assert_eq!(current_blend_option(&rs), Some(BlendPreset::Replace));
     }
 
     #[test]
@@ -1073,29 +1101,36 @@ mod tests {
             blend_mod: Some(state),
             ..Default::default()
         };
-        match current_blend_preset(&rs) {
-            BlendPreset::Custom(s) => assert_eq!(s, state),
+        match current_blend_option(&rs) {
+            Some(BlendPreset::Custom(s)) => assert_eq!(s, state),
             other => panic!("expected Custom, got {:?}", other),
         }
     }
 
     #[test]
-    fn apply_replace_preset_writes_none() {
+    fn apply_none_option_writes_none() {
         let mut rs = RenderState {
             blend_mod: Some(BlendState::ALPHA_BLENDING),
             ..Default::default()
         };
-        apply_blend_preset(&mut rs, BlendPreset::Replace);
+        apply_blend_option(&mut rs, None);
         assert_eq!(rs.blend_mod, None);
+    }
+
+    #[test]
+    fn apply_replace_preset_writes_some_replace() {
+        let mut rs = RenderState::default();
+        apply_blend_option(&mut rs, Some(BlendPreset::Replace));
+        assert_eq!(rs.blend_mod, Some(BlendState::REPLACE));
     }
 
     #[test]
     fn apply_non_replace_preset_writes_some() {
         let mut rs = RenderState::default();
-        apply_blend_preset(&mut rs, BlendPreset::Add);
+        apply_blend_option(&mut rs, Some(BlendPreset::Add));
         assert_eq!(rs.blend_mod, Some(BlendPreset::Add.to_blend_state()));
 
-        apply_blend_preset(&mut rs, BlendPreset::Multiply);
+        apply_blend_option(&mut rs, Some(BlendPreset::Multiply));
         assert_eq!(rs.blend_mod, Some(BlendPreset::Multiply.to_blend_state()));
     }
 
@@ -1114,22 +1149,23 @@ mod tests {
             },
         };
         let mut rs = RenderState::default();
-        apply_blend_preset(&mut rs, BlendPreset::Custom(custom_state));
+        apply_blend_option(&mut rs, Some(BlendPreset::Custom(custom_state)));
         assert_eq!(rs.blend_mod, Some(custom_state));
     }
 
     #[test]
-    fn preset_roundtrip_preserves_effective_state() {
-        // preset → RenderState → 再次推导 preset，应回到同一预设
-        for preset in [
-            BlendPreset::Replace,
-            BlendPreset::Add,
-            BlendPreset::Multiply,
-            BlendPreset::AlphaBlend,
+    fn option_roundtrip_preserves_effective_state() {
+        // 选项 → RenderState → 再次推导选项，应回到同一选项
+        for option in [
+            None,
+            Some(BlendPreset::Replace),
+            Some(BlendPreset::Add),
+            Some(BlendPreset::Multiply),
+            Some(BlendPreset::AlphaBlend),
         ] {
             let mut rs = RenderState::default();
-            apply_blend_preset(&mut rs, preset);
-            assert_eq!(current_blend_preset(&rs), preset);
+            apply_blend_option(&mut rs, option);
+            assert_eq!(current_blend_option(&rs), option);
         }
     }
 }
