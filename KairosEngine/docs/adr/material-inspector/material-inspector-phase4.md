@@ -556,10 +556,14 @@ ui.vertical_centered(|ui| {
 在 `draw()` 顶部检测：
 
 ```rust
-if self.model.dirty.get() && ui.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::S)) {
+if self.model.dirty.get() && ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::S)) {
     messager.send(self.apply_message());
 }
 ```
+
+> **按实际实现修订（跨平台）**：初稿/issue #36 为 `modifiers.ctrl`；实现改为
+> `modifiers.command` —— egui 中 macOS 上映射为 ⌘、Windows/Linux 上映射为 Ctrl，
+> 符合各平台保存快捷键习惯（代码库先例：`docking_tab.rs` 同样使用 `modifiers.command`）。
 
 ### 4.5.3 Apply 消息处理
 

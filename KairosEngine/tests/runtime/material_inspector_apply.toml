@@ -9,7 +9,7 @@
 # Until then, equivalent coverage lives in Rust integration tests:
 #   kairos_engine/tests/integration/kairos_editor/material_inspector.rs
 #
-# Note: Ctrl+S cannot be injected — the harness keyboard injector has no
+# Note: Cmd/Ctrl+S cannot be injected — the harness keyboard injector has no
 # modifier-key support; the button click below exercises the same
 # apply_message() path.
 #

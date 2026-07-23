@@ -831,9 +831,10 @@ impl Inspector for MaterialInspector {
         assets_server: &AssetsServer,
         _dt: f32,
     ) {
-        // ---- Ctrl+S 快捷键触发 Apply（issue #36，ADR §4.5.2）----
+        // ---- Cmd/Ctrl+S 快捷键触发 Apply（issue #36，ADR §4.5.2）----
+        // modifiers.command：macOS = ⌘、Windows/Linux = Ctrl，跨平台保存习惯一致
         // 与 Apply 按钮走同一条消息路径，仅在有未保存修改时触发
-        if self.model.dirty.get() && ui.input(|i| i.modifiers.ctrl && i.key_pressed(egui::Key::S)) {
+        if self.model.dirty.get() && ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::S)) {
             messager.send(self.apply_message());
         }
 
