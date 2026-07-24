@@ -69,6 +69,43 @@ impl PixelDatas {
     pub fn byte_len(&self) -> usize {
         self.as_bytes().len()
     }
+
+    /// Convert this pixel data to RGBA8 `U8` variant.
+    ///
+    /// If already `U8`, returns a clone. For float variants, clamps each
+    /// channel to [0.0, 1.0] and scales to [0, 255].
+    pub fn to_rgba8(&self) -> Self {
+        match self {
+            PixelDatas::U8(_) => self.clone(),
+            PixelDatas::F16(data) => PixelDatas::U8(
+                data.iter()
+                    .map(|&v| {
+                        let f = v.to_f32();
+                        if f <= 0.0 {
+                            0u8
+                        } else if f >= 1.0 {
+                            255u8
+                        } else {
+                            (f * 255.0).round() as u8
+                        }
+                    })
+                    .collect(),
+            ),
+            PixelDatas::F32(data) => PixelDatas::U8(
+                data.iter()
+                    .map(|&v| {
+                        if v <= 0.0 {
+                            0u8
+                        } else if v >= 1.0 {
+                            255u8
+                        } else {
+                            (v * 255.0).round() as u8
+                        }
+                    })
+                    .collect(),
+            ),
+        }
+    }
 }
 
 /// Dimensions and byte-size of a compression block.
@@ -2495,5 +2532,41 @@ mod tests {
         assert_eq!(encoded.as_bytes().len(), w * h * 8);
         let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Rgba16Float);
         assert_eq!(decoded.as_bytes().len(), w * h * 8);
+    }
+
+    #[test]
+    fn to_rgba8_converts_f16() {
+        // F16 → U8 conversion with clamping
+        let f16_data = vec![
+            half::f16::from_f32(-0.5),  // clamped to 0
+            half::f16::from_f32(0.0),
+            half::f16::from_f32(0.5),   // → 128
+            half::f16::from_f32(1.0),   // → 255
+            half::f16::from_f32(2.0),   // clamped to 255
+        ];
+        let pixels = PixelDatas::F16(f16_data);
+        let rgba8 = pixels.to_rgba8();
+        match rgba8 {
+            PixelDatas::U8(data) => {
+                assert_eq!(data.len(), 5);
+                assert_eq!(data[0], 0, "-0.5 → 0");
+                assert_eq!(data[1], 0, "0.0 → 0");
+                assert_eq!(data[2], 128, "0.5 → 128");
+                assert_eq!(data[3], 255, "1.0 → 255");
+                assert_eq!(data[4], 255, "2.0 → 255");
+            }
+            _ => panic!("expected U8 variant"),
+        }
+    }
+
+    #[test]
+    fn to_rgba8_passthrough_u8() {
+        let u8_data = vec![100u8, 150, 200, 255];
+        let pixels = PixelDatas::U8(u8_data.clone());
+        let rgba8 = pixels.to_rgba8();
+        match rgba8 {
+            PixelDatas::U8(data) => assert_eq!(data, u8_data),
+            _ => panic!("expected U8 variant"),
+        }
     }
 }
