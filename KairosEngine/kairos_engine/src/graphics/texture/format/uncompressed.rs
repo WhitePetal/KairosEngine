@@ -279,24 +279,24 @@ fn encode_r16s_impl(rgba: &[u8], width: usize, height: usize) -> Vec<u16> {
     out
 }
 
-/// Decode R16 (Uint or Sint) back to RGBA8.
+/// Decode R16 (Uint or Sint) back to RGBA16.
 ///
 /// Input is 1 u16 per pixel.
-/// Output is 4 bytes per pixel: [R, 0, 0, 255].
-fn decode_r16_impl(data: &[u16], width: usize, height: usize) -> Vec<u8> {
+/// Output is 4 u16 per pixel: [R, 0, 0, 65535].
+fn decode_r16_impl(data: &[u16], width: usize, height: usize) -> Vec<u16> {
     const CHUNK_SIZE: usize = 4096;
     let pixel_count = width * height;
-    let mut out = vec![0u8; pixel_count << 2];
+    let mut out = vec![0u16; pixel_count << 2];
     out.par_chunks_mut(CHUNK_SIZE)
         .enumerate()
         .for_each(|(chunk_idx, chunk)| {
             let pixel_base = chunk_idx * (CHUNK_SIZE >> 2);
             for (j, rgba) in chunk.chunks_mut(4).enumerate() {
                 let abs_pixel = pixel_base + j;
-                rgba[0] = data[abs_pixel] as u8;
+                rgba[0] = data[abs_pixel];
                 rgba[1] = 0;
                 rgba[2] = 0;
-                rgba[3] = 255;
+                rgba[3] = 65535;
             }
         });
     out
@@ -427,13 +427,10 @@ pub fn encode_r16s(pixels: &PixelDatas, w: usize, h: usize) -> PixelDatas {
 }
 
 pub fn decode_r16(data: &PixelDatas, w: usize, h: usize) -> PixelDatas {
-    match data {
-        PixelDatas::U16(d) => PixelDatas::U8(decode_r16_impl(d, w, h)),
-        other => {
-            let src: &[u16] = bytemuck::cast_slice(other.as_bytes());
-            PixelDatas::U8(decode_r16_impl(src, w, h))
-        }
-    }
+    let PixelDatas::U16(d) = data else {
+        panic!("decode_r16: expected U16 variant");
+    };
+    PixelDatas::U16(decode_r16_impl(d, w, h))
 }
 
 // ============================================================
@@ -480,14 +477,14 @@ fn encode_rg16s_impl(rgba: &[u8], width: usize, height: usize) -> Vec<u16> {
     out
 }
 
-/// Decode Rg16 (Uint or Sint) back to RGBA8.
+/// Decode Rg16 (Uint or Sint) back to RGBA16.
 ///
 /// Input is 2 u16 per pixel: [R, G].
-/// Output is 4 bytes per pixel: [R, G, 0, 255].
-fn decode_rg16_impl(data: &[u16], width: usize, height: usize) -> Vec<u8> {
+/// Output is 4 u16 per pixel: [R, G, 0, 65535].
+fn decode_rg16_impl(data: &[u16], width: usize, height: usize) -> Vec<u16> {
     const CHUNK_SIZE: usize = 4096;
     let pixel_count = width * height;
-    let mut out = vec![0u8; pixel_count << 2];
+    let mut out = vec![0u16; pixel_count << 2];
     out.par_chunks_mut(CHUNK_SIZE)
         .enumerate()
         .for_each(|(chunk_idx, chunk)| {
@@ -495,10 +492,10 @@ fn decode_rg16_impl(data: &[u16], width: usize, height: usize) -> Vec<u8> {
             for (j, rgba) in chunk.chunks_mut(4).enumerate() {
                 let abs_pixel = pixel_base + j;
                 let src_idx = abs_pixel << 1;
-                rgba[0] = data[src_idx] as u8;
-                rgba[1] = data[src_idx + 1] as u8;
+                rgba[0] = data[src_idx];
+                rgba[1] = data[src_idx + 1];
                 rgba[2] = 0;
-                rgba[3] = 255;
+                rgba[3] = 65535;
             }
         });
     out
@@ -633,13 +630,10 @@ pub fn encode_rg16s(pixels: &PixelDatas, w: usize, h: usize) -> PixelDatas {
 }
 
 pub fn decode_rg16(data: &PixelDatas, w: usize, h: usize) -> PixelDatas {
-    match data {
-        PixelDatas::U16(d) => PixelDatas::U8(decode_rg16_impl(d, w, h)),
-        other => {
-            let src: &[u16] = bytemuck::cast_slice(other.as_bytes());
-            PixelDatas::U8(decode_rg16_impl(src, w, h))
-        }
-    }
+    let PixelDatas::U16(d) = data else {
+        panic!("decode_rg16: expected U16 variant");
+    };
+    PixelDatas::U16(decode_rg16_impl(d, w, h))
 }
 
 // ============================================================
@@ -690,14 +684,14 @@ fn encode_rgba16s_impl(rgba: &[u8], width: usize, height: usize) -> Vec<u16> {
     out
 }
 
-/// Decode Rgba16 (Uint or Sint) back to RGBA8.
+/// Decode Rgba16 (Uint or Sint) back to RGBA16.
 ///
 /// Input is 4 u16 per pixel: [R, G, B, A].
-/// Output is 4 bytes per pixel: [R, G, B, A].
-fn decode_rgba16_impl(data: &[u16], width: usize, height: usize) -> Vec<u8> {
+/// Output is 4 u16 per pixel: [R, G, B, A].
+fn decode_rgba16_impl(data: &[u16], width: usize, height: usize) -> Vec<u16> {
     const CHUNK_SIZE: usize = 4096;
     let pixel_count = width * height;
-    let mut out = vec![0u8; pixel_count << 2];
+    let mut out = vec![0u16; pixel_count << 2];
     out.par_chunks_mut(CHUNK_SIZE)
         .enumerate()
         .for_each(|(chunk_idx, chunk)| {
@@ -705,10 +699,7 @@ fn decode_rgba16_impl(data: &[u16], width: usize, height: usize) -> Vec<u8> {
             for (j, rgba) in chunk.chunks_mut(4).enumerate() {
                 let abs_pixel = pixel_base + j;
                 let src_idx = abs_pixel << 2;
-                rgba[0] = data[src_idx] as u8;
-                rgba[1] = data[src_idx + 1] as u8;
-                rgba[2] = data[src_idx + 2] as u8;
-                rgba[3] = data[src_idx + 3] as u8;
+                rgba.copy_from_slice(&data[src_idx..src_idx + 4]);
             }
         });
     out
@@ -817,13 +808,10 @@ pub fn encode_rgba16s(pixels: &PixelDatas, w: usize, h: usize) -> PixelDatas {
 }
 
 pub fn decode_rgba16(data: &PixelDatas, w: usize, h: usize) -> PixelDatas {
-    match data {
-        PixelDatas::U16(d) => PixelDatas::U8(decode_rgba16_impl(d, w, h)),
-        other => {
-            let src: &[u16] = bytemuck::cast_slice(other.as_bytes());
-            PixelDatas::U8(decode_rgba16_impl(src, w, h))
-        }
-    }
+    let PixelDatas::U16(d) = data else {
+        panic!("decode_rgba16: expected U16 variant");
+    };
+    PixelDatas::U16(decode_rgba16_impl(d, w, h))
 }
 
 // ============================================================

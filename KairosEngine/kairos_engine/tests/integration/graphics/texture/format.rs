@@ -388,15 +388,15 @@ fn r16_uint_roundtrip() {
     let encoded = encode(&input, w as u32, h as u32, TextureFormat::R16Uint);
     assert_eq!(encoded.as_bytes().len(), w * h * 2);
     let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::R16Uint);
-    assert_eq!(decoded.as_bytes().len(), w * h * 4);
-    let dec = decoded.as_bytes();
+    assert_eq!(decoded.as_bytes().len(), w * h * 8);
+    let dec: &[u16] = bytemuck::cast_slice(decoded.as_bytes());
     for y in 0..h {
         for x in 0..w {
-            let idx = (y * w + x) * 4;
-            assert_eq!(dec[idx], rgba[idx], "R at ({},{})", x, y);
-            assert_eq!(dec[idx + 1], 0, "G at ({},{})", x, y);
-            assert_eq!(dec[idx + 2], 0, "B at ({},{})", x, y);
-            assert_eq!(dec[idx + 3], 255, "A at ({},{})", x, y);
+            let px = (y * w + x) * 4;
+            assert_eq!(dec[px], rgba[px] as u16, "R at ({},{})", x, y);
+            assert_eq!(dec[px + 1], 0, "G at ({},{})", x, y);
+            assert_eq!(dec[px + 2], 0, "B at ({},{})", x, y);
+            assert_eq!(dec[px + 3], 65535, "A at ({},{})", x, y);
         }
     }
 }
@@ -421,15 +421,15 @@ fn r16_sint_roundtrip() {
     let encoded = encode(&input, w as u32, h as u32, TextureFormat::R16Sint);
     assert_eq!(encoded.as_bytes().len(), w * h * 2);
     let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::R16Sint);
-    assert_eq!(decoded.as_bytes().len(), w * h * 4);
-    let dec = decoded.as_bytes();
+    assert_eq!(decoded.as_bytes().len(), w * h * 8);
+    let dec: &[u16] = bytemuck::cast_slice(decoded.as_bytes());
     for y in 0..h {
         for x in 0..w {
-            let idx = (y * w + x) * 4;
-            assert_eq!(dec[idx], rgba[idx], "R at ({},{})", x, y);
-            assert_eq!(dec[idx + 1], 0, "G at ({},{})", x, y);
-            assert_eq!(dec[idx + 2], 0, "B at ({},{})", x, y);
-            assert_eq!(dec[idx + 3], 255, "A at ({},{})", x, y);
+            let px = (y * w + x) * 4;
+            assert_eq!(dec[px], sext(rgba[px]), "R at ({},{})", x, y);
+            assert_eq!(dec[px + 1], 0, "G at ({},{})", x, y);
+            assert_eq!(dec[px + 2], 0, "B at ({},{})", x, y);
+            assert_eq!(dec[px + 3], 65535, "A at ({},{})", x, y);
         }
     }
 }
@@ -496,15 +496,15 @@ fn rg16_uint_roundtrip() {
         }
     }
     let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Rg16Uint);
-    assert_eq!(decoded.as_bytes().len(), w * h * 4);
-    let dec = decoded.as_bytes();
+    assert_eq!(decoded.as_bytes().len(), w * h * 8);
+    let dec: &[u16] = bytemuck::cast_slice(decoded.as_bytes());
     for y in 0..h {
         for x in 0..w {
-            let idx = (y * w + x) * 4;
-            assert_eq!(dec[idx], rgba[idx], "R at ({},{})", x, y);
-            assert_eq!(dec[idx + 1], rgba[idx + 1], "G at ({},{})", x, y);
-            assert_eq!(dec[idx + 2], 0, "B at ({},{})", x, y);
-            assert_eq!(dec[idx + 3], 255, "A at ({},{})", x, y);
+            let px = (y * w + x) * 4;
+            assert_eq!(dec[px], rgba[px] as u16, "R at ({},{})", x, y);
+            assert_eq!(dec[px + 1], rgba[px + 1] as u16, "G at ({},{})", x, y);
+            assert_eq!(dec[px + 2], 0, "B at ({},{})", x, y);
+            assert_eq!(dec[px + 3], 65535, "A at ({},{})", x, y);
         }
     }
 }
@@ -529,15 +529,15 @@ fn rg16_sint_roundtrip() {
     let encoded = encode(&input, w as u32, h as u32, TextureFormat::Rg16Sint);
     assert_eq!(encoded.as_bytes().len(), w * h * 4);
     let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Rg16Sint);
-    assert_eq!(decoded.as_bytes().len(), w * h * 4);
-    let dec = decoded.as_bytes();
+    assert_eq!(decoded.as_bytes().len(), w * h * 8);
+    let dec: &[u16] = bytemuck::cast_slice(decoded.as_bytes());
     for y in 0..h {
         for x in 0..w {
-            let idx = (y * w + x) * 4;
-            assert_eq!(dec[idx], rgba[idx], "R at ({},{})", x, y);
-            assert_eq!(dec[idx + 1], rgba[idx + 1], "G at ({},{})", x, y);
-            assert_eq!(dec[idx + 2], 0, "B at ({},{})", x, y);
-            assert_eq!(dec[idx + 3], 255, "A at ({},{})", x, y);
+            let px = (y * w + x) * 4;
+            assert_eq!(dec[px], sext(rgba[px]), "R at ({},{})", x, y);
+            assert_eq!(dec[px + 1], sext(rgba[px + 1]), "G at ({},{})", x, y);
+            assert_eq!(dec[px + 2], 0, "B at ({},{})", x, y);
+            assert_eq!(dec[px + 3], 65535, "A at ({},{})", x, y);
         }
     }
 }
@@ -592,8 +592,11 @@ fn rgba16_uint_roundtrip() {
     let encoded = encode(&input, w as u32, h as u32, TextureFormat::Rgba16Uint);
     assert_eq!(encoded.as_bytes().len(), w * h * 8);
     let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Rgba16Uint);
-    assert_eq!(decoded.as_bytes().len(), w * h * 4);
-    assert_eq!(decoded.as_bytes(), rgba.as_slice(), "Rgba16Uint roundtrip");
+    assert_eq!(decoded.as_bytes().len(), w * h * 8);
+    let dec: &[u16] = bytemuck::cast_slice(decoded.as_bytes());
+    for i in 0..w*h*4 {
+        assert_eq!(dec[i], rgba[i] as u16, "channel {} mismatch", i);
+    }
 }
 
 #[test]
@@ -616,8 +619,11 @@ fn rgba16_sint_roundtrip() {
     let encoded = encode(&input, w as u32, h as u32, TextureFormat::Rgba16Sint);
     assert_eq!(encoded.as_bytes().len(), w * h * 8);
     let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Rgba16Sint);
-    assert_eq!(decoded.as_bytes().len(), w * h * 4);
-    assert_eq!(decoded.as_bytes(), rgba.as_slice(), "Rgba16Sint roundtrip");
+    assert_eq!(decoded.as_bytes().len(), w * h * 8);
+    let dec: &[u16] = bytemuck::cast_slice(decoded.as_bytes());
+    for i in 0..w*h*4 {
+        assert_eq!(dec[i], sext(rgba[i]), "channel {} mismatch", i);
+    }
 }
 
 #[test]
@@ -685,8 +691,9 @@ fn all_group_b_encode_decode_sizes() {
         );
         let decoded = decode(&encoded, 4, 4, *fmt);
         let expected_dec_size = match fmt.raw_pixel_type() {
-            RawPixelType::U8 | RawPixelType::U16 => 4 * 4 * 4, // RGBA8
-            RawPixelType::F16 => 4 * 4 * 8,       // RGBA f16
+            RawPixelType::U8 => 4 * 4 * 4,  // RGBA8
+            RawPixelType::U16 => 4 * 4 * 8,  // RGBA16
+            RawPixelType::F16 => 4 * 4 * 8,  // RGBA f16
             _ => unreachable!(),
         };
         assert_eq!(
@@ -710,13 +717,13 @@ fn r16_sint_sign_extension() {
     let r = u16::from_le_bytes([enc[0], enc[1]]);
     // 200 as i8 = -56, as i16 = -56 = 0xFFC8 = 65480
     assert_eq!(r, (-56i16) as u16, "R should be sign-extended");
-    // Decode back should truncate to original
+    // Decode back preserves the sign-extended u16 value
     let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::R16Sint);
-    let dec = decoded.as_bytes();
-    assert_eq!(dec[0], 200, "R should be 200 after truncation");
+    let dec: &[u16] = bytemuck::cast_slice(decoded.as_bytes());
+    assert_eq!(dec[0], (-56i16) as u16, "R should be sign-extended");
     assert_eq!(dec[1], 0, "G");
     assert_eq!(dec[2], 0, "B");
-    assert_eq!(dec[3], 255, "A");
+    assert_eq!(dec[3], 65535, "A");
 }
 
 #[test]
@@ -733,7 +740,7 @@ fn r16_uint_zero_extension() {
     assert_eq!(r, 200u16, "R should be zero-extended");
     // Decode back
     let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::R16Uint);
-    let dec = decoded.as_bytes();
+    let dec: &[u16] = bytemuck::cast_slice(decoded.as_bytes());
     assert_eq!(dec[0], 200, "R should be 200");
 }
 
@@ -836,6 +843,10 @@ fn rgba16_float_golden() {
 // Stress tests: non-power-of-two dimensions, multi-chunk images
 // ============================================================
 
+fn sext(v: u8) -> u16 {
+    (v as i8) as i16 as u16
+}
+
 /// Run a roundtrip encode→decode for a format, with verification.
 fn stress_roundtrip_int(
     fmt: TextureFormat,
@@ -845,6 +856,7 @@ fn stress_roundtrip_int(
     fill_g: bool,
     fill_b: bool,
     fill_a: bool,
+    sign_extend: bool,
 ) {
     let pixel_count = w * h;
     let mut state: u32 = 12345;
@@ -869,28 +881,29 @@ fn stress_roundtrip_int(
     let decoded = decode(&encoded, w as u32, h as u32, fmt);
     assert_eq!(
         decoded.as_bytes().len(),
-        pixel_count * 4,
+        pixel_count * 8,
         "{fmt:?} decoded size mismatch at {w}x{h}"
     );
-    let dec = decoded.as_bytes();
+    let dec: &[u16] = bytemuck::cast_slice(decoded.as_bytes());
     for y in 0..h {
         for x in 0..w {
-            let idx = (y * w + x) * 4;
-            assert_eq!(dec[idx], rgba[idx], "R at ({},{}) fmt={fmt:?}", x, y);
+            let px = (y * w + x) * 4;
+            let expected = |v: u8| -> u16 { if sign_extend { sext(v) } else { v as u16 } };
+            assert_eq!(dec[px], expected(rgba[px]), "R at ({},{}) fmt={fmt:?}", x, y);
             if fill_g {
-                assert_eq!(dec[idx + 1], rgba[idx + 1], "G at ({},{}) fmt={fmt:?}", x, y);
+                assert_eq!(dec[px + 1], expected(rgba[px + 1]), "G at ({},{}) fmt={fmt:?}", x, y);
             } else {
-                assert_eq!(dec[idx + 1], 0, "G at ({},{}) fmt={fmt:?}", x, y);
+                assert_eq!(dec[px + 1], 0, "G at ({},{}) fmt={fmt:?}", x, y);
             }
             if fill_b {
-                assert_eq!(dec[idx + 2], rgba[idx + 2], "B at ({},{}) fmt={fmt:?}", x, y);
+                assert_eq!(dec[px + 2], expected(rgba[px + 2]), "B at ({},{}) fmt={fmt:?}", x, y);
             } else {
-                assert_eq!(dec[idx + 2], 0, "B at ({},{}) fmt={fmt:?}", x, y);
+                assert_eq!(dec[px + 2], 0, "B at ({},{}) fmt={fmt:?}", x, y);
             }
             if fill_a {
-                assert_eq!(dec[idx + 3], rgba[idx + 3], "A at ({},{}) fmt={fmt:?}", x, y);
+                assert_eq!(dec[px + 3], expected(rgba[px + 3]), "A at ({},{}) fmt={fmt:?}", x, y);
             } else {
-                assert_eq!(dec[idx + 3], 255, "A at ({},{}) fmt={fmt:?}", x, y);
+                assert_eq!(dec[px + 3], 65535, "A at ({},{}) fmt={fmt:?}", x, y);
             }
         }
     }
@@ -930,14 +943,14 @@ const STRESS_SIZES: &[(usize, usize)] = &[
 #[test]
 fn r16_uint_stress() {
     for &(w, h) in STRESS_SIZES {
-        stress_roundtrip_int(TextureFormat::R16Uint, w, h, 2, false, false, false);
+        stress_roundtrip_int(TextureFormat::R16Uint, w, h, 2, false, false, false, false);
     }
 }
 
 #[test]
 fn r16_sint_stress() {
     for &(w, h) in STRESS_SIZES {
-        stress_roundtrip_int(TextureFormat::R16Sint, w, h, 2, false, false, false);
+        stress_roundtrip_int(TextureFormat::R16Sint, w, h, 2, false, false, false, true);
     }
 }
 
@@ -951,14 +964,14 @@ fn r16_float_stress() {
 #[test]
 fn rg16_uint_stress() {
     for &(w, h) in STRESS_SIZES {
-        stress_roundtrip_int(TextureFormat::Rg16Uint, w, h, 4, true, false, false);
+        stress_roundtrip_int(TextureFormat::Rg16Uint, w, h, 4, true, false, false, false);
     }
 }
 
 #[test]
 fn rg16_sint_stress() {
     for &(w, h) in STRESS_SIZES {
-        stress_roundtrip_int(TextureFormat::Rg16Sint, w, h, 4, true, false, false);
+        stress_roundtrip_int(TextureFormat::Rg16Sint, w, h, 4, true, false, false, true);
     }
 }
 
@@ -972,14 +985,14 @@ fn rg16_float_stress() {
 #[test]
 fn rgba16_uint_stress() {
     for &(w, h) in STRESS_SIZES {
-        stress_roundtrip_int(TextureFormat::Rgba16Uint, w, h, 8, true, true, true);
+        stress_roundtrip_int(TextureFormat::Rgba16Uint, w, h, 8, true, true, true, false);
     }
 }
 
 #[test]
 fn rgba16_sint_stress() {
     for &(w, h) in STRESS_SIZES {
-        stress_roundtrip_int(TextureFormat::Rgba16Sint, w, h, 8, true, true, true);
+        stress_roundtrip_int(TextureFormat::Rgba16Sint, w, h, 8, true, true, true, true);
     }
 }
 
