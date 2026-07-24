@@ -78,3 +78,7 @@ path = "tests/integration/main.rs"
 [[bench]]
 name = "vec_benchmark"
 harness = false
+
+[[bench]]
+name = "texture_encode_decode"
+harness = false

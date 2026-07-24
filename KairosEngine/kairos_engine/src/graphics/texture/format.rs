@@ -495,10 +495,10 @@ impl TextureFormat {
             TextureFormat::R16Uint => false,
             TextureFormat::R16Sint => false,
             TextureFormat::R16Float => false,
-            TextureFormat::Rg8Unorm => false,
-            TextureFormat::Rg8Snorm => false,
-            TextureFormat::Rg8Uint => false,
-            TextureFormat::Rg8Sint => false,
+            TextureFormat::Rg8Unorm => true,
+            TextureFormat::Rg8Snorm => true,
+            TextureFormat::Rg8Uint => true,
+            TextureFormat::Rg8Sint => true,
             TextureFormat::R32Uint => false,
             TextureFormat::R32Sint => false,
             TextureFormat::R32Float => false,
@@ -507,11 +507,11 @@ impl TextureFormat {
             TextureFormat::Rg16Float => false,
             TextureFormat::Rgba8Unorm => true,
             TextureFormat::Rgba8UnormSrgb => true,
-            TextureFormat::Rgba8Snorm => false,
-            TextureFormat::Rgba8Uint => false,
-            TextureFormat::Rgba8Sint => false,
-            TextureFormat::Bgra8Unorm => false,
-            TextureFormat::Bgra8UnormSrgb => false,
+            TextureFormat::Rgba8Snorm => true,
+            TextureFormat::Rgba8Uint => true,
+            TextureFormat::Rgba8Sint => true,
+            TextureFormat::Bgra8Unorm => true,
+            TextureFormat::Bgra8UnormSrgb => true,
             TextureFormat::Rgb10a2Unorm => false,
             TextureFormat::Rg11b10Ufloat => false,
             TextureFormat::Rg32Uint => false,
@@ -1374,6 +1374,19 @@ pub fn encode(pixels: &PixelDatas, width: u32, height: u32, format: TextureForma
         TextureFormat::R8Snorm => uncompressed::encode_r8(pixels, w, h),
         TextureFormat::R8Uint => uncompressed::encode_r8(pixels, w, h),
         TextureFormat::R8Sint => uncompressed::encode_r8(pixels, w, h),
+        TextureFormat::Rg8Unorm
+        | TextureFormat::Rg8Snorm
+        | TextureFormat::Rg8Uint
+        | TextureFormat::Rg8Sint => uncompressed::encode_rg8(pixels, w, h),
+        TextureFormat::Rgba8Snorm
+        | TextureFormat::Rgba8Uint
+        | TextureFormat::Rgba8Sint => {
+            // Pass-through — same as Rgba8Unorm; GPU reinterpretation differs
+            PixelDatas::U8(pixels.as_bytes().to_vec())
+        }
+        TextureFormat::Bgra8Unorm | TextureFormat::Bgra8UnormSrgb => {
+            uncompressed::encode_bgra8(pixels, w, h)
+        }
         _ => todo!("encode not yet implemented for {format:?}"),
     }
 }
@@ -1397,6 +1410,19 @@ pub fn decode(data: &PixelDatas, width: u32, height: u32, format: TextureFormat)
         TextureFormat::R8Snorm => uncompressed::decode_r8(data, w, h, true, true, true),
         TextureFormat::R8Uint => uncompressed::decode_r8(data, w, h, true, true, true),
         TextureFormat::R8Sint => uncompressed::decode_r8(data, w, h, true, true, true),
+        TextureFormat::Rg8Unorm
+        | TextureFormat::Rg8Snorm
+        | TextureFormat::Rg8Uint
+        | TextureFormat::Rg8Sint => uncompressed::decode_rg8(data, w, h),
+        TextureFormat::Rgba8Snorm
+        | TextureFormat::Rgba8Uint
+        | TextureFormat::Rgba8Sint => {
+            // Pass-through — same as Rgba8Unorm
+            PixelDatas::U8(raw.to_vec())
+        }
+        TextureFormat::Bgra8Unorm | TextureFormat::Bgra8UnormSrgb => {
+            uncompressed::decode_bgra8(data, w, h)
+        }
         _ => todo!("decode not yet implemented for {format:?}"),
     }
 }
@@ -1480,5 +1506,268 @@ mod tests {
         let input = PixelDatas::U8(rgba);
         let encoded = encode(&input, 4, 4, TextureFormat::Bc1RgbaUnorm);
         assert!(matches!(encoded, PixelDatas::U8(_)));
+    }
+
+    // ============================================================
+    // Group A: Uncompressed SDR format tests
+    // ============================================================
+
+    #[test]
+    fn rgba8_snorm_pass_through() {
+        let rgba = make_test_rgba(8, 8);
+        let input = PixelDatas::U8(rgba.clone());
+        let encoded = encode(&input, 8, 8, TextureFormat::Rgba8Snorm);
+        assert_eq!(encoded.as_bytes(), rgba.as_slice());
+        let decoded = decode(&encoded, 8, 8, TextureFormat::Rgba8Snorm);
+        assert_eq!(decoded.as_bytes(), rgba.as_slice());
+    }
+
+    #[test]
+    fn rgba8_uint_pass_through() {
+        let rgba = make_test_rgba(8, 8);
+        let input = PixelDatas::U8(rgba.clone());
+        let encoded = encode(&input, 8, 8, TextureFormat::Rgba8Uint);
+        assert_eq!(encoded.as_bytes(), rgba.as_slice());
+        let decoded = decode(&encoded, 8, 8, TextureFormat::Rgba8Uint);
+        assert_eq!(decoded.as_bytes(), rgba.as_slice());
+    }
+
+    #[test]
+    fn rgba8_sint_pass_through() {
+        let rgba = make_test_rgba(8, 8);
+        let input = PixelDatas::U8(rgba.clone());
+        let encoded = encode(&input, 8, 8, TextureFormat::Rgba8Sint);
+        assert_eq!(encoded.as_bytes(), rgba.as_slice());
+        let decoded = decode(&encoded, 8, 8, TextureFormat::Rgba8Sint);
+        assert_eq!(decoded.as_bytes(), rgba.as_slice());
+    }
+
+    #[test]
+    fn rg8_encode_decode() {
+        let rgba = make_test_rgba(16, 16);
+        let input = PixelDatas::U8(rgba.clone());
+        let encoded = encode(&input, 16, 16, TextureFormat::Rg8Unorm);
+        // 16×16 → 2 bytes per pixel = 512 bytes
+        assert_eq!(encoded.as_bytes().len(), 512);
+        // Verify R and G are preserved, B/A dropped
+        let enc_bytes = encoded.as_bytes();
+        for y in 0..16 {
+            for x in 0..16 {
+                let src_idx = (y * 16 + x) * 4;
+                let enc_idx = (y * 16 + x) * 2;
+                assert_eq!(enc_bytes[enc_idx], rgba[src_idx], "R at ({},{})", x, y);
+                assert_eq!(enc_bytes[enc_idx + 1], rgba[src_idx + 1], "G at ({},{})", x, y);
+            }
+        }
+        // Decode back
+        let decoded = decode(&encoded, 16, 16, TextureFormat::Rg8Unorm);
+        assert_eq!(decoded.as_bytes().len(), 1024);
+        let dec_bytes = decoded.as_bytes();
+        for y in 0..16 {
+            for x in 0..16 {
+                let idx = (y * 16 + x) * 4;
+                let src_idx = (y * 16 + x) * 4;
+                assert_eq!(dec_bytes[idx], rgba[src_idx], "decoded R at ({},{})", x, y);
+                assert_eq!(dec_bytes[idx + 1], rgba[src_idx + 1], "decoded G at ({},{})", x, y);
+                assert_eq!(dec_bytes[idx + 2], 0, "decoded B at ({},{}) should be 0", x, y);
+                assert_eq!(dec_bytes[idx + 3], 255, "decoded A at ({},{}) should be 255", x, y);
+            }
+        }
+    }
+
+    #[test]
+    fn rg8_snorm_encode_decode() {
+        let rgba = make_test_rgba(4, 4);
+        let input = PixelDatas::U8(rgba);
+        let encoded = encode(&input, 4, 4, TextureFormat::Rg8Snorm);
+        assert_eq!(encoded.as_bytes().len(), 32); // 4×4×2
+        let decoded = decode(&encoded, 4, 4, TextureFormat::Rg8Snorm);
+        assert_eq!(decoded.as_bytes().len(), 64); // 4×4×4
+    }
+
+    #[test]
+    fn rg8_uint_encode_decode() {
+        let rgba = make_test_rgba(4, 4);
+        let input = PixelDatas::U8(rgba);
+        let encoded = encode(&input, 4, 4, TextureFormat::Rg8Uint);
+        assert_eq!(encoded.as_bytes().len(), 32);
+        let decoded = decode(&encoded, 4, 4, TextureFormat::Rg8Uint);
+        assert_eq!(decoded.as_bytes().len(), 64);
+    }
+
+    #[test]
+    fn rg8_sint_encode_decode() {
+        let rgba = make_test_rgba(4, 4);
+        let input = PixelDatas::U8(rgba);
+        let encoded = encode(&input, 4, 4, TextureFormat::Rg8Sint);
+        assert_eq!(encoded.as_bytes().len(), 32);
+        let decoded = decode(&encoded, 4, 4, TextureFormat::Rg8Sint);
+        assert_eq!(decoded.as_bytes().len(), 64);
+    }
+
+    #[test]
+    fn bgra8_encode_decode() {
+        let rgba = make_test_rgba(8, 8);
+        let input = PixelDatas::U8(rgba.clone());
+        let encoded = encode(&input, 8, 8, TextureFormat::Bgra8Unorm);
+        assert_eq!(encoded.as_bytes().len(), 256); // 8×8×4
+        // Verify R↔B swap
+        let enc_bytes = encoded.as_bytes();
+        for y in 0..8 {
+            for x in 0..8 {
+                let src_idx = (y * 8 + x) * 4;
+                let enc_idx = (y * 8 + x) * 4;
+                assert_eq!(enc_bytes[enc_idx], rgba[src_idx + 2], "B (was R) at ({},{})", x, y);
+                assert_eq!(enc_bytes[enc_idx + 1], rgba[src_idx + 1], "G at ({},{})", x, y);
+                assert_eq!(enc_bytes[enc_idx + 2], rgba[src_idx], "R (was B) at ({},{})", x, y);
+                assert_eq!(enc_bytes[enc_idx + 3], rgba[src_idx + 3], "A at ({},{})", x, y);
+            }
+        }
+        // Decode back should restore original
+        let decoded = decode(&encoded, 8, 8, TextureFormat::Bgra8Unorm);
+        assert_eq!(decoded.as_bytes(), rgba.as_slice());
+    }
+
+    #[test]
+    fn bgra8_srgb_encode_decode() {
+        let rgba = make_test_rgba(8, 8);
+        let input = PixelDatas::U8(rgba.clone());
+        let encoded = encode(&input, 8, 8, TextureFormat::Bgra8UnormSrgb);
+        assert_eq!(encoded.as_bytes().len(), 256);
+        // Decode back should restore original
+        let decoded = decode(&encoded, 8, 8, TextureFormat::Bgra8UnormSrgb);
+        assert_eq!(decoded.as_bytes(), rgba.as_slice());
+    }
+
+    #[test]
+    fn all_group_a_supports_encoding() {
+        let formats = [
+            TextureFormat::Rg8Unorm,
+            TextureFormat::Rg8Snorm,
+            TextureFormat::Rg8Uint,
+            TextureFormat::Rg8Sint,
+            TextureFormat::Rgba8Snorm,
+            TextureFormat::Rgba8Uint,
+            TextureFormat::Rgba8Sint,
+            TextureFormat::Bgra8Unorm,
+            TextureFormat::Bgra8UnormSrgb,
+        ];
+        for fmt in &formats {
+            assert!(
+                fmt.supports_encoding(),
+                "{fmt:?} should support encoding"
+            );
+        }
+    }
+
+    /// Roundtrip test: random RGBA8 pixels → encode → decode → original
+    #[test]
+    fn rg8_roundtrip_random() {
+        // Simple LCG RNG
+        let mut state: u32 = 42;
+        let mut next_rand = || -> u8 {
+            state = state.wrapping_mul(1664525).wrapping_add(1013904223);
+            (state >> 24) as u8
+        };
+        let w = 16;
+        let h = 16;
+        let mut rgba = vec![0u8; w * h * 4];
+        for px in rgba.chunks_mut(4) {
+            px[0] = next_rand();
+            px[1] = next_rand();
+            px[2] = next_rand();
+            px[3] = next_rand();
+        }
+        let input = PixelDatas::U8(rgba.clone());
+        let encoded = encode(&input, w as u32, h as u32, TextureFormat::Rg8Unorm);
+        let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Rg8Unorm);
+        let dec = decoded.as_bytes();
+        for y in 0..h {
+            for x in 0..w {
+                let idx = (y * w + x) * 4;
+                assert_eq!(dec[idx], rgba[idx], "R at ({},{})", x, y);
+                assert_eq!(dec[idx + 1], rgba[idx + 1], "G at ({},{})", x, y);
+                assert_eq!(dec[idx + 2], 0, "B at ({},{})", x, y);
+                assert_eq!(dec[idx + 3], 255, "A at ({},{})", x, y);
+            }
+        }
+    }
+
+    #[test]
+    fn bgra8_roundtrip_random() {
+        let mut state: u32 = 99;
+        let mut next_rand = || -> u8 {
+            state = state.wrapping_mul(1664525).wrapping_add(1013904223);
+            (state >> 24) as u8
+        };
+        let w = 16;
+        let h = 16;
+        let mut rgba = vec![0u8; w * h * 4];
+        for px in rgba.chunks_mut(4) {
+            px[0] = next_rand();
+            px[1] = next_rand();
+            px[2] = next_rand();
+            px[3] = 255;
+        }
+        let input = PixelDatas::U8(rgba.clone());
+        let encoded = encode(&input, w as u32, h as u32, TextureFormat::Bgra8Unorm);
+        let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Bgra8Unorm);
+        assert_eq!(decoded.as_bytes(), rgba.as_slice(), "BGRA8 roundtrip");
+    }
+
+    #[test]
+    fn rgba8_snorm_roundtrip_random() {
+        let mut state: u32 = 77;
+        let mut next_rand = || -> u8 {
+            state = state.wrapping_mul(1664525).wrapping_add(1013904223);
+            (state >> 24) as u8
+        };
+        let w = 8;
+        let h = 8;
+        let mut rgba = vec![0u8; w * h * 4];
+        for px in rgba.chunks_mut(4) {
+            // Snorm range: 0..=255 maps to -1..=1, but bytes are stored as-is
+            px[0] = next_rand();
+            px[1] = next_rand();
+            px[2] = next_rand();
+            px[3] = next_rand();
+        }
+        let input = PixelDatas::U8(rgba.clone());
+        let encoded = encode(&input, w as u32, h as u32, TextureFormat::Rgba8Snorm);
+        // Pass-through: encode should return identical bytes
+        assert_eq!(encoded.as_bytes(), rgba.as_slice());
+        let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Rgba8Snorm);
+        assert_eq!(decoded.as_bytes(), rgba.as_slice());
+    }
+
+    #[test]
+    fn all_group_a_encode_decode_sizes() {
+        let formats = [
+            (TextureFormat::Rg8Unorm, 2usize),
+            (TextureFormat::Rg8Snorm, 2),
+            (TextureFormat::Rg8Uint, 2),
+            (TextureFormat::Rg8Sint, 2),
+            (TextureFormat::Rgba8Snorm, 4),
+            (TextureFormat::Rgba8Uint, 4),
+            (TextureFormat::Rgba8Sint, 4),
+            (TextureFormat::Bgra8Unorm, 4),
+            (TextureFormat::Bgra8UnormSrgb, 4),
+        ];
+        for (fmt, bpp) in &formats {
+            let rgba = make_test_rgba(4, 4);
+            let input = PixelDatas::U8(rgba);
+            let encoded = encode(&input, 4, 4, *fmt);
+            assert_eq!(
+                encoded.as_bytes().len(),
+                4 * 4 * bpp,
+                "{fmt:?} encoded size mismatch"
+            );
+            let decoded = decode(&encoded, 4, 4, *fmt);
+            assert_eq!(
+                decoded.as_bytes().len(),
+                4 * 4 * 4,
+                "{fmt:?} decoded size should be RGBA8"
+            );
+        }
     }
 }
