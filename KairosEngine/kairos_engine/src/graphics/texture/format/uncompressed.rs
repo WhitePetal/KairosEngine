@@ -3,6 +3,15 @@ use rayon::prelude::*;
 use crate::graphics::texture::format::PixelDatas;
 use half::f16;
 
+/// Get RGBA8 bytes from any PixelDatas variant.
+/// For U8, returns bytes directly. For F16/F32, converts via to_rgba8().
+fn rgba8_bytes(pixels: &PixelDatas) -> Vec<u8> {
+    match pixels {
+        PixelDatas::U8(_) => pixels.as_bytes().to_vec(),
+        other => other.to_rgba8().as_bytes().to_vec(),
+    }
+}
+
 /// Encode RGBA8 to single-channel R8 by extracting the R channel.
 ///
 /// The same encoding is used for Unorm, Snorm, Uint, and Sint —
@@ -91,7 +100,7 @@ fn decode_r8_impl(
 // ============================================================
 
 pub fn encode_r8(pixels: &PixelDatas, w: usize, h: usize) -> PixelDatas {
-    PixelDatas::U8(encode_r8_impl(pixels.as_bytes(), w, h))
+    PixelDatas::U8(encode_r8_impl(&rgba8_bytes(pixels), w, h))
 }
 
 pub fn decode_r8(
@@ -163,7 +172,7 @@ fn decode_rg8_impl(data: &[u8], width: usize, height: usize) -> Vec<u8> {
 }
 
 pub fn encode_rg8(pixels: &PixelDatas, w: usize, h: usize) -> PixelDatas {
-    PixelDatas::U8(encode_rg8_impl(pixels.as_bytes(), w, h))
+    PixelDatas::U8(encode_rg8_impl(&rgba8_bytes(pixels), w, h))
 }
 
 pub fn decode_rg8(data: &PixelDatas, w: usize, h: usize) -> PixelDatas {
@@ -221,7 +230,7 @@ fn decode_bgra8_impl(data: &[u8], width: usize, height: usize) -> Vec<u8> {
 }
 
 pub fn encode_bgra8(pixels: &PixelDatas, w: usize, h: usize) -> PixelDatas {
-    PixelDatas::U8(encode_bgra8_impl(pixels.as_bytes(), w, h))
+    PixelDatas::U8(encode_bgra8_impl(&rgba8_bytes(pixels), w, h))
 }
 
 pub fn decode_bgra8(data: &PixelDatas, w: usize, h: usize) -> PixelDatas {
@@ -300,11 +309,11 @@ fn decode_r16_impl(data: &[u8], width: usize, height: usize) -> Vec<u8> {
 }
 
 pub fn encode_r16u(pixels: &PixelDatas, w: usize, h: usize) -> PixelDatas {
-    PixelDatas::U8(encode_r16u_impl(pixels.as_bytes(), w, h))
+    PixelDatas::U8(encode_r16u_impl(&rgba8_bytes(pixels), w, h))
 }
 
 pub fn encode_r16s(pixels: &PixelDatas, w: usize, h: usize) -> PixelDatas {
-    PixelDatas::U8(encode_r16s_impl(pixels.as_bytes(), w, h))
+    PixelDatas::U8(encode_r16s_impl(&rgba8_bytes(pixels), w, h))
 }
 
 pub fn decode_r16(data: &PixelDatas, w: usize, h: usize) -> PixelDatas {
@@ -390,11 +399,11 @@ fn decode_rg16_impl(data: &[u8], width: usize, height: usize) -> Vec<u8> {
 }
 
 pub fn encode_rg16u(pixels: &PixelDatas, w: usize, h: usize) -> PixelDatas {
-    PixelDatas::U8(encode_rg16u_impl(pixels.as_bytes(), w, h))
+    PixelDatas::U8(encode_rg16u_impl(&rgba8_bytes(pixels), w, h))
 }
 
 pub fn encode_rg16s(pixels: &PixelDatas, w: usize, h: usize) -> PixelDatas {
-    PixelDatas::U8(encode_rg16s_impl(pixels.as_bytes(), w, h))
+    PixelDatas::U8(encode_rg16s_impl(&rgba8_bytes(pixels), w, h))
 }
 
 pub fn decode_rg16(data: &PixelDatas, w: usize, h: usize) -> PixelDatas {
@@ -494,11 +503,11 @@ fn decode_rgba16_impl(data: &[u8], width: usize, height: usize) -> Vec<u8> {
 }
 
 pub fn encode_rgba16u(pixels: &PixelDatas, w: usize, h: usize) -> PixelDatas {
-    PixelDatas::U8(encode_rgba16u_impl(pixels.as_bytes(), w, h))
+    PixelDatas::U8(encode_rgba16u_impl(&rgba8_bytes(pixels), w, h))
 }
 
 pub fn encode_rgba16s(pixels: &PixelDatas, w: usize, h: usize) -> PixelDatas {
-    PixelDatas::U8(encode_rgba16s_impl(pixels.as_bytes(), w, h))
+    PixelDatas::U8(encode_rgba16s_impl(&rgba8_bytes(pixels), w, h))
 }
 
 pub fn decode_rgba16(data: &PixelDatas, w: usize, h: usize) -> PixelDatas {
