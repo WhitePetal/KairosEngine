@@ -302,12 +302,128 @@ fn decode_r16_impl(data: &[u16], width: usize, height: usize) -> Vec<u8> {
     out
 }
 
+fn encode_r16u_from_u16_impl(rgba: &[u16], width: usize, height: usize) -> Vec<u16> {
+    use rayon::prelude::*;
+    const CHUNK_SIZE: usize = 4096;
+    let pixel_count = width * height;
+    let mut out = vec![0u16; pixel_count];
+    out.par_chunks_mut(CHUNK_SIZE)
+        .enumerate()
+        .for_each(|(chunk_idx, chunk)| {
+            let pixel_base = chunk_idx * CHUNK_SIZE;
+            for (j, dst) in chunk.iter_mut().enumerate() {
+                *dst = rgba[(pixel_base + j) << 2];
+            }
+        });
+    out
+}
+
+fn encode_r16u_from_f16_impl(rgba: &[f16], width: usize, height: usize) -> Vec<u16> {
+    use rayon::prelude::*;
+    const CHUNK_SIZE: usize = 4096;
+    let pixel_count = width * height;
+    let mut out = vec![0u16; pixel_count];
+    out.par_chunks_mut(CHUNK_SIZE)
+        .enumerate()
+        .for_each(|(chunk_idx, chunk)| {
+            let pixel_base = chunk_idx * CHUNK_SIZE;
+            for (j, dst) in chunk.iter_mut().enumerate() {
+                let f = rgba[(pixel_base + j) << 2].to_f32();
+                *dst = if f <= 0.0 { 0 }
+                       else if f >= 1.0 { 65535 }
+                       else { (f * 65535.0).round() as u16 };
+            }
+        });
+    out
+}
+
+fn encode_r16u_from_f32_impl(rgba: &[f32], width: usize, height: usize) -> Vec<u16> {
+    use rayon::prelude::*;
+    const CHUNK_SIZE: usize = 4096;
+    let pixel_count = width * height;
+    let mut out = vec![0u16; pixel_count];
+    out.par_chunks_mut(CHUNK_SIZE)
+        .enumerate()
+        .for_each(|(chunk_idx, chunk)| {
+            let pixel_base = chunk_idx * CHUNK_SIZE;
+            for (j, dst) in chunk.iter_mut().enumerate() {
+                let f = rgba[(pixel_base + j) << 2];
+                *dst = if f <= 0.0 { 0 }
+                       else if f >= 1.0 { 65535 }
+                       else { (f * 65535.0).round() as u16 };
+            }
+        });
+    out
+}
+
+fn encode_r16s_from_u16_impl(rgba: &[u16], width: usize, height: usize) -> Vec<u16> {
+    use rayon::prelude::*;
+    const CHUNK_SIZE: usize = 4096;
+    let pixel_count = width * height;
+    let mut out = vec![0u16; pixel_count];
+    out.par_chunks_mut(CHUNK_SIZE)
+        .enumerate()
+        .for_each(|(chunk_idx, chunk)| {
+            let pixel_base = chunk_idx * CHUNK_SIZE;
+            for (j, dst) in chunk.iter_mut().enumerate() {
+                *dst = rgba[(pixel_base + j) << 2] as i16 as u16;
+            }
+        });
+    out
+}
+
+fn encode_r16s_from_f16_impl(rgba: &[f16], width: usize, height: usize) -> Vec<u16> {
+    use rayon::prelude::*;
+    const CHUNK_SIZE: usize = 4096;
+    let pixel_count = width * height;
+    let mut out = vec![0u16; pixel_count];
+    out.par_chunks_mut(CHUNK_SIZE)
+        .enumerate()
+        .for_each(|(chunk_idx, chunk)| {
+            let pixel_base = chunk_idx * CHUNK_SIZE;
+            for (j, dst) in chunk.iter_mut().enumerate() {
+                let f = rgba[(pixel_base + j) << 2].to_f32();
+                let clamped = f.max(-1.0).min(1.0);
+                *dst = (clamped * 32767.0).round() as i16 as u16;
+            }
+        });
+    out
+}
+
+fn encode_r16s_from_f32_impl(rgba: &[f32], width: usize, height: usize) -> Vec<u16> {
+    use rayon::prelude::*;
+    const CHUNK_SIZE: usize = 4096;
+    let pixel_count = width * height;
+    let mut out = vec![0u16; pixel_count];
+    out.par_chunks_mut(CHUNK_SIZE)
+        .enumerate()
+        .for_each(|(chunk_idx, chunk)| {
+            let pixel_base = chunk_idx * CHUNK_SIZE;
+            for (j, dst) in chunk.iter_mut().enumerate() {
+                let f = rgba[(pixel_base + j) << 2];
+                let clamped = f.max(-1.0).min(1.0);
+                *dst = (clamped * 32767.0).round() as i16 as u16;
+            }
+        });
+    out
+}
+
 pub fn encode_r16u(pixels: &PixelDatas, w: usize, h: usize) -> PixelDatas {
-    PixelDatas::U16(encode_r16u_impl(&rgba8_bytes(pixels), w, h))
+    match pixels {
+        PixelDatas::U8(rgba) => PixelDatas::U16(encode_r16u_impl(rgba, w, h)),
+        PixelDatas::U16(rgba) => PixelDatas::U16(encode_r16u_from_u16_impl(rgba, w, h)),
+        PixelDatas::F16(rgba) => PixelDatas::U16(encode_r16u_from_f16_impl(rgba, w, h)),
+        PixelDatas::F32(rgba) => PixelDatas::U16(encode_r16u_from_f32_impl(rgba, w, h)),
+    }
 }
 
 pub fn encode_r16s(pixels: &PixelDatas, w: usize, h: usize) -> PixelDatas {
-    PixelDatas::U16(encode_r16s_impl(&rgba8_bytes(pixels), w, h))
+    match pixels {
+        PixelDatas::U8(rgba) => PixelDatas::U16(encode_r16s_impl(rgba, w, h)),
+        PixelDatas::U16(rgba) => PixelDatas::U16(encode_r16s_from_u16_impl(rgba, w, h)),
+        PixelDatas::F16(rgba) => PixelDatas::U16(encode_r16s_from_f16_impl(rgba, w, h)),
+        PixelDatas::F32(rgba) => PixelDatas::U16(encode_r16s_from_f32_impl(rgba, w, h)),
+    }
 }
 
 pub fn decode_r16(data: &PixelDatas, w: usize, h: usize) -> PixelDatas {
@@ -383,12 +499,132 @@ fn decode_rg16_impl(data: &[u16], width: usize, height: usize) -> Vec<u8> {
     out
 }
 
+fn encode_rg16u_from_u16_impl(rgba: &[u16], width: usize, height: usize) -> Vec<u16> {
+    const CHUNK_SIZE: usize = 4096;
+    let pixel_count = width * height;
+    let mut out = vec![0u16; pixel_count << 1];
+    out.par_chunks_mut(CHUNK_SIZE << 1)
+        .enumerate()
+        .for_each(|(chunk_idx, chunk)| {
+            let pixel_base = chunk_idx * CHUNK_SIZE;
+            for (j, pair) in chunk.chunks_mut(2).enumerate() {
+                let src_idx = (pixel_base + j) << 2;
+                pair[0] = rgba[src_idx];
+                pair[1] = rgba[src_idx + 1];
+            }
+        });
+    out
+}
+
+fn encode_rg16u_from_f16_impl(rgba: &[f16], width: usize, height: usize) -> Vec<u16> {
+    const CHUNK_SIZE: usize = 4096;
+    let pixel_count = width * height;
+    let mut out = vec![0u16; pixel_count << 1];
+    out.par_chunks_mut(CHUNK_SIZE << 1)
+        .enumerate()
+        .for_each(|(chunk_idx, chunk)| {
+            let pixel_base = chunk_idx * CHUNK_SIZE;
+            for (j, pair) in chunk.chunks_mut(2).enumerate() {
+                let src_idx = (pixel_base + j) << 2;
+                let fr = rgba[src_idx].to_f32();
+                let fg = rgba[src_idx + 1].to_f32();
+                pair[0] = if fr <= 0.0 { 0 } else if fr >= 1.0 { 65535 } else { (fr * 65535.0).round() as u16 };
+                pair[1] = if fg <= 0.0 { 0 } else if fg >= 1.0 { 65535 } else { (fg * 65535.0).round() as u16 };
+            }
+        });
+    out
+}
+
+fn encode_rg16u_from_f32_impl(rgba: &[f32], width: usize, height: usize) -> Vec<u16> {
+    const CHUNK_SIZE: usize = 4096;
+    let pixel_count = width * height;
+    let mut out = vec![0u16; pixel_count << 1];
+    out.par_chunks_mut(CHUNK_SIZE << 1)
+        .enumerate()
+        .for_each(|(chunk_idx, chunk)| {
+            let pixel_base = chunk_idx * CHUNK_SIZE;
+            for (j, pair) in chunk.chunks_mut(2).enumerate() {
+                let src_idx = (pixel_base + j) << 2;
+                let fr = rgba[src_idx];
+                let fg = rgba[src_idx + 1];
+                pair[0] = if fr <= 0.0 { 0 } else if fr >= 1.0 { 65535 } else { (fr * 65535.0).round() as u16 };
+                pair[1] = if fg <= 0.0 { 0 } else if fg >= 1.0 { 65535 } else { (fg * 65535.0).round() as u16 };
+            }
+        });
+    out
+}
+
+fn encode_rg16s_from_u16_impl(rgba: &[u16], width: usize, height: usize) -> Vec<u16> {
+    const CHUNK_SIZE: usize = 4096;
+    let pixel_count = width * height;
+    let mut out = vec![0u16; pixel_count << 1];
+    out.par_chunks_mut(CHUNK_SIZE << 1)
+        .enumerate()
+        .for_each(|(chunk_idx, chunk)| {
+            let pixel_base = chunk_idx * CHUNK_SIZE;
+            for (j, pair) in chunk.chunks_mut(2).enumerate() {
+                let src_idx = (pixel_base + j) << 2;
+                pair[0] = rgba[src_idx] as i16 as u16;
+                pair[1] = rgba[src_idx + 1] as i16 as u16;
+            }
+        });
+    out
+}
+
+fn encode_rg16s_from_f16_impl(rgba: &[f16], width: usize, height: usize) -> Vec<u16> {
+    const CHUNK_SIZE: usize = 4096;
+    let pixel_count = width * height;
+    let mut out = vec![0u16; pixel_count << 1];
+    out.par_chunks_mut(CHUNK_SIZE << 1)
+        .enumerate()
+        .for_each(|(chunk_idx, chunk)| {
+            let pixel_base = chunk_idx * CHUNK_SIZE;
+            for (j, pair) in chunk.chunks_mut(2).enumerate() {
+                let src_idx = (pixel_base + j) << 2;
+                let fr = rgba[src_idx].to_f32().max(-1.0).min(1.0);
+                let fg = rgba[src_idx + 1].to_f32().max(-1.0).min(1.0);
+                pair[0] = (fr * 32767.0).round() as i16 as u16;
+                pair[1] = (fg * 32767.0).round() as i16 as u16;
+            }
+        });
+    out
+}
+
+fn encode_rg16s_from_f32_impl(rgba: &[f32], width: usize, height: usize) -> Vec<u16> {
+    const CHUNK_SIZE: usize = 4096;
+    let pixel_count = width * height;
+    let mut out = vec![0u16; pixel_count << 1];
+    out.par_chunks_mut(CHUNK_SIZE << 1)
+        .enumerate()
+        .for_each(|(chunk_idx, chunk)| {
+            let pixel_base = chunk_idx * CHUNK_SIZE;
+            for (j, pair) in chunk.chunks_mut(2).enumerate() {
+                let src_idx = (pixel_base + j) << 2;
+                let fr = rgba[src_idx].max(-1.0).min(1.0);
+                let fg = rgba[src_idx + 1].max(-1.0).min(1.0);
+                pair[0] = (fr * 32767.0).round() as i16 as u16;
+                pair[1] = (fg * 32767.0).round() as i16 as u16;
+            }
+        });
+    out
+}
+
 pub fn encode_rg16u(pixels: &PixelDatas, w: usize, h: usize) -> PixelDatas {
-    PixelDatas::U16(encode_rg16u_impl(&rgba8_bytes(pixels), w, h))
+    match pixels {
+        PixelDatas::U8(rgba) => PixelDatas::U16(encode_rg16u_impl(rgba, w, h)),
+        PixelDatas::U16(rgba) => PixelDatas::U16(encode_rg16u_from_u16_impl(rgba, w, h)),
+        PixelDatas::F16(rgba) => PixelDatas::U16(encode_rg16u_from_f16_impl(rgba, w, h)),
+        PixelDatas::F32(rgba) => PixelDatas::U16(encode_rg16u_from_f32_impl(rgba, w, h)),
+    }
 }
 
 pub fn encode_rg16s(pixels: &PixelDatas, w: usize, h: usize) -> PixelDatas {
-    PixelDatas::U16(encode_rg16s_impl(&rgba8_bytes(pixels), w, h))
+    match pixels {
+        PixelDatas::U8(rgba) => PixelDatas::U16(encode_rg16s_impl(rgba, w, h)),
+        PixelDatas::U16(rgba) => PixelDatas::U16(encode_rg16s_from_u16_impl(rgba, w, h)),
+        PixelDatas::F16(rgba) => PixelDatas::U16(encode_rg16s_from_f16_impl(rgba, w, h)),
+        PixelDatas::F32(rgba) => PixelDatas::U16(encode_rg16s_from_f32_impl(rgba, w, h)),
+    }
 }
 
 pub fn decode_rg16(data: &PixelDatas, w: usize, h: usize) -> PixelDatas {
@@ -468,12 +704,106 @@ fn decode_rgba16_impl(data: &[u16], width: usize, height: usize) -> Vec<u8> {
     out
 }
 
+fn encode_rgba16u_from_u16_impl(rgba: &[u16], _width: usize, _height: usize) -> Vec<u16> {
+    rgba.to_vec()
+}
+
+fn encode_rgba16u_from_f16_impl(rgba: &[f16], width: usize, height: usize) -> Vec<u16> {
+    const CHUNK_SIZE: usize = 4096;
+    let pixel_count = width * height;
+    let mut out = vec![0u16; pixel_count << 2];
+    out.par_chunks_mut(CHUNK_SIZE << 2)
+        .enumerate()
+        .for_each(|(chunk_idx, chunk)| {
+            let pixel_base = chunk_idx * CHUNK_SIZE;
+            for (j, quad) in chunk.chunks_mut(4).enumerate() {
+                let src_idx = (pixel_base + j) << 2;
+                for k in 0..4 {
+                    let f = rgba[src_idx + k].to_f32();
+                    quad[k] = if f <= 0.0 { 0 } else if f >= 1.0 { 65535 } else { (f * 65535.0).round() as u16 };
+                }
+            }
+        });
+    out
+}
+
+fn encode_rgba16u_from_f32_impl(rgba: &[f32], width: usize, height: usize) -> Vec<u16> {
+    const CHUNK_SIZE: usize = 4096;
+    let pixel_count = width * height;
+    let mut out = vec![0u16; pixel_count << 2];
+    out.par_chunks_mut(CHUNK_SIZE << 2)
+        .enumerate()
+        .for_each(|(chunk_idx, chunk)| {
+            let pixel_base = chunk_idx * CHUNK_SIZE;
+            for (j, quad) in chunk.chunks_mut(4).enumerate() {
+                let src_idx = (pixel_base + j) << 2;
+                for k in 0..4 {
+                    let f = rgba[src_idx + k];
+                    quad[k] = if f <= 0.0 { 0 } else if f >= 1.0 { 65535 } else { (f * 65535.0).round() as u16 };
+                }
+            }
+        });
+    out
+}
+
+fn encode_rgba16s_from_u16_impl(rgba: &[u16], _width: usize, _height: usize) -> Vec<u16> {
+    rgba.to_vec()
+}
+
+fn encode_rgba16s_from_f16_impl(rgba: &[f16], width: usize, height: usize) -> Vec<u16> {
+    const CHUNK_SIZE: usize = 4096;
+    let pixel_count = width * height;
+    let mut out = vec![0u16; pixel_count << 2];
+    out.par_chunks_mut(CHUNK_SIZE << 2)
+        .enumerate()
+        .for_each(|(chunk_idx, chunk)| {
+            let pixel_base = chunk_idx * CHUNK_SIZE;
+            for (j, quad) in chunk.chunks_mut(4).enumerate() {
+                let src_idx = (pixel_base + j) << 2;
+                for k in 0..4 {
+                    let f = rgba[src_idx + k].to_f32().max(-1.0).min(1.0);
+                    quad[k] = (f * 32767.0).round() as i16 as u16;
+                }
+            }
+        });
+    out
+}
+
+fn encode_rgba16s_from_f32_impl(rgba: &[f32], width: usize, height: usize) -> Vec<u16> {
+    const CHUNK_SIZE: usize = 4096;
+    let pixel_count = width * height;
+    let mut out = vec![0u16; pixel_count << 2];
+    out.par_chunks_mut(CHUNK_SIZE << 2)
+        .enumerate()
+        .for_each(|(chunk_idx, chunk)| {
+            let pixel_base = chunk_idx * CHUNK_SIZE;
+            for (j, quad) in chunk.chunks_mut(4).enumerate() {
+                let src_idx = (pixel_base + j) << 2;
+                for k in 0..4 {
+                    let f = rgba[src_idx + k].max(-1.0).min(1.0);
+                    quad[k] = (f * 32767.0).round() as i16 as u16;
+                }
+            }
+        });
+    out
+}
+
 pub fn encode_rgba16u(pixels: &PixelDatas, w: usize, h: usize) -> PixelDatas {
-    PixelDatas::U16(encode_rgba16u_impl(&rgba8_bytes(pixels), w, h))
+    match pixels {
+        PixelDatas::U8(rgba) => PixelDatas::U16(encode_rgba16u_impl(rgba, w, h)),
+        PixelDatas::U16(rgba) => PixelDatas::U16(encode_rgba16u_from_u16_impl(rgba, w, h)),
+        PixelDatas::F16(rgba) => PixelDatas::U16(encode_rgba16u_from_f16_impl(rgba, w, h)),
+        PixelDatas::F32(rgba) => PixelDatas::U16(encode_rgba16u_from_f32_impl(rgba, w, h)),
+    }
 }
 
 pub fn encode_rgba16s(pixels: &PixelDatas, w: usize, h: usize) -> PixelDatas {
-    PixelDatas::U16(encode_rgba16s_impl(&rgba8_bytes(pixels), w, h))
+    match pixels {
+        PixelDatas::U8(rgba) => PixelDatas::U16(encode_rgba16s_impl(rgba, w, h)),
+        PixelDatas::U16(rgba) => PixelDatas::U16(encode_rgba16s_from_u16_impl(rgba, w, h)),
+        PixelDatas::F16(rgba) => PixelDatas::U16(encode_rgba16s_from_f16_impl(rgba, w, h)),
+        PixelDatas::F32(rgba) => PixelDatas::U16(encode_rgba16s_from_f32_impl(rgba, w, h)),
+    }
 }
 
 pub fn decode_rgba16(data: &PixelDatas, w: usize, h: usize) -> PixelDatas {
