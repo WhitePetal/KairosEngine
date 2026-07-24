@@ -1,6 +1,6 @@
 use std::fs;
 
-use crate::kairos_editor::ui::{UIReader, inspector::{Inspector}};
+use crate::kairos_editor::ui::{UIReader, inspector::Inspector};
 
 pub struct DirectoryInspector {
     path: std::path::PathBuf,

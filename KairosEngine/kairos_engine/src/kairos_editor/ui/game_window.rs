@@ -6,10 +6,13 @@ use toml::from_str;
 
 use crate::{
     graphics::{
-        attachment::{Attachment, AttachmentLoadAction, AttachmentStoreAction}, camera::Camera, egui_texture_handle::EguiTextureHandle, graphics_graph::{
+        attachment::{Attachment, AttachmentLoadAction, AttachmentStoreAction},
+        camera::Camera,
+        egui_texture_handle::EguiTextureHandle,
+        graphics_graph::{
             GraphicsCommand,
             graphics_node::{ColorAttachmentBind, DepthAttachmentBind},
-        }
+        },
     },
     kairos_editor::{
         Engine,
@@ -255,7 +258,10 @@ impl GameWindow {
         self.model.height = height;
     }
 
-    pub fn register_view_bind(&mut self, recever: tokio::sync::oneshot::Receiver<EguiTextureHandle>) {
+    pub fn register_view_bind(
+        &mut self,
+        recever: tokio::sync::oneshot::Receiver<EguiTextureHandle>,
+    ) {
         self.model.egui_bind_tex_recever = Some(recever);
     }
 

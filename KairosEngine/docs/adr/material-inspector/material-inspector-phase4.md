@@ -201,7 +201,7 @@ preview_meshes = [
 ```rust
 pub const PATH_MATERIAL_INSPECTOR_STYLE: &'static str =
     "Preferences/Styles/Inspectors/Material.toml";
-pub const PATH_ERROR_SHADER: &'static str = "res/shaders/error_shader.wgsl";
+pub const PATH_ERROR_SHADER: &'static str = "res/shaders/gizmos/error_shader.wgsl";
 pub const PATH_WHITE_TEXTURE: &'static str = "res/textures/white.texture";
 ```
 

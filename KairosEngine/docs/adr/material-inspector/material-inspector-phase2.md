@@ -12,7 +12,7 @@
 | `asset_loader/assets/asset/serialized_material.rs` | **新建** | SerializedMaterialAssetsSystem |
 | `asset_loader/assets/asset.rs` | 修改 | 注册 serialized_material 模块 |
 | `Preferences/Styles/Inspectors/Material.toml` | **新建** | Style TOML |
-| `res/shaders/error_shader.wgsl` | **新建** | 紫色降级 shader |
+| `res/shaders/gizmos/error_shader.wgsl` | **新建** | 紫色降级 shader |
 | `res/textures/white.texture` (+ `white.texture_bin`) | **新建** | 白色降级纹理 |
 | `graphics/render_state.rs` | 修改 | 为 BlendState/Face/PrimitiveTopology 添加包装类型 + Display/label |
 | `graphics/material.rs` | 修改 | SerializedMaterial 可能需调整（确保与 SerializedMaterialAssetsSystem 兼容） |

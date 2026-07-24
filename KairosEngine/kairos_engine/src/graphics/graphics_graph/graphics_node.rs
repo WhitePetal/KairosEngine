@@ -2,7 +2,10 @@ use std::{hash::Hash, sync::Arc};
 
 use crate::{
     asset_loader::assets::{AssetHandle, MaterialAssetsSystem, MeshAssetsSystem},
-    graphics::{attachment::{AttachmentLoadAction, AttachmentStoreAction}, egui_texture_handle::EguiTextureHandle},
+    graphics::{
+        attachment::{AttachmentLoadAction, AttachmentStoreAction},
+        egui_texture_handle::EguiTextureHandle,
+    },
     math::float4x4,
 };
 

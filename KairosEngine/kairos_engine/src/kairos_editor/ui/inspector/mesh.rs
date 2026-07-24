@@ -10,13 +10,17 @@ use serde::{Deserialize, Serialize};
 use crate::{
     asset_loader::assets::{AssetHandle, AssetsServer, MaterialAssetsSystem, MeshAssetsSystem},
     graphics::{
-        attachment::{Attachment, AttachmentFormat, AttachmentLoadAction, AttachmentStoreAction}, egui_texture_handle::EguiTextureHandle, graphics_graph::{
+        attachment::{Attachment, AttachmentFormat, AttachmentLoadAction, AttachmentStoreAction},
+        egui_texture_handle::EguiTextureHandle,
+        graphics_graph::{
             GraphicsCommand,
             graphics_node::{ColorAttachmentBind, DepthAttachmentBind},
-        }, mesh::{Mesh, wireframe}
+        },
+        mesh::{Mesh, wireframe},
     },
     kairos_editor::ui::{
-        Message, Messager, UIReader, dialog::Dialog, inspector::Inspector, paths, scene_camera::SceneCamera
+        Message, Messager, UIReader, dialog::Dialog, inspector::Inspector, paths,
+        scene_camera::SceneCamera,
     },
     math::{Vector, float2, float3, float4, float4x4},
     spatial::AABB,

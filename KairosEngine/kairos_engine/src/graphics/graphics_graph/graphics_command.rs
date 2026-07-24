@@ -3,11 +3,13 @@ use std::sync::Arc;
 use crate::{
     asset_loader::assets::{AssetHandle, MaterialAssetsSystem, MeshAssetsSystem},
     graphics::{
-        attachment::Attachment, egui_texture_handle::EguiTextureHandle, graphics_graph::graphics_node::{
+        attachment::Attachment,
+        egui_texture_handle::EguiTextureHandle,
+        graphics_graph::graphics_node::{
             BaseDraw, BindAttachmentToEguiNode, ColorAttachmentBind, ColorAttachmentId,
             CopyAttachmentToEguiNode, DepthAttachmentBind, DepthAttachmentId, EguiDraw, GraphNode,
             OutputToFrameBufferNode, RenderPassNode, VPId,
-        }
+        },
     },
     math::float4x4,
 };

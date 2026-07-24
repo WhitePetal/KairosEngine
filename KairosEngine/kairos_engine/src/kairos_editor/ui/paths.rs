@@ -36,15 +36,14 @@ pub const PATH_MESH_INSPECTOR_STYLE: &'static str = "Preferences/Styles/Inspecto
 pub const PATH_WGSL_SYNTAX_CONFIG: &'static str = "Preferences/SublimeSyntax/wgsl_syntax.toml";
 pub const PATH_RUST_SYNTAX_CONFIG: &'static str = "Preferences/SublimeSyntax/rust_syntax.toml";
 
-pub const PATH_MESH_INSPECTOR_PREVIEW_MATERIAL: &'static str =
-    "res/materials/gizmos/mesh_inspector/preview.mat";
+pub const PATH_MESH_INSPECTOR_PREVIEW_MATERIAL: &'static str = "res/materials/gizmos/preview.mat";
 pub const PATH_MESH_INSPECTOR_PREVIEW_WIREFRAME_MATERIAL: &'static str =
-    "res/materials/gizmos/mesh_inspector/preview_wireframe.mat";
+    "res/materials/gizmos/preview_wireframe.mat";
 pub const PATH_MESH_INSPECTOR_PREVIEW_SHADED_MATERIAL: &'static str =
-    "res/materials/gizmos/mesh_inspector/preview_shaded.mat";
+    "res/materials/gizmos/preview_shaded.mat";
 pub const PATH_MESH_INSPECTOR_PREVIEW_NORMAL_MATERIAL: &'static str =
-    "res/materials/gizmos/mesh_inspector/preview_normal.mat";
+    "res/materials/gizmos/preview_normal.mat";
 pub const PATH_MESH_INSPECTOR_PREVIEW_TANGENT_MATERIAL: &'static str =
-    "res/materials/gizmos/mesh_inspector/preview_tangent.mat";
+    "res/materials/gizmos/preview_tangent.mat";
 pub const PATH_MESH_INSPECTOR_PREVIEW_VERTEX_COLOR_MATERIAL: &'static str =
-    "res/materials/gizmos/mesh_inspector/preview_vertex_color.mat";
+    "res/materials/gizmos/preview_vertex_color.mat";

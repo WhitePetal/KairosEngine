@@ -1,4 +1,4 @@
-source_path = "res/materials/gizmos/mesh_inspector/preview_wireframe.mat"
+source_path = "res/materials/gizmos/preview_wireframe.mat"
 shader_path = "res/shaders/wireframe.wgsl"
 
 [render_state]

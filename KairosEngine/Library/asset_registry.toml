@@ -351,6 +351,94 @@ guid = "47b07a99-a2f8-4bf5-99d5-35b96aa41d77"
 path = "docs/plan"
 
 [[entries]]
+guid = "48e98ad2-3454-45b7-909b-e4586cf9e601"
+path = "docs/plan/hierarchy"
+
+[[entries]]
+guid = "f73c74be-d8de-4a05-a660-bfc4ca2d0d26"
+path = "docs/plan/hierarchy/README.md"
+
+[[entries]]
+guid = "71e4d59c-461e-4acb-9b3e-71b1e6af879a"
+path = "docs/plan/hierarchy/handoff.md"
+
+[[entries]]
+guid = "a49e53eb-937a-4836-abc0-175496a70389"
+path = "docs/plan/hierarchy/hierarchy-phase1-requirements.md"
+
+[[entries]]
+guid = "6f810a24-fa88-40ab-9359-1fe0193a9f07"
+path = "docs/plan/hierarchy/hierarchy-phase2-features.md"
+
+[[entries]]
+guid = "72991527-3142-4982-805a-bce087c07088"
+path = "docs/plan/hierarchy/hierarchy-phase3-tech.md"
+
+[[entries]]
+guid = "10d1be2e-4ec6-48a7-ad71-98e82019c6e6"
+path = "docs/plan/hierarchy/hierarchy-phase4-schedule.md"
+
+[[entries]]
+guid = "117e4b73-c2d8-41dd-846b-99e6fabc6302"
+path = "docs/plan/kairos-editor-claw"
+
+[[entries]]
+guid = "7ce30218-840d-443c-bb0e-a55ac7431bfd"
+path = "docs/plan/kairos-editor-claw/README.md"
+
+[[entries]]
+guid = "80dc14ce-6e56-4ebf-a481-b86c01e90454"
+path = "docs/plan/kairos-editor-claw/claw-phase1-requirements.md"
+
+[[entries]]
+guid = "7e27e96c-82a6-4bb7-b9b9-94c280bc9eb3"
+path = "docs/plan/kairos-editor-claw/claw-phase2-features.md"
+
+[[entries]]
+guid = "60a935e1-af91-4bef-9955-9bd7b372cbef"
+path = "docs/plan/kairos-editor-claw/claw-phase3-tech.md"
+
+[[entries]]
+guid = "b6aceea7-7777-4bf6-b763-2b959ac5aa4d"
+path = "docs/plan/kairos-editor-claw/claw-phase4-schedule.md"
+
+[[entries]]
+guid = "f425d037-2b33-463f-a68f-a67ea024471e"
+path = "docs/plan/kairos-editor-claw/handoff-claw.md"
+
+[[entries]]
+guid = "8da09597-6ee2-43e2-b1e2-48b31452e573"
+path = "docs/plan/kairos-editor-mcp"
+
+[[entries]]
+guid = "b22a1b0f-8946-4639-983a-b109aada3e4e"
+path = "docs/plan/kairos-editor-mcp/handoff.md"
+
+[[entries]]
+guid = "9f8aedaa-2166-4623-b254-e4bd0bb6127b"
+path = "docs/plan/kairos-editor-mcp/phase1-requirements.md"
+
+[[entries]]
+guid = "a23ad6ef-a187-4533-9bc6-8fc7692fe810"
+path = "docs/plan/kairos-editor-mcp/phase2-observability.md"
+
+[[entries]]
+guid = "a0612b6d-fa55-4693-bbdd-2db946e8bb16"
+path = "docs/plan/kairos-editor-mcp/phase2-tools-catalog.md"
+
+[[entries]]
+guid = "0f7de035-63ce-42fd-8a9e-8316724f27c0"
+path = "docs/plan/kairos-editor-mcp/phase3-event-loop-integration.md"
+
+[[entries]]
+guid = "879649ca-a948-43f0-8f9e-0e27f70ccf2e"
+path = "docs/plan/kairos-editor-mcp/phase3-middleware-architecture.md"
+
+[[entries]]
+guid = "916cdff9-f8d7-4f2f-8a9f-922382076664"
+path = "docs/plan/kairos-editor-mcp/phase4-work-schedule.md"
+
+[[entries]]
 guid = "087f304a-6688-44ef-a575-8f9d65b762fc"
 path = "docs/plan/material-inspector.md"
 
@@ -365,6 +453,34 @@ path = "docs/research"
 [[entries]]
 guid = "b60f8c47-3969-416a-8452-e6518edda222"
 path = "docs/research/README.md"
+
+[[entries]]
+guid = "6bb2bb81-02df-4f80-be76-c294fb4fcd71"
+path = "docs/research/claw-tools-architecture.md"
+
+[[entries]]
+guid = "364e8fdc-bbb1-4e93-8d2f-8c8a32f48d2d"
+path = "docs/research/egui-mcp-analysis.md"
+
+[[entries]]
+guid = "cfb88e5b-a120-4712-93f3-c35fe33c4736"
+path = "docs/research/hierarchy"
+
+[[entries]]
+guid = "4e44e8f7-0186-4356-b51b-628622aa5b9b"
+path = "docs/research/hierarchy/bevy-godot-hierarchy.md"
+
+[[entries]]
+guid = "1f4341f6-0216-4645-9e98-fc2a8935d4a0"
+path = "docs/research/hierarchy/ue-outliner.md"
+
+[[entries]]
+guid = "edc039bf-0297-4702-89d5-e679c45786dd"
+path = "docs/research/hierarchy/unity-hierarchy.md"
+
+[[entries]]
+guid = "da13c85e-4ef3-464e-96b9-5ac86a948494"
+path = "docs/research/mcp-protocol.md"
 
 [[entries]]
 guid = "69431eb0-656d-4abf-a05c-c7381c7e9aaf"
@@ -385,6 +501,10 @@ path = "docs/research/texture-encoding/texture-compression-reference-impls.md"
 [[entries]]
 guid = "9fb5a6c1-fae8-404d-a174-d09d47123696"
 path = "docs/research/texture-encoding/wgpu-srgb-handling.md"
+
+[[entries]]
+guid = "9cabd4bc-02f3-4d33-bcf6-f2127e90731f"
+path = "docs/research/zed-ai-agent-integration.md"
 
 [[entries]]
 guid = "a9d7418e-b508-4dab-98cd-507a29299957"
@@ -1411,6 +1531,34 @@ guid = "85ba75e0-21df-4c9a-9bb9-85ec53ba09e8"
 path = "kairos_supervisor/src/main.rs"
 
 [[entries]]
+guid = "689dba96-bf4f-4b92-83db-50db6ecaef9a"
+path = "prototypes"
+
+[[entries]]
+guid = "999ad358-c41c-4591-8d05-4502be59fdcb"
+path = "prototypes/kairos-editor-mcp-middleware"
+
+[[entries]]
+guid = "1cd40287-e9e7-4ae5-abc0-7a4c44dd843e"
+path = "prototypes/kairos-editor-mcp-middleware/Cargo.toml"
+
+[[entries]]
+guid = "d1405c51-fb13-4ccd-9d02-53629d5ec4cb"
+path = "prototypes/kairos-editor-mcp-middleware/src"
+
+[[entries]]
+guid = "9b8ba5b9-8bff-4de6-8dd0-76b8acbe5073"
+path = "prototypes/kairos-editor-mcp-middleware/src/channel.rs"
+
+[[entries]]
+guid = "3b1531e2-a5ab-48e0-80db-027fcee7ac27"
+path = "prototypes/kairos-editor-mcp-middleware/src/lib.rs"
+
+[[entries]]
+guid = "ba012a40-12c2-402b-a7f0-d355f7206496"
+path = "prototypes/kairos-editor-mcp-middleware/src/types.rs"
+
+[[entries]]
 guid = "b6048d44-7787-4e1f-96ca-07cf9da68098"
 path = "res"
 
@@ -1451,24 +1599,28 @@ guid = "e46cab4b-9998-4d1d-b22b-e3d0139ce05c"
 path = "res/materials/gizmos/mesh_inspector/preview.mat"
 
 [[entries]]
+guid = "29411308-b0f9-4f72-96cc-1f6f263f4dd6"
+path = "res/materials/gizmos/preview.mat"
+
+[[entries]]
 guid = "a4d5c891-dbb1-45ab-94ff-d304205296dd"
-path = "res/materials/gizmos/mesh_inspector/preview_normal.mat"
+path = "res/materials/gizmos/preview_normal.mat"
 
 [[entries]]
 guid = "00a2388a-9d6c-4068-8427-b84f3f1f550b"
-path = "res/materials/gizmos/mesh_inspector/preview_shaded.mat"
+path = "res/materials/gizmos/preview_shaded.mat"
 
 [[entries]]
 guid = "70fb1922-c719-464a-874a-6eb92ef80542"
-path = "res/materials/gizmos/mesh_inspector/preview_tangent.mat"
+path = "res/materials/gizmos/preview_tangent.mat"
 
 [[entries]]
 guid = "0478a1f5-fc34-420e-9221-aa06c3fa273b"
-path = "res/materials/gizmos/mesh_inspector/preview_vertex_color.mat"
+path = "res/materials/gizmos/preview_vertex_color.mat"
 
 [[entries]]
 guid = "7c3e1c3c-4025-4df0-8240-196a88bae096"
-path = "res/materials/gizmos/mesh_inspector/preview_wireframe.mat"
+path = "res/materials/gizmos/preview_wireframe.mat"
 
 [[entries]]
 guid = "97b05a0e-0c8f-47b7-baf9-83236f5ecf79"
@@ -1495,16 +1647,16 @@ guid = "140ee644-3dc8-4f5c-8c61-fd9d38e73230"
 path = "res/shaders"
 
 [[entries]]
-guid = "ddce8e55-a8f2-44c3-b87f-71a06eee3195"
-path = "res/shaders/error_shader.wgsl"
-
-[[entries]]
 guid = "736a8638-ec25-4221-9cc7-00346d581b1a"
 path = "res/shaders/gizmos"
 
 [[entries]]
 guid = "3edc7c6a-57f1-4f4c-b008-34c4022df5f6"
 path = "res/shaders/gizmos/axes.wgsl"
+
+[[entries]]
+guid = "ddce8e55-a8f2-44c3-b87f-71a06eee3195"
+path = "res/shaders/gizmos/error_shader.wgsl"
 
 [[entries]]
 guid = "b25759b3-fa7b-4d85-a366-2a3a94f9b439"
@@ -1516,23 +1668,23 @@ path = "res/shaders/gizmos/mesh_inspector"
 
 [[entries]]
 guid = "fb58f3a5-4eff-49e1-851f-a267ad2af5b7"
-path = "res/shaders/gizmos/mesh_inspector/preview.wgsl"
+path = "res/shaders/gizmos/preview.wgsl"
 
 [[entries]]
 guid = "0e15cab7-f6ea-40d9-8de5-ff0911c61615"
-path = "res/shaders/gizmos/mesh_inspector/preview_normal.wgsl"
+path = "res/shaders/gizmos/preview_normal.wgsl"
 
 [[entries]]
 guid = "05668a71-aeb3-4590-abd6-ea37c070d7bc"
-path = "res/shaders/gizmos/mesh_inspector/preview_shaded.wgsl"
+path = "res/shaders/gizmos/preview_shaded.wgsl"
 
 [[entries]]
 guid = "6260e6b2-43ea-49a1-839f-a71a9d39eb7c"
-path = "res/shaders/gizmos/mesh_inspector/preview_tangent.wgsl"
+path = "res/shaders/gizmos/preview_tangent.wgsl"
 
 [[entries]]
 guid = "112138a8-1858-4910-ad4b-58d185b1be7b"
-path = "res/shaders/gizmos/mesh_inspector/preview_vertex_color.wgsl"
+path = "res/shaders/gizmos/preview_vertex_color.wgsl"
 
 [[entries]]
 guid = "1a9d150d-8dd1-4868-ba36-77233dfa7d35"

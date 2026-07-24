@@ -100,6 +100,12 @@ pub struct KairosEditorRuntime {
 
 impl KairosEditorRuntime {
     pub fn new(proxy: EventLoopProxy<KairosEditorRuntimeEvent>) -> RuntimeResult<Self> {
+        // Temp
+        // let (st, data) = crate::graphics::texture::SerializedTexture::convert_img_to_asset(&std::path::Path::new("res/textures/kairos_texture.png"))?;
+        // st.save_to_file(&data)?;
+        // let (st, data) = crate::graphics::texture::SerializedTexture::convert_img_to_asset(&std::path::Path::new("res/textures/white.png"))?;
+        // st.save_to_file(&data)?;
+
         let egui_ctx = egui::Context::default();
         egui_extras::install_image_loaders(&egui_ctx);
 

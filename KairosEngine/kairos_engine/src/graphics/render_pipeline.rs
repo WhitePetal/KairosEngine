@@ -25,7 +25,14 @@ use winit::{dpi::PhysicalSize, window::Window};
 use crate::{
     asset_loader::assets::{AssetHandle, AssetsServer, TextureAssetsSystem, asset::AssetIndex},
     graphics::{
-        attachment::{AttachmentFormat, InternalAttachmentId}, egui_texture_handle::EguiTextureHandle, graphics_graph::{self, GraphicsGraph, graphics_node::RenderPassNode}, mesh::Mesh, render_state::RenderState, shader::ShaderAsset, texture::{Texture, format::TextureCompressionConfig}, vertex::Vertex
+        attachment::{AttachmentFormat, InternalAttachmentId},
+        egui_texture_handle::EguiTextureHandle,
+        graphics_graph::{self, GraphicsGraph, graphics_node::RenderPassNode},
+        mesh::Mesh,
+        render_state::RenderState,
+        shader::ShaderAsset,
+        texture::{Texture, format::TextureCompressionConfig},
+        vertex::Vertex,
     },
     kairos_paths,
     math::{float4, float4x4},
@@ -43,6 +50,7 @@ struct PipelineCache {
 
 struct TextureCache {
     version: u32,
+    modify_count: u64,
     bind_group: BindGroup,
     layout: BindGroupLayout,
 }
@@ -646,16 +654,22 @@ impl RenderPipeline {
                         material_id,
                         device.push_error_scope(wgpu::ErrorFilter::Validation),
                     ));
+                    let current_modify_count = assets_server
+                        .get_modify_count::<TextureAssetsSystem>(key)
+                        .unwrap_or(0);
                     match texture_cache.entry(key) {
                         std::collections::hash_map::Entry::Occupied(mut entry) => {
                             let cache = entry.get();
-                            if cache.version == version {
+                            if cache.version == version
+                                && cache.modify_count == current_modify_count
+                            {
                                 cache.bind_group.clone()
                             } else {
                                 let (bind_group, layout) =
                                     Self::create_texture(device, queue, texture_asset);
                                 entry.insert(TextureCache {
                                     version,
+                                    modify_count: current_modify_count,
                                     bind_group: bind_group.clone(),
                                     layout,
                                 });
@@ -667,6 +681,7 @@ impl RenderPipeline {
                                 Self::create_texture(device, queue, texture_asset);
                             entry.insert(TextureCache {
                                 version,
+                                modify_count: current_modify_count,
                                 bind_group: bind_group.clone(),
                                 layout,
                             });

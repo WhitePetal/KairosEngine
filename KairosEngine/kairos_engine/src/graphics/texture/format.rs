@@ -13,6 +13,20 @@ use rayon::prelude::*;
 // PixelDatas — universal pixel container
 // ============================================================
 
+/// How raw encoded bytes should be interpreted per-pixel (or per-block).
+///
+/// Each `TextureFormat` variant maps to exactly one of these.
+/// The mapping is defined in [`TextureFormat::raw_pixel_type`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RawPixelType {
+    /// Raw bytes are u8 — SDR uncompressed, BC/ETC/EAC/ASTC block-compressed.
+    U8,
+    /// Raw bytes should be reinterpreted as `half::f16` slices.
+    F16,
+    /// Raw bytes should be reinterpreted as `f32` slices.
+    F32,
+}
+
 /// Pixel data for a single mip level.
 ///
 /// The variant is chosen by the texture format's bit depth:
@@ -66,7 +80,11 @@ pub struct BlockLayout {
 }
 
 impl BlockLayout {
-    pub const BC: BlockLayout = BlockLayout { w: 4, h: 4, bytes: 0 };
+    pub const BC: BlockLayout = BlockLayout {
+        w: 4,
+        h: 4,
+        bytes: 0,
+    };
 
     pub const fn new(w: usize, h: usize, bytes: usize) -> Self {
         Self { w, h, bytes }
@@ -75,7 +93,15 @@ impl BlockLayout {
 
 /// Extract a rectangular block of RGBA8 pixels from a full image.
 /// Out-of-bounds pixels are filled with zeros.
-pub fn extract_block(rgba: &[u8], w: usize, h: usize, x: usize, y: usize, block_w: usize, block_h: usize) -> Vec<[u8; 4]> {
+pub fn extract_block(
+    rgba: &[u8],
+    w: usize,
+    h: usize,
+    x: usize,
+    y: usize,
+    block_w: usize,
+    block_h: usize,
+) -> Vec<[u8; 4]> {
     let mut block = Vec::with_capacity(block_w * block_h);
     for py in 0..block_h {
         for px in 0..block_w {
@@ -95,7 +121,15 @@ pub fn extract_block(rgba: &[u8], w: usize, h: usize, x: usize, y: usize, block_
 /// Extract a block of F16 RGBA pixels from a full image.
 /// Half-float pixels are packed as `[f16; 4]` per pixel.
 /// Out-of-bounds pixels are filled with zero.
-pub fn extract_block_f16(rgba: &[half::f16], w: usize, h: usize, x: usize, y: usize, block_w: usize, block_h: usize) -> Vec<[half::f16; 4]> {
+pub fn extract_block_f16(
+    rgba: &[half::f16],
+    w: usize,
+    h: usize,
+    x: usize,
+    y: usize,
+    block_w: usize,
+    block_h: usize,
+) -> Vec<[half::f16; 4]> {
     let mut block = Vec::with_capacity(block_w * block_h);
     for py in 0..block_h {
         for px in 0..block_w {
@@ -125,51 +159,67 @@ pub fn extract_block_f16(rgba: &[half::f16], w: usize, h: usize, x: usize, y: us
 macro_rules! encode_blocks {
     // U8 variant: for BC1-5, BC7, ETC2, ASTC LDR
     ($name:ident, U8, $block_w:expr, $block_h:expr, $block_size:expr, $block_fn:ident) => {
-        pub fn $name(pixels: &$crate::graphics::texture::format::PixelDatas, width: usize, height: usize) -> $crate::graphics::texture::format::PixelDatas {
+        pub fn $name(
+            pixels: &$crate::graphics::texture::format::PixelDatas,
+            width: usize,
+            height: usize,
+        ) -> $crate::graphics::texture::format::PixelDatas {
             let $crate::graphics::texture::format::PixelDatas::U8(rgba) = pixels else {
                 panic!("encode_blocks! U8 called on non-U8 variant");
             };
             let bx = (width + $block_w - 1) / $block_w;
             let by = (height + $block_h - 1) / $block_h;
             let mut out = vec![0u8; bx * by * $block_size];
-            out.par_chunks_mut($block_size)
-                .enumerate()
-                .for_each(|(i, chunk): (usize, &mut [u8])| {
+            out.par_chunks_mut($block_size).enumerate().for_each(
+                |(i, chunk): (usize, &mut [u8])| {
                     let bx_i = i % bx;
                     let by_i = i / bx;
                     let block = $crate::graphics::texture::format::extract_block(
-                        rgba, width, height,
-                        bx_i * $block_w, by_i * $block_h,
-                        $block_w, $block_h,
+                        rgba,
+                        width,
+                        height,
+                        bx_i * $block_w,
+                        by_i * $block_h,
+                        $block_w,
+                        $block_h,
                     );
                     let encoded = $block_fn(&block);
                     chunk.copy_from_slice(&encoded);
-                });
+                },
+            );
             $crate::graphics::texture::format::PixelDatas::U8(out)
         }
     };
     // F16 variant: for BC6h, ASTC HDR
     ($name:ident, F16, $block_w:expr, $block_h:expr, $block_size:expr, $block_fn:ident) => {
-        pub fn $name(pixels: &$crate::graphics::texture::format::PixelDatas, width: usize, height: usize) -> $crate::graphics::texture::format::PixelDatas {
+        pub fn $name(
+            pixels: &$crate::graphics::texture::format::PixelDatas,
+            width: usize,
+            height: usize,
+        ) -> $crate::graphics::texture::format::PixelDatas {
             let $crate::graphics::texture::format::PixelDatas::F16(rgba) = pixels else {
                 panic!("encode_blocks! F16 called on non-F16 variant");
             };
             let bx = (width + $block_w - 1) / $block_w;
             let by = (height + $block_h - 1) / $block_h;
             let mut out = vec![0u8; bx * by * $block_size];
-            out.par_chunks_mut($block_size)
-                .enumerate()
-                .for_each(|(i, chunk): (usize, &mut [u8])| {
+            out.par_chunks_mut($block_size).enumerate().for_each(
+                |(i, chunk): (usize, &mut [u8])| {
                     let bx_i = i % bx;
                     let by_i = i / bx;
                     let block = $crate::graphics::texture::format::extract_block_f16(
-                        rgba, width, height,
-                        bx_i * $block_w, by_i * $block_h,
-                        $block_w, $block_h,
+                        rgba,
+                        width,
+                        height,
+                        bx_i * $block_w,
+                        by_i * $block_h,
+                        $block_w,
+                        $block_h,
                     );
                     let encoded = $block_fn(&block);
                     chunk.copy_from_slice(&encoded);
-                });
+                },
+            );
             $crate::graphics::texture::format::PixelDatas::F16(out)
         }
     };
@@ -187,7 +237,11 @@ pub fn decode_blocks(
     decode: impl Fn(&[u8], &mut [u8; 64]) + Sync,
 ) -> PixelDatas {
     let raw = data.as_bytes();
-    let BlockLayout { w: block_w, h: block_h, bytes: block_size } = layout;
+    let BlockLayout {
+        w: block_w,
+        h: block_h,
+        bytes: block_size,
+    } = layout;
     let bx = (width + block_w - 1) / block_w;
     let by = (height + block_h - 1) / block_h;
     let total = bx * by;
@@ -767,6 +821,291 @@ impl TextureFormat {
     pub fn is_filterable(&self) -> bool {
         self.sample_type() == SampleType::Float
     }
+
+    /// Byte count per block (or per pixel for uncompressed formats).
+    ///
+    /// For block-compressed formats:
+    ///   - BC1, BC4: 8 bytes per 4×4 block
+    ///   - BC2, BC3, BC5, BC6H, BC7: 16 bytes per 4×4 block
+    ///   - ETC2 RGB8, ETC2 RGB8A1, EAC R11: 8 bytes per 4×4 block
+    ///   - ETC2 RGBA8, EAC RG11: 16 bytes per 4×4 block
+    ///   - ASTC: 16 bytes per block (block dimensions vary)
+    /// For uncompressed formats: bytes per pixel.
+    pub fn block_byte_size(&self) -> u32 {
+        match self {
+            Self::Bc1RgbaUnorm | Self::Bc1RgbaUnormSrgb | Self::Bc4RUnorm | Self::Bc4RSnorm => 8,
+
+            Self::Etc2Rgb8Unorm
+            | Self::Etc2Rgb8UnormSrgb
+            | Self::Etc2Rgb8A1Unorm
+            | Self::Etc2Rgb8A1UnormSrgb
+            | Self::EacR11Unorm
+            | Self::EacR11Snorm => 8,
+
+            Self::Bc2RgbaUnorm
+            | Self::Bc2RgbaUnormSrgb
+            | Self::Bc3RgbaUnorm
+            | Self::Bc3RgbaUnormSrgb
+            | Self::Bc5RgUnorm
+            | Self::Bc5RgSnorm
+            | Self::Bc6hRgbUfloat
+            | Self::Bc6hRgbFloat
+            | Self::Bc7RgbaUnorm
+            | Self::Bc7RgbaUnormSrgb
+            | Self::Etc2Rgba8Unorm
+            | Self::Etc2Rgba8UnormSrgb
+            | Self::EacRg11Unorm
+            | Self::EacRg11Snorm => 16,
+
+            Self::Astc4x4Unorm
+            | Self::Astc4x4UnormSrgb
+            | Self::Astc4x4Hdr
+            | Self::Astc5x4Unorm
+            | Self::Astc5x4UnormSrgb
+            | Self::Astc5x4Hdr
+            | Self::Astc5x5Unorm
+            | Self::Astc5x5UnormSrgb
+            | Self::Astc5x5Hdr
+            | Self::Astc6x5Unorm
+            | Self::Astc6x5UnormSrgb
+            | Self::Astc6x5Hdr
+            | Self::Astc6x6Unorm
+            | Self::Astc6x6UnormSrgb
+            | Self::Astc6x6Hdr
+            | Self::Astc8x5Unorm
+            | Self::Astc8x5UnormSrgb
+            | Self::Astc8x5Hdr
+            | Self::Astc8x6Unorm
+            | Self::Astc8x6UnormSrgb
+            | Self::Astc8x6Hdr
+            | Self::Astc8x8Unorm
+            | Self::Astc8x8UnormSrgb
+            | Self::Astc8x8Hdr
+            | Self::Astc10x5Unorm
+            | Self::Astc10x5UnormSrgb
+            | Self::Astc10x5Hdr
+            | Self::Astc10x6Unorm
+            | Self::Astc10x6UnormSrgb
+            | Self::Astc10x6Hdr
+            | Self::Astc10x8Unorm
+            | Self::Astc10x8UnormSrgb
+            | Self::Astc10x8Hdr
+            | Self::Astc10x10Unorm
+            | Self::Astc10x10UnormSrgb
+            | Self::Astc10x10Hdr
+            | Self::Astc12x10Unorm
+            | Self::Astc12x10UnormSrgb
+            | Self::Astc12x10Hdr
+            | Self::Astc12x12Unorm
+            | Self::Astc12x12UnormSrgb
+            | Self::Astc12x12Hdr => 16,
+
+            // Uncompressed (block dims = 1×1 → bytes per pixel)
+            Self::R8Unorm | Self::R8Snorm | Self::R8Uint | Self::R8Sint => 1,
+            Self::R16Uint
+            | Self::R16Sint
+            | Self::R16Float
+            | Self::Rg8Unorm
+            | Self::Rg8Snorm
+            | Self::Rg8Uint
+            | Self::Rg8Sint => 2,
+            Self::R32Uint
+            | Self::R32Sint
+            | Self::R32Float
+            | Self::Rg16Uint
+            | Self::Rg16Sint
+            | Self::Rg16Float
+            | Self::Rgba8Unorm
+            | Self::Rgba8UnormSrgb
+            | Self::Rgba8Snorm
+            | Self::Rgba8Uint
+            | Self::Rgba8Sint
+            | Self::Bgra8Unorm
+            | Self::Bgra8UnormSrgb
+            | Self::Rgb10a2Unorm
+            | Self::Rg11b10Ufloat => 4,
+            Self::Rg32Uint
+            | Self::Rg32Sint
+            | Self::Rg32Float
+            | Self::Rgba16Uint
+            | Self::Rgba16Sint
+            | Self::Rgba16Float => 8,
+            Self::Rgba32Uint | Self::Rgba32Sint | Self::Rgba32Float => 16,
+        }
+    }
+
+    /// Number of mip levels actually stored for the given base dimensions,
+    /// respecting the block-size constraint and `lod_max_clamp`.
+    ///
+    /// This replicates the same counting logic as the save-side loop in
+    /// `inspector/texture.rs` — levels where either dimension drops below
+    /// the block size are omitted from the binary, even if `lod_max_clamp`
+    /// suggests a higher count.
+    pub fn stored_mip_count(&self, width: u32, height: u32, lod_max_clamp: f32) -> usize {
+        let max_possible = (width.max(height) as f32).log2().floor() as u32;
+        let end_level = (lod_max_clamp.floor() as u32).min(max_possible);
+        let (bw, bh) = self.block_dimensions();
+        let mut w = width;
+        let mut h = height;
+        let mut count = 0;
+        for _ in 0..end_level {
+            if w < bw || h < bh {
+                break;
+            }
+            count += 1;
+            w = (w / 2).max(1);
+            h = (h / 2).max(1);
+        }
+        count
+    }
+
+    /// Compute the exact byte count of a single mip level's encoded data.
+    ///
+    /// For uncompressed formats: `ceil(w)·ceil(h)·bytes_per_pixel`
+    /// For block-compressed formats: `num_blocks·block_bytes`
+    pub fn mip_level_byte_count(&self, width: u32, height: u32, level: u32) -> usize {
+        let w = (width >> level).max(1);
+        let h = (height >> level).max(1);
+        let (bw, bh) = self.block_dimensions();
+        let blocks_x = (w + bw - 1) / bw;
+        let blocks_y = (h + bh - 1) / bh;
+        (blocks_x * blocks_y * self.block_byte_size()) as usize
+    }
+
+    /// Map each format variant to its raw pixel storage type.
+    ///
+    /// Every variant is listed explicitly — adding a new `TextureFormat`
+    /// forces a compile error here, guaranteeing the mapping stays in sync.
+    pub fn raw_pixel_type(&self) -> RawPixelType {
+        match self {
+            // === F16 ===
+            Self::R16Float
+            | Self::Rg16Float
+            | Self::Rgba16Float
+            | Self::Bc6hRgbUfloat
+            | Self::Bc6hRgbFloat => RawPixelType::F16,
+
+            // === F32 ===
+            Self::R32Float | Self::Rg32Float | Self::Rgba32Float => RawPixelType::F32,
+
+            // === U8 — uncompressed ===
+            Self::R8Unorm
+            | Self::R8Snorm
+            | Self::R8Uint
+            | Self::R8Sint
+            | Self::R16Uint
+            | Self::R16Sint
+            | Self::Rg8Unorm
+            | Self::Rg8Snorm
+            | Self::Rg8Uint
+            | Self::Rg8Sint
+            | Self::R32Uint
+            | Self::R32Sint
+            | Self::Rg16Uint
+            | Self::Rg16Sint
+            | Self::Rgba8Unorm
+            | Self::Rgba8UnormSrgb
+            | Self::Rgba8Snorm
+            | Self::Rgba8Uint
+            | Self::Rgba8Sint
+            | Self::Bgra8Unorm
+            | Self::Bgra8UnormSrgb
+            | Self::Rgb10a2Unorm
+            | Self::Rg11b10Ufloat
+            | Self::Rg32Uint
+            | Self::Rg32Sint
+            | Self::Rgba16Uint
+            | Self::Rgba16Sint
+            | Self::Rgba32Uint
+            | Self::Rgba32Sint => RawPixelType::U8,
+
+            // === U8 — BC (excluding BC6h which is F16) ===
+            Self::Bc1RgbaUnorm
+            | Self::Bc1RgbaUnormSrgb
+            | Self::Bc2RgbaUnorm
+            | Self::Bc2RgbaUnormSrgb
+            | Self::Bc3RgbaUnorm
+            | Self::Bc3RgbaUnormSrgb
+            | Self::Bc4RUnorm
+            | Self::Bc4RSnorm
+            | Self::Bc5RgUnorm
+            | Self::Bc5RgSnorm
+            | Self::Bc7RgbaUnorm
+            | Self::Bc7RgbaUnormSrgb => RawPixelType::U8,
+
+            // === U8 — ETC2 / EAC ===
+            Self::Etc2Rgb8Unorm
+            | Self::Etc2Rgb8UnormSrgb
+            | Self::Etc2Rgb8A1Unorm
+            | Self::Etc2Rgb8A1UnormSrgb
+            | Self::Etc2Rgba8Unorm
+            | Self::Etc2Rgba8UnormSrgb
+            | Self::EacR11Unorm
+            | Self::EacR11Snorm
+            | Self::EacRg11Unorm
+            | Self::EacRg11Snorm => RawPixelType::U8,
+
+            // === U8 — ASTC (LDR *and* HDR; block-compressed bytes) ===
+            Self::Astc4x4Unorm
+            | Self::Astc4x4UnormSrgb
+            | Self::Astc4x4Hdr
+            | Self::Astc5x4Unorm
+            | Self::Astc5x4UnormSrgb
+            | Self::Astc5x4Hdr
+            | Self::Astc5x5Unorm
+            | Self::Astc5x5UnormSrgb
+            | Self::Astc5x5Hdr
+            | Self::Astc6x5Unorm
+            | Self::Astc6x5UnormSrgb
+            | Self::Astc6x5Hdr
+            | Self::Astc6x6Unorm
+            | Self::Astc6x6UnormSrgb
+            | Self::Astc6x6Hdr
+            | Self::Astc8x5Unorm
+            | Self::Astc8x5UnormSrgb
+            | Self::Astc8x5Hdr
+            | Self::Astc8x6Unorm
+            | Self::Astc8x6UnormSrgb
+            | Self::Astc8x6Hdr
+            | Self::Astc8x8Unorm
+            | Self::Astc8x8UnormSrgb
+            | Self::Astc8x8Hdr
+            | Self::Astc10x5Unorm
+            | Self::Astc10x5UnormSrgb
+            | Self::Astc10x5Hdr
+            | Self::Astc10x6Unorm
+            | Self::Astc10x6UnormSrgb
+            | Self::Astc10x6Hdr
+            | Self::Astc10x8Unorm
+            | Self::Astc10x8UnormSrgb
+            | Self::Astc10x8Hdr
+            | Self::Astc10x10Unorm
+            | Self::Astc10x10UnormSrgb
+            | Self::Astc10x10Hdr
+            | Self::Astc12x10Unorm
+            | Self::Astc12x10UnormSrgb
+            | Self::Astc12x10Hdr
+            | Self::Astc12x12Unorm
+            | Self::Astc12x12UnormSrgb
+            | Self::Astc12x12Hdr => RawPixelType::U8,
+        }
+    }
+
+    /// Construct a `PixelDatas` from raw encoded bytes.
+    ///
+    /// Delegates to [`raw_pixel_type`](Self::raw_pixel_type) to determine
+    /// whether the bytes should be wrapped as-is (`U8`), reinterpreted as
+    /// half-floats (`F16`), or reinterpreted as full-floats (`F32`).
+    ///
+    /// This method itself needs no update when new format variants are added
+    /// — only [`raw_pixel_type`](Self::raw_pixel_type) does.
+    pub fn pixel_datas_from_raw(&self, raw: &[u8]) -> PixelDatas {
+        match self.raw_pixel_type() {
+            RawPixelType::F16 => PixelDatas::F16(bytemuck::cast_slice(raw).to_vec()),
+            RawPixelType::F32 => PixelDatas::F32(bytemuck::cast_slice(raw).to_vec()),
+            RawPixelType::U8 => PixelDatas::U8(raw.to_vec()),
+        }
+    }
 }
 
 impl From<TextureFormat> for wgpu::TextureFormat {
@@ -1020,9 +1359,15 @@ pub fn encode(pixels: &PixelDatas, width: u32, height: u32, format: TextureForma
         TextureFormat::Rgba8Unorm | TextureFormat::Rgba8UnormSrgb => {
             PixelDatas::U8(pixels.as_bytes().to_vec())
         }
-        TextureFormat::Bc1RgbaUnorm | TextureFormat::Bc1RgbaUnormSrgb => bc::encode_bc1(pixels, w, h),
-        TextureFormat::Bc2RgbaUnorm | TextureFormat::Bc2RgbaUnormSrgb => bc::encode_bc2(pixels, w, h),
-        TextureFormat::Bc3RgbaUnorm | TextureFormat::Bc3RgbaUnormSrgb => bc::encode_bc3(pixels, w, h),
+        TextureFormat::Bc1RgbaUnorm | TextureFormat::Bc1RgbaUnormSrgb => {
+            bc::encode_bc1(pixels, w, h)
+        }
+        TextureFormat::Bc2RgbaUnorm | TextureFormat::Bc2RgbaUnormSrgb => {
+            bc::encode_bc2(pixels, w, h)
+        }
+        TextureFormat::Bc3RgbaUnorm | TextureFormat::Bc3RgbaUnormSrgb => {
+            bc::encode_bc3(pixels, w, h)
+        }
         TextureFormat::Bc4RUnorm | TextureFormat::Bc4RSnorm => bc::encode_bc4(pixels, w, h),
         TextureFormat::Bc5RgUnorm | TextureFormat::Bc5RgSnorm => bc::encode_bc5(pixels, w, h),
         TextureFormat::R8Unorm => uncompressed::encode_r8(pixels, w, h),

@@ -1,7 +1,5 @@
 use egui::TextureId;
 
-
-
 pub struct EguiTextureHandle {
     id: TextureId,
     sender: std::sync::mpsc::Sender<TextureId>,

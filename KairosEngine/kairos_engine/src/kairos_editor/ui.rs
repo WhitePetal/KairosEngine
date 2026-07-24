@@ -4,7 +4,8 @@ use crate::{
         TomlTableAssetsSystem, asset::TextAssetsSystem,
     },
     graphics::{
-        egui_texture_handle::EguiTextureHandle, graphics_graph::GraphicsCommand, material::SerializedMaterial, mesh::Mesh, render_state::RenderState
+        egui_texture_handle::EguiTextureHandle, graphics_graph::GraphicsCommand,
+        material::SerializedMaterial, mesh::Mesh, render_state::RenderState,
     },
     kairos_editor::{
         Engine,
@@ -553,7 +554,7 @@ impl Context {
                         project_window.select_node(node);
                         let info = project_window.get_selected_node_info(&mut engine.assets_server);
                         if let Some(inspector) = self.get_window_mut::<InspectorWindow>() {
-                            let dialog= inspector.set_selected(ui.ctx(), info);
+                            let dialog = inspector.set_selected(ui.ctx(), info);
                             if let Some(dialog) = dialog {
                                 self.dialogs.push(dialog);
                             }

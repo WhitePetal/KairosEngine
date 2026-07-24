@@ -10,8 +10,8 @@ use crate::{
     },
     kairos_editor::ui::{
         self, Message, Messager, UIReader,
-        dialog::{ConfirmDialogWindow},
-        inspector::{Inspector, Dialog},
+        dialog::ConfirmDialogWindow,
+        inspector::{Dialog, Inspector},
         paths,
     },
     math,

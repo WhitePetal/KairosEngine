@@ -11,8 +11,8 @@ use crate::{
         },
         consts,
     },
-    graphics::texture::{PixelDatas, SerializedTexture, Texture},
     graphics::texture::format::TextureFormat,
+    graphics::texture::{PixelDatas, SerializedTexture, Texture},
 };
 
 #[derive(Debug)]
@@ -56,17 +56,16 @@ impl Loader {
         let texture = toml::from_slice::<SerializedTexture>(&toml)?;
         Ok(texture)
     }
-    async fn load_bin(path: &PathBuf, format: TextureFormat) -> Result<Vec<PixelDatas>, Error> {
+    async fn load_bin(
+        path: &PathBuf,
+        width: u32,
+        height: u32,
+        format: TextureFormat,
+        lod_max_clamp: f32,
+    ) -> Result<Vec<PixelDatas>, Error> {
         let bytes = tokio::fs::read(path.with_extension("texture_bin")).await?;
-        // Existing files are rkyv — try that first.
-        if let Ok(data) = rkyv::from_bytes::<Vec<u8>, rkyv::rancor::Error>(&bytes) {
-            return Ok(vec![PixelDatas::U8(data)]);
-        }
-        if let Ok(data) = rkyv::from_bytes::<Vec<Vec<u8>>, rkyv::rancor::Error>(&bytes) {
-            return Ok(data.into_iter().map(PixelDatas::U8).collect());
-        }
-        // New custom binary format.
-        crate::kairos_editor::serialize_asset::texture::deserialize_pixel_datas(&bytes, format)
+        // New headerless binary format.
+        SerializedTexture::deserialize_pixel_datas(&bytes, width, height, lod_max_clamp, format)
     }
     async fn load(
         path: PathBuf,
@@ -74,7 +73,20 @@ impl Loader {
         sender: tokio::sync::mpsc::Sender<LoadedEvent>,
     ) -> Result<(), Error> {
         let serialized = Self::load_toml(&path).await?;
-        let data = Self::load_bin(&path, serialized.format).await?;
+        let lod_max_clamp = serialized
+            .sampler
+            .mipmap
+            .as_ref()
+            .map(|m| m.lod_max_clamp)
+            .unwrap_or(0.0);
+        let data = Self::load_bin(
+            &path,
+            serialized.width,
+            serialized.height,
+            serialized.format,
+            lod_max_clamp,
+        )
+        .await?;
 
         let texture = Texture {
             width: serialized.width,

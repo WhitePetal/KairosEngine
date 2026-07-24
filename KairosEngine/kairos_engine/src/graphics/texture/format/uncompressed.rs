@@ -101,5 +101,12 @@ pub fn decode_r8(
     fill_b: bool,
     fill_a: bool,
 ) -> PixelDatas {
-    PixelDatas::U8(decode_r8_impl(data.as_bytes(), w, h, fill_g, fill_b, fill_a))
+    PixelDatas::U8(decode_r8_impl(
+        data.as_bytes(),
+        w,
+        h,
+        fill_g,
+        fill_b,
+        fill_a,
+    ))
 }

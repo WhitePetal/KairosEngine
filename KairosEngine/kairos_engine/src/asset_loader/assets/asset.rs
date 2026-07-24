@@ -179,8 +179,14 @@ where
 #[derive(Debug)]
 pub enum Entry<T> {
     None,
-    Loading { version: u32 },
-    Some { value: T, version: u32 },
+    Loading {
+        version: u32,
+    },
+    Some {
+        value: T,
+        version: u32,
+        modify_count: u64,
+    },
 }
 
 #[derive(Debug)]
@@ -300,6 +306,7 @@ where
                 self.storages[index.index] = Entry::Some {
                     value: event.get_asset(),
                     version: index.version,
+                    modify_count: 0,
                 };
             }
         }
@@ -416,7 +423,7 @@ where
         let entry = &self.storages[handle.index.index];
         match entry {
             Entry::None | Entry::Loading { .. } => None,
-            Entry::Some { value, version } => {
+            Entry::Some { value, version, .. } => {
                 if handle.index.version == *version {
                     Some(value)
                 } else {
@@ -430,13 +437,27 @@ where
         let entry = &mut self.storages[handle.index.index];
         match entry {
             Entry::None | Entry::Loading { .. } => None,
-            Entry::Some { value, version } => {
+            Entry::Some {
+                value,
+                version,
+                modify_count,
+            } => {
                 if handle.index.version == *version {
+                    *modify_count = modify_count.wrapping_add(1);
                     Some(value)
                 } else {
                     None
                 }
             }
+        }
+    }
+
+    /// Returns the current modify_count for the asset at the given storage index.
+    /// This is used by render caches to detect in-place mutations.
+    pub fn get_modify_count(&self, index: usize) -> Option<u64> {
+        match &self.storages[index] {
+            Entry::Some { modify_count, .. } => Some(*modify_count),
+            _ => None,
         }
     }
 
@@ -463,6 +484,7 @@ where
             self.storages[existing_index.index] = Entry::Some {
                 value: asset,
                 version: existing_index.version,
+                modify_count: 0,
             };
             return handle;
         }
@@ -474,6 +496,7 @@ where
         self.storages[asset_index.index] = Entry::Some {
             value: asset,
             version: asset_index.version,
+            modify_count: 0,
         };
 
         // 4. Register key if provided.

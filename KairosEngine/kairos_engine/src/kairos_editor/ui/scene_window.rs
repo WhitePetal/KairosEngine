@@ -7,10 +7,12 @@ use toml::from_str;
 use crate::{
     asset_loader::assets::AssetsServer,
     graphics::{
-        attachment::{Attachment, AttachmentLoadAction, AttachmentStoreAction}, egui_texture_handle::EguiTextureHandle, graphics_graph::{
+        attachment::{Attachment, AttachmentLoadAction, AttachmentStoreAction},
+        egui_texture_handle::EguiTextureHandle,
+        graphics_graph::{
             GraphicsCommand,
             graphics_node::{ColorAttachmentBind, DepthAttachmentBind},
-        }
+        },
     },
     kairos_dialog,
     kairos_editor::{
@@ -479,7 +481,10 @@ impl SceneWindow {
         self.model.camera.aspect = width as f32 / height as f32;
     }
 
-    pub fn register_view_bind(&mut self, recever: tokio::sync::oneshot::Receiver<EguiTextureHandle>) {
+    pub fn register_view_bind(
+        &mut self,
+        recever: tokio::sync::oneshot::Receiver<EguiTextureHandle>,
+    ) {
         self.model.egui_bind_tex_recever = Some(recever);
         // self.try_rece_texture_id();
     }

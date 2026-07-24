@@ -129,6 +129,16 @@ impl AssetsServer {
         assets.get_mut(handle)
     }
 
+    /// Returns the modify_count for the asset at the given storage index.
+    /// Used by render caches to detect in-place mutations without needing a handle.
+    pub fn get_modify_count<T>(&self, index: usize) -> Option<u64>
+    where
+        T: AssetsSystem + 'static,
+    {
+        let handler = self.get_handler::<T>()?;
+        handler.get_assets().get_modify_count(index)
+    }
+
     /// Insert a runtime-created asset directly into the asset system.
     /// Returns an `Arc<AssetHandle<T>>` that participates in the normal
     /// lifecycle (ref-counting, drop, etc.).

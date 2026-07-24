@@ -141,10 +141,7 @@ impl Inspector for FontInspector {
         );
     }
 
-    fn on_exit(
-        &mut self,
-        ctx: &egui::Context,
-    ) -> Option<Box<dyn Dialog>> {
+    fn on_exit(&mut self, ctx: &egui::Context) -> Option<Box<dyn Dialog>> {
         self.unregister(ctx);
         None
     }

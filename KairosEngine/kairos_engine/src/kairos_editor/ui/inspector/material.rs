@@ -1,7 +1,8 @@
 use std::{cell::Cell, fs, ops::DerefMut, path::PathBuf, sync::Arc};
 
 use egui::{
-    Vec2, menu::{MenuConfig, SubMenuButton},
+    Vec2,
+    menu::{MenuConfig, SubMenuButton},
 };
 use egui_extras::{Column, TableBuilder};
 use parking_lot::Mutex;
@@ -14,13 +15,18 @@ use crate::{
         SerializedMaterialAssetsSystem, ShaderAssetsSystem, TextureAssetsSystem,
     },
     graphics::{
-        attachment::{Attachment, AttachmentFormat, AttachmentLoadAction, AttachmentStoreAction}, compare_function::CompareFunction, egui_texture_handle::EguiTextureHandle, graphics_graph::{
+        attachment::{Attachment, AttachmentFormat, AttachmentLoadAction, AttachmentStoreAction},
+        compare_function::CompareFunction,
+        egui_texture_handle::EguiTextureHandle,
+        graphics_graph::{
             GraphicsCommand,
             graphics_node::{ColorAttachmentBind, DepthAttachmentBind},
-        }, material::SerializedMaterial, render_state::{
+        },
+        material::SerializedMaterial,
+        render_state::{
             BlendFactor, BlendOperation, BlendPreset, BlendState, CullMode, PrimitiveTopology,
             RenderState,
-        }
+        },
     },
     kairos_editor::{
         asset_registry::AssetKind,
@@ -29,7 +35,7 @@ use crate::{
             Message, Messager, UIReader,
             dialog::{ConfirmDialogWindow, Dialog},
             drag::Drag,
-            inspector::{Inspector},
+            inspector::Inspector,
             paths,
             project_window::ProjectWindow,
             scene_camera::SceneCamera,
@@ -631,7 +637,7 @@ impl MaterialInspector {
             .cell_layout(egui::Layout::left_to_right(egui::Align::LEFT))
             .column(Column::auto())
             .column(Column::remainder())
-            .auto_shrink([true;2])
+            .auto_shrink([true; 2])
             .id_salt("render_state")
             .body(|mut body| {
                 // ---- Depth Test：None + CompareFunction 各选项 ----
@@ -1066,120 +1072,127 @@ impl Inspector for MaterialInspector {
         ui.separator();
 
         let width = ui.available_width();
-        egui::ScrollArea::vertical().auto_shrink([true; 2]).show(ui, |ui| {
-            // ---- Shader 层级下拉菜单 ----
-            let current_shader_name = current_shader_path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("Unknown");
+        egui::ScrollArea::vertical()
+            .auto_shrink([true; 2])
+            .show(ui, |ui| {
+                // ---- Shader 层级下拉菜单 ----
+                let current_shader_name = current_shader_path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("Unknown");
 
-            let shader_selecter = TableBuilder::new(ui)
-                .resizable(false)
-                .striped(true)
-                .cell_layout(egui::Layout::left_to_right(egui::Align::LEFT))
-                .column(Column::auto())
-                .column(Column::remainder())
-                .auto_shrink([true;2])
-                .id_salt("shader");
-            shader_selecter.body(|mut body| {
-                body.row(self.model.style.shader_selector_height, |mut row| {
-                    let label_rect = row.col(|ui| {
-                        ui.label("Shader");
-                    }).0;
-                    row.col(|ui| {
-                        let mut menu = SubMenuButton::new(current_shader_name);
-                        let menu_width = (width
-                            - self.model.style.shader_selector_menu_border
-                            - label_rect.width())
+                let shader_selecter = TableBuilder::new(ui)
+                    .resizable(false)
+                    .striped(true)
+                    .cell_layout(egui::Layout::left_to_right(egui::Align::LEFT))
+                    .column(Column::auto())
+                    .column(Column::remainder())
+                    .auto_shrink([true; 2])
+                    .id_salt("shader");
+                shader_selecter.body(|mut body| {
+                    body.row(self.model.style.shader_selector_height, |mut row| {
+                        let label_rect = row
+                            .col(|ui| {
+                                ui.label("Shader");
+                            })
+                            .0;
+                        row.col(|ui| {
+                            let mut menu = SubMenuButton::new(current_shader_name);
+                            let menu_width = (width
+                                - self.model.style.shader_selector_menu_border
+                                - label_rect.width())
                             .max(self.model.style.shader_selector_menu_min_width);
-                        let menu_height = ui.available_height();
-                        menu.button = menu.button.min_size(Vec2::new(menu_width, menu_height));
-                        let (shader_response, _) = menu
-                            .config(
-                                MenuConfig::new()
-                                    .close_behavior(egui::PopupCloseBehavior::CloseOnClick),
-                            )
-                            .ui(ui, |_ui| {});
-                        egui::Popup::menu(&shader_response)
-                            .gap(4.0)
-                            .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
-                            .show(|ui| {
-                                self.draw_shader_menu(
-                                    ui,
-                                    &self.model.shader_menu_tree,
-                                    &current_shader_path,
-                                    messager,
-                                    (menu_width
-                                        * self.model.style.shader_selector_submenu_width_factor)
-                                        .max(self.model.style.shader_selector_menu_min_width),
-                                    menu_height,
-                                );
-                            });
+                            let menu_height = ui.available_height();
+                            menu.button = menu.button.min_size(Vec2::new(menu_width, menu_height));
+                            let (shader_response, _) = menu
+                                .config(
+                                    MenuConfig::new()
+                                        .close_behavior(egui::PopupCloseBehavior::CloseOnClick),
+                                )
+                                .ui(ui, |_ui| {});
+                            egui::Popup::menu(&shader_response)
+                                .gap(4.0)
+                                .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
+                                .show(|ui| {
+                                    self.draw_shader_menu(
+                                        ui,
+                                        &self.model.shader_menu_tree,
+                                        &current_shader_path,
+                                        messager,
+                                        (menu_width
+                                            * self
+                                                .model
+                                                .style
+                                                .shader_selector_submenu_width_factor)
+                                            .max(self.model.style.shader_selector_menu_min_width),
+                                        menu_height,
+                                    );
+                                });
+                        });
                     });
                 });
-            });
 
-            ui.separator();
+                ui.separator();
 
-            // ---- Table 区域----
-            let table = TableBuilder::new(ui)
-                .striped(true)
-                .cell_layout(egui::Layout::left_to_right(egui::Align::LEFT))
-                .column(Column::auto())
-                .column(Column::remainder())
-                .auto_shrink([true;2])
-                .id_salt("table");
-            table.body(|mut body| {
-                let texture_size = self.model.style.texture_label_height;
-                body.row(texture_size, |mut row| {
-                    row.col(|ui| {
-                        ui.label("Texture");
-                    });
-                    row.col(|ui| {
-                        self.draw_texture_col(
-                            ui,
-                            reader,
-                            messager,
-                            assets_server,
-                            &serialize_mat.texture_path,
-                        );
+                // ---- Table 区域----
+                let table = TableBuilder::new(ui)
+                    .striped(true)
+                    .cell_layout(egui::Layout::left_to_right(egui::Align::LEFT))
+                    .column(Column::auto())
+                    .column(Column::remainder())
+                    .auto_shrink([true; 2])
+                    .id_salt("table");
+                table.body(|mut body| {
+                    let texture_size = self.model.style.texture_label_height;
+                    body.row(texture_size, |mut row| {
+                        row.col(|ui| {
+                            ui.label("Texture");
+                        });
+                        row.col(|ui| {
+                            self.draw_texture_col(
+                                ui,
+                                reader,
+                                messager,
+                                assets_server,
+                                &serialize_mat.texture_path,
+                            );
+                        });
                     });
                 });
+
+                ui.separator();
+
+                // ---- Render State 编辑区域（issue #33）----
+                self.draw_render_state_section(ui, messager, &serialize_mat.render_state);
+
+                ui.separator();
+
+                // ---- Apply 按钮（issue #36）----
+                let changed = self.model.dirty.get();
+                ui.vertical_centered(|ui| {
+                    // Tag for test harness: widget rect collection
+                    ui.push_id("apply_button", |ui| {
+                        let apply_btn = egui::Button::new("Apply").min_size(Vec2::new(
+                            ui.available_width(),
+                            self.model.style.apply_button_height,
+                        ));
+                        // let resp = apply_btn.ui(ui);
+                        let resp = ui.add_enabled(changed, apply_btn);
+
+                        if resp.clicked() {
+                            messager.send(self.apply_message());
+                        }
+                        if changed {
+                            ui.label("* unsaved changes");
+                        }
+                    }); // push_id("apply_button")
+                });
+
+                ui.separator();
+
+                // ---- 3D 预览面板（issue #37）----
+                self.draw_preview(ui, assets_server, dt);
             });
-
-            ui.separator();
-
-            // ---- Render State 编辑区域（issue #33）----
-            self.draw_render_state_section(ui, messager, &serialize_mat.render_state);
-
-            ui.separator();
-
-            // ---- Apply 按钮（issue #36）----
-            let changed = self.model.dirty.get();
-            ui.vertical_centered(|ui| {
-                // Tag for test harness: widget rect collection
-                ui.push_id("apply_button", |ui| {
-                    let apply_btn = egui::Button::new("Apply").min_size(Vec2::new(
-                        ui.available_width(),
-                        self.model.style.apply_button_height,
-                    ));
-                    // let resp = apply_btn.ui(ui);
-                    let resp = ui.add_enabled(changed, apply_btn);
-
-                    if resp.clicked() {
-                        messager.send(self.apply_message());
-                    }
-                    if changed {
-                        ui.label("* unsaved changes");
-                    }
-                }); // push_id("apply_button")
-            });
-
-            ui.separator();
-
-            // ---- 3D 预览面板（issue #37）----
-            self.draw_preview(ui, assets_server, dt);
-        });
     }
 
     fn render(&self) -> Option<GraphicsCommand> {

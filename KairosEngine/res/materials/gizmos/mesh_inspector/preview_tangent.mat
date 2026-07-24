@@ -1,8 +1,0 @@
-source_path = "res/materials/gizmos/mesh_inspector/preview_tangent.mat"
-shader_path = "res/shaders/gizmos/mesh_inspector/preview_tangent.wgsl"
-
-[render_state]
-depth_test = "LessEqual"
-depth_write = true
-cull_mod = "Back"
-topology = "TriangleList"

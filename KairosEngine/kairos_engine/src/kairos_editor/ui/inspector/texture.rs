@@ -219,56 +219,55 @@ impl TextureInspector {
         };
 
         // 2. Encode base level + generate cascading mip-chain.
-        let mip_data: Vec<crate::graphics::texture::PixelDatas> = if let Some(ref mip) = ext.serialized.sampler.mipmap {
-            let max_possible = (new_w.max(new_h) as f32).log2().floor() as u32;
-            let end_level = (mip.lod_max_clamp.floor() as u32).min(max_possible);
-            let total_levels = end_level + 1;
-            let (block_w, block_h) = ext.serialized.format.block_dimensions();
-            let mut levels = Vec::with_capacity(total_levels as usize);
-            let mut current_w = new_w;
-            let mut current_h = new_h;
-            let mut current_rgba = rgba_data;
+        let mip_data: Vec<crate::graphics::texture::PixelDatas> =
+            if let Some(ref mip) = ext.serialized.sampler.mipmap {
+                let max_possible = (new_w.max(new_h) as f32).log2().floor() as u32;
+                let end_level = (mip.lod_max_clamp.floor() as u32).min(max_possible);
+                let total_levels = end_level + 1;
+                let (block_w, block_h) = ext.serialized.format.block_dimensions();
+                let mut levels = Vec::with_capacity(total_levels as usize);
+                let mut current_w = new_w;
+                let mut current_h = new_h;
+                let mut current_rgba = rgba_data;
 
-            for _ in 0..total_levels {
-                // Block-compressed formats require dimensions >= block size.
-                if current_w < block_w || current_h < block_h {
-                    break;
-                }
-                let pixels = crate::graphics::texture::PixelDatas::U8(current_rgba.clone());
-                let encoded = crate::graphics::texture::format::encode(
-                    &pixels,
-                    current_w,
-                    current_h,
-                    ext.serialized.format,
-                );
-                levels.push(encoded);
-                let prev_w = current_w;
-                let prev_h = current_h;
-                current_w = (current_w / 2).max(1);
-                current_h = (current_h / 2).max(1);
-                if let Some(source) = image::RgbaImage::from_raw(prev_w, prev_h, current_rgba) {
-                    current_rgba = image::imageops::resize(
-                        &source,
+                for _ in 0..total_levels {
+                    if current_w < block_w || current_h < block_h {
+                        break;
+                    }
+                    let pixels = crate::graphics::texture::PixelDatas::U8(current_rgba.clone());
+                    let encoded = crate::graphics::texture::format::encode(
+                        &pixels,
                         current_w,
                         current_h,
-                        image::imageops::FilterType::Lanczos3,
-                    )
-                    .into_vec();
-                } else {
-                    break;
+                        ext.serialized.format,
+                    );
+                    levels.push(encoded);
+                    let (pw, ph) = (current_w, current_h);
+                    current_w = (current_w / 2).max(1);
+                    current_h = (current_h / 2).max(1);
+                    if let Some(source) = image::RgbaImage::from_raw(pw, ph, current_rgba) {
+                        current_rgba = image::imageops::resize(
+                            &source,
+                            current_w,
+                            current_h,
+                            image::imageops::FilterType::Lanczos3,
+                        )
+                        .into_vec();
+                    } else {
+                        break;
+                    }
                 }
-            }
-            levels
-        } else {
-            let pixels = crate::graphics::texture::PixelDatas::U8(rgba_data);
-            let encoded = crate::graphics::texture::format::encode(
-                &pixels,
-                new_w,
-                new_h,
-                ext.serialized.format,
-            );
-            vec![encoded]
-        };
+                levels
+            } else {
+                let pixels = crate::graphics::texture::PixelDatas::U8(rgba_data);
+                let encoded = crate::graphics::texture::format::encode(
+                    &pixels,
+                    new_w,
+                    new_h,
+                    ext.serialized.format,
+                );
+                vec![encoded]
+            };
 
         // 3. Save to file
         match ext.serialized.save_to_file(&mip_data) {
@@ -356,7 +355,8 @@ impl Inspector for TextureInspector {
                 };
 
                 // Also wait for the runtime Texture (pixel data) to be ready.
-                let Some(texture_inner) = assets_server.get::<TextureAssetsSystem>(&ext.texture) else {
+                let Some(texture_inner) = assets_server.get::<TextureAssetsSystem>(&ext.texture)
+                else {
                     ui.label("Texture data is Loading...");
                     return;
                 };
@@ -372,7 +372,8 @@ impl Inspector for TextureInspector {
                 let w_aniso = self.model.style.combo_width_anisotropy;
                 let w_format = self.model.style.combo_width_format;
                 let original_max = ext.original_width.max(ext.original_height);
-                let mut selected_size = find_texture_max_size(ext.serialized.width, ext.serialized.height);
+                let mut selected_size =
+                    find_texture_max_size(ext.serialized.width, ext.serialized.height);
 
                 TableBuilder::new(ui)
                     .striped(true)
@@ -386,7 +387,10 @@ impl Inspector for TextureInspector {
                                 ui.label("Original Size:");
                             });
                             row.col(|ui| {
-                                ui.label(format!("{} x {}", ext.original_width, ext.original_height));
+                                ui.label(format!(
+                                    "{} x {}",
+                                    ext.original_width, ext.original_height
+                                ));
                             });
                         });
 
@@ -443,37 +447,42 @@ impl Inspector for TextureInspector {
                             row.col(|ui| {
                                 // Tag for test harness
                                 ui.push_id("format_dropdown", |ui| {
-                                let _combo_resp = ComboBox::from_id_salt("texture_format")
-                                    .width(w_format)
-                                    .selected_text(format!("{:?}", ext.serialized.format))
-                                    .show_ui(ui, |ui| {
-                                        for format in TextureFormat::iter()
-                                        {
-                                            ui.add_enabled_ui(
-                                                format.is_available(&self.model.compression_config),
-                                                |ui| {
-                                                    let resp = ui
-                                                        .selectable_value(
+                                    let _combo_resp = ComboBox::from_id_salt("texture_format")
+                                        .width(w_format)
+                                        .selected_text(format!("{:?}", ext.serialized.format))
+                                        .show_ui(ui, |ui| {
+                                            for format in TextureFormat::iter() {
+                                                ui.add_enabled_ui(
+                                                    format.is_available(
+                                                        &self.model.compression_config,
+                                                    ),
+                                                    |ui| {
+                                                        let resp = ui.selectable_value(
                                                             &mut ext.serialized.format,
                                                             format,
                                                             format!("{format:?}"),
-                                                            );
-                                                    if resp.changed()
-                                                        {
+                                                        );
+                                                        if resp.changed() {
                                                             // #2: auto-adjust sampler for non-filterable formats.
                                                             if !format.is_filterable() {
-                                                                ext.serialized.sampler.filter_mode = FilterMode::Nearest;
-                                                                if let Some(ref mut mip) = ext.serialized.sampler.mipmap {
-                                                                    mip.filter = MipmapFilter::Nearest;
+                                                                ext.serialized
+                                                                    .sampler
+                                                                    .filter_mode =
+                                                                    FilterMode::Nearest;
+                                                                if let Some(ref mut mip) =
+                                                                    ext.serialized.sampler.mipmap
+                                                                {
+                                                                    mip.filter =
+                                                                        MipmapFilter::Nearest;
                                                                     mip.anisotropy_clamp = 1;
                                                                 }
                                                             }
                                                             self.dirty.set(true);
                                                         }
                                                     },
-                                            );
-                                        }
-                                    });
+                                                );
+                                            }
+                                        });
                                 }); // push_id("format_dropdown")
                             });
                         });
@@ -499,7 +508,9 @@ impl Inspector for TextureInspector {
                                                 ext.serialized.sampler.filter_mode = current;
                                                 // Anisotropy requires Linear filtering.
                                                 if current == FilterMode::Nearest {
-                                                    if let Some(ref mut mip) = ext.serialized.sampler.mipmap {
+                                                    if let Some(ref mut mip) =
+                                                        ext.serialized.sampler.mipmap
+                                                    {
                                                         mip.anisotropy_clamp = 1;
                                                     }
                                                 }
@@ -511,7 +522,14 @@ impl Inspector for TextureInspector {
                         });
 
                         // Address Mode (with per-axis support)
-                        draw_address_mode_rows(&mut body, row_h, w_default, &mut ext.serialized, &self.dirty, &self.per_axis_mode);
+                        draw_address_mode_rows(
+                            &mut body,
+                            row_h,
+                            w_default,
+                            &mut ext.serialized,
+                            &self.dirty,
+                            &self.per_axis_mode,
+                        );
 
                         // Mipmap toggle
                         body.row(row_h, |mut row| {
@@ -522,16 +540,16 @@ impl Inspector for TextureInspector {
                                 let mut enabled = ext.serialized.sampler.mipmap.is_some();
                                 if ui.checkbox(&mut enabled, "").changed() {
                                     if enabled {
-                                        let max_dim = ext.serialized.width.max(ext.serialized.height);
+                                        let max_dim =
+                                            ext.serialized.width.max(ext.serialized.height);
                                         let max_level = (max_dim as f32).log2().floor();
-                                        ext.serialized.sampler.mipmap = Some(
-                                            crate::graphics::texture::sampler::MipmapConfig {
+                                        ext.serialized.sampler.mipmap =
+                                            Some(crate::graphics::texture::sampler::MipmapConfig {
                                                 filter: MipmapFilter::Linear,
                                                 anisotropy_clamp: AnisotropyLevel::Level2.as_u16(),
                                                 lod_min_clamp: 0.0,
                                                 lod_max_clamp: max_level,
-                                            },
-                                        );
+                                            });
                                     } else {
                                         ext.serialized.sampler.mipmap = None;
                                     }
@@ -558,7 +576,11 @@ impl Inspector for TextureInspector {
                                         .show_ui(ui, |ui| {
                                             for mode in MipmapFilter::iter() {
                                                 if ui
-                                                    .selectable_value(&mut current, mode, mode.label())
+                                                    .selectable_value(
+                                                        &mut current,
+                                                        mode,
+                                                        mode.label(),
+                                                    )
                                                     .changed()
                                                 {
                                                     mip.filter = current;
@@ -578,25 +600,35 @@ impl Inspector for TextureInspector {
                                     ui.label("  Anisotropic:");
                                 });
                                 row.col(|ui| {
-                                    let can_aniso = ext.serialized.sampler.filter_mode == FilterMode::Linear
+                                    let can_aniso = ext.serialized.sampler.filter_mode
+                                        == FilterMode::Linear
                                         && mip.filter == MipmapFilter::Linear;
                                     let mut aniso_on = mip.anisotropy_clamp > 1 && can_aniso;
                                     ui.add_enabled_ui(can_aniso, |ui| {
                                         if ui.checkbox(&mut aniso_on, "").changed() {
-                                            mip.anisotropy_clamp = if aniso_on { AnisotropyLevel::Level4.as_u16() } else { 1 };
+                                            mip.anisotropy_clamp = if aniso_on {
+                                                AnisotropyLevel::Level4.as_u16()
+                                            } else {
+                                                1
+                                            };
                                             self.dirty.set(true);
                                         }
                                     });
                                     if aniso_on {
-                                        let mut level = AnisotropyLevel::from_u16(mip.anisotropy_clamp)
-                                            .unwrap_or(AnisotropyLevel::Level4);
+                                        let mut level =
+                                            AnisotropyLevel::from_u16(mip.anisotropy_clamp)
+                                                .unwrap_or(AnisotropyLevel::Level4);
                                         egui::ComboBox::from_id_salt("texture_anisotropy")
                                             .width(w_aniso)
                                             .selected_text(level.as_u16().to_string())
                                             .show_ui(ui, |ui| {
                                                 for l in AnisotropyLevel::iter() {
                                                     if ui
-                                                        .selectable_value(&mut level, l, l.as_u16().to_string())
+                                                        .selectable_value(
+                                                            &mut level,
+                                                            l,
+                                                            l.as_u16().to_string(),
+                                                        )
                                                         .changed()
                                                     {
                                                         mip.anisotropy_clamp = level.as_u16();
@@ -628,7 +660,13 @@ impl Inspector for TextureInspector {
                         }
 
                         // Compare
-                        draw_compare_row(&mut body, row_h, w_default, &mut ext.serialized, &self.dirty);
+                        draw_compare_row(
+                            &mut body,
+                            row_h,
+                            w_default,
+                            &mut ext.serialized,
+                            &self.dirty,
+                        );
                     });
             }
 
@@ -637,23 +675,23 @@ impl Inspector for TextureInspector {
             ui.vertical_centered(|ui| {
                 // Tag for test harness: widget rect collection
                 ui.push_id("apply_button", |ui| {
-                let apply_btn = egui::Button::new("Apply").min_size(Vec2::new(
-                    ui.available_width(),
-                    self.model.style.apply_button_height,
-                ));
-
-                let resp = ui.add_enabled(changed, apply_btn);
-
-                if resp.clicked() {
-                    messager.send(Message::TextureInspectorApply(
-                        self.model.texture_path.clone(),
-                        self.model.handle.clone(),
-                        self.model.texture_ext.clone(),
+                    let apply_btn = egui::Button::new("Apply").min_size(Vec2::new(
+                        ui.available_width(),
+                        self.model.style.apply_button_height,
                     ));
-                }
-                if changed {
-                    ui.label("* unsaved changes");
-                }
+
+                    let resp = ui.add_enabled(changed, apply_btn);
+
+                    if resp.clicked() {
+                        messager.send(Message::TextureInspectorApply(
+                            self.model.texture_path.clone(),
+                            self.model.handle.clone(),
+                            self.model.texture_ext.clone(),
+                        ));
+                    }
+                    if changed {
+                        ui.label("* unsaved changes");
+                    }
                 }); // push_id("apply_button")
             });
 
