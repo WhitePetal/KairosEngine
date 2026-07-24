@@ -21,6 +21,8 @@ use rayon::prelude::*;
 pub enum RawPixelType {
     /// Raw bytes are u8 — SDR uncompressed, BC/ETC/EAC/ASTC block-compressed.
     U8,
+    /// Raw bytes are u16 — wide integer formats (R16Uint, Rg16Uint, etc.).
+    U16,
     /// Raw bytes should be reinterpreted as `half::f16` slices.
     F16,
     /// Raw bytes should be reinterpreted as `f32` slices.
@@ -39,6 +41,8 @@ pub enum RawPixelType {
 pub enum PixelDatas {
     /// 8-bit unsigned integer pixel data (e.g. RGBA8, BC compressed).
     U8(Vec<u8>),
+    /// 16-bit unsigned integer pixel data (e.g. R16Uint, Rg16Uint encoded).
+    U16(Vec<u16>),
     /// 16-bit half-float pixel data.
     F16(Vec<half::f16>),
     /// 32-bit full-float pixel data.
@@ -51,6 +55,7 @@ impl PixelDatas {
     pub fn as_bytes(&self) -> &[u8] {
         match self {
             PixelDatas::U8(data) => data.as_slice(),
+            PixelDatas::U16(data) => bytemuck::cast_slice(data),
             PixelDatas::F16(data) => bytemuck::cast_slice(data),
             PixelDatas::F32(data) => bytemuck::cast_slice(data),
         }
@@ -77,6 +82,9 @@ impl PixelDatas {
     pub fn to_rgba8(&self) -> Self {
         match self {
             PixelDatas::U8(_) => self.clone(),
+            PixelDatas::U16(data) => PixelDatas::U8(
+                data.iter().map(|&v| v as u8).collect(),
+            ),
             PixelDatas::F16(data) => PixelDatas::U8(
                 data.iter()
                     .map(|&v| {
@@ -107,36 +115,52 @@ impl PixelDatas {
         }
     }
 
-    /// Convert to `Vec<u8>` of RGBA8 bytes, avoiding the allocation wrapper
-    /// that `to_rgba8()` then `.as_bytes().to_vec()` would create.
+    /// Convert to `Vec<u8>` of RGBA8 bytes in parallel.
     pub fn to_rgba8_bytes(&self) -> Vec<u8> {
+        const CHUNK: usize = 4096;
         match self {
             PixelDatas::U8(data) => data.clone(),
-            PixelDatas::F16(data) => data
-                .iter()
-                .map(|&v| {
-                    let f = v.to_f32();
-                    if f <= 0.0 {
-                        0u8
-                    } else if f >= 1.0 {
-                        255u8
-                    } else {
-                        (f * 255.0).round() as u8
-                    }
-                })
-                .collect(),
-            PixelDatas::F32(data) => data
-                .iter()
-                .map(|&v| {
-                    if v <= 0.0 {
-                        0u8
-                    } else if v >= 1.0 {
-                        255u8
-                    } else {
-                        (v * 255.0).round() as u8
-                    }
-                })
-                .collect(),
+            PixelDatas::U16(data) => data.iter().map(|&v| v as u8).collect(),
+            PixelDatas::F16(data) => {
+                let pixel_count = data.len();
+                let mut out = vec![0u8; pixel_count];
+                out.par_chunks_mut(CHUNK)
+                    .enumerate()
+                    .for_each(|(chunk_idx, chunk)| {
+                        let base = chunk_idx * CHUNK;
+                        for (j, dst) in chunk.iter_mut().enumerate() {
+                            let f = data[base + j].to_f32();
+                            *dst = if f <= 0.0 {
+                                0u8
+                            } else if f >= 1.0 {
+                                255u8
+                            } else {
+                                (f * 255.0).round() as u8
+                            };
+                        }
+                    });
+                out
+            }
+            PixelDatas::F32(data) => {
+                let pixel_count = data.len();
+                let mut out = vec![0u8; pixel_count];
+                out.par_chunks_mut(CHUNK)
+                    .enumerate()
+                    .for_each(|(chunk_idx, chunk)| {
+                        let base = chunk_idx * CHUNK;
+                        for (j, dst) in chunk.iter_mut().enumerate() {
+                            let v = data[base + j];
+                            *dst = if v <= 0.0 {
+                                0u8
+                            } else if v >= 1.0 {
+                                255u8
+                            } else {
+                                (v * 255.0).round() as u8
+                            };
+                        }
+                    });
+                out
+            }
         }
     }
 }
@@ -1058,21 +1082,25 @@ impl TextureFormat {
             // === F32 ===
             Self::R32Float | Self::Rg32Float | Self::Rgba32Float => RawPixelType::F32,
 
+            // === U16 — wide integer uncompressed ===
+            Self::R16Uint
+            | Self::R16Sint
+            | Self::Rg16Uint
+            | Self::Rg16Sint
+            | Self::Rgba16Uint
+            | Self::Rgba16Sint => RawPixelType::U16,
+
             // === U8 — uncompressed ===
             Self::R8Unorm
             | Self::R8Snorm
             | Self::R8Uint
             | Self::R8Sint
-            | Self::R16Uint
-            | Self::R16Sint
             | Self::Rg8Unorm
             | Self::Rg8Snorm
             | Self::Rg8Uint
             | Self::Rg8Sint
             | Self::R32Uint
             | Self::R32Sint
-            | Self::Rg16Uint
-            | Self::Rg16Sint
             | Self::Rgba8Unorm
             | Self::Rgba8UnormSrgb
             | Self::Rgba8Snorm
@@ -1084,8 +1112,6 @@ impl TextureFormat {
             | Self::Rg11b10Ufloat
             | Self::Rg32Uint
             | Self::Rg32Sint
-            | Self::Rgba16Uint
-            | Self::Rgba16Sint
             | Self::Rgba32Uint
             | Self::Rgba32Sint => RawPixelType::U8,
 
@@ -1171,6 +1197,7 @@ impl TextureFormat {
     /// — only [`raw_pixel_type`](Self::raw_pixel_type) does.
     pub fn pixel_datas_from_raw(&self, raw: &[u8]) -> PixelDatas {
         match self.raw_pixel_type() {
+            RawPixelType::U16 => PixelDatas::U16(bytemuck::cast_slice(raw).to_vec()),
             RawPixelType::F16 => PixelDatas::F16(bytemuck::cast_slice(raw).to_vec()),
             RawPixelType::F32 => PixelDatas::F32(bytemuck::cast_slice(raw).to_vec()),
             RawPixelType::U8 => PixelDatas::U8(raw.to_vec()),
