@@ -543,6 +543,10 @@ guid = "19044817-ac7b-47c8-8e2e-011424ac3dec"
 path = "kairos_engine/benches"
 
 [[entries]]
+guid = "6ee05f4d-dc54-4321-b0cb-1fda47cf0859"
+path = "kairos_engine/benches/texture_encode_decode.rs"
+
+[[entries]]
 guid = "9c2b1796-36c7-400e-a332-fc96490cb635"
 path = "kairos_engine/benches/vec_benchmark.rs"
 

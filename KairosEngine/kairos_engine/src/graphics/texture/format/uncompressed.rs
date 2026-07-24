@@ -14,7 +14,7 @@ fn encode_r8_impl(rgba: &[u8], width: usize, height: usize) -> Vec<u8> {
         .for_each(|(chunk_idx, chunk)| {
             let pixel_base = chunk_idx * CHUNK_SIZE;
             for (j, data) in chunk.iter_mut().enumerate() {
-                *data = rgba[(pixel_base + j) * 4];
+                *data = rgba[(pixel_base + j) << 2];
             }
         });
     out
@@ -36,7 +36,7 @@ fn decode_r8_impl(
 ) -> Vec<u8> {
     const CHUNK_SIZE: usize = 4096;
     let pixel_count = width * height;
-    let mut out = vec![0u8; pixel_count * 4];
+    let mut out = vec![0u8; pixel_count << 2];
 
     match (fill_g, fill_b, fill_a) {
         (true, true, true) => {
@@ -45,7 +45,7 @@ fn decode_r8_impl(
                 .for_each(|(chunk_idx, chunk)| {
                     let byte_base = chunk_idx * CHUNK_SIZE;
                     for (j, rgba) in chunk.iter_mut().enumerate() {
-                        let pixel_idx = (byte_base + j) / 4;
+                        let pixel_idx = (byte_base + j) >> 2;
                         *rgba = data[pixel_idx];
                     }
                 });
@@ -57,7 +57,7 @@ fn decode_r8_impl(
                     let byte_base = chunk_idx * CHUNK_SIZE;
                     for (j, rgba) in chunk.iter_mut().enumerate() {
                         if (byte_base + j) % 4 == 0 {
-                            *rgba = data[(byte_base + j) / 4];
+                            *rgba = data[(byte_base + j) >> 2];
                         }
                     }
                 });
@@ -75,7 +75,7 @@ fn decode_r8_impl(
                             || (channel == 2 && fill_b)
                             || (channel == 3 && fill_a)
                         {
-                            *rgba = data[idx / 4];
+                            *rgba = data[idx >> 2];
                         }
                     }
                 });
@@ -122,14 +122,14 @@ pub fn decode_r8(
 fn encode_rg8_impl(rgba: &[u8], width: usize, height: usize) -> Vec<u8> {
     const CHUNK_SIZE: usize = 4096;
     let pixel_count = width * height;
-    let mut out = vec![0u8; pixel_count * 2];
-    out.par_chunks_mut(CHUNK_SIZE * 2)
+    let mut out = vec![0u8; pixel_count << 1];
+    out.par_chunks_mut(CHUNK_SIZE << 1)
         .enumerate()
         .for_each(|(chunk_idx, chunk)| {
             let pixel_base = chunk_idx * CHUNK_SIZE;
             for (j, pair) in chunk.chunks_mut(2).enumerate() {
                 let abs_pixel = pixel_base + j;
-                let src_idx = abs_pixel * 4;
+                let src_idx = abs_pixel << 2;
                 pair[0] = rgba[src_idx];     // R
                 pair[1] = rgba[src_idx + 1]; // G
             }
@@ -144,14 +144,14 @@ fn encode_rg8_impl(rgba: &[u8], width: usize, height: usize) -> Vec<u8> {
 fn decode_rg8_impl(data: &[u8], width: usize, height: usize) -> Vec<u8> {
     const CHUNK_SIZE: usize = 4096;
     let pixel_count = width * height;
-    let mut out = vec![0u8; pixel_count * 4];
+    let mut out = vec![0u8; pixel_count << 2];
     out.par_chunks_mut(CHUNK_SIZE)
         .enumerate()
         .for_each(|(chunk_idx, chunk)| {
-            let pixel_base = chunk_idx * (CHUNK_SIZE / 4);
+            let pixel_base = chunk_idx * (CHUNK_SIZE >> 2);
             for (j, rgba) in chunk.chunks_mut(4).enumerate() {
                 let abs_pixel = pixel_base + j;
-                let src_idx = abs_pixel * 2;
+                let src_idx = abs_pixel << 1;
                 rgba[0] = data[src_idx];         // R
                 rgba[1] = data[src_idx + 1];     // G
                 rgba[2] = 0;                      // B
@@ -181,14 +181,14 @@ pub fn decode_rg8(data: &PixelDatas, w: usize, h: usize) -> PixelDatas {
 fn encode_bgra8_impl(rgba: &[u8], width: usize, height: usize) -> Vec<u8> {
     const CHUNK_SIZE: usize = 1024;
     let pixel_count = width * height;
-    let mut out = vec![0u8; pixel_count * 4];
+    let mut out = vec![0u8; pixel_count << 2];
     out.par_chunks_mut(CHUNK_SIZE)
         .enumerate()
         .for_each(|(chunk_idx, chunk)| {
-            let pixel_base = chunk_idx * (CHUNK_SIZE / 4);
+            let pixel_base = chunk_idx * (CHUNK_SIZE >> 2);
             for (j, bgra) in chunk.chunks_mut(4).enumerate() {
                 let abs_pixel = pixel_base + j;
-                let src_idx = abs_pixel * 4;
+                let src_idx = abs_pixel << 2;
                 bgra[0] = rgba[src_idx + 2]; // B
                 bgra[1] = rgba[src_idx + 1]; // G
                 bgra[2] = rgba[src_idx];     // R
@@ -202,14 +202,14 @@ fn encode_bgra8_impl(rgba: &[u8], width: usize, height: usize) -> Vec<u8> {
 fn decode_bgra8_impl(data: &[u8], width: usize, height: usize) -> Vec<u8> {
     const CHUNK_SIZE: usize = 1024;
     let pixel_count = width * height;
-    let mut out = vec![0u8; pixel_count * 4];
+    let mut out = vec![0u8; pixel_count << 2];
     out.par_chunks_mut(CHUNK_SIZE)
         .enumerate()
         .for_each(|(chunk_idx, chunk)| {
-            let pixel_base = chunk_idx * (CHUNK_SIZE / 4);
+            let pixel_base = chunk_idx * (CHUNK_SIZE >> 2);
             for (j, rgba) in chunk.chunks_mut(4).enumerate() {
                 let abs_pixel = pixel_base + j;
-                let src_idx = abs_pixel * 4;
+                let src_idx = abs_pixel << 2;
                 rgba[0] = data[src_idx + 2]; // R (was B)
                 rgba[1] = data[src_idx + 1]; // G (was G)
                 rgba[2] = data[src_idx];     // B (was R)
