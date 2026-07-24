@@ -1443,6 +1443,34 @@ guid = "f9b35d46-4936-4234-ab76-e50547baa5e4"
 path = "kairos_engine/tests/integration/ecs.rs"
 
 [[entries]]
+guid = "d80ee7e2-9dea-4675-817c-dde2cfd630dc"
+path = "kairos_engine/tests/integration/graphics"
+
+[[entries]]
+guid = "c5d77117-eebe-441d-8636-676486abf359"
+path = "kairos_engine/tests/integration/graphics/mod.rs"
+
+[[entries]]
+guid = "cd309e65-746d-476f-9c4e-a347d0fa4045"
+path = "kairos_engine/tests/integration/graphics/texture"
+
+[[entries]]
+guid = "936e07e1-0d2d-406e-a810-fcd724098c34"
+path = "kairos_engine/tests/integration/graphics/texture/format.rs"
+
+[[entries]]
+guid = "fa5531b0-56cd-4fb9-aa26-ba8fa0f01317"
+path = "kairos_engine/tests/integration/graphics/texture/mod.rs"
+
+[[entries]]
+guid = "94a7d226-6c39-4101-8590-c1609fec6bb4"
+path = "kairos_engine/tests/integration/graphics/texture.rs"
+
+[[entries]]
+guid = "157186c4-a098-483a-b44f-d74c658a6919"
+path = "kairos_engine/tests/integration/graphics.rs"
+
+[[entries]]
 guid = "3b9dc1bd-1a95-450e-86c6-3a9e5400036a"
 path = "kairos_engine/tests/integration/kairos_editor"
 

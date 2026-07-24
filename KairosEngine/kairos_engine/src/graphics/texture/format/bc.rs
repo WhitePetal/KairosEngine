@@ -1,12 +1,12 @@
 //! BCn (Block Compression) pure-Rust encoder/decoder.
 //!
-//! Uses the shared `encode_blocks!` macro and `decode_blocks` function
+//! Uses the shared `encode_blocks!` and `decode_blocks!` macros
 //! from `super` for block-parallel processing.
 
 use rayon::prelude::*;
 
-use crate::encode_blocks;
-use crate::graphics::texture::format::{BlockLayout, PixelDatas};
+use crate::graphics::texture::format::BlockLayout;
+use crate::{decode_blocks, encode_blocks};
 
 // ============================================================
 // Compressors/Encode
@@ -28,21 +28,11 @@ const BC3_LAYOUT: BlockLayout = BlockLayout::new(4, 4, 16);
 const BC4_LAYOUT: BlockLayout = BlockLayout::new(4, 4, 8);
 const BC5_LAYOUT: BlockLayout = BlockLayout::new(4, 4, 16);
 
-pub fn decode_bc1(data: &PixelDatas, width: usize, height: usize) -> PixelDatas {
-    super::decode_blocks(data, width, height, BC1_LAYOUT, decode_bc1_block)
-}
-pub fn decode_bc2(data: &PixelDatas, width: usize, height: usize) -> PixelDatas {
-    super::decode_blocks(data, width, height, BC2_LAYOUT, decode_bc2_block)
-}
-pub fn decode_bc3(data: &PixelDatas, width: usize, height: usize) -> PixelDatas {
-    super::decode_blocks(data, width, height, BC3_LAYOUT, decode_bc3_block)
-}
-pub fn decode_bc4(data: &PixelDatas, width: usize, height: usize) -> PixelDatas {
-    super::decode_blocks(data, width, height, BC4_LAYOUT, decode_bc4_block)
-}
-pub fn decode_bc5(data: &PixelDatas, width: usize, height: usize) -> PixelDatas {
-    super::decode_blocks(data, width, height, BC5_LAYOUT, decode_bc5_block)
-}
+decode_blocks!(decode_bc1, U8, BC1_LAYOUT, decode_bc1_block);
+decode_blocks!(decode_bc2, U8, BC2_LAYOUT, decode_bc2_block);
+decode_blocks!(decode_bc3, U8, BC3_LAYOUT, decode_bc3_block);
+decode_blocks!(decode_bc4, U8, BC4_LAYOUT, decode_bc4_block);
+decode_blocks!(decode_bc5, U8, BC5_LAYOUT, decode_bc5_block);
 
 // ============================================================
 // Block encode helpers

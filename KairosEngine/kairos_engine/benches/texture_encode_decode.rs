@@ -51,11 +51,25 @@ fn bench_rg8_unorm(c: &mut Criterion) {
         let rgba = make_rgba(size, size);
         let input = PixelDatas::U8(rgba);
         g.bench_with_input(BenchmarkId::new("encode", size), &input, |b, px| {
-            b.iter(|| encode(black_box(px), size as u32, size as u32, TextureFormat::Rg8Unorm));
+            b.iter(|| {
+                encode(
+                    black_box(px),
+                    size as u32,
+                    size as u32,
+                    TextureFormat::Rg8Unorm,
+                )
+            });
         });
         let encoded = encode(&input, size as u32, size as u32, TextureFormat::Rg8Unorm);
         g.bench_with_input(BenchmarkId::new("decode", size), &encoded, |b, px| {
-            b.iter(|| decode(black_box(px), size as u32, size as u32, TextureFormat::Rg8Unorm));
+            b.iter(|| {
+                decode(
+                    black_box(px),
+                    size as u32,
+                    size as u32,
+                    TextureFormat::Rg8Unorm,
+                )
+            });
         });
     }
 }
@@ -66,11 +80,25 @@ fn bench_rg8_snorm(c: &mut Criterion) {
         let rgba = make_rgba(size, size);
         let input = PixelDatas::U8(rgba);
         g.bench_with_input(BenchmarkId::new("encode", size), &input, |b, px| {
-            b.iter(|| encode(black_box(px), size as u32, size as u32, TextureFormat::Rg8Snorm));
+            b.iter(|| {
+                encode(
+                    black_box(px),
+                    size as u32,
+                    size as u32,
+                    TextureFormat::Rg8Snorm,
+                )
+            });
         });
         let encoded = encode(&input, size as u32, size as u32, TextureFormat::Rg8Snorm);
         g.bench_with_input(BenchmarkId::new("decode", size), &encoded, |b, px| {
-            b.iter(|| decode(black_box(px), size as u32, size as u32, TextureFormat::Rg8Snorm));
+            b.iter(|| {
+                decode(
+                    black_box(px),
+                    size as u32,
+                    size as u32,
+                    TextureFormat::Rg8Snorm,
+                )
+            });
         });
     }
 }
@@ -81,11 +109,25 @@ fn bench_rg8_uint(c: &mut Criterion) {
         let rgba = make_rgba(size, size);
         let input = PixelDatas::U8(rgba);
         g.bench_with_input(BenchmarkId::new("encode", size), &input, |b, px| {
-            b.iter(|| encode(black_box(px), size as u32, size as u32, TextureFormat::Rg8Uint));
+            b.iter(|| {
+                encode(
+                    black_box(px),
+                    size as u32,
+                    size as u32,
+                    TextureFormat::Rg8Uint,
+                )
+            });
         });
         let encoded = encode(&input, size as u32, size as u32, TextureFormat::Rg8Uint);
         g.bench_with_input(BenchmarkId::new("decode", size), &encoded, |b, px| {
-            b.iter(|| decode(black_box(px), size as u32, size as u32, TextureFormat::Rg8Uint));
+            b.iter(|| {
+                decode(
+                    black_box(px),
+                    size as u32,
+                    size as u32,
+                    TextureFormat::Rg8Uint,
+                )
+            });
         });
     }
 }
@@ -96,11 +138,25 @@ fn bench_rg8_sint(c: &mut Criterion) {
         let rgba = make_rgba(size, size);
         let input = PixelDatas::U8(rgba);
         g.bench_with_input(BenchmarkId::new("encode", size), &input, |b, px| {
-            b.iter(|| encode(black_box(px), size as u32, size as u32, TextureFormat::Rg8Sint));
+            b.iter(|| {
+                encode(
+                    black_box(px),
+                    size as u32,
+                    size as u32,
+                    TextureFormat::Rg8Sint,
+                )
+            });
         });
         let encoded = encode(&input, size as u32, size as u32, TextureFormat::Rg8Sint);
         g.bench_with_input(BenchmarkId::new("decode", size), &encoded, |b, px| {
-            b.iter(|| decode(black_box(px), size as u32, size as u32, TextureFormat::Rg8Sint));
+            b.iter(|| {
+                decode(
+                    black_box(px),
+                    size as u32,
+                    size as u32,
+                    TextureFormat::Rg8Sint,
+                )
+            });
         });
     }
 }
@@ -244,7 +300,12 @@ fn bench_bgra8_unorm_srgb(c: &mut Criterion) {
                 )
             });
         });
-        let encoded = encode(&input, size as u32, size as u32, TextureFormat::Bgra8UnormSrgb);
+        let encoded = encode(
+            &input,
+            size as u32,
+            size as u32,
+            TextureFormat::Bgra8UnormSrgb,
+        );
         g.bench_with_input(BenchmarkId::new("decode", size), &encoded, |b, px| {
             b.iter(|| {
                 decode(
@@ -268,11 +329,25 @@ fn bench_r16_uint(c: &mut Criterion) {
         let rgba = make_rgba(size, size);
         let input = PixelDatas::U8(rgba);
         g.bench_with_input(BenchmarkId::new("encode", size), &input, |b, px| {
-            b.iter(|| encode(black_box(px), size as u32, size as u32, TextureFormat::R16Uint));
+            b.iter(|| {
+                encode(
+                    black_box(px),
+                    size as u32,
+                    size as u32,
+                    TextureFormat::R16Uint,
+                )
+            });
         });
         let encoded = encode(&input, size as u32, size as u32, TextureFormat::R16Uint);
         g.bench_with_input(BenchmarkId::new("decode", size), &encoded, |b, px| {
-            b.iter(|| decode(black_box(px), size as u32, size as u32, TextureFormat::R16Uint));
+            b.iter(|| {
+                decode(
+                    black_box(px),
+                    size as u32,
+                    size as u32,
+                    TextureFormat::R16Uint,
+                )
+            });
         });
     }
 }
@@ -283,11 +358,25 @@ fn bench_r16_sint(c: &mut Criterion) {
         let rgba = make_rgba(size, size);
         let input = PixelDatas::U8(rgba);
         g.bench_with_input(BenchmarkId::new("encode", size), &input, |b, px| {
-            b.iter(|| encode(black_box(px), size as u32, size as u32, TextureFormat::R16Sint));
+            b.iter(|| {
+                encode(
+                    black_box(px),
+                    size as u32,
+                    size as u32,
+                    TextureFormat::R16Sint,
+                )
+            });
         });
         let encoded = encode(&input, size as u32, size as u32, TextureFormat::R16Sint);
         g.bench_with_input(BenchmarkId::new("decode", size), &encoded, |b, px| {
-            b.iter(|| decode(black_box(px), size as u32, size as u32, TextureFormat::R16Sint));
+            b.iter(|| {
+                decode(
+                    black_box(px),
+                    size as u32,
+                    size as u32,
+                    TextureFormat::R16Sint,
+                )
+            });
         });
     }
 }
@@ -298,11 +387,25 @@ fn bench_r16_float(c: &mut Criterion) {
         let rgba = make_rgba_f16(size, size);
         let input = PixelDatas::F16(rgba);
         g.bench_with_input(BenchmarkId::new("encode", size), &input, |b, px| {
-            b.iter(|| encode(black_box(px), size as u32, size as u32, TextureFormat::R16Float));
+            b.iter(|| {
+                encode(
+                    black_box(px),
+                    size as u32,
+                    size as u32,
+                    TextureFormat::R16Float,
+                )
+            });
         });
         let encoded = encode(&input, size as u32, size as u32, TextureFormat::R16Float);
         g.bench_with_input(BenchmarkId::new("decode", size), &encoded, |b, px| {
-            b.iter(|| decode(black_box(px), size as u32, size as u32, TextureFormat::R16Float));
+            b.iter(|| {
+                decode(
+                    black_box(px),
+                    size as u32,
+                    size as u32,
+                    TextureFormat::R16Float,
+                )
+            });
         });
     }
 }
@@ -313,11 +416,25 @@ fn bench_rg16_uint(c: &mut Criterion) {
         let rgba = make_rgba(size, size);
         let input = PixelDatas::U8(rgba);
         g.bench_with_input(BenchmarkId::new("encode", size), &input, |b, px| {
-            b.iter(|| encode(black_box(px), size as u32, size as u32, TextureFormat::Rg16Uint));
+            b.iter(|| {
+                encode(
+                    black_box(px),
+                    size as u32,
+                    size as u32,
+                    TextureFormat::Rg16Uint,
+                )
+            });
         });
         let encoded = encode(&input, size as u32, size as u32, TextureFormat::Rg16Uint);
         g.bench_with_input(BenchmarkId::new("decode", size), &encoded, |b, px| {
-            b.iter(|| decode(black_box(px), size as u32, size as u32, TextureFormat::Rg16Uint));
+            b.iter(|| {
+                decode(
+                    black_box(px),
+                    size as u32,
+                    size as u32,
+                    TextureFormat::Rg16Uint,
+                )
+            });
         });
     }
 }
@@ -328,11 +445,25 @@ fn bench_rg16_sint(c: &mut Criterion) {
         let rgba = make_rgba(size, size);
         let input = PixelDatas::U8(rgba);
         g.bench_with_input(BenchmarkId::new("encode", size), &input, |b, px| {
-            b.iter(|| encode(black_box(px), size as u32, size as u32, TextureFormat::Rg16Sint));
+            b.iter(|| {
+                encode(
+                    black_box(px),
+                    size as u32,
+                    size as u32,
+                    TextureFormat::Rg16Sint,
+                )
+            });
         });
         let encoded = encode(&input, size as u32, size as u32, TextureFormat::Rg16Sint);
         g.bench_with_input(BenchmarkId::new("decode", size), &encoded, |b, px| {
-            b.iter(|| decode(black_box(px), size as u32, size as u32, TextureFormat::Rg16Sint));
+            b.iter(|| {
+                decode(
+                    black_box(px),
+                    size as u32,
+                    size as u32,
+                    TextureFormat::Rg16Sint,
+                )
+            });
         });
     }
 }
@@ -343,11 +474,25 @@ fn bench_rg16_float(c: &mut Criterion) {
         let rgba = make_rgba_f16(size, size);
         let input = PixelDatas::F16(rgba);
         g.bench_with_input(BenchmarkId::new("encode", size), &input, |b, px| {
-            b.iter(|| encode(black_box(px), size as u32, size as u32, TextureFormat::Rg16Float));
+            b.iter(|| {
+                encode(
+                    black_box(px),
+                    size as u32,
+                    size as u32,
+                    TextureFormat::Rg16Float,
+                )
+            });
         });
         let encoded = encode(&input, size as u32, size as u32, TextureFormat::Rg16Float);
         g.bench_with_input(BenchmarkId::new("decode", size), &encoded, |b, px| {
-            b.iter(|| decode(black_box(px), size as u32, size as u32, TextureFormat::Rg16Float));
+            b.iter(|| {
+                decode(
+                    black_box(px),
+                    size as u32,
+                    size as u32,
+                    TextureFormat::Rg16Float,
+                )
+            });
         });
     }
 }
@@ -358,11 +503,25 @@ fn bench_rgba16_uint(c: &mut Criterion) {
         let rgba = make_rgba(size, size);
         let input = PixelDatas::U8(rgba);
         g.bench_with_input(BenchmarkId::new("encode", size), &input, |b, px| {
-            b.iter(|| encode(black_box(px), size as u32, size as u32, TextureFormat::Rgba16Uint));
+            b.iter(|| {
+                encode(
+                    black_box(px),
+                    size as u32,
+                    size as u32,
+                    TextureFormat::Rgba16Uint,
+                )
+            });
         });
         let encoded = encode(&input, size as u32, size as u32, TextureFormat::Rgba16Uint);
         g.bench_with_input(BenchmarkId::new("decode", size), &encoded, |b, px| {
-            b.iter(|| decode(black_box(px), size as u32, size as u32, TextureFormat::Rgba16Uint));
+            b.iter(|| {
+                decode(
+                    black_box(px),
+                    size as u32,
+                    size as u32,
+                    TextureFormat::Rgba16Uint,
+                )
+            });
         });
     }
 }
@@ -373,11 +532,25 @@ fn bench_rgba16_sint(c: &mut Criterion) {
         let rgba = make_rgba(size, size);
         let input = PixelDatas::U8(rgba);
         g.bench_with_input(BenchmarkId::new("encode", size), &input, |b, px| {
-            b.iter(|| encode(black_box(px), size as u32, size as u32, TextureFormat::Rgba16Sint));
+            b.iter(|| {
+                encode(
+                    black_box(px),
+                    size as u32,
+                    size as u32,
+                    TextureFormat::Rgba16Sint,
+                )
+            });
         });
         let encoded = encode(&input, size as u32, size as u32, TextureFormat::Rgba16Sint);
         g.bench_with_input(BenchmarkId::new("decode", size), &encoded, |b, px| {
-            b.iter(|| decode(black_box(px), size as u32, size as u32, TextureFormat::Rgba16Sint));
+            b.iter(|| {
+                decode(
+                    black_box(px),
+                    size as u32,
+                    size as u32,
+                    TextureFormat::Rgba16Sint,
+                )
+            });
         });
     }
 }
@@ -388,11 +561,25 @@ fn bench_rgba16_float(c: &mut Criterion) {
         let rgba = make_rgba_f16(size, size);
         let input = PixelDatas::F16(rgba);
         g.bench_with_input(BenchmarkId::new("encode", size), &input, |b, px| {
-            b.iter(|| encode(black_box(px), size as u32, size as u32, TextureFormat::Rgba16Float));
+            b.iter(|| {
+                encode(
+                    black_box(px),
+                    size as u32,
+                    size as u32,
+                    TextureFormat::Rgba16Float,
+                )
+            });
         });
         let encoded = encode(&input, size as u32, size as u32, TextureFormat::Rgba16Float);
         g.bench_with_input(BenchmarkId::new("decode", size), &encoded, |b, px| {
-            b.iter(|| decode(black_box(px), size as u32, size as u32, TextureFormat::Rgba16Float));
+            b.iter(|| {
+                decode(
+                    black_box(px),
+                    size as u32,
+                    size as u32,
+                    TextureFormat::Rgba16Float,
+                )
+            });
         });
     }
 }

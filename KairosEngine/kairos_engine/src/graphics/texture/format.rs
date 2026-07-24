@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
 
+use half::f16;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
@@ -7,11 +9,112 @@ mod bc;
 mod srgb;
 mod uncompressed;
 
-use rayon::prelude::*;
-
 // ============================================================
 // PixelDatas — universal pixel container
 // ============================================================
+
+/// Convert a [0..1] f32 to SNORM u16.
+#[inline(always)]
+fn f32_to_u16(v: f32) -> u16 {
+    if v <= 0.0 {
+        0u16
+    } else if v >= 1.0 {
+        65535u16
+    } else {
+        (v * 65535.0).round() as u16
+    }
+}
+/// Convert a [-1..1] f16 to SNORM u16.
+#[inline(always)]
+fn f16_to_u16(v: f16) -> u16 {
+    f32_to_u16(v.to_f32())
+}
+/// Convert a [0..1] f32 to UNORM u8 (0..255).
+#[inline(always)]
+fn f32_to_u8(v: f32) -> u8 {
+    if v <= 0.0 {
+        0
+    } else if v >= 1.0 {
+        255
+    } else {
+        (v * 255.0).round() as u8
+    }
+}
+/// Convert a [0..1] f16 to UNORM u8 (0..255).
+#[inline(always)]
+fn f16_to_u8(v: f16) -> u8 {
+    f32_to_u8(v.to_f32())
+}
+#[inline(always)]
+fn i8_to_u8(v: i8) -> u8 {
+    (v as i16 + 128) as u8
+}
+#[inline(always)]
+fn i16_to_u8(v: i16) -> u8 {
+    i8_to_u8(v as i8)
+}
+#[inline(always)]
+fn i8_to_u16(v: i8) -> u16 {
+    (v as i16 + 128) as u16
+}
+#[inline(always)]
+fn i16_to_u16(v: i16) -> u16 {
+    (v as i32 + 32768) as u16
+}
+#[inline(always)]
+fn u16_to_i16(v: u16) -> i16 {
+    (v as i32 - 32768) as i16
+}
+#[inline(always)]
+fn u8_to_i16(v: u8) -> i16 {
+    u16_to_i16(v as u16)
+}
+#[inline(always)]
+fn f32_to_i16(v: f32) -> i16 {
+    if v <= 0.0 {
+        -32768
+    } else if v >= 1.0 {
+        32767
+    } else {
+        (v * 32767.0).round() as i16
+    }
+}
+#[inline(always)]
+fn f16_to_i16(v: f16) -> i16 {
+    f32_to_i16(v.to_f32())
+}
+#[inline(always)]
+fn u8_to_f32(v: u8) -> f32 {
+    (v as f32) / 255.0
+}
+#[inline(always)]
+fn u8_to_f16(v: u8) -> f16 {
+    f16::from_f32(u8_to_f32(v))
+}
+#[inline(always)]
+fn u16_to_f32(v: u16) -> f32 {
+    (v as f32) / 65535.0
+}
+#[inline(always)]
+fn u16_to_f16(v: u16) -> f16 {
+    f16::from_f32(u16_to_f32(v))
+}
+#[inline(always)]
+fn s8_to_f32(v: i8) -> f32 {
+    (v as f32) / 128.0
+}
+#[inline(always)]
+fn s8_to_f16(v: i8) -> f16 {
+    f16::from_f32(s8_to_f32(v))
+}
+#[inline(always)]
+fn s16_to_f32(v: i16) -> f32 {
+    (v as f32) / 32767.0
+}
+#[inline(always)]
+fn s16_to_f16(v: i16) -> f16 {
+    f16::from_f32(s16_to_f32(v))
+}
 
 /// How raw encoded bytes should be interpreted per-pixel (or per-block).
 ///
@@ -21,8 +124,10 @@ use rayon::prelude::*;
 pub enum RawPixelType {
     /// Raw bytes are u8 — SDR uncompressed, BC/ETC/EAC/ASTC block-compressed.
     U8,
+    S8,
     /// Raw bytes are u16 — wide integer formats (R16Uint, Rg16Uint, etc.).
     U16,
+    S16,
     /// Raw bytes should be reinterpreted as `half::f16` slices.
     F16,
     /// Raw bytes should be reinterpreted as `f32` slices.
@@ -33,6 +138,9 @@ pub enum RawPixelType {
 ///
 /// The variant is chosen by the texture format's bit depth:
 /// - `U8` for 8-bit/channel SDR formats and BC compression
+/// - `S8` for 8-bit/channel Signed formats
+/// - 'U16' for 16-bit/channel formats
+/// - 'I16' for 16-bit/channel Signed formats
 /// - `F16` for half-float HDR formats (BC6h, ASTC HDR, R16F, etc.)
 /// - `F32` for native 32-bit float formats (R32F, Rg32F, Rgba32F)
 ///
@@ -41,8 +149,10 @@ pub enum RawPixelType {
 pub enum PixelDatas {
     /// 8-bit unsigned integer pixel data (e.g. RGBA8, BC compressed).
     U8(Vec<u8>),
+    S8(Vec<i8>),
     /// 16-bit unsigned integer pixel data (e.g. R16Uint, Rg16Uint encoded).
     U16(Vec<u16>),
+    S16(Vec<i16>),
     /// 16-bit half-float pixel data.
     F16(Vec<half::f16>),
     /// 32-bit full-float pixel data.
@@ -58,6 +168,8 @@ impl PixelDatas {
             PixelDatas::U16(data) => bytemuck::cast_slice(data),
             PixelDatas::F16(data) => bytemuck::cast_slice(data),
             PixelDatas::F32(data) => bytemuck::cast_slice(data),
+            PixelDatas::S8(data) => bytemuck::cast_slice(data),
+            PixelDatas::S16(data) => bytemuck::cast_slice(data),
         }
     }
 
@@ -75,52 +187,29 @@ impl PixelDatas {
         self.as_bytes().len()
     }
 
-    /// Convert this pixel data to RGBA8 `U8` variant.
-    ///
-    /// If already `U8`, returns a clone. For float variants, clamps each
-    /// channel to [0.0, 1.0] and scales to [0, 255].
-    pub fn to_rgba8(&self) -> Self {
-        match self {
-            PixelDatas::U8(_) => self.clone(),
-            PixelDatas::U16(data) => PixelDatas::U8(
-                data.iter().map(|&v| v as u8).collect(),
-            ),
-            PixelDatas::F16(data) => PixelDatas::U8(
-                data.iter()
-                    .map(|&v| {
-                        let f = v.to_f32();
-                        if f <= 0.0 {
-                            0u8
-                        } else if f >= 1.0 {
-                            255u8
-                        } else {
-                            (f * 255.0).round() as u8
-                        }
-                    })
-                    .collect(),
-            ),
-            PixelDatas::F32(data) => PixelDatas::U8(
-                data.iter()
-                    .map(|&v| {
-                        if v <= 0.0 {
-                            0u8
-                        } else if v >= 1.0 {
-                            255u8
-                        } else {
-                            (v * 255.0).round() as u8
-                        }
-                    })
-                    .collect(),
-            ),
-        }
+    /// Convert this pixel data to `U8` variant.
+    pub fn convert_to_u8(&self) -> Self {
+        PixelDatas::U8(self.convert_to_u8_bytes())
     }
 
-    /// Convert to `Vec<u8>` of RGBA8 bytes in parallel.
-    pub fn to_rgba8_bytes(&self) -> Vec<u8> {
+    /// Convert to u8 pixel data bytes in parallel.
+    pub fn convert_to_u8_bytes(&self) -> Vec<u8> {
         const CHUNK: usize = 4096;
         match self {
             PixelDatas::U8(data) => data.clone(),
-            PixelDatas::U16(data) => data.iter().map(|&v| v as u8).collect(),
+            PixelDatas::U16(data) => {
+                let pixel_count = data.len();
+                let mut out = vec![0u8; pixel_count];
+                out.par_chunks_mut(CHUNK)
+                    .enumerate()
+                    .for_each(|(chunk_idx, chunk)| {
+                        let base = chunk_idx * CHUNK;
+                        for (j, dst) in chunk.iter_mut().enumerate() {
+                            *dst = data[base + j] as u8;
+                        }
+                    });
+                out
+            }
             PixelDatas::F16(data) => {
                 let pixel_count = data.len();
                 let mut out = vec![0u8; pixel_count];
@@ -129,14 +218,7 @@ impl PixelDatas {
                     .for_each(|(chunk_idx, chunk)| {
                         let base = chunk_idx * CHUNK;
                         for (j, dst) in chunk.iter_mut().enumerate() {
-                            let f = data[base + j].to_f32();
-                            *dst = if f <= 0.0 {
-                                0u8
-                            } else if f >= 1.0 {
-                                255u8
-                            } else {
-                                (f * 255.0).round() as u8
-                            };
+                            *dst = f16_to_u8(data[base + j]);
                         }
                     });
                 out
@@ -149,14 +231,267 @@ impl PixelDatas {
                     .for_each(|(chunk_idx, chunk)| {
                         let base = chunk_idx * CHUNK;
                         for (j, dst) in chunk.iter_mut().enumerate() {
-                            let v = data[base + j];
-                            *dst = if v <= 0.0 {
-                                0u8
-                            } else if v >= 1.0 {
-                                255u8
-                            } else {
-                                (v * 255.0).round() as u8
-                            };
+                            *dst = f32_to_u8(data[base + j]);
+                        }
+                    });
+                out
+            }
+            PixelDatas::S8(data) => {
+                let pixel_count = data.len();
+                let mut out = vec![0u8; pixel_count];
+                out.par_chunks_mut(CHUNK)
+                    .enumerate()
+                    .for_each(|(chunk_idx, chunk)| {
+                        let base = chunk_idx * CHUNK;
+                        for (j, dst) in chunk.iter_mut().enumerate() {
+                            *dst = i8_to_u8(data[base + j]);
+                        }
+                    });
+                out
+            }
+            PixelDatas::S16(data) => {
+                let pixel_count = data.len();
+                let mut out = vec![0u8; pixel_count];
+                out.par_chunks_mut(CHUNK)
+                    .enumerate()
+                    .for_each(|(chunk_idx, chunk)| {
+                        let base = chunk_idx * CHUNK;
+                        for (j, dst) in chunk.iter_mut().enumerate() {
+                            *dst = i16_to_u8(data[base + j]);
+                        }
+                    });
+                out
+            }
+        }
+    }
+
+    /// Convert this pixel data to `U16` variant.
+    pub fn convert_to_u16(&self) -> Self {
+        PixelDatas::U16(self.convert_to_u16_bytes())
+    }
+
+    /// Convert to u16 pixel data bytes in parallel.
+    pub fn convert_to_u16_bytes(&self) -> Vec<u16> {
+        const CHUNK: usize = 4096;
+        match self {
+            PixelDatas::U8(data) => {
+                let pixel_count = data.len();
+                let mut out = vec![0u16; pixel_count];
+                out.par_chunks_mut(CHUNK)
+                    .enumerate()
+                    .for_each(|(chunk_idx, chunk)| {
+                        let base = chunk_idx * CHUNK;
+                        for (j, dst) in chunk.iter_mut().enumerate() {
+                            *dst = data[base + j] as u16;
+                        }
+                    });
+                out
+            }
+            PixelDatas::U16(data) => data.clone(),
+            PixelDatas::F16(data) => {
+                let pixel_count = data.len();
+                let mut out = vec![0u16; pixel_count];
+                out.par_chunks_mut(CHUNK)
+                    .enumerate()
+                    .for_each(|(chunk_idx, chunk)| {
+                        let base = chunk_idx * CHUNK;
+                        for (j, dst) in chunk.iter_mut().enumerate() {
+                            *dst = f16_to_u16(data[base + j]);
+                        }
+                    });
+                out
+            }
+            PixelDatas::F32(data) => {
+                let pixel_count = data.len();
+                let mut out = vec![0u16; pixel_count];
+                out.par_chunks_mut(CHUNK)
+                    .enumerate()
+                    .for_each(|(chunk_idx, chunk)| {
+                        let base = chunk_idx * CHUNK;
+                        for (j, dst) in chunk.iter_mut().enumerate() {
+                            *dst = f32_to_u16(data[base + j]);
+                        }
+                    });
+                out
+            }
+            PixelDatas::S8(data) => {
+                let pixel_count = data.len();
+                let mut out = vec![0u16; pixel_count];
+                out.par_chunks_mut(CHUNK)
+                    .enumerate()
+                    .for_each(|(chunk_idx, chunk)| {
+                        let base = chunk_idx * CHUNK;
+                        for (j, dst) in chunk.iter_mut().enumerate() {
+                            *dst = i8_to_u16(data[base + j]);
+                        }
+                    });
+                out
+            }
+            PixelDatas::S16(data) => {
+                let pixel_count = data.len();
+                let mut out = vec![0u16; pixel_count];
+                out.par_chunks_mut(CHUNK)
+                    .enumerate()
+                    .for_each(|(chunk_idx, chunk)| {
+                        let base = chunk_idx * CHUNK;
+                        for (j, dst) in chunk.iter_mut().enumerate() {
+                            *dst = i16_to_u16(data[base + j]);
+                        }
+                    });
+                out
+            }
+        }
+    }
+
+    /// Convert this pixel data to `S16` variant.
+    pub fn convert_to_s16(&self) -> Self {
+        PixelDatas::S16(self.convert_to_s16_bytes())
+    }
+
+    /// Convert to s16 pixel data bytes in parallel.
+    pub fn convert_to_s16_bytes(&self) -> Vec<i16> {
+        const CHUNK: usize = 4096;
+        match self {
+            PixelDatas::U8(data) => {
+                let pixel_count = data.len();
+                let mut out = vec![0i16; pixel_count];
+                out.par_chunks_mut(CHUNK)
+                    .enumerate()
+                    .for_each(|(chunk_idx, chunk)| {
+                        let base = chunk_idx * CHUNK;
+                        for (j, dst) in chunk.iter_mut().enumerate() {
+                            *dst = u8_to_i16(data[base + j]);
+                        }
+                    });
+                out
+            }
+            PixelDatas::U16(data) => {
+                let pixel_count = data.len();
+                let mut out = vec![0i16; pixel_count];
+                out.par_chunks_mut(CHUNK)
+                    .enumerate()
+                    .for_each(|(chunk_idx, chunk)| {
+                        let base = chunk_idx * CHUNK;
+                        for (j, dst) in chunk.iter_mut().enumerate() {
+                            *dst = u16_to_i16(data[base + j]);
+                        }
+                    });
+                out
+            }
+            PixelDatas::F16(data) => {
+                let pixel_count = data.len();
+                let mut out = vec![0i16; pixel_count];
+                out.par_chunks_mut(CHUNK)
+                    .enumerate()
+                    .for_each(|(chunk_idx, chunk)| {
+                        let base = chunk_idx * CHUNK;
+                        for (j, dst) in chunk.iter_mut().enumerate() {
+                            *dst = f16_to_i16(data[base + j]);
+                        }
+                    });
+                out
+            }
+            PixelDatas::F32(data) => {
+                let pixel_count = data.len();
+                let mut out = vec![0i16; pixel_count];
+                out.par_chunks_mut(CHUNK)
+                    .enumerate()
+                    .for_each(|(chunk_idx, chunk)| {
+                        let base = chunk_idx * CHUNK;
+                        for (j, dst) in chunk.iter_mut().enumerate() {
+                            *dst = f32_to_i16(data[base + j]);
+                        }
+                    });
+                out
+            }
+            PixelDatas::S8(data) => {
+                let pixel_count = data.len();
+                let mut out = vec![0i16; pixel_count];
+                out.par_chunks_mut(CHUNK)
+                    .enumerate()
+                    .for_each(|(chunk_idx, chunk)| {
+                        let base = chunk_idx * CHUNK;
+                        for (j, dst) in chunk.iter_mut().enumerate() {
+                            *dst = data[base + j] as i16;
+                        }
+                    });
+                out
+            }
+            PixelDatas::S16(data) => data.clone(),
+        }
+    }
+
+    /// Convert this pixel data to `S16` variant.
+    pub fn convert_to_f16(&self) -> Self {
+        PixelDatas::F16(self.convert_to_f16_bytes())
+    }
+
+    /// Convert to s16 pixel data bytes in parallel.
+    pub fn convert_to_f16_bytes(&self) -> Vec<f16> {
+        const CHUNK: usize = 4096;
+        match self {
+            PixelDatas::U8(data) => {
+                let pixel_count = data.len();
+                let mut out = vec![f16::ZERO; pixel_count];
+                out.par_chunks_mut(CHUNK)
+                    .enumerate()
+                    .for_each(|(chunk_idx, chunk)| {
+                        let base = chunk_idx * CHUNK;
+                        for (j, dst) in chunk.iter_mut().enumerate() {
+                            *dst = u8_to_f16(data[base + j]);
+                        }
+                    });
+                out
+            }
+            PixelDatas::U16(data) => {
+                let pixel_count = data.len();
+                let mut out = vec![f16::ZERO; pixel_count];
+                out.par_chunks_mut(CHUNK)
+                    .enumerate()
+                    .for_each(|(chunk_idx, chunk)| {
+                        let base = chunk_idx * CHUNK;
+                        for (j, dst) in chunk.iter_mut().enumerate() {
+                            *dst = u16_to_f16(data[base + j]);
+                        }
+                    });
+                out
+            }
+            PixelDatas::F16(data) => data.clone(),
+            PixelDatas::F32(data) => {
+                let pixel_count = data.len();
+                let mut out = vec![f16::ZERO; pixel_count];
+                out.par_chunks_mut(CHUNK)
+                    .enumerate()
+                    .for_each(|(chunk_idx, chunk)| {
+                        let base = chunk_idx * CHUNK;
+                        for (j, dst) in chunk.iter_mut().enumerate() {
+                            *dst = f16::from_f32(data[base + j]);
+                        }
+                    });
+                out
+            }
+            PixelDatas::S8(data) => {
+                let pixel_count = data.len();
+                let mut out = vec![f16::ZERO; pixel_count];
+                out.par_chunks_mut(CHUNK)
+                    .enumerate()
+                    .for_each(|(chunk_idx, chunk)| {
+                        let base = chunk_idx * CHUNK;
+                        for (j, dst) in chunk.iter_mut().enumerate() {
+                            *dst = s8_to_f16(data[base + j])
+                        }
+                    });
+                out
+            }
+            PixelDatas::S16(data) => {
+                let pixel_count = data.len();
+                let mut out = vec![f16::ZERO; pixel_count];
+                out.par_chunks_mut(CHUNK)
+                    .enumerate()
+                    .for_each(|(chunk_idx, chunk)| {
+                        let base = chunk_idx * CHUNK;
+                        for (j, dst) in chunk.iter_mut().enumerate() {
+                            *dst = s16_to_f16(data[base + j])
                         }
                     });
                 out
@@ -242,10 +577,13 @@ pub fn extract_block_f16(
 
 /// Shared block-parallel encoding macro for compressed formats.
 ///
-/// Destructures the input `PixelDatas` variant explicitly — each caller
-/// must specify the variant (`U8`, `F16`, or `F32`). The macro selects
-/// the correct `extract_block` function and output wrapping based on the
-/// variant.
+/// Accepts any `PixelDatas` variant. Non-matching variants are converted
+/// to the required pixel type before block encoding (U8 via
+/// [`PixelDatas::to_rgba8_bytes`], F16 via per-channel normalization).
+/// This ensures the encoder never panics on variant mismatch.
+///
+/// The variant name (`U8`, `F16`) selects the correct inner-pixel type
+/// for `extract_block` / `extract_block_f16` and output wrapping.
 ///
 /// # Panics
 /// Panics at compile time if the variant is not recognized.
@@ -258,8 +596,13 @@ macro_rules! encode_blocks {
             width: usize,
             height: usize,
         ) -> $crate::graphics::texture::format::PixelDatas {
-            let $crate::graphics::texture::format::PixelDatas::U8(rgba) = pixels else {
-                panic!("encode_blocks! U8 called on non-U8 variant");
+            // Zero-alloc fast path: borrow U8 slice directly.
+            // Non-U8 variants convert via to_rgba8_bytes() which allocates.
+            let rgba: std::borrow::Cow<'_, [u8]> = match pixels {
+                $crate::graphics::texture::format::PixelDatas::U8(data) => {
+                    std::borrow::Cow::Borrowed(data.as_slice())
+                }
+                other => std::borrow::Cow::Owned(other.convert_to_u8_bytes()),
             };
             let bx = (width + $block_w - 1) / $block_w;
             let by = (height + $block_h - 1) / $block_h;
@@ -269,7 +612,7 @@ macro_rules! encode_blocks {
                     let bx_i = i % bx;
                     let by_i = i / bx;
                     let block = $crate::graphics::texture::format::extract_block(
-                        rgba,
+                        rgba.as_ref(),
                         width,
                         height,
                         bx_i * $block_w,
@@ -291,8 +634,54 @@ macro_rules! encode_blocks {
             width: usize,
             height: usize,
         ) -> $crate::graphics::texture::format::PixelDatas {
-            let $crate::graphics::texture::format::PixelDatas::F16(rgba) = pixels else {
-                panic!("encode_blocks! F16 called on non-F16 variant");
+            // Zero-alloc fast path: borrow F16 slice directly.
+            // Non-F16 variants convert via per-channel normalization.
+            let rgba: std::borrow::Cow<'_, [half::f16]> = match pixels {
+                $crate::graphics::texture::format::PixelDatas::F16(data) => {
+                    std::borrow::Cow::Borrowed(data.as_slice())
+                }
+                $crate::graphics::texture::format::PixelDatas::U8(data) => {
+                    const CHUNK: usize = 4096;
+                    let n = data.len();
+                    let mut out = vec![half::f16::ZERO; n];
+                    out.par_chunks_mut(CHUNK)
+                        .enumerate()
+                        .for_each(|(chunk_idx, chunk)| {
+                            let base = chunk_idx * CHUNK;
+                            for (j, dst) in chunk.iter_mut().enumerate() {
+                                *dst = half::f16::from_f32(data[base + j] as f32 / 255.0);
+                            }
+                        });
+                    std::borrow::Cow::Owned(out)
+                }
+                $crate::graphics::texture::format::PixelDatas::U16(data) => {
+                    const CHUNK: usize = 4096;
+                    let n = data.len();
+                    let mut out = vec![half::f16::ZERO; n];
+                    out.par_chunks_mut(CHUNK)
+                        .enumerate()
+                        .for_each(|(chunk_idx, chunk)| {
+                            let base = chunk_idx * CHUNK;
+                            for (j, dst) in chunk.iter_mut().enumerate() {
+                                *dst = half::f16::from_f32(data[base + j] as f32 / 65535.0);
+                            }
+                        });
+                    std::borrow::Cow::Owned(out)
+                }
+                $crate::graphics::texture::format::PixelDatas::F32(data) => {
+                    const CHUNK: usize = 4096;
+                    let n = data.len();
+                    let mut out = vec![half::f16::ZERO; n];
+                    out.par_chunks_mut(CHUNK)
+                        .enumerate()
+                        .for_each(|(chunk_idx, chunk)| {
+                            let base = chunk_idx * CHUNK;
+                            for (j, dst) in chunk.iter_mut().enumerate() {
+                                *dst = half::f16::from_f32(data[base + j]);
+                            }
+                        });
+                    std::borrow::Cow::Owned(out)
+                }
             };
             let bx = (width + $block_w - 1) / $block_w;
             let by = (height + $block_h - 1) / $block_h;
@@ -302,7 +691,7 @@ macro_rules! encode_blocks {
                     let bx_i = i % bx;
                     let by_i = i / bx;
                     let block = $crate::graphics::texture::format::extract_block_f16(
-                        rgba,
+                        rgba.as_ref(),
                         width,
                         height,
                         bx_i * $block_w,
@@ -319,54 +708,272 @@ macro_rules! encode_blocks {
     };
 }
 
-/// Shared block-parallel decoding function for compressed formats.
+/// Shared block-parallel decoding macro for compressed formats.
 ///
-/// Processes blocks in parallel, calls `decode` per block (which writes
-/// RGBA8 pixels), and returns the result as `PixelDatas::U8`.
-pub fn decode_blocks(
-    data: &PixelDatas,
-    width: usize,
-    height: usize,
-    layout: BlockLayout,
-    decode: impl Fn(&[u8], &mut [u8; 64]) + Sync,
-) -> PixelDatas {
-    let raw = data.as_bytes();
-    let BlockLayout {
-        w: block_w,
-        h: block_h,
-        bytes: block_size,
-    } = layout;
-    let bx = (width + block_w - 1) / block_w;
-    let by = (height + block_h - 1) / block_h;
-    let total = bx * by;
-    let mut out = vec![0u8; width * height * 4];
-    let out_addr = out.as_mut_ptr() as usize;
+/// Generates a decoding function for the given variant:
+///
+/// | Variant | Output `PixelDatas` | Per-block buffer |
+/// |---------|---------------------|------------------|
+/// | `U8`    | `PixelDatas::U8`    | `[u8; 64]`       |
+/// | `F16`   | `PixelDatas::F16`   | `[half::f16; 64]`|
+///
+/// This mirrors the design of [`encode_blocks!`] and ensures the output
+/// variant matches the decoded pixel type (no panic, no assumption).
+///
+/// # Panics
+/// Panics at compile time if the variant is not recognized.
+#[macro_export]
+macro_rules! decode_blocks {
+    // U8 variant: for BC1-5, BC7, ETC2, ASTC LDR
+    ($name:ident, U8, $layout:expr, $decode_fn:ident) => {
+        pub fn $name(
+            data: &$crate::graphics::texture::format::PixelDatas,
+            width: usize,
+            height: usize,
+        ) -> $crate::graphics::texture::format::PixelDatas {
+            let raw = data.convert_to_u8_bytes();
+            let $crate::graphics::texture::format::BlockLayout {
+                w: block_w,
+                h: block_h,
+                bytes: block_size,
+            } = $layout;
+            let bx = (width + block_w - 1) / block_w;
+            let by = (height + block_h - 1) / block_h;
+            let total = bx * by;
+            let mut out = vec![0u8; width * height * 4];
+            let out_addr = out.as_mut_ptr() as usize;
 
-    (0..total).into_par_iter().for_each(|i| {
-        let out_ptr = out_addr as *mut u8;
-        let bx_i = i % bx;
-        let by_i = i / bx;
-        let off = i * block_size;
-        let mut pixels = [0u8; 64];
-        decode(&raw[off..off + block_size], &mut pixels);
-        for py in 0..block_h {
-            for px in 0..block_w {
-                let sx = bx_i * block_w + px;
-                let sy = by_i * block_h + py;
-                if sx < width && sy < height {
-                    let dst = (sy * width + sx) * 4;
-                    let src = (py * block_w + px) * 4;
-                    // SAFETY: each (sx, sy) pair is unique across all blocks,
-                    // so no two threads write to the same output location.
-                    unsafe {
-                        std::ptr::copy_nonoverlapping(pixels[src..].as_ptr(), out_ptr.add(dst), 4);
+            (0..total).into_par_iter().for_each(|i| {
+                let out_ptr = out_addr as *mut u8;
+                let bx_i = i % bx;
+                let by_i = i / bx;
+                let off = i * block_size;
+                let mut pixels = [0u8; 64];
+                $decode_fn(&raw[off..off + block_size], &mut pixels);
+                for py in 0..block_h {
+                    for px in 0..block_w {
+                        let sx = bx_i * block_w + px;
+                        let sy = by_i * block_h + py;
+                        if sx < width && sy < height {
+                            let dst = (sy * width + sx) * 4;
+                            let src = (py * block_w + px) * 4;
+                            // SAFETY: each (sx, sy) pair is unique across all blocks,
+                            // so no two threads write to the same output location.
+                            unsafe {
+                                std::ptr::copy_nonoverlapping(
+                                    pixels[src..].as_ptr(),
+                                    out_ptr.add(dst),
+                                    4,
+                                );
+                            }
+                        }
                     }
                 }
-            }
-        }
-    });
+            });
 
-    PixelDatas::U8(out)
+            $crate::graphics::texture::format::PixelDatas::U8(out)
+        }
+    };
+    // S8 variant
+    ($name:ident, S8, $layout:expr, $decode_fn:ident) => {
+        pub fn $name(
+            data: &$crate::graphics::texture::format::PixelDatas,
+            width: usize,
+            height: usize,
+        ) -> $crate::graphics::texture::format::PixelDatas {
+            let raw = data.convert_to_s8_bytes();
+            let $crate::graphics::texture::format::BlockLayout {
+                w: block_w,
+                h: block_h,
+                bytes: block_size,
+            } = $layout;
+            let bx = (width + block_w - 1) / block_w;
+            let by = (height + block_h - 1) / block_h;
+            let total = bx * by;
+            let mut out = vec![0i8; width * height * 4];
+            let out_addr = out.as_mut_ptr() as usize;
+
+            (0..total).into_par_iter().for_each(|i| {
+                let out_ptr = out_addr as *mut u8;
+                let bx_i = i % bx;
+                let by_i = i / bx;
+                let off = i * block_size;
+                let mut pixels = [0i8; 64];
+                $decode_fn(&raw[off..off + block_size], &mut pixels);
+                for py in 0..block_h {
+                    for px in 0..block_w {
+                        let sx = bx_i * block_w + px;
+                        let sy = by_i * block_h + py;
+                        if sx < width && sy < height {
+                            let dst = (sy * width + sx) * 4;
+                            let src = (py * block_w + px) * 4;
+                            // SAFETY: each (sx, sy) pair is unique across all blocks,
+                            // so no two threads write to the same output location.
+                            unsafe {
+                                std::ptr::copy_nonoverlapping(
+                                    pixels[src..].as_ptr(),
+                                    out_ptr.add(dst),
+                                    4,
+                                );
+                            }
+                        }
+                    }
+                }
+            });
+
+            $crate::graphics::texture::format::PixelDatas::U8(out)
+        }
+    };
+    // U16 variant
+    ($name:ident, U16, $layout:expr, $decode_fn:ident) => {
+        pub fn $name(
+            data: &$crate::graphics::texture::format::PixelDatas,
+            width: usize,
+            height: usize,
+        ) -> $crate::graphics::texture::format::PixelDatas {
+            let raw = data.convert_to_u16_bytes();
+            let $crate::graphics::texture::format::BlockLayout {
+                w: block_w,
+                h: block_h,
+                bytes: block_size,
+            } = $layout;
+            let bx = (width + block_w - 1) / block_w;
+            let by = (height + block_h - 1) / block_h;
+            let total = bx * by;
+            let mut out = vec![0u16; width * height * 4];
+            let out_addr = out.as_mut_ptr() as usize;
+
+            (0..total).into_par_iter().for_each(|i| {
+                let out_ptr = out_addr as *mut u8;
+                let bx_i = i % bx;
+                let by_i = i / bx;
+                let off = i * block_size;
+                let mut pixels = [0u16; 64];
+                $decode_fn(&raw[off..off + block_size], &mut pixels);
+                for py in 0..block_h {
+                    for px in 0..block_w {
+                        let sx = bx_i * block_w + px;
+                        let sy = by_i * block_h + py;
+                        if sx < width && sy < height {
+                            let dst = (sy * width + sx) * 4;
+                            let src = (py * block_w + px) * 4;
+                            // SAFETY: each (sx, sy) pair is unique across all blocks,
+                            // so no two threads write to the same output location.
+                            unsafe {
+                                std::ptr::copy_nonoverlapping(
+                                    pixels[src..].as_ptr(),
+                                    out_ptr.add(dst),
+                                    4,
+                                );
+                            }
+                        }
+                    }
+                }
+            });
+
+            $crate::graphics::texture::format::PixelDatas::U8(out)
+        }
+    };
+    // S16 variant
+    ($name:ident, S16, $layout:expr, $decode_fn:ident) => {
+        pub fn $name(
+            data: &$crate::graphics::texture::format::PixelDatas,
+            width: usize,
+            height: usize,
+        ) -> $crate::graphics::texture::format::PixelDatas {
+            let raw = data.convert_to_s16_bytes();
+            let $crate::graphics::texture::format::BlockLayout {
+                w: block_w,
+                h: block_h,
+                bytes: block_size,
+            } = $layout;
+            let bx = (width + block_w - 1) / block_w;
+            let by = (height + block_h - 1) / block_h;
+            let total = bx * by;
+            let mut out = vec![0i16; width * height * 4];
+            let out_addr = out.as_mut_ptr() as usize;
+
+            (0..total).into_par_iter().for_each(|i| {
+                let out_ptr = out_addr as *mut u8;
+                let bx_i = i % bx;
+                let by_i = i / bx;
+                let off = i * block_size;
+                let mut pixels = [0i16; 64];
+                $decode_fn(&raw[off..off + block_size], &mut pixels);
+                for py in 0..block_h {
+                    for px in 0..block_w {
+                        let sx = bx_i * block_w + px;
+                        let sy = by_i * block_h + py;
+                        if sx < width && sy < height {
+                            let dst = (sy * width + sx) * 4;
+                            let src = (py * block_w + px) * 4;
+                            // SAFETY: each (sx, sy) pair is unique across all blocks,
+                            // so no two threads write to the same output location.
+                            unsafe {
+                                std::ptr::copy_nonoverlapping(
+                                    pixels[src..].as_ptr(),
+                                    out_ptr.add(dst),
+                                    4,
+                                );
+                            }
+                        }
+                    }
+                }
+            });
+
+            $crate::graphics::texture::format::PixelDatas::U8(out)
+        }
+    };
+    // F16 variant: for BC6h, ASTC HDR
+    ($name:ident, F16, $layout:expr, $decode_fn:ident) => {
+        pub fn $name(
+            data: &$crate::graphics::texture::format::PixelDatas,
+            width: usize,
+            height: usize,
+        ) -> $crate::graphics::texture::format::PixelDatas {
+            let raw = data.convert_to_u16_bytes();
+            let $crate::graphics::texture::format::BlockLayout {
+                w: block_w,
+                h: block_h,
+                bytes: block_size,
+            } = $layout;
+            let bx = (width + block_w - 1) / block_w;
+            let by = (height + block_h - 1) / block_h;
+            let total = bx * by;
+            let mut out = vec![half::f16::ZERO; width * height * 4];
+            let out_addr = out.as_mut_ptr() as usize;
+
+            (0..total).into_par_iter().for_each(|i| {
+                let out_ptr = out_addr as *mut half::f16;
+                let bx_i = i % bx;
+                let by_i = i / bx;
+                let off = i * block_size;
+                let mut pixels = [half::f16::ZERO; 64];
+                $decode_fn(&raw[off..off + block_size], &mut pixels);
+                for py in 0..block_h {
+                    for px in 0..block_w {
+                        let sx = bx_i * block_w + px;
+                        let sy = by_i * block_h + py;
+                        if sx < width && sy < height {
+                            let dst = (sy * width + sx) * 4;
+                            let src = (py * block_w + px) * 4;
+                            // SAFETY: each (sx, sy) pair is unique across all blocks,
+                            // so no two threads write to the same output location.
+                            unsafe {
+                                std::ptr::copy_nonoverlapping(
+                                    pixels[src..].as_ptr(),
+                                    out_ptr.add(dst),
+                                    4,
+                                );
+                            }
+                        }
+                    }
+                }
+            });
+
+            $crate::graphics::texture::format::PixelDatas::F16(out)
+        }
+    };
 }
 
 // ============================================================
@@ -1077,43 +1684,39 @@ impl TextureFormat {
             | Self::Rg16Float
             | Self::Rgba16Float
             | Self::Bc6hRgbUfloat
+            | Self::Rg11b10Ufloat
             | Self::Bc6hRgbFloat => RawPixelType::F16,
 
             // === F32 ===
             Self::R32Float | Self::Rg32Float | Self::Rgba32Float => RawPixelType::F32,
 
             // === U16 — wide integer uncompressed ===
-            Self::R16Uint
-            | Self::R16Sint
-            | Self::Rg16Uint
-            | Self::Rg16Sint
-            | Self::Rgba16Uint
-            | Self::Rgba16Sint => RawPixelType::U16,
+            Self::R16Uint | Self::Rg16Uint | Self::Rgba16Uint => RawPixelType::U16,
+            Self::R16Sint | Self::Rg16Sint | Self::Rgba16Sint => RawPixelType::S16,
 
             // === U8 — uncompressed ===
             Self::R8Unorm
-            | Self::R8Snorm
             | Self::R8Uint
-            | Self::R8Sint
             | Self::Rg8Unorm
-            | Self::Rg8Snorm
             | Self::Rg8Uint
-            | Self::Rg8Sint
             | Self::R32Uint
-            | Self::R32Sint
             | Self::Rgba8Unorm
             | Self::Rgba8UnormSrgb
-            | Self::Rgba8Snorm
             | Self::Rgba8Uint
-            | Self::Rgba8Sint
             | Self::Bgra8Unorm
             | Self::Bgra8UnormSrgb
             | Self::Rgb10a2Unorm
-            | Self::Rg11b10Ufloat
             | Self::Rg32Uint
+            | Self::Rgba32Uint => RawPixelType::U8,
+            Self::R8Snorm
+            | Self::R8Sint
+            | Self::Rg8Snorm
+            | Self::Rg8Sint
+            | Self::R32Sint
+            | Self::Rgba8Snorm
+            | Self::Rgba8Sint
             | Self::Rg32Sint
-            | Self::Rgba32Uint
-            | Self::Rgba32Sint => RawPixelType::U8,
+            | Self::Rgba32Sint => RawPixelType::S8,
 
             // === U8 — BC (excluding BC6h which is F16) ===
             Self::Bc1RgbaUnorm
@@ -1122,12 +1725,11 @@ impl TextureFormat {
             | Self::Bc2RgbaUnormSrgb
             | Self::Bc3RgbaUnorm
             | Self::Bc3RgbaUnormSrgb
-            | Self::Bc4RUnorm
-            | Self::Bc4RSnorm
             | Self::Bc5RgUnorm
-            | Self::Bc5RgSnorm
             | Self::Bc7RgbaUnorm
+            | Self::Bc4RUnorm
             | Self::Bc7RgbaUnormSrgb => RawPixelType::U8,
+            Self::Bc4RSnorm | Self::Bc5RgSnorm => RawPixelType::S8,
 
             // === U8 — ETC2 / EAC ===
             Self::Etc2Rgb8Unorm
@@ -1137,9 +1739,8 @@ impl TextureFormat {
             | Self::Etc2Rgba8Unorm
             | Self::Etc2Rgba8UnormSrgb
             | Self::EacR11Unorm
-            | Self::EacR11Snorm
-            | Self::EacRg11Unorm
-            | Self::EacRg11Snorm => RawPixelType::U8,
+            | Self::EacRg11Unorm => RawPixelType::U8,
+            Self::EacR11Snorm | Self::EacRg11Snorm => RawPixelType::S8,
 
             // === U8 — ASTC (LDR *and* HDR; block-compressed bytes) ===
             Self::Astc4x4Unorm
@@ -1201,6 +1802,8 @@ impl TextureFormat {
             RawPixelType::F16 => PixelDatas::F16(bytemuck::cast_slice(raw).to_vec()),
             RawPixelType::F32 => PixelDatas::F32(bytemuck::cast_slice(raw).to_vec()),
             RawPixelType::U8 => PixelDatas::U8(raw.to_vec()),
+            RawPixelType::S8 => PixelDatas::S8(bytemuck::cast_slice(raw).to_vec()),
+            RawPixelType::S16 => PixelDatas::S16(bytemuck::cast_slice(raw).to_vec()),
         }
     }
 }
@@ -1453,12 +2056,10 @@ pub fn encode(pixels: &PixelDatas, width: u32, height: u32, format: TextureForma
     let w = width as usize;
     let h = height as usize;
     match format {
-        TextureFormat::Rgba8Unorm | TextureFormat::Rgba8UnormSrgb => {
-            match pixels {
-                PixelDatas::U8(_) => PixelDatas::U8(pixels.as_bytes().to_vec()),
-                other => PixelDatas::U8(other.to_rgba8_bytes()),
-            }
-        }
+        TextureFormat::Rgba8Unorm | TextureFormat::Rgba8UnormSrgb => match pixels {
+            PixelDatas::U8(datas) => PixelDatas::U8(datas.clone()),
+            other => PixelDatas::U8(other.convert_to_u8_bytes()),
+        },
         TextureFormat::Bc1RgbaUnorm | TextureFormat::Bc1RgbaUnormSrgb => {
             bc::encode_bc1(pixels, w, h)
         }
@@ -1478,13 +2079,11 @@ pub fn encode(pixels: &PixelDatas, width: u32, height: u32, format: TextureForma
         | TextureFormat::Rg8Snorm
         | TextureFormat::Rg8Uint
         | TextureFormat::Rg8Sint => uncompressed::encode_rg8(pixels, w, h),
-        TextureFormat::Rgba8Snorm
-        | TextureFormat::Rgba8Uint
-        | TextureFormat::Rgba8Sint => {
+        TextureFormat::Rgba8Snorm | TextureFormat::Rgba8Uint | TextureFormat::Rgba8Sint => {
             // Pass-through — same as Rgba8Unorm; GPU reinterpretation differs
             match pixels {
-                PixelDatas::U8(_) => PixelDatas::U8(pixels.as_bytes().to_vec()),
-                other => PixelDatas::U8(other.to_rgba8_bytes()),
+                PixelDatas::U8(datas) => PixelDatas::U8(datas.clone()),
+                other => PixelDatas::U8(other.convert_to_u8_bytes()),
             }
         }
         TextureFormat::Bgra8Unorm | TextureFormat::Bgra8UnormSrgb => {
@@ -1508,11 +2107,10 @@ pub fn encode(pixels: &PixelDatas, width: u32, height: u32, format: TextureForma
 /// For SDR formats this returns `PixelDatas::U8`. Future HDR formats
 /// will return `F16` or `F32`.
 pub fn decode(data: &PixelDatas, width: u32, height: u32, format: TextureFormat) -> PixelDatas {
-    let raw = data.as_bytes();
     let w = width as usize;
     let h = height as usize;
     match format {
-        TextureFormat::Rgba8Unorm | TextureFormat::Rgba8UnormSrgb => PixelDatas::U8(raw.to_vec()),
+        TextureFormat::Rgba8Unorm | TextureFormat::Rgba8UnormSrgb => data.convert_to_u8(),
         TextureFormat::Bc1RgbaUnorm | TextureFormat::Bc1RgbaUnormSrgb => bc::decode_bc1(data, w, h),
         TextureFormat::Bc2RgbaUnorm | TextureFormat::Bc2RgbaUnormSrgb => bc::decode_bc2(data, w, h),
         TextureFormat::Bc3RgbaUnorm | TextureFormat::Bc3RgbaUnormSrgb => bc::decode_bc3(data, w, h),
@@ -1526,20 +2124,21 @@ pub fn decode(data: &PixelDatas, width: u32, height: u32, format: TextureFormat)
         | TextureFormat::Rg8Snorm
         | TextureFormat::Rg8Uint
         | TextureFormat::Rg8Sint => uncompressed::decode_rg8(data, w, h),
-        TextureFormat::Rgba8Snorm
-        | TextureFormat::Rgba8Uint
-        | TextureFormat::Rgba8Sint => {
+        TextureFormat::Rgba8Snorm | TextureFormat::Rgba8Uint | TextureFormat::Rgba8Sint => {
             // Pass-through — same as Rgba8Unorm
-            PixelDatas::U8(raw.to_vec())
+            data.convert_to_u8()
         }
         TextureFormat::Bgra8Unorm | TextureFormat::Bgra8UnormSrgb => {
             uncompressed::decode_bgra8(data, w, h)
         }
-        TextureFormat::R16Uint | TextureFormat::R16Sint => uncompressed::decode_r16(data, w, h),
+        TextureFormat::R16Uint => uncompressed::decode_r16u(data, w, h),
+        TextureFormat::R16Sint => uncompressed::decode_r16s(data, w, h),
         TextureFormat::R16Float => uncompressed::decode_r16f(data, w, h),
-        TextureFormat::Rg16Uint | TextureFormat::Rg16Sint => uncompressed::decode_rg16(data, w, h),
+        TextureFormat::Rg16Uint => uncompressed::decode_rg16u(data, w, h),
+        TextureFormat::Rg16Sint => uncompressed::decode_rg16s(data, w, h),
         TextureFormat::Rg16Float => uncompressed::decode_rg16f(data, w, h),
-        TextureFormat::Rgba16Uint | TextureFormat::Rgba16Sint => uncompressed::decode_rgba16(data, w, h),
+        TextureFormat::Rgba16Uint => uncompressed::decode_rgba16u(data, w, h),
+        TextureFormat::Rgba16Sint => uncompressed::decode_rgba16s(data, w, h),
         TextureFormat::Rgba16Float => uncompressed::decode_rgba16f(data, w, h),
         _ => todo!("decode not yet implemented for {format:?}"),
     }

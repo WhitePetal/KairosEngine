@@ -1,7 +1,7 @@
-use kairos_engine::graphics::texture::{PixelDatas, TextureFormat, format::{RawPixelType, decode, encode}};
-
-
-
+use kairos_engine::graphics::texture::{
+    PixelDatas, TextureFormat,
+    format::{RawPixelType, decode, encode},
+};
 
 /// Create a simple 4×4 RGBA8 gradient test image.
 fn make_test_rgba(w: usize, h: usize) -> Vec<u8> {
@@ -128,7 +128,13 @@ fn rg8_encode_decode() {
             let src_idx = (y * 16 + x) * 4;
             let enc_idx = (y * 16 + x) * 2;
             assert_eq!(enc_bytes[enc_idx], rgba[src_idx], "R at ({},{})", x, y);
-            assert_eq!(enc_bytes[enc_idx + 1], rgba[src_idx + 1], "G at ({},{})", x, y);
+            assert_eq!(
+                enc_bytes[enc_idx + 1],
+                rgba[src_idx + 1],
+                "G at ({},{})",
+                x,
+                y
+            );
         }
     }
     // Decode back
@@ -140,9 +146,27 @@ fn rg8_encode_decode() {
             let idx = (y * 16 + x) * 4;
             let src_idx = (y * 16 + x) * 4;
             assert_eq!(dec_bytes[idx], rgba[src_idx], "decoded R at ({},{})", x, y);
-            assert_eq!(dec_bytes[idx + 1], rgba[src_idx + 1], "decoded G at ({},{})", x, y);
-            assert_eq!(dec_bytes[idx + 2], 0, "decoded B at ({},{}) should be 0", x, y);
-            assert_eq!(dec_bytes[idx + 3], 255, "decoded A at ({},{}) should be 255", x, y);
+            assert_eq!(
+                dec_bytes[idx + 1],
+                rgba[src_idx + 1],
+                "decoded G at ({},{})",
+                x,
+                y
+            );
+            assert_eq!(
+                dec_bytes[idx + 2],
+                0,
+                "decoded B at ({},{}) should be 0",
+                x,
+                y
+            );
+            assert_eq!(
+                dec_bytes[idx + 3],
+                255,
+                "decoded A at ({},{}) should be 255",
+                x,
+                y
+            );
         }
     }
 }
@@ -189,10 +213,34 @@ fn bgra8_encode_decode() {
         for x in 0..8 {
             let src_idx = (y * 8 + x) * 4;
             let enc_idx = (y * 8 + x) * 4;
-            assert_eq!(enc_bytes[enc_idx], rgba[src_idx + 2], "B (was R) at ({},{})", x, y);
-            assert_eq!(enc_bytes[enc_idx + 1], rgba[src_idx + 1], "G at ({},{})", x, y);
-            assert_eq!(enc_bytes[enc_idx + 2], rgba[src_idx], "R (was B) at ({},{})", x, y);
-            assert_eq!(enc_bytes[enc_idx + 3], rgba[src_idx + 3], "A at ({},{})", x, y);
+            assert_eq!(
+                enc_bytes[enc_idx],
+                rgba[src_idx + 2],
+                "B (was R) at ({},{})",
+                x,
+                y
+            );
+            assert_eq!(
+                enc_bytes[enc_idx + 1],
+                rgba[src_idx + 1],
+                "G at ({},{})",
+                x,
+                y
+            );
+            assert_eq!(
+                enc_bytes[enc_idx + 2],
+                rgba[src_idx],
+                "R (was B) at ({},{})",
+                x,
+                y
+            );
+            assert_eq!(
+                enc_bytes[enc_idx + 3],
+                rgba[src_idx + 3],
+                "A at ({},{})",
+                x,
+                y
+            );
         }
     }
     // Decode back should restore original
@@ -225,10 +273,7 @@ fn all_group_a_supports_encoding() {
         TextureFormat::Bgra8UnormSrgb,
     ];
     for fmt in &formats {
-        assert!(
-            fmt.supports_encoding(),
-            "{fmt:?} should support encoding"
-        );
+        assert!(fmt.supports_encoding(), "{fmt:?} should support encoding");
     }
 }
 
@@ -361,10 +406,7 @@ fn all_group_b_supports_encoding() {
         TextureFormat::Rgba16Float,
     ];
     for fmt in &formats {
-        assert!(
-            fmt.supports_encoding(),
-            "{fmt:?} should support encoding"
-        );
+        assert!(fmt.supports_encoding(), "{fmt:?} should support encoding");
     }
 }
 
@@ -594,7 +636,7 @@ fn rgba16_uint_roundtrip() {
     let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Rgba16Uint);
     assert_eq!(decoded.as_bytes().len(), w * h * 8);
     let dec: &[u16] = bytemuck::cast_slice(decoded.as_bytes());
-    for i in 0..w*h*4 {
+    for i in 0..w * h * 4 {
         assert_eq!(dec[i], rgba[i] as u16, "channel {} mismatch", i);
     }
 }
@@ -621,7 +663,7 @@ fn rgba16_sint_roundtrip() {
     let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Rgba16Sint);
     assert_eq!(decoded.as_bytes().len(), w * h * 8);
     let dec: &[u16] = bytemuck::cast_slice(decoded.as_bytes());
-    for i in 0..w*h*4 {
+    for i in 0..w * h * 4 {
         assert_eq!(dec[i], sext(rgba[i]), "channel {} mismatch", i);
     }
 }
@@ -657,7 +699,7 @@ fn all_group_b_encode_decode_sizes() {
     let formats = [
         (TextureFormat::R16Uint, 2usize),
         (TextureFormat::R16Sint, 2),
-        (TextureFormat::R16Float, 2),  // 1 f16 = 2 bytes
+        (TextureFormat::R16Float, 2), // 1 f16 = 2 bytes
         (TextureFormat::Rg16Uint, 4),
         (TextureFormat::Rg16Sint, 4),
         (TextureFormat::Rg16Float, 4), // 2 f16 = 4 bytes
@@ -692,8 +734,8 @@ fn all_group_b_encode_decode_sizes() {
         let decoded = decode(&encoded, 4, 4, *fmt);
         let expected_dec_size = match fmt.raw_pixel_type() {
             RawPixelType::U8 => 4 * 4 * 4,  // RGBA8
-            RawPixelType::U16 => 4 * 4 * 8,  // RGBA16
-            RawPixelType::F16 => 4 * 4 * 8,  // RGBA f16
+            RawPixelType::U16 => 4 * 4 * 8, // RGBA16
+            RawPixelType::F16 => 4 * 4 * 8, // RGBA f16
             _ => unreachable!(),
         };
         assert_eq!(
@@ -889,19 +931,43 @@ fn stress_roundtrip_int(
         for x in 0..w {
             let px = (y * w + x) * 4;
             let expected = |v: u8| -> u16 { if sign_extend { sext(v) } else { v as u16 } };
-            assert_eq!(dec[px], expected(rgba[px]), "R at ({},{}) fmt={fmt:?}", x, y);
+            assert_eq!(
+                dec[px],
+                expected(rgba[px]),
+                "R at ({},{}) fmt={fmt:?}",
+                x,
+                y
+            );
             if fill_g {
-                assert_eq!(dec[px + 1], expected(rgba[px + 1]), "G at ({},{}) fmt={fmt:?}", x, y);
+                assert_eq!(
+                    dec[px + 1],
+                    expected(rgba[px + 1]),
+                    "G at ({},{}) fmt={fmt:?}",
+                    x,
+                    y
+                );
             } else {
                 assert_eq!(dec[px + 1], 0, "G at ({},{}) fmt={fmt:?}", x, y);
             }
             if fill_b {
-                assert_eq!(dec[px + 2], expected(rgba[px + 2]), "B at ({},{}) fmt={fmt:?}", x, y);
+                assert_eq!(
+                    dec[px + 2],
+                    expected(rgba[px + 2]),
+                    "B at ({},{}) fmt={fmt:?}",
+                    x,
+                    y
+                );
             } else {
                 assert_eq!(dec[px + 2], 0, "B at ({},{}) fmt={fmt:?}", x, y);
             }
             if fill_a {
-                assert_eq!(dec[px + 3], expected(rgba[px + 3]), "A at ({},{}) fmt={fmt:?}", x, y);
+                assert_eq!(
+                    dec[px + 3],
+                    expected(rgba[px + 3]),
+                    "A at ({},{}) fmt={fmt:?}",
+                    x,
+                    y
+                );
             } else {
                 assert_eq!(dec[px + 3], 65535, "A at ({},{}) fmt={fmt:?}", x, y);
             }
@@ -1071,11 +1137,11 @@ fn rgba16_float_from_uint8() {
 fn to_rgba8_converts_f16() {
     // F16 → U8 conversion with clamping
     let f16_data = vec![
-        half::f16::from_f32(-0.5),  // clamped to 0
+        half::f16::from_f32(-0.5), // clamped to 0
         half::f16::from_f32(0.0),
-        half::f16::from_f32(0.5),   // → 128
-        half::f16::from_f32(1.0),   // → 255
-        half::f16::from_f32(2.0),   // clamped to 255
+        half::f16::from_f32(0.5), // → 128
+        half::f16::from_f32(1.0), // → 255
+        half::f16::from_f32(2.0), // clamped to 255
     ];
     let pixels = PixelDatas::F16(f16_data);
     let rgba8 = pixels.to_rgba8();
