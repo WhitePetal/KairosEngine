@@ -238,6 +238,13 @@ pub fn decode_bgra8(data: &PixelDatas, w: usize, h: usize) -> PixelDatas {
 fn encode_r16u_impl(rgba: &[u8], width: usize, height: usize) -> Vec<u8> {
     const CHUNK_SIZE: usize = 4096;
     let pixel_count = width * height;
+    debug_assert_eq!(
+        rgba.len(),
+        pixel_count * 4,
+        "encode_r16u: rgba len {} != pixel_count {} * 4",
+        rgba.len(),
+        pixel_count
+    );
     let mut out = vec![0u8; pixel_count << 1];
     out.par_chunks_mut(CHUNK_SIZE << 1)
         .enumerate()
@@ -259,6 +266,13 @@ fn encode_r16u_impl(rgba: &[u8], width: usize, height: usize) -> Vec<u8> {
 fn encode_r16s_impl(rgba: &[u8], width: usize, height: usize) -> Vec<u8> {
     const CHUNK_SIZE: usize = 4096;
     let pixel_count = width * height;
+    debug_assert_eq!(
+        rgba.len(),
+        pixel_count * 4,
+        "encode_r16s: rgba len {} != pixel_count {} * 4",
+        rgba.len(),
+        pixel_count
+    );
     let mut out = vec![0u8; pixel_count << 1];
     out.par_chunks_mut(CHUNK_SIZE << 1)
         .enumerate()
@@ -281,6 +295,13 @@ fn encode_r16s_impl(rgba: &[u8], width: usize, height: usize) -> Vec<u8> {
 fn decode_r16_impl(data: &[u8], width: usize, height: usize) -> Vec<u8> {
     const CHUNK_SIZE: usize = 4096;
     let pixel_count = width * height;
+    debug_assert_eq!(
+        data.len(),
+        pixel_count * 2,
+        "decode_r16: data len {} != pixel_count {} * 2",
+        data.len(),
+        pixel_count
+    );
     let mut out = vec![0u8; pixel_count << 2];
     out.par_chunks_mut(CHUNK_SIZE)
         .enumerate()
@@ -321,6 +342,13 @@ pub fn decode_r16(data: &PixelDatas, w: usize, h: usize) -> PixelDatas {
 fn encode_rg16u_impl(rgba: &[u8], width: usize, height: usize) -> Vec<u8> {
     const CHUNK_SIZE: usize = 4096;
     let pixel_count = width * height;
+    debug_assert_eq!(
+        rgba.len(),
+        pixel_count * 4,
+        "encode_rg16u: rgba len {} != pixel_count {} * 4",
+        rgba.len(),
+        pixel_count
+    );
     let mut out = vec![0u8; pixel_count << 2];
     out.par_chunks_mut(CHUNK_SIZE << 2)
         .enumerate()
@@ -345,6 +373,13 @@ fn encode_rg16u_impl(rgba: &[u8], width: usize, height: usize) -> Vec<u8> {
 fn encode_rg16s_impl(rgba: &[u8], width: usize, height: usize) -> Vec<u8> {
     const CHUNK_SIZE: usize = 4096;
     let pixel_count = width * height;
+    debug_assert_eq!(
+        rgba.len(),
+        pixel_count * 4,
+        "encode_rg16s: rgba len {} != pixel_count {} * 4",
+        rgba.len(),
+        pixel_count
+    );
     let mut out = vec![0u8; pixel_count << 2];
     out.par_chunks_mut(CHUNK_SIZE << 2)
         .enumerate()
@@ -370,6 +405,13 @@ fn encode_rg16s_impl(rgba: &[u8], width: usize, height: usize) -> Vec<u8> {
 fn decode_rg16_impl(data: &[u8], width: usize, height: usize) -> Vec<u8> {
     const CHUNK_SIZE: usize = 4096;
     let pixel_count = width * height;
+    debug_assert_eq!(
+        data.len(),
+        pixel_count * 4,
+        "decode_rg16: data len {} != pixel_count {} * 4",
+        data.len(),
+        pixel_count
+    );
     let mut out = vec![0u8; pixel_count << 2];
     out.par_chunks_mut(CHUNK_SIZE)
         .enumerate()
@@ -411,6 +453,13 @@ pub fn decode_rg16(data: &PixelDatas, w: usize, h: usize) -> PixelDatas {
 fn encode_rgba16u_impl(rgba: &[u8], width: usize, height: usize) -> Vec<u8> {
     const CHUNK_SIZE: usize = 4096;
     let pixel_count = width * height;
+    debug_assert_eq!(
+        rgba.len(),
+        pixel_count * 4,
+        "encode_rgba16u: rgba len {} != pixel_count {} * 4",
+        rgba.len(),
+        pixel_count
+    );
     let mut out = vec![0u8; pixel_count << 3];
     out.par_chunks_mut(CHUNK_SIZE << 3)
         .enumerate()
@@ -441,6 +490,13 @@ fn encode_rgba16u_impl(rgba: &[u8], width: usize, height: usize) -> Vec<u8> {
 fn encode_rgba16s_impl(rgba: &[u8], width: usize, height: usize) -> Vec<u8> {
     const CHUNK_SIZE: usize = 4096;
     let pixel_count = width * height;
+    debug_assert_eq!(
+        rgba.len(),
+        pixel_count * 4,
+        "encode_rgba16s: rgba len {} != pixel_count {} * 4",
+        rgba.len(),
+        pixel_count
+    );
     let mut out = vec![0u8; pixel_count << 3];
     out.par_chunks_mut(CHUNK_SIZE << 3)
         .enumerate()
@@ -472,6 +528,13 @@ fn encode_rgba16s_impl(rgba: &[u8], width: usize, height: usize) -> Vec<u8> {
 fn decode_rgba16_impl(data: &[u8], width: usize, height: usize) -> Vec<u8> {
     const CHUNK_SIZE: usize = 4096;
     let pixel_count = width * height;
+    debug_assert_eq!(
+        data.len(),
+        pixel_count * 8,
+        "decode_rgba16: data len {} != pixel_count {} * 8",
+        data.len(),
+        pixel_count
+    );
     let mut out = vec![0u8; pixel_count << 2];
     out.par_chunks_mut(CHUNK_SIZE)
         .enumerate()
@@ -515,6 +578,13 @@ pub fn decode_rgba16(data: &PixelDatas, w: usize, h: usize) -> PixelDatas {
 fn encode_r16f_impl(rgba: &[f16], width: usize, height: usize) -> Vec<f16> {
     const CHUNK_SIZE: usize = 4096;
     let pixel_count = width * height;
+    debug_assert_eq!(
+        rgba.len(),
+        pixel_count * 4,
+        "encode_r16f: rgba len {} != pixel_count {} * 4",
+        rgba.len(),
+        pixel_count
+    );
     let mut out = vec![f16::ZERO; pixel_count];
     out.par_chunks_mut(CHUNK_SIZE)
         .enumerate()
@@ -534,6 +604,13 @@ fn encode_r16f_impl(rgba: &[f16], width: usize, height: usize) -> Vec<f16> {
 fn decode_r16f_impl(data: &[f16], width: usize, height: usize) -> Vec<f16> {
     const CHUNK_SIZE: usize = 4096;
     let pixel_count = width * height;
+    debug_assert_eq!(
+        data.len(),
+        pixel_count,
+        "decode_r16f: data len {} != pixel_count {}",
+        data.len(),
+        pixel_count
+    );
     let mut out = vec![f16::ZERO; pixel_count << 2];
     out.par_chunks_mut(CHUNK_SIZE)
         .enumerate()
@@ -570,6 +647,13 @@ pub fn decode_r16f(data: &PixelDatas, w: usize, h: usize) -> PixelDatas {
 fn encode_rg16f_impl(rgba: &[f16], width: usize, height: usize) -> Vec<f16> {
     const CHUNK_SIZE: usize = 4096;
     let pixel_count = width * height;
+    debug_assert_eq!(
+        rgba.len(),
+        pixel_count * 4,
+        "encode_rg16f: rgba len {} != pixel_count {} * 4",
+        rgba.len(),
+        pixel_count
+    );
     let mut out = vec![f16::ZERO; pixel_count << 1];
     out.par_chunks_mut(CHUNK_SIZE << 1)
         .enumerate()
@@ -591,6 +675,13 @@ fn encode_rg16f_impl(rgba: &[f16], width: usize, height: usize) -> Vec<f16> {
 fn decode_rg16f_impl(data: &[f16], width: usize, height: usize) -> Vec<f16> {
     const CHUNK_SIZE: usize = 4096;
     let pixel_count = width * height;
+    debug_assert_eq!(
+        data.len(),
+        pixel_count * 2,
+        "decode_rg16f: data len {} != pixel_count {} * 2",
+        data.len(),
+        pixel_count
+    );
     let mut out = vec![f16::ZERO; pixel_count << 2];
     out.par_chunks_mut(CHUNK_SIZE)
         .enumerate()
@@ -628,6 +719,13 @@ pub fn decode_rg16f(data: &PixelDatas, w: usize, h: usize) -> PixelDatas {
 fn encode_rgba16f_impl(rgba: &[f16], width: usize, height: usize) -> Vec<f16> {
     const CHUNK_SIZE: usize = 4096;
     let pixel_count = width * height;
+    debug_assert_eq!(
+        rgba.len(),
+        pixel_count * 4,
+        "encode_rgba16f: rgba len {} != pixel_count {} * 4",
+        rgba.len(),
+        pixel_count
+    );
     let mut out = vec![f16::ZERO; pixel_count << 2];
     out.par_chunks_mut(CHUNK_SIZE << 2)
         .enumerate()
@@ -648,6 +746,13 @@ fn encode_rgba16f_impl(rgba: &[f16], width: usize, height: usize) -> Vec<f16> {
 fn decode_rgba16f_impl(data: &[f16], width: usize, height: usize) -> Vec<f16> {
     const CHUNK_SIZE: usize = 4096;
     let pixel_count = width * height;
+    debug_assert_eq!(
+        data.len(),
+        pixel_count * 4,
+        "decode_rgba16f: data len {} != pixel_count {} * 4",
+        data.len(),
+        pixel_count
+    );
     let mut out = vec![f16::ZERO; pixel_count << 2];
     out.par_chunks_mut(CHUNK_SIZE)
         .enumerate()
