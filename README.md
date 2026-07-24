@@ -1,7 +1,6 @@
 # 简介
-一个游戏引擎开发计划
-最开始尝试使用C++ + Beef-lang, 现在转为了纯Rust 
-目标是 面向数据设计，ECS，高性能，高灵活性 和 高可扩展性    
+从新开始审视游戏工业 KairosEngine：
+目标是 面向数据设计，ECS，高性能，高灵活性 和 高可扩展性 的 纯Rust游戏引擎
 如果你有任何想法和问题，欢迎在 [Discussions](https://github.com/WhitePetal/KairosEngine/discussions) 中讨论
 也可以直接在 [B站(Bilibili)](https://space.bilibili.com/232017781) 私信我
 
@@ -13,6 +12,8 @@
 - Base ECS base ENTT/Flecs ✅
 - Base Physics System ✅
 - Base Audio System ✅
+- Kairos Editor MCP
+- Kairos Editor Claw
 - Demo: Football Game
 
 ### 0.2.0
