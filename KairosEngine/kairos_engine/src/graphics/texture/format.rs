@@ -2432,4 +2432,68 @@ mod tests {
             stress_roundtrip_f16(TextureFormat::Rgba16Float, w, h);
         }
     }
+
+    // ============================================================
+    // Cross-variant tests: U8→float encode (the reported OOB path)
+    // ============================================================
+
+    #[test]
+    fn r16_float_from_uint8() {
+        // RGBA8 → R16Float: U8 input to float encode (the crash scenario)
+        let w = 256;
+        let h = 256;
+        let mut rgba8 = vec![0u8; w * h * 4];
+        for y in 0..h {
+            for x in 0..w {
+                let i = (y * w + x) * 4;
+                rgba8[i] = (x % 256) as u8;
+                rgba8[i + 1] = (y % 256) as u8;
+                rgba8[i + 2] = 128;
+                rgba8[i + 3] = 255;
+            }
+        }
+        let input = PixelDatas::U8(rgba8);
+        let encoded = encode(&input, w as u32, h as u32, TextureFormat::R16Float);
+        // R16Float: 1 f16 per pixel = 2 bytes per pixel
+        assert_eq!(encoded.as_bytes().len(), w * h * 2);
+        // Decode back
+        let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::R16Float);
+        assert_eq!(decoded.as_bytes().len(), w * h * 8);
+    }
+
+    #[test]
+    fn rg16_float_from_uint8() {
+        let w = 128;
+        let h = 128;
+        let mut rgba8 = vec![0u8; w * h * 4];
+        for i in (0..rgba8.len()).step_by(4) {
+            rgba8[i] = 100;
+            rgba8[i + 1] = 200;
+            rgba8[i + 2] = 50;
+            rgba8[i + 3] = 255;
+        }
+        let input = PixelDatas::U8(rgba8);
+        let encoded = encode(&input, w as u32, h as u32, TextureFormat::Rg16Float);
+        assert_eq!(encoded.as_bytes().len(), w * h * 4);
+        let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Rg16Float);
+        assert_eq!(decoded.as_bytes().len(), w * h * 8);
+    }
+
+    #[test]
+    fn rgba16_float_from_uint8() {
+        let w = 64;
+        let h = 64;
+        let mut rgba8 = vec![0u8; w * h * 4];
+        for i in (0..rgba8.len()).step_by(4) {
+            rgba8[i] = 10;
+            rgba8[i + 1] = 20;
+            rgba8[i + 2] = 30;
+            rgba8[i + 3] = 255;
+        }
+        let input = PixelDatas::U8(rgba8);
+        let encoded = encode(&input, w as u32, h as u32, TextureFormat::Rgba16Float);
+        assert_eq!(encoded.as_bytes().len(), w * h * 8);
+        let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Rgba16Float);
+        assert_eq!(decoded.as_bytes().len(), w * h * 8);
+    }
 }
