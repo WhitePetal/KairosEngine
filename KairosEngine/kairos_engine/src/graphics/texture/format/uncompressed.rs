@@ -427,8 +427,13 @@ pub fn encode_r16s(pixels: &PixelDatas, w: usize, h: usize) -> PixelDatas {
 }
 
 pub fn decode_r16(data: &PixelDatas, w: usize, h: usize) -> PixelDatas {
-    let src: &[u16] = bytemuck::cast_slice(data.as_bytes());
-    PixelDatas::U8(decode_r16_impl(src, w, h))
+    match data {
+        PixelDatas::U16(d) => PixelDatas::U8(decode_r16_impl(d, w, h)),
+        other => {
+            let src: &[u16] = bytemuck::cast_slice(other.as_bytes());
+            PixelDatas::U8(decode_r16_impl(src, w, h))
+        }
+    }
 }
 
 // ============================================================
@@ -628,8 +633,13 @@ pub fn encode_rg16s(pixels: &PixelDatas, w: usize, h: usize) -> PixelDatas {
 }
 
 pub fn decode_rg16(data: &PixelDatas, w: usize, h: usize) -> PixelDatas {
-    let src: &[u16] = bytemuck::cast_slice(data.as_bytes());
-    PixelDatas::U8(decode_rg16_impl(src, w, h))
+    match data {
+        PixelDatas::U16(d) => PixelDatas::U8(decode_rg16_impl(d, w, h)),
+        other => {
+            let src: &[u16] = bytemuck::cast_slice(other.as_bytes());
+            PixelDatas::U8(decode_rg16_impl(src, w, h))
+        }
+    }
 }
 
 // ============================================================
@@ -807,8 +817,13 @@ pub fn encode_rgba16s(pixels: &PixelDatas, w: usize, h: usize) -> PixelDatas {
 }
 
 pub fn decode_rgba16(data: &PixelDatas, w: usize, h: usize) -> PixelDatas {
-    let src: &[u16] = bytemuck::cast_slice(data.as_bytes());
-    PixelDatas::U8(decode_rgba16_impl(src, w, h))
+    match data {
+        PixelDatas::U16(d) => PixelDatas::U8(decode_rgba16_impl(d, w, h)),
+        other => {
+            let src: &[u16] = bytemuck::cast_slice(other.as_bytes());
+            PixelDatas::U8(decode_rgba16_impl(src, w, h))
+        }
+    }
 }
 
 // ============================================================
