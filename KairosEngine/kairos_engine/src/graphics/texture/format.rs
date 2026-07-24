@@ -106,6 +106,39 @@ impl PixelDatas {
             ),
         }
     }
+
+    /// Convert to `Vec<u8>` of RGBA8 bytes, avoiding the allocation wrapper
+    /// that `to_rgba8()` then `.as_bytes().to_vec()` would create.
+    pub fn to_rgba8_bytes(&self) -> Vec<u8> {
+        match self {
+            PixelDatas::U8(data) => data.clone(),
+            PixelDatas::F16(data) => data
+                .iter()
+                .map(|&v| {
+                    let f = v.to_f32();
+                    if f <= 0.0 {
+                        0u8
+                    } else if f >= 1.0 {
+                        255u8
+                    } else {
+                        (f * 255.0).round() as u8
+                    }
+                })
+                .collect(),
+            PixelDatas::F32(data) => data
+                .iter()
+                .map(|&v| {
+                    if v <= 0.0 {
+                        0u8
+                    } else if v >= 1.0 {
+                        255u8
+                    } else {
+                        (v * 255.0).round() as u8
+                    }
+                })
+                .collect(),
+        }
+    }
 }
 
 /// Dimensions and byte-size of a compression block.
@@ -1396,7 +1429,7 @@ pub fn encode(pixels: &PixelDatas, width: u32, height: u32, format: TextureForma
         TextureFormat::Rgba8Unorm | TextureFormat::Rgba8UnormSrgb => {
             match pixels {
                 PixelDatas::U8(_) => PixelDatas::U8(pixels.as_bytes().to_vec()),
-                other => PixelDatas::U8(other.to_rgba8().as_bytes().to_vec()),
+                other => PixelDatas::U8(other.to_rgba8_bytes()),
             }
         }
         TextureFormat::Bc1RgbaUnorm | TextureFormat::Bc1RgbaUnormSrgb => {
@@ -1424,7 +1457,7 @@ pub fn encode(pixels: &PixelDatas, width: u32, height: u32, format: TextureForma
             // Pass-through — same as Rgba8Unorm; GPU reinterpretation differs
             match pixels {
                 PixelDatas::U8(_) => PixelDatas::U8(pixels.as_bytes().to_vec()),
-                other => PixelDatas::U8(other.to_rgba8().as_bytes().to_vec()),
+                other => PixelDatas::U8(other.to_rgba8_bytes()),
             }
         }
         TextureFormat::Bgra8Unorm | TextureFormat::Bgra8UnormSrgb => {

@@ -8,7 +8,7 @@ use half::f16;
 fn rgba8_bytes(pixels: &PixelDatas) -> Vec<u8> {
     match pixels {
         PixelDatas::U8(_) => pixels.as_bytes().to_vec(),
-        other => other.to_rgba8().as_bytes().to_vec(),
+        other => other.to_rgba8_bytes(),
     }
 }
 

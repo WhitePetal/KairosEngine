@@ -116,15 +116,15 @@ impl TextureInspector {
             }
         }
 
-        // Decode to RGBA8 for the egui preview (converts F16/F32 if needed).
-        let rgba = crate::graphics::texture::format::decode(
-            &texture.data[0],
-            texture.width,
-            texture.height,
-            texture.format,
-        )
-        .to_rgba8();
-        let rgba_bytes = rgba.as_bytes().to_vec();
+        // Decode to RGBA8 bytes for the egui preview (converts F16/F32 if needed).
+        let rgba_bytes =
+            crate::graphics::texture::format::decode(
+                &texture.data[0],
+                texture.width,
+                texture.height,
+                texture.format,
+            )
+            .to_rgba8_bytes();
 
         let w = texture.width as usize;
         let h = texture.height as usize;
