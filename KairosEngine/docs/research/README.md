@@ -1,5 +1,11 @@
 # Research Notes
 
+## Editor Architecture
+
+| File | Topic |
+|---|---|
+| `hierarchy/unity-hierarchy.md` | Unity Hierarchy 窗口实现分析与架构研究 |
+
 ## Texture Encoding
 
 | File | Topic |
