@@ -1,4 +1,4 @@
-# 🔷 KairosEngine
+# <img src="KairosEngine/Preferences/Textures/engine_icon.png" width = "24" height = "24" > KairosEngine
 
 <div align="center">
 
