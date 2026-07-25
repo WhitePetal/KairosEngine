@@ -67,7 +67,7 @@ fn u16_to_i16(v: u16) -> i16 {
 }
 #[inline(always)]
 fn u8_to_i16(v: u8) -> i16 {
-    u16_to_i16(v as u16)
+    (v as i16 - 128) as i16
 }
 #[inline(always)]
 fn f32_to_i16(v: f32) -> i16 {
@@ -1646,16 +1646,17 @@ impl TextureFormat {
         let max_possible = (width.max(height) as f32).log2().floor() as u32;
         let end_level = (lod_max_clamp.floor() as u32).min(max_possible);
         let (bw, bh) = self.block_dimensions();
-        let mut w = width;
-        let mut h = height;
         let mut count = 0;
-        for _ in 0..end_level {
+        // Count from level 0 to end_level (inclusive).
+        // For a 2048×2048 texture with lod_max_clamp=11, this gives 12 levels:
+        //   level 0  (2048×2048) through level 11 (1×1).
+        for level in 0..=end_level {
+            let w = (width >> level).max(1);
+            let h = (height >> level).max(1);
             if w < bw || h < bh {
                 break;
             }
             count += 1;
-            w = (w / 2).max(1);
-            h = (h / 2).max(1);
         }
         count
     }
@@ -2102,10 +2103,7 @@ pub fn encode(pixels: &PixelDatas, width: u32, height: u32, format: TextureForma
     }
 }
 
-/// Decode encoded texture data back to `PixelDatas` (RGBA8).
-///
-/// For SDR formats this returns `PixelDatas::U8`. Future HDR formats
-/// will return `F16` or `F32`.
+/// Decode encoded texture data back to `PixelDatas` (RGBA).
 pub fn decode(data: &PixelDatas, width: u32, height: u32, format: TextureFormat) -> PixelDatas {
     let w = width as usize;
     let h = height as usize;

@@ -116,7 +116,7 @@ impl TextureInspector {
             }
         }
 
-        // Decode to RGBA8 bytes for the egui preview (converts F16/F32 if needed).
+        // Decode to RGBA bytes for the egui preview (converts F16/F32 if needed).
         let rgba_bytes = crate::graphics::texture::format::decode(
             &texture.data[0],
             texture.width,
@@ -194,7 +194,7 @@ impl TextureInspector {
         let (orig_w, orig_h) = (ext.original_width, ext.original_height);
         let original_rgba = ext.original_rgba.clone();
 
-        // 1. Resize from cached original RGBA (always RGBA8 intermediate)
+        // 1. Resize from cached original RGBA
         let rgba_data = if new_w == orig_w && new_h == orig_h {
             original_rgba.clone()
         } else {

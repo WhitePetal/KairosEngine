@@ -44,14 +44,15 @@ impl SerializedTexture {
         let width = texture_data.width();
         let height = texture_data.height();
 
-        let mip_count = (width.max(height) as f32).log2().floor() as u32;
+        let max_mip_level = (width.max(height) as f32).log2().floor() as u32;
+        let level_count = max_mip_level + 1;
         let raw = texture_data.into_raw();
-        let mut data: Vec<PixelDatas> = Vec::with_capacity(mip_count as usize);
+        let mut data: Vec<PixelDatas> = Vec::with_capacity(level_count as usize);
         let mut current_rgba = raw;
         let mut current_w = width;
         let mut current_h = height;
 
-        for _ in 0..mip_count {
+        for _ in 0..level_count {
             data.push(PixelDatas::U8(current_rgba.clone()));
             let (pw, ph) = (current_w, current_h);
             current_w = (current_w / 2).max(1);
@@ -84,7 +85,7 @@ impl SerializedTexture {
                         filter: MipmapFilter::Linear,
                         anisotropy_clamp: AnisotropyLevel::Level2.as_u16(),
                         lod_min_clamp: 0.0,
-                        lod_max_clamp: mip_count as f32,
+                        lod_max_clamp: max_mip_level as f32,
                     }),
                     compare: None,
                     border_color: None,
@@ -116,14 +117,15 @@ impl SerializedTexture {
         let width = texture_data.width();
         let height = texture_data.height();
 
-        let mip_count = (width.max(height) as f32).log2().floor() as u32;
+        let max_mip_level = (width.max(height) as f32).log2().floor() as u32;
+        let level_count = max_mip_level + 1;
         let raw = texture_data.into_raw();
-        let mut data: Vec<PixelDatas> = Vec::with_capacity(mip_count as usize);
+        let mut data: Vec<PixelDatas> = Vec::with_capacity(level_count as usize);
         let mut current = raw;
         let mut current_w = width;
         let mut current_h = height;
 
-        for _ in 0..mip_count {
+        for _ in 0..level_count {
             // f32 → f16, normalizing u16-sourced values to 0–1
             let f16: Vec<half::f16> = current
                 .iter()
@@ -170,7 +172,7 @@ impl SerializedTexture {
                         filter: MipmapFilter::Linear,
                         anisotropy_clamp: AnisotropyLevel::Level2.as_u16(),
                         lod_min_clamp: 0.0,
-                        lod_max_clamp: mip_count as f32,
+                        lod_max_clamp: max_mip_level as f32,
                     }),
                     compare: None,
                     border_color: None,
@@ -224,11 +226,6 @@ impl SerializedTexture {
     ///
     /// The mip count and per-level byte boundaries are computed from the
     /// `.texture` TOML metadata — the binary itself has no headers.
-    ///
-    /// The `format` determines which variant to construct:
-    ///   - U8  → all SDR / compressed formats
-    ///   - F16 → R16F, Rg16F, Rgba16F, BC6h, ASTC HDR
-    ///   - F32 → R32F, Rg32F, Rgba32F
     pub fn deserialize_pixel_datas(
         bytes: &[u8],
         width: u32,

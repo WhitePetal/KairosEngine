@@ -443,6 +443,11 @@ fn r16_uint_roundtrip() {
     }
 }
 
+#[inline(always)]
+fn u8_to_i16(v: u8) -> i16 {
+    (v as i16 - 128) as i16
+}
+
 #[test]
 fn r16_sint_roundtrip() {
     let w = 8;
@@ -464,14 +469,14 @@ fn r16_sint_roundtrip() {
     assert_eq!(encoded.as_bytes().len(), w * h * 2);
     let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::R16Sint);
     assert_eq!(decoded.as_bytes().len(), w * h * 8);
-    let dec: &[u16] = bytemuck::cast_slice(decoded.as_bytes());
+    let dec: &[i16] = bytemuck::cast_slice(decoded.as_bytes());
     for y in 0..h {
         for x in 0..w {
             let px = (y * w + x) * 4;
-            assert_eq!(dec[px], sext(rgba[px]), "R at ({},{})", x, y);
-            assert_eq!(dec[px + 1], 0, "G at ({},{})", x, y);
-            assert_eq!(dec[px + 2], 0, "B at ({},{})", x, y);
-            assert_eq!(dec[px + 3], 65535, "A at ({},{})", x, y);
+            assert_eq!(dec[px], u8_to_i16(rgba[px]), "R at ({},{})", x, y);
+            assert_eq!(dec[px + 1], u8_to_i16(rgba[px + 1]), "G at ({},{})", x, y);
+            assert_eq!(dec[px + 2], u8_to_i16(rgba[px + 2]), "B at ({},{})", x, y);
+            assert_eq!(dec[px + 3], u8_to_i16(rgba[px] + 3), "A at ({},{})", x, y);
         }
     }
 }
@@ -708,9 +713,8 @@ fn all_group_b_encode_decode_sizes() {
         (TextureFormat::Rgba16Float, 8), // 4 f16 = 8 bytes
     ];
     for (fmt, bpp) in &formats {
-        let rgba = make_test_rgba(4, 4);
         let input = match fmt.raw_pixel_type() {
-            RawPixelType::U8 | RawPixelType::U16 => PixelDatas::U8(rgba),
+            RawPixelType::U8 => PixelDatas::U8(make_test_rgba(4, 4)),
             RawPixelType::F16 => {
                 let pixel_count = 4 * 4;
                 let mut f16_data = vec![half::f16::ZERO; pixel_count * 4];
@@ -723,7 +727,54 @@ fn all_group_b_encode_decode_sizes() {
                 }
                 PixelDatas::F16(f16_data)
             }
-            _ => unreachable!(),
+            RawPixelType::S8 => {
+                let pixel_count = 4 * 4;
+                let mut s8_data = vec![0i8; pixel_count * 4];
+                for i in 0..pixel_count {
+                    let idx = i * 4;
+                    s8_data[idx] = 0;
+                    s8_data[idx + 1] = 0;
+                    s8_data[idx + 2] = 0;
+                    s8_data[idx + 3] = i8::MAX;
+                }
+                PixelDatas::S8(s8_data)
+            },
+            RawPixelType::U16 => {
+                let pixel_count = 4 * 4;
+                let mut u16_data = vec![0u16; pixel_count * 4];
+                for i in 0..pixel_count {
+                    let idx = i * 4;
+                    u16_data[idx] = u16::MAX / 2;
+                    u16_data[idx + 1] = u16::MAX / 2;
+                    u16_data[idx + 2] = u16::MAX / 2;
+                    u16_data[idx + 3] = u16::MAX;
+                }
+                PixelDatas::U16(u16_data)
+            },
+            RawPixelType::S16 => {
+                let pixel_count = 4 * 4;
+                let mut s16_data = vec![0i16; pixel_count * 4];
+                for i in 0..pixel_count {
+                    let idx = i * 4;
+                    s16_data[idx] = 0;
+                    s16_data[idx + 1] = 0;
+                    s16_data[idx + 2] = 0;
+                    s16_data[idx + 3] = i16::MAX;
+                }
+                PixelDatas::S16(s16_data)
+            },
+            RawPixelType::F32 => {
+                let pixel_count = 4 * 4;
+                let mut f32_data = vec![0.0f32; pixel_count * 4];
+                for i in 0..pixel_count {
+                    let idx = i * 4;
+                    f32_data[idx] = 0.5;
+                    f32_data[idx + 1] = 0.5;
+                    f32_data[idx + 2] = 0.5;
+                    f32_data[idx + 3] = 1.0;
+                }
+                PixelDatas::F32(f32_data)
+            },
         };
         let encoded = encode(&input, 4, 4, *fmt);
         assert_eq!(
@@ -736,7 +787,9 @@ fn all_group_b_encode_decode_sizes() {
             RawPixelType::U8 => 4 * 4 * 4,  // RGBA8
             RawPixelType::U16 => 4 * 4 * 8, // RGBA16
             RawPixelType::F16 => 4 * 4 * 8, // RGBA f16
-            _ => unreachable!(),
+            RawPixelType::S8 => 4 * 4 * 4,
+            RawPixelType::S16 => 4 * 4 * 8,
+            RawPixelType::F32 => 4 * 4 * 16,
         };
         assert_eq!(
             decoded.as_bytes().len(),
@@ -813,14 +866,12 @@ fn r16_sint_golden() {
     let rgba = vec![0u8, 0, 0, 0, 255u8, 0, 0, 0];
     let input = PixelDatas::U8(rgba);
     let encoded = encode(&input, 2, 1, TextureFormat::R16Sint);
-    assert_eq!(encoded.as_bytes().len(), 4);
     let enc = encoded.as_bytes();
-    // Pixel 0: R=0 as i8=0, sign-extend → u16=0 → LE=[0x00, 0x00]
-    assert_eq!(enc[0], 0x00);
-    assert_eq!(enc[1], 0x00);
-    // Pixel 1: R=255 as i8=-1, sign-extend → i16=-1 → u16=0xFFFF → LE=[0xFF, 0xFF]
-    assert_eq!(enc[2], 0xFF);
-    assert_eq!(enc[3], 0xFF);
+    assert_eq!(enc.len(), 4);
+    assert_eq!(enc[0], 0x80);
+    assert_eq!(enc[1], 0xFF);
+    assert_eq!(enc[2], 0x7F);
+    assert_eq!(enc[3], 0x00);
 }
 
 #[test]
@@ -1144,7 +1195,7 @@ fn to_rgba8_converts_f16() {
         half::f16::from_f32(2.0), // clamped to 255
     ];
     let pixels = PixelDatas::F16(f16_data);
-    let rgba8 = pixels.to_rgba8();
+    let rgba8 = pixels.convert_to_u8();
     match rgba8 {
         PixelDatas::U8(data) => {
             assert_eq!(data.len(), 5);
@@ -1162,7 +1213,7 @@ fn to_rgba8_converts_f16() {
 fn to_rgba8_passthrough_u8() {
     let u8_data = vec![100u8, 150, 200, 255];
     let pixels = PixelDatas::U8(u8_data.clone());
-    let rgba8 = pixels.to_rgba8();
+    let rgba8 = pixels.convert_to_u8();
     match rgba8 {
         PixelDatas::U8(data) => assert_eq!(data, u8_data),
         _ => panic!("expected U8 variant"),
