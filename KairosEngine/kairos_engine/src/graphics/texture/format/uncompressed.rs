@@ -150,7 +150,7 @@ fn decode_rg8_impl(data: &[u8], width: usize, height: usize) -> Vec<u8> {
                 rgba[0] = data[src_idx]; // R
                 rgba[1] = data[src_idx + 1]; // G
                 rgba[2] = 0; // B
-                rgba[3] = 255; // A
+                rgba[3] = 0; // A
             }
         });
     out
@@ -283,7 +283,7 @@ fn decode_r16_impl(data: &[u16], width: usize, height: usize) -> Vec<u16> {
                 rgba[0] = data[abs_pixel];
                 rgba[1] = 0;
                 rgba[2] = 0;
-                rgba[3] = 65535;
+                rgba[3] = 0;
             }
         });
     out
@@ -306,7 +306,7 @@ fn decode_r16s_impl(data: &[i16], width: usize, height: usize) -> Vec<i16> {
                 rgba[0] = data[abs_pixel];
                 rgba[1] = 0;
                 rgba[2] = 0;
-                rgba[3] = i16::MAX;
+                rgba[3] = 0;
             }
         });
     out
@@ -394,7 +394,7 @@ fn decode_rg16u_impl(data: &[u16], width: usize, height: usize) -> Vec<u16> {
                 rgba[0] = data[src_idx];
                 rgba[1] = data[src_idx + 1];
                 rgba[2] = 0;
-                rgba[3] = 65535;
+                rgba[3] = 0;
             }
         });
     out
@@ -418,7 +418,7 @@ fn decode_rg16s_impl(data: &[i16], width: usize, height: usize) -> Vec<i16> {
                 rgba[0] = data[src_idx];
                 rgba[1] = data[src_idx + 1];
                 rgba[2] = 0;
-                rgba[3] = i16::MAX;
+                rgba[3] = 0;
             }
         });
     out
@@ -593,7 +593,7 @@ fn decode_r16f_impl(data: &[f16], width: usize, height: usize) -> Vec<f16> {
                 rgba[0] = data[abs_pixel];
                 rgba[1] = f16::ZERO;
                 rgba[2] = f16::ZERO;
-                rgba[3] = f16::from_f32(1.0);
+                rgba[3] = f16::from_f32(0.0);
             }
         });
     out
@@ -651,7 +651,7 @@ fn decode_rg16f_impl(data: &[f16], width: usize, height: usize) -> Vec<f16> {
                 rgba[0] = data[src_idx]; // R
                 rgba[1] = data[src_idx + 1]; // G
                 rgba[2] = f16::ZERO;
-                rgba[3] = f16::from_f32(1.0);
+                rgba[3] = f16::from_f32(0.0);
             }
         });
     out

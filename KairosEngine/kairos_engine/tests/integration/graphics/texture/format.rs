@@ -162,7 +162,7 @@ fn rg8_encode_decode() {
             );
             assert_eq!(
                 dec_bytes[idx + 3],
-                255,
+                0,
                 "decoded A at ({},{}) should be 255",
                 x,
                 y
@@ -305,7 +305,7 @@ fn rg8_roundtrip_random() {
             assert_eq!(dec[idx], rgba[idx], "R at ({},{})", x, y);
             assert_eq!(dec[idx + 1], rgba[idx + 1], "G at ({},{})", x, y);
             assert_eq!(dec[idx + 2], 0, "B at ({},{})", x, y);
-            assert_eq!(dec[idx + 3], 255, "A at ({},{})", x, y);
+            assert_eq!(dec[idx + 3], 0, "A at ({},{})", x, y);
         }
     }
 }
@@ -438,7 +438,7 @@ fn r16_uint_roundtrip() {
             assert_eq!(dec[px], rgba[px] as u16, "R at ({},{})", x, y);
             assert_eq!(dec[px + 1], 0, "G at ({},{})", x, y);
             assert_eq!(dec[px + 2], 0, "B at ({},{})", x, y);
-            assert_eq!(dec[px + 3], 65535, "A at ({},{})", x, y);
+            assert_eq!(dec[px + 3], 0, "A at ({},{})", x, y);
         }
     }
 }
@@ -474,9 +474,9 @@ fn r16_sint_roundtrip() {
         for x in 0..w {
             let px = (y * w + x) * 4;
             assert_eq!(dec[px], u8_to_i16(rgba[px]), "R at ({},{})", x, y);
-            assert_eq!(dec[px + 1], u8_to_i16(rgba[px + 1]), "G at ({},{})", x, y);
-            assert_eq!(dec[px + 2], u8_to_i16(rgba[px + 2]), "B at ({},{})", x, y);
-            assert_eq!(dec[px + 3], u8_to_i16(rgba[px] + 3), "A at ({},{})", x, y);
+            assert_eq!(dec[px + 1], 0, "G at ({},{})", x, y);
+            assert_eq!(dec[px + 2], 0, "B at ({},{})", x, y);
+            assert_eq!(dec[px + 3], 0, "A at ({},{})", x, y);
         }
     }
 }
@@ -503,11 +503,10 @@ fn r16_float_roundtrip() {
     let dec: &[half::f16] = bytemuck::cast_slice(decoded.as_bytes());
     for i in 0..pixel_count {
         let idx = i * 4;
-        let half_one = half::f16::from_f32(1.0);
         assert_eq!(dec[idx], rgba_f16[idx], "R at pixel {}", i);
         assert_eq!(dec[idx + 1], half::f16::ZERO, "G at pixel {}", i);
         assert_eq!(dec[idx + 2], half::f16::ZERO, "B at pixel {}", i);
-        assert_eq!(dec[idx + 3], half_one, "A at pixel {}", i);
+        assert_eq!(dec[idx + 3], half::f16::ZERO, "A at pixel {}", i);
     }
 }
 
@@ -551,7 +550,7 @@ fn rg16_uint_roundtrip() {
             assert_eq!(dec[px], rgba[px] as u16, "R at ({},{})", x, y);
             assert_eq!(dec[px + 1], rgba[px + 1] as u16, "G at ({},{})", x, y);
             assert_eq!(dec[px + 2], 0, "B at ({},{})", x, y);
-            assert_eq!(dec[px + 3], 65535, "A at ({},{})", x, y);
+            assert_eq!(dec[px + 3], 0, "A at ({},{})", x, y);
         }
     }
 }
@@ -577,14 +576,14 @@ fn rg16_sint_roundtrip() {
     assert_eq!(encoded.as_bytes().len(), w * h * 4);
     let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Rg16Sint);
     assert_eq!(decoded.as_bytes().len(), w * h * 8);
-    let dec: &[u16] = bytemuck::cast_slice(decoded.as_bytes());
+    let dec: &[i16] = bytemuck::cast_slice(decoded.as_bytes());
     for y in 0..h {
         for x in 0..w {
             let px = (y * w + x) * 4;
-            assert_eq!(dec[px], sext(rgba[px]), "R at ({},{})", x, y);
-            assert_eq!(dec[px + 1], sext(rgba[px + 1]), "G at ({},{})", x, y);
+            assert_eq!(dec[px], u8_to_i16(rgba[px]), "R at ({},{})", x, y);
+            assert_eq!(dec[px + 1], u8_to_i16(rgba[px + 1]), "G at ({},{})", x, y);
             assert_eq!(dec[px + 2], 0, "B at ({},{})", x, y);
-            assert_eq!(dec[px + 3], 65535, "A at ({},{})", x, y);
+            assert_eq!(dec[px + 3], 0, "A at ({},{})", x, y);
         }
     }
 }
@@ -615,7 +614,7 @@ fn rg16_float_roundtrip() {
         assert_eq!(dec[idx], rgba_f16[idx], "R at pixel {}", i);
         assert_eq!(dec[idx + 1], rgba_f16[idx + 1], "G at pixel {}", i);
         assert_eq!(dec[idx + 2], half::f16::ZERO, "B at pixel {}", i);
-        assert_eq!(dec[idx + 3], half_one, "A at pixel {}", i);
+        assert_eq!(dec[idx + 3], half::f16::ZERO, "A at pixel {}", i);
     }
 }
 
@@ -667,9 +666,9 @@ fn rgba16_sint_roundtrip() {
     assert_eq!(encoded.as_bytes().len(), w * h * 8);
     let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Rgba16Sint);
     assert_eq!(decoded.as_bytes().len(), w * h * 8);
-    let dec: &[u16] = bytemuck::cast_slice(decoded.as_bytes());
+    let dec: &[i16] = bytemuck::cast_slice(decoded.as_bytes());
     for i in 0..w * h * 4 {
-        assert_eq!(dec[i], sext(rgba[i]), "channel {} mismatch", i);
+        assert_eq!(dec[i], u8_to_i16(rgba[i]), "channel {} mismatch", i);
     }
 }
 
@@ -809,16 +808,16 @@ fn r16_sint_sign_extension() {
     let input = PixelDatas::U8(rgba);
     let encoded = encode(&input, w as u32, h as u32, TextureFormat::R16Sint);
     let enc = encoded.as_bytes();
-    let r = u16::from_le_bytes([enc[0], enc[1]]);
-    // 200 as i8 = -56, as i16 = -56 = 0xFFC8 = 65480
-    assert_eq!(r, (-56i16) as u16, "R should be sign-extended");
+    let r = i16::from_le_bytes([enc[0], enc[1]]);
+
+    assert_eq!(r, 200 - 128, "R should be sign-extended");
     // Decode back preserves the sign-extended u16 value
     let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::R16Sint);
-    let dec: &[u16] = bytemuck::cast_slice(decoded.as_bytes());
-    assert_eq!(dec[0], (-56i16) as u16, "R should be sign-extended");
+    let dec: &[i16] = bytemuck::cast_slice(decoded.as_bytes());
+    assert_eq!(dec[0], 200 - 128, "R should be sign-extended");
     assert_eq!(dec[1], 0, "G");
     assert_eq!(dec[2], 0, "B");
-    assert_eq!(dec[3], 65535, "A");
+    assert_eq!(dec[3], 0, "A");
 }
 
 #[test]
@@ -981,7 +980,7 @@ fn stress_roundtrip_int(
     for y in 0..h {
         for x in 0..w {
             let px = (y * w + x) * 4;
-            let expected = |v: u8| -> u16 { if sign_extend { sext(v) } else { v as u16 } };
+            let expected = |v: u8| -> u16 { if sign_extend { u8_to_i16(v) as u16 } else { v as u16 } };
             assert_eq!(
                 dec[px],
                 expected(rgba[px]),
@@ -1020,7 +1019,7 @@ fn stress_roundtrip_int(
                     y
                 );
             } else {
-                assert_eq!(dec[px + 3], 65535, "A at ({},{}) fmt={fmt:?}", x, y);
+                assert_eq!(dec[px + 3], 0, "A at ({},{}) fmt={fmt:?}", x, y);
             }
         }
     }

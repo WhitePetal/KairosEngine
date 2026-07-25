@@ -92,7 +92,7 @@ fn decode_bc1_block(blk: &[u8], out: &mut [u8; 64]) {
         out[i * 4] = p[idx][0];
         out[i * 4 + 1] = p[idx][1];
         out[i * 4 + 2] = p[idx][2];
-        out[i * 4 + 3] = 255;
+        out[i * 4 + 3] = 0;
     }
 }
 
@@ -135,7 +135,7 @@ fn decode_bc4_block(blk: &[u8], out: &mut [u8; 64]) {
         out[i * 4] = r[i];
         out[i * 4 + 1] = r[i];
         out[i * 4 + 2] = r[i];
-        out[i * 4 + 3] = 255;
+        out[i * 4 + 3] = 0;
     }
 }
 
@@ -146,7 +146,7 @@ fn decode_bc5_block(blk: &[u8], out: &mut [u8; 64]) {
         out[i * 4] = r[i];
         out[i * 4 + 1] = g[i];
         out[i * 4 + 2] = 0;
-        out[i * 4 + 3] = 255;
+        out[i * 4 + 3] = 0;
     }
 }
 
