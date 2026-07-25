@@ -426,6 +426,84 @@ impl PixelDatas {
         PixelDatas::F16(self.convert_to_f16_bytes())
     }
 
+    /// Convert this pixel data to `F32` variant.
+    pub fn convert_to_f32(&self) -> Self {
+        PixelDatas::F32(self.convert_to_f32_bytes())
+    }
+
+    /// Convert to f32 pixel data in parallel.
+    pub fn convert_to_f32_bytes(&self) -> Vec<f32> {
+        const CHUNK: usize = 4096;
+        match self {
+            PixelDatas::U8(data) => {
+                let pixel_count = data.len();
+                let mut out = vec![0.0f32; pixel_count];
+                out.par_chunks_mut(CHUNK)
+                    .enumerate()
+                    .for_each(|(chunk_idx, chunk)| {
+                        let base = chunk_idx * CHUNK;
+                        for (j, dst) in chunk.iter_mut().enumerate() {
+                            *dst = (data[base + j] as f32) / 255.0;
+                        }
+                    });
+                out
+            }
+            PixelDatas::U16(data) => {
+                let pixel_count = data.len();
+                let mut out = vec![0.0f32; pixel_count];
+                out.par_chunks_mut(CHUNK)
+                    .enumerate()
+                    .for_each(|(chunk_idx, chunk)| {
+                        let base = chunk_idx * CHUNK;
+                        for (j, dst) in chunk.iter_mut().enumerate() {
+                            *dst = (data[base + j] as f32) / 65535.0;
+                        }
+                    });
+                out
+            }
+            PixelDatas::F16(data) => {
+                let pixel_count = data.len();
+                let mut out = vec![0.0f32; pixel_count];
+                out.par_chunks_mut(CHUNK)
+                    .enumerate()
+                    .for_each(|(chunk_idx, chunk)| {
+                        let base = chunk_idx * CHUNK;
+                        for (j, dst) in chunk.iter_mut().enumerate() {
+                            *dst = data[base + j].to_f32();
+                        }
+                    });
+                out
+            }
+            PixelDatas::F32(data) => data.clone(),
+            PixelDatas::S8(data) => {
+                let pixel_count = data.len();
+                let mut out = vec![0.0f32; pixel_count];
+                out.par_chunks_mut(CHUNK)
+                    .enumerate()
+                    .for_each(|(chunk_idx, chunk)| {
+                        let base = chunk_idx * CHUNK;
+                        for (j, dst) in chunk.iter_mut().enumerate() {
+                            *dst = (data[base + j] as f32) / 128.0;
+                        }
+                    });
+                out
+            }
+            PixelDatas::S16(data) => {
+                let pixel_count = data.len();
+                let mut out = vec![0.0f32; pixel_count];
+                out.par_chunks_mut(CHUNK)
+                    .enumerate()
+                    .for_each(|(chunk_idx, chunk)| {
+                        let base = chunk_idx * CHUNK;
+                        for (j, dst) in chunk.iter_mut().enumerate() {
+                            *dst = (data[base + j] as f32) / 32767.0;
+                        }
+                    });
+                out
+            }
+        }
+    }
+
     /// Convert to s16 pixel data bytes in parallel.
     pub fn convert_to_f16_bytes(&self) -> Vec<f16> {
         const CHUNK: usize = 4096;
@@ -1200,9 +1278,9 @@ impl TextureFormat {
             TextureFormat::Rg8Snorm => true,
             TextureFormat::Rg8Uint => true,
             TextureFormat::Rg8Sint => true,
-            TextureFormat::R32Uint => false,
-            TextureFormat::R32Sint => false,
-            TextureFormat::R32Float => false,
+            TextureFormat::R32Uint => true,
+            TextureFormat::R32Sint => true,
+            TextureFormat::R32Float => true,
             TextureFormat::Rg16Uint => true,
             TextureFormat::Rg16Sint => true,
             TextureFormat::Rg16Float => true,
@@ -1213,17 +1291,17 @@ impl TextureFormat {
             TextureFormat::Rgba8Sint => true,
             TextureFormat::Bgra8Unorm => true,
             TextureFormat::Bgra8UnormSrgb => true,
-            TextureFormat::Rgb10a2Unorm => false,
-            TextureFormat::Rg11b10Ufloat => false,
-            TextureFormat::Rg32Uint => false,
-            TextureFormat::Rg32Sint => false,
-            TextureFormat::Rg32Float => false,
+            TextureFormat::Rgb10a2Unorm => true,
+            TextureFormat::Rg11b10Ufloat => true,
+            TextureFormat::Rg32Uint => true,
+            TextureFormat::Rg32Sint => true,
+            TextureFormat::Rg32Float => true,
             TextureFormat::Rgba16Uint => true,
             TextureFormat::Rgba16Sint => true,
             TextureFormat::Rgba16Float => true,
-            TextureFormat::Rgba32Uint => false,
-            TextureFormat::Rgba32Sint => false,
-            TextureFormat::Rgba32Float => false,
+            TextureFormat::Rgba32Uint => true,
+            TextureFormat::Rgba32Sint => true,
+            TextureFormat::Rgba32Float => true,
             TextureFormat::Bc1RgbaUnorm => true,
             TextureFormat::Bc1RgbaUnormSrgb => true,
             TextureFormat::Bc2RgbaUnorm => true,
@@ -1685,8 +1763,11 @@ impl TextureFormat {
             | Self::Rg16Float
             | Self::Rgba16Float
             | Self::Bc6hRgbUfloat
-            | Self::Rg11b10Ufloat
             | Self::Bc6hRgbFloat => RawPixelType::F16,
+
+            // === U8 — packed ===
+            Self::Rgb10a2Unorm
+            | Self::Rg11b10Ufloat => RawPixelType::U8,
 
             // === F32 ===
             Self::R32Float | Self::Rg32Float | Self::Rgba32Float => RawPixelType::F32,
@@ -1706,7 +1787,6 @@ impl TextureFormat {
             | Self::Rgba8Uint
             | Self::Bgra8Unorm
             | Self::Bgra8UnormSrgb
-            | Self::Rgb10a2Unorm
             | Self::Rg32Uint
             | Self::Rgba32Uint => RawPixelType::U8,
             Self::R8Snorm
@@ -2099,6 +2179,17 @@ pub fn encode(pixels: &PixelDatas, width: u32, height: u32, format: TextureForma
         TextureFormat::Rgba16Uint => uncompressed::encode_rgba16u(pixels, w, h),
         TextureFormat::Rgba16Sint => uncompressed::encode_rgba16s(pixels, w, h),
         TextureFormat::Rgba16Float => uncompressed::encode_rgba16f(pixels, w, h),
+        TextureFormat::R32Uint => uncompressed::encode_r32u(pixels, w, h),
+        TextureFormat::R32Sint => uncompressed::encode_r32s(pixels, w, h),
+        TextureFormat::R32Float => uncompressed::encode_r32f(pixels, w, h),
+        TextureFormat::Rg32Uint => uncompressed::encode_rg32u(pixels, w, h),
+        TextureFormat::Rg32Sint => uncompressed::encode_rg32s(pixels, w, h),
+        TextureFormat::Rg32Float => uncompressed::encode_rg32f(pixels, w, h),
+        TextureFormat::Rgba32Uint => uncompressed::encode_rgba32u(pixels, w, h),
+        TextureFormat::Rgba32Sint => uncompressed::encode_rgba32s(pixels, w, h),
+        TextureFormat::Rgba32Float => uncompressed::encode_rgba32f(pixels, w, h),
+        TextureFormat::Rgb10a2Unorm => uncompressed::encode_rgb10a2_unorm(pixels, w, h),
+        TextureFormat::Rg11b10Ufloat => uncompressed::encode_rg11b10_ufloat(pixels, w, h),
         _ => todo!("encode not yet implemented for {format:?}"),
     }
 }
@@ -2138,6 +2229,17 @@ pub fn decode(data: &PixelDatas, width: u32, height: u32, format: TextureFormat)
         TextureFormat::Rgba16Uint => uncompressed::decode_rgba16u(data, w, h),
         TextureFormat::Rgba16Sint => uncompressed::decode_rgba16s(data, w, h),
         TextureFormat::Rgba16Float => uncompressed::decode_rgba16f(data, w, h),
+        TextureFormat::R32Uint => uncompressed::decode_r32u(data, w, h),
+        TextureFormat::R32Sint => uncompressed::decode_r32s(data, w, h),
+        TextureFormat::R32Float => uncompressed::decode_r32f(data, w, h),
+        TextureFormat::Rg32Uint => uncompressed::decode_rg32u(data, w, h),
+        TextureFormat::Rg32Sint => uncompressed::decode_rg32s(data, w, h),
+        TextureFormat::Rg32Float => uncompressed::decode_rg32f(data, w, h),
+        TextureFormat::Rgba32Uint => uncompressed::decode_rgba32u(data, w, h),
+        TextureFormat::Rgba32Sint => uncompressed::decode_rgba32s(data, w, h),
+        TextureFormat::Rgba32Float => uncompressed::decode_rgba32f(data, w, h),
+        TextureFormat::Rgb10a2Unorm => uncompressed::decode_rgb10a2_unorm(data, w, h),
+        TextureFormat::Rg11b10Ufloat => uncompressed::decode_rg11b10_ufloat(data, w, h),
         _ => todo!("decode not yet implemented for {format:?}"),
     }
 }
