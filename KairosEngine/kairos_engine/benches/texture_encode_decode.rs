@@ -971,6 +971,16 @@ bench_etc_format!(bench_eac_r11_snorm, EacR11Snorm);
 bench_etc_format!(bench_eac_rg11_unorm, EacRg11Unorm);
 bench_etc_format!(bench_eac_rg11_snorm, EacRg11Snorm);
 
+// ============================================================
+// Group F: ASTC (representative subset)
+// ============================================================
+
+bench_etc_format!(bench_astc_4x4_unorm, Astc4x4Unorm);
+bench_etc_format!(bench_astc_4x4_unorm_srgb, Astc4x4UnormSrgb);
+bench_etc_format!(bench_astc_6x6_unorm, Astc6x6Unorm);
+bench_etc_format!(bench_astc_8x8_unorm, Astc8x8Unorm);
+bench_etc_format!(bench_astc_12x12_unorm, Astc12x12Unorm);
+
 criterion_group!(
     benches,
     bench_rg8_unorm,
@@ -1014,5 +1024,11 @@ criterion_group!(
     bench_eac_r11_snorm,
     bench_eac_rg11_unorm,
     bench_eac_rg11_snorm,
+    // Group F — ASTC
+    bench_astc_4x4_unorm,
+    bench_astc_4x4_unorm_srgb,
+    bench_astc_6x6_unorm,
+    bench_astc_8x8_unorm,
+    bench_astc_12x12_unorm,
 );
 criterion_main!(benches);

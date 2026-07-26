@@ -1951,3 +1951,90 @@ fn bc7_roundtrip_larger() {
     let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Bc7RgbaUnorm);
     assert_eq!(decoded.as_bytes().len(), w * h * 4);
 }
+
+// ============================================================
+// Group F: ASTC encode/decode
+// ============================================================
+
+#[test]
+fn astc_4x4_ldr_roundtrip() {
+    let w = 4usize;
+    let h = 4usize;
+    let rgba = make_test_rgba(w, h);
+    let input = PixelDatas::U8(rgba);
+    let encoded = encode(&input, w as u32, h as u32, TextureFormat::Astc4x4Unorm);
+    // 4x4 → one 4×4 block → 16 bytes
+    assert_eq!(encoded.as_bytes().len(), 16, "ASTC 4x4 should produce 16 bytes");
+    let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Astc4x4Unorm);
+    assert_eq!(decoded.as_bytes().len(), w * h * 4, "ASTC 4x4 decoded should be RGBA8");
+}
+
+#[test]
+fn astc_8x8_ldr_roundtrip() {
+    let w = 8usize;
+    let h = 8usize;
+    let rgba = make_test_rgba(w, h);
+    let input = PixelDatas::U8(rgba);
+    let encoded = encode(&input, w as u32, h as u32, TextureFormat::Astc8x8Unorm);
+    // 8x8 with 8x8 blocks → 1 block, 16 bytes
+    assert_eq!(encoded.as_bytes().len(), 16, "ASTC 8x8 single block = 16 bytes");
+    let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Astc8x8Unorm);
+    assert_eq!(decoded.as_bytes().len(), w * h * 4);
+}
+
+#[test]
+fn astc_4x4_hdr_roundtrip() {
+    let w = 4usize;
+    let h = 4usize;
+    let f16_data = make_test_f16(w, h);
+    let input = PixelDatas::F16(f16_data);
+    let encoded = encode(&input, w as u32, h as u32, TextureFormat::Astc4x4Hdr);
+    assert_eq!(encoded.as_bytes().len(), 16, "ASTC HDR 4x4 should produce 16 bytes");
+    let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Astc4x4Hdr);
+    assert_eq!(decoded.as_bytes().len(), w * h * 8, "ASTC HDR decoded should be F16 RGBA");
+}
+
+#[test]
+fn astc_12x12_ldr_roundtrip() {
+    let w = 12usize;
+    let h = 12usize;
+    let rgba = make_test_rgba(w, h);
+    let input = PixelDatas::U8(rgba);
+    let encoded = encode(&input, w as u32, h as u32, TextureFormat::Astc12x12Unorm);
+    assert_eq!(encoded.as_bytes().len(), 16, "ASTC 12x12 single block = 16 bytes");
+    let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Astc12x12Unorm);
+    assert_eq!(decoded.as_bytes().len(), w * h * 4);
+}
+
+#[test]
+fn astc_5x4_ldr_roundtrip() {
+    let w = 5usize;
+    let h = 4usize;
+    let rgba = make_test_rgba(w, h);
+    let input = PixelDatas::U8(rgba);
+    let encoded = encode(&input, w as u32, h as u32, TextureFormat::Astc5x4Unorm);
+    assert_eq!(encoded.as_bytes().len(), 16, "ASTC 5x4 single block = 16 bytes");
+    let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Astc5x4Unorm);
+    assert_eq!(decoded.as_bytes().len(), w * h * 4);
+}
+
+#[test]
+fn astc_supports_encoding() {
+    let formats = [
+        TextureFormat::Astc4x4Unorm,
+        TextureFormat::Astc4x4UnormSrgb,
+        TextureFormat::Astc4x4Hdr,
+        TextureFormat::Astc5x4Unorm,
+        TextureFormat::Astc5x4UnormSrgb,
+        TextureFormat::Astc5x4Hdr,
+        TextureFormat::Astc8x8Unorm,
+        TextureFormat::Astc8x8UnormSrgb,
+        TextureFormat::Astc8x8Hdr,
+        TextureFormat::Astc12x12Unorm,
+        TextureFormat::Astc12x12UnormSrgb,
+        TextureFormat::Astc12x12Hdr,
+    ];
+    for fmt in &formats {
+        assert!(fmt.supports_encoding(), "{fmt:?} should support encoding");
+    }
+}

@@ -5,6 +5,7 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
+mod astc;
 mod bc;
 mod bc6h;
 mod bc7;
@@ -1428,48 +1429,48 @@ impl TextureFormat {
             TextureFormat::EacR11Snorm => true,
             TextureFormat::EacRg11Unorm => true,
             TextureFormat::EacRg11Snorm => true,
-            TextureFormat::Astc4x4Unorm => false,
-            TextureFormat::Astc4x4UnormSrgb => false,
-            TextureFormat::Astc4x4Hdr => false,
-            TextureFormat::Astc5x4Unorm => false,
-            TextureFormat::Astc5x4UnormSrgb => false,
-            TextureFormat::Astc5x4Hdr => false,
-            TextureFormat::Astc5x5Unorm => false,
-            TextureFormat::Astc5x5UnormSrgb => false,
-            TextureFormat::Astc5x5Hdr => false,
-            TextureFormat::Astc6x5Unorm => false,
-            TextureFormat::Astc6x5UnormSrgb => false,
-            TextureFormat::Astc6x5Hdr => false,
-            TextureFormat::Astc6x6Unorm => false,
-            TextureFormat::Astc6x6UnormSrgb => false,
-            TextureFormat::Astc6x6Hdr => false,
-            TextureFormat::Astc8x5Unorm => false,
-            TextureFormat::Astc8x5UnormSrgb => false,
-            TextureFormat::Astc8x5Hdr => false,
-            TextureFormat::Astc8x6Unorm => false,
-            TextureFormat::Astc8x6UnormSrgb => false,
-            TextureFormat::Astc8x6Hdr => false,
-            TextureFormat::Astc8x8Unorm => false,
-            TextureFormat::Astc8x8UnormSrgb => false,
-            TextureFormat::Astc8x8Hdr => false,
-            TextureFormat::Astc10x5Unorm => false,
-            TextureFormat::Astc10x5UnormSrgb => false,
-            TextureFormat::Astc10x5Hdr => false,
-            TextureFormat::Astc10x6Unorm => false,
-            TextureFormat::Astc10x6UnormSrgb => false,
-            TextureFormat::Astc10x6Hdr => false,
-            TextureFormat::Astc10x8Unorm => false,
-            TextureFormat::Astc10x8UnormSrgb => false,
-            TextureFormat::Astc10x8Hdr => false,
-            TextureFormat::Astc10x10Unorm => false,
-            TextureFormat::Astc10x10UnormSrgb => false,
-            TextureFormat::Astc10x10Hdr => false,
-            TextureFormat::Astc12x10Unorm => false,
-            TextureFormat::Astc12x10UnormSrgb => false,
-            TextureFormat::Astc12x10Hdr => false,
-            TextureFormat::Astc12x12Unorm => false,
-            TextureFormat::Astc12x12UnormSrgb => false,
-            TextureFormat::Astc12x12Hdr => false,
+            TextureFormat::Astc4x4Unorm => true,
+            TextureFormat::Astc4x4UnormSrgb => true,
+            TextureFormat::Astc4x4Hdr => true,
+            TextureFormat::Astc5x4Unorm => true,
+            TextureFormat::Astc5x4UnormSrgb => true,
+            TextureFormat::Astc5x4Hdr => true,
+            TextureFormat::Astc5x5Unorm => true,
+            TextureFormat::Astc5x5UnormSrgb => true,
+            TextureFormat::Astc5x5Hdr => true,
+            TextureFormat::Astc6x5Unorm => true,
+            TextureFormat::Astc6x5UnormSrgb => true,
+            TextureFormat::Astc6x5Hdr => true,
+            TextureFormat::Astc6x6Unorm => true,
+            TextureFormat::Astc6x6UnormSrgb => true,
+            TextureFormat::Astc6x6Hdr => true,
+            TextureFormat::Astc8x5Unorm => true,
+            TextureFormat::Astc8x5UnormSrgb => true,
+            TextureFormat::Astc8x5Hdr => true,
+            TextureFormat::Astc8x6Unorm => true,
+            TextureFormat::Astc8x6UnormSrgb => true,
+            TextureFormat::Astc8x6Hdr => true,
+            TextureFormat::Astc8x8Unorm => true,
+            TextureFormat::Astc8x8UnormSrgb => true,
+            TextureFormat::Astc8x8Hdr => true,
+            TextureFormat::Astc10x5Unorm => true,
+            TextureFormat::Astc10x5UnormSrgb => true,
+            TextureFormat::Astc10x5Hdr => true,
+            TextureFormat::Astc10x6Unorm => true,
+            TextureFormat::Astc10x6UnormSrgb => true,
+            TextureFormat::Astc10x6Hdr => true,
+            TextureFormat::Astc10x8Unorm => true,
+            TextureFormat::Astc10x8UnormSrgb => true,
+            TextureFormat::Astc10x8Hdr => true,
+            TextureFormat::Astc10x10Unorm => true,
+            TextureFormat::Astc10x10UnormSrgb => true,
+            TextureFormat::Astc10x10Hdr => true,
+            TextureFormat::Astc12x10Unorm => true,
+            TextureFormat::Astc12x10UnormSrgb => true,
+            TextureFormat::Astc12x10Hdr => true,
+            TextureFormat::Astc12x12Unorm => true,
+            TextureFormat::Astc12x12UnormSrgb => true,
+            TextureFormat::Astc12x12Hdr => true,
         }
     }
 
@@ -2323,6 +2324,90 @@ pub fn encode(pixels: &PixelDatas, width: u32, height: u32, format: TextureForma
         TextureFormat::EacRg11Snorm => {
             etc::encode_eac_rg11_snorm(pixels, w, h)
         }
+        TextureFormat::Astc4x4Unorm | TextureFormat::Astc4x4UnormSrgb => {
+            astc::encode_astc_ldr_batch(pixels, w, h, 4, 4)
+        }
+        TextureFormat::Astc4x4Hdr => {
+            astc::encode_astc_hdr_batch(pixels, w, h, 4, 4)
+        }
+        TextureFormat::Astc5x4Unorm | TextureFormat::Astc5x4UnormSrgb => {
+            astc::encode_astc_ldr_batch(pixels, w, h, 5, 4)
+        }
+        TextureFormat::Astc5x4Hdr => {
+            astc::encode_astc_hdr_batch(pixels, w, h, 5, 4)
+        }
+        TextureFormat::Astc5x5Unorm | TextureFormat::Astc5x5UnormSrgb => {
+            astc::encode_astc_ldr_batch(pixels, w, h, 5, 5)
+        }
+        TextureFormat::Astc5x5Hdr => {
+            astc::encode_astc_hdr_batch(pixels, w, h, 5, 5)
+        }
+        TextureFormat::Astc6x5Unorm | TextureFormat::Astc6x5UnormSrgb => {
+            astc::encode_astc_ldr_batch(pixels, w, h, 6, 5)
+        }
+        TextureFormat::Astc6x5Hdr => {
+            astc::encode_astc_hdr_batch(pixels, w, h, 6, 5)
+        }
+        TextureFormat::Astc6x6Unorm | TextureFormat::Astc6x6UnormSrgb => {
+            astc::encode_astc_ldr_batch(pixels, w, h, 6, 6)
+        }
+        TextureFormat::Astc6x6Hdr => {
+            astc::encode_astc_hdr_batch(pixels, w, h, 6, 6)
+        }
+        TextureFormat::Astc8x5Unorm | TextureFormat::Astc8x5UnormSrgb => {
+            astc::encode_astc_ldr_batch(pixels, w, h, 8, 5)
+        }
+        TextureFormat::Astc8x5Hdr => {
+            astc::encode_astc_hdr_batch(pixels, w, h, 8, 5)
+        }
+        TextureFormat::Astc8x6Unorm | TextureFormat::Astc8x6UnormSrgb => {
+            astc::encode_astc_ldr_batch(pixels, w, h, 8, 6)
+        }
+        TextureFormat::Astc8x6Hdr => {
+            astc::encode_astc_hdr_batch(pixels, w, h, 8, 6)
+        }
+        TextureFormat::Astc8x8Unorm | TextureFormat::Astc8x8UnormSrgb => {
+            astc::encode_astc_ldr_batch(pixels, w, h, 8, 8)
+        }
+        TextureFormat::Astc8x8Hdr => {
+            astc::encode_astc_hdr_batch(pixels, w, h, 8, 8)
+        }
+        TextureFormat::Astc10x5Unorm | TextureFormat::Astc10x5UnormSrgb => {
+            astc::encode_astc_ldr_batch(pixels, w, h, 10, 5)
+        }
+        TextureFormat::Astc10x5Hdr => {
+            astc::encode_astc_hdr_batch(pixels, w, h, 10, 5)
+        }
+        TextureFormat::Astc10x6Unorm | TextureFormat::Astc10x6UnormSrgb => {
+            astc::encode_astc_ldr_batch(pixels, w, h, 10, 6)
+        }
+        TextureFormat::Astc10x6Hdr => {
+            astc::encode_astc_hdr_batch(pixels, w, h, 10, 6)
+        }
+        TextureFormat::Astc10x8Unorm | TextureFormat::Astc10x8UnormSrgb => {
+            astc::encode_astc_ldr_batch(pixels, w, h, 10, 8)
+        }
+        TextureFormat::Astc10x8Hdr => {
+            astc::encode_astc_hdr_batch(pixels, w, h, 10, 8)
+        }
+        TextureFormat::Astc10x10Unorm | TextureFormat::Astc10x10UnormSrgb => {
+            astc::encode_astc_ldr_batch(pixels, w, h, 10, 10)
+        }
+        TextureFormat::Astc10x10Hdr => {
+            astc::encode_astc_hdr_batch(pixels, w, h, 10, 10)
+        }
+        TextureFormat::Astc12x10Unorm | TextureFormat::Astc12x10UnormSrgb => {
+            astc::encode_astc_ldr_batch(pixels, w, h, 12, 10)
+        }
+        TextureFormat::Astc12x10Hdr => {
+            astc::encode_astc_hdr_batch(pixels, w, h, 12, 10)
+        }
+        TextureFormat::Astc12x12Unorm | TextureFormat::Astc12x12UnormSrgb => {
+            astc::encode_astc_ldr_batch(pixels, w, h, 12, 12)
+        }
+        TextureFormat::Astc12x12Hdr => {
+            astc::encode_astc_hdr_batch(pixels, w, h, 12, 12)
+        }
         _ => todo!("encode not yet implemented for {format:?}"),
     }
 }
@@ -2398,6 +2483,90 @@ pub fn decode(data: &PixelDatas, width: u32, height: u32, format: TextureFormat)
         }
         TextureFormat::EacRg11Snorm => {
             etc::decode_eac_rg11_snorm(data, w, h)
+        }
+        TextureFormat::Astc4x4Unorm | TextureFormat::Astc4x4UnormSrgb => {
+            astc::decode_astc_ldr_batch(data, w, h, 4, 4)
+        }
+        TextureFormat::Astc4x4Hdr => {
+            astc::decode_astc_hdr_batch(data, w, h, 4, 4)
+        }
+        TextureFormat::Astc5x4Unorm | TextureFormat::Astc5x4UnormSrgb => {
+            astc::decode_astc_ldr_batch(data, w, h, 5, 4)
+        }
+        TextureFormat::Astc5x4Hdr => {
+            astc::decode_astc_hdr_batch(data, w, h, 5, 4)
+        }
+        TextureFormat::Astc5x5Unorm | TextureFormat::Astc5x5UnormSrgb => {
+            astc::decode_astc_ldr_batch(data, w, h, 5, 5)
+        }
+        TextureFormat::Astc5x5Hdr => {
+            astc::decode_astc_hdr_batch(data, w, h, 5, 5)
+        }
+        TextureFormat::Astc6x5Unorm | TextureFormat::Astc6x5UnormSrgb => {
+            astc::decode_astc_ldr_batch(data, w, h, 6, 5)
+        }
+        TextureFormat::Astc6x5Hdr => {
+            astc::decode_astc_hdr_batch(data, w, h, 6, 5)
+        }
+        TextureFormat::Astc6x6Unorm | TextureFormat::Astc6x6UnormSrgb => {
+            astc::decode_astc_ldr_batch(data, w, h, 6, 6)
+        }
+        TextureFormat::Astc6x6Hdr => {
+            astc::decode_astc_hdr_batch(data, w, h, 6, 6)
+        }
+        TextureFormat::Astc8x5Unorm | TextureFormat::Astc8x5UnormSrgb => {
+            astc::decode_astc_ldr_batch(data, w, h, 8, 5)
+        }
+        TextureFormat::Astc8x5Hdr => {
+            astc::decode_astc_hdr_batch(data, w, h, 8, 5)
+        }
+        TextureFormat::Astc8x6Unorm | TextureFormat::Astc8x6UnormSrgb => {
+            astc::decode_astc_ldr_batch(data, w, h, 8, 6)
+        }
+        TextureFormat::Astc8x6Hdr => {
+            astc::decode_astc_hdr_batch(data, w, h, 8, 6)
+        }
+        TextureFormat::Astc8x8Unorm | TextureFormat::Astc8x8UnormSrgb => {
+            astc::decode_astc_ldr_batch(data, w, h, 8, 8)
+        }
+        TextureFormat::Astc8x8Hdr => {
+            astc::decode_astc_hdr_batch(data, w, h, 8, 8)
+        }
+        TextureFormat::Astc10x5Unorm | TextureFormat::Astc10x5UnormSrgb => {
+            astc::decode_astc_ldr_batch(data, w, h, 10, 5)
+        }
+        TextureFormat::Astc10x5Hdr => {
+            astc::decode_astc_hdr_batch(data, w, h, 10, 5)
+        }
+        TextureFormat::Astc10x6Unorm | TextureFormat::Astc10x6UnormSrgb => {
+            astc::decode_astc_ldr_batch(data, w, h, 10, 6)
+        }
+        TextureFormat::Astc10x6Hdr => {
+            astc::decode_astc_hdr_batch(data, w, h, 10, 6)
+        }
+        TextureFormat::Astc10x8Unorm | TextureFormat::Astc10x8UnormSrgb => {
+            astc::decode_astc_ldr_batch(data, w, h, 10, 8)
+        }
+        TextureFormat::Astc10x8Hdr => {
+            astc::decode_astc_hdr_batch(data, w, h, 10, 8)
+        }
+        TextureFormat::Astc10x10Unorm | TextureFormat::Astc10x10UnormSrgb => {
+            astc::decode_astc_ldr_batch(data, w, h, 10, 10)
+        }
+        TextureFormat::Astc10x10Hdr => {
+            astc::decode_astc_hdr_batch(data, w, h, 10, 10)
+        }
+        TextureFormat::Astc12x10Unorm | TextureFormat::Astc12x10UnormSrgb => {
+            astc::decode_astc_ldr_batch(data, w, h, 12, 10)
+        }
+        TextureFormat::Astc12x10Hdr => {
+            astc::decode_astc_hdr_batch(data, w, h, 12, 10)
+        }
+        TextureFormat::Astc12x12Unorm | TextureFormat::Astc12x12UnormSrgb => {
+            astc::decode_astc_ldr_batch(data, w, h, 12, 12)
+        }
+        TextureFormat::Astc12x12Hdr => {
+            astc::decode_astc_hdr_batch(data, w, h, 12, 12)
         }
         _ => todo!("decode not yet implemented for {format:?}"),
     }
