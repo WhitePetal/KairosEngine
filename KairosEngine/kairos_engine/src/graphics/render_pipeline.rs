@@ -42,6 +42,10 @@ use crate::{
 struct PipelineKey {
     shader_index: usize,
     render_state: RenderState,
+    /// Whether the associated texture bind group layout uses filterable sampling.
+    /// Non-filterable (e.g. R32Float) and filterable formats cannot share
+    /// a pipeline because their bind group layouts differ.
+    texture_filterable: bool,
 }
 struct PipelineCache {
     version: u32,
@@ -633,19 +637,27 @@ impl RenderPipeline {
             // --- Texture bind group ---
             let texture_bind_group: Option<BindGroup>;
             let texture_bind_group_layout: Option<&BindGroupLayout>;
+            // Tracks whether the bind group layout uses filterable sampling;
+            // needed so PipelineKey distinguishes filterable from non-filterable.
+            let texture_filterable: bool;
 
             if material_errored {
                 if let Some((bg, layout)) = purple_fallback.as_ref() {
                     texture_bind_group = Some(bg.clone());
                     texture_bind_group_layout = Some(layout);
+                    // Purple fallback always uses a non-filterable layout
+                    // so it is compatible with any texture format.
+                    texture_filterable = false;
                 } else {
                     texture_bind_group = None;
                     texture_bind_group_layout = None;
+                    texture_filterable = false;
                 }
             } else {
                 let Some(texture_asset) = assets_server.get(texture_handle) else {
                     continue;
                 };
+                texture_filterable = texture_asset.format.is_filterable();
                 let texture_id = texture_handle.id();
                 let key = texture_id.index() as usize;
                 let version = texture_id.version();
@@ -698,6 +710,7 @@ impl RenderPipeline {
             let pipeline_key = PipelineKey {
                 shader_index: shader_id.index(),
                 render_state: material.render_state,
+                texture_filterable,
             };
             let shader_version = shader_id.version();
             let pipeline = match pipeline_cache.entry(pipeline_key) {
@@ -972,7 +985,9 @@ impl RenderPipeline {
                     binding: 0,
                     visibility: ShaderStages::FRAGMENT,
                     ty: BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        // Use filterable: false so this layout is compatible
+                        // with non-filterable formats like Rgba32Float.
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
                         view_dimension: TextureViewDimension::D2,
                         multisampled: false,
                     },
@@ -981,7 +996,7 @@ impl RenderPipeline {
                 BindGroupLayoutEntry {
                     binding: 1,
                     visibility: ShaderStages::FRAGMENT,
-                    ty: BindingType::Sampler(SamplerBindingType::Filtering),
+                    ty: BindingType::Sampler(SamplerBindingType::NonFiltering),
                     count: None,
                 },
             ],
