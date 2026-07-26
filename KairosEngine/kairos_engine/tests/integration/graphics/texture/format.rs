@@ -1,3 +1,5 @@
+use half::f16;
+
 use kairos_engine::graphics::texture::{
     PixelDatas, TextureFormat,
     format::{RawPixelType, decode, encode},
@@ -1718,4 +1720,172 @@ fn all_group_c_encode_decode_sizes() {
             "{fmt:?} decoded size mismatch"
         );
     }
+}
+
+// ============================================================
+// Group D: BC6h + BC7 encode/decode
+// ============================================================
+
+/// Create a 4×4 HDR half-float test image with known values.
+fn make_test_f16(w: usize, h: usize) -> Vec<f16> {
+    let mut data = vec![f16::ZERO; w * h * 4];
+    for y in 0..h {
+        for x in 0..w {
+            let i = (y * w + x) * 4;
+            data[i] = f16::from_f32(x as f32 / w.max(1) as f32);
+            data[i + 1] = f16::from_f32(y as f32 / h.max(1) as f32);
+            data[i + 2] = f16::from_f32(0.5);
+            data[i + 3] = f16::from_f32(1.0);
+        }
+    }
+    data
+}
+
+#[test]
+fn bc6h_roundtrip_4x4() {
+    let w = 4usize;
+    let h = 4usize;
+    let f16_data = make_test_f16(w, h);
+    let input = PixelDatas::F16(f16_data);
+    let encoded = encode(&input, w as u32, h as u32, TextureFormat::Bc6hRgbUfloat);
+    // 4×4 → one 4×4 block → 16 bytes
+    assert_eq!(encoded.as_bytes().len(), 16, "BC6h 4x4 should produce 16 bytes");
+    let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Bc6hRgbUfloat);
+    assert_eq!(decoded.as_bytes().len(), w * h * 8, "BC6h decoded should be 8 bytes per pixel");
+}
+
+#[test]
+fn bc6h_signed_roundtrip_4x4() {
+    let w = 4usize;
+    let h = 4usize;
+    // Use signed test data with negative values
+    let mut f16_data = vec![f16::ZERO; w * h * 4];
+    for y in 0..h {
+        for x in 0..w {
+            let i = (y * w + x) * 4;
+            f16_data[i] = f16::from_f32((x as f32 / w as f32) * 2.0 - 1.0);
+            f16_data[i + 1] = f16::from_f32((y as f32 / h as f32) * 2.0 - 1.0);
+            f16_data[i + 2] = f16::from_f32(0.0);
+            f16_data[i + 3] = f16::from_f32(1.0);
+        }
+    }
+    let input = PixelDatas::F16(f16_data);
+    let encoded = encode(&input, w as u32, h as u32, TextureFormat::Bc6hRgbFloat);
+    assert_eq!(encoded.as_bytes().len(), 16);
+    let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Bc6hRgbFloat);
+    assert_eq!(decoded.as_bytes().len(), w * h * 8);
+}
+
+#[test]
+fn bc6h_roundtrip_8x8() {
+    let w = 8usize;
+    let h = 8usize;
+    let f16_data = make_test_f16(w, h);
+    let input = PixelDatas::F16(f16_data);
+    let encoded = encode(&input, w as u32, h as u32, TextureFormat::Bc6hRgbUfloat);
+    // 8x8 → 2×2 = 4 blocks, 16 bytes each → 64 bytes
+    assert_eq!(encoded.as_bytes().len(), 64);
+    let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Bc6hRgbUfloat);
+    assert_eq!(decoded.as_bytes().len(), w * h * 8);
+}
+
+#[test]
+fn bc6h_encode_variant() {
+    let w = 4usize;
+    let h = 4usize;
+    let f16_data = make_test_f16(w, h);
+    let input = PixelDatas::F16(f16_data);
+    let encoded = encode(&input, w as u32, h as u32, TextureFormat::Bc6hRgbUfloat);
+    // BC6h encode returns U8 (raw bytes)
+    assert!(matches!(encoded, PixelDatas::U8(_)));
+    let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Bc6hRgbUfloat);
+    // BC6h decode returns F16
+    assert!(matches!(decoded, PixelDatas::F16(_)));
+}
+
+#[test]
+fn bc7_roundtrip_4x4() {
+    let w = 4usize;
+    let h = 4usize;
+    let rgba = make_test_rgba(w, h);
+    let input = PixelDatas::U8(rgba);
+    let encoded = encode(&input, w as u32, h as u32, TextureFormat::Bc7RgbaUnorm);
+    assert_eq!(encoded.as_bytes().len(), 16, "BC7 4x4 should produce 16 bytes");
+    let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Bc7RgbaUnorm);
+    assert_eq!(decoded.as_bytes().len(), w * h * 4);
+}
+
+#[test]
+fn bc7_roundtrip_8x8() {
+    let w = 8usize;
+    let h = 8usize;
+    let rgba = make_test_rgba(w, h);
+    let input = PixelDatas::U8(rgba);
+    let encoded = encode(&input, w as u32, h as u32, TextureFormat::Bc7RgbaUnorm);
+    // 8x8 → 2×2 = 4 blocks, 16 bytes each → 64 bytes
+    assert_eq!(encoded.as_bytes().len(), 64);
+    let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Bc7RgbaUnorm);
+    assert_eq!(decoded.as_bytes().len(), w * h * 4);
+}
+
+#[test]
+fn bc7_srgb_roundtrip_4x4() {
+    let w = 4usize;
+    let h = 4usize;
+    let rgba = make_test_rgba(w, h);
+    let input = PixelDatas::U8(rgba);
+    let encoded = encode(&input, w as u32, h as u32, TextureFormat::Bc7RgbaUnormSrgb);
+    assert_eq!(encoded.as_bytes().len(), 16);
+    let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Bc7RgbaUnormSrgb);
+    assert_eq!(decoded.as_bytes().len(), w * h * 4);
+}
+
+#[test]
+fn bc7_encode_variant() {
+    let w = 4usize;
+    let h = 4usize;
+    let rgba = make_test_rgba(w, h);
+    let input = PixelDatas::U8(rgba);
+    let encoded = encode(&input, w as u32, h as u32, TextureFormat::Bc7RgbaUnorm);
+    assert!(matches!(encoded, PixelDatas::U8(_)));
+    let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Bc7RgbaUnorm);
+    assert!(matches!(decoded, PixelDatas::U8(_)));
+}
+
+#[test]
+fn bc6h_and_bc7_supports_encoding() {
+    let formats = [
+        TextureFormat::Bc6hRgbUfloat,
+        TextureFormat::Bc6hRgbFloat,
+        TextureFormat::Bc7RgbaUnorm,
+        TextureFormat::Bc7RgbaUnormSrgb,
+    ];
+    for fmt in &formats {
+        assert!(fmt.supports_encoding(), "{fmt:?} should support encoding");
+    }
+}
+
+#[test]
+fn bc6h_roundtrip_larger() {
+    let w = 16usize;
+    let h = 16usize;
+    let f16_data = make_test_f16(w, h);
+    let input = PixelDatas::F16(f16_data);
+    let encoded = encode(&input, w as u32, h as u32, TextureFormat::Bc6hRgbUfloat);
+    // 16x16 → 4×4 = 16 blocks, 16 bytes each → 256 bytes
+    assert_eq!(encoded.as_bytes().len(), 256);
+    let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Bc6hRgbUfloat);
+    assert_eq!(decoded.as_bytes().len(), w * h * 8);
+}
+
+#[test]
+fn bc7_roundtrip_larger() {
+    let w = 16usize;
+    let h = 16usize;
+    let rgba = make_test_rgba(w, h);
+    let input = PixelDatas::U8(rgba);
+    let encoded = encode(&input, w as u32, h as u32, TextureFormat::Bc7RgbaUnorm);
+    assert_eq!(encoded.as_bytes().len(), 256);
+    let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Bc7RgbaUnorm);
+    assert_eq!(decoded.as_bytes().len(), w * h * 4);
 }

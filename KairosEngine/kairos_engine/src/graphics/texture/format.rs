@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 use strum::EnumIter;
 
 mod bc;
+mod bc6h;
+mod bc7;
 mod srgb;
 mod uncompressed;
 
@@ -1333,10 +1335,10 @@ impl TextureFormat {
             TextureFormat::Bc4RSnorm => true,
             TextureFormat::Bc5RgUnorm => true,
             TextureFormat::Bc5RgSnorm => true,
-            TextureFormat::Bc6hRgbUfloat => false,
-            TextureFormat::Bc6hRgbFloat => false,
-            TextureFormat::Bc7RgbaUnorm => false,
-            TextureFormat::Bc7RgbaUnormSrgb => false,
+            TextureFormat::Bc6hRgbUfloat => true,
+            TextureFormat::Bc6hRgbFloat => true,
+            TextureFormat::Bc7RgbaUnorm => true,
+            TextureFormat::Bc7RgbaUnormSrgb => true,
             TextureFormat::Etc2Rgb8Unorm => false,
             TextureFormat::Etc2Rgb8UnormSrgb => false,
             TextureFormat::Etc2Rgb8A1Unorm => false,
@@ -2216,6 +2218,11 @@ pub fn encode(pixels: &PixelDatas, width: u32, height: u32, format: TextureForma
         TextureFormat::Rgba32Float => uncompressed::encode_rgba32f(pixels, w, h),
         TextureFormat::Rgb10a2Unorm => uncompressed::encode_rgb10a2_unorm(pixels, w, h),
         TextureFormat::Rg11b10Ufloat => uncompressed::encode_rg11b10_ufloat(pixels, w, h),
+        TextureFormat::Bc6hRgbUfloat => bc6h::encode_bc6h(pixels, w, h),
+        TextureFormat::Bc6hRgbFloat => bc6h::encode_bc6h_signed(pixels, w, h),
+        TextureFormat::Bc7RgbaUnorm | TextureFormat::Bc7RgbaUnormSrgb => {
+            bc7::encode_bc7(pixels, w, h)
+        }
         _ => todo!("encode not yet implemented for {format:?}"),
     }
 }
@@ -2266,6 +2273,11 @@ pub fn decode(data: &PixelDatas, width: u32, height: u32, format: TextureFormat)
         TextureFormat::Rgba32Float => uncompressed::decode_rgba32f(data, w, h),
         TextureFormat::Rgb10a2Unorm => uncompressed::decode_rgb10a2_unorm(data, w, h),
         TextureFormat::Rg11b10Ufloat => uncompressed::decode_rg11b10_ufloat(data, w, h),
+        TextureFormat::Bc6hRgbUfloat => bc6h::decode_bc6h(data, w, h),
+        TextureFormat::Bc6hRgbFloat => bc6h::decode_bc6h_signed(data, w, h),
+        TextureFormat::Bc7RgbaUnorm | TextureFormat::Bc7RgbaUnormSrgb => {
+            bc7::decode_bc7(data, w, h)
+        }
         _ => todo!("decode not yet implemented for {format:?}"),
     }
 }
