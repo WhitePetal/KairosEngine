@@ -617,15 +617,16 @@ fn encode_bc7_block(block: &[[u8; 4]]) -> [u8; 16] {
     w.write_bit(1);
 
     // No partition bits, no rotation bits, no index mode bits for mode 6
-    // Write endpoints: R, G, B, A for endpoint 0, then endpoint 1
-    w.write_bits(ep0[0] as u32, 7);
-    w.write_bits(ep0[1] as u32, 7);
-    w.write_bits(ep0[2] as u32, 7);
-    w.write_bits(ep0[3] as u32, 7);
-    w.write_bits(ep1[0] as u32, 7);
-    w.write_bits(ep1[1] as u32, 7);
-    w.write_bits(ep1[2] as u32, 7);
-    w.write_bits(ep1[3] as u32, 7);
+    // Write endpoints per-channel: R0,R1 then G0,G1 then B0,B1 then A0,A1
+    // (BC7 spec stores channels in sequence, not endpoints)
+    w.write_bits(ep0[0] as u32, 7); // R0
+    w.write_bits(ep1[0] as u32, 7); // R1
+    w.write_bits(ep0[1] as u32, 7); // G0
+    w.write_bits(ep1[1] as u32, 7); // G1
+    w.write_bits(ep0[2] as u32, 7); // B0
+    w.write_bits(ep1[2] as u32, 7); // B1
+    w.write_bits(ep0[3] as u32, 7); // A0
+    w.write_bits(ep1[3] as u32, 7); // A1
 
     // P-bits (2 bits: one per endpoint)
     w.write_bit(pb0);

@@ -933,14 +933,6 @@ fn rgba16_float_golden() {
     assert_eq!(enc[3], half::f16::from_f32(0.4), "A");
 }
 
-// ============================================================
-// Stress tests: non-power-of-two dimensions, multi-chunk images
-// ============================================================
-
-fn sext(v: u8) -> u16 {
-    (v as i8) as i16 as u16
-}
-
 /// Run a roundtrip encode→decode for a format, with verification.
 fn stress_roundtrip_int(
     fmt: TextureFormat,
@@ -1621,7 +1613,7 @@ fn rg11b10_ufloat_golden() {
     let uf11_val = (exp << 6) | mant as u16;
     // For 1.0: f16=0x3C00 (exp=15, mant=0), uf11=(15<<6 | 0) = 0x3C0
     assert_eq!(uf11_val, 0x3C0, "f32(1.0) → uf11 = 0x{:03X}", uf11_val);
-    
+
     // Now pack R=1.0, G=0.5, B=2.0
     let rgba_f32 = vec![1.0f32, 0.5, 2.0, 1.0];
     let input = PixelDatas::F32(rgba_f32);
@@ -1629,19 +1621,19 @@ fn rg11b10_ufloat_golden() {
     assert_eq!(encoded.as_bytes().len(), 4);
     let enc = encoded.as_bytes();
     let packed = u32::from_le_bytes([enc[0], enc[1], enc[2], enc[3]]);
-    
+
     // G=0.5 → f16=0x3800 → exp=14, mant=0 → uf11 = (14<<6) | 0 = 0x380
     let g_f = half::f16::from_f32(0.5);
     let g_exp = (g_f.to_bits() >> 10) & 0x1F;
     let g_mant = (g_f.to_bits() & 0x3FF) >> 4;
     let g_uf11 = (g_exp << 6) | g_mant as u16;
-    
+
     // B=2.0 → f16=0x4000 → exp=16, mant=0 → uf10 = (16<<5) | 0 = 0x200
     let b_f = half::f16::from_f32(2.0);
     let b_exp = (b_f.to_bits() >> 10) & 0x1F;
     let b_mant = (b_f.to_bits() & 0x3FF) >> 5;
     let b_uf10 = (b_exp << 5) | b_mant as u16;
-    
+
     let expected_packed = (uf11_val as u32) | ((g_uf11 as u32) << 11) | ((b_uf10 as u32) << 22);
     assert_eq!(packed, expected_packed, "RG11B10 packed = 0x{:08X}, expected 0x{:08X}", packed, expected_packed);
 }
@@ -1796,8 +1788,8 @@ fn bc6h_encode_variant() {
     let f16_data = make_test_f16(w, h);
     let input = PixelDatas::F16(f16_data);
     let encoded = encode(&input, w as u32, h as u32, TextureFormat::Bc6hRgbUfloat);
-    // BC6h encode returns U8 (raw bytes)
-    assert!(matches!(encoded, PixelDatas::U8(_)));
+    // BC6h encode returns F16 (raw bytes reinterpreted as f16 for storage)
+    assert!(matches!(encoded, PixelDatas::F16(_)), "BC6h encode should return F16");
     let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Bc6hRgbUfloat);
     // BC6h decode returns F16
     assert!(matches!(decoded, PixelDatas::F16(_)));
@@ -1876,6 +1868,57 @@ fn bc6h_roundtrip_larger() {
     assert_eq!(encoded.as_bytes().len(), 256);
     let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Bc6hRgbUfloat);
     assert_eq!(decoded.as_bytes().len(), w * h * 8);
+}
+
+#[test]
+fn bc6h_decode_not_overexposed() {
+    // Verify decoded values are in a sane range (not infinity/overexposed white)
+    let w = 4usize;
+    let h = 4usize;
+    let f16_data = make_test_f16(w, h);
+    let input = PixelDatas::F16(f16_data);
+    let encoded = encode(&input, w as u32, h as u32, TextureFormat::Bc6hRgbUfloat);
+    let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Bc6hRgbUfloat);
+    let pixels = match &decoded {
+        PixelDatas::F16(d) => d,
+        _ => panic!("expected F16"),
+    };
+    for i in (0..w * h * 4).step_by(4) {
+        let r = pixels[i].to_f32();
+        let g = pixels[i + 1].to_f32();
+        let b = pixels[i + 2].to_f32();
+        // Values should be finite and in a reasonable range (not infinity)
+        assert!(r.is_finite(), "R should be finite, got {}", r);
+        assert!(g.is_finite(), "G should be finite, got {}", g);
+        assert!(b.is_finite(), "B should be finite, got {}", b);
+        // Should not be massively overexposed (max f16 normal is ~65504)
+        assert!(r < 1000.0, "R should be < 1000, got {}", r);
+        assert!(g < 1000.0, "G should be < 1000, got {}", g);
+        assert!(b < 1000.0, "B should be < 1000, got {}", b);
+    }
+}
+
+#[test]
+fn bc7_decode_not_corrupted() {
+    let w = 4usize;
+    let h = 4usize;
+    let rgba = make_test_rgba(w, h);
+    let input = PixelDatas::U8(rgba.clone());
+    let encoded = encode(&input, w as u32, h as u32, TextureFormat::Bc7RgbaUnorm);
+    let decoded = decode(&encoded, w as u32, h as u32, TextureFormat::Bc7RgbaUnorm);
+    let pixels = match &decoded {
+        PixelDatas::U8(d) => d,
+        _ => panic!("expected U8"),
+    };
+    // Decoded values should roughly resemble the input
+    let mut max_diff = 0i32;
+    for i in 0..w * h * 4 {
+        let diff = (rgba[i] as i32 - pixels[i] as i32).abs();
+        max_diff = max_diff.max(diff);
+    }
+    // With lossy BC7 compression (simple encoder using mode 6 only),
+    // per-channel diff for a gradient should be reasonable.
+    assert!(max_diff < 128, "max per-channel diff {max_diff} too large");
 }
 
 #[test]

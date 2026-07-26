@@ -13,7 +13,7 @@
 use half::f16;
 use rayon::prelude::*;
 
-use crate::graphics::texture::format::PixelDatas;
+use crate::graphics::texture::format::{PixelDatas};
 
 // ============================================================
 // Constants — shared spec tables
@@ -354,52 +354,60 @@ fn int_to_f16(input: i32, signed: bool) -> f16 {
     }
 }
 
-/// Quantize a value to the given bit precision.
+/// The maximum f16 normal value used for BC6h quantization range.
+const F16MAX: i32 = 0x7BFF;
+
+/// Quantize an f16-integer value to the given bit precision.
+///
+/// Port of DirectXTex `D3DX_BC6H::Quantize`.
+/// Maps the f16 integer domain [0, F16MAX] (unsigned) or [-F16MAX, F16MAX] (signed)
+/// onto the target precision range.
 fn quantize(value: i32, prec: u8, signed: bool) -> i32 {
     if signed {
-        let max_val = (1 << (prec - 1)) - 1;
-        let min_val = -(1 << (prec - 1));
-        let clamped = value.clamp(min_val, max_val);
-        clamped & ((1 << prec) - 1)
+        let s = if value < 0 { 1 } else { 0 };
+        let v = if value < 0 { -value } else { value };
+        let q = if prec >= 16 { v } else { (v << (prec - 1)) / (F16MAX + 1) };
+        if s != 0 { -q } else { q }
     } else {
-        let max_val = (1 << prec) - 1;
-        value.max(0).min(max_val)
+        if prec >= 15 { value } else { (value << prec) / (F16MAX + 1) }
     }
 }
 
-/// Unquantize from `bits_per_comp`-bit representation to 16-bit range.
+/// Unquantize from the given bit precision back to 16-bit range.
+///
+/// Port of DirectXTex `D3DX_BC6H::Unquantize`.
 fn unquantize(comp: i32, bits_per_comp: u8, signed: bool) -> i32 {
-    if !signed {
-        if bits_per_comp >= 16 || bits_per_comp == 0 {
-            return comp;
-        }
-        let max_val = (1 << bits_per_comp) - 1;
-        // comp is unsigned in [0, max_val]
-        (comp * 65536 + (1 << (bits_per_comp - 1))) / max_val
+    if signed {
+        if bits_per_comp >= 16 { return comp; }
+        let (s, comp) = if comp < 0 { (1, -comp) } else { (0, comp) };
+        let unq = if comp == 0 {
+            0
+        } else if comp >= ((1 << (bits_per_comp - 1)) - 1) {
+            0x7FFF
+        } else {
+            ((comp << 15) + 0x4000) >> (bits_per_comp - 1)
+        };
+        if s != 0 { -unq } else { unq }
     } else {
-        if bits_per_comp >= 16 || bits_per_comp == 0 {
-            return comp;
+        if bits_per_comp >= 15 { return comp; }
+        if comp == 0 {
+            0
+        } else if comp == ((1 << bits_per_comp) - 1) {
+            0xFFFF
+        } else {
+            ((comp << 16) + 0x8000) >> bits_per_comp
         }
-        let max_val = (1 << bits_per_comp) - 1;
-        let sign = if comp < 0 { -1 } else { 1 };
-        let abs_val = comp.abs();
-        let result = (abs_val * 65536 + (1 << (bits_per_comp - 1))) / max_val;
-        sign * result.min(0x7FFF)
     }
 }
 
-/// Final unquantize: bring the 16-bit interpolated value into f16 range.
+/// Final unquantize: bring the 16-bit interpolated value into f16 integer range.
+///
+/// Port of DirectXTex `D3DX_BC6H::FinishUnquantize`.
 fn finish_unquantize(comp: i32, signed: bool) -> i32 {
-    if !signed {
-        // unsigned: *31/64 compresses [0,65535] → [0,~31743] (f16 max normal ≅ 0x7BFF)
-        (comp * 31) / 64
+    if signed {
+        if comp < 0 { -(((-comp) * 31) >> 5) } else { (comp * 31) >> 5 }
     } else {
-        // signed: *31/32 compresses [-32767,32767] → [-31743,31743]
-        if comp < 0 {
-            -((-comp * 31) / 32)
-        } else {
-            (comp * 31) / 32
-        }
+        (comp * 31) >> 6
     }
 }
 
@@ -730,7 +738,8 @@ pub fn encode_bc6h(
     width: usize,
     height: usize,
 ) -> PixelDatas {
-    encode_bc6h_inner(pixels, width, height, false)
+    let datas = pixels.convert_to_f16_bytes();
+    PixelDatas::F16(encode_bc6h_inner(&datas, width, height, false))
 }
 
 /// Encode f16 pixels to BC6h signed (Bc6hRgbFloat).
@@ -739,43 +748,26 @@ pub fn encode_bc6h_signed(
     width: usize,
     height: usize,
 ) -> PixelDatas {
-    encode_bc6h_inner(pixels, width, height, true)
+    let datas = pixels.convert_to_f16_bytes();
+    PixelDatas::F16(encode_bc6h_inner(&datas, width, height, true))
 }
 
 fn encode_bc6h_inner(
-    pixels: &PixelDatas,
+    rgba: &Vec<f16>,
     width: usize,
     height: usize,
     is_signed: bool,
-) -> PixelDatas {
-    // Convert input to F16
-    let rgba: std::borrow::Cow<'_, [f16]> = match pixels {
-        PixelDatas::F16(data) => std::borrow::Cow::Borrowed(data.as_slice()),
-        PixelDatas::U8(data) => {
-            let n = data.len();
-            let mut out = vec![f16::ZERO; n];
-            out.par_chunks_mut(4096)
-                .enumerate()
-                .for_each(|(chunk_idx, chunk)| {
-                    let base = chunk_idx * 4096;
-                    for (j, dst) in chunk.iter_mut().enumerate() {
-                        *dst = f16::from_f32(data[base + j] as f32 / 255.0);
-                    }
-                });
-            std::borrow::Cow::Owned(out)
-        }
-        other => std::borrow::Cow::Owned(other.convert_to_f16_bytes()),
-    };
-
+) -> Vec<f16> {
     let block_w = 4usize;
     let block_h = 4usize;
-    let block_size = 16usize;
+    // block_size in f16 units: 16 encoded bytes = 8 f16 values
+    let block_size_f16 = 8usize;
 
     let bx = (width + block_w - 1) / block_w;
     let by = (height + block_h - 1) / block_h;
-    let mut out = vec![0u8; bx * by * block_size];
+    let mut out = vec![f16::ZERO; bx * by * block_size_f16];
 
-    out.par_chunks_mut(block_size).enumerate().for_each(|(i, chunk)| {
+    out.par_chunks_mut(block_size_f16).enumerate().for_each(|(i, chunk)| {
         let bx_i = i % bx;
         let by_i = i / bx;
 
@@ -795,15 +787,17 @@ fn encode_bc6h_inner(
             }
         }
 
-        let encoded = if is_signed {
+        let encoded: [u8; 16] = if is_signed {
             encode_bc6h_block(&block, true)
         } else {
             encode_bc6h_block(&block, false)
         };
-        chunk.copy_from_slice(&encoded);
+        // Reinterpret 16 encoded bytes as 8 f16 values (matches PixelDatas::F16 storage)
+        let encoded_f16: &[f16] = bytemuck::cast_slice(&encoded);
+        chunk.copy_from_slice(encoded_f16);
     });
 
-    PixelDatas::U8(out)
+    out
 }
 
 /// Decode BC6h unsigned (Bc6hRgbUfloat) to f16 pixels.
@@ -812,7 +806,8 @@ pub fn decode_bc6h(
     width: usize,
     height: usize,
 ) -> PixelDatas {
-    decode_bc6h_inner(data, width, height, false)
+    let datas = decode_bc6h_inner(data, width, height, false);
+    PixelDatas::F16(datas)
 }
 
 /// Decode BC6h signed (Bc6hRgbFloat) to f16 pixels.
@@ -821,7 +816,8 @@ pub fn decode_bc6h_signed(
     width: usize,
     height: usize,
 ) -> PixelDatas {
-    decode_bc6h_inner(data, width, height, true)
+    let datas = decode_bc6h_inner(data, width, height, true);
+    PixelDatas::F16(datas)
 }
 
 fn decode_bc6h_inner(
@@ -829,8 +825,10 @@ fn decode_bc6h_inner(
     width: usize,
     height: usize,
     is_signed: bool,
-) -> PixelDatas {
-    let raw = data.convert_to_u8_bytes();
+) -> Vec<f16> {
+    // The encoded BC6h data is stored as PixelDatas::F16 (raw bytes reinterpreted
+    // as f16 for storage). Use as_bytes() to get the raw bytes without conversion.
+    let raw = data.as_bytes();
     let block_w = 4usize;
     let block_h = 4usize;
     let block_size = 16usize;
@@ -868,5 +866,5 @@ fn decode_bc6h_inner(
         }
     });
 
-    PixelDatas::F16(out)
+    out
 }
