@@ -1,4 +1,10 @@
-use std::{collections::HashMap, error::Error, path::PathBuf, sync::Arc};
+use std::{
+    collections::{HashMap, hash_map::DefaultHasher},
+    error::Error,
+    hash::{Hash, Hasher},
+    path::PathBuf,
+    sync::Arc,
+};
 
 use petgraph::visit::{DfsEvent, Reversed, depth_first_search};
 use strum::EnumCount;
@@ -23,11 +29,14 @@ use wgpu::{
 use winit::{dpi::PhysicalSize, window::Window};
 
 use crate::{
-    asset_loader::assets::{AssetHandle, AssetsServer, TextureAssetsSystem, asset::AssetIndex},
+    asset_loader::assets::{
+        AssetHandle, AssetsServer, ShaderAssetsSystem, TextureAssetsSystem, asset::AssetIndex,
+    },
     graphics::{
         attachment::{AttachmentFormat, InternalAttachmentId},
         egui_texture_handle::EguiTextureHandle,
         graphics_graph::{self, GraphicsGraph, graphics_node::RenderPassNode},
+        material::Material,
         mesh::Mesh,
         render_state::RenderState,
         shader::ShaderAsset,
@@ -38,14 +47,45 @@ use crate::{
     math::{float4, float4x4},
 };
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 struct PipelineKey {
-    shader_index: usize,
+    shader_id: usize,
+    shader_version: u32,
+    shader_modify_count: u64,
+    texture_hash: u64,
     render_state: RenderState,
-    /// Whether the associated texture bind group layout uses filterable sampling.
-    /// Non-filterable (e.g. R32Float) and filterable formats cannot share
-    /// a pipeline because their bind group layouts differ.
-    texture_filterable: bool,
+}
+
+impl PipelineKey {
+    fn from_material(material: &Material, assets_server: &AssetsServer) -> Self {
+        let shader = material.shader.as_ref();
+        let shader_id = shader.map_or(0, |s| s.id().index());
+        let shader_version = shader.map_or(0, |s| s.id().version());
+        let shader_modify_count = shader
+            .and_then(|s| assets_server.get_modify_count::<ShaderAssetsSystem>(s.id().index()))
+            .unwrap_or(0);
+
+        let mut hasher = DefaultHasher::new();
+        if let Some(t) = &material.texture {
+            let idx = t.id().index();
+            let ver = t.id().version();
+            let mc = assets_server
+                .get_modify_count::<TextureAssetsSystem>(idx)
+                .unwrap_or(0);
+            idx.hash(&mut hasher);
+            ver.hash(&mut hasher);
+            mc.hash(&mut hasher);
+        }
+        let texture_hash = hasher.finish();
+
+        Self {
+            shader_id,
+            shader_version,
+            shader_modify_count,
+            texture_hash,
+            render_state: material.render_state,
+        }
+    }
 }
 struct PipelineCache {
     version: u32,
@@ -637,27 +677,19 @@ impl RenderPipeline {
             // --- Texture bind group ---
             let texture_bind_group: Option<BindGroup>;
             let texture_bind_group_layout: Option<&BindGroupLayout>;
-            // Tracks whether the bind group layout uses filterable sampling;
-            // needed so PipelineKey distinguishes filterable from non-filterable.
-            let texture_filterable: bool;
 
             if material_errored {
                 if let Some((bg, layout)) = purple_fallback.as_ref() {
                     texture_bind_group = Some(bg.clone());
                     texture_bind_group_layout = Some(layout);
-                    // Purple fallback always uses a non-filterable layout
-                    // so it is compatible with any texture format.
-                    texture_filterable = false;
                 } else {
                     texture_bind_group = None;
                     texture_bind_group_layout = None;
-                    texture_filterable = false;
                 }
             } else {
                 let Some(texture_asset) = assets_server.get(texture_handle) else {
                     continue;
                 };
-                texture_filterable = texture_asset.format.is_filterable();
                 let texture_id = texture_handle.id();
                 let key = texture_id.index() as usize;
                 let version = texture_id.version();
@@ -707,11 +739,7 @@ impl RenderPipeline {
 
             // --- Pipeline ---
             let shader_id = shader_asset.id();
-            let pipeline_key = PipelineKey {
-                shader_index: shader_id.index(),
-                render_state: material.render_state,
-                texture_filterable,
-            };
+            let pipeline_key = PipelineKey::from_material(&material, assets_server);
             let shader_version = shader_id.version();
             let pipeline = match pipeline_cache.entry(pipeline_key) {
                 std::collections::hash_map::Entry::Occupied(mut entry) => {
@@ -729,7 +757,7 @@ impl RenderPipeline {
                             texture_bind_group_layout,
                             shader,
                             &depth_state,
-                            &pipeline_key.render_state,
+                            &material.render_state,
                             instancing_vertex_buffer_layout.clone(),
                             color_attachments[0]
                                 .as_ref()
@@ -756,7 +784,7 @@ impl RenderPipeline {
                         texture_bind_group_layout,
                         shader,
                         &depth_state,
-                        &pipeline_key.render_state,
+                        &material.render_state,
                         instancing_vertex_buffer_layout.clone(),
                         color_attachments[0]
                             .as_ref()
@@ -1023,6 +1051,19 @@ impl RenderPipeline {
         self.error_material_indices.remove(&material_id);
     }
 
+    /// Clear all cached pipelines.
+    ///
+    /// Call this after bulk asset changes (scene transitions, project reloads)
+    /// to reclaim memory from stale entries whose shader/texture versions no
+    /// longer match the current assets.
+    ///
+    /// Hot-reloaded assets that recycle their slot (handle version changes)
+    /// naturally produce a cache miss under the new key, so calling this
+    /// between scenes is sufficient — no need to clear every frame.
+    pub fn clear_pipeline_cache(&mut self) {
+        self.pipeline_cache.clear();
+    }
+
     fn create_pipeline(
         device: &Device,
         vp_bind_group_layout: &BindGroupLayout,
@@ -1189,20 +1230,8 @@ impl RenderPipeline {
         }
         let texture_view = gpu_texture.create_view(&TextureViewDescriptor::default());
 
-        let engine_sample_type = texture_asset.format.sample_type();
-        let sample_type = match engine_sample_type {
-            crate::graphics::texture::format::SampleType::Float => {
-                wgpu::TextureSampleType::Float {
-                    filterable: texture_asset.format.is_filterable(),
-                }
-            }
-            crate::graphics::texture::format::SampleType::Uint => wgpu::TextureSampleType::Uint,
-            crate::graphics::texture::format::SampleType::Sint => wgpu::TextureSampleType::Sint,
-        };
-        let sampler_type = match sample_type {
-            wgpu::TextureSampleType::Float { filterable: true } => SamplerBindingType::Filtering,
-            _ => SamplerBindingType::NonFiltering,
-        };
+        let sample_type: wgpu::TextureSampleType = texture_asset.format.into();
+        let sampler_type: wgpu::SamplerBindingType = texture_asset.format.into();
         let layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("Texture Bind Group Layout"),
             entries: &[

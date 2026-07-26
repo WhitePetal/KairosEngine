@@ -483,6 +483,10 @@ guid = "da13c85e-4ef3-464e-96b9-5ac86a948494"
 path = "docs/research/mcp-protocol.md"
 
 [[entries]]
+guid = "014de37b-986b-4d7b-8f13-d0f75f53c424"
+path = "docs/research/pipeline-cache-key-design.md"
+
+[[entries]]
 guid = "69431eb0-656d-4abf-a05c-c7381c7e9aaf"
 path = "docs/research/texture-encoding"
 

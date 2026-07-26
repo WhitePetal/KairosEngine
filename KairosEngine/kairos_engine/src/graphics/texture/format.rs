@@ -1146,6 +1146,27 @@ impl From<SampleType> for wgpu::TextureSampleType {
     }
 }
 
+impl From<TextureFormat> for wgpu::TextureSampleType {
+    fn from(format: TextureFormat) -> Self {
+        match format.sample_type() {
+            SampleType::Float => wgpu::TextureSampleType::Float {
+                filterable: format.is_filterable(),
+            },
+            SampleType::Uint => wgpu::TextureSampleType::Uint,
+            SampleType::Sint => wgpu::TextureSampleType::Sint,
+        }
+    }
+}
+
+impl From<TextureFormat> for wgpu::SamplerBindingType {
+    fn from(format: TextureFormat) -> Self {
+        match format.sample_type() {
+            SampleType::Float if format.is_filterable() => wgpu::SamplerBindingType::Filtering,
+            _ => wgpu::SamplerBindingType::NonFiltering,
+        }
+    }
+}
+
 /// Project texture format — maps to `wgpu::TextureFormat` at the GPU boundary.
 
 /// Project texture format — maps to `wgpu::TextureFormat` at the GPU boundary.
