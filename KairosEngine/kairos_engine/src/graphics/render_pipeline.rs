@@ -1174,9 +1174,18 @@ impl RenderPipeline {
         }
         let texture_view = gpu_texture.create_view(&TextureViewDescriptor::default());
 
-        let sample_type = texture_asset.format.sample_type().into();
+        let engine_sample_type = texture_asset.format.sample_type();
+        let sample_type = match engine_sample_type {
+            crate::graphics::texture::format::SampleType::Float => {
+                wgpu::TextureSampleType::Float {
+                    filterable: texture_asset.format.is_filterable(),
+                }
+            }
+            crate::graphics::texture::format::SampleType::Uint => wgpu::TextureSampleType::Uint,
+            crate::graphics::texture::format::SampleType::Sint => wgpu::TextureSampleType::Sint,
+        };
         let sampler_type = match sample_type {
-            wgpu::TextureSampleType::Float { .. } => SamplerBindingType::Filtering,
+            wgpu::TextureSampleType::Float { filterable: true } => SamplerBindingType::Filtering,
             _ => SamplerBindingType::NonFiltering,
         };
         let layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {

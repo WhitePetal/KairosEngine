@@ -1597,8 +1597,13 @@ impl TextureFormat {
 
     /// Whether this format supports hardware texture filtering (Linear).
     /// Uint/Sint formats do not — they require Nearest filtering.
+    /// 32-bit float formats (R32Float, Rg32Float, Rgba32Float) are also
+    /// not filterable per wgpu/hardware constraints.
     pub fn is_filterable(&self) -> bool {
-        self.sample_type() == SampleType::Float
+        match self {
+            Self::R32Float | Self::Rg32Float | Self::Rgba32Float => false,
+            _ => self.sample_type() == SampleType::Float,
+        }
     }
 
     /// Byte count per block (or per pixel for uncompressed formats).
