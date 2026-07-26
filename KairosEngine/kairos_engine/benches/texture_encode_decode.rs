@@ -922,6 +922,55 @@ fn bench_rgba16_float(c: &mut Criterion) {
     }
 }
 
+// ============================================================
+// Group E — ETC2 / EAC (4×4 block-compressed formats)
+// ============================================================
+
+macro_rules! bench_etc_format {
+    ($name:ident, $fmt:ident) => {
+        fn $name(c: &mut Criterion) {
+            let mut g = c.benchmark_group(stringify!($fmt));
+            for &size in SIZES {
+                let rgba = make_rgba(size, size);
+                let input = PixelDatas::U8(rgba);
+                g.bench_with_input(BenchmarkId::new("encode", size), &input, |b, px| {
+                    b.iter(|| {
+                        encode(
+                            black_box(px),
+                            size as u32,
+                            size as u32,
+                            TextureFormat::$fmt,
+                        )
+                    });
+                });
+                let encoded =
+                    encode(&input, size as u32, size as u32, TextureFormat::$fmt);
+                g.bench_with_input(BenchmarkId::new("decode", size), &encoded, |b, px| {
+                    b.iter(|| {
+                        decode(
+                            black_box(px),
+                            size as u32,
+                            size as u32,
+                            TextureFormat::$fmt,
+                        )
+                    });
+                });
+            }
+        }
+    };
+}
+
+bench_etc_format!(bench_etc2_rgb8_unorm, Etc2Rgb8Unorm);
+bench_etc_format!(bench_etc2_rgb8_unorm_srgb, Etc2Rgb8UnormSrgb);
+bench_etc_format!(bench_etc2_rgb8_a1_unorm, Etc2Rgb8A1Unorm);
+bench_etc_format!(bench_etc2_rgb8_a1_unorm_srgb, Etc2Rgb8A1UnormSrgb);
+bench_etc_format!(bench_etc2_rgba8_unorm, Etc2Rgba8Unorm);
+bench_etc_format!(bench_etc2_rgba8_unorm_srgb, Etc2Rgba8UnormSrgb);
+bench_etc_format!(bench_eac_r11_unorm, EacR11Unorm);
+bench_etc_format!(bench_eac_r11_snorm, EacR11Snorm);
+bench_etc_format!(bench_eac_rg11_unorm, EacRg11Unorm);
+bench_etc_format!(bench_eac_rg11_snorm, EacRg11Snorm);
+
 criterion_group!(
     benches,
     bench_rg8_unorm,
@@ -954,5 +1003,16 @@ criterion_group!(
     bench_rgba32_float,
     bench_rgb10a2_unorm,
     bench_rg11b10_ufloat,
+    // Group E — ETC2 / EAC
+    bench_etc2_rgb8_unorm,
+    bench_etc2_rgb8_unorm_srgb,
+    bench_etc2_rgb8_a1_unorm,
+    bench_etc2_rgb8_a1_unorm_srgb,
+    bench_etc2_rgba8_unorm,
+    bench_etc2_rgba8_unorm_srgb,
+    bench_eac_r11_unorm,
+    bench_eac_r11_snorm,
+    bench_eac_rg11_unorm,
+    bench_eac_rg11_snorm,
 );
 criterion_main!(benches);

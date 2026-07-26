@@ -1858,6 +1858,25 @@ fn bc6h_and_bc7_supports_encoding() {
 }
 
 #[test]
+fn etc2_and_eac_supports_encoding() {
+    let formats = [
+        TextureFormat::Etc2Rgb8Unorm,
+        TextureFormat::Etc2Rgb8UnormSrgb,
+        TextureFormat::Etc2Rgb8A1Unorm,
+        TextureFormat::Etc2Rgb8A1UnormSrgb,
+        TextureFormat::Etc2Rgba8Unorm,
+        TextureFormat::Etc2Rgba8UnormSrgb,
+        TextureFormat::EacR11Unorm,
+        TextureFormat::EacR11Snorm,
+        TextureFormat::EacRg11Unorm,
+        TextureFormat::EacRg11Snorm,
+    ];
+    for fmt in &formats {
+        assert!(fmt.supports_encoding(), "{fmt:?} should support encoding");
+    }
+}
+
+#[test]
 fn bc6h_roundtrip_larger() {
     let w = 16usize;
     let h = 16usize;

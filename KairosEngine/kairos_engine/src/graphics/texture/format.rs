@@ -8,6 +8,7 @@ use strum::EnumIter;
 mod bc;
 mod bc6h;
 mod bc7;
+mod etc;
 mod srgb;
 mod uncompressed;
 
@@ -260,6 +261,84 @@ impl PixelDatas {
                         let base = chunk_idx * CHUNK;
                         for (j, dst) in chunk.iter_mut().enumerate() {
                             *dst = i16_to_u8(data[base + j]);
+                        }
+                    });
+                out
+            }
+        }
+    }
+
+    /// Convert this pixel data to `S8` variant.
+    pub fn convert_to_s8(&self) -> Self {
+        PixelDatas::S8(self.convert_to_s8_bytes())
+    }
+
+    /// Convert to s8 pixel data bytes in parallel.
+    pub fn convert_to_s8_bytes(&self) -> Vec<i8> {
+        const CHUNK: usize = 4096;
+        match self {
+            PixelDatas::U8(data) => {
+                let pixel_count = data.len();
+                let mut out = vec![0i8; pixel_count];
+                out.par_chunks_mut(CHUNK)
+                    .enumerate()
+                    .for_each(|(chunk_idx, chunk)| {
+                        let base = chunk_idx * CHUNK;
+                        for (j, dst) in chunk.iter_mut().enumerate() {
+                            *dst = data[base + j] as i8;
+                        }
+                    });
+                out
+            }
+            PixelDatas::U16(data) => {
+                let pixel_count = data.len();
+                let mut out = vec![0i8; pixel_count];
+                out.par_chunks_mut(CHUNK)
+                    .enumerate()
+                    .for_each(|(chunk_idx, chunk)| {
+                        let base = chunk_idx * CHUNK;
+                        for (j, dst) in chunk.iter_mut().enumerate() {
+                            *dst = data[base + j] as i8;
+                        }
+                    });
+                out
+            }
+            PixelDatas::F16(data) => {
+                let pixel_count = data.len();
+                let mut out = vec![0i8; pixel_count];
+                out.par_chunks_mut(CHUNK)
+                    .enumerate()
+                    .for_each(|(chunk_idx, chunk)| {
+                        let base = chunk_idx * CHUNK;
+                        for (j, dst) in chunk.iter_mut().enumerate() {
+                            *dst = f16_to_u8(data[base + j]) as i8;
+                        }
+                    });
+                out
+            }
+            PixelDatas::F32(data) => {
+                let pixel_count = data.len();
+                let mut out = vec![0i8; pixel_count];
+                out.par_chunks_mut(CHUNK)
+                    .enumerate()
+                    .for_each(|(chunk_idx, chunk)| {
+                        let base = chunk_idx * CHUNK;
+                        for (j, dst) in chunk.iter_mut().enumerate() {
+                            *dst = f32_to_u8(data[base + j]) as i8;
+                        }
+                    });
+                out
+            }
+            PixelDatas::S8(data) => data.clone(),
+            PixelDatas::S16(data) => {
+                let pixel_count = data.len();
+                let mut out = vec![0i8; pixel_count];
+                out.par_chunks_mut(CHUNK)
+                    .enumerate()
+                    .for_each(|(chunk_idx, chunk)| {
+                        let base = chunk_idx * CHUNK;
+                        for (j, dst) in chunk.iter_mut().enumerate() {
+                            *dst = data[base + j] as i8;
                         }
                     });
                 out
@@ -861,7 +940,7 @@ macro_rules! decode_blocks {
             width: usize,
             height: usize,
         ) -> $crate::graphics::texture::format::PixelDatas {
-            let raw = data.convert_to_s8_bytes();
+            let raw = data.convert_to_u8_bytes();
             let $crate::graphics::texture::format::BlockLayout {
                 w: block_w,
                 h: block_h,
@@ -874,7 +953,7 @@ macro_rules! decode_blocks {
             let out_addr = out.as_mut_ptr() as usize;
 
             (0..total).into_par_iter().for_each(|i| {
-                let out_ptr = out_addr as *mut u8;
+                let out_ptr = out_addr as *mut i8;
                 let bx_i = i % bx;
                 let by_i = i / bx;
                 let off = i * block_size;
@@ -901,7 +980,7 @@ macro_rules! decode_blocks {
                 }
             });
 
-            $crate::graphics::texture::format::PixelDatas::U8(out)
+            $crate::graphics::texture::format::PixelDatas::S8(out)
         }
     };
     // U16 variant
@@ -1339,16 +1418,16 @@ impl TextureFormat {
             TextureFormat::Bc6hRgbFloat => true,
             TextureFormat::Bc7RgbaUnorm => true,
             TextureFormat::Bc7RgbaUnormSrgb => true,
-            TextureFormat::Etc2Rgb8Unorm => false,
-            TextureFormat::Etc2Rgb8UnormSrgb => false,
-            TextureFormat::Etc2Rgb8A1Unorm => false,
-            TextureFormat::Etc2Rgb8A1UnormSrgb => false,
-            TextureFormat::Etc2Rgba8Unorm => false,
-            TextureFormat::Etc2Rgba8UnormSrgb => false,
-            TextureFormat::EacR11Unorm => false,
-            TextureFormat::EacR11Snorm => false,
-            TextureFormat::EacRg11Unorm => false,
-            TextureFormat::EacRg11Snorm => false,
+            TextureFormat::Etc2Rgb8Unorm => true,
+            TextureFormat::Etc2Rgb8UnormSrgb => true,
+            TextureFormat::Etc2Rgb8A1Unorm => true,
+            TextureFormat::Etc2Rgb8A1UnormSrgb => true,
+            TextureFormat::Etc2Rgba8Unorm => true,
+            TextureFormat::Etc2Rgba8UnormSrgb => true,
+            TextureFormat::EacR11Unorm => true,
+            TextureFormat::EacR11Snorm => true,
+            TextureFormat::EacRg11Unorm => true,
+            TextureFormat::EacRg11Snorm => true,
             TextureFormat::Astc4x4Unorm => false,
             TextureFormat::Astc4x4UnormSrgb => false,
             TextureFormat::Astc4x4Hdr => false,
@@ -2223,6 +2302,27 @@ pub fn encode(pixels: &PixelDatas, width: u32, height: u32, format: TextureForma
         TextureFormat::Bc7RgbaUnorm | TextureFormat::Bc7RgbaUnormSrgb => {
             bc7::encode_bc7(pixels, w, h)
         }
+        TextureFormat::Etc2Rgb8Unorm | TextureFormat::Etc2Rgb8UnormSrgb => {
+            etc::encode_etc2_rgb8(pixels, w, h)
+        }
+        TextureFormat::Etc2Rgb8A1Unorm | TextureFormat::Etc2Rgb8A1UnormSrgb => {
+            etc::encode_etc2_rgb8_a1(pixels, w, h)
+        }
+        TextureFormat::Etc2Rgba8Unorm | TextureFormat::Etc2Rgba8UnormSrgb => {
+            etc::encode_etc2_rgba8(pixels, w, h)
+        }
+        TextureFormat::EacR11Unorm => {
+            etc::encode_eac_r11(pixels, w, h)
+        }
+        TextureFormat::EacR11Snorm => {
+            etc::encode_eac_r11_snorm(pixels, w, h)
+        }
+        TextureFormat::EacRg11Unorm => {
+            etc::encode_eac_rg11(pixels, w, h)
+        }
+        TextureFormat::EacRg11Snorm => {
+            etc::encode_eac_rg11_snorm(pixels, w, h)
+        }
         _ => todo!("encode not yet implemented for {format:?}"),
     }
 }
@@ -2277,6 +2377,27 @@ pub fn decode(data: &PixelDatas, width: u32, height: u32, format: TextureFormat)
         TextureFormat::Bc6hRgbFloat => bc6h::decode_bc6h_signed(data, w, h),
         TextureFormat::Bc7RgbaUnorm | TextureFormat::Bc7RgbaUnormSrgb => {
             bc7::decode_bc7(data, w, h)
+        }
+        TextureFormat::Etc2Rgb8Unorm | TextureFormat::Etc2Rgb8UnormSrgb => {
+            etc::decode_etc2_rgb8(data, w, h)
+        }
+        TextureFormat::Etc2Rgb8A1Unorm | TextureFormat::Etc2Rgb8A1UnormSrgb => {
+            etc::decode_etc2_rgb8_a1(data, w, h)
+        }
+        TextureFormat::Etc2Rgba8Unorm | TextureFormat::Etc2Rgba8UnormSrgb => {
+            etc::decode_etc2_rgba8(data, w, h)
+        }
+        TextureFormat::EacR11Unorm => {
+            etc::decode_eac_r11(data, w, h)
+        }
+        TextureFormat::EacR11Snorm => {
+            etc::decode_eac_r11_snorm(data, w, h)
+        }
+        TextureFormat::EacRg11Unorm => {
+            etc::decode_eac_rg11(data, w, h)
+        }
+        TextureFormat::EacRg11Snorm => {
+            etc::decode_eac_rg11_snorm(data, w, h)
         }
         _ => todo!("decode not yet implemented for {format:?}"),
     }
