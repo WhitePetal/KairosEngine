@@ -12,7 +12,6 @@ pub mod sparse_set;
 pub mod table;
 pub mod table_graph;
 pub mod take;
-pub mod unsafe_world_cell;
 
 pub mod system;
 pub mod world;

@@ -13,6 +13,10 @@ use std::{
 
 use petgraph::graph::{Node, NodeIndex};
 
+pub mod unsafe_world_cell;
+
+pub use unsafe_world_cell::UnsafeWorldCell;
+
 use crate::ecs::{
     batch::ColumBatch,
     change_detection::{ComponentTicks, Tick},
@@ -147,6 +151,18 @@ pub struct World {
 }
 
 impl World {
+    /// 创建一个完全读写访问的 UnsafeWorldCell。
+    #[inline]
+    pub fn as_unsafe_world_cell(&mut self) -> UnsafeWorldCell<'_> {
+        UnsafeWorldCell::new_mutable(self)
+    }
+
+    /// 创建一个只读访问的 UnsafeWorldCell。
+    #[inline]
+    pub fn as_unsafe_world_cell_readonly(&self) -> UnsafeWorldCell<'_> {
+        UnsafeWorldCell::new_readonly(self)
+    }
+
     pub fn new() -> Self {
         static ID: Mutex<u64> = Mutex::new(1);
         let _id = {
