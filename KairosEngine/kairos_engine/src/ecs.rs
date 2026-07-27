@@ -13,6 +13,7 @@ pub mod table;
 pub mod table_graph;
 pub mod take;
 
+pub mod system;
 pub mod world;
 
 pub use component_tuple::{Added, Changed};

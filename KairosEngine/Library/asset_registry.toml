@@ -863,6 +863,10 @@ guid = "079c95be-3b03-4e06-9613-d0fc48be3acb"
 path = "kairos_engine/src/ecs/sparse_set.rs"
 
 [[entries]]
+guid = "ae7a848c-24ce-4907-b49e-0e9f9350c0be"
+path = "kairos_engine/src/ecs/system.rs"
+
+[[entries]]
 guid = "e02ca21b-c9b9-4d58-a6a4-5d1166ad90ff"
 path = "kairos_engine/src/ecs/table.rs"
 

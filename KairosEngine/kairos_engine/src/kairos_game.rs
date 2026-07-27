@@ -2,23 +2,135 @@ use std::path::PathBuf;
 
 use crate::{
     asset_loader::assets::{AudioAssetsSystem, MaterialAssetsSystem, MeshAssetsSystem},
+    asset_loader::assets::AssetsServer,
     audio::spatial::{
         spatial_audio_listener::SpatialAudioListenerComponent,
         spatial_audio_reverb::SpatialAudioReverb,
     },
+    audio::AudioEngine,
+    ecs::change_detection::tick::Tick,
+    ecs::system::{System, SystemMeta},
+    ecs::world::World,
     graphics::{
         camera::Camera, graphics_graph::GraphicsCommand, lod_mesh_component::LODMesh,
         material_component::MaterialComponent, mesh::SerializedMeshAsset,
     },
-    inputs::Input,
+    inputs::{Input, InputEngine},
     kairos_editor::Engine,
     math::{float3, quaternion},
     physics::{
         collider::{Collider, ColliderMaterial},
         rigid_body::RigidBody,
     },
+    physics::PhysicsEngine,
     spatial::{AABB, Transform},
 };
+
+// ── Audio System ──────────────────────────────────────────────────────
+
+struct AudioUpdateSystem<'a> {
+    audio_engine: &'a mut AudioEngine,
+    assets_server: &'a mut AssetsServer,
+    delta_time: f32,
+    meta: SystemMeta,
+}
+
+impl System for AudioUpdateSystem<'_> {
+    fn run(&mut self, world: &mut World) {
+        let this_run = world.increment_change_tick();
+        world.set_system_ticks(self.meta.last_run, this_run);
+        self.audio_engine
+            .update(self.assets_server, world, self.delta_time);
+        world.clear_system_ticks();
+        self.meta.last_run = this_run;
+    }
+
+    fn initialize(&mut self, world: &mut World) {
+        if self.meta.is_initialized {
+            return;
+        }
+        self.meta.last_run = world.change_tick().relative_to(Tick::MAX);
+        self.meta.is_initialized = true;
+    }
+
+    fn meta(&self) -> &SystemMeta {
+        &self.meta
+    }
+
+    fn meta_mut(&mut self) -> &mut SystemMeta {
+        &mut self.meta
+    }
+}
+
+// ── Physics System ────────────────────────────────────────────────────
+
+struct PhysicsUpdateSystem<'a> {
+    physics_engine: &'a mut PhysicsEngine,
+    delta_time: f32,
+    meta: SystemMeta,
+}
+
+impl System for PhysicsUpdateSystem<'_> {
+    fn run(&mut self, world: &mut World) {
+        let this_run = world.increment_change_tick();
+        world.set_system_ticks(self.meta.last_run, this_run);
+        self.physics_engine.update(world, self.delta_time);
+        world.clear_system_ticks();
+        self.meta.last_run = this_run;
+    }
+
+    fn initialize(&mut self, world: &mut World) {
+        if self.meta.is_initialized {
+            return;
+        }
+        self.meta.last_run = world.change_tick().relative_to(Tick::MAX);
+        self.meta.is_initialized = true;
+    }
+
+    fn meta(&self) -> &SystemMeta {
+        &self.meta
+    }
+
+    fn meta_mut(&mut self) -> &mut SystemMeta {
+        &mut self.meta
+    }
+}
+
+// ── Input System ──────────────────────────────────────────────────────
+
+struct InputUpdateSystem<'a> {
+    input_engine: &'a mut InputEngine,
+    delta_time: f32,
+    meta: SystemMeta,
+}
+
+impl System for InputUpdateSystem<'_> {
+    fn run(&mut self, _world: &mut World) {
+        let this_run = _world.increment_change_tick();
+        _world.set_system_ticks(self.meta.last_run, this_run);
+        self.input_engine.update(self.delta_time);
+        _world.clear_system_ticks();
+        self.meta.last_run = this_run;
+    }
+
+    fn initialize(&mut self, world: &mut World) {
+        if self.meta.is_initialized {
+            return;
+        }
+        self.meta.last_run = world.change_tick().relative_to(Tick::MAX);
+        self.meta.is_initialized = true;
+    }
+
+    fn meta(&self) -> &SystemMeta {
+        &self.meta
+    }
+
+    fn meta_mut(&mut self) -> &mut SystemMeta {
+        &mut self.meta
+    }
+}
+
+// ── KairosGame ────────────────────────────────────────────────────────
 
 pub struct KairosGame {}
 
@@ -172,21 +284,39 @@ impl KairosGame {
         let _total_time = engine.time.total_time().as_secs_f32();
         let delta_time = engine.time.delta_time().as_secs_f32();
 
-        // let transfoms = engine.world.query_mut::<&mut Transform>().into_iter();
-        // transfoms.for_each(|trans| {
-        //     let position = &mut trans.position;
-        //     let x = position.x();
-        //     let y = math::sin(x + total_time * 0.5);
-        //     *position = float3::new(x, y, position.z());
-        // });
+        // ── Audio System ──────────────────────────────────────────────
+        {
+            let mut system = AudioUpdateSystem {
+                audio_engine: &mut engine.audio_engine,
+                assets_server: &mut engine.assets_server,
+                delta_time,
+                meta: SystemMeta::new(),
+            };
+            system.initialize(&mut engine.world);
+            system.run(&mut engine.world);
+        }
 
-        engine
-            .audio_engine
-            .update(&mut engine.assets_server, &mut engine.world, delta_time);
+        // ── Physics System ────────────────────────────────────────────
+        {
+            let mut system = PhysicsUpdateSystem {
+                physics_engine: &mut engine.physics_engine,
+                delta_time,
+                meta: SystemMeta::new(),
+            };
+            system.initialize(&mut engine.world);
+            system.run(&mut engine.world);
+        }
 
-        engine.physics_engine.update(&mut engine.world, delta_time);
-
-        engine.input_engine.update(delta_time);
+        // ── Input System ──────────────────────────────────────────────
+        {
+            let mut system = InputUpdateSystem {
+                input_engine: &mut engine.input_engine,
+                delta_time,
+                meta: SystemMeta::new(),
+            };
+            system.initialize(&mut engine.world);
+            system.run(&mut engine.world);
+        }
     }
 
     pub fn render(&self, engine: &mut Engine, graphics_command: &mut GraphicsCommand) {

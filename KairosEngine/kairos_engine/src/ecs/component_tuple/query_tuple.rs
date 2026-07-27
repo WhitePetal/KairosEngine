@@ -1167,8 +1167,7 @@ pub struct ViewBorrow<'w, Q: Query> {
 
 impl<'w, Q: Query> ViewBorrow<'w, Q> {
     pub fn new(world: &'w World) -> Self {
-        let this_run = world.change_tick();
-        let last_run = Tick(this_run.0.wrapping_sub(1));
+        let (last_run, this_run) = world.get_change_ticks();
         let cache = CachedQuery::get(world);
         cache.borrow(world.table_graph());
         let view =
@@ -1330,8 +1329,7 @@ pub struct QueryIter<'q, Q: Query> {
 
 impl<'q, Q: Query> QueryIter<'q, Q> {
     unsafe fn new(world: &'q World, cache: CachedQuery<Q::Fetch>) -> Self {
-        let this_run = world.change_tick();
-        let last_run = Tick(this_run.0.wrapping_sub(1));
+        let (last_run, this_run) = world.get_change_ticks();
         Self {
             world,
             tables: TableIter::new(cache, last_run, this_run),
@@ -1787,8 +1785,7 @@ impl<Q: Query> PreparedQuery<Q> {
             *self = Self::prepare(world);
         }
 
-        let this_run = world.change_tick();
-        let last_run = Tick(this_run.0.wrapping_sub(1));
+        let (last_run, this_run) = world.get_change_ticks();
         let entity_datas = world.entity_datas();
         let tables = world.table_graph();
 
@@ -1802,8 +1799,7 @@ impl<Q: Query> PreparedQuery<Q> {
             *self = Self::prepare(world)
         }
 
-        let this_run = world.change_tick();
-        let last_run = Tick(this_run.0.wrapping_sub(1));
+        let (last_run, this_run) = world.get_change_ticks();
         let tables = world.table_graph();
 
         unsafe { PreparedQueryIter::new(tables, self.states.iter(), last_run, this_run) }
@@ -1816,8 +1812,7 @@ impl<Q: Query> PreparedQuery<Q> {
             *self = Self::prepare(world)
         }
 
-        let this_run = world.change_tick();
-        let last_run = Tick(this_run.0.wrapping_sub(1));
+        let (last_run, this_run) = world.get_change_ticks();
         let entity_datas = world.entity_datas();
         let tables = world.table_graph();
 
@@ -1847,8 +1842,7 @@ impl<'q, Q: Query> QueryMut<'q, Q> {
     }
 
     pub fn view(&mut self) -> View<'_, Q> {
-        let this_run = self.world.change_tick();
-        let last_run = Tick(this_run.0.wrapping_sub(1));
+        let (last_run, this_run) = self.world.get_change_ticks();
         let cache = CachedQuery::get(self.world);
         unsafe { View::new(self.world.entity_datas(), self.world.table_graph(), cache, last_run, this_run) }
     }
@@ -1869,8 +1863,7 @@ impl<'q, Q: Query> QueryMut<'q, Q> {
     }
 
     pub fn into_iter_batched(self, batch_size: usize) -> BatchedIter<'q, Q> {
-        let this_run = self.world.change_tick();
-        let last_run = Tick(this_run.0.wrapping_sub(1));
+        let (last_run, this_run) = self.world.get_change_ticks();
         let cache = CachedQuery::get(self.world);
         unsafe { BatchedIter::new(self.world.table_graph(), batch_size, cache, last_run, this_run) }
     }

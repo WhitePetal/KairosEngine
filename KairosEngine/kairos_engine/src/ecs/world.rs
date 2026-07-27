@@ -6,7 +6,7 @@ use std::{
     ops::Add,
     ptr,
     sync::{
-        atomic::{AtomicU32, Ordering},
+        atomic::{AtomicBool, AtomicU32, Ordering},
         Mutex,
     },
 };
@@ -131,6 +131,14 @@ pub struct World {
     /// 上次调用 `clear_trackers()` 时的 tick，用于 track 清理。
     last_change_tick: Tick,
 
+    /// System::run() 是否正在执行中。期间查询使用 system ticks 代替默认的
+    /// `(change_tick - 1, change_tick)`。原子类型允许 `&World` 跨线程共享。
+    system_ticks_active: AtomicBool,
+    /// 当前 system 的 last_run tick（仅当 `system_ticks_active` 时有效）。
+    system_last_run: AtomicU32,
+    /// 当前 system 的 this_run tick（仅当 `system_ticks_active` 时有效）。
+    system_this_run: AtomicU32,
+
     // 后面这里的Scene概念应该会改为Chunk概念
     // 由Game里的各个功能组件/System来做区块划分并通过类似TagComponent进行控制
     // pub scene_stroge: SceneStroge,
@@ -166,6 +174,9 @@ impl World {
             query_cache: QueryCache::default(),
             change_tick: AtomicU32::new(0),
             last_change_tick: Tick::MIN,
+            system_ticks_active: AtomicBool::new(false),
+            system_last_run: AtomicU32::new(0),
+            system_this_run: AtomicU32::new(0),
             _id,
         }
     }
@@ -528,16 +539,58 @@ impl World {
         self.change_tick.fetch_add(1, Ordering::Relaxed);
     }
 
-    /// 递增变更检测 tick 并返回新值。
+    /// 递增变更检测 tick 并返回旧值（Bevy 语义一致）。
+    ///
+    /// 返回的是递增前的值，`clear_trackers()` 依赖此语义：
+    /// `last_change_tick = increment_change_tick()` 将 `last_change_tick` 设为旧值，
+    /// 而 `change_tick` 已递增到新值。非 system 查询使用 `(last_change_tick, change_tick)`
+    /// 作为 `(last_run, this_run)`，确保 `this_run > last_run`。
     pub fn increment_change_tick(&mut self) -> Tick {
         let prev = self.change_tick.fetch_add(1, Ordering::Relaxed);
-        Tick(prev.wrapping_add(1))
+        Tick(prev)
     }
 
     /// 推进 `last_change_tick` 到当前 `change_tick`，
     /// 用于在当前帧结束时清除 tracker 状态。
+    ///
+    /// 与 Bevy 一致：递增 `change_tick` 并将 `last_change_tick` 设为旧值。
+    /// 调用后 `(last_change_tick, change_tick)` 作为 `(last_run, this_run)` 使用，
+    /// `this_run > last_run` 始终成立。
     pub fn clear_trackers(&mut self) {
-        self.last_change_tick = self.change_tick();
+        self.last_change_tick = self.increment_change_tick();
+    }
+
+    /// 返回当前应使用的变更检测 tick 对 `(last_run, this_run)`。
+    ///
+    /// - 如果在 system 执行期间（`system_ticks_active` 为 true），返回 system 的 ticks。
+    /// - 否则使用 `last_change_tick` 作为 `last_run`（Bevy 一致的行为），
+    ///   只通过 `clear_trackers()` 推进。
+    ///
+    /// 使用 `Ordering::Relaxed` 因为所有写操作发生在 `&mut World` 保护下，
+    /// 读操作只发生在同一线程的 system 执行期内。
+    pub fn get_change_ticks(&self) -> (Tick, Tick) {
+        if self.system_ticks_active.load(Ordering::Relaxed) {
+            let last_run = Tick(self.system_last_run.load(Ordering::Relaxed));
+            let this_run = Tick(self.system_this_run.load(Ordering::Relaxed));
+            (last_run, this_run)
+        } else {
+            let this_run = Tick(self.change_tick.load(Ordering::Relaxed));
+            (self.last_change_tick, this_run)
+        }
+    }
+
+    /// 注入 system 的 `(last_run, this_run)` 到 World 的查询中。
+    /// 由 `System::run()` 在 `&mut World` 保护下调用。
+    pub fn set_system_ticks(&self, last_run: Tick, this_run: Tick) {
+        self.system_last_run.store(last_run.0, Ordering::Relaxed);
+        self.system_this_run.store(this_run.0, Ordering::Relaxed);
+        self.system_ticks_active.store(true, Ordering::Relaxed);
+    }
+
+    /// 清除 system 的 tick 注入，恢复查询的默认 tick 行为。
+    /// 由 `System::run()` 在 system 体执行后调用。
+    pub fn clear_system_ticks(&self) {
+        self.system_ticks_active.store(false, Ordering::Relaxed);
     }
 
     /// 从实体身上移除'T'组件
@@ -692,8 +745,7 @@ impl World {
     pub fn view_mut<Q: Query>(&mut self) -> View<'_, Q> {
         assert_borrow::<Q>();
 
-        let this_run = self.change_tick();
-        let last_run = Tick(this_run.0.wrapping_sub(1));
+        let (last_run, this_run) = self.get_change_ticks();
         let cache = CachedQuery::get(self);
         unsafe { View::<Q>::new(&self.entity_datas, &self.table_graph, cache, last_run, this_run) }
     }

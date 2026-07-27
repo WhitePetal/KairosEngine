@@ -106,7 +106,7 @@ fn unchanged_component_not_returned() {
     let _entity = world.spawn((Transform { x: 0.0, y: 0.0, z: 0.0 },));
 
     // Advance tick past the insertion tick
-    world.increment_tick(); // tick = 2
+    world.clear_trackers(); // tick = 2, last_change_tick = 2
 
     // This component was inserted at tick 1, now at tick 2 it should NOT be changed
     let mut query = world.query::<Changed<Transform>>();
@@ -128,7 +128,7 @@ fn changed_only_returns_modified_entities() {
     let e1 = world.spawn((Transform { x: 1.0, y: 0.0, z: 0.0 },));
     let _e2 = world.spawn((Transform { x: 2.0, y: 0.0, z: 0.0 },));
 
-    world.increment_tick(); // tick = 2
+    world.clear_trackers(); // clear old changes, last_change_tick = 2
 
     // Only modify e1
     world
@@ -149,7 +149,7 @@ fn query_mut_marks_as_changed() {
 
     let _e1 = world.spawn((Transform { x: 1.0, y: 2.0, z: 3.0 },));
 
-    world.increment_tick(); // tick = 2
+    world.clear_trackers(); // clear old changes, last_change_tick = 2
 
     // Access via query_mut - QueryMut implements IntoIterator.
     // The tuple (&mut Transform,) yields items of type (&mut Transform,) - access via .0
@@ -175,7 +175,7 @@ fn changed_does_not_mix_types() {
         Velocity { x: 0.1, y: 0.2, z: 0.3 },
     ));
 
-    world.increment_tick(); // tick = 2
+    world.clear_trackers(); // clear old changes, last_change_tick = 2
 
     // Only modify Transform
     world
@@ -199,7 +199,7 @@ fn exchange_triggers_changed() {
 
     let entity = world.spawn((Transform { x: 1.0, y: 2.0, z: 3.0 },));
 
-    world.increment_tick(); // tick = 2
+    world.clear_trackers(); // clear old changes, last_change_tick = 2
 
     // Exchange: remove Transform, add Velocity
     let removed: Transform = world
@@ -236,15 +236,15 @@ fn increment_tick_clears_changed() {
         );
     } // query is dropped here, releasing the borrow on world
 
-    world.increment_tick(); // tick = 2
+    world.clear_trackers(); // clear old changes, last_change_tick = 3
 
-    // After incrementing, no more changes
+    // After clearing, no more changes
     {
         let mut query = world.query::<Changed<Transform>>();
         assert_eq!(
             query.iter().count(),
             0,
-            "after increment_tick, no components should be changed"
+            "after clear_trackers, no components should be changed"
         );
     }
 }
@@ -259,7 +259,7 @@ fn multiple_entities_partial_change() {
     let _e2 = world.spawn((Transform { x: 2.0, y: 2.0, z: 2.0 },));
     let e3 = world.spawn((Transform { x: 3.0, y: 3.0, z: 3.0 },));
 
-    world.increment_tick(); // tick = 2
+    world.clear_trackers(); // clear old changes, last_change_tick = 2
 
     // Modify 2 out of 3 entities
     world
@@ -282,18 +282,20 @@ fn multiple_entities_partial_change() {
     );
 }
 
-/// 测试 increment_change_tick 返回新增值
+/// 测试 increment_change_tick 返回旧值（Bevy 语义）
 #[test]
-fn increment_change_tick_returns_new_tick() {
+fn increment_change_tick_returns_old_tick() {
     let mut world = World::new();
     assert_eq!(world.change_tick(), Tick::MIN);
 
-    let tick1 = world.increment_change_tick();
-    assert_eq!(tick1, Tick::new(1));
+    // 初始 change_tick = 0，递增后返回旧值 0，change_tick 变为 1
+    let tick_ret = world.increment_change_tick();
+    assert_eq!(tick_ret, Tick::new(0));
     assert_eq!(world.change_tick(), Tick::new(1));
 
-    let tick2 = world.increment_change_tick();
-    assert_eq!(tick2, Tick::new(2));
+    // 再次递增，返回旧值 1，change_tick 变为 2
+    let tick_ret = world.increment_change_tick();
+    assert_eq!(tick_ret, Tick::new(1));
     assert_eq!(world.change_tick(), Tick::new(2));
 }
 
@@ -306,7 +308,10 @@ fn clear_trackers_advances_last_change_tick() {
     world.increment_tick(); // tick = 2
 
     world.clear_trackers();
-    // after clear_trackers, last_change_tick = change_tick = 2
+    // after clear_trackers:
+    //   increment_change_tick 返回旧值 2（递增前），last_change_tick = 2
+    //   change_tick = 3（递增后）
+    // 查询使用 (last_change_tick=2, change_tick=3) → this_run > last_run
     // no panic means success
 }
 
@@ -328,11 +333,11 @@ fn table_grow_preserves_ticks() {
     assert_eq!(query.iter().count(), 100, "all 100 entities should be changed after spawn");
     drop(query);
 
-    world.increment_tick(); // tick = 2
+    world.clear_trackers(); // clear old changes, last_change_tick = 2
 
-    // None should be changed at tick 2
+    // None should be changed
     let mut query = world.query::<Changed<Transform>>();
-    assert_eq!(query.iter().count(), 0, "no entities should be changed after tick advance");
+    assert_eq!(query.iter().count(), 0, "no entities should be changed after clear_trackers");
 }
 
 /// 测试 remove_entity swap 后 ticks 与被移动的 entity 对应正确
@@ -345,7 +350,7 @@ fn remove_entity_swap_preserves_tick_correspondence() {
     let e2 = world.spawn((Transform { x: 2.0, y: 0.0, z: 0.0 },));
     let _e3 = world.spawn((Transform { x: 3.0, y: 0.0, z: 0.0 },));
 
-    world.increment_tick(); // tick = 2
+    world.clear_trackers(); // clear old changes, last_change_tick = 2
 
     // Modify e2 only
     world.insert_one(e2, Transform { x: 20.0, y: 0.0, z: 0.0 }).unwrap();
@@ -371,7 +376,7 @@ fn move_to_carries_ticks() {
         Velocity { x: 0.1, y: 0.2, z: 0.3 },
     ));
 
-    world.increment_tick(); // tick = 2
+    world.clear_trackers(); // clear old changes, last_change_tick = 2
 
     // Remove Velocity — this triggers move_to internally
     let _vel: Velocity = world.remove_one(entity).unwrap();
@@ -437,7 +442,7 @@ fn mut_bypass_change_detection_does_not_mark() {
     world.increment_tick(); // tick = 1
 
     let _e = world.spawn((Transform { x: 1.0, y: 2.0, z: 3.0 },));
-    world.increment_tick(); // tick = 2
+    world.clear_trackers(); // clear old changes, last_change_tick = 2
 
     // Access via query_mut and use bypass_change_detection
     {
@@ -490,7 +495,7 @@ fn mut_set_if_neq_noop_when_equal() {
 
     let original = Transform { x: 1.0, y: 2.0, z: 3.0 };
     let _e = world.spawn((original.clone(),));
-    world.increment_tick(); // tick = 2
+    world.clear_trackers(); // clear old changes, last_change_tick = 2
 
     // Use set_if_neq with the same value → should NOT mark changed
     {
