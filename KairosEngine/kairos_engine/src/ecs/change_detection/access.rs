@@ -181,10 +181,7 @@ impl<T: ?Sized> DetectChanges for Mut<'_, T> {
 
     #[inline]
     fn last_changed(&self) -> Tick {
-        self.ticks
-            .as_ref()
-            .map(|t| t.changed)
-            .unwrap_or(Tick::MIN)
+        self.ticks.as_ref().map(|t| t.changed).unwrap_or(Tick::MIN)
     }
 }
 

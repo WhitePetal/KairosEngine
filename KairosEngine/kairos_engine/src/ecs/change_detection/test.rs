@@ -28,19 +28,38 @@ fn spawn_entity_changed_matches() {
     let mut world = World::new();
     world.increment_tick(); // tick = 1
 
-    let _entity = world.spawn((Transform { x: 1.0, y: 0.0, z: 0.0 },));
+    let _entity = world.spawn((Transform {
+        x: 1.0,
+        y: 0.0,
+        z: 0.0,
+    },));
 
     // Bind the query to avoid temporary lifetime issues
     let mut query = world.query::<Changed<Transform>>();
     let results: Vec<&Transform> = query.iter().collect();
-    assert_eq!(results.len(), 1, "spawned entity should appear in Changed query");
-    assert_eq!(*results[0], Transform { x: 1.0, y: 0.0, z: 0.0 });
+    assert_eq!(
+        results.len(),
+        1,
+        "spawned entity should appear in Changed query"
+    );
+    assert_eq!(
+        *results[0],
+        Transform {
+            x: 1.0,
+            y: 0.0,
+            z: 0.0
+        }
+    );
     drop(query);
 
     // Also verify Added matches
     let mut query = world.query::<Added<Transform>>();
     let results: Vec<&Transform> = query.iter().collect();
-    assert_eq!(results.len(), 1, "spawned entity should appear in Added query");
+    assert_eq!(
+        results.len(),
+        1,
+        "spawned entity should appear in Added query"
+    );
 }
 
 /// 测试 insert → Added 匹配新插入的组件
@@ -49,29 +68,44 @@ fn insert_entity_added_matches() {
     let mut world = World::new();
     world.increment_tick(); // tick = 1
 
-    let entity = world.spawn((Transform { x: 0.0, y: 0.0, z: 0.0 },));
+    let entity = world.spawn((Transform {
+        x: 0.0,
+        y: 0.0,
+        z: 0.0,
+    },));
 
     // After incrementing tick, the old component should NOT be changed
     world.increment_tick(); // tick = 2
 
     // Insert a new component onto the entity
     world
-        .insert_one(entity, Velocity {
-            x: 5.0,
-            y: 0.0,
-            z: 0.0,
-        })
+        .insert_one(
+            entity,
+            Velocity {
+                x: 5.0,
+                y: 0.0,
+                z: 0.0,
+            },
+        )
         .unwrap();
 
     // Changed<Velocity> should match (it was just inserted)
     let mut query = world.query::<Changed<Velocity>>();
     let v_changed: Vec<&Velocity> = query.iter().collect();
-    assert_eq!(v_changed.len(), 1, "inserted Velocity should appear in Changed query");
+    assert_eq!(
+        v_changed.len(),
+        1,
+        "inserted Velocity should appear in Changed query"
+    );
 
     // Added<Velocity> should also match
     let mut query = world.query::<Added<Velocity>>();
     let v_added: Vec<&Velocity> = query.iter().collect();
-    assert_eq!(v_added.len(), 1, "inserted Velocity should appear in Added query");
+    assert_eq!(
+        v_added.len(),
+        1,
+        "inserted Velocity should appear in Added query"
+    );
 }
 
 /// 测试修改后的组件被 Changed 查询捕获
@@ -80,21 +114,43 @@ fn modify_entity_changed_matches() {
     let mut world = World::new();
     world.increment_tick(); // tick = 1
 
-    let entity = world.spawn((Transform { x: 1.0, y: 2.0, z: 3.0 },));
+    let entity = world.spawn((Transform {
+        x: 1.0,
+        y: 2.0,
+        z: 3.0,
+    },));
 
     // Advance tick so the component is no longer "changed" for tick 1
     world.increment_tick(); // tick = 2
 
     // Modify by re-inserting the component with new values
     world
-        .insert_one(entity, Transform { x: 10.0, y: 20.0, z: 30.0 })
+        .insert_one(
+            entity,
+            Transform {
+                x: 10.0,
+                y: 20.0,
+                z: 30.0,
+            },
+        )
         .unwrap();
 
     // Changed<Transform> should match (it was just modified)
     let mut query = world.query::<Changed<Transform>>();
     let changed: Vec<&Transform> = query.iter().collect();
-    assert_eq!(changed.len(), 1, "modified Transform should appear in Changed query");
-    assert_eq!(*changed[0], Transform { x: 10.0, y: 20.0, z: 30.0 });
+    assert_eq!(
+        changed.len(),
+        1,
+        "modified Transform should appear in Changed query"
+    );
+    assert_eq!(
+        *changed[0],
+        Transform {
+            x: 10.0,
+            y: 20.0,
+            z: 30.0
+        }
+    );
 }
 
 /// 测试未修改的组件不被 Changed/Added 查询返回
@@ -103,7 +159,11 @@ fn unchanged_component_not_returned() {
     let mut world = World::new();
     world.increment_tick(); // tick = 1
 
-    let _entity = world.spawn((Transform { x: 0.0, y: 0.0, z: 0.0 },));
+    let _entity = world.spawn((Transform {
+        x: 0.0,
+        y: 0.0,
+        z: 0.0,
+    },));
 
     // Advance tick past the insertion tick
     world.clear_trackers(); // tick = 2, last_change_tick = 2
@@ -111,12 +171,20 @@ fn unchanged_component_not_returned() {
     // This component was inserted at tick 1, now at tick 2 it should NOT be changed
     let mut query = world.query::<Changed<Transform>>();
     let changed: Vec<&Transform> = query.iter().collect();
-    assert_eq!(changed.len(), 0, "unchanged Transform should NOT appear in Changed query");
+    assert_eq!(
+        changed.len(),
+        0,
+        "unchanged Transform should NOT appear in Changed query"
+    );
     drop(query);
 
     let mut query = world.query::<Added<Transform>>();
     let added: Vec<&Transform> = query.iter().collect();
-    assert_eq!(added.len(), 0, "unchanged Transform should NOT appear in Added query");
+    assert_eq!(
+        added.len(),
+        0,
+        "unchanged Transform should NOT appear in Added query"
+    );
 }
 
 /// 测试多实体场景下 Changed 只返回正确实体
@@ -125,20 +193,46 @@ fn changed_only_returns_modified_entities() {
     let mut world = World::new();
     world.increment_tick(); // tick = 1
 
-    let e1 = world.spawn((Transform { x: 1.0, y: 0.0, z: 0.0 },));
-    let _e2 = world.spawn((Transform { x: 2.0, y: 0.0, z: 0.0 },));
+    let e1 = world.spawn((Transform {
+        x: 1.0,
+        y: 0.0,
+        z: 0.0,
+    },));
+    let _e2 = world.spawn((Transform {
+        x: 2.0,
+        y: 0.0,
+        z: 0.0,
+    },));
 
     world.clear_trackers(); // clear old changes, last_change_tick = 2
 
     // Only modify e1
     world
-        .insert_one(e1, Transform { x: 10.0, y: 0.0, z: 0.0 })
+        .insert_one(
+            e1,
+            Transform {
+                x: 10.0,
+                y: 0.0,
+                z: 0.0,
+            },
+        )
         .unwrap();
 
     let mut query = world.query::<Changed<Transform>>();
     let changed: Vec<&Transform> = query.iter().collect();
-    assert_eq!(changed.len(), 1, "only one entity should have changed Transform");
-    assert_eq!(*changed[0], Transform { x: 10.0, y: 0.0, z: 0.0 });
+    assert_eq!(
+        changed.len(),
+        1,
+        "only one entity should have changed Transform"
+    );
+    assert_eq!(
+        *changed[0],
+        Transform {
+            x: 10.0,
+            y: 0.0,
+            z: 0.0
+        }
+    );
 }
 
 /// 测试 query_mut 标记组件为已修改
@@ -147,7 +241,11 @@ fn query_mut_marks_as_changed() {
     let mut world = World::new();
     world.increment_tick(); // tick = 1
 
-    let _e1 = world.spawn((Transform { x: 1.0, y: 2.0, z: 3.0 },));
+    let _e1 = world.spawn((Transform {
+        x: 1.0,
+        y: 2.0,
+        z: 3.0,
+    },));
 
     world.clear_trackers(); // clear old changes, last_change_tick = 2
 
@@ -160,7 +258,11 @@ fn query_mut_marks_as_changed() {
     // Now Changed<Transform> should match since we accessed it mutably
     let mut query = world.query::<Changed<Transform>>();
     let changed: Vec<&Transform> = query.iter().collect();
-    assert_eq!(changed.len(), 1, "mutably accessed component should be in Changed query");
+    assert_eq!(
+        changed.len(),
+        1,
+        "mutably accessed component should be in Changed query"
+    );
     assert_eq!(changed[0].x, 100.0);
 }
 
@@ -171,15 +273,30 @@ fn changed_does_not_mix_types() {
     world.increment_tick(); // tick = 1
 
     let entity = world.spawn((
-        Transform { x: 1.0, y: 2.0, z: 3.0 },
-        Velocity { x: 0.1, y: 0.2, z: 0.3 },
+        Transform {
+            x: 1.0,
+            y: 2.0,
+            z: 3.0,
+        },
+        Velocity {
+            x: 0.1,
+            y: 0.2,
+            z: 0.3,
+        },
     ));
 
     world.clear_trackers(); // clear old changes, last_change_tick = 2
 
     // Only modify Transform
     world
-        .insert_one(entity, Transform { x: 10.0, y: 20.0, z: 30.0 })
+        .insert_one(
+            entity,
+            Transform {
+                x: 10.0,
+                y: 20.0,
+                z: 30.0,
+            },
+        )
         .unwrap();
 
     let mut query = world.query::<Changed<Transform>>();
@@ -197,15 +314,33 @@ fn exchange_triggers_changed() {
     let mut world = World::new();
     world.increment_tick(); // tick = 1
 
-    let entity = world.spawn((Transform { x: 1.0, y: 2.0, z: 3.0 },));
+    let entity = world.spawn((Transform {
+        x: 1.0,
+        y: 2.0,
+        z: 3.0,
+    },));
 
     world.clear_trackers(); // clear old changes, last_change_tick = 2
 
     // Exchange: remove Transform, add Velocity
     let removed: Transform = world
-        .exchange_one::<Transform, Velocity>(entity, Velocity { x: 5.0, y: 6.0, z: 7.0 })
+        .exchange_one::<Transform, Velocity>(
+            entity,
+            Velocity {
+                x: 5.0,
+                y: 6.0,
+                z: 7.0,
+            },
+        )
         .unwrap();
-    assert_eq!(removed, Transform { x: 1.0, y: 2.0, z: 3.0 });
+    assert_eq!(
+        removed,
+        Transform {
+            x: 1.0,
+            y: 2.0,
+            z: 3.0
+        }
+    );
 
     // Velocity was just added
     let mut query = world.query::<Added<Velocity>>();
@@ -224,16 +359,16 @@ fn increment_tick_clears_changed() {
     let mut world = World::new();
     world.increment_tick(); // tick = 1
 
-    let _entity = world.spawn((Transform { x: 1.0, y: 2.0, z: 3.0 },));
+    let _entity = world.spawn((Transform {
+        x: 1.0,
+        y: 2.0,
+        z: 3.0,
+    },));
 
     // Components inserted at tick 1
     {
         let mut query = world.query::<Changed<Transform>>();
-        assert_eq!(
-            query.iter().count(),
-            1,
-            "newly spawned is changed"
-        );
+        assert_eq!(query.iter().count(), 1, "newly spawned is changed");
     } // query is dropped here, releasing the borrow on world
 
     world.clear_trackers(); // clear old changes, last_change_tick = 3
@@ -255,23 +390,53 @@ fn multiple_entities_partial_change() {
     let mut world = World::new();
     world.increment_tick(); // tick = 1
 
-    let e1 = world.spawn((Transform { x: 1.0, y: 1.0, z: 1.0 },));
-    let _e2 = world.spawn((Transform { x: 2.0, y: 2.0, z: 2.0 },));
-    let e3 = world.spawn((Transform { x: 3.0, y: 3.0, z: 3.0 },));
+    let e1 = world.spawn((Transform {
+        x: 1.0,
+        y: 1.0,
+        z: 1.0,
+    },));
+    let _e2 = world.spawn((Transform {
+        x: 2.0,
+        y: 2.0,
+        z: 2.0,
+    },));
+    let e3 = world.spawn((Transform {
+        x: 3.0,
+        y: 3.0,
+        z: 3.0,
+    },));
 
     world.clear_trackers(); // clear old changes, last_change_tick = 2
 
     // Modify 2 out of 3 entities
     world
-        .insert_one(e1, Transform { x: 10.0, y: 10.0, z: 10.0 })
+        .insert_one(
+            e1,
+            Transform {
+                x: 10.0,
+                y: 10.0,
+                z: 10.0,
+            },
+        )
         .unwrap();
     world
-        .insert_one(e3, Transform { x: 30.0, y: 30.0, z: 30.0 })
+        .insert_one(
+            e3,
+            Transform {
+                x: 30.0,
+                y: 30.0,
+                z: 30.0,
+            },
+        )
         .unwrap();
 
     let mut query = world.query::<Changed<Transform>>();
     let changed: Vec<&Transform> = query.iter().collect();
-    assert_eq!(changed.len(), 2, "two entities should have changed Transform");
+    assert_eq!(
+        changed.len(),
+        2,
+        "two entities should have changed Transform"
+    );
     assert!(
         changed.iter().any(|t| t.x == 10.0),
         "e1 should be in results"
@@ -324,20 +489,32 @@ fn table_grow_preserves_ticks() {
     // spawn many entities to force grow
     let mut entities = Vec::new();
     for i in 0..100 {
-        let e = world.spawn((Transform { x: i as f32, y: 0.0, z: 0.0 },));
+        let e = world.spawn((Transform {
+            x: i as f32,
+            y: 0.0,
+            z: 0.0,
+        },));
         entities.push(e);
     }
 
     // All should be changed at tick 1
     let mut query = world.query::<Changed<Transform>>();
-    assert_eq!(query.iter().count(), 100, "all 100 entities should be changed after spawn");
+    assert_eq!(
+        query.iter().count(),
+        100,
+        "all 100 entities should be changed after spawn"
+    );
     drop(query);
 
     world.clear_trackers(); // clear old changes, last_change_tick = 2
 
     // None should be changed
     let mut query = world.query::<Changed<Transform>>();
-    assert_eq!(query.iter().count(), 0, "no entities should be changed after clear_trackers");
+    assert_eq!(
+        query.iter().count(),
+        0,
+        "no entities should be changed after clear_trackers"
+    );
 }
 
 /// 测试 remove_entity swap 后 ticks 与被移动的 entity 对应正确
@@ -346,14 +523,35 @@ fn remove_entity_swap_preserves_tick_correspondence() {
     let mut world = World::new();
     world.increment_tick(); // tick = 1
 
-    let e1 = world.spawn((Transform { x: 1.0, y: 0.0, z: 0.0 },));
-    let e2 = world.spawn((Transform { x: 2.0, y: 0.0, z: 0.0 },));
-    let _e3 = world.spawn((Transform { x: 3.0, y: 0.0, z: 0.0 },));
+    let e1 = world.spawn((Transform {
+        x: 1.0,
+        y: 0.0,
+        z: 0.0,
+    },));
+    let e2 = world.spawn((Transform {
+        x: 2.0,
+        y: 0.0,
+        z: 0.0,
+    },));
+    let _e3 = world.spawn((Transform {
+        x: 3.0,
+        y: 0.0,
+        z: 0.0,
+    },));
 
     world.clear_trackers(); // clear old changes, last_change_tick = 2
 
     // Modify e2 only
-    world.insert_one(e2, Transform { x: 20.0, y: 0.0, z: 0.0 }).unwrap();
+    world
+        .insert_one(
+            e2,
+            Transform {
+                x: 20.0,
+                y: 0.0,
+                z: 0.0,
+            },
+        )
+        .unwrap();
 
     // Remove e1 (this will swap e1 with e3 in the table)
     world.despawn(e1).unwrap();
@@ -372,8 +570,16 @@ fn move_to_carries_ticks() {
     world.increment_tick(); // tick = 1
 
     let entity = world.spawn((
-        Transform { x: 1.0, y: 2.0, z: 3.0 },
-        Velocity { x: 0.1, y: 0.2, z: 0.3 },
+        Transform {
+            x: 1.0,
+            y: 2.0,
+            z: 3.0,
+        },
+        Velocity {
+            x: 0.1,
+            y: 0.2,
+            z: 0.3,
+        },
     ));
 
     world.clear_trackers(); // clear old changes, last_change_tick = 2
@@ -384,11 +590,22 @@ fn move_to_carries_ticks() {
     // The entity still has Transform
     let entity_ref = world.entity_ref(entity).unwrap();
     let result: Transform = (*entity_ref.get::<&Transform>().unwrap()).clone();
-    assert_eq!(result, Transform { x: 1.0, y: 2.0, z: 3.0 });
+    assert_eq!(
+        result,
+        Transform {
+            x: 1.0,
+            y: 2.0,
+            z: 3.0
+        }
+    );
 
     // Transform should NOT be changed (its tick was preserved during move)
     let mut query = world.query::<Changed<Transform>>();
-    assert_eq!(query.iter().count(), 0, "Transform tick should be preserved during move_to");
+    assert_eq!(
+        query.iter().count(),
+        0,
+        "Transform tick should be preserved during move_to"
+    );
 }
 
 /// 测试 Tick wrapping 在 World 层面的正确性
@@ -405,9 +622,17 @@ fn tick_wrapping_at_world_level() {
 
     // Spawn 后检查 Changed
     world.increment_tick();
-    let _e = world.spawn((Transform { x: 1.0, y: 0.0, z: 0.0 },));
+    let _e = world.spawn((Transform {
+        x: 1.0,
+        y: 0.0,
+        z: 0.0,
+    },));
     let mut query = world.query::<Changed<Transform>>();
-    assert_eq!(query.iter().count(), 1, "entity spawned after tick advance should be changed");
+    assert_eq!(
+        query.iter().count(),
+        1,
+        "entity spawned after tick advance should be changed"
+    );
 }
 
 // =========================================================================
@@ -420,7 +645,11 @@ fn mut_deref_mut_marks_changed() {
     let mut world = World::new();
     world.increment_tick(); // tick = 1
 
-    let _e = world.spawn((Transform { x: 1.0, y: 2.0, z: 3.0 },));
+    let _e = world.spawn((Transform {
+        x: 1.0,
+        y: 2.0,
+        z: 3.0,
+    },));
     world.increment_tick(); // tick = 2
 
     // Access via (&mut Transform,) — Query::get returns Mut<Transform>
@@ -441,7 +670,11 @@ fn mut_bypass_change_detection_does_not_mark() {
     let mut world = World::new();
     world.increment_tick(); // tick = 1
 
-    let _e = world.spawn((Transform { x: 1.0, y: 2.0, z: 3.0 },));
+    let _e = world.spawn((Transform {
+        x: 1.0,
+        y: 2.0,
+        z: 3.0,
+    },));
     world.clear_trackers(); // clear old changes, last_change_tick = 2
 
     // Access via query_mut and use bypass_change_detection
@@ -468,14 +701,22 @@ fn mut_set_if_neq_marks_when_different() {
     let mut world = World::new();
     world.increment_tick(); // tick = 1
 
-    let _e = world.spawn((Transform { x: 1.0, y: 2.0, z: 3.0 },));
+    let _e = world.spawn((Transform {
+        x: 1.0,
+        y: 2.0,
+        z: 3.0,
+    },));
     world.increment_tick(); // tick = 2
 
     // Use set_if_neq with a different value → should mark changed
     {
         let mut q = world.query::<(&mut Transform,)>();
         for mut item in q.iter() {
-            item.0.set_if_neq(Transform { x: 10.0, y: 20.0, z: 30.0 });
+            item.0.set_if_neq(Transform {
+                x: 10.0,
+                y: 20.0,
+                z: 30.0,
+            });
         }
     }
 
@@ -493,7 +734,11 @@ fn mut_set_if_neq_noop_when_equal() {
     let mut world = World::new();
     world.increment_tick(); // tick = 1
 
-    let original = Transform { x: 1.0, y: 2.0, z: 3.0 };
+    let original = Transform {
+        x: 1.0,
+        y: 2.0,
+        z: 3.0,
+    };
     let _e = world.spawn((original.clone(),));
     world.clear_trackers(); // clear old changes, last_change_tick = 2
 
@@ -519,7 +764,11 @@ fn ref_is_changed_and_is_added() {
     let mut world = World::new();
     world.increment_tick(); // tick = 1
 
-    let _e = world.spawn((Transform { x: 1.0, y: 2.0, z: 3.0 },));
+    let _e = world.spawn((Transform {
+        x: 1.0,
+        y: 2.0,
+        z: 3.0,
+    },));
     world.increment_tick(); // tick = 2
 
     // At tick 2, the component was added at tick 1, so is_added should be false
@@ -555,8 +804,14 @@ fn ref_is_changed_and_is_added() {
     assert_eq!(items.len(), 1);
     let r: &Ref<'_, Transform> = &items[0].0;
     // At this point, the component is old, so is_added and is_changed should be false
-    assert!(!r.is_added(), "component added long ago should not be is_added");
-    assert!(!r.is_changed(), "component not recently changed should not be is_changed");
+    assert!(
+        !r.is_added(),
+        "component added long ago should not be is_added"
+    );
+    assert!(
+        !r.is_changed(),
+        "component not recently changed should not be is_changed"
+    );
 }
 
 /// 测试 Ref 实现了 Copy（不要求 T: Copy）
@@ -565,7 +820,11 @@ fn ref_implements_copy() {
     // 手动验证: Ref 可以自由复制而不要求 T: Copy
     let world = &mut World::new();
     world.increment_tick();
-    let _e = world.spawn((Transform { x: 1.0, y: 2.0, z: 3.0 },));
+    let _e = world.spawn((Transform {
+        x: 1.0,
+        y: 2.0,
+        z: 3.0,
+    },));
     world.increment_tick();
 
     let mut query = world.query::<(&Transform,)>();
@@ -581,7 +840,11 @@ fn ref_implements_copy() {
 fn fetch_read_returns_ref() {
     let mut world = World::new();
     world.increment_tick();
-    let _e = world.spawn((Transform { x: 1.0, y: 2.0, z: 3.0 },));
+    let _e = world.spawn((Transform {
+        x: 1.0,
+        y: 2.0,
+        z: 3.0,
+    },));
 
     // (&Transform,) should yield Ref<Transform> items (not &Transform)
     let mut query = world.query::<(&Transform,)>();
@@ -600,7 +863,11 @@ fn fetch_read_returns_ref() {
 fn fetch_write_returns_mut() {
     let mut world = World::new();
     world.increment_tick();
-    let _e = world.spawn((Transform { x: 1.0, y: 2.0, z: 3.0 },));
+    let _e = world.spawn((Transform {
+        x: 1.0,
+        y: 2.0,
+        z: 3.0,
+    },));
 
     // (&mut Transform,) should yield Mut<Transform> items (not &mut Transform)
     let mut query = world.query::<(&mut Transform,)>();

@@ -21,7 +21,12 @@ fn test_etc2_rgb8_decode_constant() {
             // Each pixel should be roughly grey; tolerance ±12
             for c in 0..3 {
                 let diff = (decoded[off + c] as i16 - grey[c] as i16).abs();
-                assert!(diff <= 12, "pixel ({px},{py}) ch {c}: got {} expected {}", decoded[off + c], grey[c]);
+                assert!(
+                    diff <= 12,
+                    "pixel ({px},{py}) ch {c}: got {} expected {}",
+                    decoded[off + c],
+                    grey[c]
+                );
             }
             assert_eq!(decoded[off + 3], 255, "alpha should be 255");
         }

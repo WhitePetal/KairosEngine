@@ -45,7 +45,6 @@ use crate::{
     spatial::AABB,
 };
 
-
 #[cfg(test)]
 mod test;
 
@@ -198,7 +197,8 @@ impl Thumbnail {
             texture.width,
             texture.height,
             texture.format,
-        ).convert_to_u8();
+        )
+        .convert_to_u8();
         let rgba_bytes = rgba.as_bytes().to_vec();
         let w = texture.width as usize;
         let h = texture.height as usize;

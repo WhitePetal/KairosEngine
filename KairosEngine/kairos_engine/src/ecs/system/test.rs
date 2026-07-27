@@ -125,11 +125,7 @@ fn unchanged_system_does_not_trigger_changed() {
     // 第二帧：system 什么都没做，查询不应检测到变更
     system.run(&mut world);
     query_system.run(&mut world);
-    assert_eq!(
-        changed_count.get(),
-        0,
-        "未修改时不应检测到 Changed"
-    );
+    assert_eq!(changed_count.get(), 0, "未修改时不应检测到 Changed");
 }
 
 /// 初始化后首次 run，Changed<T> 检测到所有组件。

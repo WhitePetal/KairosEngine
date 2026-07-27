@@ -153,8 +153,8 @@ impl<'w> UnsafeWorldCell<'w> {
 
 #[cfg(test)]
 mod tests {
-    use super::World;
     use super::UnsafeWorldCell;
+    use super::World;
     use crate::ecs::{component::Component, entity::Entity};
 
     struct Transform {
@@ -236,15 +236,17 @@ mod tests {
     #[test]
     fn read_only_query() {
         let mut world = World::new();
-        let entity = world.spawn((Transform { x: 1.0, y: 2.0, z: 3.0 },));
+        let entity = world.spawn((Transform {
+            x: 1.0,
+            y: 2.0,
+            z: 3.0,
+        },));
         world.flush();
 
         let cell = world.as_unsafe_world_cell_readonly();
         let mut query = unsafe { cell.query::<(Entity, &Transform)>() };
-        let results: Vec<(Entity, f32, f32, f32)> = query
-            .iter()
-            .map(|(e, t)| (e, t.x, t.y, t.z))
-            .collect();
+        let results: Vec<(Entity, f32, f32, f32)> =
+            query.iter().map(|(e, t)| (e, t.x, t.y, t.z)).collect();
 
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].0, entity);
@@ -257,7 +259,11 @@ mod tests {
     #[test]
     fn mutable_query() {
         let mut world = World::new();
-        world.spawn((Transform { x: 1.0, y: 2.0, z: 3.0 },));
+        world.spawn((Transform {
+            x: 1.0,
+            y: 2.0,
+            z: 3.0,
+        },));
         world.flush();
 
         let cell = world.as_unsafe_world_cell();
@@ -307,8 +313,16 @@ mod tests {
     #[test]
     fn multiple_read_only_queries() {
         let mut world = World::new();
-        world.spawn((Transform { x: 1.0, y: 2.0, z: 3.0 },));
-        world.spawn((Velocity { x: 4.0, y: 5.0, z: 6.0 },));
+        world.spawn((Transform {
+            x: 1.0,
+            y: 2.0,
+            z: 3.0,
+        },));
+        world.spawn((Velocity {
+            x: 4.0,
+            y: 5.0,
+            z: 6.0,
+        },));
         world.flush();
 
         let cell = world.as_unsafe_world_cell_readonly();

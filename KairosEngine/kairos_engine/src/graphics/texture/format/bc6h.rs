@@ -13,7 +13,7 @@
 use half::f16;
 use rayon::prelude::*;
 
-use crate::graphics::texture::format::{PixelDatas};
+use crate::graphics::texture::format::PixelDatas;
 
 // ============================================================
 // Constants — shared spec tables
@@ -57,8 +57,8 @@ const PARTITION: [[u8; 16]; 32] = [
 
 /// Fix-up index for second subset in each of the 32 partition shapes.
 const FIXUP: [u8; 32] = [
-    15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15,
-    15, 2, 8, 2, 2, 8, 8, 15, 2, 8, 2, 2, 8, 8, 2, 2,
+    15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 2, 8, 2, 2, 8, 8, 15, 2, 8,
+    2, 2, 8, 8, 2, 2,
 ];
 
 /// Interpolation weights for 3-bit indices (modes 0–9).
@@ -69,8 +69,8 @@ const W4: [i32; 16] = [0, 4, 9, 13, 17, 21, 26, 30, 34, 38, 43, 47, 51, 55, 60, 
 
 /// Maps the 5-bit mode value (0..31) to the mode index (0..13) or -1 for invalid.
 const MODE_TO_INFO: [i8; 32] = [
-    0, 1, 2, 10, -1, -1, 3, 11, -1, -1, 4, 12, -1, -1, 5, 13,
-    -1, -1, 6, -1, -1, -1, 7, -1, -1, -1, 8, -1, -1, -1, 9, -1,
+    0, 1, 2, 10, -1, -1, 3, 11, -1, -1, 4, 12, -1, -1, 5, 13, -1, -1, 6, -1, -1, -1, 7, -1, -1, -1,
+    8, -1, -1, -1, 9, -1,
 ];
 
 // ============================================================
@@ -366,10 +366,18 @@ fn quantize(value: i32, prec: u8, signed: bool) -> i32 {
     if signed {
         let s = if value < 0 { 1 } else { 0 };
         let v = if value < 0 { -value } else { value };
-        let q = if prec >= 16 { v } else { (v << (prec - 1)) / (F16MAX + 1) };
+        let q = if prec >= 16 {
+            v
+        } else {
+            (v << (prec - 1)) / (F16MAX + 1)
+        };
         if s != 0 { -q } else { q }
     } else {
-        if prec >= 15 { value } else { (value << prec) / (F16MAX + 1) }
+        if prec >= 15 {
+            value
+        } else {
+            (value << prec) / (F16MAX + 1)
+        }
     }
 }
 
@@ -378,7 +386,9 @@ fn quantize(value: i32, prec: u8, signed: bool) -> i32 {
 /// Port of DirectXTex `D3DX_BC6H::Unquantize`.
 fn unquantize(comp: i32, bits_per_comp: u8, signed: bool) -> i32 {
     if signed {
-        if bits_per_comp >= 16 { return comp; }
+        if bits_per_comp >= 16 {
+            return comp;
+        }
         let (s, comp) = if comp < 0 { (1, -comp) } else { (0, comp) };
         let unq = if comp == 0 {
             0
@@ -389,7 +399,9 @@ fn unquantize(comp: i32, bits_per_comp: u8, signed: bool) -> i32 {
         };
         if s != 0 { -unq } else { unq }
     } else {
-        if bits_per_comp >= 15 { return comp; }
+        if bits_per_comp >= 15 {
+            return comp;
+        }
         if comp == 0 {
             0
         } else if comp == ((1 << bits_per_comp) - 1) {
@@ -405,7 +417,11 @@ fn unquantize(comp: i32, bits_per_comp: u8, signed: bool) -> i32 {
 /// Port of DirectXTex `D3DX_BC6H::FinishUnquantize`.
 fn finish_unquantize(comp: i32, signed: bool) -> i32 {
     if signed {
-        if comp < 0 { -(((-comp) * 31) >> 5) } else { (comp * 31) >> 5 }
+        if comp < 0 {
+            -(((-comp) * 31) >> 5)
+        } else {
+            (comp * 31) >> 5
+        }
     } else {
         (comp * 31) >> 6
     }
@@ -485,8 +501,18 @@ fn decode_bc6h_block(blk: &[u8], out: &mut [f16; 64], is_signed: bool) {
     }
 
     // --- Step 3: Compute total endpoint data bits and skip padding ---
-    let total_field_bits = md.w.iter().chain(md.x.iter()).chain(md.y.iter()).chain(md.z.iter()).map(|&b| b as usize).sum::<usize>()
-        + if md.partitioned { 5 + mode_bits_count } else { mode_bits_count };
+    let total_field_bits =
+        md.w.iter()
+            .chain(md.x.iter())
+            .chain(md.y.iter())
+            .chain(md.z.iter())
+            .map(|&b| b as usize)
+            .sum::<usize>()
+            + if md.partitioned {
+                5 + mode_bits_count
+            } else {
+                mode_bits_count
+            };
     // Some modes have NA padding bits between the endpoint data and the index data.
     // header_bits is the total header. The number of NA padding bits within the header:
     let na_padding = if md.header_bits > total_field_bits {
@@ -655,12 +681,24 @@ fn encode_bc6h_block(block: &[[f16; 4]], is_signed: bool) -> [u8; 16] {
         let r = pixels[i][0];
         let g = pixels[i][1];
         let b = pixels[i][2];
-        if r < min_r { min_r = r; }
-        if r > max_r { max_r = r; }
-        if g < min_g { min_g = g; }
-        if g > max_g { max_g = g; }
-        if b < min_b { min_b = b; }
-        if b > max_b { max_b = b; }
+        if r < min_r {
+            min_r = r;
+        }
+        if r > max_r {
+            max_r = r;
+        }
+        if g < min_g {
+            min_g = g;
+        }
+        if g > max_g {
+            max_g = g;
+        }
+        if b < min_b {
+            min_b = b;
+        }
+        if b > max_b {
+            max_b = b;
+        }
     }
 
     // Step 3: Quantize endpoints to 10 bits
@@ -733,31 +771,18 @@ fn encode_bc6h_block(block: &[[f16; 4]], is_signed: bool) -> [u8; 16] {
 // ============================================================
 
 /// Encode f16 pixels to BC6h unsigned (Bc6hRgbUfloat).
-pub fn encode_bc6h(
-    pixels: &PixelDatas,
-    width: usize,
-    height: usize,
-) -> PixelDatas {
+pub fn encode_bc6h(pixels: &PixelDatas, width: usize, height: usize) -> PixelDatas {
     let datas = pixels.convert_to_f16_bytes();
     PixelDatas::F16(encode_bc6h_inner(&datas, width, height, false))
 }
 
 /// Encode f16 pixels to BC6h signed (Bc6hRgbFloat).
-pub fn encode_bc6h_signed(
-    pixels: &PixelDatas,
-    width: usize,
-    height: usize,
-) -> PixelDatas {
+pub fn encode_bc6h_signed(pixels: &PixelDatas, width: usize, height: usize) -> PixelDatas {
     let datas = pixels.convert_to_f16_bytes();
     PixelDatas::F16(encode_bc6h_inner(&datas, width, height, true))
 }
 
-fn encode_bc6h_inner(
-    rgba: &Vec<f16>,
-    width: usize,
-    height: usize,
-    is_signed: bool,
-) -> Vec<f16> {
+fn encode_bc6h_inner(rgba: &Vec<f16>, width: usize, height: usize, is_signed: bool) -> Vec<f16> {
     let block_w = 4usize;
     let block_h = 4usize;
     // block_size in f16 units: 16 encoded bytes = 8 f16 values
@@ -767,65 +792,54 @@ fn encode_bc6h_inner(
     let by = (height + block_h - 1) / block_h;
     let mut out = vec![f16::ZERO; bx * by * block_size_f16];
 
-    out.par_chunks_mut(block_size_f16).enumerate().for_each(|(i, chunk)| {
-        let bx_i = i % bx;
-        let by_i = i / bx;
+    out.par_chunks_mut(block_size_f16)
+        .enumerate()
+        .for_each(|(i, chunk)| {
+            let bx_i = i % bx;
+            let by_i = i / bx;
 
-        // Extract 4×4 block, handling boundary clamping
-        let mut block = [[f16::ZERO; 4]; 16];
-        for py in 0..block_h {
-            for px in 0..block_w {
-                let sx = bx_i * block_w + px;
-                let sy = by_i * block_h + py;
-                let bi = py * block_w + px;
-                if sx < width && sy < height {
-                    let src = (sy * width + sx) * 4;
-                    block[bi] = [rgba[src], rgba[src + 1], rgba[src + 2], rgba[src + 3]];
-                } else {
-                    block[bi] = [f16::ZERO; 4];
+            // Extract 4×4 block, handling boundary clamping
+            let mut block = [[f16::ZERO; 4]; 16];
+            for py in 0..block_h {
+                for px in 0..block_w {
+                    let sx = bx_i * block_w + px;
+                    let sy = by_i * block_h + py;
+                    let bi = py * block_w + px;
+                    if sx < width && sy < height {
+                        let src = (sy * width + sx) * 4;
+                        block[bi] = [rgba[src], rgba[src + 1], rgba[src + 2], rgba[src + 3]];
+                    } else {
+                        block[bi] = [f16::ZERO; 4];
+                    }
                 }
             }
-        }
 
-        let encoded: [u8; 16] = if is_signed {
-            encode_bc6h_block(&block, true)
-        } else {
-            encode_bc6h_block(&block, false)
-        };
-        // Reinterpret 16 encoded bytes as 8 f16 values (matches PixelDatas::F16 storage)
-        let encoded_f16: &[f16] = bytemuck::cast_slice(&encoded);
-        chunk.copy_from_slice(encoded_f16);
-    });
+            let encoded: [u8; 16] = if is_signed {
+                encode_bc6h_block(&block, true)
+            } else {
+                encode_bc6h_block(&block, false)
+            };
+            // Reinterpret 16 encoded bytes as 8 f16 values (matches PixelDatas::F16 storage)
+            let encoded_f16: &[f16] = bytemuck::cast_slice(&encoded);
+            chunk.copy_from_slice(encoded_f16);
+        });
 
     out
 }
 
 /// Decode BC6h unsigned (Bc6hRgbUfloat) to f16 pixels.
-pub fn decode_bc6h(
-    data: &PixelDatas,
-    width: usize,
-    height: usize,
-) -> PixelDatas {
+pub fn decode_bc6h(data: &PixelDatas, width: usize, height: usize) -> PixelDatas {
     let datas = decode_bc6h_inner(data, width, height, false);
     PixelDatas::F16(datas)
 }
 
 /// Decode BC6h signed (Bc6hRgbFloat) to f16 pixels.
-pub fn decode_bc6h_signed(
-    data: &PixelDatas,
-    width: usize,
-    height: usize,
-) -> PixelDatas {
+pub fn decode_bc6h_signed(data: &PixelDatas, width: usize, height: usize) -> PixelDatas {
     let datas = decode_bc6h_inner(data, width, height, true);
     PixelDatas::F16(datas)
 }
 
-fn decode_bc6h_inner(
-    data: &PixelDatas,
-    width: usize,
-    height: usize,
-    is_signed: bool,
-) -> Vec<f16> {
+fn decode_bc6h_inner(data: &PixelDatas, width: usize, height: usize, is_signed: bool) -> Vec<f16> {
     // The encoded BC6h data is stored as PixelDatas::F16 (raw bytes reinterpreted
     // as f16 for storage). Use as_bytes() to get the raw bytes without conversion.
     let raw = data.as_bytes();
@@ -855,11 +869,7 @@ fn decode_bc6h_inner(
                     let src = (py * block_w + px) * 4;
                     // SAFETY: each (sx, sy) pair is unique per block, no overlap.
                     unsafe {
-                        std::ptr::copy_nonoverlapping(
-                            pixels[src..].as_ptr(),
-                            out_ptr.add(dst),
-                            4,
-                        );
+                        std::ptr::copy_nonoverlapping(pixels[src..].as_ptr(), out_ptr.add(dst), 4);
                     }
                 }
             }

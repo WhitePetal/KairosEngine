@@ -61,7 +61,6 @@ impl<'a> BitReader<'a> {
         }
         val
     }
-
 }
 
 /// Writes bits into a 128-bit (16-byte) ASTC block in LSB-first order.
@@ -141,11 +140,11 @@ fn get_partition(
         } else {
             (partition_index as u32) | 0x400
         };
-        
+
         let hash = ((texel_id * 154) ^ seed) & 0x3f;
         seed = (seed ^ (hash * 13)) & 0x3f;
         let s_val = (seed.wrapping_mul(9).wrapping_add(hash.wrapping_mul(3))) & 0x3f;
-        
+
         let part = if partition_count == 2 {
             if s_val < 32 { 0 } else { 1 }
         } else if partition_count == 3 {
@@ -200,23 +199,108 @@ struct ColorEndpointMode {
 /// Color endpoint mode table for modes 0-15.
 fn get_color_endpoint_mode(mode: u32) -> ColorEndpointMode {
     match mode {
-        0 => ColorEndpointMode { is_luminance: true, has_alpha: false, is_direct: false, num_endpoint_values: 1 },
-        1 => ColorEndpointMode { is_luminance: true, has_alpha: true, is_direct: false, num_endpoint_values: 2 },
-        2 => ColorEndpointMode { is_luminance: false, has_alpha: false, is_direct: false, num_endpoint_values: 3 },
-        3 => ColorEndpointMode { is_luminance: false, has_alpha: true, is_direct: false, num_endpoint_values: 4 },
-        4 => ColorEndpointMode { is_luminance: false, has_alpha: false, is_direct: true, num_endpoint_values: 3 },
-        5 => ColorEndpointMode { is_luminance: false, has_alpha: true, is_direct: true, num_endpoint_values: 4 },
-        6 => ColorEndpointMode { is_luminance: false, has_alpha: false, is_direct: false, num_endpoint_values: 3 }, // Base+LDR scale
-        7 => ColorEndpointMode { is_luminance: false, has_alpha: true, is_direct: false, num_endpoint_values: 4 }, // Base+LDR scale+alpha
-        8 => ColorEndpointMode { is_luminance: true, has_alpha: false, is_direct: false, num_endpoint_values: 1 },
-        9 => ColorEndpointMode { is_luminance: true, has_alpha: true, is_direct: false, num_endpoint_values: 2 },
-        10 => ColorEndpointMode { is_luminance: false, has_alpha: false, is_direct: false, num_endpoint_values: 3 },
-        11 => ColorEndpointMode { is_luminance: false, has_alpha: true, is_direct: false, num_endpoint_values: 4 },
-        12 => ColorEndpointMode { is_luminance: false, has_alpha: false, is_direct: true, num_endpoint_values: 3 },
-        13 => ColorEndpointMode { is_luminance: false, has_alpha: true, is_direct: true, num_endpoint_values: 4 },
-        14 => ColorEndpointMode { is_luminance: false, has_alpha: false, is_direct: false, num_endpoint_values: 3 }, // LDR RGB+scale
-        15 => ColorEndpointMode { is_luminance: false, has_alpha: true, is_direct: false, num_endpoint_values: 4 }, // LDR RGBA+scale
-        _ => ColorEndpointMode { is_luminance: true, has_alpha: false, is_direct: false, num_endpoint_values: 1 },
+        0 => ColorEndpointMode {
+            is_luminance: true,
+            has_alpha: false,
+            is_direct: false,
+            num_endpoint_values: 1,
+        },
+        1 => ColorEndpointMode {
+            is_luminance: true,
+            has_alpha: true,
+            is_direct: false,
+            num_endpoint_values: 2,
+        },
+        2 => ColorEndpointMode {
+            is_luminance: false,
+            has_alpha: false,
+            is_direct: false,
+            num_endpoint_values: 3,
+        },
+        3 => ColorEndpointMode {
+            is_luminance: false,
+            has_alpha: true,
+            is_direct: false,
+            num_endpoint_values: 4,
+        },
+        4 => ColorEndpointMode {
+            is_luminance: false,
+            has_alpha: false,
+            is_direct: true,
+            num_endpoint_values: 3,
+        },
+        5 => ColorEndpointMode {
+            is_luminance: false,
+            has_alpha: true,
+            is_direct: true,
+            num_endpoint_values: 4,
+        },
+        6 => ColorEndpointMode {
+            is_luminance: false,
+            has_alpha: false,
+            is_direct: false,
+            num_endpoint_values: 3,
+        }, // Base+LDR scale
+        7 => ColorEndpointMode {
+            is_luminance: false,
+            has_alpha: true,
+            is_direct: false,
+            num_endpoint_values: 4,
+        }, // Base+LDR scale+alpha
+        8 => ColorEndpointMode {
+            is_luminance: true,
+            has_alpha: false,
+            is_direct: false,
+            num_endpoint_values: 1,
+        },
+        9 => ColorEndpointMode {
+            is_luminance: true,
+            has_alpha: true,
+            is_direct: false,
+            num_endpoint_values: 2,
+        },
+        10 => ColorEndpointMode {
+            is_luminance: false,
+            has_alpha: false,
+            is_direct: false,
+            num_endpoint_values: 3,
+        },
+        11 => ColorEndpointMode {
+            is_luminance: false,
+            has_alpha: true,
+            is_direct: false,
+            num_endpoint_values: 4,
+        },
+        12 => ColorEndpointMode {
+            is_luminance: false,
+            has_alpha: false,
+            is_direct: true,
+            num_endpoint_values: 3,
+        },
+        13 => ColorEndpointMode {
+            is_luminance: false,
+            has_alpha: true,
+            is_direct: true,
+            num_endpoint_values: 4,
+        },
+        14 => ColorEndpointMode {
+            is_luminance: false,
+            has_alpha: false,
+            is_direct: false,
+            num_endpoint_values: 3,
+        }, // LDR RGB+scale
+        15 => ColorEndpointMode {
+            is_luminance: false,
+            has_alpha: true,
+            is_direct: false,
+            num_endpoint_values: 4,
+        }, // LDR RGBA+scale
+        _ => ColorEndpointMode {
+            is_luminance: true,
+            has_alpha: false,
+            is_direct: false,
+            num_endpoint_values: 1,
+        },
     }
 }
 
@@ -239,9 +323,21 @@ fn decode_ldr_color_endpoints(
     for part in 0..partition_count {
         let base = part * num_val * 2; // 2 endpoints per partition
         let v0 = if base < values.len() { values[base] } else { 0 };
-        let v1 = if base + 1 < values.len() { values[base + 1] } else { 0 };
-        let v2 = if base + 2 < values.len() { values[base + 2] } else { 0 };
-        let v3 = if base + 3 < values.len() { values[base + 3] } else { 0 };
+        let v1 = if base + 1 < values.len() {
+            values[base + 1]
+        } else {
+            0
+        };
+        let v2 = if base + 2 < values.len() {
+            values[base + 2]
+        } else {
+            0
+        };
+        let v3 = if base + 3 < values.len() {
+            values[base + 3]
+        } else {
+            0
+        };
 
         // Decode based on endpoint mode
         if ce_mode.is_luminance && !ce_mode.has_alpha {
@@ -264,8 +360,16 @@ fn decode_ldr_color_endpoints(
             let g0 = v1 as f32 / 255.0;
             let b0 = v2 as f32 / 255.0;
             let r1 = v3 as f32 / 255.0;
-            let g1 = if base + 4 < values.len() { values[base + 4] as f32 / 255.0 } else { 0.0 };
-            let b1 = if base + 5 < values.len() { values[base + 5] as f32 / 255.0 } else { 0.0 };
+            let g1 = if base + 4 < values.len() {
+                values[base + 4] as f32 / 255.0
+            } else {
+                0.0
+            };
+            let b1 = if base + 5 < values.len() {
+                values[base + 5] as f32 / 255.0
+            } else {
+                0.0
+            };
             endpoints_a[part] = [r0, g0, b0, 1.0];
             endpoints_b[part] = [r1, g1, b1, 1.0];
         } else {
@@ -274,10 +378,26 @@ fn decode_ldr_color_endpoints(
             let g0 = v1 as f32 / 255.0;
             let b0 = v2 as f32 / 255.0;
             let a0 = v3 as f32 / 255.0;
-            let r1 = if base + 4 < values.len() { values[base + 4] as f32 / 255.0 } else { 0.0 };
-            let g1 = if base + 5 < values.len() { values[base + 5] as f32 / 255.0 } else { 0.0 };
-            let b1 = if base + 6 < values.len() { values[base + 6] as f32 / 255.0 } else { 0.0 };
-            let a1 = if base + 7 < values.len() { values[base + 7] as f32 / 255.0 } else { 1.0 };
+            let r1 = if base + 4 < values.len() {
+                values[base + 4] as f32 / 255.0
+            } else {
+                0.0
+            };
+            let g1 = if base + 5 < values.len() {
+                values[base + 5] as f32 / 255.0
+            } else {
+                0.0
+            };
+            let b1 = if base + 6 < values.len() {
+                values[base + 6] as f32 / 255.0
+            } else {
+                0.0
+            };
+            let a1 = if base + 7 < values.len() {
+                values[base + 7] as f32 / 255.0
+            } else {
+                1.0
+            };
             endpoints_a[part] = [r0, g0, b0, a0];
             endpoints_b[part] = [r1, g1, b1, a1];
         }
@@ -298,13 +418,41 @@ fn decode_hdr_color_endpoints(
     for part in 0..partition_count {
         let base = part * num_val * 2;
         let v0 = if base < values.len() { values[base] } else { 0 };
-        let v1 = if base + 1 < values.len() { values[base + 1] } else { 0 };
-        let v2 = if base + 2 < values.len() { values[base + 2] } else { 0 };
-        let v3 = if base + 3 < values.len() { values[base + 3] } else { 0 };
-        let v4 = if base + 4 < values.len() { values[base + 4] } else { 0 };
-        let v5 = if base + 5 < values.len() { values[base + 5] } else { 0 };
-        let v6 = if base + 6 < values.len() { values[base + 6] } else { 0 };
-        let v7 = if base + 7 < values.len() { values[base + 7] } else { 0 };
+        let v1 = if base + 1 < values.len() {
+            values[base + 1]
+        } else {
+            0
+        };
+        let v2 = if base + 2 < values.len() {
+            values[base + 2]
+        } else {
+            0
+        };
+        let v3 = if base + 3 < values.len() {
+            values[base + 3]
+        } else {
+            0
+        };
+        let v4 = if base + 4 < values.len() {
+            values[base + 4]
+        } else {
+            0
+        };
+        let v5 = if base + 5 < values.len() {
+            values[base + 5]
+        } else {
+            0
+        };
+        let v6 = if base + 6 < values.len() {
+            values[base + 6]
+        } else {
+            0
+        };
+        let v7 = if base + 7 < values.len() {
+            values[base + 7]
+        } else {
+            0
+        };
 
         if ce_mode.is_luminance && !ce_mode.has_alpha {
             // HDR Luminance
@@ -325,7 +473,11 @@ fn decode_hdr_color_endpoints(
             let r0 = hdr_ldr_value(v0);
             let g0 = hdr_ldr_value(v1);
             let b0 = hdr_ldr_value(v2);
-            let a0 = if ce_mode.has_alpha { v3 as f32 / 255.0 } else { 1.0 };
+            let a0 = if ce_mode.has_alpha {
+                v3 as f32 / 255.0
+            } else {
+                1.0
+            };
             let r1 = hdr_ldr_value(v4);
             let g1 = hdr_ldr_value(v5);
             let b1 = hdr_ldr_value(v6);
@@ -383,8 +535,8 @@ fn decode_astc_block(
         // We don't need the values since we always use fixed 2×2 weight grid.
         let _mode_hi = reader.bit(); // mode bit 0
         let _mode_lo = reader.bit(); // mode bit 1
-        let _r0 = reader.bit();       // grid r0
-        let _r1 = reader.bit();       // grid r1
+        let _r0 = reader.bit(); // grid r0
+        let _r1 = reader.bit(); // grid r1
 
         // Our encoder always produces single-plane mode with 2×2 weight grid
         let mode = BlockMode {
@@ -467,7 +619,12 @@ fn decode_astc_block(
         // Partition assignment
         let texel_count = (bw * bh) as usize;
         let mut partition_of_texel = [0u8; MAX_TEXELS];
-        get_partition(partition_count, partition_index, texel_count, &mut partition_of_texel);
+        get_partition(
+            partition_count,
+            partition_index,
+            texel_count,
+            &mut partition_of_texel,
+        );
 
         // Decode color endpoints
         let mut endpoints_a = [[0.0f32; 4]; 4];
@@ -475,11 +632,23 @@ fn decode_astc_block(
 
         if is_hdr {
             for part in 0..partition_count {
-                decode_hdr_color_endpoints(&ep_values, ce_modes[part], 1, &mut endpoints_a, &mut endpoints_b);
+                decode_hdr_color_endpoints(
+                    &ep_values,
+                    ce_modes[part],
+                    1,
+                    &mut endpoints_a,
+                    &mut endpoints_b,
+                );
             }
         } else {
             for part in 0..partition_count {
-                decode_ldr_color_endpoints(&ep_values, ce_modes[part], 1, &mut endpoints_a, &mut endpoints_b);
+                decode_ldr_color_endpoints(
+                    &ep_values,
+                    ce_modes[part],
+                    1,
+                    &mut endpoints_a,
+                    &mut endpoints_b,
+                );
             }
         }
 
@@ -575,16 +744,16 @@ fn hdr_to_u8(v: f16) -> u8 {
 fn encode_astc_ldr_block(pixels: &[[u8; 4]; 144], bw: u32, bh: u32) -> [u8; 16] {
     let texel_count = (bw * bh) as usize;
     let mut w = BitWriter::new();
-    
+
     // Header: 12 bits
-    w.write_bit(0);     // bit 0:  non-void-extent
-    w.write_bit(0);     // bit 1:  mode[0]
-    w.write_bit(0);     // bit 2:  mode[1]
-    w.write_bit(1);     // bit 3:  r0=1 (reduced height)
-    w.write_bit(1);     // bit 4:  r1=1 (reduced width)
+    w.write_bit(0); // bit 0:  non-void-extent
+    w.write_bit(0); // bit 1:  mode[0]
+    w.write_bit(0); // bit 2:  mode[1]
+    w.write_bit(1); // bit 3:  r0=1 (reduced height)
+    w.write_bit(1); // bit 4:  r1=1 (reduced width)
     w.write_bits(0, 2); // bits 5-6: partition count = 0 (1 partition)
     w.write_bits(3, 4); // bits 7-10: CE mode 3 (RGBA)
-    w.write_bit(0);     // bit 11: dual plane = false
+    w.write_bit(0); // bit 11: dual plane = false
 
     // Weights: 4×2=8 bits (2×2 grid, 2-bit values)
     for _ in 0..4 {
@@ -601,8 +770,12 @@ fn encode_astc_ldr_block(pixels: &[[u8; 4]; 144], bw: u32, bh: u32) -> [u8; 16] 
             max_c[c] = max_c[c].max(v);
         }
     }
-    for c in 0..4 { w.write_bits(min_c[c], 8); }
-    for c in 0..4 { w.write_bits(max_c[c], 8); }
+    for c in 0..4 {
+        w.write_bits(min_c[c], 8);
+    }
+    for c in 0..4 {
+        w.write_bits(max_c[c], 8);
+    }
 
     // Total: 12 + 8 + 64 = 84 bits ✓
     w.finish()
@@ -612,14 +785,14 @@ fn encode_astc_ldr_block(pixels: &[[u8; 4]; 144], bw: u32, bh: u32) -> [u8; 16] 
 fn encode_astc_hdr_block(_pixels: &[f16; 144], _bw: u32, _bh: u32) -> [u8; 16] {
     let mut w = BitWriter::new();
     // Header: 12 bits (same structure as LDR)
-    w.write_bit(0);     // non-void-extent
-    w.write_bit(0);     // mode[0]
-    w.write_bit(0);     // mode[1]
-    w.write_bit(1);     // r0
-    w.write_bit(1);     // r1
+    w.write_bit(0); // non-void-extent
+    w.write_bit(0); // mode[0]
+    w.write_bit(0); // mode[1]
+    w.write_bit(1); // r0
+    w.write_bit(1); // r1
     w.write_bits(0, 2); // 1 partition
     w.write_bits(10, 4); // CE mode 10 (HDR RGB)
-    w.write_bit(0);     // dual plane
+    w.write_bit(0); // dual plane
 
     // Weights: 4×2=8 bits
     for _ in 0..4 {

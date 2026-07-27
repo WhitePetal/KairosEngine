@@ -1,5 +1,8 @@
+pub mod hash;
 pub mod math;
 pub mod types;
+
+pub mod collections;
 
 pub mod kairos_dialog;
 

@@ -517,7 +517,9 @@ impl Table {
     /// `&self` 的方式可以通过行级过滤时的 `execute` 调用（exeucte 只接受 `&Table`）。
     /// # Safety
     /// 调用者必须确保该指针不会被用于违反别名规则的操作。
-    pub unsafe fn get_ticks_base_mut_ptr_unsafe<T: Component>(&self) -> Option<*mut ComponentTicks> {
+    pub unsafe fn get_ticks_base_mut_ptr_unsafe<T: Component>(
+        &self,
+    ) -> Option<*mut ComponentTicks> {
         let state = self.get_state::<T>()?;
         Some(self.colums[state].ticks.as_ptr() as *mut ComponentTicks)
     }

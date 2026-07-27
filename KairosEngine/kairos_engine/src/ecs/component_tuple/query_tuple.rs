@@ -195,9 +195,7 @@ unsafe impl<T: Component> Fetch for FetchRead<T> {
         unsafe {
             Self {
                 data: table.get_base(state),
-                ticks: table
-                    .get_ticks_base_ptr::<T>()
-                    .unwrap_or(std::ptr::null()),
+                ticks: table.get_ticks_base_ptr::<T>().unwrap_or(std::ptr::null()),
                 last_run: Tick::MIN,
                 this_run: Tick::MIN,
             }
@@ -800,10 +798,7 @@ unsafe impl<T: Component> Fetch for FetchChanged<T> {
         if self.ticks_base.is_null() {
             return true;
         }
-        unsafe {
-            (*self.ticks_base.add(row))
-                .is_changed(last_run, this_run)
-        }
+        unsafe { (*self.ticks_base.add(row)).is_changed(last_run, this_run) }
     }
 }
 
@@ -880,10 +875,7 @@ unsafe impl<T: Component> Fetch for FetchAdded<T> {
         if self.ticks_base.is_null() {
             return true;
         }
-        unsafe {
-            (*self.ticks_base.add(row))
-                .is_added(last_run, this_run)
-        }
+        unsafe { (*self.ticks_base.add(row)).is_added(last_run, this_run) }
     }
 }
 
@@ -935,9 +927,7 @@ impl<F: Fetch> CachedQuery<F> {
             .unwrap()
             .get(&TypeId::of::<F>())
             .map(|x| Arc::downcast::<CachedQueryInner<F>>(x.clone()).unwrap())
-            .filter(|x| {
-                x.table_graph_generation == world.table_graph_generation()
-            });
+            .filter(|x| x.table_graph_generation == world.table_graph_generation());
 
         let inner = existing_cache.unwrap_or_else(
             // 告诉编译器这个闭包属于冷路径代码
@@ -1170,8 +1160,15 @@ impl<'w, Q: Query> ViewBorrow<'w, Q> {
         let (last_run, this_run) = world.get_change_ticks();
         let cache = CachedQuery::get(world);
         cache.borrow(world.table_graph());
-        let view =
-            unsafe { View::<Q>::new(world.entity_datas(), world.table_graph(), cache.clone(), last_run, this_run) };
+        let view = unsafe {
+            View::<Q>::new(
+                world.entity_datas(),
+                world.table_graph(),
+                cache.clone(),
+                last_run,
+                this_run,
+            )
+        };
 
         Self { view, cache }
     }
@@ -1258,7 +1255,10 @@ impl<Q: Query> ChunkIter<Q> {
 
     unsafe fn next<'a>(&mut self) -> Option<Q::Item<'a>> {
         while self.position < self.len {
-            if !self.fetch.filter_fetch(self.position, self.last_run, self.this_run) {
+            if !self
+                .fetch
+                .filter_fetch(self.position, self.last_run, self.this_run)
+            {
                 self.position += 1;
                 continue;
             }
@@ -1474,7 +1474,15 @@ impl<'w, Q: Query> QueryBorrow<'w, Q> {
         let this_run = self.world.change_tick();
         let last_run = Tick(this_run.0.wrapping_sub(1));
         let cache = self.borrow().clone();
-        unsafe { View::new(self.world.entity_datas(), self.world.table_graph(), cache, last_run, this_run) }
+        unsafe {
+            View::new(
+                self.world.entity_datas(),
+                self.world.table_graph(),
+                cache,
+                last_run,
+                this_run,
+            )
+        }
     }
 
     fn borrow(&mut self) -> &CachedQuery<Q::Fetch> {
@@ -1489,7 +1497,15 @@ impl<'w, Q: Query> QueryBorrow<'w, Q> {
         let this_run = self.world.change_tick();
         let last_run = Tick(this_run.0.wrapping_sub(1));
         let cache = self.borrow().clone();
-        unsafe { BatchedIter::new(self.world.table_graph(), batch_size, cache, last_run, this_run) }
+        unsafe {
+            BatchedIter::new(
+                self.world.table_graph(),
+                batch_size,
+                cache,
+                last_run,
+                this_run,
+            )
+        }
     }
 
     fn transform<R: Query>(self) -> QueryBorrow<'w, R> {
@@ -1682,7 +1698,12 @@ impl<'q, Q: Query> Iterator for PreparedQueryIter<'q, Q> {
                 None => {
                     let (idx, state) = self.states.next()?;
                     let table = &self.tables[*idx];
-                    self.iter = ChunkIter::new(table, Q::Fetch::execute(table, *state), self.last_run, self.this_run);
+                    self.iter = ChunkIter::new(
+                        table,
+                        Q::Fetch::execute(table, *state),
+                        self.last_run,
+                        self.this_run,
+                    );
                     continue;
                 }
             }
@@ -1722,7 +1743,14 @@ impl<'q, Q: Query> PreparedQueryBorrow<'q, Q> {
     }
 
     pub fn iter(&mut self) -> PreparedQueryIter<'_, Q> {
-        unsafe { PreparedQueryIter::new(self.tables, self.states.iter(), self.last_run, self.this_run) }
+        unsafe {
+            PreparedQueryIter::new(
+                self.tables,
+                self.states.iter(),
+                self.last_run,
+                self.this_run,
+            )
+        }
     }
 
     pub fn view(&mut self) -> PreparedView<'_, Q> {
@@ -1789,7 +1817,14 @@ impl<Q: Query> PreparedQuery<Q> {
         let entity_datas = world.entity_datas();
         let tables = world.table_graph();
 
-        PreparedQueryBorrow::new(entity_datas, tables, &self.states, &mut self.fetches, last_run, this_run)
+        PreparedQueryBorrow::new(
+            entity_datas,
+            tables,
+            &self.states,
+            &mut self.fetches,
+            last_run,
+            this_run,
+        )
     }
 
     pub fn query_mut<'q>(&'q mut self, world: &'q mut World) -> PreparedQueryIter<'q, Q> {
@@ -1816,7 +1851,16 @@ impl<Q: Query> PreparedQuery<Q> {
         let entity_datas = world.entity_datas();
         let tables = world.table_graph();
 
-        unsafe { PreparedView::new(entity_datas, tables, self.states.iter(), &mut self.fetches, last_run, this_run) }
+        unsafe {
+            PreparedView::new(
+                entity_datas,
+                tables,
+                self.states.iter(),
+                &mut self.fetches,
+                last_run,
+                this_run,
+            )
+        }
     }
 }
 
@@ -1844,7 +1888,15 @@ impl<'q, Q: Query> QueryMut<'q, Q> {
     pub fn view(&mut self) -> View<'_, Q> {
         let (last_run, this_run) = self.world.get_change_ticks();
         let cache = CachedQuery::get(self.world);
-        unsafe { View::new(self.world.entity_datas(), self.world.table_graph(), cache, last_run, this_run) }
+        unsafe {
+            View::new(
+                self.world.entity_datas(),
+                self.world.table_graph(),
+                cache,
+                last_run,
+                this_run,
+            )
+        }
     }
 
     fn transform<R: Query>(self) -> QueryMut<'q, R> {
@@ -1865,7 +1917,15 @@ impl<'q, Q: Query> QueryMut<'q, Q> {
     pub fn into_iter_batched(self, batch_size: usize) -> BatchedIter<'q, Q> {
         let (last_run, this_run) = self.world.get_change_ticks();
         let cache = CachedQuery::get(self.world);
-        unsafe { BatchedIter::new(self.world.table_graph(), batch_size, cache, last_run, this_run) }
+        unsafe {
+            BatchedIter::new(
+                self.world.table_graph(),
+                batch_size,
+                cache,
+                last_run,
+                this_run,
+            )
+        }
     }
 }
 

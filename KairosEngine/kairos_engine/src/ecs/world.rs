@@ -6,8 +6,8 @@ use std::{
     ops::Add,
     ptr,
     sync::{
-        atomic::{AtomicBool, AtomicU32, Ordering},
         Mutex,
+        atomic::{AtomicBool, AtomicU32, Ordering},
     },
 };
 
@@ -30,6 +30,7 @@ use crate::ecs::{
     entity::{Entity, EntityFlag},
     entity_ref::{ComponentRef, EntityRef},
     id::Id,
+    schedule::{Schedule, ScheduleLabel},
     sparse_set::{self, AllocManyState, EntityStorage, NoSuchId, SparseSet},
     table::Table,
     table_graph::{InsertTarget, TableGraph, TableGraphGeneration},
@@ -130,6 +131,8 @@ pub struct World {
 
     query_cache: QueryCache,
 
+    schedule: Schedule,
+
     // 变更检测：每次组件写入递增该 tick（原子计数器，支持并发读取）
     change_tick: AtomicU32,
     /// 上次调用 `clear_trackers()` 时的 tick，用于 track 清理。
@@ -188,6 +191,7 @@ impl World {
             remove_edges,
             table_graph,
             query_cache: QueryCache::default(),
+            schedule: Schedule {},
             change_tick: AtomicU32::new(0),
             last_change_tick: Tick::MIN,
             system_ticks_active: AtomicBool::new(false),
@@ -252,7 +256,12 @@ impl World {
         if target_ref.get_node_index() == src_table {
             unsafe {
                 components.put(|ptr, info| {
-                    source_table.put_dynamic(ptr, &info, row_index, ComponentTicks::new(change_tick));
+                    source_table.put_dynamic(
+                        ptr,
+                        &info,
+                        row_index,
+                        ComponentTicks::new(change_tick),
+                    );
                 });
             }
             return;
@@ -270,7 +279,12 @@ impl World {
         // 写入components到新表（新插入的组件标记为当前 tick）
         unsafe {
             components.put(|ptr, info| {
-                target_table.put_dynamic(ptr, &info, target_row_index, ComponentTicks::new(change_tick));
+                target_table.put_dynamic(
+                    ptr,
+                    &info,
+                    target_row_index,
+                    ComponentTicks::new(change_tick),
+                );
             });
         }
 
@@ -644,9 +658,8 @@ impl World {
                     if let Some(moved) = unsafe {
                         source_table.move_to(old_row_index, |src, tick, info| {
                             if target_table.has_component_type_id(info.id()) {
-                                let dst = target_table
-                                    .get_dynamice(info, target_row_index)
-                                    .unwrap();
+                                let dst =
+                                    target_table.get_dynamice(info, target_row_index).unwrap();
                                 ptr::copy_nonoverlapping(src, dst.as_ptr(), info.layout().size());
                                 target_table.set_tick_dynamic(info, target_row_index, tick);
                             }
@@ -768,7 +781,15 @@ impl World {
 
         let (last_run, this_run) = self.get_change_ticks();
         let cache = CachedQuery::get(self);
-        unsafe { View::<Q>::new(&self.entity_datas, &self.table_graph, cache, last_run, this_run) }
+        unsafe {
+            View::<Q>::new(
+                &self.entity_datas,
+                &self.table_graph,
+                cache,
+                last_run,
+                this_run,
+            )
+        }
     }
 
     pub fn query_one<Q: Query>(&self, entity: Entity) -> QueryOne<'_, Q> {
@@ -869,6 +890,15 @@ impl World {
             ))
         }
     }
+
+    pub fn schedule_scope<R>(
+        &mut self,
+        label: impl ScheduleLabel,
+        f: impl FnOnce(&mut World, &mut Schedule) -> R,
+    ) -> R {
+        let label = label.intern();
+
+    }
 }
 
 pub struct Iter<'a> {
@@ -954,8 +984,12 @@ where
         let row_index = self.table.allocate_entity(entity);
         unsafe {
             components.put(|ptr, info| {
-                self.table
-                    .put_dynamic(ptr, &info, row_index, ComponentTicks::new(self.change_tick));
+                self.table.put_dynamic(
+                    ptr,
+                    &info,
+                    row_index,
+                    ComponentTicks::new(self.change_tick),
+                );
             });
         }
         self.entity_datas.insert(
