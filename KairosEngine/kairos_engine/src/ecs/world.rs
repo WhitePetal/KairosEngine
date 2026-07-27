@@ -692,8 +692,10 @@ impl World {
     pub fn view_mut<Q: Query>(&mut self) -> View<'_, Q> {
         assert_borrow::<Q>();
 
+        let this_run = self.change_tick();
+        let last_run = Tick(this_run.0.wrapping_sub(1));
         let cache = CachedQuery::get(self);
-        unsafe { View::<Q>::new(&self.entity_datas, &self.table_graph, cache) }
+        unsafe { View::<Q>::new(&self.entity_datas, &self.table_graph, cache, last_run, this_run) }
     }
 
     pub fn query_one<Q: Query>(&self, entity: Entity) -> QueryOne<'_, Q> {
