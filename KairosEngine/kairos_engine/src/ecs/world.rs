@@ -534,6 +534,11 @@ impl World {
         Tick(self.change_tick.load(Ordering::Relaxed))
     }
 
+    /// 返回上次调用 `clear_trackers()` 时的 tick。
+    pub fn last_change_tick(&self) -> Tick {
+        self.last_change_tick
+    }
+
     /// 递增变更检测 tick。通常每帧调用一次。
     pub fn increment_tick(&mut self) {
         self.change_tick.fetch_add(1, Ordering::Relaxed);
