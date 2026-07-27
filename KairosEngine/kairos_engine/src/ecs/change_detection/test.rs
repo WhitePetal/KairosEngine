@@ -1,5 +1,5 @@
 use crate::ecs::{
-    change_detection::Tick,
+    change_detection::{DetectChanges, DetectChangesMut, Ref, Tick},
     component::Component,
     component_tuple::{Added, Changed},
     world::World,
@@ -153,7 +153,7 @@ fn query_mut_marks_as_changed() {
 
     // Access via query_mut - QueryMut implements IntoIterator.
     // The tuple (&mut Transform,) yields items of type (&mut Transform,) - access via .0
-    for t in world.query::<(&mut Transform,)>().iter() {
+    for mut t in world.query::<(&mut Transform,)>().iter() {
         t.0.x = 100.0;
     }
 
@@ -218,7 +218,7 @@ fn exchange_triggers_changed() {
     assert_eq!(changed_t.len(), 0, "Transform was removed, not modified");
 }
 
-/// 测试 increment_tick 后不再返回组件
+// -------------------------------------------------------------------------/ 测试 increment_tick 后不再返回组件
 #[test]
 fn increment_tick_clears_changed() {
     let mut world = World::new();
@@ -403,4 +403,209 @@ fn tick_wrapping_at_world_level() {
     let _e = world.spawn((Transform { x: 1.0, y: 0.0, z: 0.0 },));
     let mut query = world.query::<Changed<Transform>>();
     assert_eq!(query.iter().count(), 1, "entity spawned after tick advance should be changed");
+}
+
+// =========================================================================
+// T3 — Mut<T>/Ref<T> Access Wrappers
+// =========================================================================
+
+/// 测试 DerefMut 自动标记 changed
+#[test]
+fn mut_deref_mut_marks_changed() {
+    let mut world = World::new();
+    world.increment_tick(); // tick = 1
+
+    let _e = world.spawn((Transform { x: 1.0, y: 2.0, z: 3.0 },));
+    world.increment_tick(); // tick = 2
+
+    // Access via (&mut Transform,) — Query::get returns Mut<Transform>
+    for mut t in world.query::<(&mut Transform,)>().iter() {
+        t.0.x = 100.0; // DerefMut → set_changed
+    }
+
+    // Changed should detect the modification
+    let mut query = world.query::<Changed<Transform>>();
+    let changed: Vec<&Transform> = query.iter().collect();
+    assert_eq!(changed.len(), 1, "Mut::deref_mut should mark changed");
+    assert_eq!(changed[0].x, 100.0);
+}
+
+/// 测试 bypass_change_detection 不触发 changed 标记
+#[test]
+fn mut_bypass_change_detection_does_not_mark() {
+    let mut world = World::new();
+    world.increment_tick(); // tick = 1
+
+    let _e = world.spawn((Transform { x: 1.0, y: 2.0, z: 3.0 },));
+    world.increment_tick(); // tick = 2
+
+    // Access via query_mut and use bypass_change_detection
+    {
+        let mut q = world.query::<(&mut Transform,)>();
+        for mut item in q.iter() {
+            let t: &mut Transform = item.0.bypass_change_detection();
+            t.x = 200.0;
+        }
+    }
+
+    // Changed should NOT detect the modification
+    let mut query = world.query::<Changed<Transform>>();
+    assert_eq!(
+        query.iter().count(),
+        0,
+        "bypass_change_detection should NOT mark changed"
+    );
+}
+
+/// 测试 set_if_neq 值不同时标记 changed
+#[test]
+fn mut_set_if_neq_marks_when_different() {
+    let mut world = World::new();
+    world.increment_tick(); // tick = 1
+
+    let _e = world.spawn((Transform { x: 1.0, y: 2.0, z: 3.0 },));
+    world.increment_tick(); // tick = 2
+
+    // Use set_if_neq with a different value → should mark changed
+    {
+        let mut q = world.query::<(&mut Transform,)>();
+        for mut item in q.iter() {
+            item.0.set_if_neq(Transform { x: 10.0, y: 20.0, z: 30.0 });
+        }
+    }
+
+    let mut query = world.query::<Changed<Transform>>();
+    assert_eq!(
+        query.iter().count(),
+        1,
+        "set_if_neq with different value should mark changed"
+    );
+}
+
+/// 测试 set_if_neq 值相同时不标记 changed
+#[test]
+fn mut_set_if_neq_noop_when_equal() {
+    let mut world = World::new();
+    world.increment_tick(); // tick = 1
+
+    let original = Transform { x: 1.0, y: 2.0, z: 3.0 };
+    let _e = world.spawn((original.clone(),));
+    world.increment_tick(); // tick = 2
+
+    // Use set_if_neq with the same value → should NOT mark changed
+    {
+        let mut q = world.query::<(&mut Transform,)>();
+        for mut item in q.iter() {
+            item.0.set_if_neq(original.clone());
+        }
+    }
+
+    let mut query = world.query::<Changed<Transform>>();
+    assert_eq!(
+        query.iter().count(),
+        0,
+        "set_if_neq with same value should NOT mark changed"
+    );
+}
+
+/// 测试 Ref::is_changed / is_added 的正确性
+#[test]
+fn ref_is_changed_and_is_added() {
+    let mut world = World::new();
+    world.increment_tick(); // tick = 1
+
+    let _e = world.spawn((Transform { x: 1.0, y: 2.0, z: 3.0 },));
+    world.increment_tick(); // tick = 2
+
+    // At tick 2, the component was added at tick 1, so is_added should be false
+    // (last_run for the implicit system is tick 2 here)
+    // Actually, World::query uses last_change_tick as last_run and change_tick as this_run.
+    // After spawn at tick 1, then increment to tick 2, the component was added at tick 1.
+    // The query runs with last_run = last_change_tick, this_run = change_tick.
+    // Since we didn't call clear_trackers, last_change_tick is still Tick::MIN (0).
+    // So is_added(0, 2) should return true since 1 is_newer_than(0, 2).
+    // Let me verify: last_run = 0, this_run = 2, added = 1
+    // ticks_since_change = 1.relative_to(2) = (2-1).wrapping = 1, min MAX = 1
+    // ticks_since_system = 0.relative_to(2) = (2-0).wrapping = 2, min MAX = 2
+    // 1 < 2 → true. Yes, is_added = true.
+
+    // After incrementing to tick 3 without any changes, is_added should be false
+    world.increment_tick(); // tick = 3
+
+    // Now: last_run = 0 (last_change_tick hasn't been updated), this_run = 3, added = 1
+    // ticks_since_change = 1.relative_to(3) = 2, min MAX = 2
+    // ticks_since_system = 0.relative_to(3) = 3, min MAX = 3
+    // 2 < 3 → true still! So we need to advance more or call clear_trackers.
+    // Actually, let's use clear_trackers to set last_change_tick = change_tick.
+    world.clear_trackers(); // last_change_tick = 3
+    world.increment_tick(); // tick = 4
+    // Now the query will use last_run = 3, this_run = 4
+    // added = 1, is_added(3, 4):
+    // ticks_since_change = 1.relative_to(4) = 3, min MAX = 3
+    // ticks_since_system = 3.relative_to(4) = 1, min MAX = 1
+    // 3 < 1 → false! is_added = false. ✅
+
+    let mut query = world.query::<(&Transform,)>();
+    let items: Vec<_> = query.iter().collect();
+    assert_eq!(items.len(), 1);
+    let r: &Ref<'_, Transform> = &items[0].0;
+    // At this point, the component is old, so is_added and is_changed should be false
+    assert!(!r.is_added(), "component added long ago should not be is_added");
+    assert!(!r.is_changed(), "component not recently changed should not be is_changed");
+}
+
+/// 测试 Ref 实现了 Copy（不要求 T: Copy）
+#[test]
+fn ref_implements_copy() {
+    // 手动验证: Ref 可以自由复制而不要求 T: Copy
+    let world = &mut World::new();
+    world.increment_tick();
+    let _e = world.spawn((Transform { x: 1.0, y: 2.0, z: 3.0 },));
+    world.increment_tick();
+
+    let mut query = world.query::<(&Transform,)>();
+    let items: Vec<_> = query.iter().collect();
+    let r = items[0].0; // Move out
+    let r2 = r; // Copy — should work without T: Copy
+    let _ = r; // suppress unused warning
+    let _ = r2;
+}
+
+/// 测试 FetchRead 返回 Ref（而非 &T）
+#[test]
+fn fetch_read_returns_ref() {
+    let mut world = World::new();
+    world.increment_tick();
+    let _e = world.spawn((Transform { x: 1.0, y: 2.0, z: 3.0 },));
+
+    // (&Transform,) should yield Ref<Transform> items (not &Transform)
+    let mut query = world.query::<(&Transform,)>();
+    for item in query.iter() {
+        // item is (Ref<Transform>,), item.0 is Ref<Transform>
+        // Deref to &Transform still works
+        let _: &Transform = &*item.0;
+        // is_changed/is_added available
+        let _ = item.0.is_changed();
+        let _ = item.0.is_added();
+    }
+}
+
+/// 测试 FetchWrite 返回 Mut（而非 &mut T）
+#[test]
+fn fetch_write_returns_mut() {
+    let mut world = World::new();
+    world.increment_tick();
+    let _e = world.spawn((Transform { x: 1.0, y: 2.0, z: 3.0 },));
+
+    // (&mut Transform,) should yield Mut<Transform> items (not &mut Transform)
+    let mut query = world.query::<(&mut Transform,)>();
+    for mut item in query.iter() {
+        // item is (Mut<Transform>,), item.0 is Mut<Transform>
+        // DerefMut works and auto-marks changed
+        item.0.x = 42.0;
+        // is_changed available
+        let _ = item.0.is_changed();
+        // bypass_change_detection available
+        let _: &mut Transform = item.0.bypass_change_detection();
+    }
 }

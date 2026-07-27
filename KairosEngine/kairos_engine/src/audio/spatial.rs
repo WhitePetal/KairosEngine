@@ -1,4 +1,4 @@
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, ops::DerefMut, time::Duration};
 
 use kira::{
     AudioManager, Decibels, Easing, Mapping, Mix, Tween, Value,
@@ -304,12 +304,12 @@ impl SpatialAudioTracks {
             .query_mut::<(&Transform, &mut SpatialAudioVolume)>()
             .into_iter()
             .map(|(_, volume)| volume);
-        for volume in volumes {
+        for mut volume in volumes {
             Self::update_audio_volume_state(
                 assets_server,
                 delta_time,
                 self.config.audio_volume_leaving_duration,
-                volume,
+                volume.deref_mut(),
             );
         }
 
@@ -348,8 +348,8 @@ impl SpatialAudioTracks {
             .query_mut::<(&Transform, &mut SpatialAudioVolume)>()
             .into_iter()
             .map(|(_, volume)| volume);
-        for volume in volumes {
-            Self::free_audio_volume_track(listener, volume);
+        for mut volume in volumes {
+            Self::free_audio_volume_track(listener, volume.deref_mut());
         }
 
         // 找到前 k 个 距离 listener 最近的 可播放的 volumes
@@ -390,17 +390,17 @@ impl SpatialAudioTracks {
                 manager,
                 listener,
                 trans,
-                volume,
+                volume.deref_mut(),
                 per_listener_track_count,
                 reverb_track,
             ) {
-                Self::leaving_audio_volume_in_track(fade_time, listener, trans, volume);
+                Self::leaving_audio_volume_in_track(fade_time, listener, trans, volume.deref_mut());
             }
         }
 
         // 剩下的 volume，如果持有 track，则进入 leaving 状态
         for (_, trans, volume) in &mut volumes[track_count as usize..volumes_len] {
-            Self::leaving_audio_volume_in_track(fade_time, listener, trans, volume);
+            Self::leaving_audio_volume_in_track(fade_time, listener, trans, volume.deref_mut());
         }
     }
 

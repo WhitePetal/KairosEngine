@@ -359,6 +359,14 @@ guid = "f73c74be-d8de-4a05-a660-bfc4ca2d0d26"
 path = "docs/plan/hierarchy/README.md"
 
 [[entries]]
+guid = "92ca3434-9102-442c-a43d-67f2bb237310"
+path = "docs/plan/hierarchy/ecs"
+
+[[entries]]
+guid = "4cbe6d52-dd74-4928-a5c7-0f1bf99ec1b9"
+path = "docs/plan/hierarchy/ecs/handoff.md"
+
+[[entries]]
 guid = "71e4d59c-461e-4acb-9b3e-71b1e6af879a"
 path = "docs/plan/hierarchy/handoff.md"
 
@@ -439,12 +447,60 @@ guid = "916cdff9-f8d7-4f2f-8a9f-922382076664"
 path = "docs/plan/kairos-editor-mcp/phase4-work-schedule.md"
 
 [[entries]]
+guid = "3db14879-8a28-4d9f-9d99-f43563cad76a"
+path = "docs/plan/material-dynamic_properties"
+
+[[entries]]
+guid = "a108bbeb-a49b-4bdc-a4d4-ba0ef442fedb"
+path = "docs/plan/material-dynamic_properties/kairos-material-dynamic-properties-handoff.md"
+
+[[entries]]
+guid = "e6cc252c-05f3-4d08-83a1-b8e285c35fcf"
+path = "docs/plan/material-dynamic_properties/material-dynamic-properties.md"
+
+[[entries]]
+guid = "deea0b33-4221-4a64-9012-30a8c0ae0d66"
+path = "docs/plan/material-dynamic_properties/phase1-requirements.md"
+
+[[entries]]
+guid = "e35f84f5-fa56-4b04-b0aa-c4d62f264b5b"
+path = "docs/plan/material-dynamic_properties/phase3-functional-analysis.md"
+
+[[entries]]
+guid = "f60b6be0-e5e5-4c9b-8e48-c50bf035f276"
+path = "docs/plan/material-dynamic_properties/phase4-tech-decisions.md"
+
+[[entries]]
+guid = "634a2390-2a4a-4764-a2aa-dc33c8a84ef3"
+path = "docs/plan/material-dynamic_properties/phase5-implementation-plan.md"
+
+[[entries]]
 guid = "087f304a-6688-44ef-a575-8f9d65b762fc"
 path = "docs/plan/material-inspector.md"
 
 [[entries]]
 guid = "a53a15d7-776a-416b-81c2-3c29fb5d7545"
 path = "docs/plan/texture-encode-decode-plan.md"
+
+[[entries]]
+guid = "56ef04c3-1970-41ac-baf6-e760c16d87ec"
+path = "docs/plan/texture-encoding"
+
+[[entries]]
+guid = "36ab6e7b-5c4b-4290-b30b-071701feaa1f"
+path = "docs/plan/texture-encoding/0001-pixeldata-enum-over-arrays.md"
+
+[[entries]]
+guid = "e771c562-e7e1-4937-9946-a706c4bd2187"
+path = "docs/plan/texture-encoding/0002-srgb-handling-in-encode.md"
+
+[[entries]]
+guid = "58f6af50-f6e9-40bf-8d38-cd4769d1e59c"
+path = "docs/plan/texture-encoding/0003-encode-decode-implementation-plan.md"
+
+[[entries]]
+guid = "29ede14e-abbd-409e-b822-9dc2f598003b"
+path = "docs/plan/texture-encoding/texture-encode-decode-plan.md"
 
 [[entries]]
 guid = "a16f8e0a-0d52-4035-b585-7c8ed8feb90f"
@@ -457,6 +513,10 @@ path = "docs/research/3a-sky-rendering.md"
 [[entries]]
 guid = "b60f8c47-3969-416a-8452-e6518edda222"
 path = "docs/research/README.md"
+
+[[entries]]
+guid = "89f4ba0e-4e4a-47c1-bf30-8bad325863b2"
+path = "docs/research/bevy-change-detection.md"
 
 [[entries]]
 guid = "6bb2bb81-02df-4f80-be76-c294fb4fcd71"
@@ -715,6 +775,34 @@ guid = "1048757b-fd40-4b34-b1c9-9efe38ce7d7c"
 path = "kairos_engine/src/ecs/borrow.rs"
 
 [[entries]]
+guid = "97c88d81-ffbe-41dc-91fd-752789e6d71d"
+path = "kairos_engine/src/ecs/change_detection"
+
+[[entries]]
+guid = "8f229cd1-3225-4e0d-ac0f-8043b6bfcd49"
+path = "kairos_engine/src/ecs/change_detection/access.rs"
+
+[[entries]]
+guid = "1cf23081-e98a-4038-9253-0f71f1d7137e"
+path = "kairos_engine/src/ecs/change_detection/test.rs"
+
+[[entries]]
+guid = "cd869009-1cc3-49ad-b5ab-9b386c5e23c3"
+path = "kairos_engine/src/ecs/change_detection/tick"
+
+[[entries]]
+guid = "4d9ab8cf-bf22-493d-88b9-dbd9f31595d2"
+path = "kairos_engine/src/ecs/change_detection/tick/test.rs"
+
+[[entries]]
+guid = "155e78fb-d5ce-4507-97e9-8f34693ba091"
+path = "kairos_engine/src/ecs/change_detection/tick.rs"
+
+[[entries]]
+guid = "b6384047-ce89-4cd2-bdef-f85bade9844c"
+path = "kairos_engine/src/ecs/change_detection.rs"
+
+[[entries]]
 guid = "832cfe23-a041-4332-8fc7-a0ee4b347b37"
 path = "kairos_engine/src/ecs/component.rs"
 
@@ -765,6 +853,10 @@ path = "kairos_engine/src/ecs/sparse_set"
 [[entries]]
 guid = "a8014182-20eb-4c5d-aa9e-ffe63688e4a4"
 path = "kairos_engine/src/ecs/sparse_set/entity_stroge.rs"
+
+[[entries]]
+guid = "1f95ab23-0565-4298-b9e3-b43df01b657d"
+path = "kairos_engine/src/ecs/sparse_set/test.rs"
 
 [[entries]]
 guid = "079c95be-3b03-4e06-9613-d0fc48be3acb"
@@ -835,6 +927,14 @@ guid = "fa0604e3-aa7e-4a1b-b21d-3f57168ead94"
 path = "kairos_engine/src/graphics/lod_mesh_component.rs"
 
 [[entries]]
+guid = "de451369-7624-4443-811e-7bc1d746a10f"
+path = "kairos_engine/src/graphics/material"
+
+[[entries]]
+guid = "eda965dd-47c2-48ea-a1ad-4fef32f7a1c0"
+path = "kairos_engine/src/graphics/material/test.rs"
+
+[[entries]]
 guid = "a5f4b8d9-b9f4-4708-80e3-c874333fbaea"
 path = "kairos_engine/src/graphics/material.rs"
 
@@ -857,6 +957,14 @@ path = "kairos_engine/src/graphics/mesh.rs"
 [[entries]]
 guid = "f045be3e-0334-49bf-b072-01c80140397d"
 path = "kairos_engine/src/graphics/render_pipeline.rs"
+
+[[entries]]
+guid = "9fdb8add-0e04-4739-bfe8-1179dd691f19"
+path = "kairos_engine/src/graphics/render_state"
+
+[[entries]]
+guid = "e9ec3f57-6e71-4a08-9a19-e2a59db38b97"
+path = "kairos_engine/src/graphics/render_state/test.rs"
 
 [[entries]]
 guid = "c69bdc52-2dfb-4193-a706-bf926da5b46a"
@@ -971,6 +1079,10 @@ guid = "08ac5875-aee9-43ab-b32d-6d8585bccd92"
 path = "kairos_engine/src/kairos_editor/project_path_tree/create_request.rs"
 
 [[entries]]
+guid = "152cd62d-8e3c-48f8-bfbf-5c9fa53cea2c"
+path = "kairos_engine/src/kairos_editor/project_path_tree/test.rs"
+
+[[entries]]
 guid = "110ace3a-0e54-4d65-83d1-ab835821c742"
 path = "kairos_engine/src/kairos_editor/project_path_tree/texture_path.rs"
 
@@ -1055,6 +1167,10 @@ guid = "c7f34c03-ed96-4302-a0d1-7cd50e283f59"
 path = "kairos_engine/src/kairos_editor/ui/docking_tab/dock_state/tree/node.rs"
 
 [[entries]]
+guid = "f9522b4d-af54-4be4-a610-564157b2d67c"
+path = "kairos_engine/src/kairos_editor/ui/docking_tab/dock_state/tree/test.rs"
+
+[[entries]]
 guid = "1c495e24-93ba-4aca-8b5e-00bda3bd13a3"
 path = "kairos_engine/src/kairos_editor/ui/docking_tab/dock_state/tree.rs"
 
@@ -1123,6 +1239,14 @@ guid = "efed0dcc-a590-4c1b-9e61-e62dab3d5681"
 path = "kairos_engine/src/kairos_editor/ui/inspector"
 
 [[entries]]
+guid = "7cd67a20-c3db-418f-831f-3a79b29d1c48"
+path = "kairos_engine/src/kairos_editor/ui/inspector/audio"
+
+[[entries]]
+guid = "9fe55001-62e4-450b-8ce4-f280b1282066"
+path = "kairos_engine/src/kairos_editor/ui/inspector/audio/test.rs"
+
+[[entries]]
 guid = "bc13fce2-cb81-4b69-8228-b3ab20f3446f"
 path = "kairos_engine/src/kairos_editor/ui/inspector/audio.rs"
 
@@ -1145,6 +1269,14 @@ path = "kairos_engine/src/kairos_editor/ui/inspector/document.rs"
 [[entries]]
 guid = "977b6f6d-1ee2-46c6-b406-7728c87cad63"
 path = "kairos_engine/src/kairos_editor/ui/inspector/font.rs"
+
+[[entries]]
+guid = "44c633f2-f56b-472f-97e1-d500ee0f6693"
+path = "kairos_engine/src/kairos_editor/ui/inspector/material"
+
+[[entries]]
+guid = "8b423566-7ef4-46db-aa69-0393fe5310da"
+path = "kairos_engine/src/kairos_editor/ui/inspector/material/test.rs"
 
 [[entries]]
 guid = "8454fb8d-69ee-4e67-ab47-cd2f11897d5d"
@@ -1367,6 +1499,14 @@ guid = "53d9edda-097b-427f-9043-89689d4bed42"
 path = "kairos_engine/src/math/consts.rs"
 
 [[entries]]
+guid = "13e273bc-bce2-485f-9ff9-d083d557af76"
+path = "kairos_engine/src/math/matrix"
+
+[[entries]]
+guid = "73e4c244-98fd-4374-9cbe-4565dacd208a"
+path = "kairos_engine/src/math/matrix/test.rs"
+
+[[entries]]
 guid = "0b400b52-59e1-4ca5-8cbf-cde33174ef76"
 path = "kairos_engine/src/math/matrix.rs"
 
@@ -1393,6 +1533,10 @@ path = "kairos_engine/src/math/vec"
 [[entries]]
 guid = "0fd059df-bc77-48dc-a084-8916ae9eb6c8"
 path = "kairos_engine/src/math/vec/converts.rs"
+
+[[entries]]
+guid = "3e83594b-3d02-463e-bdde-f98f8bcb0c77"
+path = "kairos_engine/src/math/vec/test.rs"
 
 [[entries]]
 guid = "a1e6555b-da6d-4fac-9800-b23276f69ba2"

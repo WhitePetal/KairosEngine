@@ -79,7 +79,7 @@ impl AudioEngine {
 
         // update backgroun
         let background = world.query_mut::<&mut BackgroundAudio>().into_iter().next();
-        if let Some(background) = background {
+        if let Some(mut background) = background {
             match background.state {
                 AudioState::Created => {
                     if background.auto_play {

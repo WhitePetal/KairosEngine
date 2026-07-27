@@ -14,7 +14,7 @@ use petgraph::graph::{Node, NodeIndex};
 
 use crate::{
     ecs::{
-        change_detection::{ComponentTicks, Tick},
+        change_detection::{ComponentTicks, Mut, Ref, Tick},
         component::Component,
         entity::Entity,
         sparse_set::{NoSuchId, SparseSet},
@@ -141,11 +141,24 @@ impl Query for Entity {
 
 unsafe impl<T> QueryShared for &'_ T {}
 
-pub struct FetchRead<T>(NonNull<T>);
+pub struct FetchRead<T> {
+    data: NonNull<T>,
+    /// 指向组件列 ticks 数组起始位置的只读指针
+    ticks: *const ComponentTicks,
+    /// 系统上次运行时的 tick
+    last_run: Tick,
+    /// 系统本次运行时的 tick
+    this_run: Tick,
+}
 
 impl<T> Clone for FetchRead<T> {
     fn clone(&self) -> Self {
-        Self(self.0)
+        Self {
+            data: self.data,
+            ticks: self.ticks,
+            last_run: self.last_run,
+            this_run: self.this_run,
+        }
     }
 }
 
@@ -154,7 +167,12 @@ unsafe impl<T: Component> Fetch for FetchRead<T> {
     type State = usize;
 
     fn dangling() -> Self {
-        Self(NonNull::dangling())
+        Self {
+            data: NonNull::dangling(),
+            ticks: std::ptr::null(),
+            last_run: Tick::MIN,
+            this_run: Tick::MIN,
+        }
     }
 
     fn access(table: &Table) -> Option<Access> {
@@ -174,7 +192,21 @@ unsafe impl<T: Component> Fetch for FetchRead<T> {
     }
 
     fn execute(table: &Table, state: Self::State) -> Self {
-        unsafe { Self(table.get_base(state)) }
+        unsafe {
+            Self {
+                data: table.get_base(state),
+                ticks: table
+                    .get_ticks_base_ptr::<T>()
+                    .unwrap_or(std::ptr::null()),
+                last_run: Tick::MIN,
+                this_run: Tick::MIN,
+            }
+        }
+    }
+
+    fn inject_ticks(&mut self, last_run: Tick, this_run: Tick) {
+        self.last_run = last_run;
+        self.this_run = this_run;
     }
 
     fn release(table: &Table, state: Self::State) {
@@ -188,19 +220,34 @@ unsafe impl<T: Component> Fetch for FetchRead<T> {
 }
 
 impl<T: Component> Query for &'_ T {
-    type Item<'q> = &'q T;
+    type Item<'q> = Ref<'q, T>;
 
     type Fetch = FetchRead<T>;
 
     unsafe fn get<'q>(fetch: &Self::Fetch, n: usize) -> Self::Item<'q> {
-        unsafe { &*fetch.0.as_ptr().add(n) }
+        unsafe {
+            Ref {
+                value: &*fetch.data.as_ptr().add(n),
+                ticks: if fetch.ticks.is_null() {
+                    None
+                } else {
+                    Some(&*fetch.ticks.add(n))
+                },
+                last_run: fetch.last_run,
+                this_run: fetch.this_run,
+            }
+        }
     }
 }
 
 pub struct FetchWrite<T> {
     data: NonNull<T>,
+    /// 指向组件列 ticks 数组起始位置的可变指针
     ticks_base: *mut ComponentTicks,
-    world_tick: u32,
+    /// 系统上次运行时的 tick
+    last_run: Tick,
+    /// 系统本次运行时的 tick
+    this_run: Tick,
 }
 
 impl<T> Clone for FetchWrite<T> {
@@ -208,7 +255,8 @@ impl<T> Clone for FetchWrite<T> {
         Self {
             data: self.data,
             ticks_base: self.ticks_base,
-            world_tick: self.world_tick,
+            last_run: self.last_run,
+            this_run: self.this_run,
         }
     }
 }
@@ -221,7 +269,8 @@ unsafe impl<T: Component> Fetch for FetchWrite<T> {
         Self {
             data: NonNull::dangling(),
             ticks_base: std::ptr::null_mut(),
-            world_tick: 0,
+            last_run: Tick::MIN,
+            this_run: Tick::MIN,
         }
     }
 
@@ -248,13 +297,15 @@ unsafe impl<T: Component> Fetch for FetchWrite<T> {
                 ticks_base: table
                     .get_ticks_base_mut_ptr_unsafe::<T>()
                     .unwrap_or(std::ptr::null_mut()),
-                world_tick: 0, // will be set via inject_ticks
+                last_run: Tick::MIN,
+                this_run: Tick::MIN,
             }
         }
     }
 
-    fn inject_ticks(&mut self, _last_run: Tick, this_run: Tick) {
-        self.world_tick = this_run.0;
+    fn inject_ticks(&mut self, last_run: Tick, this_run: Tick) {
+        self.last_run = last_run;
+        self.this_run = this_run;
     }
 
     fn release(table: &Table, state: Self::State) {
@@ -268,18 +319,23 @@ unsafe impl<T: Component> Fetch for FetchWrite<T> {
 }
 
 impl<T: Component> Query for &'_ mut T {
-    type Item<'q> = &'q mut T;
+    type Item<'q> = Mut<'q, T>;
 
     type Fetch = FetchWrite<T>;
 
     unsafe fn get<'q>(fetch: &Self::Fetch, n: usize) -> Self::Item<'q> {
-        // 标记该行为已修改（仅更新 changed tick，保留 added tick）
         unsafe {
-            if !fetch.ticks_base.is_null() {
-                (*fetch.ticks_base.add(n)).set_changed(Tick(fetch.world_tick));
-            }
+            Mut::new(
+                &mut *fetch.data.as_ptr().add(n),
+                if fetch.ticks_base.is_null() {
+                    None
+                } else {
+                    Some(&mut *fetch.ticks_base.add(n))
+                },
+                fetch.last_run,
+                fetch.this_run,
+            )
         }
-        unsafe { &mut *fetch.data.as_ptr().add(n) }
     }
 }
 

@@ -221,7 +221,7 @@ impl Drawer for GameWindow {
             )),
         );
 
-        if let Some((transform, camera)) = engine
+        if let Some((transform, mut camera)) = engine
             .world
             .query_mut::<(&Transform, &mut Camera)>()
             .into_iter()

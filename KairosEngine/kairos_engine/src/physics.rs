@@ -93,7 +93,7 @@ impl PhysicsEngine {
             self.accumulator -= FIXED_DT;
         }
 
-        for (transform, rigid_body) in word.query_mut::<(&mut Transform, &RigidBody)>().into_iter()
+        for (mut transform, rigid_body) in word.query_mut::<(&mut Transform, &RigidBody)>().into_iter()
         {
             let rigid_body = &self.rigid_body_set[rigid_body.handle];
             transform.position = rigid_body.translation().into();
