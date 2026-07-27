@@ -1,5 +1,6 @@
 pub mod batch;
 pub mod borrow;
+pub mod change_detection;
 pub mod component;
 pub mod component_tuple;
 pub mod consts;
@@ -13,3 +14,5 @@ pub mod table_graph;
 pub mod take;
 
 pub mod world;
+
+pub use component_tuple::{Added, Changed};

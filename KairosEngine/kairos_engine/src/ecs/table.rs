@@ -8,8 +8,8 @@ use std::{
 
 use crate::{
     ecs::{
-        borrow::AtomicBorrow, component::Component, consts, entity::Entity, id::Id,
-        sparse_set::SparseSet,
+        borrow::AtomicBorrow, change_detection::ComponentTicks, component::Component, consts,
+        entity::Entity, id::Id, sparse_set::SparseSet,
     },
     types::OrderedTypeIdMap,
 };
@@ -20,6 +20,20 @@ use crate::{
 pub struct ComponentColum {
     data: NonNull<u8>,
     state: AtomicBorrow,
+    /// 每行存储的组件变更 tick（`ComponentTicks`）。长度始终与行数相同。
+    pub ticks: Vec<ComponentTicks>,
+}
+
+impl ComponentColum {
+    /// 设置指定行的 `ComponentTicks`。
+    pub fn set_ticks(&mut self, row: usize, ticks: ComponentTicks) {
+        self.ticks[row] = ticks;
+    }
+
+    /// 设置指定行的 `changed` tick（保留 `added` 不变）。
+    pub fn set_changed_tick(&mut self, row: usize, tick: crate::ecs::change_detection::Tick) {
+        self.ticks[row].set_changed(tick);
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -126,6 +140,7 @@ impl Table {
                 // 将 max_align 转为 地址值(指针)，该地址一定基于 max_align 对齐 (addr(max_align) % max_align == 0)
                 data: NonNull::new(max_align as *mut u8).unwrap(),
                 state: AtomicBorrow::new(),
+                ticks: Vec::new(),
             })
             .collect();
 
@@ -158,6 +173,9 @@ impl Table {
             }
         }
         self.len = 0;
+        for colum in &mut self.colums {
+            colum.ticks.clear();
+        }
     }
 
     /// 创建一个实体行
@@ -171,6 +189,10 @@ impl Table {
         self.entitiy_infos.insert(entity, EntityInfo { row_index });
         self.entities[row_index] = entity;
         self.len = row_index + 1;
+        // 为新行初始化 ticks（用默认值表示从未修改过）
+        for colum in &mut self.colums {
+            colum.ticks.push(ComponentTicks::default());
+        }
         row_index
     }
 
@@ -213,9 +235,13 @@ impl Table {
                         }
                     }
                 };
+                let mut ticks = old_colum.ticks.clone();
+                // 只预留容量，不改变长度（实际元素由 allocate_entity 的 push 添加）
+                ticks.reserve(increment);
                 ComponentColum {
                     data: storage,
                     state: AtomicBorrow::new(),
+                    ticks,
                 }
             })
             .collect::<Box<[_]>>();
@@ -249,7 +275,7 @@ impl Table {
             Some(entity_info) => {
                 let row_index = entity_info.row_index;
                 let swap = row_index != end;
-                for (info, colum) in self.types.iter().zip(&self.colums) {
+                for (info, colum) in self.types.iter().zip(&mut self.colums) {
                     unsafe {
                         let layout_size = info.layout.size();
                         let removed = colum.data.as_ptr().add(row_index * layout_size);
@@ -259,6 +285,7 @@ impl Table {
                         if swap {
                             let moved = colum.data.as_ptr().add(end * layout_size);
                             ptr::copy_nonoverlapping(moved, removed, layout_size);
+                            colum.ticks.swap(row_index, end);
                         }
                     }
                 }
@@ -300,7 +327,29 @@ impl Table {
         }
     }
 
-    pub fn put_dynamic(&mut self, component: *mut u8, info: &ComponentTypeInfo, row_index: usize) {
+    pub fn get_tick_dynamic(&self, info: &ComponentTypeInfo, row_index: usize) -> ComponentTicks {
+        let colum_index = *self.colum_indexs.get(&info.type_id).unwrap();
+        self.colums[colum_index].ticks[row_index]
+    }
+
+    /// 通过 `ComponentTypeInfo` 设置指定行的 `ComponentTicks`
+    pub fn set_tick_dynamic(
+        &mut self,
+        info: &ComponentTypeInfo,
+        row_index: usize,
+        ticks: ComponentTicks,
+    ) {
+        let colum_index = *self.colum_indexs.get(&info.type_id).unwrap();
+        self.colums[colum_index].ticks[row_index] = ticks;
+    }
+
+    pub fn put_dynamic(
+        &mut self,
+        component: *mut u8,
+        info: &ComponentTypeInfo,
+        row_index: usize,
+        ticks: ComponentTicks,
+    ) {
         unsafe {
             let ptr = self
                 .get_dynamice(info, row_index)
@@ -309,22 +358,27 @@ impl Table {
                 .cast::<u8>();
             ptr::copy_nonoverlapping(component, ptr, info.layout.size());
         }
+        let colum_index = *self.colum_indexs.get(&info.type_id).unwrap();
+        self.colums[colum_index].ticks[row_index] = ticks;
     }
 
     /// 把 row_index 行数据通过 f 写入目标
-    pub fn move_to<F: FnMut(*mut u8, &ComponentTypeInfo) -> ()>(
+    /// 闭包参数为 (数据指针, `ComponentTicks`, 组件类型信息)
+    pub fn move_to<F: FnMut(*mut u8, ComponentTicks, &ComponentTypeInfo) -> ()>(
         &mut self,
         row_index: usize,
         mut f: F,
     ) -> Option<Entity> {
         let last = self.len - 1;
-        for (info, colum) in self.types.iter().zip(&self.colums) {
+        for (info, colum) in self.types.iter().zip(&mut self.colums) {
             unsafe {
                 let moved_out = colum.data.as_ptr().add(row_index * info.layout.size());
-                (f)(moved_out, info);
+                let tick = colum.ticks[row_index];
+                (f)(moved_out, tick, info);
                 if row_index != last {
                     let moved = colum.data.as_ptr().add(last * info.layout.size());
                     ptr::copy_nonoverlapping(moved, moved_out, info.layout.size());
+                    colum.ticks.swap(row_index, last);
                 }
             }
         }
@@ -360,13 +414,14 @@ impl Table {
     /// 把 'other' Table 合并入当前Table (other 的数据 push 到当前table后面)
     pub fn merge(&mut self, mut other: Table) {
         self.reserve(other.row_count());
-        for ((info, dst), src) in self.types.iter().zip(&self.colums).zip(&other.colums) {
+        for ((info, dst), src) in self.types.iter().zip(&mut self.colums).zip(&other.colums) {
             unsafe {
                 dst.data
                     .as_ptr()
                     .add(info.layout.size() * self.len)
                     .copy_from_nonoverlapping(src.data.as_ptr(), other.len * info.layout.size());
             }
+            dst.ticks.extend_from_slice(&src.ticks[..other.len]);
         }
         self.len += other.len;
         other.len = 0;
@@ -432,6 +487,44 @@ impl Table {
 
     pub fn is_emptry(&self) -> bool {
         self.len == 0
+    }
+
+    /// 获取指定组件列在指定行的 `ComponentTicks`
+    pub fn get_tick(&self, type_id: TypeId, row_index: usize) -> ComponentTicks {
+        let colum_index = *self.colum_indexs.get(&type_id).unwrap();
+        self.colums[colum_index].ticks[row_index]
+    }
+
+    /// 获取指定组件列的 ticks 切片（只读）
+    pub fn get_ticks_slice<T: Component>(&self) -> Option<&[ComponentTicks]> {
+        let state = self.get_state::<T>()?;
+        Some(&self.colums[state].ticks[..self.len])
+    }
+
+    /// 获取指定组件列的 ticks 基地址（用于查询过滤器的快速路径）
+    pub fn get_ticks_base_ptr<T: Component>(&self) -> Option<*const ComponentTicks> {
+        let state = self.get_state::<T>()?;
+        Some(self.colums[state].ticks.as_ptr())
+    }
+
+    /// 获取指定组件列的 ticks 可变基地址
+    pub fn get_ticks_base_mut_ptr<T: Component>(&mut self) -> Option<*mut ComponentTicks> {
+        let state = self.get_state::<T>()?;
+        Some(self.colums[state].ticks.as_mut_ptr())
+    }
+
+    /// 获取指定组件列的 ticks 可变基地址（通过 `&self`，返回 `*mut ComponentTicks`）。
+    /// `&self` 的方式可以通过行级过滤时的 `execute` 调用（exeucte 只接受 `&Table`）。
+    /// # Safety
+    /// 调用者必须确保该指针不会被用于违反别名规则的操作。
+    pub unsafe fn get_ticks_base_mut_ptr_unsafe<T: Component>(&self) -> Option<*mut ComponentTicks> {
+        let state = self.get_state::<T>()?;
+        Some(self.colums[state].ticks.as_ptr() as *mut ComponentTicks)
+    }
+
+    /// 获取列的数量（用于迭代）
+    pub fn colums_len(&self) -> usize {
+        self.colums.len()
     }
 }
 

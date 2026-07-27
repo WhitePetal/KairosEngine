@@ -14,6 +14,7 @@ use petgraph::graph::{Node, NodeIndex};
 
 use crate::{
     ecs::{
+        change_detection::{ComponentTicks, Tick},
         component::Component,
         entity::Entity,
         sparse_set::{NoSuchId, SparseSet},
@@ -61,6 +62,19 @@ pub unsafe trait Fetch: Clone + Sized + 'static {
 
     /// 用于编译期检查，检查Fetch中的所有借用关系
     fn for_each_borrow<F: FnMut(TypeId, bool)>(f: F);
+
+    /// 在 prepare 之后额外注入运行时信息（如世界 tick）。默认无操作。
+    #[inline]
+    fn inject_prepared_state(_state: &mut Self::State, _world_tick: u32) {}
+
+    /// 行级过滤器。返回 `true` 表示该行应被包含在结果中。
+    ///
+    /// 默认实现包含所有行。`Changed<T>`/`Added<T>` 等过滤器通过
+    /// 重写此方法实现零开销行级过滤，无需装箱。
+    #[inline]
+    fn filter_fetch(&self, _row: usize) -> bool {
+        true
+    }
 }
 
 /// 从[`World`](crate::ecs::world::World)获取的组件类型集合
@@ -178,19 +192,32 @@ impl<T: Component> Query for &'_ T {
     }
 }
 
-pub struct FetchWrite<T>(NonNull<T>);
+pub struct FetchWrite<T> {
+    data: NonNull<T>,
+    ticks_base: *mut ComponentTicks,
+    world_tick: u32,
+}
 
 impl<T> Clone for FetchWrite<T> {
     fn clone(&self) -> Self {
-        Self(self.0)
+        Self {
+            data: self.data,
+            ticks_base: self.ticks_base,
+            world_tick: self.world_tick,
+        }
     }
 }
 
 unsafe impl<T: Component> Fetch for FetchWrite<T> {
-    type State = usize;
+    /// (column_index, world_tick)
+    type State = (usize, u32);
 
     fn dangling() -> Self {
-        Self(NonNull::dangling())
+        Self {
+            data: NonNull::dangling(),
+            ticks_base: std::ptr::null_mut(),
+            world_tick: 0,
+        }
     }
 
     fn access(table: &Table) -> Option<Access> {
@@ -202,19 +229,33 @@ unsafe impl<T: Component> Fetch for FetchWrite<T> {
     }
 
     fn borrow(table: &Table, state: Self::State) {
-        table.borrow_mut::<T>(state);
+        table.borrow_mut::<T>(state.0);
     }
 
     fn prepare(table: &Table) -> Option<Self::State> {
-        table.get_state::<T>()
+        let col = table.get_state::<T>()?;
+        Some((col, 0))
+    }
+
+    fn inject_prepared_state(state: &mut Self::State, world_tick: u32) {
+        state.1 = world_tick;
     }
 
     fn execute(table: &Table, state: Self::State) -> Self {
-        unsafe { Self(table.get_base::<T>(state)) }
+        let (col, world_tick) = state;
+        unsafe {
+            Self {
+                data: table.get_base::<T>(col),
+                ticks_base: table
+                    .get_ticks_base_mut_ptr_unsafe::<T>()
+                    .unwrap_or(std::ptr::null_mut()),
+                world_tick,
+            }
+        }
     }
 
     fn release(table: &Table, state: Self::State) {
-        table.release_mut::<T>(state);
+        table.release_mut::<T>(state.0);
     }
 
     fn for_each_borrow<F: FnMut(TypeId, bool)>(mut f: F) {
@@ -229,7 +270,13 @@ impl<T: Component> Query for &'_ mut T {
     type Fetch = FetchWrite<T>;
 
     unsafe fn get<'q>(fetch: &Self::Fetch, n: usize) -> Self::Item<'q> {
-        unsafe { &mut *fetch.0.as_ptr().add(n) }
+        // 标记该行为已修改（仅更新 changed tick，保留 added tick）
+        unsafe {
+            if !fetch.ticks_base.is_null() {
+                (*fetch.ticks_base.add(n)).set_changed(Tick(fetch.world_tick));
+            }
+        }
+        unsafe { &mut *fetch.data.as_ptr().add(n) }
     }
 }
 
@@ -271,6 +318,12 @@ unsafe impl<T: Fetch> Fetch for TryFetch<T> {
 
     fn for_each_borrow<F: FnMut(TypeId, bool)>(f: F) {
         T::for_each_borrow(f);
+    }
+
+    fn inject_prepared_state(state: &mut Self::State, world_tick: u32) {
+        if let Some(st) = state.as_mut() {
+            T::inject_prepared_state(st, world_tick);
+        }
     }
 }
 
@@ -402,6 +455,17 @@ unsafe impl<L: Fetch, R: Fetch> Fetch for FetchOr<L, R> {
         L::for_each_borrow(&mut f);
         R::for_each_borrow(&mut f);
     }
+
+    fn inject_prepared_state(state: &mut Self::State, world_tick: u32) {
+        match state {
+            Or::Left(l) => L::inject_prepared_state(l, world_tick),
+            Or::Right(r) => R::inject_prepared_state(r, world_tick),
+            Or::Both(l, r) => {
+                L::inject_prepared_state(l, world_tick);
+                R::inject_prepared_state(r, world_tick);
+            }
+        }
+    }
 }
 
 impl<L: Query, R: Query> Query for Or<L, R> {
@@ -469,6 +533,10 @@ unsafe impl<F: Fetch, G: Fetch> Fetch for FetchWithout<F, G> {
     fn for_each_borrow<FF: FnMut(TypeId, bool)>(f: FF) {
         F::for_each_borrow(f);
     }
+
+    fn inject_prepared_state(state: &mut Self::State, world_tick: u32) {
+        F::inject_prepared_state(state, world_tick);
+    }
 }
 
 impl<Q: Query, R: Query> Query for Without<Q, R> {
@@ -528,6 +596,10 @@ unsafe impl<F: Fetch, G: Fetch> Fetch for FetchWith<F, G> {
     fn for_each_borrow<FF: FnMut(TypeId, bool)>(f: FF) {
         F::for_each_borrow(f);
     }
+
+    fn inject_prepared_state(state: &mut Self::State, world_tick: u32) {
+        F::inject_prepared_state(state, world_tick);
+    }
 }
 
 impl<Q: Query, R: Query> Query for With<Q, R> {
@@ -580,7 +652,7 @@ unsafe impl<F: Fetch> Fetch for FetchSatisfies<F> {
     fn for_each_borrow<FF: FnMut(TypeId, bool)>(_f: FF) {}
 }
 
-impl<Q: Query> Query for Satisfies<Q> {
+impl<Q: Query> Query for FetchSatisfies<Q> {
     type Item<'q> = bool;
 
     type Fetch = FetchSatisfies<Q::Fetch>;
@@ -590,23 +662,226 @@ impl<Q: Query> Query for Satisfies<Q> {
     }
 }
 
+// ============================================================================
+// Change Detection: Changed<T> / Added<T>
+// ============================================================================
+
+/// 查询本帧被修改过的 `T` 组件。
+pub struct Changed<T>(PhantomData<T>);
+unsafe impl<T: Component> QueryShared for Changed<T> {}
+
+/// 查询本帧新插入的 `T` 组件。
+pub struct Added<T>(PhantomData<T>);
+unsafe impl<T: Component> QueryShared for Added<T> {}
+
+/// [`Changed<T>`] 的 Fetch。
+///
+/// 存储组件数据指针、ticks 数组指针以及世界 tick，
+/// 在 `Query::get` 中通过 [`ChunkIter`] 的过滤机制跳过未修改的行。
+pub struct FetchChanged<T: Component> {
+    data: NonNull<T>,
+    ticks_base: *const ComponentTicks,
+    world_tick: u32,
+}
+
+impl<T: Component> Clone for FetchChanged<T> {
+    fn clone(&self) -> Self {
+        Self {
+            data: self.data,
+            ticks_base: self.ticks_base,
+            world_tick: self.world_tick,
+        }
+    }
+}
+
+unsafe impl<T: Component> Fetch for FetchChanged<T> {
+    /// (column_index, world_tick)
+    type State = (usize, u32);
+
+    fn dangling() -> Self {
+        Self {
+            data: NonNull::dangling(),
+            ticks_base: std::ptr::null(),
+            world_tick: 0,
+        }
+    }
+
+    fn access(table: &Table) -> Option<Access> {
+        if table.has_component_type::<T>() {
+            Some(Access::Read)
+        } else {
+            None
+        }
+    }
+
+    fn borrow(table: &Table, state: Self::State) {
+        table.borrow::<T>(state.0);
+    }
+
+    fn prepare(table: &Table) -> Option<Self::State> {
+        let col = table.get_state::<T>()?;
+        Some((col, 0)) // world_tick will be injected
+    }
+
+    fn inject_prepared_state(state: &mut Self::State, world_tick: u32) {
+        state.1 = world_tick;
+    }
+
+    fn execute(table: &Table, state: Self::State) -> Self {
+        let (col, world_tick) = state;
+        unsafe {
+            Self {
+                data: table.get_base::<T>(col),
+                ticks_base: table.get_ticks_base_ptr::<T>().unwrap_or(std::ptr::null()),
+                world_tick,
+            }
+        }
+    }
+
+    fn release(table: &Table, state: Self::State) {
+        table.release::<T>(state.0);
+    }
+
+    fn for_each_borrow<F: FnMut(TypeId, bool)>(mut f: F) {
+        f(TypeId::of::<T>(), false);
+    }
+
+    fn filter_fetch(&self, row: usize) -> bool {
+        if self.ticks_base.is_null() {
+            return true;
+        }
+        unsafe {
+            (*self.ticks_base.add(row))
+                .is_changed(Tick(self.world_tick - 1), Tick(self.world_tick))
+        }
+    }
+}
+
+impl<T: Component> Query for Changed<T> {
+    type Item<'q> = &'q T;
+    type Fetch = FetchChanged<T>;
+
+    unsafe fn get<'q>(fetch: &Self::Fetch, n: usize) -> Self::Item<'q> {
+        unsafe { &*fetch.data.as_ptr().add(n) }
+    }
+}
+
+/// [`Added<T>`] 的 Fetch，逻辑与 [`FetchChanged`] 相同——
+/// 在单 tick 系统中插入和修改都设置 tick = world_tick。
+pub struct FetchAdded<T: Component> {
+    data: NonNull<T>,
+    ticks_base: *const ComponentTicks,
+    world_tick: u32,
+}
+
+impl<T: Component> Clone for FetchAdded<T> {
+    fn clone(&self) -> Self {
+        Self {
+            data: self.data,
+            ticks_base: self.ticks_base,
+            world_tick: self.world_tick,
+        }
+    }
+}
+
+unsafe impl<T: Component> Fetch for FetchAdded<T> {
+    type State = (usize, u32);
+
+    fn dangling() -> Self {
+        Self {
+            data: NonNull::dangling(),
+            ticks_base: std::ptr::null(),
+            world_tick: 0,
+        }
+    }
+
+    fn access(table: &Table) -> Option<Access> {
+        if table.has_component_type::<T>() {
+            Some(Access::Read)
+        } else {
+            None
+        }
+    }
+
+    fn borrow(table: &Table, state: Self::State) {
+        table.borrow::<T>(state.0);
+    }
+
+    fn prepare(table: &Table) -> Option<Self::State> {
+        let col = table.get_state::<T>()?;
+        Some((col, 0))
+    }
+
+    fn inject_prepared_state(state: &mut Self::State, world_tick: u32) {
+        state.1 = world_tick;
+    }
+
+    fn execute(table: &Table, state: Self::State) -> Self {
+        let (col, world_tick) = state;
+        unsafe {
+            Self {
+                data: table.get_base::<T>(col),
+                ticks_base: table.get_ticks_base_ptr::<T>().unwrap_or(std::ptr::null()),
+                world_tick,
+            }
+        }
+    }
+
+    fn release(table: &Table, state: Self::State) {
+        table.release::<T>(state.0);
+    }
+
+    fn for_each_borrow<F: FnMut(TypeId, bool)>(mut f: F) {
+        f(TypeId::of::<T>(), false);
+    }
+
+    fn filter_fetch(&self, row: usize) -> bool {
+        if self.ticks_base.is_null() {
+            return true;
+        }
+        unsafe {
+            (*self.ticks_base.add(row))
+                .is_added(Tick(self.world_tick - 1), Tick(self.world_tick))
+        }
+    }
+}
+
+impl<T: Component> Query for Added<T> {
+    type Item<'q> = &'q T;
+    type Fetch = FetchAdded<T>;
+
+    unsafe fn get<'q>(fetch: &Self::Fetch, n: usize) -> Self::Item<'q> {
+        unsafe { &*fetch.data.as_ptr().add(n) }
+    }
+}
+
 pub type QueryCache = RwLock<TypeIdMap<Arc<dyn Any + Send + Sync>>>;
 
 struct CachedQueryInner<F: Fetch> {
     states: Box<[(usize, F::State)]>,
     // 当有新建表时，需要更新查找缓存，因为新建的表可能也满足查找条件
     table_graph_generation: TableGraphGeneration,
+    /// 创建缓存时的世界 tick，用于检测缓存是否因 tick 递增而过期
+    world_tick: Tick,
 }
 
 impl<F: Fetch> CachedQueryInner<F> {
     fn new(world: &World) -> Self {
+        let world_tick = world.change_tick();
+        let world_tick_u32 = world_tick.0;
+        let states: Box<[(usize, F::State)]> = world
+            .table_graph_iter()
+            .enumerate()
+            .filter_map(|(idx, x)| {
+                let mut state = F::prepare(&x.weight)?;
+                F::inject_prepared_state(&mut state, world_tick_u32);
+                Some((idx, state))
+            })
+            .collect();
         Self {
-            states: world
-                .table_graph_iter()
-                .enumerate()
-                .filter_map(|(idx, x)| F::prepare(&x.weight).map(|state| (idx, state)))
-                .collect(),
+            states,
             table_graph_generation: world.table_graph_generation(),
+            world_tick,
         }
     }
 }
@@ -617,13 +892,16 @@ pub struct CachedQuery<F: Fetch> {
 
 impl<F: Fetch> CachedQuery<F> {
     pub fn get(world: &World) -> Self {
+        let world_tick = world.change_tick();
         let existing_cache = world
             .query_cache()
             .read()
             .unwrap()
             .get(&TypeId::of::<F>())
             .map(|x| Arc::downcast::<CachedQueryInner<F>>(x.clone()).unwrap())
-            .filter(|x| x.table_graph_generation == world.table_graph_generation());
+            .filter(|x| {
+                x.table_graph_generation == world.table_graph_generation() && x.world_tick == world_tick
+            });
 
         let inner = existing_cache.unwrap_or_else(
             // 告诉编译器这个闭包属于冷路径代码
@@ -638,7 +916,9 @@ impl<F: Fetch> CachedQuery<F> {
                 let cached = match entry {
                     Entry::Occupied(mut e) => {
                         let value = Arc::downcast::<CachedQueryInner<F>>(e.get().clone()).unwrap();
-                        match value.table_graph_generation == world.table_graph_generation() {
+                        match value.table_graph_generation == world.table_graph_generation()
+                            && value.world_tick == world_tick
+                        {
                             true => value,
                             false => {
                                 let fresh = Arc::new(CachedQueryInner::<F>::new(world));
@@ -921,16 +1201,26 @@ impl<Q: Query> ChunkIter<Q> {
     }
 
     unsafe fn next<'a>(&mut self) -> Option<Q::Item<'a>> {
-        if self.position == self.len {
-            return None;
+        while self.position < self.len {
+            if !self.fetch.filter_fetch(self.position) {
+                self.position += 1;
+                continue;
+            }
+            let item = unsafe { Q::get(&self.fetch, self.position) };
+            self.position += 1;
+            return Some(item);
         }
-        let item = unsafe { Q::get(&self.fetch, self.position) };
-        self.position = self.position + 1;
-        Some(item)
+        None
     }
 
     fn remaining(&self) -> usize {
-        self.len - self.position
+        let mut count = 0;
+        for i in self.position..self.len {
+            if self.fetch.filter_fetch(i) {
+                count += 1;
+            }
+        }
+        count
     }
 }
 
@@ -1717,6 +2007,12 @@ macro_rules! tuple_impl {
             #[allow(unused_variables, unused_mut, clippy::unused_unit)]
             fn for_each_borrow<__F: FnMut(TypeId, bool)>(mut f: __F) {
                 $($name::for_each_borrow(&mut f);)*
+            }
+
+            #[allow(unused_variables, non_snake_case, clippy::unused_unit)]
+            fn inject_prepared_state(state: &mut Self::State, world_tick: u32) {
+                let ($($name,)*) = state;
+                $($name::inject_prepared_state($name, world_tick);)*
             }
         }
 

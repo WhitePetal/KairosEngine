@@ -23,10 +23,3 @@ Five canonical labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-f
 Single-context layout: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
 
 ### Testing after implementation
-
-After implementing a feature or fixing a bug, always verify correctness through tests. Use the `kairos-test` skill (`.agents/skills/kairos-test/SKILL.md`) to decide the right test strategy:
-
-- **Rust integration tests** (`kairos_engine/tests/integration/`) — for data/logic validation that doesn't need the engine loop or GPU.
-- **Kairos Test Harness TOML tests** (`tests/runtime/`) — for runtime interactions (GPU, egui, physics, ECS scheduling, input paths) that can't be exercised by `cargo test`.
-
-If the test harness lacks a needed command, assertion, or input type, extend it first (see the skill for extension points), then write the TOML test.

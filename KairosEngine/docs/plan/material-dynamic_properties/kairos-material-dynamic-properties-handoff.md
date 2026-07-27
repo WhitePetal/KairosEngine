@@ -25,11 +25,11 @@
 | 文档 | 路径 |
 |------|------|
 | 设计案索引 | `docs/plan/material-dynamic-properties.md` |
-| 需求分析 | `docs/adr/material-dynamic-properties/phase1-requirements.md` |
+| 需求分析 | `docs/plan/material-dynamic-properties/phase1-requirements.md` |
 | 竞品调研 | `docs/research/material-dynamic-properties-competitor-analysis.md` |
-| 功能分析 | `docs/adr/material-dynamic-properties/phase3-functional-analysis.md` |
-| 技术选型 | `docs/adr/material-dynamic-properties/phase4-tech-decisions.md` |
-| 实现排期 | `docs/adr/material-dynamic-properties/phase5-implementation-plan.md` |
+| 功能分析 | `docs/plan/material-dynamic-properties/phase3-functional-analysis.md` |
+| 技术选型 | `docs/plan/material-dynamic-properties/phase4-tech-decisions.md` |
+| 实现排期 | `docs/plan/material-dynamic-properties/phase5-implementation-plan.md` |
 
 ## 核心技术决策速查
 

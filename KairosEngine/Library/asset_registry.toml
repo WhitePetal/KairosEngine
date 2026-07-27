@@ -451,6 +451,10 @@ guid = "a16f8e0a-0d52-4035-b585-7c8ed8feb90f"
 path = "docs/research"
 
 [[entries]]
+guid = "1a11db3e-738a-4b0c-848c-166ae354d42f"
+path = "docs/research/3a-sky-rendering.md"
+
+[[entries]]
 guid = "b60f8c47-3969-416a-8452-e6518edda222"
 path = "docs/research/README.md"
 
@@ -477,6 +481,10 @@ path = "docs/research/hierarchy/ue-outliner.md"
 [[entries]]
 guid = "edc039bf-0297-4702-89d5-e679c45786dd"
 path = "docs/research/hierarchy/unity-hierarchy.md"
+
+[[entries]]
+guid = "9482935d-151c-454b-94ec-4c52f2ba1182"
+path = "docs/research/material-dynamic-properties-competitor-analysis.md"
 
 [[entries]]
 guid = "da13c85e-4ef3-464e-96b9-5ac86a948494"
@@ -867,6 +875,10 @@ guid = "561c4251-f256-4645-903d-f118efcbb971"
 path = "kairos_engine/src/graphics/texture/format"
 
 [[entries]]
+guid = "95515768-c1e0-470c-88ef-1f907112b599"
+path = "kairos_engine/src/graphics/texture/format/astc.rs"
+
+[[entries]]
 guid = "f578faef-91f3-442d-898d-d2793f169eb3"
 path = "kairos_engine/src/graphics/texture/format/bc.rs"
 
@@ -877,6 +889,14 @@ path = "kairos_engine/src/graphics/texture/format/bc6h.rs"
 [[entries]]
 guid = "b4015200-1e73-4b49-ab97-773d5d6b3729"
 path = "kairos_engine/src/graphics/texture/format/bc7.rs"
+
+[[entries]]
+guid = "a8de317e-75e2-4fd6-b91a-30da7468912c"
+path = "kairos_engine/src/graphics/texture/format/etc"
+
+[[entries]]
+guid = "a6082f36-483a-4be1-87a2-ca7ba45e58ee"
+path = "kairos_engine/src/graphics/texture/format/etc/test.rs"
 
 [[entries]]
 guid = "ffa3f829-28c5-453b-9377-8568834d8ef0"

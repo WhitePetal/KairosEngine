@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use kairos_engine::asset_loader::assets::{AssetsServer, SerializedMaterialAssetsSystem};
+use crate::asset_loader::assets::{AssetsServer, SerializedMaterialAssetsSystem};
 
 // ============================================================
 // SerializedMaterialAssetsSystem tests

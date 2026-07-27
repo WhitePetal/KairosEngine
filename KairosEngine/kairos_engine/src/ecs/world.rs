@@ -5,13 +5,17 @@ use std::{
     hash::{BuildHasher, BuildHasherDefault, Hasher},
     ops::Add,
     ptr,
-    sync::Mutex,
+    sync::{
+        atomic::{AtomicU32, Ordering},
+        Mutex,
+    },
 };
 
 use petgraph::graph::{Node, NodeIndex};
 
 use crate::ecs::{
     batch::ColumBatch,
+    change_detection::{ComponentTicks, Tick},
     component::{Component, ComponentError, MissingComponent},
     component_tuple::{
         CachedQuery, ComponentTuple, ComponentTupleKey, DynamicComponentTuple, Fetch, Query,
@@ -122,6 +126,11 @@ pub struct World {
 
     query_cache: QueryCache,
 
+    // 变更检测：每次组件写入递增该 tick（原子计数器，支持并发读取）
+    change_tick: AtomicU32,
+    /// 上次调用 `clear_trackers()` 时的 tick，用于 track 清理。
+    last_change_tick: Tick,
+
     // 后面这里的Scene概念应该会改为Chunk概念
     // 由Game里的各个功能组件/System来做区块划分并通过类似TagComponent进行控制
     // pub scene_stroge: SceneStroge,
@@ -155,6 +164,8 @@ impl World {
             remove_edges,
             table_graph,
             query_cache: QueryCache::default(),
+            change_tick: AtomicU32::new(0),
+            last_change_tick: Tick::MIN,
             _id,
         }
     }
@@ -201,6 +212,8 @@ impl World {
         };
 
         let source_table = &mut self.table_graph[src_table];
+        // 在借用 self 之前读取 tick
+        let change_tick = Tick(self.change_tick.load(Ordering::Relaxed));
 
         // drop老表中会被覆盖更新的行
         for ty in target_ref.get_need_updates() {
@@ -212,7 +225,7 @@ impl World {
         if target_ref.get_node_index() == src_table {
             unsafe {
                 components.put(|ptr, info| {
-                    source_table.put_dynamic(ptr, &info, row_index);
+                    source_table.put_dynamic(ptr, &info, row_index, ComponentTicks::new(change_tick));
                 });
             }
             return;
@@ -227,17 +240,18 @@ impl World {
         entity_data.table_index = target_ref.get_node_index();
         entity_data.row_index = target_row_index;
 
-        // 写入components到新表
+        // 写入components到新表（新插入的组件标记为当前 tick）
         unsafe {
             components.put(|ptr, info| {
-                target_table.put_dynamic(ptr, &info, target_row_index);
+                target_table.put_dynamic(ptr, &info, target_row_index, ComponentTicks::new(change_tick));
             });
         }
 
-        // 转移需要转移的老表中的数据
+        // 转移需要转移的老表中的数据（保留原始 tick，表示该组件并非本帧修改）
         for info in target_ref.get_need_moves() {
             let src = source_table.get_dynamice(info, row_index).unwrap();
-            target_table.put_dynamic(src.as_ptr(), info, target_row_index);
+            let src_tick = source_table.get_tick_dynamic(info, row_index);
+            target_table.put_dynamic(src.as_ptr(), info, target_row_index, src_tick);
         }
 
         // remove 老表的entity，并更新这里entity data 的 row_index
@@ -283,6 +297,7 @@ impl World {
     }
 
     fn spawn_inner<T: DynamicComponentTuple>(&mut self, entity: Entity, components: T) {
+        let change_tick = Tick(self.change_tick.load(Ordering::Relaxed));
         let tables = &mut self.table_graph;
         let table_index = match components.key() {
             Some(key) => *self.tuple_to_table.entry(key).or_insert(
@@ -295,7 +310,7 @@ impl World {
         let row_index = table.allocate_entity(entity);
         unsafe {
             components.put(|ptr, info| {
-                table.put_dynamic(ptr, &info, row_index);
+                table.put_dynamic(ptr, &info, row_index, ComponentTicks::new(change_tick));
             });
         }
         self.entity_datas.insert(
@@ -358,6 +373,8 @@ impl World {
         let table_index = self.reserve_inner::<I::Item>(
             usize::try_from(upper.unwrap_or(lower)).expect("iterator too larget"),
         );
+        // 必须在借用 self 之前读取 tick
+        let change_tick = Tick(self.change_tick.load(Ordering::Relaxed));
 
         SpawnBatchIter {
             inner: iter,
@@ -365,6 +382,7 @@ impl World {
             entity_datas: &mut self.entity_datas,
             table_index,
             table: &mut self.table_graph[table_index],
+            change_tick,
         }
     }
 
@@ -500,6 +518,28 @@ impl World {
         self.entities.has(entity)
     }
 
+    /// 返回当前变更检测 tick
+    pub fn change_tick(&self) -> Tick {
+        Tick(self.change_tick.load(Ordering::Relaxed))
+    }
+
+    /// 递增变更检测 tick。通常每帧调用一次。
+    pub fn increment_tick(&mut self) {
+        self.change_tick.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// 递增变更检测 tick 并返回新值。
+    pub fn increment_change_tick(&mut self) -> Tick {
+        let prev = self.change_tick.fetch_add(1, Ordering::Relaxed);
+        Tick(prev.wrapping_add(1))
+    }
+
+    /// 推进 `last_change_tick` 到当前 `change_tick`，
+    /// 用于在当前帧结束时清除 tracker 状态。
+    pub fn clear_trackers(&mut self) {
+        self.last_change_tick = self.change_tick();
+    }
+
     /// 从实体身上移除'T'组件
     pub fn remove<T: ComponentTuple + 'static>(
         &mut self,
@@ -528,9 +568,13 @@ impl World {
                     entity_data.table_index = target;
                     entity_data.row_index = target_row_index;
                     if let Some(moved) = unsafe {
-                        source_table.move_to(old_row_index, |src, info| {
-                            if let Some(dst) = target_table.get_dynamice(info, target_row_index) {
+                        source_table.move_to(old_row_index, |src, tick, info| {
+                            if target_table.has_component_type_id(info.id()) {
+                                let dst = target_table
+                                    .get_dynamice(info, target_row_index)
+                                    .unwrap();
                                 ptr::copy_nonoverlapping(src, dst.as_ptr(), info.layout().size());
+                                target_table.set_tick_dynamic(info, target_row_index, tick);
                             }
                         })
                     } {
@@ -819,6 +863,7 @@ where
     entity_datas: &'a mut SparseSet<Entity, EntityData>,
     table_index: NodeIndex,
     table: &'a mut Table,
+    change_tick: Tick,
 }
 
 impl<I> Iterator for SpawnBatchIter<'_, I>
@@ -834,7 +879,8 @@ where
         let row_index = self.table.allocate_entity(entity);
         unsafe {
             components.put(|ptr, info| {
-                self.table.put_dynamic(ptr, &info, row_index);
+                self.table
+                    .put_dynamic(ptr, &info, row_index, ComponentTicks::new(self.change_tick));
             });
         }
         self.entity_datas.insert(
