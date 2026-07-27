@@ -10,7 +10,6 @@
 //! # Architecture
 //!
 //! - `BitReader` / `BitWriter` — bit-level I/O for 128-bit ASTC blocks
-//! - `IntegerSequenceEncoding` — ASTC's custom ISE for weight/endpoint data
 //! - Block decode: parses 128-bit headers, dequantizes, interpolates
 //! - Block encode: simple partition/endpoint selection, quantizes, packs
 //!
@@ -27,9 +26,6 @@ const MAX_TEXELS: usize = 144;
 
 /// Maximum number of weight grid texels (12×12).
 const MAX_WEIGHT_TEXELS: usize = 144;
-
-/// Number of partition patterns per partition count.
-const PARTITION_COUNT_PATTERNS: [usize; 5] = [0, 1, 64, 1024, 1024];
 
 // ============================================================
 // Bit-level I/O for 128-bit ASTC blocks
@@ -66,10 +62,6 @@ impl<'a> BitReader<'a> {
         val
     }
 
-    /// Peak at remaining bits without consuming.
-    fn remaining(&self) -> usize {
-        128 - self.pos
-    }
 }
 
 /// Writes bits into a 128-bit (16-byte) ASTC block in LSB-first order.
@@ -103,121 +95,6 @@ impl BitWriter {
 
     fn finish(self) -> [u8; 16] {
         self.data
-    }
-}
-
-// ============================================================
-// Integer Sequence Encoding (ISE)
-// ============================================================
-
-/// ISE quant method and bit count per value.
-struct IseDesc {
-    bits: usize,
-    max_val: u32,
-}
-
-/// ISE method table — indexed by method number (0..9 for LDR/HDR).
-const ISE: [IseDesc; 10] = [
-    IseDesc { bits: 1, max_val: 1 },
-    IseDesc { bits: 2, max_val: 3 },
-    IseDesc { bits: 3, max_val: 7 },
-    IseDesc { bits: 4, max_val: 15 },
-    IseDesc { bits: 5, max_val: 31 },
-    IseDesc { bits: 6, max_val: 63 },
-    IseDesc { bits: 7, max_val: 127 },
-    IseDesc { bits: 8, max_val: 255 },
-    IseDesc { bits: 9, max_val: 511 },
-    IseDesc { bits: 10, max_val: 1023 },
-];
-
-
-
-/// Decode a sequence of integers from ISE data.
-fn decode_ise(data: &[u8], offset: usize, method: usize, count: usize, output: &mut [u32]) {
-    let desc = &ISE[method];
-    let bits = desc.bits;
-    if bits <= 8 {
-        // Bounded low-bitrate encoding
-        let total_bits = count * bits;
-        let mut reader = IseBitReader::new(data, offset);
-        for i in 0..count {
-            output[i] = reader.read_bits(bits);
-        }
-        // Handle remaining bits
-        let _ = total_bits;
-    } else {
-        // High-bitrate encoding (up to 10 bits)
-        let total_bits = count * bits;
-        let mut reader = IseBitReader::new(data, offset);
-        for i in 0..count {
-            output[i] = reader.read_bits(bits);
-        }
-        let _ = total_bits;
-    }
-}
-
-/// Simple bit reader for ISE data blocks (separate from block bit reader).
-struct IseBitReader<'a> {
-    data: &'a [u8],
-    pos: usize,
-}
-
-impl<'a> IseBitReader<'a> {
-    fn new(data: &'a [u8], offset: usize) -> Self {
-        Self {
-            data,
-            pos: offset * 8,
-        }
-    }
-
-    fn read_bits(&mut self, count: usize) -> u32 {
-        if count == 0 {
-            return 0;
-        }
-        let mut val = 0u32;
-        for i in 0..count {
-            let byte = self.pos >> 3;
-            let bit = self.pos & 7;
-            self.pos += 1;
-            val |= (((self.data[byte] >> bit) & 1) as u32) << i;
-        }
-        val
-    }
-}
-
-/// Encode a sequence of integers using ISE.
-fn encode_ise(output: &mut [u8], offset: usize, method: usize, input: &[u32]) {
-    let desc = &ISE[method];
-    let bits = desc.bits;
-    let mut writer = IseBitWriter::new(output, offset);
-    for &val in input {
-        writer.write_bits(val, bits);
-    }
-}
-
-/// Simple bit writer for ISE data blocks.
-struct IseBitWriter<'a> {
-    data: &'a mut [u8],
-    pos: usize,
-}
-
-impl<'a> IseBitWriter<'a> {
-    fn new(data: &'a mut [u8], offset: usize) -> Self {
-        Self {
-            data,
-            pos: offset * 8,
-        }
-    }
-
-    fn write_bits(&mut self, val: u32, count: usize) {
-        for i in 0..count {
-            let byte = self.pos >> 3;
-            let bit = self.pos & 7;
-            if (val >> i) & 1 != 0 {
-                self.data[byte] |= 1 << bit;
-            }
-            self.pos += 1;
-        }
     }
 }
 
@@ -299,36 +176,12 @@ struct BlockMode {
     weight_w: u32,
     /// Weight grid height.
     weight_h: u32,
-    /// Weight quantization method.
-    weight_quant: u32,
     /// Weight bits per level.
     weight_bits: u32,
     /// True if dual-weight (separate weight for each endpoint pair).
     dual_plane: bool,
     /// Number of weight levels.
     weight_levels: u32,
-}
-
-/// Decode block mode from the 128-bit block.
-/// Uses a simplified mode parser focused on the modes our encoder produces.
-fn decode_block_mode(_reader: &mut BitReader, _bw: u32, _bh: u32) -> Option<BlockMode> {
-    // Our encoder always produces blocks with a 2×2 weight grid and 2-bit weights.
-    // The mode bits are consumed inline in decode_astc_block.
-    // Return the fixed configuration we always use.
-    Some(BlockMode {
-        weight_w: 2,
-        weight_h: 2,
-        weight_quant: 0,
-        weight_bits: 2,
-        dual_plane: false,
-        weight_levels: 4,
-    })
-}
-
-/// Compute the weight grid dimension from block dimension and shift.
-fn compute_weight_dim(block_dim: u32, shift: u32) -> u32 {
-    let dim = block_dim >> shift;
-    dim.max(2).min(12)
 }
 
 // ============================================================
@@ -338,7 +191,6 @@ fn compute_weight_dim(block_dim: u32, shift: u32) -> u32 {
 /// Describes how to decode color endpoint values.
 #[derive(Copy, Clone)]
 struct ColorEndpointMode {
-    is_hdr: bool,
     is_luminance: bool,
     has_alpha: bool,
     is_direct: bool,
@@ -348,106 +200,24 @@ struct ColorEndpointMode {
 /// Color endpoint mode table for modes 0-15.
 fn get_color_endpoint_mode(mode: u32) -> ColorEndpointMode {
     match mode {
-        0 => ColorEndpointMode { is_hdr: false, is_luminance: true, has_alpha: false, is_direct: false, num_endpoint_values: 1 },
-        1 => ColorEndpointMode { is_hdr: false, is_luminance: true, has_alpha: true, is_direct: false, num_endpoint_values: 2 },
-        2 => ColorEndpointMode { is_hdr: false, is_luminance: false, has_alpha: false, is_direct: false, num_endpoint_values: 3 },
-        3 => ColorEndpointMode { is_hdr: false, is_luminance: false, has_alpha: true, is_direct: false, num_endpoint_values: 4 },
-        4 => ColorEndpointMode { is_hdr: false, is_luminance: false, has_alpha: false, is_direct: true, num_endpoint_values: 3 },
-        5 => ColorEndpointMode { is_hdr: false, is_luminance: false, has_alpha: true, is_direct: true, num_endpoint_values: 4 },
-        6 => ColorEndpointMode { is_hdr: false, is_luminance: false, has_alpha: false, is_direct: false, num_endpoint_values: 3 }, // Base+LDR scale
-        7 => ColorEndpointMode { is_hdr: false, is_luminance: false, has_alpha: true, is_direct: false, num_endpoint_values: 4 }, // Base+LDR scale+alpha
-        8 => ColorEndpointMode { is_hdr: true, is_luminance: true, has_alpha: false, is_direct: false, num_endpoint_values: 1 },
-        9 => ColorEndpointMode { is_hdr: true, is_luminance: true, has_alpha: true, is_direct: false, num_endpoint_values: 2 },
-        10 => ColorEndpointMode { is_hdr: true, is_luminance: false, has_alpha: false, is_direct: false, num_endpoint_values: 3 },
-        11 => ColorEndpointMode { is_hdr: true, is_luminance: false, has_alpha: true, is_direct: false, num_endpoint_values: 4 },
-        12 => ColorEndpointMode { is_hdr: true, is_luminance: false, has_alpha: false, is_direct: true, num_endpoint_values: 3 },
-        13 => ColorEndpointMode { is_hdr: true, is_luminance: false, has_alpha: true, is_direct: true, num_endpoint_values: 4 },
-        14 => ColorEndpointMode { is_hdr: false, is_luminance: false, has_alpha: false, is_direct: false, num_endpoint_values: 3 }, // LDR RGB+scale
-        15 => ColorEndpointMode { is_hdr: false, is_luminance: false, has_alpha: true, is_direct: false, num_endpoint_values: 4 }, // LDR RGBA+scale
-        _ => ColorEndpointMode { is_hdr: false, is_luminance: true, has_alpha: false, is_direct: false, num_endpoint_values: 1 },
+        0 => ColorEndpointMode { is_luminance: true, has_alpha: false, is_direct: false, num_endpoint_values: 1 },
+        1 => ColorEndpointMode { is_luminance: true, has_alpha: true, is_direct: false, num_endpoint_values: 2 },
+        2 => ColorEndpointMode { is_luminance: false, has_alpha: false, is_direct: false, num_endpoint_values: 3 },
+        3 => ColorEndpointMode { is_luminance: false, has_alpha: true, is_direct: false, num_endpoint_values: 4 },
+        4 => ColorEndpointMode { is_luminance: false, has_alpha: false, is_direct: true, num_endpoint_values: 3 },
+        5 => ColorEndpointMode { is_luminance: false, has_alpha: true, is_direct: true, num_endpoint_values: 4 },
+        6 => ColorEndpointMode { is_luminance: false, has_alpha: false, is_direct: false, num_endpoint_values: 3 }, // Base+LDR scale
+        7 => ColorEndpointMode { is_luminance: false, has_alpha: true, is_direct: false, num_endpoint_values: 4 }, // Base+LDR scale+alpha
+        8 => ColorEndpointMode { is_luminance: true, has_alpha: false, is_direct: false, num_endpoint_values: 1 },
+        9 => ColorEndpointMode { is_luminance: true, has_alpha: true, is_direct: false, num_endpoint_values: 2 },
+        10 => ColorEndpointMode { is_luminance: false, has_alpha: false, is_direct: false, num_endpoint_values: 3 },
+        11 => ColorEndpointMode { is_luminance: false, has_alpha: true, is_direct: false, num_endpoint_values: 4 },
+        12 => ColorEndpointMode { is_luminance: false, has_alpha: false, is_direct: true, num_endpoint_values: 3 },
+        13 => ColorEndpointMode { is_luminance: false, has_alpha: true, is_direct: true, num_endpoint_values: 4 },
+        14 => ColorEndpointMode { is_luminance: false, has_alpha: false, is_direct: false, num_endpoint_values: 3 }, // LDR RGB+scale
+        15 => ColorEndpointMode { is_luminance: false, has_alpha: true, is_direct: false, num_endpoint_values: 4 }, // LDR RGBA+scale
+        _ => ColorEndpointMode { is_luminance: true, has_alpha: false, is_direct: false, num_endpoint_values: 1 },
     }
-}
-
-// ============================================================
-// Color unquantization (LDR)
-// ============================================================
-
-fn unquantize_ldr_byte(val: u32, bits: u32) -> u8 {
-    if bits == 8 {
-        return val as u8;
-    }
-    // Replicate bits to fill 8 bits (bit replication from ASTC spec).
-    let mut v = val;
-    let mut result = 0u32;
-    let mut remaining = 8;
-    let mut shift = 0;
-    while remaining > 0 {
-        let take = remaining.min(bits);
-        result |= (v & ((1 << take) - 1)) << shift;
-        v >>= take;
-        shift += take;
-        remaining -= take;
-    }
-    result as u8
-}
-
-fn unquantize_ldr_word(val: u32, bits: u32) -> u16 {
-    if bits == 16 {
-        return val as u16;
-    }
-    let mut v = val;
-    let mut result = 0u32;
-    let mut remaining = 16;
-    let mut shift = 0;
-    while remaining > 0 {
-        let take = remaining.min(bits);
-        result |= (v & ((1 << take) - 1)) << shift;
-        v >>= take;
-        shift += take;
-        remaining -= take;
-    }
-    result as u16
-}
-
-// ============================================================
-// Color unquantization (HDR)
-// ============================================================
-
-/// Unquantize an HDR value from the quantized representation.
-fn unquantize_hdr(val: u32, bits: u32) -> (u16, bool) {
-    // HDR unquantization: decode to half-float bits.
-    // The ASTC HDR specification defines how quantized integer values
-    // map to F16 bit patterns.
-    //
-    // For bits < 8, we reconstruct the F16 from mantissa+exponent.
-    // The basic approach: val encodes a sign-extended exponent + mantissa.
-    //
-    // This is a simplified implementation matching the reference.
-
-    let max_val = (1u32 << bits) - 1;
-
-    if val == 0 {
-        return (0u16, false); // zero
-    }
-    if val == max_val {
-        return (0x7C00u16, false); // +inf (actually NaN for some modes)
-    }
-
-    if bits == 8 {
-        // Directly map to F16-like format: 1 sign, 5 exponent, 10 mantissa
-        // But ASTC uses a different encoding...
-        // Simplification: treat as unorm and convert
-        let frac = val as f32 / max_val as f32;
-        let f = f16::from_f32(frac);
-        return (f.to_bits(), false);
-    }
-
-    // For general case, use a float-based conversion
-    let frac = val as f32 / max_val as f32;
-    // HDR needs wider range: scale up
-    let scaled = frac * 65504.0; // max F16 finite
-    let f = f16::from_f32(scaled);
-    (f.to_bits(), false)
 }
 
 // ============================================================
@@ -620,7 +390,6 @@ fn decode_astc_block(
         let mode = BlockMode {
             weight_w: 2,
             weight_h: 2,
-            weight_quant: 0,
             weight_bits: 2,
             dual_plane: false,
             weight_levels: 4,
@@ -667,7 +436,6 @@ fn decode_astc_block(
         // Compute endpoint value count
         let mut total_endpoint_values = 0usize;
         let mut ce_params = [ColorEndpointMode {
-            is_hdr: false,
             is_luminance: false,
             has_alpha: false,
             is_direct: false,
@@ -867,209 +635,6 @@ fn encode_astc_hdr_block(_pixels: &[f16; 144], _bw: u32, _bh: u32) -> [u8; 16] {
     // Total: 12 + 8 + 48 = 68 bits ✓
     w.finish()
 }
-
-// ============================================================
-// Block-sized extraction helpers (used by encode_blocks! macro)
-// ============================================================
-
-/// Decode an ASTC block into a [u8; 64] RGBA output.
-/// `block`: 16-byte ASTC block data.
-/// `bw`, `bh`: block dimensions.
-/// `is_hdr`: whether this is HDR.
-/// `is_srgb`: whether sRGB correction is needed.
-pub fn decode_astc_block_to_rgba(
-    block: &[u8],
-    output: &mut [u8; 64],
-    bw: u32,
-    bh: u32,
-    is_hdr: bool,
-    is_srgb: bool,
-) {
-    let block_arr = if block.len() >= 16 {
-        let mut arr = [0u8; 16];
-        arr.copy_from_slice(&block[..16]);
-        arr
-    } else {
-        [0u8; 16]
-    };
-
-    let mut pixels = [[0u8; 4]; 144];
-    decode_astc_block(&block_arr, bw, bh, is_hdr, is_srgb, &mut pixels);
-
-    let texel_count = (bw * bh) as usize;
-    let out_texels = texel_count.min(16);
-    for i in 0..out_texels {
-        let dst = i * 4;
-        output[dst] = pixels[i][0];
-        output[dst + 1] = pixels[i][1];
-        output[dst + 2] = pixels[i][2];
-        output[dst + 3] = pixels[i][3];
-    }
-    // Pad remaining pixels with 0
-    for i in out_texels..16 {
-        let dst = i * 4;
-        output[dst] = 0;
-        output[dst + 1] = 0;
-        output[dst + 2] = 0;
-        output[dst + 3] = 255;
-    }
-}
-
-/// Decode an ASTC block into a [half::f16; 64] RGBA output (for HDR).
-pub fn decode_astc_block_to_f16(
-    block: &[u8],
-    output: &mut [f16; 64],
-    bw: u32,
-    bh: u32,
-) {
-    let block_arr = if block.len() >= 16 {
-        let mut arr = [0u8; 16];
-        arr.copy_from_slice(&block[..16]);
-        arr
-    } else {
-        [0u8; 16]
-    };
-
-    let mut pixels = [[0u8; 4]; 144];
-    decode_astc_block(&block_arr, bw, bh, true, false, &mut pixels);
-
-    let texel_count = (bw * bh) as usize;
-    let out_texels = texel_count.min(16);
-    for i in 0..out_texels {
-        let dst = i * 4;
-        // Convert U8 output back to F16 (lossy but functional)
-        output[dst] = f16::from_f32(pixels[i][0] as f32 / 255.0);
-        output[dst + 1] = f16::from_f32(pixels[i][1] as f32 / 255.0);
-        output[dst + 2] = f16::from_f32(pixels[i][2] as f32 / 255.0);
-        output[dst + 3] = f16::from_f32(pixels[i][3] as f32 / 255.0);
-    }
-    for i in out_texels..16 {
-        let dst = i * 4;
-        output[dst] = f16::ZERO;
-        output[dst + 1] = f16::ZERO;
-        output[dst + 2] = f16::ZERO;
-        output[dst + 3] = f16::from_f32(1.0);
-    }
-}
-
-/// Encode a single block (LDR, RGBA8 input → 16 bytes output).
-/// Block slice length determines block dimensions.
-pub fn encode_astc_ldr_block_fn(block: &[[u8; 4]]) -> [u8; 16] {
-    // Determine block dimensions from the number of texels.
-    let texel_count = block.len();
-    let (bw, bh) = match texel_count {
-        16 => (4, 4),
-        20 => (5, 4),
-        25 => (5, 5),
-        30 => (6, 5),
-        36 => (6, 6),
-        40 => (8, 5),
-        48 => (8, 6),
-        64 => (8, 8),
-        50 => (10, 5),
-        60 => (10, 6),
-        80 => (10, 8),
-        100 => (10, 10),
-        120 => (12, 10),
-        144 => (12, 12),
-        _ => (4, 4), // fallback
-    };
-
-    let mut pixels = [[0u8; 4]; 144];
-    for (i, px) in block.iter().enumerate().take(144) {
-        pixels[i] = *px;
-    }
-
-    encode_astc_ldr_block(&pixels, bw, bh)
-}
-
-/// Encode a single block (HDR, F16 input → 16 bytes output).
-pub fn encode_astc_hdr_block_fn(block: &[f16]) -> [u8; 16] {
-    let texel_count = block.len() / 4;
-    let (bw, bh) = match texel_count {
-        16 => (4, 4),
-        20 => (5, 4),
-        25 => (5, 5),
-        30 => (6, 5),
-        36 => (6, 6),
-        40 => (8, 5),
-        48 => (8, 6),
-        64 => (8, 8),
-        50 => (10, 5),
-        60 => (10, 6),
-        80 => (10, 8),
-        100 => (10, 10),
-        120 => (12, 10),
-        144 => (12, 12),
-        _ => (4, 4),
-    };
-
-    let mut pixels = [f16::ZERO; 144];
-    for (i, px) in block.iter().enumerate().take(144) {
-        pixels[i] = *px;
-    }
-
-    encode_astc_hdr_block(&pixels, bw, bh)
-}
-
-// ============================================================
-// Per-variant block-size encode/decode helpers
-// ============================================================
-
-macro_rules! define_astc_decode_funcs {
-    ($(($name:ident, $bw:expr, $bh:expr, $hdr:expr, $srgb:expr)),* $(,)?) => {
-        $(
-            pub fn $name(block: &[u8], output: &mut [u8; 64]) {
-                decode_astc_block_to_rgba(block, output, $bw, $bh, $hdr, $srgb);
-            }
-        )*
-    };
-}
-
-define_astc_decode_funcs!(
-    (decode_astc_4x4, 4, 4, false, false),
-    (decode_astc_4x4_srgb, 4, 4, false, true),
-    (decode_astc_4x4_hdr, 4, 4, true, false),
-    (decode_astc_5x4, 5, 4, false, false),
-    (decode_astc_5x4_srgb, 5, 4, false, true),
-    (decode_astc_5x4_hdr, 5, 4, true, false),
-    (decode_astc_5x5, 5, 5, false, false),
-    (decode_astc_5x5_srgb, 5, 5, false, true),
-    (decode_astc_5x5_hdr, 5, 5, true, false),
-    (decode_astc_6x5, 6, 5, false, false),
-    (decode_astc_6x5_srgb, 6, 5, false, true),
-    (decode_astc_6x5_hdr, 6, 5, true, false),
-    (decode_astc_6x6, 6, 6, false, false),
-    (decode_astc_6x6_srgb, 6, 6, false, true),
-    (decode_astc_6x6_hdr, 6, 6, true, false),
-    (decode_astc_8x5, 8, 5, false, false),
-    (decode_astc_8x5_srgb, 8, 5, false, true),
-    (decode_astc_8x5_hdr, 8, 5, true, false),
-    (decode_astc_8x6, 8, 6, false, false),
-    (decode_astc_8x6_srgb, 8, 6, false, true),
-    (decode_astc_8x6_hdr, 8, 6, true, false),
-    (decode_astc_8x8, 8, 8, false, false),
-    (decode_astc_8x8_srgb, 8, 8, false, true),
-    (decode_astc_8x8_hdr, 8, 8, true, false),
-    (decode_astc_10x5, 10, 5, false, false),
-    (decode_astc_10x5_srgb, 10, 5, false, true),
-    (decode_astc_10x5_hdr, 10, 5, true, false),
-    (decode_astc_10x6, 10, 6, false, false),
-    (decode_astc_10x6_srgb, 10, 6, false, true),
-    (decode_astc_10x6_hdr, 10, 6, true, false),
-    (decode_astc_10x8, 10, 8, false, false),
-    (decode_astc_10x8_srgb, 10, 8, false, true),
-    (decode_astc_10x8_hdr, 10, 8, true, false),
-    (decode_astc_10x10, 10, 10, false, false),
-    (decode_astc_10x10_srgb, 10, 10, false, true),
-    (decode_astc_10x10_hdr, 10, 10, true, false),
-    (decode_astc_12x10, 12, 10, false, false),
-    (decode_astc_12x10_srgb, 12, 10, false, true),
-    (decode_astc_12x10_hdr, 12, 10, true, false),
-    (decode_astc_12x12, 12, 12, false, false),
-    (decode_astc_12x12_srgb, 12, 12, false, true),
-    (decode_astc_12x12_hdr, 12, 12, true, false),
-);
 
 // ============================================================
 // Batch parallel encode/decode (used by format.rs dispatch)
@@ -1316,21 +881,6 @@ pub fn decode_astc_hdr_batch(
 mod tests {
     use super::*;
 
-    /// Test that a constant-color block roundtrips through encode→decode.
-    fn test_constant_ldr(bw: u32, bh: u32) {
-        let texel_count = (bw * bh) as usize;
-        let mut pixels = [[0u8; 4]; 144];
-        for i in 0..texel_count {
-            pixels[i] = [128, 64, 192, 255];
-        }
-
-        let encoded = encode_astc_ldr_block(&pixels, bw, bh);
-        let block_arr = &encoded;
-
-        let mut decoded = [[0u8; 4]; 144];
-        decode_astc_block(block_arr, bw, bh, false, false, &mut decoded);
-    }
-
     #[test]
     fn test_astc_4x4_ldr_encode_decode() {
         let mut pixels = [[0u8; 4]; 144];
@@ -1352,6 +902,7 @@ mod tests {
         assert_eq!(encoded_8x8.len(), 16);
     }
 
+    // Test LDR RGBA mode (3)
     #[test]
     fn test_bit_reader_writer_roundtrip() {
         let mut writer = BitWriter::new();
@@ -1369,17 +920,6 @@ mod tests {
     }
 
     #[test]
-    fn test_ise_roundtrip() {
-        let input = [1u32, 3, 5, 7, 9, 11, 13, 15];
-        let mut output = [0u8; 16];
-        encode_ise(&mut output, 0, 4, &input); // 4-bit method
-
-        let mut decoded = [0u32; 8];
-        decode_ise(&output, 0, 4, 8, &mut decoded);
-        assert_eq!(decoded, input);
-    }
-
-    #[test]
     fn test_get_partition_single() {
         let mut output = [0u8; 16];
         get_partition(1, 0, 16, &mut output);
@@ -1392,20 +932,17 @@ mod tests {
     fn test_color_endpoint_modes() {
         // Test LDR RGB mode (2)
         let cem = get_color_endpoint_mode(2);
-        assert!(!cem.is_hdr);
         assert!(!cem.is_luminance);
         assert_eq!(cem.num_endpoint_values, 3);
 
         // Test LDR RGBA mode (3)
         let cem = get_color_endpoint_mode(3);
-        assert!(!cem.is_hdr);
         assert!(!cem.is_luminance);
         assert!(cem.has_alpha);
         assert_eq!(cem.num_endpoint_values, 4);
 
         // Test HDR RGB mode (10)
         let cem = get_color_endpoint_mode(10);
-        assert!(cem.is_hdr);
         assert!(!cem.is_luminance);
         assert!(!cem.has_alpha);
         assert_eq!(cem.num_endpoint_values, 3);

@@ -4,6 +4,9 @@ use crate::math::{float3, float4};
 
 use super::quaternions::quaternion;
 
+#[cfg(test)]
+mod test;
+
 ///
 /// column-major 4x4 matrix, backed by glam::Mat4
 #[repr(transparent)]

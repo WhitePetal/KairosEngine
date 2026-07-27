@@ -15,6 +15,9 @@ pub mod entity_stroge;
 
 pub use entity_stroge::*;
 
+#[cfg(test)]
+mod test;
+
 pub struct SparsePos {
     pub page: usize,
     pub slot: usize,

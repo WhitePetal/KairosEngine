@@ -14,6 +14,9 @@ use crate::{
 };
 use kira::sound::static_sound::StaticSoundHandle;
 
+#[cfg(test)]
+mod test;
+
 // ============================================================
 // WaveformPeak — Unity-style amplitude bucket
 // ============================================================

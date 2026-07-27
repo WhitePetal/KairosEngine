@@ -2,6 +2,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::graphics::compare_function::CompareFunction;
 
+#[cfg(test)]
+mod test;
+
 // ============================================================
 // CullMode — project-level back-face culling control
 // ============================================================

@@ -12,6 +12,9 @@ use crate::kairos_editor::ui::docking_tab::{dock_state::tree::node::Node, surfac
 
 pub mod node;
 
+#[cfg(test)]
+mod test;
+
 /// Direction in which a new node is created relatively to the parent node at which the split occurs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Split {

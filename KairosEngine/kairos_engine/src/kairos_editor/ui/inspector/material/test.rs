@@ -1,13 +1,13 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use kairos_engine::asset_loader::assets::{
+use crate::asset_loader::assets::{
     AssetsServer, MaterialAssetsSystem, SerializedMaterialAssetsSystem,
 };
-use kairos_engine::graphics::compare_function::CompareFunction;
-use kairos_engine::graphics::material::SerializedMaterial;
-use kairos_engine::graphics::render_state::{CullMode, PrimitiveTopology, RenderState};
-use kairos_engine::kairos_editor::ui::inspector::material::MaterialInspector;
+use crate::graphics::compare_function::CompareFunction;
+use crate::graphics::material::SerializedMaterial;
+use crate::graphics::render_state::{CullMode, PrimitiveTopology, RenderState};
+use crate::kairos_editor::ui::inspector::material::MaterialInspector;
 use parking_lot::Mutex;
 use tempfile::TempDir;
 

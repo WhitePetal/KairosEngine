@@ -1,4 +1,4 @@
-use kairos_engine::ecs::{
+use crate::ecs::{
     entity::{Entity, EntityFlag},
     id::Id,
     sparse_set::{EntityStorage, SparseSet},

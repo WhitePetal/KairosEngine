@@ -7,6 +7,9 @@ use crate::{
     graphics::render_state::RenderState,
 };
 
+#[cfg(test)]
+mod test;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SerializedMaterial {
     pub source_path: PathBuf,

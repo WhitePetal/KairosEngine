@@ -2408,7 +2408,6 @@ pub fn encode(pixels: &PixelDatas, width: u32, height: u32, format: TextureForma
         TextureFormat::Astc12x12Hdr => {
             astc::encode_astc_hdr_batch(pixels, w, h, 12, 12)
         }
-        _ => todo!("encode not yet implemented for {format:?}"),
     }
 }
 
@@ -2568,6 +2567,5 @@ pub fn decode(data: &PixelDatas, width: u32, height: u32, format: TextureFormat)
         TextureFormat::Astc12x12Hdr => {
             astc::decode_astc_hdr_batch(data, w, h, 12, 12)
         }
-        _ => todo!("decode not yet implemented for {format:?}"),
     }
 }

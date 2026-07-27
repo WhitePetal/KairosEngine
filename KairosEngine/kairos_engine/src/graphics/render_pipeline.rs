@@ -1192,14 +1192,11 @@ impl RenderPipeline {
         let gpu_texture = device.create_texture(&tex_desc);
 
         // Write each mip level.
-        let wgpu_fmt: wgpu::TextureFormat = texture_asset.format.into();
         for (level, level_data) in texture_asset.data.iter().enumerate() {
             let level = level as u32;
             let level_w = (texture_dimension.0 >> level).max(1);
             let level_h = (texture_dimension.1 >> level).max(1);
-            let block_bytes = wgpu_fmt
-                .block_copy_size(Some(wgpu::TextureAspect::All))
-                .unwrap_or(4);
+            let block_bytes = texture_asset.format.block_byte_size();
             let (block_w, block_h) = texture_asset.format.block_dimensions();
             let blocks_per_row = (level_w + block_w - 1) / block_w;
             let blocks_per_column = (level_h + block_h - 1) / block_h;

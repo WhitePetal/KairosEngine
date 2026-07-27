@@ -14,3 +14,9 @@
 | `texture-encoding/png-srgb-color-space.md` | PNG 色彩空间与 wgpu 的行为 |
 | `texture-encoding/texture-compression-reference-impls.md` | C++ 纹理压缩参考实现对比 |
 | `texture-encoding/wgpu-srgb-handling.md` | wgpu 中 sRGB 处理方式 |
+
+## Material System
+
+| File | Topic |
+|---|---|
+| `material-dynamic-properties-competitor-analysis.md` | Unity/Unreal/Godot/Bevy 材质动态属性系统竞品分析 |

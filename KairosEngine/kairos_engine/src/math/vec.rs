@@ -7,6 +7,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::math::{Cos, Lerp, LerpFactor, Max, Min, Sin, Sqrt, Tan};
 
+#[cfg(test)]
+mod test;
+
 pub trait Vector
 where
     Self: Add<f32, Output = Self>

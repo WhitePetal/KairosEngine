@@ -20,6 +20,9 @@ use crate::{
 use create_request::CreateRequest;
 use tree_node::ProjectTreeNode;
 
+#[cfg(test)]
+mod test;
+
 // ============================================================
 // ProjectPathGraph — 项目目录树（基于 petgraph）
 // ============================================================

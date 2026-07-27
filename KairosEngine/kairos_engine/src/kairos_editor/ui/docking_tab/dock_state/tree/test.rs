@@ -1,4 +1,4 @@
-use kairos_engine::kairos_editor::ui::docking_tab::dock_state::tree::Tree;
+use crate::kairos_editor::ui::docking_tab::dock_state::tree::Tree;
 
 #[test]
 fn test_tabs_iter() {
