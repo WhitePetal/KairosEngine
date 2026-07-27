@@ -22,6 +22,20 @@ unsafe impl Send for UnsafeWorldCell<'_> {}
 // SAFETY: `&World` 和 `&mut World` 都是 Sync
 unsafe impl Sync for UnsafeWorldCell<'_> {}
 
+impl<'w> From<&'w mut World> for UnsafeWorldCell<'w> {
+    #[inline]
+    fn from(value: &'w mut World) -> Self {
+        value.as_unsafe_world_cell()
+    }
+}
+
+impl<'w> From<&'w World> for UnsafeWorldCell<'w> {
+    #[inline]
+    fn from(value: &'w World) -> Self {
+        value.as_unsafe_world_cell_readonly()
+    }
+}
+
 impl<'w> UnsafeWorldCell<'w> {
     /// 创建只读访问的 UnsafeWorldCell。
     #[inline]
@@ -269,6 +283,24 @@ mod tests {
 
         assert_send::<UnsafeWorldCell<'_>>();
         assert_sync::<UnsafeWorldCell<'_>>();
+    }
+
+    /// 可以通过 From<&mut World> 创建 UnsafeWorldCell
+    #[test]
+    fn from_mut_world() {
+        let mut world = World::new();
+        let cell = UnsafeWorldCell::from(&mut world);
+        let tick = cell.change_tick();
+        assert_eq!(tick, world.change_tick());
+    }
+
+    /// 可以通过 From<&World> 创建 UnsafeWorldCell
+    #[test]
+    fn from_shared_world() {
+        let world = World::new();
+        let cell = UnsafeWorldCell::from(&world);
+        let tick = cell.change_tick();
+        assert_eq!(tick, world.change_tick());
     }
 
     /// 多个只读查询可以共存
