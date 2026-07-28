@@ -31,7 +31,7 @@
 //! The interfaces [`Allocator`] and [`RemoteAllocator`] provide safe interfaces to them.
 
 use std::mem::ManuallyDrop;
-use std::sync::atomic::{AtomicPtr, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicPtr, AtomicU32, AtomicU64, Ordering};
 
 use crate::cell::SyncUnsafeCell;
 use crate::debug::DebugCheckedUnwrap;
@@ -504,5 +504,135 @@ impl FreeCount {
             Ok(_) => Ok(()),
             Err(val) => Err(FreeCountState(val)),
         }
+    }
+}
+
+/// This is conceptually like a `Vec<Entity>` that stores entities pending reuse.
+struct FreeList {
+    /// The actual buffer of [`Slot`]s.
+    /// Conceptually, this is like the `RawVec` for this `Vec`.
+    buffer: FreeBuffer,
+    /// The length of the free buffer
+    len: FreeCount,
+}
+
+impl FreeList {
+    // Constructs a empty [`FreeList`].
+    fn new() -> Self {
+        Self { buffer: FreeBuffer::new(), len: FreeCount::new_zero_len() }
+    }
+
+    /// Gets the number of free entities.
+    ///
+    /// # Risk
+    ///
+    /// For this to be accurate, this must not be called during a [`Self::free`].
+    #[inline]
+    fn num_free(&self) -> u32 {
+        // Relaxed ordering is fine since this doesn't act on the length value in memory.
+        self.len.state(Ordering::Relaxed).length()
+    }
+
+    /// Frees the `entities` allowing them to be reused.
+    ///
+    /// # Safety
+    ///
+    /// There must be a clear, strict order between this call and calls to [`Self::free`], [`Self::alloc_many`], and [`Self::alloc`].
+    /// Otherwise, the compiler will make unsound optimizations.
+    #[inline]
+    unsafe fn free(&self, entities: &[Entity]) {
+        // Disable remote allocation.
+        // We don't need to acquire the most recent memory from remote threads because we never read it.
+        // We do not need to release to remote threads because we only changed the disabled bit,
+        // which the remote allocator would with relaxed ordering.
+        let state = self.len.disable_len_for_state(Ordering::Relaxed);
+
+        // Append onto the buffer
+        let mut len = state.length();
+        // `for_each` is typically faster than `for` here.
+        entities.iter().for_each(|&entity| {
+            // SAFETY: Caller ensures this does not conflict with `free` or `alloc` calls,
+            // and we just disabled remote allocation with a strict memory ordering.
+            // We only call `set` during a free, and the caller ensures that is not called concurrently.
+            unsafe {
+                self.buffer.set(len, entity);
+            }
+            len += 1;
+        });
+
+        // Update length
+        let new_state = state.with_length(len);
+        // This is safe because `alloc` is not being called and `remote_alloc` checks that it is not disabled.
+        // We don't need to change the generation since this will change the length, which changes the value anyway.
+        // If, from a `remote_alloc` perspective, this does not change the length (i.e. this changes it *back* to what it was),
+        // then `alloc` must have been called, which changes the generation.
+        self.len.set_state_risky(new_state, Ordering::Release);
+    }
+
+    /// Allocates an [`Entity`] from the free list if one is available.
+    ///
+    /// # Safety
+    ///
+    /// There must be a clear, strict order between this call and calls to [`Self::free`].
+    /// Otherwise, the compiler will make unsound optimizations.
+    #[inline]
+    unsafe fn alloc(&self) -> Option<Entity> {
+        // SAFETY: This will get a valid index because caller ensures there is no way for `free` to be done at the same time.
+        // Relaxed is ok here since `free` is the only time memory is changed, and relaxed still gets the most recent state.
+        // The memory ordering to ensure we read the most recent value at the index is ensured by the caller.
+        let len = self.len.pop_for_state(1, Ordering::Relaxed).length();
+        let index = len.checked_sub(1)?;
+
+        // SAFETY: This was less then `len`, so it must have been `set` via `free` before.
+        // There is a strict memory ordering of this use of the index because the length is only decreasing.
+        // That means there is only one use of this index since the last call to `free`.
+        // The only time the length increases is during `free`, which the caller ensures has a "happened before" relationship with this call.
+        Some(unsafe {
+            self.buffer.get(index)
+        })
+    }
+
+    /// Allocates as many [`Entity`]s from the free list as are available, up to `count`.
+    ///
+    /// # Safety
+    ///
+    /// There must be a clear, strict order between this call and calls to [`Self::free`].
+    /// Otherwise, the compiler will make unsound optimizations.
+    ///
+    /// Note that this allocation call doesn't end until the returned value is dropped.
+    /// So, calling [`Self::free`] while the returned value is live is unsound.
+    #[inline]
+    unsafe fn alloc_many(&self, count: u32) -> FreeBufferIterator<'_> {
+        // SAFETY: This will get a valid index because there is no way for `free` to be done at the same time.
+        // Relaxed is ok here since `free` is the only time memory is changed, and relaxed still gets the most recent state.
+        // The memory ordering to ensure we read the most recent value at the index is ensured by the caller.
+        let len = self.len.pop_for_state(count, Ordering::Relaxed).length();
+        let index = len.saturating_sub(count);
+
+        // SAFETY: The iterator's items are all less than the length, so they are in bounds and have been previously set.
+        // There is a strict memory ordering of this use of the indices because the length is only decreasing.
+        // That means there is only one use of these indices since the last call to `free`.
+        // The only time it the length increases is during `free`, which the caller ensures has a "happened before" relationship with this call.
+        unsafe { self.buffer.iter(index..len) }
+    }
+
+    /// Allocates an [`Entity`] from the free list if one is available and it is safe to do so.
+    #[inline]
+    fn remote_alloc(&self) -> Option<Entity> {
+        // The goal is the same as `alloc`, so what's the difference?
+        // `alloc` knows `free` is not being called, but this does not.
+        // What if we `len.fetch_sub(1)` but then `free` overwrites the entity before we could read it?
+        // That would mean we would leak an entity and give another entity out twice.
+        // We get around this by only updating `len` after the read is complete.
+        // But that means something else could be trying to allocate the same index!
+        // So we need a `len.compare_exchange` loop to ensure the index is unique.
+        // Because we keep a generation value in the `FreeCount`, if any of these things happen, we simply try again.
+        // We also need to prevent this from conflicting with a `free` call, so we check to ensure the state is not disabled.
+
+        // We keep track of the attempts so we can yield the thread on std after a few fails.
+        let mut attempts = 1u32;
+        // We need an acquire ordering to acquire the most recent memory of `free` calls.
+        let mut state = self.len.state(Ordering::Acquire);
+
     }
 }
