@@ -1,12 +1,7 @@
 {
   "hard_tabs": false,
   "terminal": {
-    "shell": {
-      "with_arguments": {
-        "program": "powershell.exe",
-        "args": []
-      }
-    }
+    "shell": "system"
   },
   "document_symbols": "off",
   "document_folding_ranges": "off",

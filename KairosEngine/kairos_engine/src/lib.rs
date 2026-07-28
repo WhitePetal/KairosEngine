@@ -1,6 +1,8 @@
+pub mod cell;
 pub mod hash;
 pub mod math;
 pub mod types;
+pub mod debug;
 
 pub mod collections;
 
