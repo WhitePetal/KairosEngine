@@ -96,25 +96,25 @@ pub struct Ref<'a, T: ?Sized> {
 unsafe impl<T: ?Sized + Sync> Send for Ref<'_, T> {}
 unsafe impl<T: ?Sized + Sync> Sync for Ref<'_, T> {}
 
-impl<T: ?Sized> Deref for Ref<'_, T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        unsafe { self.target.as_ref() }
-    }
-}
-
 impl<'a, T: ?Sized> Ref<'a, T> {
     pub fn map<U: ?Sized, F>(orig: Ref<'a, T>, f: F) -> Ref<'a, U>
     where
         F: FnOnce(&T) -> &U,
     {
-        let target = NonNull::from(f(&orig));
+        let target = NonNull::from(f(&orig.as_deref()));
         Ref {
             borrow: orig.borrow,
             target,
             _phantom: PhantomData,
         }
+    }
+
+    fn as_deref(&self) -> &'a T {
+        unsafe { self.target.as_ref() }
+    }
+
+    pub fn deref(self) -> &'a T {
+        self.as_deref()
     }
 }
 
@@ -131,13 +131,13 @@ impl<'a, T: Component> Ref<'a, T> {
 
 impl<T: ?Sized + Debug> Debug for Ref<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Debug::fmt(self.deref(), f)
+        Debug::fmt(self.as_deref(), f)
     }
 }
 
 impl<T: ?Sized + Display> Display for Ref<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Display::fmt(self.deref(), f)
+        Display::fmt(self.as_deref(), f)
     }
 }
 

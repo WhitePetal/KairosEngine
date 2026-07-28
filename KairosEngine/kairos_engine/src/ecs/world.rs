@@ -1,14 +1,8 @@
 use std::{
-    any::TypeId,
-    collections::{HashMap, hash_map::Entry},
-    fmt::Debug,
-    hash::{BuildHasher, BuildHasherDefault, Hasher},
-    ops::Add,
-    ptr,
-    sync::{
+    any::TypeId, collections::{HashMap, hash_map::Entry}, fmt::Debug, hash::{BuildHasher, BuildHasherDefault, Hasher}, ops::{Add, Deref}, ptr, sync::{
         Mutex,
         atomic::{AtomicBool, AtomicU32, Ordering},
-    },
+    }
 };
 
 use petgraph::graph::{Node, NodeIndex};
@@ -18,23 +12,11 @@ pub mod unsafe_world_cell;
 pub use unsafe_world_cell::UnsafeWorldCell;
 
 use crate::ecs::{
-    batch::ColumBatch,
-    change_detection::{ComponentTicks, Tick},
-    component::{Component, ComponentError, MissingComponent},
-    component_tuple::{
+    batch::ColumBatch, change_detection::{ComponentTicks, Ref, Tick}, component::{Component, ComponentError, MissingComponent}, component_tuple::{
         CachedQuery, ComponentTuple, ComponentTupleKey, DynamicComponentTuple, Fetch, Query,
         QueryBorrow, QueryCache, QueryMut, QueryOne, QueryOneError, View, ViewBorrow,
         assert_borrow, assert_distinct,
-    },
-    consts,
-    entity::{Entity, EntityFlag},
-    entity_ref::{ComponentRef, EntityRef},
-    id::Id,
-    schedule::{Schedule, ScheduleLabel},
-    sparse_set::{self, AllocManyState, EntityStorage, NoSuchId, SparseSet},
-    table::Table,
-    table_graph::{InsertTarget, TableGraph, TableGraphGeneration},
-    take::TakeEntity,
+    }, consts, entity::{Entity, EntityFlag}, entity_ref::{self, ComponentRef, EntityRef}, id::Id, resource::{Resource, ResourceEntities}, schedule::{Schedule, ScheduleLabel}, sparse_set::{self, AllocManyState, EntityStorage, NoSuchId, SparseSet}, table::Table, table_graph::{InsertTarget, TableGraph, TableGraphGeneration}, take::TakeEntity
 };
 
 #[derive(Debug)]
@@ -129,6 +111,8 @@ pub struct World {
     insert_edges: NodeIndexTupleIdMap<InsertTarget>,
     remove_edges: NodeIndexTupleIdMap<NodeIndex>,
 
+    resource_entities: ResourceEntities,
+
     query_cache: QueryCache,
 
     schedule: Schedule,
@@ -191,6 +175,7 @@ impl World {
             remove_edges,
             table_graph,
             query_cache: QueryCache::default(),
+            resource_entities: ResourceEntities::default(),
             schedule: Schedule {},
             change_tick: AtomicU32::new(0),
             last_change_tick: Tick::MIN,
@@ -559,6 +544,46 @@ impl World {
         self.entities.has(entity)
     }
 
+    #[inline]
+    pub fn resource_entities(&self) -> &ResourceEntities {
+        &self.resource_entities
+    }
+
+    pub fn insert_resource<R: Resource>(&mut self, resource: R) {
+        let resouce_id = TypeId::of::<R>();
+        if let Some(entity) = self.resource_entities.get(resouce_id) {
+            let _ = self.insert_one(entity, resource);
+        } else {
+            let entity = self.spawn((resource, ));
+            self.resource_entities.insert(resouce_id, entity);
+        };
+    }
+
+    pub fn remove_resource<R: Resource>(&mut self) -> bool {
+        let resouce_id = TypeId::of::<R>();
+        if let Some(entity) = self.resource_entities.remove(resouce_id) {
+            self.remove_one::<R>(entity).is_ok()
+        } else {
+            false
+        }
+    }
+
+    #[inline]
+    pub fn contains_resource<R: Resource>(&self) -> bool {
+        let resouce_id = TypeId::of::<R>();
+        self.resource_entities.contains(resouce_id)
+    }
+
+    #[inline]
+    pub fn get_resource<R: Resource>(&self) -> Option<&R> {
+        let resource_id = TypeId::of::<R>();
+        if let Some(entity) = self.resource_entities.get(resource_id) {
+            self.get::<&R>(entity).ok().map(|r| r.deref())
+        } else {
+            None
+        }
+    }
+
     /// 返回当前变更检测 tick
     pub fn change_tick(&self) -> Tick {
         Tick(self.change_tick.load(Ordering::Relaxed))
@@ -897,7 +922,7 @@ impl World {
         f: impl FnOnce(&mut World, &mut Schedule) -> R,
     ) -> R {
         let label = label.intern();
-
+        todo!()
     }
 }
 

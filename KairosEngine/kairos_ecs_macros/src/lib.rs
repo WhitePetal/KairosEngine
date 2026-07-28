@@ -1,7 +1,9 @@
 extern crate proc_macro;
 
 mod common;
+mod component;
 mod tuple;
+mod resource;
 
 use proc_macro::TokenStream;
 use syn::{DeriveInput, parse_macro_input};
@@ -29,4 +31,17 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
         Err(e) => e.to_compile_error(),
     }
     .into()
+}
+
+#[proc_macro_derive(Component, attributes(component, require))]
+pub fn derive_component(input: TokenStream) -> TokenStream {
+    let mut ast = parse_macro_input!(input as DeriveInput);
+    TokenStream::from(component::derive_component(&mut ast))
+}
+
+
+#[proc_macro_derive(Resource, attributes(component, require))]
+pub fn derive_resource(input: TokenStream) -> TokenStream {
+    let mut ast = parse_macro_input!(input as DeriveInput);
+    TokenStream::from(resource::derive_resource(&mut ast))
 }
