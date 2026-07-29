@@ -1039,6 +1039,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "disqualified"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c9c272297e804878a2a4b707cfcfc6d2328b5bb936944613b4fdf2b9269afdfd"
+
+[[package]]
 name = "dlib"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2299,6 +2305,7 @@ dependencies = [
  "criterion",
  "crossbeam-channel",
  "derive_more",
+ "disqualified",
  "duplicate",
  "egui",
  "egui-wgpu",

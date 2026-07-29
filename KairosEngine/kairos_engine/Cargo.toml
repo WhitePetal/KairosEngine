@@ -12,8 +12,10 @@ smallvec = { version = "1.15.2", features = ["malloc_size_of"] }
 tempfile = "3"
 
 [features]
+default = ["debug"]
 test-harness = ["dep:tokio-tungstenite", "dep:futures-util", "dep:serde_json"]
 track_location = []
+debug = []
 
 [dependencies]
 
@@ -77,6 +79,7 @@ arrayvec = "0.7.8"
 thiserror = "2.0.19"
 indexmap = "2.14.0"
 hashbrown = "0.17.1"
+disqualified = "1.0.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.4"

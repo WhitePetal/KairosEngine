@@ -1,4 +1,5 @@
 mod maybe_location;
+mod debug_info;
 
 pub use maybe_location::MaybeLocation;
 

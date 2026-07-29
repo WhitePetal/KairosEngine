@@ -1,6 +1,10 @@
-use std::{array, collections::{btree_map, btree_set}, hash::{BuildHasher, Hash}, iter::{self, FusedIterator}, option, ptr, rc::Rc, result, sync::Arc};
+use std::{array, collections::{btree_map, btree_set}, fmt::{Debug, Formatter}, hash::{BuildHasher, Hash}, iter::{self, FusedIterator}, option, ptr, rc::Rc, result, sync::Arc};
 
-use crate::{collections::FixedHashSet, ecs::entity::Entity};
+use crate::{collections::FixedHashSet, ecs::entity::{Entity, UniqueEntityEquivalentSlice}};
+
+
+#[cfg(test)]
+mod tests;
 
 /// A trait for types that contain an [`Entity`].
 ///
@@ -448,5 +452,40 @@ impl<T: EntityEquivalent, I: Iterator<Item: EntityEquivalent> + AsRef<[T]>>
     fn as_ref(&self) -> &UniqueEntityEquivalentSlice<T> {
         // SAFETY: All elements in the original slice are unique.
         unsafe { UniqueEntityEquivalentSlice::from_slice_unchecked(self.iter.as_ref()) }
+    }
+}
+
+impl<T: EntityEquivalent, I: Iterator<Item: EntityEquivalent> + AsMut<[T]>>
+    AsMut<UniqueEntityEquivalentSlice<T>> for UniqueEntityIter<I>
+{
+    fn as_mut(&mut self) -> &mut UniqueEntityEquivalentSlice<T> {
+        // SAFETY: All elements in the original slice are unique.
+        unsafe { UniqueEntityEquivalentSlice::from_slice_unchecked_mut(self.iter.as_mut()) }
+    }
+}
+
+// Default does not guarantee uniqueness, meaning `I` needs to be EntitySetIterator.
+impl<I: EntitySetIterator + Default> Default for UniqueEntityIter<I> {
+    fn default() -> Self {
+        Self {
+            iter: Default::default(),
+        }
+    }
+}
+
+// Clone does not guarantee to maintain uniqueness, meaning `I` needs to be EntitySetIterator.
+impl<I: EntitySetIterator + Clone> Clone for UniqueEntityIter<I> {
+    fn clone(&self) -> Self {
+        Self {
+            iter: self.iter.clone(),
+        }
+    }
+}
+
+impl<I: Iterator<Item: EntityEquivalent> + Debug> Debug for UniqueEntityIter<I> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("UniqueEntityIter")
+            .field("iter", &self.iter)
+            .finish()
     }
 }

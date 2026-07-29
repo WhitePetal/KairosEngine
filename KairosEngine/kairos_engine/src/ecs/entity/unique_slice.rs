@@ -1,8 +1,7 @@
-use std::{borrow::Borrow, cmp::Ordering, ops::{Deref, Index, Range}, ptr, rc::Rc, slice::{self, SliceIndex}, sync::Arc};
+use std::{array::TryFromSliceError, borrow::{Borrow, Cow}, cmp::Ordering, collections::VecDeque, iter::FusedIterator, ops::{Bound, Deref, Index, IndexMut, Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive}, ptr, rc::Rc, slice::{self, SliceIndex}, sync::Arc};
 
-use crate::ecs::entity::{Entity, EntityEquivalent, UniqueEntityIter, unique_array::UniqueEntityEquivalentArray, unique_vec::{self, UniqueEntityEquivalentVec}};
-
-
+use crate::ecs::entity::{Entity, EntityEquivalent, EntitySet, FromEntitySetIterator, UniqueEntityIter, unique_vec::{self, UniqueEntityEquivalentVec}};
+use super::UniqueEntityEquivalentArray;
 
 /// A slice that contains only unique entities.
 ///
@@ -1121,9 +1120,509 @@ impl<T: EntityEquivalent> Borrow<[T]> for UniqueEntityEquivalentSlice<T> {
         self
     }
 }
-// TODO!
 
+impl<T: EntityEquivalent + Clone> Clone for Box<UniqueEntityEquivalentSlice<T>> {
+    fn clone(&self) -> Self {
+        self.to_vec().into_boxed_slice()
+    }
+}
 
+impl<T: EntityEquivalent> Default for &UniqueEntityEquivalentSlice<T> {
+    fn default() -> Self {
+        // SAFETY: All elements in the original slice are unique.
+        unsafe { UniqueEntityEquivalentSlice::from_slice_unchecked(Default::default()) }
+    }
+}
+
+impl<T: EntityEquivalent> Default for &mut UniqueEntityEquivalentSlice<T> {
+    fn default() -> Self {
+        // SAFETY: All elements in the original slice are unique.
+        unsafe { UniqueEntityEquivalentSlice::from_slice_unchecked_mut(Default::default()) }
+    }
+}
+
+impl<T: EntityEquivalent> Default for Box<UniqueEntityEquivalentSlice<T>> {
+    fn default() -> Self {
+        // SAFETY: All elements in the original slice are unique.
+        unsafe { UniqueEntityEquivalentSlice::from_boxed_slice_unchecked(Default::default()) }
+    }
+}
+
+impl<T: EntityEquivalent + Clone> From<&UniqueEntityEquivalentSlice<T>>
+    for Box<UniqueEntityEquivalentSlice<T>>
+{
+    fn from(value: &UniqueEntityEquivalentSlice<T>) -> Self {
+        // SAFETY: All elements in the original slice are unique.
+        unsafe { UniqueEntityEquivalentSlice::from_boxed_slice_unchecked(value.0.into()) }
+    }
+}
+
+impl<T: EntityEquivalent + Clone> From<&UniqueEntityEquivalentSlice<T>>
+    for Arc<UniqueEntityEquivalentSlice<T>>
+{
+    fn from(value: &UniqueEntityEquivalentSlice<T>) -> Self {
+        // SAFETY: All elements in the original slice are unique.
+        unsafe { UniqueEntityEquivalentSlice::from_arc_slice_unchecked(value.0.into()) }
+    }
+}
+
+impl<T: EntityEquivalent + Clone> From<&UniqueEntityEquivalentSlice<T>>
+    for Rc<UniqueEntityEquivalentSlice<T>>
+{
+    fn from(value: &UniqueEntityEquivalentSlice<T>) -> Self {
+        // SAFETY: All elements in the original slice are unique.
+        unsafe { UniqueEntityEquivalentSlice::from_rc_slice_unchecked(value.0.into()) }
+    }
+}
+
+impl<'a, T: EntityEquivalent + Clone> From<&'a UniqueEntityEquivalentSlice<T>>
+    for Cow<'a, UniqueEntityEquivalentSlice<T>>
+{
+    fn from(value: &'a UniqueEntityEquivalentSlice<T>) -> Self {
+        Cow::Borrowed(value)
+    }
+}
+
+impl<T: EntityEquivalent + Clone> ToOwned for UniqueEntityEquivalentSlice<T> {
+    type Owned = UniqueEntityEquivalentVec<T>;
+
+    fn to_owned(&self) -> Self::Owned {
+        // SAFETY: All elements in the original slice are unique.
+        unsafe { UniqueEntityEquivalentVec::from_vec_unchecked(self.0.to_owned()) }
+    }
+}
+
+impl<T: EntityEquivalent + Clone, const N: usize> From<UniqueEntityEquivalentArray<T, N>>
+    for Box<UniqueEntityEquivalentSlice<T>>
+{
+    fn from(value: UniqueEntityEquivalentArray<T, N>) -> Self {
+        // SAFETY: All elements in the original slice are unique.
+        unsafe {
+            UniqueEntityEquivalentSlice::from_boxed_slice_unchecked(Box::new(value.into_inner()))
+        }
+    }
+}
+
+impl<'a, T: EntityEquivalent + Clone> From<Cow<'a, UniqueEntityEquivalentSlice<T>>>
+    for Box<UniqueEntityEquivalentSlice<T>>
+{
+    fn from(value: Cow<'a, UniqueEntityEquivalentSlice<T>>) -> Self {
+        match value {
+            Cow::Borrowed(slice) => Box::from(slice),
+            Cow::Owned(slice) => Box::from(slice),
+        }
+    }
+}
+
+impl<T: EntityEquivalent> From<UniqueEntityEquivalentVec<T>>
+    for Box<UniqueEntityEquivalentSlice<T>>
+{
+    fn from(value: UniqueEntityEquivalentVec<T>) -> Self {
+        value.into_boxed_slice()
+    }
+}
+
+impl<T: EntityEquivalent> FromIterator<T> for Box<UniqueEntityEquivalentSlice<T>> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        iter.into_iter()
+            .collect::<UniqueEntityEquivalentVec<T>>()
+            .into_boxed_slice()
+    }
+}
+
+impl<T: EntityEquivalent> FromEntitySetIterator<T> for Box<UniqueEntityEquivalentSlice<T>> {
+    fn from_entity_set_iter<I: EntitySet<Item = T>>(iter: I) -> Self {
+        iter.into_iter()
+            .collect_set::<UniqueEntityEquivalentVec<T>>()
+            .into_boxed_slice()
+    }
+}
+
+impl<T: EntityEquivalent + PartialEq<U>, U: EntityEquivalent>
+    PartialEq<UniqueEntityEquivalentVec<U>> for &UniqueEntityEquivalentSlice<T>
+{
+    fn eq(&self, other: &UniqueEntityEquivalentVec<U>) -> bool {
+        self.0.eq(other.as_vec())
+    }
+}
+
+impl<T: EntityEquivalent + PartialEq<U>, U: EntityEquivalent>
+    PartialEq<UniqueEntityEquivalentVec<U>> for &mut UniqueEntityEquivalentSlice<T>
+{
+    fn eq(&self, other: &UniqueEntityEquivalentVec<U>) -> bool {
+        self.0.eq(other.as_vec())
+    }
+}
+
+impl<T: EntityEquivalent + PartialEq<U>, U: EntityEquivalent>
+    PartialEq<UniqueEntityEquivalentVec<U>> for UniqueEntityEquivalentSlice<T>
+{
+    fn eq(&self, other: &UniqueEntityEquivalentVec<U>) -> bool {
+        self.0.eq(other.as_vec())
+    }
+}
+
+impl<T: PartialEq<U>, U: EntityEquivalent, const N: usize>
+    PartialEq<&UniqueEntityEquivalentSlice<U>> for [T; N]
+{
+    fn eq(&self, other: &&UniqueEntityEquivalentSlice<U>) -> bool {
+        self.eq(&other.0)
+    }
+}
+
+impl<T: PartialEq<U> + Clone, U: EntityEquivalent> PartialEq<&UniqueEntityEquivalentSlice<U>>
+    for Cow<'_, [T]>
+{
+    fn eq(&self, other: &&UniqueEntityEquivalentSlice<U>) -> bool {
+        self.eq(&&other.0)
+    }
+}
+
+impl<T: EntityEquivalent + PartialEq<U> + Clone, U: EntityEquivalent>
+    PartialEq<&UniqueEntityEquivalentSlice<U>> for Cow<'_, UniqueEntityEquivalentSlice<T>>
+{
+    fn eq(&self, other: &&UniqueEntityEquivalentSlice<U>) -> bool {
+        self.0.eq(&other.0)
+    }
+}
+
+impl<T: PartialEq<U>, U: EntityEquivalent> PartialEq<&UniqueEntityEquivalentSlice<U>> for Vec<T> {
+    fn eq(&self, other: &&UniqueEntityEquivalentSlice<U>) -> bool {
+        self.eq(&other.0)
+    }
+}
+
+impl<T: PartialEq<U>, U: EntityEquivalent> PartialEq<&UniqueEntityEquivalentSlice<U>>
+    for VecDeque<T>
+{
+    fn eq(&self, other: &&UniqueEntityEquivalentSlice<U>) -> bool {
+        self.eq(&&other.0)
+    }
+}
+
+impl<T: PartialEq<U>, U: EntityEquivalent, const N: usize>
+    PartialEq<&mut UniqueEntityEquivalentSlice<U>> for [T; N]
+{
+    fn eq(&self, other: &&mut UniqueEntityEquivalentSlice<U>) -> bool {
+        self.eq(&other.0)
+    }
+}
+
+impl<T: PartialEq<U> + Clone, U: EntityEquivalent> PartialEq<&mut UniqueEntityEquivalentSlice<U>>
+    for Cow<'_, [T]>
+{
+    fn eq(&self, other: &&mut UniqueEntityEquivalentSlice<U>) -> bool {
+        self.eq(&&**other)
+    }
+}
+
+impl<T: EntityEquivalent + PartialEq<U> + Clone, U: EntityEquivalent>
+    PartialEq<&mut UniqueEntityEquivalentSlice<U>> for Cow<'_, UniqueEntityEquivalentSlice<T>>
+{
+    fn eq(&self, other: &&mut UniqueEntityEquivalentSlice<U>) -> bool {
+        self.0.eq(&other.0)
+    }
+}
+
+impl<T: EntityEquivalent + PartialEq<U> + Clone, U: EntityEquivalent>
+    PartialEq<UniqueEntityEquivalentVec<U>> for Cow<'_, UniqueEntityEquivalentSlice<T>>
+{
+    fn eq(&self, other: &UniqueEntityEquivalentVec<U>) -> bool {
+        self.0.eq(other.as_vec())
+    }
+}
+
+impl<T: PartialEq<U>, U: EntityEquivalent> PartialEq<&mut UniqueEntityEquivalentSlice<U>>
+    for Vec<T>
+{
+    fn eq(&self, other: &&mut UniqueEntityEquivalentSlice<U>) -> bool {
+        self.eq(&other.0)
+    }
+}
+
+impl<T: PartialEq<U>, U: EntityEquivalent> PartialEq<&mut UniqueEntityEquivalentSlice<U>>
+    for VecDeque<T>
+{
+    fn eq(&self, other: &&mut UniqueEntityEquivalentSlice<U>) -> bool {
+        self.eq(&&other.0)
+    }
+}
+
+impl<T: EntityEquivalent + PartialEq<U>, U: EntityEquivalent>
+    PartialEq<UniqueEntityEquivalentSlice<U>> for [T]
+{
+    fn eq(&self, other: &UniqueEntityEquivalentSlice<U>) -> bool {
+        self.eq(&other.0)
+    }
+}
+
+impl<T: PartialEq<U>, U: EntityEquivalent, const N: usize> PartialEq<UniqueEntityEquivalentSlice<U>>
+    for [T; N]
+{
+    fn eq(&self, other: &UniqueEntityEquivalentSlice<U>) -> bool {
+        self.eq(&other.0)
+    }
+}
+
+impl<T: EntityEquivalent + PartialEq<U>, U: EntityEquivalent>
+    PartialEq<UniqueEntityEquivalentSlice<U>> for Vec<T>
+{
+    fn eq(&self, other: &UniqueEntityEquivalentSlice<U>) -> bool {
+        self.eq(&other.0)
+    }
+}
+
+impl<T: EntityEquivalent + PartialEq<U>, U, const N: usize> PartialEq<[U; N]>
+    for &UniqueEntityEquivalentSlice<T>
+{
+    fn eq(&self, other: &[U; N]) -> bool {
+        self.0.eq(other)
+    }
+}
+
+impl<T: EntityEquivalent + PartialEq<U>, U, const N: usize> PartialEq<[U; N]>
+    for &mut UniqueEntityEquivalentSlice<T>
+{
+    fn eq(&self, other: &[U; N]) -> bool {
+        self.0.eq(other)
+    }
+}
+
+impl<T: EntityEquivalent + PartialEq<U>, U, const N: usize> PartialEq<[U; N]>
+    for UniqueEntityEquivalentSlice<T>
+{
+    fn eq(&self, other: &[U; N]) -> bool {
+        self.0.eq(other)
+    }
+}
+
+impl<T: EntityEquivalent + PartialEq<U>, U: EntityEquivalent, const N: usize>
+    PartialEq<UniqueEntityEquivalentArray<U, N>> for &UniqueEntityEquivalentSlice<T>
+{
+    fn eq(&self, other: &UniqueEntityEquivalentArray<U, N>) -> bool {
+        self.0.eq(&other.0)
+    }
+}
+
+impl<T: EntityEquivalent + PartialEq<U>, U: EntityEquivalent, const N: usize>
+    PartialEq<UniqueEntityEquivalentArray<U, N>> for &mut UniqueEntityEquivalentSlice<T>
+{
+    fn eq(&self, other: &UniqueEntityEquivalentArray<U, N>) -> bool {
+        self.0.eq(&other.0)
+    }
+}
+
+impl<T: EntityEquivalent + PartialEq<U>, U: EntityEquivalent, const N: usize>
+    PartialEq<UniqueEntityEquivalentArray<U, N>> for UniqueEntityEquivalentSlice<T>
+{
+    fn eq(&self, other: &UniqueEntityEquivalentArray<U, N>) -> bool {
+        self.0.eq(&other.0)
+    }
+}
+
+impl<T: EntityEquivalent + PartialEq<U>, U> PartialEq<Vec<U>> for &UniqueEntityEquivalentSlice<T> {
+    fn eq(&self, other: &Vec<U>) -> bool {
+        self.0.eq(other)
+    }
+}
+
+impl<T: EntityEquivalent + PartialEq<U>, U> PartialEq<Vec<U>>
+    for &mut UniqueEntityEquivalentSlice<T>
+{
+    fn eq(&self, other: &Vec<U>) -> bool {
+        self.0.eq(other)
+    }
+}
+
+impl<T: EntityEquivalent + PartialEq<U>, U> PartialEq<Vec<U>> for UniqueEntityEquivalentSlice<T> {
+    fn eq(&self, other: &Vec<U>) -> bool {
+        self.0.eq(other)
+    }
+}
+
+impl<'a, T: EntityEquivalent + Copy, const N: usize> TryFrom<&'a UniqueEntityEquivalentSlice<T>>
+    for &'a UniqueEntityEquivalentArray<T, N>
+{
+    type Error = TryFromSliceError;
+
+    fn try_from(value: &'a UniqueEntityEquivalentSlice<T>) -> Result<Self, Self::Error> {
+        <&[T; N]>::try_from(&value.0).map(|array|
+                // SAFETY: All elements in the original slice are unique.
+                unsafe { UniqueEntityEquivalentArray::from_array_ref_unchecked(array) })
+    }
+}
+
+impl<T: EntityEquivalent + Copy, const N: usize> TryFrom<&UniqueEntityEquivalentSlice<T>>
+    for UniqueEntityEquivalentArray<T, N>
+{
+    type Error = TryFromSliceError;
+
+    fn try_from(value: &UniqueEntityEquivalentSlice<T>) -> Result<Self, Self::Error> {
+        <&Self>::try_from(value).copied()
+    }
+}
+
+impl<T: EntityEquivalent + Copy, const N: usize> TryFrom<&mut UniqueEntityEquivalentSlice<T>>
+    for UniqueEntityEquivalentArray<T, N>
+{
+    type Error = TryFromSliceError;
+
+    fn try_from(value: &mut UniqueEntityEquivalentSlice<T>) -> Result<Self, Self::Error> {
+        <Self>::try_from(&*value)
+    }
+}
+
+impl<T: EntityEquivalent> Index<(Bound<usize>, Bound<usize>)> for UniqueEntityEquivalentSlice<T> {
+    type Output = Self;
+
+    fn index(&self, key: (Bound<usize>, Bound<usize>)) -> &Self {
+        // SAFETY: All elements in the original slice are unique.
+        unsafe { Self::from_slice_unchecked(self.0.index(key)) }
+    }
+}
+
+impl<T: EntityEquivalent> Index<Range<usize>> for UniqueEntityEquivalentSlice<T> {
+    type Output = Self;
+
+    fn index(&self, key: Range<usize>) -> &Self {
+        // SAFETY: All elements in the original slice are unique.
+        unsafe { Self::from_slice_unchecked(self.0.index(key)) }
+    }
+}
+
+impl<T: EntityEquivalent> Index<RangeFrom<usize>> for UniqueEntityEquivalentSlice<T> {
+    type Output = Self;
+
+    fn index(&self, key: RangeFrom<usize>) -> &Self {
+        // SAFETY: All elements in the original slice are unique.
+        unsafe { Self::from_slice_unchecked(self.0.index(key)) }
+    }
+}
+
+impl<T: EntityEquivalent> Index<RangeFull> for UniqueEntityEquivalentSlice<T> {
+    type Output = Self;
+
+    fn index(&self, key: RangeFull) -> &Self {
+        // SAFETY: All elements in the original slice are unique.
+        unsafe { Self::from_slice_unchecked(self.0.index(key)) }
+    }
+}
+
+impl<T: EntityEquivalent> Index<RangeInclusive<usize>> for UniqueEntityEquivalentSlice<T> {
+    type Output = UniqueEntityEquivalentSlice<T>;
+
+    fn index(&self, key: RangeInclusive<usize>) -> &Self {
+        // SAFETY: All elements in the original slice are unique.
+        unsafe { Self::from_slice_unchecked(self.0.index(key)) }
+    }
+}
+
+impl<T: EntityEquivalent> Index<RangeTo<usize>> for UniqueEntityEquivalentSlice<T> {
+    type Output = UniqueEntityEquivalentSlice<T>;
+
+    fn index(&self, key: RangeTo<usize>) -> &Self {
+        // SAFETY: All elements in the original slice are unique.
+        unsafe { Self::from_slice_unchecked(self.0.index(key)) }
+    }
+}
+
+impl<T: EntityEquivalent> Index<RangeToInclusive<usize>> for UniqueEntityEquivalentSlice<T> {
+    type Output = UniqueEntityEquivalentSlice<T>;
+
+    fn index(&self, key: RangeToInclusive<usize>) -> &Self {
+        // SAFETY: All elements in the original slice are unique.
+        unsafe { Self::from_slice_unchecked(self.0.index(key)) }
+    }
+}
+
+impl<T: EntityEquivalent> Index<usize> for UniqueEntityEquivalentSlice<T> {
+    type Output = T;
+
+    fn index(&self, index: usize) -> &T {
+        &self.0[index]
+    }
+}
+
+impl<T: EntityEquivalent> IndexMut<(Bound<usize>, Bound<usize>)>
+    for UniqueEntityEquivalentSlice<T>
+{
+    fn index_mut(&mut self, key: (Bound<usize>, Bound<usize>)) -> &mut Self {
+        // SAFETY: All elements in the original slice are unique.
+        unsafe { Self::from_slice_unchecked_mut(self.0.index_mut(key)) }
+    }
+}
+
+impl<T: EntityEquivalent> IndexMut<Range<usize>> for UniqueEntityEquivalentSlice<T> {
+    fn index_mut(&mut self, key: Range<usize>) -> &mut Self {
+        // SAFETY: All elements in the original slice are unique.
+        unsafe { Self::from_slice_unchecked_mut(self.0.index_mut(key)) }
+    }
+}
+
+impl<T: EntityEquivalent> IndexMut<RangeFrom<usize>> for UniqueEntityEquivalentSlice<T> {
+    fn index_mut(&mut self, key: RangeFrom<usize>) -> &mut Self {
+        // SAFETY: All elements in the original slice are unique.
+        unsafe { Self::from_slice_unchecked_mut(self.0.index_mut(key)) }
+    }
+}
+
+impl<T: EntityEquivalent> IndexMut<RangeFull> for UniqueEntityEquivalentSlice<T> {
+    fn index_mut(&mut self, key: RangeFull) -> &mut Self {
+        // SAFETY: All elements in the original slice are unique.
+        unsafe { Self::from_slice_unchecked_mut(self.0.index_mut(key)) }
+    }
+}
+
+impl<T: EntityEquivalent> IndexMut<RangeInclusive<usize>> for UniqueEntityEquivalentSlice<T> {
+    fn index_mut(&mut self, key: RangeInclusive<usize>) -> &mut Self {
+        // SAFETY: All elements in the original slice are unique.
+        unsafe { Self::from_slice_unchecked_mut(self.0.index_mut(key)) }
+    }
+}
+
+impl<T: EntityEquivalent> IndexMut<RangeTo<usize>> for UniqueEntityEquivalentSlice<T> {
+    fn index_mut(&mut self, key: RangeTo<usize>) -> &mut Self {
+        // SAFETY: All elements in the original slice are unique.
+        unsafe { Self::from_slice_unchecked_mut(self.0.index_mut(key)) }
+    }
+}
+
+impl<T: EntityEquivalent> IndexMut<RangeToInclusive<usize>> for UniqueEntityEquivalentSlice<T> {
+    fn index_mut(&mut self, key: RangeToInclusive<usize>) -> &mut Self {
+        // SAFETY: All elements in the original slice are unique.
+        unsafe { Self::from_slice_unchecked_mut(self.0.index_mut(key)) }
+    }
+}
+
+impl<'a, T: EntityEquivalent> UniqueEntityIter<slice::Iter<'a, T>> {
+    /// Views the underlying data as a subslice of the original data.
+    ///
+    /// Equivalent to [`slice::Iter::as_slice`].
+    pub fn as_slice(&self) -> &'a UniqueEntityEquivalentSlice<T> {
+        // SAFETY: All elements in the original slice are unique.
+        unsafe { UniqueEntityEquivalentSlice::from_slice_unchecked(self.as_inner().as_slice()) }
+    }
+}
+
+impl<'a, T: EntityEquivalent> UniqueEntityIter<slice::IterMut<'a, T>> {
+    /// Views the underlying data as a mutable subslice of the original data.
+    ///
+    /// Equivalent to [`slice::IterMut::into_slice`].
+    pub fn into_slice(self) -> &'a mut UniqueEntityEquivalentSlice<T> {
+        // SAFETY: All elements in the original slice are unique.
+        unsafe {
+            UniqueEntityEquivalentSlice::from_slice_unchecked_mut(self.into_inner().into_slice())
+        }
+    }
+
+    /// Views the underlying data as a subslice of the original data.
+    ///
+    /// Equivalent to [`slice::IterMut::as_slice`].
+    pub fn as_slice(&self) -> &UniqueEntityEquivalentSlice<T> {
+        // SAFETY: All elements in the original slice are unique.
+        unsafe { UniqueEntityEquivalentSlice::from_slice_unchecked(self.as_inner().as_slice()) }
+    }
+}
 
 /// An iterator that yields `&UniqueEntityEquivalentSlice`. Note that an entity may appear
 /// in multiple slices, depending on the wrapped iterator.
@@ -1147,4 +1646,140 @@ pub struct UniqueEntityEquivalentSliceIterMut<
     I: Iterator<Item = &'a mut [T]>,
 > {
     iter: I,
+}
+
+impl<'a, T: EntityEquivalent + 'a, I: Iterator<Item = &'a mut [T]>>
+    UniqueEntityEquivalentSliceIterMut<'a, T, I>
+{
+    /// Constructs a [`UniqueEntityEquivalentSliceIterMut`] from a mutable slice iterator unsafely.
+    ///
+    /// # Safety
+    ///
+    /// All elements in each of the slices must be unique.
+    pub const unsafe fn from_mut_slice_iter_unchecked(iter: I) -> Self {
+        Self { iter }
+    }
+
+    /// Returns the inner `I`.
+    pub fn into_inner(self) -> I {
+        self.iter
+    }
+
+    /// Returns a reference to the inner `I`.
+    pub const fn as_inner(&self) -> &I {
+        &self.iter
+    }
+
+    /// Returns a mutable reference to the inner `I`.
+    ///
+    /// # Safety
+    ///
+    /// `self` must always contain an iterator that yields unique elements,
+    /// even while this reference is live.
+    pub const unsafe fn as_mut_inner(&mut self) -> &mut I {
+        &mut self.iter
+    }
+}
+
+impl<'a, T: EntityEquivalent + 'a, I: Iterator<Item = &'a mut [T]>> Iterator
+    for UniqueEntityEquivalentSliceIterMut<'a, T, I>
+{
+    type Item = &'a mut UniqueEntityEquivalentSlice<T>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|slice|
+            // SAFETY: All elements in the original iterator are unique slices.
+            unsafe { UniqueEntityEquivalentSlice::from_slice_unchecked_mut(slice) })
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter.size_hint()
+    }
+}
+
+impl<'a, T: EntityEquivalent + 'a, I: ExactSizeIterator<Item = &'a mut [T]>> ExactSizeIterator
+    for UniqueEntityEquivalentSliceIterMut<'a, T, I>
+{
+}
+
+impl<'a, T: EntityEquivalent + 'a, I: DoubleEndedIterator<Item = &'a mut [T]>> DoubleEndedIterator
+    for UniqueEntityEquivalentSliceIterMut<'a, T, I>
+{
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.iter.next_back().map(|slice|
+            // SAFETY: All elements in the original iterator are unique slices.
+            unsafe { UniqueEntityEquivalentSlice::from_slice_unchecked_mut(slice) })
+    }
+}
+
+impl<'a, T: EntityEquivalent + 'a, I: FusedIterator<Item = &'a mut [T]>> FusedIterator
+    for UniqueEntityEquivalentSliceIterMut<'a, T, I>
+{
+}
+
+impl<'a, T: EntityEquivalent + 'a, I: Iterator<Item = &'a mut [T]> + AsRef<[&'a [T]]>>
+    AsRef<[&'a UniqueEntityEquivalentSlice<T>]> for UniqueEntityEquivalentSliceIterMut<'a, T, I>
+{
+    fn as_ref(&self) -> &[&'a UniqueEntityEquivalentSlice<T>] {
+        // SAFETY: All elements in the original iterator are unique slices.
+        unsafe { cast_slice_of_unique_entity_slice(self.iter.as_ref()) }
+    }
+}
+
+impl<'a, T: EntityEquivalent + 'a, I: Iterator<Item = &'a mut [T]> + AsMut<[&'a mut [T]]>>
+    AsMut<[&'a mut UniqueEntityEquivalentSlice<T>]>
+    for UniqueEntityEquivalentSliceIterMut<'a, T, I>
+{
+    fn as_mut(&mut self) -> &mut [&'a mut UniqueEntityEquivalentSlice<T>] {
+        // SAFETY: All elements in the original iterator are unique slices.
+        unsafe { cast_slice_of_mut_unique_entity_slice_mut(self.iter.as_mut()) }
+    }
+}
+
+impl<'a, T: EntityEquivalent> UniqueEntityEquivalentSliceIter<'a, T, slice::ChunksExact<'a, T>> {
+    /// Returns the remainder of the original slice that is not going to be
+    /// returned by the iterator.
+    ///
+    /// Equivalent to [`slice::ChunksExact::remainder`].
+    pub fn remainder(&self) -> &'a UniqueEntityEquivalentSlice<T> {
+        // SAFETY: All elements in the original iterator are unique slices.
+        unsafe { UniqueEntityEquivalentSlice::from_slice_unchecked(self.iter.remainder()) }
+    }
+}
+
+impl<'a, T: EntityEquivalent> UniqueEntityEquivalentSliceIter<'a, T, slice::RChunksExact<'a, T>> {
+    /// Returns the remainder of the original slice that is not going to be
+    /// returned by the iterator.
+    ///
+    /// Equivalent to [`slice::RChunksExact::remainder`].
+    pub fn remainder(&self) -> &'a UniqueEntityEquivalentSlice<T> {
+        // SAFETY: All elements in the original iterator are unique slices.
+        unsafe { UniqueEntityEquivalentSlice::from_slice_unchecked(self.iter.remainder()) }
+    }
+}
+
+impl<'a, T: EntityEquivalent>
+    UniqueEntityEquivalentSliceIterMut<'a, T, slice::ChunksExactMut<'a, T>>
+{
+    /// Returns the remainder of the original slice that is not going to be
+    /// returned by the iterator.
+    ///
+    /// Equivalent to [`slice::ChunksExactMut::into_remainder`].
+    pub fn into_remainder(self) -> &'a mut UniqueEntityEquivalentSlice<T> {
+        // SAFETY: All elements in the original iterator are unique slices.
+        unsafe { UniqueEntityEquivalentSlice::from_slice_unchecked_mut(self.iter.into_remainder()) }
+    }
+}
+
+impl<'a, T: EntityEquivalent>
+    UniqueEntityEquivalentSliceIterMut<'a, T, slice::RChunksExactMut<'a, T>>
+{
+    /// Returns the remainder of the original slice that is not going to be
+    /// returned by the iterator.
+    ///
+    /// Equivalent to [`slice::RChunksExactMut::into_remainder`].
+    pub fn into_remainder(self) -> &'a mut UniqueEntityEquivalentSlice<T> {
+        // SAFETY: All elements in the original iterator are unique slices.
+        unsafe { UniqueEntityEquivalentSlice::from_slice_unchecked_mut(self.iter.into_remainder()) }
+    }
 }

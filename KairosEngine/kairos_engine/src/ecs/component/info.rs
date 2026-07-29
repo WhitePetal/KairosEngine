@@ -43,10 +43,6 @@ impl ComponentId {
     }
 }
 
-pub struct ComponentInfo {
-    pub(super) id: ComponentId,
-}
-
 impl SparseSetIndex for ComponentId {
     #[inline]
     fn sparse_set_index(&self) -> usize {
@@ -57,6 +53,17 @@ impl SparseSetIndex for ComponentId {
     fn get_sparse_set_index(value: usize) -> Self {
         Self(value)
     }
+}
+
+/// A value describing a component or resource, which may or may not correspond to a Rust type.
+#[derive(Clone)]
+pub struct ComponentDescriptor {
+
+}
+
+pub struct ComponentInfo {
+    pub(super) id: ComponentId,
+    pub(super) descriptor:
 }
 
 /// Stores metadata associated with each kind of [`Component`] in a given [`World`](crate::world::World).
