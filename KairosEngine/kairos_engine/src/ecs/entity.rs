@@ -82,11 +82,29 @@
 //! [`Commands`]: crate::system::Commands
 //!
 
-use std::{fmt::Display, mem, num::NonZero};
+use std::{fmt, mem, num::NonZero, panic::Location};
 
+use derive_more::Display;
+use log::warn;
 use nonmax::NonMaxU32;
+use serde::{Deserialize, Serialize};
 
-use crate::ecs::remote_allocator;
+use crate::{
+    debug::MaybeLocation,
+    ecs::{
+        archetype::{ArchetypeId, ArchetypeRow},
+        change_detection::{CheckChangeTicks, Tick},
+        remote_allocator::{self, RemoteAllocator},
+        storage::{TableId, TableRow},
+    },
+};
+
+mod hash;
+
+pub use hash::*;
+
+#[cfg(test)]
+mod tests;
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Display)]
 #[repr(transparent)]
@@ -517,7 +535,7 @@ impl fmt::Display for Entity {
         if self == &Self::PLACEHOLDER {
             f.pad("PLACEHOLDER")
         } else {
-            f.pad(&alloc::fmt::format(format_args!(
+            f.pad(&fmt::format(format_args!(
                 "{}v{}",
                 self.index(),
                 self.generation()
@@ -534,7 +552,535 @@ impl fmt::Display for Entity {
 /// See the module docs for how these ids and this allocator participate in the life cycle of an entity.
 #[derive(Default, Debug)]
 pub struct EntityAllocator {
-    pub(crate) inner: remote_allocator::A,
+    pub(crate) inner: remote_allocator::Allocator,
 }
 
-impl EntityAllocator {}
+impl EntityAllocator {
+    /// Restarts the allocator.
+    pub(crate) fn restart(&mut self) {
+        self.inner = remote_allocator::Allocator::new();
+    }
+
+    /// Builds a new remote allocator that hooks into this [`EntityAllocator`].
+    /// This is useful when you need to allocate entities without holding a reference to the world (like in async).
+    pub fn build_remote_allocator(&self) -> RemoteAllocator {
+        RemoteAllocator::new(&self.inner)
+    }
+
+    /// Returns `true` when the `allocator` is connected to this [`EntityAllocator`]
+    /// and its allocated [`Entity`] values can still be used in this world.
+    pub fn has_remote_allocator(&self, allocator: &RemoteAllocator) -> bool {
+        allocator.is_connected_to(&self.inner)
+    }
+
+    /// This allows `freed` to be retrieved from [`alloc`](Self::alloc), etc.
+    /// Freeing an [`Entity`] such that one [`EntityIndex`] is in the allocator in multiple places can cause panics when spawning the allocated entity.
+    /// Additionally, to differentiate versions of an [`Entity`], updating the [`EntityGeneration`] before freeing is a good idea
+    /// (but not strictly necessary if you don't mind [`Entity`] id aliasing.)
+    pub fn free(&mut self, freed: Entity) {
+        self.inner.free(freed);
+    }
+
+    /// This allows `freed` to be retrieved from [`alloc`](Self::alloc), etc.
+    ///
+    /// The same caveats of [`free`](Self::free) apply here.
+    /// (Eg. the slice should not contain duplicates.)
+    pub fn free_many(&mut self, freed: &[Entity]) {
+        self.inner.free_many(freed);
+    }
+
+    /// Allocates some [`Entity`].
+    /// The result could have come from a [`free`](Self::free) or be a brand new [`EntityIndex`].
+    ///
+    /// The returned entity is valid and unique, but it is not yet spawned.
+    /// Using the id as if it were spawned may produce errors.
+    /// It can not be queried, and it has no [`EntityLocation`].
+    /// See module [docs](crate::entity) for more information about entity validity vs spawning.
+    ///
+    /// This is different from empty entities, which are spawned and
+    /// just happen to have no components.
+    ///
+    /// These ids must be used; otherwise, they will be forgotten.
+    /// For example, the result must be eventually used to either spawn an entity or be [`free`](Self::free)d.
+    ///
+    /// # Panics
+    ///
+    /// If there are no more entities available, this panics.
+    ///
+    ///
+    /// # Example
+    ///
+    /// This is particularly useful when spawning entities in special ways.
+    /// For example, [`Commands`](crate::system::Commands) uses this to allocate an entity and [`spawn_at`](crate::world::World::spawn_at) it later.
+    /// But remember, since this entity is not queryable and is not discoverable, losing the returned [`Entity`] effectively leaks it, never to be used again!
+    ///
+    /// ```
+    /// # use bevy_ecs::{prelude::*};
+    /// let mut world = World::new();
+    /// let entity = world.entity_allocator().alloc();
+    /// // wait as long as you like
+    /// let entity_access = world.spawn_empty_at(entity).unwrap(); // or spawn_at(entity, my_bundle)
+    /// // treat it as a normal entity
+    /// entity_access.despawn();
+    /// ```
+    ///
+    /// More generally, manually spawning and [`despawn_no_free`](crate::world::World::despawn_no_free)ing entities allows you to skip Bevy's default entity allocator.
+    /// This is useful if you want to enforce properties about the [`EntityIndex`]s of a group of entities, make a custom allocator, etc.
+    pub fn alloc(&self) -> Entity {
+        self.inner.alloc()
+    }
+
+    /// A more efficient way of calling [`alloc`](Self::alloc) repeatedly `count` times.
+    /// See [`alloc`](Self::alloc) for details.
+    ///
+    /// Like [`alloc`](Self::alloc), these entities must be used, otherwise they will be forgotten.
+    /// If the iterator is not exhausted, its remaining entities are forgotten.
+    /// See [`AllocEntitiesIterator`] docs for more.
+    pub fn alloc_many(&self, count: u32) -> AllocEntitiesIterator {
+        AllocEntitiesIterator {
+            inner: self.inner.alloc_many(count),
+        }
+    }
+}
+
+/// An [`Iterator`] returning a sequence of unique [`Entity`] values from [`Entities`].
+/// Dropping this will still retain the entities as allocated; this is effectively a leak.
+/// To prevent this, ensure the iterator is exhausted before dropping it.
+pub struct AllocEntitiesIterator<'a> {
+    inner: remote_allocator::AllocEntitiesIterator<'a>,
+}
+
+impl<'a> Iterator for AllocEntitiesIterator<'a> {
+    type Item = Entity;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.inner.size_hint()
+    }
+}
+
+impl<'a> ExactSizeIterator for AllocEntitiesIterator<'a> {}
+
+impl<'a> core::iter::FusedIterator for AllocEntitiesIterator<'a> {}
+
+// TODO!: Need EntitySetIterator
+// SAFETY: Newly allocated entity values are unique.
+// unsafe impl EntitySetIterator for AllocEntitiesIterator<'_> {}
+
+/// A location of an entity in an archetype.
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct EntityLocation {
+    /// The ID of the [`Archetype`] the [`Entity`] belongs to.
+    ///
+    /// [`Archetype`]: crate::archetype::Archetype
+    pub archetype_id: ArchetypeId,
+
+    /// The index of the [`Entity`] within its [`Archetype`].
+    ///
+    /// [`Archetype`]: crate::archetype::Archetype
+    pub archetype_row: ArchetypeRow,
+
+    /// The ID of the [`Table`] the [`Entity`] belongs to.
+    ///
+    /// [`Table`]: crate::storage::Table
+    pub table_id: TableId,
+
+    /// The index of the [`Entity`] within its [`Table`].
+    ///
+    /// [`Table`]: crate::storage::Table
+    pub table_row: TableRow,
+}
+
+#[derive(Copy, Clone, Debug)]
+struct SpawnedOrDespawned {
+    by: MaybeLocation,
+    tick: Tick,
+}
+
+#[derive(Copy, Clone, Debug)]
+struct EntityMeta {
+    /// The current [`EntityGeneration`] of the [`EntityIndex`].
+    generation: EntityGeneration,
+    /// The current location of the [`EntityIndex`].
+    location: Option<EntityLocation>,
+    /// Location and tick of the last spawn/despawn
+    spawned_or_despawned: SpawnedOrDespawned,
+}
+
+impl EntityMeta {
+    /// The metadata for a fresh entity: Never spawned/despawned, no location, etc.
+    const FRESH: EntityMeta = EntityMeta {
+        generation: EntityGeneration::FIRST,
+        location: None,
+        spawned_or_despawned: SpawnedOrDespawned {
+            by: MaybeLocation::caller(),
+            tick: Tick::new(0),
+        },
+    };
+}
+
+/// [`Entities`] tracks all known [`EntityIndex`]s and their metadata.
+/// This is like a base table of information all entities have.
+#[derive(Debug, Clone)]
+pub struct Entities {
+    meta: Vec<EntityMeta>,
+}
+
+impl Entities {
+    pub(crate) const fn new() -> Self {
+        Self { meta: Vec::new() }
+    }
+
+    /// Clears all entity information
+    pub fn clear(&mut self) {
+        self.meta.clear();
+    }
+
+    /// Returns the [`EntityLocation`] of an [`Entity`] if it is valid and spawned.
+    /// This will return an error if the [`EntityGeneration`] of this entity has passed or if the [`EntityIndex`] is not spawned.
+    ///
+    /// See the module [docs](crate::entity) for a full explanation of these ids, entity life cycles, and the meaning of this result.
+    #[inline]
+    pub fn get_spawned(&self, entity: Entity) -> Result<EntityLocation, EntityNotSpawnedError> {
+        let meta = self.meta.get(entity.index_u32() as usize);
+        let meta = meta.unwrap_or(&EntityMeta::FRESH);
+        if entity.generation() != meta.generation {
+            return Err(EntityNotSpawnedError::Invalid(InvalidEntityError {
+                entity,
+                current_generation: meta.generation,
+            }));
+        };
+        meta.location
+            .ok_or(EntityNotSpawnedError::ValidButNotSpawned(
+                EntityValidButNotSpawnedError {
+                    entity,
+                    location: meta.spawned_or_despawned.by,
+                },
+            ))
+    }
+
+    /// Returns the [`EntityLocation`] of an [`Entity`] if it is valid.
+    /// The location will be `None` if the entity is not spawned.
+    /// If you expect the entity to be spawned, use [`get_spawned`](Self::get_spawned).
+    ///
+    /// This will fail if the [`Entity`] is not valid (ex: the generation is mismatched).
+    ///
+    /// See the module [docs](crate::entity) for a full explanation of these ids, entity life cycles, and the meaning of this result.
+    #[inline]
+    pub fn get(&self, entity: Entity) -> Result<Option<EntityLocation>, InvalidEntityError> {
+        match self.get_spawned(entity) {
+            Ok(location) => Ok(Some(location)),
+            Err(EntityNotSpawnedError::ValidButNotSpawned { .. }) => Ok(None),
+            Err(EntityNotSpawnedError::Invalid(err)) => Err(err),
+        }
+    }
+
+    /// Get the [`Entity`] for the given [`EntityIndex`].
+    /// Note that this entity may not be spawned yet.
+    ///
+    /// See the module [docs](crate::entity) for a full explanation of these ids, entity life cycles, and the meaning of this result.
+    #[inline]
+    pub fn resolve_from_index(&self, index: EntityIndex) -> Entity {
+        self.meta
+            .get(index.index() as usize)
+            .map(|meta| Entity::from_index_and_generation(index, meta.generation))
+            .unwrap_or(Entity::from_index(index))
+    }
+
+    /// Returns whether the entity at this `index` is spawned or not.
+    ///
+    /// See the module [docs](crate::entity) for a full explanation of these ids, entity life cycles, and the meaning of this result.
+    #[inline]
+    pub fn is_index_spawned(&self, index: EntityIndex) -> bool {
+        self.meta
+            .get(index.index() as usize)
+            .is_some_and(|meta| meta.location.is_some())
+    }
+
+    /// Returns true if the entity is valid.
+    /// This will return true for entities that are valid but have not been spawned.
+    ///
+    /// See the module [docs](crate::entity) for a full explanation of these ids, entity life cycles, and the meaning of this result.
+    pub fn contains(&self, entity: Entity) -> bool {
+        self.resolve_from_index(entity.index()).generation() == entity.generation()
+    }
+
+    /// Returns true if the entity is valid and is spawned.
+    ///
+    /// See the module [docs](crate::entity) for a full explanation of these ids, entity life cycles, and the meaning of this result.
+    pub fn contains_spawned(&self, entity: Entity) -> bool {
+        self.get_spawned(entity).is_ok()
+    }
+
+    /// Provides information regarding if `entity` may be safely spawned.
+    /// This can error if the entity is invalid or is already spawned.
+    ///
+    /// See the module [docs](crate::entity) for a full explanation of these ids, entity life cycles, and the meaning of this result.
+    #[inline]
+    pub fn check_can_spawn_at(&self, entity: Entity) -> Result<(), SpawnError> {
+        match self.get(entity) {
+            Ok(Some(_)) => Err(SpawnError::AlreadySpawned),
+            Ok(None) => Ok(()),
+            Err(err) => Err(SpawnError::Invalid(err)),
+        }
+    }
+
+    /// Updates the location of an [`EntityIndex`].
+    /// This must be called when moving the components of the existing entity around in storage.
+    /// Returns the previous location of the index.
+    ///
+    /// # Safety
+    ///  - The current location of the `index` must already be set. If not, use [`set_location`](Self::set_location).
+    ///  - `location` must be valid for the entity at `index` or immediately made valid afterwards
+    ///    before handing control to unknown code.
+    #[inline]
+    pub(crate) unsafe fn update_existing_location(
+        &mut self,
+        index: EntityIndex,
+        location: Option<EntityLocation>,
+    ) -> Option<EntityLocation> {
+        // SAFETY: Caller guarantees that `index` already had a location, so `declare` must have made the index valid already.
+        let meta = unsafe { self.meta.get_unchecked_mut(index.index() as usize) };
+        mem::replace(&mut meta.location, location)
+    }
+
+    /// Declares the location of an [`EntityIndex`].
+    /// This must be called when spawning entities, but when possible, prefer [`update_existing_location`](Self::update_existing_location).
+    /// Returns the previous location of the index.
+    ///
+    /// # Safety
+    ///  - `location` must be valid for the entity at `index` or immediately made valid afterwards
+    ///    before handing control to unknown code.
+    #[inline]
+    pub(crate) unsafe fn set_location(
+        &mut self,
+        index: EntityIndex,
+        location: Option<EntityLocation>,
+    ) -> Option<EntityLocation> {
+        self.ensure_index_index_is_valid(index);
+        // SAFETY: We just did `ensure_index`
+        unsafe { self.update_existing_location(index, location) }
+    }
+
+    /// Ensures the index is within the bounds of [`Self::meta`], expanding it if necessary.
+    #[inline]
+    fn ensure_index_index_is_valid(&mut self, index: EntityIndex) {
+        #[cold] // to help with branch prediction
+        fn expand(meta: &mut Vec<EntityMeta>, len: usize) {
+            meta.resize(len, EntityMeta::FRESH);
+            // Set these up too while we're here.
+            meta.resize(meta.capacity(), EntityMeta::FRESH);
+        }
+
+        let index = index.index() as usize;
+        if self.meta.len() <= index {
+            // TODO: hint unlikely once stable.
+            expand(&mut self.meta, index + 1);
+        }
+    }
+
+    /// Marks the `index` as free, returning the [`Entity`] to reuse that [`EntityIndex`].
+    ///
+    /// # Safety
+    ///
+    /// - `index` must be despawned (have no location) already.
+    pub(crate) unsafe fn mark_free(&mut self, index: EntityIndex, generations: u32) -> Entity {
+        self.ensure_index_index_is_valid(index);
+
+        let meta = unsafe { self.meta.get_unchecked_mut(index.index() as usize) };
+
+        let (new_generation, aliased) = meta.generation.after_versions_and_could_alias(generations);
+        meta.generation = new_generation;
+        if aliased {
+            warn!("EntityIndex({index}) generation wrapped on Entities::free, aliasing may occur")
+        }
+
+        Entity::from_index_and_generation(index, meta.generation)
+    }
+
+    /// Mark an [`EntityIndex`] as spawned or despawned in the given tick.
+    ///
+    /// # Safety
+    ///  - `index` must have been spawned at least once, ensuring its index is valid.
+    #[inline]
+    pub(crate) unsafe fn mark_spawned_or_despawned(
+        &mut self,
+        index: EntityIndex,
+        by: MaybeLocation,
+        tick: Tick,
+    ) {
+        // SAFETY: Caller guarantees that `index` already had a location, so `declare` must have made the index valid already.
+        let meta = unsafe { self.meta.get_unchecked_mut(index.index() as usize) };
+        meta.spawned_or_despawned = SpawnedOrDespawned { by, tick }
+    }
+
+    /// Try to get the source code location from which this entity has last been spawned or despawned.
+    ///
+    /// Returns `None` if the entity does not exist or has never been construced/despawned.
+    pub fn entity_get_spawned_or_despawned_by(
+        &self,
+        entity: Entity,
+    ) -> MaybeLocation<Option<&'static Location<'static>>> {
+        MaybeLocation::new_with_flattened(|| {
+            self.entity_get_spawned_or_despawned(entity)
+                .map(|spawned_or_despawned| spawned_or_despawned.by)
+        })
+    }
+
+    /// Try to get the [`Tick`] at which this entity has last been spawned or despawned.
+    ///
+    /// Returns `None` if the entity does not exist or has never been construced/despawned.
+    pub fn entity_get_spawn_or_despawn_tick(&self, entity: Entity) -> Option<Tick> {
+        self.entity_get_spawned_or_despawned(entity)
+            .map(|spawned_or_despawned| spawned_or_despawned.tick)
+    }
+
+    /// Try to get the [`SpawnedOrDespawned`] related to the entity's last spawning or despawning.
+    ///
+    /// Returns `None` if the entity does not exist or has never been construced/despawned.
+    #[inline]
+    fn entity_get_spawned_or_despawned(&self, entity: Entity) -> Option<SpawnedOrDespawned> {
+        self.meta
+            .get(entity.index_u32() as usize)
+            .filter(|meta| {
+                (meta.generation == entity.generation)
+                    || (meta.location.is_none()
+                        && meta.generation == entity.generation().after_version(1))
+            })
+            .map(|meta| meta.spawned_or_despawned)
+    }
+
+    /// Returns the source code location from which this entity has last been spawned
+    /// or despawned and the Tick of when that happened.
+    ///
+    /// # Safety
+    ///
+    /// The entity index must belong to an entity that is currently alive or, if it
+    /// despawned, was not overwritten by a new entity of the same index.
+    #[inline]
+    pub(crate) unsafe fn entity_get_spawned_or_despawned_unchecked(
+        &self,
+        entity: Entity,
+    ) -> (MaybeLocation, Tick) {
+        // SAFETY: caller ensures entity is allocated
+        let meta = unsafe { self.meta.get_unchecked(entity.index_u32() as usize) };
+        (meta.spawned_or_despawned.by, meta.spawned_or_despawned.tick)
+    }
+
+    #[inline]
+    pub(crate) fn check_change_ticks(&mut self, check: CheckChangeTicks) {
+        for meta in &mut self.meta {
+            meta.spawned_or_despawned.tick.check_tick(check);
+        }
+    }
+
+    /// The count of currently allocated entity indices.
+    /// For information on active entities, see [`Self::count_spawned`].
+    #[inline]
+    pub fn len(&self) -> u32 {
+        self.meta.len() as u32
+    }
+
+    /// Checks if any entity has been declared.
+    /// For information on active entities, see [`Self::any_spawned`].
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Counts the number of entity indices currently spawned.
+    /// See the module docs for a more precise explanation of what spawning means.
+    /// Be aware that this is O(n) and is intended only to be used as a diagnostic for tests.
+    pub fn count_spawned(&self) -> u32 {
+        self.meta
+            .iter()
+            .filter(|meta| meta.location.is_some())
+            .count() as u32
+    }
+
+    /// Returns true if there are any entity indices currently spawned.
+    /// See the module docs for a more precise explanation of what spawning means.
+    pub fn any_spawned(&self) -> bool {
+        self.meta.iter().any(|meta| meta.location.is_some())
+    }
+}
+
+/// An error that occurs when a specified [`Entity`] does not exist in the entity id space.
+/// See [module](crate::entity) docs for more about entity validity.
+#[derive(thiserror::Error, Debug, Clone, Copy, PartialEq, Eq)]
+#[error(
+    "The entity with ID {entity} is invalid; its index now has generation {current_generation}."
+)]
+pub struct InvalidEntityError {
+    /// The entity's ID.
+    pub entity: Entity,
+    /// The generation of the [`EntityIndex`], which did not match the requested entity.
+    pub current_generation: EntityGeneration,
+}
+
+/// An error that occurs when a specified [`Entity`] is certain to be valid and is expected to be spawned but is not spawned yet.
+/// This includes when an [`EntityIndex`] is requested but is not spawned, since each index always corresponds to exactly one valid entity.
+#[derive(thiserror::Error, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EntityValidButNotSpawnedError {
+    /// The entity's ID.
+    pub entity: Entity,
+    /// The location of what last despawned the entity.
+    pub location: MaybeLocation<&'static Location<'static>>,
+}
+
+impl fmt::Display for EntityValidButNotSpawnedError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let entity = self.entity;
+        match self.location.into_option() {
+            Some(location) => write!(
+                f,
+                "The entity with ID {entity} is not spawned; its index was last despawned by {location}."
+            ),
+            None => write!(
+                f,
+                "The entity with ID {entity} is not spawned; enable `track_location` feature for more details."
+            ),
+        }
+    }
+}
+
+/// An error that occurs when a specified [`Entity`] is expected to be valid and spawned but is not.
+/// Represents an error of either [`InvalidEntityError`] (when the entity is invalid) or [`EntityValidButNotSpawnedError`] (when the [`EntityGeneration`] is correct but the [`EntityIndex`] is not spawned).
+#[derive(thiserror::Error, Copy, Clone, Debug, Eq, PartialEq)]
+pub enum EntityNotSpawnedError {
+    /// The entity was invalid.
+    #[error(
+        "Entity despawned: {0}\nNote that interacting with a despawned entity is the most common cause of this error but there are others"
+    )]
+    Invalid(#[from] InvalidEntityError),
+    /// The entity was valid but was not spawned.
+    #[error(
+        "Entity not yet spawned: {0}\nNote that interacting with a not-yet-spawned entity is the most common cause of this error but there are others"
+    )]
+    ValidButNotSpawned(#[from] EntityValidButNotSpawnedError),
+}
+
+impl EntityNotSpawnedError {
+    /// The entity that did not exist or was not spawned.
+    pub fn entity(&self) -> Entity {
+        match self {
+            EntityNotSpawnedError::Invalid(err) => err.entity,
+            EntityNotSpawnedError::ValidButNotSpawned(err) => err.entity,
+        }
+    }
+}
+
+/// An error that occurs when a specified [`Entity`] can not be spawned.
+#[derive(thiserror::Error, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SpawnError {
+    /// The [`Entity`] to spawn was invalid.
+    /// It probably had the wrong generation or was created erroneously.
+    #[error("Invalid id: {0}")]
+    Invalid(InvalidEntityError),
+    /// The [`Entity`] to spawn was already spawned.
+    #[error("The entity can not be spawned as it already has a location.")]
+    AlreadySpawned,
+}

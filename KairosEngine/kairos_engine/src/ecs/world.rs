@@ -2,6 +2,8 @@ mod identifier;
 
 pub use identifier::WorldId;
 
+use crate::ecs::entity::{Entities, EntityAllocator};
+
 /// Stores and exposes operations on [entities](Entity), [components](Component), resources,
 /// and their associated metadata.
 ///
@@ -24,6 +26,8 @@ pub use identifier::WorldId;
 pub struct World {
     id: WorldId,
     pub(crate) entities: Entities,
+    pub(crate) entity_allocator: EntityAllocator,
+    pub(crate) components: Components,
 }
 
 /// Creates an instance of the type this trait is implemented for

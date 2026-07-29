@@ -6,7 +6,7 @@
   "document_symbols": "off",
   "document_folding_ranges": "off",
   "semantic_tokens": "combined",
-  "colorize_brackets": false,
+  "colorize_brackets": true,
   "remove_trailing_whitespace_on_save": true,
   "auto_indent": "syntax_aware",
   "indent_guides": {

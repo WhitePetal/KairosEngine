@@ -31,12 +31,19 @@
 //! The interfaces [`Allocator`] and [`RemoteAllocator`] provide safe interfaces to them.
 
 use std::mem::ManuallyDrop;
-use std::sync::atomic::{AtomicPtr, AtomicU32, AtomicU64, Ordering};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, AtomicU64, Ordering};
+
+use arrayvec::ArrayVec;
+use log::warn;
+use nonmax::NonMaxU32;
 
 use crate::cell::SyncUnsafeCell;
 use crate::debug::DebugCheckedUnwrap;
-use crate::ecs::entity::{self, Entity};
-use crate::kairos_editor::ui::docking_tab::state;
+use crate::ecs::entity::{Entity, EntityIndex};
+
+#[cfg(test)]
+mod tests;
 
 /// This is the item we store in the free list.
 /// Effectively, this is a `MaybeUninit<Entity>` where uninit is represented by `Entity::PLACEHOLDER`.
@@ -261,6 +268,16 @@ impl FreeBuffer {
         }
     }
 
+    /// Iterates the entities in these indices.
+    ///
+    /// # Safety
+    ///
+    /// [`Self::set`] must have been called on these indices before to initialize memory.
+    /// There must be a clear, strict order between this call and the previous uses of these `indices`.
+    /// Note that until the returned value is dropped, these `indices` are still being accessed,
+    /// making safety for other operations afterward need careful justification.
+    /// Otherwise, the compiler will make unsound optimizations.
+    #[inline]
     unsafe fn iter(&self, indices: std::ops::Range<u32>) -> FreeBufferIterator<'_> {
         FreeBufferIterator {
             buffer: self,
@@ -275,7 +292,9 @@ impl Drop for FreeBuffer {
         for index in 0..Self::NUM_CHUNKS {
             let capacity = Self::capacity_of_chunk(index);
             // SAFETY: we have `&mut` and the capacity is correct.
-            unsafe { self.0[index as usize].dealloc(capacity); }
+            unsafe {
+                self.0[index as usize].dealloc(capacity);
+            }
         }
     }
 }
@@ -301,9 +320,7 @@ impl<'a> Iterator for FreeBufferIterator<'a> {
         if let Some(found) = self.current_chunk_slice.next() {
             // SAFETY: We have `&mut self`, so that memory order is certain.
             // The caller of `FreeBuffer::iter` ensures the memory order of this value's lifetime.
-            return Some(unsafe {
-                found.get_entity()
-            });
+            return Some(unsafe { found.get_entity() });
         }
 
         let still_need = self.future_buffer_indices.len() as u32;
@@ -314,22 +331,16 @@ impl<'a> Iterator for FreeBufferIterator<'a> {
         let (chunk, index, chunk_capacity) = self.buffer.index_in_chunk(next_index);
 
         // SAFETY: Assured by `FreeBuffer::iter`
-        let slice = unsafe {
-            chunk.get_slice(index, still_need, chunk_capacity)
-        };
+        let slice = unsafe { chunk.get_slice(index, still_need, chunk_capacity) };
         self.future_buffer_indices.start += slice.len() as u32;
         self.current_chunk_slice = slice.iter();
 
         // SAFETY: Constructor ensures these indices are valid in the buffer; the buffer is not sparse, and we just got the next slice.
         // So the only way for the slice to be empty is if the constructor did not uphold safety.
-        let next = unsafe {
-            self.current_chunk_slice.next().debug_checked_unwrap()
-        };
+        let next = unsafe { self.current_chunk_slice.next().debug_checked_unwrap() };
         // SAFETY: We have `&mut self`, so that memory order is certain.
         // The caller of `FreeBuffer::iter` ensures the memory order of this value's lifetime.
-        Some(unsafe {
-            next.get_entity()
-        })
+        Some(unsafe { next.get_entity() })
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -340,7 +351,6 @@ impl<'a> Iterator for FreeBufferIterator<'a> {
 
 impl<'a> ExactSizeIterator for FreeBufferIterator<'a> {}
 impl<'a> core::iter::FusedIterator for FreeBufferIterator<'a> {}
-
 
 /// This tracks the state of a [`FreeCount`], which has lots of information packed into it.
 ///
@@ -499,8 +509,17 @@ impl FreeCount {
 
     /// Attempts to update the state, returning the new [`FreeCountState`] if it fails.
     #[inline]
-    fn try_set_state(&self, expected_current_state: FreeCountState, target_state: FreeCountState, success: Ordering, failure: Ordering) -> Result<(), FreeCountState> {
-        match self.0.compare_exchange(expected_current_state.0, target_state.0, success, failure) {
+    fn try_set_state(
+        &self,
+        expected_current_state: FreeCountState,
+        target_state: FreeCountState,
+        success: Ordering,
+        failure: Ordering,
+    ) -> Result<(), FreeCountState> {
+        match self
+            .0
+            .compare_exchange(expected_current_state.0, target_state.0, success, failure)
+        {
             Ok(_) => Ok(()),
             Err(val) => Err(FreeCountState(val)),
         }
@@ -519,7 +538,10 @@ struct FreeList {
 impl FreeList {
     // Constructs a empty [`FreeList`].
     fn new() -> Self {
-        Self { buffer: FreeBuffer::new(), len: FreeCount::new_zero_len() }
+        Self {
+            buffer: FreeBuffer::new(),
+            len: FreeCount::new_zero_len(),
+        }
     }
 
     /// Gets the number of free entities.
@@ -587,9 +609,7 @@ impl FreeList {
         // There is a strict memory ordering of this use of the index because the length is only decreasing.
         // That means there is only one use of this index since the last call to `free`.
         // The only time the length increases is during `free`, which the caller ensures has a "happened before" relationship with this call.
-        Some(unsafe {
-            self.buffer.get(index)
-        })
+        Some(unsafe { self.buffer.get(index) })
     }
 
     /// Allocates as many [`Entity`]s from the free list as are available, up to `count`.
@@ -633,6 +653,400 @@ impl FreeList {
         let mut attempts = 1u32;
         // We need an acquire ordering to acquire the most recent memory of `free` calls.
         let mut state = self.len.state(Ordering::Acquire);
+        loop {
+            // The state is only disabled when freeing.
+            // If a free is happening, we need to wait for the new entity to be ready on the free buffer.
+            // That means we will also need to re-fetch the state and acquire the new memory.
+            // Then, we can allocate it.
+            if state.is_disabled() {
+                // Spin 64 times before yielding.
+                attempts += 1;
+                if attempts.is_multiple_of(64) {
+                    // scheduler probably isn't running the thread doing the `free` call, so yield so it can finish.
+                    std::thread::yield_now();
+                } else {
+                    core::hint::spin_loop();
+                }
 
+                state = self.len.state(Ordering::Acquire);
+                continue;
+            }
+
+            // At this point, we know a `free` was not happening when we started.
+
+            let len = state.length();
+            let index = len.checked_sub(1)?;
+
+            // SAFETY:
+            //
+            // If no `free` call has started, this safety follows the same logic as in non-remote `alloc`.
+            // That is, the len always counts down, so this is the only use of this index since the last `free`,
+            // and another `free` hasn't happened.
+            //
+            // But if a `free` did start at this point, it would be operating on indices greater than `index`.
+            // We haven't updated the `FreeCount` yet, so the `free` call would be adding to it, while we've been subtracting from it.
+            // That means this is still the only time this index is used since the last `free`!
+            // So, even though we can't guarantee when the concurrent `free` is happening in memory order, it doesn't matter since that `free` doesn't use this index.
+            // We can still establish a clear, strict ordering for this slot because 1) any concurrent `free` doesn't use this index and 2) we have an `Acquire` relationship with the `free` before it.
+            //
+            // So yeah, we could be reading from outdated memory (the free buffer), but the part that we are reading, hasn't changed, so that's ok.
+            // That satisfies safety but not correctness.
+            // We still need to double check that a free didn't happen, and retry if it did.
+            // Otherwise, this entity might be given out twice.
+            let entity = unsafe { self.buffer.get(index) };
+
+            let ideal_state = state.pop(1);
+            // If we fail, we need to acquire the new state.
+            // If we succeed, we are finished, and we haven't changed any memory, so we can used relaxed ordering.
+            match self
+                .len
+                .try_set_state(state, ideal_state, Ordering::Relaxed, Ordering::Acquire)
+            {
+                Ok(_) => return Some(entity),
+                Err(new_state) => state = new_state,
+            }
+        }
+    }
+}
+
+struct FreshAllocator {
+    /// The next value of [`Entity::index`] to give out if needed.
+    next_entity_index: AtomicU32,
+}
+
+impl FreshAllocator {
+    /// This exists because it may possibly change depending on platform.
+    /// Ex: We may want this to be smaller on 32 bit platforms at some point.
+    const MAX_ENTITIES: u32 = u32::MAX;
+
+    /// The total number of indices given out.
+    #[inline]
+    fn total_entity_indices(&self) -> u32 {
+        self.next_entity_index.load(Ordering::Relaxed)
+    }
+
+    /// This just panics.
+    /// It is included to help with branch prediction, and put the panic message in one spot.
+    #[cold]
+    #[inline]
+    fn on_overflow() -> ! {
+        panic!("too many entities")
+    }
+
+    /// Allocates a fresh [`EntityIndex`].
+    /// This row has never been given out before.
+    #[inline]
+    fn alloc(&self) -> Entity {
+        let index = self.next_entity_index.fetch_add(1, Ordering::Relaxed);
+        if index == Self::MAX_ENTITIES {
+            Self::on_overflow();
+        }
+        // SAFETY: We just checked that this was not max and we only added 1, so we can't have missed it.
+        Entity::from_index(unsafe { EntityIndex::new(NonMaxU32::new_unchecked(index)) })
+    }
+
+    /// Allocates `count` [`EntityIndex`]s.
+    /// These rows will be fresh.
+    /// They have never been given out before.
+    fn alloc_many(&self, count: u32) -> AllocUniqueEntityIndexIterator {
+        let start_new = self.next_entity_index.fetch_add(count, Ordering::Relaxed);
+        let new = match start_new
+            .checked_add(count)
+            .filter(|new| *new < Self::MAX_ENTITIES)
+        {
+            Some(new_next_entity_index) => start_new..new_next_entity_index,
+            None => Self::on_overflow(),
+        };
+        AllocUniqueEntityIndexIterator(new)
+    }
+}
+
+/// An [`Iterator`] returning a sequence of [`EntityIndex`] values from an [`Allocator`] that are never aliased.
+/// These rows have never been given out before.
+///
+/// **NOTE:** Dropping will leak the remaining entity rows!
+pub(super) struct AllocUniqueEntityIndexIterator(std::ops::Range<u32>);
+
+impl Iterator for AllocUniqueEntityIndexIterator {
+    type Item = Entity;
+
+    #[inline]
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0
+            .next()
+            // SAFETY: This came from an *exclusive* range. It can never be max.
+            .map(|idx| unsafe { EntityIndex::new(NonMaxU32::new_unchecked(idx)) })
+            .map(Entity::from_index)
+    }
+
+    #[inline]
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.0.size_hint()
+    }
+}
+
+impl ExactSizeIterator for AllocUniqueEntityIndexIterator {}
+impl std::iter::FusedIterator for AllocUniqueEntityIndexIterator {}
+
+/// An [`Iterator`] returning a sequence of [`Entity`] values from an [`Allocator`].
+///
+/// **NOTE:** Dropping will leak the remaining entities!
+pub(super) struct AllocEntitiesIterator<'a> {
+    new: AllocUniqueEntityIndexIterator,
+    reused: FreeBufferIterator<'a>,
+}
+
+impl<'a> Iterator for AllocEntitiesIterator<'a> {
+    type Item = Entity;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.reused.next().or_else(|| self.new.next())
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.reused.len() + self.new.len();
+        (len, Some(len))
+    }
+}
+
+impl<'a> ExactSizeIterator for AllocEntitiesIterator<'a> {}
+impl<'a> core::iter::FusedIterator for AllocEntitiesIterator<'a> {}
+
+// TODO!: Need EntitySet
+// SAFETY: Newly reserved entity values are unique.
+// unsafe impl EntitySetIterator for AllocEntitiesIterator<'_> {}
+
+impl Drop for AllocEntitiesIterator<'_> {
+    fn drop(&mut self) {
+        let leaking = self.len();
+        if leaking > 0 {
+            warn!(
+                "{} entities being leaked via unfinished `AllocEntitiesIterator`",
+                leaking
+            );
+        }
+    }
+}
+
+/// This stores allocation data shared by all entity allocators.
+struct SharedAllocator {
+    /// The entities pending reuse
+    free: FreeList,
+    fresh: FreshAllocator,
+    /// Tracks whether or not the primary [`Allocator`] has been closed or not.
+    is_closed: AtomicBool,
+}
+
+impl SharedAllocator {
+    /// Constructs a [`SharedAllocator`]
+    fn new() -> Self {
+        Self {
+            free: FreeList::new(),
+            fresh: FreshAllocator {
+                next_entity_index: AtomicU32::new(0),
+            },
+            is_closed: AtomicBool::new(false),
+        }
+    }
+
+    /// Allocates a new [`Entity`], reusing a freed index if one exists.
+    ///
+    /// # Safety
+    ///
+    /// This must not conflict with [`FreeList::free`] calls.
+    #[inline]
+    unsafe fn alloc(&self) -> Entity {
+        // SAFETY: assured by caller
+        unsafe { self.free.alloc() }.unwrap_or_else(|| self.fresh.alloc())
+    }
+
+    /// Allocates a `count` [`Entity`]s, reusing freed indices if they exist.
+    ///
+    /// # Safety
+    ///
+    /// This must not conflict with [`FreeList::free`] calls for the duration of the iterator.
+    #[inline]
+    unsafe fn alloc_many(&self, count: u32) -> AllocEntitiesIterator<'_> {
+        // SAFETY: Ensured by caller.
+        let reused = unsafe { self.free.alloc_many(count) };
+        let still_need = count - reused.len() as u32;
+        let new = self.fresh.alloc_many(still_need);
+        AllocEntitiesIterator { new, reused }
+    }
+
+    /// Allocates a new [`Entity`].
+    /// This will only try to reuse a freed index if it is safe to do so.
+    #[inline]
+    fn remote_alloc(&self) -> Entity {
+        self.free
+            .remote_alloc()
+            .unwrap_or_else(|| self.fresh.alloc())
+    }
+
+    /// Marks the allocator as closed, but it will still function normally.
+    fn close(&self) {
+        self.is_closed.store(true, Ordering::Release);
+    }
+
+    /// Returns true if [`Self::close`] has been called.
+    fn is_closed(&self) -> bool {
+        self.is_closed.load(Ordering::Acquire)
+    }
+}
+
+/// This keeps track of freed entities and allows the allocation of new ones.
+///
+/// Note that this must not implement [`Clone`].
+/// The allocator assumes that it is the only one with [`FreeList::free`] permissions.
+/// If this were cloned, that assumption would be broken, leading to undefined behavior.
+/// This is in contrast to the [`RemoteAllocator`], which may be cloned freely.
+pub(crate) struct Allocator {
+    /// The shared allocator state, which we share with any [`RemoteAllocator`]s.
+    shared: Arc<SharedAllocator>,
+    /// The local free list.
+    /// We use this to amortize the cost of freeing to the shared allocator since that is expensive.
+    local_free: Box<ArrayVec<Entity, 128>>,
+}
+
+impl Allocator {
+    /// Constructs a new [`Allocator`]
+    pub(super) fn new() -> Self {
+        Self {
+            shared: Arc::new(SharedAllocator::new()),
+            local_free: Box::new(ArrayVec::new()),
+        }
+    }
+
+    /// Allocates a new [`Entity`], reusing a freed index if one exists.
+    #[inline]
+    pub(super) fn alloc(&self) -> Entity {
+        // SAFETY: violating safety requires a `&mut self` to exist, but rust does not allow that.
+        unsafe { self.shared.alloc() }
+    }
+
+    /// The total number of indices given out.
+    #[inline]
+    pub(crate) fn total_entity_indices(&self) -> u32 {
+        self.shared.fresh.total_entity_indices()
+    }
+
+    /// The number of free entities.
+    #[inline]
+    fn num_free(&self) -> u32 {
+        // RISK: `free` requires mutable access.
+        self.shared.free.num_free()
+    }
+
+    /// Flushes the entities that have been freed locally into the full allocator.
+    /// This is not exposed publicly because it is subject to change.
+    /// It is sometimes useful to call this for tests that depend on the entity allocator behaving more predictably.
+    #[inline]
+    pub(crate) fn flush_freed(&mut self) {
+        // SAFETY: We have `&mut self`.
+        unsafe {
+            self.shared.free.free(self.local_free.as_slice());
+        }
+        self.local_free.clear();
+    }
+
+    /// Frees the entity allowing it to be reused.
+    #[inline]
+    pub(super) fn free(&mut self, entity: Entity) {
+        if self.local_free.is_full() {
+            self.flush_freed();
+        }
+
+        // SAFETY: The `ArrayVec` is not full or has just been cleared.
+        unsafe {
+            self.local_free.push_unchecked(entity);
+        }
+    }
+
+    /// Allocates `count` entities in an iterator.
+    #[inline]
+    pub(super) fn alloc_many(&self, count: u32) -> AllocEntitiesIterator<'_> {
+        // SAFETY: `free` takes `&mut self`, and this lifetime is captured by the iterator.
+        unsafe { self.shared.alloc_many(count) }
+    }
+
+    /// Frees the entities allowing them to be reused.
+    #[inline]
+    pub(super) fn free_many(&mut self, entities: &[Entity]) {
+        if self.local_free.try_extend_from_slice(entities).is_err() {
+            // SAFETY: We have `&mut self`.
+            unsafe {
+                self.shared.free.free(entities);
+            }
+        }
+    }
+}
+
+impl Drop for Allocator {
+    fn drop(&mut self) {
+        self.shared.close();
+    }
+}
+
+impl std::fmt::Debug for Allocator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct(std::any::type_name::<Self>())
+            .field("total_indices", &self.total_entity_indices())
+            .field("total_free", &self.num_free())
+            .finish()
+    }
+}
+
+impl Default for Allocator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// This is a stripped down entity allocator that operates on fewer assumptions than [`EntityAllocator`](super::EntityAllocator).
+/// As a result, using this will be slower than the main allocator but this offers additional freedoms.
+/// In particular, this type is fully owned, allowing you to allocate entities for a world without locking or holding reference to the world.
+/// This is especially useful in async contexts.
+#[derive(Clone)]
+pub struct RemoteAllocator {
+    shared: Arc<SharedAllocator>,
+}
+
+impl RemoteAllocator {
+    /// Creates a new [`RemoteAllocator`] with the provided [`Allocator`] source.
+    /// If the source is ever destroyed, [`Self::alloc`] will yield garbage values.
+    /// Be sure to use [`Self::is_closed`] to determine if it is safe to use these entities.
+    pub(super) fn new(source: &Allocator) -> Self {
+        Self {
+            shared: source.shared.clone(),
+        }
+    }
+
+    /// Returns whether or not this [`RemoteAllocator`] is connected to this source [`Allocator`].
+    pub(super) fn is_connected_to(&self, source: &Allocator) -> bool {
+        Arc::ptr_eq(&self.shared, &source.shared)
+    }
+
+    /// Allocates an entity remotely.
+    ///
+    /// This comes with a major downside:
+    /// Because this does not hold reference to the world, the world may be cleared or destroyed before you get a chance to use the result.
+    /// If that happens, these entities will be garbage!
+    /// They will not be unique in the world anymore and you should not spawn them!
+    /// Before using the returned values in the world, first check that it is ok with [`EntityAllocator::has_remote_allocator`](super::EntityAllocator::has_remote_allocator).
+    #[inline]
+    pub fn alloc(&self) -> Entity {
+        self.shared.remote_alloc()
+    }
+
+    /// Returns whether or not this [`RemoteAllocator`] is still connected to its source [`EntityAllocator`](super::EntityAllocator).
+    ///
+    /// Note that this could close immediately after the function returns false, so be careful.
+    /// The best way to ensure that does not happen is to only trust the returned value while holding a reference to the world
+    /// and to ensure it is the right world through [`EntityAllocator::has_remote_allocator`](super::EntityAllocator::has_remote_allocator).
+    ///
+    /// This is generally best used as a diagnostic.
+    /// [`EntityAllocator::has_remote_allocator`](super::EntityAllocator::has_remote_allocator) is a better check for correctness.
+    pub fn is_closed(&self) -> bool {
+        self.shared.is_closed()
     }
 }
