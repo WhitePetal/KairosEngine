@@ -75,7 +75,6 @@ impl Tick {
     }
 }
 
-
 /// An [`Event`] that can be used to maintain [`Tick`]s in custom data structures, enabling to make
 /// use of bevy's periodic checks that clamps ticks to a certain range, preventing overflows and thus
 /// keeping methods like [`Tick::is_newer_than`] reliably return `false` for ticks that got too old.
@@ -110,6 +109,5 @@ impl CheckChangeTicks {
         self.0
     }
 }
-
 
 // TODO!

@@ -1877,6 +1877,8 @@ version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
 dependencies = [
+ "allocator-api2",
+ "equivalent",
  "foldhash 0.2.0",
  "serde",
  "serde_core",
@@ -2311,6 +2313,7 @@ dependencies = [
  "glam 0.33.1",
  "gltf",
  "half",
+ "hashbrown 0.17.1",
  "image",
  "indexmap",
  "kira",

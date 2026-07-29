@@ -1,9 +1,5 @@
 use std::{
     borrow::Borrow,
-    collections::{
-        TryReserveError,
-        hash_set::{Difference, Drain, ExtractIf, Intersection, Iter, SymmetricDifference, Union},
-    },
     fmt::Debug,
     hash::{BuildHasher, Hash},
     ops::{
@@ -12,17 +8,18 @@ use std::{
     },
 };
 
+use hashbrown::{TryReserveError, hash_set::{Difference, Drain, ExtractIf, Intersection, Iter, SymmetricDifference, Union}};
 use rayon::iter::{FromParallelIterator, IntoParallelIterator, ParallelExtend};
 
 use crate::hash::FixedHasher;
 
 /// 使用 [`FixedHasher`] 的新 [`HashSet`]
 #[repr(transparent)]
-pub struct FixedHashSet<T, S = FixedHasher>(std::collections::HashSet<T, S>);
+pub struct FixedHashSet<T, S = FixedHasher>(hashbrown::HashSet<T, S>);
 
 impl<T, S> Clone for FixedHashSet<T, S>
 where
-    std::collections::HashSet<T, S>: Clone,
+    hashbrown::HashSet<T, S>: Clone,
 {
     #[inline]
     fn clone(&self) -> Self {
@@ -36,17 +33,17 @@ where
 
 impl<T, S> Debug for FixedHashSet<T, S>
 where
-    std::collections::HashSet<T, S>: Debug,
+    hashbrown::HashSet<T, S>: Debug,
 {
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        <std::collections::HashSet<T, S> as Debug>::fmt(&self.0, f)
+        <hashbrown::HashSet<T, S> as Debug>::fmt(&self.0, f)
     }
 }
 
 impl<T, S> Default for FixedHashSet<T, S>
 where
-    std::collections::HashSet<T, S>: Default,
+    hashbrown::HashSet<T, S>: Default,
 {
     #[inline]
     fn default() -> Self {
@@ -56,7 +53,7 @@ where
 
 impl<T, S> PartialEq for FixedHashSet<T, S>
 where
-    std::collections::HashSet<T, S>: PartialEq,
+    hashbrown::HashSet<T, S>: PartialEq,
 {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
@@ -64,11 +61,11 @@ where
     }
 }
 
-impl<T, S> Eq for FixedHashSet<T, S> where std::collections::HashSet<T, S>: Eq {}
+impl<T, S> Eq for FixedHashSet<T, S> where hashbrown::HashSet<T, S>: Eq {}
 
 impl<T, S, X> FromIterator<X> for FixedHashSet<T, S>
 where
-    std::collections::HashSet<T, S>: FromIterator<X>,
+    hashbrown::HashSet<T, S>: FromIterator<X>,
 {
     #[inline]
     fn from_iter<U: IntoIterator<Item = X>>(iter: U) -> Self {
@@ -78,11 +75,11 @@ where
 
 impl<T, S> IntoIterator for FixedHashSet<T, S>
 where
-    std::collections::HashSet<T, S>: IntoIterator,
+    hashbrown::HashSet<T, S>: IntoIterator,
 {
-    type Item = <std::collections::HashSet<T, S> as IntoIterator>::Item;
+    type Item = <hashbrown::HashSet<T, S> as IntoIterator>::Item;
 
-    type IntoIter = <std::collections::HashSet<T, S> as IntoIterator>::IntoIter;
+    type IntoIter = <hashbrown::HashSet<T, S> as IntoIterator>::IntoIter;
 
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
@@ -92,11 +89,11 @@ where
 
 impl<'a, T, S> IntoIterator for &'a FixedHashSet<T, S>
 where
-    &'a std::collections::HashSet<T, S>: IntoIterator,
+    &'a hashbrown::HashSet<T, S>: IntoIterator,
 {
-    type Item = <&'a std::collections::HashSet<T, S> as IntoIterator>::Item;
+    type Item = <&'a hashbrown::HashSet<T, S> as IntoIterator>::Item;
 
-    type IntoIter = <&'a std::collections::HashSet<T, S> as IntoIterator>::IntoIter;
+    type IntoIter = <&'a hashbrown::HashSet<T, S> as IntoIterator>::IntoIter;
 
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
@@ -106,11 +103,11 @@ where
 
 impl<'a, T, S> IntoIterator for &'a mut FixedHashSet<T, S>
 where
-    &'a mut std::collections::HashSet<T, S>: IntoIterator,
+    &'a mut hashbrown::HashSet<T, S>: IntoIterator,
 {
-    type Item = <&'a mut std::collections::HashSet<T, S> as IntoIterator>::Item;
+    type Item = <&'a mut hashbrown::HashSet<T, S> as IntoIterator>::Item;
 
-    type IntoIter = <&'a mut std::collections::HashSet<T, S> as IntoIterator>::IntoIter;
+    type IntoIter = <&'a mut hashbrown::HashSet<T, S> as IntoIterator>::IntoIter;
 
     #[inline]
     fn into_iter(self) -> Self::IntoIter {
@@ -120,7 +117,7 @@ where
 
 impl<T, S, X> Extend<X> for FixedHashSet<T, S>
 where
-    std::collections::HashSet<T, S>: Extend<X>,
+    hashbrown::HashSet<T, S>: Extend<X>,
 {
     #[inline]
     fn extend<U: IntoIterator<Item = X>>(&mut self, iter: U) {
@@ -137,14 +134,14 @@ where
     }
 }
 
-impl<T, S> From<std::collections::HashSet<T, S>> for FixedHashSet<T, S> {
+impl<T, S> From<hashbrown::HashSet<T, S>> for FixedHashSet<T, S> {
     #[inline]
-    fn from(value: std::collections::HashSet<T, S>) -> Self {
+    fn from(value: hashbrown::HashSet<T, S>) -> Self {
         Self(value)
     }
 }
 
-impl<T, S> From<FixedHashSet<T, S>> for std::collections::HashSet<T, S> {
+impl<T, S> From<FixedHashSet<T, S>> for hashbrown::HashSet<T, S> {
     #[inline]
     fn from(value: FixedHashSet<T, S>) -> Self {
         value.0
@@ -152,7 +149,7 @@ impl<T, S> From<FixedHashSet<T, S>> for std::collections::HashSet<T, S> {
 }
 
 impl<T, S> Deref for FixedHashSet<T, S> {
-    type Target = std::collections::HashSet<T, S>;
+    type Target = hashbrown::HashSet<T, S>;
 
     #[inline]
     fn deref(&self) -> &Self::Target {
@@ -169,7 +166,7 @@ impl<T, S> DerefMut for FixedHashSet<T, S> {
 
 impl<T, S> serde::Serialize for FixedHashSet<T, S>
 where
-    std::collections::HashSet<T, S>: serde::Serialize,
+    hashbrown::HashSet<T, S>: serde::Serialize,
 {
     #[inline]
     fn serialize<U>(&self, serializer: U) -> Result<U::Ok, U::Error>
@@ -182,7 +179,7 @@ where
 
 impl<'de, T, S> serde::Deserialize<'de> for FixedHashSet<T, S>
 where
-    std::collections::HashSet<T, S>: serde::Deserialize<'de>,
+    hashbrown::HashSet<T, S>: serde::Deserialize<'de>,
 {
     #[inline]
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -253,12 +250,12 @@ impl<T, S> FixedHashSet<T, S> {
 
     #[inline]
     pub const fn with_hasher(hasher: S) -> Self {
-        Self(std::collections::HashSet::with_hasher(hasher))
+        Self(hashbrown::HashSet::with_hasher(hasher))
     }
 
     #[inline]
     pub fn with_capacity_and_hasher(capacity: usize, hasher: S) -> Self {
-        Self(std::collections::HashSet::with_capacity_and_hasher(
+        Self(hashbrown::HashSet::with_capacity_and_hasher(
             capacity, hasher,
         ))
     }
@@ -269,7 +266,7 @@ impl<T, S> FixedHashSet<T, S> {
     }
 
     #[inline]
-    pub fn into_inner(self) -> std::collections::HashSet<T, S> {
+    pub fn into_inner(self) -> hashbrown::HashSet<T, S> {
         self.0
     }
 }
@@ -379,12 +376,62 @@ where
     {
         self.0.take(value)
     }
+
+    /// Returns the total amount of memory allocated internally by the hash
+    /// set, in bytes.
+    ///
+    /// Refer to [`allocation_size`](hb::HashSet::allocation_size) for further details.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use bevy_platform::collections::HashSet;
+    /// let mut map = HashSet::new();
+    ///
+    /// assert_eq!(map.allocation_size(), 0);
+    ///
+    /// map.insert("foo");
+    ///
+    /// assert!(map.allocation_size() >= size_of::<&'static str>());
+    /// ```
+    #[inline]
+    pub fn allocation_size(&self) -> usize {
+        self.0.allocation_size()
+    }
+
+    /// Insert a value the set without checking if the value already exists in the set.
+    ///
+    /// Refer to [`insert_unique_unchecked`](hb::HashSet::insert_unique_unchecked) for further details.
+    ///
+    /// # Safety
+    ///
+    /// This operation is safe if a value does not exist in the set.
+    ///
+    /// However, if a value exists in the set already, the behavior is unspecified:
+    /// this operation may panic, loop forever, or any following operation with the set
+    /// may panic, loop forever or return arbitrary result.
+    ///
+    /// That said, this operation (and following operations) are guaranteed to
+    /// not violate memory safety.
+    ///
+    /// However this operation is still unsafe because the resulting `HashSet`
+    /// may be passed to unsafe code which does expect the set to behave
+    /// correctly, and would cause unsoundness as a result.
+    #[expect(
+        unsafe_code,
+        reason = "re-exporting unsafe method from Hashbrown requires unsafe code"
+    )]
+    #[inline]
+    pub unsafe fn insert_unique_unchecked(&mut self, value: T) -> &T {
+        // SAFETY: safety contract is ensured by the caller.
+        unsafe { self.0.insert_unique_unchecked(value) }
+    }
 }
 
 impl<T, S> BitOr<&FixedHashSet<T, S>> for &FixedHashSet<T, S>
 where
-    for<'a> &'a std::collections::HashSet<T, S>:
-        BitOr<&'a std::collections::HashSet<T, S>, Output = std::collections::HashSet<T, S>>,
+    for<'a> &'a hashbrown::HashSet<T, S>:
+        BitOr<&'a hashbrown::HashSet<T, S>, Output = hashbrown::HashSet<T, S>>,
 {
     type Output = FixedHashSet<T, S>;
 
@@ -396,8 +443,8 @@ where
 
 impl<T, S> BitAnd<&FixedHashSet<T, S>> for &FixedHashSet<T, S>
 where
-    for<'a> &'a std::collections::HashSet<T, S>:
-        BitAnd<&'a std::collections::HashSet<T, S>, Output = std::collections::HashSet<T, S>>,
+    for<'a> &'a hashbrown::HashSet<T, S>:
+        BitAnd<&'a hashbrown::HashSet<T, S>, Output = hashbrown::HashSet<T, S>>,
 {
     type Output = FixedHashSet<T, S>;
 
@@ -409,8 +456,8 @@ where
 
 impl<T, S> BitXor<&FixedHashSet<T, S>> for &FixedHashSet<T, S>
 where
-    for<'a> &'a std::collections::HashSet<T, S>:
-        BitXor<&'a std::collections::HashSet<T, S>, Output = std::collections::HashSet<T, S>>,
+    for<'a> &'a hashbrown::HashSet<T, S>:
+        BitXor<&'a hashbrown::HashSet<T, S>, Output = hashbrown::HashSet<T, S>>,
 {
     type Output = FixedHashSet<T, S>;
 
@@ -422,8 +469,8 @@ where
 
 impl<T, S> Sub<&FixedHashSet<T, S>> for &FixedHashSet<T, S>
 where
-    for<'a> &'a std::collections::HashSet<T, S>:
-        Sub<&'a std::collections::HashSet<T, S>, Output = std::collections::HashSet<T, S>>,
+    for<'a> &'a hashbrown::HashSet<T, S>:
+        Sub<&'a hashbrown::HashSet<T, S>, Output = hashbrown::HashSet<T, S>>,
 {
     type Output = FixedHashSet<T, S>;
 
@@ -435,7 +482,7 @@ where
 
 impl<T, S> BitOrAssign<&FixedHashSet<T, S>> for FixedHashSet<T, S>
 where
-    std::collections::HashSet<T, S>: for<'a> BitOrAssign<&'a std::collections::HashSet<T, S>>,
+    hashbrown::HashSet<T, S>: for<'a> BitOrAssign<&'a hashbrown::HashSet<T, S>>,
 {
     /// Modifies this set to contain the union of `self` and `rhs`.
     #[inline]
@@ -446,7 +493,7 @@ where
 
 impl<T, S> BitAndAssign<&FixedHashSet<T, S>> for FixedHashSet<T, S>
 where
-    std::collections::HashSet<T, S>: for<'a> BitAndAssign<&'a std::collections::HashSet<T, S>>,
+    hashbrown::HashSet<T, S>: for<'a> BitAndAssign<&'a hashbrown::HashSet<T, S>>,
 {
     /// Modifies this set to contain the intersection of `self` and `rhs`.
     #[inline]
@@ -457,7 +504,7 @@ where
 
 impl<T, S> BitXorAssign<&FixedHashSet<T, S>> for FixedHashSet<T, S>
 where
-    std::collections::HashSet<T, S>: for<'a> BitXorAssign<&'a std::collections::HashSet<T, S>>,
+    hashbrown::HashSet<T, S>: for<'a> BitXorAssign<&'a hashbrown::HashSet<T, S>>,
 {
     /// Modifies this set to contain the symmetric difference of `self` and `rhs`.
     #[inline]
@@ -468,7 +515,7 @@ where
 
 impl<T, S> SubAssign<&FixedHashSet<T, S>> for FixedHashSet<T, S>
 where
-    std::collections::HashSet<T, S>: for<'a> SubAssign<&'a std::collections::HashSet<T, S>>,
+    hashbrown::HashSet<T, S>: for<'a> SubAssign<&'a hashbrown::HashSet<T, S>>,
 {
     /// Modifies this set to contain the difference of `self` and `rhs`.
     #[inline]
@@ -479,14 +526,14 @@ where
 
 impl<T, S, U> FromParallelIterator<U> for FixedHashSet<T, S>
 where
-    std::collections::HashSet<T, S>: FromParallelIterator<U>,
+    hashbrown::HashSet<T, S>: FromParallelIterator<U>,
     U: Send,
 {
     fn from_par_iter<P>(par_iter: P) -> Self
     where
         P: IntoParallelIterator<Item = U>,
     {
-        Self(<std::collections::HashSet<T, S> as FromParallelIterator<
+        Self(<hashbrown::HashSet<T, S> as FromParallelIterator<
             U,
         >>::from_par_iter(par_iter))
     }
@@ -494,10 +541,10 @@ where
 
 impl<T, S> IntoParallelIterator for FixedHashSet<T, S>
 where
-    std::collections::HashSet<T, S>: IntoParallelIterator,
+    hashbrown::HashSet<T, S>: IntoParallelIterator,
 {
-    type Item = <std::collections::HashSet<T, S> as IntoParallelIterator>::Item;
-    type Iter = <std::collections::HashSet<T, S> as IntoParallelIterator>::Iter;
+    type Item = <hashbrown::HashSet<T, S> as IntoParallelIterator>::Item;
+    type Iter = <hashbrown::HashSet<T, S> as IntoParallelIterator>::Iter;
 
     fn into_par_iter(self) -> Self::Iter {
         self.0.into_par_iter()
@@ -506,10 +553,10 @@ where
 
 impl<'a, T: Sync, S> IntoParallelIterator for &'a FixedHashSet<T, S>
 where
-    &'a std::collections::HashSet<T, S>: IntoParallelIterator,
+    &'a hashbrown::HashSet<T, S>: IntoParallelIterator,
 {
-    type Item = <&'a std::collections::HashSet<T, S> as IntoParallelIterator>::Item;
-    type Iter = <&'a std::collections::HashSet<T, S> as IntoParallelIterator>::Iter;
+    type Item = <&'a hashbrown::HashSet<T, S> as IntoParallelIterator>::Item;
+    type Iter = <&'a hashbrown::HashSet<T, S> as IntoParallelIterator>::Iter;
 
     fn into_par_iter(self) -> Self::Iter {
         (&self.0).into_par_iter()
@@ -518,13 +565,13 @@ where
 
 impl<T, S, U> ParallelExtend<U> for FixedHashSet<T, S>
 where
-    std::collections::HashSet<T, S>: ParallelExtend<U>,
+    hashbrown::HashSet<T, S>: ParallelExtend<U>,
     U: Send,
 {
     fn par_extend<I>(&mut self, par_iter: I)
     where
         I: IntoParallelIterator<Item = U>,
     {
-        <std::collections::HashSet<T, S> as ParallelExtend<U>>::par_extend(&mut self.0, par_iter);
+        <hashbrown::HashSet<T, S> as ParallelExtend<U>>::par_extend(&mut self.0, par_iter);
     }
 }

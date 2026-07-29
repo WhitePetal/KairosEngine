@@ -35,5 +35,4 @@ pub struct TableId(u32);
 #[repr(transparent)]
 pub struct TableRow(NonMaxU32);
 
-
 // TODO!

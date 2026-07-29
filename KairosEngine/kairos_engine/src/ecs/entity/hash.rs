@@ -1,7 +1,5 @@
 use std::hash::{BuildHasher, Hasher};
 
-
-
 /// A very fast hash that is only designed to work on generational indices
 /// like [`Entity`](super::Entity). It will panic if attempting to hash a type containing
 /// non-u64 fields.
@@ -61,7 +59,6 @@ impl Hasher for EntityHasher {
         self.hash = bits.wrapping_mul(UPPER_PHI);
     }
 }
-
 
 /// A [`BuildHasher`] that results in a [`EntityHasher`].
 #[derive(Debug, Default, Clone)]

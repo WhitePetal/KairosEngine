@@ -48,5 +48,4 @@ pub struct ArchetypeRow(NonMaxU32);
 #[repr(transparent)]
 pub struct ArchetypeId(u32);
 
-
 // TODO!

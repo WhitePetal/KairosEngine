@@ -95,9 +95,18 @@ use crate::{
         archetype::{ArchetypeId, ArchetypeRow},
         change_detection::{CheckChangeTicks, Tick},
         remote_allocator::{self, RemoteAllocator},
-        storage::{TableId, TableRow},
+        storage::{SparseSetIndex, TableId, TableRow},
     },
 };
+
+mod entity_set;
+
+pub mod unique_slice;
+mod unique_array;
+mod unique_vec;
+
+pub use entity_set::*;
+pub use unique_slice::{UniqueEntityEquivalentSlice, UniqueEntitySlice};
 
 mod hash;
 
@@ -166,6 +175,18 @@ impl EntityIndex {
             })),
             None => None,
         }
+    }
+}
+
+impl SparseSetIndex for EntityIndex {
+    #[inline]
+    fn sparse_set_index(&self) -> usize {
+        self.index() as usize
+    }
+
+    #[inline]
+    fn get_sparse_set_index(value: usize) -> Self {
+        Self::from_bits(value as u32)
     }
 }
 
@@ -544,6 +565,20 @@ impl fmt::Display for Entity {
     }
 }
 
+// By not short-circuiting in comparisons, we get better codegen.
+// See <https://github.com/rust-lang/rust/issues/117800>
+impl PartialEq for Entity {
+    #[inline]
+    fn eq(&self, other: &Entity) -> bool {
+        // By using `to_bits`, the codegen can be optimized out even
+        // further potentially. Relies on the correct alignment/field
+        // order of `Entity`.
+        self.to_bits() == other.to_bits()
+    }
+}
+
+impl Eq for Entity {}
+
 /// Allocates [`Entity`] ids uniquely.
 /// This is used in [`World::spawn_at`](crate::world::World::spawn_at) and [`World::despawn_no_free`](crate::world::World::despawn_no_free) to track entity ids no longer in use.
 /// Allocating is fully concurrent and can be done from multiple threads.
@@ -666,9 +701,8 @@ impl<'a> ExactSizeIterator for AllocEntitiesIterator<'a> {}
 
 impl<'a> core::iter::FusedIterator for AllocEntitiesIterator<'a> {}
 
-// TODO!: Need EntitySetIterator
 // SAFETY: Newly allocated entity values are unique.
-// unsafe impl EntitySetIterator for AllocEntitiesIterator<'_> {}
+unsafe impl EntitySetIterator for AllocEntitiesIterator<'_> {}
 
 /// A location of an entity in an archetype.
 #[derive(Copy, Clone, Debug, PartialEq)]

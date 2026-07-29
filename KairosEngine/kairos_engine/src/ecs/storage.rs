@@ -25,9 +25,10 @@
 //! [`World`]: crate::world::World
 //! [`World::storages`]: crate::world::World::storages
 
+mod sparse_set;
 mod table;
 
+pub use sparse_set::*;
 pub use table::*;
-
 
 // TODO!

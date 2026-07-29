@@ -4,7 +4,6 @@ mod tick;
 
 pub use tick::*;
 
-
 /// The (arbitrarily chosen) minimum number of world tick increments between `check_tick` scans.
 ///
 /// Change ticks can only be scanned when systems aren't running. Thus, if the threshold is `N`,

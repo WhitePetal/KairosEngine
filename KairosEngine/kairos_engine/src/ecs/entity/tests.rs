@@ -211,8 +211,7 @@ fn entity_hash_id_bitflip_affects_high_7_bits() {
 
     for bit in 0..u32::BITS {
         let id = first_id ^ (1 << bit);
-        let hash =
-            hash.hash_one(Entity::from_index(EntityIndex::from_raw_u32(id).unwrap())) >> 57;
+        let hash = hash.hash_one(Entity::from_index(EntityIndex::from_raw_u32(id).unwrap())) >> 57;
         assert_ne!(hash, first_hash);
     }
 }
