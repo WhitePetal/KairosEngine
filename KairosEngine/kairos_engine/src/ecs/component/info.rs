@@ -1,6 +1,6 @@
-use std::sync::RwLock;
+use std::{alloc::Layout, any::TypeId, sync::RwLock};
 
-use crate::{collections::TypeIdMap, ecs::storage::SparseSetIndex};
+use crate::{collections::TypeIdMap, debug::DebugName, ecs::{component::{ComponentCloneBehavior, StorageType}, relationship::MaybeRelationshipAccessor, storage::SparseSetIndex}, ptr::OwningPtr};
 
 /// A value which uniquely identifies the type of a [`Component`] or [`Resource`] within a
 /// [`World`](crate::world::World).
@@ -58,7 +58,21 @@ impl SparseSetIndex for ComponentId {
 /// A value describing a component or resource, which may or may not correspond to a Rust type.
 #[derive(Clone)]
 pub struct ComponentDescriptor {
-
+    name: DebugName,
+    // SAFETY: This must remain private. It must match the statically known StorageType of the
+    // associated rust component type if one exists.
+    storage_type: StorageType,
+    // SAFETY: This must remain private. It must only be set to "true" if this component is
+    // actually Send + Sync
+    is_send_and_sync: bool,
+    type_id: Option<TypeId>,
+    // SAFETY: This must always have `size()` that is a multiple of `align()`.
+    // `BlobArray` relies on that to calculate byte offsets as a multiple of `size()`.
+    layout: Layout,
+    drop: Option<for<'a> unsafe fn(OwningPtr<'a>)>,
+    mutable: bool,
+    clone_behavior: ComponentCloneBehavior,
+    relationship_accessor: MaybeRelationshipAccessor,
 }
 
 pub struct ComponentInfo {
