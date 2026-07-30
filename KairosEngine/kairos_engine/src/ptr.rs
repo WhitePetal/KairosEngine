@@ -1,4 +1,4 @@
-use std::{fmt::{self, Debug, Pointer, Formatter}, marker::PhantomData, ptr::{self, NonNull}};
+use std::{fmt::{self, Debug, Formatter, Pointer}, marker::PhantomData, mem::ManuallyDrop, ptr::{self, NonNull}};
 
 
 
@@ -145,6 +145,154 @@ impl IsAligned for Unaligned {
     }
 }
 
+/// A newtype around [`NonNull`] that only allows conversion to read-only borrows or pointers.
+///
+/// This type can be thought of as the `*const T` to [`NonNull<T>`]'s `*mut T`.
+#[derive(Clone, Copy)]
+#[repr(transparent)]
+pub struct ConstNonNull<T: ?Sized>(NonNull<T>);
+
+impl<T: ?Sized> ConstNonNull<T> {
+    /// Creates a new `ConstNonNull` if `ptr` is non-null.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use bevy_ptr::ConstNonNull;
+    ///
+    /// let x = 0u32;
+    /// let ptr = ConstNonNull::<u32>::new(&x as *const _).expect("ptr is null!");
+    ///
+    /// if let Some(ptr) = ConstNonNull::<u32>::new(core::ptr::null()) {
+    ///     unreachable!();
+    /// }
+    /// ```
+    pub fn new(ptr: *const T) -> Option<Self> {
+        NonNull::new(ptr.cast_mut()).map(Self)
+    }
+
+    /// Creates a new `ConstNonNull`.
+    ///
+    /// # Safety
+    ///
+    /// `ptr` must be non-null.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use bevy_ptr::ConstNonNull;
+    ///
+    /// let x = 0u32;
+    /// let ptr = unsafe { ConstNonNull::new_unchecked(&x as *const _) };
+    /// ```
+    ///
+    /// *Incorrect* usage of this function:
+    ///
+    /// ```rust,no_run
+    /// use bevy_ptr::ConstNonNull;
+    ///
+    /// // NEVER DO THAT!!! This is undefined behavior. ⚠️
+    /// let ptr = unsafe { ConstNonNull::<u32>::new_unchecked(core::ptr::null()) };
+    /// ```
+    pub const unsafe fn new_unchecked(ptr: *const T) -> Self {
+        // SAFETY: This function's safety invariants are identical to `NonNull::new_unchecked`
+        // The caller must satisfy all of them.
+        unsafe { Self(NonNull::new_unchecked(ptr.cast_mut())) }
+    }
+
+    /// Returns a shared reference to the value.
+    ///
+    /// # Safety
+    ///
+    /// When calling this method, you have to ensure that all of the following is true:
+    ///
+    /// * The pointer must be [properly aligned].
+    ///
+    /// * It must be "dereferenceable" in the sense defined in [the module documentation].
+    ///
+    /// * The pointer must point to an initialized instance of `T`.
+    ///
+    /// * You must enforce Rust's aliasing rules, since the returned lifetime `'a` is
+    ///   arbitrarily chosen and does not necessarily reflect the actual lifetime of the data.
+    ///   In particular, while this reference exists, the memory the pointer points to must
+    ///   not get mutated (except inside `UnsafeCell`).
+    ///
+    /// This applies even if the result of this method is unused!
+    /// (The part about being initialized is not yet fully decided, but until
+    /// it is, the only safe approach is to ensure that they are indeed initialized.)
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use bevy_ptr::ConstNonNull;
+    ///
+    /// let mut x = 0u32;
+    /// let ptr = ConstNonNull::new(&mut x as *mut _).expect("ptr is null!");
+    ///
+    /// let ref_x = unsafe { ptr.as_ref() };
+    /// println!("{ref_x}");
+    /// ```
+    ///
+    /// [the module documentation]: core::ptr#safety
+    /// [properly aligned]: https://doc.rust-lang.org/std/ptr/index.html#alignment
+    #[inline]
+    pub unsafe fn as_ref<'a>(&self) -> &'a T {
+        // SAFETY: This function's safety invariants are identical to `NonNull::as_ref`
+        // The caller must satisfy all of them.
+        unsafe { self.0.as_ref() }
+    }
+}
+
+impl<T: ?Sized> From<NonNull<T>> for ConstNonNull<T> {
+    fn from(value: NonNull<T>) -> Self {
+        ConstNonNull(value)
+    }
+}
+
+impl<'a, T: ?Sized> From<&'a T> for ConstNonNull<T> {
+    fn from(value: &'a T) -> Self {
+        ConstNonNull(NonNull::from(value))
+    }
+}
+
+impl<'a, T: ?Sized> From<&'a mut T> for ConstNonNull<T> {
+    fn from(value: &'a mut T) -> Self {
+        ConstNonNull(NonNull::from(value))
+    }
+}
+
+/// Type-erased borrow of some unknown type chosen when constructing this type.
+///
+/// This type tries to act "borrow-like" which means that:
+/// - It should be considered immutable: its target must not be changed while this pointer is alive.
+/// - It must always point to a valid value of whatever the pointee type is.
+/// - The lifetime `'a` accurately represents how long the pointer is valid for.
+/// - If `A` is [`Aligned`], the pointer must always be [properly aligned] for the unknown pointee type.
+///
+/// It may be helpful to think of this type as similar to `&'a dyn Any` but without
+/// the metadata and able to point to data that does not correspond to a Rust type.
+///
+/// [properly aligned]: https://doc.rust-lang.org/std/ptr/index.html#alignment
+#[derive(Copy, Clone)]
+#[repr(transparent)]
+pub struct Ptr<'a, A: IsAligned = Aligned>(NonNull<u8>, PhantomData<(&'a u8, A)>);
+
+/// Type-erased mutable borrow of some unknown type chosen when constructing this type.
+///
+/// This type tries to act "borrow-like" which means that:
+/// - Pointer is considered exclusive and mutable. It cannot be cloned as this would lead to
+///   aliased mutability.
+/// - It must always point to a valid value of whatever the pointee type is.
+/// - The lifetime `'a` accurately represents how long the pointer is valid for.
+/// - If `A` is [`Aligned`], the pointer must always be [properly aligned] for the unknown pointee type.
+///
+/// It may be helpful to think of this type as similar to `&'a mut dyn Any` but without
+/// the metadata and able to point to data that does not correspond to a Rust type.
+///
+/// [properly aligned]: https://doc.rust-lang.org/std/ptr/index.html#alignment
+#[repr(transparent)]
+pub struct PtrMut<'a, A: IsAligned = Aligned>(NonNull<u8>, PhantomData<(&'a mut u8, A)>);
+
 /// Type-erased [`Box`]-like pointer to some unknown type chosen when constructing this type.
 ///
 /// Conceptually represents ownership of whatever data is being pointed to and so is
@@ -166,7 +314,6 @@ impl IsAligned for Unaligned {
 /// [`Box`]: https://doc.rust-lang.org/std/boxed/struct.Box.html
 #[repr(transparent)]
 pub struct OwningPtr<'a, A: IsAligned = Aligned>(NonNull<u8>, PhantomData<(&'a mut u8, A)>);
-
 
 macro_rules! impl_ptr {
     ($ptr:ident) => {
@@ -250,6 +397,131 @@ macro_rules! impl_ptr {
     };
 }
 
+impl_ptr!(Ptr);
+impl_ptr!(PtrMut);
 impl_ptr!(OwningPtr);
+
+
+impl<'a> OwningPtr<'a> {
+    unsafe fn make_internal<T>(temp: &mut ManuallyDrop<T>) -> OwningPtr<'_> {
+
+    }
+
+    /// Consumes a value and creates an [`OwningPtr`] to it while ensuring a double drop does not happen.
+    #[inline]
+    pub fn make<T, F: FnOnce(OwningPtr<'_>) -> R, R>(val: T, f: F) -> R {
+        let mut val = ManuallyDrop::new(val);
+
+        // SAFETY: The value behind the pointer will not get dropped or observed later,
+        // so it's safe to promote it to an owning pointer.
+        f(unsafe {
+            Self::make_internal(&mut val)
+        })
+    }
+}
+
+impl<'a, A: IsAligned> OwningPtr<'a, A> {
+    /// Creates a new instance from a raw pointer.
+    ///
+    /// # Safety
+    /// - `inner` must point to valid value of whatever the pointee type is.
+    /// - If the `A` type parameter is [`Aligned`] then `inner` must be [properly aligned] for the pointee type.
+    /// - `inner` must have correct provenance to allow read and writes of the pointee type.
+    /// - The lifetime `'a` must be constrained such that this [`OwningPtr`] will stay valid and nothing
+    ///   else can read or mutate the pointee while this [`OwningPtr`] is live.
+    ///
+    /// [properly aligned]: https://doc.rust-lang.org/std/ptr/index.html#alignment
+    #[inline]
+    pub unsafe fn new(inner: NonNull<u8>) -> Self {
+        Self(inner, PhantomData)
+    }
+
+    /// Consumes the [`OwningPtr`] to obtain ownership of the underlying data of type `T`.
+    ///
+    /// # Safety
+    /// - `T` must be the erased pointee type for this [`OwningPtr`].
+    /// - If the type parameter `A` is [`Unaligned`] then this pointer must be [properly aligned]
+    ///   for the pointee type `T`.
+    ///
+    /// [properly aligned]: https://doc.rust-lang.org/std/ptr/index.html#alignment
+    #[inline]
+    pub unsafe fn read<T>(self) -> T {
+        let ptr = self.as_ptr().cast::<T>().debug_ensure_aligned();
+
+        // SAFETY: The caller ensure the pointee is of type `T` and uphold safety for `read`.
+        unsafe { ptr.read() }
+    }
+
+    /// Consumes the [`OwningPtr`] to drop the underlying data of type `T`.
+    ///
+    /// # Safety
+    /// - `T` must be the erased pointee type for this [`OwningPtr`].
+    /// - If the type parameter `A` is [`Unaligned`] then this pointer must be [properly aligned]
+    ///   for the pointee type `T`.
+    ///
+    /// [properly aligned]: https://doc.rust-lang.org/std/ptr/index.html#alignment
+    #[inline]
+    pub unsafe fn drop_as<T>(self) {
+        let ptr = self.as_ptr().cast::<T>().debug_ensure_aligned();
+        // SAFETY: The caller ensure the pointee is of type `T` and uphold safety for `drop_in_place`.
+        unsafe {
+            ptr.drop_in_place();
+        }
+    }
+
+    pub unsafe fn cast<T>(self) -> MovingPtr<'a, T, A> {
+
+    }
+
+    /// Gets the underlying pointer, erasing the associated lifetime.
+    ///
+    /// If possible, it is strongly encouraged to use the other more type-safe functions
+    /// over this function.
+    #[inline]
+    pub fn as_ptr(&self) -> *mut u8 {
+        self.0.as_ptr()
+    }
+
+    /// Gets an immutable pointer from this owned pointer.
+    #[inline]
+    pub fn as_ref(&self) -> Ptr<'_, A> {
+        // SAFETY: The `Owning` type's guarantees about the validity of this pointer are a superset of `Ptr` s guarantees
+        unsafe { Ptr::new(self.0) }
+    }
+
+    /// Gets a mutable pointer from this owned pointer.
+    #[inline]
+    pub fn as_mut(&mut self) -> PtrMut<'_, A> {
+
+    }
+}
+
+
+trait DebugEnsureAligned {
+    fn debug_ensure_aligned(self) -> Self;
+}
+
+// Disable this for miri runs as it already checks if pointer to reference
+// casts are properly aligned.
+#[cfg(all(debug_assertions, not(miri)))]
+impl<T: Sized> DebugEnsureAligned for *mut T {
+    fn debug_ensure_aligned(self) -> Self {
+        assert!(
+            self.is_aligned(),
+            "pointer is not aligned. Address {:p} does not have alignment {} for type {}",
+            self,
+            align_of::<T>(),
+            std::any::type_name::<T>()
+        )
+    }
+}
+
+#[cfg(any(not(debug_assertions), miri))]
+impl<T: Sized> DebugEnsureAligned for *mut T {
+    #[inline(always)]
+    fn debug_ensure_aligned(self) -> Self {
+        self
+    }
+}
 
 // TODO!

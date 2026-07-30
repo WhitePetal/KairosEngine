@@ -75,9 +75,17 @@ pub struct ComponentDescriptor {
     relationship_accessor: MaybeRelationshipAccessor,
 }
 
+impl ComponentDescriptor {
+    unsafe fn drop_ptr<T>(x: OwningPtr<'_>) {
+        unsafe {
+            x.drop_as::<T>();
+        }
+    }
+}
+
 pub struct ComponentInfo {
     pub(super) id: ComponentId,
-    pub(super) descriptor:
+    pub(super) descriptor: ComponentDescriptor,
 }
 
 /// Stores metadata associated with each kind of [`Component`] in a given [`World`](crate::world::World).

@@ -926,6 +926,7 @@ impl Entities {
     pub(crate) unsafe fn mark_free(&mut self, index: EntityIndex, generations: u32) -> Entity {
         self.ensure_index_index_is_valid(index);
 
+        // SAFETY: We just did `ensure_index`
         let meta = unsafe { self.meta.get_unchecked_mut(index.index() as usize) };
 
         let (new_generation, aliased) = meta.generation.after_versions_and_could_alias(generations);
