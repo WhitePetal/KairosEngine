@@ -1,7 +1,17 @@
-use std::{array, borrow::{Borrow, BorrowMut}, collections::{BTreeSet, BinaryHeap, LinkedList, VecDeque}, ops::{Bound, Deref, DerefMut, Index, IndexMut, Range, RangeFull, RangeTo, RangeToInclusive}, ptr, range::{RangeFrom, RangeInclusive}, rc::Rc, sync::Arc};
+use std::{
+    array,
+    borrow::{Borrow, BorrowMut},
+    collections::{BTreeSet, BinaryHeap, LinkedList, VecDeque},
+    ops::{Bound, Deref, DerefMut, Index, IndexMut, Range, RangeFull, RangeTo, RangeToInclusive},
+    ptr,
+    range::{RangeFrom, RangeInclusive},
+    rc::Rc,
+    sync::Arc,
+};
 
-use crate::ecs::entity::{Entity, EntityEquivalent, UniqueEntityEquivalentSlice, UniqueEntityIter, unique_slice};
-
+use crate::ecs::entity::{
+    Entity, EntityEquivalent, UniqueEntityEquivalentSlice, UniqueEntityIter, unique_slice,
+};
 
 /// An array that contains only unique entities.
 ///

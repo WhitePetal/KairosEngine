@@ -8,7 +8,10 @@ use std::{
     },
 };
 
-use hashbrown::{TryReserveError, hash_set::{Difference, Drain, ExtractIf, Intersection, Iter, SymmetricDifference, Union}};
+use hashbrown::{
+    TryReserveError,
+    hash_set::{Difference, Drain, ExtractIf, Intersection, Iter, SymmetricDifference, Union},
+};
 use rayon::iter::{FromParallelIterator, IntoParallelIterator, ParallelExtend};
 
 use crate::hash::FixedHasher;
@@ -533,9 +536,7 @@ where
     where
         P: IntoParallelIterator<Item = U>,
     {
-        Self(<hashbrown::HashSet<T, S> as FromParallelIterator<
-            U,
-        >>::from_par_iter(par_iter))
+        Self(<hashbrown::HashSet<T, S> as FromParallelIterator<U>>::from_par_iter(par_iter))
     }
 }
 

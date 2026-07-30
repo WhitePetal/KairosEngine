@@ -35,8 +35,7 @@ fn preserving_uniqueness() {
         .cloned();
 
     // With `iter_many_mut` collecting is not possible, because you need to drop each `Mut`/`&mut` before the next is retrieved.
-    let _results: Vec<Mut<Thing>> =
-        query.iter_many_unique_mut(&mut world, entity_set).collect();
+    let _results: Vec<Mut<Thing>> = query.iter_many_unique_mut(&mut world, entity_set).collect();
 }
 
 #[test]
@@ -45,10 +44,7 @@ fn nesting_queries() {
 
     world.spawn_batch(vec![Thing; 1000]);
 
-    pub fn system(
-        mut thing_entities: Query<Entity, With<Thing>>,
-        mut things: Query<&mut Thing>,
-    ) {
+    pub fn system(mut thing_entities: Query<Entity, With<Thing>>, mut things: Query<&mut Thing>) {
         things.iter_many_unique(thing_entities.iter());
         things.iter_many_unique_mut(thing_entities.iter_mut());
     }

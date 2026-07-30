@@ -1,9 +1,8 @@
-mod info;
 mod clone;
+mod info;
 
-pub use info::*;
 pub use clone::*;
-
+pub use info::*;
 
 /// The storage used for a specific component type.
 ///

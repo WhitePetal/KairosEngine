@@ -1,5 +1,3 @@
-
-
 /// Function type that can be used to clone a component of an entity.
 pub type ComponentCloneFn = fn(&SourceComponent, &mut ComponentCloneCtx);
 

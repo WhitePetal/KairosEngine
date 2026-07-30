@@ -101,13 +101,13 @@ use crate::{
 
 mod entity_set;
 
-pub mod unique_slice;
 mod unique_array;
+pub mod unique_slice;
 mod unique_vec;
 
 pub use entity_set::*;
+pub use unique_array::{UniqueEntityArray, UniqueEntityEquivalentArray};
 pub use unique_slice::{UniqueEntityEquivalentSlice, UniqueEntitySlice};
-pub use unique_array::{UniqueEntityEquivalentArray, UniqueEntityArray};
 pub use unique_vec::{UniqueEntityEquivalentVec, UniqueEntityVec};
 
 mod hash;

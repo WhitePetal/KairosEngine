@@ -1,8 +1,21 @@
-use std::{borrow::{Borrow, BorrowMut, Cow}, collections::{BTreeSet, BinaryHeap, TryReserveError, VecDeque}, mem::MaybeUninit, ops::{Bound, Deref, DerefMut, Index, IndexMut, Range, RangeBounds, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive}, ptr, rc::Rc, sync::Arc, vec};
+use std::{
+    borrow::{Borrow, BorrowMut, Cow},
+    collections::{BTreeSet, BinaryHeap, TryReserveError, VecDeque},
+    mem::MaybeUninit,
+    ops::{
+        Bound, Deref, DerefMut, Index, IndexMut, Range, RangeBounds, RangeFrom, RangeFull,
+        RangeInclusive, RangeTo, RangeToInclusive,
+    },
+    ptr,
+    rc::Rc,
+    sync::Arc,
+    vec,
+};
 
-use crate::ecs::entity::{Entity, EntityEquivalent, EntitySet, FromEntitySetIterator, UniqueEntityEquivalentArray, UniqueEntityEquivalentSlice, UniqueEntityIter, unique_slice};
-
-
+use crate::ecs::entity::{
+    Entity, EntityEquivalent, EntitySet, FromEntitySetIterator, UniqueEntityEquivalentArray,
+    UniqueEntityEquivalentSlice, UniqueEntityIter, unique_slice,
+};
 
 /// A `Vec` that contains only unique entities.
 ///

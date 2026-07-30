@@ -1,7 +1,24 @@
-use std::{array::TryFromSliceError, borrow::{Borrow, Cow}, cmp::Ordering, collections::VecDeque, iter::FusedIterator, ops::{Bound, Deref, Index, IndexMut, Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive}, ptr, rc::Rc, slice::{self, SliceIndex}, sync::Arc};
+use std::{
+    array::TryFromSliceError,
+    borrow::{Borrow, Cow},
+    cmp::Ordering,
+    collections::VecDeque,
+    iter::FusedIterator,
+    ops::{
+        Bound, Deref, Index, IndexMut, Range, RangeFrom, RangeFull, RangeInclusive, RangeTo,
+        RangeToInclusive,
+    },
+    ptr,
+    rc::Rc,
+    slice::{self, SliceIndex},
+    sync::Arc,
+};
 
-use crate::ecs::entity::{Entity, EntityEquivalent, EntitySet, FromEntitySetIterator, UniqueEntityIter, unique_vec::{self, UniqueEntityEquivalentVec}};
 use super::UniqueEntityEquivalentArray;
+use crate::ecs::entity::{
+    Entity, EntityEquivalent, EntitySet, FromEntitySetIterator, UniqueEntityIter,
+    unique_vec::{self, UniqueEntityEquivalentVec},
+};
 
 /// A slice that contains only unique entities.
 ///
@@ -11,7 +28,6 @@ use super::UniqueEntityEquivalentArray;
 #[repr(transparent)]
 #[derive(Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct UniqueEntityEquivalentSlice<T: EntityEquivalent>([T]);
-
 
 /// A slice that contains only unique [`Entity`].
 ///
@@ -178,7 +194,7 @@ impl<T: EntityEquivalent> UniqueEntityEquivalentSlice<T> {
     /// `slice` must contain only unique elements.
     pub const unsafe fn from_slice_unchecked(slice: &[T]) -> &Self {
         // SAFETY: UniqueEntityEquivalentSlice is a transparent wrapper around [T].
-        unsafe { &*(ptr::from_ref(slice) as *const Self ) }
+        unsafe { &*(ptr::from_ref(slice) as *const Self) }
     }
 
     /// Constructs a `UniqueEntityEquivalentSlice` from a [`&mut [T]`] unsafely.
@@ -996,12 +1012,11 @@ impl<T: EntityEquivalent> UniqueEntityEquivalentSlice<T> {
     ///
     /// [`slice::from_raw_parts`] must be safe to call with `data` and `len`.
     /// Additionally, all elements in the resulting slice must be unique.
-    pub const unsafe fn from_raw_parts<'a>(
-        data: *const T,
-        len: usize,
-    ) -> &'a Self {
+    pub const unsafe fn from_raw_parts<'a>(data: *const T, len: usize) -> &'a Self {
         // SAFETY: The safety contract is upheld by the caller.
-        unsafe { UniqueEntityEquivalentSlice::from_slice_unchecked(slice::from_raw_parts(data, len)) }
+        unsafe {
+            UniqueEntityEquivalentSlice::from_slice_unchecked(slice::from_raw_parts(data, len))
+        }
     }
 
     /// Performs the same functionality as [`from_raw_parts`], except that a mutable slice is returned.
@@ -1012,13 +1027,12 @@ impl<T: EntityEquivalent> UniqueEntityEquivalentSlice<T> {
     ///
     /// [`slice::from_raw_parts_mut`] must be safe to call with `data` and `len`.
     /// Additionally, all elements in the resulting slice must be unique.
-    pub const unsafe fn from_raw_parts_mut<'a>(
-        data: *mut T,
-        len: usize,
-    ) -> &'a mut Self {
+    pub const unsafe fn from_raw_parts_mut<'a>(data: *mut T, len: usize) -> &'a mut Self {
         // SAFETY: The safety contract is upheld by the caller.
         unsafe {
-            UniqueEntityEquivalentSlice::from_slice_unchecked_mut(slice::from_raw_parts_mut(data, len))
+            UniqueEntityEquivalentSlice::from_slice_unchecked_mut(slice::from_raw_parts_mut(
+                data, len,
+            ))
         }
     }
 }

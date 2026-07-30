@@ -1,8 +1,8 @@
-mod maybe_location;
 mod debug_info;
+mod maybe_location;
 
-pub use maybe_location::MaybeLocation;
 pub use debug_info::DebugName;
+pub use maybe_location::MaybeLocation;
 
 /// A debug checked version of [`Option::unwrap_unchecked`]. Will panic in
 /// debug modes if unwrapping a `None` or `Err` value in debug mode, but is

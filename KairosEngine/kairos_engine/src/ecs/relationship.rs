@@ -1,5 +1,3 @@
-
-
 #[derive(Clone, Debug, Default)]
 pub(crate) enum MaybeRelationshipAccessor {
     /// Not a relationship

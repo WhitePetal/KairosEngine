@@ -1,13 +1,10 @@
-
-
+use disqualified::ShortName;
 #[cfg(feature = "debug")]
 use std::{any::type_name, borrow::Cow};
 use std::{fmt, ops::Deref};
-use disqualified::ShortName;
 
 #[cfg(not(feature = "debug"))]
 const FEATURE_DISABLED: &str = "<Enable the debug feature to see the name>";
-
 
 pub struct DebugName {
     #[cfg(feature = "debug")]
@@ -28,7 +25,6 @@ impl fmt::Debug for DebugName {
     }
 }
 
-
 impl DebugName {
     /// Create a new `DebugName` from a `&str`
     ///
@@ -43,7 +39,7 @@ impl DebugName {
     pub const fn borrow(value: &'static str) -> Self {
         DebugName {
             #[cfg(feature = "debug")]
-            name: Cow::Borrowed(value)
+            name: Cow::Borrowed(value),
         }
     }
 
@@ -60,7 +56,7 @@ impl DebugName {
     pub fn owned(value: String) -> Self {
         DebugName {
             #[cfg(feature = "debug")]
-            name: Cow::Owned(value)
+            name: Cow::Owned(value),
         }
     }
 
@@ -115,7 +111,7 @@ impl From<Cow<'static, str>> for DebugName {
     fn from(value: Cow<'static, str>) -> Self {
         Self {
             #[cfg(feature = "debug")]
-            name: value
+            name: value,
         }
     }
 }

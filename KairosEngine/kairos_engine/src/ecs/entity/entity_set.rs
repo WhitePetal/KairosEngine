@@ -1,7 +1,19 @@
-use std::{array, collections::{btree_map, btree_set}, fmt::{Debug, Formatter}, hash::{BuildHasher, Hash}, iter::{self, FusedIterator}, option, ptr, rc::Rc, result, sync::Arc};
+use std::{
+    array,
+    collections::{btree_map, btree_set},
+    fmt::{Debug, Formatter},
+    hash::{BuildHasher, Hash},
+    iter::{self, FusedIterator},
+    option, ptr,
+    rc::Rc,
+    result,
+    sync::Arc,
+};
 
-use crate::{collections::FixedHashSet, ecs::entity::{Entity, UniqueEntityEquivalentSlice}};
-
+use crate::{
+    collections::FixedHashSet,
+    ecs::entity::{Entity, UniqueEntityEquivalentSlice},
+};
 
 #[cfg(test)]
 mod tests;
@@ -312,7 +324,6 @@ unsafe impl<I: EntitySetIterator, P: FnMut(&<I as Iterator>::Item) -> bool> Enti
 // SAFETY: Discarding elements maintains uniqueness.
 unsafe impl<I: EntitySetIterator> EntitySetIterator for iter::StepBy<I> {}
 
-
 /// Conversion from an `EntitySetIterator`.
 ///
 /// Some collections, while they can be constructed from plain iterators,
@@ -327,7 +338,9 @@ pub trait FromEntitySetIterator<A: EntityEquivalent>: FromIterator<A> {
     fn from_entity_set_iter<T: EntitySet<Item = A>>(set_iter: T) -> Self;
 }
 
-impl<T: EntityEquivalent + Hash, S: BuildHasher + Default> FromEntitySetIterator<T> for FixedHashSet<T, S> {
+impl<T: EntityEquivalent + Hash, S: BuildHasher + Default> FromEntitySetIterator<T>
+    for FixedHashSet<T, S>
+{
     #[inline]
     fn from_entity_set_iter<I: EntitySet<Item = T>>(set_iter: I) -> Self {
         let iter = set_iter.into_iter();
@@ -341,7 +354,6 @@ impl<T: EntityEquivalent + Hash, S: BuildHasher + Default> FromEntitySetIterator
         })
     }
 }
-
 
 /// An iterator that yields unique entities.
 ///

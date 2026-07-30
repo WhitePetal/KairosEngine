@@ -1,6 +1,15 @@
 use std::{alloc::Layout, any::TypeId, sync::RwLock};
 
-use crate::{collections::TypeIdMap, debug::DebugName, ecs::{component::{ComponentCloneBehavior, StorageType}, relationship::MaybeRelationshipAccessor, storage::SparseSetIndex}, ptr::OwningPtr};
+use crate::{
+    collections::TypeIdMap,
+    debug::DebugName,
+    ecs::{
+        component::{ComponentCloneBehavior, StorageType},
+        relationship::MaybeRelationshipAccessor,
+        storage::SparseSetIndex,
+    },
+    ptr::OwningPtr,
+};
 
 /// A value which uniquely identifies the type of a [`Component`] or [`Resource`] within a
 /// [`World`](crate::world::World).
