@@ -1,7 +1,5 @@
 use crate::ecs::entity::Entity;
 
-
-
 /// An implementor of this trait knows how to map an [`Entity`] into another [`Entity`].
 ///
 /// Usually this is done by using an [`EntityHashMap<Entity>`] to map source entities

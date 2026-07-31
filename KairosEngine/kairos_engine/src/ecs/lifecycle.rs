@@ -51,7 +51,71 @@
 //! This is used to skip [`TypeId`](core::any::TypeId) lookups in hot paths.
 //!
 
+use crate::ecs::world::DeferredWorld;
+
 /// The type used for [`Component`] lifecycle hooks such as `on_add`, `on_insert` or `on_remove`.
-pub type ComponentHook = for<'w> fn(DeferredWorld<'w>, HookContext);
+pub type ComponentHook = for<'w> fn(DeferredWorld<'w>);
+
+/// [`World`]-mutating functions that run as part of lifecycle events of a [`Component`].
+///
+/// Hooks are functions that run when a component is added, overwritten, or removed from an entity.
+/// These are intended to be used for structural side effects that need to happen when a component is added or removed,
+/// and are not intended for general-purpose logic.
+///
+/// For example, you might use a hook to update a cached index when a component is added,
+/// to clean up resources when a component is removed,
+/// or to keep hierarchical data structures across entities in sync.
+///
+/// This information is stored in the [`ComponentInfo`](crate::component::ComponentInfo) of the associated component.
+///
+/// There are two ways of configuring hooks for a component:
+/// 1. Defining the relevant hooks on the [`Component`] implementation
+/// 2. Using the [`World::register_component_hooks`] method
+///
+/// # Example
+///
+/// ```
+/// use bevy_ecs::prelude::*;
+/// use bevy_ecs::entity::EntityHashSet;
+///
+/// #[derive(Component)]
+/// struct MyTrackedComponent;
+///
+/// #[derive(Resource, Default)]
+/// struct TrackedEntities(EntityHashSet);
+///
+/// let mut world = World::new();
+/// world.init_resource::<TrackedEntities>();
+///
+/// // No entities with `MyTrackedComponent` have been added yet, so we can safely add component hooks
+/// let mut tracked_component_query = world.query::<&MyTrackedComponent>();
+/// assert!(tracked_component_query.iter(&world).next().is_none());
+///
+/// world.register_component_hooks::<MyTrackedComponent>().on_add(|mut world, context| {
+///    let mut tracked_entities = world.resource_mut::<TrackedEntities>();
+///   tracked_entities.0.insert(context.entity);
+/// });
+///
+/// world.register_component_hooks::<MyTrackedComponent>().on_remove(|mut world, context| {
+///   let mut tracked_entities = world.resource_mut::<TrackedEntities>();
+///   tracked_entities.0.remove(&context.entity);
+/// });
+///
+/// let entity = world.spawn(MyTrackedComponent).id();
+/// let tracked_entities = world.resource::<TrackedEntities>();
+/// assert!(tracked_entities.0.contains(&entity));
+///
+/// world.despawn(entity);
+/// let tracked_entities = world.resource::<TrackedEntities>();
+/// assert!(!tracked_entities.0.contains(&entity));
+/// ```
+#[derive(Debug, Clone, Default)]
+pub struct ComponentHooks {
+    pub(crate) on_add: Option<ComponentHook>,
+    pub(crate) on_insert: Option<ComponentHook>,
+    pub(crate) on_discard: Option<ComponentHook>,
+    pub(crate) on_remove: Option<ComponentHook>,
+    pub(crate) on_despawn: Option<ComponentHook>,
+}
 
 // TODO!

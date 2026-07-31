@@ -1,5 +1,10 @@
 use std::{
-    cell::UnsafeCell, fmt::{self, Debug, Formatter, Pointer}, marker::PhantomData, mem::{self, ManuallyDrop, MaybeUninit}, ops::{Deref, DerefMut}, ptr::{self, NonNull},
+    cell::UnsafeCell,
+    fmt::{self, Debug, Formatter, Pointer},
+    marker::PhantomData,
+    mem::{self, ManuallyDrop, MaybeUninit},
+    ops::{Deref, DerefMut},
+    ptr::{self, NonNull},
 };
 
 /// Used as a type argument to [`Ptr`], [`PtrMut`], [`OwningPtr`], and [`MovingPtr`] to specify that the pointer is guaranteed
@@ -689,9 +694,7 @@ impl<'a, T, A: IsAligned> MovingPtr<'a, MaybeUninit<T>, A> {
         // - The caller must ensure that `U` is the correct type for the field at `byte_offset` and thus
         //   cannot be null.
         // - `MaybeUninit<T>` is `repr(transparent)` and thus must have the same memory layout as `T``
-        let field_ptr = unsafe {
-            NonNull::new_unchecked(f(self_ptr))
-        };
+        let field_ptr = unsafe { NonNull::new_unchecked(f(self_ptr)) };
         MovingPtr(field_ptr.cast::<MaybeUninit<U>>(), PhantomData)
     }
 }
@@ -743,9 +746,7 @@ impl<'a, T, A: IsAligned> From<MovingPtr<'a, T, A>> for OwningPtr<'a, A> {
         // - `value.0` by construction must have correct provenance to allow read and writes of type `T`.
         // - The lifetime `'a` is mirrored from input to output, keeping the same lifetime guarantees.
         // - `OwningPtr` maintains the same aliasing invariants as `MovingPtr`.
-        let ptr = unsafe {
-            OwningPtr::new(value.0.cast::<u8>())
-        };
+        let ptr = unsafe { OwningPtr::new(value.0.cast::<u8>()) };
         mem::forget(value);
         ptr
     }
@@ -791,7 +792,9 @@ impl<T, A: IsAligned> Drop for MovingPtr<'_, T, A> {
         //  - If `A` is `Aligned`, then `ptr` must be properly aligned for type `T` by construction.
         //  - `self.0` owns the value it points to so it must always be valid for dropping until this pointer is dropped.
         //  - This type owns the value it points to, so it's required to not mutably alias value that it points to.
-        unsafe { A::drop_in_place(self.0.as_ptr()); }
+        unsafe {
+            A::drop_in_place(self.0.as_ptr());
+        }
     }
 }
 
@@ -959,7 +962,7 @@ impl<'a> OwningPtr<'a> {
     /// # Safety
     ///
     /// Safety constraints of [`PtrMut::promote`] must be upheld.
-    unsafe fn make_internal<T>(temp: &mut ManuallyDrop<T>) -> OwningPtr<'_>  {
+    unsafe fn make_internal<T>(temp: &mut ManuallyDrop<T>) -> OwningPtr<'_> {
         // SAFETY: The constraints of `promote` are upheld by caller.
         unsafe { PtrMut::from(&mut *temp).promote() }
     }
@@ -970,9 +973,7 @@ impl<'a> OwningPtr<'a> {
         let mut val = ManuallyDrop::new(val);
         // SAFETY: The value behind the pointer will not get dropped or observed later,
         // so it's safe to promote it to an owning pointer.
-        f(unsafe {
-            Self::make_internal(&mut val)
-        })
+        f(unsafe { Self::make_internal(&mut val) })
     }
 }
 
@@ -1101,34 +1102,34 @@ pub struct ThinSlicePtr<'a, T> {
 }
 
 impl<'a, T> ThinSlicePtr<'a, T> {
-   pub unsafe fn get_unchecked(&self, index: usize) -> &'a T {
-       // We cannot use `debug_assert!` here because `self.len` does not exist when not in debug
-       // mode.
-       #[cfg(debug_assertions)]
-       assert!(index < self.len, "tried to index out-of-bounds of a slice");
+    pub unsafe fn get_unchecked(&self, index: usize) -> &'a T {
+        // We cannot use `debug_assert!` here because `self.len` does not exist when not in debug
+        // mode.
+        #[cfg(debug_assertions)]
+        assert!(index < self.len, "tried to index out-of-bounds of a slice");
 
-       // SAFETY: The caller guarantees `index` is in-bounds so that the resulting pointer is
-       // valid to dereference.
-       unsafe { &*self.ptr.add(index).as_ptr() }
-   }
+        // SAFETY: The caller guarantees `index` is in-bounds so that the resulting pointer is
+        // valid to dereference.
+        unsafe { &*self.ptr.add(index).as_ptr() }
+    }
 
-   /// Returns a slice without performing bounds checks.
-   ///
-   /// # Safety
-   ///
-   /// - There must be no mutable aliases for the lifetime `'a` to the slice. to the slice.
-   /// - `len` must be less than or equal to the length of the slice.
-   pub unsafe fn as_slice_unchecked(&self, len: usize) -> &'a [T] {
-       #[cfg(debug_assertions)]
-       assert!(len <= self.len, "tried to create an out-of-bounds slice");
+    /// Returns a slice without performing bounds checks.
+    ///
+    /// # Safety
+    ///
+    /// - There must be no mutable aliases for the lifetime `'a` to the slice. to the slice.
+    /// - `len` must be less than or equal to the length of the slice.
+    pub unsafe fn as_slice_unchecked(&self, len: usize) -> &'a [T] {
+        #[cfg(debug_assertions)]
+        assert!(len <= self.len, "tried to create an out-of-bounds slice");
 
-       // SAFETY:
-       // - The caller guarantees `len` is not greater than the length of the slice.
-       // - The caller guarantees the aliasing rules.
-       // - `self.ptr` is a valid pointer for the type `T`.
-       // - `len` is valid hence `len * size_of::<T>()` is less than `isize::MAX`.
-       unsafe { std::slice::from_raw_parts(self.ptr.as_ptr(), len) }
-   }
+        // SAFETY:
+        // - The caller guarantees `len` is not greater than the length of the slice.
+        // - The caller guarantees the aliasing rules.
+        // - `self.ptr` is a valid pointer for the type `T`.
+        // - `len` is valid hence `len * size_of::<T>()` is less than `isize::MAX`.
+        unsafe { std::slice::from_raw_parts(self.ptr.as_ptr(), len) }
+    }
 }
 
 impl<'a, T> ThinSlicePtr<'a, UnsafeCell<T>> {
@@ -1153,12 +1154,10 @@ impl<'a, T> ThinSlicePtr<'a, UnsafeCell<T>> {
     pub fn cast(&self) -> ThinSlicePtr<'a, T> {
         ThinSlicePtr {
             // SAFETY: `self.ptr` is non null hence `UnsafeCell::raw_get` always returns a non null pointer
-            ptr: unsafe {
-                NonNull::new_unchecked(UnsafeCell::raw_get(self.ptr.as_ptr()))
-            },
+            ptr: unsafe { NonNull::new_unchecked(UnsafeCell::raw_get(self.ptr.as_ptr())) },
             #[cfg(debug_assertions)]
             len: self.len,
-            _marker: PhantomData
+            _marker: PhantomData,
         }
     }
 }
@@ -1178,12 +1177,10 @@ impl<'a, T> From<&'a [T]> for ThinSlicePtr<'a, T> {
 
         Self {
             // SAFETY: A reference can never be null.
-            ptr: unsafe {
-                NonNull::new_unchecked(ptr)
-            },
+            ptr: unsafe { NonNull::new_unchecked(ptr) },
             #[cfg(debug_assertions)]
             len: slice.len(),
-            _marker: PhantomData
+            _marker: PhantomData,
         }
     }
 }
@@ -1211,7 +1208,9 @@ pub trait UnsafeCellDeref<'a, T>: private::SealedUnsafeCell {
     /// # Safety
     /// - The [`UnsafeCell`] must not currently have a mutable reference to its content.
     /// - At all times, you must avoid data races. If multiple threads have access to the same [`UnsafeCell`], then any writes must have a proper happens-before relation to all other accesses or use atomics ([`UnsafeCell`] docs for reference).
-    unsafe fn read(self) -> T where T: Copy;
+    unsafe fn read(self) -> T
+    where
+        T: Copy;
 }
 
 impl<'a, T> UnsafeCellDeref<'a, T> for &'a UnsafeCell<T> {
@@ -1226,7 +1225,10 @@ impl<'a, T> UnsafeCellDeref<'a, T> for &'a UnsafeCell<T> {
         unsafe { &*self.get() }
     }
     #[inline]
-    unsafe fn read(self) -> T where T: Copy {
+    unsafe fn read(self) -> T
+    where
+        T: Copy,
+    {
         // SAFETY: The caller upholds the alias rules.
         unsafe { self.get().read() }
     }
@@ -1287,7 +1289,6 @@ macro_rules! get_pattern {
         $pattern
     };
 }
-
 
 /// Deconstructs a [`MovingPtr`] into its individual fields.
 ///

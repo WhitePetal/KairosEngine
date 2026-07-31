@@ -3,14 +3,18 @@
 mod clone;
 mod info;
 mod register;
+mod required;
 
 use std::marker::PhantomData;
 
 pub use clone::*;
 pub use info::*;
 pub use register::*;
+pub use required::*;
 
-use crate::ecs::{entity::EntityMapper, lifecycle::ComponentHook, relationship::ComponentRelationshipAccessor};
+use crate::ecs::{
+    entity::EntityMapper, lifecycle::ComponentHook, relationship::ComponentRelationshipAccessor,
+};
 
 /// The storage used for a specific component type.
 ///
@@ -29,7 +33,6 @@ pub enum StorageType {
     Table,
     SparseSet,
 }
-
 
 /// A data type that can be used to store data for an [entity].
 ///
@@ -559,7 +562,10 @@ pub trait Component: Send + Sync + 'static {
     /// # Safety
     ///
     /// - `_required_components` must only contain components valid in `_components`.
-    fn register_required_components(_component_id: ComponentId, _required_components: &mut RequiredComponentsRegistrator) {
+    fn register_required_components(
+        _component_id: ComponentId,
+        _required_components: &mut RequiredComponentsRegistrator,
+    ) {
     }
 
     /// Called when registering this component, allowing to override clone function (or disable cloning altogether) for this component.
@@ -727,4 +733,4 @@ struct InitComponentId<T: Component> {
     marker: PhantomData<T>,
 }
 
-pub struct ComponentIdFor<'s, T: Component>(Local)
+pub struct ComponentIdFor {}

@@ -1,6 +1,6 @@
 use std::any::TypeId;
 
-use indexmap::IndexMap;
+use indexmap::map::IndexMap;
 
 use crate::hash::NoOpHash;
 

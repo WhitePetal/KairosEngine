@@ -100,7 +100,7 @@ impl Tick {
 ///     schedule.0.check_change_ticks(*check);
 /// });
 /// ```
-#[derive(Debug, Clone, Copy, Event)]
+#[derive(Debug, Clone, Copy)]
 pub struct CheckChangeTicks(pub(crate) Tick);
 
 impl CheckChangeTicks {

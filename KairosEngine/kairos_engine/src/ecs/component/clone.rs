@@ -1,5 +1,5 @@
 /// Function type that can be used to clone a component of an entity.
-pub type ComponentCloneFn = fn(&SourceComponent, &mut ComponentCloneCtx);
+pub type ComponentCloneFn = fn();
 
 /// The clone behavior to use when cloning or moving a [`Component`].
 #[derive(Clone, Debug, Default)]

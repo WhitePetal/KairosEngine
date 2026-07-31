@@ -6,6 +6,11 @@ use std::{fmt, ops::Deref};
 #[cfg(not(feature = "debug"))]
 const FEATURE_DISABLED: &str = "<Enable the debug feature to see the name>";
 
+/// Wrapper to help debugging ECS issues. This is used to display the names of systems, components, ...
+///
+/// * If the `debug` feature is enabled, the actual name will be used
+/// * If it is disabled, a string mentioning the disabled feature will be used
+#[derive(Clone, PartialEq, Eq)]
 pub struct DebugName {
     #[cfg(feature = "debug")]
     name: Cow<'static, str>,

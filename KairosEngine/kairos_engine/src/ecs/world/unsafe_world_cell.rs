@@ -4,7 +4,6 @@ use std::{cell::UnsafeCell, marker::PhantomData, ptr};
 
 use crate::ecs::world::World;
 
-
 /// Variant of the [`World`] where resource and component accesses take `&self`, and the responsibility to avoid
 /// aliasing violations are given to the caller instead of being checked at compile-time by rust's unique XOR shared rule.
 ///
@@ -68,16 +67,13 @@ pub struct UnsafeWorldCell<'w> {
     _marker: PhantomData<(&'w World, &'w UnsafeCell<World>)>,
 }
 
-
 // SAFETY: `&World` and `&mut World` are both `Send`
 unsafe impl Send for UnsafeWorldCell<'_> {}
 // SAFETY: `&World` and `&mut World` are both `Sync`
 unsafe impl Sync for UnsafeWorldCell<'_> {}
 
 impl<'w> From<&'w mut World> for UnsafeWorldCell<'w> {
-    fn from(value: &'w mut World) -> Self {
-
-    }
+    fn from(value: &'w mut World) -> Self {}
 }
 
 impl<'w> UnsafeWorldCell<'w> {

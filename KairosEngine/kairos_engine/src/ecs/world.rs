@@ -2,7 +2,10 @@ mod identifier;
 
 pub use identifier::WorldId;
 
-use crate::ecs::{entity::{Entities, EntityAllocator}, world::unsafe_world_cell::UnsafeWorldCell};
+use crate::ecs::{
+    entity::{Entities, EntityAllocator},
+    world::unsafe_world_cell::UnsafeWorldCell,
+};
 
 pub mod unsafe_world_cell;
 
@@ -68,7 +71,6 @@ pub struct World {
 pub trait FromWorld {
     fn from_world(world: &mut World) -> Self;
 }
-
 
 impl World {
     /// Creates a new [`UnsafeWorldCell`] view with complete read+write access.

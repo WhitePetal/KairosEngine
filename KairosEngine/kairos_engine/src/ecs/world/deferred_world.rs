@@ -1,4 +1,4 @@
-
+use crate::ecs::world::unsafe_world_cell::UnsafeWorldCell;
 
 /// A [`World`] reference that disallows structural ECS changes.
 /// This includes initializing resources, registering components or spawning entities.
@@ -8,6 +8,5 @@ pub struct DeferredWorld<'w> {
     // SAFETY: Implementers must not use this reference to make structural changes
     world: UnsafeWorldCell<'w>,
 }
-
 
 // TODO!
