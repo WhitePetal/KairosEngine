@@ -3,6 +3,7 @@ mod identifier;
 pub use identifier::WorldId;
 
 use crate::ecs::{
+    component::{Component, ComponentId, ComponentIds, Components, ComponentsRegistrator},
     entity::{Entities, EntityAllocator},
     world::unsafe_world_cell::UnsafeWorldCell,
 };
@@ -36,7 +37,8 @@ pub struct World {
     id: WorldId,
     pub(crate) entities: Entities,
     pub(crate) entity_allocator: EntityAllocator,
-    // pub(crate) components: Components,
+    pub(crate) components: Components,
+    pub(crate) component_ids: ComponentIds,
 }
 
 /// Creates an instance of the type this trait is implemented for
@@ -77,5 +79,16 @@ impl World {
     #[inline]
     pub fn as_unsafe_world_cell(&mut self) -> UnsafeWorldCell<'_> {
         UnsafeWorldCell::new_mutable(self)
+    }
+
+    /// Prepares a [`ComponentsRegistrator`] for the world.
+    #[inline]
+    pub fn components_registrator(&mut self) -> ComponentsRegistrator<'_> {
+        // SAFETY: These are from the same world.
+        unsafe { ComponentsRegistrator::new(&mut self.components, &mut self.component_ids) }
+    }
+
+    pub fn register_component<T: Component>(&mut self) -> ComponentId {
+        todo!()
     }
 }

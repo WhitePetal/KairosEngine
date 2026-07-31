@@ -644,7 +644,12 @@ impl Components {
     /// The [`ComponentId`] must be unique.
     /// The [`TypeId`] and [`ComponentId`] must not be registered or queued.
     #[inline]
-    pub(super) unsafe fn regisster_non_send_unchecked(&mut self, type_id: TypeId, component_id: ComponentId, descriptor: ComponentDescriptor) {
+    pub(super) unsafe fn regisster_non_send_unchecked(
+        &mut self,
+        type_id: TypeId,
+        component_id: ComponentId,
+        descriptor: ComponentDescriptor,
+    ) {
         // SAFETY: ensured by caller
         unsafe {
             self.register_component_inner(component_id, descriptor);
@@ -658,7 +663,10 @@ impl Components {
         self.components.iter().filter_map(Option::as_ref)
     }
 
-    pub(crate) fn get_relationship_accessor_mut(&mut self, component_id: ComponentId) -> Option<&mut MaybeRelationshipAccessor> {
+    pub(crate) fn get_relationship_accessor_mut(
+        &mut self,
+        component_id: ComponentId,
+    ) -> Option<&mut MaybeRelationshipAccessor> {
         self.components
             .get_mut(component_id.index())
             .and_then(|info| {

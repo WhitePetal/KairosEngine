@@ -5,7 +5,7 @@ mod info;
 mod register;
 mod required;
 
-use std::marker::PhantomData;
+use std::{marker::PhantomData, ops::Deref};
 
 pub use clone::*;
 pub use info::*;
@@ -14,6 +14,7 @@ pub use required::*;
 
 use crate::ecs::{
     entity::EntityMapper, lifecycle::ComponentHook, relationship::ComponentRelationshipAccessor,
+    world::FromWorld,
 };
 
 /// The storage used for a specific component type.
@@ -725,12 +726,54 @@ impl ComponentMutability for Mutable {
     const MUTABLE: bool = true;
 }
 
-// TODO!
-
 /// Initializes the [`ComponentId`] for a specific type when used with [`FromWorld`].
 struct InitComponentId<T: Component> {
     component_id: ComponentId,
     marker: PhantomData<T>,
 }
 
-pub struct ComponentIdFor {}
+impl<T: Component> FromWorld for InitComponentId<T> {
+    fn from_world(world: &mut super::world::World) -> Self {
+        Self {
+            component_id: world.register_component::<T>(),
+            marker: PhantomData,
+        }
+    }
+}
+
+/// A [`SystemParam`] that provides access to the [`ComponentId`] for a specific component type.
+///
+/// # Example
+/// ```
+/// # use bevy_ecs::{system::Local, component::{Component, ComponentId, ComponentIdFor}};
+/// #[derive(Component)]
+/// struct Player;
+/// fn my_system(component_id: ComponentIdFor<Player>) {
+///     let component_id: ComponentId = component_id.get();
+///     // ...
+/// }
+/// ```
+#[derive(SystemParam)]
+pub struct ComponentIdFor<'s, T: Component>(Local<'s, InitComponentId<T>>);
+
+impl<T: Component> ComponentIdFor<'_, T> {
+    /// Gets the [`ComponentId`] for the type `T`.
+    #[inline]
+    pub fn get(&self) -> ComponentId {
+        **self
+    }
+}
+
+impl<T: Component> Deref for ComponentIdFor<'_, T> {
+    type Target = ComponentId;
+    fn deref(&self) -> &Self::Target {
+        &self.0.component_id
+    }
+}
+
+impl<T: Component> From<ComponentIdFor<'_, T>> for ComponentId {
+    #[inline]
+    fn from(to_component_id: ComponentIdFor<'_, T>) -> Self {
+        *to_component_id
+    }
+}
