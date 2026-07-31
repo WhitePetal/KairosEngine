@@ -1,12 +1,10 @@
-use std::{alloc::Layout, any::TypeId, sync::RwLock};
+use std::{alloc::Layout, any::TypeId, fmt::Debug, mem::needs_drop, sync::RwLock};
 
 use crate::{
     collections::TypeIdMap,
     debug::DebugName,
     ecs::{
-        component::{ComponentCloneBehavior, StorageType},
-        relationship::MaybeRelationshipAccessor,
-        storage::SparseSetIndex,
+        component::{Component, ComponentCloneBehavior, StorageType}, relationship::MaybeRelationshipAccessor, storage::SparseSetIndex
     },
     ptr::OwningPtr,
 };
@@ -78,18 +76,58 @@ pub struct ComponentDescriptor {
     // SAFETY: This must always have `size()` that is a multiple of `align()`.
     // `BlobArray` relies on that to calculate byte offsets as a multiple of `size()`.
     layout: Layout,
+    // SAFETY: this function must be safe to call with pointers pointing to items of the type
+    // this descriptor describes.
+    // None if the underlying type doesn't need to be dropped
     drop: Option<for<'a> unsafe fn(OwningPtr<'a>)>,
     mutable: bool,
     clone_behavior: ComponentCloneBehavior,
     relationship_accessor: MaybeRelationshipAccessor,
 }
 
+// We need to ignore the `drop` field in our `Debug` impl
+impl Debug for ComponentDescriptor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ComponentDescriptor")
+            .field("name", &self.name)
+            .field("storage_type", &self.storage_type)
+            .field("is_send_and_sync", &self.is_send_and_sync)
+            .field("type_id", &self.type_id)
+            .field("layout", &self.layout)
+            .field("mutable", &self.mutable)
+            .field("clone_behavior", &self.clone_behavior)
+            .field("relationship_accessor", &self.relationship_accessor)
+            .finish()
+    }
+}
+
 impl ComponentDescriptor {
+    /// # Safety
+    ///
+    /// `x` must point to a valid value of type `T`.
     unsafe fn drop_ptr<T>(x: OwningPtr<'_>) {
+        // SAFETY: Contract is required to be upheld by the caller.
         unsafe {
             x.drop_as::<T>();
         }
     }
+
+    pub fn new<T: Component>() -> Self {
+        Self {
+            name: DebugName::type_name::<T>(),
+            storage_type: T::STORAGE_TYPE,
+            is_send_and_sync: true,
+            type_id: Some(TypeId::of::<T>()),
+            // `T` is a rust type, so the layout will have `size()` as a multiple of `align()`
+            layout: Layout::new::<T>(),
+            drop: needs_drop::<T>().then_some(Self::drop_ptr::<T> as _),
+            mutable: T::Mutability::MUTABLE,
+            clone_behavior: T::clone_behavior(),
+            relationship_accessor: T::relationship_accessor().map(|v| v.initializer).into(),
+        }
+    }
+
+    // TODO!
 }
 
 pub struct ComponentInfo {

@@ -100,12 +100,14 @@ use crate::{
 };
 
 mod entity_set;
+mod map_entities;
 
 mod unique_array;
 pub mod unique_slice;
 mod unique_vec;
 
 pub use entity_set::*;
+pub use map_entities::*;
 pub use unique_array::{UniqueEntityArray, UniqueEntityEquivalentArray};
 pub use unique_slice::{UniqueEntityEquivalentSlice, UniqueEntitySlice};
 pub use unique_vec::{UniqueEntityEquivalentVec, UniqueEntityVec};

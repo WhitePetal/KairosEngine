@@ -2,7 +2,13 @@ mod identifier;
 
 pub use identifier::WorldId;
 
-use crate::ecs::entity::{Entities, EntityAllocator};
+use crate::ecs::{entity::{Entities, EntityAllocator}, world::unsafe_world_cell::UnsafeWorldCell};
+
+pub mod unsafe_world_cell;
+
+mod deferred_world;
+
+pub use deferred_world::DeferredWorld;
 
 /// Stores and exposes operations on [entities](Entity), [components](Component), resources,
 /// and their associated metadata.
@@ -27,7 +33,7 @@ pub struct World {
     id: WorldId,
     pub(crate) entities: Entities,
     pub(crate) entity_allocator: EntityAllocator,
-    pub(crate) components: Components,
+    // pub(crate) components: Components,
 }
 
 /// Creates an instance of the type this trait is implemented for
@@ -61,4 +67,13 @@ pub struct World {
 /// ```
 pub trait FromWorld {
     fn from_world(world: &mut World) -> Self;
+}
+
+
+impl World {
+    /// Creates a new [`UnsafeWorldCell`] view with complete read+write access.
+    #[inline]
+    pub fn as_unsafe_world_cell(&mut self) -> UnsafeWorldCell<'_> {
+        UnsafeWorldCell::new_mutable(self)
+    }
 }

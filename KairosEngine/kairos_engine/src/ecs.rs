@@ -5,4 +5,5 @@ pub mod entity;
 pub mod relationship;
 pub mod remote_allocator;
 pub mod storage;
+pub mod lifecycle;
 pub mod world;
