@@ -24,9 +24,20 @@ impl BuildHasher for FixedHasher {
 #[derive(Clone, Default)]
 pub struct NoOpHash;
 
+impl BuildHasher for NoOpHash {
+    type Hasher = NoOpHasher;
+
+    fn build_hasher(&self) -> Self::Hasher {
+        NoOpHasher(0)
+    }
+}
+
+#[doc(hidden)]
+pub struct NoOpHasher(u64);
+
 // This is for types that already contain a high-quality hash and want to skip
 // re-hashing that hash.
-impl Hasher for NoOpHash {
+impl Hasher for NoOpHasher {
     fn finish(&self) -> u64 {
         self.0
     }

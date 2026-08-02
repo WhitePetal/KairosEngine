@@ -1,5 +1,7 @@
 use nonmax::NonMaxU32;
 
+use crate::ecs::entity::Entity;
+
 /// An opaque unique ID for a [`Table`] within a [`World`].
 ///
 /// Can be used with [`Tables::get`] to fetch the corresponding
@@ -34,5 +36,27 @@ pub struct TableId(u32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct TableRow(NonMaxU32);
+
+
+/// A column-oriented [structure-of-arrays] based storage for [`Component`]s of entities
+/// in a [`World`].
+///
+/// Conceptually, a `Table` can be thought of as a `HashMap<ComponentId, Column>`, where
+/// each [`Column`] is a type-erased `Vec<T: Component>`. Each row corresponds to a single entity
+/// (i.e. index 3 in Column A and index 3 in Column B point to different components on the same
+/// entity). Fetching components from a table involves fetching the associated column for a
+/// component type (via its [`ComponentId`]), then fetching the entity's row within that column.
+///
+/// [structure-of-arrays]: https://en.wikipedia.org/wiki/AoS_and_SoA#Structure_of_arrays
+/// [`Component`]: crate::component::Component
+/// [`World`]: crate::world::World
+//
+// # Safety
+// The capacity of all columns is determined by that of the `entities` Vec. This means that
+// it must be the correct capacity to allocate, reallocate, and deallocate all columns. This
+// means the safety invariant must be enforced even in `TableBuilder`.
+pub struct Table {
+    entities: Vec<Entity>,
+}
 
 // TODO!
