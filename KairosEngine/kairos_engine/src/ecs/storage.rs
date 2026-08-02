@@ -28,6 +28,7 @@
 mod blob_array;
 mod sparse_set;
 mod table;
+mod thin_array_ptr;
 
 pub use sparse_set::*;
 pub use table::*;
