@@ -110,4 +110,14 @@ impl CheckChangeTicks {
     }
 }
 
+/// Records when a component or resource was added and when it was last mutably dereferenced (or added).
+#[derive(Copy, Clone, Debug)]
+pub struct ComponentTicks {
+    /// Tick recording the time this component or resource was added.
+    pub added: Tick,
+
+    /// Tick recording the time this component or resource was most recently changed.
+    pub changed: Tick,
+}
+
 // TODO!

@@ -1,8 +1,11 @@
-use std::{alloc::{Layout, alloc, handle_alloc_error, realloc}, mem::needs_drop, num::NonZeroUsize, ptr::{self, NonNull}};
+use std::{
+    alloc::{Layout, alloc, handle_alloc_error, realloc},
+    mem::needs_drop,
+    num::NonZeroUsize,
+    ptr::{self, NonNull},
+};
 
 use crate::debug::DebugCheckedUnwrap;
-
-
 
 /// Similar to [`Vec<T>`], but with the capacity and length cut out for performance reasons.
 ///
@@ -45,7 +48,9 @@ impl<T> ThinArrayPtr<T> {
         if capacity > 0 {
             // SAFETY:
             // - The `current_capacity` is 0 because it was just created
-            unsafe { arr.alloc(NonZeroUsize::new_unchecked(capacity)); }
+            unsafe {
+                arr.alloc(NonZeroUsize::new_unchecked(capacity));
+            }
         }
         arr
     }
@@ -65,10 +70,9 @@ impl<T> ThinArrayPtr<T> {
             let new_layout = Layout::array::<T>(capacity.get())
                 .expect("layout should be valid (arithmetic overflow");
 
-            self.data = NonNull::new(unsafe {
-                alloc(new_layout)
-            }).unwrap_or_else(|| handle_alloc_error(new_layout))
-            .cast();
+            self.data = NonNull::new(unsafe { alloc(new_layout) })
+                .unwrap_or_else(|| handle_alloc_error(new_layout))
+                .cast();
         }
     }
 
@@ -96,14 +100,30 @@ impl<T> ThinArrayPtr<T> {
             // since the item size is always a multiple of its align, the rounding cannot happen
             // here and the overflow is handled in `Layout::array`
             self.data = NonNull::new(unsafe {
-                realloc(self.data.cast().as_ptr(),
-                Layout::array::<T>(current_capacity.get()).debug_checked_unwrap(),
-                new_layout.size()
+                realloc(
+                    self.data.cast().as_ptr(),
+                    Layout::array::<T>(current_capacity.get()).debug_checked_unwrap(),
+                    new_layout.size(),
                 )
             })
             .unwrap_or_else(|| handle_alloc_error(new_layout))
             .cast()
         }
+    }
+
+    /// Initializes the value at `index` to `value`. This function does not do any bounds checking.
+    ///
+    /// # Safety
+    /// `index` must be in bounds i.e. within the `capacity`.
+    /// if `index` = `len` the caller should update their saved `len` value to reflect the fact that it was changed
+    #[inline]
+    pub unsafe fn initialize_unchecked(&mut self, index: usize, value: T) {
+        // SAFETY:
+        // - `self.data` and the resulting pointer are in the same allocated object
+        // - the memory address of the last element doesn't overflow `isize`, so if `index` is in bounds, it won't overflow either
+        let ptr = unsafe { self.data.as_ptr().add(index) };
+        // SAFETY: `index` is in bounds, therefore the pointer to that location in the array is valid, and aligned.
+        unsafe { ptr::write(ptr, value) };
     }
 
     /// Get a reference to the element at `index`. This method doesn't do any bounds checking.
@@ -115,9 +135,7 @@ impl<T> ThinArrayPtr<T> {
         // SAFETY:
         // - `self.data` and the resulting pointer are in the same allocated object
         // - the memory address of the last element doesn't overflow `isize`, so if `index` is in bounds, it won't overflow either
-        let ptr = unsafe {
-            self.data.as_ptr().add(index)
-        };
+        let ptr = unsafe { self.data.as_ptr().add(index) };
         // SAFETY:
         // - The pointer is properly aligned
         // - It is dereferenceable (all in the same allocation)
