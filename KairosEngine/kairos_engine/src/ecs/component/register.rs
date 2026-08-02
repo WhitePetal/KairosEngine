@@ -1,12 +1,19 @@
 use std::{
-    any::{Any, TypeId}, fmt::Debug, ops::Deref, sync::{PoisonError, atomic::AtomicUsize},
+    any::{Any, TypeId},
+    fmt::Debug,
+    ops::Deref,
+    sync::{PoisonError, atomic::AtomicUsize},
 };
 
 use crate::{
-    collections::TypeIdMap, debug::DebugCheckedUnwrap, ecs::{
+    collections::TypeIdMap,
+    debug::DebugCheckedUnwrap,
+    ecs::{
         component::{
-            Component, ComponentDescriptor, ComponentId, Components, RequiredComponents, RequiredComponentsRegistrator, StorageType, enforce_no_required_components_recursion,
-        }, lifecycle::ComponentHooks,
+            Component, ComponentDescriptor, ComponentId, Components, RequiredComponents,
+            RequiredComponentsRegistrator, StorageType, enforce_no_required_components_recursion,
+        },
+        lifecycle::ComponentHooks,
     },
 };
 
@@ -482,7 +489,7 @@ impl<'w> ComponentsQueuedRegistrator<'w> {
         &self,
         type_id: TypeId,
         descriptor: ComponentDescriptor,
-        func: fn(&mut ComponentsRegistrator, ComponentId, ComponentDescriptor)
+        func: fn(&mut ComponentsRegistrator, ComponentId, ComponentDescriptor),
     ) -> ComponentId {
         self.components
             .queued
@@ -501,7 +508,7 @@ impl<'w> ComponentsQueuedRegistrator<'w> {
     fn register_arbitrary_dynamic(
         &self,
         descriptor: ComponentDescriptor,
-        func: fn(&mut ComponentsRegistrator, ComponentId, ComponentDescriptor)
+        func: fn(&mut ComponentsRegistrator, ComponentId, ComponentDescriptor),
     ) -> ComponentId {
         let id = self.ids.next();
         self.components
@@ -511,9 +518,7 @@ impl<'w> ComponentsQueuedRegistrator<'w> {
             .dynamic_registrations
             .push(
                 // SAFETY: The id was just generated.
-                unsafe {
-                    QueuedRegistration::new(id, descriptor, func)
-                }
+                unsafe { QueuedRegistration::new(id, descriptor, func) },
             );
         id
     }
@@ -544,10 +549,10 @@ impl<'w> ComponentsQueuedRegistrator<'w> {
                                 id,
                                 descriptor,
                                 T::register_required_components,
-                                ComponentHooks::update_from_component::<T>
+                                ComponentHooks::update_from_component::<T>,
                             );
                         }
-                    }
+                    },
                 )
             }
         })
@@ -571,7 +576,7 @@ impl<'w> ComponentsQueuedRegistrator<'w> {
     #[inline]
     pub fn queue_register_component_with_descriptor(
         &self,
-        descriptor: ComponentDescriptor
+        descriptor: ComponentDescriptor,
     ) -> ComponentId {
         self.register_arbitrary_dynamic(descriptor, |registrator, id, descriptor| {
             // SAFETY: Id uniqueness handled by caller.
@@ -610,10 +615,10 @@ impl<'w> ComponentsQueuedRegistrator<'w> {
                             registrator.components.regisster_non_send_unchecked(
                                 descriptor.type_id().unwrap(),
                                 id,
-                                descriptor
+                                descriptor,
                             );
                         }
-                    }
+                    },
                 )
             }
         })

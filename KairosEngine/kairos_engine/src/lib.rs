@@ -2,6 +2,7 @@ pub mod cell;
 pub mod debug;
 pub mod hash;
 pub mod math;
+pub mod on_drop;
 pub mod ptr;
 
 pub mod collections;

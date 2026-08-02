@@ -25,6 +25,7 @@
 //! [`World`]: crate::world::World
 //! [`World::storages`]: crate::world::World::storages
 
+mod blob_array;
 mod sparse_set;
 mod table;
 

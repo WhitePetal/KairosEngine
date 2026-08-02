@@ -2,7 +2,17 @@ use std::sync::Arc;
 
 use indexmap::IndexMap;
 
-use crate::{debug::MaybeLocation, ecs::{change_detection::Tick, component::ComponentId, entity::Entity, storage::{SparseSets, Table, TableRow}}, hash::FixedHasher};
+use crate::{
+    debug::MaybeLocation,
+    ecs::{
+        change_detection::Tick,
+        component::{Component, ComponentId, Components, ComponentsRegistrator},
+        entity::Entity,
+        storage::{SparseSets, Table, TableRow},
+    },
+    hash::FixedHasher,
+    ptr::OwningPtr,
+};
 
 /// Metadata associated with a required component. See [`Component`] for details.
 #[derive(Clone)]
@@ -15,8 +25,47 @@ pub struct RequiredComponent {
 #[derive(Clone)]
 pub struct RequiredComponentConstructor(
     // Note: this function makes `unsafe` assumptions, so it cannot be public.
-    Arc<dyn Fn(&mut Table, &mut SparseSets, Tick, TableRow, Entity, MaybeLocation)>
+    Arc<dyn Fn(&mut Table, &mut SparseSets, Tick, TableRow, Entity, MaybeLocation)>,
 );
+
+impl RequiredComponentConstructor {
+    /// Creates a new instance of `RequiredComponentConstructor` for the given type
+    ///
+    /// # Safety
+    ///
+    /// - `component_id` must be a valid component for type `C`.
+    pub unsafe fn new<C: Component>(
+        component_id: ComponentId,
+        constructor: impl Fn() -> C + 'static,
+    ) -> Self {
+        RequiredComponentConstructor({
+            type Constructor = dyn for<'a, 'b> Fn(
+                &'a mut Table,
+                &'b mut SparseSets,
+                Tick,
+                TableRow,
+                Entity,
+                MaybeLocation,
+            );
+
+            type Intermediate<T> = Arc<T>;
+
+            let boxed: Intermediate<Constructor> = Intermediate::new(
+                move |table, sparse_sets, change_tick, table_row, entity, caller| {
+                    OwningPtr::make(constructor(), |ptr| {
+                        // SAFETY: This will only be called in the context of `BundleInfo::write_components`, which will
+                        // pass in a valid table_row and entity requiring a C constructor
+                        // C::STORAGE_TYPE is the storage type associated with `component_id` / `C`
+                        // `ptr` points to valid `C` data, which matches the type associated with `component_id`
+                        unsafe { todo!() }
+                    });
+                },
+            );
+
+            Arc::from(boxed)
+        })
+    }
+}
 
 /// The collection of metadata for components that are required for a given component.
 ///

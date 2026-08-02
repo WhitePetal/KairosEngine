@@ -2,6 +2,25 @@ use nonmax::NonMaxU32;
 
 use crate::ecs::entity::Entity;
 
+/// A type-erased contiguous container for data of a homogeneous type.
+///
+/// Conceptually, a `Column` is very similar to a type-erased `Box<[T]>`.
+/// It also stores the change detection ticks for its components, kept in two separate
+/// contiguous buffers internally. An element shares its data across these buffers by using the
+/// same index (i.e. the entity at row 3 has it's data at index 3 and its change detection ticks at index 3).
+///
+/// Like many other low-level storage types, `Column` has a limited and highly unsafe
+/// interface. It's highly advised to use higher level types and their safe abstractions
+/// instead of working directly with `Column`.
+///
+/// For performance reasons, `Column` does not does not store it's capacity and length.
+/// This type is used by [`Table`] and [`ComponentSparseSet`], where the corresponding capacity
+/// and length can be found.
+///
+/// [`ComponentSparseSet`]: crate::storage::ComponentSparseSet
+#[derive(Debug)]
+pub struct Column {}
+
 /// An opaque unique ID for a [`Table`] within a [`World`].
 ///
 /// Can be used with [`Tables::get`] to fetch the corresponding
@@ -36,7 +55,6 @@ pub struct TableId(u32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct TableRow(NonMaxU32);
-
 
 /// A column-oriented [structure-of-arrays] based storage for [`Component`]s of entities
 /// in a [`World`].
