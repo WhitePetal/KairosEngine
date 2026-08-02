@@ -22,6 +22,53 @@ pub use column::*;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TableId(u32);
 
+impl TableId {
+    /// Creates a new [`TableId`].
+    ///
+    /// `index` *must* be retrieved from calling [`TableId::as_u32`] on a `TableId` you got
+    /// from a table of a given [`World`] or the created ID may be invalid.
+    ///
+    /// [`World`]: crate::world::World
+    #[inline]
+    pub const fn from_u32(index: u32) -> Self {
+        Self(index)
+    }
+
+    /// Creates a new [`TableId`].
+    ///
+    /// `index` *must* be retrieved from calling [`TableId::as_usize`] on a `TableId` you got
+    /// from a table of a given [`World`] or the created ID may be invalid.
+    ///
+    /// [`World`]: crate::world::World
+    ///
+    /// # Panics
+    ///
+    /// Will panic if the provided value does not fit within a [`u32`].
+    #[inline]
+    pub const fn from_usize(index: usize) -> Self {
+        debug_assert!(index as u32 as usize == index);
+        Self(index as u32)
+    }
+
+    /// Gets the underlying table index from the ID.
+    #[inline]
+    pub const fn as_u32(self) -> u32 {
+        self.0
+    }
+
+    /// Gets the underlying table index from the ID.
+    #[inline]
+    pub const fn as_usize(self) -> usize {
+        self.0  as usize
+    }
+
+    /// The [`TableId`] of the [`Table`] without any components.
+    #[inline]
+    pub const fn empty() -> Self {
+        Self(0)
+    }
+}
+
 /// An opaque newtype for rows in [`Table`]s. Specifies a single row in a specific table.
 ///
 /// Values of this type are retrievable from [`Archetype::entity_table_row`] and can be
