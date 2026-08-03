@@ -1,4 +1,6 @@
-use crate::ecs::change_detection::MAX_CHANGE_AGE;
+use std::{cell::UnsafeCell, panic::Location};
+
+use crate::{debug::MaybeLocation, ecs::change_detection::MAX_CHANGE_AGE};
 
 /// A value that tracks when a system ran relative to other systems.
 /// This is used to power change detection.
@@ -118,6 +120,17 @@ pub struct ComponentTicks {
 
     /// Tick recording the time this component or resource was most recently changed.
     pub changed: Tick,
+}
+
+/// Interior-mutable access to the [`Tick`]s of a single component or resource.
+#[derive(Copy, Clone, Debug)]
+pub struct ComponentTickCells<'a> {
+    /// The tick indicating when the value was added to the world.
+    pub added: &'a UnsafeCell<Tick>,
+    /// The tick indicating the last time the value was modified.
+    pub changed: &'a UnsafeCell<Tick>,
+    /// The calling location that last modified the value.
+    pub changed_by: MaybeLocation<&'a UnsafeCell<&'static Location<'static>>>,
 }
 
 // TODO!

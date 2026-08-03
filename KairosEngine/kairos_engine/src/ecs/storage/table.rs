@@ -59,7 +59,7 @@ impl TableId {
     /// Gets the underlying table index from the ID.
     #[inline]
     pub const fn as_usize(self) -> usize {
-        self.0  as usize
+        self.0 as usize
     }
 
     /// The [`TableId`] of the [`Table`] without any components.

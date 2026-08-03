@@ -47,7 +47,7 @@ impl<F: FnOnce()> OnDrop<F> {
     }
 }
 
-impl<F: FnOnce> Drop for OnDrop<F> {
+impl<F: FnOnce()> Drop for OnDrop<F> {
     fn drop(&mut self) {
         #![expect(
             unsafe_code,
@@ -56,5 +56,14 @@ impl<F: FnOnce> Drop for OnDrop<F> {
         // SAFETY: We may move out of `self`, since this instance can never be observed after it's dropped.
         let callback = unsafe { ManuallyDrop::take(&mut self.callback) };
         callback();
+    }
+}
+
+pub struct AbortOnPanic;
+
+impl Drop for AbortOnPanic {
+    fn drop(&mut self) {
+        // Panicking while unwinding will force an abort.
+        panic!("Aborting due to allocator error");
     }
 }
