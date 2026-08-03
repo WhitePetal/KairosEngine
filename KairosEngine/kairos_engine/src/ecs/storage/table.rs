@@ -2,7 +2,7 @@ use std::{cell::UnsafeCell, num::NonZeroUsize, panic::Location};
 
 use nonmax::NonMaxU32;
 
-use crate::{debug::{DebugCheckedUnwrap, MaybeLocation}, ecs::{change_detection::{CheckChangeTicks, ComponentTicks, Tick}, component::{ComponentId, ComponentInfo}, entity::Entity, storage::{ImmutableSparseSet, SparseSet}}, on_drop::AbortOnPanic, ptr::{OwningPtr, Ptr}};
+use crate::{collections::FixedHashMap, debug::{DebugCheckedUnwrap, MaybeLocation}, ecs::{change_detection::{CheckChangeTicks, ComponentTicks, Tick}, component::{ComponentId, ComponentInfo}, entity::Entity, storage::{ImmutableSparseSet, SparseSet}}, on_drop::AbortOnPanic, ptr::{OwningPtr, Ptr}};
 
 mod column;
 
@@ -607,6 +607,14 @@ impl Table {
         self.get_column(component_id)
             .map(|col| col.data.get_unchecked(row.index()))
     }
+}
+
+/// A collection of [`Table`] storages, indexed by [`TableId`]
+///
+/// Can be accessed via [`Storages`](crate::storage::Storages)
+pub struct Tables {
+    tables: Vec<Table>,
+    table_ids: FixedHashMap<Box<[ComponentId]>, TableId>,
 }
 
 // TODO!
