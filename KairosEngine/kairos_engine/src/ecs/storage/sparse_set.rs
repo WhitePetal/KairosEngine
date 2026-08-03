@@ -614,7 +614,7 @@ macro_rules! impl_sparse_set {
 
             /// Returns `true` if the sparse set contains a value for `index`.
             #[inline]
-            pub fn cotains(&self, index: I) -> bool {
+            pub fn contains(&self, index: I) -> bool {
                 self.sparse.contains(index)
             }
 

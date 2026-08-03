@@ -1,6 +1,8 @@
+use std::{cell::UnsafeCell, panic::Location};
+
 use nonmax::NonMaxU32;
 
-use crate::ecs::entity::Entity;
+use crate::{debug::MaybeLocation, ecs::{change_detection::{ComponentTicks, Tick}, component::{ComponentId, ComponentInfo}, entity::Entity, storage::{ImmutableSparseSet, SparseSet}}};
 
 mod column;
 
@@ -109,6 +111,66 @@ impl TableRow {
     }
 }
 
+/// A builder type for constructing [`Table`]s.
+///
+///  - Use [`with_capacity`] to initialize the builder.
+///  - Repeatedly call [`add_column`] to add columns for components.
+///  - Finalize with [`build`] to get the constructed [`Table`].
+///
+/// [`with_capacity`]: Self::with_capacity
+/// [`add_column`]: Self::add_column
+/// [`build`]: Self::build
+//
+// # Safety
+// The capacity of all columns is determined by that of the `entities` Vec. This means that
+// it must be the correct capacity to allocate, reallocate, and deallocate all columns. This
+// means the safety invariant must be enforced even in `TableBuilder`.
+pub(crate) struct TableBuilder {
+    columns: SparseSet<ComponentId, Column>,
+    entities: Vec<Entity>,
+}
+
+impl TableBuilder {
+    /// Start building a new [`Table`] with a specified
+    /// `column_capacity` (How many columns?) and `capacity` (How many entities per column?).
+    pub fn with_capacity(capacity: usize, column_capacity: usize) -> Self {
+        Self {
+            columns: SparseSet::with_capacity(column_capacity),
+            entities: Vec::with_capacity(capacity)
+        }
+    }
+
+    /// Add a new column to the [`Table`].
+    ///
+    /// Specify the component which will be stored in the [`column`](Column) using its [`ComponentId`]
+    ///
+    /// Columns must be added in order of increasing [`ComponentId`],
+    /// or else [`TableBuilder::build`] will panic.
+    #[must_use]
+    pub fn add_column(mut self, component_info: &ComponentInfo) -> Self {
+        self.columns.insert(
+            component_info.id(),
+            Column::with_capacity(component_info, self.entities.capacity())
+        );
+        self
+    }
+
+    /// Build the [`Table`].
+    ///
+    /// After this operation, the caller won't be able to add more columns.
+    ///
+    /// # Panics
+    /// - If the table's columns were not added in order, sorted by [`ComponentId`].
+    #[must_use]
+    pub fn build(self) -> Table {
+        assert!(self.columns.indices().is_sorted());
+        Table {
+            columns: self.columns.into_immutable(),
+            entities: self.entities
+        }
+    }
+}
+
 /// A column-oriented [structure-of-arrays] based storage for [`Component`]s of entities
 /// in a [`World`].
 ///
@@ -127,7 +189,223 @@ impl TableRow {
 // it must be the correct capacity to allocate, reallocate, and deallocate all columns. This
 // means the safety invariant must be enforced even in `TableBuilder`.
 pub struct Table {
+    columns: ImmutableSparseSet<ComponentId, Column>,
     entities: Vec<Entity>,
+}
+
+impl Table {
+    /// Fetches a read-only slice of the entities stored within the [`Table`].
+    #[inline]
+    pub fn entities(&self) -> &[Entity] {
+        &self.entities
+    }
+
+    /// Get the capacity of this table, in entities.
+    /// Note that if an allocation is in process, this might not match the actual capacity of the columns, but it should once the allocation ends.
+    #[inline]
+    pub fn capacity(&self) -> usize {
+        self.entities.capacity()
+    }
+
+    /// Gets the number of entities currently being stored in the table.
+    #[inline]
+    pub fn entity_count(&self) -> u32 {
+        // No entity may have more than one table row, so there are no duplicates,
+        // and there may only ever be u32::MAX entities, so the length never exceeds u32's capacity.
+        self.entities.len() as u32
+    }
+
+    /// Removes the entity at the given row and returns the entity swapped in to replace it (if an
+    /// entity was swapped in)
+    ///
+    /// # Safety
+    /// `row` must be in-bounds (`row.as_usize()` < `self.len()`)
+    pub(crate) unsafe fn swap_remove_unchecked(&mut self, row: TableRow) -> Option<Entity> {
+        debug_assert!(row.index_u32() < self.entity_count());
+        let last_element_index = self.entity_count() - 1;
+        if row.index_u32() != last_element_index {
+            // Instead of checking this condition on every `swap_remove` call, we
+            // check it here and use `swap_remove_nonoverlapping`.
+            for col in self.columns.values_mut() {
+                // SAFETY:
+                // - `row` < `len`
+                // - `last_element_index` = `len` - 1
+                // - `row` != `last_element_index`
+                // - the `len` is kept within `self.entities`, it will update accordingly.
+                unsafe {
+                    col.swap_remove_and_drop_unchecked_nonoverlapping(
+                        last_element_index as usize,
+                        row
+                    );
+                }
+            }
+        } else {
+            // If `row.as_usize()` == `last_element_index` than there's no point in removing the component
+            // at `row`, but we still need to drop it.
+            for col in self.columns.values_mut() {
+                col.drop_last_component(last_element_index as usize);
+            }
+        }
+        let is_last = row.index_u32() == last_element_index;
+        self.entities.swap_remove(row.index());
+        if is_last {
+            None
+        } else {
+            // SAFETY: This was swap removed and was not last, so it must be in bounds.
+            unsafe { Some(*self.entities.get_unchecked(row.index())) }
+        }
+    }
+
+    /// Fetches a read-only reference to the [`Column`] for a given [`Component`] within the table.
+    ///
+    /// Returns `None` if the corresponding component does not belong to the table.
+    ///
+    /// [`Component`]: crate::component::Component
+    #[inline]
+    pub fn get_column(&self, component_id: ComponentId) -> Option<&Column> {
+        self.columns.get(component_id)
+    }
+
+    /// Fetches a mutable reference to the [`Column`] for a given [`Component`] within the
+    /// table.
+    ///
+    /// Returns `None` if the corresponding component does not belong to the table.
+    ///
+    /// [`Component`]: crate::component::Component
+    #[inline]
+    pub(crate) fn get_column_mut(&mut self, component_id: ComponentId) -> Option<&mut Column> {
+        self.columns.get_mut(component_id)
+    }
+
+    /// Get the data of the column matching `component_id` as a slice.
+    ///
+    /// # Safety
+    /// `row.as_usize()` < `self.len()`
+    /// - `T` must match the `component_id`
+    pub unsafe fn get_data_slice_for<T>(
+        &self,
+        component_id: ComponentId
+    ) -> Option<&[UnsafeCell<T>]> {
+        self.get_column(component_id)
+            .map(|col| col.get_data_slice(self.entity_count() as usize))
+    }
+
+    /// Get the added ticks of the column matching `component_id` as a slice.
+    pub fn get_added_ticks_slice_for(
+        &self,
+        component_id: ComponentId
+    ) -> Option<&[UnsafeCell<Tick>]> {
+        self.get_column(component_id)
+            // SAFETY: `self.len()` is guaranteed to be the len of the ticks array
+            .map(|col| unsafe {
+                col.get_added_ticks_slice(self.entity_count() as usize)
+            })
+    }
+
+    /// Get the changed ticks of the column matching `component_id` as a slice.
+    pub fn get_changed_ticks_slice_for(
+        &self,
+        component_id: ComponentId
+    ) -> Option<&[UnsafeCell<Tick>]> {
+        self.get_column(component_id)
+            // SAFETY: `self.len()` is guaranteed to be the len of the ticks array
+            .map(|col| unsafe {
+                col.get_changed_ticks_slice(self.entity_count() as usize)
+            })
+    }
+
+    /// Fetches the calling locations that last changed the each component
+    pub fn get_changed_by_slice_for(
+        &self,
+        component_id: ComponentId
+    ) -> MaybeLocation<Option<&[UnsafeCell<&'static Location<'static>>]>> {
+        MaybeLocation::new_with_flattened(|| {
+            self.get_column(component_id)
+                // SAFETY: `self.len()` is guaranteed to be the len of the locations array
+                .map(|col| unsafe {
+                    col.get_changed_by_slice(self.entity_count() as usize)
+                })
+        })
+    }
+
+    /// Get the specific [`change tick`](Tick) of the component matching `component_id` in `row`.
+    pub fn get_changed_tick(
+        &self,
+        component_id: ComponentId,
+        row: TableRow
+    ) -> Option<&UnsafeCell<Tick>> {
+        if row.index_u32() >= self.entity_count() {
+            return None;
+        }
+
+        // SAFETY: `row.index()` < `len`
+        self.get_column(component_id)
+            .map(|col| unsafe {
+                col.changed_ticks.get_unchecked(row.index())
+            })
+    }
+
+    /// Get the specific [`added tick`](Tick) of the component matching `component_id` in `row`.
+    pub fn get_added_tick(
+        &self,
+        component_id: ComponentId,
+        row: TableRow,
+    ) -> Option<&UnsafeCell<Tick>> {
+        if row.index_u32() >= self.entity_count() {
+            return None;
+        }
+
+        // SAFETY: `row.index()` < `len`
+        self.get_column(component_id)
+            .map(|col| unsafe { col.added_ticks.get_unchecked(row.index()) })
+    }
+
+    /// Get the specific calling location that changed the component matching `component_id` in `row`
+    pub fn get_changed_by(
+        &self,
+        component_id: ComponentId,
+        row: TableRow,
+    ) -> MaybeLocation<Option<&UnsafeCell<&'static Location<'static>>>> {
+        MaybeLocation::new_with_flattened(|| {
+            if row.index_u32() >= self.entity_count() {
+                return None;
+            }
+
+            self.get_column(component_id).map(|col| {
+                // SAFETY: `row.index()` < `len`
+                col.changed_by
+                    .as_ref()
+                    .map(|changed_by| unsafe { changed_by.get_unchecked(row.index()) })
+            })
+        })
+    }
+
+    /// Get the [`ComponentTicks`] of the component matching `component_id` in `row`.
+    ///
+    /// # Safety
+    /// - `row.as_usize()` < `self.len()`
+    pub unsafe fn get_ticks_unchecked(
+        &self,
+        component_id: ComponentId,
+        row: TableRow,
+    ) -> Option<ComponentTicks> {
+        self.get_column(component_id).map(|col| ComponentTicks {
+            added: col.added_ticks.get_unchecked(row.index()).read(),
+            changed: col.changed_ticks.get_unchecked(row.index()).read(),
+        })
+    }
+
+    /// Checks if the table contains a [`Column`] for a given [`Component`].
+    ///
+    /// Returns `true` if the column is present, `false` otherwise.
+    ///
+    /// [`Component`]: crate::component::Component
+    #[inline]
+    pub fn has_column(&self, component_id: ComponentId) -> bool {
+        self.columns.contains(component_id)
+    }
+
+
 }
 
 // TODO!
