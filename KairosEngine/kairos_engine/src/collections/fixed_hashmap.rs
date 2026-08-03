@@ -1,8 +1,13 @@
 use std::{
-    fmt::Debug, hash::{BuildHasher, Hash}, ops::{Deref, DerefMut, Index},
+    fmt::Debug,
+    hash::{BuildHasher, Hash},
+    ops::{Deref, DerefMut, Index},
 };
 
-use hashbrown::hash_map::{Drain, Entry, EntryRef, ExtractIf, IntoKeys, IntoValues, Iter, IterMut, Keys, OccupiedError, Values, ValuesMut};
+use hashbrown::hash_map::{
+    Drain, Entry, EntryRef, ExtractIf, IntoKeys, IntoValues, Iter, IterMut, Keys, OccupiedError,
+    Values, ValuesMut,
+};
 use indexmap::Equivalent;
 use rayon::iter::{FromParallelIterator, IntoParallelIterator, ParallelExtend};
 
@@ -751,7 +756,11 @@ impl<K, V> FixedHashMap<K, V, FixedHasher> {
     }
 }
 
-impl<K, V, S> FixedHashMap<K, V, S> where K: Eq + Hash, S: BuildHasher {
+impl<K, V, S> FixedHashMap<K, V, S>
+where
+    K: Eq + Hash,
+    S: BuildHasher,
+{
     /// Reserves capacity for at least `additional` more elements to be inserted
     /// in the [`HashMap`]. The collection may reserve more space to avoid
     /// frequent reallocations.
