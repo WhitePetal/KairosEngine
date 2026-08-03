@@ -1,12 +1,14 @@
 use std::any::TypeId;
 
-use indexmap::map::IndexMap;
+use indexmap::map::{Entry, IndexMap};
 
 use crate::hash::NoOpHash;
 
 /// A specialized map type with Key of [`TypeId`]
 /// Iteration order only depends on the order of insertions and deletions.
 pub type TypeIdMap<V> = IndexMap<TypeId, V, NoOpHash>;
+
+pub type TypeIdMapEntry<'a, K, V> = Entry<'a, K, V>;
 
 /// Extension trait to make use of [`TypeIdMap`] more ergonomic.
 ///
