@@ -1,8 +1,8 @@
-use std::{cell::UnsafeCell, panic::Location};
+use std::{cell::UnsafeCell, num::NonZeroUsize, panic::Location};
 
 use nonmax::NonMaxU32;
 
-use crate::{debug::MaybeLocation, ecs::{change_detection::{ComponentTicks, Tick}, component::{ComponentId, ComponentInfo}, entity::Entity, storage::{ImmutableSparseSet, SparseSet}}};
+use crate::{debug::{DebugCheckedUnwrap, MaybeLocation}, ecs::{change_detection::{CheckChangeTicks, ComponentTicks, Tick}, component::{ComponentId, ComponentInfo}, entity::Entity, storage::{ImmutableSparseSet, SparseSet}}, on_drop::AbortOnPanic, ptr::{OwningPtr, Ptr}};
 
 mod column;
 
@@ -405,7 +405,208 @@ impl Table {
         self.columns.contains(component_id)
     }
 
+    /// Allocate memory for the columns in the [`Table`]
+    ///
+    /// # Panics
+    /// - Panics if any of the new capacity overflows `isize::MAX` bytes.
+    /// - Panics if any of the new allocations causes an out-of-memory error.
+    ///
+    /// The current capacity of the columns should be 0, if it's not 0, then the previous data will be overwritten and leaked.
+    ///
+    /// # Safety
+    /// The capacity of all columns is determined by that of the `entities` Vec. This means that
+    /// it must be the correct capacity to allocate, reallocate, and deallocate all columns. This
+    /// means the safety invariant must be enforced even in `TableBuilder`.
+    fn alloc_columns(&mut self, new_capacity: NonZeroUsize) {
+        // If any of these allocations trigger an unwind, the wrong capacity will be used while dropping this table - UB.
+        // To avoid this, we use `AbortOnPanic`. If the allocation triggered a panic, the `AbortOnPanic`'s Drop impl will be
+        // called, and abort the program.
+        let _guard = AbortOnPanic;
+        for col in self.columns.values_mut() {
+            col.alloc(new_capacity);
+        }
+        std::mem::forget(_guard); // The allocation was successful, so we don't drop the guard.
+    }
 
+    /// Reallocate memory for the columns in the [`Table`]
+    ///
+    /// # Panics
+    /// - Panics if any of the new capacities overflows `isize::MAX` bytes.
+    /// - Panics if any of the new reallocations causes an out-of-memory error.
+    ///
+    /// # Safety
+    /// - `current_column_capacity` is indeed the capacity of the columns
+    ///
+    /// The capacity of all columns is determined by that of the `entities` Vec. This means that
+    /// it must be the correct capacity to allocate, reallocate, and deallocate all columns. This
+    /// means the safety invariant must be enforced even in `TableBuilder`.
+    unsafe fn realloc_columns(
+        &mut self,
+        current_column_capacity: NonZeroUsize,
+        new_capacity: NonZeroUsize
+    ) {
+        // If any of these allocations trigger an unwind, the wrong capacity will be used while dropping this table - UB.
+        // To avoid this, we use `AbortOnPanic`. If the allocation triggered a panic, the `AbortOnPanic`'s Drop impl will be
+        // called, and abort the program.
+        let _guard = AbortOnPanic;
+
+        // SAFETY:
+        // - There's no overflow
+        // - `current_capacity` is indeed the capacity - safety requirement
+        // - current capacity > 0
+        for col in self.columns.values_mut() {
+            col.realloc(current_column_capacity, new_capacity);
+        }
+        std::mem::forget(_guard); // The allocation was successful, so we don't drop the guard.
+    }
+
+    /// Reserves `additional` elements worth of capacity within the table.
+    pub(crate) fn reserve(&mut self, additional: usize) {
+        if (self.capacity() - self.entity_count() as usize) < additional {
+            let column_cap = self.capacity();
+            self.entities.reserve(additional);
+
+            // use entities vector capacity as driving capacity for all related allocations
+            let new_capacity = self.entities.capacity();
+
+            if column_cap == 0 {
+                // SAFETY: the current capacity is 0
+                unsafe { self.alloc_columns(NonZeroUsize::new_unchecked(new_capacity)); }
+            } else {
+                // SAFETY:
+                // - `column_cap` is indeed the columns' capacity
+                unsafe {
+                    self.realloc_columns(NonZeroUsize::new_unchecked(column_cap), NonZeroUsize::new_unchecked(new_capacity));
+                }
+            }
+        }
+    }
+
+    /// Allocates space for a new entity
+    ///
+    /// # Panics
+    /// - Panics if the allocation forces a reallocation and the new capacities overflows `isize::MAX` bytes.
+    /// - Panics if the allocation forces a reallocation and causes an out-of-memory error.
+    ///
+    /// # Safety
+    ///
+    /// The allocated row must be written to immediately with valid values in each column
+    pub(crate) unsafe fn allocate(&mut self, entity: Entity) -> TableRow {
+        self.reserve(1);
+        let len = self.entity_count();
+        // SAFETY: No entity index may be in more than one table row at once, so there are no duplicates,
+        // and there can not be an entity index of u32::MAX. Therefore, this can not be max either.
+        let row = unsafe {
+            TableRow::new(NonMaxU32::new_unchecked(len))
+        };
+        let len = len as usize;
+        self.entities.push(entity);
+        for col in self.columns.values_mut() {
+            col.added_ticks
+                .initialize_unchecked(len, UnsafeCell::new(Tick::new(0)));
+            col.changed_ticks
+                .initialize_unchecked(len, UnsafeCell::new(Tick::new(0)));
+            col.changed_by
+                .as_mut()
+                .zip(MaybeLocation::caller())
+                .map(|(changed_by, caller)| {
+                    changed_by.initialize_unchecked(len, UnsafeCell::new(caller));
+                });
+        }
+
+        row
+    }
+
+    /// Get the drop function for some component that is stored in this table.
+    #[inline]
+    pub fn get_drop_for(&self, component_id: ComponentId) -> Option<unsafe fn(OwningPtr<'_>)> {
+        self.get_column(component_id)?.data.drop
+    }
+
+    /// Gets the number of components being stored in the table.
+    #[inline]
+    pub fn component_count(&self) -> usize {
+        self.columns.len()
+    }
+
+    /// Gets the maximum number of entities the table can currently store
+    /// without reallocating the underlying memory.
+    #[inline]
+    pub fn entity_capacity(&self) -> usize {
+        self.entities.capacity()
+    }
+
+    /// Checks if the [`Table`] is empty or not.
+    ///
+    /// Returns `true` if the table contains no entities, `false` otherwise.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.entities.is_empty()
+    }
+
+    /// Call [`Tick::check_tick`] on all of the ticks in the [`Table`]
+    pub(crate) fn check_change_ticks(&mut self, check: CheckChangeTicks) {
+        let len = self.entity_count() as usize;
+        for col in self.columns.values_mut() {
+            // SAFETY: `len` is the actual length of the column
+            unsafe { col.check_change_ticks(len, check); }
+        }
+    }
+
+    /// Iterates over the [`Column`]s of the [`Table`].
+    pub fn iter_columns(&self) -> impl Iterator<Item = &Column> {
+        self.columns.values()
+    }
+
+    /// Clears all of the stored components in the [`Table`].
+    ///
+    /// # Panics
+    /// - Panics if any of the components in any of the columns panics while being dropped.
+    pub(crate) fn clear(&mut self) {
+        let len = self.entity_count() as usize;
+        // We must clear the entities first, because in the drop function causes a panic, it will result in a double free of the columns.
+        self.entities.clear();
+        for column in self.columns.values_mut() {
+            // SAFETY: we defer `self.entities.clear()` until after clearing the columns,
+            // so `self.len()` should match the columns' len
+            unsafe { column.clear(len); }
+        }
+    }
+
+    /// Moves component data out of the [`Table`].
+    ///
+    /// This function leaves the underlying memory unchanged, but the component behind
+    /// returned pointer is semantically owned by the caller and will not be dropped in its original location.
+    /// Caller is responsible to drop component data behind returned pointer.
+    ///
+    /// # Safety
+    /// - This table must hold the component matching `component_id`
+    /// - `row` must be in bounds
+    /// - The row's inconsistent state that happens after taking the component must be resolved—either initialize a new component or remove the row.
+    pub(crate) unsafe fn take_component(
+        &mut self,
+        component_id: ComponentId,
+        row: TableRow
+    ) -> OwningPtr<'_> {
+        self.get_column_mut(component_id)
+            .debug_checked_unwrap()
+            .data
+            .get_unchecked_mut(row.index())
+            .promote()
+    }
+
+    /// Get the component at a given `row`, if the [`Table`] stores components with the given `component_id`
+    ///
+    /// # Safety
+    /// `row.as_usize()` < `self.len()`
+    pub unsafe fn get_component(
+        &self,
+        component_id: ComponentId,
+        row: TableRow
+    ) -> Option<Ptr<'_>> {
+        self.get_column(component_id)
+            .map(|col| col.data.get_unchecked(row.index()))
+    }
 }
 
 // TODO!
