@@ -157,6 +157,17 @@ impl Chunk {
         } else {
             ptr
         };
+
+        // SAFETY: caller ensures it is in bounds and we are not fighting with other `set` calls or `get` calls.
+        // A race condition is therefore impossible.
+        // The address can't wrap or pass isize max since this addition is within an allocation.
+        // For that to happen, you would first run out of memory in practice.
+        let target = unsafe { &*head.add(index as usize) };
+
+        // SAFETY: Ensured by caller.
+        unsafe {
+            target.set_entity(entity);
+        }
     }
 
     /// Initializes the chunk to be valid, returning the pointer.

@@ -25,13 +25,43 @@
 //! [`World`]: crate::world::World
 //! [`World::storages`]: crate::world::World::storages
 
+use crate::ecs::component::{ComponentInfo, StorageType};
+
 mod blob_array;
 mod sparse_set;
 mod table;
 mod thin_array_ptr;
+mod non_send;
 
 pub use sparse_set::*;
 pub use table::*;
+pub use non_send::*;
+
+/// The raw data stores of a [`World`](crate::world::World)
+#[derive(Default)]
+pub struct Storages {
+    /// Backing storage for [`SparseSet`] components.
+    /// Note that sparse sets are only present for components that have been spawned or have had a relevant bundle registered.
+    pub sparse_sets: SparseSets,
+    /// Backing storage for [`Table`] components.
+    pub tables: Tables,
+    /// Backing storage for `!Send` data.
+    pub non_sends: NonSends,
+}
+
+impl Storages {
+    /// ensures that the component has its necessary storage initialize.
+    pub fn prepare_component(&mut self, component: &ComponentInfo) {
+        match component.storage_type() {
+            StorageType::Table => {
+                // table needs no preparation
+            },
+            StorageType::SparseSet => {
+                self.sparse_sets.get_or_insert(component);
+            },
+        }
+    }
+}
 
 /// Unsafe extension functions for `Vec<T>`
 trait VecExtensions<T> {
@@ -74,5 +104,3 @@ impl<T> VecExtensions<T> for Vec<T> {
         value
     }
 }
-
-// TODO!
