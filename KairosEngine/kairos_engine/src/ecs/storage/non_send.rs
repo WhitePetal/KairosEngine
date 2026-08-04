@@ -1,8 +1,14 @@
 use std::{cell::UnsafeCell, panic::Location, thread::ThreadId};
 
-use crate::{debug::{DebugName, MaybeLocation}, ecs::{change_detection::{CheckChangeTicks, ComponentTickCells, ComponentTicks, Tick}, component::{ComponentId, Components}, storage::{SparseSet, blob_array::BlobArray}}, ptr::{OwningPtr, Ptr, UnsafeCellDeref}};
-
-
+use crate::{
+    debug::{DebugName, MaybeLocation},
+    ecs::{
+        change_detection::{CheckChangeTicks, ComponentTickCells, ComponentTicks, Tick},
+        component::{ComponentId, Components},
+        storage::{SparseSet, blob_array::BlobArray},
+    },
+    ptr::{OwningPtr, Ptr, UnsafeCellDeref},
+};
 
 /// The type-erased backing storage and metadata for a single resource within a [`World`].
 ///
@@ -85,14 +91,12 @@ impl NonSendData {
             self.validate_access();
             (
                 // SAFETY: We've already checked if a value is present, and there should only be one.
-                unsafe {
-                    self.data.get_unchecked(Self::ROW)
-                },
+                unsafe { self.data.get_unchecked(Self::ROW) },
                 ComponentTickCells {
                     added: &self.added_ticks,
                     changed: &self.changed_ticks,
-                    changed_by: self.changed_by.as_ref()
-                }
+                    changed_by: self.changed_by.as_ref(),
+                },
             )
         })
     }
@@ -110,14 +114,16 @@ impl NonSendData {
         &mut self,
         value: OwningPtr<'_>,
         change_tick: Tick,
-        caller: MaybeLocation
+        caller: MaybeLocation,
     ) {
         if self.is_parsent() {
             self.validate_access();
             // SAFETY: The caller ensures that the provided value is valid for the underlying type and
             // is properly initialized. We've ensured that a value is already present and previously
             // initialized.
-            unsafe { self.data.replace_unchecked(Self::ROW, value); }
+            unsafe {
+                self.data.replace_unchecked(Self::ROW, value);
+            }
         } else {
             self.origin_thread_id = Some(std::thread::current().id());
             // SAFETY:
@@ -125,7 +131,9 @@ impl NonSendData {
             // - The caller guarantees must be valid for the underlying type and thus its
             //   layout must be identical.
             // - The value was previously not present and thus must not have been initialized.
-            unsafe { self.data.initialize_unchecked(Self::ROW, value); }
+            unsafe {
+                self.data.initialize_unchecked(Self::ROW, value);
+            }
             *self.added_ticks.deref_mut() = change_tick;
             self.is_present = true;
         }
@@ -155,16 +163,12 @@ impl NonSendData {
         // - There is always only one row in the `BlobArray` created during initialization.
         // - This function has validated that the row is present with the check of `self.is_present`.
         // - The caller is to take ownership of the value, returned as a `OwningPtr`.
-        let res = unsafe {
-            self.data.get_unchecked_mut(Self::ROW).promote()
-        };
+        let res = unsafe { self.data.get_unchecked_mut(Self::ROW).promote() };
 
         let caller = self
             .changed_by
             .as_ref()
-            .map(|changed_by| unsafe {
-                *changed_by.deref_mut()
-            });
+            .map(|changed_by| unsafe { *changed_by.deref_mut() });
 
         // SAFETY: This function is being called through an exclusive mutable reference to Self, which
         // makes it sound to read these ticks.
@@ -173,9 +177,9 @@ impl NonSendData {
                 res,
                 ComponentTicks {
                     added: self.added_ticks.read(),
-                    changed: self.changed_ticks.read()
+                    changed: self.changed_ticks.read(),
                 },
-                caller
+                caller,
             ))
         }
     }
@@ -189,7 +193,9 @@ impl NonSendData {
         if self.is_parsent() {
             self.validate_access();
             // SAFETY: There is only one element, and it's always allocated.
-            unsafe { self.data.drop_last_element(Self::ROW); }
+            unsafe {
+                self.data.drop_last_element(Self::ROW);
+            }
             self.is_present = false;
         }
     }
@@ -272,7 +278,7 @@ impl NonSends {
                 changed_ticks: UnsafeCell::new(Tick::new(0)),
                 type_name: component_info.name(),
                 origin_thread_id: None,
-                changed_by: MaybeLocation::caller().map(UnsafeCell::new)
+                changed_by: MaybeLocation::caller().map(UnsafeCell::new),
             }
         })
     }

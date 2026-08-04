@@ -67,4 +67,16 @@ bitflags::bitflags! {
     }
 }
 
+/// Used in [`ArchetypeAfterBundleInsert`] to track whether components in the bundle are newly
+/// added or already existed in the entity's archetype.
+#[derive(Copy, Clone, Eq, PartialEq)]
+pub(crate) enum ComponentStatus {
+    Added,
+    Existing,
+}
+
+pub(crate) trait BundleComponentStatus {
+    unsafe fn get_status(&self, index: usize) -> ComponentStatus;
+}
+
 // TODO!

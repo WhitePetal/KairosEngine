@@ -3,14 +3,19 @@ mod identifier;
 pub use identifier::WorldId;
 
 use crate::ecs::{
-    component::{Component, ComponentId, ComponentIds, Components, ComponentsRegistrator}, entity::{Entities, EntityAllocator}, storage::Storages, world::unsafe_world_cell::UnsafeWorldCell
+    component::{Component, ComponentId, ComponentIds, Components, ComponentsRegistrator},
+    entity::{Entities, EntityAllocator},
+    storage::Storages,
+    world::unsafe_world_cell::UnsafeWorldCell,
 };
 
 pub mod unsafe_world_cell;
 
 mod deferred_world;
+mod entity_access;
 
 pub use deferred_world::DeferredWorld;
+pub use entity_access::EntityWorldMut;
 
 /// Stores and exposes operations on [entities](Entity), [components](Component), resources,
 /// and their associated metadata.

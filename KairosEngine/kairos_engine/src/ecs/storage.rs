@@ -28,14 +28,14 @@
 use crate::ecs::component::{ComponentInfo, StorageType};
 
 mod blob_array;
+mod non_send;
 mod sparse_set;
 mod table;
 mod thin_array_ptr;
-mod non_send;
 
+pub use non_send::*;
 pub use sparse_set::*;
 pub use table::*;
-pub use non_send::*;
 
 /// The raw data stores of a [`World`](crate::world::World)
 #[derive(Default)]
@@ -55,10 +55,10 @@ impl Storages {
         match component.storage_type() {
             StorageType::Table => {
                 // table needs no preparation
-            },
+            }
             StorageType::SparseSet => {
                 self.sparse_sets.get_or_insert(component);
-            },
+            }
         }
     }
 }
