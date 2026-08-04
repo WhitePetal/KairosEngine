@@ -1,6 +1,7 @@
 use std::{fmt::Debug, sync::Arc};
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
+use thiserror::Error;
 
 use crate::{
     debug::{DebugCheckedUnwrap, MaybeLocation},
@@ -298,7 +299,174 @@ impl RequiredComponents {
     }
 }
 
-impl Components {}
+impl Components {
+    /// Registers the components in `required_components` as required by `requiree`.
+    ///
+    /// # Safety
+    ///
+    /// - `requiree` must have been registered in `self`
+    /// - all components in `required_components` must have been registered in `self`;
+    /// - this is called with `requiree` before being called on any component requiring `requiree`.
+    pub(crate) unsafe fn register_required_by(
+        &mut self,
+        requiree: ComponentId,
+        required_components: &RequiredComponents
+    ) {
+        for &required in required_components.all.keys() {
+            // SAFETY: the caller guarantees that all components in `required_components` have been registered in `self`.
+            let required_by = unsafe {
+                self.get_required_by_mut(required).debug_checked_unwrap()
+            };
+            // This preserves the invariant of `required_by` because:
+            // - components requiring `required` and required by `requiree` are already initialized at this point
+            //   and hence registered in `required_by` before `requiree`;
+            // - components requiring `requiree` cannot exist yet, as this is called on `requiree` before them.
+            required_by.insert(requiree);
+        }
+    }
+
+    /// Registers the given component `R` and [required components] inherited from it as required by `T`.
+    ///
+    /// When `T` is added to an entity, `R` will also be added if it was not already provided.
+    /// The given `constructor` will be used for the creation of `R`.
+    ///
+    /// [required components]: Component#required-components
+    ///
+    /// # Safety
+    ///
+    /// - the given component IDs `required` and `requiree` must be valid in `self`;
+    /// - the given component ID `required` must be valid for the component type `R`.
+    ///
+    ///
+    /// # Errors
+    ///
+    /// Returns a [`RequiredComponentsError`] if either of these are true:
+    /// - the `required` component is already a *directly* required component for the `requiree`; indirect
+    ///   requirements through other components are allowed. In those cases, the more specific
+    ///   registration will be used.
+    /// - the `requiree` component is already a (possibly indirect) required component for the `required` component.
+    pub(crate) unsafe fn register_required_components<R: Component>(
+        &mut self,
+        requiree: ComponentId,
+        required: ComponentId,
+        constructor: fn() -> R
+    ) -> Result<(), RequiredComponentsError> {
+        // First step: validate inputs and return errors.
+
+        // SAFETY: The caller ensures that the `required` is valid.
+        let required_required_components = unsafe {
+            self.get_required_components(required)
+                .debug_checked_unwrap()
+        };
+
+        // Cannot create cyclic requirements.
+        if required_required_components.all.contains_key(&requiree) {
+            return Err(RequiredComponentsError::CyclicRequirement(
+                requiree, required
+            ));
+        }
+
+        // SAFETY: The caller ensures that the `requiree` is valid.
+        let required_components = unsafe {
+            self.get_required_components_mut(requiree).debug_checked_unwrap()
+        };
+
+        // Cannot directly require the same component twice.
+        if required_components.direct.contains_key(&required) {
+            return Err(RequiredComponentsError::DuplicateRegistration(
+                requiree, required
+            ));
+        }
+
+        // Second step: register the single requirement requiree->required
+
+        // Store the old count of (all) required components. This will help determine which ones are new.
+        let old_required_count = required_components.all.len();
+
+        // SAFETY: the caller guarantees that `requiree` is valid in `self`.
+        unsafe {
+            self.required_components_scope(requiree, |this, required_components| {
+                // SAFETY: the caller guarantees that `required` is valid for type `R` in `self`
+                required_components.register_by_id(required, this, constructor);
+            });
+        }
+        // Third step: update the required components and required_by of all the indirect requirements/requirees.
+
+        // Borrow again otherwise it conflicts with the `self.required_components_scope` call.
+        // SAFETY: The caller ensures that the `requiree` is valid.
+        let required_components = unsafe {
+            self.get_required_components_mut(requiree).debug_checked_unwrap()
+        };
+
+        // Optimization: get all the new required components, i.e. those that were appended.
+        // Other components that might be inherited when requiring `required` can be safely ignored because
+        // any component requiring `requiree` will already transitively require them.
+        // Note: the only small exception is for `required` itself, for which we cannot ignore the value of the
+        // constructor. But for simplicity we will rebuild any `RequiredComponents`
+        let new_required_components = required_components.all[old_required_count..]
+            .keys()
+            .copied()
+            .collect::<Vec<_>>();
+
+        // Get all the new requiree components, i.e. `requiree` and all the components that `requiree` is required by.
+        // SAFETY: The caller ensures that the `requiree` is valid.
+        let requiree_required_by = unsafe {
+            self.get_required_by(requiree).debug_checked_unwrap()
+        };
+        let new_requiree_components = [requiree]
+            .into_iter()
+            .chain(requiree_required_by.iter().copied())
+            .collect::<IndexSet<_, FixedHasher>>();
+
+        // We now need to update the required and required_by components of all the components
+        // directly or indirectly involved.
+        // Important: we need to be careful about the order we do these operations in.
+        // Since computing the required components of some component depends on the required components of
+        // other components, and while we do this operations not all required components are up-to-date, we need
+        // to ensure we update components in such a way that we update a component after the components it depends on.
+        // Luckily, `new_requiree_components` comes from `ComponentInfo::required_by`, which guarantees an order
+        // with that property.
+
+        // Update the inherited required components of all requiree components (directly or indirectly).
+        // Skip the first one (requiree) because we already updates it.
+        for &indirect_requiree in &new_requiree_components[1..] {
+            // SAFETY: `indirect_requiree` comes from `self` so it must be valid.
+            unsafe {
+                self.required_components_scope(indirect_requiree, |this, required_components| {
+                    // Rebuild the inherited required components.
+                    // SAFETY: `required_components` comes from `self`, so all its components must have be valid in `self`.
+                    required_components.rebuild_inherited_required_components(this);
+                })
+            }
+        }
+
+        // Update the `required_by` of all the components that were newly required (directly or indirectly).
+        for &indirect_required in &new_required_components {
+            // SAFETY: `indirect_required` comes from `self`, so it must be valid.
+            let required_by = unsafe {
+                self.get_required_by_mut(indirect_required).debug_checked_unwrap()
+            };
+
+            // Remove and re-add all the components in `new_requiree_components`
+            // This preserves the invariant of `required_by` because `new_requiree_components`
+            // satisfies its invariant, due to being `requiree` followed by its `required_by` components,
+            // and because any component not in `new_requiree_components` cannot require a component in it,
+            // since if that was the case it would appear in the `required_by` for `requiree`.
+            required_by.retain(|id| !new_requiree_components.contains(id));
+            required_by.extend(&new_requiree_components);
+        }
+
+        Ok(())
+    }
+
+    unsafe fn required_components_scope<R>(
+        &mut self,
+        component_id: ComponentId,
+        f: impl FnOnce(&mut Self, &mut RequiredComponents) -> R
+    ) -> R {
+        todo!()
+    }
+}
 
 /// This is a safe handle around `ComponentsRegistrator` and `RequiredComponents` to register required components.
 pub struct RequiredComponentsRegistrator<'a, 'w> {
@@ -319,6 +487,21 @@ impl<'a, 'w> RequiredComponentsRegistrator<'a, 'w> {
             required_components,
         }
     }
+}
+
+/// An error returned when the registration of a required component fails.
+#[derive(Error, Debug)]
+#[non_exhaustive]
+pub enum RequiredComponentsError {
+    /// The component is already a directly required component for the requiree.
+    #[error("Component {0:?} already directly requires component {1:?}")]
+    DuplicateRegistration(ComponentId, ComponentId),
+    /// Adding the given requirement would create a cycle.
+    #[error("Cyclic requirement found: the requiree component {0:?} is required by the required component {1:?}")]
+    CyclicRequirement(ComponentId, ComponentId),
+    /// An archetype with the component that requires other components already exists
+    #[error("An archetype with the component {0:?} that requires other components already exists")]
+    ArchetypeExists(ComponentId),
 }
 
 pub(super) fn enforce_no_required_components_recursion(
