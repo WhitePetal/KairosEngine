@@ -39,6 +39,7 @@ sonic-rs = "0.5.7"
 strum = { version = "0.26", features = ["derive"] }
 duplicate = "2.0"
 paste = "1.0"
+kairos_ecs_macros = { path = "src/ecs/macros" }
 image = { version = "0.25.10", features = ["rayon", "serde", "png"] }
 base64 = "0.22.1"
 wgpu = { version = "29.0.3", features = ["serde"] }

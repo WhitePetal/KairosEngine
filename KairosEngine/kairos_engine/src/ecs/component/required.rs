@@ -16,6 +16,9 @@ use crate::{
     ptr::OwningPtr,
 };
 
+#[cfg(test)]
+mod tests;
+
 /// Metadata associated with a required component. See [`Component`] for details.
 #[derive(Clone)]
 pub struct RequiredComponent {
@@ -459,33 +462,48 @@ impl Components {
         Ok(())
     }
 
+    /// Temporarily take out the [`RequiredComponents`] of the component with id `component_id`
+    /// and runs the given closure with mutable access to `self` and the given [`RequiredComponents`].
+    ///
+    /// SAFETY:
+    ///
+    /// `component_id` is valid in `self.components`
     unsafe fn required_components_scope<R>(
         &mut self,
         component_id: ComponentId,
         f: impl FnOnce(&mut Self, &mut RequiredComponents) -> R
     ) -> R {
-        todo!()
-    }
-}
-
-/// This is a safe handle around `ComponentsRegistrator` and `RequiredComponents` to register required components.
-pub struct RequiredComponentsRegistrator<'a, 'w> {
-    components: &'a mut ComponentsRegistrator<'w>,
-    required_components: &'a mut RequiredComponents,
-}
-
-impl<'a, 'w> RequiredComponentsRegistrator<'a, 'w> {
-    /// # Safety
-    ///
-    /// All components in `required_components` must have been registered in `components`
-    pub(crate) unsafe fn new(
-        components: &'a mut ComponentsRegistrator<'w>,
-        required_components: &'a mut RequiredComponents,
-    ) -> Self {
-        Self {
-            components,
-            required_components,
+        struct DropGuard<'a> {
+            components: &'a mut Components,
+            component_id: ComponentId,
+            required_components: RequiredComponents,
         }
+
+        impl Drop for DropGuard<'_> {
+            fn drop(&mut self) {
+                let required_components = unsafe {
+                    self.components
+                        .get_required_components_mut(self.component_id)
+                        .debug_checked_unwrap()
+                };
+
+                debug_assert!(required_components.direct.is_empty());
+                debug_assert!(required_components.all.is_empty());
+
+                *required_components = std::mem::take(&mut self.required_components);
+            }
+        }
+
+        let mut guard = DropGuard {
+            component_id,
+            required_components: std::mem::take(unsafe {
+                self.get_required_components_mut(component_id)
+                    .debug_checked_unwrap()
+            }),
+            components: self,
+        };
+
+        f(guard.components, &mut guard.required_components)
     }
 }
 
@@ -530,5 +548,97 @@ pub(super) fn enforce_no_required_components_recursion(
                 "If this is intentional, consider merging the components.".into()
             }
         );
+    }
+}
+
+/// This is a safe handle around `ComponentsRegistrator` and `RequiredComponents` to register required components.
+pub struct RequiredComponentsRegistrator<'a, 'w> {
+    components: &'a mut ComponentsRegistrator<'w>,
+    required_components: &'a mut RequiredComponents,
+}
+
+impl<'a, 'w> RequiredComponentsRegistrator<'a, 'w> {
+    /// # Safety
+    ///
+    /// All components in `required_components` must have been registered in `components`
+    pub(crate) unsafe fn new(
+        components: &'a mut ComponentsRegistrator<'w>,
+        required_components: &'a mut RequiredComponents,
+    ) -> Self {
+        Self {
+            components,
+            required_components,
+        }
+    }
+
+    /// Provides access to the current [`World`](crate::world::World)'s [`ComponentsRegistrator`]
+    pub fn components_registrator(&mut self) -> &mut ComponentsRegistrator<'w> {
+        self.components
+    }
+
+    /// Registers the [`Component`] `C` as an explicitly required component.
+    ///
+    /// If the component was not already registered as an explicit required component then it is added
+    /// as one, potentially overriding the constructor of a inherited required component, otherwise panics.
+    pub fn register_required<C: Component>(&mut self, constructor: impl Fn() -> C + 'static) {
+        // SAFETY: we internally guarantee that all components in `required_components`
+        // are registered in `components`
+        unsafe {
+            self.required_components
+                .register(self.components, constructor);
+        }
+    }
+
+    /// Registers the [`Component`] with the given `component_id` ID as an explicitly required component.
+    ///
+    /// If the component was not already registered as an explicit required component then it is added
+    /// as one, potentially overriding the constructor of a inherited required component, otherwise panics.
+    ///
+    /// # Safety
+    ///
+    /// `component_id` must be a valid [`ComponentId`] for `C` in the [`Components`] instance of `self`.
+    pub unsafe fn register_required_by_id<C: Component>(
+        &mut self,
+        component_id: ComponentId,
+        constructor: fn() -> C
+    ) {
+        // SAFETY:
+        // - the caller guarantees `component_id` is a valid component in `components` for `C`;
+        // - we internally guarantee all other components in `required_components` are registered in `components`.
+        unsafe {
+            self.required_components.register_by_id(
+                component_id,
+                self.components,
+                constructor
+            );
+        }
+    }
+
+    /// Registers the [`Component`] with the given `component_id` ID as an explicitly required component.
+    ///
+    /// If the component was not already registered as an explicit required component then it is added
+    /// as one, potentially overriding the constructor of a inherited required component, otherwise panics.
+    ///
+    /// # Safety
+    ///
+    /// - `component_id` must be valid in the [`Components`] instance of `self`;
+    /// - `constructor` must return a [`RequiredComponentConstructor`] that constructs a valid instance for the
+    ///   component with ID `component_id`.
+    pub unsafe fn register_required_dynamic_with(
+        &mut self,
+        component_id: ComponentId,
+        constructor: impl FnOnce() -> RequiredComponentConstructor
+    ) {
+        // SAFETY:
+        // - the caller guarantees `component_id` is valid in `components`;
+        // - the caller guarantees `constructor` returns a valid constructor for `component_id`;
+        // - we internally guarantee all other components in `required_components` are registered in `components`.
+        unsafe {
+            self.required_components.register_dynamic_with(
+                component_id,
+                self.components,
+                constructor
+            );
+        }
     }
 }

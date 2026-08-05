@@ -12,6 +12,9 @@ use crate::{
     },
 };
 
+/// Derive macro for implementing the [`Resource`] trait.
+pub use kairos_ecs_macros::Resource;
+
 /// A type that can be inserted into a [`World`] as a singleton.
 ///
 /// You can access resource data in systems using the [`Res`] and [`ResMut`] system parameters

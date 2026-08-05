@@ -12,6 +12,9 @@ pub use info::*;
 pub use register::*;
 pub use required::*;
 
+/// Derive macro for implementing the [`Component`] trait.
+pub use kairos_ecs_macros::Component;
+
 use crate::ecs::{
     entity::EntityMapper, lifecycle::ComponentHook, relationship::ComponentRelationshipAccessor,
     world::FromWorld,

@@ -1,5 +1,5 @@
 [workspace]
-members = ["kairos_engine", "kairos_supervisor"]
+members = ["kairos_engine", "kairos_supervisor", "kairos_engine/src/ecs/macros"]
 resolver = "3"
 
 [workspace.package]

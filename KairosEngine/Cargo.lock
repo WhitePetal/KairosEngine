@@ -2295,6 +2295,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "kairos_ecs_macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
+
+[[package]]
 name = "kairos_engine"
 version = "0.1.0"
 dependencies = [
@@ -2324,6 +2333,7 @@ dependencies = [
  "hashbrown 0.17.1",
  "image",
  "indexmap",
+ "kairos_ecs_macros",
  "kira",
  "log",
  "mint",
