@@ -1,8 +1,8 @@
 //! Contains types that allow disjoint mutable access to a [`World`].
 
-use std::{cell::UnsafeCell, marker::PhantomData, ptr};
+use std::{any::TypeId, cell::UnsafeCell, fmt::Debug, marker::PhantomData, ptr};
 
-use crate::ecs::{change_detection::Tick, component::Components, entity::{Entities, Entity, EntityAllocator, EntityLocation}, resource::ResourceEntities, storage::Storages, world::{DeferredWorld, World, WorldId}};
+use crate::ecs::{change_detection::Tick, component::{Component, ComponentId, Components}, entity::{Entities, Entity, EntityAllocator, EntityLocation}, resource::ResourceEntities, storage::Storages, world::{DeferredWorld, World, WorldId}};
 
 /// Variant of the [`World`] where resource and component accesses take `&self`, and the responsibility to avoid
 /// aliasing violations are given to the caller instead of being checked at compile-time by rust's unique XOR shared rule.
@@ -104,17 +104,6 @@ impl<'w> UnsafeWorldCell<'w> {
             #[cfg(debug_assertions)]
             allows_mutable_access: true,
             _marker: PhantomData,
-        }
-    }
-
-    /// Creates [`UnsafeWorldCell`] that can be used to access everything mutably
-    #[inline]
-    pub(crate) fn new_mutable(world: &'w mut World) -> Self {
-        Self {
-            ptr: ptr::from_mut(world),
-            #[cfg(debug_assertions)]
-            allows_mutable_access: true,
-            _marker: PhantomData
         }
     }
 
@@ -290,6 +279,15 @@ impl<'w> UnsafeWorldCell<'w> {
     }
 }
 
+impl Debug for UnsafeWorldCell<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // SAFETY: World's Debug implementation only accesses metadata.
+        Debug::fmt(unsafe {
+            self.world_metadata()
+        }, f)
+    }
+}
+
 /// An interior-mutable reference to a particular [`Entity`] and all of its components
 #[derive(Copy, Clone)]
 pub struct UnsafeEntityCell<'w> {
@@ -299,3 +297,90 @@ pub struct UnsafeEntityCell<'w> {
     last_run: Tick,
     this_run: Tick,
 }
+
+impl<'w> UnsafeEntityCell<'w> {
+    pub(crate) fn new(
+        world: UnsafeWorldCell<'w>,
+        entity: Entity,
+        location: EntityLocation,
+        last_run: Tick,
+        this_run: Tick
+    ) -> Self {
+        UnsafeEntityCell {
+            world,
+            entity,
+            location,
+            last_run,
+            this_run
+        }
+    }
+
+    /// Returns the [ID](Entity) of the current entity.
+    #[inline]
+    #[must_use = "Omit the .id() call if you do not need to store the `Entity` identifier."]
+    pub fn id(self) -> Entity {
+        self.entity
+    }
+
+    /// Gets metadata indicating the location where the current entity is stored.
+    #[inline]
+    pub fn location(self) -> EntityLocation {
+        self.location
+    }
+
+    /// Gets the world that the current entity belongs to.
+    #[inline]
+    pub fn world(self) -> UnsafeWorldCell<'w> {
+        self.world
+    }
+
+    /// Returns `true` if the current entity has a component identified by `component_id`.
+    /// Otherwise, this returns false.
+    ///
+    /// ## Notes
+    ///
+    /// - If you know the concrete type of the component, you should prefer [`Self::contains`].
+    /// - If you know the component's [`TypeId`] but not its [`ComponentId`], consider using
+    ///   [`Self::contains_type_id`].
+    #[inline]
+    pub fn contains_id(self, component_id: ComponentId) -> bool {
+        todo!()
+    }
+
+    /// Returns `true` if the current entity has a component with the type identified by `type_id`.
+    /// Otherwise, this returns false.
+    ///
+    /// ## Notes
+    ///
+    /// - If you know the concrete type of the component, you should prefer [`Self::contains`].
+    /// - If you have a [`ComponentId`] instead of a [`TypeId`], consider using [`Self::contains_id`].
+    #[inline]
+    pub fn contains_type_id(self, type_id: TypeId) -> bool {
+        let Some(id) = self.world.components().get_id(type_id) else {
+            return false;
+        };
+        self.contains_id(id)
+    }
+
+    /// Returns `true` if the current entity has a component of type `T`.
+    /// Otherwise, this returns `false`.
+    ///
+    /// ## Notes
+    ///
+    /// If you do not know the concrete type of a component, consider using
+    /// [`Self::contains_id`] or [`Self::contains_type_id`].
+    #[inline]
+    pub fn contains<T: Component>(self) -> bool {
+        self.contains_type_id(TypeId::of::<T>())
+    }
+
+    pub unsafe fn get<T: Component>(self) -> Option<&'w T> {
+        let component_id = self.world.components().get_valid_id(TypeId::of::<T>())?;
+
+        unsafe {
+            todo!()
+        }
+    }
+}
+
+// TODO!
