@@ -1,0 +1,20 @@
+[package]
+name = "kairos_ecs_macro_logic"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Shared Kairos ECS Macro internals"
+
+[dependencies]
+kairos_macro_utils = { path = "../../macro_utils" }
+syn = { version = "2.0.119", features = ["full", "extra-traits"] }
+quote = "1.0"
+proc-macro2 = "1.0"
+
+[package.metadata.docs.rs]
+rustdoc-args = [
+  "-Zunstable-options",
+  "--generate-link-to-definition",
+  "--generate-macro-expansion",
+]
+all-features = true

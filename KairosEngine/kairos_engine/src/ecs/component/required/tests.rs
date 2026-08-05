@@ -1,6 +1,7 @@
-use crate::{ecs::{component::RequiredComponentsError, world::World}, ptr::OwningPtr};
-
-
+use crate::{
+    ecs::{component::RequiredComponentsError, world::World},
+    ptr::OwningPtr,
+};
 
 // #[test]
 // fn required_components() {

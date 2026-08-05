@@ -780,3 +780,5 @@ impl<T: Component> From<ComponentIdFor<'_, T>> for ComponentId {
         *to_component_id
     }
 }
+
+pub struct DerveRelationshipTest {}

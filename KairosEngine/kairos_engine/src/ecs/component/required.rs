@@ -313,13 +313,11 @@ impl Components {
     pub(crate) unsafe fn register_required_by(
         &mut self,
         requiree: ComponentId,
-        required_components: &RequiredComponents
+        required_components: &RequiredComponents,
     ) {
         for &required in required_components.all.keys() {
             // SAFETY: the caller guarantees that all components in `required_components` have been registered in `self`.
-            let required_by = unsafe {
-                self.get_required_by_mut(required).debug_checked_unwrap()
-            };
+            let required_by = unsafe { self.get_required_by_mut(required).debug_checked_unwrap() };
             // This preserves the invariant of `required_by` because:
             // - components requiring `required` and required by `requiree` are already initialized at this point
             //   and hence registered in `required_by` before `requiree`;
@@ -352,7 +350,7 @@ impl Components {
         &mut self,
         requiree: ComponentId,
         required: ComponentId,
-        constructor: fn() -> R
+        constructor: fn() -> R,
     ) -> Result<(), RequiredComponentsError> {
         // First step: validate inputs and return errors.
 
@@ -365,19 +363,20 @@ impl Components {
         // Cannot create cyclic requirements.
         if required_required_components.all.contains_key(&requiree) {
             return Err(RequiredComponentsError::CyclicRequirement(
-                requiree, required
+                requiree, required,
             ));
         }
 
         // SAFETY: The caller ensures that the `requiree` is valid.
         let required_components = unsafe {
-            self.get_required_components_mut(requiree).debug_checked_unwrap()
+            self.get_required_components_mut(requiree)
+                .debug_checked_unwrap()
         };
 
         // Cannot directly require the same component twice.
         if required_components.direct.contains_key(&required) {
             return Err(RequiredComponentsError::DuplicateRegistration(
-                requiree, required
+                requiree, required,
             ));
         }
 
@@ -398,7 +397,8 @@ impl Components {
         // Borrow again otherwise it conflicts with the `self.required_components_scope` call.
         // SAFETY: The caller ensures that the `requiree` is valid.
         let required_components = unsafe {
-            self.get_required_components_mut(requiree).debug_checked_unwrap()
+            self.get_required_components_mut(requiree)
+                .debug_checked_unwrap()
         };
 
         // Optimization: get all the new required components, i.e. those that were appended.
@@ -413,9 +413,7 @@ impl Components {
 
         // Get all the new requiree components, i.e. `requiree` and all the components that `requiree` is required by.
         // SAFETY: The caller ensures that the `requiree` is valid.
-        let requiree_required_by = unsafe {
-            self.get_required_by(requiree).debug_checked_unwrap()
-        };
+        let requiree_required_by = unsafe { self.get_required_by(requiree).debug_checked_unwrap() };
         let new_requiree_components = [requiree]
             .into_iter()
             .chain(requiree_required_by.iter().copied())
@@ -447,7 +445,8 @@ impl Components {
         for &indirect_required in &new_required_components {
             // SAFETY: `indirect_required` comes from `self`, so it must be valid.
             let required_by = unsafe {
-                self.get_required_by_mut(indirect_required).debug_checked_unwrap()
+                self.get_required_by_mut(indirect_required)
+                    .debug_checked_unwrap()
             };
 
             // Remove and re-add all the components in `new_requiree_components`
@@ -471,7 +470,7 @@ impl Components {
     unsafe fn required_components_scope<R>(
         &mut self,
         component_id: ComponentId,
-        f: impl FnOnce(&mut Self, &mut RequiredComponents) -> R
+        f: impl FnOnce(&mut Self, &mut RequiredComponents) -> R,
     ) -> R {
         struct DropGuard<'a> {
             components: &'a mut Components,
@@ -515,7 +514,9 @@ pub enum RequiredComponentsError {
     #[error("Component {0:?} already directly requires component {1:?}")]
     DuplicateRegistration(ComponentId, ComponentId),
     /// Adding the given requirement would create a cycle.
-    #[error("Cyclic requirement found: the requiree component {0:?} is required by the required component {1:?}")]
+    #[error(
+        "Cyclic requirement found: the requiree component {0:?} is required by the required component {1:?}"
+    )]
     CyclicRequirement(ComponentId, ComponentId),
     /// An archetype with the component that requires other components already exists
     #[error("An archetype with the component {0:?} that requires other components already exists")]
@@ -600,17 +601,14 @@ impl<'a, 'w> RequiredComponentsRegistrator<'a, 'w> {
     pub unsafe fn register_required_by_id<C: Component>(
         &mut self,
         component_id: ComponentId,
-        constructor: fn() -> C
+        constructor: fn() -> C,
     ) {
         // SAFETY:
         // - the caller guarantees `component_id` is a valid component in `components` for `C`;
         // - we internally guarantee all other components in `required_components` are registered in `components`.
         unsafe {
-            self.required_components.register_by_id(
-                component_id,
-                self.components,
-                constructor
-            );
+            self.required_components
+                .register_by_id(component_id, self.components, constructor);
         }
     }
 
@@ -627,7 +625,7 @@ impl<'a, 'w> RequiredComponentsRegistrator<'a, 'w> {
     pub unsafe fn register_required_dynamic_with(
         &mut self,
         component_id: ComponentId,
-        constructor: impl FnOnce() -> RequiredComponentConstructor
+        constructor: impl FnOnce() -> RequiredComponentConstructor,
     ) {
         // SAFETY:
         // - the caller guarantees `component_id` is valid in `components`;
@@ -637,7 +635,7 @@ impl<'a, 'w> RequiredComponentsRegistrator<'a, 'w> {
             self.required_components.register_dynamic_with(
                 component_id,
                 self.components,
-                constructor
+                constructor,
             );
         }
     }

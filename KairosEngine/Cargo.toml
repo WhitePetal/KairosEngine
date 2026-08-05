@@ -1,5 +1,11 @@
 [workspace]
-members = ["kairos_engine", "kairos_supervisor", "kairos_engine/src/ecs/macros"]
+members = [
+    "kairos_engine",
+    "kairos_engine/src/ecs/macros",
+    "kairos_engine/src/ecs/macro_logic",
+    "kairos_engine/src/macro_utils",
+    "kairos_supervisor",
+]
 resolver = "3"
 
 [workspace.package]
