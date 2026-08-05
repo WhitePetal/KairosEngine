@@ -1,7 +1,9 @@
 //! Types that detect when their internal data mutate.
 
+mod params;
 mod tick;
 
+pub use params::*;
 pub use tick::*;
 
 /// The (arbitrarily chosen) minimum number of world tick increments between `check_tick` scans.

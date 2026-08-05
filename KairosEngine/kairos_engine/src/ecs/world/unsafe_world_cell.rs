@@ -2,7 +2,7 @@
 
 use std::{any::TypeId, cell::UnsafeCell, fmt::Debug, marker::PhantomData, ptr};
 
-use crate::ecs::{change_detection::Tick, component::{Component, ComponentId, Components}, entity::{Entities, Entity, EntityAllocator, EntityLocation}, resource::ResourceEntities, storage::Storages, world::{DeferredWorld, World, WorldId}};
+use crate::{ecs::{change_detection::Tick, component::{Component, ComponentId, Components, StorageType}, entity::{Entities, Entity, EntityAllocator, EntityLocation}, resource::ResourceEntities, storage::{ComponentSparseSet, Storages, Table}, world::{DeferredWorld, World, WorldId}}, ptr::Ptr};
 
 /// Variant of the [`World`] where resource and component accesses take `&self`, and the responsibility to avoid
 /// aliasing violations are given to the caller instead of being checked at compile-time by rust's unique XOR shared rule.
@@ -277,6 +277,28 @@ impl<'w> UnsafeWorldCell<'w> {
             self.unsafe_world()
         }.storages
     }
+
+    /// # Safety
+    /// - the returned `Table` is only used in ways that this [`UnsafeWorldCell`] has permission for.
+    /// - the returned `Table` is only used in ways that would not conflict with any existing borrows of world data.
+    #[inline]
+    unsafe fn fetch_table(self, location: EntityLocation) -> Option<&'w Table> {
+        // SAFETY:
+        // - caller ensures returned data is not misused and we have not created any borrows of component/resource data
+        // - `location` contains a valid `TableId`, so getting the table won't fail
+        unsafe { self.storages().tables.get(location.table_id) }
+    }
+
+    /// # Safety
+    /// - the returned `ComponentSparseSet` is only used in ways that this [`UnsafeWorldCell`] has permission for.
+    /// - the returned `ComponentSparseSet` is only used in ways that would not conflict with any existing
+    ///   borrows of world data.
+    #[inline]
+    unsafe fn fetch_sparse_set(self, component_id: ComponentId) -> Option<&'w ComponentSparseSet> {
+        // SAFETY: caller ensures returned data is not misused and we have not created any borrows
+        // of component/resource data
+        unsafe { self.storages() }.sparse_sets.get(component_id)
+    }
 }
 
 impl Debug for UnsafeWorldCell<'_> {
@@ -374,11 +396,56 @@ impl<'w> UnsafeEntityCell<'w> {
         self.contains_type_id(TypeId::of::<T>())
     }
 
+    /// # Safety
+    /// It is the caller's responsibility to ensure that
+    /// - the [`UnsafeEntityCell`] has permission to access the component
+    /// - no other mutable references to the component exist at the same time
+    #[inline]
     pub unsafe fn get<T: Component>(self) -> Option<&'w T> {
         let component_id = self.world.components().get_valid_id(TypeId::of::<T>())?;
-
+        // SAFETY:
+        // - `storage_type` is correct (T component_id + T::STORAGE_TYPE)
+        // - `location` is valid
+        // - proper aliasing is promised by caller
         unsafe {
-            todo!()
+            get_component(
+                self.world,
+                component_id,
+                T::STORAGE_TYPE,
+                self.entity,
+                self.location
+            )
+            // SAFETY: returned component is of type T
+            .map(|value| value.deref::<T>())
+        }
+    }
+}
+
+/// Get an untyped pointer to a particular [`Component`] on a particular [`Entity`] in the provided [`World`].
+///
+/// # Safety
+/// - `location` must refer to an archetype that contains `entity`
+///   the archetype
+/// - `component_id` must be valid
+/// - `storage_type` must accurately reflect where the components for `component_id` are stored.
+/// - the caller must ensure that no aliasing rules are violated
+#[inline]
+unsafe fn get_component(
+    world: UnsafeWorldCell<'_>,
+    component_id: ComponentId,
+    storage_type: StorageType,
+    entity: Entity,
+    location: EntityLocation
+) -> Option<Ptr<'_>> {
+    // SAFETY: component_id exists and is therefore valid
+    unsafe {
+        match storage_type {
+            StorageType::Table => {
+                let table = world.fetch_table(location)?;
+                // SAFETY: archetypes only store valid table_rows and caller ensure aliasing rules
+                table.get_component(component_id, location.table_row)
+            },
+            StorageType::SparseSet => world.fetch_sparse_set(component_id)?.get(entity)
         }
     }
 }
