@@ -13,9 +13,13 @@ pub mod unsafe_world_cell;
 
 mod deferred_world;
 mod entity_access;
+mod entity_fetch;
+
+pub mod error;
 
 pub use deferred_world::DeferredWorld;
 pub use entity_access::EntityWorldMut;
+pub use entity_fetch::{EntityFetcher, WorldEntityFetch};
 
 /// Stores and exposes operations on [entities](Entity), [components](Component), resources,
 /// and their associated metadata.
@@ -85,6 +89,12 @@ impl World {
         UnsafeWorldCell::new_mutable(self)
     }
 
+    /// Creates a new [`UnsafeWorldCell`] view with only read access to everything.
+    #[inline]
+    pub fn as_unsafe_world_cell_readonly(&self) -> UnsafeWorldCell<'_> {
+        UnsafeWorldCell::new_readonly(self)
+    }
+
     /// Prepares a [`ComponentsRegistrator`] for the world.
     #[inline]
     pub fn components_registrator(&mut self) -> ComponentsRegistrator<'_> {
@@ -92,7 +102,46 @@ impl World {
         unsafe { ComponentsRegistrator::new(&mut self.components, &mut self.component_ids) }
     }
 
+    /// Registers a new [`Component`] type and returns the [`ComponentId`] created for it.
+    ///
+    /// # Usage Notes
+    /// In most cases, you don't need to call this method directly since component registration
+    /// happens automatically during system initialization.
+    #[doc(alias = "register_resource")]
     pub fn register_component<T: Component>(&mut self) -> ComponentId {
-        todo!()
+        self.components_registrator().register_component::<T>()
     }
+
+    /// Returns the [`ComponentId`] of the given [`Component`] type `T`.
+    ///
+    /// The returned `ComponentId` is specific to the `World` instance
+    /// it was retrieved from and should not be used with another `World` instance.
+    ///
+    /// Returns [`None`] if the `Component` type has not yet been initialized within
+    /// the `World` using [`World::register_component`].
+    ///
+    /// ```
+    /// use bevy_ecs::prelude::*;
+    ///
+    /// let mut world = World::new();
+    ///
+    /// #[derive(Component)]
+    /// struct ComponentA;
+    ///
+    /// let component_a_id = world.register_component::<ComponentA>();
+    ///
+    /// assert_eq!(component_a_id, world.component_id::<ComponentA>().unwrap())
+    /// ```
+    ///
+    /// # See also
+    ///
+    /// * [`ComponentIdFor`](crate::component::ComponentIdFor)
+    /// * [`Components::component_id()`]
+    /// * [`Components::get_id()`]
+    #[inline]
+    pub fn component_id<T: Component>(&self) -> Option<ComponentId> {
+        self.components.component_id::<T>()
+    }
+
+    pub fn entity<F: WorldEntity
 }

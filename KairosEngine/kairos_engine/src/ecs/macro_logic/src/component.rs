@@ -459,7 +459,6 @@ impl DeriveComponent {
 
         let fqdefault = FQDefault.into_token_stream();
 
-        todo!();
         Ok(Some(quote! {}))
     }
 }

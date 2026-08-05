@@ -4,6 +4,7 @@ pub mod change_detection;
 pub mod component;
 pub mod entity;
 pub mod lifecycle;
+pub mod event;
 pub mod relationship;
 pub mod remote_allocator;
 pub mod resource;

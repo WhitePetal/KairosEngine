@@ -2,7 +2,7 @@
 
 use std::{cell::UnsafeCell, marker::PhantomData, ptr};
 
-use crate::ecs::world::World;
+use crate::ecs::{change_detection::Tick, component::Components, entity::{Entities, Entity, EntityAllocator, EntityLocation}, resource::ResourceEntities, storage::Storages, world::{DeferredWorld, World, WorldId}};
 
 /// Variant of the [`World`] where resource and component accesses take `&self`, and the responsibility to avoid
 /// aliasing violations are given to the caller instead of being checked at compile-time by rust's unique XOR shared rule.
@@ -73,10 +73,29 @@ unsafe impl Send for UnsafeWorldCell<'_> {}
 unsafe impl Sync for UnsafeWorldCell<'_> {}
 
 impl<'w> From<&'w mut World> for UnsafeWorldCell<'w> {
-    fn from(value: &'w mut World) -> Self {}
+    fn from(value: &'w mut World) -> Self {
+        value.as_unsafe_world_cell()
+    }
+}
+
+impl<'w> From<&'w World> for UnsafeWorldCell<'w> {
+    fn from(value: &'w World) -> Self {
+        value.as_unsafe_world_cell_readonly()
+    }
 }
 
 impl<'w> UnsafeWorldCell<'w> {
+    /// Creates a [`UnsafeWorldCell`] that can be used to access everything immutably
+    #[inline]
+    pub(crate) fn new_readonly(world: &'w World) -> Self {
+        Self {
+            ptr: ptr::from_ref(world).cast_mut(),
+            #[cfg(debug_assertions)]
+            allows_mutable_access: false,
+            _marker: PhantomData,
+        }
+    }
+
     /// Creates [`UnsafeWorldCell`] that can be used to access everything mutably
     #[inline]
     pub(crate) fn new_mutable(world: &'w mut World) -> Self {
@@ -87,4 +106,196 @@ impl<'w> UnsafeWorldCell<'w> {
             _marker: PhantomData,
         }
     }
+
+    /// Creates [`UnsafeWorldCell`] that can be used to access everything mutably
+    #[inline]
+    pub(crate) fn new_mutable(world: &'w mut World) -> Self {
+        Self {
+            ptr: ptr::from_mut(world),
+            #[cfg(debug_assertions)]
+            allows_mutable_access: true,
+            _marker: PhantomData
+        }
+    }
+
+    #[cfg_attr(debug_assertions, inline(never), track_caller)]
+    #[cfg_attr(not(debug_assertions), inline(always))]
+    pub(crate) fn assert_allows_mutable_access(self) {
+        // This annotation is needed because the
+        // allows_mutable_access field doesn't exist otherwise.
+        // Kinda weird, since debug_assert would never be called,
+        // but CI complained in https://github.com/bevyengine/bevy/pull/17393
+        #[cfg(debug_assertions)]
+        debug_assert!(
+            self.allows_mutable_access,
+            "mutating world data via 'World::as_unsafe_world_cell_readonly' is forbidden"
+        );
+    }
+
+    /// Gets a mutable reference to the [`World`] this [`UnsafeWorldCell`] belongs to.
+    /// This is an incredibly error-prone operation and is only valid in a small number of circumstances.
+    ///
+    /// Calling this method implies mutable access to the *whole* world (see first point on safety section
+    /// below), which includes all entities, components, and resources. Notably, calling this on
+    /// [`WorldQuery::init_fetch`](crate::query::WorldQuery::init_fetch) and
+    /// [`SystemParam::get_param`](crate::system::SystemParam::get_param) are most likely *unsound* unless
+    /// you can prove that the underlying [`World`] is exclusive, which in normal circumstances is not.
+    ///
+    /// # Safety
+    /// - `self` must have been obtained from a call to [`World::as_unsafe_world_cell`]
+    ///   (*not* `as_unsafe_world_cell_readonly` or any other method of construction that
+    ///   does not provide mutable access to the entire world).
+    ///   - This means that if you have an `UnsafeWorldCell` that you didn't create yourself,
+    ///     it is likely *unsound* to call this method.
+    /// - The returned `&mut World` *must* be unique: it must never be allowed to exist
+    ///   at the same time as any other borrows of the world or any accesses to its data.
+    ///   This includes safe ways of accessing world data, such as [`UnsafeWorldCell::archetypes`].
+    ///   - Note that the `&mut World` *may* exist at the same time as instances of `UnsafeWorldCell`,
+    ///     so long as none of those instances are used to access world data in any way
+    ///     while the mutable borrow is active.
+    ///
+    /// [//]: # (This test fails miri.)
+    /// ```no_run
+    /// # use bevy_ecs::prelude::*;
+    /// # #[derive(Component)] struct Player;
+    /// # fn store_but_dont_use<T>(_: T) {}
+    /// # let mut world = World::new();
+    /// // Make an UnsafeWorldCell.
+    /// let world_cell = world.as_unsafe_world_cell();
+    ///
+    /// // SAFETY: `world_cell` was originally created from `&mut World`.
+    /// // We must be sure not to access any world data while `world_mut` is active.
+    /// let world_mut = unsafe { world_cell.world_mut() };
+    ///
+    /// // We can still use `world_cell` so long as we don't access the world with it.
+    /// store_but_dont_use(world_cell);
+    ///
+    /// // !!This is unsound!! Even though this method is safe, we cannot call it until
+    /// // `world_mut` is no longer active.
+    /// let tick = world_cell.change_tick();
+    ///
+    /// // Use mutable access to spawn an entity.
+    /// world_mut.spawn(Player);
+    ///
+    /// // Since we never use `world_mut` after this, the borrow is released
+    /// // and we are once again allowed to access the world using `world_cell`.
+    /// let archetypes = world_cell.archetypes();
+    /// ```
+    #[inline]
+    pub unsafe fn world_mut(self) -> &'w mut World {
+        self.assert_allows_mutable_access();
+        // SAFETY:
+        // - caller ensures the created `&mut World` is the only borrow of world
+        unsafe { &mut *self.ptr }
+    }
+
+    /// Gets a reference to the [`&World`](World) this [`UnsafeWorldCell`] belongs to.
+    /// This can be used for arbitrary shared/readonly access.
+    ///
+    /// # Safety
+    /// - must have permission to access the whole world immutably
+    /// - there must be no live exclusive borrows of world data
+    /// - there must be no live exclusive borrow of world
+    #[inline]
+    pub unsafe fn world(self) -> &'w World {
+        // SAFETY:
+        // - caller ensures there is no `&mut World` this makes it okay to make a `&World`
+        // - caller ensures there are no mutable borrows of world data, this means the caller cannot
+        //   misuse the returned `&World`
+        unsafe { self.unsafe_world() }
+    }
+
+    /// Gets a reference to the [`World`] this [`UnsafeWorldCell`] belong to.
+    /// This can be used for arbitrary read only access of world metadata
+    ///
+    /// You should attempt to use various safe methods on [`UnsafeWorldCell`] for
+    /// metadata access before using this method.
+    ///
+    /// # Safety
+    /// - must only be used to access world metadata
+    #[inline]
+    pub unsafe fn world_metadata(self) -> &'w World {
+        // SAFETY: caller ensures that returned reference is not used to violate aliasing rules
+        unsafe { self.unsafe_world() }
+    }
+
+    /// Variant on [`UnsafeWorldCell::world`] solely used for implementing this type's methods.
+    /// It allows having an `&World` even with live mutable borrows of components and resources
+    /// so the returned `&World` should not be handed out to safe code and care should be taken
+    /// when working with it.
+    ///
+    /// Deliberately private as the correct way to access data in a [`World`] that may have existing
+    /// mutable borrows of data inside it, is to use [`UnsafeWorldCell`].
+    ///
+    /// # Safety
+    /// - must not be used in a way that would conflict with any
+    ///   live exclusive borrows of world data
+    #[inline]
+    unsafe fn unsafe_world(self) -> &'w World {
+        // SAFETY:
+        // - caller ensures that the returned `&World` is not used in a way that would conflict
+        //   with any existing mutable borrows of world data
+        unsafe { &*self.ptr }
+    }
+
+    /// Retrieves this world's unique [ID](WorldId).
+    #[inline]
+    pub fn id(self) -> WorldId {
+        unsafe { self.world_metadata() }.id
+    }
+
+    /// Retrieves this world's [`Entities`] collection.
+    #[inline]
+    pub fn entities(self) -> &'w Entities {
+        // SAFETY:
+        // - we only access world metadata
+        &unsafe {
+            self.world_metadata()
+        }.entities
+    }
+
+    /// Retrieves this world's [`Entities`] collection.
+    #[inline]
+    pub fn entity_allocator(self) -> &'w EntityAllocator {
+        // SAFETY:
+        // - we only access world metadata
+        &unsafe {
+            self.world_metadata()
+        }.entity_allocator
+    }
+
+    /// Retrieves this world's [`Components`] collection.
+    #[inline]
+    pub fn components(self) -> &'w Components {
+        // SAFETY:
+        // - we only access world metadata
+        &unsafe {
+            self.world_metadata()
+        }.components
+    }
+
+    /// Provides unchecked access to the internal data stores of the [`World`].
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that this is only used to access world data
+    /// that this [`UnsafeWorldCell`] is allowed to.
+    /// As always, any mutable access to a component must not exist at the same
+    /// time as any other accesses to that same component.
+    #[inline]
+    pub unsafe fn storages(self) -> &'w Storages {
+        &unsafe {
+            self.unsafe_world()
+        }.storages
+    }
+}
+
+/// An interior-mutable reference to a particular [`Entity`] and all of its components
+#[derive(Copy, Clone)]
+pub struct UnsafeEntityCell<'w> {
+    world: UnsafeWorldCell<'w>,
+    entity: Entity,
+    location: EntityLocation,
+    last_run: Tick,
+    this_run: Tick,
 }

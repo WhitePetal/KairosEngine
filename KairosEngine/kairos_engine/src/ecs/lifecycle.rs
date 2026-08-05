@@ -51,10 +51,23 @@
 //! This is used to skip [`TypeId`](core::any::TypeId) lookups in hot paths.
 //!
 
-use crate::ecs::world::DeferredWorld;
+use crate::{debug::MaybeLocation, ecs::{component::{Component, ComponentId}, entity::Entity, relationship::RelationshipHookMode, world::DeferredWorld}};
 
 /// The type used for [`Component`] lifecycle hooks such as `on_add`, `on_insert` or `on_remove`.
 pub type ComponentHook = for<'w> fn(DeferredWorld<'w>);
+
+/// Context provided to a [`ComponentHook`].
+#[derive(Clone, Copy, Debug)]
+pub struct HookContext {
+    /// The [`Entity`] this hook was invoked for.
+    pub entity: Entity,
+    /// The [`ComponentId`] this hook was invoked for.
+    pub component_id: ComponentId,
+    /// The caller location is `Some` if the `track_caller` feature is enabled.
+    pub caller: MaybeLocation,
+    /// Configures how relationship hooks will run
+    pub relationship_hook_mode: RelationshipHookMode,
+}
 
 /// [`World`]-mutating functions that run as part of lifecycle events of a [`Component`].
 ///
@@ -116,6 +129,166 @@ pub struct ComponentHooks {
     pub(crate) on_discard: Option<ComponentHook>,
     pub(crate) on_remove: Option<ComponentHook>,
     pub(crate) on_despawn: Option<ComponentHook>,
+}
+
+impl ComponentHooks {
+    /// Attempt to register a [`ComponentHook`] that will be run when this component is added to an entity.
+    ///
+    /// This is a fallible version of [`Self::on_add`].
+    ///
+    /// Returns `None` if the component already has an `on_add` hook.
+    pub fn try_on_add(&mut self, hook: ComponentHook) -> Option<&mut Self> {
+        if self.on_add.is_some() {
+            return None;
+        }
+        self.on_add = Some(hook);
+        Some(self)
+    }
+
+    /// Register a [`ComponentHook`] that will be run when this component is added to an entity.
+    /// An `on_add` hook will always run before `on_insert` hooks. Spawning an entity counts as
+    /// adding all of its components.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if the component already has an `on_add` hook
+    pub fn on_add(&mut self, hook: ComponentHook) -> &mut Self {
+        self.try_on_add(hook)
+            .expect("Component already has an on_add hook")
+    }
+
+    /// Attempt to register a [`ComponentHook`] that will be run when this component is added (with `.insert`)
+    ///
+    /// This is a fallible version of [`Self::on_insert`].
+    ///
+    /// Returns `None` if the component already has an `on_insert` hook.
+    pub fn try_on_insert(&mut self, hook: ComponentHook) -> Option<&mut Self> {
+        if self.on_insert.is_some() {
+            return None;
+        }
+        self.on_insert = Some(hook);
+        Some(self)
+    }
+
+    /// Register a [`ComponentHook`] that will be run when this component is added (with `.insert`)
+    /// or replaced.
+    ///
+    /// An `on_insert` hook always runs after any `on_add` hooks (if the entity didn't already have the component).
+    ///
+    /// # Warning
+    ///
+    /// The hook won't run if the component is already present and is only mutated, such as in a system via a query.
+    /// As a result, this needs to be combined with immutable components to serve as a mechanism for reliably updating indexes and other caches.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if the component already has an `on_insert` hook
+    pub fn on_insert(&mut self, hook: ComponentHook) -> &mut Self {
+        self.try_on_insert(hook)
+            .expect("Component already has an on_insert hook")
+    }
+
+    /// Attempt to register a [`ComponentHook`] that will be run when this component is replaced (with `.insert`) or removed
+    ///
+    /// This is a fallible version of [`Self::on_discard`].
+    ///
+    /// Returns `None` if the component already has an `on_discard` hook.
+    pub fn try_on_discard(&mut self, hook: ComponentHook) -> Option<&mut Self> {
+        if self.on_discard.is_some() {
+            return None;
+        }
+        self.on_discard = Some(hook);
+        Some(self)
+    }
+
+    /// Register a [`ComponentHook`] that will be run when this component is about to be dropped,
+    /// such as being replaced (with `.insert`) or removed.
+    ///
+    /// If this component is inserted onto an entity that already has it, this hook will run before the value is replaced,
+    /// allowing access to the previous data just before it is dropped.
+    /// This hook does *not* run if the entity did not already have this component.
+    ///
+    /// An `on_discard` hook always runs before any `on_remove` hooks (if the component is being removed from the entity).
+    ///
+    /// # Warning
+    ///
+    /// The hook won't run if the component is already present and is only mutated, such as in a system via a query.
+    /// As a result, this needs to be combined with immutable components to serve as a mechanism for reliably updating indexes and other caches.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if the component already has an `on_discard` hook
+    pub fn on_discard(&mut self, hook: ComponentHook) -> &mut Self {
+        self.try_on_discard(hook)
+            .expect("Component already has an on_discard hook")
+    }
+
+    /// Attempt to register a [`ComponentHook`] that will be run when this component is removed from an entity.
+    ///
+    /// This is a fallible version of [`Self::on_remove`].
+    ///
+    /// Returns `None` if the component already has an `on_remove` hook.
+    pub fn try_on_remove(&mut self, hook: ComponentHook) -> Option<&mut Self> {
+        if self.on_remove.is_some() {
+            return None;
+        }
+        self.on_remove = Some(hook);
+        Some(self)
+    }
+
+    /// Register a [`ComponentHook`] that will be run when this component is removed from an entity.
+    /// Despawning an entity counts as removing all of its components.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if the component already has an `on_remove` hook
+    pub fn on_remove(&mut self, hook: ComponentHook) -> &mut Self {
+        self.try_on_remove(hook)
+            .expect("Component already has an on_remove hook")
+    }
+
+    /// Attempt to register a [`ComponentHook`] that will be run for each component on an entity when it is despawned.
+    ///
+    /// This is a fallible version of [`Self::on_despawn`].
+    ///
+    /// Returns `None` if the component already has an `on_despawn` hook.
+    pub fn try_on_despawn(&mut self, hook: ComponentHook) -> Option<&mut Self> {
+        if self.on_despawn.is_some() {
+            return None;
+        }
+        self.on_despawn = Some(hook);
+        Some(self)
+    }
+
+    /// Register a [`ComponentHook`] that will be run for each component on an entity when it is despawned.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if the component already has an `on_despawn` hook
+    pub fn on_despawn(&mut self, hook: ComponentHook) -> &mut Self {
+        self.try_on_despawn(hook)
+            .expect("Component already has an on_despawn hook")
+    }
+
+    pub(crate) fn update_from_component<C: Component + ?Sized>(&mut self) -> &mut Self {
+        if let Some(hook) = C::on_add() {
+            self.on_add(hook);
+        }
+        if let Some(hook) = C::on_insert() {
+            self.on_insert(hook);
+        }
+        if let Some(hook) = C::on_discard() {
+            self.on_discard(hook);
+        }
+        if let Some(hook) = C::on_remove() {
+            self.on_remove(hook);
+        }
+        if let Some(hook) = C::on_despawn() {
+            self.on_despawn(hook);
+        }
+
+        self
+    }
 }
 
 // TODO!

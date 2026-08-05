@@ -16,8 +16,7 @@ pub use required::*;
 pub use kairos_ecs_macros::Component;
 
 use crate::ecs::{
-    entity::EntityMapper, lifecycle::ComponentHook, relationship::ComponentRelationshipAccessor,
-    world::FromWorld,
+    self, entity::EntityMapper, lifecycle::ComponentHook, relationship::ComponentRelationshipAccessor, world::FromWorld
 };
 
 /// The storage used for a specific component type.
@@ -781,4 +780,47 @@ impl<T: Component> From<ComponentIdFor<'_, T>> for ComponentId {
     }
 }
 
-pub struct DerveRelationshipTest {}
+// pub struct DerveRelationshipTest {}
+
+// pub struct DerveRelationshipTargetTest {}
+
+// impl ecs::component::Component for DerveRelationshipTest {
+//     const STORAGE_TYPE: StorageType = StorageType::Table;
+
+//     type Mutability = Mutable;
+// }
+// impl ecs::component::Component for DerveRelationshipTargetTest {
+//     const STORAGE_TYPE: StorageType = StorageType::Table;
+
+//     type Mutability = Mutable;
+// }
+
+// impl ecs::relationship::RelationshipTarget for DerveRelationshipTargetTest {
+//     type Relationship = DerveRelationshipTest;
+// }
+
+// impl ecs::relationship::Relationship for DerveRelationshipTest {
+//     type RelationshipTarget = DerveRelationshipTargetTest;
+//     const ALLOW_SELF_REFERENITAL: bool = false;
+
+//     fn get(&self) -> ecs::entity::Entity {
+//         todo!()
+//     }
+
+//     fn from(entity: ecs::entity::Entity) -> Self {
+//         todo!()
+//     }
+
+//     fn set_risky(&mut self, entity: ecs::entity::Entity) {
+//         todo!()
+//     }
+
+//     fn on_insert(
+//         mut world: ecs::world::DeferredWorld,
+//         HookContext {
+
+//         }
+//     ) {
+//         todo!()
+//     }
+// }

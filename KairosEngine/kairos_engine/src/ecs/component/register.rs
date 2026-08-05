@@ -168,7 +168,7 @@ impl<'w> ComponentsRegistrator<'w> {
             TypeId::of::<T>(),
             ComponentDescriptor::new::<T>,
             T::register_required_components,
-            ComponentHooks::update_from_component::<T>(),
+            ComponentHooks::update_from_component::<T>,
         )
     }
 
