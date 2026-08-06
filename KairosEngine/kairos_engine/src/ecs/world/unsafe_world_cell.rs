@@ -2,17 +2,15 @@
 
 use std::{any::TypeId, cell::UnsafeCell, fmt::Debug, marker::PhantomData, ptr};
 
+use serde::de::value;
+use wgpu::naga::valid;
+
 use crate::{
-    debug::DebugCheckedUnwrap,
+    debug::{DebugCheckedUnwrap, MaybeLocation},
     ecs::{
-        change_detection::{ComponentTickCells, ComponentTicksRef, Ref, Tick},
-        component::{Component, ComponentId, Components, StorageType},
-        entity::{Entities, Entity, EntityAllocator, EntityLocation},
-        resource::ResourceEntities,
-        storage::{ComponentSparseSet, Storages, Table},
-        world::{DeferredWorld, World, WorldId},
+        change_detection::{ComponentTickCells, ComponentTicks, ComponentTicksMut, ComponentTicksRef, Mut, Ref, Tick}, component::{Component, ComponentId, Components, Mutable, StorageType}, entity::{ContainsEntity, Entities, Entity, EntityAllocator, EntityLocation}, query::{QueryAccessError, ReleaseStateQueryData, SingleEntityQueryData}, resource::ResourceEntities, storage::{ComponentSparseSet, Storages, Table}, world::{DeferredWorld, World, WorldId}
     },
-    ptr::Ptr,
+    ptr::{Ptr, UnsafeCellDeref},
 };
 
 /// Variant of the [`World`] where resource and component accesses take `&self`, and the responsibility to avoid
@@ -431,6 +429,10 @@ impl<'w> UnsafeEntityCell<'w> {
         let change_tick = self.this_run;
         let component_id = self.world.components().get_valid_id(TypeId::of::<T>())?;
 
+        // SAFETY:
+        // - `storage_type` is correct (T component_id + T::STORAGE_TYPE)
+        // - `location` is valid
+        // - proper aliasing is promised by caller
         unsafe {
             get_component_and_ticks(
                 self.world,
@@ -444,6 +446,151 @@ impl<'w> UnsafeEntityCell<'w> {
                 ticks: ComponentTicksRef::from_tick_cells(cells, last_change_tick, change_tick),
             })
         }
+    }
+
+    /// Retrieves the change ticks for the given component. This can be useful for implementing change
+    /// detection in custom runtimes.
+    ///
+    /// # Safety
+    /// It is the caller's responsibility to ensure that
+    /// - the [`UnsafeEntityCell`] has permission to access the component
+    /// - no other mutable references to the component exist at the same time
+    #[inline]
+    pub unsafe fn get_change_ticks<T: Component>(self) -> Option<ComponentTicks> {
+        let component_id = self.world.components().get_valid_id(TypeId::of::<T>())?;
+
+        // SAFETY:
+        // - entity location is valid
+        // - proper world access is promised by caller
+        unsafe {
+            get_ticks(
+                self.world,
+                component_id,
+                T::STORAGE_TYPE,
+                self.entity,
+                self.location,
+            )
+        }
+    }
+
+    /// Get the [`MaybeLocation`] from where the given [`Component`] was last changed from.
+    /// This contains information regarding the last place (in code) that changed this component and can be useful for debugging.
+    /// For more information, see [`Location`](https://doc.rust-lang.org/nightly/core/panic/struct.Location.html), and enable the `track_location` feature.
+    ///
+    /// # Safety
+    /// It is the caller's responsibility to ensure that
+    /// - the [`UnsafeEntityCell`] has permission to access the component
+    /// - no other mutable references to the component exist at the same time
+    #[inline]
+    pub unsafe fn get_changed_by<T: Component>(self) -> Option<MaybeLocation> {
+        let component_id = self.world.components().get_valid_id(TypeId::of::<T>())?;
+
+        // SAFETY:
+        // - entity location is valid
+        // - proper world access is promised by caller
+        unsafe {
+            get_changed_by(
+                self.world(),
+                component_id,
+                T::STORAGE_TYPE,
+                self.entity,
+                self.location
+            )
+        }
+    }
+
+    /// Retrieves the change ticks for the given [`ComponentId`]. This can be useful for implementing change
+    /// detection in custom runtimes.
+    ///
+    /// **You should prefer to use the typed API [`UnsafeEntityCell::get_change_ticks`] where possible and only
+    /// use this in cases where the actual component types are not known at
+    /// compile time.**
+    ///
+    /// # Safety
+    /// It is the caller's responsibility to ensure that
+    /// - the [`UnsafeEntityCell`] has permission to access the component
+    /// - no other mutable references to the component exist at the same time
+    #[inline]
+    pub unsafe fn get_change_ticks_by_id(
+        &self,
+        component_id: ComponentId
+    ) -> Option<ComponentTicks> {
+        let info = self.world.components().get_info(component_id)?;
+        // SAFETY:
+        // - entity location and entity is valid
+        // - world access is immutable, lifetime tied to `&self`
+        // - the storage type provided is correct for T
+        unsafe {
+            get_ticks(
+                self.world,
+                component_id,
+                info.storage_type(),
+                self.entity,
+                self.location
+            )
+        }
+    }
+
+    /// # Safety
+    /// It is the caller's responsibility to ensure that
+    /// - the [`UnsafeEntityCell`] has permission to access the component mutably
+    /// - no other references to the component exist at the same time
+    /// - The component `T` is mutable
+    #[inline]
+    pub(crate) unsafe fn get_mut_using_ticks_assume_mutable<T: Component>(
+        &self,
+        last_change_tick: Tick,
+        change_tick: Tick,
+    ) -> Option<Mut<'w, T>> {
+        self.world.assert_allows_mutable_access();
+
+        let component_id = self.world.components().get_valid_id(TypeId::of::<T>())?;
+
+        // SAFETY:
+        // - `storage_type` is correct
+        // - `location` is valid
+        // - aliasing rules are ensured by caller
+        unsafe {
+            get_component_and_ticks(
+                self.world,
+                component_id,
+                T::STORAGE_TYPE,
+                self.entity,
+                self.location
+            )
+            .map(|(value, cells)| Mut {
+                value: value.assert_unique().deref_mut::<T>(),
+                ticks: ComponentTicksMut::from_tick_cells(cells, last_change_tick, change_tick)
+            })
+        }
+    }
+
+    /// # Safety
+    /// It is the caller's responsibility to ensure that
+    /// - the [`UnsafeEntityCell`] has permission to access the component mutably
+    /// - no other references to the component exist at the same time
+    /// - the component `T` is mutable
+    #[inline]
+    pub unsafe fn get_mut_assume_mutable<T: Component>(self) -> Option<Mut<'w, T>> {
+        unsafe { self.getmut }
+    }
+
+    /// # Safety
+    /// It is the caller's responsibility to ensure that
+    /// - the [`UnsafeEntityCell`] has permission to access the component mutably
+    /// - no other references to the component exist at the same time
+    #[inline]
+    pub unsafe fn get_mut<T: Component<Mutability = Mutable>>(self) -> Option<Mut<'w, T>> {
+        unsafe { self.get_mut_assume_mutable() }
+    }
+
+    pub(crate) unsafe fn get_components<Q: ReleaseStateQueryData + SingleEntityQueryData>(
+        &self
+    ) -> Result<Q::Item<'w, 'static>, QueryAccessError> {
+        let state = unsafe {
+            let world = self.world().world();
+            todo!()
+        };
     }
 }
 
@@ -513,6 +660,76 @@ unsafe fn get_component_and_ticks(
             }
             StorageType::SparseSet => world.fetch_sparse_set(component_id)?.get_with_ticks(entity),
         }
+    }
+}
+
+/// Get the [`ComponentTicks`] on a particular [`Entity`]
+///
+/// # Safety
+/// - `location` must refer to an archetype that contains `entity`
+///   the archetype
+/// - `component_id` must be valid
+/// - `storage_type` must accurately reflect where the components for `component_id` are stored.
+/// - the caller must ensure that no aliasing rules are violated
+#[inline]
+unsafe fn get_ticks(
+    world: UnsafeWorldCell<'_>,
+    component_id: ComponentId,
+    storage_type: StorageType,
+    entity: Entity,
+    location: EntityLocation
+) -> Option<ComponentTicks> {
+    unsafe  {
+        match storage_type {
+            StorageType::Table => {
+                let table = world.fetch_table(location)?;
+                // SAFETY: archetypes only store valid table_rows and caller ensure aliasing rules
+                table.get_ticks_unchecked(component_id, location.table_row)
+            },
+            StorageType::SparseSet => world.fetch_sparse_set(component_id)?.get_ticks(entity),
+        }
+    }
+}
+
+/// Get the [`MaybeLocation`] for a [`Component`] on a particular [`Entity`].
+/// This contains information regarding the last place (in code) that changed this component and can be useful for debugging.
+///
+/// # Safety
+/// - `location` must refer to an archetype that contains `entity`
+///   the archetype
+/// - `component_id` must be valid
+/// - `storage_type` must accurately reflect where the components for `component_id` are stored.
+/// - the caller must ensure that no aliasing rules are violated
+#[inline]
+unsafe fn get_changed_by(
+    world: UnsafeWorldCell<'_>,
+    component_id: ComponentId,
+    storage_type: StorageType,
+    entity: Entity,
+    location: EntityLocation,
+) -> Option<MaybeLocation> {
+    let caller = unsafe {
+        match storage_type {
+            StorageType::Table => world
+                .fetch_table(location)?
+                .get_changed_by(component_id, location.table_row),
+            StorageType::SparseSet => world.fetch_sparse_set(component_id)?.get_changed_by(entity),
+        }
+    };
+
+    Some(
+        caller
+            .transpose()?
+            // SAFETY: This function is being called through an exclusive mutable reference to Self
+            .map(|changed_by| unsafe {
+                *changed_by.deref()
+            })
+    )
+}
+
+impl ContainsEntity for UnsafeEntityCell<'_> {
+    fn entity(&self) -> Entity {
+        self.id()
     }
 }
 

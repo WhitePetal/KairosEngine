@@ -1,8 +1,8 @@
+pub mod entity;
+pub mod component;
+pub mod change_detection;
 pub mod archetype;
 pub mod bundle;
-pub mod change_detection;
-pub mod component;
-pub mod entity;
 pub mod event;
 pub mod lifecycle;
 pub mod relationship;
@@ -10,3 +10,4 @@ pub mod remote_allocator;
 pub mod resource;
 pub mod storage;
 pub mod world;
+pub mod query;

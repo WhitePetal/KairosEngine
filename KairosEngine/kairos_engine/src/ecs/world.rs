@@ -3,10 +3,7 @@ mod identifier;
 pub use identifier::WorldId;
 
 use crate::ecs::{
-    component::{Component, ComponentId, ComponentIds, Components, ComponentsRegistrator},
-    entity::{Entities, EntityAllocator},
-    storage::Storages,
-    world::unsafe_world_cell::UnsafeWorldCell,
+    component::{Component, ComponentId, ComponentIds, Components, ComponentsRegistrator}, entity::{Entities, EntityAllocator}, resource::ResourceEntities, storage::Storages, world::unsafe_world_cell::UnsafeWorldCell
 };
 
 pub mod unsafe_world_cell;
@@ -47,6 +44,8 @@ pub struct World {
     pub(crate) components: Components,
     pub(crate) component_ids: ComponentIds,
     pub(crate) storages: Storages,
+    pub(crate) resource_entities: ResourceEntities,
+    pub(crate) archetypes: Archetypes,
 }
 
 /// Creates an instance of the type this trait is implemented for

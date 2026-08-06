@@ -117,6 +117,8 @@ impl ResourceEntities {
     }
 }
 
+// TODO!
+
 // /// A marker component for entities that have a Resource component.
 // #[derive(Component, Debug)]
 // #[component(on_insert, on_discard, on_despawn)]
