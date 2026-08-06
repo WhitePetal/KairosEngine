@@ -51,7 +51,15 @@
 //! This is used to skip [`TypeId`](core::any::TypeId) lookups in hot paths.
 //!
 
-use crate::{debug::MaybeLocation, ecs::{component::{Component, ComponentId}, entity::Entity, relationship::RelationshipHookMode, world::DeferredWorld}};
+use crate::{
+    debug::MaybeLocation,
+    ecs::{
+        component::{Component, ComponentId},
+        entity::Entity,
+        relationship::RelationshipHookMode,
+        world::DeferredWorld,
+    },
+};
 
 /// The type used for [`Component`] lifecycle hooks such as `on_add`, `on_insert` or `on_remove`.
 pub type ComponentHook = for<'w> fn(DeferredWorld<'w>);

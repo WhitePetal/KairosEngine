@@ -143,5 +143,5 @@ impl World {
         self.components.component_id::<T>()
     }
 
-    pub fn entity<F: WorldEntity
+    // pub fn entity<F: WorldEntity
 }

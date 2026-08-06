@@ -2,9 +2,12 @@
 
 mod params;
 mod tick;
+mod traits;
 
 pub use params::*;
 pub use tick::*;
+
+pub use traits::{DetectChanges, DetectChangesMut};
 
 /// The (arbitrarily chosen) minimum number of world tick increments between `check_tick` scans.
 ///

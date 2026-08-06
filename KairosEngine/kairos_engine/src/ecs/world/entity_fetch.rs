@@ -1,5 +1,7 @@
-use crate::ecs::{entity::EntityNotSpawnedError, world::{error::EntityMutableFetchError, unsafe_world_cell::UnsafeWorldCell}};
-
+use crate::ecs::{
+    entity::{Entity, EntityNotSpawnedError},
+    world::{error::EntityMutableFetchError, unsafe_world_cell::UnsafeWorldCell},
+};
 
 /// Types that can be used to fetch [`Entity`] references from a [`World`].
 ///
@@ -51,7 +53,7 @@ pub unsafe trait WorldEntityFetch {
     /// - Returns [`EntityNotSpawnedError`] if the entity does not exist.
     unsafe fn fetch_ref(
         self,
-        cell: UnsafeWorldCell<'_>
+        cell: UnsafeWorldCell<'_>,
     ) -> Result<Self::Ref<'_>, EntityNotSpawnedError>;
 
     /// Returns mutable reference(s) to the entities with the given [`Entity`]
@@ -70,7 +72,7 @@ pub unsafe trait WorldEntityFetch {
     ///   requested mutably more than once.
     unsafe fn fetch_mut(
         self,
-        cell: UnsafeWorldCell<'_>
+        cell: UnsafeWorldCell<'_>,
     ) -> Result<Self::Mut<'_>, EntityMutableFetchError>;
 
     /// Returns mutable reference(s) to the entities with the given [`Entity`]
@@ -93,11 +95,13 @@ pub unsafe trait WorldEntityFetch {
     ///   requested mutably more than once.
     unsafe fn fetch_deferred_mut(
         self,
-        cell: UnsafeWorldCell<'_>
+        cell: UnsafeWorldCell<'_>,
     ) -> Result<Self::DeferredMut<'_>, EntityMutableFetchError>;
 }
 
-
+unsafe impl WorldEntityFetch for Entity {
+    type Ref<'w> = EntityRef;
+}
 
 /// Provides a safe interface for non-structural access to the entities in a [`World`].
 ///
@@ -121,5 +125,5 @@ impl<'w> EntityFetcher<'w> {
         Self { cell }
     }
 
-    pub fn get
+    // pub fn get
 }

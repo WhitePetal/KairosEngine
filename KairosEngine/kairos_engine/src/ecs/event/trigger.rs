@@ -1,5 +1,1 @@
-
-
-pub unsafe trait Trigger<E: Event> {
-
-}
+pub unsafe trait Trigger<E: Event> {}

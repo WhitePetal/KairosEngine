@@ -16,7 +16,8 @@ pub use required::*;
 pub use kairos_ecs_macros::Component;
 
 use crate::ecs::{
-    self, entity::EntityMapper, lifecycle::ComponentHook, relationship::ComponentRelationshipAccessor, world::FromWorld
+    self, entity::EntityMapper, lifecycle::ComponentHook,
+    relationship::ComponentRelationshipAccessor, world::FromWorld,
 };
 
 /// The storage used for a specific component type.

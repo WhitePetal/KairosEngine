@@ -4,7 +4,10 @@ use std::{marker::PhantomData, sync::Arc};
 
 use crate::{
     ecs::{
-        component::{Component, ComponentId, Components, Mutable}, entity::Entity, lifecycle::HookContext, world::DeferredWorld
+        component::{Component, ComponentId, Components, Mutable},
+        entity::Entity,
+        lifecycle::HookContext,
+        world::DeferredWorld,
     },
     ptr::Ptr,
 };
@@ -138,15 +141,15 @@ pub trait Relationship: Component + Sized {
             caller,
             relationship_hook_mode,
             ..
-        }: HookContext
+        }: HookContext,
     ) {
         match relationship_hook_mode {
-            RelationshipHookMode::Run => {},
+            RelationshipHookMode::Run => {}
             RelationshipHookMode::RunIfNotLinked => {
                 if <Self::RelationshipTarget as RelationshipTarget>::LINKED_SPAWN {
                     return;
                 }
-            },
+            }
             RelationshipHookMode::Skip => return,
         }
     }
@@ -175,7 +178,7 @@ pub enum RelationshipHookMode {
     /// Relationship insert/discard hooks will run if [`RelationshipTarget::LINKED_SPAWN`] is false
     RunIfNotLinked,
     /// Relationship insert/discard hooks will always be skipped
-    Skip
+    Skip,
 }
 
 #[derive(Clone, Debug, Default)]

@@ -1,7 +1,5 @@
 use crate::ecs::world::unsafe_world_cell::UnsafeEntityCell;
 
-
-
 /// Provides mutable access to a single entity and all of its components.
 ///
 /// Contrast with [`EntityWorldMut`], which allows adding and removing components,

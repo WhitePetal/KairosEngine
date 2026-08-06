@@ -1,6 +1,7 @@
-use crate::ecs::{entity::{ContainsEntity, Entity}, world::World};
-
-
+use crate::ecs::{
+    entity::{ContainsEntity, Entity},
+    world::World,
+};
 
 // #[derive(Message, Copy, Clone, PartialEq, Eq, Debug)]
 // struct TestEvent {

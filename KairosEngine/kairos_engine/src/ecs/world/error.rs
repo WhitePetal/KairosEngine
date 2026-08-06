@@ -1,7 +1,5 @@
 use crate::ecs::entity::{Entity, EntityNotSpawnedError};
 
-
-
 /// An error that occurs when fetching entities mutably from a world.
 #[derive(thiserror::Error, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EntityMutableFetchError {

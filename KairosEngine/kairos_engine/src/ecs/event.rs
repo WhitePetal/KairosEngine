@@ -1,6 +1,5 @@
 //! [`Event`] functionality.
 
-
 mod trigger;
 
 use std::marker::PhantomData;
