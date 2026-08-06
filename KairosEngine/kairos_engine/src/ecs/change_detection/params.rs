@@ -1,16 +1,18 @@
-use std::{cell::UnsafeCell, ops::{Deref, DerefMut}, panic::Location};
+use std::{
+    cell::UnsafeCell,
+    fmt::Debug,
+    ops::{Deref, DerefMut},
+    panic::Location,
+};
 
 use crate::{
     debug::MaybeLocation,
     ecs::{
-        change_detection::{
-            ComponentTickCells, DetectChanges, Tick,
-            traits::*,
-        },
+        change_detection::{ComponentTickCells, DetectChanges, Tick, traits::*},
         component::Mutable,
         resource::Resource,
     },
-    ptr::{ThinSlicePtr, UnsafeCellDeref},
+    ptr::{Ptr, PtrMut, ThinSlicePtr, UnsafeCellDeref},
 };
 
 /// Used by immutable query parameters (such as [`Ref`] and [`Res`])
@@ -549,12 +551,14 @@ where
     type IntoIter = <&'a T as IntoIterator>::IntoIter;
 
     fn into_iter(self) -> Self::IntoIter {
-
         self.value.into_iter()
     }
 }
 
-impl<'w, 'a, T: Resource<Mutability = Mutable>> IntoIterator for &'a mut ResMut<'w, T> where &'a mut T: IntoIterator {
+impl<'w, 'a, T: Resource<Mutability = Mutable>> IntoIterator for &'a mut ResMut<'w, T>
+where
+    &'a mut T: IntoIterator,
+{
     type Item = <&'a mut T as IntoIterator>::Item;
 
     type IntoIter = <&'a mut T as IntoIterator>::IntoIter;
@@ -571,7 +575,7 @@ impl<'w, T: Resource<Mutability = Mutable>> From<ResMut<'w, T>> for Mut<'w, T> {
     fn from(other: ResMut<'w, T>) -> Self {
         Self {
             value: other.value,
-            ticks: other.ticks
+            ticks: other.ticks,
         }
     }
 }
@@ -631,7 +635,7 @@ impl<'w, T: 'static> From<NonSendMut<'w, T>> for Mut<'w, T> {
     fn from(other: NonSendMut<'w, T>) -> Self {
         Mut {
             value: other.value,
-            ticks: other.ticks
+            ticks: other.ticks,
         }
     }
 }
@@ -663,6 +667,209 @@ impl<'w, T: 'static> From<NonSendMut<'w, T>> for Mut<'w, T> {
 pub struct Ref<'w, T: ?Sized> {
     pub(crate) value: &'w T,
     pub(crate) ticks: ComponentTicksRef<'w>,
+}
+
+impl<'w, T: ?Sized> Ref<'w, T> {
+    /// Returns the reference wrapped by this type. The reference is allowed to outlive `self`, which makes this method more flexible than simply borrowing `self`.
+    pub fn into_inner(self) -> &'w T {
+        self.value
+    }
+
+    /// Map `Ref` to a different type using `f`.
+    ///
+    /// This doesn't do anything else than call `f` on the wrapped value.
+    /// This is equivalent to [`Mut::map_unchanged`].
+    pub fn map<U: ?Sized>(self, f: impl FnOnce(&T) -> &U) -> Ref<'w, U> {
+        Ref {
+            value: f(self.value),
+            ticks: self.ticks,
+        }
+    }
+
+    /// Create a new `Ref` using provided values.
+    ///
+    /// This is an advanced feature, `Ref`s are designed to be _created_ by
+    /// engine-internal code and _consumed_ by end-user code.
+    ///
+    /// - `value` - The value wrapped by `Ref`.
+    /// - `added` - A [`Tick`] that stores the tick when the wrapped value was created.
+    /// - `changed` - A [`Tick`] that stores the last time the wrapped value was changed.
+    /// - `last_run` - A [`Tick`], occurring before `this_run`, which is used
+    ///   as a reference to determine whether the wrapped value is newly added or changed.
+    /// - `this_run` - A [`Tick`] corresponding to the current point in time -- "now".
+    pub fn new(
+        value: &'w T,
+        added: &'w Tick,
+        changed: &'w Tick,
+        last_run: Tick,
+        this_run: Tick,
+        caller: MaybeLocation<&'w &'static Location<'static>>,
+    ) -> Ref<'w, T> {
+        Ref {
+            value,
+            ticks: ComponentTicksRef {
+                added,
+                changed,
+                changed_by: caller,
+                last_run,
+                this_run,
+            },
+        }
+    }
+
+    /// Overwrite the `last_run` and `this_run` tick that are used for change detection.
+    ///
+    /// This is an advanced feature. `Ref`s are usually _created_ by engine-internal code and
+    /// _consumed_ by end-user code.
+    pub fn set_ticks(&mut self, last_run: Tick, this_run: Tick) {
+        self.ticks.last_run = last_run;
+        self.ticks.this_run = this_run;
+    }
+}
+
+change_detection_impl!(Ref<'w, T>, T,);
+impl_debug!(Ref<'w, T>,);
+
+// `Ref` is `Copy` to facilitate creation of split borrows. Compared to `Res`
+// (which isn't `Copy`), `Ref` is not as widely used so can afford to require
+// `ref.as_ref().clone()` or `ref.deref().clone()` in order to clone the inner `T`.
+impl<'w, T: ?Sized> Copy for Ref<'w, T> {}
+
+impl<'w, T: ?Sized> Clone for Ref<'w, T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+/// Contiguous equivalent of [`Ref<T>`].
+///
+/// Data type returned by [`ContiguousQueryData::fetch_contiguous`](crate::query::ContiguousQueryData::fetch_contiguous) for [`Ref<T>`].
+#[derive(Clone)]
+pub struct ContiguousRef<'w, T> {
+    pub(crate) value: &'w [T],
+    pub(crate) ticks: ContiguousComponentTicksRef<'w>,
+}
+
+impl<'w, T> ContiguousRef<'w, T> {
+    /// Returns the reference wrapped by this type. The reference is allowed to outlive `self`, which makes this method more flexible than simply borrowing `self`.
+    pub fn into_inner(self) -> &'w [T] {
+        self.value
+    }
+
+    /// Returns the added ticks.
+    #[inline]
+    pub fn added_ticks_slice(&self) -> &'w [Tick] {
+        self.ticks.added
+    }
+
+    /// Returns the changed ticks.
+    #[inline]
+    pub fn changed_ticks_slice(&self) -> &'w [Tick] {
+        self.ticks.changed
+    }
+
+    /// Returns the changed by ticks.
+    #[inline]
+    pub fn changed_by_ticks_slice(&self) -> MaybeLocation<&[&'static Location<'static>]> {
+        self.ticks.changed_by.as_deref()
+    }
+
+    /// Returns the tick when the system last ran.
+    #[inline]
+    pub fn last_run_tick(&self) -> Tick {
+        self.ticks.last_run
+    }
+
+    /// Returns the tick of the system's current run.
+    #[inline]
+    pub fn this_run_tick(&self) -> Tick {
+        self.ticks.this_run
+    }
+
+    /// Creates a new `ContiguousRef` using provided values or returns [`None`] if lengths of
+    /// `value`, `added`, `changed` and `changed_by` do not match
+    ///
+    /// This is an advanced feature, `ContiguousRef`s are designed to be _created_ by
+    /// engine-internal code and _consumed_ by end-user code.
+    ///
+    /// - `value` - The values wrapped by `ContiguousRef`.
+    /// - `added` - [`Tick`]s that store the tick when the wrapped value was created.
+    /// - `changed` - [`Tick`]s that store the last time the wrapped value was changed.
+    /// - `last_run` - A [`Tick`], occurring before `this_run`, which is used
+    ///   as a reference to determine whether the wrapped value is newly added or changed.
+    /// - `this_run` - A [`Tick`] corresponding to the current point in time -- "now".
+    /// - `caller` - [`Location`]s that store the location when the wrapper value was changed.
+    pub fn new(
+        value: &'w [T],
+        added: &'w [Tick],
+        changed: &'w [Tick],
+        last_run: Tick,
+        this_run: Tick,
+        caller: MaybeLocation<&'w [&'static Location<'static>]>,
+    ) -> Option<Self> {
+        (value.len() == added.len())
+            .then(|| ContiguousComponentTicksRef::new(added, changed, last_run, this_run, caller))
+            .flatten()
+            .map(|ticks| Self { value, ticks })
+    }
+
+    /// Splits [`ContiguousRef`] into it's inner data types.
+    pub fn split(this: Self) -> (&'w [T], ContiguousComponentTicksRef<'w>) {
+        (this.value, this.ticks)
+    }
+
+    /// Reverse of [`ContiguousRef::split`], constructing a [`ContiguousRef`] using components'
+    /// values and ticks.
+    ///
+    /// Returns [`None`] if lengths of `value` and `ticks` do not match, which doesn't happen if
+    /// `ticks` and `value` come from the same [`Self::split`] call.
+    pub fn from_parts(value: &'w [T], ticks: ContiguousComponentTicksRef<'w>) -> Option<Self> {
+        (value.len() == ticks.changed.len()).then_some(Self { value, ticks })
+    }
+}
+
+impl<'w, T> Deref for ContiguousRef<'w, T> {
+    type Target = [T];
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        self.value
+    }
+}
+
+impl<'w, T> AsRef<[T]> for ContiguousRef<'w, T> {
+    #[inline]
+    fn as_ref(&self) -> &[T] {
+        self.deref()
+    }
+}
+
+impl<'w, T> IntoIterator for ContiguousRef<'w, T> {
+    type Item = &'w T;
+
+    type IntoIter = std::slice::Iter<'w, T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.value.iter()
+    }
+}
+
+impl<'w, T: Debug> Debug for ContiguousRef<'w, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("ContiguousRef").field(&self.value).finish()
+    }
+}
+
+impl<'w, 'a, T> IntoIterator for &'a Ref<'w, T>
+where
+    &'a T: IntoIterator,
+{
+    type Item = <&'a T as IntoIterator>::Item;
+    type IntoIter = <&'a T as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.value.into_iter()
+    }
 }
 
 /// Unique mutable borrow of an entity's component or of a resource.
@@ -706,4 +913,505 @@ pub struct Mut<'w, T: ?Sized> {
     pub(crate) ticks: ComponentTicksMut<'w>,
 }
 
-// TODO!
+change_detection_impl!(Mut<'w, T>, T,);
+change_detection_mut_impl!(Mut<'w, T>, T,);
+impl_methods!(Mut<'w, T>, T,);
+impl_debug!(Mut<'w, T>,);
+
+impl<'w, T: ?Sized> Mut<'w, T> {
+    /// Creates a new change-detection enabled smart pointer.
+    /// In almost all cases you do not need to call this method manually,
+    /// as instances of `Mut` will be created by engine-internal code.
+    ///
+    /// Many use-cases of this method would be better served by [`Mut::map_unchanged`]
+    /// or [`Mut::reborrow`].
+    ///
+    /// - `value` - The value wrapped by this smart pointer.
+    /// - `added` - A [`Tick`] that stores the tick when the wrapped value was created.
+    /// - `last_changed` - A [`Tick`] that stores the last time the wrapped value was changed.
+    ///   This will be updated to the value of `change_tick` if the returned smart pointer
+    ///   is modified.
+    /// - `last_run` - A [`Tick`], occurring before `this_run`, which is used
+    ///   as a reference to determine whether the wrapped value is newly added or changed.
+    /// - `this_run` - A [`Tick`] corresponding to the current point in time -- "now".
+    pub fn new(
+        value: &'w mut T,
+        added: &'w mut Tick,
+        last_changed: &'w mut Tick,
+        last_run: Tick,
+        this_run: Tick,
+        caller: MaybeLocation<&'w mut &'static Location<'static>>,
+    ) -> Self {
+        Self {
+            value,
+            ticks: ComponentTicksMut {
+                added,
+                changed: last_changed,
+                changed_by: caller,
+                last_run,
+                this_run,
+            },
+        }
+    }
+
+    /// Overwrite the `last_run` and `this_run` tick that are used for change detection.
+    ///
+    /// This is an advanced feature. `Mut`s are usually _created_ by engine-internal code and
+    /// _consumed_ by end-user code.
+    pub fn set_ticks(&mut self, last_run: Tick, this_run: Tick) {
+        self.ticks.last_run = last_run;
+        self.ticks.this_run = this_run;
+    }
+}
+
+/// Data type returned by [`ContiguousQueryData::fetch_contiguous`](crate::query::ContiguousQueryData::fetch_contiguous)
+/// for [`Mut<T>`] and `&mut T`
+///
+/// # Warning
+/// Implementations of [`DerefMut`], [`AsMut`] and [`IntoIterator`] update change ticks, which may effect performance.
+pub struct ContiguousMut<'w, T> {
+    pub(crate) value: &'w mut [T],
+    pub(crate) ticks: ContiguousComponentTicksMut<'w>,
+}
+
+/// Data type returned by [`ContiguousQueryData::fetch_contiguous`](crate::query::ContiguousQueryData::fetch_contiguous)
+/// for [`Mut<T>`] and `&mut T`
+///
+/// # Warning
+/// Implementations of [`DerefMut`], [`AsMut`] and [`IntoIterator`] update change ticks, which may effect performance.
+impl<'w, T> ContiguousMut<'w, T> {
+    /// Manually bypasses change detection, allowing you to mutate the underlying values without updating the change tick,
+    /// which may be useful to reduce amount of work to be done.
+    ///
+    /// # Warning
+    /// This is a risky operation, that can have unexpected consequences on any system relying on this code.
+    /// However, it can be an essential escape hatch when, for example,
+    /// you are trying to synchronize representations using change detection and need to avoid infinite recursion.
+    #[inline]
+    pub fn bypass_change_detection(&mut self) -> &mut [T] {
+        self.value
+    }
+
+    /// Returns the immutable added ticks' slice.
+    #[inline]
+    pub fn added_ticks_slice(&self) -> &[Tick] {
+        self.ticks.added
+    }
+
+    /// Returns the immutable changed ticks' slice.
+    #[inline]
+    pub fn changed_ticks_slice(&self) -> &[Tick] {
+        self.ticks.changed
+    }
+
+    /// Returns the mutable changed by ticks' slice
+    #[inline]
+    pub fn changed_by_ticks_mut(&self) -> MaybeLocation<&[&'static Location<'static>]> {
+        self.ticks.changed_by.as_deref()
+    }
+
+    /// Returns the tick when the system last ran.
+    #[inline]
+    pub fn last_run_tick(&self) -> Tick {
+        self.ticks.last_run
+    }
+
+    /// Returns the mutable added ticks' slice.
+    #[inline]
+    pub fn added_ticks_slice_mut(&mut self) -> &mut [Tick] {
+        self.ticks.added
+    }
+
+    /// Returns the mutable changed ticks' slice.
+    #[inline]
+    pub fn changed_ticks_slice_mut(&mut self) -> &mut [Tick] {
+        self.ticks.changed
+    }
+
+    /// Returns the mutable changed by ticks' slice
+    #[inline]
+    pub fn changed_by_ticks_slice_mut(
+        &mut self,
+    ) -> MaybeLocation<&mut [&'static Location<'static>]> {
+        self.ticks.changed_by.as_deref_mut()
+    }
+
+    /// Marks all components as changed.
+    ///
+    /// **Runs in O(n), where n is the amount of rows**
+    #[inline]
+    pub fn mark_all_as_changed(&mut self) {
+        self.ticks.mark_all_as_changed();
+    }
+
+    /// Creates a new `ContiguousMut` using provided values or returns [`None`] if lengths of
+    /// `value`, `added`, `changed` and `changed_by` do not match
+    ///
+    /// This is an advanced feature, `ContiguousMut`s are designed to be _created_ by
+    /// engine-internal code and _consumed_ by end-user code.
+    ///
+    /// - `value` - The values wrapped by `ContiguousMut`.
+    /// - `added` - [`Tick`]s that store the tick when the wrapped value was created.
+    /// - `changed` - [`Tick`]s that store the last time the wrapped value was changed.
+    /// - `last_run` - A [`Tick`], occurring before `this_run`, which is used
+    ///   as a reference to determine whether the wrapped value is newly added or changed.
+    /// - `this_run` - A [`Tick`] corresponding to the current point in time -- "now".
+    /// - `caller` - [`Location`]s that store the location when the wrapper value was changed.
+    pub fn new(
+        value: &'w mut [T],
+        added: &'w mut [Tick],
+        changed: &'w mut [Tick],
+        last_run: Tick,
+        this_run: Tick,
+        caller: MaybeLocation<&'w mut [&'static Location<'static>]>,
+    ) -> Option<Self> {
+        (value.len() == added.len())
+            .then(|| ContiguousComponentTicksMut::new(added, changed, last_run, this_run, caller))
+            .flatten()
+            .map(|ticks| Self { value, ticks })
+    }
+
+    /// Returns a `ContiguousMut<T>` with a smaller lifetime.
+    pub fn reborrow(&mut self) -> ContiguousMut<'_, T> {
+        ContiguousMut {
+            value: self.value,
+            ticks: self.ticks.reborrow(),
+        }
+    }
+
+    /// Splits [`ContiguousMut`] into it's inner data types. It may be useful, when you want to
+    /// have an iterator over component values and check ticks simultaneously (using
+    /// [`ContiguousComponentTicksMut::is_changed_iter`] and
+    /// [`ContiguousComponentTicksMut::is_added_iter`]).
+    ///
+    /// Variant of [`Self::split`] which bypasses change detection: [`Self::bypass_change_detection_split`].
+    ///
+    /// Reverse of [`Self::split`] is [`Self::from_parts`].
+    ///
+    /// # Warning
+    /// This version updates changed ticks **before** returning, hence
+    /// [`ContiguousComponentTicksMut::is_changed_iter`] will be useless (the iterator will be filled with
+    /// [`prim@true`]s).
+    // NOTE: `ticks_since_insert` will be 0 (because `this.mark_all_as_changed` makes all changed ticks `this_run`),
+    // `ticks_since_system` won't be 0, `tick` is newer if
+    // `ticks_since_system` > `ticks_since_insert`, hence it will always be true.
+    pub fn split(mut this: Self) -> (&'w mut [T], ContiguousComponentTicksMut<'w>) {
+        this.mark_all_as_changed();
+        (this.value, this.ticks)
+    }
+
+    /// Splits [`ContiguousMut`] into it's inner data types. It may be useful, when you want to
+    /// have an iterator over component values and check ticks simultaneously (using
+    /// [`ContiguousComponentTicksMut::is_changed_iter`] and
+    /// [`ContiguousComponentTicksMut::is_added_iter`]).
+    ///
+    /// Variant of [`Self::bypass_change_detection_split`] which **does not** bypass change detection: [`Self::split`].
+    ///
+    /// Reverse of [`Self::bypass_change_detection_split`] is [`Self::from_parts`].
+    ///
+    /// # Warning
+    /// **Bypasses change detection**, call [`Self::split`] if you don't want to bypass it.
+    ///
+    /// See [`Self::bypass_change_detection`] for further explanations.
+    pub fn bypass_change_detection_split(
+        this: Self,
+    ) -> (&'w mut [T], ContiguousComponentTicksMut<'w>) {
+        (this.value, this.ticks)
+    }
+
+    /// Reverse of [`ContiguousMut::split`] and [`ContiguousMut::bypass_change_detection_split`],
+    /// constructing a [`ContiguousMut`] using components' values and ticks.
+    ///
+    /// Returns [`None`] if lengths of `value` and `ticks` do not match, which doesn't happen if
+    /// `ticks` and `value` come from the same [`Self::split`] or [`Self::bypass_change_detection_split`] call.
+    pub fn from_parts(value: &'w mut [T], ticks: ContiguousComponentTicksMut<'w>) -> Option<Self> {
+        (value.len() == ticks.changed.len()).then_some(Self { value, ticks })
+    }
+}
+
+impl<'w, T> Deref for ContiguousMut<'w, T> {
+    type Target = [T];
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        self.value
+    }
+}
+
+impl<'w, T> DerefMut for ContiguousMut<'w, T> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.mark_all_as_changed();
+        self.value
+    }
+}
+
+impl<'w, T> AsRef<[T]> for ContiguousMut<'w, T> {
+    #[inline]
+    fn as_ref(&self) -> &[T] {
+        self.deref()
+    }
+}
+
+impl<'w, T> AsMut<[T]> for ContiguousMut<'w, T> {
+    #[inline]
+    fn as_mut(&mut self) -> &mut [T] {
+        self.deref_mut()
+    }
+}
+
+impl<'w, T> IntoIterator for ContiguousMut<'w, T> {
+    type Item = &'w mut T;
+
+    type IntoIter = std::slice::IterMut<'w, T>;
+
+    fn into_iter(mut self) -> Self::IntoIter {
+        self.mark_all_as_changed();
+        self.value.iter_mut()
+    }
+}
+
+impl<'w, T: Debug> Debug for ContiguousMut<'w, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("ContiguousMut").field(&self.value).finish()
+    }
+}
+
+impl<'w, T> From<ContiguousMut<'w, T>> for ContiguousRef<'w, T> {
+    fn from(value: ContiguousMut<'w, T>) -> Self {
+        Self {
+            value: value.value,
+            ticks: value.ticks.into(),
+        }
+    }
+}
+
+impl<'w, T: ?Sized> From<Mut<'w, T>> for Ref<'w, T> {
+    fn from(mut_ref: Mut<'w, T>) -> Self {
+        Self {
+            value: mut_ref.value,
+            ticks: mut_ref.ticks.into(),
+        }
+    }
+}
+
+impl<'w, 'a, T> IntoIterator for &'a Mut<'w, T>
+where
+    &'a T: IntoIterator,
+{
+    type Item = <&'a T as IntoIterator>::Item;
+    type IntoIter = <&'a T as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.value.into_iter()
+    }
+}
+
+impl<'w, 'a, T> IntoIterator for &'a mut Mut<'w, T>
+where
+    &'a mut T: IntoIterator,
+{
+    type Item = <&'a mut T as IntoIterator>::Item;
+    type IntoIter = <&'a mut T as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.set_changed();
+        self.value.into_iter()
+    }
+}
+
+/// Unique mutable borrow of resources or an entity's component.
+///
+/// Similar to [`Mut`], but not generic over the component type, instead
+/// exposing the raw pointer as a `*mut ()`.
+///
+/// Usually you don't need to use this and can instead use the APIs returning a
+/// [`Mut`], but in situations where the types are not known at compile time
+/// or are defined outside of rust this can be used.
+pub struct MutUntyped<'w> {
+    pub(crate) value: PtrMut<'w>,
+    pub(crate) ticks: ComponentTicksMut<'w>,
+}
+
+impl<'w> DetectChangesMut for MutUntyped<'w> {
+    type Inner = PtrMut<'w>;
+
+    #[inline]
+    #[track_caller]
+    fn set_changed(&mut self) {
+        *self.ticks.changed = self.ticks.this_run;
+        self.ticks.changed_by.assign(MaybeLocation::caller());
+    }
+
+    #[inline]
+    #[track_caller]
+    fn set_added(&mut self) {
+        *self.ticks.changed = self.ticks.this_run;
+        *self.ticks.added = self.ticks.this_run;
+        self.ticks.changed_by.assign(MaybeLocation::caller());
+    }
+
+    #[inline]
+    #[track_caller]
+    fn set_last_changed(&mut self, last_changed: Tick) {
+        *self.ticks.changed = last_changed;
+        self.ticks.changed_by.assign(MaybeLocation::caller());
+    }
+
+    #[inline]
+    #[track_caller]
+    fn set_last_added(&mut self, last_added: Tick) {
+        *self.ticks.added = last_added;
+        *self.ticks.changed = last_added;
+        self.ticks.changed_by.assign(MaybeLocation::caller());
+    }
+
+    #[inline]
+    #[track_caller]
+    fn bypass_change_detection(&mut self) -> &mut Self::Inner {
+        &mut self.value
+    }
+}
+
+impl<'w> DetectChanges for MutUntyped<'w> {
+    #[inline]
+    fn is_added(&self) -> bool {
+        self.is_added_after(self.ticks.last_run)
+    }
+
+    #[inline]
+    fn is_changed(&self) -> bool {
+        self.is_changed_after(self.ticks.last_run)
+    }
+
+    #[inline]
+    fn is_added_after(&self, other: Tick) -> bool {
+        self.ticks.added.is_newer_than(other, self.ticks.this_run)
+    }
+
+    #[inline]
+    fn is_changed_after(&self, other: Tick) -> bool {
+        self.ticks.changed.is_newer_than(other, self.ticks.this_run)
+    }
+
+    #[inline]
+    fn last_changed(&self) -> Tick {
+        *self.ticks.changed
+    }
+
+    #[inline]
+    fn changed_by(&self) -> MaybeLocation {
+        self.ticks.changed_by.copied()
+    }
+
+    #[inline]
+    fn added(&self) -> Tick {
+        *self.ticks.added
+    }
+}
+
+impl<'w> MutUntyped<'w> {
+    /// Returns the pointer to the value, marking it as changed.
+    ///
+    /// In order to avoid marking the value as changed, you need to call [`bypass_change_detection`](DetectChangesMut::bypass_change_detection).
+    #[inline]
+    pub fn into_inner(mut self) -> PtrMut<'w> {
+        self.set_changed();
+        self.value
+    }
+
+    /// Returns a [`MutUntyped`] with a smaller lifetime.
+    /// This is useful if you have `&mut MutUntyped`, but you need a `MutUntyped`.
+    #[inline]
+    pub fn reborrow(&mut self) -> MutUntyped<'_> {
+        MutUntyped {
+            value: self.value.reborrow(),
+            ticks: ComponentTicksMut {
+                added: self.ticks.added,
+                changed: self.ticks.changed,
+                changed_by: self.ticks.changed_by.as_deref_mut(),
+                last_run: self.ticks.last_run,
+                this_run: self.ticks.this_run,
+            },
+        }
+    }
+
+    /// Returns `true` if this value was changed or mutably dereferenced
+    /// either since a specific change tick.
+    pub fn has_changed_slice(&self, tick: Tick) -> bool {
+        self.ticks.changed.is_newer_than(tick, self.ticks.this_run)
+    }
+
+    /// Returns a pointer to the value without taking ownership of this smart pointer, marking it as changed.
+    ///
+    /// In order to avoid marking the value as changed, you need to call [`bypass_change_detection`](DetectChangesMut::bypass_change_detection).
+    #[inline]
+    pub fn as_mut(&mut self) -> PtrMut<'_> {
+        self.set_changed();
+        self.value.reborrow()
+    }
+
+    /// Returns an immutable pointer to the value without taking ownership.
+    #[inline]
+    pub fn as_ref(&self) -> Ptr<'_> {
+        self.value.as_ref()
+    }
+
+    /// Turn this [`MutUntyped`] into a [`Mut`] by mapping the inner [`PtrMut`] to another value,
+    /// without flagging a change.
+    /// This function is the untyped equivalent of [`Mut::map_unchanged`].
+    ///
+    /// You should never modify the argument passed to the closure – if you want to modify the data without flagging a change, consider using [`bypass_change_detection`](DetectChangesMut::bypass_change_detection) to make your intent explicit.
+    ///
+    /// If you know the type of the value you can do
+    /// ```no_run
+    /// # use bevy_ecs::change_detection::{Mut, MutUntyped};
+    /// # let mut_untyped: MutUntyped = unimplemented!();
+    /// // SAFETY: ptr is of type `u8`
+    /// mut_untyped.map_unchanged(|ptr| unsafe { ptr.deref_mut::<u8>() });
+    /// ```
+    /// If you have a [`ReflectFromPtr`](bevy_reflect::ReflectFromPtr) that you know belongs to this [`MutUntyped`],
+    /// you can do
+    /// ```no_run
+    /// # use bevy_ecs::change_detection::{Mut, MutUntyped};
+    /// # let mut_untyped: MutUntyped = unimplemented!();
+    /// # let reflect_from_ptr: bevy_reflect::ReflectFromPtr = unimplemented!();
+    /// // SAFETY: from the context it is known that `ReflectFromPtr` was made for the type of the `MutUntyped`
+    /// mut_untyped.map_unchanged(|ptr| unsafe { reflect_from_ptr.as_reflect_mut(ptr) });
+    /// ```
+    pub fn map_unchanged<T: ?Sized>(self, f: impl FnOnce(PtrMut<'w>) -> &'w mut T) -> Mut<'w, T> {
+        Mut {
+            value: f(self.value),
+            ticks: self.ticks,
+        }
+    }
+
+    /// Transforms this [`MutUntyped`] into a [`Mut<T>`] with the same lifetime.
+    ///
+    /// # Safety
+    /// - `T` must be the erased pointee type for this [`MutUntyped`].
+    pub unsafe fn with_type<T>(self) -> Mut<'w, T> {
+        Mut {
+            // SAFETY: `value` is `Aligned` and caller ensures the pointee type is `T`.
+            value: unsafe { self.value.deref_mut() },
+            ticks: self.ticks,
+        }
+    }
+}
+
+impl Debug for MutUntyped<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_tuple("MutUntyped")
+            .field(&self.value.as_ptr())
+            .finish()
+    }
+}
+
+impl<'w, T> From<Mut<'w, T>> for MutUntyped<'w> {
+    fn from(value: Mut<'w, T>) -> Self {
+        MutUntyped {
+            value: value.value.into(),
+            ticks: value.ticks,
+        }
+    }
+}
