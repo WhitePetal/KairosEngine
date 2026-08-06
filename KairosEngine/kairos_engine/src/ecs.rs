@@ -11,3 +11,4 @@ pub mod resource;
 pub mod storage;
 pub mod world;
 pub mod query;
+pub mod observer;
