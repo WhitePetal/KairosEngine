@@ -221,32 +221,33 @@ impl Drawer for GameWindow {
             )),
         );
 
-        if let Some((transform, mut camera)) = engine
-            .world
-            .query_mut::<(&Transform, &mut Camera)>()
-            .into_iter()
-            .next()
-        {
-            camera.aspect = width as f32 / height as f32;
-            let vp_id = graphics_command
-                .set_view_projection_matrix(camera.get_view_projection_matrix(*transform));
-            graphics_command.begin_render_pass(
-                Some("GameWindow Render Pass"),
-                vec![game_view_bind],
-                Some(game_depth_bind),
-                vp_id,
-                4,
-            );
+        // TODO!
+        // if let Some((transform, mut camera)) = engine
+        //     .world
+        //     .query_mut::<(&Transform, &mut Camera)>()
+        //     .into_iter()
+        //     .next()
+        // {
+        //     camera.aspect = width as f32 / height as f32;
+        //     let vp_id = graphics_command
+        //         .set_view_projection_matrix(camera.get_view_projection_matrix(*transform));
+        //     graphics_command.begin_render_pass(
+        //         Some("GameWindow Render Pass"),
+        //         vec![game_view_bind],
+        //         Some(game_depth_bind),
+        //         vp_id,
+        //         4,
+        //     );
 
-            game.render(engine, &mut graphics_command);
+        //     game.render(engine, &mut graphics_command);
 
-            graphics_command.end_render_pass();
+        //     graphics_command.end_render_pass();
 
-            let (egui_bind_tex_sender, egui_bind_tex_recever) = tokio::sync::oneshot::channel();
-            messager.send(Message::RegisteGameWindowViewBind(egui_bind_tex_recever));
-            graphics_command.bind_attachment_to_egui(game_view_id, egui_bind_tex_sender);
-            return Some(graphics_command);
-        };
+        //     let (egui_bind_tex_sender, egui_bind_tex_recever) = tokio::sync::oneshot::channel();
+        //     messager.send(Message::RegisteGameWindowViewBind(egui_bind_tex_recever));
+        //     graphics_command.bind_attachment_to_egui(game_view_id, egui_bind_tex_sender);
+        //     return Some(graphics_command);
+        // };
 
         None
     }

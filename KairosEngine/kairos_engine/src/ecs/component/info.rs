@@ -7,7 +7,6 @@ use std::{
     sync::{PoisonError, RwLock},
 };
 
-use bitflags::Flags;
 use indexmap::IndexSet;
 
 use crate::{
@@ -16,7 +15,8 @@ use crate::{
     ecs::{
         archetype::ArchetypeFlags,
         component::{
-            Component, ComponentCloneBehavior, QueuedComponents, RequiredComponents, StorageType,
+            Component, ComponentCloneBehavior, ComponentMutability, QueuedComponents,
+            RequiredComponents, StorageType,
         },
         lifecycle::ComponentHooks,
         relationship::{

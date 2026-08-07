@@ -94,13 +94,15 @@ use crate::{
     ecs::{
         archetype::{ArchetypeId, ArchetypeRow},
         change_detection::{CheckChangeTicks, Tick},
-        remote_allocator::{self, RemoteAllocator},
         storage::{SparseSetIndex, TableId, TableRow},
     },
 };
 
 mod entity_set;
 mod map_entities;
+
+mod remote_allocator;
+pub use remote_allocator::RemoteAllocator;
 
 mod unique_array;
 pub mod unique_slice;

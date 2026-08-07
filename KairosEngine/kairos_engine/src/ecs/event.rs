@@ -6,7 +6,11 @@ use std::marker::PhantomData;
 
 pub use trigger::*;
 
-use crate::ecs::{component::ComponentId, entity::Entity, world::World};
+use crate::ecs::{
+    component::{Component, ComponentId, Mutable, StorageType},
+    entity::Entity,
+    world::World,
+};
 
 #[cfg(test)]
 mod tests;
@@ -355,8 +359,15 @@ pub trait SetEntityEventTarget: EntityEvent {
 ///
 /// This type is an implementation detail and should never be made public.
 // TODO: refactor events to store their metadata on distinct entities, rather than using `ComponentId`
-#[derive(Component)]
+// TODO!
+// #[derive(Component)]
 struct EventWrapperComponent<E: Event>(PhantomData<E>);
+
+impl<E: Event> Component for EventWrapperComponent<E> {
+    const STORAGE_TYPE: super::component::StorageType = StorageType::Table;
+
+    type Mutability = Mutable;
+}
 
 /// A unique identifier for an [`Event`], used by [observers].
 ///

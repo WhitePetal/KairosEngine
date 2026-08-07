@@ -8,12 +8,8 @@ use crate::{
         component::{Component, ComponentId},
         entity::Entity,
         storage::SparseArray,
-        world::DeferredWorld,
     },
 };
-
-/// Derive macro for implementing the [`Resource`] trait.
-pub use kairos_ecs_macros::Resource;
 
 /// A type that can be inserted into a [`World`] as a singleton.
 ///

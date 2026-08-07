@@ -39,7 +39,8 @@ pub struct SpatialAudioVolume {
     pub track_states: Vec<SpatialAudioVolumeTrackState>,
     pub playing_time: f32,
 }
-impl Component for SpatialAudioVolume {}
+// TODO!
+// impl Component for SpatialAudioVolume {}
 
 impl SpatialAudioVolume {
     pub fn new(audios: SmallVec<[AudioAssetHandle; 4]>, auto_play: bool, start_time: f32) -> Self {

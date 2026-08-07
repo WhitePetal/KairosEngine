@@ -2,9 +2,6 @@
 
 use std::{any::TypeId, cell::UnsafeCell, fmt::Debug, marker::PhantomData, ptr};
 
-use serde::de::value;
-use wgpu::naga::valid;
-
 use crate::{
     debug::{DebugCheckedUnwrap, MaybeLocation},
     ecs::{
@@ -15,9 +12,8 @@ use crate::{
         component::{Component, ComponentId, Components, Mutable, StorageType},
         entity::{ContainsEntity, Entities, Entity, EntityAllocator, EntityLocation},
         query::{QueryAccessError, ReleaseStateQueryData, SingleEntityQueryData},
-        resource::ResourceEntities,
         storage::{ComponentSparseSet, Storages, Table},
-        world::{DeferredWorld, World, WorldId},
+        world::{World, WorldId},
     },
     ptr::{Ptr, UnsafeCellDeref},
 };
@@ -581,7 +577,7 @@ impl<'w> UnsafeEntityCell<'w> {
     /// - the component `T` is mutable
     #[inline]
     pub unsafe fn get_mut_assume_mutable<T: Component>(self) -> Option<Mut<'w, T>> {
-        unsafe { self.getmut }
+        unsafe { self.get_mut_using_ticks_assume_mutable(self.last_run, self.this_run) }
     }
 
     /// # Safety
@@ -593,6 +589,14 @@ impl<'w> UnsafeEntityCell<'w> {
         unsafe { self.get_mut_assume_mutable() }
     }
 
+    /// Returns read-only components for the current entity that match the query `Q`,
+    /// or `None` if the entity does not have the components required by the query `Q`.
+    ///
+    /// # Safety
+    /// It is the caller's responsibility to ensure that
+    /// - the [`UnsafeEntityCell`] has permission to access the queried data immutably
+    /// - no mutable references to the queried data exist at the same time
+    /// - The `QueryData` does not provide aliasing mutable references to the same component.
     pub(crate) unsafe fn get_components<Q: ReleaseStateQueryData + SingleEntityQueryData>(
         &self,
     ) -> Result<Q::Item<'w, 'static>, QueryAccessError> {

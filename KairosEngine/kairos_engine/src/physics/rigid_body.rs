@@ -12,7 +12,8 @@ use crate::{
 pub struct RigidBody {
     pub handle: RigidBodyHandle,
 }
-impl Component for RigidBody {}
+// TODO!
+// impl Component for RigidBody {}
 
 impl RigidBody {
     pub fn with_sphere_collider(engine: &mut PhysicsEngine, radius: f32) -> Self {

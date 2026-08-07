@@ -836,7 +836,7 @@ impl SparseSets {
         &mut self,
         component_info: &ComponentInfo,
     ) -> &mut ComponentSparseSet {
-        if !self.sets.cotains(component_info.id()) {
+        if !self.sets.contains(component_info.id()) {
             self.sets.insert(
                 component_info.id(),
                 ComponentSparseSet::new(component_info, 64),

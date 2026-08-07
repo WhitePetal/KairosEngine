@@ -10,7 +10,8 @@ pub struct ColliderMaterial {
 pub struct Collider {
     pub handle: ColliderHandle,
 }
-impl Component for Collider {}
+// TODO!
+// impl Component for Collider {}
 
 impl Collider {
     pub fn box_collider_with_material(

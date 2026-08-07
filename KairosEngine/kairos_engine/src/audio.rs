@@ -77,34 +77,35 @@ impl AudioEngine {
         self.spatial_tracks
             .update(assets_server, &mut self.manager, world, delta_time);
 
+        // TODO!
         // update backgroun
-        let background = world.query_mut::<&mut BackgroundAudio>().into_iter().next();
-        if let Some(mut background) = background {
-            match background.state {
-                AudioState::Created => {
-                    if background.auto_play {
-                        background.state = AudioState::WaitLoading;
-                    }
-                }
-                AudioState::WaitLoading => {
-                    let audio = assets_server.get(&background.audio);
-                    if let Some(audio) = audio {
-                        background.handle = self.manager.play(audio.sound_data.clone()).ok();
-                        background.state = AudioState::Playing;
-                    }
-                }
-                AudioState::Playing => {
-                    if let Some(handle) = &background.handle {
-                        if handle.state() == PlaybackState::Stopped {
-                            background.state = AudioState::Completed;
-                        }
-                    }
-                }
-                AudioState::Paused => todo!(),
-                AudioState::Completed => {
-                    // now do nothing
-                }
-            }
-        }
+        // let background = world.query_mut::<&mut BackgroundAudio>().into_iter().next();
+        // if let Some(mut background) = background {
+        //     match background.state {
+        //         AudioState::Created => {
+        //             if background.auto_play {
+        //                 background.state = AudioState::WaitLoading;
+        //             }
+        //         }
+        //         AudioState::WaitLoading => {
+        //             let audio = assets_server.get(&background.audio);
+        //             if let Some(audio) = audio {
+        //                 background.handle = self.manager.play(audio.sound_data.clone()).ok();
+        //                 background.state = AudioState::Playing;
+        //             }
+        //         }
+        //         AudioState::Playing => {
+        //             if let Some(handle) = &background.handle {
+        //                 if handle.state() == PlaybackState::Stopped {
+        //                     background.state = AudioState::Completed;
+        //                 }
+        //             }
+        //         }
+        //         AudioState::Paused => todo!(),
+        //         AudioState::Completed => {
+        //             // now do nothing
+        //         }
+        //     }
+        // }
     }
 }

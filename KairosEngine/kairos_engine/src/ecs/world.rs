@@ -1,13 +1,21 @@
 mod identifier;
 
+use std::fmt;
+
 pub use identifier::WorldId;
 
-use crate::ecs::{
-    component::{Component, ComponentId, ComponentIds, Components, ComponentsRegistrator},
-    entity::{Entities, EntityAllocator},
-    resource::ResourceEntities,
-    storage::Storages,
-    world::unsafe_world_cell::UnsafeWorldCell,
+use crate::{
+    debug::DebugCheckedUnwrap,
+    ecs::{
+        archetype::Archetypes,
+        bundle::{Bundle, BundleId, BundleInfo, Bundles},
+        component::{Component, ComponentId, ComponentIds, Components, ComponentsRegistrator},
+        entity::{Entities, EntityAllocator},
+        observer::Observers,
+        resource::ResourceEntities,
+        storage::Storages,
+        world::unsafe_world_cell::UnsafeWorldCell,
+    },
 };
 
 pub mod unsafe_world_cell;
@@ -51,6 +59,7 @@ pub struct World {
     pub(crate) archetypes: Archetypes,
     pub(crate) storages: Storages,
     pub(crate) bundles: Bundles,
+    pub(crate) observers: Observers,
 }
 
 /// Creates an instance of the type this trait is implemented for
@@ -87,6 +96,10 @@ pub trait FromWorld {
 }
 
 impl World {
+    pub fn new() -> Self {
+        todo!()
+    }
+
     /// Creates a new [`UnsafeWorldCell`] view with complete read+write access.
     #[inline]
     pub fn as_unsafe_world_cell(&mut self) -> UnsafeWorldCell<'_> {
@@ -148,4 +161,41 @@ impl World {
     }
 
     // pub fn entity<F: WorldEntity
+
+    /// Registers all of the components in the given [`Bundle`] and returns both the component
+    /// ids and the bundle id.
+    ///
+    /// This is largely equivalent to calling [`register_component`](Self::register_component) on each
+    /// component in the bundle.
+    #[inline]
+    pub fn register_bundle<B: Bundle>(&mut self) -> &BundleInfo {
+        let id = self.register_bundle_info::<B>();
+
+        // SAFETY: We just initialized the bundle so its id should definitely be valid.
+        unsafe { self.bundles.get(id).debug_checked_unwrap() }
+    }
+
+    pub(crate) fn register_bundle_info<B: Bundle>(&mut self) -> BundleId {
+        let mut registrator =
+            unsafe { ComponentsRegistrator::new(&mut self.components, &mut self.component_ids) };
+
+        // SAFETY: `registrator`, `self.storages` and `self.bundles` all come from this world.
+        unsafe {
+            self.bundles
+                .register_info::<B>(&mut registrator, &mut self.storages)
+        }
+    }
+}
+
+impl fmt::Debug for World {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // SAFETY: `UnsafeWorldCell` requires that this must only access metadata.
+        // Accessing any data stored in the world would be unsound.
+        f.debug_struct("World")
+            .field("id", &self.id)
+            .field("entity_count", &self.entities.count_spawned())
+            .field("archetype_count", &self.archetypes.len())
+            .field("component_count", &self.components.len())
+            .finish()
+    }
 }

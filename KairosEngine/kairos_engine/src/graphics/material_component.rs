@@ -8,7 +8,8 @@ use crate::{
 pub struct MaterialComponent {
     pub material: Arc<AssetHandle<MaterialAssetsSystem>>,
 }
-impl Component for MaterialComponent {}
+// TODO!
+// impl Component for MaterialComponent {}
 
 impl MaterialComponent {
     pub fn new(material: Arc<AssetHandle<MaterialAssetsSystem>>) -> Self {

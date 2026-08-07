@@ -850,29 +850,6 @@ impl<'a, A: IsAligned> Ptr<'a, A> {
     }
 }
 
-impl<'a> OwningPtr<'a> {
-    /// This exists mostly to reduce compile times;
-    /// code is only duplicated per type, rather than per function called.
-    ///
-    /// # Safety
-    ///
-    /// Safety constraints of [`PtrMut::promote`] must be upheld.
-    unsafe fn make_internal<T>(temp: &mut ManuallyDrop<T>) -> OwningPtr<'_> {
-        // SAFETY: The constraints of `promote` are upheld by caller.
-        unsafe { PtrMut::from(&mut *temp).promote() }
-    }
-
-    /// Consumes a value and creates an [`OwningPtr`] to it while ensuring a double drop does not happen.
-    #[inline]
-    pub fn make<T, F: FnOnce(OwningPtr<'_>) -> R, R>(val: T, f: F) -> R {
-        let mut val = ManuallyDrop::new(val);
-
-        // SAFETY: The value behind the pointer will not get dropped or observed later,
-        // so it's safe to promote it to an owning pointer.
-        f(unsafe { Self::make_internal(&mut val) })
-    }
-}
-
 impl<'a, T: ?Sized> From<&'a T> for Ptr<'a> {
     #[inline]
     fn from(value: &'a T) -> Self {
@@ -1242,6 +1219,7 @@ trait DebugEnsureAligned {
 // casts are properly aligned.
 #[cfg(all(debug_assertions, not(miri)))]
 impl<T: Sized> DebugEnsureAligned for *mut T {
+    #[track_caller]
     fn debug_ensure_aligned(self) -> Self {
         assert!(
             self.is_aligned(),
@@ -1249,7 +1227,8 @@ impl<T: Sized> DebugEnsureAligned for *mut T {
             self,
             align_of::<T>(),
             std::any::type_name::<T>()
-        )
+        );
+        self
     }
 }
 

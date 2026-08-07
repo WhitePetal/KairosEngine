@@ -8,7 +8,6 @@ pub mod lifecycle;
 pub mod observer;
 pub mod query;
 pub mod relationship;
-pub mod remote_allocator;
 pub mod resource;
 pub mod storage;
 pub mod world;

@@ -21,6 +21,7 @@ mod tests;
 /// and a pointer to the location of the start of the array, similar to a C-style `void*` array.
 ///
 /// This type is reliant on its owning type to store the capacity and length information.
+#[derive(Debug)]
 pub(super) struct BlobArray {
     /// The layout of the data.
     /// This always has `size()` as a multiple of `align()`,
@@ -359,6 +360,8 @@ impl BlobArray {
         let source = value.as_ptr();
 
         if let Some(drop) = self.drop {
+            // We set `self.drop` to `None` before dropping elements for unwind safety. This ensures we don't
+            // accidentally drop elements twice in the event of a drop impl panicking.
             self.drop = None;
 
             // Transfer ownership of the old value out of the vector, so it can be dropped.
@@ -479,14 +482,10 @@ impl BlobArray {
             debug_assert!(self.capacity > index_to_keep);
             debug_assert!(self.capacity > index_to_remove);
         }
+        let drop = self.drop;
         let value = self.swap_remove_unchecked(index_to_remove, index_to_keep);
-        if let Some(drop) = self.drop {
-            // Set `self.drop` to `None` before dropping for unwind safety, so a re-entrant
-            // `clear`/`drop` (e.g. during world teardown after a panic) cannot double-drop
-            // the removed element, whose slot the caller has not yet updated its saved len for
-            self.drop = None;
+        if let Some(drop) = drop {
             drop(value);
-            self.drop = Some(drop);
         }
     }
 
@@ -511,14 +510,10 @@ impl BlobArray {
             debug_assert!(self.capacity > index_to_remove);
             debug_assert_ne!(index_to_keep, index_to_remove);
         }
+        let drop = self.drop;
         let value = self.swap_remove_unchecked_nonoverlapping(index_to_remove, index_to_keep);
-        if let Some(drop) = self.drop {
-            // Set `self.drop` to `None` before dropping for unwind safety, so a re-entrant
-            // `clear`/`drop` (e.g. during world teardown after a panic) cannot double-drop
-            // the removed element, whose slot the caller has not yet updated its saved len for
-            self.drop = None;
+        if let Some(drop) = drop {
             drop(value);
-            self.drop = Some(drop);
         }
     }
 }

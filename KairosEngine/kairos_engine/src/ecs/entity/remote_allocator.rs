@@ -177,7 +177,7 @@ impl Chunk {
     /// This must not be called concurrently with itself.
     #[cold]
     unsafe fn init(&self, chunk_capacity: u32) -> *mut Slot {
-        let mut buff = ManuallyDrop::new(Vec::new);
+        let mut buff = ManuallyDrop::new(Vec::new());
         buff.reserve_exact(chunk_capacity as usize);
         buff.resize_with(chunk_capacity as usize, Slot::empty);
         let ptr = buff.as_mut_ptr();

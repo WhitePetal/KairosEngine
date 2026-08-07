@@ -28,18 +28,23 @@ use crate::{
     collections::FixedHashMap,
     debug::DebugCheckedUnwrap,
     ecs::{
-        archetype,
         bundle::BundleId,
         component::{ComponentId, Components, RequiredComponentConstructor, StorageType},
         entity::{Entity, EntityLocation},
+        event::{Event, GlobalTrigger},
         observer::Observers,
         storage::{ImmutableSparseSet, SparseArray, SparseSet, TableId, TableRow},
     },
 };
 
-#[derive(Event)]
+// TODO!
+// #[derive(Event)]
 #[expect(dead_code, reason = "Prepare for the upcoming Query as Entities")]
 pub(crate) struct ArchetypeCreated(pub ArchetypeId);
+
+impl Event for ArchetypeCreated {
+    type Trigger<'a> = GlobalTrigger;
+}
 
 /// An opaque location within a [`Archetype`].
 ///

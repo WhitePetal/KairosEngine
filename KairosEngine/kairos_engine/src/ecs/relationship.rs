@@ -167,7 +167,7 @@ pub trait RelationshipTarget: Component<Mutability = Mutable> + Sized {
     /// This defaults to false when derived.
     const LINKED_SPAWN: bool;
     /// The [`Relationship`] that populates this [`RelationshipTarget`] collection.
-    type Relationship: Relationship<Relationship = Self>;
+    type Relationship: Relationship<RelationshipTarget = Self>;
 }
 
 /// Configures the conditions under which the Relationship insert/discard hooks will be run.
@@ -197,6 +197,24 @@ impl MaybeRelationshipAccessor {
     /// Initializes the relationship accessor if it isn't initialized already and the counterpart is registered.
     pub fn initialize(&mut self, id: ComponentId, components: &mut Components) {
         todo!()
+    }
+
+    /// Returns [`RelationshipAccessor`] if this component is a part of relationship and the accessor is initialized.
+    pub fn accessor(&self) -> Option<&RelationshipAccessor> {
+        match self {
+            MaybeRelationshipAccessor::Accessor(relationship_accessor) => {
+                Some(relationship_accessor)
+            }
+            _ => None,
+        }
+    }
+}
+
+impl From<Option<RelationshipAccessorInitializer>> for MaybeRelationshipAccessor {
+    fn from(value: Option<RelationshipAccessorInitializer>) -> Self {
+        value
+            .map(|v| MaybeRelationshipAccessor::Initializer(Box::new(v)))
+            .unwrap_or(MaybeRelationshipAccessor::NoAccessor)
     }
 }
 
@@ -233,6 +251,35 @@ pub enum RelationshipAccessorInitializer {
         /// Should return `None` if [`Relationship`] isn't registered yet.
         relationship_getter: Arc<dyn Fn(&Components) -> Option<ComponentId>>,
     },
+}
+
+impl std::fmt::Debug for RelationshipAccessorInitializer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RelationshipAccessorInitializer::Relationship {
+                entity_field_offset,
+                linked_spawn,
+                allow_self_referential,
+                relationship_target_getter,
+            } => f
+                .debug_struct("Relationship")
+                .field("entity_field_offset", entity_field_offset)
+                .field("linked_spawn", linked_spawn)
+                .field("allow_self_referential", allow_self_referential)
+                .finish(),
+            RelationshipAccessorInitializer::RelationshipTarget {
+                iter,
+                linked_spawn,
+                allow_self_referential,
+                relationship_getter,
+            } => f
+                .debug_struct("RelationshipTarget")
+                .field("iter", iter)
+                .field("linked_spawn", linked_spawn)
+                .field("allow_self_referential", allow_self_referential)
+                .finish(),
+        }
+    }
 }
 
 /// This enum describes a way to access the entities of [`Relationship`] and [`RelationshipTarget`] components

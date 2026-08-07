@@ -10,7 +10,8 @@ pub struct BackgroundAudio {
     pub state: AudioState,
     pub auto_play: bool,
 }
-impl Component for BackgroundAudio {}
+// TODO!
+// impl Component for BackgroundAudio {}
 
 impl BackgroundAudio {
     pub fn new(audio: AudioAssetHandle, auto_play: bool) -> Self {

@@ -9,7 +9,8 @@ use crate::{
 pub struct LODMesh {
     pub lod0: Arc<AssetHandle<MeshAssetsSystem>>,
 }
-impl Component for LODMesh {}
+// TODO!
+// impl Component for LODMesh {}
 
 impl LODMesh {
     pub fn new(lod0: Arc<AssetHandle<MeshAssetsSystem>>) -> Self {

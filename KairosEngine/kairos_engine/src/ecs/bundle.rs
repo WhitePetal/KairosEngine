@@ -9,6 +9,7 @@
 
 mod impls;
 mod info;
+mod insert;
 
 use std::mem::MaybeUninit;
 
@@ -200,7 +201,10 @@ pub trait NoBundleEffect {}
     label = "invalid `Bundle`",
     note = "consider annotating `{Self}` with `#[derive(Component)]` or `#[derive(Bundle)]`"
 )]
-pub unsafe trait Bundle: DynamicBundle {
+pub unsafe trait Bundle: DynamicBundle + Send + Sync + 'static {
+    /// Gets this [`Bundle`]'s component ids, in the order of this bundle's [`Component`]s
+    /// This will register the component if it doesn't exist.
+    #[doc(hidden)]
     fn component_ids(
         components: &mut ComponentsRegistrator,
     ) -> impl Iterator<Item = ComponentId> + use<Self>;

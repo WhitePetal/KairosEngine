@@ -158,6 +158,8 @@ unsafe impl<T: EntityEquivalent> EntityEquivalent for Arc<T> {}
 /// [`Vec`]: alloc::vec::Vec
 pub trait EntitySet: IntoIterator<IntoIter: EntitySetIterator> {}
 
+impl<T: IntoIterator<IntoIter: EntitySetIterator>> EntitySet for T {}
+
 /// An iterator over a set of unique entities.
 ///
 /// Every `EntitySetIterator` is also [`EntitySet`].

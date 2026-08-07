@@ -17,7 +17,7 @@ use crate::{
         storage::{ImmutableSparseSet, SparseSet},
     },
     on_drop::AbortOnPanic,
-    ptr::{OwningPtr, Ptr},
+    ptr::{OwningPtr, Ptr, UnsafeCellDeref},
 };
 
 mod column;

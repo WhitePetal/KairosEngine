@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use std::{any::TypeId, path::PathBuf, sync::Arc};
 
 use crate::asset_loader::assets::asset::{AssetsHandler, AssetsSystem};
-use crate::types::TypeIdMap;
+use crate::collections::TypeIdMap;
 
 pub use asset::AssetHandle;
 pub use asset::AudioAssetHandle;
@@ -16,6 +16,7 @@ pub use asset::SyntaxAssetsSystem;
 pub use asset::TextureAssetsSystem;
 pub use asset::TomlTableAssetsSystem;
 
+use indexmap::map::Entry;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
 
@@ -81,12 +82,12 @@ impl AssetsServer {
         let sender = self.dependency_request_sender.clone();
 
         let handler = match self.handlers.entry(TypeId::of::<T>()) {
-            std::collections::hash_map::Entry::Occupied(occupied_entry) => occupied_entry
+            Entry::Occupied(occupied_entry) => occupied_entry
                 .into_mut()
                 .as_any_mut()
                 .downcast_mut::<T>()
                 .unwrap(),
-            std::collections::hash_map::Entry::Vacant(vacant_entry) => {
+            Entry::Vacant(vacant_entry) => {
                 let system = Box::new(T::default());
                 vacant_entry
                     .insert(system)
@@ -150,12 +151,12 @@ impl AssetsServer {
         T: AssetsSystem + 'static,
     {
         let handler = match self.handlers.entry(TypeId::of::<T>()) {
-            std::collections::hash_map::Entry::Occupied(occupied_entry) => occupied_entry
+            Entry::Occupied(occupied_entry) => occupied_entry
                 .into_mut()
                 .as_any_mut()
                 .downcast_mut::<T>()
                 .unwrap(),
-            std::collections::hash_map::Entry::Vacant(vacant_entry) => {
+            Entry::Vacant(vacant_entry) => {
                 let system = Box::new(T::default());
                 vacant_entry
                     .insert(system)

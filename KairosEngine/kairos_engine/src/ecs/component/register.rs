@@ -579,7 +579,7 @@ impl<'w> ComponentsQueuedRegistrator<'w> {
             unsafe {
                 self.register_arbitrary_component(
                     type_id,
-                    ComponentDescriptor::new_non_send(StorageType::default()),
+                    ComponentDescriptor::new_non_send::<T>(StorageType::default()),
                     |registrator, id, descriptor| {
                         // SAFETY: We just checked that this is not currently registered or queued, and if it was registered since, this would have been dropped from the queue.
                         // SAFETY: Id uniqueness handled by caller, and the type_id matches descriptor.

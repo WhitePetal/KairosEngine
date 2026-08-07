@@ -93,7 +93,8 @@ impl KairosEngine {
     }
 
     fn on_exit(&mut self) {
-        self.engine.world.clear();
+        // TODO!
+        // self.engine.world.clear();
         self.engine.assets_server.handle();
     }
 }

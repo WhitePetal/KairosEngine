@@ -3,6 +3,7 @@ use crate::{
         AssetHandle, AssetsServer, MaterialAssetsSystem, SerializedMaterialAssetsSystem,
         TomlTableAssetsSystem, asset::TextAssetsSystem,
     },
+    collections::TypeIdMap,
     graphics::{
         egui_texture_handle::EguiTextureHandle, graphics_graph::GraphicsCommand,
         material::SerializedMaterial, mesh::Mesh, render_state::RenderState,
@@ -27,7 +28,6 @@ use crate::{
     },
     kairos_game::KairosGame,
     log::Log,
-    types::TypeIdMap,
 };
 use egui::{self};
 use std::{

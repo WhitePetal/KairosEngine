@@ -2,15 +2,27 @@ use crate::{
     debug::MaybeLocation,
     ecs::{
         change_detection::Tick,
-        component::{ComponentIds, Components, ComponentsRegistrator},
+        component::{
+            Component, ComponentIds, Components, ComponentsRegistrator, Mutable, StorageType,
+        },
         entity::{Entity, EntityIndex},
         storage::{TableBuilder, TableId, TableRow, Tables},
     },
     ptr::OwningPtr,
 };
 
+// TODO!
 // #[derive(Component)]
 struct W<T>(T);
+
+impl<T> Component for W<T>
+where
+    T: Send + Sync + 'static,
+{
+    const STORAGE_TYPE: crate::ecs::component::StorageType = StorageType::Table;
+
+    type Mutability = Mutable;
+}
 
 #[test]
 fn only_one_empty_table() {

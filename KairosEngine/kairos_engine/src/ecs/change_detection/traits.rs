@@ -373,7 +373,7 @@ macro_rules! change_detection_impl {
             fn is_added_after(&self, other: Tick) -> bool {
                 self.ticks
                     .added
-                    .is_newer_than(other, self.ticsk.this_run)
+                    .is_newer_than(other, self.ticks.this_run)
             }
 
             #[inline]

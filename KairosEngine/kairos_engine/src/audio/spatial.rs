@@ -159,32 +159,28 @@ impl SpatialAudioTracks {
         world: &mut World,
         delta_time: f32,
     ) {
-        let listeners_iter = world
-            .query_mut::<(&Transform, &mut SpatialAudioListenerComponent)>()
-            .into_iter();
-        if listeners_iter.len() == 0 {
-            return;
-        }
+        // TODO!
+        // let listeners_iter = world
+        //     .query_mut::<(&Transform, &mut SpatialAudioListenerComponent)>()
+        //     .into_iter();
+        // if listeners_iter.len() == 0 {
+        //     return;
+        // }
 
-        let mut listeners = listeners_iter
-            .map(|(trans, listener)| (*trans, *listener))
-            .collect::<Box<_>>();
-        let mut listener_capacity = self.listener_infos.capacity();
-        if listeners.len() > listener_capacity {
-            listeners
-                .select_nth_unstable_by(listener_capacity, |x, y| y.1.priority.cmp(&x.1.priority));
-        } else {
-            listener_capacity = listeners.len()
-        }
+        // let mut listeners = listeners_iter
+        //     .map(|(trans, listener)| (*trans, *listener))
+        //     .collect::<Box<_>>();
+        // let mut listener_capacity = self.listener_infos.capacity();
+        // if listeners.len() > listener_capacity {
+        //     listeners
+        //         .select_nth_unstable_by(listener_capacity, |x, y| y.1.priority.cmp(&x.1.priority));
+        // } else {
+        //     listener_capacity = listeners.len()
+        // }
 
-        self.update_listeners_inner(manager, world, &mut listeners[0..listener_capacity]);
+        // self.update_listeners_inner(manager, world, &mut listeners[0..listener_capacity]);
 
-        self.update_audios(assets_server, manager, world, delta_time);
-
-        // let volumes = world.query_mut::<(Entity, &TransformComponent, &SpatialAudioVolumeComponent)>().into_iter();
-        // volumes.enumerate().for_each(|(i, (entity, _, volume))| {
-        //     println!("audio volume {:?} => entity: {:?}, state: {:?}, tracks_state: {:?}", i, entity, volume.state, volume.track_states);
-        // });
+        // self.update_audios(assets_server, manager, world, delta_time);
     }
 
     fn update_listeners_inner(
@@ -261,35 +257,36 @@ impl SpatialAudioTracks {
             return;
         };
 
-        let reverbs = world
-            .query_mut::<(&SpatialAudioReverbBound, &SpatialAudioReverb)>()
-            .into_iter();
-        for (bound, reverb) in reverbs {
-            if !bound.contains_point(listener.position) {
-                continue;
-            }
+        // TODO!
+        // let reverbs = world
+        //     .query_mut::<(&SpatialAudioReverbBound, &SpatialAudioReverb)>()
+        //     .into_iter();
+        // for (bound, reverb) in reverbs {
+        //     if !bound.contains_point(listener.position) {
+        //         continue;
+        //     }
 
-            let tween = Tween::default();
+        //     let tween = Tween::default();
 
-            reverb_track.set_volume(
-                Value::FromListenerDistance(Mapping {
-                    input_range: (0.0, reverb.distance_range as f64),
-                    output_range: (Decibels(reverb.min_volume), Decibels(reverb.max_volume)),
-                    easing: Easing::Linear,
-                }),
-                tween,
-            );
-            listener
-                .reverb_handle
-                .set_feedback(Value::Fixed(reverb.feed_back as f64), tween);
-            listener
-                .reverb_handle
-                .set_damping(reverb.damping as f64, tween);
-            listener.reverb_handle.set_mix(Mix(reverb.mix), tween);
-            listener
-                .reverb_handle
-                .set_damping(reverb.damping as f64, tween);
-        }
+        //     reverb_track.set_volume(
+        //         Value::FromListenerDistance(Mapping {
+        //             input_range: (0.0, reverb.distance_range as f64),
+        //             output_range: (Decibels(reverb.min_volume), Decibels(reverb.max_volume)),
+        //             easing: Easing::Linear,
+        //         }),
+        //         tween,
+        //     );
+        //     listener
+        //         .reverb_handle
+        //         .set_feedback(Value::Fixed(reverb.feed_back as f64), tween);
+        //     listener
+        //         .reverb_handle
+        //         .set_damping(reverb.damping as f64, tween);
+        //     listener.reverb_handle.set_mix(Mix(reverb.mix), tween);
+        //     listener
+        //         .reverb_handle
+        //         .set_damping(reverb.damping as f64, tween);
+        // }
     }
 
     fn update_audios(
@@ -299,19 +296,20 @@ impl SpatialAudioTracks {
         world: &mut World,
         delta_time: f32,
     ) {
+        // TODO!
         // 先更新 kairos engine 端的 audio volume 数据
-        let volumes = world
-            .query_mut::<(&Transform, &mut SpatialAudioVolume)>()
-            .into_iter()
-            .map(|(_, volume)| volume);
-        for mut volume in volumes {
-            Self::update_audio_volume_state(
-                assets_server,
-                delta_time,
-                self.config.audio_volume_leaving_duration,
-                volume.deref_mut(),
-            );
-        }
+        // let volumes = world
+        //     .query_mut::<(&Transform, &mut SpatialAudioVolume)>()
+        //     .into_iter()
+        //     .map(|(_, volume)| volume);
+        // for mut volume in volumes {
+        //     Self::update_audio_volume_state(
+        //         assets_server,
+        //         delta_time,
+        //         self.config.audio_volume_leaving_duration,
+        //         volume.deref_mut(),
+        //     );
+        // }
 
         // 再对每个 listener 更新 volumes
         // 分配 track、播放...
@@ -342,66 +340,67 @@ impl SpatialAudioTracks {
         listener: &mut ListenerInfo,
         reverb_track: Option<SendTrackId>,
     ) {
-        // 首先，如果有 volume play completed 或者 leaved track
-        // 那么先让它们free掉持有的track
-        let volumes = world
-            .query_mut::<(&Transform, &mut SpatialAudioVolume)>()
-            .into_iter()
-            .map(|(_, volume)| volume);
-        for mut volume in volumes {
-            Self::free_audio_volume_track(listener, volume.deref_mut());
-        }
+        // TODO!
+        // // 首先，如果有 volume play completed 或者 leaved track
+        // // 那么先让它们free掉持有的track
+        // let volumes = world
+        //     .query_mut::<(&Transform, &mut SpatialAudioVolume)>()
+        //     .into_iter()
+        //     .map(|(_, volume)| volume);
+        // for mut volume in volumes {
+        //     Self::free_audio_volume_track(listener, volume.deref_mut());
+        // }
 
-        // 找到前 k 个 距离 listener 最近的 可播放的 volumes
-        let mut volumes = world
-            .query_mut::<(&Transform, &mut SpatialAudioVolume)>()
-            .into_iter()
-            .filter(|(_, volume)| match volume.state {
-                AudioState::Created => false,
-                AudioState::WaitLoading => false,
-                AudioState::Playing => true,
-                AudioState::Paused => true,
-                AudioState::Completed => false,
-            })
-            .map(|(trans, volume)| {
-                let dst_sq = float3::distance_sq(listener.position, trans.position);
-                (dst_sq, trans, volume)
-            })
-            .filter(|(dst, _, _)| *dst < cut_off_dst_sq)
-            .collect::<Vec<_>>();
+        // // 找到前 k 个 距离 listener 最近的 可播放的 volumes
+        // let mut volumes = world
+        //     .query_mut::<(&Transform, &mut SpatialAudioVolume)>()
+        //     .into_iter()
+        //     .filter(|(_, volume)| match volume.state {
+        //         AudioState::Created => false,
+        //         AudioState::WaitLoading => false,
+        //         AudioState::Playing => true,
+        //         AudioState::Paused => true,
+        //         AudioState::Completed => false,
+        //     })
+        //     .map(|(trans, volume)| {
+        //         let dst_sq = float3::distance_sq(listener.position, trans.position);
+        //         (dst_sq, trans, volume)
+        //     })
+        //     .filter(|(dst, _, _)| *dst < cut_off_dst_sq)
+        //     .collect::<Vec<_>>();
 
-        let track_count;
-        let volumes_len = volumes.len();
-        if volumes_len > per_listener_track_count as usize {
-            volumes.select_nth_unstable_by(per_listener_track_count as usize, |x, y| {
-                x.0.total_cmp(&y.0)
-            });
-            track_count = per_listener_track_count;
-        } else {
-            track_count = volumes.len() as u8;
-        }
+        // let track_count;
+        // let volumes_len = volumes.len();
+        // if volumes_len > per_listener_track_count as usize {
+        //     volumes.select_nth_unstable_by(per_listener_track_count as usize, |x, y| {
+        //         x.0.total_cmp(&y.0)
+        //     });
+        //     track_count = per_listener_track_count;
+        // } else {
+        //     track_count = volumes.len() as u8;
+        // }
 
-        // 在 track 上 播放/更新 前k个 volumes
-        // 由于可能在k之外有的volume之前持有着track
-        // 因此这里 播放/更新的 volumes 数量可能少于k
-        for (_, trans, volume) in &mut volumes[0..track_count as usize] {
-            if !Self::play_audio_volume_in_track(
-                assets_server,
-                manager,
-                listener,
-                trans,
-                volume.deref_mut(),
-                per_listener_track_count,
-                reverb_track,
-            ) {
-                Self::leaving_audio_volume_in_track(fade_time, listener, trans, volume.deref_mut());
-            }
-        }
+        // // 在 track 上 播放/更新 前k个 volumes
+        // // 由于可能在k之外有的volume之前持有着track
+        // // 因此这里 播放/更新的 volumes 数量可能少于k
+        // for (_, trans, volume) in &mut volumes[0..track_count as usize] {
+        //     if !Self::play_audio_volume_in_track(
+        //         assets_server,
+        //         manager,
+        //         listener,
+        //         trans,
+        //         volume.deref_mut(),
+        //         per_listener_track_count,
+        //         reverb_track,
+        //     ) {
+        //         Self::leaving_audio_volume_in_track(fade_time, listener, trans, volume.deref_mut());
+        //     }
+        // }
 
-        // 剩下的 volume，如果持有 track，则进入 leaving 状态
-        for (_, trans, volume) in &mut volumes[track_count as usize..volumes_len] {
-            Self::leaving_audio_volume_in_track(fade_time, listener, trans, volume.deref_mut());
-        }
+        // // 剩下的 volume，如果持有 track，则进入 leaving 状态
+        // for (_, trans, volume) in &mut volumes[track_count as usize..volumes_len] {
+        //     Self::leaving_audio_volume_in_track(fade_time, listener, trans, volume.deref_mut());
+        // }
     }
 
     fn update_audio_volume_state(

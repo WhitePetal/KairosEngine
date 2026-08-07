@@ -5,7 +5,7 @@ mod info;
 mod register;
 mod required;
 
-use std::{marker::PhantomData, ops::Deref};
+use std::marker::PhantomData;
 
 pub use clone::*;
 pub use info::*;
@@ -16,8 +16,8 @@ pub use required::*;
 pub use kairos_ecs_macros::Component;
 
 use crate::ecs::{
-    self, entity::EntityMapper, lifecycle::ComponentHook,
-    relationship::ComponentRelationshipAccessor, world::FromWorld,
+    entity::EntityMapper, lifecycle::ComponentHook, relationship::ComponentRelationshipAccessor,
+    world::FromWorld,
 };
 
 /// The storage used for a specific component type.
@@ -744,42 +744,43 @@ impl<T: Component> FromWorld for InitComponentId<T> {
     }
 }
 
-/// A [`SystemParam`] that provides access to the [`ComponentId`] for a specific component type.
-///
-/// # Example
-/// ```
-/// # use bevy_ecs::{system::Local, component::{Component, ComponentId, ComponentIdFor}};
-/// #[derive(Component)]
-/// struct Player;
-/// fn my_system(component_id: ComponentIdFor<Player>) {
-///     let component_id: ComponentId = component_id.get();
-///     // ...
-/// }
-/// ```
-#[derive(SystemParam)]
-pub struct ComponentIdFor<'s, T: Component>(Local<'s, InitComponentId<T>>);
+// TODO!
+// /// A [`SystemParam`] that provides access to the [`ComponentId`] for a specific component type.
+// ///
+// /// # Example
+// /// ```
+// /// # use bevy_ecs::{system::Local, component::{Component, ComponentId, ComponentIdFor}};
+// /// #[derive(Component)]
+// /// struct Player;
+// /// fn my_system(component_id: ComponentIdFor<Player>) {
+// ///     let component_id: ComponentId = component_id.get();
+// ///     // ...
+// /// }
+// /// ```
+// #[derive(SystemParam)]
+// pub struct ComponentIdFor<'s, T: Component>(Local<'s, InitComponentId<T>>);
 
-impl<T: Component> ComponentIdFor<'_, T> {
-    /// Gets the [`ComponentId`] for the type `T`.
-    #[inline]
-    pub fn get(&self) -> ComponentId {
-        **self
-    }
-}
+// impl<T: Component> ComponentIdFor<'_, T> {
+//     /// Gets the [`ComponentId`] for the type `T`.
+//     #[inline]
+//     pub fn get(&self) -> ComponentId {
+//         **self
+//     }
+// }
 
-impl<T: Component> Deref for ComponentIdFor<'_, T> {
-    type Target = ComponentId;
-    fn deref(&self) -> &Self::Target {
-        &self.0.component_id
-    }
-}
+// impl<T: Component> Deref for ComponentIdFor<'_, T> {
+//     type Target = ComponentId;
+//     fn deref(&self) -> &Self::Target {
+//         &self.0.component_id
+//     }
+// }
 
-impl<T: Component> From<ComponentIdFor<'_, T>> for ComponentId {
-    #[inline]
-    fn from(to_component_id: ComponentIdFor<'_, T>) -> Self {
-        *to_component_id
-    }
-}
+// impl<T: Component> From<ComponentIdFor<'_, T>> for ComponentId {
+//     #[inline]
+//     fn from(to_component_id: ComponentIdFor<'_, T>) -> Self {
+//         *to_component_id
+//     }
+// }
 
 // pub struct DerveRelationshipTest {}
 

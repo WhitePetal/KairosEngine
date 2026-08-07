@@ -16,7 +16,8 @@ use std::{
 
 use super::UniqueEntityEquivalentArray;
 use crate::ecs::entity::{
-    Entity, EntityEquivalent, EntitySet, FromEntitySetIterator, UniqueEntityIter,
+    Entity, EntityEquivalent, EntitySet, EntitySetIterator, FromEntitySetIterator,
+    UniqueEntityIter,
     unique_vec::{self, UniqueEntityEquivalentVec},
 };
 
@@ -1648,6 +1649,39 @@ pub struct UniqueEntityEquivalentSliceIter<
     I: Iterator<Item = &'a [T]>,
 > {
     iter: I,
+}
+
+impl<'a, T: EntityEquivalent + 'a, I: Iterator<Item = &'a [T]>>
+    UniqueEntityEquivalentSliceIter<'a, T, I>
+{
+    /// Constructs a [`UniqueEntityEquivalentSliceIter`] from a slice iterator unsafely.
+    ///
+    /// # Safety
+    ///
+    /// All elements in each of the slices must be unique.
+    pub const unsafe fn from_slice_iter_unchecked(iter: I) -> Self {
+        Self { iter }
+    }
+
+    /// Returns the inner `I`.
+    pub fn into_inner(self) -> I {
+        self.iter
+    }
+
+    /// Returns a reference to the inner `I`.
+    pub const fn as_inner(&self) -> &I {
+        &self.iter
+    }
+
+    /// Returns a mutable reference to the inner `I`.
+    ///
+    /// # Safety
+    ///
+    /// `self` must always contain an iterator that yields unique elements,
+    /// even while this reference is live.
+    pub const unsafe fn as_mut_inner(&mut self) -> &mut I {
+        &mut self.iter
+    }
 }
 
 /// An iterator that yields `&mut UniqueEntityEquivalentSlice`. Note that an entity may appear

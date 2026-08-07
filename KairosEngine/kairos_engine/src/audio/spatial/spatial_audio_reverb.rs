@@ -3,7 +3,8 @@ use crate::{ecs::component::Component, math::float3, spatial::AABB};
 pub struct SpatialAudioReverbBound {
     pub aabb: AABB,
 }
-impl Component for SpatialAudioReverbBound {}
+// TODO!
+// impl Component for SpatialAudioReverbBound {}
 
 impl SpatialAudioReverbBound {
     pub fn contains_point(&self, point: float3) -> bool {
@@ -19,7 +20,7 @@ pub struct SpatialAudioReverb {
     pub damping: f32,
     pub mix: f32,
 }
-impl Component for SpatialAudioReverb {}
+// impl Component for SpatialAudioReverb {}
 
 impl SpatialAudioReverb {
     pub fn new(

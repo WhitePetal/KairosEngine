@@ -427,6 +427,8 @@ impl DeriveComponent {
             Ok(value) => value,
             Err(err) => Some(err.into_compile_error()),
         };
+
+        todo!()
     }
 
     fn derive_relationship(&self, ast: &DeriveInput, ecs: &Path) -> Result<Option<TokenStream>> {

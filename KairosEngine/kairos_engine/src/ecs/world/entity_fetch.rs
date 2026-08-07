@@ -1,6 +1,11 @@
 use crate::ecs::{
     entity::{Entity, EntityNotSpawnedError},
-    world::{error::EntityMutableFetchError, unsafe_world_cell::UnsafeWorldCell},
+    world::{
+        EntityWorldMut,
+        entity_access::{EntityMut, EntityRef},
+        error::EntityMutableFetchError,
+        unsafe_world_cell::UnsafeWorldCell,
+    },
 };
 
 /// Types that can be used to fetch [`Entity`] references from a [`World`].
@@ -100,7 +105,32 @@ pub unsafe trait WorldEntityFetch {
 }
 
 unsafe impl WorldEntityFetch for Entity {
-    type Ref<'w> = EntityRef;
+    type Ref<'w> = EntityRef<'w>;
+
+    type Mut<'w> = EntityWorldMut<'w>;
+
+    type DeferredMut<'w> = EntityMut<'w>;
+
+    unsafe fn fetch_ref(
+        self,
+        cell: UnsafeWorldCell<'_>,
+    ) -> Result<Self::Ref<'_>, EntityNotSpawnedError> {
+        todo!()
+    }
+
+    unsafe fn fetch_mut(
+        self,
+        cell: UnsafeWorldCell<'_>,
+    ) -> Result<Self::Mut<'_>, EntityMutableFetchError> {
+        todo!()
+    }
+
+    unsafe fn fetch_deferred_mut(
+        self,
+        cell: UnsafeWorldCell<'_>,
+    ) -> Result<Self::DeferredMut<'_>, EntityMutableFetchError> {
+        todo!()
+    }
 }
 
 /// Provides a safe interface for non-structural access to the entities in a [`World`].

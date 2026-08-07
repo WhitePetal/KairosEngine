@@ -1,6 +1,12 @@
 use std::ops::Deref;
 
-use crate::ecs::world::{World, unsafe_world_cell::UnsafeWorldCell};
+use crate::{
+    debug::MaybeLocation,
+    ecs::{
+        event::{Event, EventKey},
+        world::{World, unsafe_world_cell::UnsafeWorldCell},
+    },
+};
 
 /// A [`World`] reference that disallows structural ECS changes.
 /// This includes initializing resources, registering components or spawning entities.
@@ -17,6 +23,32 @@ impl<'w> Deref for DeferredWorld<'w> {
     fn deref(&self) -> &Self::Target {
         // SAFETY: Structural changes cannot be made through &World
         unsafe { self.world.world() }
+    }
+}
+
+impl<'w> DeferredWorld<'w> {
+    /// Sends a global [`Event`] without any targets.
+    ///
+    /// This will run any [`Observer`] of the given [`Event`] that isn't scoped to specific targets.
+    ///
+    /// [`Observer`]: crate::observer::Observer
+    pub fn trigger<'a>(&mut self, event: impl Event<Trigger<'a>: Default>) {
+        todo!()
+    }
+
+    /// Triggers all `event` observers for the given `targets`
+    ///
+    /// # Safety
+    /// - Caller must ensure `E` is accessible as the type represented by `event_key`
+    #[inline]
+    pub unsafe fn trigger_raw<'a, E: Event>(
+        &mut self,
+        event_key: EventKey,
+        event: &mut E,
+        trigger: &mut E::Trigger<'a>,
+        caller: MaybeLocation,
+    ) {
+        todo!()
     }
 }
 
