@@ -4,6 +4,7 @@ mod clone;
 mod info;
 mod register;
 mod required;
+mod constants;
 
 use std::marker::PhantomData;
 
@@ -11,6 +12,7 @@ pub use clone::*;
 pub use info::*;
 pub use register::*;
 pub use required::*;
+pub use constants::*;
 
 /// Derive macro for implementing the [`Component`] trait.
 pub use kairos_ecs_macros::Component;

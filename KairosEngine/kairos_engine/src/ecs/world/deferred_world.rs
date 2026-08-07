@@ -3,8 +3,7 @@ use std::ops::Deref;
 use crate::{
     debug::MaybeLocation,
     ecs::{
-        event::{Event, EventKey},
-        world::{World, unsafe_world_cell::UnsafeWorldCell},
+        archetype::Archetype, component::ComponentId, entity::Entity, event::{Event, EventKey}, relationship::RelationshipHookMode, world::{World, unsafe_world_cell::UnsafeWorldCell}
     },
 };
 
@@ -47,6 +46,21 @@ impl<'w> DeferredWorld<'w> {
         event: &mut E,
         trigger: &mut E::Trigger<'a>,
         caller: MaybeLocation,
+    ) {
+        todo!()
+    }
+
+    /// Triggers all `on_discard` hooks for [`ComponentId`] in target.
+    ///
+    /// # Safety
+    /// Caller must ensure [`ComponentId`] in target exist in self.
+    pub(crate) unsafe fn trigger_on_discard(
+        &mut self,
+        archetype: &Archetype,
+        entity: Entity,
+        targets: impl Iterator<Item = ComponentId>,
+        callder: MaybeLocation,
+        relationship_hook_mode: RelationshipHookMode,
     ) {
         todo!()
     }

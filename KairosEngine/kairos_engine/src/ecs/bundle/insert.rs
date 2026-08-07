@@ -6,15 +6,7 @@ use crate::{
         archetype::{
             Archetype, ArchetypeAfterBundleInsert, ArchetypeCreated, ArchetypeId, Archetypes,
             ComponentStatus,
-        },
-        bundle::{ArchetypeMoveType, Bundle, BundleId, BundleInfo, InsertMode},
-        change_detection::Tick,
-        component::{Components, StorageType},
-        entity::{Entity, EntityLocation},
-        observer::Observers,
-        relationship::RelationshipHookMode,
-        storage::{SparseSets, Storages, Table, TableRow},
-        world::{World, unsafe_world_cell::UnsafeWorldCell},
+        }, bundle::{ArchetypeMoveType, Bundle, BundleId, BundleInfo, InsertMode}, change_detection::Tick, component::{Components, StorageType}, entity::{Entity, EntityLocation}, event::EntityComponentsTrigger, lifecycle::{DISCARD, Discard}, observer::Observers, relationship::RelationshipHookMode, storage::{SparseSets, Storages, Table, TableRow}, world::{World, unsafe_world_cell::UnsafeWorldCell}
     },
     ptr::ConstNonNull,
 };
@@ -151,12 +143,67 @@ impl<'w> BundleInserter<'w> {
                     }
                 };
                 if archetype.has_discard_observer() {
-                    todo!()
+                    deferred_world.trigger_raw(
+                        DISCARD,
+                        &mut Discard { entity },
+                        &mut EntityComponentsTrigger {
+                            components: archetype_after_insert.existing(),
+                            old_archetype: Some(archetype),
+                            new_archetype: Some(new_archetype),
+                        },
+                        caller
+                    );
                 }
+                deferred_world.trigger_on_discard(
+                    archetype,
+                    entity,
+                    archetype_after_insert.existing().iter().copied(),
+                    caller,
+                    relationship_hook_mode,
+                );
             }
         }
 
-        todo!()
+        // SAFETY: Archetype gets borrowed when running the on_discard observers above,
+        // so this reference can only be promoted from shared to &mut down here, after they have been ran
+        let archetype = archetype.as_mut();
+
+        match archetype_move_type {
+            ArchetypeMoveType::SameArchetype => {
+                // SAFETY: Mutable references do not alias and will be dropped after this block
+                let (sparse_set, table) = {
+                    let world = world.world_mut();
+                    (
+                        &mut world.storages.sparse_sets,
+                        &mut world.storages.tables[archetype.table_id()]
+                    )
+                };
+
+                (
+                    &*archetype,
+                    location,
+                    sparse_set,
+                    table,
+                    location.table_row
+                )
+            },
+            ArchetypeMoveType::NewArchetypeSameTable { new_archetype } =>{
+                let new_archetype = new_archetype.as_mut();
+
+                // SAFETY: Mutable references do not alias and will be dropped after this block
+                let (sparse_sets, table, entities) = {
+                    let world = world.world_mut();
+                    (
+                        &mut world.storages.sparse_sets,
+                        &mut world.storages.tables[new_archetype.table_id()],
+                        &mut world.entities
+                    )
+                };
+
+                todo!()
+            },
+            ArchetypeMoveType::NewArchetypeNewTable { new_archetype } => todo!(),
+        }
     }
 }
 

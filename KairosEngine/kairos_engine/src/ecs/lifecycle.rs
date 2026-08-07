@@ -54,10 +54,7 @@
 use crate::{
     debug::MaybeLocation,
     ecs::{
-        component::{Component, ComponentId},
-        entity::Entity,
-        relationship::RelationshipHookMode,
-        world::DeferredWorld,
+        component::{self, Component, ComponentId}, entity::Entity, event::{EntityComponentsTrigger, EntityEvent, Event, EventKey}, relationship::RelationshipHookMode, world::DeferredWorld
     },
 };
 
@@ -297,6 +294,101 @@ impl ComponentHooks {
 
         self
     }
+}
+
+// TODO!
+
+/// [`EventKey`] for [`Add`]
+pub const ADD: EventKey = EventKey(ComponentId::new(component::ADD));
+/// [`EventKey`] for [`Insert`]
+pub const INSERT: EventKey = EventKey(ComponentId::new(component::INSERT));
+/// [`EventKey`] for [`Discard`]
+pub const DISCARD: EventKey = EventKey(ComponentId::new(component::DISCARD));
+/// [`EventKey`] for [`Remove`]
+pub const REMOVE: EventKey = EventKey(ComponentId::new(component::REMOVE));
+/// [`EventKey`] for [`Despawn`]
+pub const DESPAWN: EventKey = EventKey(ComponentId::new(component::DESPAWN));
+
+/// Trigger emitted when a component is inserted onto an entity that does not already have that
+/// component. Runs before `Insert`.
+/// See [`ComponentHooks::on_add`](`crate::lifecycle::ComponentHooks::on_add`) for more information.
+// #[derive(Debug, Clone, EntityEvent)]
+#[derive(Debug, Clone)]
+// #[entity_event(trigger = EntityComponentsTrigger<'a>)]
+// #[cfg_attr(feature = "bevy_reflect", derive(Reflect))]
+// #[cfg_attr(feature = "bevy_reflect", reflect(Debug))]
+#[doc(alias = "OnAdd")]
+pub struct Add {
+    /// The entity this component was added to.
+    pub entity: Entity,
+}
+
+/// Trigger emitted when a component is inserted, regardless of whether or not the entity already
+/// had that component. Runs after `Add`, if it ran.
+/// See [`ComponentHooks::on_insert`](`crate::lifecycle::ComponentHooks::on_insert`) for more information.
+// #[derive(Debug, Clone, EntityEvent)]
+#[derive(Debug, Clone)]
+// #[entity_event(trigger = EntityComponentsTrigger<'a>)]
+// #[cfg_attr(feature = "bevy_reflect", derive(Reflect))]
+// #[cfg_attr(feature = "bevy_reflect", reflect(Debug))]
+#[doc(alias = "OnInsert")]
+pub struct Insert {
+    pub entity: Entity,
+}
+
+/// Trigger emitted when a component is removed from an entity, regardless
+/// of whether or not it is later replaced.
+///
+/// Runs before the value is replaced, so you can still access the original component data.
+/// See [`ComponentHooks::on_discard`](`crate::lifecycle::ComponentHooks::on_discard`) for more information.
+// #[derive(Debug, Clone, EntityEvent)]
+#[derive(Debug, Clone)]
+// #[entity_event(trigger = EntityComponentsTrigger<'a>)]
+// #[cfg_attr(feature = "bevy_reflect", derive(Reflect))]
+// #[cfg_attr(feature = "bevy_reflect", reflect(Debug))]
+#[doc(alias = "OnDiscard")]
+#[doc(alias = "OnReplace")]
+#[doc(alias = "Replace")]
+pub struct Discard {
+    /// The entity that held this component before it was discarded.
+    pub entity: Entity,
+}
+
+impl Event for Discard {
+    type Trigger<'a> = EntityComponentsTrigger<'a>;
+}
+
+impl EntityEvent for Discard {
+    fn event_target(&self) -> Entity {
+        self.entity
+    }
+}
+
+/// Trigger emitted when a component is removed from an entity, and runs before the component is
+/// removed, so you can still access the component data.
+/// See [`ComponentHooks::on_remove`](`crate::lifecycle::ComponentHooks::on_remove`) for more information.
+// #[derive(Debug, Clone, EntityEvent)]
+#[derive(Debug, Clone)]
+// #[entity_event(trigger = EntityComponentsTrigger<'a>)]
+// #[cfg_attr(feature = "bevy_reflect", derive(Reflect))]
+// #[cfg_attr(feature = "bevy_reflect", reflect(Debug))]
+#[doc(alias = "OnRemove")]
+pub struct Remove {
+    /// The entity this component was removed from.
+    pub entity: Entity,
+}
+
+/// [`EntityEvent`] emitted for each component on an entity when it is despawned.
+/// See [`ComponentHooks::on_despawn`](`crate::lifecycle::ComponentHooks::on_despawn`) for more information.
+// #[derive(Debug, Clone, EntityEvent)]
+#[derive(Debug, Clone)]
+// #[entity_event(trigger = EntityComponentsTrigger<'a>)]
+// #[cfg_attr(feature = "bevy_reflect", derive(Reflect))]
+// #[cfg_attr(feature = "bevy_reflect", reflect(Debug))]
+#[doc(alias = "OnDespawn")]
+pub struct Despawn {
+    /// The entity that held this component before it was despawned.
+    pub entity: Entity,
 }
 
 // TODO!
