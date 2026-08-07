@@ -19,6 +19,8 @@
 //! [`Table`]: crate::storage::Table
 //! [`World::archetypes`]: crate::world::World::archetypes
 
+use std::ops::{Index, IndexMut, RangeFrom};
+
 use hashbrown::hash_map::Entry;
 use nonmax::NonMaxU32;
 
@@ -930,10 +932,58 @@ impl Archetypes {
     pub fn iter(&self) -> impl Iterator<Item = &Archetype> {
         self.archetypes.iter()
     }
+
+    /// Clears all entities from all archetypes.
+    pub(crate) fn clear_entities(&mut self) {
+        for archetype in &mut self.archetypes {
+            archetype.clear_entities();
+        }
+    }
+
+    /// Get the component index
+    pub fn component_index(&self) -> &ComponentIndex {
+        &self.by_component
+    }
+
+    pub(crate) fn update_flags(
+        &mut self,
+        component_id: ComponentId,
+        flags: ArchetypeFlags,
+        set: bool
+    ) {
+        if let Some(archetypes) = self.by_component.get(&component_id) {
+            for archetype_id in archetypes.keys() {
+                // SAFETY: the component index only contains valid archetype ids
+                self.archetypes
+                    .get_mut(archetype_id.index())
+                    .unwrap()
+                    .flags
+                    .set(flags, set);
+            }
+        }
+    }
 }
 
-pub(crate) trait BundleComponentStatus {
-    unsafe fn get_status(&self, index: usize) -> ComponentStatus;
+impl Index<RangeFrom<ArchetypeGeneration>> for Archetypes {
+    type Output = [Archetype];
+
+    #[inline]
+    fn index(&self, index: RangeFrom<ArchetypeGeneration>) -> &Self::Output {
+        &self.archetypes[index.start.0.index()..]
+    }
 }
 
-// TODO!
+impl Index<ArchetypeId> for Archetypes {
+    type Output = Archetype;
+
+    #[inline]
+    fn index(&self, index: ArchetypeId) -> &Self::Output {
+        &self.archetypes[index.index()]
+    }
+}
+
+impl IndexMut<ArchetypeId> for Archetypes {
+    fn index_mut(&mut self, index: ArchetypeId) -> &mut Self::Output {
+        &mut self.archetypes[index.index()]
+    }
+}
