@@ -8,7 +8,16 @@ use wgpu::naga::valid;
 use crate::{
     debug::{DebugCheckedUnwrap, MaybeLocation},
     ecs::{
-        change_detection::{ComponentTickCells, ComponentTicks, ComponentTicksMut, ComponentTicksRef, Mut, Ref, Tick}, component::{Component, ComponentId, Components, Mutable, StorageType}, entity::{ContainsEntity, Entities, Entity, EntityAllocator, EntityLocation}, query::{QueryAccessError, ReleaseStateQueryData, SingleEntityQueryData}, resource::ResourceEntities, storage::{ComponentSparseSet, Storages, Table}, world::{DeferredWorld, World, WorldId}
+        change_detection::{
+            ComponentTickCells, ComponentTicks, ComponentTicksMut, ComponentTicksRef, Mut, Ref,
+            Tick,
+        },
+        component::{Component, ComponentId, Components, Mutable, StorageType},
+        entity::{ContainsEntity, Entities, Entity, EntityAllocator, EntityLocation},
+        query::{QueryAccessError, ReleaseStateQueryData, SingleEntityQueryData},
+        resource::ResourceEntities,
+        storage::{ComponentSparseSet, Storages, Table},
+        world::{DeferredWorld, World, WorldId},
     },
     ptr::{Ptr, UnsafeCellDeref},
 };
@@ -494,7 +503,7 @@ impl<'w> UnsafeEntityCell<'w> {
                 component_id,
                 T::STORAGE_TYPE,
                 self.entity,
-                self.location
+                self.location,
             )
         }
     }
@@ -513,7 +522,7 @@ impl<'w> UnsafeEntityCell<'w> {
     #[inline]
     pub unsafe fn get_change_ticks_by_id(
         &self,
-        component_id: ComponentId
+        component_id: ComponentId,
     ) -> Option<ComponentTicks> {
         let info = self.world.components().get_info(component_id)?;
         // SAFETY:
@@ -526,7 +535,7 @@ impl<'w> UnsafeEntityCell<'w> {
                 component_id,
                 info.storage_type(),
                 self.entity,
-                self.location
+                self.location,
             )
         }
     }
@@ -556,11 +565,11 @@ impl<'w> UnsafeEntityCell<'w> {
                 component_id,
                 T::STORAGE_TYPE,
                 self.entity,
-                self.location
+                self.location,
             )
             .map(|(value, cells)| Mut {
                 value: value.assert_unique().deref_mut::<T>(),
-                ticks: ComponentTicksMut::from_tick_cells(cells, last_change_tick, change_tick)
+                ticks: ComponentTicksMut::from_tick_cells(cells, last_change_tick, change_tick),
             })
         }
     }
@@ -585,7 +594,7 @@ impl<'w> UnsafeEntityCell<'w> {
     }
 
     pub(crate) unsafe fn get_components<Q: ReleaseStateQueryData + SingleEntityQueryData>(
-        &self
+        &self,
     ) -> Result<Q::Item<'w, 'static>, QueryAccessError> {
         let state = unsafe {
             let world = self.world().world();
@@ -677,15 +686,15 @@ unsafe fn get_ticks(
     component_id: ComponentId,
     storage_type: StorageType,
     entity: Entity,
-    location: EntityLocation
+    location: EntityLocation,
 ) -> Option<ComponentTicks> {
-    unsafe  {
+    unsafe {
         match storage_type {
             StorageType::Table => {
                 let table = world.fetch_table(location)?;
                 // SAFETY: archetypes only store valid table_rows and caller ensure aliasing rules
                 table.get_ticks_unchecked(component_id, location.table_row)
-            },
+            }
             StorageType::SparseSet => world.fetch_sparse_set(component_id)?.get_ticks(entity),
         }
     }
@@ -721,9 +730,7 @@ unsafe fn get_changed_by(
         caller
             .transpose()?
             // SAFETY: This function is being called through an exclusive mutable reference to Self
-            .map(|changed_by| unsafe {
-                *changed_by.deref()
-            })
+            .map(|changed_by| unsafe { *changed_by.deref() }),
     )
 }
 

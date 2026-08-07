@@ -24,7 +24,18 @@ use std::ops::{Index, IndexMut, RangeFrom};
 use hashbrown::hash_map::Entry;
 use nonmax::NonMaxU32;
 
-use crate::{collections::FixedHashMap, debug::DebugCheckedUnwrap, ecs::{archetype, bundle::BundleId, component::{ComponentId, Components, RequiredComponentConstructor, StorageType}, entity::{Entity, EntityLocation}, observer::Observers, storage::{ImmutableSparseSet, SparseArray, SparseSet, TableId, TableRow}}};
+use crate::{
+    collections::FixedHashMap,
+    debug::DebugCheckedUnwrap,
+    ecs::{
+        archetype,
+        bundle::BundleId,
+        component::{ComponentId, Components, RequiredComponentConstructor, StorageType},
+        entity::{Entity, EntityLocation},
+        observer::Observers,
+        storage::{ImmutableSparseSet, SparseArray, SparseSet, TableId, TableRow},
+    },
+};
 
 #[derive(Event)]
 #[expect(dead_code, reason = "Prepare for the upcoming Query as Entities")]
@@ -238,13 +249,13 @@ impl Edges {
         added.extend(existing);
         self.insert_bundle.insert(
             bundle_id,
-            ArchetypeAfterBundleInsert{
+            ArchetypeAfterBundleInsert {
                 archetype_id,
                 bundle_status: bundle_status.into(),
                 required_components: required_components.into(),
                 added_len,
-                inserted: added.into()
-            }
+                inserted: added.into(),
+            },
         );
     }
 
@@ -288,7 +299,7 @@ impl Edges {
     #[inline]
     pub fn get_archetype_after_bundle_take(
         &self,
-        bundle_id: BundleId
+        bundle_id: BundleId,
     ) -> Option<Option<ArchetypeId>> {
         self.take_bundle.get(bundle_id).cloned()
     }
@@ -301,7 +312,7 @@ impl Edges {
     pub(crate) fn cache_archetype_after_bundle_take(
         &mut self,
         bundle_id: BundleId,
-        archetype_id: Option<ArchetypeId>
+        archetype_id: Option<ArchetypeId>,
     ) {
         self.take_bundle.insert(bundle_id, archetype_id);
     }
@@ -396,16 +407,14 @@ impl Archetype {
         let mut archetype_components = SparseSet::with_capacity(min_table + min_sparse);
         for (idx, component_id) in table_components.enumerate() {
             // SAFETY: We are creating an archetype that includes this component so it must exist
-            let info = unsafe {
-                components.get_info_unchecked(component_id)
-            };
+            let info = unsafe { components.get_info_unchecked(component_id) };
             info.update_archetype_flags(&mut flags);
             observers.update_archetype_flags(component_id, &mut flags);
             archetype_components.insert(
                 component_id,
                 ArchetypeComponentInfo {
-                    storage_type: StorageType::Table
-                }
+                    storage_type: StorageType::Table,
+                },
             );
 
             component_index
@@ -416,16 +425,14 @@ impl Archetype {
 
         for component_id in sparse_set_components {
             // SAFETY: We are creating an archetype that includes this component so it must exist
-            let info = unsafe {
-                components.get_info_unchecked(component_id)
-            };
+            let info = unsafe { components.get_info_unchecked(component_id) };
             info.update_archetype_flags(&mut flags);
             observers.update_archetype_flags(component_id, &mut flags);
             archetype_components.insert(
                 component_id,
                 ArchetypeComponentInfo {
-                    storage_type: StorageType::SparseSet
-                }
+                    storage_type: StorageType::SparseSet,
+                },
             );
             component_index
                 .entry(component_id)
@@ -483,9 +490,9 @@ impl Archetype {
                         },
                         table_id: self.table_id,
                         table_row,
-                    }
+                    },
                 )
-            }
+            },
         )
     }
 
@@ -595,12 +602,10 @@ impl Archetype {
     pub(crate) unsafe fn allocate(
         &mut self,
         entity: Entity,
-        table_row: TableRow
+        table_row: TableRow,
     ) -> EntityLocation {
         // SAFETY: An entity can not have multiple archetype rows and there can not be more than u32::MAX entities.
-        let archetype_row = unsafe {
-            ArchetypeRow::new(NonMaxU32::new_unchecked(self.len()))
-        };
+        let archetype_row = unsafe { ArchetypeRow::new(NonMaxU32::new_unchecked(self.len())) };
         self.entities.push(ArchetypeEntity { entity, table_row });
 
         EntityLocation {
@@ -797,7 +802,7 @@ impl Archetypes {
                 &Observers::default(),
                 TableId::empty(),
                 Vec::new(),
-                Vec::new()
+                Vec::new(),
             );
         }
         archetypes
@@ -843,11 +848,11 @@ impl Archetypes {
                     id,
                     table_id,
                     table_components.iter().copied(),
-                    sparse_set_components.iter().copied()
+                    sparse_set_components.iter().copied(),
                 ));
                 vacant.insert(id);
                 (id, true)
-            },
+            }
         }
     }
 
@@ -908,12 +913,10 @@ impl Archetypes {
     pub(crate) unsafe fn get_maybe_disjoint_mut(
         &mut self,
         id_a: ArchetypeId,
-        id_b: ArchetypeId
+        id_b: ArchetypeId,
     ) -> (&mut Archetype, Option<&mut Archetype>) {
         if id_a == id_b {
-            let archetype_a = unsafe {
-                self.archetypes.get_unchecked_mut(id_a.index())
-            };
+            let archetype_a = unsafe { self.archetypes.get_unchecked_mut(id_a.index()) };
             (archetype_a, None)
         } else {
             // SAFETY:
@@ -949,7 +952,7 @@ impl Archetypes {
         &mut self,
         component_id: ComponentId,
         flags: ArchetypeFlags,
-        set: bool
+        set: bool,
     ) {
         if let Some(archetypes) = self.by_component.get(&component_id) {
             for archetype_id in archetypes.keys() {

@@ -1460,7 +1460,7 @@ macro_rules! deconstruct_moving_ptr {
                 unreachable!()
             }
             *value = ($(unreachable($field_index),)*);
-        }
+        };
         // SAFETY:
         // - `f` does a raw pointer offset, which always returns a non-null pointer to a field inside `T`
         // - The struct is not `repr(packed)`, since otherwise the block of code above would fail compilation
@@ -1541,3 +1541,5 @@ macro_rules! deconstruct_moving_ptr {
         core::mem::forget(ptr);
     };
 }
+
+pub use deconstruct_moving_ptr;

@@ -1,6 +1,5 @@
 use crate::ecs::query::WorldQuery;
 
-
 /// Types that can be fetched from a [`World`] using a [`Query`].
 ///
 /// There are many types that natively implement this trait:
@@ -354,7 +353,6 @@ pub unsafe trait IterQueryData: QueryData {}
 ///
 /// This [`QueryData`] must only access data from the current entity, and not any other entities.
 pub unsafe trait SingleEntityQueryData: IterQueryData {}
-
 
 /// A [`QueryData`] that does not borrow from its [`QueryState`].
 ///

@@ -1,5 +1,3 @@
-use std::mem::MaybeUninit;
-
 use indexmap::{IndexMap, IndexSet};
 
 use crate::{
@@ -7,11 +5,11 @@ use crate::{
     debug::{DebugCheckedUnwrap, MaybeLocation},
     ecs::{
         archetype::{BundleComponentStatus, ComponentStatus},
+        bundle::DynamicBundle,
         change_detection::Tick,
         component::{ComponentId, Components, RequiredComponentConstructor, StorageType},
         entity::Entity,
         storage::{SparseSetIndex, SparseSets, Storages, Table, TableRow},
-        world::EntityWorldMut,
     },
     hash::FixedHasher,
     ptr::{MovingPtr, OwningPtr},
@@ -339,61 +337,3 @@ impl BundleInfo {
         }
     }
 }
-
-/// The parts from [`Bundle`] that don't require statically knowing the components of the bundle.
-pub trait DynamicBundle: Sized {
-    /// An operation on the entity that happens _after_ inserting this bundle.
-    type Effect;
-
-    /// Moves the components out of the bundle.
-    ///
-    /// # Safety
-    /// For callers:
-    /// - Must be called exactly once before `apply_effect`
-    /// - The `StorageType` argument passed into `func` must be correct for the component being fetched.
-    /// - `apply_effect` must be called exactly once after this has been called if `Effect: !NoBundleEffect`
-    ///
-    /// For implementors:
-    ///  - Implementors of this function must convert `ptr` into pointers to individual components stored within
-    ///    `Self` and call `func` on each of them in exactly the same order as [`Bundle::get_component_ids`] and
-    ///    [`BundleFromComponents::from_components`].
-    ///  - If any part of `ptr` is to be accessed in `apply_effect`, it must *not* be dropped at any point in this
-    ///    function. Calling [`bevy_ptr::deconstruct_moving_ptr`] in this function automatically ensures this.
-    ///
-    /// [`Component`]: crate::component::Component
-    // This function explicitly uses `MovingPtr` to avoid potentially large stack copies of the bundle
-    // when inserting into ECS storage. See https://github.com/bevyengine/bevy/issues/20571 for more
-    // information.
-    unsafe fn get_components(
-        ptr: MovingPtr<'_, Self>,
-        func: &mut impl FnMut(StorageType, OwningPtr<'_>),
-    );
-
-    /// Applies the after-effects of spawning this bundle.
-    ///
-    /// This is applied after all residual changes to the [`World`], including flushing the internal command
-    /// queue.
-    ///
-    /// # Safety
-    /// For callers:
-    /// - Must be called exactly once after `get_components` has been called.
-    /// - `ptr` must point to the instance of `Self` that `get_components` was called on,
-    ///   all of fields that were moved out of in `get_components` will not be valid anymore.
-    ///
-    /// For implementors:
-    ///  - If any part of `ptr` is to be accessed in this function, it must *not* be dropped at any point in
-    ///    `get_components`. Calling [`bevy_ptr::deconstruct_moving_ptr`] in `get_components` automatically
-    ///    ensures this is the case.
-    ///  - Note that `entity` may already have been despawned by hooks or observers at this point,
-    ///    so check [`EntityWorldMut::is_spawned`] before trusting it.
-    ///
-    /// [`World`]: crate::world::World
-    // This function explicitly uses `MovingPtr` to avoid potentially large stack copies of the bundle
-    // when inserting into ECS storage. See https://github.com/bevyengine/bevy/issues/20571 for more
-    // information.
-    unsafe fn apply_effect(ptr: MovingPtr<'_, MaybeUninit<Self>>, entity: &mut EntityWorldMut);
-}
-
-/// A trait implemented for [`DynamicBundle::Effect`] implementations that do nothing. This is used as a type constraint for
-/// [`Bundle`] APIs that do not / cannot run [`DynamicBundle::Effect`], such as "batch spawn" APIs.
-pub trait NoBundleEffect {}
