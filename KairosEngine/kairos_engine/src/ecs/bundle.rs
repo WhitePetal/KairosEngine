@@ -7,18 +7,24 @@
 //!
 //! This module contains the [`Bundle`] trait and some other helper types.
 
+#[cfg(test)]
+mod tests;
+
 mod impls;
 mod info;
 mod insert;
 mod remove;
 mod spawner;
+mod writer;
 
 use std::mem::MaybeUninit;
 
 pub use info::*;
+pub use writer::*;
 
 pub(crate) use insert::BundleInserter;
 pub(crate) use remove::BundleRemover;
+pub(crate) use spawner::BundleSpawner;
 
 use crate::{
     ecs::{

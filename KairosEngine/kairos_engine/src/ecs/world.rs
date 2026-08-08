@@ -216,6 +216,36 @@ impl World {
         self.flush_components();
         self.flush_commands();
     }
+
+    /// Spawns a new [`Entity`] and returns a corresponding [`EntityWorldMut`], which can be used
+    /// to add components to the entity or retrieve its id.
+    ///
+    /// ```
+    /// use bevy_ecs::{component::Component, world::World};
+    ///
+    /// #[derive(Component)]
+    /// struct Position {
+    ///   x: f32,
+    ///   y: f32,
+    /// }
+    /// #[derive(Component)]
+    /// struct Label(&'static str);
+    /// #[derive(Component)]
+    /// struct Num(u32);
+    ///
+    /// let mut world = World::new();
+    /// let entity = world.spawn_empty()
+    ///     .insert(Position { x: 0.0, y: 0.0 }) // add a single component
+    ///     .insert((Num(1), Label("hello"))) // add a bundle of components
+    ///     .id();
+    ///
+    /// let position = world.entity(entity).get::<Position>().unwrap();
+    /// assert_eq!(position.x, 0.0);
+    /// ```
+    #[track_caller]
+    pub fn spawn_empty(&mut self) -> EntityWorldMut<'_> {
+        todo!()
+    }
 }
 
 impl fmt::Debug for World {

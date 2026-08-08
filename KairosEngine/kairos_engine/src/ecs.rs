@@ -5,6 +5,7 @@ pub mod component;
 pub mod entity;
 pub mod event;
 pub mod lifecycle;
+pub mod name;
 pub mod observer;
 pub mod query;
 pub mod relationship;

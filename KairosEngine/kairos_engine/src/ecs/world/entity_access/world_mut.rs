@@ -1,6 +1,11 @@
-use crate::ecs::{
-    entity::{Entity, EntityLocation},
-    world::World,
+use crate::{
+    ecs::{
+        component::{Component, ComponentId},
+        entity::{Entity, EntityLocation},
+        relationship::RelationshipHookMode,
+        world::{World, entity_access::EntityRef},
+    },
+    ptr::OwningPtr,
 };
 
 /// A mutable reference to a particular [`Entity`], and the entire world.
@@ -29,4 +34,74 @@ pub struct EntityWorldMut<'w> {
     world: &'w mut World,
     entity: Entity,
     location: Option<EntityLocation>,
+}
+
+impl<'w> EntityWorldMut<'w> {
+    /// Inserts a dynamic [`Bundle`] into the entity.
+    ///
+    /// This will overwrite any previous value(s) of the same component type.
+    ///
+    /// You should prefer to use the typed API [`EntityWorldMut::insert`] where possible.
+    /// If your [`Bundle`] only has one component, use the cached API [`EntityWorldMut::insert_by_id`].
+    ///
+    /// If possible, pass a sorted slice of `ComponentId` to maximize caching potential.
+    ///
+    /// # Safety
+    /// - Each [`ComponentId`] must be from the same world as [`EntityWorldMut`]
+    /// - Each [`OwningPtr`] must be a valid reference to the type represented by [`ComponentId`]
+    ///
+    /// # Panics
+    ///
+    /// If the entity has been despawned while this `EntityWorldMut` is still alive.
+    #[track_caller]
+    pub unsafe fn insert_by_ids<'a, I: Iterator<Item = OwningPtr<'a>>>(
+        &mut self,
+        component_ids: &[ComponentId],
+        iter_components: I,
+    ) -> &mut Self {
+        self.insert_by_ids_internal(component_ids, iter_components, RelationshipHookMode::Run)
+    }
+
+    #[track_caller]
+    pub(crate) unsafe fn insert_by_ids_internal<'a, I: Iterator<Item = OwningPtr<'a>>>(
+        &mut self,
+        component_ids: &[ComponentId],
+        iter_components: I,
+        relationship_hook_inter_mode: RelationshipHookMode,
+    ) -> &mut Self {
+        todo!()
+    }
+
+    /// Gets read-only access to all of the entity's components.
+    #[inline]
+    pub fn as_readonly(&self) -> EntityRef<'_> {
+        todo!()
+    }
+
+    /// Gets access to the component of type `T` for the current entity.
+    /// Returns `None` if the entity does not have a component of type `T`.
+    ///
+    /// # Panics
+    ///
+    /// If the entity has been despawned while this `EntityWorldMut` is still alive.
+    #[inline]
+    pub fn get<T: Component>(&self) -> Option<&'_ T> {
+        todo!()
+    }
+
+    /// Returns `true` if the current entity has a component of type `T`.
+    /// Otherwise, this returns `false`.
+    ///
+    /// ## Notes
+    ///
+    /// If you do not know the concrete type of a component, consider using
+    /// [`Self::contains_id`] or [`Self::contains_type_id`].
+    ///
+    /// # Panics
+    ///
+    /// If the entity has been despawned while this `EntityWorldMut` is still alive.
+    #[inline]
+    pub fn contains<T: Component>(&self) -> bool {
+        todo!()
+    }
 }

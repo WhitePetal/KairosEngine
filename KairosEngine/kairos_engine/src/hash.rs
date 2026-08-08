@@ -1,4 +1,9 @@
-use std::hash::{BuildHasher, Hasher};
+use std::{
+    fmt::Debug,
+    hash::{BuildHasher, Hash, Hasher},
+    marker::PhantomData,
+    ops::Deref,
+};
 
 use foldhash::fast::{FixedState, FoldHasher};
 
@@ -17,6 +22,136 @@ impl BuildHasher for FixedHasher {
     #[inline]
     fn build_hasher(&self) -> Self::Hasher {
         FIXED_HASHER.build_hasher()
+    }
+}
+
+/// Hashes one value with the deterministic [`FixedHasher`].
+pub fn fixed_hash_one(x: impl Hash) -> u64 {
+    FixedHasher.hash_one(x)
+}
+
+/// A pre-hashed value of a specific type. Pre-hashing enables memoization of hashes that are expensive to compute.
+///
+/// It also enables faster [`PartialEq`] comparisons by short circuiting on hash equality.
+/// See [`PassHash`] and [`PassHasher`] for a "pass through" [`BuildHasher`] and [`Hasher`] implementation
+/// designed to work with [`Hashed`]
+/// See `PreHashMap` for a hashmap pre-configured to use [`Hashed`] keys.
+pub struct FixedHashed<V, S = FixedHasher> {
+    hash: u64,
+    value: V,
+    marker: PhantomData<S>,
+}
+
+impl<V: Hash, H: BuildHasher + Default> FixedHashed<V, H> {
+    /// Pre-hashes the given value using the [`BuildHasher`] configured in the [`Hashed`] type.
+    pub fn new(value: V) -> Self {
+        Self {
+            hash: H::default().hash_one(&value),
+            value,
+            marker: PhantomData,
+        }
+    }
+
+    /// Mutates the current value and re-computes the hash.
+    pub fn mutate(&mut self, func: impl FnOnce(&mut V)) {
+        func(&mut self.value);
+        self.hash = H::default().hash_one(&self.value);
+    }
+
+    /// The pre-computed hash.
+    #[inline]
+    pub fn hash(&self) -> u64 {
+        self.hash
+    }
+}
+
+impl<V, H> Hash for FixedHashed<V, H> {
+    #[inline]
+    fn hash<R: Hasher>(&self, state: &mut R) {
+        state.write_u64(self.hash);
+    }
+}
+
+impl<V: Hash, H: BuildHasher + Default> From<V> for FixedHashed<V, H> {
+    fn from(value: V) -> Self {
+        Self::new(value)
+    }
+}
+
+impl<V, H> Deref for FixedHashed<V, H> {
+    type Target = V;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.value
+    }
+}
+
+impl<V: PartialEq, H> PartialEq for FixedHashed<V, H> {
+    /// A fast impl of [`PartialEq`] that first checks that `other`'s pre-computed hash
+    /// matches this value's pre-computed hash.
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.hash == other.hash && self.value.eq(&other.value)
+    }
+}
+
+impl<V: Debug, H> Debug for FixedHashed<V, H> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Hashed")
+            .field("hash", &self.hash)
+            .field("value", &self.value)
+            .finish()
+    }
+}
+
+impl<V: Clone, H> Clone for FixedHashed<V, H> {
+    #[inline]
+    fn clone(&self) -> Self {
+        Self {
+            hash: self.hash,
+            value: self.value.clone(),
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<V: Copy, H> Copy for FixedHashed<V, H> {}
+
+impl<V: Eq, H> Eq for FixedHashed<V, H> {}
+
+/// A [`BuildHasher`] that results in a [`PassHasher`].
+#[derive(Default, Clone)]
+pub struct PassHash;
+
+impl BuildHasher for PassHash {
+    type Hasher = PassHasher;
+
+    fn build_hasher(&self) -> Self::Hasher {
+        PassHasher::default()
+    }
+}
+
+/// A no-op hash that only works on `u64`s. Will panic if attempting to
+/// hash a type containing non-u64 fields.
+#[derive(Debug, Default)]
+pub struct PassHasher {
+    hash: u64,
+}
+
+impl Hasher for PassHasher {
+    #[inline]
+    fn finish(&self) -> u64 {
+        self.hash
+    }
+
+    fn write(&mut self, _bytes: &[u8]) {
+        panic!("can only hash u64 using PassHasher");
+    }
+
+    #[inline]
+    fn write_u64(&mut self, i: u64) {
+        self.hash = i;
     }
 }
 

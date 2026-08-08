@@ -2321,6 +2321,7 @@ dependencies = [
  "arrayvec",
  "base64 0.22.1",
  "bitflags 2.13.1",
+ "bumpalo",
  "bytemuck",
  "criterion",
  "crossbeam-channel",
