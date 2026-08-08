@@ -82,7 +82,7 @@
 //! [`Commands`]: crate::system::Commands
 //!
 
-use std::{fmt, mem, num::NonZero, panic::Location};
+use std::{fmt, hash::Hash, mem, num::NonZero, panic::Location};
 
 use derive_more::Display;
 use log::warn;
@@ -116,7 +116,11 @@ pub use unique_vec::{UniqueEntityEquivalentVec, UniqueEntityVec};
 
 mod hash;
 
+pub mod hash_map;
+pub mod hash_set;
+
 pub use hash::*;
+pub use hash_map::EntityHashMap;
 
 #[cfg(test)]
 mod tests;
@@ -584,6 +588,43 @@ impl PartialEq for Entity {
 }
 
 impl Eq for Entity {}
+
+// The derive macro codegen output is not optimal and can't be optimized as well
+// by the compiler. This impl resolves the issue of non-optimal codegen by relying
+// on comparing against the bit representation of `Entity` instead of comparing
+// the fields. The result is then LLVM is able to optimize the codegen for Entity
+// far beyond what the derive macro can.
+// See <https://github.com/rust-lang/rust/issues/106107>
+impl PartialOrd for Entity {
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        // Make use of our `Ord` impl to ensure optimal codegen output
+        Some(self.cmp(other))
+    }
+}
+
+// The derive macro codegen output is not optimal and can't be optimized as well
+// by the compiler. This impl resolves the issue of non-optimal codegen by relying
+// on comparing against the bit representation of `Entity` instead of comparing
+// the fields. The result is then LLVM is able to optimize the codegen for Entity
+// far beyond what the derive macro can.
+// See <https://github.com/rust-lang/rust/issues/106107>
+impl Ord for Entity {
+    #[inline]
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        // This will result in better codegen for ordering comparisons, plus
+        // avoids pitfalls with regards to macro codegen relying on property
+        // position when we want to compare against the bit representation.
+        self.to_bits().cmp(&other.to_bits())
+    }
+}
+
+impl Hash for Entity {
+    #[inline]
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        self.to_bits().hash(state);
+    }
+}
 
 /// Allocates [`Entity`] ids uniquely.
 /// This is used in [`World::spawn_at`](crate::world::World::spawn_at) and [`World::despawn_no_free`](crate::world::World::despawn_no_free) to track entity ids no longer in use.

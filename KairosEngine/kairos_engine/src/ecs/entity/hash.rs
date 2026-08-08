@@ -22,7 +22,7 @@ impl Hasher for EntityHasher {
         self.hash
     }
 
-    fn write(&mut self, bytes: &[u8]) {
+    fn write(&mut self, _bytes: &[u8]) {
         panic!("EntityHasher can only hash u64 fields.");
     }
 

@@ -2367,6 +2367,7 @@ dependencies = [
  "serde_json",
  "smallvec",
  "sonic-rs",
+ "static_assertions",
  "strum",
  "symphonia",
  "syntect",
