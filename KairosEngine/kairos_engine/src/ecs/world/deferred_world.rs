@@ -3,7 +3,12 @@ use std::ops::Deref;
 use crate::{
     debug::MaybeLocation,
     ecs::{
-        archetype::Archetype, component::ComponentId, entity::Entity, event::{Event, EventKey}, relationship::RelationshipHookMode, world::{World, unsafe_world_cell::UnsafeWorldCell}
+        archetype::Archetype,
+        component::ComponentId,
+        entity::Entity,
+        event::{Event, EventKey},
+        relationship::RelationshipHookMode,
+        world::{World, unsafe_world_cell::UnsafeWorldCell},
     },
 };
 
@@ -55,6 +60,37 @@ impl<'w> DeferredWorld<'w> {
     /// # Safety
     /// Caller must ensure [`ComponentId`] in target exist in self.
     pub(crate) unsafe fn trigger_on_discard(
+        &mut self,
+        archetype: &Archetype,
+        entity: Entity,
+        targets: impl Iterator<Item = ComponentId>,
+        callder: MaybeLocation,
+        relationship_hook_mode: RelationshipHookMode,
+    ) {
+        todo!()
+    }
+
+    /// Triggers all `on_add` hooks for [`ComponentId`] in target.
+    ///
+    /// # Safety
+    /// Caller must ensure [`ComponentId`] in target exist in self.
+    #[inline]
+    pub(crate) unsafe fn trigger_on_add(
+        &mut self,
+        archetype: &Archetype,
+        entity: Entity,
+        targets: impl Iterator<Item = ComponentId>,
+        caller: MaybeLocation,
+    ) {
+        todo!()
+    }
+
+    /// Triggers all `on_insert` hooks for [`ComponentId`] in target.
+    ///
+    /// # Safety
+    /// Caller must ensure [`ComponentId`] in target exist in self.
+    #[inline]
+    pub(crate) unsafe fn trigger_on_insert(
         &mut self,
         archetype: &Archetype,
         entity: Entity,

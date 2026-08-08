@@ -6,9 +6,19 @@ use crate::{
         archetype::{
             Archetype, ArchetypeAfterBundleInsert, ArchetypeCreated, ArchetypeId, Archetypes,
             ComponentStatus,
-        }, bundle::{ArchetypeMoveType, Bundle, BundleId, BundleInfo, InsertMode}, change_detection::Tick, component::{Components, StorageType}, entity::{Entity, EntityLocation}, event::EntityComponentsTrigger, lifecycle::{DISCARD, Discard}, observer::Observers, relationship::RelationshipHookMode, storage::{SparseSets, Storages, Table, TableRow}, world::{World, unsafe_world_cell::UnsafeWorldCell}
+        },
+        bundle::{ArchetypeMoveType, Bundle, BundleId, BundleInfo, DynamicBundle, InsertMode},
+        change_detection::Tick,
+        component::{Components, StorageType},
+        entity::{Entities, Entity, EntityLocation},
+        event::EntityComponentsTrigger,
+        lifecycle::{ADD, Add, DISCARD, Discard, INSERT, Insert},
+        observer::Observers,
+        relationship::RelationshipHookMode,
+        storage::{SparseSets, Storages, Table, TableRow},
+        world::{DeferredWorld, World, unsafe_world_cell::UnsafeWorldCell},
     },
-    ptr::ConstNonNull,
+    ptr::{ConstNonNull, MovingPtr},
 };
 
 // SAFETY: We have exclusive world access so our pointers can't be invalidated externally
@@ -151,7 +161,7 @@ impl<'w> BundleInserter<'w> {
                             old_archetype: Some(archetype),
                             new_archetype: Some(new_archetype),
                         },
-                        caller
+                        caller,
                     );
                 }
                 deferred_world.trigger_on_discard(
@@ -175,19 +185,13 @@ impl<'w> BundleInserter<'w> {
                     let world = world.world_mut();
                     (
                         &mut world.storages.sparse_sets,
-                        &mut world.storages.tables[archetype.table_id()]
+                        &mut world.storages.tables[archetype.table_id()],
                     )
                 };
 
-                (
-                    &*archetype,
-                    location,
-                    sparse_set,
-                    table,
-                    location.table_row
-                )
-            },
-            ArchetypeMoveType::NewArchetypeSameTable { new_archetype } =>{
+                (&*archetype, location, sparse_set, table, location.table_row)
+            }
+            ArchetypeMoveType::NewArchetypeSameTable { new_archetype } => {
                 let new_archetype = new_archetype.as_mut();
 
                 // SAFETY: Mutable references do not alias and will be dropped after this block
@@ -196,14 +200,284 @@ impl<'w> BundleInserter<'w> {
                     (
                         &mut world.storages.sparse_sets,
                         &mut world.storages.tables[new_archetype.table_id()],
-                        &mut world.entities
+                        &mut world.entities,
                     )
                 };
 
-                todo!()
-            },
-            ArchetypeMoveType::NewArchetypeNewTable { new_archetype } => todo!(),
+                let result = archetype.swap_remove(location.archetype_row);
+                if let Some(swapped_entity) = result.swapped_entity {
+                    // SAFETY: If the swap was successful, swapped_entity must be valid.
+                    let swapped_location =
+                        unsafe { entities.get_spawned(swapped_entity).debug_checked_unwrap() };
+                    entities.update_existing_location(
+                        swapped_entity.index(),
+                        Some(EntityLocation {
+                            archetype_id: swapped_location.archetype_id,
+                            archetype_row: location.archetype_row,
+                            table_id: swapped_location.table_id,
+                            table_row: swapped_location.table_row,
+                        }),
+                    );
+                }
+                let new_location = new_archetype.allocate(entity, result.table_row);
+                entities.update_existing_location(entity.index(), Some(new_location));
+
+                (
+                    &*new_archetype,
+                    new_location,
+                    sparse_sets,
+                    table,
+                    result.table_row,
+                )
+            }
+            ArchetypeMoveType::NewArchetypeNewTable { new_archetype } => {
+                let new_archetype = new_archetype.as_mut();
+
+                // SAFETY: Mutable references do not alias and will be dropped after this block
+                let (archetypes_ptr, tables, sparse_sets, entities) = {
+                    let word = world.world_mut();
+                    let archetype_ptr: *mut Archetype = word.archetypes.archetypes.as_mut_ptr();
+                    (
+                        archetype_ptr,
+                        &mut word.storages.tables,
+                        &mut word.storages.sparse_sets,
+                        &mut word.entities,
+                    )
+                };
+                let result = archetype.swap_remove(location.archetype_row);
+                if let Some(swapped_entity) = result.swapped_entity {
+                    // SAFETY: If the swap was successful, swapped_entity must be valid.
+                    let swapped_location =
+                        unsafe { entities.get_spawned(swapped_entity).debug_checked_unwrap() };
+                    entities.update_existing_location(
+                        swapped_entity.index(),
+                        Some(EntityLocation {
+                            archetype_id: swapped_location.archetype_id,
+                            archetype_row: location.archetype_row,
+                            table_id: swapped_location.table_id,
+                            table_row: swapped_location.table_row,
+                        }),
+                    );
+                }
+
+                // SAFETY:
+                // - Since `ArchetypeMoveType` is `NewArchetypeNewTable`,
+                //   the entity's old table was determined to be different
+                //   from its new table in `Self::new_with_id`.
+                // - `location.table_id` is obtained from a valid location
+                //   and `new_archetype.table_id()` is obtained from a valid archetype.
+                // - `result.table_row` was obtained from a valid archetype.
+                // - We will not drop any components.
+                // - Valid values will be written to new components by the caller (`Self::insert`).
+                let move_result = unsafe {
+                    tables.move_row::<true>(
+                        location.table_id,
+                        new_archetype.table_id(),
+                        result.table_row,
+                    )
+                };
+
+                let new_location = new_archetype.allocate(entity, move_result.new_row);
+                entities.update_existing_location(entity.index(), Some(new_location));
+
+                // If an entity was moved into this entity's table spot, update its table row.
+                if let Some(swapped_entity) = move_result.swapped_entity {
+                    // SAFETY: If the swap was successful, swapped_entity must be valid.
+                    let swapped_location =
+                        unsafe { entities.get_spawned(swapped_entity).debug_checked_unwrap() };
+
+                    entities.update_existing_location(
+                        swapped_entity.index(),
+                        Some(EntityLocation {
+                            archetype_id: swapped_location.archetype_id,
+                            archetype_row: swapped_location.archetype_row,
+                            table_id: swapped_location.table_id,
+                            table_row: result.table_row,
+                        }),
+                    );
+
+                    if archetype.id() == swapped_location.archetype_id {
+                        archetype
+                            .set_entity_table_row(swapped_location.archetype_row, result.table_row);
+                    } else if new_archetype.id() == swapped_location.archetype_id {
+                        new_archetype
+                            .set_entity_table_row(swapped_location.archetype_row, result.table_row);
+                    } else {
+                        // SAFETY: the only two borrowed archetypes are above and we just did collision checks
+                        (*archetypes_ptr.add(swapped_location.archetype_id.index()))
+                            .set_entity_table_row(swapped_location.archetype_row, result.table_row);
+                    }
+                }
+
+                (
+                    &*new_archetype,
+                    new_location,
+                    sparse_sets,
+                    move_result.new_table,
+                    move_result.new_row,
+                )
+            }
         }
+    }
+
+    /// # Safety
+    /// - `entity` must currently exist in the source archetype for this inserter.
+    /// - `location` must be `entity`'s location in the archetype.
+    /// - `T` must match this [`BundleInserter`] type used to create
+    /// - If `T::Effect: !NoBundleEffect.`, then [`apply_effect`] must be called at most once on
+    ///   `bundle` after this function before returning to user-space safe code.
+    /// - The value pointed to by `bundle` must not be accessed for anything other than [`apply_effect`]
+    ///   or dropped.
+    ///
+    /// [`apply_effect`]: crate::bundle::DynamicBundle::apply_effect
+    #[inline]
+    pub(crate) unsafe fn insert<T: DynamicBundle>(
+        &mut self,
+        entity: Entity,
+        location: EntityLocation,
+        bundle: MovingPtr<'_, T>,
+        insert_mode: InsertMode,
+        caller: MaybeLocation,
+        relationship_hook_mode: RelationshipHookMode,
+    ) -> EntityLocation {
+        let archetype_after_insert = self.archetype_after_insert.as_ref();
+
+        let (new_archetype, new_location) = {
+            let (new_archetype, new_location, sparse_sets, table, table_row) = Self::before_insert(
+                entity,
+                location,
+                insert_mode,
+                caller,
+                relationship_hook_mode,
+                self.archetype,
+                archetype_after_insert,
+                &self.world,
+                &mut self.archetype_move_type,
+            );
+
+            self.bundle_info.as_ref().write_components(
+                table,
+                sparse_sets,
+                archetype_after_insert,
+                archetype_after_insert.required_components.iter(),
+                entity,
+                table_row,
+                self.change_tick,
+                bundle,
+                insert_mode,
+                caller,
+            );
+
+            (new_archetype, new_location)
+        };
+
+        // SAFETY: We have no outstanding mutable references to world as they were dropped
+        let deferred_world = unsafe { self.world.into_deferred() };
+
+        // Non-generic postlude extracted to improve compile time by minimizing monomorphized code.
+        Self::after_insert(
+            entity,
+            insert_mode,
+            caller,
+            relationship_hook_mode,
+            archetype_after_insert,
+            self.archetype.as_ref(),
+            new_archetype,
+            deferred_world,
+        );
+
+        new_location
+    }
+
+    // A non-generic postlude to insert used to minimize duplicated monomorphized code.
+    // In combination with before_insert, this can reduce compile time of bevy by 10%.
+    // We inline in release to avoid a minor perf loss.
+    #[cfg_attr(not(debug_assertions), inline(always))]
+    fn after_insert(
+        entity: Entity,
+        insert_mode: InsertMode,
+        caller: MaybeLocation,
+        relationship_hook_mode: RelationshipHookMode,
+        archetype_after_insert: &ArchetypeAfterBundleInsert,
+        old_archetype: &Archetype,
+        new_archetype: &Archetype,
+        mut deferred_world: DeferredWorld<'_>,
+    ) {
+        // SAFETY: All components in the bundle are guaranteed to exist in the World
+        // as they must be initialized before creating the BundleInfo.
+        unsafe {
+            deferred_world.trigger_on_add(
+                new_archetype,
+                entity,
+                archetype_after_insert.added().iter().copied(),
+                caller,
+            );
+            if new_archetype.has_add_observer() {
+                deferred_world.trigger_raw(
+                    ADD,
+                    &mut Add { entity },
+                    &mut EntityComponentsTrigger {
+                        components: archetype_after_insert.added(),
+                        old_archetype: Some(old_archetype),
+                        new_archetype: Some(new_archetype),
+                    },
+                    caller,
+                );
+            }
+            match insert_mode {
+                InsertMode::Replace => {
+                    // Insert triggers for both new and existing components if we're replacing them.
+                    deferred_world.trigger_on_insert(
+                        new_archetype,
+                        entity,
+                        archetype_after_insert.inserted().iter().copied(),
+                        caller,
+                        relationship_hook_mode,
+                    );
+                    if new_archetype.has_insert_observer() {
+                        deferred_world.trigger_raw(
+                            INSERT,
+                            &mut Insert { entity },
+                            &mut EntityComponentsTrigger {
+                                components: archetype_after_insert.inserted(),
+                                old_archetype: Some(old_archetype),
+                                new_archetype: Some(new_archetype),
+                            },
+                            caller,
+                        );
+                    }
+                }
+                InsertMode::Keep => {
+                    // Insert triggers only for new components if we're not replacing them (since
+                    // nothing is actually inserted).
+                    deferred_world.trigger_on_insert(
+                        new_archetype,
+                        entity,
+                        archetype_after_insert.added().iter().copied(),
+                        caller,
+                        relationship_hook_mode,
+                    );
+                    if new_archetype.has_insert_observer() {
+                        deferred_world.trigger_raw(
+                            INSERT,
+                            &mut Insert { entity },
+                            &mut EntityComponentsTrigger {
+                                components: archetype_after_insert.added(),
+                                old_archetype: Some(old_archetype),
+                                new_archetype: Some(new_archetype),
+                            },
+                            caller,
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[inline]
+    pub(crate) fn entities(&mut self) -> &mut Entities {
+        // SAFETY: No outstanding references to self.world, changes to entities cannot invalidate our internal pointers
+        unsafe { &mut self.world.world_mut().entities }
     }
 }
 

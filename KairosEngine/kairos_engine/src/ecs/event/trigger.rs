@@ -1,4 +1,8 @@
-use crate::ecs::{archetype::Archetype, component::ComponentId, event::{EntityEvent, Event}};
+use crate::ecs::{
+    archetype::Archetype,
+    component::ComponentId,
+    event::{EntityEvent, Event},
+};
 
 pub unsafe trait Trigger<E: Event> {}
 
@@ -10,7 +14,6 @@ pub unsafe trait Trigger<E: Event> {}
 pub struct GlobalTrigger;
 
 unsafe impl<E: for<'a> Event<Trigger<'a> = Self>> Trigger<E> for GlobalTrigger {}
-
 
 /// An [`EntityEvent`] [`Trigger`] that, in addition to behaving like a normal [`EntityTrigger`], _also_ runs observers
 /// that watch for components that match the slice of [`ComponentId`]s referenced in [`EntityComponentsTrigger`]. This includes
@@ -103,6 +106,7 @@ pub struct EntityComponentsTrigger<'a> {
     pub new_archetype: Option<&'a Archetype>,
 }
 
-unsafe impl<'a, E: EntityEvent + Event<Trigger<'a> = EntityComponentsTrigger<'a>>> Trigger<E> for EntityComponentsTrigger<'a> {
-
+unsafe impl<'a, E: EntityEvent + Event<Trigger<'a> = EntityComponentsTrigger<'a>>> Trigger<E>
+    for EntityComponentsTrigger<'a>
+{
 }

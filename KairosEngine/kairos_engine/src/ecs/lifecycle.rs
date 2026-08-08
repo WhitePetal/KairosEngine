@@ -54,7 +54,11 @@
 use crate::{
     debug::MaybeLocation,
     ecs::{
-        component::{self, Component, ComponentId}, entity::Entity, event::{EntityComponentsTrigger, EntityEvent, Event, EventKey}, relationship::RelationshipHookMode, world::DeferredWorld
+        component::{self, Component, ComponentId},
+        entity::Entity,
+        event::{EntityComponentsTrigger, EntityEvent, Event, EventKey},
+        relationship::RelationshipHookMode,
+        world::DeferredWorld,
     },
 };
 
@@ -323,6 +327,16 @@ pub struct Add {
     pub entity: Entity,
 }
 
+impl Event for Add {
+    type Trigger<'a> = EntityComponentsTrigger<'a>;
+}
+
+impl EntityEvent for Add {
+    fn event_target(&self) -> Entity {
+        self.entity
+    }
+}
+
 /// Trigger emitted when a component is inserted, regardless of whether or not the entity already
 /// had that component. Runs after `Add`, if it ran.
 /// See [`ComponentHooks::on_insert`](`crate::lifecycle::ComponentHooks::on_insert`) for more information.
@@ -334,6 +348,16 @@ pub struct Add {
 #[doc(alias = "OnInsert")]
 pub struct Insert {
     pub entity: Entity,
+}
+
+impl Event for Insert {
+    type Trigger<'a> = EntityComponentsTrigger<'a>;
+}
+
+impl EntityEvent for Insert {
+    fn event_target(&self) -> Entity {
+        self.entity
+    }
 }
 
 /// Trigger emitted when a component is removed from an entity, regardless
