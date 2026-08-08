@@ -11,6 +11,7 @@ use crate::{
         bundle::{Bundle, BundleId, BundleInfo, Bundles},
         component::{Component, ComponentId, ComponentIds, Components, ComponentsRegistrator},
         entity::{Entities, EntityAllocator},
+        lifecycle::RemovedComponentMessages,
         observer::Observers,
         resource::ResourceEntities,
         storage::Storages,
@@ -60,6 +61,7 @@ pub struct World {
     pub(crate) storages: Storages,
     pub(crate) bundles: Bundles,
     pub(crate) observers: Observers,
+    pub(crate) removed_components: RemovedComponentMessages,
 }
 
 /// Creates an instance of the type this trait is implemented for

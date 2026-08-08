@@ -58,6 +58,7 @@ use crate::{
         entity::Entity,
         event::{EntityComponentsTrigger, EntityEvent, Event, EventKey},
         relationship::RelationshipHookMode,
+        storage::SparseSet,
         world::DeferredWorld,
     },
 };
@@ -402,6 +403,16 @@ pub struct Remove {
     pub entity: Entity,
 }
 
+impl Event for Remove {
+    type Trigger<'a> = EntityComponentsTrigger<'a>;
+}
+
+impl EntityEvent for Remove {
+    fn event_target(&self) -> Entity {
+        self.entity
+    }
+}
+
 /// [`EntityEvent`] emitted for each component on an entity when it is despawned.
 /// See [`ComponentHooks::on_despawn`](`crate::lifecycle::ComponentHooks::on_despawn`) for more information.
 // #[derive(Debug, Clone, EntityEvent)]
@@ -413,6 +424,19 @@ pub struct Remove {
 pub struct Despawn {
     /// The entity that held this component before it was despawned.
     pub entity: Entity,
+}
+
+/// Stores the [`RemovedComponents`] event buffers for all types of component in a given [`World`].
+#[derive(Default, Debug)]
+pub struct RemovedComponentMessages {
+    event_sets: SparseSet<ComponentId, Vec<RemovedComponentMessages>>,
+}
+
+impl RemovedComponentMessages {
+    /// Writes a removal message for the specified component.
+    pub fn write(&mut self, component_id: impl Into<ComponentId>, entity: Entity) {
+        todo!()
+    }
 }
 
 // TODO!

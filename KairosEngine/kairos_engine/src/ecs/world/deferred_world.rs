@@ -100,6 +100,21 @@ impl<'w> DeferredWorld<'w> {
     ) {
         todo!()
     }
+
+    /// Triggers all `on_remove` hooks for [`ComponentId`] in target.
+    ///
+    /// # Safety
+    /// Caller must ensure [`ComponentId`] in target exist in self.
+    #[inline]
+    pub(crate) unsafe fn trigger_on_remove(
+        &mut self,
+        archetype: &Archetype,
+        entity: Entity,
+        targets: impl Iterator<Item = ComponentId>,
+        caller: MaybeLocation,
+    ) {
+        todo!()
+    }
 }
 
 impl<'w> UnsafeWorldCell<'w> {
