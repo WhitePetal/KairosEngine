@@ -11,12 +11,14 @@ mod impls;
 mod info;
 mod insert;
 mod remove;
+mod spawner;
 
 use std::mem::MaybeUninit;
 
 pub use info::*;
 
 pub(crate) use insert::BundleInserter;
+pub(crate) use remove::BundleRemover;
 
 use crate::{
     ecs::{

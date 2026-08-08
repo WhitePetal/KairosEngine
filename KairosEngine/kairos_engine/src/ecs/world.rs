@@ -187,6 +187,35 @@ impl World {
                 .register_info::<B>(&mut registrator, &mut self.storages)
         }
     }
+
+    /// Applies any commands in the world's internal [`CommandQueue`].
+    /// This does not apply commands from any systems, only those stored in the world.
+    ///
+    /// # Panics
+    /// This will panic if any of the queued commands are [`spawn`](Commands::spawn).
+    /// If this is possible, you should instead use [`flush`](Self::flush).
+    pub(crate) fn flush_commands(&mut self) {
+        todo!()
+    }
+
+    /// Applies any queued component registration.
+    /// For spawning vanilla rust component types and resources, this is not strictly necessary.
+    /// However, flushing components can make information available more quickly, and can have performance benefits.
+    /// Additionally, for components and resources registered dynamically through a raw descriptor or similar,
+    /// this is the only way to complete their registration.
+    pub(crate) fn flush_components(&mut self) {
+        self.components_registrator().apply_queued_registrations();
+    }
+
+    /// Flushes queued entities and commands.
+    ///
+    /// Queued entities will be spawned, and then commands will be applied.
+    #[inline]
+    #[track_caller]
+    pub fn flush(&mut self) {
+        self.flush_components();
+        self.flush_commands();
+    }
 }
 
 impl fmt::Debug for World {

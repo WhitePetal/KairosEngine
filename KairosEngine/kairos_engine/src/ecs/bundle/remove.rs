@@ -86,10 +86,10 @@ impl<'w> BundleRemover<'w> {
                 .archetypes
                 .get_maybe_disjoint_mut(archetype_id, new_archetype_id)
         };
-        let new_archetyoe = new_archetype?;
+        let new_archetype = new_archetype?;
 
-        let tables = (old_archetype.table_id() != new_archetyoe.table_id())
-            .then_some((old_archetype.table_id(), new_archetyoe.table_id()));
+        let tables = (old_archetype.table_id() != new_archetype.table_id())
+            .then_some((old_archetype.table_id(), new_archetype.table_id()));
 
         let remover = Self {
             bundle_info: bundle_info.into(),
