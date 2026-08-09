@@ -1,4 +1,11 @@
+use std::ops::{Deref, DerefMut};
+
+use variadics_please::all_tuples;
+
 use crate::ecs::{bundle::Bundle, event::Event, observer::On, system::System};
+
+#[cfg(test)]
+mod tests;
 
 /// Trait for types that can be used as input to [`System`]s.
 ///
@@ -52,6 +59,194 @@ pub trait SystemInput: Sized {
 /// Shorthand way to get the [`System::In`] for a [`System`] as a [`SystemInput::Inner`].
 pub type SystemIn<'a, S> = <<S as System>::In as SystemInput>::Inner<'a>;
 
+/// A type that may be constructed from the input of a [`System`].
+/// This is used to allow systems whose first parameter is a `StaticSystemInput<In>`
+/// to take an `In` as input, and can be implemented for user types to allow
+/// similar conversions.
+pub trait FromInput<In: SystemInput>: SystemInput {
+    /// Converts the system input's inner representation into this type's
+    /// inner representation.
+    fn from_inner<'i>(inner: In::Inner<'i>) -> Self::Inner<'i>;
+}
+
+impl<In: SystemInput> FromInput<In> for In {
+    #[inline]
+    fn from_inner<'i>(inner: In::Inner<'i>) -> Self::Inner<'i> {
+        inner
+    }
+}
+
+impl<'a, In: SystemInput> FromInput<In> for StaticSystemInput<'a, In> {
+    #[inline]
+    fn from_inner<'i>(inner: In::Inner<'i>) -> Self::Inner<'i> {
+        inner
+    }
+}
+
+/// A [`SystemInput`] type which denotes that a [`System`] receives
+/// an input value of type `T` from its caller.
+///
+/// [`System`]s may take an optional input which they require to be passed to them when they
+/// are being [`run`](System::run). For [`FunctionSystem`]s the input may be marked
+/// with this `In` type, but only the first param of a function may be tagged as an input. This also
+/// means a system can only have one or zero input parameters.
+///
+/// See [`SystemInput`] to learn more about system inputs in general.
+///
+/// # Examples
+///
+/// Here is a simple example of a system that takes a [`usize`] and returns the square of it.
+///
+/// ```
+/// # use bevy_ecs::prelude::*;
+/// #
+/// fn square(In(input): In<usize>) -> usize {
+///     input * input
+/// }
+///
+/// let mut world = World::new();
+/// let mut square_system = IntoSystem::into_system(square);
+/// square_system.initialize(&mut world);
+///
+/// assert_eq!(square_system.run(12, &mut world).unwrap(), 144);
+/// ```
+///
+/// [`SystemParam`]: crate::system::SystemParam
+/// [`FunctionSystem`]: crate::system::FunctionSystem
+#[derive(Debug)]
+pub struct In<T>(pub T);
+
+impl<T: 'static> SystemInput for In<T> {
+    type Param<'i> = In<T>;
+    type Inner<'i> = T;
+
+    fn wrap(this: Self::Inner<'_>) -> Self::Param<'_> {
+        In(this)
+    }
+}
+
+impl<T> Deref for In<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T> DerefMut for In<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+/// A [`SystemInput`] type which denotes that a [`System`] receives
+/// a read-only reference to a value of type `T` from its caller.
+///
+/// This is similar to [`In`] but takes a reference to a value instead of the value itself.
+/// See [`InMut`] for the mutable version.
+///
+/// See [`SystemInput`] to learn more about system inputs in general.
+///
+/// # Examples
+///
+/// Here is a simple example of a system that logs the passed in message.
+///
+/// ```
+/// # use bevy_ecs::prelude::*;
+/// # use std::fmt::Write as _;
+/// #
+/// #[derive(Resource, Default)]
+/// struct Log(String);
+///
+/// fn log(InRef(msg): InRef<str>, mut log: ResMut<Log>) {
+///     writeln!(log.0, "{}", msg).unwrap();
+/// }
+///
+/// let mut world = World::new();
+/// world.init_resource::<Log>();
+/// let mut log_system = IntoSystem::into_system(log);
+/// log_system.initialize(&mut world);
+///
+/// log_system.run("Hello, world!", &mut world);
+/// # assert_eq!(world.get_resource::<Log>().unwrap().0, "Hello, world!\n");
+/// ```
+///
+/// [`SystemParam`]: crate::system::SystemParam
+#[derive(Debug)]
+pub struct InRef<'i, T: ?Sized>(pub &'i T);
+
+impl<T: ?Sized + 'static> SystemInput for InRef<'_, T> {
+    type Param<'i> = InRef<'i, T>;
+    type Inner<'i> = &'i T;
+
+    fn wrap(this: Self::Inner<'_>) -> Self::Param<'_> {
+        InRef(this)
+    }
+}
+
+impl<'i, T: ?Sized> Deref for InRef<'i, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        self.0
+    }
+}
+
+/// A [`SystemInput`] type which denotes that a [`System`] receives
+/// a mutable reference to a value of type `T` from its caller.
+///
+/// This is similar to [`In`] but takes a mutable reference to a value instead of the value itself.
+/// See [`InRef`] for the read-only version.
+///
+/// See [`SystemInput`] to learn more about system inputs in general.
+///
+/// # Examples
+///
+/// Here is a simple example of a system that takes a `&mut usize` and squares it.
+///
+/// ```
+/// # use bevy_ecs::prelude::*;
+/// #
+/// fn square(InMut(input): InMut<usize>) {
+///     *input *= *input;
+/// }
+///
+/// let mut world = World::new();
+/// let mut square_system = IntoSystem::into_system(square);
+/// square_system.initialize(&mut world);
+///
+/// let mut value = 12;
+/// square_system.run(&mut value, &mut world);
+/// assert_eq!(value, 144);
+/// ```
+///
+/// [`SystemParam`]: crate::system::SystemParam
+#[derive(Debug)]
+pub struct InMut<'a, T: ?Sized>(pub &'a mut T);
+
+impl<T: ?Sized + 'static> SystemInput for InMut<'_, T> {
+    type Param<'i> = InMut<'i, T>;
+    type Inner<'i> = &'i mut T;
+
+    fn wrap(this: Self::Inner<'_>) -> Self::Param<'_> {
+        InMut(this)
+    }
+}
+
+impl<'i, T: ?Sized> Deref for InMut<'i, T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        self.0
+    }
+}
+
+impl<'i, T: ?Sized> DerefMut for InMut<'i, T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.0
+    }
+}
+
 /// Used for [`ObserverSystem`]s.
 ///
 /// [`ObserverSystem`]: crate::system::ObserverSystem
@@ -67,5 +262,70 @@ impl<E: Event, B: Bundle> SystemInput for On<'_, '_, E, B> {
         this
     }
 }
+
+/// A helper for using [`SystemInput`]s in generic contexts.
+///
+/// This type is a [`SystemInput`] adapter which always has
+/// `Self::Param == Self` (ignoring lifetimes for brevity),
+/// no matter the argument [`SystemInput`] (`I`).
+///
+/// This makes it useful for having arbitrary [`SystemInput`]s in
+/// function systems.
+///
+/// See [`SystemInput`] to learn more about system inputs in general.
+pub struct StaticSystemInput<'a, I: SystemInput>(pub I::Inner<'a>);
+
+impl<'a, I: SystemInput> SystemInput for StaticSystemInput<'a, I> {
+    type Param<'i> = StaticSystemInput<'i, I>;
+    type Inner<'i> = I::Inner<'i>;
+
+    fn wrap(this: Self::Inner<'_>) -> Self::Param<'_> {
+        StaticSystemInput(this)
+    }
+}
+
+impl<I: SystemInput> SystemInput for Option<I> {
+    type Param<'i> = Option<I::Param<'i>>;
+    type Inner<'i> = Option<I::Inner<'i>>;
+
+    fn wrap(this: Self::Inner<'_>) -> Self::Param<'_> {
+        this.map(I::wrap)
+    }
+}
+
+macro_rules! impl_system_input_tuple {
+    ($(#[$meta:meta])* $($name:ident),*) => {
+        $(#[$meta])*
+        impl<$($name: SystemInput),*> SystemInput for ($($name,)*) {
+            type Param<'i> = ($($name::Param<'i>,)*);
+            type Inner<'i> = ($($name::Inner<'i>,)*);
+
+            #[expect(
+                clippy::allow_attributes,
+                reason = "This is in a macro; as such, the below lints may not always apply."
+            )]
+            #[allow(
+                non_snake_case,
+                reason = "Certain variable names are provided by the caller, not by us."
+            )]
+            #[allow(
+                clippy::unused_unit,
+                reason = "Zero-length tuples won't have anything to wrap."
+            )]
+            fn wrap(this: Self::Inner<'_>) -> Self::Param<'_> {
+                let ($($name,)*) = this;
+                ($($name::wrap($name),)*)
+            }
+        }
+    };
+}
+
+all_tuples!(
+    #[doc(fake_variadic)]
+    impl_system_input_tuple,
+    0,
+    8,
+    I
+);
 
 // TODO!

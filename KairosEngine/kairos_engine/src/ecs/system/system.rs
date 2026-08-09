@@ -1,5 +1,7 @@
 use std::{any::Any, fmt::Display};
 
+use bitflags::bitflags;
+
 use crate::{
     debug::DebugName,
     ecs::{
@@ -10,6 +12,19 @@ use crate::{
         world::{DeferredWorld, World, unsafe_world_cell::UnsafeWorldCell},
     },
 };
+
+bitflags! {
+    /// Bitflags representing system states and requirements.
+    #[derive(Clone, Copy, PartialEq, Eq, Hash)]
+    pub struct SystemStateFlags: u8 {
+        /// Set if system cannot be sent across threads
+        const NON_SEND       = 1 << 0;
+        /// Set if system requires exclusive World access
+        const EXCLUSIVE      = 1 << 1;
+        /// Set if system has deferred buffers.
+        const DEFERRED       = 1 << 2;
+    }
+}
 
 /// An ECS system that can be added to a [`Schedule`](crate::schedule::Schedule)
 ///
@@ -111,5 +126,24 @@ where
         Self::Failed(From::from(value))
     }
 }
+
+/// [`System`] types that do not modify the [`World`] when run.
+/// This is implemented for any systems whose parameters all implement [`ReadOnlySystemParam`].
+///
+/// Note that systems which perform [deferred](System::apply_deferred) mutations (such as with [`Commands`])
+/// may implement this trait.
+///
+/// [`ReadOnlySystemParam`]: crate::system::ReadOnlySystemParam
+/// [`Commands`]: crate::system::Commands
+///
+/// # Safety
+///
+/// This must only be implemented for system types which do not mutate the `World`
+/// when [`System::run_unsafe`] is called.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is not a read-only system",
+    label = "invalid read-only system"
+)]
+pub unsafe trait ReadOnlySystem: System {}
 
 // TODO!

@@ -1,6 +1,8 @@
 //! Contains types that allow disjoint mutable access to a [`World`].
 
-use std::{any::TypeId, cell::UnsafeCell, fmt::Debug, marker::PhantomData, ptr};
+use std::{
+    any::TypeId, cell::UnsafeCell, fmt::Debug, marker::PhantomData, ptr, sync::atomic::Ordering,
+};
 
 use crate::{
     debug::{DebugCheckedUnwrap, MaybeLocation},
@@ -301,6 +303,17 @@ impl<'w> UnsafeWorldCell<'w> {
         unsafe { self.world_metadata() }.last_change_tick()
     }
 
+    /// Increments the world's current change tick and returns the old value.
+    #[inline]
+    pub fn increment_change_tick(self) -> Tick {
+        // SAFETY:
+        // - we only access world metadata
+        let change_tick = unsafe { &self.world_metadata().change_tick };
+        // NOTE: We can used a relaxed memory ordering here, since nothing
+        // other than the atomic value itself is relying on atomic synchronization
+        Tick::new(change_tick.fetch_add(1, Ordering::Relaxed))
+    }
+
     /// Retrieves this world's [`Components`] collection.
     #[inline]
     pub fn components(self) -> &'w Components {
@@ -414,6 +427,28 @@ impl<'w> UnsafeWorldCell<'w> {
             .copied()
             .unwrap_or_default()
             .0
+    }
+
+    // Shorthand helper function for getting the data and change ticks for a resource.
+    /// # Safety
+    /// It is the caller's responsibility to ensure that
+    /// - the [`UnsafeWorldCell`] has permission to access the resource mutably
+    /// - no mutable references to the resource exist at the same time
+    #[inline]
+    pub(crate) unsafe fn get_resource_with_ticks(
+        self,
+        component_id: ComponentId,
+    ) -> Option<(Ptr<'w>, ComponentTickCells<'w>)> {
+        // SAFETY: We have permission to access the resource of `component_id`.
+        let entity = unsafe { self.resource_entities() }.get(component_id)?;
+        let storage_type = self.components().get_info(component_id)?.storage_type();
+        let location = self.get_entity(entity).ok()?.location();
+        // SAFETY:
+        // - caller ensures there is no `&mut World`
+        // - caller ensures there are no mutable borrows of this resource
+        // - caller ensures that we have permission to access this resource
+        // - storage_type and location are valid
+        unsafe { get_component_and_ticks(self, component_id, storage_type, entity, location) }
     }
 }
 

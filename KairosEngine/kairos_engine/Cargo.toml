@@ -12,10 +12,10 @@ smallvec = { version = "1.15.2", features = ["malloc_size_of"] }
 tempfile = "3"
 
 [features]
-default = ["debug"]
-test-harness = ["dep:tokio-tungstenite", "dep:futures-util", "dep:serde_json"]
+default = ["debug", "trace"]
 track_location = []
 debug = []
+trace = []
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)", "cfg(docsrs_dep)"] }
@@ -90,6 +90,7 @@ bitflags = "2.13.1"
 variadics_please = "2.0.0"
 bumpalo = "3.20.3"
 static_assertions = "1.1.0"
+tracing = "0.1.44"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.4"

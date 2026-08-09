@@ -17,11 +17,12 @@ use crate::{
         bundle::Bundle,
         component::{Component, ComponentCloneBehavior, ComponentId, Mutable, StorageType},
         entity::Entity,
-        error::ErrorHandler,
+        error::{BevyError, ErrorContext, ErrorHandler},
         event::{Event, EventKey},
         lifecycle::{ComponentHook, HookContext},
         observer::{ObserverCondition, ObserverRunner, observer_system_runner},
-        system::{IntoObserverSystem, ObserverSystem, System},
+        schedule::SystemCondition,
+        system::{IntoObserverSystem, IntoSystem, ObserverSystem, System},
         world::{DeferredWorld, World},
     },
 };
@@ -234,6 +235,115 @@ impl Observer {
             last_trigger_id: 0,
             conditions: Vec::new(),
         }
+    }
+
+    /// Creates a new [`Observer`] with custom runner, this is mostly used for dynamic event observers
+    pub fn with_dynamic_runner(runner: ObserverRunner) -> Self {
+        Self {
+            system: Box::new(IntoSystem::into_system(|| {})),
+            descriptor: Default::default(),
+            hook_on_add: |mut world, hook_context| {
+                let default_error_handler = world.fallback_error_handler();
+                world.commands().queue(move |world: &mut World| {
+                    let entity = hook_context.entity;
+                    let mut conditions = {
+                        let Some(mut observer) = world.get_mut::<Observer>(entity) else {
+                            return;
+                        };
+                        if observer.descriptor.event_keys.is_empty() {
+                            return;
+                        }
+                        if observer.error_handler.is_none() {
+                            observer.error_handler = Some(default_error_handler)
+                        }
+                        std::mem::take(&mut observer.conditions)
+                    };
+                    for condition in &mut conditions {
+                        condition.initialize(world);
+                    }
+                    if let Some(mut observer) = world.get_mut::<Observer>(entity) {
+                        observer.conditions = conditions;
+                    }
+                    world.register_observer(entity);
+                });
+            },
+            error_handler: None,
+            runner,
+            despawned_watched_entities: 0,
+            last_trigger_id: 0,
+            conditions: Vec::new(),
+        }
+    }
+
+    /// Observes the given `entity` (in addition to any entity already being observed).
+    /// This will cause the [`Observer`] to run whenever an [`EntityEvent::event_target`] is the given `entity`.
+    /// Note that if this is called _after_ an [`Observer`] is spawned, it will produce no effects.
+    pub fn with_entity(mut self, entity: Entity) -> Self {
+        self.watch_entity(entity);
+        self
+    }
+
+    /// Observes the given `entities` (in addition to any entity already being observed).
+    /// This will cause the [`Observer`] to run whenever an [`EntityEvent::event_target`] is any of the `entities`.
+    /// Note that if this is called _after_ an [`Observer`] is spawned, it will produce no effects.
+    pub fn with_entities<I: IntoIterator<Item = Entity>>(mut self, entities: I) -> Self {
+        self.watch_entities(entities);
+        self
+    }
+
+    /// Observes the given `entity` (in addition to any entity already being observed).
+    /// This will cause the [`Observer`] to run whenever an [`EntityEvent::event_target`] is the given `entity`.
+    /// Note that if this is called _after_ an [`Observer`] is spawned, it will produce no effects.
+    pub fn watch_entity(&mut self, entity: Entity) {
+        self.descriptor.entities.push(entity);
+    }
+
+    /// Observes the given `entity` (in addition to any entity already being observed).
+    /// This will cause the [`Observer`] to run whenever an [`EntityEvent::event_target`] is any of the `entities`.
+    /// Note that if this is called _after_ an [`Observer`] is spawned, it will produce no effects.
+    pub fn watch_entities<I: IntoIterator<Item = Entity>>(&mut self, entities: I) {
+        self.descriptor.entities.extend(entities);
+    }
+
+    /// Observes the given `component`. This will cause the [`Observer`] to run whenever the [`Event`] has
+    /// an [`EntityComponentsTrigger`](crate::event::EntityComponentsTrigger) that targets the given `component`.
+    pub fn with_component(mut self, component: ComponentId) -> Self {
+        self.descriptor.components.push(component);
+        self
+    }
+
+    /// Observes the given `components`. This will cause the [`Observer`] to run whenever the [`Event`] has
+    /// an [`EntityComponentsTrigger`](crate::event::EntityComponentsTrigger) that targets any of the `components`.
+    pub fn with_components<I: IntoIterator<Item = ComponentId>>(mut self, components: I) -> Self {
+        self.descriptor.components.extend(components);
+        self
+    }
+
+    /// Observes the given `event_key`. This will cause the [`Observer`] to run whenever an event with the given [`EventKey`]
+    /// is triggered.
+    /// # Safety
+    /// The type of the `event_key` [`EventKey`] _must_ match the actual value
+    /// of the event passed into the observer system.
+    pub unsafe fn with_event_key(mut self, event_key: EventKey) -> Self {
+        self.descriptor.event_keys.push(event_key);
+        self
+    }
+
+    /// Sets the error handler to use for this observer.
+    ///
+    /// See the [`error` module-level documentation](crate::error) for more information.
+    pub fn with_error_handler(mut self, error_handler: fn(BevyError, ErrorContext)) -> Self {
+        self.error_handler = Some(error_handler);
+        self
+    }
+
+    /// Adds a run condition to this observer.
+    ///
+    /// The observer will only run if all conditions return `true` (AND semantics).
+    /// Multiple conditions can be added by chaining `run_if` calls.
+    pub fn run_if<M>(mut self, condition: impl SystemCondition<M>) -> Self {
+        self.conditions.push(ObserverCondition::new(condition));
+        self
     }
 }
 

@@ -12,6 +12,7 @@ pub mod observer;
 pub mod query;
 pub mod relationship;
 pub mod resource;
+pub mod schedule;
 pub mod storage;
 pub mod system;
 pub mod traversal;

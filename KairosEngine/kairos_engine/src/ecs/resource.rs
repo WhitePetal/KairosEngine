@@ -113,6 +113,9 @@ impl ResourceEntities {
     }
 }
 
+/// [`ComponentId`] of the [`IsResource`] component.
+pub const IS_RESOURCE: ComponentId = ComponentId::new(crate::ecs::component::IS_RESOURCE);
+
 // TODO!
 
 // /// A marker component for entities that have a Resource component.

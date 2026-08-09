@@ -119,16 +119,99 @@
 //!
 //! [`Vec<P>`]: alloc::vec::Vec
 
+mod builder;
 mod commands;
+mod function_system;
 mod input;
 mod observer_system;
 mod system;
 mod system_param;
 
+pub use builder::*;
 pub use commands::*;
+pub use function_system::*;
 pub use input::*;
 pub use observer_system::*;
 pub use system::*;
 pub use system_param::*;
+
+use crate::ecs::world::World;
+
+/// Conversion trait to turn something into a [`System`].
+///
+/// Use this to get a system from a function. Also note that every system implements this trait as
+/// well.
+///
+/// # Usage notes
+///
+/// This trait should only be used as a bound for trait implementations or as an
+/// argument to a function. If a system needs to be returned from a function or
+/// stored somewhere, use [`System`] instead of this trait.
+///
+/// # Examples
+///
+/// ```
+/// use bevy_ecs::prelude::*;
+///
+/// fn my_system_function(a_usize_local: Local<usize>) {}
+///
+/// let system = IntoSystem::into_system(my_system_function);
+/// ```
+// This trait has to be generic because we have potentially overlapping impls, in particular
+// because Rust thinks a type could impl multiple different `FnMut` combinations
+// even though none can currently
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is not a valid system with input `{In}` and output `{Out}`",
+    label = "invalid system"
+)]
+pub trait IntoSystem<In: SystemInput, Out, Marker>: Sized {
+    /// The type of [`System`] that this instance converts into.
+    type System: System<In = In, Out = Out>;
+
+    /// Turns this value into its corresponding [`System`].
+    fn into_system(this: Self) -> Self::System;
+}
+
+// All systems implicitly implement IntoSystem.
+impl<T: System> IntoSystem<T::In, T::Out, ()> for T {
+    type System = T;
+    fn into_system(this: Self) -> Self {
+        this
+    }
+}
+
+/// Ensure that a given function is a [system](System).
+///
+/// This should be used when writing doc examples,
+/// to confirm that systems used in an example are
+/// valid systems.
+///
+/// # Examples
+///
+/// The following example will panic when run since the
+/// system's parameters mutably access the same component
+/// multiple times.
+///
+/// ```should_panic
+/// # use bevy_ecs::{prelude::*, system::assert_is_system};
+/// #
+/// # #[derive(Component)]
+/// # struct Transform;
+/// #
+/// fn my_system(query1: Query<&mut Transform>, query2: Query<&mut Transform>) {
+///     // ...
+/// }
+///
+/// assert_is_system(my_system);
+/// ```
+pub fn assert_is_system<In: SystemInput, Out: 'static, Marker>(
+    system: impl IntoSystem<In, Out, Marker>,
+) {
+    let mut system = IntoSystem::into_system(system);
+
+    // Initialize the system, which will panic if the system has access conflicts.
+    let mut world = World::new();
+    system.initialize(&mut world);
+}
 
 // TODO!

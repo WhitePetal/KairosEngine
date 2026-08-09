@@ -17,9 +17,10 @@ use crate::{
             Component, ComponentId, ComponentIds, Components, ComponentsRegistrator, Mutable,
         },
         entity::{Entities, Entity, EntityAllocator},
+        error::{ErrorHandler, FallbackErrorHandler},
         lifecycle::RemovedComponentMessages,
         observer::Observers,
-        resource::ResourceEntities,
+        resource::{Resource, ResourceEntities},
         storage::Storages,
         world::unsafe_world_cell::UnsafeWorldCell,
     },
@@ -110,6 +111,12 @@ pub trait FromWorld {
 impl World {
     pub fn new() -> Self {
         todo!()
+    }
+
+    /// Retrieves this [`World`]'s unique ID
+    #[inline]
+    pub fn id(&self) -> WorldId {
+        self.id
     }
 
     /// Creates a new [`UnsafeWorldCell`] view with complete read+write access.
@@ -336,6 +343,25 @@ impl World {
         entity: Entity,
     ) -> Option<Mut<'_, T>> {
         todo!()
+    }
+
+    /// Gets a reference to the resource of the given type if it exists
+    #[inline]
+    pub fn get_resource<R: Resource>(&self) -> Option<&R> {
+        // SAFETY:
+        // - `as_unsafe_world_cell_readonly` gives permission to access everything immutably
+        // - `&self` ensures nothing in world is borrowed mutably
+        unsafe { self.as_unsafe_world_cell_readonly().get_resource() }
+    }
+
+    /// Convenience method for accessing the world's fallback error handler,
+    /// which can be overwritten with [`FallbackErrorHandler`].
+    #[inline]
+    pub fn fallback_error_handler(&self) -> ErrorHandler {
+        self.get_resource::<FallbackErrorHandler>()
+            .copied()
+            .unwrap_or_default()
+            .0
     }
 }
 
