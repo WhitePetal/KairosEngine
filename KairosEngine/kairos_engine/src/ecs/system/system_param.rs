@@ -4,16 +4,9 @@ use thiserror::Error;
 use variadics_please::all_tuples_enumerated;
 
 use crate::{
-    debug::DebugName,
-    ecs::{
-        change_detection::{ComponentTicksRef, Res, Tick},
-        component::ComponentId,
-        query::{FilteredAccess, FilteredAccessSet},
-        resource::{IS_RESOURCE, Resource},
-        system::SystemMeta,
-        world::{DeferredWorld, World, unsafe_world_cell::UnsafeWorldCell},
-    },
-    ptr::UnsafeCellDeref,
+    debug::DebugName, ecs::{
+        change_detection::{ComponentTicksMut, ComponentTicksRef, Res, ResMut, Tick}, component::{ComponentId, Mutable}, query::{FilteredAccess, FilteredAccessSet}, resource::{IS_RESOURCE, Resource}, system::SystemMeta, world::{DeferredWorld, World, unsafe_world_cell::UnsafeWorldCell},
+    }, ptr::UnsafeCellDeref,
 };
 
 /// A parameter that can be used in a [`System`](super::System).
@@ -657,5 +650,107 @@ unsafe impl<'a, T: Resource> SystemParam for Res<'a, T> {
         }
     }
 }
+
+// SAFETY: Res ComponentId access is applied to SystemMeta. If this Res
+// conflicts with any prior access, a panic will occur.
+unsafe impl<'a, T: Resource<Mutability = Mutable>> SystemParam for ResMut<'a, T> {
+    type State = ComponentId;
+
+    type Item<'w, 's> = ResMut<'w, T>;
+
+    fn init_state(world: &mut World) -> Self::State {
+        world.components_registrator().register_component::<T>()
+    }
+
+    fn init_access(
+        &component_id: &Self::State,
+        system_meta: &mut SystemMeta,
+        component_access_set: &mut FilteredAccessSet,
+        world: &mut World,
+    ) {
+        let mut filter = FilteredAccess::default();
+        filter.add_write(component_id);
+        filter.and_with(IS_RESOURCE);
+
+        let conflicts = component_access_set.get_conflicts_single(&filter);
+        if conflicts.is_empty() {
+            component_access_set.add(filter);
+            return;
+        }
+
+        let mut accesses = conflicts.format_conflict_list(world.as_unsafe_world_cell());
+        // Access list may be empty (if access to all components requested)
+        if !accesses.is_empty() {
+            accesses.push(' ');
+        }
+        panic!("error[B0002]: ResMut<{}> in system {} conflicts with a previous system parameter. Consider removing the duplicate access or using `Without<IsResource>` to create disjoint Queries or merging conflicting Queries into a `ParamSet`. See: https://bevy.org/learn/errors/b0002", DebugName::type_name::<T>(), system_meta.name);
+    }
+
+    #[inline]
+    unsafe fn get_param<'world, 'state>(
+        &mut component_id: &'state mut Self::State,
+        system_meta: &SystemMeta,
+        world: UnsafeWorldCell<'world>,
+        change_tick: Tick,
+    ) -> Result<Self::Item<'world, 'state>, SystemParamValidationError> {
+        let value = unsafe {
+            world.get_resource_mut_by_id(component_id).ok_or_else(|| {
+                SystemParamValidationError::invalid::<Self>("Resource does not exist")
+            })?
+        };
+        Ok(ResMut {
+            value: unsafe { value.value.deref_mut::<T>() },
+            ticks: ComponentTicksMut {
+                added: value.ticks.added,
+                changed: value.ticks.changed,
+                changed_by: value.ticks.changed_by,
+                last_run: system_meta.last_run,
+                this_run: change_tick
+            }
+        })
+    }
+}
+
+// SAFETY: only reads world
+unsafe impl<'w> ReadOnlySystemParam for &'w World {}
+
+// SAFETY: `read_all` access is set and conflicts result in a panic
+unsafe impl SystemParam for &'_ World {
+    type State = ();
+
+    type Item<'w, 's> = &'w World;
+
+    fn init_state(world: &mut World) -> Self::State {}
+
+    fn init_access(
+        _state: &Self::State,
+        _system_meta: &mut SystemMeta,
+        component_access_set: &mut FilteredAccessSet,
+        _world: &mut World,
+    ) {
+        let mut filtered_access = FilteredAccess::default();
+
+        filtered_access.read_all();
+        if !component_access_set
+            .get_conflicts_single(&filtered_access)
+            .is_empty()
+        {
+            panic!("&World conflicts with a previous mutable system parameter. Allowing this would break Rust's mutability rules");
+        }
+        component_access_set.add(filtered_access);
+    }
+
+    #[inline]
+    unsafe fn get_param<'world, 'state>(
+        _state: &'state mut Self::State,
+        _system_meta: &SystemMeta,
+        world: UnsafeWorldCell<'world>,
+        _change_tick: Tick,
+    ) -> Result<Self::Item<'world, 'state>, SystemParamValidationError> {
+        // SAFETY: Read-only access to the entire world was registered in `init_state`.
+        Ok(unsafe { world.world() })
+    }
+}
+
 
 // TODO!

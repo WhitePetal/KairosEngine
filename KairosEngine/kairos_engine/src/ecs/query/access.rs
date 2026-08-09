@@ -58,11 +58,21 @@ impl FilteredAccess {
         todo!()
     }
 
+    /// Adds exclusive access to the component given by `index`.
+    pub fn add_write(&mut self, index: ComponentId) {
+        todo!()
+    }
+
     /// Adds a `With` filter: corresponds to a conjunction (AND) operation.
     ///
     /// Suppose we begin with `Or<(With<A>, With<B>)>`, which is represented by an array of two `AccessFilter` instances.
     /// Adding `AND With<C>` via this method transforms it into the equivalent of  `Or<((With<A>, With<C>), (With<B>, With<C>))>`.
     pub fn and_with(&mut self, index: ComponentId) {
+        todo!()
+    }
+
+    /// Sets the underlying unfiltered access as having access to all components.
+    pub fn read_all(&mut self) {
         todo!()
     }
 }
