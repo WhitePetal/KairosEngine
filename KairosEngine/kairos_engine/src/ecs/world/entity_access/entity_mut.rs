@@ -1,4 +1,8 @@
-use crate::ecs::world::unsafe_world_cell::UnsafeEntityCell;
+use crate::ecs::{
+    change_detection::Mut,
+    component::{Component, Mutable},
+    world::unsafe_world_cell::UnsafeEntityCell,
+};
 
 /// Provides mutable access to a single entity and all of its components.
 ///
@@ -25,4 +29,23 @@ use crate::ecs::world::unsafe_world_cell::UnsafeEntityCell;
 /// [`EntityWorldMut`]: crate::world::EntityWorldMut
 pub struct EntityMut<'w> {
     cell: UnsafeEntityCell<'w>,
+}
+
+impl<'w> EntityMut<'w> {
+    /// Gets mutable access to the component of type `T` for the current entity.
+    /// Returns `None` if the entity does not have a component of type `T`.
+    #[inline]
+    pub fn get_mut<T: Component<Mutability = Mutable>>(&mut self) -> Option<Mut<'_, T>> {
+        // SAFETY: &mut self implies exclusive access for duration of returned value
+        unsafe { self.cell.get_mut() }
+    }
+
+    /// Consumes self and gets mutable access to the component of type `T`
+    /// with the world `'w` lifetime for the current entity.
+    /// Returns `None` if the entity does not have a component of type `T`.
+    #[inline]
+    pub fn into_mut<T: Component<Mutability = Mutable>>(self) -> Option<Mut<'w, T>> {
+        // SAFETY: consuming `self` implies exclusive access
+        unsafe { self.cell.get_mut() }
+    }
 }

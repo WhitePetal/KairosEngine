@@ -10,8 +10,13 @@ use crate::{
             Tick,
         },
         component::{Component, ComponentId, Components, Mutable, StorageType},
-        entity::{ContainsEntity, Entities, Entity, EntityAllocator, EntityLocation},
+        entity::{
+            ContainsEntity, Entities, Entity, EntityAllocator, EntityLocation,
+            EntityNotSpawnedError,
+        },
+        error::{ErrorHandler, FallbackErrorHandler},
         query::{QueryAccessError, ReleaseStateQueryData, SingleEntityQueryData},
+        resource::{Resource, ResourceEntities},
         storage::{ComponentSparseSet, Storages, Table},
         world::{World, WorldId},
     },
@@ -263,6 +268,39 @@ impl<'w> UnsafeWorldCell<'w> {
         &unsafe { self.world_metadata() }.entity_allocator
     }
 
+    /// Gets the current change tick of this world.
+    #[inline]
+    pub fn change_tick(self) -> Tick {
+        // SAFETY:
+        // - we only access world metadata
+        unsafe { self.world_metadata() }.read_change_tick()
+    }
+
+    /// Returns the id of the last ECS event that was fired.
+    /// Used internally to ensure observers don't trigger multiple times for the same event.
+    #[inline]
+    pub fn last_trigger_id(&self) -> u32 {
+        // SAFETY:
+        // - we only access world metadata
+        unsafe { self.world_metadata() }.last_trigger_id()
+    }
+
+    /// Returns the [`Tick`] indicating the last time that [`World::clear_trackers`] was called.
+    ///
+    /// If this `UnsafeWorldCell` was created from inside of an exclusive system (a [`System`] that
+    /// takes `&mut World` as its first parameter), this will instead return the `Tick` indicating
+    /// the last time the system was run.
+    ///
+    /// See [`World::last_change_tick()`].
+    ///
+    /// [`System`]: crate::system::System
+    #[inline]
+    pub fn last_change_tick(self) -> Tick {
+        // SAFETY:
+        // - we only access world metadata
+        unsafe { self.world_metadata() }.last_change_tick()
+    }
+
     /// Retrieves this world's [`Components`] collection.
     #[inline]
     pub fn components(self) -> &'w Components {
@@ -282,6 +320,20 @@ impl<'w> UnsafeWorldCell<'w> {
     #[inline]
     pub unsafe fn storages(self) -> &'w Storages {
         &unsafe { self.unsafe_world() }.storages
+    }
+
+    /// Retrieves an [`UnsafeEntityCell`] that exposes read and write operations for the given `entity`.
+    /// Similar to the [`UnsafeWorldCell`], you are in charge of making sure that no aliasing rules are violated.
+    #[inline]
+    pub fn get_entity(self, entity: Entity) -> Result<UnsafeEntityCell<'w>, EntityNotSpawnedError> {
+        let location = self.entities().get_spawned(entity)?;
+        Ok(UnsafeEntityCell::new(
+            self,
+            entity,
+            location,
+            self.last_change_tick(),
+            self.change_tick(),
+        ))
     }
 
     /// # Safety
@@ -304,6 +356,64 @@ impl<'w> UnsafeWorldCell<'w> {
         // SAFETY: caller ensures returned data is not misused and we have not created any borrows
         // of component/resource data
         unsafe { self.storages() }.sparse_sets.get(component_id)
+    }
+
+    /// Retrieves this world's resource-entity map.
+    ///
+    /// # Safety
+    /// The caller must have exclusive read or write access to the resources that are updated in the cache.
+    #[inline]
+    pub unsafe fn resource_entities(self) -> &'w ResourceEntities {
+        &unsafe { self.world_metadata() }.resource_entities
+    }
+
+    /// Gets a reference to the resource of the given type if it exists
+    ///
+    /// # Safety
+    /// It is the caller's responsibility to ensure that
+    /// - the [`UnsafeWorldCell`] has permission to access the resource
+    /// - no mutable reference to the resource exists at the same time
+    #[inline]
+    pub unsafe fn get_resource<R: Resource>(self) -> Option<&'w R> {
+        let component_id = self.components().get_valid_id(TypeId::of::<R>())?;
+        // SAFETY: caller ensures `self` has permission to access the resource
+        //  caller also ensure that no mutable reference to the resource exists
+        unsafe {
+            self.get_resource_by_id(component_id)
+                // SAFETY: `component_id` was obtained from the type ID of `R`.
+                .map(|ptr| ptr.deref::<R>())
+        }
+    }
+
+    /// Gets a pointer to the resource with the id [`ComponentId`] if it exists.
+    /// The returned pointer must not be used to modify the resource, and must not be
+    /// dereferenced after the borrow of the [`World`] ends.
+    ///
+    /// **You should prefer to use the typed API [`UnsafeWorldCell::get_resource`] where possible and only
+    /// use this in cases where the actual types are not known at compile time.**
+    ///
+    /// # Safety
+    /// It is the caller's responsibility to ensure that
+    /// - the [`UnsafeWorldCell`] has permission to access the resource
+    /// - no mutable reference to the resource exists at the same time
+    #[inline]
+    pub unsafe fn get_resource_by_id(self, component_id: ComponentId) -> Option<Ptr<'w>> {
+        // SAFETY: We have permission to access the resource of `component_id`.
+        let entity = unsafe { self.resource_entities() }.get(component_id)?;
+        let entity_cell = self.get_entity(entity).ok()?;
+        unsafe { entity_cell.get_by_id(component_id) }
+    }
+
+    /// Convenience method for accessing the world's fallback error handler,
+    ///
+    /// # Safety
+    /// Must have read access to [`FallbackErrorHandler`].
+    #[inline]
+    pub unsafe fn fallback_error_handler(&self) -> ErrorHandler {
+        unsafe { self.get_resource::<FallbackErrorHandler>() }
+            .copied()
+            .unwrap_or_default()
+            .0
     }
 }
 
@@ -421,6 +531,34 @@ impl<'w> UnsafeEntityCell<'w> {
             )
             // SAFETY: returned component is of type T
             .map(|value| value.deref::<T>())
+        }
+    }
+
+    /// Gets the component of the given [`ComponentId`] from the entity.
+    ///
+    /// **You should prefer to use the typed API where possible and only
+    /// use this in cases where the actual component types are not known at
+    /// compile time.**
+    ///
+    /// Unlike [`UnsafeEntityCell::get`], this returns a raw pointer to the component,
+    /// which is only valid while the `'w` borrow of the lifetime is active.
+    ///
+    /// # Safety
+    /// It is the caller's responsibility to ensure that
+    /// - the [`UnsafeEntityCell`] has permission to access the component
+    /// - no other mutable references to the component exist at the same time
+    #[inline]
+    pub unsafe fn get_by_id(self, component_id: ComponentId) -> Option<Ptr<'w>> {
+        let info = self.world.components().get_info(component_id)?;
+        // SAFETY: entity_location is valid, component_id is valid as checked by the line above
+        unsafe {
+            get_component(
+                self.world,
+                component_id,
+                info.storage_type(),
+                self.entity,
+                self.location,
+            )
         }
     }
 

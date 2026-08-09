@@ -78,6 +78,8 @@ derive_more = { version = "2.1.1", default-features = false, features = [
   "display",
   "into",
   "as_ref",
+  "deref",
+  "deref_mut"
 ] }
 arrayvec = "0.7.8"
 thiserror = "2.0.19"

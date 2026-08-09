@@ -41,7 +41,7 @@ impl DebugName {
             reason = "The value will be ignored if the `debug` feature is not enabled"
         )
     )]
-    pub const fn borrow(value: &'static str) -> Self {
+    pub const fn borrowed(value: &'static str) -> Self {
         DebugName {
             #[cfg(feature = "debug")]
             name: Cow::Borrowed(value),
@@ -142,6 +142,6 @@ impl From<DebugName> for Cow<'static, str> {
 
 impl From<&'static str> for DebugName {
     fn from(value: &'static str) -> Self {
-        Self::borrow(value)
+        Self::borrowed(value)
     }
 }

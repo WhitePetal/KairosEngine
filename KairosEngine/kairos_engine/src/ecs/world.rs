@@ -1,6 +1,9 @@
 mod identifier;
 
-use std::fmt;
+use std::{
+    fmt,
+    sync::atomic::{AtomicU32, Ordering},
+};
 
 pub use identifier::WorldId;
 
@@ -9,8 +12,11 @@ use crate::{
     ecs::{
         archetype::Archetypes,
         bundle::{Bundle, BundleId, BundleInfo, Bundles},
-        component::{Component, ComponentId, ComponentIds, Components, ComponentsRegistrator},
-        entity::{Entities, EntityAllocator},
+        change_detection::{Mut, Tick},
+        component::{
+            Component, ComponentId, ComponentIds, Components, ComponentsRegistrator, Mutable,
+        },
+        entity::{Entities, Entity, EntityAllocator},
         lifecycle::RemovedComponentMessages,
         observer::Observers,
         resource::ResourceEntities,
@@ -62,6 +68,10 @@ pub struct World {
     pub(crate) bundles: Bundles,
     pub(crate) observers: Observers,
     pub(crate) removed_components: RemovedComponentMessages,
+    pub(crate) change_tick: AtomicU32,
+    pub(crate) last_change_tick: Tick,
+    pub(crate) last_check_tick: Tick,
+    pub(crate) last_trigger_id: u32,
 }
 
 /// Creates an instance of the type this trait is implemented for
@@ -162,7 +172,43 @@ impl World {
         self.components.component_id::<T>()
     }
 
-    // pub fn entity<F: WorldEntity
+    /// Reads the current change tick of this world.
+    ///
+    /// If you have exclusive (`&mut`) access to the world, consider using [`change_tick()`](Self::change_tick),
+    /// which is more efficient since it does not require atomic synchronization.
+    #[inline]
+    pub fn read_change_tick(&self) -> Tick {
+        let tick = self.change_tick.load(Ordering::Acquire);
+        Tick::new(tick)
+    }
+
+    /// Reads the current change tick of this world.
+    ///
+    /// This does the same thing as [`read_change_tick()`](Self::read_change_tick), only this method
+    /// is more efficient since it does not require atomic synchronization.
+    #[inline]
+    pub fn change_tick(&mut self) -> Tick {
+        let tick = *self.change_tick.get_mut();
+        Tick::new(tick)
+    }
+
+    /// When called from within an exclusive system (a [`System`] that takes `&mut World` as its first
+    /// parameter), this method returns the [`Tick`] indicating the last time the exclusive system was run.
+    ///
+    /// Otherwise, this returns the `Tick` indicating the last time that [`World::clear_trackers`] was called.
+    ///
+    /// [`System`]: crate::system::System
+    #[inline]
+    pub fn last_change_tick(&self) -> Tick {
+        self.last_change_tick
+    }
+
+    /// Returns the id of the last ECS event that was fired.
+    /// Used internally to ensure observers don't trigger multiple times for the same event.
+    #[inline]
+    pub(crate) fn last_trigger_id(&self) -> u32 {
+        self.last_trigger_id
+    }
 
     /// Registers all of the components in the given [`Bundle`] and returns both the component
     /// ids and the bundle id.
@@ -244,6 +290,51 @@ impl World {
     /// ```
     #[track_caller]
     pub fn spawn_empty(&mut self) -> EntityWorldMut<'_> {
+        todo!()
+    }
+
+    /// Retrieves a reference to the given `entity`'s [`Component`] of the given type.
+    /// Returns `None` if the `entity` does not have a [`Component`] of the given type.
+    /// ```
+    /// use bevy_ecs::{component::Component, world::World};
+    ///
+    /// #[derive(Component)]
+    /// struct Position {
+    ///   x: f32,
+    ///   y: f32,
+    /// }
+    ///
+    /// let mut world = World::new();
+    /// let entity = world.spawn(Position { x: 0.0, y: 0.0 }).id();
+    /// let position = world.get::<Position>(entity).unwrap();
+    /// assert_eq!(position.x, 0.0);
+    /// ```
+    #[inline]
+    pub fn get<T: Component>(&self, entity: Entity) -> Option<&T> {
+        todo!()
+    }
+
+    /// Retrieves a mutable reference to the given `entity`'s [`Component`] of the given type.
+    /// Returns `None` if the `entity` does not have a [`Component`] of the given type.
+    /// ```
+    /// use bevy_ecs::{component::Component, world::World};
+    ///
+    /// #[derive(Component)]
+    /// struct Position {
+    ///   x: f32,
+    ///   y: f32,
+    /// }
+    ///
+    /// let mut world = World::new();
+    /// let entity = world.spawn(Position { x: 0.0, y: 0.0 }).id();
+    /// let mut position = world.get_mut::<Position>(entity).unwrap();
+    /// position.x = 1.0;
+    /// ```
+    #[inline]
+    pub fn get_mut<T: Component<Mutability = Mutable>>(
+        &mut self,
+        entity: Entity,
+    ) -> Option<Mut<'_, T>> {
         todo!()
     }
 }

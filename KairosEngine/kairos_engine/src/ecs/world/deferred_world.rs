@@ -4,11 +4,16 @@ use crate::{
     debug::MaybeLocation,
     ecs::{
         archetype::Archetype,
-        component::ComponentId,
+        change_detection::Mut,
+        component::{Component, ComponentId, Mutable},
         entity::Entity,
         event::{Event, EventKey},
         relationship::RelationshipHookMode,
-        world::{World, unsafe_world_cell::UnsafeWorldCell},
+        system::Commands,
+        world::{
+            World, WorldEntityFetch, error::EntityMutableFetchError,
+            unsafe_world_cell::UnsafeWorldCell,
+        },
     },
 };
 
@@ -114,6 +119,197 @@ impl<'w> DeferredWorld<'w> {
         caller: MaybeLocation,
     ) {
         todo!()
+    }
+
+    /// Creates a [`Commands`] instance that pushes to the world's command queue
+    #[inline]
+    pub fn commands(&mut self) -> Commands<'_, '_> {
+        todo!()
+    }
+
+    /// Returns [`EntityMut`]s that expose read and write operations for the
+    /// given `entities`, returning [`Err`] if any of the given entities do not
+    /// exist. Instead of immediately unwrapping the value returned from this
+    /// function, prefer [`World::entity_mut`].
+    ///
+    /// This function supports fetching a single entity or multiple entities:
+    /// - Pass an [`Entity`] to receive a single [`EntityMut`].
+    /// - Pass a slice of [`Entity`]s to receive a [`Vec<EntityMut>`].
+    /// - Pass an array of [`Entity`]s to receive an equally-sized array of [`EntityMut`]s.
+    /// - Pass an [`&EntityHashSet`] to receive an [`EntityHashMap<EntityMut>`].
+    ///
+    /// **As [`DeferredWorld`] does not allow structural changes, all returned
+    /// references are [`EntityMut`]s, which do not allow structural changes
+    /// (i.e. adding/removing components or despawning the entity).**
+    ///
+    /// # Errors
+    ///
+    /// - Returns [`EntityMutableFetchError::NotSpawned`] if any of the given `entities` do not exist in the world.
+    ///     - Only the first entity found to be missing will be returned.
+    /// - Returns [`EntityMutableFetchError::AliasedMutability`] if the same entity is requested multiple times.
+    ///
+    /// # Examples
+    ///
+    /// For examples, see [`DeferredWorld::entity_mut`].
+    ///
+    /// [`EntityMut`]: crate::world::EntityMut
+    /// [`&EntityHashSet`]: crate::entity::EntityHashSet
+    /// [`EntityHashMap<EntityMut>`]: crate::entity::EntityHashMap
+    /// [`Vec<EntityMut>`]: alloc::vec::Vec
+    #[inline]
+    pub fn get_entity_mut<F: WorldEntityFetch>(
+        &mut self,
+        entities: F,
+    ) -> Result<F::DeferredMut<'_>, EntityMutableFetchError> {
+        let cell = self.as_unsafe_world_cell();
+        // SAFETY: `&mut self` gives mutable access to the entire world,
+        // and prevents any other access to the world.
+        unsafe { entities.fetch_deferred_mut(cell) }
+    }
+
+    /// Retrieves a mutable reference to the given `entity`'s [`Component`] of the given type.
+    /// Returns `None` if the `entity` does not have a [`Component`] of the given type.
+    #[inline]
+    pub fn get_mut<T: Component<Mutability = Mutable>>(
+        &mut self,
+        entity: Entity,
+    ) -> Option<Mut<'_, T>> {
+        self.get_entity_mut(entity).ok()?.into_mut()
+    }
+
+    /// Returns [`EntityMut`]s that expose read and write operations for the
+    /// given `entities`. This will panic if any of the given entities do not
+    /// exist. Use [`DeferredWorld::get_entity_mut`] if you want to check for
+    /// entity existence instead of implicitly panicking.
+    ///
+    /// This function supports fetching a single entity or multiple entities:
+    /// - Pass an [`Entity`] to receive a single [`EntityMut`].
+    /// - Pass a slice of [`Entity`]s to receive a [`Vec<EntityMut>`].
+    /// - Pass an array of [`Entity`]s to receive an equally-sized array of [`EntityMut`]s.
+    /// - Pass an [`&EntityHashSet`] to receive an [`EntityHashMap<EntityMut>`].
+    ///
+    /// **As [`DeferredWorld`] does not allow structural changes, all returned
+    /// references are [`EntityMut`]s, which do not allow structural changes
+    /// (i.e. adding/removing components or despawning the entity).**
+    ///
+    /// # Panics
+    ///
+    /// If any of the given `entities` do not exist in the world.
+    ///
+    /// # Examples
+    ///
+    /// ## Single [`Entity`]
+    ///
+    /// ```
+    /// # use bevy_ecs::{prelude::*, world::DeferredWorld};
+    /// #[derive(Component)]
+    /// struct Position {
+    ///   x: f32,
+    ///   y: f32,
+    /// }
+    ///
+    /// # let mut world = World::new();
+    /// # let entity = world.spawn(Position { x: 0.0, y: 0.0 }).id();
+    /// let mut world: DeferredWorld = // ...
+    /// #   DeferredWorld::from(&mut world);
+    ///
+    /// let mut entity_mut = world.entity_mut(entity);
+    /// let mut position = entity_mut.get_mut::<Position>().unwrap();
+    /// position.y = 1.0;
+    /// assert_eq!(position.x, 0.0);
+    /// ```
+    ///
+    /// ## Array of [`Entity`]s
+    ///
+    /// ```
+    /// # use bevy_ecs::{prelude::*, world::DeferredWorld};
+    /// #[derive(Component)]
+    /// struct Position {
+    ///   x: f32,
+    ///   y: f32,
+    /// }
+    ///
+    /// # let mut world = World::new();
+    /// # let e1 = world.spawn(Position { x: 0.0, y: 0.0 }).id();
+    /// # let e2 = world.spawn(Position { x: 1.0, y: 1.0 }).id();
+    /// let mut world: DeferredWorld = // ...
+    /// #   DeferredWorld::from(&mut world);
+    ///
+    /// let [mut e1_ref, mut e2_ref] = world.entity_mut([e1, e2]);
+    /// let mut e1_position = e1_ref.get_mut::<Position>().unwrap();
+    /// e1_position.x = 1.0;
+    /// assert_eq!(e1_position.x, 1.0);
+    /// let mut e2_position = e2_ref.get_mut::<Position>().unwrap();
+    /// e2_position.x = 2.0;
+    /// assert_eq!(e2_position.x, 2.0);
+    /// ```
+    ///
+    /// ## Slice of [`Entity`]s
+    ///
+    /// ```
+    /// # use bevy_ecs::{prelude::*, world::DeferredWorld};
+    /// #[derive(Component)]
+    /// struct Position {
+    ///   x: f32,
+    ///   y: f32,
+    /// }
+    ///
+    /// # let mut world = World::new();
+    /// # let e1 = world.spawn(Position { x: 0.0, y: 1.0 }).id();
+    /// # let e2 = world.spawn(Position { x: 0.0, y: 1.0 }).id();
+    /// # let e3 = world.spawn(Position { x: 0.0, y: 1.0 }).id();
+    /// let mut world: DeferredWorld = // ...
+    /// #   DeferredWorld::from(&mut world);
+    ///
+    /// let ids = vec![e1, e2, e3];
+    /// for mut eref in world.entity_mut(&ids[..]) {
+    ///     let mut pos = eref.get_mut::<Position>().unwrap();
+    ///     pos.y = 2.0;
+    ///     assert_eq!(pos.y, 2.0);
+    /// }
+    /// ```
+    ///
+    /// ## [`&EntityHashSet`]
+    ///
+    /// ```
+    /// # use bevy_ecs::{prelude::*, entity::EntityHashSet, world::DeferredWorld};
+    /// #[derive(Component)]
+    /// struct Position {
+    ///   x: f32,
+    ///   y: f32,
+    /// }
+    ///
+    /// # let mut world = World::new();
+    /// # let e1 = world.spawn(Position { x: 0.0, y: 1.0 }).id();
+    /// # let e2 = world.spawn(Position { x: 0.0, y: 1.0 }).id();
+    /// # let e3 = world.spawn(Position { x: 0.0, y: 1.0 }).id();
+    /// let mut world: DeferredWorld = // ...
+    /// #   DeferredWorld::from(&mut world);
+    ///
+    /// let ids = EntityHashSet::from_iter([e1, e2, e3]);
+    /// for (_id, mut eref) in world.entity_mut(&ids) {
+    ///     let mut pos = eref.get_mut::<Position>().unwrap();
+    ///     pos.y = 2.0;
+    ///     assert_eq!(pos.y, 2.0);
+    /// }
+    /// ```
+    ///
+    /// [`EntityMut`]: crate::world::EntityMut
+    /// [`&EntityHashSet`]: crate::entity::EntityHashSet
+    /// [`EntityHashMap<EntityMut>`]: crate::entity::EntityHashMap
+    /// [`Vec<EntityMut>`]: alloc::vec::Vec
+    #[inline]
+    pub fn entity_mut<F: WorldEntityFetch>(&mut self, entities: F) -> F::DeferredMut<'_> {
+        todo!()
+    }
+
+    /// Gets an [`UnsafeWorldCell`] containing the underlying world.
+    ///
+    /// # Safety
+    /// - must only be used to make non-structural ECS changes
+    #[inline]
+    pub fn as_unsafe_world_cell(&mut self) -> UnsafeWorldCell<'_> {
+        self.world
     }
 }
 

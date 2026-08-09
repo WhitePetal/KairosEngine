@@ -64,7 +64,7 @@ use crate::{
 };
 
 /// The type used for [`Component`] lifecycle hooks such as `on_add`, `on_insert` or `on_remove`.
-pub type ComponentHook = for<'w> fn(DeferredWorld<'w>);
+pub type ComponentHook = for<'w> fn(DeferredWorld<'w>, HookContext);
 
 /// Context provided to a [`ComponentHook`].
 #[derive(Clone, Copy, Debug)]
