@@ -7,14 +7,26 @@ use std::{
 use thiserror::Error;
 
 use crate::{
-    debug::{DebugCheckedUnwrap, MaybeLocation}, ecs::{
+    debug::{DebugCheckedUnwrap, MaybeLocation},
+    ecs::{
+        archetype::Archetypes,
+        bundle::Bundles,
         change_detection::{
-            ComponentTickCells, ComponentTicks, ComponentTicksMut, ComponentTicksRef, Mut, MutUntyped, Ref, Tick,
-        }, component::{Component, ComponentId, Components, Mutable, StorageType}, entity::{
+            ComponentTickCells, ComponentTicks, ComponentTicksMut, ComponentTicksRef, Mut,
+            MutUntyped, Ref, Tick,
+        },
+        component::{Component, ComponentId, Components, Mutable, StorageType},
+        entity::{
             ContainsEntity, Entities, Entity, EntityAllocator, EntityLocation,
             EntityNotSpawnedError,
-        }, error::{ErrorHandler, FallbackErrorHandler}, query::{QueryAccessError, ReleaseStateQueryData, SingleEntityQueryData}, resource::{Resource, ResourceEntities}, storage::{ComponentSparseSet, Storages, Table}, world::{World, WorldId},
-    }, ptr::{Ptr, UnsafeCellDeref},
+        },
+        error::{ErrorHandler, FallbackErrorHandler},
+        query::{QueryAccessError, ReleaseStateQueryData, SingleEntityQueryData},
+        resource::{Resource, ResourceEntities},
+        storage::{ComponentSparseSet, Storages, Table},
+        world::{World, WorldId},
+    },
+    ptr::{Ptr, UnsafeCellDeref},
 };
 
 /// Variant of the [`World`] where resource and component accesses take `&self`, and the responsibility to avoid
@@ -262,6 +274,14 @@ impl<'w> UnsafeWorldCell<'w> {
         &unsafe { self.world_metadata() }.entity_allocator
     }
 
+    /// Retrieves this world's [`Archetypes`] collection.
+    #[inline]
+    pub fn archetypes(self) -> &'w Archetypes {
+        // SAFETY:
+        // - we only access world metadata
+        &unsafe { self.world_metadata() }.archetypes
+    }
+
     /// Gets the current change tick of this world.
     #[inline]
     pub fn change_tick(self) -> Tick {
@@ -372,6 +392,14 @@ impl<'w> UnsafeWorldCell<'w> {
         &unsafe { self.world_metadata() }.resource_entities
     }
 
+    /// Retrieves this world's [`Bundles`] collection.
+    #[inline]
+    pub fn bundles(self) -> &'w Bundles {
+        // SAFETY:
+        // - we only access world metadata
+        &unsafe { self.world_metadata() }.bundles
+    }
+
     /// Gets a reference to the resource of the given type if it exists
     ///
     /// # Safety
@@ -423,13 +451,11 @@ impl<'w> UnsafeWorldCell<'w> {
     #[inline]
     pub unsafe fn get_resource_mut_by_id(
         self,
-        component_id: ComponentId
+        component_id: ComponentId,
     ) -> Option<MutUntyped<'w>> {
         self.assert_allows_mutable_access();
 
-        let entity = unsafe {
-            self.resource_entities()
-        }.get(component_id)?;
+        let entity = unsafe { self.resource_entities() }.get(component_id)?;
         let entity_cell = self.get_entity(entity).ok()?;
         unsafe { entity_cell.get_mut_by_id(component_id).ok() }
     }
@@ -466,6 +492,31 @@ impl<'w> UnsafeWorldCell<'w> {
         // - caller ensures that we have permission to access this resource
         // - storage_type and location are valid
         unsafe { get_component_and_ticks(self, component_id, storage_type, entity, location) }
+    }
+
+    // Shorthand helper function for getting the data and change ticks for a resource.
+    /// # Panics
+    /// This function will panic if it isn't called from the same thread that the resource was inserted from.
+    ///
+    /// # Safety
+    /// It is the caller's responsibility to ensure that
+    /// - the [`UnsafeWorldCell`] has permission to access the resource mutably
+    /// - no mutable references to the resource exist at the same time
+    #[inline]
+    pub(crate) unsafe fn get_non_send_with_ticks(
+        self,
+        component_id: ComponentId,
+    ) -> Option<(Ptr<'w>, ComponentTickCells<'w>)> {
+        // SAFETY:
+        // - caller ensures there is no `&mut World`
+        // - caller ensures there are no mutable borrows of this resource
+        // - caller ensures that we have permission to access this resource
+        unsafe {
+            self.storages()
+                .non_sends
+                .get(component_id)?
+                .get_with_ticks()
+        }
     }
 }
 
@@ -628,7 +679,7 @@ impl<'w> UnsafeEntityCell<'w> {
     #[inline]
     pub unsafe fn get_mut_by_id(
         self,
-        component_id: ComponentId
+        component_id: ComponentId,
     ) -> Result<MutUntyped<'w>, GetEntityMutByIdError> {
         self.world.assert_allows_mutable_access();
 
@@ -650,12 +701,12 @@ impl<'w> UnsafeEntityCell<'w> {
                 component_id,
                 info.storage_type(),
                 self.entity,
-                self.location
+                self.location,
             )
             .map(|(value, cells)| MutUntyped {
                 // SAFETY: world access validated by caller and ties world lifetime to `MutUntyped` lifetime
                 value: value.assert_unique(),
-                ticks: ComponentTicksMut::from_tick_cells(cells, self.last_run, self.this_run)
+                ticks: ComponentTicksMut::from_tick_cells(cells, self.last_run, self.this_run),
             })
             .ok_or(GetEntityMutByIdError::ComponentNotFound)
         }
@@ -980,7 +1031,6 @@ impl ContainsEntity for UnsafeEntityCell<'_> {
         self.id()
     }
 }
-
 
 /// Error that may be returned when calling [`UnsafeEntityCell::get_mut_by_id`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]

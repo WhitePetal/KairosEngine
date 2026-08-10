@@ -31,12 +31,14 @@ pub mod unsafe_world_cell;
 mod deferred_world;
 mod entity_access;
 mod entity_fetch;
+mod filtered_resource;
 
 pub mod error;
 
 pub use deferred_world::DeferredWorld;
 pub use entity_access::EntityWorldMut;
 pub use entity_fetch::{EntityFetcher, WorldEntityFetch};
+pub use filtered_resource::*;
 
 /// Stores and exposes operations on [entities](Entity), [components](Component), resources,
 /// and their associated metadata.

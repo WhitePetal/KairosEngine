@@ -36,6 +36,12 @@ impl<'w> Deref for DeferredWorld<'w> {
 }
 
 impl<'w> DeferredWorld<'w> {
+    /// Reborrow self as a new instance of [`DeferredWorld`]
+    #[inline]
+    pub fn reborrow(&mut self) -> DeferredWorld<'_> {
+        DeferredWorld { world: self.world }
+    }
+
     /// Sends a global [`Event`] without any targets.
     ///
     /// This will run any [`Observer`] of the given [`Event`] that isn't scoped to specific targets.

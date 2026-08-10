@@ -124,6 +124,7 @@ mod commands;
 mod function_system;
 mod input;
 mod observer_system;
+mod query;
 mod system;
 mod system_param;
 
@@ -132,6 +133,7 @@ pub use commands::*;
 pub use function_system::*;
 pub use input::*;
 pub use observer_system::*;
+pub use query::*;
 pub use system::*;
 pub use system_param::*;
 

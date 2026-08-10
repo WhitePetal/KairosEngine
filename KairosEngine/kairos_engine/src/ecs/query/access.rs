@@ -2,6 +2,45 @@ use derive_more::From;
 
 use crate::ecs::{component::ComponentId, world::unsafe_world_cell::UnsafeWorldCell};
 
+/// Tracks read and write access to specific elements in a collection.
+///
+/// Used internally to ensure soundness during system initialization and execution.
+/// See the [`is_compatible`](Access::is_compatible) and [`get_conflicts`](Access::get_conflicts) functions.
+#[derive(Eq, PartialEq, Default, Hash, Debug)]
+pub struct Access {}
+
+impl Access {
+    /// Creates an empty [`Access`] collection.
+    pub const fn new() -> Self {
+        todo!()
+    }
+    /// Returns `true` if this can access any component.
+    pub fn has_any_read(&self) -> bool {
+        todo!()
+    }
+
+    /// Returns `true` if this can access the component given by `index`.
+    pub fn has_read(&self, index: ComponentId) -> bool {
+        todo!()
+    }
+
+    /// Returns `true` if this can exclusively access the component given by `index`.
+    pub fn has_write(&self, index: ComponentId) -> bool {
+        todo!()
+    }
+
+    /// Adds all access from `other`.
+    pub fn extend(&mut self, other: &Access) {
+        todo!()
+    }
+
+    /// Returns a vector of elements that the access and `other` cannot access at the same time.
+    #[inline]
+    pub fn get_conflicts(&self, other: &Access) -> AccessConflicts {
+        todo!()
+    }
+}
+
 /// A collection of [`FilteredAccess`] instances.
 ///
 /// Used internally to statically check if systems have conflicting access.
@@ -12,9 +51,26 @@ use crate::ecs::{component::ComponentId, world::unsafe_world_cell::UnsafeWorldCe
 #[derive(Debug, PartialEq, Eq, Default)]
 pub struct FilteredAccessSet {}
 
+// This is needed since `#[derive(Clone)]` does not generate optimized `clone_from`.
+impl Clone for FilteredAccessSet {
+    fn clone(&self) -> Self {
+        todo!()
+    }
+
+    fn clone_from(&mut self, source: &Self) {
+        todo!()
+    }
+}
+
 impl FilteredAccessSet {
     /// Creates an empty [`FilteredAccessSet`].
     pub const fn new() -> Self {
+        todo!()
+    }
+
+    /// Returns a reference to the unfiltered access of the entire set.
+    #[inline]
+    pub fn combined_access(&self) -> &Access {
         todo!()
     }
 
@@ -25,6 +81,32 @@ impl FilteredAccessSet {
 
     /// Adds the filtered access to the set.
     pub fn add(&mut self, filtered_acces: FilteredAccess) {
+        todo!()
+    }
+
+    /// Marks the set as writing all T.
+    pub fn write_all(&mut self) {
+        let mut filter = FilteredAccess::matches_everything();
+        filter.write_all();
+        self.add(filter);
+    }
+
+    /// Adds a read access to a component to the set.
+    pub(crate) fn add_unfiltered_component_read(&mut self, index: ComponentId) {
+        let mut filter = FilteredAccess::default();
+        filter.add_read(index);
+        self.add(filter);
+    }
+
+    /// Adds a write access to a resource to the set.
+    pub(crate) fn add_unfiltered_component_write(&mut self, index: ComponentId) {
+        let mut filter = FilteredAccess::default();
+        filter.add_write(index);
+        self.add(filter);
+    }
+
+    /// Adds all of the accesses from the passed set to `self`.
+    pub fn extend(&mut self, filtered_access_set: FilteredAccessSet) {
         todo!()
     }
 }
@@ -53,6 +135,11 @@ impl FilteredAccessSet {
 pub struct FilteredAccess {}
 
 impl FilteredAccess {
+    /// Returns a `FilteredAccess` which has no access and matches everything.
+    /// This is the equivalent of a `TRUE` logic atom.
+    pub fn matches_everything() -> Self {
+        todo!()
+    }
     // Adds access to the component given by `index`.
     pub fn add_read(&mut self, index: ComponentId) {
         todo!()
@@ -73,6 +160,17 @@ impl FilteredAccess {
 
     /// Sets the underlying unfiltered access as having access to all components.
     pub fn read_all(&mut self) {
+        todo!()
+    }
+
+    /// Sets the underlying unfiltered access as having mutable access to all components.
+    pub fn write_all(&mut self) {
+        todo!()
+    }
+
+    /// Returns a mutable reference to the underlying unfiltered access.
+    #[inline]
+    pub fn access_mut(&mut self) -> &mut Access {
         todo!()
     }
 }
