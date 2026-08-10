@@ -767,7 +767,7 @@ impl<I: SparseSetIndex, V> SparseSet<I, V> {
             self.indices.swap_remove(index);
             if !is_last {
                 let swapped_index = self.indices[index].clone();
-                *self.sparse.get_mut(swapped_index).unwrap() == dense_index;
+                *self.sparse.get_mut(swapped_index).unwrap() = dense_index;
             }
             value
         })

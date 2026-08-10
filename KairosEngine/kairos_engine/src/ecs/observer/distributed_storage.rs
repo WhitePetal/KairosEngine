@@ -9,7 +9,7 @@
 //! When we watch entities, we add the [`ObservedBy`] component to those entities,
 //! which links back to the observer entity.
 
-use std::any::Any;
+use std::{any::Any, marker::PhantomData};
 
 use crate::{
     debug::DebugName,
@@ -18,9 +18,12 @@ use crate::{
         component::{Component, ComponentCloneBehavior, ComponentId, Mutable, StorageType},
         entity::Entity,
         error::{BevyError, ErrorContext, ErrorHandler},
-        event::{Event, EventKey},
+        event::{EntityEvent, Event, EventKey},
         lifecycle::{ComponentHook, HookContext},
-        observer::{ObserverCondition, ObserverRunner, observer_system_runner},
+        observer::{
+            ObserverCondition, ObserverRunner, ObserverWithCondition, ObserverWithConditionMarker,
+            observer_system_runner,
+        },
         schedule::SystemCondition,
         system::{IntoObserverSystem, IntoSystem, ObserverSystem, System},
         world::{DeferredWorld, World},
@@ -345,6 +348,16 @@ impl Observer {
         self.conditions.push(ObserverCondition::new(condition));
         self
     }
+
+    /// Returns the [`ObserverDescriptor`] for this [`Observer`].
+    pub fn descriptor(&self) -> &ObserverDescriptor {
+        &self.descriptor
+    }
+
+    /// Returns the name of the [`Observer`]'s system .
+    pub fn system_name(&self) -> DebugName {
+        self.system.system_name()
+    }
 }
 
 fn hook_on_add<E: Event, B: Bundle, S: ObserverSystem<E, B>>(
@@ -392,9 +405,12 @@ fn hook_on_add<E: Event, B: Bundle, S: ObserverSystem<E, B>>(
 
 /// Tracks a list of entity observers for the [`Entity`] [`ObservedBy`] is added to.
 #[derive(Default, Debug)]
+// #[cfg_attr(feature = "bevy_reflect", derive(bevy_reflect::Reflect))]
+// #[cfg_attr(feature = "bevy_reflect", reflect(Component, Debug))]
 pub struct ObserveBy(pub(crate) Vec<Entity>);
 
 impl ObserveBy {
+    /// Provides a read-only reference to the list of entities observing this entity.
     pub fn get(&self) -> &[Entity] {
         &self.0
     }
@@ -448,24 +464,6 @@ impl<T: Any + System> AnyNamedSystem for T {
     }
 }
 
-/// Trait for types that can be converted into an [`Observer`].
-pub trait IntoObserver<Marker>: Send + 'static {
-    /// Converts this type into an [`Observer`].
-    fn into_observer(self) -> Observer;
-}
-
-impl IntoObserver<()> for Observer {
-    fn into_observer(self) -> Observer {
-        self
-    }
-}
-
-impl<E: Event, B: Bundle, M, T: IntoObserverSystem<E, B, M>> IntoObserver<(E, B, M)> for T {
-    fn into_observer(self) -> Observer {
-        Observer::new(self)
-    }
-}
-
 impl Component for Observer {
     const STORAGE_TYPE: StorageType = StorageType::SparseSet;
     type Mutability = Mutable;
@@ -510,3 +508,117 @@ pub struct ObserverDescriptor {
     /// The entities the observer is watching.
     pub(super) entities: Vec<Entity>,
 }
+
+impl ObserverDescriptor {
+    /// Add the given `event_keys` to the descriptor.
+    /// # Safety
+    /// The type of each [`EventKey`] in `event_keys` _must_ match the actual value
+    /// of the event passed into the observer.
+    pub unsafe fn with_event_keys(mut self, event_keys: Vec<EventKey>) -> Self {
+        self.event_keys = event_keys;
+        self
+    }
+
+    /// Add the given `components` to the descriptor.
+    pub fn with_components(mut self, components: Vec<ComponentId>) -> Self {
+        self.components = components;
+        self
+    }
+
+    /// Add the given `entities` to the descriptor.
+    pub fn with_entities(mut self, entities: Vec<Entity>) -> Self {
+        self.entities = entities;
+        self
+    }
+
+    /// Returns the `event_keys` that the observer is watching.
+    pub fn event_keys(&self) -> &[EventKey] {
+        &self.event_keys
+    }
+
+    /// Returns the `components` that the observer is watching.
+    pub fn components(&self) -> &[ComponentId] {
+        &self.components
+    }
+
+    /// Returns the `entities` that the observer is watching.
+    pub fn entities(&self) -> &[Entity] {
+        &self.entities
+    }
+}
+
+/// Trait for types that can be converted into an [`Observer`].
+pub trait IntoObserver<Marker>: Send + 'static {
+    /// Converts this type into an [`Observer`].
+    fn into_observer(self) -> Observer;
+}
+
+impl IntoObserver<()> for Observer {
+    fn into_observer(self) -> Observer {
+        self
+    }
+}
+
+impl<E: Event, B: Bundle, M, T: IntoObserverSystem<E, B, M>> IntoObserver<(E, B, M)> for T {
+    fn into_observer(self) -> Observer {
+        Observer::new(self)
+    }
+}
+
+impl<E: Event, B: Bundle, M: 'static, S: IntoObserverSystem<E, B, M>>
+    IntoObserver<ObserverWithConditionMarker> for ObserverWithCondition<E, B, M, S>
+{
+    fn into_observer(self) -> Observer {
+        let (system, conditions) = self.take_conditions();
+        let mut observer = Observer::new(system);
+        observer.conditions = conditions;
+        observer
+    }
+}
+
+/// Trait for types that can be converted into an entity-targeting [`Observer`].
+///
+/// This trait enforces that the event type implements [`EntityEvent`].
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` cannot be used as an entity observer",
+    note = "entity observers require the event type to implement `EntityEvent`"
+)]
+pub trait IntoEntityObserver<Marker>: Send + 'static {
+    /// Converts this type into an [`Observer`] that watches the given entity.
+    fn into_observer_for_entity(self, entity: Entity) -> Observer;
+}
+
+impl<E: EntityEvent, B: Bundle, M, T: IntoObserverSystem<E, B, M>> IntoEntityObserver<(E, B, M)>
+    for T
+{
+    fn into_observer_for_entity(self, entity: Entity) -> Observer {
+        Observer::new(self).with_entity(entity)
+    }
+}
+
+impl<E: EntityEvent, B: Bundle, M: 'static, S: IntoObserverSystem<E, B, M>>
+    IntoEntityObserver<ObserverWithConditionMarker> for ObserverWithCondition<E, B, M, S>
+{
+    fn into_observer_for_entity(self, entity: Entity) -> Observer {
+        let (system, conditions) = self.take_conditions();
+        let mut observer = Observer::new(system);
+        observer.conditions = conditions;
+        observer.with_entity(entity)
+    }
+}
+
+/// Extension trait for adding run conditions to observer systems.
+pub trait ObserverSystemExt<E: Event, B: Bundle, M>: IntoObserverSystem<E, B, M> + Sized {
+    fn run_if<C, CM>(self, condition: C) -> ObserverWithCondition<E, B, M, Self>
+    where
+        C: SystemCondition<CM>,
+    {
+        ObserverWithCondition {
+            system: self,
+            conditions: std::vec![Box::new(IntoSystem::into_system(condition))],
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<E: Event, B: Bundle, M, T: IntoObserverSystem<E, B, M>> ObserverSystemExt<E, B, M> for T {}
