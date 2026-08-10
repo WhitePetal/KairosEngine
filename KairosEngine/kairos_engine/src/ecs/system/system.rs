@@ -1,17 +1,25 @@
-use std::{any::Any, fmt::Display};
+use std::{
+    any::{Any, TypeId},
+    fmt::{Debug, Display},
+};
 
 use bitflags::bitflags;
+use log::warn;
 
 use crate::{
     debug::DebugName,
     ecs::{
-        change_detection::Tick,
+        change_detection::{CheckChangeTicks, Tick},
         error::BevyError,
         query::FilteredAccessSet,
-        system::{SystemIn, SystemInput, SystemParamValidationError},
+        schedule::InternedSystemSet,
+        system::{IntoSystem, SystemIn, SystemInput, SystemParamValidationError},
         world::{DeferredWorld, World, unsafe_world_cell::UnsafeWorldCell},
     },
 };
+
+#[cfg(test)]
+mod tests;
 
 bitflags! {
     /// Bitflags representing system states and requirements.
@@ -47,16 +55,32 @@ pub trait System: Send + Sync + 'static {
     /// Returns the system's name.
     fn name(&self) -> DebugName;
 
+    /// Returns the [`TypeId`] of the underlying system type.
+    #[inline]
+    fn system_type(&self) -> TypeId {
+        TypeId::of::<Self>()
+    }
+
+    /// Returns the [`SystemStateFlags`] of the system.
+    fn flags(&self) -> SystemStateFlags;
+
+    /// Returns true if the system is [`Send`].
+    #[inline]
+    fn is_send(&self) -> bool {
+        !self.flags().intersects(SystemStateFlags::NON_SEND)
+    }
+
     /// Returns true if the system must be run exclusively.
     #[inline]
     fn is_exclusive(&self) -> bool {
-        todo!()
+        self.flags().intersects(SystemStateFlags::EXCLUSIVE)
     }
 
-    /// Initialize the system.
-    ///
-    /// Returns a [`FilteredAccessSet`] with the access required to run the system.
-    fn initialize(&mut self, _world: &mut World) -> FilteredAccessSet;
+    /// Returns true if system has deferred buffers.
+    #[inline]
+    fn has_deferred(&self) -> bool {
+        self.flags().intersects(SystemStateFlags::DEFERRED)
+    }
 
     /// Runs the system with the given input in the world. Unlike [`System::run`], this function
     /// can be called in parallel with other systems and may break Rust's aliasing rules
@@ -78,12 +102,278 @@ pub trait System: Send + Sync + 'static {
         world: UnsafeWorldCell,
     ) -> Result<Self::Out, RunSystemError>;
 
-    /// Gets the tick indicating the last time this system ran.
-    fn get_last_run(&self) -> Tick;
+    // /// Refresh the inner pointer based on the latest hot patch jump table
+    // #[cfg(feature = "hotpatching")]
+    // fn refresh_hotpatch(&mut self);
+
+    /// Runs the system with the given input in the world.
+    ///
+    /// For [read-only](ReadOnlySystem) systems, see [`run_readonly`], which can be called using `&World`.
+    ///
+    /// Unlike [`System::run_unsafe`], this will apply deferred parameters *immediately*.
+    ///
+    /// [`run_readonly`]: ReadOnlySystem::run_readonly
+    fn run(
+        &mut self,
+        input: SystemIn<'_, Self>,
+        world: &mut World,
+    ) -> Result<Self::Out, RunSystemError> {
+        let ret = self.run_without_applying_deferred(input, world)?;
+        self.apply_deferred(world);
+        Ok(ret)
+    }
+
+    /// Runs the system with the given input in the world.
+    ///
+    /// [`run_readonly`]: ReadOnlySystem::run_readonly
+    fn run_without_applying_deferred(
+        &mut self,
+        input: SystemIn<'_, Self>,
+        world: &mut World,
+    ) -> Result<Self::Out, RunSystemError> {
+        let world_cell = world.as_unsafe_world_cell();
+        // SAFETY:
+        // - We have exclusive access to the entire world.
+        unsafe { self.run_unsafe(input, world_cell) }
+    }
+
+    /// Applies any [`Deferred`](crate::system::Deferred) system parameters (or other system buffers) of this system to the world.
+    ///
+    /// This is where [`Commands`](crate::system::Commands) get applied.
+    fn apply_deferred(&mut self, world: &mut World);
 
     /// Enqueues any [`Deferred`](crate::system::Deferred) system parameters (or other system buffers)
     /// of this system into the world's command buffer.
     fn queue_deferred(&mut self, world: DeferredWorld);
+
+    /// Initialize the system.
+    ///
+    /// Returns a [`FilteredAccessSet`] with the access required to run the system.
+    fn initialize(&mut self, _world: &mut World) -> FilteredAccessSet;
+
+    /// Checks any [`Tick`]s stored on this system and wraps their value if they get too old.
+    ///
+    /// This method must be called periodically to ensure that change detection behaves correctly.
+    /// When using bevy's default configuration, this will be called for you as needed.
+    fn check_change_tick(&mut self, check: CheckChangeTicks);
+
+    /// Returns the system's default [system sets](crate::schedule::SystemSet).
+    ///
+    /// Each system will create a default system set that contains the system.
+    fn default_system_sets(&self) -> Vec<InternedSystemSet> {
+        Vec::new()
+    }
+
+    /// Gets the tick indicating the last time this system ran.
+    fn get_last_run(&self) -> Tick;
+
+    /// Overwrites the tick indicating the last time this system ran.
+    ///
+    /// # Warning
+    /// This is a complex and error-prone operation, that can have unexpected consequences on any system relying on this code.
+    /// However, it can be an essential escape hatch when, for example,
+    /// you are trying to synchronize representations using change detection and need to avoid infinite recursion.
+    fn set_last_run(&mut self, last_run: Tick);
+}
+
+/// [`System`] types that do not modify the [`World`] when run.
+/// This is implemented for any systems whose parameters all implement [`ReadOnlySystemParam`].
+///
+/// Note that systems which perform [deferred](System::apply_deferred) mutations (such as with [`Commands`])
+/// may implement this trait.
+///
+/// [`ReadOnlySystemParam`]: crate::system::ReadOnlySystemParam
+/// [`Commands`]: crate::system::Commands
+///
+/// # Safety
+///
+/// This must only be implemented for system types which do not mutate the `World`
+/// when [`System::run_unsafe`] is called.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is not a read-only system",
+    label = "invalid read-only system"
+)]
+pub unsafe trait ReadOnlySystem: System {
+    /// Runs this system with the given input in the world.
+    ///
+    /// Unlike [`System::run`], this can be called with a shared reference to the world,
+    /// since this system is known not to modify the world.
+    fn run_readonly(
+        &mut self,
+        input: SystemIn<'_, Self>,
+        world: &World,
+    ) -> Result<Self::Out, RunSystemError> {
+        let world = world.as_unsafe_world_cell_readonly();
+        // SAFETY:
+        // - We have read-only access to the entire world.
+        unsafe { self.run_unsafe(input, world) }
+    }
+}
+
+/// A convenience type alias for a boxed [`System`] trait object.
+pub type BoxedSystem<In = (), Out = ()> = Box<dyn System<In = In, Out = Out>>;
+
+/// A convenience type alias for a boxed [`ReadOnlySystem`] trait object.
+pub type BoxedReadOnlySystem<In = (), Out = ()> = Box<dyn ReadOnlySystem<In = In, Out = Out>>;
+
+pub(crate) fn check_system_change_tick(
+    last_run: &mut Tick,
+    check: CheckChangeTicks,
+    system_name: DebugName,
+) {
+    if last_run.check_tick(check) {
+        let age = check.present_tick().relative_to(*last_run).get();
+        warn!(
+            "System '{system_name}' has not run for {age} ticks. \
+            Changes older than {} ticks will not be detected.",
+            Tick::MAX.get() - 1
+        );
+    }
+}
+
+impl<In, Out> Debug for dyn System<In = In, Out = Out>
+where
+    In: SystemInput + 'static,
+    Out: 'static,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("System")
+            .field("name", &self.name())
+            .field("is_exclusive", &self.is_exclusive())
+            .field("is_send", &self.is_send())
+            .finish_non_exhaustive()
+    }
+}
+
+/// Trait used to run a system immediately on a [`World`].
+///
+/// # Warning
+/// This function is not an efficient method of running systems and it's meant to be used as a utility
+/// for testing and/or diagnostics.
+///
+/// Systems called through [`run_system_once`](RunSystemOnce::run_system_once) do not hold onto any state,
+/// as they are created and destroyed every time [`run_system_once`](RunSystemOnce::run_system_once) is called.
+/// Practically, this means that [`Local`](crate::system::Local) variables are
+/// reset on every run and change detection does not work.
+///
+/// ```
+/// # use bevy_ecs::prelude::*;
+/// # use bevy_ecs::system::RunSystemOnce;
+/// #[derive(Resource, Default)]
+/// struct Counter(u8);
+///
+/// fn increment(mut counter: Local<Counter>) {
+///    counter.0 += 1;
+///    println!("{}", counter.0);
+/// }
+///
+/// let mut world = World::default();
+/// world.run_system_once(increment); // prints 1
+/// world.run_system_once(increment); // still prints 1
+/// ```
+///
+/// If you do need systems to hold onto state between runs, use [`World::run_system_cached`](World::run_system_cached)
+/// or [`World::run_system`](World::run_system).
+///
+/// # Usage
+/// Typically, to test a system, or to extract specific diagnostics information from a world,
+/// you'd need a [`Schedule`](crate::schedule::Schedule) to run the system. This can create redundant boilerplate code
+/// when writing tests or trying to quickly iterate on debug specific systems.
+///
+/// For these situations, this function can be useful because it allows you to execute a system
+/// immediately with some custom input and retrieve its output without requiring the necessary boilerplate.
+///
+/// # Examples
+///
+/// ## Immediate Command Execution
+///
+/// This usage is helpful when trying to test systems or functions that operate on [`Commands`](crate::system::Commands):
+/// ```
+/// # use bevy_ecs::prelude::*;
+/// # use bevy_ecs::system::RunSystemOnce;
+/// let mut world = World::default();
+/// let entity = world.run_system_once(|mut commands: Commands| {
+///     commands.spawn_empty().id()
+/// }).unwrap();
+/// # assert!(world.get_entity(entity).is_ok());
+/// ```
+///
+/// ## Immediate Queries
+///
+/// This usage is helpful when trying to run an arbitrary query on a world for testing or debugging purposes:
+/// ```
+/// # use bevy_ecs::prelude::*;
+/// # use bevy_ecs::system::RunSystemOnce;
+///
+/// #[derive(Component)]
+/// struct T(usize);
+///
+/// let mut world = World::default();
+/// world.spawn(T(0));
+/// world.spawn(T(1));
+/// world.spawn(T(1));
+/// let count = world.run_system_once(|query: Query<&T>| {
+///     query.iter().filter(|t| t.0 == 1).count()
+/// }).unwrap();
+///
+/// # assert_eq!(count, 2);
+/// ```
+///
+/// Note that instead of closures you can also pass in regular functions as systems:
+///
+/// ```
+/// # use bevy_ecs::prelude::*;
+/// # use bevy_ecs::system::RunSystemOnce;
+///
+/// #[derive(Component)]
+/// struct T(usize);
+///
+/// fn count(query: Query<&T>) -> usize {
+///     query.iter().filter(|t| t.0 == 1).count()
+/// }
+///
+/// let mut world = World::default();
+/// world.spawn(T(0));
+/// world.spawn(T(1));
+/// world.spawn(T(1));
+/// let count = world.run_system_once(count).unwrap();
+///
+/// # assert_eq!(count, 2);
+/// ```
+pub trait RunSystemOnce: Sized {
+    /// Tries to run a system and apply its deferred parameters.
+    fn run_system_once<T, Out, Marker>(self, system: T) -> Result<Out, RunSystemError>
+    where
+        T: IntoSystem<(), Out, Marker>,
+    {
+        self.run_system_once_with(system, ())
+    }
+
+    /// Tries to run a system with given input and apply deferred parameters.
+    fn run_system_once_with<T, In, Out, Marker>(
+        self,
+        system: T,
+        input: SystemIn<'_, T::System>,
+    ) -> Result<Out, RunSystemError>
+    where
+        T: IntoSystem<In, Out, Marker>,
+        In: SystemInput;
+}
+
+impl RunSystemOnce for &mut World {
+    fn run_system_once_with<T, In, Out, Marker>(
+        self,
+        system: T,
+        input: SystemIn<'_, T::System>,
+    ) -> Result<Out, RunSystemError>
+    where
+        T: IntoSystem<In, Out, Marker>,
+        In: SystemInput,
+    {
+        let mut system: T::System = IntoSystem::into_system(system);
+        system.initialize(self);
+        system.run(input, self)
+    }
 }
 
 /// Running system failed.
@@ -126,24 +416,3 @@ where
         Self::Failed(From::from(value))
     }
 }
-
-/// [`System`] types that do not modify the [`World`] when run.
-/// This is implemented for any systems whose parameters all implement [`ReadOnlySystemParam`].
-///
-/// Note that systems which perform [deferred](System::apply_deferred) mutations (such as with [`Commands`])
-/// may implement this trait.
-///
-/// [`ReadOnlySystemParam`]: crate::system::ReadOnlySystemParam
-/// [`Commands`]: crate::system::Commands
-///
-/// # Safety
-///
-/// This must only be implemented for system types which do not mutate the `World`
-/// when [`System::run_unsafe`] is called.
-#[diagnostic::on_unimplemented(
-    message = "`{Self}` is not a read-only system",
-    label = "invalid read-only system"
-)]
-pub unsafe trait ReadOnlySystem: System {}
-
-// TODO!

@@ -5,6 +5,8 @@ pub mod component;
 pub mod entity;
 pub mod error;
 pub mod event;
+pub mod intern;
+pub mod label;
 pub mod lifecycle;
 pub mod name;
 pub mod never;

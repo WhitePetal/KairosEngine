@@ -4,7 +4,7 @@ use crate::ecs::error::BevyError;
 #[cfg(not(miri))] // miri backtraces are weird
 #[cfg(not(windows))] // the windows backtrace in this context is ... unhelpful and not worth testing
 fn filtered_backtrace_test() {
-    fn i_fail() -> crate::error::Result {
+    fn i_fail() -> crate::ecs::error::Result {
         let _: usize = "I am not a number".parse()?;
         Ok(())
     }
@@ -18,7 +18,7 @@ fn filtered_backtrace_test() {
     }
 
     let error = i_fail().err().unwrap();
-    let debug_message = alloc::format!("{error:?}");
+    let debug_message = std::format!("{error:?}");
     let mut lines = debug_message.lines().peekable();
     assert_eq!(
         "ParseIntError { kind: InvalidDigit }",
@@ -39,7 +39,7 @@ fn filtered_backtrace_test() {
         lines.next().unwrap();
     }
 
-    let expected_lines = alloc::vec![
+    let expected_lines = std::vec![
         "bevy_ecs::error::bevy_error::tests::filtered_backtrace_test::i_fail",
         "bevy_ecs::error::bevy_error::tests::filtered_backtrace_test",
         "bevy_ecs::error::bevy_error::tests::filtered_backtrace_test::{{closure}}",

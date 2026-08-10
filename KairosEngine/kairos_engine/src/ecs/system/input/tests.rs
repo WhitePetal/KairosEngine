@@ -1,5 +1,5 @@
 use crate::ecs::{
-    system::{In, InMut, InRef, IntoSystem, StaticSystemInput, assert_is_system},
+    system::{In, InMut, InRef, IntoSystem, StaticSystemInput, System, assert_is_system},
     world::World,
 };
 
