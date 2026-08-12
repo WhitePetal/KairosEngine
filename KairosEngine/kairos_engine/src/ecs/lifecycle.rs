@@ -51,15 +51,12 @@
 //! This is used to skip [`TypeId`](core::any::TypeId) lookups in hot paths.
 //!
 
+use derive_more::Into;
+
 use crate::{
     debug::MaybeLocation,
     ecs::{
-        component::{self, Component, ComponentId},
-        entity::Entity,
-        event::{EntityComponentsTrigger, EntityEvent, Event, EventKey},
-        relationship::RelationshipHookMode,
-        storage::SparseSet,
-        world::DeferredWorld,
+        component::{self, Component, ComponentId}, entity::Entity, event::{EntityComponentsTrigger, EntityEvent, Event, EventKey}, message::Message, relationship::RelationshipHookMode, storage::SparseSet, world::DeferredWorld
     },
 };
 
@@ -301,8 +298,6 @@ impl ComponentHooks {
     }
 }
 
-// TODO!
-
 /// [`EventKey`] for [`Add`]
 pub const ADD: EventKey = EventKey(ComponentId::new(component::ADD));
 /// [`EventKey`] for [`Insert`]
@@ -425,6 +420,26 @@ pub struct Despawn {
     /// The entity that held this component before it was despawned.
     pub entity: Entity,
 }
+
+/// Wrapper around [`Entity`] for [`RemovedComponents`].
+/// Internally, `RemovedComponents` uses these as an [`Messages<RemovedComponentEntity>`].
+// #[derive(Message, Debug, Clone, Into)]
+#[derive(Debug, Clone, Into)]
+// #[cfg_attr(feature = "bevy_reflect", derive(Reflect))]
+// #[cfg_attr(feature = "bevy_reflect", reflect(Debug, Clone))]
+pub struct RemovedComponentEntity(Entity);
+
+impl Message for RemovedComponentEntity {}
+
+/// Wrapper around a [`MessageCursor<RemovedComponentEntity>`] so that we
+/// can differentiate messages between components.
+// #[derive(Debug)]
+// pub struct RemovedComponentReader<T>
+// where
+//     T: Component
+// {
+//     reader: MessageCursor
+// }
 
 /// Stores the [`RemovedComponents`] event buffers for all types of component in a given [`World`].
 #[derive(Default, Debug)]

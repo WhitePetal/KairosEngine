@@ -18,4 +18,5 @@ pub mod schedule;
 pub mod storage;
 pub mod system;
 pub mod traversal;
+pub mod message;
 pub mod world;
