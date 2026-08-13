@@ -1,3 +1,5 @@
+extern crate self as kairos_engine;
+
 pub mod cell;
 pub mod debug;
 pub mod hash;

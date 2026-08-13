@@ -1,7 +1,7 @@
 use crate::ecs::{
     change_detection::ResMut,
     message::{Message, MessageCursor, Messages},
-    system::{Local, ReadOnlySystemParam, SystemParam, SystemParamValidationError},
+    system::{Local, SystemParam},
 };
 
 /// Reads and writes [`Message`]s of type `T`, keeping track of which messages have already been read.
@@ -49,116 +49,11 @@ use crate::ecs::{
 ///
 /// [`MessageReader`]: super::MessageReader
 /// [`MessageWriter`]: super::MessageWriter
-// #[derive(SystemParam, Debug)]
-#[derive(Debug)]
+#[derive(SystemParam, Debug)]
 pub struct MessageMutator<'w, 's, M: Message> {
     pub(super) reader: Local<'s, MessageCursor<M>>,
+    #[system_param(validation_message = "Message not initialized")]
     messages: ResMut<'w, Messages<M>>,
 }
 
-// TODO!: use derive
-const _: () = {
-    type __StructFieldsAlias<'w, 's, M> = (Local<'s, MessageCursor<M>>, ResMut<'w, Messages<M>>);
-
-    pub struct FetchState<M: Message> {
-        // 实际类型是(SyncCellM<MessageCursor<M>>, ComponentId)
-        state: <__StructFieldsAlias<'static, 'static, M> as SystemParam>::State,
-    }
-
-    unsafe impl<M: Message> SystemParam for MessageMutator<'_, '_, M> {
-        type State = FetchState<M>;
-
-        type Item<'w, 's> = MessageMutator<'w, 's, M>;
-
-        fn init_state(world: &mut crate::ecs::world::World) -> Self::State {
-            // (SyncCellM<MessageCursor<M>>::default(), world.components_registrator().register_component::<T>())
-            FetchState {
-                state: <__StructFieldsAlias<'_, '_, M> as SystemParam>::init_state(world),
-            }
-        }
-
-        fn init_access(
-            state: &Self::State,
-            system_meta: &mut crate::ecs::system::SystemMeta,
-            component_access_set: &mut crate::ecs::query::FilteredAccessSet,
-            world: &mut crate::ecs::world::World,
-        ) {
-            <__StructFieldsAlias<'_, '_, M> as SystemParam>::init_access(
-                &state.state,
-                system_meta,
-                component_access_set,
-                world,
-            );
-        }
-
-        fn apply(
-            state: &mut Self::State,
-            system_meta: &crate::ecs::system::SystemMeta,
-            world: &mut crate::ecs::world::World,
-        ) {
-            <__StructFieldsAlias<'_, '_, M> as SystemParam>::apply(
-                &mut state.state,
-                system_meta,
-                world,
-            );
-        }
-
-        fn queue(
-            state: &mut Self::State,
-            system_meta: &crate::ecs::system::SystemMeta,
-            world: crate::ecs::world::DeferredWorld,
-        ) {
-            <__StructFieldsAlias<'_, '_, M> as SystemParam>::queue(
-                &mut state.state,
-                system_meta,
-                world,
-            );
-        }
-
-        unsafe fn get_param<'w, 's>(
-            state: &'s mut Self::State,
-            system_meta: &crate::ecs::system::SystemMeta,
-            world: crate::ecs::world::unsafe_world_cell::UnsafeWorldCell<'w>,
-            change_tick: crate::ecs::change_detection::Tick,
-        ) -> Result<Self::Item<'w, 's>, crate::ecs::system::SystemParamValidationError> {
-            let (field0, field1) = &mut state.state;
-            let field0 = unsafe {
-                <Local<'s, MessageCursor<M>> as SystemParam>::get_param(
-                    field0,
-                    system_meta,
-                    world,
-                    change_tick,
-                )
-            }
-            .map_err(|err| {
-                SystemParamValidationError::new::<Self>(err.skipped, err.message, "::reader")
-            })?;
-            let field1 = unsafe {
-                <ResMut<'w, Messages<M>> as SystemParam>::get_param(
-                    field1,
-                    system_meta,
-                    world,
-                    change_tick,
-                )
-            }
-            .map_err(|err| {
-                SystemParamValidationError::new::<Self>(
-                    err.skipped,
-                    "Message not initialized",
-                    "::messages",
-                )
-            })?;
-            Result::Ok(MessageMutator {
-                reader: field0,
-                messages: field1,
-            })
-        }
-    }
-
-    unsafe impl<'w, 's, M: Message> ReadOnlySystemParam for MessageMutator<'w, 's, M>
-    where
-        Local<'s, MessageCursor<M>>: ReadOnlySystemParam,
-        ResMut<'w, Messages<M>>: ReadOnlySystemParam,
-    {
-    }
-};
+// TODO!

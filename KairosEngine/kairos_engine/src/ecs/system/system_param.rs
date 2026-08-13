@@ -32,6 +32,8 @@ use crate::{
     ptr::UnsafeCellDeref,
 };
 
+pub use kairos_ecs_macros::SystemParam;
+
 #[cfg(test)]
 mod tests;
 
