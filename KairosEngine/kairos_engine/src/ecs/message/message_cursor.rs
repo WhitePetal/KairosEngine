@@ -1,6 +1,9 @@
 use std::marker::PhantomData;
 
-use crate::ecs::message::Message;
+use crate::ecs::message::{
+    Message, MessageIterator, MessageIteratorWithId, MessageMutIterator, MessageMutIteratorWithId,
+    MessageMutParIter, MessageParIter, Messages,
+};
 
 /// Stores the state for a [`MessageReader`] or [`MessageMutator`].
 ///
@@ -58,6 +61,85 @@ impl<M: Message> Default for MessageCursor<M> {
             last_message_count: 0,
             _marker: Default::default(),
         }
+    }
+}
+
+impl<M: Message> Clone for MessageCursor<M> {
+    fn clone(&self) -> Self {
+        MessageCursor {
+            last_message_count: self.last_message_count,
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<M: Message> MessageCursor<M> {
+    /// See [`MessageReader::read`](super::MessageReader::read)
+    pub fn read<'a>(&'a mut self, messages: &'a Messages<M>) -> MessageIterator<'a, M> {
+        self.read_with_id(messages).without_id()
+    }
+
+    /// See [`MessageMutator::read`](super::MessageMutator::read)
+    pub fn read_mut<'a>(&'a mut self, messages: &'a mut Messages<M>) -> MessageMutIterator<'a, M> {
+        self.read_mut_with_id(messages).without_id()
+    }
+
+    /// See [`MessageReader::len`](super::MessageReader::len)
+    pub fn len(&self, messages: &Messages<M>) -> usize {
+        // The number of messages in this reader is the difference between the most recent message
+        // and the last message seen by it. This will be at most the number of messages contained
+        // with the messages (any others have already been dropped)
+        // TODO: Warn when there are dropped messages, or return e.g. a `Result<usize, (usize, usize)>`
+        messages
+            .message_count
+            .saturating_sub(self.last_message_count)
+            .min(messages.len())
+    }
+
+    /// See [`MessageReader::read_with_id`](super::MessageReader::read_with_id)
+    pub fn read_with_id<'a>(
+        &'a mut self,
+        messages: &'a Messages<M>,
+    ) -> MessageIteratorWithId<'a, M> {
+        MessageIteratorWithId::new(self, messages)
+    }
+
+    /// See [`MessageMutator::read_with_id`](super::MessageMutator::read_with_id)
+    pub fn read_mut_with_id<'a>(
+        &'a mut self,
+        messages: &'a mut Messages<M>,
+    ) -> MessageMutIteratorWithId<'a, M> {
+        MessageMutIteratorWithId::new(self, messages)
+    }
+
+    /// See [`MessageMutator::par_read`](super::MessageMutator::par_read)
+    pub fn par_read<'a>(&'a mut self, messages: &'a Messages<M>) -> MessageParIter<'a, M> {
+        MessageParIter::new(self, messages)
+    }
+
+    /// See [`MessageMutator::par_read`](super::MessageMutator::par_read)
+    pub fn par_read_mut<'a>(
+        &'a mut self,
+        messages: &'a mut Messages<M>,
+    ) -> MessageMutParIter<'a, M> {
+        MessageMutParIter::new(self, messages)
+    }
+
+    /// Amount of messages we missed.
+    pub fn missed_message(&self, messages: &Messages<M>) -> usize {
+        messages
+            .oldest_message_count()
+            .saturating_sub(self.last_message_count)
+    }
+
+    /// See [`MessageReader::is_empty()`](super::MessageReader::is_empty)
+    pub fn is_empty(&self, messages: &Messages<M>) -> bool {
+        self.len(messages) == 0
+    }
+
+    /// See [`MessageReader::clear()`](super::MessageReader::clear)
+    pub fn clear(&mut self, messages: &Messages<M>) {
+        self.last_message_count = messages.message_count;
     }
 }
 

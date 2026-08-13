@@ -7,10 +7,12 @@ use crate::debug::MaybeLocation;
 mod iterators;
 mod message_cursor;
 mod messages;
+mod mut_iterators;
 
 pub use iterators::*;
 pub use message_cursor::*;
 pub use messages::*;
+pub use mut_iterators::*;
 
 /// A buffered message for pull-based event handling.
 ///
@@ -139,6 +141,12 @@ impl<M: Message> PartialEq for MessageId<M> {
 }
 
 impl<M: Message> Eq for MessageId<M> {}
+
+impl<M: Message> PartialOrd for MessageId<M> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
 
 impl<M: Message> Ord for MessageId<M> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {

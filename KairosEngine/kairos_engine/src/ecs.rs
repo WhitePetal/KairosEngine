@@ -1,4 +1,5 @@
 pub mod archetype;
+pub mod batching;
 pub mod bundle;
 pub mod change_detection;
 pub mod component;
