@@ -2,6 +2,7 @@
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
+use kairos_macro_utils::{KairosManifest, get_struct_fields};
 use proc_macro::TokenStream;
 use syn::{DeriveInput, parse_macro_input};
 
@@ -110,3 +111,39 @@ pub fn derive_component(input: TokenStream) -> TokenStream {
     let mut ast = parse_macro_input!(input as DeriveInput);
     todo!()
 }
+
+/// Implement `SystemParam` to use a struct as a parameter in a system
+#[proc_macro_derive(SystemParam, attributes(system_param))]
+pub fn derive_system_param(input: TokenStream) -> TokenStream {
+    let token_stream = input.clone();
+    let ast = parse_macro_input!(input as DeriveInput);
+
+    match derive_system_param_impl(token_stream, ast) {
+        Ok(t) => t,
+        Err(e) => e.into_compile_error().into(),
+    }
+}
+fn derive_system_param_impl(
+    token_stream: TokenStream,
+    ast: DeriveInput,
+) -> syn::Result<TokenStream> {
+    let fields = get_struct_fields(&ast.data, "derive(SystemParam)")?;
+    todo!()
+}
+
+/// Return the path to the Kairos ECS module, relative to the caller's crate.
+///
+/// The ECS is a module of the `kairos_engine` crate (`kairos_engine::ecs`),
+/// so this resolves the engine crate from the caller's manifest and appends
+/// the `ecs` module segment. Macro expansions can then append further module
+/// paths, e.g. `#kairos_ecs_path::world::World`.
+pub(crate) fn kairos_ecs_path() -> syn::Path {
+    KairosManifest::shared(|manifest| {
+        let mut path = manifest.get_path("kairos_engine");
+        path.segments
+            .push(KairosManifest::parse_str::<syn::PathSegment>("ecs"));
+        path
+    })
+}
+
+// TODO!

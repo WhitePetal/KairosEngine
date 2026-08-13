@@ -110,6 +110,12 @@ pub trait FromWorld {
     fn from_world(world: &mut World) -> Self;
 }
 
+impl<T: Default> FromWorld for T {
+    fn from_world(world: &mut World) -> Self {
+        T::default()
+    }
+}
+
 impl World {
     pub fn new() -> Self {
         todo!()

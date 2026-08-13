@@ -142,5 +142,3 @@ impl<M: Message> MessageCursor<M> {
         self.last_message_count = messages.message_count;
     }
 }
-
-// TODO!

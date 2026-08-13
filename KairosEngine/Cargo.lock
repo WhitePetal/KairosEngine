@@ -2308,6 +2308,7 @@ dependencies = [
 name = "kairos_ecs_macros"
 version = "0.1.0"
 dependencies = [
+ "kairos_macro_utils",
  "proc-macro2",
  "quote",
  "syn 2.0.119",

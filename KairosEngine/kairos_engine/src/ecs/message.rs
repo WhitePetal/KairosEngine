@@ -6,11 +6,13 @@ use crate::debug::MaybeLocation;
 
 mod iterators;
 mod message_cursor;
+mod message_mutator;
 mod messages;
 mod mut_iterators;
 
 pub use iterators::*;
 pub use message_cursor::*;
+pub use message_mutator::*;
 pub use messages::*;
 pub use mut_iterators::*;
 
