@@ -4,14 +4,13 @@ use std::{fmt, hash::Hash, marker::PhantomData};
 
 use crate::debug::MaybeLocation;
 
-mod messages;
-mod message_cursor;
 mod iterators;
+mod message_cursor;
+mod messages;
 
-pub use messages::*;
-pub use message_cursor::*;
 pub use iterators::*;
-
+pub use message_cursor::*;
+pub use messages::*;
 
 /// A buffered message for pull-based event handling.
 ///
@@ -84,7 +83,7 @@ pub trait Message: Send + Sync + 'static {}
 // #[cfg_attr(feature = "bevy_reflect", derive(Reflect))]
 pub(crate) struct MessageInstance<M: Message> {
     pub message_id: MessageId<M>,
-    pub message: M
+    pub message: M,
 }
 
 /// A [`MessageId`] uniquely identifies a message stored in a specific [`World`].
@@ -116,7 +115,7 @@ impl<M: Message> Clone for MessageId<M> {
     }
 }
 
-impl<M: Message> fmt::Display for MessageId<M>  {
+impl<M: Message> fmt::Display for MessageId<M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         <Self as fmt::Debug>::fmt(self, f)
     }

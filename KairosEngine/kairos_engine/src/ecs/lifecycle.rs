@@ -56,7 +56,13 @@ use derive_more::Into;
 use crate::{
     debug::MaybeLocation,
     ecs::{
-        component::{self, Component, ComponentId}, entity::Entity, event::{EntityComponentsTrigger, EntityEvent, Event, EventKey}, message::Message, relationship::RelationshipHookMode, storage::SparseSet, world::DeferredWorld
+        component::{self, Component, ComponentId},
+        entity::Entity,
+        event::{EntityComponentsTrigger, EntityEvent, Event, EventKey},
+        message::Message,
+        relationship::RelationshipHookMode,
+        storage::SparseSet,
+        world::DeferredWorld,
     },
 };
 

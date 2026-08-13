@@ -2,7 +2,6 @@ use std::marker::PhantomData;
 
 use crate::ecs::message::Message;
 
-
 /// Stores the state for a [`MessageReader`] or [`MessageMutator`].
 ///
 /// Access to the [`Messages<M>`] resource is required to read any incoming messages.
@@ -51,6 +50,15 @@ use crate::ecs::message::Message;
 pub struct MessageCursor<M: Message> {
     pub(super) last_message_count: usize,
     pub(super) _marker: PhantomData<M>,
+}
+
+impl<M: Message> Default for MessageCursor<M> {
+    fn default() -> Self {
+        MessageCursor {
+            last_message_count: 0,
+            _marker: Default::default(),
+        }
+    }
 }
 
 // TODO!

@@ -1,7 +1,19 @@
-use std::{marker::PhantomData, ops::{Deref, DerefMut}};
+use std::{
+    marker::PhantomData,
+    ops::{Deref, DerefMut},
+};
 
-use crate::{debug::MaybeLocation, ecs::{component::Component, message::{Message, MessageId, MessageInstance}, resource::Resource}};
+use crate::{
+    debug::MaybeLocation,
+    ecs::{
+        component::Component,
+        message::{Message, MessageCursor, MessageId, MessageInstance},
+        resource::Resource,
+    },
+};
 
+#[cfg(test)]
+mod tests;
 
 /// A message collection that represents the messages that occurred within the last two
 /// [`Messages::update`] calls.
@@ -97,7 +109,7 @@ impl<M: Message> Default for Messages<M> {
         Self {
             messages_a: Default::default(),
             messages_b: Default::default(),
-            message_count: Default::default()
+            message_count: Default::default(),
         }
     }
 }
@@ -127,7 +139,7 @@ impl<M: Message> Messages<M> {
 
         let message_instance = MessageInstance {
             message_id,
-            message
+            message,
         };
 
         self.messages_b.push(message_instance);
@@ -148,7 +160,129 @@ impl<M: Message> Messages<M> {
         WriteBatchIds {
             last_count,
             message_count: self.message_count,
-            _marker: PhantomData
+            _marker: PhantomData,
+        }
+    }
+
+    /// Writes the default value of the message. Useful when the message is an empty struct.
+    /// This method returns the [ID](`MessageId`) of the written `message`.
+    #[track_caller]
+    pub fn write_default(&mut self) -> MessageId<M>
+    where
+        M: Default,
+    {
+        self.write(Default::default())
+    }
+
+    /// Gets a new [`MessageCursor`]. This will ignore all messages already in the message buffers.
+    /// It will read all future messages.
+    pub fn get_cursor_current(&self) -> MessageCursor<M> {
+        MessageCursor {
+            last_message_count: self.message_count,
+            ..Default::default()
+        }
+    }
+
+    /// Swaps the message buffers and clears the oldest message buffer. In general, this should be
+    /// called once per frame/update.
+    ///
+    /// If you need access to the messages that were removed, consider using [`Messages::update_drain`].
+    pub fn update(&mut self) {
+        std::mem::swap(&mut self.messages_a, &mut self.messages_b);
+        self.messages_b.clear();
+        self.messages_b.start_message_count = self.message_count;
+        debug_assert_eq!(
+            self.messages_a.start_message_count + self.messages_a.len(),
+            self.messages_b.start_message_count
+        )
+    }
+
+    /// Swaps the message buffers and drains the oldest message buffer, returning an iterator
+    /// of all messages that were removed. In general, this should be called once per frame/update.
+    ///
+    /// If you do not need to take ownership of the removed messages, use [`Messages::update`] instead.
+    #[must_use = "If you do not need the returned messages, call .update() instead."]
+    pub fn update_draint(&mut self) -> impl Iterator<Item = M> + '_ {
+        std::mem::swap(&mut self.messages_a, &mut self.messages_b);
+        let iter = self.messages_b.messages.drain(..);
+        self.messages_b.start_message_count = self.message_count;
+        debug_assert_eq!(
+            self.messages_a.start_message_count + self.messages_a.len(),
+            self.messages_b.start_message_count
+        );
+
+        iter.map(|e| e.message)
+    }
+
+    #[inline]
+    fn reset_start_message_count(&mut self) {
+        self.messages_a.start_message_count = self.message_count;
+        self.messages_b.start_message_count = self.message_count;
+    }
+
+    /// Removes all messages.
+    #[inline]
+    pub fn clear(&mut self) {
+        self.reset_start_message_count();
+        self.messages_a.clear();
+        self.messages_b.clear();
+    }
+
+    /// Returns the number of messages currently stored in the message buffer.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.messages_a.len() + self.messages_b.len()
+    }
+
+    /// Returns true if there are no messages currently stored in the message buffer.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Creates a draining iterator that removes all messages.
+    pub fn drain(&mut self) -> impl Iterator<Item = M> + '_ {
+        self.reset_start_message_count();
+
+        // Drain the oldest messages first, then the newest
+        self.messages_a
+            .drain(..)
+            .chain(self.messages_b.drain(..))
+            .map(|i| i.message)
+    }
+
+    /// Iterates over messages that happened since the last "update" call.
+    /// WARNING: You probably don't want to use this call. In most cases you should use an
+    /// [`MessageReader`]. You should only use this if you know you only need to consume messages
+    /// between the last `update()` call and your call to `iter_current_update_messages`.
+    /// If messages happen outside that window, they will not be handled. For example, any messages that
+    /// happen after this call and before the next `update()` call will be dropped.
+    ///
+    /// [`MessageReader`]: super::MessageReader
+    pub fn iter_current_update_messages(&self) -> impl ExactSizeIterator<Item = &M> {
+        self.messages_b.iter().map(|i| &i.message)
+    }
+
+    /// Get a specific message by id if it still exists in the messages buffer.
+    pub fn get_message(&self, id: usize) -> Option<(&M, MessageId<M>)> {
+        if id < self.oldest_message_count() {
+            return None;
+        }
+
+        let sequence = self.sequence(id);
+        let index = id.saturating_sub(sequence.start_message_count);
+
+        sequence
+            .get(index)
+            .map(|instance| (&instance.message, instance.message_id))
+    }
+
+    /// Which message buffer is this message id a part of.
+    fn sequence(&self, id: usize) -> &MessageSequence<M> {
+        if id < self.messages_b.start_message_count {
+            &self.messages_a
+        } else {
+            &self.messages_b
         }
     }
 }
@@ -161,12 +295,12 @@ impl<M: Message> Extend<M> for Messages<M> {
             let message_id = MessageId {
                 id: message_count,
                 caller: MaybeLocation::caller(),
-                _marker: PhantomData
+                _marker: PhantomData,
             };
             message_count += 1;
             MessageInstance {
                 message_id,
-                message
+                message,
             }
         });
 
@@ -186,15 +320,13 @@ impl<M: Message> Extend<M> for Messages<M> {
 
 // TODO!: use derive
 impl<M: Message> Component for Messages<M> {
-    const STORAGE_TYPE: crate::ecs::component::StorageType = crate::ecs::component::StorageType::SparseSet;
+    const STORAGE_TYPE: crate::ecs::component::StorageType =
+        crate::ecs::component::StorageType::SparseSet;
 
     type Mutability = crate::ecs::component::Mutable;
 }
 
-impl<M: Message> Resource for Messages<M> {
-
-}
-
+impl<M: Message> Resource for Messages<M> {}
 
 #[derive(Debug)]
 // #[cfg_attr(feature = "bevy_reflect", derive(Reflect), reflect(Default))]
@@ -208,7 +340,7 @@ impl<M: Message> Default for MessageSequence<M> {
     fn default() -> Self {
         Self {
             messages: Default::default(),
-            start_message_count: Default::default()
+            start_message_count: Default::default(),
         }
     }
 }
@@ -245,7 +377,7 @@ impl<M: Message> Iterator for WriteBatchIds<M> {
         let result = Some(MessageId {
             id: self.last_count,
             caller: MaybeLocation::caller(),
-            _marker: PhantomData
+            _marker: PhantomData,
         });
 
         self.last_count += 1;
