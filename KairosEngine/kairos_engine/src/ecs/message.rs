@@ -4,17 +4,19 @@ use std::{fmt, hash::Hash, marker::PhantomData};
 
 use crate::debug::MaybeLocation;
 
-mod iterators;
-mod message_cursor;
-mod message_mutator;
 mod messages;
+mod message_cursor;
+mod iterators;
 mod mut_iterators;
+mod message_mutator;
+mod message_reader;
 
-pub use iterators::*;
-pub use message_cursor::*;
-pub use message_mutator::*;
 pub use messages::*;
+pub use message_cursor::*;
+pub use iterators::*;
 pub use mut_iterators::*;
+pub use message_mutator::*;
+pub use message_reader::*;
 
 /// A buffered message for pull-based event handling.
 ///
