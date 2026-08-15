@@ -1,6 +1,9 @@
 use crate::ecs::{
     change_detection::ResMut,
-    message::{Message, MessageCursor, MessageId, MessageMutIterator, MessageMutIteratorWithId, MessageMutParIter, Messages, WriteBatchIds},
+    message::{
+        Message, MessageCursor, MessageId, MessageMutIterator, MessageMutIteratorWithId,
+        MessageMutParIter, Messages, WriteBatchIds,
+    },
     system::{Local, SystemParam},
 };
 
@@ -174,7 +177,7 @@ impl<'w, 's, M: Message> MessageMutator<'w, 's, M> {
     #[track_caller]
     pub fn write_default(&mut self) -> MessageId<M>
     where
-        M: Default
+        M: Default,
     {
         self.messages.write_default()
     }

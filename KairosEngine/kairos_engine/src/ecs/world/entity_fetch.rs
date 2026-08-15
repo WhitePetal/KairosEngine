@@ -104,6 +104,10 @@ pub unsafe trait WorldEntityFetch {
     ) -> Result<Self::DeferredMut<'_>, EntityMutableFetchError>;
 }
 
+// SAFETY:
+// - No aliased mutability is caused because a single reference is returned.
+// - No mutable references are returned by `fetch_ref`.
+// - No structurally-mutable references are returned by `fetch_deferred_mut`.
 unsafe impl WorldEntityFetch for Entity {
     type Ref<'w> = EntityRef<'w>;
 
@@ -111,25 +115,36 @@ unsafe impl WorldEntityFetch for Entity {
 
     type DeferredMut<'w> = EntityMut<'w>;
 
+    #[inline]
     unsafe fn fetch_ref(
         self,
         cell: UnsafeWorldCell<'_>,
     ) -> Result<Self::Ref<'_>, EntityNotSpawnedError> {
-        todo!()
+        let ecell = cell.get_entity(self)?;
+
+        Ok(unsafe { EntityRef::new(ecell) })
     }
 
+    #[inline]
     unsafe fn fetch_mut(
         self,
         cell: UnsafeWorldCell<'_>,
     ) -> Result<Self::Mut<'_>, EntityMutableFetchError> {
-        todo!()
+        let location = cell.entities().get_spawned(self)?;
+        // SAFETY: caller ensures that the world cell has mutable access to the entity.
+        let world = unsafe { cell.world_mut() };
+        // SAFETY: location was fetched from the same world's `Entities`.
+        Ok(unsafe { EntityWorldMut::new(world, self, Some(location)) })
     }
 
+    #[inline]
     unsafe fn fetch_deferred_mut(
         self,
         cell: UnsafeWorldCell<'_>,
     ) -> Result<Self::DeferredMut<'_>, EntityMutableFetchError> {
-        todo!()
+        let ecell = cell.get_entity(self)?;
+        // SAFETY: caller ensures that the world cell has mutable access to the entity.
+        Ok(unsafe { EntityMut::new(ecell) })
     }
 }
 

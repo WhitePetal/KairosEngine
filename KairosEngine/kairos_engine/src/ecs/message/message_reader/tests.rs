@@ -1,7 +1,9 @@
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
 use crate::ecs::{message::PopulatedMessageReader, world::World};
-
 
 // #[test]
 // fn test_populated_message_reader() {

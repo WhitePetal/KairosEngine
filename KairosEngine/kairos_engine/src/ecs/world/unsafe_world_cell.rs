@@ -9,7 +9,7 @@ use thiserror::Error;
 use crate::{
     debug::{DebugCheckedUnwrap, MaybeLocation},
     ecs::{
-        archetype::Archetypes,
+        archetype::{Archetype, Archetypes},
         bundle::Bundles,
         change_detection::{
             ComponentTickCells, ComponentTicks, ComponentTicksMut, ComponentTicksRef, Mut,
@@ -567,10 +567,28 @@ impl<'w> UnsafeEntityCell<'w> {
         self.location
     }
 
+    /// Returns the archetype that the current entity belongs to.
+    #[inline]
+    pub fn archetype(self) -> &'w Archetype {
+        &self.world.archetypes()[self.location.archetype_id]
+    }
+
     /// Gets the world that the current entity belongs to.
     #[inline]
     pub fn world(self) -> UnsafeWorldCell<'w> {
         self.world
+    }
+
+    /// Returns `true` if the current entity has a component of type `T`.
+    /// Otherwise, this returns `false`.
+    ///
+    /// ## Notes
+    ///
+    /// If you do not know the concrete type of a component, consider using
+    /// [`Self::contains_id`] or [`Self::contains_type_id`].
+    #[inline]
+    pub fn contains<T: Component>(self) -> bool {
+        self.contains_type_id(TypeId::of::<T>())
     }
 
     /// Returns `true` if the current entity has a component identified by `component_id`.
@@ -583,7 +601,7 @@ impl<'w> UnsafeEntityCell<'w> {
     ///   [`Self::contains_type_id`].
     #[inline]
     pub fn contains_id(self, component_id: ComponentId) -> bool {
-        todo!()
+        self.archetype().contains(component_id)
     }
 
     /// Returns `true` if the current entity has a component with the type identified by `type_id`.
@@ -599,18 +617,6 @@ impl<'w> UnsafeEntityCell<'w> {
             return false;
         };
         self.contains_id(id)
-    }
-
-    /// Returns `true` if the current entity has a component of type `T`.
-    /// Otherwise, this returns `false`.
-    ///
-    /// ## Notes
-    ///
-    /// If you do not know the concrete type of a component, consider using
-    /// [`Self::contains_id`] or [`Self::contains_type_id`].
-    #[inline]
-    pub fn contains<T: Component>(self) -> bool {
-        self.contains_type_id(TypeId::of::<T>())
     }
 
     /// # Safety
@@ -695,6 +701,48 @@ impl<'w> UnsafeEntityCell<'w> {
         }
 
         // SAFETY: entity_location is valid, component_id is valid as checked by the line above
+        unsafe {
+            get_component_and_ticks(
+                self.world,
+                component_id,
+                info.storage_type(),
+                self.entity,
+                self.location,
+            )
+            .map(|(value, cells)| MutUntyped {
+                // SAFETY: world access validated by caller and ties world lifetime to `MutUntyped` lifetime
+                value: value.assert_unique(),
+                ticks: ComponentTicksMut::from_tick_cells(cells, self.last_run, self.this_run),
+            })
+            .ok_or(GetEntityMutByIdError::ComponentNotFound)
+        }
+    }
+
+    /// Retrieves a mutable untyped reference to the given `entity`'s [`Component`] of the given [`ComponentId`].
+    /// Returns `None` if the `entity` does not have a [`Component`] of the given type.
+    /// This method assumes the [`Component`] is mutable, skipping that check.
+    ///
+    /// **You should prefer to use the typed API [`UnsafeEntityCell::get_mut_assume_mutable`] where possible and only
+    /// use this in cases where the actual types are not known at compile time.**
+    ///
+    /// # Safety
+    /// It is the caller's responsibility to ensure that
+    /// - the [`UnsafeEntityCell`] has permission to access the component mutably
+    /// - no other references to the component exist at the same time
+    /// - the component `T` is mutable
+    #[inline]
+    pub unsafe fn get_mut_assume_mutable_by_id(
+        self,
+        component_id: ComponentId,
+    ) -> Result<MutUntyped<'w>, GetEntityMutByIdError> {
+        self.world.assert_allows_mutable_access();
+
+        let info = self
+            .world
+            .components()
+            .get_info(component_id)
+            .ok_or(GetEntityMutByIdError::InfoNotFound)?;
+
         unsafe {
             get_component_and_ticks(
                 self.world,

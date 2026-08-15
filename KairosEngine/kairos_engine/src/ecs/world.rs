@@ -8,22 +8,25 @@ use std::{
 pub use identifier::WorldId;
 
 use crate::{
-    debug::DebugCheckedUnwrap,
+    debug::{DebugCheckedUnwrap, MaybeLocation},
     ecs::{
         archetype::Archetypes,
-        bundle::{Bundle, BundleId, BundleInfo, Bundles},
-        change_detection::{Mut, Tick},
+        bundle::{Bundle, BundleId, BundleInfo, BundleSpawner, Bundles, InsertMode},
+        change_detection::{Mut, MutUntyped, Tick},
         component::{
             Component, ComponentId, ComponentIds, Components, ComponentsRegistrator, Mutable,
         },
-        entity::{Entities, Entity, EntityAllocator},
+        entity::{Entities, Entity, EntityAllocator, EntityNotSpawnedError},
         error::{ErrorHandler, FallbackErrorHandler},
         lifecycle::RemovedComponentMessages,
         observer::Observers,
+        relationship::RelationshipHookMode,
         resource::{Resource, ResourceEntities},
         storage::Storages,
-        world::unsafe_world_cell::UnsafeWorldCell,
+        world::{error::EntityMutableFetchError, unsafe_world_cell::UnsafeWorldCell},
     },
+    move_as_ptr,
+    ptr::MovingPtr,
 };
 
 pub mod unsafe_world_cell;
@@ -137,6 +140,12 @@ impl World {
     #[inline]
     pub fn as_unsafe_world_cell_readonly(&self) -> UnsafeWorldCell<'_> {
         UnsafeWorldCell::new_readonly(self)
+    }
+
+    /// Retrieves this world's [`Entities`] collection.
+    #[inline]
+    pub fn entities(&self) -> &Entities {
+        &self.entities
     }
 
     /// Prepares a [`ComponentsRegistrator`] for the world.
@@ -362,6 +371,23 @@ impl World {
         unsafe { self.as_unsafe_world_cell_readonly().get_resource() }
     }
 
+    /// Gets a pointer to the resource with the id [`ComponentId`] if it exists and is mutable.
+    /// The returned pointer may be used to modify the resource, as long as the mutable borrow
+    /// of the [`World`] is still valid.
+    ///
+    /// **You should prefer to use the typed API [`World::get_resource_mut`] where possible and only
+    /// use this in cases where the actual types are not known at compile time.**
+    #[inline]
+    pub fn get_resource_mut_by_id(&mut self, component_id: ComponentId) -> Option<MutUntyped<'_>> {
+        // SAFETY:
+        // - `&mut self` ensures that all accessed data is unaliased
+        // - `as_unsafe_world_cell` provides mutable permission to the whole world
+        unsafe {
+            self.as_unsafe_world_cell()
+                .get_resource_mut_by_id(component_id)
+        }
+    }
+
     /// Convenience method for accessing the world's fallback error handler,
     /// which can be overwritten with [`FallbackErrorHandler`].
     #[inline]
@@ -370,6 +396,363 @@ impl World {
             .copied()
             .unwrap_or_default()
             .0
+    }
+
+    /// Returns [`EntityRef`]s that expose read-only operations for the given
+    /// `entities`, returning [`Err`] if any of the given entities do not exist.
+    /// Instead of immediately unwrapping the value returned from this function,
+    /// prefer [`World::entity`].
+    ///
+    /// This function supports fetching a single entity or multiple entities:
+    /// - Pass an [`Entity`] to receive a single [`EntityRef`].
+    /// - Pass a slice of [`Entity`]s to receive a [`Vec<EntityRef>`].
+    /// - Pass an array of [`Entity`]s to receive an equally-sized array of [`EntityRef`]s.
+    /// - Pass a reference to a [`EntityHashSet`](crate::entity::EntityHashMap) to receive an
+    ///   [`EntityHashMap<EntityRef>`](crate::entity::EntityHashMap).
+    ///
+    /// # Errors
+    ///
+    /// If any of the given `entities` do not exist in the world, the first
+    /// [`Entity`] found to be missing will return an [`EntityNotSpawnedError`].
+    ///
+    /// # Examples
+    ///
+    /// For examples, see [`World::entity`].
+    ///
+    /// [`EntityHashSet`]: crate::entity::EntityHashSet
+    #[inline]
+    pub fn get_entity<F: WorldEntityFetch>(
+        &self,
+        entities: F,
+    ) -> Result<F::Ref<'_>, EntityNotSpawnedError> {
+        let cell = self.as_unsafe_world_cell_readonly();
+        // SAFETY: `&self` gives read access to the entire world, and prevents mutable access.
+        unsafe { entities.fetch_ref(cell) }
+    }
+
+    /// Returns [`EntityMut`]s that expose read and write operations for the
+    /// given `entities`, returning [`Err`] if any of the given entities do not
+    /// exist. Instead of immediately unwrapping the value returned from this
+    /// function, prefer [`World::entity_mut`].
+    ///
+    /// This function supports fetching a single entity or multiple entities:
+    /// - Pass an [`Entity`] to receive a single [`EntityWorldMut`].
+    ///    - This reference type allows for structural changes to the entity,
+    ///      such as adding or removing components, or despawning the entity.
+    /// - Pass a slice of [`Entity`]s to receive a [`Vec<EntityMut>`].
+    /// - Pass an array of [`Entity`]s to receive an equally-sized array of [`EntityMut`]s.
+    /// - Pass a reference to a [`EntityHashSet`](crate::entity::EntityHashMap) to receive an
+    ///   [`EntityHashMap<EntityMut>`](crate::entity::EntityHashMap).
+    ///
+    /// In order to perform structural changes on the returned entity reference,
+    /// such as adding or removing components, or despawning the entity, only a
+    /// single [`Entity`] can be passed to this function. Allowing multiple
+    /// entities at the same time with structural access would lead to undefined
+    /// behavior, so [`EntityMut`] is returned when requesting multiple entities.
+    ///
+    /// # Errors
+    ///
+    /// - Returns [`EntityMutableFetchError::NotSpawned`] if any of the given `entities` do not exist in the world.
+    ///     - Only the first entity found to be missing will be returned.
+    /// - Returns [`EntityMutableFetchError::AliasedMutability`] if the same entity is requested multiple times.
+    ///
+    /// # Examples
+    ///
+    /// For examples, see [`World::entity_mut`].
+    ///
+    /// [`EntityHashSet`]: crate::entity::EntityHashSet
+    #[inline]
+    pub fn get_entity_mut<F: WorldEntityFetch>(
+        &mut self,
+        entities: F,
+    ) -> Result<F::Mut<'_>, EntityMutableFetchError> {
+        let cell = self.as_unsafe_world_cell();
+        // SAFETY: `&mut self` gives mutable access to the entire world,
+        // and prevents any other access to the world.
+        unsafe { entities.fetch_mut(cell) }
+    }
+
+    /// Returns [`EntityMut`]s that expose read and write operations for the
+    /// given `entities`. This will panic if any of the given entities do not
+    /// exist. Use [`World::get_entity_mut`] if you want to check for entity
+    /// existence instead of implicitly panicking.
+    ///
+    /// This function supports fetching a single entity or multiple entities:
+    /// - Pass an [`Entity`] to receive a single [`EntityWorldMut`].
+    ///    - This reference type allows for structural changes to the entity,
+    ///      such as adding or removing components, or despawning the entity.
+    /// - Pass a slice of [`Entity`]s to receive a [`Vec<EntityMut>`].
+    /// - Pass an array of [`Entity`]s to receive an equally-sized array of [`EntityMut`]s.
+    /// - Pass a reference to a [`EntityHashSet`](crate::entity::EntityHashMap) to receive an
+    ///   [`EntityHashMap<EntityMut>`](crate::entity::EntityHashMap).
+    ///
+    /// In order to perform structural changes on the returned entity reference,
+    /// such as adding or removing components, or despawning the entity, only a
+    /// single [`Entity`] can be passed to this function. Allowing multiple
+    /// entities at the same time with structural access would lead to undefined
+    /// behavior, so [`EntityMut`] is returned when requesting multiple entities.
+    ///
+    /// # Panics
+    ///
+    /// If any of the given `entities` do not exist in the world.
+    ///
+    /// # Examples
+    ///
+    /// ## Single [`Entity`]
+    ///
+    /// ```
+    /// # use bevy_ecs::prelude::*;
+    /// #[derive(Component)]
+    /// struct Position {
+    ///   x: f32,
+    ///   y: f32,
+    /// }
+    ///
+    /// let mut world = World::new();
+    /// let entity = world.spawn(Position { x: 0.0, y: 0.0 }).id();
+    ///
+    /// let mut entity_mut = world.entity_mut(entity);
+    /// let mut position = entity_mut.get_mut::<Position>().unwrap();
+    /// position.y = 1.0;
+    /// assert_eq!(position.x, 0.0);
+    /// entity_mut.despawn();
+    /// # assert!(world.get_entity_mut(entity).is_err());
+    /// ```
+    ///
+    /// ## Array of [`Entity`]s
+    ///
+    /// ```
+    /// # use bevy_ecs::prelude::*;
+    /// #[derive(Component)]
+    /// struct Position {
+    ///   x: f32,
+    ///   y: f32,
+    /// }
+    ///
+    /// let mut world = World::new();
+    /// let e1 = world.spawn(Position { x: 0.0, y: 0.0 }).id();
+    /// let e2 = world.spawn(Position { x: 1.0, y: 1.0 }).id();
+    ///
+    /// let [mut e1_ref, mut e2_ref] = world.entity_mut([e1, e2]);
+    /// let mut e1_position = e1_ref.get_mut::<Position>().unwrap();
+    /// e1_position.x = 1.0;
+    /// assert_eq!(e1_position.x, 1.0);
+    /// let mut e2_position = e2_ref.get_mut::<Position>().unwrap();
+    /// e2_position.x = 2.0;
+    /// assert_eq!(e2_position.x, 2.0);
+    /// ```
+    ///
+    /// ## Slice of [`Entity`]s
+    ///
+    /// ```
+    /// # use bevy_ecs::prelude::*;
+    /// #[derive(Component)]
+    /// struct Position {
+    ///   x: f32,
+    ///   y: f32,
+    /// }
+    ///
+    /// let mut world = World::new();
+    /// let e1 = world.spawn(Position { x: 0.0, y: 1.0 }).id();
+    /// let e2 = world.spawn(Position { x: 0.0, y: 1.0 }).id();
+    /// let e3 = world.spawn(Position { x: 0.0, y: 1.0 }).id();
+    ///
+    /// let ids = vec![e1, e2, e3];
+    /// for mut eref in world.entity_mut(&ids[..]) {
+    ///     let mut pos = eref.get_mut::<Position>().unwrap();
+    ///     pos.y = 2.0;
+    ///     assert_eq!(pos.y, 2.0);
+    /// }
+    /// ```
+    ///
+    /// ## [`EntityHashSet`](crate::entity::EntityHashSet)
+    ///
+    /// ```
+    /// # use bevy_ecs::{prelude::*, entity::EntityHashSet};
+    /// #[derive(Component)]
+    /// struct Position {
+    ///   x: f32,
+    ///   y: f32,
+    /// }
+    ///
+    /// let mut world = World::new();
+    /// let e1 = world.spawn(Position { x: 0.0, y: 1.0 }).id();
+    /// let e2 = world.spawn(Position { x: 0.0, y: 1.0 }).id();
+    /// let e3 = world.spawn(Position { x: 0.0, y: 1.0 }).id();
+    ///
+    /// let ids = EntityHashSet::from_iter([e1, e2, e3]);
+    /// for (_id, mut eref) in world.entity_mut(&ids) {
+    ///     let mut pos = eref.get_mut::<Position>().unwrap();
+    ///     pos.y = 2.0;
+    ///     assert_eq!(pos.y, 2.0);
+    /// }
+    /// ```
+    ///
+    /// [`EntityHashSet`]: crate::entity::EntityHashSet
+    #[inline]
+    #[track_caller]
+    pub fn entity_mut<F: WorldEntityFetch>(&mut self, entities: F) -> F::Mut<'_> {
+        #[inline(never)]
+        #[cold]
+        #[track_caller]
+        fn panic_on_err(e: EntityMutableFetchError) -> ! {
+            panic!("{e}")
+        }
+
+        match self.get_entity_mut(entities) {
+            Ok(fetched) => fetched,
+            Err(e) => panic_on_err(e),
+        }
+    }
+
+    /// Spawns `bundle` on `entity`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the entity index is already constructed
+    pub(crate) fn spawn_at_unchecked<B: Bundle>(
+        &mut self,
+        entity: Entity,
+        bundle: MovingPtr<'_, B>,
+        caller: MaybeLocation,
+    ) -> EntityWorldMut<'_> {
+        let change_tick = self.change_tick();
+        let mut bundle_spawner = BundleSpawner::new::<B>(self, change_tick);
+        let (bundle, entity_location) = bundle.partial_move(|bundle| {
+            // SAFETY:
+            // - `B` matches `bundle_spawner`'s type
+            // -  `entity` is allocated but non-existent
+            // - `B::Effect` is unconstrained, and `B::apply_effect` is called exactly once on the bundle after this call.
+            // - This function ensures that the value pointed to by `bundle` must not be accessed for anything afterwards by consuming
+            //   the `MovingPtr`. The value is otherwise only used to call `apply_effect` within this function, and the safety invariants
+            //   of `DynamicBundle` ensure that only the elements that have not been moved out of by this call are accessed.
+            unsafe { bundle_spawner.spawn_at::<B>(entity, bundle, caller) }
+        });
+
+        let mut entity_location = Some(entity_location);
+
+        todo!();
+
+        // SAFETY: The entity and location started as valid.
+        // If they were changed by commands, the location was updated to match.
+        let mut entity = unsafe { EntityWorldMut::new(self, entity, entity_location) };
+
+        // SAFETY:
+        // - This is called exactly once after `get_components` has been called in `spawn_non_existent`.
+        // - `bundle` had it's `get_components` function called exactly once inside `spawn_non_existent`.
+        unsafe { B::apply_effect(bundle, &mut entity) };
+        entity
+    }
+
+    pub(crate) fn spawn_with_caller<B: Bundle>(
+        &mut self,
+        bundle: MovingPtr<'_, B>,
+        caller: MaybeLocation,
+    ) -> EntityWorldMut<'_> {
+        let entity = self.entity_allocator.alloc();
+        // This was just spawned from null, so it shouldn't panic.
+        self.spawn_at_unchecked(entity, bundle, caller)
+    }
+
+    fn insert_resource_if_not_exists_with_caller<R: Resource>(
+        &mut self,
+        func: impl FnOnce(&mut World) -> R,
+        caller: MaybeLocation,
+    ) -> (ComponentId, EntityWorldMut<'_>) {
+        let resource_id = self.register_component::<R>();
+
+        if let Some(entity) = self.resource_entities.get(resource_id) {
+            let entity_ref = self.get_entity(entity).expect("ResourceCache is in sync");
+            if !entity_ref.contains_id(resource_id) {
+                let resource = func(self);
+                move_as_ptr!(resource);
+                self.entity_mut(entity).insert_with_caller(
+                    resource,
+                    InsertMode::Replace,
+                    caller,
+                    RelationshipHookMode::Run,
+                );
+            }
+            return (resource_id, self.entity_mut(entity));
+        }
+
+        let resource = func(self);
+        move_as_ptr!(resource);
+        let entity_mut = self.spawn_with_caller(resource, caller); // ResourceCache is updated automatically
+        (resource_id, entity_mut)
+    }
+
+    /// Initializes a new resource and returns the [`ComponentId`] created for it.
+    ///
+    /// If the resource already exists, nothing happens.
+    ///
+    /// The value given by the [`FromWorld::from_world`] method will be used.
+    /// Note that any resource with the [`Default`] trait automatically implements [`FromWorld`],
+    /// and those default values will be here instead.
+    #[inline]
+    #[track_caller]
+    pub fn init_resource<R: Resource + FromWorld>(&mut self) -> ComponentId {
+        let caller = MaybeLocation::caller();
+        self.insert_resource_if_not_exists_with_caller(R::from_world, caller)
+            .0
+    }
+
+    /// Gets a mutable reference to the resource of type `T` if it exists,
+    /// otherwise initializes the resource by calling its [`FromWorld`]
+    /// implementation.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use bevy_ecs::prelude::*;
+    /// #
+    /// #[derive(Resource)]
+    /// struct Foo(i32);
+    ///
+    /// impl Default for Foo {
+    ///     fn default() -> Self {
+    ///         Self(15)
+    ///     }
+    /// }
+    ///
+    /// #[derive(Resource)]
+    /// struct MyResource(i32);
+    ///
+    /// impl FromWorld for MyResource {
+    ///     fn from_world(world: &mut World) -> Self {
+    ///         let foo = world.get_resource_or_init::<Foo>();
+    ///         Self(foo.0 * 2)
+    ///     }
+    /// }
+    ///
+    /// # let mut world = World::new();
+    /// let my_res = world.get_resource_or_init::<MyResource>();
+    /// assert_eq!(my_res.0, 30);
+    /// ```
+    #[track_caller]
+    pub fn get_resource_or_init<R: Resource<Mutability = Mutable> + FromWorld>(
+        &mut self,
+    ) -> Mut<'_, R> {
+        let caller = MaybeLocation::caller();
+        let (resource_id, entity) =
+            self.insert_resource_if_not_exists_with_caller(R::from_world, caller);
+        let untyped = entity
+            .into_mut_by_id(resource_id)
+            .expect("Resource must exist");
+        // SAFETY: resource is of type R
+        unsafe { untyped.with_type() }
+    }
+
+    /// Removes the resource of a given type and returns it, if it exists. Otherwise returns `None`.
+    #[inline]
+    pub fn remove_resource<R: Resource>(&mut self) -> Option<R> {
+        let resource_id = self.component_id::<R>()?;
+        let entity = self.resource_entities.get(resource_id)?;
+        let value = self
+            .get_entity_mut(entity)
+            .expect("ResourceCache is in sync")
+            .take::<R>()?;
+        Some(value)
     }
 }
 

@@ -1,4 +1,7 @@
-use crate::ecs::entity::{Entity, EntityNotSpawnedError};
+use crate::ecs::{
+    component::ComponentId,
+    entity::{Entity, EntityNotSpawnedError},
+};
 
 /// An error that occurs when fetching entities mutably from a world.
 #[derive(thiserror::Error, Debug, Clone, Copy, PartialEq, Eq)]
@@ -14,3 +17,16 @@ pub enum EntityMutableFetchError {
     #[error("The entity with ID {0} was requested mutably more than once")]
     AliasedMutability(Entity),
 }
+
+/// An error that occurs when dynamically retrieving components from an entity.
+#[derive(thiserror::Error, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EntityComponentError {
+    /// The component with the given [`ComponentId`] does not exist on the entity.
+    #[error("The component with ID {0:?} does not exist on the entity.")]
+    MissingComponent(ComponentId),
+    /// The component with the given [`ComponentId`] was requested mutably more than once.
+    #[error("The component with ID {0:?} was requested mutably more than once.")]
+    AliasedMutability(ComponentId),
+}
+
+// TODO!

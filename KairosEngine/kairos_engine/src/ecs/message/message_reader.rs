@@ -1,6 +1,12 @@
 use std::ops::DerefMut;
 
-use crate::ecs::{change_detection::Res, message::{Message, MessageCursor, MessageIterator, MessageIteratorWithId, MessageParIter, Messages}, system::{Local, SystemParam, SystemParamValidationError}};
+use crate::ecs::{
+    change_detection::Res,
+    message::{
+        Message, MessageCursor, MessageIterator, MessageIteratorWithId, MessageParIter, Messages,
+    },
+    system::{Local, SystemParam, SystemParamValidationError},
+};
 
 #[cfg(test)]
 mod tests;
@@ -178,12 +184,10 @@ unsafe impl<'w, 's, M: Message> SystemParam for PopulatedMessageReader<'w, 's, M
         world: crate::ecs::world::unsafe_world_cell::UnsafeWorldCell<'world>,
         change_tick: crate::ecs::change_detection::Tick,
     ) -> Result<Self::Item<'world, 'state>, crate::ecs::system::SystemParamValidationError> {
-        let reader = unsafe {
-            MessageReader::get_param(state, system_meta, world, change_tick)?
-        };
+        let reader = unsafe { MessageReader::get_param(state, system_meta, world, change_tick)? };
         if reader.is_empty() {
             Err(SystemParamValidationError::skipped::<Self>(
-                "message queue is empty"
+                "message queue is empty",
             ))
         } else {
             Ok(PopulatedMessageReader(reader))
