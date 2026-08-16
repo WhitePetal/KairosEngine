@@ -2,6 +2,7 @@ use crate::{
     debug::{DebugCheckedUnwrap, MaybeLocation},
     ecs::{
         bundle::{Bundle, BundleFromComponents, BundleInserter, BundleRemover, InsertMode},
+        change_detection::ComponentTicks,
         component::{Component, ComponentId, StorageType},
         entity::{Entity, EntityLocation},
         relationship::RelationshipHookMode,
@@ -161,6 +162,38 @@ impl<'w> EntityWorldMut<'w> {
     #[inline]
     pub fn contains<T: Component>(&self) -> bool {
         todo!()
+    }
+
+    /// Returns `true` if the current entity has a component identified by `component_id`.
+    /// Otherwise, this returns false.
+    ///
+    /// ## Notes
+    ///
+    /// - If you know the concrete type of the component, you should prefer [`Self::contains`].
+    /// - If you know the component's [`TypeId`] but not its [`ComponentId`], consider using
+    ///   [`Self::contains_type_id`].
+    ///
+    /// # Panics
+    ///
+    /// If the entity has been despawned while this `EntityWorldMut` is still alive.
+    #[inline]
+    pub fn contains_id(&self, compnent_id: ComponentId) -> bool {
+        self.as_unsafe_entity_cell_readonly()
+            .contains_id(compnent_id)
+    }
+
+    #[inline(always)]
+    fn as_unsafe_entity_cell_readonly(&self) -> UnsafeEntityCell<'_> {
+        let location = self.location();
+        let last_change_tick = self.world.last_change_tick;
+        let change_tick = self.world.read_change_tick();
+        UnsafeEntityCell::new(
+            self.world.as_unsafe_world_cell_readonly(),
+            self.entity,
+            location,
+            last_change_tick,
+            change_tick,
+        )
     }
 
     #[inline(always)]
@@ -332,6 +365,48 @@ impl<'w> EntityWorldMut<'w> {
         self.world.flush();
         self.update_location();
         Some(result)
+    }
+
+    /// Retrieves the change ticks for the given component. This can be useful for implementing change
+    /// detection in custom runtimes.
+    ///
+    /// # Panics
+    ///
+    /// If the entity has been despawned while this `EntityWorldMut` is still alive.
+    #[inline]
+    pub fn get_change_ticks<T: Component>(&self) -> Option<ComponentTicks> {
+        self.as_readonly().get_change_ticks::<T>()
+    }
+
+    /// Get the [`MaybeLocation`] from where the given [`Component`] was last changed from.
+    /// This contains information regarding the last place (in code) that changed this component and can be useful for debugging.
+    /// For more information, see [`Location`](https://doc.rust-lang.org/nightly/core/panic/struct.Location.html), and enable the `track_location` feature.
+    ///
+    /// # Panics
+    ///
+    /// If the entity has been despawned while this `EntityWorldMut` is still alive.
+    #[inline]
+    pub fn get_changed_by<T: Component>(&self) -> Option<MaybeLocation> {
+        self.as_readonly().get_changed_by::<T>()
+    }
+
+    /// Gets read-only access to the world that the current entity belongs to.
+    #[inline]
+    pub fn world(&self) -> &World {
+        self.world
+    }
+
+    /// Returns this entity's world.
+    ///
+    /// See [`EntityWorldMut::world_scope`] or [`EntityWorldMut::into_world_mut`] for a safe alternative.
+    ///
+    /// # Safety
+    /// Caller must not modify the world in a way that changes the current entity's location
+    /// If the caller _does_ do something that could change the location, `self.update_location()`
+    /// must be called before using any other methods on this [`EntityWorldMut`].
+    #[inline]
+    pub unsafe fn world_mut(&mut self) -> &mut World {
+        self.world
     }
 }
 

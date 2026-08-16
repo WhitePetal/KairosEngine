@@ -52,9 +52,10 @@ impl<C: Component> DynamicBundle for C {
         func(C::STORAGE_TYPE, OwningPtr::from(ptr));
     }
 
+    #[inline]
     unsafe fn apply_effect(
-        ptr: crate::ptr::MovingPtr<'_, std::mem::MaybeUninit<Self>>,
-        entity: &mut crate::ecs::world::EntityWorldMut,
+        _ptr: crate::ptr::MovingPtr<'_, std::mem::MaybeUninit<Self>>,
+        _entity: &mut crate::ecs::world::EntityWorldMut,
     ) {
     }
 }

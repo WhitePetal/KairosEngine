@@ -12,6 +12,7 @@ mod message_registry;
 mod message_writer;
 mod messages;
 mod mut_iterators;
+mod update;
 
 pub use iterators::*;
 pub use message_cursor::*;
@@ -21,6 +22,7 @@ pub use message_registry::*;
 pub use message_writer::*;
 pub use messages::*;
 pub use mut_iterators::*;
+pub use update::*;
 
 /// A buffered message for pull-based event handling.
 ///
