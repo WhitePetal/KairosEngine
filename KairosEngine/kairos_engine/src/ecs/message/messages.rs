@@ -174,6 +174,11 @@ impl<M: Message> Messages<M> {
         self.write(Default::default())
     }
 
+    /// Gets a new [`MessageCursor`]. This will include all messages already in the message buffers.
+    pub fn get_cursor(&self) -> MessageCursor<M> {
+        MessageCursor::default()
+    }
+
     /// Gets a new [`MessageCursor`]. This will ignore all messages already in the message buffers.
     /// It will read all future messages.
     pub fn get_cursor_current(&self) -> MessageCursor<M> {

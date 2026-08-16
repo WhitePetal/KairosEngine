@@ -24,6 +24,8 @@ pub use messages::*;
 pub use mut_iterators::*;
 pub use update::*;
 
+pub use kairos_ecs_macros::Message;
+
 /// A buffered message for pull-based event handling.
 ///
 /// Messages can be written with [`MessageWriter`] and read using the [`MessageReader`] system parameter.

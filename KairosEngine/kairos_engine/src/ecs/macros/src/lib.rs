@@ -4,6 +4,9 @@
 
 extern crate proc_macro;
 
+mod event;
+mod message;
+
 use kairos_macro_utils::{
     KairosManifest, ensure_no_collision, fq_std::FQResult, get_struct_fields,
 };
@@ -380,6 +383,36 @@ pub(crate) fn kairos_ecs_path() -> syn::Path {
             .push(KairosManifest::parse_str::<syn::PathSegment>("ecs"));
         path
     })
+}
+
+/// Implement the `Event` trait.
+#[proc_macro_derive(Event, attributes(event))]
+pub fn derive_event(input: TokenStream) -> TokenStream {
+    event::derive_event(input)
+}
+
+/// Cheat sheet for derive syntax,
+/// see full explanation on `EntityEvent` trait docs.
+///
+/// ```ignore
+/// #[derive(EntityEvent)]
+/// /// Enable propagation, which defaults to using the ChildOf component
+/// #[entity_event(propagate)]
+/// /// Enable propagation using the given Traversal implementation
+/// #[entity_event(propagate = &'static ChildOf)]
+/// /// Always propagate
+/// #[entity_event(auto_propagate)]
+/// struct MyEvent;
+/// ```
+#[proc_macro_derive(EntityEvent, attributes(entity_event, event_target))]
+pub fn derive_entity_event(input: TokenStream) -> TokenStream {
+    event::derive_entity_event(input)
+}
+
+/// Implement the `Message` trait.
+#[proc_macro_derive(Message)]
+pub fn derive_message(input: TokenStream) -> TokenStream {
+    message::derive_message(input)
 }
 
 // TODO!

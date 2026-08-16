@@ -4,6 +4,7 @@ mod trigger;
 
 use std::marker::PhantomData;
 
+pub use kairos_ecs_macros::{EntityEvent, Event};
 pub use trigger::*;
 
 use crate::ecs::{

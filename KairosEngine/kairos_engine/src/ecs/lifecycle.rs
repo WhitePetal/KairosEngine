@@ -51,17 +51,27 @@
 //! This is used to skip [`TypeId`](core::any::TypeId) lookups in hot paths.
 //!
 
+use std::{
+    iter,
+    marker::PhantomData,
+    ops::{Deref, DerefMut},
+    option,
+};
+
 use derive_more::Into;
 
 use crate::{
     debug::MaybeLocation,
     ecs::{
-        component::{self, Component, ComponentId},
+        component::{self, Component, ComponentId, ComponentIdFor},
         entity::Entity,
-        event::{EntityComponentsTrigger, EntityEvent, Event, EventKey},
-        message::Message,
+        event::{EntityComponentsTrigger, EntityEvent, EventKey},
+        message::{
+            Message, MessageCursor, MessageId, MessageIterator, MessageIteratorWithId, Messages,
+        },
         relationship::RelationshipHookMode,
         storage::SparseSet,
+        system::{Local, ReadOnlySystemParam, SystemParam},
         world::DeferredWorld,
     },
 };
@@ -145,17 +155,24 @@ pub struct ComponentHooks {
 }
 
 impl ComponentHooks {
-    /// Attempt to register a [`ComponentHook`] that will be run when this component is added to an entity.
-    ///
-    /// This is a fallible version of [`Self::on_add`].
-    ///
-    /// Returns `None` if the component already has an `on_add` hook.
-    pub fn try_on_add(&mut self, hook: ComponentHook) -> Option<&mut Self> {
-        if self.on_add.is_some() {
-            return None;
+    pub(crate) fn update_from_component<C: Component + ?Sized>(&mut self) -> &mut Self {
+        if let Some(hook) = C::on_add() {
+            self.on_add(hook);
         }
-        self.on_add = Some(hook);
-        Some(self)
+        if let Some(hook) = C::on_insert() {
+            self.on_insert(hook);
+        }
+        if let Some(hook) = C::on_discard() {
+            self.on_discard(hook);
+        }
+        if let Some(hook) = C::on_remove() {
+            self.on_remove(hook);
+        }
+        if let Some(hook) = C::on_despawn() {
+            self.on_despawn(hook);
+        }
+
+        self
     }
 
     /// Register a [`ComponentHook`] that will be run when this component is added to an entity.
@@ -168,19 +185,6 @@ impl ComponentHooks {
     pub fn on_add(&mut self, hook: ComponentHook) -> &mut Self {
         self.try_on_add(hook)
             .expect("Component already has an on_add hook")
-    }
-
-    /// Attempt to register a [`ComponentHook`] that will be run when this component is added (with `.insert`)
-    ///
-    /// This is a fallible version of [`Self::on_insert`].
-    ///
-    /// Returns `None` if the component already has an `on_insert` hook.
-    pub fn try_on_insert(&mut self, hook: ComponentHook) -> Option<&mut Self> {
-        if self.on_insert.is_some() {
-            return None;
-        }
-        self.on_insert = Some(hook);
-        Some(self)
     }
 
     /// Register a [`ComponentHook`] that will be run when this component is added (with `.insert`)
@@ -199,19 +203,6 @@ impl ComponentHooks {
     pub fn on_insert(&mut self, hook: ComponentHook) -> &mut Self {
         self.try_on_insert(hook)
             .expect("Component already has an on_insert hook")
-    }
-
-    /// Attempt to register a [`ComponentHook`] that will be run when this component is replaced (with `.insert`) or removed
-    ///
-    /// This is a fallible version of [`Self::on_discard`].
-    ///
-    /// Returns `None` if the component already has an `on_discard` hook.
-    pub fn try_on_discard(&mut self, hook: ComponentHook) -> Option<&mut Self> {
-        if self.on_discard.is_some() {
-            return None;
-        }
-        self.on_discard = Some(hook);
-        Some(self)
     }
 
     /// Register a [`ComponentHook`] that will be run when this component is about to be dropped,
@@ -236,6 +227,66 @@ impl ComponentHooks {
             .expect("Component already has an on_discard hook")
     }
 
+    /// Register a [`ComponentHook`] that will be run when this component is removed from an entity.
+    /// Despawning an entity counts as removing all of its components.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if the component already has an `on_remove` hook
+    pub fn on_remove(&mut self, hook: ComponentHook) -> &mut Self {
+        self.try_on_remove(hook)
+            .expect("Component already has an on_remove hook")
+    }
+
+    /// Register a [`ComponentHook`] that will be run for each component on an entity when it is despawned.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if the component already has an `on_despawn` hook
+    pub fn on_despawn(&mut self, hook: ComponentHook) -> &mut Self {
+        self.try_on_despawn(hook)
+            .expect("Component already has an on_despawn hook")
+    }
+
+    /// Attempt to register a [`ComponentHook`] that will be run when this component is added to an entity.
+    ///
+    /// This is a fallible version of [`Self::on_add`].
+    ///
+    /// Returns `None` if the component already has an `on_add` hook.
+    pub fn try_on_add(&mut self, hook: ComponentHook) -> Option<&mut Self> {
+        if self.on_add.is_some() {
+            return None;
+        }
+        self.on_add = Some(hook);
+        Some(self)
+    }
+
+    /// Attempt to register a [`ComponentHook`] that will be run when this component is added (with `.insert`)
+    ///
+    /// This is a fallible version of [`Self::on_insert`].
+    ///
+    /// Returns `None` if the component already has an `on_insert` hook.
+    pub fn try_on_insert(&mut self, hook: ComponentHook) -> Option<&mut Self> {
+        if self.on_insert.is_some() {
+            return None;
+        }
+        self.on_insert = Some(hook);
+        Some(self)
+    }
+
+    /// Attempt to register a [`ComponentHook`] that will be run when this component is replaced (with `.insert`) or removed
+    ///
+    /// This is a fallible version of [`Self::on_discard`].
+    ///
+    /// Returns `None` if the component already has an `on_discard` hook.
+    pub fn try_on_discard(&mut self, hook: ComponentHook) -> Option<&mut Self> {
+        if self.on_discard.is_some() {
+            return None;
+        }
+        self.on_discard = Some(hook);
+        Some(self)
+    }
+
     /// Attempt to register a [`ComponentHook`] that will be run when this component is removed from an entity.
     ///
     /// This is a fallible version of [`Self::on_remove`].
@@ -249,17 +300,6 @@ impl ComponentHooks {
         Some(self)
     }
 
-    /// Register a [`ComponentHook`] that will be run when this component is removed from an entity.
-    /// Despawning an entity counts as removing all of its components.
-    ///
-    /// # Panics
-    ///
-    /// Will panic if the component already has an `on_remove` hook
-    pub fn on_remove(&mut self, hook: ComponentHook) -> &mut Self {
-        self.try_on_remove(hook)
-            .expect("Component already has an on_remove hook")
-    }
-
     /// Attempt to register a [`ComponentHook`] that will be run for each component on an entity when it is despawned.
     ///
     /// This is a fallible version of [`Self::on_despawn`].
@@ -271,36 +311,6 @@ impl ComponentHooks {
         }
         self.on_despawn = Some(hook);
         Some(self)
-    }
-
-    /// Register a [`ComponentHook`] that will be run for each component on an entity when it is despawned.
-    ///
-    /// # Panics
-    ///
-    /// Will panic if the component already has an `on_despawn` hook
-    pub fn on_despawn(&mut self, hook: ComponentHook) -> &mut Self {
-        self.try_on_despawn(hook)
-            .expect("Component already has an on_despawn hook")
-    }
-
-    pub(crate) fn update_from_component<C: Component + ?Sized>(&mut self) -> &mut Self {
-        if let Some(hook) = C::on_add() {
-            self.on_add(hook);
-        }
-        if let Some(hook) = C::on_insert() {
-            self.on_insert(hook);
-        }
-        if let Some(hook) = C::on_discard() {
-            self.on_discard(hook);
-        }
-        if let Some(hook) = C::on_remove() {
-            self.on_remove(hook);
-        }
-        if let Some(hook) = C::on_despawn() {
-            self.on_despawn(hook);
-        }
-
-        self
     }
 }
 
@@ -319,7 +329,8 @@ pub const DESPAWN: EventKey = EventKey(ComponentId::new(component::DESPAWN));
 /// component. Runs before `Insert`.
 /// See [`ComponentHooks::on_add`](`crate::lifecycle::ComponentHooks::on_add`) for more information.
 // #[derive(Debug, Clone, EntityEvent)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, EntityEvent)]
+#[entity_event(trigger = EntityComponentsTrigger<'a>)]
 // #[entity_event(trigger = EntityComponentsTrigger<'a>)]
 // #[cfg_attr(feature = "bevy_reflect", derive(Reflect))]
 // #[cfg_attr(feature = "bevy_reflect", reflect(Debug))]
@@ -329,22 +340,11 @@ pub struct Add {
     pub entity: Entity,
 }
 
-impl Event for Add {
-    type Trigger<'a> = EntityComponentsTrigger<'a>;
-}
-
-impl EntityEvent for Add {
-    fn event_target(&self) -> Entity {
-        self.entity
-    }
-}
-
 /// Trigger emitted when a component is inserted, regardless of whether or not the entity already
 /// had that component. Runs after `Add`, if it ran.
 /// See [`ComponentHooks::on_insert`](`crate::lifecycle::ComponentHooks::on_insert`) for more information.
-// #[derive(Debug, Clone, EntityEvent)]
-#[derive(Debug, Clone)]
-// #[entity_event(trigger = EntityComponentsTrigger<'a>)]
+#[derive(Debug, Clone, EntityEvent)]
+#[entity_event(trigger = EntityComponentsTrigger<'a>)]
 // #[cfg_attr(feature = "bevy_reflect", derive(Reflect))]
 // #[cfg_attr(feature = "bevy_reflect", reflect(Debug))]
 #[doc(alias = "OnInsert")]
@@ -352,24 +352,13 @@ pub struct Insert {
     pub entity: Entity,
 }
 
-impl Event for Insert {
-    type Trigger<'a> = EntityComponentsTrigger<'a>;
-}
-
-impl EntityEvent for Insert {
-    fn event_target(&self) -> Entity {
-        self.entity
-    }
-}
-
 /// Trigger emitted when a component is removed from an entity, regardless
 /// of whether or not it is later replaced.
 ///
 /// Runs before the value is replaced, so you can still access the original component data.
 /// See [`ComponentHooks::on_discard`](`crate::lifecycle::ComponentHooks::on_discard`) for more information.
-// #[derive(Debug, Clone, EntityEvent)]
-#[derive(Debug, Clone)]
-// #[entity_event(trigger = EntityComponentsTrigger<'a>)]
+#[derive(Debug, Clone, EntityEvent)]
+#[entity_event(trigger = EntityComponentsTrigger<'a>)]
 // #[cfg_attr(feature = "bevy_reflect", derive(Reflect))]
 // #[cfg_attr(feature = "bevy_reflect", reflect(Debug))]
 #[doc(alias = "OnDiscard")]
@@ -380,22 +369,11 @@ pub struct Discard {
     pub entity: Entity,
 }
 
-impl Event for Discard {
-    type Trigger<'a> = EntityComponentsTrigger<'a>;
-}
-
-impl EntityEvent for Discard {
-    fn event_target(&self) -> Entity {
-        self.entity
-    }
-}
-
 /// Trigger emitted when a component is removed from an entity, and runs before the component is
 /// removed, so you can still access the component data.
 /// See [`ComponentHooks::on_remove`](`crate::lifecycle::ComponentHooks::on_remove`) for more information.
-// #[derive(Debug, Clone, EntityEvent)]
-#[derive(Debug, Clone)]
-// #[entity_event(trigger = EntityComponentsTrigger<'a>)]
+#[derive(Debug, Clone, EntityEvent)]
+#[entity_event(trigger = EntityComponentsTrigger<'a>)]
 // #[cfg_attr(feature = "bevy_reflect", derive(Reflect))]
 // #[cfg_attr(feature = "bevy_reflect", reflect(Debug))]
 #[doc(alias = "OnRemove")]
@@ -404,21 +382,10 @@ pub struct Remove {
     pub entity: Entity,
 }
 
-impl Event for Remove {
-    type Trigger<'a> = EntityComponentsTrigger<'a>;
-}
-
-impl EntityEvent for Remove {
-    fn event_target(&self) -> Entity {
-        self.entity
-    }
-}
-
 /// [`EntityEvent`] emitted for each component on an entity when it is despawned.
 /// See [`ComponentHooks::on_despawn`](`crate::lifecycle::ComponentHooks::on_despawn`) for more information.
-// #[derive(Debug, Clone, EntityEvent)]
-#[derive(Debug, Clone)]
-// #[entity_event(trigger = EntityComponentsTrigger<'a>)]
+#[derive(Debug, Clone, EntityEvent)]
+#[entity_event(trigger = EntityComponentsTrigger<'a>)]
 // #[cfg_attr(feature = "bevy_reflect", derive(Reflect))]
 // #[cfg_attr(feature = "bevy_reflect", reflect(Debug))]
 #[doc(alias = "OnDespawn")]
@@ -429,35 +396,253 @@ pub struct Despawn {
 
 /// Wrapper around [`Entity`] for [`RemovedComponents`].
 /// Internally, `RemovedComponents` uses these as an [`Messages<RemovedComponentEntity>`].
-// #[derive(Message, Debug, Clone, Into)]
-#[derive(Debug, Clone, Into)]
+#[derive(Message, Debug, Clone, Into)]
 // #[cfg_attr(feature = "bevy_reflect", derive(Reflect))]
 // #[cfg_attr(feature = "bevy_reflect", reflect(Debug, Clone))]
 pub struct RemovedComponentEntity(Entity);
 
-impl Message for RemovedComponentEntity {}
-
 /// Wrapper around a [`MessageCursor<RemovedComponentEntity>`] so that we
 /// can differentiate messages between components.
-// #[derive(Debug)]
-// pub struct RemovedComponentReader<T>
-// where
-//     T: Component
-// {
-//     reader: MessageCursor
-// }
+#[derive(Debug)]
+pub struct RemovedComponentReader<T>
+where
+    T: Component,
+{
+    reader: MessageCursor<RemovedComponentEntity>,
+    marker: PhantomData<T>,
+}
+
+impl<T: Component> Default for RemovedComponentReader<T> {
+    fn default() -> Self {
+        Self {
+            reader: Default::default(),
+            marker: PhantomData,
+        }
+    }
+}
+
+impl<T: Component> Deref for RemovedComponentReader<T> {
+    type Target = MessageCursor<RemovedComponentEntity>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.reader
+    }
+}
+
+impl<T: Component> DerefMut for RemovedComponentReader<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.reader
+    }
+}
 
 /// Stores the [`RemovedComponents`] event buffers for all types of component in a given [`World`].
 #[derive(Default, Debug)]
 pub struct RemovedComponentMessages {
-    event_sets: SparseSet<ComponentId, Vec<RemovedComponentMessages>>,
+    event_sets: SparseSet<ComponentId, Messages<RemovedComponentEntity>>,
 }
 
 impl RemovedComponentMessages {
+    /// Creates an empty storage buffer for component removal messages.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// For each type of component, swaps the event buffers and clears the oldest event buffer.
+    /// In general, this should be called once per frame/update.
+    pub fn update(&mut self) {
+        for (_component_id, messages) in self.event_sets.iter_mut() {
+            messages.update();
+        }
+    }
+
+    /// Returns an iterator over components and their entity messages.
+    pub fn iter(&self) -> impl Iterator<Item = (&ComponentId, &Messages<RemovedComponentEntity>)> {
+        self.event_sets.iter()
+    }
+
+    /// Gets the event storage for a given component.
+    pub fn get(
+        &self,
+        component_id: impl Into<ComponentId>,
+    ) -> Option<&Messages<RemovedComponentEntity>> {
+        self.event_sets.get(component_id.into())
+    }
+
     /// Writes a removal message for the specified component.
     pub fn write(&mut self, component_id: impl Into<ComponentId>, entity: Entity) {
-        todo!()
+        self.event_sets
+            .get_or_insert_with(component_id.into(), Default::default)
+            .write(RemovedComponentEntity(entity));
     }
 }
 
-// TODO!
+/// A [`SystemParam`] that yields entities that had their `T` [`Component`]
+/// removed or have been despawned with it.
+///
+/// This acts effectively the same as a [`MessageReader`](crate::message::MessageReader).
+///
+/// Unlike hooks or observers (see the [lifecycle](crate) module docs),
+/// this does not allow you to see which data existed before removal.
+///
+/// If you are using `bevy_ecs` as a standalone crate,
+/// note that the [`RemovedComponents`] list will not be automatically cleared for you,
+/// and will need to be manually flushed using [`World::clear_trackers`](World::clear_trackers).
+///
+/// For users of `bevy` and `bevy_app`, [`World::clear_trackers`](World::clear_trackers) is
+/// automatically called by `bevy_app::App::update` and `bevy_app::SubApp::update`.
+/// For the main world, this is delayed until after all `SubApp`s have run.
+///
+/// # Examples
+///
+/// Basic usage:
+///
+/// ```
+/// # use bevy_ecs::component::Component;
+/// # use bevy_ecs::system::IntoSystem;
+/// # use bevy_ecs::lifecycle::RemovedComponents;
+/// #
+/// # #[derive(Component)]
+/// # struct MyComponent;
+/// fn react_on_removal(mut removed: RemovedComponents<MyComponent>) {
+///     removed.read().for_each(|removed_entity| println!("{}", removed_entity));
+/// }
+/// # bevy_ecs::system::assert_is_system(react_on_removal);
+/// ```
+#[derive(SystemParam)]
+pub struct RemovedComponents<'w, 's, T: Component> {
+    component_id: ComponentIdFor<'s, T>,
+    reader: Local<'s, RemovedComponentReader<T>>,
+    message_sets: &'w RemovedComponentMessages,
+}
+
+/// Iterator over entities that had a specific component removed.
+///
+/// See [`RemovedComponents`].
+pub type RemovedIter<'a> = iter::Map<
+    iter::Flatten<option::IntoIter<iter::Cloned<MessageIterator<'a, RemovedComponentEntity>>>>,
+    fn(RemovedComponentEntity) -> Entity,
+>;
+
+/// Iterator over entities that had a specific component removed.
+///
+/// See [`RemovedComponents`].
+pub type RemovedIterWithId<'a> = iter::Map<
+    iter::Flatten<option::IntoIter<MessageIteratorWithId<'a, RemovedComponentEntity>>>,
+    fn(
+        (&RemovedComponentEntity, MessageId<RemovedComponentEntity>),
+    ) -> (Entity, MessageId<RemovedComponentEntity>),
+>;
+
+fn map_id_message(
+    (entity, id): (&RemovedComponentEntity, MessageId<RemovedComponentEntity>),
+) -> (Entity, MessageId<RemovedComponentEntity>) {
+    (entity.clone().into(), id)
+}
+
+// For all practical purposes, the api surface of `RemovedComponents<T>`
+// should be similar to `MessageReader<T>` to reduce confusion.
+impl<'w, 's, T: Component> RemovedComponents<'w, 's, T> {
+    /// Fetch underlying [`MessageCursor`].
+    pub fn reader(&self) -> &MessageCursor<RemovedComponentEntity> {
+        &self.reader
+    }
+
+    /// Fetch underlying [`MessageCursor`] mutably.
+    pub fn reader_mut(&mut self) -> &mut MessageCursor<RemovedComponentEntity> {
+        &mut self.reader
+    }
+
+    /// Fetch underlying [`Messages`].
+    pub fn messages(&self) -> Option<&Messages<RemovedComponentEntity>> {
+        self.message_sets.get(self.component_id.get())
+    }
+
+    /// Destructures to get a mutable reference to the `MessageCursor`
+    /// and a reference to `Messages`.
+    ///
+    /// This is necessary since Rust can't detect destructuring through methods and most
+    /// usecases of the reader uses the `Messages` as well.
+    pub fn reader_mut_with_messages(
+        &mut self,
+    ) -> Option<(
+        &mut RemovedComponentReader<T>,
+        &Messages<RemovedComponentEntity>,
+    )> {
+        self.message_sets
+            .get(self.component_id.get())
+            .map(|messages| (&mut *self.reader, messages))
+    }
+
+    /// Iterates over the messages this [`RemovedComponents`] has not seen yet. This updates the
+    /// [`RemovedComponents`]'s message counter, which means subsequent message reads will not include messages
+    /// that happened before now.
+    pub fn read(&mut self) -> RemovedIter<'_> {
+        self.reader_mut_with_messages()
+            .map(|(reader, messages)| reader.read(messages).cloned())
+            .into_iter()
+            .flatten()
+            .map(RemovedComponentEntity::into)
+    }
+
+    /// Like [`read`](Self::read), except also returning the [`MessageId`] of the messages.
+    pub fn read_with_id(&mut self) -> RemovedIterWithId<'_> {
+        self.reader_mut_with_messages()
+            .map(|(reader, messages)| reader.read_with_id(messages))
+            .into_iter()
+            .flatten()
+            .map(map_id_message)
+    }
+
+    /// Determines the number of removal messages available to be read from this [`RemovedComponents`] without consuming any.
+    pub fn len(&self) -> usize {
+        self.messages()
+            .map(|messages| self.reader.len(messages))
+            .unwrap_or(0)
+    }
+
+    /// Returns `true` if there are no messages available to read.
+    pub fn is_empty(&self) -> bool {
+        self.messages()
+            .is_none_or(|messages| self.reader.is_empty(messages))
+    }
+
+    /// Consumes all available messages.
+    ///
+    /// This means these messages will not appear in calls to [`RemovedComponents::read()`] or
+    /// [`RemovedComponents::read_with_id()`] and [`RemovedComponents::is_empty()`] will return `true`.
+    pub fn clear(&mut self) {
+        if let Some((reader, messages)) = self.reader_mut_with_messages() {
+            reader.clear(messages);
+        }
+    }
+}
+
+// SAFETY: Only reads World removed component messages
+unsafe impl<'a> ReadOnlySystemParam for &'a RemovedComponentMessages {}
+
+// SAFETY: no component value access.
+unsafe impl<'a> SystemParam for &'a RemovedComponentMessages {
+    type State = ();
+
+    type Item<'w, 's> = &'w RemovedComponentMessages;
+
+    fn init_state(_world: &mut super::world::World) -> Self::State {}
+
+    fn init_access(
+        _state: &Self::State,
+        _system_meta: &mut super::system::SystemMeta,
+        _component_access_set: &mut super::query::FilteredAccessSet,
+        _world: &mut super::world::World,
+    ) {
+    }
+
+    #[inline]
+    unsafe fn get_param<'world, 'state>(
+        _state: &'state mut Self::State,
+        _system_meta: &super::system::SystemMeta,
+        world: super::world::unsafe_world_cell::UnsafeWorldCell<'world>,
+        _change_tick: super::change_detection::Tick,
+    ) -> Result<Self::Item<'world, 'state>, super::system::SystemParamValidationError> {
+        Ok(world.removed_components())
+    }
+}

@@ -21,6 +21,7 @@ use crate::{
             EntityNotSpawnedError,
         },
         error::{ErrorHandler, FallbackErrorHandler},
+        lifecycle::RemovedComponentMessages,
         query::{QueryAccessError, ReleaseStateQueryData, SingleEntityQueryData},
         resource::{Resource, ResourceEntities},
         storage::{ComponentSparseSet, Storages, Table},
@@ -517,6 +518,24 @@ impl<'w> UnsafeWorldCell<'w> {
                 .get(component_id)?
                 .get_with_ticks()
         }
+    }
+
+    /// # Safety
+    /// It is the caller's responsibility to ensure that there are no outstanding
+    /// references to `last_trigger_id`.
+    pub(crate) unsafe fn increment_trigger_id(self) {
+        self.assert_allows_mutable_access();
+        // SAFETY: Caller ensure there are no outstanding references
+        unsafe {
+            (*self.ptr).last_trigger_id = (*self.ptr).last_trigger_id.wrapping_add(1);
+        }
+    }
+
+    /// Retrieves this world's collection of [removed components](RemovedComponentMessages).
+    pub fn removed_components(self) -> &'w RemovedComponentMessages {
+        // SAFETY:
+        // - we only access world metadata
+        &unsafe { self.world_metadata() }.removed_components
     }
 }
 

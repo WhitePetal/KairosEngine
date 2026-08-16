@@ -1,4 +1,4 @@
-use crate::ecs::query::WorldQuery;
+use crate::ecs::{entity::Entity, query::WorldQuery};
 
 /// Types that can be fetched from a [`World`] using a [`Query`].
 ///
@@ -310,6 +310,9 @@ pub unsafe trait QueryData: WorldQuery {
     /// If this is `true`, then [`QueryData::fetch`] must always return `Some`.
     const IS_ARCHETYPAL: bool;
 
+    /// The read-only variant of this [`QueryData`], which satisfies the [`ReadOnlyQueryData`] trait.
+    type ReadOnly: ReadOnlyQueryData<State = <Self as WorldQuery>::State>;
+
     /// The item returned by this [`WorldQuery`]
     /// This will be the data retrieved by the query,
     /// and is visible to the end user when calling e.g. `Query<Self>::get`.
@@ -344,6 +347,13 @@ pub unsafe trait QueryData: WorldQuery {
 /// This [`QueryData`] must not perform conflicting access when fetched for different entities.
 pub unsafe trait IterQueryData: QueryData {}
 
+/// A [`QueryData`] that is read only.
+///
+/// # Safety
+///
+/// This must only be implemented for read-only [`QueryData`]'s.
+pub unsafe trait ReadOnlyQueryData: IterQueryData<ReadOnly = Self> {}
+
 /// A [`QueryData`] that only accesses data from the current entity, the one passed to [`QueryData::fetch`].
 ///
 /// This is used as a bound in [`EntityRef::get_components`] and related APIs,
@@ -364,5 +374,33 @@ pub trait ReleaseStateQueryData: QueryData {
     /// Releases the borrow from the query state by converting an item to have a `'static` state lifetime.
     fn release_state<'w>(item: Self::Item<'w, '_>) -> Self::Item<'w, 'static>;
 }
+
+// SAFETY:
+// `update_component_access` does nothing.
+// This is sound because `fetch` does not access components.
+unsafe impl WorldQuery for Entity {
+    type Fetch<'w> = ();
+
+    type State = ();
+}
+
+unsafe impl QueryData for Entity {
+    const IS_READ_ONLY: bool = true;
+
+    const IS_ARCHETYPAL: bool = true;
+
+    type ReadOnly = Self;
+
+    type Item<'w, 's> = Entity;
+}
+
+// SAFETY: access is read only and only on the current entity
+unsafe impl IterQueryData for Entity {}
+
+// SAFETY: access is read only
+unsafe impl ReadOnlyQueryData for Entity {}
+
+// SAFETY: access is only on the current entity
+unsafe impl SingleEntityQueryData for Entity {}
 
 // TODO!
