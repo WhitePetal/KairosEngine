@@ -2,22 +2,29 @@ use std::{any::TypeId, cell::LazyCell, collections::VecDeque, ops::Range};
 
 use bumpalo::Bump;
 use derive_more::From;
+use hashbrown::hash_map::Entry;
 
 use crate::{
     collections::{FixedHashMap, FixedHashSet},
     debug::{DebugCheckedUnwrap, DebugName, MaybeLocation},
     ecs::{
         archetype::Archetype,
-        bundle::{BundleRemover, InsertMode},
+        bundle::{Bundle, BundleRemover, InsertMode},
         component::{
             Component, ComponentCloneBehavior, ComponentCloneFn, ComponentId, ComponentInfo,
         },
-        entity::{Entity, EntityAllocator, EntityHashMap, EntityMapper},
+        entity::{
+            Entity, EntityAllocator, EntityHashMap, EntityMapper,
+            clone_entities::private::{FilterableId, FilterableIds, Marker},
+        },
         relationship::RelationshipHookMode,
         world::World,
     },
     ptr::{Ptr, PtrMut},
 };
+
+#[cfg(test)]
+mod tests;
 
 /// Provides read access to the source component (the component being cloned) in a [`ComponentCloneFn`].
 pub struct SourceComponent<'a> {
@@ -763,6 +770,261 @@ pub struct EntityClonerBuilder<'w, Filter> {
     state: EntityClonerState,
 }
 
+impl<'w, Filter: CloneByFilter> EntityClonerBuilder<'w, Filter> {
+    /// Internally calls [`EntityCloner::clone_entity`] on the builder's [`World`].
+    pub fn clone_entity(&mut self, source: Entity, target: Entity) -> &mut Self {
+        let mut mapper = EntityHashMap::<Entity>::new();
+        mapper.set_mapped(source, target);
+        EntityCloner::clone_entity_mapped_internal(
+            &mut self.state,
+            &mut self.filter,
+            self.world,
+            source,
+            &mut mapper,
+        );
+        self
+    }
+
+    /// Finishes configuring [`EntityCloner`] returns it.
+    pub fn finish(self) -> EntityCloner {
+        EntityCloner {
+            filter: self.filter.into(),
+            state: self.state,
+        }
+    }
+
+    /// Sets the default clone function to use.
+    ///
+    /// Will be overridden if [`EntityClonerBuilder::move_components`] is enabled.
+    pub fn with_default_clone_fn(&mut self, clone_fn: ComponentCloneFn) -> &mut Self {
+        self.state.default_clone_fn = clone_fn;
+        self
+    }
+
+    /// Sets whether the cloner should remove any components that were cloned,
+    /// effectively moving them from the source entity to the target.
+    ///
+    /// This is disabled by default.
+    ///
+    /// The setting only applies to components that are allowed through the filter
+    /// at the time [`EntityClonerBuilder::clone_entity`] is called.
+    ///
+    /// Enabling this overrides any custom function set with [`EntityClonerBuilder::with_default_clone_fn`].
+    pub fn move_components(&mut self, enable: bool) -> &mut Self {
+        self.state.move_components = enable;
+        self
+    }
+
+    /// Overrides the [`ComponentCloneBehavior`] for a component in this builder.
+    /// This handler will be used to clone the component instead of the global one defined by the [`EntityCloner`].
+    ///
+    /// See [Clone Behaviors section of `EntityCloner`](EntityCloner#clone-behaviors) to understand how this affects handler priority.
+    pub fn override_clone_behavior<T: Component>(
+        &mut self,
+        clone_behavior: ComponentCloneBehavior,
+    ) -> &mut Self {
+        if let Some(id) = self.world.components().valid_component_id::<T>() {
+            self.state
+                .clone_behavior_overrides
+                .insert(id, clone_behavior);
+        }
+        self
+    }
+
+    /// Overrides the [`ComponentCloneBehavior`] for a component with the given `component_id` in this builder.
+    /// This handler will be used to clone the component instead of the global one defined by the [`EntityCloner`].
+    ///
+    /// See [Clone Behaviors section of `EntityCloner`](EntityCloner#clone-behaviors) to understand how this affects handler priority.
+    pub fn override_clone_behavior_with_id(
+        &mut self,
+        component_id: ComponentId,
+        clone_behavior: ComponentCloneBehavior,
+    ) -> &mut Self {
+        self.state
+            .clone_behavior_overrides
+            .insert(component_id, clone_behavior);
+        self
+    }
+
+    /// Removes a previously set override of [`ComponentCloneBehavior`] for a component in this builder.
+    pub fn remove_clone_behavior_override<T: Component>(&mut self) -> &mut Self {
+        if let Some(id) = self.world.components().valid_component_id::<T>() {
+            self.state.clone_behavior_overrides.remove(&id);
+        }
+        self
+    }
+
+    /// Removes a previously set override of [`ComponentCloneBehavior`] for a given `component_id` in this builder.
+    pub fn remove_clone_behavior_override_with_id(
+        &mut self,
+        component_id: ComponentId,
+    ) -> &mut Self {
+        self.state.clone_behavior_overrides.remove(&component_id);
+        self
+    }
+
+    /// When true this cloner will be configured to clone entities referenced in cloned components via [`RelationshipTarget::LINKED_SPAWN`](crate::relationship::RelationshipTarget::LINKED_SPAWN).
+    /// This will produce "deep" / recursive clones of relationship trees that have "linked spawn".
+    pub fn linked_cloning(&mut self, linked_cloning: bool) -> &mut Self {
+        self.state.linked_cloning = linked_cloning;
+        self
+    }
+}
+
+impl<'w> EntityClonerBuilder<'w, OptOut> {
+    /// By default, any components denied through the filter will automatically
+    /// deny all of components they are required by too.
+    ///
+    /// This method allows for a scoped mode where any changes to the filter
+    /// will not involve these requiring components.
+    ///
+    /// If component `A` is denied in the `builder` closure here and component `B`
+    /// requires `A`, then `A` will be inserted with the value defined in `B`'s
+    /// [`Component` derive](https://docs.rs/bevy/latest/bevy/ecs/component/trait.Component.html#required-components).
+    /// This assumes `A` is missing yet at the target entity.
+    pub fn without_required_by_components(&mut self, builder: impl FnOnce(&mut Self)) -> &mut Self {
+        self.filter.attach_required_by_components = false;
+        builder(self);
+        self.filter.attach_required_by_components = true;
+        self
+    }
+
+    /// Sets whether components are always cloned ([`InsertMode::Replace`], the default) or only if it is missing
+    /// ([`InsertMode::Keep`]) at the target entity.
+    ///
+    /// This makes no difference if the target is spawned by the cloner.
+    pub fn insert_mode(&mut self, insert_mode: InsertMode) -> &mut Self {
+        self.filter.insert_mode = insert_mode;
+        self
+    }
+
+    /// Disallows all components of the bundle from being cloned.
+    ///
+    /// If component `A` is denied here and component `B` requires `A`, then `A`
+    /// is denied as well. See [`Self::without_required_by_components`] to alter
+    /// this behavior.
+    pub fn deny<T: Bundle>(&mut self) -> &mut Self {
+        let bundle_id = self.world.register_bundle::<T>().id();
+        self.deny_by_ids(bundle_id)
+    }
+
+    /// Extends the list of components that shouldn't be cloned.
+    /// Supports filtering by [`TypeId`], [`ComponentId`], [`BundleId`](`crate::bundle::BundleId`), and [`IntoIterator`] yielding one of these.
+    ///
+    /// If component `A` is denied here and component `B` requires `A`, then `A`
+    /// is denied as well. See [`Self::without_required_by_components`] to alter
+    /// this behavior.
+    pub fn deny_by_ids<M: Marker>(&mut self, ids: impl FilterableIds<M>) -> &mut Self {
+        ids.filter_ids(&mut |ids| match ids {
+            FilterableId::Type(type_id) => {
+                if let Some(id) = self.world.components().get_valid_id(type_id) {
+                    self.filter.filter_deny(id, self.world);
+                }
+            }
+            FilterableId::Component(component_id) => {
+                self.filter.filter_deny(component_id, self.world);
+            }
+            FilterableId::Bundle(bundle_id) => {
+                if let Some(bundle) = self.world.bundles().get(bundle_id) {
+                    let ids = bundle.explicit_components().iter();
+                    for &id in ids {
+                        self.filter.filter_deny(id, self.world);
+                    }
+                }
+            }
+        });
+        self
+    }
+}
+
+impl<'w> EntityClonerBuilder<'w, OptIn> {
+    /// By default, any components allowed through the filter will automatically
+    /// allow all of their required components.
+    ///
+    /// This method allows for a scoped mode where any changes to the filter
+    /// will not involve required components.
+    ///
+    /// If component `A` is allowed in the `builder` closure here and requires
+    /// component `B`, then `B` will be inserted with the value defined in `A`'s
+    /// [`Component` derive](https://docs.rs/bevy/latest/bevy/ecs/component/trait.Component.html#required-components).
+    /// This assumes `B` is missing yet at the target entity.
+    pub fn without_required_components(&mut self, builder: impl FnOnce(&mut Self)) -> &mut Self {
+        self.filter.attach_required_components = false;
+        builder(self);
+        self.filter.attach_required_components = true;
+        self
+    }
+
+    /// Adds all components of the bundle to the list of components to clone.
+    ///
+    /// If component `A` is allowed here and requires component `B`, then `B`
+    /// is allowed as well. See [`Self::without_required_components`]
+    /// to alter this behavior.
+    pub fn allow<T: Bundle>(&mut self) -> &mut Self {
+        let bundle_id = self.world.register_bundle::<T>().id();
+        self.allow_by_ids(bundle_id)
+    }
+
+    /// Adds all components of the bundle to the list of components to clone if
+    /// the target does not contain them.
+    ///
+    /// If component `A` is allowed here and requires component `B`, then `B`
+    /// is allowed as well. See [`Self::without_required_components`]
+    /// to alter this behavior.
+    pub fn allow_if_new<T: Bundle>(&mut self) -> &mut Self {
+        let bundle_id = self.world.register_bundle::<T>().id();
+        self.allow_by_ids_if_new(bundle_id)
+    }
+
+    /// Extends the list of components to clone.
+    /// Supports filtering by [`TypeId`], [`ComponentId`], [`BundleId`](`crate::bundle::BundleId`), and [`IntoIterator`] yielding one of these.
+    ///
+    /// If component `A` is allowed here and requires component `B`, then `B`
+    /// is allowed as well. See [`Self::without_required_components`]
+    /// to alter this behavior.
+    pub fn allow_by_ids<M: Marker>(&mut self, ids: impl FilterableIds<M>) -> &mut Self {
+        self.allow_by_ids_inner(ids, InsertMode::Replace);
+        self
+    }
+
+    /// Extends the list of components to clone if the target does not contain them.
+    /// Supports filtering by [`TypeId`], [`ComponentId`], [`BundleId`](`crate::bundle::BundleId`), and [`IntoIterator`] yielding one of these.
+    ///
+    /// If component `A` is allowed here and requires component `B`, then `B`
+    /// is allowed as well. See [`Self::without_required_components`]
+    /// to alter this behavior.
+    pub fn allow_by_ids_if_new<M: Marker>(&mut self, ids: impl FilterableIds<M>) -> &mut Self {
+        self.allow_by_ids_inner(ids, InsertMode::Keep);
+        self
+    }
+
+    fn allow_by_ids_inner<M: Marker>(
+        &mut self,
+        ids: impl FilterableIds<M>,
+        insert_mode: InsertMode,
+    ) {
+        ids.filter_ids(&mut |id| match id {
+            FilterableId::Type(type_id) => {
+                if let Some(id) = self.world.components().get_valid_id(type_id) {
+                    self.filter.filter_allow(id, self.world, insert_mode);
+                }
+            }
+            FilterableId::Component(component_id) => {
+                self.filter
+                    .filter_allow(component_id, self.world, insert_mode);
+            }
+            FilterableId::Bundle(bundle_id) => {
+                if let Some(bundle) = self.world.bundles().get(bundle_id) {
+                    let ids = bundle.explicit_components().iter();
+                    for &id in ids {
+                        self.filter.filter_allow(id, self.world, insert_mode);
+                    }
+                }
+            }
+        });
+    }
+}
+
 /// Filters that can selectively clone components depending on its inner configuration are unified with this trait.
 #[doc(hidden)]
 pub trait CloneByFilter: Into<EntityClonerFilter> {
@@ -835,6 +1097,44 @@ impl Default for OptOut {
     }
 }
 
+impl CloneByFilter for OptOut {
+    #[inline]
+    fn clone_components<'a>(
+        &mut self,
+        source_archetype: &Archetype,
+        target_archetype: LazyCell<&'a Archetype, impl FnOnce() -> &'a Archetype>,
+        mut clone_component: impl FnMut(ComponentId),
+    ) {
+        match self.insert_mode {
+            InsertMode::Replace => {
+                for component in source_archetype.iter_components() {
+                    if !self.deny.contains(&component) {
+                        clone_component(component);
+                    }
+                }
+            }
+            InsertMode::Keep => {
+                for component in source_archetype.iter_components() {
+                    if !target_archetype.contains(component) && !self.deny.contains(&component) {
+                        clone_component(component);
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl OptOut {
+    fn filter_deny(&mut self, id: ComponentId, world: &World) {
+        self.deny.insert(id);
+        if self.attach_required_by_components
+            && let Some(required_by) = world.components().get_required_by(id)
+        {
+            self.deny.extend(required_by.iter());
+        }
+    }
+}
+
 /// Generic for [`EntityClonerBuilder`] that makes the cloner try to clone every component that was explicitly
 /// allowed from the source entity, for example by using the [`allow`](EntityClonerBuilder::allow) method.
 ///
@@ -868,6 +1168,158 @@ impl Default for OptIn {
     }
 }
 
+impl CloneByFilter for OptIn {
+    #[inline]
+    fn clone_components<'a>(
+        &mut self,
+        source_archetype: &Archetype,
+        target_archetype: LazyCell<&'a Archetype, impl FnOnce() -> &'a Archetype>,
+        mut clone_component: impl FnMut(ComponentId),
+    ) {
+        // track the amount of components left not being cloned yet to exit this method early
+        let mut uncloned_components = source_archetype.component_count();
+
+        // track if any `Required::required_by_reduced` has been reduced so they are reset
+        let mut reduced_any = false;
+
+        // clone explicit components
+        for (&component, explicit) in self.allow.iter() {
+            if uncloned_components == 0 {
+                // exhausted all source components, reset changed `Required::required_by_reduced`
+                if reduced_any {
+                    self.required
+                        .iter_mut()
+                        .for_each(|(_, required)| required.reset());
+                }
+                return;
+            }
+
+            let do_clone = source_archetype.contains(component)
+                && (explicit.insert_mode == InsertMode::Replace
+                    || !target_archetype.contains(component));
+            if do_clone {
+                clone_component(component);
+                uncloned_components -= 1;
+            } else if let Some(range) = explicit.required_range.clone() {
+                for component in self.required_of_allow[range].iter() {
+                    if let Some(required) = self.required.get_mut(component) {
+                        required.required_by_reduced -= 1;
+                        reduced_any = true;
+                    }
+                }
+            }
+        }
+
+        let mut required_iter = self.required.iter_mut();
+
+        let required_components = required_iter
+            .by_ref()
+            .filter_map(|(&component, required)| {
+                let do_clone = required.required_by_reduced > 0 // required by a cloned component
+                    && source_archetype.contains(component) // must exist to clone, may miss if removed
+                    && !target_archetype.contains(component);
+
+                // reset changed `Required::required_by_reduced` as this is done being checked here
+                required.reset();
+
+                do_clone.then_some(component)
+            })
+            .take(uncloned_components);
+
+        for required_component in required_components {
+            clone_component(required_component);
+        }
+
+        // if the `required_components` iterator has not been exhausted yet because the source has no more
+        // components to clone, iterate the rest to reset changed `Required::required_by_reduced` for the
+        // next clone
+        if reduced_any {
+            required_iter.for_each(|(_, required)| required.reset());
+        }
+    }
+}
+
+impl OptIn {
+    /// Allows a component through the filter, also allow required components if
+    /// [`Self::attach_required_components`] is true.
+    #[inline]
+    fn filter_allow(&mut self, id: ComponentId, world: &World, mut insert_mode: InsertMode) {
+        match self.allow.entry(id) {
+            Entry::Occupied(mut explicit) => {
+                let explicit = explicit.get_mut();
+
+                // set required component range if it was inserted with `None` earlier
+                if self.attach_required_components && explicit.required_range.is_none() {
+                    if explicit.insert_mode == InsertMode::Replace {
+                        // do not overwrite with Keep if component was allowed as Replace earlier
+                        insert_mode = InsertMode::Replace;
+                    }
+
+                    self.filter_allow_with_required(id, world, insert_mode);
+                } else if explicit.insert_mode == InsertMode::Keep {
+                    // potentially overwrite Keep with Replace
+                    explicit.insert_mode = insert_mode;
+                }
+            }
+            Entry::Vacant(explicit) => {
+                // explicit components should not appear in the required map
+                self.required.remove(&id);
+
+                if !self.attach_required_components {
+                    explicit.insert(Explicit {
+                        insert_mode,
+                        required_range: None,
+                    });
+                } else {
+                    self.filter_allow_with_required(id, world, insert_mode);
+                }
+            }
+        }
+    }
+
+    // Allow a component through the filter and include required components.
+    #[inline]
+    fn filter_allow_with_required(
+        &mut self,
+        id: ComponentId,
+        world: &World,
+        insert_mode: InsertMode,
+    ) {
+        let Some(info) = world.components().get_info(id) else {
+            return;
+        };
+
+        let iter = info
+            .required_components()
+            .iter_ids()
+            .filter(|id| !self.allow.contains_key(id))
+            .inspect(|id| {
+                self.required
+                    .entry(*id)
+                    .and_modify(|required| {
+                        required.required_by += 1;
+                        required.required_by_reduced += 1;
+                    })
+                    .or_insert(Required {
+                        required_by: 1,
+                        required_by_reduced: 1,
+                    });
+            });
+
+        let start = self.required_of_allow.len();
+        self.required_of_allow.extend(iter);
+        let end = self.required_of_allow.len();
+
+        self.allow.insert(
+            id,
+            Explicit {
+                insert_mode,
+                required_range: Some(start..end),
+            },
+        );
+    }
+}
+
 /// Contains the components explicitly allowed to be cloned.
 struct Explicit {
     /// If component was added via [`allow`](EntityClonerBuilder::allow) etc, this is `Overwrite`.
@@ -898,4 +1350,85 @@ struct Required {
     /// The counter is reset to `required_by` when the cloning is over in case another entity needs to be
     /// cloned by the same [`EntityCloner`].
     required_by_reduced: u32,
+}
+
+impl Required {
+    // Revert reductions for the next entity to clone with this EntityCloner
+    #[inline]
+    fn reset(&mut self) {
+        self.required_by_reduced = self.required_by
+    }
+}
+
+mod private {
+    use std::any::TypeId;
+
+    use derive_more::From;
+
+    use crate::ecs::{bundle::BundleId, component::ComponentId};
+
+    /// Marker trait to allow multiple blanket implementations for [`FilterableIds`].
+    pub trait Marker {}
+    /// Marker struct for [`FilterableIds`] implementation for single-value types.
+    pub struct ScalarType {}
+    impl Marker for ScalarType {}
+    /// Marker struct for [`FilterableIds`] implementation for [`IntoIterator`] types.
+    pub struct VectorType {}
+    impl Marker for VectorType {}
+
+    /// Defines types of ids that [`EntityClonerBuilder`](`super::EntityClonerBuilder`) can filter components by.
+    #[derive(From)]
+    pub enum FilterableId {
+        Type(TypeId),
+        Component(ComponentId),
+        Bundle(BundleId),
+    }
+
+    impl<'a, T> From<&'a T> for FilterableId
+    where
+        T: Into<FilterableId> + Copy,
+    {
+        #[inline]
+        fn from(value: &'a T) -> Self {
+            (*value).into()
+        }
+    }
+
+    /// A trait to allow [`EntityClonerBuilder`](`super::EntityClonerBuilder`) filter by any supported id type and their iterators,
+    /// reducing the number of method permutations required for all id types.
+    ///
+    /// The supported id types that can be used to filter components are defined by [`FilterableId`], which allows following types: [`TypeId`], [`ComponentId`] and [`BundleId`].
+    ///
+    /// `M` is a generic marker to allow multiple blanket implementations of this trait.
+    /// This works because `FilterableId<M1>` is a different trait from `FilterableId<M2>`, so multiple blanket implementations for different `M` are allowed.
+    /// The reason this is required is because supporting `IntoIterator` requires blanket implementation, but that will conflict with implementation for `TypeId`
+    /// since `IntoIterator` can technically be implemented for `TypeId` in the future.
+    /// Functions like `allow_by_ids` rely on type inference to automatically select proper type for `M` at call site.
+    pub trait FilterableIds<M: Marker> {
+        /// Takes in a function that processes all types of [`FilterableId`] one-by-one.
+        fn filter_ids(self, ids: &mut impl FnMut(FilterableId));
+    }
+
+    impl<I, T> FilterableIds<VectorType> for I
+    where
+        I: IntoIterator<Item = T>,
+        T: Into<FilterableId>,
+    {
+        #[inline]
+        fn filter_ids(self, ids: &mut impl FnMut(FilterableId)) {
+            for id in self.into_iter() {
+                ids(id.into())
+            }
+        }
+    }
+
+    impl<T> FilterableIds<ScalarType> for T
+    where
+        T: Into<FilterableId>,
+    {
+        #[inline]
+        fn filter_ids(self, ids: &mut impl FnMut(FilterableId)) {
+            ids(self.into())
+        }
+    }
 }

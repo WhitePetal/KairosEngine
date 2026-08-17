@@ -152,6 +152,30 @@ impl World {
         &self.entities
     }
 
+    /// Retrieves this world's [`Archetypes`] collection.
+    #[inline]
+    pub fn archetypes(&self) -> &Archetypes {
+        &self.archetypes
+    }
+
+    /// Retrieves this world's [`Components`] collection.
+    #[inline]
+    pub fn components(&self) -> &Components {
+        &self.components
+    }
+
+    /// Retrieves this world's [`Storages`] collection.
+    #[inline]
+    pub fn storages(&self) -> &Storages {
+        &self.storages
+    }
+
+    /// Retrieves this world's [`Bundles`] collection.
+    #[inline]
+    pub fn bundles(&self) -> &Bundles {
+        &self.bundles
+    }
+
     /// Prepares a [`ComponentsRegistrator`] for the world.
     #[inline]
     pub fn components_registrator(&mut self) -> ComponentsRegistrator<'_> {
