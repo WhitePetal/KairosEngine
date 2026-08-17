@@ -133,4 +133,45 @@ pub struct ComponentTickCells<'a> {
     pub changed_by: MaybeLocation<&'a UnsafeCell<&'static Location<'static>>>,
 }
 
-// TODO!
+impl ComponentTicks {
+    /// Returns `true` if the component or resource was added after the system last ran
+    /// (or the system is running for the first time).
+    #[inline]
+    pub fn is_added(&self, last_run: Tick, this_run: Tick) -> bool {
+        self.added.is_newer_than(last_run, this_run)
+    }
+
+    /// Returns `true` if the component or resource was added or mutably dereferenced after the system last ran
+    /// (or the system is running for the first time).
+    #[inline]
+    pub fn is_changed(&self, last_run: Tick, this_run: Tick) -> bool {
+        self.changed.is_newer_than(last_run, this_run)
+    }
+
+    /// Creates a new instance with the same change tick for `added` and `changed`.
+    pub fn new(change_tick: Tick) -> Self {
+        Self {
+            added: change_tick,
+            changed: change_tick,
+        }
+    }
+
+    /// Manually sets the change tick.
+    ///
+    /// This is normally done automatically via the [`DerefMut`](core::ops::DerefMut) implementation
+    /// on [`Mut<T>`](crate::change_detection::Mut), [`ResMut<T>`](crate::change_detection::ResMut), etc.
+    /// However, components and resources that make use of interior mutability might require manual updates.
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use bevy_ecs::{world::World, change_detection::ComponentTicks};
+    /// let world: World = unimplemented!();
+    /// let component_ticks: ComponentTicks = unimplemented!();
+    ///
+    /// component_ticks.set_changed(world.read_change_tick());
+    /// ```
+    #[inline]
+    pub fn set_changed(&mut self, change_tick: Tick) {
+        self.changed = change_tick
+    }
+}

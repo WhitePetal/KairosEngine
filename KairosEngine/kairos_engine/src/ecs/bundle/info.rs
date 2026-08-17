@@ -557,7 +557,7 @@ impl Bundles {
         &mut self,
         storages: &mut Storages,
         components: &Components,
-        component_id: ComponentId
+        component_id: ComponentId,
     ) -> BundleId {
         let bundle_infos = &mut self.bundle_infos;
         let bundle_id = self

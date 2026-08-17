@@ -8,7 +8,9 @@ mod event;
 mod message;
 
 use kairos_macro_utils::{
-    KairosManifest, ensure_no_collision, fq_std::{FQDefault, FQIterator, FQOption, FQResult}, get_struct_fields,
+    KairosManifest, ensure_no_collision,
+    fq_std::{FQDefault, FQIterator, FQOption, FQResult},
+    get_struct_fields,
 };
 use proc_macro::TokenStream;
 use proc_macro2::Ident;
@@ -35,7 +37,7 @@ struct BundleAttributes {
 impl Default for BundleAttributes {
     fn default() -> Self {
         Self {
-            impl_from_components: true
+            impl_from_components: true,
         }
     }
 }
@@ -113,7 +115,7 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
                 active_field_types.push(field_type);
                 active_field_locals.push(field_local);
                 active_field_members.push(field_member);
-            },
+            }
             BundleFieldKind::Ignore => inactive_field_members.push(field_member),
         }
     }

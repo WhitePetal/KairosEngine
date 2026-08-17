@@ -3,9 +3,10 @@ use crate::{
     ecs::{
         bundle::{Bundle, BundleFromComponents, BundleInserter, BundleRemover, InsertMode},
         change_detection::ComponentTicks,
-        component::{Component, ComponentId, StorageType},
+        component::{Component, ComponentId, Components, StorageType},
         entity::{Entity, EntityLocation},
         relationship::RelationshipHookMode,
+        storage::{SparseSets, Table},
         world::{
             World,
             entity_access::{DynamicComponentFetch, EntityMut, EntityRef},
@@ -126,7 +127,7 @@ impl<'w> EntityWorldMut<'w> {
         &mut self,
         component_ids: &[ComponentId],
         iter_components: I,
-        relationship_hook_inter_mode: RelationshipHookMode,
+        relationship_hook_insert_mode: RelationshipHookMode,
     ) -> &mut Self {
         todo!()
     }
@@ -407,6 +408,64 @@ impl<'w> EntityWorldMut<'w> {
     #[inline]
     pub unsafe fn world_mut(&mut self) -> &mut World {
         self.world
+    }
+
+    /// Removes a dynamic bundle from the entity if it exists.
+    ///
+    /// You should prefer to use the typed API [`EntityWorldMut::remove`] where possible.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any of the provided [`ComponentId`]s do not exist in the [`World`] or if the
+    /// entity has been despawned while this `EntityWorldMut` is still alive.
+    #[track_caller]
+    pub fn remove_by_ids(&mut self, component_ids: &[ComponentId]) -> &mut Self {
+        self.remove_by_ids_with_caller(
+            component_ids,
+            MaybeLocation::caller(),
+            RelationshipHookMode::Run,
+            BundleRemover::empty_pre_remove,
+        )
+    }
+
+    #[inline]
+    pub(crate) fn remove_by_ids_with_caller<T: 'static>(
+        &mut self,
+        component_ids: &[ComponentId],
+        caller: MaybeLocation,
+        relationship_hook_mode: RelationshipHookMode,
+        pre_remove: impl FnOnce(
+            &mut SparseSets,
+            Option<&mut Table>,
+            &Components,
+            &[ComponentId],
+        ) -> (bool, T),
+    ) -> &mut Self {
+        let location = self.location();
+        let components = &mut self.world.components;
+
+        let bundle_id = self.world.bundles.init_dynamic_info(
+            &mut self.world.storages,
+            components,
+            component_ids,
+        );
+
+        // SAFETY: We just created the bundle, and the archetype is valid, since we are in it.
+        let Some(mut remover) = (unsafe {
+            BundleRemover::new_with_id(self.world, location.archetype_id, bundle_id, false)
+        }) else {
+            return self;
+        };
+        remover.relationship_hook_mode = relationship_hook_mode;
+        // SAFETY:
+        // - The remover archetype came from the passed location and the removal can not fail.
+        // - `location` was obtained from a valid `Self`.
+        let new_location = unsafe { remover.remove(self.entity, location, caller, pre_remove) }.0;
+
+        self.location = Some(new_location);
+        self.world.flush();
+        self.update_location();
+        self
     }
 }
 

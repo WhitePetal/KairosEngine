@@ -1,4 +1,4 @@
-use crate::ecs::entity::Entity;
+use crate::ecs::entity::{Entity, EntityHashMap};
 
 /// An implementor of this trait knows how to map an [`Entity`] into another [`Entity`].
 ///
@@ -39,3 +39,26 @@ pub trait EntityMapper {
     /// of [`EntityMapper::get_mapped`].
     fn set_mapped(&mut self, source: Entity, target: Entity);
 }
+
+impl EntityMapper for &mut dyn EntityMapper {
+    fn get_mapped(&mut self, source: Entity) -> Entity {
+        (*self).get_mapped(source)
+    }
+
+    fn set_mapped(&mut self, source: Entity, target: Entity) {
+        (*self).set_mapped(source, target);
+    }
+}
+
+impl EntityMapper for EntityHashMap<Entity> {
+    /// Returns the corresponding mapped entity or returns `entity` if there is no mapped entity
+    fn get_mapped(&mut self, source: Entity) -> Entity {
+        self.get(&source).cloned().unwrap_or(source)
+    }
+
+    fn set_mapped(&mut self, source: Entity, target: Entity) {
+        self.insert(source, target);
+    }
+}
+
+// TODO!

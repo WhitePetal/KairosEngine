@@ -20,7 +20,7 @@ use crate::{
         component::{
             Component, ComponentId, ComponentIds, Components, ComponentsRegistrator, Mutable,
         },
-        entity::{Entities, Entity, EntityAllocator, EntityNotSpawnedError},
+        entity::{Entities, Entity, EntityAllocator, EntityNotSpawnedError, SpawnError},
         error::{ErrorHandler, FallbackErrorHandler},
         lifecycle::RemovedComponentMessages,
         observer::Observers,
@@ -646,6 +646,51 @@ impl World {
         // - `bundle` had it's `get_components` function called exactly once inside `spawn_non_existent`.
         unsafe { B::apply_effect(bundle, &mut entity) };
         entity
+    }
+
+    /// A faster version of [`spawn_at`](Self::spawn_at) for the empty bundle.
+    #[track_caller]
+    pub fn spawn_empty_at(&mut self, entity: Entity) -> Result<EntityWorldMut<'_>, SpawnError> {
+        self.spawn_empty_at_with_caller(entity, MaybeLocation::caller())
+    }
+
+    pub(crate) fn spawn_empty_at_with_caller(
+        &mut self,
+        entity: Entity,
+        caller: MaybeLocation,
+    ) -> Result<EntityWorldMut<'_>, SpawnError> {
+        self.entities.check_can_spawn_at(entity)?;
+        Ok(self.spawn_empty_at_unchecked(entity, caller))
+    }
+
+    /// A faster version of [`spawn_at_unchecked`](Self::spawn_at_unchecked) for the empty bundle.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the entity index is already spawned
+    pub(crate) fn spawn_empty_at_unchecked(
+        &mut self,
+        entity: Entity,
+        caller: MaybeLocation,
+    ) -> EntityWorldMut<'_> {
+        // SAFETY: Locations are immediately made valid
+        unsafe {
+            let archetype = self.archetypes.empty_mut();
+
+            let table_row = self.storages.tables[archetype.table_id()].allocate(entity);
+
+            let location = archetype.allocate(entity, table_row);
+            let change_tick = self.change_tick();
+            let was_at = self.entities.set_location(entity.index(), Some(location));
+            assert!(
+                was_at.is_none(),
+                "Attempting to construct an empty entity, but it was already constructed."
+            );
+            self.entities
+                .mark_spawned_or_despawned(entity.index(), caller, change_tick);
+
+            EntityWorldMut::new(self, entity, Some(location))
+        }
     }
 
     pub(crate) fn spawn_with_caller<B: Bundle>(
