@@ -1,3 +1,5 @@
+use super::Bundle;
+
 // TODO!
 // #[derive(Component)]
 // struct A;
@@ -252,11 +254,11 @@
 //     assert_eq!(world.resource::<Count>().0, 3);
 // }
 
-// #[derive(Bundle)]
-// #[expect(unused, reason = "tests the output of the derive macro is valid")]
-// struct Ignore {
-//     #[bundle(ignore)]
-//     foo: i32,
-//     #[bundle(ignore)]
-//     bar: i32,
-// }
+#[derive(Bundle)]
+#[expect(unused, reason = "tests the output of the derive macro is valid")]
+struct Ignore {
+    #[bundle(ignore)]
+    foo: i32,
+    #[bundle(ignore)]
+    bar: i32,
+}

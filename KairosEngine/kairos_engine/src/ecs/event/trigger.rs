@@ -508,5 +508,3 @@ impl<'a> EntityComponentsTrigger<'a> {
         }
     }
 }
-
-// TODO!

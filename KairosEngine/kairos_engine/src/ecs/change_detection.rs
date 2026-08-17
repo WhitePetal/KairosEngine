@@ -9,6 +9,9 @@ pub use tick::*;
 
 pub use traits::{DetectChanges, DetectChangesMut};
 
+#[cfg(test)]
+mod tests;
+
 /// The (arbitrarily chosen) minimum number of world tick increments between `check_tick` scans.
 ///
 /// Change ticks can only be scanned when systems aren't running. Thus, if the threshold is `N`,
@@ -23,5 +26,3 @@ pub const CHECK_TICK_THRESHOLD: u32 = 518_400_000;
 ///
 /// Changes stop being detected once they become this old.
 pub const MAX_CHANGE_AGE: u32 = u32::MAX - (2 * CHECK_TICK_THRESHOLD - 1);
-
-// TODO!: tests

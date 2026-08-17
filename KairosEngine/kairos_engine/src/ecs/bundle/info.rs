@@ -547,6 +547,34 @@ impl Bundles {
             });
         *bundle_id
     }
+
+    /// Initializes a new [`BundleInfo`] for a dynamic [`Bundle`] with single component.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the provided [`ComponentId`] does not exist in the provided [`Components`].
+    pub(crate) fn init_component_info(
+        &mut self,
+        storages: &mut Storages,
+        components: &Components,
+        component_id: ComponentId
+    ) -> BundleId {
+        let bundle_infos = &mut self.bundle_infos;
+        let bundle_id = self
+            .dynamic_component_bundle_ids
+            .entry(component_id)
+            .or_insert_with(|| {
+                let (id, storage_type) = initialize_dynamic_bundle(
+                    bundle_infos,
+                    storages,
+                    components,
+                    vec![component_id],
+                );
+                self.dynamic_component_storages.insert(id, storage_type[0]);
+                id
+            });
+        *bundle_id
+    }
 }
 
 /// Asserts that all components are part of [`Components`]

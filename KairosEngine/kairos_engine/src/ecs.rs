@@ -21,3 +21,15 @@ pub mod storage;
 pub mod system;
 pub mod traversal;
 pub mod world;
+
+/// Exports used by macros.
+///
+/// These are not meant to be used directly and are subject to breaking changes.
+#[doc(hidden)]
+pub mod __macro_exports {
+    // Cannot directly use `alloc::vec::Vec` in macros, as a crate may not have
+    // included `extern crate alloc;`. This re-export ensures we have access
+    // to `Vec` in `no_std` and `std` contexts.
+    pub use crate::debug::DebugCheckedUnwrap;
+    pub use crate::ptr::{MovingPtr, OwningPtr, deconstruct_moving_ptr};
+}

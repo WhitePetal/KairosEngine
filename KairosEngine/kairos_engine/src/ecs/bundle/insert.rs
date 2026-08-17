@@ -32,6 +32,9 @@ pub(crate) struct BundleInserter<'w> {
 }
 
 impl<'w> BundleInserter<'w> {
+    /// # Safety
+    /// - `archetype_id` must correspond to a valid archetype in `world`.
+    #[inline]
     pub(crate) unsafe fn new<T: Bundle>(
         world: &'w mut World,
         archetype_id: ArchetypeId,
@@ -515,6 +518,7 @@ impl BundleInfo {
         for component_id in self.iter_explicit_components() {
             if current_archetype.contains(component_id) {
                 bundle_status.push(ComponentStatus::Existing);
+                existing.push(component_id);
             } else {
                 bundle_status.push(ComponentStatus::Added);
                 added.push(component_id);
