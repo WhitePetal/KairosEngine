@@ -1,11 +1,11 @@
-use std::marker::PhantomData;
+use std::{fmt, marker::PhantomData};
 
 use crate::{
     ecs::{
         archetype::Archetype,
         component::ComponentId,
         entity::Entity,
-        event::{EntityEvent, Event},
+        event::{self, EntityEvent, Event, SetEntityEventTarget},
         observer::{CachedObservers, TriggerContext},
         traversal::Traversal,
         world::DeferredWorld,
@@ -221,8 +221,113 @@ pub unsafe fn trigger_entity_internal(
     }
 }
 
+/// An [`EntityEvent`] [`Trigger`] that behaves like [`EntityTrigger`], but "propagates" the event
+/// using an [`Entity`] [`Traversal`]. At each step in the propagation, the [`EntityTrigger`] logic will
+/// be run, until [`PropagateEntityTrigger::propagate`] is false, or there are no entities left to traverse.
+///
+/// This is used by the [`EntityEvent`] derive when `#[entity_event(propagate)]` is enabled. It is usable by every
+/// [`EntityEvent`] type.
+///
+/// If `AUTO_PROPAGATE` is `true`, [`PropagateEntityTrigger::propagate`] will default to `true`.
 pub struct PropagateEntityTrigger<const AUTO_PROPAGATE: bool, E: EntityEvent, T: Traversal<E>> {
-    _todo: PhantomData<(E, T)>,
+    /// The original [`Entity`] the [`Event`] was _first_ triggered for.
+    pub original_event_target: Entity,
+
+    /// Whether or not to continue propagating using the `T` [`Traversal`]. If this is false,
+    /// The [`Traversal`] will stop on the current entity.
+    pub propagate: bool,
+
+    _marker: PhantomData<(E, T)>,
+}
+
+impl<const AUTO_PROPAGATE: bool, E: EntityEvent, T: Traversal<E>> Default
+    for PropagateEntityTrigger<AUTO_PROPAGATE, E, T>
+{
+    fn default() -> Self {
+        Self {
+            original_event_target: Entity::PLACEHOLDER,
+            propagate: AUTO_PROPAGATE,
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<const AUTO_PROPAGATE: bool, E: EntityEvent, T: Traversal<E>> fmt::Debug
+    for PropagateEntityTrigger<AUTO_PROPAGATE, E, T>
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PropagateEntityTrigger")
+            .field("original_event_target", &self.original_event_target)
+            .field("propagate", &self.original_event_target)
+            .field("_marker", &self._marker)
+            .finish()
+    }
+}
+
+// SAFETY:
+// - `E`'s [`Event::Trigger`] is constrained to [`PropagateEntityTrigger<E>`]
+unsafe impl<
+    const AUTO_PROPAGATE: bool,
+    E: EntityEvent + SetEntityEventTarget + for<'a> Event<Trigger<'a> = Self>,
+    T: Traversal<E>,
+> Trigger<E> for PropagateEntityTrigger<AUTO_PROPAGATE, E, T>
+{
+    unsafe fn trigger(
+        &mut self,
+        mut world: DeferredWorld,
+        observers: &CachedObservers,
+        trigger_context: &TriggerContext,
+        event: &mut E,
+    ) {
+        let mut current_entity = event.event_target();
+        self.original_event_target = current_entity;
+        // SAFETY:
+        // - `observers` come from `world` and match the event type `E`, enforced by the call to `trigger`
+        // - the passed in event pointer comes from `event`, which is an `Event`
+        // - `trigger` is a matching trigger type, as it comes from `self`, which is the Trigger for `E`
+        // - `trigger_context`'s event_key matches `E`, enforced by the call to `trigger`
+        unsafe {
+            trigger_entity_internal(
+                world.reborrow(),
+                observers,
+                event.into(),
+                self.into(),
+                current_entity,
+                trigger_context,
+            );
+        }
+
+        loop {
+            if !self.propagate {
+                return;
+            }
+            if let Ok(entity) = world.get_entity(current_entity)
+                && let Ok(item) = entity.get_components::<T>()
+                && let Some(traverse_to) = T::traverse(item, event)
+            {
+                current_entity = traverse_to;
+            } else {
+                break;
+            }
+
+            event.set_event_target(current_entity);
+            // SAFETY:
+            // - `observers` come from `world` and match the event type `E`, enforced by the call to `trigger`
+            // - the passed in event pointer comes from `event`, which is an `Event`
+            // - `trigger` is a matching trigger type, as it comes from `self`, which is the Trigger for `E`
+            // - `trigger_context`'s event_key matches `E`, enforced by the call to `trigger`
+            unsafe {
+                trigger_entity_internal(
+                    world.reborrow(),
+                    observers,
+                    event.into(),
+                    self.into(),
+                    current_entity,
+                    trigger_context,
+                );
+            }
+        }
+    }
 }
 
 /// An [`EntityEvent`] [`Trigger`] that, in addition to behaving like a normal [`EntityTrigger`], _also_ runs observers
@@ -326,7 +431,81 @@ unsafe impl<'a, E: EntityEvent + Event<Trigger<'a> = EntityComponentsTrigger<'a>
         trigger_context: &TriggerContext,
         event: &mut E,
     ) {
-        todo!()
+        let entity = event.event_target();
+        // SAFETY:
+        // - `observers` come from `world` and match the event type `E`, enforced by the call to `trigger`
+        // - the passed in event pointer comes from `event`, which is an `Event`
+        // - `trigger_context`'s event_key matches `E`, enforced by the call to `trigger`
+        unsafe {
+            self.trigger_internal(world, observers, event.into(), entity, trigger_context);
+        }
+    }
+}
+
+impl<'a> EntityComponentsTrigger<'a> {
+    /// # Safety
+    /// - `observers` must come from the `world` [`DeferredWorld`]
+    /// - `event` must point to an [`Event`] whose [`Event::Trigger`] is [`EntityComponentsTrigger`]
+    /// - `trigger_context`'s [`TriggerContext::event_key`] must correspond to the `event` type.
+    #[inline(never)]
+    unsafe fn trigger_internal(
+        &mut self,
+        mut world: DeferredWorld,
+        observers: &CachedObservers,
+        mut event: PtrMut,
+        entity: Entity,
+        trigger_context: &TriggerContext,
+    ) {
+        unsafe {
+            trigger_entity_internal(
+                world.reborrow(),
+                observers,
+                event.reborrow(),
+                self.into(),
+                entity,
+                trigger_context,
+            );
+        }
+
+        for id in self.components {
+            if let Some(compoent_observers) = observers.component_observers().get(id) {
+                for (observer, runner) in compoent_observers.global_observers() {
+                    // SAFETY:
+                    // - `observers` come from `world` and match the `event` type, enforced by the call to `trigger_internal`
+                    // - the passed in event pointer is an `Event`, enforced by the call to `trigger_internal`
+                    // - `trigger` is a matching trigger type, enforced by the call to `trigger_internal`
+                    // - `trigger_context`'s event_key matches `E`, enforced by the call to `trigger_internal`
+                    unsafe {
+                        (runner)(
+                            world.reborrow(),
+                            *observer,
+                            trigger_context,
+                            event.reborrow(),
+                            self.into(),
+                        );
+                    }
+                }
+
+                if let Some(map) = compoent_observers.entity_component_observers().get(&entity) {
+                    for (observer, runner) in map {
+                        // SAFETY:
+                        // - `observers` come from `world` and match the `event` type, enforced by the call to `trigger_internal`
+                        // - the passed in event pointer is an `Event`, enforced by the call to `trigger_internal`
+                        // - `trigger` is a matching trigger type, enforced by the call to `trigger_internal`
+                        // - `trigger_context`'s event_key matches `E`, enforced by the call to `trigger_internal`
+                        unsafe {
+                            (runner)(
+                                world.reborrow(),
+                                *observer,
+                                trigger_context,
+                                event.reborrow(),
+                                self.into(),
+                            );
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

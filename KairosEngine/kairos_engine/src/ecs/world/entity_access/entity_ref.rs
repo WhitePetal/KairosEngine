@@ -7,6 +7,9 @@ use crate::{
         change_detection::{ComponentTicks, Ref},
         component::{Component, ComponentId},
         entity::{Entity, EntityLocation},
+        query::{
+            QueryAccessError, ReadOnlyQueryData, ReleaseStateQueryData, SingleEntityQueryData,
+        },
         world::unsafe_world_cell::UnsafeEntityCell,
     },
 };
@@ -144,6 +147,17 @@ impl<'w> EntityRef<'w> {
     pub fn get_change_ticks_by_id(&self, component_id: ComponentId) -> Option<ComponentTicks> {
         // SAFETY: We have read-only access to all components of this entity.
         unsafe { self.cell.get_change_ticks_by_id(component_id) }
+    }
+
+    /// Returns read-only components for the current entity that match the query `Q`,
+    /// or `None` if the entity does not have the components required by the query `Q`.
+    pub fn get_components<Q: ReadOnlyQueryData + ReleaseStateQueryData + SingleEntityQueryData>(
+        &self,
+    ) -> Result<Q::Item<'w, 'static>, QueryAccessError> {
+        // SAFETY:
+        // - We have read-only access to all components of this entity.
+        // - The query is read-only, and read-only references cannot have conflicts.
+        unsafe { self.cell.get_components::<Q>() }
     }
 }
 
