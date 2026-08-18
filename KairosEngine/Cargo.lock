@@ -2339,6 +2339,7 @@ dependencies = [
  "emath",
  "env_logger",
  "epaint",
+ "fixedbitset",
  "foldhash 0.2.0",
  "futures-util",
  "glam 0.33.1",

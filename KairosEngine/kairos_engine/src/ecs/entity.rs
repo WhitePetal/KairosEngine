@@ -128,12 +128,16 @@ pub use hash_set::EntityHashSet;
 pub mod index_map;
 pub mod index_set;
 
+pub use index_map::EntityIndexMap;
 pub use index_set::EntityIndexSet;
 
 #[cfg(test)]
 mod tests;
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Display)]
+// #[cfg_attr(feature = "bevy_reflect", derive(Reflect))]
+// #[cfg_attr(feature = "bevy_reflect", reflect(opaque))]
+// #[cfg_attr(feature = "bevy_reflect", reflect(Hash, PartialEq, Debug, Clone))]
 #[repr(transparent)]
 pub struct EntityIndex(NonMaxU32);
 
@@ -209,6 +213,9 @@ impl SparseSetIndex for EntityIndex {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Display)]
+// #[cfg_attr(feature = "bevy_reflect", derive(Reflect))]
+// #[cfg_attr(feature = "bevy_reflect", reflect(opaque))]
+// #[cfg_attr(feature = "bevy_reflect", reflect(Hash, PartialEq, Debug, Clone))]
 #[repr(transparent)]
 pub struct EntityGeneration(u32);
 
