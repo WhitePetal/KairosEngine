@@ -1,6 +1,9 @@
 use std::fmt::Display;
 
-use crate::ecs::{component::Components, query::QueryData};
+use crate::ecs::{
+    component::{ComponentId, Components},
+    query::{Access, QueryData},
+};
 
 // found by benchmarking
 // too low, and smaller queries do unnecessary work
@@ -39,6 +42,31 @@ impl Display for QueryAccessError {
             }
         }
     }
+}
+
+/// The data storage type that is being accessed.
+#[derive(Copy, Clone, Debug, PartialEq, Hash)]
+pub enum EcsAccessType<'a> {
+    /// Accesses [`Component`](crate::prelude::Component) data
+    Component(EcsAccessLevel),
+    /// borrowed access from [`WorldQuery::State`](crate::query::WorldQuery)
+    Access(&'a Access),
+    /// Does not access any data that can conflict.
+    Empty,
+}
+
+/// The way the data will be accessed and whether we take access on all the components on
+/// an entity or just one component.
+#[derive(Clone, Copy, Debug, PartialEq, Hash)]
+pub enum EcsAccessLevel {
+    /// Reads [`Component`](crate::prelude::Component) with [`ComponentId`]
+    Read(ComponentId),
+    /// Writes [`Component`](crate::prelude::Component) with [`ComponentId`]
+    Write(ComponentId),
+    /// Potentially reads all [`Component`](crate::prelude::Component)'s in the [`World`](crate::prelude::World)
+    ReadAll,
+    /// Potentially writes all [`Component`](crate::prelude::Component)'s in the [`World`](crate::prelude::World)
+    WriteAll,
 }
 
 // TODO!
