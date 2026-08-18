@@ -1,5 +1,18 @@
 use std::fmt::Display;
 
+use crate::ecs::{component::Components, query::QueryData};
+
+// found by benchmarking
+// too low, and smaller queries do unnecessary work
+// maintaining the bloom filter for a handful of checks
+// too high, and the benefit of a simpler loop
+// is outweighed by the n^2 check
+const USE_FILTER_THRESHOLD: usize = 4;
+
+pub fn has_conflicits<Q: QueryData>(components: &Components) -> Result<(), QueryAccessError> {
+    todo!()
+}
+
 /// Error returned from [`has_conflicts`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum QueryAccessError {
