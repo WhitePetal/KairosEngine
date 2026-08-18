@@ -50,6 +50,11 @@ use crate::{
 /// Given a type `T` which implements [`Component`] (including [`Resource`]), the `ComponentId` for `T` can be retrieved
 /// from a `World` using [`World::component_id()`](crate::world::World::component_id) or via [`Components::component_id()`].
 #[derive(Debug, Copy, Clone, Hash, Ord, PartialOrd, Eq, PartialEq)]
+// #[cfg_attr(
+//     feature = "bevy_reflect",
+//     derive(Reflect),
+//     reflect(Debug, Hash, PartialEq, Clone)
+// )]
 pub struct ComponentId(pub(super) usize);
 
 impl ComponentId {

@@ -285,6 +285,10 @@ impl RequiredComponents {
 
         // Register all inherited components as if we just registered all components in `direct` one-by-one.
         for (&required_id, required_component) in &self.direct {
+            // SAFETY:
+            // - the caller guarantees that all components in this instance have been registered in `components`,
+            //   meaning both `all` and `required_id` have been registered in `components`;
+            // - `required_component` was associated to `required_id`, so it must hold a constructor valid for it.
             unsafe {
                 Self::register_inherited_required_components_unchecked(
                     &mut self.all,

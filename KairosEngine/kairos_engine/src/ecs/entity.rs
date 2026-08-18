@@ -124,6 +124,8 @@ pub mod hash_set;
 pub use hash::*;
 pub use hash_map::EntityHashMap;
 
+pub mod index_set;
+
 #[cfg(test)]
 mod tests;
 
