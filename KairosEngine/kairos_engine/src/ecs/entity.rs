@@ -123,8 +123,12 @@ pub mod hash_set;
 
 pub use hash::*;
 pub use hash_map::EntityHashMap;
+pub use hash_set::EntityHashSet;
 
+pub mod index_map;
 pub mod index_set;
+
+pub use index_set::EntityIndexSet;
 
 #[cfg(test)]
 mod tests;
