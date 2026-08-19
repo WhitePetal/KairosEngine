@@ -2,7 +2,13 @@ use std::any::TypeId;
 
 use thiserror::Error;
 
-use crate::ecs::{archetype::Archetype, component::{Component, ComponentId}, entity::{Entity, EntityLocation}, query::Access, world::{EntityRef, unsafe_world_cell::UnsafeEntityCell}};
+use crate::ecs::{
+    archetype::Archetype,
+    component::{Component, ComponentId},
+    entity::{Entity, EntityLocation},
+    query::Access,
+    world::{EntityRef, unsafe_world_cell::UnsafeEntityCell},
+};
 
 /// Provides read-only access to a single entity and some of its components defined by the contained [`Access`].
 ///

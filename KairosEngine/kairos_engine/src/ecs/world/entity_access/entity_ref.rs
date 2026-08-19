@@ -166,7 +166,7 @@ impl<'w> EntityRef<'w> {
     ///
     /// If the entity does not have the components required by the query `Q`.
     pub fn components<Q: ReadOnlyQueryData + ReleaseStateQueryData + SingleEntityQueryData>(
-        &self
+        &self,
     ) -> Q::Item<'w, 'static> {
         self.get_components::<Q>()
             .expect("Query does not match the current entity")

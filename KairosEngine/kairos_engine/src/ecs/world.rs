@@ -27,7 +27,10 @@ use crate::{
         relationship::RelationshipHookMode,
         resource::{Resource, ResourceEntities},
         storage::Storages,
-        world::{command_queue::RawCommandQueue, error::EntityMutableFetchError, unsafe_world_cell::UnsafeWorldCell},
+        world::{
+            command_queue::RawCommandQueue, error::EntityMutableFetchError,
+            unsafe_world_cell::UnsafeWorldCell,
+        },
     },
     move_as_ptr,
     ptr::MovingPtr,
@@ -46,7 +49,9 @@ mod identifier;
 pub mod error;
 
 pub use deferred_world::DeferredWorld;
-pub use entity_access::{EntityMut, EntityRef, EntityWorldMut, FilteredEntityRef, FilteredEntityMut};
+pub use entity_access::{
+    EntityMut, EntityRef, EntityWorldMut, FilteredEntityMut, FilteredEntityRef,
+};
 pub use entity_fetch::{EntityFetcher, WorldEntityFetch};
 pub use filtered_resource::*;
 

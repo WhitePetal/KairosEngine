@@ -1,9 +1,15 @@
 use std::any::TypeId;
 
 use crate::ecs::{
-    archetype::Archetype, change_detection::Mut, component::{Component, ComponentId, Mutable}, entity::{Entity, EntityLocation}, query::{Access, ReadOnlyQueryData, ReleaseStateQueryData, SingleEntityQueryData}, world::{
-        EntityRef, FilteredEntityMut, entity_access::DynamicComponentFetch, error::EntityComponentError, unsafe_world_cell::UnsafeEntityCell
-    }
+    archetype::Archetype,
+    change_detection::Mut,
+    component::{Component, ComponentId, Mutable},
+    entity::{Entity, EntityLocation},
+    query::{Access, ReadOnlyQueryData, ReleaseStateQueryData, SingleEntityQueryData},
+    world::{
+        EntityRef, FilteredEntityMut, entity_access::DynamicComponentFetch,
+        error::EntityComponentError, unsafe_world_cell::UnsafeEntityCell,
+    },
 };
 
 /// Provides mutable access to a single entity and all of its components.
@@ -153,8 +159,8 @@ impl<'w> EntityMut<'w> {
     ///
     /// If the entity does not have the components required by the query `Q`.
     pub fn components<Q: ReadOnlyQueryData + ReleaseStateQueryData + SingleEntityQueryData>(
-        &self
-    ) -> Q::Item<'_, 'static>{
+        &self,
+    ) -> Q::Item<'_, 'static> {
         self.as_readonly().components::<Q>()
     }
 
