@@ -159,6 +159,18 @@ impl<'w> EntityRef<'w> {
         // - The query is read-only, and read-only references cannot have conflicts.
         unsafe { self.cell.get_components::<Q>() }
     }
+
+    /// Returns read-only components for the current entity that match the query `Q`.
+    ///
+    /// # Panics
+    ///
+    /// If the entity does not have the components required by the query `Q`.
+    pub fn components<Q: ReadOnlyQueryData + ReleaseStateQueryData + SingleEntityQueryData>(
+        &self
+    ) -> Q::Item<'w, 'static> {
+        self.get_components::<Q>()
+            .expect("Query does not match the current entity")
+    }
 }
 
 // TODO!

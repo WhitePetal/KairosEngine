@@ -9,23 +9,13 @@ use thiserror::Error;
 use crate::{
     debug::{DebugCheckedUnwrap, MaybeLocation},
     ecs::{
-        archetype::{Archetype, Archetypes},
-        bundle::Bundles,
-        change_detection::{
+        archetype::{Archetype, Archetypes}, bundle::Bundles, change_detection::{
             ComponentTickCells, ComponentTicks, ComponentTicksMut, ComponentTicksRef, Mut,
             MutUntyped, Ref, Tick,
-        },
-        component::{Component, ComponentId, Components, Mutable, StorageType},
-        entity::{
+        }, component::{Component, ComponentId, Components, Mutable, StorageType}, entity::{
             ContainsEntity, Entities, Entity, EntityAllocator, EntityLocation,
             EntityNotSpawnedError,
-        },
-        error::{ErrorHandler, FallbackErrorHandler},
-        lifecycle::RemovedComponentMessages,
-        query::{QueryAccessError, ReleaseStateQueryData, SingleEntityQueryData},
-        resource::{Resource, ResourceEntities},
-        storage::{ComponentSparseSet, Storages, Table},
-        world::{World, WorldId},
+        }, error::{ErrorHandler, FallbackErrorHandler}, lifecycle::RemovedComponentMessages, observer::Observers, query::{QueryAccessError, ReleaseStateQueryData, SingleEntityQueryData}, resource::{Resource, ResourceEntities}, storage::{ComponentSparseSet, Storages, Table}, world::{World, WorldId, command_queue::RawCommandQueue}
     },
     ptr::{Ptr, UnsafeCellDeref},
 };
@@ -283,6 +273,57 @@ impl<'w> UnsafeWorldCell<'w> {
         &unsafe { self.world_metadata() }.archetypes
     }
 
+    /// Retrieves this world's [`Components`] collection.
+    #[inline]
+    pub fn components(self) -> &'w Components {
+        // SAFETY:
+        // - we only access world metadata
+        &unsafe {
+            self.world_metadata()
+        }.components
+    }
+
+    /// Retrieves this world's resource-entity map.
+    ///
+    /// # Safety
+    /// The caller must have exclusive read or write access to the resources that are updated in the cache.
+    #[inline]
+    pub unsafe fn resource_entities(self) -> &'w ResourceEntities {
+        // SAFETY:
+        // - we only access world metadata
+        &unsafe {
+            self.world_metadata()
+        }.resource_entities
+    }
+
+    /// Retrieves this world's collection of [removed components](RemovedComponentMessages).
+    pub fn removed_components(self) -> &'w RemovedComponentMessages {
+        // SAFETY:
+        // - we only access world metadata
+        &unsafe {
+            self.world_metadata()
+        }.removed_components
+    }
+
+    /// Retrieves this world's [`Observers`] collection.
+    pub(crate) fn observers(self) -> &'w Observers {
+        // SAFETY:
+        // - we only access world metadata
+        &unsafe {
+            self.world_metadata()
+        }.observers
+    }
+
+    /// Retrieves this world's [`Bundles`] collection.
+    #[inline]
+    pub fn bundles(self) -> &'w Bundles {
+        // SAFETY:
+        // - we only access world metadata
+        &unsafe {
+            self.world_metadata()
+        }.bundles
+    }
+
     /// Gets the current change tick of this world.
     #[inline]
     pub fn change_tick(self) -> Tick {
@@ -327,14 +368,6 @@ impl<'w> UnsafeWorldCell<'w> {
         Tick::new(change_tick.fetch_add(1, Ordering::Relaxed))
     }
 
-    /// Retrieves this world's [`Components`] collection.
-    #[inline]
-    pub fn components(self) -> &'w Components {
-        // SAFETY:
-        // - we only access world metadata
-        &unsafe { self.world_metadata() }.components
-    }
-
     /// Provides unchecked access to the internal data stores of the [`World`].
     ///
     /// # Safety
@@ -377,45 +410,6 @@ impl<'w> UnsafeWorldCell<'w> {
         ))
     }
 
-    /// # Safety
-    /// - the returned `Table` is only used in ways that this [`UnsafeWorldCell`] has permission for.
-    /// - the returned `Table` is only used in ways that would not conflict with any existing borrows of world data.
-    #[inline]
-    unsafe fn fetch_table(self, location: EntityLocation) -> Option<&'w Table> {
-        // SAFETY:
-        // - caller ensures returned data is not misused and we have not created any borrows of component/resource data
-        // - `location` contains a valid `TableId`, so getting the table won't fail
-        unsafe { self.storages().tables.get(location.table_id) }
-    }
-
-    /// # Safety
-    /// - the returned `ComponentSparseSet` is only used in ways that this [`UnsafeWorldCell`] has permission for.
-    /// - the returned `ComponentSparseSet` is only used in ways that would not conflict with any existing
-    ///   borrows of world data.
-    #[inline]
-    unsafe fn fetch_sparse_set(self, component_id: ComponentId) -> Option<&'w ComponentSparseSet> {
-        // SAFETY: caller ensures returned data is not misused and we have not created any borrows
-        // of component/resource data
-        unsafe { self.storages() }.sparse_sets.get(component_id)
-    }
-
-    /// Retrieves this world's resource-entity map.
-    ///
-    /// # Safety
-    /// The caller must have exclusive read or write access to the resources that are updated in the cache.
-    #[inline]
-    pub unsafe fn resource_entities(self) -> &'w ResourceEntities {
-        &unsafe { self.world_metadata() }.resource_entities
-    }
-
-    /// Retrieves this world's [`Bundles`] collection.
-    #[inline]
-    pub fn bundles(self) -> &'w Bundles {
-        // SAFETY:
-        // - we only access world metadata
-        &unsafe { self.world_metadata() }.bundles
-    }
-
     /// Gets a reference to the resource of the given type if it exists
     ///
     /// # Safety
@@ -432,6 +426,35 @@ impl<'w> UnsafeWorldCell<'w> {
                 // SAFETY: `component_id` was obtained from the type ID of `R`.
                 .map(|ptr| ptr.deref::<R>())
         }
+    }
+
+    /// Gets a reference including change detection to the resource of the given type if it exists.
+    ///
+    /// # Safety
+    /// It is the caller's responsibility to ensure that
+    /// - the [`UnsafeWorldCell`] has permission to access the resource
+    /// - no mutable reference to the resource exists at the same time
+    #[inline]
+    pub unsafe fn get_resource_ref<R: Resource>(self) -> Option<Ref<'w, R>> {
+        let component_id = self.components().get_valid_id(TypeId::of::<R>())?;
+
+        // SAFETY: caller ensures `self` has permission to access the resource
+        // caller also ensures that no mutable reference to the resource exists
+        let (ptr, ticks) = unsafe {
+            self.get_resource_with_ticks(component_id)?
+        };
+
+        // SAFETY: `component_id` was obtained from the type ID of `R`
+        let value = unsafe {
+            ptr.deref::<R>()
+        };
+
+        // SAFETY: caller ensures that no mutable reference to the resource exists
+        let ticks = unsafe {
+            ComponentTicksRef::from_tick_cells(ticks, self.last_change_tick(), self.change_tick())
+        };
+
+        Some(Ref { value, ticks })
     }
 
     /// Gets a pointer to the resource with the id [`ComponentId`] if it exists.
@@ -451,6 +474,68 @@ impl<'w> UnsafeWorldCell<'w> {
         let entity = unsafe { self.resource_entities() }.get(component_id)?;
         let entity_cell = self.get_entity(entity).ok()?;
         unsafe { entity_cell.get_by_id(component_id) }
+    }
+
+    /// Gets a reference to non-send data of the given type if it exists
+    ///
+    /// # Safety
+    /// It is the caller's responsibility to ensure that
+    /// - the [`UnsafeWorldCell`] has permission to access the data
+    /// - no mutable reference to the data exists at the same time
+    #[inline]
+    pub unsafe fn get_non_send<R: 'static>(self) -> Option<&'w R> {
+        let component_id = self.components().get_valid_id(TypeId::of::<R>())?;
+        // SAFETY: caller ensures that `self` has permission to access `R`
+        //  caller ensures that no mutable reference exists to `R`
+        unsafe {
+            self.get_non_send_by_id(component_id)
+                // SAFETY: `component_id` was obtained from `TypeId::of::<R>()`
+                .map(|ptr| ptr.deref::<R>())
+        }
+    }
+
+    /// Gets a pointer to `!Send` data with the id [`ComponentId`] if it exists.
+    /// The returned pointer must not be used to modify the data, and must not be
+    /// dereferenced after the immutable borrow of the [`World`] ends.
+    ///
+    /// **You should prefer to use the typed API [`UnsafeWorldCell::get_non_send`] where possible and only
+    /// use this in cases where the actual types are not known at compile time.**
+    ///
+    /// # Panics
+    /// This function will panic if it isn't called from the same thread that the data was inserted from.
+    ///
+    /// # Safety
+    /// It is the caller's responsibility to ensure that
+    /// - the [`UnsafeWorldCell`] has permission to access the data
+    /// - no mutable reference to the data exists at the same time
+    #[inline]
+    pub unsafe fn get_non_send_by_id(self, component_id: ComponentId) -> Option<Ptr<'w>> {
+        // SAFETY: we only access data on world that the caller has ensured is unaliased and we have
+        //  permission to access.
+        unsafe { self.storages() }
+            .non_sends
+            .get(component_id)?
+            .get_data()
+    }
+
+    /// Gets a mutable reference to the resource of the given type if it exists
+    ///
+    /// # Safety
+    /// It is the caller's responsibility to ensure that
+    /// - the [`UnsafeWorldCell`] has permission to access the resource mutably
+    /// - no other references to the resource exist at the same time
+    #[inline]
+    pub unsafe fn get_resource_mut<R: Resource<Mutability = Mutable>>(self) -> Option<Mut<'w, R>> {
+        self.assert_allows_mutable_access();
+        let component_id = self.components().get_valid_id(TypeId::of::<R>())?;
+        // SAFETY:
+        // - caller ensures `self` has permission to access the resource mutably
+        // - caller ensures no other references to the resource exist
+        unsafe {
+            self.get_resource_mut_by_id(component_id)
+                // `component_id` was gotten from `TypeId::of::<R>()`
+                .map(|ptr| ptr.with_type::<R>())
+        }
     }
 
     /// Gets a pointer to the resource with the id [`ComponentId`] if it exists and is mutable.
@@ -476,16 +561,90 @@ impl<'w> UnsafeWorldCell<'w> {
         unsafe { entity_cell.get_mut_by_id(component_id).ok() }
     }
 
-    /// Convenience method for accessing the world's fallback error handler,
+    /// # Safety
+    /// It is the caller's responsibility to ensure that
+    /// - the [`UnsafeWorldCell`] has permission to access the resource mutably
+    /// - no other references to the resource exist at the same time
+    /// - the resource `R` is mutable
+    #[inline]
+    pub unsafe fn get_resource_mut_assume_mutable<R: Resource>(self) -> Option<Mut<'w, R>> {
+        let component_id = self.components().get_valid_id(TypeId::of::<R>())?;
+        // SAFETY:
+        // - caller ensures `self` has permission to access the resource mutably
+        // - caller ensures no other references to the resource exist
+        // - caller ensures the resource is mutable
+        unsafe {
+            self.get_resource_mut_by_id(component_id)
+                // `component_id` was gotten from `TypeId::of::<R>()`
+                .map(|ptr| ptr.with_type::<R>())
+        }
+    }
+
+    /// Gets a mutable reference to the non-send data of the given type if it exists
     ///
     /// # Safety
-    /// Must have read access to [`FallbackErrorHandler`].
+    /// It is the caller's responsibility to ensure that
+    /// - the [`UnsafeWorldCell`] has permission to access the data mutably
+    /// - no other references to the data exist at the same time
     #[inline]
-    pub unsafe fn fallback_error_handler(&self) -> ErrorHandler {
-        unsafe { self.get_resource::<FallbackErrorHandler>() }
-            .copied()
-            .unwrap_or_default()
-            .0
+    pub unsafe fn get_non_send_mut<R: 'static>(self) -> Option<Mut<'w, R>> {
+        self.assert_allows_mutable_access();
+        let component_id = self.components().get_valid_id(TypeId::of::<R>())?;
+        // SAFETY:
+        // - caller ensures that `self` has permission to access the data
+        // - caller ensures that the data is unaliased
+        unsafe {
+            self.get_non_send_mut_by_id(component_id)
+                // SAFETY: `component_id` was gotten by `TypeId::of::<R>()`
+                .map(|ptr| ptr.with_type::<R>())
+
+        }
+    }
+
+    /// Gets mutable access to `!Send` data with the id [`ComponentId`] if it exists.
+    /// The returned pointer may be used to modify the data, as long as the mutable borrow
+    /// of the [`World`] is still valid.
+    ///
+    /// **You should prefer to use the typed API [`UnsafeWorldCell::get_non_send_mut`] where possible and only
+    /// use this in cases where the actual types are not known at compile time.**
+    ///
+    /// # Panics
+    /// This function will panic if it isn't called from the same thread that the data was inserted from.
+    ///
+    /// # Safety
+    /// It is the caller's responsibility to ensure that
+    /// - the [`UnsafeWorldCell`] has permission to access the data mutably
+    /// - no other references to the data exist at the same time
+    #[inline]
+    pub unsafe fn get_non_send_mut_by_id(
+        self,
+        component_id: ComponentId
+    ) -> Option<MutUntyped<'w>> {
+        self.assert_allows_mutable_access();
+        let change_tick = self.change_tick();
+        // SAFETY: we only access data that the caller has ensured is unaliased and `self`
+        //  has permission to access.
+        let (ptr, ticks) = unsafe {
+            self.storages()
+        }
+        .non_sends
+        .get(component_id)?
+        .get_with_ticks()?;
+
+        // SAFETY: This function has exclusive access to the world so nothing aliases `ticks`.
+        // - index is in-bounds because the column is initialized and non-empty
+        // - no other reference to the ticks of the same row can exist at the same time
+        let ticks = unsafe {
+            ComponentTicksMut::from_tick_cells(ticks, self.last_change_tick(), change_tick)
+        };
+
+        Some(MutUntyped {
+            // SAFETY: This function has exclusive access to the world so nothing aliases `ptr`.
+            value: unsafe {
+                ptr.assert_unique()
+            },
+            ticks
+        })
     }
 
     // Shorthand helper function for getting the data and change ticks for a resource.
@@ -535,6 +694,53 @@ impl<'w> UnsafeWorldCell<'w> {
         }
     }
 
+    // Returns a mutable reference to the underlying world's [`CommandQueue`].
+    /// # Safety
+    /// It is the caller's responsibility to ensure that
+    /// - the [`UnsafeWorldCell`] has permission to access the queue mutably
+    /// - no mutable references to the queue exist at the same time
+    pub(crate) unsafe fn get_raw_command_queue(self) -> RawCommandQueue {
+        self.assert_allows_mutable_access();
+        // SAFETY:
+        // - caller ensures there are no existing mutable references
+        // - caller ensures that we have permission to access the queue
+        unsafe { (*self.ptr).command_queue.clone() }
+    }
+
+    /// # Safety
+    /// - the returned `Table` is only used in ways that this [`UnsafeWorldCell`] has permission for.
+    /// - the returned `Table` is only used in ways that would not conflict with any existing borrows of world data.
+    #[inline]
+    unsafe fn fetch_table(self, location: EntityLocation) -> Option<&'w Table> {
+        // SAFETY:
+        // - caller ensures returned data is not misused and we have not created any borrows of component/resource data
+        // - `location` contains a valid `TableId`, so getting the table won't fail
+        unsafe { self.storages().tables.get(location.table_id) }
+    }
+
+    /// # Safety
+    /// - the returned `ComponentSparseSet` is only used in ways that this [`UnsafeWorldCell`] has permission for.
+    /// - the returned `ComponentSparseSet` is only used in ways that would not conflict with any existing
+    ///   borrows of world data.
+    #[inline]
+    unsafe fn fetch_sparse_set(self, component_id: ComponentId) -> Option<&'w ComponentSparseSet> {
+        // SAFETY: caller ensures returned data is not misused and we have not created any borrows
+        // of component/resource data
+        unsafe { self.storages() }.sparse_sets.get(component_id)
+    }
+
+    /// Convenience method for accessing the world's fallback error handler,
+    ///
+    /// # Safety
+    /// Must have read access to [`FallbackErrorHandler`].
+    #[inline]
+    pub unsafe fn fallback_error_handler(&self) -> ErrorHandler {
+        unsafe { self.get_resource::<FallbackErrorHandler>() }
+            .copied()
+            .unwrap_or_default()
+            .0
+    }
+
     /// # Safety
     /// It is the caller's responsibility to ensure that there are no outstanding
     /// references to `last_trigger_id`.
@@ -544,13 +750,6 @@ impl<'w> UnsafeWorldCell<'w> {
         unsafe {
             (*self.ptr).last_trigger_id = (*self.ptr).last_trigger_id.wrapping_add(1);
         }
-    }
-
-    /// Retrieves this world's collection of [removed components](RemovedComponentMessages).
-    pub fn removed_components(self) -> &'w RemovedComponentMessages {
-        // SAFETY:
-        // - we only access world metadata
-        &unsafe { self.world_metadata() }.removed_components
     }
 }
 

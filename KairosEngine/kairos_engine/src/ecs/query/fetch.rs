@@ -10,7 +10,7 @@ use crate::{
         query::{Access, EcsAccessLevel, EcsAccessType, WorldQuery},
         storage::{Table, TableRow},
         world::{
-            EntityMut, EntityRef, FiletredEntityRef, World, unsafe_world_cell::UnsafeWorldCell,
+            EntityMut, EntityRef, FilteredEntityRef, World, unsafe_world_cell::UnsafeWorldCell,
         },
     },
 };
@@ -1151,7 +1151,7 @@ impl ReleaseStateQueryData for EntityMut<'_> {
 
 impl ArchetypeQueryData for EntityMut<'_> {}
 
-unsafe impl WorldQuery for FiletredEntityRef<'_, '_> {
+unsafe impl WorldQuery for FilteredEntityRef<'_, '_> {
     type Fetch<'w> = EntityFetch<'w>;
 
     type State = Access;

@@ -1,4 +1,4 @@
-mod identifier;
+//! Defines the [`World`] and APIs for accessing it directly.
 
 use std::{
     fmt,
@@ -27,11 +27,13 @@ use crate::{
         relationship::RelationshipHookMode,
         resource::{Resource, ResourceEntities},
         storage::Storages,
-        world::{error::EntityMutableFetchError, unsafe_world_cell::UnsafeWorldCell},
+        world::{command_queue::RawCommandQueue, error::EntityMutableFetchError, unsafe_world_cell::UnsafeWorldCell},
     },
     move_as_ptr,
     ptr::MovingPtr,
 };
+
+pub(crate) mod command_queue;
 
 pub mod unsafe_world_cell;
 
@@ -39,11 +41,12 @@ mod deferred_world;
 mod entity_access;
 mod entity_fetch;
 mod filtered_resource;
+mod identifier;
 
 pub mod error;
 
 pub use deferred_world::DeferredWorld;
-pub use entity_access::{EntityMut, EntityRef, EntityWorldMut, FiletredEntityRef};
+pub use entity_access::{EntityMut, EntityRef, EntityWorldMut, FilteredEntityRef, FilteredEntityMut};
 pub use entity_fetch::{EntityFetcher, WorldEntityFetch};
 pub use filtered_resource::*;
 
@@ -82,6 +85,7 @@ pub struct World {
     pub(crate) last_change_tick: Tick,
     pub(crate) last_check_tick: Tick,
     pub(crate) last_trigger_id: u32,
+    pub(crate) command_queue: RawCommandQueue,
 }
 
 /// Creates an instance of the type this trait is implemented for
