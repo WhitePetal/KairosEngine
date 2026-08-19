@@ -362,6 +362,21 @@ impl<'w> UnsafeWorldCell<'w> {
         ))
     }
 
+    /// Retrieves an [`UnsafeEntityCell`] that exposes read and write operations for the given `entity`.
+    /// Similar to the [`UnsafeWorldCell`], you are in charge of making sure that no aliasing rules are violated.
+    #[inline]
+    pub fn get_entity_with_ticks(
+        self,
+        entity: Entity,
+        last_run: Tick,
+        this_run: Tick,
+    ) -> Result<UnsafeEntityCell<'w>, EntityNotSpawnedError> {
+        let location = self.entities().get_spawned(entity)?;
+        Ok(UnsafeEntityCell::new(
+            self, entity, location, last_run, this_run,
+        ))
+    }
+
     /// # Safety
     /// - the returned `Table` is only used in ways that this [`UnsafeWorldCell`] has permission for.
     /// - the returned `Table` is only used in ways that would not conflict with any existing borrows of world data.

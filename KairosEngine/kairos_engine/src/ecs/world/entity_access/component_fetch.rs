@@ -1,4 +1,7 @@
+use std::mem::MaybeUninit;
+
 use crate::{
+    collections::{FixedHashMap, FixedHashSet},
     ecs::{
         change_detection::MutUntyped,
         component::ComponentId,
@@ -130,4 +133,242 @@ unsafe impl DynamicComponentFetch for ComponentId {
     }
 }
 
-// TODO!
+// SAFETY:
+// - No aliased mutability is caused because the array is checked for duplicates.
+// - No mutable references are returned by `fetch_ref`.
+unsafe impl<const N: usize> DynamicComponentFetch for [ComponentId; N] {
+    type Ref<'w> = [Ptr<'w>; N];
+
+    type Mut<'w> = [MutUntyped<'w>; N];
+
+    unsafe fn fetch_ref(
+        self,
+        cell: UnsafeEntityCell<'_>,
+    ) -> Result<Self::Ref<'_>, EntityComponentError> {
+        // SAFETY: Uphelp by caller.
+        unsafe { <&Self>::fetch_ref(&self, cell) }
+    }
+
+    unsafe fn fetch_mut(
+        self,
+        cell: UnsafeEntityCell<'_>,
+    ) -> Result<Self::Mut<'_>, EntityComponentError> {
+        // SAFETY: Uphelp by caller.
+        unsafe { <&Self>::fetch_mut(&self, cell) }
+    }
+
+    unsafe fn fetch_mut_assume_mutable(
+        self,
+        cell: UnsafeEntityCell<'_>,
+    ) -> Result<Self::Mut<'_>, EntityComponentError> {
+        // SAFETY: Uphelp by caller.
+        unsafe { <&Self>::fetch_mut_assume_mutable(&self, cell) }
+    }
+}
+
+// SAFETY:
+// - No aliased mutability is caused because the array is checked for duplicates.
+// - No mutable references are returned by `fetch_ref`.
+unsafe impl<const N: usize> DynamicComponentFetch for &'_ [ComponentId; N] {
+    type Ref<'w> = [Ptr<'w>; N];
+
+    type Mut<'w> = [MutUntyped<'w>; N];
+
+    unsafe fn fetch_ref(
+        self,
+        cell: UnsafeEntityCell<'_>,
+    ) -> Result<Self::Ref<'_>, EntityComponentError> {
+        let mut ptrs = [const { MaybeUninit::uninit() }; N];
+        for (ptr, &id) in std::iter::zip(&mut ptrs, self) {
+            *ptr = MaybeUninit::new(
+                // SAFETY: caller ensures that the cell has read access to the component.
+                unsafe { cell.get_by_id(id) }.ok_or(EntityComponentError::MissingComponent(id))?,
+            );
+        }
+
+        // SAFETY: Each ptr was initialized in the loop above.
+        let ptrs = ptrs.map(|ptr| unsafe { MaybeUninit::assume_init(ptr) });
+
+        Ok(ptrs)
+    }
+
+    unsafe fn fetch_mut(
+        self,
+        cell: UnsafeEntityCell<'_>,
+    ) -> Result<Self::Mut<'_>, EntityComponentError> {
+        // Check for duplicate component IDs.
+        for i in 0..self.len() {
+            for j in 0..i {
+                if self[i] == self[j] {
+                    return Err(EntityComponentError::AliasedMutability(self[i]));
+                }
+            }
+        }
+
+        let mut ptrs = [const { MaybeUninit::uninit() }; N];
+        for (ptr, &id) in std::iter::zip(&mut ptrs, self) {
+            *ptr = MaybeUninit::new(
+                // SAFETY: caller ensures that the cell has mutable access to the component.
+                unsafe { cell.get_mut_by_id(id) }
+                    .map_err(|_| EntityComponentError::MissingComponent(id))?,
+            );
+        }
+
+        // SAFETY: Each ptr was initialized in the loop above.
+        let ptrs = ptrs.map(|ptr| unsafe { MaybeUninit::assume_init(ptr) });
+
+        Ok(ptrs)
+    }
+
+    unsafe fn fetch_mut_assume_mutable(
+        self,
+        cell: UnsafeEntityCell<'_>,
+    ) -> Result<Self::Mut<'_>, EntityComponentError> {
+        // Check for duplicate component IDs.
+        for i in 0..self.len() {
+            for j in 0..i {
+                if self[i] == self[j] {
+                    return Err(EntityComponentError::AliasedMutability(self[i]));
+                }
+            }
+        }
+
+        let mut ptrs = [const { MaybeUninit::uninit() }; N];
+        for (ptr, &id) in core::iter::zip(&mut ptrs, self) {
+            *ptr = MaybeUninit::new(
+                // SAFETY: caller ensures that the cell has mutable access to the component.
+                unsafe { cell.get_mut_assume_mutable_by_id(id) }
+                    .map_err(|_| EntityComponentError::MissingComponent(id))?,
+            );
+        }
+
+        // SAFETY: Each ptr was initialized in the loop above.
+        let ptrs = ptrs.map(|ptr| unsafe { MaybeUninit::assume_init(ptr) });
+
+        Ok(ptrs)
+    }
+}
+
+// SAFETY:
+// - No aliased mutability is caused because the slice is checked for duplicates.
+// - No mutable references are returned by `fetch_ref`.
+unsafe impl DynamicComponentFetch for &'_ [ComponentId] {
+    type Ref<'w> = Vec<Ptr<'w>>;
+
+    type Mut<'w> = Vec<MutUntyped<'w>>;
+
+    unsafe fn fetch_ref(
+        self,
+        cell: UnsafeEntityCell<'_>,
+    ) -> Result<Self::Ref<'_>, EntityComponentError> {
+        let mut ptrs = Vec::with_capacity(self.len());
+        for &id in self {
+            // SAFETY: caller ensures that the cell has read access to the component.
+            ptrs.push(
+                unsafe { cell.get_by_id(id) }.ok_or(EntityComponentError::MissingComponent(id))?,
+            );
+        }
+        Ok(ptrs)
+    }
+
+    unsafe fn fetch_mut(
+        self,
+        cell: UnsafeEntityCell<'_>,
+    ) -> Result<Self::Mut<'_>, EntityComponentError> {
+        // Check for duplicate component IDs.
+        for i in 0..self.len() {
+            for j in 0..i {
+                if self[i] == self[j] {
+                    return Err(EntityComponentError::AliasedMutability(self[i]));
+                }
+            }
+        }
+
+        let mut ptrs = Vec::with_capacity(self.len());
+        for &id in self {
+            ptrs.push(
+                unsafe { cell.get_mut_by_id(id) }
+                    .map_err(|_| EntityComponentError::MissingComponent(id))?,
+            );
+        }
+        Ok(ptrs)
+    }
+
+    unsafe fn fetch_mut_assume_mutable(
+        self,
+        cell: UnsafeEntityCell<'_>,
+    ) -> Result<Self::Mut<'_>, EntityComponentError> {
+        // Check for duplicate component IDs.
+        for i in 0..self.len() {
+            for j in 0..i {
+                if self[i] == self[j] {
+                    return Err(EntityComponentError::AliasedMutability(self[i]));
+                }
+            }
+        }
+
+        let mut ptrs = Vec::with_capacity(self.len());
+        for &id in self {
+            ptrs.push(
+                // SAFETY: caller ensures that the cell has mutable access to the component.
+                unsafe { cell.get_mut_assume_mutable_by_id(id) }
+                    .map_err(|_| EntityComponentError::MissingComponent(id))?,
+            );
+        }
+        Ok(ptrs)
+    }
+}
+
+// SAFETY:
+// - No aliased mutability is caused because `HashSet` guarantees unique elements.
+// - No mutable references are returned by `fetch_ref`.
+unsafe impl DynamicComponentFetch for &'_ FixedHashSet<ComponentId> {
+    type Ref<'w> = FixedHashMap<ComponentId, Ptr<'w>>;
+
+    type Mut<'w> = FixedHashMap<ComponentId, MutUntyped<'w>>;
+
+    unsafe fn fetch_ref(
+        self,
+        cell: UnsafeEntityCell<'_>,
+    ) -> Result<Self::Ref<'_>, EntityComponentError> {
+        let mut ptrs = FixedHashMap::with_capacity_and_hasher(self.len(), Default::default());
+        for &id in self {
+            ptrs.insert(
+                id,
+                // SAFETY: caller ensures that the cell has read access to the component.
+                unsafe { cell.get_by_id(id) }.ok_or(EntityComponentError::MissingComponent(id))?,
+            );
+        }
+        Ok(ptrs)
+    }
+
+    unsafe fn fetch_mut(
+        self,
+        cell: UnsafeEntityCell<'_>,
+    ) -> Result<Self::Mut<'_>, EntityComponentError> {
+        let mut ptrs = FixedHashMap::with_capacity_and_hasher(self.len(), Default::default());
+        for &id in self {
+            ptrs.insert(
+                id,
+                unsafe { cell.get_mut_by_id(id) }
+                    .map_err(|_| EntityComponentError::MissingComponent(id))?,
+            );
+        }
+        Ok(ptrs)
+    }
+
+    unsafe fn fetch_mut_assume_mutable(
+        self,
+        cell: UnsafeEntityCell<'_>,
+    ) -> Result<Self::Mut<'_>, EntityComponentError> {
+        let mut ptrs = FixedHashMap::with_capacity_and_hasher(self.len(), Default::default());
+        for &id in self {
+            ptrs.insert(
+                id,
+                unsafe { cell.get_mut_assume_mutable_by_id(id) }
+                    .map_err(|_| EntityComponentError::MissingComponent(id))?,
+            );
+        }
+        Ok(ptrs)
+    }
+}

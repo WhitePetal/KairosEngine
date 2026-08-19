@@ -43,7 +43,7 @@ mod filtered_resource;
 pub mod error;
 
 pub use deferred_world::DeferredWorld;
-pub use entity_access::{EntityMut, EntityRef, EntityWorldMut};
+pub use entity_access::{EntityMut, EntityRef, EntityWorldMut, FiletredEntityRef};
 pub use entity_fetch::{EntityFetcher, WorldEntityFetch};
 pub use filtered_resource::*;
 

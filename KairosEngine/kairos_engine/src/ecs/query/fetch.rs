@@ -7,9 +7,11 @@ use crate::{
         change_detection::Tick,
         component::{ComponentId, Components},
         entity::{Entities, Entity, EntityLocation},
-        query::{Access, EcsAccessType, WorldQuery},
+        query::{Access, EcsAccessLevel, EcsAccessType, WorldQuery},
         storage::{Table, TableRow},
-        world::{EntityRef, World, unsafe_world_cell::UnsafeWorldCell},
+        world::{
+            EntityMut, EntityRef, FiletredEntityRef, World, unsafe_world_cell::UnsafeWorldCell,
+        },
     },
 };
 
@@ -975,6 +977,234 @@ unsafe impl<'a> WorldQuery for EntityRef<'a> {
         _set_contains_id: &impl Fn(ComponentId) -> bool,
     ) -> bool {
         true
+    }
+}
+
+unsafe impl<'a> QueryData for EntityRef<'a> {
+    const IS_READ_ONLY: bool = true;
+
+    const IS_ARCHETYPAL: bool = true;
+
+    type ReadOnly = Self;
+
+    type Item<'w, 's> = EntityRef<'w>;
+
+    fn shrink<'wlong: 'wshort, 'wshort, 's>(
+        item: Self::Item<'wlong, 's>,
+    ) -> Self::Item<'wshort, 's> {
+        item
+    }
+
+    #[inline(always)]
+    unsafe fn fetch<'w, 's>(
+        state: &'s Self::State,
+        fetch: &mut Self::Fetch<'w>,
+        entity: Entity,
+        table_row: TableRow,
+    ) -> Option<Self::Item<'w, 's>> {
+        // SAFETY: `fetch` must be called with an entity that exists in the world
+        let cell = unsafe {
+            fetch
+                .world
+                .get_entity_with_ticks(entity, fetch.last_run, fetch.this_run)
+                .debug_checked_unwrap()
+        };
+        // SAFETY: Read-only access to every component has been registered.
+        Some(unsafe { EntityRef::new(cell) })
+    }
+
+    fn iter_access(state: &Self::State) -> impl Iterator<Item = EcsAccessType<'_>> {
+        iter::once(EcsAccessType::Component(EcsAccessLevel::ReadAll))
+    }
+}
+
+// SAFETY: access is read only and only on the current entity
+unsafe impl IterQueryData for EntityRef<'_> {}
+
+// SAFETY: access is read only
+unsafe impl ReadOnlyQueryData for EntityRef<'_> {}
+
+// SAFETY: access is only on the current entity
+unsafe impl SingleEntityQueryData for EntityRef<'_> {}
+
+impl ReleaseStateQueryData for EntityRef<'_> {
+    fn release_state<'w>(item: Self::Item<'w, '_>) -> Self::Item<'w, 'static> {
+        item
+    }
+}
+
+impl ArchetypeQueryData for EntityRef<'_> {}
+
+unsafe impl<'a> WorldQuery for EntityMut<'a> {
+    type Fetch<'w> = EntityFetch<'w>;
+
+    type State = ();
+
+    fn shrink_fetch<'wlong: 'wshort, 'wshort>(fetch: Self::Fetch<'wlong>) -> Self::Fetch<'wshort> {
+        fetch
+    }
+
+    unsafe fn init_fetch<'w, 's>(
+        world: UnsafeWorldCell<'w>,
+        _state: &'s Self::State,
+        last_run: Tick,
+        this_run: Tick,
+    ) -> Self::Fetch<'w> {
+        EntityFetch {
+            world,
+            last_run,
+            this_run,
+        }
+    }
+
+    const IS_DENSE: bool = true;
+
+    #[inline]
+    unsafe fn set_archetype<'w, 's>(
+        _fetch: &mut Self::Fetch<'w>,
+        _state: &'s Self::State,
+        _archetype: &'w Archetype,
+        _table: &'w Table,
+    ) {
+    }
+
+    #[inline]
+    unsafe fn set_table<'w, 's>(
+        _fethc: &mut Self::Fetch<'w>,
+        _state: &'s Self::State,
+        _table: &'w Table,
+    ) {
+    }
+
+    fn update_component_access(_state: &Self::State, access: &mut super::FilteredAccess) {
+        assert!(
+            !access.access().has_any_read(),
+            "EntityMut conflicts with a previous access in this query. Exclusive access cannot coincide with any other accesses.",
+        );
+        access.write_all();
+    }
+
+    fn init_state(_world: &mut World) -> Self::State {}
+
+    fn get_state(_components: &Components) -> Option<Self::State> {
+        Some(())
+    }
+
+    fn matches_component_set(
+        _state: &Self::State,
+        _set_contains_id: &impl Fn(ComponentId) -> bool,
+    ) -> bool {
+        true
+    }
+}
+
+// SAFETY: access of `EntityRef` is a subset of `EntityMut`
+unsafe impl<'a> QueryData for EntityMut<'a> {
+    const IS_READ_ONLY: bool = false;
+
+    const IS_ARCHETYPAL: bool = true;
+
+    type ReadOnly = EntityRef<'a>;
+
+    type Item<'w, 's> = EntityMut<'w>;
+
+    fn shrink<'wlong: 'wshort, 'wshort, 's>(
+        item: Self::Item<'wlong, 's>,
+    ) -> Self::Item<'wshort, 's> {
+        item
+    }
+
+    #[inline(always)]
+    unsafe fn fetch<'w, 's>(
+        _state: &'s Self::State,
+        fetch: &mut Self::Fetch<'w>,
+        entity: Entity,
+        table_row: TableRow,
+    ) -> Option<Self::Item<'w, 's>> {
+        // SAFETY: `fetch` must be called with an entity that exists in the world
+        let cell = unsafe {
+            fetch
+                .world
+                .get_entity_with_ticks(entity, fetch.last_run, fetch.this_run)
+                .debug_checked_unwrap()
+        };
+        // SAFETY: mutable access to every component has been registered.
+        Some(unsafe { EntityMut::new(cell) })
+    }
+
+    fn iter_access(state: &Self::State) -> impl Iterator<Item = EcsAccessType<'_>> {
+        iter::once(EcsAccessType::Component(EcsAccessLevel::WriteAll))
+    }
+}
+
+// SAFETY: access is only on the current entity
+unsafe impl IterQueryData for EntityMut<'_> {}
+
+// SAFETY: access is only on the current entity
+unsafe impl SingleEntityQueryData for EntityMut<'_> {}
+
+impl ReleaseStateQueryData for EntityMut<'_> {
+    fn release_state<'w>(item: Self::Item<'w, '_>) -> Self::Item<'w, 'static> {
+        item
+    }
+}
+
+impl ArchetypeQueryData for EntityMut<'_> {}
+
+unsafe impl WorldQuery for FiletredEntityRef<'_, '_> {
+    type Fetch<'w> = EntityFetch<'w>;
+
+    type State = Access;
+
+    fn shrink_fetch<'wlong: 'wshort, 'wshort>(fetch: Self::Fetch<'wlong>) -> Self::Fetch<'wshort> {
+        todo!()
+    }
+
+    unsafe fn init_fetch<'w, 's>(
+        world: UnsafeWorldCell<'w>,
+        state: &'s Self::State,
+        last_run: Tick,
+        this_run: Tick,
+    ) -> Self::Fetch<'w> {
+        todo!()
+    }
+
+    const IS_DENSE: bool = true;
+
+    unsafe fn set_archetype<'w, 's>(
+        fetch: &mut Self::Fetch<'w>,
+        state: &'s Self::State,
+        archetype: &'w Archetype,
+        table: &'w Table,
+    ) {
+        todo!()
+    }
+
+    unsafe fn set_table<'w, 's>(
+        fethc: &mut Self::Fetch<'w>,
+        state: &'s Self::State,
+        table: &'w Table,
+    ) {
+        todo!()
+    }
+
+    fn update_component_access(state: &Self::State, access: &mut super::FilteredAccess) {
+        todo!()
+    }
+
+    fn init_state(world: &mut World) -> Self::State {
+        todo!()
+    }
+
+    fn get_state(components: &Components) -> Option<Self::State> {
+        todo!()
+    }
+
+    fn matches_component_set(
+        state: &Self::State,
+        set_contains_id: &impl Fn(ComponentId) -> bool,
+    ) -> bool {
+        todo!()
     }
 }
 
