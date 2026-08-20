@@ -111,7 +111,7 @@ pub unsafe trait WorldQuery {
     /// - `table` must be from the same [`World`] that [`WorldQuery::init_state`] was called on.
     /// - `state` must be the [`State`](Self::State) that `fetch` was initialized with.
     unsafe fn set_table<'w, 's>(
-        fethc: &mut Self::Fetch<'w>,
+        fetch: &mut Self::Fetch<'w>,
         state: &'s Self::State,
         table: &'w Table,
     );

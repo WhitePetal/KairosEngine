@@ -24,6 +24,7 @@ use crate::{
         error::{ErrorHandler, FallbackErrorHandler},
         lifecycle::RemovedComponentMessages,
         observer::Observers,
+        query::{QueryData, QueryFilter, QueryState},
         relationship::RelationshipHookMode,
         resource::{Resource, ResourceEntities},
         storage::Storages,
@@ -1033,6 +1034,30 @@ impl World {
         let result = f(guard.world, value_mut);
 
         Some(result)
+    }
+
+    /// Returns [`QueryState`] for the given filtered [`QueryData`], which is used to efficiently
+    /// run queries on the [`World`] by storing and reusing the [`QueryState`].
+    /// ```
+    /// use bevy_ecs::{component::Component, entity::Entity, world::World, query::With};
+    ///
+    /// #[derive(Component)]
+    /// struct A;
+    /// #[derive(Component)]
+    /// struct B;
+    ///
+    /// let mut world = World::new();
+    /// let e1 = world.spawn(A).id();
+    /// let e2 = world.spawn((A, B)).id();
+    ///
+    /// let mut query = world.query_filtered::<Entity, With<B>>();
+    /// let matching_entities = query.iter(&world).collect::<Vec<Entity>>();
+    ///
+    /// assert_eq!(matching_entities, vec![e2]);
+    /// ```
+    #[inline]
+    pub fn query_filtered<D: QueryData, F: QueryFilter>(&mut self) -> QueryState<D, F> {
+        QueryState::new(self)
     }
 }
 

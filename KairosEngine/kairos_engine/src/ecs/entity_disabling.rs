@@ -96,4 +96,119 @@
 //! [`World`]: crate::prelude::World
 //! [`Query` performance]: crate::prelude::Query#performance
 
+use smallvec::SmallVec;
+
+use crate::ecs::{
+    component::{Component, ComponentId, Components, Mutable, StorageType},
+    query::FilteredAccess,
+    resource::Resource,
+};
+
+/// Default query filters work by excluding entities with certain components from most queries.
+///
+/// If a query does not explicitly mention a given disabling component, it will not include entities with that component.
+/// To be more precise, this checks if the query's [`FilteredAccess`] contains the component,
+/// and if it does not, adds a [`Without`](crate::prelude::Without) filter for that component to the query.
+///
+/// [`Allow`](crate::query::Allow) and [`Has`](crate::prelude::Has) can be used to include entities
+/// with and without the disabling component.
+/// [`Allow`](crate::query::Allow) is a [`QueryFilter`](crate::query::QueryFilter) and will simply change
+/// the list of shown entities, while [`Has`](crate::prelude::Has) is a [`QueryData`](crate::query::QueryData)
+/// and will allow you to see if each entity has the disabling component or not.
+///
+/// This resource is initialized in the [`World`] whenever a new world is created,
+/// with the [`Disabled`] component as a disabling component.
+///
+/// Note that you can remove default query filters by overwriting the [`DefaultQueryFilters`] resource.
+/// This can be useful as a last resort escape hatch, but is liable to break compatibility with other libraries.
+///
+/// See the [module docs](crate::entity_disabling) for more info.
+///
+///
+/// # Warning
+///
+/// Default query filters are a global setting that affects all queries in the [`World`],
+/// and incur a small performance cost for each query.
+///
+/// They can cause significant interoperability issues within the ecosystem,
+/// as users must be aware of each disabling component in use.
+///
+/// Think carefully about whether you need to use a new disabling component,
+/// and clearly communicate their presence in any libraries you publish.
+// #[derive(Resource, Debug)]
+// #[cfg_attr(
+//     feature = "bevy_reflect",
+//     derive(bevy_reflect::Reflect),
+//     reflect(Resource)
+// )]
+#[derive(Debug)]
+pub struct DefaultQueryFilters {
+    // We only expect a few components per application to act as disabling components, so we use a SmallVec here
+    // to avoid heap allocation in most cases.
+    disabling: SmallVec<[ComponentId; 4]>,
+}
+
+// TODO!: use derive
+impl Component for DefaultQueryFilters {
+    const STORAGE_TYPE: StorageType = StorageType::SparseSet;
+
+    type Mutability = Mutable;
+}
+
+// TODO!: use derive
+impl Resource for DefaultQueryFilters {}
+
+impl DefaultQueryFilters {
+    /// Creates a new, completely empty [`DefaultQueryFilters`].
+    ///
+    /// This is provided as an escape hatch; in most cases you should initialize this using [`FromWorld`],
+    /// which is automatically called when creating a new [`World`].
+    #[must_use]
+    pub fn empty() -> Self {
+        DefaultQueryFilters {
+            disabling: SmallVec::new(),
+        }
+    }
+
+    /// Adds this [`ComponentId`] to the set of [`DefaultQueryFilters`],
+    /// causing entities with this component to be excluded from queries.
+    ///
+    /// This method is idempotent, and will not add the same component multiple times.
+    ///
+    /// # Warning
+    ///
+    /// This method should only be called before the app starts, as it will not affect queries
+    /// initialized before it is called.
+    ///
+    /// As discussed in the [module docs](crate::entity_disabling), this can have performance implications,
+    /// as well as create interoperability issues, and should be used with caution.
+    pub fn register_disabling_component(&mut self, component_id: ComponentId) {
+        if !self.disabling.contains(&component_id) {
+            self.disabling.push(component_id);
+        }
+    }
+
+    /// Get an iterator over all of the components which disable entities when present.
+    pub fn disabling_ids(&self) -> impl Iterator<Item = ComponentId> {
+        self.disabling.iter().copied()
+    }
+
+    /// Modifies the provided [`FilteredAccess`] to include the filters from this [`DefaultQueryFilters`].
+    pub(super) fn modify_access(&self, component_access: &mut FilteredAccess) {
+        for component_id in self.disabling_ids() {
+            if !component_access.contains(component_id) {
+                component_access.and_without(component_id);
+            }
+        }
+    }
+
+    pub(super) fn is_dense(&self, components: &Components) -> bool {
+        self.disabling_ids().all(|component_id| {
+            components
+                .get_info(component_id)
+                .is_some_and(|info| info.storage_type() == StorageType::Table)
+        })
+    }
+}
+
 // TODO!
