@@ -1,16 +1,17 @@
 use std::iter;
 
 use crate::{
-    debug::{DebugCheckedUnwrap, MaybeLocation},
+    debug::{DebugCheckedUnwrap, DebugName, MaybeLocation},
     ecs::{
         archetype::Archetype,
+        bundle::Bundle,
         change_detection::Tick,
         component::{ComponentId, Components},
         entity::{Entities, Entity, EntityLocation},
         query::{Access, EcsAccessLevel, EcsAccessType, WorldQuery},
         storage::{Table, TableRow},
         world::{
-            EntityMut, EntityRef, FilteredEntityMut, FilteredEntityRef, World,
+            EntityMut, EntityRef, EntityRefExcept, FilteredEntityMut, FilteredEntityRef, World,
             unsafe_world_cell::UnsafeWorldCell,
         },
     },
@@ -1413,5 +1414,141 @@ unsafe impl IterQueryData for FilteredEntityMut<'_, '_> {}
 unsafe impl SingleEntityQueryData for FilteredEntityMut<'_, '_> {}
 
 impl ArchetypeQueryData for FilteredEntityMut<'_, '_> {}
+
+unsafe impl<'a, 'b, B> WorldQuery for EntityRefExcept<'a, 'b, B>
+where
+    B: Bundle,
+{
+    type Fetch<'w> = EntityFetch<'w>;
+
+    type State = Access;
+
+    fn shrink_fetch<'wlong: 'wshort, 'wshort>(fetch: Self::Fetch<'wlong>) -> Self::Fetch<'wshort> {
+        fetch
+    }
+
+    unsafe fn init_fetch<'w, 's>(
+        world: UnsafeWorldCell<'w>,
+        _state: &'s Self::State,
+        last_run: Tick,
+        this_run: Tick,
+    ) -> Self::Fetch<'w> {
+        EntityFetch {
+            world,
+            last_run,
+            this_run,
+        }
+    }
+
+    const IS_DENSE: bool = true;
+
+    unsafe fn set_archetype<'w, 's>(
+        _fetch: &mut Self::Fetch<'w>,
+        _state: &'s Self::State,
+        _archetype: &'w Archetype,
+        _table: &'w Table,
+    ) {
+    }
+
+    unsafe fn set_table<'w, 's>(
+        _fethc: &mut Self::Fetch<'w>,
+        _state: &'s Self::State,
+        _table: &'w Table,
+    ) {
+    }
+
+    fn update_component_access(state: &Self::State, filtered_access: &mut super::FilteredAccess) {
+        let access = filtered_access.access_mut();
+        assert!(
+            access.is_compatible(state),
+            "`EntityRefExcept<{}>` conflicts with a previous access in this query.",
+            DebugName::type_name::<B>()
+        );
+        access.extend(state);
+    }
+
+    fn init_state(world: &mut World) -> Self::State {
+        let mut access = Access::new();
+        access.read_all();
+        for id in B::component_ids(&mut world.components_registrator()) {
+            access.remove_read(id);
+        }
+        access
+    }
+
+    fn get_state(components: &Components) -> Option<Self::State> {
+        let mut access = Access::new();
+        access.read_all();
+        // If the component isn't registered, we don't have a `ComponentId`
+        // to use to exclude its access.
+        // Rather than fail, just try to take additional access.
+        // This is sound because access checks will run on the resulting access.
+        // Since the component isn't registered, there are no entities with that
+        // component, and the extra access will usually have no effect.
+        for id in B::get_component_ids(components).flatten() {
+            access.remove_read(id);
+        }
+        Some(access)
+    }
+
+    fn matches_component_set(
+        _state: &Self::State,
+        _set_contains_id: &impl Fn(ComponentId) -> bool,
+    ) -> bool {
+        true
+    }
+}
+
+// SAFETY: `Self` is the same as `Self::ReadOnly`.
+unsafe impl<'a, 'b, B> QueryData for EntityRefExcept<'a, 'b, B>
+where
+    B: Bundle,
+{
+    const IS_READ_ONLY: bool = true;
+
+    const IS_ARCHETYPAL: bool = true;
+
+    type ReadOnly = Self;
+
+    type Item<'w, 's> = EntityRefExcept<'w, 's, B>;
+
+    fn shrink<'wlong: 'wshort, 'wshort, 's>(
+        item: Self::Item<'wlong, 's>,
+    ) -> Self::Item<'wshort, 's> {
+        item
+    }
+
+    unsafe fn fetch<'w, 's>(
+        access: &'s Self::State,
+        fetch: &mut Self::Fetch<'w>,
+        entity: Entity,
+        _table_row: TableRow,
+    ) -> Option<Self::Item<'w, 's>> {
+        // SAFETY: `fetch` must be called with an entity that exists in the world
+        let cell = unsafe {
+            fetch
+                .world
+                .get_entity_with_ticks(entity, fetch.last_run, fetch.this_run)
+                .debug_checked_unwrap()
+        };
+        // SAFETY: mutable access to every component has been registered.
+        Some(unsafe { EntityRefExcept::new(cell, access) })
+    }
+
+    fn iter_access(state: &Self::State) -> impl Iterator<Item = EcsAccessType<'_>> {
+        iter::once(EcsAccessType::Access(state))
+    }
+}
+
+// SAFETY: access is read only and only on the current entity
+unsafe impl<B> IterQueryData for EntityRefExcept<'_, '_, B> where B: Bundle {}
+
+// SAFETY: access is read only
+unsafe impl<B> ReadOnlyQueryData for EntityRefExcept<'_, '_, B> where B: Bundle {}
+
+// SAFETY: access is only on the current entity
+unsafe impl<B> SingleEntityQueryData for EntityRefExcept<'_, '_, B> where B: Bundle {}
+
+impl<B: Bundle> ArchetypeQueryData for EntityRefExcept<'_, '_, B> {}
 
 // TODO!

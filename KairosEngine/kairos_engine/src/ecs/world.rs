@@ -50,7 +50,8 @@ pub mod error;
 
 pub use deferred_world::DeferredWorld;
 pub use entity_access::{
-    EntityMut, EntityRef, EntityWorldMut, FilteredEntityMut, FilteredEntityRef,
+    EntityMut, EntityMutExcept, EntityRef, EntityRefExcept, EntityWorldMut, FilteredEntityMut,
+    FilteredEntityRef,
 };
 pub use entity_fetch::{EntityFetcher, WorldEntityFetch};
 pub use filtered_resource::*;
