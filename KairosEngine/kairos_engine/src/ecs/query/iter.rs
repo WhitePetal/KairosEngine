@@ -1,4 +1,4 @@
-use std::ops::Range;
+use std::{iter::FusedIterator, ops::Range};
 
 use nonmax::NonMaxU32;
 
@@ -7,8 +7,8 @@ use crate::{
     ecs::{
         archetype::{Archetype, ArchetypeEntity, Archetypes},
         change_detection::Tick,
-        entity::Entity,
-        query::{IterQueryData, QueryData, QueryFilter, QueryState, ReadOnlyQueryData, StorageId},
+        entity::{Entities, Entity},
+        query::{IterQueryData, QueryData, QueryFilter, QueryState, ReadOnlyQueryData, SingleEntityQueryData, StorageId},
         storage::{Table, TableRow, Tables},
         world::unsafe_world_cell::UnsafeWorldCell,
     },
@@ -445,6 +445,218 @@ impl<'w, 's, D: IterQueryData, F: QueryFilter> QueryIter<'w, 's, D, F> {
     }
 }
 
+impl<'w, 's, D: QueryData, F: QueryFilter> QueryIter<'w, 's, D, F> {
+    /// Sorts all query items into a new iterator, using the query lens as a key.
+    ///
+    /// This sort is stable (i.e., does not reorder equal elements).
+    ///
+    /// This uses [`slice::sort`] internally.
+    ///
+    /// Defining the lens works like [`transmute_lens`](crate::system::Query::transmute_lens).
+    /// This includes the allowed parameter type changes listed under [allowed transmutes].
+    /// However, the lens uses the filter of the original query when present.
+    ///
+    /// The lens needs to be a [`SingleEntityQueryData`] because the current implementation
+    /// of query transmutes does not support nested queries.
+    /// This restriction may be lifted in the future.
+    ///
+    /// The sort is not cached across system runs.
+    ///
+    /// If the [`QueryData`] does not implement [`IterQueryData`],
+    /// then it is not sound to yield multiple items concurrently
+    /// and the resulting [`QuerySortedIter`] will not implement [`Iterator`].
+    /// To iterate over the items in that case,
+    /// use the [`QuerySortedIter::fetch_next()`](crate::query::QuerySortedIter::fetch_next) method,
+    /// which ensures only one item is alive at a time.
+    ///
+    /// [allowed transmutes]: crate::system::Query#allowed-transmutes
+    ///
+    /// # Panics
+    ///
+    /// This will panic if `next` has been called on `QueryIter` before, unless the underlying `Query` is empty.
+    ///
+    /// # Examples
+    /// ```rust
+    /// # use bevy_ecs::prelude::*;
+    /// # use std::{ops::{Deref, DerefMut}, iter::Sum};
+    /// #
+    /// # #[derive(Component)]
+    /// # struct PartMarker;
+    /// #
+    /// # #[derive(Component, PartialEq, Eq, PartialOrd, Ord)]
+    /// # struct PartIndex(usize);
+    /// #
+    /// # #[derive(Component, Clone, Copy)]
+    /// # struct PartValue(f32);
+    /// #
+    /// # impl Deref for PartValue {
+    /// #     type Target = f32;
+    /// #
+    /// #     fn deref(&self) -> &Self::Target {
+    /// #         &self.0
+    /// #     }
+    /// # }
+    /// #
+    /// # #[derive(Component)]
+    /// # struct ParentValue(f32);
+    /// #
+    /// # impl Deref for ParentValue {
+    /// #     type Target = f32;
+    /// #
+    /// #     fn deref(&self) -> &Self::Target {
+    /// #         &self.0
+    /// #     }
+    /// # }
+    /// #
+    /// # impl DerefMut for ParentValue {
+    /// #     fn deref_mut(&mut self) -> &mut Self::Target {
+    /// #         &mut self.0
+    /// #     }
+    /// # }
+    /// #
+    /// # #[derive(Component, Debug, PartialEq, Eq, PartialOrd, Ord)]
+    /// # struct Length(usize);
+    /// #
+    /// # #[derive(Component, Debug, PartialEq, Eq, PartialOrd, Ord)]
+    /// # struct Width(usize);
+    /// #
+    /// # #[derive(Component, Debug, PartialEq, Eq, PartialOrd, Ord)]
+    /// # struct Height(usize);
+    /// #
+    /// # #[derive(Component, PartialEq, Eq, PartialOrd, Ord)]
+    /// # struct ParentEntity(Entity);
+    /// #
+    /// # #[derive(Component, Clone, Copy)]
+    /// # struct ChildPartCount(usize);
+    /// #
+    /// # impl Deref for ChildPartCount {
+    /// #     type Target = usize;
+    /// #
+    /// #     fn deref(&self) -> &Self::Target {
+    /// #         &self.0
+    /// #     }
+    /// # }
+    /// # let mut world = World::new();
+    /// // We can ensure that a query always returns in the same order.
+    /// fn system_1(query: Query<(Entity, &PartIndex)>) {
+    ///     let parts: Vec<(Entity, &PartIndex)> = query.iter().sort::<&PartIndex>().collect();
+    /// }
+    ///
+    /// // We can freely rearrange query components in the key.
+    /// fn system_2(query: Query<(&Length, &Width, &Height), With<PartMarker>>) {
+    ///     for (length, width, height) in query.iter().sort::<(&Height, &Length, &Width)>() {
+    ///         println!("height: {height:?}, width: {width:?}, length: {length:?}")
+    ///     }
+    /// }
+    ///
+    /// // We can sort by Entity without including it in the original Query.
+    /// // Here, we match iteration orders between query iterators.
+    /// fn system_3(
+    ///     part_query: Query<(&PartValue, &ParentEntity)>,
+    ///     mut parent_query: Query<(&ChildPartCount, &mut ParentValue)>,
+    /// ) {
+    ///     let part_values = &mut part_query
+    ///         .into_iter()
+    ///         .sort::<&ParentEntity>()
+    ///         .map(|(&value, parent_entity)| *value);
+    ///
+    ///     for (&child_count, mut parent_value) in parent_query.iter_mut().sort::<Entity>() {
+    ///         **parent_value = part_values.take(*child_count).sum();
+    ///     }
+    /// }
+    /// #
+    /// # let mut schedule = Schedule::default();
+    /// # schedule.add_systems((system_1, system_2, system_3));
+    /// # schedule.run(&mut world);
+    /// ```
+    pub fn sort<L: ReadOnlyQueryData + SingleEntityQueryData + 'w>(
+        self
+    ) -> QuerySortedIter<
+        'w,
+        's,
+        D,
+        F,
+        impl ExactSizeIterator<Item = Entity> + DoubleEndedIterator + FusedIterator + 'w
+    >
+    where
+        for<'lw, 'ls> L::Item<'lw, 'ls>: Ord
+    {
+        self.sort_impl::<L>(|keyed_query| keyed_query.sort())
+    }
+
+    /// Shared implementation for the various `sort` methods.
+    /// This uses the lens to collect the items for sorting, but delegates the actual sorting to the provided closure.
+    ///
+    /// Defining the lens works like [`transmute_lens`](crate::system::Query::transmute_lens).
+    /// This includes the allowed parameter type changes listed under [allowed transmutes].
+    /// However, the lens uses the filter of the original query when present.
+    ///
+    /// The lens needs to be a [`SingleEntityQueryData`] because the current implementation
+    /// of query transmutes does not support nested queries.
+    /// This restriction may be lifted in the future.
+    ///
+    /// The sort is not cached across system runs.
+    ///
+    /// If the [`QueryData`] does not implement [`IterQueryData`],
+    /// then it is not sound to yield multiple items concurrently
+    /// and the resulting [`QuerySortedIter`] will not implement [`Iterator`].
+    /// To iterate over the items in that case,
+    /// use the [`QuerySortedIter::fetch_next()`](crate::query::QuerySortedIter::fetch_next) method,
+    /// which ensures only one item is alive at a time.
+    ///
+    /// [allowed transmutes]: crate::system::Query#allowed-transmutes
+    ///
+    /// # Panics
+    ///
+    /// This will panic if `next` has been called on `QueryIter` before, unless the underlying `Query` is empty.
+    fn sort_impl<L: ReadOnlyQueryData + SingleEntityQueryData + 'w>(
+        self,
+        f: impl FnOnce(&mut Vec<(L::Item<'_, '_>, NeutralOrd<Entity>)>)
+    ) -> QuerySortedIter<
+        'w,
+        's,
+        D,
+        F,
+        impl ExactSizeIterator<Item = Entity> + DoubleEndedIterator + FusedIterator + 'w
+    >
+    {
+        // On the first successful iteration of `QueryIterationCursor`, `archetype_entities` or `table_entities`
+        // will be set to a non-zero value. The correctness of this method relies on this.
+        // I.e. this sort method will execute if and only if `next` on `QueryIterationCursor` of a
+        // non-empty `QueryIter` has not yet been called. When empty, this sort method will not panic.
+        if !self.cursor.archetype_entities.is_empty() || !self.cursor.table_entities.is_empty() {
+            panic!("it is not valid to call sort() after next()")
+        }
+
+        let world = self.world;
+
+        let query_lens_state = self.query_state.transmute_filtered::<(L, Entity), F>(world);
+
+        let query_lens = unsafe {
+            query_lens_state.query_unchecked_manual(world)
+        }.into_iter();
+
+        todo!()
+    }
+}
+
+/// An [`Iterator`] over sorted query results of a [`Query`](crate::system::Query).
+///
+/// This struct is created by the [`QueryIter::sort`], [`QueryIter::sort_unstable`],
+/// [`QueryIter::sort_by`], [`QueryIter::sort_unstable_by`], [`QueryIter::sort_by_key`],
+/// [`QueryIter::sort_unstable_by_key`], and [`QueryIter::sort_by_cached_key`] methods.
+pub struct QuerySortedIter<'w, 's, D: QueryData, F: QueryFilter, I>
+where
+    I: Iterator<Item = Entity>
+{
+    entity_iter: I,
+    entities: &'w Entities,
+    tables: &'w Tables,
+    archetypes: &'w Archetypes,
+    fetch: D::Fetch<'w>,
+    query_state: &'s QueryState<D, F>
+}
+
 struct QueryIterationCursor<'w, 's, D: QueryData, F: QueryFilter> {
     // whether the query iteration is dense or not. Mirrors QueryState's `is_dense` field.
     is_dense: bool,
@@ -724,5 +936,33 @@ impl<'w, 's, D: QueryData, F: QueryFilter> QueryIterationCursor<'w, 's, D, F> {
                 }
             }
         }
+    }
+}
+
+/// A wrapper struct that gives its data a neutral ordering.
+#[derive(Copy, Clone)]
+struct NeutralOrd<T>(T);
+
+impl<T> PartialEq for NeutralOrd<T> {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
+impl<T> Eq for NeutralOrd<T> {}
+
+#[expect(
+    clippy::non_canonical_partial_ord_impl,
+    reason = "`PartialOrd` and `Ord` on this struct must only ever return `Ordering::Equal`, so we prefer clarity"
+)]
+impl<T> PartialOrd for NeutralOrd<T> {
+    fn partial_cmp(&self, _other: &Self) -> Option<Ordering> {
+        Some(Ordering::Equal)
+    }
+}
+
+impl<T> Ord for NeutralOrd<T> {
+    fn cmp(&self, _other: &Self) -> Ordering {
+        Ordering::Equal
     }
 }

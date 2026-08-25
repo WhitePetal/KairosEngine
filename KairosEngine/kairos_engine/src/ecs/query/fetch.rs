@@ -3201,4 +3201,10 @@ impl<D: QueryData> ReleaseStateQueryData for NopWorldQuery<D> {
 
 impl<D: QueryData> ArchetypeQueryData for NopWorldQuery<D> {}
 
+macro_rules! impl_tuple_query_data {
+    () => {
+
+    };
+}
+
 // TODO!
