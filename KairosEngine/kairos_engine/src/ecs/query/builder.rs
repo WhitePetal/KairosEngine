@@ -1,8 +1,10 @@
 use std::marker::PhantomData;
 
-use crate::ecs::{component::StorageType, query::{FilteredAccess, QueryData, QueryFilter}, world::World};
-
-
+use crate::ecs::{
+    component::StorageType,
+    query::{FilteredAccess, QueryData, QueryFilter},
+    world::World,
+};
 
 /// Builder struct to create [`QueryState`] instances at runtime.
 ///
@@ -37,7 +39,7 @@ pub struct QueryBuilder<'w, D: QueryData = (), F: QueryFilter = ()> {
     world: &'w mut World,
     or: bool,
     first: bool,
-    _marker: PhantomData<(D, F)>
+    _marker: PhantomData<(D, F)>,
 }
 
 impl<'w, D: QueryData, F: QueryFilter> QueryBuilder<'w, D, F> {

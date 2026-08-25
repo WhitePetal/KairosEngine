@@ -1,6 +1,7 @@
-use crate::ecs::{archetype::ArchetypeId, entity::{Entity, EntityNotSpawnedError}};
-
-
+use crate::ecs::{
+    archetype::ArchetypeId,
+    entity::{Entity, EntityNotSpawnedError},
+};
 
 /// An error that occurs when retrieving a specific [`Entity`]'s query result from [`Query`](crate::system::Query) or [`QueryState`](crate::query::QueryState).
 // TODO: return the type_name as part of this error

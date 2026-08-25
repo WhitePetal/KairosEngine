@@ -1,6 +1,14 @@
 use std::marker::PhantomData;
 
-use crate::ecs::{change_detection::Tick, entity::{Entity, UniqueEntityArray}, query::{IterQueryData, NopWorldQuery, QueryData, QueryEntityError, QueryFilter, QueryIter, QueryState, ReadOnlyQueryData}, world::unsafe_world_cell::UnsafeWorldCell};
+use crate::ecs::{
+    change_detection::Tick,
+    entity::{Entity, UniqueEntityArray},
+    query::{
+        IterQueryData, NopWorldQuery, QueryData, QueryEntityError, QueryFilter, QueryIter,
+        QueryState, ReadOnlyQueryData,
+    },
+    world::unsafe_world_cell::UnsafeWorldCell,
+};
 
 /// A [system parameter] that provides selective access to the [`Component`] data stored in a [`World`].
 ///
@@ -472,11 +480,10 @@ pub struct Query<'world, 'state, D: QueryData, F: QueryFilter = ()> {
     world: UnsafeWorldCell<'world>,
     state: &'state QueryState<D, F>,
     last_run: Tick,
-    this_run: Tick
+    this_run: Tick,
 }
 
-
-impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F>  {
+impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// Creates a new query.
     ///
     /// # Safety
@@ -489,13 +496,13 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F>  {
         world: UnsafeWorldCell<'w>,
         state: &'s QueryState<D, F>,
         last_run: Tick,
-        this_run: Tick
+        this_run: Tick,
     ) -> Self {
         Self {
             world,
             state,
             last_run,
-            this_run
+            this_run,
         }
     }
 
@@ -613,10 +620,10 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F>  {
     #[inline]
     pub fn get_many_inner<const N: usize>(
         self,
-        entities: [Entity; N]
+        entities: [Entity; N],
     ) -> Result<[D::Item<'w, 's>; N], QueryEntityError>
     where
-        D: ReadOnlyQueryData
+        D: ReadOnlyQueryData,
     {
         todo!()
     }
@@ -637,7 +644,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F>  {
         entities: UniqueEntityArray<N>,
     ) -> Result<[D::Item<'w, 's>; N], QueryEntityError>
     where
-        D: IterQueryData
+        D: IterQueryData,
     {
         todo!()
     }
@@ -656,10 +663,10 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F>  {
     #[inline]
     pub fn get_many_mut_inner<const N: usize>(
         self,
-        entities: [Entity; N]
+        entities: [Entity; N],
     ) -> Result<[D::Item<'w, 's>; N], QueryEntityError>
     where
-        D: IterQueryData
+        D: IterQueryData,
     {
         todo!()
     }

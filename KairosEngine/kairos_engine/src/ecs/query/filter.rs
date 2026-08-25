@@ -1,4 +1,4 @@
-use crate::ecs::query::WorldQuery;
+use crate::ecs::{entity::Entity, query::WorldQuery, storage::TableRow};
 
 /// Types that filter the results of a [`Query`].
 ///
@@ -69,8 +69,48 @@ use crate::ecs::query::WorldQuery;
     label = "invalid `Query` filter",
     note = "a `QueryFilter` typically uses a combination of `With<T>` and `Without<T>` statements"
 )]
-pub unsafe trait QueryFilter: WorldQuery {}
+pub unsafe trait QueryFilter: WorldQuery {
+    /// Returns true if (and only if) this Filter relies strictly on archetypes to limit which
+    /// components are accessed by the Query.
+    ///
+    /// This enables optimizations for [`QueryIter`](`crate::query::QueryIter`) that rely on knowing exactly how
+    /// many elements are being iterated (such as `Iterator::collect()`).
+    ///
+    /// If this is `true`, then [`QueryFilter::filter_fetch`] must always return true.
+    const IS_ARCHETYPAL: bool;
 
-unsafe impl QueryFilter for () {}
+    /// Returns true if the provided [`Entity`] and [`TableRow`] should be included in the query results.
+    /// If false, the entity will be skipped.
+    ///
+    /// Note that this is called after already restricting the matched [`Table`]s and [`Archetype`]s to the
+    /// ones that are compatible with the Filter's access.
+    ///
+    /// Implementors of this method will generally either have a trivial `true` body (required for archetypal filters),
+    /// or access the necessary data within this function to make the final decision on filter inclusion.
+    ///
+    /// # Safety
+    ///
+    /// Must always be called _after_ [`WorldQuery::set_table`] or [`WorldQuery::set_archetype`]. `entity` and
+    /// `table_row` must be in the range of the current table and archetype.
+    unsafe fn filter_fetch(
+        state: &Self::State,
+        fetch: &mut Self::Fetch<'_>,
+        entity: Entity,
+        table_row: TableRow,
+    ) -> bool;
+}
+
+unsafe impl QueryFilter for () {
+    const IS_ARCHETYPAL: bool = true;
+
+    unsafe fn filter_fetch(
+        state: &Self::State,
+        fetch: &mut Self::Fetch<'_>,
+        entity: Entity,
+        table_row: TableRow,
+    ) -> bool {
+        true
+    }
+}
 
 // TODO!
