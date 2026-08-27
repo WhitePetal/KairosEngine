@@ -113,4 +113,24 @@ unsafe impl QueryFilter for () {
     }
 }
 
+/// A marker trait to indicate that the filter works at an archetype level.
+///
+/// This is needed to:
+/// - implement [`ExactSizeIterator`] for [`QueryIter`](crate::query::QueryIter) that contains archetype-level filters.
+/// - ensure table filtering for [`QueryContiguousIter`](crate::query::QueryContiguousIter).
+///
+/// The trait must only be implemented for filters where its corresponding [`QueryFilter::IS_ARCHETYPAL`]
+/// is [`prim@true`]. As such, only the [`With`] and [`Without`] filters can implement the trait.
+/// [Tuples](prim@tuple) and [`Or`] filters are automatically implemented with the trait only if its containing types
+/// also implement the same trait.
+///
+/// [`Added`], [`Changed`] and [`Spawned`] work with entities, and therefore are not archetypal. As such
+/// they do not implement [`ArchetypeFilter`].
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is not a valid `Query` filter based on archetype information",
+    label = "invalid `Query` filter",
+    note = "an `ArchetypeFilter` typically uses a combination of `With<T>` and `Without<T>` statements"
+)]
+pub trait ArchetypeFilter: QueryFilter {}
+
 // TODO!

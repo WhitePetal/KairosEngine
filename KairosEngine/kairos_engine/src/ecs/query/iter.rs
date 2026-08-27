@@ -1,19 +1,13 @@
-use std::{cmp::Ordering, iter::FusedIterator, ops::Range};
+use std::{cmp::Ordering, fmt::{self, Debug, Formatter}, iter::FusedIterator, ops::Range};
 
 use nonmax::NonMaxU32;
 
 use crate::{
     debug::DebugCheckedUnwrap,
     ecs::{
-        archetype::{Archetype, ArchetypeEntity, Archetypes},
-        change_detection::Tick,
-        entity::{Entities, Entity, EntitySetIterator},
-        query::{
-            IterQueryData, QueryData, QueryFilter, QueryState, ReadOnlyQueryData,
-            SingleEntityQueryData, StorageId,
-        },
-        storage::{Table, TableRow, Tables},
-        world::{EntityMut, EntityRef, FilteredEntityRef, unsafe_world_cell::UnsafeWorldCell},
+        archetype::{Archetype, ArchetypeEntity, Archetypes}, bundle::Bundle, change_detection::Tick, entity::{ContainsEntity, Entities, Entity, EntityEquivalent, EntitySetIterator}, query::{
+            ArchetypeFilter, ArchetypeQueryData, ContiguousQueryData, IterQueryData, QueryData, QueryFilter, QueryState, ReadOnlyQueryData, SingleEntityQueryData, StorageId
+        }, storage::{Table, TableRow, Tables}, world::{EntityMut, EntityMutExcept, EntityRef, EntityRefExcept, FilteredEntityMut, FilteredEntityRef, unsafe_world_cell::UnsafeWorldCell}
     },
 };
 
@@ -718,8 +712,132 @@ unsafe impl<'w, 's, F: QueryFilter> EntitySetIterator for QueryIter<'w, 's, Enti
 // SAFETY: [`QueryIter`] is guaranteed to return every matching entity once and only once.
 unsafe impl<'w, 's, F: QueryFilter> EntitySetIterator for QueryIter<'w, 's, EntityMut<'_>, F> {}
 
+// SAFETY: [`QueryIter`] is guaranteed to return every matching entity once and only once.
 unsafe impl<'w, 's, F: QueryFilter> EntitySetIterator
     for QueryIter<'w, 's, FilteredEntityRef<'_, '_>, F>
+{
+}
+
+// SAFETY: [`QueryIter`] is guaranteed to return every matching entity once and only once.
+unsafe impl<'w, 's, F: QueryFilter> EntitySetIterator
+    for QueryIter<'w, 's, FilteredEntityMut<'_, '_>, F>
+{
+}
+
+// SAFETY: [`QueryIter`] is guaranteed to return every matching entity once and only once.
+unsafe impl<'w, 's, F: QueryFilter, B: Bundle> EntitySetIterator
+    for QueryIter<'w, 's, EntityRefExcept<'_, '_, B>, F>
+{
+}
+
+// SAFETY: [`QueryIter`] is guaranteed to return every matching entity once and only once.
+unsafe impl<'w, 's, F: QueryFilter, B: Bundle> EntitySetIterator
+    for QueryIter<'w, 's, EntityMutExcept<'_, '_, B>, F>
+{
+}
+
+impl<'w, 's, D: QueryData, F: QueryFilter> Debug for QueryIter<'w, 's, D, F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("QueryIter").finish()
+    }
+}
+
+impl<'w, 's, D: ReadOnlyQueryData, F: QueryFilter> Clone for QueryIter<'w, 's, D, F> {
+    fn clone(&self) -> Self {
+        self.remaining()
+    }
+}
+
+/// Iterator for contiguous chunks of memory
+pub struct QueryContiguousIter<'w, 's, D: ContiguousQueryData, F: ArchetypeFilter> {
+    tables: &'w Tables,
+    storage_id_iter: std::slice::Iter<'s, StorageId>,
+    query_state: &'s QueryState<D, F>,
+    fetch: D::Fetch<'w>,
+    // NOTE: no need for F::Fetch because it always returns true
+}
+
+impl<'w, 's, D: ContiguousQueryData, F: ArchetypeFilter> QueryContiguousIter<'w, 's, D, F> {
+    /// # Safety
+    /// - `world` must have permission to access any of the components registered in `query_state`.
+    /// - `world` must be the same one used to initialize `query_state`.
+    pub(crate) unsafe fn new(
+        world: UnsafeWorldCell<'w>,
+        query_state: &'s QueryState<D, F>,
+        last_run: Tick,
+        this_run: Tick
+    ) -> Option<Self> {
+        query_state.is_dense.then(|| Self {
+            // SAFETY: We only access table data that has been registered in `query_state`
+            tables: unsafe {
+                &world.storages().tables
+            },
+            storage_id_iter: query_state.matched_storage_ids.iter(),
+            // SAFETY: The invariants are upheld by the caller.
+            fetch: unsafe {
+                D::init_fetch(world, &query_state.fetch_state, last_run, this_run)
+            },
+            query_state,
+        })
+    }
+}
+
+impl<'w, 's, D: ContiguousQueryData, F: ArchetypeFilter> Iterator
+    for QueryContiguousIter<'w, 's, D, F>
+{
+    type Item = D::Contiguous<'w, 's>;
+
+    #[inline(always)]
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+             // SAFETY: Query is dense
+            let table_id = unsafe {
+                self.storage_id_iter.next()?.table_id
+            };
+            // SAFETY: `table_id` was returned by `self.storage_id_iter` which always returns a
+            // valid id
+            let table = unsafe {
+                self.tables.get(table_id).debug_checked_unwrap()
+            };
+            if table.is_empty() {
+                continue;
+            }
+            // SAFETY:
+            // - `table` is from the same world as `self.query_state` (`self.storage_id_iter` is
+            // from the same world as `self.query_state`, see [`Self::new`])
+            // - `self.fetch` was initialized with `self.query_state` (in [`Self::new`])
+            unsafe {
+                D::set_table(&mut self.fetch, &self.query_state.fetch_state, table);
+            }
+
+            // no filtering because `F` implements `ArchetypeFilter` which ensures that `QueryFilter::fetch`
+            // always returns true
+
+            // SAFETY:
+            // - [`D::set_table`] is executed prior.
+            // - `table.entities()` return a valid entity array
+            // - the caller of [`Self::new`] ensures that the world has permission to access any of
+            // the components registered in `self.query_state`
+            let item = unsafe {
+                D::fetch_contiguous(
+                    &self.query_state.fetch_state,
+                    &mut self.fetch,
+                    table.entities()
+                )
+            };
+
+            return Some(item);
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (0, self.storage_id_iter.size_hint().1)
+    }
+}
+
+// [`QueryIterationCursor::next_contiguous`] always returns None when exhausted
+impl<'w, 's, D: ContiguousQueryData, F: ArchetypeFilter> FusedIterator
+    for QueryContiguousIter<'w, 's, D, F>
 {
 }
 
@@ -744,6 +862,10 @@ impl<'w, 's, D: QueryData, F: QueryFilter, I: Iterator> QuerySortedIter<'w, 's, 
 where
     I: Iterator<Item = Entity>,
 {
+    /// # Safety
+    /// - `world` must have permission to access any of the components registered in `query_state`.
+    /// - `world` must be the same one used to initialize `query_state`.
+    /// - `entity_list` must only contain unique entities or be empty.
     pub(crate) unsafe fn new<EntityList: IntoIterator<IntoIter = I>>(
         world: UnsafeWorldCell<'w>,
         query_state: &'s QueryState<D, F>,
@@ -761,6 +883,612 @@ where
             tables: &unsafe { world.storages() }.tables,
             fetch,
             entity_iter: entity_list.into_iter(),
+        }
+    }
+
+    /// Get the next result from the query.
+    ///
+    /// If the [`QueryData`] does not implement [`IterQueryData`],
+    /// then it is not sound to yield multiple items concurrently
+    /// and the resulting [`QuerySortedIter`] will not implement [`Iterator`].
+    /// In that case, this method can be used to iterate over the items
+    /// while ensuring only one is alive at a time.
+    ///
+    /// Most queries do implement [`IterQueryData`],
+    /// and can use the ordinary [`Iterator::next`]
+    /// method or a `for` loop.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use bevy_ecs::prelude::*;
+    /// # #[derive(Component, Ord, PartialOrd, Eq, PartialEq)]
+    /// # struct C;
+    /// fn system(mut query: Query<&mut C>) {
+    ///     let mut iter = query.iter_mut().sort::<&C>();
+    ///     while let Some(mut c) = iter.fetch_next() {
+    ///         //
+    ///     }
+    /// }
+    /// # bevy_ecs::system::assert_is_system(system);
+    /// ```
+    pub fn fetch_next(&mut self) -> Option<D::Item<'_, 's>> {
+        while let Some(entity) = self.entity_iter.next() {
+            // SAFETY:
+            // - `entity` is passed from `entity_iter` the first time.
+            // - `self` is mutably borrowed, so there are no other items alive for any entity.
+            if let Some(item) = unsafe {
+                self.fetch_next_impl(entity)
+            } {
+                return Some(D::shrink(item));
+            }
+        }
+        None
+    }
+
+    /// Get the next result from the back of the query.
+    ///
+    /// If the [`QueryData`] does not implement [`IterQueryData`],
+    /// then it is not sound to yield multiple items concurrently
+    /// and the resulting [`QuerySortedIter`] will not implement [`Iterator`].
+    /// In that case, this method can be used to iterate over the items
+    /// while ensuring only one is alive at a time.
+    ///
+    /// Most queries do implement [`IterQueryData`],
+    /// and can use the ordinary [`Iterator::next`]
+    /// method or a `for` loop.
+    pub fn fetch_next_back(&mut self) -> Option<D::Item<'_, 's>>
+    where
+        I: DoubleEndedIterator
+    {
+        while let Some(entity) = self.entity_iter.next_back() {
+            // SAFETY:
+            // - `entity` is passed from `entity_iter` the first time.
+            // - `self` is mutably borrowed, so there are no other items alive for any entity.
+            if let Some(item) = unsafe {
+                self.fetch_next_impl(entity)
+            } {
+                return Some(D::shrink(item));
+            }
+        }
+        None
+    }
+
+    /// # Safety
+    ///
+    /// - `entity` must stem from `self.entity_iter`
+    /// - If `D` does not impl `ReadOnlyQueryData`, then there must not be any other `Item`s alive for the current entity
+    /// - If `D` does not impl `IterQueryData`, then there must not be any other `Item`s alive for *any* entity
+    #[inline(always)]
+    unsafe fn fetch_next_impl(&mut self, entity: Entity) -> Option<D::Item<'w, 's>> {
+        let (location, archetype, table);
+        // SAFETY:
+        // `tables` and `archetypes` belong to the same world that the [`QueryIter`]
+        // was initialized for.
+        unsafe {
+            location = self.entities.get_spawned(entity).debug_checked_unwrap();
+            archetype = self
+                .archetypes
+                .get(location.archetype_id)
+                .debug_checked_unwrap();
+            table = self.tables.get(location.table_id).debug_checked_unwrap();
+        }
+
+        // SAFETY: `archetype` is from the world that `fetch` was created for,
+        // `fetch_state` is the state that `fetch` was initialized with
+        unsafe {
+            D::set_archetype(
+                &mut self.fetch,
+                &self.query_state.fetch_state,
+                archetype,
+                table
+            );
+        }
+
+        // The entity list has already been filtered by the query lens, so we forego filtering here.
+        // SAFETY:
+        // - set_archetype was called prior, `location.archetype_row` is an archetype index in range of the current archetype
+        // - Caller ensures there are no conflicting items alive
+        unsafe {
+            D::fetch(
+                &self.query_state.fetch_state,
+                &mut self.fetch,
+                entity,
+                location.table_row
+            )
+        }
+    }
+}
+
+impl<'w, 's, D: IterQueryData, F: QueryFilter, I: Iterator> Iterator
+    for QuerySortedIter<'w, 's, D, F, I>
+where
+    I: Iterator<Item = Entity>
+{
+    type Item = D::Item<'w, 's>;
+
+    #[inline(always)]
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some(entity) = self.entity_iter.next() {
+            // SAFETY:
+            // - `entity` is passed from `entity_iter` the first time.
+            // - `D: IterQueryData`
+            if let Some(item) = unsafe {
+                self.fetch_next_impl(entity)
+            } {
+                return Some(item);
+            }
+        }
+
+        None
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let (min_size, max_size) = self.entity_iter.size_hint();
+        let archetype_query = D::IS_ARCHETYPAL;
+        let min_size = if archetype_query { min_size } else { 0 };
+        (min_size, max_size)
+    }
+}
+
+impl<'w, 's, D: IterQueryData, F: QueryFilter, I: Iterator> DoubleEndedIterator
+    for QuerySortedIter<'w, 's, D, F, I>
+where
+    I: DoubleEndedIterator<Item = Entity>,
+{
+    #[inline(always)]
+    fn next_back(&mut self) -> Option<Self::Item> {
+        while let Some(entity) = self.entity_iter.next_back() {
+            // SAFETY:
+            // - `entity` is passed from `entity_iter` the first time.
+            // - `D: IterQueryData`
+            if let Some(item) = unsafe { self.fetch_next_impl(entity) } {
+                return Some(item);
+            }
+        }
+        None
+    }
+}
+
+impl<
+        D: ArchetypeQueryData + IterQueryData,
+        F: QueryFilter,
+        I: ExactSizeIterator<Item = Entity>,
+    > ExactSizeIterator for QuerySortedIter<'_, '_, D, F, I>
+{
+}
+
+// This is correct as [`QuerySortedIter`] returns `None` once exhausted if `entity_iter` does.
+impl<'w, 's, D: IterQueryData, F: QueryFilter, I: Iterator> FusedIterator
+    for QuerySortedIter<'w, 's, D, F, I>
+where
+    I: FusedIterator<Item = Entity>,
+{
+}
+
+// SAFETY:
+// `I` stems from a collected and sorted `EntitySetIterator` ([`QueryIter`]).
+// Fetching unique entities maintains uniqueness.
+unsafe impl<'w, 's, F: QueryFilter, I: Iterator<Item = Entity>> EntitySetIterator
+    for QuerySortedIter<'w, 's, Entity, F, I>
+{
+}
+
+impl<'w, 's, D: QueryData, F: QueryFilter, I: Iterator<Item = Entity>> Debug
+    for QuerySortedIter<'w, 's, D, F, I>
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("QuerySortedIter").finish()
+    }
+}
+
+/// An [`Iterator`] over the query items generated from an iterator of [`Entity`]s.
+///
+/// Items are returned in the order of the provided iterator.
+/// Entities that don't match the query are skipped.
+///
+/// This struct is created by the [`Query::iter_many`](crate::system::Query::iter_many) and [`Query::iter_many_mut`](crate::system::Query::iter_many_mut) methods.
+pub struct QueryManyIter<'w, 's, D: QueryData, F: QueryFilter, I: Iterator<Item = EntityEquivalent>>
+{
+    world: UnsafeWorldCell<'w>,
+    entity_iter: I,
+    entities: &'w Entities,
+    tables: &'w Tables,
+    archetypes: &'w Archetypes,
+    fetch: D::Fetch<'w>,
+    filter: F::Fetch<'w>,
+    query_state: &'s QueryState<D, F>
+}
+
+impl<'w, 's, D: QueryData, F: QueryFilter, I: Iterator<Item: EntityEquivalent>> QueryManyIter<'w, 's, D, F, I> {
+    /// # Safety
+    /// - `world` must have permission to access any of the components registered in `query_state`.
+    /// - `world` must be the same one used to initialize `query_state`.
+    pub(crate) unsafe fn new<EntityList: IntoIterator<IntoIter = I>>(
+        world: UnsafeWorldCell<'w>,
+        query_state: &'s QueryState<D, F>,
+        entity_list: EntityList,
+        last_run: Tick,
+        this_run: Tick
+    ) -> QueryManyIter<'w, 's, D, F, I> {
+        let fetch = unsafe {
+            D::init_fetch(world, &query_state.fetch_state, last_run, this_run)
+        };
+        let filter = unsafe {
+            F::init_fetch(world, &query_state.filter_state, last_run, this_run)
+        };
+        QueryManyIter {
+            world,
+            query_state,
+            entities: world.entities(),
+            archetypes: world.archetypes(),
+            // SAFETY: We only access table data that has been registered in `query_state`.
+            // This means `world` has permission to access the data we use.
+            tables: unsafe { &world.storages().tables },
+            fetch,
+            filter,
+            entity_iter: entity_list.into_iter()
+        }
+    }
+
+    /// # Safety
+    ///
+    /// - All arguments must stem from the same valid `QueryManyIter`.
+    /// - If `D` does not impl `ReadOnlyQueryData`, then there must not be any other `Item`s alive for the current entity
+    /// - If `D` does not impl `IterQueryData`, then there must not be any other `Item`s alive for *any* entity
+    #[inline(always)]
+    unsafe fn fetch_next_aliased_unchecked(
+        entity_iter: impl Iterator<Item: EntityEquivalent>,
+        entities: &'w Entities,
+        tables: &'w Tables,
+        archetypes: &'w Archetypes,
+        fetch: &mut D::Fetch<'w>,
+        filter: &mut F::Fetch<'w>,
+        query_state: &'s QueryState<D, F>
+    ) -> Option<D::Item<'w, 's>> {
+        for entity_borrow in entity_iter {
+            let entity = entity_borrow.entity();
+            let Ok(location) = entities.get_spawned(entity) else {
+                continue;
+            };
+
+            if !query_state
+                .matched_archetypes
+                .contains(location.archetype_id.index())
+            {
+                continue;
+            }
+
+            let archetype = unsafe {
+                archetypes.get(location.archetype_id).debug_checked_unwrap()
+            };
+            let table = unsafe {
+                tables.get(location.table_id).debug_checked_unwrap()
+            };
+
+            // SAFETY: `archetype` is from the world that `fetch/filter` were created for,
+            // `fetch_state`/`filter_state` are the states that `fetch/filter` were initialized with
+            unsafe {
+                D::set_archetype(fetch, &query_state.fetch_state, archetype, table);
+            }
+            // SAFETY: `table` is from the world that `fetch/filter` were created for,
+            // `fetch_state`/`filter_state` are the states that `fetch/filter` were initialized with
+            unsafe {
+                F::set_archetype(filter, &query_state.filter_state, archetype, table);
+            }
+
+            if unsafe {
+                F::filter_fetch(
+                    &query_state.filter_state,
+                    filter,
+                    entity,
+                    location.table_row
+                )
+            } {
+                // SAFETY:
+                // - set_archetype was called prior, `location.archetype_row` is an archetype index in range of the current archetype
+                // - Caller ensures there are no conflicting items alive
+                let item = unsafe {
+                    D::fetch(&query_state.fetch_state, fetch, entity, location.table_row)
+                };
+                if let Some(item) = item {
+                    return Some(item);
+                }
+            }
+        }
+        None
+    }
+
+    /// Get the next result from the query
+    #[inline(always)]
+    pub fn fetch_next(&mut self) -> Option<D::Item<'_, 's>> {
+        // SAFETY:
+        // All arguments stem from self.
+        // We are limiting the returned reference to self,
+        // making sure this method cannot be called multiple times without getting rid
+        // of any previously returned unique references first, thus preventing aliasing.
+        unsafe {
+            Self::fetch_next_aliased_unchecked(
+                &mut self.entity_iter,
+                self.entities,
+                self.tables,
+                self.archetypes,
+                &mut self.fetch,
+                &mut self.filter,
+                self.query_state
+            )
+            .map(D::shrink)
+        }
+    }
+
+    /// Sorts all query items into a new iterator, using the query lens as a key.
+    ///
+    /// This sort is stable (i.e., does not reorder equal elements).
+    ///
+    /// This uses [`slice::sort`] internally.
+    ///
+    /// Defining the lens works like [`transmute_lens`](crate::system::Query::transmute_lens).
+    /// This includes the allowed parameter type changes listed under [allowed transmutes].
+    /// However, the lens uses the filter of the original query when present.
+    ///
+    /// The lens needs to be a [`SingleEntityQueryData`] because the current implementation
+    /// of query transmutes does not support nested queries.
+    /// This restriction may be lifted in the future.
+    ///
+    /// The sort is not cached across system runs.
+    ///
+    /// [allowed transmutes]: crate::system::Query#allowed-transmutes
+    ///
+    /// Unlike the sort methods on [`QueryIter`], this does NOT panic if `next`/`fetch_next` has been
+    /// called on [`QueryManyIter`] before.
+    ///
+    /// # Examples
+    /// ```rust
+    /// # use bevy_ecs::prelude::*;
+    /// # use std::{ops::{Deref, DerefMut}, iter::Sum};
+    /// #
+    /// # #[derive(Component)]
+    /// # struct PartMarker;
+    /// #
+    /// # #[derive(Component, PartialEq, Eq, PartialOrd, Ord)]
+    /// # struct PartIndex(usize);
+    /// #
+    /// # #[derive(Component, Clone, Copy)]
+    /// # struct PartValue(usize);
+    /// #
+    /// # impl Deref for PartValue {
+    /// #     type Target = usize;
+    /// #
+    /// #     fn deref(&self) -> &Self::Target {
+    /// #         &self.0
+    /// #     }
+    /// # }
+    /// #
+    /// # impl DerefMut for PartValue {
+    /// #     fn deref_mut(&mut self) -> &mut Self::Target {
+    /// #         &mut self.0
+    /// #     }
+    /// # }
+    /// #
+    /// # #[derive(Component, Debug, PartialEq, Eq, PartialOrd, Ord)]
+    /// # struct Length(usize);
+    /// #
+    /// # #[derive(Component, Debug, PartialEq, Eq, PartialOrd, Ord)]
+    /// # struct Width(usize);
+    /// #
+    /// # #[derive(Component, Debug, PartialEq, Eq, PartialOrd, Ord)]
+    /// # struct Height(usize);
+    /// #
+    /// # #[derive(Component, PartialEq, Eq, PartialOrd, Ord)]
+    /// # struct ParentEntity(Entity);
+    /// #
+    /// # let mut world = World::new();
+    /// // We can ensure that a query always returns in the same order.
+    /// fn system_1(query: Query<(Entity, &PartIndex)>) {
+    /// #   let entity_list: Vec<Entity> = Vec::new();
+    ///     let parts: Vec<(Entity, &PartIndex)> = query.iter_many(entity_list).sort::<&PartIndex>().collect();
+    /// }
+    ///
+    /// // We can freely rearrange query components in the key.
+    /// fn system_2(query: Query<(&Length, &Width, &Height), With<PartMarker>>) {
+    /// #   let entity_list: Vec<Entity> = Vec::new();
+    ///     for (length, width, height) in query.iter_many(entity_list).sort::<(&Height, &Length, &Width)>() {
+    ///         println!("height: {height:?}, width: {width:?}, length: {length:?}")
+    ///     }
+    /// }
+    ///
+    /// // You can use `fetch_next_back` to obtain mutable references in reverse order.
+    /// fn system_3(
+    ///     mut query: Query<&mut PartValue>,
+    /// ) {
+    /// #   let entity_list: Vec<Entity> = Vec::new();
+    ///     // We need to collect the internal iterator before iterating mutably
+    ///     let mut parent_query_iter = query.iter_many_mut(entity_list)
+    ///         .sort::<Entity>();
+    ///
+    ///     let mut scratch_value = 0;
+    ///     while let Some(mut part_value) = parent_query_iter.fetch_next_back()
+    ///     {
+    ///         // some order-dependent operation, here bitwise XOR
+    ///         **part_value ^= scratch_value;
+    ///         scratch_value = **part_value;
+    ///     }
+    /// }
+    /// #
+    /// # let mut schedule = Schedule::default();
+    /// # schedule.add_systems((system_1, system_2, system_3));
+    /// # schedule.run(&mut world);
+    /// ```
+    pub fn sort<L: ReadOnlyQueryData + SingleEntityQueryData + 'w>(
+        self
+    ) -> QuerySortedManyIter<
+        'w,
+        's,
+        D,
+        F,
+        impl ExactSizeIterator<Item = Entity> + DoubleEndedIterator + FusedIterator + 'w
+    >
+    where
+        for<'lw, 'ls> L::Item<'lw, 'ls>: Ord,
+    {
+        self.sort_impl::<L>(|keyed_query| keyed_query.srot())
+    }
+
+    /// Shared implementation for the various `sort` methods.
+    /// This uses the lens to collect the items for sorting, but delegates the actual sorting to the provided closure.
+    ///
+    /// Defining the lens works like [`transmute_lens`](crate::system::Query::transmute_lens).
+    /// This includes the allowed parameter type changes listed under [allowed transmutes].
+    /// However, the lens uses the filter of the original query when present.
+    ///
+    /// The lens needs to be a [`SingleEntityQueryData`] because the current implementation
+    /// of query transmutes does not support nested queries.
+    /// This restriction may be lifted in the future.
+    ///
+    /// The sort is not cached across system runs.
+    ///
+    /// [allowed transmutes]: crate::system::Query#allowed-transmutes
+    ///
+    /// Unlike the sort methods on [`QueryIter`], this does NOT panic if `next`/`fetch_next` has been
+    /// called on [`QueryManyIter`] before.
+    fn sort_impl<L: ReadOnlyQueryData + SingleEntityQueryData + 'w>(
+        self,
+        f: impl FnOnce(&mut Vec<(L::Item<'_, '_>, NeutralOrd<Entity>)>)
+    ) -> QuerySortedManyIter<
+        'w,
+        's,
+        D,
+        F,
+        impl ExactSizeIterator<Item = Entity> + DoubleEndedIterator + FusedIterator + 'w
+    > {
+        let world = self.world;
+
+        let query_lens_state = self.query_state.transmute_filtered::<(L, Entity), F>(world);
+
+        // SAFETY:
+        // `self.world` has permission to access the required components.
+        // The original query iter has not been iterated on, so no items are aliased from it.
+        // `QueryIter::new` ensures `world` is the same one used to initialize `query_state`.
+        let query_lens = unsafe {
+            query_lens_state.query_unchecked_manual(world)
+        }.iter_many_inner(self.entity_iter);
+        let mut keyed_query: Vec<_> = query_lens
+            .map(|(key, entity)| (key, NeutralOrd(entity)))
+            .collect();
+        f(&mut keyed_query);
+        // Re-collect into a `Vec` to eagerly drop the lens items.
+        // They must be dropped before `fetch_next` is called since they may alias
+        // with other data items if there are duplicate entities in `entity_iter`.
+        let entity_iter = keyed_query
+            .into_iter()
+            .map(|(.., entity)| entity.0)
+            .collect::<Vec<_>>()
+            .into_iter();
+        // SAFETY:
+        // `self.world` has permission to access the required components.
+        // Each lens query item is dropped before the respective actual query item is accessed.
+        unsafe {
+            QuerySortedManyIter::new(
+                world,
+                self.query_state,
+                entity_iter,
+                world.last_change_tick(),
+                world.change_tick()
+            )
+        }
+    }
+}
+
+impl<'w, 's, D: QueryData, F: QueryFilter, I: DoubleEndedIterator<Item: EntityEquivalent>>
+    QueryManyIter<'w, 's, D, F, I>
+{
+    /// Get the next result from the back of the query
+    #[inline(always)]
+    pub fn fetch_next_back(&mut self) -> Option<D::Item<'_, 's>> {
+        // SAFETY:
+        // All arguments stem from self.
+        // We are limiting the returned reference to self,
+        // making sure this method cannot be called multiple times without getting rid
+        // of any previously returned unique references first, thus preventing aliasing.
+        unsafe {
+            Self::fetch_next_aliased_unchecked(
+                self.entity_iter,
+                self.entities,
+                self.tables,
+                self.archetypes,
+                &mut self.fetch,
+                &mut self.filter,
+                self.query_state
+            )
+            .map(D::shrink)
+        }
+    }
+}
+
+impl<'w, 's, D: ReadOnlyQueryData, F: QueryFilter, I: Iterator<Item: EntityEquivalent>> Iterator
+    for QueryManyIter<'w, 's, D, F, I>
+{
+    type Item = D::Item<'w, 's>;
+
+    #[inline(always)]
+    fn next(&mut self) -> Option<Self::Item> {
+        // SAFETY:
+        // All arguments stem from self.
+        // It is safe to alias for ReadOnlyWorldQuery.
+        unsafe {
+            Self::fetch_next_aliased_unchecked(
+                &mut self.entity_iter,
+                self.entities,
+                self.tables,
+                self.archetypes,
+                &mut self.fetch,
+                &mut self.filter,
+                self.query_state
+            )
+        }
+    }
+}
+
+/// An [`Iterator`] over sorted query results of a [`QueryManyIter`].
+///
+/// This struct is created by the [`sort`](QueryManyIter), [`sort_unstable`](QueryManyIter),
+/// [`sort_by`](QueryManyIter), [`sort_unstable_by`](QueryManyIter), [`sort_by_key`](QueryManyIter),
+/// [`sort_unstable_by_key`](QueryManyIter), and [`sort_by_cached_key`](QueryManyIter) methods of [`QueryManyIter`].
+pub struct QuerySortedManyIter<'w, 's, D: QueryData, F: QueryFilter, I: Iterator<Item = Entity>> {
+    entity_iter: I,
+    entities: &'w Entities,
+    tables: &'w Tables,
+    archetypes: &'w Archetypes,
+    fetch: D::Fetch<'w>,
+    query_state: &'s QueryState<D, F>
+}
+
+impl<'w, 's, D: QueryData, F: QueryFilter, I: Iterator<Item = Entity>>
+    QuerySortedManyIter<'w, 's, D, F, I>
+{
+    /// # Safety
+    /// - `world` must have permission to access any of the components registered in `query_state`.
+    /// - `world` must be the same one used to initialize `query_state`.
+    /// - `entity_list` must only contain unique entities or be empty.
+    pub(crate) unsafe fn new<EntityList: IntoIterator<IntoIter = I>>(
+        world: UnsafeWorldCell<'w>,
+        query_state: &'s QueryState<D, F>,
+        entity_list: EntityList,
+        last_run: Tick,
+        this_run: Tick
+    ) -> QuerySortedManyIter<'w, 's, D, F, I> {
+        let fetch = unsafe {
+            D::init_fetch(world, &query_state.fetch_state, last_run, this_run)
+        };
+        QuerySortedManyIter {
+            query_state,
+            entities: world.entities(),
+            archetypes: world.archetypes(),
+            // SAFETY: We only access table data that has been registered in `query_state`.
+            // This means `world` has permission to access the data we use.
+            tables: &unsafe { world.storages() }.tables,
+            fetch,
+            entity_iter: entity_list.into_iter()
         }
     }
 }

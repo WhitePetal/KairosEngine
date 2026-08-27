@@ -1175,17 +1175,17 @@ impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
         self.query_mut(world).iter_inner()
     }
 
-    // /// Returns an [`Iterator`] over the query results for the given [`World`] without updating the query's archetypes.
-    // /// Archetypes must be manually updated before by using [`Self::update_archetypes`].
-    // ///
-    // /// This iterator is always guaranteed to return results from each matching entity once and only once.
-    // /// Iteration order is not guaranteed.
-    // ///
-    // /// This can only be called for read-only queries.
-    // #[inline]
-    // pub fn iter_manual<'w, 's>(&'s self, world: &'w World) -> QueryIter<'w, 's, D::ReadOnly, F> {
-    //     self.query_manual(world).into_iter()
-    // }
+    /// Returns an [`Iterator`] over the query results for the given [`World`] without updating the query's archetypes.
+    /// Archetypes must be manually updated before by using [`Self::update_archetypes`].
+    ///
+    /// This iterator is always guaranteed to return results from each matching entity once and only once.
+    /// Iteration order is not guaranteed.
+    ///
+    /// This can only be called for read-only queries.
+    #[inline]
+    pub fn iter_manual<'w, 's>(&'s self, world: &'w World) -> QueryIter<'w, 's, D::ReadOnly, F> {
+        self.query_manual(world).into_iter()
+    }
 }
 
 // TODO!

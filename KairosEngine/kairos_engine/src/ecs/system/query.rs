@@ -2,10 +2,9 @@ use std::marker::PhantomData;
 
 use crate::ecs::{
     change_detection::Tick,
-    entity::{Entity, UniqueEntityArray},
+    entity::{Entity, EntityEquivalent, UniqueEntityArray},
     query::{
-        IterQueryData, NopWorldQuery, QueryData, QueryEntityError, QueryFilter, QueryIter,
-        QueryState, ReadOnlyQueryData,
+        IterQueryData, NopWorldQuery, QueryData, QueryEntityError, QueryFilter, QueryIter, QueryManyIter, QueryState, ReadOnlyQueryData
     },
     world::unsafe_world_cell::UnsafeWorldCell,
 };
@@ -708,6 +707,33 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
         // - We consume the query, so mutable queries cannot alias.
         //   Read-only queries are `Copy`, but may alias themselves.
         unsafe { QueryIter::new(self.world, self.state, self.last_run, self.this_run) }
+    }
+
+    /// Returns an iterator over the query items generated from an [`Entity`] list.
+    /// This consumes the [`Query`] to return results with the actual "inner" world lifetime.
+    ///
+    /// Items are returned in the order of the list of entities, and may not be unique if the input
+    /// doesn't guarantee uniqueness. Entities that don't match the query are skipped.
+    ///
+    /// # See also
+    ///
+    /// - [`iter_many`](Self::iter_many) to get read-only query items.
+    /// - [`iter_many_mut`](Self::iter_many_mut) to get mutable query items.
+    #[inline]
+    pub fn iter_many_inner<EntityList: IntoIterator<Item: EntityEquivalent>>(
+        self,
+        entities: EntityList
+    ) -> QueryManyIter<'w, 's, D, F, EntityList::IntoIter> {
+        // SAFETY: `self.world` has permission to access the required components.
+        unsafe {
+            QueryManyIter::new(
+                self.world,
+                self.state,
+                entities,
+                self.last_run,
+                self.this_run
+            )
+        }
     }
 }
 
