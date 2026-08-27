@@ -13,7 +13,7 @@ use crate::{
             SingleEntityQueryData, StorageId,
         },
         storage::{Table, TableRow, Tables},
-        world::{EntityMut, EntityRef, unsafe_world_cell::UnsafeWorldCell},
+        world::{EntityMut, EntityRef, FilteredEntityRef, unsafe_world_cell::UnsafeWorldCell},
     },
 };
 
@@ -717,6 +717,11 @@ unsafe impl<'w, 's, F: QueryFilter> EntitySetIterator for QueryIter<'w, 's, Enti
 
 // SAFETY: [`QueryIter`] is guaranteed to return every matching entity once and only once.
 unsafe impl<'w, 's, F: QueryFilter> EntitySetIterator for QueryIter<'w, 's, EntityMut<'_>, F> {}
+
+unsafe impl<'w, 's, F: QueryFilter> EntitySetIterator
+    for QueryIter<'w, 's, FilteredEntityRef<'_, '_>, F>
+{
+}
 
 /// An [`Iterator`] over sorted query results of a [`Query`](crate::system::Query).
 ///
