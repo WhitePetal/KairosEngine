@@ -1,4 +1,4 @@
-use std::{iter::FusedIterator, ops::Range};
+use std::{cmp::Ordering, iter::FusedIterator, ops::Range};
 
 use nonmax::NonMaxU32;
 
@@ -7,13 +7,13 @@ use crate::{
     ecs::{
         archetype::{Archetype, ArchetypeEntity, Archetypes},
         change_detection::Tick,
-        entity::{Entities, Entity},
+        entity::{Entities, Entity, EntitySetIterator},
         query::{
             IterQueryData, QueryData, QueryFilter, QueryState, ReadOnlyQueryData,
             SingleEntityQueryData, StorageId,
         },
         storage::{Table, TableRow, Tables},
-        world::unsafe_world_cell::UnsafeWorldCell,
+        world::{EntityMut, EntityRef, unsafe_world_cell::UnsafeWorldCell},
     },
 };
 
@@ -634,11 +634,89 @@ impl<'w, 's, D: QueryData, F: QueryFilter> QueryIter<'w, 's, D, F> {
 
         let query_lens_state = self.query_state.transmute_filtered::<(L, Entity), F>(world);
 
+        // SAFETY:
+        // `self.world` has permission to access the required components.
+        // The original query iter has not been iterated on, so no items are aliased from it.
+        // `QueryIter::new` ensures `world` is the same one used to initialize `query_state`.
         let query_lens = unsafe { query_lens_state.query_unchecked_manual(world) }.into_iter();
-
-        todo!()
+        let mut keyed_query: Vec<_> = query_lens
+            .map(|(key, entity)| (key, NeutralOrd(entity)))
+            .collect();
+        f(&mut keyed_query);
+        let entity_iter = keyed_query
+            .into_iter()
+            .map(|(.., entity)| entity.0)
+            .collect::<Vec<_>>()
+            .into_iter();
+        // SAFETY:
+        // `self.world` has permission to access the required components.
+        // Each lens query item is dropped before the respective actual query item is accessed.
+        unsafe {
+            QuerySortedIter::new(
+                world,
+                self.query_state,
+                entity_iter,
+                world.last_change_tick(),
+                world.change_tick(),
+            )
+        }
     }
 }
+
+impl<'w, 's, D: IterQueryData, F: QueryFilter> Iterator for QueryIter<'w, 's, D, F> {
+    type Item = D::Item<'w, 's>;
+
+    #[inline(always)]
+    fn next(&mut self) -> Option<Self::Item> {
+        // SAFETY:
+        // - `tables` and `archetypes` belong to the same world that the cursor was initialized for.
+        // - `query_state` is the state that was passed to `QueryIterationCursor::init`.
+        // - `D: IterQueryData`
+        unsafe {
+            self.cursor
+                .next(self.tables, self.archetypes, self.query_state)
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let max_size = self.cursor.max_remaining(self.tables, self.archetypes);
+        let archetype_query = D::IS_ARCHETYPAL && F::IS_ARCHETYPAL;
+        let min_size = if archetype_query { max_size } else { 0 };
+        (min_size as usize, Some(max_size as usize))
+    }
+
+    #[inline]
+    fn fold<B, Func>(mut self, init: B, mut func: Func) -> B
+    where
+        Func: FnMut(B, Self::Item) -> B,
+    {
+        let mut accum = init;
+        // Empty any remaining uniterated values from the current table/archetype
+        while self.cursor.current_row != self.cursor.current_len {
+            let Some(item) = self.next() else { break };
+            accum = func(accum, item);
+        }
+
+        for id in self.cursor.storage_id_iter.clone().copied() {
+            // SAFETY:
+            // - The range(None) is equivalent to [0, storage.entity_count)
+            accum = unsafe { self.fold_over_storage_range(accum, &mut func, id, None) }
+        }
+        accum
+    }
+}
+
+// This is correct as [`QueryIter`] always returns `None` once exhausted.
+impl<'w, 's, D: IterQueryData, F: QueryFilter> FusedIterator for QueryIter<'w, 's, D, F> {}
+
+// SAFETY: [`QueryIter`] is guaranteed to return every matching entity once and only once.
+unsafe impl<'w, 's, F: QueryFilter> EntitySetIterator for QueryIter<'w, 's, Entity, F> {}
+
+// SAFETY: [`QueryIter`] is guaranteed to return every matching entity once and only once.
+unsafe impl<'w, 's, F: QueryFilter> EntitySetIterator for QueryIter<'w, 's, EntityRef<'_>, F> {}
+
+// SAFETY: [`QueryIter`] is guaranteed to return every matching entity once and only once.
+unsafe impl<'w, 's, F: QueryFilter> EntitySetIterator for QueryIter<'w, 's, EntityMut<'_>, F> {}
 
 /// An [`Iterator`] over sorted query results of a [`Query`](crate::system::Query).
 ///
@@ -655,6 +733,31 @@ where
     archetypes: &'w Archetypes,
     fetch: D::Fetch<'w>,
     query_state: &'s QueryState<D, F>,
+}
+
+impl<'w, 's, D: QueryData, F: QueryFilter, I: Iterator> QuerySortedIter<'w, 's, D, F, I>
+where
+    I: Iterator<Item = Entity>,
+{
+    pub(crate) unsafe fn new<EntityList: IntoIterator<IntoIter = I>>(
+        world: UnsafeWorldCell<'w>,
+        query_state: &'s QueryState<D, F>,
+        entity_list: EntityList,
+        last_run: Tick,
+        this_run: Tick,
+    ) -> QuerySortedIter<'w, 's, D, F, I> {
+        let fetch = unsafe { D::init_fetch(world, &query_state.fetch_state, last_run, this_run) };
+        QuerySortedIter {
+            query_state,
+            entities: world.entities(),
+            archetypes: world.archetypes(),
+            // SAFETY: We only access table data that has been registered in `query_state`.
+            // This means `world` has permission to access the data we use.
+            tables: &unsafe { world.storages() }.tables,
+            fetch,
+            entity_iter: entity_list.into_iter(),
+        }
+    }
 }
 
 struct QueryIterationCursor<'w, 's, D: QueryData, F: QueryFilter> {

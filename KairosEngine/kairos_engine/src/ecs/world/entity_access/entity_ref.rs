@@ -1,16 +1,20 @@
-use std::any::TypeId;
+use std::{any::TypeId, hash::Hash};
 
 use crate::{
     debug::MaybeLocation,
     ecs::{
         archetype::Archetype,
-        change_detection::{ComponentTicks, Ref},
+        change_detection::{ComponentTicks, Ref, Tick},
         component::{Component, ComponentId},
-        entity::{Entity, EntityLocation},
+        entity::{ContainsEntity, Entity, EntityEquivalent, EntityLocation},
         query::{
-            QueryAccessError, ReadOnlyQueryData, ReleaseStateQueryData, SingleEntityQueryData,
+            Access, QueryAccessError, ReadOnlyQueryData, ReleaseStateQueryData,
+            SingleEntityQueryData,
         },
-        world::unsafe_world_cell::UnsafeEntityCell,
+        world::{
+            FilteredEntityRef, entity_access::DynamicComponentFetch, error::EntityComponentError,
+            unsafe_world_cell::UnsafeEntityCell,
+        },
     },
 };
 
@@ -45,6 +49,15 @@ impl<'w> EntityRef<'w> {
     #[inline]
     pub(crate) unsafe fn new(cell: UnsafeEntityCell<'w>) -> Self {
         Self { cell }
+    }
+
+    /// Consumes `self` and returns a [`FilteredEntityRef`] which has read-only
+    /// access to all of the entity's components, with the world `'w` lifetime.
+    #[inline]
+    pub fn into_filtered(self) -> FilteredEntityRef<'w, 'static> {
+        // SAFETY:
+        // - `EntityRef` guarantees exclusive access to all components in the new `FilteredEntityRef`.
+        unsafe { FilteredEntityRef::new(self.cell, const { &Access::new_read_all() }) }
     }
 
     /// Returns the [ID](Entity) of the current entity.
@@ -149,15 +162,117 @@ impl<'w> EntityRef<'w> {
         unsafe { self.cell.get_change_ticks_by_id(component_id) }
     }
 
-    /// Returns read-only components for the current entity that match the query `Q`,
-    /// or `None` if the entity does not have the components required by the query `Q`.
-    pub fn get_components<Q: ReadOnlyQueryData + ReleaseStateQueryData + SingleEntityQueryData>(
+    /// Returns untyped read-only reference(s) to component(s) for the
+    /// current entity, based on the given [`ComponentId`]s.
+    ///
+    /// **You should prefer to use the typed API [`EntityRef::get`] where
+    /// possible and only use this in cases where the actual component types
+    /// are not known at compile time.**
+    ///
+    /// Unlike [`EntityRef::get`], this returns untyped reference(s) to
+    /// component(s), and it's the job of the caller to ensure the correct
+    /// type(s) are dereferenced (if necessary).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EntityComponentError::MissingComponent`] if the entity does
+    /// not have a component.
+    ///
+    /// # Examples
+    ///
+    /// ## Single [`ComponentId`]
+    ///
+    /// ```
+    /// # use bevy_ecs::prelude::*;
+    /// #
+    /// # #[derive(Component, PartialEq, Debug)]
+    /// # pub struct Foo(i32);
+    /// # let mut world = World::new();
+    /// let entity = world.spawn(Foo(42)).id();
+    ///
+    /// // Grab the component ID for `Foo` in whatever way you like.
+    /// let component_id = world.register_component::<Foo>();
+    ///
+    /// // Then, get the component by ID.
+    /// let ptr = world.entity(entity).get_by_id(component_id);
+    /// # assert_eq!(unsafe { ptr.unwrap().deref::<Foo>() }, &Foo(42));
+    /// ```
+    ///
+    /// ## Array of [`ComponentId`]s
+    ///
+    /// ```
+    /// # use bevy_ecs::prelude::*;
+    /// #
+    /// # #[derive(Component, PartialEq, Debug)]
+    /// # pub struct X(i32);
+    /// # #[derive(Component, PartialEq, Debug)]
+    /// # pub struct Y(i32);
+    /// # let mut world = World::new();
+    /// let entity = world.spawn((X(42), Y(10))).id();
+    ///
+    /// // Grab the component IDs for `X` and `Y` in whatever way you like.
+    /// let x_id = world.register_component::<X>();
+    /// let y_id = world.register_component::<Y>();
+    ///
+    /// // Then, get the components by ID. You'll receive a same-sized array.
+    /// let Ok([x_ptr, y_ptr]) = world.entity(entity).get_by_id([x_id, y_id]) else {
+    ///     // Up to you to handle if a component is missing from the entity.
+    /// #   unreachable!();
+    /// };
+    /// # assert_eq!((unsafe { x_ptr.deref::<X>() }, unsafe { y_ptr.deref::<Y>() }), (&X(42), &Y(10)));
+    /// ```
+    ///
+    /// ## Slice of [`ComponentId`]s
+    ///
+    /// ```
+    /// # use bevy_ecs::{prelude::*, component::ComponentId};
+    /// #
+    /// # #[derive(Component, PartialEq, Debug)]
+    /// # pub struct X(i32);
+    /// # #[derive(Component, PartialEq, Debug)]
+    /// # pub struct Y(i32);
+    /// # let mut world = World::new();
+    /// let entity = world.spawn((X(42), Y(10))).id();
+    ///
+    /// // Grab the component IDs for `X` and `Y` in whatever way you like.
+    /// let x_id = world.register_component::<X>();
+    /// let y_id = world.register_component::<Y>();
+    ///
+    /// // Then, get the components by ID. You'll receive a vec of ptrs.
+    /// let ptrs = world.entity(entity).get_by_id(&[x_id, y_id] as &[ComponentId]);
+    /// # let ptrs = ptrs.unwrap();
+    /// # assert_eq!((unsafe { ptrs[0].deref::<X>() }, unsafe { ptrs[1].deref::<Y>() }), (&X(42), &Y(10)));
+    /// ```
+    ///
+    /// ## `HashSet` of [`ComponentId`]s
+    ///
+    /// ```
+    /// # use bevy_platform::collections::HashSet;
+    /// # use bevy_ecs::{prelude::*, component::ComponentId};
+    /// #
+    /// # #[derive(Component, PartialEq, Debug)]
+    /// # pub struct X(i32);
+    /// # #[derive(Component, PartialEq, Debug)]
+    /// # pub struct Y(i32);
+    /// # let mut world = World::new();
+    /// let entity = world.spawn((X(42), Y(10))).id();
+    ///
+    /// // Grab the component IDs for `X` and `Y` in whatever way you like.
+    /// let x_id = world.register_component::<X>();
+    /// let y_id = world.register_component::<Y>();
+    ///
+    /// // Then, get the components by ID. You'll receive a vec of ptrs.
+    /// let ptrs = world.entity(entity).get_by_id(&HashSet::from_iter([x_id, y_id]));
+    /// # let ptrs = ptrs.unwrap();
+    /// # assert_eq!((unsafe { ptrs[&x_id].deref::<X>() }, unsafe { ptrs[&y_id].deref::<Y>() }), (&X(42), &Y(10)));
+    /// ```
+    #[inline]
+    pub fn get_by_id<F: DynamicComponentFetch>(
         &self,
-    ) -> Result<Q::Item<'w, 'static>, QueryAccessError> {
-        // SAFETY:
-        // - We have read-only access to all components of this entity.
-        // - The query is read-only, and read-only references cannot have conflicts.
-        unsafe { self.cell.get_components::<Q>() }
+        component_ids: F,
+    ) -> Result<F::Ref<'w>, EntityComponentError> {
+        // SAFETY: We have read-only access to all components of this entity.
+        unsafe { component_ids.fetch_ref(self.cell) }
     }
 
     /// Returns read-only components for the current entity that match the query `Q`.
@@ -171,6 +286,76 @@ impl<'w> EntityRef<'w> {
         self.get_components::<Q>()
             .expect("Query does not match the current entity")
     }
+
+    /// Returns read-only components for the current entity that match the query `Q`,
+    /// or `None` if the entity does not have the components required by the query `Q`.
+    pub fn get_components<Q: ReadOnlyQueryData + ReleaseStateQueryData + SingleEntityQueryData>(
+        &self,
+    ) -> Result<Q::Item<'w, 'static>, QueryAccessError> {
+        // SAFETY:
+        // - We have read-only access to all components of this entity.
+        // - The query is read-only, and read-only references cannot have conflicts.
+        unsafe { self.cell.get_components::<Q>() }
+    }
+
+    /// Returns the source code location from which this entity has been spawned.
+    pub fn spawned_by(&self) -> MaybeLocation {
+        self.cell.spawned_by()
+    }
+
+    /// Returns the [`Tick`] at which this entity has been spawned.
+    pub fn spawn_tick(&self) -> Tick {
+        self.cell.spawn_tick()
+    }
 }
 
-// TODO!
+impl<'a> From<EntityRef<'a>> for FilteredEntityRef<'a, 'static> {
+    #[inline]
+    fn from(entity: EntityRef<'a>) -> Self {
+        entity.into_filtered()
+    }
+}
+
+impl<'a> From<&EntityRef<'a>> for FilteredEntityRef<'a, 'static> {
+    #[inline]
+    fn from(entity: &EntityRef<'a>) -> Self {
+        entity.into_filtered()
+    }
+}
+
+impl PartialEq for EntityRef<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.entity() == other.entity()
+    }
+}
+
+impl Eq for EntityRef<'_> {}
+
+impl PartialOrd for EntityRef<'_> {
+    /// [`EntityRef`]'s comparison trait implementations match the underlying [`Entity`],
+    /// and cannot discern between different worlds.
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for EntityRef<'_> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.entity().cmp(&other.entity())
+    }
+}
+
+impl Hash for EntityRef<'_> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.entity().hash(state);
+    }
+}
+
+impl ContainsEntity for EntityRef<'_> {
+    fn entity(&self) -> Entity {
+        self.id()
+    }
+}
+
+// SAFETY: This type represents one Entity. We implement the comparison traits based on that Entity.
+unsafe impl EntityEquivalent for EntityRef<'_> {}

@@ -711,13 +711,13 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     }
 }
 
-// impl<'w, 's, D: IterQueryData, F: QueryFilter> IntoIterator for Query<'w, 's, D, F> {
-//     type Item = D::Item<'w, 's>;
-//     type IntoIter = QueryIter<'w, 's, D, F>;
+impl<'w, 's, D: IterQueryData, F: QueryFilter> IntoIterator for Query<'w, 's, D, F> {
+    type Item = D::Item<'w, 's>;
+    type IntoIter = QueryIter<'w, 's, D, F>;
 
-//     fn into_iter(self) -> Self::IntoIter {
-//         self.iter_inner()
-//     }
-// }
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_inner()
+    }
+}
 
 // TODO!
