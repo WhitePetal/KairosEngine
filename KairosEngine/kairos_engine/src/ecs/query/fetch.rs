@@ -1,5 +1,7 @@
 use std::{cell::UnsafeCell, iter, marker::PhantomData, panic::Location};
 
+use variadics_please::all_tuples;
+
 use crate::{
     debug::{DebugCheckedUnwrap, DebugName, MaybeLocation},
     ecs::{
@@ -3202,9 +3204,139 @@ impl<D: QueryData> ReleaseStateQueryData for NopWorldQuery<D> {
 impl<D: QueryData> ArchetypeQueryData for NopWorldQuery<D> {}
 
 macro_rules! impl_tuple_query_data {
-    () => {
+    ($(#[$meta:meta])* $(($name: ident, $item: ident, $state: ident)),*) => {
+        #[expect(
+            clippy::allow_attributes,
+            reason = "This is a tuple-related macro; as such the lints below may not always apply."
+        )]
+        #[allow(
+            non_snake_case,
+            reason = "The name of some variables are provided by the macro's caller, not by us."
+        )]
+        #[allow(
+            unused_variables,
+            reason = "Zero-length tuples won't use any of the parameters."
+        )]
+        #[allow(
+            clippy::unused_uint,
+            reason = "Zero-length tuples will generate some function bodies equivalent to `()`; however, this macro is meant for all applicable tuples, and as such it makes no sense to rewrite it just for that case."
+        )]
+        $(#[$meta])*
+        // SAFETY: defers to soundness `$name: WorldQuery` impl
+        unsafe impl<$($name: QueryData),*> QueryData for ($($name,)*) {
+            const IS_READ_ONLY: bool = true $(&& $name::IS_READ_ONLY)*;
+            const IS_ARCHETYPAL: bool = true $(&& $name::IS_ARCHETYPAL)*;
+            type ReadOnly = ($($name::ReadOnly,)*);
+            type Item<'w, 's> = ($($name::Item<'w, 's>,)*);
 
+            fn shrink<'wlong: 'wshort, 'wshort, 's>(item: Self::Item<'wlong, 's>) -> Self::Item<'wshort, 's> {
+                let ($($name,)*) = item;
+                ($(
+                    $name::shrink($name),
+                )*)
+            }
+
+            #[inline]
+            fn provide_extra_access(
+                state: &mut Self::State,
+                access: &mut Access,
+                available_access: &Access
+            ) {
+                let ($($name,)*) = state;
+                $($name::provide_extra_access($name, access, available_access);)*
+            }
+
+            #[inline(always)]
+            unsafe fn fetch<'w, 's>(
+                state: &'s Self::State,
+                fetch: &mut Self::Fetch<'w>,
+                entity: Entity,
+                table_row: TableRow
+            ) -> Option<Self::Item<'w, 's>> {
+                let ($($state,)*) = state;
+                let ($($name,)*) = fetch;
+                // SAFETY: The invariants are upheld by the caller.
+                Some(($(unsafe { $name::fetch($state, $name, entity, table_row) }?,)*))
+            }
+
+            fn iter_access(state: &Self::State) -> impl Iterator<Item = EcsAccessType<'_>> {
+                let ($($name,)*) = state;
+                iter::empty()$(.chain($name::iter_access($name)))*
+            }
+        }
+
+        $(#[$meta])*
+        // SAFETY: each item in the tuple is iterable
+        unsafe impl<$($name: IterQueryData),*> IterQueryData for ($($name,)*) {}
+
+        $(#[$meta])*
+        // SAFETY: each item in the tuple is read only
+        unsafe impl<$($name: ReadOnlyQueryData),*> ReadOnlyQueryData for ($($name,)*) {}
+
+        $(#[$meta])*
+        // SAFETY: each item in the tuple only accesses the current entity
+        unsafe impl<$($name: SingleEntityQueryData),*> SingleEntityQueryData for ($($name,)*) {}
+
+        #[expect(
+            clippy::allow_attributes,
+            reason = "This is a tuple-related macro; as such the lints below may not always apply."
+        )]
+        #[allow(
+            clippy::unused_unit,
+            reason = "Zero-length tuples will generate some function bodies equivalent to `()`; however, this macro is meant for all applicable tuples, and as such it makes no sense to rewrite it just for that case."
+        )]
+        $(#[$meta])*
+        impl<$($name: ReleaseStateQueryData),*> ReleaseStateQueryData for ($($name,)*) {
+            fn release_state<'w>(($($item,)*): Self::Item<'w, '_>) -> Self::Item<'w, 'static> {
+                ($($name::release_state($item),)*)
+            }
+        }
+
+        $(#[$meta])*
+        impl<$($name: ArchetypeQueryData),*> ArchetypeQueryData for ($($name,)*) {}
+
+        #[expect(
+            clippy::allow_attributes,
+            reason = "This is a tuple-related macro; as such the lints below may not always apply."
+        )]
+        #[allow(
+            non_snake_case,
+            reason = "The names of some variables are provided by the macro's caller, not by us."
+        )]
+        #[allow(
+            unused_variables,
+            reason = "Zero-length tuples won't use any of the parameters."
+        )]
+        #[allow(
+            clippy::unused_unit,
+            reason = "Zero-length tuples will generate some function bodies equivalent to `()`; however, this macro is meant for all applicable tuples, and as such it makes no sense to rewrite it just for that case."
+        )]
+        $(#[$meta])*
+        impl<$($name: ContiguousQueryData),*> ContiguousQueryData for ($($name,)*) {
+            type Contiguous<'w, 's> = ($($name::Contiguous::<'w, 's>,)*);
+
+            unsafe fn fetch_contiguous<'w, 's>(
+                state: &'s Self::State,
+                fetch: &mut Self::Fetch<'w>,
+                entities: &'w [Entity]
+            ) -> Self::Contiguous<'w, 's> {
+                let ($($state,)*) = state;
+                let ($($name,)*) = fetch;
+                // SAFETY: The invariants are upheld by the caller.
+                ($(unsafe { $name::fetch_contiguous($state, $name, entities) },)*)
+            }
+        }
     };
 }
+
+all_tuples!(
+    #[doc(fake_variadic)]
+    impl_tuple_query_data,
+    0,
+    15,
+    F,
+    i,
+    s
+);
 
 // TODO!

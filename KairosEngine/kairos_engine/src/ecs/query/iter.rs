@@ -8,7 +8,10 @@ use crate::{
         archetype::{Archetype, ArchetypeEntity, Archetypes},
         change_detection::Tick,
         entity::{Entities, Entity},
-        query::{IterQueryData, QueryData, QueryFilter, QueryState, ReadOnlyQueryData, SingleEntityQueryData, StorageId},
+        query::{
+            IterQueryData, QueryData, QueryFilter, QueryState, ReadOnlyQueryData,
+            SingleEntityQueryData, StorageId,
+        },
         storage::{Table, TableRow, Tables},
         world::unsafe_world_cell::UnsafeWorldCell,
     },
@@ -570,16 +573,16 @@ impl<'w, 's, D: QueryData, F: QueryFilter> QueryIter<'w, 's, D, F> {
     /// # schedule.run(&mut world);
     /// ```
     pub fn sort<L: ReadOnlyQueryData + SingleEntityQueryData + 'w>(
-        self
+        self,
     ) -> QuerySortedIter<
         'w,
         's,
         D,
         F,
-        impl ExactSizeIterator<Item = Entity> + DoubleEndedIterator + FusedIterator + 'w
+        impl ExactSizeIterator<Item = Entity> + DoubleEndedIterator + FusedIterator + 'w,
     >
     where
-        for<'lw, 'ls> L::Item<'lw, 'ls>: Ord
+        for<'lw, 'ls> L::Item<'lw, 'ls>: Ord,
     {
         self.sort_impl::<L>(|keyed_query| keyed_query.sort())
     }
@@ -611,15 +614,14 @@ impl<'w, 's, D: QueryData, F: QueryFilter> QueryIter<'w, 's, D, F> {
     /// This will panic if `next` has been called on `QueryIter` before, unless the underlying `Query` is empty.
     fn sort_impl<L: ReadOnlyQueryData + SingleEntityQueryData + 'w>(
         self,
-        f: impl FnOnce(&mut Vec<(L::Item<'_, '_>, NeutralOrd<Entity>)>)
+        f: impl FnOnce(&mut Vec<(L::Item<'_, '_>, NeutralOrd<Entity>)>),
     ) -> QuerySortedIter<
         'w,
         's,
         D,
         F,
-        impl ExactSizeIterator<Item = Entity> + DoubleEndedIterator + FusedIterator + 'w
-    >
-    {
+        impl ExactSizeIterator<Item = Entity> + DoubleEndedIterator + FusedIterator + 'w,
+    > {
         // On the first successful iteration of `QueryIterationCursor`, `archetype_entities` or `table_entities`
         // will be set to a non-zero value. The correctness of this method relies on this.
         // I.e. this sort method will execute if and only if `next` on `QueryIterationCursor` of a
@@ -632,9 +634,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> QueryIter<'w, 's, D, F> {
 
         let query_lens_state = self.query_state.transmute_filtered::<(L, Entity), F>(world);
 
-        let query_lens = unsafe {
-            query_lens_state.query_unchecked_manual(world)
-        }.into_iter();
+        let query_lens = unsafe { query_lens_state.query_unchecked_manual(world) }.into_iter();
 
         todo!()
     }
@@ -647,14 +647,14 @@ impl<'w, 's, D: QueryData, F: QueryFilter> QueryIter<'w, 's, D, F> {
 /// [`QueryIter::sort_unstable_by_key`], and [`QueryIter::sort_by_cached_key`] methods.
 pub struct QuerySortedIter<'w, 's, D: QueryData, F: QueryFilter, I>
 where
-    I: Iterator<Item = Entity>
+    I: Iterator<Item = Entity>,
 {
     entity_iter: I,
     entities: &'w Entities,
     tables: &'w Tables,
     archetypes: &'w Archetypes,
     fetch: D::Fetch<'w>,
-    query_state: &'s QueryState<D, F>
+    query_state: &'s QueryState<D, F>,
 }
 
 struct QueryIterationCursor<'w, 's, D: QueryData, F: QueryFilter> {
