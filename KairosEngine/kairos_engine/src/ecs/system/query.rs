@@ -4,7 +4,8 @@ use crate::ecs::{
     change_detection::Tick,
     entity::{Entity, EntityEquivalent, UniqueEntityArray},
     query::{
-        IterQueryData, NopWorldQuery, QueryData, QueryEntityError, QueryFilter, QueryIter, QueryManyIter, QueryState, ReadOnlyQueryData
+        IterQueryData, NopWorldQuery, QueryData, QueryEntityError, QueryFilter, QueryIter,
+        QueryManyIter, QueryState, ReadOnlyQueryData,
     },
     world::unsafe_world_cell::UnsafeWorldCell,
 };
@@ -722,7 +723,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     #[inline]
     pub fn iter_many_inner<EntityList: IntoIterator<Item: EntityEquivalent>>(
         self,
-        entities: EntityList
+        entities: EntityList,
     ) -> QueryManyIter<'w, 's, D, F, EntityList::IntoIter> {
         // SAFETY: `self.world` has permission to access the required components.
         unsafe {
@@ -731,7 +732,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
                 self.state,
                 entities,
                 self.last_run,
-                self.this_run
+                self.this_run,
             )
         }
     }
