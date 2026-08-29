@@ -1684,6 +1684,52 @@ impl<'a, T: EntityEquivalent + 'a, I: Iterator<Item = &'a [T]>>
     }
 }
 
+impl<'a, T: EntityEquivalent + 'a, I: Iterator<Item = &'a [T]>> Iterator
+    for UniqueEntityEquivalentSliceIter<'a, T, I>
+{
+    type Item = &'a UniqueEntityEquivalentSlice<T>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|slice| unsafe {
+            // SAFETY: All elements in the original iterator are unique slices.
+            UniqueEntityEquivalentSlice::from_slice_unchecked(slice)
+        })
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.iter.size_hint()
+    }
+}
+
+impl<'a, T: EntityEquivalent + 'a, I: ExactSizeIterator<Item = &'a [T]>> ExactSizeIterator
+    for UniqueEntityEquivalentSliceIter<'a, T, I>
+{
+}
+
+impl<'a, T: EntityEquivalent + 'a, I: DoubleEndedIterator<Item = &'a [T]>> DoubleEndedIterator
+    for UniqueEntityEquivalentSliceIter<'a, T, I>
+{
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.iter.next_back().map(|slice|
+            // SAFETY: All elements in the original iterator are unique slices.
+            unsafe { UniqueEntityEquivalentSlice::from_slice_unchecked(slice) })
+    }
+}
+
+impl<'a, T: EntityEquivalent + 'a, I: FusedIterator<Item = &'a [T]>> FusedIterator
+    for UniqueEntityEquivalentSliceIter<'a, T, I>
+{
+}
+
+impl<'a, T: EntityEquivalent + 'a, I: Iterator<Item = &'a [T]> + AsRef<[&'a [T]]>>
+    AsRef<[&'a UniqueEntityEquivalentSlice<T>]> for UniqueEntityEquivalentSliceIter<'a, T, I>
+{
+    fn as_ref(&self) -> &[&'a UniqueEntityEquivalentSlice<T>] {
+        // SAFETY:
+        unsafe { cast_slice_of_unique_entity_slice(self.iter.as_ref()) }
+    }
+}
+
 /// An iterator that yields `&mut UniqueEntityEquivalentSlice`. Note that an entity may appear
 /// in multiple slices, depending on the wrapped iterator.
 #[repr(transparent)]

@@ -11,12 +11,12 @@ use crate::{
         archetype::{Archetype, ArchetypeGeneration, ArchetypeId},
         change_detection::Tick,
         component::ComponentId,
-        entity::{Entity, UniqueEntityArray},
+        entity::{Entity, EntityEquivalent, UniqueEntityArray, UniqueEntityEquivalentSlice},
         entity_disabling::DefaultQueryFilters,
         query::{
             FilteredAccess, FilteredAccessSet, IterQueryData, NopWorldQuery, QueryBuilder,
-            QueryData, QueryEntityError, QueryFilter, QueryIter, ROQueryItem, ReadOnlyQueryData,
-            SingleEntityQueryData, WorldQuery,
+            QueryCombinationIter, QueryData, QueryEntityError, QueryFilter, QueryIter, ROQueryItem,
+            ReadOnlyQueryData, SingleEntityQueryData, WorldQuery,
         },
         storage::TableId,
         system::Query,
@@ -1185,6 +1185,217 @@ impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
     #[inline]
     pub fn iter_manual<'w, 's>(&'s self, world: &'w World) -> QueryIter<'w, 's, D::ReadOnly, F> {
         self.query_manual(world).into_iter()
+    }
+
+    pub fn iter_combinations<'w, 's, const K: usize>(
+        &'s mut self,
+        world: &'w World,
+    ) -> QueryCombinationIter<'w, 's, D::ReadOnly, F, K> {
+        todo!()
+    }
+
+    pub(crate) unsafe fn par_fold_init_unchecked_manual<'w, 's, T, FN, INIT>(
+        &'s self,
+        init_accum: INIT,
+        world: UnsafeWorldCell<'w>,
+        batch_size: u32,
+        func: FN,
+        last_run: Tick,
+        this_run: Tick,
+    ) where
+        FN: Fn(T, D::Item<'w, 's>) -> T + Send + Sync + Clone,
+        INIT: Fn() -> T + Sync + Send + Clone,
+        D: IterQueryData,
+    {
+        // NOTE: If you are changing query iteration code, remember to update the following places, where relevant:
+        // QueryIter, QueryIterationCursor, QueryManyIter, QueryCombinationIter,QueryState::par_fold_init_unchecked_manual,
+        // QueryState::par_many_fold_init_unchecked_manual, QueryState::par_many_unique_fold_init_unchecked_manual, QueryContiguousIter::next
+        use arrayvec::ArrayVec;
+
+        rayon::scope(|scope| {
+            // SAFETY: We only access table data that has been registered in `self.component_access`.
+            let tables = unsafe { &world.storages().tables };
+            let archetypes = world.archetypes();
+            let mut batch_queue = ArrayVec::new();
+            let mut queue_entity_count = 0;
+
+            // submit a list of storages which smaller than batch_size as single task
+            let submit_batch_queue = |queue: &mut ArrayVec<StorageId, 128>| {
+                if queue.is_empty() {
+                    return;
+                }
+                let queue = core::mem::take(queue);
+                let mut func = func.clone();
+                let init_accum = init_accum.clone();
+                scope.spawn(move |_| {
+                    #[cfg(feature = "trace")]
+                    let _span = self.par_iter_span.enter();
+                    let mut iter = unsafe {
+                        self.query_unchecked_manual_with_ticks(world, last_run, this_run)
+                            .into_iter()
+                    };
+                    let mut accum = init_accum();
+                    for storage_id in queue {
+                        accum = unsafe {
+                            iter.fold_over_storage_range(accum, &mut func, storage_id, None)
+                        };
+                    }
+                });
+            };
+
+            // submit single storage larger than batch_size
+            let submit_single = |count, storage_id: StorageId| {
+                for offset in (0..count).step_by(batch_size as usize) {
+                    let mut func = func.clone();
+                    let init_accum = init_accum.clone();
+                    let len = batch_size.min(count - offset);
+                    let batch = offset..offset + len;
+                    scope.spawn(move |_| {
+                        #[cfg(feature = "trace")]
+                        let _span = self.par_iter_span.enter();
+                        let accum = init_accum();
+                        unsafe {
+                            self.query_unchecked_manual_with_ticks(world, last_run, this_run)
+                                .into_iter()
+                                .fold_over_storage_range(accum, &mut func, storage_id, Some(batch))
+                        };
+                    });
+                }
+            };
+
+            let storage_entity_count = |storage_id: StorageId| -> u32 {
+                if self.is_dense {
+                    // SAFETY: `StorageId` is a union; reading `table_id` is only valid for dense storages.
+                    unsafe { &tables[storage_id.table_id] }.entity_count()
+                } else {
+                    // SAFETY: `StorageId` is a union; reading `archetype_id` is only valid for archetypal storages.
+                    unsafe { &archetypes[storage_id.archetype_id] }.len()
+                }
+            };
+
+            for storage_id in &self.matched_storage_ids {
+                let count = storage_entity_count(*storage_id);
+
+                // skip empty storage
+                if count == 0 {
+                    continue;
+                }
+                // immediately submit large storage
+                if count >= batch_size {
+                    submit_single(count, *storage_id);
+                    continue;
+                }
+                // merge small storage
+                batch_queue.push(*storage_id);
+                queue_entity_count += count;
+
+                // submit batch_queue
+                if queue_entity_count >= batch_size || batch_queue.is_full() {
+                    submit_batch_queue(&mut batch_queue);
+                    queue_entity_count = 0;
+                }
+            }
+            submit_batch_queue(&mut batch_queue);
+        });
+    }
+
+    pub(crate) unsafe fn par_many_unique_fold_init_unchecked_manual<'w, 's, T, FN, INIT, E>(
+        &'s self,
+        init_accum: INIT,
+        world: UnsafeWorldCell<'w>,
+        entity_list: &UniqueEntityEquivalentSlice<E>,
+        batch_size: u32,
+        mut func: FN,
+        last_run: Tick,
+        this_run: Tick,
+    ) where
+        FN: Fn(T, D::Item<'w, 's>) -> T + Send + Sync + Clone,
+        INIT: Fn() -> T + Sync + Send + Clone,
+        E: EntityEquivalent + Sync,
+        D: IterQueryData,
+    {
+        // NOTE: If you are changing query iteration code, remember to update the following places, where relevant:
+        // QueryIter, QueryIterationCursor, QueryManyIter, QueryCombinationIter,QueryState::par_fold_init_unchecked_manual
+        // QueryState::par_many_fold_init_unchecked_manual, QueryState::par_many_unique_fold_init_unchecked_manual, QueryContiguousIter::next
+
+        rayon::scope(|scope| {
+            let chunks = entity_list.chunks_exact(batch_size as usize);
+            let remainder = chunks.remainder();
+
+            for batch in chunks {
+                let mut func = func.clone();
+                let init_accum = init_accum.clone();
+                scope.spawn(move |_| {
+                    #[cfg(feature = "trace")]
+                    let _span = self.par_iter_span.enter();
+                    let accun = init_accum();
+                    unsafe {
+                        self.query_unchecked_manual_with_ticks(world, last_run, this_run)
+                            .iter_many_unique_inner(batch)
+                            .fold(accun, &mut func);
+                    }
+                });
+            }
+
+            #[cfg(feature = "trace")]
+            let _span = self.par_iter_span.enter();
+            let accum = init_accum();
+            unsafe {
+                self.query_unchecked_manual_with_ticks(world, last_run, this_run)
+                    .iter_many_unique_inner(remainder)
+                    .fold(accum, &mut func);
+            }
+        });
+    }
+}
+
+impl<D: ReadOnlyQueryData, F: QueryFilter> QueryState<D, F> {
+    pub(crate) unsafe fn par_many_fold_init_unchecked_manual<'w, 's, T, FN, INIT, E>(
+        &'s self,
+        init_accum: INIT,
+        world: UnsafeWorldCell<'w>,
+        entity_list: &[E],
+        batch_size: u32,
+        mut func: FN,
+        last_run: Tick,
+        this_run: Tick,
+    ) where
+        FN: Fn(T, D::Item<'w, 's>) -> T + Send + Sync + Clone,
+        INIT: Fn() -> T + Sync + Send + Clone,
+        E: EntityEquivalent + Sync,
+    {
+        // NOTE: If you are changing query iteration code, remember to update the following places, where relevant:
+        // QueryIter, QueryIterationCursor, QueryManyIter, QueryCombinationIter, QueryState::par_fold_init_unchecked_manual
+        // QueryState::par_many_fold_init_unchecked_manual, QueryState::par_many_unique_fold_init_unchecked_manual, QueryContiguousIter::next
+
+        rayon::scope(|scope| {
+            let chunks = entity_list.chunks_exact(batch_size as usize);
+            let remainder = chunks.remainder();
+
+            for batch in chunks {
+                let mut func = func.clone();
+                let init_accum = init_accum.clone();
+                scope.spawn(move |_| {
+                    #[cfg(feature = "trace")]
+                    let _span = self.par_iter_span.enter();
+                    let accum = init_accum();
+                    unsafe {
+                        self.query_unchecked_manual_with_ticks(world, last_run, this_run)
+                            .iter_many_inner(batch)
+                            .fold(accum, &mut func);
+                    }
+                });
+            }
+
+            #[cfg(feature = "trace")]
+            let _span = self.par_iter_span.enter();
+            let accum = init_accum();
+            unsafe {
+                self.query_unchecked_manual_with_ticks(world, last_run, this_run)
+                    .iter_many_inner(remainder)
+                    .fold(accum, &mut func)
+            };
+        });
     }
 }
 
