@@ -1059,6 +1059,73 @@ impl World {
     pub fn query_filtered<D: QueryData, F: QueryFilter>(&mut self) -> QueryState<D, F> {
         QueryState::new(self)
     }
+
+    /// Returns [`QueryState`] for the given [`QueryData`], which is used to efficiently
+    /// run queries on the [`World`] by storing and reusing the [`QueryState`].
+    /// ```
+    /// use bevy_ecs::{component::Component, entity::Entity, world::World};
+    ///
+    /// #[derive(Component, Debug, PartialEq)]
+    /// struct Position {
+    ///   x: f32,
+    ///   y: f32,
+    /// }
+    ///
+    /// #[derive(Component)]
+    /// struct Velocity {
+    ///   x: f32,
+    ///   y: f32,
+    /// }
+    ///
+    /// let mut world = World::new();
+    /// let entities = world.spawn_batch(vec![
+    ///     (Position { x: 0.0, y: 0.0}, Velocity { x: 1.0, y: 0.0 }),
+    ///     (Position { x: 0.0, y: 0.0}, Velocity { x: 0.0, y: 1.0 }),
+    /// ]).collect::<Vec<Entity>>();
+    ///
+    /// let mut query = world.query::<(&mut Position, &Velocity)>();
+    /// for (mut position, velocity) in query.iter_mut(&mut world) {
+    ///    position.x += velocity.x;
+    ///    position.y += velocity.y;
+    /// }
+    ///
+    /// assert_eq!(world.get::<Position>(entities[0]).unwrap(), &Position { x: 1.0, y: 0.0 });
+    /// assert_eq!(world.get::<Position>(entities[1]).unwrap(), &Position { x: 0.0, y: 1.0 });
+    /// ```
+    ///
+    /// To iterate over entities in a deterministic order,
+    /// sort the results of the query using the desired component as a key.
+    /// Note that this requires fetching the whole result set from the query
+    /// and allocation of a [`Vec`] to store it.
+    ///
+    /// ```
+    /// use bevy_ecs::{component::Component, entity::Entity, world::World};
+    ///
+    /// #[derive(Component, PartialEq, Eq, PartialOrd, Ord, Debug)]
+    /// struct Order(i32);
+    /// #[derive(Component, PartialEq, Debug)]
+    /// struct Label(&'static str);
+    ///
+    /// let mut world = World::new();
+    /// let a = world.spawn((Order(2), Label("second"))).id();
+    /// let b = world.spawn((Order(3), Label("third"))).id();
+    /// let c = world.spawn((Order(1), Label("first"))).id();
+    /// let mut entities = world.query::<(Entity, &Order, &Label)>()
+    ///     .iter(&world)
+    ///     .collect::<Vec<_>>();
+    /// // Sort the query results by their `Order` component before comparing
+    /// // to expected results. Query iteration order should not be relied on.
+    /// entities.sort_by_key(|e| e.1);
+    /// assert_eq!(entities, vec![
+    ///     (c, &Order(1), &Label("first")),
+    ///     (a, &Order(2), &Label("second")),
+    ///     (b, &Order(3), &Label("third")),
+    /// ]);
+    /// ```
+    #[inline]
+    pub fn query<D: QueryData>(&mut self) -> QueryState<D, ()> {
+        self.query_filtered::<D, ()>()
+    }
 }
 
 impl fmt::Debug for World {

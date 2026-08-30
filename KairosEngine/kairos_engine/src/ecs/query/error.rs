@@ -1,6 +1,9 @@
-use crate::ecs::{
-    archetype::ArchetypeId,
-    entity::{Entity, EntityNotSpawnedError},
+use crate::{
+    debug::DebugName,
+    ecs::{
+        archetype::ArchetypeId,
+        entity::{Entity, EntityNotSpawnedError},
+    },
 };
 
 /// An error that occurs when retrieving a specific [`Entity`]'s query result from [`Query`](crate::system::Query) or [`QueryState`](crate::query::QueryState).
@@ -21,3 +24,21 @@ pub enum QueryEntityError {
     #[error("The entity with ID {0} was requested mutably more than once")]
     AliasedMutability(Entity),
 }
+
+/// An error that occurs when evaluating a [`Query`](crate::system::Query) or [`QueryState`](crate::query::QueryState) as a single expected result via
+/// [`single`](crate::system::Query::single) or [`single_mut`](crate::system::Query::single_mut).
+#[derive(Debug, thiserror::Error)]
+pub enum QuerySingleError {
+    /// No entity fits the query.
+    #[error("No entities fit the query {0}")]
+    NonEntities(DebugName),
+    /// Multiple entities fit the query.
+    #[error("Multiple entities fit the query {0}")]
+    MultipleEntities(DebugName),
+}
+
+/// An error that occurs when creating a contiguous iterator from a non-dense [`Query`](crate::system::Query) or [`QueryState`](crate::query::QueryState) via
+/// [`contiguous_iter`](crate::system::Query::contiguous_iter) or [`contiguous_iter_mut`](crate::system::Query::contiguous_iter_mut).
+#[derive(Debug, thiserror::Error)]
+#[error("Cannot contiguously iterate non-dense query {0}")]
+pub struct QueryNotDenseError(pub DebugName);

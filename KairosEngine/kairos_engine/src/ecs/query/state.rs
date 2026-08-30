@@ -15,8 +15,8 @@ use crate::{
         entity_disabling::DefaultQueryFilters,
         query::{
             FilteredAccess, FilteredAccessSet, IterQueryData, NopWorldQuery, QueryBuilder,
-            QueryCombinationIter, QueryData, QueryEntityError, QueryFilter, QueryIter, ROQueryItem,
-            ReadOnlyQueryData, SingleEntityQueryData, WorldQuery,
+            QueryCombinationIter, QueryData, QueryEntityError, QueryFilter, QueryIter,
+            QuerySingleError, ROQueryItem, ReadOnlyQueryData, SingleEntityQueryData, WorldQuery,
         },
         storage::TableId,
         system::Query,
@@ -1396,6 +1396,15 @@ impl<D: ReadOnlyQueryData, F: QueryFilter> QueryState<D, F> {
                     .fold(accum, &mut func)
             };
         });
+    }
+}
+
+impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
+    pub fn single<'w>(
+        &mut self,
+        world: &'w World,
+    ) -> Result<ROQueryItem<'w, '_, D>, QuerySingleError> {
+        self.query(world).single_inner()
     }
 }
 

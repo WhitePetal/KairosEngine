@@ -165,6 +165,13 @@ impl<'w> EntityWorldMut<'w> {
         todo!()
     }
 
+    /// Returns the [ID](Entity) of the current entity.
+    #[inline]
+    #[must_use = "Omit the .id() call if you do not need to store the `Entity` identifier."]
+    pub fn id(&self) -> Entity {
+        self.entity
+    }
+
     /// Returns `true` if the current entity has a component identified by `component_id`.
     /// Otherwise, this returns false.
     ///
