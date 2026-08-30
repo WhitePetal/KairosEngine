@@ -24,6 +24,9 @@ use crate::{
     },
 };
 
+#[cfg(test)]
+mod tests;
+
 /// An ID for either a table or an archetype. Used for Query iteration.
 ///
 /// Query iteration is exclusively dense (over tables) or archetypal (over archetypes) based on whether
@@ -1400,12 +1403,161 @@ impl<D: ReadOnlyQueryData, F: QueryFilter> QueryState<D, F> {
 }
 
 impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
+    /// Returns a single immutable query result when there is exactly one entity matching
+    /// the query.
+    ///
+    /// This can only be called for read-only queries,
+    /// see [`single_mut`](Self::single_mut) for write-queries.
+    ///
+    /// If the number of query results is not exactly one, a [`QuerySingleError`] is returned
+    /// instead.
+    ///
+    /// # Example
+    ///
+    /// Sometimes, you might want to handle the error in a specific way,
+    /// generally by spawning the missing entity.
+    ///
+    /// ```rust
+    /// use bevy_ecs::prelude::*;
+    /// use bevy_ecs::query::QuerySingleError;
+    ///
+    /// #[derive(Component)]
+    /// struct A(usize);
+    ///
+    /// fn my_system(query: Query<&A>, mut commands: Commands) {
+    ///     match query.single() {
+    ///         Ok(a) => (), // Do something with `a`
+    ///         Err(err) => match err {
+    ///             QuerySingleError::NoEntities(_) => {
+    ///                 commands.spawn(A(0));
+    ///             }
+    ///             QuerySingleError::MultipleEntities(_) => panic!("Multiple entities found!"),
+    ///         },
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// However in most cases, this error can simply be handled with a graceful early return.
+    /// If this is an expected failure mode, you can do this using the `let else` pattern like so:
+    /// ```rust
+    /// use bevy_ecs::prelude::*;
+    ///
+    /// #[derive(Component)]
+    /// struct A(usize);
+    ///
+    /// fn my_system(query: Query<&A>) {
+    ///   let Ok(a) = query.single() else {
+    ///     return;
+    ///   };
+    ///
+    ///   // Do something with `a`
+    /// }
+    /// ```
+    ///
+    /// If this is unexpected though, you should probably use the `?` operator
+    /// in combination with Bevy's error handling apparatus.
+    ///
+    /// ```rust
+    /// use bevy_ecs::prelude::*;
+    ///
+    /// #[derive(Component)]
+    /// struct A(usize);
+    ///
+    /// fn my_system(query: Query<&A>) -> Result {
+    ///  let a = query.single()?;
+    ///
+    ///  // Do something with `a`
+    ///  Ok(())
+    /// }
+    /// ```
+    ///
+    /// This allows you to globally control how errors are handled in your application,
+    /// by setting up a custom error handler.
+    /// See the [`bevy_ecs::error`] module docs for more information!
+    /// Commonly, you might want to panic on an error during development, but log the error and continue
+    /// execution in production.
+    ///
+    /// Simply unwrapping the [`Result`] also works, but should generally be reserved for tests.
+    #[inline]
     pub fn single<'w>(
         &mut self,
         world: &'w World,
     ) -> Result<ROQueryItem<'w, '_, D>, QuerySingleError> {
         self.query(world).single_inner()
     }
+
+    /// Returns a single mutable query result when there is exactly one entity matching
+    /// the query.
+    ///
+    /// If the number of query results is not exactly one, a [`QuerySingleError`] is returned
+    /// instead.
+    ///
+    /// # Examples
+    ///
+    /// Please see [`Query::single`] for advice on handling the error.
+    #[inline]
+    pub fn single_mut<'w>(
+        &mut self,
+        world: &'w mut World,
+    ) -> Result<D::Item<'w, '_>, QuerySingleError>
+    where
+        D: IterQueryData,
+    {
+        self.query_mut(world).single_inner()
+    }
+
+    /// Returns a query result when there is exactly one entity matching the query.
+    ///
+    /// If the number of query results is not exactly one, a [`QuerySingleError`] is returned
+    /// instead.
+    ///
+    /// # Safety
+    ///
+    /// This does not check for mutable query correctness. To be safe, make sure mutable queries
+    /// have unique access to the components they query.
+    #[inline]
+    pub unsafe fn single_unchecked<'w>(
+        &mut self,
+        world: UnsafeWorldCell<'w>,
+    ) -> Result<D::Item<'w, '_>, QuerySingleError>
+    where
+        D: IterQueryData,
+    {
+        // SAFETY: Upheld by caller
+        unsafe { self.query_unchecked(world) }.single_inner()
+    }
+
+    /// Returns a query result when there is exactly one entity matching the query,
+    /// where the last change and the current change tick are given.
+    ///
+    /// If the number of query results is not exactly one, a [`QuerySingleError`] is returned
+    /// instead.
+    ///
+    /// # Safety
+    ///
+    /// This does not check for mutable query correctness. To be safe, make sure mutable queries
+    /// have unique access to the components they query.
+    /// This does not validate that `world.id()` matches `self.world_id`. Calling this on a `world`
+    /// with a mismatched [`WorldId`] is unsound.
+    #[inline]
+    pub unsafe fn single_unchecked_manual<'w>(
+        &self,
+        world: UnsafeWorldCell<'w>,
+        last_run: Tick,
+        this_run: Tick,
+    ) -> Result<D::Item<'w, '_>, QuerySingleError>
+    where
+        D: IterQueryData,
+    {
+        // SAFETY:
+        // - The caller ensured we have the correct access to the world.
+        // - The caller ensured that the world matches.
+        unsafe { self.query_unchecked_manual_with_ticks(world, last_run, this_run) }.single_inner()
+    }
 }
 
-// TODO!
+impl<D: QueryData, F: QueryFilter> From<QueryBuilder<'_, D, F>> for QueryState<D, F> {
+    fn from(mut value: QueryBuilder<'_, D, F>) -> Self {
+        QueryState::from_builder(&mut value)
+    }
+}
