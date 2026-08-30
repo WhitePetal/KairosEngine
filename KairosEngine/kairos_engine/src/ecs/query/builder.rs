@@ -1,9 +1,7 @@
 use std::marker::PhantomData;
 
 use crate::ecs::{
-    component::StorageType,
-    query::{FilteredAccess, QueryData, QueryFilter},
-    world::World,
+    component::{Component, ComponentId, StorageType}, query::{FilteredAccess, QueryData, QueryFilter, With}, world::World,
 };
 
 /// Builder struct to create [`QueryState`] instances at runtime.
@@ -43,6 +41,33 @@ pub struct QueryBuilder<'w, D: QueryData = (), F: QueryFilter = ()> {
 }
 
 impl<'w, D: QueryData, F: QueryFilter> QueryBuilder<'w, D, F> {
+    /// Creates a new builder with the accesses required for `D` and `F`
+    pub fn new(world: &'w mut World) -> Self {
+        let fetch_state = D::init_state(world);
+        let filter_state = F::init_state(world);
+
+        let mut access = FilteredAccess::default();
+        D::update_component_access(&fetch_state, &mut access);
+
+        // Use a temporary empty FilteredAccess for filters. This prevents them from conflicting with the
+        // main Query's `fetch_state` access. Filters are allowed to conflict with the main query fetch
+        // because they are evaluated *before* a specific reference is constructed.
+        let mut filter_access = FilteredAccess::default();
+        F::update_component_access(&filter_state, &mut filter_access);
+
+        // Merge the temporary filter access with the main access. This ensures that filter access is
+        // properly considered in a global "cross-query" context (both within systems and across systems).
+        access.extend(&filter_access);
+
+        Self {
+            access,
+            world,
+            or: false,
+            first: false,
+            _marker: PhantomData
+        }
+    }
+
     pub(super) fn is_dense(&self) -> bool {
         // Note: `component_id` comes from the user in safe code, so we cannot trust it to
         // exist. If it doesn't exist we pessimistically assume it's sparse.
@@ -76,6 +101,53 @@ impl<'w, D: QueryData, F: QueryFilter> QueryBuilder<'w, D, F> {
     /// Returns a mutable reference to the world passed to [`Self::new`].
     pub fn world_mut(&mut self) -> &mut World {
         self.world
+    }
+
+    /// Adds access to self's underlying [`FilteredAccess`] respecting [`Self::or`] and [`Self::and`]
+    pub fn extend_access(&mut self, mut access: FilteredAccess) {
+        if self.or {
+            if self.first {
+                access.required.clear();
+                self.access.extend(&access);
+                self.first = false;
+            } else {
+                self.access.append_or(&access);
+            }
+        } else {
+            self.access.extend(&access);
+        }
+    }
+
+    /// Adds accesses required for `T` to self.
+    pub fn data<T: QueryData>(&mut self) -> &mut Self {
+        let state = T::init_state(self.world);
+        let mut access = FilteredAccess::default();
+        T::update_component_access(&state, &mut access);
+        self.extend_access(access);
+        self
+    }
+
+    /// Adds filter from `T` to self.
+    pub fn filter<T: QueryFilter>(&mut self) -> &mut Self {
+        let state = T::init_state(self.world);
+        let mut access = FilteredAccess::default();
+        T::update_component_access(&state, &mut access);
+        self.extend_access(access);
+        self
+    }
+
+    /// Adds [`With<T>`] to the [`FilteredAccess`] of self.
+    pub fn with<T: Component>(&mut self) -> &mut Self {
+        self.filter::<With<T>>();
+        self
+    }
+
+    /// Adds [`With<T>`] to the [`FilteredAccess`] of self from a runtime [`ComponentId`].
+    pub fn with_id(&mut self, id: ComponentId) -> &mut Self {
+        let mut access = FilteredAccess::default();
+        access.and_with(id);
+        self.extend_access(access);
+        self
     }
 
     /// Returns a reference to the [`FilteredAccess`] that will be provided to the built [`Query`].

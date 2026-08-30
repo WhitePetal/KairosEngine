@@ -1,4 +1,8 @@
-use crate::ecs::{entity::Entity, query::WorldQuery, storage::TableRow};
+use std::marker::PhantomData;
+
+use wgpu::wgc::id;
+
+use crate::ecs::{component::{Component, ComponentId, StorageType}, entity::Entity, query::WorldQuery, storage::TableRow};
 
 /// Types that filter the results of a [`Query`].
 ///
@@ -98,6 +102,116 @@ pub unsafe trait QueryFilter: WorldQuery {
         entity: Entity,
         table_row: TableRow,
     ) -> bool;
+}
+
+/// Filter that selects entities with a component `T`.
+///
+/// This can be used in a [`Query`](crate::system::Query) if entities are required to have the
+/// component `T` but you don't actually care about components value.
+///
+/// This is the negation of [`Without`].
+///
+/// # Examples
+///
+/// ```
+/// # use bevy_ecs::component::Component;
+/// # use bevy_ecs::query::With;
+/// # use bevy_ecs::system::IntoSystem;
+/// # use bevy_ecs::system::Query;
+/// #
+/// # #[derive(Component)]
+/// # struct IsBeautiful;
+/// # #[derive(Component)]
+/// # struct Name { name: &'static str };
+/// #
+/// fn compliment_entity_system(query: Query<&Name, With<IsBeautiful>>) {
+///     for name in &query {
+///         println!("{} is looking lovely today!", name.name);
+///     }
+/// }
+/// # bevy_ecs::system::assert_is_system(compliment_entity_system);
+/// ```
+pub struct With<T>(PhantomData<T>);
+
+// SAFETY:
+// `update_component_access` does not add any accesses.
+// This is sound because [`QueryFilter::filter_fetch`] does not access any components.
+// `update_component_access` adds a `With` filter for `T`.
+// This is sound because `matches_component_set` returns whether the set contains the component.
+unsafe impl<T: Component> WorldQuery for With<T> {
+    type Fetch<'w> = ();
+
+    type State = ComponentId;
+
+    fn shrink_fetch<'wlong: 'wshort, 'wshort>(_fetch: Self::Fetch<'wlong>) -> Self::Fetch<'wshort> {}
+
+    #[inline]
+    unsafe fn init_fetch<'w, 's>(
+        _world: crate::ecs::world::unsafe_world_cell::UnsafeWorldCell<'w>,
+        _state: &'s Self::State,
+        _last_run: crate::ecs::change_detection::Tick,
+        _this_run: crate::ecs::change_detection::Tick,
+    ) -> Self::Fetch<'w> {
+    }
+
+    const IS_DENSE: bool = {
+        match T::STORAGE_TYPE {
+            StorageType::Table => true,
+            StorageType::SparseSet => false,
+        }
+    };
+
+    #[inline]
+    unsafe fn set_archetype<'w, 's>(
+        _fetch: &mut Self::Fetch<'w>,
+        _state: &'s Self::State,
+        _archetype: &'w crate::ecs::archetype::Archetype,
+        _table: &'w crate::ecs::storage::Table,
+    ) {
+    }
+
+    #[inline]
+    unsafe fn set_table<'w, 's>(
+        _fetch: &mut Self::Fetch<'w>,
+        _state: &'s Self::State,
+        _table: &'w crate::ecs::storage::Table,
+    ) {
+    }
+
+    #[inline]
+    fn update_component_access(id: &Self::State, access: &mut super::FilteredAccess) {
+        access.and_with(*id);
+    }
+
+    fn init_state(world: &mut crate::ecs::world::World) -> Self::State {
+        world.register_component::<T>()
+    }
+
+    fn get_state(components: &crate::ecs::component::Components) -> Option<Self::State> {
+        components.component_id::<T>()
+    }
+
+    fn matches_component_set(
+        id: &Self::State,
+        set_contains_id: &impl Fn(crate::ecs::component::ComponentId) -> bool,
+    ) -> bool {
+        set_contains_id(*id)
+    }
+}
+
+// SAFETY: WorldQuery impl performs no access at all
+unsafe impl<T: Component> QueryFilter for With<T> {
+    const IS_ARCHETYPAL: bool = true;
+
+     #[inline(always)]
+    unsafe fn filter_fetch(
+        _state: &Self::State,
+        _fetch: &mut Self::Fetch<'_>,
+        _entity: Entity,
+        _table_row: TableRow,
+    ) -> bool {
+        true
+    }
 }
 
 unsafe impl QueryFilter for () {
