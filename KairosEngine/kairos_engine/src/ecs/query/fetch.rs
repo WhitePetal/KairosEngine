@@ -3099,7 +3099,7 @@ unsafe impl<D: ReadOnlyQueryData + 'static, F: QueryFilter + 'static> QueryData
         }
     }
 
-    fn iter_access(state: &Self::State) -> impl Iterator<Item = EcsAccessType<'_>> {
+    fn iter_access(_state: &Self::State) -> impl Iterator<Item = EcsAccessType<'_>> {
         // This performs no access on the current entity
         // Access to the nested query is checked through `init_nested_access`
         iter::empty()

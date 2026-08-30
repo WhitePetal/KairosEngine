@@ -11,6 +11,9 @@ use crate::ecs::{
     component::ComponentId, resource::IS_RESOURCE, world::unsafe_world_cell::UnsafeWorldCell,
 };
 
+#[cfg(test)]
+mod tests;
+
 /// Tracks read and write access to specific elements in a collection.
 ///
 /// Used internally to ensure soundness during system initialization and execution.
@@ -414,7 +417,7 @@ impl Access {
         if self.read_and_writes_inverted {
             return Err(UnboundedAccessError {
                 writes_inverted: self.writes_inverted,
-                read_and_writres_inverted: self.read_and_writes_inverted,
+                read_and_writes_inverted: self.read_and_writes_inverted,
             });
         }
         Ok(&self.read_and_writes)
@@ -426,7 +429,7 @@ impl Access {
         if self.writes_inverted {
             return Err(UnboundedAccessError {
                 writes_inverted: self.writes_inverted,
-                read_and_writres_inverted: self.read_and_writes_inverted,
+                read_and_writes_inverted: self.read_and_writes_inverted,
             });
         }
         Ok(&self.writes)
@@ -538,7 +541,7 @@ pub struct UnboundedAccessError {
     pub writes_inverted: bool,
     /// [`Access`] is defined in terms of _excluding_ [shared](ComponentAccessKind::Shared) and
     /// [exclusive](ComponentAccessKind::Exclusive) access.
-    pub read_and_writres_inverted: bool,
+    pub read_and_writes_inverted: bool,
 }
 
 /// Describes the level of access for a particular component as defined in an [`Access`].

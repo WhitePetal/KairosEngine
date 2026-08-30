@@ -1,5 +1,6 @@
 extern crate self as kairos_engine;
 
+pub mod bloom_filter;
 pub mod cell;
 pub mod debug;
 pub mod hash;
