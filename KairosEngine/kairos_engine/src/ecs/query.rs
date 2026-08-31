@@ -21,3 +21,6 @@ pub use iter::*;
 pub use par_iter::*;
 pub use state::*;
 pub use world_query::*;
+
+#[cfg(test)]
+mod tests;

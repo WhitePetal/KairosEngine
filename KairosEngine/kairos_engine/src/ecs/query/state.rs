@@ -11,12 +11,16 @@ use crate::{
         archetype::{Archetype, ArchetypeGeneration, ArchetypeId},
         change_detection::Tick,
         component::ComponentId,
-        entity::{Entity, EntityEquivalent, UniqueEntityArray, UniqueEntityEquivalentSlice},
+        entity::{
+            Entity, EntityEquivalent, EntitySet, UniqueEntityArray, UniqueEntityEquivalentSlice,
+        },
         entity_disabling::DefaultQueryFilters,
         query::{
-            FilteredAccess, FilteredAccessSet, IterQueryData, NopWorldQuery, QueryBuilder,
-            QueryCombinationIter, QueryData, QueryEntityError, QueryFilter, QueryIter,
-            QuerySingleError, ROQueryItem, ReadOnlyQueryData, SingleEntityQueryData, WorldQuery,
+            ArchetypeFilter, ContiguousQueryData, FilteredAccess, FilteredAccessSet, IterQueryData,
+            NopWorldQuery, QueryBuilder, QueryCombinationIter, QueryContiguousIter, QueryData,
+            QueryEntityError, QueryFilter, QueryIter, QueryManyIter, QueryManyUniqueIter,
+            QueryNotDenseError, QueryParIter, QuerySingleError, ROQueryItem, ReadOnlyQueryData,
+            SingleEntityQueryData, WorldQuery,
         },
         storage::TableId,
         system::Query,
@@ -815,7 +819,7 @@ impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
         let mut component_access = FilteredAccess::default();
         let mut new_fetch_state = NewD::get_state(world.components())
             .expect("Could not create fetch_state, Please initialize all referenced components before transmuting.");
-        let mut new_filter_state = NewF::get_state(world.components())
+        let new_filter_state = NewF::get_state(world.components())
             .expect("Could not create filter_state, Please initialize all referenced components before transmuting.");
 
         let mut joined_component_access = self.component_access.clone();
@@ -1190,13 +1194,333 @@ impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
         self.query_manual(world).into_iter()
     }
 
+    /// Returns an [`Iterator`] over all possible combinations of `K` query results without repetition.
+    /// This can only be called for read-only queries.
+    ///
+    /// A combination is an arrangement of a collection of items where order does not matter.
+    ///
+    /// `K` is the number of items that make up each subset, and the number of items returned by the iterator.
+    /// `N` is the number of total entities output by query.
+    ///
+    /// For example, given the list [1, 2, 3, 4], where `K` is 2, the combinations without repeats are
+    /// [1, 2], [1, 3], [1, 4], [2, 3], [2, 4], [3, 4].
+    /// And in this case, `N` would be defined as 4 since the size of the input list is 4.
+    ///
+    ///  For combinations of size `K` of query taking `N` inputs, you will get:
+    /// - if `K == N`: one combination of all query results
+    /// - if `K < N`: all possible `K`-sized combinations of query results, without repetition
+    /// - if `K > N`: empty set (no `K`-sized combinations exist)
+    ///
+    /// The `iter_combinations` method does not guarantee order of iteration.
+    ///
+    /// This iterator is always guaranteed to return results from each unique pair of matching entities.
+    /// Iteration order is not guaranteed.
+    ///
+    /// This can only be called for read-only queries, see [`Self::iter_combinations_mut`] for
+    /// write-queries.
+    #[inline]
     pub fn iter_combinations<'w, 's, const K: usize>(
         &'s mut self,
         world: &'w World,
     ) -> QueryCombinationIter<'w, 's, D::ReadOnly, F, K> {
-        todo!()
+        self.query(world).iter_combinations_inner()
     }
 
+    /// Returns an [`Iterator`] over all possible combinations of `K` query results without repetition.
+    ///
+    /// A combination is an arrangement of a collection of items where order does not matter.
+    ///
+    /// `K` is the number of items that make up each subset, and the number of items returned by the iterator.
+    /// `N` is the number of total entities output by query.
+    ///
+    /// For example, given the list [1, 2, 3, 4], where `K` is 2, the combinations without repeats are
+    /// [1, 2], [1, 3], [1, 4], [2, 3], [2, 4], [3, 4].
+    /// And in this case, `N` would be defined as 4 since the size of the input list is 4.
+    ///
+    ///  For combinations of size `K` of query taking `N` inputs, you will get:
+    /// - if `K == N`: one combination of all query results
+    /// - if `K < N`: all possible `K`-sized combinations of query results, without repetition
+    /// - if `K > N`: empty set (no `K`-sized combinations exist)
+    ///
+    /// The `iter_combinations_mut` method does not guarantee order of iteration.
+    #[inline]
+    pub fn iter_combinations_mut<'w, 's, const K: usize>(
+        &'s mut self,
+        world: &'w mut World,
+    ) -> QueryCombinationIter<'w, 's, D, F, K>
+    where
+        D: IterQueryData,
+    {
+        self.query_mut(world).iter_combinations_inner()
+    }
+
+    /// Returns an [`Iterator`] over the read-only query items generated from an [`Entity`] list.
+    ///
+    /// Items are returned in the order of the list of entities.
+    /// Entities that don't match the query are skipped.
+    ///
+    /// If you need to iterate multiple times at once but get borrowing errors,
+    /// consider using [`Self::update_archetypes`] followed by multiple [`Self::iter_many_manual`] calls.
+    ///
+    /// # See also
+    ///
+    /// - [`iter_many_mut`](Self::iter_many_mut) to get mutable query items.
+    #[inline]
+    pub fn iter_many<'w, 's, EntityList: IntoIterator<Item: EntityEquivalent>>(
+        &'s mut self,
+        world: &'w World,
+        entities: EntityList,
+    ) -> QueryManyIter<'w, 's, D::ReadOnly, F, EntityList::IntoIter> {
+        self.query(world).iter_many_inner(entities)
+    }
+
+    /// Returns an [`Iterator`] over the read-only query items generated from an [`Entity`] list.
+    ///
+    /// Items are returned in the order of the list of entities.
+    /// Entities that don't match the query are skipped.
+    ///
+    /// If `world` archetypes changed since [`Self::update_archetypes`] was last called,
+    /// this will skip entities contained in new archetypes.
+    ///
+    /// This can only be called for read-only queries.
+    ///
+    /// # See also
+    ///
+    /// - [`iter_many`](Self::iter_many) to update archetypes.
+    /// - [`iter_manual`](Self::iter_manual) to iterate over all query items.
+    #[inline]
+    pub fn iter_many_manual<'w, 's, EntityList: IntoIterator<Item: EntityEquivalent>>(
+        &'s self,
+        world: &'w World,
+        entities: EntityList,
+    ) -> QueryManyIter<'w, 's, D::ReadOnly, F, EntityList::IntoIter> {
+        self.query_manual(world).iter_many_inner(entities)
+    }
+
+    /// Returns an iterator over the query items generated from an [`Entity`] list.
+    ///
+    /// Items are returned in the order of the list of entities.
+    /// Entities that don't match the query are skipped.
+    #[inline]
+    pub fn iter_many_mut<'w, 's, EntityList: IntoIterator<Item: EntityEquivalent>>(
+        &'s mut self,
+        world: &'w mut World,
+        entities: EntityList,
+    ) -> QueryManyIter<'w, 's, D, F, EntityList::IntoIter> {
+        self.query_mut(world).iter_many_inner(entities)
+    }
+
+    /// Returns an [`Iterator`] over the unique read-only query items generated from an [`EntitySet`].
+    ///
+    /// Items are returned in the order of the list of entities.
+    /// Entities that don't match the query are skipped.
+    ///
+    /// # See also
+    ///
+    /// - [`iter_many_unique_mut`](Self::iter_many_unique_mut) to get mutable query items.
+    #[inline]
+    pub fn iter_many_unique<'w, 's, EntityList: EntitySet>(
+        &'s mut self,
+        world: &'w World,
+        entities: EntityList,
+    ) -> QueryManyUniqueIter<'w, 's, D::ReadOnly, F, EntityList::IntoIter> {
+        self.query(world).iter_many_unique_inner(entities)
+    }
+
+    /// Returns an [`Iterator`] over the unique read-only query items generated from an [`EntitySet`].
+    ///
+    /// Items are returned in the order of the list of entities.
+    /// Entities that don't match the query are skipped.
+    ///
+    /// If `world` archetypes changed since [`Self::update_archetypes`] was last called,
+    /// this will skip entities contained in new archetypes.
+    ///
+    /// This can only be called for read-only queries.
+    ///
+    /// # See also
+    ///
+    /// - [`iter_many_unique`](Self::iter_many) to update archetypes.
+    /// - [`iter_many`](Self::iter_many) to iterate over a non-unique entity list.
+    /// - [`iter_manual`](Self::iter_manual) to iterate over all query items.
+    #[inline]
+    pub fn iter_many_unique_manual<'w, 's, EntityList: EntitySet>(
+        &'s self,
+        world: &'w World,
+        entities: EntityList,
+    ) -> QueryManyUniqueIter<'w, 's, D::ReadOnly, F, EntityList::IntoIter> {
+        self.query_manual(world).iter_many_unique_inner(entities)
+    }
+
+    /// Returns an iterator over the unique query items generated from an [`EntitySet`].
+    ///
+    /// Items are returned in the order of the list of entities.
+    /// Entities that don't match the query are skipped.
+    #[inline]
+    pub fn iter_many_unique_mut<'w, 's, EntityList: EntitySet>(
+        &'s mut self,
+        world: &'w mut World,
+        entities: EntityList,
+    ) -> QueryManyUniqueIter<'w, 's, D, F, EntityList::IntoIter>
+    where
+        D: IterQueryData,
+    {
+        self.query_mut(world).iter_many_unique_inner(entities)
+    }
+
+    /// Returns an [`Iterator`] over the query results for the given [`World`].
+    ///
+    /// This iterator is always guaranteed to return results from each matching entity once and only once.
+    /// Iteration order is not guaranteed.
+    ///
+    /// # Safety
+    ///
+    /// This does not check for mutable query correctness. To be safe, make sure mutable queries
+    /// have unique access to the components they query.
+    #[inline]
+    pub unsafe fn iter_unchecked<'w, 's>(
+        &'s mut self,
+        world: UnsafeWorldCell<'w>,
+    ) -> QueryIter<'w, 's, D, F> {
+        unsafe { self.query_unchecked(world) }.iter_inner()
+    }
+
+    /// Returns an [`Iterator`] over all possible combinations of `K` query results for the
+    /// given [`World`] without repetition.
+    /// This can only be called for read-only queries.
+    ///
+    /// This iterator is always guaranteed to return results from each unique pair of matching entities.
+    /// Iteration order is not guaranteed.
+    ///
+    /// # Safety
+    ///
+    /// This does not check for mutable query correctness. To be safe, make sure mutable queries
+    /// have unique access to the components they query.
+    #[inline]
+    pub unsafe fn iter_combinations_unchecked<'w, 's, const K: usize>(
+        &'s mut self,
+        world: UnsafeWorldCell<'w>,
+    ) -> QueryCombinationIter<'w, 's, D, F, K>
+    where
+        D: IterQueryData,
+    {
+        // SAFETY: Upheld by caller
+        unsafe { self.query_unchecked(world) }.iter_combinations_inner()
+    }
+
+    /// Returns a parallel iterator over the query results for the given [`World`].
+    ///
+    /// This can only be called for read-only queries, see [`par_iter_mut`] for write-queries.
+    ///
+    /// Note that you must use the `for_each` method to iterate over the
+    /// results, see [`par_iter_mut`] for an example.
+    ///
+    /// [`par_iter_mut`]: Self::par_iter_mut
+    #[inline]
+    pub fn par_iter<'w, 's>(
+        &'s mut self,
+        world: &'w World,
+    ) -> QueryParIter<'w, 's, D::ReadOnly, F> {
+        self.query(world).par_iter_inner()
+    }
+
+    /// Returns a parallel iterator over the query results for the given [`World`].
+    ///
+    /// This can only be called for mutable queries, see [`par_iter`] for read-only-queries.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use bevy_ecs::prelude::*;
+    /// use bevy_ecs::query::QueryEntityError;
+    ///
+    /// #[derive(Component, PartialEq, Debug)]
+    /// struct A(usize);
+    ///
+    /// # bevy_tasks::ComputeTaskPool::get_or_init(|| bevy_tasks::TaskPool::new());
+    ///
+    /// let mut world = World::new();
+    ///
+    /// # let entities: Vec<Entity> = (0..3).map(|i| world.spawn(A(i)).id()).collect();
+    /// # let entities: [Entity; 3] = entities.try_into().unwrap();
+    ///
+    /// let mut query_state = world.query::<&mut A>();
+    ///
+    /// query_state.par_iter_mut(&mut world).for_each(|mut a| {
+    ///     a.0 += 5;
+    /// });
+    ///
+    /// # let component_values = query_state.get_many(&world, entities).unwrap();
+    ///
+    /// # assert_eq!(component_values, [&A(5), &A(6), &A(7)]);
+    ///
+    /// # let wrong_entity = Entity::from_raw_u32(57).unwrap();
+    /// # let invalid_entity = world.spawn_empty().id();
+    ///
+    /// # assert_eq!(match query_state.get_many(&mut world, [wrong_entity]).unwrap_err() {QueryEntityError::NotSpawned(error) => error.entity(), _ => panic!()}, wrong_entity);
+    /// assert_eq!(match query_state.get_many_mut(&mut world, [invalid_entity]).unwrap_err() {QueryEntityError::QueryDoesNotMatch(entity, _) => entity, _ => panic!()}, invalid_entity);
+    /// # assert_eq!(query_state.get_many_mut(&mut world, [entities[0], entities[0]]).unwrap_err(), QueryEntityError::AliasedMutability(entities[0]));
+    /// ```
+    ///
+    /// # Panics
+    /// The [`ComputeTaskPool`] is not initialized. If using this from a query that is being
+    /// initialized and run from the ECS scheduler, this should never panic.
+    ///
+    /// [`par_iter`]: Self::par_iter
+    /// [`ComputeTaskPool`]: bevy_tasks::ComputeTaskPool
+    #[inline]
+    pub fn par_iter_mut<'w, 's>(&'s mut self, world: &'w mut World) -> QueryParIter<'w, 's, D, F>
+    where
+        D: IterQueryData,
+    {
+        self.query_mut(world).par_iter_inner()
+    }
+
+    /// Returns a contiguous iterator over the query results for the given [`World`] or [`Err`] with [`QueryNotDenseError`] if
+    /// the query is not dense hence not contiguously iterable.
+    #[inline]
+    pub fn contiguous_iter<'w, 's>(
+        &'s mut self,
+        world: &'w World,
+    ) -> Result<QueryContiguousIter<'w, 's, D::ReadOnly, F>, QueryNotDenseError>
+    where
+        D::ReadOnly: ContiguousQueryData,
+        F: ArchetypeFilter,
+    {
+        self.query(world).contiguous_iter_inner()
+    }
+
+    /// Returns a contiguous iterator over the query results for the given [`World`] or [`Err`] with [`QueryNotDenseError`] if
+    /// the query is not dense hence not contiguously iterable.
+    ///
+    /// This can only be called for mutable queries, see [`Self::contiguous_iter`] for read-only-queries.
+    #[inline]
+    pub fn contiguous_iter_mut<'w, 's>(
+        &'s mut self,
+        world: &'w mut World,
+    ) -> Result<QueryContiguousIter<'w, 's, D, F>, QueryNotDenseError>
+    where
+        D: ContiguousQueryData,
+        F: ArchetypeFilter,
+    {
+        self.query_mut(world).contiguous_iter_inner()
+    }
+
+    /// Runs `func` on each query result in parallel for the given [`World`], where the last change and
+    /// the current change tick are given. This is faster than the equivalent
+    /// `iter()` method, but cannot be chained like a normal [`Iterator`].
+    ///
+    /// # Panics
+    /// The [`ComputeTaskPool`] is not initialized. If using this from a query that is being
+    /// initialized and run from the ECS scheduler, this should never panic.
+    ///
+    /// # Safety
+    ///
+    /// This does not check for mutable query correctness. To be safe, make sure mutable queries
+    /// have unique access to the components they query.
+    /// This does not validate that `world.id()` matches `self.world_id`. Calling this on a `world`
+    /// with a mismatched [`WorldId`] is unsound.
+    ///
+    /// [`ComputeTaskPool`]: bevy_tasks::ComputeTaskPool
     pub(crate) unsafe fn par_fold_init_unchecked_manual<'w, 's, T, FN, INIT>(
         &'s self,
         init_accum: INIT,
@@ -1302,6 +1626,22 @@ impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
         });
     }
 
+    /// Runs `func` on each query result in parallel for the given [`EntitySet`],
+    /// where the last change and the current change tick are given. This is faster than the
+    /// equivalent `iter_many_unique()` method, but cannot be chained like a normal [`Iterator`].
+    ///
+    /// # Panics
+    /// The [`ComputeTaskPool`] is not initialized. If using this from a query that is being
+    /// initialized and run from the ECS scheduler, this should never panic.
+    ///
+    /// # Safety
+    ///
+    /// This does not check for mutable query correctness. To be safe, make sure mutable queries
+    /// have unique access to the components they query.
+    /// This does not validate that `world.id()` matches `self.world_id`. Calling this on a `world`
+    /// with a mismatched [`WorldId`] is unsound.
+    ///
+    /// [`ComputeTaskPool`]: bevy_tasks::ComputeTaskPool
     pub(crate) unsafe fn par_many_unique_fold_init_unchecked_manual<'w, 's, T, FN, INIT, E>(
         &'s self,
         init_accum: INIT,
@@ -1353,6 +1693,22 @@ impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
 }
 
 impl<D: ReadOnlyQueryData, F: QueryFilter> QueryState<D, F> {
+    /// Runs `func` on each read-only query result in parallel for the given [`Entity`] list,
+    /// where the last change and the current change tick are given. This is faster than the equivalent
+    /// `iter_many()` method, but cannot be chained like a normal [`Iterator`].
+    ///
+    /// # Panics
+    /// The [`ComputeTaskPool`] is not initialized. If using this from a query that is being
+    /// initialized and run from the ECS scheduler, this should never panic.
+    ///
+    /// # Safety
+    ///
+    /// This does not check for mutable query correctness. To be safe, make sure mutable queries
+    /// have unique access to the components they query.
+    /// This does not validate that `world.id()` matches `self.world_id`. Calling this on a `world`
+    /// with a mismatched [`WorldId`] is unsound.
+    ///
+    /// [`ComputeTaskPool`]: bevy_tasks::ComputeTaskPool
     pub(crate) unsafe fn par_many_fold_init_unchecked_manual<'w, 's, T, FN, INIT, E>(
         &'s self,
         init_accum: INIT,
