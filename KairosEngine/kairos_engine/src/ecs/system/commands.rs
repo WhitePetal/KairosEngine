@@ -1,6 +1,10 @@
 use std::marker::PhantomData;
 
-use crate::ecs::entity::{Entities, Entity, EntityAllocator};
+use crate::ecs::{
+    entity::{Entities, Entity, EntityAllocator},
+    system::Deferred,
+    world::command_queue::{CommandQueue, RawCommandQueue},
+};
 
 pub mod command;
 pub mod entity_command;
@@ -77,8 +81,15 @@ pub struct Commands<'w, 's> {
     allocator: &'w EntityAllocator,
 }
 
+// SAFETY: All commands [`Command`] implement [`Send`]
+unsafe impl Send for Commands<'_, '_> {}
+
+// SAFETY: `Commands` never gives access to the inner commands.
+unsafe impl Sync for Commands<'_, '_> {}
+
 enum InternalQueue<'s> {
-    TODO(PhantomData<&'s u32>),
+    CommandQueue(&'s CommandQueue),
+    RawCommandQueue(RawCommandQueue),
 }
 
 impl<'w, 's> Commands<'w, 's> {

@@ -1,7 +1,9 @@
 use crate::{
     debug::{DebugCheckedUnwrap, MaybeLocation},
     ecs::{
-        bundle::{Bundle, BundleFromComponents, BundleInserter, BundleRemover, InsertMode},
+        bundle::{
+            Bundle, BundleFromComponents, BundleInserter, BundleRemover, DynamicBundle, InsertMode,
+        },
         change_detection::ComponentTicks,
         component::{Component, ComponentId, Components, StorageType},
         entity::{Entity, EntityLocation},
@@ -14,6 +16,7 @@ use crate::{
             unsafe_world_cell::UnsafeEntityCell,
         },
     },
+    move_as_ptr,
     ptr::{MovingPtr, OwningPtr},
 };
 
@@ -516,6 +519,117 @@ impl<'w> EntityWorldMut<'w> {
         // This will run even in case the closure `f` unwinds.
         let guard = Guard { entity_mut: self };
         f(guard.entity_mut.world)
+    }
+
+    /// # Safety
+    ///
+    /// - [`ComponentId`] must be from the same world as [`EntityWorldMut`]
+    /// - [`OwningPtr`] must be a valid reference to the type represented by [`ComponentId`]
+    #[inline]
+    pub(crate) unsafe fn insert_by_id_with_caller(
+        &mut self,
+        compnent_id: ComponentId,
+        component: OwningPtr<'_>,
+        mode: InsertMode,
+        caller: MaybeLocation,
+        relationship_hook_insert_mode: RelationshipHookMode,
+    ) -> &mut Self {
+        let location = self.location();
+        let change_tick = self.world.change_tick();
+        let bundle_id = self.world.bundles.init_component_info(
+            &mut self.world.storages,
+            &self.world.components,
+            compnent_id,
+        );
+        let storage_type = unsafe { self.world.bundles.get_storage_unchecked(bundle_id) };
+
+        let bundle_inserter = unsafe {
+            BundleInserter::new_with_id(self.world, location.archetype_id, bundle_id, change_tick)
+        };
+
+        self.location = unsafe {
+            Some(insert_dynamic_bundle(
+                bundle_inserter,
+                self.entity,
+                location,
+                Some(component).into_iter(),
+                Some(storage_type).iter().cloned(),
+                mode,
+                caller,
+                relationship_hook_insert_mode,
+            ))
+        };
+        self.world.flush();
+        self.update_location();
+        self
+    }
+}
+
+/// Inserts a dynamic [`Bundle`] into the entity.
+///
+/// # Safety
+///
+/// - [`OwningPtr`] and [`StorageType`] iterators must correspond to the
+///   [`BundleInfo`](crate::bundle::BundleInfo) used to construct [`BundleInserter`]
+/// - [`Entity`] must correspond to [`EntityLocation`]
+unsafe fn insert_dynamic_bundle<
+    'a,
+    I: Iterator<Item = OwningPtr<'a>>,
+    S: Iterator<Item = StorageType>,
+>(
+    mut bundle_inserter: BundleInserter<'_>,
+    entity: Entity,
+    location: EntityLocation,
+    components: I,
+    storage_types: S,
+    mode: InsertMode,
+    caller: MaybeLocation,
+    relationship_hook_insert_mode: RelationshipHookMode,
+) -> EntityLocation {
+    struct DynamicInsertBundle<'a, I: Iterator<Item = (StorageType, OwningPtr<'a>)>> {
+        components: I,
+    }
+
+    impl<'a, I: Iterator<Item = (StorageType, OwningPtr<'a>)>> DynamicBundle
+        for DynamicInsertBundle<'a, I>
+    {
+        type Effect = ();
+
+        unsafe fn get_components(
+            mut ptr: MovingPtr<'_, Self>,
+            func: &mut impl FnMut(StorageType, OwningPtr<'_>),
+        ) {
+            (&mut ptr.components).for_each(|(t, ptr)| func(t, ptr));
+        }
+
+        unsafe fn apply_effect(
+            _ptr: MovingPtr<'_, std::mem::MaybeUninit<Self>>,
+            _entity: &mut EntityWorldMut,
+        ) {
+        }
+    }
+
+    let bundle = DynamicInsertBundle {
+        components: storage_types.zip(components),
+    };
+
+    move_as_ptr!(bundle);
+
+    // SAFETY:
+    // - `location` matches `entity`.  and thus must currently exist in the source
+    //   archetype for this inserter and its location within the archetype.
+    // - The caller must ensure that the iterators and storage types match up with the `BundleInserter`
+    // - `apply_effect` is never called on this bundle.
+    // - `bundle` is not used or dropped after this point.
+    unsafe {
+        bundle_inserter.insert(
+            entity,
+            location,
+            bundle,
+            mode,
+            caller,
+            relationship_hook_insert_mode,
+        )
     }
 }
 

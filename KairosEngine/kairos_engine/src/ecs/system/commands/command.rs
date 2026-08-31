@@ -4,7 +4,16 @@
 //! It also contains functions that return closures for use with
 //! [`Commands`](crate::system::Commands).
 
-use crate::ecs::{error::CommandOutput, world::World};
+use crate::{
+    debug::{DebugName, MaybeLocation},
+    ecs::{
+        bundle::{Bundle, InsertMode, NoBundleEffect},
+        entity::Entity,
+        error::{CommandOutput, ErrorContext, ErrorHandler, Result},
+        resource::Resource,
+        world::{FromWorld, SpawnBatchIter, World},
+    },
+};
 
 /// A [`World`] mutation.
 ///
@@ -46,6 +55,55 @@ pub trait Command: Send + 'static {
     /// Because this method takes `self`, you can store data or settings on the type that implements this trait.
     /// This data is set by the system or other source of the command, and then ultimately read in this method.
     fn apply(self, world: &mut World) -> Self::Out;
+
+    /// Takes a [`Command`] that returns a Result and uses a given error handler function to convert it into
+    /// a [`Command`] that internally handles an error if it occurs and returns `()`.
+    #[inline]
+    fn handle_error_with(self, error_handler: ErrorHandler) -> impl Command<Out = ()>
+    where
+        Self: Sized,
+    {
+        move |world: &mut World| {
+            if let Some(error) = self.apply(world).to_err() {
+                error_handler(
+                    error,
+                    ErrorContext::Command {
+                        name: DebugName::type_name::<Self>(),
+                    },
+                )
+            }
+        }
+    }
+
+    /// Takes a [`Command`] that returns a Result and uses the fallback error handler function to convert it into
+    /// a [`Command`] that internally handles an error if it occurs and returns `()`.
+    #[inline]
+    fn handle_error(self) -> impl Command<Out = ()>
+    where
+        Self: Sized,
+    {
+        move |world: &mut World| {
+            if let Some(error) = self.apply(world).to_err() {
+                world.fallback_error_handler()(
+                    error,
+                    ErrorContext::Command {
+                        name: DebugName::type_name::<Self>(),
+                    },
+                )
+            }
+        }
+    }
+
+    /// Takes a [`Command`] that returns a Result and ignores any error that occurs.
+    #[inline]
+    fn ignore_error(self) -> impl Command<Out = ()>
+    where
+        Self: Sized,
+    {
+        move |world: &mut World| {
+            let _ = self.apply(world);
+        }
+    }
 }
 
 impl<F, Out> Command for F
@@ -56,7 +114,59 @@ where
     type Out = Out;
 
     fn apply(self, world: &mut World) -> Self::Out {
-        todo!()
+        self(world)
+    }
+}
+
+/// A [`Command`] that consumes an iterator of [`Bundles`](Bundle) to spawn a series of entities.
+///
+/// This is more efficient than spawning the entities individually.
+#[track_caller]
+pub fn spawn_batch<I>(bundles_iter: I) -> impl Command
+where
+    I: IntoIterator + Send + Sync + 'static,
+    I::Item: Bundle<Effect: NoBundleEffect>,
+{
+    let caller = MaybeLocation::caller();
+    move |world: &mut World| {
+        SpawnBatchIter::new(world, bundles_iter.into_iter(), caller);
+    }
+}
+
+/// A [`Command`] that consumes an iterator to add a series of [`Bundles`](Bundle) to a set of entities.
+///
+/// If any entities do not exist in the world, this command will return a
+/// [`TryInsertBatchError`](crate::world::error::TryInsertBatchError).
+///
+/// This is more efficient than inserting the bundles individually.
+#[track_caller]
+pub fn insert_batch<I, B>(batch: I, insert_mode: InsertMode) -> impl Command
+where
+    I: IntoIterator<Item = (Entity, B)> + Send + Sync + 'static,
+    B: Bundle<Effect: NoBundleEffect>,
+{
+    let caller = MaybeLocation::caller();
+    move |world: &mut World| -> Result {
+        world.try_insert_batch_with_caller(batch, insert_mode, caller)?;
+        Ok(())
+    }
+}
+
+/// A [`Command`] that inserts a [`Resource`] into the world using a value
+/// created with the [`FromWorld`] trait.
+#[track_caller]
+pub fn init_resource<R: Resource + FromWorld>() -> impl Command {
+    move |world: &mut World| {
+        world.init_resource::<R>();
+    }
+}
+
+/// A [`Command`] that inserts a [`Resource`] into the world.
+#[track_caller]
+pub fn insert_resource<R: Resource>(resource: R) -> impl Command {
+    let caller = MaybeLocation::caller();
+    move |world: &mut World| {
+        world.insert_resource_with_caller(resource, caller);
     }
 }
 

@@ -1,7 +1,26 @@
-use crate::ecs::{
-    component::ComponentId,
-    entity::{Entity, EntityNotSpawnedError},
+use crate::{
+    debug::DebugName,
+    ecs::{
+        component::ComponentId,
+        entity::{Entity, EntityNotSpawnedError},
+    },
 };
+
+/// The error type returned by [`World::try_insert_batch`] and [`World::try_insert_batch_if_new`]
+/// if any of the provided entities do not exist.
+///
+/// [`World::try_insert_batch`]: crate::world::World::try_insert_batch
+/// [`World::try_insert_batch_if_new`]: crate::world::World::try_insert_batch_if_new
+#[derive(thiserror::Error, Debug, Clone)]
+#[error(
+    "Could not insert bundles of type {bundle_type} into the entities with the following IDs because they do not exist: {entities:?}"
+)]
+pub struct TryInsertBatchError {
+    /// The bundles' type name.
+    pub bundle_type: DebugName,
+    /// The IDs of the provided entities that do not exist.
+    pub entities: Vec<Entity>,
+}
 
 /// An error that occurs when fetching entities mutably from a world.
 #[derive(thiserror::Error, Debug, Clone, Copy, PartialEq, Eq)]

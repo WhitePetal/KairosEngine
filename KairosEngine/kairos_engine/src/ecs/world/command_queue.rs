@@ -1,6 +1,14 @@
-use std::{fmt::Debug, mem::MaybeUninit, ptr::{NonNull, addr_of_mut}};
+use std::{
+    fmt::Debug,
+    mem::MaybeUninit,
+    ptr::{NonNull, addr_of_mut},
+};
 
-use crate::{debug::MaybeLocation, ecs::{system::Command, world::World}, ptr::{OwningPtr, Unaligned}};
+use crate::{
+    debug::MaybeLocation,
+    ecs::{system::Command, world::World},
+    ptr::{OwningPtr, Unaligned},
+};
 
 struct CommandMeta {
     /// SAFETY: The `value` must point to a value of type `T: Command`,
@@ -38,7 +46,7 @@ impl Default for CommandQueue {
             bytes: Default::default(),
             cursor: Default::default(),
             painc_recovery: Default::default(),
-            caller: MaybeLocation::caller()
+            caller: MaybeLocation::caller(),
         }
     }
 }
@@ -87,7 +95,7 @@ impl CommandQueue {
             RawCommandQueue {
                 bytes: NonNull::new_unchecked(addr_of_mut!(self.bytes)),
                 cursor: NonNull::new_unchecked(addr_of_mut!(self.cursor)),
-                panic_recovery: NonNull::new_unchecked(addr_of_mut!(self.painc_recovery))
+                panic_recovery: NonNull::new_unchecked(addr_of_mut!(self.painc_recovery)),
             }
         }
     }
@@ -119,7 +127,7 @@ impl RawCommandQueue {
         #[repr(C, packed)]
         struct Packed<C: Command<Out = ()>> {
             meta: CommandMeta,
-            command: C
+            command: C,
         }
 
         let meta = CommandMeta {
@@ -128,22 +136,18 @@ impl RawCommandQueue {
 
                 // SAFETY: According to the invariants of `CommandMeta.consume_command_and_get_size`,
                 // `command` must point to a value of type `C`.
-                let command: C = unsafe {
-                    command.read_unaligned()
-                };
+                let command: C = unsafe { command.read_unaligned() };
                 match world {
                     // Apply command to the provided world...
                     Some(mut world) => {
                         // SAFETY: Caller ensures pointer is not null
-                        let world = unsafe {
-                            world.as_mut()
-                        };
+                        let world = unsafe { world.as_mut() };
                         command.apply(world);
                         // The command may have queued up world commands, which we flush here to ensure they are also picked up.
                         // If the current command queue already the World Command queue, this will still behave appropriately because the global cursor
                         // is still at the current `stop`, ensuring only the newly queued Commands will be applied.
                         world.flush();
-                    },
+                    }
                     // ...or discard it.
                     None => drop(command),
                 }
@@ -151,9 +155,7 @@ impl RawCommandQueue {
         };
 
         // SAFETY: There are no outstanding references to self.bytes
-        let bytes = unsafe {
-            self.bytes.as_mut()
-        };
+        let bytes = unsafe { self.bytes.as_mut() };
 
         let old_len = bytes.len();
 
@@ -162,9 +164,7 @@ impl RawCommandQueue {
 
         // Pointer to the bytes at the end of the buffer.
         // SAFETY: We know it is within bounds of the allocation, due to the call to `.reserve()`.
-        let ptr = unsafe {
-            bytes.as_mut_ptr().add(old_len)
-        };
+        let ptr = unsafe { bytes.as_mut_ptr().add(old_len) };
 
         // Write the metadata into the buffer, followed by the command.
         // We are using a packed struct to write them both as one operation.

@@ -6,19 +6,34 @@ use std::{
     sync::atomic::{AtomicU32, Ordering},
 };
 
-pub use identifier::WorldId;
-
 use crate::{
-    debug::{DebugCheckedUnwrap, DebugName, MaybeLocation}, ecs::{
-        archetype::Archetypes, bundle::{
-            self, Bundle, BundleId, BundleInfo, BundleInserter, BundleSpawner, Bundles, DynamicBundle, InsertMode,
-        }, change_detection::{ComponentTicksMut, Mut, MutUntyped, Tick}, component::{
+    debug::{DebugCheckedUnwrap, DebugName, MaybeLocation},
+    ecs::{
+        archetype::{ArchetypeId, Archetypes},
+        bundle::{
+            self, Bundle, BundleId, BundleInfo, BundleInserter, BundleSpawner, Bundles,
+            DynamicBundle, InsertMode, NoBundleEffect,
+        },
+        change_detection::{ComponentTicksMut, Mut, MutUntyped, Tick},
+        component::{
             Component, ComponentId, ComponentIds, Components, ComponentsRegistrator, Mutable,
-        }, entity::{Entities, Entity, EntityAllocator, EntityNotSpawnedError, SpawnError}, error::{ErrorHandler, FallbackErrorHandler}, lifecycle::RemovedComponentMessages, observer::Observers, query::{QueryData, QueryFilter, QueryState}, relationship::RelationshipHookMode, resource::{Resource, ResourceEntities}, storage::Storages, world::{
-            command_queue::RawCommandQueue, error::EntityMutableFetchError,
+        },
+        entity::{Entities, Entity, EntityAllocator, EntityNotSpawnedError, SpawnError},
+        error::{ErrorHandler, FallbackErrorHandler},
+        lifecycle::RemovedComponentMessages,
+        observer::Observers,
+        query::{QueryData, QueryFilter, QueryState},
+        relationship::RelationshipHookMode,
+        resource::{Resource, ResourceEntities},
+        storage::Storages,
+        world::{
+            command_queue::RawCommandQueue,
+            error::{EntityMutableFetchError, TryInsertBatchError},
             unsafe_world_cell::UnsafeWorldCell,
         },
-    }, move_as_ptr, ptr::MovingPtr,
+    },
+    move_as_ptr,
+    ptr::{MovingPtr, OwningPtr},
 };
 
 pub(crate) mod command_queue;
@@ -30,6 +45,7 @@ mod entity_access;
 mod entity_fetch;
 mod filtered_resource;
 mod identifier;
+mod spawn_batch;
 
 pub mod error;
 
@@ -40,6 +56,8 @@ pub use entity_access::{
 };
 pub use entity_fetch::{EntityFetcher, WorldEntityFetch};
 pub use filtered_resource::*;
+pub use identifier::WorldId;
+pub use spawn_batch::*;
 
 /// Stores and exposes operations on [entities](Entity), [components](Component), resources,
 /// and their associated metadata.
@@ -1175,6 +1193,178 @@ impl World {
     pub fn spawn<B: Bundle>(&mut self, bundle: B) -> EntityWorldMut<'_> {
         move_as_ptr!(bundle);
         self.spawn_with_caller(bundle, MaybeLocation::caller())
+    }
+
+    /// Split into a new function so we can differentiate the calling location.
+    ///
+    /// This can be called by:
+    /// - [`World::try_insert_batch`]
+    /// - [`World::try_insert_batch_if_new`]
+    /// - [`Commands::insert_batch`]
+    /// - [`Commands::insert_batch_if_new`]
+    /// - [`Commands::try_insert_batch`]
+    /// - [`Commands::try_insert_batch_if_new`]
+    #[inline]
+    pub(crate) fn try_insert_batch_with_caller<I, B>(
+        &mut self,
+        batch: I,
+        insert_mode: InsertMode,
+        caller: MaybeLocation,
+    ) -> Result<(), TryInsertBatchError>
+    where
+        I: IntoIterator,
+        I::IntoIter: Iterator<Item = (Entity, B)>,
+        B: Bundle<Effect: NoBundleEffect>,
+    {
+        struct InserterArchetypeCache<'w> {
+            inserter: BundleInserter<'w>,
+            archetype_id: ArchetypeId,
+        }
+
+        let change_tick = self.change_tick();
+        let bundle_id = self.register_bundle_info::<B>();
+
+        let mut invalid_entities = Vec::<Entity>::new();
+        let mut batch_iter = batch.into_iter();
+
+        // We need to find the first valid entity so we can initialize the bundle inserter.
+        // This differs from `insert_batch_with_caller` because that method can just panic
+        // if the first entity is invalid, whereas this method needs to keep going.
+        let cache = loop {
+            if let Some((first_entity, first_bundle)) = batch_iter.next() {
+                if let Ok(first_location) = self.entities().get_spawned(first_entity) {
+                    let mut cache = InserterArchetypeCache {
+                        // SAFETY: we initialized this bundle_id in `register_bundle_info`
+                        inserter: unsafe {
+                            BundleInserter::new_with_id(
+                                self,
+                                first_location.archetype_id,
+                                bundle_id,
+                                change_tick,
+                            )
+                        },
+                        archetype_id: first_location.archetype_id,
+                    };
+
+                    move_as_ptr!(first_bundle);
+                    // SAFETY:
+                    // - `entity` is valid, `location` matches entity, bundle matches inserter
+                    // - `apply_effect` is never called on this bundle.
+                    // - `first_bundle` is not be accessed or dropped after this.
+                    unsafe {
+                        cache.inserter.insert(
+                            first_entity,
+                            first_location,
+                            first_bundle,
+                            insert_mode,
+                            caller,
+                            RelationshipHookMode::Run,
+                        )
+                    };
+                    break Some(cache);
+                }
+                invalid_entities.push(first_entity);
+            } else {
+                // We reached the end of the entities the caller provided and none were valid.
+                break None;
+            }
+        };
+
+        if let Some(mut cache) = cache {
+            for (entity, bundle) in batch_iter {
+                if let Ok(location) = cache.inserter.entities().get_spawned(entity) {
+                    if location.archetype_id != cache.archetype_id {
+                        cache = InserterArchetypeCache {
+                            // SAFETY: we initialized this bundle_id in `register_info`
+                            inserter: unsafe {
+                                BundleInserter::new_with_id(
+                                    self,
+                                    location.archetype_id,
+                                    bundle_id,
+                                    change_tick,
+                                )
+                            },
+                            archetype_id: location.archetype_id,
+                        }
+                    }
+
+                    move_as_ptr!(bundle);
+                    // SAFETY:
+                    // - `entity` is valid, `location` matches entity, bundle matches inserter
+                    // - `apply_effect` is never called on this bundle.
+                    // - `bundle` is not be accessed or dropped after this.
+                    unsafe {
+                        cache.inserter.insert(
+                            entity,
+                            location,
+                            bundle,
+                            insert_mode,
+                            caller,
+                            RelationshipHookMode::Run,
+                        )
+                    };
+                } else {
+                    invalid_entities.push(entity);
+                }
+            }
+        }
+
+        if invalid_entities.is_empty() {
+            Ok(())
+        } else {
+            Err(TryInsertBatchError {
+                bundle_type: DebugName::type_name::<B>(),
+                entities: invalid_entities,
+            })
+        }
+    }
+
+    /// Split into a new function so we can pass the calling location into the function when using
+    /// as a command.
+    #[inline]
+    pub(crate) fn insert_resource_with_caller<R: Resource>(
+        &mut self,
+        value: R,
+        caller: MaybeLocation,
+    ) {
+        let component_id = self.components_registrator().register_component::<R>();
+        OwningPtr::make(value, |ptr| {
+            // SAFETY: component_id was just initialized and corresponds to resource of type R.
+            unsafe {
+                self.insert_resouce_by_id(component_id, ptr, caller);
+            }
+        });
+    }
+
+    /// Inserts a new resource with the given `value`. Will replace the value if it already existed.
+    ///
+    /// **You should prefer to use the typed API [`World::insert_resource`] where possible and only
+    /// use this in cases where the actual types are not known at compile time.**
+    ///
+    /// # Safety
+    /// The value referenced by `value` must be valid for the given [`ComponentId`] of this world.
+    #[inline]
+    #[track_caller]
+    pub unsafe fn insert_resource_by_id(
+        &mut self,
+        component_id: ComponentId,
+        value: OwningPtr<'_>,
+        caller: MaybeLocation,
+    ) {
+        // if the resource already exists, we replace it on the same entity
+        let mut entity_mut = if let Some(entity) = self.resource_entities.get(component_id) {
+            self.get_entity_mut(entity)
+                .expect("ResourceCache is in sync")
+        } else {
+            self.spawn_empty()
+        };
+        entity_mut.insert_by_id_with_caller(
+            component_id,
+            value,
+            InsertMode::Replace,
+            caller,
+            RelationshipHookMode::Run,
+        );
     }
 }
 
