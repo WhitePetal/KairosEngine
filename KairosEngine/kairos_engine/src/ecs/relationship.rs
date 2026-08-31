@@ -1,5 +1,7 @@
 //! This module provides functionality to link entities to each other using specialized components called "relationships". See the [`Relationship`] trait for more info.
 
+mod related_methods;
+
 use std::{marker::PhantomData, sync::Arc};
 
 use crate::{

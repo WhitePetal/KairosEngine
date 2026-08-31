@@ -474,6 +474,49 @@ impl<'w> EntityWorldMut<'w> {
         self.update_location();
         self
     }
+
+    /// Gives mutable access to this entity's [`World`] in a temporary scope.
+    /// This is a safe alternative to using [`EntityWorldMut::world_mut`].
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use bevy_ecs::prelude::*;
+    /// #[derive(Resource, Default, Clone, Copy)]
+    /// struct R(u32);
+    ///
+    /// # let mut world = World::new();
+    /// # world.init_resource::<R>();
+    /// # let mut entity = world.spawn_empty();
+    /// // This closure gives us temporary access to the world.
+    /// let new_r = entity.world_scope(|world: &mut World| {
+    ///     // Mutate the world while we have access to it.
+    ///     let mut r = world.resource_mut::<R>();
+    ///     r.0 += 1;
+    ///
+    ///     // Return a value from the world before giving it back to the `EntityWorldMut`.
+    ///     *r
+    /// });
+    /// # assert_eq!(new_r.0, 1);
+    /// ```
+    pub fn world_scope<U>(&mut self, f: impl FnOnce(&mut World) -> U) -> U {
+        struct Guard<'w, 'a> {
+            entity_mut: &'a mut EntityWorldMut<'w>,
+        }
+
+        impl Drop for Guard<'_, '_> {
+            #[inline]
+            fn drop(&mut self) {
+                self.entity_mut.update_location();
+            }
+        }
+
+        // When `guard` is dropped at the end of this scope,
+        // it will update the cached `EntityLocation` for this instance.
+        // This will run even in case the closure `f` unwinds.
+        let guard = Guard { entity_mut: self };
+        f(guard.entity_mut.world)
+    }
 }
 
 // TODO!

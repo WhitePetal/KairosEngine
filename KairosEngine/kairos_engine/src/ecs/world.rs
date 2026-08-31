@@ -9,32 +9,16 @@ use std::{
 pub use identifier::WorldId;
 
 use crate::{
-    debug::{DebugCheckedUnwrap, DebugName, MaybeLocation},
-    ecs::{
-        archetype::Archetypes,
-        bundle::{
-            Bundle, BundleId, BundleInfo, BundleInserter, BundleSpawner, Bundles, DynamicBundle,
-            InsertMode,
-        },
-        change_detection::{ComponentTicksMut, Mut, MutUntyped, Tick},
-        component::{
+    debug::{DebugCheckedUnwrap, DebugName, MaybeLocation}, ecs::{
+        archetype::Archetypes, bundle::{
+            self, Bundle, BundleId, BundleInfo, BundleInserter, BundleSpawner, Bundles, DynamicBundle, InsertMode,
+        }, change_detection::{ComponentTicksMut, Mut, MutUntyped, Tick}, component::{
             Component, ComponentId, ComponentIds, Components, ComponentsRegistrator, Mutable,
-        },
-        entity::{Entities, Entity, EntityAllocator, EntityNotSpawnedError, SpawnError},
-        error::{ErrorHandler, FallbackErrorHandler},
-        lifecycle::RemovedComponentMessages,
-        observer::Observers,
-        query::{QueryData, QueryFilter, QueryState},
-        relationship::RelationshipHookMode,
-        resource::{Resource, ResourceEntities},
-        storage::Storages,
-        world::{
+        }, entity::{Entities, Entity, EntityAllocator, EntityNotSpawnedError, SpawnError}, error::{ErrorHandler, FallbackErrorHandler}, lifecycle::RemovedComponentMessages, observer::Observers, query::{QueryData, QueryFilter, QueryState}, relationship::RelationshipHookMode, resource::{Resource, ResourceEntities}, storage::Storages, world::{
             command_queue::RawCommandQueue, error::EntityMutableFetchError,
             unsafe_world_cell::UnsafeWorldCell,
         },
-    },
-    move_as_ptr,
-    ptr::MovingPtr,
+    }, move_as_ptr, ptr::MovingPtr,
 };
 
 pub(crate) mod command_queue;
@@ -1125,6 +1109,72 @@ impl World {
     #[inline]
     pub fn query<D: QueryData>(&mut self) -> QueryState<D, ()> {
         self.query_filtered::<D, ()>()
+    }
+
+    /// Spawns a new [`Entity`] with a given [`Bundle`] of [components](`Component`) and returns
+    /// a corresponding [`EntityWorldMut`], which can be used to add components to the entity or
+    /// retrieve its id. In case large batches of entities need to be spawned, consider using
+    /// [`World::spawn_batch`] instead.
+    ///
+    /// ```
+    /// use bevy_ecs::{bundle::Bundle, component::Component, world::World};
+    ///
+    /// #[derive(Component)]
+    /// struct Position {
+    ///   x: f32,
+    ///   y: f32,
+    /// }
+    ///
+    /// #[derive(Component)]
+    /// struct Velocity {
+    ///     x: f32,
+    ///     y: f32,
+    /// };
+    ///
+    /// #[derive(Component)]
+    /// struct Name(&'static str);
+    ///
+    /// #[derive(Bundle)]
+    /// struct PhysicsBundle {
+    ///     position: Position,
+    ///     velocity: Velocity,
+    /// }
+    ///
+    /// let mut world = World::new();
+    ///
+    /// // `spawn` can accept a single component:
+    /// world.spawn(Position { x: 0.0, y: 0.0 });
+    ///
+    /// // It can also accept a tuple of components:
+    /// world.spawn((
+    ///     Position { x: 0.0, y: 0.0 },
+    ///     Velocity { x: 1.0, y: 1.0 },
+    /// ));
+    ///
+    /// // Or it can accept a pre-defined Bundle of components:
+    /// world.spawn(PhysicsBundle {
+    ///     position: Position { x: 2.0, y: 2.0 },
+    ///     velocity: Velocity { x: 0.0, y: 4.0 },
+    /// });
+    ///
+    /// let entity = world
+    ///     // Tuples can also mix Bundles and Components
+    ///     .spawn((
+    ///         PhysicsBundle {
+    ///             position: Position { x: 2.0, y: 2.0 },
+    ///             velocity: Velocity { x: 0.0, y: 4.0 },
+    ///         },
+    ///         Name("Elaina Proctor"),
+    ///     ))
+    ///     // Calling id() will return the unique identifier for the spawned entity
+    ///     .id();
+    /// let position = world.entity(entity).get::<Position>().unwrap();
+    /// assert_eq!(position.x, 2.0);
+    /// ```
+    #[track_caller]
+    pub fn spawn<B: Bundle>(&mut self, bundle: B) -> EntityWorldMut<'_> {
+        move_as_ptr!(bundle);
+        self.spawn_with_caller(bundle, MaybeLocation::caller())
     }
 }
 
