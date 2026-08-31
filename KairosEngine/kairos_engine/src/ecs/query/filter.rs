@@ -2,7 +2,12 @@ use std::marker::PhantomData;
 
 use wgpu::wgc::id;
 
-use crate::ecs::{component::{Component, ComponentId, StorageType}, entity::Entity, query::WorldQuery, storage::TableRow};
+use crate::ecs::{
+    component::{Component, ComponentId, StorageType},
+    entity::Entity,
+    query::WorldQuery,
+    storage::TableRow,
+};
 
 /// Types that filter the results of a [`Query`].
 ///
@@ -143,7 +148,8 @@ unsafe impl<T: Component> WorldQuery for With<T> {
 
     type State = ComponentId;
 
-    fn shrink_fetch<'wlong: 'wshort, 'wshort>(_fetch: Self::Fetch<'wlong>) -> Self::Fetch<'wshort> {}
+    fn shrink_fetch<'wlong: 'wshort, 'wshort>(_fetch: Self::Fetch<'wlong>) -> Self::Fetch<'wshort> {
+    }
 
     #[inline]
     unsafe fn init_fetch<'w, 's>(
@@ -203,7 +209,7 @@ unsafe impl<T: Component> WorldQuery for With<T> {
 unsafe impl<T: Component> QueryFilter for With<T> {
     const IS_ARCHETYPAL: bool = true;
 
-     #[inline(always)]
+    #[inline(always)]
     unsafe fn filter_fetch(
         _state: &Self::State,
         _fetch: &mut Self::Fetch<'_>,
@@ -222,6 +228,112 @@ unsafe impl QueryFilter for () {
         fetch: &mut Self::Fetch<'_>,
         entity: Entity,
         table_row: TableRow,
+    ) -> bool {
+        true
+    }
+}
+
+/// Filter that selects entities without a component `T`.
+///
+/// This is the negation of [`With`].
+///
+/// # Examples
+///
+/// ```
+/// # use bevy_ecs::component::Component;
+/// # use bevy_ecs::query::Without;
+/// # use bevy_ecs::system::IntoSystem;
+/// # use bevy_ecs::system::Query;
+/// #
+/// # #[derive(Component)]
+/// # struct Permit;
+/// # #[derive(Component)]
+/// # struct Name { name: &'static str };
+/// #
+/// fn no_permit_system(query: Query<&Name, Without<Permit>>) {
+///     for name in &query{
+///         println!("{} has no permit!", name.name);
+///     }
+/// }
+/// # bevy_ecs::system::assert_is_system(no_permit_system);
+/// ```
+pub struct Without<T>(PhantomData<T>);
+
+// SAFETY:
+// `update_component_access` does not add any accesses.
+// This is sound because [`QueryFilter::filter_fetch`] does not access any components.
+// `update_component_access` adds a `Without` filter for `T`.
+// This is sound because `matches_component_set` returns whether the set does not contain the component.
+unsafe impl<T: Component> WorldQuery for Without<T> {
+    type Fetch<'w> = ();
+
+    type State = ComponentId;
+
+    fn shrink_fetch<'wlong: 'wshort, 'wshort>(fetch: Self::Fetch<'wlong>) -> Self::Fetch<'wshort> {}
+
+    #[inline]
+    unsafe fn init_fetch<'w, 's>(
+        _world: crate::ecs::world::unsafe_world_cell::UnsafeWorldCell<'w>,
+        _state: &'s Self::State,
+        _last_run: crate::ecs::change_detection::Tick,
+        _this_run: crate::ecs::change_detection::Tick,
+    ) -> Self::Fetch<'w> {
+    }
+
+    const IS_DENSE: bool = {
+        match T::STORAGE_TYPE {
+            StorageType::Table => true,
+            StorageType::SparseSet => false,
+        }
+    };
+
+    #[inline]
+    unsafe fn set_archetype<'w, 's>(
+        _fetch: &mut Self::Fetch<'w>,
+        _state: &'s Self::State,
+        _archetype: &'w crate::ecs::archetype::Archetype,
+        _table: &'w crate::ecs::storage::Table,
+    ) {
+    }
+
+    #[inline]
+    unsafe fn set_table<'w, 's>(
+        _fetch: &mut Self::Fetch<'w>,
+        _state: &'s Self::State,
+        _table: &'w crate::ecs::storage::Table,
+    ) {
+    }
+
+    #[inline]
+    fn update_component_access(id: &Self::State, access: &mut super::FilteredAccess) {
+        access.and_without(*id);
+    }
+
+    fn init_state(world: &mut crate::ecs::world::World) -> Self::State {
+        world.register_component::<T>()
+    }
+
+    fn get_state(components: &crate::ecs::component::Components) -> Option<Self::State> {
+        components.component_id::<T>()
+    }
+
+    fn matches_component_set(
+        id: &Self::State,
+        set_contains_id: &impl Fn(ComponentId) -> bool,
+    ) -> bool {
+        !set_contains_id(*id)
+    }
+}
+
+// SAFETY: WorldQuery impl performs no access at all
+unsafe impl<T: Component> QueryFilter for Without<T> {
+    const IS_ARCHETYPAL: bool = true;
+
+    unsafe fn filter_fetch(
+        _state: &Self::State,
+        _fetch: &mut Self::Fetch<'_>,
+        _entity: Entity,
+        _table_row: TableRow,
     ) -> bool {
         true
     }

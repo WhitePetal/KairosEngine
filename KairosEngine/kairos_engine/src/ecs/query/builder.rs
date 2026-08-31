@@ -1,8 +1,13 @@
 use std::marker::PhantomData;
 
 use crate::ecs::{
-    component::{Component, ComponentId, StorageType}, query::{FilteredAccess, QueryData, QueryFilter, With}, world::World,
+    component::{Component, ComponentId, StorageType},
+    query::{FilteredAccess, QueryData, QueryFilter, QueryState, With, Without},
+    world::World,
 };
+
+#[cfg(test)]
+mod tests;
 
 /// Builder struct to create [`QueryState`] instances at runtime.
 ///
@@ -64,7 +69,7 @@ impl<'w, D: QueryData, F: QueryFilter> QueryBuilder<'w, D, F> {
             world,
             or: false,
             first: false,
-            _marker: PhantomData
+            _marker: PhantomData,
         }
     }
 
@@ -150,10 +155,122 @@ impl<'w, D: QueryData, F: QueryFilter> QueryBuilder<'w, D, F> {
         self
     }
 
+    /// Adds [`Without<T>`] to the [`FilteredAccess`] of self.
+    pub fn without<T: Component>(&mut self) -> &mut Self {
+        self.filter::<Without<T>>();
+        self
+    }
+
+    /// Adds [`Without<T>`] to the [`FilteredAccess`] of self from a runtime [`ComponentId`].
+    pub fn without_id(&mut self, id: ComponentId) -> &mut Self {
+        let mut access = FilteredAccess::default();
+        access.and_without(id);
+        self.extend_access(access);
+        self
+    }
+
+    /// Adds `&T` to the [`FilteredAccess`] of self.
+    pub fn ref_id(&mut self, id: ComponentId) -> &mut Self {
+        self.with_id(id);
+        self.access.add_read(id);
+        self
+    }
+
+    /// Adds `&mut T` to the [`FilteredAccess`] of self.
+    pub fn mut_id(&mut self, id: ComponentId) -> &mut Self {
+        self.with_id(id);
+        self.access.add_write(id);
+        self
+    }
+
+    /// Takes a function over mutable access to a [`QueryBuilder`], calls that function
+    /// on an empty builder and then adds all accesses from that builder to self as optional.
+    pub fn optional(&mut self, f: impl Fn(&mut QueryBuilder)) -> &mut Self {
+        let mut builder = QueryBuilder::new(self.world);
+        f(&mut builder);
+        self.access.extend_access(builder.access());
+        self
+    }
+
+    /// Takes a function over mutable access to a [`QueryBuilder`], calls that function
+    /// on an empty builder and then adds all accesses from that builder to self.
+    ///
+    /// Primarily used when inside a [`Self::or`] closure to group several terms.
+    pub fn and(&mut self, f: impl Fn(&mut QueryBuilder)) -> &mut Self {
+        let mut builder = QueryBuilder::new(self.world);
+        f(&mut builder);
+        let access = builder.access().clone();
+        self.extend_access(access);
+        self
+    }
+
+    /// Takes a function over mutable access to a [`QueryBuilder`], calls that function
+    /// on an empty builder, all accesses added to that builder will become terms in an or expression.
+    ///
+    /// ```
+    /// # use bevy_ecs::prelude::*;
+    /// #
+    /// # #[derive(Component)]
+    /// # struct A;
+    /// #
+    /// # #[derive(Component)]
+    /// # struct B;
+    /// #
+    /// # let mut world = World::new();
+    /// #
+    /// QueryBuilder::<Entity>::new(&mut world).or(|builder| {
+    ///     builder.with::<A>();
+    ///     builder.with::<B>();
+    /// });
+    /// // is equivalent to
+    /// QueryBuilder::<Entity>::new(&mut world).filter::<Or<(With<A>, With<B>)>>();
+    /// ```
+    pub fn or(&mut self, f: impl Fn(&mut QueryBuilder)) -> &mut Self {
+        let mut builder = QueryBuilder::new(self.world);
+        builder.or = true;
+        builder.first = true;
+        f(&mut builder);
+        self.access.extend(builder.access());
+        self
+    }
+
     /// Returns a reference to the [`FilteredAccess`] that will be provided to the built [`Query`].
     pub fn access(&self) -> &FilteredAccess {
         &self.access
     }
-}
 
-// TODO!
+    /// Transmute the existing builder adding required accesses.
+    /// This will maintain all existing accesses.
+    ///
+    /// If including a filter type see [`Self::transmute_filtered`]
+    pub fn transmute<NewD: QueryData>(&mut self) -> &mut QueryBuilder<'w, NewD> {
+        self.transmute_filtered::<NewD, ()>()
+    }
+
+    /// Transmute the existing builder adding required accesses.
+    /// This will maintain all existing accesses.
+    pub fn transmute_filtered<NewD: QueryData, NewF: QueryFilter>(
+        &mut self,
+    ) -> &mut QueryBuilder<'w, NewD, NewF> {
+        let fetch_state = NewD::init_state(self.world);
+        let filter_state = NewF::init_state(self.world);
+
+        let mut access = FilteredAccess::default();
+        NewD::update_component_access(&fetch_state, &mut access);
+        NewF::update_component_access(&filter_state, &mut access);
+
+        self.extend_access(access);
+        // SAFETY:
+        // - We have included all required accesses for NewQ and NewF
+        // - The layout of all QueryBuilder instances is the same
+        unsafe { std::mem::transmute(self) }
+    }
+
+    /// Create a [`QueryState`] with the accesses of the builder.
+    ///
+    /// Takes `&mut self` to access the inner world reference while initializing
+    /// state for the new [`QueryState`]
+    pub fn build(&mut self) -> QueryState<D, F> {
+        QueryState::<D, F>::from_builder(self)
+    }
+}
