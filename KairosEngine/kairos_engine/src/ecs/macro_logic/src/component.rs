@@ -5,7 +5,7 @@ use proc_macro2::{Span, TokenStream};
 use quote::{ToTokens, quote};
 use syn::{
     Data, DataStruct, DeriveInput, Expr, ExprCall, ExprPath, Field, Fields, LitStr, Member, Path,
-    Result, Token, Type, braced, parenthesized,
+    Result, Token, Type, Visibility, braced, parenthesized,
     parse::Parse,
     parse_quote,
     punctuated::Punctuated,
@@ -13,7 +13,300 @@ use syn::{
     token::{Brace, Comma, Paren},
 };
 
-use crate::{component::kw::relationship, map_entities::MapEntitiesAttributeKind};
+use crate::map_entities::MapEntitiesAttributeKind;
+
+/// Whether the derive macro may contain a `component(storage = "…")` attribute.
+pub enum StorageAttribute {
+    /// User can overwrite the storage type
+    Allowed,
+    /// User cannot overwrite the storage type
+    Disallowed,
+}
+
+/// Derived `Component` trait specification, which can be used to generate a component implementation.
+pub struct DeriveComponent {
+    /// The storage type of the component.
+    pub storage: Option<StorageTy>,
+    /// The parsed punctuated list of required components.
+    pub requires: Option<Punctuated<Require, Comma>>,
+    /// The `on_add` hook.
+    pub on_add: Option<HookAttributeKind>,
+    /// The `on_insert` hook.
+    pub on_insert: Option<HookAttributeKind>,
+    /// The `on_discard` hook.
+    pub on_discard: Option<HookAttributeKind>,
+    /// The `on_remove` hook.
+    pub on_remove: Option<HookAttributeKind>,
+    /// The `on_despawn` hook.
+    pub on_despawn: Option<HookAttributeKind>,
+    /// The relationship attribute information.
+    pub relationship: Option<Relationship>,
+    /// The relationship target attribute information.
+    pub relationship_target: Option<RelationshipTarget>,
+    /// Whether or not this component is immutable.
+    pub immutable: bool,
+    /// The clone behavior for this component.
+    pub clone_behavior: Option<Expr>,
+    /// The `map_entities` attribute information.
+    pub map_entities: Option<MapEntitiesAttributeKind>,
+    /// Additional required component registrations that are added in `Component::register_required_components`
+    pub additional_requires: Vec<TokenStream>,
+}
+
+impl DeriveComponent {
+    /// Parse [`DeriveComponent`] from the given `ast`.
+    pub fn parse(ast: &DeriveInput, storage_attr: StorageAttribute) -> Result<DeriveComponent> {
+        let mut attrs = DeriveComponent {
+            storage: None,
+            on_add: None,
+            on_insert: None,
+            on_discard: None,
+            on_remove: None,
+            on_despawn: None,
+            requires: None,
+            relationship: None,
+            relationship_target: None,
+            immutable: false,
+            clone_behavior: None,
+            map_entities: None,
+            additional_requires: Vec::new(),
+        };
+
+        let mut requir_paths = HashSet::new();
+        for attr in ast.attrs.iter() {
+            if attr.path().is_ident(COMPONENT) {
+                attr.parse_nested_meta(|nested| {
+                    if let StorageAttribute::Allowed = storage_attr
+                        && nested.path.is_ident(STORAGE)
+                    {
+                        attrs.storage = Some(match nested.value()?.parse::<LitStr>()?.value() {
+                            s if s == TABLE => StorageTy::Table,
+                            s if s == SPARSE_SET => StorageTy::SparseSet,
+                            s => {
+                                return Err(nested.error(format!(
+                                    "Invalid storage type '{s}', expected '{TABLE}' or '{SPARSE_SET}'.",
+                                )));
+                            }
+                        });
+                        Ok(())
+                    } else if nested.path.is_ident(ON_ADD) {
+                        attrs.on_add = Some(HookAttributeKind::parse(nested.input, || {
+                            parse_quote! { Self::on_add }
+                        })?);
+                        Ok(())
+                    } else if nested.path.is_ident(ON_INSERT) {
+                        attrs.on_insert = Some(HookAttributeKind::parse(nested.input, || {
+                            parse_quote! { Self::on_insert }
+                        })?);
+                        Ok(())
+                    } else if nested.path.is_ident(ON_DISCARD) {
+                        attrs.on_discard = Some(HookAttributeKind::parse(nested.input, || {
+                            parse_quote! { Self::on_discard }
+                        })?);
+                        Ok(())
+                    } else if nested.path.is_ident(ON_REMOVE) {
+                        attrs.on_remove = Some(HookAttributeKind::parse(nested.input, || {
+                            parse_quote! { Self::on_remove }
+                        })?);
+                        Ok(())
+                    } else if nested.path.is_ident(ON_DESPAWN) {
+                        attrs.on_despawn = Some(HookAttributeKind::parse(nested.input, || {
+                            parse_quote! { Self::on_despawn }
+                        })?);
+                        Ok(())
+                    } else if nested.path.is_ident(IMMUTABLE) {
+                        attrs.immutable = true;
+                        Ok(())
+                    } else if nested.path.is_ident(CLONE_BEHAVIOR) {
+                        attrs.clone_behavior = Some(nested.value()?.parse()?);
+                        Ok(())
+                    } else if nested.path.is_ident(MAP_ENTITIES) {
+                        attrs.map_entities =
+                            Some(nested.input.parse::<MapEntitiesAttributeKind>()?);
+                        Ok(())
+                    } else {
+                        Err(nested.error("Unsupported attribute"))
+                    }
+                })?;
+            } else if attr.path().is_ident(REQUIRE) {
+                let punctuated =
+                    attr.parse_args_with(Punctuated::<Require, Comma>::parse_terminated)?;
+                for require in punctuated.iter() {
+                    if !requir_paths.insert(require.path.to_token_stream().to_string()) {
+                        return Err(syn::Error::new(
+                            require.path.span(),
+                            "Duplicate required components are not allowed.",
+                        ));
+                    }
+                }
+                if let Some(current) = &mut attrs.requires {
+                    current.extend(punctuated);
+                } else {
+                    attrs.requires = Some(punctuated);
+                }
+            } else if attr.path().is_ident(RELATIONSHIP) {
+                let relationship = attr.parse_args::<Relationship>()?;
+                attrs.relationship = Some(relationship);
+            } else if attr.path().is_ident(RELATIONSHIP_TARGET) {
+                let relationship_target = attr.parse_args::<RelationshipTarget>()?;
+                attrs.relationship_target = Some(relationship_target);
+            }
+        }
+
+        if attrs.relationship_target.is_some() && attrs.clone_behavior.is_some() {
+            return Err(syn::Error::new(
+                attrs.clone_behavior.span(),
+                "A Relationship Target already has its own clone behavior, please remove 'clone_behavior = ...'",
+            ));
+        }
+
+        Ok(attrs)
+    }
+
+    /// Generates a new `Component` trait implementation from this specification.
+    ///
+    /// Note that this will add Send + Sync + 'static to the where clause
+    pub fn impl_component(
+        self,
+        ast: &mut DeriveInput,
+        ecs: &Path,
+        default_storage: StorageTy,
+    ) -> Result<TokenStream> {
+        // We want to raise a compile time error when the generic lifetimes
+        // are not bound to 'static lifetime
+        let non_static_lifetime_error = ast
+            .generics
+            .lifetimes()
+            .filter(|lifetime| !lifetime.bounds.iter().any(|bound| bound.ident == "static"))
+            .map(|param| syn::Error::new(param.span(), "Lifetimes must be 'static"))
+            .reduce(|mut err_acc, err| {
+                err_acc.combine(err);
+                err_acc
+            });
+        if let Some(err) = non_static_lifetime_error {
+            return Err(err);
+        }
+
+        let relationship = match self.derive_relationship(ast, ecs) {
+            Ok(value) => value,
+            Err(err) => Some(err.into_compile_error()),
+        };
+
+        let relationship_target = match self.derive_relationship_target(ast, ecs) {
+            Ok(value) => value,
+            Err(err) => Some(err.into_compile_error()),
+        };
+
+        todo!()
+    }
+
+    fn derive_relationship(&self, ast: &DeriveInput, ecs: &Path) -> Result<Option<TokenStream>> {
+        let Some(relationship) = &self.relationship else {
+            return Ok(None);
+        };
+        let Data::Struct(DataStruct {
+            fields,
+            struct_token,
+            ..
+        }) = &ast.data
+        else {
+            return Err(syn::Error::new(
+                ast.span(),
+                "Relationship can only be derived for structs",
+            ));
+        };
+        let field = relationship_field(fields, "Relationship", struct_token.span())?;
+
+        let relationship_member = field.ident.clone().map_or(Member::from(0), Member::Named);
+        let members = fields
+            .members()
+            .filter(|member| member != &relationship_member);
+
+        let struct_name = &ast.ident;
+        let (impl_generics, type_generics, where_clause) = &ast.generics.split_for_impl();
+
+        let relationship_target = &relationship.relationship_target;
+        let allow_self_referential = relationship.allow_self_referential;
+
+        let fqdefault = FQDefault.into_token_stream();
+
+        Ok(Some(quote! {
+            impl #impl_generics #ecs::relationship::RelationShip for #struct_name #type_generics #where_clause {
+                type RelationshipTarget = #relationship_target;
+                const ALLOW_SELF_REFERENTIAL: bool = #allow_self_referential;
+
+                #[inline(always)]
+                fn get(&self) -> #ecs::entity::Entity {
+                    self.#relationship_member
+                }
+
+                #[inline]
+                fn from(entity: #ecs::entity::Entity) -> Self {
+                    Self {
+                        #(#members: #fqdefault::default(),)*
+                        #relationship_member: entity
+                    }
+                }
+
+                #[inline]
+                fn set_risky(&mut self, entity: #ecs::entity::Entity) {
+                    self.#relationship_member = entity;
+                }
+            }
+        }))
+    }
+
+    fn derive_relationship_target(
+        &self,
+        ast: &DeriveInput,
+        ecs: &Path,
+    ) -> Result<Option<TokenStream>> {
+        let Some(relationship_target) = &self.relationship_target else {
+            return Ok(None);
+        };
+
+        let Data::Struct(DataStruct {
+            fields,
+            struct_token,
+            ..
+        }) = &ast.data
+        else {
+            return Err(syn::Error::new(
+                ast.span(),
+                "RelationshipTarget can only be derived for structs.",
+            ));
+        };
+        let field = relationship_field(fields, "RelationshipTarget", struct_token.span())?;
+
+        if field.vis != Visibility::Inherited {
+            return Err(syn::Error::new(
+                field.span(),
+                "The collection in RelationshipTarget must be private to prevent users from directly mutating it, which could invalidate the correctness of relationship.",
+            ));
+        }
+        let collection = &field.ty;
+        let relationship_member = field.ident.clone().map_or(Member::from(0), Member::Named);
+
+        let members = fields
+            .members()
+            .filter(|member| member != &relationship_member);
+
+        let relationship = &relationship_target.relationship;
+        let sturct_name = &ast.ident;
+        let (impl_generics, type_generics, where_clause) = &ast.generics.split_for_impl();
+        let linked_spawn = relationship_target.linked_spawn;
+        let fqdefault = FQDefault.into_token_stream();
+        todo!()
+        // Ok(Some(quote! {
+        //     impl #impl_generics #ecs::relationship::RelationshipTarget for #struct_name #type_generics #where_clause {
+        //         const LINKED_SPAWN: bool = #linked_spawn;
+        //         type Relationship = #relationship;
+        //         type Collection = #collection;
+
+        //     }
+        // }))
+    }
+}
 
 const COMPONENT: &str = "component";
 const MAP_ENTITIES: &str = "map_entities";
@@ -36,14 +329,6 @@ mod kw {
     syn::custom_keyword!(relationship);
     syn::custom_keyword!(linked_spawn);
     syn::custom_keyword!(allow_self_referential);
-}
-
-/// Whether the derive macro may contain a `component(storage = "…")` attribute.
-pub enum StorageAttribute {
-    /// User can overwrite the storage type
-    Allowed,
-    /// User cannot overwrite the storage type
-    Disallowed,
 }
 
 /// The derived component storage type
@@ -256,212 +541,6 @@ impl Parse for RelationshipTarget {
             })?,
             linked_spawn,
         })
-    }
-}
-
-/// Derived `Component` trait specification, which can be used to generate a component implementation.
-pub struct DeriveComponent {
-    /// The storage type of the component.
-    pub storage: Option<StorageTy>,
-    /// The parsed punctuated list of required components.
-    pub requires: Option<Punctuated<Require, Comma>>,
-    /// The `on_add` hook.
-    pub on_add: Option<HookAttributeKind>,
-    /// The `on_insert` hook.
-    pub on_insert: Option<HookAttributeKind>,
-    /// The `on_discard` hook.
-    pub on_discard: Option<HookAttributeKind>,
-    /// The `on_remove` hook.
-    pub on_remove: Option<HookAttributeKind>,
-    /// The `on_despawn` hook.
-    pub on_despawn: Option<HookAttributeKind>,
-    /// The relationship attribute information.
-    pub relationship: Option<Relationship>,
-    /// The relationship target attribute information.
-    pub relationship_target: Option<RelationshipTarget>,
-    /// Whether or not this component is immutable.
-    pub immutable: bool,
-    /// The clone behavior for this component.
-    pub clone_behavior: Option<Expr>,
-    /// The `map_entities` attribute information.
-    pub map_entities: Option<MapEntitiesAttributeKind>,
-    /// Additional required component registrations that are added in `Component::register_required_components`
-    pub additional_requires: Vec<TokenStream>,
-}
-
-impl DeriveComponent {
-    /// Parse [`DeriveComponent`] from the given `ast`.
-    pub fn parse(ast: &DeriveInput, storage_attr: StorageAttribute) -> Result<DeriveComponent> {
-        let mut attrs = DeriveComponent {
-            storage: None,
-            on_add: None,
-            on_insert: None,
-            on_discard: None,
-            on_remove: None,
-            on_despawn: None,
-            requires: None,
-            relationship: None,
-            relationship_target: None,
-            immutable: false,
-            clone_behavior: None,
-            map_entities: None,
-            additional_requires: Vec::new(),
-        };
-
-        let mut requir_paths = HashSet::new();
-        for attr in ast.attrs.iter() {
-            if attr.path().is_ident(COMPONENT) {
-                attr.parse_nested_meta(|nested| {
-                    if let StorageAttribute::Allowed = storage_attr
-                        && nested.path.is_ident(STORAGE)
-                    {
-                        attrs.storage = Some(match nested.value()?.parse::<LitStr>()?.value() {
-                            s if s == TABLE => StorageTy::Table,
-                            s if s == SPARSE_SET => StorageTy::SparseSet,
-                            s => {
-                                return Err(nested.error(format!(
-                                    "Invalid storage type '{s}', expected '{TABLE}' or '{SPARSE_SET}'.",
-                                )));
-                            }
-                        });
-                        Ok(())
-                    } else if nested.path.is_ident(ON_ADD) {
-                        attrs.on_add = Some(HookAttributeKind::parse(nested.input, || {
-                            parse_quote! { Self::on_add }
-                        })?);
-                        Ok(())
-                    } else if nested.path.is_ident(ON_INSERT) {
-                        attrs.on_insert = Some(HookAttributeKind::parse(nested.input, || {
-                            parse_quote! { Self::on_insert }
-                        })?);
-                        Ok(())
-                    } else if nested.path.is_ident(ON_DISCARD) {
-                        attrs.on_discard = Some(HookAttributeKind::parse(nested.input, || {
-                            parse_quote! { Self::on_discard }
-                        })?);
-                        Ok(())
-                    } else if nested.path.is_ident(ON_REMOVE) {
-                        attrs.on_remove = Some(HookAttributeKind::parse(nested.input, || {
-                            parse_quote! { Self::on_remove }
-                        })?);
-                        Ok(())
-                    } else if nested.path.is_ident(ON_DESPAWN) {
-                        attrs.on_despawn = Some(HookAttributeKind::parse(nested.input, || {
-                            parse_quote! { Self::on_despawn }
-                        })?);
-                        Ok(())
-                    } else if nested.path.is_ident(IMMUTABLE) {
-                        attrs.immutable = true;
-                        Ok(())
-                    } else if nested.path.is_ident(CLONE_BEHAVIOR) {
-                        attrs.clone_behavior = Some(nested.value()?.parse()?);
-                        Ok(())
-                    } else if nested.path.is_ident(MAP_ENTITIES) {
-                        attrs.map_entities =
-                            Some(nested.input.parse::<MapEntitiesAttributeKind>()?);
-                        Ok(())
-                    } else {
-                        Err(nested.error("Unsupported attribute"))
-                    }
-                })?;
-            } else if attr.path().is_ident(REQUIRE) {
-                let punctuated =
-                    attr.parse_args_with(Punctuated::<Require, Comma>::parse_terminated)?;
-                for require in punctuated.iter() {
-                    if !requir_paths.insert(require.path.to_token_stream().to_string()) {
-                        return Err(syn::Error::new(
-                            require.path.span(),
-                            "Duplicate required components are not allowed.",
-                        ));
-                    }
-                }
-                if let Some(current) = &mut attrs.requires {
-                    current.extend(punctuated);
-                } else {
-                    attrs.requires = Some(punctuated);
-                }
-            } else if attr.path().is_ident(RELATIONSHIP) {
-                let relationship = attr.parse_args::<Relationship>()?;
-                attrs.relationship = Some(relationship);
-            } else if attr.path().is_ident(RELATIONSHIP_TARGET) {
-                let relationship_target = attr.parse_args::<RelationshipTarget>()?;
-                attrs.relationship_target = Some(relationship_target);
-            }
-        }
-
-        if attrs.relationship_target.is_some() && attrs.clone_behavior.is_some() {
-            return Err(syn::Error::new(
-                attrs.clone_behavior.span(),
-                "A Relationship Target already has its own clone behavior, please remove 'clone_behavior = ...'",
-            ));
-        }
-
-        Ok(attrs)
-    }
-
-    /// Generates a new `Component` trait implementation from this specification.
-    ///
-    /// Note that this will add Send + Sync + 'static to the where clause
-    pub fn impl_component(
-        self,
-        ast: &mut DeriveInput,
-        ecs: &Path,
-        default_storage: StorageTy,
-    ) -> Result<TokenStream> {
-        // We want to raise a compile time error when the generic lifetimes
-        // are not bound to 'static lifetime
-        let non_static_lifetime_error = ast
-            .generics
-            .lifetimes()
-            .filter(|lifetime| !lifetime.bounds.iter().any(|bound| bound.ident == "static"))
-            .map(|param| syn::Error::new(param.span(), "Lifetimes must be 'static"))
-            .reduce(|mut err_acc, err| {
-                err_acc.combine(err);
-                err_acc
-            });
-        if let Some(err) = non_static_lifetime_error {
-            return Err(err);
-        }
-
-        let relationship = match self.derive_relationship(ast, ecs) {
-            Ok(value) => value,
-            Err(err) => Some(err.into_compile_error()),
-        };
-
-        todo!()
-    }
-
-    fn derive_relationship(&self, ast: &DeriveInput, ecs: &Path) -> Result<Option<TokenStream>> {
-        let Some(relationship) = &self.relationship else {
-            return Ok(None);
-        };
-        let Data::Struct(DataStruct {
-            fields,
-            struct_token,
-            ..
-        }) = &ast.data
-        else {
-            return Err(syn::Error::new(
-                ast.span(),
-                "Relationship can only be derived for structs",
-            ));
-        };
-        let field = relationship_field(fields, "Relationship", struct_token.span())?;
-
-        let relationship_member = field.ident.clone().map_or(Member::from(0), Member::Named);
-        let members = fields
-            .members()
-            .filter(|member| member != &relationship_member);
-
-        let struct_name = &ast.ident;
-        let (impl_generics, type_generics, where_clause) = &ast.generics.split_for_impl();
-
-        let relationship_target = &relationship.relationship_target;
-        let allow_self_referential = relationship.allow_self_referential;
-
-        let fqdefault = FQDefault.into_token_stream();
-
-        Ok(Some(quote! {}))
     }
 }
 

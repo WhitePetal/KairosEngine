@@ -6,19 +6,29 @@ extern crate proc_macro;
 
 mod event;
 mod message;
+mod query_data;
+mod query_filter;
+mod resource;
+mod world_query;
 
+use kairos_ecs_macro_logic::{
+    component::{DeriveComponent, StorageAttribute, StorageTy},
+    map_entities::map_entities,
+};
 use kairos_macro_utils::{
     KairosManifest, ensure_no_collision,
     fq_std::{FQDefault, FQIterator, FQOption, FQResult},
     get_struct_fields,
 };
 use proc_macro::TokenStream;
-use proc_macro2::Ident;
+use proc_macro2::{Ident, Span};
 use quote::{ToTokens, format_ident, quote};
 use syn::{
     ConstParam, DeriveInput, GenericParam, TypeParam, parse_macro_input, parse_quote,
     punctuated::Punctuated, token::Comma,
 };
+
+use crate::{query_data::derive_query_data_impl, query_filter::derive_query_filter_impl};
 
 enum BundleFieldKind {
     Component,
@@ -198,6 +208,115 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
     })
 }
 
+/// Implement the `MapEntities` trait.
+#[proc_macro_derive(MapEntities, attributes(entities))]
+pub fn derive_map_entities(input: TokenStream) -> TokenStream {
+    let ast = parse_macro_input!(input as DeriveInput);
+    let ecs_path = kairos_ecs_path();
+
+    let map_entities_impl = map_entities(
+        &ast.data,
+        &ecs_path,
+        Ident::new("self", Span::call_site()),
+        false,
+        false,
+        None,
+    );
+
+    let struct_name = &ast.ident;
+    let (impl_generics, type_generics, where_clause) = &ast.generics.split_for_impl();
+    TokenStream::from(quote! {
+        impl #impl_generics #ecs_path::entity::MapEntities for #struct_name #type_generics #where_clause {
+            fn map_entities<M: #ecs_path::entity::EntityMapper>(&mut self, mapper: &mut M) {
+                #map_entities_impl
+            }
+        }
+    })
+}
+
+/// Implement `QueryData` to use a struct as a data parameter in a query
+#[proc_macro_derive(QueryData, attributes(query_data))]
+pub fn derive_query_data(input: TokenStream) -> TokenStream {
+    derive_query_data_impl(input)
+}
+
+/// Implement `QueryFilter` to use a struct as a filter parameter in a query
+#[proc_macro_derive(QueryFilter, attributes(query_filter))]
+pub fn derive_query_filter(input: TokenStream) -> TokenStream {
+    derive_query_filter_impl(input)
+}
+
+/// Return the path to the Kairos ECS module, relative to the caller's crate.
+///
+/// The ECS is a module of the `kairos_engine` crate (`kairos_engine::ecs`),
+/// so this resolves the engine crate from the caller's manifest and appends
+/// the `ecs` module segment. Macro expansions can then append further module
+/// paths, e.g. `#kairos_ecs_path::world::World`.
+pub(crate) fn kairos_ecs_path() -> syn::Path {
+    KairosManifest::shared(|manifest| {
+        let mut path = manifest.get_path("kairos_engine");
+        path.segments
+            .push(KairosManifest::parse_str::<syn::PathSegment>("ecs"));
+        path
+    })
+}
+
+/// Implement the `Event` trait.
+#[proc_macro_derive(Event, attributes(event))]
+pub fn derive_event(input: TokenStream) -> TokenStream {
+    event::derive_event(input)
+}
+
+/// Cheat sheet for derive syntax,
+/// see full explanation on `EntityEvent` trait docs.
+///
+/// ```ignore
+/// #[derive(EntityEvent)]
+/// /// Enable propagation, which defaults to using the ChildOf component
+/// #[entity_event(propagate)]
+/// /// Enable propagation using the given Traversal implementation
+/// #[entity_event(propagate = &'static ChildOf)]
+/// /// Always propagate
+/// #[entity_event(auto_propagate)]
+/// struct MyEvent;
+/// ```
+#[proc_macro_derive(EntityEvent, attributes(entity_event, event_target))]
+pub fn derive_entity_event(input: TokenStream) -> TokenStream {
+    event::derive_entity_event(input)
+}
+
+/// Implement the `Message` trait.
+#[proc_macro_derive(Message)]
+pub fn derive_message(input: TokenStream) -> TokenStream {
+    message::derive_message(input)
+}
+
+/// Implement the `Resource` trait.
+///
+/// ## Immutability
+/// ```ignore
+/// #[derive(Resource)]
+/// #[component(immutable)]
+/// struct MyResource;
+/// ```
+///
+/// ## Hooks
+/// ```ignore
+/// #[derive(Resource)]
+/// #[component(hook_name = function)]
+/// struct MyResource;
+/// ```
+/// where `hook_name` is `on_add`, `on_insert`, `on_discard` or `on_remove`;
+/// `function` can be either a path, e.g. `some_function::<Self>`,
+/// or a function call that returns a function that can be turned into
+/// a `ComponentHook`, e.g. `get_closure("Hi!")`.
+/// `function` can be elided if the path is `Self::on_add`, `Self::on_insert` etc.
+#[proc_macro_derive(Resource, attributes(component, require))]
+pub fn derive_resource(input: TokenStream) -> TokenStream {
+    let mut ast = parse_macro_input!(input as DeriveInput);
+    TokenStream::from(resource::derive_resource(&mut ast))
+}
+
 /// Cheat sheet for derive syntax,
 /// see full explanation and examples on the `Component` trait doc.
 ///
@@ -299,7 +418,17 @@ pub fn derive_bundle(input: TokenStream) -> TokenStream {
 )]
 pub fn derive_component(input: TokenStream) -> TokenStream {
     let mut ast = parse_macro_input!(input as DeriveInput);
-    todo!()
+    let derive_component = match DeriveComponent::parse(&ast, StorageAttribute::Allowed) {
+        Ok(value) => value,
+        Err(e) => return e.into_compile_error().into(),
+    };
+    let kairos_ecs = kairos_ecs_path();
+    let impl_component =
+        match derive_component.impl_component(&mut ast, &kairos_ecs, StorageTy::Table) {
+            Ok(value) => value,
+            Err(e) => return e.into_compile_error().into(),
+        };
+    TokenStream::from(impl_component)
 }
 
 /// Implement `SystemParam` to use a struct as a parameter in a system
@@ -548,51 +677,6 @@ fn derive_system_param_impl(
 
         #builder_struct
     }))
-}
-
-/// Return the path to the Kairos ECS module, relative to the caller's crate.
-///
-/// The ECS is a module of the `kairos_engine` crate (`kairos_engine::ecs`),
-/// so this resolves the engine crate from the caller's manifest and appends
-/// the `ecs` module segment. Macro expansions can then append further module
-/// paths, e.g. `#kairos_ecs_path::world::World`.
-pub(crate) fn kairos_ecs_path() -> syn::Path {
-    KairosManifest::shared(|manifest| {
-        let mut path = manifest.get_path("kairos_engine");
-        path.segments
-            .push(KairosManifest::parse_str::<syn::PathSegment>("ecs"));
-        path
-    })
-}
-
-/// Implement the `Event` trait.
-#[proc_macro_derive(Event, attributes(event))]
-pub fn derive_event(input: TokenStream) -> TokenStream {
-    event::derive_event(input)
-}
-
-/// Cheat sheet for derive syntax,
-/// see full explanation on `EntityEvent` trait docs.
-///
-/// ```ignore
-/// #[derive(EntityEvent)]
-/// /// Enable propagation, which defaults to using the ChildOf component
-/// #[entity_event(propagate)]
-/// /// Enable propagation using the given Traversal implementation
-/// #[entity_event(propagate = &'static ChildOf)]
-/// /// Always propagate
-/// #[entity_event(auto_propagate)]
-/// struct MyEvent;
-/// ```
-#[proc_macro_derive(EntityEvent, attributes(entity_event, event_target))]
-pub fn derive_entity_event(input: TokenStream) -> TokenStream {
-    event::derive_entity_event(input)
-}
-
-/// Implement the `Message` trait.
-#[proc_macro_derive(Message)]
-pub fn derive_message(input: TokenStream) -> TokenStream {
-    message::derive_message(input)
 }
 
 // TODO!

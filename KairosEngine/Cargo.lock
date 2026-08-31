@@ -2310,6 +2310,7 @@ dependencies = [
 name = "kairos_ecs_macros"
 version = "0.1.0"
 dependencies = [
+ "kairos_ecs_macro_logic",
  "kairos_macro_utils",
  "proc-macro2",
  "quote",

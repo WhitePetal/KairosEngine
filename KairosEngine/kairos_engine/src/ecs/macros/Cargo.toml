@@ -13,3 +13,4 @@ proc-macro2 = "1"
 quote = "1"
 syn = { version = "2", features = ["full"] }
 kairos_macro_utils = { path = "../../macro_utils" }
+kairos_ecs_macro_logic = {path = "../macro_logic"}
