@@ -13,7 +13,7 @@ use crate::{
         entity::{ContainsEntity, Entity, EntityEquivalent, EntityLocation},
         query::{
             Access, QueryAccessError, ReadOnlyQueryData, ReleaseStateQueryData,
-            SingleEntityQueryData, has_conflicits,
+            SingleEntityQueryData, has_conflicts,
         },
         world::{
             EntityRef, FilteredEntityMut, FilteredEntityRef, entity_access::DynamicComponentFetch,
@@ -340,7 +340,7 @@ impl<'w> EntityMut<'w> {
     pub fn into_components_mut<Q: ReleaseStateQueryData + SingleEntityQueryData>(
         self,
     ) -> Result<Q::Item<'w, 'static>, QueryAccessError> {
-        has_conflicits::<Q>(self.cell.world().components())?;
+        has_conflicts::<Q>(self.cell.world().components())?;
 
         // SAFETY: we checked that there were not conflicting components above
         unsafe { self.into_components_mut_unchecked::<Q>() }

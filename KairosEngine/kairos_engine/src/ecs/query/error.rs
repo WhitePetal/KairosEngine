@@ -6,6 +6,9 @@ use crate::{
     },
 };
 
+#[cfg(test)]
+mod tests;
+
 /// An error that occurs when retrieving a specific [`Entity`]'s query result from [`Query`](crate::system::Query) or [`QueryState`](crate::query::QueryState).
 // TODO: return the type_name as part of this error
 #[derive(thiserror::Error, Clone, Copy, Debug, PartialEq, Eq)]
