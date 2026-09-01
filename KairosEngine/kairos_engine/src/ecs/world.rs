@@ -523,6 +523,112 @@ impl World {
         unsafe { entities.fetch_mut(cell) }
     }
 
+    /// Returns [`EntityRef`]s that expose read-only operations for the given
+    /// `entities`. This will panic if any of the given entities do not exist. Use
+    /// [`World::get_entity`] if you want to check for entity existence instead
+    /// of implicitly panicking.
+    ///
+    /// This function supports fetching a single entity or multiple entities:
+    /// - Pass an [`Entity`] to receive a single [`EntityRef`].
+    /// - Pass a slice of [`Entity`]s to receive a [`Vec<EntityRef>`].
+    /// - Pass an array of [`Entity`]s to receive an equally-sized array of [`EntityRef`]s.
+    ///
+    /// # Panics
+    ///
+    /// If any of the given `entities` do not exist in the world.
+    ///
+    /// # Examples
+    ///
+    /// ## Single [`Entity`]
+    ///
+    /// ```
+    /// # use bevy_ecs::prelude::*;
+    /// #[derive(Component)]
+    /// struct Position {
+    ///   x: f32,
+    ///   y: f32,
+    /// }
+    ///
+    /// let mut world = World::new();
+    /// let entity = world.spawn(Position { x: 0.0, y: 0.0 }).id();
+    ///
+    /// let position = world.entity(entity).get::<Position>().unwrap();
+    /// assert_eq!(position.x, 0.0);
+    /// ```
+    ///
+    /// ## Array of [`Entity`]s
+    ///
+    /// ```
+    /// # use bevy_ecs::prelude::*;
+    /// #[derive(Component)]
+    /// struct Position {
+    ///   x: f32,
+    ///   y: f32,
+    /// }
+    ///
+    /// let mut world = World::new();
+    /// let e1 = world.spawn(Position { x: 0.0, y: 0.0 }).id();
+    /// let e2 = world.spawn(Position { x: 1.0, y: 1.0 }).id();
+    ///
+    /// let [e1_ref, e2_ref] = world.entity([e1, e2]);
+    /// let e1_position = e1_ref.get::<Position>().unwrap();
+    /// assert_eq!(e1_position.x, 0.0);
+    /// let e2_position = e2_ref.get::<Position>().unwrap();
+    /// assert_eq!(e2_position.x, 1.0);
+    /// ```
+    ///
+    /// ## Slice of [`Entity`]s
+    ///
+    /// ```
+    /// # use bevy_ecs::prelude::*;
+    /// #[derive(Component)]
+    /// struct Position {
+    ///   x: f32,
+    ///   y: f32,
+    /// }
+    ///
+    /// let mut world = World::new();
+    /// let e1 = world.spawn(Position { x: 0.0, y: 1.0 }).id();
+    /// let e2 = world.spawn(Position { x: 0.0, y: 1.0 }).id();
+    /// let e3 = world.spawn(Position { x: 0.0, y: 1.0 }).id();
+    ///
+    /// let ids = vec![e1, e2, e3];
+    /// for eref in world.entity(&ids[..]) {
+    ///     assert_eq!(eref.get::<Position>().unwrap().y, 1.0);
+    /// }
+    /// ```
+    ///
+    /// ## [`EntityHashSet`](crate::entity::EntityHashSet)
+    ///
+    /// ```
+    /// # use bevy_ecs::{prelude::*, entity::EntityHashSet};
+    /// #[derive(Component)]
+    /// struct Position {
+    ///   x: f32,
+    ///   y: f32,
+    /// }
+    ///
+    /// let mut world = World::new();
+    /// let e1 = world.spawn(Position { x: 0.0, y: 1.0 }).id();
+    /// let e2 = world.spawn(Position { x: 0.0, y: 1.0 }).id();
+    /// let e3 = world.spawn(Position { x: 0.0, y: 1.0 }).id();
+    ///
+    /// let ids = EntityHashSet::from_iter([e1, e2, e3]);
+    /// for (_id, eref) in world.entity(&ids) {
+    ///     assert_eq!(eref.get::<Position>().unwrap().y, 1.0);
+    /// }
+    /// ```
+    ///
+    /// [`EntityHashSet`]: crate::entity::EntityHashSet
+    #[inline]
+    #[track_caller]
+    pub fn entity<F: WorldEntityFetch>(&self, entities: F) -> F::Ref<'_> {
+        match self.get_entity(entities) {
+            Ok(res) => res,
+            Err(err) => panic!("{err}"),
+        }
+    }
+
     /// Returns [`EntityMut`]s that expose read and write operations for the
     /// given `entities`. This will panic if any of the given entities do not
     /// exist. Use [`World::get_entity_mut`] if you want to check for entity

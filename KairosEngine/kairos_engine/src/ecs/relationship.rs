@@ -1,17 +1,19 @@
 //! This module provides functionality to link entities to each other using specialized components called "relationships". See the [`Relationship`] trait for more info.
 
 mod related_methods;
+mod relationship_source_collection;
+
+pub use related_methods::*;
+pub use relationship_source_collection::*;
 
 use std::{marker::PhantomData, sync::Arc};
 
+use log::warn;
+
 use crate::{
-    ecs::{
-        component::{Component, ComponentId, Components, Mutable},
-        entity::Entity,
-        lifecycle::HookContext,
-        world::DeferredWorld,
-    },
-    ptr::Ptr,
+    debug::DebugName, ecs::{
+        component::{Component, ComponentId, Components, Mutable}, entity::Entity, lifecycle::HookContext, system::EntityCommand, world::{DeferredWorld, EntityWorldMut},
+    }, ptr::Ptr,
 };
 
 /// A [`Component`] on a "source" [`Entity`] that references another target [`Entity`], creating a "relationship" between them. Every [`Relationship`]
@@ -147,15 +149,113 @@ pub trait Relationship: Component + Sized {
     ) {
         match relationship_hook_mode {
             RelationshipHookMode::Run => {}
+            RelationshipHookMode::Skip => return,
             RelationshipHookMode::RunIfNotLinked => {
                 if <Self::RelationshipTarget as RelationshipTarget>::LINKED_SPAWN {
                     return;
                 }
             }
+        }
+        let target_entity = world.entity(entity).get::<Self>().unwrap().get();
+        if !Self::ALLOW_SELF_REFERENITAL && target_entity == entity {
+            warn!(
+                "{}The {}({target_entity:?}) relationship on entity {entity:?} points to itself. The invalid {} relationship has been removed. \nIf this is intended behavior self-referential reltaions can be enabled with the allow_self_referential attribute: #[relationship(allow_self_referential)]",
+                caller
+                    .map(|location| format!("{location}"))
+                    .unwrap_or_default(),
+                DebugName::type_name::<Self>(),
+                DebugName::type_name::<Self>()
+            );
+            world.commands().entity(entity).remove::<Self>();
+            return;
+        }
+        // For one-to-one relationships, remove existing relationship before adding new one
+        let current_source_to_remove = world
+            .get_entity(target_entity)
+            .ok()
+            .and_then(|target_entity_ref| target_entity_ref.get::<Self::RelationshipTarget>())
+            .and_then(|relationship_target| {
+                relationship_target
+                    .collection()
+                    .source_to_remove_before_add()
+            });
+
+        if let Some(current_source) = current_source_to_remove {
+            world.commands().entity(current_source).try_remove::<Self>();
+        }
+
+        if let Ok(mut entity_commands) = world.commands().get_entity(target_entity) {
+            entity_commands
+                .entry::<Self::RelationshipTarget>()
+                .and_modify(move |mut relationship_target| {
+                    relationship_target.collection_mut_risky().add(entity);
+                })
+                .or_insert_with(move || {
+                    let mut target = Self::RelationshipTarget::with_capacity(1);
+                    target.collection_mut_risky().add(entity);
+                    target
+                });
+        } else {
+            warn!(
+                "{}The {}({target_entity:?}) relationship on entity {entity:?} relates to an entity that does not exist. The invalid {} relationship has been removed.",
+                caller.map(|localtion| format!("{localtion}")).unwrap_or_default(),
+                DebugName::type_name::<Self>(),
+                DebugName::type_name::<Self>()
+            );
+            world.commands().entity(entity).remove::<Self>();
+        }
+    }
+
+    /// The `on_discard` component hook that maintains the [`Relationship`] / [`RelationshipTarget`] connection.
+    // note: think of this as "on_drop"
+    fn on_discard(
+        mut world: DeferredWorld,
+        HookContext {
+            entity,
+            relationship_hook_mode,
+            ..
+        }: HookContext
+    ) {
+        match relationship_hook_mode {
+            RelationshipHookMode::Run => {},
             RelationshipHookMode::Skip => return,
+            RelationshipHookMode::RunIfNotLinked => {
+                if <Self::RelationshipTarget as RelationshipTarget>::LINKED_SPAWN {
+                    return;
+                }
+            },
+        }
+        let target_entity = world.entity(entity).get::<Self>().unwrap().get();
+        if let Ok(mut target_entity_mut) = world.get_entity_mut(target_entity)
+            && let Some(mut relationship_target) =
+                target_entity_mut.get_mut::<Self::RelationshipTarget>()
+        {
+            relationship_target.collection_mut_risky().remove(entity);
+            if relationship_target.len() == 0 {
+                let command = |mut entity: EntityWorldMut| {
+                    // this "remove" operation must check emptiness because in the event that an identical
+                    // relationship is inserted on top, this despawn would result in the removal of that identical
+                    // relationship ... not what we want!
+                    if entity
+                        .get::<Self::RelationshipTarget>()
+                        .is_some_and(RelationshipTarget::is_empty)
+                    {
+                        entity.remove::<Self::RelationshipTarget>();
+                    }
+                };
+
+                world
+                    .commands()
+                    .queue_silenced(command.with_entity(target_entity));
+            }
         }
     }
 }
+
+/// The iterator type for the source entities in a [`RelationshipTarget`] collection,
+/// as defined in the [`RelationshipSourceCollection`] trait.
+pub type SourceIter<'w, R> =
+    <<R as RelationshipTarget>::Collection as RelationshipSourceCollection>::SourceIter<'w>;
 
 /// A [`Component`] containing the collection of entities that relate to this [`Entity`] via the associated `Relationship` type.
 /// See the [`Relationship`] documentation for more information.
@@ -170,6 +270,73 @@ pub trait RelationshipTarget: Component<Mutability = Mutable> + Sized {
     const LINKED_SPAWN: bool;
     /// The [`Relationship`] that populates this [`RelationshipTarget`] collection.
     type Relationship: Relationship<RelationshipTarget = Self>;
+    /// The collection type that stores the "source" entities for this [`RelationshipTarget`] component.
+    ///
+    /// Check the list of types which implement [`RelationshipSourceCollection`] for the data structures that can be used inside of your component.
+    /// If you need a new collection type, you can implement the [`RelationshipSourceCollection`] trait
+    /// for a type you own which wraps the collection you want to use (to avoid the orphan rule),
+    /// or open an issue on the Bevy repository to request first-party support for your collection type.
+    type Collection: RelationshipSourceCollection;
+
+    /// Returns a reference to the stored [`RelationshipTarget::Collection`].
+    fn collection(&self) -> &Self::Collection;
+
+    /// Returns a mutable reference to the stored [`RelationshipTarget::Collection`].
+    ///
+    /// # Warning
+    /// This should generally not be called by user code, as modifying the internal collection could invalidate the relationship.
+    /// The collection should not contain duplicates.
+    fn collection_mut_risky(&mut self) -> &mut Self::Collection;
+
+    /// Creates a new [`RelationshipTarget`] from the given [`RelationshipTarget::Collection`].
+    ///
+    /// # Warning
+    /// This should generally not be called by user code, as constructing the internal collection could invalidate the relationship.
+    /// The collection should not contain duplicates.
+    fn from_collection_risky(collection: Self::Collection) -> Self;
+
+    /// The `on_discard` component hook that maintains the [`Relationship`] / [`RelationshipTarget`] connection.
+    // note: think of this as "on_drop"
+    fn on_discard(
+        mut world: DeferredWorld,
+        HookContext {
+            entity,
+            relationship_hook_mode,
+            ..
+        }: HookContext,
+    ) {
+        match relationship_hook_mode {
+            RelationshipHookMode::Run => {},
+            // For RelationshipTarget we don't want to run this hook even if it isn't linked, but for Relationship we do.
+            RelationshipHookMode::Skip | RelationshipHookMode::RunIfNotLinked  => return,
+        }
+        todo!()
+    }
+
+    /// Creates this [`RelationshipTarget`] with the given pre-allocated entity capacity.
+    fn with_capacity(capacity: usize) -> Self {
+        let collection =
+            <Self::Collection as RelationshipSourceCollection>::with_capacity(capacity);
+        Self::from_collection_risky(collection)
+    }
+
+    /// Iterates the entities stored in this collection.
+    #[inline]
+    fn iter(&self) -> SourceIter<'_, Self> {
+        self.collection().iter()
+    }
+
+    /// Returns the number of entities in this collection.
+    #[inline]
+    fn len(&self) -> usize {
+        self.collection().len()
+    }
+
+    /// Returns true if this entity collection is empty.
+    #[inline]
+    fn is_empty(&self) -> bool {
+        self.collection().is_empty()
+    }
 }
 
 /// Configures the conditions under which the Relationship insert/discard hooks will be run.
