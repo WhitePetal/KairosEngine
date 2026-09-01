@@ -88,7 +88,7 @@ unsafe impl Send for Commands<'_, '_> {}
 unsafe impl Sync for Commands<'_, '_> {}
 
 enum InternalQueue<'s> {
-    CommandQueue(&'s CommandQueue),
+    CommandQueue(Deferred<'s, CommandQueue>),
     RawCommandQueue(RawCommandQueue),
 }
 
@@ -198,6 +198,17 @@ impl<'w, 's> Commands<'w, 's> {
         EntityCommands {
             entity,
             commands: self.reborrow(),
+        }
+    }
+
+    /// Take all commands from `other` and append them to `self`, leaving `other` empty.
+    pub fn append(&mut self, other: &mut CommandQueue) {
+        match &mut self.queue {
+            InternalQueue::CommandQueue(queue) => queue.bytes.append(&mut other.bytes),
+            InternalQueue::RawCommandQueue(queue) => {
+                // SAFETY: Pointers in `RawCommandQueue` are never null
+                unsafe { queue.bytes.as_mut() }.append(&mut other.bytes);
+            }
         }
     }
 }
