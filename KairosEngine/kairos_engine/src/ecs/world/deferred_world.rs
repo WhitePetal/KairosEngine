@@ -4,15 +4,15 @@ use crate::{
     debug::MaybeLocation,
     ecs::{
         archetype::Archetype,
-        change_detection::Mut,
+        change_detection::{Mut, MutUntyped},
         component::{Component, ComponentId, Mutable},
         entity::Entity,
-        event::{Event, EventKey},
-        lifecycle::HookContext,
+        event::{EntityComponentsTrigger, Event, EventKey},
+        lifecycle::{DISCARD, Discard, HookContext, INSERT, Insert},
         relationship::RelationshipHookMode,
         system::Commands,
         world::{
-            World, WorldEntityFetch, error::EntityMutableFetchError,
+            EntityFetcher, World, WorldEntityFetch, error::EntityMutableFetchError,
             unsafe_world_cell::UnsafeWorldCell,
         },
     },
@@ -348,6 +348,199 @@ impl<'w> DeferredWorld<'w> {
     #[inline]
     pub fn as_unsafe_world_cell(&mut self) -> UnsafeWorldCell<'_> {
         self.world
+    }
+
+    /// Simultaneously provides access to entity data and a command queue, which
+    /// will be applied when the [`World`] is next flushed.
+    ///
+    /// This allows using borrowed entity data to construct commands where the
+    /// borrow checker would otherwise prevent it.
+    ///
+    /// See [`World::entities_and_commands`] for the non-deferred version.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// # use bevy_ecs::{prelude::*, world::DeferredWorld};
+    /// #[derive(Component)]
+    /// struct Targets(Vec<Entity>);
+    /// #[derive(Component)]
+    /// struct TargetedBy(Entity);
+    ///
+    /// # let mut _world = World::new();
+    /// # let e1 = _world.spawn_empty().id();
+    /// # let e2 = _world.spawn_empty().id();
+    /// # let eid = _world.spawn(Targets(vec![e1, e2])).id();
+    /// let mut world: DeferredWorld = // ...
+    /// #   DeferredWorld::from(&mut _world);
+    /// let (entities, mut commands) = world.entities_and_commands();
+    ///
+    /// let entity = entities.get(eid).unwrap();
+    /// for &target in entity.get::<Targets>().unwrap().0.iter() {
+    ///     commands.entity(target).insert(TargetedBy(eid));
+    /// }
+    /// # _world.flush();
+    /// # assert_eq!(_world.get::<TargetedBy>(e1).unwrap().0, eid);
+    /// # assert_eq!(_world.get::<TargetedBy>(e2).unwrap().0, eid);
+    /// ```
+    pub fn entities_and_commands(&mut self) -> (EntityFetcher<'_>, Commands<'_, '_>) {
+        let cell = self.as_unsafe_world_cell();
+        // SAFETY: `&mut self` gives mutable access to the entire world, and prevents simultaneous access.
+        let fetcher = unsafe { EntityFetcher::new(cell) };
+        // SAFETY:
+        // - `&mut self` gives mutable access to the entire world, and prevents simultaneous access.
+        // - Command queue access does not conflict with entity access.
+        let raw_queue = unsafe { cell.get_raw_command_queue() };
+        // SAFETY: `&mut self` ensures the commands does not outlive the world.
+        let commands = unsafe {
+            Commands::new_raw_from_entities(raw_queue, cell.entity_allocator(), cell.entities())
+        };
+
+        (fetcher, commands)
+    }
+
+    /// Temporarily removes a [`Component`] `T` from the provided [`Entity`] and
+    /// runs the provided closure on it, returning the result if `T` was available.
+    /// This will trigger the `Remove` and `Discard` component hooks without
+    /// causing an archetype move.
+    ///
+    /// This is most useful with immutable components, where removal and reinsertion
+    /// is the only way to modify a value.
+    ///
+    /// If you do not need to ensure the above hooks are triggered, and your component
+    /// is mutable, prefer using [`get_mut`](DeferredWorld::get_mut).
+    #[inline]
+    #[track_caller]
+    pub(crate) fn modify_component_with_relationship_hook_mode<T: Component, R>(
+        &mut self,
+        entity: Entity,
+        relationship_hook_mode: RelationshipHookMode,
+        f: impl FnOnce(&mut T) -> R,
+    ) -> Result<Option<R>, EntityMutableFetchError> {
+        // If the component is not registered, then it doesn't exist on this entity, so no action required.
+        let Some(component_id) = self.component_id::<T>() else {
+            return Ok(None);
+        };
+
+        self.modify_component_by_id_with_relationship_hook_mode(
+            entity,
+            component_id,
+            relationship_hook_mode,
+            move |component| {
+                // SAFETY: component matches the component_id collected in the above line
+                let mut component = unsafe { component.with_type::<T>() };
+
+                f(&mut component)
+            },
+        )
+    }
+
+    /// Temporarily removes a [`Component`] identified by the provided
+    /// [`ComponentId`] from the provided [`Entity`] and runs the provided
+    /// closure on it, returning the result if the component was available.
+    /// This will trigger the `Remove` and `Discard` component hooks without
+    /// causing an archetype move.
+    ///
+    /// This is most useful with immutable components, where removal and reinsertion
+    /// is the only way to modify a value.
+    ///
+    /// If you do not need to ensure the above hooks are triggered, and your component
+    /// is mutable, prefer using [`get_mut_by_id`](DeferredWorld::get_mut_by_id).
+    ///
+    /// You should prefer the typed [`modify_component_with_relationship_hook_mode`](DeferredWorld::modify_component_with_relationship_hook_mode)
+    /// whenever possible.
+    #[inline]
+    #[track_caller]
+    pub(crate) fn modify_component_by_id_with_relationship_hook_mode<R>(
+        &mut self,
+        entity: Entity,
+        component_id: ComponentId,
+        relationship_hook_mode: RelationshipHookMode,
+        f: impl for<'a> FnOnce(MutUntyped<'a>) -> R,
+    ) -> Result<Option<R>, EntityMutableFetchError> {
+        let entity_cell = self.get_entity_mut(entity)?;
+
+        if !entity_cell.contains_id(component_id) {
+            return Ok(None);
+        }
+
+        let archetype = &raw const *entity_cell.archetype();
+
+        // SAFETY:
+        // - DeferredWorld ensures archetype pointer will remain valid as no
+        //   relocations will occur.
+        // - component_id exists on this world and this entity
+        // - DISCARD is able to accept ZST events
+        unsafe {
+            let archetype = &*archetype;
+            self.trigger_on_discard(
+                archetype,
+                entity,
+                [component_id].into_iter(),
+                MaybeLocation::caller(),
+                relationship_hook_mode,
+            );
+            if archetype.has_discard_observer() {
+                // SAFETY: the DISCARD event_key corresponds to the Discard event's type
+                self.trigger_raw(
+                    DISCARD,
+                    &mut Discard { entity },
+                    &mut EntityComponentsTrigger {
+                        components: &[component_id],
+                        old_archetype: Some(archetype),
+                        new_archetype: Some(archetype),
+                    },
+                    MaybeLocation::caller(),
+                );
+            }
+        }
+
+        let mut entity_cell = self
+            .get_entity_mut(entity)
+            .expect("entity access confirmed above");
+
+        // SAFETY: we will run the required hooks to simulate removal/replacement.
+        let mut component = unsafe {
+            entity_cell
+                .get_mut_assume_mutable_by_id(component_id)
+                .expect("component access confirmed above")
+        };
+
+        let result = f(component.reborrow());
+
+        // Simulate adding this component by updating the relevant ticks
+        *component.ticks.added = *component.ticks.changed;
+
+        // SAFETY:
+        // - DeferredWorld ensures archetype pointer will remain valid as no
+        //   relocations will occur.
+        // - component_id exists on this world and this entity
+        // - DISCARD is able to accept ZST events
+        unsafe {
+            let archetype = &*archetype;
+            self.trigger_on_insert(
+                archetype,
+                entity,
+                [component_id].into_iter(),
+                MaybeLocation::caller(),
+                relationship_hook_mode,
+            );
+            if archetype.has_insert_observer() {
+                // SAFETY: the INSERT event_key corresponds to the Insert event's type
+                self.trigger_raw(
+                    INSERT,
+                    &mut Insert { entity },
+                    &mut EntityComponentsTrigger {
+                        components: &[component_id],
+                        old_archetype: Some(archetype),
+                        new_archetype: Some(archetype),
+                    },
+                    MaybeLocation::caller(),
+                );
+            }
+        }
+
+        Ok(Some(result))
     }
 }
 

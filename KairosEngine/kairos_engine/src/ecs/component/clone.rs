@@ -28,17 +28,17 @@ impl ComponentCloneBehavior {
         Self::Custom(component_clone_via_clone::<C>)
     }
 
-    // /// Set clone handler based on `Reflect` trait.
-    // #[cfg(feature = "bevy_reflect")]
-    // pub fn reflect() -> Self {
-    //     Self::Custom(component_clone_via_reflect)
-    // }
+    /// Set clone handler based on `Reflect` trait.
+    #[cfg(feature = "kairos_reflect")]
+    pub fn reflect() -> Self {
+        Self::Custom(component_clone_via_reflect)
+    }
 
     /// Returns the "global default"
     pub fn global_default_fn() -> ComponentCloneFn {
-        // #[cfg(feature = "bevy_reflect")]
-        // return component_clone_via_reflect;
-        // #[cfg(not(feature = "bevy_reflect"))]
+        #[cfg(feature = "kairos_reflect")]
+        return component_clone_via_reflect;
+        #[cfg(not(feature = "kairos_reflect"))]
         return component_clone_ignore;
     }
 

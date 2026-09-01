@@ -11,9 +11,15 @@ use std::{marker::PhantomData, sync::Arc};
 use log::warn;
 
 use crate::{
-    debug::DebugName, ecs::{
-        component::{Component, ComponentId, Components, Mutable}, entity::Entity, lifecycle::HookContext, system::EntityCommand, world::{DeferredWorld, EntityWorldMut},
-    }, ptr::Ptr,
+    debug::DebugName,
+    ecs::{
+        component::{Component, ComponentCloneBehavior, ComponentId, Components, Mutable},
+        entity::{ComponentCloneCtx, Entity},
+        lifecycle::HookContext,
+        system::EntityCommand,
+        world::{DeferredWorld, EntityWorldMut},
+    },
+    ptr::Ptr,
 };
 
 /// A [`Component`] on a "source" [`Entity`] that references another target [`Entity`], creating a "relationship" between them. Every [`Relationship`]
@@ -198,7 +204,9 @@ pub trait Relationship: Component + Sized {
         } else {
             warn!(
                 "{}The {}({target_entity:?}) relationship on entity {entity:?} relates to an entity that does not exist. The invalid {} relationship has been removed.",
-                caller.map(|localtion| format!("{localtion}")).unwrap_or_default(),
+                caller
+                    .map(|localtion| format!("{localtion}"))
+                    .unwrap_or_default(),
                 DebugName::type_name::<Self>(),
                 DebugName::type_name::<Self>()
             );
@@ -214,16 +222,16 @@ pub trait Relationship: Component + Sized {
             entity,
             relationship_hook_mode,
             ..
-        }: HookContext
+        }: HookContext,
     ) {
         match relationship_hook_mode {
-            RelationshipHookMode::Run => {},
+            RelationshipHookMode::Run => {}
             RelationshipHookMode::Skip => return,
             RelationshipHookMode::RunIfNotLinked => {
                 if <Self::RelationshipTarget as RelationshipTarget>::LINKED_SPAWN {
                     return;
                 }
-            },
+            }
         }
         let target_entity = world.entity(entity).get::<Self>().unwrap().get();
         if let Ok(mut target_entity_mut) = world.get_entity_mut(target_entity)
@@ -306,11 +314,28 @@ pub trait RelationshipTarget: Component<Mutability = Mutable> + Sized {
         }: HookContext,
     ) {
         match relationship_hook_mode {
-            RelationshipHookMode::Run => {},
+            RelationshipHookMode::Run => {}
             // For RelationshipTarget we don't want to run this hook even if it isn't linked, but for Relationship we do.
-            RelationshipHookMode::Skip | RelationshipHookMode::RunIfNotLinked  => return,
+            RelationshipHookMode::Skip | RelationshipHookMode::RunIfNotLinked => return,
         }
-        todo!()
+        let (entities, mut commands) = world.entities_and_commands();
+        let relationship_target = entities.get(entity).unwrap().get::<Self>().unwrap();
+        for source_entity in relationship_target.iter() {
+            commands
+                .entity(source_entity)
+                .try_remove::<Self::Relationship>();
+        }
+    }
+
+    /// The `on_despawn` component hook that despawns entities stored in an entity's [`RelationshipTarget`] when
+    /// that entity is despawned.
+    // note: think of this as "on_drop"
+    fn on_despawn(mut world: DeferredWorld, HookContext { entity, .. }: HookContext) {
+        let (entities, mut commands) = world.entities_and_commands();
+        let relationship_target = entities.get(entity).unwrap().get::<Self>().unwrap();
+        for source_entity in relationship_target.iter() {
+            commands.entity(source_entity).try_despawn();
+        }
     }
 
     /// Creates this [`RelationshipTarget`] with the given pre-allocated entity capacity.
@@ -339,6 +364,40 @@ pub trait RelationshipTarget: Component<Mutability = Mutable> + Sized {
     }
 }
 
+/// The "clone behavior" for [`RelationshipTarget`]. The [`RelationshipTarget`] will be populated with the proper components
+/// when the corresponding [`Relationship`] sources of truth are inserted. Cloning the actual entities
+/// in the original [`RelationshipTarget`] would result in duplicates, so we don't do that!
+///
+/// This will also queue up clones of the relationship sources if the [`EntityCloner`](crate::entity::EntityCloner) is configured
+/// to spawn recursively.
+pub fn clone_relationship_target<T: RelationshipTarget>(
+    component: &T,
+    cloned: &mut T,
+    context: &mut ComponentCloneCtx,
+) {
+    if context.linked_cloning() && T::LINKED_SPAWN {
+        let collection = cloned.collection_mut_risky();
+        for entity in component.iter() {
+            collection.add(entity);
+            context.queue_entity_clone(entity);
+        }
+    } else if context.moving() {
+        let target = context.target();
+        let collection = cloned.collection_mut_risky();
+        for entity in component.iter() {
+            collection.add(entity);
+            context.queue_deferred(move |world, _mapper| {
+                _ = DeferredWorld::from(world)
+                    .modify_component_with_relationship_hook_mode::<T::Relationship, ()>(
+                        entity,
+                        RelationshipHookMode::Skip,
+                        |r| r.set_risky(target),
+                    );
+            });
+        }
+    }
+}
+
 /// Configures the conditions under which the Relationship insert/discard hooks will be run.
 #[derive(Copy, Clone, Debug)]
 pub enum RelationshipHookMode {
@@ -350,40 +409,119 @@ pub enum RelationshipHookMode {
     Skip,
 }
 
-#[derive(Clone, Debug, Default)]
-pub(crate) enum MaybeRelationshipAccessor {
-    /// Not a relationship
-    #[default]
-    NoAccessor,
-    /// Uninitialized relationship, which will be initialized when the second component of the relationship is registered.
-    /// Boxed to reduce size overhead.
-    Initializer(Box<RelationshipAccessorInitializer>),
-    /// Relationship
-    Accessor(RelationshipAccessor),
+/// Wrapper for components clone specialization using autoderef.
+#[doc(hidden)]
+pub struct RelationshipCloneBehaviorSpecialization<T>(PhantomData<T>);
+
+impl<T> Default for RelationshipCloneBehaviorSpecialization<T> {
+    fn default() -> Self {
+        Self(PhantomData)
+    }
 }
 
-impl MaybeRelationshipAccessor {
-    /// Initializes the relationship accessor if it isn't initialized already and the counterpart is registered.
-    pub fn initialize(&mut self, id: ComponentId, components: &mut Components) {
-        todo!()
-    }
+/// Base trait for relationship clone specialization using autoderef.
+#[doc(hidden)]
+pub trait RelationshipCloneBehaviorBase {
+    fn default_clone_behavior(&self) -> ComponentCloneBehavior;
+}
 
-    /// Returns [`RelationshipAccessor`] if this component is a part of relationship and the accessor is initialized.
-    pub fn accessor(&self) -> Option<&RelationshipAccessor> {
-        match self {
-            MaybeRelationshipAccessor::Accessor(relationship_accessor) => {
-                Some(relationship_accessor)
+impl<C> RelationshipCloneBehaviorBase for RelationshipCloneBehaviorSpecialization<C> {
+    fn default_clone_behavior(&self) -> ComponentCloneBehavior {
+        // Relationships currently must have `Clone`/`Reflect`-based handler for cloning/moving logic to properly work.
+        ComponentCloneBehavior::Ignore
+    }
+}
+
+/// Specialized trait for relationship clone specialization using autoderef.
+#[doc(hidden)]
+pub trait RelationshipCloneBehaviorViaReflect {
+    fn default_clone_behavior(&self) -> ComponentCloneBehavior;
+}
+
+#[cfg(feature = "kairos_reflect")]
+impl<C: Relationship + kairos_reflect::Reflect> RelationshipCloneBehaviorViaReflect
+    for &RelationshipCloneBehaviorSpecialization<C>
+{
+    fn default_clone_behavior(&self) -> ComponentCloneBehavior {
+        ComponentCloneBehavior::reflect()
+    }
+}
+
+/// Specialized trait for relationship clone specialization using autoderef.
+#[doc(hidden)]
+pub trait RelationshipCloneBehaviorViaClone {
+    fn default_clone_behavior(&self) -> ComponentCloneBehavior;
+}
+
+impl<C: Relationship + Clone> RelationshipCloneBehaviorViaClone
+    for &&RelationshipCloneBehaviorSpecialization<C>
+{
+    fn default_clone_behavior(&self) -> ComponentCloneBehavior {
+        ComponentCloneBehavior::clone::<C>()
+    }
+}
+
+/// Specialized trait for relationship target clone specialization using autoderef.
+#[doc(hidden)]
+pub trait RelationshipTargetCloneBehaviorViaReflect {
+    fn default_clone_behavior(&self) -> ComponentCloneBehavior;
+}
+
+#[cfg(feature = "kairos_reflect")]
+impl<C: RelationshipTarget + kairos_reflect::Reflect + kairos_reflect::TypePath>
+    RelationshipTargetCloneBehaviorViaReflect for &&&RelationshipCloneBehaviorSpecialization<C>
+{
+    fn default_clone_behavior(&self) -> ComponentCloneBehavior {
+        ComponentCloneBehavior::Custom(|source, context| {
+            if let Some(component) = source.read::<C>()
+                && let Ok(mut cloned) = component.reflect_clone_and_take::<C>()
+            {
+                cloned.collection_mut_risky().clear();
+                clone_relationship_target(component, &mut cloned, context);
+                context.write_target_component(component);
             }
-            _ => None,
-        }
+        })
     }
 }
 
-impl From<Option<RelationshipAccessorInitializer>> for MaybeRelationshipAccessor {
-    fn from(value: Option<RelationshipAccessorInitializer>) -> Self {
-        value
-            .map(|v| MaybeRelationshipAccessor::Initializer(Box::new(v)))
-            .unwrap_or(MaybeRelationshipAccessor::NoAccessor)
+/// Specialized trait for relationship target clone specialization using autoderef.
+#[doc(hidden)]
+pub trait RelationshipTargetCloneBehaviorViaClone {
+    fn default_clone_behavior(&self) -> ComponentCloneBehavior;
+}
+
+impl<C: RelationshipTarget + Clone> RelationshipTargetCloneBehaviorViaClone
+    for &&&&RelationshipCloneBehaviorSpecialization<C>
+{
+    fn default_clone_behavior(&self) -> ComponentCloneBehavior {
+        ComponentCloneBehavior::Custom(|source, context| {
+            if let Some(component) = source.read::<C>() {
+                let mut cloned = component.clone();
+                cloned.collection_mut_risky().clear();
+                clone_relationship_target(component, &mut cloned, context);
+                context.write_target_component(cloned);
+            }
+        })
+    }
+}
+
+/// We know there's no additional data on Children, so this handler is an optimization to avoid cloning the entire Collection.
+#[doc(hidden)]
+pub trait RelationshipTargetCloneBehaviorHierarchy {
+    fn default_clone_behavior(&self) -> ComponentCloneBehavior;
+}
+
+impl RelationshipTargetCloneBehaviorHierarchy
+    for &&&&&RelationshipCloneBehaviorSpecialization<crate::ecs::hierarchy::Children>
+{
+    fn default_clone_behavior(&self) -> ComponentCloneBehavior {
+        ComponentCloneBehavior::Custom(|source, context| {
+            if let Some(component) = source.read::<crate::ecs::hierarchy::Children>() {
+                let mut cloned = crate::ecs::hierarchy::Children::with_capacity(component.len());
+                clone_relationship_target(component, &mut cloned, context);
+                context.write_target_component(cloned);
+            }
+        })
     }
 }
 
@@ -429,7 +567,7 @@ impl std::fmt::Debug for RelationshipAccessorInitializer {
                 entity_field_offset,
                 linked_spawn,
                 allow_self_referential,
-                relationship_target_getter,
+                relationship_target_getter: _,
             } => f
                 .debug_struct("Relationship")
                 .field("entity_field_offset", entity_field_offset)
@@ -440,7 +578,7 @@ impl std::fmt::Debug for RelationshipAccessorInitializer {
                 iter,
                 linked_spawn,
                 allow_self_referential,
-                relationship_getter,
+                relationship_getter: _,
             } => f
                 .debug_struct("RelationshipTarget")
                 .field("iter", iter)
@@ -448,6 +586,90 @@ impl std::fmt::Debug for RelationshipAccessorInitializer {
                 .field("allow_self_referential", allow_self_referential)
                 .finish(),
         }
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub(crate) enum MaybeRelationshipAccessor {
+    /// Not a relationship
+    #[default]
+    NoAccessor,
+    /// Uninitialized relationship, which will be initialized when the second component of the relationship is registered.
+    /// Boxed to reduce size overhead.
+    Initializer(Box<RelationshipAccessorInitializer>),
+    /// Relationship
+    Accessor(RelationshipAccessor),
+}
+
+impl MaybeRelationshipAccessor {
+    /// Returns [`RelationshipAccessor`] if this component is a part of relationship and the accessor is initialized.
+    pub fn accessor(&self) -> Option<&RelationshipAccessor> {
+        match self {
+            MaybeRelationshipAccessor::Accessor(relationship_accessor) => {
+                Some(relationship_accessor)
+            }
+            _ => None,
+        }
+    }
+
+    /// Initializes the relationship accessor if it isn't initialized already and the counterpart is registered.
+    pub fn initialize(&mut self, id: ComponentId, components: &mut Components) {
+        _ = (|| {
+            let accessor = self.initializer_to_accessor(|getter| getter(components))?;
+            let counterpart_id = accessor.counterpart_id();
+            let counterpart_slot = components.get_relationship_accessor_mut(counterpart_id)?;
+            let counterpart_accessor = counterpart_slot.initializer_to_accessor(|_| Some(id))?;
+            *counterpart_slot = MaybeRelationshipAccessor::Accessor(counterpart_accessor);
+            *self = MaybeRelationshipAccessor::Accessor(accessor);
+            Some(())
+        })();
+    }
+
+    fn initializer_to_accessor(
+        &self,
+        mapper: impl FnOnce(&dyn Fn(&Components) -> Option<ComponentId>) -> Option<ComponentId>,
+    ) -> Option<RelationshipAccessor> {
+        let MaybeRelationshipAccessor::Initializer(initializer) = self else {
+            return None;
+        };
+        Some(match *initializer.as_ref() {
+            RelationshipAccessorInitializer::Relationship {
+                entity_field_offset,
+                linked_spawn,
+                allow_self_referential,
+                ref relationship_target_getter,
+            } => {
+                let relationship_target = mapper(relationship_target_getter.as_ref())?;
+                RelationshipAccessor::Relationship {
+                    entity_field_offset,
+                    linked_spawn,
+                    allow_self_referential,
+                    relationship_target,
+                }
+            }
+            RelationshipAccessorInitializer::RelationshipTarget {
+                iter,
+                linked_spawn,
+                allow_self_referential,
+                ref relationship_getter,
+            } => {
+                let relationship = mapper(relationship_getter.as_ref())?;
+                RelationshipAccessor::RelationshipTarget {
+                    iter,
+                    linked_spawn,
+                    allow_self_referential,
+                    relationship,
+                }
+            }
+        })
+    }
+}
+
+impl From<Option<RelationshipAccessorInitializer>> for MaybeRelationshipAccessor {
+    fn from(value: Option<RelationshipAccessorInitializer>) -> Self {
+        value
+            .map(|v| MaybeRelationshipAccessor::Initializer(Box::new(v)))
+            .unwrap_or(MaybeRelationshipAccessor::NoAccessor)
     }
 }
 
@@ -483,6 +705,19 @@ pub enum RelationshipAccessor {
         /// [`ComponentId`] of the [`Relationship`] counterpart.
         relationship: ComponentId,
     },
+}
+
+impl RelationshipAccessor {
+    /// Returns [`ComponentId`] of [`RelationshipTarget`] for this [`Relationship`] and vice-versa.
+    pub fn counterpart_id(&self) -> ComponentId {
+        match self {
+            RelationshipAccessor::Relationship {
+                relationship_target,
+                ..
+            } => *relationship_target,
+            RelationshipAccessor::RelationshipTarget { relationship, .. } => *relationship,
+        }
+    }
 }
 
 /// A type-safe convenience wrapper over [`RelationshipAccessor`].

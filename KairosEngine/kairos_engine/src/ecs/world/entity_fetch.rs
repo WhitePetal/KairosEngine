@@ -170,7 +170,34 @@ impl<'w> EntityFetcher<'w> {
         Self { cell }
     }
 
-    // pub fn get
+    /// Returns [`EntityRef`]s that expose read-only operations for the given
+    /// `entities`, returning [`Err`] if any of the given entities do not exist.
+    ///
+    /// This function supports fetching a single entity or multiple entities:
+    /// - Pass an [`Entity`] to receive a single [`EntityRef`].
+    /// - Pass a slice of [`Entity`]s to receive a [`Vec<EntityRef>`].
+    /// - Pass an array of [`Entity`]s to receive an equally-sized array of [`EntityRef`]s.
+    /// - Pass a reference to a [`EntityHashSet`](crate::entity::EntityHashMap) to receive an
+    ///   [`EntityHashMap<EntityRef>`](crate::entity::EntityHashMap).
+    ///
+    /// # Errors
+    ///
+    /// If any of the given `entities` do not exist in the world, the first
+    /// [`Entity`] found to be missing will return an [`EntityNotSpawnedError`].
+    ///
+    /// # Examples
+    ///
+    /// For examples, see [`World::entity`].
+    ///
+    /// [`World::entity`]: crate::world::World::entity
+    #[inline]
+    pub fn get<F: WorldEntityFetch>(
+        &self,
+        entities: F,
+    ) -> Result<F::Ref<'_>, EntityNotSpawnedError> {
+        // SAFETY: `&self` gives read access to all entities, and prevents mutable access.
+        unsafe { entities.fetch_ref(self.cell) }
+    }
 }
 
 // TODO!

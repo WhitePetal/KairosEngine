@@ -16,6 +16,7 @@ default = ["debug", "trace"]
 track_location = []
 debug = []
 trace = []
+kairos_reflect = []
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)", "cfg(docsrs_dep)"] }
