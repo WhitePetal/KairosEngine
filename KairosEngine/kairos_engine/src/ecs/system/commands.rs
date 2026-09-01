@@ -30,8 +30,12 @@ use crate::{
 pub mod command;
 pub mod entity_command;
 
+mod parallel_scope;
+
 pub use command::Command;
 pub use entity_command::EntityCommand;
+
+pub use parallel_scope::*;
 
 #[cfg(test)]
 mod tests;
