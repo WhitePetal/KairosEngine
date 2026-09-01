@@ -68,15 +68,15 @@
 //! [`system piping feature`]: crate::system::In
 //! [`Command::handle_error_with`]: crate::system::Command::handle_error_with
 
-mod bevy_error;
 mod command_handling;
 mod handler;
+mod kairos_error;
 
-pub use bevy_error::*;
 pub use command_handling::*;
 pub use handler::*;
+pub use kairos_error::*;
 
 /// A result type for use in fallible systems, commands and observers.
 ///
-/// The [`BevyError`] type is a type-erased error type with optional Bevy-specific diagnostics.
-pub type Result<T = (), E = BevyError> = std::result::Result<T, E>;
+/// The [`KairosError`] type is a type-erased error type with optional Bevy-specific diagnostics.
+pub type Result<T = (), E = KairosError> = std::result::Result<T, E>;

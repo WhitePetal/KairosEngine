@@ -127,6 +127,7 @@ mod observer_system;
 mod query;
 mod system;
 mod system_param;
+mod system_registry;
 
 pub use builder::*;
 pub use commands::*;
@@ -136,6 +137,7 @@ pub use observer_system::*;
 pub use query::*;
 pub use system::*;
 pub use system_param::*;
+pub use system_registry::*;
 
 use crate::ecs::world::World;
 

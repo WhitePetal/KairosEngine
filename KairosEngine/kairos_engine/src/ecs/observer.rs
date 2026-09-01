@@ -15,7 +15,14 @@ pub use distributed_storage::*;
 pub use runner::*;
 pub use system_param::*;
 
-use crate::ecs::{entity::Entity, world::World};
+use crate::{
+    debug::MaybeLocation,
+    ecs::{
+        entity::Entity,
+        event::Event,
+        world::{DeferredWorld, World},
+    },
+};
 
 impl World {
     /// Register an observer to the cache, called when an observer is created
@@ -26,5 +33,18 @@ impl World {
     /// Remove the observer from the cache, called when an observer gets despawned
     pub(crate) fn unregister_observer(&mut self, entity: Entity, descriptor: ObserverDescriptor) {
         todo!()
+    }
+
+    pub(crate) fn trigger_ref_with_caller<'a, E: Event>(
+        &mut self,
+        event: &mut E,
+        trigger: &mut E::Trigger<'a>,
+        caller: MaybeLocation,
+    ) {
+        let event_key = self.register_event_key::<E>();
+        // SAFETY: event_key was just registered and matches `event`
+        unsafe {
+            DeferredWorld::from(self).trigger_raw(event_key, event, trigger, caller);
+        }
     }
 }

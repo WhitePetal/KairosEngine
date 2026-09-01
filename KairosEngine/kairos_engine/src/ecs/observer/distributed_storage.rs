@@ -17,7 +17,7 @@ use crate::{
         bundle::Bundle,
         component::{Component, ComponentCloneBehavior, ComponentId, Mutable, StorageType},
         entity::Entity,
-        error::{BevyError, ErrorContext, ErrorHandler},
+        error::{ErrorContext, ErrorHandler, KairosError},
         event::{EntityEvent, Event, EventKey},
         lifecycle::{ComponentHook, HookContext},
         observer::{
@@ -335,7 +335,7 @@ impl Observer {
     /// Sets the error handler to use for this observer.
     ///
     /// See the [`error` module-level documentation](crate::error) for more information.
-    pub fn with_error_handler(mut self, error_handler: fn(BevyError, ErrorContext)) -> Self {
+    pub fn with_error_handler(mut self, error_handler: fn(KairosError, ErrorContext)) -> Self {
         self.error_handler = Some(error_handler);
         self
     }

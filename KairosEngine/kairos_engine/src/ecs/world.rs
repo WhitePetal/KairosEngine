@@ -25,10 +25,11 @@ use crate::{
         query::{QueryData, QueryFilter, QueryState},
         relationship::RelationshipHookMode,
         resource::{Resource, ResourceEntities},
+        schedule::ScheduleLabel,
         storage::Storages,
         world::{
             command_queue::RawCommandQueue,
-            error::{EntityMutableFetchError, TryInsertBatchError},
+            error::{EntityMutableFetchError, TryInsertBatchError, TryRunScheduleError},
             unsafe_world_cell::UnsafeWorldCell,
         },
     },
@@ -1331,7 +1332,7 @@ impl World {
         OwningPtr::make(value, |ptr| {
             // SAFETY: component_id was just initialized and corresponds to resource of type R.
             unsafe {
-                self.insert_resouce_by_id(component_id, ptr, caller);
+                self.insert_resource_by_id(component_id, ptr, caller);
             }
         });
     }
@@ -1365,6 +1366,53 @@ impl World {
             caller,
             RelationshipHookMode::Run,
         );
+    }
+
+    /// Attempts to run the [`Schedule`] associated with the `label` a single time,
+    /// and returns a [`TryRunScheduleError`] if the schedule does not exist.
+    ///
+    /// The [`Schedule`] is fetched from the [`Schedules`] resource of the world by its label,
+    /// and system state is cached.
+    ///
+    /// For simple testing use cases, call [`Schedule::run(&mut world)`](Schedule::run) instead.
+    pub fn try_run_schedule(
+        &mut self,
+        lable: impl ScheduleLabel,
+    ) -> Result<(), TryRunScheduleError> {
+        todo!()
+    }
+
+    /// Gets a mutable reference to the resource of the given type
+    ///
+    /// # Panics
+    ///
+    /// Panics if the resource does not exist.
+    /// Use [`get_resource_mut`](World::get_resource_mut) instead if you want to handle this case.
+    ///
+    /// If you want to instead insert a value if the resource does not exist,
+    /// use [`get_resource_or_insert_with`](World::get_resource_or_insert_with).
+    #[inline]
+    #[track_caller]
+    pub fn resource_mut<R: Resource<Mutability = Mutable>>(&mut self) -> Mut<'_, R> {
+        match self.get_resource_mut() {
+            Some(x) => x,
+            None => panic!(
+                "Requested resource {} does not exist in the `World`.
+                Did you forget to add it using `app.insert_resource` / `app.init_resource`?
+                Resources are also implicitly added via `app.add_message`,
+                and can be added by plugins.",
+                DebugName::type_name::<R>()
+            ),
+        }
+    }
+
+    /// Gets a mutable reference to the resource of the given type if it exists
+    #[inline]
+    pub fn get_resource_mut<R: Resource<Mutability = Mutable>>(&mut self) -> Option<Mut<'_, R>> {
+        // SAFETY:
+        // - `as_unsafe_world_cell` gives permission to access everything mutably
+        // - `&mut self` ensures nothing in world is borrowed
+        unsafe { self.as_unsafe_world_cell().get_resource_mut() }
     }
 }
 

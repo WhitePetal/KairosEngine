@@ -8,7 +8,7 @@ use crate::{
     debug::DebugName,
     ecs::{
         change_detection::{CheckChangeTicks, Tick},
-        error::BevyError,
+        error::KairosError,
         never::Never,
         query::FilteredAccessSet,
         schedule::{InternedSystemSet, SystemSet},
@@ -688,7 +688,7 @@ impl<T> IntoResult<T> for Result<T, RunSystemError> {
     }
 }
 
-impl<T> IntoResult<T> for Result<T, BevyError> {
+impl<T> IntoResult<T> for Result<T, KairosError> {
     fn into_result(self) -> Result<T, RunSystemError> {
         Ok(self?)
     }

@@ -5,13 +5,13 @@ use crate::{
     ecs::{
         change_detection::Tick,
         component::Component,
-        error::{BevyError, Severity},
+        error::{KairosError, Severity},
         resource::Resource,
     },
 };
 use derive_more::derive::{Deref, DerefMut};
 
-/// Context for a [`BevyError`] to aid in debugging.
+/// Context for a [`KairosError`] to aid in debugging.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ErrorContext {
     /// The error occurred in a system.
@@ -108,7 +108,7 @@ macro_rules! inner {
 }
 
 /// Defines how Bevy reacts to errors.
-pub type ErrorHandler = fn(BevyError, ErrorContext);
+pub type ErrorHandler = fn(KairosError, ErrorContext);
 
 /// Fallback error handler to call when an error is not handled otherwise.
 /// Defaults to [`match_severity()`].
@@ -138,7 +138,7 @@ impl Default for FallbackErrorHandler {
 /// Error handler that defers to an error's [`Severity`].
 #[track_caller]
 #[inline]
-pub fn match_severity(err: BevyError, ctx: ErrorContext) {
+pub fn match_severity(err: KairosError, ctx: ErrorContext) {
     match err.severity() {
         Severity::Ignore => ignore(err, ctx),
         Severity::Trace => trace(err, ctx),
@@ -153,46 +153,46 @@ pub fn match_severity(err: BevyError, ctx: ErrorContext) {
 /// Error handler that panics with the system error.
 #[track_caller]
 #[inline]
-pub fn panic(error: BevyError, ctx: ErrorContext) {
+pub fn panic(error: KairosError, ctx: ErrorContext) {
     inner!(panic, error, ctx);
 }
 
 /// Error handler that logs the system error at the `error` level.
 #[track_caller]
 #[inline]
-pub fn error(error: BevyError, ctx: ErrorContext) {
+pub fn error(error: KairosError, ctx: ErrorContext) {
     inner!(log::error, error, ctx);
 }
 
 /// Error handler that logs the system error at the `warn` level.
 #[track_caller]
 #[inline]
-pub fn warn(error: BevyError, ctx: ErrorContext) {
+pub fn warn(error: KairosError, ctx: ErrorContext) {
     inner!(log::warn, error, ctx);
 }
 
 /// Error handler that logs the system error at the `info` level.
 #[track_caller]
 #[inline]
-pub fn info(error: BevyError, ctx: ErrorContext) {
+pub fn info(error: KairosError, ctx: ErrorContext) {
     inner!(log::info, error, ctx);
 }
 
 /// Error handler that logs the system error at the `debug` level.
 #[track_caller]
 #[inline]
-pub fn debug(error: BevyError, ctx: ErrorContext) {
+pub fn debug(error: KairosError, ctx: ErrorContext) {
     inner!(log::debug, error, ctx);
 }
 
 /// Error handler that logs the system error at the `trace` level.
 #[track_caller]
 #[inline]
-pub fn trace(error: BevyError, ctx: ErrorContext) {
+pub fn trace(error: KairosError, ctx: ErrorContext) {
     inner!(log::trace, error, ctx);
 }
 
 /// Error handler that ignores the system error.
 #[track_caller]
 #[inline]
-pub fn ignore(_: BevyError, _: ErrorContext) {}
+pub fn ignore(_: KairosError, _: ErrorContext) {}

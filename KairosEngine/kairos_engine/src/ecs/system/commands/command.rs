@@ -10,7 +10,11 @@ use crate::{
         bundle::{Bundle, InsertMode, NoBundleEffect},
         entity::Entity,
         error::{CommandOutput, ErrorContext, ErrorHandler, Result},
+        event::Event,
+        message::{Message, Messages},
         resource::Resource,
+        schedule::ScheduleLabel,
+        system::{IntoSystem, SystemId, SystemInput},
         world::{FromWorld, SpawnBatchIter, World},
     },
 };
@@ -170,4 +174,128 @@ pub fn insert_resource<R: Resource>(resource: R) -> impl Command {
     }
 }
 
-// TODO!
+/// A [`Command`] that removes a [`Resource`] from the world.
+pub fn remove_resource<R: Resource>() -> impl Command {
+    move |world: &mut World| {
+        world.remove_resource::<R>();
+    }
+}
+
+/// A [`Command`] that runs the system corresponding to the given [`SystemId`].
+pub fn run_system<O: 'static>(id: impl Into<SystemId<(), O>> + Send) -> impl Command {
+    let id = id.into();
+    move |world: &mut World| -> Result {
+        world.run_system(id)?;
+        Ok(())
+    }
+}
+
+/// A [`Command`] that runs the system corresponding to the given [`SystemId`]
+/// and provides the given input value.
+pub fn run_system_with<I>(
+    id: impl Into<SystemId<I>> + Send,
+    input: I::Inner<'static>,
+) -> impl Command
+where
+    I: SystemInput<Inner<'static>: Send> + 'static,
+{
+    let id = id.into();
+    move |world: &mut World| -> Result {
+        world.run_system_with(id, input)?;
+        Ok(())
+    }
+}
+
+/// A [`Command`] that runs the given system,
+/// caching its [`SystemId`] in a [`CachedSystemId`](crate::system::CachedSystemId) resource.
+pub fn run_system_cached<M, S>(system: S) -> impl Command
+where
+    M: 'static,
+    S: IntoSystem<(), (), M> + Send + 'static,
+{
+    move |world: &mut World| -> Result {
+        world.run_system_cached(system)?;
+        Ok(())
+    }
+}
+
+/// A [`Command`] that runs the given system with the given input value,
+/// caching its [`SystemId`] in a [`CachedSystemId`](crate::system::CachedSystemId) resource.
+///
+/// To use the supplied input, the system should have a [`SystemInput`] as the first parameter.
+pub fn run_system_cached_with<I, M, S>(system: S, input: I::Inner<'static>) -> impl Command
+where
+    I: SystemInput<Inner<'static>: Send> + Send + 'static,
+    M: 'static,
+    S: IntoSystem<I, (), M> + Send + 'static,
+{
+    move |world: &mut World| -> Result {
+        world.run_system_cached_with(system, input)?;
+        Ok(())
+    }
+}
+
+/// A [`Command`] that removes a system previously registered with one of the following:
+/// - [`Commands::run_system_cached`](crate::system::Commands::run_system_cached)
+/// - [`World::run_system_cached`]
+/// - [`World::register_system_cached`]
+pub fn unregister_system_cached<I, O, M, S>(system: S) -> impl Command
+where
+    I: SystemInput + Send + 'static,
+    O: 'static,
+    M: 'static,
+    S: IntoSystem<I, O, M> + Send + 'static,
+{
+    move |world: &mut World| -> Result {
+        world.unregister_system_cached(system)?;
+        Ok(())
+    }
+}
+
+/// A [`Command`] that runs the schedule corresponding to the given [`ScheduleLabel`].
+pub fn run_schedule(label: impl ScheduleLabel) -> impl Command {
+    move |world: &mut World| -> Result {
+        world.try_run_schedule(label)?;
+        Ok(())
+    }
+}
+
+/// Triggers the given [`Event`], which will run any [`Observer`]s watching for it.
+///
+/// [`Observer`]: crate::observer::Observer
+#[track_caller]
+pub fn trigger<'a, E: Event<Trigger<'a>: Default>>(mut event: E) -> impl Command {
+    let caller = MaybeLocation::caller();
+    move |world: &mut World| {
+        world.trigger_ref_with_caller(
+            &mut event,
+            &mut <E::Trigger<'_> as Default>::default(),
+            caller,
+        );
+    }
+}
+
+/// Triggers the given [`Event`] using the given [`Trigger`], which will run any [`Observer`]s watching for it.
+///
+/// [`Trigger`]: crate::event::Trigger
+/// [`Observer`]: crate::observer::Observer
+#[track_caller]
+pub fn trigger_with<E: Event<Trigger<'static>: Send + Sync>>(
+    mut event: E,
+    mut trigger: E::Trigger<'static>,
+) -> impl Command {
+    let caller = MaybeLocation::caller();
+    move |world: &mut World| {
+        world.trigger_ref_with_caller(&mut event, &mut trigger, caller);
+    }
+}
+
+/// A [`Command`] that writes an arbitrary [`Message`].
+#[track_caller]
+pub fn write_message<M: Message>(message: M) -> impl Command {
+    let caller = MaybeLocation::caller();
+    move |world: &mut World| {
+        let mut messages = world.resource_mut::<Messages<M>>();
+        messages.write_with_caller(message, caller);
+    }
+}

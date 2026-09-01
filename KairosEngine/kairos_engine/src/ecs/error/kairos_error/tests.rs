@@ -1,4 +1,4 @@
-use crate::ecs::error::BevyError;
+use crate::ecs::error::KairosError;
 
 #[test]
 #[cfg(not(miri))] // miri backtraces are weird
@@ -98,7 +98,7 @@ fn downcasting() {
     }
     impl core::error::Error for Fun {}
 
-    let new_error = BevyError::new(crate::ecs::error::Severity::Debug, Fun(1));
+    let new_error = KairosError::new(crate::ecs::error::Severity::Debug, Fun(1));
 
     assert!(new_error.is::<Fun>());
     assert_eq!(new_error.downcast_ref::<Fun>(), Some(&Fun(1)));

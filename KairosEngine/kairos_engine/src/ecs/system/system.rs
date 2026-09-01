@@ -10,7 +10,7 @@ use crate::{
     debug::DebugName,
     ecs::{
         change_detection::{CheckChangeTicks, Tick},
-        error::BevyError,
+        error::KairosError,
         query::FilteredAccessSet,
         schedule::InternedSystemSet,
         system::{IntoSystem, SystemIn, SystemInput, SystemParamValidationError},
@@ -383,7 +383,7 @@ pub enum RunSystemError {
     /// This is not considered an error.
     Skipped(SystemParamValidationError),
     /// System returned an error or failed required parameter validation.
-    Failed(BevyError),
+    Failed(KairosError),
 }
 
 impl Display for RunSystemError {
@@ -400,7 +400,7 @@ impl Display for RunSystemError {
 
 impl<E: Any> From<E> for RunSystemError
 where
-    BevyError: From<E>,
+    KairosError: From<E>,
 {
     fn from(mut value: E) -> Self {
         // Specialize the impl so that a skipped `SystemParamValidationError`
