@@ -27,3 +27,9 @@
 | File | Topic |
 |---|---|
 | `material-dynamic-properties-competitor-analysis.md` | Unity/Unreal/Godot/Bevy 材质动态属性系统竞品分析 |
+
+## Animation / Motion Matching
+
+| File | Topic |
+|---|---|
+| `motion-matching-libraries.md` | 开源 motion matching 实现调研（面向动画系统，0.3.0 排期） |

@@ -16,7 +16,8 @@ use crate::{
         },
         change_detection::{ComponentTicksMut, Mut, MutUntyped, Tick},
         component::{
-            Component, ComponentId, ComponentIds, Components, ComponentsRegistrator, Mutable,
+            Component, ComponentId, ComponentIds, ComponentInfo, Components, ComponentsRegistrator,
+            Mutable,
         },
         entity::{Entities, Entity, EntityAllocator, EntityNotSpawnedError, SpawnError},
         error::{ErrorHandler, FallbackErrorHandler},
@@ -653,6 +654,24 @@ impl World {
             Ok(fetched) => fetched,
             Err(e) => panic_on_err(e),
         }
+    }
+
+    /// Returns the components of an [`Entity`] through [`ComponentInfo`].
+    #[inline]
+    pub fn inspect_entity(
+        &self,
+        entity: Entity,
+    ) -> Result<impl Iterator<Item = &ComponentInfo>, EntityNotSpawnedError> {
+        let entity_location = self.entities().get_spawned(entity)?;
+
+        let archetype = self
+            .archetypes()
+            .get(entity_location.archetype_id)
+            .expect("ArchetypeId was retrieved from an EntityLocation and should correspond to an Archetype");
+
+        Ok(archetype
+            .iter_components()
+            .filter_map(|id| self.components().get_info(id)))
     }
 
     /// Spawns `bundle` on `entity`.
@@ -1421,6 +1440,28 @@ impl World {
         // - `as_unsafe_world_cell` gives permission to access everything mutably
         // - `&mut self` ensures nothing in world is borrowed
         unsafe { self.as_unsafe_world_cell().get_resource_mut() }
+    }
+
+    pub(crate) fn spawn_at_with_caller<B: Bundle>(
+        &mut self,
+        entity: Entity,
+        bundle: MovingPtr<'_, B>,
+        caller: MaybeLocation,
+    ) -> Result<EntityWorldMut<'_>, SpawnError> {
+        self.entities.check_can_spawn_at(entity)?;
+        Ok(self.spawn_at_unchecked(entity, bundle, caller))
+    }
+
+    pub(crate) fn register_contributed_bundle_info<B: Bundle>(&mut self) -> BundleId {
+        // SAFETY: These come from the same world. `Self.components_registrator` can't be used since we borrow other fields too.
+        let mut registrator =
+            unsafe { ComponentsRegistrator::new(&mut self.components, &mut self.component_ids) };
+
+        // SAFETY: `registrator`, `self.bundles` and `self.storages` are all from this world.
+        unsafe {
+            self.bundles
+                .register_contributed_bundle_info::<B>(&mut registrator, &mut self.storages)
+        }
     }
 }
 

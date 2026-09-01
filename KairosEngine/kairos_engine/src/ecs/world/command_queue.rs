@@ -1,7 +1,7 @@
 use std::{
     fmt::Debug,
     mem::MaybeUninit,
-    panic::{AssertUnwindSafe},
+    panic::AssertUnwindSafe,
     ptr::{NonNull, addr_of_mut},
 };
 

@@ -1,12 +1,16 @@
 use crate::{
     debug::{DebugCheckedUnwrap, MaybeLocation},
     ecs::{
+        archetype::Archetype,
         bundle::{
             Bundle, BundleFromComponents, BundleInserter, BundleRemover, DynamicBundle, InsertMode,
         },
-        change_detection::ComponentTicks,
-        component::{Component, ComponentId, Components, StorageType},
-        entity::{Entity, EntityLocation},
+        change_detection::{ComponentTicks, Mut},
+        component::{Component, ComponentId, Components, Mutable, StorageType},
+        entity::{Entity, EntityCloner, EntityClonerBuilder, EntityLocation, OptIn, OptOut},
+        event::EntityComponentsTrigger,
+        lifecycle::{DESPAWN, DISCARD, Despawn, Discard, REMOVE, Remove},
+        observer::IntoEntityObserver,
         relationship::RelationshipHookMode,
         storage::{SparseSets, Table},
         world::{
@@ -81,6 +85,14 @@ impl<'w> EntityWorldMut<'w> {
         )
     }
 
+    #[inline(always)]
+    #[track_caller]
+    pub(crate) fn assert_not_despawned(&self) {
+        if self.location.is_none() {
+            self.panic_despawned()
+        }
+    }
+
     /// Gets metadata indicating the location where the current entity is stored.
     #[inline]
     pub fn try_location(&self) -> Option<EntityLocation> {
@@ -98,6 +110,13 @@ impl<'w> EntityWorldMut<'w> {
             Some(a) => a,
             None => self.panic_despawned(),
         }
+    }
+
+    /// Returns the archetype that the current entity belongs to.
+    #[inline]
+    pub fn try_archetype(&self) -> Option<&Archetype> {
+        self.try_location()
+            .map(|location| &self.world.archetypes[location.archetype_id])
     }
 
     /// Inserts a dynamic [`Bundle`] into the entity.
@@ -138,7 +157,30 @@ impl<'w> EntityWorldMut<'w> {
     /// Gets read-only access to all of the entity's components.
     #[inline]
     pub fn as_readonly(&self) -> EntityRef<'_> {
-        todo!()
+        // SAFETY:
+        // - We have exclusive access to the entire world.
+        // - `&self` ensures no mutable accesses are active.
+        unsafe { EntityRef::new(self.as_unsafe_entity_cell_readonly()) }
+    }
+
+    /// Gets non-structural mutable access to all of the entity's components.
+    #[inline]
+    pub fn as_mutable(&mut self) -> EntityMut<'_> {
+        // SAFETY:
+        // - We have exclusive access to the entire world.
+        // - `&mut self` ensures there are no other accesses.
+        unsafe { EntityMut::new(self.as_unsafe_entity_cell()) }
+    }
+
+    /// Gets mutable access to the component of type `T` for the current entity.
+    /// Returns `None` if the entity does not have a component of type `T`.
+    ///
+    /// # Panics
+    ///
+    /// If the entity has been despawned while this `EntityWorldMut` is still alive.
+    #[inline]
+    pub fn get_mut<T: Component<Mutability = Mutable>>(&mut self) -> Option<Mut<'_, T>> {
+        self.as_mutable().into_mut()
     }
 
     /// Gets access to the component of type `T` for the current entity.
@@ -166,6 +208,19 @@ impl<'w> EntityWorldMut<'w> {
     #[inline]
     pub fn contains<T: Component>(&self) -> bool {
         todo!()
+    }
+
+    /// Returns the archetype that the current entity belongs to.
+    ///
+    /// # Panics
+    ///
+    /// If the entity has been despawned while this `EntityWorldMut` is still alive.
+    #[inline]
+    pub fn archetype(&self) -> &Archetype {
+        match self.try_archetype() {
+            Some(a) => a,
+            None => self.panic_despawned(),
+        }
     }
 
     /// Returns the [ID](Entity) of the current entity.
@@ -200,6 +255,20 @@ impl<'w> EntityWorldMut<'w> {
         let change_tick = self.world.read_change_tick();
         UnsafeEntityCell::new(
             self.world.as_unsafe_world_cell_readonly(),
+            self.entity,
+            location,
+            last_change_tick,
+            change_tick,
+        )
+    }
+
+    #[inline(always)]
+    fn as_unsafe_entity_cell(&mut self) -> UnsafeEntityCell<'_> {
+        let location = self.location();
+        let last_change_tick = self.world.last_change_tick;
+        let change_tick = self.world.change_tick();
+        UnsafeEntityCell::new(
+            self.world.as_unsafe_world_cell(),
             self.entity,
             location,
             last_change_tick,
@@ -559,6 +628,599 @@ impl<'w> EntityWorldMut<'w> {
                 relationship_hook_insert_mode,
             ))
         };
+        self.world.flush();
+        self.update_location();
+        self
+    }
+
+    /// Removes any components in the [`Bundle`] from the entity.
+    ///
+    /// See [`EntityCommands::remove`](crate::system::EntityCommands::remove) for more details.
+    ///
+    /// # Panics
+    ///
+    /// If the entity has been despawned while this `EntityWorldMut` is still alive.
+    #[track_caller]
+    pub fn remove<T: Bundle>(&mut self) -> &mut Self {
+        self.remove_with_caller::<T>(MaybeLocation::caller())
+    }
+
+    #[inline]
+    pub(crate) fn remove_with_caller<T: Bundle>(&mut self, caller: MaybeLocation) -> &mut Self {
+        let location = self.location();
+
+        let Some(mut remover) =
+            // SAFETY: The archetype id must be valid since this entity is in it.
+            (unsafe { BundleRemover::new::<T>(self.world, location.archetype_id, false) })
+        else {
+            return self;
+        };
+
+        let new_location = unsafe {
+            remover.remove(
+                self.entity,
+                location,
+                caller,
+                BundleRemover::empty_pre_remove,
+            )
+        }
+        .0;
+
+        self.location = Some(new_location);
+        self.world.flush();
+        self.update_location();
+        self
+    }
+
+    /// Removes all components in the [`Bundle`] and remove all required components for each component in the bundle
+    ///
+    /// # Panics
+    ///
+    /// If the entity has been despawned while this `EntityWorldMut` is still alive.
+    #[track_caller]
+    pub fn remove_with_requires<T: Bundle>(&mut self) -> &mut Self {
+        self.remove_with_requires_with_caller::<T>(MaybeLocation::caller())
+    }
+
+    pub(crate) fn remove_with_requires_with_caller<T: Bundle>(
+        &mut self,
+        caller: MaybeLocation,
+    ) -> &mut Self {
+        let location = self.location();
+        let bundle_id = self.world.register_contributed_bundle_info::<T>();
+
+        // SAFETY: We just created the bundle, and the archetype is valid, since we are in it.
+        let Some(mut remover) = (unsafe {
+            BundleRemover::new_with_id(self.world, location.archetype_id, bundle_id, false)
+        }) else {
+            return self;
+        };
+        // SAFETY:
+        // - The remover archetype came from the passed location and the removal can not fail.
+        // - `location` was obtained from a valid `Self`.
+        let new_location = unsafe {
+            remover.remove(
+                self.entity,
+                location,
+                caller,
+                BundleRemover::empty_pre_remove,
+            )
+        }
+        .0;
+
+        self.location = Some(new_location);
+        self.world.flush();
+        self.update_location();
+        self
+    }
+
+    /// Removes a dynamic [`Component`] from the entity if it exists.
+    ///
+    /// You should prefer to use the typed API [`EntityWorldMut::remove`] where possible.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the provided [`ComponentId`] does not exist in the [`World`] or if the
+    /// entity has been despawned while this `EntityWorldMut` is still alive.
+    #[track_caller]
+    #[inline]
+    pub(crate) fn remove_by_id_with_caller(
+        &mut self,
+        compnent_id: ComponentId,
+        caller: MaybeLocation,
+    ) -> &mut Self {
+        let location = self.location();
+        let components = &mut self.world.components;
+
+        let bundle_id = self.world.bundles.init_component_info(
+            &mut self.world.storages,
+            components,
+            compnent_id,
+        );
+
+        // SAFETY: We just created the bundle, and the archetype is valid, since we are in it.
+        let Some(mut remover) = (unsafe {
+            BundleRemover::new_with_id(self.world, location.archetype_id, bundle_id, false)
+        }) else {
+            return self;
+        };
+        // SAFETY:
+        // - The remover archetype came from the passed location and the removal can not fail.
+        // - `location` was obtained from a valid `Self`.
+        let new_location = unsafe {
+            remover.remove(
+                self.entity,
+                location,
+                caller,
+                BundleRemover::empty_pre_remove,
+            )
+        }
+        .0;
+
+        self.location = Some(new_location);
+        self.world.flush();
+        self.update_location();
+        self
+    }
+
+    /// Removes all components associated with the entity.
+    ///
+    /// # Panics
+    ///
+    /// If the entity has been despawned while this `EntityWorldMut` is still alive.
+    #[track_caller]
+    pub fn clear(&mut self) -> &mut Self {
+        self.clear_with_caller(MaybeLocation::caller())
+    }
+
+    #[inline]
+    pub(crate) fn clear_with_caller(&mut self, caller: MaybeLocation) -> &mut Self {
+        let location = self.location();
+        // PERF: this should not be necessary
+        let component_ids: Vec<ComponentId> = self.archetype().components().to_vec();
+        let components = &mut self.world.components;
+
+        let bundle_id = self.world.bundles.init_dynamic_info(
+            &mut self.world.storages,
+            components,
+            component_ids.as_slice(),
+        );
+
+        // SAFETY: We just created the bundle, and the archetype is valid, since we are in it.
+        let Some(mut remover) = (unsafe {
+            BundleRemover::new_with_id(self.world, location.archetype_id, bundle_id, false)
+        }) else {
+            return self;
+        };
+        // SAFETY:
+        // - The remover archetype came from the passed location and the removal can not fail.
+        // - `location` was obtained from a valid `Self`.
+        let new_location = unsafe {
+            remover.remove(
+                self.entity,
+                location,
+                caller,
+                BundleRemover::empty_pre_remove,
+            )
+        }
+        .0;
+
+        self.location = Some(new_location);
+        self.world.flush();
+        self.update_location();
+        self
+    }
+
+    /// Removes any components except those in the [`Bundle`] (and its Required Components) from the entity.
+    ///
+    /// See [`EntityCommands::retain`](crate::system::EntityCommands::retain) for more details.
+    ///
+    /// # Panics
+    ///
+    /// If the entity has been despawned while this `EntityWorldMut` is still alive.
+    #[track_caller]
+    pub fn retain<T: Bundle>(&mut self) -> &mut Self {
+        self.retain_with_caller::<T>(MaybeLocation::caller())
+    }
+
+    #[inline]
+    pub(crate) fn retain_with_caller<T: Bundle>(&mut self, caller: MaybeLocation) -> &mut Self {
+        let old_location = self.location();
+        let retained_bundle = self.world.register_bundle_info::<T>();
+        let archetypes = &mut self.world.archetypes;
+
+        // SAFETY: `retained_bundle` exists as we just registered it.
+        let retained_bundle_info = unsafe { self.world.bundles.get_unchecked(retained_bundle) };
+        let old_archetype = &mut archetypes[old_location.archetype_id];
+
+        // PERF: this could be stored in an Archetype Edge
+        let to_remove = &old_archetype
+            .iter_components()
+            .filter(|c| !retained_bundle_info.contributed_components().contains(c))
+            .collect::<Vec<_>>();
+        let remove_bundle = self.world.bundles.init_dynamic_info(
+            &mut self.world.storages,
+            &self.world.components,
+            to_remove,
+        );
+
+        // SAFETY: We just created the bundle, and the archetype is valid, since we are in it.
+        let Some(mut remover) = (unsafe {
+            BundleRemover::new_with_id(self.world, old_location.archetype_id, remove_bundle, false)
+        }) else {
+            return self;
+        };
+        // SAFETY:
+        // - The remover archetype came from the passed location and the removal can not fail.
+        // - `old_location` was obtained from a valid `Self`.
+        let new_location = unsafe {
+            remover.remove(
+                self.entity,
+                old_location,
+                caller,
+                BundleRemover::empty_pre_remove,
+            )
+        }
+        .0;
+
+        self.location = Some(new_location);
+        self.world.flush();
+        self.update_location();
+        self
+    }
+
+    /// This despawns this entity if it is currently spawned, storing the new [`EntityGeneration`](crate::entity::EntityGeneration) in [`Self::entity`] but not freeing it.
+    pub(crate) fn despawn_no_free_with_caller(&mut self, caller: MaybeLocation) {
+        // setup
+        let Some(location) = self.location else {
+            // If there is no location, we are already despawned
+            return;
+        };
+        let archetype = &self.world.archetypes[location.archetype_id];
+
+        // SAFETY: Archetype cannot be mutably aliased by DeferredWorld
+        let (archetype, mut deferred_world) = unsafe {
+            let archetype: *const Archetype = archetype;
+            let world = self.world.as_unsafe_world_cell();
+            (&*archetype, world.into_deferred())
+        };
+
+        // SAFETY: All components in the archetype exist in world
+        unsafe {
+            if archetype.has_despawn_observer() {
+                deferred_world.trigger_raw(
+                    DESPAWN,
+                    &mut Despawn {
+                        entity: self.entity,
+                    },
+                    &mut EntityComponentsTrigger {
+                        components: archetype.components(),
+                        old_archetype: Some(archetype),
+                        new_archetype: None,
+                    },
+                    caller,
+                );
+            }
+            deferred_world.trigger_on_despawn(
+                archetype,
+                self.entity,
+                archetype.iter_components(),
+                caller,
+            );
+            if archetype.has_discard_observer() {
+                // SAFETY: the DISCARD event_key corresponds to the Discard event's type
+                deferred_world.trigger_raw(
+                    DISCARD,
+                    &mut Discard {
+                        entity: self.entity,
+                    },
+                    &mut EntityComponentsTrigger {
+                        components: archetype.components(),
+                        old_archetype: Some(archetype),
+                        new_archetype: None,
+                    },
+                    caller,
+                );
+            }
+            deferred_world.trigger_on_discard(
+                archetype,
+                self.entity,
+                archetype.iter_components(),
+                caller,
+                RelationshipHookMode::Run,
+            );
+            if archetype.has_remove_observer() {
+                // SAFETY: the REMOVE event_key corresponds to the Remove event's type
+                deferred_world.trigger_raw(
+                    REMOVE,
+                    &mut Remove {
+                        entity: self.entity,
+                    },
+                    &mut EntityComponentsTrigger {
+                        components: archetype.components(),
+                        old_archetype: Some(archetype),
+                        new_archetype: None,
+                    },
+                    caller,
+                );
+            }
+            deferred_world.trigger_on_remove(
+                archetype,
+                self.entity,
+                archetype.iter_components(),
+                caller,
+            );
+        }
+
+        // do the despawn
+        let change_tick = self.world.change_tick();
+        for component_id in archetype.components() {
+            self.world
+                .removed_components
+                .write(*component_id, self.entity);
+        }
+        // SAFETY: Since we had a location, and it was valid, this is safe.
+        unsafe {
+            let was_at = self
+                .world
+                .entities
+                .update_existing_location(self.entity.index(), None);
+            debug_assert_eq!(was_at, Some(location));
+            self.world
+                .entities
+                .mark_spawned_or_despawned(self.entity.index(), caller, change_tick);
+        }
+
+        let table_row;
+        let moved_entity;
+        {
+            let archetype = &mut self.world.archetypes[location.archetype_id];
+            let remove_result = archetype.swap_remove(location.archetype_row);
+            if let Some(swapped_entity) = remove_result.swapped_entity {
+                let swapped_location = self.world.entities.get_spawned(swapped_entity).unwrap();
+                // SAFETY: swapped_entity is valid and the swapped entity's components are
+                // moved to the new location immediately after.
+                unsafe {
+                    self.world.entities.update_existing_location(
+                        swapped_entity.index(),
+                        Some(EntityLocation {
+                            archetype_id: swapped_location.archetype_id,
+                            archetype_row: location.archetype_row,
+                            table_id: swapped_location.table_id,
+                            table_row: swapped_location.table_row,
+                        }),
+                    );
+                }
+            }
+            table_row = remove_result.table_row;
+
+            for component_id in archetype.sparse_set_components() {
+                // set must have existed for the component to be added.
+                let sparse_set = self
+                    .world
+                    .storages
+                    .sparse_sets
+                    .get_mut(component_id)
+                    .unwrap();
+                sparse_set.remove(self.entity);
+            }
+            // SAFETY: table rows stored in archetypes always exist
+            moved_entity = unsafe {
+                self.world.storages.tables[archetype.table_id()].swap_remove_unchecked(table_row)
+            };
+        };
+
+        // Handle displaced entity
+        if let Some(moved_entity) = moved_entity {
+            let moved_location = self.world.entities.get_spawned(moved_entity).unwrap();
+
+            unsafe {
+                self.world.entities.update_existing_location(
+                    moved_entity.index(),
+                    Some(EntityLocation {
+                        archetype_id: moved_location.archetype_id,
+                        archetype_row: moved_location.archetype_row,
+                        table_id: moved_location.table_id,
+                        table_row,
+                    }),
+                );
+            }
+            self.world.archetypes[moved_location.archetype_id]
+                .set_entity_table_row(moved_location.archetype_row, table_row);
+        }
+
+        // finish
+        // SAFETY: We just despawned it.
+        self.entity = unsafe { self.world.entities.mark_free(self.entity.index(), 1) };
+        self.world.flush();
+    }
+
+    /// Despawns the current entity.
+    ///
+    /// See [`World::despawn`] for more details.
+    ///
+    /// # Note
+    ///
+    /// This will also despawn any [`Children`](crate::hierarchy::Children) entities, and any other [`RelationshipTarget`](crate::relationship::RelationshipTarget) that is configured
+    /// to despawn descendants. This results in "recursive despawn" behavior.
+    #[track_caller]
+    pub fn despawn(self) {
+        self.despawn_with_caller(MaybeLocation::caller());
+    }
+
+    pub(crate) fn despawn_with_caller(mut self, caller: MaybeLocation) {
+        self.despawn_no_free_with_caller(caller);
+        if let Ok(None) = self.world.entities.get(self.entity) {
+            self.world.entity_allocator.free(self.entity);
+        }
+
+        // Otherwise:
+        // A command must have reconstructed it (had a location); don't free
+        // A command must have already despawned it (err) or otherwise made the free unneeded (ex by spawning and despawning in commands); don't free
+    }
+
+    /// Creates an [`Observer`](crate::observer::Observer) watching for an [`EntityEvent`] of type `E` whose [`EntityEvent::event_target`]
+    /// targets this entity.
+    ///
+    /// # Panics
+    ///
+    /// If the entity has been despawned while this `EntityWorldMut` is still alive.
+    ///
+    /// Panics if the given system is an exclusive system.
+    #[track_caller]
+    pub fn observe<M>(&mut self, observer: impl IntoEntityObserver<M>) -> &mut Self {
+        self.observe_with_caller(observer, MaybeLocation::caller())
+    }
+
+    pub(crate) fn observe_with_caller<M>(
+        &mut self,
+        observer: impl IntoEntityObserver<M>,
+        caller: MaybeLocation,
+    ) -> &mut Self {
+        self.assert_not_despawned();
+        let bundle = observer.into_observer_for_entity(self.entity);
+        move_as_ptr!(bundle);
+        self.world.spawn_with_caller(bundle, caller);
+        self.world.flush();
+        self.update_location();
+        self
+    }
+
+    /// Clones parts of an entity (components, observers, etc.) onto another entity,
+    /// configured through [`EntityClonerBuilder`].
+    ///
+    /// The other entity will receive all the components of the original that implement
+    /// [`Clone`] or [`Reflect`](bevy_reflect::Reflect) except those that are
+    /// [denied](EntityClonerBuilder::deny) in the `config`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use bevy_ecs::prelude::*;
+    /// # #[derive(Component, Clone, PartialEq, Debug)]
+    /// # struct ComponentA;
+    /// # #[derive(Component, Clone, PartialEq, Debug)]
+    /// # struct ComponentB;
+    /// # let mut world = World::new();
+    /// # let entity = world.spawn((ComponentA, ComponentB)).id();
+    /// # let target = world.spawn_empty().id();
+    /// // Clone all components except ComponentA onto the target.
+    /// world.entity_mut(entity).clone_with_opt_out(target, |builder| {
+    ///     builder.deny::<ComponentA>();
+    /// });
+    /// # assert_eq!(world.get::<ComponentA>(target), None);
+    /// # assert_eq!(world.get::<ComponentB>(target), Some(&ComponentB));
+    /// ```
+    ///
+    /// See [`EntityClonerBuilder<OptOut>`] for more options.
+    ///
+    /// # Panics
+    ///
+    /// - If this entity has been despawned while this `EntityWorldMut` is still alive.
+    /// - If the target entity does not exist.
+    pub fn clone_with_opt_out(
+        &mut self,
+        target: Entity,
+        config: impl FnOnce(&mut EntityClonerBuilder<OptOut>) + Send + Sync + 'static,
+    ) -> &mut Self {
+        self.assert_not_despawned();
+
+        let mut builder = EntityCloner::build_opt_out(self.world);
+        config(&mut builder);
+        builder.clone_entity(self.entity, target);
+
+        self.world.flush();
+        self.update_location();
+        self
+    }
+
+    /// Clones parts of an entity (components, observers, etc.) onto another entity,
+    /// configured through [`EntityClonerBuilder`].
+    ///
+    /// The other entity will receive only the components of the original that implement
+    /// [`Clone`] or [`Reflect`](bevy_reflect::Reflect) and are
+    /// [allowed](EntityClonerBuilder::allow) in the `config`.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use bevy_ecs::prelude::*;
+    /// # #[derive(Component, Clone, PartialEq, Debug)]
+    /// # struct ComponentA;
+    /// # #[derive(Component, Clone, PartialEq, Debug)]
+    /// # struct ComponentB;
+    /// # let mut world = World::new();
+    /// # let entity = world.spawn((ComponentA, ComponentB)).id();
+    /// # let target = world.spawn_empty().id();
+    /// // Clone only ComponentA onto the target.
+    /// world.entity_mut(entity).clone_with_opt_in(target, |builder| {
+    ///     builder.allow::<ComponentA>();
+    /// });
+    /// # assert_eq!(world.get::<ComponentA>(target), Some(&ComponentA));
+    /// # assert_eq!(world.get::<ComponentB>(target), None);
+    /// ```
+    ///
+    /// See [`EntityClonerBuilder<OptIn>`] for more options.
+    ///
+    /// # Panics
+    ///
+    /// - If this entity has been despawned while this `EntityWorldMut` is still alive.
+    /// - If the target entity does not exist.
+    pub fn clone_with_opt_in(
+        &mut self,
+        target: Entity,
+        config: impl FnOnce(&mut EntityClonerBuilder<OptIn>) + Send + Sync + 'static,
+    ) -> &mut Self {
+        self.assert_not_despawned();
+
+        let mut builder = EntityCloner::build_opt_in(self.world);
+        config(&mut builder);
+        builder.clone_entity(self.entity, target);
+
+        self.world.flush();
+        self.update_location();
+        self
+    }
+
+    /// Clones the specified components of this entity and inserts them into another entity.
+    ///
+    /// Components can only be cloned if they implement
+    /// [`Clone`] or [`Reflect`](bevy_reflect::Reflect).
+    ///
+    /// # Panics
+    ///
+    /// - If this entity has been despawned while this `EntityWorldMut` is still alive.
+    /// - If the target entity does not exist.
+    pub fn clone_components<B: Bundle>(&mut self, target: Entity) -> &mut Self {
+        self.assert_not_despawned();
+
+        EntityCloner::build_opt_in(self.world)
+            .allow::<B>()
+            .clone_entity(self.entity, target);
+
+        self.world.flush();
+        self.update_location();
+        self
+    }
+
+    /// Clones the specified components of this entity and inserts them into another entity,
+    /// then removes the components from this entity.
+    ///
+    /// Components can only be cloned if they implement
+    /// [`Clone`] or [`Reflect`](bevy_reflect::Reflect).
+    ///
+    /// # Panics
+    ///
+    /// - If this entity has been despawned while this `EntityWorldMut` is still alive.
+    /// - If the target entity does not exist.
+    pub fn move_components<B: Bundle>(&mut self, target: Entity) -> &mut Self {
+        self.assert_not_despawned();
+
+        EntityCloner::build_opt_in(self.world)
+            .allow::<B>()
+            .move_components(true)
+            .clone_entity(self.entity, target);
+
         self.world.flush();
         self.update_location();
         self

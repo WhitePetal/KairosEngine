@@ -235,6 +235,20 @@ where
     }
 }
 
+/// A [`Command`] that removes a system previously registered with
+/// [`Commands::register_system`](crate::system::Commands::register_system) or
+/// [`World::register_system`].
+pub fn unregister_system<I, O>(system_id: SystemId<I, O>) -> impl Command
+where
+    I: SystemInput + Send + 'static,
+    O: Send + 'static,
+{
+    move |world: &mut World| -> Result {
+        world.unregister_system(system_id)?;
+        Ok(())
+    }
+}
+
 /// A [`Command`] that removes a system previously registered with one of the following:
 /// - [`Commands::run_system_cached`](crate::system::Commands::run_system_cached)
 /// - [`World::run_system_cached`]

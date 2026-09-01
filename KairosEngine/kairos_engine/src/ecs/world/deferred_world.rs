@@ -8,6 +8,7 @@ use crate::{
         component::{Component, ComponentId, Mutable},
         entity::Entity,
         event::{Event, EventKey},
+        lifecycle::HookContext,
         relationship::RelationshipHookMode,
         system::Commands,
         world::{
@@ -42,45 +43,6 @@ impl<'w> DeferredWorld<'w> {
         DeferredWorld { world: self.world }
     }
 
-    /// Sends a global [`Event`] without any targets.
-    ///
-    /// This will run any [`Observer`] of the given [`Event`] that isn't scoped to specific targets.
-    ///
-    /// [`Observer`]: crate::observer::Observer
-    pub fn trigger<'a>(&mut self, event: impl Event<Trigger<'a>: Default>) {
-        todo!()
-    }
-
-    /// Triggers all `event` observers for the given `targets`
-    ///
-    /// # Safety
-    /// - Caller must ensure `E` is accessible as the type represented by `event_key`
-    #[inline]
-    pub unsafe fn trigger_raw<'a, E: Event>(
-        &mut self,
-        event_key: EventKey,
-        event: &mut E,
-        trigger: &mut E::Trigger<'a>,
-        caller: MaybeLocation,
-    ) {
-        todo!()
-    }
-
-    /// Triggers all `on_discard` hooks for [`ComponentId`] in target.
-    ///
-    /// # Safety
-    /// Caller must ensure [`ComponentId`] in target exist in self.
-    pub(crate) unsafe fn trigger_on_discard(
-        &mut self,
-        archetype: &Archetype,
-        entity: Entity,
-        targets: impl Iterator<Item = ComponentId>,
-        callder: MaybeLocation,
-        relationship_hook_mode: RelationshipHookMode,
-    ) {
-        todo!()
-    }
-
     /// Triggers all `on_add` hooks for [`ComponentId`] in target.
     ///
     /// # Safety
@@ -112,6 +74,21 @@ impl<'w> DeferredWorld<'w> {
         todo!()
     }
 
+    /// Triggers all `on_discard` hooks for [`ComponentId`] in target.
+    ///
+    /// # Safety
+    /// Caller must ensure [`ComponentId`] in target exist in self.
+    pub(crate) unsafe fn trigger_on_discard(
+        &mut self,
+        archetype: &Archetype,
+        entity: Entity,
+        targets: impl Iterator<Item = ComponentId>,
+        callder: MaybeLocation,
+        relationship_hook_mode: RelationshipHookMode,
+    ) {
+        todo!()
+    }
+
     /// Triggers all `on_remove` hooks for [`ComponentId`] in target.
     ///
     /// # Safety
@@ -124,6 +101,61 @@ impl<'w> DeferredWorld<'w> {
         targets: impl Iterator<Item = ComponentId>,
         caller: MaybeLocation,
     ) {
+        todo!()
+    }
+
+    /// Triggers all `on_despawn` hooks for [`ComponentId`] in target.
+    ///
+    /// # Safety
+    /// Caller must ensure [`ComponentId`] in target exist in self.
+    #[inline]
+    pub(crate) unsafe fn trigger_on_despawn(
+        &mut self,
+        arhcetype: &Archetype,
+        entity: Entity,
+        targets: impl Iterator<Item = ComponentId>,
+        caller: MaybeLocation,
+    ) {
+        if arhcetype.has_despawn_hook() {
+            for component_id in targets {
+                // SAFETY: Caller ensures that these components exist
+                let hooks = unsafe { self.components().get_info_unchecked(component_id) }.hooks();
+                if let Some(hook) = hooks.on_despawn {
+                    hook(
+                        DeferredWorld { world: self.world },
+                        HookContext {
+                            entity,
+                            component_id,
+                            caller,
+                            relationship_hook_mode: RelationshipHookMode::Run,
+                        },
+                    )
+                }
+            }
+        }
+    }
+
+    /// Triggers all `event` observers for the given `targets`
+    ///
+    /// # Safety
+    /// - Caller must ensure `E` is accessible as the type represented by `event_key`
+    #[inline]
+    pub unsafe fn trigger_raw<'a, E: Event>(
+        &mut self,
+        event_key: EventKey,
+        event: &mut E,
+        trigger: &mut E::Trigger<'a>,
+        caller: MaybeLocation,
+    ) {
+        todo!()
+    }
+
+    /// Sends a global [`Event`] without any targets.
+    ///
+    /// This will run any [`Observer`] of the given [`Event`] that isn't scoped to specific targets.
+    ///
+    /// [`Observer`]: crate::observer::Observer
+    pub fn trigger<'a>(&mut self, event: impl Event<Trigger<'a>: Default>) {
         todo!()
     }
 

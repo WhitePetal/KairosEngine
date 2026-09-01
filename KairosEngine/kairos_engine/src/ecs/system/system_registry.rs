@@ -13,6 +13,34 @@ use crate::{
     },
 };
 
+/// A small wrapper for [`BoxedSystem`] that also keeps track whether or not the system has been initialized.
+// #[derive(Component)]
+// #[require(SystemIdMarker = SystemIdMarker::typed_system_id_marker::<I, O>())]
+pub(crate) struct RegisteredSystem<I, O> {
+    initialized: bool,
+    system: Option<BoxedSystem<I, O>>,
+}
+
+// TODO: use derive
+impl<I, O> Component for RegisteredSystem<I, O>
+where
+    I: 'static,
+    O: 'static,
+{
+    const STORAGE_TYPE: StorageType = StorageType::Table;
+
+    type Mutability = Mutable;
+}
+
+impl<I, O> RegisteredSystem<I, O> {
+    pub fn new(system: BoxedSystem<I, O>) -> Self {
+        RegisteredSystem {
+            initialized: false,
+            system: Some(system),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 struct TypeIdAndName {
     type_id: TypeId,
@@ -92,6 +120,29 @@ pub struct SystemId<I: SystemInput = (), O = ()> {
     pub(crate) marker: PhantomData<fn(I) -> O>,
 }
 
+impl<I: SystemInput, O> SystemId<I, O> {
+    /// Transforms a [`SystemId`] into the [`Entity`] that holds the one-shot system's state.
+    ///
+    /// It's trivial to convert [`SystemId`] into an [`Entity`] since a one-shot system
+    /// is really an entity with associated handler function.
+    ///
+    /// For example, this is useful if you want to assign a name label to a system.
+    pub fn entity(self) -> Entity {
+        self.entity
+    }
+
+    /// Create [`SystemId`] from an [`Entity`]. Useful when you only have entity handles to avoid
+    /// adding extra components that have a [`SystemId`] everywhere. To run a system with this ID
+    ///  - The entity must be a system
+    ///  - The `I` + `O` types must be correct
+    pub fn from_entity(entity: Entity) -> Self {
+        Self {
+            entity,
+            marker: PhantomData,
+        }
+    }
+}
+
 impl<I: SystemInput, O> std::fmt::Debug for SystemId<I, O> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("SystemId").field(&self.entity).finish()
@@ -99,6 +150,17 @@ impl<I: SystemInput, O> std::fmt::Debug for SystemId<I, O> {
 }
 
 impl World {
+    pub fn unregister_system<I, O>(
+        &mut self,
+        id: SystemId<I, O>,
+    ) -> Result<RemovedSystem<I, O>, RegisteredSystemError<I, O>>
+    where
+        I: SystemInput + 'static,
+        O: 'static,
+    {
+        todo!()
+    }
+
     /// Run stored systems by their [`SystemId`].
     /// Before running a system, it must first be registered.
     /// The method [`World::register_system`] stores a given system and returns a [`SystemId`].
