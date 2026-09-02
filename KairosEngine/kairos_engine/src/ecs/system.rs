@@ -119,6 +119,7 @@
 //!
 //! [`Vec<P>`]: alloc::vec::Vec
 
+mod adapter_system;
 mod builder;
 mod combinator;
 mod commands;
@@ -130,6 +131,7 @@ mod system;
 mod system_param;
 mod system_registry;
 
+pub use adapter_system::*;
 pub use builder::*;
 pub use combinator::*;
 pub use commands::*;
@@ -188,6 +190,32 @@ pub trait IntoSystem<In: SystemInput, Out, Marker>: Sized {
         for<'a> BIn: SystemInput<Inner<'a> = Out>,
     {
         IntoPipeSystem::new(self, system)
+    }
+
+    /// Pass the output of this system into the passed function `f`, creating a new system that
+    /// outputs the value returned from the function.
+    ///
+    /// ```
+    /// # use bevy_ecs::prelude::*;
+    /// # let mut schedule = Schedule::default();
+    /// // Ignores the output of a system that may fail.
+    /// schedule.add_systems(my_system.map(drop));
+    /// # let mut world = World::new();
+    /// # world.insert_resource(T);
+    /// # schedule.run(&mut world);
+    ///
+    /// # #[derive(Resource)] struct T;
+    /// # type Err = ();
+    /// fn my_system(res: Res<T>) -> Result<(), Err> {
+    ///     // ...
+    ///     # Err(())
+    /// }
+    /// ```
+    fn map<T, F>(self, f: F) -> IntoAdapterSystem<F, Self>
+    where
+        F: Send + Sync + 'static + FnMut(Out) -> T,
+    {
+        IntoAdapterSystem::new(f, self)
     }
 }
 
