@@ -1,9 +1,11 @@
 //! This module provides functionality to link entities to each other using specialized components called "relationships". See the [`Relationship`] trait for more info.
 
 mod related_methods;
+mod relationship_query;
 mod relationship_source_collection;
 
 pub use related_methods::*;
+pub use relationship_query::*;
 pub use relationship_source_collection::*;
 
 #[cfg(test)]
