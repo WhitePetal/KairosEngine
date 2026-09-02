@@ -2,8 +2,8 @@ use kairos_macro_utils::fq_std::FQDefault;
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
-    Data, DeriveInput, Fields, Ident, Index, Path, Result, parse::ParseStream, parse_macro_input,
-    spanned::Spanned,
+    Data, DeriveInput, Fields, FieldsUnnamed, Ident, Index, Path, Result, Token, WhereClause,
+    parse::ParseStream, parse_macro_input, parse_quote, punctuated::Punctuated, spanned::Spanned,
 };
 
 use crate::kairos_ecs_path;
@@ -69,15 +69,266 @@ pub(crate) fn derive_from_template(input: TokenStream) -> TokenStream {
                         }
                     }
                 }
-                Fields::Unnamed(fields_unnamed) => todo!(),
-                Fields::Unit => todo!(),
+                Fields::Unnamed(_) => {
+                    quote! {
+                        #[allow(missing_docs)]
+                        #maybe_pub struct #template_ident #impl_generics (
+                            #(#template_fields,)*
+                        ) #where_clause;
+
+                        impl #impl_generics #ecs::template::Template for #template_ident #type_generics #where_clause {
+                            type Output = #type_ident #type_generics;
+
+                            fn build_template(&self, context: &mut ecs::template::TemplateContext) -> #ecs::error::Result<Self::Output> {
+                                #ecs::error::Result::Ok(#type_ident (
+                                    #(#template_field_builds,)*
+                                ))
+                            }
+
+                            fn clone_template(&self) -> Self {
+                                Self(
+                                    #(#template_field_clones,)*
+                                )
+                            }
+                        }
+
+                        impl #impl_generics #FQDefault for #template_ident #type_generics #where_clause {
+                            fn default() -> Self {
+                                Self (
+                                    #(#template_field_defaults,)*
+                                )
+                            }
+                        }
+                    }
+                }
+                Fields::Unit => {
+                    quote! {
+                        #[allow(missing_docs)]
+                        #maybe_pub struct #template_ident;
+
+                        impl #impl_generics #ecs::template::Template for #template_ident #type_generics #where_clause {
+                            type Output = #type_ident;
+
+                            fn build_template(&self, context: &mut #ecs::template::TemplateContext) -> #ecs::error::Result<Self::Output> {
+                                #ecs::error::Result::Ok(#type_ident)
+                            }
+
+                            fn clone_template(&self) -> Self {
+                                Self
+                            }
+                        }
+
+                        impl #impl_generics #FQDefault for #template_ident #type_generics #where_clause {
+                            fn default() -> Self {
+                                Self
+                            }
+                        }
+                    }
+                }
             }
         }
-        Data::Enum(data_enum) => todo!(),
-        Data::Union(data_union) => todo!(),
+        Data::Enum(data_enum) => {
+            let mut variant_definitions = Vec::new();
+            let mut variant_builds = Vec::new();
+            let mut variant_clones = Vec::new();
+            let mut variant_default_ident = None;
+            let mut variant_defaults = Vec::new();
+            for variant in &data_enum.variants {
+                let result = match struct_impl(&variant.fields, &ecs, true) {
+                    Ok(result) => result,
+                    Err(err) => return err.into_compile_error().into(),
+                };
+                let StructImpl {
+                    template_fields,
+                    template_field_builds,
+                    template_field_defaults,
+                    template_field_clones,
+                    ..
+                } = result;
+
+                let is_default = variant
+                    .attrs
+                    .iter()
+                    .any(|a| a.path().is_ident(TEMPLATE_DEFAULT_ATTRIBUTE));
+                if is_default && variant_default_ident.is_some() {
+                    panic!("Cannot have multiple default variants");
+                }
+                let variant_ident = &variant.ident;
+                let variant_name_lower = variant_ident.to_string().to_lowercase();
+                let variant_default_name = format_ident!("default_{}", variant_name_lower);
+                match &variant.fields {
+                    Fields::Named(fields) => {
+                        variant_definitions.push(quote! {
+                            #variant_ident {
+                                #(#template_fields,)*
+                            }
+                        });
+                        let field_idents = fields.named.iter().map(|f| &f.ident);
+                        variant_builds.push(quote! {
+                            // TODO: proper assignments here
+                            #template_ident::#variant_ident {
+                                #(#field_idents,)*
+                            } => {
+                                #(#template_field_builds,)*
+                            }
+                        });
+
+                        let field_idents = fields.named.iter().map(|f| &f.ident);
+                        variant_clones.push(quote! {
+                            // TODO: proper assignments here
+                            #template_ident::#variant_ident {
+                                #(#field_idents,)*
+                            } => {
+                                #template_ident::#variant_ident {
+                                    #(#template_field_clones,)*
+                                }
+                            }
+                        });
+
+                        if is_default {
+                            variant_default_ident = Some(quote! {
+                                Self::#variant_ident {
+                                    #(#template_field_defaults,)*
+                                }
+                            });
+                        }
+                        variant_defaults.push(quote! {
+                            /// Default value for this variant, generated by a `FromTemplate` derive.
+                            #maybe_pub fn #variant_default_name() -> Self {
+                                Self::#variant_ident {
+                                    #(#template_field_defaults,)*
+                                }
+                            }
+                        });
+                    }
+                    Fields::Unnamed(FieldsUnnamed { unnamed: f, .. }) => {
+                        let field_idents = f
+                            .iter()
+                            .enumerate()
+                            .map(|(i, _)| format_ident!("t{}", i))
+                            .collect::<Vec<_>>();
+                        variant_definitions.push(quote! {
+                            #variant_ident(#(#template_fields,)*)
+                        });
+                        variant_builds.push(quote! {
+                            // TODO: proper assignments here
+                            #template_ident::#variant_ident(
+                                #(#field_idents,)*
+                            ) => {
+                                #type_ident::#variant_ident(
+                                    #(#template_field_builds,)*
+                                )
+                            }
+                        });
+                        variant_clones.push(quote! {
+                            #template_ident::#variant_ident(
+                                #(#field_idents,)*
+                            ) => {
+                                #template_ident::#variant_ident(
+                                    #(#template_field_clones,)*
+                                )
+                            }
+                        });
+                        if is_default {
+                            variant_default_ident = Some(quote! {
+                                Self::#variant_ident(
+                                    #(#template_field_defaults,)*
+                                )
+                            });
+                        }
+
+                        variant_defaults.push(quote! {
+                            /// Default value for this variant, generated by a `FromTemplate` derive.
+                            #maybe_pub fn #variant_default_name() -> Self {
+                                Self::#variant_ident(
+                                    #(#template_field_defaults,)*
+                                )
+                            }
+                        });
+                    }
+                    Fields::Unit => {
+                        variant_definitions.push(quote! {#variant_ident});
+                        variant_builds.push(
+                            quote! {#template_ident::#variant_ident => #type_ident::#variant_ident},
+                        );
+                        variant_clones.push(
+                            quote! {#template_ident::#variant_ident => #template_ident::#variant_ident},
+                        );
+                        if is_default {
+                            variant_default_ident = Some(quote! {
+                                Self::#variant_ident
+                            });
+                        }
+                        variant_defaults.push(quote! {
+                            /// Default value for this variant, generated by a `FromTemplate` derive.
+                            #maybe_pub fn #variant_default_name() -> Self {
+                                Self::#variant_ident
+                            }
+                        });
+                    }
+                }
+            }
+
+            if variant_default_ident.is_none() {
+                panic!(
+                    "Deriving Template for enums requires picking a default variant using #[default]"
+                );
+            }
+
+            quote! {
+                #[allow(missing_docs)]
+                #maybe_pub enum #template_ident #type_generics #where_clause {
+                    #(#variant_definitions,)*
+                }
+
+                impl #impl_generics #template_ident #type_generics #where_clause {
+                    #(#variant_defaults)*
+                }
+
+                impl #impl_generics #ecs::template::Template for #template_ident #type_generics #where_clause {
+                    type Output = #type_ident #type_generics;
+
+                    fn build_template(&self, context: &mut #ecs::template::TemplateContext) -> #ecs::error::Result<Self::Output> {
+                        #ecs::error::Result::Ok(match self {
+                            #(#variant_builds,)*
+                        })
+                    }
+
+                    fn clone_template(&self) -> Self {
+                        match self {
+                            #(#variant_clones,)*
+                        }
+                    }
+                }
+
+                impl #impl_generics #FQDefault for #template_ident #type_generics #where_clause {
+                    fn default() -> Self {
+                        #variant_default_ident
+                    }
+                }
+            }
+        }
+        Data::Union(_) => panic!("Union types are not supported yet."),
     };
 
-    todo!()
+    let mut unpin_where_clause = where_clause.cloned().unwrap_or_else(|| WhereClause {
+        where_token: <Token![where]>::default(),
+        predicates: Punctuated::new(),
+    });
+
+    unpin_where_clause
+        .predicates
+        .push(parse_quote! { for<'a> [()]: #ecs::template::SpecializeFromTemplate });
+
+    TokenStream::from(quote! {
+        impl #impl_generics #ecs::template::FromTemplate for #type_ident #type_generics #where_clause {
+            type Template = #template_ident #type_generics;
+        }
+
+        impl #impl_generics ::std::marker::Unpin for #type_ident #type_generics #unpin_where_clause {}
+
+        #template
+    })
 }
 
 struct StructImpl {

@@ -10,6 +10,7 @@ mod query_data;
 mod query_filter;
 mod resource;
 mod template;
+mod variant_defaults;
 mod world_query;
 
 use kairos_ecs_macro_logic::{
@@ -499,6 +500,12 @@ pub fn derive_from_world(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(FromTemplate, attributes(template, default))]
 pub fn derive_from_template(input: TokenStream) -> TokenStream {
     template::derive_from_template(input)
+}
+
+/// Derives `VariantDefaults`.
+#[proc_macro_derive(VariantDefaults)]
+pub fn derive_variant_defaults(input: TokenStream) -> TokenStream {
+    variant_defaults::derive_variant_defaults(input)
 }
 
 /// Implement `SystemParam` to use a struct as a parameter in a system

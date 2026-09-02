@@ -17,7 +17,7 @@ pub trait PreHashMapExt<K, V> {
     fn get_or_insert_with<F: FnOnce() -> V>(&mut self, key: &FixedHashed<K>, func: F) -> &mut V;
 }
 
-impl<K: Hash + Eq + PartialEq + Clone, V> PreHashMapExt<K, V> for PreHashMap<K, v> {
+impl<K: Hash + Eq + PartialEq + Clone, V> PreHashMapExt<K, V> for PreHashMap<K, V> {
     fn get_or_insert_with<F: FnOnce() -> V>(&mut self, key: &FixedHashed<K>, func: F) -> &mut V {
         use hashbrown::hash_map::RawEntryMut;
 
