@@ -102,6 +102,10 @@ pub trait System: Send + Sync + 'static {
         world: UnsafeWorldCell,
     ) -> Result<Self::Out, RunSystemError>;
 
+    /// Refresh the inner pointer based on the latest hot patch jump table
+    #[cfg(feature = "hotpatching")]
+    fn refresh_hotpatch(&mut self);
+
     // /// Refresh the inner pointer based on the latest hot patch jump table
     // #[cfg(feature = "hotpatching")]
     // fn refresh_hotpatch(&mut self);

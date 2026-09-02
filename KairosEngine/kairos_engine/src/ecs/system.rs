@@ -120,6 +120,7 @@
 //! [`Vec<P>`]: alloc::vec::Vec
 
 mod builder;
+mod combinator;
 mod commands;
 mod function_system;
 mod input;
@@ -130,6 +131,7 @@ mod system_param;
 mod system_registry;
 
 pub use builder::*;
+pub use combinator::*;
 pub use commands::*;
 pub use function_system::*;
 pub use input::*;
@@ -174,6 +176,19 @@ pub trait IntoSystem<In: SystemInput, Out, Marker>: Sized {
 
     /// Turns this value into its corresponding [`System`].
     fn into_system(this: Self) -> Self::System;
+
+    /// Pass the output of this system `A` into a second system `B`, creating a new compound system.
+    ///
+    /// The second system must have [`In<T>`](crate::system::In) as its first parameter,
+    /// where `T` is the return type of the first system.
+    fn pipe<B, BIn, BOut, MarkerB>(self, system: B) -> IntoPipeSystem<Self, B>
+    where
+        Out: 'static,
+        B: IntoSystem<BIn, BOut, MarkerB>,
+        for<'a> BIn: SystemInput<Inner<'a> = Out>,
+    {
+        IntoPipeSystem::new(self, system)
+    }
 }
 
 // All systems implicitly implement IntoSystem.
