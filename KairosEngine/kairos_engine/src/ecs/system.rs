@@ -127,6 +127,7 @@ mod function_system;
 mod input;
 mod observer_system;
 mod query;
+mod schedule_system;
 mod system;
 mod system_param;
 mod system_registry;
@@ -139,6 +140,7 @@ pub use function_system::*;
 pub use input::*;
 pub use observer_system::*;
 pub use query::*;
+pub use schedule_system::*;
 pub use system::*;
 pub use system_param::*;
 pub use system_registry::*;
@@ -216,6 +218,36 @@ pub trait IntoSystem<In: SystemInput, Out, Marker>: Sized {
         F: Send + Sync + 'static + FnMut(Out) -> T,
     {
         IntoAdapterSystem::new(f, self)
+    }
+
+    /// Passes a mutable reference to `value` as input to the system each run,
+    /// turning it into a system that takes no input.
+    ///
+    /// `Self` can have any [`SystemInput`] type that takes a mutable reference
+    /// to `T`, such as [`InMut`].
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use bevy_ecs::prelude::*;
+    /// #
+    /// fn my_system(InMut(value): InMut<usize>) {
+    ///     *value += 1;
+    ///     if *value > 10 {
+    ///        println!("Value is greater than 10!");
+    ///     }
+    /// }
+    ///
+    /// # let mut schedule = Schedule::default();
+    /// schedule.add_systems(my_system.with_input(0));
+    /// # bevy_ecs::system::assert_is_system(my_system.with_input(0));
+    /// ```
+    fn with_input<T>(self, value: T) -> WithInputWrapper<Self::System, T>
+    where
+        for<'i> In: SystemInput<Inner<'i> = &'i mut T>,
+        T: Send + Sync + 'static,
+    {
+        WithInputWrapper::new(self, value)
     }
 }
 
