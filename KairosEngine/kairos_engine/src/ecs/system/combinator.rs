@@ -6,10 +6,14 @@ use crate::{
         change_detection::{CheckChangeTicks, Tick},
         error::{ErrorContext, FallbackErrorHandler},
         query::FilteredAccessSet,
-        system::{ReadOnlySystem, RunSystemError, System, SystemIn, SystemInput},
+        schedule::InternedSystemSet,
+        system::{IntoSystem, ReadOnlySystem, RunSystemError, System, SystemIn, SystemInput},
         world::{DeferredWorld, World, unsafe_world_cell::UnsafeWorldCell},
     },
 };
+
+#[cfg(test)]
+mod tests;
 
 /// Customizes the behavior of a [`CombinatorSystem`].
 ///
@@ -278,4 +282,181 @@ where
     fn clone(&self) -> Self {
         CombinatorSystem::new(self.a.clone(), self.b.clone(), self.name.clone())
     }
+}
+
+/// An [`IntoSystem`] creating an instance of [`PipeSystem`].
+#[derive(Clone)]
+pub struct IntoPipeSystem<A, B> {
+    a: A,
+    b: B,
+}
+
+impl<A, B> IntoPipeSystem<A, B> {
+    /// Creates a new [`IntoSystem`] that pipes two inner systems.
+    pub const fn new(a: A, b: B) -> Self {
+        Self { a, b }
+    }
+}
+
+#[doc(hidden)]
+pub struct IsPipeSystemMarker;
+
+impl<A, B, IA, OA, IB, OB, MA, MB> IntoSystem<IA, OB, (IsPipeSystemMarker, OA, IB, MA, MB)>
+    for IntoPipeSystem<A, B>
+where
+    IA: SystemInput,
+    A: IntoSystem<IA, OA, MA>,
+    B: IntoSystem<IB, OB, MB>,
+    for<'a> IB: SystemInput<Inner<'a> = OA>,
+{
+    type System = PipeSystem<A::System, B::System>;
+
+    fn into_system(this: Self) -> Self::System {
+        let system_a = IntoSystem::into_system(this.a);
+        let system_b = IntoSystem::into_system(this.b);
+        let name = format!("Pipe({}, {})", system_a.name(), system_b.name());
+        PipeSystem::new(system_a, system_b, DebugName::owned(name))
+    }
+}
+
+/// A [`System`] created by piping the output of the first system into the input of the second.
+///
+/// This can be repeated indefinitely, but system pipes cannot branch: the output is consumed by the receiving system.
+///
+/// Given two systems `A` and `B`, A may be piped into `B` as `A.pipe(B)` if the output type of `A` is
+/// equal to the input type of `B`.
+///
+/// Note that for [`FunctionSystem`](crate::system::FunctionSystem)s the output is the return value
+/// of the function and the input is the first [`SystemParam`](crate::system::SystemParam) if it is
+/// tagged with [`In`](crate::system::In) or `()` if the function has no designated input parameter.
+///
+/// # Examples
+///
+/// ```
+/// use std::num::ParseIntError;
+///
+/// use bevy_ecs::prelude::*;
+///
+/// fn main() {
+///     let mut world = World::default();
+///     world.insert_resource(Message("42".to_string()));
+///
+///     // pipe the `parse_message_system`'s output into the `filter_system`s input
+///     let mut piped_system = IntoSystem::into_system(parse_message_system.pipe(filter_system));
+///     piped_system.initialize(&mut world);
+///     assert_eq!(piped_system.run((), &mut world).unwrap(), Some(42));
+/// }
+///
+/// #[derive(Resource)]
+/// struct Message(String);
+///
+/// fn parse_message_system(message: Res<Message>) -> Result<usize, ParseIntError> {
+///     message.0.parse::<usize>()
+/// }
+///
+/// fn filter_system(In(result): In<Result<usize, ParseIntError>>) -> Option<usize> {
+///     result.ok().filter(|&n| n < 100)
+/// }
+/// ```
+pub struct PipeSystem<A, B> {
+    a: A,
+    b: B,
+    name: DebugName,
+}
+
+impl<A, B> PipeSystem<A, B>
+where
+    A: System,
+    B: System,
+    for<'a> B::In: SystemInput<Inner<'a> = A::Out>,
+{
+    /// Creates a new system that pipes two inner systems.
+    pub fn new(a: A, b: B, name: DebugName) -> Self {
+        Self { a, b, name }
+    }
+}
+
+impl<A, B> System for PipeSystem<A, B>
+where
+    A: System,
+    B: System,
+    for<'a> B::In: SystemInput<Inner<'a> = A::Out>,
+{
+    type In = A::In;
+
+    type Out = B::Out;
+
+    fn name(&self) -> DebugName {
+        self.name.clone()
+    }
+
+    #[inline]
+    fn flags(&self) -> super::SystemStateFlags {
+        self.a.flags() | self.b.flags()
+    }
+
+    unsafe fn run_unsafe(
+        &mut self,
+        input: SystemIn<'_, Self>,
+        world: UnsafeWorldCell,
+    ) -> Result<Self::Out, RunSystemError> {
+        // SAFETY: Upheld by caller
+        unsafe {
+            let value = self.a.run_unsafe(input, world)?;
+            self.b.run_unsafe(value, world)
+        }
+    }
+
+    #[cfg(feature = "hotpatching")]
+    #[inline]
+    fn refresh_hotpatch(&mut self) {
+        self.a.refresh_hotpatch();
+        self.b.refresh_hotpatch();
+    }
+
+    fn apply_deferred(&mut self, world: &mut World) {
+        self.a.apply_deferred(world);
+        self.b.apply_deferred(world);
+    }
+
+    fn queue_deferred(&mut self, mut world: DeferredWorld) {
+        self.a.queue_deferred(world.reborrow());
+        self.b.queue_deferred(world);
+    }
+
+    fn initialize(&mut self, world: &mut World) -> FilteredAccessSet {
+        let mut a_access = self.a.initialize(world);
+        let b_access = self.b.initialize(world);
+        a_access.extend(b_access);
+        a_access
+    }
+
+    fn check_change_tick(&mut self, check: CheckChangeTicks) {
+        self.a.check_change_tick(check);
+        self.b.check_change_tick(check);
+    }
+
+    fn default_system_sets(&self) -> Vec<InternedSystemSet> {
+        let mut default_sets = self.a.default_system_sets();
+        default_sets.append(&mut self.b.default_system_sets());
+        default_sets
+    }
+
+    fn get_last_run(&self) -> Tick {
+        self.a.get_last_run()
+    }
+
+    fn set_last_run(&mut self, last_run: Tick) {
+        self.a.set_last_run(last_run);
+        self.b.set_last_run(last_run);
+    }
+}
+
+// SAFETY: Both systems are read-only, so any system created by piping them will only read from the world.
+unsafe impl<A, B> ReadOnlySystem for PipeSystem<A, B>
+where
+    A: ReadOnlySystem,
+    B: ReadOnlySystem,
+    for<'a> B::In: SystemInput<Inner<'a> = A::Out>,
+{
 }
