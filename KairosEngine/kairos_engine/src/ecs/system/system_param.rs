@@ -11,25 +11,14 @@ use thiserror::Error;
 use variadics_please::{all_tuples, all_tuples_enumerated};
 
 use crate::{
-    cell::SyncCell,
-    debug::DebugName,
-    ecs::{
-        archetype::Archetypes,
-        bundle::Bundles,
-        change_detection::{
+    cell::SyncCell, debug::DebugName, ecs::{
+        archetype::Archetypes, bundle::Bundles, change_detection::{
             ComponentTicksMut, ComponentTicksRef, NonSend, NonSendMut, Res, ResMut, Tick,
-        },
-        component::{ComponentId, Components, Mutable},
-        entity::{Entities, EntityAllocator},
-        query::{Access, FilteredAccess, FilteredAccessSet},
-        resource::{IS_RESOURCE, Resource},
-        system::SystemMeta,
-        world::{
+        }, component::{ComponentId, Components, Mutable}, entity::{Entities, EntityAllocator}, query::{Access, FilteredAccess, FilteredAccessSet, IterQueryData, QueryData, QueryFilter, QuerySingleError, QueryState, ReadOnlyQueryData}, resource::{IS_RESOURCE, Resource}, system::{Query, Single, SystemMeta}, world::{
             DeferredWorld, FilteredResources, FilteredResourcesMut, FromWorld, World,
             unsafe_world_cell::UnsafeWorldCell,
         },
-    },
-    ptr::UnsafeCellDeref,
+    }, ptr::UnsafeCellDeref,
 };
 
 pub use kairos_ecs_macros::SystemParam;
@@ -291,6 +280,107 @@ pub unsafe trait ReadOnlySystemParam: SystemParam {}
 
 /// Shorthand way of accessing the associated type [`SystemParam::Item`] for a given [`SystemParam`].
 pub type SystemParamItem<'w, 's, P> = <P as SystemParam>::Item<'w, 's>;
+
+// SAFETY: QueryState is constrained to read-only fetches, so it only reads World.
+unsafe impl<'w, 's, D: ReadOnlyQueryData + 'static, F: QueryFilter + 'static> ReadOnlySystemParam
+    for Query<'w, 's, D, F>
+{
+}
+
+// SAFETY: Relevant query ComponentId access is applied to SystemMeta. If
+// this Query conflicts with any prior access, a panic will occur.
+unsafe impl<D: QueryData + 'static, F: QueryFilter + 'static> SystemParam for Query<'_, '_, D, F> {
+    type State = QueryState<D, F>;
+
+    type Item<'w, 's> = Query<'w, 's, D, F>;
+
+    fn init_state(world: &mut World) -> Self::State {
+        // SAFETY: `SystemParam::init_access` calls `QueryState::init_access`,
+        // `SystemParam::init_access` must be called before `SystemParam::get_param`,
+        // and we only call methods on the `QueryState` in `get_param`.
+        unsafe { QueryState::new_unchecked(world) }
+    }
+
+    fn init_access(
+        state: &Self::State,
+        system_meta: &mut SystemMeta,
+        component_access_set: &mut FilteredAccessSet,
+        world: &mut World,
+    ) {
+        state.init_access(Some(system_meta.name()), component_access_set, world.into());
+    }
+
+    #[inline]
+    unsafe fn get_param<'world, 'state>(
+        state: &'state mut Self::State,
+        system_meta: &SystemMeta,
+        world: UnsafeWorldCell<'world>,
+        change_tick: Tick,
+    ) -> Result<Self::Item<'world, 'state>, SystemParamValidationError> {
+        // SAFETY: We have registered all of the query's world accesses,
+        // so the caller ensures that `world` has permission to access any
+        // world data that the query needs.
+        // The caller ensures the world matches the one used in init_state.
+        Ok(unsafe {
+            state.query_unchecked_with_ticks(world, system_meta.last_run, change_tick)
+        })
+    }
+}
+
+// SAFETY: Relevant query ComponentId access is applied to SystemMeta. If
+// this Query conflicts with any prior access, a panic will occur.
+unsafe impl<'a, 'b, D: IterQueryData + 'static, F: QueryFilter + 'static> SystemParam
+    for Single<'a, 'b, D, F>
+{
+    type State = QueryState<D, F>;
+
+    type Item<'w, 's> = Single<'w, 's, D, F>;
+
+    fn init_state(world: &mut World) -> Self::State {
+        Query::init_state(world)
+    }
+
+    fn init_access(
+        state: &Self::State,
+        system_meta: &mut SystemMeta,
+        component_access_set: &mut FilteredAccessSet,
+        world: &mut World,
+    ) {
+        Query::init_access(state, system_meta, component_access_set, world);
+    }
+
+    #[inline]
+    unsafe fn get_param<'world, 'state>(
+        state: &'state mut Self::State,
+        system_meta: &SystemMeta,
+        world: UnsafeWorldCell<'world>,
+        change_tick: Tick,
+    ) -> Result<Self::Item<'world, 'state>, SystemParamValidationError> {
+        // SAFETY: State ensures that the components it accesses are not accessible somewhere elsewhere.
+        // The caller ensures the world matches the one used in init_state.
+        let query = unsafe {
+            state.query_unchecked_with_ticks(world, system_meta.last_run, change_tick)
+        };
+        match query.single_inner() {
+            Ok(single) => Ok(Single {
+                item: single,
+                _filter: PhantomData,
+            }),
+            Err(QuerySingleError::NonEntities(_)) => Err(
+                SystemParamValidationError::skipped::<Self>("No matching entities"),
+            ),
+            Err(QuerySingleError::MultipleEntities(_)) => Err(
+                SystemParamValidationError::skipped::<Self>("Multiple matching entities"),
+            )
+        }
+    }
+}
+
+// SAFETY: QueryState is constrained to read-only fetches, so it only reads World.
+unsafe impl<'a, 'b, D: ReadOnlyQueryData + 'static, F: QueryFilter + 'static> ReadOnlySystemParam
+    for Single<'a, 'b, D, F>
+{
+}
 
 /// An error that occurs when a system parameter is not valid,
 /// used by system executors to determine what to do with a system.

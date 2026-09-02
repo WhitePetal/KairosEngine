@@ -132,6 +132,8 @@ mod system;
 mod system_param;
 mod system_registry;
 
+use std::any::TypeId;
+
 pub use adapter_system::*;
 pub use builder::*;
 pub use combinator::*;
@@ -145,7 +147,11 @@ pub use system::*;
 pub use system_param::*;
 pub use system_registry::*;
 
-use crate::ecs::world::World;
+#[cfg(test)]
+#[expect(clippy::print_stdout, reason = "Allowed in tests.")]
+mod tests;
+
+use crate::ecs::world::{FromWorld, World};
 
 /// Conversion trait to turn something into a [`System`].
 ///
@@ -249,6 +255,53 @@ pub trait IntoSystem<In: SystemInput, Out, Marker>: Sized {
     {
         WithInputWrapper::new(self, value)
     }
+
+    /// Passes a mutable reference to a value of type `T` created via
+    /// [`FromWorld`] as input to the system each run, turning it into a system
+    /// that takes no input.
+    ///
+    /// `Self` can have any [`SystemInput`] type that takes a mutable reference
+    /// to `T`, such as [`InMut`].
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use bevy_ecs::prelude::*;
+    /// #
+    /// struct MyData {
+    ///     value: usize,
+    /// }
+    ///
+    /// impl FromWorld for MyData {
+    ///     fn from_world(world: &mut World) -> Self {
+    ///         // Fetch from the world the data needed to create `MyData`
+    /// #       MyData { value: 0 }
+    ///     }
+    /// }
+    ///
+    /// fn my_system(InMut(data): InMut<MyData>) {
+    ///     data.value += 1;
+    ///     if data.value > 10 {
+    ///         println!("Value is greater than 10!");
+    ///     }
+    /// }
+    /// # let mut schedule = Schedule::default();
+    /// schedule.add_systems(my_system.with_input_from::<MyData>());
+    /// # bevy_ecs::system::assert_is_system(my_system.with_input_from::<MyData>());
+    /// ```
+    fn with_input_from<T>(self) -> WithInputFromWrapper<Self::System, T>
+    where
+        for<'i> In: SystemInput<Inner<'i> = &'i mut T>,
+        T: FromWorld + Send + Sync + 'static,
+    {
+        WithInputFromWrapper::new(self)
+    }
+
+    /// Get the [`TypeId`] of the [`System`] produced after calling [`into_system`](`IntoSystem::into_system`).
+    #[inline]
+    fn system_type_id(&self) -> TypeId {
+        TypeId::of::<Self::System>()
+    }
 }
 
 // All systems implicitly implement IntoSystem.
@@ -293,4 +346,47 @@ pub fn assert_is_system<In: SystemInput, Out: 'static, Marker>(
     system.initialize(&mut world);
 }
 
-// TODO!
+/// Ensure that a given function is a [read-only system](ReadOnlySystem).
+///
+/// This should be used when writing doc examples,
+/// to confirm that systems used in an example are
+/// valid systems.
+///
+/// # Examples
+///
+/// The following example will fail to compile
+/// since the system accesses a component mutably.
+///
+/// ```compile_fail
+/// # use bevy_ecs::{prelude::*, system::assert_is_read_only_system};
+/// #
+/// # #[derive(Component)]
+/// # struct Transform;
+/// #
+/// fn my_system(query: Query<&mut Transform>) {
+///     // ...
+/// }
+///
+/// assert_is_read_only_system(my_system);
+/// ```
+pub fn assert_is_read_only_system<In, Out, Marker, S>(system: S)
+where
+    In: SystemInput,
+    Out: 'static,
+    S: IntoSystem<In, Out, Marker>,
+    S::System: ReadOnlySystem,
+{
+    assert_is_system(system);
+}
+
+/// Ensures that the provided system doesn't conflict with itself.
+///
+/// This function will panic if the provided system conflict with itself.
+///
+/// Note: this will run the system on an empty world.
+pub fn assert_system_does_not_conflict<Out, Params, S: IntoSystem<(), Out, Params>>(sys: S) {
+    let mut world = World::new();
+    let mut system = IntoSystem::into_system(sys);
+    system.initialize(&mut world);
+    system.run((), &mut world).unwrap();
+}
