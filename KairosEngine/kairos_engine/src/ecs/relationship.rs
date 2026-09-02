@@ -6,7 +6,10 @@ mod relationship_source_collection;
 pub use related_methods::*;
 pub use relationship_source_collection::*;
 
-use std::{marker::PhantomData, sync::Arc};
+#[cfg(test)]
+mod tests;
+
+use std::{any::TypeId, marker::PhantomData, sync::Arc};
 
 use log::warn;
 
@@ -718,12 +721,78 @@ impl RelationshipAccessor {
             RelationshipAccessor::RelationshipTarget { relationship, .. } => *relationship,
         }
     }
+
+    /// Returns the value of [`RelationshipTarget::LINKED_SPAWN`].
+    pub fn linked_spawn(&self) -> bool {
+        match self {
+            RelationshipAccessor::Relationship { linked_spawn, .. }
+            | RelationshipAccessor::RelationshipTarget { linked_spawn, .. } => *linked_spawn,
+        }
+    }
+
+    /// Returns the value of [`Relationship::ALLOW_SELF_REFERENTIAL`].
+    pub fn allow_self_referential(&self) -> bool {
+        match self {
+            RelationshipAccessor::Relationship {
+                allow_self_referential,
+                ..
+            }
+            | RelationshipAccessor::RelationshipTarget {
+                allow_self_referential,
+                ..
+            } => *allow_self_referential,
+        }
+    }
 }
 
 /// A type-safe convenience wrapper over [`RelationshipAccessor`].
 pub struct ComponentRelationshipAccessor<C: ?Sized> {
     pub(crate) initializer: RelationshipAccessorInitializer,
     phantom: PhantomData<C>,
+}
+
+impl<C> ComponentRelationshipAccessor<C> {
+    /// Create a new [`ComponentRelationshipAccessor`] for a [`Relationship`] component.
+    /// # Safety
+    /// `entity_field_offset` should be the offset from the base of this component and point to a field that stores value of type [`Entity`].
+    /// This value can be obtained using the [`core::mem::offset_of`] macro.
+    pub unsafe fn relationship(entity_field_offset: usize) -> Self
+    where
+        C: Relationship,
+    {
+        // Due to https://github.com/taiki-e/portable-atomic/issues/143 we have to box this first, and then get the Arc from the box
+        let getter: Box<dyn Fn(&Components) -> Option<ComponentId>> =
+            Box::new(|components| components.get_id(TypeId::of::<C::RelationshipTarget>()));
+        Self {
+            initializer: RelationshipAccessorInitializer::Relationship {
+                entity_field_offset,
+                linked_spawn: C::RelationshipTarget::LINKED_SPAWN,
+                allow_self_referential: C::ALLOW_SELF_REFERENITAL,
+                relationship_target_getter: Arc::from(getter),
+            },
+            phantom: Default::default(),
+        }
+    }
+
+    /// Create a new [`ComponentRelationshipAccessor`] for a [`RelationshipTarget`] component.
+    pub fn relationship_target() -> Self
+    where
+        C: RelationshipTarget,
+    {
+        // Due to https://github.com/taiki-e/portable-atomic/issues/143 we have to box this first, and then get the Arc from the box
+        let getter: Box<dyn Fn(&Components) -> Option<ComponentId>> =
+            Box::new(|components| components.get_id(TypeId::of::<C::Relationship>()));
+        Self {
+            initializer: RelationshipAccessorInitializer::RelationshipTarget {
+                // Safety: caller ensures that `ptr` is of type `C`.
+                iter: |ptr| unsafe { Box::new(RelationshipTarget::iter(ptr.deref::<C>())) },
+                linked_spawn: C::LINKED_SPAWN,
+                allow_self_referential: C::Relationship::ALLOW_SELF_REFERENITAL,
+                relationship_getter: Arc::from(getter),
+            },
+            phantom: Default::default(),
+        }
+    }
 }
 
 //TODO!

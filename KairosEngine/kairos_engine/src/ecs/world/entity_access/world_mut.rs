@@ -3,7 +3,8 @@ use crate::{
     ecs::{
         archetype::Archetype,
         bundle::{
-            Bundle, BundleFromComponents, BundleInserter, BundleRemover, DynamicBundle, InsertMode,
+            self, Bundle, BundleFromComponents, BundleInserter, BundleRemover, DynamicBundle,
+            InsertMode,
         },
         change_detection::{ComponentTicks, Mut},
         component::{Component, ComponentId, Components, Mutable, StorageType},
@@ -1224,6 +1225,53 @@ impl<'w> EntityWorldMut<'w> {
         self.world.flush();
         self.update_location();
         self
+    }
+
+    /// Adds a [`Bundle`] of components to the entity.
+    /// [`Relationship`](crate::relationship::Relationship) components in the bundle will follow the configuration
+    /// in `relationship_hook_mode`.
+    ///
+    /// This will overwrite any previous value(s) of the same component type.
+    ///
+    /// # Warning
+    ///
+    /// This can easily break the integrity of relationships. This is intended to be used for cloning and spawning code internals,
+    /// not most user-facing scenarios.
+    ///
+    /// # Panics
+    ///
+    /// If the entity has been despawned while this `EntityWorldMut` is still alive.
+    #[track_caller]
+    pub fn insert_with_relationship_hook_mode<T: Bundle>(
+        &mut self,
+        bundle: T,
+        relationship_hook_mode: RelationshipHookMode,
+    ) -> &mut Self {
+        move_as_ptr!(bundle);
+        self.insert_with_caller(
+            bundle,
+            InsertMode::Replace,
+            MaybeLocation::caller(),
+            relationship_hook_mode,
+        )
+    }
+
+    /// Adds a [`Bundle`] of components to the entity.
+    ///
+    /// This will overwrite any previous value(s) of the same component type.
+    ///
+    /// # Panics
+    ///
+    /// If the entity has been despawned while this `EntityWorldMut` is still alive.
+    #[track_caller]
+    pub fn insert<T: Bundle>(&mut self, bundle: T) -> &mut Self {
+        move_as_ptr!(bundle);
+        self.insert_with_caller(
+            bundle,
+            InsertMode::Replace,
+            MaybeLocation::caller(),
+            RelationshipHookMode::Run,
+        )
     }
 }
 
