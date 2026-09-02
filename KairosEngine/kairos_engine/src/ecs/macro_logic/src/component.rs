@@ -1,11 +1,11 @@
 use std::collections::HashSet;
 
-use kairos_macro_utils::fq_std::FQDefault;
+use kairos_macro_utils::fq_std::{FQDefault, FQOption, FQSend, FQSync};
 use proc_macro2::{Span, TokenStream};
 use quote::{ToTokens, quote};
 use syn::{
-    Data, DataStruct, DeriveInput, Expr, ExprCall, ExprPath, Field, Fields, LitStr, Member, Path,
-    Result, Token, Type, Visibility, braced, parenthesized,
+    Data, DataStruct, DeriveInput, Expr, ExprCall, ExprPath, Field, Fields, Ident, LitStr, Member,
+    Path, Result, Token, Type, Visibility, braced, parenthesized,
     parse::Parse,
     parse_quote,
     punctuated::Punctuated,
@@ -13,7 +13,7 @@ use syn::{
     token::{Brace, Comma, Paren},
 };
 
-use crate::map_entities::MapEntitiesAttributeKind;
+use crate::map_entities::{MapEntitiesAttributeKind, map_entities};
 
 /// Whether the derive macro may contain a `component(storage = "…")` attribute.
 pub enum StorageAttribute {
@@ -197,7 +197,177 @@ impl DeriveComponent {
             Err(err) => Some(err.into_compile_error()),
         };
 
-        todo!()
+        let map_entities = map_entities(
+            &ast.data,
+            ecs,
+            Ident::new("this", Span::call_site()),
+            relationship.is_some(),
+            relationship_target.is_some(),
+            self.map_entities,
+        )
+        .map(|map_entities_impl| {
+            quote! {
+                fn map_entities<M: #ecs::entity::EntityMapper>(this: &mut Self, mapper: &mut M) {
+                    use #ecs::entity::MapEntities;
+                    #map_entities_impl
+                }
+            }
+        });
+
+        let storage = storage_path(ecs, self.storage.unwrap_or(default_storage));
+
+        let on_add_path = Vec::from_iter(self.on_add.map(|path| path.to_token_stream(ecs)));
+        let on_remove_path = Vec::from_iter(self.on_remove.map(|path| path.to_token_stream(ecs)));
+
+        let mut on_insert_path =
+            Vec::from_iter(self.on_insert.map(|path| path.to_token_stream(ecs)));
+
+        let mut on_discard_path =
+            Vec::from_iter(self.on_discard.map(|path| path.to_token_stream(ecs)));
+
+        let mut on_despawn_path =
+            Vec::from_iter(self.on_despawn.map(|path| path.to_token_stream(ecs)));
+
+        if relationship.is_some() {
+            on_insert_path.push(quote!(<Self as #ecs::relationship::Relationship>::on_insert));
+            on_discard_path.push(quote!(<Self as #ecs::relationship::Relationship>::on_discard));
+        }
+        if let Some(target) = self.relationship_target {
+            on_discard_path
+                .push(quote!(<Self as #ecs::relationship::RelationshipTarget>::on_discard));
+            if target.linked_spawn {
+                on_despawn_path
+                    .push(quote!(<Self as #ecs::relationship::RelationshipTarget>::on_despawn));
+            }
+        }
+
+        let on_add = hook_register_function_call(ecs, quote! {on_add}, &on_add_path);
+        let on_insert = hook_register_function_call(ecs, quote! {on_insert}, &on_insert_path);
+        let on_discard = hook_register_function_call(ecs, quote! {on_discard}, &on_discard_path);
+        let on_remove = hook_register_function_call(ecs, quote! {on_remove}, &on_remove_path);
+        let on_despawn = hook_register_function_call(ecs, quote! {on_despawn}, &on_despawn_path);
+
+        let requires = &self.requires;
+        let mut register_required = Vec::with_capacity(self.requires.iter().len());
+        if let Some(requires) = requires {
+            for require in requires {
+                let ident = &require.path;
+                let constructor = match &require.func {
+                    Some(func) => quote! { || { let x: #ident = (#func)().into(); x } },
+                    None => quote! { <#ident as #FQDefault::default },
+                };
+                register_required.push(quote! {
+                    required_components.register_required::<#ident>(#constructor);
+                });
+            }
+        }
+        let additional_requires = &self.additional_requires;
+        let struct_name = &ast.ident;
+        ast.generics
+            .make_where_clause()
+            .predicates
+            .push(parse_quote! { Self: #FQSend + #FQSync + 'static });
+        let (impl_generics, type_generics, where_clause) = &ast.generics.split_for_impl();
+
+        let required_component_docs = self.requires.map(|r| {
+            let paths = r
+                .iter()
+                .map(|r| format!("[`{}`]", r.path.to_token_stream()))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let doc = format!("**Required Components**: {paths}. \n\n A component's Required Components are inserted whenever it is inserted. Note that this will also insert the required components _of_ the required components, recursively, in depth-first order.");
+            quote! {
+                #[doc = #doc]
+            }
+        });
+
+        let mutable_type = (self.immutable || relationship.is_some())
+            .then_some(quote! { #ecs::component::Immutable })
+            .unwrap_or(quote! { #ecs::component::Mutable });
+
+        let clone_behavior = if relationship_target.is_some() || relationship.is_some() {
+            quote!(
+                use #ecs::relationship::{
+                    RelationshipCloneBehaviorBase, RelationshipCloneBehaviorViaClone, RelationshipCloneBehaviorViaReflect,
+                    RelationshipTargetCloneBehaviorViaClone, RelationshipTargetCloneBehaviorViaReflect, RelationshipTargetCloneBehaviorHierarchy
+                };
+                (&&&&&&&#ecs::relationship::RelationshipCloneBehaviorSpecialization::<Self>::default()).default_clone_behavior()
+            )
+        } else if let Some(behavior) = self.clone_behavior {
+            quote!(#ecs::relationship::ComponentCloneBehavior::#behavior)
+        } else {
+            quote!(
+                use #ecs::component::{DefaultCloneBehaviorBase, DefaultCloneBehaviorViaClone};
+                (&&&#ecs::component::DefaultCloneBehaviorSpecialization::<Self>::default()).default_clone_behavior()
+            )
+        };
+
+        let relationship_accessor = if (relationship.is_some() || relationship_target.is_some())
+            && let Data::Struct(DataStruct {
+                fields,
+                struct_token,
+                ..
+            }) = &ast.data
+            && let Ok(field) = relationship_field(fields, "Relationship", struct_token.span())
+        {
+            let relationship_member = field.ident.clone().map_or(Member::from(0), Member::Named);
+            if relationship.is_some() {
+                quote! {
+                    #FQOption::Some(
+                        unsafe {
+                            #ecs::relationship::ComponentRelationshipAccessor::<Self>::relationship(
+                                ::std::mem::offset_of!(Self, #relationship_member)
+                            )
+                        }
+                    )
+                }
+            } else {
+                quote! {
+                    #FQOption::Some(#ecs::relationship::ComponentRelationshipAccessor::<Self>::relationship_target())
+                }
+            }
+        } else {
+            quote! {#FQOption::None}
+        };
+        Ok(quote! {
+            #required_component_docs
+            impl #impl_generics #ecs::component::Component for #struct_name #type_generics #where_clause {
+                const STORAGE_TYPE: #ecs::component::StorageType = #storage;
+                type Mutability = #mutable_type;
+
+                fn register_required_components(
+                    _require: #ecs::component::ComponentId,
+                    required_components: &mut #ecs::component::RequiredComponentsRegistrator,
+                ) {
+                    #(#register_required)*
+                    #(#additional_requires)*
+                }
+
+                #on_add
+
+                #on_insert
+
+                #on_discard
+
+                #on_remove
+
+                #on_despawn
+
+                fn clone_behavior() -> #ecs::component::ComponentCloneBehavior {
+                    #clone_behavior
+                }
+
+                #map_entities
+
+                fn relationship_accessor() -> #FQOption<#ecs::relationship::ComponentRelationshipAccessor<Self>> {
+                    #relationship_accessor
+                }
+            }
+
+            #relationship
+
+            #relationship_target
+        })
     }
 
     fn derive_relationship(&self, ast: &DeriveInput, ecs: &Path) -> Result<Option<TokenStream>> {
@@ -212,7 +382,7 @@ impl DeriveComponent {
         else {
             return Err(syn::Error::new(
                 ast.span(),
-                "Relationship can only be derived for structs",
+                "Relationship can only be derived for structs.",
             ));
         };
         let field = relationship_field(fields, "Relationship", struct_token.span())?;
@@ -292,19 +462,35 @@ impl DeriveComponent {
             .filter(|member| member != &relationship_member);
 
         let relationship = &relationship_target.relationship;
-        let sturct_name = &ast.ident;
+        let struct_name = &ast.ident;
         let (impl_generics, type_generics, where_clause) = &ast.generics.split_for_impl();
         let linked_spawn = relationship_target.linked_spawn;
         let fqdefault = FQDefault.into_token_stream();
-        todo!()
-        // Ok(Some(quote! {
-        //     impl #impl_generics #ecs::relationship::RelationshipTarget for #struct_name #type_generics #where_clause {
-        //         const LINKED_SPAWN: bool = #linked_spawn;
-        //         type Relationship = #relationship;
-        //         type Collection = #collection;
+        Ok(Some(quote! {
+            impl #impl_generics #ecs::relationship::RelationshipTarget for #struct_name #type_generics #where_clause {
+                const LINKED_SPAWN: bool = #linked_spawn;
+                type Relationship = #relationship;
+                type Collection = #collection;
 
-        //     }
-        // }))
+                #[inline]
+                fn collection(&self) -> &Self::Collection {
+                    &self.#relationship_member
+                }
+
+                #[inline]
+                fn collection_mut_risky(&mut self) -> &mut Self::Collection {
+                    &mut self.#relationship_member
+                }
+
+                #[inline]
+                fn from_collection_risky(collection: Self::Collection) -> Self {
+                    Self {
+                        #(#members: #fqdefault::default(),)*
+                        #relationship_member: collection
+                    }
+                }
+            }
+        }))
     }
 }
 
@@ -324,11 +510,63 @@ const ON_DESPAWN: &str = "on_despawn";
 const IMMUTABLE: &str = "immutable";
 const CLONE_BEHAVIOR: &str = "clone_behavior";
 
-mod kw {
-    syn::custom_keyword!(relationship_target);
-    syn::custom_keyword!(relationship);
-    syn::custom_keyword!(linked_spawn);
-    syn::custom_keyword!(allow_self_referential);
+/// All allowed attribute value expression kinds for component hooks.
+/// This doesn't simply use general expressions because of conflicting needs:
+/// - we want to be able to use `Self` & generic parameters in paths
+/// - call expressions producing a closure need to be wrapped in a function
+///   to turn them into function pointers, which prevents access to the outer generic params
+#[derive(Debug)]
+pub enum HookAttributeKind {
+    /// expressions like function or struct names
+    ///
+    /// structs will throw compile errors on the code generation so this is safe
+    Path(ExprPath),
+    /// function call like expressions
+    Call(ExprCall),
+}
+
+impl HookAttributeKind {
+    fn parse(
+        input: syn::parse::ParseStream,
+        default_hook_path: impl FnOnce() -> ExprPath,
+    ) -> Result<Self> {
+        if input.peek(Token![=]) {
+            input.parse::<Token![=]>()?;
+            input.parse::<Expr>().and_then(Self::from_expr)
+        } else {
+            Ok(Self::Path(default_hook_path()))
+        }
+    }
+
+    fn from_expr(value: Expr) -> Result<Self> {
+        match value {
+            Expr::Path(path) => Ok(HookAttributeKind::Path(path)),
+            Expr::Call(call) => Ok(HookAttributeKind::Call(call)),
+            _ => Err(syn::Error::new(
+                value.span(),
+                [
+                    "Not supported in this position, please use one of the following:",
+                    "- path to function",
+                    "- call to function yielding closure",
+                ]
+                .join("\n"),
+            )),
+        }
+    }
+
+    fn to_token_stream(&self, ecs_path: &Path) -> TokenStream {
+        match self {
+            HookAttributeKind::Path(path) => path.to_token_stream(),
+            HookAttributeKind::Call(call) => {
+                quote! {
+                    fn _internal_hook(world: #ecs_path::world::DeferredWorld, ctx: #ecs_path::lifecycle::HookContext) {
+                        (#call)(world, ctx)
+                    }
+                    _internall_hook
+                }
+            }
+        }
+    }
 }
 
 /// The derived component storage type
@@ -340,15 +578,27 @@ pub enum StorageTy {
     SparseSet,
 }
 
-// values for `storage` attribute
-const TABLE: &str = "Table";
-const SPARSE_SET: &str = "SparseSet";
-
 /// Derived required component from the `#[require]` attribute.
 pub struct Require {
     path: Path,
     func: Option<TokenStream>,
 }
+
+/// Derived `#[relationship]` attribute information.
+pub struct Relationship {
+    relationship_target: Type,
+    allow_self_referential: bool,
+}
+
+/// Derived `#[relationship_target]` attribute information.
+pub struct RelationshipTarget {
+    relationship: Type,
+    linked_spawn: bool,
+}
+
+// values for `storage` attribute
+const TABLE: &str = "Table";
+const SPARSE_SET: &str = "SparseSet";
 
 impl Parse for Require {
     fn parse(input: syn::parse::ParseStream) -> Result<Self> {
@@ -413,69 +663,43 @@ impl Parse for Require {
     }
 }
 
-/// All allowed attribute value expression kinds for component hooks.
-/// This doesn't simply use general expressions because of conflicting needs:
-/// - we want to be able to use `Self` & generic parameters in paths
-/// - call expressions producing a closure need to be wrapped in a function
-///   to turn them into function pointers, which prevents access to the outer generic params
-#[derive(Debug)]
-pub enum HookAttributeKind {
-    /// expressions like function or struct names
-    ///
-    /// structs will throw compile errors on the code generation so this is safe
-    Path(ExprPath),
-    /// function call like expressions
-    Call(ExprCall),
+fn storage_path(ecs_path: &Path, ty: StorageTy) -> TokenStream {
+    let storage_type = match ty {
+        StorageTy::Table => Ident::new("Table", Span::call_site()),
+        StorageTy::SparseSet => Ident::new("SparseSet", Span::call_site()),
+    };
+
+    quote! { #ecs_path::component::StorageType::#storage_type }
 }
 
-impl HookAttributeKind {
-    fn parse(
-        input: syn::parse::ParseStream,
-        default_hook_path: impl FnOnce() -> ExprPath,
-    ) -> Result<Self> {
-        if input.peek(Token![=]) {
-            input.parse::<Token![=]>()?;
-            input.parse::<Expr>().and_then(Self::from_expr)
-        } else {
-            Ok(Self::Path(default_hook_path()))
-        }
-    }
-
-    fn from_expr(value: Expr) -> Result<Self> {
-        match value {
-            Expr::Path(path) => Ok(HookAttributeKind::Path(path)),
-            Expr::Call(call) => Ok(HookAttributeKind::Call(call)),
-            _ => Err(syn::Error::new(
-                value.span(),
-                [
-                    "Not supported in this position, please use one of the following:",
-                    "- path to function",
-                    "- call to function yielding closure",
-                ]
-                .join("\n"),
-            )),
-        }
-    }
-
-    fn to_token_stream(&self, ecs_path: &Path) -> TokenStream {
-        match self {
-            HookAttributeKind::Path(path) => path.to_token_stream(),
-            HookAttributeKind::Call(call) => {
-                quote! {
-                    fn _internal_hook(world: #ecs_path::world::DeferredWorld, ctx: #ecs_path::lifecycle::HookContext) {
-                        (#call)(world, ctx)
-                    }
-                    _internall_hook
+fn hook_register_function_call(
+    ecs_path: &Path,
+    hook: TokenStream,
+    functions: &[TokenStream],
+) -> TokenStream {
+    let hook_function = match functions {
+        [] => return TokenStream::new(),
+        [single] => single.clone(),
+        multiple => {
+            quote! {
+                |mut world: #ecs_path::world::DeferredWorld, context: #ecs_path::lifecycle::HookContext| {
+                    #(#multiple(world.reborrow(), context.clone());)*
                 }
             }
         }
+    };
+    quote! {
+        fn #hook() -> #FQOption<#ecs_path::lifecycle::ComponentHook> {
+            #FQOption::Some(#hook_function)
+        }
     }
 }
 
-/// Derived `#[relationship]` attribute information.
-pub struct Relationship {
-    relationship_target: Type,
-    allow_self_referential: bool,
+mod kw {
+    syn::custom_keyword!(relationship_target);
+    syn::custom_keyword!(relationship);
+    syn::custom_keyword!(linked_spawn);
+    syn::custom_keyword!(allow_self_referential);
 }
 
 impl Parse for Relationship {
@@ -506,12 +730,6 @@ impl Parse for Relationship {
             allow_self_referential,
         })
     }
-}
-
-/// Derived `#[relationship_target]` attribute information.
-pub struct RelationshipTarget {
-    relationship: Type,
-    linked_spawn: bool,
 }
 
 impl Parse for RelationshipTarget {

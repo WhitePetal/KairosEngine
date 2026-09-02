@@ -21,6 +21,7 @@ pub mod resource;
 pub mod schedule;
 pub mod storage;
 pub mod system;
+pub mod template;
 pub mod traversal;
 pub mod world;
 

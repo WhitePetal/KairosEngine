@@ -1,16 +1,15 @@
 use std::fmt::Display;
 
+use derive_more::{Deref, DerefMut};
+
 use crate::{
     debug::DebugName,
     ecs::{
         change_detection::Tick,
-        component::Component,
         error::{KairosError, Severity},
         resource::Resource,
     },
 };
-use derive_more::derive::{Deref, DerefMut};
-
 /// Context for a [`KairosError`] to aid in debugging.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ErrorContext {
@@ -117,17 +116,8 @@ pub type ErrorHandler = fn(KairosError, ErrorContext);
 /// that schedule until it's completed.
 ///
 /// [`Schedule`]: crate::schedule::Schedule
-#[derive(Deref, DerefMut, Copy, Clone)]
+#[derive(Resource, Deref, DerefMut, Copy, Clone)]
 pub struct FallbackErrorHandler(pub ErrorHandler);
-
-// TODO! to derive
-impl Component for FallbackErrorHandler {
-    const STORAGE_TYPE: crate::ecs::component::StorageType =
-        crate::ecs::component::StorageType::Table;
-
-    type Mutability = crate::ecs::component::Mutable;
-}
-impl Resource for FallbackErrorHandler {}
 
 impl Default for FallbackErrorHandler {
     fn default() -> Self {

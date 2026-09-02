@@ -9,6 +9,7 @@ mod message;
 mod query_data;
 mod query_filter;
 mod resource;
+mod template;
 mod world_query;
 
 use kairos_ecs_macro_logic::{
@@ -24,7 +25,7 @@ use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span};
 use quote::{ToTokens, format_ident, quote};
 use syn::{
-    ConstParam, DeriveInput, GenericParam, TypeParam, parse_macro_input, parse_quote,
+    ConstParam, Data, DeriveInput, GenericParam, TypeParam, parse_macro_input, parse_quote,
     punctuated::Punctuated, token::Comma,
 };
 
@@ -317,6 +318,8 @@ pub fn derive_resource(input: TokenStream) -> TokenStream {
     TokenStream::from(resource::derive_resource(&mut ast))
 }
 
+// TODO!: derive_settings_group
+
 /// Cheat sheet for derive syntax,
 /// see full explanation and examples on the `Component` trait doc.
 ///
@@ -429,6 +432,73 @@ pub fn derive_component(input: TokenStream) -> TokenStream {
             Err(e) => return e.into_compile_error().into(),
         };
     TokenStream::from(impl_component)
+}
+
+/// Implement the `FromWorld` trait.
+#[proc_macro_derive(FromWorld, attributes(from_world))]
+pub fn derive_from_world(input: TokenStream) -> TokenStream {
+    let ecs_path = kairos_ecs_path();
+    let ast = parse_macro_input!(input as DeriveInput);
+    let name = ast.ident;
+    let (impl_generics, ty_generics, where_clauses) = ast.generics.split_for_impl();
+
+    let (fields, variant_ident) = match &ast.data {
+        Data::Struct(data) => (&data.fields, None),
+        Data::Enum(data) => {
+            match data.variants.iter().find(|variant| {
+                variant
+                    .attrs
+                    .iter()
+                    .any(|attr| attr.path().is_ident("from_world"))
+            }) {
+                Some(variant) => (&variant.fields, Some(&variant.ident)),
+                None => {
+                    return syn::Error::new(
+                        Span::call_site(),
+                        "No variant found with the `#[from_world]` attribute",
+                    )
+                    .into_compile_error()
+                    .into();
+                }
+            }
+        }
+        Data::Union(_) => {
+            return syn::Error::new(
+                Span::call_site(),
+                "`#[derive(FromWorld)]` does not support unions",
+            )
+            .into_compile_error()
+            .into();
+        }
+    };
+
+    let field_init_expr = quote!(#ecs_path::world::FromWorld::from_world(world));
+    let members = fields.members();
+
+    let field_initializers = match variant_ident {
+        Some(variant_ident) => quote!( Self::#variant_ident {
+            #(#members: #field_init_expr),*
+        }),
+        None => quote!(
+            Self {
+                #(#members: #field_init_expr),*
+            }
+        ),
+    };
+
+    TokenStream::from(quote! {
+        impl #impl_generics #ecs_path::world::FromWorld for #name #ty_generics #where_clauses {
+            fn from_world(world: &mut #ecs_path::world::World) -> Self {
+                #field_initializers
+            }
+        }
+    })
+}
+
+/// Derives `FromTemplate`.
+#[proc_macro_derive(FromTemplate, attributes(template, default))]
+pub fn derive_from_template(input: TokenStream) -> TokenStream {
+    template::derive_from_template(input)
 }
 
 /// Implement `SystemParam` to use a struct as a parameter in a system

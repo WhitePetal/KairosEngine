@@ -1,7 +1,9 @@
 mod fixed_hashmap;
 mod fixed_hashset;
+mod pre_hash_map;
 mod type_id_map;
 
 pub use fixed_hashmap::FixedHashMap;
 pub use fixed_hashset::FixedHashSet;
+pub use pre_hash_map::PreHashMap;
 pub use type_id_map::TypeIdMap;
