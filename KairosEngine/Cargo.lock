@@ -2371,6 +2371,7 @@ dependencies = [
  "rustfft",
  "serde",
  "serde_json",
+ "slotmap",
  "smallvec",
  "sonic-rs",
  "static_assertions",

@@ -96,6 +96,7 @@ tracing = "0.1.44"
 fixedbitset = "0.5.7"
 thread_local = "1.1.10"
 concurrent-queue = "2.5.0"
+slotmap = "1.1.1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.4"
