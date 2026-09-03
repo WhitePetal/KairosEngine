@@ -21,6 +21,9 @@ use crate::{
     },
 };
 
+#[cfg(test)]
+mod tests;
+
 /// The metadata of a [`System`].
 #[derive(Clone)]
 pub struct SystemMeta {
@@ -235,6 +238,61 @@ pub struct SystemState<Param: SystemParam + 'static> {
     world_id: WorldId,
 }
 
+// Allow closure arguments to be inferred.
+// For a closure to be used as a `SystemParamFunction`, it needs to be generic in any `'w` or `'s` lifetimes.
+// Rust will only infer a closure to be generic over lifetimes if it's passed to a function with a Fn constraint.
+// So, generate a function for each arity with an explicit `FnMut` constraint to enable higher-order lifetimes,
+// along with a regular `SystemParamFunction` constraint to allow the system to be built.
+macro_rules! impl_build_system {
+    ($(#[$meta:meta])* $($param: ident),*) => {
+        $(#[$meta])*
+        impl<$($param: SystemParam),*> SystemState<($($param,)*)> {
+            /// Create a [`FunctionSystem`] from a [`SystemState`].
+            /// This method signature allows type inference of closure parameters for a system with no input.
+            /// You can use [`SystemState::build_system_with_input()`] if you have input, or [`SystemState::build_any_system()`] if you don't need type inference.
+            #[inline]
+            pub fn build_system<
+                InnerOut: IntoResult<Out>,
+                Out,
+                Marker,
+                F: FnMut($(SystemParamItem<$param>), *) -> InnerOut
+                    + SystemParamFunction<Marker, In = (), Out = InnerOut, Param = ($($param,)*)>
+            >
+            (
+                self,
+                func: F,
+            ) -> FunctionSystem<Marker, (), Out, F>
+            {
+                self.build_any_system(func)
+            }
+
+            pub fn build_system_with_input<
+                InnerIn: SystemInput + FromInput<In>,
+                In: SystemInput,
+                InnerOut: IntoResult<Out>,
+                Out,
+                Marker,
+                F: FnMut(InnerIn, $(SystemParamItem<$param>),*) -> InnerOut
+                    + SystemParamFunction<Marker, In = InnerIn, Out = InnerOut, Param = ($($param,)*)>
+            >
+            (
+                self,
+                func: F
+            ) -> FunctionSystem<Marker, In, Out, F> {
+                self.build_any_system(func)
+            }
+        }
+    };
+}
+
+all_tuples!(
+    #[doc(fake_variadic)]
+    impl_build_system,
+    0,
+    16,
+    P
+);
+
 impl<Param: SystemParam> SystemState<Param> {
     /// Creates a new [`SystemState`] with default state.
     #[track_caller]
@@ -439,8 +497,8 @@ where
     F: SystemParamFunction<Marker>,
 {
     func: F,
-    // #[cfg(feature = "hotpatching")]
-    // current_ptr: subsecond::HotFnPtr,
+    #[cfg(feature = "hotpatching")]
+    current_ptr: subsecond::HotFnPtr,
     state: Option<FunctionSystemState<F::Param>>,
     system_meta: SystemMeta,
     // NOTE: PhantomData<fn()-> T> gives this safe Send/Sync impls
@@ -467,9 +525,9 @@ where
     fn new(func: F, system_meta: SystemMeta, state: Option<FunctionSystemState<F::Param>>) -> Self {
         Self {
             func,
-            // #[cfg(feature = "hotpatching")]
-            // current_ptr: subsecond::HotFn::current(<F as SystemParamFunction<Marker>>::run)
-            //     .ptr_address(),
+            #[cfg(feature = "hotpatching")]
+            current_ptr: subsecond::HotFn::current(<F as SystemParamFunction<Marker>>::run)
+                .ptr_address(),
             state,
             system_meta,
             marker: PhantomData,
@@ -493,9 +551,9 @@ where
     fn clone(&self) -> Self {
         Self {
             func: self.func.clone(),
-            // #[cfg(feature = "hotpatching")]
-            // current_ptr: subsecond::HotFn::current(<F as SystemParamFunction<Marker>>::run)
-            //     .ptr_address(),
+            #[cfg(feature = "hotpatching")]
+            current_ptr: subsecond::HotFn::current(<F as SystemParamFunction<Marker>>::run)
+                .ptr_address(),
             state: None,
             system_meta: SystemMeta::new::<F>(),
             marker: PhantomData,
@@ -520,6 +578,46 @@ where
     }
 }
 
+/// A type that may be converted to the output of a [`System`].
+/// This is used to allow systems to return either a plain value or a [`Result`].
+pub trait IntoResult<Out>: Sized {
+    fn into_result(self) -> Result<Out, RunSystemError>;
+}
+
+impl<T> IntoResult<T> for T {
+    fn into_result(self) -> Result<T, RunSystemError> {
+        Ok(self)
+    }
+}
+
+impl<T> IntoResult<T> for Result<T, RunSystemError> {
+    fn into_result(self) -> Result<T, RunSystemError> {
+        self
+    }
+}
+
+impl<T> IntoResult<T> for Result<T, KairosError> {
+    fn into_result(self) -> Result<T, RunSystemError> {
+        Ok(self?)
+    }
+}
+
+// The `!` impl can't be generic in `Out`, since that would overlap with
+// `impl<T> IntoResult<T> for T` when `T` = `!`.
+// Use explicit impls for `()` and `bool` so diverging functions
+// can be used for systems and conditions.
+impl IntoResult<()> for Never {
+    fn into_result(self) -> Result<(), RunSystemError> {
+        self
+    }
+}
+
+impl IntoResult<bool> for Never {
+    fn into_result(self) -> Result<bool, RunSystemError> {
+        self
+    }
+}
+
 impl<Marker, In, Out, F> FunctionSystem<Marker, In, Out, F>
 where
     F: SystemParamFunction<Marker>,
@@ -531,60 +629,154 @@ where
         "System's state was not found. Did you forget to initialize this system before running it?";
 }
 
-// Allow closure arguments to be inferred.
-// For a closure to be used as a `SystemParamFunction`, it needs to be generic in any `'w` or `'s` lifetimes.
-// Rust will only infer a closure to be generic over lifetimes if it's passed to a function with a Fn constraint.
-// So, generate a function for each arity with an explicit `FnMut` constraint to enable higher-order lifetimes,
-// along with a regular `SystemParamFunction` constraint to allow the system to be built.
-macro_rules! impl_build_system {
-    ($(#[$meta:meta])* $($param: ident),*) => {
-        $(#[$meta])*
-        impl<$($param: SystemParam),*> SystemState<($($param,)*)> {
-            /// Create a [`FunctionSystem`] from a [`SystemState`].
-            /// This method signature allows type inference of closure parameters for a system with no input.
-            /// You can use [`SystemState::build_system_with_input()`] if you have input, or [`SystemState::build_any_system()`] if you don't need type inference.
-            #[inline]
-            pub fn build_system<
-                InnerOut: IntoResult<Out>,
-                Out,
-                Marker,
-                F: FnMut($(SystemParamItem<$param>), *) -> InnerOut
-                    + SystemParamFunction<Marker, In = (), Out = InnerOut, Param = ($($param,)*)>
-            >
-            (
-                self,
-                func: F,
-            ) -> FunctionSystem<Marker, (), Out, F>
-            {
-                self.build_any_system(func)
-            }
+impl<Marker, In, Out, F> System for FunctionSystem<Marker, In, Out, F>
+where
+    Marker: 'static,
+    In: SystemInput + 'static,
+    Out: 'static,
+    F: SystemParamFunction<Marker, In: FromInput<In>, Out: IntoResult<Out>>,
+{
+    type In = In;
+    type Out = Out;
 
-            pub fn build_system_with_input<
-                InnerIn: SystemInput + FromInput<In>,
-                In: SystemInput,
-                InnerOut: IntoResult<Out>,
-                Out,
-                Marker,
-                F: FnMut(InnerIn, $(SystemParamItem<$param>),*) -> InnerOut
-                    + SystemParamFunction<Marker, In = InnerIn, Out = InnerOut, Param = ($($param,)*)>
-            >
-            (
-                self,
-                func: F
-            ) -> FunctionSystem<Marker, In, Out, F> {
-                self.build_any_system(func)
+    #[inline]
+    fn name(&self) -> DebugName {
+        self.system_meta.name.clone()
+    }
+
+    #[inline]
+    fn flags(&self) -> SystemStateFlags {
+        self.system_meta.flags
+    }
+
+    #[inline]
+    unsafe fn run_unsafe(
+        &mut self,
+        input: super::SystemIn<'_, Self>,
+        world: UnsafeWorldCell,
+    ) -> Result<Self::Out, RunSystemError> {
+        #[cfg(feature = "trace")]
+        let _span_guard = self.system_meta.system_span.enter();
+
+        let change_tick = world.increment_change_tick();
+
+        let input = F::In::from_inner(input);
+
+        let state = self.state.as_mut().expect(Self::ERROR_UNINITIALIZED);
+        assert_eq!(
+            state.world_id,
+            world.id(),
+            "Encountered a mismatched World. A System cannot be used with Worlds other than the one it was initialized with."
+        );
+        // SAFETY:
+        // - The above assert ensures the world matches.
+        // - All world accesses used by `F::Param` have been registered, so the caller
+        //   will ensure that there are no data access conflicts.
+        let params = unsafe {
+            F::Param::get_param(&mut state.param, &self.system_meta, world, change_tick)
+        }?;
+
+        #[cfg(feature = "hotpatching")]
+        let out = {
+            let mut hot_fn = subsecond::HotFn::current(<F as SystemParamFunction<Marker>>::run);
+            // SAFETY:
+            // - pointer used to call is from the current jump table
+            unsafe {
+                hot_fn
+                    .try_call_with_ptr(self.current_ptr, (&mut self.func, input, params))
+                    .expect("Error calling hotpatched system. Run a full rebuild")
             }
+        };
+        #[cfg(not(feature = "hotpatching"))]
+        let out = self.func.run(input, params);
+
+        self.system_meta.last_run = change_tick;
+        IntoResult::into_result(out)
+    }
+
+    #[cfg(feature = "hotpatching")]
+    #[inline]
+    fn refresh_hotpatch(&mut self) {
+        let new = subsecond::HotFn::current(<F as SystemParamFunction<Marker>>::run).ptr_address();
+        if new != self.current_ptr {
+            log::debug!("system {} hotpatched", self.name());
         }
-    };
+        self.current_ptr = new;
+    }
+
+    #[inline]
+    fn apply_deferred(&mut self, world: &mut World) {
+        let param_state = &mut self.state.as_mut().expect(Self::ERROR_UNINITIALIZED).param;
+        F::Param::apply(param_state, &self.system_meta, world);
+    }
+
+    #[inline]
+    fn queue_deferred(&mut self, world: DeferredWorld) {
+        let param_state = &mut self.state.as_mut().expect(Self::ERROR_UNINITIALIZED).param;
+        F::Param::queue(param_state, &self.system_meta, world);
+    }
+
+    #[inline]
+    fn initialize(&mut self, world: &mut World) -> FilteredAccessSet {
+        if let Some(state) = &self.state {
+            assert_eq!(
+                state.world_id,
+                world.id(),
+                "System built with a different world than the one it was added to."
+            );
+        }
+        let state = self.state.get_or_insert_with(|| FunctionSystemState {
+            param: F::Param::init_state(world),
+            world_id: world.id(),
+        });
+        self.system_meta.last_run = world.change_tick().relative_to(Tick::MAX);
+        let mut component_access_set = FilteredAccessSet::new();
+        F::Param::init_access(
+            &state.param,
+            &mut self.system_meta,
+            &mut component_access_set,
+            world,
+        );
+        component_access_set
+    }
+
+    #[inline]
+    fn check_change_tick(&mut self, check: CheckChangeTicks) {
+        check_system_change_tick(
+            &mut self.system_meta.last_run,
+            check,
+            self.system_meta.name.clone(),
+        );
+    }
+
+    fn default_system_sets(&self) -> Vec<InternedSystemSet> {
+        let set = crate::ecs::schedule::SystemTypeSet::<F>::new();
+        vec![set.intern()]
+    }
+
+    fn get_last_run(&self) -> Tick {
+        self.system_meta.last_run
+    }
+
+    fn set_last_run(&mut self, last_run: Tick) {
+        self.system_meta.last_run = last_run;
+    }
 }
 
-all_tuples!(
-    #[doc(fake_variadic)]
-    impl_build_system,
-    0,
-    16,
-    P
-);
+// SAFETY: `F`'s param is [`ReadOnlySystemParam`], so this system will only read from the world.
+unsafe impl<Marker, In, Out, F> ReadOnlySystem for FunctionSystem<Marker, In, Out, F>
+where
+    Marker: 'static,
+    In: SystemInput + 'static,
+    Out: 'static,
+    F: SystemParamFunction<
+            Marker,
+            In: FromInput<In>,
+            Out: IntoResult<Out>,
+            Param: ReadOnlySystemParam,
+        >,
+{
+}
 
 /// A trait implemented for all functions that can be used as [`System`]s.
 ///
@@ -668,195 +860,6 @@ pub trait SystemParamFunction<Marker>: Send + Sync + 'static {
         input: <Self::In as SystemInput>::Inner<'_>,
         param_value: SystemParamItem<Self::Param>,
     ) -> Self::Out;
-}
-
-/// A type that may be converted to the output of a [`System`].
-/// This is used to allow systems to return either a plain value or a [`Result`].
-pub trait IntoResult<Out>: Sized {
-    fn into_result(self) -> Result<Out, RunSystemError>;
-}
-
-impl<T> IntoResult<T> for T {
-    fn into_result(self) -> Result<T, RunSystemError> {
-        Ok(self)
-    }
-}
-
-impl<T> IntoResult<T> for Result<T, RunSystemError> {
-    fn into_result(self) -> Result<T, RunSystemError> {
-        self
-    }
-}
-
-impl<T> IntoResult<T> for Result<T, KairosError> {
-    fn into_result(self) -> Result<T, RunSystemError> {
-        Ok(self?)
-    }
-}
-
-// The `!` impl can't be generic in `Out`, since that would overlap with
-// `impl<T> IntoResult<T> for T` when `T` = `!`.
-// Use explicit impls for `()` and `bool` so diverging functions
-// can be used for systems and conditions.
-impl IntoResult<()> for Never {
-    fn into_result(self) -> Result<(), RunSystemError> {
-        self
-    }
-}
-
-impl IntoResult<bool> for Never {
-    fn into_result(self) -> Result<bool, RunSystemError> {
-        self
-    }
-}
-
-impl<Marker, In, Out, F> System for FunctionSystem<Marker, In, Out, F>
-where
-    Marker: 'static,
-    In: SystemInput + 'static,
-    Out: 'static,
-    F: SystemParamFunction<Marker, In: FromInput<In>, Out: IntoResult<Out>>,
-{
-    type In = In;
-    type Out = Out;
-
-    #[inline]
-    fn name(&self) -> DebugName {
-        self.system_meta.name.clone()
-    }
-
-    #[inline]
-    fn flags(&self) -> SystemStateFlags {
-        self.system_meta.flags
-    }
-
-    #[inline]
-    unsafe fn run_unsafe(
-        &mut self,
-        input: super::SystemIn<'_, Self>,
-        world: UnsafeWorldCell,
-    ) -> Result<Self::Out, RunSystemError> {
-        #[cfg(feature = "trace")]
-        let _span_guard = self.system_meta.system_span.enter();
-
-        let change_tick = world.increment_change_tick();
-
-        let input = F::In::from_inner(input);
-
-        let state = self.state.as_mut().expect(Self::ERROR_UNINITIALIZED);
-        assert_eq!(
-            state.world_id,
-            world.id(),
-            "Encountered a mismatched World. A System cannot be used with Worlds other than the one it was initialized with."
-        );
-        // SAFETY:
-        // - The above assert ensures the world matches.
-        // - All world accesses used by `F::Param` have been registered, so the caller
-        //   will ensure that there are no data access conflicts.
-        let params = unsafe {
-            F::Param::get_param(&mut state.param, &self.system_meta, world, change_tick)
-        }?;
-
-        // #[cfg(feature = "hotpatching")]
-        // let out = {
-        //     let mut hot_fn = subsecond::HotFn::current(<F as SystemParamFunction<Marker>>::run);
-        //     // SAFETY:
-        //     // - pointer used to call is from the current jump table
-        //     unsafe {
-        //         hot_fn
-        //             .try_call_with_ptr(self.current_ptr, (&mut self.func, input, params))
-        //             .expect("Error calling hotpatched system. Run a full rebuild")
-        //     }
-        // };
-        // #[cfg(not(feature = "hotpatching"))]
-        let out = self.func.run(input, params);
-
-        self.system_meta.last_run = change_tick;
-        IntoResult::into_result(out)
-    }
-
-    // #[cfg(feature = "hotpatching")]
-    // #[inline]
-    // fn refresh_hotpatch(&mut self) {
-    //     let new = subsecond::HotFn::current(<F as SystemParamFunction<Marker>>::run).ptr_address();
-    //     if new != self.current_ptr {
-    //         log::debug!("system {} hotpatched", self.name());
-    //     }
-    //     self.current_ptr = new;
-    // }
-
-    #[inline]
-    fn apply_deferred(&mut self, world: &mut World) {
-        let param_state = &mut self.state.as_mut().expect(Self::ERROR_UNINITIALIZED).param;
-        F::Param::apply(param_state, &self.system_meta, world);
-    }
-
-    #[inline]
-    fn queue_deferred(&mut self, world: DeferredWorld) {
-        let param_state = &mut self.state.as_mut().expect(Self::ERROR_UNINITIALIZED).param;
-        F::Param::queue(param_state, &self.system_meta, world);
-    }
-
-    #[inline]
-    fn initialize(&mut self, world: &mut World) -> FilteredAccessSet {
-        if let Some(state) = &self.state {
-            assert_eq!(
-                state.world_id,
-                world.id(),
-                "System built with a different world than the one it was added to."
-            );
-        }
-        let state = self.state.get_or_insert_with(|| FunctionSystemState {
-            param: F::Param::init_state(world),
-            world_id: world.id(),
-        });
-        self.system_meta.last_run = world.change_tick().relative_to(Tick::MAX);
-        let mut component_access_set = FilteredAccessSet::new();
-        F::Param::init_access(
-            &state.param,
-            &mut self.system_meta,
-            &mut component_access_set,
-            world,
-        );
-        component_access_set
-    }
-
-    #[inline]
-    fn check_change_tick(&mut self, check: CheckChangeTicks) {
-        check_system_change_tick(
-            &mut self.system_meta.last_run,
-            check,
-            self.system_meta.name.clone(),
-        );
-    }
-
-    fn default_system_sets(&self) -> Vec<InternedSystemSet> {
-        let set = crate::ecs::schedule::SystemTypeSet::<F>::new();
-        vec![set.intern()]
-    }
-
-    fn get_last_run(&self) -> Tick {
-        self.system_meta.last_run
-    }
-
-    fn set_last_run(&mut self, last_run: Tick) {
-        self.system_meta.last_run = last_run;
-    }
-}
-
-// SAFETY: `F`'s param is [`ReadOnlySystemParam`], so this system will only read from the world.
-unsafe impl<Marker, In, Out, F> ReadOnlySystem for FunctionSystem<Marker, In, Out, F>
-where
-    Marker: 'static,
-    In: SystemInput + 'static,
-    Out: 'static,
-    F: SystemParamFunction<
-            Marker,
-            In: FromInput<In>,
-            Out: IntoResult<Out>,
-            Param: ReadOnlySystemParam,
-        >,
-{
 }
 
 /// A marker type used to distinguish function systems with and without input.

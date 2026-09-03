@@ -2501,5 +2501,3 @@ impl<'a, T: Component> EntityEntryCommands<'a, T> {
         self.entity_commands.reborrow()
     }
 }
-
-// TODO
