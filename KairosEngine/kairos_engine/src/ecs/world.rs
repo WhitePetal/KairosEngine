@@ -1725,6 +1725,37 @@ impl World {
         }
         false
     }
+
+    /// Spawns a batch of entities with the same component [`Bundle`] type. Takes a given
+    /// [`Bundle`] iterator and returns a corresponding [`Entity`] iterator.
+    /// This is more efficient than spawning entities and adding components to them individually
+    /// using [`World::spawn`], but it is limited to spawning entities with the same [`Bundle`]
+    /// type, whereas spawning individually is more flexible.
+    ///
+    /// ```
+    /// use bevy_ecs::{component::Component, entity::Entity, world::World};
+    ///
+    /// #[derive(Component)]
+    /// struct Str(&'static str);
+    /// #[derive(Component)]
+    /// struct Num(u32);
+    ///
+    /// let mut world = World::new();
+    /// let entities = world.spawn_batch(vec![
+    ///   (Str("a"), Num(0)), // the first entity
+    ///   (Str("b"), Num(1)), // the second entity
+    /// ]).collect::<Vec<Entity>>();
+    ///
+    /// assert_eq!(entities.len(), 2);
+    /// ```
+    #[track_caller]
+    pub fn spawn_batch<I>(&mut self, iter: I) -> SpawnBatchIter<'_, I::IntoIter>
+    where
+        I: IntoIterator,
+        I::Item: Bundle<Effect: NoBundleEffect>,
+    {
+        SpawnBatchIter::new(self, iter.into_iter(), MaybeLocation::caller())
+    }
 }
 
 impl fmt::Debug for World {

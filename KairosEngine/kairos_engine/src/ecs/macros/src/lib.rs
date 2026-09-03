@@ -18,7 +18,9 @@ use kairos_ecs_macro_logic::{
     map_entities::map_entities,
 };
 use kairos_macro_utils::{
-    KairosManifest, derive_label, ensure_no_collision, fq_std::{FQDefault, FQIterator, FQOption, FQResult}, get_struct_fields,
+    KairosManifest, derive_label, ensure_no_collision,
+    fq_std::{FQDefault, FQIterator, FQOption, FQResult},
+    get_struct_fields,
 };
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span};

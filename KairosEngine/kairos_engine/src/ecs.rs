@@ -16,9 +16,12 @@ pub mod name;
 pub mod never;
 pub mod observer;
 pub mod query;
+#[cfg(feature = "kairos_reflect")]
+pub mod reflect;
 pub mod relationship;
 pub mod resource;
 pub mod schedule;
+pub mod spawn;
 pub mod storage;
 pub mod system;
 pub mod template;
