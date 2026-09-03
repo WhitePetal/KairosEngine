@@ -94,7 +94,7 @@ pub fn derive_label(
                     alloc::boxed::Box::new(#FQClone::clone(self))
                 }
             }
-        }
+        };
     }
     .into()
 }

@@ -1,22 +1,20 @@
 use std::{
-    any::TypeId,
-    fmt::{self, Debug},
+    any::TypeId, collections::BTreeSet, fmt::{self, Debug}, ops::{Deref, Index, IndexMut, Range},
 };
 
 use slotmap::{Key, KeyData, SecondaryMap, SlotMap, new_key_type};
+use thiserror::Error;
 
 use crate::{
-    debug::DebugName,
-    ecs::{
-        query::FilteredAccessSet,
-        schedule::{
-            BoxedCondition,
-            graph::{Direction, GraphNodeId},
-        },
-        system::{RunSystemError, ScheduleSystem, System, SystemIn, SystemStateFlags},
-        world::{DeferredWorld, World, unsafe_world_cell::UnsafeWorldCell},
+    collections::{FixedHashMap, FixedHashSet}, debug::DebugName, ecs::{
+        component::{ComponentId, Components}, query::{AccessConflicts, FilteredAccessSet}, schedule::{
+            BoxedCondition, InternedSystemSet, ScheduleGraph, SystemSet, graph::{DagAnalysis, DagGroups, DiGraph, Direction::{self, Incoming, Outgoing}, GraphNodeId, UnGraph},
+        }, system::{ReadOnlySystem, RunSystemError, ScheduleSystem, System, SystemIn, SystemStateFlags}, world::{DeferredWorld, World, unsafe_world_cell::UnsafeWorldCell},
     },
 };
+
+#[cfg(test)]
+mod tests;
 
 /// A [`SystemWithAccess`] stored in a [`ScheduleGraph`].
 pub(crate) struct SystemNode {
@@ -247,12 +245,36 @@ impl GraphNodeId for SystemKey {
     }
 }
 
-/// Container for systems in a schedule.
-#[derive(Default)]
-pub struct Systems {
-    nodes: SlotMap<SystemKey, SystemNode>,
-    conditions: SecondaryMap<SystemKey, Vec<ConditionWithAccess>>,
-    uninit: Vec<SystemKey>,
+impl GraphNodeId for SystemSetKey {
+    type Adjacent = (SystemSetKey, Direction);
+
+    type Edge = (SystemSetKey, SystemSetKey);
+
+    fn kind(&self) -> &'static str {
+        "system set"
+    }
+}
+
+impl TryFrom<NodeId> for SystemKey {
+    type Error = SystemSetKey;
+
+    fn try_from(value: NodeId) -> Result<Self, Self::Error> {
+        match value {
+            NodeId::System(key) => Ok(key),
+            NodeId::Set(key) => Err(key),
+        }
+    }
+}
+
+impl TryFrom<NodeId> for SystemSetKey {
+    type Error = SystemKey;
+
+    fn try_from(value: NodeId) -> Result<Self, Self::Error> {
+        match value {
+            NodeId::System(key) => Err(key),
+            NodeId::Set(key) => Ok(key),
+        }
+    }
 }
 
 /// Unique identifier for a system or system set stored in a [`ScheduleGraph`].
@@ -271,6 +293,27 @@ impl NodeId {
     pub const fn is_system(&self) -> bool {
         matches!(self, NodeId::System(_))
     }
+
+    /// Returns `true` if the identified node is a system set.
+    pub const fn is_set(&self) -> bool {
+        matches!(self, NodeId::Set(_))
+    }
+
+    /// Returns the system key if the node is a system, otherwise `None`.
+    pub const fn as_system(&self) -> Option<SystemKey> {
+        match self {
+            NodeId::System(system) => Some(*system),
+            NodeId::Set(_) => None,
+        }
+    }
+
+    /// Returns the system set key if the node is a system set, otherwise `None`.
+    pub const fn as_set(&self) -> Option<SystemSetKey> {
+        match self {
+            NodeId::System(_) => None,
+            NodeId::Set(set) => Some(*set),
+        }
+    }
 }
 
 impl GraphNodeId for NodeId {
@@ -285,12 +328,15 @@ impl GraphNodeId for NodeId {
     }
 }
 
-impl GraphNodeId for SystemSetKey {
-    type Adjacent = (SystemSetKey, Direction);
-    type Edge = (SystemSetKey, SystemSetKey);
+impl From<SystemKey> for NodeId {
+    fn from(system: SystemKey) -> Self {
+        NodeId::System(system)
+    }
+}
 
-    fn kind(&self) -> &'static str {
-        "system set"
+impl From<SystemSetKey> for NodeId {
+    fn from(set: SystemSetKey) -> Self {
+        NodeId::Set(set)
     }
 }
 
@@ -390,3 +436,461 @@ impl From<CompactNodeIdPair> for (NodeId, NodeId) {
         (a, b)
     }
 }
+
+/// Container for systems in a schedule.
+#[derive(Default)]
+pub struct Systems {
+    /// List of systems in the schedule.
+    nodes: SlotMap<SystemKey, SystemNode>,
+    /// List of conditions for each system, in the same order as `nodes`.
+    conditions: SecondaryMap<SystemKey, Vec<ConditionWithAccess>>,
+    /// Systems and their conditions that have not been initialized yet.
+    uninit: Vec<SystemKey>,
+}
+
+impl Systems {
+    /// Returns the number of systems in this container.
+    pub fn len(&self) -> usize {
+        self.nodes.len()
+    }
+
+    /// Returns `true` if this container is empty.
+    pub fn is_empty(&self) -> bool {
+        self.nodes.is_empty()
+    }
+
+    /// Returns a reference to the system with the given key, if it exists.
+    pub fn get(&self, key: SystemKey) -> Option<&SystemWithAccess> {
+        self.nodes.get(key).and_then(|node| node.get())
+    }
+
+    /// Returns a mutable reference to the system with the given key, if it exists.
+    pub fn get_mut(&mut self, key: SystemKey) -> Option<&mut SystemWithAccess> {
+        self.nodes.get_mut(key).and_then(|node| node.get_mut())
+    }
+
+    /// Returns a mutable reference to the system with the given key. Will return
+    /// `None` if the key does not exist.
+    pub(crate) fn node_mut(&mut self, key: SystemKey) -> Option<&mut SystemNode> {
+        self.nodes.get_mut(key)
+    }
+
+    /// Returns `true` if the system with the given key has conditions.
+    pub fn has_conditions(&self, key: SystemKey) -> bool {
+        self.conditions
+            .get(key)
+            .is_some_and(|conditions| !conditions.is_empty())
+    }
+
+    /// Returns a reference to the conditions for the system with the given key, if it exists.
+    pub fn get_conditions(&self, key: SystemKey) -> Option<&[ConditionWithAccess]> {
+        self.conditions.get(key).map(Vec::as_slice)
+    }
+
+    /// Returns a mutable reference to the conditions for the system with the given key, if it exists.
+    pub fn get_conditions_mut(&mut self, key: SystemKey) -> Option<&mut Vec<ConditionWithAccess>> {
+        self.conditions.get_mut(key)
+    }
+
+    /// Returns an iterator over all systems and their conditions in this
+    /// container.
+    pub fn iter(
+        &self,
+    ) -> impl Iterator<Item = (SystemKey, &ScheduleSystem, &[ConditionWithAccess])> + '_ {
+        self.nodes.iter().filter_map(|(key, node)| {
+            let system = &node.get()?.system;
+            let conditions = self
+                .conditions
+                .get(key)
+                .map(Vec::as_slice)
+                .unwrap_or_default();
+            Some((key, system, conditions))
+        })
+    }
+
+    /// Inserts a new system into the container, along with its conditions,
+    /// and queues it to be initialized later in [`Systems::initialize`].
+    ///
+    /// We have to defer initialization of systems in the container until we have
+    /// `&mut World` access, so we store these in a list until
+    /// [`Systems::initialize`] is called. This is usually done upon the first
+    /// run of the schedule.
+    pub fn insert(
+        &mut self,
+        system: ScheduleSystem,
+        conditions: Vec<Box<dyn ReadOnlySystem<In = (), Out = bool>>>,
+    ) -> SystemKey {
+        let key = self.nodes.insert(SystemNode::new(system));
+        self.conditions.insert(
+            key,
+            conditions
+                .into_iter()
+                .map(ConditionWithAccess::new)
+                .collect()
+        );
+        self.uninit.push(key);
+        key
+    }
+
+    /// Remove a system with [`SystemKey`]
+    pub(crate) fn remove(&mut self, key: SystemKey) -> bool {
+        let mut found = false;
+        if self.nodes.remove(key).is_some() {
+            found = true;
+        }
+
+        if self.conditions.remove(key).is_some() {
+            found = true;
+        }
+
+        if let Some(index) = self.uninit.iter().position(|value| *value == key) {
+            self.uninit.remove(index);
+            found = true;
+        }
+
+        found
+    }
+
+    /// Returns `true` if all systems in this container have been initialized.
+    pub fn is_initialized(&self) -> bool {
+        self.uninit.is_empty()
+    }
+
+    /// Initializes all systems and their conditions that have not been
+    /// initialized yet.
+    pub fn initialize(&mut self, world: &mut World) {
+        for key in self.uninit.drain(..) {
+            let Some(system) = self.nodes.get_mut(key).and_then(|node| node.get_mut()) else {
+                continue;
+            };
+            system.access = system.system.initialize(world);
+            let Some(conditions) = self.conditions.get_mut(key) else {
+                continue;
+            };
+            for condition in conditions {
+                condition.access = condition.condition.initialize(world);
+            }
+        }
+    }
+
+    /// Calculates the list of systems that conflict with each other based on
+    /// their access patterns.
+    ///
+    /// If the `Box<[ComponentId]>` is empty for a given pair of systems, then the
+    /// systems conflict on [`World`] access in general (e.g. one of them is
+    /// exclusive, or both systems have `Query<EntityMut>`).
+    pub fn get_conflicting_systems(
+        &self,
+        flat_dependency_analysis: &DagAnalysis<SystemKey>,
+        flat_ambiguous_with: &UnGraph<SystemKey>,
+        ambiguous_with_all: &FixedHashSet<NodeId>,
+        ignored_ambiguities: &BTreeSet<ComponentId>,
+    ) -> ConflictingSystems {
+        let mut conflicting_systems: Vec<(_, _, Box<[_]>)> = Vec::new();
+        for &(a, b) in flat_dependency_analysis.disconnected() {
+            if flat_ambiguous_with.contains_edge(a, b)
+                || ambiguous_with_all.contains(&NodeId::System(a))
+                || ambiguous_with_all.contains(&NodeId::System(b))
+            {
+                continue;
+            }
+
+            let system_a = &self[a];
+            let system_b = &self[b];
+            if system_a.is_exclusive() || system_b.is_exclusive() {
+                conflicting_systems.push((a, b, Box::new([])));
+            } else {
+                let access_a = &system_a.access;
+                let access_b = &system_b.access;
+                if !access_a.is_compatible(access_b) {
+                    match access_a.get_conflicts(access_b) {
+                        AccessConflicts::Individual(conflicts) => {
+                            let conflicts: Box<[_]> = conflicts
+                                .iter()
+                                .filter(|id| !ignored_ambiguities.contains(id))
+                                .collect();
+                            if !conflicts.is_empty() {
+                                conflicting_systems.push((a, b, conflicts));
+                            }
+                        },
+                        AccessConflicts::All => {
+                            // there is no specific component conflicting, but the systems are overall incompatible
+                            // for example 2 systems with `Query<EntityMut>`
+                            conflicting_systems.push((a, b, Box::new([])));
+                        },
+                    }
+                }
+            }
+        }
+
+        ConflictingSystems(conflicting_systems)
+    }
+}
+
+impl Index<SystemKey> for Systems {
+    type Output = SystemWithAccess;
+
+    #[track_caller]
+    fn index(&self, key: SystemKey) -> &Self::Output {
+        self.get(key)
+            .unwrap_or_else(|| panic!("System with key {:?} does not exist in the schedule", key))
+    }
+}
+
+impl IndexMut<SystemKey> for Systems {
+    #[track_caller]
+    fn index_mut(&mut self, key: SystemKey) -> &mut Self::Output {
+        self.get_mut(key)
+            .unwrap_or_else(|| panic!("System with key {:?} does not exist in the schedule", key))
+    }
+}
+
+/// Pairs of systems that conflict with each other along with the components
+/// they conflict on, which prevents them from running in parallel. If the
+/// component list is empty, the systems conflict on [`World`] access in general
+/// (e.g. one of them is exclusive, or both systems have `Query<EntityMut>`).
+#[derive(Clone, Debug, Default)]
+pub struct ConflictingSystems(pub Vec<(SystemKey, SystemKey, Box<[ComponentId]>)>);
+
+impl ConflictingSystems {
+    /// Checks if there are any conflicting systems, returning [`Ok`] if there
+    /// are none, or an [`AmbiguousSystemConflictsWarning`] if there are.
+    pub fn check_if_not_empty(&self) -> Result<(), AmbiguousSystemConflictsWarning> {
+        if self.0.is_empty() {
+            Ok(())
+        } else {
+            Err(AmbiguousSystemConflictsWarning(self.clone()))
+        }
+    }
+
+    /// Converts the conflicting systems into an iterator of their system names
+    /// and the names of the components they conflict on.
+    pub fn to_string(
+        &self,
+        graph: &ScheduleGraph,
+        components: &Components,
+    ) -> impl Iterator<Item = (String, String, Box<[DebugName]>)> {
+        self.iter().map(move |(system_a, system_b, conflicts)| {
+            let name_a = graph.get_node_name(&NodeId::System(*system_a));
+            let name_b = graph.get_node_name(&NodeId::System(*system_b));
+
+            let conflict_names: Box<[_]> = conflicts
+                .iter()
+                .map(|id| components.get_name(*id).unwrap())
+                .collect();
+            (name_a, name_b, conflict_names)
+        })
+    }
+}
+
+impl Deref for ConflictingSystems {
+    type Target = Vec<(SystemKey, SystemKey, Box<[ComponentId]>)>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+/// Error returned when there are ambiguous system conflicts detected.
+#[derive(Error, Debug)]
+#[error("Systems with conflicting access have indeterminate run order: {:?}", .0.0)]
+pub struct AmbiguousSystemConflictsWarning(pub ConflictingSystems);
+
+/// Container for system sets in a schedule.
+#[derive(Default)]
+pub struct SystemSets {
+    /// List of system sets in the schedule.
+    sets: SlotMap<SystemSetKey, InternedSystemSet>,
+    /// List of conditions for each system set, in the same order as `sets`.
+    conditions: SecondaryMap<SystemSetKey, Vec<ConditionWithAccess>>,
+    /// Map from system sets to their keys.
+    ids: FixedHashMap<InternedSystemSet, SystemSetKey>,
+    /// System sets that have not been initialized yet.
+    uninit: Vec<UninitializedSet>,
+}
+
+/// A system set's conditions that have not been initialized yet.
+struct UninitializedSet {
+    key: SystemSetKey,
+    /// The range of indices in [`SystemSets::conditions`] that correspond
+    /// to conditions that have not been initialized yet.
+    ///
+    /// [`SystemSets::conditions`] for a given set may be appended to
+    /// multiple times (e.g. when `configure_sets` is called multiple with
+    /// the same set), so we need to track which conditions in that list
+    /// are newly added and not yet initialized.
+    ///
+    /// Systems don't need this tracking because each `add_systems` call
+    /// creates separate nodes in the graph with their own conditions,
+    /// so all conditions are initialized together.
+    uninitialized_conditions: Range<usize>,
+}
+
+impl SystemSets {
+    /// Returns the number of system sets in this container.
+    pub fn len(&self) -> usize {
+        self.sets.len()
+    }
+
+    /// Returns `true` if this container is empty.
+    pub fn is_empty(&self) -> bool {
+        self.sets.is_empty()
+    }
+
+    /// Returns `true` if the given set is present in this container.
+    pub fn contains(&self, set: impl SystemSet) -> bool {
+        self.ids.contains_key(&set.intern())
+    }
+
+    /// Returns a reference to the system set with the given key, if it exists.
+    pub fn get(&self, key: SystemSetKey) -> Option<&dyn SystemSet> {
+        self.sets.get(key).map(|set| &**set)
+    }
+
+    /// Returns the key for the given system set, returns None if it does not exist.
+    pub fn get_key(&self, set: InternedSystemSet) -> Option<SystemSetKey> {
+        self.ids.get(&set).copied()
+    }
+
+    /// Returns the key for the given system set, inserting it into this
+    /// container if it does not already exist.
+    pub fn get_key_or_insert(&mut self, set: InternedSystemSet) -> SystemSetKey {
+        *self.ids.entry(set).or_insert_with(|| {
+            let key = self.sets.insert(set);
+            self.conditions.insert(key, Vec::new());
+            key
+        })
+    }
+
+    /// Returns `true` if the system set with the given key has conditions.
+    pub fn has_conditions(&self, key: SystemSetKey) -> bool {
+        self.conditions
+            .get(key)
+            .is_some_and(|conditions| !conditions.is_empty())
+    }
+
+    /// Returns a reference to the conditions for the system set with the given
+    /// key, if it exists.
+    pub fn get_conditions(&self, key: SystemSetKey) -> Option<&[ConditionWithAccess]> {
+        self.conditions.get(key).map(Vec::as_slice)
+    }
+
+    /// Returns a mutable reference to the conditions for the system set with
+    /// the given key, if it exists.
+    pub fn get_conditions_mut(
+        &mut self,
+        key: SystemSetKey,
+    ) -> Option<&mut Vec<ConditionWithAccess>> {
+        self.conditions.get_mut(key)
+    }
+
+    /// Returns an iterator over all system sets in this container, along with
+    /// their conditions.
+    pub fn iter(
+        &self,
+    ) -> impl Iterator<Item = (SystemSetKey, &dyn SystemSet, &[ConditionWithAccess])> {
+        self.sets.iter().filter_map(|(key, set)| {
+            let conditions = self.conditions.get(key)?.as_slice();
+            Some((key, &**set, conditions))
+        })
+    }
+
+    /// Inserts conditions for a system set into the container, and queues the
+    /// newly added conditions to be initialized later in [`SystemSets::initialize`].
+    ///
+    /// If the set was not already present in the container, it is added automatically.
+    ///
+    /// We have to defer initialization of system set conditions in the container
+    /// until we have `&mut World` access, so we store these in a list until
+    /// [`SystemSets::initialize`] is called. This is usually done upon the
+    /// first run of the schedule.
+    pub fn insert(
+        &mut self,
+        set: InternedSystemSet,
+        new_conditions: Vec<Box<dyn ReadOnlySystem<In = (), Out = bool>>>,
+    ) -> SystemSetKey {
+        let key = self.get_key_or_insert(set);
+        if !new_conditions.is_empty() {
+            let current_conditions = &mut self.conditions[key];
+            let start = current_conditions.len();
+            self.uninit.push(UninitializedSet {
+                key,
+                uninitialized_conditions: start..(start + new_conditions.len()),
+            });
+            current_conditions.extend(new_conditions.into_iter().map(ConditionWithAccess::new));
+        }
+        key
+    }
+
+    /// Remove a set with a [`SystemSetKey`]
+    pub(crate) fn remove(&mut self, key: SystemSetKey) -> bool {
+        self.sets.remove(key);
+        self.conditions.remove(key);
+        self.uninit.retain(|uninit| uninit.key != key);
+        true
+    }
+
+    /// Returns `true` if all system sets' conditions in this container have
+    /// been initialized.
+    pub fn is_initialized(&self) -> bool {
+        self.uninit.is_empty()
+    }
+
+    /// Initializes all system sets' conditions that have not been
+    /// initialized yet. Because a system set's conditions may be appended to
+    /// multiple times, we track which conditions were added since the last
+    /// initialization and only initialize those.
+    pub fn initialize(&mut self, world: &mut World) {
+        for uninit in self.uninit.drain(..) {
+            let Some(conditions) = self.conditions.get_mut(uninit.key) else {
+                continue;
+            };
+            for condition in &mut conditions[uninit.uninitialized_conditions] {
+                condition.access = condition.initialize(world);
+            }
+        }
+    }
+
+    /// Ensures that there are no edges to system-type sets that have multiple
+    /// instances.
+    pub fn check_type_set_ambiguity(
+        &self,
+        set_systems: &DagGroups<SystemSetKey, SystemKey>,
+        ambiguous_with: &UnGraph<NodeId>,
+        dependency: &DiGraph<NodeId>,
+    ) -> Result<(), SystemTypeSetAmbiguityError> {
+        for (&key, systems) in set_systems.iter() {
+            let set = &self[key];
+            if set.system_type().is_some() {
+                let instances = systems.len();
+                let ambiguous_with = ambiguous_with.edges(NodeId::Set(key));
+                let before = dependency.edges_directed(NodeId::Set(key), Incoming);
+                let after = dependency.edges_directed(NodeId::Set(key), Outgoing);
+                let relations = before.count() + after.count() + ambiguous_with.count();
+                if instances > 1 && relations > 0 {
+                    return Err(SystemTypeSetAmbiguityError(key));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Index<SystemSetKey> for SystemSets {
+    type Output = dyn SystemSet;
+
+    #[track_caller]
+    fn index(&self, key: SystemSetKey) -> &Self::Output {
+        self.get(key).unwrap_or_else(|| {
+            panic!(
+                "System set with key {:?} does not exist in the schedule",
+                key
+            )
+        })
+    }
+}
+
+/// Error returned when calling [`SystemSets::check_type_set_ambiguity`].
+#[derive(Error, Debug)]
+#[error("Tried to order against `{0:?}` in a schedule that has more than one `{0:?}` instance. `{0:?}` is a `SystemTypeSet` and cannot be used for ordering if ambiguous. Use a different set without this restriction.")]
+pub struct SystemTypeSetAmbiguityError(pub SystemSetKey);

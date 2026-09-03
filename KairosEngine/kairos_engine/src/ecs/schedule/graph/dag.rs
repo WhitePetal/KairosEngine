@@ -18,6 +18,9 @@ use crate::{
     hash::FixedHasher,
 };
 
+#[cfg(test)]
+mod tests;
+
 /// A directed acyclic graph structure.
 #[derive(Clone)]
 pub struct Dag<N: GraphNodeId, S: BuildHasher = FixedHasher> {
