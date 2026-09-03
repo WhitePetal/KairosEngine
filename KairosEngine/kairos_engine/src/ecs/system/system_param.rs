@@ -14,7 +14,7 @@ use crate::{
     cell::SyncCell, debug::DebugName, ecs::{
         archetype::Archetypes, bundle::Bundles, change_detection::{
             ComponentTicksMut, ComponentTicksRef, NonSend, NonSendMut, Res, ResMut, Tick,
-        }, component::{ComponentId, Components, Mutable}, entity::{Entities, EntityAllocator}, query::{Access, FilteredAccess, FilteredAccessSet, IterQueryData, QueryData, QueryFilter, QuerySingleError, QueryState, ReadOnlyQueryData}, resource::{IS_RESOURCE, Resource}, system::{Query, Single, SystemMeta}, world::{
+        }, component::{ComponentId, Components, Mutable}, entity::{Entities, EntityAllocator}, query::{Access, FilteredAccess, FilteredAccessSet, IterQueryData, QueryData, QueryFilter, QuerySingleError, QueryState, ReadOnlyQueryData}, resource::{IS_RESOURCE, Resource}, system::{Populated, Query, Single, SystemMeta}, world::{
             DeferredWorld, FilteredResources, FilteredResourcesMut, FromWorld, World,
             unsafe_world_cell::UnsafeWorldCell,
         },
@@ -382,94 +382,52 @@ unsafe impl<'a, 'b, D: ReadOnlyQueryData + 'static, F: QueryFilter + 'static> Re
 {
 }
 
-/// An error that occurs when a system parameter is not valid,
-/// used by system executors to determine what to do with a system.
-///
-/// Returned as an error from [`SystemParam::get_param`],
-/// and handled using the unified error handling mechanisms defined in [`bevy_ecs::error`].
-#[derive(Debug, PartialEq, Eq, Clone, Error)]
-pub struct SystemParamValidationError {
-    /// Whether the system should be skipped.
-    ///
-    /// If `false`, the error should be handled.
-    /// By default, this will result in a panic. See [`error`](`crate::error`) for more information.
-    ///
-    /// This is the default behavior, and is suitable for system params that should *always* be valid,
-    /// either because sensible fallback behavior exists (like [`Query`]) or because
-    /// failures in validation should be considered a bug in the user's logic that must be immediately addressed (like [`Res`]).
-    ///
-    /// If `true`, the system should be skipped.
-    /// This is set by wrapping the system param in [`If`],
-    /// and indicates that the system is intended to only operate in certain application states.
-    pub skipped: bool,
+// SAFETY: Relevant query ComponentId access is applied to SystemMeta. If
+// this Query conflicts with any prior access, a panic will occur.
+unsafe impl<D: QueryData + 'static, F: QueryFilter + 'static> SystemParam
+    for Populated<'_, '_, D, F>
+{
+    type State = QueryState<D, F>;
 
-    /// A message describing the validation error.
-    pub message: Cow<'static, str>,
+    type Item<'w, 's> = Populated<'w, 's, D, F>;
 
-    /// A string identifying the invalid parameter.
-    /// This is usually the type name of the parameter.
-    pub param: DebugName,
-
-    /// A string identifying the field within a parameter using `#[derive(SystemParam)]`.
-    /// This will be an empty string for other parameters.
-    ///
-    /// This will be printed after `param` in the `Display` impl, and should include a `::` prefix if non-empty.
-    pub field: Cow<'static, str>,
-}
-
-impl SystemParamValidationError {
-    /// Constructs a `SystemParamValidationError` that skips the system.
-    /// The parameter name is initialized to the type name of `T`, so a `SystemParam` should usually pass `Self`.
-    pub fn skipped<T>(message: impl Into<Cow<'static, str>>) -> Self {
-        Self::new::<T>(true, message, Cow::Borrowed(""))
+    fn init_state(world: &mut World) -> Self::State {
+        Query::init_state(world)
     }
 
-    /// Constructs a `SystemParamValidationError` for an invalid parameter that should be treated as an error.
-    /// The parameter name is initialized to the type name of `T`, so a `SystemParam` should usually pass `Self`.
-    pub fn invalid<T>(message: impl Into<Cow<'static, str>>) -> Self {
-        Self::new::<T>(false, message, Cow::Borrowed(""))
+    fn init_access(
+        state: &Self::State,
+        system_meta: &mut SystemMeta,
+        component_access_set: &mut FilteredAccessSet,
+        world: &mut World,
+    ) {
+        Query::init_access(state, system_meta, component_access_set, world);
     }
 
-    /// Constructs a `SystemParamValidationError` for an invalid parameter.
-    /// The parameter name is initialized to the type name of `T`, so a `SystemParam` should usually pass `Self`.
-    pub fn new<T>(
-        skipped: bool,
-        message: impl Into<Cow<'static, str>>,
-        field: impl Into<Cow<'static, str>>,
-    ) -> Self {
-        Self {
-            skipped,
-            message: message.into(),
-            param: DebugName::type_name::<T>(),
-            field: field.into(),
+    #[inline]
+    unsafe fn get_param<'world, 'state>(
+        state: &'state mut Self::State,
+        system_meta: &SystemMeta,
+        world: UnsafeWorldCell<'world>,
+        change_tick: Tick,
+    ) -> Result<Self::Item<'world, 'state>, SystemParamValidationError> {
+        let query = unsafe {
+            Query::get_param(state, system_meta, world, change_tick)?
+        };
+        if query.is_empty() {
+            Err(SystemParamValidationError::skipped::<Self>(
+                "No matching entities",
+            ))
+        } else {
+            Ok(Populated(query))
         }
     }
-
-    pub(crate) const EMPTY: Self = Self {
-        skipped: false,
-        message: Cow::Borrowed(""),
-        param: DebugName::borrowed(""),
-        field: Cow::Borrowed(""),
-    };
 }
 
-impl Display for SystemParamValidationError {
-    fn fmt(&self, fmt: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
-        write!(
-            fmt,
-            "Parameter `{}{}` failed validation: {}",
-            self.param.shortname(),
-            self.field,
-            self.message
-        )?;
-        if !self.skipped {
-            write!(
-                fmt,
-                "\nIf this is an expected state, wrap the parameter in `Option<T>` and handle `None` when it happens, or wrap the parameter in `If<T>` to skip the system when it happens."
-            )?;
-        }
-        Ok(())
-    }
+// SAFETY: QueryState is constrained to read-only fetches, so it only reads World.
+unsafe impl<'w, 's, D: ReadOnlyQueryData + 'static, F: QueryFilter + 'static> ReadOnlySystemParam
+    for Populated<'w, 's, D, F>
+{
 }
 
 /// A collection of potentially conflicting [`SystemParam`]s allowed by disjoint access.
@@ -2726,4 +2684,92 @@ unsafe impl SystemParam for FilteredResourcesMut<'_, '_> {
     }
 }
 
-// TODO!
+/// An error that occurs when a system parameter is not valid,
+/// used by system executors to determine what to do with a system.
+///
+/// Returned as an error from [`SystemParam::get_param`],
+/// and handled using the unified error handling mechanisms defined in [`bevy_ecs::error`].
+#[derive(Debug, PartialEq, Eq, Clone, Error)]
+pub struct SystemParamValidationError {
+    /// Whether the system should be skipped.
+    ///
+    /// If `false`, the error should be handled.
+    /// By default, this will result in a panic. See [`error`](`crate::error`) for more information.
+    ///
+    /// This is the default behavior, and is suitable for system params that should *always* be valid,
+    /// either because sensible fallback behavior exists (like [`Query`]) or because
+    /// failures in validation should be considered a bug in the user's logic that must be immediately addressed (like [`Res`]).
+    ///
+    /// If `true`, the system should be skipped.
+    /// This is set by wrapping the system param in [`If`],
+    /// and indicates that the system is intended to only operate in certain application states.
+    pub skipped: bool,
+
+    /// A message describing the validation error.
+    pub message: Cow<'static, str>,
+
+    /// A string identifying the invalid parameter.
+    /// This is usually the type name of the parameter.
+    pub param: DebugName,
+
+    /// A string identifying the field within a parameter using `#[derive(SystemParam)]`.
+    /// This will be an empty string for other parameters.
+    ///
+    /// This will be printed after `param` in the `Display` impl, and should include a `::` prefix if non-empty.
+    pub field: Cow<'static, str>,
+}
+
+impl SystemParamValidationError {
+    /// Constructs a `SystemParamValidationError` that skips the system.
+    /// The parameter name is initialized to the type name of `T`, so a `SystemParam` should usually pass `Self`.
+    pub fn skipped<T>(message: impl Into<Cow<'static, str>>) -> Self {
+        Self::new::<T>(true, message, Cow::Borrowed(""))
+    }
+
+    /// Constructs a `SystemParamValidationError` for an invalid parameter that should be treated as an error.
+    /// The parameter name is initialized to the type name of `T`, so a `SystemParam` should usually pass `Self`.
+    pub fn invalid<T>(message: impl Into<Cow<'static, str>>) -> Self {
+        Self::new::<T>(false, message, Cow::Borrowed(""))
+    }
+
+    /// Constructs a `SystemParamValidationError` for an invalid parameter.
+    /// The parameter name is initialized to the type name of `T`, so a `SystemParam` should usually pass `Self`.
+    pub fn new<T>(
+        skipped: bool,
+        message: impl Into<Cow<'static, str>>,
+        field: impl Into<Cow<'static, str>>,
+    ) -> Self {
+        Self {
+            skipped,
+            message: message.into(),
+            param: DebugName::type_name::<T>(),
+            field: field.into(),
+        }
+    }
+
+    pub(crate) const EMPTY: Self = Self {
+        skipped: false,
+        message: Cow::Borrowed(""),
+        param: DebugName::borrowed(""),
+        field: Cow::Borrowed(""),
+    };
+}
+
+impl Display for SystemParamValidationError {
+    fn fmt(&self, fmt: &mut core::fmt::Formatter<'_>) -> Result<(), core::fmt::Error> {
+        write!(
+            fmt,
+            "Parameter `{}{}` failed validation: {}",
+            self.param.shortname(),
+            self.field,
+            self.message
+        )?;
+        if !self.skipped {
+            write!(
+                fmt,
+                "\nIf this is an expected state, wrap the parameter in `Option<T>` and handle `None` when it happens, or wrap the parameter in `If<T>` to skip the system when it happens."
+            )?;
+        }
+        Ok(())
+    }
+}

@@ -1,4 +1,9 @@
-// TODO!
+// use std::{cell::RefCell, marker::PhantomData};
+
+// use kairos_ecs_macros::{SystemParam};
+
+// use crate::ecs::{change_detection::{NonSend, NonSendMut, Res, ResMut}, message::{Message, MessageReader}, query::{QueryData, QueryFilter, Without}, resource::{IsResource, Resource}, system::{DynSystemParam, Local, ParamSet, Query, assert_is_system}, world::{EntityMut, FromWorld, World}};
+
 // #[test]
 // #[should_panic]
 // fn non_send_alias() {
@@ -10,7 +15,7 @@
 //     }
 //     let mut world = World::new();
 //     world.insert_non_send(A(42));
-//     let mut schedule = crate::schedule::Schedule::default();
+//     let mut schedule = crate::ecs::schedule::Schedule::default();
 //     schedule.add_systems(my_system);
 //     schedule.run(&mut world);
 // }
@@ -238,7 +243,7 @@
 //     }
 
 //     let mut world = World::new();
-//     let mut schedule = crate::schedule::Schedule::default();
+//     let mut schedule = crate::ecs::schedule::Schedule::default();
 //     schedule.add_systems(non_sync_system);
 //     schedule.run(&mut world);
 // }
@@ -253,7 +258,7 @@
 
 //     let mut world = World::new();
 //     world.insert_non_send(core::ptr::null_mut::<u8>());
-//     let mut schedule = crate::schedule::Schedule::default();
+//     let mut schedule = crate::ecs::schedule::Schedule::default();
 //     schedule.add_systems((non_send_param_set, non_send_param_set, non_send_param_set));
 //     schedule.run(&mut world);
 // }
@@ -268,7 +273,7 @@
 
 //     let mut world = World::new();
 //     world.insert_non_send(core::ptr::null_mut::<u8>());
-//     let mut schedule = crate::schedule::Schedule::default();
+//     let mut schedule = crate::ecs::schedule::Schedule::default();
 //     schedule.add_systems((non_send_param_set, non_send_param_set, non_send_param_set));
 //     schedule.run(&mut world);
 // }
@@ -287,7 +292,7 @@
 //     #[derive(Resource)]
 //     pub struct MissingResource;
 
-//     let mut schedule = crate::schedule::Schedule::default();
+//     let mut schedule = crate::ecs::schedule::Schedule::default();
 //     schedule.add_systems(res_system);
 //     let mut world = World::new();
 //     schedule.run(&mut world);
@@ -298,12 +303,10 @@
 // #[test]
 // #[should_panic]
 // fn missing_message_error() {
-//     use crate::prelude::{Message, MessageReader};
-
 //     #[derive(Message)]
 //     pub struct MissingEvent;
 
-//     let mut schedule = crate::schedule::Schedule::default();
+//     let mut schedule = crate::ecs::schedule::Schedule::default();
 //     schedule.add_systems(message_system);
 //     let mut world = World::new();
 //     schedule.run(&mut world);
