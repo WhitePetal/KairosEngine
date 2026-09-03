@@ -1,5 +1,9 @@
 use crate::ecs::{
-    change_detection::Tick, query::Access, world::unsafe_world_cell::UnsafeWorldCell,
+    change_detection::Tick,
+    component::ComponentId,
+    query::Access,
+    resource::Resource,
+    world::{World, unsafe_world_cell::UnsafeWorldCell},
 };
 
 /// Provides read-only access to a set of [`Resource`]s defined by the contained [`Access`].
@@ -279,6 +283,119 @@ impl<'w, 's> FilteredResourcesMut<'w, 's> {
             last_run,
             this_run,
         }
+    }
+}
+
+/// Builder struct to define the access for a [`FilteredResources`].
+///
+/// This is passed to a callback in [`FilteredResourcesParamBuilder`](crate::system::FilteredResourcesParamBuilder).
+pub struct FilteredResourcesBuilder<'w> {
+    world: &'w mut World,
+    access: Access,
+}
+
+impl<'w> FilteredResourcesBuilder<'w> {
+    /// Creates a new builder with no access.
+    pub fn new(world: &'w mut World) -> Self {
+        Self {
+            world,
+            access: Access::new(),
+        }
+    }
+
+    /// Returns a reference to the underlying [`Access`].
+    pub fn access(&self) -> &Access {
+        &self.access
+    }
+
+    /// Add accesses required to read all resources.
+    pub fn add_read_all(&mut self) -> &mut Self {
+        self.access.read_all();
+        self
+    }
+
+    /// Add accesses required to read the resource of the given type.
+    pub fn add_read<R: Resource>(&mut self) -> &mut Self {
+        let component_id = self
+            .world
+            .components_registrator()
+            .register_component::<R>();
+        self.add_read_by_id(component_id)
+    }
+
+    /// Add accesses required to read the resource with the given [`ComponentId`].
+    pub fn add_read_by_id(&mut self, component_id: ComponentId) -> &mut Self {
+        self.access.add_read(component_id);
+        self
+    }
+
+    /// Create an [`Access`] that represents the accesses of the builder.
+    pub fn build(self) -> Access {
+        self.access
+    }
+}
+
+/// Builder struct to define the access for a [`FilteredResourcesMut`].
+///
+/// This is passed to a callback in [`FilteredResourcesMutParamBuilder`](crate::system::FilteredResourcesMutParamBuilder).
+pub struct FilteredResourcesMutBuilder<'w> {
+    world: &'w mut World,
+    access: Access,
+}
+
+impl<'w> FilteredResourcesMutBuilder<'w> {
+    /// Creates a new builder with no access.
+    pub fn new(world: &'w mut World) -> Self {
+        Self {
+            world,
+            access: Access::new(),
+        }
+    }
+
+    /// Returns a reference to the underlying [`Access`].
+    pub fn access(&self) -> &Access {
+        &self.access
+    }
+
+    /// Add accesses required to read the resource of the given type.
+    pub fn add_read<R: Resource>(&mut self) -> &mut Self {
+        let component_id = self
+            .world
+            .components_registrator()
+            .register_component::<R>();
+        self.add_read_by_id(component_id)
+    }
+
+    /// Add accesses required to read the resource with the given [`ComponentId`].
+    pub fn add_read_by_id(&mut self, component_id: ComponentId) -> &mut Self {
+        self.access.add_read(component_id);
+        self
+    }
+
+    /// Add accesses required to get mutable access to all resources.
+    pub fn add_write_all(&mut self) -> &mut Self {
+        self.access.write_all();
+        self
+    }
+
+    /// Add accesses required to get mutable access to the resource of the given type.
+    pub fn add_write<R: Resource>(&mut self) -> &mut Self {
+        let component_id = self
+            .world
+            .components_registrator()
+            .register_component::<R>();
+        self.add_write_by_id(component_id)
+    }
+
+    /// Add accesses required to get mutable access to the resource with the given [`ComponentId`].
+    pub fn add_write_by_id(&mut self, component_id: ComponentId) -> &mut Self {
+        self.access.add_write(component_id);
+        self
+    }
+
+    /// Create an [`Access`] that represents the accesses of the builder.
+    pub fn build(self) -> Access {
+        self.access
     }
 }
 

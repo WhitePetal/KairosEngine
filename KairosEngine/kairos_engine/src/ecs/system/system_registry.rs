@@ -5,7 +5,7 @@ use thiserror::Error;
 use crate::{
     debug::DebugName,
     ecs::{
-        component::{Component, Mutable, StorageType},
+        component::Component,
         entity::Entity,
         error::KairosError,
         system::{BoxedSystem, IntoSystem, SystemInput, SystemParamValidationError},
@@ -14,22 +14,11 @@ use crate::{
 };
 
 /// A small wrapper for [`BoxedSystem`] that also keeps track whether or not the system has been initialized.
-// #[derive(Component)]
-// #[require(SystemIdMarker = SystemIdMarker::typed_system_id_marker::<I, O>())]
+#[derive(Component)]
+#[require(SystemIdMarker = SystemIdMarker::typed_system_id_marker::<I, O>())]
 pub(crate) struct RegisteredSystem<I, O> {
     initialized: bool,
     system: Option<BoxedSystem<I, O>>,
-}
-
-// TODO: use derive
-impl<I, O> Component for RegisteredSystem<I, O>
-where
-    I: 'static,
-    O: 'static,
-{
-    const STORAGE_TYPE: StorageType = StorageType::Table;
-
-    type Mutability = Mutable;
 }
 
 impl<I, O> RegisteredSystem<I, O> {
@@ -66,18 +55,10 @@ impl Default for TypeIdAndName {
 }
 
 /// Marker [`Component`](bevy_ecs::component::Component) for identifying [`SystemId`] [`Entity`]s.
-// #[derive(Debug, Default, Clone, Component)]
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Component)]
 pub struct SystemIdMarker {
     input_type_id: TypeIdAndName,
     output_type_id: TypeIdAndName,
-}
-
-// TODO: use derive
-impl Component for SystemIdMarker {
-    const STORAGE_TYPE: StorageType = StorageType::Table;
-
-    type Mutability = Mutable;
 }
 
 impl SystemIdMarker {
@@ -87,6 +68,15 @@ impl SystemIdMarker {
             output_type_id: TypeIdAndName::new::<O>(),
         }
     }
+}
+
+/// A system that has been removed from the registry.
+/// It contains the system and whether or not it has been initialized.
+///
+/// This struct is returned by [`World::unregister_system`].
+pub struct RemovedSystem<I = (), O = ()> {
+    initialized: bool,
+    system: BoxedSystem<I, O>,
 }
 
 impl<I, O> RemovedSystem<I, O> {
@@ -100,15 +90,6 @@ impl<I, O> RemovedSystem<I, O> {
     pub fn system(self) -> BoxedSystem<I, O> {
         self.system
     }
-}
-
-/// A system that has been removed from the registry.
-/// It contains the system and whether or not it has been initialized.
-///
-/// This struct is returned by [`World::unregister_system`].
-pub struct RemovedSystem<I = (), O = ()> {
-    initialized: bool,
-    system: BoxedSystem<I, O>,
 }
 
 /// An identifier for a registered system.

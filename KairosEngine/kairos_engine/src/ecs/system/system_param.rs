@@ -11,14 +11,28 @@ use thiserror::Error;
 use variadics_please::{all_tuples, all_tuples_enumerated};
 
 use crate::{
-    cell::SyncCell, debug::DebugName, ecs::{
-        archetype::Archetypes, bundle::Bundles, change_detection::{
+    cell::SyncCell,
+    debug::DebugName,
+    ecs::{
+        archetype::Archetypes,
+        bundle::Bundles,
+        change_detection::{
             ComponentTicksMut, ComponentTicksRef, NonSend, NonSendMut, Res, ResMut, Tick,
-        }, component::{ComponentId, Components, Mutable}, entity::{Entities, EntityAllocator}, query::{Access, FilteredAccess, FilteredAccessSet, IterQueryData, QueryData, QueryFilter, QuerySingleError, QueryState, ReadOnlyQueryData}, resource::{IS_RESOURCE, Resource}, system::{Populated, Query, Single, SystemMeta}, world::{
+        },
+        component::{ComponentId, Components, Mutable},
+        entity::{Entities, EntityAllocator},
+        query::{
+            Access, FilteredAccess, FilteredAccessSet, IterQueryData, QueryData, QueryFilter,
+            QuerySingleError, QueryState, ReadOnlyQueryData,
+        },
+        resource::{IS_RESOURCE, Resource},
+        system::{Populated, Query, Single, SystemMeta},
+        world::{
             DeferredWorld, FilteredResources, FilteredResourcesMut, FromWorld, World,
             unsafe_world_cell::UnsafeWorldCell,
         },
-    }, ptr::UnsafeCellDeref,
+    },
+    ptr::UnsafeCellDeref,
 };
 
 pub use kairos_ecs_macros::SystemParam;
@@ -321,9 +335,7 @@ unsafe impl<D: QueryData + 'static, F: QueryFilter + 'static> SystemParam for Qu
         // so the caller ensures that `world` has permission to access any
         // world data that the query needs.
         // The caller ensures the world matches the one used in init_state.
-        Ok(unsafe {
-            state.query_unchecked_with_ticks(world, system_meta.last_run, change_tick)
-        })
+        Ok(unsafe { state.query_unchecked_with_ticks(world, system_meta.last_run, change_tick) })
     }
 }
 
@@ -358,9 +370,8 @@ unsafe impl<'a, 'b, D: IterQueryData + 'static, F: QueryFilter + 'static> System
     ) -> Result<Self::Item<'world, 'state>, SystemParamValidationError> {
         // SAFETY: State ensures that the components it accesses are not accessible somewhere elsewhere.
         // The caller ensures the world matches the one used in init_state.
-        let query = unsafe {
-            state.query_unchecked_with_ticks(world, system_meta.last_run, change_tick)
-        };
+        let query =
+            unsafe { state.query_unchecked_with_ticks(world, system_meta.last_run, change_tick) };
         match query.single_inner() {
             Ok(single) => Ok(Single {
                 item: single,
@@ -371,7 +382,7 @@ unsafe impl<'a, 'b, D: IterQueryData + 'static, F: QueryFilter + 'static> System
             ),
             Err(QuerySingleError::MultipleEntities(_)) => Err(
                 SystemParamValidationError::skipped::<Self>("Multiple matching entities"),
-            )
+            ),
         }
     }
 }
@@ -411,9 +422,7 @@ unsafe impl<D: QueryData + 'static, F: QueryFilter + 'static> SystemParam
         world: UnsafeWorldCell<'world>,
         change_tick: Tick,
     ) -> Result<Self::Item<'world, 'state>, SystemParamValidationError> {
-        let query = unsafe {
-            Query::get_param(state, system_meta, world, change_tick)?
-        };
+        let query = unsafe { Query::get_param(state, system_meta, world, change_tick)? };
         if query.is_empty() {
             Err(SystemParamValidationError::skipped::<Self>(
                 "No matching entities",
