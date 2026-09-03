@@ -1,5 +1,14 @@
-use crate::ecs::{bundle::Bundle, event::Event, observer::On, system::System};
+use crate::ecs::{
+    bundle::Bundle,
+    event::Event,
+    observer::On,
+    system::{IntoSystem, System},
+};
 
+#[cfg(test)]
+mod tests;
+
+/// Implemented for [`System`]s that have [`On`] as the first argument.
 pub trait ObserverSystem<E: Event, B: Bundle, Out = ()>:
     System<In = On<'static, 'static, E, B>, Out = Out> + Send + 'static
 {
@@ -30,4 +39,16 @@ pub trait IntoObserverSystem<E: Event, B: Bundle, M, Out = ()>: Send + 'static {
     fn into_system(this: Self) -> Self::System;
 }
 
-// TODO!
+impl<E: Event, B, M, Out, S> IntoObserverSystem<E, B, M, Out> for S
+where
+    S: IntoSystem<On<'static, 'static, E, B>, Out, M> + Send + 'static,
+    S::System: ObserverSystem<E, B, Out>,
+    E: 'static,
+    B: Bundle,
+{
+    type System = S::System;
+
+    fn into_system(this: Self) -> Self::System {
+        IntoSystem::into_system(this)
+    }
+}

@@ -1,6 +1,7 @@
 //! Defines the [`World`] and APIs for accessing it directly.
 
 use std::{
+    any::TypeId,
     fmt,
     mem::ManuallyDrop,
     sync::atomic::{AtomicU32, Ordering},
@@ -1693,6 +1694,36 @@ impl World {
         let prev_tick = *change_tick;
         *change_tick = change_tick.wrapping_add(1);
         Tick::new(prev_tick)
+    }
+
+    /// Inserts a new resource with the given `value`.
+    ///
+    /// Resources are "unique" data of a given type.
+    /// If you insert a resource of a type that already exists,
+    /// you will overwrite any existing data.
+    #[inline]
+    #[track_caller]
+    pub fn insert_resource<R: Resource>(&mut self, value: R) {
+        self.insert_resource_with_caller(value, MaybeLocation::caller());
+    }
+
+    /// Returns `true` if a resource of type `R` exists. Otherwise returns `false`.
+    #[inline]
+    pub fn contains_resource<R: Resource>(&self) -> bool {
+        self.components
+            .get_valid_id(TypeId::of::<R>())
+            .is_some_and(|component_id| self.contains_resource_by_id(component_id))
+    }
+
+    /// Returns `true` if a resource with provided `component_id` exists. Otherwise returns `false`.
+    #[inline]
+    pub fn contains_resource_by_id(&self, component_id: ComponentId) -> bool {
+        if let Some(entity) = self.resource_entities.get(component_id)
+            && let Ok(entity_ref) = self.get_entity(entity)
+        {
+            return entity_ref.contains_id(component_id);
+        }
+        false
     }
 }
 

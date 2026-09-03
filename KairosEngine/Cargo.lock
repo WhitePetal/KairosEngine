@@ -2327,6 +2327,7 @@ dependencies = [
  "bitflags 2.13.1",
  "bumpalo",
  "bytemuck",
+ "concurrent-queue",
  "criterion",
  "crossbeam-channel",
  "derive_more",
