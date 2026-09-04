@@ -2,14 +2,13 @@ use std::{any::Any, marker::PhantomData, sync::Mutex};
 
 use concurrent_queue::ConcurrentQueue;
 use fixedbitset::FixedBitSet;
+use kairos_tasks::Scope;
 #[cfg(feature = "trace")]
 use tracing::{Span, info_span};
 
 use crate::{
-    cell::SyncUnsafeCell,
-    ecs::{
-        schedule::{ConditionWithAccess, SystemExecutor, SystemSchedule, SystemWithAccess},
-        world::{World, unsafe_world_cell::UnsafeWorldCell},
+    cell::SyncUnsafeCell, ecs::{
+        error::{ErrorContext, ErrorHandler, KairosError}, schedule::{ConditionWithAccess, SystemExecutor, SystemSchedule, SystemWithAccess}, world::{World, unsafe_world_cell::UnsafeWorldCell},
     },
 };
 
@@ -118,12 +117,33 @@ pub struct ExecutorState {
 
 struct Context<'scope, 'env, 'sys> {
     environment: &'env Environment<'env, 'sys>,
-    _todo: PhantomData<&'scope usize>,
+    scope: &'scope Scope<'scope, 'env, ()>,
+    error_handler: ErrorHandler,
 }
 
 impl Default for MultiThreadedExecutor {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl SystemExecutor for MultiThreadedExecutor {
+    fn init(&mut self, schedule: &SystemSchedule) {
+        todo!()
+    }
+
+    fn run(
+        &mut self,
+        schedule: &mut SystemSchedule,
+        world: &mut World,
+        skip_systems: Option<&FixedBitSet>,
+        error_handler: fn(KairosError, ErrorContext),
+    ) {
+        todo!()
+    }
+
+    fn set_apply_final_deferred(&mut self, value: bool) {
+        todo!()
     }
 }
 
@@ -141,26 +161,6 @@ impl MultiThreadedExecutor {
             #[cfg(feature = "trace")]
             executor_span: info_span!("multithreaded executor"),
         }
-    }
-}
-
-impl SystemExecutor for MultiThreadedExecutor {
-    fn init(&mut self, schedule: &SystemSchedule) {
-        todo!()
-    }
-
-    fn run(
-        &mut self,
-        schedule: &mut SystemSchedule,
-        world: &mut World,
-        skip_systems: Option<&FixedBitSet>,
-        error_handler: fn(crate::ecs::error::KairosError, sonic_rs::error::ErrorCode),
-    ) {
-        todo!()
-    }
-
-    fn set_apply_final_deferred(&mut self, value: bool) {
-        todo!()
     }
 }
 

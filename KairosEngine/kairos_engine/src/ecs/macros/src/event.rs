@@ -53,7 +53,7 @@ pub fn derive_event(input: TokenStream) -> TokenStream {
 
     TokenStream::from(quote! {
         impl #impl_generics #kairos_ecs_path::event::Event for #struct_name #type_generics #where_clause {
-            type Trigger<'a> = #trigger
+            type Trigger<'a> = #trigger;
         }
     })
 }

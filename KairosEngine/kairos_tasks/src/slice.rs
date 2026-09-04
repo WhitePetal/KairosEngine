@@ -1,6 +1,5 @@
 use crate::TaskPool;
 
-
 #[cfg(test)]
 mod tests;
 

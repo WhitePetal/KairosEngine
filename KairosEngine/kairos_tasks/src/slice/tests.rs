@@ -1,4 +1,7 @@
-use crate::{TaskPool, slice::{ParallelSlice, ParallelSliceMut}};
+use crate::{
+    TaskPool,
+    slice::{ParallelSlice, ParallelSliceMut},
+};
 
 #[test]
 fn test_par_chunks_map() {

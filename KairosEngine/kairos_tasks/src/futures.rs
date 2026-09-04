@@ -1,6 +1,9 @@
 //! Utilities for working with [`Future`]s.
 
-use std::{pin::pin, task::{Context, Poll, Waker}};
+use std::{
+    pin::pin,
+    task::{Context, Poll, Waker},
+};
 
 /// Consumes a future, polls it once, and immediately returns the output
 /// or returns `None` if it wasn't ready yet.

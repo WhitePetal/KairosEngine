@@ -15,19 +15,22 @@ use crate::{
             Bundle, BundleId, BundleInfo, BundleInserter, BundleSpawner, Bundles, DynamicBundle,
             InsertMode, NoBundleEffect,
         },
-        change_detection::{ComponentTicksMut, Mut, MutUntyped, Tick},
+        change_detection::{
+            CHECK_TICK_THRESHOLD, CheckChangeTicks, ComponentTicksMut, Mut, MutUntyped, Tick,
+        },
         component::{
             Component, ComponentId, ComponentIds, ComponentInfo, Components, ComponentsRegistrator,
             Mutable,
         },
         entity::{Entities, Entity, EntityAllocator, EntityNotSpawnedError, SpawnError},
         error::{ErrorHandler, FallbackErrorHandler},
+        event::Event,
         lifecycle::RemovedComponentMessages,
         observer::Observers,
         query::{QueryData, QueryFilter, QueryState},
         relationship::RelationshipHookMode,
         resource::{Resource, ResourceEntities},
-        schedule::ScheduleLabel,
+        schedule::{ScheduleLabel, Schedules},
         storage::Storages,
         world::{
             command_queue::RawCommandQueue,
@@ -1755,6 +1758,47 @@ impl World {
         I::Item: Bundle<Effect: NoBundleEffect>,
     {
         SpawnBatchIter::new(self, iter.into_iter(), MaybeLocation::caller())
+    }
+
+    /// Iterates all component change ticks and clamps any older than [`MAX_CHANGE_AGE`](crate::change_detection::MAX_CHANGE_AGE).
+    /// This also triggers [`CheckChangeTicks`] observers and returns the same event here.
+    ///
+    /// Calling this method prevents [`Tick`]s overflowing and thus prevents false positives when comparing them.
+    ///
+    /// **Note:** Does nothing and returns `None` if the [`World`] counter has not been incremented at least [`CHECK_TICK_THRESHOLD`]
+    /// times since the previous pass.
+    // TODO: benchmark and optimize
+    pub fn check_change_ticks(&mut self) -> Option<CheckChangeTicks> {
+        let change_tick = self.change_tick();
+        if change_tick.relative_to(self.last_check_tick).get() < CHECK_TICK_THRESHOLD {
+            return None;
+        }
+
+        let check = CheckChangeTicks(change_tick);
+
+        let Storages {
+            ref mut tables,
+            ref mut sparse_sets,
+            ref mut non_sends,
+        } = self.storages;
+
+        #[cfg(feature = "trace")]
+        let _span = tracing::info_span!("check component ticks").entered();
+        tables.check_change_ticks(check);
+        sparse_sets.check_change_ticks(check);
+        non_sends.check_change_ticks(check);
+        self.entities.check_change_ticks(check);
+
+        if let Some(mut schedules) = self.get_resource_mut::<Schedules>() {
+            schedules.check_change_ticks(check);
+        }
+
+        self.trigger(check);
+        self.flush();
+
+        self.last_check_tick = change_tick;
+
+        Some(check)
     }
 }
 

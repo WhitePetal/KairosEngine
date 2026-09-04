@@ -222,4 +222,45 @@ impl<T> SystemSet for SystemTypeSet<T> {
     }
 }
 
+/// A [`SystemSet`] implicitly created when using
+/// [`Schedule::add_systems`](super::Schedule::add_systems) or
+/// [`Schedule::configure_sets`](super::Schedule::configure_sets).
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+pub struct AnonymousSet(usize);
+
+impl AnonymousSet {
+    pub(crate) fn new(id: usize) -> Self {
+        Self(id)
+    }
+}
+
+impl SystemSet for AnonymousSet {
+    fn is_anonymous(&self) -> bool {
+        true
+    }
+
+    fn dyn_clone(&self) -> Box<dyn SystemSet> {
+        Box::new(*self)
+    }
+}
+
+/// Types that can be converted into a [`SystemSet`].
+///
+/// # Usage notes
+///
+/// This trait should only be used as a bound for trait implementations or as an
+/// argument to a function. If a system set needs to be returned from a function
+/// or stored somewhere, use [`SystemSet`] instead of this trait.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` is not a system set",
+    label = "invalid system set"
+)]
+pub trait IntoSystemSet<Marker>: Sized {
+    /// The type of [`SystemSet`] this instance converts into.
+    type Set: SystemSet;
+
+    /// Converts this instance to its associated [`SystemSet`] type.
+    fn into_system_set(self) -> Self::Set;
+}
+
 // TODO!

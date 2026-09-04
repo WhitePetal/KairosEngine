@@ -47,4 +47,31 @@ impl World {
             DeferredWorld::from(self).trigger_raw(event_key, event, trigger, caller);
         }
     }
+
+    /// Triggers the given [`Event`], which will run any [`Observer`]s watching for it.
+    ///
+    /// For a variant that borrows the `event` rather than consuming it, use [`World::trigger_ref`] instead.
+    #[track_caller]
+    pub fn trigger<'a, E: Event<Trigger<'a>: Default>>(&mut self, mut event: E) {
+        self.trigger_ref_with_caller(
+            &mut event,
+            &mut <E::Trigger<'a> as Default>::default(),
+            MaybeLocation::caller(),
+        );
+    }
+
+    /// Triggers the given mutable [`Event`] reference, which will run any [`Observer`]s watching for it.
+    ///
+    /// Compared to [`World::trigger`], this method is most useful when it's necessary to check
+    /// or use the event after it has been modified by observers.
+    #[track_caller]
+    pub fn trigger_ref<'a, E: Event<Trigger<'a>: Default>>(&mut self, event: &mut E) {
+        self.trigger_ref_with_caller(
+            event,
+            &mut <E::Trigger<'a> as Default>::default(),
+            MaybeLocation::caller(),
+        );
+    }
 }
+
+// TODO!

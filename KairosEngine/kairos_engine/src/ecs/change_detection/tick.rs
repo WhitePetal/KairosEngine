@@ -1,5 +1,7 @@
 use std::{cell::UnsafeCell, panic::Location};
 
+use kairos_ecs_macros::Event;
+
 use crate::{debug::MaybeLocation, ecs::change_detection::MAX_CHANGE_AGE};
 
 /// A value that tracks when a system ran relative to other systems.
@@ -102,7 +104,7 @@ impl Tick {
 ///     schedule.0.check_change_ticks(*check);
 /// });
 /// ```
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Event)]
 pub struct CheckChangeTicks(pub(crate) Tick);
 
 impl CheckChangeTicks {

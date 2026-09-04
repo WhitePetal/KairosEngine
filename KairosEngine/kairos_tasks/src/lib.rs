@@ -2,13 +2,13 @@ mod executor;
 pub mod futures;
 mod iter;
 mod slice;
-mod usages;
 mod task_pool;
 mod thread_executor;
+mod usages;
 
+pub use async_task::Task;
 pub use iter::ParallelIterator;
 pub use slice::{ParallelSlice, ParallelSliceMut};
-pub use async_task::Task;
 pub use task_pool::{Scope, TaskPool, TaskPoolBuilder};
 pub use thread_executor::{ThreadExecutor, ThreadExecutorTicker};
 

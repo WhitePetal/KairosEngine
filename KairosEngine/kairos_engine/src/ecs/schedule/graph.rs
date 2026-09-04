@@ -48,7 +48,7 @@ pub(crate) enum Ambiguity {
     /// Ignore warnings with systems in any of these system sets. May contain duplicates.
     IgnoreWithSet(Vec<InternedSystemSet>),
     /// Ignore all warnings.
-    IngnoreAll,
+    IgnoreAll,
 }
 
 /// Metadata about how the node fits in the schedule graph

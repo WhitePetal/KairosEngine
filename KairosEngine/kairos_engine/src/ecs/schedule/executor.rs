@@ -1,15 +1,28 @@
-use fixedbitset::FixedBitSet;
-use sonic_rs::error::ErrorCode;
+use std::any::TypeId;
 
-use crate::ecs::{
-    error::KairosError,
-    schedule::{ConditionWithAccess, SystemKey, SystemSetKey, SystemWithAccess},
-    world::World,
+use fixedbitset::FixedBitSet;
+
+use crate::{
+    debug::DebugName,
+    ecs::{
+        change_detection::{CheckChangeTicks, Tick},
+        error::{ErrorContext, KairosError},
+        query::FilteredAccessSet,
+        schedule::{
+            ConditionWithAccess, InternedSystemSet, IntoSystemSet, SystemKey, SystemSet,
+            SystemSetKey, SystemTypeSet, SystemWithAccess,
+        },
+        system::{RunSystemError, System, SystemIn, SystemStateFlags},
+        world::{DeferredWorld, World, unsafe_world_cell::UnsafeWorldCell},
+    },
 };
 
 mod multi_threaded;
 
 pub use multi_threaded::MultiThreadedExecutor;
+
+#[cfg(test)]
+mod tests;
 
 /// Types that can run a [`SystemSchedule`] on a [`World`].
 pub trait SystemExecutor: Send + Sync {
@@ -22,7 +35,7 @@ pub trait SystemExecutor: Send + Sync {
         schedule: &mut SystemSchedule,
         world: &mut World,
         skip_systems: Option<&FixedBitSet>,
-        error_handler: fn(KairosError, ErrorCode),
+        error_handler: fn(KairosError, ErrorContext),
     );
 
     /// Sets whether deferred system buffers should be applied after all systems have run.
@@ -86,3 +99,104 @@ impl SystemSchedule {
         }
     }
 }
+
+/// A special [`System`] that instructs the executor to call
+/// [`System::apply_deferred`] on the systems that have run but not applied
+/// their [`Deferred`] system parameters (like [`Commands`]) or other system buffers.
+///
+/// ## Scheduling
+///
+/// `ApplyDeferred` systems are scheduled *by default*
+/// - later in the same schedule run (for example, if a system with `Commands` param
+///   is scheduled in `Update`, all the changes will be visible in `PostUpdate`)
+/// - between systems with dependencies if the dependency [has deferred buffers]
+///   (if system `bar` directly or indirectly depends on `foo`, and `foo` uses
+///   `Commands` param, changes to the world in `foo` will be visible in `bar`)
+///
+/// ## Notes
+/// - This system (currently) does nothing if it's called manually or wrapped
+///   inside a [`PipeSystem`].
+/// - Modifying a [`Schedule`] may change the order buffers are applied.
+///
+/// [`System::apply_deferred`]: crate::system::System::apply_deferred
+/// [`Deferred`]: crate::system::Deferred
+/// [`Commands`]: crate::prelude::Commands
+/// [has deferred buffers]: crate::system::System::has_deferred
+/// [`PipeSystem`]: crate::system::PipeSystem
+/// [`Schedule`]: super::Schedule
+#[doc(alias = "apply_system_buffers")]
+pub struct ApplyDeferred;
+
+/// Returns `true` if the [`System`] is an instance of [`ApplyDeferred`].
+pub(super) fn is_apply_deferred(system: &dyn System<In = (), Out = ()>) -> bool {
+    system.system_type() == TypeId::of::<ApplyDeferred>()
+}
+
+impl System for ApplyDeferred {
+    type In = ();
+    type Out = ();
+
+    fn name(&self) -> DebugName {
+        DebugName::borrowed("kairos_ecs::apply_deferred")
+    }
+
+    fn flags(&self) -> SystemStateFlags {
+        // non-send , exclusive , no deferred
+        SystemStateFlags::NON_SEND | SystemStateFlags::EXCLUSIVE
+    }
+
+    unsafe fn run_unsafe(
+        &mut self,
+        _input: SystemIn<'_, Self>,
+        _world: UnsafeWorldCell,
+    ) -> Result<Self::Out, RunSystemError> {
+        // This system does nothing on its own. The executor will apply deferred
+        // commands from other systems instead of running this system.
+        Ok(())
+    }
+
+    #[cfg(feature = "hotpatching")]
+    #[inline]
+    fn refresh_hotpatch(&mut self) {}
+
+    fn run(
+        &mut self,
+        _input: SystemIn<'_, Self>,
+        _world: &mut World,
+    ) -> Result<Self::Out, RunSystemError> {
+        // This system does nothing on its own. The executor will apply deferred
+        // commands from other systems instead of running this system.
+        Ok(())
+    }
+
+    fn apply_deferred(&mut self, _world: &mut World) {}
+
+    fn queue_deferred(&mut self, _world: DeferredWorld) {}
+
+    fn initialize(&mut self, _world: &mut World) -> FilteredAccessSet {
+        FilteredAccessSet::new()
+    }
+
+    fn check_change_tick(&mut self, _check: CheckChangeTicks) {}
+
+    fn default_system_sets(&self) -> Vec<InternedSystemSet> {
+        vec![SystemTypeSet::<Self>::new().intern()]
+    }
+
+    fn get_last_run(&self) -> Tick {
+        // This system is never run, so it has no last run tick.
+        Tick::MAX
+    }
+
+    fn set_last_run(&mut self, _last_run: Tick) {}
+}
+
+impl IntoSystemSet<()> for ApplyDeferred {
+    type Set = SystemTypeSet<Self>;
+
+    fn into_system_set(self) -> Self::Set {
+        SystemTypeSet::<Self>::new()
+    }
+}
+
+// TODO!

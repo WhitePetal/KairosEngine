@@ -2440,6 +2440,7 @@ dependencies = [
  "image",
  "indexmap",
  "kairos_ecs_macros",
+ "kairos_tasks",
  "kira",
  "log",
  "mint",
