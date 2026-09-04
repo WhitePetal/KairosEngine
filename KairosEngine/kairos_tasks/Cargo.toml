@@ -1,0 +1,10 @@
+[package]
+name = "kairos_tasks"
+version = "0.1.0"
+edition = "2024"
+description = "Async task pool, task handles, and parallel iteration primitives for KairosEngine"
+license = "MIT OR Apache-2.0"
+
+# Foundation crate — keep the dependency list minimal on purpose.
+# `kairos_tasks` must never depend on `kairos_engine`.
+[dependencies]

@@ -1,24 +1,117 @@
-use kairos_ecs_macros::Resource;
+use std::{any::TypeId, collections::BTreeSet};
+
+use indexmap::IndexMap;
+use kairos_ecs_macros::{Resource, ScheduleLabel};
 
 use crate::{
-    collections::{FixedHashMap, FixedHashSet},
-    ecs::{
-        schedule::{
-            ConflictingSystems, InternedScheduleLabel, NodeId, SystemSetKey, SystemSets, Systems,
-            graph::{
+    collections::{FixedHashMap, FixedHashSet}, ecs::{
+        component::ComponentId, schedule::{
+            ConflictingSystems, InternedScheduleLabel, NodeId, ScheduleLabel, SystemExecutor, SystemSchedule, SystemSetKey, SystemSets, Systems, default_executor, graph::{
                 Dag, DagGroups,
                 Direction::{Incoming, Outgoing},
                 UnGraph,
-            },
-        },
-        system::System,
-    },
+            }, pass::ScheduleBuildPassObj,
+        }, system::System,
+    }, hash::FixedHasher,
 };
 
 /// Resource that stores [`Schedule`]s mapped to [`ScheduleLabel`]s excluding the current running [`Schedule`].
 #[derive(Default, Resource)]
 pub struct Schedules {
     inner: FixedHashMap<InternedScheduleLabel, Schedule>,
+    /// List of [`ComponentId`]s to ignore when reporting system order ambiguity conflicts
+    pub ingnored_scheduling_ambiguities: BTreeSet<ComponentId>,
+    /// Set of schedule labels that have been removed to execute in [`World::try_schedule_scope`].
+    temporarily_removed: FixedHashSet<InternedScheduleLabel>,
+    /// Set of schedule labels that have attempted to be read in [`World::try_schedule_scope`],
+    /// but have no associated [`Schedule`] in `inner`
+    empty_labels: FixedHashSet<InternedScheduleLabel>,
+}
+
+impl Schedules {
+    /// Constructs an empty `Schedules` with zero initial capacity.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Inserts a labeled schedule into the map.
+    ///
+    /// If the map already had an entry for `label`, `schedule` is inserted,
+    /// and the old schedule is returned. Otherwise, `None` is returned.
+    pub fn insert(&mut self, schedule: Schedule) -> Option<Schedule> {
+        self.temporarily_removed.remove(&schedule.label);
+        // error if above is true
+        self.inner.insert(schedule.label, schedule)
+    }
+
+    /// Inserts a labeled schedule into the map.
+    ///
+    /// If the map already had an entry for `label`, `schedule` is inserted,
+    /// and the old schedule is returned. Otherwise, `None` is returned.
+    pub fn reinsert(&mut self, schedule: Schedule) -> Option<Schedule> {
+        self.temporarily_removed.remove(&schedule.label);
+        // error if above false
+        self.inner.insert(schedule.label, schedule)
+    }
+
+    /// Removes the schedule corresponding to the `label` from the map, returning it if it existed.
+    pub fn remove(&mut self, label: impl ScheduleLabel) -> Option<Schedule> {
+        self.inner.remove(&label.intern())
+    }
+
+    /// Removes the schedule corresponding to the `label` from the map, returning it if it existed, tracks.
+    pub fn remove_temporarily(&mut self, label: impl ScheduleLabel) -> Option<Schedule> {
+        let label = label.intern();
+        let k = self.inner.remove(&label);
+        if k.is_some() {
+            self.temporarily_removed.insert(label);
+            // error if above false
+            self.empty_labels.remove(&label);
+        } else {
+            self.empty_labels.insert(label);
+        }
+        k
+    }
+
+    /// Removes the (schedule, label) pair corresponding to the `label` from the map, returning it if it existed.
+    pub fn remove_entry(
+        &mut self,
+        label: impl ScheduleLabel,
+    ) -> Option<(InternedScheduleLabel, Schedule)> {
+        self.inner.remove_entry(&label.intern())
+    }
+
+    /// Gets a set of temporarily removed schedules
+    pub fn get_temporarily_removed(&self) -> FixedHashSet<InternedScheduleLabel> {
+        self.temporarily_removed.clone()
+    }
+
+    /// Gets a set of empty schedule labels
+    pub fn get_empty_labels(&self) -> FixedHashSet<InternedScheduleLabel> {
+        self.empty_labels.clone()
+    }
+
+    /// Does a schedule with the provided label already exist?
+    pub fn contains(&self, lable: impl ScheduleLabel) -> bool {
+        self.inner.contains_key(&lable.intern())
+    }
+
+    /// Returns a reference to the schedule associated with `label`, if it exists.
+    pub fn get(&self, label: impl ScheduleLabel) -> Option<&Schedule> {
+        self.inner.get(&label.intern())
+    }
+
+    /// Returns a mutable reference to the schedule associated with `label`, if it exists.
+    pub fn get_mut(&mut self, label: impl ScheduleLabel) -> Option<&mut Schedule> {
+        self.inner.get_mut(&label.intern())
+    }
+
+    /// Returns a mutable reference to the schedules associated with `label`, creating one if it doesn't already exist.
+    pub fn entry(&mut self, label: impl ScheduleLabel) -> &mut Schedule {
+        self.inner
+            .entry(label.intern())
+            .or_insert_with(|| Schedule::new(label))
+    }
 }
 
 /// A collection of systems, and the metadata and executor needed to run them
@@ -96,6 +189,32 @@ pub struct Schedules {
 pub struct Schedule {
     label: InternedScheduleLabel,
     graph: ScheduleGraph,
+    executable: SystemSchedule,
+    executor: Box<dyn SystemExecutor>,
+    executor_initialized: bool,
+}
+
+#[derive(ScheduleLabel, Hash, PartialEq, Eq, Debug, Clone)]
+struct DefaultSchedule;
+
+impl Schedule {
+    pub fn new(label: impl ScheduleLabel) -> Self {
+        /// Constructs an empty `Schedule`.
+        let mut this = Self {
+            label: label.intern(),
+            graph: ScheduleGraph::new(),
+            executable: SystemSchedule::new(),
+            executor: default_executor(),
+            executor_initialized: false,
+        };
+        // Call `set_build_settings` to add any default build passes
+        this.set_build_settings(Default::default());
+        this
+    }
+
+    pub fn set_build_settings(&mut self, settings: ScheduleBuildSettings) -> &mut Self {
+        todo!()
+    }
 }
 
 /// Metadata for a [`Schedule`].
@@ -121,6 +240,27 @@ pub struct ScheduleGraph {
     anonymous_sets: usize,
     changed: bool,
     settings: ScheduleBuildSettings,
+    passes: IndexMap<TypeId, Box<dyn ScheduleBuildPassObj>, FixedHasher>,
+}
+
+impl ScheduleGraph {
+    /// Creates an empty [`ScheduleGraph`] with default settings.
+    pub fn new() -> Self {
+        Self {
+            systems: Systems::default(),
+            system_sets: SystemSets::default(),
+            hierarchy: Dag::new(),
+            dependency: Dag::new(),
+            set_systems: DagGroups::default(),
+            ambiguous_with: UnGraph::default(),
+            ambiguous_with_all: FixedHashSet::default(),
+            conflicting_systems: ConflictingSystems::default(),
+            anonymous_sets: 0,
+            changed: false,
+            settings: Default::default(),
+            passes: Default::default(),
+        }
+    }
 }
 
 /// Specifies how schedule construction should respond to detecting a certain kind of issue.

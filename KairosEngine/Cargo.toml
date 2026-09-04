@@ -5,6 +5,7 @@ members = [
     "kairos_engine/src/ecs/macro_logic",
     "kairos_engine/src/macro_utils",
     "kairos_supervisor",
+    "kairos_tasks",
 ]
 resolver = "3"
 

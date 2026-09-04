@@ -84,13 +84,14 @@ cargo run --profile bench    # Benchmark-grade performance
 
 ## 🧱 Architecture
 
-KairosEngine is organized as a Rust workspace with three crates:
+KairosEngine is organized as a Rust workspace with four primary crates:
 
 | Crate | Description |
 |-------|-------------|
 | **`kairos_engine`** | Core engine + built-in editor. The binary target. |
 | **`kairos_ecs_macros`** | Procedural macros powering the ECS system. |
 | **`kairos_supervisor`** | Thin watchdog process for test-harness crash monitoring. |
+| **`kairos_tasks`** | Async task pool & parallel iteration primitives (foundation crate). |
 
 ### Engine Layout
 
