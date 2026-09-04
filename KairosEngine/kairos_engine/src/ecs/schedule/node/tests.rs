@@ -1,6 +1,10 @@
 use kairos_ecs_macros::SystemSet;
 
-use crate::ecs::{schedule::{SystemSet, SystemSets, Systems}, system::IntoSystem, world::World};
+use crate::ecs::{
+    schedule::{SystemSet, SystemSets, Systems},
+    system::IntoSystem,
+    world::World,
+};
 
 #[derive(SystemSet, Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub struct TestSet;

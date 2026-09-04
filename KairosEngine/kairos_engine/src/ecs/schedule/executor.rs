@@ -1,11 +1,15 @@
 use fixedbitset::FixedBitSet;
 use sonic_rs::error::ErrorCode;
 
-use crate::ecs::{error::KairosError, schedule::{ConditionWithAccess, SystemKey, SystemSetKey, SystemWithAccess}, world::World};
+use crate::ecs::{
+    error::KairosError,
+    schedule::{ConditionWithAccess, SystemKey, SystemSetKey, SystemWithAccess},
+    world::World,
+};
 
 mod multi_threaded;
 
-pub use multi_threaded::{MultiThreadedExecutor};
+pub use multi_threaded::MultiThreadedExecutor;
 
 /// Types that can run a [`SystemSchedule`] on a [`World`].
 pub trait SystemExecutor: Send + Sync {

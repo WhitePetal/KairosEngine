@@ -4,15 +4,22 @@ use indexmap::IndexMap;
 use kairos_ecs_macros::{Resource, ScheduleLabel};
 
 use crate::{
-    collections::{FixedHashMap, FixedHashSet}, ecs::{
-        component::ComponentId, schedule::{
-            ConflictingSystems, InternedScheduleLabel, NodeId, ScheduleLabel, SystemExecutor, SystemSchedule, SystemSetKey, SystemSets, Systems, default_executor, graph::{
+    collections::{FixedHashMap, FixedHashSet},
+    ecs::{
+        component::ComponentId,
+        schedule::{
+            ConflictingSystems, InternedScheduleLabel, NodeId, ScheduleLabel, SystemExecutor,
+            SystemSchedule, SystemSetKey, SystemSets, Systems, default_executor,
+            graph::{
                 Dag, DagGroups,
                 Direction::{Incoming, Outgoing},
                 UnGraph,
-            }, pass::ScheduleBuildPassObj,
-        }, system::System,
-    }, hash::FixedHasher,
+            },
+            pass::ScheduleBuildPassObj,
+        },
+        system::System,
+    },
+    hash::FixedHasher,
 };
 
 /// Resource that stores [`Schedule`]s mapped to [`ScheduleLabel`]s excluding the current running [`Schedule`].

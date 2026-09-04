@@ -5,7 +5,13 @@ use fixedbitset::FixedBitSet;
 #[cfg(feature = "trace")]
 use tracing::{Span, info_span};
 
-use crate::{cell::SyncUnsafeCell, ecs::{schedule::{ConditionWithAccess, SystemExecutor, SystemSchedule, SystemWithAccess}, world::{World, unsafe_world_cell::UnsafeWorldCell}}};
+use crate::{
+    cell::SyncUnsafeCell,
+    ecs::{
+        schedule::{ConditionWithAccess, SystemExecutor, SystemSchedule, SystemWithAccess},
+        world::{World, unsafe_world_cell::UnsafeWorldCell},
+    },
+};
 
 /// Borrowed data used by the [`MultiThreadedExecutor`].
 struct Environment<'env, 'sys> {

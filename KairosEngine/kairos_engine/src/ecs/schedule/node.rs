@@ -1,15 +1,31 @@
 use std::{
-    any::TypeId, collections::BTreeSet, fmt::{self, Debug}, ops::{Deref, Index, IndexMut, Range},
+    any::TypeId,
+    collections::BTreeSet,
+    fmt::{self, Debug},
+    ops::{Deref, Index, IndexMut, Range},
 };
 
 use slotmap::{Key, KeyData, SecondaryMap, SlotMap, new_key_type};
 use thiserror::Error;
 
 use crate::{
-    collections::{FixedHashMap, FixedHashSet}, debug::DebugName, ecs::{
-        component::{ComponentId, Components}, query::{AccessConflicts, FilteredAccessSet}, schedule::{
-            BoxedCondition, InternedSystemSet, ScheduleGraph, SystemSet, graph::{DagAnalysis, DagGroups, DiGraph, Direction::{self, Incoming, Outgoing}, GraphNodeId, UnGraph},
-        }, system::{ReadOnlySystem, RunSystemError, ScheduleSystem, System, SystemIn, SystemStateFlags}, world::{DeferredWorld, World, unsafe_world_cell::UnsafeWorldCell},
+    collections::{FixedHashMap, FixedHashSet},
+    debug::DebugName,
+    ecs::{
+        component::{ComponentId, Components},
+        query::{AccessConflicts, FilteredAccessSet},
+        schedule::{
+            BoxedCondition, InternedSystemSet, ScheduleGraph, SystemSet,
+            graph::{
+                DagAnalysis, DagGroups, DiGraph,
+                Direction::{self, Incoming, Outgoing},
+                GraphNodeId, UnGraph,
+            },
+        },
+        system::{
+            ReadOnlySystem, RunSystemError, ScheduleSystem, System, SystemIn, SystemStateFlags,
+        },
+        world::{DeferredWorld, World, unsafe_world_cell::UnsafeWorldCell},
     },
 };
 
@@ -526,7 +542,7 @@ impl Systems {
             conditions
                 .into_iter()
                 .map(ConditionWithAccess::new)
-                .collect()
+                .collect(),
         );
         self.uninit.push(key);
         key
@@ -612,12 +628,12 @@ impl Systems {
                             if !conflicts.is_empty() {
                                 conflicting_systems.push((a, b, conflicts));
                             }
-                        },
+                        }
                         AccessConflicts::All => {
                             // there is no specific component conflicting, but the systems are overall incompatible
                             // for example 2 systems with `Query<EntityMut>`
                             conflicting_systems.push((a, b, Box::new([])));
-                        },
+                        }
                     }
                 }
             }
@@ -892,5 +908,7 @@ impl Index<SystemSetKey> for SystemSets {
 
 /// Error returned when calling [`SystemSets::check_type_set_ambiguity`].
 #[derive(Error, Debug)]
-#[error("Tried to order against `{0:?}` in a schedule that has more than one `{0:?}` instance. `{0:?}` is a `SystemTypeSet` and cannot be used for ordering if ambiguous. Use a different set without this restriction.")]
+#[error(
+    "Tried to order against `{0:?}` in a schedule that has more than one `{0:?}` instance. `{0:?}` is a `SystemTypeSet` and cannot be used for ordering if ambiguous. Use a different set without this restriction."
+)]
 pub struct SystemTypeSetAmbiguityError(pub SystemSetKey);
