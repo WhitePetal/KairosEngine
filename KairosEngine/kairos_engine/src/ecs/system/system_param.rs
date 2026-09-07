@@ -619,6 +619,7 @@ macro_rules! impl_param_set {
                 <($($param,)*) as SystemParam>::queue(state, system_meta, world.reborrow());
             }
 
+            #[inline]
             unsafe fn get_param<'w, 's>(
                 state: &'s mut Self::State,
                 system_meta: &SystemMeta,
@@ -2063,7 +2064,7 @@ macro_rules! impl_system_param_tuple {
         #[allow(clippy::unused_unit, reason = "Zero length tuple is unit.")]
         $(#[$meta])*
         // SAFETY: implementers of each `SystemParam` in the tuple have validated their impls
-        unsafe impl <$($param: SystemParam),*> SystemParam for ($($param,)*) {
+        unsafe impl<$($param: SystemParam),*> SystemParam for ($($param,)*) {
             type State = ($($param::State,)*);
             type Item<'w, 's> = ($($param::Item::<'w, 's>,)*);
 

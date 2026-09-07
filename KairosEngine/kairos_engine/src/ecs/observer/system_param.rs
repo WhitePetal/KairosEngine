@@ -11,7 +11,8 @@ use crate::{
     ecs::{
         bundle::Bundle,
         entity::Entity,
-        event::{EntityEvent, Event, EventKey},
+        event::{EntityEvent, Event, EventKey, PropagateEntityTrigger},
+        traversal::Traversal,
     },
 };
 
@@ -121,6 +122,46 @@ impl<'w, 't, E: Event, B: Bundle> On<'w, 't, E, B> {
     }
 }
 
+impl<
+    'w,
+    't,
+    const AUTO_PROPAGATE: bool,
+    E: EntityEvent + for<'a> Event<Trigger<'a> = PropagateEntityTrigger<AUTO_PROPAGATE, E, T>>,
+    B: Bundle,
+    T: Traversal<E>,
+> On<'w, 't, E, B>
+{
+    /// Returns the original [`Entity`] that this [`EntityEvent`] targeted via [`EntityEvent::event_target`] when it was _first_ triggered,
+    /// prior to any propagation logic.
+    pub fn original_event_target(&self) -> Entity {
+        self.trigger.original_event_target
+    }
+
+    /// Enables or disables event propagation, allowing the same event to trigger observers on a chain of different entities.
+    ///
+    /// The path an [`EntityEvent`] will propagate along is specified by the [`Traversal`] component defined in [`PropagateEntityTrigger`].
+    ///
+    /// [`EntityEvent`] does not propagate by default. To enable propagation, you must:
+    /// + Enable propagation in [`EntityEvent`] using `#[entity_event(propagate)]`. See [`EntityEvent`] for details.
+    /// + Either call `propagate(true)` in the first observer or in the [`EntityEvent`] derive add `#[entity_event(auto_propagate)]`.
+    ///
+    /// You can prevent an event from propagating further using `propagate(false)`. This will prevent the event from triggering on the next
+    /// [`Entity`] in the [`Traversal`], but note that all remaining observers for the _current_ entity will still run.
+    ///
+    ///
+    /// [`Traversal`]: crate::traversal::Traversal
+    pub fn propagate(&mut self, should_propagate: bool) {
+        self.trigger.propagate = should_propagate;
+    }
+
+    /// Returns the value of the flag that controls event propagation. See [`propagate`] for more information.
+    ///
+    /// [`propagate`]: On::propagate
+    pub fn get_propagate(&self) -> bool {
+        self.trigger.propagate
+    }
+}
+
 impl<'w, 't, E: for<'a> Event<Trigger<'a>: Debug> + Debug, B: Bundle> Debug for On<'w, 't, E, B> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("On")
@@ -154,5 +195,3 @@ pub struct TriggerContext {
     /// The location of the source code that triggered the observer.
     pub caller: MaybeLocation,
 }
-
-// TODO!

@@ -1,6 +1,6 @@
 use crate::ecs::{
     change_detection::{DetectChangesMut, MutUntyped, Tick},
-    component::{Component, ComponentId},
+    component::ComponentId,
     message::{Message, Messages},
     resource::Resource,
     world::World,
@@ -17,8 +17,7 @@ struct RegisteredMessage {
 
 /// A registry of all of the [`Messages`] in the [`World`], used by [`message_update_system`](crate::message::message_update_system)
 /// to update all of the messages.
-// #[derive(Resource, Default)]
-#[derive(Default)]
+#[derive(Resource, Default)]
 pub struct MessageRegistry {
     /// Should the messages be updated?
     ///
@@ -26,16 +25,6 @@ pub struct MessageRegistry {
     pub should_update: ShouldUpdateMessages,
     message_updates: Vec<RegisteredMessage>,
 }
-
-// TODO!: use derive
-impl Component for MessageRegistry {
-    const STORAGE_TYPE: crate::ecs::component::StorageType =
-        crate::ecs::component::StorageType::SparseSet;
-
-    type Mutability = crate::ecs::component::Mutable;
-}
-
-impl Resource for MessageRegistry {}
 
 /// Controls whether or not the messages in an [`MessageRegistry`] should be updated.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]

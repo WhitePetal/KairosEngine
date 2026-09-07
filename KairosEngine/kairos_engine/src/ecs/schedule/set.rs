@@ -5,7 +5,20 @@ use std::{
     marker::PhantomData,
 };
 
-use crate::{debug::DebugName, define_label, ecs::intern::Interned};
+use crate::{
+    debug::DebugName,
+    define_label,
+    ecs::{
+        intern::Interned,
+        system::{
+            ExclusiveSystemParamFunction, FromInput, IntoResult, IsExclusiveFunctionSystem,
+            IsFunctionSystem, SystemParamFunction,
+        },
+    },
+};
+
+#[cfg(test)]
+mod tests;
 
 define_label!(
     /// A strongly-typed class of labels used to identify a [`Schedule`].
@@ -263,4 +276,41 @@ pub trait IntoSystemSet<Marker>: Sized {
     fn into_system_set(self) -> Self::Set;
 }
 
-// TODO!
+// systems sets
+impl<S: SystemSet> IntoSystemSet<()> for S {
+    type Set = Self;
+
+    #[inline]
+    fn into_system_set(self) -> Self::Set {
+        self
+    }
+}
+
+// systems
+impl<Marker, F> IntoSystemSet<(IsFunctionSystem, Marker)> for F
+where
+    Marker: 'static,
+    F: SystemParamFunction<Marker, In: FromInput<()>, Out: IntoResult<()>>,
+{
+    type Set = SystemTypeSet<F>;
+
+    #[inline]
+    fn into_system_set(self) -> Self::Set {
+        SystemTypeSet::<F>::new()
+    }
+}
+
+// exclusive systems
+impl<Marker, F> IntoSystemSet<(IsExclusiveFunctionSystem, Marker)> for F
+where
+    Marker: 'static,
+    F::Out: IntoResult<()>,
+    F: ExclusiveSystemParamFunction<Marker>,
+{
+    type Set = SystemTypeSet<F>;
+
+    #[inline]
+    fn into_system_set(self) -> Self::Set {
+        SystemTypeSet::<F>::new()
+    }
+}

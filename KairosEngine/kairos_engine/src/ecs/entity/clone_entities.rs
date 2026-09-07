@@ -56,28 +56,27 @@ impl<'a> SourceComponent<'a> {
         self.ptr
     }
 
-    // TODO!: need relfect
-    // /// Returns a reference to the component on the source entity as [`&dyn Reflect`](bevy_reflect::Reflect).
-    // ///
-    // /// Will return `None` if:
-    // /// - World does not have [`AppTypeRegistry`](`crate::reflect::AppTypeRegistry`).
-    // /// - Component does not implement [`ReflectFromPtr`](bevy_reflect::ReflectFromPtr).
-    // /// - Component is not registered.
-    // /// - Component does not have [`TypeId`]
-    // /// - Registered [`ReflectFromPtr`](bevy_reflect::ReflectFromPtr)'s [`TypeId`] does not match component's [`TypeId`]
-    // #[cfg(feature = "bevy_reflect")]
-    // pub fn read_reflect(
-    //     &self,
-    //     registry: &bevy_reflect::TypeRegistry,
-    // ) -> Option<&dyn bevy_reflect::Reflect> {
-    //     let type_id = self.info.type_id()?;
-    //     let reflect_from_ptr = registry.get_type_data::<bevy_reflect::ReflectFromPtr>(type_id)?;
-    //     if reflect_from_ptr.type_id() != type_id {
-    //         return None;
-    //     }
-    //     // SAFETY: `source_component_ptr` stores data represented by `component_id`, which we used to get `ReflectFromPtr`.
-    //     unsafe { Some(reflect_from_ptr.as_reflect(self.ptr)) }
-    // }
+    /// Returns a reference to the component on the source entity as [`&dyn Reflect`](bevy_reflect::Reflect).
+    ///
+    /// Will return `None` if:
+    /// - World does not have [`AppTypeRegistry`](`crate::reflect::AppTypeRegistry`).
+    /// - Component does not implement [`ReflectFromPtr`](bevy_reflect::ReflectFromPtr).
+    /// - Component is not registered.
+    /// - Component does not have [`TypeId`]
+    /// - Registered [`ReflectFromPtr`](bevy_reflect::ReflectFromPtr)'s [`TypeId`] does not match component's [`TypeId`]
+    #[cfg(feature = "kairos_reflect")]
+    pub fn read_reflect(
+        &self,
+        registry: &bevy_reflect::TypeRegistry,
+    ) -> Option<&dyn bevy_reflect::Reflect> {
+        let type_id = self.info.type_id()?;
+        let reflect_from_ptr = registry.get_type_data::<bevy_reflect::ReflectFromPtr>(type_id)?;
+        if reflect_from_ptr.type_id() != type_id {
+            return None;
+        }
+        // SAFETY: `source_component_ptr` stores data represented by `component_id`, which we used to get `ReflectFromPtr`.
+        unsafe { Some(reflect_from_ptr.as_reflect(self.ptr)) }
+    }
 }
 
 /// Context for component clone handlers.

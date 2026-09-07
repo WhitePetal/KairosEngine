@@ -20,13 +20,13 @@ use kairos_ecs_macro_logic::{
 use kairos_macro_utils::{
     KairosManifest, derive_label, ensure_no_collision,
     fq_std::{FQDefault, FQIterator, FQOption, FQResult},
-    get_struct_fields,
+    get_struct_fields, pascal_to_snake_case,
 };
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span};
 use quote::{ToTokens, format_ident, quote};
 use syn::{
-    ConstParam, Data, DeriveInput, GenericParam, TypeParam, parse_macro_input, parse_quote,
+    ConstParam, Data, DeriveInput, Fields, GenericParam, TypeParam, parse_macro_input, parse_quote,
     punctuated::Punctuated, token::Comma,
 };
 
@@ -537,6 +537,10 @@ pub(crate) fn kairos_ecs_path() -> syn::Path {
     })
 }
 
+pub(crate) fn kairos_settings_path() -> syn::Path {
+    KairosManifest::shared(|manifest| manifest.get_path("kairos-settings"))
+}
+
 /// Implement the `Event` trait.
 #[proc_macro_derive(Event, attributes(event))]
 pub fn derive_event(input: TokenStream) -> TokenStream {
@@ -593,7 +597,143 @@ pub fn derive_resource(input: TokenStream) -> TokenStream {
     TokenStream::from(resource::derive_resource(&mut ast))
 }
 
-// TODO!: derive_settings_group
+/// Cheat sheet for derive syntax,
+///
+/// ## Group Override
+/// ```ignore
+/// #[derive(SettingsGroup)]
+/// #[settings_group(group = "my_group")]
+/// struct MySettings {
+///     test: true
+/// }
+/// ```
+/// results in:
+/// ```ignore
+/// [my_group]
+/// test = true
+/// ```
+///
+/// ## File Override
+/// ```ignore
+/// #[derive(SettingsGroup)]
+/// #[settings_group(file = "my_file")]
+/// struct MySettings {
+///     test: true
+/// }
+/// ```
+/// results in a different file being used as the source of the settings.
+///
+/// ## Key Override
+/// Only valid for enums, as struct keys are always derived from the field name.
+/// ```ignore
+/// #[derive(SettingsGroup)]
+/// #[settings_group(key = "my_key")]
+/// enum MySettingsEnum {
+///     Variant1,
+///     Variant2
+/// };
+/// ```
+/// results in:
+/// ```ignore
+/// [my_settings_enum]
+/// my_key = "variant1"
+/// ```
+#[proc_macro_derive(SettingsGroup, attributes(settings_group))]
+pub fn derive_settings_group(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+
+    let name = &input.ident;
+
+    let path = kairos_settings_path();
+
+    let (override_group_name, override_key_name, override_file) = {
+        let mut override_group_name: Option<String> = None;
+        let mut override_key_name: Option<String> = None;
+        let mut override_file: Option<String> = None;
+
+        input
+            .attrs
+            .iter()
+            .find(|attr| attr.path().is_ident("settings_group"))
+            .and_then(|attr| {
+                attr.parse_nested_meta(|meta| {
+                    if meta.path.is_ident("group") {
+                        let value = meta.value()?;
+                        let s: syn::LitStr = value.parse()?;
+                        override_group_name = Some(s.value());
+                        Ok(())
+                    } else if meta.path.is_ident("key") {
+                        let value = meta.value()?;
+                        let s: syn::LitStr = value.parse()?;
+                        override_key_name = Some(s.value());
+                        Ok(())
+                    } else if meta.path.is_ident("file") {
+                        let value = meta.value()?;
+                        let s: syn::LitStr = value.parse()?;
+                        override_file = Some(s.value());
+                        Ok(())
+                    } else {
+                        Err(meta.error("unsupported attribute"))
+                    }
+                })
+                .ok()
+            });
+
+        (override_group_name, override_key_name, override_file)
+    };
+
+    let key_name = match &input.data {
+        Data::Struct(data) => match data.fields {
+            Fields::Named(_) if override_key_name.is_some() => {
+                return syn::Error::new(
+                    Span::call_site(),
+                    "The `key` attribute is not supported for structs with named fields",
+                )
+                .into_compile_error()
+                .into();
+            }
+            Fields::Named(_) => None,
+            Fields::Unnamed(_) | Fields::Unit => {
+                override_key_name.or_else(|| Some(pascal_to_snake_case(&name.to_string())))
+            }
+        },
+        Data::Enum(_) => override_key_name.or(Some(pascal_to_snake_case(&name.to_string()))),
+        Data::Union(_) => {
+            return syn::Error::new(
+                Span::call_site(),
+                "SettingsGroup cannot be derived for unions",
+            )
+            .into_compile_error()
+            .into();
+        }
+    };
+
+    let group_name = override_group_name.unwrap_or(pascal_to_snake_case(&name.to_string()));
+    let key_name = key_name
+        .map(|f| quote! { #FQOption::Some(#f) })
+        .unwrap_or(quote! { #FQOption::None });
+    let file_name = override_file
+        .map(|f| quote! { #FQOption::Some(#f) })
+        .unwrap_or(quote! { #FQOption::None });
+
+    let expanded = quote! {
+        impl #path::SettingsGroup for #name {
+            fn settings_group_name() -> &'static str {
+                #group_name
+            }
+
+            fn settings_key_name() -> #FQOption<&'static str> {
+                #key_name
+            }
+
+            fn settings_source() -> #FQOption<&'static str> {
+                #file_name
+            }
+        }
+    };
+
+    TokenStream::from(expanded)
+}
 
 /// Cheat sheet for derive syntax,
 /// see full explanation and examples on the `Component` trait doc.

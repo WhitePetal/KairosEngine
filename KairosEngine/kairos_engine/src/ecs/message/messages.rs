@@ -6,7 +6,6 @@ use std::{
 use crate::{
     debug::MaybeLocation,
     ecs::{
-        component::Component,
         message::{Message, MessageCursor, MessageId, MessageInstance},
         resource::Resource,
     },
@@ -91,9 +90,12 @@ mod tests;
 /// [`MessageReader`]: super::MessageReader
 /// [`MessageWriter`]: super::MessageWriter
 /// [`message_update_system`]: super::message_update_system
-// #[derive(Debug, Resource)]
-// #[cfg_attr(feature = "bevy_reflect", derive(Reflect), reflect(Resource, Default))]
-#[derive(Debug)]
+#[derive(Debug, Resource)]
+#[cfg_attr(
+    feature = "kairos_reflect",
+    derive(Reflect),
+    reflect(Resource, Default)
+)]
 pub struct Messages<M: Message> {
     /// Holds the oldest still active messages.
     /// Note that `a.start_message_count + a.len()` should always be equal to `messages_b.start_message_count`.
@@ -322,16 +324,6 @@ impl<M: Message> Extend<M> for Messages<M> {
         }
     }
 }
-
-// TODO!: use derive
-impl<M: Message> Component for Messages<M> {
-    const STORAGE_TYPE: crate::ecs::component::StorageType =
-        crate::ecs::component::StorageType::SparseSet;
-
-    type Mutability = crate::ecs::component::Mutable;
-}
-
-impl<M: Message> Resource for Messages<M> {}
 
 #[derive(Debug)]
 // #[cfg_attr(feature = "bevy_reflect", derive(Reflect), reflect(Default))]

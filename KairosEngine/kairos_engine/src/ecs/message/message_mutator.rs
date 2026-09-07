@@ -182,5 +182,3 @@ impl<'w, 's, M: Message> MessageMutator<'w, 's, M> {
         self.messages.write_default()
     }
 }
-
-// TODO!

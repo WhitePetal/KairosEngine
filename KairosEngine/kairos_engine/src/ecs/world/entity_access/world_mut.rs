@@ -348,6 +348,38 @@ impl<'w> EntityWorldMut<'w> {
         self
     }
 
+    /// Inserts a dynamic [`Component`] into the entity.
+    ///
+    /// This will overwrite any previous value(s) of the same component type.
+    ///
+    /// You should prefer to use the typed API [`EntityWorldMut::insert`] where possible.
+    ///
+    /// # Safety
+    ///
+    /// - [`ComponentId`] must be from the same world as [`EntityWorldMut`]
+    /// - [`OwningPtr`] must be a valid reference to the type represented by [`ComponentId`]
+    ///
+    /// # Panics
+    ///
+    /// If the entity has been despawned while this `EntityWorldMut` is still alive.
+    #[track_caller]
+    pub unsafe fn insert_by_id(
+        &mut self,
+        component_id: ComponentId,
+        component: OwningPtr<'_>,
+    ) -> &mut Self {
+        // SAFETY: Upheld by caller
+        unsafe {
+            self.insert_by_id_with_caller(
+                component_id,
+                component,
+                InsertMode::Replace,
+                MaybeLocation::caller(),
+                RelationshipHookMode::Run,
+            )
+        }
+    }
+
     /// Updates the internal entity location to match the current location in the internal
     /// [`World`].
     ///
@@ -1091,6 +1123,12 @@ impl<'w> EntityWorldMut<'w> {
         // A command must have already despawned it (err) or otherwise made the free unneeded (ex by spawning and despawning in commands); don't free
     }
 
+    /// Ensures any commands triggered by the actions of Self are applied, equivalent to [`World::flush`]
+    pub fn flush(self) -> Entity {
+        self.world.flush();
+        self.entity
+    }
+
     /// Creates an [`Observer`](crate::observer::Observer) watching for an [`EntityEvent`] of type `E` whose [`EntityEvent::event_target`]
     /// targets this entity.
     ///
@@ -1284,6 +1322,25 @@ impl<'w> EntityWorldMut<'w> {
             InsertMode::Replace,
             MaybeLocation::caller(),
             relationship_hook_mode,
+        )
+    }
+
+    /// Adds a [`Bundle`] of components to the entity without overwriting.
+    ///
+    /// This will leave any previous value(s) of the same component type
+    /// unchanged.
+    ///
+    /// # Panics
+    ///
+    /// If the entity has been despawned while this `EntityWorldMut` is still alive.
+    #[track_caller]
+    pub fn insert_if_new<T: Bundle>(&mut self, bundle: T) -> &mut Self {
+        move_as_ptr!(bundle);
+        self.insert_with_caller(
+            bundle,
+            InsertMode::Keep,
+            MaybeLocation::caller(),
+            RelationshipHookMode::Run,
         )
     }
 

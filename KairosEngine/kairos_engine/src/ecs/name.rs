@@ -12,10 +12,7 @@ use serde::{
 };
 
 use crate::{
-    ecs::{
-        component::{Component, Mutable},
-        entity::Entity,
-    },
+    ecs::{component::Component, entity::Entity},
     hash::FixedHashed,
 };
 
@@ -23,15 +20,21 @@ use crate::{
 #[derive(Clone)]
 pub struct HashedStr(FixedHashed<Cow<'static, str>>);
 
-// TODO!
-#[derive(Clone)]
+/// Component used to identify an entity. Stores a hash for faster comparisons.
+///
+/// The hash is eagerly re-computed upon each update to the name.
+///
+/// [`Name`] should not be treated as a globally unique identifier for entities,
+/// as multiple entities can have the same name.  [`Entity`] should be
+/// used instead as the default unique identifier.
+#[derive(Component, Clone)]
+#[cfg_attr(
+    feature = "kairos_reflect",
+    derive(Reflect),
+    reflect(Component, Default, Debug, Clone, Hash, PartialEq)
+)]
+#[cfg_attr(feature = "kairos_reflect", reflect(Deserialize, Serialize))]
 pub struct Name(pub HashedStr);
-
-impl Component for Name {
-    const STORAGE_TYPE: super::component::StorageType = super::component::StorageType::Table;
-
-    type Mutability = Mutable;
-}
 
 impl Default for Name {
     fn default() -> Self {

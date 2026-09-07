@@ -105,5 +105,3 @@ impl<E: Event, B: Bundle, M, S: IntoObserverSystem<E, B, M>> ObserverWithConditi
         (self.system, conditions)
     }
 }
-
-// TODO!

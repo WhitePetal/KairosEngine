@@ -39,7 +39,7 @@ use log::warn;
 use nonmax::NonMaxU32;
 
 use crate::debug::DebugCheckedUnwrap;
-use crate::ecs::entity::{Entity, EntityIndex};
+use crate::ecs::entity::{Entity, EntityIndex, EntitySetIterator};
 
 #[cfg(test)]
 mod tests;
@@ -147,7 +147,7 @@ impl Chunk {
         // SAFETY: caller ensures we are in bounds and init (because `set` must be in bounds)
         let target = unsafe { &*head.add(index as usize) };
         if ATOMIC {
-            unsafe { target.get_entity() }
+            target.get_entity()
         } else {
             // SAFETY: Caller ensures memory ordering.
             // The `Slot` has the same memory representation as `u64`
@@ -692,7 +692,6 @@ impl FreeList {
         // We also need to prevent this from conflicting with a `free` call, so we check to ensure the state is not disabled.
 
         // We keep track of the attempts so we can yield the thread on std after a few fails.
-        #[cfg(feature = "std")]
         let mut attempts = 1u32;
         // We need an acquire ordering to acquire the most recent memory of `free` calls.
         let mut state = self.len.state(Ordering::Acquire);
@@ -703,7 +702,6 @@ impl FreeList {
             // Then, we can allocate it.
             if state.is_disabled() {
                 // Spin 64 times before yielding.
-                #[cfg(feature = "std")]
                 {
                     attempts += 1;
                     if attempts.is_multiple_of(64) {
@@ -714,8 +712,8 @@ impl FreeList {
                     }
                 }
 
-                #[cfg(not(feature = "std"))]
-                core::hint::spin_loop();
+                // #[cfg(not(feature = "std"))]
+                // core::hint::spin_loop();
 
                 // Retry with the fresh state and acquired memory order.
                 state = self.len.state(Ordering::Acquire);
@@ -849,9 +847,8 @@ impl<'a> Iterator for AllocEntitiesIterator<'a> {
 impl<'a> ExactSizeIterator for AllocEntitiesIterator<'a> {}
 impl<'a> core::iter::FusedIterator for AllocEntitiesIterator<'a> {}
 
-// TODO!: Need EntitySet
 // SAFETY: Newly reserved entity values are unique.
-// unsafe impl EntitySetIterator for AllocEntitiesIterator<'_> {}
+unsafe impl EntitySetIterator for AllocEntitiesIterator<'_> {}
 
 impl Drop for AllocEntitiesIterator<'_> {
     fn drop(&mut self) {

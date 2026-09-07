@@ -19,6 +19,12 @@ use crate::{
 #[cfg(test)]
 mod tests;
 
+/// Type for function that is run when an observer is triggered.
+///
+/// Typically refers to the default runner that runs the system stored in the associated [`Observer`] component,
+/// but can be overridden for custom behavior.
+///
+/// See `observer_system_runner` for safety considerations.
 pub type ObserverRunner =
     unsafe fn(DeferredWorld, observer: Entity, &TriggerContext, event: PtrMut, trigger: PtrMut);
 
@@ -99,13 +105,13 @@ pub(super) unsafe fn observer_system_runner<E: Event, B: Bundle, S: ObserverSyst
     //   and is never exclusive
     // - system is the same type erased system from above
     unsafe {
-        // #[cfg(feature = "hotpatching")]
-        // if world
-        //     .get_resource_ref::<crate::HotPatchChanges>()
-        //     .is_none_or(|r| r.is_changed_after((*system).get_last_run()))
-        // {
-        //     (*system).refresh_hotpatch();
-        // };
+        #[cfg(feature = "hotpatching")]
+        if world
+            .get_resource_ref::<crate::HotPatchChanges>()
+            .is_none_or(|r| r.is_changed_after((*system).get_last_run()))
+        {
+            (*system).refresh_hotpatch();
+        };
 
         if let Err(RunSystemError::Failed(err)) = (*system).run_unsafe(on, world) {
             let handler = state
@@ -122,4 +128,3 @@ pub(super) unsafe fn observer_system_runner<E: Event, B: Bundle, S: ObserverSyst
         (*system).queue_deferred(world.into_deferred());
     }
 }
-// TODO!

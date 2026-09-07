@@ -2,12 +2,8 @@ use crate::ecs::message::{Message, Messages};
 
 #[test]
 fn iter_current_update_messages_iterates_over_current_messages() {
-    // #[derive(Message, Clone)]
-    #[derive(Clone)]
+    #[derive(Message, Clone)]
     struct TestMessage;
-
-    // TODO!: use derive
-    impl Message for TestMessage {}
 
     let mut test_messages = Messages::<TestMessage>::default();
 
@@ -38,12 +34,8 @@ fn iter_current_update_messages_iterates_over_current_messages() {
 
 #[test]
 fn write_batch_iter_size_hint() {
-    // #[derive(Message, Clone, Copy)]
-    #[derive(Clone, Copy)]
+    #[derive(Message, Clone, Copy)]
     struct TestMessage;
-
-    // TODO!: use derive
-    impl Message for TestMessage {}
 
     let mut test_messages = Messages::<TestMessage>::default();
     let write_batch_ids = test_messages.write_batch([TestMessage; 4]);

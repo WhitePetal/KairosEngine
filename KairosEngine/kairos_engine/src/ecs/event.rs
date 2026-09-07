@@ -8,7 +8,7 @@ pub use kairos_ecs_macros::{EntityEvent, Event};
 pub use trigger::*;
 
 use crate::ecs::{
-    component::{Component, ComponentId, Mutable, StorageType},
+    component::{Component, ComponentId},
     entity::Entity,
     world::World,
 };
@@ -360,15 +360,8 @@ pub trait SetEntityEventTarget: EntityEvent {
 ///
 /// This type is an implementation detail and should never be made public.
 // TODO: refactor events to store their metadata on distinct entities, rather than using `ComponentId`
-// TODO!
-// #[derive(Component)]
+#[derive(Component)]
 struct EventWrapperComponent<E: Event>(PhantomData<E>);
-
-impl<E: Event> Component for EventWrapperComponent<E> {
-    const STORAGE_TYPE: super::component::StorageType = StorageType::Table;
-
-    type Mutability = Mutable;
-}
 
 /// A unique identifier for an [`Event`], used by [observers].
 ///

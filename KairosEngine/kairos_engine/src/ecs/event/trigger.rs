@@ -5,7 +5,7 @@ use crate::{
         archetype::Archetype,
         component::ComponentId,
         entity::Entity,
-        event::{self, EntityEvent, Event, SetEntityEventTarget},
+        event::{EntityEvent, Event, SetEntityEventTarget},
         observer::{CachedObservers, TriggerContext},
         traversal::Traversal,
         world::DeferredWorld,

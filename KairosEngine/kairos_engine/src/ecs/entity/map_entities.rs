@@ -370,5 +370,3 @@ impl<'m> SceneEntityMapper<'m> {
         result
     }
 }
-
-// TODO!
