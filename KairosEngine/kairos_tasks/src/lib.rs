@@ -11,6 +11,7 @@ pub use iter::ParallelIterator;
 pub use slice::{ParallelSlice, ParallelSliceMut};
 pub use task_pool::{Scope, TaskPool, TaskPoolBuilder};
 pub use thread_executor::{ThreadExecutor, ThreadExecutorTicker};
+pub use usages::{AsyncComputeTaskPool, ComputeTaskPool, IoTaskPool};
 
 /// Gets the logical CPU core count available to the current process.
 ///

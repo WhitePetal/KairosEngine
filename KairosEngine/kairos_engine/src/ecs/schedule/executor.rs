@@ -199,4 +199,77 @@ impl IntoSystemSet<()> for ApplyDeferred {
     }
 }
 
+/// These functions hide the bottom of the callstack from `RUST_BACKTRACE=1` (assuming the default panic handler is used).
+///
+/// The full callstack will still be visible with `RUST_BACKTRACE=full`.
+/// They are specialized for `System::run` & co instead of being generic over closures because this avoids an
+/// extra frame in the backtrace.
+///
+/// This is reliant on undocumented behavior in Rust's default panic handler, which checks the call stack for symbols
+/// containing the string `__rust_begin_short_backtrace` in their mangled name.
+mod __rust_begin_short_backtrace {
+    use std::hint::black_box;
+
+use crate::ecs::{system::{ReadOnlySystem, RunSystemError, ScheduleSystem}, world::{World, unsafe_world_cell::UnsafeWorldCell}};
+
+    /// # Safety
+    /// See `System::run_unsafe`.
+    // This is only used by `MultiThreadedExecutor`, and would be dead code without `std`.
+    #[inline(never)]
+    pub(super) unsafe fn run_unsafe(
+        system: &mut ScheduleSystem,
+        world: UnsafeWorldCell,
+    ) -> Result<(), RunSystemError> {
+        // SAFETY: Upheld by caller
+        let result = unsafe { system.run_unsafe((), world) };
+        // Call `black_box` to prevent this frame from being tail-call optimized away
+        black_box(());
+        result
+    }
+
+    /// # Safety
+    /// See `ReadOnlySystem::run_unsafe`.
+    // This is only used by `MultiThreadedExecutor`, and would be dead code without `std`.
+    #[inline(never)]
+    pub(super) unsafe fn readonly_run_unsafe<O: 'static>(
+        system: &mut dyn ReadOnlySystem<In = (), Out = O>,
+        world: UnsafeWorldCell,
+    ) -> Result<O, RunSystemError> {
+        // Call `black_box` to prevent this frame from being tail-call optimized away
+        // SAFETY: Upheld by caller
+        black_box(unsafe { system.run_unsafe((), world) })
+    }
+
+    #[inline(never)]
+    pub(super) fn run(
+        system: &mut ScheduleSystem,
+        world: &mut World,
+    ) -> Result<(), RunSystemError> {
+        let result = system.run((), world);
+        // Call `black_box` to prevent this frame from being tail-call optimized away
+        black_box(());
+        result
+    }
+
+    #[inline(never)]
+    pub(super) fn run_without_applying_deferred(
+        system: &mut ScheduleSystem,
+        world: &mut World,
+    ) -> Result<(), RunSystemError> {
+        let result = system.run_without_applying_deferred((), world);
+        // Call `black_box` to prevent this frame from being tail-call optimized away
+        black_box(());
+        result
+    }
+
+    #[inline(never)]
+    pub(super) fn readonly_run<O: 'static>(
+        system: &mut dyn ReadOnlySystem<In = (), Out = O>,
+        world: &mut World,
+    ) -> Result<O, RunSystemError> {
+        // Call `black_box` to prevent this frame from being tail-call optimized away
+        black_box(system.run((), world))
+    }
+}
+
 // TODO!
