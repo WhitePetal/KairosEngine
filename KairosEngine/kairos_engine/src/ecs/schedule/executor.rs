@@ -21,9 +21,13 @@ mod multi_threaded;
 mod single_threaded;
 
 pub use multi_threaded::{MainThreadExecutor, MultiThreadedExecutor};
+pub use single_threaded::SingleThreadedExecutor;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod validation_tests;
 
 /// Types that can run a [`SystemSchedule`] on a [`World`].
 pub trait SystemExecutor: Send + Sync {
@@ -98,6 +102,15 @@ impl SystemSchedule {
             sets_with_conditions_of_systems: Vec::new(),
             systems_in_sets_with_conditions: Vec::new(),
         }
+    }
+
+    /// Accessor to allow running systems from a custom executor
+    ///
+    /// # Safety
+    /// - The only allowed mutations are from calling methods on the [`System`] trait. Replacing
+    ///   systems in the returned [`Vec`] should be considered undefined behavior.
+    pub unsafe fn systems_mut(&mut self) -> &mut Vec<SystemWithAccess> {
+        &mut self.systems
     }
 }
 
@@ -275,5 +288,3 @@ mod __rust_begin_short_backtrace {
         black_box(system.run((), world))
     }
 }
-
-// TODO!

@@ -24,6 +24,9 @@ use crate::{
     },
 };
 
+#[cfg(test)]
+mod tests;
+
 impl World {
     /// Register an observer to the cache, called when an observer is created
     pub(crate) fn register_observer(&mut self, observer_entity: Entity) {
@@ -32,7 +35,89 @@ impl World {
 
     /// Remove the observer from the cache, called when an observer gets despawned
     pub(crate) fn unregister_observer(&mut self, entity: Entity, descriptor: ObserverDescriptor) {
-        todo!()
+        // Remove this observer from all the corresponding ObservedBy components.
+        for &observing in descriptor.entities.iter() {
+            let Ok(mut observing) = self.get_entity_mut(observing) else {
+                // This can happen when ObservedBy is despawning and is despawning the related
+                // observers.
+                continue;
+            };
+            let Some(mut observed_by) = observing.get_mut::<ObservedBy>() else {
+                // In "normal" usage, this should be impossible, but there's nothing stopping a user
+                // from just removing the ObservedBy component themselves. While that's odd usage,
+                // there's no reason to panic if a user does so.
+                continue;
+            };
+
+            observed_by.0.retain(|e| *e != entity);
+            if observed_by.0.is_empty() {
+                observing.remove::<ObservedBy>();
+            }
+        }
+
+        let archetypes = &mut self.archetypes;
+        let observers = &mut self.observers;
+
+        for &event_key in &descriptor.event_keys {
+            let cache = observers.get_observers_mut(event_key);
+            if descriptor.components.is_empty() && descriptor.entities.is_empty() {
+                cache.global_observers.remove(&entity);
+            } else if descriptor.components.is_empty() {
+                for watched_entity in &descriptor.entities {
+                    // This check should be unnecessary since this observer hasn't been unregistered yet
+                    let Some(observers) = cache.entity_observers.get_mut(watched_entity) else {
+                        continue;
+                    };
+                    observers.remove(&entity);
+                    if observers.is_empty() {
+                        cache.entity_observers.remove(watched_entity);
+                    }
+                }
+            } else {
+                for component in &descriptor.components {
+                    let Some(observers) = cache.component_observers.get_mut(component) else {
+                        continue;
+                    };
+                    if descriptor.entities.is_empty() {
+                        observers.global_observers.remove(&entity);
+                    } else {
+                        for watched_entity in &descriptor.entities {
+                            let Some(map) =
+                                observers.entity_component_observers.get_mut(watched_entity)
+                            else {
+                                continue;
+                            };
+                            map.remove(&entity);
+                            if map.is_empty() {
+                                observers.entity_component_observers.remove(watched_entity);
+                            }
+                        }
+                    }
+
+                    if observers.global_observers.is_empty()
+                        && observers.entity_component_observers.is_empty()
+                    {
+                        cache.component_observers.remove(component);
+                        if let Some(flag) = Observers::is_archetype_cached(event_key)
+                            && let Some(by_component) = archetypes.by_component.get(component)
+                        {
+                            for archetype in by_component.keys() {
+                                let archetype = &mut archetypes.archetypes[archetype.index()];
+                                if archetype.contains(*component) {
+                                    let no_longer_observed = archetype
+                                        .iter_components()
+                                        .all(|id| !cache.component_observers.contains_key(&id));
+
+                                    if no_longer_observed {
+                                        archetype.flags.set(flag, false);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     pub(crate) fn trigger_ref_with_caller<'a, E: Event>(

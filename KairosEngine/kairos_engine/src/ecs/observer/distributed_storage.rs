@@ -407,23 +407,23 @@ fn hook_on_add<E: Event, B: Bundle, S: ObserverSystem<E, B>>(
 #[derive(Default, Debug)]
 // #[cfg_attr(feature = "bevy_reflect", derive(bevy_reflect::Reflect))]
 // #[cfg_attr(feature = "bevy_reflect", reflect(Component, Debug))]
-pub struct ObserveBy(pub(crate) Vec<Entity>);
+pub struct ObservedBy(pub(crate) Vec<Entity>);
 
-impl ObserveBy {
+impl ObservedBy {
     /// Provides a read-only reference to the list of entities observing this entity.
     pub fn get(&self) -> &[Entity] {
         &self.0
     }
 }
 
-impl Component for ObserveBy {
+impl Component for ObservedBy {
     const STORAGE_TYPE: StorageType = StorageType::SparseSet;
     type Mutability = Mutable;
 
     fn on_remove() -> Option<ComponentHook> {
         Some(|mut world, HookContext { entity, .. }| {
             let observed_by = {
-                let mut component = world.get_mut::<ObserveBy>(entity).unwrap();
+                let mut component = world.get_mut::<ObservedBy>(entity).unwrap();
                 std::mem::take(&mut component.0)
             };
             for e in observed_by {
@@ -443,7 +443,7 @@ impl Component for ObserveBy {
 
                 // Despawn Observer if it has no more active sources.
                 if total_entities == despawned_watched_entities {
-                    world.commands().entity(e).despawn();
+                    world.commands().entity(e).try_despawn();
                 }
             }
         })

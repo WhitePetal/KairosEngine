@@ -9,9 +9,12 @@ mod node;
 mod pass;
 mod schedule;
 mod set;
+mod stepping;
 
 /// An implementation of a graph data structure.
 pub mod graph;
+
+pub use graph::GraphInfo;
 
 pub mod passes {
     pub use crate::ecs::schedule::auto_insert_apply_deferred::*;
@@ -22,5 +25,6 @@ pub use config::*;
 pub use error::*;
 pub use executor::*;
 pub use node::*;
+pub use pass::{FlattenedDependencies, ScheduleBuildPass};
 pub use schedule::*;
 pub use set::*;

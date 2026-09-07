@@ -1,322 +1,249 @@
-// use kairos_ecs_macros::{Component, Resource};
+use kairos_ecs_macros::{Component, Resource};
 
-// use crate::ecs::{change_detection::{Res, ResMut}, schedule::{MultiThreadedExecutor, Schedule}, system::{DynParamBuilder, DynSystemParam, ExclusiveSystemParam, In, Local, ParamBuilder, ParamSet, Query, RunSystemError, Single, SystemMeta, SystemParamValidationError}, world::World};
+use crate::ecs::{
+    change_detection::{Res, ResMut},
+    schedule::{MultiThreadedExecutor, Schedule, SingleThreadedExecutor},
+    system::{In, IntoSystem, Populated, Single},
+    world::World,
+};
 
-// #[derive(Component)]
-// struct TestComponent;
+#[derive(Component)]
+struct TestComponent;
 
-// #[derive(Resource, Default)]
-// struct Counter(u8);
+#[derive(Resource, Default)]
+struct TestState {
+    populated_ran: bool,
+    single_ran: bool,
+}
 
-// // A resource that won't be inserted, causing validation to fail.
-// #[derive(Resource)]
-// struct MissingResource;
+#[derive(Resource, Default)]
+struct Counter(u8);
 
-// /// An [`ExclusiveSystemParam`] that always fails validation.
-// struct AlwaysInvalid;
+fn set_single_state(mut _single: Single<&TestComponent>, mut state: ResMut<TestState>) {
+    state.single_ran = true;
+}
 
-// impl ExclusiveSystemParam for AlwaysInvalid {
-//     type State = ();
-//     type Item<'s> = AlwaysInvalid;
+fn set_populated_state(mut _populated: Populated<&TestComponent>, mut state: ResMut<TestState>) {
+    state.populated_ran = true;
+}
 
-//     fn init(_world: &mut World, _system_meta: &mut SystemMeta) -> Self::State {}
+#[test]
+fn single_and_populated_skipped_and_run_singlethreaded() {
+    let mut schedule = Schedule::default();
+    schedule.set_executor(SingleThreadedExecutor::new());
+    single_and_populated_skipped_and_run("SingleThreaded", schedule);
+}
 
-//     fn get_param<'s>(
-//         _state: &'s mut Self::State,
-//         _system_meta: &SystemMeta,
-//     ) -> Result<Self::Item<'s>, SystemParamValidationError> {
-//         Err(SystemParamValidationError::invalid::<Self>(
-//             "always invalid",
-//         ))
-//     }
-// }
+#[test]
+fn single_and_populated_skipped_and_run_multithreaded() {
+    let mut schedule = Schedule::default();
+    schedule.set_executor(MultiThreadedExecutor::new());
+    single_and_populated_skipped_and_run("MultiThreaded", schedule);
+}
 
-// #[test]
-// fn function_system_validation_failure_is_error() {
-//     fn system(_res: Res<MissingResource>) {}
+#[expect(clippy::print_stdout, reason = "std and println are allowed in tests")]
+fn single_and_populated_skipped_and_run(name: &str, mut schedule: Schedule) {
+    std::println!("Testing executor: {name}");
 
-//     let mut world = World::new();
-//     let result = world.run_system_once(system);
-//     assert!(
-//         matches!(result, Err(RunSystemError::Failed(_))),
-//         "Expected Failed, got {result:?}"
-//     );
-// }
+    let mut world = World::new();
+    world.init_resource::<TestState>();
 
-// #[test]
-// fn function_system_validation_skip() {
-//     fn system(_single: Single<&TestComponent>) {}
+    schedule.add_systems((set_single_state, set_populated_state));
+    schedule.run(&mut world);
 
-//     let mut world = World::new();
-//     let result = world.run_system_once(system);
-//     assert!(
-//         matches!(result, Err(RunSystemError::Skipped(_))),
-//         "Expected Skipped, got {result:?}"
-//     );
-// }
+    let state = world.get_resource::<TestState>().unwrap();
+    assert!(!state.single_ran);
+    assert!(!state.populated_ran);
 
-// #[test]
-// fn function_system_validation_success() {
-//     fn system(_res: Res<Counter>) {}
+    world.spawn(TestComponent);
 
-//     let mut world = World::new();
-//     world.init_resource::<Counter>();
-//     let result = world.run_system_once(system);
-//     assert!(result.is_ok(), "Expected Ok, got {result:?}");
-// }
+    schedule.run(&mut world);
+    let state = world.get_resource::<TestState>().unwrap();
+    assert!(state.single_ran);
+    assert!(state.populated_ran);
+}
 
-// #[test]
-// fn adapter_system_validation_failure() {
-//     fn system(_res: Res<MissingResource>) -> u32 {
-//         42
-//     }
+fn look_for_missing_resource(_res: Res<TestState>) {}
 
-//     let mut world = World::new();
-//     let result = world.run_system_once(system.map(|_x| {}));
-//     assert!(
-//         matches!(result, Err(RunSystemError::Failed(_))),
-//         "Expected Failed from adapter system, got {result:?}"
-//     );
-// }
+#[test]
+#[should_panic]
+fn missing_resource_panics_single_threaded() {
+    let mut world = World::new();
+    let mut schedule = Schedule::default();
 
-// #[test]
-// fn adapter_system_validation_skip() {
-//     fn system(_single: Single<&TestComponent>) -> u32 {
-//         42
-//     }
+    schedule.set_executor(SingleThreadedExecutor::new());
+    schedule.add_systems(look_for_missing_resource);
+    schedule.run(&mut world);
+}
 
-//     let mut world = World::new();
-//     let result = world.run_system_once(system.map(|_x| {}));
-//     assert!(
-//         matches!(result, Err(RunSystemError::Skipped(_))),
-//         "Expected Skipped from adapter system, got {result:?}"
-//     );
-// }
+#[test]
+#[should_panic]
+fn missing_resource_panics_multi_threaded() {
+    let mut world = World::new();
+    let mut schedule = Schedule::default();
 
-// #[test]
-// fn pipe_system_validation_failure_in_first() {
-//     fn first(_res: Res<MissingResource>) -> u32 {
-//         42
-//     }
-//     fn second(_input: In<u32>) {}
+    schedule.set_executor(MultiThreadedExecutor::new());
+    schedule.add_systems(look_for_missing_resource);
+    schedule.run(&mut world);
+}
 
-//     let mut world = World::new();
-//     let result = world.run_system_once(first.pipe(second));
-//     assert!(
-//         matches!(result, Err(RunSystemError::Failed(_))),
-//         "Expected Failed from pipe first system, got {result:?}"
-//     );
-// }
+#[test]
+fn piped_systems_first_system_skipped() {
+    // This system should be skipped when run due to no matching entity
+    fn pipe_out(_single: Single<&TestComponent>) -> u8 {
+        42
+    }
 
-// #[test]
-// fn pipe_system_validation_failure_in_second() {
-//     fn first() -> u32 {
-//         42
-//     }
-//     fn second(_input: In<u32>, _res: Res<MissingResource>) {}
+    fn pipe_in(_input: In<u8>, mut counter: ResMut<Counter>) {
+        counter.0 += 1;
+    }
 
-//     let mut world = World::new();
-//     let result = world.run_system_once(first.pipe(second));
-//     assert!(
-//         matches!(result, Err(RunSystemError::Failed(_))),
-//         "Expected Failed from pipe second system, got {result:?}"
-//     );
-// }
+    let mut world = World::new();
+    world.init_resource::<Counter>();
+    let mut schedule = Schedule::default();
 
-// #[test]
-// fn pipe_system_validation_skip_in_first() {
-//     fn first(_single: Single<&TestComponent>) -> u32 {
-//         42
-//     }
-//     fn second(_input: In<u32>) {}
+    schedule.add_systems(pipe_out.pipe(pipe_in));
+    schedule.run(&mut world);
 
-//     let mut world = World::new();
-//     let result = world.run_system_once(first.pipe(second));
-//     assert!(
-//         matches!(result, Err(RunSystemError::Skipped(_))),
-//         "Expected Skipped from pipe first system, got {result:?}"
-//     );
-// }
+    let counter = world.resource::<Counter>();
+    assert_eq!(counter.0, 0);
+}
 
-// #[test]
-// fn pipe_system_validation_skip_in_second() {
-//     fn first() -> u32 {
-//         42
-//     }
+#[test]
+fn piped_system_second_system_skipped() {
+    // This system will be run before the second system is validated
+    fn pipe_out(mut counter: ResMut<Counter>) -> u8 {
+        counter.0 += 1;
+        42
+    }
 
-//     fn second(_input: In<u32>, _single: Single<&TestComponent>) {}
+    // This system should be skipped when run due to no matching entity
+    fn pipe_in(_input: In<u8>, _single: Single<&TestComponent>, mut counter: ResMut<Counter>) {
+        counter.0 += 1;
+    }
 
-//     let mut world = World::new();
-//     let result = world.run_system_once(first.pipe(second));
-//     assert!(
-//         matches!(result, Err(RunSystemError::Skipped(_))),
-//         "Expected Skipped from pipe second system, got {result:?}"
-//     );
-// }
+    let mut world = World::new();
+    world.init_resource::<Counter>();
+    let mut schedule = Schedule::default();
 
-// #[test]
-// fn builder_system_validation_failure() {
-//     fn system(_res: Res<MissingResource>) {}
+    schedule.add_systems(pipe_out.pipe(pipe_in));
+    schedule.run(&mut world);
+    let counter = world.resource::<Counter>();
+    assert_eq!(counter.0, 1);
+}
 
-//     let mut world = World::new();
-//     let result = world.run_system_once(ParamBuilder.build_system(system));
-//     assert!(
-//         matches!(result, Err(RunSystemError::Failed(_))),
-//         "Expected Failed from builder system, got {result:?}"
-//     );
-// }
+#[test]
+#[should_panic]
+fn piped_system_first_system_panics() {
+    // This system should panic when run because the resource is missing
+    fn pipe_out(_res: Res<TestState>) -> u8 {
+        42
+    }
 
-// #[test]
-// fn builder_system_validation_skip() {
-//     fn system(_single: Single<&TestComponent>) {}
+    fn pipe_in(_input: In<u8>) {}
 
-//     let mut world = World::new();
-//     let result = world.run_system_once(ParamBuilder.build_system(system));
-//     assert!(
-//         matches!(result, Err(RunSystemError::Skipped(_))),
-//         "Expected Skipped from builder system, got {result:?}"
-//     );
-// }
+    let mut world = World::new();
+    let mut schedule = Schedule::default();
 
-// #[test]
-// fn dyn_system_param_validation_failure() {
-//     let mut world = World::new();
-//     let system = (DynParamBuilder::new::<Res<MissingResource>>(ParamBuilder),)
-//         .build_state(&mut world)
-//         .build_system(|_param: DynSystemParam| {});
-//     let result = world.run_system_once(system);
-//     assert!(
-//         matches!(result, Err(RunSystemError::Failed(_))),
-//         "Expected Failed from DynSystemParam system, got {result:?}"
-//     );
-// }
+    schedule.add_systems(pipe_out.pipe(pipe_in));
+    schedule.run(&mut world);
+}
 
-// #[test]
-// fn dyn_system_param_validation_skip() {
-//     let mut world = World::new();
-//     let system = (DynParamBuilder::new::<Single<&TestComponent>>(ParamBuilder),)
-//         .build_state(&mut world)
-//         .build_system(|_param: DynSystemParam| {});
-//     let result = world.run_system_once(system);
-//     assert!(
-//         matches!(result, Err(RunSystemError::Skipped(_))),
-//         "Expected Skipped from DynSystemParam system, got {result:?}"
-//     );
-// }
+#[test]
+#[should_panic]
+fn piped_system_second_system_panics() {
+    fn pipe_out() -> u8 {
+        42
+    }
 
-// #[test]
-// fn dyn_system_param_validation_success() {
-//     let mut world = World::new();
-//     world.init_resource::<Counter>();
-//     let system = (DynParamBuilder::new::<Res<Counter>>(ParamBuilder),)
-//         .build_state(&mut world)
-//         .build_system(|_param: DynSystemParam| {});
-//     let result = world.run_system_once(system);
-//     assert!(
-//         result.is_ok(),
-//         "Expected Ok from DynSystemParam system, got {result:?}"
-//     );
-// }
+    // This system should panic when run because the resource is missing
+    fn pipe_in(_input: In<u8>, _res: Res<TestState>) {}
 
-// #[test]
-// fn exclusive_system_validation_failure() {
-//     fn system(_world: &mut World, _param: AlwaysInvalid) {}
+    let mut world = World::new();
+    let mut schedule = Schedule::default();
 
-//     let mut world = World::new();
-//     let result = world.run_system_once(system);
-//     assert!(
-//         matches!(result, Err(RunSystemError::Failed(_))),
-//         "Expected Failed from exclusive system, got {result:?}"
-//     );
-// }
+    schedule.add_systems(pipe_out.pipe(pipe_in));
+    schedule.run(&mut world);
+}
 
-// #[test]
-// fn exclusive_system_validation_success() {
-//     fn system(_world: &mut World, mut _local: Local<u32>) {}
+// This test runs without panicking because we've
+// decided to use early-out behavior for piped systems
+#[test]
+fn piped_system_skip_and_panic() {
+    // This system should be skipped when run due to no matching entity
+    fn pipe_out(_single: Single<&TestComponent>) -> u8 {
+        42
+    }
 
-//     let mut world = World::new();
-//     let result = world.run_system_once(system);
-//     assert!(
-//         result.is_ok(),
-//         "Expected Ok from exclusive system, got {result:?}"
-//     );
-// }
+    // This system should panic when run because the resource is missing
+    fn pipe_in(_input: In<u8>, _res: Res<TestState>) {}
 
-// #[test]
-// fn validation_skips_system_in_schedule_singlethreaded() {
-//     let mut schedule = Schedule::default();
-//     schedule.set_executor(SingleThreadedExecutor::new());
-//     validation_skips_system_in_schedule("SingleThreaded", schedule);
-// }
+    let mut world = World::new();
+    let mut schedule = Schedule::default();
 
-// #[test]
-// fn validation_skips_system_in_schedule_multithreaded() {
-//     let mut schedule = Schedule::default();
-//     schedule.set_executor(MultiThreadedExecutor::new());
-//     validation_skips_system_in_schedule("MultiThreaded", schedule);
-// }
+    schedule.add_systems(pipe_out.pipe(pipe_in));
+    schedule.run(&mut world);
+}
 
-// fn validation_skips_system_in_schedule(name: &str, mut schedule: Schedule) {
-//     // Ensure the executor properly handles validation failures by skipping
-//     // and not running the system body.
-//     fn skippable_system(_single: Single<&TestComponent>, mut counter: ResMut<Counter>) {
-//         counter.0 += 1;
-//     }
+#[test]
+#[should_panic]
+fn piped_system_panic_and_skip() {
+    // This system should panic when run because the resource is missing
 
-//     let mut world = World::new();
-//     world.init_resource::<Counter>();
+    fn pipe_out(_res: Res<TestState>) -> u8 {
+        42
+    }
 
-//     schedule.add_systems(skippable_system);
+    // This system should be skipped when run due to no matching entity
+    fn pipe_in(_input: In<u8>, _single: Single<&TestComponent>) {}
 
-//     // No TestComponent entity exists, so the system should be skipped.
-//     schedule.run(&mut world);
-//     assert_eq!(
-//         world.resource::<Counter>().0,
-//         0,
-//         "System should have been skipped with {name}"
-//     );
-// }
+    let mut world = World::new();
+    let mut schedule = Schedule::default();
 
-// #[test]
-// fn param_set_validation_skip() {
-//     // A system using ParamSet with a Single sub-param should be skipped
-//     // when the Single has no matching entities, rather than panicking.
-//     fn system(mut _set: ParamSet<(Single<&TestComponent>,)>) {}
+    schedule.add_systems(pipe_out.pipe(pipe_in));
+    schedule.run(&mut world);
+}
 
-//     let mut world = World::new();
-//     let result = world.run_system_once(system);
-//     assert!(
-//         matches!(result, Err(RunSystemError::Skipped(_))),
-//         "Expected Skipped from ParamSet with invalid Single, got {result:?}"
-//     );
-// }
+#[test]
+#[should_panic]
+fn piped_system_panic_and_panic() {
+    // This system should panic when run because the resource is missing
 
-// #[test]
-// fn param_set_validation_failure() {
-//     // A system using ParamSet with a Res sub-param should fail validation
-//     // when the resource does not exist.
-//     fn system(mut _set: ParamSet<(Query<&TestComponent>, Res<MissingResource>)>) {}
+    fn pipe_out(_res: Res<TestState>) -> u8 {
+        42
+    }
 
-//     let mut world = World::new();
-//     let result = world.run_system_once(system);
-//     assert!(
-//         matches!(result, Err(RunSystemError::Failed(_))),
-//         "Expected Failed from ParamSet with missing resource, got {result:?}"
-//     );
-// }
+    // This system should panic when run because the resource is missing
+    fn pipe_in(_input: In<u8>, _res: Res<TestState>) {}
 
-// #[test]
-// fn param_set_validation_success() {
-//     // A system using ParamSet with valid sub-params should succeed.
-//     fn system(mut set: ParamSet<(Query<&TestComponent>, Res<Counter>)>) {
-//         let _q = set.p0();
-//     }
+    let mut world = World::new();
+    let mut schedule = Schedule::default();
 
-//     let mut world = World::new();
-//     world.init_resource::<Counter>();
-//     let result = world.run_system_once(system);
-//     assert!(
-//         result.is_ok(),
-//         "Expected Ok from ParamSet with valid params, got {result:?}"
-//     );
-// }
+    schedule.add_systems(pipe_out.pipe(pipe_in));
+    schedule.run(&mut world);
+}
+
+#[test]
+fn piped_system_skip_and_skip() {
+    // This system should be skipped when run due to no matching entity
+
+    fn pipe_out(_single: Single<&TestComponent>, mut counter: ResMut<Counter>) -> u8 {
+        counter.0 += 1;
+        42
+    }
+
+    // This system should be skipped when run due to no matching entity
+    fn pipe_in(_input: In<u8>, _single: Single<&TestComponent>, mut counter: ResMut<Counter>) {
+        counter.0 += 1;
+    }
+
+    let mut world = World::new();
+    world.init_resource::<Counter>();
+    let mut schedule = Schedule::default();
+
+    schedule.add_systems(pipe_out.pipe(pipe_in));
+    schedule.run(&mut world);
+
+    let counter = world.resource::<Counter>();
+    assert_eq!(counter.0, 0);
+}
