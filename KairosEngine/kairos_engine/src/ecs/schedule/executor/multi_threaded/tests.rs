@@ -1,6 +1,10 @@
 use kairos_ecs_macros::Resource;
 
-use crate::ecs::{schedule::{IntoScheduleConfigs, MultiThreadedExecutor, Schedule}, system::Commands, world::World};
+use crate::ecs::{
+    schedule::{IntoScheduleConfigs, MultiThreadedExecutor, Schedule},
+    system::Commands,
+    world::World,
+};
 
 #[derive(Resource)]
 struct R;

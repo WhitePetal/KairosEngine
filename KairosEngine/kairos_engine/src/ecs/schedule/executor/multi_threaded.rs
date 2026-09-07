@@ -1,4 +1,8 @@
-use std::{any::Any, panic::AssertUnwindSafe, sync::{Arc, Mutex, MutexGuard}};
+use std::{
+    any::Any,
+    panic::AssertUnwindSafe,
+    sync::{Arc, Mutex, MutexGuard},
+};
 
 use concurrent_queue::ConcurrentQueue;
 use fixedbitset::FixedBitSet;
@@ -8,8 +12,15 @@ use kairos_tasks::{ComputeTaskPool, Scope, TaskPool, ThreadExecutor};
 use tracing::{Span, info_span};
 
 use crate::{
-    cell::SyncUnsafeCell, ecs::{
-        error::{ErrorContext, ErrorHandler, KairosError}, schedule::{ConditionWithAccess, SystemExecutor, SystemSchedule, SystemWithAccess, executor::__rust_begin_short_backtrace, is_apply_deferred}, system::{RunSystemError, ScheduleSystem}, world::{World, unsafe_world_cell::UnsafeWorldCell},
+    cell::SyncUnsafeCell,
+    ecs::{
+        error::{ErrorContext, ErrorHandler, KairosError},
+        schedule::{
+            ConditionWithAccess, SystemExecutor, SystemSchedule, SystemWithAccess,
+            executor::__rust_begin_short_backtrace, is_apply_deferred,
+        },
+        system::{RunSystemError, ScheduleSystem},
+        world::{World, unsafe_world_cell::UnsafeWorldCell},
     },
 };
 
@@ -275,8 +286,6 @@ impl SystemExecutor for MultiThreadedExecutor {
                 context.tick_executor();
             },
         );
-
-
     }
 
     fn set_apply_final_deferred(&mut self, value: bool) {

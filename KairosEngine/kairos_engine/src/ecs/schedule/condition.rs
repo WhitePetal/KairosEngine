@@ -1,6 +1,12 @@
 use std::ops::Not;
 
-use crate::{debug::DebugName, ecs::system::{Adapt, AdapterSystem, CombinatorSystem, Combine, IntoSystem, ReadOnlySystem, RunSystemError, System, SystemIn, SystemInput}};
+use crate::{
+    debug::DebugName,
+    ecs::system::{
+        Adapt, AdapterSystem, CombinatorSystem, Combine, IntoSystem, ReadOnlySystem,
+        RunSystemError, System, SystemIn, SystemInput,
+    },
+};
 
 #[cfg(test)]
 mod tests;
@@ -601,7 +607,16 @@ impl<Marker, In: SystemInput, F> SystemCondition<Marker, In> for F where
 
 /// A collection of [run conditions](SystemCondition) that may be useful in any bevy app.
 pub mod common_conditions {
-    use crate::ecs::{change_detection::{DetectChanges, Res}, component::Component, lifecycle::RemovedComponents, message::{Message, MessageReader}, query::{QueryFilter, With}, resource::Resource, schedule::{NotSystem, SystemCondition}, system::{In, IntoSystem, Local, Query, System, SystemInput}};
+    use crate::ecs::{
+        change_detection::{DetectChanges, Res},
+        component::Component,
+        lifecycle::RemovedComponents,
+        message::{Message, MessageReader},
+        query::{QueryFilter, With},
+        resource::Resource,
+        schedule::{NotSystem, SystemCondition},
+        system::{In, IntoSystem, Local, Query, System, SystemInput},
+    };
 
     /// A [`SystemCondition`]-satisfying system that returns `true`
     /// on the first time the condition is run and false every time after.

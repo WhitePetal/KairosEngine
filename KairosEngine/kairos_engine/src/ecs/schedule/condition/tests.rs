@@ -2,7 +2,21 @@ use std::sync::{Arc, Mutex};
 
 use kairos_ecs_macros::{Component, Message, Resource, SystemSet};
 
-use crate::ecs::{change_detection::{Res, ResMut}, error::{ErrorContext, FallbackErrorHandler, KairosError}, query::With, schedule::{IntoScheduleConfigs, Schedule, SystemCondition, common_conditions::{any_match_filter, any_with_component, not, on_message, resource_added, resource_changed, resource_changed_or_removed, resource_exists, resource_exists_and_changed, resource_removed, run_once}}, system::{IntoSystem, Local, RunSystemOnce, Single, System}, world::World};
+use crate::ecs::{
+    change_detection::{Res, ResMut},
+    error::{ErrorContext, FallbackErrorHandler, KairosError},
+    query::With,
+    schedule::{
+        IntoScheduleConfigs, Schedule, SystemCondition,
+        common_conditions::{
+            any_match_filter, any_with_component, not, on_message, resource_added,
+            resource_changed, resource_changed_or_removed, resource_exists,
+            resource_exists_and_changed, resource_removed, run_once,
+        },
+    },
+    system::{IntoSystem, Local, RunSystemOnce, Single, System},
+    world::World,
+};
 
 #[derive(Resource, Default)]
 struct Counter(usize);
@@ -158,7 +172,8 @@ fn combinators_with_maybe_failing_condition() {
         );
 
         assert_eq!(
-            counter, expected_counter,
+            counter,
+            expected_counter,
             "At {}:{} System `{name}` did not increment counter as expected: expected `{expected_counter}`, got `{counter}`",
             caller.file(),
             caller.line(),
@@ -297,12 +312,12 @@ fn run_condition_combinators() {
         (
             increment_counter.run_if(every_other_time.and_eager(|| true)), // Run every odd cycle.
             increment_counter.run_if(every_other_time.nand_eager(|| false)), // Always run.
-            double_counter.run_if(every_other_time.nor_eager(|| false)), // Run every even cycle.
-            increment_counter.run_if(every_other_time.or_eager(|| true)), // Always run.
-            increment_counter.run_if(every_other_time.xnor(|| true)),    // Run every odd cycle.
-            double_counter.run_if(every_other_time.xnor(|| false)), // Run every even cycle.
-            increment_counter.run_if(every_other_time.xor(|| false)), // Run every odd cycle.
-            double_counter.run_if(every_other_time.xor(|| true)),   // Run every even cycle.
+            double_counter.run_if(every_other_time.nor_eager(|| false)),   // Run every even cycle.
+            increment_counter.run_if(every_other_time.or_eager(|| true)),  // Always run.
+            increment_counter.run_if(every_other_time.xnor(|| true)),      // Run every odd cycle.
+            double_counter.run_if(every_other_time.xnor(|| false)),        // Run every even cycle.
+            increment_counter.run_if(every_other_time.xor(|| false)),      // Run every odd cycle.
+            double_counter.run_if(every_other_time.xor(|| true)),          // Run every even cycle.
         )
             .chain(),
     );

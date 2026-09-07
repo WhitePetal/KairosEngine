@@ -18,8 +18,9 @@ use crate::{
 };
 
 mod multi_threaded;
+mod single_threaded;
 
-pub use multi_threaded::MultiThreadedExecutor;
+pub use multi_threaded::{MainThreadExecutor, MultiThreadedExecutor};
 
 #[cfg(test)]
 mod tests;
@@ -210,7 +211,10 @@ impl IntoSystemSet<()> for ApplyDeferred {
 mod __rust_begin_short_backtrace {
     use std::hint::black_box;
 
-use crate::ecs::{system::{ReadOnlySystem, RunSystemError, ScheduleSystem}, world::{World, unsafe_world_cell::UnsafeWorldCell}};
+    use crate::ecs::{
+        system::{ReadOnlySystem, RunSystemError, ScheduleSystem},
+        world::{World, unsafe_world_cell::UnsafeWorldCell},
+    };
 
     /// # Safety
     /// See `System::run_unsafe`.
