@@ -1,7 +1,10 @@
 use kairos_ecs_macros::EntityEvent;
 
-use crate::ecs::{entity::Entity, observer::{ObservedBy, Observer, On}, world::World};
-
+use crate::ecs::{
+    entity::Entity,
+    observer::{ObservedBy, Observer, On},
+    world::World,
+};
 
 // TODO!
 

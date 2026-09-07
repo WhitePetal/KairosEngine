@@ -28,3 +28,6 @@ pub use node::*;
 pub use pass::{FlattenedDependencies, ScheduleBuildPass};
 pub use schedule::*;
 pub use set::*;
+
+#[cfg(test)]
+mod tests;

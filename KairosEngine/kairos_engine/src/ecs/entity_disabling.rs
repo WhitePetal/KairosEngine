@@ -99,10 +99,38 @@
 use smallvec::SmallVec;
 
 use crate::ecs::{
-    component::{Component, ComponentId, Components, Mutable, StorageType},
+    component::{Component, ComponentId, Components, StorageType},
     query::FilteredAccess,
     resource::Resource,
+    world::{FromWorld, World},
 };
+
+#[cfg(test)]
+mod tests;
+
+/// A marker component for disabled entities.
+///
+/// Semantically, this component is used to mark entities that are temporarily disabled (typically for gameplay reasons),
+/// but will likely be re-enabled at some point.
+///
+/// Like all disabling components, this only disables the entity itself,
+/// not its children or other entities that reference it.
+/// To disable an entire tree of entities, use [`EntityCommands::insert_recursive`](crate::prelude::EntityCommands::insert_recursive).
+///
+/// Every [`World`] has a default query filter that excludes entities with this component,
+/// registered in the [`DefaultQueryFilters`] resource.
+/// See [the module docs] for more info.
+///
+/// [the module docs]: crate::entity_disabling
+#[derive(Component, Clone, Debug, Default)]
+#[cfg_attr(
+    feature = "kairos_reflect",
+    derive(Reflect),
+    reflect(Component),
+    reflect(Debug, Clone, Default)
+)]
+// This component is registered as a disabling component during World::bootstrap
+pub struct Disabled;
 
 /// Default query filters work by excluding entities with certain components from most queries.
 ///
@@ -135,28 +163,26 @@ use crate::ecs::{
 ///
 /// Think carefully about whether you need to use a new disabling component,
 /// and clearly communicate their presence in any libraries you publish.
-// #[derive(Resource, Debug)]
-// #[cfg_attr(
-//     feature = "bevy_reflect",
-//     derive(bevy_reflect::Reflect),
-//     reflect(Resource)
-// )]
-#[derive(Debug)]
+#[derive(Resource, Debug)]
+#[cfg_attr(
+    feature = "kairos_reflect",
+    derive(bevy_reflect::Reflect),
+    reflect(Resource)
+)]
 pub struct DefaultQueryFilters {
     // We only expect a few components per application to act as disabling components, so we use a SmallVec here
     // to avoid heap allocation in most cases.
     disabling: SmallVec<[ComponentId; 4]>,
 }
 
-// TODO!: use derive
-impl Component for DefaultQueryFilters {
-    const STORAGE_TYPE: StorageType = StorageType::SparseSet;
-
-    type Mutability = Mutable;
+impl FromWorld for DefaultQueryFilters {
+    fn from_world(world: &mut World) -> Self {
+        let mut filters = DefaultQueryFilters::empty();
+        let disabled_component_id = world.register_component::<Disabled>();
+        filters.register_disabling_component(disabled_component_id);
+        filters
+    }
 }
-
-// TODO!: use derive
-impl Resource for DefaultQueryFilters {}
 
 impl DefaultQueryFilters {
     /// Creates a new, completely empty [`DefaultQueryFilters`].
@@ -210,5 +236,3 @@ impl DefaultQueryFilters {
         })
     }
 }
-
-// TODO!

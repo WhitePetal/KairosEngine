@@ -23,13 +23,17 @@ use crate::{
             Mutable,
         },
         entity::{Entities, Entity, EntityAllocator, EntityNotSpawnedError, SpawnError},
+        entity_disabling::DefaultQueryFilters,
         error::{ErrorHandler, FallbackErrorHandler},
         event::Event,
-        lifecycle::RemovedComponentMessages,
+        lifecycle::{
+            ADD, Add, DESPAWN, DISCARD, Despawn, Discard, INSERT, Insert, REMOVE, Remove,
+            RemovedComponentMessages,
+        },
         observer::Observers,
         query::{QueryData, QueryFilter, QueryState},
         relationship::RelationshipHookMode,
-        resource::{Resource, ResourceEntities},
+        resource::{IS_RESOURCE, IsResource, Resource, ResourceEntities},
         schedule::{ScheduleLabel, Schedules},
         storage::Storages,
         world::{
@@ -101,6 +105,75 @@ pub struct World {
     pub(crate) last_check_tick: Tick,
     pub(crate) last_trigger_id: u32,
     pub(crate) command_queue: RawCommandQueue,
+}
+
+impl Default for World {
+    fn default() -> Self {
+        let mut world = Self {
+            id: WorldId::new().expect("More `bevy` `World`s have been created than is supported"),
+            entities: Entities::new(),
+            entity_allocator: EntityAllocator::default(),
+            components: Default::default(),
+            resource_entities: Default::default(),
+            archetypes: Archetypes::new(),
+            storages: Default::default(),
+            bundles: Default::default(),
+            observers: Observers::default(),
+            removed_components: Default::default(),
+            // Default value is `1`, and `last_change_tick`s default to `0`, such that changes
+            // are detected on first system runs and for direct world queries.
+            change_tick: AtomicU32::new(1),
+            last_change_tick: Tick::new(0),
+            last_check_tick: Tick::new(0),
+            last_trigger_id: 0,
+            command_queue: RawCommandQueue::new(),
+            component_ids: ComponentIds::default(),
+        };
+        world.bootstrap();
+        world
+    }
+}
+
+impl Drop for World {
+    fn drop(&mut self) {
+        // SAFETY: Not passing a pointer so the argument is always valid
+        unsafe { self.command_queue.apply_or_drop_queued(None) };
+        // SAFETY: Pointers in internal command queue are only invalidated here
+        drop(unsafe { Box::from_raw(self.command_queue.bytes.as_ptr()) });
+        // SAFETY: Pointers in internal command queue are only invalidated here
+        drop(unsafe { Box::from_raw(self.command_queue.cursor.as_ptr()) });
+        // SAFETY: Pointers in internal command queue are only invalidated here
+        drop(unsafe { Box::from_raw(self.command_queue.panic_recovery.as_ptr()) });
+    }
+}
+
+impl World {
+    /// This performs initialization that _must_ happen for every [`World`] immediately upon creation (such as claiming specific component ids).
+    /// This _must_ be run as part of constructing a [`World`], before it is returned to the caller.
+    #[inline]
+    fn bootstrap(&mut self) {
+        // The order that we register these events is vital to ensure that the constants are correct!
+        let on_add = self.register_event_key::<Add>();
+        assert_eq!(ADD, on_add);
+
+        let on_insert = self.register_event_key::<Insert>();
+        assert_eq!(INSERT, on_insert);
+
+        let on_discard = self.register_event_key::<Discard>();
+        assert_eq!(DISCARD, on_discard);
+
+        let on_remove = self.register_event_key::<Remove>();
+        assert_eq!(REMOVE, on_remove);
+
+        let on_despawn = self.register_event_key::<Despawn>();
+        assert_eq!(DESPAWN, on_despawn);
+
+        let is_resource = self.register_component::<IsResource>();
+        assert_eq!(IS_RESOURCE, is_resource);
+
+        // This sets up `Disabled` as a disabling component, via the FromWorld impl
+        self.init_resource::<DefaultQueryFilters>();
+    }
 }
 
 /// Creates an instance of the type this trait is implemented for
@@ -1823,6 +1896,14 @@ impl World {
                 DebugName::type_name::<R>()
             ),
         }
+    }
+
+    /// Registers a component type as "disabling",
+    /// using [default query filters](DefaultQueryFilters) to exclude entities with the component from queries.
+    pub fn register_disabling_component<C: Component>(&mut self) {
+        let component_id = self.register_component::<C>();
+        let mut dqf = self.resource_mut::<DefaultQueryFilters>();
+        dqf.register_disabling_component(component_id);
     }
 }
 

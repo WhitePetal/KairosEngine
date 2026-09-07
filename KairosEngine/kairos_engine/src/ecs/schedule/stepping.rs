@@ -5,7 +5,14 @@ use kairos_ecs_macros::Resource;
 use log::{debug, error, info, warn};
 use thiserror::Error;
 
-use crate::{collections::{FixedHashMap, TypeIdMap}, ecs::{change_detection::ResMut, schedule::{InternedScheduleLabel, NodeId, Schedule, ScheduleLabel, SystemKey}, system::IntoSystem}};
+use crate::{
+    collections::{FixedHashMap, TypeIdMap},
+    ecs::{
+        change_detection::ResMut,
+        schedule::{InternedScheduleLabel, NodeId, Schedule, ScheduleLabel, SystemKey},
+        system::IntoSystem,
+    },
+};
 
 #[cfg(all(test, feature = "debug_stepping"))]
 #[expect(clippy::print_stdout, reason = "Allowed in tests.")]

@@ -49,9 +49,7 @@ macro_rules! assert_skip_list_eq {
                     (true, false) => {
                         msg.push_str("skip   run    FAILED; system should not have run\n")
                     }
-                    (false, true) => {
-                        msg.push_str("run    skip   FAILED; system should have run\n")
-                    }
+                    (false, true) => msg.push_str("run    skip   FAILED; system should have run\n"),
                     (false, false) => msg.push_str("run    run    pass\n"),
                 }
             }
