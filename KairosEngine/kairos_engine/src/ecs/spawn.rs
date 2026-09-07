@@ -494,7 +494,7 @@ impl<T: RelationshipTarget> SpawnRelated for T {
 #[macro_export]
 macro_rules! related {
     ($relationship_target:ty [$($child:expr),*$(,)?]) => {
-        <$relationship_target as $crate::ecs::spawn::SpawnRelated>::spawn($crate::ecs::recursive_spawn!($($child),*))
+        <$relationship_target as $crate::ecs::spawn::SpawnRelated>::spawn($crate::recursive_spawn!($($child),*))
     };
 }
 
@@ -639,7 +639,7 @@ macro_rules! recursive_spawn {
             $crate::ecs::spawn::Spawn($i),
             $crate::ecs::spawn::Spawn($j),
             $crate::ecs::spawn::Spawn($k),
-            $crate::ecs::recursive_spawn!($($rest),*)
+            $crate::recursive_spawn!($($rest),*)
         )
     };
 }

@@ -401,7 +401,7 @@ impl DeriveComponent {
         let fqdefault = FQDefault.into_token_stream();
 
         Ok(Some(quote! {
-            impl #impl_generics #ecs::relationship::RelationShip for #struct_name #type_generics #where_clause {
+            impl #impl_generics #ecs::relationship::Relationship for #struct_name #type_generics #where_clause {
                 type RelationshipTarget = #relationship_target;
                 const ALLOW_SELF_REFERENTIAL: bool = #allow_self_referential;
 

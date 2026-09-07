@@ -31,20 +31,15 @@ use crate::{
         bundle::BundleId,
         component::{ComponentId, Components, RequiredComponentConstructor, StorageType},
         entity::{Entity, EntityLocation},
-        event::{Event, GlobalTrigger},
+        event::Event,
         observer::Observers,
         storage::{ImmutableSparseSet, SparseArray, SparseSet, TableId, TableRow},
     },
 };
 
-// TODO!
-// #[derive(Event)]
+#[derive(Event)]
 #[expect(dead_code, reason = "Prepare for the upcoming Query as Entities")]
 pub(crate) struct ArchetypeCreated(pub ArchetypeId);
-
-impl Event for ArchetypeCreated {
-    type Trigger<'a> = GlobalTrigger;
-}
 
 /// An opaque location within a [`Archetype`].
 ///
@@ -188,7 +183,7 @@ pub(crate) struct SpawnBundleStatus;
 
 impl BundleComponentStatus for SpawnBundleStatus {
     #[inline]
-    unsafe fn get_status(&self, index: usize) -> ComponentStatus {
+    unsafe fn get_status(&self, _index: usize) -> ComponentStatus {
         // Components inserted during a spawn call are always treated as added.
         ComponentStatus::Added
     }

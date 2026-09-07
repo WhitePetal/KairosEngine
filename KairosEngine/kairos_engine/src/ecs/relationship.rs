@@ -126,7 +126,7 @@ pub trait Relationship: Component + Sized {
     /// When `ALLOW_SELF` is `true`, be careful when using recursive traversal methods
     /// like `iter_ancestors` or `root_ancestor`, as they will loop infinitely if an entity
     /// points to itself.
-    const ALLOW_SELF_REFERENITAL: bool = false;
+    const ALLOW_SELF_REFERENTIAL: bool = false;
 
     /// Gets the [`Entity`] ID of the related entity.
     fn get(&self) -> Entity;
@@ -168,7 +168,7 @@ pub trait Relationship: Component + Sized {
             }
         }
         let target_entity = world.entity(entity).get::<Self>().unwrap().get();
-        if !Self::ALLOW_SELF_REFERENITAL && target_entity == entity {
+        if !Self::ALLOW_SELF_REFERENTIAL && target_entity == entity {
             warn!(
                 "{}The {}({target_entity:?}) relationship on entity {entity:?} points to itself. The invalid {} relationship has been removed. \nIf this is intended behavior self-referential reltaions can be enabled with the allow_self_referential attribute: #[relationship(allow_self_referential)]",
                 caller
@@ -769,7 +769,7 @@ impl<C> ComponentRelationshipAccessor<C> {
             initializer: RelationshipAccessorInitializer::Relationship {
                 entity_field_offset,
                 linked_spawn: C::RelationshipTarget::LINKED_SPAWN,
-                allow_self_referential: C::ALLOW_SELF_REFERENITAL,
+                allow_self_referential: C::ALLOW_SELF_REFERENTIAL,
                 relationship_target_getter: Arc::from(getter),
             },
             phantom: Default::default(),
@@ -789,7 +789,7 @@ impl<C> ComponentRelationshipAccessor<C> {
                 // Safety: caller ensures that `ptr` is of type `C`.
                 iter: |ptr| unsafe { Box::new(RelationshipTarget::iter(ptr.deref::<C>())) },
                 linked_spawn: C::LINKED_SPAWN,
-                allow_self_referential: C::Relationship::ALLOW_SELF_REFERENITAL,
+                allow_self_referential: C::Relationship::ALLOW_SELF_REFERENTIAL,
                 relationship_getter: Arc::from(getter),
             },
             phantom: Default::default(),

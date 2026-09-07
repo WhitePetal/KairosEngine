@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use crate::{
     debug::{DebugCheckedUnwrap, MaybeLocation},
     ecs::{
@@ -16,7 +18,10 @@ use crate::{
         storage::{SparseSets, Table},
         world::{
             World,
-            entity_access::{DynamicComponentFetch, EntityMut, EntityRef},
+            entity_access::{
+                ComponentEntry, DynamicComponentFetch, EntityMut, EntityRef,
+                OccupiedComponentEntry, VacantComponentEntry,
+            },
             error::EntityComponentError,
             unsafe_world_cell::UnsafeEntityCell,
         },
@@ -1310,6 +1315,45 @@ impl<'w> EntityWorldMut<'w> {
     #[inline]
     pub fn is_despawned(&self) -> bool {
         self.location.is_none()
+    }
+
+    /// Gets an Entry into the world for this entity and component for in-place manipulation.
+    ///
+    /// The type parameter specifies which component to get.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use bevy_ecs::prelude::*;
+    /// #[derive(Component, Default, Clone, Copy, Debug, PartialEq)]
+    /// struct Comp(u32);
+    ///
+    /// # let mut world = World::new();
+    /// let mut entity = world.spawn_empty();
+    /// entity.entry().or_insert_with(|| Comp(4));
+    /// # let entity_id = entity.id();
+    /// assert_eq!(world.query::<&Comp>().single(&world).unwrap().0, 4);
+    ///
+    /// # let mut entity = world.get_entity_mut(entity_id).unwrap();
+    /// entity.entry::<Comp>().and_modify(|mut c| c.0 += 1);
+    /// assert_eq!(world.query::<&Comp>().single(&world).unwrap().0, 5);
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// If the entity has been despawned while this `EntityWorldMut` is still alive.
+    pub fn entry<'a, T: Component>(&'a mut self) -> ComponentEntry<'w, 'a, T> {
+        if self.contains::<T>() {
+            ComponentEntry::Occupied(OccupiedComponentEntry {
+                entity_world: self,
+                _marker: PhantomData,
+            })
+        } else {
+            ComponentEntry::Vacant(VacantComponentEntry {
+                entity_world: self,
+                _marker: PhantomData,
+            })
+        }
     }
 }
 

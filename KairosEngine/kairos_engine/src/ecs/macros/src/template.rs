@@ -79,7 +79,7 @@ pub(crate) fn derive_from_template(input: TokenStream) -> TokenStream {
                         impl #impl_generics #ecs::template::Template for #template_ident #type_generics #where_clause {
                             type Output = #type_ident #type_generics;
 
-                            fn build_template(&self, context: &mut ecs::template::TemplateContext) -> #ecs::error::Result<Self::Output> {
+                            fn build_template(&self, context: &mut #ecs::template::TemplateContext) -> #ecs::error::Result<Self::Output> {
                                 #ecs::error::Result::Ok(#type_ident (
                                     #(#template_field_builds,)*
                                 ))
