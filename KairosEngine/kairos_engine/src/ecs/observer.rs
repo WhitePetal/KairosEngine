@@ -20,7 +20,7 @@ use crate::{
     ecs::{
         entity::Entity,
         event::Event,
-        world::{DeferredWorld, World},
+        world::{DeferredWorld, EntityWorldMut, World},
     },
 };
 
@@ -28,6 +28,38 @@ use crate::{
 mod tests;
 
 impl World {
+    /// Spawns a "global" [`Observer`] which will watch for the given event.
+    /// Returns its [`Entity`] as a [`EntityWorldMut`].
+    ///
+    /// `system` can be any system whose first parameter is [`On`].
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use bevy_ecs::prelude::*;
+    /// #[derive(Component)]
+    /// struct A;
+    ///
+    /// # let mut world = World::new();
+    /// world.add_observer(|_: On<Add, A>| {
+    ///     // ...
+    /// });
+    /// world.add_observer(|_: On<Remove, A>| {
+    ///     // ...
+    /// });
+    /// ```
+    ///
+    /// **Calling [`observe`](EntityWorldMut::observe) on the returned
+    /// [`EntityWorldMut`] will observe the observer itself, which you very
+    /// likely do not want.**
+    ///
+    /// # Panics
+    ///
+    /// Panics if the given system is an exclusive system.
+    pub fn add_observer<M>(&mut self, observer: impl IntoObserver<M>) -> EntityWorldMut<'_> {
+        self.spawn(observer.into_observer())
+    }
+
     /// Register an observer to the cache, called when an observer is created
     pub(crate) fn register_observer(&mut self, observer_entity: Entity) {
         todo!()

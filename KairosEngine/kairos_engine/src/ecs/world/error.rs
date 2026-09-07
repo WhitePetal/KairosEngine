@@ -30,6 +30,11 @@ pub struct TryInsertBatchError {
     pub entities: Vec<Entity>,
 }
 
+/// An error that occurs when a specified [`Entity`] could not be despawned.
+#[derive(thiserror::Error, Debug, Clone, Copy)]
+#[error("Could not despawn entity: {0}")]
+pub struct EntityDespawnError(#[from] pub EntityNotSpawnedError);
+
 /// An error that occurs when fetching entities mutably from a world.
 #[derive(thiserror::Error, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EntityMutableFetchError {

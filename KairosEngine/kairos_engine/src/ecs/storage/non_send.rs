@@ -51,7 +51,7 @@ impl NonSendData {
 
     /// Returns true if the resource is populated.
     #[inline]
-    pub fn is_parsent(&self) -> bool {
+    pub fn is_present(&self) -> bool {
         self.is_present
     }
 
@@ -61,7 +61,7 @@ impl NonSendData {
     /// This will panic if a value is present and is not accessed from the original thread it was inserted from.
     #[inline]
     pub fn get_data(&self) -> Option<Ptr<'_>> {
-        self.is_parsent().then(|| {
+        self.is_present().then(|| {
             self.validate_access();
             // SAFETY: We've already checked if a value is present, and there should only be one.
             unsafe { self.data.get_unchecked(Self::ROW) }
@@ -74,7 +74,7 @@ impl NonSendData {
         // SAFETY: This is being fetched through a read-only reference to Self, so no other mutable references
         // to the ticks can exist.
         unsafe {
-            self.is_parsent().then(|| ComponentTicks {
+            self.is_present().then(|| ComponentTicks {
                 added: self.added_ticks.read(),
                 changed: self.changed_ticks.read(),
             })
@@ -87,7 +87,7 @@ impl NonSendData {
     /// This will panic if a value is present and is not accessed from the original thread it was inserted in.
     #[inline]
     pub(crate) fn get_with_ticks(&self) -> Option<(Ptr<'_>, ComponentTickCells<'_>)> {
-        self.is_parsent().then(|| {
+        self.is_present().then(|| {
             self.validate_access();
             (
                 // SAFETY: We've already checked if a value is present, and there should only be one.
@@ -116,7 +116,7 @@ impl NonSendData {
         change_tick: Tick,
         caller: MaybeLocation,
     ) {
-        if self.is_parsent() {
+        if self.is_present() {
             self.validate_access();
             // SAFETY: The caller ensures that the provided value is valid for the underlying type and
             // is properly initialized. We've ensured that a value is already present and previously
@@ -152,7 +152,7 @@ impl NonSendData {
     #[inline]
     #[must_use = "The returned pointer to the removed component should be used or dropped"]
     pub(crate) fn remove(&mut self) -> Option<(OwningPtr<'_>, ComponentTicks, MaybeLocation)> {
-        if !self.is_parsent() {
+        if !self.is_present() {
             return None;
         }
         self.validate_access();
@@ -190,7 +190,7 @@ impl NonSendData {
     /// This will panic if a value is present and is not accessed from the original thread it was inserted in.
     #[inline]
     pub(crate) fn remove_and_drop(&mut self) {
-        if self.is_parsent() {
+        if self.is_present() {
             self.validate_access();
             // SAFETY: There is only one element, and it's always allocated.
             unsafe {

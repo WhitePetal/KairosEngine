@@ -355,6 +355,19 @@ impl<'w> EntityWorldMut<'w> {
         self.location = self.world.entities().get_spawned(self.entity).ok();
     }
 
+    /// Consumes `self` and gets mutable access to the component of type `T`
+    /// with the world `'w` lifetime for the current entity.
+    /// Returns `None` if the entity does not have a component of type `T`.
+    ///
+    /// # Panics
+    ///
+    /// If the entity has been despawned while this `EntityWorldMut` is still alive.
+    #[inline]
+    pub fn into_mut<T: Component<Mutability = Mutable>>(self) -> Option<Mut<'w, T>> {
+        // SAFETY: consuming `self` implies exclusive access
+        unsafe { self.into_unsafe_entity_cell().get_mut() }
+    }
+
     /// Consumes `self` and returns [untyped mutable reference(s)](MutUntyped)
     /// to component(s) with lifetime `'w` for the current entity, based on the
     /// given [`ComponentId`]s.
@@ -488,6 +501,19 @@ impl<'w> EntityWorldMut<'w> {
     #[inline]
     pub unsafe fn world_mut(&mut self) -> &mut World {
         self.world
+    }
+
+    /// Removes a dynamic [`Component`] from the entity if it exists.
+    ///
+    /// You should prefer to use the typed API [`EntityWorldMut::remove`] where possible.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the provided [`ComponentId`] does not exist in the [`World`] or if the
+    /// entity has been despawned while this `EntityWorldMut` is still alive.
+    #[track_caller]
+    pub fn remove_by_id(&mut self, component_id: ComponentId) -> &mut Self {
+        self.remove_by_id_with_caller(component_id, MaybeLocation::caller())
     }
 
     /// Removes a dynamic bundle from the entity if it exists.
