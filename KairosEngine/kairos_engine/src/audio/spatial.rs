@@ -23,10 +23,11 @@ use crate::{
             },
         },
     },
-    ecs::world::World,
     math::{Vector, float3, quaternion},
     spatial::Transform,
 };
+
+use kairos_ecs::world::World;
 
 pub mod spatial_audio_listener;
 pub mod spatial_audio_reverb;

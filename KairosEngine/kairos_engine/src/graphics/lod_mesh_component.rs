@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
-use crate::{
-    asset_loader::assets::{AssetHandle, MeshAssetsSystem},
-    ecs::component::Component,
-};
+use crate::asset_loader::assets::{AssetHandle, MeshAssetsSystem};
+use kairos_ecs::component::Component;
 
 #[derive(Debug)]
 pub struct LODMesh {

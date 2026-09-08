@@ -7,7 +7,8 @@ use rapier3d::{
     pipeline::PhysicsPipeline,
 };
 
-use crate::{ecs::world::World, math::float3, physics::rigid_body::RigidBody, spatial::Transform};
+use crate::{math::float3, physics::rigid_body::RigidBody, spatial::Transform};
+use kairos_ecs::world::World;
 
 pub mod collider;
 pub mod rigid_body;

@@ -1,6 +1,7 @@
 use rapier3d::geometry::{ColliderBuilder, ColliderHandle};
 
-use crate::{ecs::component::Component, math::float3, physics::PhysicsEngine};
+use crate::{math::float3, physics::PhysicsEngine};
+use kairos_ecs::component::Component;
 
 #[derive(Debug, Clone, Copy)]
 pub struct ColliderMaterial {

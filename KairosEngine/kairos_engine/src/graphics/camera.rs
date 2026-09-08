@@ -1,8 +1,8 @@
 use crate::{
-    ecs::component::Component,
     math::{self, float3, float4, float4x4},
     spatial::Transform,
 };
+use kairos_ecs::component::Component;
 
 /// Pure projection parameters; view matrix is derived from a `Transform`.
 pub struct Camera {

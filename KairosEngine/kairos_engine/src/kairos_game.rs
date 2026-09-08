@@ -8,7 +8,6 @@ use crate::{
         spatial_audio_listener::SpatialAudioListenerComponent,
         spatial_audio_reverb::SpatialAudioReverb,
     },
-    ecs::world::World,
     graphics::{
         camera::Camera, graphics_graph::GraphicsCommand, lod_mesh_component::LODMesh,
         material_component::MaterialComponent, mesh::SerializedMeshAsset,

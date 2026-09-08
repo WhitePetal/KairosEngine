@@ -1,4 +1,5 @@
-use crate::{ecs::component::Component, math::float3, spatial::AABB};
+use crate::{math::float3, spatial::AABB};
+use kairos_ecs::component::Component;
 
 pub struct SpatialAudioReverbBound {
     pub aabb: AABB,

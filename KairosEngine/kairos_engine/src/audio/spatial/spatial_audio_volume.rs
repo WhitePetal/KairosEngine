@@ -1,9 +1,8 @@
 use kira::{listener::ListenerId, sound::static_sound::StaticSoundHandle};
 use smallvec::SmallVec;
 
-use crate::{
-    asset_loader::assets::AudioAssetHandle, audio::audio::AudioState, ecs::component::Component,
-};
+use crate::{asset_loader::assets::AudioAssetHandle, audio::audio::AudioState};
+use kairos_ecs::component::Component;
 
 pub const SMALL_VEC_AUDIO_COUNT: usize = 4;
 

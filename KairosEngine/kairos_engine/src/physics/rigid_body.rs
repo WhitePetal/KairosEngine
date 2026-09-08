@@ -4,10 +4,10 @@ use rapier3d::{
 };
 
 use crate::{
-    ecs::component::Component,
     math::float3,
     physics::{PhysicsEngine, collider::ColliderMaterial},
 };
+use kairos_ecs::component::Component;
 
 pub struct RigidBody {
     pub handle: RigidBodyHandle,

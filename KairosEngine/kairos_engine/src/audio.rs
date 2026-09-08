@@ -14,8 +14,9 @@ use crate::{
         background::BackgroundAudio,
         spatial::{SpatialAudioConfig, SpatialAudioTracks},
     },
-    ecs::world::World,
 };
+
+use kairos_ecs::world::World;
 
 pub mod audio;
 pub mod audio_ext;

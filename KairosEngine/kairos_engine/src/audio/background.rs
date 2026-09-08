@@ -1,8 +1,7 @@
 use kira::sound::static_sound::StaticSoundHandle;
 
-use crate::{
-    asset_loader::assets::AudioAssetHandle, audio::audio::AudioState, ecs::component::Component,
-};
+use crate::{asset_loader::assets::AudioAssetHandle, audio::audio::AudioState};
+use kairos_ecs::component::Component;
 
 pub struct BackgroundAudio {
     pub audio: AudioAssetHandle,

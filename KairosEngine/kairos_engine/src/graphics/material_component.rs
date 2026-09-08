@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
-use crate::{
-    asset_loader::assets::{AssetHandle, MaterialAssetsSystem},
-    ecs::component::Component,
-};
+use crate::asset_loader::assets::{AssetHandle, MaterialAssetsSystem};
+use kairos_ecs::component::Component;
 
 pub struct MaterialComponent {
     pub material: Arc<AssetHandle<MaterialAssetsSystem>>,

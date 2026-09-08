@@ -1,6 +1,6 @@
 use kira::listener::ListenerId;
 
-use crate::ecs::component::Component;
+use kairos_ecs::component::Component;
 
 #[derive(Debug, Clone, Copy)]
 pub struct SpatialAudioListenerComponent {
