@@ -16,9 +16,7 @@ use crate::{
     ecs::{
         archetype::Archetypes,
         bundle::Bundles,
-        change_detection::{
-            ComponentTicksMut, ComponentTicksRef, NonSend, NonSendMut, Res, ResMut, Tick,
-        },
+        change_detection::{ComponentTicksMut, ComponentTicksRef, Tick},
         component::{ComponentId, Components, Mutable},
         entity::{Entities, EntityAllocator},
         query::{
@@ -36,6 +34,8 @@ use crate::{
 };
 
 pub use kairos_ecs_macros::SystemParam;
+
+pub use crate::ecs::change_detection::{NonSend, NonSendMut, Res, ResMut};
 
 #[cfg(test)]
 mod tests;

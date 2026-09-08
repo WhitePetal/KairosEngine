@@ -1,24 +1,26 @@
-// use crate::ecs::{query::QueryEntityError, world::World};
+use kairos_ecs_macros::Component;
 
-// #[test]
-// fn query_does_not_match() {
-//     let mut world = World::new();
+use crate::ecs::{query::QueryEntityError, world::World};
 
-//     #[derive(Component)]
-//     struct Present1;
-//     #[derive(Component)]
-//     struct Present2;
-//     #[derive(Component, Debug, PartialEq)]
-//     struct NotPresent;
+#[test]
+fn query_does_not_match() {
+    let mut world = World::new();
 
-//     let entity = world.spawn((Present1, Present2));
+    #[derive(Component)]
+    struct Present1;
+    #[derive(Component)]
+    struct Present2;
+    #[derive(Component, Debug, PartialEq)]
+    struct NotPresent;
 
-//     let (entity, archetype_id) = (entity.id(), entity.archetype().id());
+    let entity = world.spawn((Present1, Present2));
 
-//     let result = world.query::<&NotPresent>().get(&world, entity);
+    let (entity, archetype_id) = (entity.id(), entity.archetype().id());
 
-//     assert_eq!(
-//         result,
-//         Err(QueryEntityError::QueryDoesNotMatch(entity, archetype_id))
-//     );
-// }
+    let result = world.query::<&NotPresent>().get(&world, entity);
+
+    assert_eq!(
+        result,
+        Err(QueryEntityError::QueryDoesNotMatch(entity, archetype_id))
+    );
+}

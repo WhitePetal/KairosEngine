@@ -209,7 +209,7 @@ impl<M: Message> Messages<M> {
     ///
     /// If you do not need to take ownership of the removed messages, use [`Messages::update`] instead.
     #[must_use = "If you do not need the returned messages, call .update() instead."]
-    pub fn update_draint(&mut self) -> impl Iterator<Item = M> + '_ {
+    pub fn update_drain(&mut self) -> impl Iterator<Item = M> + '_ {
         std::mem::swap(&mut self.messages_a, &mut self.messages_b);
         let iter = self.messages_b.messages.drain(..);
         self.messages_b.start_message_count = self.message_count;

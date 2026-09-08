@@ -275,7 +275,7 @@ impl EntityMapper for SceneEntityMapper<'_> {
         // this new entity reference is specifically designed to never represent any living entity
         let new = Entity::from_index_and_generation(
             self.dead_start.index(),
-            self.dead_start.generation.after_version(self.generations),
+            self.dead_start.generation.after_versions(self.generations),
         );
         self.generations = self.generations.wrapping_add(1);
 

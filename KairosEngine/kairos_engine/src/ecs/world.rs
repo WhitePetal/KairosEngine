@@ -51,6 +51,7 @@ use crate::{
     move_as_ptr,
     ptr::{MovingPtr, OwningPtr, Ptr},
 };
+use log::warn;
 
 pub(crate) mod command_queue;
 
@@ -67,13 +68,14 @@ pub mod error;
 
 pub use deferred_world::DeferredWorld;
 pub use entity_access::{
-    EntityMut, EntityMutExcept, EntityRef, EntityRefExcept, EntityWorldMut, FilteredEntityMut,
-    FilteredEntityRef,
+    ComponentEntry, DynamicComponentFetch, EntityMut, EntityMutExcept, EntityRef, EntityRefExcept,
+    EntityWorldMut, FilteredEntityMut, FilteredEntityRef, OccupiedComponentEntry,
+    TryFromFilteredError, UnsafeFilteredEntityMut, VacantComponentEntry,
 };
 pub use entity_fetch::{EntityFetcher, WorldEntityFetch};
 pub use filtered_resource::*;
 pub use identifier::WorldId;
-use log::warn;
+pub use kairos_ecs_macros::FromWorld;
 pub use spawn_batch::*;
 
 #[cfg(test)]

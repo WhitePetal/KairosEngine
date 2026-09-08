@@ -1,338 +1,345 @@
-// #[derive(Component, PartialEq)]
-// struct C;
+use std::ops::{Deref, DerefMut};
 
-// #[derive(Resource)]
-// struct R;
+use kairos_ecs_macros::{Component, Resource};
 
-// #[derive(Resource, PartialEq)]
-// struct R2(u8);
+use crate::{debug::MaybeLocation, ecs::{change_detection::{CHECK_TICK_THRESHOLD, ComponentTicks, ComponentTicksMut, DetectChanges, DetectChangesMut, MAX_CHANGE_AGE, Mut, MutUntyped, Ref, Tick}, system::{IntoSystem, NonSendMut, ResMut, Single, System}, world::World}};
 
-// impl Deref for R2 {
-//     type Target = u8;
-//     fn deref(&self) -> &u8 {
-//         &self.0
-//     }
-// }
+#[derive(Component, PartialEq)]
+struct C;
 
-// impl DerefMut for R2 {
-//     fn deref_mut(&mut self) -> &mut u8 {
-//         &mut self.0
-//     }
-// }
+#[derive(Resource)]
+struct R;
 
-// #[test]
-// fn change_expiration() {
-//     fn change_detected(query: Option<Single<Ref<C>>>) -> bool {
-//         query.unwrap().is_changed()
-//     }
+#[derive(Resource, PartialEq)]
+struct R2(u8);
 
-//     fn change_expired(query: Option<Single<Ref<C>>>) -> bool {
-//         query.unwrap().is_changed()
-//     }
+impl Deref for R2 {
+    type Target = u8;
+    fn deref(&self) -> &u8 {
+        &self.0
+    }
+}
 
-//     let mut world = World::new();
+impl DerefMut for R2 {
+    fn deref_mut(&mut self) -> &mut u8 {
+        &mut self.0
+    }
+}
 
-//     // component added: 1, changed: 1
-//     world.spawn(C);
+#[test]
+fn change_expiration() {
+    fn change_detected(query: Option<Single<Ref<C>>>) -> bool {
+        query.unwrap().is_changed()
+    }
 
-//     let mut change_detected_system = IntoSystem::into_system(change_detected);
-//     let mut change_expired_system = IntoSystem::into_system(change_expired);
-//     change_detected_system.initialize(&mut world);
-//     change_expired_system.initialize(&mut world);
+    fn change_expired(query: Option<Single<Ref<C>>>) -> bool {
+        query.unwrap().is_changed()
+    }
 
-//     // world: 1, system last ran: 0, component changed: 1
-//     // The spawn will be detected since it happened after the system "last ran".
-//     assert!(change_detected_system.run((), &mut world).unwrap());
+    let mut world = World::new();
 
-//     // world: 1 + MAX_CHANGE_AGE
-//     let change_tick = world.change_tick.get_mut();
-//     *change_tick = change_tick.wrapping_add(MAX_CHANGE_AGE);
+    // component added: 1, changed: 1
+    world.spawn(C);
 
-//     // Both the system and component appeared `MAX_CHANGE_AGE` ticks ago.
-//     // Since we clamp things to `MAX_CHANGE_AGE` for determinism,
-//     // `ComponentTicks::is_changed` will now see `MAX_CHANGE_AGE > MAX_CHANGE_AGE`
-//     // and return `false`.
-//     assert!(!change_expired_system.run((), &mut world).unwrap());
-// }
+    let mut change_detected_system = IntoSystem::into_system(change_detected);
+    let mut change_expired_system = IntoSystem::into_system(change_expired);
+    change_detected_system.initialize(&mut world);
+    change_expired_system.initialize(&mut world);
 
-// #[test]
-// fn change_tick_wraparound() {
-//     let mut world = World::new();
-//     world.last_change_tick = Tick::new(u32::MAX);
-//     *world.change_tick.get_mut() = 0;
+    // world: 1, system last ran: 0, component changed: 1
+    // The spawn will be detected since it happened after the system "last ran".
+    assert!(change_detected_system.run((), &mut world).unwrap());
 
-//     // component added: 0, changed: 0
-//     world.spawn(C);
+    // world: 1 + MAX_CHANGE_AGE
+    let change_tick = world.change_tick.get_mut();
+    *change_tick = change_tick.wrapping_add(MAX_CHANGE_AGE);
 
-//     world.increment_change_tick();
+    // Both the system and component appeared `MAX_CHANGE_AGE` ticks ago.
+    // Since we clamp things to `MAX_CHANGE_AGE` for determinism,
+    // `ComponentTicks::is_changed` will now see `MAX_CHANGE_AGE > MAX_CHANGE_AGE`
+    // and return `false`.
+    assert!(!change_expired_system.run((), &mut world).unwrap());
+}
 
-//     // Since the world is always ahead, as long as changes can't get older than `u32::MAX` (which we ensure),
-//     // the wrapping difference will always be positive, so wraparound doesn't matter.
-//     let mut query = world.query::<Ref<C>>();
-//     assert!(query.single(&world).unwrap().is_changed());
-// }
+#[test]
+fn change_tick_wraparound() {
+    let mut world = World::new();
+    world.last_change_tick = Tick::new(u32::MAX);
+    *world.change_tick.get_mut() = 0;
 
-// #[test]
-// fn change_tick_scan() {
-//     let mut world = World::new();
+    // component added: 0, changed: 0
+    world.spawn(C);
 
-//     // component added: 1, changed: 1
-//     world.spawn(C);
+    world.increment_change_tick();
 
-//     // a bunch of stuff happens, the component is now older than `MAX_CHANGE_AGE`
-//     *world.change_tick.get_mut() += MAX_CHANGE_AGE + CHECK_TICK_THRESHOLD;
-//     let change_tick = world.change_tick();
+    // Since the world is always ahead, as long as changes can't get older than `u32::MAX` (which we ensure),
+    // the wrapping difference will always be positive, so wraparound doesn't matter.
+    let mut query = world.query::<Ref<C>>();
+    assert!(query.single(&world).unwrap().is_changed());
+}
 
-//     let mut query = world.query::<Ref<C>>();
-//     for tracker in query.iter(&world) {
-//         let ticks_since_insert = change_tick.relative_to(*tracker.ticks.added).get();
-//         let ticks_since_change = change_tick.relative_to(*tracker.ticks.changed).get();
-//         assert!(ticks_since_insert > MAX_CHANGE_AGE);
-//         assert!(ticks_since_change > MAX_CHANGE_AGE);
-//     }
+#[test]
+fn change_tick_scan() {
+    let mut world = World::new();
 
-//     // scan change ticks and clamp those at risk of overflow
-//     world.check_change_ticks();
+    // component added: 1, changed: 1
+    world.spawn(C);
 
-//     for tracker in query.iter(&world) {
-//         let ticks_since_insert = change_tick.relative_to(*tracker.ticks.added).get();
-//         let ticks_since_change = change_tick.relative_to(*tracker.ticks.changed).get();
-//         assert_eq!(ticks_since_insert, MAX_CHANGE_AGE);
-//         assert_eq!(ticks_since_change, MAX_CHANGE_AGE);
-//     }
-// }
+    // a bunch of stuff happens, the component is now older than `MAX_CHANGE_AGE`
+    *world.change_tick.get_mut() += MAX_CHANGE_AGE + CHECK_TICK_THRESHOLD;
+    let change_tick = world.change_tick();
 
-// #[test]
-// fn mut_from_res_mut() {
-//     let mut component_ticks = ComponentTicks {
-//         added: Tick::new(1),
-//         changed: Tick::new(2),
-//     };
-//     let mut caller = MaybeLocation::caller();
-//     let ticks = ComponentTicksMut {
-//         added: &mut component_ticks.added,
-//         changed: &mut component_ticks.changed,
-//         changed_by: caller.as_mut(),
-//         last_run: Tick::new(3),
-//         this_run: Tick::new(4),
-//     };
-//     let mut res = R {};
+    let mut query = world.query::<Ref<C>>();
+    for tracker in query.iter(&world) {
+        let ticks_since_insert = change_tick.relative_to(*tracker.ticks.added).get();
+        let ticks_since_change = change_tick.relative_to(*tracker.ticks.changed).get();
+        assert!(ticks_since_insert > MAX_CHANGE_AGE);
+        assert!(ticks_since_change > MAX_CHANGE_AGE);
+    }
 
-//     let res_mut = ResMut {
-//         value: &mut res,
-//         ticks,
-//     };
+    // scan change ticks and clamp those at risk of overflow
+    world.check_change_ticks();
 
-//     let into_mut: Mut<R> = res_mut.into();
-//     assert_eq!(1, into_mut.ticks.added.get());
-//     assert_eq!(2, into_mut.ticks.changed.get());
-//     assert_eq!(3, into_mut.ticks.last_run.get());
-//     assert_eq!(4, into_mut.ticks.this_run.get());
-// }
+    for tracker in query.iter(&world) {
+        let ticks_since_insert = change_tick.relative_to(*tracker.ticks.added).get();
+        let ticks_since_change = change_tick.relative_to(*tracker.ticks.changed).get();
+        assert_eq!(ticks_since_insert, MAX_CHANGE_AGE);
+        assert_eq!(ticks_since_change, MAX_CHANGE_AGE);
+    }
+}
 
-// #[test]
-// fn mut_new() {
-//     let mut component_ticks = ComponentTicks {
-//         added: Tick::new(1),
-//         changed: Tick::new(3),
-//     };
-//     let mut res = R {};
-//     let mut caller = MaybeLocation::caller();
+#[test]
+fn mut_from_res_mut() {
+    let mut component_ticks = ComponentTicks {
+        added: Tick::new(1),
+        changed: Tick::new(2),
+    };
+    let mut caller = MaybeLocation::caller();
+    let ticks = ComponentTicksMut {
+        added: &mut component_ticks.added,
+        changed: &mut component_ticks.changed,
+        changed_by: caller.as_mut(),
+        last_run: Tick::new(3),
+        this_run: Tick::new(4),
+    };
+    let mut res = R {};
 
-//     let val = Mut::new(
-//         &mut res,
-//         &mut component_ticks.added,
-//         &mut component_ticks.changed,
-//         Tick::new(2), // last_run
-//         Tick::new(4), // this_run
-//         caller.as_mut(),
-//     );
+    let res_mut = ResMut {
+        value: &mut res,
+        ticks,
+    };
 
-//     assert!(!val.is_added());
-//     assert!(val.is_changed());
-// }
+    let into_mut: Mut<R> = res_mut.into();
+    assert_eq!(1, into_mut.ticks.added.get());
+    assert_eq!(2, into_mut.ticks.changed.get());
+    assert_eq!(3, into_mut.ticks.last_run.get());
+    assert_eq!(4, into_mut.ticks.this_run.get());
+}
 
-// #[test]
-// fn mut_from_non_send_mut() {
-//     let mut component_ticks = ComponentTicks {
-//         added: Tick::new(1),
-//         changed: Tick::new(2),
-//     };
-//     let mut caller = MaybeLocation::caller();
-//     let ticks = ComponentTicksMut {
-//         added: &mut component_ticks.added,
-//         changed: &mut component_ticks.changed,
-//         changed_by: caller.as_mut(),
-//         last_run: Tick::new(3),
-//         this_run: Tick::new(4),
-//     };
-//     let mut res = R {};
+#[test]
+fn mut_new() {
+    let mut component_ticks = ComponentTicks {
+        added: Tick::new(1),
+        changed: Tick::new(3),
+    };
+    let mut res = R {};
+    let mut caller = MaybeLocation::caller();
 
-//     let non_send_mut = NonSendMut {
-//         value: &mut res,
-//         ticks,
-//     };
+    let val = Mut::new(
+        &mut res,
+        &mut component_ticks.added,
+        &mut component_ticks.changed,
+        Tick::new(2), // last_run
+        Tick::new(4), // this_run
+        caller.as_mut(),
+    );
 
-//     let into_mut: Mut<R> = non_send_mut.into();
-//     assert_eq!(1, into_mut.ticks.added.get());
-//     assert_eq!(2, into_mut.ticks.changed.get());
-//     assert_eq!(3, into_mut.ticks.last_run.get());
-//     assert_eq!(4, into_mut.ticks.this_run.get());
-// }
+    assert!(!val.is_added());
+    assert!(val.is_changed());
+}
 
-// #[test]
-// fn map_mut() {
-//     use super::*;
-//     struct Outer(i64);
+#[test]
+fn mut_from_non_send_mut() {
+    let mut component_ticks = ComponentTicks {
+        added: Tick::new(1),
+        changed: Tick::new(2),
+    };
+    let mut caller = MaybeLocation::caller();
+    let ticks = ComponentTicksMut {
+        added: &mut component_ticks.added,
+        changed: &mut component_ticks.changed,
+        changed_by: caller.as_mut(),
+        last_run: Tick::new(3),
+        this_run: Tick::new(4),
+    };
+    let mut res = R {};
 
-//     let last_run = Tick::new(2);
-//     let this_run = Tick::new(3);
-//     let mut component_ticks = ComponentTicks {
-//         added: Tick::new(1),
-//         changed: Tick::new(2),
-//     };
-//     let mut caller = MaybeLocation::caller();
-//     let ticks = ComponentTicksMut {
-//         added: &mut component_ticks.added,
-//         changed: &mut component_ticks.changed,
-//         changed_by: caller.as_mut(),
-//         last_run,
-//         this_run,
-//     };
+    let non_send_mut = NonSendMut {
+        value: &mut res,
+        ticks,
+    };
 
-//     let mut outer = Outer(0);
+    let into_mut: Mut<R> = non_send_mut.into();
+    assert_eq!(1, into_mut.ticks.added.get());
+    assert_eq!(2, into_mut.ticks.changed.get());
+    assert_eq!(3, into_mut.ticks.last_run.get());
+    assert_eq!(4, into_mut.ticks.this_run.get());
+}
 
-//     let ptr = Mut {
-//         value: &mut outer,
-//         ticks,
-//     };
-//     assert!(!ptr.is_changed());
+#[test]
+fn map_mut() {
+    use super::*;
+    struct Outer(i64);
 
-//     // Perform a mapping operation.
-//     let mut inner = ptr.map_unchanged(|x| &mut x.0);
-//     assert!(!inner.is_changed());
+    let last_run = Tick::new(2);
+    let this_run = Tick::new(3);
+    let mut component_ticks = ComponentTicks {
+        added: Tick::new(1),
+        changed: Tick::new(2),
+    };
+    let mut caller = MaybeLocation::caller();
+    let ticks = ComponentTicksMut {
+        added: &mut component_ticks.added,
+        changed: &mut component_ticks.changed,
+        changed_by: caller.as_mut(),
+        last_run,
+        this_run,
+    };
 
-//     // Mutate the inner value.
-//     *inner = 64;
-//     assert!(inner.is_changed());
-//     // Modifying one field of a component should flag a change for the entire component.
-//     assert!(component_ticks.is_changed(last_run, this_run));
-// }
+    let mut outer = Outer(0);
 
-// #[test]
-// fn set_if_neq() {
-//     let mut world = World::new();
+    let ptr = Mut {
+        value: &mut outer,
+        ticks,
+    };
+    assert!(!ptr.is_changed());
 
-//     world.insert_resource(R2(0));
-//     // Resources are Changed when first added
-//     world.increment_change_tick();
-//     // This is required to update world::last_change_tick
-//     world.clear_trackers();
+    // Perform a mapping operation.
+    let mut inner = ptr.map_unchanged(|x| &mut x.0);
+    assert!(!inner.is_changed());
 
-//     let mut r = world.resource_mut::<R2>();
-//     assert!(!r.is_changed(), "Resource must begin unchanged.");
+    // Mutate the inner value.
+    *inner = 64;
+    assert!(inner.is_changed());
+    // Modifying one field of a component should flag a change for the entire component.
+    assert!(component_ticks.is_changed(last_run, this_run));
+}
 
-//     r.set_if_neq(R2(0));
-//     assert!(
-//         !r.is_changed(),
-//         "Resource must not be changed after setting to the same value."
-//     );
+#[test]
+fn set_if_neq() {
+    let mut world = World::new();
 
-//     r.set_if_neq(R2(3));
-//     assert!(
-//         r.is_changed(),
-//         "Resource must be changed after setting to a different value."
-//     );
-// }
+    world.insert_resource(R2(0));
+    // Resources are Changed when first added
+    world.increment_change_tick();
+    // This is required to update world::last_change_tick
+    world.clear_trackers();
 
-// #[test]
-// fn as_deref_mut() {
-//     let mut world = World::new();
+    let mut r = world.resource_mut::<R2>();
+    assert!(!r.is_changed(), "Resource must begin unchanged.");
 
-//     world.insert_resource(R2(0));
-//     // Resources are Changed when first added
-//     world.increment_change_tick();
-//     // This is required to update world::last_change_tick
-//     world.clear_trackers();
+    r.set_if_neq(R2(0));
+    assert!(
+        !r.is_changed(),
+        "Resource must not be changed after setting to the same value."
+    );
 
-//     let mut r = world.resource_mut::<R2>();
-//     assert!(!r.is_changed(), "Resource must begin unchanged.");
+    r.set_if_neq(R2(3));
+    assert!(
+        r.is_changed(),
+        "Resource must be changed after setting to a different value."
+    );
+}
 
-//     let mut r = r.as_deref_mut();
-//     assert!(
-//         !r.is_changed(),
-//         "Dereferencing should not mark the item as changed yet"
-//     );
+#[test]
+fn as_deref_mut() {
+    let mut world = World::new();
 
-//     r.set_if_neq(3);
-//     assert!(
-//         r.is_changed(),
-//         "Resource must be changed after setting to a different value."
-//     );
-// }
+    world.insert_resource(R2(0));
+    // Resources are Changed when first added
+    world.increment_change_tick();
+    // This is required to update world::last_change_tick
+    world.clear_trackers();
 
-// #[test]
-// fn mut_untyped_to_reflect() {
-//     let last_run = Tick::new(2);
-//     let this_run = Tick::new(3);
-//     let mut component_ticks = ComponentTicks {
-//         added: Tick::new(1),
-//         changed: Tick::new(2),
-//     };
-//     let mut caller = MaybeLocation::caller();
-//     let ticks = ComponentTicksMut {
-//         added: &mut component_ticks.added,
-//         changed: &mut component_ticks.changed,
-//         changed_by: caller.as_mut(),
-//         last_run,
-//         this_run,
-//     };
+    let mut r = world.resource_mut::<R2>();
+    assert!(!r.is_changed(), "Resource must begin unchanged.");
 
-//     let mut value: i32 = 5;
+    let mut r = r.as_deref_mut();
+    assert!(
+        !r.is_changed(),
+        "Dereferencing should not mark the item as changed yet"
+    );
 
-//     let value = MutUntyped {
-//         value: PtrMut::from(&mut value),
-//         ticks,
-//     };
+    r.set_if_neq(3);
+    assert!(
+        r.is_changed(),
+        "Resource must be changed after setting to a different value."
+    );
+}
 
-//     let reflect_from_ptr = <ReflectFromPtr as FromType<i32>>::from_type();
+#[cfg(feature = "kairos_reflect")]
+#[test]
+fn mut_untyped_to_reflect() {
+    let last_run = Tick::new(2);
+    let this_run = Tick::new(3);
+    let mut component_ticks = ComponentTicks {
+        added: Tick::new(1),
+        changed: Tick::new(2),
+    };
+    let mut caller = MaybeLocation::caller();
+    let ticks = ComponentTicksMut {
+        added: &mut component_ticks.added,
+        changed: &mut component_ticks.changed,
+        changed_by: caller.as_mut(),
+        last_run,
+        this_run,
+    };
 
-//     let mut new = value.map_unchanged(|ptr| {
-//         // SAFETY: The underlying type of `ptr` matches `reflect_from_ptr`.
-//         unsafe { reflect_from_ptr.as_reflect_mut(ptr) }
-//     });
+    let mut value: i32 = 5;
 
-//     assert!(!new.is_changed());
+    let value = MutUntyped {
+        value: PtrMut::from(&mut value),
+        ticks,
+    };
 
-//     new.reflect_mut();
+    let reflect_from_ptr = <ReflectFromPtr as FromType<i32>>::from_type();
 
-//     assert!(new.is_changed());
-// }
+    let mut new = value.map_unchanged(|ptr| {
+        // SAFETY: The underlying type of `ptr` matches `reflect_from_ptr`.
+        unsafe { reflect_from_ptr.as_reflect_mut(ptr) }
+    });
 
-// #[test]
-// fn mut_untyped_from_mut() {
-//     let mut component_ticks = ComponentTicks {
-//         added: Tick::new(1),
-//         changed: Tick::new(2),
-//     };
-//     let mut caller = MaybeLocation::caller();
-//     let ticks = ComponentTicksMut {
-//         added: &mut component_ticks.added,
-//         changed: &mut component_ticks.changed,
-//         changed_by: caller.as_mut(),
-//         last_run: Tick::new(3),
-//         this_run: Tick::new(4),
-//     };
-//     let mut c = C {};
+    assert!(!new.is_changed());
 
-//     let mut_typed = Mut {
-//         value: &mut c,
-//         ticks,
-//     };
+    new.reflect_mut();
 
-//     let into_mut: MutUntyped = mut_typed.into();
-//     assert_eq!(1, into_mut.ticks.added.get());
-//     assert_eq!(2, into_mut.ticks.changed.get());
-//     assert_eq!(3, into_mut.ticks.last_run.get());
-//     assert_eq!(4, into_mut.ticks.this_run.get());
-// }
+    assert!(new.is_changed());
+}
+
+#[test]
+fn mut_untyped_from_mut() {
+    let mut component_ticks = ComponentTicks {
+        added: Tick::new(1),
+        changed: Tick::new(2),
+    };
+    let mut caller = MaybeLocation::caller();
+    let ticks = ComponentTicksMut {
+        added: &mut component_ticks.added,
+        changed: &mut component_ticks.changed,
+        changed_by: caller.as_mut(),
+        last_run: Tick::new(3),
+        this_run: Tick::new(4),
+    };
+    let mut c = C {};
+
+    let mut_typed = Mut {
+        value: &mut c,
+        ticks,
+    };
+
+    let into_mut: MutUntyped = mut_typed.into();
+    assert_eq!(1, into_mut.ticks.added.get());
+    assert_eq!(2, into_mut.ticks.changed.get());
+    assert_eq!(3, into_mut.ticks.last_run.get());
+    assert_eq!(4, into_mut.ticks.this_run.get());
+}

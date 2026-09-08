@@ -648,6 +648,7 @@ impl Schedule {
     }
 
     /// Returns the [`SystemSchedule`].
+    #[cfg(feature = "debug_stepping")]
     pub(crate) fn executable(&self) -> &SystemSchedule {
         &self.executable
     }

@@ -44,7 +44,7 @@ impl SystemExecutor for SingleThreadedExecutor {
         &mut self,
         schedule: &mut super::SystemSchedule,
         world: &mut crate::ecs::world::World,
-        skip_systems: Option<&FixedBitSet>,
+        _skip_systems: Option<&FixedBitSet>,
         error_handler: fn(crate::ecs::error::KairosError, crate::ecs::error::ErrorContext),
     ) {
         // If stepping is enabled, make sure we skip those systems that should

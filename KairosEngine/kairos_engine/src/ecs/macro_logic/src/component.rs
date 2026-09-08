@@ -254,7 +254,7 @@ impl DeriveComponent {
                 let ident = &require.path;
                 let constructor = match &require.func {
                     Some(func) => quote! { || { let x: #ident = (#func)().into(); x } },
-                    None => quote! { <#ident as #FQDefault::default },
+                    None => quote! { <#ident as #FQDefault>::default },
                 };
                 register_required.push(quote! {
                     required_components.register_required::<#ident>(#constructor);
@@ -294,7 +294,7 @@ impl DeriveComponent {
                 (&&&&&&&#ecs::relationship::RelationshipCloneBehaviorSpecialization::<Self>::default()).default_clone_behavior()
             )
         } else if let Some(behavior) = self.clone_behavior {
-            quote!(#ecs::relationship::ComponentCloneBehavior::#behavior)
+            quote!(#ecs::component::ComponentCloneBehavior::#behavior)
         } else {
             quote!(
                 use #ecs::component::{DefaultCloneBehaviorBase, DefaultCloneBehaviorViaClone};

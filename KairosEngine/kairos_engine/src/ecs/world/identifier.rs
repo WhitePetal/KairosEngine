@@ -21,7 +21,7 @@ impl WorldId {
     /// time - if a given [`WorldId`] is [`Drop`]ped its value still cannot be reused
     pub fn new() -> Option<Self> {
         MAX_WORLD_ID
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |val| {
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |val| {
                 val.checked_add(1)
             })
             .map(WorldId)

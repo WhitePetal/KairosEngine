@@ -6,6 +6,7 @@ use std::{
     ops::Deref,
 };
 
+use kairos_ecs_macros::QueryData;
 use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
     de::{Error, Visitor},
@@ -16,9 +17,8 @@ use crate::{
     hash::FixedHashed,
 };
 
-/// A wrapper over Hashed. This exists to make Name("value".into()) possible, which plays nicely with contexts like the `bsn!` macro.
-#[derive(Clone)]
-pub struct HashedStr(FixedHashed<Cow<'static, str>>);
+#[cfg(test)]
+mod tests;
 
 /// Component used to identify an entity. Stores a hash for faster comparisons.
 ///
@@ -41,6 +41,11 @@ impl Default for Name {
         Name::new("")
     }
 }
+
+/// A wrapper over Hashed. This exists to make Name("value".into()) possible, which plays nicely with contexts like the `bsn!` macro.
+#[derive(Clone)]
+#[cfg_attr(feature = "kairos_reflect", derive(Reflect))]
+pub struct HashedStr(FixedHashed<Cow<'static, str>>);
 
 impl From<&'static str> for HashedStr {
     fn from(value: &'static str) -> Self {
@@ -134,9 +139,8 @@ impl std::fmt::Debug for Name {
 ///
 /// The `Display` impl for `NameOrEntity` returns the `Name` where there is one
 /// or {index}v{generation} for entities without one.
-// TODO!
-// #[derive(QueryData)]
-// #[query_data(derive(Debug))]
+#[derive(QueryData)]
+#[query_data(derive(Debug))]
 pub struct NameOrEntity {
     /// A [`Name`] that the entity might have that is displayed if available.
     pub name: Option<&'static Name>,
@@ -144,15 +148,15 @@ pub struct NameOrEntity {
     pub entity: Entity,
 }
 
-// impl<'w, 's> core::fmt::Display for NameOrEntityItem<'w, 's> {
-//     #[inline(always)]
-//     fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
-//         match self.name {
-//             Some(name) => core::fmt::Display::fmt(name, f),
-//             None => core::fmt::Display::fmt(&self.entity, f),
-//         }
-//     }
-// }
+impl<'w, 's> std::fmt::Display for NameOrEntityItem<'w, 's> {
+    #[inline(always)]
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self.name {
+            Some(name) => core::fmt::Display::fmt(name, f),
+            None => core::fmt::Display::fmt(&self.entity, f),
+        }
+    }
+}
 
 // Conversions from strings
 

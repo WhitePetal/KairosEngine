@@ -9,6 +9,7 @@ mod node;
 mod pass;
 mod schedule;
 mod set;
+#[cfg(feature = "debug_stepping")]
 mod stepping;
 
 /// An implementation of a graph data structure.

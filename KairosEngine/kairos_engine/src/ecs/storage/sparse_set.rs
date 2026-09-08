@@ -670,6 +670,12 @@ macro_rules! impl_sparse_set {
 impl_sparse_set!(SparseSet);
 impl_sparse_set!(ImmutableSparseSet);
 
+impl<I: SparseSetIndex, V> Default for SparseSet<I, V> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<I, V> SparseSet<I, V> {
     /// Creates a new [`SparseSet`].
     pub const fn new() -> Self {
@@ -678,12 +684,6 @@ impl<I, V> SparseSet<I, V> {
             indices: Vec::new(),
             sparse: SparseArray::new(),
         }
-    }
-}
-
-impl<I: SparseSetIndex, V> Default for SparseSet<I, V> {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

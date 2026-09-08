@@ -1,20 +1,22 @@
-// use crate::ecs::world::World;
+use kairos_ecs_macros::FromTemplate;
 
-// #[test]
-// fn option_template() {
-//     #[derive(FromTemplate)]
-//     struct Handle(String);
+use crate::ecs::world::World;
 
-//     #[derive(FromTemplate)]
-//     struct Foo {
-//         #[template(built_in)]
-//         handle: Option<Handle>,
-//     }
+#[test]
+fn option_template() {
+    #[derive(FromTemplate)]
+    struct Handle(String);
 
-//     let mut world = World::new();
-//     let foo_template = FooTemplate {
-//         handle: Some(HandleTemplate("handle_path".to_string())).into(),
-//     };
-//     let foo = world.spawn_empty().build_template(&foo_template).unwrap();
-//     assert_eq!(foo.handle.unwrap().0, "handle_path".to_string());
-// }
+    #[derive(FromTemplate)]
+    struct Foo {
+        #[template(built_in)]
+        handle: Option<Handle>,
+    }
+
+    let mut world = World::new();
+    let foo_template = FooTemplate {
+        handle: Some(HandleTemplate("handle_path".to_string())).into(),
+    };
+    let foo = world.spawn_empty().build_template(&foo_template).unwrap();
+    assert_eq!(foo.handle.unwrap().0, "handle_path".to_string());
+}

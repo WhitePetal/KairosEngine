@@ -243,7 +243,7 @@ impl EntityGeneration {
 
     /// Returns the [`EntityGeneration`] that would result from this many more `versions` of the corresponding [`EntityIndex`] from passing.
     #[inline]
-    pub const fn after_version(self, version: u32) -> Self {
+    pub const fn after_versions(self, version: u32) -> Self {
         Self(self.0.wrapping_add(version))
     }
 
@@ -388,6 +388,57 @@ pub struct Entity {
     generation: EntityGeneration,
     #[cfg(target_endian = "big")]
     index: EntityIndex,
+}
+
+// By not short-circuiting in comparisons, we get better codegen.
+// See <https://github.com/rust-lang/rust/issues/117800>
+impl PartialEq for Entity {
+    #[inline]
+    fn eq(&self, other: &Entity) -> bool {
+        // By using `to_bits`, the codegen can be optimized out even
+        // further potentially. Relies on the correct alignment/field
+        // order of `Entity`.
+        self.to_bits() == other.to_bits()
+    }
+}
+
+impl Eq for Entity {}
+
+// The derive macro codegen output is not optimal and can't be optimized as well
+// by the compiler. This impl resolves the issue of non-optimal codegen by relying
+// on comparing against the bit representation of `Entity` instead of comparing
+// the fields. The result is then LLVM is able to optimize the codegen for Entity
+// far beyond what the derive macro can.
+// See <https://github.com/rust-lang/rust/issues/106107>
+impl PartialOrd for Entity {
+    #[inline]
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        // Make use of our `Ord` impl to ensure optimal codegen output
+        Some(self.cmp(other))
+    }
+}
+
+// The derive macro codegen output is not optimal and can't be optimized as well
+// by the compiler. This impl resolves the issue of non-optimal codegen by relying
+// on comparing against the bit representation of `Entity` instead of comparing
+// the fields. The result is then LLVM is able to optimize the codegen for Entity
+// far beyond what the derive macro can.
+// See <https://github.com/rust-lang/rust/issues/106107>
+impl Ord for Entity {
+    #[inline]
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        // This will result in better codegen for ordering comparisons, plus
+        // avoids pitfalls with regards to macro codegen relying on property
+        // position when we want to compare against the bit representation.
+        self.to_bits().cmp(&other.to_bits())
+    }
+}
+
+impl Hash for Entity {
+    #[inline]
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        self.to_bits().hash(state);
+    }
 }
 
 impl Entity {
@@ -590,54 +641,15 @@ impl fmt::Display for Entity {
     }
 }
 
-// By not short-circuiting in comparisons, we get better codegen.
-// See <https://github.com/rust-lang/rust/issues/117800>
-impl PartialEq for Entity {
+impl SparseSetIndex for Entity {
     #[inline]
-    fn eq(&self, other: &Entity) -> bool {
-        // By using `to_bits`, the codegen can be optimized out even
-        // further potentially. Relies on the correct alignment/field
-        // order of `Entity`.
-        self.to_bits() == other.to_bits()
+    fn sparse_set_index(&self) -> usize {
+        self.index().sparse_set_index()
     }
-}
 
-impl Eq for Entity {}
-
-// The derive macro codegen output is not optimal and can't be optimized as well
-// by the compiler. This impl resolves the issue of non-optimal codegen by relying
-// on comparing against the bit representation of `Entity` instead of comparing
-// the fields. The result is then LLVM is able to optimize the codegen for Entity
-// far beyond what the derive macro can.
-// See <https://github.com/rust-lang/rust/issues/106107>
-impl PartialOrd for Entity {
     #[inline]
-    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
-        // Make use of our `Ord` impl to ensure optimal codegen output
-        Some(self.cmp(other))
-    }
-}
-
-// The derive macro codegen output is not optimal and can't be optimized as well
-// by the compiler. This impl resolves the issue of non-optimal codegen by relying
-// on comparing against the bit representation of `Entity` instead of comparing
-// the fields. The result is then LLVM is able to optimize the codegen for Entity
-// far beyond what the derive macro can.
-// See <https://github.com/rust-lang/rust/issues/106107>
-impl Ord for Entity {
-    #[inline]
-    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
-        // This will result in better codegen for ordering comparisons, plus
-        // avoids pitfalls with regards to macro codegen relying on property
-        // position when we want to compare against the bit representation.
-        self.to_bits().cmp(&other.to_bits())
-    }
-}
-
-impl Hash for Entity {
-    #[inline]
-    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
-        self.to_bits().hash(state);
+    fn get_sparse_set_index(value: usize) -> Self {
+        Entity::from_index(EntityIndex::get_sparse_set_index(value))
     }
 }
 
@@ -733,7 +745,7 @@ impl EntityAllocator {
     /// Like [`alloc`](Self::alloc), these entities must be used, otherwise they will be forgotten.
     /// If the iterator is not exhausted, its remaining entities are forgotten.
     /// See [`AllocEntitiesIterator`] docs for more.
-    pub fn alloc_many(&self, count: u32) -> AllocEntitiesIterator {
+    pub fn alloc_many(&self, count: u32) -> AllocEntitiesIterator<'_> {
         AllocEntitiesIterator {
             inner: self.inner.alloc_many(count),
         }
@@ -1045,7 +1057,7 @@ impl Entities {
             .filter(|meta| {
                 (meta.generation == entity.generation)
                     || (meta.location.is_none()
-                        && meta.generation == entity.generation().after_version(1))
+                        && meta.generation == entity.generation().after_versions(1))
             })
             .map(|meta| meta.spawned_or_despawned)
     }

@@ -28,6 +28,64 @@ pub mod template;
 pub mod traversal;
 pub mod world;
 
+/// The ECS prelude.
+///
+/// This includes the most common types in this crate, re-exported for your convenience.
+pub mod prelude {
+    #[doc(hidden)]
+    pub use crate::ecs::{
+        bundle::Bundle,
+        change_detection::{
+            ContiguousMut, ContiguousRef, DetectChanges, DetectChangesMut, Mut, Ref,
+        },
+        component::Component,
+        entity::{ContainsEntity, Entity, EntityMapper},
+        error::{KairosError, Result, ResultSeverityExt, Severity},
+        event::{EntityEvent, Event},
+        hierarchy::{ChildOf, ChildSpawner, ChildSpawnerCommands, Children},
+        lifecycle::{Add, Despawn, Discard, Insert, Remove, RemovedComponents},
+        message::{
+            Message, MessageMutator, MessageReader, MessageWriter, Messages, PopulatedMessageReader,
+        },
+        name::{Name, NameOrEntity},
+        observer::{Observer, ObserverSystemExt, On},
+        query::{Added, Allow, AnyOf, Changed, Has, Or, QueryBuilder, QueryState, With, Without},
+        relationship::RelationshipTarget,
+        resource::Resource,
+        schedule::{
+            ApplyDeferred, IntoScheduleConfigs, IntoSystemSet, Schedule, Schedules,
+            SystemCondition, SystemSet, common_conditions::*,
+        },
+        spawn::{Spawn, SpawnIter, SpawnRelated, SpawnWith, WithOneRelated, WithRelated},
+        system::{
+            Command, Commands, Deferred, EntityCommand, EntityCommands, If, In, InMut, InRef,
+            IntoSystem, Local, NonSend, NonSendMut, ParamSet, Populated, Query, ReadOnlySystem,
+            Res, ResMut, Single, System, SystemIn, SystemInput, SystemParamBuilder,
+            SystemParamFunction,
+        },
+        template::{FromTemplate, Template, template},
+        world::{
+            EntityMut, EntityRef, EntityWorldMut, FilteredResources, FilteredResourcesMut,
+            FromWorld, World,
+        },
+    };
+    pub use crate::{children, related};
+
+    #[doc(hidden)]
+    pub use crate::ecs::system::ParallelCommands;
+
+    #[doc(hidden)]
+    #[cfg(feature = "kairos_reflect")]
+    pub use crate::reflect::{
+        AppTypeRegistry, ReflectComponent, ReflectEvent, ReflectFromWorld, ReflectMessage,
+        ReflectResource,
+    };
+
+    // #[doc(hidden)]
+    // #[cfg(feature = "reflect_functions")]
+    // pub use crate::reflect::AppFunctionRegistry;
+}
+
 /// Exports used by macros.
 ///
 /// These are not meant to be used directly and are subject to breaking changes.

@@ -51,10 +51,10 @@ fn contiguous_item_struct(
 ) -> proc_macro2::TokenStream {
     let item_attrs = quote! {
         #[doc = concat!(
-            "Automatically generated [`ContiguousQueryData`](,"
+            "Automatically generated [`ContiguousQueryData`](",
             stringify!(#path),
-            "::fetch::ContiguousQueryData) item type for [`"
-            stringify(#struct_name),
+            "::fetch::ContiguousQueryData) item type for [`",
+            stringify!(#struct_name),
             "`], returned when iterating over contiguous query results",
         )]
         #[automatically_derived]
@@ -372,7 +372,7 @@ pub fn derive_query_data_impl(input: TokenStream) -> TokenStream {
                     #[doc = "Automatically generated read-only field for accessing `"]
                     #[doc = stringify!(#field_types)]
                     #[doc = "`."]
-                    #field_visibilities #field_members: #read_only_field_types
+                    #field_visibilities #field_members: #read_only_field_types,
                 )*
             }
 

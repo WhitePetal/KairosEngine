@@ -89,7 +89,7 @@ impl<'w> BundleInserter<'w> {
 
         let archetype_move_type = if let Some(new_archetype) = new_archetype {
             if archetype.table_id() == new_archetype.table_id() {
-                ArchetypeMoveType::NewArchetypeNewTable {
+                ArchetypeMoveType::NewArchetypeSameTable {
                     new_archetype: new_archetype.into(),
                 }
             } else {

@@ -234,7 +234,7 @@ impl SystemExecutor for MultiThreadedExecutor {
         &mut self,
         schedule: &mut SystemSchedule,
         world: &mut World,
-        skip_systems: Option<&FixedBitSet>,
+        _skip_systems: Option<&FixedBitSet>,
         error_handler: fn(KairosError, ErrorContext),
     ) {
         let state = self.state.get_mut().unwrap();

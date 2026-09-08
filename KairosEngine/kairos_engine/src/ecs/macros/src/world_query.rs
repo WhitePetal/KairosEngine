@@ -23,9 +23,9 @@ pub(crate) fn item_struct(
     let item_attrs = quote! {
         #[doc = concat!(
             "Automatically generated [`WorldQuery`](",
-            stringify(#path),
+            stringify!(#path),
             "::query::WorldQuery) item type for [`",
-            stringify(#struct_name),
+            stringify!(#struct_name),
             "`], returned when iterating over query results."
         )]
         #[automatically_derived]

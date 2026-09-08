@@ -3,36 +3,38 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-use crate::ecs::{message::PopulatedMessageReader, world::World};
+use kairos_ecs_macros::Message;
 
-// #[test]
-// fn test_populated_message_reader() {
-//     let system_ran = Arc::new(AtomicBool::new(false));
+use crate::ecs::{message::{MessageRegistry, PopulatedMessageReader}, schedule::Schedule, world::World};
 
-//     let mut world = World::new();
-//     MessageRegistry::register_message::<TheMessage>(&mut world);
+#[test]
+fn test_populated_message_reader() {
+    let system_ran = Arc::new(AtomicBool::new(false));
 
-//     let mut schedule = Schedule::default();
-//     schedule.add_systems({
-//         let system_ran = system_ran.clone();
-//         move |mut _reader: PopulatedMessageReader<TheMessage>| {
-//             system_ran.store(true, Ordering::SeqCst);
-//         }
-//     });
+    let mut world = World::new();
+    MessageRegistry::register_message::<TheMessage>(&mut world);
 
-//     schedule.run(&mut world);
-//     assert!(
-//         !system_ran.load(Ordering::SeqCst),
-//         "system with PopulatedMessageReader should have been skipped"
-//     );
+    let mut schedule = Schedule::default();
+    schedule.add_systems({
+        let system_ran = system_ran.clone();
+        move |mut _reader: PopulatedMessageReader<TheMessage>| {
+            system_ran.store(true, Ordering::SeqCst);
+        }
+    });
 
-//     world.write_message(TheMessage);
-//     schedule.run(&mut world);
-//     assert!(
-//         system_ran.load(Ordering::SeqCst),
-//         "system with PopulatedMessageReader should NOT have been skipped"
-//     );
+    schedule.run(&mut world);
+    assert!(
+        !system_ran.load(Ordering::SeqCst),
+        "system with PopulatedMessageReader should have been skipped"
+    );
 
-//     #[derive(Message)]
-//     struct TheMessage;
-// }
+    world.write_message(TheMessage);
+    schedule.run(&mut world);
+    assert!(
+        system_ran.load(Ordering::SeqCst),
+        "system with PopulatedMessageReader should NOT have been skipped"
+    );
+
+    #[derive(Message)]
+    struct TheMessage;
+}
