@@ -1,0 +1,53 @@
+[package]
+name = "kairos_ecs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "A bevy_ecs-style ECS for the Kairos engine, extracted as a standalone crate"
+
+[features]
+default = ["debug", "trace"]
+debug = []
+trace = ["dep:tracing"]
+track_location = []
+kairos_reflect = []
+hotpatching = []
+debug_stepping = []
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)", "cfg(docsrs_dep)"] }
+
+[dependencies]
+fixedbitset = "0.5.7"
+hashbrown = "0.17.1"
+indexmap = { version = "2.5.0", default-features = false, features = ["serde"] }
+smallvec = { version = "1.15.2", features = ["union", "serde", "const_new", "write"] }
+nonmax = "0.5.5"
+thiserror = "2.0.19"
+log = "0.4"
+tracing = { version = "0.1.44", optional = true }
+rayon = "1.12.0"
+variadics_please = "2.0.0"
+concurrent-queue = "2.5.0"
+bumpalo = "3.20.3"
+arrayvec = "0.7.8"
+derive_more = { version = "2.1.1", default-features = false, features = [
+  "from",
+  "display",
+  "into",
+  "deref",
+  "deref_mut"
+] }
+bitflags = "2.13.1"
+serde = { version = "1.0.228", features = ["derive"] }
+slotmap = "1.1.1"
+disqualified = "1.0.0"
+thread_local = "1.1.10"
+kairos_tasks = { path = "../kairos_tasks" }
+kairos_ptr = { path = "../kairos_ptr" }
+kairos_collections = { path = "../kairos_collections" }
+kairos_ecs_macros = { path = "macros" }
+
+[dev-dependencies]
+serde_test = "1"
+static_assertions = "1.1.0"

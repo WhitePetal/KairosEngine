@@ -1,5 +1,3 @@
-use kairos_ecs_macros::Component;
-
 use crate::math::{self, float3, float4x4, quaternion};
 
 // TODO!

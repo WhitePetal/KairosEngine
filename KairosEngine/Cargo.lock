@@ -2397,6 +2397,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "kairos_ecs"
+version = "0.1.0"
+dependencies = [
+ "arrayvec",
+ "bitflags 2.13.1",
+ "bumpalo",
+ "concurrent-queue",
+ "derive_more",
+ "disqualified",
+ "fixedbitset",
+ "hashbrown 0.17.1",
+ "indexmap",
+ "kairos_collections",
+ "kairos_ecs_macros",
+ "kairos_ptr",
+ "kairos_tasks",
+ "log",
+ "nonmax",
+ "rayon",
+ "serde",
+ "serde_test",
+ "slotmap",
+ "smallvec",
+ "static_assertions",
+ "thiserror 2.0.19",
+ "thread_local",
+ "tracing",
+ "variadics_please",
+]
+
+[[package]]
 name = "kairos_ecs_macro_logic"
 version = "0.1.0"
 dependencies = [
@@ -2450,7 +2481,7 @@ dependencies = [
  "image",
  "indexmap",
  "kairos_collections",
- "kairos_ecs_macros",
+ "kairos_ecs",
  "kairos_tasks",
  "kira",
  "log",
