@@ -13,6 +13,8 @@ pub use task_pool::{Scope, TaskPool, TaskPoolBuilder};
 pub use thread_executor::{ThreadExecutor, ThreadExecutorTicker};
 pub use usages::{AsyncComputeTaskPool, ComputeTaskPool, IoTaskPool};
 
+pub use usages::tick_global_task_pools_on_main_thread;
+
 /// Gets the logical CPU core count available to the current process.
 ///
 /// This is identical to `std::thread::available_parallelism`, except
