@@ -43,7 +43,7 @@ use crate::{
 /// The [`FilteredEntityRef`] must be the entire [`QueryData`](crate::query::QueryData), and not nested inside a tuple with other data.
 ///
 /// ```
-/// # use bevy_ecs::{prelude::*, world::FilteredEntityRef};
+/// # use kairos_ecs::{prelude::*, world::FilteredEntityRef};
 /// #
 /// # #[derive(Component)]
 /// # struct A;
@@ -311,7 +311,7 @@ unsafe impl EntityEquivalent for FilteredEntityRef<'_, '_> {}
 /// ### Example Usage
 ///
 /// ```
-/// # use bevy_ecs::{prelude::*, world::{FilteredEntityMut, UnsafeFilteredEntityMut}};
+/// # use kairos_ecs::{prelude::*, world::{FilteredEntityMut, UnsafeFilteredEntityMut}};
 /// #
 /// # #[derive(Component)]
 /// # struct A;
@@ -367,7 +367,7 @@ impl<'w, 's> UnsafeFilteredEntityMut<'w, 's> {
 /// The `FilteredEntityMut` must be the entire `QueryData`, and not nested inside a tuple with other data.
 ///
 /// ```
-/// # use bevy_ecs::{prelude::*, world::FilteredEntityMut};
+/// # use kairos_ecs::{prelude::*, world::FilteredEntityMut};
 /// #
 /// # #[derive(Component)]
 /// # struct A;
@@ -555,7 +555,7 @@ impl<'w, 's> FilteredEntityMut<'w, 's> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::{prelude::*, world::FilteredEntityMut};
+    /// # use kairos_ecs::{prelude::*, world::FilteredEntityMut};
     /// #
     /// #[derive(Component)]
     /// struct X(usize);

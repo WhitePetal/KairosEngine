@@ -67,7 +67,7 @@ impl<'w> EntityWorldMut<'w> {
     /// # Example
     ///
     /// ```
-    /// use bevy_ecs::prelude::*;
+    /// use kairos_ecs::prelude::*;
     ///
     /// let mut world = World::new();
     /// let e0 = world.spawn_empty().id();

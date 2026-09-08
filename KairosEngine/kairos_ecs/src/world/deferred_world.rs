@@ -335,7 +335,7 @@ impl<'w> DeferredWorld<'w> {
     /// ## Single [`Entity`]
     ///
     /// ```
-    /// # use bevy_ecs::{prelude::*, world::DeferredWorld};
+    /// # use kairos_ecs::{prelude::*, world::DeferredWorld};
     /// #[derive(Component)]
     /// struct Position {
     ///   x: f32,
@@ -356,7 +356,7 @@ impl<'w> DeferredWorld<'w> {
     /// ## Array of [`Entity`]s
     ///
     /// ```
-    /// # use bevy_ecs::{prelude::*, world::DeferredWorld};
+    /// # use kairos_ecs::{prelude::*, world::DeferredWorld};
     /// #[derive(Component)]
     /// struct Position {
     ///   x: f32,
@@ -381,7 +381,7 @@ impl<'w> DeferredWorld<'w> {
     /// ## Slice of [`Entity`]s
     ///
     /// ```
-    /// # use bevy_ecs::{prelude::*, world::DeferredWorld};
+    /// # use kairos_ecs::{prelude::*, world::DeferredWorld};
     /// #[derive(Component)]
     /// struct Position {
     ///   x: f32,
@@ -406,7 +406,7 @@ impl<'w> DeferredWorld<'w> {
     /// ## [`&EntityHashSet`]
     ///
     /// ```
-    /// # use bevy_ecs::{prelude::*, entity::EntityHashSet, world::DeferredWorld};
+    /// # use kairos_ecs::{prelude::*, entity::EntityHashSet, world::DeferredWorld};
     /// #[derive(Component)]
     /// struct Position {
     ///   x: f32,
@@ -448,7 +448,7 @@ impl<'w> DeferredWorld<'w> {
     /// # Example
     ///
     /// ```rust
-    /// # use bevy_ecs::{prelude::*, world::DeferredWorld};
+    /// # use kairos_ecs::{prelude::*, world::DeferredWorld};
     /// #[derive(Component)]
     /// struct Targets(Vec<Entity>);
     /// #[derive(Component)]

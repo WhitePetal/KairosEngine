@@ -17,7 +17,7 @@ mod tests;
 ///
 /// # Usage
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 ///
 /// #[derive(Message)]
 /// pub struct MyMessage(String); // Custom message type.
@@ -27,7 +27,7 @@ mod tests;
 ///     }
 /// }
 ///
-/// # bevy_ecs::system::assert_is_system(my_system);
+/// # kairos_ecs::system::assert_is_system(my_system);
 /// ```
 ///
 /// # Concurrency
@@ -61,7 +61,7 @@ impl<'w, 's, M: Message> MessageReader<'w, 's, M> {
     ///
     /// # Example
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # use std::sync::atomic::{AtomicUsize, Ordering};
     ///
     /// #[derive(Message)]
@@ -108,7 +108,7 @@ impl<'w, 's, M: Message> MessageReader<'w, 's, M> {
     /// [`MessageReader::clear()`] is used so the same messages don't re-trigger the behavior the next time the system runs.
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// #[derive(Message)]
     /// struct Collision;
@@ -119,7 +119,7 @@ impl<'w, 's, M: Message> MessageReader<'w, 's, M> {
     ///         // Play a sound
     ///     }
     /// }
-    /// # bevy_ecs::system::assert_is_system(play_collision_sound);
+    /// # kairos_ecs::system::assert_is_system(play_collision_sound);
     /// ```
     pub fn is_empty(&self) -> bool {
         self.reader.is_empty(&self.messages)

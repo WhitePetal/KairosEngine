@@ -46,10 +46,10 @@ mod tests;
 /// Also see the [`children`](crate::children) and [`related`](crate::related) macros that abstract over the [`Spawn`] API.
 ///
 /// ```
-/// # use bevy_ecs::hierarchy::Children;
-/// # use bevy_ecs::spawn::{Spawn, SpawnRelated};
-/// # use bevy_ecs::name::Name;
-/// # use bevy_ecs::world::World;
+/// # use kairos_ecs::hierarchy::Children;
+/// # use kairos_ecs::spawn::{Spawn, SpawnRelated};
+/// # use kairos_ecs::name::Name;
+/// # use kairos_ecs::world::World;
 /// let mut world = World::new();
 /// world.spawn((
 ///     Name::new("Root"),
@@ -126,10 +126,10 @@ impl<R: Relationship, B: Bundle> SpawnableList<R> for Spawn<B> {
 /// A [`SpawnableList`] that spawns entities using an iterator of a given [`Bundle`]:
 ///
 /// ```
-/// # use bevy_ecs::hierarchy::Children;
-/// # use bevy_ecs::spawn::{Spawn, SpawnIter, SpawnRelated};
-/// # use bevy_ecs::name::Name;
-/// # use bevy_ecs::world::World;
+/// # use kairos_ecs::hierarchy::Children;
+/// # use kairos_ecs::spawn::{Spawn, SpawnIter, SpawnRelated};
+/// # use kairos_ecs::name::Name;
+/// # use kairos_ecs::world::World;
 /// let mut world = World::new();
 /// world.spawn((
 ///     Name::new("Root"),
@@ -158,11 +158,11 @@ impl<R: Relationship, I: Iterator<Item = B> + Send + Sync + 'static, B: Bundle> 
 /// A [`SpawnableList`] that spawns entities using a [`FnOnce`] with a [`RelatedSpawner`] as an argument:
 ///
 /// ```
-/// # use bevy_ecs::hierarchy::{Children, ChildOf};
-/// # use bevy_ecs::spawn::{Spawn, SpawnWith, SpawnRelated};
-/// # use bevy_ecs::name::Name;
-/// # use bevy_ecs::relationship::RelatedSpawner;
-/// # use bevy_ecs::world::World;
+/// # use kairos_ecs::hierarchy::{Children, ChildOf};
+/// # use kairos_ecs::spawn::{Spawn, SpawnWith, SpawnRelated};
+/// # use kairos_ecs::name::Name;
+/// # use kairos_ecs::relationship::RelatedSpawner;
+/// # use kairos_ecs::world::World;
 /// let mut world = World::new();
 /// world.spawn((
 ///     Name::new("Root"),
@@ -197,10 +197,10 @@ impl<R: Relationship, F: FnOnce(&mut RelatedSpawner<R>) + Send + Sync + 'static>
 /// If you only need to do this for a single entity, consider using [`WithOneRelated`].
 ///
 /// ```
-/// # use bevy_ecs::hierarchy::Children;
-/// # use bevy_ecs::spawn::{Spawn, WithRelated, SpawnRelated};
-/// # use bevy_ecs::name::Name;
-/// # use bevy_ecs::world::World;
+/// # use kairos_ecs::hierarchy::Children;
+/// # use kairos_ecs::spawn::{Spawn, WithRelated, SpawnRelated};
+/// # use kairos_ecs::name::Name;
+/// # use kairos_ecs::world::World;
 /// let mut world = World::new();
 ///
 /// let child2 = world.spawn(Name::new("Child2")).id();
@@ -243,10 +243,10 @@ impl<R: Relationship, I: Iterator<Item = Entity>> SpawnableList<R> for WithRelat
 /// Also see the [`children`](crate::children) and [`related`](crate::related) macros that abstract over the [`Spawn`] API.
 ///
 /// ```
-/// # use bevy_ecs::hierarchy::Children;
-/// # use bevy_ecs::spawn::{Spawn, WithOneRelated, SpawnRelated};
-/// # use bevy_ecs::name::Name;
-/// # use bevy_ecs::world::World;
+/// # use kairos_ecs::hierarchy::Children;
+/// # use kairos_ecs::spawn::{Spawn, WithOneRelated, SpawnRelated};
+/// # use kairos_ecs::name::Name;
+/// # use kairos_ecs::world::World;
 /// let mut world = World::new();
 ///
 /// let child1 = world.spawn(Name::new("Child1")).id();
@@ -453,10 +453,10 @@ pub trait SpawnRelated: RelationshipTarget {
     /// via [`RelationshipTarget::Relationship`].
     ///
     /// ```
-    /// # use bevy_ecs::hierarchy::Children;
-    /// # use bevy_ecs::spawn::SpawnRelated;
-    /// # use bevy_ecs::name::Name;
-    /// # use bevy_ecs::world::World;
+    /// # use kairos_ecs::hierarchy::Children;
+    /// # use kairos_ecs::spawn::SpawnRelated;
+    /// # use kairos_ecs::name::Name;
+    /// # use kairos_ecs::world::World;
     /// let mut world = World::new();
     /// world.spawn((
     ///     Name::new("Root"),
@@ -492,10 +492,10 @@ impl<T: RelationshipTarget> SpawnRelated for T {
 /// Also see [`children`](crate::children) for a [`Children`](crate::hierarchy::Children)-specific equivalent.
 ///
 /// ```
-/// # use bevy_ecs::hierarchy::Children;
-/// # use bevy_ecs::name::Name;
-/// # use bevy_ecs::world::World;
-/// # use bevy_ecs::related;
+/// # use kairos_ecs::hierarchy::Children;
+/// # use kairos_ecs::name::Name;
+/// # use kairos_ecs::world::World;
+/// # use kairos_ecs::related;
 /// let mut world = World::new();
 /// world.spawn((
 ///     Name::new("Root"),

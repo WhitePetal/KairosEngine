@@ -157,7 +157,7 @@ impl<'w> ContiguousComponentTicksRef<'w> {
     ///
     /// # Example
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// # #[derive(Component)]
     /// # struct A(pub i32);
@@ -184,7 +184,7 @@ impl<'w> ContiguousComponentTicksRef<'w> {
     ///
     /// # Example
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// # #[derive(Component)]
     /// # struct A(pub i32);
@@ -367,7 +367,7 @@ impl<'w> ContiguousComponentTicksMut<'w> {
     ///
     /// # Example
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// # #[derive(Component)]
     /// # struct A(pub i32);
@@ -394,7 +394,7 @@ impl<'w> ContiguousComponentTicksMut<'w> {
     ///
     /// # Example
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// # #[derive(Component)]
     /// # struct A(pub i32);
@@ -656,11 +656,11 @@ impl<'w, T: 'static> From<NonSendMut<'w, T>> for Mut<'w, T> {
 /// These two systems produce the same output.
 ///
 /// ```
-/// # use bevy_ecs::change_detection::DetectChanges;
-/// # use bevy_ecs::query::{Changed, With};
-/// # use bevy_ecs::system::Query;
-/// # use bevy_ecs::world::Ref;
-/// # use bevy_ecs_macros::Component;
+/// # use kairos_ecs::change_detection::DetectChanges;
+/// # use kairos_ecs::query::{Changed, With};
+/// # use kairos_ecs::system::Query;
+/// # use kairos_ecs::change_detection::Ref;
+/// # use kairos_ecs_macros::Component;
 /// # #[derive(Component)]
 /// # struct MyComponent;
 ///
@@ -886,8 +886,8 @@ where
 /// to `&mut T` which only provides access to change detection from mutable query methods.
 ///
 /// ```rust
-/// # use bevy_ecs::prelude::*;
-/// # use bevy_ecs::query::QueryData;
+/// # use kairos_ecs::prelude::*;
+/// # use kairos_ecs::query::QueryData;
 /// #
 /// #[derive(Component, Clone, Debug)]
 /// struct Name(String);
@@ -914,7 +914,7 @@ where
 ///     }
 /// }
 ///
-/// # bevy_ecs::system::assert_is_system(my_system);
+/// # kairos_ecs::system::assert_is_system(my_system);
 /// ```
 pub struct Mut<'w, T: ?Sized> {
     pub(crate) value: &'w mut T,
@@ -1373,15 +1373,17 @@ impl<'w> MutUntyped<'w> {
     ///
     /// If you know the type of the value you can do
     /// ```no_run
-    /// # use bevy_ecs::change_detection::{Mut, MutUntyped};
+    /// # use kairos_ecs::change_detection::{Mut, MutUntyped};
     /// # let mut_untyped: MutUntyped = unimplemented!();
     /// // SAFETY: ptr is of type `u8`
     /// mut_untyped.map_unchanged(|ptr| unsafe { ptr.deref_mut::<u8>() });
     /// ```
-    /// If you have a [`ReflectFromPtr`](bevy_reflect::ReflectFromPtr) that you know belongs to this [`MutUntyped`],
+    /// If you have a `ReflectFromPtr` that you know belongs to this [`MutUntyped`],
     /// you can do
-    /// ```no_run
-    /// # use bevy_ecs::change_detection::{Mut, MutUntyped};
+    /// ```ignore
+    /// // `ReflectFromPtr` comes from the reflection integration behind the `kairos_reflect`
+    /// // feature, which is not wired to a crate yet; until then this example is not compiled.
+    /// # use kairos_ecs::change_detection::{Mut, MutUntyped};
     /// # let mut_untyped: MutUntyped = unimplemented!();
     /// # let reflect_from_ptr: bevy_reflect::ReflectFromPtr = unimplemented!();
     /// // SAFETY: from the context it is known that `ReflectFromPtr` was made for the type of the `MutUntyped`

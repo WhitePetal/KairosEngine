@@ -49,7 +49,7 @@ use crate::{
 /// # Usage
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// // Our world resource
 /// #[derive(Resource, Default)]
 /// struct Counter(u64);

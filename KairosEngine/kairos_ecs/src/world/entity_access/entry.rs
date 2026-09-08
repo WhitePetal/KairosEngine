@@ -24,7 +24,7 @@ impl<'w, 'a, T: Component<Mutability = Mutable>> ComponentEntry<'w, 'a, T> {
     /// # Examples
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #[derive(Component, Default, Clone, Copy, Debug, PartialEq)]
     /// struct Comp(u32);
     ///
@@ -52,7 +52,7 @@ impl<'w, 'a, T: Component> ComponentEntry<'w, 'a, T> {
     /// # Examples
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #[derive(Component, Default, Clone, Copy, Debug, PartialEq)]
     /// struct Comp(u32);
     ///
@@ -82,7 +82,7 @@ impl<'w, 'a, T: Component> ComponentEntry<'w, 'a, T> {
     /// # Examples
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #[derive(Component, Default, Clone, Copy, Debug, PartialEq)]
     /// struct Comp(u32);
     ///
@@ -111,7 +111,7 @@ impl<'w, 'a, T: Component> ComponentEntry<'w, 'a, T> {
     /// # Examples
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #[derive(Component, Default, Clone, Copy, Debug, PartialEq)]
     /// struct Comp(u32);
     ///
@@ -137,7 +137,7 @@ impl<'w, 'a, T: Component + Default> ComponentEntry<'w, 'a, T> {
     /// # Examples
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #[derive(Component, Default, Clone, Copy, Debug, PartialEq)]
     /// struct Comp(u32);
     ///
@@ -170,7 +170,7 @@ impl<'w, 'a, T: Component> OccupiedComponentEntry<'w, 'a, T> {
     /// # Examples
     ///
     /// ```
-    /// # use bevy_ecs::{prelude::*, world::ComponentEntry};
+    /// # use kairos_ecs::{prelude::*, world::ComponentEntry};
     /// #[derive(Component, Default, Clone, Copy, Debug, PartialEq)]
     /// struct Comp(u32);
     ///
@@ -192,7 +192,7 @@ impl<'w, 'a, T: Component> OccupiedComponentEntry<'w, 'a, T> {
     /// # Examples
     ///
     /// ```
-    /// # use bevy_ecs::{prelude::*, world::ComponentEntry};
+    /// # use kairos_ecs::{prelude::*, world::ComponentEntry};
     /// #[derive(Component, Default, Clone, Copy, Debug, PartialEq)]
     /// struct Comp(u32);
     ///
@@ -215,7 +215,7 @@ impl<'w, 'a, T: Component> OccupiedComponentEntry<'w, 'a, T> {
     /// # Examples
     ///
     /// ```
-    /// # use bevy_ecs::{prelude::*, world::ComponentEntry};
+    /// # use kairos_ecs::{prelude::*, world::ComponentEntry};
     /// #[derive(Component, Default, Clone, Copy, Debug, PartialEq)]
     /// struct Comp(u32);
     ///
@@ -246,7 +246,7 @@ impl<'w, 'a, T: Component<Mutability = Mutable>> OccupiedComponentEntry<'w, 'a, 
     /// # Examples
     ///
     /// ```
-    /// # use bevy_ecs::{prelude::*, world::ComponentEntry};
+    /// # use kairos_ecs::{prelude::*, world::ComponentEntry};
     /// #[derive(Component, Default, Clone, Copy, Debug, PartialEq)]
     /// struct Comp(u32);
     ///
@@ -279,7 +279,7 @@ impl<'w, 'a, T: Component<Mutability = Mutable>> OccupiedComponentEntry<'w, 'a, 
     /// # Examples
     ///
     /// ```
-    /// # use bevy_ecs::{prelude::*, world::ComponentEntry};
+    /// # use kairos_ecs::{prelude::*, world::ComponentEntry};
     /// #[derive(Component, Default, Clone, Copy, Debug, PartialEq)]
     /// struct Comp(u32);
     ///
@@ -311,7 +311,7 @@ impl<'w, 'a, T: Component> VacantComponentEntry<'w, 'a, T> {
     /// # Examples
     ///
     /// ```
-    /// # use bevy_ecs::{prelude::*, world::ComponentEntry};
+    /// # use kairos_ecs::{prelude::*, world::ComponentEntry};
     /// #[derive(Component, Default, Clone, Copy, Debug, PartialEq)]
     /// struct Comp(u32);
     ///

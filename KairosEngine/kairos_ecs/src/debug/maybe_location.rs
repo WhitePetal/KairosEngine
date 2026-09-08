@@ -146,7 +146,7 @@ impl<T> MaybeLocation<Option<T>> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::{change_detection::MaybeLocation, world::World};
+    /// # use kairos_ecs::{debug::MaybeLocation, world::World};
     /// # use core::panic::Location;
     /// #
     /// # fn test() -> Option<()> {

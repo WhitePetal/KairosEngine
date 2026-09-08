@@ -513,8 +513,8 @@ const CLONE_BEHAVIOR: &str = "clone_behavior";
 /// All allowed attribute value expression kinds for component hooks.
 /// This doesn't simply use general expressions because of conflicting needs:
 /// - we want to be able to use `Self` & generic parameters in paths
-/// - call expressions producing a closure need to be wrapped in a function
-///   to turn them into function pointers, which prevents access to the outer generic params
+/// - call expressions producing a closure are wrapped in a closure literal that
+///   coerces to a function pointer (capturing outer values would break the coercion)
 #[derive(Debug)]
 pub enum HookAttributeKind {
     /// expressions like function or struct names
@@ -559,10 +559,9 @@ impl HookAttributeKind {
             HookAttributeKind::Path(path) => path.to_token_stream(),
             HookAttributeKind::Call(call) => {
                 quote! {
-                    fn _internal_hook(world: #ecs_path::world::DeferredWorld, ctx: #ecs_path::lifecycle::HookContext) {
+                    |world: #ecs_path::world::DeferredWorld, ctx: #ecs_path::lifecycle::HookContext| {
                         (#call)(world, ctx)
                     }
-                    _internall_hook
                 }
             }
         }

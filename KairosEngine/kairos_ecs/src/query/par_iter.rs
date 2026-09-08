@@ -34,7 +34,7 @@ impl<'w, 's, D: IterQueryData, F: QueryFilter> QueryParIter<'w, 's, D, F> {
     /// If the [`ComputeTaskPool`] is not initialized. If using this from a query that is being
     /// initialized and run from the ECS scheduler, this should never panic.
     ///
-    /// [`ComputeTaskPool`]: bevy_tasks::ComputeTaskPool
+    /// [`ComputeTaskPool`]: kairos_tasks::ComputeTaskPool
     #[inline]
     pub fn for_each<FN: Fn(QueryItem<'w, 's, D>) + Send + Sync + Clone>(self, func: FN) {
         self.for_each_init(|| {}, |_, item| func(item));
@@ -49,8 +49,8 @@ impl<'w, 's, D: IterQueryData, F: QueryFilter> QueryParIter<'w, 's, D, F> {
     /// # Example
     ///
     /// ```
-    /// use bevy_utils::Parallel;
-    /// use crate::{bevy_ecs::prelude::Component, bevy_ecs::system::Query};
+    /// use kairos_ecs::parallel_queue::Parallel;
+    /// use crate::{kairos_ecs::prelude::Component, kairos_ecs::system::Query};
     /// #[derive(Component)]
     /// struct T;
     /// fn system(query: Query<&T>){
@@ -69,7 +69,7 @@ impl<'w, 's, D: IterQueryData, F: QueryFilter> QueryParIter<'w, 's, D, F> {
     /// If the [`ComputeTaskPool`] is not initialized. If using this from a query that is being
     /// initialized and run from the ECS scheduler, this should never panic.
     ///
-    /// [`ComputeTaskPool`]: bevy_tasks::ComputeTaskPool
+    /// [`ComputeTaskPool`]: kairos_tasks::ComputeTaskPool
     #[inline]
     pub fn for_each_init<FN, INIT, T>(self, init: INIT, func: FN)
     where
@@ -164,7 +164,7 @@ impl<'w, 's, D: ReadOnlyQueryData, F: QueryFilter, E: EntityEquivalent + Sync>
     /// If the [`ComputeTaskPool`] is not initialized. If using this from a query that is being
     /// initialized and run from the ECS scheduler, this should never panic.
     ///
-    /// [`ComputeTaskPool`]: bevy_tasks::ComputeTaskPool
+    /// [`ComputeTaskPool`]: kairos_tasks::ComputeTaskPool
     #[inline]
     pub fn for_each<FN: Fn(QueryItem<'w, 's, D>) + Send + Sync + Clone>(self, func: FN) {
         self.for_each_init(|| {}, |_, item| func(item));
@@ -179,10 +179,10 @@ impl<'w, 's, D: ReadOnlyQueryData, F: QueryFilter, E: EntityEquivalent + Sync>
     /// # Example
     ///
     /// ```
-    /// use bevy_utils::Parallel;
-    /// use crate::{bevy_ecs::prelude::{Component, Res, Resource, Entity}, bevy_ecs::system::Query};
+    /// use kairos_ecs::parallel_queue::Parallel;
+    /// use crate::{kairos_ecs::prelude::{Component, Res, Resource, Entity}, kairos_ecs::system::Query};
     /// # use core::slice;
-    /// use bevy_platform::prelude::Vec;
+    /// use std::vec::Vec;
     /// # fn some_expensive_operation(_item: &T) -> usize {
     /// #     0
     /// # }
@@ -219,7 +219,7 @@ impl<'w, 's, D: ReadOnlyQueryData, F: QueryFilter, E: EntityEquivalent + Sync>
     /// If the [`ComputeTaskPool`] is not initialized. If using this from a query that is being
     /// initialized and run from the ECS scheduler, this should never panic.
     ///
-    /// [`ComputeTaskPool`]: bevy_tasks::ComputeTaskPool
+    /// [`ComputeTaskPool`]: kairos_tasks::ComputeTaskPool
     #[inline]
     pub fn for_each_init<FN, INIT, T>(self, init: INIT, func: FN)
     where
@@ -304,7 +304,7 @@ impl<'w, 's, D: IterQueryData, F: QueryFilter, E: EntityEquivalent + Sync>
     /// If the [`ComputeTaskPool`] is not initialized. If using this from a query that is being
     /// initialized and run from the ECS scheduler, this should never panic.
     ///
-    /// [`ComputeTaskPool`]: bevy_tasks::ComputeTaskPool
+    /// [`ComputeTaskPool`]: kairos_tasks::ComputeTaskPool
     #[inline]
     pub fn for_each<FN: Fn(QueryItem<'w, 's, D>) + Send + Sync + Clone>(self, func: FN) {
         self.for_each_init(|| {}, |_, item| func(item));
@@ -319,10 +319,10 @@ impl<'w, 's, D: IterQueryData, F: QueryFilter, E: EntityEquivalent + Sync>
     /// # Example
     ///
     /// ```
-    /// use bevy_utils::Parallel;
-    /// use crate::{bevy_ecs::{prelude::{Component, Res, Resource, Entity}, entity::UniqueEntityVec, system::Query}};
+    /// use kairos_ecs::parallel_queue::Parallel;
+    /// use crate::{kairos_ecs::{prelude::{Component, Res, Resource, Entity}, entity::UniqueEntityVec, system::Query}};
     /// # use core::slice;
-    /// # use crate::bevy_ecs::entity::UniqueEntityIter;
+    /// # use crate::kairos_ecs::entity::UniqueEntityIter;
     /// # fn some_expensive_operation(_item: &T) -> usize {
     /// #     0
     /// # }
@@ -359,7 +359,7 @@ impl<'w, 's, D: IterQueryData, F: QueryFilter, E: EntityEquivalent + Sync>
     /// If the [`ComputeTaskPool`] is not initialized. If using this from a query that is being
     /// initialized and run from the ECS scheduler, this should never panic.
     ///
-    /// [`ComputeTaskPool`]: bevy_tasks::ComputeTaskPool
+    /// [`ComputeTaskPool`]: kairos_tasks::ComputeTaskPool
     #[inline]
     pub fn for_each_init<FN, INIT, T>(self, init: INIT, func: FN)
     where

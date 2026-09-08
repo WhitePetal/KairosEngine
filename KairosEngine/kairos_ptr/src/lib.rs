@@ -1,6 +1,6 @@
-//! Pointer types and utilities for the Kairos ECS (bevy_ptr parity).
+//! Pointer types and utilities for the Kairos ECS.
 //!
-//! Mirrors the `bevy_ptr` crate: `Ptr`/`PtrMut` borrowed pointers,
+//! A port of bevy's upstream `bevy_ptr` crate: `Ptr`/`PtrMut` borrowed pointers,
 //! `OwningPtr`, and `MovingPtr` plus the `move_as_ptr!` / `deconstruct_moving_ptr!`
 //! macros used to move values out field-by-field.
 
@@ -168,7 +168,7 @@ impl<T: ?Sized> ConstNonNull<T> {
     /// # Examples
     ///
     /// ```
-    /// use bevy_ptr::ConstNonNull;
+    /// use kairos_ptr::ConstNonNull;
     ///
     /// let x = 0u32;
     /// let ptr = ConstNonNull::<u32>::new(&x as *const _).expect("ptr is null!");
@@ -190,7 +190,7 @@ impl<T: ?Sized> ConstNonNull<T> {
     /// # Examples
     ///
     /// ```
-    /// use bevy_ptr::ConstNonNull;
+    /// use kairos_ptr::ConstNonNull;
     ///
     /// let x = 0u32;
     /// let ptr = unsafe { ConstNonNull::new_unchecked(&x as *const _) };
@@ -199,7 +199,7 @@ impl<T: ?Sized> ConstNonNull<T> {
     /// *Incorrect* usage of this function:
     ///
     /// ```rust,no_run
-    /// use bevy_ptr::ConstNonNull;
+    /// use kairos_ptr::ConstNonNull;
     ///
     /// // NEVER DO THAT!!! This is undefined behavior. ⚠️
     /// let ptr = unsafe { ConstNonNull::<u32>::new_unchecked(core::ptr::null()) };
@@ -234,7 +234,7 @@ impl<T: ?Sized> ConstNonNull<T> {
     /// # Examples
     ///
     /// ```
-    /// use bevy_ptr::ConstNonNull;
+    /// use kairos_ptr::ConstNonNull;
     ///
     /// let mut x = 0u32;
     /// let ptr = ConstNonNull::new(&mut x as *mut _).expect("ptr is null!");
@@ -490,7 +490,7 @@ impl<'a, T, A: IsAligned> MovingPtr<'a, T, A> {
     ///
     /// ```
     /// use core::mem::{offset_of, MaybeUninit, forget};
-    /// use bevy_ptr::{MovingPtr, move_as_ptr};
+    /// use kairos_ptr::{MovingPtr, move_as_ptr};
     /// # struct FieldAType(usize);
     /// # struct FieldBType(usize);
     /// # struct FieldCType(usize);
@@ -514,7 +514,7 @@ impl<'a, T, A: IsAligned> MovingPtr<'a, T, A> {
     /// // SAFETY:
     /// // - `field_a` and `field_b` are both unique.
     /// let (partial_parent, ()) = MovingPtr::partial_move(parent, |parent_ptr| unsafe {
-    ///   bevy_ptr::deconstruct_moving_ptr!({
+    ///   kairos_ptr::deconstruct_moving_ptr!({
     ///     let Parent { field_a, field_b, field_c } = parent_ptr;
     ///   });
     ///
@@ -528,7 +528,7 @@ impl<'a, T, A: IsAligned> MovingPtr<'a, T, A> {
     /// // - `field_c` is by itself unique and does not conflict with the previous accesses
     /// //   inside `partial_move`.
     /// unsafe {
-    ///   bevy_ptr::deconstruct_moving_ptr!({
+    ///   kairos_ptr::deconstruct_moving_ptr!({
     ///     let MaybeUninit::<Parent> { field_a: _, field_b: _, field_c } = partial_parent;
     ///   });
     ///
@@ -628,7 +628,7 @@ impl<'a, T, A: IsAligned> MovingPtr<'a, T, A> {
     ///
     /// ```
     /// use core::mem::offset_of;
-    /// use bevy_ptr::{MovingPtr, move_as_ptr};
+    /// use kairos_ptr::{MovingPtr, move_as_ptr};
     /// # struct FieldAType(usize);
     /// # struct FieldBType(usize);
     /// # struct FieldCType(usize);
@@ -1068,7 +1068,7 @@ impl<'a> OwningPtr<'a, Unaligned> {
 ///
 /// ```
 /// # use core::mem::size_of;
-/// # use bevy_ptr::ThinSlicePtr;
+/// # use kairos_ptr::ThinSlicePtr;
 /// #
 /// let slice: &[u32] = &[2, 4, 8];
 /// let thin_slice = ThinSlicePtr::from(slice);
@@ -1298,8 +1298,8 @@ macro_rules! get_pattern {
 ///
 /// ```
 /// use core::mem::{offset_of, MaybeUninit};
-/// use bevy_ptr::{MovingPtr, move_as_ptr};
-/// # use bevy_ptr::Unaligned;
+/// use kairos_ptr::{MovingPtr, move_as_ptr};
+/// # use kairos_ptr::Unaligned;
 /// # struct FieldAType(usize);
 /// # struct FieldBType(usize);
 /// # struct FieldCType(usize);
@@ -1325,7 +1325,7 @@ macro_rules! get_pattern {
 ///
 /// // The field names must match the name used in the type definition.
 /// // Each one will be a `MovingPtr` of the field's type.
-/// bevy_ptr::deconstruct_moving_ptr!({
+/// kairos_ptr::deconstruct_moving_ptr!({
 ///   let Parent { field_a, field_b, field_c } = parent;
 /// });
 ///
@@ -1342,8 +1342,8 @@ macro_rules! get_pattern {
 ///
 /// ```
 /// use core::mem::{offset_of, MaybeUninit};
-/// use bevy_ptr::{MovingPtr, move_as_ptr};
-/// # use bevy_ptr::Unaligned;
+/// use kairos_ptr::{MovingPtr, move_as_ptr};
+/// # use kairos_ptr::Unaligned;
 /// # struct FieldAType(usize);
 /// # struct FieldBType(usize);
 /// # struct FieldCType(usize);
@@ -1369,7 +1369,7 @@ macro_rules! get_pattern {
 ///
 /// // The field names must match the name used in the type definition.
 /// // Each one will be a `MovingPtr` of the field's type.
-/// bevy_ptr::deconstruct_moving_ptr!({
+/// kairos_ptr::deconstruct_moving_ptr!({
 ///   let tuple { 0: field_a, 1: field_b, 2: field_c } = parent;
 /// });
 ///
@@ -1386,8 +1386,8 @@ macro_rules! get_pattern {
 ///
 /// ```
 /// use core::mem::{offset_of, MaybeUninit};
-/// use bevy_ptr::{MovingPtr, move_as_ptr};
-/// # use bevy_ptr::Unaligned;
+/// use kairos_ptr::{MovingPtr, move_as_ptr};
+/// # use kairos_ptr::Unaligned;
 /// # struct FieldAType(usize);
 /// # struct FieldBType(usize);
 /// # struct FieldCType(usize);
@@ -1413,7 +1413,7 @@ macro_rules! get_pattern {
 ///
 /// // The field names must match the name used in the type definition.
 /// // Each one will be a `MovingPtr` of the field's type.
-/// bevy_ptr::deconstruct_moving_ptr!({
+/// kairos_ptr::deconstruct_moving_ptr!({
 ///   let MaybeUninit::<Parent> { field_a, field_b, field_c } = parent;
 /// });
 ///

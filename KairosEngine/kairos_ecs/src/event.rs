@@ -25,7 +25,7 @@ mod tests;
 /// First, we create an [`Event`] type, typically by deriving the trait.
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #
 /// #[derive(Event)]
 /// struct Speak {
@@ -36,7 +36,7 @@ mod tests;
 /// Then, we add an [`Observer`](crate::observer::Observer) to watch for this event type:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #
 /// # #[derive(Event)]
 /// # struct Speak {
@@ -53,7 +53,7 @@ mod tests;
 /// Finally, we trigger the event by calling [`World::trigger`](World::trigger):
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #
 /// # #[derive(Event)]
 /// # struct Speak {
@@ -97,7 +97,7 @@ pub trait Event: Send + Sync + Sized + 'static {
 /// An [`EntityEvent`] is an [`Event`] that is triggered for a specific [`EntityEvent::event_target`] entity:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// # let mut world = World::default();
 /// # let entity = world.spawn_empty().id();
 /// #[derive(EntityEvent)]
@@ -117,7 +117,7 @@ pub trait Event: Send + Sync + Sized + 'static {
 /// whose only field is [`Entity`]:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #[derive(EntityEvent)]
 /// struct Explode(Entity);
 /// ```
@@ -125,7 +125,7 @@ pub trait Event: Send + Sync + Sized + 'static {
 /// The [`EntityEvent::event_target`] can also be manually set using the `#[event_target]` field attribute:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #[derive(EntityEvent)]
 /// struct Explode {
 ///     #[event_target]
@@ -134,7 +134,7 @@ pub trait Event: Send + Sync + Sized + 'static {
 /// ```
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #[derive(EntityEvent)]
 /// struct Explode(#[event_target] Entity);
 /// ```
@@ -142,7 +142,7 @@ pub trait Event: Send + Sync + Sized + 'static {
 /// You may also use any type which implements [`ContainsEntity`](crate::entity::ContainsEntity) as the event target:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// struct Bomb(Entity);
 ///
 /// impl ContainsEntity for Bomb {
@@ -160,7 +160,7 @@ pub trait Event: Send + Sync + Sized + 'static {
 ///
 /// This trait is automatically implemented for you if you enable event propagation:
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #[derive(EntityEvent)]
 /// #[entity_event(propagate)]
 /// struct Explode(Entity);
@@ -174,7 +174,7 @@ pub trait Event: Send + Sync + Sized + 'static {
 /// However it will _also_ run all observers that watch _specific_ entities, which enables you to assign entity-specific logic:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// # #[derive(Component, Debug)]
 /// # struct Name(String);
 /// # let mut world = World::default();
@@ -200,7 +200,7 @@ pub trait Event: Send + Sync + Sized + 'static {
 /// specifying the `#[entity_event(propagate)]` attribute:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #[derive(EntityEvent)]
 /// #[entity_event(propagate)]
 /// struct Click {
@@ -216,7 +216,7 @@ pub trait Event: Send + Sync + Sized + 'static {
 /// (just be sure to avoid cycles ... these aren't detected for performance reasons):
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #[derive(Component)]
 /// #[relationship(relationship_target = ClickableBy)]
 /// struct Clickable(Entity);
@@ -235,7 +235,7 @@ pub trait Event: Send + Sync + Sized + 'static {
 /// By default, propagation requires observers to opt-in:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #[derive(EntityEvent)]
 /// #[entity_event(propagate)]
 /// struct Click {
@@ -251,7 +251,7 @@ pub trait Event: Send + Sync + Sized + 'static {
 ///
 /// But you can enable auto propagation using the `#[entity_event(auto_propagate)]` attribute:
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #[derive(EntityEvent)]
 /// #[entity_event(propagate, auto_propagate)]
 /// struct Click {
@@ -261,7 +261,7 @@ pub trait Event: Send + Sync + Sized + 'static {
 ///
 /// You can also _stop_ propagation like this:
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// # #[derive(EntityEvent)]
 /// # #[entity_event(propagate)]
 /// # struct Click {
@@ -309,7 +309,7 @@ pub trait Event: Send + Sync + Sized + 'static {
 /// just shorthand for spawning an [`Observer`] directly and manually watching the entity:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// # let mut world = World::default();
 /// # let entity = world.spawn_empty().id();
 /// # #[derive(EntityEvent)]

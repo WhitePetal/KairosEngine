@@ -9,7 +9,7 @@ use std::hash::{BuildHasher, Hasher};
 ///
 /// If you have an unusual case -- say all your indices are multiples of 256
 /// or most of the entities are dead generations -- then you might want also to
-/// try [`DefaultHasher`](bevy_platform::hash::DefaultHasher) for a slower hash
+/// try the standard library's [`DefaultHasher`](std::collections::hash_map::DefaultHasher) for a slower hash
 /// computation but fewer lookup conflicts.
 #[derive(Debug, Default)]
 pub struct EntityHasher {

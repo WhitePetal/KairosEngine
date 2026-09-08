@@ -93,11 +93,11 @@ impl Tick {
 /// possibly causing `Tick`-related bugs on long-running apps.
 ///
 /// To fix that, add an observer for this event that calls the schedule's
-/// [`Schedule::check_change_ticks`](bevy_ecs::schedule::Schedule::check_change_ticks).
+/// [`Schedule::check_change_ticks`](kairos_ecs::schedule::Schedule::check_change_ticks).
 ///
 /// ```
-/// use bevy_ecs::prelude::*;
-/// use bevy_ecs::change_detection::CheckChangeTicks;
+/// use kairos_ecs::prelude::*;
+/// use kairos_ecs::change_detection::CheckChangeTicks;
 ///
 /// #[derive(Resource)]
 /// struct CustomSchedule(Schedule);
@@ -169,7 +169,7 @@ impl ComponentTicks {
     ///
     /// # Example
     /// ```no_run
-    /// # use bevy_ecs::{world::World, change_detection::ComponentTicks};
+    /// # use kairos_ecs::{world::World, change_detection::ComponentTicks};
     /// let world: World = unimplemented!();
     /// let component_ticks: ComponentTicks = unimplemented!();
     ///

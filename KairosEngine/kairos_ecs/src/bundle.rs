@@ -40,7 +40,7 @@ pub(crate) use spawner::BundleSpawner;
 /// the [`BundleFromComponents`] implementation.
 ///
 /// ```rust
-/// # use bevy_ecs::prelude::{Component, Bundle};
+/// # use kairos_ecs::prelude::{Component, Bundle};
 /// # #[derive(Component)]
 /// # struct Hitpoint;
 /// #
@@ -55,20 +55,20 @@ pub(crate) use spawner::BundleSpawner;
 ///
 /// Some fields may be bundles that do not implement
 /// [`BundleFromComponents`]. This happens for bundles that cannot be extracted.
-/// For example with [`SpawnRelatedBundle`](bevy_ecs::spawn::SpawnRelatedBundle), see below for an
+/// For example with [`SpawnRelatedBundle`](kairos_ecs::spawn::SpawnRelatedBundle), see below for an
 /// example usage.
 /// In those cases you can either ignore it as above,
 /// or you can opt out the whole Struct by marking it as ignored with
 /// `#[bundle(ignore_from_components)]`.
 ///
 /// ```rust
-/// # use bevy_ecs::prelude::{Component, Bundle, ChildOf, Spawn};
+/// # use kairos_ecs::prelude::{Component, Bundle, ChildOf, Spawn};
 /// # #[derive(Component)]
 /// # struct Hitpoint;
 /// # #[derive(Component)]
 /// # struct Marker;
 /// #
-/// use bevy_ecs::spawn::SpawnRelatedBundle;
+/// use kairos_ecs::spawn::SpawnRelatedBundle;
 ///
 /// #[derive(Bundle)]
 /// #[bundle(ignore_from_components)]
@@ -161,7 +161,7 @@ use crate::{
 /// If you want to add `PhantomData` to your `Bundle` you have to mark it with `#[bundle(ignore)]`.
 /// ```
 /// # use std::marker::PhantomData;
-/// use bevy_ecs::{component::Component, bundle::Bundle};
+/// use kairos_ecs::{component::Component, bundle::Bundle};
 ///
 /// #[derive(Component)]
 /// struct XPosition(i32);
@@ -272,7 +272,7 @@ pub trait DynamicBundle: Sized {
     ///    `Self` and call `func` on each of them in exactly the same order as [`Bundle::get_component_ids`] and
     ///    [`BundleFromComponents::from_components`].
     ///  - If any part of `ptr` is to be accessed in `apply_effect`, it must *not* be dropped at any point in this
-    ///    function. Calling [`bevy_ptr::deconstruct_moving_ptr`] in this function automatically ensures this.
+    ///    function. Calling [`kairos_ecs::ptr::deconstruct_moving_ptr`] in this function automatically ensures this.
     ///
     /// [`Component`]: crate::component::Component
     // This function explicitly uses `MovingPtr` to avoid potentially large stack copies of the bundle
@@ -296,7 +296,7 @@ pub trait DynamicBundle: Sized {
     ///
     /// For implementors:
     ///  - If any part of `ptr` is to be accessed in this function, it must *not* be dropped at any point in
-    ///    `get_components`. Calling [`bevy_ptr::deconstruct_moving_ptr`] in `get_components` automatically
+    ///    `get_components`. Calling [`kairos_ecs::ptr::deconstruct_moving_ptr`] in `get_components` automatically
     ///    ensures this is the case.
     ///  - Note that `entity` may already have been despawned by hooks or observers at this point,
     ///    so check [`EntityWorldMut::is_spawned`] before trusting it.

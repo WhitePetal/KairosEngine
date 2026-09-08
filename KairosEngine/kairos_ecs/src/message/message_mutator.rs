@@ -18,7 +18,7 @@ use crate::{
 ///
 /// [`MessageMutator`]s are usually declared as a [`SystemParam`].
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 ///
 /// #[derive(Message, Debug)]
 /// pub struct MyMessage(pub u32); // Custom message type.
@@ -77,7 +77,7 @@ impl<'w, 's, M: Message> MessageMutator<'w, 's, M> {
     ///
     /// # Example
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # use std::sync::atomic::{AtomicUsize, Ordering};
     ///
     /// #[derive(Message)]
@@ -124,7 +124,7 @@ impl<'w, 's, M: Message> MessageMutator<'w, 's, M> {
     /// [`MessageMutator::clear()`] is used so the same messages don't re-trigger the behavior the next time the system runs.
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// #[derive(Message)]
     /// struct Collision;
@@ -135,7 +135,7 @@ impl<'w, 's, M: Message> MessageMutator<'w, 's, M> {
     ///         // Play a sound
     ///     }
     /// }
-    /// # bevy_ecs::system::assert_is_system(play_collision_sound);
+    /// # kairos_ecs::system::assert_is_system(play_collision_sound);
     /// ```
     pub fn is_empty(&self) -> bool {
         self.reader.is_empty(&self.messages)

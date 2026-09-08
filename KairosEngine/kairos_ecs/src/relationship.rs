@@ -61,8 +61,8 @@ use crate::{
 /// [`RelationshipTarget`] also requires that the relationship field is private to prevent direct mutation,
 /// ensuring the correctness of relationships.
 /// ```
-/// # use bevy_ecs::component::Component;
-/// # use bevy_ecs::entity::Entity;
+/// # use kairos_ecs::component::Component;
+/// # use kairos_ecs::entity::Entity;
 /// #[derive(Component)]
 /// #[relationship(relationship_target = Children)]
 /// pub struct ChildOf {
@@ -80,8 +80,8 @@ use crate::{
 /// In that case, if another entity is added to the relationship, the original entity is removed.
 ///
 /// ```
-/// # use bevy_ecs::component::Component;
-/// # use bevy_ecs::entity::Entity;
+/// # use kairos_ecs::component::Component;
+/// # use kairos_ecs::entity::Entity;
 /// #[derive(Component)]
 /// #[relationship(relationship_target = View)]
 /// pub struct ViewOf(pub Entity);
@@ -95,8 +95,8 @@ use crate::{
 /// automatically despawn entities stored in an entity's [`RelationshipTarget`] when that entity is despawned:
 ///
 /// ```
-/// # use bevy_ecs::component::Component;
-/// # use bevy_ecs::entity::Entity;
+/// # use kairos_ecs::component::Component;
+/// # use kairos_ecs::entity::Entity;
 /// #[derive(Component)]
 /// #[relationship(relationship_target = Children)]
 /// pub struct ChildOf(pub Entity);
@@ -110,8 +110,8 @@ use crate::{
 /// relationships, you can use the `allow_self_referential` attribute:
 ///
 /// ```
-/// # use bevy_ecs::component::Component;
-/// # use bevy_ecs::entity::Entity;
+/// # use kairos_ecs::component::Component;
+/// # use kairos_ecs::entity::Entity;
 /// #[derive(Component)]
 /// #[relationship(relationship_target = PeopleILike, allow_self_referential)]
 /// pub struct LikedBy(pub Entity);

@@ -99,7 +99,7 @@ impl<'w, 't, E: Event, B: Bundle> On<'w, 't, E, B> {
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     ///
     /// #[derive(EntityEvent)]
     /// struct AssertEvent {

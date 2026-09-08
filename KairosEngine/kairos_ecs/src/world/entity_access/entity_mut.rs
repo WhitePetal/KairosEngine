@@ -53,7 +53,7 @@ use crate::{
 /// Disjoint mutable access.
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// # #[derive(Component)] pub struct A;
 /// fn disjoint_system(
 ///     query1: Query<EntityMut, With<A>>,
@@ -61,7 +61,7 @@ use crate::{
 /// ) {
 ///     // ...
 /// }
-/// # bevy_ecs::system::assert_is_system(disjoint_system);
+/// # kairos_ecs::system::assert_is_system(disjoint_system);
 /// ```
 ///
 /// [`EntityWorldMut`]: crate::world::EntityWorldMut
@@ -212,7 +212,7 @@ impl<'w> EntityMut<'w> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// #[derive(Component)]
     /// struct X(usize);
@@ -252,7 +252,7 @@ impl<'w> EntityMut<'w> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// #[derive(Component)]
     /// struct X(usize);
@@ -280,7 +280,7 @@ impl<'w> EntityMut<'w> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// #[derive(Component)]
     /// struct X(usize);
@@ -331,7 +331,7 @@ impl<'w> EntityMut<'w> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// #[derive(Component)]
     /// struct X(usize);
@@ -347,7 +347,7 @@ impl<'w> EntityMut<'w> {
     /// ```
     ///
     /// ```should_panic
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// # #[derive(Component)]
     /// # struct X(usize);
@@ -537,7 +537,7 @@ impl<'w> EntityMut<'w> {
     /// ## Single [`ComponentId`]
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// # #[derive(Component, PartialEq, Debug)]
     /// # pub struct Foo(i32);
@@ -557,7 +557,7 @@ impl<'w> EntityMut<'w> {
     /// ## Array of [`ComponentId`]s
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// # #[derive(Component, PartialEq, Debug)]
     /// # pub struct X(i32);
@@ -582,7 +582,7 @@ impl<'w> EntityMut<'w> {
     /// ## Slice of [`ComponentId`]s
     ///
     /// ```
-    /// # use bevy_ecs::{prelude::*, component::ComponentId, change_detection::MutUntyped};
+    /// # use kairos_ecs::{prelude::*, component::ComponentId, change_detection::MutUntyped};
     /// #
     /// # #[derive(Component, PartialEq, Debug)]
     /// # pub struct X(i32);
@@ -606,8 +606,8 @@ impl<'w> EntityMut<'w> {
     /// ## `HashSet` of [`ComponentId`]s
     ///
     /// ```
-    /// # use bevy_platform::collections::HashSet;
-    /// # use bevy_ecs::{prelude::*, component::ComponentId};
+    /// # use kairos_collections::FixedHashSet as HashSet;
+    /// # use kairos_ecs::{prelude::*, component::ComponentId};
     /// #
     /// # #[derive(Component, PartialEq, Debug)]
     /// # pub struct X(i32);

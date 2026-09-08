@@ -31,13 +31,14 @@ define_label!(
     /// # Defining new schedule labels
     ///
     /// By default, you should use Bevy's premade schedule labels which implement this trait.
-    /// If you are using [`bevy_ecs`] directly or if you need to run a group of systems outside
+    /// If you are using [`kairos_ecs`] directly or if you need to run a group of systems outside
     /// the existing schedules, you may define your own schedule labels by using
     /// `#[derive(ScheduleLabel)]`.
     ///
     /// ```
-    /// use bevy_ecs::prelude::*;
-    /// use bevy_ecs::schedule::ScheduleLabel;
+    /// use kairos_ecs::prelude::*;
+    /// use kairos_ecs::schedule::ScheduleLabel;
+    /// # use kairos_ecs_macros::ScheduleLabel;
     ///
     /// // Declare a new schedule label.
     /// #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash, Default)]
@@ -91,7 +92,8 @@ define_label!(
     /// Unit structs are a good choice for one-off sets.
     ///
     /// ```rust
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
+    /// # use kairos_ecs_macros::SystemSet;
     ///
     /// #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
     /// struct PhysicsSystems;
@@ -102,7 +104,8 @@ define_label!(
     /// Each variant will be treated as a separate system set.
     ///
     /// ```rust
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
+    /// # use kairos_ecs_macros::SystemSet;
     ///
     /// #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
     /// enum CombatSystems {
@@ -126,7 +129,8 @@ define_label!(
     /// or repeated to add systems to multiple sets.
     ///
     /// ```rust
-    /// use bevy_ecs::prelude::*;
+    /// use kairos_ecs::prelude::*;
+    /// # use kairos_ecs_macros::SystemSet;
     ///
     /// #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
     /// enum CombatSystems {

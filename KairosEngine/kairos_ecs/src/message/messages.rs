@@ -43,7 +43,7 @@ mod tests;
 /// # Example
 ///
 /// ```
-/// use bevy_ecs::message::{Message, Messages};
+/// use kairos_ecs::message::{Message, Messages};
 ///
 /// #[derive(Message)]
 /// struct MyMessage {

@@ -26,7 +26,7 @@
 //! ```
 //! We should write this:
 //! ```
-//! use bevy_macro_utils::fq_std::FQOption;
+//! use kairos_macro_utils::fq_std::FQOption;
 //! # use quote::quote;
 //!
 //! quote!(

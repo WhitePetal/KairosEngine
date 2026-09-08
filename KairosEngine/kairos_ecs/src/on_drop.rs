@@ -10,7 +10,7 @@ use std::mem::ManuallyDrop;
 /// # Examples
 ///
 /// ```
-/// # use bevy_utils::OnDrop;
+/// # use kairos_ecs::on_drop::OnDrop;
 /// # fn test_panic(do_panic: bool, log: impl FnOnce(&str)) {
 /// // This will print a message when the variable `_catch` gets dropped,
 /// // even if a panic occurs before we reach the end of this scope.

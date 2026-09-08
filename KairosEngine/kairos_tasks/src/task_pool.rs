@@ -212,7 +212,7 @@ impl TaskPool {
     /// # Example
     ///
     /// ```
-    /// use bevy_tasks::TaskPool;
+    /// use kairos_tasks::TaskPool;
     ///
     /// let pool = TaskPool::new();
     /// let mut x = 0;
@@ -257,7 +257,7 @@ impl TaskPool {
     /// Thus this lifetime must outlive `'scope`.
     ///
     /// ```compile_fail
-    /// use bevy_tasks::TaskPool;
+    /// use kairos_tasks::TaskPool;
     /// fn scope_escapes_closure() {
     ///     let pool = TaskPool::new();
     ///     let foo = Box::new(42);
@@ -273,7 +273,7 @@ impl TaskPool {
     /// ```
     ///
     /// ```compile_fail
-    /// use bevy_tasks::TaskPool;
+    /// use kairos_tasks::TaskPool;
     /// fn cannot_borrow_from_closure() {
     ///     let pool = TaskPool::new();
     ///     pool.scope(|scope| {
@@ -558,7 +558,7 @@ impl TaskPool {
     /// other things.
     ///
     /// ```
-    /// use bevy_tasks::TaskPool;
+    /// use kairos_tasks::TaskPool;
     ///
     /// TaskPool::new().with_local_executor(|local_executor| {
     ///     local_executor.try_tick();

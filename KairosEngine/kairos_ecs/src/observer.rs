@@ -44,7 +44,7 @@ impl World {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #[derive(Component)]
     /// struct A;
     ///

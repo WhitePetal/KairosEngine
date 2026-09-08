@@ -971,8 +971,8 @@ impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
     /// # Examples
     ///
     /// ```
-    /// use bevy_ecs::prelude::*;
-    /// use bevy_ecs::query::QueryEntityError;
+    /// use kairos_ecs::prelude::*;
+    /// use kairos_ecs::query::QueryEntityError;
     ///
     /// #[derive(Component, PartialEq, Debug)]
     /// struct A(usize);
@@ -1010,7 +1010,7 @@ impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
     /// # Examples
     ///
     /// ```
-    /// use bevy_ecs::{prelude::*, query::QueryEntityError, entity::{EntitySetIterator, UniqueEntityArray, UniqueEntityVec}};
+    /// use kairos_ecs::{prelude::*, query::QueryEntityError, entity::{EntitySetIterator, UniqueEntityArray, UniqueEntityVec}};
     ///
     /// #[derive(Component, PartialEq, Debug)]
     /// struct A(usize);
@@ -1058,8 +1058,8 @@ impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
     /// returned instead.
     ///
     /// ```
-    /// use bevy_ecs::prelude::*;
-    /// use bevy_ecs::query::QueryEntityError;
+    /// use kairos_ecs::prelude::*;
+    /// use kairos_ecs::query::QueryEntityError;
     ///
     /// #[derive(Component, PartialEq, Debug)]
     /// struct A(usize);
@@ -1108,7 +1108,7 @@ impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
     /// returned instead.
     ///
     /// ```
-    /// use bevy_ecs::{prelude::*, query::QueryEntityError, entity::{EntitySetIterator, UniqueEntityArray, UniqueEntityVec}};
+    /// use kairos_ecs::{prelude::*, query::QueryEntityError, entity::{EntitySetIterator, UniqueEntityArray, UniqueEntityVec}};
     ///
     /// #[derive(Component, PartialEq, Debug)]
     /// struct A(usize);
@@ -1458,13 +1458,13 @@ impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
     /// # Examples
     ///
     /// ```
-    /// use bevy_ecs::prelude::*;
-    /// use bevy_ecs::query::QueryEntityError;
+    /// use kairos_ecs::prelude::*;
+    /// use kairos_ecs::query::QueryEntityError;
     ///
     /// #[derive(Component, PartialEq, Debug)]
     /// struct A(usize);
     ///
-    /// # bevy_tasks::ComputeTaskPool::get_or_init(|| bevy_tasks::TaskPool::new());
+    /// # kairos_tasks::ComputeTaskPool::get_or_init(|| kairos_tasks::TaskPool::new());
     ///
     /// let mut world = World::new();
     ///
@@ -1494,7 +1494,7 @@ impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
     /// initialized and run from the ECS scheduler, this should never panic.
     ///
     /// [`par_iter`]: Self::par_iter
-    /// [`ComputeTaskPool`]: bevy_tasks::ComputeTaskPool
+    /// [`ComputeTaskPool`]: kairos_tasks::ComputeTaskPool
     #[inline]
     pub fn par_iter_mut<'w, 's>(&'s mut self, world: &'w mut World) -> QueryParIter<'w, 's, D, F>
     where
@@ -1548,7 +1548,7 @@ impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
     /// This does not validate that `world.id()` matches `self.world_id`. Calling this on a `world`
     /// with a mismatched [`WorldId`] is unsound.
     ///
-    /// [`ComputeTaskPool`]: bevy_tasks::ComputeTaskPool
+    /// [`ComputeTaskPool`]: kairos_tasks::ComputeTaskPool
     pub(crate) unsafe fn par_fold_init_unchecked_manual<'w, 's, T, FN, INIT>(
         &'s self,
         init_accum: INIT,
@@ -1669,7 +1669,7 @@ impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
     /// This does not validate that `world.id()` matches `self.world_id`. Calling this on a `world`
     /// with a mismatched [`WorldId`] is unsound.
     ///
-    /// [`ComputeTaskPool`]: bevy_tasks::ComputeTaskPool
+    /// [`ComputeTaskPool`]: kairos_tasks::ComputeTaskPool
     pub(crate) unsafe fn par_many_unique_fold_init_unchecked_manual<'w, 's, T, FN, INIT, E>(
         &'s self,
         init_accum: INIT,
@@ -1736,7 +1736,7 @@ impl<D: ReadOnlyQueryData, F: QueryFilter> QueryState<D, F> {
     /// This does not validate that `world.id()` matches `self.world_id`. Calling this on a `world`
     /// with a mismatched [`WorldId`] is unsound.
     ///
-    /// [`ComputeTaskPool`]: bevy_tasks::ComputeTaskPool
+    /// [`ComputeTaskPool`]: kairos_tasks::ComputeTaskPool
     pub(crate) unsafe fn par_many_fold_init_unchecked_manual<'w, 's, T, FN, INIT, E>(
         &'s self,
         init_accum: INIT,
@@ -1802,8 +1802,8 @@ impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
     /// generally by spawning the missing entity.
     ///
     /// ```rust
-    /// use bevy_ecs::prelude::*;
-    /// use bevy_ecs::query::QuerySingleError;
+    /// use kairos_ecs::prelude::*;
+    /// use kairos_ecs::query::QuerySingleError;
     ///
     /// #[derive(Component)]
     /// struct A(usize);
@@ -1812,7 +1812,7 @@ impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
     ///     match query.single() {
     ///         Ok(a) => (), // Do something with `a`
     ///         Err(err) => match err {
-    ///             QuerySingleError::NoEntities(_) => {
+    ///             QuerySingleError::NonEntities(_) => {
     ///                 commands.spawn(A(0));
     ///             }
     ///             QuerySingleError::MultipleEntities(_) => panic!("Multiple entities found!"),
@@ -1824,7 +1824,7 @@ impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
     /// However in most cases, this error can simply be handled with a graceful early return.
     /// If this is an expected failure mode, you can do this using the `let else` pattern like so:
     /// ```rust
-    /// use bevy_ecs::prelude::*;
+    /// use kairos_ecs::prelude::*;
     ///
     /// #[derive(Component)]
     /// struct A(usize);
@@ -1842,7 +1842,7 @@ impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
     /// in combination with Bevy's error handling apparatus.
     ///
     /// ```rust
-    /// use bevy_ecs::prelude::*;
+    /// use kairos_ecs::prelude::*;
     ///
     /// #[derive(Component)]
     /// struct A(usize);
@@ -1857,7 +1857,7 @@ impl<D: QueryData, F: QueryFilter> QueryState<D, F> {
     ///
     /// This allows you to globally control how errors are handled in your application,
     /// by setting up a custom error handler.
-    /// See the [`bevy_ecs::error`] module docs for more information!
+    /// See the [`kairos_ecs::error`] module docs for more information!
     /// Commonly, you might want to panic on an error during development, but log the error and continue
     /// execution in production.
     ///

@@ -41,7 +41,7 @@ mod tests;
 /// You can create parent-child relationships in a variety of ways. The most direct way is to insert a [`ChildOf`] component:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// # let mut world = World::new();
 /// let root = world.spawn_empty().id();
 /// let child1 = world.spawn(ChildOf(root)).id();
@@ -63,7 +63,7 @@ mod tests;
 /// However if you are spawning many children, you might want to use the [`EntityWorldMut::with_children`] helper instead:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// # let mut world = World::new();
 /// let mut child1 = Entity::PLACEHOLDER;
 /// let mut child2 = Entity::PLACEHOLDER;
@@ -442,10 +442,10 @@ impl<'a> EntityCommands<'a> {
 /// Also see [`related`](crate::related) for a version of this that works with any [`RelationshipTarget`] type.
 ///
 /// ```
-/// # use bevy_ecs::hierarchy::Children;
-/// # use bevy_ecs::name::Name;
-/// # use bevy_ecs::world::World;
-/// # use bevy_ecs::children;
+/// # use kairos_ecs::hierarchy::Children;
+/// # use kairos_ecs::name::Name;
+/// # use kairos_ecs::world::World;
+/// # use kairos_ecs::children;
 /// let mut world = World::new();
 /// world.spawn((
 ///     Name::new("Root"),

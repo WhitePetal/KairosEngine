@@ -36,7 +36,7 @@
 //! context surrounding the error – such as the system's [`name`] – in your error messages.
 //!
 //! ```rust, ignore
-//! use bevy_ecs::error::{BevyError, ErrorContext, FallbackErrorHandler};
+//! use kairos_ecs::error::{BevyError, ErrorContext, FallbackErrorHandler};
 //! use log::trace;
 //!
 //! fn my_error_handler(error: BevyError, ctx: ErrorContext) {
@@ -44,7 +44,7 @@
 //!       trace!("Nothing to see here, move along.");
 //!       return;
 //!   }
-//!   bevy_ecs::error::error(error, ctx);
+//!   kairos_ecs::error::error(error, ctx);
 //! }
 //!
 //! fn main() {

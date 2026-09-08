@@ -118,7 +118,7 @@ impl SceneEntityReferences {
 }
 
 /// A unique reference for a named entity in a scene.
-/// Usually used by `bevy_scene` in generated code
+/// Usually used by the scene system when generating code.
 ///
 /// Hashed here should allow implementing compile-time hashing in the future
 ///
@@ -195,7 +195,8 @@ impl Equivalent<FixedHashed<InnerSceneEntityReference>> for SceneEntityReference
 ///
 /// [`FromTemplate`] can be derived for types whose fields _also_ implement [`FromTemplate`]:
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
+/// # use kairos_ecs_macros::FromTemplate;
 /// # #[derive(Default, Clone)]
 /// # struct Handle<T>(core::marker::PhantomData<T>);
 /// # #[derive(Default, Clone)]
@@ -208,7 +209,8 @@ impl Equivalent<FixedHashed<InnerSceneEntityReference>> for SceneEntityReference
 ///
 /// Deriving [`FromTemplate`] will generate a [`Template`] type for the deriving type. The example above would generate a `PlayerTemplate` like this:
 /// ```
-/// # use bevy_ecs::{prelude::*, template::TemplateContext};
+/// # use kairos_ecs::{prelude::*, template::TemplateContext};
+/// # use kairos_ecs_macros::FromTemplate;
 /// # #[derive(FromTemplate)]
 /// # struct Handle<T: core::marker::Unpin>(core::marker::PhantomData<T>);
 /// # #[derive(Default, Clone)]
@@ -243,7 +245,8 @@ impl Equivalent<FixedHashed<InnerSceneEntityReference>> for SceneEntityReference
 ///
 /// [`FromTemplate`] derives can specify custom templates to use instead of a canonical [`FromTemplate`]:
 /// ```
-/// # use bevy_ecs::{prelude::*, template::TemplateContext};
+/// # use kairos_ecs::{prelude::*, template::TemplateContext};
+/// # use kairos_ecs_macros::FromTemplate;
 /// # struct Image;
 /// #[derive(FromTemplate)]
 /// struct Counter {
@@ -277,7 +280,8 @@ impl Equivalent<FixedHashed<InnerSceneEntityReference>> for SceneEntityReference
 /// the template manually:
 ///
 /// ```
-/// # use bevy_ecs::{prelude::*, template::{TemplateContext, OptionTemplate}};
+/// # use kairos_ecs::{prelude::*, template::{TemplateContext, OptionTemplate}};
+/// # use kairos_ecs_macros::FromTemplate;
 /// # use core::marker::PhantomData;
 /// # struct Handle<T>(PhantomData<T>);
 /// # struct HandleTemplate<T>(PhantomData<T>);
@@ -309,7 +313,8 @@ impl Equivalent<FixedHashed<InnerSceneEntityReference>> for SceneEntityReference
 /// annotate it with the `template(built_in)` attribute to use [`BuiltInTemplate`] instead of [`FromTemplate`]:
 ///
 /// ```
-/// # use bevy_ecs::{prelude::*, template::TemplateContext};
+/// # use kairos_ecs::{prelude::*, template::TemplateContext};
+/// # use kairos_ecs_macros::FromTemplate;
 /// # use core::marker::PhantomData;
 /// # struct Handle<T>(PhantomData<T>);
 /// # struct HandleTemplate<T>(PhantomData<T>);
@@ -405,7 +410,7 @@ pub trait SpecializeFromTemplate: Sized {}
 
 /// A [`Template`] reference to an [`Entity`].
 ///
-/// This is only valid during scene spawning and should **never** be used as a [`Component`](bevy_ecs::prelude::Component) field.
+/// This is only valid during scene spawning and should **never** be used as a [`Component`](kairos_ecs::prelude::Component) field.
 #[derive(Copy, Clone, Default, Debug)]
 pub enum EntityTemplate {
     /// A reference to a specific [`Entity`]

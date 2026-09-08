@@ -36,8 +36,8 @@ pub type BoxedCondition<In = ()> = Box<dyn ReadOnlySystem<In = In, Out = bool>>;
 /// but usually have to be specified when passing a condition to a function.
 ///
 /// ```
-/// # use bevy_ecs::schedule::SystemCondition;
-/// # use bevy_ecs::system::IntoSystem;
+/// # use kairos_ecs::schedule::SystemCondition;
+/// # use kairos_ecs::system::IntoSystem;
 /// fn not_condition<Marker>(a: impl SystemCondition<Marker>) -> impl SystemCondition<()> {
 ///    IntoSystem::into_system(a.map(|x| !x))
 /// }
@@ -46,7 +46,7 @@ pub type BoxedCondition<In = ()> = Box<dyn ReadOnlySystem<In = In, Out = bool>>;
 /// # Examples
 /// A condition that returns true every other time it's called.
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// fn every_other_time() -> impl SystemCondition<()> {
 ///     IntoSystem::into_system(|mut flag: Local<bool>| {
 ///         *flag = !*flag;
@@ -70,7 +70,7 @@ pub type BoxedCondition<In = ()> = Box<dyn ReadOnlySystem<In = In, Out = bool>>;
 /// A condition that takes a bool as an input and returns it unchanged.
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// fn identity() -> impl SystemCondition<(), In<bool>> {
 ///     IntoSystem::into_system(|In(x): In<bool>| x)
 /// }
@@ -109,7 +109,7 @@ pub trait SystemCondition<Marker, In: SystemInput = ()>:
     /// # Examples
     ///
     /// ```should_panic
-    /// use bevy_ecs::prelude::*;
+    /// use kairos_ecs::prelude::*;
     ///
     /// #[derive(Resource, PartialEq)]
     /// struct R(u32);
@@ -128,7 +128,7 @@ pub trait SystemCondition<Marker, In: SystemInput = ()>:
     /// Use `.and_then()` to avoid checking the condition.
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Resource, PartialEq)]
     /// # struct R(u32);
     /// # let mut schedule = Schedule::default();
@@ -174,7 +174,7 @@ pub trait SystemCondition<Marker, In: SystemInput = ()>:
     /// # Examples
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # use std::sync::atomic::AtomicBool;
     /// # use std::sync::atomic::Ordering;
     /// # #[derive(Resource, PartialEq)]
@@ -232,7 +232,7 @@ pub trait SystemCondition<Marker, In: SystemInput = ()>:
     /// # Examples
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// # #[derive(Resource, Debug, Clone, PartialEq, Eq, Hash)]
     /// # pub enum PlayerState {
@@ -289,7 +289,7 @@ pub trait SystemCondition<Marker, In: SystemInput = ()>:
     /// Equivalent logic can be achieved by using `not` in concert with `and_then`:
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Resource, Debug, Clone, PartialEq, Eq, Hash)]
     /// # pub enum PlayerState {
     /// #     Alive,
@@ -453,7 +453,7 @@ pub trait SystemCondition<Marker, In: SystemInput = ()>:
     /// # Examples
     ///
     /// ```
-    /// use bevy_ecs::prelude::*;
+    /// use kairos_ecs::prelude::*;
     ///
     /// #[derive(Resource, PartialEq)]
     /// struct A(u32);
@@ -467,7 +467,7 @@ pub trait SystemCondition<Marker, In: SystemInput = ()>:
     /// # fn my_system(mut c: ResMut<C>) { c.0 = true; }
     /// app.add_systems(
     ///     // Only run the system if either `A` or `B` exist.
-    ///     my_system.run_if(resource_exists::<A>.or(resource_exists::<B>)),
+    ///     my_system.run_if(resource_exists::<A>.or_else(resource_exists::<B>)),
     /// );
     /// #
     /// # world.insert_resource(C(false));
@@ -632,7 +632,7 @@ pub mod common_conditions {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Resource, Default)]
     /// # struct Counter(u8);
     /// # let mut app = Schedule::default();
@@ -673,7 +673,7 @@ pub mod common_conditions {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Resource, Default)]
     /// # struct Counter(u8);
     /// # let mut app = Schedule::default();
@@ -712,7 +712,7 @@ pub mod common_conditions {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Resource, Default, PartialEq)]
     /// # struct Counter(u8);
     /// # let mut app = Schedule::default();
@@ -750,7 +750,7 @@ pub mod common_conditions {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Resource, Default, PartialEq)]
     /// # struct Counter(u8);
     /// # let mut app = Schedule::default();
@@ -793,7 +793,7 @@ pub mod common_conditions {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Resource, Default)]
     /// # struct Counter(u8);
     /// # let mut app = Schedule::default();
@@ -842,7 +842,7 @@ pub mod common_conditions {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Resource, Default)]
     /// # struct Counter(u8);
     /// # let mut app = Schedule::default();
@@ -856,7 +856,7 @@ pub mod common_conditions {
     ///         // By default detecting changes will also trigger if the resource was
     ///         // just added, this won't work with my example so I will add a second
     ///         // condition to make sure the resource wasn't just added
-    ///         .and(not(resource_added::<Counter>))
+    ///         .and_then(not(resource_added::<Counter>))
     ///     ),
     /// );
     ///
@@ -893,7 +893,7 @@ pub mod common_conditions {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Resource, Default)]
     /// # struct Counter(u8);
     /// # let mut app = Schedule::default();
@@ -906,7 +906,7 @@ pub mod common_conditions {
     ///         // By default detecting changes will also trigger if the resource was
     ///         // just added, this won't work with my example so I will add a second
     ///         // condition to make sure the resource wasn't just added
-    ///         .and(not(resource_added::<Counter>))
+    ///         .and_then(not(resource_added::<Counter>))
     ///     ),
     /// );
     ///
@@ -950,7 +950,7 @@ pub mod common_conditions {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Resource, Default)]
     /// # struct Counter(u8);
     /// # let mut app = Schedule::default();
@@ -964,7 +964,7 @@ pub mod common_conditions {
     ///         // By default detecting changes will also trigger if the resource was
     ///         // just added, this won't work with my example so I will add a second
     ///         // condition to make sure the resource wasn't just added
-    ///         .and(not(resource_added::<Counter>))
+    ///         .and_then(not(resource_added::<Counter>))
     ///     ),
     /// );
     ///
@@ -1017,7 +1017,7 @@ pub mod common_conditions {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Resource, Default)]
     /// # struct Counter(u8);
     /// # let mut app = Schedule::default();
@@ -1071,14 +1071,14 @@ pub mod common_conditions {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Resource, Default)]
     /// # struct Counter(u8);
     /// # let mut app = Schedule::default();
     /// # let mut world = World::new();
     /// # world.init_resource::<Counter>();
     /// # world.init_resource::<Messages<MyMessage>>();
-    /// # app.add_systems(bevy_ecs::message::message_update_system.before(my_system));
+    /// # app.add_systems(kairos_ecs::message::message_update_system.before(my_system));
     ///
     /// app.add_systems(
     ///     my_system.run_if(on_message::<MyMessage>),
@@ -1121,7 +1121,7 @@ pub mod common_conditions {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Resource, Default)]
     /// # struct Counter(u8);
     /// # let mut app = Schedule::default();
@@ -1180,7 +1180,7 @@ pub mod common_conditions {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Resource, Default)]
     /// # struct Counter(u8);
     /// # let mut app = Schedule::default();
@@ -1221,7 +1221,7 @@ pub mod common_conditions {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Resource, Default)]
     /// # struct Counter(u8);
     /// # let mut app = Schedule::default();
@@ -1272,7 +1272,7 @@ pub mod common_conditions {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Resource, Default)]
     /// # struct Counter(u8);
     /// # let mut app = Schedule::default();

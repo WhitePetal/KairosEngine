@@ -1,7 +1,8 @@
 //! Hashing utilities and deterministic collections shared by `kairos_ecs` and `kairos_engine`.
 //!
-//! Mirrors `bevy_utils`: collection types live flat at the crate root, hashing
-//! utilities live in the [`hash`] submodule.
+//! Collection types live flat at the crate root, hashing utilities live in
+//! the [`hash`] submodule (mirroring the split of `bevy_utils`/`bevy_platform`
+//! that this crate was extracted from).
 
 mod fixed_hashmap;
 mod fixed_hashset;

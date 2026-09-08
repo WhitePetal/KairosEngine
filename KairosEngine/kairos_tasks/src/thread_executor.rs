@@ -16,7 +16,7 @@ mod tests;
 /// # Example
 /// ```
 /// # use std::sync::{Arc, atomic::{AtomicI32, Ordering}};
-/// use bevy_tasks::ThreadExecutor;
+/// use kairos_tasks::ThreadExecutor;
 ///
 /// let thread_executor = ThreadExecutor::new();
 /// let count = Arc::new(AtomicI32::new(0));

@@ -584,7 +584,7 @@ impl Components {
     /// If you want to include queued registration, see [`Components::component_id()`].
     ///
     /// ```
-    /// use bevy_ecs::prelude::*;
+    /// use kairos_ecs::prelude::*;
     ///
     /// let mut world = World::new();
     ///
@@ -629,7 +629,7 @@ impl Components {
     /// [`ComponentsQueuedRegistrator::queue_register_component()`](super::ComponentsQueuedRegistrator::queue_register_component).
     ///
     /// ```
-    /// use bevy_ecs::prelude::*;
+    /// use kairos_ecs::prelude::*;
     ///
     /// let mut world = World::new();
     ///

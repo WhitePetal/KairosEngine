@@ -49,7 +49,7 @@ pub use kairos_ecs_macros::Message;
 /// The [`Message`] trait can be derived:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #
 /// #[derive(Message)]
 /// struct Greeting(String);
@@ -58,7 +58,7 @@ pub use kairos_ecs_macros::Message;
 /// The message can then be written to the message buffer using a [`MessageWriter`]:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #
 /// # #[derive(Message)]
 /// # struct Greeting(String);
@@ -71,7 +71,7 @@ pub use kairos_ecs_macros::Message;
 /// Messages can be efficiently read using a [`MessageReader`]:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #
 /// # #[derive(Message)]
 /// # struct Greeting(String);

@@ -68,7 +68,7 @@ use crate::{
 /// The simplest usage of the observer pattern looks like this:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// # let mut world = World::default();
 /// #[derive(Event)]
 /// struct Speak {
@@ -87,7 +87,7 @@ use crate::{
 /// Notice that we used [`World::add_observer`]. This is just a shorthand for spawning an [`Entity`] with an [`Observer`] manually:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// # let mut world = World::default();
 /// # #[derive(Event)]
 /// # struct Speak;
@@ -102,7 +102,7 @@ use crate::{
 /// Because they are systems, they can access arbitrary [`World`] data by adding [`SystemParam`]s:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// # let mut world = World::default();
 /// # #[derive(Event)]
 /// # struct PrintNames;
@@ -118,7 +118,7 @@ use crate::{
 /// You can also add [`Commands`], which means you can spawn new entities, insert new components, etc:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// # let mut world = World::default();
 /// # #[derive(Event)]
 /// # struct SpawnThing;
@@ -132,7 +132,7 @@ use crate::{
 /// Observers can also trigger new events:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// # let mut world = World::default();
 /// # #[derive(Event)]
 /// # struct A;

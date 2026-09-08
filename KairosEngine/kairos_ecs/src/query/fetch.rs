@@ -124,8 +124,9 @@ mod tests;
 /// This trait can only be derived for structs, if each field also implements `QueryData`.
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
-/// use bevy_ecs::query::QueryData;
+/// # use kairos_ecs::prelude::*;
+/// use kairos_ecs::query::QueryData;
+/// # use kairos_ecs_macros::QueryData;
 /// #
 /// # #[derive(Component)]
 /// # struct ComponentA;
@@ -146,7 +147,7 @@ mod tests;
 ///         q.component_a;
 ///     }
 /// }
-/// # bevy_ecs::system::assert_is_system(my_system);
+/// # kairos_ecs::system::assert_is_system(my_system);
 /// ```
 ///
 /// ## Macro expansion
@@ -167,8 +168,9 @@ mod tests;
 /// Simply adding mutable references to a derived `QueryData` will result in a compilation error:
 ///
 /// ```compile_fail
-/// # use bevy_ecs::prelude::*;
-/// # use bevy_ecs::query::QueryData;
+/// # use kairos_ecs::prelude::*;
+/// # use kairos_ecs::query::QueryData;
+/// # use kairos_ecs_macros::QueryData;
 /// #
 /// # #[derive(Component)]
 /// # struct ComponentA;
@@ -183,8 +185,9 @@ mod tests;
 /// This will also create three more structs that will be used for accessing the query immutably (see table above).
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
-/// # use bevy_ecs::query::QueryData;
+/// # use kairos_ecs::prelude::*;
+/// # use kairos_ecs::query::QueryData;
+/// # use kairos_ecs_macros::QueryData;
 /// #
 /// # #[derive(Component)]
 /// # struct ComponentA;
@@ -203,8 +206,9 @@ mod tests;
 ///
 /// For mutable queries it may be done like this:
 /// ```
-/// # use bevy_ecs::prelude::*;
-/// # use bevy_ecs::query::QueryData;
+/// # use kairos_ecs::prelude::*;
+/// # use kairos_ecs::query::QueryData;
+/// # use kairos_ecs_macros::QueryData;
 /// #
 /// # #[derive(Component)]
 /// # struct ComponentA;
@@ -233,8 +237,9 @@ mod tests;
 /// generated structs.
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
-/// # use bevy_ecs::query::QueryData;
+/// # use kairos_ecs::prelude::*;
+/// # use kairos_ecs::query::QueryData;
+/// # use kairos_ecs_macros::QueryData;
 /// #
 /// #[derive(Component)]
 /// struct Health(f32);
@@ -278,7 +283,7 @@ mod tests;
 ///         println!("Total (mut): {}", health.total());
 ///     }
 /// }
-/// # bevy_ecs::system::assert_is_system(my_system);
+/// # kairos_ecs::system::assert_is_system(my_system);
 /// ```
 ///
 /// ## Deriving traits for query items
@@ -288,8 +293,9 @@ mod tests;
 /// This will apply the listed derivable traits to the query item structs.
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
-/// # use bevy_ecs::query::QueryData;
+/// # use kairos_ecs::prelude::*;
+/// # use kairos_ecs::query::QueryData;
+/// # use kairos_ecs_macros::QueryData;
 /// #
 /// # #[derive(Component, Debug)]
 /// # struct ComponentA;
@@ -315,8 +321,9 @@ mod tests;
 /// This means that a `QueryData` can also be used as a subquery, potentially in multiple places.
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
-/// # use bevy_ecs::query::QueryData;
+/// # use kairos_ecs::prelude::*;
+/// # use kairos_ecs::query::QueryData;
+/// # use kairos_ecs_macros::QueryData;
 /// #
 /// # #[derive(Component)]
 /// # struct ComponentA;
@@ -345,7 +352,8 @@ mod tests;
 /// `PhantomData<T>` types, this pattern can be used with this macro.
 ///
 /// ```
-/// # use bevy_ecs::{prelude::*, query::QueryData};
+/// # use kairos_ecs::{prelude::*, query::QueryData};
+/// # use kairos_ecs_macros::QueryData;
 /// # use std::marker::PhantomData;
 /// #[derive(QueryData)]
 /// pub struct GenericQuery<T> {
@@ -353,7 +361,7 @@ mod tests;
 ///     marker: PhantomData<T>,
 /// }
 /// # fn my_system(q: Query<GenericQuery<()>>) {}
-/// # bevy_ecs::system::assert_is_system(my_system);
+/// # kairos_ecs::system::assert_is_system(my_system);
 /// ```
 ///
 /// # Safety
@@ -767,19 +775,19 @@ impl ArchetypeQueryData for EntityLocation {}
 /// The `SpawnDetails` query parameter fetches the [`Tick`] the entity was spawned at.
 ///
 /// To evaluate whether the spawn happened since the last time the system ran, the system
-/// param [`SystemChangeTick`](bevy_ecs::system::SystemChangeTick) needs to be used.
+/// param [`SystemChangeTick`](kairos_ecs::system::SystemChangeTick) needs to be used.
 ///
 /// If the query should filter for spawned entities instead, use the
-/// [`Spawned`](bevy_ecs::query::Spawned) query filter instead.
+/// [`Spawned`](kairos_ecs::query::Spawned) query filter instead.
 ///
 /// # Examples
 ///
 /// ```
-/// # use bevy_ecs::component::Component;
-/// # use bevy_ecs::entity::Entity;
-/// # use bevy_ecs::system::Query;
-/// # use bevy_ecs::query::Spawned;
-/// # use bevy_ecs::query::SpawnDetails;
+/// # use kairos_ecs::component::Component;
+/// # use kairos_ecs::entity::Entity;
+/// # use kairos_ecs::system::Query;
+/// # use kairos_ecs::query::Spawned;
+/// # use kairos_ecs::query::SpawnDetails;
 ///
 /// fn print_spawn_details(query: Query<(Entity, SpawnDetails)>) {
 ///     for (entity, spawn_details) in &query {
@@ -798,7 +806,7 @@ impl ArchetypeQueryData for EntityLocation {}
 ///     }
 /// }
 ///
-/// # bevy_ecs::system::assert_is_system(print_spawn_details);
+/// # kairos_ecs::system::assert_is_system(print_spawn_details);
 /// ```
 #[derive(Clone, Copy, Debug)]
 pub struct SpawnDetails {
@@ -2787,8 +2795,8 @@ impl<'__w, T: Component<Mutability = Mutable>> ContiguousQueryData for Mut<'__w,
 /// to prevent mutable aliasing.
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
-/// # use bevy_ecs::query::NestedQuery;
+/// # use kairos_ecs::prelude::*;
+/// # use kairos_ecs::query::NestedQuery;
 /// #
 /// # #[derive(Component)]
 /// # struct A;
@@ -2801,8 +2809,8 @@ impl<'__w, T: Component<Mutability = Mutable>> ContiguousQueryData for Mut<'__w,
 /// ```
 ///
 /// ```compile_fail
-/// # use bevy_ecs::prelude::*;
-/// # use bevy_ecs::query::NestedQuery;
+/// # use kairos_ecs::prelude::*;
+/// # use kairos_ecs::query::NestedQuery;
 /// #
 /// # #[derive(Component)]
 /// # struct A;
@@ -2821,8 +2829,9 @@ impl<'__w, T: Component<Mutability = Mutable>> ContiguousQueryData for Mut<'__w,
 /// and we can use the query in methods on that struct.
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
-/// # use bevy_ecs::query::{NestedQuery, QueryData, QueryFilter, ReadOnlyQueryData};
+/// # use kairos_ecs::prelude::*;
+/// # use kairos_ecs::query::{NestedQuery, QueryData, QueryFilter, ReadOnlyQueryData};
+/// # use kairos_ecs_macros::QueryData;
 /// #
 /// # #[derive(Component)]
 /// # struct Data(usize);
@@ -2864,7 +2873,7 @@ impl<'__w, T: Component<Mutability = Mutable>> ContiguousQueryData for Mut<'__w,
 /// you can implement `QueryData` manually by delegating to `NestedQuery`.
 ///
 /// ```
-/// # use bevy_ecs::{
+/// # use kairos_ecs::{
 /// #     archetype::Archetype,
 /// #     change_detection::Tick,
 /// #     component::{ComponentId, Components},
@@ -3374,10 +3383,10 @@ impl<T: ContiguousQueryData> ContiguousQueryData for Option<T> {
 /// # Examples
 ///
 /// ```
-/// # use bevy_ecs::component::Component;
-/// # use bevy_ecs::query::Has;
-/// # use bevy_ecs::system::IntoSystem;
-/// # use bevy_ecs::system::Query;
+/// # use kairos_ecs::component::Component;
+/// # use kairos_ecs::query::Has;
+/// # use kairos_ecs::system::IntoSystem;
+/// # use kairos_ecs::system::Query;
 /// #
 /// # #[derive(Component)]
 /// # struct IsHungry;
@@ -3393,14 +3402,14 @@ impl<T: ContiguousQueryData> ContiguousQueryData for Option<T> {
 ///         }
 ///     }
 /// }
-/// # bevy_ecs::system::assert_is_system(food_entity_system);
+/// # kairos_ecs::system::assert_is_system(food_entity_system);
 /// ```
 ///
 /// ```
-/// # use bevy_ecs::component::Component;
-/// # use bevy_ecs::query::Has;
-/// # use bevy_ecs::system::IntoSystem;
-/// # use bevy_ecs::system::Query;
+/// # use kairos_ecs::component::Component;
+/// # use kairos_ecs::query::Has;
+/// # use kairos_ecs::system::IntoSystem;
+/// # use kairos_ecs::system::Query;
 /// #
 /// # #[derive(Component)]
 /// # struct Alpha{has_beta: bool};
@@ -3417,7 +3426,7 @@ impl<T: ContiguousQueryData> ContiguousQueryData for Option<T> {
 ///         beta.has_alpha = has_alpha;
 ///     }
 /// }
-/// # bevy_ecs::system::assert_is_system(alphabet_entity_system);
+/// # kairos_ecs::system::assert_is_system(alphabet_entity_system);
 /// ```
 pub struct Has<T>(PhantomData<T>);
 
@@ -3968,7 +3977,7 @@ all_tuples!(
 
 /// [`WorldQuery`] used to nullify queries by turning `Query<D>` into `Query<NopWorldQuery<D>>`
 ///
-/// This will rarely be useful to consumers of `bevy_ecs`.
+/// This will rarely be useful to consumers of `kairos_ecs`.
 pub(crate) struct NopWorldQuery<D: QueryData>(PhantomData<D>);
 
 // SAFETY:

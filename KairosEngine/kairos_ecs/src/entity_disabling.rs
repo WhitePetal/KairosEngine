@@ -9,7 +9,7 @@
 //! disabling components, which will operate in the same way but can have distinct semantics.
 //!
 //! ```
-//! use bevy_ecs::prelude::*;
+//! use kairos_ecs::prelude::*;
 //!
 //! // Our custom disabling component!
 //! #[derive(Component, Clone)]
@@ -54,8 +54,8 @@
 //! it's possible to temporarily ignore any default filters by using [`World::resource_scope`](crate::prelude::World).
 //!
 //! ```
-//! use bevy_ecs::prelude::*;
-//! use bevy_ecs::entity_disabling::{DefaultQueryFilters, Disabled};
+//! use kairos_ecs::prelude::*;
+//! use kairos_ecs::entity_disabling::{DefaultQueryFilters, Disabled};
 //!
 //! let mut world = World::default();
 //!

@@ -81,7 +81,7 @@ impl Default for TypeIdAndName {
     }
 }
 
-/// Marker [`Component`](bevy_ecs::component::Component) for identifying [`SystemId`] [`Entity`]s.
+/// Marker [`Component`](kairos_ecs::component::Component) for identifying [`SystemId`] [`Entity`]s.
 #[derive(Debug, Default, Clone, Component)]
 pub struct SystemIdMarker {
     input_type_id: TypeIdAndName,
@@ -161,10 +161,9 @@ impl Default for RegisteredSystemDespawner {
 /// # Cleanup
 ///
 /// Registered system entities are cleaned up by the [`despawn_unused_registered_systems`]
-/// system, which is automatically added to the default app by the `bevy_app`
-/// crate when the "std" feature is enabled. If not using the default app, the
-/// "std" feature, or `bevy_app` in general, consider running this system
-/// yourself to ensure proper cleanup of registered systems.
+/// system, which the engine's application layer adds to the default app when the `std`
+/// feature is enabled. If you are not using that application layer, consider running this
+/// system yourself to ensure proper cleanup of registered systems.
 pub enum SystemHandle<I: SystemInput = (), O = ()> {
     /// A strong handle keeps the system entity alive as long as the handle
     /// (and any clones of it) exist, as long as the system entity isn't
@@ -584,7 +583,7 @@ impl World {
     /// ## Running a system
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// fn increment(mut counter: Local<u8>) {
     ///    *counter += 1;
     ///    println!("{}", *counter);
@@ -601,7 +600,7 @@ impl World {
     /// ## Change detection
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #[derive(Resource, Default)]
     /// struct ChangeDetector;
     ///
@@ -625,7 +624,7 @@ impl World {
     /// ## Getting system output
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     ///
     /// #[derive(Resource)]
     /// struct PlayerScore(i32);
@@ -671,7 +670,7 @@ impl World {
     /// # Examples
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// fn increment(In(increment_by): In<u8>, mut counter: Local<u8>) -> u8 {
     ///   *counter += increment_by;
     ///   *counter

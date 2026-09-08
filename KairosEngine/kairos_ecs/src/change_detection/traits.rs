@@ -11,7 +11,7 @@ use crate::{
 /// a way to query if a value has been mutated in another system.
 ///
 /// ```
-/// use bevy_ecs::prelude::*;
+/// use kairos_ecs::prelude::*;
 ///
 /// #[derive(Resource)]
 /// struct MyResource(u32);
@@ -46,7 +46,7 @@ pub trait DetectChanges {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Component)]
     /// # struct Source;
     /// # #[derive(Component)]
@@ -67,7 +67,7 @@ pub trait DetectChanges {
     ///     }
     /// }
     /// #
-    /// # bevy_ecs::system::assert_is_system(system);
+    /// # kairos_ecs::system::assert_is_system(system);
     /// ```
     fn is_changed_after(&self, other: Tick) -> bool;
 
@@ -103,7 +103,7 @@ pub trait DetectChanges {
 /// method for this common functionality.
 ///
 /// ```
-/// use bevy_ecs::prelude::*;
+/// use kairos_ecs::prelude::*;
 ///
 /// #[derive(Resource)]
 /// struct MyResource(u32);
@@ -182,7 +182,7 @@ pub trait DetectChangesMut: DetectChanges {
     /// # Examples
     ///
     /// ```
-    /// # use bevy_ecs::{prelude::*, schedule::common_conditions::resource_changed};
+    /// # use kairos_ecs::{prelude::*, schedule::common_conditions::resource_changed};
     /// #[derive(Resource, PartialEq, Eq)]
     /// pub struct Score(u32);
     ///
@@ -244,7 +244,7 @@ pub trait DetectChangesMut: DetectChanges {
     /// # Examples
     ///
     /// ```
-    /// # use bevy_ecs::{prelude::*, schedule::common_conditions::{resource_changed, on_message}};
+    /// # use kairos_ecs::{prelude::*, schedule::common_conditions::{resource_changed, on_message}};
     /// #[derive(Resource, PartialEq, Eq)]
     /// pub struct Score(u32);
     ///
@@ -319,7 +319,7 @@ pub trait DetectChangesMut: DetectChanges {
     /// ```
     /// # extern crate alloc;
     /// # use alloc::borrow::ToOwned;
-    /// # use bevy_ecs::{prelude::*, schedule::common_conditions::resource_changed};
+    /// # use kairos_ecs::{prelude::*, schedule::common_conditions::resource_changed};
     /// #[derive(Resource)]
     /// pub struct Message(String);
     ///
@@ -518,7 +518,7 @@ macro_rules! impl_methods {
             /// without flagging a change, consider using [`DetectChangesMut::bypass_change_detection`] to make your intent explicit.
             ///
             /// ```
-            /// # use bevy_ecs::prelude::*;
+            /// # use kairos_ecs::prelude::*;
             /// # #[derive(PartialEq)] pub struct Vec2;
             /// # impl Vec2 { pub const ZERO: Self = Self; }
             /// # #[derive(Component)] pub struct Transform { translation: Vec2 }
@@ -532,7 +532,7 @@ macro_rules! impl_methods {
             ///         translation.set_if_neq(Vec2::ZERO);
             ///     }
             /// }
-            /// # bevy_ecs::system::assert_is_system(reset_positions);
+            /// # kairos_ecs::system::assert_is_system(reset_positions);
             /// ```
             pub fn map_unchanged<U: ?Sized>(self, f: impl FnOnce(&mut $target) -> &mut U) -> Mut<'w, U> {
                 Mut {

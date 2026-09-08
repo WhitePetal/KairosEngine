@@ -470,7 +470,7 @@ impl World {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #[derive(Component)]
     /// struct A;
     ///
@@ -518,7 +518,7 @@ impl World {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #[derive(Component)]
     /// struct A;
     ///
@@ -573,7 +573,7 @@ impl World {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #[derive(Component)]
     /// struct A;
     ///
@@ -626,7 +626,7 @@ impl World {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #[derive(Component)]
     /// struct A;
     ///
@@ -711,7 +711,7 @@ impl World {
     /// the `World` using [`World::register_component`].
     ///
     /// ```
-    /// use bevy_ecs::prelude::*;
+    /// use kairos_ecs::prelude::*;
     ///
     /// let mut world = World::new();
     ///
@@ -752,7 +752,7 @@ impl World {
     /// ## Single [`Entity`]
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #[derive(Component)]
     /// struct Position {
     ///   x: f32,
@@ -769,7 +769,7 @@ impl World {
     /// ## Array of [`Entity`]s
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #[derive(Component)]
     /// struct Position {
     ///   x: f32,
@@ -790,7 +790,7 @@ impl World {
     /// ## Slice of [`Entity`]s
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #[derive(Component)]
     /// struct Position {
     ///   x: f32,
@@ -811,7 +811,7 @@ impl World {
     /// ## [`EntityHashSet`](crate::entity::EntityHashSet)
     ///
     /// ```
-    /// # use bevy_ecs::{prelude::*, entity::EntityHashSet};
+    /// # use kairos_ecs::{prelude::*, entity::EntityHashSet};
     /// #[derive(Component)]
     /// struct Position {
     ///   x: f32,
@@ -868,7 +868,7 @@ impl World {
     /// ## Single [`Entity`]
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #[derive(Component)]
     /// struct Position {
     ///   x: f32,
@@ -889,7 +889,7 @@ impl World {
     /// ## Array of [`Entity`]s
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #[derive(Component)]
     /// struct Position {
     ///   x: f32,
@@ -912,7 +912,7 @@ impl World {
     /// ## Slice of [`Entity`]s
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #[derive(Component)]
     /// struct Position {
     ///   x: f32,
@@ -935,7 +935,7 @@ impl World {
     /// ## [`EntityHashSet`](crate::entity::EntityHashSet)
     ///
     /// ```
-    /// # use bevy_ecs::{prelude::*, entity::EntityHashSet};
+    /// # use kairos_ecs::{prelude::*, entity::EntityHashSet};
     /// #[derive(Component)]
     /// struct Position {
     ///   x: f32,
@@ -1102,7 +1102,7 @@ impl World {
     /// # Example
     ///
     /// ```rust
-    /// # use bevy_ecs::{prelude::*, world::DeferredWorld};
+    /// # use kairos_ecs::{prelude::*, world::DeferredWorld};
     /// #[derive(Component)]
     /// struct Targets(Vec<Entity>);
     /// #[derive(Component)]
@@ -1273,7 +1273,7 @@ impl World {
     /// [`World::spawn_batch`] instead.
     ///
     /// ```
-    /// use bevy_ecs::{bundle::Bundle, component::Component, world::World};
+    /// use kairos_ecs::{bundle::Bundle, component::Component, world::World};
     ///
     /// #[derive(Component)]
     /// struct Position {
@@ -1347,7 +1347,7 @@ impl World {
     /// to add components to the entity or retrieve its id.
     ///
     /// ```
-    /// use bevy_ecs::{component::Component, world::World};
+    /// use kairos_ecs::{component::Component, world::World};
     ///
     /// #[derive(Component)]
     /// struct Position {
@@ -1386,7 +1386,7 @@ impl World {
     /// type, whereas spawning individually is more flexible.
     ///
     /// ```
-    /// use bevy_ecs::{component::Component, entity::Entity, world::World};
+    /// use kairos_ecs::{component::Component, entity::Entity, world::World};
     ///
     /// #[derive(Component)]
     /// struct Str(&'static str);
@@ -1413,7 +1413,7 @@ impl World {
     /// Retrieves a reference to the given `entity`'s [`Component`] of the given type.
     /// Returns `None` if the `entity` does not have a [`Component`] of the given type.
     /// ```
-    /// use bevy_ecs::{component::Component, world::World};
+    /// use kairos_ecs::{component::Component, world::World};
     ///
     /// #[derive(Component)]
     /// struct Position {
@@ -1434,7 +1434,7 @@ impl World {
     /// Retrieves a mutable reference to the given `entity`'s [`Component`] of the given type.
     /// Returns `None` if the `entity` does not have a [`Component`] of the given type.
     /// ```
-    /// use bevy_ecs::{component::Component, world::World};
+    /// use kairos_ecs::{component::Component, world::World};
     ///
     /// #[derive(Component)]
     /// struct Position {
@@ -1469,7 +1469,7 @@ impl World {
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// #[derive(Component, PartialEq, Eq, Debug)]
     /// #[component(immutable)]
@@ -1554,7 +1554,7 @@ impl World {
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// #[derive(Resource, PartialEq, Eq, Debug)]
     /// #[component(immutable)]
@@ -1643,7 +1643,7 @@ impl World {
     /// to despawn descendants. For example, this will recursively despawn [`Children`](crate::hierarchy::Children).
     ///
     /// ```
-    /// use bevy_ecs::{component::Component, world::World};
+    /// use kairos_ecs::{component::Component, world::World};
     ///
     /// #[derive(Component)]
     /// struct Position {
@@ -1769,12 +1769,12 @@ impl World {
     /// By clearing this internal state, the world "forgets" about those changes, allowing a new round
     /// of detection to be recorded.
     ///
-    /// When using `bevy_ecs` as part of the full Bevy engine, this method is called automatically
-    /// by `bevy_app::App::update` and `bevy_app::SubApp::update`, so you don't need to call it manually.
-    /// When using `bevy_ecs` as a separate standalone crate however, you do need to call this manually.
+    /// When using `kairos_ecs` as part of the full Kairos engine, this method is called automatically
+    /// by the application update loop, so you don't need to call it manually.
+    /// When using `kairos_ecs` as a separate standalone crate however, you do need to call this manually.
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Component, Default)]
     /// # struct Transform;
     /// // a whole new world
@@ -1804,7 +1804,7 @@ impl World {
     /// Returns [`QueryState`] for the given [`QueryData`], which is used to efficiently
     /// run queries on the [`World`] by storing and reusing the [`QueryState`].
     /// ```
-    /// use bevy_ecs::{component::Component, entity::Entity, world::World};
+    /// use kairos_ecs::{component::Component, entity::Entity, world::World};
     ///
     /// #[derive(Component, Debug, PartialEq)]
     /// struct Position {
@@ -1840,7 +1840,7 @@ impl World {
     /// and allocation of a [`Vec`] to store it.
     ///
     /// ```
-    /// use bevy_ecs::{component::Component, entity::Entity, world::World};
+    /// use kairos_ecs::{component::Component, entity::Entity, world::World};
     ///
     /// #[derive(Component, PartialEq, Eq, PartialOrd, Ord, Debug)]
     /// struct Order(i32);
@@ -1871,7 +1871,7 @@ impl World {
     /// Returns [`QueryState`] for the given filtered [`QueryData`], which is used to efficiently
     /// run queries on the [`World`] by storing and reusing the [`QueryState`].
     /// ```
-    /// use bevy_ecs::{component::Component, entity::Entity, world::World, query::With};
+    /// use kairos_ecs::{component::Component, entity::Entity, world::World, query::With};
     ///
     /// #[derive(Component)]
     /// struct A;
@@ -1895,7 +1895,7 @@ impl World {
     /// Returns [`QueryState`] for the given [`QueryData`], which is used to efficiently
     /// run queries on the [`World`] by storing and reusing the [`QueryState`].
     /// ```
-    /// use bevy_ecs::{component::Component, entity::Entity, world::World};
+    /// use kairos_ecs::{component::Component, entity::Entity, world::World};
     ///
     /// #[derive(Component, Debug, PartialEq)]
     /// struct Position {
@@ -1923,7 +1923,7 @@ impl World {
     /// Requires only an immutable world reference, but may fail if, for example,
     /// the components that make up this query have not been registered into the world.
     /// ```
-    /// use bevy_ecs::{component::Component, entity::Entity, world::World};
+    /// use kairos_ecs::{component::Component, entity::Entity, world::World};
     ///
     /// #[derive(Component)]
     /// struct A;
@@ -1946,7 +1946,7 @@ impl World {
     /// Returns [`QueryState`] for the given filtered [`QueryData`], which is used to efficiently
     /// run queries on the [`World`] by storing and reusing the [`QueryState`].
     /// ```
-    /// use bevy_ecs::{component::Component, entity::Entity, world::World, query::With};
+    /// use kairos_ecs::{component::Component, entity::Entity, world::World, query::With};
     ///
     /// #[derive(Component)]
     /// struct A;
@@ -2376,7 +2376,7 @@ impl World {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// #[derive(Resource)]
     /// struct MyResource(i32);
@@ -2408,7 +2408,7 @@ impl World {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// #[derive(Resource)]
     /// struct Foo(i32);
@@ -2853,7 +2853,7 @@ impl World {
     ///
     /// # Example
     /// ```
-    /// use bevy_ecs::prelude::*;
+    /// use kairos_ecs::prelude::*;
     /// #[derive(Resource)]
     /// struct A(u32);
     /// #[derive(Component)]
@@ -3243,7 +3243,7 @@ impl World {
     /// # Examples
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// // This function runs an update loop repeatedly, allowing each iteration of the loop
     /// // to react to changes made in the previous loop iteration.
     /// fn update_loop(
@@ -3541,14 +3541,14 @@ impl World {
     /// ## Printing the size of all resources
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Resource)]
     /// # struct A(u32);
     /// # #[derive(Resource)]
     /// # struct B(u32);
     /// #
     /// # let mut world = World::new();
-    /// # world.remove_resource::<bevy_ecs::entity_disabling::DefaultQueryFilters>();
+    /// # world.remove_resource::<kairos_ecs::entity_disabling::DefaultQueryFilters>();
     /// # world.insert_resource(A(1));
     /// # world.insert_resource(B(2));
     /// let mut total = 0;
@@ -3564,10 +3564,10 @@ impl World {
     /// ## Dynamically running closures for resources matching specific `TypeId`s
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # use std::collections::HashMap;
     /// # use std::any::TypeId;
-    /// # use bevy_ptr::Ptr;
+    /// # use kairos_ecs::ptr::Ptr;
     /// # #[derive(Resource)]
     /// # struct A(u32);
     /// # #[derive(Resource)]
@@ -3577,9 +3577,8 @@ impl World {
     /// # world.insert_resource(A(1));
     /// # world.insert_resource(B(2));
     /// #
-    /// // In this example, `A` and `B` are resources. We deliberately do not use the
-    /// // `bevy_reflect` crate here to showcase the low-level [`Ptr`] usage. You should
-    /// // probably use something like `ReflectFromPtr` in a real-world scenario.
+    /// // In this example, `A` and `B` are resources. We deliberately do not use
+    /// // reflection here to showcase the low-level [`Ptr`] usage.
     ///
     /// // Create the hash map that will store the closures for each resource type
     /// let mut closures: HashMap<TypeId, Box<dyn Fn(&Ptr<'_>)>> = HashMap::default();
@@ -3637,8 +3636,8 @@ impl World {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
-    /// # use bevy_ecs::change_detection::MutUntyped;
+    /// # use kairos_ecs::prelude::*;
+    /// # use kairos_ecs::change_detection::MutUntyped;
     /// # use std::collections::HashMap;
     /// # use std::any::TypeId;
     /// # #[derive(Resource)]
@@ -3650,9 +3649,8 @@ impl World {
     /// # world.insert_resource(A(1));
     /// # world.insert_resource(B(2));
     /// #
-    /// // In this example, `A` and `B` are resources. We deliberately do not use the
-    /// // `bevy_reflect` crate here to showcase the low-level `MutUntyped` usage. You should
-    /// // probably use something like `ReflectFromPtr` in a real-world scenario.
+    /// // In this example, `A` and `B` are resources. We deliberately do not use
+    /// // reflection here to showcase the low-level `MutUntyped` usage.
     ///
     /// // Create the hash map that will store the mutator closures for each resource type
     /// let mut mutators: HashMap<TypeId, Box<dyn Fn(&mut MutUntyped<'_>)>> = HashMap::default();
@@ -3889,7 +3887,8 @@ impl World {
     /// # Examples
     ///
     /// ```
-    /// # use bevy_ecs::{prelude::*, schedule::ScheduleLabel};
+    /// # use kairos_ecs::{prelude::*, schedule::ScheduleLabel};
+    /// # use kairos_ecs_macros::ScheduleLabel;
     /// # #[derive(ScheduleLabel, Debug, Clone, Copy, PartialEq, Eq, Hash)]
     /// # pub struct MySchedule;
     /// # #[derive(Resource)]

@@ -195,7 +195,7 @@ impl<'a, M: Message> MessageMutParIter<'a, M> {
     /// If the [`ComputeTaskPool`] is not initialized. If using this from a message reader that is being
     /// initialized and run from the ECS scheduler, this should never panic.
     ///
-    /// [`ComputeTaskPool`]: bevy_tasks::ComputeTaskPool
+    /// [`ComputeTaskPool`]: kairos_tasks::ComputeTaskPool
     pub fn for_each<FN: Fn(&'a mut M) + Send + Sync + Clone>(self, func: FN) {
         self.for_each_with_id(move |e, _| func(e));
     }

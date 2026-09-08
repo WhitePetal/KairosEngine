@@ -388,7 +388,7 @@ where
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashSet;
+    /// # use hashbrown::HashSet;
     /// let mut map = HashSet::new();
     ///
     /// assert_eq!(map.allocation_size(), 0);

@@ -40,7 +40,7 @@ use crate::{
 /// Read-only access disjoint with mutable access.
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// # #[derive(Component)] pub struct A;
 /// # #[derive(Component)] pub struct B;
 /// fn disjoint_system(
@@ -49,7 +49,7 @@ use crate::{
 /// ) {
 ///     // ...
 /// }
-/// # bevy_ecs::system::assert_is_system(disjoint_system);
+/// # kairos_ecs::system::assert_is_system(disjoint_system);
 /// ```
 #[derive(Copy, Clone)]
 pub struct EntityRef<'w> {
@@ -198,7 +198,7 @@ impl<'w> EntityRef<'w> {
     /// ## Single [`ComponentId`]
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// # #[derive(Component, PartialEq, Debug)]
     /// # pub struct Foo(i32);
@@ -216,7 +216,7 @@ impl<'w> EntityRef<'w> {
     /// ## Array of [`ComponentId`]s
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// # #[derive(Component, PartialEq, Debug)]
     /// # pub struct X(i32);
@@ -240,7 +240,7 @@ impl<'w> EntityRef<'w> {
     /// ## Slice of [`ComponentId`]s
     ///
     /// ```
-    /// # use bevy_ecs::{prelude::*, component::ComponentId};
+    /// # use kairos_ecs::{prelude::*, component::ComponentId};
     /// #
     /// # #[derive(Component, PartialEq, Debug)]
     /// # pub struct X(i32);
@@ -262,8 +262,8 @@ impl<'w> EntityRef<'w> {
     /// ## `HashSet` of [`ComponentId`]s
     ///
     /// ```
-    /// # use bevy_platform::collections::HashSet;
-    /// # use bevy_ecs::{prelude::*, component::ComponentId};
+    /// # use kairos_collections::FixedHashSet as HashSet;
+    /// # use kairos_ecs::{prelude::*, component::ComponentId};
     /// #
     /// # #[derive(Component, PartialEq, Debug)]
     /// # pub struct X(i32);

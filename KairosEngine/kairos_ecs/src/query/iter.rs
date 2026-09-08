@@ -100,7 +100,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> QueryIter<'w, 's, D, F> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// # #[derive(Component)]
     /// # struct ComponentA;
@@ -137,7 +137,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> QueryIter<'w, 's, D, F> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// # #[derive(Component)]
     /// # struct ComponentA;
@@ -176,7 +176,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> QueryIter<'w, 's, D, F> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Component)]
     /// # struct C;
     /// fn system(mut query: Query<&mut C>) {
@@ -185,7 +185,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> QueryIter<'w, 's, D, F> {
     ///         //
     ///     }
     /// }
-    /// # bevy_ecs::system::assert_is_system(system);
+    /// # kairos_ecs::system::assert_is_system(system);
     /// ```
     pub fn fetch_next(&mut self) -> Option<D::Item<'_, 's>> {
         // SAFETY:
@@ -519,7 +519,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> QueryIter<'w, 's, D, F> {
     ///
     /// # Examples
     /// ```rust
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # use std::{ops::{Deref, DerefMut}, iter::Sum};
     /// #
     /// # #[derive(Component)]
@@ -657,7 +657,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> QueryIter<'w, 's, D, F> {
     ///
     /// # Example
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// # let mut world = World::new();
     /// #
@@ -725,7 +725,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> QueryIter<'w, 's, D, F> {
     ///
     /// # Example
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # use std::ops::Deref;
     /// #
     /// # impl Deref for PartValue {
@@ -843,7 +843,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> QueryIter<'w, 's, D, F> {
     ///
     /// # Example
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # use std::ops::Deref;
     /// #
     /// # #[derive(Component)]
@@ -1318,7 +1318,7 @@ where
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Component, Ord, PartialOrd, Eq, PartialEq)]
     /// # struct C;
     /// fn system(mut query: Query<&mut C>) {
@@ -1327,7 +1327,7 @@ where
     ///         //
     ///     }
     /// }
-    /// # bevy_ecs::system::assert_is_system(system);
+    /// # kairos_ecs::system::assert_is_system(system);
     /// ```
     pub fn fetch_next(&mut self) -> Option<D::Item<'_, 's>> {
         while let Some(entity) = self.entity_iter.next() {
@@ -1646,7 +1646,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter, I: Iterator<Item: EntityEquivalent>>
     ///
     /// # Examples
     /// ```rust
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # use std::{ops::{Deref, DerefMut}, iter::Sum};
     /// #
     /// # #[derive(Component)]
@@ -1759,7 +1759,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter, I: Iterator<Item: EntityEquivalent>>
     ///
     /// # Example
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// # let mut world = World::new();
     /// #
@@ -1821,7 +1821,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter, I: Iterator<Item: EntityEquivalent>>
     ///
     /// # Example
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # use std::ops::Deref;
     /// #
     /// # impl Deref for PartValue {
@@ -1925,7 +1925,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter, I: Iterator<Item: EntityEquivalent>>
     ///
     /// # Example
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # use std::ops::Deref;
     /// #
     /// # #[derive(Component)]
@@ -2539,7 +2539,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter, I: Iterator<Item = Entity>> Debug
 /// The following example shows how to traverse the iterator when the query items are read-only.
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// # #[derive(Component)]
 /// # struct ComponentA;
 /// #
@@ -2553,7 +2553,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter, I: Iterator<Item = Entity>> Debug
 /// The following example shows how `fetch_next` should be called with a `while let` loop to traverse the iterator when the query items are mutable.
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// # #[derive(Component)]
 /// # struct ComponentA;
 /// #

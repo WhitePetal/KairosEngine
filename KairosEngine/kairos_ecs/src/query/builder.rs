@@ -12,7 +12,7 @@ mod tests;
 /// Builder struct to create [`QueryState`] instances at runtime.
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #
 /// # #[derive(Component)]
 /// # struct A;
@@ -208,7 +208,7 @@ impl<'w, D: QueryData, F: QueryFilter> QueryBuilder<'w, D, F> {
     /// on an empty builder, all accesses added to that builder will become terms in an or expression.
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// # #[derive(Component)]
     /// # struct A;

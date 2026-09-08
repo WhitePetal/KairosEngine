@@ -59,7 +59,7 @@ where
 /// # Example
 ///
 /// ```
-/// # use bevy_ecs::define_label;
+/// # use kairos_ecs::define_label;
 /// define_label!(
 ///     /// Documentation of label trait
 ///     MyNewLabelTrait,

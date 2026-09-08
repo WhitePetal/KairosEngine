@@ -100,7 +100,7 @@ impl Name {
     pub fn as_str(&self) -> &str {
         &self.0.0
     }
-    /// Get the precomputed hash of this names string, useful for raw entry operations on [`PreHashMap`](bevy_utils::PreHashMap)
+    /// Get the precomputed hash of this names string, useful for raw entry operations on [`PreHashMap`](kairos_collections::PreHashMap)
     #[inline(always)]
     pub fn pre_hash(&self) -> u64 {
         self.0.0.hash()
@@ -124,7 +124,7 @@ impl std::fmt::Debug for Name {
 /// Convenient query for giving a human friendly name to an entity.
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// # #[derive(Component)] pub struct Score(f32);
 /// fn increment_score(mut scores: Query<(NameOrEntity, &mut Score)>) {
 ///     for (name, mut score) in &mut scores {
@@ -134,7 +134,7 @@ impl std::fmt::Debug for Name {
 ///         }
 ///     }
 /// }
-/// # bevy_ecs::system::assert_is_system(increment_score);
+/// # kairos_ecs::system::assert_is_system(increment_score);
 /// ```
 ///
 /// # Implementation

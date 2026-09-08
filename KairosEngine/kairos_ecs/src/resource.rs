@@ -30,7 +30,7 @@ mod tests;
 /// ```
 /// # let mut world = World::default();
 /// # let mut schedule = Schedule::default();
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #[derive(Resource)]
 /// struct MyResource { value: u32 }
 ///
@@ -58,7 +58,7 @@ mod tests;
 /// This will fail to compile since `RefCell` is `!Sync`.
 /// ```compile_fail
 /// # use std::cell::RefCell;
-/// # use bevy_ecs::resource::Resource;
+/// # use kairos_ecs::resource::Resource;
 ///
 /// #[derive(Resource)]
 /// struct NotSync {
@@ -69,8 +69,8 @@ mod tests;
 /// This will compile since the `RefCell` is wrapped with `SyncCell`.
 /// ```
 /// # use std::cell::RefCell;
-/// # use bevy_ecs::resource::Resource;
-/// use bevy_platform::cell::SyncCell;
+/// # use kairos_ecs::resource::Resource;
+/// use kairos_ecs::cell::SyncCell;
 ///
 /// #[derive(Resource)]
 /// struct ActuallySync {
@@ -82,7 +82,7 @@ mod tests;
 /// [`World`]: crate::world::World
 /// [`Res`]: crate::system::Res
 /// [`ResMut`]: crate::system::ResMut
-/// [`SyncCell`]: bevy_platform::cell::SyncCell
+/// [`SyncCell`]: crate::cell::SyncCell
 #[diagnostic::on_unimplemented(
     message = "`{Self}` is not a `Resource`",
     label = "invalid `Resource`",

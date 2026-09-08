@@ -38,8 +38,8 @@ struct ParallelCommandQueue {
 /// # Example
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
-/// # use bevy_tasks::ComputeTaskPool;
+/// # use kairos_ecs::prelude::*;
+/// # use kairos_tasks::ComputeTaskPool;
 /// #
 /// # #[derive(Component)]
 /// # struct Velocity;
@@ -56,7 +56,7 @@ struct ParallelCommandQueue {
 ///         }
 ///     });
 /// }
-/// # bevy_ecs::system::assert_is_system(parallel_command_system);
+/// # kairos_ecs::system::assert_is_system(parallel_command_system);
 /// ```
 #[derive(SystemParam)]
 pub struct ParallelCommands<'w, 's> {

@@ -16,7 +16,7 @@ use crate::{
 ///
 /// `MessageWriter`s are usually declared as a [`SystemParam`].
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 ///
 /// #[derive(Message)]
 /// pub struct MyMessage(String); // Custom message type.
@@ -24,7 +24,7 @@ use crate::{
 ///     writer.write(MyMessage("My custom payload!".to_string()));
 /// }
 ///
-/// # bevy_ecs::system::assert_is_system(my_system);
+/// # kairos_ecs::system::assert_is_system(my_system);
 /// ```
 ///
 /// # Concurrency
@@ -39,7 +39,7 @@ use crate::{
 /// ahead of time every kind of message you'll need to write. In this case, you can use the "type-erased message" pattern.
 ///
 /// ```
-/// # use bevy_ecs::{prelude::*, message::Messages};
+/// # use kairos_ecs::{prelude::*, message::Messages};
 /// # #[derive(Message)]
 /// # pub struct MyMessage;
 /// fn write_untyped(mut commands: Commands) {
@@ -73,7 +73,7 @@ impl<'w, M: Message> MessageWriter<'w, M> {
     /// See [`Messages`] for details.
     #[doc(alias = "send")]
     #[track_caller]
-    pub fn wirte(&mut self, message: M) -> MessageId<M> {
+    pub fn write(&mut self, message: M) -> MessageId<M> {
         self.messages.write(message)
     }
 

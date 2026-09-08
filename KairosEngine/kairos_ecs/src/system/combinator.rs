@@ -35,8 +35,8 @@ mod tests;
 /// # Examples
 ///
 /// ```
-/// use bevy_ecs::prelude::*;
-/// use bevy_ecs::system::{CombinatorSystem, Combine, RunSystemError};
+/// use kairos_ecs::prelude::*;
+/// use kairos_ecs::system::{CombinatorSystem, Combine, RunSystemError};
 ///
 /// // A system combinator that performs an exclusive-or (XOR)
 /// // operation on the output of two systems.
@@ -350,7 +350,7 @@ where
 /// ```
 /// use std::num::ParseIntError;
 ///
-/// use bevy_ecs::prelude::*;
+/// use kairos_ecs::prelude::*;
 ///
 /// fn main() {
 ///     let mut world = World::default();

@@ -37,8 +37,8 @@ mod tests;
 /// ## Example
 ///
 /// ```
-/// use bevy_ecs::prelude::*;
-/// use bevy_ecs::entity::MapEntities;
+/// use kairos_ecs::prelude::*;
+/// use kairos_ecs::entity::MapEntities;
 ///
 /// #[derive(Component)]
 /// struct Spring {
@@ -211,8 +211,8 @@ impl MapEntities for () {
 /// ## Example
 ///
 /// ```
-/// # use bevy_ecs::entity::{Entity, EntityMapper};
-/// # use bevy_ecs::entity::EntityHashMap;
+/// # use kairos_ecs::entity::{Entity, EntityMapper};
+/// # use kairos_ecs::entity::EntityHashMap;
 /// #
 /// pub struct SimpleEntityMapper {
 ///   map: EntityHashMap<Entity>,

@@ -101,11 +101,11 @@ mod tests;
 /// safely hand out mutable references.
 ///
 /// ```
-/// use bevy_ecs::world::World;
-/// use bevy_ecs::change_detection::Mut;
-/// use bevy_ecs::resource::Resource;
-/// use bevy_ecs::component::Mutable;
-/// use bevy_ecs::world::unsafe_world_cell::UnsafeWorldCell;
+/// use kairos_ecs::world::World;
+/// use kairos_ecs::change_detection::Mut;
+/// use kairos_ecs::resource::Resource;
+/// use kairos_ecs::component::Mutable;
+/// use kairos_ecs::world::unsafe_world_cell::UnsafeWorldCell;
 ///
 /// // INVARIANT: existence of this struct means that users of it are the only ones being able to access resources in the world
 /// struct OnlyResourceAccessWorld<'w>(UnsafeWorldCell<'w>);
@@ -216,7 +216,7 @@ impl<'w> UnsafeWorldCell<'w> {
     ///
     /// [//]: # (This test fails miri.)
     /// ```no_run
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Component)] struct Player;
     /// # fn store_but_dont_use<T>(_: T) {}
     /// # let mut world = World::new();

@@ -363,7 +363,7 @@ impl Chain {
 /// Here is an example of a `Schedule` running a "Hello world" system:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// fn hello_world() { println!("Hello world!") }
 ///
 /// fn main() {
@@ -378,7 +378,7 @@ impl Chain {
 /// A schedule can also run several systems in an ordered way:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// fn system_one() { println!("System 1 works!") }
 /// fn system_two() { println!("System 2 works!") }
 /// fn system_three() { println!("System 3 works!") }
@@ -399,8 +399,9 @@ impl Chain {
 /// Schedules are often inserted into a [`World`] and identified by their [`ScheduleLabel`] only:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
-/// use bevy_ecs::schedule::ScheduleLabel;
+/// # use kairos_ecs::prelude::*;
+/// use kairos_ecs::schedule::ScheduleLabel;
+/// # use kairos_ecs_macros::ScheduleLabel;
 ///
 /// // Declare a new schedule label.
 /// #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash, Default)]
@@ -487,8 +488,8 @@ impl Schedule {
     ///
     /// ## Example
     /// ```
-    /// # use bevy_ecs::prelude::*;
-    /// # use bevy_ecs::schedule::ScheduleCleanupPolicy;
+    /// # use kairos_ecs::prelude::*;
+    /// # use kairos_ecs::schedule::ScheduleCleanupPolicy;
     /// #
     /// # fn my_system() {}
     /// #

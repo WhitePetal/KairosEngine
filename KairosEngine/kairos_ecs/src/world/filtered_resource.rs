@@ -29,7 +29,7 @@ use crate::{
 /// # Examples
 ///
 /// ```
-/// # use bevy_ecs::{prelude::*, system::*};
+/// # use kairos_ecs::{prelude::*, system::*};
 /// #
 /// # #[derive(Default, Resource)]
 /// # struct A;
@@ -68,7 +68,7 @@ use crate::{
 /// This can be used alongside ordinary [`Res`](crate::system::Res) and [`ResMut`](crate::system::ResMut) parameters if they do not conflict.
 ///
 /// ```
-/// # use bevy_ecs::{prelude::*, system::*};
+/// # use kairos_ecs::{prelude::*, system::*};
 /// #
 /// # #[derive(Default, Resource)]
 /// # struct A;
@@ -101,7 +101,7 @@ use crate::{
 /// But it will conflict if it tries to read the same resource that another parameter writes.
 ///
 /// ```should_panic
-/// # use bevy_ecs::{prelude::*, system::*};
+/// # use kairos_ecs::{prelude::*, system::*};
 /// #
 /// # #[derive(Default, Resource)]
 /// # struct A;
@@ -262,7 +262,7 @@ impl<'w> From<&'w mut World> for FilteredResources<'w, 'static> {
 /// # Examples
 ///
 /// ```
-/// # use bevy_ecs::{prelude::*, system::*};
+/// # use kairos_ecs::{prelude::*, system::*};
 /// #
 /// # #[derive(Default, Resource)]
 /// # struct A;
@@ -311,7 +311,7 @@ impl<'w> From<&'w mut World> for FilteredResources<'w, 'static> {
 /// This can be used alongside ordinary [`Res`](crate::system::ResMut) and [`ResMut`](crate::system::ResMut) parameters if they do not conflict.
 ///
 /// ```
-/// # use bevy_ecs::{prelude::*, system::*};
+/// # use kairos_ecs::{prelude::*, system::*};
 /// #
 /// # #[derive(Default, Resource)]
 /// # struct A;
@@ -351,7 +351,7 @@ impl<'w> From<&'w mut World> for FilteredResources<'w, 'static> {
 /// or write the same resource that another parameter reads.
 ///
 /// ```should_panic
-/// # use bevy_ecs::{prelude::*, system::*};
+/// # use kairos_ecs::{prelude::*, system::*};
 /// #
 /// # #[derive(Default, Resource)]
 /// # struct A;

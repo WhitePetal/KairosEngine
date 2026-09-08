@@ -358,7 +358,7 @@ pub struct EntityComponentsTrigger<'a> {
     ///
     /// # Example
     /// ```
-    /// # use bevy_ecs::{
+    /// # use kairos_ecs::{
     /// #     component::ComponentIdFor, entity::EntityHashSet, entity_disabling::Disabled,
     /// #     prelude::*,
     /// # };
@@ -397,7 +397,7 @@ pub struct EntityComponentsTrigger<'a> {
     ///
     /// # Example
     /// ```
-    /// # use bevy_ecs::{
+    /// # use kairos_ecs::{
     /// #     component::ComponentIdFor, entity::EntityHashSet, entity_disabling::Disabled,
     /// #     prelude::*,
     /// # };

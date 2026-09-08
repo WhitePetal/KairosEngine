@@ -174,8 +174,8 @@ impl SystemMeta {
 ///
 /// Basic usage:
 /// ```
-/// # use bevy_ecs::prelude::*;
-/// # use bevy_ecs::system::SystemState;
+/// # use kairos_ecs::prelude::*;
+/// # use kairos_ecs::system::SystemState;
 /// #
 /// # #[derive(Message)]
 /// # struct MyMessage;
@@ -206,9 +206,9 @@ impl SystemMeta {
 /// ```
 /// Caching:
 /// ```
-/// # use bevy_ecs::prelude::*;
-/// # use bevy_ecs::system::SystemState;
-/// # use bevy_ecs::message::Messages;
+/// # use kairos_ecs::prelude::*;
+/// # use kairos_ecs::system::SystemState;
+/// # use kairos_ecs::message::Messages;
 /// #
 /// # #[derive(Message)]
 /// # struct MyMessage;
@@ -238,8 +238,8 @@ impl SystemMeta {
 /// ```
 /// Exclusive System:
 /// ```
-/// # use bevy_ecs::prelude::*;
-/// # use bevy_ecs::system::SystemState;
+/// # use kairos_ecs::prelude::*;
+/// # use kairos_ecs::system::SystemState;
 /// #
 /// # #[derive(Message)]
 /// # struct MyMessage;
@@ -814,8 +814,8 @@ where
 /// ```
 /// use std::num::ParseIntError;
 ///
-/// use bevy_ecs::prelude::*;
-/// use bevy_ecs::system::StaticSystemInput;
+/// use kairos_ecs::prelude::*;
+/// use kairos_ecs::system::StaticSystemInput;
 ///
 /// /// Pipe creates a new system which calls `a`, then calls `b` with the output of `a`
 /// pub fn pipe<A, B, AMarker, BMarker>(

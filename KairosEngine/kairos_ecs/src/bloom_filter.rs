@@ -14,7 +14,7 @@ use kairos_collections::hash::FixedHasher;
 /// # Examples
 ///
 /// ```
-/// use bevy_utils::BloomFilter;
+/// use kairos_ecs::bloom_filter::BloomFilter;
 ///
 /// let mut filter = BloomFilter::<1>::new();
 /// filter.insert(&"hello");

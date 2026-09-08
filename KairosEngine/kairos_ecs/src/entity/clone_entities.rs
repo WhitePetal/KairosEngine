@@ -336,8 +336,8 @@ impl<'a, 'b> ComponentCloneCtx<'a, 'b> {
 /// After configuration is complete an entity can be cloned using [`Self::clone_entity`].
 ///
 ///```
-/// use bevy_ecs::prelude::*;
-/// use bevy_ecs::entity::EntityCloner;
+/// use kairos_ecs::prelude::*;
+/// use kairos_ecs::entity::EntityCloner;
 ///
 /// #[derive(Component, Clone, PartialEq, Eq)]
 /// struct A {
@@ -368,8 +368,8 @@ impl<'a, 'b> ComponentCloneCtx<'a, 'b> {
 ///
 /// Here's an example of how to do it using [`clone_behavior`](Component::clone_behavior):
 /// ```
-/// # use bevy_ecs::prelude::*;
-/// # use bevy_ecs::component::{StorageType, ComponentCloneBehavior, Mutable};
+/// # use kairos_ecs::prelude::*;
+/// # use kairos_ecs::component::{StorageType, ComponentCloneBehavior, Mutable};
 /// #[derive(Clone, Component)]
 /// #[component(clone_behavior = clone::<Self>())]
 /// struct SomeComponent;

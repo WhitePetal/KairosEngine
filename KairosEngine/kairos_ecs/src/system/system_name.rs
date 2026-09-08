@@ -21,8 +21,8 @@ mod tests;
 /// # Examples
 ///
 /// ```
-/// # use bevy_ecs::system::SystemName;
-/// # use bevy_ecs::system::SystemParam;
+/// # use kairos_ecs::system::SystemName;
+/// # use kairos_ecs::system::SystemParam;
 ///
 /// #[derive(SystemParam)]
 /// struct Logger {

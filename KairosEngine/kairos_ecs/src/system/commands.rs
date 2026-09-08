@@ -95,11 +95,11 @@ mod tests;
 /// Commands are almost always used as a [`SystemParam`](crate::system::SystemParam).
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// fn my_system(mut commands: Commands) {
 ///    // ...
 /// }
-/// # bevy_ecs::system::assert_is_system(my_system);
+/// # kairos_ecs::system::assert_is_system(my_system);
 /// ```
 ///
 /// # Implementing
@@ -112,7 +112,7 @@ mod tests;
 /// anonymous custom commands.
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// # fn foo(mut commands: Commands) {
 /// // NOTE: type inference fails here, so annotations are required on the closure.
 /// commands.queue(|w: &mut World| {
@@ -300,7 +300,7 @@ impl<'w, 's> Commands<'w, 's> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// fn my_system(mut commands: Commands) {
     ///     // We do our initialization in a separate function,
     ///     // which expects an owned `Commands`.
@@ -341,7 +341,7 @@ impl<'w, 's> Commands<'w, 's> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #[derive(Component)]
     /// struct Label(&'static str);
     /// #[derive(Component)]
@@ -360,7 +360,7 @@ impl<'w, 's> Commands<'w, 's> {
     ///         // Add a single component to the entity.
     ///         .insert(Label("hello world"));
     /// }
-    /// # bevy_ecs::system::assert_is_system(example_system);
+    /// # kairos_ecs::system::assert_is_system(example_system);
     /// ```
     ///
     /// # See also
@@ -387,7 +387,7 @@ impl<'w, 's> Commands<'w, 's> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #[derive(Component)]
     /// struct ComponentA(u32);
     /// #[derive(Component)]
@@ -412,7 +412,7 @@ impl<'w, 's> Commands<'w, 's> {
     ///         b: ComponentB(2),
     ///     });
     /// }
-    /// # bevy_ecs::system::assert_is_system(example_system);
+    /// # kairos_ecs::system::assert_is_system(example_system);
     /// ```
     ///
     /// # See also
@@ -441,7 +441,7 @@ impl<'w, 's> Commands<'w, 's> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #[derive(Resource)]
     /// struct PlayerEntity {
     ///     entity: Entity
@@ -454,7 +454,7 @@ impl<'w, 's> Commands<'w, 's> {
     ///     // Get the entity and add a component.
     ///     commands.entity(player.entity).insert(Label("hello world"));
     /// }
-    /// # bevy_ecs::system::assert_is_system(example_system);
+    /// # kairos_ecs::system::assert_is_system(example_system);
     /// ```
     ///
     /// # See also
@@ -484,7 +484,7 @@ impl<'w, 's> Commands<'w, 's> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #[derive(Resource)]
     /// struct PlayerEntity {
     ///     entity: Entity
@@ -505,7 +505,7 @@ impl<'w, 's> Commands<'w, 's> {
     ///     // Return from the system successfully.
     ///     Ok(())
     /// }
-    /// # bevy_ecs::system::assert_is_system::<(), (), _>(example_system);
+    /// # kairos_ecs::system::assert_is_system::<(), (), _>(example_system);
     /// ```
     ///
     /// # See also
@@ -538,7 +538,7 @@ impl<'w, 's> Commands<'w, 's> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #[derive(Resource)]
     /// struct PlayerEntity {
     ///     entity: Entity
@@ -559,7 +559,7 @@ impl<'w, 's> Commands<'w, 's> {
     ///     // Return from the system successfully.
     ///     Ok(())
     /// }
-    /// # bevy_ecs::system::assert_is_system::<(), (), _>(example_system);
+    /// # kairos_ecs::system::assert_is_system::<(), (), _>(example_system);
     /// ```
     ///
     /// # See also
@@ -591,7 +591,7 @@ impl<'w, 's> Commands<'w, 's> {
     /// # Example
     ///
     /// ```
-    /// use bevy_ecs::prelude::*;
+    /// use kairos_ecs::prelude::*;
     ///
     /// #[derive(Component)]
     /// struct Score(u32);
@@ -602,7 +602,7 @@ impl<'w, 's> Commands<'w, 's> {
     ///         (Name::new("Bob"), Score(0)),
     ///     ]);
     /// }
-    /// # bevy_ecs::system::assert_is_system(example_system);
+    /// # kairos_ecs::system::assert_is_system(example_system);
     /// ```
     ///
     /// # See also
@@ -634,7 +634,7 @@ impl<'w, 's> Commands<'w, 's> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #[derive(Resource, Default)]
     /// struct Counter(u64);
     ///
@@ -661,8 +661,8 @@ impl<'w, 's> Commands<'w, 's> {
     ///         counter.0 += 25;
     ///     });
     /// }
-    /// # bevy_ecs::system::assert_is_system(add_three_to_counter_system);
-    /// # bevy_ecs::system::assert_is_system(add_twenty_five_to_counter_system);
+    /// # kairos_ecs::system::assert_is_system(add_three_to_counter_system);
+    /// # kairos_ecs::system::assert_is_system(add_twenty_five_to_counter_system);
     /// ```
     pub fn queue(&mut self, command: impl Command) {
         self.queue_internal(command.handle_error());
@@ -685,8 +685,8 @@ impl<'w, 's> Commands<'w, 's> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
-    /// use bevy_ecs::error::warn;
+    /// # use kairos_ecs::prelude::*;
+    /// use kairos_ecs::error::warn;
     ///
     /// #[derive(Resource, Default)]
     /// struct Counter(u64);
@@ -714,8 +714,8 @@ impl<'w, 's> Commands<'w, 's> {
     ///         counter.0 += 25;
     ///     });
     /// }
-    /// # bevy_ecs::system::assert_is_system(add_three_to_counter_system);
-    /// # bevy_ecs::system::assert_is_system(add_twenty_five_to_counter_system);
+    /// # kairos_ecs::system::assert_is_system(add_three_to_counter_system);
+    /// # kairos_ecs::system::assert_is_system(add_twenty_five_to_counter_system);
     /// ```
     pub fn queue_handled(
         &mut self,
@@ -878,7 +878,7 @@ impl<'w, 's> Commands<'w, 's> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #[derive(Resource, Default)]
     /// struct Scoreboard {
     ///     current_score: u32,
@@ -888,7 +888,7 @@ impl<'w, 's> Commands<'w, 's> {
     /// fn initialize_scoreboard(mut commands: Commands) {
     ///     commands.init_resource::<Scoreboard>();
     /// }
-    /// # bevy_ecs::system::assert_is_system(initialize_scoreboard);
+    /// # kairos_ecs::system::assert_is_system(initialize_scoreboard);
     /// ```
     #[track_caller]
     pub fn init_resource<R: Resource + FromWorld>(&mut self) {
@@ -902,7 +902,7 @@ impl<'w, 's> Commands<'w, 's> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #[derive(Resource)]
     /// struct Scoreboard {
     ///     current_score: u32,
@@ -915,7 +915,7 @@ impl<'w, 's> Commands<'w, 's> {
     ///         high_score: 0,
     ///     });
     /// }
-    /// # bevy_ecs::system::assert_is_system(system);
+    /// # kairos_ecs::system::assert_is_system(system);
     /// ```
     #[track_caller]
     pub fn insert_resource<R: Resource>(&mut self, resource: R) {
@@ -943,7 +943,7 @@ impl<'w, 's> Commands<'w, 's> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #[derive(Resource)]
     /// struct Scoreboard {
     ///     current_score: u32,
@@ -953,7 +953,7 @@ impl<'w, 's> Commands<'w, 's> {
     /// fn system(mut commands: Commands) {
     ///     commands.remove_resource::<Scoreboard>();
     /// }
-    /// # bevy_ecs::system::assert_is_system(system);
+    /// # kairos_ecs::system::assert_is_system(system);
     /// ```
     pub fn remove_resource<R: Resource>(&mut self) {
         self.queue(command::remove_resource::<R>());
@@ -1031,7 +1031,7 @@ impl<'w, 's> Commands<'w, 's> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::{prelude::*, world::CommandQueue, system::SystemId};
+    /// # use kairos_ecs::{prelude::*, system::SystemId};
     /// #[derive(Resource)]
     /// struct Counter(i32);
     ///
@@ -1052,20 +1052,13 @@ impl<'w, 's> Commands<'w, 's> {
     ///
     /// # let mut world = World::default();
     /// # world.insert_resource(Counter(0));
-    /// # let mut queue_1 = CommandQueue::default();
-    /// # let systemid = {
-    /// #   let mut commands = Commands::new(&mut queue_1, &world);
-    /// #   commands.register_system(increment_counter)
-    /// # };
-    /// # let mut queue_2 = CommandQueue::default();
-    /// # {
-    /// #   let mut commands = Commands::new(&mut queue_2, &world);
-    /// #   commands.run_system(systemid);
-    /// # }
-    /// # queue_1.append(&mut queue_2);
-    /// # queue_1.apply(&mut world);
+    /// # let mut schedule = Schedule::default();
+    /// # schedule.add_systems(register_system);
+    /// # // First run registers the system, the second run invokes it by id.
+    /// # schedule.run(&mut world);
+    /// # schedule.run(&mut world);
     /// # assert_eq!(1, world.resource::<Counter>().0);
-    /// # bevy_ecs::system::assert_is_system(register_system);
+    /// # kairos_ecs::system::assert_is_system(register_system);
     /// ```
     pub fn register_system<I, O, M>(
         &mut self,
@@ -1260,8 +1253,9 @@ impl<'w, 's> Commands<'w, 's> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
-    /// # use bevy_ecs::schedule::ScheduleLabel;
+    /// # use kairos_ecs::prelude::*;
+    /// # use kairos_ecs::schedule::ScheduleLabel;
+    /// # use kairos_ecs_macros::ScheduleLabel;
     /// # #[derive(Default, Resource)]
     /// # struct Counter(u32);
     /// #[derive(ScheduleLabel, Hash, Debug, PartialEq, Eq, Clone, Copy)]
@@ -1338,12 +1332,12 @@ impl<'a> EntityCommands<'a> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// fn my_system(mut commands: Commands) {
     ///     let entity_id = commands.spawn_empty().id();
     /// }
-    /// # bevy_ecs::system::assert_is_system(my_system);
+    /// # kairos_ecs::system::assert_is_system(my_system);
     /// ```
     #[inline]
     #[must_use = "Omit the .id() call if you do not need to store the `Entity` identifier."]
@@ -1370,7 +1364,7 @@ impl<'a> EntityCommands<'a> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Resource)]
     /// # struct PlayerEntity { entity: Entity }
     /// #[derive(Component)]
@@ -1402,7 +1396,7 @@ impl<'a> EntityCommands<'a> {
     ///     });
     /// }
     ///
-    /// # bevy_ecs::system::assert_is_system(level_up_system);
+    /// # kairos_ecs::system::assert_is_system(level_up_system);
     /// ```
     pub fn entry<T: Component>(&mut self) -> EntityEntryCommands<'_, T> {
         EntityEntryCommands {
@@ -1419,7 +1413,7 @@ impl<'a> EntityCommands<'a> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Resource)]
     /// # struct PlayerEntity { entity: Entity }
     /// #[derive(Component)]
@@ -1455,7 +1449,7 @@ impl<'a> EntityCommands<'a> {
     ///             },
     ///         ));
     /// }
-    /// # bevy_ecs::system::assert_is_system(add_combat_stats_system);
+    /// # kairos_ecs::system::assert_is_system(add_combat_stats_system);
     /// ```
     #[track_caller]
     pub fn insert(&mut self, bundle: impl Bundle) -> &mut Self {
@@ -1469,7 +1463,7 @@ impl<'a> EntityCommands<'a> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Resource)]
     /// # struct PlayerEntity { entity: Entity }
     /// # impl PlayerEntity { fn is_spectator(&self) -> bool { true } }
@@ -1484,7 +1478,7 @@ impl<'a> EntityCommands<'a> {
     ///         .insert_if(Health(10), || !player.is_spectator())
     ///         .remove::<StillLoadingStats>();
     /// }
-    /// # bevy_ecs::system::assert_is_system(add_health_system);
+    /// # kairos_ecs::system::assert_is_system(add_health_system);
     /// ```
     #[track_caller]
     pub fn insert_if<F>(&mut self, bundle: impl Bundle, condition: F) -> &mut Self
@@ -1614,7 +1608,7 @@ impl<'a> EntityCommands<'a> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Resource)]
     /// # struct PlayerEntity { entity: Entity }
     /// #[derive(Component)]
@@ -1646,7 +1640,7 @@ impl<'a> EntityCommands<'a> {
     ///     // This will not panic nor will it add the component.
     ///     commands.entity(player.entity).try_insert(Defense(5));
     /// }
-    /// # bevy_ecs::system::assert_is_system(add_combat_stats_system);
+    /// # kairos_ecs::system::assert_is_system(add_combat_stats_system);
     /// ```
     #[track_caller]
     pub fn try_insert(&mut self, bundle: impl Bundle) -> &mut Self {
@@ -1719,7 +1713,7 @@ impl<'a> EntityCommands<'a> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Resource)]
     /// # struct PlayerEntity { entity: Entity }
     /// #[derive(Component)]
@@ -1746,7 +1740,7 @@ impl<'a> EntityCommands<'a> {
     ///         // This is equivalent to the calls above:
     ///         .remove::<(Defense, CombatBundle)>();
     /// }
-    /// # bevy_ecs::system::assert_is_system(remove_combat_stats_system);
+    /// # kairos_ecs::system::assert_is_system(remove_combat_stats_system);
     /// ```
     #[track_caller]
     pub fn remove<B: Bundle>(&mut self) -> &mut Self {
@@ -1760,7 +1754,7 @@ impl<'a> EntityCommands<'a> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Resource)]
     /// # struct PlayerEntity { entity: Entity }
     /// # impl PlayerEntity { fn is_spectator(&self) -> bool { true } }
@@ -1782,7 +1776,7 @@ impl<'a> EntityCommands<'a> {
     ///         .entity(player.entity)
     ///         .remove_if::<(Defense, CombatBundle)>(|| !player.is_spectator());
     /// }
-    /// # bevy_ecs::system::assert_is_system(remove_combat_stats_system);
+    /// # kairos_ecs::system::assert_is_system(remove_combat_stats_system);
     /// ```
     #[track_caller]
     pub fn remove_if<B: Bundle>(&mut self, condition: impl FnOnce() -> bool) -> &mut Self {
@@ -1821,7 +1815,7 @@ impl<'a> EntityCommands<'a> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Resource)]
     /// # struct PlayerEntity { entity: Entity }
     /// #[derive(Component)]
@@ -1848,7 +1842,7 @@ impl<'a> EntityCommands<'a> {
     ///         // This is equivalent to the calls above:
     ///         .try_remove::<(Defense, CombatBundle)>();
     /// }
-    /// # bevy_ecs::system::assert_is_system(remove_combat_stats_system);
+    /// # kairos_ecs::system::assert_is_system(remove_combat_stats_system);
     /// ```
     pub fn try_remove<B: Bundle>(&mut self) -> &mut Self {
         self.queue_silenced(entity_command::remove::<B>())
@@ -1863,7 +1857,7 @@ impl<'a> EntityCommands<'a> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Resource)]
     /// # struct PlayerEntity { entity: Entity }
     /// #
@@ -1879,7 +1873,7 @@ impl<'a> EntityCommands<'a> {
     ///         // Removes both A and B from the entity, because B is required by A.
     ///         .remove_with_requires::<A>();
     /// }
-    /// # bevy_ecs::system::assert_is_system(remove_with_requires_system);
+    /// # kairos_ecs::system::assert_is_system(remove_with_requires_system);
     /// ```
     #[track_caller]
     pub fn remove_with_requires<B: Bundle>(&mut self) -> &mut Self {
@@ -1916,7 +1910,7 @@ impl<'a> EntityCommands<'a> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Resource)]
     /// # struct CharacterToRemove { entity: Entity }
     /// #
@@ -1926,7 +1920,7 @@ impl<'a> EntityCommands<'a> {
     /// ) {
     ///     commands.entity(character_to_remove.entity).despawn();
     /// }
-    /// # bevy_ecs::system::assert_is_system(remove_character_system);
+    /// # kairos_ecs::system::assert_is_system(remove_character_system);
     /// ```
     #[track_caller]
     pub fn despawn(&mut self) {
@@ -1968,7 +1962,7 @@ impl<'a> EntityCommands<'a> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # fn my_system(mut commands: Commands) {
     /// commands
     ///     .spawn_empty()
@@ -1977,7 +1971,7 @@ impl<'a> EntityCommands<'a> {
     ///         println!("Executed an EntityCommand for {}", entity.id());
     ///     });
     /// # }
-    /// # bevy_ecs::system::assert_is_system(my_system);
+    /// # kairos_ecs::system::assert_is_system(my_system);
     /// ```
     pub fn queue(&mut self, command: impl EntityCommand) -> &mut Self {
         self.commands.queue(command.with_entity(self.entity));
@@ -2003,9 +1997,9 @@ impl<'a> EntityCommands<'a> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # fn my_system(mut commands: Commands) {
-    /// use bevy_ecs::error::warn;
+    /// use kairos_ecs::error::warn;
     ///
     /// commands
     ///     .spawn_empty()
@@ -2019,7 +2013,7 @@ impl<'a> EntityCommands<'a> {
     ///         warn
     ///     );
     /// # }
-    /// # bevy_ecs::system::assert_is_system(my_system);
+    /// # kairos_ecs::system::assert_is_system(my_system);
     /// ```
     pub fn queue_handled(
         &mut self,
@@ -2045,7 +2039,7 @@ impl<'a> EntityCommands<'a> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Resource)]
     /// # struct PlayerEntity { entity: Entity }
     /// #[derive(Component)]
@@ -2070,7 +2064,7 @@ impl<'a> EntityCommands<'a> {
     ///         // You can also retain only a single component.
     ///         .retain::<Health>();
     /// }
-    /// # bevy_ecs::system::assert_is_system(remove_combat_stats_system);
+    /// # kairos_ecs::system::assert_is_system(remove_combat_stats_system);
     /// ```
     #[track_caller]
     pub fn retain<B: Bundle>(&mut self) -> &mut Self {
@@ -2113,7 +2107,7 @@ impl<'a> EntityCommands<'a> {
     ///
     /// Configure through [`EntityClonerBuilder<OptOut>`] as follows:
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #[derive(Component, Clone)]
     /// struct ComponentA(u32);
     /// #[derive(Component, Clone)]
@@ -2131,7 +2125,7 @@ impl<'a> EntityCommands<'a> {
     ///         builder.deny::<ComponentB>();
     ///     });
     /// }
-    /// # bevy_ecs::system::assert_is_system(example_system);
+    /// # kairos_ecs::system::assert_is_system(example_system);
     /// ```
     ///
     /// See [`EntityClonerBuilder`] for more options.
@@ -2158,7 +2152,7 @@ impl<'a> EntityCommands<'a> {
     ///
     /// Configure through [`EntityClonerBuilder<OptIn>`] as follows:
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #[derive(Component, Clone)]
     /// struct ComponentA(u32);
     /// #[derive(Component, Clone)]
@@ -2176,7 +2170,7 @@ impl<'a> EntityCommands<'a> {
     ///         builder.allow::<ComponentA>();
     ///     });
     /// }
-    /// # bevy_ecs::system::assert_is_system(example_system);
+    /// # kairos_ecs::system::assert_is_system(example_system);
     /// ```
     ///
     /// See [`EntityClonerBuilder`] for more options.
@@ -2205,7 +2199,7 @@ impl<'a> EntityCommands<'a> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #[derive(Component, Clone)]
     /// struct ComponentA(u32);
     /// #[derive(Component, Clone)]
@@ -2218,7 +2212,7 @@ impl<'a> EntityCommands<'a> {
     ///     // Create a clone of the entity.
     ///     let mut entity_clone = entity.clone_and_spawn();
     /// }
-    /// # bevy_ecs::system::assert_is_system(example_system);
+    /// # kairos_ecs::system::assert_is_system(example_system);
     pub fn clone_and_spawn(&mut self) -> EntityCommands<'_> {
         self.clone_and_spawn_with_opt_out(|_| {})
     }
@@ -2240,7 +2234,7 @@ impl<'a> EntityCommands<'a> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #[derive(Component, Clone)]
     /// struct ComponentA(u32);
     /// #[derive(Component, Clone)]
@@ -2255,7 +2249,7 @@ impl<'a> EntityCommands<'a> {
     ///         builder.deny::<ComponentB>();
     ///     });
     /// }
-    /// # bevy_ecs::system::assert_is_system(example_system);
+    /// # kairos_ecs::system::assert_is_system(example_system);
     pub fn clone_and_spawn_with_opt_out(
         &mut self,
         config: impl FnOnce(&mut EntityClonerBuilder<OptOut>) + Send + Sync + 'static,
@@ -2285,7 +2279,7 @@ impl<'a> EntityCommands<'a> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #[derive(Component, Clone)]
     /// struct ComponentA(u32);
     /// #[derive(Component, Clone)]
@@ -2300,7 +2294,7 @@ impl<'a> EntityCommands<'a> {
     ///         builder.allow::<ComponentA>();
     ///     });
     /// }
-    /// # bevy_ecs::system::assert_is_system(example_system);
+    /// # kairos_ecs::system::assert_is_system(example_system);
     pub fn clone_and_spawn_with_opt_in(
         &mut self,
         config: impl FnOnce(&mut EntityClonerBuilder<OptIn>) + Send + Sync + 'static,
@@ -2350,7 +2344,7 @@ impl<'a> EntityCommands<'a> {
     /// A surprising number of functions meet the trait bounds for `event_fn`:
     ///
     /// ```rust
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     ///
     /// #[derive(EntityEvent)]
     /// struct Explode(Entity);
@@ -2508,7 +2502,7 @@ impl<'a, T: Component> EntityEntryCommands<'a, T> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Resource)]
     /// # struct PlayerEntity { entity: Entity }
     /// #[derive(Component)]
@@ -2527,7 +2521,7 @@ impl<'a, T: Component> EntityEntryCommands<'a, T> {
     ///         // Continue chaining method calls.
     ///         .insert(Name::new("Player"));
     /// }
-    /// # bevy_ecs::system::assert_is_system(level_up_system);
+    /// # kairos_ecs::system::assert_is_system(level_up_system);
     /// ```
     pub fn entity(&mut self) -> EntityCommands<'_> {
         self.entity_commands.reborrow()

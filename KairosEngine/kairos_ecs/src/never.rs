@@ -4,7 +4,7 @@
 //! reimplemented here to avoid adding a new dependency.
 //!
 //! This module exists due to a change in [never type fallback inference] in the Rust 2024 edition.
-//! This caused failures in `bevy_ecs`'s traits which are implemented for functions
+//! This caused failures in `kairos_ecs`'s traits which are implemented for functions
 //! (like [`System`](crate::system::System)) when working with panicking closures.
 //!
 //! Note that using this hack is not recommended in general;

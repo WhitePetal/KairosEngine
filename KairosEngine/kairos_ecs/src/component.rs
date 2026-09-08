@@ -29,7 +29,7 @@ use crate::{
 /// The [`StorageType`] for a component is configured via the derive attribute
 ///
 /// ```
-/// # use bevy_ecs::{prelude::*, component::*};
+/// # use kairos_ecs::{prelude::*, component::*};
 /// #[derive(Component)]
 /// #[component(storage = "SparseSet")]
 /// struct A;
@@ -55,7 +55,7 @@ pub enum StorageType {
 /// The following examples show how components are laid out in code.
 ///
 /// ```
-/// # use bevy_ecs::component::Component;
+/// # use kairos_ecs::component::Component;
 /// # struct Color;
 /// #
 /// // A component can contain data...
@@ -107,7 +107,7 @@ pub enum StorageType {
 /// This is achieved by adding an additional `#[component(storage = "SparseSet")]` attribute to the derive one:
 ///
 /// ```
-/// # use bevy_ecs::component::Component;
+/// # use kairos_ecs::component::Component;
 /// #
 /// #[derive(Component)]
 /// #[component(storage = "SparseSet")]
@@ -125,7 +125,7 @@ pub enum StorageType {
 /// The [`Default`] constructor will be used to initialize the component, by default:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #[derive(Component)]
 /// #[require(B)]
 /// struct A;
@@ -145,7 +145,7 @@ pub enum StorageType {
 /// Components can have more than one required component:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #[derive(Component)]
 /// #[require(B, C)]
 /// struct A;
@@ -166,7 +166,7 @@ pub enum StorageType {
 ///
 /// You can define inline component values that take the following forms:
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #[derive(Component)]
 /// #[require(
 ///     B(1), // tuple structs
@@ -224,7 +224,7 @@ pub enum StorageType {
 /// You can also define arbitrary expressions by using `=`
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #[derive(Component)]
 /// #[require(C = init_c())]
 /// struct A;
@@ -254,7 +254,7 @@ pub enum StorageType {
 /// those components will _also_ be inserted if they are missing:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #[derive(Component)]
 /// #[require(B)]
 /// struct A;
@@ -280,7 +280,7 @@ pub enum StorageType {
 /// at different levels of the inheritance tree:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #[derive(Component)]
 /// struct X(usize);
 ///
@@ -318,7 +318,7 @@ pub enum StorageType {
 /// for the [`Default`] and custom constructors respectively:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #[derive(Component)]
 /// struct A;
 ///
@@ -379,11 +379,11 @@ pub enum StorageType {
 /// - `#[component(on_remove = on_remove_function)]`
 ///
 /// ```
-/// # use bevy_ecs::component::Component;
-/// # use bevy_ecs::lifecycle::HookContext;
-/// # use bevy_ecs::world::DeferredWorld;
-/// # use bevy_ecs::entity::Entity;
-/// # use bevy_ecs::component::ComponentId;
+/// # use kairos_ecs::component::Component;
+/// # use kairos_ecs::lifecycle::HookContext;
+/// # use kairos_ecs::world::DeferredWorld;
+/// # use kairos_ecs::entity::Entity;
+/// # use kairos_ecs::component::ComponentId;
 /// # use core::panic::Location;
 /// #
 /// #[derive(Component)]
@@ -409,9 +409,9 @@ pub enum StorageType {
 /// This also supports function calls that yield closures
 ///
 /// ```
-/// # use bevy_ecs::component::Component;
-/// # use bevy_ecs::lifecycle::HookContext;
-/// # use bevy_ecs::world::DeferredWorld;
+/// # use kairos_ecs::component::Component;
+/// # use kairos_ecs::lifecycle::HookContext;
+/// # use kairos_ecs::world::DeferredWorld;
 /// #
 /// #[derive(Component)]
 /// #[component(on_add = my_msg_hook("hello"))]
@@ -429,9 +429,9 @@ pub enum StorageType {
 ///
 /// A hook's function path can be elided if it is `Self::on_add`, `Self::on_insert` etc.
 /// ```
-/// # use bevy_ecs::lifecycle::HookContext;
-/// # use bevy_ecs::prelude::*;
-/// # use bevy_ecs::world::DeferredWorld;
+/// # use kairos_ecs::lifecycle::HookContext;
+/// # use kairos_ecs::prelude::*;
+/// # use kairos_ecs::world::DeferredWorld;
 /// #
 /// #[derive(Component, Debug)]
 /// #[component(on_add)]
@@ -456,7 +456,7 @@ pub enum StorageType {
 /// Your options are the functions and variants of [`ComponentCloneBehavior`]
 /// See [Clone Behaviors section of `EntityCloner`](crate::entity::EntityCloner#clone-behaviors) to understand how this affects handler priority.
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 ///
 /// #[derive(Component)]
 /// #[component(clone_behavior = Ignore)]
@@ -473,8 +473,8 @@ pub enum StorageType {
 /// The following example gives a demonstration of this pattern.
 ///
 /// ```
-/// // `Component` is defined in the `bevy_ecs` crate.
-/// use bevy_ecs::component::Component;
+/// // `Component` is defined in the `kairos_ecs` crate.
+/// use kairos_ecs::component::Component;
 ///
 /// // `Duration` is defined in the `std` crate.
 /// use std::time::Duration;
@@ -499,7 +499,7 @@ pub enum StorageType {
 /// This will fail to compile since `RefCell` is `!Sync`.
 /// ```compile_fail
 /// # use std::cell::RefCell;
-/// # use bevy_ecs::component::Component;
+/// # use kairos_ecs::component::Component;
 /// #[derive(Component)]
 /// struct NotSync {
 ///    counter: RefCell<usize>,
@@ -509,8 +509,8 @@ pub enum StorageType {
 /// This will compile since the `RefCell` is wrapped with `SyncCell`.
 /// ```
 /// # use std::cell::RefCell;
-/// # use bevy_ecs::component::Component;
-/// use bevy_platform::cell::SyncCell;
+/// # use kairos_ecs::component::Component;
+/// use kairos_ecs::cell::SyncCell;
 ///
 /// // This will compile.
 /// #[derive(Component)]
@@ -519,7 +519,7 @@ pub enum StorageType {
 /// }
 /// ```
 ///
-/// [`SyncCell`]: bevy_platform::cell::SyncCell
+/// [`SyncCell`]: crate::cell::SyncCell
 /// [`Exclusive`]: https://doc.rust-lang.org/nightly/std/sync/struct.Exclusive.html
 /// [`ComponentHooks`]: crate::lifecycle::ComponentHooks
 #[diagnostic::on_unimplemented(
@@ -587,7 +587,7 @@ pub trait Component: Send + Sync + 'static {
     /// When deriving [`Component`], this is populated by annotating fields containing entities with `#[entities]`
     ///
     /// ```
-    /// # use bevy_ecs::{component::Component, entity::Entity};
+    /// # use kairos_ecs::{component::Component, entity::Entity};
     /// #[derive(Component)]
     /// struct Inventory {
     ///     #[entities]
@@ -600,7 +600,7 @@ pub trait Component: Send + Sync + 'static {
     /// Bevy provides various implementations of [`MapEntities`](crate::entity::MapEntities), so that arbitrary combinations like these are supported with `#[entities]`:
     ///
     /// ```rust
-    /// # use bevy_ecs::{component::Component, entity::Entity};
+    /// # use kairos_ecs::{component::Component, entity::Entity};
     /// #[derive(Component)]
     /// struct Inventory {
     ///     #[entities]
@@ -614,7 +614,7 @@ pub trait Component: Send + Sync + 'static {
     /// component itself, and this method will simply call that implementation.
     ///
     /// ```
-    /// # use bevy_ecs::{component::Component, entity::{Entity, MapEntities, EntityMapper, EntityHashMap}};
+    /// # use kairos_ecs::{component::Component, entity::{Entity, MapEntities, EntityMapper, EntityHashMap}};
     /// #[derive(Component)]
     /// #[component(map_entities)]
     /// struct Inventory {
@@ -641,7 +641,7 @@ pub trait Component: Send + Sync + 'static {
     /// In this case, the inputs of the function should mirror the inputs to this method, with the second parameter being generic.
     ///
     /// ```
-    /// # use bevy_ecs::{component::Component, entity::{Entity, MapEntities, EntityMapper, EntityHashMap}};
+    /// # use kairos_ecs::{component::Component, entity::{Entity, MapEntities, EntityMapper, EntityHashMap}};
     /// #[derive(Component)]
     /// #[component(map_entities = map_the_map)]
     /// // Also works: map_the_map::<M> or map_the_map::<_>
@@ -698,7 +698,7 @@ mod private {
 /// # Examples
 ///
 /// ```rust
-/// # use bevy_ecs::component::Component;
+/// # use kairos_ecs::component::Component;
 /// #
 /// #[derive(Component)]
 /// #[component(immutable)]
@@ -751,7 +751,7 @@ impl<T: Component> FromWorld for InitComponentId<T> {
 ///
 /// # Example
 /// ```
-/// # use bevy_ecs::{system::Local, component::{Component, ComponentId, ComponentIdFor}};
+/// # use kairos_ecs::{system::Local, component::{Component, ComponentId, ComponentIdFor}};
 /// #[derive(Component)]
 /// struct Player;
 /// fn my_system(component_id: ComponentIdFor<Player>) {

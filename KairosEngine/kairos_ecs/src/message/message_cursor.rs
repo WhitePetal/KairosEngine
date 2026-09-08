@@ -18,8 +18,8 @@ use crate::message::{
 /// # Example
 ///
 /// ```
-/// use bevy_ecs::prelude::*;
-/// use bevy_ecs::message::{Message, MessageCursor};
+/// use kairos_ecs::prelude::*;
+/// use kairos_ecs::message::{Message, MessageCursor};
 ///
 /// #[derive(Message, Clone, Debug)]
 /// struct MyMessage;
@@ -44,7 +44,7 @@ use crate::message::{
 ///     }
 /// }
 ///
-/// # bevy_ecs::system::assert_is_system(send_and_receive_messages);
+/// # kairos_ecs::system::assert_is_system(send_and_receive_messages);
 /// ```
 ///
 /// [`MessageReader`]: super::MessageReader

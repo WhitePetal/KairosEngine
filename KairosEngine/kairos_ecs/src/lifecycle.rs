@@ -128,8 +128,8 @@ pub struct HookContext {
 /// # Example
 ///
 /// ```
-/// use bevy_ecs::prelude::*;
-/// use bevy_ecs::entity::EntityHashSet;
+/// use kairos_ecs::prelude::*;
+/// use kairos_ecs::entity::EntityHashSet;
 ///
 /// #[derive(Component)]
 /// struct MyTrackedComponent;
@@ -501,29 +501,30 @@ impl RemovedComponentMessages {
 /// Unlike hooks or observers (see the [lifecycle](crate) module docs),
 /// this does not allow you to see which data existed before removal.
 ///
-/// If you are using `bevy_ecs` as a standalone crate,
+/// If you are using `kairos_ecs` as a standalone crate,
 /// note that the [`RemovedComponents`] list will not be automatically cleared for you,
 /// and will need to be manually flushed using [`World::clear_trackers`](World::clear_trackers).
 ///
-/// For users of `bevy` and `bevy_app`, [`World::clear_trackers`](World::clear_trackers) is
-/// automatically called by `bevy_app::App::update` and `bevy_app::SubApp::update`.
-/// For the main world, this is delayed until after all `SubApp`s have run.
+/// When this crate is driven by the engine's application layer (the future `App`
+/// equivalent in `kairos_engine`), [`World::clear_trackers`](World::clear_trackers) is
+/// automatically called on each app update.
+/// For the main world, this is delayed until after all sub-apps have run.
 ///
 /// # Examples
 ///
 /// Basic usage:
 ///
 /// ```
-/// # use bevy_ecs::component::Component;
-/// # use bevy_ecs::system::IntoSystem;
-/// # use bevy_ecs::lifecycle::RemovedComponents;
+/// # use kairos_ecs::component::Component;
+/// # use kairos_ecs::system::IntoSystem;
+/// # use kairos_ecs::lifecycle::RemovedComponents;
 /// #
 /// # #[derive(Component)]
 /// # struct MyComponent;
 /// fn react_on_removal(mut removed: RemovedComponents<MyComponent>) {
 ///     removed.read().for_each(|removed_entity| println!("{}", removed_entity));
 /// }
-/// # bevy_ecs::system::assert_is_system(react_on_removal);
+/// # kairos_ecs::system::assert_is_system(react_on_removal);
 /// ```
 #[derive(SystemParam)]
 pub struct RemovedComponents<'w, 's, T: Component> {

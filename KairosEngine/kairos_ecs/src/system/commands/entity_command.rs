@@ -52,8 +52,8 @@ use tracing::info;
 ///
 /// ```
 /// # use std::collections::HashSet;
-/// # use bevy_ecs::prelude::*;
-/// use bevy_ecs::system::EntityCommand;
+/// # use kairos_ecs::prelude::*;
+/// use kairos_ecs::system::EntityCommand;
 /// #
 /// # #[derive(Component, PartialEq)]
 /// # struct Name(String);

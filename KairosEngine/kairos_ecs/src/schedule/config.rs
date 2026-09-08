@@ -286,7 +286,7 @@ impl<T: Schedulable<Metadata = GraphInfo, GroupMetadata = Chain>> ScheduleConfig
 /// # Examples
 ///
 /// ```
-/// # use bevy_ecs::{schedule::IntoScheduleConfigs, system::ScheduleSystem};
+/// # use kairos_ecs::{schedule::IntoScheduleConfigs, system::ScheduleSystem};
 /// # struct AppMock;
 /// # struct Update;
 /// # impl AppMock {
@@ -394,7 +394,7 @@ pub trait IntoScheduleConfigs<T: Schedulable<Metadata = GraphInfo, GroupMetadata
     /// system, as shown below:
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # let mut schedule = Schedule::default();
     /// # fn a() {}
     /// # fn b() {}
@@ -430,7 +430,8 @@ pub trait IntoScheduleConfigs<T: Schedulable<Metadata = GraphInfo, GroupMetadata
     /// # Examples
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
+    /// # use kairos_ecs_macros::SystemSet;
     /// # let mut schedule = Schedule::default();
     /// # fn a() {}
     /// # fn b() {}

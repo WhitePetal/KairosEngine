@@ -282,8 +282,8 @@ impl<K, V, S> FixedHashMap<K, V, S> {
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
-    /// # use bevy_platform::hash::FixedHasher as SomeHasher;
+    /// # use hashbrown::HashMap;
+    /// # use kairos_collections::hash::FixedHasher as SomeHasher;
     /// // Creates a HashMap with the provided hasher.
     /// let map = HashMap::with_hasher(SomeHasher);
     /// #
@@ -304,8 +304,8 @@ impl<K, V, S> FixedHashMap<K, V, S> {
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
-    /// # use bevy_platform::hash::FixedHasher as SomeHasher;
+    /// # use hashbrown::HashMap;
+    /// # use kairos_collections::hash::FixedHasher as SomeHasher;
     /// // Creates a HashMap with capacity for 5 entries and the provided hasher.
     /// let map = HashMap::with_capacity_and_hasher(5, SomeHasher);
     /// #
@@ -336,7 +336,7 @@ impl<K, V, S> FixedHashMap<K, V, S> {
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
+    /// # use hashbrown::HashMap;
     /// let map = HashMap::with_capacity(5);
     ///
     /// # let map: HashMap<(), ()> = map;
@@ -356,7 +356,7 @@ impl<K, V, S> FixedHashMap<K, V, S> {
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
+    /// # use hashbrown::HashMap;
     /// #
     /// let mut map = HashMap::new();
     ///
@@ -384,7 +384,7 @@ impl<K, V, S> FixedHashMap<K, V, S> {
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
+    /// # use hashbrown::HashMap;
     /// #
     /// let mut map = HashMap::new();
     ///
@@ -412,7 +412,7 @@ impl<K, V, S> FixedHashMap<K, V, S> {
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
+    /// # use hashbrown::HashMap;
     /// #
     /// let mut map = HashMap::new();
     ///
@@ -440,7 +440,7 @@ impl<K, V, S> FixedHashMap<K, V, S> {
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
+    /// # use hashbrown::HashMap;
     /// #
     /// let mut map = HashMap::new();
     ///
@@ -469,7 +469,7 @@ impl<K, V, S> FixedHashMap<K, V, S> {
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
+    /// # use hashbrown::HashMap;
     /// #
     /// let mut map = HashMap::new();
     ///
@@ -496,7 +496,7 @@ impl<K, V, S> FixedHashMap<K, V, S> {
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
+    /// # use hashbrown::HashMap;
     /// let mut map = HashMap::new();
     ///
     /// assert_eq!(map.len(), 0);
@@ -517,7 +517,7 @@ impl<K, V, S> FixedHashMap<K, V, S> {
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
+    /// # use hashbrown::HashMap;
     /// let mut map = HashMap::new();
     ///
     /// assert!(map.is_empty());
@@ -539,7 +539,7 @@ impl<K, V, S> FixedHashMap<K, V, S> {
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
+    /// # use hashbrown::HashMap;
     /// #
     /// let mut map = HashMap::new();
     ///
@@ -567,7 +567,7 @@ impl<K, V, S> FixedHashMap<K, V, S> {
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
+    /// # use hashbrown::HashMap;
     /// #
     /// let mut map = HashMap::new();
     ///
@@ -595,7 +595,7 @@ impl<K, V, S> FixedHashMap<K, V, S> {
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
+    /// # use hashbrown::HashMap;
     /// #
     /// let mut map = HashMap::new();
     ///
@@ -626,7 +626,7 @@ impl<K, V, S> FixedHashMap<K, V, S> {
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
+    /// # use hashbrown::HashMap;
     /// #
     /// let mut map = HashMap::new();
     ///
@@ -652,7 +652,7 @@ impl<K, V, S> FixedHashMap<K, V, S> {
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
+    /// # use hashbrown::HashMap;
     /// #
     /// let mut map = HashMap::new();
     ///
@@ -679,7 +679,7 @@ impl<K, V, S> FixedHashMap<K, V, S> {
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
+    /// # use hashbrown::HashMap;
     /// #
     /// let mut map = HashMap::new();
     ///
@@ -702,8 +702,9 @@ impl<K, V, S> FixedHashMap<K, V, S> {
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
-    /// let map: HashMap<&'static str, usize> = HashMap::new();
+    /// # use hashbrown::HashMap;
+    /// # use kairos_collections::FixedHashMap;
+    /// let map: FixedHashMap<&'static str, usize> = FixedHashMap::default();
     /// let map: hashbrown::HashMap<&'static str, usize, _> = map.into_inner();
     /// ```
     #[inline]
@@ -720,7 +721,7 @@ impl<K, V> FixedHashMap<K, V, FixedHasher> {
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
+    /// # use hashbrown::HashMap;
     /// #
     /// // Creates a HashMap with zero capacity.
     /// let map = HashMap::new();
@@ -741,7 +742,7 @@ impl<K, V> FixedHashMap<K, V, FixedHasher> {
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
+    /// # use hashbrown::HashMap;
     /// #
     /// // Creates a HashMap with capacity for at least 5 entries.
     /// let map = HashMap::with_capacity(5);
@@ -770,7 +771,7 @@ where
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
+    /// # use hashbrown::HashMap;
     /// let mut map = HashMap::with_capacity(5);
     ///
     /// # let mut map: HashMap<(), ()> = map;
@@ -795,7 +796,7 @@ where
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
+    /// # use hashbrown::HashMap;
     /// let mut map = HashMap::with_capacity(5);
     ///
     /// # let mut map: HashMap<(), ()> = map;
@@ -820,7 +821,7 @@ where
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
+    /// # use hashbrown::HashMap;
     /// let mut map = HashMap::with_capacity(5);
     ///
     /// map.insert("foo", 0);
@@ -855,7 +856,7 @@ where
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
+    /// # use hashbrown::HashMap;
     /// let mut map = HashMap::new();
     ///
     /// let value = map.entry("foo").or_insert(0);
@@ -874,9 +875,8 @@ where
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
-    /// let mut map = HashMap::new();
-    /// # let mut map: HashMap<&'static str, usize> = map;
+    /// # use hashbrown::HashMap;
+    /// let mut map: HashMap<String, usize> = HashMap::new();
     ///
     /// let value = map.entry_ref("foo").or_insert(0);
     /// #
@@ -897,7 +897,7 @@ where
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
+    /// # use hashbrown::HashMap;
     /// let mut map = HashMap::new();
     ///
     /// map.insert("foo", 0);
@@ -919,7 +919,7 @@ where
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
+    /// # use hashbrown::HashMap;
     /// let mut map = HashMap::new();
     ///
     /// map.insert("foo", 0);
@@ -941,7 +941,7 @@ where
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
+    /// # use hashbrown::HashMap;
     /// let mut map = HashMap::new();
     ///
     /// map.insert("foo", 0);
@@ -963,7 +963,7 @@ where
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
+    /// # use hashbrown::HashMap;
     /// let mut map = HashMap::new();
     ///
     /// map.insert("foo", 0);
@@ -985,7 +985,7 @@ where
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
+    /// # use hashbrown::HashMap;
     /// let mut map = HashMap::new();
     ///
     /// map.insert("foo", 0);
@@ -1007,7 +1007,7 @@ where
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
+    /// # use hashbrown::HashMap;
     /// let mut map = HashMap::new();
     ///
     /// map.insert("foo", 0);
@@ -1034,7 +1034,7 @@ where
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
+    /// # use hashbrown::HashMap;
     /// let mut map = HashMap::new();
     ///
     /// map.insert("foo", 0);
@@ -1063,7 +1063,7 @@ where
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
+    /// # use hashbrown::HashMap;
     /// let mut map = HashMap::new();
     ///
     /// map.insert("foo", 0);
@@ -1083,7 +1083,7 @@ where
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
+    /// # use hashbrown::HashMap;
     /// let mut map = HashMap::new();
     ///
     /// map.try_insert("foo", 0).unwrap();
@@ -1103,7 +1103,7 @@ where
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
+    /// # use hashbrown::HashMap;
     /// let mut map = HashMap::new();
     ///
     /// map.insert("foo", 0);
@@ -1128,7 +1128,7 @@ where
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
+    /// # use hashbrown::HashMap;
     /// let mut map = HashMap::new();
     ///
     /// map.insert("foo", 0);
@@ -1153,7 +1153,7 @@ where
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_platform::collections::HashMap;
+    /// # use hashbrown::HashMap;
     /// let mut map = HashMap::new();
     ///
     /// assert_eq!(map.allocation_size(), 0);

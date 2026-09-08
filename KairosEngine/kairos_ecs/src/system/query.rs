@@ -91,7 +91,7 @@ mod tests;
 /// You can fetch an entity's component by specifying a reference to that component in the query's data parameter:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #
 /// # #[derive(Component)]
 /// # struct ComponentA;
@@ -106,14 +106,14 @@ mod tests;
 ///     // ...
 /// }
 /// #
-/// # bevy_ecs::system::assert_is_system(immutable_query);
-/// # bevy_ecs::system::assert_is_system(mutable_query);
+/// # kairos_ecs::system::assert_is_system(immutable_query);
+/// # kairos_ecs::system::assert_is_system(mutable_query);
 /// ```
 ///
 /// Note that components need to be behind a reference (`&` or `&mut`), or the query will not compile:
 ///
 /// ```compile_fail,E0277
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #
 /// # #[derive(Component)]
 /// # struct ComponentA;
@@ -129,7 +129,7 @@ mod tests;
 /// Setting the query filter type parameter will ensure that each query item satisfies the given condition:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #
 /// # #[derive(Component)]
 /// # struct ComponentA;
@@ -142,7 +142,7 @@ mod tests;
 ///     // ...
 /// }
 /// #
-/// # bevy_ecs::system::assert_is_system(filtered_query);
+/// # kairos_ecs::system::assert_is_system(filtered_query);
 /// ```
 ///
 /// Note that the filter is `With<ComponentB>`, not `With<&ComponentB>`. Unlike query data, `With`
@@ -156,7 +156,7 @@ mod tests;
 /// filtered on two conditions:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #
 /// # #[derive(Component)]
 /// # struct ComponentA;
@@ -176,14 +176,14 @@ mod tests;
 ///     // ...
 /// }
 /// #
-/// # bevy_ecs::system::assert_is_system(complex_query);
+/// # kairos_ecs::system::assert_is_system(complex_query);
 /// ```
 ///
 /// Note that this currently only works on tuples with 15 or fewer items. You may nest tuples to
 /// get around this limit:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #
 /// # #[derive(Component)]
 /// # struct ComponentA;
@@ -203,7 +203,7 @@ mod tests;
 ///     // ...
 /// }
 /// #
-/// # bevy_ecs::system::assert_is_system(nested_query);
+/// # kairos_ecs::system::assert_is_system(nested_query);
 /// ```
 ///
 /// ## Entity identifier access
@@ -211,7 +211,7 @@ mod tests;
 /// You can access [`Entity`], the entity identifier, by including it in the query data parameter:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #
 /// # #[derive(Component)]
 /// # struct ComponentA;
@@ -220,7 +220,7 @@ mod tests;
 ///     // ...
 /// }
 /// #
-/// # bevy_ecs::system::assert_is_system(entity_id_query);
+/// # kairos_ecs::system::assert_is_system(entity_id_query);
 /// ```
 ///
 /// Be aware that [`Entity`] is not a component, so it does not need to be behind a reference.
@@ -232,7 +232,7 @@ mod tests;
 /// When this is the case, `Option<&ComponentB>`'s corresponding value will be `None`.
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #
 /// # #[derive(Component)]
 /// # struct ComponentA;
@@ -246,7 +246,7 @@ mod tests;
 ///     // ...
 /// }
 /// #
-/// # bevy_ecs::system::assert_is_system(optional_component_query);
+/// # kairos_ecs::system::assert_is_system(optional_component_query);
 /// ```
 ///
 /// Optional components can hurt performance in some cases, so please read the [performance]
@@ -267,7 +267,7 @@ mod tests;
 /// however, instead of breaking Rust's mutability rules:
 ///
 /// ```should_panic
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #
 /// # #[derive(Component)]
 /// # struct Health;
@@ -285,14 +285,14 @@ mod tests;
 ///     // ...
 /// }
 /// #
-/// # bevy_ecs::system::assert_system_does_not_conflict(randomize_health);
+/// # kairos_ecs::system::assert_system_does_not_conflict(randomize_health);
 /// ```
 ///
 /// Adding a [`Without`] filter will disjoint the queries. In the following example, any entity
 /// that has both the `Player` and `Enemy` components will be excluded from _both_ queries:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #
 /// # #[derive(Component)]
 /// # struct Health;
@@ -310,7 +310,7 @@ mod tests;
 ///     // ...
 /// }
 /// #
-/// # bevy_ecs::system::assert_system_does_not_conflict(randomize_health);
+/// # kairos_ecs::system::assert_system_does_not_conflict(randomize_health);
 /// ```
 ///
 /// An alternative solution to this problem would be to wrap the conflicting queries in
@@ -325,7 +325,7 @@ mod tests;
 /// This is useful when dynamically fetching components instead of baking them into the query type.
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #
 /// # #[derive(Component)]
 /// # struct ComponentA;
@@ -334,14 +334,14 @@ mod tests;
 ///     // ...
 /// }
 /// #
-/// # bevy_ecs::system::assert_is_system(all_components_query);
+/// # kairos_ecs::system::assert_is_system(all_components_query);
 /// ```
 ///
 /// As [`EntityRef`] can read any component on an entity, a query using it will conflict with *any*
 /// mutable component access.
 ///
 /// ```should_panic
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #
 /// # #[derive(Component)]
 /// # struct ComponentA;
@@ -354,7 +354,7 @@ mod tests;
 ///     // ...
 /// }
 /// #
-/// # bevy_ecs::system::assert_system_does_not_conflict(invalid_query);
+/// # kairos_ecs::system::assert_system_does_not_conflict(invalid_query);
 /// ```
 ///
 /// It is strongly advised to couple [`EntityRef`] queries with the use of either [`With`] /
@@ -363,7 +363,7 @@ mod tests;
 /// components:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #
 /// # #[derive(Component)]
 /// # struct ComponentA;
@@ -381,7 +381,7 @@ mod tests;
 ///     // ...
 /// }
 /// #
-/// # bevy_ecs::system::assert_system_does_not_conflict(disjoint_query);
+/// # kairos_ecs::system::assert_system_does_not_conflict(disjoint_query);
 /// ```
 ///
 /// The fundamental rule: [`EntityRef`]'s ability to read all components means it can never
@@ -490,7 +490,7 @@ mod tests;
 /// *Always* profile or benchmark before and after the change!
 ///
 /// ```rust
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #
 /// # #[derive(Component)]
 /// # struct ComponentA;
@@ -507,7 +507,7 @@ mod tests;
 ///     }
 /// }
 /// #
-/// # bevy_ecs::system::assert_is_system(system);
+/// # kairos_ecs::system::assert_is_system(system);
 /// ```
 ///
 /// [autovectorization]: https://en.wikipedia.org/wiki/Automatic_vectorization
@@ -618,7 +618,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// completely giving up ownership of it.
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// # #[derive(Component)]
     /// # struct ComponentA;
@@ -685,7 +685,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// Here, the `report_names_system` iterates over the `Player` component of every entity that contains it:
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// # #[derive(Component)]
     /// # struct Player { name: String }
@@ -695,7 +695,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     ///         println!("Say hello to {}!", player.name);
     ///     }
     /// }
-    /// # bevy_ecs::system::assert_is_system(report_names_system);
+    /// # kairos_ecs::system::assert_is_system(report_names_system);
     /// ```
     ///
     /// # See also
@@ -723,7 +723,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// Here, the `gravity_system` updates the `Velocity` component of every entity that contains it:
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// # #[derive(Component)]
     /// # struct Velocity { x: f32, y: f32, z: f32 }
@@ -733,7 +733,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     ///         velocity.y -= 9.8 * DELTA;
     ///     }
     /// }
-    /// # bevy_ecs::system::assert_is_system(gravity_system);
+    /// # kairos_ecs::system::assert_is_system(gravity_system);
     /// ```
     ///
     /// # See also
@@ -762,7 +762,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// that contains it:
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// # #[derive(Component)]
     /// # struct Player { name: String }
@@ -772,7 +772,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     ///         println!("Say hello to {}!", player.name);
     ///     }
     /// }
-    /// # bevy_ecs::system::assert_is_system(report_names_system);
+    /// # kairos_ecs::system::assert_is_system(report_names_system);
     /// ```
     #[inline]
     pub fn iter_inner(self) -> QueryIter<'w, 's, D, F> {
@@ -791,7 +791,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Component)]
     /// # struct ComponentA;
     /// #
@@ -821,7 +821,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Component)]
     /// # struct ComponentA;
     /// fn some_system(mut query: Query<&mut ComponentA>) {
@@ -853,7 +853,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Component)]
     /// # struct ComponentA;
     /// fn some_system(query: Query<&mut ComponentA>) {
@@ -885,7 +885,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Component)]
     /// # struct Counter {
     /// #     value: i32
@@ -907,7 +907,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     ///         }
     ///     }
     /// }
-    /// # bevy_ecs::system::assert_is_system(system);
+    /// # kairos_ecs::system::assert_is_system(system);
     /// ```
     ///
     /// # See also
@@ -930,7 +930,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// # Examples
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #[derive(Component)]
     /// struct Counter {
     ///     value: i32
@@ -953,7 +953,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     ///         }
     ///     }
     /// }
-    /// # bevy_ecs::system::assert_is_system(system);
+    /// # kairos_ecs::system::assert_is_system(system);
     /// ```
     /// # See also
     ///
@@ -1001,7 +1001,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::{prelude::*, entity::{EntitySet, UniqueEntityIter}};
+    /// # use kairos_ecs::{prelude::*, entity::{EntitySet, UniqueEntityIter}};
     /// # use core::slice;
     /// # #[derive(Component)]
     /// # struct Counter {
@@ -1035,7 +1035,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     ///         }
     ///     }
     /// }
-    /// # bevy_ecs::system::assert_is_system(system);
+    /// # kairos_ecs::system::assert_is_system(system);
     /// ```
     ///
     /// # See also
@@ -1057,7 +1057,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// # Examples
     ///
     /// ```
-    /// # use bevy_ecs::{prelude::*, entity::{EntitySet, UniqueEntityIter}};
+    /// # use kairos_ecs::{prelude::*, entity::{EntitySet, UniqueEntityIter}};
     /// # use core::slice;
     /// #[derive(Component)]
     /// struct Counter {
@@ -1091,7 +1091,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     ///         }
     ///     }
     /// }
-    /// # bevy_ecs::system::assert_is_system(system);
+    /// # kairos_ecs::system::assert_is_system(system);
     /// ```
     /// # See also
     ///
@@ -1116,7 +1116,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// # Examples
     ///
     /// ```
-    /// # use bevy_ecs::{prelude::*, entity::{EntitySet, UniqueEntityIter}};
+    /// # use kairos_ecs::{prelude::*, entity::{EntitySet, UniqueEntityIter}};
     /// # use core::slice;
     /// #[derive(Component)]
     /// struct Counter {
@@ -1149,7 +1149,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     ///         counter.value += 1;
     ///     }
     /// }
-    /// # bevy_ecs::system::assert_is_system(system);
+    /// # kairos_ecs::system::assert_is_system(system);
     /// ```
     /// # See also
     ///
@@ -1310,7 +1310,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// Here, the `gravity_system` updates the `Velocity` component of every entity that contains it:
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// # #[derive(Component)]
     /// # struct Velocity { x: f32, y: f32, z: f32 }
@@ -1320,7 +1320,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     ///         velocity.y -= 9.8 * DELTA;
     ///     });
     /// }
-    /// # bevy_ecs::system::assert_is_system(gravity_system);
+    /// # kairos_ecs::system::assert_is_system(gravity_system);
     /// ```
     ///
     /// [`par_iter`]: Self::par_iter
@@ -1347,7 +1347,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// Here, the `gravity_system` updates the `Velocity` component of every entity that contains it:
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// # #[derive(Component)]
     /// # struct Velocity { x: f32, y: f32, z: f32 }
@@ -1357,7 +1357,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     ///         velocity.y -= 9.8 * DELTA;
     ///     });
     /// }
-    /// # bevy_ecs::system::assert_is_system(gravity_system);
+    /// # kairos_ecs::system::assert_is_system(gravity_system);
     /// ```
     #[inline]
     pub fn par_iter_inner(self) -> QueryParIter<'w, 's, D, F>
@@ -1476,7 +1476,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// The following system despawns all entities which health is negative.
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// # #[derive(Component)]
     /// # struct Health(pub f32);
@@ -1519,7 +1519,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// health by some fraction.
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// # #[derive(Component)]
     /// # struct Health(pub f32);
@@ -1575,7 +1575,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// Here, `get` is used to retrieve the exact query item of the entity specified by the `SelectedCharacter` resource.
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// # #[derive(Resource)]
     /// # struct SelectedCharacter { entity: Entity }
@@ -1591,7 +1591,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     ///         println!("{}", selected_character.name);
     ///     }
     /// }
-    /// # bevy_ecs::system::assert_is_system(print_selected_character_name_system);
+    /// # kairos_ecs::system::assert_is_system(print_selected_character_name_system);
     /// ```
     ///
     /// # See also
@@ -1611,8 +1611,8 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// # Examples
     ///
     /// ```
-    /// use bevy_ecs::prelude::*;
-    /// use bevy_ecs::query::QueryEntityError;
+    /// use kairos_ecs::prelude::*;
+    /// use kairos_ecs::query::QueryEntityError;
     ///
     /// #[derive(Component, PartialEq, Debug)]
     /// struct A(usize);
@@ -1663,7 +1663,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// # Examples
     ///
     /// ```
-    /// use bevy_ecs::{prelude::*, query::QueryEntityError, entity::{EntitySetIterator, UniqueEntityArray, UniqueEntityVec}};
+    /// use kairos_ecs::{prelude::*, query::QueryEntityError, entity::{EntitySetIterator, UniqueEntityArray, UniqueEntityVec}};
     ///
     /// #[derive(Component, PartialEq, Debug)]
     /// struct A(usize);
@@ -1715,7 +1715,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// Here, `get_mut` is used to retrieve the exact query item of the entity specified by the `PoisonedCharacter` resource.
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// # #[derive(Resource)]
     /// # struct PoisonedCharacter { character_id: Entity }
@@ -1727,7 +1727,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     ///         health.0 -= 1;
     ///     }
     /// }
-    /// # bevy_ecs::system::assert_is_system(poison_system);
+    /// # kairos_ecs::system::assert_is_system(poison_system);
     /// ```
     ///
     /// # See also
@@ -1820,8 +1820,8 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// # Examples
     ///
     /// ```
-    /// use bevy_ecs::prelude::*;
-    /// use bevy_ecs::query::QueryEntityError;
+    /// use kairos_ecs::prelude::*;
+    /// use kairos_ecs::query::QueryEntityError;
     ///
     /// #[derive(Component, PartialEq, Debug)]
     /// struct A(usize);
@@ -1898,7 +1898,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// # Examples
     ///
     /// ```
-    /// use bevy_ecs::{prelude::*, query::QueryEntityError, entity::{EntitySetIterator, UniqueEntityArray, UniqueEntityVec}};
+    /// use kairos_ecs::{prelude::*, query::QueryEntityError, entity::{EntitySetIterator, UniqueEntityArray, UniqueEntityVec}};
     ///
     /// #[derive(Component, PartialEq, Debug)]
     /// struct A(usize);
@@ -2094,8 +2094,8 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
-    /// # use bevy_ecs::query::QuerySingleError;
+    /// # use kairos_ecs::prelude::*;
+    /// # use kairos_ecs::query::QuerySingleError;
     /// # #[derive(Component)]
     /// # struct PlayerScore(i32);
     /// fn player_scoring_system(query: Query<&PlayerScore>) {
@@ -2103,7 +2103,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     ///         Ok(PlayerScore(score)) => {
     ///             println!("Score: {}", score);
     ///         }
-    ///         Err(QuerySingleError::NoEntities(_)) => {
+    ///         Err(QuerySingleError::NonEntities(_)) => {
     ///             println!("Error: There is no player!");
     ///         }
     ///         Err(QuerySingleError::MultipleEntities(_)) => {
@@ -2111,7 +2111,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     ///         }
     ///     }
     /// }
-    /// # bevy_ecs::system::assert_is_system(player_scoring_system);
+    /// # kairos_ecs::system::assert_is_system(player_scoring_system);
     /// ```
     ///
     /// # See also
@@ -2129,7 +2129,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// # #[derive(Component)]
     /// # struct Player;
@@ -2140,7 +2140,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     ///     let mut health = query.single_mut().expect("Error: Could not find a single player.");
     ///     health.0 += 1;
     /// }
-    /// # bevy_ecs::system::assert_is_system(regenerate_player_health_system);
+    /// # kairos_ecs::system::assert_is_system(regenerate_player_health_system);
     /// ```
     ///
     /// # See also
@@ -2162,7 +2162,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// # #[derive(Component)]
     /// # struct Player;
@@ -2173,7 +2173,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     ///     let mut health = query.single_inner().expect("Error: Could not find a single player.");
     ///     health.0 += 1;
     /// }
-    /// # bevy_ecs::system::assert_is_system(regenerate_player_health_system);
+    /// # kairos_ecs::system::assert_is_system(regenerate_player_health_system);
     /// ```
     ///
     /// # See also
@@ -2210,7 +2210,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// Here, the score is increased only if an entity with a `Player` component is present in the world:
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// # #[derive(Component)]
     /// # struct Player;
@@ -2221,7 +2221,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     ///         score.0 += 1;
     ///     }
     /// }
-    /// # bevy_ecs::system::assert_is_system(update_score_system);
+    /// # kairos_ecs::system::assert_is_system(update_score_system);
     /// ```
     ///
     /// [`Added`]: crate::query::Added
@@ -2245,7 +2245,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// # #[derive(Component)]
     /// # struct InRange;
@@ -2260,7 +2260,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     ///         println!("Bam!")
     ///     }
     /// }
-    /// # bevy_ecs::system::assert_is_system(targeting_system);
+    /// # kairos_ecs::system::assert_is_system(targeting_system);
     /// ```
     #[inline]
     pub fn contains(&self, entity: Entity) -> bool {
@@ -2284,7 +2284,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// # #[derive(Component)]
     /// # struct InRange;
@@ -2293,7 +2293,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     ///     let count = in_range_query.count();
     ///     println!("{count} targets in range!");
     /// }
-    /// # bevy_ecs::system::assert_is_system(targeting_system);
+    /// # kairos_ecs::system::assert_is_system(targeting_system);
     /// ```
     pub fn count(&self) -> usize {
         // If the query data matches every entity, then `as_nop()` can safely
@@ -2375,8 +2375,8 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// ## Example
     ///
     /// ```rust
-    /// # use bevy_ecs::prelude::*;
-    /// # use bevy_ecs::system::QueryLens;
+    /// # use kairos_ecs::prelude::*;
+    /// # use kairos_ecs::system::QueryLens;
     /// #
     /// # #[derive(Component)]
     /// # struct A(usize);
@@ -2412,7 +2412,7 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// ### Examples of valid transmutes
     ///
     /// ```rust
-    /// # use bevy_ecs::{
+    /// # use kairos_ecs::{
     /// #     prelude::*,
     /// #     archetype::Archetype,
     /// #     entity::EntityLocation,
@@ -2504,8 +2504,8 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// ## Example
     ///
     /// ```rust
-    /// # use bevy_ecs::prelude::*;
-    /// # use bevy_ecs::system::QueryLens;
+    /// # use kairos_ecs::prelude::*;
+    /// # use kairos_ecs::system::QueryLens;
     /// #
     /// # #[derive(Component)]
     /// # struct A(usize);
@@ -2619,8 +2619,8 @@ impl<'w, 's, D: QueryData, F: QueryFilter> Query<'w, 's, D, F> {
     /// ## Example
     ///
     /// ```rust
-    /// # use bevy_ecs::prelude::*;
-    /// # use bevy_ecs::system::QueryLens;
+    /// # use kairos_ecs::prelude::*;
+    /// # use kairos_ecs::system::QueryLens;
     /// #
     /// # #[derive(Component)]
     /// # struct Transform;
@@ -2846,7 +2846,7 @@ impl<'w, 'q, Q: SingleEntityQueryData, F: QueryFilter> From<&'q mut Query<'w, '_
 ///
 /// # Example
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #[derive(Component)]
 /// struct Hiding;
 ///

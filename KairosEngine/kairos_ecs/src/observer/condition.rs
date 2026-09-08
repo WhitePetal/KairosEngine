@@ -70,7 +70,7 @@ impl<E: Event, B: Bundle, M, S: IntoObserverSystem<E, B, M>> ObserverWithConditi
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Event)]
     /// # struct MyEvent;
     /// # #[derive(Resource)]

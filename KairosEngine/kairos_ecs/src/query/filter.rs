@@ -70,8 +70,9 @@ use crate::{
 /// This trait can only be derived for structs if each field also implements `QueryFilter`.
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
-/// # use bevy_ecs::{query::QueryFilter, component::Component};
+/// # use kairos_ecs::prelude::*;
+/// # use kairos_ecs::{query::QueryFilter, component::Component};
+/// # use kairos_ecs_macros::QueryFilter;
 /// #
 /// # #[derive(Component)]
 /// # struct ComponentA;
@@ -95,7 +96,7 @@ use crate::{
 /// fn my_system(query: Query<Entity, MyFilter<ComponentD, ComponentE>>) {
 ///     // ...
 /// }
-/// # bevy_ecs::system::assert_is_system(my_system);
+/// # kairos_ecs::system::assert_is_system(my_system);
 /// ```
 ///
 /// [`Query`]: crate::system::Query
@@ -150,10 +151,10 @@ pub unsafe trait QueryFilter: WorldQuery {
 /// # Examples
 ///
 /// ```
-/// # use bevy_ecs::component::Component;
-/// # use bevy_ecs::query::With;
-/// # use bevy_ecs::system::IntoSystem;
-/// # use bevy_ecs::system::Query;
+/// # use kairos_ecs::component::Component;
+/// # use kairos_ecs::query::With;
+/// # use kairos_ecs::system::IntoSystem;
+/// # use kairos_ecs::system::Query;
 /// #
 /// # #[derive(Component)]
 /// # struct IsBeautiful;
@@ -165,7 +166,7 @@ pub unsafe trait QueryFilter: WorldQuery {
 ///         println!("{} is looking lovely today!", name.name);
 ///     }
 /// }
-/// # bevy_ecs::system::assert_is_system(compliment_entity_system);
+/// # kairos_ecs::system::assert_is_system(compliment_entity_system);
 /// ```
 pub struct With<T>(PhantomData<T>);
 
@@ -258,10 +259,10 @@ unsafe impl<T: Component> QueryFilter for With<T> {
 /// # Examples
 ///
 /// ```
-/// # use bevy_ecs::component::Component;
-/// # use bevy_ecs::query::Without;
-/// # use bevy_ecs::system::IntoSystem;
-/// # use bevy_ecs::system::Query;
+/// # use kairos_ecs::component::Component;
+/// # use kairos_ecs::query::Without;
+/// # use kairos_ecs::system::IntoSystem;
+/// # use kairos_ecs::system::Query;
 /// #
 /// # #[derive(Component)]
 /// # struct Permit;
@@ -273,7 +274,7 @@ unsafe impl<T: Component> QueryFilter for With<T> {
 ///         println!("{} has no permit!", name.name);
 ///     }
 /// }
-/// # bevy_ecs::system::assert_is_system(no_permit_system);
+/// # kairos_ecs::system::assert_is_system(no_permit_system);
 /// ```
 pub struct Without<T>(PhantomData<T>);
 
@@ -369,12 +370,12 @@ unsafe impl<T: Component> QueryFilter for Without<T> {
 /// # Examples
 ///
 /// ```
-/// # use bevy_ecs::component::Component;
-/// # use bevy_ecs::entity::Entity;
-/// # use bevy_ecs::query::Changed;
-/// # use bevy_ecs::query::Or;
-/// # use bevy_ecs::system::IntoSystem;
-/// # use bevy_ecs::system::Query;
+/// # use kairos_ecs::component::Component;
+/// # use kairos_ecs::entity::Entity;
+/// # use kairos_ecs::query::Changed;
+/// # use kairos_ecs::query::Or;
+/// # use kairos_ecs::system::IntoSystem;
+/// # use kairos_ecs::system::Query;
 /// #
 /// # #[derive(Component, Debug)]
 /// # struct Color {};
@@ -386,7 +387,7 @@ unsafe impl<T: Component> QueryFilter for Without<T> {
 ///         println!("Entity {} got a new style or color", entity);
 ///     }
 /// }
-/// # bevy_ecs::system::assert_is_system(print_cool_entity_system);
+/// # kairos_ecs::system::assert_is_system(print_cool_entity_system);
 /// ```
 pub struct Or<T>(PhantomData<T>);
 
@@ -748,11 +749,11 @@ unsafe impl<T: Component> QueryFilter for Allow<T> {
 /// For example, these two systems are roughly equivalent in terms of performance:
 ///
 /// ```
-/// # use bevy_ecs::change_detection::{DetectChanges, Ref};
-/// # use bevy_ecs::entity::Entity;
-/// # use bevy_ecs::query::Added;
-/// # use bevy_ecs::system::Query;
-/// # use bevy_ecs_macros::Component;
+/// # use kairos_ecs::change_detection::{DetectChanges, Ref};
+/// # use kairos_ecs::entity::Entity;
+/// # use kairos_ecs::query::Added;
+/// # use kairos_ecs::system::Query;
+/// # use kairos_ecs_macros::Component;
 /// # #[derive(Component)]
 /// # struct MyComponent;
 /// # #[derive(Component)]
@@ -772,10 +773,10 @@ unsafe impl<T: Component> QueryFilter for Allow<T> {
 /// # Examples
 ///
 /// ```
-/// # use bevy_ecs::component::Component;
-/// # use bevy_ecs::query::Added;
-/// # use bevy_ecs::system::IntoSystem;
-/// # use bevy_ecs::system::Query;
+/// # use kairos_ecs::component::Component;
+/// # use kairos_ecs::query::Added;
+/// # use kairos_ecs::system::IntoSystem;
+/// # use kairos_ecs::system::Query;
 /// #
 /// # #[derive(Component, Debug)]
 /// # struct Name {};
@@ -786,7 +787,7 @@ unsafe impl<T: Component> QueryFilter for Allow<T> {
 ///     }
 /// }
 ///
-/// # bevy_ecs::system::assert_is_system(print_add_name_component);
+/// # kairos_ecs::system::assert_is_system(print_add_name_component);
 /// ```
 pub struct Added<T>(PhantomData<T>);
 
@@ -982,12 +983,12 @@ unsafe impl<T: Component> QueryFilter for Added<T> {
 /// For example, these two systems are roughly equivalent in terms of performance:
 ///
 /// ```
-/// # use bevy_ecs::change_detection::DetectChanges;
-/// # use bevy_ecs::entity::Entity;
-/// # use bevy_ecs::query::Changed;
-/// # use bevy_ecs::system::Query;
-/// # use bevy_ecs::world::Ref;
-/// # use bevy_ecs_macros::Component;
+/// # use kairos_ecs::change_detection::DetectChanges;
+/// # use kairos_ecs::entity::Entity;
+/// # use kairos_ecs::query::Changed;
+/// # use kairos_ecs::system::Query;
+/// # use kairos_ecs::change_detection::Ref;
+/// # use kairos_ecs_macros::Component;
 /// # #[derive(Component)]
 /// # struct MyComponent;
 /// # #[derive(Component)]
@@ -1007,10 +1008,10 @@ unsafe impl<T: Component> QueryFilter for Added<T> {
 /// # Examples
 ///
 /// ```
-/// # use bevy_ecs::component::Component;
-/// # use bevy_ecs::query::Changed;
-/// # use bevy_ecs::system::IntoSystem;
-/// # use bevy_ecs::system::Query;
+/// # use kairos_ecs::component::Component;
+/// # use kairos_ecs::query::Changed;
+/// # use kairos_ecs::system::IntoSystem;
+/// # use kairos_ecs::system::Query;
 /// #
 /// # #[derive(Component, Debug)]
 /// # struct Name {};
@@ -1023,7 +1024,7 @@ unsafe impl<T: Component> QueryFilter for Added<T> {
 ///     }
 /// }
 ///
-/// # bevy_ecs::system::assert_is_system(print_moving_objects_system);
+/// # kairos_ecs::system::assert_is_system(print_moving_objects_system);
 /// ```
 pub struct Changed<T>(PhantomData<T>);
 
@@ -1213,10 +1214,10 @@ unsafe impl<T: Component> QueryFilter for Changed<T> {
 /// For example, these two systems are roughly equivalent in terms of performance:
 ///
 /// ```
-/// # use bevy_ecs::entity::Entity;
-/// # use bevy_ecs::system::Query;
-/// # use bevy_ecs::query::Spawned;
-/// # use bevy_ecs::query::SpawnDetails;
+/// # use kairos_ecs::entity::Entity;
+/// # use kairos_ecs::system::Query;
+/// # use kairos_ecs::query::Spawned;
+/// # use kairos_ecs::query::SpawnDetails;
 ///
 /// fn system1(query: Query<Entity, Spawned>) {
 ///     for entity in &query { /* entity spawned */ }
@@ -1232,10 +1233,10 @@ unsafe impl<T: Component> QueryFilter for Changed<T> {
 /// # Examples
 ///
 /// ```
-/// # use bevy_ecs::component::Component;
-/// # use bevy_ecs::query::Spawned;
-/// # use bevy_ecs::system::IntoSystem;
-/// # use bevy_ecs::system::Query;
+/// # use kairos_ecs::component::Component;
+/// # use kairos_ecs::query::Spawned;
+/// # use kairos_ecs::system::IntoSystem;
+/// # use kairos_ecs::system::Query;
 /// #
 /// # #[derive(Component, Debug)]
 /// # struct Name {};
@@ -1246,7 +1247,7 @@ unsafe impl<T: Component> QueryFilter for Changed<T> {
 ///     }
 /// }
 ///
-/// # bevy_ecs::system::assert_is_system(print_spawning_entities);
+/// # kairos_ecs::system::assert_is_system(print_spawning_entities);
 /// ```
 pub struct Spawned;
 

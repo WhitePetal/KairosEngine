@@ -11,7 +11,7 @@
 //! System functions often look like this:
 //!
 //! ```
-//! # use bevy_ecs::prelude::*;
+//! # use kairos_ecs::prelude::*;
 //! #
 //! # #[derive(Component)]
 //! # struct Player { alive: bool }
@@ -31,7 +31,7 @@
 //!     }
 //!     round.0 += 1;
 //! }
-//! # bevy_ecs::system::assert_is_system(update_score_system);
+//! # kairos_ecs::system::assert_is_system(update_score_system);
 //! ```
 //!
 //! # System ordering
@@ -54,7 +54,7 @@
 //! ## Example
 //!
 //! ```
-//! # use bevy_ecs::prelude::*;
+//! # use kairos_ecs::prelude::*;
 //! # let mut schedule = Schedule::default();
 //! # let mut world = World::new();
 //! // Configure these systems to run in order using `chain()`.
@@ -173,7 +173,7 @@ use crate::world::{FromWorld, World};
 /// # Examples
 ///
 /// ```
-/// use bevy_ecs::prelude::*;
+/// use kairos_ecs::prelude::*;
 ///
 /// fn my_system_function(a_usize_local: Local<usize>) {}
 ///
@@ -210,7 +210,7 @@ pub trait IntoSystem<In: SystemInput, Out, Marker>: Sized {
     /// outputs the value returned from the function.
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # let mut schedule = Schedule::default();
     /// // Ignores the output of a system that may fail.
     /// schedule.add_systems(my_system.map(drop));
@@ -241,7 +241,7 @@ pub trait IntoSystem<In: SystemInput, Out, Marker>: Sized {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// fn my_system(InMut(value): InMut<usize>) {
     ///     *value += 1;
@@ -252,7 +252,7 @@ pub trait IntoSystem<In: SystemInput, Out, Marker>: Sized {
     ///
     /// # let mut schedule = Schedule::default();
     /// schedule.add_systems(my_system.with_input(0));
-    /// # bevy_ecs::system::assert_is_system(my_system.with_input(0));
+    /// # kairos_ecs::system::assert_is_system(my_system.with_input(0));
     /// ```
     fn with_input<T>(self, value: T) -> WithInputWrapper<Self::System, T>
     where
@@ -272,7 +272,7 @@ pub trait IntoSystem<In: SystemInput, Out, Marker>: Sized {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// struct MyData {
     ///     value: usize,
@@ -293,7 +293,7 @@ pub trait IntoSystem<In: SystemInput, Out, Marker>: Sized {
     /// }
     /// # let mut schedule = Schedule::default();
     /// schedule.add_systems(my_system.with_input_from::<MyData>());
-    /// # bevy_ecs::system::assert_is_system(my_system.with_input_from::<MyData>());
+    /// # kairos_ecs::system::assert_is_system(my_system.with_input_from::<MyData>());
     /// ```
     fn with_input_from<T>(self) -> WithInputFromWrapper<Self::System, T>
     where
@@ -331,7 +331,7 @@ impl<T: System> IntoSystem<T::In, T::Out, ()> for T {
 /// multiple times.
 ///
 /// ```should_panic
-/// # use bevy_ecs::{prelude::*, system::assert_is_system};
+/// # use kairos_ecs::{prelude::*, system::assert_is_system};
 /// #
 /// # #[derive(Component)]
 /// # struct Transform;
@@ -364,7 +364,7 @@ pub fn assert_is_system<In: SystemInput, Out: 'static, Marker>(
 /// since the system accesses a component mutably.
 ///
 /// ```compile_fail
-/// # use bevy_ecs::{prelude::*, system::assert_is_read_only_system};
+/// # use kairos_ecs::{prelude::*, system::assert_is_read_only_system};
 /// #
 /// # #[derive(Component)]
 /// # struct Transform;

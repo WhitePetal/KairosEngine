@@ -74,7 +74,7 @@ impl<T> SyncUnsafeCell<[T]> {
     /// # Examples
     ///
     /// ```
-    /// # use bevy_platform::cell::SyncUnsafeCell;
+    /// # use kairos_ecs::cell::SyncUnsafeCell;
     ///
     /// let slice: &mut [i32] = &mut [1, 2, 3];
     /// let cell_slice: &SyncUnsafeCell<[i32]> = SyncUnsafeCell::from_mut(slice);

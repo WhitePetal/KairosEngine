@@ -444,8 +444,8 @@ impl Access {
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_ecs::query::{Access, ComponentAccessKind};
-    /// # use bevy_ecs::component::ComponentId;
+    /// # use kairos_ecs::query::{Access, ComponentAccessKind};
+    /// # use kairos_ecs::component::ComponentId;
     /// let mut access = Access::default();
     ///
     /// access.add_read(ComponentId::new(1));

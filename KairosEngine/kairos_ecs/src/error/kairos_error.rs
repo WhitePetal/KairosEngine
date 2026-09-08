@@ -43,7 +43,7 @@ mod tests;
 /// # Usage
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 ///
 /// fn fallible_system() -> Result<(), KairosError> {
 ///     // This will result in Rust's built-in ParseIntError, which will automatically
@@ -68,7 +68,7 @@ impl KairosError {
     /// # Examples
     ///
     /// ```
-    /// # use bevy_ecs::error::{KairosError, Severity};
+    /// # use kairos_ecs::error::{KairosError, Severity};
     ///
     /// fn some_function(val: i64) -> Result<(), KairosError> {
     ///     if val < 0 {
@@ -293,7 +293,7 @@ pub trait ResultSeverityExt<T, E>: Sized {
     ///
     /// # Example
     /// ```
-    /// # use bevy_ecs::error::{KairosError, ResultSeverityExt, Severity};
+    /// # use kairos_ecs::error::{KairosError, ResultSeverityExt, Severity};
     /// fn fallible() -> Result<(), KairosError> {
     ///     // This failure is expected in some contexts, so we downgrade its severity.
     ///     let _parsed: usize = "I am not a number"
@@ -311,7 +311,7 @@ pub trait ResultSeverityExt<T, E>: Sized {
     ///
     /// # Example
     /// ```
-    /// # use bevy_ecs::error::{KairosError, ResultSeverityExt, Severity};
+    /// # use kairos_ecs::error::{KairosError, ResultSeverityExt, Severity};
     /// # use thiserror::Error;
     /// # fn validate(_string: &str) -> Result<usize, ValidationError> {
     /// #     Err(ValidationError::IncorrectVersion)

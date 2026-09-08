@@ -26,7 +26,7 @@ mod tests;
 /// ## Tuples of [`SystemInput`]s
 ///
 /// ```
-/// use bevy_ecs::prelude::*;
+/// use kairos_ecs::prelude::*;
 ///
 /// fn add((InMut(a), In(b)): (InMut<usize>, In<usize>)) {
 ///     *a += b;
@@ -98,7 +98,7 @@ impl<'a, In: SystemInput> FromInput<In> for StaticSystemInput<'a, In> {
 /// Here is a simple example of a system that takes a [`usize`] and returns the square of it.
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #
 /// fn square(In(input): In<usize>) -> usize {
 ///     input * input
@@ -152,7 +152,7 @@ impl<T> DerefMut for In<T> {
 /// Here is a simple example of a system that logs the passed in message.
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// # use std::fmt::Write as _;
 /// #
 /// #[derive(Resource, Default)]
@@ -205,7 +205,7 @@ impl<'i, T: ?Sized> Deref for InRef<'i, T> {
 /// Here is a simple example of a system that takes a `&mut usize` and squares it.
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #
 /// fn square(InMut(input): InMut<usize>) {
 ///     *input *= *input;

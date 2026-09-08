@@ -20,8 +20,8 @@ pub type TypeIdMapEntry<'a, K, V> = Entry<'a, K, V>;
 ///
 /// ```rust
 /// # use std::any::TypeId;
-/// # use bevy_utils::TypeIdMap;
-/// use bevy_utils::TypeIdMapExt;
+/// # use kairos_collections::TypeIdMap;
+/// use kairos_collections::TypeIdMapExt;
 ///
 /// struct MyType;
 ///

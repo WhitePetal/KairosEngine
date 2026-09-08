@@ -271,8 +271,8 @@ where
 /// reset on every run and change detection does not work.
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
-/// # use bevy_ecs::system::RunSystemOnce;
+/// # use kairos_ecs::prelude::*;
+/// # use kairos_ecs::system::RunSystemOnce;
 /// #[derive(Resource, Default)]
 /// struct Counter(u8);
 ///
@@ -303,8 +303,8 @@ where
 ///
 /// This usage is helpful when trying to test systems or functions that operate on [`Commands`](crate::system::Commands):
 /// ```
-/// # use bevy_ecs::prelude::*;
-/// # use bevy_ecs::system::RunSystemOnce;
+/// # use kairos_ecs::prelude::*;
+/// # use kairos_ecs::system::RunSystemOnce;
 /// let mut world = World::default();
 /// let entity = world.run_system_once(|mut commands: Commands| {
 ///     commands.spawn_empty().id()
@@ -316,8 +316,8 @@ where
 ///
 /// This usage is helpful when trying to run an arbitrary query on a world for testing or debugging purposes:
 /// ```
-/// # use bevy_ecs::prelude::*;
-/// # use bevy_ecs::system::RunSystemOnce;
+/// # use kairos_ecs::prelude::*;
+/// # use kairos_ecs::system::RunSystemOnce;
 ///
 /// #[derive(Component)]
 /// struct T(usize);
@@ -336,8 +336,8 @@ where
 /// Note that instead of closures you can also pass in regular functions as systems:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
-/// # use bevy_ecs::system::RunSystemOnce;
+/// # use kairos_ecs::prelude::*;
+/// # use kairos_ecs::system::RunSystemOnce;
 ///
 /// #[derive(Component)]
 /// struct T(usize);

@@ -53,7 +53,7 @@ mod tests;
 /// A builder that can create a [`SystemParam`].
 ///
 /// ```
-/// # use bevy_ecs::{
+/// # use kairos_ecs::{
 /// #     prelude::*,
 /// #     system::{SystemParam, ParamBuilder},
 /// # };
@@ -70,7 +70,7 @@ mod tests;
 ///     // with a builder for each parameter.
 ///     // Note that the builder for a system must be a tuple,
 ///     // even if there is only one parameter.
-/// #   let _system: bevy_ecs::system::IntoBuilderSystem<fn(MyParam), (), (), _, _> =
+/// #   let _system: kairos_ecs::system::IntoBuilderSystem<fn(MyParam), (), (), _, _> =
 ///     (builder,)
 ///         .build_system(some_system);
 /// }
@@ -197,7 +197,7 @@ pub unsafe trait SystemParamBuilder<P: SystemParam>: Sized {
 /// ## Example
 ///
 /// ```
-/// # use bevy_ecs::{
+/// # use kairos_ecs::{
 /// #     prelude::*,
 /// #     system::{SystemParam, ParamBuilder},
 /// # };
@@ -526,7 +526,7 @@ unsafe impl<'w, 's, D: QueryData + 'static, F: QueryFilter + 'static>
 /// ## Example
 ///
 /// ```
-/// # use bevy_ecs::{
+/// # use kairos_ecs::{
 /// #     prelude::*,
 /// #     system::{SystemParam, QueryParamBuilder},
 /// # };
@@ -663,7 +663,7 @@ unsafe impl<P: SystemParam, B: SystemParamBuilder<P>, const N: usize>
 /// # Examples
 ///
 /// ```
-/// # use bevy_ecs::{prelude::*, system::*};
+/// # use kairos_ecs::{prelude::*, system::*};
 /// #
 /// # #[derive(Component)]
 /// # struct Health;
@@ -690,7 +690,11 @@ unsafe impl<P: SystemParam, B: SystemParamBuilder<P>, const N: usize>
 /// # world.run_system_once(system);
 ///
 /// fn buildable_system_with_tuple(
-///     mut set: ParamSet<(Query<&mut Health>, Query<&mut Health>, &World)>,
+///     mut set: ParamSet<(
+///         Query<&'static mut Health, With<Enemy>>,
+///         Query<&'static mut Health, With<Ally>>,
+///         &'static World,
+///     )>,
 /// ) {
 ///     // The first parameter is built from the first builder,
 ///     // so this will iterate over enemies.
@@ -714,7 +718,7 @@ unsafe impl<P: SystemParam, B: SystemParamBuilder<P>, const N: usize>
 ///     .build_system(buildable_system_with_vec);
 /// # world.run_system_once(system);
 ///
-/// fn buildable_system_with_vec(mut set: ParamSet<Vec<Query<&mut Health>>>) {
+/// fn buildable_system_with_vec(mut set: ParamSet<Vec<Query<&'static mut Health>>>) {
 ///     // As with tuples, the first parameter is built from the first builder,
 ///     // so this will iterate over enemies.
 ///     for mut health in set.get_mut(0).iter_mut() {}
@@ -796,7 +800,7 @@ unsafe impl<'a, 'w, 's> SystemParamBuilder<DynSystemParam<'w, 's>> for DynParamB
 /// ## Example
 ///
 /// ```
-/// # use bevy_ecs::{
+/// # use kairos_ecs::{
 /// #     prelude::*,
 /// #     system::{SystemParam, LocalBuilder, RunSystemOnce},
 /// # };

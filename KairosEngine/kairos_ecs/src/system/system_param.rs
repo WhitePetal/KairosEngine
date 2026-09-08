@@ -84,7 +84,7 @@ mod tests;
 /// The following list shows the most common [`SystemParam`]s and which lifetime they require
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// # #[derive(Component)]
 /// # struct SomeComponent;
 /// # #[derive(Resource)]
@@ -93,7 +93,7 @@ mod tests;
 /// # struct SomeMessage;
 /// # #[derive(Resource)]
 /// # struct SomeOtherResource;
-/// # use bevy_ecs::system::SystemParam;
+/// # use kairos_ecs::system::SystemParam;
 /// # #[derive(SystemParam)]
 /// # struct ParamsExample<'w, 's> {
 /// #    query:
@@ -122,11 +122,11 @@ mod tests;
 /// # Example
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// # #[derive(Resource)]
 /// # struct SomeResource;
 /// use std::marker::PhantomData;
-/// use bevy_ecs::system::SystemParam;
+/// use kairos_ecs::system::SystemParam;
 ///
 /// #[derive(SystemParam)]
 /// struct MyParam<'w, Marker: 'static> {
@@ -138,7 +138,7 @@ mod tests;
 ///     // Access the resource through `param.foo`
 /// }
 ///
-/// # bevy_ecs::system::assert_is_system(my_system::<()>);
+/// # kairos_ecs::system::assert_is_system(my_system::<()>);
 /// ```
 ///
 /// # Generic `SystemParam`s
@@ -171,10 +171,10 @@ mod tests;
 /// If you want to override the error message, add a `#[system_param(validation_message = "New message")]` attribute to the parameter.
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// # #[derive(Resource)]
 /// # struct SomeResource;
-/// # use bevy_ecs::system::SystemParam;
+/// # use kairos_ecs::system::SystemParam;
 /// #
 /// #[derive(SystemParam)]
 /// struct MyParam<'w> {
@@ -198,7 +198,7 @@ mod tests;
 ///
 /// ```
 /// mod custom_param {
-/// #     use bevy_ecs::{
+/// #     use kairos_ecs::{
 /// #         prelude::*,
 /// #         system::{LocalBuilder, QueryParamBuilder, SystemParam},
 /// #     };
@@ -225,7 +225,7 @@ mod tests;
 ///
 /// use custom_param::CustomParam;
 ///
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// # #[derive(Component)]
 /// # struct A;
 /// #
@@ -293,7 +293,7 @@ pub unsafe trait SystemParam: Sized {
     /// an appropriate [`SystemParamValidationError`] should be returned.
     /// Systems will convert this to a [`RunSystemError`](super::RunSystemError),
     /// and the built-in executors will ignore any "skipped" validation results,
-    /// but pass any "invalid" results to the fallback error handler defined in [`bevy_ecs::error`].
+    /// but pass any "invalid" results to the fallback error handler defined in [`kairos_ecs::error`].
     ///
     /// For nested [`SystemParam`]s validation will fail if any
     /// delegated validation fails.
@@ -482,7 +482,7 @@ unsafe impl<'w, 's, D: ReadOnlyQueryData + 'static, F: QueryFilter + 'static> Re
 /// which is not allowed due to rust's mutability rules.
 ///
 /// ```should_panic
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #
 /// # #[derive(Component)]
 /// # struct Health;
@@ -511,7 +511,7 @@ unsafe impl<'w, 's, D: ReadOnlyQueryData + 'static, F: QueryFilter + 'static> Re
 /// which leverages the borrow checker to ensure that only one of the contained parameters are accessed at a given time.
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #
 /// # #[derive(Component)]
 /// # struct Health;
@@ -525,8 +525,8 @@ unsafe impl<'w, 's, D: ReadOnlyQueryData + 'static, F: QueryFilter + 'static> Re
 /// // Given the following system
 /// fn fancy_system(
 ///     mut set: ParamSet<(
-///         Query<&mut Health, With<Enemy>>,
-///         Query<&mut Health, With<Ally>>,
+///         Query<&'static mut Health, With<Enemy>>,
+///         Query<&'static mut Health, With<Ally>>,
 ///     )>
 /// ) {
 ///     // This will access the first `SystemParam`.
@@ -540,13 +540,13 @@ unsafe impl<'w, 's, D: ReadOnlyQueryData + 'static, F: QueryFilter + 'static> Re
 ///         // Do even fancier stuff here...
 ///     }
 /// }
-/// # bevy_ecs::system::assert_is_system(fancy_system);
+/// # kairos_ecs::system::assert_is_system(fancy_system);
 /// ```
 ///
 /// Of course, `ParamSet`s can be used with any kind of `SystemParam`, not just [queries](Query).
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #
 /// # #[derive(Message)]
 /// # struct MyMessage;
@@ -580,7 +580,7 @@ unsafe impl<'w, 's, D: ReadOnlyQueryData + 'static, F: QueryFilter + 'static> Re
 ///     // ...
 ///     # let _entities = entities;
 /// }
-/// # bevy_ecs::system::assert_is_system(message_system);
+/// # kairos_ecs::system::assert_is_system(message_system);
 /// ```
 pub struct ParamSet<'w, 's, T: SystemParam> {
     param_states: &'s mut T::State,
@@ -919,7 +919,7 @@ unsafe impl<'w> SystemParam for DeferredWorld<'w> {
 /// # Examples
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// # let world = &mut World::default();
 /// fn counter(mut count: Local<u32>) -> u32 {
 ///     *count += 1;
@@ -937,7 +937,7 @@ unsafe impl<'w> SystemParam for DeferredWorld<'w> {
 /// A simple way to set a different default value for a local is by wrapping the value with an Option.
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// # let world = &mut World::default();
 /// fn counter_from_10(mut count: Local<Option<u32>>) -> u32 {
 ///     let count = count.get_or_insert(10);
@@ -956,7 +956,7 @@ unsafe impl<'w> SystemParam for DeferredWorld<'w> {
 /// A system can have multiple `Local` values with the same type, each with distinct values.
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// # let world = &mut World::default();
 /// fn double_counter(mut count: Local<u32>, mut double_count: Local<u32>) -> (u32, u32) {
 ///     *count += 1;
@@ -973,7 +973,7 @@ unsafe impl<'w> SystemParam for DeferredWorld<'w> {
 /// This example shows that two systems using the same type for their own `Local` get distinct locals.
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// # let world = &mut World::default();
 /// fn write_to_local(mut local: Local<usize>) {
 ///     *local = 42;
@@ -995,7 +995,7 @@ unsafe impl<'w> SystemParam for DeferredWorld<'w> {
 /// You can use a `Local` to avoid reallocating memory every system call.
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// fn some_system(mut vec: Local<Vec<u32>>) {
 ///     // Do your regular system logic, using the vec, as normal.
 ///
@@ -1009,8 +1009,8 @@ unsafe impl<'w> SystemParam for DeferredWorld<'w> {
 /// To add configuration to a system, convert a capturing closure into the system instead:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
-/// # use bevy_ecs::system::assert_is_system;
+/// # use kairos_ecs::prelude::*;
+/// # use kairos_ecs::system::assert_is_system;
 /// struct Config(u32);
 /// #[derive(Resource)]
 /// struct MyU32Wrapper(u32);
@@ -1133,8 +1133,8 @@ pub trait SystemBuffer: FromWorld + Send + 'static {
 /// or which otherwise take up a small portion of a system's run-time.
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
-/// # use bevy_ecs::world::DeferredWorld;
+/// # use kairos_ecs::prelude::*;
+/// # use kairos_ecs::world::DeferredWorld;
 /// // Tracks whether or not there is a threat the player should be aware of.
 /// #[derive(Resource, Default)]
 /// pub struct Alarm(bool);
@@ -1154,7 +1154,7 @@ pub trait SystemBuffer: FromWorld + Send + 'static {
 ///
 /// # impl Criminal { pub fn is_threat(&self, _: &Settlement) -> bool { true } }
 ///
-/// use bevy_ecs::system::{Deferred, SystemBuffer, SystemMeta};
+/// use kairos_ecs::system::{Deferred, SystemBuffer, SystemMeta};
 ///
 /// // Uses deferred mutations to allow signaling the alarm from multiple systems in parallel.
 /// #[derive(Resource, Default)]
@@ -1775,7 +1775,7 @@ unsafe impl<T: ReadOnlySystemParam> ReadOnlySystemParam for Result<T, SystemPara
 /// # Example
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// # #[derive(Resource)]
 /// # struct SomeResource;
 /// // This system will fail if `SomeResource` is not present.
@@ -1786,7 +1786,7 @@ unsafe impl<T: ReadOnlySystemParam> ReadOnlySystemParam for Result<T, SystemPara
 ///     // The inner parameter is available using `Deref`
 ///     let some_resource: &SomeResource = &res;
 /// }
-/// # bevy_ecs::system::assert_is_system(skips_on_missing_resource);
+/// # kairos_ecs::system::assert_is_system(skips_on_missing_resource);
 /// ```
 #[derive(Debug)]
 pub struct If<T>(pub T);
@@ -1797,13 +1797,13 @@ impl<T> If<T> {
     /// The inner value is `pub`, so you can also obtain it by destructuring the parameter:
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Resource)]
     /// # struct SomeResource;
     /// fn skips_on_missing_resource(If(res): If<Res<SomeResource>>) {
     ///     let some_resource: Res<SomeResource> = res;
     /// }
-    /// # bevy_ecs::system::assert_is_system(skips_on_missing_resource);
+    /// # kairos_ecs::system::assert_is_system(skips_on_missing_resource);
     /// ```
     pub fn into_inner(self) -> T {
         self.0
@@ -2195,8 +2195,8 @@ pub mod lifetimeless {
 /// derive:
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
-/// use bevy_ecs::system::{SystemParam, StaticSystemParam};
+/// # use kairos_ecs::prelude::*;
+/// use kairos_ecs::system::{SystemParam, StaticSystemParam};
 /// #[derive(SystemParam)]
 /// struct GenericParam<'w,'s, T: SystemParam + 'static> {
 ///     field: StaticSystemParam<'w, 's, T>,
@@ -2204,7 +2204,7 @@ pub mod lifetimeless {
 /// fn do_thing_generically<T: SystemParam + 'static>(t: StaticSystemParam<T>) {}
 ///
 /// fn check_always_is_system<T: SystemParam + 'static>(){
-///     bevy_ecs::system::assert_is_system(do_thing_generically::<T>);
+///     kairos_ecs::system::assert_is_system(do_thing_generically::<T>);
 /// }
 /// ```
 /// Note that in a real case you'd generally want
@@ -2219,8 +2219,8 @@ pub mod lifetimeless {
 ///
 /// The method which doesn't use this type will not compile:
 /// ```compile_fail
-/// # use bevy_ecs::prelude::*;
-/// # use bevy_ecs::system::{SystemParam, StaticSystemParam};
+/// # use kairos_ecs::prelude::*;
+/// # use kairos_ecs::system::{SystemParam, StaticSystemParam};
 ///
 /// fn do_thing_generically<T: SystemParam + 'static>(t: T) {}
 ///
@@ -2231,7 +2231,7 @@ pub mod lifetimeless {
 ///     phantom: std::marker::PhantomData<&'w &'s ()>
 /// }
 /// # fn check_always_is_system<T: SystemParam + 'static>(){
-/// #    bevy_ecs::system::assert_is_system(do_thing_generically::<T>);
+/// #    kairos_ecs::system::assert_is_system(do_thing_generically::<T>);
 /// # }
 /// ```
 pub struct StaticSystemParam<'w, 's, P: SystemParam>(SystemParamItem<'w, 's, P>);
@@ -2337,7 +2337,7 @@ unsafe impl<T: ?Sized> ReadOnlySystemParam for PhantomData<T> {}
 /// # Examples
 ///
 /// ```
-/// # use bevy_ecs::{prelude::*, system::*};
+/// # use kairos_ecs::{prelude::*, system::*};
 /// #
 /// # #[derive(Default, Resource)]
 /// # struct A;
@@ -2726,7 +2726,7 @@ unsafe impl SystemParam for FilteredResourcesMut<'_, '_> {
 /// used by system executors to determine what to do with a system.
 ///
 /// Returned as an error from [`SystemParam::get_param`],
-/// and handled using the unified error handling mechanisms defined in [`bevy_ecs::error`].
+/// and handled using the unified error handling mechanisms defined in [`kairos_ecs::error`].
 #[derive(Debug, PartialEq, Eq, Clone, Error)]
 pub struct SystemParamValidationError {
     /// Whether the system should be skipped.

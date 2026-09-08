@@ -386,7 +386,7 @@ impl<'w> EntityWorldMut<'w> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// #[derive(Component)]
     /// struct X(usize);
@@ -426,7 +426,7 @@ impl<'w> EntityWorldMut<'w> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// #[derive(Component)]
     /// struct X(usize);
@@ -454,7 +454,7 @@ impl<'w> EntityWorldMut<'w> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// #[derive(Component)]
     /// struct X(usize);
@@ -504,7 +504,7 @@ impl<'w> EntityWorldMut<'w> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// #[derive(Component)]
     /// struct X(usize);
@@ -520,7 +520,7 @@ impl<'w> EntityWorldMut<'w> {
     /// ```
     ///
     /// ```should_panic
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// # #[derive(Component)]
     /// # struct X(usize);
@@ -602,7 +602,7 @@ impl<'w> EntityWorldMut<'w> {
     /// # Examples
     ///
     /// ```rust
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #
     /// #[derive(Component, PartialEq, Eq, Debug)]
     /// #[component(immutable)]
@@ -1938,7 +1938,7 @@ impl<'w> EntityWorldMut<'w> {
     /// # Examples
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #[derive(Resource, Default, Clone, Copy)]
     /// struct R(u32);
     ///
@@ -2006,7 +2006,7 @@ impl<'w> EntityWorldMut<'w> {
     /// # Examples
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// #[derive(Component, Default, Clone, Copy, Debug, PartialEq)]
     /// struct Comp(u32);
     ///
@@ -2075,7 +2075,7 @@ impl<'w> EntityWorldMut<'w> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Component, Clone, PartialEq, Debug)]
     /// # struct ComponentA;
     /// # #[derive(Component, Clone, PartialEq, Debug)]
@@ -2123,7 +2123,7 @@ impl<'w> EntityWorldMut<'w> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # #[derive(Component, Clone, PartialEq, Debug)]
     /// # struct ComponentA;
     /// # #[derive(Component, Clone, PartialEq, Debug)]
@@ -2187,7 +2187,7 @@ impl<'w> EntityWorldMut<'w> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # let mut world = World::new();
     /// # let entity = world.spawn((ComponentA, ComponentB)).id();
     /// # #[derive(Component, Clone, PartialEq, Debug)]
@@ -2233,7 +2233,7 @@ impl<'w> EntityWorldMut<'w> {
     /// # Example
     ///
     /// ```
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// # let mut world = World::new();
     /// # let entity = world.spawn((ComponentA, ComponentB)).id();
     /// # #[derive(Component, Clone, PartialEq, Debug)]

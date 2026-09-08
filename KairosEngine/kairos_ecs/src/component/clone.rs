@@ -162,7 +162,7 @@ pub fn component_clone_via_clone<C: Clone + Component>(
 //             // - component is a valid value represented by component_id
 //             unsafe {
 //                 use alloc::boxed::Box;
-//                 use bevy_ptr::OwningPtr;
+//                 use kairos_ecs::ptr::OwningPtr;
 
 //                 let raw_component_ptr =
 //                     core::ptr::NonNull::new_unchecked(Box::into_raw(component).cast::<u8>());

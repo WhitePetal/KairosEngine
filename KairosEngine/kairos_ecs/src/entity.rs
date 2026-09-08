@@ -271,7 +271,7 @@ impl EntityGeneration {
     /// Generations that are later will be [`Greater`](core::cmp::Ordering::Greater) than earlier ones.
     ///
     /// ```
-    /// # use bevy_ecs::entity::EntityGeneration;
+    /// # use kairos_ecs::entity::EntityGeneration;
     /// # use core::cmp::Ordering;
     /// let later_generation = EntityGeneration::FIRST.after_versions(400);
     /// assert_eq!(EntityGeneration::FIRST.cmp_approx(&later_generation), Ordering::Less);
@@ -285,7 +285,7 @@ impl EntityGeneration {
     /// for distant generations:
     ///
     /// ```should_panic
-    /// # use bevy_ecs::entity::EntityGeneration;
+    /// # use kairos_ecs::entity::EntityGeneration;
     /// # use core::cmp::Ordering;
     /// let later_generation = EntityGeneration::FIRST.after_versions(3u32 << 31);
     /// let much_later_generation = later_generation.after_versions(3u32 << 31);
@@ -345,7 +345,7 @@ impl EntityGeneration {
 /// It can also be obtained by calling [`EntityCommands::id`] or [`EntityWorldMut::id`].
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// # #[derive(Component)]
 /// # struct SomeComponent;
 /// fn setup(mut commands: Commands) {
@@ -358,14 +358,14 @@ impl EntityGeneration {
 ///     let entity = world.spawn(SomeComponent).id();
 /// }
 /// #
-/// # bevy_ecs::system::assert_is_system(setup);
-/// # bevy_ecs::system::assert_is_system(exclusive_system);
+/// # kairos_ecs::system::assert_is_system(setup);
+/// # kairos_ecs::system::assert_is_system(exclusive_system);
 /// ```
 ///
 /// It can be used to refer to a specific entity to apply [`EntityCommands`], or to call [`Query::get`] (or similar methods) to access its components.
 ///
 /// ```
-/// # use bevy_ecs::prelude::*;
+/// # use kairos_ecs::prelude::*;
 /// #
 /// # #[derive(Component)]
 /// # struct Expired;
@@ -376,7 +376,7 @@ impl EntityGeneration {
 ///     }
 /// }
 /// #
-/// # bevy_ecs::system::assert_is_system(dispose_expired_food);
+/// # kairos_ecs::system::assert_is_system(dispose_expired_food);
 /// ```
 ///
 /// [learn more]: crate::system::Query#entity-id-access
@@ -458,17 +458,20 @@ impl Entity {
     /// Initializing a collection (e.g. `array` or `Vec`) with a known size:
     ///
     /// ```no_run
-    /// # use bevy_ecs::prelude::*;
+    /// # use kairos_ecs::prelude::*;
     /// // Create a new array of size 10 filled with invalid entity ids.
     /// let mut entities: [Entity; 10] = [Entity::PLACEHOLDER; 10];
     ///
     /// // ... replace the entities with valid ones.
     /// ```
     ///
-    /// Deriving [`Reflect`] for a component that has an `Entity` field:
+    /// Deriving `Reflect` for a component that has an `Entity` field:
     ///
-    /// ```no_run
-    /// # use bevy_ecs::{prelude::*, component::*};
+    /// ```ignore
+    /// // `Reflect` is only available through the reflection integration behind the
+    /// // `kairos_reflect` feature, which is not wired to a crate yet; until then
+    /// // this example is not compiled.
+    /// # use kairos_ecs::{prelude::*, component::*};
     /// # use bevy_reflect::Reflect;
     /// #[derive(Reflect, Component)]
     /// #[reflect(Component)]
@@ -732,7 +735,7 @@ impl EntityAllocator {
     /// But remember, since this entity is not queryable and is not discoverable, losing the returned [`Entity`] effectively leaks it, never to be used again!
     ///
     /// ```
-    /// # use bevy_ecs::{prelude::*};
+    /// # use kairos_ecs::{prelude::*};
     /// let mut world = World::new();
     /// let entity = world.entity_allocator().alloc();
     /// // wait as long as you like

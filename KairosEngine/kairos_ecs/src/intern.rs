@@ -29,7 +29,7 @@ mod tests;
 /// the same [`Interner`] instance.
 // NOTE: This type must NEVER implement Borrow since it does not obey that trait's invariants.
 /// ```
-/// # use bevy_ecs::intern::*;
+/// # use kairos_ecs::intern::*;
 /// #[derive(PartialEq, Eq, Hash, Debug)]
 /// struct Value(i32);
 /// impl Internable for Value {
