@@ -286,6 +286,33 @@ impl SystemExecutor for MultiThreadedExecutor {
                 context.tick_executor();
             },
         );
+
+        // End the borrows of self and world in environment by copying out the reference to systems.
+        let systems = environment.systems;
+
+        let state = self.state.get_mut().unwrap();
+        if self.apply_final_deferred {
+            // Do one final apply buffers after all systems have completed
+            // Commands should be applied while on the scope's thread, not the executor's thread
+            let res = apply_deferred(&state.unapplied_systems, systems, world);
+            if let Err(payload) = res {
+                let panic_payload = self.panic_payload.get_mut().unwrap();
+                *panic_payload = Some(payload);
+            }
+            state.unapplied_systems.clear();
+        }
+
+        // check to see if there was a panic
+        let payload = self.panic_payload.get_mut().unwrap();
+        if let Some(payload) = payload.take() {
+            std::panic::resume_unwind(payload);
+        }
+
+        debug_assert!(state.ready_systems.is_clear());
+        debug_assert!(state.running_systems.is_clear());
+        state.evaluated_sets.clear();
+        state.skipped_systems.clear();
+        state.completed_systems.clear();
     }
 
     fn set_apply_final_deferred(&mut self, value: bool) {

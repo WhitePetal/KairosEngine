@@ -199,23 +199,23 @@ pub unsafe fn trigger_entity_internal(
                 trigger.reborrow(),
             )
         }
+    }
 
-        if let Some(map) = observers.entity_observers().get(&target_entity) {
-            for (observer, runner) in map {
-                // SAFETY:
-                // - `observers` come from `world` and match the `event` type, enforced by the call to `trigger_entity_internal`
-                // - the passed in event pointer is an `Event`, enforced by the call to `trigger_entity_internal`
-                // - `trigger` is a matching trigger type, enforced by the call to `trigger_entity_internal`
-                // - `trigger_context`'s event_key matches `E`, enforced by the call to `trigger_entity_internal`
-                unsafe {
-                    (runner)(
-                        world.reborrow(),
-                        *observer,
-                        trigger_context,
-                        event.reborrow(),
-                        trigger.reborrow(),
-                    );
-                }
+    if let Some(map) = observers.entity_observers().get(&target_entity) {
+        for (observer, runner) in map {
+            // SAFETY:
+            // - `observers` come from `world` and match the `event` type, enforced by the call to `trigger_entity_internal`
+            // - the passed in event pointer is an `Event`, enforced by the call to `trigger_entity_internal`
+            // - `trigger` is a matching trigger type, enforced by the call to `trigger_entity_internal`
+            // - `trigger_context`'s event_key matches `E`, enforced by the call to `trigger_entity_internal`
+            unsafe {
+                (runner)(
+                    world.reborrow(),
+                    *observer,
+                    trigger_context,
+                    event.reborrow(),
+                    trigger.reborrow(),
+                );
             }
         }
     }

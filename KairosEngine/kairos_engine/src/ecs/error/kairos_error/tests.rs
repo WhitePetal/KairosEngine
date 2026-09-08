@@ -27,28 +27,26 @@ fn filtered_backtrace_test() {
 
     // On mac backtraces can start with Backtrace::create
     // Rust 1.95 changed the format to use angle brackets: <std::backtrace::Backtrace>::create
-    let mut skip = false;
-    if let Some(line) = lines.peek()
-        && (line[6..] == *"std::backtrace::Backtrace::create"
-            || line[6..] == *"<std::backtrace::Backtrace>::create")
-    {
-        skip = true;
-    }
-
-    if skip {
+    // Rust 1.98 stopped inlining create into capture, so more than one of these frames can appear
+    while lines.peek().is_some_and(|line| {
+        let symbol = line.get(6..).unwrap_or("");
+        symbol.starts_with("std::backtrace::Backtrace::")
+            || symbol.starts_with("<std::backtrace::Backtrace>::")
+    }) {
         lines.next().unwrap();
     }
 
     let expected_lines = std::vec![
-        "bevy_ecs::error::bevy_error::tests::filtered_backtrace_test::i_fail",
-        "bevy_ecs::error::bevy_error::tests::filtered_backtrace_test",
-        "bevy_ecs::error::bevy_error::tests::filtered_backtrace_test::{{closure}}",
-        "core::ops::function::FnOnce::call_once",
+        "<kairos_engine::ecs::error::kairos_error::KairosError as core::convert::From<core::num::error::ParseIntError>>::from",
+        "<core::result::Result<(), kairos_engine::ecs::error::kairos_error::KairosError> as core::ops::try_trait::FromResidual<core::result::Result<core::convert::Infallible, core::num::error::ParseIntError>>>::from_residual",
+        "kairos_engine::ecs::error::kairos_error::tests::filtered_backtrace_test::i_fail",
+        "kairos_engine::ecs::error::kairos_error::tests::filtered_backtrace_test",
+        "kairos_engine::ecs::error::kairos_error::tests::filtered_backtrace_test::{closure#0}",
+        "<kairos_engine::ecs::error::kairos_error::tests::filtered_backtrace_test::{closure#0} as core::ops::function::FnOnce<()>>::call_once",
     ];
 
     for expected in expected_lines {
-        let line = lines.next().unwrap();
-        assert_eq!(&line[6..], expected);
+        // On mac, it can sometimes start with an "at" line
         let mut skip = false;
         if let Some(line) = lines.peek()
             && line.starts_with("             at")
@@ -59,12 +57,15 @@ fn filtered_backtrace_test() {
         if skip {
             lines.next().unwrap();
         }
+
+        let line = lines.next().unwrap();
+        assert_eq!(&line[6..], expected);
     }
 
-    // on linux there is a second call_once
+    // To handle any potential "at" line after the expected lines
     let mut skip = false;
     if let Some(line) = lines.peek()
-        && &line[6..] == "core::ops::function::FnOnce::call_once"
+        && line.starts_with("             at")
     {
         skip = true;
     }
@@ -72,6 +73,21 @@ fn filtered_backtrace_test() {
     if skip {
         lines.next().unwrap();
     }
+
+    // on some platforms there is a second call_once
+    let mut skip = false;
+    if let Some(line) = lines.peek()
+        && &line[6..]
+            == "<fn() -> core::result::Result<(), alloc::string::String> as core::ops::function::FnOnce<()>>::call_once"
+    {
+        skip = true;
+    }
+
+    if skip {
+        lines.next().unwrap();
+    }
+
+    // To handle any potential "at" line after the second call_once
     let mut skip = false;
     if let Some(line) = lines.peek()
         && line.starts_with("             at")

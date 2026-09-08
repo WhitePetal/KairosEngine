@@ -5,5 +5,5 @@ mod type_id_map;
 
 pub use fixed_hashmap::FixedHashMap;
 pub use fixed_hashset::FixedHashSet;
-pub use pre_hash_map::PreHashMap;
-pub use type_id_map::TypeIdMap;
+pub use pre_hash_map::{PreHashMap, PreHashMapExt};
+pub use type_id_map::{TypeIdMap, TypeIdMapEntry, TypeIdMapExt};

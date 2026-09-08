@@ -777,7 +777,7 @@ mod system_execution {
         }
     }
 
-    mod system_ambigutiy {
+    mod system_ambiguity {
         #[cfg(feature = "trace")]
         use std::collections::BTreeSet;
 
@@ -1178,22 +1178,22 @@ mod system_execution {
                 (
                     "system_d".to_string(),
                     "system_a".to_string(),
-                    vec!["bevy_ecs::schedule::tests::system_ambiguity::R".into()],
+                    vec!["kairos_engine::ecs::schedule::tests::system_execution::system_ambiguity::R".into()],
                 ),
                 (
                     "system_d".to_string(),
                     "system_e".to_string(),
-                    vec!["bevy_ecs::schedule::tests::system_ambiguity::R".into()],
+                    vec!["kairos_engine::ecs::schedule::tests::system_execution::system_ambiguity::R".into()],
                 ),
                 (
                     "system_b".to_string(),
                     "system_a".to_string(),
-                    vec!["bevy_ecs::schedule::tests::system_ambiguity::R".into()],
+                    vec!["kairos_engine::ecs::schedule::tests::system_execution::system_ambiguity::R".into()],
                 ),
                 (
                     "system_b".to_string(),
                     "system_e".to_string(),
-                    vec!["bevy_ecs::schedule::tests::system_ambiguity::R".into()],
+                    vec!["kairos_engine::ecs::schedule::tests::system_execution::system_ambiguity::R".into()],
                 ),
             ];
 
@@ -1238,7 +1238,7 @@ mod system_execution {
                 (
                     "resmut_system (in set (resmut_system, resmut_system))".to_string(),
                     "resmut_system (in set (resmut_system, resmut_system))".to_string(),
-                    vec!["bevy_ecs::schedule::tests::system_ambiguity::R".into()],
+                    vec!["kairos_engine::ecs::schedule::tests::system_execution::system_ambiguity::R".into()],
                 )
             );
         }

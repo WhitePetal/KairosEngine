@@ -1376,17 +1376,17 @@ fn observer_new_old_archetypes() {
     assert_eq!(
         &world.resource_mut::<Changes>().0,
         &[
-            ("kairos_ecs::lifecycle::Add", None, Some(ab)),
-            ("kairos_ecs::lifecycle::Insert", None, Some(ab)),
-            ("kairos_ecs::lifecycle::Discard", Some(ab), Some(empty)),
-            ("kairos_ecs::lifecycle::Remove", Some(ab), Some(empty)),
-            ("kairos_ecs::lifecycle::Add", Some(empty), Some(a)),
-            ("kairos_ecs::lifecycle::Insert", Some(empty), Some(a)),
-            ("kairos_ecs::lifecycle::Discard", Some(a), Some(a)),
-            ("kairos_ecs::lifecycle::Insert", Some(a), Some(a)),
-            ("kairos_ecs::lifecycle::Despawn", Some(a), None),
-            ("kairos_ecs::lifecycle::Discard", Some(a), None),
-            ("kairos_ecs::lifecycle::Remove", Some(a), None),
+            ("kairos_engine::ecs::lifecycle::Add", None, Some(ab)),
+            ("kairos_engine::ecs::lifecycle::Insert", None, Some(ab)),
+            ("kairos_engine::ecs::lifecycle::Discard", Some(ab), Some(empty)),
+            ("kairos_engine::ecs::lifecycle::Remove", Some(ab), Some(empty)),
+            ("kairos_engine::ecs::lifecycle::Add", Some(empty), Some(a)),
+            ("kairos_engine::ecs::lifecycle::Insert", Some(empty), Some(a)),
+            ("kairos_engine::ecs::lifecycle::Discard", Some(a), Some(a)),
+            ("kairos_engine::ecs::lifecycle::Insert", Some(a), Some(a)),
+            ("kairos_engine::ecs::lifecycle::Despawn", Some(a), None),
+            ("kairos_engine::ecs::lifecycle::Discard", Some(a), None),
+            ("kairos_engine::ecs::lifecycle::Remove", Some(a), None),
         ],
     );
 }

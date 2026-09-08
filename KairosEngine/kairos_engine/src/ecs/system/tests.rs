@@ -1500,7 +1500,7 @@ fn test_combinator_clone() {
 #[test]
 #[cfg_attr(not(feature = "debug"), ignore)]
 #[should_panic(
-    expected = "Encountered an error in system `bevy_ecs::system::tests::simple_fallible_system::sys`: error"
+    expected = "Encountered an error in system `kairos_engine::ecs::system::tests::simple_fallible_system::sys`: error"
 )]
 fn simple_fallible_system() {
     fn sys() -> Result {
@@ -1515,7 +1515,7 @@ fn simple_fallible_system() {
 #[test]
 #[cfg_attr(not(feature = "debug"), ignore)]
 #[should_panic(
-    expected = "Encountered an error in system `bevy_ecs::system::tests::simple_fallible_exclusive_system::sys`: error"
+    expected = "Encountered an error in system `kairos_engine::ecs::system::tests::simple_fallible_exclusive_system::sys`: error"
 )]
 fn simple_fallible_exclusive_system() {
     fn sys(_world: &mut World) -> Result {

@@ -205,11 +205,13 @@ impl KairosError {
                             skip_next_location_line = true;
                             continue;
                         }
-                        if line.contains("std::backtrace::Backtrace::") {
+                        if line.contains("std::backtrace::Backtrace::")
+                        || line.contains("<std::backtrace::Backtrace>::")
+                        {
                             skip_next_location_line = true;
                             continue;
                         }
-                        if line.contains("<bevy_ecs::error::bevy_error::KairosError as core::convert::From<E>>::from") {
+                        if line.contains("<kairos_engine::ecs::error::kairos_error::KairosError as core::convert::From<E>>::from") {
                             skip_next_location_line = true;
                             continue;
                         }
@@ -220,7 +222,7 @@ impl KairosError {
                         if line.contains("__rust_begin_short_backtrace") {
                             break;
                         }
-                        if line.contains("bevy_ecs::observer::Observers::invoke::{{closure}}") {
+                        if line.contains("kairos_engine::ecs::observer::Observers::invoke::{{closure}}") {
                             break;
                         }
                     }
