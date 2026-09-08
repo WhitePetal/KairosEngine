@@ -6,8 +6,9 @@ use std::{
     },
 };
 
+use kairos_collections::{FixedHashMap, FixedHashSet};
+
 use crate::{
-    collections::{FixedHashMap, FixedHashSet},
     debug::{DebugName, MaybeLocation},
     ecs::{
         change_detection::{DetectChanges, DetectChangesMut, Mut, Res},

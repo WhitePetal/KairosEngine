@@ -10,8 +10,9 @@ use std::{
     sync::Arc,
 };
 
+use kairos_collections::FixedHashSet;
+
 use crate::{
-    collections::FixedHashSet,
     ecs::entity::{Entity, UniqueEntityEquivalentSlice},
 };
 

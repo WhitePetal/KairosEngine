@@ -3,6 +3,8 @@ use std::{fmt::Debug, sync::Arc};
 use indexmap::{IndexMap, IndexSet};
 use thiserror::Error;
 
+use kairos_collections::hash::FixedHasher;
+
 use crate::{
     debug::{DebugCheckedUnwrap, MaybeLocation},
     ecs::{
@@ -12,7 +14,6 @@ use crate::{
         entity::Entity,
         storage::{SparseSets, Table, TableRow},
     },
-    hash::FixedHasher,
     ptr::OwningPtr,
 };
 

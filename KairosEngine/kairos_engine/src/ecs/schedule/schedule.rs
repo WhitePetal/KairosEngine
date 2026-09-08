@@ -12,8 +12,10 @@ use thiserror::Error;
 #[cfg(feature = "trace")]
 use tracing::info_span;
 
+use kairos_collections::{FixedHashMap, FixedHashSet, TypeIdMap};
+use kairos_collections::hash::FixedHasher;
+
 use crate::{
-    collections::{FixedHashMap, FixedHashSet, TypeIdMap},
     ecs::{
         change_detection::CheckChangeTicks,
         component::{Component, ComponentId, Components},
@@ -36,7 +38,6 @@ use crate::{
         system::{ScheduleSystem, System},
         world::World,
     },
-    hash::FixedHasher,
 };
 
 #[cfg(test)]

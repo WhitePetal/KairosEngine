@@ -9,8 +9,10 @@ use std::{
 
 use indexmap::IndexSet;
 
+use kairos_collections::TypeIdMap;
+use kairos_collections::hash::FixedHasher;
+
 use crate::{
-    collections::TypeIdMap,
     debug::{DebugCheckedUnwrap, DebugName},
     ecs::{
         archetype::ArchetypeFlags,
@@ -24,7 +26,6 @@ use crate::{
         },
         storage::SparseSetIndex,
     },
-    hash::FixedHasher,
     ptr::OwningPtr,
 };
 

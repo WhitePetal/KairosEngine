@@ -24,8 +24,9 @@ use std::ops::{Index, IndexMut, RangeFrom};
 use hashbrown::hash_map::Entry;
 use nonmax::NonMaxU32;
 
+use kairos_collections::FixedHashMap;
+
 use crate::{
-    collections::FixedHashMap,
     debug::DebugCheckedUnwrap,
     ecs::{
         bundle::BundleId,

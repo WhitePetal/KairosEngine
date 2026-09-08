@@ -1,5 +1,6 @@
+use kairos_collections::FixedHashMap;
+
 use crate::{
-    collections::FixedHashMap,
     ecs::{
         archetype::ArchetypeFlags, component::ComponentId, entity::EntityHashMap, event::EventKey,
         observer::ObserverRunner,

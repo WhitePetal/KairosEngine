@@ -8,8 +8,9 @@ use std::{
 use slotmap::{Key, KeyData, SecondaryMap, SlotMap, new_key_type};
 use thiserror::Error;
 
+use kairos_collections::{FixedHashMap, FixedHashSet};
+
 use crate::{
-    collections::{FixedHashMap, FixedHashSet},
     debug::DebugName,
     ecs::{
         component::{ComponentId, Components},

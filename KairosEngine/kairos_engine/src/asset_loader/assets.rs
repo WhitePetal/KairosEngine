@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use std::{any::TypeId, path::PathBuf, sync::Arc};
 
 use crate::asset_loader::assets::asset::{AssetsHandler, AssetsSystem};
-use crate::collections::TypeIdMap;
+use kairos_collections::TypeIdMap;
 
 pub use asset::AssetHandle;
 pub use asset::AudioAssetHandle;

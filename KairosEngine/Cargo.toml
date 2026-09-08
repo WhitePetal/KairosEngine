@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "kairos_collections",
     "kairos_engine",
     "kairos_engine/src/ecs/macros",
     "kairos_engine/src/ecs/macro_logic",

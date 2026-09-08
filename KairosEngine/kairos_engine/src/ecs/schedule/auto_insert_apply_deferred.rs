@@ -2,8 +2,10 @@ use std::collections::BTreeSet;
 
 use indexmap::IndexSet;
 
+use kairos_collections::FixedHashMap;
+use kairos_collections::hash::FixedHasher;
+
 use crate::{
-    collections::FixedHashMap,
     ecs::{
         schedule::{
             ApplyDeferred, NodeId, ScheduleBuildError, ScheduleGraph, SystemKey, SystemSetKey,
@@ -14,7 +16,6 @@ use crate::{
         system::{IntoSystem, System},
         world::World,
     },
-    hash::FixedHasher,
 };
 
 /// A [`ScheduleBuildPass`] that inserts [`ApplyDeferred`] systems into the schedule graph

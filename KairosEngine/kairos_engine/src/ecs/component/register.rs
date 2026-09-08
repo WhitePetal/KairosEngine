@@ -5,8 +5,9 @@ use std::{
     sync::{PoisonError, atomic::AtomicUsize},
 };
 
+use kairos_collections::TypeIdMap;
+
 use crate::{
-    collections::TypeIdMap,
     debug::DebugCheckedUnwrap,
     ecs::{
         component::{

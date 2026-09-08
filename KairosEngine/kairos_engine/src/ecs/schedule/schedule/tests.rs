@@ -2,6 +2,8 @@ use std::any::TypeId;
 
 use kairos_ecs_macros::{Resource, ScheduleLabel, SystemSet};
 
+use kairos_collections::hash::FixedHasher;
+
 use crate::{
     ecs::{
         change_detection::{Res, ResMut},
@@ -15,7 +17,6 @@ use crate::{
         system::Commands,
         world::World,
     },
-    hash::FixedHasher,
 };
 
 #[derive(Resource)]

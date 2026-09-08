@@ -12,8 +12,9 @@ use std::{
 use hashbrown::hash_map;
 use serde::{Deserialize, Serialize};
 
+use kairos_collections::FixedHashMap;
+
 use crate::{
-    collections::FixedHashMap,
     ecs::entity::{Entity, EntityEquivalent, EntityHash, EntitySetIterator},
 };
 

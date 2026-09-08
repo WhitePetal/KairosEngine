@@ -13,10 +13,11 @@ use indexmap::IndexMap;
 use smallvec::SmallVec;
 use thiserror::Error;
 
+use kairos_collections::{FixedHashMap, FixedHashSet};
+use kairos_collections::hash::FixedHasher;
+
 use crate::{
-    collections::{FixedHashMap, FixedHashSet},
     ecs::schedule::graph::graph_map::Direction::{Incoming, Outgoing},
-    hash::FixedHasher,
 };
 
 #[cfg(test)]

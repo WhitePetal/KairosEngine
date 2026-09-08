@@ -1,8 +1,9 @@
 use std::hash::{BuildHasher, Hasher};
 
+use kairos_collections::hash::FixedHasher;
+
 use crate::{
     ecs::intern::{Internable, Interned, Interner},
-    hash::FixedHasher,
 };
 
 #[test]

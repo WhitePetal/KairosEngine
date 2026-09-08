@@ -1,6 +1,6 @@
 use std::hash::{BuildHasher, Hash};
 
-use crate::hash::FixedHasher;
+use kairos_collections::hash::FixedHasher;
 
 /// A Bloom filter, parameterized by number of u64 segments `N` and number of hash functions `K`.
 ///

@@ -15,8 +15,9 @@ use std::{
 use hashbrown::hash_set;
 use serde::{Deserialize, Serialize};
 
+use kairos_collections::FixedHashSet;
+
 use crate::{
-    collections::FixedHashSet,
     ecs::entity::{Entity, EntityHash, EntitySet, EntitySetIterator, FromEntitySetIterator},
 };
 

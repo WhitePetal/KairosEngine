@@ -4,8 +4,9 @@ use bumpalo::Bump;
 use derive_more::From;
 use hashbrown::hash_map::Entry;
 
+use kairos_collections::{FixedHashMap, FixedHashSet};
+
 use crate::{
-    collections::{FixedHashMap, FixedHashSet},
     debug::{DebugCheckedUnwrap, DebugName, MaybeLocation},
     ecs::{
         archetype::Archetype,

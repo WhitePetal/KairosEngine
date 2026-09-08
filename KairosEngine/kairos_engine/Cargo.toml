@@ -61,7 +61,6 @@ egui-winit = "0.35.0"
 egui-wgpu = "0.35.0"
 parking_lot = "0.12.5"
 gltf = "1.4.1"
-foldhash = "0.2.0"
 uuid = { version = "1", features = ["v4", "serde"] }
 kira = { version = "0.12.0", features = ["serde"] }
 symphonia = { version = "0.5", default-features = false, features = ["mp3", "wav", "flac", "ogg", "isomp4"] }
@@ -100,6 +99,7 @@ thread_local = "1.1.10"
 concurrent-queue = "2.5.0"
 slotmap = "1.1.1"
 kairos_tasks = { path = "../kairos_tasks" }
+kairos_collections = { path = "../kairos_collections" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.4"

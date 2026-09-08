@@ -2,8 +2,9 @@ use std::{any::type_name, collections::HashSet, fmt::Debug, hash::Hash};
 
 use kairos_ecs_macros::{QueryData, QueryFilter};
 
+use kairos_collections::FixedHashSet;
+
 use crate::{
-    collections::FixedHashSet,
     ecs::{
         component::Component,
         entity::Entity,

@@ -12,9 +12,10 @@ use serde::{
     de::{Error, Visitor},
 };
 
+use kairos_collections::hash::FixedHashed;
+
 use crate::{
     ecs::{component::Component, entity::Entity},
-    hash::FixedHashed,
 };
 
 #[cfg(test)]

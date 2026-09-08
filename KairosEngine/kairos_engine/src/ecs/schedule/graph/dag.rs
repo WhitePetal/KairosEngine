@@ -8,14 +8,15 @@ use fixedbitset::FixedBitSet;
 use indexmap::IndexSet;
 use thiserror::Error;
 
+use kairos_collections::{FixedHashMap, FixedHashSet};
+use kairos_collections::hash::FixedHasher;
+
 use crate::{
-    collections::{FixedHashMap, FixedHashSet},
     ecs::schedule::graph::{
         DiGraph, DiGraphToposortError,
         Direction::{Incoming, Outgoing},
         GraphNodeId, UnGraph, index, row_col,
     },
-    hash::FixedHasher,
 };
 
 #[cfg(test)]

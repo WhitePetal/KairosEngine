@@ -7,8 +7,9 @@ use std::{
 
 use nonmax::NonMaxU32;
 
+use kairos_collections::FixedHashMap;
+
 use crate::{
-    collections::FixedHashMap,
     debug::{DebugCheckedUnwrap, MaybeLocation},
     ecs::{
         change_detection::{CheckChangeTicks, ComponentTicks, Tick},

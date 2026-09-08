@@ -1,9 +1,10 @@
+use kairos_collections::hash::fixed_hash_one;
+
 use crate::{
     ecs::{
         name::{Name, NameOrEntity},
         world::World,
     },
-    hash::fixed_hash_one,
 };
 use serde_test::{Token, assert_tokens};
 

@@ -11,7 +11,8 @@ use std::{
     sync::{PoisonError, RwLock},
 };
 
-use crate::{collections::FixedHashSet, hash::FixedHasher};
+use kairos_collections::FixedHashSet;
+use kairos_collections::hash::FixedHasher;
 
 #[cfg(test)]
 mod tests;

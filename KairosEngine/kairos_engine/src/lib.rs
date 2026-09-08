@@ -3,13 +3,10 @@ extern crate self as kairos_engine;
 pub mod bloom_filter;
 pub mod cell;
 pub mod debug;
-pub mod hash;
 pub mod math;
 pub mod on_drop;
 pub mod parallel_queue;
 pub mod ptr;
-
-pub mod collections;
 
 pub mod kairos_dialog;
 

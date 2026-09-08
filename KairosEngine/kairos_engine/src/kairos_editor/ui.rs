@@ -1,9 +1,10 @@
+use kairos_collections::TypeIdMap;
+
 use crate::{
     asset_loader::assets::{
         AssetHandle, AssetsServer, MaterialAssetsSystem, SerializedMaterialAssetsSystem,
         TomlTableAssetsSystem, asset::TextAssetsSystem,
     },
-    collections::TypeIdMap,
     graphics::{
         egui_texture_handle::EguiTextureHandle, graphics_graph::GraphicsCommand,
         material::SerializedMaterial, mesh::Mesh, render_state::RenderState,

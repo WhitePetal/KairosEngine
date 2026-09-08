@@ -1,7 +1,8 @@
 use std::mem::MaybeUninit;
 
+use kairos_collections::{FixedHashMap, FixedHashSet};
+
 use crate::{
-    collections::{FixedHashMap, FixedHashSet},
     ecs::{
         change_detection::MutUntyped,
         component::ComponentId,

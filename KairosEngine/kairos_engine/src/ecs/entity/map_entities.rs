@@ -7,8 +7,9 @@ use std::{
 use indexmap::{IndexMap, IndexSet};
 use smallvec::SmallVec;
 
+use kairos_collections::{FixedHashMap, FixedHashSet};
+
 use crate::{
-    collections::{FixedHashMap, FixedHashSet},
     ecs::{
         entity::{Entity, EntityHashMap, index_set::EntityIndexSet},
         world::World,

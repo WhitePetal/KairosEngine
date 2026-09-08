@@ -5,8 +5,9 @@ use kairos_ecs_macros::Resource;
 use log::{debug, error, info, warn};
 use thiserror::Error;
 
+use kairos_collections::{FixedHashMap, TypeIdMap};
+
 use crate::{
-    collections::{FixedHashMap, TypeIdMap},
     ecs::{
         change_detection::ResMut,
         schedule::{InternedScheduleLabel, NodeId, Schedule, ScheduleLabel, SystemKey},

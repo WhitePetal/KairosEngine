@@ -6,14 +6,15 @@ use hashbrown::hash_map::RawEntryMut;
 use indexmap::Equivalent;
 use variadics_please::all_tuples;
 
+use kairos_collections::PreHashMap;
+use kairos_collections::hash::FixedHashed;
+
 use crate::{
-    collections::PreHashMap,
     ecs::{
         entity::Entity,
         error::{KairosError, Result},
         world::{EntityWorldMut, World},
     },
-    hash::FixedHashed,
 };
 
 #[cfg(test)]

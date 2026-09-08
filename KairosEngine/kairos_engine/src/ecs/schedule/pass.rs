@@ -6,8 +6,10 @@ use std::{
 
 use indexmap::IndexSet;
 
+use kairos_collections::{FixedHashSet, TypeIdMap};
+use kairos_collections::hash::FixedHasher;
+
 use crate::{
-    collections::{FixedHashSet, TypeIdMap},
     ecs::{
         schedule::{
             NodeId, ScheduleBuildError, ScheduleGraph, SystemKey, SystemSetKey,
@@ -15,7 +17,6 @@ use crate::{
         },
         world::World,
     },
-    hash::FixedHasher,
 };
 
 /// A pass for modular modification of the dependency graph.

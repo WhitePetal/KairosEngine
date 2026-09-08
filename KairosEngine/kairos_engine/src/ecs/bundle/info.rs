@@ -2,8 +2,10 @@ use std::{any::TypeId, ptr::NonNull};
 
 use indexmap::{IndexMap, IndexSet};
 
+use kairos_collections::{FixedHashMap, FixedHashSet, TypeIdMap};
+use kairos_collections::hash::FixedHasher;
+
 use crate::{
-    collections::{FixedHashMap, FixedHashSet, TypeIdMap},
     debug::{DebugCheckedUnwrap, MaybeLocation},
     ecs::{
         archetype::{Archetype, BundleComponentStatus, ComponentStatus},
@@ -16,7 +18,6 @@ use crate::{
         entity::Entity,
         storage::{SparseSetIndex, SparseSets, Storages, Table, TableRow},
     },
-    hash::FixedHasher,
     ptr::{MovingPtr, OwningPtr},
 };
 
