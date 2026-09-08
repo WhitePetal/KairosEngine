@@ -1,0 +1,10 @@
+[package]
+name = "kairos_ptr"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Pointer types and utilities for the Kairos ECS (bevy_ptr parity): MovingPtr, OwningPtr, Ptr, PtrMut and friends"
+
+# Foundation crate — keep the dependency list minimal on purpose.
+# `kairos_ptr` must never depend on `kairos_engine`.
+[dependencies]

@@ -1,3 +1,9 @@
+//! Pointer types and utilities for the Kairos ECS (bevy_ptr parity).
+//!
+//! Mirrors the `bevy_ptr` crate: `Ptr`/`PtrMut` borrowed pointers,
+//! `OwningPtr`, and `MovingPtr` plus the `move_as_ptr!` / `deconstruct_moving_ptr!`
+//! macros used to move values out field-by-field.
+
 use std::{
     cell::UnsafeCell,
     fmt::{self, Debug, Formatter, Pointer},
@@ -1252,7 +1258,7 @@ macro_rules! move_as_ptr {
         //   it is impossible to refer to the original value, preventing further access after
         //   the `MovingPtr` has been used. `MaybeUninit` also prevents the compiler from
         //   dropping the original value.
-        let $value = unsafe { $crate::ptr::MovingPtr::from_value(&mut $value) };
+        let $value = unsafe { $crate::MovingPtr::from_value(&mut $value) };
     };
 }
 
@@ -1427,7 +1433,7 @@ macro_rules! get_pattern {
 macro_rules! deconstruct_moving_ptr {
     ({ let tuple { $($field_index:tt: $pattern:pat),* $(,)? } = $ptr:expr ;}) => {
         // Specify the type to make sure the `mem::forget` doesn't forget a mere `&mut MovingPtr`
-        let mut ptr: $crate::ptr::MovingPtr<_, _> = $ptr;
+        let mut ptr: $crate::MovingPtr<_, _> = $ptr;
         let _ = || {
             let value = &mut *ptr;
             // Ensure that each field index exists and is mentioned only once
@@ -1450,7 +1456,7 @@ macro_rules! deconstruct_moving_ptr {
     };
     ({ let MaybeUninit::<tuple> { $($field_index:tt: $pattern:pat),* $(,)? } = $ptr:expr ;}) => {
         // Specify the type to make sure the `mem::forget` doesn't forget a mere `&mut MovingPtr`
-        let mut ptr: $crate::ptr::MovingPtr<std::mem::MaybeUninit<_>, _> = $ptr;
+        let mut ptr: $crate::MovingPtr<std::mem::MaybeUninit<_>, _> = $ptr;
         let _ = || {
             // SAFETY: This closure is never called
             let value = unsafe { ptr.assume_init_mut() };
@@ -1474,7 +1480,7 @@ macro_rules! deconstruct_moving_ptr {
     };
     ({ let $struct_name:ident { $($field_index:tt$(: $pattern:pat)?),* $(,)? } = $ptr:expr ;}) => {
         // Specify the type to make sure the `mem::forget` doesn't forget a mere `&mut MovingPtr`
-        let mut ptr: $crate::ptr::MovingPtr<_, _> = $ptr;
+        let mut ptr: $crate::MovingPtr<_, _> = $ptr;
         let _ = || {
             let value = &mut *ptr;
             // Ensure that each field index exists is mentioned only once
@@ -1497,7 +1503,7 @@ macro_rules! deconstruct_moving_ptr {
     };
     ({ let MaybeUninit::<$struct_name:ident> { $($field_index:tt$(: $pattern:pat)?),* $(,)? } = $ptr:expr ;}) => {
         // Specify the type to make sure the `mem::forget` doesn't forget a mere `&mut MovingPtr`
-        let mut ptr: $crate::ptr::MovingPtr<core::mem::MaybeUninit<_>, _> = $ptr;
+        let mut ptr: $crate::MovingPtr<core::mem::MaybeUninit<_>, _> = $ptr;
         let _ = || {
             // SAFETY: This closure is never called
             let value = unsafe { ptr.assume_init_mut() };
@@ -1520,5 +1526,3 @@ macro_rules! deconstruct_moving_ptr {
         core::mem::forget(ptr);
     };
 }
-
-pub use deconstruct_moving_ptr;

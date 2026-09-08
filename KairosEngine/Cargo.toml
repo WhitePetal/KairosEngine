@@ -5,6 +5,7 @@ members = [
     "kairos_engine/src/ecs/macros",
     "kairos_engine/src/ecs/macro_logic",
     "kairos_engine/src/macro_utils",
+    "kairos_ptr",
     "kairos_supervisor",
     "kairos_tasks",
 ]

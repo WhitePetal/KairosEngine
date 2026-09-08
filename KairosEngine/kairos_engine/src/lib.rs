@@ -6,7 +6,6 @@ pub mod debug;
 pub mod math;
 pub mod on_drop;
 pub mod parallel_queue;
-pub mod ptr;
 
 pub mod kairos_dialog;
 
