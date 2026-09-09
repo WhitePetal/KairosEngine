@@ -1,6 +1,6 @@
 use std::ops::Mul;
 
-use crate::{float3, float4};
+use crate::{affine, float3, float4};
 
 use super::quaternions::quaternion;
 
@@ -24,13 +24,11 @@ impl float4x4 {
 
     #[inline(always)]
     pub fn trs(position: float3, rotation: quaternion, scale: float3) -> Self {
-        let r = rotation.to_float4x4();
-        Self(glam::Mat4::from_cols(
-            r.c0().0 * scale.x(),
-            r.c1().0 * scale.y(),
-            r.c2().0 * scale.z(),
-            float4::new(position.x(), position.y(), position.z(), 1.0).0,
-        ))
+        // Single TRS implementation, routed through `affine` (glam's
+        // `Affine3A::from_scale_rotation_translation`); the expansion to
+        // `float4x4` is exact, so this is bit-identical to
+        // `affine::trs(...).to_float4x4()` (see affine/test.rs).
+        affine::trs(position, rotation, scale).to_float4x4()
     }
 
     #[inline(always)]

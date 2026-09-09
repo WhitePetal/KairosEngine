@@ -57,9 +57,9 @@ fn trs_to_float4x4_matches_matrix_trs() {
     let via_affine = affine::trs(position, rotation, scale).to_float4x4();
     let via_matrix = float4x4::trs(position, rotation, scale);
 
-    // Same TRS semantics, but the quat->mat expansion differs slightly between
-    // the engine matrix code and glam, so compare approximately.
-    assert_matrix_eq(via_affine, via_matrix, 1e-3);
+    // `float4x4::trs` delegates to `affine::trs` (both route through glam's
+    // `from_scale_rotation_translation`), so the two are bit-identical.
+    assert_eq!(via_affine, via_matrix);
 }
 
 #[test]

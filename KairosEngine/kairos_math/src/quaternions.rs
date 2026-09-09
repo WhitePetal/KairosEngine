@@ -147,31 +147,13 @@ impl quaternion {
 
     #[inline(always)]
     pub fn to_float4x4(self) -> float4x4 {
-        let q = self.normalized().0 .0;
-        let q2 = q * q;
-        let xy_yz_zx = q * q.yzxw();
-        let xw_yw_zw = q * q.wwww();
-
-        let c0 = float4::from_inner(glam::Vec4::new(
-            1.0 - 2.0 * (q2.y + q2.z),
-            2.0 * (xy_yz_zx.x + xw_yw_zw.z),
-            2.0 * (xy_yz_zx.z - xw_yw_zw.y),
-            0.0,
-        ));
-        let c1 = float4::from_inner(glam::Vec4::new(
-            2.0 * (xy_yz_zx.x - xw_yw_zw.z),
-            1.0 - 2.0 * (q2.x + q2.z),
-            2.0 * (xy_yz_zx.y + xw_yw_zw.x),
-            0.0,
-        ));
-        let c2 = float4::from_inner(glam::Vec4::new(
-            2.0 * (xy_yz_zx.z + xw_yw_zw.y),
-            2.0 * (xy_yz_zx.y - xw_yw_zw.x),
-            1.0 - 2.0 * (q2.x + q2.y),
-            0.0,
-        ));
-
-        float4x4::new(c0, c1, c2, float4::new(0.0, 0.0, 0.0, 1.0))
+        // Converge on glam's quat->matrix expansion so every rotation-matrix
+        // path (camera views, `float4x4::trs` via `affine`) shares one
+        // implementation; the previous hand-rolled formula was mathematically
+        // equivalent but rounded differently.
+        float4x4(glam::Mat4::from_quat(glam::Quat::from_vec4(
+            self.normalized().0 .0,
+        )))
     }
 }
 
