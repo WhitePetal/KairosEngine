@@ -159,20 +159,10 @@ impl KairosGame {
 
         let _mesh = assets_server.load::<MeshAssetsSystem>(
             &PathBuf::from("res/models/Suzanne.mesh"),
-            // None::<fn(&mut MeshAsset)>,
         );
         let material = assets_server.load::<MaterialAssetsSystem>(
             &PathBuf::from("res/materials/material.mat"),
-            // None::<fn(&mut MaterialAsset)>,
         );
-
-        // let pad_audio = StaticSoundData::from_file("res/audios/pad.ogg").unwrap().loop_region(..);
-
-        // let pad = SerializedAudioAsset {
-        //     source_path: PathBuf::from("res/audios/pad.ogg"),
-        //     audio_asset_settings: SerializedAudioAssetSettings::from_static_sound_data(&pad_audio)
-        // };
-        // let _ = pad.save_to_file();
 
         let _background_audio =
             assets_server.load::<AudioAssetsSystem>(&PathBuf::from("res/audios/pad.audio"));
