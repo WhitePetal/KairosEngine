@@ -75,6 +75,7 @@ serde_json = { version = "1.0", optional = true }
 indexmap = { version = "2.5.0", default-features = false, features = ["serde"] }
 kairos_collections = { path = "../kairos_collections" }
 kairos_ecs = { path = "../kairos_ecs" }
+kairos_math = { path = "../kairos_math", features = ["serde", "rkyv"] }
 kairos_time = { path = "../kairos_time" }
 
 [target.'cfg(target_os = "macos")'.dependencies]

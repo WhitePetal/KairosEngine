@@ -7,7 +7,7 @@ use rapier3d::{
     pipeline::PhysicsPipeline,
 };
 
-use crate::{math::float3, physics::rigid_body::RigidBody, spatial::Transform};
+use crate::{math::{float3, quaternion}, physics::rigid_body::RigidBody, spatial::Transform};
 use kairos_ecs::world::World;
 
 pub mod collider;
@@ -77,7 +77,7 @@ impl PhysicsEngine {
 
         while self.accumulator >= FIXED_DT {
             self.physics_pipeline.step(
-                self.gravity.into(),
+                to_rapier_vec3(self.gravity),
                 &self.integration_parameters,
                 &mut self.island_manager,
                 &mut self.broad_phase,
@@ -99,8 +99,22 @@ impl PhysicsEngine {
         //     word.query_mut::<(&mut Transform, &RigidBody)>().into_iter()
         // {
         //     let rigid_body = &self.rigid_body_set[rigid_body.handle];
-        //     transform.position = rigid_body.translation().into();
-        //     transform.rotation = (*rigid_body.rotation()).into();
+        //     transform.position = to_float3(*rigid_body.translation());
+        //     transform.rotation = quat_from_rapier(rigid_body.rotation());
         // }
     }
+}
+
+// Explicit engine ↔ rapier conversions (the old `From` impls were removed
+// when math moved to `kairos_math`; orphan rules forbid them there, #139).
+fn to_rapier_vec3(v: float3) -> rapier3d::math::Vector3 {
+    rapier3d::math::Vector3::new(v.x(), v.y(), v.z())
+}
+
+fn to_float3(v: rapier3d::math::Vector3) -> float3 {
+    float3::new(v.x, v.y, v.z)
+}
+
+fn quat_from_rapier(r: &rapier3d::math::Rotation) -> quaternion {
+    quaternion::new(r.x, r.y, r.z, r.w)
 }

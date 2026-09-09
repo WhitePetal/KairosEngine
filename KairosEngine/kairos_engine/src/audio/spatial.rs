@@ -92,7 +92,7 @@ impl Tracks {
             track_builder = track_builder.with_send(reverb, Value::Fixed(Decibels::IDENTITY));
         }
         let handle = manager
-            .add_spatial_sub_track(listener_id, float3::ZERO, track_builder)
+            .add_spatial_sub_track(listener_id, to_mint_vec3(float3::ZERO), track_builder)
             .ok();
         if self.free_slots.len() == 0 {
             index = self.tracks.len() as u8;
@@ -142,7 +142,10 @@ impl SpatialAudioTracks {
 
     pub fn create_listener(&mut self, manager: &mut AudioManager) -> Option<ListenerId> {
         let handle = manager
-            .add_listener(float3::ZERO, quaternion::IDENTITY)
+            .add_listener(
+                to_mint_vec3(float3::ZERO),
+                to_mint_quaternion(quaternion::IDENTITY),
+            )
             .ok();
         if let Some(handle) = handle {
             let id = handle.id();
@@ -221,8 +224,8 @@ impl SpatialAudioTracks {
                 continue;
             };
             *be_ref = true;
-            handle.set_position(trans.position, Tween::default());
-            handle.set_orientation(trans.rotation, Tween::default());
+            handle.set_position(to_mint_vec3(trans.position), Tween::default());
+            handle.set_orientation(to_mint_quaternion(trans.rotation), Tween::default());
             match self
                 .listener_infos
                 .iter_mut()
@@ -558,7 +561,7 @@ impl SpatialAudioTracks {
         if let Some(track_index) = using_track_index {
             let track = &mut listener.tracks.tracks[track_index as usize];
             if let Some(track) = track {
-                track.set_position(trans.position, Tween::default());
+                track.set_position(to_mint_vec3(trans.position), Tween::default());
             }
             return true;
         }
@@ -587,7 +590,7 @@ impl SpatialAudioTracks {
                 let audio = assets_server
                     .get::<AudioAssetsSystem>(&volume.audios[i])
                     .unwrap();
-                track.set_position(trans.position, Tween::default());
+                track.set_position(to_mint_vec3(trans.position), Tween::default());
                 match track.play(
                     audio
                         .sound_data
@@ -626,7 +629,7 @@ impl SpatialAudioTracks {
                             duration: Duration::from_secs_f32(fade_time),
                             ..Default::default()
                         });
-                        track.set_position(trans.position, Tween::default());
+                        track.set_position(to_mint_vec3(trans.position), Tween::default());
                     }
                     *track_state =
                         SpatialAudioVolumeTrackState::Leaving(SpatialAudioVolumeTrackLeaving {
@@ -642,12 +645,34 @@ impl SpatialAudioTracks {
                     if let Some(track) =
                         &mut listener.tracks.tracks[leaving.track_key.track_index as usize]
                     {
-                        track.set_position(trans.position, Tween::default());
+                        track.set_position(to_mint_vec3(trans.position), Tween::default());
                     }
                     break;
                 }
                 SpatialAudioVolumeTrackState::Leaved(_) => {}
             }
         }
+    }
+}
+
+// kira's spatial APIs consume mint values; convert explicitly since the old
+// `float3`/`quaternion` → mint `From` impls were removed with the move of math
+// to `kairos_math` (#139/#144).
+fn to_mint_vec3(v: float3) -> mint::Vector3<f32> {
+    mint::Vector3 {
+        x: v.x(),
+        y: v.y(),
+        z: v.z(),
+    }
+}
+
+fn to_mint_quaternion(q: quaternion) -> mint::Quaternion<f32> {
+    mint::Quaternion {
+        v: mint::Vector3 {
+            x: q.0.x(),
+            y: q.0.y(),
+            z: q.0.z(),
+        },
+        s: q.0.w(),
     }
 }
