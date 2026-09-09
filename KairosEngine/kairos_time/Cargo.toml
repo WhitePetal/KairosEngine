@@ -1,0 +1,12 @@
+[package]
+name = "kairos_time"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "A bevy_time-style time and fixed-timestep clock for the Kairos engine, extracted as a standalone crate"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)", "cfg(docsrs_dep)"] }
+
+[dependencies]
+kairos_ecs = { path = "../kairos_ecs" }

@@ -1,3 +1,14 @@
+//! Time and fixed-timestep clocks for the Kairos engine.
+//!
+//! Extracted from `kairos_engine` as a standalone crate (bevy `bevy_time`
+//! parity): the two clock [`Resource`]s the engine's schedule rails drive and
+//! read each frame.
+//!
+//! - [`Time`] is the per-frame virtual clock, registered during engine
+//!   bootstrap and advanced exactly once per frame at the `First` stage.
+//! - [`FixedTime`] is the fixed-timestep clock consumed by the fixed-step
+//!   driver (bevy `Time<Fixed>` parity).
+
 use kairos_ecs::resource::Resource;
 use std::time::{Duration, Instant};
 
@@ -17,10 +28,10 @@ const DEFAULT_MAX_DELTA: Duration = Duration::from_millis(250);
 /// The engine's per-frame virtual clock: raw wall-clock measurement unified
 /// with `time_scale` and `paused` into one clock.
 ///
-/// This is a ECS `World` resource: it is registered during `install` (see
-/// `kairos_editor::schedule`) and advanced exactly once per frame by
-/// `time_system` at the `First` stage. Engine-side (non-system) code only ever
-/// reads it — via the `World` resource or an `Engine` read accessor.
+/// This is an ECS `World` resource: the engine registers it during bootstrap
+/// (`install`) and advances it exactly once per frame by its `First`-stage
+/// `time_system` (bevy `TimePlugin` parity). Engine-side (non-system) code
+/// only ever reads it — via the `World` resource or an engine read accessor.
 #[derive(Resource, Debug)]
 pub struct Time {
     start_time: Instant,
@@ -57,7 +68,8 @@ impl Time {
     /// Advances the clock by the wall-clock time elapsed since the previous
     /// call.
     ///
-    /// Invoked exactly once per frame by `time_system` at the `First` stage.
+    /// Invoked exactly once per frame by the engine's `First`-stage
+    /// `time_system`.
     pub fn update(&mut self) {
         let now = Instant::now();
         let raw_delta = now.duration_since(self.pre_time);
@@ -71,10 +83,10 @@ impl Time {
     ///
     /// `raw_delta` is clamped to `max_delta` before `time_scale` scaling;
     /// `paused` freezes `delta_time` at zero without accumulating a catch-up
-    /// debt (the next frame measures from scratch). Crate-visible so the
+    /// debt (the next frame measures from scratch). Public so the engine's
     /// schedule smoke tests can script deterministic per-frame deltas; only the
     /// wall-clock [`update`](Self::update) drives it in production.
-    pub(crate) fn update_with_raw_delta(&mut self, raw_delta: Duration) {
+    pub fn update_with_raw_delta(&mut self, raw_delta: Duration) {
         self.total_frame = self.total_frame + 1;
 
         if self.paused {
@@ -146,11 +158,11 @@ const DEFAULT_FIXED_TIMESTEP: Duration = Duration::from_micros(15_625);
 /// The engine's fixed-timestep clock: the kairos shape of bevy's `Time<Fixed>`
 /// as a single concrete (non-generic) `World` resource.
 ///
-/// Registered during `install` (see `kairos_editor::schedule`); every frame the
-/// `RunFixedMainLoop` driver (see `kairos_editor::schedule`) accumulates the
-/// virtual clock's delta into it and then expends one step at a time, running
-/// the `FixedUpdate` schedule once per step. Its unit tests drive it directly;
-/// the fixed driver integration lives in `kairos_editor::schedule::test`.
+/// Registered during engine bootstrap (`install`); every frame the fixed-step
+/// driver accumulates the virtual clock's delta into it and then expends one
+/// step at a time, running the `FixedUpdate` schedule once per step. Its unit
+/// tests drive it directly; the fixed driver integration lives in the engine's
+/// schedule tests.
 ///
 /// Semantics mirror bevy `Time<Fixed>`:
 ///

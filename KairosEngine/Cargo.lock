@@ -2474,6 +2474,7 @@ dependencies = [
  "indexmap",
  "kairos_collections",
  "kairos_ecs",
+ "kairos_time",
  "kira",
  "log",
  "mint",
@@ -2536,6 +2537,13 @@ dependencies = [
  "concurrent-queue",
  "derive_more",
  "futures-lite",
+]
+
+[[package]]
+name = "kairos_time"
+version = "0.1.0"
+dependencies = [
+ "kairos_ecs",
 ]
 
 [[package]]

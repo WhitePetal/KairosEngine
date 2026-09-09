@@ -535,6 +535,10 @@ guid = "89f4ba0e-4e4a-47c1-bf30-8bad325863b2"
 path = "docs/research/bevy-change-detection.md"
 
 [[entries]]
+guid = "bf9df397-bd00-4303-a4fa-d3dd1c849233"
+path = "docs/research/bevy-fixed-timestep-reference.md"
+
+[[entries]]
 guid = "6bb2bb81-02df-4f80-be76-c294fb4fcd71"
 path = "docs/research/claw-tools-architecture.md"
 
@@ -3225,6 +3229,26 @@ path = "kairos_tasks/src/thread_executor.rs"
 [[entries]]
 guid = "52e63e5c-aa6a-44a2-aee0-64706f4982e6"
 path = "kairos_tasks/src/usages.rs"
+
+[[entries]]
+guid = "1f11a579-4132-4cca-8d57-3225abf059a2"
+path = "kairos_time"
+
+[[entries]]
+guid = "a9fbd94b-ea7c-45e5-8899-49e0b2ee21b9"
+path = "kairos_time/Cargo.toml"
+
+[[entries]]
+guid = "40e81f1f-1188-439d-bb04-8ce1454de71b"
+path = "kairos_time/src"
+
+[[entries]]
+guid = "b0713369-6116-4fd3-bd65-25156ad4a36a"
+path = "kairos_time/src/lib.rs"
+
+[[entries]]
+guid = "99aedbd3-144c-4d89-afda-f1f30cfa1b14"
+path = "kairos_time/src/tests.rs"
 
 [[entries]]
 guid = "689dba96-bf4f-4b92-83db-50db6ecaef9a"

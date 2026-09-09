@@ -31,7 +31,7 @@
 //! accesses and, whenever the accumulated time covers a full step, one run of
 //! an empty schedule — no user systems, no warn, and no forced first step.
 
-use crate::timer::{FixedTime, Time};
+use crate::time::{FixedTime, Time};
 use kairos_ecs::{
     resource::Resource,
     schedule::{InternedScheduleLabel, MainThreadExecutor, Schedule, ScheduleLabel, Schedules},

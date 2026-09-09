@@ -18,4 +18,7 @@ pub mod graphics;
 pub mod inputs;
 pub mod physics;
 pub mod spatial;
-pub mod timer;
+
+// Bevy parity: re-export the time crate so `crate::time` resolves like
+// `bevy::time` (bevy re-exports `bevy_time` under the same name).
+pub use kairos_time as time;

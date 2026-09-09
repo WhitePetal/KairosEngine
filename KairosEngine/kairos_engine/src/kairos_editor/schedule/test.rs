@@ -17,7 +17,7 @@ use super::{
     First, FixedUpdate, Last, Main, MainScheduleOrder, PostUpdate, PreUpdate, RunFixedMainLoop,
     Startup, Update, install,
 };
-use crate::timer::{FixedTime, Time};
+use crate::time::{FixedTime, Time};
 use kairos_ecs::{
     resource::Resource,
     schedule::{InternedScheduleLabel, MainThreadExecutor, Schedule, ScheduleLabel, Schedules},

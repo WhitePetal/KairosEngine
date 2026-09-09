@@ -1,7 +1,7 @@
 use crate::{
     asset_loader::assets::AssetsServer, audio::AudioEngine,
     graphics::graphics_graph::GraphicsCommand, inputs::InputEngine, kairos_game::KairosGame,
-    log::Log, physics::PhysicsEngine, timer::Time,
+    log::Log, physics::PhysicsEngine, time::Time,
 };
 use egui::Visuals;
 use kairos_ecs::world::World;
