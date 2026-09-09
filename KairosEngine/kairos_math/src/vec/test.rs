@@ -30,12 +30,12 @@ fn float4_dot() {
     )
 }
 
-// Baseline gap fixed in kairos_math (#143): float3 was the only wrapper
-// missing bytemuck impls while `Vertex` (engine) needs them.
+// float3 wraps `Vec3A`, whose SIMD layout carries w-lane padding — glam only
+// implements `AnyBitPattern`/`Zeroable` (not `Pod`) for `Vec3A`, and we mirror
+// that. Assert `Zeroable`; `Pod` is intentionally absent (see the impl in
+// vec.rs).
 #[test]
-fn float3_is_bytemuck_pod() {
-    fn assert_pod<T: bytemuck::Pod>() {}
+fn float3_is_bytemuck_zeroable() {
     fn assert_zeroable<T: bytemuck::Zeroable>() {}
-    assert_pod::<crate::float3>();
     assert_zeroable::<crate::float3>();
 }

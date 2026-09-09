@@ -816,8 +816,13 @@ impl Div for &float3 {
 }
 impl Eq for float3 {}
 
+// SAFETY: a zeroed `Vec3A` (all bits 0) is a valid `float3` (glam's own
+// `Zeroable` impl). `Pod` is deliberately **not** implemented: `float3` wraps
+// `glam::Vec3A`, whose SIMD-aligned layout carries 4 bytes of padding in the
+// `w` lane — glam itself only implements `AnyBitPattern` (not `Pod`) for
+// `Vec3A` for the same reason. Mirror that here; `float2`/`float4` back
+// `Vec2`/`Vec4` and stay `Pod`.
 unsafe impl bytemuck::Zeroable for float3 {}
-unsafe impl bytemuck::Pod for float3 {}
 
 impl Min for float3 {
     #[inline(always)]
