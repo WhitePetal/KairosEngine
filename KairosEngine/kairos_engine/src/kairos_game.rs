@@ -279,9 +279,11 @@ impl KairosGame {
     }
 
     pub fn update(&mut self, engine: &mut Engine) {
-        engine.time.update();
-        let _total_time = engine.time.total_time().as_secs_f32();
-        let delta_time = engine.time.delta_time().as_secs_f32();
+        // Time is advanced exactly once per frame by `time_system` at the
+        // `First` stage (frame start); game-side code only reads it here, to
+        // feed subsystem update parameters.
+        let _total_time = engine.time().total_time().as_secs_f32();
+        let delta_time = engine.time().delta_time().as_secs_f32();
 
         // ── Audio System ──────────────────────────────────────────────
         {

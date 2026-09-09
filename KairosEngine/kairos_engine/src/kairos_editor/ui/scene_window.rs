@@ -155,7 +155,7 @@ impl Drawer for SceneWindow {
 
         // --- Camera input (view: only sends messages, never mutates model) ---
         if response.hovered() {
-            let dt = engine.time.delta_time().as_secs_f32();
+            let dt = engine.time().delta_time().as_secs_f32();
             let delta = response.drag_delta();
             if response.dragged_by(egui::PointerButton::Secondary)
                 || response.dragged_by(egui::PointerButton::Middle)

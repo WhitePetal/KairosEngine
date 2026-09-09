@@ -10,17 +10,20 @@
 //! - [`run_main`] drives the labeled sub-schedules listed in the
 //!   [`MainScheduleOrder`] resource in order. The [`Startup`] sub-schedule runs
 //!   exactly once — on the first frame, before any other sub-stage.
-//! - [`install`] registers the fixed set of (currently empty) sub-schedules
-//!   plus the resources the driver needs. All sub-schedules are empty for now,
-//!   so a frame costs nothing beyond walking the label list.
+//! - [`install`] registers the fixed set of sub-schedules plus the resources
+//!   the driver needs. The engine's virtual clock ([`Time`]) is registered as
+//!   a World resource and advanced by [`time_system`], hosted by the [`First`]
+//!   sub-stage. The other sub-schedules are still empty, so a frame costs
+//!   nothing beyond walking the label list and advancing the clock once.
 //!
 //! `FixedUpdate` is only a placeholder in the per-frame label order at this
 //! stage; fixed-timestep semantics are out of scope for the skeleton.
 
+use crate::timer::Time;
 use kairos_ecs::{
     resource::Resource,
     schedule::{InternedScheduleLabel, MainThreadExecutor, Schedule, ScheduleLabel, Schedules},
-    system::Local,
+    system::{Local, ResMut},
     world::World,
 };
 
@@ -112,6 +115,17 @@ impl Default for MainScheduleOrder {
     }
 }
 
+/// Advances the engine's virtual clock ([`Time`]) exactly once per frame.
+///
+/// Registered into the [`First`] sub-stage — the first per-frame stage — so a
+/// fresh `delta_time` is available to every later stage and to engine-side
+/// code that reads the clock after the frame's schedules have run. This is the
+/// only place the clock is advanced (bevy `TimePlugin` parity: `time_system`
+/// hangs off `First`).
+fn time_system(mut time: ResMut<Time>) {
+    time.update();
+}
+
 /// The exclusive driver system hosted by the [`Main`] schedule.
 ///
 /// On its first execution it runs the `startup_labels` schedules once; after
@@ -141,17 +155,26 @@ fn run_main(world: &mut World, mut run_at_least_once: Local<bool>) {
 
 /// Bootstraps the schedule rails onto a fresh [`World`].
 ///
-/// Registers the seven (currently empty) sub-schedules, builds the [`Main`]
-/// schedule around [`run_main`], and inserts the driver resources
-/// ([`MainScheduleOrder`], plus a [`MainThreadExecutor`] captured on the
-/// calling thread). `Schedules` itself is created on demand by the world.
+/// Registers the sub-schedules (the [`First`] one hosting [`time_system`]),
+/// builds the [`Main`] schedule around [`run_main`], and inserts the driver
+/// resources ([`Time`], [`MainScheduleOrder`], plus a [`MainThreadExecutor`]
+/// captured on the calling thread). `Schedules` itself is created on demand by
+/// the world.
 pub(crate) fn install(world: &mut World) {
-    log::debug!("installing the empty main-schedule rails");
+    log::debug!("installing the main-schedule rails");
+
+    // The engine's virtual clock lives in the World as a resource; it is
+    // advanced exactly once per frame by `time_system` below.
+    world.insert_resource(Time::new());
 
     let mut schedules = world.get_resource_or_init::<Schedules>();
+
+    let mut first = Schedule::new(First);
+    first.add_systems(time_system);
+    schedules.insert(first);
+
     for label in [
         Startup.intern(),
-        First.intern(),
         PreUpdate.intern(),
         FixedUpdate.intern(),
         Update.intern(),

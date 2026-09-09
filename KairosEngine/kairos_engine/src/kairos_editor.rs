@@ -18,7 +18,6 @@ pub mod syntax;
 pub mod ui;
 
 pub struct Engine {
-    pub time: Time,
     pub world: World,
     pub assets_server: AssetsServer,
     pub audio_engine: AudioEngine,
@@ -28,10 +27,10 @@ pub struct Engine {
 
 impl Engine {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let time = Time::new();
         let mut world = World::new();
-        // Bootstrap the (currently empty) bevy_app-style schedule rails before
-        // any game/editor logic gets a chance to register systems.
+        // Bootstrap the bevy_app-style schedule rails — including the `Time`
+        // World resource and its `First`-stage `time_system` — before any
+        // game/editor logic gets a chance to register systems.
         schedule::install(&mut world);
         let assets_server = AssetsServer::new();
         let audio_engine = AudioEngine::new()?;
@@ -39,7 +38,6 @@ impl Engine {
         let input_engine = InputEngine::new();
 
         Ok(Self {
-            time,
             world,
             assets_server,
             audio_engine,
@@ -48,12 +46,24 @@ impl Engine {
         })
     }
 
+    /// Read access to the engine's per-frame virtual clock.
+    ///
+    /// The clock is a [`Time`] World resource, registered during
+    /// `schedule::install` and advanced exactly once per frame by
+    /// `time_system` at the `First` stage — engine-side (non-system) code only
+    /// ever reads it, through this accessor (or directly via the World
+    /// resource).
+    pub fn time(&self) -> &Time {
+        self.world.resource::<Time>()
+    }
+
     /// Advances the engine's ECS schedule rails by one frame.
     ///
     /// Runs the top-level [`Main`](schedule::Main) schedule — whose `run_main`
     /// driver executes the sub-schedules listed in
-    /// [`MainScheduleOrder`](schedule::MainScheduleOrder) — and then clears the
-    /// world's change-detection trackers to close the frame.
+    /// [`MainScheduleOrder`](schedule::MainScheduleOrder) (the `First` stage's
+    /// `time_system` advances the [`Time`] resource first) — and then clears
+    /// the world's change-detection trackers to close the frame.
     pub fn update(&mut self) {
         self.world.run_schedule(schedule::Main);
         self.world.clear_trackers();

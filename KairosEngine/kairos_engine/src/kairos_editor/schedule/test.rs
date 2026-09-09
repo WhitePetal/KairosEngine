@@ -1,6 +1,7 @@
-//! Smoke tests (T1–T8) for the bevy_app-style schedule rails.
+//! Smoke tests (T1–T11) for the bevy_app-style schedule rails.
 //!
-//! Test list per Grilling #130 resolution D4; all tests run against a bare
+//! Test list per Grilling #130 resolution D4, extended with the time-resource
+//! rails (T9–T11, issue #135); all tests run against a bare
 //! [`World`] (D2): `World::new()` → `install`, and one "frame" is
 //! `world.run_schedule(Main)` followed by `world.clear_trackers()`.
 //! `Engine::new()` is deliberately avoided (no audio-device dependency), so
@@ -10,9 +11,10 @@ use super::{
     First, FixedUpdate, Last, Main, MainScheduleOrder, PostUpdate, PreUpdate, Startup, Update,
     install,
 };
+use crate::timer::Time;
 use kairos_ecs::{
     resource::Resource,
-    schedule::{MainThreadExecutor, ScheduleLabel, Schedules},
+    schedule::{InternedScheduleLabel, MainThreadExecutor, ScheduleLabel, Schedules},
     system::ResMut,
     world::World,
 };
@@ -324,4 +326,79 @@ fn missing_substage_warns_and_continues() {
             "frame {frame}: remaining sub-stages must still run in order"
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// T9–T11: the `Time` World resource and its `First`-stage `time_system` (#135)
+// ---------------------------------------------------------------------------
+
+/// T9: `install` registers the `Time` World resource with a zeroed clock.
+#[test]
+fn install_registers_the_time_resource() {
+    let world = boot();
+
+    let time = world
+        .get_resource::<Time>()
+        .expect("Time resource missing after install");
+    assert_eq!(time.total_frame(), 0, "clock must start before frame one");
+    assert_eq!(time.delta_time(), std::time::Duration::ZERO);
+    assert_eq!(time.total_time(), std::time::Duration::ZERO);
+}
+
+/// T10: a full frame advances the clock exactly once — `time_system` runs in
+/// `First`, the only stage that advances it.
+#[test]
+fn time_advances_exactly_once_per_frame() {
+    let mut world = boot();
+
+    for _ in 0..FRAMES {
+        run_frame(&mut world);
+    }
+
+    let time = world.get_resource::<Time>().expect("Time resource");
+    assert_eq!(
+        time.total_frame(),
+        FRAMES as u64,
+        "clock must advance exactly once per frame"
+    );
+}
+
+/// T11: no sub-stage other than `First` advances the clock; running `First`
+/// alone advances it exactly once.
+#[test]
+fn only_first_advances_the_clock() {
+    let mut world = boot();
+
+    // Run every sub-stage the frame driver runs except `First` directly: the
+    // clock must not move. The stage list comes from the `MainScheduleOrder`
+    // resource itself (startup + per-frame labels) so it stays in sync with
+    // the canonical order instead of duplicating it.
+    let other_stages: Vec<InternedScheduleLabel> = {
+        let order = world
+            .get_resource::<MainScheduleOrder>()
+            .expect("MainScheduleOrder resource");
+        order
+            .startup_labels
+            .iter()
+            .chain(order.labels.iter())
+            .copied()
+            .filter(|label| *label != First.intern())
+            .collect()
+    };
+    for label in other_stages {
+        world.run_schedule(label);
+    }
+    assert_eq!(
+        world.get_resource::<Time>().expect("Time resource").total_frame(),
+        0,
+        "stages other than First must not advance the clock"
+    );
+
+    // Running `First` alone is one frame's worth of advancement.
+    world.run_schedule(First);
+    assert_eq!(
+        world.get_resource::<Time>().expect("Time resource").total_frame(),
+        1,
+        "First must advance the clock exactly once per run"
+    );
 }
