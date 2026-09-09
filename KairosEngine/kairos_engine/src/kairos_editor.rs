@@ -12,6 +12,7 @@ pub mod consts;
 pub mod editor_assets;
 pub mod project_path_tree;
 pub mod runtime;
+pub mod schedule;
 pub mod serialize_asset;
 pub mod syntax;
 pub mod ui;
@@ -28,7 +29,10 @@ pub struct Engine {
 impl Engine {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let time = Time::new();
-        let world = World::new();
+        let mut world = World::new();
+        // Bootstrap the (currently empty) bevy_app-style schedule rails before
+        // any game/editor logic gets a chance to register systems.
+        schedule::install(&mut world);
         let assets_server = AssetsServer::new();
         let audio_engine = AudioEngine::new()?;
         let physics_engine = PhysicsEngine::new();
@@ -42,6 +46,17 @@ impl Engine {
             physics_engine,
             input_engine,
         })
+    }
+
+    /// Advances the engine's ECS schedule rails by one frame.
+    ///
+    /// Runs the top-level [`Main`](schedule::Main) schedule — whose `run_main`
+    /// driver executes the sub-schedules listed in
+    /// [`MainScheduleOrder`](schedule::MainScheduleOrder) — and then clears the
+    /// world's change-detection trackers to close the frame.
+    pub fn update(&mut self) {
+        self.world.run_schedule(schedule::Main);
+        self.world.clear_trackers();
     }
 }
 
@@ -71,6 +86,8 @@ impl KairosEngine {
     }
 
     fn update(&mut self) {
+        // Frame start: drive the engine's schedule rails first.
+        self.engine.update();
         self.game.update(&mut self.engine);
     }
 
