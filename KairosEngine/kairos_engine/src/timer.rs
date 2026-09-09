@@ -9,7 +9,7 @@ mod tests;
 /// Mirrors bevy's `Time<Virtual>` default `max_delta` (250 ms). It stops a
 /// single over-long frame (a blocked main thread, a breakpoint, a slow first
 /// frame) from jumping the virtual clock forward by the whole stall — which
-/// would also indirectly bound how many fixed steps a future fixed-step driver
+/// also indirectly bounds how many fixed steps the `RunFixedMainLoop` driver
 /// has to catch up in one frame ("spiral of death" protection lives on the
 /// virtual side).
 const DEFAULT_MAX_DELTA: Duration = Duration::from_millis(250);
@@ -71,10 +71,10 @@ impl Time {
     ///
     /// `raw_delta` is clamped to `max_delta` before `time_scale` scaling;
     /// `paused` freezes `delta_time` at zero without accumulating a catch-up
-    /// debt (the next frame measures from scratch). Kept private: only the
-    /// wall-clock [`update`](Self::update) drives it in production; unit tests
-    /// use it for deterministic deltas.
-    fn update_with_raw_delta(&mut self, raw_delta: Duration) {
+    /// debt (the next frame measures from scratch). Crate-visible so the
+    /// schedule smoke tests can script deterministic per-frame deltas; only the
+    /// wall-clock [`update`](Self::update) drives it in production.
+    pub(crate) fn update_with_raw_delta(&mut self, raw_delta: Duration) {
         self.total_frame = self.total_frame + 1;
 
         if self.paused {
@@ -146,11 +146,11 @@ const DEFAULT_FIXED_TIMESTEP: Duration = Duration::from_micros(15_625);
 /// The engine's fixed-timestep clock: the kairos shape of bevy's `Time<Fixed>`
 /// as a single concrete (non-generic) `World` resource.
 ///
-/// Registered during `install` (see `kairos_editor::schedule`), but nothing
-/// advances it yet — the fixed-step driver (accumulate the virtual frame delta
-/// each frame, then `expend` until it returns false) lands with the
-/// fixed-step scheduling ticket, so engine behavior is unchanged. Unit tests
-/// drive it directly.
+/// Registered during `install` (see `kairos_editor::schedule`); every frame the
+/// `RunFixedMainLoop` driver (see `kairos_editor::schedule`) accumulates the
+/// virtual clock's delta into it and then expends one step at a time, running
+/// the `FixedUpdate` schedule once per step. Its unit tests drive it directly;
+/// the fixed driver integration lives in `kairos_editor::schedule::test`.
 ///
 /// Semantics mirror bevy `Time<Fixed>`:
 ///

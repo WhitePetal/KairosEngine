@@ -1,7 +1,7 @@
 //! bevy_app-style "main schedule" rails for the editor engine.
 //!
-//! This module bootstraps the per-frame scheduling skeleton that engine and game
-//! code register systems into. It mirrors the structure of bevy's
+//! This module bootstraps the per-frame scheduling skeleton that engine and
+//! game code register systems into. It mirrors the structure of bevy's
 //! `MainSchedulePlugin` (`bevy_app/src/main_schedule.rs`) using only
 //! `kairos_ecs` primitives:
 //!
@@ -9,17 +9,27 @@
 //!   contains a single exclusive system, [`run_main`].
 //! - [`run_main`] drives the labeled sub-schedules listed in the
 //!   [`MainScheduleOrder`] resource in order. The [`Startup`] sub-schedule runs
-//!   exactly once — on the first frame, before any other sub-stage.
-//! - [`install`] registers the fixed set of sub-schedules plus the resources
-//!   the driver needs. The engine's virtual clock ([`Time`]) is registered as
-//!   a World resource and advanced by [`time_system`], hosted by the [`First`]
-//!   sub-stage. The other sub-schedules are still empty, so a frame costs
-//!   nothing beyond walking the label list and advancing the clock once.
+//!   exactly once — on the first frame, before any other sub-stage. A missing
+//!   sub-schedule is tolerated: its error is logged and the remaining labels
+//!   still run.
+//! - Fixed-rate work mounts onto the [`FixedUpdate`] sub-schedule, which is
+//!   *not* part of the per-frame label list. Between `PreUpdate` and `Update`
+//!   sits [`RunFixedMainLoop`], a stage hosting a single exclusive driver
+//!   system, [`run_fixed_main_loop`]. Every frame the driver feeds the virtual
+//!   clock's delta into the [`FixedTime`] accumulator and then re-runs
+//!   `FixedUpdate` once per full timestep — 0..N runs per frame (0 when the
+//!   accumulated time covers no full step). `FixedUpdate` systems read the
+//!   fixed semantics from `Res<FixedTime>` (constant timestep, fixed elapsed);
+//!   `Res<Time>` stays the per-frame virtual clock and carries no fixed
+//!   meaning.
 //!
-//! `FixedUpdate` is only a placeholder in the per-frame label order at this
-//! stage; its fixed clock ([`FixedTime`]) is registered as a World resource
-//! but is not yet consumed by any schedule — fixed-timestep driving lands in a
-//! later ticket.
+//! [`install`] registers the fixed set of sub-schedules plus the resources the
+//! drivers need: the engine's virtual clock ([`Time`]) and the fixed clock
+//! ([`FixedTime`]) as World resources — [`time_system`], hosted by the
+//! [`First`] sub-stage, advances the former exactly once per frame. When
+//! `FixedUpdate` has no systems a frame costs the driver a few resource
+//! accesses and, whenever the accumulated time covers a full step, one run of
+//! an empty schedule — no user systems, no warn, and no forced first step.
 
 use crate::timer::{FixedTime, Time};
 use kairos_ecs::{
@@ -45,7 +55,19 @@ pub struct First;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PreUpdate;
 
-/// Placeholder for the fixed-timestep sub-stage (driven per frame for now).
+/// Sub-stage between `PreUpdate` and `Update` (bevy's `RunFixedMainLoop`).
+///
+/// Runs exactly once per frame and hosts the sole exclusive system
+/// [`run_fixed_main_loop`], the fixed-step driver.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct RunFixedMainLoop;
+
+/// The fixed-timestep content sub-schedule: the single mount point for
+/// fixed-rate systems.
+///
+/// Not listed in the per-frame [`MainScheduleOrder`]; instead
+/// [`run_fixed_main_loop`] runs it 0..N times per frame — once per full
+/// [`FixedTime`] timestep that the accumulated virtual time pays for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FixedUpdate;
 
@@ -81,6 +103,7 @@ impl_schedule_label!(
     Startup,
     First,
     PreUpdate,
+    RunFixedMainLoop,
     FixedUpdate,
     Update,
     PostUpdate,
@@ -91,8 +114,12 @@ impl_schedule_label!(
 ///
 /// `run_main` runs every label in [`startup_labels`](Self::startup_labels)
 /// exactly once on the first frame, and then every label in
-/// [`labels`](Self::labels) once per frame, in order. The lists are stored as
-/// interned labels so iteration and equality checks are cheap.
+/// [`labels`](Self::labels) once per frame, in order. The default per-frame
+/// list walks `First` (clock advance) … `PreUpdate` … `RunFixedMainLoop`
+/// (fixed-step driver) … `Update` … `Last`; `FixedUpdate` is deliberately not
+/// here — the driver inside `RunFixedMainLoop` re-runs it 0..N times per
+/// frame. The lists are stored as interned labels so iteration and equality
+/// checks are cheap.
 #[derive(Resource)]
 pub struct MainScheduleOrder {
     /// Schedules run once, in order, on the first frame (currently `[Startup]`).
@@ -108,7 +135,7 @@ impl Default for MainScheduleOrder {
             labels: vec![
                 First.intern(),
                 PreUpdate.intern(),
-                FixedUpdate.intern(),
+                RunFixedMainLoop.intern(),
                 Update.intern(),
                 PostUpdate.intern(),
                 Last.intern(),
@@ -155,20 +182,57 @@ fn run_main(world: &mut World, mut run_at_least_once: Local<bool>) {
     });
 }
 
+/// The exclusive fixed-step driver system hosted by the [`RunFixedMainLoop`]
+/// schedule.
+///
+/// Runs exactly once per frame, after the `First`-stage [`time_system`] has
+/// advanced the virtual clock:
+///
+/// 1. read the frame's virtual delta from [`Time`] — it is already
+///    `max_delta`-clamped, `time_scale`-scaled and `paused`-aware, so a
+///    paused or zero-speed frame feeds `Duration::ZERO`;
+/// 2. accumulate that delta into [`FixedTime`];
+/// 3. while the accumulator still covers a full timestep, run the
+///    [`FixedUpdate`] schedule exactly once per step.
+///
+/// The per-frame step count is therefore 0..N with no explicit loop bound —
+/// the implicit cap is the virtual clock's default 250 ms `max_delta` clamp
+/// (~16 steps per frame at the default 64 Hz). The `FixedUpdate` schedule is
+/// temporarily pulled out of `Schedules` for the loop (kairos_ecs schedule
+/// scope) so the 0..N consecutive runs share one system-state cache. A missing
+/// `FixedUpdate` schedule is tolerated like any other missing sub-stage: the
+/// error is logged and the frame moves on; nothing is drained in that case, so
+/// the fixed clock only ever advances through real steps.
+fn run_fixed_main_loop(world: &mut World) {
+    let delta = world.resource::<Time>().delta_time();
+    world.resource_mut::<FixedTime>().accumulate(delta);
+
+    // Run the fixed schedule until the accumulated time runs out (0..N times).
+    if let Err(error) = world.try_schedule_scope(FixedUpdate, |world, schedule| {
+        while world.resource_mut::<FixedTime>().expend() {
+            schedule.run(world);
+        }
+    }) {
+        log::error!("skipping fixed-update schedule `{FixedUpdate:?}`: {error}");
+    }
+}
+
 /// Bootstraps the schedule rails onto a fresh [`World`].
 ///
-/// Registers the sub-schedules (the [`First`] one hosting [`time_system`]),
-/// builds the [`Main`] schedule around [`run_main`], and inserts the driver
-/// resources ([`Time`], [`MainScheduleOrder`], plus a [`MainThreadExecutor`]
+/// Registers the sub-schedules — the [`First`] one hosting [`time_system`], the
+/// [`RunFixedMainLoop`] one hosting the fixed-step [`run_fixed_main_loop`]
+/// driver, and the empty [`FixedUpdate`] content schedule — builds the [`Main`]
+/// schedule around [`run_main`], and inserts the driver resources ([`Time`],
+/// [`FixedTime`], [`MainScheduleOrder`], plus a [`MainThreadExecutor`]
 /// captured on the calling thread). `Schedules` itself is created on demand by
 /// the world.
 pub(crate) fn install(world: &mut World) {
     log::debug!("installing the main-schedule rails");
 
-    // The engine's virtual clock lives in the World as a resource; it is
-    // advanced exactly once per frame by `time_system` below. The fixed-step
-    // clock is registered alongside, but nothing drives it yet — the driver
-    // lands with the fixed-step scheduling ticket (#136 registers only).
+    // The engine's virtual clock lives in the World as a resource and is
+    // advanced exactly once per frame by `time_system` below. The fixed clock
+    // sits alongside it; `run_fixed_main_loop` consumes it every frame inside
+    // `RunFixedMainLoop`.
     world.insert_resource(Time::new());
     world.insert_resource(FixedTime::new());
 
@@ -177,6 +241,10 @@ pub(crate) fn install(world: &mut World) {
     let mut first = Schedule::new(First);
     first.add_systems(time_system);
     schedules.insert(first);
+
+    let mut fixed_loop = Schedule::new(RunFixedMainLoop);
+    fixed_loop.add_systems(run_fixed_main_loop);
+    schedules.insert(fixed_loop);
 
     for label in [
         Startup.intern(),
