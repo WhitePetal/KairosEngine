@@ -11,6 +11,7 @@ members = [
     "kairos_supervisor",
     "kairos_tasks",
     "kairos_time",
+    "kairos_transform",
 ]
 resolver = "3"
 

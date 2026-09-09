@@ -2474,6 +2474,7 @@ dependencies = [
  "indexmap",
  "kairos_collections",
  "kairos_ecs",
+ "kairos_math",
  "kairos_time",
  "kira",
  "log",
@@ -2556,6 +2557,16 @@ name = "kairos_time"
 version = "0.1.0"
 dependencies = [
  "kairos_ecs",
+]
+
+[[package]]
+name = "kairos_transform"
+version = "0.1.0"
+dependencies = [
+ "kairos_ecs",
+ "kairos_math",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
