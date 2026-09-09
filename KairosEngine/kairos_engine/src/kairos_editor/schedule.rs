@@ -123,7 +123,7 @@ fn run_main(world: &mut World, mut run_at_least_once: Local<bool>) {
         world.resource_scope::<MainScheduleOrder, _>(|world, order| {
             for &label in &order.startup_labels {
                 if let Err(error) = world.try_run_schedule(label) {
-                    log::warn!("skipping startup schedule `{label:?}`: {error}");
+                    log::error!("skipping startup schedule `{label:?}`: {error}");
                 }
             }
         });
@@ -133,7 +133,7 @@ fn run_main(world: &mut World, mut run_at_least_once: Local<bool>) {
     world.resource_scope::<MainScheduleOrder, _>(|world, order| {
         for &label in &order.labels {
             if let Err(error) = world.try_run_schedule(label) {
-                log::warn!("skipping sub-stage schedule `{label:?}`: {error}");
+                log::error!("skipping sub-stage schedule `{label:?}`: {error}");
             }
         }
     });
@@ -164,7 +164,6 @@ pub(crate) fn install(world: &mut World) {
     let mut main = Schedule::new(Main);
     main.add_systems(run_main);
     schedules.insert(main);
-    drop(schedules);
 
     world.insert_resource(MainScheduleOrder::default());
     // The driver may eventually contain `!Send` systems; capture this (main)
