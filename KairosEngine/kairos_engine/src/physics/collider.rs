@@ -56,6 +56,6 @@ impl Collider {
     }
 
     pub fn set_position(&self, engine: &mut PhysicsEngine, position: float3) {
-        engine.collider_set[self.handle].set_translation(position.into());
+        engine.collider_set[self.handle].set_translation(super::to_rapier_vec3(position));
     }
 }
