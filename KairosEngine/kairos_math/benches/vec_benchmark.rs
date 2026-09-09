@@ -1,6 +1,6 @@
-use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use glam::Vec4Swizzles;
-use kairos_engine::math::{self, Vector};
+use kairos_math::{self as math, Vector};
 use std::hint::black_box;
 
 #[derive(Clone, Copy)]

@@ -83,9 +83,5 @@ objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std"
 objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSString"] }
 
 [[bench]]
-name = "vec_benchmark"
-harness = false
-
-[[bench]]
 name = "texture_encode_decode"
 harness = false

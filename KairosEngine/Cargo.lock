@@ -2519,6 +2519,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "kairos_math"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "criterion",
+ "glam 0.33.1",
+ "rkyv",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "kairos_ptr"
 version = "0.1.0"
 
