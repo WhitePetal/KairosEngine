@@ -1,7 +1,8 @@
-//! Smoke tests (T1–T11) for the bevy_app-style schedule rails.
+//! Smoke tests (T1–T12) for the bevy_app-style schedule rails.
 //!
 //! Test list per Grilling #130 resolution D4, extended with the time-resource
-//! rails (T9–T11, issue #135); all tests run against a bare
+//! rails (T9–T11, issue #135) and the fixed-clock registration (T12, issue
+//! #136); all tests run against a bare
 //! [`World`] (D2): `World::new()` → `install`, and one "frame" is
 //! `world.run_schedule(Main)` followed by `world.clear_trackers()`.
 //! `Engine::new()` is deliberately avoided (no audio-device dependency), so
@@ -11,7 +12,7 @@ use super::{
     First, FixedUpdate, Last, Main, MainScheduleOrder, PostUpdate, PreUpdate, Startup, Update,
     install,
 };
-use crate::timer::Time;
+use crate::timer::{FixedTime, Time};
 use kairos_ecs::{
     resource::Resource,
     schedule::{InternedScheduleLabel, MainThreadExecutor, ScheduleLabel, Schedules},
@@ -329,7 +330,8 @@ fn missing_substage_warns_and_continues() {
 }
 
 // ---------------------------------------------------------------------------
-// T9–T11: the `Time` World resource and its `First`-stage `time_system` (#135)
+// T9–T12: the `Time` World resource with its `First`-stage `time_system`
+// (#135), plus the registered-but-idle `FixedTime` resource (#136)
 // ---------------------------------------------------------------------------
 
 /// T9: `install` registers the `Time` World resource with a zeroed clock.
@@ -401,4 +403,31 @@ fn only_first_advances_the_clock() {
         1,
         "First must advance the clock exactly once per run"
     );
+}
+
+/// T12: `install` also registers the `FixedTime` World resource (#136) with a
+/// default 64 Hz clock — but nothing consumes it yet, so the fixed clock is
+/// untouched by frames.
+#[test]
+fn install_registers_the_fixed_time_resource() {
+    let mut world = boot();
+
+    let fixed = world
+        .get_resource::<FixedTime>()
+        .expect("FixedTime resource missing after install");
+    assert_eq!(fixed.timestep(), std::time::Duration::from_micros(15_625));
+    assert_eq!(fixed.overstep(), std::time::Duration::ZERO);
+    assert_eq!(fixed.delta(), std::time::Duration::ZERO);
+    assert_eq!(fixed.elapsed(), std::time::Duration::ZERO);
+
+    // Frames must not move the fixed clock: no schedule consumes it yet.
+    for _ in 0..FRAMES {
+        run_frame(&mut world);
+    }
+    let fixed = world
+        .get_resource::<FixedTime>()
+        .expect("FixedTime resource");
+    assert_eq!(fixed.delta(), std::time::Duration::ZERO);
+    assert_eq!(fixed.elapsed(), std::time::Duration::ZERO);
+    assert_eq!(fixed.overstep(), std::time::Duration::ZERO);
 }

@@ -17,9 +17,11 @@
 //!   nothing beyond walking the label list and advancing the clock once.
 //!
 //! `FixedUpdate` is only a placeholder in the per-frame label order at this
-//! stage; fixed-timestep semantics are out of scope for the skeleton.
+//! stage; its fixed clock ([`FixedTime`]) is registered as a World resource
+//! but is not yet consumed by any schedule — fixed-timestep driving lands in a
+//! later ticket.
 
-use crate::timer::Time;
+use crate::timer::{FixedTime, Time};
 use kairos_ecs::{
     resource::Resource,
     schedule::{InternedScheduleLabel, MainThreadExecutor, Schedule, ScheduleLabel, Schedules},
@@ -164,8 +166,11 @@ pub(crate) fn install(world: &mut World) {
     log::debug!("installing the main-schedule rails");
 
     // The engine's virtual clock lives in the World as a resource; it is
-    // advanced exactly once per frame by `time_system` below.
+    // advanced exactly once per frame by `time_system` below. The fixed-step
+    // clock is registered alongside, but nothing drives it yet — the driver
+    // lands with the fixed-step scheduling ticket (#136 registers only).
     world.insert_resource(Time::new());
+    world.insert_resource(FixedTime::new());
 
     let mut schedules = world.get_resource_or_init::<Schedules>();
 
