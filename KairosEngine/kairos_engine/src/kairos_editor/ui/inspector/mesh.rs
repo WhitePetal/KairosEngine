@@ -22,7 +22,7 @@ use crate::{
         Message, Messager, UIReader, dialog::Dialog, inspector::Inspector, paths,
         scene_camera::SceneCamera,
     },
-    math::{Vector, float2, float3, float4, float4x4},
+    math::{Vector, float3, float4x4},
     spatial::AABB,
 };
 
@@ -385,10 +385,10 @@ impl Inspector for MeshInspector {
                             ui.label("Position");
                         });
                         row.col(|ui| {
-                            ui.label("float4");
+                            ui.label("f32×4");
                         });
                         row.col(|ui| {
-                            ui.label(std::mem::size_of::<float4>().to_string());
+                            ui.label(std::mem::size_of::<[f32; 4]>().to_string());
                         });
                     });
                     body.row(row_h, |mut row| {
@@ -396,10 +396,10 @@ impl Inspector for MeshInspector {
                             ui.label("Color");
                         });
                         row.col(|ui| {
-                            ui.label("float4");
+                            ui.label("f32×4");
                         });
                         row.col(|ui| {
-                            ui.label(std::mem::size_of::<float4>().to_string());
+                            ui.label(std::mem::size_of::<[f32; 4]>().to_string());
                         });
                     });
                     body.row(row_h, |mut row| {
@@ -407,10 +407,10 @@ impl Inspector for MeshInspector {
                             ui.label("Texcoord");
                         });
                         row.col(|ui| {
-                            ui.label("float2");
+                            ui.label("f32×2");
                         });
                         row.col(|ui| {
-                            ui.label(std::mem::size_of::<float2>().to_string());
+                            ui.label(std::mem::size_of::<[f32; 2]>().to_string());
                         });
                     });
                     body.row(row_h, |mut row| {
@@ -418,10 +418,10 @@ impl Inspector for MeshInspector {
                             ui.label("Normal");
                         });
                         row.col(|ui| {
-                            ui.label("float3");
+                            ui.label("f32×3");
                         });
                         row.col(|ui| {
-                            ui.label(std::mem::size_of::<float3>().to_string());
+                            ui.label(std::mem::size_of::<[f32; 3]>().to_string());
                         });
                     });
                     body.row(row_h, |mut row| {
@@ -429,10 +429,10 @@ impl Inspector for MeshInspector {
                             ui.label("Tangent");
                         });
                         row.col(|ui| {
-                            ui.label("float4");
+                            ui.label("f32×4");
                         });
                         row.col(|ui| {
-                            ui.label(std::mem::size_of::<float4>().to_string());
+                            ui.label(std::mem::size_of::<[f32; 4]>().to_string());
                         });
                     });
                 });

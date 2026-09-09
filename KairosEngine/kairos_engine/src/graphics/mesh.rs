@@ -125,11 +125,11 @@ impl SerializedMeshAsset {
             );
 
             vertices.push(Vertex {
-                position: float4::from((position, 1.0)),
-                color,
+                position: float4::from((position, 1.0)).to_array(),
+                color: color.to_array(),
                 texcoord,
-                normal,
-                tangent: float4::from((tangent_xyz, tangent[3])),
+                normal: Vertex::pack_normal(normal),
+                tangent: float4::from((tangent_xyz, tangent[3])).to_array(),
             });
         }
 
@@ -206,7 +206,7 @@ impl Mesh {
         let (min, max) = self
             .vertices
             .par_iter()
-            .map(|v| v.position.xyz())
+            .map(|v| float3::from_array_4(v.position))
             .map(|p| (p, p))
             .reduce(
                 || {
