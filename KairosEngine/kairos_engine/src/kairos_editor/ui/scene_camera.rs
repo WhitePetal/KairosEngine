@@ -1,9 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    math::{self, float3, float4x4},
-    spatial::Transform,
-};
+use crate::math::{self, float3, float4x4};
+use kairos_transform::LocalTransform;
 
 /// Editor orbit camera — pure data + pure math, no egui dependency.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -131,8 +129,8 @@ impl SceneCamera {
         math::cross(self.right(), self.forward())
     }
 
-    pub fn transform(&self) -> Transform {
-        Transform::look_at(self.position(), self.pivot, float3::UP)
+    pub fn transform(&self) -> LocalTransform {
+        LocalTransform::look_at(self.position(), self.pivot, float3::UP)
     }
 
     pub fn view_projection(&self) -> float4x4 {

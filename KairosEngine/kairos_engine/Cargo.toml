@@ -77,6 +77,7 @@ kairos_collections = { path = "../kairos_collections" }
 kairos_ecs = { path = "../kairos_ecs" }
 kairos_math = { path = "../kairos_math", features = ["serde", "rkyv"] }
 kairos_time = { path = "../kairos_time" }
+kairos_transform = { path = "../kairos_transform" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6.4"

@@ -20,8 +20,9 @@ use crate::{
         collider::{Collider, ColliderMaterial},
         rigid_body::RigidBody,
     },
-    spatial::{AABB, Transform},
+    spatial::AABB,
 };
+use kairos_transform::LocalTransform;
 
 // TODO!
 
@@ -181,7 +182,7 @@ impl KairosGame {
 
         let cam_pos = float3::new(0.0, 1.0, -2.0);
         let cam_target = float3::new(0.0, 0.0, 0.0);
-        let cam_trans = Transform::look_at(cam_pos, cam_target, float3::UP);
+        let cam_trans = LocalTransform::look_at(cam_pos, cam_target, float3::UP);
         let camera = Camera::new(45.0, 16.0 / 9.0, 0.3, 100.);
         // engine.world.spawn((cam_trans, camera));
 
@@ -220,7 +221,7 @@ impl KairosGame {
         //             let scale = float3::new(0.05, 0.05, 0.05);
         //             let position = float3::new(x as f32, 0.0, z as f32) * scale * 2.0;
         //             let rotation = quaternion::identity();
-        //             let transform = Transform::new(position, rotation, scale);
+        //             let transform = LocalTransform::new(position, rotation, scale);
         //             let audios = smallvec![blip_audio.clone()];
         //             let spatial_audio_volume =
         //                 SpatialAudioVolume::new(audios, true, rand::random_range(0.0..5.0));
@@ -234,7 +235,7 @@ impl KairosGame {
         //         }),
         // );
 
-        let plane_transform = Transform::new(
+        let plane_transform = LocalTransform::new(
             float3::new(0.0, -1.0, 0.0),
             quaternion::IDENTITY,
             float3::ONE,
@@ -242,7 +243,7 @@ impl KairosGame {
         let plane_collider = Collider::box_collider(&mut engine.physics_engine, 100.0, 0.1, 100.0);
         plane_collider.set_position(&mut engine.physics_engine, plane_transform.position);
 
-        let ball_transform = Transform::new(
+        let ball_transform = LocalTransform::new(
             float3::new(0.0, 10.0, 0.0),
             quaternion::IDENTITY,
             float3::ONE,
@@ -323,13 +324,13 @@ impl KairosGame {
     pub fn render(&self, engine: &mut Engine, graphics_command: &mut GraphicsCommand) {
         // let renderers = engine
         //     .world
-        //     .query_mut::<(&Transform, &LODMesh, &MaterialComponent)>()
+        //     .query_mut::<(&LocalTransform, &LODMesh, &MaterialComponent)>()
         //     .into_iter();
         // renderers.for_each(|(trans, lod, mat)| {
         //     graphics_command.draw(
         //         lod.lod0.clone(),
         //         mat.material.clone(),
-        //         trans.get_local_to_world(),
+        //         trans.compute_local_matrix(),
         //     );
         // });
     }

@@ -1,10 +1,8 @@
-use crate::{
-    math::{self, float3, float4, float4x4},
-    spatial::Transform,
-};
+use crate::math::{self, float3, float4, float4x4};
 use kairos_ecs::component::Component;
+use kairos_transform::LocalTransform;
 
-/// Pure projection parameters; view matrix is derived from a `Transform`.
+/// Pure projection parameters; view matrix is derived from a `LocalTransform`.
 pub struct Camera {
     pub fov: f32,
     /// width / height
@@ -25,12 +23,13 @@ impl Camera {
         }
     }
 
-    /// World→View matrix from the camera's world-space `Transform`.
+    /// World→View matrix from the camera's root-level `LocalTransform`
+    /// (world-space while every scene is a root scene).
     ///
     /// `view = inverse(camera_world)`, where `camera_world` is derived from
     /// `transform.rotation` (right = +X, up = +Y, forward = -Z) and
     /// `transform.position`.
-    pub fn get_view_matrix(&self, transform: Transform) -> float4x4 {
+    pub fn get_view_matrix(&self, transform: LocalTransform) -> float4x4 {
         // Columns of the rotation matrix R = [right | up | -forward]
         let m = transform.rotation.to_float4x4();
         let r = float3::new(m.c0().x(), m.c0().y(), m.c0().z()); // right
@@ -68,7 +67,7 @@ impl Camera {
     }
 
     #[inline(always)]
-    pub fn get_view_projection_matrix(&self, transform: Transform) -> float4x4 {
+    pub fn get_view_projection_matrix(&self, transform: LocalTransform) -> float4x4 {
         self.get_projection_matrix() * self.get_view_matrix(transform)
     }
 }

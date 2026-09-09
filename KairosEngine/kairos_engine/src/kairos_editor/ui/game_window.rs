@@ -19,8 +19,8 @@ use crate::{
         ui::{Drawer, Message, UIReader, paths},
     },
     kairos_game::KairosGame,
-    spatial::Transform,
 };
+use kairos_transform::LocalTransform;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct GameWindowStyle {
@@ -224,7 +224,7 @@ impl Drawer for GameWindow {
         // TODO!
         // if let Some((transform, mut camera)) = engine
         //     .world
-        //     .query_mut::<(&Transform, &mut Camera)>()
+        //     .query_mut::<(&LocalTransform, &mut Camera)>()
         //     .into_iter()
         //     .next()
         // {

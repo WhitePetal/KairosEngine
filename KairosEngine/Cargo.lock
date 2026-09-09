@@ -2476,6 +2476,7 @@ dependencies = [
  "kairos_ecs",
  "kairos_math",
  "kairos_time",
+ "kairos_transform",
  "kira",
  "log",
  "mint",

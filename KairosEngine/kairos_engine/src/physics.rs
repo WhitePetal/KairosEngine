@@ -7,8 +7,12 @@ use rapier3d::{
     pipeline::PhysicsPipeline,
 };
 
-use crate::{math::{float3, quaternion}, physics::rigid_body::RigidBody, spatial::Transform};
+use crate::{
+    math::{float3, quaternion},
+    physics::rigid_body::RigidBody,
+};
 use kairos_ecs::world::World;
+use kairos_transform::LocalTransform;
 
 pub mod collider;
 pub mod rigid_body;
@@ -95,8 +99,10 @@ impl PhysicsEngine {
         }
 
         // TODO!
+        // 将来由 rapier 写回 LocalTransform（根级场景 local == world，字段 pub 直接写；
+        // 只写 position/rotation，scale 不动）。
         // for (mut transform, rigid_body) in
-        //     word.query_mut::<(&mut Transform, &RigidBody)>().into_iter()
+        //     word.query_mut::<(&mut LocalTransform, &RigidBody)>().into_iter()
         // {
         //     let rigid_body = &self.rigid_body_set[rigid_body.handle];
         //     transform.position = to_float3(*rigid_body.translation());

@@ -24,10 +24,10 @@ use crate::{
         },
     },
     math::{Vector, float3, quaternion},
-    spatial::Transform,
 };
 
 use kairos_ecs::world::World;
+use kairos_transform::LocalTransform;
 
 pub mod spatial_audio_listener;
 pub mod spatial_audio_reverb;
@@ -165,7 +165,7 @@ impl SpatialAudioTracks {
     ) {
         // TODO!
         // let listeners_iter = world
-        //     .query_mut::<(&Transform, &mut SpatialAudioListenerComponent)>()
+        //     .query_mut::<(&LocalTransform, &mut SpatialAudioListenerComponent)>()
         //     .into_iter();
         // if listeners_iter.len() == 0 {
         //     return;
@@ -191,7 +191,7 @@ impl SpatialAudioTracks {
         &mut self,
         manager: &mut AudioManager,
         world: &mut World,
-        listeners: &mut [(Transform, SpatialAudioListenerComponent)],
+        listeners: &mut [(LocalTransform, SpatialAudioListenerComponent)],
     ) {
         let len = listeners.len();
         let per_listener_track_count = self.config.max_track_count / (len as u8);
@@ -303,7 +303,7 @@ impl SpatialAudioTracks {
         // TODO!
         // 先更新 kairos engine 端的 audio volume 数据
         // let volumes = world
-        //     .query_mut::<(&Transform, &mut SpatialAudioVolume)>()
+        //     .query_mut::<(&LocalTransform, &mut SpatialAudioVolume)>()
         //     .into_iter()
         //     .map(|(_, volume)| volume);
         // for mut volume in volumes {
@@ -345,10 +345,10 @@ impl SpatialAudioTracks {
         reverb_track: Option<SendTrackId>,
     ) {
         // TODO!
-        // // 首先，如果有 volume play completed 或者 leaved track
-        // // 那么先让它们free掉持有的track
+        // 首先，如果有 volume play completed 或者 leaved track
+        // 那么先让它们free掉持有的track
         // let volumes = world
-        //     .query_mut::<(&Transform, &mut SpatialAudioVolume)>()
+        //     .query_mut::<(&LocalTransform, &mut SpatialAudioVolume)>()
         //     .into_iter()
         //     .map(|(_, volume)| volume);
         // for mut volume in volumes {
@@ -357,7 +357,7 @@ impl SpatialAudioTracks {
 
         // // 找到前 k 个 距离 listener 最近的 可播放的 volumes
         // let mut volumes = world
-        //     .query_mut::<(&Transform, &mut SpatialAudioVolume)>()
+        //     .query_mut::<(&LocalTransform, &mut SpatialAudioVolume)>()
         //     .into_iter()
         //     .filter(|(_, volume)| match volume.state {
         //         AudioState::Created => false,
@@ -529,7 +529,7 @@ impl SpatialAudioTracks {
         assets_server: &mut AssetsServer,
         manager: &mut AudioManager,
         listener: &mut ListenerInfo,
-        trans: &Transform,
+        trans: &LocalTransform,
         volume: &mut SpatialAudioVolume,
         per_listener_track_count: u8,
         reverb_track: Option<SendTrackId>,
@@ -615,7 +615,7 @@ impl SpatialAudioTracks {
     fn leaving_audio_volume_in_track(
         fade_time: f32,
         listener: &mut ListenerInfo,
-        trans: &Transform,
+        trans: &LocalTransform,
         volume: &mut SpatialAudioVolume,
     ) {
         for track_state in &mut volume.track_states {
