@@ -1,0 +1,17 @@
+[package]
+name = "kairos_physics"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "The Kairos engine's physics subsystem — a rapier3d-backed `PhysicsEngine` World resource plus the `RigidBody`/`Collider` components that point into it — extracted as a standalone crate"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)", "cfg(docsrs_dep)"] }
+
+[dependencies]
+log = "0.4"
+rapier3d = { version = "0.33.0", features = ["simd-stable", "parallel", "serde-serialize"] }
+kairos_ecs = { path = "../kairos_ecs" }
+kairos_math = { path = "../kairos_math" }
+kairos_time = { path = "../kairos_time" }
+kairos_transform = { path = "../kairos_transform" }

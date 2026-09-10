@@ -9,6 +9,7 @@ members = [
     "kairos_engine",
     "kairos_graphics",
     "kairos_math",
+    "kairos_physics",
     "kairos_ptr",
     "kairos_supervisor",
     "kairos_tasks",

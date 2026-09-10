@@ -37,11 +37,12 @@ impl Engine {
         // World resource and its `First`-stage `time_system` — before any
         // game/editor logic gets a chance to register systems.
         schedule::install(&mut world);
-        // Physics is installed right after the schedule rails: the resource has
-        // no ordering dependency today, but its step system will register into
-        // `FixedUpdate` here. It is a World resource, not an `Engine` field, so
-        // from here on every `Engine` carries physics in its world.
-        physics::install(&mut world);
+        // Physics is installed right after the schedule rails: its step system
+        // registers into the `FixedUpdate` stage the skeleton above just
+        // created, so this order is a precondition. It is a World resource, not
+        // an `Engine` field, so from here on every `Engine` carries physics in
+        // its world.
+        physics::install(&mut world, schedule::FixedUpdate);
         // Then the render rails, which register into the `Extract` stage the
         // skeleton above just created. The order is a precondition, not a
         // preference: game assembly runs after `Engine::new` and binds the game

@@ -223,6 +223,10 @@ guid = "7b521338-6e23-4a0a-a5f5-9a86ae6fb7a9"
 path = "docs/agents/issue-tracker.md"
 
 [[entries]]
+guid = "a4e7caf1-6f00-4eb2-a04c-4e1207ee4e71"
+path = "docs/agents/testing.md"
+
+[[entries]]
 guid = "657e815b-bbae-4944-a86c-e53571dd08d7"
 path = "docs/agents/triage-labels.md"
 
@@ -527,8 +531,16 @@ guid = "58f7f7cd-45ab-4f75-aa3f-1604865cd175"
 path = "docs/research/aaa-terrain-systems-analysis.md"
 
 [[entries]]
+guid = "a8285cbc-6dea-48d1-981c-f02bffe9e60c"
+path = "docs/research/audio-ecs-call-sites-inventory.md"
+
+[[entries]]
 guid = "da5938e2-1278-48ac-a776-8a6a24a01760"
 path = "docs/research/bevy-app-schedule-reference.md"
+
+[[entries]]
+guid = "b3c73d33-0924-45d2-8e2d-4094423995d9"
+path = "docs/research/bevy-camera-view-reference.md"
 
 [[entries]]
 guid = "89f4ba0e-4e4a-47c1-bf30-8bad325863b2"
@@ -541,6 +553,10 @@ path = "docs/research/bevy-fixed-timestep-reference.md"
 [[entries]]
 guid = "6bb2bb81-02df-4f80-be76-c294fb4fcd71"
 path = "docs/research/claw-tools-architecture.md"
+
+[[entries]]
+guid = "6402f93e-d6c1-400e-b8a5-491b12350e70"
+path = "docs/research/ecs-render-facts.md"
 
 [[entries]]
 guid = "364e8fdc-bbb1-4e93-8d2f-8c8a32f48d2d"
@@ -579,8 +595,16 @@ guid = "8d1d18b4-f6d8-46c5-9eeb-df2f28b7895b"
 path = "docs/research/open-world-terrain-engines.md"
 
 [[entries]]
+guid = "a359a504-448d-4d77-acd2-d51060caaf7c"
+path = "docs/research/physics-rapier-facts-inventory.md"
+
+[[entries]]
 guid = "014de37b-986b-4d7b-8f13-d0f75f53c424"
 path = "docs/research/pipeline-cache-key-design.md"
+
+[[entries]]
+guid = "c7a41ba0-d73a-435b-9d48-c92b8c4d124a"
+path = "docs/research/spatial-math-call-sites-inventory.md"
 
 [[entries]]
 guid = "60b75001-c14e-4492-9492-3d81d11979c4"
@@ -613,6 +637,38 @@ path = "docs/research/ue5-terrain-landscape-system.md"
 [[entries]]
 guid = "9cabd4bc-02f3-4d33-bcf6-f2127e90731f"
 path = "docs/research/zed-ai-agent-integration.md"
+
+[[entries]]
+guid = "205ba3dc-409c-409b-bdf3-4a34cbe56673"
+path = "kairos_asset"
+
+[[entries]]
+guid = "30146f44-da96-482a-b7d1-6da552a10cbe"
+path = "kairos_asset/Cargo.toml"
+
+[[entries]]
+guid = "86e62552-0a87-42aa-8dd0-b23916b9084c"
+path = "kairos_asset/src"
+
+[[entries]]
+guid = "e9e3fa46-bcc0-4d9b-b4fb-b1f8d8e5ca6c"
+path = "kairos_asset/src/assets"
+
+[[entries]]
+guid = "5f61ce95-c747-4839-85e8-641a8461ef30"
+path = "kairos_asset/src/assets/asset.rs"
+
+[[entries]]
+guid = "232ac49d-9c6e-418e-88c4-d530ad8fdf7f"
+path = "kairos_asset/src/assets.rs"
+
+[[entries]]
+guid = "aca9248d-22fd-4476-b5b7-544ff5c6f671"
+path = "kairos_asset/src/consts.rs"
+
+[[entries]]
+guid = "9e0959c8-5997-4c9b-88a2-f6ba00544ea3"
+path = "kairos_asset/src/lib.rs"
 
 [[entries]]
 guid = "f2f7e874-896f-4d8b-b1f5-77788fa0b0a2"
@@ -2139,6 +2195,10 @@ guid = "0720f0e1-5e7e-4319-83e3-2c2f9c0e46bd"
 path = "kairos_engine/src/audio/spatial_audio_listener.rs"
 
 [[entries]]
+guid = "a63ef601-dc04-4e66-9518-528cc0a44489"
+path = "kairos_engine/src/audio/test.rs"
+
+[[entries]]
 guid = "2f49d5db-b65e-4d83-a689-79d251cfc5d6"
 path = "kairos_engine/src/audio.rs"
 
@@ -2437,6 +2497,18 @@ path = "kairos_engine/src/kairos_editor"
 [[entries]]
 guid = "f9c88dd0-b97c-4523-b266-f1f3a442ba19"
 path = "kairos_engine/src/kairos_editor/asset_registry.rs"
+
+[[entries]]
+guid = "ec780024-609e-46a4-ae66-8cc59fdc940a"
+path = "kairos_engine/src/kairos_editor/camera"
+
+[[entries]]
+guid = "d7a1936b-c322-48e8-ae6e-4b33d7d20188"
+path = "kairos_engine/src/kairos_editor/camera/test.rs"
+
+[[entries]]
+guid = "f5fbd9fb-9017-40dd-90ef-a2a083c6df12"
+path = "kairos_engine/src/kairos_editor/camera.rs"
 
 [[entries]]
 guid = "2d8e3ef9-8824-4ce2-9f33-2588050dbc10"
@@ -2955,6 +3027,10 @@ guid = "df85a2b4-25ee-4ee1-a3f1-1303066d7098"
 path = "kairos_engine/src/physics/rigid_body.rs"
 
 [[entries]]
+guid = "6cb45522-444a-453e-a92f-5a0ca1681879"
+path = "kairos_engine/src/physics/tests.rs"
+
+[[entries]]
 guid = "89eeed4b-ff59-4554-94ba-5f0faba55b57"
 path = "kairos_engine/src/physics.rs"
 
@@ -3123,6 +3199,358 @@ guid = "37eb13d0-65c1-4be8-9f75-f808f4285787"
 path = "kairos_engine/tests/integration/serialized_material.rs"
 
 [[entries]]
+guid = "3704bc1b-4456-4eae-bd12-fb0aa6ffa220"
+path = "kairos_graphics"
+
+[[entries]]
+guid = "66da993d-ec54-4fbf-bf50-83f0fcca8242"
+path = "kairos_graphics/Cargo.toml"
+
+[[entries]]
+guid = "57a99ad8-f88b-4aeb-9618-887199130e13"
+path = "kairos_graphics/src"
+
+[[entries]]
+guid = "387a3eca-4bb6-4265-88f4-876144036a0d"
+path = "kairos_graphics/src/assets"
+
+[[entries]]
+guid = "ae6b244e-ee5a-4377-9091-d3de09007ea1"
+path = "kairos_graphics/src/assets/asset"
+
+[[entries]]
+guid = "08102d29-cec1-4a43-863f-f8c40253c606"
+path = "kairos_graphics/src/assets/asset/material.rs"
+
+[[entries]]
+guid = "c4f3f08f-ceae-4228-8cf1-ef423a6dd15a"
+path = "kairos_graphics/src/assets/asset/mesh.rs"
+
+[[entries]]
+guid = "3bbae013-3143-4004-8596-88e26f4d4c38"
+path = "kairos_graphics/src/assets/asset/serialized_material.rs"
+
+[[entries]]
+guid = "33f0ba79-3bbb-432c-991d-9d541ac3a541"
+path = "kairos_graphics/src/assets/asset/shader.rs"
+
+[[entries]]
+guid = "e2433eb8-11a3-43e7-821d-4d3a946194fa"
+path = "kairos_graphics/src/assets/asset/texture.rs"
+
+[[entries]]
+guid = "a3a38333-5622-4589-9017-ffb9c8e7dd90"
+path = "kairos_graphics/src/assets/asset.rs"
+
+[[entries]]
+guid = "f97997d2-02b9-4d27-ab25-028a4b5dbf29"
+path = "kairos_graphics/src/assets.rs"
+
+[[entries]]
+guid = "982ee325-5685-41e0-9bed-68c1d4c8a0ff"
+path = "kairos_graphics/src/attachment.rs"
+
+[[entries]]
+guid = "f329f2d9-ee8a-4a65-8ead-359153a5f319"
+path = "kairos_graphics/src/camera"
+
+[[entries]]
+guid = "fa62f79d-d195-41d6-aef3-92288dfc3376"
+path = "kairos_graphics/src/camera/test.rs"
+
+[[entries]]
+guid = "42a356f4-6fcd-4b5f-a05c-1912ff3df27c"
+path = "kairos_graphics/src/camera.rs"
+
+[[entries]]
+guid = "7027d5cc-3f86-42c1-a056-5cf0fe44b51c"
+path = "kairos_graphics/src/compare_function.rs"
+
+[[entries]]
+guid = "4f253663-4288-4715-bfc2-96c79fa50f65"
+path = "kairos_graphics/src/drawer.rs"
+
+[[entries]]
+guid = "c5b9b3d6-b67a-47d1-92b0-c9a3630a4173"
+path = "kairos_graphics/src/egui_texture_handle.rs"
+
+[[entries]]
+guid = "5410e682-3fd5-438c-b0a9-dd93140f1018"
+path = "kairos_graphics/src/extract"
+
+[[entries]]
+guid = "c9723e8a-3f57-43d1-bea3-db6df3023b51"
+path = "kairos_graphics/src/extract/test.rs"
+
+[[entries]]
+guid = "4b0ea31d-1bfb-4792-a4c0-2421ab4b1800"
+path = "kairos_graphics/src/extract.rs"
+
+[[entries]]
+guid = "36d052c5-ba92-4a21-bf92-1f36db814136"
+path = "kairos_graphics/src/graphics_graph"
+
+[[entries]]
+guid = "3a89644c-5ddc-4e2a-8027-25c235e9d824"
+path = "kairos_graphics/src/graphics_graph/graph.rs"
+
+[[entries]]
+guid = "4b421b0c-e748-4d59-a0da-585bb880a132"
+path = "kairos_graphics/src/graphics_graph/graphics_command.rs"
+
+[[entries]]
+guid = "ca31aa54-dc5f-499f-9f3b-b70b1079e1b0"
+path = "kairos_graphics/src/graphics_graph/graphics_node.rs"
+
+[[entries]]
+guid = "ef358f84-112c-4440-924f-2ad7d9057866"
+path = "kairos_graphics/src/graphics_graph.rs"
+
+[[entries]]
+guid = "c9e4038e-4b4a-4078-b416-cb7ffa5c8754"
+path = "kairos_graphics/src/lib.rs"
+
+[[entries]]
+guid = "4a0e17e7-a964-451c-8bb8-9840a7930cc6"
+path = "kairos_graphics/src/lod_mesh_component.rs"
+
+[[entries]]
+guid = "8403924b-3144-4cdf-af27-410a7fb1245b"
+path = "kairos_graphics/src/material"
+
+[[entries]]
+guid = "4b083555-ed5f-4094-8539-ca76b513067f"
+path = "kairos_graphics/src/material/serialize.rs"
+
+[[entries]]
+guid = "40074121-e1c8-4bd1-afde-fb2668405add"
+path = "kairos_graphics/src/material/test.rs"
+
+[[entries]]
+guid = "c64141e8-d31c-4e74-9e5c-8d5697b3429e"
+path = "kairos_graphics/src/material.rs"
+
+[[entries]]
+guid = "88fdc1d6-d0e7-46ea-b86c-d21972d120cd"
+path = "kairos_graphics/src/material_component.rs"
+
+[[entries]]
+guid = "0b29d563-b05b-4f75-9850-82c128f4104b"
+path = "kairos_graphics/src/mesh"
+
+[[entries]]
+guid = "3a63cfd6-4eec-4b93-a714-1bf3481a4797"
+path = "kairos_graphics/src/mesh/test.rs"
+
+[[entries]]
+guid = "4073487d-eedb-4b67-906c-f26b222582ab"
+path = "kairos_graphics/src/mesh/wireframe.rs"
+
+[[entries]]
+guid = "f06702ed-22c3-453f-a73e-7ee78192627b"
+path = "kairos_graphics/src/mesh.rs"
+
+[[entries]]
+guid = "2b294348-5e0c-4017-a94a-f5dac369e11e"
+path = "kairos_graphics/src/render_pipeline.rs"
+
+[[entries]]
+guid = "b3d62ce0-0adb-4c2b-842b-f1160e9217d6"
+path = "kairos_graphics/src/render_state"
+
+[[entries]]
+guid = "a29f0012-efe4-45ce-bada-6a60cdec4f7f"
+path = "kairos_graphics/src/render_state/test.rs"
+
+[[entries]]
+guid = "e656d3ec-d30f-4384-b75b-fad0118cadb2"
+path = "kairos_graphics/src/render_state.rs"
+
+[[entries]]
+guid = "78b0e35e-2203-408e-ba9b-c0693ab39712"
+path = "kairos_graphics/src/shader.rs"
+
+[[entries]]
+guid = "dd30c35d-3683-40d3-8e4c-8c9d1e2b30e3"
+path = "kairos_graphics/src/texture"
+
+[[entries]]
+guid = "3ee688fb-b63c-4f85-885b-a2d1f4d8c0d3"
+path = "kairos_graphics/src/texture/format"
+
+[[entries]]
+guid = "0455d460-34b7-4a1c-8279-b3f4fc57e48d"
+path = "kairos_graphics/src/texture/format/astc.rs"
+
+[[entries]]
+guid = "a99ece7f-809c-4b18-bbbb-4c137d30f8eb"
+path = "kairos_graphics/src/texture/format/bc.rs"
+
+[[entries]]
+guid = "3043d9a2-231c-413f-aaf4-95f71ee6f36e"
+path = "kairos_graphics/src/texture/format/bc6h.rs"
+
+[[entries]]
+guid = "c3ec4e95-f896-4457-876e-88762dc76982"
+path = "kairos_graphics/src/texture/format/bc7.rs"
+
+[[entries]]
+guid = "62c81550-03c2-4f78-9760-9bd8e7ef6146"
+path = "kairos_graphics/src/texture/format/etc"
+
+[[entries]]
+guid = "7bed6cae-2ac0-4fbb-8e14-704f65036813"
+path = "kairos_graphics/src/texture/format/etc/test.rs"
+
+[[entries]]
+guid = "96af6272-1407-4a94-aa79-bf93145d6172"
+path = "kairos_graphics/src/texture/format/etc.rs"
+
+[[entries]]
+guid = "9c224047-905f-4a5c-ab01-8966720ab8e3"
+path = "kairos_graphics/src/texture/format/srgb.rs"
+
+[[entries]]
+guid = "1c1c363f-a9e1-4387-868c-01bbd056ab69"
+path = "kairos_graphics/src/texture/format/uncompressed.rs"
+
+[[entries]]
+guid = "f03f11cb-b954-4217-be48-91f454fcefc0"
+path = "kairos_graphics/src/texture/format.rs"
+
+[[entries]]
+guid = "a45a3e0c-87bd-46f1-866f-a4d43e864a23"
+path = "kairos_graphics/src/texture/sampler.rs"
+
+[[entries]]
+guid = "5b2ede17-b4dd-46f4-b6ef-b6db228eabce"
+path = "kairos_graphics/src/texture/serialize.rs"
+
+[[entries]]
+guid = "3ac7987a-f832-46f2-bb2c-13b54794b000"
+path = "kairos_graphics/src/texture.rs"
+
+[[entries]]
+guid = "06f86e57-ddc9-446b-802e-34e0e7577aef"
+path = "kairos_graphics/src/vertex.rs"
+
+[[entries]]
+guid = "c23d904c-481f-4076-bfab-f47796d94693"
+path = "kairos_graphics/src/view_port.rs"
+
+[[entries]]
+guid = "a6c8310e-4bae-462f-9c44-8bbc3fe12656"
+path = "kairos_math"
+
+[[entries]]
+guid = "aefa0efc-5f69-4b72-bd30-15d5431a9feb"
+path = "kairos_math/Cargo.toml"
+
+[[entries]]
+guid = "f548a427-31b0-4b72-8acd-5800a234d492"
+path = "kairos_math/benches"
+
+[[entries]]
+guid = "92851ca9-878c-4de7-a269-92d54b843c8b"
+path = "kairos_math/benches/vec_benchmark.rs"
+
+[[entries]]
+guid = "1f09fbcd-ad01-4162-9192-d24d6df66c66"
+path = "kairos_math/src"
+
+[[entries]]
+guid = "bc70259c-46dc-4e98-b219-a9ec3b5e4994"
+path = "kairos_math/src/aabb.rs"
+
+[[entries]]
+guid = "8ac1cf40-a9f8-4bd6-85da-d4105c93bb11"
+path = "kairos_math/src/affine"
+
+[[entries]]
+guid = "4fbdf8f1-6e16-4270-a63f-2ba43f3cb32d"
+path = "kairos_math/src/affine/test.rs"
+
+[[entries]]
+guid = "967b72ac-71b5-4283-bd08-e035a2577931"
+path = "kairos_math/src/affine.rs"
+
+[[entries]]
+guid = "79029046-2d3e-42d7-9fc9-8e64274a8be7"
+path = "kairos_math/src/consts.rs"
+
+[[entries]]
+guid = "a39a965d-1373-4704-8a38-c4eb63a5c026"
+path = "kairos_math/src/lib.rs"
+
+[[entries]]
+guid = "19ed0348-27fc-4e59-a022-d9be1ed3b2e8"
+path = "kairos_math/src/matrix"
+
+[[entries]]
+guid = "f8e498ac-6559-4d7f-b7ec-543c8c614a03"
+path = "kairos_math/src/matrix/test.rs"
+
+[[entries]]
+guid = "fd34f691-3218-40ea-bb43-15af636e1461"
+path = "kairos_math/src/matrix.rs"
+
+[[entries]]
+guid = "5f75d9ab-7299-406f-8658-dac03697ed9d"
+path = "kairos_math/src/quaternions"
+
+[[entries]]
+guid = "c9136a58-dc17-4848-81e5-bcbff2652a3f"
+path = "kairos_math/src/quaternions/test.rs"
+
+[[entries]]
+guid = "f0cd706c-e310-4aae-851b-84f704073640"
+path = "kairos_math/src/quaternions.rs"
+
+[[entries]]
+guid = "2a4df860-876c-4464-82e4-8c9e061411f4"
+path = "kairos_math/src/trigonometric.rs"
+
+[[entries]]
+guid = "f17f6330-7580-488d-92eb-3f135f3c44d8"
+path = "kairos_math/src/vec"
+
+[[entries]]
+guid = "2e668e6e-4298-4bf2-a784-4b70ff5f66a1"
+path = "kairos_math/src/vec/test.rs"
+
+[[entries]]
+guid = "03502a1f-b15a-4363-b976-49949bb445b8"
+path = "kairos_math/src/vec.rs"
+
+[[entries]]
+guid = "36f1fe71-bea2-4728-ac48-189ef38d7038"
+path = "kairos_physics"
+
+[[entries]]
+guid = "ee715aef-136a-4d0e-a726-5ed32bc4ef1f"
+path = "kairos_physics/Cargo.toml"
+
+[[entries]]
+guid = "c66b48ad-6dda-4ea7-b877-3df069c63bb6"
+path = "kairos_physics/src"
+
+[[entries]]
+guid = "7d4ebe20-b8d6-4d1c-99f7-0f3cf3dc2d6b"
+path = "kairos_physics/src/collider.rs"
+
+[[entries]]
+guid = "f729f1b5-592c-4632-96c3-876f1cd79e57"
+path = "kairos_physics/src/lib.rs"
+
+[[entries]]
+guid = "a661a5ee-b0c2-4a2b-a8f8-527cb5985b5e"
+path = "kairos_physics/src/rigid_body.rs"
+
+[[entries]]
+guid = "5b183e6b-0332-47ef-963b-6a97b6b00dbe"
+path = "kairos_physics/src/tests.rs"
+
+[[entries]]
 guid = "7945a1bc-4a93-444d-81e5-2687c8d59a1d"
 path = "kairos_ptr"
 
@@ -3249,6 +3677,30 @@ path = "kairos_time/src/lib.rs"
 [[entries]]
 guid = "99aedbd3-144c-4d89-afda-f1f30cfa1b14"
 path = "kairos_time/src/tests.rs"
+
+[[entries]]
+guid = "a1437a02-c969-4b47-82d1-8cffb422478f"
+path = "kairos_transform"
+
+[[entries]]
+guid = "0e090caa-36b8-4626-b7f0-8974b6ed04b2"
+path = "kairos_transform/Cargo.toml"
+
+[[entries]]
+guid = "36df14ff-53f5-48b3-b695-348d50c6f715"
+path = "kairos_transform/src"
+
+[[entries]]
+guid = "a6d8ac25-bda3-47bb-b2c4-1fa26a089c83"
+path = "kairos_transform/src/global_transform.rs"
+
+[[entries]]
+guid = "071f5ac0-e5ee-4ebc-98eb-1a1966a93da0"
+path = "kairos_transform/src/lib.rs"
+
+[[entries]]
+guid = "b4cec9ba-c059-46c5-a685-e095feba4257"
+path = "kairos_transform/src/local_transform.rs"
 
 [[entries]]
 guid = "689dba96-bf4f-4b92-83db-50db6ecaef9a"

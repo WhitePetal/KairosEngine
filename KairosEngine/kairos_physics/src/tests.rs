@@ -1,8 +1,22 @@
 use super::*;
-use kairos_ecs::{entity::Entity, world::World};
+use kairos_ecs::{
+    entity::Entity,
+    schedule::{Schedule, ScheduleLabel, Schedules},
+    world::World,
+};
 use rapier3d::{dynamics::RigidBodyHandle, geometry::ColliderHandle};
 
-use crate::kairos_editor::schedule;
+/// The fixed-step stage the step system is installed into. The real engine uses
+/// its `kairos_editor::schedule::FixedUpdate`; a standalone crate cannot know
+/// about it, so the test declares its own label — `install` takes the stage as a
+/// parameter for exactly this reason.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct TestFixedUpdate;
+impl ScheduleLabel for TestFixedUpdate {
+    fn dyn_clone(&self) -> Box<dyn ScheduleLabel> {
+        Box::new(*self)
+    }
+}
 
 fn initial_transform() -> LocalTransform {
     LocalTransform::new(
@@ -243,21 +257,25 @@ const STEPS: usize = 64;
 /// never steps cannot pass by accident.
 const FALL_MARGIN: f32 = 1.0;
 
-/// Boots the schedule rails and installs physics — the same order
-/// `Engine::new` uses, so the `FixedUpdate` content schedule exists by the
-/// time `install` registers into it.
+/// Boots a fixed-step stage with the fixed clock, then installs physics into
+/// it — the same order `Engine::new` uses, so the stage exists by the time
+/// `install` registers into it.
 fn boot() -> World {
     let mut world = World::new();
-    schedule::install(&mut world);
-    install(&mut world);
+    world.insert_resource(FixedTime::new());
+    world.init_resource::<Schedules>();
+    world
+        .resource_mut::<Schedules>()
+        .insert(Schedule::new(TestFixedUpdate));
+    install(&mut world, TestFixedUpdate);
     world
 }
 
-/// Runs the `FixedUpdate` schedule once — one physics step. The per-frame
-/// driver is bypassed deliberately: its step count depends on accumulated
-/// virtual time, while this exercises the step system deterministically.
+/// Runs the fixed-step schedule once — one physics step. The per-frame driver
+/// is bypassed deliberately: its step count depends on accumulated virtual
+/// time, while this exercises the step system deterministically.
 fn run_fixed_step(world: &mut World) {
-    world.run_schedule(FixedUpdate);
+    world.run_schedule(TestFixedUpdate);
     world.clear_trackers();
 }
 

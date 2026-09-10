@@ -15,8 +15,12 @@ pub mod kairos_ui;
 pub mod asset_loader;
 pub mod audio;
 pub mod inputs;
-pub mod physics;
 pub mod spatial;
+
+// The physics subsystem is its own crate (`kairos_physics`); re-export it under
+// the name engine code already uses, so `crate::physics::…` keeps resolving
+// exactly like `crate::graphics` / `kairos_graphics`.
+pub use kairos_physics as physics;
 
 // The graphics subsystem is its own crate (`kairos_graphics`); re-export it
 // under the name engine code already uses, so `crate::graphics::…` keeps

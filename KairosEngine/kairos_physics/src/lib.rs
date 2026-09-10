@@ -1,15 +1,19 @@
-//! The physics subsystem: a [`PhysicsEngine`] World resource plus the
-//! `RigidBody` / `Collider` components that point into it.
+//! The Kairos engine's physics subsystem, extracted as a standalone crate.
+//!
+//! A [`PhysicsEngine`] World resource plus the [`RigidBody`] / [`Collider`]
+//! components that point into it. The crate depends only on the engine's
+//! foundation crates (`kairos_ecs`, `kairos_math`, `kairos_time`,
+//! `kairos_transform`) — never on `kairos_engine` — so it can be built and
+//! tested on its own.
 //!
 //! [`install`] is the single bootstrap entry point (bevy-plugin style): it
-//! inserts the resource, registers [`physics_step_system`] into `FixedUpdate`,
-//! and attaches the despawn-cleanup `on_discard` hooks to both components, so
-//! every [`World`] that went through
-//! [`Engine::new`](crate::kairos_editor::Engine::new) is guaranteed to carry
-//! physics, to advance it once per fixed step, and to release a discarded
-//! entity's rapier objects. The rapier types themselves never leave this module
-//! — engine code talks to the resource through its eager `insert_*` constructors,
-//! and entities carry nothing but private handles.
+//! inserts the resource, registers `physics_step_system` into the fixed-step
+//! stage the caller passes in, and attaches the despawn-cleanup `on_discard`
+//! hooks to both components, so every [`World`] installed this way is
+//! guaranteed to carry physics, to advance it once per fixed step, and to
+//! release a discarded entity's rapier objects. The rapier types themselves
+//! never leave this crate — engine code talks to the resource through its eager
+//! `insert_*` constructors, and entities carry nothing but private handles.
 
 use rapier3d::{
     dynamics::{
@@ -22,21 +26,18 @@ use rapier3d::{
 };
 
 use crate::{
-    kairos_editor::schedule::FixedUpdate,
-    math::{float3, quaternion},
-    physics::{
-        collider::{Collider, ColliderMaterial},
-        rigid_body::RigidBody,
-    },
-    time::FixedTime,
+    collider::{Collider, ColliderMaterial},
+    rigid_body::RigidBody,
 };
 use kairos_ecs::{
     lifecycle::HookContext,
     resource::Resource,
-    schedule::Schedules,
+    schedule::{ScheduleLabel, Schedules},
     system::{Query, Res, ResMut},
     world::{DeferredWorld, World},
 };
+use kairos_math::{float3, quaternion};
+use kairos_time::FixedTime;
 use kairos_transform::LocalTransform;
 
 pub mod collider;
@@ -46,7 +47,7 @@ pub mod rigid_body;
 ///
 /// Holds the rapier sets plus the pipeline state needed to step them. The sets
 /// and pipeline are private: callers build and destroy rapier objects through
-/// the eager `insert_*` methods below, so rapier types stay inside the module.
+/// the eager `insert_*` methods below, so rapier types stay inside this crate.
 #[derive(Resource)]
 pub struct PhysicsEngine {
     rigid_body_set: RigidBodySet,
@@ -163,7 +164,7 @@ impl PhysicsEngine {
 
     /// Advances the rapier simulation by one step of `dt` seconds.
     ///
-    /// Called by [`physics_step_system`] once per `FixedUpdate` run, always
+    /// Called by `physics_step_system` once per fixed-step run, always
     /// with the fixed clock's timestep: rapier reads `integration_parameters.dt`
     /// once per `step`, so aligning it here is what keeps simulated physics time
     /// equal to [`FixedTime`] instead of drifting at rapier's own 60 Hz default.
@@ -193,7 +194,7 @@ impl PhysicsEngine {
     /// that hang off it — each [`Collider`] component owns its own rapier object,
     /// so attached colliders are detached (`set_parent(None)`) and left for the
     /// collider hook to delete. That keeps the two cleanup paths independent and
-    /// order-insensitive. Module-private: rapier types never leave `physics`.
+    /// order-insensitive. Crate-private: rapier types never leave this crate.
     fn remove_rigid_body(&mut self, handle: RigidBodyHandle) -> bool {
         self.rigid_body_set
             .remove(
@@ -211,8 +212,8 @@ impl PhysicsEngine {
     ///
     /// `wake_up` is `false`: tearing down an object never needs to wake an island.
     /// Removing a collider detaches it from its parent body first, so this is
-    /// equally correct before or after the body hook has run. Module-private:
-    /// rapier types never leave `physics`.
+    /// equally correct before or after the body hook has run. Crate-private:
+    /// rapier types never leave this crate.
     fn remove_collider(&mut self, handle: ColliderHandle) -> bool {
         self.collider_set
             .remove(handle, &mut self.island_manager, &mut self.rigid_body_set, false)
@@ -304,10 +305,20 @@ fn physics_step_system(
 /// Installs the physics resource, its single fixed-step system, and the
 /// despawn-cleanup hooks onto `world`.
 ///
-/// Registered in `Engine::new` right after
-/// [`schedule::install`](crate::kairos_editor::schedule::install), so physics is
-/// present for the whole lifetime of an `Engine`. This is the one place physics
-/// is wired into the schedule: `KairosGame` never registers a physics system.
+/// `fixed_update_stage` is the fixed-rate content schedule the step system
+/// registers into — the stage the application re-runs once per full fixed
+/// timestep. The schedule skeleton (and its label) belongs to the application,
+/// not to the physics crate, so the caller passes it in: `kairos_engine`
+/// supplies its `FixedUpdate` stage, and a bare [`World`] under test can supply
+/// its own. `kairos_engine` calls this in `Engine::new` right after its
+/// `schedule::install`, so physics is present for the whole lifetime of an
+/// `Engine`; this is the one place physics is wired into a schedule —
+/// `KairosGame` never registers a physics system.
+///
+/// The stage is a *precondition*: the caller must have created the schedule
+/// before calling this, because registering into a stage that is about to be
+/// replaced would silently drop the system. A missing stage at *install* time
+/// is a bootstrap order bug.
 ///
 /// The same call also registers an `on_discard` hook on both physics components,
 /// so every path that drops a `RigidBody`/`Collider` — despawn, `remove`, or
@@ -317,15 +328,15 @@ fn physics_step_system(
 ///
 /// # Panics
 ///
-/// If the schedule rails are not installed yet: the [`FixedUpdate`] stage would
-/// not exist, and registering into a stage that does not exist is a bootstrap
-/// order bug.
+/// If the schedule named by `fixed_update_stage` does not exist yet: the stage
+/// would not exist, and registering into a stage that does not exist is a
+/// bootstrap order bug.
 ///
 /// If the physics components are already in use — for example, installing
 /// physics twice — hook registration fails: a `ComponentHooks` can only be
 /// edited before the component exists in an archetype, and a `RigidBody` or
 /// `Collider` may only carry one `on_discard` hook.
-pub(crate) fn install(world: &mut World) {
+pub fn install(world: &mut World, fixed_update_stage: impl ScheduleLabel) {
     log::debug!("installing the physics resource and fixed-step system");
     world.insert_resource(PhysicsEngine::new());
 
@@ -338,7 +349,7 @@ pub(crate) fn install(world: &mut World) {
 
     let mut schedules = world.get_resource_or_init::<Schedules>();
     schedules
-        .get_mut(FixedUpdate)
+        .get_mut(fixed_update_stage)
         .expect("the `FixedUpdate` schedule must exist: install the schedule rails first")
         .add_systems(physics_step_system);
 }

@@ -2486,6 +2486,7 @@ dependencies = [
  "kairos_ecs",
  "kairos_graphics",
  "kairos_math",
+ "kairos_physics",
  "kairos_time",
  "kairos_transform",
  "kira",
@@ -2501,7 +2502,6 @@ dependencies = [
  "petgraph",
  "pollster",
  "rand 0.10.2",
- "rapier3d",
  "rayon",
  "rkyv",
  "rustfft",
@@ -2571,6 +2571,18 @@ dependencies = [
  "rkyv",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "kairos_physics"
+version = "0.1.0"
+dependencies = [
+ "kairos_ecs",
+ "kairos_math",
+ "kairos_time",
+ "kairos_transform",
+ "log",
+ "rapier3d",
 ]
 
 [[package]]

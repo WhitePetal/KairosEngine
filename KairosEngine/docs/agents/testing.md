@@ -44,10 +44,11 @@ kairos_ecs           ← kairos_tasks, kairos_ptr, kairos_collections
 ├── kairos_time      ← kairos_ecs
 ├── kairos_transform ← kairos_ecs, kairos_math
 ├── kairos_graphics  ← kairos_asset, kairos_ecs, kairos_math, kairos_transform (+ wgpu, egui, winit, image)
-└── kairos_engine    ← kairos_asset, kairos_graphics and all of the above (+ wgpu, egui, winit, rapier3d)
+├── kairos_physics   ← kairos_ecs, kairos_math, kairos_time, kairos_transform (+ rapier3d)
+└── kairos_engine    ← kairos_asset, kairos_graphics, kairos_physics and all of the above (+ wgpu, egui, winit)
 ```
 
-Touching `kairos_ecs` invalidates `kairos_time`, `kairos_transform`, `kairos_graphics` and `kairos_engine`. Scoping with `-p` skips that rebuild: 3.9s of compiling instead of 9.6s, ~8s wall instead of ~12s. `kairos_engine` is the expensive one — it pulls in wgpu, egui, winit and rapier3d.
+Touching `kairos_ecs` invalidates `kairos_time`, `kairos_transform`, `kairos_graphics`, `kairos_physics` and `kairos_engine`. Scoping with `-p` skips that rebuild: 3.9s of compiling instead of 9.6s, ~8s wall instead of ~12s. `kairos_engine` is the expensive one — it pulls in wgpu, egui and winit.
 
 The ~920 unit tests themselves execute in well under a second. Test execution is never the problem.
 
