@@ -370,3 +370,41 @@ fn each_view_derives_its_own_projection() {
         "two cameras with different poses and aspects must not share a projection"
     );
 }
+
+/// Extraction writes the camera a view is *bound to* and nothing else: the
+/// camera query is an index, not a sweep, so a camera in the world that no view
+/// renders from keeps its cleared default instead of being derived "on the
+/// side" by whichever view happens to be extracted.
+#[test]
+fn extraction_leaves_cameras_no_view_is_bound_to_alone() {
+    let mut world = boot();
+    let scene_camera = spawn_camera(&mut world, float3::new(0.0, 8.0, -16.0));
+    let unbound_camera = spawn_camera(&mut world, float3::new(12.0, 3.0, 4.0));
+
+    world.resource_mut::<SceneView>().camera = Some(scene_camera);
+    world.resource_mut::<SceneView>().size = ViewportSize::new(1280, 720);
+    // The Game view renders this frame but binds no camera at all.
+    world.resource_mut::<GameView>().size = ViewportSize::new(1280, 720);
+
+    run_frame(&mut world);
+
+    assert_eq!(
+        projection_of(&world, scene_camera),
+        Some(expected_projection(&world, scene_camera, 1280.0 / 720.0)),
+        "the bound camera is derived"
+    );
+    assert_eq!(
+        projection_of(&world, unbound_camera),
+        None,
+        "an unbound camera must not be derived by someone else's view"
+    );
+    assert_eq!(
+        world
+            .entity(unbound_camera)
+            .get::<CameraView>()
+            .expect("CameraView")
+            .physical_size,
+        (0, 0),
+        "an unbound camera stays at its cleared default"
+    );
+}

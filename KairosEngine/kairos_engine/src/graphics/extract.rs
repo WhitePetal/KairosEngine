@@ -76,6 +76,11 @@ pub fn extract_game_view(
 /// known yet" behind rather than an older frame's numbers. Every invalid state
 /// is a no-op rather than a crash: no camera bound, a binding that outlives its
 /// entity, or a camera without a [`CameraView`].
+///
+/// The `cameras` query is an *index*, not a sweep: the only camera this writes
+/// is the one `view.camera()` points at (`get_mut` by entity), so a view can
+/// never derive another view's camera — and a camera no view is bound to is
+/// written by nobody, staying at its cleared default.
 fn reset_and_derive(
     view: &mut impl ViewResource,
     cameras: &mut Query<(&LocalTransform, &Camera, &mut CameraView)>,
