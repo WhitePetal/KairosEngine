@@ -36,7 +36,12 @@ RUST_BACKTRACE = "1"
 # 而在每次改完后都跑全量 (实测 doctest 占了全量 82%~95% 的时间)。
 # 详见 docs/agents/testing.md
 [alias]
-# 快速测试: 跳过 doctest，且单个失败不中止其余 crate。改完随手跑这个。
+# 只测你改的那个 crate —— 日常默认，agent 和人都用这个。
+# 用法: cargo test-crate kairos_ecs
+# 为什么不直接 `cargo test`: 在 workspace 根目录裸跑 cargo test 会编译并测试
+# 全部 11 个 crate，而且默认 fail-fast + 跑 doctest (全量约 183s)。
+test-crate = "test --lib --bins --tests --no-fail-fast -p"
+# 全工作区、跳过 doctest。想一遍过所有 crate 时用 (~0.5s 执行 + 编译)。
 test-fast = "test --workspace --lib --bins --tests --no-fail-fast"
-# 全量测试: 含 doctest。合并 / 发 PR 前跑一次。
+# 全工作区、含 doctest。慢，只在明确要求时跑 (合并 / 发 PR 前)。
 test-full = "test --workspace --no-fail-fast"

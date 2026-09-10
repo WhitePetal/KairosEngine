@@ -1,36 +1,37 @@
 # Testing After Implementation
 
-What to run to verify a change in this workspace, and when. The goal is to keep verification cheap enough that you run it after every edit instead of saving it up.
+What to run to verify a change in this workspace, and when. Read this before choosing a test command — the wrong choice costs 22x.
 
-## Default: `cargo test-fast`
+## Rule: test the crate you changed
 
 ```sh
-cargo test-fast
+cargo test-crate kairos_ecs
 ```
 
-Defined in `.cargo/config.toml` as `cargo test --workspace --lib --bins --tests --no-fail-fast`.
+Defined in `.cargo/config.toml` as `cargo test --lib --bins --tests --no-fail-fast -p`. The crate name is the only argument, and you already know it — it is the crate whose files you edited. A trailing test-name filter also works: `cargo test-crate kairos_ecs filtered_backtrace`.
 
-Two properties make it the default:
+**Do not run bare `cargo test` from the workspace root.** This is a virtual workspace, so a root-level `cargo test` compiles and tests all 11 member crates, aborts on the first failure, and includes the doctests. That is the 183-second path described below, and it is never what you want after an edit.
 
-- **It skips doctests.** The 453 doctests in `kairos_ecs` account for 82–95% of a full run. They verify documentation examples, not implementation behaviour, so they belong at the merge gate.
-- **It never aborts early.** Plain `cargo test` is fail-fast: the first failing test stops cargo and every downstream crate silently never runs. You then get no signal about `kairos_time`, `kairos_transform` or `kairos_engine` at all.
+If you would rather not name the crate, `cd` into it and run the command there — inside a crate directory cargo scopes to that crate only. From the workspace root the identical command tests all 11.
 
-## Measured cost
+## Commands
 
-macOS, `opt-level = 1` with line-table debug info, nothing else running.
+| Command | Tests | Cost | Use for |
+| --- | --- | --- | --- |
+| `cargo test-crate <crate>` | that crate only | **~8s** | after every edit — the default |
+| `cargo test-fast` | all crates, no doctests | **~12s** | one-pass check across the workspace |
+| `cargo check --workspace --all-targets` | compiles, runs nothing | **~4s** | catching downstream compile breakage |
+| `cargo test-full` | all crates + doctests | **~183s** | not your job — see below |
 
-Test execution with nothing to recompile:
+Figures are warm-cache after touching `kairos_ecs`, on macOS, with `opt-level = 1` and line-table debug info.
 
-| Command | Time |
-| --- | --- |
-| `cargo test-fast` | **0.5s** |
-| `cargo test-full` | **56s – 183s** |
+## Where the time actually goes
 
-The ~920 unit tests execute in well under a second, always. The suite is not slow — **the doctests are**, and they are the only reason a full run feels expensive. Their cost swings widely with cache state: 56s when their compiled artifacts are warm, 173s right after a shared crate changed and rustdoc has to rebuild all 453 of them.
+Two independent costs, needing two different fixes.
 
-## Scope to the crate you changed
+**1. Doctests: 453 tests, 173s of a 183s run.** That is 82–95% of the full suite depending on cache state. They verify documentation examples. Almost no edit can affect them, so they belong at the merge gate. Every command above except `test-full` skips them via `--lib --bins --tests`.
 
-Recompilation, not execution, dominates iteration. Dependency graph:
+**2. Recompiling dependents.** `kairos_ecs` sits at the base of the graph:
 
 ```
 kairos_collections   leaf
@@ -44,33 +45,37 @@ kairos_ecs           ← kairos_tasks, kairos_ptr, kairos_collections
 └── kairos_engine    ← all of the above (+ wgpu, egui, winit, rapier3d)
 ```
 
-`kairos_ecs` sits at the base, so touching it invalidates `kairos_time`, `kairos_transform` and `kairos_engine`. `kairos_engine` is the expensive one to rebuild.
+Touching `kairos_ecs` invalidates `kairos_time`, `kairos_transform` and `kairos_engine`. Scoping with `-p` skips that rebuild: 3.9s of compiling instead of 9.6s, ~8s wall instead of ~12s. `kairos_engine` is the expensive one — it pulls in wgpu, egui, winit and rapier3d.
 
-While iterating, scope to one crate:
+The ~920 unit tests themselves execute in well under a second. Test execution is never the problem.
 
-```sh
-cargo test -p kairos_ecs --lib
-```
+## Safety net for shared crates
 
-That skips the downstream rebuild entirely. Recompile cost for a scoped run is a few seconds; a workspace-wide run after touching `kairos_ecs` costs roughly 5–20s of compiling depending on incremental cache state.
-
-## When to run `cargo test-full`
+Scoping has one deliberate blind spot: `cargo test-crate kairos_ecs` says nothing about whether `kairos_engine` still compiles or passes. When you change a crate that others depend on, add the cheap check:
 
 ```sh
-cargo test-full
+cargo test-crate kairos_ecs
+cargo check --workspace --all-targets
 ```
 
-Run it before calling a change done when any of these hold:
+That pair costs ~12s and catches compile breakage across every dependent, `kairos_engine` included. It does not run the dependents' tests — if you changed an API that `kairos_engine` consumes, run `cargo test-crate kairos_engine` too, or simply use `cargo test-fast`.
 
-- You changed a shared crate (`kairos_ecs`, `kairos_collections`, `kairos_math`) that other crates depend on.
-- You changed public API, so downstream call sites and their tests are in scope.
-- You changed a doc comment containing an example — that example **is** a doctest.
-- The change is about to be committed or opened as a PR.
+## Do not run `cargo test-full`
 
-Otherwise `cargo test-fast` after each edit is the expected behaviour. Running the full suite after every edit buys nothing that `cargo test-fast` does not already cover.
+`cargo test-full` takes ~183s. **Do not run it to verify your own work.** It is the merge gate, not an implementation step. If you believe it is genuinely required, say so and let the user decide.
+
+A full run cannot tell you anything that `cargo test-crate` plus `cargo check --workspace --all-targets` does not, except whether documentation examples still compile — and those are a property of doc comments, not of the implementation you just wrote.
+
+## Finding which crates changed
+
+```sh
+git diff --name-only | cut -d/ -f1 | sort -u
+```
+
+This lists the top-level directories you touched; each `kairos_*` entry is a crate name to hand to `cargo test-crate`. Remember the graph above: changing `kairos_ecs` means `kairos_time`, `kairos_transform` and `kairos_engine` are affected consumers even though their files are untouched.
 
 ## Notes
 
-- **`RUST_BACKTRACE`** is set to `1` in `.cargo/config.toml`, so `kairos_ecs`'s `filtered_backtrace_test` passes without extra ceremony. That test panics by design when the variable is missing or `0`, and under fail-fast it used to abort the whole workspace run before any downstream crate was tested. Override it on the command line if you need `full`.
-- **Doctests are documentation.** Keep them green and fix them when they break, but they are the wrong thing to pay minutes for on every edit — particularly because most edits cannot affect a doc example at all.
+- **`RUST_BACKTRACE`** is set to `1` in `.cargo/config.toml`, so `kairos_ecs`'s `filtered_backtrace_test` passes without extra ceremony. That test panics by design when the variable is missing or `0`, and under fail-fast it used to abort the whole workspace run before any downstream crate was tested. Override on the command line if you need `full`.
+- **Doctests are documentation.** Keep them green and fix them when they break, but they are the wrong thing to pay three minutes for on every edit.
 - **There is no CI in this repo.** The full suite is therefore the only pre-merge gate and it runs wherever someone remembers to run it. If CI is added, `cargo test-full` belongs there and this file should say so.
