@@ -201,11 +201,16 @@ impl KairosGame {
         // a tab-opening handler like the editor camera. The world is therefore
         // complete before any tab opens. Its view projection is derived each
         // frame by the extract stage once `GameView.size` is known.
-        let cam_pos = float3::new(0.0, 8.0, -16.0);
-        let cam_target = float3::new(0.0, 2.0, 0.0);
+        // The pose frames the whole vertical extent the demo occupies — the
+        // ground top at y = -0.9 through the ball top at y = 10.5 — inside the
+        // 45-degree vertical fov at the ~17 m framing distance. The target sits
+        // near the middle of that span, and the resulting downward tilt keeps
+        // the 200x200 ground a receding plane rather than an edge-on line.
+        let cam_pos = float3::new(0.0, 8.0, -8.0);
+        let cam_target = float3::new(0.0, 8.0, 0.0);
         let game_camera_transform = LocalTransform::look_at(cam_pos, cam_target, float3::UP);
         // Intrinsics are unchanged from the pre-fork values.
-        let game_camera = Camera::new(45.0, 0.3, 100.0);
+        let game_camera = Camera::new(45.0, 0.3, 1000.0);
         let game_camera_entity = engine
             .world
             .spawn((game_camera_transform, game_camera))
@@ -228,22 +233,22 @@ impl KairosGame {
         let plane_transform = LocalTransform::new(
             float3::new(0.0, -1.0, 0.0),
             quaternion::IDENTITY,
-            float3::ONE,
+            float3::new(10.0, 10.0, 10.0),
         );
-        let plane_collider = Collider::box_collider(&mut engine.physics_engine, 100.0, 0.1, 100.0);
-        plane_collider.set_position(&mut engine.physics_engine, plane_transform.position);
+        // let plane_collider = Collider::box_collider(&mut engine.physics_engine, 100.0, 0.1, 100.0);
+        // plane_collider.set_position(&mut engine.physics_engine, plane_transform.position);
 
         let ball_transform = LocalTransform::new(
             float3::new(0.0, 10.0, 0.0),
             quaternion::IDENTITY,
-            float3::ONE,
+            float3::ONE * 2.0,
         );
-        let ball_rigid_body = RigidBody::with_sphere_collider_with_material(
-            &mut engine.physics_engine,
-            0.5,
-            ColliderMaterial { restitution: 0.8 },
-        );
-        ball_rigid_body.set_position(&mut engine.physics_engine, ball_transform.position);
+        // let ball_rigid_body = RigidBody::with_sphere_collider_with_material(
+        //     &mut engine.physics_engine,
+        //     0.5,
+        //     ColliderMaterial { restitution: 0.8 },
+        // );
+        // ball_rigid_body.set_position(&mut engine.physics_engine, ball_transform.position);
 
         SerializedMeshAsset::save_from_glb_file(PathBuf::from("res/models/Ball.glb"));
 
