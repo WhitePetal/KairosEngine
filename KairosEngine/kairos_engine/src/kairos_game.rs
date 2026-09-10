@@ -203,8 +203,8 @@ impl KairosGame {
         // 45-degree vertical fov at the ~17 m framing distance. The target sits
         // near the middle of that span, and the resulting downward tilt keeps
         // the 200x200 ground a receding plane rather than an edge-on line.
-        let cam_pos = float3::new(0.0, 8.0, -8.0);
-        let cam_target = float3::new(0.0, 8.0, 0.0);
+        let cam_pos = float3::new(0.0, 8.0, -18.0);
+        let cam_target = float3::new(0.0, 0.0, 0.0);
         let game_camera_transform = LocalTransform::look_at(cam_pos, cam_target, float3::UP);
         // Intrinsics are unchanged from the pre-fork values.
         let game_camera = Camera::new(45.0, 0.3, 1000.0);
