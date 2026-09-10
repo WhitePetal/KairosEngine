@@ -2,10 +2,14 @@ use std::fmt::Debug;
 
 use kira::{
     AudioManager, AudioManagerSettings, Capacities, DefaultBackend,
+    backend::Backend,
     listener::ListenerId,
     sound::{PlaybackState, static_sound::StaticSoundData},
     track::MainTrackBuilder,
 };
+
+#[cfg(test)]
+use kira::backend::mock::MockBackend;
 
 use crate::{
     asset_loader::assets::AssetsServer,
@@ -27,35 +31,35 @@ pub mod spatial;
 #[cfg(test)]
 mod test;
 
-pub struct AudioEngine {
-    manager: AudioManager,
-    spatial_tracks: SpatialAudioTracks,
+/// The backend is a type parameter purely so tests can run the per-frame driver
+/// without an audio device; every call site uses the default (real) backend.
+pub struct AudioEngine<B: Backend = DefaultBackend> {
+    manager: AudioManager<B>,
+    spatial_tracks: SpatialAudioTracks<B>,
 }
 
-impl Debug for AudioEngine {
+impl<B: Backend> Debug for AudioEngine<B> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AudioEngine").finish_non_exhaustive()
     }
 }
 
-impl AudioEngine {
+impl AudioEngine<DefaultBackend> {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let manager = AudioManager::<DefaultBackend>::new(AudioManagerSettings {
-            capacities: Capacities {
-                sub_track_capacity: 1024,
-                ..Default::default()
-            },
-            internal_buffer_size: 2048,
-            main_track_builder: MainTrackBuilder::new().sound_capacity(2048),
-            ..Default::default()
-        })?;
+        let manager = AudioManager::<DefaultBackend>::new(engine_manager_settings())?;
+        Self::from_manager(manager)
+    }
+}
+
+impl<B: Backend> AudioEngine<B> {
+    fn from_manager(manager: AudioManager<B>) -> Result<Self, Box<dyn std::error::Error>> {
         let spatial_audio_config = SpatialAudioConfig::new(
             consts::MAX_SPATIAL_TRACK_COUNT,
             consts::MAX_SPATIAL_LISTENER_COUNT,
             consts::SPATIAL_AUDIO_CUT_OFF_DISTANCE_SQ,
             consts::SPATIAL_AUDIO_TRACK_LEAVING_DURATION,
         );
-        let spatial_tracks = SpatialAudioTracks::new(spatial_audio_config)?;
+        let spatial_tracks = SpatialAudioTracks::<B>::new(spatial_audio_config)?;
         Ok(Self {
             manager,
             spatial_tracks,
@@ -81,35 +85,77 @@ impl AudioEngine {
         self.spatial_tracks
             .update(assets_server, &mut self.manager, world, delta_time);
 
-        // TODO!
-        // update backgroun
-        // let background = world.query_mut::<&mut BackgroundAudio>().into_iter().next();
-        // if let Some(mut background) = background {
-        //     match background.state {
-        //         AudioState::Created => {
-        //             if background.auto_play {
-        //                 background.state = AudioState::WaitLoading;
-        //             }
-        //         }
-        //         AudioState::WaitLoading => {
-        //             let audio = assets_server.get(&background.audio);
-        //             if let Some(audio) = audio {
-        //                 background.handle = self.manager.play(audio.sound_data.clone()).ok();
-        //                 background.state = AudioState::Playing;
-        //             }
-        //         }
-        //         AudioState::Playing => {
-        //             if let Some(handle) = &background.handle {
-        //                 if handle.state() == PlaybackState::Stopped {
-        //                     background.state = AudioState::Completed;
-        //                 }
-        //             }
-        //         }
-        //         AudioState::Paused => todo!(),
-        //         AudioState::Completed => {
-        //             // now do nothing
-        //         }
-        //     }
-        // }
+        // update background
+        //
+        // The pre-fork code took the first `&mut BackgroundAudio` with
+        // `query_mut::<&mut BackgroundAudio>().into_iter().next()`; the fork has no
+        // `query_mut`, so this is the `world.query::<Q>()` + `iter_mut` form of the
+        // same thing (deliberately `.next()`, *not* `single_mut`, which panics
+        // unless the world holds exactly one background entity).
+        let mut background_query = world.query::<&mut BackgroundAudio>();
+        if let Some(mut background) = background_query.iter_mut(&mut *world).next() {
+            match background.state {
+                AudioState::Created => {
+                    if background.auto_play {
+                        background.state = AudioState::WaitLoading;
+                    }
+                }
+                AudioState::WaitLoading => {
+                    // Polls every frame until the asset loader resolves the handle.
+                    let audio = assets_server.get(&background.audio);
+                    if let Some(audio) = audio {
+                        background.handle = self.manager.play(audio.sound_data.clone()).ok();
+                        background.state = AudioState::Playing;
+                    }
+                }
+                AudioState::Playing => {
+                    if let Some(handle) = &background.handle {
+                        if handle.state() == PlaybackState::Stopped {
+                            background.state = AudioState::Completed;
+                        }
+                    }
+                }
+                // Same placeholder as the pre-fork code: nothing ever moves a
+                // background audio into `Paused`, so this arm is unreachable today.
+                AudioState::Paused => todo!(),
+                AudioState::Completed => {
+                    // now do nothing
+                }
+            }
+        }
+    }
+}
+
+/// Capacities [`AudioEngine`] runs with, shared by the real and mock backends so
+/// tests exercise the same resource budget as production.
+fn engine_manager_settings<B>() -> AudioManagerSettings<B>
+where
+    B: Backend,
+    B::Settings: Default,
+{
+    AudioManagerSettings {
+        capacities: Capacities {
+            sub_track_capacity: 1024,
+            ..Default::default()
+        },
+        internal_buffer_size: 2048,
+        main_track_builder: MainTrackBuilder::new().sound_capacity(2048),
+        ..Default::default()
+    }
+}
+
+#[cfg(test)]
+impl AudioEngine<MockBackend> {
+    /// An [`AudioEngine`] on kira's device-free mock backend. The caller must
+    /// drive [`MockBackend::process`] via [`Self::backend_mut`] for playback
+    /// state to advance.
+    pub(crate) fn new_mock() -> Self {
+        let manager = AudioManager::<MockBackend>::new(engine_manager_settings())
+            .expect("the mock backend cannot fail to initialise");
+        Self::from_manager(manager).expect("spatial track config is valid")
+    }
+
+    pub(crate) fn backend_mut(&mut self) -> &mut MockBackend {
+        self.manager.backend_mut()
     }
 }

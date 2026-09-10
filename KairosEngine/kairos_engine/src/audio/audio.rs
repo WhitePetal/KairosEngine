@@ -156,7 +156,7 @@ pub struct AudioAsset {
     pub sound_data: StaticSoundData,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AudioState {
     Created,
     WaitLoading,

@@ -1,7 +1,8 @@
-use std::{collections::HashMap, ops::DerefMut, time::Duration};
+use std::{collections::HashMap, marker::PhantomData, ops::DerefMut, time::Duration};
 
 use kira::{
-    AudioManager, Decibels, Easing, Mapping, Mix, Tween, Value,
+    AudioManager, Decibels, DefaultBackend, Easing, Mapping, Mix, Tween, Value,
+    backend::Backend,
     effect::reverb::{ReverbBuilder, ReverbHandle},
     listener::{ListenerHandle, ListenerId},
     sound::{PlaybackPosition, PlaybackState},
@@ -80,9 +81,9 @@ impl Tracks {
         }
     }
 
-    pub fn use_track(
+    pub fn use_track<B: Backend>(
         &mut self,
-        manager: &mut AudioManager,
+        manager: &mut AudioManager<B>,
         listener_id: ListenerId,
         reverb_track: Option<SendTrackId>,
     ) -> (u8, &mut Option<SpatialTrackHandle>) {
@@ -120,7 +121,11 @@ struct ListenerInfo {
     reverb_send_track: Option<SendTrackHandle>,
 }
 
-pub struct SpatialAudioTracks {
+pub struct SpatialAudioTracks<B: Backend = DefaultBackend> {
+    /// The tracks never own a manager: `B` only flows through the `update`
+    /// entry points, so a `PhantomData` carries the backend choice.
+    backend: PhantomData<fn() -> B>,
+
     per_listener_track_capacity: u8,
 
     all_listeners: HashMap<ListenerId, (ListenerHandle, bool)>,
@@ -130,9 +135,10 @@ pub struct SpatialAudioTracks {
     config: SpatialAudioConfig,
 }
 
-impl SpatialAudioTracks {
+impl<B: Backend> SpatialAudioTracks<B> {
     pub fn new(config: SpatialAudioConfig) -> Result<Self, Box<dyn std::error::Error>> {
         Ok(Self {
+            backend: PhantomData,
             per_listener_track_capacity: config.max_listener_count,
             all_listeners: HashMap::with_capacity((config.max_listener_count as usize) << 1),
             listener_infos: Vec::with_capacity(config.max_listener_count as usize),
@@ -140,7 +146,7 @@ impl SpatialAudioTracks {
         })
     }
 
-    pub fn create_listener(&mut self, manager: &mut AudioManager) -> Option<ListenerId> {
+    pub fn create_listener(&mut self, manager: &mut AudioManager<B>) -> Option<ListenerId> {
         let handle = manager
             .add_listener(
                 to_mint_vec3(float3::ZERO),
@@ -159,7 +165,7 @@ impl SpatialAudioTracks {
     pub fn update(
         &mut self,
         assets_server: &mut AssetsServer,
-        manager: &mut AudioManager,
+        manager: &mut AudioManager<B>,
         world: &mut World,
         delta_time: f32,
     ) {
@@ -191,7 +197,7 @@ impl SpatialAudioTracks {
 
     fn update_listeners_inner(
         &mut self,
-        manager: &mut AudioManager,
+        manager: &mut AudioManager<B>,
         world: &mut World,
         listeners: &mut [(LocalTransform, SpatialAudioListenerComponent)],
     ) {
@@ -299,7 +305,7 @@ impl SpatialAudioTracks {
     fn update_audios(
         &mut self,
         assets_server: &mut AssetsServer,
-        manager: &mut AudioManager,
+        manager: &mut AudioManager<B>,
         world: &mut World,
         delta_time: f32,
     ) {
@@ -339,7 +345,7 @@ impl SpatialAudioTracks {
         cut_off_dst_sq: f32,
         fade_time: f32,
         per_listener_track_count: u8,
-        manager: &mut AudioManager,
+        manager: &mut AudioManager<B>,
         listener: &mut ListenerInfo,
         reverb_track: Option<SendTrackId>,
     ) {
@@ -532,7 +538,7 @@ impl SpatialAudioTracks {
 
     fn play_audio_volume_in_track(
         assets_server: &mut AssetsServer,
-        manager: &mut AudioManager,
+        manager: &mut AudioManager<B>,
         listener: &mut ListenerInfo,
         trans: &LocalTransform,
         volume: &mut SpatialAudioVolume,
