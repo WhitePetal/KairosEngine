@@ -240,6 +240,12 @@ impl Drawer for ToolBar {
                             if ui.button("Console").clicked() {
                                 messager.send(Message::OpenConsoleTab);
                             }
+                            if ui.button("Scene").clicked() {
+                                messager.send(Message::OpenSceneTab);
+                            }
+                            if ui.button("Game").clicked() {
+                                messager.send(Message::OpenGameTab);
+                            }
                         })
                     })
                 });

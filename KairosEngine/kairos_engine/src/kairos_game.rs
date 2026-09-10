@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 
 use crate::{
-    asset_loader::assets::AssetsServer,
     asset_loader::assets::{
         AudioAssetHandle, AudioAssetsSystem, MaterialAssetsSystem, MeshAssetsSystem,
     },
@@ -13,12 +12,11 @@ use crate::{
     },
     graphics::{
         camera::Camera, graphics_graph::GraphicsCommand, lod_mesh_component::LODMesh,
-        material_component::MaterialComponent, mesh::SerializedMeshAsset,
+        material_component::MaterialComponent, mesh::SerializedMeshAsset, view_port::GameView,
     },
-    inputs::{Input, InputEngine},
+    inputs::Input,
     kairos_editor::Engine,
     math::{float3, quaternion},
-    physics::PhysicsEngine,
     physics::{
         collider::{Collider, ColliderMaterial},
         rigid_body::RigidBody,
@@ -27,112 +25,6 @@ use crate::{
 };
 use kairos_ecs::world::World;
 use kairos_transform::LocalTransform;
-
-// TODO!
-
-// ── Audio System ──────────────────────────────────────────────────────
-
-// struct AudioUpdateSystem<'a> {
-//     audio_engine: &'a mut AudioEngine,
-//     assets_server: &'a mut AssetsServer,
-//     delta_time: f32,
-//     meta: SystemMeta,
-// }
-
-// impl System for AudioUpdateSystem<'_> {
-//     fn run(&mut self, world: &mut World) {
-//         let this_run = world.increment_change_tick();
-//         world.set_system_ticks(self.meta.last_run, this_run);
-//         self.audio_engine
-//             .update(self.assets_server, world, self.delta_time);
-//         world.clear_system_ticks();
-//         self.meta.last_run = this_run;
-//     }
-
-//     fn initialize(&mut self, world: &mut World) {
-//         if self.meta.is_initialized {
-//             return;
-//         }
-//         self.meta.last_run = world.change_tick().relative_to(Tick::MAX);
-//         self.meta.is_initialized = true;
-//     }
-
-//     fn meta(&self) -> &SystemMeta {
-//         &self.meta
-//     }
-
-//     fn meta_mut(&mut self) -> &mut SystemMeta {
-//         &mut self.meta
-//     }
-// }
-
-// ── Physics System ────────────────────────────────────────────────────
-
-// struct PhysicsUpdateSystem<'a> {
-//     physics_engine: &'a mut PhysicsEngine,
-//     delta_time: f32,
-//     meta: SystemMeta,
-// }
-
-// impl System for PhysicsUpdateSystem<'_> {
-//     fn run(&mut self, world: &mut World) {
-//         let this_run = world.increment_change_tick();
-//         world.set_system_ticks(self.meta.last_run, this_run);
-//         self.physics_engine.update(world, self.delta_time);
-//         world.clear_system_ticks();
-//         self.meta.last_run = this_run;
-//     }
-
-//     fn initialize(&mut self, world: &mut World) {
-//         if self.meta.is_initialized {
-//             return;
-//         }
-//         self.meta.last_run = world.change_tick().relative_to(Tick::MAX);
-//         self.meta.is_initialized = true;
-//     }
-
-//     fn meta(&self) -> &SystemMeta {
-//         &self.meta
-//     }
-
-//     fn meta_mut(&mut self) -> &mut SystemMeta {
-//         &mut self.meta
-//     }
-// }
-
-// ── Input System ──────────────────────────────────────────────────────
-
-// struct InputUpdateSystem<'a> {
-//     input_engine: &'a mut InputEngine,
-//     delta_time: f32,
-//     meta: SystemMeta,
-// }
-
-// impl System for InputUpdateSystem<'_> {
-//     fn run(&mut self, _world: &mut World) {
-//         let this_run = _world.increment_change_tick();
-//         _world.set_system_ticks(self.meta.last_run, this_run);
-//         self.input_engine.update(self.delta_time);
-//         _world.clear_system_ticks();
-//         self.meta.last_run = this_run;
-//     }
-
-//     fn initialize(&mut self, world: &mut World) {
-//         if self.meta.is_initialized {
-//             return;
-//         }
-//         self.meta.last_run = world.change_tick().relative_to(Tick::MAX);
-//         self.meta.is_initialized = true;
-//     }
-
-//     fn meta(&self) -> &SystemMeta {
-//         &self.meta
-//     }
-
-//     fn meta_mut(&mut self) -> &mut SystemMeta {
-//         &mut self.meta
-//     }
-// }
 
 // ── Minimal audible scene ─────────────────────────────────────────────
 //
@@ -293,11 +185,6 @@ impl KairosGame {
 
         let assets_server = &mut engine.assets_server;
 
-        SerializedMeshAsset::save_from_glb_file(PathBuf::from("res/models/Suzanne.glb"));
-
-        let _mesh = assets_server.load::<MeshAssetsSystem>(
-            &PathBuf::from("res/models/Suzanne.mesh"),
-        );
         let material = assets_server.load::<MaterialAssetsSystem>(
             &PathBuf::from("res/materials/material.mat"),
         );
@@ -308,11 +195,22 @@ impl KairosGame {
         let blip_audio =
             assets_server.load::<AudioAssetsSystem>(&PathBuf::from("res/audios/blip.audio"));
 
-        let cam_pos = float3::new(0.0, 1.0, -2.0);
-        let cam_target = float3::new(0.0, 0.0, 0.0);
-        let cam_trans = LocalTransform::look_at(cam_pos, cam_target, float3::UP);
-        let camera = Camera::new(45.0, 0.3, 100.);
-        // engine.world.spawn((cam_trans, camera));
+        // ── Game camera (wayfinder map #158) ──────────────────────────
+        //
+        // The game camera is game content, so it is spawned once here — not by
+        // a tab-opening handler like the editor camera. The world is therefore
+        // complete before any tab opens. Its view projection is derived each
+        // frame by the extract stage once `GameView.size` is known.
+        let cam_pos = float3::new(0.0, 8.0, -16.0);
+        let cam_target = float3::new(0.0, 2.0, 0.0);
+        let game_camera_transform = LocalTransform::look_at(cam_pos, cam_target, float3::UP);
+        // Intrinsics are unchanged from the pre-fork values.
+        let game_camera = Camera::new(45.0, 0.3, 100.0);
+        let game_camera_entity = engine
+            .world
+            .spawn((game_camera_transform, game_camera))
+            .id();
+        engine.world.resource_mut::<GameView>().camera = Some(game_camera_entity);
 
         Self::spawn_audio_scene(
             &mut engine.world,
@@ -321,6 +219,12 @@ impl KairosGame {
             blip_audio,
         );
 
+        // ── Physics bodies (wayfinder map #150) ───────────────────────
+        //
+        // Plane / ball poses plus their physics bodies. The transforms are
+        // shared with the render region below; when the physics effort lands
+        // it appends `Collider` / `RigidBody` to the plane / ball entities
+        // spawned there — never as separate parallel entities.
         let plane_transform = LocalTransform::new(
             float3::new(0.0, -1.0, 0.0),
             quaternion::IDENTITY,
@@ -349,18 +253,22 @@ impl KairosGame {
             assets_server.load::<MeshAssetsSystem>(&PathBuf::from("res/models/Ball.mesh"));
         let plane_mesh = LODMesh::new(plan_mesh_asset);
         let ball_mesh = LODMesh::new(ball_mesh_asset);
-        // engine.world.spawn((
-        //     plane_transform,
-        //     plane_collider,
-        //     plane_mesh,
-        //     MaterialComponent::new(material.clone()),
-        // ));
-        // engine.world.spawn((
-        //     ball_transform,
-        //     ball_rigid_body,
-        //     ball_mesh,
-        //     MaterialComponent::new(material.clone()),
-        // ));
+
+        // ── Render demo (wayfinder map #158) ──────────────────────────
+        //
+        // Mesh side only: `LocalTransform` + `LODMesh` + `MaterialComponent`.
+        // The physics side (wayfinder map #150) appends its components to
+        // these same two entities, reusing the plane / ball transforms above.
+        engine.world.spawn((
+            plane_transform,
+            plane_mesh,
+            MaterialComponent::new(material.clone()),
+        ));
+        engine.world.spawn((
+            ball_transform,
+            ball_mesh,
+            MaterialComponent::new(material.clone()),
+        ));
 
         Self {
             listener_drift_angle: LISTENER_DRIFT_START_ANGLE,
@@ -476,38 +384,13 @@ impl KairosGame {
 
         // ── Audio System ──────────────────────────────────────────────
         //
-        // Driven by hand rather than by the `AudioUpdateSystem` sketched at the
-        // top of this file: #156 fixed the driver shape to a manual per-frame
+        // Driven by hand: #156 fixed the driver shape to a manual per-frame
         // call from here (`AudioEngine` stays an `Engine` field, `AssetsServer`
         // is still passed by reference, `dt` comes from the `Time` resource the
-        // `First` stage advanced). That commented system stays as the reference
-        // for the later effort that moves `KairosGame::update` onto the schedule
-        // rails.
+        // `First` stage advanced).
         engine
             .audio_engine
             .update(&mut engine.assets_server, &mut engine.world, delta_time);
-
-        // ── Physics System ────────────────────────────────────────────
-        {
-            // let mut system = PhysicsUpdateSystem {
-            //     physics_engine: &mut engine.physics_engine,
-            //     delta_time,
-            //     meta: SystemMeta::new(),
-            // };
-            // system.initialize(&mut engine.world);
-            // system.run(&mut engine.world);
-        }
-
-        // ── Input System ──────────────────────────────────────────────
-        {
-            // let mut system = InputUpdateSystem {
-            //     input_engine: &mut engine.input_engine,
-            //     delta_time,
-            //     meta: SystemMeta::new(),
-            // };
-            // system.initialize(&mut engine.world);
-            // system.run(&mut engine.world);
-        }
     }
 
     pub fn render(&self, engine: &mut Engine, graphics_command: &mut GraphicsCommand) {

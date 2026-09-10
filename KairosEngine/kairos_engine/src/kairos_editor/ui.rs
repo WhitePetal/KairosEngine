@@ -6,8 +6,12 @@ use crate::{
         TomlTableAssetsSystem, asset::TextAssetsSystem,
     },
     graphics::{
-        egui_texture_handle::EguiTextureHandle, graphics_graph::GraphicsCommand,
-        material::SerializedMaterial, mesh::Mesh, render_state::RenderState,
+        egui_texture_handle::EguiTextureHandle,
+        graphics_graph::GraphicsCommand,
+        material::SerializedMaterial,
+        mesh::Mesh,
+        render_state::RenderState,
+        view_port::{GameView, ViewportSize},
     },
     kairos_editor::{
         Engine,
@@ -653,11 +657,12 @@ impl Context {
                 }
                 Message::CloseGameTab => {
                     self.close_drawer::<GameWindow>();
+                    // A closed window renders nothing: `size == 0` makes the play
+                    // layer skip it entirely, so no attachment and no stale frame.
+                    engine.world.resource_mut::<GameView>().size = ViewportSize::new(0, 0);
                 }
                 Message::UpdateGameWindowSize(width, height) => {
-                    if let Some(game_window) = self.get_window_mut::<GameWindow>() {
-                        game_window.update_size(width, height);
-                    }
+                    engine.world.resource_mut::<GameView>().size = ViewportSize::new(width, height);
                 }
                 Message::RegisteGameWindowViewBind(receiver) => {
                     if let Some(game_window) = self.get_window_mut::<GameWindow>() {
