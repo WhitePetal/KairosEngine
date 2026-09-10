@@ -5,10 +5,7 @@ use kairos_ecs::{
 
 use crate::{
     graphics::{
-        extract::{
-            ResetViewBuffers, extract_game_view, extract_scene_view, mesh::extract_meshes,
-            reset_camera_views,
-        },
+        extract::{extract_game_view, extract_scene_view, reset_camera_views},
         view_port::{GameView, SceneView},
     },
     kairos_editor::schedule::Extract,
@@ -34,8 +31,8 @@ pub mod lod_mesh_component;
 pub mod material_component;
 pub mod view_port;
 
-/// Installs the render rails: the per-view frame buffers, the extract-stage
-/// systems that fill them, and the default mesh render service.
+/// Installs the render rails: the per-view frame buffers, one extract system
+/// per view, and the drawers that fill them.
 ///
 /// Installed next to [`schedule::install`](crate::kairos_editor::schedule::install)
 /// in `Engine::new` — and **after** it, because the rails register into the
@@ -62,15 +59,12 @@ pub fn install(world: &mut World) {
         .expect("the `Extract` schedule must exist: install the schedule rails first");
 
     extract.add_systems((
-        // Frame-start reset, so no camera carries an earlier frame's projection
-        // into this one.
+        // Frame-start reset, so no camera carries an earlier frame's derived
+        // state into this one.
         reset_camera_views,
-        // The view rails clear their buffers next; the mesh service below —
-        // and anything else that orders after `ResetViewBuffers` — appends to
-        // buffers that are already empty.
-        (extract_scene_view, extract_game_view)
-            .in_set(ResetViewBuffers)
-            .after(reset_camera_views),
-        extract_meshes.after(ResetViewBuffers),
+        // One rail per view, each owning its view end to end (clear, derive,
+        // draw), so no two systems write the same buffer.
+        extract_scene_view.after(reset_camera_views),
+        extract_game_view.after(reset_camera_views),
     ));
 }

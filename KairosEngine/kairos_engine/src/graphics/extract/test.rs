@@ -246,8 +246,21 @@ fn a_zero_sized_view_is_skipped_entirely() {
         "a closed window derives no projection"
     );
 
-    // The sibling view is untouched by its neighbour's closed state.
+    // The sibling view is untouched by its neighbour's closed state — each
+    // view is extracted on its own, not by one pass over both.
     assert_eq!(world.resource::<GameView>().draws.len(), 1);
+
+    // …and the other way round.
+    world.resource_mut::<SceneView>().size = ViewportSize::new(1920, 1080);
+    world.resource_mut::<GameView>().size = ViewportSize::new(0, 0);
+    run_frame(&mut world);
+
+    assert_eq!(world.resource::<SceneView>().draws.len(), 1);
+    assert!(world.resource::<GameView>().draws.is_empty());
+    assert!(
+        projection_of(&world, camera).is_some(),
+        "reopening the scene window re-derives its projection"
+    );
 }
 
 /// A projection derived on an earlier frame never survives into a frame that

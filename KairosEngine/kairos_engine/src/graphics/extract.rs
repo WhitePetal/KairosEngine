@@ -6,52 +6,27 @@
 //! every modifier has already run, so nothing here needs to order itself
 //! against gameplay, physics or the editor camera controller.
 //!
-//! Two layers, per the render-rails decision:
-//!
-//! - the **view rails** in this module ([`reset_camera_views`],
-//!   [`extract_scene_view`], [`extract_game_view`]) clear the cameras' derived
-//!   state and each view's buffer, then derive the projections. They own the
-//!   "who clears what" question;
-//! - the **draw producers** ([`mesh`], registered after
-//!   [`ResetViewBuffers`]) append entries. Swapping what is drawn is a matter
-//!   of which producer systems `graphics::install` registers.
+//! One system per view — [`extract_scene_view`], [`extract_game_view`] — and
+//! each one owns its view end to end: clear the buffer, derive the camera's
+//! projection, then call the drawers that fill it. Nothing writes two views at
+//! once, so clearing and filling need no cross-system ordering, each view lists
+//! the drawers it wants on its own, and the views stay free to diverge
+//! (per-camera culling will make them).
 
-use kairos_ecs::{
-    schedule::SystemSet,
-    system::{Query, ResMut},
-};
+use kairos_ecs::system::{Query, ResMut};
 use kairos_transform::LocalTransform;
 
 use crate::graphics::{
     camera::{Camera, CameraView},
+    drawer,
+    lod_mesh_component::LODMesh,
+    material_component::MaterialComponent,
     view_port::{GameView, SceneView, ViewResource},
 };
 
-pub mod mesh;
-
-/// The view-rail systems — reset a view's buffer, then derive its projection.
-///
-/// Draw producers order themselves **after** this set rather than before a
-/// specific rail system, so a new view or a new producer can be added without
-/// naming the others. The order is load-bearing, not cosmetic: a producer that
-/// ran first would have its entries erased by the reset.
-///
-/// Hand-rolled like the schedule labels (see
-/// [`schedule`](crate::kairos_editor::schedule)): `kairos_ecs` re-exports the
-/// `Component` / `Resource` derives but not `SystemSet`, and a one-method trait
-/// is not worth a `kairos_ecs_macros` dependency of its own.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ResetViewBuffers;
-
-impl SystemSet for ResetViewBuffers {
-    fn dyn_clone(&self) -> Box<dyn SystemSet> {
-        Box::new(*self)
-    }
-}
-
 /// Clears every camera's derived view state at the top of the stage.
 ///
-/// This is what makes "no stale matrix survives a frame" unconditional: each
+/// This is what makes "no stale matrix survives a frame" unconditional. Each
 /// view below derives the data of *its* camera, and a camera no view renders
 /// from — unbound, or abandoned when a view was pointed elsewhere — would
 /// otherwise keep what an earlier frame derived for it, readable by anyone
@@ -63,55 +38,65 @@ pub fn reset_camera_views(mut cameras: Query<&mut CameraView>) {
     }
 }
 
-/// The Scene view's rail: empty its buffer and derive this frame's projection
-/// onto the editor camera entity.
+/// The Scene view's rail: refill the editor camera's frame buffer.
 pub fn extract_scene_view(
     mut view: ResMut<SceneView>,
+    meshes: Query<(&LocalTransform, &LODMesh, &MaterialComponent)>,
     mut cameras: Query<(&LocalTransform, &Camera, &mut CameraView)>,
 ) {
-    extract_view(&mut *view, &mut cameras);
+    if reset_and_derive(&mut *view, &mut cameras) {
+        drawer::draw_meshes(view.draws_mut(), &meshes);
+    }
 }
 
-/// The Game view's rail. Same work as [`extract_scene_view`], separate system
-/// because the two views own separate buffers.
+/// The Game view's rail: refill the game camera's frame buffer. Same work as
+/// [`extract_scene_view`], separate system because the two views own separate
+/// buffers — each names the drawers it wants, so they can diverge later.
 pub fn extract_game_view(
     mut view: ResMut<GameView>,
+    meshes: Query<(&LocalTransform, &LODMesh, &MaterialComponent)>,
     mut cameras: Query<(&LocalTransform, &Camera, &mut CameraView)>,
 ) {
-    extract_view(&mut *view, &mut cameras);
+    if reset_and_derive(&mut *view, &mut cameras) {
+        drawer::draw_meshes(view.draws_mut(), &meshes);
+    }
 }
 
-/// The one implementation of "extract a view", instantiated per view.
+/// The one implementation of "prepare a view for this frame", instantiated per
+/// view: empty the buffer, then write this frame's derived size, aspect and
+/// projection onto the camera the view is bound to.
 ///
-/// Clears the view's buffer and writes this frame's derived size, aspect and
-/// projection onto the camera it is bound to. [`reset_camera_views`] has
-/// already cleared every camera's derived state, so a view that derives nothing
-/// (closed window, no camera) leaves "no view size known yet" behind rather
-/// than an older frame's numbers. Every invalid state is a no-op rather than a
-/// crash: no camera bound, a binding that outlives its entity, a camera without
-/// a [`CameraView`], or a closed window (`size == 0`, which is also what keeps
-/// `width / height` away from a division by zero).
-fn extract_view(
+/// Returns whether the view renders this frame — `false` for a closed window
+/// (`size == 0`), which is also what keeps `width / height` away from a
+/// division by zero, and is why the caller's drawers are skipped rather than
+/// filling a buffer nothing will read.
+///
+/// [`reset_camera_views`] has already cleared every camera's derived state, so
+/// a view that derives nothing (closed window, no camera) leaves "no view size
+/// known yet" behind rather than an older frame's numbers. Every invalid state
+/// is a no-op rather than a crash: no camera bound, a binding that outlives its
+/// entity, or a camera without a [`CameraView`].
+fn reset_and_derive(
     view: &mut impl ViewResource,
     cameras: &mut Query<(&LocalTransform, &Camera, &mut CameraView)>,
-) {
-    let camera = view.camera();
+) -> bool {
     view.draws_mut().clear();
-
-    let Some(entity) = camera else { return };
-    let Ok((transform, intrinsics, mut derived)) = cameras.get_mut(entity) else {
-        return;
-    };
 
     let size = view.size();
     if !size.is_renderable() {
-        return;
+        return false;
     }
 
-    let aspect = size.aspect();
-    derived.physical_size = (size.width, size.height);
-    derived.aspect = aspect;
-    derived.view_projection = Some(intrinsics.get_view_projection_matrix(*transform, aspect));
+    if let Some(entity) = view.camera()
+        && let Ok((transform, intrinsics, mut derived)) = cameras.get_mut(entity)
+    {
+        let aspect = size.aspect();
+        derived.physical_size = (size.width, size.height);
+        derived.aspect = aspect;
+        derived.view_projection = Some(intrinsics.get_view_projection_matrix(*transform, aspect));
+    }
+
+    true
 }
 
 #[cfg(test)]
