@@ -27,7 +27,7 @@
 
 ### 为什么用 Rust？为什么从零开始？
 
-KairosEngine 不依赖任何运行时脚本语言 —— 你的游戏就是编译为原生代码的 Rust 程序。每个子系统（ECS、渲染器、物理、音频、编辑器）都是手工打造，遵循一致的数据导向架构，让你完全掌控内存布局、调度和可扩展性。
+KairosEngine 不依赖任何运行时脚本语言 —— 你的游戏就是编译为原生代码的 Rust 程序。ECS 核心基于 bevy_ecs 的 fork，围绕它的每个子系统（渲染器、物理、音频、编辑器）都是手工打造，遵循一致的数据导向架构，让你完全掌控内存布局、调度和可扩展性。
 
 ### 快速开始
 
@@ -43,6 +43,8 @@ cargo run --profile bench    # 基准测试级别性能
 
 ## 🗺️ 版本计划
 
+> **终点是一款开放世界 ARPG。** KairosEngine 的最终目标，是成为真正可以用来制作开放世界动作角色扮演游戏的引擎 —— 因此每个版本节点交付的是**引擎能力**，而不是游戏 Demo。地形、流式加载、动画、状态机与 AI 都在为这个目标服务，而引擎的最终成果只用一样东西来展示：随 **1.0.0** 一同发布的完整 **开放世界 ARPG 游戏**。
+
 ### 0.1.0
 
 | 功能 | 状态 |
@@ -50,12 +52,11 @@ cargo run --profile bench    # 基准测试级别性能
 | 引擎 GUI 界面 | ✅ |
 | Base Graphics | ✅ |
 | Base Input System | ✅ |
-| Base ECS（参考 ENTT / Flecs） | ✅ |
+| Base ECS（基于 bevy_ecs） | ✅ |
 | Base Physics System | ✅ |
 | Base Audio System | ✅ |
 | Kairos Editor MCP | 🚧 |
 | Kairos Editor Claw | 🚧 |
-| Demo: 足球游戏 | 📝 |
 
 ### 0.2.0
 
@@ -66,7 +67,6 @@ cargo run --profile bench    # 基准测试级别性能
 | Graphics Graph | 🚧 |
 | Input Graph System | 📝 |
 | World Scenes System | 📝 |
-| Demo: 赛车游戏 | 📝 |
 
 ### 0.3.0
 
@@ -77,80 +77,77 @@ cargo run --profile bench    # 基准测试级别性能
 | GI (Global Illumination) System | 📝 |
 | Cinemachine System | 📝 |
 | AI Agent | 📝 |
-| Demo: 动作游戏 | 📝 |
 
 ### 1.0.0
 
-- ...（待定）
-- Demo: ...（待定）
+- ……（待定）
+- **展示作品：完全使用 KairosEngine 制作的开放世界 ARPG 游戏** 📝
+
+### 计划中的子系统迁移
+
+| 子系统 | 当前 | 计划 |
+|-----------|-------|---------|
+| 物理 | `kairos_physics` —— 基于 **rapier3d** 的独立 crate | 基于 **[avian](https://github.com/Jondolf/avian)** 的独立 crate |
+| 音频 | 引擎内模块，基于 **kira** + **symphonia** | 基于 **bevy_audio** 的独立 crate |
 
 ---
 
 ## 🧱 架构
 
-KairosEngine 由四个主要的 Cargo workspace 成员组成：
+KairosEngine 是一个 Rust workspace，每个子系统都是独立 crate，可以脱离编辑器单独依赖：
 
 | 包 | 描述 |
 |-------|-------------|
 | **`kairos_engine`** | 核心引擎 + 内置编辑器（可执行目标） |
-| **`kairos_ecs_macros`** | ECS 系统的过程宏 |
-| **`kairos_supervisor`** | 测试框架的轻量看门狗进程（崩溃监控） |
-| **`kairos_tasks`** | 异步任务池与并行迭代原语（基础层 crate） |
+| **`kairos_ecs`** | 引擎的 ECS 核心 —— 基于 bevy_ecs 的 fork，独立 crate |
+| **`kairos_ecs_macros`** | ECS 的过程宏（`Component`、`Resource`……），内部为 `kairos_ecs_macro_logic` / `kairos_macro_utils` |
+| **`kairos_graphics`** | 图形子系统 —— 纹理、材质、网格、着色器、帧图、wgpu 管线 |
+| **`kairos_physics`** | 物理子系统 —— `PhysicsEngine` World 资源与 `RigidBody`/`Collider` 组件（当前由 rapier3d 驱动，见版本计划） |
+| **`kairos_asset`** | 异步资源服务器、资源句柄与类型化资源系统 |
+| **`kairos_math`** | 基于 glam 的空间/几何数学 —— 向量、四元数、矩阵、AABB、仿射 |
+| **`kairos_time`** | bevy_time 风格的时钟与固定时间步 |
+| **`kairos_transform`** | bevy_transform 风格的 `LocalTransform` / `GlobalTransform` 组件对 —— 引擎空间约定为右手系、Y 向上、-Z 向前 |
+| **`kairos_collections`** | 各 crate 共用的哈希工具与确定性集合 |
+| **`kairos_ptr`** | ECS 指针类型（与 bevy_ptr 对齐） |
+| **`kairos_tasks`** | 异步任务池与并行迭代原语 |
+| **`kairos_supervisor`** | 轻量看门狗进程（崩溃监控） |
 
 ### 引擎代码结构
+
+拥有独立 crate 的子系统在上面列出；`kairos_engine` 负责编辑器应用、逐帧接线以及游戏入口。
 
 ```
 kairos_engine/src/
 ├── main.rs                 # 入口 — 初始化事件循环和编辑器运行时
-├── lib.rs                  # 公开模块树
-├── ecs/                    # 自定义实体组件系统 (ECS)
-│   ├── world.rs            # World — ECS 核心容器
-│   ├── entity.rs           # 实体句柄
-│   ├── component.rs        # 组件 trait 与存储
-│   ├── table.rs            # Archetype 表
-│   ├── table_graph.rs      # 表转换图（实体形态变化）
-│   ├── sparse_set.rs       # 稀疏集存储
-│   ├── batch.rs            # 批量实体操作
-│   ├── borrow.rs           # 查询借用检查
-│   └── ...
-├── graphics/               # GPU 渲染管线
-│   ├── render_pipeline.rs  # wgpu 渲染管线管理
-│   ├── shader.rs           # 着色器加载与编译
-│   ├── texture.rs          # 纹理编解码（SDR + HDR）
-│   ├── mesh.rs             # 网格数据与 GLTF 导入
-│   ├── material.rs         # 材质系统
-│   ├── camera.rs           # 相机/视口管理
-│   ├── vertex.rs           # 顶点布局定义
-│   ├── render_state.rs     # 渲染状态管理
-│   └── graphics_graph.rs   # 帧图（渲染帧结构）
-├── physics/                # 物理引擎 (rapier3d)
-│   ├── rigid_body.rs       # 刚体组件
-│   └── collider.rs         # 碰撞体组件
+├── lib.rs                  # 公开模块树（重导出各子系统 crate）
+├── kairos_editor/          # 内置编辑器应用
+│   ├── runtime.rs          # 编辑器事件循环与窗口
+│   ├── schedule/           # 编辑器调度接线
+│   ├── ui/                 # 基于 egui 的编辑器界面
+│   │   ├── inspector/      # 类型化检查器（材质、纹理、网格、着色器、音频……）
+│   │   ├── scene_window/   # 3D 场景视口
+│   │   ├── game_window.rs  # 游戏运行视口
+│   │   ├── hierarchy_window.rs  # 实体层级面板
+│   │   ├── project_window/ # 项目文件浏览器
+│   │   ├── console_window.rs    # 控制台/日志面板
+│   │   └── ...
+│   ├── camera/             # 编辑器相机
+│   ├── project_path_tree/  # 项目路径树
+│   └── asset_registry.rs   # 资源类型注册表
+├── kairos_ui/              # 编辑器通用 UI 基础件（字体等）
+├── asset_loader/           # 异步资源加载（依赖图感知）
+│   ├── assets.rs           # AssetsServer & AssetsSystem trait
+│   └── assets/             # 类型化资源系统（网格、材质、纹理、着色器、音频……）
 ├── audio/                  # 音频引擎 (kira + symphonia)
 │   ├── audio.rs            # 音频状态与播放
 │   ├── background.rs       # 背景音乐
-│   └── spatial.rs          # 3D 空间音频
-├── asset_loader/           # 异步资源加载（依赖图感知）
-│   ├── assets.rs           # AssetsServer & AssetsSystem trait
-│   └── asset.rs            # AssetHandle 与类型化系统
-├── kairos_editor/          # 内置编辑器应用
-│   ├── runtime.rs          # 编辑器事件循环与窗口
-│   ├── ui/                 # 基于 egui 的编辑器界面
-│   │   ├── inspector/      # 类型化检查器（材质、纹理、网格、着色器、音频……）
-│   │   ├── scene_window.rs # 3D 场景视口
-│   │   ├── game_window.rs  # 游戏运行视口
-│   │   ├── hierarchy_window.rs  # 实体层级面板
-│   │   ├── project_window.rs    # 项目文件浏览器
-│   │   └── ...
-│   └── asset_registry.rs   # 资源类型注册表
-├── kairos_game.rs          # 游戏逻辑模板（开发者在此编写游戏）
+│   └── spatial/            # 3D 空间音频（监听器、混响区域、音量）
+├── math/                   # 数学重导出 + 颜色类型
+├── kairos_game.rs          # 游戏逻辑（开发者在此编写游戏）
 ├── kairos_paths.rs         # 项目路径管理
 ├── kairos_settings.rs      # 编辑器/项目设置
 ├── inputs.rs               # 输入引擎（键盘/鼠标映射）
-├── math.rs                 # 数学库（向量、矩阵、四元数、颜色、三角函数）
-├── spatial.rs              # 空间系统（Transform、AABB、右手系-Y向上）
-├── timer.rs                # 帧计时与时间缩放
-├── types.rs                # TypeIdMap — 优化 TypeId 键控哈希表
+├── spatial.rs              # 空间辅助（右手系、Y 向上、-Z 向前）
 └── log.rs                  # 编辑器内日志面板
 ```
 
@@ -158,9 +155,17 @@ kairos_engine/src/
 
 ## ✨ 核心特性
 
-### ⚙️ ECS（hecs 风格，自实现）
+### ⚙️ ECS（基于 bevy_ecs）
 
-设计上参考 **hecs**，采用 Archetype 表、稀疏集、列式存储和实体代际 ID。额外扩展了表转换图（追踪 Archetype 变化）、批量实体操作和显式的借用检查系统以支持安全的并发查询。
+ECS 核心已经不再基于 hecs，而是**基于 bevy_ecs**：`kairos_ecs` 是 bevy ECS 的仓库内 fork（与 bevy v0.19.x 保持对齐），作为独立 crate 维护 —— 引擎因此直接继承了久经考验的数据模型，而不是重新推导一套：
+
+- **Archetype 存储** — 列式组件表、稀疏集查找、快速的 bundle 生成
+- **查询** — `Query` / `QueryBuilder`，支持过滤器（`With` / `Without` / `Added` / `Changed`）、join 与并行迭代
+- **变更检测** — 通过 `Ref` / `Mut` 进行逐组件 tick 追踪
+- **调度** — 有序 system set、label、run condition、延迟命令，以及固定时间步驱动（`kairos_time`，与 bevy `Time<Fixed>` 对齐）
+- **观察者、消息与生命周期** — `On<…>` 观察者、`Messages`，以及 `Add` / `Insert` / `Remove` / `Despawn` 钩子
+- **关系与层级** — `ChildOf` / `Children` 以及通用 relationship
+- **配套 crate** — `kairos_ptr`（与 bevy_ptr 对齐）、`kairos_collections`（确定性哈希/集合）、`kairos_ecs_macros`（派生宏）
 
 ### 🎨 GPU 渲染
 
@@ -185,11 +190,15 @@ kairos_engine/src/
 
 ### 🏗️ 物理引擎
 
-通过 **rapier3d** 实现刚体动力学、碰撞体、关节和连续碰撞检测（CCD），支持并行模拟。
+`kairos_physics` 是独立 crate：刚体动力学、碰撞体、关节和连续碰撞检测（CCD），当前由 **rapier3d** 在 `PhysicsEngine` World 资源与 `RigidBody` / `Collider` 组件背后驱动，支持并行模拟。
+
+> **计划中：** 该模块将迁移为基于 **[avian](https://github.com/Jondolf/avian)** 的独立 crate —— avian 是 ECS 原生的物理引擎，与基于 bevy_ecs 的核心更契合。详见版本计划。
 
 ### 🔊 音频引擎
 
-通过 **kira** 实现 3D 空间音频，**symphonia** 解码多种格式（MP3、WAV、FLAC、Ogg、MP4），支持背景音乐轨道和混响。
+通过 **kira** 实现 3D 空间音频，**symphonia** 解码多种格式（MP3、WAV、FLAC、Ogg、MP4），支持背景音乐轨道、混响区域以及每个监听器的轨道预算。
+
+> **计划中：** 音频模块将迁移为基于 **bevy_audio** 的独立 crate，使音频实体与播放遵循与引擎其余部分一致的 ECS 习惯。
 
 ### 📦 资源系统
 
@@ -200,23 +209,20 @@ kairos_engine/src/
 
 ### 🔬 测试策略
 
-两层测试架构：
-- **Rust 集成测试** — 逻辑和数据验证，无需 GPU 或引擎循环
-- **TOML 运行时测试** — GPU、egui UI、物理、ECS 调度和输入路径的运行时验证，通过 `kairos_supervisor` 看门狗监控崩溃
+- **按 crate 运行 Rust 测试** — 逻辑与数据验证，无需 GPU 或引擎循环，通过 `cargo test-crate` 别名执行
+- **编辑器驱动验证** — 运行时行为（GPU、egui、物理、输入）的目标验证方式是通过 Kairos Editor MCP 驱动真实编辑器，取代已废弃的 TOML 运行时测试框架；`kairos_supervisor` 仍作为崩溃看门狗保留
 
 ---
 
 ## 🧪 运行测试
 
 ```bash
-# 集成测试（逻辑与数据，无需 GPU）
-cargo test
-
-# 运行时测试（GPU、物理、egui 等）
-cargo run --features test-harness          # 启动测试框架
+cargo test-crate kairos_ecs   # 只测你改动的那个 crate —— 日常默认（约 8s）
+cargo test-fast               # 全工作区、跳过 doctest（约 12s）
+cargo test-full               # 全工作区含 doctest —— 合并前的门禁（约 183s）
 ```
 
-详见 [Kairos Test Harness 说明](.agents/skills/kairos-test/SKILL.md)。
+详见 [`docs/agents/testing.md`](KairosEngine/docs/agents/testing.md)。
 
 ---
 
@@ -226,10 +232,10 @@ cargo run --features test-harness          # 启动测试框架
 - **无脚本 VM** — 游戏就是使用引擎作为库的 Rust 程序
 - **GPU 优先** — 纹理编码、压缩和渲染都是原生 GPU 操作
 - **模块化** — 每个子系统拥有自己的类型；编辑器是消费者而非核心
-- **可测试** — 两层测试架构将纯逻辑与运行时 GPU 交互分离
+- **可测试** — 按 crate 的 Rust 测试让纯逻辑的验证保持廉价，运行时行为则通过驱动真实编辑器来验证
 - **可扩展** — 易于替换子系统、添加新组件类型、扩展编辑器
 
-架构决策记录（ADR）详见 [`docs/adr/`](docs/adr/)。
+架构决策记录（ADR）详见 [`docs/adr/`](KairosEngine/docs/adr/)。
 
 ---
 
@@ -239,10 +245,11 @@ cargo run --features test-harness          # 启动测试框架
 
 | 领域 | 库 |
 |--------|------|
+| ECS | 仓库内 `kairos_ecs` —— 基于 **bevy_ecs** 的 fork，与 bevy v0.19.x 对齐 |
 | 图形 | [wgpu](https://wgpu.rs) 0.29 |
 | 编辑器 UI | [egui](https://egui.rs) 0.35, egui-wgpu, egui-winit |
-| 物理 | [rapier3d](https://rapier.rs) 0.33 |
-| 音频 | [kira](https://github.com/tesselode/kira) 0.12, [symphonia](https://github.com/pdeljanov/Symphonia) 0.5 |
+| 物理 | [rapier3d](https://rapier.rs) 0.33 → [avian](https://github.com/Jondolf/avian)（计划中） |
+| 音频 | [kira](https://github.com/tesselode/kira) 0.12, [symphonia](https://github.com/pdeljanov/Symphonia) 0.5 → bevy_audio（计划中） |
 | 资源加载 | [image](https://github.com/image-rs/image) (PNG), [gltf](https://github.com/gltf-rs/gltf) 1.4 |
 | 数学 | [glam](https://github.com/bitshifter/glam-rs) 0.33, [mint](https://github.com/kvark/mint) |
 | 异步 | [tokio](https://tokio.rs) (full), [crossbeam-channel](https://docs.rs/crossbeam-channel) |
@@ -251,9 +258,9 @@ cargo run --features test-harness          # 启动测试框架
 
 > 完整依赖列在 [`Cargo.toml`](KairosEngine/Cargo.toml)。
 
-### 致谢 / 间接依赖
+### 致谢
 
-参见 [Thanks.md](Thanks.md) —— 感谢使 KairosEngine 成为可能的所有开源项目。
+KairosEngine 感谢它所依托的每一个开源项目 —— 其中包括 **[hecs](https://github.com/Ralith/hecs)**、**[rapier](https://rapier.rs)** 与 **[kira](https://github.com/tesselode/kira)**，它们既塑造了本引擎的设计，也塑造了它的代码。完整列表见 [Thanks.md](Thanks.md)。
 
 ---
 
@@ -266,6 +273,8 @@ res/
 ├── materials/     # 材质定义
 ├── shaders/       # 着色器源码
 └── audios/        # 音频文件
+```
+
 ---
 
 ## 🤝 参与贡献 & 联系
@@ -284,8 +293,8 @@ res/
 本项目使用：
 - [GitHub Issues](https://github.com/WhitePetal/KairosEngine/issues) 进行问题跟踪
 - 五个分类标签：`needs-triage`、`needs-info`、`ready-for-agent`、`ready-for-human`、`wontfix`
-- 架构决策记录（ADR）位于 [`docs/adr/`](docs/adr/)
-- AI 代理遵循 [`AGENTS.md`](AGENTS.md) 中的指引
+- 架构决策记录（ADR）位于 [`docs/adr/`](KairosEngine/docs/adr/)
+- AI 代理遵循 [`AGENTS.md`](KairosEngine/AGENTS.md) 中的指引
 
 ### 使用的 AI 工具
 
@@ -300,7 +309,10 @@ KairosEngine 开发过程中使用的 AI 辅助工具：
 
 ## 📄 许可证
 
-本项目的许可协议为 [MIT](LICENSE-MIT) 或 [Apache-2.0](LICENSE-APACHE)，您可任选其一。
+本项目的许可协议为以下二者之一（任选其一）：
+
+- Apache License, Version 2.0（[LICENSE-APACHE](LICENSE-APACHE)）
+- MIT 许可证（[LICENSE-MIT](LICENSE-MIT)）
 
 ---
 

@@ -27,7 +27,7 @@ If you have any ideas or questions, feel free to start a [Discussion](https://gi
 
 ### Why Rust? Why start from scratch?
 
-KairosEngine avoids runtime scripting languages entirely — your game is a Rust program compiled to native code. Every subsystem (ECS, renderer, physics, audio, editor) is hand-crafted to fit a consistent data-oriented architecture, giving you full control over memory layout, scheduling, and extensibility.
+KairosEngine avoids runtime scripting languages entirely — your game is a Rust program compiled to native code. The ECS core is a bevy_ecs-based fork, and every subsystem around it (renderer, physics, audio, editor) is hand-crafted to fit that data-oriented architecture, giving you full control over memory layout, scheduling, and extensibility.
 
 ### Quick Start
 
@@ -43,18 +43,19 @@ cargo run --profile bench    # Benchmark-grade performance
 
 ## 🗺️ Version Roadmap
 
+> **The destination is an open-world ARPG.** KairosEngine's end goal is to be the engine an open-world action RPG is actually built with — so version nodes ship *engine capabilities*, not game demos. Terrain, streaming, animation, state machines and AI are being built for that goal, and the finished engine is demonstrated by one thing only: a full **open-world ARPG game** shipped alongside **1.0.0**.
+
 ### 0.1.0
 | Feature | Status |
 |---------|--------|
 | Engine GUI (editor interface) | ✅ |
 | Base Graphics | ✅ |
 | Base Input System | ✅ |
-| Base ECS (inspired by ENTT / Flecs) | ✅ |
+| Base ECS (bevy_ecs-based) | ✅ |
 | Base Physics System | ✅ |
 | Base Audio System | ✅ |
 | Kairos Editor MCP | 🚧 |
 | Kairos Editor Claw | 🚧 |
-| Demo: Football Game | 📝 |
 
 ### 0.2.0
 | Feature | Status |
@@ -64,7 +65,6 @@ cargo run --profile bench    # Benchmark-grade performance
 | Graphics Graph | 🚧 |
 | Input Graph System | 📝 |
 | World Scenes System | 📝 |
-| Demo: Car Race Game | 📝 |
 
 ### 0.3.0
 | Feature | Status |
@@ -74,79 +74,76 @@ cargo run --profile bench    # Benchmark-grade performance
 | GI (Global Illumination) System | 📝 |
 | Cinemachine System | 📝 |
 | AI Agent | 📝 |
-| Demo: Action Game | 📝 |
 
 ### 1.0.0
 - ... (to be announced)
-- Demo: ... (to be announced)
+- **Showcase: an open-world ARPG game built entirely with KairosEngine** 📝
+
+### Planned Subsystem Migrations
+
+| Subsystem | Today | Planned |
+|-----------|-------|---------|
+| Physics | `kairos_physics` — standalone crate backed by **rapier3d** | standalone crate backed by **[avian](https://github.com/Jondolf/avian)** |
+| Audio | in-engine module over **kira** + **symphonia** | standalone **bevy_audio**-based crate |
 
 ---
 
 ## 🧱 Architecture
 
-KairosEngine is organized as a Rust workspace with four primary crates:
+KairosEngine is a Rust workspace. Each subsystem is its own crate and can be depended on independently of the editor:
 
 | Crate | Description |
 |-------|-------------|
 | **`kairos_engine`** | Core engine + built-in editor. The binary target. |
-| **`kairos_ecs_macros`** | Procedural macros powering the ECS system. |
-| **`kairos_supervisor`** | Thin watchdog process for test-harness crash monitoring. |
-| **`kairos_tasks`** | Async task pool & parallel iteration primitives (foundation crate). |
+| **`kairos_ecs`** | The engine's core ECS — a bevy_ecs-based (forked) standalone crate. |
+| **`kairos_ecs_macros`** | Derive macros for the ECS (`Component`, `Resource`, …), with `kairos_ecs_macro_logic` / `kairos_macro_utils` internals. |
+| **`kairos_graphics`** | Graphics subsystem — textures, materials, meshes, shaders, render (frame) graph, wgpu pipelines. |
+| **`kairos_physics`** | Physics subsystem — `PhysicsEngine` world resource plus `RigidBody`/`Collider` components (rapier3d-backed today; see the roadmap). |
+| **`kairos_asset`** | Async asset server, handles, and typed asset systems. |
+| **`kairos_math`** | Spatial/geometry math over glam — vectors, quaternions, matrices, AABB, affine. |
+| **`kairos_time`** | bevy_time-style clock and fixed timestep. |
+| **`kairos_transform`** | bevy_transform-style `LocalTransform` / `GlobalTransform` component pair — the engine's spatial convention is right-handed, Y-up, -Z forward. |
+| **`kairos_collections`** | Hashing utilities and deterministic collections shared across crates. |
+| **`kairos_ptr`** | Pointer types for the ECS (bevy_ptr parity). |
+| **`kairos_tasks`** | Async task pool and parallel-iteration primitives. |
+| **`kairos_supervisor`** | Thin watchdog process for crash monitoring. |
 
 ### Engine Layout
+
+Subsystems with their own crate live in the crates above; `kairos_engine` holds the editor application, the per-frame wiring, and the game entry point.
 
 ```
 kairos_engine/src/
 ├── main.rs                 # Entry point — initializes event loop & editor runtime
-├── lib.rs                  # Public module tree
-├── ecs/                    # Custom Entity Component System
-│   ├── world.rs            # World — central ECS container
-│   ├── entity.rs           # Entity handles
-│   ├── component.rs        # Component trait & storage
-│   ├── table.rs            # Archetype tables
-│   ├── table_graph.rs      # Table transition graph
-│   ├── sparse_set.rs       # Sparse set storage
-│   ├── batch.rs            # Batch entity operations
-│   ├── borrow.rs           # Borrow checking for ECS queries
-│   └── ...
-├── graphics/               # GPU rendering pipeline
-│   ├── render_pipeline.rs  # wgpu render pipeline management
-│   ├── shader.rs           # Shader loading & compilation
-│   ├── texture.rs          # Texture encoding/decoding (SDR & HDR)
-│   ├── mesh.rs             # Mesh data & GLTF import
-│   ├── material.rs         # Material system
-│   ├── camera.rs           # Camera/viewport management
-│   ├── vertex.rs           # Vertex layout definitions
-│   ├── render_state.rs     # Render state management
-│   └── graphics_graph.rs   # Frame graph for render passes
-├── physics/                # Physics (rapier3d)
-│   ├── rigid_body.rs       # Rigid body components
-│   └── collider.rs         # Collider components
+├── lib.rs                  # Public module tree (re-exports the subsystem crates)
+├── kairos_editor/          # Built-in editor application
+│   ├── runtime.rs          # Editor event loop & windowing
+│   ├── schedule/           # Editor schedule wiring
+│   ├── ui/                 # egui-based editor UI
+│   │   ├── inspector/      # Per-type inspectors (material, texture, mesh, shader, audio, ...)
+│   │   ├── scene_window/   # 3D scene viewport
+│   │   ├── game_window.rs  # Game viewport
+│   │   ├── hierarchy_window.rs
+│   │   ├── project_window/ # Project file browser
+│   │   ├── console_window.rs
+│   │   └── ...
+│   ├── camera/             # Editor camera
+│   ├── project_path_tree/  # Project path tree
+│   └── asset_registry.rs   # Asset type registry
+├── kairos_ui/              # Shared editor UI primitives (fonts, ...)
+├── asset_loader/           # Async asset loading with dependency graph
+│   ├── assets.rs           # AssetsServer & AssetsSystem trait
+│   └── assets/             # Typed asset systems (mesh, material, texture, shader, audio, ...)
 ├── audio/                  # Audio engine (kira + symphonia)
 │   ├── audio.rs            # Audio state & playback
 │   ├── background.rs       # Background music
-│   └── spatial.rs          # 3D spatial audio
-├── asset_loader/           # Async asset loading with dependency graph
-│   ├── assets.rs           # AssetsServer & AssetsSystem trait
-│   └── asset.rs            # AssetHandle & typed systems
-├── kairos_editor/          # Built-in editor application
-│   ├── runtime.rs          # Editor event loop & windowing
-│   ├── ui/                 # egui-based editor UI
-│   │   ├── inspector/      # Per-type inspectors (material, texture, mesh, shader, audio, ...)
-│   │   ├── scene_window.rs # 3D scene viewport
-│   │   ├── game_window.rs  # Game viewport
-│   │   ├── hierarchy_window.rs
-│   │   ├── project_window.rs
-│   │   └── ...
-│   └── asset_registry.rs   # Asset type registry
-├── kairos_game.rs          # Game logic stub (what the player builds with)
+│   └── spatial/            # 3D spatial audio (listener, reverb zones, volumes)
+├── math/                   # Math re-exports + color types
+├── kairos_game.rs          # Game logic (what the developer builds with)
 ├── kairos_paths.rs         # Project path management
 ├── kairos_settings.rs      # Editor/project settings
 ├── inputs.rs               # Input engine (keyboard/mouse mapping)
-├── math.rs                 # Math library (vec, matrix, quaternion, color, trigonometric)
-├── spatial.rs              # Spatial system (Transform, AABB, right-handed Y-up)
-├── timer.rs                # Frame timing & time scale
-├── types.rs                # TypeIdMap — optimized TypeId-keyed hash maps
+├── spatial.rs              # Spatial helpers (right-handed, Y-up, -Z forward)
 └── log.rs                  # In-editor logging
 ```
 
@@ -154,9 +151,17 @@ kairos_engine/src/
 
 ## ✨ Key Features
 
-### ⚙️ ECS (hecs-style, custom-built)
+### ⚙️ ECS (bevy_ecs-based)
 
-Designed after **hecs**, with archetype tables, sparse sets, columnar storage, and entity generation IDs. Beyond that, it adds a table transition graph (for tracking archetype changes), batched entity operations, and an explicit borrowing system for safe concurrent queries.
+The ECS core is no longer hecs-based — it is **bevy_ecs-based**. `kairos_ecs` is an in-repo fork of bevy's ECS (tracking bevy v0.19.x parity) kept as a standalone crate, so the engine inherits a battle-tested data model instead of re-deriving one:
+
+- **Archetype storage** — columnar component tables with sparse-set lookup and fast bundle spawning
+- **Queries** — `Query` / `QueryBuilder` with filters (`With` / `Without` / `Added` / `Changed`), joins, and parallel iteration
+- **Change detection** — per-component tick tracking via `Ref` / `Mut`
+- **Schedules** — ordered system sets, labels, run conditions, deferred commands, and a fixed-timestep driver (`kairos_time`, bevy `Time<Fixed>` parity)
+- **Observers, messages & lifecycle** — `On<…>` observers, `Messages`, and `Add` / `Insert` / `Remove` / `Despawn` hooks
+- **Relationships & hierarchy** — `ChildOf` / `Children` plus generic relationships
+- **Supporting crates** — `kairos_ptr` (bevy_ptr parity), `kairos_collections` (deterministic hashing/collections), `kairos_ecs_macros` (derives)
 
 ### 🎨 GPU Rendering
 
@@ -181,11 +186,15 @@ Designed after **hecs**, with archetype tables, sparse sets, columnar storage, a
 
 ### 🏗️ Physics
 
-Rigid body dynamics, colliders, joints, and CCD (continuous collision detection) via **rapier3d**, with parallel simulation support.
+`kairos_physics` is a standalone crate: rigid body dynamics, colliders, joints, and CCD (continuous collision detection), currently simulated by **rapier3d** behind a `PhysicsEngine` world resource plus `RigidBody` / `Collider` components, with parallel simulation support.
+
+> **Planned:** this module moves to a standalone crate built on **[avian](https://github.com/Jondolf/avian)** — an ECS-native physics engine, which fits the bevy_ecs-based core more naturally. See the roadmap.
 
 ### 🔊 Audio
 
-Spatial 3D audio via **kira** with **symphonia** decoding (MP3, WAV, FLAC, Ogg, MP4), background music tracks, reverb support.
+Spatial 3D audio via **kira** with **symphonia** decoding (MP3, WAV, FLAC, Ogg, MP4), background music tracks, reverb zones, and per-listener track budgets.
+
+> **Planned:** the audio module becomes a standalone crate built on **bevy_audio**, so audio entities and playback follow the same ECS idioms as the rest of the engine.
 
 ### 📦 Asset System
 
@@ -196,23 +205,20 @@ Spatial 3D audio via **kira** with **symphonia** decoding (MP3, WAV, FLAC, Ogg, 
 
 ### 🔬 Testing
 
-Two-tier testing strategy:
-- **Rust integration tests** — logic/data validation without GPU or engine loop
-- **TOML-based runtime tests** — GPU, egui, physics, ECS scheduling, and input pathway validation via the `kairos_supervisor` watchdog
+- **Rust tests per crate** — logic/data validation without a GPU or an engine loop, via the `cargo test-crate` alias
+- **Editor-driven verification** — runtime behaviour (GPU, egui, physics, input) is meant to be checked by driving the real editor through the Kairos Editor MCP, the approach that replaces the retired TOML runtime test harness; `kairos_supervisor` remains as a crash watchdog
 
 ---
 
 ## 🧪 Testing
 
 ```bash
-# Integration tests (logic & data, no GPU needed)
-cargo test
-
-# Runtime tests (GPU, physics, egui, etc.)
-cargo run --features test-harness          # Launch test harness
+cargo test-crate kairos_ecs   # test only the crate you changed — the default (~8s)
+cargo test-fast               # every crate, no doctests (~12s)
+cargo test-full               # every crate + doctests — the merge gate (~183s)
 ```
 
-See the [Kairos Test Harness skill](.agents/skills/kairos-test/SKILL.md) for details.
+See [`docs/agents/testing.md`](KairosEngine/docs/agents/testing.md) for the full testing policy.
 
 ---
 
@@ -222,10 +228,10 @@ See the [Kairos Test Harness skill](.agents/skills/kairos-test/SKILL.md) for det
 - **No scripting VM** — games are Rust programs using the engine as a library
 - **GPU-first** — texture encoding, compression, and rendering are native GPU operations
 - **Modular** — every subsystem owns its types; the editor is a consumer, not the core
-- **Testable** — two-tier testing separates pure logic from runtime GPU interactions
+- **Testable** — per-crate Rust tests keep pure logic fast to verify, while runtime behaviour is checked by driving the real editor
 - **Extensible** — easy to swap subsystems, add new component types, and extend the editor
 
-Architecture decisions are documented as **ADRs** in [`docs/adr/`](docs/adr/).
+Architecture decisions are documented as **ADRs** in [`docs/adr/`](KairosEngine/docs/adr/).
 
 ---
 
@@ -235,10 +241,11 @@ Architecture decisions are documented as **ADRs** in [`docs/adr/`](docs/adr/).
 
 | Domain | Library |
 |--------|---------|
+| ECS | in-repo `kairos_ecs` — a **bevy_ecs**-based fork, kept at bevy v0.19.x parity |
 | Graphics | [wgpu](https://wgpu.rs) 0.29 |
 | Editor UI | [egui](https://egui.rs) 0.35, egui-wgpu, egui-winit |
-| Physics | [rapier3d](https://rapier.rs) 0.33 |
-| Audio | [kira](https://github.com/tesselode/kira) 0.12, [symphonia](https://github.com/pdeljanov/Symphonia) 0.5 |
+| Physics | [rapier3d](https://rapier.rs) 0.33 → [avian](https://github.com/Jondolf/avian) (planned) |
+| Audio | [kira](https://github.com/tesselode/kira) 0.12, [symphonia](https://github.com/pdeljanov/Symphonia) 0.5 → bevy_audio (planned) |
 | Asset loading | [image](https://github.com/image-rs/image) (PNG), [gltf](https://github.com/gltf-rs/gltf) 1.4 |
 | Math | [glam](https://github.com/bitshifter/glam-rs) 0.33, [mint](https://github.com/kvark/mint) |
 | Async | [tokio](https://tokio.rs) (full), [crossbeam-channel](https://docs.rs/crossbeam-channel) |
@@ -247,9 +254,9 @@ Architecture decisions are documented as **ADRs** in [`docs/adr/`](docs/adr/).
 
 > Full dependency list in [`Cargo.toml`](KairosEngine/Cargo.toml).
 
-### Thanks / Indirect Dependencies
+### Thanks
 
-See [Thanks.md](Thanks.md) for acknowledgments of the open-source projects that make KairosEngine possible.
+KairosEngine thanks every open-source project it stands on — **[hecs](https://github.com/Ralith/hecs)**, **[rapier](https://rapier.rs)**, and **[kira](https://github.com/tesselode/kira)** among them, each of which shaped this engine's design as well as its code. The full list lives in [Thanks.md](Thanks.md).
 
 ---
 
@@ -282,8 +289,8 @@ res/
 The project uses:
 - [GitHub Issues](https://github.com/WhitePetal/KairosEngine/issues) for issue tracking
 - Five canonical triage labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`
-- Architecture Decision Records in [`docs/adr/`](docs/adr/)
-- AI agents follow instructions in [`AGENTS.md`](AGENTS.md)
+- Architecture Decision Records in [`docs/adr/`](KairosEngine/docs/adr/)
+- AI agents follow instructions in [`AGENTS.md`](KairosEngine/AGENTS.md)
 
 ### AI Tools Used
 
@@ -298,7 +305,12 @@ KairosEngine development is assisted by:
 
 ## 📄 License
 
-Licensed under either of [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE) at your option.
+Licensed under either of
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+- MIT license ([LICENSE-MIT](LICENSE-MIT))
+
+at your option.
 
 ---
 
