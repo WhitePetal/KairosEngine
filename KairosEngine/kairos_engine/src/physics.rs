@@ -2,11 +2,13 @@
 //! `RigidBody` / `Collider` components that point into it.
 //!
 //! [`install`] is the single bootstrap entry point (bevy-plugin style): it
-//! inserts the resource, so every [`World`] that went through
+//! inserts the resource and registers [`physics_step_system`] into
+//! `FixedUpdate`, so every [`World`] that went through
 //! [`Engine::new`](crate::kairos_editor::Engine::new) is guaranteed to carry
-//! physics. The rapier types themselves never leave this module — engine code
-//! talks to the resource through its eager `insert_*` constructors, and
-//! entities carry nothing but private handles.
+//! physics *and* to advance it once per fixed step. The rapier types themselves
+//! never leave this module — engine code talks to the resource through its
+//! eager `insert_*` constructors, and entities carry nothing but private
+//! handles.
 
 use rapier3d::{
     dynamics::{
@@ -19,13 +21,20 @@ use rapier3d::{
 };
 
 use crate::{
+    kairos_editor::schedule::FixedUpdate,
     math::{float3, quaternion},
     physics::{
         collider::{Collider, ColliderMaterial},
         rigid_body::RigidBody,
     },
+    time::FixedTime,
 };
-use kairos_ecs::{resource::Resource, world::World};
+use kairos_ecs::{
+    resource::Resource,
+    schedule::Schedules,
+    system::{Query, Res, ResMut},
+    world::World,
+};
 use kairos_transform::LocalTransform;
 
 pub mod collider;
@@ -149,17 +158,100 @@ impl PhysicsEngine {
             handle: self.collider_set.insert(collider),
         }
     }
+
+    /// Advances the rapier simulation by one step of `dt` seconds.
+    ///
+    /// Called by [`physics_step_system`] once per `FixedUpdate` run, always
+    /// with the fixed clock's timestep: rapier reads `integration_parameters.dt`
+    /// once per `step`, so aligning it here is what keeps simulated physics time
+    /// equal to [`FixedTime`] instead of drifting at rapier's own 60 Hz default.
+    /// `gravity` and the remaining parameters stay the resource's field
+    /// constants — there is deliberately no `Gravity` resource.
+    pub(crate) fn step(&mut self, dt: f32) {
+        self.integration_parameters.dt = dt;
+        self.physics_pipeline.step(
+            to_rapier_vec3(self.gravity),
+            &self.integration_parameters,
+            &mut self.island_manager,
+            &mut self.broad_phase,
+            &mut self.narrow_phase,
+            &mut self.rigid_body_set,
+            &mut self.collider_set,
+            &mut self.impulse_joint_set,
+            &mut self.multibody_joint_set,
+            &mut self.ccd_solver,
+            &self.physics_hooks,
+            &self.event_handler,
+        );
+    }
 }
 
-/// Installs the physics resource onto `world`.
+/// The single `FixedUpdate` system that advances physics one fixed step.
+///
+/// One run is the whole push → step → pull exchange, in lexical order:
+///
+/// 1. **push** — every entity's `LocalTransform` position/rotation is written
+///    into its rapier body unconditionally, with `wake = true`. An equal-value
+///    write is a rapier no-op, so a settled body still goes to sleep; a write
+///    that does differ teleports the body and wakes its island on the next step.
+/// 2. **step** — [`PhysicsEngine::step`] runs once with [`FixedTime`]'s
+///    timestep, so simulated physics time tracks the fixed clock exactly.
+/// 3. **pull** — position/rotation are read back from rapier. `scale` is never
+///    written: it has no rapier counterpart.
+///
+/// Only entities carrying a `RigidBody` participate; a collider-only static
+/// entity (the ground) is not in the query at all, so it is neither pushed nor
+/// pulled. A handle that no longer resolves skips its entity with a `warn!` —
+/// the system never panics on a dangling handle, and it never despawns or
+/// detaches anything itself.
+fn physics_step_system(
+    fixed_time: Res<FixedTime>,
+    mut physics: ResMut<PhysicsEngine>,
+    mut bodies: Query<(&mut LocalTransform, &RigidBody)>,
+) {
+    for (transform, body) in bodies.iter_mut() {
+        let handle = body.handle;
+        let Some(rapier_body) = physics.rigid_body_set.get_mut(handle) else {
+            log::warn!("skipping dangling rigid body handle {handle:?} on the physics push");
+            continue;
+        };
+        rapier_body.set_position(pose_from(*transform), true);
+    }
+
+    physics.step(fixed_time.timestep().as_secs_f32());
+
+    for (mut transform, body) in bodies.iter_mut() {
+        let handle = body.handle;
+        let Some(rapier_body) = physics.rigid_body_set.get(handle) else {
+            log::warn!("skipping dangling rigid body handle {handle:?} on the physics pull");
+            continue;
+        };
+        transform.position = to_float3(rapier_body.translation());
+        transform.rotation = quat_from_rapier(rapier_body.rotation());
+    }
+}
+
+/// Installs the physics resource and its single fixed-step system onto `world`.
 ///
 /// Registered in `Engine::new` right after
 /// [`schedule::install`](crate::kairos_editor::schedule::install), so physics is
-/// present for the whole lifetime of an `Engine`. System and hook registration
-/// will join it here as the corresponding tickets land.
+/// present for the whole lifetime of an `Engine`. This is the one place physics
+/// is wired into the schedule: `KairosGame` never registers a physics system.
+///
+/// # Panics
+///
+/// If the schedule rails are not installed yet: the [`FixedUpdate`] stage would
+/// not exist, and registering into a stage that does not exist is a bootstrap
+/// order bug.
 pub(crate) fn install(world: &mut World) {
-    log::debug!("installing the physics resource");
+    log::debug!("installing the physics resource and fixed-step system");
     world.insert_resource(PhysicsEngine::new());
+
+    let mut schedules = world.get_resource_or_init::<Schedules>();
+    schedules
+        .get_mut(FixedUpdate)
+        .expect("the `FixedUpdate` schedule must exist: install the schedule rails first")
+        .add_systems(physics_step_system);
 }
 
 /// Builds a rapier pose from an entity's initial transform.
@@ -194,7 +286,10 @@ fn quat_from_rapier(r: &Rotation) -> quaternion {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kairos_ecs::world::World;
+    use kairos_ecs::{entity::Entity, world::World};
+    use rapier3d::dynamics::RigidBodyHandle;
+
+    use crate::kairos_editor::schedule;
 
     fn initial_transform() -> LocalTransform {
         LocalTransform::new(
@@ -206,8 +301,7 @@ mod tests {
 
     #[test]
     fn install_inserts_the_physics_resource() {
-        let mut world = World::new();
-        install(&mut world);
+        let world = boot();
         assert!(
             world.get_resource::<PhysicsEngine>().is_some(),
             "install must leave a PhysicsEngine in the world"
@@ -274,5 +368,185 @@ mod tests {
 
         assert!(world.get::<RigidBody>(entity).is_some());
         assert!(world.get::<Collider>(entity).is_some());
+    }
+
+    // -----------------------------------------------------------------------
+    // The fixed-step system: push → step → pull through `FixedUpdate`
+    // -----------------------------------------------------------------------
+
+    /// The number of fixed steps the falling tests run: one simulated second at
+    /// the default 64 Hz clock, far more than free fall needs to cross the
+    /// one-metre margin below.
+    const STEPS: usize = 64;
+
+    /// The ball must end at least this far below its start, so a system that
+    /// never steps cannot pass by accident.
+    const FALL_MARGIN: f32 = 1.0;
+
+    /// Boots the schedule rails and installs physics — the same order
+    /// `Engine::new` uses, so the `FixedUpdate` content schedule exists by the
+    /// time `install` registers into it.
+    fn boot() -> World {
+        let mut world = World::new();
+        schedule::install(&mut world);
+        install(&mut world);
+        world
+    }
+
+    /// Runs the `FixedUpdate` schedule once — one physics step. The per-frame
+    /// driver is bypassed deliberately: its step count depends on accumulated
+    /// virtual time, while this exercises the step system deterministically.
+    fn run_fixed_step(world: &mut World) {
+        world.run_schedule(FixedUpdate);
+        world.clear_trackers();
+    }
+
+    fn transform_of(world: &World, entity: Entity) -> LocalTransform {
+        *world
+            .get::<LocalTransform>(entity)
+            .expect("the entity carries a transform")
+    }
+
+    /// Builds a standalone immovable box through the resource — no `RigidBody`,
+    /// like the game ground — and spawns it at `transform`.
+    fn spawn_ground(world: &mut World, transform: LocalTransform) -> Entity {
+        let collider = world
+            .resource_mut::<PhysicsEngine>()
+            .insert_immovable_box(float3::new(100.0, 1.0, 100.0), transform);
+        world.spawn((transform, collider)).id()
+    }
+
+    /// Builds a dynamic sphere through the resource and spawns it with both
+    /// physics components at `transform`.
+    fn spawn_ball(world: &mut World, transform: LocalTransform) -> Entity {
+        let (body, collider) = {
+            let mut physics = world.resource_mut::<PhysicsEngine>();
+            physics.insert_movable_sphere(0.5, ColliderMaterial { restitution: 0.2 }, transform)
+        };
+        world.spawn((transform, body, collider)).id()
+    }
+
+    /// The acceptance capstone: a dynamic ball spawned over an immovable ground
+    /// falls under gravity across fixed steps, while the ground — a
+    /// collider-only static entity — is never written.
+    #[test]
+    fn a_dynamic_ball_falls_while_the_ground_stays_put() {
+        let mut world = boot();
+
+        let ground_pose = LocalTransform::new(float3::ZERO, quaternion::IDENTITY, float3::ONE);
+        let ground = spawn_ground(&mut world, ground_pose);
+
+        let ball_start = LocalTransform::new(
+            float3::new(0.0, 5.0, 0.0),
+            quaternion::IDENTITY,
+            float3::ONE,
+        );
+        let ball = spawn_ball(&mut world, ball_start);
+
+        for _ in 0..STEPS {
+            run_fixed_step(&mut world);
+        }
+
+        let ball_end = transform_of(&world, ball);
+        assert!(
+            ball_end.position.y() < ball_start.position.y() - FALL_MARGIN,
+            "the ball must fall significantly: y {} -> {}",
+            ball_start.position.y(),
+            ball_end.position.y()
+        );
+        assert_eq!(
+            transform_of(&world, ground),
+            ground_pose,
+            "a collider-only entity has no `RigidBody`, so physics must not touch its transform"
+        );
+    }
+
+    /// Push and pull move position/rotation only: `scale` is engine-side state
+    /// with no rapier counterpart, so no fixed step may rewrite it.
+    #[test]
+    fn synchronisation_never_touches_scale() {
+        let mut world = boot();
+
+        let scale = float3::new(2.0, 3.0, 4.0);
+        let ball_start =
+            LocalTransform::new(float3::new(0.0, 5.0, 0.0), quaternion::IDENTITY, scale);
+        let ball = spawn_ball(&mut world, ball_start);
+
+        for _ in 0..STEPS {
+            run_fixed_step(&mut world);
+        }
+
+        let ball_end = transform_of(&world, ball);
+        assert_eq!(ball_end.scale, scale, "scale must survive every push and pull");
+        assert!(
+            ball_end.position.y() < ball_start.position.y(),
+            "the same steps moved the ball, so the run did reach physics"
+        );
+    }
+
+    /// The step's `dt` is the fixed clock's timestep, not rapier's 1/60 default:
+    /// after 64 steps the free-fall drop matches semi-implicit Euler at
+    /// `1/64 s` (≈4.98 m) and is far from the `1/60 s` value (≈5.67 m).
+    #[test]
+    fn a_fixed_step_uses_the_fixed_timestep() {
+        let mut world = boot();
+
+        let start = LocalTransform::new(
+            float3::new(0.0, 100.0, 0.0),
+            quaternion::IDENTITY,
+            float3::ONE,
+        );
+        let ball = spawn_ball(&mut world, start);
+
+        for _ in 0..STEPS {
+            run_fixed_step(&mut world);
+        }
+
+        // Semi-implicit Euler under constant gravity g for n steps of dt:
+        // drop = g * dt^2 * n * (n + 1) / 2. The expected value is derived from
+        // kinematics and the fixed clock's timestep, independent of the step
+        // code — so a regression to rapier's 1/60 default fails this.
+        let dt = world
+            .get_resource::<FixedTime>()
+            .expect("install registers FixedTime")
+            .timestep()
+            .as_secs_f32();
+        let expected_drop = 9.81 * dt * dt * (STEPS * (STEPS + 1) / 2) as f32;
+        let drop = start.position.y() - transform_of(&world, ball).position.y();
+        assert!(
+            (drop - expected_drop).abs() < 0.2,
+            "64 steps must drop ≈{expected_drop} m at the fixed timestep, got {drop} m"
+        );
+    }
+
+    /// A `RigidBody` whose handle no longer resolves is skipped with a warning,
+    /// never a panic, and its transform stays untouched.
+    #[test]
+    fn a_dangling_rigid_body_handle_is_skipped() {
+        let mut world = boot();
+
+        let start = LocalTransform::new(
+            float3::new(0.0, 5.0, 0.0),
+            quaternion::IDENTITY,
+            float3::ONE,
+        );
+        let entity = world
+            .spawn((
+                start,
+                RigidBody {
+                    handle: RigidBodyHandle::invalid(),
+                },
+            ))
+            .id();
+
+        for _ in 0..3 {
+            run_fixed_step(&mut world);
+        }
+
+        assert_eq!(
+            transform_of(&world, entity),
+            start,
+            "a dangling handle must be skipped, leaving its transform alone"
+        );
     }
 }
