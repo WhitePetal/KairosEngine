@@ -11,6 +11,7 @@ use crate::{
     asset_loader::assets::{AssetHandle, AssetsServer, MaterialAssetsSystem, MeshAssetsSystem},
     graphics::{
         attachment::{Attachment, AttachmentFormat, AttachmentLoadAction, AttachmentStoreAction},
+        camera::Camera,
         egui_texture_handle::EguiTextureHandle,
         graphics_graph::{
             GraphicsCommand,
@@ -18,9 +19,9 @@ use crate::{
         },
         mesh::{Mesh, wireframe},
     },
-    kairos_editor::ui::{
-        Message, Messager, UIReader, dialog::Dialog, inspector::Inspector, paths,
-        scene_camera::SceneCamera,
+    kairos_editor::{
+        camera::{OrbitState, OrbitTuning},
+        ui::{Message, Messager, UIReader, dialog::Dialog, inspector::Inspector, paths},
     },
     math::{Vector, float3, float4x4},
     spatial::AABB,
@@ -80,7 +81,9 @@ struct PreviewState {
     egui_texture_handle: Option<EguiTextureHandle>,
     bind_receiver: Option<tokio::sync::oneshot::Receiver<EguiTextureHandle>>,
     size: (u32, u32),
-    camera: SceneCamera,
+    camera: Camera,
+    orbit: OrbitState,
+    tuning: OrbitTuning,
 }
 
 impl PreviewState {
@@ -94,20 +97,17 @@ impl PreviewState {
         let direction = style.camera_direction.normalize();
         let eye = center - direction * distance;
 
-        let camera = SceneCamera::new(
-            eye,
-            center,
-            style.camera_fov,
-            0.03,
-            3000.0,
-            style.camera_orbit_speed,
-            style.camera_zoom_speed,
-            0.0,
-            0.0,
-            0.0,
-            style.camera_min_distance,
-            style.camera_max_distance,
-        );
+        let camera = Camera::new(fov, 0.03, 3000.0);
+        let orbit = OrbitState::from_eye_pivot(eye, center);
+        let tuning = OrbitTuning {
+            orbit_speed: style.camera_orbit_speed,
+            zoom_speed: style.camera_zoom_speed,
+            fly_acce_duration: 0.0,
+            fly_min_speed: 0.0,
+            fly_max_speed: 0.0,
+            min_distance: style.camera_min_distance,
+            max_distance: style.camera_max_distance,
+        };
 
         let size = style.preview_default_size.max(1);
         Self {
@@ -115,6 +115,8 @@ impl PreviewState {
             egui_texture_handle: None,
             bind_receiver: None,
             camera,
+            orbit,
+            tuning,
         }
     }
 }
@@ -182,18 +184,17 @@ impl MeshInspector {
         let width = (rect.width() * pixels_per_point).round().max(1.0) as u32;
         let height = (rect.height() * pixels_per_point).round().max(1.0) as u32;
         preview.size = (width, height);
-        preview.camera.aspect = width as f32 / height as f32;
 
         // ---- Orbit: mouse drag ------
         if response.dragged() {
             let delta = -response.drag_delta();
-            preview.camera.orbit(delta.x, delta.y, dt);
+            preview.orbit.orbit(delta.x, delta.y, &preview.tuning, dt);
         }
 
         // ---- Zoom: scroll wheel ------
         let scroll_delta = ui.input(|i| i.smooth_scroll_delta);
         if response.hovered() && scroll_delta.y != 0.0 {
-            preview.camera.zoom(scroll_delta.y, dt);
+            preview.orbit.zoom(scroll_delta.y, &preview.tuning, dt);
         }
 
         // Draw the preview texture over the allocated rect.
@@ -461,7 +462,10 @@ impl Inspector for MeshInspector {
 
         let (width, height) = preview.size;
 
-        let vp = preview.camera.view_projection();
+        let vp = preview.camera.get_view_projection_matrix(
+            preview.orbit.transform(),
+            width as f32 / height as f32,
+        );
 
         let mut command = GraphicsCommand::new(3, 2, 1, 6);
 

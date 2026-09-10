@@ -11,8 +11,8 @@ use crate::{
         spatial_audio_reverb::SpatialAudioReverb, spatial_audio_volume::SpatialAudioVolume,
     },
     graphics::{
-        camera::Camera, graphics_graph::GraphicsCommand, lod_mesh_component::LODMesh,
-        material_component::MaterialComponent, mesh::SerializedMeshAsset, view_port::GameView,
+        camera::Camera, lod_mesh_component::LODMesh, material_component::MaterialComponent,
+        mesh::SerializedMeshAsset, view_port::GameView,
     },
     inputs::Input,
     kairos_editor::Engine,
@@ -396,19 +396,5 @@ impl KairosGame {
         engine
             .audio_engine
             .update(&mut engine.assets_server, &mut engine.world, delta_time);
-    }
-
-    pub fn render(&self, engine: &mut Engine, graphics_command: &mut GraphicsCommand) {
-        // let renderers = engine
-        //     .world
-        //     .query_mut::<(&LocalTransform, &LODMesh, &MaterialComponent)>()
-        //     .into_iter();
-        // renderers.for_each(|(trans, lod, mat)| {
-        //     graphics_command.draw(
-        //         lod.lod0.clone(),
-        //         mat.material.clone(),
-        //         trans.compute_local_matrix(),
-        //     );
-        // });
     }
 }

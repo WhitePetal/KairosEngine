@@ -8,18 +8,21 @@ use crate::{
     asset_loader::assets::AssetsServer,
     graphics::{
         attachment::{Attachment, AttachmentLoadAction, AttachmentStoreAction},
+        camera::{Camera, CameraView},
+        drawer::DrawCommand,
         egui_texture_handle::EguiTextureHandle,
         graphics_graph::{
             GraphicsCommand,
             graphics_node::{ColorAttachmentBind, DepthAttachmentBind},
         },
+        view_port::SceneView,
     },
     kairos_dialog,
     kairos_editor::{
         Engine,
+        camera::{EditorCameraController, OrbitState, OrbitTuning},
         ui::{
             Drawer, Message, UIReader, paths,
-            scene_camera::SceneCamera,
             scene_window::gizmos::{GizmosModel, GizmosRenderer},
             ui_style_fields::{
                 FloatFieldEditViewType, FloatStyleField, RangeStyleField, StyleField,
@@ -28,8 +31,9 @@ use crate::{
         },
     },
     kairos_game::KairosGame,
-    math::{self, float2, float3},
+    math::{self, float2, float3, float4x4},
 };
+use kairos_ecs::{entity::Entity, world::World};
 
 mod gizmos;
 
@@ -53,11 +57,8 @@ struct SceneWindowStyle {
 struct SceneWindowModel {
     style: SceneWindowStyle,
     rt_handle: Option<EguiTextureHandle>,
-    width: u32,
-    height: u32,
     egui_bind_tex_recever: Option<tokio::sync::oneshot::Receiver<EguiTextureHandle>>,
 
-    camera: SceneCamera,
     gizmos: GizmosModel,
 }
 
@@ -83,35 +84,31 @@ impl SceneWindowStyle {
         })?;
         Ok(style)
     }
+
+    /// The orbit knobs this style maps to. The style DTO stays private to the
+    /// window (toml keys unchanged); this is where it reaches the component.
+    fn orbit_tuning(&self) -> OrbitTuning {
+        OrbitTuning {
+            orbit_speed: self.cam_default_orbit_speed,
+            zoom_speed: self.cam_default_zoom_speed,
+            fly_acce_duration: self.cam_default_fly_acce_duration,
+            fly_min_speed: self.cam_default_fly_min_speed,
+            fly_max_speed: self.cam_default_fly_max_speed,
+            min_distance: self.cam_default_min_distance,
+            max_distance: self.cam_default_max_distance,
+        }
+    }
 }
 
 impl SceneWindowModel {
     pub fn new(assets_server: &mut AssetsServer) -> Result<Self, Box<dyn std::error::Error>> {
         let style = SceneWindowStyle::new()?;
-
-        let scene_camera = SceneCamera::new(
-            style.cam_default_position,
-            style.cam_default_target,
-            style.cam_default_fov,
-            style.cam_default_near,
-            style.cam_default_far,
-            style.cam_default_orbit_speed,
-            style.cam_default_zoom_speed,
-            style.cam_default_fly_acce_duration,
-            style.cam_default_fly_min_speed,
-            style.cam_default_fly_max_speed,
-            style.cam_default_min_distance,
-            style.cam_default_max_distance,
-        );
         let gizmos = GizmosModel::new(assets_server);
 
         Ok(Self {
             style,
             rt_handle: None,
-            width: 1,
-            height: 1,
             egui_bind_tex_recever: None,
-            camera: scene_camera,
             gizmos,
         })
     }
@@ -155,16 +152,15 @@ impl Drawer for SceneWindow {
 
         // --- Camera input (view: only sends messages, never mutates model) ---
         if response.hovered() {
-            let dt = engine.time().delta_time().as_secs_f32();
             let delta = response.drag_delta();
             if response.dragged_by(egui::PointerButton::Secondary)
                 || response.dragged_by(egui::PointerButton::Middle)
             {
-                messager.send(Message::SceneCameraOrbit(-delta.x, -delta.y, dt));
+                messager.send(Message::SceneViewOrbit(-delta.x, -delta.y));
             }
             let scroll = ui.input(|i| i.smooth_scroll_delta);
             if scroll.y != 0.0 {
-                messager.send(Message::CameraZoom(scroll.y, dt));
+                messager.send(Message::SceneViewZoom(scroll.y));
             }
             // WASD movement
             let w = ui.input(|i| i.key_down(egui::Key::W));
@@ -186,11 +182,14 @@ impl Drawer for SceneWindow {
                 0.0
             };
             if forward != 0.0 || right != 0.0 {
-                messager.send(Message::CameraFly(right, forward, dt));
+                messager.send(Message::SceneViewFly(right, forward));
             }
         }
 
-        if width != self.model.width || height != self.model.height {
+        // The view resource is the only place the size is stored; write back
+        // only on a real change (the message handler owns the write).
+        let size = engine.world.resource::<SceneView>().size;
+        if size.width != width || size.height != height {
             messager.send(Message::UpdateSceneWindowSize(width, height));
         }
 
@@ -362,7 +361,7 @@ impl Drawer for SceneWindow {
     fn render(
         &self,
         engine: &mut Engine,
-        game: &mut KairosGame,
+        _game: &mut KairosGame,
         messager: &mut super::Messager,
     ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {
         let mut graphics_command = GraphicsCommand::new(16, 2, 4, 16);
@@ -371,19 +370,25 @@ impl Drawer for SceneWindow {
             messager.send(Message::SceneWindowTryReceTextureId);
         }
 
-        // draw
-        let width = self.model.width;
-        let height = self.model.height;
+        // Thin play layer: everything comes from the view resource, nothing is
+        // queried out of the world. A closed window (`size == 0`) renders nothing
+        // at all — no attachment, no stale frame.
+        let view = engine.world.resource::<SceneView>();
+        let size = view.size;
+        if !size.is_renderable() {
+            return None;
+        }
+
         let scene_view = Attachment::new(
             Some("SceneWindow Attachment"),
-            width,
-            height,
+            size.width,
+            size.height,
             crate::graphics::attachment::AttachmentFormat::RGBA8UNorm,
         );
         let scene_depth_stencil = Attachment::new(
             Some("SceneWindow DepthStencil"),
-            width,
-            height,
+            size.width,
+            size.height,
             crate::graphics::attachment::AttachmentFormat::D24S8,
         );
         let scene_view_id = graphics_command.create_color_attachment(scene_view);
@@ -405,17 +410,36 @@ impl Drawer for SceneWindow {
             )),
         );
 
-        let vp_id =
-            graphics_command.set_view_projection_matrix(self.model.camera.view_projection());
+        // The view projection lives on the bound camera entity, not on the view
+        // resource. `None` means no camera is bound yet, or the extract stage
+        // derived nothing for it this frame. `draws` is gated on size alone, so it
+        // can be non-empty with no projection — drain it only when there is one,
+        // and fall back to an identity VP for the clear-only pass.
+        let view_projection = view
+            .camera
+            .and_then(|camera| engine.world.entity(camera).get::<CameraView>())
+            .and_then(|derived| derived.view_projection);
+        let (view_projection, draws): (float4x4, &[DrawCommand]) = match view_projection {
+            Some(view_projection) => (view_projection, &view.draws),
+            None => (float4x4::IDENTITY, &[]),
+        };
+        let vp_id = graphics_command.set_view_projection_matrix(view_projection);
+
         graphics_command.begin_render_pass(
             Some("SceneWindow Render Pass"),
             vec![scene_view_bind],
             Some(scene_depth_bind),
             vp_id,
-            4,
+            draws.len(),
         );
 
-        game.render(engine, &mut graphics_command);
+        for draw in draws {
+            graphics_command.draw(
+                draw.mesh.clone(),
+                draw.material.clone(),
+                draw.local_to_world,
+            );
+        }
 
         graphics_command.end_render_pass();
 
@@ -461,24 +485,64 @@ impl Drawer for SceneWindow {
 }
 
 impl SceneWindow {
-    // --- Camera controller (mutates model, called from Context::handle) ---
+    // --- Editor camera entity (the window owns its style DTO, so it owns the
+    // --- only code that can map that style onto the camera components) ---
 
-    pub fn on_camera_orbit(&mut self, dx: f32, dy: f32, dt: f32) {
-        self.model.camera.orbit(dx, dy, dt);
+    /// Spawns the editor camera entity on first open and binds it to the Scene
+    /// view.
+    ///
+    /// Idempotent: if the view already has a camera (the tab was reopened), the
+    /// existing entity is returned untouched. The entity is never despawned when
+    /// the tab closes — it lives as long as the world — so reopening preserves
+    /// the view.
+    pub fn spawn_editor_camera(&self, world: &mut World) -> Entity {
+        if let Some(existing) = world.resource::<SceneView>().camera {
+            return existing;
+        }
+
+        let style = &self.model.style;
+        let orbit = OrbitState::from_eye_pivot(style.cam_default_position, style.cam_default_target);
+        let camera = Camera::new(
+            style.cam_default_fov,
+            style.cam_default_near,
+            style.cam_default_far,
+        );
+
+        let entity = world
+            .spawn((
+                orbit.transform(),
+                camera,
+                EditorCameraController {
+                    orbit,
+                    tuning: style.orbit_tuning(),
+                },
+            ))
+            .id();
+        world.resource_mut::<SceneView>().camera = Some(entity);
+        entity
     }
 
-    pub fn on_camera_zoom(&mut self, delta: f32, dt: f32) {
-        self.model.camera.zoom(delta, dt);
-    }
+    /// Hot-updates the live editor camera from this window's style.
+    ///
+    /// Intrinsics and the seven orbit knobs take effect on the already-orbitable
+    /// entity. The default position/target are deliberately **not** touched: they
+    /// are the view's framing start point, and the user has since orbited
+    /// somewhere — dragging a slider must not yank the view back.
+    pub fn apply_camera_style(&self, world: &mut World) {
+        let Some(entity) = world.resource::<SceneView>().camera else {
+            return;
+        };
+        let style = &self.model.style;
 
-    pub fn on_camera_fly(&mut self, right: f32, forward: f32, dt: f32) {
-        self.model.camera.fly(right, forward, dt);
-    }
-
-    pub fn update_size(&mut self, width: u32, height: u32) {
-        self.model.width = width;
-        self.model.height = height;
-        self.model.camera.aspect = width as f32 / height as f32;
+        let mut entity_mut = world.entity_mut(entity);
+        if let Some(mut camera) = entity_mut.get_mut::<Camera>() {
+            camera.fov = style.cam_default_fov;
+            camera.near = style.cam_default_near;
+            camera.far = style.cam_default_far;
+        }
+        if let Some(mut controller) = entity_mut.get_mut::<EditorCameraController>() {
+            controller.tuning = style.orbit_tuning();
+        }
     }
 
     pub fn register_view_bind(

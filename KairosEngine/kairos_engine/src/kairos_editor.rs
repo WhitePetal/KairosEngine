@@ -13,6 +13,7 @@ use kairos_ecs::world::World;
 use winit::event::KeyEvent;
 
 pub mod asset_registry;
+pub mod camera;
 pub mod consts;
 pub mod editor_assets;
 pub mod project_path_tree;
@@ -42,6 +43,11 @@ impl Engine {
         // preference: game assembly runs after `Engine::new` and binds the game
         // camera to `GameView`, so the view resources must already exist.
         graphics::install(&mut world);
+        // Finally the editor camera controller, whose system the extract stage
+        // must find already written to when it reads the frame. It consumes
+        // `SceneViewInput`, an editor concept, so it is installed here rather
+        // than by the engine-level `graphics::install`.
+        camera::install(&mut world);
         let assets_server = AssetsServer::new();
         let audio_engine = AudioEngine::new()?;
         let physics_engine = PhysicsEngine::new();
