@@ -91,12 +91,9 @@ fn spectrum_silence_is_flat() {
     );
 }
 
-
 use std::{path::Path, time::Duration};
 
-use crate::{
-    audio::audio_ext::pcm::PcmData, kairos_editor::ui::inspector::audio::compute_peaks,
-};
+use crate::{audio::audio_ext::pcm::PcmData, kairos_editor::ui::inspector::audio::compute_peaks};
 
 // ----------------------------------------------------------
 // Helpers

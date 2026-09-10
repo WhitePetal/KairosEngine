@@ -3,7 +3,7 @@
 [package]
 name = "kairos-editor-mcp-middleware-prototype"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 description = "Prototype: middleware architecture for kairos_editor_mcp → KairosEngine communication"
 
 [dependencies]

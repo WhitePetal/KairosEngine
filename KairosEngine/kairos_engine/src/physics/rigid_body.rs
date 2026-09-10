@@ -1,57 +1,17 @@
-use rapier3d::{
-    dynamics::{RigidBodyBuilder, RigidBodyHandle},
-    geometry::ColliderBuilder,
-};
+use rapier3d::dynamics::RigidBodyHandle;
 
-use crate::{
-    ecs::component::Component,
-    math::float3,
-    physics::{PhysicsEngine, collider::ColliderMaterial},
-};
+use kairos_ecs::component::Component;
 
+/// An entity's physics body: a move-only, handle-only [`Component`].
+///
+/// The handle is the entity's credential of ownership over exactly one rapier
+/// rigid body. It is kept crate-private — engine code talks to bodies through
+/// [`PhysicsEngine`](super::PhysicsEngine) instead of reaching into rapier.
+///
+/// Deliberately neither `Copy`/`Clone` nor `Default`/serde: a rapier body has a
+/// single owner, so duplicating or default-constructing the credential would
+/// alias or orphan the object. See issue #152.
+#[derive(Component, Debug, PartialEq)]
 pub struct RigidBody {
-    pub handle: RigidBodyHandle,
-}
-impl Component for RigidBody {}
-
-impl RigidBody {
-    pub fn with_sphere_collider(engine: &mut PhysicsEngine, radius: f32) -> Self {
-        let rigid_body = RigidBodyBuilder::dynamic().build();
-        let rigid_body_handle = engine.rigid_body_set.insert(rigid_body);
-        let collider = ColliderBuilder::ball(radius).build();
-        engine.collider_set.insert_with_parent(
-            collider,
-            rigid_body_handle,
-            &mut engine.rigid_body_set,
-        );
-
-        Self {
-            handle: rigid_body_handle,
-        }
-    }
-
-    pub fn with_sphere_collider_with_material(
-        engine: &mut PhysicsEngine,
-        radius: f32,
-        material: ColliderMaterial,
-    ) -> Self {
-        let rigid_body = RigidBodyBuilder::dynamic().build();
-        let rigid_body_handle = engine.rigid_body_set.insert(rigid_body);
-        let collider = ColliderBuilder::ball(radius)
-            .restitution(material.restitution)
-            .build();
-        engine.collider_set.insert_with_parent(
-            collider,
-            rigid_body_handle,
-            &mut engine.rigid_body_set,
-        );
-
-        Self {
-            handle: rigid_body_handle,
-        }
-    }
-
-    pub fn set_position(&self, engine: &mut PhysicsEngine, position: float3) {
-        engine.rigid_body_set[self.handle].set_translation(position.into(), false);
-    }
+    pub(crate) handle: RigidBodyHandle,
 }

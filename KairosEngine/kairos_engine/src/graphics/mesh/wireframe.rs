@@ -150,8 +150,8 @@ fn emit_edge_quad(
 ) {
     let va = &vertices[ia];
     let vb = &vertices[ib];
-    let pa = va.position.xyz();
-    let pb = vb.position.xyz();
+    let pa = float3::from_array_4(va.position);
+    let pb = float3::from_array_4(vb.position);
 
     let edge_dir = math::normalize(pb - pa);
 
@@ -180,22 +180,22 @@ fn emit_edge_quad(
 
     // v0+
     let mut v = va.clone();
-    v.position = (pa + offset).append(1.0);
+    v.position = (pa + offset).append(1.0).to_array();
     verts.push(v);
 
     // v0-
     let mut v = va.clone();
-    v.position = (pa - offset).append(1.0);
+    v.position = (pa - offset).append(1.0).to_array();
     verts.push(v);
 
     // v1+
     let mut v = vb.clone();
-    v.position = (pb + offset).append(1.0);
+    v.position = (pb + offset).append(1.0).to_array();
     verts.push(v);
 
     // v1-
     let mut v = vb.clone();
-    v.position = (pb - offset).append(1.0);
+    v.position = (pb - offset).append(1.0).to_array();
     verts.push(v);
 
     // Triangle 1: (v0+, v1+, v0-)

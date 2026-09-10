@@ -1,7 +1,8 @@
-use std::{collections::HashMap, ops::DerefMut, time::Duration};
+use std::{collections::HashMap, marker::PhantomData, ops::DerefMut, time::Duration};
 
 use kira::{
-    AudioManager, Decibels, Easing, Mapping, Mix, Tween, Value,
+    AudioManager, Decibels, DefaultBackend, Easing, Mapping, Mix, Tween, Value,
+    backend::Backend,
     effect::reverb::{ReverbBuilder, ReverbHandle},
     listener::{ListenerHandle, ListenerId},
     sound::{PlaybackPosition, PlaybackState},
@@ -23,10 +24,11 @@ use crate::{
             },
         },
     },
-    ecs::world::World,
     math::{Vector, float3, quaternion},
-    spatial::Transform,
 };
+
+use kairos_ecs::world::World;
+use kairos_transform::LocalTransform;
 
 pub mod spatial_audio_listener;
 pub mod spatial_audio_reverb;
@@ -79,9 +81,9 @@ impl Tracks {
         }
     }
 
-    pub fn use_track(
+    pub fn use_track<B: Backend>(
         &mut self,
-        manager: &mut AudioManager,
+        manager: &mut AudioManager<B>,
         listener_id: ListenerId,
         reverb_track: Option<SendTrackId>,
     ) -> (u8, &mut Option<SpatialTrackHandle>) {
@@ -91,7 +93,7 @@ impl Tracks {
             track_builder = track_builder.with_send(reverb, Value::Fixed(Decibels::IDENTITY));
         }
         let handle = manager
-            .add_spatial_sub_track(listener_id, float3::ZERO, track_builder)
+            .add_spatial_sub_track(listener_id, to_mint_vec3(float3::ZERO), track_builder)
             .ok();
         if self.free_slots.len() == 0 {
             index = self.tracks.len() as u8;
@@ -119,7 +121,11 @@ struct ListenerInfo {
     reverb_send_track: Option<SendTrackHandle>,
 }
 
-pub struct SpatialAudioTracks {
+pub struct SpatialAudioTracks<B: Backend = DefaultBackend> {
+    /// The tracks never own a manager: `B` only flows through the `update`
+    /// entry points, so a `PhantomData` carries the backend choice.
+    backend: PhantomData<fn() -> B>,
+
     per_listener_track_capacity: u8,
 
     all_listeners: HashMap<ListenerId, (ListenerHandle, bool)>,
@@ -129,9 +135,10 @@ pub struct SpatialAudioTracks {
     config: SpatialAudioConfig,
 }
 
-impl SpatialAudioTracks {
+impl<B: Backend> SpatialAudioTracks<B> {
     pub fn new(config: SpatialAudioConfig) -> Result<Self, Box<dyn std::error::Error>> {
         Ok(Self {
+            backend: PhantomData,
             per_listener_track_capacity: config.max_listener_count,
             all_listeners: HashMap::with_capacity((config.max_listener_count as usize) << 1),
             listener_infos: Vec::with_capacity(config.max_listener_count as usize),
@@ -139,9 +146,12 @@ impl SpatialAudioTracks {
         })
     }
 
-    pub fn create_listener(&mut self, manager: &mut AudioManager) -> Option<ListenerId> {
+    pub fn create_listener(&mut self, manager: &mut AudioManager<B>) -> Option<ListenerId> {
         let handle = manager
-            .add_listener(float3::ZERO, quaternion::IDENTITY)
+            .add_listener(
+                to_mint_vec3(float3::ZERO),
+                to_mint_quaternion(quaternion::IDENTITY),
+            )
             .ok();
         if let Some(handle) = handle {
             let id = handle.id();
@@ -155,20 +165,23 @@ impl SpatialAudioTracks {
     pub fn update(
         &mut self,
         assets_server: &mut AssetsServer,
-        manager: &mut AudioManager,
+        manager: &mut AudioManager<B>,
         world: &mut World,
         delta_time: f32,
     ) {
-        let listeners_iter = world
-            .query_mut::<(&Transform, &mut SpatialAudioListenerComponent)>()
-            .into_iter();
-        if listeners_iter.len() == 0 {
+        // Read-only pass: both components are `Copy`, so the listener table is
+        // copied out and the world borrow is released before the mutable passes
+        // below (`update_listeners_inner` / `update_audios`) take `&mut World`.
+        let mut listeners_query =
+            world.query::<(&LocalTransform, &SpatialAudioListenerComponent)>();
+        let mut listeners = listeners_query
+            .iter(&*world)
+            .map(|(trans, listener)| (*trans, *listener))
+            .collect::<Box<_>>();
+        if listeners.is_empty() {
             return;
         }
 
-        let mut listeners = listeners_iter
-            .map(|(trans, listener)| (*trans, *listener))
-            .collect::<Box<_>>();
         let mut listener_capacity = self.listener_infos.capacity();
         if listeners.len() > listener_capacity {
             listeners
@@ -180,18 +193,13 @@ impl SpatialAudioTracks {
         self.update_listeners_inner(manager, world, &mut listeners[0..listener_capacity]);
 
         self.update_audios(assets_server, manager, world, delta_time);
-
-        // let volumes = world.query_mut::<(Entity, &TransformComponent, &SpatialAudioVolumeComponent)>().into_iter();
-        // volumes.enumerate().for_each(|(i, (entity, _, volume))| {
-        //     println!("audio volume {:?} => entity: {:?}, state: {:?}, tracks_state: {:?}", i, entity, volume.state, volume.track_states);
-        // });
     }
 
     fn update_listeners_inner(
         &mut self,
-        manager: &mut AudioManager,
+        manager: &mut AudioManager<B>,
         world: &mut World,
-        listeners: &mut [(Transform, SpatialAudioListenerComponent)],
+        listeners: &mut [(LocalTransform, SpatialAudioListenerComponent)],
     ) {
         let len = listeners.len();
         let per_listener_track_count = self.config.max_track_count / (len as u8);
@@ -224,8 +232,8 @@ impl SpatialAudioTracks {
                 continue;
             };
             *be_ref = true;
-            handle.set_position(trans.position, Tween::default());
-            handle.set_orientation(trans.rotation, Tween::default());
+            handle.set_position(to_mint_vec3(trans.position), Tween::default());
+            handle.set_orientation(to_mint_quaternion(trans.rotation), Tween::default());
             match self
                 .listener_infos
                 .iter_mut()
@@ -261,10 +269,10 @@ impl SpatialAudioTracks {
             return;
         };
 
-        let reverbs = world
-            .query_mut::<(&SpatialAudioReverbBound, &SpatialAudioReverb)>()
-            .into_iter();
-        for (bound, reverb) in reverbs {
+        // Read-only pass: every zone whose bounds contain the listener writes its
+        // reverb settings onto this listener's effect handle and send track.
+        let mut reverbs_query = world.query::<(&SpatialAudioReverbBound, &SpatialAudioReverb)>();
+        for (bound, reverb) in reverbs_query.iter(&*world) {
             if !bound.contains_point(listener.position) {
                 continue;
             }
@@ -286,6 +294,8 @@ impl SpatialAudioTracks {
                 .reverb_handle
                 .set_damping(reverb.damping as f64, tween);
             listener.reverb_handle.set_mix(Mix(reverb.mix), tween);
+            // The pre-fork code set damping a second time here; kept verbatim so the
+            // restored behaviour matches the original exactly.
             listener
                 .reverb_handle
                 .set_damping(reverb.damping as f64, tween);
@@ -295,16 +305,13 @@ impl SpatialAudioTracks {
     fn update_audios(
         &mut self,
         assets_server: &mut AssetsServer,
-        manager: &mut AudioManager,
+        manager: &mut AudioManager<B>,
         world: &mut World,
         delta_time: f32,
     ) {
         // 先更新 kairos engine 端的 audio volume 数据
-        let volumes = world
-            .query_mut::<(&Transform, &mut SpatialAudioVolume)>()
-            .into_iter()
-            .map(|(_, volume)| volume);
-        for mut volume in volumes {
+        let mut volumes_query = world.query::<(&LocalTransform, &mut SpatialAudioVolume)>();
+        for (_, mut volume) in volumes_query.iter_mut(&mut *world) {
             Self::update_audio_volume_state(
                 assets_server,
                 delta_time,
@@ -338,31 +345,22 @@ impl SpatialAudioTracks {
         cut_off_dst_sq: f32,
         fade_time: f32,
         per_listener_track_count: u8,
-        manager: &mut AudioManager,
+        manager: &mut AudioManager<B>,
         listener: &mut ListenerInfo,
         reverb_track: Option<SendTrackId>,
     ) {
         // 首先，如果有 volume play completed 或者 leaved track
         // 那么先让它们free掉持有的track
-        let volumes = world
-            .query_mut::<(&Transform, &mut SpatialAudioVolume)>()
-            .into_iter()
-            .map(|(_, volume)| volume);
-        for mut volume in volumes {
+        let mut volumes_query = world.query::<(&LocalTransform, &mut SpatialAudioVolume)>();
+        for (_, mut volume) in volumes_query.iter_mut(&mut *world) {
             Self::free_audio_volume_track(listener, volume.deref_mut());
         }
 
         // 找到前 k 个 距离 listener 最近的 可播放的 volumes
-        let mut volumes = world
-            .query_mut::<(&Transform, &mut SpatialAudioVolume)>()
-            .into_iter()
-            .filter(|(_, volume)| match volume.state {
-                AudioState::Created => false,
-                AudioState::WaitLoading => false,
-                AudioState::Playing => true,
-                AudioState::Paused => true,
-                AudioState::Completed => false,
-            })
+        let mut volumes_query = world.query::<(&LocalTransform, &mut SpatialAudioVolume)>();
+        let mut volumes = volumes_query
+            .iter_mut(&mut *world)
+            .filter(|(_, volume)| matches!(volume.state, AudioState::Playing | AudioState::Paused))
             .map(|(trans, volume)| {
                 let dst_sq = float3::distance_sq(listener.position, trans.position);
                 (dst_sq, trans, volume)
@@ -436,6 +434,13 @@ impl SpatialAudioTracks {
             AudioState::Playing => {
                 volume.playing_time = volume.playing_time + delta_time;
 
+                // KNOWN ISSUE (pre-existing, deliberately unchanged during the ECS
+                // restore): `audio_handles` is shared by the whole volume rather than
+                // kept per listener, so a volume tracked by more than one listener
+                // pushes `audios.len() * listener_count` handles and the `len ==
+                // audios.len()` test below can never hold — such a volume never
+                // reaches `Completed`. The semantic fix belongs to the future
+                // bevy_audio-style rework, not to this restore.
                 let mut completed = volume.audio_handles.len() == volume.audios.len();
                 for track_state in &mut volume.track_states {
                     Self::update_audio_track_state(
@@ -463,6 +468,9 @@ impl SpatialAudioTracks {
                 }
             }
             AudioState::Paused => {
+                // Pre-existing placeholder: a paused volume is not driven yet (no
+                // pause/restore semantics exist in the current component model).
+                // Kept as-is; implementing it would be a semantic change.
                 todo!()
             }
             AudioState::Completed => {
@@ -519,14 +527,20 @@ impl SpatialAudioTracks {
                 true
             }
         });
+        // KNOWN ISSUE (pre-existing, deliberately unchanged during the ECS restore):
+        // this clears every handle on the volume, including handles a *different*
+        // listener is still playing, and it does so unconditionally — even when the
+        // volume held no `Leaved` track for this listener. Both feed the completion
+        // check in `update_audio_volume_state`. Fixing it is a semantic change and
+        // belongs to the future bevy_audio-style rework.
         volume.audio_handles.clear();
     }
 
     fn play_audio_volume_in_track(
         assets_server: &mut AssetsServer,
-        manager: &mut AudioManager,
+        manager: &mut AudioManager<B>,
         listener: &mut ListenerInfo,
-        trans: &Transform,
+        trans: &LocalTransform,
         volume: &mut SpatialAudioVolume,
         per_listener_track_count: u8,
         reverb_track: Option<SendTrackId>,
@@ -558,7 +572,7 @@ impl SpatialAudioTracks {
         if let Some(track_index) = using_track_index {
             let track = &mut listener.tracks.tracks[track_index as usize];
             if let Some(track) = track {
-                track.set_position(trans.position, Tween::default());
+                track.set_position(to_mint_vec3(trans.position), Tween::default());
             }
             return true;
         }
@@ -587,7 +601,7 @@ impl SpatialAudioTracks {
                 let audio = assets_server
                     .get::<AudioAssetsSystem>(&volume.audios[i])
                     .unwrap();
-                track.set_position(trans.position, Tween::default());
+                track.set_position(to_mint_vec3(trans.position), Tween::default());
                 match track.play(
                     audio
                         .sound_data
@@ -612,7 +626,7 @@ impl SpatialAudioTracks {
     fn leaving_audio_volume_in_track(
         fade_time: f32,
         listener: &mut ListenerInfo,
-        trans: &Transform,
+        trans: &LocalTransform,
         volume: &mut SpatialAudioVolume,
     ) {
         for track_state in &mut volume.track_states {
@@ -626,7 +640,7 @@ impl SpatialAudioTracks {
                             duration: Duration::from_secs_f32(fade_time),
                             ..Default::default()
                         });
-                        track.set_position(trans.position, Tween::default());
+                        track.set_position(to_mint_vec3(trans.position), Tween::default());
                     }
                     *track_state =
                         SpatialAudioVolumeTrackState::Leaving(SpatialAudioVolumeTrackLeaving {
@@ -642,12 +656,34 @@ impl SpatialAudioTracks {
                     if let Some(track) =
                         &mut listener.tracks.tracks[leaving.track_key.track_index as usize]
                     {
-                        track.set_position(trans.position, Tween::default());
+                        track.set_position(to_mint_vec3(trans.position), Tween::default());
                     }
                     break;
                 }
                 SpatialAudioVolumeTrackState::Leaved(_) => {}
             }
         }
+    }
+}
+
+// kira's spatial APIs consume mint values; convert explicitly since the old
+// `float3`/`quaternion` → mint `From` impls were removed with the move of math
+// to `kairos_math` (#139/#144).
+fn to_mint_vec3(v: float3) -> mint::Vector3<f32> {
+    mint::Vector3 {
+        x: v.x(),
+        y: v.y(),
+        z: v.z(),
+    }
+}
+
+fn to_mint_quaternion(q: quaternion) -> mint::Quaternion<f32> {
+    mint::Quaternion {
+        v: mint::Vector3 {
+            x: q.0.x(),
+            y: q.0.y(),
+            z: q.0.z(),
+        },
+        s: q.0.w(),
     }
 }

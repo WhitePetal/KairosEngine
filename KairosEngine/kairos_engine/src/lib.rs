@@ -1,5 +1,6 @@
+extern crate self as kairos_engine;
+
 pub mod math;
-pub mod types;
 
 pub mod kairos_dialog;
 
@@ -13,9 +14,11 @@ pub mod kairos_ui;
 
 pub mod asset_loader;
 pub mod audio;
-pub mod ecs;
 pub mod graphics;
 pub mod inputs;
 pub mod physics;
 pub mod spatial;
-pub mod timer;
+
+// Bevy parity: re-export the time crate so `crate::time` resolves like
+// `bevy::time` (bevy re-exports `bevy_time` under the same name).
+pub use kairos_time as time;

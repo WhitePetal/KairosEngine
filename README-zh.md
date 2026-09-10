@@ -88,13 +88,14 @@ cargo run --profile bench    # 基准测试级别性能
 
 ## 🧱 架构
 
-KairosEngine 由三个 Cargo workspace 成员组成：
+KairosEngine 由四个主要的 Cargo workspace 成员组成：
 
 | 包 | 描述 |
 |-------|-------------|
 | **`kairos_engine`** | 核心引擎 + 内置编辑器（可执行目标） |
 | **`kairos_ecs_macros`** | ECS 系统的过程宏 |
 | **`kairos_supervisor`** | 测试框架的轻量看门狗进程（崩溃监控） |
+| **`kairos_tasks`** | 异步任务池与并行迭代原语（基础层 crate） |
 
 ### 引擎代码结构
 

@@ -850,7 +850,12 @@ fn bench_rgb10a2_unorm(c: &mut Criterion) {
                 )
             });
         });
-        let encoded = encode(&input, size as u32, size as u32, TextureFormat::Rgb10a2Unorm);
+        let encoded = encode(
+            &input,
+            size as u32,
+            size as u32,
+            TextureFormat::Rgb10a2Unorm,
+        );
         g.bench_with_input(BenchmarkId::new("decode", size), &encoded, |b, px| {
             b.iter(|| {
                 decode(
@@ -879,7 +884,12 @@ fn bench_rg11b10_ufloat(c: &mut Criterion) {
                 )
             });
         });
-        let encoded = encode(&input, size as u32, size as u32, TextureFormat::Rg11b10Ufloat);
+        let encoded = encode(
+            &input,
+            size as u32,
+            size as u32,
+            TextureFormat::Rg11b10Ufloat,
+        );
         g.bench_with_input(BenchmarkId::new("decode", size), &encoded, |b, px| {
             b.iter(|| {
                 decode(
@@ -934,26 +944,11 @@ macro_rules! bench_etc_format {
                 let rgba = make_rgba(size, size);
                 let input = PixelDatas::U8(rgba);
                 g.bench_with_input(BenchmarkId::new("encode", size), &input, |b, px| {
-                    b.iter(|| {
-                        encode(
-                            black_box(px),
-                            size as u32,
-                            size as u32,
-                            TextureFormat::$fmt,
-                        )
-                    });
+                    b.iter(|| encode(black_box(px), size as u32, size as u32, TextureFormat::$fmt));
                 });
-                let encoded =
-                    encode(&input, size as u32, size as u32, TextureFormat::$fmt);
+                let encoded = encode(&input, size as u32, size as u32, TextureFormat::$fmt);
                 g.bench_with_input(BenchmarkId::new("decode", size), &encoded, |b, px| {
-                    b.iter(|| {
-                        decode(
-                            black_box(px),
-                            size as u32,
-                            size as u32,
-                            TextureFormat::$fmt,
-                        )
-                    });
+                    b.iter(|| decode(black_box(px), size as u32, size as u32, TextureFormat::$fmt));
                 });
             }
         }

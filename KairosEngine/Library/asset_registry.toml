@@ -287,6 +287,14 @@ guid = "df550b31-93b0-4558-acb8-854d0065f7e1"
 path = "docs/ai/knowledge/gltf.md"
 
 [[entries]]
+guid = "8f45cf92-6fe1-4ace-82db-463b3a2bf0e3"
+path = "docs/ai/open-world-terrain-overview.md"
+
+[[entries]]
+guid = "964b8c8c-86d4-475d-af34-524e0db78f09"
+path = "docs/ai/open-world-terrain-resource-index.md"
+
+[[entries]]
 guid = "a463b531-b154-42a7-8584-cd9bc265baf5"
 path = "docs/ai/render-pipeline-resource-cache-conversation.md"
 
@@ -515,8 +523,20 @@ guid = "b60f8c47-3969-416a-8452-e6518edda222"
 path = "docs/research/README.md"
 
 [[entries]]
+guid = "58f7f7cd-45ab-4f75-aa3f-1604865cd175"
+path = "docs/research/aaa-terrain-systems-analysis.md"
+
+[[entries]]
+guid = "da5938e2-1278-48ac-a776-8a6a24a01760"
+path = "docs/research/bevy-app-schedule-reference.md"
+
+[[entries]]
 guid = "89f4ba0e-4e4a-47c1-bf30-8bad325863b2"
 path = "docs/research/bevy-change-detection.md"
+
+[[entries]]
+guid = "bf9df397-bd00-4303-a4fa-d3dd1c849233"
+path = "docs/research/bevy-fixed-timestep-reference.md"
 
 [[entries]]
 guid = "6bb2bb81-02df-4f80-be76-c294fb4fcd71"
@@ -551,8 +571,20 @@ guid = "da13c85e-4ef3-464e-96b9-5ac86a948494"
 path = "docs/research/mcp-protocol.md"
 
 [[entries]]
+guid = "4d17bace-7752-4ac4-874a-c27d4dcfa6a1"
+path = "docs/research/motion-matching-libraries.md"
+
+[[entries]]
+guid = "8d1d18b4-f6d8-46c5-9eeb-df2f28b7895b"
+path = "docs/research/open-world-terrain-engines.md"
+
+[[entries]]
 guid = "014de37b-986b-4d7b-8f13-d0f75f53c424"
 path = "docs/research/pipeline-cache-key-design.md"
+
+[[entries]]
+guid = "60b75001-c14e-4492-9492-3d81d11979c4"
+path = "docs/research/terrain-ocean-cave-technical-reference.md"
 
 [[entries]]
 guid = "69431eb0-656d-4abf-a05c-c7381c7e9aaf"
@@ -575,8 +607,1356 @@ guid = "9fb5a6c1-fae8-404d-a174-d09d47123696"
 path = "docs/research/texture-encoding/wgpu-srgb-handling.md"
 
 [[entries]]
+guid = "ee69339f-e425-4341-9c6a-91c9e0b13ad3"
+path = "docs/research/ue5-terrain-landscape-system.md"
+
+[[entries]]
 guid = "9cabd4bc-02f3-4d33-bcf6-f2127e90731f"
 path = "docs/research/zed-ai-agent-integration.md"
+
+[[entries]]
+guid = "f2f7e874-896f-4d8b-b1f5-77788fa0b0a2"
+path = "kairos_collections"
+
+[[entries]]
+guid = "040ce410-c73d-459e-9ac7-61ccaace4167"
+path = "kairos_collections/Cargo.toml"
+
+[[entries]]
+guid = "7bfb981f-1b04-4582-bce3-8a1a0ad1d1cf"
+path = "kairos_collections/src"
+
+[[entries]]
+guid = "ecff5ca4-0497-4660-8f4c-bec3dc48bb6c"
+path = "kairos_collections/src/fixed_hashmap.rs"
+
+[[entries]]
+guid = "4165ebfe-23d3-4c29-bbcb-7dda32b4a873"
+path = "kairos_collections/src/fixed_hashset.rs"
+
+[[entries]]
+guid = "2240c98f-ca00-4e33-a32f-1c7f0744ba4d"
+path = "kairos_collections/src/hash.rs"
+
+[[entries]]
+guid = "b123ef35-66d3-4831-90ea-a037c626633e"
+path = "kairos_collections/src/lib.rs"
+
+[[entries]]
+guid = "87535728-6854-495f-a1e5-1ceb7a00dd79"
+path = "kairos_collections/src/pre_hash_map.rs"
+
+[[entries]]
+guid = "06630d08-1b20-446c-9793-93296e92c1be"
+path = "kairos_collections/src/type_id_map.rs"
+
+[[entries]]
+guid = "6310f5ce-2ce8-4563-b2c7-31fb29c76f21"
+path = "kairos_ecs"
+
+[[entries]]
+guid = "9ca47bb9-fcbb-4fce-ac73-4ba12253d2e4"
+path = "kairos_ecs/Cargo.toml"
+
+[[entries]]
+guid = "904a5c4e-f295-4094-909e-66b2f595740e"
+path = "kairos_ecs/macro_logic"
+
+[[entries]]
+guid = "ba6ee403-2a82-480f-b04d-f0e45f9cd944"
+path = "kairos_ecs/macro_logic/Cargo.toml"
+
+[[entries]]
+guid = "fde68d91-0f26-4c65-81c8-7416fadb82b3"
+path = "kairos_ecs/macro_logic/src"
+
+[[entries]]
+guid = "e0d0a71c-7605-44e8-bf69-4139c26859d4"
+path = "kairos_ecs/macro_logic/src/component.rs"
+
+[[entries]]
+guid = "795577a2-444f-4887-8ffc-dd2fb92c77e4"
+path = "kairos_ecs/macro_logic/src/lib.rs"
+
+[[entries]]
+guid = "be77da22-8e45-4042-b906-31f13c00cddb"
+path = "kairos_ecs/macro_logic/src/map_entities.rs"
+
+[[entries]]
+guid = "a4a73a65-fe1a-433a-8b35-49c0937f3184"
+path = "kairos_ecs/macro_utils"
+
+[[entries]]
+guid = "23ddb0ae-6266-4599-8ce7-4ed7be4a8999"
+path = "kairos_ecs/macro_utils/Cargo.toml"
+
+[[entries]]
+guid = "2f00472b-7749-4dbd-91d1-3f95bc18e969"
+path = "kairos_ecs/macro_utils/src"
+
+[[entries]]
+guid = "2147be17-e40c-474c-a3af-f8457e36d1df"
+path = "kairos_ecs/macro_utils/src/fq_std.rs"
+
+[[entries]]
+guid = "69c608fd-e7d0-4a1e-a4d4-c1b0d5ac2fe3"
+path = "kairos_ecs/macro_utils/src/kairos_manifest.rs"
+
+[[entries]]
+guid = "a127fa5b-0f96-48f8-a6b9-7fad605692c8"
+path = "kairos_ecs/macro_utils/src/label"
+
+[[entries]]
+guid = "e34cc2f7-fd11-4dcd-a7fe-42a9f4484f13"
+path = "kairos_ecs/macro_utils/src/label/tests.rs"
+
+[[entries]]
+guid = "1c40e543-5cf4-4ab1-8295-350c53459dc9"
+path = "kairos_ecs/macro_utils/src/label.rs"
+
+[[entries]]
+guid = "e8c3c962-c0d9-4eae-b707-2fdc9ccd218c"
+path = "kairos_ecs/macro_utils/src/lib.rs"
+
+[[entries]]
+guid = "9aac7656-aab9-4182-bffe-6d4a397b165a"
+path = "kairos_ecs/macro_utils/src/shape.rs"
+
+[[entries]]
+guid = "c9233970-1b45-4fdb-80f1-6e2617948da0"
+path = "kairos_ecs/macros"
+
+[[entries]]
+guid = "ad69e729-08a2-4cf0-8409-1363a30a6f00"
+path = "kairos_ecs/macros/Cargo.toml"
+
+[[entries]]
+guid = "71862547-02ae-4ea3-85cd-b40b45c720e6"
+path = "kairos_ecs/macros/src"
+
+[[entries]]
+guid = "f1d9cc48-a09f-442a-af31-c7bec051ee12"
+path = "kairos_ecs/macros/src/event.rs"
+
+[[entries]]
+guid = "4ce34c09-3acc-4a95-9e59-ed202f0ffd73"
+path = "kairos_ecs/macros/src/lib.rs"
+
+[[entries]]
+guid = "165af79e-3736-4bbc-8fb9-1abd9aa14255"
+path = "kairos_ecs/macros/src/message.rs"
+
+[[entries]]
+guid = "b6ab27ce-911d-4a6f-819a-76af6231350c"
+path = "kairos_ecs/macros/src/query_data.rs"
+
+[[entries]]
+guid = "455ce7b1-c856-4db2-a43c-6dba29d6a5b2"
+path = "kairos_ecs/macros/src/query_filter.rs"
+
+[[entries]]
+guid = "909c2b4b-8fc1-4f6b-86ad-b6b89c73a7ee"
+path = "kairos_ecs/macros/src/resource.rs"
+
+[[entries]]
+guid = "23e368f8-3979-4bee-8d3e-96608ca6f0b6"
+path = "kairos_ecs/macros/src/template.rs"
+
+[[entries]]
+guid = "271d3b6c-60d9-4bd1-b904-6fed927476e4"
+path = "kairos_ecs/macros/src/variant_defaults.rs"
+
+[[entries]]
+guid = "f5ded4e5-eb1e-47cb-b053-2016a8440788"
+path = "kairos_ecs/macros/src/world_query.rs"
+
+[[entries]]
+guid = "9f600a4c-7ffe-4219-963a-7c16e3c5afad"
+path = "kairos_ecs/src"
+
+[[entries]]
+guid = "9097727c-fefe-4b84-b205-b7bccf0f9f7a"
+path = "kairos_ecs/src/archetype.rs"
+
+[[entries]]
+guid = "fcc067d9-4294-4c4b-b5db-29a4f6a1b53c"
+path = "kairos_ecs/src/batching.rs"
+
+[[entries]]
+guid = "2dffbbfb-2e76-42f4-8b85-fdc2d61a453b"
+path = "kairos_ecs/src/bloom_filter.rs"
+
+[[entries]]
+guid = "bb558c49-939c-42b1-91ec-d3c710510aca"
+path = "kairos_ecs/src/bundle"
+
+[[entries]]
+guid = "6bcaad90-83e6-439b-b3da-201439565311"
+path = "kairos_ecs/src/bundle/impls.rs"
+
+[[entries]]
+guid = "12fe5be7-871e-4354-a460-61f4fe47d2da"
+path = "kairos_ecs/src/bundle/info.rs"
+
+[[entries]]
+guid = "d4254721-0bc2-46e2-9f23-95756ae2d49b"
+path = "kairos_ecs/src/bundle/insert.rs"
+
+[[entries]]
+guid = "92e748d8-9016-4119-8426-a72f55478107"
+path = "kairos_ecs/src/bundle/remove"
+
+[[entries]]
+guid = "04159e1a-be8d-4725-9b6f-0ea0af07aa03"
+path = "kairos_ecs/src/bundle/remove/tests.rs"
+
+[[entries]]
+guid = "fe0b6b5f-f628-4435-91e8-99cf0ddf3615"
+path = "kairos_ecs/src/bundle/remove.rs"
+
+[[entries]]
+guid = "e1c4681e-dcf0-403c-b60a-55f10c431695"
+path = "kairos_ecs/src/bundle/spawner.rs"
+
+[[entries]]
+guid = "56446c0f-e5b1-452d-b717-24f91b42ab51"
+path = "kairos_ecs/src/bundle/tests.rs"
+
+[[entries]]
+guid = "da51db43-6d7a-48e2-9f49-6f94dca5531d"
+path = "kairos_ecs/src/bundle/writer"
+
+[[entries]]
+guid = "27128748-8a4e-4214-b38f-576ed0583fe0"
+path = "kairos_ecs/src/bundle/writer/tests.rs"
+
+[[entries]]
+guid = "2ff2528b-5371-4253-83d2-864f0d9c2a59"
+path = "kairos_ecs/src/bundle/writer.rs"
+
+[[entries]]
+guid = "200248f8-4589-4d2c-b180-7d4416588e63"
+path = "kairos_ecs/src/bundle.rs"
+
+[[entries]]
+guid = "6f73ba35-113f-4b72-9317-f8d6ba33f3e2"
+path = "kairos_ecs/src/cell"
+
+[[entries]]
+guid = "20ddc22e-f487-4585-80ec-ea9da1e94a73"
+path = "kairos_ecs/src/cell/sync_cell.rs"
+
+[[entries]]
+guid = "f8e7927b-cf93-4f5f-8e9d-e2db846282cd"
+path = "kairos_ecs/src/cell/sync_unsafe_cell.rs"
+
+[[entries]]
+guid = "cb3e9815-4a58-4f6d-b929-519f0427e8d4"
+path = "kairos_ecs/src/cell.rs"
+
+[[entries]]
+guid = "69ecb232-1f5e-4985-8a1d-d78157e2e37a"
+path = "kairos_ecs/src/change_detection"
+
+[[entries]]
+guid = "3cfc1f5b-5c90-414a-93c6-69bcb4d65127"
+path = "kairos_ecs/src/change_detection/params.rs"
+
+[[entries]]
+guid = "1b1b3687-88d5-45b8-8c5b-191adb39aac2"
+path = "kairos_ecs/src/change_detection/tests.rs"
+
+[[entries]]
+guid = "1365198c-d0e2-4f1d-a068-3a321affc116"
+path = "kairos_ecs/src/change_detection/tick.rs"
+
+[[entries]]
+guid = "02a8476e-b3ce-4ad1-95d5-5db80b740527"
+path = "kairos_ecs/src/change_detection/traits.rs"
+
+[[entries]]
+guid = "c4fa4c6c-2ca7-41da-b954-df90607ad5f0"
+path = "kairos_ecs/src/change_detection.rs"
+
+[[entries]]
+guid = "2c947fde-09a4-45cd-ad36-1340aa24b4e6"
+path = "kairos_ecs/src/component"
+
+[[entries]]
+guid = "c38ab60c-60f8-4d60-8a4b-8de49ad9ae6a"
+path = "kairos_ecs/src/component/clone.rs"
+
+[[entries]]
+guid = "d3bfd3c1-95a7-4a44-af40-ec75e0ff1ee4"
+path = "kairos_ecs/src/component/constants.rs"
+
+[[entries]]
+guid = "13c6f673-e7c0-4ed7-840c-14ff4e711cb8"
+path = "kairos_ecs/src/component/info.rs"
+
+[[entries]]
+guid = "57575ad9-d83c-41aa-ad80-d22cb62b1604"
+path = "kairos_ecs/src/component/register.rs"
+
+[[entries]]
+guid = "8ff3fc48-0b9b-43cd-a475-96d1a63cbbf6"
+path = "kairos_ecs/src/component/required"
+
+[[entries]]
+guid = "5fec3f55-6be2-491c-bcab-d0ace5d4a54c"
+path = "kairos_ecs/src/component/required/tests.rs"
+
+[[entries]]
+guid = "11384e5f-0145-4460-8dfe-e481ceb49e87"
+path = "kairos_ecs/src/component/required.rs"
+
+[[entries]]
+guid = "3abb6651-769a-4017-b66f-ee70381c6dc7"
+path = "kairos_ecs/src/component.rs"
+
+[[entries]]
+guid = "825517a5-bea2-41ab-9d0f-5c1c73c847fa"
+path = "kairos_ecs/src/debug"
+
+[[entries]]
+guid = "0ee244a2-cc20-4665-9fd5-9aab71bc4150"
+path = "kairos_ecs/src/debug/debug_info.rs"
+
+[[entries]]
+guid = "efe3d9e6-cf2f-4b4b-8a67-9c01f13717b5"
+path = "kairos_ecs/src/debug/maybe_location.rs"
+
+[[entries]]
+guid = "2ad3a936-17b8-4219-b879-2e798dea09be"
+path = "kairos_ecs/src/debug.rs"
+
+[[entries]]
+guid = "a244cea4-cb8b-440f-8522-b6377d2184c4"
+path = "kairos_ecs/src/entity"
+
+[[entries]]
+guid = "860da3e6-6a59-4df9-b20e-f3c776fe8cec"
+path = "kairos_ecs/src/entity/clone_entities"
+
+[[entries]]
+guid = "1e5cf2ae-9834-44fd-b24a-27fa76480575"
+path = "kairos_ecs/src/entity/clone_entities/tests.rs"
+
+[[entries]]
+guid = "351fb462-0786-47ae-b720-ff16f06ccc7b"
+path = "kairos_ecs/src/entity/clone_entities.rs"
+
+[[entries]]
+guid = "0d691828-b07f-41ca-81af-1a0a0adea4d8"
+path = "kairos_ecs/src/entity/entity_set"
+
+[[entries]]
+guid = "f93dff28-4ba8-450a-b347-bf9a8817a4a6"
+path = "kairos_ecs/src/entity/entity_set/tests.rs"
+
+[[entries]]
+guid = "2bdcb0d8-029e-41f1-a876-a97f53ae28b7"
+path = "kairos_ecs/src/entity/entity_set.rs"
+
+[[entries]]
+guid = "d82b77f9-bfc2-4927-833a-a3b2f32c4797"
+path = "kairos_ecs/src/entity/hash.rs"
+
+[[entries]]
+guid = "ee22a99c-e04f-4e2e-ae60-fabc83084ba6"
+path = "kairos_ecs/src/entity/hash_map"
+
+[[entries]]
+guid = "f0d09401-96ef-4080-ae29-87e91a7146da"
+path = "kairos_ecs/src/entity/hash_map/test.rs"
+
+[[entries]]
+guid = "bc47cecd-5516-489d-bbb0-61c48bed873c"
+path = "kairos_ecs/src/entity/hash_map.rs"
+
+[[entries]]
+guid = "3d24882c-6942-4e68-bacb-d4a3fa82c946"
+path = "kairos_ecs/src/entity/hash_set.rs"
+
+[[entries]]
+guid = "06d904b1-78b0-4be9-bb83-ba42ab094a6e"
+path = "kairos_ecs/src/entity/index_map.rs"
+
+[[entries]]
+guid = "fc5b31db-2652-4ce9-96e9-bbbc4571c6dc"
+path = "kairos_ecs/src/entity/index_set.rs"
+
+[[entries]]
+guid = "849c5a6f-185b-4d84-bb8e-717b91448e8d"
+path = "kairos_ecs/src/entity/map_entities"
+
+[[entries]]
+guid = "a50af189-0de3-4c13-bcee-4062c5c6034b"
+path = "kairos_ecs/src/entity/map_entities/tests.rs"
+
+[[entries]]
+guid = "71941206-d87c-46f9-9a75-754962aa1898"
+path = "kairos_ecs/src/entity/map_entities.rs"
+
+[[entries]]
+guid = "c7787b8c-f6a9-4d54-b0b5-3d51ea4badc4"
+path = "kairos_ecs/src/entity/remote_allocator"
+
+[[entries]]
+guid = "b55b4688-24ae-447c-b768-073ba81455bb"
+path = "kairos_ecs/src/entity/remote_allocator/tests.rs"
+
+[[entries]]
+guid = "46c06da0-2397-49d8-ae71-e7f9feb0771c"
+path = "kairos_ecs/src/entity/remote_allocator.rs"
+
+[[entries]]
+guid = "1c687367-82b1-440a-8e58-94e631faf8a2"
+path = "kairos_ecs/src/entity/tests.rs"
+
+[[entries]]
+guid = "171543bc-f7bb-414a-8f2e-91147728dcec"
+path = "kairos_ecs/src/entity/unique_array.rs"
+
+[[entries]]
+guid = "30d08797-bafd-479d-b603-1fa62309c0bd"
+path = "kairos_ecs/src/entity/unique_slice.rs"
+
+[[entries]]
+guid = "e48f4bba-d1f8-4aa0-99a5-e6361c08df90"
+path = "kairos_ecs/src/entity/unique_vec.rs"
+
+[[entries]]
+guid = "171af65b-abb5-4b9b-8e81-581789e8c9c9"
+path = "kairos_ecs/src/entity.rs"
+
+[[entries]]
+guid = "1856bf2d-010b-416c-92ed-8a40aebfcefa"
+path = "kairos_ecs/src/entity_disabling"
+
+[[entries]]
+guid = "c3954055-2879-4c80-96ae-e65b8c0711d7"
+path = "kairos_ecs/src/entity_disabling/tests.rs"
+
+[[entries]]
+guid = "6289cea3-9839-43a5-b3fe-f523bb29dae5"
+path = "kairos_ecs/src/entity_disabling.rs"
+
+[[entries]]
+guid = "dc0759eb-0f84-4039-b5f7-46ce5af73015"
+path = "kairos_ecs/src/error"
+
+[[entries]]
+guid = "7ecd2a47-cc07-4843-be26-bbc4ff44ed74"
+path = "kairos_ecs/src/error/command_handling.rs"
+
+[[entries]]
+guid = "0847a40b-c122-4738-ace1-40d2fae2bc4b"
+path = "kairos_ecs/src/error/handler.rs"
+
+[[entries]]
+guid = "d6435120-cd34-439f-ac1c-67d2245fd57b"
+path = "kairos_ecs/src/error/kairos_error"
+
+[[entries]]
+guid = "a7f3b87b-0d61-485a-9c17-f39993840afb"
+path = "kairos_ecs/src/error/kairos_error/tests.rs"
+
+[[entries]]
+guid = "a61838f5-85df-4dda-9468-19d6040435c9"
+path = "kairos_ecs/src/error/kairos_error.rs"
+
+[[entries]]
+guid = "36a356c1-d842-4fa3-a8e1-7deaf0952e0e"
+path = "kairos_ecs/src/error.rs"
+
+[[entries]]
+guid = "4cf8decc-8ff8-4d50-9498-c45455fe085f"
+path = "kairos_ecs/src/event"
+
+[[entries]]
+guid = "e078a95f-d07a-4e5f-a647-a400b93dceed"
+path = "kairos_ecs/src/event/tests.rs"
+
+[[entries]]
+guid = "ac8e887d-d2d7-46df-b44a-a2aede568192"
+path = "kairos_ecs/src/event/trigger.rs"
+
+[[entries]]
+guid = "77429397-afdc-498d-9cef-4b9bda2057f6"
+path = "kairos_ecs/src/event.rs"
+
+[[entries]]
+guid = "a0ae3018-0e71-432a-80b6-18b5069a4d9b"
+path = "kairos_ecs/src/hierarchy"
+
+[[entries]]
+guid = "6849dd93-2d65-45eb-91eb-b120d910f61a"
+path = "kairos_ecs/src/hierarchy/tests.rs"
+
+[[entries]]
+guid = "72902968-cc5c-49b6-a438-4d20e556ccb9"
+path = "kairos_ecs/src/hierarchy.rs"
+
+[[entries]]
+guid = "5f623413-4357-44a8-93cd-a22b0454fef9"
+path = "kairos_ecs/src/intern"
+
+[[entries]]
+guid = "8659344c-7c27-4d75-8ef4-9813cc356189"
+path = "kairos_ecs/src/intern/tests.rs"
+
+[[entries]]
+guid = "3f85191f-abbd-4a69-aa52-c19e71bf70c7"
+path = "kairos_ecs/src/intern.rs"
+
+[[entries]]
+guid = "7debb4d2-edf9-461f-ac99-1822d3deeafd"
+path = "kairos_ecs/src/label.rs"
+
+[[entries]]
+guid = "2fafee05-538f-4776-88e3-07254de162e7"
+path = "kairos_ecs/src/lib.rs"
+
+[[entries]]
+guid = "cc9663ab-30c6-4c60-a35d-c280717ae9dd"
+path = "kairos_ecs/src/lifecycle.rs"
+
+[[entries]]
+guid = "27c65a88-7a81-48d3-812b-14ac2967d462"
+path = "kairos_ecs/src/message"
+
+[[entries]]
+guid = "d76284ac-dc85-4bba-81ff-c2689f35887d"
+path = "kairos_ecs/src/message/iterators.rs"
+
+[[entries]]
+guid = "5ff6f21b-ca7d-487a-887f-e9327959e7f2"
+path = "kairos_ecs/src/message/message_cursor.rs"
+
+[[entries]]
+guid = "ade054f6-4723-42b1-b71a-5e25594c8e49"
+path = "kairos_ecs/src/message/message_mutator.rs"
+
+[[entries]]
+guid = "853b5140-1180-43c3-a53e-f3fdc309bef5"
+path = "kairos_ecs/src/message/message_reader"
+
+[[entries]]
+guid = "589959b6-2ebc-411f-a103-07d7f335c236"
+path = "kairos_ecs/src/message/message_reader/tests.rs"
+
+[[entries]]
+guid = "2d1192f6-56d6-4509-b235-a5e59b10fae6"
+path = "kairos_ecs/src/message/message_reader.rs"
+
+[[entries]]
+guid = "bc1293f3-cc17-41f8-80cf-7299d3a77373"
+path = "kairos_ecs/src/message/message_registry.rs"
+
+[[entries]]
+guid = "3839c005-12ab-4d17-b93e-88ce91fd5686"
+path = "kairos_ecs/src/message/message_writer.rs"
+
+[[entries]]
+guid = "17abb1a5-93b9-4d12-b088-da03520f00f3"
+path = "kairos_ecs/src/message/messages"
+
+[[entries]]
+guid = "b9802195-e80e-46e9-ae29-d9b7d12e0bbf"
+path = "kairos_ecs/src/message/messages/tests.rs"
+
+[[entries]]
+guid = "eec38156-03d6-4a8a-a545-47f64a21d1b3"
+path = "kairos_ecs/src/message/messages.rs"
+
+[[entries]]
+guid = "0e027b79-c415-4e54-b13b-03c2b4ce80f9"
+path = "kairos_ecs/src/message/mut_iterators.rs"
+
+[[entries]]
+guid = "dba6caad-136c-4b0d-a604-87f0337d7499"
+path = "kairos_ecs/src/message/update.rs"
+
+[[entries]]
+guid = "4020be21-e851-47fe-9e41-5ceb3bce51ff"
+path = "kairos_ecs/src/message.rs"
+
+[[entries]]
+guid = "07c90eb1-88c0-4263-a1f6-1fd53c4e48e1"
+path = "kairos_ecs/src/name"
+
+[[entries]]
+guid = "8a1bab9d-2305-4fb7-a6e3-2ba2826f96a8"
+path = "kairos_ecs/src/name/tests.rs"
+
+[[entries]]
+guid = "dcf64277-a87f-4e44-a9ea-04ecf3d96e3c"
+path = "kairos_ecs/src/name.rs"
+
+[[entries]]
+guid = "9ba6132b-d556-4f8f-b527-451439bf0c23"
+path = "kairos_ecs/src/never.rs"
+
+[[entries]]
+guid = "94789f05-fb0a-4b98-ab22-7d26ba8a1153"
+path = "kairos_ecs/src/observer"
+
+[[entries]]
+guid = "d3823e05-f7be-4c4b-85f6-bf6675d0f763"
+path = "kairos_ecs/src/observer/centralized_storage.rs"
+
+[[entries]]
+guid = "bc52db26-6dd5-4924-9822-2394075fa2ab"
+path = "kairos_ecs/src/observer/condition.rs"
+
+[[entries]]
+guid = "47d7fdfb-7c76-4a81-8000-fd8c8a19c56e"
+path = "kairos_ecs/src/observer/distributed_storage.rs"
+
+[[entries]]
+guid = "cf98b033-c0cd-4904-b6ff-196c2a50720a"
+path = "kairos_ecs/src/observer/runner"
+
+[[entries]]
+guid = "bd2db6da-7c87-4ea1-a9f2-b337a4f0d3c3"
+path = "kairos_ecs/src/observer/runner/tests.rs"
+
+[[entries]]
+guid = "76a6fc3c-af1b-4231-911b-6890aec9c7f8"
+path = "kairos_ecs/src/observer/runner.rs"
+
+[[entries]]
+guid = "e0594e8d-c090-4d2a-b9ce-4ec382d605b7"
+path = "kairos_ecs/src/observer/system_param.rs"
+
+[[entries]]
+guid = "6cbb02e3-a37b-45c7-8dd3-6f9616c14f81"
+path = "kairos_ecs/src/observer/tests.rs"
+
+[[entries]]
+guid = "bbc1362f-1173-4df7-9711-0e8d03572ac2"
+path = "kairos_ecs/src/observer.rs"
+
+[[entries]]
+guid = "1828b934-346d-431d-87c4-e08394ef39e3"
+path = "kairos_ecs/src/on_drop.rs"
+
+[[entries]]
+guid = "cad9c0dd-8d20-4eca-b27a-efbd05d5496a"
+path = "kairos_ecs/src/parallel_queue.rs"
+
+[[entries]]
+guid = "e51722d9-5232-4570-baa6-379a9cc8763c"
+path = "kairos_ecs/src/query"
+
+[[entries]]
+guid = "a15d8cd1-845e-4529-9fd1-e4e0dfa67632"
+path = "kairos_ecs/src/query/access"
+
+[[entries]]
+guid = "20db583a-9717-4e4c-86f0-35867513a3d1"
+path = "kairos_ecs/src/query/access/tests.rs"
+
+[[entries]]
+guid = "50fa53e4-cd31-4bbe-8f27-5565d3456242"
+path = "kairos_ecs/src/query/access.rs"
+
+[[entries]]
+guid = "fe2de24e-0f7c-4ccd-aebb-953c36040801"
+path = "kairos_ecs/src/query/access_iter"
+
+[[entries]]
+guid = "2a1ab792-39d5-40c3-b907-41562b829564"
+path = "kairos_ecs/src/query/access_iter/tests.rs"
+
+[[entries]]
+guid = "794efa98-6f3e-4d32-8748-e941f020e0eb"
+path = "kairos_ecs/src/query/access_iter.rs"
+
+[[entries]]
+guid = "4185d1fc-0860-49d0-83c2-3bf3286de7a1"
+path = "kairos_ecs/src/query/builder"
+
+[[entries]]
+guid = "8d807416-4b73-4ec7-8ad9-65e9d85f774e"
+path = "kairos_ecs/src/query/builder/tests.rs"
+
+[[entries]]
+guid = "fd33822e-a1f2-45ce-a4c1-8edbce5749de"
+path = "kairos_ecs/src/query/builder.rs"
+
+[[entries]]
+guid = "5bbb0183-9cc9-473e-a1a4-8936481c7339"
+path = "kairos_ecs/src/query/error"
+
+[[entries]]
+guid = "e068ef21-ec13-4c07-be71-33d241e16b9e"
+path = "kairos_ecs/src/query/error/tests.rs"
+
+[[entries]]
+guid = "0dac14e6-a5f7-4f3a-8f89-7cb7d49324d4"
+path = "kairos_ecs/src/query/error.rs"
+
+[[entries]]
+guid = "03832a4a-7a2e-4e51-91d3-a6cbfc5c35bc"
+path = "kairos_ecs/src/query/fetch"
+
+[[entries]]
+guid = "4a777f04-f766-42dd-9529-daaf0f4507ef"
+path = "kairos_ecs/src/query/fetch/tests.rs"
+
+[[entries]]
+guid = "6795c90d-3232-47ef-9e77-62acf8ad51af"
+path = "kairos_ecs/src/query/fetch.rs"
+
+[[entries]]
+guid = "3f58c2b9-91bf-4c21-9e65-17414d90bbc4"
+path = "kairos_ecs/src/query/filter.rs"
+
+[[entries]]
+guid = "8cd0846b-6543-407d-9c83-29304b6d4088"
+path = "kairos_ecs/src/query/iter"
+
+[[entries]]
+guid = "56d9cf26-a564-4801-92cd-5552a4d5f102"
+path = "kairos_ecs/src/query/iter/tests.rs"
+
+[[entries]]
+guid = "2fd3ba39-e2dc-47ee-b701-0d424f28cf7d"
+path = "kairos_ecs/src/query/iter.rs"
+
+[[entries]]
+guid = "2543a37c-6b30-406d-9e26-2e930bad8edc"
+path = "kairos_ecs/src/query/par_iter.rs"
+
+[[entries]]
+guid = "f0c35042-4a19-4c94-bebe-78221d5ccc35"
+path = "kairos_ecs/src/query/state"
+
+[[entries]]
+guid = "a15b3489-d70a-4b80-9cca-7bd0c2690f1e"
+path = "kairos_ecs/src/query/state/tests.rs"
+
+[[entries]]
+guid = "7ae54ca5-38ee-40e2-9736-2b61a01b307d"
+path = "kairos_ecs/src/query/state.rs"
+
+[[entries]]
+guid = "c1aa2963-c93c-4ac9-b56c-98f7af2d2ce1"
+path = "kairos_ecs/src/query/tests.rs"
+
+[[entries]]
+guid = "7e8a0db3-6bc0-4f0e-8cc0-ac9f6fd00676"
+path = "kairos_ecs/src/query/world_query.rs"
+
+[[entries]]
+guid = "1ec17875-7c6c-4860-afc9-72beab5a270a"
+path = "kairos_ecs/src/query.rs"
+
+[[entries]]
+guid = "57bc273f-fc26-4db5-8f34-f3336fb9e968"
+path = "kairos_ecs/src/reflect.rs"
+
+[[entries]]
+guid = "9cc00c76-666b-40e4-a9dc-aff44f747961"
+path = "kairos_ecs/src/relationship"
+
+[[entries]]
+guid = "aa9406af-35fc-44cc-a68c-adaabecb8081"
+path = "kairos_ecs/src/relationship/related_methods"
+
+[[entries]]
+guid = "8bb3dc93-2ebc-40e6-bd7a-4923da48b33d"
+path = "kairos_ecs/src/relationship/related_methods/tests.rs"
+
+[[entries]]
+guid = "b220f250-7ee4-4b12-b320-c8f8d1484a53"
+path = "kairos_ecs/src/relationship/related_methods.rs"
+
+[[entries]]
+guid = "35eeda86-af73-4a5e-9b6d-8690dad34923"
+path = "kairos_ecs/src/relationship/relationship_query.rs"
+
+[[entries]]
+guid = "b0254b01-c347-44fb-96c9-e6502829c682"
+path = "kairos_ecs/src/relationship/relationship_source_collection"
+
+[[entries]]
+guid = "20195de7-f121-4bd7-ac66-9a08de2d7ec4"
+path = "kairos_ecs/src/relationship/relationship_source_collection/tests.rs"
+
+[[entries]]
+guid = "c7de92b6-25cb-447f-ba5f-92907a8dd3ad"
+path = "kairos_ecs/src/relationship/relationship_source_collection.rs"
+
+[[entries]]
+guid = "c81e0f9d-56d1-4f06-a047-21c987760aa0"
+path = "kairos_ecs/src/relationship/tests.rs"
+
+[[entries]]
+guid = "a0dc35e0-8dd8-4c65-80a3-e40aaaa352a0"
+path = "kairos_ecs/src/relationship.rs"
+
+[[entries]]
+guid = "ece2491c-5451-4f37-afa4-6de23b636d88"
+path = "kairos_ecs/src/resource"
+
+[[entries]]
+guid = "3378f417-c5a1-4ffa-9e4a-5cf0fa3ecce7"
+path = "kairos_ecs/src/resource/tests.rs"
+
+[[entries]]
+guid = "bdb6bffa-492c-4baf-886b-98a618e9ac13"
+path = "kairos_ecs/src/resource.rs"
+
+[[entries]]
+guid = "8fd007fc-0044-4d39-a705-6d316e0bce49"
+path = "kairos_ecs/src/schedule"
+
+[[entries]]
+guid = "f05ad9ed-dc44-437c-918b-b0f98e1798ae"
+path = "kairos_ecs/src/schedule/auto_insert_apply_deferred.rs"
+
+[[entries]]
+guid = "704eea43-6fd9-467b-a3a0-4963ffdcbab4"
+path = "kairos_ecs/src/schedule/condition"
+
+[[entries]]
+guid = "09037d1e-e232-496c-be0d-4860a802bfd9"
+path = "kairos_ecs/src/schedule/condition/tests.rs"
+
+[[entries]]
+guid = "1096d569-709a-43e8-a73e-30326958ff8c"
+path = "kairos_ecs/src/schedule/condition.rs"
+
+[[entries]]
+guid = "e298c9e9-1feb-4b0f-af18-71bd931404d9"
+path = "kairos_ecs/src/schedule/config.rs"
+
+[[entries]]
+guid = "90219dad-72f2-4bbb-9952-8defa4f9e127"
+path = "kairos_ecs/src/schedule/error.rs"
+
+[[entries]]
+guid = "82448dbb-2f8a-4f22-b37e-85c35594983d"
+path = "kairos_ecs/src/schedule/executor"
+
+[[entries]]
+guid = "962ce272-4f87-4be6-9630-779c08363308"
+path = "kairos_ecs/src/schedule/executor/multi_threaded"
+
+[[entries]]
+guid = "d47e8bb8-9f59-4404-9b12-66c9a19db191"
+path = "kairos_ecs/src/schedule/executor/multi_threaded/tests.rs"
+
+[[entries]]
+guid = "20fcf9dc-d6ed-423c-b065-a0837764cda0"
+path = "kairos_ecs/src/schedule/executor/multi_threaded.rs"
+
+[[entries]]
+guid = "5d2e8aa4-6834-43be-98aa-468d7b59dbb1"
+path = "kairos_ecs/src/schedule/executor/single_threaded.rs"
+
+[[entries]]
+guid = "fc72d5a1-efba-4b43-85fb-e5e1b9d6a772"
+path = "kairos_ecs/src/schedule/executor/tests.rs"
+
+[[entries]]
+guid = "bace562e-ea1f-4c2f-91b2-f75d1860aa07"
+path = "kairos_ecs/src/schedule/executor/validation_tests.rs"
+
+[[entries]]
+guid = "40386057-5af0-499a-b889-3226d31bb25f"
+path = "kairos_ecs/src/schedule/executor.rs"
+
+[[entries]]
+guid = "230e388a-4195-4d2e-abe7-b3a421b0dbe6"
+path = "kairos_ecs/src/schedule/graph"
+
+[[entries]]
+guid = "00e5ed61-5108-4c6c-93a6-a226ab49c80f"
+path = "kairos_ecs/src/schedule/graph/dag"
+
+[[entries]]
+guid = "b3669ecc-c619-4027-8ac7-dd8583b3c19f"
+path = "kairos_ecs/src/schedule/graph/dag/tests.rs"
+
+[[entries]]
+guid = "e12c31ae-3e74-4057-9bad-64cb5b627851"
+path = "kairos_ecs/src/schedule/graph/dag.rs"
+
+[[entries]]
+guid = "82a5451f-5100-4c96-847b-329c1911e9bd"
+path = "kairos_ecs/src/schedule/graph/graph_map"
+
+[[entries]]
+guid = "f06b6b5a-656c-4fcb-af4f-5457a917a5a4"
+path = "kairos_ecs/src/schedule/graph/graph_map/tests.rs"
+
+[[entries]]
+guid = "2cd816c7-337e-4113-8040-c1b40fabc978"
+path = "kairos_ecs/src/schedule/graph/graph_map.rs"
+
+[[entries]]
+guid = "d150a26d-73dc-43ca-bebf-b5f57ff0e0ea"
+path = "kairos_ecs/src/schedule/graph/tarjan_scc"
+
+[[entries]]
+guid = "7e9261c6-af18-4da8-b9ea-1628bd965160"
+path = "kairos_ecs/src/schedule/graph/tarjan_scc/tests.rs"
+
+[[entries]]
+guid = "7018567d-4e31-4cf0-8cd4-9d96bec48631"
+path = "kairos_ecs/src/schedule/graph/tarjan_scc.rs"
+
+[[entries]]
+guid = "2f744a7f-c1be-416d-88a5-58e0664cd056"
+path = "kairos_ecs/src/schedule/graph.rs"
+
+[[entries]]
+guid = "2e44b7aa-5bb0-46a3-9206-1ec26d2eec73"
+path = "kairos_ecs/src/schedule/node"
+
+[[entries]]
+guid = "64717c2f-a40a-4785-a562-2be63fa41205"
+path = "kairos_ecs/src/schedule/node/tests.rs"
+
+[[entries]]
+guid = "55f45748-a500-4b2f-92ad-b8e189bf97ef"
+path = "kairos_ecs/src/schedule/node.rs"
+
+[[entries]]
+guid = "12e3cd22-0bd1-4b04-b4f7-ccdd8c8e25c8"
+path = "kairos_ecs/src/schedule/pass.rs"
+
+[[entries]]
+guid = "36f13cff-d1ea-4002-b3ee-128fa81dffb8"
+path = "kairos_ecs/src/schedule/schedule"
+
+[[entries]]
+guid = "c5578c8a-1e5c-42b5-874f-a5e29861865f"
+path = "kairos_ecs/src/schedule/schedule/tests.rs"
+
+[[entries]]
+guid = "3a353ddb-6b9a-413b-90e7-7c3f7cffba8e"
+path = "kairos_ecs/src/schedule/schedule.rs"
+
+[[entries]]
+guid = "338d855d-1a00-4572-b6ef-2e08ca228ba5"
+path = "kairos_ecs/src/schedule/set"
+
+[[entries]]
+guid = "8457dac6-2e91-404c-afc2-923af692e12e"
+path = "kairos_ecs/src/schedule/set/tests.rs"
+
+[[entries]]
+guid = "b24d39f7-9422-4f61-a03c-c1bdde51f1dd"
+path = "kairos_ecs/src/schedule/set.rs"
+
+[[entries]]
+guid = "d1f7dc56-458b-42f7-b6af-b44b8d72283f"
+path = "kairos_ecs/src/schedule/stepping"
+
+[[entries]]
+guid = "0b07e9bd-e8a5-4734-b817-eb646eb4d8b2"
+path = "kairos_ecs/src/schedule/stepping/tests.rs"
+
+[[entries]]
+guid = "c630212f-2e39-48cc-b2ac-8679790f80f6"
+path = "kairos_ecs/src/schedule/stepping.rs"
+
+[[entries]]
+guid = "e9d68c2f-8484-47f2-9a90-afe39b872929"
+path = "kairos_ecs/src/schedule/tests.rs"
+
+[[entries]]
+guid = "581134a4-a452-4091-9243-5cc7f15d68fc"
+path = "kairos_ecs/src/schedule.rs"
+
+[[entries]]
+guid = "a56e33f4-63f1-4073-85c9-b593f168d2d5"
+path = "kairos_ecs/src/spawn"
+
+[[entries]]
+guid = "48ad3230-8b32-44f7-9941-393ed83d5ea8"
+path = "kairos_ecs/src/spawn/tests.rs"
+
+[[entries]]
+guid = "0db72001-8504-4cf6-b482-eedb648d62e4"
+path = "kairos_ecs/src/spawn.rs"
+
+[[entries]]
+guid = "ce95211f-a6f3-4d7a-81e6-897bd82b7c7a"
+path = "kairos_ecs/src/storage"
+
+[[entries]]
+guid = "38d18dfb-a9fe-406e-b529-37a9a4d1cff0"
+path = "kairos_ecs/src/storage/blob_array"
+
+[[entries]]
+guid = "708c14be-3934-4fa5-ba62-9536c749c446"
+path = "kairos_ecs/src/storage/blob_array/tests.rs"
+
+[[entries]]
+guid = "bccad4e6-6516-449a-a27b-540560a8b174"
+path = "kairos_ecs/src/storage/blob_array.rs"
+
+[[entries]]
+guid = "b5ae4eaf-42c5-4743-9ec7-14711f6c1668"
+path = "kairos_ecs/src/storage/non_send.rs"
+
+[[entries]]
+guid = "6837d61a-bf04-4840-adfe-f392f3dee120"
+path = "kairos_ecs/src/storage/sparse_set"
+
+[[entries]]
+guid = "e08b81e3-cc9a-4f4e-b647-79c0ca19c7d7"
+path = "kairos_ecs/src/storage/sparse_set/tests.rs"
+
+[[entries]]
+guid = "1aa6f98b-886c-4e06-8219-50dc13fdfe52"
+path = "kairos_ecs/src/storage/sparse_set.rs"
+
+[[entries]]
+guid = "2c87e34f-4758-450c-b001-b94e0cc5b37b"
+path = "kairos_ecs/src/storage/table"
+
+[[entries]]
+guid = "51066b06-2e6f-423c-9fa7-068053d329d2"
+path = "kairos_ecs/src/storage/table/column.rs"
+
+[[entries]]
+guid = "6fd61c8f-4d37-472c-bbda-03a883cf7427"
+path = "kairos_ecs/src/storage/table/tests.rs"
+
+[[entries]]
+guid = "8a455bac-ffb7-4c34-8eda-845a609f795a"
+path = "kairos_ecs/src/storage/table.rs"
+
+[[entries]]
+guid = "60dff46c-f494-442b-9662-b9fa171d8b0f"
+path = "kairos_ecs/src/storage/thin_array_ptr.rs"
+
+[[entries]]
+guid = "c054f925-2b65-4b14-bb57-e602ff4a5cbf"
+path = "kairos_ecs/src/storage.rs"
+
+[[entries]]
+guid = "36c3d479-8062-427f-89f3-b641f659b2fa"
+path = "kairos_ecs/src/system"
+
+[[entries]]
+guid = "fa98edda-f481-4cf1-a058-061a997d08a6"
+path = "kairos_ecs/src/system/adapter_system.rs"
+
+[[entries]]
+guid = "262b8e3f-3472-48a2-8cf0-7737eb3d90bb"
+path = "kairos_ecs/src/system/builder"
+
+[[entries]]
+guid = "173a3950-30f7-4484-a463-ceead5912d3f"
+path = "kairos_ecs/src/system/builder/tests.rs"
+
+[[entries]]
+guid = "933b758d-183f-406c-b670-7f8cae588eb5"
+path = "kairos_ecs/src/system/builder.rs"
+
+[[entries]]
+guid = "1dcb191a-f110-4a01-b1cd-8bf5cc7c3746"
+path = "kairos_ecs/src/system/combinator"
+
+[[entries]]
+guid = "ace02cc8-22c6-4bc2-bb98-4b23e84de1a8"
+path = "kairos_ecs/src/system/combinator/tests.rs"
+
+[[entries]]
+guid = "becf8010-adea-46fd-a4ec-bbe4d3f85cbd"
+path = "kairos_ecs/src/system/combinator.rs"
+
+[[entries]]
+guid = "66080279-8722-49ce-add2-a6e66641fd9f"
+path = "kairos_ecs/src/system/commands"
+
+[[entries]]
+guid = "e8c601c9-5df2-4436-8c44-2e6a4670e0f3"
+path = "kairos_ecs/src/system/commands/command.rs"
+
+[[entries]]
+guid = "e3379aa0-d487-4042-9a59-bed6b56da17f"
+path = "kairos_ecs/src/system/commands/entity_command.rs"
+
+[[entries]]
+guid = "e9680f0b-a121-49d4-8333-ee8ea126c4e9"
+path = "kairos_ecs/src/system/commands/parallel_scope.rs"
+
+[[entries]]
+guid = "c71120ae-d01e-453a-85f6-9bed05b9cbc5"
+path = "kairos_ecs/src/system/commands/tests.rs"
+
+[[entries]]
+guid = "fff74c52-fb55-4277-9bd1-6ca5f85ec7fc"
+path = "kairos_ecs/src/system/commands.rs"
+
+[[entries]]
+guid = "60af6e2a-7f45-4014-b6ef-51d5ce827c57"
+path = "kairos_ecs/src/system/exclusive_function_system"
+
+[[entries]]
+guid = "0dab8b22-7388-4510-acf1-13932ce33748"
+path = "kairos_ecs/src/system/exclusive_function_system/tests.rs"
+
+[[entries]]
+guid = "7206b0de-eeb7-4b6f-ab1a-6cab26875864"
+path = "kairos_ecs/src/system/exclusive_function_system.rs"
+
+[[entries]]
+guid = "5f48e3ba-266c-4bd3-8b42-dfb1fba31713"
+path = "kairos_ecs/src/system/exclusive_system_param"
+
+[[entries]]
+guid = "f8922d76-7d9c-48f0-9c2d-38a956b5cc82"
+path = "kairos_ecs/src/system/exclusive_system_param/tests.rs"
+
+[[entries]]
+guid = "093f9a69-aa52-4e2e-8ac4-b05e566e2641"
+path = "kairos_ecs/src/system/exclusive_system_param.rs"
+
+[[entries]]
+guid = "cd405a8d-c2a0-41f5-ba80-3cc3035db8f9"
+path = "kairos_ecs/src/system/function_system"
+
+[[entries]]
+guid = "2b93acae-df40-4459-8975-ebf90d9ccf38"
+path = "kairos_ecs/src/system/function_system/tests.rs"
+
+[[entries]]
+guid = "785c1085-0408-406c-a1c3-707b50c766f0"
+path = "kairos_ecs/src/system/function_system.rs"
+
+[[entries]]
+guid = "a1661a9e-afd9-472f-82c6-ecdd7f820e9c"
+path = "kairos_ecs/src/system/input"
+
+[[entries]]
+guid = "5b6754fc-cea9-4e12-a764-80dfbf9f6d54"
+path = "kairos_ecs/src/system/input/tests.rs"
+
+[[entries]]
+guid = "712e97db-43b6-4c6b-b8dd-8d43cdbbfd82"
+path = "kairos_ecs/src/system/input.rs"
+
+[[entries]]
+guid = "aa366adc-2e9f-48ff-b462-c91d723ae38d"
+path = "kairos_ecs/src/system/observer_system"
+
+[[entries]]
+guid = "38b11e57-88b3-4564-a710-492af5a9fc27"
+path = "kairos_ecs/src/system/observer_system/tests.rs"
+
+[[entries]]
+guid = "39d0642c-0ebe-44a0-bca0-326539cfb6ff"
+path = "kairos_ecs/src/system/observer_system.rs"
+
+[[entries]]
+guid = "1b3a331a-9cb8-4251-bd7c-41726ca9da32"
+path = "kairos_ecs/src/system/query"
+
+[[entries]]
+guid = "ed2dcb1a-fd81-4caa-b245-a92d87e0b6ba"
+path = "kairos_ecs/src/system/query/tests.rs"
+
+[[entries]]
+guid = "cc01e4d9-ddf9-4738-bae5-965d66a84df7"
+path = "kairos_ecs/src/system/query.rs"
+
+[[entries]]
+guid = "eb973021-bdec-4cd2-ba8c-e3669c2138f5"
+path = "kairos_ecs/src/system/schedule_system.rs"
+
+[[entries]]
+guid = "e145255b-f3d9-4d45-b556-e47f897ec14a"
+path = "kairos_ecs/src/system/system"
+
+[[entries]]
+guid = "b265d7f6-ce2a-4bbe-86d3-5fdda58fe96e"
+path = "kairos_ecs/src/system/system/tests.rs"
+
+[[entries]]
+guid = "981614b9-6fae-4754-a4a8-23fe49da9597"
+path = "kairos_ecs/src/system/system.rs"
+
+[[entries]]
+guid = "1b1ac3fd-d43e-4e24-ac57-7edadbef87ea"
+path = "kairos_ecs/src/system/system_name"
+
+[[entries]]
+guid = "37161034-198e-47a3-badf-7b8ff578584f"
+path = "kairos_ecs/src/system/system_name/tests.rs"
+
+[[entries]]
+guid = "c2f7b076-fb6c-4e5e-90b7-fe5d427de18b"
+path = "kairos_ecs/src/system/system_name.rs"
+
+[[entries]]
+guid = "b8390de5-7bc4-49fc-b29a-91497c71a4d6"
+path = "kairos_ecs/src/system/system_param"
+
+[[entries]]
+guid = "cdfc6ea4-3ee3-4538-9bdb-b6b9775fffa5"
+path = "kairos_ecs/src/system/system_param/tests.rs"
+
+[[entries]]
+guid = "027afa5c-01bf-4223-b0d6-44ad7007141e"
+path = "kairos_ecs/src/system/system_param.rs"
+
+[[entries]]
+guid = "fe0c56f5-a173-485d-8f06-ab9d9c5c170d"
+path = "kairos_ecs/src/system/system_registry"
+
+[[entries]]
+guid = "26730ce1-e607-4fe8-ab64-5473203896ea"
+path = "kairos_ecs/src/system/system_registry/tests.rs"
+
+[[entries]]
+guid = "80dde5a4-8751-4188-a946-c204bfb0c8f4"
+path = "kairos_ecs/src/system/system_registry.rs"
+
+[[entries]]
+guid = "35a21473-4440-43a6-9a42-9173f0b7ea04"
+path = "kairos_ecs/src/system/tests.rs"
+
+[[entries]]
+guid = "df5c0c8f-6815-468e-a1bb-16237cbcec51"
+path = "kairos_ecs/src/system.rs"
+
+[[entries]]
+guid = "a9823ce7-c337-48e6-9d38-9cc231a88c05"
+path = "kairos_ecs/src/template"
+
+[[entries]]
+guid = "61958cf2-c00a-4c79-bbdf-7937a7425757"
+path = "kairos_ecs/src/template/tests.rs"
+
+[[entries]]
+guid = "e6bd8a19-1267-4fd5-add8-d941d7112846"
+path = "kairos_ecs/src/template.rs"
+
+[[entries]]
+guid = "bdcc5cdb-c796-4a2e-8717-b78fad875e26"
+path = "kairos_ecs/src/traversal.rs"
+
+[[entries]]
+guid = "0481103e-fe53-44e7-a2f4-ff932c932e7e"
+path = "kairos_ecs/src/world"
+
+[[entries]]
+guid = "e4b3f4b2-9c02-41e5-ac3b-35fde886ec54"
+path = "kairos_ecs/src/world/command_queue"
+
+[[entries]]
+guid = "5af37406-163a-4323-b29e-8c7fd33b4eb1"
+path = "kairos_ecs/src/world/command_queue/tests.rs"
+
+[[entries]]
+guid = "f9ad4266-5e95-439a-9125-f5cebd5407b6"
+path = "kairos_ecs/src/world/command_queue.rs"
+
+[[entries]]
+guid = "b7d8c41c-1f61-439b-8214-eb9c4aa00b8e"
+path = "kairos_ecs/src/world/deferred_world.rs"
+
+[[entries]]
+guid = "b4072f61-5049-48a4-b91c-d756726a62e7"
+path = "kairos_ecs/src/world/entity_access"
+
+[[entries]]
+guid = "4a55dc19-f5eb-4ddc-a96c-2c0bf88e8d00"
+path = "kairos_ecs/src/world/entity_access/component_fetch.rs"
+
+[[entries]]
+guid = "a5676546-c929-4140-973d-7a4bf239cd09"
+path = "kairos_ecs/src/world/entity_access/entity_mut.rs"
+
+[[entries]]
+guid = "42f4a6d6-5976-42c8-8e04-20138579bc8d"
+path = "kairos_ecs/src/world/entity_access/entity_ref.rs"
+
+[[entries]]
+guid = "100ee1a2-7c54-426f-ba04-609f761e6f5e"
+path = "kairos_ecs/src/world/entity_access/entry.rs"
+
+[[entries]]
+guid = "51460212-bc09-40cf-8e5d-f3515aac6fad"
+path = "kairos_ecs/src/world/entity_access/except.rs"
+
+[[entries]]
+guid = "7bf8b8b2-0d5c-4a62-bd45-16a6a12ce74b"
+path = "kairos_ecs/src/world/entity_access/filtered.rs"
+
+[[entries]]
+guid = "eb09e42c-e50c-49d4-bb6e-5fdf3126315d"
+path = "kairos_ecs/src/world/entity_access/world_mut.rs"
+
+[[entries]]
+guid = "711e8813-e5ba-41bd-8708-18086aac9fdb"
+path = "kairos_ecs/src/world/entity_access.rs"
+
+[[entries]]
+guid = "24749035-bb9a-4062-bc04-874ca33dd63d"
+path = "kairos_ecs/src/world/entity_fetch.rs"
+
+[[entries]]
+guid = "651f75b8-25fa-4941-a7a2-c331d6d0758a"
+path = "kairos_ecs/src/world/error"
+
+[[entries]]
+guid = "455c45cf-7e8f-42ed-ab87-597230f83319"
+path = "kairos_ecs/src/world/error/tests.rs"
+
+[[entries]]
+guid = "9288f485-93a1-443b-a8d6-a8c816f9d90b"
+path = "kairos_ecs/src/world/error.rs"
+
+[[entries]]
+guid = "f69d66a9-e2a5-4b43-ab25-300260d7a244"
+path = "kairos_ecs/src/world/filtered_resource.rs"
+
+[[entries]]
+guid = "a7028db7-544b-4248-b10f-fd9179a86fb8"
+path = "kairos_ecs/src/world/identifier.rs"
+
+[[entries]]
+guid = "8790d520-93f7-4636-8292-5476e8708c6c"
+path = "kairos_ecs/src/world/spawn_batch"
+
+[[entries]]
+guid = "cedaee70-cd70-4e7f-b08d-4400962fc468"
+path = "kairos_ecs/src/world/spawn_batch/tests.rs"
+
+[[entries]]
+guid = "84b7c0e0-b043-433c-872c-884bef1a5744"
+path = "kairos_ecs/src/world/spawn_batch.rs"
+
+[[entries]]
+guid = "b77eafc2-cb8c-4db5-9059-9adde4772f56"
+path = "kairos_ecs/src/world/tests.rs"
+
+[[entries]]
+guid = "1deea631-e3f8-411a-91d6-2b68cebb15c8"
+path = "kairos_ecs/src/world/unsafe_world_cell"
+
+[[entries]]
+guid = "18983b82-a9fd-4cc3-8874-316e80fcb3a5"
+path = "kairos_ecs/src/world/unsafe_world_cell/tests.rs"
+
+[[entries]]
+guid = "accc45d1-b659-4806-9d6a-5050b8d52682"
+path = "kairos_ecs/src/world/unsafe_world_cell.rs"
+
+[[entries]]
+guid = "53b598dc-3f0a-4076-87ae-0024b90ed780"
+path = "kairos_ecs/src/world.rs"
 
 [[entries]]
 guid = "a9d7418e-b508-4dab-98cd-507a29299957"
@@ -1101,6 +2481,18 @@ path = "kairos_engine/src/kairos_editor/project_path_tree.rs"
 [[entries]]
 guid = "bca3c354-77ea-48dc-8617-cb6df439263e"
 path = "kairos_engine/src/kairos_editor/runtime.rs"
+
+[[entries]]
+guid = "ffc55056-341a-4f66-95aa-a51c39ca10cf"
+path = "kairos_engine/src/kairos_editor/schedule"
+
+[[entries]]
+guid = "4c98f184-932a-4369-80e6-41b27e1dfff1"
+path = "kairos_engine/src/kairos_editor/schedule/test.rs"
+
+[[entries]]
+guid = "b11ccad6-f9f3-4a30-9fa3-87596b1d799c"
+path = "kairos_engine/src/kairos_editor/schedule.rs"
 
 [[entries]]
 guid = "008f6a60-2d4b-4921-9212-19320ab1c3a6"
@@ -1731,6 +3123,22 @@ guid = "37eb13d0-65c1-4be8-9f75-f808f4285787"
 path = "kairos_engine/tests/integration/serialized_material.rs"
 
 [[entries]]
+guid = "7945a1bc-4a93-444d-81e5-2687c8d59a1d"
+path = "kairos_ptr"
+
+[[entries]]
+guid = "d9b43b9a-762c-4fe5-b19e-a0efddc84049"
+path = "kairos_ptr/Cargo.toml"
+
+[[entries]]
+guid = "09176a62-6aaf-4e87-b6e4-19ea112ef700"
+path = "kairos_ptr/src"
+
+[[entries]]
+guid = "35fc220f-ad40-4429-a454-dc213c6ace9f"
+path = "kairos_ptr/src/lib.rs"
+
+[[entries]]
 guid = "49262ba8-8bbc-4e79-a515-9c6773f649eb"
 path = "kairos_supervisor"
 
@@ -1745,6 +3153,102 @@ path = "kairos_supervisor/src"
 [[entries]]
 guid = "85ba75e0-21df-4c9a-9bb9-85ec53ba09e8"
 path = "kairos_supervisor/src/main.rs"
+
+[[entries]]
+guid = "29cda4d7-dde8-4c42-b650-2c016d556d05"
+path = "kairos_tasks"
+
+[[entries]]
+guid = "26a91d16-f97c-46b1-8440-343fb78c5db8"
+path = "kairos_tasks/Cargo.toml"
+
+[[entries]]
+guid = "94e4536e-d0df-4984-8ac7-7c684429d935"
+path = "kairos_tasks/src"
+
+[[entries]]
+guid = "faaaf419-b446-435d-8722-f0fdb86db049"
+path = "kairos_tasks/src/executor.rs"
+
+[[entries]]
+guid = "14a500ef-a4e4-4dd9-b7a9-3471e00b41fe"
+path = "kairos_tasks/src/futures.rs"
+
+[[entries]]
+guid = "cce5709a-0bc1-4caf-b338-ad19ef66ce1d"
+path = "kairos_tasks/src/iter"
+
+[[entries]]
+guid = "581c8839-234b-403d-ba9f-e51dae0a5116"
+path = "kairos_tasks/src/iter/adapters.rs"
+
+[[entries]]
+guid = "bb5ff9d8-6db7-4a57-94e4-44c447afc33e"
+path = "kairos_tasks/src/iter.rs"
+
+[[entries]]
+guid = "adfd8e86-e1da-4c3b-bdd1-0f925b2da0b9"
+path = "kairos_tasks/src/lib.rs"
+
+[[entries]]
+guid = "0fde530f-46c1-4a4c-a7ff-6e698a0b7283"
+path = "kairos_tasks/src/slice"
+
+[[entries]]
+guid = "392f8235-5e58-4ab4-b403-c65c72e1e1c7"
+path = "kairos_tasks/src/slice/tests.rs"
+
+[[entries]]
+guid = "dd3e4d59-e0e8-404f-9281-d09c102fbb41"
+path = "kairos_tasks/src/slice.rs"
+
+[[entries]]
+guid = "31925245-4a7d-499a-b10f-e5ea7c32e9f5"
+path = "kairos_tasks/src/task_pool"
+
+[[entries]]
+guid = "5dcc206f-ea15-4173-99cb-ef668e228c6d"
+path = "kairos_tasks/src/task_pool/tests.rs"
+
+[[entries]]
+guid = "509dfa11-8d52-4ba4-836b-2ee5d4b6afdd"
+path = "kairos_tasks/src/task_pool.rs"
+
+[[entries]]
+guid = "d99d388a-a1d3-4f1e-b1ac-f4a2dfd9c045"
+path = "kairos_tasks/src/thread_executor"
+
+[[entries]]
+guid = "49a3c129-4df3-45b2-8a1c-f875de5ff18b"
+path = "kairos_tasks/src/thread_executor/tests.rs"
+
+[[entries]]
+guid = "80c1ab3a-bc04-42ab-8869-9129f40520ac"
+path = "kairos_tasks/src/thread_executor.rs"
+
+[[entries]]
+guid = "52e63e5c-aa6a-44a2-aee0-64706f4982e6"
+path = "kairos_tasks/src/usages.rs"
+
+[[entries]]
+guid = "1f11a579-4132-4cca-8d57-3225abf059a2"
+path = "kairos_time"
+
+[[entries]]
+guid = "a9fbd94b-ea7c-45e5-8899-49e0b2ee21b9"
+path = "kairos_time/Cargo.toml"
+
+[[entries]]
+guid = "40e81f1f-1188-439d-bb04-8ce1454de71b"
+path = "kairos_time/src"
+
+[[entries]]
+guid = "b0713369-6116-4fd3-bd65-25156ad4a36a"
+path = "kairos_time/src/lib.rs"
+
+[[entries]]
+guid = "99aedbd3-144c-4d89-afda-f1f30cfa1b14"
+path = "kairos_time/src/tests.rs"
 
 [[entries]]
 guid = "689dba96-bf4f-4b92-83db-50db6ecaef9a"
@@ -1921,6 +3425,10 @@ path = "res/textures/kairos_texture.texture"
 [[entries]]
 guid = "16248376-3763-45f3-b666-aa295821920d"
 path = "res/textures/white.texture"
+
+[[entries]]
+guid = "6b4037b1-9553-4fa5-ba66-d63749a51877"
+path = "rust-toolchain.toml"
 
 [[entries]]
 guid = "d095dc2a-d3ea-4b66-b7d3-e8c418d63171"

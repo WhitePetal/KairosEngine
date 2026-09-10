@@ -21,7 +21,6 @@ use rayon::prelude::*;
 use crate::graphics::texture::format::BlockLayout;
 use crate::{decode_blocks, encode_blocks};
 
-
 #[cfg(test)]
 mod test;
 
@@ -47,12 +46,32 @@ encode_blocks!(encode_eac_rg11, U8, 4, 4, 16, eac_rg11_block);
 encode_blocks!(encode_eac_rg11_snorm, U8, 4, 4, 16, eac_rg11_snorm_block);
 
 decode_blocks!(decode_etc2_rgb8, U8, ETC2_LAYOUT, decode_etc2_rgb8_block);
-decode_blocks!(decode_etc2_rgb8_a1, U8, ETC2_LAYOUT, decode_etc2_rgb8a1_block);
-decode_blocks!(decode_etc2_rgba8, U8, ETC2_RGBA_LAYOUT, decode_etc2_rgba8_block);
+decode_blocks!(
+    decode_etc2_rgb8_a1,
+    U8,
+    ETC2_LAYOUT,
+    decode_etc2_rgb8a1_block
+);
+decode_blocks!(
+    decode_etc2_rgba8,
+    U8,
+    ETC2_RGBA_LAYOUT,
+    decode_etc2_rgba8_block
+);
 decode_blocks!(decode_eac_r11, U8, EAC_R11_LAYOUT, decode_eac_r11_block);
-decode_blocks!(decode_eac_r11_snorm, S8, EAC_R11_LAYOUT, decode_eac_r11_snorm_block);
+decode_blocks!(
+    decode_eac_r11_snorm,
+    S8,
+    EAC_R11_LAYOUT,
+    decode_eac_r11_snorm_block
+);
 decode_blocks!(decode_eac_rg11, U8, EAC_RG11_LAYOUT, decode_eac_rg11_block);
-decode_blocks!(decode_eac_rg11_snorm, S8, EAC_RG11_LAYOUT, decode_eac_rg11_snorm_block);
+decode_blocks!(
+    decode_eac_rg11_snorm,
+    S8,
+    EAC_RG11_LAYOUT,
+    decode_eac_rg11_snorm_block
+);
 
 // ============================================================
 // ETC1 modifier tables — used by ETC2 individual/differential modes
@@ -180,7 +199,7 @@ fn detect_mode(word: u64) -> Etc2Mode {
     // G1 is (g1 << 1) | LSB; b1 is (b1_raw << 2) | 2 bits from d-field.
     // For a conservative check, just see if any differential itself would push
     // out of the 5-bit range.
-    let g1_est = (r1 + dr).clamp(0, 31);   // use R-based approximation
+    let g1_est = (r1 + dr).clamp(0, 31); // use R-based approximation
     let _g2_est = (g1_est + dg).clamp(0, 31);
     let b1_est = ((((word >> 52) & 7) as i16) << 2) | (((word >> 32) >> 2) as i16 & 3);
     let b1_clamped = b1_est.clamp(0, 31);
@@ -252,14 +271,22 @@ fn decode_individual(word: u64, out: &mut [u8; 64]) {
     let g1_4 = g1;
     let b1_4 = (b1_raw << 1) | (r1 & 1);
 
-    let base1 = [expand4(r1_4 as u16), expand4(g1_4 as u16), expand4(b1_4 as u16)];
+    let base1 = [
+        expand4(r1_4 as u16),
+        expand4(g1_4 as u16),
+        expand4(b1_4 as u16),
+    ];
 
     // Sub-block 2 base colour (4 bits per channel → expand to 8)
     let r2_4 = (r2_raw << 1) | ((d_field >> 3) & 1);
     let g2_4_bits = g2;
     let b2_4 = (b2_raw << 1) | ((d_field >> 2) & 1);
 
-    let base2 = [expand4(r2_4 as u16), expand4(g2_4_bits as u16), expand4(b2_4 as u16)];
+    let base2 = [
+        expand4(r2_4 as u16),
+        expand4(g2_4_bits as u16),
+        expand4(b2_4 as u16),
+    ];
 
     let table1 = &ETC1_TABLES[cw1];
     let table2 = &ETC1_TABLES[cw2];
@@ -270,10 +297,18 @@ fn decode_individual(word: u64, out: &mut [u8; 64]) {
             let idx = get_idx(word, pixel);
             let (base, table) = if flip == 0 {
                 // Horizontal split: top 2 rows = sub-block 1, bottom 2 = sub-block 2
-                if py < 2 { (&base1, table1) } else { (&base2, table2) }
+                if py < 2 {
+                    (&base1, table1)
+                } else {
+                    (&base2, table2)
+                }
             } else {
                 // Vertical split: left 2 cols = sub-block 1, right 2 = sub-block 2
-                if px < 2 { (&base1, table1) } else { (&base2, table2) }
+                if px < 2 {
+                    (&base1, table1)
+                } else {
+                    (&base2, table2)
+                }
             };
 
             let off = pixel * 4;
@@ -311,7 +346,11 @@ fn decode_differential(word: u64, out: &mut [u8; 64]) {
 
     // Sign-extend 3-bit differentials
     let dr = if r2_raw >= 4 { r2_raw - 8 } else { r2_raw };
-    let dg = if (g2_full >> 1) >= 4 { (g2_full >> 1) - 8 } else { g2_full >> 1 };
+    let dg = if (g2_full >> 1) >= 4 {
+        (g2_full >> 1) - 8
+    } else {
+        g2_full >> 1
+    };
     let db = if b2_raw >= 4 { b2_raw - 8 } else { b2_raw };
 
     // 5-bit base for sub-block 2 (clamped to [0, 31])
@@ -319,8 +358,16 @@ fn decode_differential(word: u64, out: &mut [u8; 64]) {
     let g2_5b = (g1_5 + dg).clamp(0, 31);
     let b2_5b = (b1_5 + db).clamp(0, 31);
 
-    let base1 = [expand5(r1_5 as u16), expand5(g1_5 as u16), expand5(b1_5 as u16)];
-    let base2 = [expand5(r2_5b as u16), expand5(g2_5b as u16), expand5(b2_5b as u16)];
+    let base1 = [
+        expand5(r1_5 as u16),
+        expand5(g1_5 as u16),
+        expand5(b1_5 as u16),
+    ];
+    let base2 = [
+        expand5(r2_5b as u16),
+        expand5(g2_5b as u16),
+        expand5(b2_5b as u16),
+    ];
 
     let table1 = &ETC1_TABLES[cw1];
     let table2 = &ETC1_TABLES[cw2];
@@ -330,9 +377,17 @@ fn decode_differential(word: u64, out: &mut [u8; 64]) {
             let pixel = py * 4 + px;
             let idx = get_idx(word, pixel);
             let (base, table) = if flip == 0 {
-                if py < 2 { (&base1, table1) } else { (&base2, table2) }
+                if py < 2 {
+                    (&base1, table1)
+                } else {
+                    (&base2, table2)
+                }
             } else {
-                if px < 2 { (&base1, table1) } else { (&base2, table2) }
+                if px < 2 {
+                    (&base1, table1)
+                } else {
+                    (&base2, table2)
+                }
             };
             let off = pixel * 4;
             let mod_val = table[idx];
@@ -367,8 +422,16 @@ fn decode_t_mode(word: u64, out: &mut [u8; 64]) {
     let cw1 = ((word >> 58) & 3) as usize;
     let cw2 = ((word >> 60) & 3) as usize;
 
-    let base = [expand4(r1_4 as u16), expand4(g1 as u16), expand4(b1_4 as u16)];
-    let paint = [expand4(r2_4 as u16), expand4(g2 as u16), expand4(b2_4 as u16)];
+    let base = [
+        expand4(r1_4 as u16),
+        expand4(g1 as u16),
+        expand4(b1_4 as u16),
+    ];
+    let paint = [
+        expand4(r2_4 as u16),
+        expand4(g2 as u16),
+        expand4(b2_4 as u16),
+    ];
 
     // Palette: base, paint, base+table[da][3], base+table[db][3]
     let t1 = ETC1_TABLES[cw1][3];
@@ -377,8 +440,18 @@ fn decode_t_mode(word: u64, out: &mut [u8; 64]) {
     let palette: [[u8; 4]; 4] = [
         [base[0], base[1], base[2], 255],
         [paint[0], paint[1], paint[2], 255],
-        [clamp_u8(base[0] as i16 + t1), clamp_u8(base[1] as i16 + t1), clamp_u8(base[2] as i16 + t1), 255],
-        [clamp_u8(base[0] as i16 + t2), clamp_u8(base[1] as i16 + t2), clamp_u8(base[2] as i16 + t2), 255],
+        [
+            clamp_u8(base[0] as i16 + t1),
+            clamp_u8(base[1] as i16 + t1),
+            clamp_u8(base[2] as i16 + t1),
+            255,
+        ],
+        [
+            clamp_u8(base[0] as i16 + t2),
+            clamp_u8(base[1] as i16 + t2),
+            clamp_u8(base[2] as i16 + t2),
+            255,
+        ],
     ];
 
     for pixel in 0..16 {
@@ -409,18 +482,46 @@ fn decode_h_mode(word: u64, out: &mut [u8; 64]) {
     let da = ((word >> 58) & 3) as usize;
     let db = ((word >> 60) & 3) as usize;
 
-    let base = [expand4(r1_4 as u16), expand4(g1_4 as u16), expand4(b1_4 as u16)];
-    let paint = [expand4(r2_4 as u16), expand4(g2_4 as u16), expand4(b2_4 as u16)];
+    let base = [
+        expand4(r1_4 as u16),
+        expand4(g1_4 as u16),
+        expand4(b1_4 as u16),
+    ];
+    let paint = [
+        expand4(r2_4 as u16),
+        expand4(g2_4 as u16),
+        expand4(b2_4 as u16),
+    ];
 
     let t_da = &ETC1_TABLES[da];
     let t_db = &ETC1_TABLES[db];
 
     // H-mode palette: base + t_da[0], base + t_da[1], paint + t_db[0], paint + t_db[1]
     let palette: [[u8; 4]; 4] = [
-        [clamp_u8(base[0] as i16 + t_da[0]), clamp_u8(base[1] as i16 + t_da[0]), clamp_u8(base[2] as i16 + t_da[0]), 255],
-        [clamp_u8(base[0] as i16 + t_da[1]), clamp_u8(base[1] as i16 + t_da[1]), clamp_u8(base[2] as i16 + t_da[1]), 255],
-        [clamp_u8(paint[0] as i16 + t_db[0]), clamp_u8(paint[1] as i16 + t_db[0]), clamp_u8(paint[2] as i16 + t_db[0]), 255],
-        [clamp_u8(paint[0] as i16 + t_db[1]), clamp_u8(paint[1] as i16 + t_db[1]), clamp_u8(paint[2] as i16 + t_db[1]), 255],
+        [
+            clamp_u8(base[0] as i16 + t_da[0]),
+            clamp_u8(base[1] as i16 + t_da[0]),
+            clamp_u8(base[2] as i16 + t_da[0]),
+            255,
+        ],
+        [
+            clamp_u8(base[0] as i16 + t_da[1]),
+            clamp_u8(base[1] as i16 + t_da[1]),
+            clamp_u8(base[2] as i16 + t_da[1]),
+            255,
+        ],
+        [
+            clamp_u8(paint[0] as i16 + t_db[0]),
+            clamp_u8(paint[1] as i16 + t_db[0]),
+            clamp_u8(paint[2] as i16 + t_db[0]),
+            255,
+        ],
+        [
+            clamp_u8(paint[0] as i16 + t_db[1]),
+            clamp_u8(paint[1] as i16 + t_db[1]),
+            clamp_u8(paint[2] as i16 + t_db[1]),
+            255,
+        ],
     ];
 
     for pixel in 0..16 {
@@ -586,8 +687,8 @@ fn eac_r11_decode_u8_alpha(blk: &[u8]) -> [u8; 16] {
 
 fn decode_eac_r11_block(blk: &[u8], out: &mut [u8; 64]) {
     let word = u64::from_le_bytes(blk[..8].try_into().unwrap());
-    let base = (word & 0xFF) as i32;         // bits [7:0]
-    let multiplier = ((word >> 8) & 0xF) as i32;  // bits [11:8]
+    let base = (word & 0xFF) as i32; // bits [7:0]
+    let multiplier = ((word >> 8) & 0xF) as i32; // bits [11:8]
     let table_idx = ((word >> 12) & 0xF) as usize; // bits [15:12]
 
     let table = &EAC_TABLES[table_idx];
@@ -731,7 +832,11 @@ fn etc2_encode_block(block: &[[u8; 4]; 16]) -> [u8; 8] {
             for py in 0..4 {
                 for px in 0..4 {
                     let idx = py * 4 + px;
-                    if px < 2 { s1.push(idx); } else { s2.push(idx); }
+                    if px < 2 {
+                        s1.push(idx);
+                    } else {
+                        s2.push(idx);
+                    }
                 }
             }
             (s1, s2)
@@ -831,7 +936,7 @@ fn etc2_encode_block(block: &[[u8; 4]; 16]) -> [u8; 8] {
                     let r2_4 = avg2[0] as u16 >> 4;
                     let g2_4 = avg2[1] as u16 >> 4;
                     let b2_4_val = avg2[2] as u16 >> 4;
-                    let r2_field = (r2_4 >> 1) & 7;    // top 3 bits → bits [43:41]
+                    let r2_field = (r2_4 >> 1) & 7; // top 3 bits → bits [43:41]
                     let b2_field = (b2_4_val >> 1) & 7; // top 3 bits → bits [57:55]
 
                     // Set the word bits for individual mode
@@ -985,7 +1090,14 @@ fn eac_r11_encode_block(block: &[[u8; 4]; 16]) -> [u8; 8] {
                     }
                     if err < best_err {
                         best_err = err;
-                        pack_eac_block(&mut best_block, base, multiplier, table_idx, &values, table);
+                        pack_eac_block(
+                            &mut best_block,
+                            base,
+                            multiplier,
+                            table_idx,
+                            &values,
+                            table,
+                        );
                     }
                 }
             } else {
@@ -1020,7 +1132,11 @@ fn eac_r11_encode_block(block: &[[u8; 4]; 16]) -> [u8; 8] {
                     if err < best_err {
                         best_err = err;
                         pack_eac_block_with_indices(
-                            &mut best_block, base, multiplier, table_idx, &indices,
+                            &mut best_block,
+                            base,
+                            multiplier,
+                            table_idx,
+                            &indices,
                         );
                     }
                 }

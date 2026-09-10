@@ -9,8 +9,8 @@
 
 use rayon::prelude::*;
 
-use crate::graphics::texture::format::{BlockLayout, PixelDatas};
 use crate::decode_blocks;
+use crate::graphics::texture::format::{BlockLayout, PixelDatas};
 
 // ============================================================
 // Constants
@@ -30,147 +30,146 @@ const WEIGHTS_4: [u32; 16] = [0, 4, 9, 13, 17, 21, 26, 30, 34, 38, 43, 47, 51, 5
 
 /// Partition table for 2 subsets (64 shapes, shared with BC6H for first 32).
 const PARTITION_2: [[u8; 16]; 64] = [
-    [0,0,1,1,0,0,1,1,0,0,1,1,0,0,1,1],
-    [0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,1],
-    [0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,1],
-    [0,0,0,1,0,0,1,1,0,0,1,1,0,1,1,1],
-    [0,0,0,0,0,0,0,1,0,0,0,1,0,0,1,1],
-    [0,0,1,1,0,1,1,1,0,1,1,1,1,1,1,1],
-    [0,0,0,1,0,0,1,1,0,1,1,1,1,1,1,1],
-    [0,0,0,0,0,0,0,1,0,0,1,1,0,1,1,1],
-    [0,0,0,0,0,0,0,0,0,0,0,1,0,0,1,1],
-    [0,0,1,1,0,1,1,1,1,1,1,1,1,1,1,1],
-    [0,0,0,0,0,0,0,1,0,1,1,1,1,1,1,1],
-    [0,0,0,0,0,0,0,0,0,0,0,1,0,1,1,1],
-    [0,0,0,1,0,1,1,1,1,1,1,1,1,1,1,1],
-    [0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1],
-    [0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1],
-    [0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1],
-    [0,0,0,0,1,0,0,0,1,1,1,0,1,1,1,1],
-    [0,1,1,1,0,0,0,1,0,0,0,0,0,0,0,0],
-    [0,0,0,0,0,0,0,0,1,0,0,0,1,1,1,0],
-    [0,1,1,1,0,0,1,1,0,0,0,1,0,0,0,0],
-    [0,0,1,1,0,0,0,1,0,0,0,0,0,0,0,0],
-    [0,0,0,0,1,0,0,0,1,1,0,0,1,1,1,0],
-    [0,0,0,0,0,0,0,0,1,0,0,0,1,1,0,0],
-    [0,1,1,1,0,0,1,1,0,0,1,1,0,0,0,1],
-    [0,0,1,1,0,0,0,1,0,0,0,1,0,0,0,0],
-    [0,0,0,0,1,0,0,0,1,0,0,0,1,1,0,0],
-    [0,1,1,0,0,1,1,0,0,1,1,0,0,1,1,0],
-    [0,0,1,1,0,1,1,0,0,1,1,0,1,1,0,0],
-    [0,0,0,1,0,1,1,1,1,1,1,0,1,0,0,0],
-    [0,0,0,0,1,1,1,1,1,1,1,1,0,0,0,0],
-    [0,1,1,1,0,0,0,1,1,0,0,0,1,1,1,0],
-    [0,0,1,1,1,0,0,1,1,0,0,1,1,1,0,0],
+    [0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1],
+    [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1],
+    [0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1],
+    [0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 1, 1, 1],
+    [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 1],
+    [0, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1],
+    [0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1],
+    [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 1],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1],
+    [0, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 1],
+    [0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1],
+    [0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1],
+    [0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1],
+    [0, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 0],
+    [0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0],
+    [0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0],
+    [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0],
+    [0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1],
+    [0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0],
+    [0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0],
+    [0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0],
+    [0, 0, 1, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 1, 0, 0],
+    [0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0],
+    [0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0],
+    [0, 1, 1, 1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 0],
+    [0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0],
     // Second half: BC7-only partition shapes
-    [0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1],
-    [0,0,0,0,1,1,1,1,0,0,0,0,1,1,1,1],
-    [0,1,0,1,1,0,1,0,0,1,0,1,1,0,1,0],
-    [0,0,1,1,0,0,1,1,1,1,0,0,1,1,0,0],
-    [0,0,1,1,1,1,0,0,0,0,1,1,1,1,0,0],
-    [0,1,0,1,0,1,0,1,1,0,1,0,1,0,1,0],
-    [0,1,1,0,1,0,0,1,0,1,1,0,1,0,0,1],
-    [0,1,0,1,1,0,1,0,1,0,1,0,0,1,0,1],
-    [0,1,1,1,0,0,1,1,1,1,0,0,1,1,1,0],
-    [0,0,0,1,0,0,1,1,1,1,0,0,1,0,0,0],
-    [0,0,1,1,0,0,1,0,0,1,0,0,1,1,0,0],
-    [0,0,1,1,1,0,1,1,1,1,0,1,1,1,0,0],
-    [0,1,1,0,1,0,0,1,1,0,0,1,0,1,1,0],
-    [0,0,1,1,1,1,0,0,1,1,0,0,0,0,1,1],
-    [0,1,1,0,0,1,1,0,1,0,0,1,1,0,0,1],
-    [0,0,0,0,0,1,1,0,0,1,1,0,0,0,0,0],
-    [0,1,0,0,1,1,1,0,0,1,0,0,0,0,0,0],
-    [0,0,1,0,0,1,1,1,0,0,1,0,0,0,0,0],
-    [0,0,0,0,0,0,1,0,0,1,1,1,0,0,1,0],
-    [0,0,0,0,0,1,0,0,1,1,1,0,0,1,0,0],
-    [0,1,1,0,1,1,0,0,1,0,0,1,0,0,1,1],
-    [0,0,1,1,0,1,1,0,1,1,0,0,1,0,0,1],
-    [0,1,1,0,0,0,1,1,1,0,0,1,1,1,0,0],
-    [0,0,1,1,1,0,0,1,1,1,0,0,0,1,1,0],
-    [0,1,1,0,1,1,0,0,1,1,0,0,1,0,0,1],
-    [0,1,1,0,0,0,1,1,0,0,1,1,1,0,0,1],
-    [0,1,1,1,1,1,1,0,1,0,0,0,0,0,0,1],
-    [0,0,0,1,1,0,0,0,1,1,1,0,0,1,1,1],
-    [0,0,0,0,1,1,1,1,0,0,1,1,0,0,1,1],
-    [0,0,1,1,0,0,1,1,1,1,1,1,0,0,0,0],
-    [0,0,1,0,0,0,1,0,1,1,1,0,1,1,1,0],
-    [0,1,0,0,0,1,0,0,0,1,1,1,0,1,1,1],
+    [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
+    [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1],
+    [0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0],
+    [0, 0, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0],
+    [0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0],
+    [0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0],
+    [0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1],
+    [0, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1],
+    [0, 1, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0],
+    [0, 0, 0, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 0, 0, 0],
+    [0, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0, 0],
+    [0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 0, 0],
+    [0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0],
+    [0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1, 1],
+    [0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1],
+    [0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0],
+    [0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0],
+    [0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 0],
+    [0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0],
+    [0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0],
+    [0, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1],
+    [0, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1],
+    [0, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0],
+    [0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 0],
+    [0, 1, 1, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 1],
+    [0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 1],
+    [0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1],
+    [0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1],
+    [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1],
+    [0, 0, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0],
+    [0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0],
+    [0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1],
 ];
 
 /// Partition table for 3 subsets (64 shapes).
 const PARTITION_3: [[u8; 16]; 64] = [
-    [0,0,1,1,0,0,1,1,0,2,2,1,2,2,2,2],
-    [0,0,0,1,0,0,1,1,2,2,1,1,2,2,2,1],
-    [0,0,0,0,2,0,0,1,2,2,1,1,2,2,1,1],
-    [0,2,2,2,0,0,2,2,0,0,1,1,0,1,1,1],
-    [0,0,0,0,0,0,0,0,1,1,2,2,1,1,2,2],
-    [0,0,1,1,0,0,1,1,0,0,2,2,0,0,2,2],
-    [0,0,2,2,0,0,2,2,1,1,1,1,1,1,1,1],
-    [0,0,1,1,0,0,1,1,2,2,1,1,2,2,1,1],
-    [0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2],
-    [0,0,0,0,1,1,1,1,1,1,1,1,2,2,2,2],
-    [0,0,0,0,1,1,1,1,2,2,2,2,2,2,2,2],
-    [0,0,1,2,0,0,1,2,0,0,1,2,0,0,1,2],
-    [0,1,1,2,0,1,1,2,0,1,1,2,0,1,1,2],
-    [0,1,2,2,0,1,2,2,0,1,2,2,0,1,2,2],
-    [0,0,1,1,0,1,1,2,1,1,2,2,1,2,2,2],
-    [0,0,1,1,2,0,0,1,2,2,0,0,2,2,2,0],
-    [0,0,0,1,0,0,1,1,0,1,1,2,1,1,2,2],
-    [0,1,1,1,0,0,1,1,2,0,0,1,2,2,0,0],
-    [0,0,0,0,1,1,2,2,1,1,2,2,1,1,2,2],
-    [0,0,2,2,0,0,2,2,0,0,2,2,1,1,1,1],
-    [0,1,1,1,0,1,1,1,0,2,2,2,0,2,2,2],
-    [0,0,0,1,0,0,0,1,2,2,2,1,2,2,2,1],
-    [0,0,0,0,0,0,1,1,0,1,2,2,0,1,2,2],
-    [0,0,0,0,1,1,0,0,2,2,1,0,2,2,1,0],
-    [0,1,2,2,0,1,2,2,0,0,1,1,0,0,0,0],
-    [0,0,1,2,0,0,1,2,1,1,2,2,2,2,2,2],
-    [0,1,1,0,1,2,2,1,1,2,2,1,0,1,1,0],
-    [0,0,0,0,0,1,1,0,1,2,2,1,1,2,2,1],
-    [0,0,2,2,1,1,0,2,1,1,0,2,0,0,2,2],
-    [0,1,1,0,0,1,1,0,2,0,0,2,2,2,2,2],
-    [0,0,1,1,0,1,2,2,0,1,2,2,0,0,1,1],
-    [0,0,0,0,2,0,0,0,2,2,1,1,2,2,2,1],
-    [0,0,0,0,0,0,0,2,1,1,2,2,1,2,2,2],
-    [0,2,2,2,0,0,2,2,0,0,1,2,0,0,1,1],
-    [0,0,1,1,0,0,1,2,0,0,2,2,0,2,2,2],
-    [0,1,2,0,0,1,2,0,0,1,2,0,0,1,2,0],
-    [0,0,0,0,1,1,1,1,2,2,2,2,0,0,0,0],
-    [0,1,2,0,1,2,0,1,2,0,1,2,0,1,2,0],
-    [0,1,2,0,2,0,1,2,1,2,0,1,0,1,2,0],
-    [0,0,1,1,2,2,0,0,1,1,2,2,0,0,1,1],
-    [0,0,1,1,1,1,2,2,2,2,0,0,0,0,1,1],
-    [0,1,0,1,0,1,0,1,2,2,2,2,2,2,2,2],
-    [0,0,0,0,0,0,0,0,2,1,2,1,2,1,2,1],
-    [0,0,2,2,1,1,2,2,0,0,2,2,1,1,2,2],
-    [0,0,2,2,0,0,1,1,0,0,2,2,0,0,1,1],
-    [0,2,2,0,1,2,2,1,0,2,2,0,1,2,2,1],
-    [0,1,0,1,2,2,2,2,2,2,2,2,0,1,0,1],
-    [0,0,0,0,2,1,2,1,2,1,2,1,2,1,2,1],
-    [0,1,0,1,0,1,0,1,0,1,0,1,2,2,2,2],
-    [0,2,2,2,0,1,1,1,0,2,2,2,0,1,1,1],
-    [0,0,0,2,1,1,1,2,0,0,0,2,1,1,1,2],
-    [0,0,0,0,2,1,1,2,2,1,1,2,2,1,1,2],
-    [0,2,2,2,0,1,1,1,0,1,1,1,0,2,2,2],
-    [0,0,0,2,1,1,1,2,1,1,1,2,0,0,0,2],
-    [0,1,1,0,0,1,1,0,0,1,1,0,2,2,2,2],
-    [0,0,0,0,0,0,0,0,2,1,1,2,2,1,1,2],
-    [0,1,1,0,0,1,1,0,2,2,2,2,2,2,2,2],
-    [0,0,2,2,0,0,1,1,0,0,1,1,0,0,2,2],
-    [0,0,2,2,1,1,2,2,1,1,2,2,0,0,2,2],
-    [0,0,0,0,0,0,0,0,0,0,0,0,2,1,1,2],
-    [0,0,0,2,0,0,0,1,0,0,0,2,0,0,0,1],
-    [0,2,2,2,1,2,2,2,0,2,2,2,1,2,2,2],
-    [0,1,0,1,2,2,2,2,2,2,2,2,2,2,2,2],
-    [0,1,1,1,2,0,1,1,2,2,0,1,2,2,2,0],
+    [0, 0, 1, 1, 0, 0, 1, 1, 0, 2, 2, 1, 2, 2, 2, 2],
+    [0, 0, 0, 1, 0, 0, 1, 1, 2, 2, 1, 1, 2, 2, 2, 1],
+    [0, 0, 0, 0, 2, 0, 0, 1, 2, 2, 1, 1, 2, 2, 1, 1],
+    [0, 2, 2, 2, 0, 0, 2, 2, 0, 0, 1, 1, 0, 1, 1, 1],
+    [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 2, 2, 1, 1, 2, 2],
+    [0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 2, 2, 0, 0, 2, 2],
+    [0, 0, 2, 2, 0, 0, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1],
+    [0, 0, 1, 1, 0, 0, 1, 1, 2, 2, 1, 1, 2, 2, 1, 1],
+    [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2],
+    [0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2],
+    [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2],
+    [0, 0, 1, 2, 0, 0, 1, 2, 0, 0, 1, 2, 0, 0, 1, 2],
+    [0, 1, 1, 2, 0, 1, 1, 2, 0, 1, 1, 2, 0, 1, 1, 2],
+    [0, 1, 2, 2, 0, 1, 2, 2, 0, 1, 2, 2, 0, 1, 2, 2],
+    [0, 0, 1, 1, 0, 1, 1, 2, 1, 1, 2, 2, 1, 2, 2, 2],
+    [0, 0, 1, 1, 2, 0, 0, 1, 2, 2, 0, 0, 2, 2, 2, 0],
+    [0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 2, 1, 1, 2, 2],
+    [0, 1, 1, 1, 0, 0, 1, 1, 2, 0, 0, 1, 2, 2, 0, 0],
+    [0, 0, 0, 0, 1, 1, 2, 2, 1, 1, 2, 2, 1, 1, 2, 2],
+    [0, 0, 2, 2, 0, 0, 2, 2, 0, 0, 2, 2, 1, 1, 1, 1],
+    [0, 1, 1, 1, 0, 1, 1, 1, 0, 2, 2, 2, 0, 2, 2, 2],
+    [0, 0, 0, 1, 0, 0, 0, 1, 2, 2, 2, 1, 2, 2, 2, 1],
+    [0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 2, 2, 0, 1, 2, 2],
+    [0, 0, 0, 0, 1, 1, 0, 0, 2, 2, 1, 0, 2, 2, 1, 0],
+    [0, 1, 2, 2, 0, 1, 2, 2, 0, 0, 1, 1, 0, 0, 0, 0],
+    [0, 0, 1, 2, 0, 0, 1, 2, 1, 1, 2, 2, 2, 2, 2, 2],
+    [0, 1, 1, 0, 1, 2, 2, 1, 1, 2, 2, 1, 0, 1, 1, 0],
+    [0, 0, 0, 0, 0, 1, 1, 0, 1, 2, 2, 1, 1, 2, 2, 1],
+    [0, 0, 2, 2, 1, 1, 0, 2, 1, 1, 0, 2, 0, 0, 2, 2],
+    [0, 1, 1, 0, 0, 1, 1, 0, 2, 0, 0, 2, 2, 2, 2, 2],
+    [0, 0, 1, 1, 0, 1, 2, 2, 0, 1, 2, 2, 0, 0, 1, 1],
+    [0, 0, 0, 0, 2, 0, 0, 0, 2, 2, 1, 1, 2, 2, 2, 1],
+    [0, 0, 0, 0, 0, 0, 0, 2, 1, 1, 2, 2, 1, 2, 2, 2],
+    [0, 2, 2, 2, 0, 0, 2, 2, 0, 0, 1, 2, 0, 0, 1, 1],
+    [0, 0, 1, 1, 0, 0, 1, 2, 0, 0, 2, 2, 0, 2, 2, 2],
+    [0, 1, 2, 0, 0, 1, 2, 0, 0, 1, 2, 0, 0, 1, 2, 0],
+    [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 0, 0, 0, 0],
+    [0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0, 1, 2, 0],
+    [0, 1, 2, 0, 2, 0, 1, 2, 1, 2, 0, 1, 0, 1, 2, 0],
+    [0, 0, 1, 1, 2, 2, 0, 0, 1, 1, 2, 2, 0, 0, 1, 1],
+    [0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 0, 0, 0, 0, 1, 1],
+    [0, 1, 0, 1, 0, 1, 0, 1, 2, 2, 2, 2, 2, 2, 2, 2],
+    [0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 2, 1, 2, 1, 2, 1],
+    [0, 0, 2, 2, 1, 1, 2, 2, 0, 0, 2, 2, 1, 1, 2, 2],
+    [0, 0, 2, 2, 0, 0, 1, 1, 0, 0, 2, 2, 0, 0, 1, 1],
+    [0, 2, 2, 0, 1, 2, 2, 1, 0, 2, 2, 0, 1, 2, 2, 1],
+    [0, 1, 0, 1, 2, 2, 2, 2, 2, 2, 2, 2, 0, 1, 0, 1],
+    [0, 0, 0, 0, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 1],
+    [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 2, 2, 2, 2],
+    [0, 2, 2, 2, 0, 1, 1, 1, 0, 2, 2, 2, 0, 1, 1, 1],
+    [0, 0, 0, 2, 1, 1, 1, 2, 0, 0, 0, 2, 1, 1, 1, 2],
+    [0, 0, 0, 0, 2, 1, 1, 2, 2, 1, 1, 2, 2, 1, 1, 2],
+    [0, 2, 2, 2, 0, 1, 1, 1, 0, 1, 1, 1, 0, 2, 2, 2],
+    [0, 0, 0, 2, 1, 1, 1, 2, 1, 1, 1, 2, 0, 0, 0, 2],
+    [0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 2, 2, 2, 2],
+    [0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 1, 2, 2, 1, 1, 2],
+    [0, 1, 1, 0, 0, 1, 1, 0, 2, 2, 2, 2, 2, 2, 2, 2],
+    [0, 0, 2, 2, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 2, 2],
+    [0, 0, 2, 2, 1, 1, 2, 2, 1, 1, 2, 2, 0, 0, 2, 2],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 1, 2],
+    [0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 1],
+    [0, 2, 2, 2, 1, 2, 2, 2, 0, 2, 2, 2, 1, 2, 2, 2],
+    [0, 1, 0, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
+    [0, 1, 1, 1, 2, 0, 1, 1, 2, 2, 0, 1, 2, 2, 2, 0],
 ];
 
 /// Fix-up table for 2 subsets.
 const FIXUP_2: [u8; 64] = [
-    15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,15,
-    15,2,8,2,2,8,8,15,2,8,2,2,8,8,2,2,
-    15,15,6,8,2,8,15,15,2,8,2,2,2,15,15,6,
-    6,2,6,8,15,15,2,2,15,15,15,15,15,2,2,15,
+    15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 2, 8, 2, 2, 8, 8, 15, 2, 8,
+    2, 2, 8, 8, 2, 2, 15, 15, 6, 8, 2, 8, 15, 15, 2, 8, 2, 2, 2, 15, 15, 6, 6, 2, 6, 8, 15, 15, 2,
+    2, 15, 15, 15, 15, 15, 2, 2, 15,
 ];
 
 // ============================================================
@@ -178,18 +177,18 @@ const FIXUP_2: [u8; 64] = [
 // ============================================================
 
 struct BC7Mode {
-    partitions: u8,        // Number of partitions (0 = 1 subset)
-    partition_bits: u8,    // Bits for partition selection
-    pbits: u8,             // Number of P-bits
-    rotation_bits: u8,     // Bits for rotation
-    index_mode_bits: u8,   // Bits for index mode
-    index_prec: u8,        // Index precision for color
-    index_prec2: u8,       // Index precision for alpha (0 = combined)
-    prec_r: u8,            // Red precision
-    prec_g: u8,            // Green precision
-    prec_b: u8,            // Blue precision
-    prec_a: u8,            // Alpha precision
-    prec_with_p_r: u8,     // Red precision with P-bit
+    partitions: u8,      // Number of partitions (0 = 1 subset)
+    partition_bits: u8,  // Bits for partition selection
+    pbits: u8,           // Number of P-bits
+    rotation_bits: u8,   // Bits for rotation
+    index_mode_bits: u8, // Bits for index mode
+    index_prec: u8,      // Index precision for color
+    index_prec2: u8,     // Index precision for alpha (0 = combined)
+    prec_r: u8,          // Red precision
+    prec_g: u8,          // Green precision
+    prec_b: u8,          // Blue precision
+    prec_a: u8,          // Alpha precision
+    prec_with_p_r: u8,   // Red precision with P-bit
     prec_with_p_g: u8,
     prec_with_p_b: u8,
     prec_with_p_a: u8,
@@ -197,29 +196,149 @@ struct BC7Mode {
 
 const MODES: [BC7Mode; 8] = [
     // Mode 0: 3 subsets, 4 partition bits, 6 P-bits, RGB 4441
-    BC7Mode { partitions: 2, partition_bits: 4, pbits: 6, rotation_bits: 0, index_mode_bits: 0, index_prec: 3, index_prec2: 0,
-        prec_r: 4, prec_g: 4, prec_b: 4, prec_a: 0, prec_with_p_r: 5, prec_with_p_g: 5, prec_with_p_b: 5, prec_with_p_a: 0 },
+    BC7Mode {
+        partitions: 2,
+        partition_bits: 4,
+        pbits: 6,
+        rotation_bits: 0,
+        index_mode_bits: 0,
+        index_prec: 3,
+        index_prec2: 0,
+        prec_r: 4,
+        prec_g: 4,
+        prec_b: 4,
+        prec_a: 0,
+        prec_with_p_r: 5,
+        prec_with_p_g: 5,
+        prec_with_p_b: 5,
+        prec_with_p_a: 0,
+    },
     // Mode 1: 2 subsets, 6 partition bits, 2 P-bits, RGB 6661
-    BC7Mode { partitions: 1, partition_bits: 6, pbits: 2, rotation_bits: 0, index_mode_bits: 0, index_prec: 3, index_prec2: 0,
-        prec_r: 6, prec_g: 6, prec_b: 6, prec_a: 0, prec_with_p_r: 7, prec_with_p_g: 7, prec_with_p_b: 7, prec_with_p_a: 0 },
+    BC7Mode {
+        partitions: 1,
+        partition_bits: 6,
+        pbits: 2,
+        rotation_bits: 0,
+        index_mode_bits: 0,
+        index_prec: 3,
+        index_prec2: 0,
+        prec_r: 6,
+        prec_g: 6,
+        prec_b: 6,
+        prec_a: 0,
+        prec_with_p_r: 7,
+        prec_with_p_g: 7,
+        prec_with_p_b: 7,
+        prec_with_p_a: 0,
+    },
     // Mode 2: 3 subsets, 6 partition bits, 0 P-bits, RGB 555
-    BC7Mode { partitions: 2, partition_bits: 6, pbits: 0, rotation_bits: 0, index_mode_bits: 0, index_prec: 2, index_prec2: 0,
-        prec_r: 5, prec_g: 5, prec_b: 5, prec_a: 0, prec_with_p_r: 5, prec_with_p_g: 5, prec_with_p_b: 5, prec_with_p_a: 0 },
+    BC7Mode {
+        partitions: 2,
+        partition_bits: 6,
+        pbits: 0,
+        rotation_bits: 0,
+        index_mode_bits: 0,
+        index_prec: 2,
+        index_prec2: 0,
+        prec_r: 5,
+        prec_g: 5,
+        prec_b: 5,
+        prec_a: 0,
+        prec_with_p_r: 5,
+        prec_with_p_g: 5,
+        prec_with_p_b: 5,
+        prec_with_p_a: 0,
+    },
     // Mode 3: 2 subsets, 6 partition bits, 4 P-bits, RGB 7771
-    BC7Mode { partitions: 1, partition_bits: 6, pbits: 4, rotation_bits: 0, index_mode_bits: 0, index_prec: 2, index_prec2: 0,
-        prec_r: 7, prec_g: 7, prec_b: 7, prec_a: 0, prec_with_p_r: 8, prec_with_p_g: 8, prec_with_p_b: 8, prec_with_p_a: 0 },
+    BC7Mode {
+        partitions: 1,
+        partition_bits: 6,
+        pbits: 4,
+        rotation_bits: 0,
+        index_mode_bits: 0,
+        index_prec: 2,
+        index_prec2: 0,
+        prec_r: 7,
+        prec_g: 7,
+        prec_b: 7,
+        prec_a: 0,
+        prec_with_p_r: 8,
+        prec_with_p_g: 8,
+        prec_with_p_b: 8,
+        prec_with_p_a: 0,
+    },
     // Mode 4: 1 subset, 0 P-bits, RGB 555 + A6, 2-bit rotation, 1-bit index mode
-    BC7Mode { partitions: 0, partition_bits: 0, pbits: 0, rotation_bits: 2, index_mode_bits: 1, index_prec: 2, index_prec2: 3,
-        prec_r: 5, prec_g: 5, prec_b: 5, prec_a: 6, prec_with_p_r: 5, prec_with_p_g: 5, prec_with_p_b: 5, prec_with_p_a: 6 },
+    BC7Mode {
+        partitions: 0,
+        partition_bits: 0,
+        pbits: 0,
+        rotation_bits: 2,
+        index_mode_bits: 1,
+        index_prec: 2,
+        index_prec2: 3,
+        prec_r: 5,
+        prec_g: 5,
+        prec_b: 5,
+        prec_a: 6,
+        prec_with_p_r: 5,
+        prec_with_p_g: 5,
+        prec_with_p_b: 5,
+        prec_with_p_a: 6,
+    },
     // Mode 5: 1 subset, 0 P-bits, RGB 777 + A8, 2-bit rotation
-    BC7Mode { partitions: 0, partition_bits: 0, pbits: 0, rotation_bits: 2, index_mode_bits: 0, index_prec: 2, index_prec2: 2,
-        prec_r: 7, prec_g: 7, prec_b: 7, prec_a: 8, prec_with_p_r: 7, prec_with_p_g: 7, prec_with_p_b: 7, prec_with_p_a: 8 },
+    BC7Mode {
+        partitions: 0,
+        partition_bits: 0,
+        pbits: 0,
+        rotation_bits: 2,
+        index_mode_bits: 0,
+        index_prec: 2,
+        index_prec2: 2,
+        prec_r: 7,
+        prec_g: 7,
+        prec_b: 7,
+        prec_a: 8,
+        prec_with_p_r: 7,
+        prec_with_p_g: 7,
+        prec_with_p_b: 7,
+        prec_with_p_a: 8,
+    },
     // Mode 6: 1 subset, 2 P-bits, RGBA 77771
-    BC7Mode { partitions: 0, partition_bits: 0, pbits: 2, rotation_bits: 0, index_mode_bits: 0, index_prec: 4, index_prec2: 0,
-        prec_r: 7, prec_g: 7, prec_b: 7, prec_a: 7, prec_with_p_r: 8, prec_with_p_g: 8, prec_with_p_b: 8, prec_with_p_a: 8 },
+    BC7Mode {
+        partitions: 0,
+        partition_bits: 0,
+        pbits: 2,
+        rotation_bits: 0,
+        index_mode_bits: 0,
+        index_prec: 4,
+        index_prec2: 0,
+        prec_r: 7,
+        prec_g: 7,
+        prec_b: 7,
+        prec_a: 7,
+        prec_with_p_r: 8,
+        prec_with_p_g: 8,
+        prec_with_p_b: 8,
+        prec_with_p_a: 8,
+    },
     // Mode 7: 2 subsets, 6 partition bits, 4 P-bits, RGBA 55551
-    BC7Mode { partitions: 1, partition_bits: 6, pbits: 4, rotation_bits: 0, index_mode_bits: 0, index_prec: 2, index_prec2: 0,
-        prec_r: 5, prec_g: 5, prec_b: 5, prec_a: 5, prec_with_p_r: 6, prec_with_p_g: 6, prec_with_p_b: 6, prec_with_p_a: 6 },
+    BC7Mode {
+        partitions: 1,
+        partition_bits: 6,
+        pbits: 4,
+        rotation_bits: 0,
+        index_mode_bits: 0,
+        index_prec: 2,
+        index_prec2: 0,
+        prec_r: 5,
+        prec_g: 5,
+        prec_b: 5,
+        prec_a: 5,
+        prec_with_p_r: 6,
+        prec_with_p_g: 6,
+        prec_with_p_b: 6,
+        prec_with_p_a: 6,
+    },
 ];
 
 // ============================================================
@@ -278,13 +397,17 @@ impl BitWriter<'_> {
 // ============================================================
 
 fn quantize(comp: u8, prec: u8) -> u8 {
-    if prec == 0 { return 0; }
+    if prec == 0 {
+        return 0;
+    }
     let rnd = (comp as u16 + (1u16 << (7 - prec))).min(255);
     (rnd >> (8 - prec)) as u8
 }
 
 fn unquantize(comp: u8, prec: u8) -> u8 {
-    if prec == 0 { return 0; }
+    if prec == 0 {
+        return 0;
+    }
     let c = (comp as u16) << (8 - prec);
     (c | (c >> prec)) as u8
 }
@@ -318,7 +441,9 @@ fn decode_bc7_block(blk: &[u8], out: &mut [u8; 64]) {
     let mut leading_zeros = 0u8;
     while r.pos < 128 && r.bit() == 0 {
         leading_zeros += 1;
-        if leading_zeros >= 8 { break; }
+        if leading_zeros >= 8 {
+            break;
+        }
     }
     if leading_zeros < 8 {
         mode = leading_zeros;
@@ -340,7 +465,9 @@ fn decode_bc7_block(blk: &[u8], out: &mut [u8; 64]) {
     // Re-parse from the beginning
     let mut r = BitReader::new(blk);
     // Skip mode bits: (mode) zeros + 1 one
-    for _ in 0..=mode { r.bit(); }
+    for _ in 0..=mode {
+        r.bit();
+    }
 
     let partitions = md.partitions as usize;
     let num_endpoints = (partitions + 1) * 2;
@@ -411,10 +538,10 @@ fn decode_bc7_block(blk: &[u8], out: &mut [u8; 64]) {
         for ep in 0..num_endpoints {
             // Determine P-bit index based on mode
             let pi = match mode {
-                1 => ep / 2,  // shared P-bit per subset (2 P-bits, 4 endpoints)
-                0 => ep,      // unique P-bit per endpoint (6 P-bits, 6 endpoints)
-                6 => ep,      // unique P-bit per endpoint (2 P-bits, 2 endpoints)
-                3 | 7 => ep,  // unique P-bit per endpoint (4 P-bits, 4 endpoints)
+                1 => ep / 2, // shared P-bit per subset (2 P-bits, 4 endpoints)
+                0 => ep,     // unique P-bit per endpoint (6 P-bits, 6 endpoints)
+                6 => ep,     // unique P-bit per endpoint (2 P-bits, 2 endpoints)
+                3 | 7 => ep, // unique P-bit per endpoint (4 P-bits, 4 endpoints)
                 _ => 0,
             };
             let pi = pi.min(md.pbits as usize - 1);
@@ -436,7 +563,10 @@ fn decode_bc7_block(blk: &[u8], out: &mut [u8; 64]) {
 
     // Unquantize endpoints
     let prec_with_p = [
-        md.prec_with_p_r, md.prec_with_p_g, md.prec_with_p_b, md.prec_with_p_a,
+        md.prec_with_p_r,
+        md.prec_with_p_g,
+        md.prec_with_p_b,
+        md.prec_with_p_a,
     ];
     for ep in 0..num_endpoints {
         for c in 0..4 {
@@ -447,20 +577,36 @@ fn decode_bc7_block(blk: &[u8], out: &mut [u8; 64]) {
     }
 
     // Read color indices
-    let index_prec = if index_mode == 0 { md.index_prec } else { md.index_prec2 };
+    let index_prec = if index_mode == 0 {
+        md.index_prec
+    } else {
+        md.index_prec2
+    };
     let mut color_idx = [0u8; 16];
     for i in 0..16 {
         let is_fix = is_fixup(partitions, shape, i);
-        let n_bits = if is_fix { (index_prec - 1) as usize } else { index_prec as usize };
+        let n_bits = if is_fix {
+            (index_prec - 1) as usize
+        } else {
+            index_prec as usize
+        };
         color_idx[i] = r.bits(n_bits) as u8;
     }
 
     // Read alpha indices
-    let alpha_prec = if index_mode == 0 { md.index_prec2 } else { md.index_prec };
+    let alpha_prec = if index_mode == 0 {
+        md.index_prec2
+    } else {
+        md.index_prec
+    };
     let mut alpha_idx = [0u8; 16];
     if alpha_prec > 0 {
         for i in 0..16 {
-            let n_bits = if i == 0 { (alpha_prec - 1) as usize } else { alpha_prec as usize };
+            let n_bits = if i == 0 {
+                (alpha_prec - 1) as usize
+            } else {
+                alpha_prec as usize
+            };
             alpha_idx[i] = r.bits(n_bits) as u8;
         }
     }
@@ -505,13 +651,18 @@ fn decode_bc7_block(blk: &[u8], out: &mut [u8; 64]) {
             cw
         };
 
-        let out_r = ((ca[0] as u32 * (WEIGHT_MAX - cw) + cb[0] as u32 * cw + WEIGHT_ROUND) >> WEIGHT_SHIFT) as u8;
-        let out_g = ((ca[1] as u32 * (WEIGHT_MAX - cw) + cb[1] as u32 * cw + WEIGHT_ROUND) >> WEIGHT_SHIFT) as u8;
-        let out_b = ((ca[2] as u32 * (WEIGHT_MAX - cw) + cb[2] as u32 * cw + WEIGHT_ROUND) >> WEIGHT_SHIFT) as u8;
+        let out_r = ((ca[0] as u32 * (WEIGHT_MAX - cw) + cb[0] as u32 * cw + WEIGHT_ROUND)
+            >> WEIGHT_SHIFT) as u8;
+        let out_g = ((ca[1] as u32 * (WEIGHT_MAX - cw) + cb[1] as u32 * cw + WEIGHT_ROUND)
+            >> WEIGHT_SHIFT) as u8;
+        let out_b = ((ca[2] as u32 * (WEIGHT_MAX - cw) + cb[2] as u32 * cw + WEIGHT_ROUND)
+            >> WEIGHT_SHIFT) as u8;
         let out_a = if alpha_prec > 0 {
-            ((ca[3] as u32 * (WEIGHT_MAX - aw) + cb[3] as u32 * aw + WEIGHT_ROUND) >> WEIGHT_SHIFT) as u8
+            ((ca[3] as u32 * (WEIGHT_MAX - aw) + cb[3] as u32 * aw + WEIGHT_ROUND) >> WEIGHT_SHIFT)
+                as u8
         } else if md.prec_a > 0 {
-            ((ca[3] as u32 * (WEIGHT_MAX - cw) + cb[3] as u32 * cw + WEIGHT_ROUND) >> WEIGHT_SHIFT) as u8
+            ((ca[3] as u32 * (WEIGHT_MAX - cw) + cb[3] as u32 * cw + WEIGHT_ROUND) >> WEIGHT_SHIFT)
+                as u8
         } else {
             255
         };
@@ -561,8 +712,10 @@ fn encode_bc7_block(block: &[[u8; 4]]) -> [u8; 16] {
     ];
 
     // Compute P-bits (LSB of 8-bit value before quantization)
-    let pbit0 = (min_c[0] & 1) | ((min_c[1] & 1) << 1) | ((min_c[2] & 1) << 2) | ((min_c[3] & 1) << 3);
-    let pbit1 = (max_c[0] & 1) | ((max_c[1] & 1) << 1) | ((max_c[2] & 1) << 2) | ((max_c[3] & 1) << 3);
+    let pbit0 =
+        (min_c[0] & 1) | ((min_c[1] & 1) << 1) | ((min_c[2] & 1) << 2) | ((min_c[3] & 1) << 3);
+    let pbit1 =
+        (max_c[0] & 1) | ((max_c[1] & 1) << 1) | ((max_c[2] & 1) << 2) | ((max_c[3] & 1) << 3);
     // P-bits are stored as 2 bits (one per endpoint)
     let pb0 = if (pbit0 & 0b1010) != 0 { 1 } else { 0 }; // Majority of LSBs for endpoint 0
     let pb1 = if (pbit1 & 0b1010) != 0 { 1 } else { 0 }; // Majority of LSBs for endpoint 1
@@ -589,10 +742,14 @@ fn encode_bc7_block(block: &[[u8; 4]]) -> [u8; 16] {
         let mut best_err = u32::MAX;
         for idx in 0..16u8 {
             let w = WEIGHTS_4[idx as usize];
-            let pr = (uq_ep0[0] as u32 * (WEIGHT_MAX - w) + uq_ep1[0] as u32 * w + WEIGHT_ROUND) >> WEIGHT_SHIFT;
-            let pg = (uq_ep0[1] as u32 * (WEIGHT_MAX - w) + uq_ep1[1] as u32 * w + WEIGHT_ROUND) >> WEIGHT_SHIFT;
-            let pb = (uq_ep0[2] as u32 * (WEIGHT_MAX - w) + uq_ep1[2] as u32 * w + WEIGHT_ROUND) >> WEIGHT_SHIFT;
-            let pa = (uq_ep0[3] as u32 * (WEIGHT_MAX - w) + uq_ep1[3] as u32 * w + WEIGHT_ROUND) >> WEIGHT_SHIFT;
+            let pr = (uq_ep0[0] as u32 * (WEIGHT_MAX - w) + uq_ep1[0] as u32 * w + WEIGHT_ROUND)
+                >> WEIGHT_SHIFT;
+            let pg = (uq_ep0[1] as u32 * (WEIGHT_MAX - w) + uq_ep1[1] as u32 * w + WEIGHT_ROUND)
+                >> WEIGHT_SHIFT;
+            let pb = (uq_ep0[2] as u32 * (WEIGHT_MAX - w) + uq_ep1[2] as u32 * w + WEIGHT_ROUND)
+                >> WEIGHT_SHIFT;
+            let pa = (uq_ep0[3] as u32 * (WEIGHT_MAX - w) + uq_ep1[3] as u32 * w + WEIGHT_ROUND)
+                >> WEIGHT_SHIFT;
 
             let dr = px[0] as i32 - pr as i32;
             let dg = px[1] as i32 - pg as i32;
@@ -613,7 +770,9 @@ fn encode_bc7_block(block: &[[u8; 4]]) -> [u8; 16] {
     let mut w = BitWriter::new(&mut out);
 
     // Mode 6: 6 zero bits + 1 one bit = 7 bits total for mode
-    for _ in 0..6 { w.write_bit(0); }
+    for _ in 0..6 {
+        w.write_bit(0);
+    }
     w.write_bit(1);
 
     // No partition bits, no rotation bits, no index mode bits for mode 6
@@ -651,19 +810,11 @@ const BC7_LAYOUT: BlockLayout = BlockLayout::new(4, 4, 16);
 decode_blocks!(decode_bc7, U8, BC7_LAYOUT, decode_bc7_block);
 
 /// Encode RGBA8 pixels to BC7.
-pub fn encode_bc7(
-    pixels: &PixelDatas,
-    width: usize,
-    height: usize,
-) -> PixelDatas {
+pub fn encode_bc7(pixels: &PixelDatas, width: usize, height: usize) -> PixelDatas {
     encode_bc7_inner(pixels, width, height)
 }
 
-fn encode_bc7_inner(
-    pixels: &PixelDatas,
-    width: usize,
-    height: usize,
-) -> PixelDatas {
+fn encode_bc7_inner(pixels: &PixelDatas, width: usize, height: usize) -> PixelDatas {
     // Convert input to U8
     let rgba: std::borrow::Cow<'_, [u8]> = match pixels {
         PixelDatas::U8(data) => std::borrow::Cow::Borrowed(data.as_slice()),
@@ -678,31 +829,33 @@ fn encode_bc7_inner(
     let by = (height + block_h - 1) / block_h;
     let mut out = vec![0u8; bx * by * block_size];
 
-    out.par_chunks_mut(block_size).enumerate().for_each(|(i, chunk)| {
-        let bx_i = i % bx;
-        let by_i = i / bx;
+    out.par_chunks_mut(block_size)
+        .enumerate()
+        .for_each(|(i, chunk)| {
+            let bx_i = i % bx;
+            let by_i = i / bx;
 
-        // Extract 4×4 block
-        let mut block = [[0u8; 4]; 16];
-        for py in 0..block_h {
-            for px in 0..block_w {
-                let sx = bx_i * block_w + px;
-                let sy = by_i * block_h + py;
-                let bi = py * block_w + px;
-                if sx < width && sy < height {
-                    let src = (sy * width + sx) * 4;
-                    for c in 0..4 {
-                        block[bi][c] = rgba[src + c];
+            // Extract 4×4 block
+            let mut block = [[0u8; 4]; 16];
+            for py in 0..block_h {
+                for px in 0..block_w {
+                    let sx = bx_i * block_w + px;
+                    let sy = by_i * block_h + py;
+                    let bi = py * block_w + px;
+                    if sx < width && sy < height {
+                        let src = (sy * width + sx) * 4;
+                        for c in 0..4 {
+                            block[bi][c] = rgba[src + c];
+                        }
+                    } else {
+                        block[bi] = [0u8; 4];
                     }
-                } else {
-                    block[bi] = [0u8; 4];
                 }
             }
-        }
 
-        let encoded = encode_bc7_block(&block);
-        chunk.copy_from_slice(&encoded);
-    });
+            let encoded = encode_bc7_block(&block);
+            chunk.copy_from_slice(&encoded);
+        });
 
     PixelDatas::U8(out)
 }

@@ -16,6 +16,7 @@ use crate::{
     },
     graphics::{
         attachment::{Attachment, AttachmentFormat, AttachmentLoadAction, AttachmentStoreAction},
+        camera::Camera,
         compare_function::CompareFunction,
         egui_texture_handle::EguiTextureHandle,
         graphics_graph::{
@@ -30,6 +31,7 @@ use crate::{
     },
     kairos_editor::{
         asset_registry::AssetKind,
+        camera::{OrbitState, OrbitTuning},
         project_path_tree::ProjectPathGraph,
         ui::{
             Message, Messager, UIReader,
@@ -38,13 +40,11 @@ use crate::{
             inspector::Inspector,
             paths,
             project_window::ProjectWindow,
-            scene_camera::SceneCamera,
         },
     },
     math::{self, Vector, float3, float4x4},
     spatial::AABB,
 };
-
 
 #[cfg(test)]
 mod test;
@@ -198,7 +198,8 @@ impl Thumbnail {
             texture.width,
             texture.height,
             texture.format,
-        ).convert_to_u8();
+        )
+        .convert_to_u8();
         let rgba_bytes = rgba.as_bytes().to_vec();
         let w = texture.width as usize;
         let h = texture.height as usize;
@@ -227,14 +228,16 @@ struct PreviewState {
     egui_texture_handle: Option<EguiTextureHandle>,
     bind_receiver: Option<tokio::sync::oneshot::Receiver<EguiTextureHandle>>,
     size: (u32, u32),
-    camera: SceneCamera,
+    camera: Camera,
+    orbit: OrbitState,
+    tuning: OrbitTuning,
     /// 取景所用预览网格的下标（切换网格后按新 AABB 重取景）
     mesh_index: usize,
 }
 
 impl PreviewState {
-    /// 由网格 AABB 计算取景相机（创建与切换网格重取景共用）。
-    fn framing_camera(aabb: AABB, style: &MaterialInspectorStyle) -> SceneCamera {
+    /// 由网格 AABB 计算取景相机 orbit（创建与切换网格重取景共用）。
+    fn framing_orbit(aabb: AABB, style: &MaterialInspectorStyle) -> OrbitState {
         let center = (aabb.min + aabb.max) * 0.5;
         let size = aabb.max - aabb.min;
         let max_extent = size.x().max(size.y()).max(size.z()).max(0.001);
@@ -243,20 +246,19 @@ impl PreviewState {
         let direction = style.camera_direction.normalize();
         let eye = center - direction * distance;
 
-        SceneCamera::new(
-            eye,
-            center,
-            style.camera_fov,
-            0.03,
-            3000.0,
-            style.camera_orbit_speed,
-            style.camera_zoom_speed,
-            0.0,
-            0.0,
-            0.0,
-            style.camera_min_distance,
-            style.camera_max_distance,
-        )
+        OrbitState::from_eye_pivot(eye, center)
+    }
+
+    fn tuning(style: &MaterialInspectorStyle) -> OrbitTuning {
+        OrbitTuning {
+            orbit_speed: style.camera_orbit_speed,
+            zoom_speed: style.camera_zoom_speed,
+            fly_acce_duration: 0.0,
+            fly_min_speed: 0.0,
+            fly_max_speed: 0.0,
+            min_distance: style.camera_min_distance,
+            max_distance: style.camera_max_distance,
+        }
     }
 
     fn new(mesh_index: usize, aabb: AABB, style: &MaterialInspectorStyle) -> Self {
@@ -265,7 +267,9 @@ impl PreviewState {
             size: (size, size),
             egui_texture_handle: None,
             bind_receiver: None,
-            camera: Self::framing_camera(aabb, style),
+            camera: Camera::new(style.camera_fov, 0.03, 3000.0),
+            orbit: Self::framing_orbit(aabb, style),
+            tuning: Self::tuning(style),
             mesh_index,
         }
     }
@@ -916,7 +920,7 @@ impl MaterialInspector {
         });
         // 切换网格后按新网格 AABB 重新取景（相机重置，egui 绑定通道保留）
         if preview.mesh_index != current_index {
-            preview.camera = PreviewState::framing_camera(mesh.compute_aabb(), &self.model.style);
+            preview.orbit = PreviewState::framing_orbit(mesh.compute_aabb(), &self.model.style);
             preview.mesh_index = current_index;
         }
 
@@ -945,18 +949,17 @@ impl MaterialInspector {
         let width = (rect.width() * pixels_per_point).round().max(1.0) as u32;
         let height = (rect.height() * pixels_per_point).round().max(1.0) as u32;
         preview.size = (width, height);
-        preview.camera.aspect = width as f32 / height as f32;
 
         // ---- Orbit：拖拽旋转 ----
         if response.dragged() {
             let delta = -response.drag_delta();
-            preview.camera.orbit(delta.x, delta.y, dt);
+            preview.orbit.orbit(delta.x, delta.y, &preview.tuning, dt);
         }
 
         // ---- Zoom：滚轮缩放 ----
         let scroll_delta = ui.input(|i| i.smooth_scroll_delta);
         if response.hovered() && scroll_delta.y != 0.0 {
-            preview.camera.zoom(scroll_delta.y, dt);
+            preview.orbit.zoom(scroll_delta.y, &preview.tuning, dt);
         }
 
         painter.image(
@@ -1215,7 +1218,10 @@ impl Inspector for MaterialInspector {
         };
 
         let (width, height) = preview.size;
-        let vp = preview.camera.view_projection();
+        let vp = preview.camera.get_view_projection_matrix(
+            preview.orbit.transform(),
+            width as f32 / height as f32,
+        );
 
         let mut command = GraphicsCommand::new(1, 1, 1, 3);
 

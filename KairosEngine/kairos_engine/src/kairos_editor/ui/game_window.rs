@@ -7,19 +7,21 @@ use toml::from_str;
 use crate::{
     graphics::{
         attachment::{Attachment, AttachmentLoadAction, AttachmentStoreAction},
-        camera::Camera,
+        camera::CameraView,
+        drawer::DrawCommand,
         egui_texture_handle::EguiTextureHandle,
         graphics_graph::{
             GraphicsCommand,
             graphics_node::{ColorAttachmentBind, DepthAttachmentBind},
         },
+        view_port::GameView,
     },
     kairos_editor::{
         Engine,
         ui::{Drawer, Message, UIReader, paths},
     },
     kairos_game::KairosGame,
-    spatial::Transform,
+    math::float4x4,
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -30,8 +32,6 @@ struct GameWindowStyle {
 struct GameWindowModel {
     style: GameWindowStyle,
     rt_handle: Option<EguiTextureHandle>,
-    width: u32,
-    height: u32,
     egui_bind_tex_recever: Option<tokio::sync::oneshot::Receiver<EguiTextureHandle>>,
 }
 
@@ -61,8 +61,6 @@ impl GameWindowModel {
         Ok(Self {
             style,
             rt_handle: None,
-            width: 1,
-            height: 1,
             egui_bind_tex_recever: None,
         })
     }
@@ -93,7 +91,7 @@ impl Drawer for GameWindow {
         ui: &mut egui::Ui,
         _reader: &UIReader,
         messager: &mut super::Messager,
-        _engine: &Engine,
+        engine: &Engine,
         _log: &mut crate::log::Log,
     ) {
         egui::Frame::NONE
@@ -139,7 +137,10 @@ impl Drawer for GameWindow {
         let width = (rect.width() * pixels_per_point).round().max(1.0) as u32;
         let height = (rect.height() * pixels_per_point).round().max(1.0) as u32;
 
-        if width != self.model.width || height != self.model.height {
+        // The view resource is the only place the size is stored; write back
+        // only on a real change (the message handler owns the write).
+        let size = engine.world.resource::<GameView>().size;
+        if size.width != width || size.height != height {
             messager.send(Message::UpdateGameWindowSize(width, height));
         }
 
@@ -178,7 +179,7 @@ impl Drawer for GameWindow {
     fn render(
         &self,
         engine: &mut Engine,
-        game: &mut KairosGame,
+        _game: &mut KairosGame,
         messager: &mut super::Messager,
     ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {
         let mut graphics_command = GraphicsCommand::new(16, 2, 4, 16);
@@ -187,19 +188,25 @@ impl Drawer for GameWindow {
             messager.send(Message::GameWindowTryReceTextureId);
         }
 
-        // draw
-        let width = self.model.width;
-        let height = self.model.height;
+        // Thin play layer: everything comes from the view resource, nothing is
+        // queried out of the world. A closed window (`size == 0`) renders
+        // nothing at all — no attachment, no stale frame.
+        let view = engine.world.resource::<GameView>();
+        let size = view.size;
+        if !size.is_renderable() {
+            return None;
+        }
+
         let game_view = Attachment::new(
             Some("GameWindow Attachment"),
-            width,
-            height,
+            size.width,
+            size.height,
             crate::graphics::attachment::AttachmentFormat::RGBA8UNorm,
         );
         let game_depth_stencil = Attachment::new(
             Some("GameWindow DepthStencil"),
-            width,
-            height,
+            size.width,
+            size.height,
             crate::graphics::attachment::AttachmentFormat::D24S8,
         );
         let game_view_id = graphics_command.create_color_attachment(game_view);
@@ -221,43 +228,51 @@ impl Drawer for GameWindow {
             )),
         );
 
-        if let Some((transform, mut camera)) = engine
-            .world
-            .query_mut::<(&Transform, &mut Camera)>()
-            .into_iter()
-            .next()
-        {
-            camera.aspect = width as f32 / height as f32;
-            let vp_id = graphics_command
-                .set_view_projection_matrix(camera.get_view_projection_matrix(*transform));
-            graphics_command.begin_render_pass(
-                Some("GameWindow Render Pass"),
-                vec![game_view_bind],
-                Some(game_depth_bind),
-                vp_id,
-                4,
+        // The view projection lives on the bound camera entity, not on the view
+        // resource. `None` means no camera is bound (or the bound entity is
+        // gone / derived nothing this frame). `draws` is gated on size alone, so
+        // it can be non-empty with no projection — drain it only when there is
+        // one, and fall back to an identity VP for the clear-only pass.
+        let view_projection = view
+            .camera
+            .and_then(|camera| engine.world.entity(camera).get::<CameraView>())
+            .and_then(|derived| derived.view_projection);
+        let (view_projection, draws): (float4x4, &[DrawCommand]) = match view_projection {
+            Some(view_projection) => (view_projection, &view.draws),
+            None => (float4x4::IDENTITY, &[]),
+        };
+        let vp_id = graphics_command.set_view_projection_matrix(view_projection);
+
+        graphics_command.begin_render_pass(
+            Some("GameWindow Render Pass"),
+            vec![game_view_bind],
+            Some(game_depth_bind),
+            vp_id,
+            draws.len(),
+        );
+
+        for draw in draws {
+            graphics_command.draw(
+                draw.mesh.clone(),
+                draw.material.clone(),
+                draw.local_to_world,
             );
+        }
 
-            game.render(engine, &mut graphics_command);
+        graphics_command.end_render_pass();
 
-            graphics_command.end_render_pass();
-
+        // Only create a new egui bind if the previous one has been consumed.
+        if self.model.egui_bind_tex_recever.is_none() {
             let (egui_bind_tex_sender, egui_bind_tex_recever) = tokio::sync::oneshot::channel();
             messager.send(Message::RegisteGameWindowViewBind(egui_bind_tex_recever));
             graphics_command.bind_attachment_to_egui(game_view_id, egui_bind_tex_sender);
-            return Some(graphics_command);
-        };
+        }
 
-        None
+        Some(graphics_command)
     }
 }
 
 impl GameWindow {
-    pub fn update_size(&mut self, width: u32, height: u32) {
-        self.model.width = width;
-        self.model.height = height;
-    }
-
     pub fn register_view_bind(
         &mut self,
         recever: tokio::sync::oneshot::Receiver<EguiTextureHandle>,

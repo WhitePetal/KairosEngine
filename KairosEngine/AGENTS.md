@@ -23,3 +23,5 @@ Five canonical labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-f
 Single-context layout: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
 
 ### Testing after implementation
+
+Test only the crate you changed: `cargo test-crate <crate>`. Never run bare `cargo test` from the workspace root, and do not run `cargo test-full` (~183s) — the full suite is the merge gate, not your verification step. If you changed a crate that others depend on, add `cargo check --workspace --all-targets`. See `docs/agents/testing.md`.

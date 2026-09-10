@@ -1,15 +1,22 @@
+use kairos_collections::TypeIdMap;
+
 use crate::{
     asset_loader::assets::{
         AssetHandle, AssetsServer, MaterialAssetsSystem, SerializedMaterialAssetsSystem,
         TomlTableAssetsSystem, asset::TextAssetsSystem,
     },
     graphics::{
-        egui_texture_handle::EguiTextureHandle, graphics_graph::GraphicsCommand,
-        material::SerializedMaterial, mesh::Mesh, render_state::RenderState,
+        egui_texture_handle::EguiTextureHandle,
+        graphics_graph::GraphicsCommand,
+        material::SerializedMaterial,
+        mesh::Mesh,
+        render_state::RenderState,
+        view_port::{GameView, SceneView, ViewportSize},
     },
     kairos_editor::{
         Engine,
         asset_registry::AssetKind,
+        camera::SceneViewInput,
         editor_assets::{TextureExt, TextureExtAssetsSystem},
         ui::{
             game_window::GameWindow,
@@ -27,7 +34,7 @@ use crate::{
     },
     kairos_game::KairosGame,
     log::Log,
-    types::TypeIdMap,
+    math::float2,
 };
 use egui::{self};
 use std::{
@@ -75,7 +82,6 @@ pub mod native_dialog;
 pub mod paths;
 pub mod preferences_window;
 pub mod project_window;
-pub mod scene_camera;
 pub mod scene_window;
 pub mod tool_bar;
 pub mod ui_style_fields;
@@ -115,12 +121,12 @@ pub enum Message {
     RegisteGameWindowViewBind(tokio::sync::oneshot::Receiver<EguiTextureHandle>),
     GameWindowTryReceTextureId,
 
-    /// SceneCamera orbit (dx, dy, dt) in pixels
-    SceneCameraOrbit(f32, f32, f32),
-    /// Camera zoom (delta, dt)
-    CameraZoom(f32, f32),
-    /// Camera fly movement (right, forward, dt) each in [-1, 0, 1]
-    CameraFly(f32, f32, f32),
+    /// Scene view camera orbit (dx, dy) in pixels
+    SceneViewOrbit(f32, f32),
+    /// Scene view camera zoom (delta)
+    SceneViewZoom(f32),
+    /// Scene view camera fly movement (right, forward) each in [-1, 0, 1]
+    SceneViewFly(f32, f32),
 
     /// ProjectWindow: 选中节点（NodeIndex::index()）
     SelectProjectNode(Option<petgraph::graph::NodeIndex>),
@@ -502,6 +508,11 @@ impl Context {
                             );
                         }
                     }
+                    // The window owns its style DTO, so mapping the freshly
+                    // written style onto the live camera entity is also its job.
+                    if let Some(scene_window) = self.get_window_mut::<SceneWindow>() {
+                        scene_window.apply_camera_style(&mut engine.world);
+                    }
                 }
                 Message::OpenConsoleTab => {
                     self.show_tab::<ConsoleWindow>(
@@ -627,14 +638,23 @@ impl Context {
                 }
                 Message::OpenSceneTab => {
                     self.show_tab::<SceneWindow>(&mut engine.assets_server, ui, self.layout.center);
+                    // The editor camera is a world entity owned by the view: spawn
+                    // it on first open, keyed on the view's binding so reopening
+                    // reuses it instead of spawning a second camera. It is never
+                    // despawned, so the view survives close/reopen.
+                    if let Some(scene_window) = self.get_window_mut::<SceneWindow>() {
+                        scene_window.spawn_editor_camera(&mut engine.world);
+                    }
                 }
                 Message::CloseSceneTab => {
                     self.close_drawer::<SceneWindow>();
+                    // A closed window renders nothing: `size == 0` makes the play
+                    // layer skip it entirely, so no attachment and no stale frame.
+                    // The camera entity is deliberately left alive.
+                    engine.world.resource_mut::<SceneView>().size = ViewportSize::new(0, 0);
                 }
                 Message::UpdateSceneWindowSize(width, height) => {
-                    if let Some(scene_window) = self.get_window_mut::<SceneWindow>() {
-                        scene_window.update_size(width, height);
-                    }
+                    engine.world.resource_mut::<SceneView>().size = ViewportSize::new(width, height);
                 }
                 Message::RegisteSceneWindowViewBind(recever) => {
                     if let Some(scene_window) = self.get_window_mut::<SceneWindow>() {
@@ -651,11 +671,12 @@ impl Context {
                 }
                 Message::CloseGameTab => {
                     self.close_drawer::<GameWindow>();
+                    // A closed window renders nothing: `size == 0` makes the play
+                    // layer skip it entirely, so no attachment and no stale frame.
+                    engine.world.resource_mut::<GameView>().size = ViewportSize::new(0, 0);
                 }
                 Message::UpdateGameWindowSize(width, height) => {
-                    if let Some(game_window) = self.get_window_mut::<GameWindow>() {
-                        game_window.update_size(width, height);
-                    }
+                    engine.world.resource_mut::<GameView>().size = ViewportSize::new(width, height);
                 }
                 Message::RegisteGameWindowViewBind(receiver) => {
                     if let Some(game_window) = self.get_window_mut::<GameWindow>() {
@@ -667,20 +688,17 @@ impl Context {
                         game_window.try_rece_texture_id();
                     }
                 }
-                Message::SceneCameraOrbit(dx, dy, dt) => {
-                    if let Some(scene_window) = self.get_window_mut::<SceneWindow>() {
-                        scene_window.on_camera_orbit(dx, dy, dt);
-                    }
+                Message::SceneViewOrbit(dx, dy) => {
+                    let mut input = engine.world.get_resource_or_init::<SceneViewInput>();
+                    input.orbit = input.orbit + float2::new(dx, dy);
                 }
-                Message::CameraZoom(delta, dt) => {
-                    if let Some(scene_window) = self.get_window_mut::<SceneWindow>() {
-                        scene_window.on_camera_zoom(delta, dt);
-                    }
+                Message::SceneViewZoom(delta) => {
+                    let mut input = engine.world.get_resource_or_init::<SceneViewInput>();
+                    input.zoom += delta;
                 }
-                Message::CameraFly(right, forward, dt) => {
-                    if let Some(scene_window) = self.get_window_mut::<SceneWindow>() {
-                        scene_window.on_camera_fly(right, forward, dt);
-                    }
+                Message::SceneViewFly(right, forward) => {
+                    let mut input = engine.world.get_resource_or_init::<SceneViewInput>();
+                    input.fly = input.fly + float2::new(right, forward);
                 }
                 Message::DocumentInspectorSave(path, handle, content) => {
                     DocumentInspector::save_content(

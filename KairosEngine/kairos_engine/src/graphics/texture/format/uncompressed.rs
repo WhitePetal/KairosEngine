@@ -756,7 +756,12 @@ fn decode_r32u_impl(data: &[u8], width: usize, height: usize) -> Vec<f32> {
             for (j, rgba) in chunk.chunks_mut(4).enumerate() {
                 let abs_pixel = pixel_base + j;
                 let src_idx = abs_pixel * 4;
-                let r = u32::from_le_bytes([data[src_idx], data[src_idx + 1], data[src_idx + 2], data[src_idx + 3]]);
+                let r = u32::from_le_bytes([
+                    data[src_idx],
+                    data[src_idx + 1],
+                    data[src_idx + 2],
+                    data[src_idx + 3],
+                ]);
                 rgba[0] = r as f32;
                 rgba[1] = 0.0;
                 rgba[2] = 0.0;
@@ -926,8 +931,18 @@ fn decode_rg32u_impl(data: &[u8], width: usize, height: usize) -> Vec<f32> {
             for (j, rgba) in chunk.chunks_mut(4).enumerate() {
                 let abs_pixel = pixel_base + j;
                 let src_idx = abs_pixel * 8;
-                let r = u32::from_le_bytes([data[src_idx], data[src_idx + 1], data[src_idx + 2], data[src_idx + 3]]);
-                let g = u32::from_le_bytes([data[src_idx + 4], data[src_idx + 5], data[src_idx + 6], data[src_idx + 7]]);
+                let r = u32::from_le_bytes([
+                    data[src_idx],
+                    data[src_idx + 1],
+                    data[src_idx + 2],
+                    data[src_idx + 3],
+                ]);
+                let g = u32::from_le_bytes([
+                    data[src_idx + 4],
+                    data[src_idx + 5],
+                    data[src_idx + 6],
+                    data[src_idx + 7],
+                ]);
                 rgba[0] = r as f32;
                 rgba[1] = g as f32;
                 rgba[2] = 0.0;
@@ -991,8 +1006,18 @@ fn decode_rg32s_impl(data: &[i8], width: usize, height: usize) -> Vec<f32> {
             for (j, rgba) in chunk.chunks_mut(4).enumerate() {
                 let abs_pixel = pixel_base + j;
                 let src_idx = abs_pixel * 8;
-                let r = i32::from_le_bytes([data[src_idx] as u8, data[src_idx + 1] as u8, data[src_idx + 2] as u8, data[src_idx + 3] as u8]);
-                let g = i32::from_le_bytes([data[src_idx + 4] as u8, data[src_idx + 5] as u8, data[src_idx + 6] as u8, data[src_idx + 7] as u8]);
+                let r = i32::from_le_bytes([
+                    data[src_idx] as u8,
+                    data[src_idx + 1] as u8,
+                    data[src_idx + 2] as u8,
+                    data[src_idx + 3] as u8,
+                ]);
+                let g = i32::from_le_bytes([
+                    data[src_idx + 4] as u8,
+                    data[src_idx + 5] as u8,
+                    data[src_idx + 6] as u8,
+                    data[src_idx + 7] as u8,
+                ]);
                 rgba[0] = r as f32;
                 rgba[1] = g as f32;
                 rgba[2] = 0.0;
@@ -1105,10 +1130,30 @@ fn decode_rgba32u_impl(data: &[u8], width: usize, height: usize) -> Vec<f32> {
             for (j, rgba) in chunk.chunks_mut(4).enumerate() {
                 let abs_pixel = pixel_base + j;
                 let src_idx = abs_pixel * 16;
-                let r = u32::from_le_bytes([data[src_idx], data[src_idx + 1], data[src_idx + 2], data[src_idx + 3]]);
-                let g = u32::from_le_bytes([data[src_idx + 4], data[src_idx + 5], data[src_idx + 6], data[src_idx + 7]]);
-                let b = u32::from_le_bytes([data[src_idx + 8], data[src_idx + 9], data[src_idx + 10], data[src_idx + 11]]);
-                let a = u32::from_le_bytes([data[src_idx + 12], data[src_idx + 13], data[src_idx + 14], data[src_idx + 15]]);
+                let r = u32::from_le_bytes([
+                    data[src_idx],
+                    data[src_idx + 1],
+                    data[src_idx + 2],
+                    data[src_idx + 3],
+                ]);
+                let g = u32::from_le_bytes([
+                    data[src_idx + 4],
+                    data[src_idx + 5],
+                    data[src_idx + 6],
+                    data[src_idx + 7],
+                ]);
+                let b = u32::from_le_bytes([
+                    data[src_idx + 8],
+                    data[src_idx + 9],
+                    data[src_idx + 10],
+                    data[src_idx + 11],
+                ]);
+                let a = u32::from_le_bytes([
+                    data[src_idx + 12],
+                    data[src_idx + 13],
+                    data[src_idx + 14],
+                    data[src_idx + 15],
+                ]);
                 rgba[0] = r as f32;
                 rgba[1] = g as f32;
                 rgba[2] = b as f32;
@@ -1184,10 +1229,30 @@ fn decode_rgba32s_impl(data: &[i8], width: usize, height: usize) -> Vec<f32> {
             for (j, rgba) in chunk.chunks_mut(4).enumerate() {
                 let abs_pixel = pixel_base + j;
                 let src_idx = abs_pixel * 16;
-                let r = i32::from_le_bytes([data[src_idx] as u8, data[src_idx + 1] as u8, data[src_idx + 2] as u8, data[src_idx + 3] as u8]);
-                let g = i32::from_le_bytes([data[src_idx + 4] as u8, data[src_idx + 5] as u8, data[src_idx + 6] as u8, data[src_idx + 7] as u8]);
-                let b = i32::from_le_bytes([data[src_idx + 8] as u8, data[src_idx + 9] as u8, data[src_idx + 10] as u8, data[src_idx + 11] as u8]);
-                let a = i32::from_le_bytes([data[src_idx + 12] as u8, data[src_idx + 13] as u8, data[src_idx + 14] as u8, data[src_idx + 15] as u8]);
+                let r = i32::from_le_bytes([
+                    data[src_idx] as u8,
+                    data[src_idx + 1] as u8,
+                    data[src_idx + 2] as u8,
+                    data[src_idx + 3] as u8,
+                ]);
+                let g = i32::from_le_bytes([
+                    data[src_idx + 4] as u8,
+                    data[src_idx + 5] as u8,
+                    data[src_idx + 6] as u8,
+                    data[src_idx + 7] as u8,
+                ]);
+                let b = i32::from_le_bytes([
+                    data[src_idx + 8] as u8,
+                    data[src_idx + 9] as u8,
+                    data[src_idx + 10] as u8,
+                    data[src_idx + 11] as u8,
+                ]);
+                let a = i32::from_le_bytes([
+                    data[src_idx + 12] as u8,
+                    data[src_idx + 13] as u8,
+                    data[src_idx + 14] as u8,
+                    data[src_idx + 15] as u8,
+                ]);
                 rgba[0] = r as f32;
                 rgba[1] = g as f32;
                 rgba[2] = b as f32;
@@ -1292,7 +1357,12 @@ fn encode_rgb10a2_unorm_impl(rgba: &[f32], width: usize, height: usize) -> Vec<u
             let pixel_base = chunk_idx * CHUNK_SIZE;
             for (j, word) in chunk.chunks_mut(4).enumerate() {
                 let src_idx = (pixel_base + j) << 2;
-                let packed = pack_rgb10a2(rgba[src_idx], rgba[src_idx + 1], rgba[src_idx + 2], rgba[src_idx + 3]);
+                let packed = pack_rgb10a2(
+                    rgba[src_idx],
+                    rgba[src_idx + 1],
+                    rgba[src_idx + 2],
+                    rgba[src_idx + 3],
+                );
                 word.copy_from_slice(&packed.to_le_bytes());
             }
         });
@@ -1310,7 +1380,12 @@ fn decode_rgb10a2_unorm_impl(data: &[u8], width: usize, height: usize) -> Vec<f3
             for (j, rgba) in chunk.chunks_mut(4).enumerate() {
                 let abs_pixel = pixel_base + j;
                 let src_idx = abs_pixel * 4;
-                let packed = u32::from_le_bytes([data[src_idx], data[src_idx + 1], data[src_idx + 2], data[src_idx + 3]]);
+                let packed = u32::from_le_bytes([
+                    data[src_idx],
+                    data[src_idx + 1],
+                    data[src_idx + 2],
+                    data[src_idx + 3],
+                ]);
                 let (r, g, b, a) = unpack_rgb10a2(packed);
                 rgba[0] = r;
                 rgba[1] = g;
@@ -1438,7 +1513,8 @@ fn encode_rg11b10_ufloat_impl(rgba: &[f32], width: usize, height: usize) -> Vec<
             let pixel_base = chunk_idx * CHUNK_SIZE;
             for (j, word) in chunk.chunks_mut(4).enumerate() {
                 let src_idx = (pixel_base + j) << 2;
-                let packed = pack_rg11b10_ufloat(rgba[src_idx], rgba[src_idx + 1], rgba[src_idx + 2]);
+                let packed =
+                    pack_rg11b10_ufloat(rgba[src_idx], rgba[src_idx + 1], rgba[src_idx + 2]);
                 word.copy_from_slice(&packed.to_le_bytes());
             }
         });
@@ -1456,7 +1532,12 @@ fn decode_rg11b10_ufloat_impl(data: &[u8], width: usize, height: usize) -> Vec<f
             for (j, rgba) in chunk.chunks_mut(4).enumerate() {
                 let abs_pixel = pixel_base + j;
                 let src_idx = abs_pixel * 4;
-                let packed = u32::from_le_bytes([data[src_idx], data[src_idx + 1], data[src_idx + 2], data[src_idx + 3]]);
+                let packed = u32::from_le_bytes([
+                    data[src_idx],
+                    data[src_idx + 1],
+                    data[src_idx + 2],
+                    data[src_idx + 3],
+                ]);
                 let (r, g, b) = unpack_rg11b10_ufloat(packed);
                 rgba[0] = r;
                 rgba[1] = g;

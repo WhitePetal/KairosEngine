@@ -1090,17 +1090,17 @@ impl RenderPipeline {
             step_mode: VertexStepMode::Vertex,
             attributes: &[
                 VertexAttribute {
-                    offset: 0,
+                    offset: std::mem::offset_of!(Vertex, position) as wgpu::BufferAddress,
                     format: VertexFormat::Float32x4,
                     shader_location: 0,
                 },
                 VertexAttribute {
-                    offset: core::mem::size_of::<float4>() as wgpu::BufferAddress,
+                    offset: std::mem::offset_of!(Vertex, color) as wgpu::BufferAddress,
                     format: VertexFormat::Float32x4,
                     shader_location: 1,
                 },
                 VertexAttribute {
-                    offset: (core::mem::size_of::<float4>() * 2) as wgpu::BufferAddress,
+                    offset: std::mem::offset_of!(Vertex, texcoord) as wgpu::BufferAddress,
                     format: VertexFormat::Float32x2,
                     shader_location: 2,
                 },
