@@ -1,6 +1,6 @@
-# KairosEngine
+# Graphics
 
-A game engine written in Rust. The graphics subsystem manages textures, materials, meshes, shaders and rendering pipelines.
+Textures, materials, meshes, shaders, and the rendering pipeline.
 
 ## Language
 

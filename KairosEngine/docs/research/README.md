@@ -33,3 +33,15 @@
 | File | Topic |
 |---|---|
 | `motion-matching-libraries.md` | 开源 motion matching 实现调研（面向动画系统，0.3.0 排期） |
+
+## Physics
+
+| File | Topic |
+|---|---|
+| `physics-rapier-facts-inventory.md` | 现役 rapier3d 0.33 后端：生命周期、静态 collider、步进 dt 语义事实清点 |
+| `avian-0.7.0/roadmap.md` | **Avian 0.7.0 学习与物理模块重建路线图**（总纲：骨架、里程碑、读码清单、验收、移植决策） |
+| `avian-0.7.0/01-architecture-and-schedules.md` | Avian 插件与调度架构、固定步骨架、`physics_transform` |
+| `avian-0.7.0/02-colliders.md` | Avian `Collider` 子系统：形状、必需组件、碰撞层、collider tree |
+| `avian-0.7.0/03-rigid-bodies-and-dynamics.md` | Avian `RigidBody`、质量属性、力与重力、积分器、求解器、CCD |
+| `avian-0.7.0/04-collision-detection.md` | Avian broad phase / narrow phase / contact types / 事件 / hooks / 空间查询 |
+| `avian-0.7.0/05-bevy-dependency-surface.md` | Avian 对 Bevy 的依赖面清点 + 移植到 `kairos_ecs`/`kairos_math` 的可行性 |

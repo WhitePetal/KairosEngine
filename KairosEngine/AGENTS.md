@@ -20,7 +20,7 @@ Five canonical labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-f
 
 ### Domain docs
 
-Single-context layout: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+Multi-context layout: `CONTEXT-MAP.md` at the repo root points at one `CONTEXT.md` per context (e.g. `kairos_asset/CONTEXT.md`, `kairos_graphics/CONTEXT.md`); `docs/adr/` holds system-wide decisions. See `docs/agents/domain.md`.
 
 ### Testing after implementation
 

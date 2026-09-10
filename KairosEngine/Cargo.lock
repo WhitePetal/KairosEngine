@@ -2617,6 +2617,7 @@ dependencies = [
 name = "kairos_transform"
 version = "0.1.0"
 dependencies = [
+ "derive_more",
  "kairos_ecs",
  "kairos_math",
  "serde",

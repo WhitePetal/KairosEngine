@@ -1,3 +1,4 @@
+use derive_more::From;
 use kairos_ecs::component::Component;
 use kairos_math::{affine, float3, float4x4, quaternion};
 
@@ -23,10 +24,13 @@ use kairos_math::{affine, float3, float4x4, quaternion};
 ///
 /// Coordinate system: right-handed, Y-up, -Z forward (the engine's spatial
 /// convention).
-#[derive(Component, Debug, Clone, Copy, PartialEq)]
+#[derive(Component, Debug, Clone, Copy, PartialEq, From)]
 pub struct GlobalTransform(affine);
 
 impl GlobalTransform {
+    /// An identity [`GlobalTransform`] that maps all points in space to themselves.
+    pub const IDENTITY: Self = Self(affine::IDENTITY);
+
     /// The translation part of the transform — the world-space position.
     #[inline(always)]
     pub fn translation(&self) -> float3 {
