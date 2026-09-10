@@ -1,7 +1,12 @@
 use crate::{
-    asset_loader::assets::AssetsServer, audio::AudioEngine,
-    graphics::graphics_graph::GraphicsCommand, inputs::InputEngine, kairos_game::KairosGame,
-    log::Log, physics::PhysicsEngine, time::Time,
+    asset_loader::assets::AssetsServer,
+    audio::AudioEngine,
+    graphics::{self, graphics_graph::GraphicsCommand},
+    inputs::InputEngine,
+    kairos_game::KairosGame,
+    log::Log,
+    physics::PhysicsEngine,
+    time::Time,
 };
 use egui::Visuals;
 use kairos_ecs::world::World;
@@ -32,6 +37,11 @@ impl Engine {
         // World resource and its `First`-stage `time_system` — before any
         // game/editor logic gets a chance to register systems.
         schedule::install(&mut world);
+        // Then the render rails, which register into the `Extract` stage the
+        // skeleton above just created. The order is a precondition, not a
+        // preference: game assembly runs after `Engine::new` and binds the game
+        // camera to `GameView`, so the view resources must already exist.
+        graphics::install(&mut world);
         let assets_server = AssetsServer::new();
         let audio_engine = AudioEngine::new()?;
         let physics_engine = PhysicsEngine::new();

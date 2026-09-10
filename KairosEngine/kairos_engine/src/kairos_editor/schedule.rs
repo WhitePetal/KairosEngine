@@ -12,6 +12,10 @@
 //!   exactly once — on the first frame, before any other sub-stage. A missing
 //!   sub-schedule is tolerated: its error is logged and the remaining labels
 //!   still run.
+//! - [`Extract`] is the per-frame extraction stage, sitting between
+//!   [`PostUpdate`] and [`Last`]: everything that *modifies* the world has
+//!   finished by the time it runs, so "this runs before the frame is read" is
+//!   a scheduling boundary rather than a per-system `.after()` promise.
 //! - Fixed-rate work mounts onto the [`FixedUpdate`] sub-schedule, which is
 //!   *not* part of the per-frame label list. Between `PreUpdate` and `Update`
 //!   sits [`RunFixedMainLoop`], a stage hosting a single exclusive driver
@@ -79,6 +83,16 @@ pub struct Update;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PostUpdate;
 
+/// The per-frame extraction stage: after every modifier, before [`Last`].
+///
+/// Everything that mutates the world lives in the stages up to and including
+/// [`PostUpdate`]; stage systems that *read* the frame's final state — the
+/// render extraction rails, for instance — register here. The ordering is a
+/// property of the schedule, not of the individual systems: a system that is
+/// not registered into this stage cannot accidentally run after it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Extract;
+
 /// The last per-frame sub-stage (bevy parity: runs after `PostUpdate`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Last;
@@ -107,6 +121,7 @@ impl_schedule_label!(
     FixedUpdate,
     Update,
     PostUpdate,
+    Extract,
     Last,
 );
 
@@ -116,10 +131,10 @@ impl_schedule_label!(
 /// exactly once on the first frame, and then every label in
 /// [`labels`](Self::labels) once per frame, in order. The default per-frame
 /// list walks `First` (clock advance) … `PreUpdate` … `RunFixedMainLoop`
-/// (fixed-step driver) … `Update` … `Last`; `FixedUpdate` is deliberately not
-/// here — the driver inside `RunFixedMainLoop` re-runs it 0..N times per
-/// frame. The lists are stored as interned labels so iteration and equality
-/// checks are cheap.
+/// (fixed-step driver) … `Update` … `PostUpdate` … `Extract` (frame read) …
+/// `Last`; `FixedUpdate` is deliberately not here — the driver inside
+/// `RunFixedMainLoop` re-runs it 0..N times per frame. The lists are stored as
+/// interned labels so iteration and equality checks are cheap.
 #[derive(Resource)]
 pub struct MainScheduleOrder {
     /// Schedules run once, in order, on the first frame (currently `[Startup]`).
@@ -138,6 +153,7 @@ impl Default for MainScheduleOrder {
                 RunFixedMainLoop.intern(),
                 Update.intern(),
                 PostUpdate.intern(),
+                Extract.intern(),
                 Last.intern(),
             ],
         }
@@ -252,6 +268,7 @@ pub(crate) fn install(world: &mut World) {
         FixedUpdate.intern(),
         Update.intern(),
         PostUpdate.intern(),
+        Extract.intern(),
         Last.intern(),
     ] {
         schedules.insert(Schedule::new(label));

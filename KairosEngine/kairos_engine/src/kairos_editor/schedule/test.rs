@@ -14,8 +14,8 @@
 //! scripted delta and the fixed-step counts are exact.
 
 use super::{
-    First, FixedUpdate, Last, Main, MainScheduleOrder, PostUpdate, PreUpdate, RunFixedMainLoop,
-    Startup, Update, install,
+    Extract, First, FixedUpdate, Last, Main, MainScheduleOrder, PostUpdate, PreUpdate,
+    RunFixedMainLoop, Startup, Update, install,
 };
 use crate::time::{FixedTime, Time};
 use kairos_ecs::{
@@ -29,15 +29,16 @@ use std::time::Duration;
 /// Number of frames run by the smoke tests (N = 3).
 const FRAMES: usize = 3;
 
-/// The canonical per-frame order of the six sub-stages (`FixedUpdate` is not
+/// The canonical per-frame order of the seven sub-stages (`FixedUpdate` is not
 /// one of them: the driver inside `RunFixedMainLoop` runs it 0..N times per
 /// frame).
-const SUB_STAGE_ORDER: [&str; 6] = [
+const SUB_STAGE_ORDER: [&str; 7] = [
     "First",
     "PreUpdate",
     "RunFixedMainLoop",
     "Update",
     "PostUpdate",
+    "Extract",
     "Last",
 ];
 
@@ -75,13 +76,14 @@ fn add_trace_system(world: &mut World, label: impl ScheduleLabel, system: fn(Res
         .add_systems(system);
 }
 
-/// Attaches the six canonical sub-stage tracers (one per sub-stage).
+/// Attaches the seven canonical sub-stage tracers (one per sub-stage).
 fn add_sub_stage_tracers(world: &mut World) {
     add_trace_system(world, First, trace_first);
     add_trace_system(world, PreUpdate, trace_pre_update);
     add_trace_system(world, RunFixedMainLoop, trace_run_fixed_main_loop);
     add_trace_system(world, Update, trace_update);
     add_trace_system(world, PostUpdate, trace_post_update);
+    add_trace_system(world, Extract, trace_extract);
     add_trace_system(world, Last, trace_last);
 }
 
@@ -113,6 +115,10 @@ fn trace_post_update(mut trace: ResMut<Trace>) {
     trace.0.push("PostUpdate");
 }
 
+fn trace_extract(mut trace: ResMut<Trace>) {
+    trace.0.push("Extract");
+}
+
 fn trace_last(mut trace: ResMut<Trace>) {
     trace.0.push("Last");
 }
@@ -129,9 +135,10 @@ fn trace_later_startup_runs(mut runs: ResMut<LaterStartupRuns>) {
 // T1–T8
 // ---------------------------------------------------------------------------
 
-/// T1: after `install` the world's `Schedules` contain all nine schedules —
-/// including the `RunFixedMainLoop` driver stage and the `FixedUpdate` content
-/// schedule that is deliberately *not* in the per-frame label list.
+/// T1: after `install` the world's `Schedules` contain all ten schedules —
+/// including the `RunFixedMainLoop` driver stage, the `Extract` stage between
+/// `PostUpdate` and `Last`, and the `FixedUpdate` content schedule that is
+/// deliberately *not* in the per-frame label list.
 #[test]
 fn boot_installs_all_schedules() {
     let world = boot();
@@ -147,6 +154,7 @@ fn boot_installs_all_schedules() {
         FixedUpdate.intern(),
         Update.intern(),
         PostUpdate.intern(),
+        Extract.intern(),
         Last.intern(),
     ] {
         assert!(
@@ -157,8 +165,9 @@ fn boot_installs_all_schedules() {
 }
 
 /// T2: `MainScheduleOrder` is present with the default startup/label lists —
-/// `RunFixedMainLoop` between `PreUpdate` and `Update`, `FixedUpdate` nowhere
-/// in the per-frame list (it is the fixed content mount, driven 0..N times).
+/// `RunFixedMainLoop` between `PreUpdate` and `Update`, `Extract` between
+/// `PostUpdate` and `Last`, `FixedUpdate` nowhere in the per-frame list (it is
+/// the fixed content mount, driven 0..N times).
 #[test]
 fn main_schedule_order_defaults() {
     let world = boot();
@@ -179,9 +188,28 @@ fn main_schedule_order_defaults() {
             RunFixedMainLoop.intern(),
             Update.intern(),
             PostUpdate.intern(),
+            Extract.intern(),
             Last.intern(),
         ],
         "labels list must default to the canonical per-frame order"
+    );
+    // The extraction stage sits immediately after the last modifier stage and
+    // just before the frame-end stage: reading the frame is a scheduling
+    // boundary, not a per-system ordering promise.
+    let extract = order
+        .labels
+        .iter()
+        .position(|label| *label == Extract.intern())
+        .expect("Extract must be in the per-frame label list");
+    assert_eq!(
+        order.labels.get(extract - 1),
+        Some(&PostUpdate.intern()),
+        "Extract must directly follow PostUpdate"
+    );
+    assert_eq!(
+        order.labels.get(extract + 1),
+        Some(&Last.intern()),
+        "Extract must directly precede Last"
     );
     assert!(
         !order.labels.contains(&FixedUpdate.intern()),
@@ -228,7 +256,7 @@ fn startup_runs_exactly_once() {
     );
 }
 
-/// T5: the six sub-stages run on every frame, in canonical order.
+/// T5: the seven sub-stages run on every frame, in canonical order.
 #[test]
 fn substages_run_every_frame_in_order() {
     let mut world = boot();
@@ -343,7 +371,7 @@ fn missing_substage_warns_and_continues() {
     assert_eq!(fixed.delta(), Duration::ZERO);
     assert_eq!(fixed.elapsed(), Duration::ZERO);
 
-    let remaining: [&str; 5] = ["First", "PreUpdate", "Update", "PostUpdate", "Last"];
+    let remaining: [&str; 6] = ["First", "PreUpdate", "Update", "PostUpdate", "Extract", "Last"];
     let trace = &world.get_resource::<Trace>().expect("Trace resource").0;
     assert_eq!(trace.len(), FRAMES * remaining.len());
     for (frame, chunk) in trace.chunks_exact(remaining.len()).enumerate() {
