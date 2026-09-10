@@ -58,7 +58,7 @@ fn scripted_time_system(mut time: ResMut<Time>, scripted: Res<ScriptedFrameDelta
 fn boot() -> World {
     let mut world = World::new();
     schedule::install(&mut world);
-    graphics::install(&mut world);
+    graphics::install(&mut world, schedule::Extract);
     install(&mut world);
 
     world.insert_resource(ScriptedFrameDelta(FRAME_DT));

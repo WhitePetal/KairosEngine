@@ -2386,6 +2386,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "kairos_asset"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "kairos_collections",
+ "tokio",
+]
+
+[[package]]
 name = "kairos_collections"
 version = "0.1.0"
 dependencies = [
@@ -2472,8 +2481,10 @@ dependencies = [
  "half",
  "image",
  "indexmap",
+ "kairos_asset",
  "kairos_collections",
  "kairos_ecs",
+ "kairos_graphics",
  "kairos_math",
  "kairos_time",
  "kairos_transform",
@@ -2506,6 +2517,36 @@ dependencies = [
  "tokio-tungstenite",
  "toml",
  "uuid",
+ "wgpu",
+ "winit",
+]
+
+[[package]]
+name = "kairos_graphics"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bytemuck",
+ "egui",
+ "egui-wgpu",
+ "epaint",
+ "gltf",
+ "half",
+ "image",
+ "kairos_asset",
+ "kairos_ecs",
+ "kairos_math",
+ "kairos_transform",
+ "log",
+ "petgraph",
+ "pollster",
+ "rayon",
+ "rkyv",
+ "serde",
+ "strum",
+ "tempfile",
+ "tokio",
+ "toml",
  "wgpu",
  "winit",
 ]

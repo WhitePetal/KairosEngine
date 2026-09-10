@@ -1,0 +1,14 @@
+[package]
+name = "kairos_asset"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Async asset server and handle system for the Kairos engine, extracted as a standalone crate"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)", "cfg(docsrs_dep)"] }
+
+[dependencies]
+indexmap = { version = "2.5.0", default-features = false, features = ["serde"] }
+tokio = { version = "1.52.3", features = ["sync", "rt"] }
+kairos_collections = { path = "../kairos_collections" }

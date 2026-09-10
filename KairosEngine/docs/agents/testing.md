@@ -34,6 +34,7 @@ Two independent costs, needing two different fixes.
 **2. Recompiling dependents.** `kairos_ecs` sits at the base of the graph:
 
 ```
+kairos_asset         ← kairos_collections
 kairos_collections   leaf
 kairos_math          leaf
 kairos_ptr           leaf
@@ -42,10 +43,11 @@ kairos_tasks         leaf
 kairos_ecs           ← kairos_tasks, kairos_ptr, kairos_collections
 ├── kairos_time      ← kairos_ecs
 ├── kairos_transform ← kairos_ecs, kairos_math
-└── kairos_engine    ← all of the above (+ wgpu, egui, winit, rapier3d)
+├── kairos_graphics  ← kairos_asset, kairos_ecs, kairos_math, kairos_transform (+ wgpu, egui, winit, image)
+└── kairos_engine    ← kairos_asset, kairos_graphics and all of the above (+ wgpu, egui, winit, rapier3d)
 ```
 
-Touching `kairos_ecs` invalidates `kairos_time`, `kairos_transform` and `kairos_engine`. Scoping with `-p` skips that rebuild: 3.9s of compiling instead of 9.6s, ~8s wall instead of ~12s. `kairos_engine` is the expensive one — it pulls in wgpu, egui, winit and rapier3d.
+Touching `kairos_ecs` invalidates `kairos_time`, `kairos_transform`, `kairos_graphics` and `kairos_engine`. Scoping with `-p` skips that rebuild: 3.9s of compiling instead of 9.6s, ~8s wall instead of ~12s. `kairos_engine` is the expensive one — it pulls in wgpu, egui, winit and rapier3d.
 
 The ~920 unit tests themselves execute in well under a second. Test execution is never the problem.
 

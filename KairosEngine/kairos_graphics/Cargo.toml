@@ -1,0 +1,37 @@
+[package]
+name = "kairos_graphics"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "The Kairos engine's graphics subsystem — textures, materials, meshes, shaders, render graph and pipelines — extracted as a standalone crate"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)", "cfg(docsrs_dep)"] }
+
+[dependencies]
+bytemuck = { version = "1.25.0", features = ["derive"] }
+egui = "0.35.0"
+egui-wgpu = "0.35.0"
+epaint = "0.35.0"
+gltf = "1.4.1"
+half = { version = "2.4", features = ["bytemuck"] }
+petgraph = "0.8.3"
+rayon = "1.12.0"
+rkyv = "0.8.16"
+serde = { version = "1.0.228", features = ["derive"] }
+strum = { version = "0.26", features = ["derive"] }
+toml = "1.1.2"
+wgpu = { version = "29.0.3", features = ["serde"] }
+winit = { version = "0.30", features = ["android-native-activity"] }
+image = { version = "0.25.10", features = ["rayon", "serde", "png"] }
+log = "0.4"
+pollster = "0.3"
+tokio = { version = "1.52.3", features = ["full"] }
+anyhow = { version = "1.0" }
+kairos_asset = { path = "../kairos_asset" }
+kairos_ecs = { path = "../kairos_ecs" }
+kairos_math = { path = "../kairos_math", features = ["serde", "rkyv"] }
+kairos_transform = { path = "../kairos_transform" }
+
+[dev-dependencies]
+tempfile = "3"

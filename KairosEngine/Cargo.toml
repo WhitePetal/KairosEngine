@@ -1,11 +1,13 @@
 [workspace]
 members = [
+    "kairos_asset",
     "kairos_collections",
     "kairos_ecs",
     "kairos_ecs/macros",
     "kairos_ecs/macro_logic",
     "kairos_ecs/macro_utils",
     "kairos_engine",
+    "kairos_graphics",
     "kairos_math",
     "kairos_ptr",
     "kairos_supervisor",

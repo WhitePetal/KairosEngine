@@ -14,10 +14,14 @@ pub mod kairos_ui;
 
 pub mod asset_loader;
 pub mod audio;
-pub mod graphics;
 pub mod inputs;
 pub mod physics;
 pub mod spatial;
+
+// The graphics subsystem is its own crate (`kairos_graphics`); re-export it
+// under the name engine code already uses, so `crate::graphics::…` keeps
+// resolving exactly like `crate::time` / `kairos_time`.
+pub use kairos_graphics as graphics;
 
 // Bevy parity: re-export the time crate so `crate::time` resolves like
 // `bevy::time` (bevy re-exports `bevy_time` under the same name).
