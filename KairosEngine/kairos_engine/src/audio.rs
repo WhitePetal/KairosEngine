@@ -24,6 +24,9 @@ pub mod background;
 pub mod consts;
 pub mod spatial;
 
+#[cfg(test)]
+mod test;
+
 pub struct AudioEngine {
     manager: AudioManager,
     spatial_tracks: SpatialAudioTracks,

@@ -1,11 +1,10 @@
 use crate::{math::float3, spatial::AABB};
 use kairos_ecs::component::Component;
 
+#[derive(Component)]
 pub struct SpatialAudioReverbBound {
     pub aabb: AABB,
 }
-// TODO!
-// impl Component for SpatialAudioReverbBound {}
 
 impl SpatialAudioReverbBound {
     pub fn contains_point(&self, point: float3) -> bool {
@@ -13,6 +12,7 @@ impl SpatialAudioReverbBound {
     }
 }
 
+#[derive(Component)]
 pub struct SpatialAudioReverb {
     pub distance_range: f32,
     pub min_volume: f32,
@@ -21,7 +21,6 @@ pub struct SpatialAudioReverb {
     pub damping: f32,
     pub mix: f32,
 }
-// impl Component for SpatialAudioReverb {}
 
 impl SpatialAudioReverb {
     pub fn new(

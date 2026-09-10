@@ -3,14 +3,13 @@ use kira::sound::static_sound::StaticSoundHandle;
 use crate::{asset_loader::assets::AudioAssetHandle, audio::audio::AudioState};
 use kairos_ecs::component::Component;
 
+#[derive(Component)]
 pub struct BackgroundAudio {
     pub audio: AudioAssetHandle,
     pub handle: Option<StaticSoundHandle>,
     pub state: AudioState,
     pub auto_play: bool,
 }
-// TODO!
-// impl Component for BackgroundAudio {}
 
 impl BackgroundAudio {
     pub fn new(audio: AudioAssetHandle, auto_play: bool) -> Self {
