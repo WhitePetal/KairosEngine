@@ -311,7 +311,7 @@ impl KairosGame {
         let cam_pos = float3::new(0.0, 1.0, -2.0);
         let cam_target = float3::new(0.0, 0.0, 0.0);
         let cam_trans = LocalTransform::look_at(cam_pos, cam_target, float3::UP);
-        let camera = Camera::new(45.0, 16.0 / 9.0, 0.3, 100.);
+        let camera = Camera::new(45.0, 0.3, 100.);
         // engine.world.spawn((cam_trans, camera));
 
         Self::spawn_audio_scene(

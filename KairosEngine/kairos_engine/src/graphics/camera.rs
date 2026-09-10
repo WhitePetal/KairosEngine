@@ -3,24 +3,52 @@ use kairos_ecs::component::Component;
 use kairos_transform::LocalTransform;
 
 /// Pure projection parameters; view matrix is derived from a `LocalTransform`.
+///
+/// Intrinsics only — the *view's* aspect ratio is not an intrinsic, so it is a
+/// parameter of the projection methods and lives on [`CameraView`], which is
+/// derived from the view's physical size each frame.
+#[derive(Component)]
+#[require(CameraView)]
 pub struct Camera {
     pub fov: f32,
-    /// width / height
-    pub aspect: f32,
     pub near: f32,
     pub far: f32,
 }
-// TODO!
-// impl Component for Camera {}
+
+/// What a camera derives from the size of the view it renders this frame —
+/// the kairos shape of bevy's `Camera::computed`.
+///
+/// [`Camera`] requires it, so spawning a camera already yields a readable
+/// value; the default reads as "no view size known yet" and stays that way
+/// until the render extract stage starts filling it in. That stage is then the
+/// only writer, and it resets `view_projection` to `None` before recomputing,
+/// so a stale matrix never survives a frame.
+#[derive(Component, Debug, Clone, Copy)]
+pub struct CameraView {
+    /// View size in physical pixels; `(0, 0)` = nothing to render this frame.
+    pub physical_size: (u32, u32),
+    /// width / height
+    pub aspect: f32,
+    /// `None` = no usable view this frame (the extract stage resets it before
+    /// recomputing, so a stale matrix never survives a frame).
+    pub view_projection: Option<float4x4>,
+}
+
+impl Default for CameraView {
+    /// Fallback `aspect` is `1.0` rather than `0.0` so the projection math can
+    /// never divide by zero before the first view size arrives.
+    fn default() -> Self {
+        Self {
+            physical_size: (0, 0),
+            aspect: 1.0,
+            view_projection: None,
+        }
+    }
+}
 
 impl Camera {
-    pub fn new(fov: f32, aspect: f32, near: f32, far: f32) -> Self {
-        Self {
-            fov,
-            aspect,
-            near,
-            far,
-        }
+    pub fn new(fov: f32, near: f32, far: f32) -> Self {
+        Self { fov, near, far }
     }
 
     /// World→View matrix from the camera's root-level `LocalTransform`
@@ -51,9 +79,10 @@ impl Camera {
         )
     }
 
-    pub fn get_projection_matrix(&self) -> float4x4 {
+    /// Projection matrix for a view of the given `aspect` (`width / height`).
+    pub fn get_projection_matrix(&self, aspect: f32) -> float4x4 {
         let y = 1. / math::tan(self.fov * math::TO_RADIUS * 0.5);
-        let x = y / self.aspect;
+        let x = y / aspect;
         let l = self.far - self.near;
         let a = self.far / l;
         let b = -self.near * self.far / l;
@@ -67,7 +96,14 @@ impl Camera {
     }
 
     #[inline(always)]
-    pub fn get_view_projection_matrix(&self, transform: LocalTransform) -> float4x4 {
-        self.get_projection_matrix() * self.get_view_matrix(transform)
+    pub fn get_view_projection_matrix(
+        &self,
+        transform: LocalTransform,
+        aspect: f32,
+    ) -> float4x4 {
+        self.get_projection_matrix(aspect) * self.get_view_matrix(transform)
     }
 }
+
+#[cfg(test)]
+mod test;

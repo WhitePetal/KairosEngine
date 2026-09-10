@@ -64,6 +64,7 @@ pub mod console_window;
 pub mod dialog;
 pub mod docking_tab;
 pub mod drag;
+pub mod editor_camera;
 pub mod egui_ext;
 pub mod game_window;
 pub mod global_styles;

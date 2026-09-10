@@ -3,11 +3,10 @@ use std::sync::Arc;
 use crate::asset_loader::assets::{AssetHandle, MaterialAssetsSystem};
 use kairos_ecs::component::Component;
 
+#[derive(Component)]
 pub struct MaterialComponent {
     pub material: Arc<AssetHandle<MaterialAssetsSystem>>,
 }
-// TODO!
-// impl Component for MaterialComponent {}
 
 impl MaterialComponent {
     pub fn new(material: Arc<AssetHandle<MaterialAssetsSystem>>) -> Self {

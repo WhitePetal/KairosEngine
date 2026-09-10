@@ -1,10 +1,10 @@
-use serde::{Deserialize, Serialize};
-
-use crate::math::{self, float3, float4x4};
+use crate::math::{float3, float4x4};
 use kairos_transform::LocalTransform;
 
+use super::editor_camera::{OrbitState, OrbitTuning};
+
 /// Editor orbit camera — pure data + pure math, no egui dependency.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy)]
 pub struct SceneCamera {
     pub fov: f32,
     pub aspect: f32,
@@ -12,21 +12,10 @@ pub struct SceneCamera {
     pub far: f32,
 
     // orbit state
-    pivot: float3,
-    distance: f32,
-    yaw: f32,
-    pitch: f32,
+    orbit: OrbitState,
 
     // sensitivity
-    orbit_speed: f32,
-    zoom_speed: f32,
-    fly_acce_duration: f32,
-    fly_min_speed: f32,
-    fly_max_speed: f32,
-    min_distance: f32,
-    max_distance: f32,
-
-    fly_timer: f32,
+    tuning: OrbitTuning,
 }
 
 impl SceneCamera {
@@ -44,99 +33,68 @@ impl SceneCamera {
         min_distance: f32,
         max_distance: f32,
     ) -> Self {
-        let offset = eye - pivot;
-        let distance = math::length(&offset);
-        let forward = if distance > 0.001 {
-            offset / distance
-        } else {
-            float3::new(0.0, 0.0, -1.0)
-        };
-        // forward = (cos(pitch)*sin(yaw), sin(pitch), -cos(pitch)*cos(yaw))
-        let yaw = f32::atan2(forward.x(), -forward.z());
-        let pitch = f32::asin(forward.y());
-
         Self {
             fov,
             aspect: 1.0,
             near,
             far,
-            pivot,
-            distance,
-            yaw,
-            pitch,
-            orbit_speed,
-            zoom_speed,
-            fly_acce_duration,
-            fly_min_speed,
-            fly_max_speed,
-            min_distance,
-            max_distance,
-            fly_timer: 0.0,
+            orbit: OrbitState::from_eye_pivot(eye, pivot),
+            tuning: OrbitTuning {
+                orbit_speed,
+                zoom_speed,
+                fly_acce_duration,
+                fly_min_speed,
+                fly_max_speed,
+                min_distance,
+                max_distance,
+            },
         }
     }
 
     /// Drag delta in pixels → orbit around pivot.
     pub fn orbit(&mut self, dx: f32, dy: f32, dt: f32) {
-        self.yaw -= dx * self.orbit_speed * dt * 60.0;
-        self.pitch -= dy * self.orbit_speed * dt * 60.0;
-        let limit = std::f32::consts::FRAC_PI_2 - 0.01;
-        self.pitch = self.pitch.clamp(-limit, limit);
+        self.orbit.orbit(dx, dy, &self.tuning, dt);
     }
 
     /// Scroll delta → zoom in/out.
     pub fn zoom(&mut self, delta: f32, dt: f32) {
-        self.distance -= delta * self.zoom_speed * dt * 60.0;
-        self.distance = self.distance.clamp(self.min_distance, self.max_distance);
+        self.orbit.zoom(delta, &self.tuning, dt);
     }
 
     /// WASD-style movement with smooth acceleration.
     /// Call each frame with `dt`; speed ramps up while keys are held.
     pub fn fly(&mut self, right_amount: f32, forward_amount: f32, dt: f32) {
-        let active = right_amount != 0.0 || forward_amount != 0.0;
-        if active {
-            self.fly_timer += dt;
-        } else {
-            self.fly_timer = 0.0;
-        }
-        let ramp = (self.fly_timer / self.fly_acce_duration).min(1.0); // smooth ramp
-        let speed = self.distance * math::lerp(self.fly_min_speed, self.fly_max_speed, ramp);
-        self.pivot = self.pivot
-            + self.right() * (right_amount * speed * dt)
-            + self.forward() * (forward_amount * speed * dt);
+        self.orbit
+            .fly(right_amount, forward_amount, &self.tuning, dt);
     }
 
     /// World-space position derived from orbit state.
     pub fn position(&self) -> float3 {
-        let cp = self.pitch.cos();
-        let sp = self.pitch.sin();
-        let cy = self.yaw.cos();
-        let sy = self.yaw.sin();
-        self.pivot + float3::new(cp * sy, sp, -cp * cy) * self.distance
+        self.orbit.position()
     }
 
     /// Camera forward direction (toward pivot).
     pub fn forward(&self) -> float3 {
-        math::normalize(self.pivot - self.position())
+        self.orbit.forward()
     }
 
     /// Camera right direction.
     pub fn right(&self) -> float3 {
-        math::normalize(math::cross(self.forward(), float3::UP))
+        self.orbit.right()
     }
 
     /// Camera up direction.
     pub fn _up(&self) -> float3 {
-        math::cross(self.right(), self.forward())
+        self.orbit._up()
     }
 
     pub fn transform(&self) -> LocalTransform {
-        LocalTransform::look_at(self.position(), self.pivot, float3::UP)
+        self.orbit.transform()
     }
 
     pub fn view_projection(&self) -> float4x4 {
         let t = self.transform();
-        let camera =
-            crate::graphics::camera::Camera::new(self.fov, self.aspect, self.near, self.far);
-        camera.get_view_projection_matrix(t)
+        let camera = crate::graphics::camera::Camera::new(self.fov, self.near, self.far);
+        camera.get_view_projection_matrix(t, self.aspect)
     }
 }
