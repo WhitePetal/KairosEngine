@@ -21,3 +21,22 @@ incremental = true
 [rustflags]
 # dev 模式下使用 unpacked 分割调试信息，减少链接时间
 # 注意: 这些 flags 会叠加到 profile 级别的 rustflags 上
+
+# --- 测试环境变量 ---
+[env]
+# kairos_ecs 的 filtered_backtrace_test 要求 RUST_BACKTRACE 存在且不为 0，
+# 否则它会在开头主动 panic，导致 cargo 默认 fail-fast 直接中止，
+# 后面的 kairos_time / kairos_transform / kairos_engine 一个都跑不到。
+# 在这里统一设置，人和 agent 都不用记得加。需要 full 时在命令行显式指定即可
+# (cargo 不会覆盖已存在的同名变量)。
+RUST_BACKTRACE = "1"
+
+# --- 测试命令别名 ---
+# 目的: 让"跑测试"有一个便宜又可信的默认选项，避免因为只知道 `cargo test`
+# 而在每次改完后都跑全量 (实测 doctest 占了全量 82%~95% 的时间)。
+# 详见 docs/agents/testing.md
+[alias]
+# 快速测试: 跳过 doctest，且单个失败不中止其余 crate。改完随手跑这个。
+test-fast = "test --workspace --lib --bins --tests --no-fail-fast"
+# 全量测试: 含 doctest。合并 / 发 PR 前跑一次。
+test-full = "test --workspace --no-fail-fast"

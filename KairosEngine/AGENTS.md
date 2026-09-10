@@ -23,3 +23,5 @@ Five canonical labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-f
 Single-context layout: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
 
 ### Testing after implementation
+
+Default to `cargo test-fast` after every edit — it skips doctests and never aborts the run early. Run `cargo test-full` (includes doctests) before considering a change done. See `docs/agents/testing.md`.
