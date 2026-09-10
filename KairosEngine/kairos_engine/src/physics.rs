@@ -1,22 +1,42 @@
+//! The physics subsystem: a [`PhysicsEngine`] World resource plus the
+//! `RigidBody` / `Collider` components that point into it.
+//!
+//! [`install`] is the single bootstrap entry point (bevy-plugin style): it
+//! inserts the resource, so every [`World`] that went through
+//! [`Engine::new`](crate::kairos_editor::Engine::new) is guaranteed to carry
+//! physics. The rapier types themselves never leave this module — engine code
+//! talks to the resource through its eager `insert_*` constructors, and
+//! entities carry nothing but private handles.
+
 use rapier3d::{
     dynamics::{
-        CCDSolver, ImpulseJointSet, IntegrationParameters, IslandManager, MultibodyJointSet,
-        RigidBodySet,
+        CCDSolver, CoefficientCombineRule, ImpulseJointSet, IntegrationParameters, IslandManager,
+        MultibodyJointSet, RigidBodyBuilder, RigidBodySet,
     },
-    geometry::{ColliderSet, DefaultBroadPhase, NarrowPhase},
+    geometry::{ColliderBuilder, ColliderSet, DefaultBroadPhase, NarrowPhase},
+    math::{Pose, Rotation, Vector3},
     pipeline::PhysicsPipeline,
 };
 
 use crate::{
     math::{float3, quaternion},
-    physics::rigid_body::RigidBody,
+    physics::{
+        collider::{Collider, ColliderMaterial},
+        rigid_body::RigidBody,
+    },
 };
-use kairos_ecs::world::World;
+use kairos_ecs::{resource::Resource, world::World};
 use kairos_transform::LocalTransform;
 
 pub mod collider;
 pub mod rigid_body;
 
+/// The engine's rapier world, stored as a World resource.
+///
+/// Holds the rapier sets plus the pipeline state needed to step them. The sets
+/// and pipeline are private: callers build and destroy rapier objects through
+/// the eager `insert_*` methods below, so rapier types stay inside the module.
+#[derive(Resource)]
 pub struct PhysicsEngine {
     rigid_body_set: RigidBodySet,
     collider_set: ColliderSet,
@@ -31,7 +51,6 @@ pub struct PhysicsEngine {
     physics_hooks: (),
     event_handler: (),
     physics_pipeline: PhysicsPipeline,
-    accumulator: f32,
 }
 
 impl PhysicsEngine {
@@ -66,61 +85,194 @@ impl PhysicsEngine {
             physics_hooks,
             event_handler,
             physics_pipeline,
-            accumulator: 0.0,
         }
     }
 
-    pub fn update(&mut self, word: &mut World, delta_time: f32) {
-        const FIXED_DT: f32 = 1.0 / 60.0;
-        const MAX_ACCUMULATOR: f32 = 0.25;
+    /// Eagerly inserts a dynamic sphere body together with its child ball
+    /// collider, placing the body's pose at `initial` once, at construction.
+    ///
+    /// The returned pair belongs on the same entity: the collider hangs off the
+    /// body at the origin, so the body's pose is also the sphere's pose. The
+    /// sphere's `material.restitution` uses a `Max` combine rule, so the
+    /// restitution stays `material.restitution` against a default (zero
+    /// restitution) surface instead of being averaged down.
+    pub fn insert_movable_sphere(
+        &mut self,
+        radius: f32,
+        material: ColliderMaterial,
+        initial: LocalTransform,
+    ) -> (RigidBody, Collider) {
+        let rigid_body = RigidBodyBuilder::dynamic()
+            .pose(pose_from(initial))
+            .build();
+        let rigid_body_handle = self.rigid_body_set.insert(rigid_body);
 
-        self.accumulator += delta_time;
-        if self.accumulator > MAX_ACCUMULATOR {
-            self.accumulator = MAX_ACCUMULATOR;
-        }
+        let collider = ColliderBuilder::ball(radius)
+            .restitution(material.restitution)
+            .restitution_combine_rule(CoefficientCombineRule::Max)
+            .build();
+        let collider_handle = self.collider_set.insert_with_parent(
+            collider,
+            rigid_body_handle,
+            &mut self.rigid_body_set,
+        );
 
-        while self.accumulator >= FIXED_DT {
-            self.physics_pipeline.step(
-                to_rapier_vec3(self.gravity),
-                &self.integration_parameters,
-                &mut self.island_manager,
-                &mut self.broad_phase,
-                &mut self.narrow_phase,
-                &mut self.rigid_body_set,
-                &mut self.collider_set,
-                &mut self.impulse_joint_set,
-                &mut self.multibody_joint_set,
-                &mut self.ccd_solver,
-                &self.physics_hooks,
-                &self.event_handler,
-            );
-
-            self.accumulator -= FIXED_DT;
-        }
-
-        // TODO!
-        // 将来由 rapier 写回 LocalTransform（根级场景 local == world，字段 pub 直接写；
-        // 只写 position/rotation，scale 不动）。
-        // for (mut transform, rigid_body) in
-        //     word.query_mut::<(&mut LocalTransform, &RigidBody)>().into_iter()
-        // {
-        //     let rigid_body = &self.rigid_body_set[rigid_body.handle];
-        //     transform.position = to_float3(*rigid_body.translation());
-        //     transform.rotation = quat_from_rapier(rigid_body.rotation());
-        // }
+        (
+            RigidBody {
+                handle: rigid_body_handle,
+            },
+            Collider {
+                handle: collider_handle,
+            },
+        )
     }
+
+    /// Eagerly inserts a standalone immovable box collider — no body — placed
+    /// at `initial` once, at construction.
+    ///
+    /// A collider without a parent body is a static object: rapier never moves
+    /// it, which is exactly the ground/plane shape.
+    pub fn insert_immovable_box(
+        &mut self,
+        half_extents: float3,
+        initial: LocalTransform,
+    ) -> Collider {
+        let collider = ColliderBuilder::cuboid(
+            half_extents.x(),
+            half_extents.y(),
+            half_extents.z(),
+        )
+        .position(pose_from(initial))
+        .build();
+
+        Collider {
+            handle: self.collider_set.insert(collider),
+        }
+    }
+}
+
+/// Installs the physics resource onto `world`.
+///
+/// Registered in `Engine::new` right after
+/// [`schedule::install`](crate::kairos_editor::schedule::install), so physics is
+/// present for the whole lifetime of an `Engine`. System and hook registration
+/// will join it here as the corresponding tickets land.
+pub(crate) fn install(world: &mut World) {
+    log::debug!("installing the physics resource");
+    world.insert_resource(PhysicsEngine::new());
+}
+
+/// Builds a rapier pose from an entity's initial transform.
+///
+/// Only position and rotation cross over — scale has no rapier counterpart, so
+/// the collider's world-space size is passed in pre-scaled by the caller.
+fn pose_from(initial: LocalTransform) -> Pose {
+    Pose::from_parts(
+        to_rapier_vec3(initial.position),
+        to_rapier_rotation(initial.rotation),
+    )
 }
 
 // Explicit engine ↔ rapier conversions (the old `From` impls were removed
 // when math moved to `kairos_math`; orphan rules forbid them there, #139).
-fn to_rapier_vec3(v: float3) -> rapier3d::math::Vector3 {
-    rapier3d::math::Vector3::new(v.x(), v.y(), v.z())
+fn to_rapier_vec3(v: float3) -> Vector3 {
+    Vector3::new(v.x(), v.y(), v.z())
 }
 
-fn to_float3(v: rapier3d::math::Vector3) -> float3 {
+fn to_rapier_rotation(q: quaternion) -> Rotation {
+    Rotation::from_xyzw(q.0.x(), q.0.y(), q.0.z(), q.0.w())
+}
+
+fn to_float3(v: Vector3) -> float3 {
     float3::new(v.x, v.y, v.z)
 }
 
-fn quat_from_rapier(r: &rapier3d::math::Rotation) -> quaternion {
+fn quat_from_rapier(r: &Rotation) -> quaternion {
     quaternion::new(r.x, r.y, r.z, r.w)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kairos_ecs::world::World;
+
+    fn initial_transform() -> LocalTransform {
+        LocalTransform::new(
+            float3::new(1.0, 2.0, 3.0),
+            quaternion::from_euler(float3::new(0.3, -0.5, 0.7)),
+            float3::ONE,
+        )
+    }
+
+    #[test]
+    fn install_inserts_the_physics_resource() {
+        let mut world = World::new();
+        install(&mut world);
+        assert!(
+            world.get_resource::<PhysicsEngine>().is_some(),
+            "install must leave a PhysicsEngine in the world"
+        );
+    }
+
+    #[test]
+    fn insert_movable_sphere_resolves_and_places_the_body() {
+        let mut physics = PhysicsEngine::new();
+        let initial = initial_transform();
+
+        let (body, collider) = physics.insert_movable_sphere(
+            0.5,
+            ColliderMaterial { restitution: 0.8 },
+            initial,
+        );
+
+        let rapier_body = physics
+            .rigid_body_set
+            .get(body.handle)
+            .expect("the body handle must resolve in the rigid-body set");
+        assert_eq!(to_float3(rapier_body.translation()), initial.position);
+        assert_eq!(quat_from_rapier(rapier_body.rotation()), initial.rotation);
+
+        let rapier_collider = physics
+            .collider_set
+            .get(collider.handle)
+            .expect("the collider handle must resolve in the collider set");
+        assert_eq!(
+            rapier_collider.parent(),
+            Some(body.handle),
+            "the sphere collider must hang off the dynamic body"
+        );
+    }
+
+    #[test]
+    fn insert_immovable_box_resolves_without_a_body() {
+        let mut physics = PhysicsEngine::new();
+        let initial = initial_transform();
+
+        let collider =
+            physics.insert_immovable_box(float3::new(100.0, 1.0, 100.0), initial);
+
+        let rapier_collider = physics
+            .collider_set
+            .get(collider.handle)
+            .expect("the collider handle must resolve in the collider set");
+        assert_eq!(rapier_collider.parent(), None, "a box must be standalone");
+        assert_eq!(to_float3(rapier_collider.translation()), initial.position);
+        assert_eq!(quat_from_rapier(&rapier_collider.rotation()), initial.rotation);
+    }
+
+    #[test]
+    fn components_spawn_on_an_entity() {
+        let mut physics = PhysicsEngine::new();
+        let (body, collider) = physics.insert_movable_sphere(
+            0.5,
+            ColliderMaterial { restitution: 0.8 },
+            initial_transform(),
+        );
+
+        let mut world = World::new();
+        let entity = world.spawn((initial_transform(), body, collider)).id();
+
+        assert!(world.get::<RigidBody>(entity).is_some());
+        assert!(world.get::<Collider>(entity).is_some());
+    }
 }

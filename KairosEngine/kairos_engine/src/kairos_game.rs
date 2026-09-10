@@ -231,20 +231,12 @@ impl KairosGame {
             quaternion::IDENTITY,
             float3::new(10.0, 10.0, 10.0),
         );
-        // let plane_collider = Collider::box_collider(&mut engine.physics_engine, 100.0, 0.1, 100.0);
-        // plane_collider.set_position(&mut engine.physics_engine, plane_transform.position);
 
         let ball_transform = LocalTransform::new(
             float3::new(0.0, 10.0, 0.0),
             quaternion::IDENTITY,
             float3::ONE * 2.0,
         );
-        // let ball_rigid_body = RigidBody::with_sphere_collider_with_material(
-        //     &mut engine.physics_engine,
-        //     0.5,
-        //     ColliderMaterial { restitution: 0.8 },
-        // );
-        // ball_rigid_body.set_position(&mut engine.physics_engine, ball_transform.position);
 
         SerializedMeshAsset::save_from_glb_file(PathBuf::from("res/models/Ball.glb"));
 

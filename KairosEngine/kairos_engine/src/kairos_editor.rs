@@ -5,7 +5,7 @@ use crate::{
     inputs::InputEngine,
     kairos_game::KairosGame,
     log::Log,
-    physics::PhysicsEngine,
+    physics,
     time::Time,
 };
 use egui::Visuals;
@@ -27,7 +27,6 @@ pub struct Engine {
     pub world: World,
     pub assets_server: AssetsServer,
     pub audio_engine: AudioEngine,
-    pub physics_engine: PhysicsEngine,
     pub input_engine: InputEngine,
 }
 
@@ -38,6 +37,11 @@ impl Engine {
         // World resource and its `First`-stage `time_system` — before any
         // game/editor logic gets a chance to register systems.
         schedule::install(&mut world);
+        // Physics is installed right after the schedule rails: the resource has
+        // no ordering dependency today, but its step system will register into
+        // `FixedUpdate` here. It is a World resource, not an `Engine` field, so
+        // from here on every `Engine` carries physics in its world.
+        physics::install(&mut world);
         // Then the render rails, which register into the `Extract` stage the
         // skeleton above just created. The order is a precondition, not a
         // preference: game assembly runs after `Engine::new` and binds the game
@@ -50,14 +54,12 @@ impl Engine {
         camera::install(&mut world);
         let assets_server = AssetsServer::new();
         let audio_engine = AudioEngine::new()?;
-        let physics_engine = PhysicsEngine::new();
         let input_engine = InputEngine::new();
 
         Ok(Self {
             world,
             assets_server,
             audio_engine,
-            physics_engine,
             input_engine,
         })
     }

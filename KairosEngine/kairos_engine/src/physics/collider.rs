@@ -1,61 +1,27 @@
-use rapier3d::geometry::{ColliderBuilder, ColliderHandle};
+use rapier3d::geometry::ColliderHandle;
 
-use crate::{math::float3, physics::PhysicsEngine};
 use kairos_ecs::component::Component;
 
+/// Collider parameters passed when building a shape.
 #[derive(Debug, Clone, Copy)]
 pub struct ColliderMaterial {
     pub restitution: f32,
 }
 
+/// An entity's collision shape: a move-only, handle-only [`Component`].
+///
+/// The handle is the entity's credential of ownership over exactly one rapier
+/// collider. It is kept crate-private — engine code talks to colliders through
+/// [`PhysicsEngine`](super::PhysicsEngine) instead of reaching into rapier.
+///
+/// A `Collider` is either standalone (an immovable body-less shape) or attached
+/// to a [`RigidBody`](super::rigid_body::RigidBody); the two are told apart
+/// structurally by the presence of a `RigidBody`, never by a marker field.
+///
+/// Deliberately neither `Copy`/`Clone` nor `Default`/serde: a rapier collider
+/// has a single owner, so duplicating or default-constructing the credential
+/// would alias or orphan the object. See issue #152.
+#[derive(Component, Debug, PartialEq)]
 pub struct Collider {
-    pub handle: ColliderHandle,
-}
-// TODO!
-// impl Component for Collider {}
-
-impl Collider {
-    pub fn box_collider_with_material(
-        engine: &mut PhysicsEngine,
-        hx: f32,
-        hy: f32,
-        hz: f32,
-        material: ColliderMaterial,
-    ) -> Self {
-        let collider = ColliderBuilder::cuboid(hx, hy, hz)
-            .restitution(material.restitution)
-            .build();
-        let handle = engine.collider_set.insert(collider);
-
-        Self { handle }
-    }
-
-    pub fn sphere_collider_with_material(
-        engine: &mut PhysicsEngine,
-        radius: f32,
-        material: ColliderMaterial,
-    ) -> Self {
-        let collider = ColliderBuilder::ball(radius)
-            .restitution(material.restitution)
-            .build();
-        let handle = engine.collider_set.insert(collider);
-        Self { handle }
-    }
-
-    pub fn box_collider(engine: &mut PhysicsEngine, hx: f32, hy: f32, hz: f32) -> Self {
-        let collider = ColliderBuilder::cuboid(hx, hy, hz).build();
-        let handle = engine.collider_set.insert(collider);
-
-        Self { handle }
-    }
-
-    pub fn sphere_collider(engine: &mut PhysicsEngine, radius: f32) -> Self {
-        let collider = ColliderBuilder::ball(radius).build();
-        let handle = engine.collider_set.insert(collider);
-        Self { handle }
-    }
-
-    pub fn set_position(&self, engine: &mut PhysicsEngine, position: float3) {
-        engine.collider_set[self.handle].set_translation(super::to_rapier_vec3(position));
-    }
+    pub(crate) handle: ColliderHandle,
 }
