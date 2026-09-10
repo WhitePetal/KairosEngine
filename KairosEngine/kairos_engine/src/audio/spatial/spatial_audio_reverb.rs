@@ -1,7 +1,7 @@
 use crate::{math::float3, spatial::AABB};
 use kairos_ecs::component::Component;
 
-#[derive(Component)]
+#[derive(Component, Debug, Clone, Copy)]
 pub struct SpatialAudioReverbBound {
     pub aabb: AABB,
 }
@@ -12,7 +12,7 @@ impl SpatialAudioReverbBound {
     }
 }
 
-#[derive(Component)]
+#[derive(Component, Debug, Clone, Copy)]
 pub struct SpatialAudioReverb {
     pub distance_range: f32,
     pub min_volume: f32,

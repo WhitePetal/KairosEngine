@@ -1,5 +1,6 @@
 use crate::float3;
 
+#[derive(Debug, Clone, Copy)]
 pub struct AABB {
     pub max: float3,
     pub min: float3,
