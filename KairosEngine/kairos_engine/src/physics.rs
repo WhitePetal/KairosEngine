@@ -2,20 +2,21 @@
 //! `RigidBody` / `Collider` components that point into it.
 //!
 //! [`install`] is the single bootstrap entry point (bevy-plugin style): it
-//! inserts the resource and registers [`physics_step_system`] into
-//! `FixedUpdate`, so every [`World`] that went through
+//! inserts the resource, registers [`physics_step_system`] into `FixedUpdate`,
+//! and attaches the despawn-cleanup `on_discard` hooks to both components, so
+//! every [`World`] that went through
 //! [`Engine::new`](crate::kairos_editor::Engine::new) is guaranteed to carry
-//! physics *and* to advance it once per fixed step. The rapier types themselves
-//! never leave this module — engine code talks to the resource through its
-//! eager `insert_*` constructors, and entities carry nothing but private
-//! handles.
+//! physics, to advance it once per fixed step, and to release a discarded
+//! entity's rapier objects. The rapier types themselves never leave this module
+//! — engine code talks to the resource through its eager `insert_*` constructors,
+//! and entities carry nothing but private handles.
 
 use rapier3d::{
     dynamics::{
         CCDSolver, CoefficientCombineRule, ImpulseJointSet, IntegrationParameters, IslandManager,
-        MultibodyJointSet, RigidBodyBuilder, RigidBodySet,
+        MultibodyJointSet, RigidBodyBuilder, RigidBodyHandle, RigidBodySet,
     },
-    geometry::{ColliderBuilder, ColliderSet, DefaultBroadPhase, NarrowPhase},
+    geometry::{ColliderBuilder, ColliderHandle, ColliderSet, DefaultBroadPhase, NarrowPhase},
     math::{Pose, Rotation, Vector3},
     pipeline::PhysicsPipeline,
 };
@@ -30,10 +31,11 @@ use crate::{
     time::FixedTime,
 };
 use kairos_ecs::{
+    lifecycle::HookContext,
     resource::Resource,
     schedule::Schedules,
     system::{Query, Res, ResMut},
-    world::World,
+    world::{DeferredWorld, World},
 };
 use kairos_transform::LocalTransform;
 
@@ -184,6 +186,74 @@ impl PhysicsEngine {
             &self.event_handler,
         );
     }
+
+    /// Removes the rigid body behind `handle`, returning whether it existed.
+    ///
+    /// `remove_attached_colliders` is `false`: a body never owns the colliders
+    /// that hang off it — each [`Collider`] component owns its own rapier object,
+    /// so attached colliders are detached (`set_parent(None)`) and left for the
+    /// collider hook to delete. That keeps the two cleanup paths independent and
+    /// order-insensitive. Module-private: rapier types never leave `physics`.
+    fn remove_rigid_body(&mut self, handle: RigidBodyHandle) -> bool {
+        self.rigid_body_set
+            .remove(
+                handle,
+                &mut self.island_manager,
+                &mut self.collider_set,
+                &mut self.impulse_joint_set,
+                &mut self.multibody_joint_set,
+                false,
+            )
+            .is_some()
+    }
+
+    /// Removes the collider behind `handle`, returning whether it existed.
+    ///
+    /// `wake_up` is `false`: tearing down an object never needs to wake an island.
+    /// Removing a collider detaches it from its parent body first, so this is
+    /// equally correct before or after the body hook has run. Module-private:
+    /// rapier types never leave `physics`.
+    fn remove_collider(&mut self, handle: ColliderHandle) -> bool {
+        self.collider_set
+            .remove(handle, &mut self.island_manager, &mut self.rigid_body_set, false)
+            .is_some()
+    }
+}
+
+/// [`ComponentHook`](kairos_ecs::lifecycle::ComponentHook) that releases the
+/// rapier body owned by a discarded [`RigidBody`].
+///
+/// Runs on every removal path — despawn, `remove`, and replace — so a discarded
+/// credential never leaks its rapier object. The copyable handle is pulled out
+/// first to end the shared borrow of the world, then the resource is borrowed
+/// mutably. A handle that no longer resolves is a real bug under
+/// `remove_attached_colliders = false`, so it is reported with a `warn!` rather
+/// than a panic.
+fn on_discard_rigid_body(mut world: DeferredWorld, HookContext { entity, .. }: HookContext) {
+    let Some(handle) = world.entity(entity).get::<RigidBody>().map(|body| body.handle) else {
+        return;
+    };
+    let mut physics = world.resource_mut::<PhysicsEngine>();
+    if !physics.remove_rigid_body(handle) {
+        log::warn!("dangling rigid body handle on discard: {handle:?}");
+    }
+}
+
+/// [`ComponentHook`](kairos_ecs::lifecycle::ComponentHook) that releases the
+/// rapier collider owned by a discarded [`Collider`].
+///
+/// Independent of, and order-insensitive with, [`on_discard_rigid_body`]: each
+/// hook deletes exactly the object its own component holds. A handle that no
+/// longer resolves is reported with a `warn!`, never a panic.
+fn on_discard_collider(mut world: DeferredWorld, HookContext { entity, .. }: HookContext) {
+    let Some(handle) = world.entity(entity).get::<Collider>().map(|collider| collider.handle)
+    else {
+        return;
+    };
+    let mut physics = world.resource_mut::<PhysicsEngine>();
+    if !physics.remove_collider(handle) {
+        log::warn!("dangling collider handle on discard: {handle:?}");
+    }
 }
 
 /// The single `FixedUpdate` system that advances physics one fixed step.
@@ -231,21 +301,40 @@ fn physics_step_system(
     }
 }
 
-/// Installs the physics resource and its single fixed-step system onto `world`.
+/// Installs the physics resource, its single fixed-step system, and the
+/// despawn-cleanup hooks onto `world`.
 ///
 /// Registered in `Engine::new` right after
 /// [`schedule::install`](crate::kairos_editor::schedule::install), so physics is
 /// present for the whole lifetime of an `Engine`. This is the one place physics
 /// is wired into the schedule: `KairosGame` never registers a physics system.
 ///
+/// The same call also registers an `on_discard` hook on both physics components,
+/// so every path that drops a `RigidBody`/`Collider` — despawn, `remove`, or
+/// replace — releases the rapier object it owned. The hook and the resource are
+/// installed together, so "there is a hook" and "there is a `PhysicsEngine`"
+/// always coincide.
+///
 /// # Panics
 ///
 /// If the schedule rails are not installed yet: the [`FixedUpdate`] stage would
 /// not exist, and registering into a stage that does not exist is a bootstrap
 /// order bug.
+///
+/// If the physics components are already in use — for example, installing
+/// physics twice — hook registration fails: a `ComponentHooks` can only be
+/// edited before the component exists in an archetype, and a `RigidBody` or
+/// `Collider` may only carry one `on_discard` hook.
 pub(crate) fn install(world: &mut World) {
     log::debug!("installing the physics resource and fixed-step system");
     world.insert_resource(PhysicsEngine::new());
+
+    world
+        .register_component_hooks::<RigidBody>()
+        .on_discard(on_discard_rigid_body);
+    world
+        .register_component_hooks::<Collider>()
+        .on_discard(on_discard_collider);
 
     let mut schedules = world.get_resource_or_init::<Schedules>();
     schedules
@@ -287,7 +376,7 @@ fn quat_from_rapier(r: &Rotation) -> quaternion {
 mod tests {
     use super::*;
     use kairos_ecs::{entity::Entity, world::World};
-    use rapier3d::dynamics::RigidBodyHandle;
+    use rapier3d::{dynamics::RigidBodyHandle, geometry::ColliderHandle};
 
     use crate::kairos_editor::schedule;
 
@@ -368,6 +457,153 @@ mod tests {
 
         assert!(world.get::<RigidBody>(entity).is_some());
         assert!(world.get::<Collider>(entity).is_some());
+    }
+
+    // -----------------------------------------------------------------------
+    // Despawn cleanup: the `on_discard` hooks registered by `install`
+    // -----------------------------------------------------------------------
+
+    /// Despawning a movable entity releases both rapier objects it owned: the
+    /// body hook removes the body (detaching its child collider rather than
+    /// cascading) and the collider hook then removes that child collider.
+    #[test]
+    fn despawning_a_movable_entity_releases_its_body_and_child_collider() {
+        let mut world = boot();
+
+        let (body, collider) = world.resource_mut::<PhysicsEngine>().insert_movable_sphere(
+            0.5,
+            ColliderMaterial { restitution: 0.2 },
+            initial_transform(),
+        );
+        let body_handle = body.handle;
+        let collider_handle = collider.handle;
+
+        let entity = world.spawn((initial_transform(), body, collider)).id();
+
+        {
+            let physics = world.get_resource::<PhysicsEngine>().unwrap();
+            assert!(
+                physics.rigid_body_set.get(body_handle).is_some(),
+                "the body must resolve before the despawn"
+            );
+            assert!(
+                physics.collider_set.get(collider_handle).is_some(),
+                "the child collider must resolve before the despawn"
+            );
+        }
+
+        world.despawn(entity);
+
+        let physics = world.get_resource::<PhysicsEngine>().unwrap();
+        assert!(
+            physics.rigid_body_set.get(body_handle).is_none(),
+            "the discarded RigidBody hook must remove the rapier body"
+        );
+        assert!(
+            physics.collider_set.get(collider_handle).is_none(),
+            "the discarded Collider hook must remove the child collider"
+        );
+    }
+
+    /// Pins the body hook's `remove_attached_colliders = false`: deleting a body
+    /// detaches its child collider instead of cascading, so the collider is left
+    /// for its own hook — this is what makes the two hooks order-insensitive.
+    #[test]
+    fn removing_a_body_detaches_its_child_collider_instead_of_deleting_it() {
+        let mut physics = PhysicsEngine::new();
+        let (body, collider) = physics.insert_movable_sphere(
+            0.5,
+            ColliderMaterial { restitution: 0.2 },
+            initial_transform(),
+        );
+
+        assert!(
+            physics.remove_rigid_body(body.handle),
+            "the body must have existed"
+        );
+
+        assert!(
+            physics.rigid_body_set.get(body.handle).is_none(),
+            "the body must be gone"
+        );
+        let rapier_collider = physics
+            .collider_set
+            .get(collider.handle)
+            .expect("a body must not delete its child collider — that is the Collider hook's job");
+        assert_eq!(
+            rapier_collider.parent(),
+            None,
+            "the surviving child collider must be detached from the removed body"
+        );
+    }
+
+    /// Despawning an immovable entity releases its standalone collider: no body
+    /// is involved, so the collider hook alone owns the cleanup.
+    #[test]
+    fn despawning_an_immovable_entity_releases_its_standalone_collider() {
+        let mut world = boot();
+
+        let collider = world
+            .resource_mut::<PhysicsEngine>()
+            .insert_immovable_box(float3::new(100.0, 1.0, 100.0), initial_transform());
+        let collider_handle = collider.handle;
+
+        let entity = world.spawn((initial_transform(), collider)).id();
+        world.despawn(entity);
+
+        let physics = world.get_resource::<PhysicsEngine>().unwrap();
+        assert!(
+            physics.collider_set.get(collider_handle).is_none(),
+            "the discarded Collider hook must remove a standalone collider"
+        );
+    }
+
+    /// A discarded handle that no longer resolves is reported with a `warn!`,
+    /// never a panic — and reaching the later cleanup proves the hook did not
+    /// abort the despawn.
+    #[test]
+    fn discarding_a_dangling_handle_warns_instead_of_panicking() {
+        let mut world = boot();
+
+        let (body, collider) = world.resource_mut::<PhysicsEngine>().insert_movable_sphere(
+            0.5,
+            ColliderMaterial { restitution: 0.2 },
+            initial_transform(),
+        );
+        let survivor_body = body.handle;
+        let survivor_collider = collider.handle;
+        let survivor = world.spawn((initial_transform(), body, collider)).id();
+
+        let dangling = world
+            .spawn((
+                initial_transform(),
+                RigidBody {
+                    handle: RigidBodyHandle::invalid(),
+                },
+                Collider {
+                    handle: ColliderHandle::invalid(),
+                },
+            ))
+            .id();
+
+        world.despawn(dangling);
+
+        {
+            let physics = world.get_resource::<PhysicsEngine>().unwrap();
+            assert!(
+                physics.rigid_body_set.get(survivor_body).is_some()
+                    && physics.collider_set.get(survivor_collider).is_some(),
+                "a dangling handle must not disturb the live rapier objects"
+            );
+        }
+
+        world.despawn(survivor);
+        let physics = world.get_resource::<PhysicsEngine>().unwrap();
+        assert!(
+            physics.rigid_body_set.get(survivor_body).is_none()
+                && physics.collider_set.get(survivor_collider).is_none(),
+            "cleanup after a dangling handle must still release live objects"
+        );
     }
 
     // -----------------------------------------------------------------------
