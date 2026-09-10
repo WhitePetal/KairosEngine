@@ -17,10 +17,6 @@ use crate::{
     inputs::Input,
     kairos_editor::Engine,
     math::{float3, quaternion},
-    physics::{
-        collider::{Collider, ColliderMaterial},
-        rigid_body::RigidBody,
-    },
     spatial::AABB,
 };
 use kairos_ecs::world::World;
