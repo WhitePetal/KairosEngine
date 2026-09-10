@@ -17,6 +17,7 @@ use crate::{
     inputs::Input,
     kairos_editor::Engine,
     math::{float3, quaternion},
+    physics::{PhysicsEngine, collider::ColliderMaterial},
     spatial::AABB,
 };
 use kairos_ecs::world::World;
@@ -223,9 +224,10 @@ impl KairosGame {
         // ── Physics bodies (wayfinder map #150) ───────────────────────
         //
         // Plane / ball poses plus their physics bodies. The transforms are
-        // shared with the render region below; when the physics effort lands
-        // it appends `Collider` / `RigidBody` to the plane / ball entities
-        // spawned there — never as separate parallel entities.
+        // shared with the render region below, which returns the entity ids the
+        // physics components are appended onto — `Collider` for the immovable
+        // plane, `RigidBody` + `Collider` for the movable ball — never as
+        // separate parallel entities.
         let plane_transform = LocalTransform::new(
             float3::new(0.0, -1.0, 0.0),
             quaternion::IDENTITY,
@@ -236,6 +238,22 @@ impl KairosGame {
             float3::new(0.0, 10.0, 0.0),
             quaternion::IDENTITY,
             float3::ONE * 2.0,
+        );
+
+        // Colliders take world-space sizes, so the meshes' local bounds are
+        // folded with the scale above: the plane mesh is 200 x 0.2 x 200 (half
+        // (100, 0.1, 100)) at scale 10, and the ball mesh is a unit sphere
+        // (radius 0.5) at scale 2. The physics side never reads
+        // `LocalTransform.scale`, which has no rapier counterpart.
+        let plane_half_extents = float3::new(1000.0, 1.0, 1000.0);
+        let ball_radius = 1.0;
+
+        let mut physics = engine.world.resource_mut::<PhysicsEngine>();
+        let plane_collider = physics.insert_immovable_box(plane_half_extents, plane_transform);
+        let (ball_rigid_body, ball_collider) = physics.insert_movable_sphere(
+            ball_radius,
+            ColliderMaterial { restitution: 0.8 },
+            ball_transform,
         );
 
         SerializedMeshAsset::save_from_glb_file(PathBuf::from("res/models/Ball.glb"));
@@ -250,18 +268,35 @@ impl KairosGame {
         // ── Render demo (wayfinder map #158) ──────────────────────────
         //
         // Mesh side only: `LocalTransform` + `LODMesh` + `MaterialComponent`.
-        // The physics side (wayfinder map #150) appends its components to
-        // these same two entities, reusing the plane / ball transforms above.
-        engine.world.spawn((
-            plane_transform,
-            plane_mesh,
-            MaterialComponent::new(material.clone()),
-        ));
-        engine.world.spawn((
-            ball_transform,
-            ball_mesh,
-            MaterialComponent::new(material.clone()),
-        ));
+        // The ids they return are the hosts for the physics components below,
+        // which reuse the plane / ball transforms above.
+        let plane_entity = engine
+            .world
+            .spawn((
+                plane_transform,
+                plane_mesh,
+                MaterialComponent::new(material.clone()),
+            ))
+            .id();
+        let ball_entity = engine
+            .world
+            .spawn((
+                ball_transform,
+                ball_mesh,
+                MaterialComponent::new(material.clone()),
+            ))
+            .id();
+
+        // ── Physics append (wayfinder map #150) ───────────────────────
+        //
+        // The components land on the same entities that carry the meshes, so
+        // the world holds one plane entity and one ball entity — no parallel
+        // physics-only copies.
+        engine.world.entity_mut(plane_entity).insert(plane_collider);
+        engine
+            .world
+            .entity_mut(ball_entity)
+            .insert((ball_rigid_body, ball_collider));
 
         Self {
             listener_drift_angle: LISTENER_DRIFT_START_ANGLE,
