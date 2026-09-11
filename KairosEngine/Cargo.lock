@@ -2542,6 +2542,7 @@ dependencies = [
  "kairos_graphics",
  "kairos_math",
  "kairos_physics",
+ "kairos_tasks",
  "kairos_time",
  "kairos_transform",
  "kira",

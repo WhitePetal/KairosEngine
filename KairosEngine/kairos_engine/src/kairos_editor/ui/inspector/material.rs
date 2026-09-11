@@ -1002,6 +1002,7 @@ impl MaterialInspector {
 impl Inspector for MaterialInspector {
     fn create(
         path: &std::path::Path,
+        _world: &kairos_ecs::world::World,
         assets_server: &mut AssetsServer,
         project_graph: &ProjectPathGraph,
     ) -> Result<Self, Box<dyn std::error::Error>> {
@@ -1051,6 +1052,7 @@ impl Inspector for MaterialInspector {
         ui: &mut egui::Ui,
         reader: &UIReader,
         messager: &mut Messager,
+        _world: &kairos_ecs::world::World,
         assets_server: &AssetsServer,
         dt: f32,
     ) {

@@ -85,7 +85,7 @@ impl FontAssetsSystem {
         let loader = Loader {};
         let assets = Assets::<Self>::new(
             loader,
-            consts::FONT_ASSETS_CAPACITY,
+            crate::kairos_ui::font::FONT_ASSETS_CAPACITY,
             consts::FONT_ASSETS_LOADED_CHANNEL_BUFFER_SIZE,
             consts::FONT_ASSETS_DROP_CHANNEL_BUFFER_SIZE,
         );

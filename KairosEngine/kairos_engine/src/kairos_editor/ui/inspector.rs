@@ -1,5 +1,7 @@
 use std::any::Any;
 
+use kairos_ecs::world::World;
+
 use crate::{
     asset_loader::assets::AssetsServer,
     graphics::graphics_graph::GraphicsCommand,
@@ -25,6 +27,7 @@ pub mod unknown;
 pub trait Inspector: Any {
     fn create(
         path: &std::path::Path,
+        world: &World,
         assets_server: &mut AssetsServer,
         _project_graph: &ProjectPathGraph,
     ) -> Result<Self, Box<dyn std::error::Error>>
@@ -36,6 +39,7 @@ pub trait Inspector: Any {
         ui: &mut egui::Ui,
         reader: &UIReader,
         messager: &mut Messager,
+        world: &World,
         assets_server: &AssetsServer,
         dt: f32,
     );

@@ -563,7 +563,8 @@ impl Context {
                 Message::SelectProjectNode(node) => {
                     if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
                         project_window.select_node(node);
-                        let info = project_window.get_selected_node_info(&mut engine.assets_server);
+                        let info = project_window
+                            .get_selected_node_info(&engine.world, &mut engine.assets_server);
                         if let Some(inspector) = self.get_window_mut::<InspectorWindow>() {
                             let dialog = inspector.set_selected(ui.ctx(), info);
                             if let Some(dialog) = dialog {

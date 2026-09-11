@@ -180,6 +180,7 @@ impl Drawer for InspectorWindow {
             ui,
             reader,
             messager,
+            &engine.world,
             &engine.assets_server,
             engine.time().delta_time_secs(),
         );

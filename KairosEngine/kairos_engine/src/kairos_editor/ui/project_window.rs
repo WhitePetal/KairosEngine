@@ -28,6 +28,7 @@ use crate::{
     log::Log,
 };
 use egui::{RichText, Vec2};
+use kairos_ecs::world::World;
 use parking_lot::Mutex;
 use petgraph::graph::NodeIndex;
 use serde::{Deserialize, Serialize};
@@ -139,6 +140,7 @@ impl ProjectWindow {
     /// 获取当前选中节点的身份信息（供 InspectorWindow 使用）。
     pub fn get_selected_node_info(
         &self,
+        world: &World,
         assets_server: &mut AssetsServer,
     ) -> Option<super::inspector_window::InspectorNodeInfo> {
         let node = self.model.selected_node?;
@@ -148,6 +150,7 @@ impl ProjectWindow {
         let inspector = InspectorCreater::create_from_asseet_kind(
             data.kind,
             inspector_path,
+            world,
             assets_server,
             &self.model.project_path_graph,
         );

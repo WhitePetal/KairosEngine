@@ -1,11 +1,14 @@
 use std::{cell::Cell, fs};
 
 use egui::{FontData, FontFamily, FontId, RichText};
+use kairos_asset::next::{AssetServer, Assets, Handle};
+use kairos_ecs::world::World;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    asset_loader::assets::{AssetHandle, AssetsServer, asset::FontAssetsSystem},
+    asset_loader::assets::AssetsServer,
     kairos_editor::ui::{Messager, UIReader, dialog::Dialog, inspector::Inspector, paths},
+    kairos_ui::font::Font,
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -34,12 +37,12 @@ impl FontInspectorStyle {
 
 struct FontInspectorModel {
     style: FontInspectorStyle,
-    font_handle: std::sync::Arc<AssetHandle<FontAssetsSystem>>,
+    font_handle: Handle<Font>,
     family_name: std::sync::Arc<str>,
 }
 impl FontInspectorModel {
     fn new(
-        font_handle: std::sync::Arc<AssetHandle<FontAssetsSystem>>,
+        font_handle: Handle<Font>,
         family_name: std::sync::Arc<str>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let style = FontInspectorStyle::new()?;
@@ -87,10 +90,16 @@ impl FontInspector {
 impl Inspector for FontInspector {
     fn create(
         path: &std::path::Path,
-        assets_server: &mut AssetsServer,
+        world: &World,
+        _assets_server: &mut AssetsServer,
         _project_graph: &crate::kairos_editor::project_path_tree::ProjectPathGraph,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let handle = assets_server.load(&path.to_path_buf());
+        // The font rides the new core: the `AssetServer` World resource starts
+        // the load (driven by `PreUpdate`) and hands back a lightweight
+        // `Handle<Font>`, whose value lands in the `Assets<Font>` store.
+        let handle = world
+            .resource::<AssetServer>()
+            .load::<Font>(path.to_path_buf());
         let name = path
             .file_stem()
             .and_then(|s| s.to_str())
@@ -109,17 +118,23 @@ impl Inspector for FontInspector {
         ui: &mut egui::Ui,
         _reader: &UIReader,
         _messager: &mut Messager,
-        assets_server: &AssetsServer,
+        world: &World,
+        _assets_server: &AssetsServer,
         _dt: f32,
     ) {
         if !self.is_registered(ui.ctx()) {
-            if let Some(font) = assets_server.get(&self.model.font_handle) {
+            if let Some(font) = world
+                .resource::<Assets<Font>>()
+                .get(self.model.font_handle.id())
+            {
                 self.register(ui.ctx(), &font.bytes);
-                ui.ctx().request_repaint();
                 ui.label("Loading font preview...");
-                return;
+            } else {
+                // The load runs on the io task pool, so keep repainting until
+                // the value reaches the store.
+                ui.label("Font data not loaded yet...");
             }
-            ui.label("Font data not loaded yet...");
+            ui.ctx().request_repaint();
             return;
         }
 

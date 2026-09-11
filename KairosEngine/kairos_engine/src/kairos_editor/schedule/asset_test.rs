@@ -2,11 +2,12 @@
 //! `PreUpdate`/`PostUpdate` stages (#206).
 //!
 //! It drives the real [`build_world`] bootstrap `Engine::new` uses — only the
-//! audio device is skipped — then registers one asset type by hand, standing in
-//! for the per-crate `init_asset` calls that land in P2.
+//! audio device is skipped — then registers one stand-in asset type by hand, on
+//! top of the types (`Font`) that bootstrap now registers itself (#207).
 
 use super::{PostUpdate, PreUpdate};
 use crate::kairos_editor::build_world;
+use crate::kairos_ui::font::Font;
 use kairos_asset::next::{
     Asset, AssetEventSystems, AssetServer, AssetStages, AssetTrackingSystems, AssetWorldExt,
     Assets, VisitAssetDependencies,
@@ -69,5 +70,16 @@ fn asset_core_mounts_on_the_engine_stages() {
     assert!(
         !events.is_empty(),
         "PostUpdate must host the asset event drivers"
+    );
+}
+
+/// The first migrated asset type, `Font`, registers its store during the engine
+/// bootstrap — P2's per-asset `init_asset` calls (#207).
+#[test]
+fn build_world_registers_the_font_asset() {
+    let world = build_world();
+    assert!(
+        world.get_resource::<Assets<Font>>().is_some(),
+        "build_world must register the Font store"
     );
 }

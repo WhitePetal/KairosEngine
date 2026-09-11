@@ -226,6 +226,7 @@ pub struct AudioInspector {
 impl Inspector for AudioInspector {
     fn create(
         path: &std::path::Path,
+        _world: &kairos_ecs::world::World,
         assets_server: &mut AssetsServer,
         _project_graph: &crate::kairos_editor::project_path_tree::ProjectPathGraph,
     ) -> Result<Self, Box<dyn std::error::Error>> {
@@ -256,6 +257,7 @@ impl Inspector for AudioInspector {
         ui: &mut egui::Ui,
         _reader: &UIReader,
         messager: &mut crate::kairos_editor::ui::Messager,
+        _world: &kairos_ecs::world::World,
         assets_server: &AssetsServer,
         _dt: f32,
     ) {

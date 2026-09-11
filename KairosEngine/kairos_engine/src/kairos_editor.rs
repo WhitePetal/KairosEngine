@@ -84,9 +84,11 @@ fn build_world() -> World {
     // The next-generation asset core lands beside the legacy `AssetsServer`: its
     // `AssetServer` becomes a World resource, its per-type driver systems mount
     // into the engine's `PreUpdate`/`PostUpdate`, and the `AssetEvent`s it writes
-    // ride the frame's message pass. No asset type is registered yet — each
-    // asset's owning crate calls `init_asset` as it migrates (P2).
+    // ride the frame's message pass.
     kairos_asset::next::install(&mut world, schedule::PreUpdate, schedule::PostUpdate);
+    // The first migrated asset type: `Font` registers its store, loader, and
+    // driver systems with the core just installed. P2 slices add the rest here.
+    crate::kairos_ui::font::install(&mut world);
     // Physics comes next: its step system registers into the `FixedUpdate` stage
     // the schedule rails just created, so this order is a precondition. It is a
     // World resource, not an `Engine` field, so from here on every `Engine`
