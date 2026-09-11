@@ -106,6 +106,10 @@ fn build_world() -> World {
     // assembly runs after `Engine::new` and binds the game camera to `GameView`,
     // so the view resources must already exist.
     graphics::install(&mut world, schedule::Extract);
+    // The graphics asset types ride the same core: their stores, loaders, and
+    // the extract-stage system that collects their change events for render
+    // cache invalidation.
+    graphics::install_assets(&mut world, schedule::Extract);
     // Finally the editor camera controller, whose system the extract stage must
     // find already written to when it reads the frame. It consumes
     // `SceneViewInput`, an editor concept, so it is installed here rather than by

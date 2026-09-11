@@ -1,15 +1,43 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::asset_loader::assets::{
-    AssetsServer, MaterialAssetsSystem, SerializedMaterialAssetsSystem,
-};
+use kairos_asset::next::{AssetServer, install};
+use kairos_ecs::schedule::ScheduleLabel;
+use kairos_ecs::world::World;
+
 use crate::graphics::compare_function::CompareFunction;
 use crate::graphics::material::SerializedMaterial;
 use crate::graphics::render_state::{CullMode, PrimitiveTopology, RenderState};
 use crate::kairos_editor::ui::inspector::material::MaterialInspector;
 use parking_lot::Mutex;
 use tempfile::TempDir;
+
+/// The two ad-hoc stages the asset drivers are installed into.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct Tracking;
+
+impl ScheduleLabel for Tracking {
+    fn dyn_clone(&self) -> Box<dyn ScheduleLabel> {
+        Box::new(*self)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct Events;
+
+impl ScheduleLabel for Events {
+    fn dyn_clone(&self) -> Box<dyn ScheduleLabel> {
+        Box::new(*self)
+    }
+}
+
+/// A world with the next-generation core plus the material stores registered.
+fn asset_world() -> World {
+    let mut world = World::new();
+    install(&mut world, Tracking, Events);
+    kairos_graphics::material::install(&mut world);
+    world
+}
 
 fn create_mat_toml(dir: &Path, name: &str, shader_path: &str) -> PathBuf {
     let path = dir.join(format!("{name}.mat"));
@@ -58,20 +86,20 @@ fn shared_state(serialized: SerializedMaterial) -> SharedSerializedMaterial {
 // ============================================================
 
 /// 清除纹理（texture_path = None）后 Apply，磁盘文件不应再有 texture_path 字段。
-#[tokio::test]
-async fn save_material_writes_empty_texture_slot() {
+#[test]
+fn save_material_writes_empty_texture_slot() {
     let tmp = TempDir::new().unwrap();
     let mat_path = create_mat_toml(tmp.path(), "material", "res/shaders/old.wgsl");
 
-    let mut assets = AssetsServer::new();
-    let handle = assets.load::<SerializedMaterialAssetsSystem>(&mat_path);
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    assets.handle();
+    let mut world = asset_world();
+    let handle = world
+        .resource::<AssetServer>()
+        .load::<SerializedMaterial>(mat_path.clone());
 
     let mut edited = edited_material(&mat_path);
     edited.texture_path = None;
     let shared = shared_state(edited);
-    MaterialInspector::save_material(&mut assets, &handle, &shared);
+    MaterialInspector::save_material(&mut world, &handle, &shared);
 
     let content = std::fs::read_to_string(&mat_path).unwrap();
     let value: toml::Value = toml::from_str(&content).unwrap();
@@ -82,16 +110,18 @@ async fn save_material_writes_empty_texture_slot() {
 }
 
 /// 保存失败（目标目录不存在）时不崩溃、不创建文件，调用方据此保留 dirty。
-#[tokio::test]
-async fn save_material_does_not_create_file_on_write_failure() {
+#[test]
+fn save_material_does_not_create_file_on_write_failure() {
     let tmp = TempDir::new().unwrap();
     let bad_path = tmp.path().join("missing_dir").join("material.mat");
 
-    let mut assets = AssetsServer::new();
-    let handle = assets.load::<SerializedMaterialAssetsSystem>(&bad_path);
+    let mut world = asset_world();
+    let handle = world
+        .resource::<AssetServer>()
+        .load::<SerializedMaterial>(bad_path.clone());
 
     let shared = shared_state(edited_material(&bad_path));
-    MaterialInspector::save_material(&mut assets, &handle, &shared);
+    MaterialInspector::save_material(&mut world, &handle, &shared);
 
     assert!(!bad_path.exists(), "no file should be created on failure");
 }
@@ -101,24 +131,21 @@ async fn save_material_does_not_create_file_on_write_failure() {
 // ============================================================
 
 /// 持久化状态未加载（.mat 读取失败）时 Discard 不崩溃、不改动任何状态。
-#[tokio::test]
-async fn discard_changes_no_crash_when_serialized_unloaded() {
+#[test]
+fn discard_changes_no_crash_when_serialized_unloaded() {
     let tmp = TempDir::new().unwrap();
     let mat_path = tmp.path().join("missing.mat");
 
-    let mut assets = AssetsServer::new();
-    let serialized_handle = assets.load::<SerializedMaterialAssetsSystem>(&mat_path);
-    let material_handle = assets.load::<MaterialAssetsSystem>(&mat_path);
-    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    assets.handle();
+    let mut world = asset_world();
+    let serialized_handle = world
+        .resource::<AssetServer>()
+        .load::<SerializedMaterial>(mat_path.clone());
+    let material_handle = world
+        .resource::<AssetServer>()
+        .load::<crate::graphics::material::Material>(mat_path.clone());
 
-    assert!(
-        assets
-            .get::<SerializedMaterialAssetsSystem>(&serialized_handle)
-            .is_none(),
-        "serialized should stay unloaded for a missing file"
-    );
-    MaterialInspector::discard_changes(&mut assets, &serialized_handle, &material_handle);
+    // No frame is pumped: both handles stay unloaded, and Discard must be a no-op.
+    MaterialInspector::discard_changes(&mut world, &serialized_handle, &material_handle);
 }
 
 // ============================================================

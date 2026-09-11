@@ -1,15 +1,15 @@
-use std::sync::Arc;
+use kairos_asset::next::Handle;
 
-use crate::assets::{AssetHandle, MaterialAssetsSystem};
+use crate::material::Material;
 use kairos_ecs::component::Component;
 
 #[derive(Component)]
 pub struct MaterialComponent {
-    pub material: Arc<AssetHandle<MaterialAssetsSystem>>,
+    pub material: Handle<Material>,
 }
 
 impl MaterialComponent {
-    pub fn new(material: Arc<AssetHandle<MaterialAssetsSystem>>) -> Self {
+    pub fn new(material: Handle<Material>) -> Self {
         Self { material }
     }
 }

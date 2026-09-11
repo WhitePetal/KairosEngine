@@ -1,7 +1,6 @@
 use std::{
-    collections::{HashMap, hash_map::DefaultHasher},
+    collections::{HashMap, HashSet},
     error::Error,
-    hash::{Hash, Hasher},
     path::PathBuf,
     sync::Arc,
 };
@@ -29,11 +28,13 @@ use wgpu::{
 use winit::{dpi::PhysicalSize, window::Window};
 
 use kairos_math::{float4, float4x4};
+use kairos_ecs::world::World;
+
+use kairos_asset::next::{AssetId, AssetServer, Assets, Handle};
 
 use crate::{
-    assets::{
-        AssetHandle, AssetsServer, ShaderAssetsSystem, TextureAssetsSystem, asset::AssetIndex,
-    },
+    asset_events::GraphicsAssetEvents,
+    assets::AssetsServer,
     attachment::{AttachmentFormat, InternalAttachmentId},
     egui_texture_handle::EguiTextureHandle,
     graphics_graph::{self, GraphicsGraph, graphics_node::RenderPassNode},
@@ -51,56 +52,34 @@ const PATH_WHITE_TEXTURE: &str = "res/textures/white.texture";
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 struct PipelineKey {
-    shader_id: usize,
-    shader_version: u32,
-    shader_modify_count: u64,
-    texture_hash: u64,
+    shader: Option<AssetId<ShaderAsset>>,
     render_state: RenderState,
 }
 
 impl PipelineKey {
-    fn from_material(material: &Material, assets_server: &AssetsServer) -> Self {
-        let shader = material.shader.as_ref();
-        let shader_id = shader.map_or(0, |s| s.id().index());
-        let shader_version = shader.map_or(0, |s| s.id().version());
-        let shader_modify_count = shader
-            .and_then(|s| assets_server.get_modify_count::<ShaderAssetsSystem>(s.id().index()))
-            .unwrap_or(0);
-
-        let mut hasher = DefaultHasher::new();
-        if let Some(t) = &material.texture {
-            let idx = t.id().index();
-            let ver = t.id().version();
-            let mc = assets_server
-                .get_modify_count::<TextureAssetsSystem>(idx)
-                .unwrap_or(0);
-            idx.hash(&mut hasher);
-            ver.hash(&mut hasher);
-            mc.hash(&mut hasher);
-        }
-        let texture_hash = hasher.finish();
-
+    fn from_material(material: &Material) -> Self {
         Self {
-            shader_id,
-            shader_version,
-            shader_modify_count,
-            texture_hash,
+            shader: material.shader.as_ref().map(|shader| shader.id()),
             render_state: material.render_state,
         }
     }
 }
+
 struct PipelineCache {
-    version: u32,
     pipeline: wgpu::RenderPipeline,
 }
 
 struct TextureCache {
-    version: u32,
-    modify_count: u64,
     bind_group: BindGroup,
     layout: BindGroupLayout,
 }
 
+/// GPU buffers for one mesh.
+///
+/// `Mesh` is not on the next-generation core yet (it lands in a later slice), so
+/// this cache is still keyed by the legacy slot index and validated by its
+/// generation — `AssetEvent<Mesh>` does not exist yet. It keeps its `version`
+/// until that migration brings event-driven invalidation with it.
 struct MeshBufferCache {
     version: u32,
     vertex_buffer: wgpu::Buffer,
@@ -131,7 +110,7 @@ pub struct RenderPipeline {
     window_size_changed: bool,
 
     pipeline_cache: HashMap<PipelineKey, PipelineCache>,
-    texture_cache: HashMap<usize, TextureCache>,
+    texture_cache: HashMap<AssetId<Texture>, TextureCache>,
     mesh_buffer_cache: HashMap<usize, MeshBufferCache>,
     global_vp_bind_group_layout: BindGroupLayout,
 
@@ -140,15 +119,15 @@ pub struct RenderPipeline {
 
     // #1: purple fallback for errored materials.
     purple_fallback: Option<(BindGroup, BindGroupLayout)>,
-    error_material_indices: std::collections::HashSet<AssetIndex>,
-    white_texture_fallback: Arc<AssetHandle<TextureAssetsSystem>>,
+    error_material_indices: HashSet<AssetId<Material>>,
+    white_texture_fallback: Handle<Texture>,
 }
 
 impl RenderPipeline {
     pub async fn new(
         window: Arc<Window>,
         compression_config: &TextureCompressionConfig,
-        assets_server: &mut AssetsServer,
+        world: &World,
     ) -> Result<Self, Box<dyn Error>> {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: Backends::all(),
@@ -249,9 +228,10 @@ impl RenderPipeline {
             mesh_buffer_cache: HashMap::new(),
             global_vp_bind_group_layout,
             purple_fallback: Some(purple_fb),
-            error_material_indices: std::collections::HashSet::new(),
-            white_texture_fallback: assets_server
-                .load(&PathBuf::from(PATH_WHITE_TEXTURE)),
+            error_material_indices: HashSet::new(),
+            white_texture_fallback: world
+                .resource::<AssetServer>()
+                .load::<Texture>(PathBuf::from(PATH_WHITE_TEXTURE)),
         })
     }
 
@@ -281,10 +261,17 @@ impl RenderPipeline {
 
     pub fn present(
         &mut self,
+        world: &World,
         assets_server: &mut AssetsServer,
         output: SurfaceTexture,
         graphics_graph: GraphicsGraph,
     ) {
+        // Drain the asset change events the extract-stage collector gathered and
+        // evict the cache entries they invalidate. `Removed` is what finally
+        // bounds the caches: a slot recycled with a fresh generation now names a
+        // different `AssetId`, so its old entry must go.
+        self.invalidate_caches(world);
+
         while let Ok(free_id) = self.egui_texture_free_reciver.try_recv() {
             self.egui_renderer.free_texture(&free_id);
         }
@@ -400,7 +387,7 @@ impl RenderPipeline {
         let mut more_command_buffers = Vec::new();
         let mut egui_free_textures = None;
 
-        let mut all_error_scopes: Vec<(AssetIndex, wgpu::ErrorScopeGuard)> = Vec::new();
+        let mut all_error_scopes: Vec<(AssetId<Material>, wgpu::ErrorScopeGuard)> = Vec::new();
         while let Some(node) = nodes_stack.pop() {
             let Some(node) = graph.remove_node(node) else {
                 continue;
@@ -436,6 +423,7 @@ impl RenderPipeline {
                         &vp_bind_group,
                         &render_pass_node,
                         assets_server,
+                        world,
                         &mut self.error_material_indices,
                         &self.purple_fallback,
                         &mut all_error_scopes,
@@ -515,7 +503,7 @@ impl RenderPipeline {
         queue: &Queue,
         encoder: &mut CommandEncoder,
         pipeline_cache: &mut HashMap<PipelineKey, PipelineCache>,
-        texture_cache: &mut HashMap<usize, TextureCache>,
+        texture_cache: &mut HashMap<AssetId<Texture>, TextureCache>,
         mesh_buffer_cache: &mut HashMap<usize, MeshBufferCache>,
         egui_renderer: &mut egui_wgpu::Renderer,
         render_pass_color_attachments: &Vec<RenderPassColorAttachment>,
@@ -524,11 +512,15 @@ impl RenderPipeline {
         vp_bind_group: &BindGroup,
         render_pass_node: &RenderPassNode,
         assets_server: &AssetsServer,
-        error_material_indices: &mut std::collections::HashSet<AssetIndex>,
+        world: &World,
+        error_material_indices: &mut HashSet<AssetId<Material>>,
         purple_fallback: &Option<(BindGroup, BindGroupLayout)>,
-        error_scopes: &mut Vec<(AssetIndex, wgpu::ErrorScopeGuard)>,
-        white_texture_fallback: &Arc<AssetHandle<TextureAssetsSystem>>,
+        error_scopes: &mut Vec<(AssetId<Material>, wgpu::ErrorScopeGuard)>,
+        white_texture_fallback: &Handle<Texture>,
     ) -> Option<Vec<CommandBuffer>> {
+        let materials = world.resource::<Assets<Material>>();
+        let shaders = world.resource::<Assets<ShaderAsset>>();
+        let textures = world.resource::<Assets<Texture>>();
         let attachment_ids = &render_pass_node.attachments;
 
         let color_attachments = attachment_ids
@@ -658,7 +650,7 @@ impl RenderPipeline {
             let Some(mesh) = assets_server.get(&draw.renderer.mesh) else {
                 continue;
             };
-            let Some(material) = assets_server.get(&draw.renderer.material) else {
+            let Some(material) = materials.get(&draw.renderer.material) else {
                 continue;
             };
             let texture_handle = match &material.texture {
@@ -672,7 +664,7 @@ impl RenderPipeline {
             let Some(shader_asset) = &material.shader else {
                 continue;
             };
-            let Some(shader) = assets_server.get(shader_asset) else {
+            let Some(shader) = shaders.get(shader_asset) else {
                 continue;
             };
 
@@ -689,45 +681,23 @@ impl RenderPipeline {
                     texture_bind_group_layout = None;
                 }
             } else {
-                let Some(texture_asset) = assets_server.get(texture_handle) else {
+                let Some(texture_asset) = textures.get(texture_handle) else {
                     continue;
                 };
                 let texture_id = texture_handle.id();
-                let key = texture_id.index() as usize;
-                let version = texture_id.version();
                 let result = {
                     error_scopes.push((
                         material_id,
                         device.push_error_scope(wgpu::ErrorFilter::Validation),
                     ));
-                    let current_modify_count = assets_server
-                        .get_modify_count::<TextureAssetsSystem>(key)
-                        .unwrap_or(0);
-                    match texture_cache.entry(key) {
-                        std::collections::hash_map::Entry::Occupied(mut entry) => {
-                            let cache = entry.get();
-                            if cache.version == version
-                                && cache.modify_count == current_modify_count
-                            {
-                                cache.bind_group.clone()
-                            } else {
-                                let (bind_group, layout) =
-                                    Self::create_texture(device, queue, texture_asset);
-                                entry.insert(TextureCache {
-                                    version,
-                                    modify_count: current_modify_count,
-                                    bind_group: bind_group.clone(),
-                                    layout,
-                                });
-                                bind_group
-                            }
+                    match texture_cache.entry(texture_id) {
+                        std::collections::hash_map::Entry::Occupied(entry) => {
+                            entry.get().bind_group.clone()
                         }
                         std::collections::hash_map::Entry::Vacant(entry) => {
                             let (bind_group, layout) =
                                 Self::create_texture(device, queue, texture_asset);
                             entry.insert(TextureCache {
-                                version,
-                                modify_count: current_modify_count,
                                 bind_group: bind_group.clone(),
                                 layout,
                             });
@@ -736,44 +706,17 @@ impl RenderPipeline {
                     }
                 };
                 texture_bind_group = Some(result);
-                texture_bind_group_layout = texture_cache.get(&key).map(|c| &c.layout);
+                texture_bind_group_layout = texture_cache.get(&texture_id).map(|c| &c.layout);
             };
 
             // --- Pipeline ---
-            let shader_id = shader_asset.id();
-            let pipeline_key = PipelineKey::from_material(&material, assets_server);
-            let shader_version = shader_id.version();
+            // The key is the shader identity plus the render state. A modified
+            // shader is evicted wholesale by `invalidate_caches`, so a surviving
+            // entry is always current.
+            let pipeline_key = PipelineKey::from_material(material);
             let pipeline = match pipeline_cache.entry(pipeline_key) {
-                std::collections::hash_map::Entry::Occupied(mut entry) => {
-                    let cache = entry.get();
-                    if cache.version == shader_version {
-                        cache.pipeline.clone()
-                    } else {
-                        error_scopes.push((
-                            material_id,
-                            device.push_error_scope(wgpu::ErrorFilter::Validation),
-                        ));
-                        let pipeline = Self::create_pipeline(
-                            device,
-                            global_vp_bind_group_layout,
-                            texture_bind_group_layout,
-                            shader,
-                            &depth_state,
-                            &material.render_state,
-                            instancing_vertex_buffer_layout.clone(),
-                            color_attachments[0]
-                                .as_ref()
-                                .unwrap()
-                                .view
-                                .texture()
-                                .format(),
-                        );
-                        entry.insert(PipelineCache {
-                            version: shader_version,
-                            pipeline: pipeline.clone(),
-                        });
-                        pipeline
-                    }
+                std::collections::hash_map::Entry::Occupied(entry) => {
+                    entry.get().pipeline.clone()
                 }
                 std::collections::hash_map::Entry::Vacant(entry) => {
                     error_scopes.push((
@@ -796,7 +739,6 @@ impl RenderPipeline {
                             .format(),
                     );
                     entry.insert(PipelineCache {
-                        version: shader_version,
                         pipeline: pipeline.clone(),
                     });
                     pipeline
@@ -1049,19 +991,48 @@ impl RenderPipeline {
     }
 
     /// #1: Clear error state for a material, re-enabling its real texture.
-    pub fn clear_material_error(&mut self, material_id: AssetIndex) {
+    pub fn clear_material_error(&mut self, material_id: AssetId<Material>) {
         self.error_material_indices.remove(&material_id);
+    }
+
+    /// Applies this frame's collected [`AssetEvent`](kairos_asset::next::AssetEvent)s
+    /// to the render caches.
+    ///
+    /// A modified or removed shader drops every pipeline compiled from it; a
+    /// modified or removed texture drops its bind group; a modified or removed
+    /// material clears any render error recorded against it so the next frame
+    /// retries it.
+    fn invalidate_caches(&mut self, world: &World) {
+        let events = world.resource::<GraphicsAssetEvents>().clone();
+        let mut sets = events.lock();
+
+        for id in sets.modified_textures.drain() {
+            self.texture_cache.remove(&id);
+        }
+        for id in sets.removed_textures.drain() {
+            self.texture_cache.remove(&id);
+        }
+        for id in sets.modified_shaders.drain() {
+            self.pipeline_cache
+                .retain(|key, _| key.shader != Some(id));
+        }
+        for id in sets.removed_shaders.drain() {
+            self.pipeline_cache
+                .retain(|key, _| key.shader != Some(id));
+        }
+        for id in sets.modified_materials.drain() {
+            self.error_material_indices.remove(&id);
+        }
+        for id in sets.removed_materials.drain() {
+            self.error_material_indices.remove(&id);
+        }
     }
 
     /// Clear all cached pipelines.
     ///
-    /// Call this after bulk asset changes (scene transitions, project reloads)
-    /// to reclaim memory from stale entries whose shader/texture versions no
-    /// longer match the current assets.
-    ///
-    /// Hot-reloaded assets that recycle their slot (handle version changes)
-    /// naturally produce a cache miss under the new key, so calling this
-    /// between scenes is sufficient — no need to clear every frame.
+    /// Invalidation is event-driven ([`GraphicsAssetEvents`]), so this is not
+    /// needed for ordinary asset changes. Call it after bulk scene transitions
+    /// or project reloads to reclaim everything at once.
     pub fn clear_pipeline_cache(&mut self) {
         self.pipeline_cache.clear();
     }

@@ -437,7 +437,10 @@ impl ProjectWindow {
 }
 
 impl Drawer for ProjectWindow {
-    fn create(_assets_server: &mut AssetsServer) -> Result<Self, Box<dyn std::error::Error>>
+    fn create(
+        _world: &kairos_ecs::world::World,
+        _assets_server: &mut AssetsServer,
+    ) -> Result<Self, Box<dyn std::error::Error>>
     where
         Self: Sized,
     {

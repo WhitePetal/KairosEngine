@@ -101,9 +101,12 @@ impl SceneWindowStyle {
 }
 
 impl SceneWindowModel {
-    pub fn new(assets_server: &mut AssetsServer) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(
+        world: &kairos_ecs::world::World,
+        assets_server: &mut AssetsServer,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let style = SceneWindowStyle::new()?;
-        let gizmos = GizmosModel::new(assets_server);
+        let gizmos = GizmosModel::new(world, assets_server);
 
         Ok(Self {
             style,
@@ -116,8 +119,11 @@ impl SceneWindowModel {
 
 impl SceneWindow {
     #[inline(always)]
-    pub fn new(assets_server: &mut AssetsServer) -> Result<Self, Box<dyn std::error::Error>> {
-        let model = SceneWindowModel::new(assets_server)?;
+    pub fn new(
+        world: &kairos_ecs::world::World,
+        assets_server: &mut AssetsServer,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let model = SceneWindowModel::new(world, assets_server)?;
         let gizmos_renderer = GizmosRenderer::new();
         Ok(Self {
             model,
@@ -127,11 +133,14 @@ impl SceneWindow {
 }
 
 impl Drawer for SceneWindow {
-    fn create(assets_server: &mut AssetsServer) -> Result<Self, Box<dyn std::error::Error>>
+    fn create(
+        world: &kairos_ecs::world::World,
+        assets_server: &mut AssetsServer,
+    ) -> Result<Self, Box<dyn std::error::Error>>
     where
         Self: Sized,
     {
-        Self::new(assets_server)
+        Self::new(world, assets_server)
     }
 
     fn show_window(&self, _state: Option<&mut super::docking_tab::window_state::WindowState>) {}

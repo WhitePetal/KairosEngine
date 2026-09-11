@@ -1,8 +1,11 @@
 use std::{path::PathBuf, sync::Arc};
 
+use kairos_asset::next::{AssetServer, Handle};
+use kairos_ecs::world::World;
+
 use crate::{
-    asset_loader::assets::{AssetHandle, AssetsServer, MaterialAssetsSystem, MeshAssetsSystem},
-    graphics::{graphics_graph::GraphicsCommand, mesh::Mesh, vertex::Vertex},
+    asset_loader::assets::{AssetHandle, AssetsServer, MeshAssetsSystem},
+    graphics::{graphics_graph::GraphicsCommand, material::Material, mesh::Mesh, vertex::Vertex},
     math::{self, float3, float4, float4x4},
 };
 
@@ -123,14 +126,15 @@ pub fn build_axes_arrows(length: f32, half_width: f32) -> Mesh {
 }
 
 pub struct AxesIndicatorModel {
-    material: Arc<AssetHandle<MaterialAssetsSystem>>,
+    material: Handle<Material>,
     mesh: Arc<AssetHandle<MeshAssetsSystem>>,
 }
 
 impl AxesIndicatorModel {
-    pub fn new(assets_server: &mut AssetsServer) -> Self {
-        let material = assets_server
-            .load::<MaterialAssetsSystem>(&PathBuf::from("res/materials/gizmos/axes.mat"));
+    pub fn new(world: &World, assets_server: &mut AssetsServer) -> Self {
+        let material = world
+            .resource::<AssetServer>()
+            .load::<Material>(PathBuf::from("res/materials/gizmos/axes.mat"));
         let mesh = build_axes_arrows(3.0, 0.08);
         let mesh = assets_server.insert(
             mesh,

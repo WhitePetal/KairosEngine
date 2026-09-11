@@ -1,14 +1,17 @@
 use std::sync::Arc;
 
+use kairos_asset::next::Handle;
 use kairos_ecs::{component::Component, world::World};
 use kairos_transform::LocalTransform;
 
 use crate::assets::{
-    AssetHandle, MaterialAssetsSystem, MeshAssetsSystem, asset::{AssetIndex, AssetsSystem},
+    AssetHandle, MeshAssetsSystem, asset::{AssetIndex, AssetsSystem},
 };
 
 use super::{Camera, CameraView};
-use crate::{lod_mesh_component::LODMesh, material_component::MaterialComponent};
+use crate::{
+    lod_mesh_component::LODMesh, material::Material, material_component::MaterialComponent,
+};
 
 /// Compile-time proof that the render trio is spawnable as `kairos_ecs`
 /// components (and thus `Send + Sync + 'static`). This stops compiling if any
@@ -57,7 +60,7 @@ fn a_mesh_and_material_pair_can_be_spawned_together() {
         .spawn((
             LocalTransform::default(),
             LODMesh::new(test_asset_handle::<MeshAssetsSystem>()),
-            MaterialComponent::new(test_asset_handle::<MaterialAssetsSystem>()),
+            MaterialComponent::new(Handle::<Material>::default()),
         ))
         .id();
 

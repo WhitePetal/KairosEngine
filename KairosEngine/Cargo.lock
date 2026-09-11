@@ -2583,6 +2583,7 @@ name = "kairos_graphics"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-fs",
  "bytemuck",
  "egui",
  "egui-wgpu",
@@ -2593,6 +2594,7 @@ dependencies = [
  "kairos_asset",
  "kairos_ecs",
  "kairos_math",
+ "kairos_tasks",
  "kairos_transform",
  "log",
  "petgraph",

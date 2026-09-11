@@ -9,6 +9,7 @@ description = "The Kairos engine's graphics subsystem — textures, materials, m
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)", "cfg(docsrs_dep)"] }
 
 [dependencies]
+async-fs = "2.1"
 bytemuck = { version = "1.25.0", features = ["derive"] }
 egui = "0.35.0"
 egui-wgpu = "0.35.0"
@@ -31,6 +32,7 @@ anyhow = { version = "1.0" }
 kairos_asset = { path = "../kairos_asset" }
 kairos_ecs = { path = "../kairos_ecs" }
 kairos_math = { path = "../kairos_math", features = ["serde", "rkyv"] }
+kairos_tasks = { path = "../kairos_tasks" }
 kairos_transform = { path = "../kairos_transform" }
 
 [dev-dependencies]

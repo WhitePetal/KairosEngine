@@ -15,10 +15,7 @@ pub use kairos_asset::assets::{
     AssetsServer, DependencyLoadRequest, DependencyLoadRequestEvent, DependencyLoadSetBack,
 };
 
-pub use kairos_graphics::assets::{
-    MaterialAssetsSystem, MeshAssetsSystem, SerializedMaterialAssetsSystem, ShaderAssetsSystem,
-    TextureAssetsSystem,
-};
+pub use kairos_graphics::assets::{MeshAssetsSystem, TextureAssetsSystem};
 
 pub use asset::{
     AudioAssetHandle, AudioAssetsSystem, AudioExtAssetsSystem, FontAssetsSystem, PcmAssetsSystem,

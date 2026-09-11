@@ -5,15 +5,13 @@ use egui::{
     menu::{MenuConfig, SubMenuButton},
 };
 use egui_extras::{Column, TableBuilder};
+use kairos_asset::next::{AssetServer, Assets, Handle};
 use parking_lot::Mutex;
 use serde::Deserialize;
 use strum::IntoEnumIterator;
 
 use crate::{
-    asset_loader::assets::{
-        AssetHandle, AssetsServer, MaterialAssetsSystem, MeshAssetsSystem,
-        SerializedMaterialAssetsSystem, ShaderAssetsSystem, TextureAssetsSystem,
-    },
+    asset_loader::assets::{AssetHandle, AssetsServer, MeshAssetsSystem},
     graphics::{
         attachment::{Attachment, AttachmentFormat, AttachmentLoadAction, AttachmentStoreAction},
         camera::Camera,
@@ -23,11 +21,13 @@ use crate::{
             GraphicsCommand,
             graphics_node::{ColorAttachmentBind, DepthAttachmentBind},
         },
-        material::SerializedMaterial,
+        material::{Material, SerializedMaterial},
         render_state::{
             BlendFactor, BlendOperation, BlendPreset, BlendState, CullMode, PrimitiveTopology,
             RenderState,
         },
+        shader::ShaderAsset,
+        texture::Texture,
     },
     kairos_editor::{
         asset_registry::AssetKind,
@@ -281,11 +281,11 @@ impl PreviewState {
 
 struct MaterialInspectorModel {
     style: MaterialInspectorStyle,
-    serialized_handle: Arc<AssetHandle<SerializedMaterialAssetsSystem>>,
+    serialized_handle: Handle<SerializedMaterial>,
     /// SerializedMaterial
     serialized_material: Arc<Mutex<Option<SerializedMaterial>>>,
-    /// 运行时 Material 句柄（通过 assets_server.load 获取）
-    material_handle: Arc<AssetHandle<MaterialAssetsSystem>>,
+    /// 运行时 Material 句柄（通过 world 的 AssetServer 获取）
+    material_handle: Handle<Material>,
     /// 按目录层级组织的 shader 菜单树
     shader_menu_tree: Vec<ShaderMenuNode>,
     /// 缩略图缓存
@@ -429,12 +429,12 @@ impl MaterialInspector {
         ui: &mut egui::Ui,
         reader: &UIReader,
         messager: &mut Messager,
-        assets_server: &AssetsServer,
+        world: &kairos_ecs::world::World,
         current_texture_path: &Option<PathBuf>,
     ) {
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
-                self.draw_texture_rect(ui, reader, messager, assets_server, current_texture_path);
+                self.draw_texture_rect(ui, reader, messager, world, current_texture_path);
 
                 if let Some(_) = current_texture_path {
                     let btn = ui.button("X");
@@ -454,7 +454,7 @@ impl MaterialInspector {
         ui: &mut egui::Ui,
         reader: &UIReader,
         messager: &mut Messager,
-        assets_server: &AssetsServer,
+        world: &kairos_ecs::world::World,
         current_texture_path: &Option<PathBuf>,
     ) {
         let texture_size = self.model.style.texture_label_height;
@@ -529,15 +529,15 @@ impl MaterialInspector {
                 // 路径变了，重新生成
                 *thumb_guard = None;
                 // 异步加载 texture 并生成缩略图
-                if let Some(mat) =
-                    assets_server.get::<MaterialAssetsSystem>(&self.model.material_handle)
+                if let Some(mat) = world
+                    .resource::<Assets<Material>>()
+                    .get(self.model.material_handle.id())
+                    && let Some(tex_handle) = &mat.texture
+                    && let Some(texture) = world
+                        .resource::<Assets<Texture>>()
+                        .get(tex_handle.id())
                 {
-                    if let Some(tex_handle) = &mat.texture {
-                        if let Some(texture) = assets_server.get::<TextureAssetsSystem>(tex_handle)
-                        {
-                            *thumb_guard = Some(Thumbnail::new(ui, texture_path, texture));
-                        }
-                    }
+                    *thumb_guard = Some(Thumbnail::new(ui, texture_path, texture));
                 }
             }
 
@@ -1002,18 +1002,22 @@ impl MaterialInspector {
 impl Inspector for MaterialInspector {
     fn create(
         path: &std::path::Path,
-        _world: &kairos_ecs::world::World,
+        world: &kairos_ecs::world::World,
         assets_server: &mut AssetsServer,
         project_graph: &ProjectPathGraph,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let style = MaterialInspectorStyle::new()?;
         let mat_path = path.to_path_buf();
 
-        // 通过 SerializedMaterialAssetsSystem 异步加载 .mat 文件
-        let serialized_handle = assets_server.load::<SerializedMaterialAssetsSystem>(&mat_path);
+        // 通过 next 核心异步加载 .mat 文件（可编辑的 SerializedMaterial）
+        let serialized_handle = world
+            .resource::<AssetServer>()
+            .load::<SerializedMaterial>(mat_path.clone());
 
         // 加载运行时 Material（异步，句柄立即返回）
-        let material_handle = assets_server.load::<MaterialAssetsSystem>(&mat_path);
+        let material_handle = world
+            .resource::<AssetServer>()
+            .load::<Material>(mat_path.clone());
 
         // 查询项目图中所有 Shader 节点，按目录层级组织
         let shader_list: Vec<(String, PathBuf)> = project_graph
@@ -1052,7 +1056,7 @@ impl Inspector for MaterialInspector {
         ui: &mut egui::Ui,
         reader: &UIReader,
         messager: &mut Messager,
-        _world: &kairos_ecs::world::World,
+        world: &kairos_ecs::world::World,
         assets_server: &AssetsServer,
         dt: f32,
     ) {
@@ -1067,7 +1071,10 @@ impl Inspector for MaterialInspector {
 
         let mut serialize_mat = self.model.serialized_material.lock();
         let Some(serialize_mat) = serialize_mat.deref_mut() else {
-            if let Some(serialized) = assets_server.get(&self.model.serialized_handle) {
+            if let Some(serialized) = world
+                .resource::<Assets<SerializedMaterial>>()
+                .get(self.model.serialized_handle.id())
+            {
                 *serialize_mat = Some(serialized.clone());
             }
             ui.label("Material is loading...");
@@ -1162,7 +1169,7 @@ impl Inspector for MaterialInspector {
                                 ui,
                                 reader,
                                 messager,
-                                assets_server,
+                                world,
                                 &serialize_mat.texture_path,
                             );
                         });
@@ -1309,13 +1316,21 @@ impl Inspector for MaterialInspector {
 
 impl MaterialInspector {
     /// 切换 shader：加载新的 shader → 合并现有 Material → 插入运行时 → 标记 dirty
-    pub fn change_shader(&mut self, assets_server: &mut AssetsServer, new_shader_path: PathBuf) {
+    pub fn change_shader(
+        &mut self,
+        world: &mut kairos_ecs::world::World,
+        new_shader_path: PathBuf,
+    ) {
         // 1. 加载新 shader（异步，句柄立即返回）
-        let new_shader_handle = assets_server.load::<ShaderAssetsSystem>(&new_shader_path);
+        let new_shader_handle = world
+            .resource::<AssetServer>()
+            .load::<ShaderAsset>(new_shader_path.clone());
 
         // 2. 修改现有运行时 Material
-        let material = assets_server.get_mut(&self.model.material_handle);
-        if let Some(material) = material {
+        if let Some(mut material) = world
+            .resource_mut::<Assets<Material>>()
+            .get_mut(self.model.material_handle.id())
+        {
             material.shader = Some(new_shader_handle);
         }
 
@@ -1327,13 +1342,21 @@ impl MaterialInspector {
     }
 
     /// 拖入 / 设置纹理：加载 texture → 更新运行时 Material → 标记 dirty
-    pub fn drop_texture(&mut self, assets_server: &mut AssetsServer, texture_path: PathBuf) {
+    pub fn drop_texture(
+        &mut self,
+        world: &mut kairos_ecs::world::World,
+        texture_path: PathBuf,
+    ) {
         // 加载 texture（异步，句柄立即返回）
-        let texture_handle = assets_server.load::<TextureAssetsSystem>(&texture_path);
+        let texture_handle = world
+            .resource::<AssetServer>()
+            .load::<Texture>(texture_path.clone());
 
         // 更新运行时 Material
-        let material = assets_server.get_mut(&self.model.material_handle);
-        if let Some(material) = material {
+        if let Some(mut material) = world
+            .resource_mut::<Assets<Material>>()
+            .get_mut(self.model.material_handle.id())
+        {
             material.texture = Some(texture_handle);
         }
 
@@ -1350,12 +1373,14 @@ impl MaterialInspector {
     /// 修改 RenderState：更新运行时 Material → 更新缓存 → 标记 dirty（issue #33）
     pub fn change_render_state(
         &mut self,
-        assets_server: &mut AssetsServer,
+        world: &mut kairos_ecs::world::World,
         new_render_state: RenderState,
     ) {
         // 1. 更新运行时 Material（edit-in-place，立即反映到渲染）
-        let material = assets_server.get_mut(&self.model.material_handle);
-        if let Some(material) = material {
+        if let Some(mut material) = world
+            .resource_mut::<Assets<Material>>()
+            .get_mut(self.model.material_handle.id())
+        {
             material.render_state = new_render_state;
         }
 
@@ -1367,9 +1392,11 @@ impl MaterialInspector {
     }
 
     /// 清除纹理
-    pub fn clear_texture(&mut self, assets_server: &mut AssetsServer) {
-        let material = assets_server.get_mut(&self.model.material_handle);
-        if let Some(material) = material {
+    pub fn clear_texture(&mut self, world: &mut kairos_ecs::world::World) {
+        if let Some(mut material) = world
+            .resource_mut::<Assets<Material>>()
+            .get_mut(self.model.material_handle.id())
+        {
             material.texture = None;
         }
 
@@ -1409,25 +1436,31 @@ impl MaterialInspector {
     /// 保存成功时同步、始终与磁盘一致，作为还原源；句柄按路径缓存加载，
     /// 与初始加载语义一致（None 纹理槽由渲染管线走 white.texture 降级）。
     pub fn discard_changes(
-        assets_server: &mut AssetsServer,
-        serialized_handle: &Arc<AssetHandle<SerializedMaterialAssetsSystem>>,
-        material_handle: &Arc<AssetHandle<MaterialAssetsSystem>>,
+        world: &mut kairos_ecs::world::World,
+        serialized_handle: &Handle<SerializedMaterial>,
+        material_handle: &Handle<Material>,
     ) {
-        // 读取持久化状态（clone 出数据后再可变借用 assets_server）
-        let Some(persisted) = assets_server
-            .get::<SerializedMaterialAssetsSystem>(serialized_handle)
+        // 读取持久化状态（clone 出数据后再可变借用 world）
+        let Some(persisted) = world
+            .resource::<Assets<SerializedMaterial>>()
+            .get(serialized_handle.id())
             .cloned()
         else {
             return;
         };
 
-        let shader_handle = assets_server.load::<ShaderAssetsSystem>(&persisted.shader_path);
+        let shader_handle = world
+            .resource::<AssetServer>()
+            .load::<ShaderAsset>(persisted.shader_path.clone());
         let texture_handle = persisted
             .texture_path
             .as_ref()
-            .map(|p| assets_server.load::<TextureAssetsSystem>(p));
+            .map(|p| world.resource::<AssetServer>().load::<Texture>(p.clone()));
 
-        if let Some(material) = assets_server.get_mut::<MaterialAssetsSystem>(material_handle) {
+        if let Some(mut material) = world
+            .resource_mut::<Assets<Material>>()
+            .get_mut(material_handle.id())
+        {
             material.shader = Some(shader_handle);
             material.texture = texture_handle;
             material.render_state = persisted.render_state;
@@ -1443,8 +1476,8 @@ impl MaterialInspector {
     /// 失败静默打 log、不崩溃。成功后同步更新资产系统缓存的
     /// SerializedMaterial，避免重新打开 Inspector 时读到过期数据。
     pub fn save_material(
-        assets_server: &mut AssetsServer,
-        serialized_handle: &Arc<AssetHandle<SerializedMaterialAssetsSystem>>,
+        world: &mut kairos_ecs::world::World,
+        serialized_handle: &Handle<SerializedMaterial>,
         serizlied_mat: &Arc<Mutex<Option<SerializedMaterial>>>,
     ) {
         let mut guard = serizlied_mat.lock();
@@ -1463,8 +1496,9 @@ impl MaterialInspector {
         }
 
         // 同步内存缓存，保持与磁盘一致
-        if let Some(asset) =
-            assets_server.get_mut::<SerializedMaterialAssetsSystem>(serialized_handle)
+        if let Some(mut asset) = world
+            .resource_mut::<Assets<SerializedMaterial>>()
+            .get_mut(serialized_handle.id())
         {
             *asset = serialized;
         }

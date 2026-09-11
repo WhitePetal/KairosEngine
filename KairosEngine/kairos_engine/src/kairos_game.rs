@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
+use kairos_asset::next::AssetServer;
+
 use crate::{
-    asset_loader::assets::{
-        AudioAssetHandle, AudioAssetsSystem, MaterialAssetsSystem, MeshAssetsSystem,
-    },
+    asset_loader::assets::{AudioAssetHandle, AudioAssetsSystem, MeshAssetsSystem},
     audio::AudioEngine,
     audio::background::BackgroundAudio,
     audio::spatial::{
@@ -11,8 +11,8 @@ use crate::{
         spatial_audio_reverb::SpatialAudioReverb, spatial_audio_volume::SpatialAudioVolume,
     },
     graphics::{
-        camera::Camera, lod_mesh_component::LODMesh, material_component::MaterialComponent,
-        mesh::SerializedMeshAsset, view_port::GameView,
+        camera::Camera, lod_mesh_component::LODMesh, material::Material,
+        material_component::MaterialComponent, mesh::SerializedMeshAsset, view_port::GameView,
     },
     inputs::Input,
     kairos_editor::Engine,
@@ -180,11 +180,12 @@ impl KairosGame {
             Input::D,
         );
 
-        let assets_server = &mut engine.assets_server;
+        let material = engine
+            .world
+            .resource::<AssetServer>()
+            .load::<Material>(PathBuf::from("res/materials/material.mat"));
 
-        let material = assets_server.load::<MaterialAssetsSystem>(
-            &PathBuf::from("res/materials/material.mat"),
-        );
+        let assets_server = &mut engine.assets_server;
 
         let background_audio =
             assets_server.load::<AudioAssetsSystem>(&PathBuf::from("res/audios/pad.audio"));

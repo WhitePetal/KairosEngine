@@ -19,14 +19,16 @@
 
 use std::sync::Arc;
 
+use kairos_asset::next::Handle;
 use kairos_ecs::system::Query;
 use kairos_transform::LocalTransform;
 
 use kairos_math::float4x4;
 
 use crate::{
-    assets::{AssetHandle, MaterialAssetsSystem, MeshAssetsSystem},
+    assets::{AssetHandle, MeshAssetsSystem},
     lod_mesh_component::LODMesh,
+    material::Material,
     material_component::MaterialComponent,
 };
 
@@ -39,7 +41,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct DrawCommand {
     pub mesh: Arc<AssetHandle<MeshAssetsSystem>>,
-    pub material: Arc<AssetHandle<MaterialAssetsSystem>>,
+    pub material: Handle<Material>,
     /// local → world, computed at draw-list build time.
     ///
     /// Today this is `LocalTransform::compute_local_matrix()` (every scene is a

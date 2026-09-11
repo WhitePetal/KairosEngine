@@ -17,7 +17,9 @@ use crate::{
     view_port::{GameView, SceneView},
 };
 
+pub mod asset_events;
 pub mod assets;
+pub mod consts;
 
 pub mod camera;
 pub mod material;
@@ -38,6 +40,14 @@ pub mod extract;
 pub mod lod_mesh_component;
 pub mod material_component;
 pub mod view_port;
+
+/// Installs the graphics asset types (`ShaderAsset`, `Texture`, `Material`, and
+/// `SerializedMaterial`) and the `Extract`-stage system that collects their
+/// change events for cache invalidation.
+///
+/// Must run after [`kairos_asset::next::install`], which creates the
+/// `AssetServer` and the `AssetStages` the per-type registration reads.
+pub use asset_events::install_assets;
 
 /// Installs the render rails: the per-view frame buffers, one extract system
 /// per view, and the drawers that fill them.

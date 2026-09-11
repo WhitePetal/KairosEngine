@@ -13,6 +13,7 @@
 
 use std::sync::Arc;
 
+use kairos_asset::next::Handle;
 use kairos_ecs::{
     entity::Entity,
     schedule::{Schedule, ScheduleLabel, Schedules},
@@ -22,12 +23,11 @@ use kairos_math::{float3, quaternion};
 use kairos_transform::LocalTransform;
 
 use crate::{
-    assets::{
-        AssetHandle, MaterialAssetsSystem, MeshAssetsSystem, asset::{AssetIndex, AssetsSystem},
-    },
+    assets::{AssetHandle, MeshAssetsSystem, asset::{AssetIndex, AssetsSystem}},
     camera::{Camera, CameraView},
     drawer::DrawCommand,
     lod_mesh_component::LODMesh,
+    material::Material,
     material_component::MaterialComponent,
     view_port::{GameView, SceneView, ViewportSize},
 };
@@ -88,7 +88,7 @@ fn spawn_mesh_entity(world: &mut World, transform: LocalTransform) -> Entity {
         .spawn((
             transform,
             LODMesh::new(test_asset_handle::<MeshAssetsSystem>()),
-            MaterialComponent::new(test_asset_handle::<MaterialAssetsSystem>()),
+            MaterialComponent::new(Handle::<Material>::default()),
         ))
         .id()
 }

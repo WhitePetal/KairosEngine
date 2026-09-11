@@ -5,6 +5,8 @@ use tokio::sync::mpsc::{self};
 
 use kairos_asset::consts;
 
+use crate::consts::TEXTURE_ASSETS_CAPACITY;
+
 use crate::{
     assets::{
         DependencyLoadRequestEvent,
@@ -126,7 +128,7 @@ impl TextureAssetsSystem {
         let loader = Loader {};
         let assets = Assets::<Self>::new(
             loader,
-            consts::TEXTURE_ASSETS_CAPACITY,
+            TEXTURE_ASSETS_CAPACITY,
             consts::TEXTURE_ASSETS_LOADED_CHANNEL_BUFFER_SIZE,
             consts::TEXTURE_ASSETS_DROP_CHANNEL_BUFFER_SIZE,
         );

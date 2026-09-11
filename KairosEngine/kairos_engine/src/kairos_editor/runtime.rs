@@ -196,7 +196,7 @@ impl KairosEditorRuntime {
         let render_pipeline = pollster::block_on(RenderPipeline::new(
             window.clone(),
             &settings.texture_compression,
-            &mut self.kairos_engine.engine.assets_server,
+            &self.kairos_engine.engine.world,
         ))?;
         let render_pipeline_event_proxy = self.event_proxy.clone();
         render_pipeline
@@ -366,6 +366,7 @@ impl KairosEditorRuntime {
 
                     let graphics_graph = GraphicsGraph::build(graphics_commands);
                     render_pipeline.present(
+                        &self.kairos_engine.engine.world,
                         &mut self.kairos_engine.engine.assets_server,
                         output,
                         graphics_graph,

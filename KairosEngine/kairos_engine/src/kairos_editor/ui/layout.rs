@@ -29,6 +29,7 @@ pub struct LayoutCenterContainer {}
 
 impl Drawer for LayoutLeftContainer {
     fn create(
+        _world: &kairos_ecs::world::World,
         _assets_server: &mut crate::asset_loader::assets::AssetsServer,
     ) -> Result<Self, Box<dyn std::error::Error>>
     where
@@ -81,6 +82,7 @@ impl Drawer for LayoutLeftContainer {
 }
 impl Drawer for LayoutRightContainer {
     fn create(
+        _world: &kairos_ecs::world::World,
         _assets_server: &mut crate::asset_loader::assets::AssetsServer,
     ) -> Result<Self, Box<dyn std::error::Error>>
     where
@@ -128,6 +130,7 @@ impl Drawer for LayoutRightContainer {
 }
 impl Drawer for LayoutBottomContainer {
     fn create(
+        _world: &kairos_ecs::world::World,
         _assets_server: &mut crate::asset_loader::assets::AssetsServer,
     ) -> Result<Self, Box<dyn std::error::Error>>
     where
@@ -175,6 +178,7 @@ impl Drawer for LayoutBottomContainer {
 }
 impl Drawer for LayoutCenterContainer {
     fn create(
+        _world: &kairos_ecs::world::World,
         _assets_server: &mut crate::asset_loader::assets::AssetsServer,
     ) -> Result<Self, Box<dyn std::error::Error>>
     where

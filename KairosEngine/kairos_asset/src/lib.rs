@@ -6,8 +6,8 @@
 //! traits ([`AssetsSystem`](assets::asset::AssetsSystem),
 //! [`AssetLoader`](assets::asset::AssetLoader)) an asset system implements.
 //!
-//! Concrete asset systems live next to their asset types — the graphics ones
-//! (`MeshAssetsSystem`, `MaterialAssetsSystem`, …) in `kairos_graphics`, the
+//! Concrete asset systems live next to their asset types — the legacy graphics
+//! ones (`MeshAssetsSystem`, `TextureAssetsSystem`) in `kairos_graphics`, the
 //! audio/text/syntax/toml ones in `kairos_engine`. Only the generic machinery
 //! lives here, so it is free of any dependency on graphics or engine types.
 //!

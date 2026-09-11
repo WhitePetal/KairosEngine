@@ -1,5 +1,6 @@
 use std::{cell::Cell, fs, ops::DerefMut, path::PathBuf, sync::Arc};
 
+use kairos_asset::next::{AssetServer, Handle};
 use strum::{Display, EnumIter};
 
 use egui::Vec2;
@@ -8,7 +9,7 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    asset_loader::assets::{AssetHandle, AssetsServer, MaterialAssetsSystem, MeshAssetsSystem},
+    asset_loader::assets::{AssetHandle, AssetsServer, MeshAssetsSystem},
     graphics::{
         attachment::{Attachment, AttachmentFormat, AttachmentLoadAction, AttachmentStoreAction},
         camera::Camera,
@@ -17,6 +18,7 @@ use crate::{
             GraphicsCommand,
             graphics_node::{ColorAttachmentBind, DepthAttachmentBind},
         },
+        material::Material,
         mesh::{Mesh, wireframe},
     },
     kairos_editor::{
@@ -129,9 +131,9 @@ struct MeshInspectorModel {
     wireframe_mesh_path: PathBuf,
     style: MeshInspectorStyle,
     mesh_handle: Arc<AssetHandle<MeshAssetsSystem>>,
-    wireframe_material_handle: Arc<AssetHandle<MaterialAssetsSystem>>,
+    wireframe_material_handle: Handle<Material>,
     wireframe_mesh_handle: Option<Arc<AssetHandle<MeshAssetsSystem>>>,
-    mode_material_handles: [Arc<AssetHandle<MaterialAssetsSystem>>; 4],
+    mode_material_handles: [Handle<Material>; 4],
     preview_mode: Cell<PreviewMode>,
     show_wireframe: Cell<bool>,
     preview: Mutex<Option<PreviewState>>,
@@ -245,7 +247,7 @@ impl MeshInspector {
 impl Inspector for MeshInspector {
     fn create(
         path: &std::path::Path,
-        _world: &kairos_ecs::world::World,
+        world: &kairos_ecs::world::World,
         assets_server: &mut AssetsServer,
         _project_graph: &crate::kairos_editor::project_path_tree::ProjectPathGraph,
     ) -> Result<Self, Box<dyn std::error::Error>>
@@ -255,23 +257,25 @@ impl Inspector for MeshInspector {
         let style = MeshInspectorStyle::new()?;
         let mesh_path = path.to_path_buf();
         let mesh_handle = assets_server.load::<MeshAssetsSystem>(&mesh_path);
-        let wireframe_material_handle = assets_server.load::<MaterialAssetsSystem>(&PathBuf::from(
-            paths::PATH_MESH_INSPECTOR_PREVIEW_WIREFRAME_MATERIAL,
-        ));
+        let wireframe_material_handle = world
+            .resource::<AssetServer>()
+            .load::<Material>(PathBuf::from(
+                paths::PATH_MESH_INSPECTOR_PREVIEW_WIREFRAME_MATERIAL,
+            ));
 
         let wireframe_mesh_path = mesh_path.with_added_extension(".wireframe_mesh");
 
         let mode_material_handles = [
-            assets_server.load::<MaterialAssetsSystem>(&PathBuf::from(
+            world.resource::<AssetServer>().load::<Material>(PathBuf::from(
                 paths::PATH_MESH_INSPECTOR_PREVIEW_SHADED_MATERIAL,
             )),
-            assets_server.load::<MaterialAssetsSystem>(&PathBuf::from(
+            world.resource::<AssetServer>().load::<Material>(PathBuf::from(
                 paths::PATH_MESH_INSPECTOR_PREVIEW_NORMAL_MATERIAL,
             )),
-            assets_server.load::<MaterialAssetsSystem>(&PathBuf::from(
+            world.resource::<AssetServer>().load::<Material>(PathBuf::from(
                 paths::PATH_MESH_INSPECTOR_PREVIEW_TANGENT_MATERIAL,
             )),
-            assets_server.load::<MaterialAssetsSystem>(&PathBuf::from(
+            world.resource::<AssetServer>().load::<Material>(PathBuf::from(
                 paths::PATH_MESH_INSPECTOR_PREVIEW_VERTEX_COLOR_MATERIAL,
             )),
         ];

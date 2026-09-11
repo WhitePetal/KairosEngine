@@ -1,11 +1,13 @@
 use std::{hash::Hash, sync::Arc};
 
+use kairos_asset::next::Handle;
 use kairos_math::float4x4;
 
 use crate::{
-    assets::{AssetHandle, MaterialAssetsSystem, MeshAssetsSystem},
+    assets::{AssetHandle, MeshAssetsSystem},
     attachment::{AttachmentLoadAction, AttachmentStoreAction},
     egui_texture_handle::EguiTextureHandle,
+    material::Material,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -57,14 +59,14 @@ pub struct VPId(pub usize);
 
 pub struct BaseDraw {
     pub mesh: Arc<AssetHandle<MeshAssetsSystem>>,
-    pub material: Arc<AssetHandle<MaterialAssetsSystem>>,
+    pub material: Handle<Material>,
     pub local_to_world: float4x4,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct InstancingRenderer {
     pub mesh: Arc<AssetHandle<MeshAssetsSystem>>,
-    pub material: Arc<AssetHandle<MaterialAssetsSystem>>,
+    pub material: Handle<Material>,
 }
 
 #[derive(Debug)]

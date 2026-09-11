@@ -14,10 +14,7 @@
 
 pub mod asset;
 
-pub use asset::{
-    MaterialAssetsSystem, MeshAssetsSystem, SerializedMaterialAssetsSystem, ShaderAssetsSystem,
-    TextureAssetsSystem,
-};
+pub use asset::{MeshAssetsSystem, TextureAssetsSystem};
 
 pub use kairos_asset::assets::{
     AssetHandle, AssetsServer, DependencyLoadRequest, DependencyLoadRequestEvent,

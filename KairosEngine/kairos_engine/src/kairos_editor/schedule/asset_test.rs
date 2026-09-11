@@ -6,6 +6,7 @@
 //! top of the types (`Font`) that bootstrap now registers itself (#207).
 
 use super::{PostUpdate, PreUpdate};
+use crate::graphics::{material::Material, material::SerializedMaterial, shader::ShaderAsset, texture::Texture};
 use crate::kairos_editor::editor_assets::{Text, Toml};
 use crate::kairos_editor::syntax::SyntaxHighlightSettings;
 use crate::kairos_ui::font::Font;
@@ -105,5 +106,29 @@ fn build_world_registers_the_s2_leaf_assets() {
             .get_resource::<Assets<SyntaxHighlightSettings>>()
             .is_some(),
         "build_world must register the SyntaxHighlightSettings store"
+    );
+}
+
+/// The S3 graphics cluster — `ShaderAsset`, `Texture`, `Material`, and the
+/// editable `SerializedMaterial` — registers its stores during the engine
+/// bootstrap too.
+#[test]
+fn build_world_registers_the_s3_graphics_assets() {
+    let world = build_world();
+    assert!(
+        world.get_resource::<Assets<ShaderAsset>>().is_some(),
+        "build_world must register the ShaderAsset store"
+    );
+    assert!(
+        world.get_resource::<Assets<Texture>>().is_some(),
+        "build_world must register the Texture store"
+    );
+    assert!(
+        world.get_resource::<Assets<Material>>().is_some(),
+        "build_world must register the Material store"
+    );
+    assert!(
+        world.get_resource::<Assets<SerializedMaterial>>().is_some(),
+        "build_world must register the SerializedMaterial store"
     );
 }

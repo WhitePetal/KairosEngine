@@ -6,6 +6,7 @@ use crate::{
         grid_plane::{GridPlaneModel, GridPlaneRenderer},
     },
 };
+use kairos_ecs::world::World;
 
 mod axes_indicator;
 mod grid_plane;
@@ -15,9 +16,9 @@ pub struct GizmosModel {
     axes_indicator: AxesIndicatorModel,
 }
 impl GizmosModel {
-    pub fn new(assets_server: &mut AssetsServer) -> Self {
-        let grid_plane = GridPlaneModel::new(assets_server);
-        let axes_indicator = AxesIndicatorModel::new(assets_server);
+    pub fn new(world: &World, assets_server: &mut AssetsServer) -> Self {
+        let grid_plane = GridPlaneModel::new(world, assets_server);
+        let axes_indicator = AxesIndicatorModel::new(world, assets_server);
         Self {
             grid_plane,
             axes_indicator,

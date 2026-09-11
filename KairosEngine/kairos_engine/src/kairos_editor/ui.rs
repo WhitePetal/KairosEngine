@@ -2,13 +2,11 @@ use kairos_asset::next::Handle;
 use kairos_collections::TypeIdMap;
 
 use crate::{
-    asset_loader::assets::{
-        AssetHandle, AssetsServer, MaterialAssetsSystem, SerializedMaterialAssetsSystem,
-    },
+    asset_loader::assets::{AssetHandle, AssetsServer},
     graphics::{
         egui_texture_handle::EguiTextureHandle,
         graphics_graph::GraphicsCommand,
-        material::SerializedMaterial,
+        material::{Material, SerializedMaterial},
         mesh::Mesh,
         render_state::RenderState,
         view_port::{GameView, SceneView, ViewportSize},
@@ -199,16 +197,13 @@ pub enum Message {
     /// state) as shared snapshots so the save targets the right data even if the
     /// inspector has since been replaced (same pattern as TextureInspectorApply).
     MaterialInspectorApply(
-        Arc<AssetHandle<SerializedMaterialAssetsSystem>>,
+        Handle<SerializedMaterial>,
         Arc<parking_lot::Mutex<Option<SerializedMaterial>>>,
     ),
     /// Material Inspector: user clicked Discard on the unsaved-changes dialog.
     /// Restores the runtime Material to the persisted (.mat) state, undoing the
     /// edit-in-place changes. Carries (.mat path, serialized handle, material handle).
-    MaterialInspectorDiscard(
-        Arc<AssetHandle<SerializedMaterialAssetsSystem>>,
-        Arc<AssetHandle<MaterialAssetsSystem>>,
-    ),
+    MaterialInspectorDiscard(Handle<SerializedMaterial>, Handle<Material>),
 }
 
 struct KairosTabDrawer {
@@ -259,7 +254,10 @@ impl TabDrawer for KairosTabDrawer {
 }
 
 pub trait Drawer: Any {
-    fn create(assets_server: &mut AssetsServer) -> Result<Self, Box<dyn std::error::Error>>
+    fn create(
+        world: &kairos_ecs::world::World,
+        assets_server: &mut AssetsServer,
+    ) -> Result<Self, Box<dyn std::error::Error>>
     where
         Self: Sized;
 
@@ -515,21 +513,13 @@ impl Context {
                     }
                 }
                 Message::OpenConsoleTab => {
-                    self.show_tab::<ConsoleWindow>(
-                        &mut engine.assets_server,
-                        ui,
-                        self.layout.bottom,
-                    );
+                    self.show_tab::<ConsoleWindow>(engine, ui, self.layout.bottom);
                 }
                 Message::CloseConsoleTab => {
                     self.close_drawer::<ConsoleWindow>();
                 }
                 Message::OpenInspectorTab => {
-                    self.show_tab::<InspectorWindow>(
-                        &mut engine.assets_server,
-                        ui,
-                        self.layout.right,
-                    );
+                    self.show_tab::<InspectorWindow>(engine, ui, self.layout.right);
                 }
                 Message::CloseInspectorTab => {
                     if let Some(inspector) = self.get_window_mut::<InspectorWindow>() {
@@ -541,21 +531,13 @@ impl Context {
                     self.close_drawer::<InspectorWindow>();
                 }
                 Message::OpenHierarchyTab => {
-                    self.show_tab::<HierarchyWindow>(
-                        &mut engine.assets_server,
-                        ui,
-                        self.layout.left,
-                    );
+                    self.show_tab::<HierarchyWindow>(engine, ui, self.layout.left);
                 }
                 Message::CloseHierarchyTab => {
                     self.close_drawer::<HierarchyWindow>();
                 }
                 Message::OpenProjectTab => {
-                    self.show_tab::<ProjectWindow>(
-                        &mut engine.assets_server,
-                        ui,
-                        self.layout.bottom,
-                    );
+                    self.show_tab::<ProjectWindow>(engine, ui, self.layout.bottom);
                 }
                 Message::CloseProjectTab => {
                     self.close_drawer::<ProjectWindow>();
@@ -638,7 +620,7 @@ impl Context {
                     }
                 }
                 Message::OpenSceneTab => {
-                    self.show_tab::<SceneWindow>(&mut engine.assets_server, ui, self.layout.center);
+                    self.show_tab::<SceneWindow>(engine, ui, self.layout.center);
                     // The editor camera is a world entity owned by the view: spawn
                     // it on first open, keyed on the view's binding so reopening
                     // reuses it instead of spawning a second camera. It is never
@@ -668,7 +650,7 @@ impl Context {
                     }
                 }
                 Message::OpenGameTab => {
-                    self.show_tab::<GameWindow>(&mut engine.assets_server, ui, self.layout.center);
+                    self.show_tab::<GameWindow>(engine, ui, self.layout.center);
                 }
                 Message::CloseGameTab => {
                     self.close_drawer::<GameWindow>();
@@ -740,7 +722,7 @@ impl Context {
                         && let Some(material_inspector) =
                             inspector.get_inspector_mut::<MaterialInspector>()
                     {
-                        material_inspector.change_shader(&mut engine.assets_server, shader_path);
+                        material_inspector.change_shader(&mut engine.world, shader_path);
                     }
                 }
                 Message::MaterialInspectorDropTexture(texture_path) => {
@@ -748,7 +730,7 @@ impl Context {
                         && let Some(material_inspector) =
                             inspector.get_inspector_mut::<MaterialInspector>()
                     {
-                        material_inspector.drop_texture(&mut engine.assets_server, texture_path);
+                        material_inspector.drop_texture(&mut engine.world, texture_path);
                     }
                 }
                 Message::MaterialInspectorClearTexture => {
@@ -756,7 +738,7 @@ impl Context {
                         && let Some(material_inspector) =
                             inspector.get_inspector_mut::<MaterialInspector>()
                     {
-                        material_inspector.clear_texture(&mut engine.assets_server);
+                        material_inspector.clear_texture(&mut engine.world);
                     }
                 }
                 Message::MaterialInspectorChangeRenderState(render_state) => {
@@ -764,8 +746,7 @@ impl Context {
                         && let Some(material_inspector) =
                             inspector.get_inspector_mut::<MaterialInspector>()
                     {
-                        material_inspector
-                            .change_render_state(&mut engine.assets_server, render_state);
+                        material_inspector.change_render_state(&mut engine.world, render_state);
                     }
                 }
                 Message::MaterialInspectorApply(serialized_handle, serialized_mat) => {
@@ -776,14 +757,14 @@ impl Context {
                         material_inspector.apply();
                     }
                     MaterialInspector::save_material(
-                        &mut engine.assets_server,
+                        &mut engine.world,
                         &serialized_handle,
                         &serialized_mat,
                     );
                 }
                 Message::MaterialInspectorDiscard(serialized_handle, material_handle) => {
                     MaterialInspector::discard_changes(
-                        &mut engine.assets_server,
+                        &mut engine.world,
                         &serialized_handle,
                         &material_handle,
                     );
@@ -847,7 +828,7 @@ impl Context {
         };
     }
 
-    fn show_tab<T>(&mut self, assets_server: &mut AssetsServer, ui: &egui::Ui, zone: Zone)
+    fn show_tab<T>(&mut self, engine: &mut Engine, ui: &egui::Ui, zone: Zone)
     where
         T: Drawer,
     {
@@ -862,9 +843,11 @@ impl Context {
                 }
             }
             None => {
-                let drawer = T::create(assets_server).unwrap_or_else(|error| {
-                    Context::create_ui_failed(ui, type_name::<T>(), error);
-                });
+                let drawer = T::create(&engine.world, &mut engine.assets_server).unwrap_or_else(
+                    |error| {
+                        Context::create_ui_failed(ui, type_name::<T>(), error);
+                    },
+                );
                 let id = self.push_drawer::<T>(Box::new(drawer));
                 self.tab_tree[zone.surface][zone.node].append_drawer(id);
             }

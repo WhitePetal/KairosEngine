@@ -62,6 +62,7 @@ impl ConsoleWindow {
 
 impl Drawer for ConsoleWindow {
     fn create(
+        _world: &kairos_ecs::world::World,
         _assets_server: &mut crate::asset_loader::assets::AssetsServer,
     ) -> Result<Self, Box<dyn std::error::Error>>
     where
