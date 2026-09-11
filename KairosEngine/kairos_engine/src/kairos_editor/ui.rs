@@ -2,7 +2,7 @@ use kairos_asset::next::Handle;
 use kairos_collections::TypeIdMap;
 
 use crate::{
-    asset_loader::assets::{AssetHandle, AssetsServer},
+    asset_loader::assets::AssetsServer,
     graphics::{
         egui_texture_handle::EguiTextureHandle,
         graphics_graph::GraphicsCommand,
@@ -15,7 +15,7 @@ use crate::{
         Engine,
         asset_registry::AssetKind,
         camera::SceneViewInput,
-        editor_assets::{Text, TextureExt, TextureExtAssetsSystem, Toml},
+        editor_assets::{Text, TextureExt, Toml},
         ui::{
             game_window::GameWindow,
             global_styles::{FontDataConfig, FontsConfig, GlobalStyles},
@@ -177,7 +177,7 @@ pub enum Message {
     /// Texture Inspector: apply size settings.
     TextureInspectorApply(
         PathBuf,
-        Arc<AssetHandle<TextureExtAssetsSystem>>,
+        Handle<TextureExt>,
         Arc<parking_lot::Mutex<Option<TextureExt>>>,
     ),
     ModelInspectorCreateWireframeMesh(Mesh),
@@ -701,7 +701,7 @@ impl Context {
                     {
                         texture.apply();
                     }
-                    TextureInspector::save_texture(&mut engine.assets_server, &path, handle, ext);
+                    TextureInspector::save_texture(&mut engine.world, &path, &handle, &ext);
                 }
                 Message::AudioInspectorTick => {
                     if let Some(inspector) = self.get_window_mut::<InspectorWindow>()

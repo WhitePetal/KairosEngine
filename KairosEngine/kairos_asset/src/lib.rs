@@ -6,9 +6,10 @@
 //! traits ([`AssetsSystem`](assets::asset::AssetsSystem),
 //! [`AssetLoader`](assets::asset::AssetLoader)) an asset system implements.
 //!
-//! Concrete asset systems live next to their asset types — the legacy graphics
-//! ones (`TextureAssetsSystem`) in `kairos_graphics`, the audio/text/syntax/toml
-//! ones in `kairos_engine`. Only the generic machinery
+//! Concrete asset systems live next to their asset types. The graphics types
+//! (`Texture`, `Mesh`, `ShaderAsset`, `Material`, `SerializedMaterial`) moved to
+//! the next-generation core in `kairos_graphics`, and the audio/text/syntax/toml
+//! legacy systems remain in `kairos_engine`. Only the generic machinery
 //! lives here, so it is free of any dependency on graphics or engine types.
 //!
 //! The [`next`] module is the landing zone for the `bevy_asset`-style rewrite of

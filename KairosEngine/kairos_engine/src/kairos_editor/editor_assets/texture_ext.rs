@@ -1,34 +1,36 @@
-use std::{path::PathBuf, sync::Arc};
+//! The `TextureExt` asset: the editor's runtime composite for a `.texture`.
+//!
+//! A `.texture` descriptor carries the editable [`SerializedTexture`] settings
+//! (source path, size, format, sampler) while the pixel data is the separate
+//! runtime [`Texture`] asset. The texture inspector edits the settings *and*
+//! previews the pixels, so it needs both — plus the source image's original
+//! pixels, to resize from when the user picks a new max size.
+//!
+//! [`TextureExt`] bundles those three. It loads through the next-generation core
+//! and declares its [`Texture`] through [`LoadContext::load`], so a live
+//! composite keeps the runtime texture loaded.
 
-use anyhow::Error;
-use tokio::sync::{
-    mpsc::{self},
-    oneshot,
+use kairos_asset::next::{
+    Asset, AssetLoader, AssetWorldExt, Handle, LoadContext, Reader, UntypedAssetId,
+    VisitAssetDependencies,
 };
+use kairos_ecs::error::KairosError;
+use kairos_ecs::world::World;
+use kairos_tasks::ConditionalSendFuture;
 
 use crate::{
-    asset_loader::assets::{
-        AssetHandle, DependencyLoadRequest, DependencyLoadRequestEvent, TextureAssetsSystem,
-        asset::{self, AssetIndex, Assets, AssetsHandler, AssetsSystem},
-    },
-    graphics::texture::SerializedTexture,
+    graphics::texture::{SerializedTexture, Texture},
     kairos_editor::consts,
 };
 
-// ============================================================
-// TextureExt — editor runtime resource (cf. AudioExt)
-// ============================================================
-
-/// Editor-specific composite that bundles the texture's serialized
-/// settings, its runtime pixel data, and cached original image info.
-///
-/// Loaded asynchronously by `TextureExtAssetsSystem`.
+/// Editor runtime composite for one `.texture`: the editable settings, a handle
+/// to the runtime pixel data, and the cached original source image.
 #[derive(Debug, Clone)]
 pub struct TextureExt {
     /// Canonical settings — modifiable by the inspector.
     pub serialized: SerializedTexture,
     /// Handle to the runtime `Texture` (RGBA pixel data for preview).
-    pub texture: Arc<AssetHandle<TextureAssetsSystem>>,
+    pub texture: Handle<Texture>,
     /// Original image width from the source PNG.
     pub original_width: u32,
     /// Original image height from the source PNG.
@@ -37,161 +39,207 @@ pub struct TextureExt {
     pub original_rgba: Vec<u8>,
 }
 
-// ============================================================
-// Asset system boilerplate
-// ============================================================
+impl Asset for TextureExt {}
+impl VisitAssetDependencies for TextureExt {
+    fn visit_dependencies(&self, visit: &mut impl FnMut(UntypedAssetId)) {
+        self.texture.visit_dependencies(visit);
+    }
+}
 
+/// Reads a `.texture` descriptor, declares the runtime [`Texture`] as a
+/// dependency, and caches the source image's original pixels.
 #[derive(Debug)]
-pub struct LoadedEvent {
-    index: AssetIndex,
-    asset: TextureExt,
-}
-impl asset::LoadedEvent<TextureExt> for LoadedEvent {
-    fn get_index(&self) -> AssetIndex {
-        self.index
-    }
-    fn get_asset(self) -> TextureExt {
-        self.asset
-    }
-}
+pub struct TextureExtLoader;
 
-#[derive(Debug)]
-pub struct DropEvent {
-    index: AssetIndex,
-}
-impl asset::DropEvent for DropEvent {
-    fn new(index: AssetIndex) -> Self {
-        Self { index }
-    }
-    fn get_index(&self) -> AssetIndex {
-        self.index
-    }
-}
+impl AssetLoader for TextureExtLoader {
+    type Asset = TextureExt;
+    type Settings = ();
+    type Error = KairosError;
 
-#[derive(Debug)]
-pub struct Loader {}
-impl Loader {
-    async fn load(
-        path: PathBuf,
-        asset_index: AssetIndex,
-        sender: mpsc::Sender<LoadedEvent>,
-        denpendency_request_sender: mpsc::Sender<DependencyLoadRequestEvent>,
-    ) -> Result<(), Error> {
-        // 1. Read .texture TOML -> SerializedTexture
-        let toml_bytes = tokio::fs::read(&path).await?;
-        let serialized: SerializedTexture =
-            tokio::task::spawn_blocking(move || toml::from_slice(&toml_bytes)).await??;
-
-        // 2. Request TextureAssetsSystem dependency (loads .texture_bin)
-        let (texture_setback_sender, texture_setback_receiver) =
-            oneshot::channel::<Arc<AssetHandle<TextureAssetsSystem>>>();
-        denpendency_request_sender
-            .send(Box::new(DependencyLoadRequest::<TextureAssetsSystem> {
-                dependency_path: path.clone(),
-                setback_sender: texture_setback_sender,
-            }))
-            .await?;
-        let texture = texture_setback_receiver.await?;
-
-        // 3. Read original PNG to cache dimensions + RGBA data
-        let source_path = serialized.source_path.clone();
-        let (original_width, original_height, original_rgba) =
-            tokio::task::spawn_blocking(move || match image::open(&source_path) {
-                Ok(img) => {
-                    let (w, h) = (img.width(), img.height());
-                    (w, h, img.into_rgba8().into_vec())
-                }
-                Err(e) => {
-                    log::warn!(
-                        "TextureExt: failed to open source PNG '{}': {e}",
-                        source_path.display()
-                    );
-                    (0, 0, Vec::new())
-                }
-            })
-            .await?;
-
-        let asset = TextureExt {
-            serialized,
-            texture,
-            original_width,
-            original_height,
-            original_rgba,
-        };
-
-        sender
-            .send(LoadedEvent {
-                index: asset_index,
-                asset,
-            })
-            .await?;
-        Ok(())
-    }
-}
-
-impl asset::AssetLoader<LoadedEvent, TextureExt> for Loader {
-    fn load_asset(
+    fn load(
         &self,
-        path: PathBuf,
-        asset_index: AssetIndex,
-        sender: mpsc::Sender<LoadedEvent>,
-        denpendency_request_sender: mpsc::Sender<DependencyLoadRequestEvent>,
-    ) {
-        tokio::spawn(Self::load(
-            path,
-            asset_index,
-            sender,
-            denpendency_request_sender,
-        ));
+        reader: &mut dyn Reader,
+        _settings: &(),
+        load_context: &mut LoadContext,
+    ) -> impl ConditionalSendFuture<Output = Result<TextureExt, KairosError>> {
+        async move {
+            // 1. Read the `.texture` TOML into its editable form.
+            let mut toml_bytes = Vec::new();
+            reader.read_to_end(&mut toml_bytes).await?;
+            let serialized: SerializedTexture = toml::from_slice(&toml_bytes)?;
+
+            // 2. Declare the runtime `Texture` as a dependency; its loader reads
+            //    the `.texture_bin` companion beside this descriptor.
+            let texture_path = load_context.path().path().to_path_buf();
+            let texture = load_context.load::<Texture>(texture_path);
+
+            // 3. Read the original source image for its dimensions and RGBA
+            //    data. A missing or unreadable source is not fatal: the rest of
+            //    the composite is still usable, so the cache degrades to empty.
+            let source_path = serialized.source_path.clone();
+            let (original_width, original_height, original_rgba) =
+                match async_fs::read(&source_path).await {
+                    Ok(bytes) => match image::load_from_memory(&bytes) {
+                        Ok(image) => {
+                            let (width, height) = (image.width(), image.height());
+                            (width, height, image.into_rgba8().into_vec())
+                        }
+                        Err(error) => {
+                            log::warn!(
+                                "TextureExt: failed to decode source image '{}': {error}",
+                                source_path.display()
+                            );
+                            (0, 0, Vec::new())
+                        }
+                    },
+                    Err(error) => {
+                        log::warn!(
+                            "TextureExt: failed to read source image '{}': {error}",
+                            source_path.display()
+                        );
+                        (0, 0, Vec::new())
+                    }
+                };
+
+            Ok(TextureExt {
+                serialized,
+                texture,
+                original_width,
+                original_height,
+                original_rgba,
+            })
+        }
+    }
+
+    /// This loader is resolved by asset type, never by extension: the `.texture`
+    /// extension is claimed by [`TextureLoader`](kairos_graphics::texture::TextureLoader),
+    /// and both are always loaded with an explicit asset type.
+    fn extensions(&self) -> &[&str] {
+        &[]
     }
 }
 
-#[derive(Debug)]
-pub struct TextureExtAssetsSystem {
-    assets: Assets<Self>,
+/// Registers the [`TextureExt`] asset and its [`TextureExtLoader`] with the core.
+///
+/// Must run after [`kairos_asset::next::install`] and after
+/// [`kairos_graphics::texture::install`], whose `Texture` store the loader's
+/// declared dependency targets.
+pub fn install(world: &mut World) {
+    world.init_asset_with_capacity::<TextureExt>(consts::TEXTURE_EXT_ASSETS_CAPACITY);
+    world.register_asset_loader(TextureExtLoader);
 }
 
-impl TextureExtAssetsSystem {
-    pub fn new() -> Self {
-        let loader = Loader {};
-        let assets = Assets::<Self>::new(
-            loader,
-            consts::TEXTURE_EXT_ASSETS_CAPACITY,
-            consts::TEXTURE_EXT_ASSETS_LOADED_CHANNEL_BUFFER_SIZE,
-            consts::TEXTURE_EXT_ASSETS_DROP_CHANNEL_BUFFER_SIZE,
-        );
-        Self { assets }
-    }
-}
+#[cfg(test)]
+mod test {
+    use std::{thread, time::Duration};
 
-impl AssetsHandler for TextureExtAssetsSystem {
-    fn handle_receves(&mut self) {
-        self.assets.handle_receves();
-    }
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-}
+    use kairos_asset::next::{AssetServer, Assets, install};
+    use kairos_ecs::schedule::ScheduleLabel;
+    use kairos_ecs::world::World;
 
-impl Default for TextureExtAssetsSystem {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+    use super::{TextureExt, install as install_texture_ext};
+    use crate::graphics::texture::{
+        PixelDatas, SerializedTexture, Texture, TextureFormat,
+        sampler::{AddressMode, FilterMode, SamplerConfig},
+    };
 
-impl AssetsSystem for TextureExtAssetsSystem {
-    type AssetType = TextureExt;
-    type LoadedEvent = LoadedEvent;
-    type DropEvent = DropEvent;
-    type Loader = Loader;
+    /// The two ad-hoc stages the asset drivers are installed into.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    struct Tracking;
 
-    fn get_assets(&self) -> &Assets<Self> {
-        &self.assets
+    impl ScheduleLabel for Tracking {
+        fn dyn_clone(&self) -> Box<dyn ScheduleLabel> {
+            Box::new(*self)
+        }
     }
-    fn get_assets_mut(&mut self) -> &mut Assets<Self> {
-        &mut self.assets
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    struct Events;
+
+    impl ScheduleLabel for Events {
+        fn dyn_clone(&self) -> Box<dyn ScheduleLabel> {
+            Box::new(*self)
+        }
+    }
+
+    fn sampler() -> SamplerConfig {
+        SamplerConfig {
+            filter_mode: FilterMode::Nearest,
+            address_mode_u: AddressMode::ClampToEdge,
+            address_mode_v: AddressMode::ClampToEdge,
+            address_mode_w: AddressMode::ClampToEdge,
+            mipmap: None,
+            compare: None,
+            border_color: None,
+        }
+    }
+
+    /// A `.texture` load through the core lands the composite in
+    /// `Assets<TextureExt>` *and* pulls its `Texture` dependency in, and the
+    /// loader caches the source image's original dimensions.
+    #[test]
+    fn texture_ext_loads_with_its_texture_dependency() {
+        // The default source is rooted at the cwd and `UnapprovedPathMode::Forbid`
+        // rejects paths outside it, so the load uses a path relative to the cwd.
+        let dir = tempfile::Builder::new()
+            .tempdir_in(".")
+            .expect("a temp dir in the cwd");
+
+        let source_path = dir.path().join("Probe.png");
+        image::RgbaImage::from_pixel(2, 2, image::Rgba([10, 20, 30, 255]))
+            .save(&source_path)
+            .expect("write the source png");
+
+        let texture_path = dir.path().join("Probe.texture");
+        let descriptor = SerializedTexture {
+            source_path: source_path.clone(),
+            width: 1,
+            height: 1,
+            format: TextureFormat::Rgba8Unorm,
+            sampler: sampler(),
+        };
+        std::fs::write(&texture_path, toml::to_string(&descriptor).unwrap())
+            .expect("write the texture descriptor");
+        std::fs::write(
+            texture_path.with_extension("texture_bin"),
+            SerializedTexture::serialize_pixel_datas(&[PixelDatas::U8(vec![
+                10, 20, 30, 255,
+            ])]),
+        )
+        .expect("write the texture binary");
+
+        let cwd = std::env::current_dir().expect("the cwd");
+        let rel_path = texture_path
+            .strip_prefix(&cwd)
+            .expect("the temp dir is under the cwd")
+            .to_path_buf();
+
+        let mut world = World::new();
+        install(&mut world, Tracking, Events);
+        crate::graphics::texture::install(&mut world);
+        install_texture_ext(&mut world);
+
+        let handle = world.resource::<AssetServer>().load::<TextureExt>(rel_path);
+
+        // The composite lands once the loader returns; its texture dependency
+        // resolves on its own task, so pump until both values are in their stores.
+        let mut loaded = None;
+        for _ in 0..400 {
+            world.run_schedule(Tracking);
+            if let Some(ext) = world.resource::<Assets<TextureExt>>().get(handle.id())
+                && let Some(texture) = world.resource::<Assets<Texture>>().get(ext.texture.id())
+            {
+                loaded = Some((
+                    ext.original_width,
+                    ext.original_height,
+                    texture.width,
+                    texture.height,
+                ));
+                break;
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
+
+        assert_eq!(loaded, Some((2, 2, 1, 1)));
     }
 }

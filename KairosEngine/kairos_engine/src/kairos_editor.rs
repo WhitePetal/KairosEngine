@@ -110,6 +110,10 @@ fn build_world() -> World {
     // the extract-stage system that collects their change events for render
     // cache invalidation.
     graphics::install_assets(&mut world, schedule::Extract);
+    // The editor's `TextureExt` composite rides the core too. Its loader declares
+    // the runtime `Texture` as a dependency, so it is registered after the
+    // texture store it targets.
+    crate::kairos_editor::editor_assets::texture_ext::install(&mut world);
     // Finally the editor camera controller, whose system the extract stage must
     // find already written to when it reads the frame. It consumes
     // `SceneViewInput`, an editor concept, so it is installed here rather than by

@@ -2,12 +2,13 @@ use std::{cell::Cell, fs, ops::DerefMut, path::PathBuf, sync::Arc};
 
 use egui::{ComboBox, Vec2, Widget};
 use egui_extras::{Column, TableBuilder};
+use kairos_asset::next::{AssetServer, Assets, Handle};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 
 use crate::{
-    asset_loader::assets::{AssetHandle, AssetsServer, TextureAssetsSystem},
+    asset_loader::assets::AssetsServer,
     graphics::{
         compare_function::CompareFunction,
         texture::{
@@ -17,7 +18,7 @@ use crate::{
         },
     },
     kairos_editor::{
-        editor_assets::{TextureExt, TextureExtAssetsSystem},
+        editor_assets::TextureExt,
         ui::{
             Message, Messager, UIReader,
             dialog::{ConfirmDialogWindow, Dialog},
@@ -71,8 +72,8 @@ struct TextureInspectorModel {
     style: TextureInspectorStyle,
     /// Path to the `.texture` asset file (for Apply writes).
     texture_path: PathBuf,
-    /// Handle to the editor runtime resource (loaded asynchronously).
-    handle: Arc<AssetHandle<TextureExtAssetsSystem>>,
+    /// Handle to the editor runtime composite (loaded asynchronously).
+    handle: Handle<TextureExt>,
     texture_ext: Arc<Mutex<Option<TextureExt>>>,
     /// Compression feature flags from `Preferences/texture_compression.toml`.
     compression_config: TextureCompressionConfig,
@@ -180,10 +181,10 @@ impl TextureInspector {
     }
 
     pub fn save_texture(
-        assets_server: &mut AssetsServer,
+        world: &mut kairos_ecs::world::World,
         path: &PathBuf,
-        handle: Arc<AssetHandle<TextureExtAssetsSystem>>,
-        ext: Arc<Mutex<Option<TextureExt>>>,
+        handle: &Handle<TextureExt>,
+        ext: &Arc<Mutex<Option<TextureExt>>>,
     ) {
         let mut ext_guard = ext.lock();
         let Some(ext) = ext_guard.deref_mut().take() else {
@@ -290,10 +291,16 @@ impl TextureInspector {
             data: mip_data,
             sampler: ext.serialized.sampler.clone(),
         };
-        if let Some(asset) = assets_server.get_mut(&ext.texture) {
+        if let Some(mut asset) = world
+            .resource_mut::<Assets<Texture>>()
+            .get_mut(ext.texture.id())
+        {
             *asset = texture_asset;
         }
-        if let Some(ext_source) = assets_server.get_mut(&handle) {
+        if let Some(mut ext_source) = world
+            .resource_mut::<Assets<TextureExt>>()
+            .get_mut(handle.id())
+        {
             *ext_source = ext
         }
     }
@@ -302,8 +309,8 @@ impl TextureInspector {
 impl Inspector for TextureInspector {
     fn create(
         path: &std::path::Path,
-        _world: &kairos_ecs::world::World,
-        assets_server: &mut AssetsServer,
+        world: &kairos_ecs::world::World,
+        _assets_server: &mut AssetsServer,
         _project_graph: &crate::kairos_editor::project_path_tree::ProjectPathGraph,
     ) -> Result<Self, Box<dyn std::error::Error>>
     where
@@ -312,9 +319,10 @@ impl Inspector for TextureInspector {
         let style = TextureInspectorStyle::new()?;
         let texture_path = path.to_path_buf();
 
-        // Load the editor runtime resource asynchronously.
-        // `TextureExtAssetsSystem` will auto-register on first use.
-        let handle = assets_server.load::<TextureExtAssetsSystem>(&texture_path);
+        // Load the editor runtime composite asynchronously through the core.
+        let handle = world
+            .resource::<AssetServer>()
+            .load::<TextureExt>(texture_path.clone());
 
         let compression_config = load_compression_config()?;
 
@@ -339,17 +347,20 @@ impl Inspector for TextureInspector {
         ui: &mut egui::Ui,
         _reader: &UIReader,
         messager: &mut Messager,
-        _world: &kairos_ecs::world::World,
-        assets_server: &AssetsServer,
+        world: &kairos_ecs::world::World,
+        _assets_server: &AssetsServer,
         _dt: f32,
     ) {
         egui::ScrollArea::vertical().show(ui, |ui| {
             let texture;
             {
-                // Wait for the TextureExt resource to load asynchronously.
+                // Wait for the TextureExt composite to load asynchronously.
                 let mut ext_guard = self.model.texture_ext.lock();
                 let Some(ext) = ext_guard.deref_mut() else {
-                    if let Some(ext_source) = assets_server.get(&self.model.handle) {
+                    if let Some(ext_source) = world
+                        .resource::<Assets<TextureExt>>()
+                        .get(self.model.handle.id())
+                    {
                         *ext_guard = Some(ext_source.clone());
                     }
                     ui.label("Texture is Loading...");
@@ -357,7 +368,9 @@ impl Inspector for TextureInspector {
                 };
 
                 // Also wait for the runtime Texture (pixel data) to be ready.
-                let Some(texture_inner) = assets_server.get::<TextureAssetsSystem>(&ext.texture)
+                let Some(texture_inner) = world
+                    .resource::<Assets<Texture>>()
+                    .get(ext.texture.id())
                 else {
                     ui.label("Texture data is Loading...");
                     return;
