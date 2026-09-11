@@ -1,17 +1,16 @@
-use std::{path::PathBuf, sync::Arc};
+use std::path::PathBuf;
 
 use kairos_asset::next::{AssetServer, Handle};
 use kairos_ecs::world::World;
 
 use crate::{
-    asset_loader::assets::{AssetHandle, AssetsServer, MeshAssetsSystem},
     graphics::{graphics_graph::GraphicsCommand, material::Material, mesh::Mesh, vertex::Vertex},
     math::{float3, float4x4},
 };
 
 pub struct GridPlaneModel {
     material: Handle<Material>,
-    mesh: Arc<AssetHandle<MeshAssetsSystem>>,
+    mesh: Handle<Mesh>,
 }
 
 /// Generate line geometry for a grid on the XZ plane (Y=0).
@@ -50,15 +49,13 @@ fn build_grid_lines(half_extent: i32) -> Mesh {
 }
 
 impl GridPlaneModel {
-    pub fn new(world: &World, assets_server: &mut AssetsServer) -> Self {
+    pub fn new(world: &World) -> Self {
         let material = world
             .resource::<AssetServer>()
             .load::<Material>(PathBuf::from("res/materials/gizmos/grid_plane.mat"));
-        let mesh = build_grid_lines(100);
-        let mesh = assets_server.insert::<MeshAssetsSystem>(
-            mesh,
-            &PathBuf::from("runtime/scene_window/gizmos/grid_plane"),
-        );
+        let mesh = world
+            .resource::<AssetServer>()
+            .add(build_grid_lines(100));
 
         Self { material, mesh }
     }

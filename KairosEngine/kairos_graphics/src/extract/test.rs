@@ -6,12 +6,9 @@
 //! audio device), and the rails never touch wgpu, so the whole suite is
 //! headless.
 //!
-//! Asset handles are forged the way the audio tests do it: an index plus a drop
-//! channel, moved into a component without ever resolving an asset. That is also
-//! the *point* of the first group — extraction must not depend on the asset
-//! server.
-
-use std::sync::Arc;
+//! Asset handles start as the default (unloaded) `Handle` — an id with no
+//! resolved value. That is also the *point* of the first group — extraction must
+//! not depend on the asset server.
 
 use kairos_asset::next::Handle;
 use kairos_ecs::{
@@ -23,12 +20,12 @@ use kairos_math::{float3, quaternion};
 use kairos_transform::LocalTransform;
 
 use crate::{
-    assets::{AssetHandle, MeshAssetsSystem, asset::{AssetIndex, AssetsSystem}},
     camera::{Camera, CameraView},
     drawer::DrawCommand,
     lod_mesh_component::LODMesh,
     material::Material,
     material_component::MaterialComponent,
+    mesh::Mesh,
     view_port::{GameView, SceneView, ViewportSize},
 };
 
@@ -87,7 +84,7 @@ fn spawn_mesh_entity(world: &mut World, transform: LocalTransform) -> Entity {
     world
         .spawn((
             transform,
-            LODMesh::new(test_asset_handle::<MeshAssetsSystem>()),
+            LODMesh::new(Handle::<Mesh>::default()),
             MaterialComponent::new(Handle::<Material>::default()),
         ))
         .id()
@@ -135,15 +132,6 @@ fn expected_projection(world: &World, camera: Entity, aspect: f32) -> kairos_mat
         .get::<Camera>()
         .expect("a camera entity carries its intrinsics")
         .get_view_projection_matrix(transform, aspect)
-}
-
-/// Builds an unloaded asset handle for structural tests: the handle is just an
-/// index plus a drop channel, so a standalone channel makes it constructible
-/// and droppable without a real `AssetsServer`. It can be moved into a
-/// component, but never resolves an asset.
-fn test_asset_handle<T: AssetsSystem>() -> Arc<AssetHandle<T>> {
-    let (drop_sender, _drop_receiver) = tokio::sync::mpsc::channel::<T::DropEvent>(1);
-    Arc::new(AssetHandle::new(AssetIndex::new(0), drop_sender))
 }
 
 // ---------------------------------------------------------------------------

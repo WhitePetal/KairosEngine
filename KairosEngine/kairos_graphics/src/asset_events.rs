@@ -21,7 +21,7 @@ use kairos_ecs::schedule::{ScheduleLabel, Schedules};
 use kairos_ecs::system::ResMut;
 use kairos_ecs::world::World;
 
-use crate::{material::Material, shader::ShaderAsset, texture::Texture};
+use crate::{material::Material, mesh::Mesh, shader::ShaderAsset, texture::Texture};
 
 /// The graphics assets whose change events invalidate the render caches.
 ///
@@ -42,6 +42,8 @@ pub(crate) struct GraphicsAssetEventSets {
     pub(crate) removed_textures: HashSet<AssetId<Texture>>,
     pub(crate) modified_materials: HashSet<AssetId<Material>>,
     pub(crate) removed_materials: HashSet<AssetId<Material>>,
+    pub(crate) modified_meshes: HashSet<AssetId<Mesh>>,
+    pub(crate) removed_meshes: HashSet<AssetId<Mesh>>,
 }
 
 impl GraphicsAssetEvents {
@@ -63,6 +65,7 @@ pub fn collect_graphics_asset_events(
     mut shaders: MessageReader<AssetEvent<ShaderAsset>>,
     mut textures: MessageReader<AssetEvent<Texture>>,
     mut materials: MessageReader<AssetEvent<Material>>,
+    mut meshes: MessageReader<AssetEvent<Mesh>>,
 ) {
     let mut sets = events.lock();
 
@@ -99,11 +102,22 @@ pub fn collect_graphics_asset_events(
             _ => {}
         }
     }
+    for event in meshes.read() {
+        match event {
+            AssetEvent::Modified { id } => {
+                sets.modified_meshes.insert(*id);
+            }
+            AssetEvent::Removed { id } => {
+                sets.removed_meshes.insert(*id);
+            }
+            _ => {}
+        }
+    }
 }
 
-/// Installs the graphics asset types (`ShaderAsset`, `Texture`, `Material`, and
-/// `SerializedMaterial`) into `world`, plus the `Extract`-stage event collector
-/// their caches are invalidated by.
+/// Installs the graphics asset types (`ShaderAsset`, `Texture`, `Mesh`,
+/// `Material`, and `SerializedMaterial`) into `world`, plus the `Extract`-stage
+/// event collector their caches are invalidated by.
 ///
 /// Must run after [`kairos_asset::next::install`], which creates the
 /// `AssetServer` and the `AssetStages` the per-type registration reads, and
@@ -115,6 +129,7 @@ pub fn collect_graphics_asset_events(
 pub fn install_assets(world: &mut World, extract_stage: impl ScheduleLabel) {
     crate::shader::install(world);
     crate::texture::install(world);
+    crate::mesh::install(world);
     crate::material::install(world);
 
     world.init_resource::<GraphicsAssetEvents>();

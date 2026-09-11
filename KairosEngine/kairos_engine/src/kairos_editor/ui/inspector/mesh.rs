@@ -1,6 +1,6 @@
-use std::{cell::Cell, fs, ops::DerefMut, path::PathBuf, sync::Arc};
+use std::{cell::Cell, fs, ops::DerefMut, path::PathBuf};
 
-use kairos_asset::next::{AssetServer, Handle};
+use kairos_asset::next::{AssetServer, Assets, Handle};
 use strum::{Display, EnumIter};
 
 use egui::Vec2;
@@ -9,7 +9,7 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    asset_loader::assets::{AssetHandle, AssetsServer, MeshAssetsSystem},
+    asset_loader::assets::AssetsServer,
     graphics::{
         attachment::{Attachment, AttachmentFormat, AttachmentLoadAction, AttachmentStoreAction},
         camera::Camera,
@@ -128,11 +128,10 @@ impl PreviewState {
 
 struct MeshInspectorModel {
     mesh_path: PathBuf,
-    wireframe_mesh_path: PathBuf,
     style: MeshInspectorStyle,
-    mesh_handle: Arc<AssetHandle<MeshAssetsSystem>>,
+    mesh_handle: Handle<Mesh>,
     wireframe_material_handle: Handle<Material>,
-    wireframe_mesh_handle: Option<Arc<AssetHandle<MeshAssetsSystem>>>,
+    wireframe_mesh_handle: Option<Handle<Mesh>>,
     mode_material_handles: [Handle<Material>; 4],
     preview_mode: Cell<PreviewMode>,
     show_wireframe: Cell<bool>,
@@ -148,9 +147,8 @@ pub struct MeshInspector {
 }
 
 impl MeshInspector {
-    pub fn create_wireframe_mesh(&mut self, assets_server: &mut AssetsServer, mesh: Mesh) {
-        self.model.wireframe_mesh_handle =
-            Some(assets_server.insert::<MeshAssetsSystem>(mesh, &self.model.wireframe_mesh_path));
+    pub fn create_wireframe_mesh(&mut self, world: &kairos_ecs::world::World, mesh: Mesh) {
+        self.model.wireframe_mesh_handle = Some(world.resource::<AssetServer>().add(mesh));
     }
 
     fn draw_preview(&self, ui: &mut egui::Ui, mesh: &Mesh, dt: f32) {
@@ -248,7 +246,7 @@ impl Inspector for MeshInspector {
     fn create(
         path: &std::path::Path,
         world: &kairos_ecs::world::World,
-        assets_server: &mut AssetsServer,
+        _assets_server: &mut AssetsServer,
         _project_graph: &crate::kairos_editor::project_path_tree::ProjectPathGraph,
     ) -> Result<Self, Box<dyn std::error::Error>>
     where
@@ -256,14 +254,14 @@ impl Inspector for MeshInspector {
     {
         let style = MeshInspectorStyle::new()?;
         let mesh_path = path.to_path_buf();
-        let mesh_handle = assets_server.load::<MeshAssetsSystem>(&mesh_path);
+        let mesh_handle = world
+            .resource::<AssetServer>()
+            .load::<Mesh>(mesh_path.clone());
         let wireframe_material_handle = world
             .resource::<AssetServer>()
             .load::<Material>(PathBuf::from(
                 paths::PATH_MESH_INSPECTOR_PREVIEW_WIREFRAME_MATERIAL,
             ));
-
-        let wireframe_mesh_path = mesh_path.with_added_extension(".wireframe_mesh");
 
         let mode_material_handles = [
             world.resource::<AssetServer>().load::<Material>(PathBuf::from(
@@ -283,7 +281,6 @@ impl Inspector for MeshInspector {
         let model = MeshInspectorModel {
             style,
             mesh_path,
-            wireframe_mesh_path,
             mesh_handle,
             wireframe_material_handle,
             wireframe_mesh_handle: None,
@@ -301,12 +298,15 @@ impl Inspector for MeshInspector {
         ui: &mut egui::Ui,
         _reader: &UIReader,
         messager: &mut Messager,
-        _world: &kairos_ecs::world::World,
-        assets_server: &AssetsServer,
+        world: &kairos_ecs::world::World,
+        _assets_server: &AssetsServer,
         dt: f32,
     ) {
         egui::ScrollArea::vertical().show(ui, |ui| {
-            let Some(mesh) = assets_server.get(&self.model.mesh_handle) else {
+            let Some(mesh) = world
+                .resource::<Assets<Mesh>>()
+                .get(self.model.mesh_handle.id())
+            else {
                 ui.label("Mesh is Loading...");
                 return;
             };

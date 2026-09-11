@@ -714,7 +714,7 @@ impl Context {
                     if let Some(inspector) = self.get_window_mut::<InspectorWindow>()
                         && let Some(mesh_inspector) = inspector.get_inspector_mut::<MeshInspector>()
                     {
-                        mesh_inspector.create_wireframe_mesh(&mut engine.assets_server, mesh);
+                        mesh_inspector.create_wireframe_mesh(&engine.world, mesh);
                     }
                 }
                 Message::MaterialInspectorChangeShader(shader_path) => {

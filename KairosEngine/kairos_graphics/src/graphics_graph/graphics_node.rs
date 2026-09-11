@@ -1,13 +1,13 @@
-use std::{hash::Hash, sync::Arc};
+use std::hash::Hash;
 
 use kairos_asset::next::Handle;
 use kairos_math::float4x4;
 
 use crate::{
-    assets::{AssetHandle, MeshAssetsSystem},
     attachment::{AttachmentLoadAction, AttachmentStoreAction},
     egui_texture_handle::EguiTextureHandle,
     material::Material,
+    mesh::Mesh,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -58,14 +58,14 @@ impl DepthAttachmentBind {
 pub struct VPId(pub usize);
 
 pub struct BaseDraw {
-    pub mesh: Arc<AssetHandle<MeshAssetsSystem>>,
+    pub mesh: Handle<Mesh>,
     pub material: Handle<Material>,
     pub local_to_world: float4x4,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct InstancingRenderer {
-    pub mesh: Arc<AssetHandle<MeshAssetsSystem>>,
+    pub mesh: Handle<Mesh>,
     pub material: Handle<Material>,
 }
 

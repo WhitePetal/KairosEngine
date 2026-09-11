@@ -17,8 +17,6 @@
 //! Swapping what is drawn means calling a different drawer from that view's
 //! extract system; adding to it means calling one more drawer there.
 
-use std::sync::Arc;
-
 use kairos_asset::next::Handle;
 use kairos_ecs::system::Query;
 use kairos_transform::LocalTransform;
@@ -26,10 +24,10 @@ use kairos_transform::LocalTransform;
 use kairos_math::float4x4;
 
 use crate::{
-    assets::{AssetHandle, MeshAssetsSystem},
     lod_mesh_component::LODMesh,
     material::Material,
     material_component::MaterialComponent,
+    mesh::Mesh,
 };
 
 /// One mesh instance to draw this frame.
@@ -40,7 +38,7 @@ use crate::{
 /// frame.
 #[derive(Debug, Clone)]
 pub struct DrawCommand {
-    pub mesh: Arc<AssetHandle<MeshAssetsSystem>>,
+    pub mesh: Handle<Mesh>,
     pub material: Handle<Material>,
     /// local → world, computed at draw-list build time.
     ///

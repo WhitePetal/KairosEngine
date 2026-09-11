@@ -1,16 +1,11 @@
-use std::sync::Arc;
-
 use kairos_asset::next::Handle;
 use kairos_ecs::{component::Component, world::World};
 use kairos_transform::LocalTransform;
 
-use crate::assets::{
-    AssetHandle, MeshAssetsSystem, asset::{AssetIndex, AssetsSystem},
-};
-
 use super::{Camera, CameraView};
 use crate::{
     lod_mesh_component::LODMesh, material::Material, material_component::MaterialComponent,
+    mesh::Mesh,
 };
 
 /// Compile-time proof that the render trio is spawnable as `kairos_ecs`
@@ -59,7 +54,7 @@ fn a_mesh_and_material_pair_can_be_spawned_together() {
     let entity = world
         .spawn((
             LocalTransform::default(),
-            LODMesh::new(test_asset_handle::<MeshAssetsSystem>()),
+            LODMesh::new(Handle::<Mesh>::default()),
             MaterialComponent::new(Handle::<Material>::default()),
         ))
         .id();
@@ -79,13 +74,4 @@ fn the_projection_honours_the_aspect_it_is_given() {
 
     assert_eq!(wide.c0().x(), square.c0().x() / 2.0);
     assert_eq!(wide.c1().y(), square.c1().y());
-}
-
-/// Builds an unloaded asset handle for structural tests: the handle is just an
-/// index plus a drop channel, so a standalone channel makes it constructible
-/// and droppable without a real `AssetsServer`. It can be moved into a
-/// component, but never resolves an asset.
-fn test_asset_handle<T: AssetsSystem>() -> Arc<AssetHandle<T>> {
-    let (drop_sender, _drop_receiver) = tokio::sync::mpsc::channel::<T::DropEvent>(1);
-    Arc::new(AssetHandle::new(AssetIndex::new(0), drop_sender))
 }

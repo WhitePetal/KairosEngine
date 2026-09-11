@@ -1,5 +1,4 @@
 use crate::{
-    asset_loader::assets::AssetsServer,
     graphics::graphics_graph::GraphicsCommand,
     kairos_editor::ui::scene_window::gizmos::{
         axes_indicator::{AxesIndicatorModel, AxesIndicatorRenderer},
@@ -16,9 +15,9 @@ pub struct GizmosModel {
     axes_indicator: AxesIndicatorModel,
 }
 impl GizmosModel {
-    pub fn new(world: &World, assets_server: &mut AssetsServer) -> Self {
-        let grid_plane = GridPlaneModel::new(world, assets_server);
-        let axes_indicator = AxesIndicatorModel::new(world, assets_server);
+    pub fn new(world: &World) -> Self {
+        let grid_plane = GridPlaneModel::new(world);
+        let axes_indicator = AxesIndicatorModel::new(world);
         Self {
             grid_plane,
             axes_indicator,

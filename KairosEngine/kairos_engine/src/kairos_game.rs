@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use kairos_asset::next::AssetServer;
 
 use crate::{
-    asset_loader::assets::{AudioAssetHandle, AudioAssetsSystem, MeshAssetsSystem},
+    asset_loader::assets::{AudioAssetHandle, AudioAssetsSystem},
     audio::AudioEngine,
     audio::background::BackgroundAudio,
     audio::spatial::{
@@ -12,7 +12,8 @@ use crate::{
     },
     graphics::{
         camera::Camera, lod_mesh_component::LODMesh, material::Material,
-        material_component::MaterialComponent, mesh::SerializedMeshAsset, view_port::GameView,
+        material_component::MaterialComponent, mesh::{Mesh, SerializedMeshAsset},
+        view_port::GameView,
     },
     inputs::Input,
     kairos_editor::Engine,
@@ -259,10 +260,14 @@ impl KairosGame {
 
         SerializedMeshAsset::save_from_glb_file(PathBuf::from("res/models/Ball.glb"));
 
-        let plan_mesh_asset =
-            assets_server.load::<MeshAssetsSystem>(&PathBuf::from("res/models/Plane.mesh"));
-        let ball_mesh_asset =
-            assets_server.load::<MeshAssetsSystem>(&PathBuf::from("res/models/Ball.mesh"));
+        let plan_mesh_asset = engine
+            .world
+            .resource::<AssetServer>()
+            .load::<Mesh>(PathBuf::from("res/models/Plane.mesh"));
+        let ball_mesh_asset = engine
+            .world
+            .resource::<AssetServer>()
+            .load::<Mesh>(PathBuf::from("res/models/Ball.mesh"));
         let plane_mesh = LODMesh::new(plan_mesh_asset);
         let ball_mesh = LODMesh::new(ball_mesh_asset);
 

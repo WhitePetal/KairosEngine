@@ -1,10 +1,7 @@
-use std::sync::Arc;
-
 use kairos_asset::next::Handle;
 use kairos_math::float4x4;
 
 use crate::{
-    assets::{AssetHandle, MeshAssetsSystem},
     attachment::Attachment,
     egui_texture_handle::EguiTextureHandle,
     graphics_graph::graphics_node::{
@@ -13,6 +10,7 @@ use crate::{
         OutputToFrameBufferNode, RenderPassNode, VPId,
     },
     material::Material,
+    mesh::Mesh,
 };
 
 enum RenderPassState {
@@ -116,7 +114,7 @@ impl GraphicsCommand {
 
     pub fn draw(
         &mut self,
-        mesh: Arc<AssetHandle<MeshAssetsSystem>>,
+        mesh: Handle<Mesh>,
         material: Handle<Material>,
         local_to_world: float4x4,
     ) {

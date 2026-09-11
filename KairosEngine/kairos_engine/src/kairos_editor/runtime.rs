@@ -367,7 +367,6 @@ impl KairosEditorRuntime {
                     let graphics_graph = GraphicsGraph::build(graphics_commands);
                     render_pipeline.present(
                         &self.kairos_engine.engine.world,
-                        &mut self.kairos_engine.engine.assets_server,
                         output,
                         graphics_graph,
                     );

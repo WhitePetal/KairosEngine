@@ -1,6 +1,13 @@
 use std::path::{Path, PathBuf};
+use std::{thread, time::Duration};
 
-use super::{Mesh, SerializedMeshAsset};
+use kairos_asset::next::{AssetServer, Assets, install};
+use kairos_ecs::schedule::ScheduleLabel;
+use kairos_ecs::world::World;
+use kairos_math::float3;
+
+use super::{Mesh, SerializedMeshAsset, install as install_mesh};
+use crate::vertex::Vertex;
 
 /// The three committed sample models (issue #149). They are decoded
 /// exactly the way the runtime asset loader does (`rkyv::from_bytes` on
@@ -114,4 +121,76 @@ fn assert_mesh_sane(name: &str, mesh: &Mesh) {
             "{name}: vertex {i} normal not unit length ({len})"
         );
     }
+}
+
+/// The two ad-hoc stages the asset drivers are installed into.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct Tracking;
+
+impl ScheduleLabel for Tracking {
+    fn dyn_clone(&self) -> Box<dyn ScheduleLabel> {
+        Box::new(*self)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct Events;
+
+impl ScheduleLabel for Events {
+    fn dyn_clone(&self) -> Box<dyn ScheduleLabel> {
+        Box::new(*self)
+    }
+}
+
+/// A `.mesh` + `.mesh_bin` pair loads through the new core.
+#[test]
+fn mesh_loads_through_the_core() {
+    let dir = tempfile::Builder::new()
+        .tempdir_in(".")
+        .expect("a temp dir in the cwd");
+    let full_path = dir.path().join("Probe.mesh");
+
+    let descriptor = SerializedMeshAsset {
+        source_path: full_path.with_extension("mesh_bin"),
+    };
+    std::fs::write(&full_path, toml::to_string(&descriptor).unwrap())
+        .expect("write the mesh descriptor");
+
+    let mesh = Mesh::new(
+        vec![
+            Vertex::with_position(float3::new(0.0, 0.0, 0.0)),
+            Vertex::with_position(float3::new(1.0, 0.0, 0.0)),
+            Vertex::with_position(float3::new(0.0, 1.0, 0.0)),
+        ],
+        vec![0, 1, 2],
+    );
+    std::fs::write(
+        full_path.with_extension("mesh_bin"),
+        rkyv::to_bytes::<rkyv::rancor::Error>(&mesh).expect("archive the mesh"),
+    )
+    .expect("write the mesh binary");
+
+    let cwd = std::env::current_dir().expect("the cwd");
+    let rel_path = full_path
+        .strip_prefix(&cwd)
+        .expect("the temp dir is under the cwd")
+        .to_path_buf();
+
+    let mut world = World::new();
+    install(&mut world, Tracking, Events);
+    install_mesh(&mut world);
+
+    let handle = world.resource::<AssetServer>().load::<Mesh>(rel_path);
+
+    let mut loaded = None;
+    for _ in 0..200 {
+        world.run_schedule(Tracking);
+        if let Some(mesh) = world.resource::<Assets<Mesh>>().get(handle.id()) {
+            loaded = Some((mesh.vertices.len(), mesh.indices.clone()));
+            break;
+        }
+        thread::sleep(Duration::from_millis(5));
+    }
+
+    assert_eq!(loaded, Some((3, vec![0, 1, 2])));
 }

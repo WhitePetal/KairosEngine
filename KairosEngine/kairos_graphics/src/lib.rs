@@ -41,9 +41,9 @@ pub mod lod_mesh_component;
 pub mod material_component;
 pub mod view_port;
 
-/// Installs the graphics asset types (`ShaderAsset`, `Texture`, `Material`, and
-/// `SerializedMaterial`) and the `Extract`-stage system that collects their
-/// change events for cache invalidation.
+/// Installs the graphics asset types (`ShaderAsset`, `Texture`, `Mesh`,
+/// `Material`, and `SerializedMaterial`) and the `Extract`-stage system that
+/// collects their change events for cache invalidation.
 ///
 /// Must run after [`kairos_asset::next::install`], which creates the
 /// `AssetServer` and the `AssetStages` the per-type registration reads.

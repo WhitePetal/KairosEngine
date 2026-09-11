@@ -1,11 +1,10 @@
-// Only `Mesh` and `Texture` still ride the legacy `AssetsSystem` stack: they are
-// migrated in later asset slices (S4/S5). The `ShaderAsset`, `Material`, and
+// Only `Texture` still rides the legacy `AssetsSystem` stack: it is migrated in
+// a later asset slice (S5). The `Mesh`, `ShaderAsset`, `Material`, and
 // `SerializedMaterial` systems that used to live here are gone — those types now
-// ride the next-generation core (`crate::shader`, `crate::material`).
-mod mesh;
+// ride the next-generation core (`crate::mesh`, `crate::shader`,
+// `crate::material`).
 mod texture;
 
 pub use kairos_asset::assets::asset::*;
 
-pub use mesh::MeshAssetsSystem;
 pub use texture::TextureAssetsSystem;

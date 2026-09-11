@@ -4,8 +4,15 @@ use gltf::Gltf;
 use rkyv::Archive;
 use serde::{Deserialize, Serialize};
 
+use kairos_asset::next::{
+    Asset, AssetLoader, AssetWorldExt, LoadContext, Reader, VisitAssetDependencies,
+};
+use kairos_ecs::error::KairosError;
+use kairos_ecs::world::World;
 use kairos_math::{self as math, AABB, float2, float3, float4, float4x4, quaternion};
+use kairos_tasks::ConditionalSendFuture;
 
+use crate::consts::MESH_ASSETS_CAPACITY;
 use crate::vertex::Vertex;
 
 #[cfg(test)]
@@ -17,6 +24,57 @@ pub mod wireframe;
 pub struct Mesh {
     pub vertices: Vec<Vertex>,
     pub indices: Vec<u16>,
+}
+
+impl Asset for Mesh {}
+impl VisitAssetDependencies for Mesh {}
+
+/// Reads a `.mesh` descriptor and its companion `.mesh_bin` archive.
+///
+/// The `.mesh` file carries only the source path; the geometry lives in the
+/// sibling `.mesh_bin` archive, which the loader decodes with `rkyv` directly
+/// with `async-fs`: the default source is rooted at the process working
+/// directory, which is also what the descriptor's path is relative to.
+#[derive(Debug)]
+pub struct MeshLoader;
+
+impl AssetLoader for MeshLoader {
+    type Asset = Mesh;
+    type Settings = ();
+    type Error = KairosError;
+
+    fn load(
+        &self,
+        reader: &mut dyn Reader,
+        _settings: &(),
+        load_context: &mut LoadContext,
+    ) -> impl ConditionalSendFuture<Output = Result<Mesh, KairosError>> {
+        async move {
+            let mut toml_bytes = Vec::new();
+            reader.read_to_end(&mut toml_bytes).await?;
+            // Parsed only to validate the descriptor; the geometry is in the
+            // binary companion, addressed by this asset's own path.
+            let _serialized: SerializedMeshAsset = toml::from_slice(&toml_bytes)?;
+
+            let bin_path = load_context.path().path().with_extension("mesh_bin");
+            let bytes = async_fs::read(&bin_path).await?;
+            let mesh = rkyv::from_bytes::<Mesh, rkyv::rancor::Error>(&bytes)?;
+            Ok(mesh)
+        }
+    }
+
+    fn extensions(&self) -> &[&str] {
+        &["mesh"]
+    }
+}
+
+/// Registers the [`Mesh`] asset and its [`MeshLoader`] with the core.
+///
+/// Must run after [`kairos_asset::next::install`], which creates the
+/// `AssetServer` and the `AssetStages` this reads.
+pub fn install(world: &mut World) {
+    world.init_asset_with_capacity::<Mesh>(MESH_ASSETS_CAPACITY);
+    world.register_asset_loader(MeshLoader);
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

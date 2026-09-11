@@ -21,6 +21,9 @@ pub const TEXTURE_ASSETS_CAPACITY: usize = 512;
 /// preallocates.
 pub const MATERIAL_ASSETS_CAPACITY: usize = 512;
 
+/// How many mesh slots [`Assets<Mesh>`](kairos_asset::next::Assets) preallocates.
+pub const MESH_ASSETS_CAPACITY: usize = 512;
+
 /// How many serialized-material slots
 /// [`Assets<SerializedMaterial>`](kairos_asset::next::Assets) preallocates.
 pub const SERIALIZED_MATERIAL_ASSETS_CAPACITY: usize = 128;

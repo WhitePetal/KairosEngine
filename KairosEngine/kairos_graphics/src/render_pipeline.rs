@@ -34,7 +34,6 @@ use kairos_asset::next::{AssetId, AssetServer, Assets, Handle};
 
 use crate::{
     asset_events::GraphicsAssetEvents,
-    assets::AssetsServer,
     attachment::{AttachmentFormat, InternalAttachmentId},
     egui_texture_handle::EguiTextureHandle,
     graphics_graph::{self, GraphicsGraph, graphics_node::RenderPassNode},
@@ -76,12 +75,10 @@ struct TextureCache {
 
 /// GPU buffers for one mesh.
 ///
-/// `Mesh` is not on the next-generation core yet (it lands in a later slice), so
-/// this cache is still keyed by the legacy slot index and validated by its
-/// generation — `AssetEvent<Mesh>` does not exist yet. It keeps its `version`
-/// until that migration brings event-driven invalidation with it.
+/// Keyed by [`AssetId<Mesh>`] and invalidated by `AssetEvent<Mesh>`: a modified
+/// or removed mesh drops its entry in [`RenderPipeline::invalidate_caches`], so a
+/// surviving entry is always current.
 struct MeshBufferCache {
-    version: u32,
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
 }
@@ -111,7 +108,7 @@ pub struct RenderPipeline {
 
     pipeline_cache: HashMap<PipelineKey, PipelineCache>,
     texture_cache: HashMap<AssetId<Texture>, TextureCache>,
-    mesh_buffer_cache: HashMap<usize, MeshBufferCache>,
+    mesh_buffer_cache: HashMap<AssetId<Mesh>, MeshBufferCache>,
     global_vp_bind_group_layout: BindGroupLayout,
 
     egui_texture_free_sender: std::sync::mpsc::Sender<egui::TextureId>,
@@ -262,7 +259,6 @@ impl RenderPipeline {
     pub fn present(
         &mut self,
         world: &World,
-        assets_server: &mut AssetsServer,
         output: SurfaceTexture,
         graphics_graph: GraphicsGraph,
     ) {
@@ -422,7 +418,6 @@ impl RenderPipeline {
                         &self.global_vp_bind_group_layout,
                         &vp_bind_group,
                         &render_pass_node,
-                        assets_server,
                         world,
                         &mut self.error_material_indices,
                         &self.purple_fallback,
@@ -504,14 +499,13 @@ impl RenderPipeline {
         encoder: &mut CommandEncoder,
         pipeline_cache: &mut HashMap<PipelineKey, PipelineCache>,
         texture_cache: &mut HashMap<AssetId<Texture>, TextureCache>,
-        mesh_buffer_cache: &mut HashMap<usize, MeshBufferCache>,
+        mesh_buffer_cache: &mut HashMap<AssetId<Mesh>, MeshBufferCache>,
         egui_renderer: &mut egui_wgpu::Renderer,
         render_pass_color_attachments: &Vec<RenderPassColorAttachment>,
         render_pass_depth_attachments: &Vec<RenderPassDepthStencilAttachment>,
         global_vp_bind_group_layout: &BindGroupLayout,
         vp_bind_group: &BindGroup,
         render_pass_node: &RenderPassNode,
-        assets_server: &AssetsServer,
         world: &World,
         error_material_indices: &mut HashSet<AssetId<Material>>,
         purple_fallback: &Option<(BindGroup, BindGroupLayout)>,
@@ -521,6 +515,7 @@ impl RenderPipeline {
         let materials = world.resource::<Assets<Material>>();
         let shaders = world.resource::<Assets<ShaderAsset>>();
         let textures = world.resource::<Assets<Texture>>();
+        let meshes = world.resource::<Assets<Mesh>>();
         let attachment_ids = &render_pass_node.attachments;
 
         let color_attachments = attachment_ids
@@ -647,7 +642,7 @@ impl RenderPipeline {
             Vec::with_capacity(render_pass_node.draw_instances.len());
 
         for draw in &render_pass_node.draw_instances {
-            let Some(mesh) = assets_server.get(&draw.renderer.mesh) else {
+            let Some(mesh) = meshes.get(&draw.renderer.mesh) else {
                 continue;
             };
             let Some(material) = materials.get(&draw.renderer.material) else {
@@ -746,29 +741,18 @@ impl RenderPipeline {
             };
 
             // --- Mesh buffers ---
+            // Keyed by `AssetId<Mesh>`; `invalidate_caches` evicts a modified or
+            // removed mesh, so a surviving entry is always current.
             let mesh_id = draw.renderer.mesh.id();
-            let mesh_key = mesh_id.index();
-            let mesh_version = mesh_id.version();
             let indices_num = mesh.indices.len() as u32;
-            let (vertex_buffer, index_buffer) = match mesh_buffer_cache.entry(mesh_key) {
-                std::collections::hash_map::Entry::Occupied(mut entry) => {
+            let (vertex_buffer, index_buffer) = match mesh_buffer_cache.entry(mesh_id) {
+                std::collections::hash_map::Entry::Occupied(entry) => {
                     let cache = entry.get();
-                    if cache.version == mesh_version {
-                        (cache.vertex_buffer.clone(), cache.index_buffer.clone())
-                    } else {
-                        let (vb, ib) = Self::create_mesh(device, mesh);
-                        entry.insert(MeshBufferCache {
-                            version: mesh_version,
-                            vertex_buffer: vb.clone(),
-                            index_buffer: ib.clone(),
-                        });
-                        (vb, ib)
-                    }
+                    (cache.vertex_buffer.clone(), cache.index_buffer.clone())
                 }
                 std::collections::hash_map::Entry::Vacant(entry) => {
                     let (vb, ib) = Self::create_mesh(device, mesh);
                     entry.insert(MeshBufferCache {
-                        version: mesh_version,
                         vertex_buffer: vb.clone(),
                         index_buffer: ib.clone(),
                     });
@@ -1000,8 +984,8 @@ impl RenderPipeline {
     ///
     /// A modified or removed shader drops every pipeline compiled from it; a
     /// modified or removed texture drops its bind group; a modified or removed
-    /// material clears any render error recorded against it so the next frame
-    /// retries it.
+    /// mesh drops its vertex/index buffers; a modified or removed material clears
+    /// any render error recorded against it so the next frame retries it.
     fn invalidate_caches(&mut self, world: &World) {
         let events = world.resource::<GraphicsAssetEvents>().clone();
         let mut sets = events.lock();
@@ -1025,6 +1009,12 @@ impl RenderPipeline {
         }
         for id in sets.removed_materials.drain() {
             self.error_material_indices.remove(&id);
+        }
+        for id in sets.modified_meshes.drain() {
+            self.mesh_buffer_cache.remove(&id);
+        }
+        for id in sets.removed_meshes.drain() {
+            self.mesh_buffer_cache.remove(&id);
         }
     }
 

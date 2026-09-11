@@ -11,7 +11,7 @@ use serde::Deserialize;
 use strum::IntoEnumIterator;
 
 use crate::{
-    asset_loader::assets::{AssetHandle, AssetsServer, MeshAssetsSystem},
+    asset_loader::assets::AssetsServer,
     graphics::{
         attachment::{Attachment, AttachmentFormat, AttachmentLoadAction, AttachmentStoreAction},
         camera::Camera,
@@ -22,6 +22,7 @@ use crate::{
             graphics_node::{ColorAttachmentBind, DepthAttachmentBind},
         },
         material::{Material, SerializedMaterial},
+        mesh::Mesh,
         render_state::{
             BlendFactor, BlendOperation, BlendPreset, BlendState, CullMode, PrimitiveTopology,
             RenderState,
@@ -295,7 +296,7 @@ struct MaterialInspectorModel {
     /// 用户是否修改了（未保存）
     dirty: Cell<bool>,
     /// 预览网格候选（Style TOML preview_meshes，create 时全部异步加载）
-    preview_mesh_handles: Vec<(PathBuf, Arc<AssetHandle<MeshAssetsSystem>>)>,
+    preview_mesh_handles: Vec<(PathBuf, Handle<Mesh>)>,
     /// 当前预览网格下标（预览工具栏下拉切换）
     preview_mesh_index: Cell<usize>,
     /// 3D 预览状态（egui texture 绑定通道 + 相机）
@@ -898,7 +899,7 @@ impl MaterialInspector {
     /// Inspector 底部 3D 预览：
     /// 下拉栏切换预览网格 → 面板 resize 更新 attachment 尺寸 →
     /// 拖拽 orbit / 滚轮 zoom 相机 → painter.image 显示 render() 回绑的纹理。
-    fn draw_preview(&self, ui: &mut egui::Ui, assets_server: &AssetsServer, dt: f32) {
+    fn draw_preview(&self, ui: &mut egui::Ui, world: &kairos_ecs::world::World, dt: f32) {
         let mut guard = self.model.preview.lock();
 
         // 工具栏始终绘制：网格加载失败时用户仍可切换其他网格
@@ -908,7 +909,7 @@ impl MaterialInspector {
             &self.model.preview_mesh_handles[self.model.preview_mesh_index.get()];
 
         // 预览网格未加载完成时无法计算 AABB 初始化相机
-        let Some(mesh) = assets_server.get(mesh_handle) else {
+        let Some(mesh) = world.resource::<Assets<Mesh>>().get(mesh_handle.id()) else {
             ui.centered_and_justified(|ui| {
                 ui.label("Preview is loading...");
             });
@@ -1003,7 +1004,7 @@ impl Inspector for MaterialInspector {
     fn create(
         path: &std::path::Path,
         world: &kairos_ecs::world::World,
-        assets_server: &mut AssetsServer,
+        _assets_server: &mut AssetsServer,
         project_graph: &ProjectPathGraph,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let style = MaterialInspectorStyle::new()?;
@@ -1031,7 +1032,14 @@ impl Inspector for MaterialInspector {
         let preview_mesh_handles = style
             .preview_meshes
             .iter()
-            .map(|path| (path.clone(), assets_server.load::<MeshAssetsSystem>(path)))
+            .map(|path| {
+                (
+                    path.clone(),
+                    world
+                        .resource::<AssetServer>()
+                        .load::<Mesh>(path.clone()),
+                )
+            })
             .collect();
 
         let model = MaterialInspectorModel {
@@ -1057,7 +1065,7 @@ impl Inspector for MaterialInspector {
         reader: &UIReader,
         messager: &mut Messager,
         world: &kairos_ecs::world::World,
-        assets_server: &AssetsServer,
+        _assets_server: &AssetsServer,
         dt: f32,
     ) {
         // ---- Cmd/Ctrl+S 快捷键触发 Apply（issue #36，ADR §4.5.2）----
@@ -1207,7 +1215,7 @@ impl Inspector for MaterialInspector {
                 ui.separator();
 
                 // ---- 3D 预览面板（issue #37）----
-                self.draw_preview(ui, assets_server, dt);
+                self.draw_preview(ui, world, dt);
             });
     }
 
