@@ -64,15 +64,23 @@ pub struct AssetIndexAllocator {
     next_index: AtomicU32,
     recycled_queue_sender: Sender<AssetIndex>,
     recycled_queue_receiver: Receiver<AssetIndex>,
+    /// Broadcasts the generation-bumped index every time [`AssetIndexAllocator::reserve`]
+    /// reuses a recycled slot, so the dense storage can re-open that slot at the new
+    /// generation. Drained by `DenseAssetStorage::flush`.
+    recycled_sender: Sender<AssetIndex>,
+    recycled_receiver: Receiver<AssetIndex>,
 }
 
 impl Default for AssetIndexAllocator {
     fn default() -> Self {
         let (recycled_queue_sender, recycled_queue_receiver) = crossbeam_channel::unbounded();
+        let (recycled_sender, recycled_receiver) = crossbeam_channel::unbounded();
         Self {
             next_index: AtomicU32::new(0),
             recycled_queue_sender,
             recycled_queue_receiver,
+            recycled_sender,
+            recycled_receiver,
         }
     }
 }
@@ -83,6 +91,8 @@ impl AssetIndexAllocator {
     pub fn reserve(&self) -> AssetIndex {
         if let Ok(mut recycled) = self.recycled_queue_receiver.try_recv() {
             recycled.generation += 1;
+            // Announce the bumped generation so the dense storage can re-open the slot.
+            let _ = self.recycled_sender.send(recycled);
             recycled
         } else {
             AssetIndex {
@@ -100,5 +110,21 @@ impl AssetIndexAllocator {
         // The queue is unbounded, so this only fails if the receiver has been
         // dropped — which cannot happen while the allocator is alive.
         let _ = self.recycled_queue_sender.send(index);
+    }
+
+    /// The next fresh slot number that [`AssetIndexAllocator::reserve`] will allocate.
+    ///
+    /// The dense storage uses this to size itself: every slot below it has either been
+    /// handed out or is queued for reuse.
+    pub(crate) fn next_index(&self) -> u32 {
+        self.next_index.load(Ordering::Relaxed)
+    }
+
+    /// Takes one recycled index whose generation was already bumped by a [`reserve`]
+    /// call, or `None` if no recycled slot has been reserved since the last drain.
+    ///
+    /// [`reserve`]: AssetIndexAllocator::reserve
+    pub(crate) fn try_recv_recycled(&self) -> Option<AssetIndex> {
+        self.recycled_receiver.try_recv().ok()
     }
 }
