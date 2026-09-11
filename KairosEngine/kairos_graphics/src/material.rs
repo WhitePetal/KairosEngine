@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use kairos_asset::next::{
+use kairos_asset::{
     Asset, AssetLoader, AssetWorldExt, Handle, LoadContext, Reader, UntypedAssetId,
     VisitAssetDependencies,
 };
@@ -38,7 +38,7 @@ pub struct SerializedMaterial {
 }
 
 /// The resolved runtime material the render pipeline draws with: the shader and
-/// texture handles are strong handles into the next-generation asset stores, so
+/// texture handles are strong handles into the asset stores, so
 /// a live [`Material`] keeps its dependencies loaded.
 #[derive(Debug, Clone)]
 pub struct Material {
@@ -148,7 +148,7 @@ impl AssetLoader for SerializedMaterialLoader {
 /// Registers the [`Material`] and [`SerializedMaterial`] assets and their
 /// loaders with the core.
 ///
-/// Must run after [`kairos_asset::next::install`], which creates the
+/// Must run after [`kairos_asset::install`], which creates the
 /// `AssetServer` and the `AssetStages` this reads.
 pub fn install(world: &mut World) {
     world.init_asset_with_capacity::<Material>(MATERIAL_ASSETS_CAPACITY);

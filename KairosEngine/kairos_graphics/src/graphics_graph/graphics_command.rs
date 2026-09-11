@@ -1,4 +1,4 @@
-use kairos_asset::next::Handle;
+use kairos_asset::Handle;
 use kairos_math::float4x4;
 
 use crate::{

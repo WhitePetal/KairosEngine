@@ -1,4 +1,4 @@
-use kairos_asset::next::Handle;
+use kairos_asset::Handle;
 use kairos_ecs::{component::Component, world::World};
 use kairos_transform::LocalTransform;
 

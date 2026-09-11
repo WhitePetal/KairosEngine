@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use kairos_asset::next::{AssetServer, Handle};
+use kairos_asset::{AssetServer, Handle};
 use kairos_ecs::world::World;
 
 use crate::{

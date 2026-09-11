@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 use toml::from_str;
 
 use crate::{
-    asset_loader::assets::AssetsServer,
     graphics::{
         attachment::{Attachment, AttachmentLoadAction, AttachmentStoreAction},
         camera::{Camera, CameraView},
@@ -129,7 +128,6 @@ impl SceneWindow {
 impl Drawer for SceneWindow {
     fn create(
         world: &kairos_ecs::world::World,
-        _assets_server: &mut AssetsServer,
     ) -> Result<Self, Box<dyn std::error::Error>>
     where
         Self: Sized,

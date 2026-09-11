@@ -1,6 +1,6 @@
 use std::{cell::Cell, fs, ops::DerefMut, path::PathBuf};
 
-use kairos_asset::next::{AssetServer, Assets, Handle};
+use kairos_asset::{AssetServer, Assets, Handle};
 use strum::{Display, EnumIter};
 
 use egui::Vec2;
@@ -9,7 +9,6 @@ use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    asset_loader::assets::AssetsServer,
     graphics::{
         attachment::{Attachment, AttachmentFormat, AttachmentLoadAction, AttachmentStoreAction},
         camera::Camera,
@@ -246,7 +245,6 @@ impl Inspector for MeshInspector {
     fn create(
         path: &std::path::Path,
         world: &kairos_ecs::world::World,
-        _assets_server: &mut AssetsServer,
         _project_graph: &crate::kairos_editor::project_path_tree::ProjectPathGraph,
     ) -> Result<Self, Box<dyn std::error::Error>>
     where
@@ -299,7 +297,6 @@ impl Inspector for MeshInspector {
         _reader: &UIReader,
         messager: &mut Messager,
         world: &kairos_ecs::world::World,
-        _assets_server: &AssetsServer,
         dt: f32,
     ) {
         egui::ScrollArea::vertical().show(ui, |ui| {

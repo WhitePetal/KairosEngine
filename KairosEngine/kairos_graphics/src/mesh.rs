@@ -4,7 +4,7 @@ use gltf::Gltf;
 use rkyv::Archive;
 use serde::{Deserialize, Serialize};
 
-use kairos_asset::next::{
+use kairos_asset::{
     Asset, AssetLoader, AssetWorldExt, LoadContext, Reader, VisitAssetDependencies,
 };
 use kairos_ecs::error::KairosError;
@@ -70,7 +70,7 @@ impl AssetLoader for MeshLoader {
 
 /// Registers the [`Mesh`] asset and its [`MeshLoader`] with the core.
 ///
-/// Must run after [`kairos_asset::next::install`], which creates the
+/// Must run after [`kairos_asset::install`], which creates the
 /// `AssetServer` and the `AssetStages` this reads.
 pub fn install(world: &mut World) {
     world.init_asset_with_capacity::<Mesh>(MESH_ASSETS_CAPACITY);

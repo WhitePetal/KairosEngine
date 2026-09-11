@@ -3,11 +3,11 @@
 //! An `.audio` descriptor names its source audio file. The audio inspector needs
 //! both the runtime [`AudioAsset`] (decoded by kira, for playback) and the
 //! [`PcmData`] (raw samples, for the waveform and spectrum views), so
-//! [`AudioExt`] bundles the two handles. It loads through the next-generation
+//! [`AudioExt`] bundles the two handles. It loads through the
 //! core and declares both through [`LoadContext::load`], so a live composite
 //! keeps them loaded.
 
-use kairos_asset::next::{
+use kairos_asset::{
     Asset, AssetLoader, AssetWorldExt, Handle, LoadContext, Reader, UntypedAssetId,
     VisitAssetDependencies,
 };
@@ -36,7 +36,7 @@ impl VisitAssetDependencies for AudioExt {
     }
 }
 
-/// How many composite slots [`Assets<AudioExt>`](kairos_asset::next::Assets)
+/// How many composite slots [`Assets<AudioExt>`](kairos_asset::Assets)
 /// preallocates. Carried over from the legacy stack's
 /// `AUDIO_EXT_ASSETS_CAPACITY`.
 pub const AUDIO_EXT_ASSETS_CAPACITY: usize = 8;
@@ -86,7 +86,7 @@ impl AssetLoader for AudioExtLoader {
 
 /// Registers the [`AudioExt`] asset and its [`AudioExtLoader`] with the core.
 ///
-/// Must run after [`kairos_asset::next::install`] and after the `AudioAsset` and
+/// Must run after [`kairos_asset::install`] and after the `AudioAsset` and
 /// `PcmData` stores its loader declares dependencies on.
 pub fn install(world: &mut World) {
     world.init_asset_with_capacity::<AudioExt>(AUDIO_EXT_ASSETS_CAPACITY);
@@ -97,7 +97,7 @@ pub fn install(world: &mut World) {
 mod test {
     use std::{thread, time::Duration};
 
-    use kairos_asset::next::{AssetServer, Assets, install};
+    use kairos_asset::{AssetServer, Assets, install};
     use kairos_ecs::schedule::ScheduleLabel;
     use kairos_ecs::world::World;
 

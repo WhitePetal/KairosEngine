@@ -4,7 +4,7 @@
 
 use std::{io::Cursor, path::Path, time::Duration};
 
-use kairos_asset::next::{
+use kairos_asset::{
     Asset, AssetLoader, AssetWorldExt, LoadContext, Reader, VisitAssetDependencies,
 };
 use kairos_ecs::error::KairosError;
@@ -190,7 +190,7 @@ impl PcmData {
 impl Asset for PcmData {}
 impl VisitAssetDependencies for PcmData {}
 
-/// How many PCM slots [`Assets<PcmData>`](kairos_asset::next::Assets)
+/// How many PCM slots [`Assets<PcmData>`](kairos_asset::Assets)
 /// preallocates. Carried over from the legacy stack's `PCM_ASSETS_CAPACITY`.
 pub const PCM_ASSETS_CAPACITY: usize = 8;
 
@@ -232,7 +232,7 @@ impl AssetLoader for PcmDataLoader {
 
 /// Registers the [`PcmData`] asset and its [`PcmDataLoader`] with the core.
 ///
-/// Must run after [`kairos_asset::next::install`], which creates the
+/// Must run after [`kairos_asset::install`], which creates the
 /// `AssetServer` and the `AssetStages` this reads.
 pub fn install(world: &mut World) {
     world.init_asset_with_capacity::<PcmData>(PCM_ASSETS_CAPACITY);
@@ -270,7 +270,7 @@ pub(crate) fn wav_bytes(samples: &[f32], sample_rate: u32) -> Vec<u8> {
 mod test {
     use std::{thread, time::Duration};
 
-    use kairos_asset::next::{AssetServer, Assets, install};
+    use kairos_asset::{AssetServer, Assets, install};
     use kairos_ecs::schedule::ScheduleLabel;
     use kairos_ecs::world::World;
 

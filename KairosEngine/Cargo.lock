@@ -2439,13 +2439,11 @@ dependencies = [
  "crossbeam-channel",
  "futures-io",
  "futures-lite",
- "indexmap",
  "kairos_collections",
  "kairos_ecs",
  "kairos_tasks",
  "ron",
  "serde",
- "tokio",
  "uuid",
 ]
 

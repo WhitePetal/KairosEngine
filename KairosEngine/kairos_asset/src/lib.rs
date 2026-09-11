@@ -1,21 +1,86 @@
-//! Async asset server and handle system for the Kairos engine.
+//! The asset core.
 //!
-//! This is the concrete-asset-agnostic half of the engine's asset loader: the
-//! [`AssetsServer`](assets::AssetsServer) that owns one handler per asset
-//! system, the [`AssetHandle`](assets::AssetHandle) ref-counted handle, and the
-//! traits ([`AssetsSystem`](assets::asset::AssetsSystem),
-//! [`AssetLoader`](assets::asset::AssetLoader)) an asset system implements.
+//! This crate is a Rust port of `bevy_asset` 0.19.1: the whole asset system —
+//! identity, storage, io, loading, registration, and scheduling — lives here,
+//! and the engine reaches it through `crate::asset` (a re-export of this crate).
+//! See ADR 0005 for the porting strategy and the deviations from the blueprint.
 //!
-//! Concrete asset systems live next to their asset types. The graphics types
-//! (`Texture`, `Mesh`, `ShaderAsset`, `Material`, `SerializedMaterial`) moved to
-//! the next-generation core in `kairos_graphics`, and the audio/text/syntax/toml
-//! legacy systems remain in `kairos_engine`. Only the generic machinery
-//! lives here, so it is free of any dependency on graphics or engine types.
+//! The layers are:
 //!
-//! The [`next`] module is the landing zone for the `bevy_asset`-style rewrite of
-//! this system. It is additive and unconsumed for now; the stack above it is the
-//! legacy implementation that still drives the engine.
+//! - Identity and handles: [`AssetIndex`] — a generational slot id, plus
+//!   [`AssetIndexAllocator`] to hand them out and recycle them;
+//!   [`AssetId`]/[`UntypedAssetId`] — a typed (and type-erased) asset identity;
+//!   [`Handle`]/[`UntypedHandle`] — reference-counted borrows backed by
+//!   [`StrongHandle`]. Handles are **not** [`Copy`](core::marker::Copy): the
+//!   `Arc` inside a strong handle is the reference count, and the last clone to
+//!   drop sends a [`DropEvent`]. [`Asset`]/[`VisitAssetDependencies`] are the
+//!   trait bound and dependency visitor every asset participates in.
+//! - Storage and events: [`Assets<A>`] — the per-type asset store, with
+//!   [`AssetMut`] for tracked mutation; [`AssetEvent<A>`] — the five-variant
+//!   event face (a `Message`).
+//! - Io, paths, and meta: [`AssetPath`]/[`AssetSourceId`] address an asset as
+//!   `source://path#label`; [`io::AssetReader`] and [`io::AssetSource`] read its
+//!   bytes; [`meta::AssetMeta`] is the RON `.meta` sidecar that names the
+//!   loader and its settings.
+//! - Loading: [`AssetLoader`] turns bytes into an asset; [`LoadContext`]
+//!   declares dependencies and collects labeled sub-assets, and
+//!   [`LoadContext::finish`] folds them into a [`LoadedAsset`]/
+//!   [`ErasedLoadedAsset`]. [`AssetServer`] registers loaders and asset types,
+//!   tracks each asset's [`LoadState`], and runs loads as tasks on the
+//!   `IoTaskPool`; [`handle_internal_asset_events`] inserts the finished values
+//!   into their stores.
+//! - Registration and scheduling: [`install`] records the caller's tracking and
+//!   event stage labels in [`AssetStages`]; [`AssetWorldExt::init_asset`] then
+//!   registers a type's store, its `Messages`, and its per-type driver systems,
+//!   mounted under the [`AssetTrackingSystems`]/[`AssetEventSystems`] sets.
+//!
+//! Deliberately absent for now (later tickets): untyped and folder loads,
+//! `add_async`/guards, `wait_for_asset*`, and the processor. This crate does
+//! not import `tokio` (ADR 0001).
 
-pub mod assets;
-pub mod consts;
-pub mod next;
+mod asset;
+mod assets;
+mod event;
+mod handle;
+mod id;
+mod index;
+mod install;
+pub mod io;
+mod loader;
+pub mod meta;
+mod path;
+mod server;
+
+pub use asset::{Asset, VisitAssetDependencies};
+pub use assets::{AssetMut, Assets, AssetsMutIterator, InvalidGenerationError};
+pub use event::{AssetEvent, AssetLoadFailedEvent};
+pub use handle::{
+    AssetHandleProvider, DropEvent, Handle, StrongHandle, UntypedAssetConversionError,
+    UntypedHandle,
+};
+pub use id::{AssetId, UntypedAssetId, UntypedAssetIdConversionError};
+pub use index::{AssetIndex, AssetIndexAllocator};
+pub use install::{
+    AssetEventSystems, AssetStages, AssetTrackingSystems, AssetWorldExt, install,
+};
+pub use loader::{
+    AssetContainer, AssetLoader, ErasedAssetLoader, ErasedLoadedAsset, LoadContext, LoadedAsset,
+};
+pub use server::{
+    AssetLoadError, AssetLoaderError, AssetServer, AssetServerMode, DependencyLoadState,
+    LoadState, RecursiveDependencyLoadState, handle_internal_asset_events,
+};
+pub use io::{
+    AssetReader, AssetReaderError, AssetSourceEvent, AssetSourceId, AssetWriter,
+    AssetWriterError, ErasedAssetReader, ErasedAssetWriter, Reader, UnapprovedPathMode,
+    VecReader, Writer, get_meta_path,
+};
+pub use meta::{
+    AssetAction, AssetActionMinimal, AssetHash, AssetMeta, AssetMetaCheck, AssetMetaDyn,
+    AssetMetaMinimal, DeserializeMetaError, MetaTransform, META_FORMAT_VERSION, Settings,
+    loader_name, loader_settings_meta_transform, meta_transform_settings,
+};
+pub use path::{AssetPath, ParseAssetPathError};
+
+#[cfg(test)]
+mod tests;

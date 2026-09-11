@@ -5,7 +5,6 @@ pub mod hierarchy_panel;
 use std::{any::type_name, cell::Cell, fs, ops::Deref, path::PathBuf, sync::Arc};
 
 use crate::{
-    asset_loader::assets::AssetsServer,
     kairos_editor::{
         Engine,
         asset_registry::{AssetKind, AssetRegistry},
@@ -141,7 +140,6 @@ impl ProjectWindow {
     pub fn get_selected_node_info(
         &self,
         world: &World,
-        assets_server: &mut AssetsServer,
     ) -> Option<super::inspector_window::InspectorNodeInfo> {
         let node = self.model.selected_node?;
         let data = self.model.project_path_graph.get_node(node)?;
@@ -151,7 +149,6 @@ impl ProjectWindow {
             data.kind,
             inspector_path,
             world,
-            assets_server,
             &self.model.project_path_graph,
         );
         match inspector {
@@ -439,7 +436,6 @@ impl ProjectWindow {
 impl Drawer for ProjectWindow {
     fn create(
         _world: &kairos_ecs::world::World,
-        _assets_server: &mut AssetsServer,
     ) -> Result<Self, Box<dyn std::error::Error>>
     where
         Self: Sized,

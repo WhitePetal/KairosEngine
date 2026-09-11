@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use kairos_asset::next::{
+use kairos_asset::{
     Asset, AssetLoader, AssetWorldExt, LoadContext, Reader, VisitAssetDependencies,
 };
 use kairos_ecs::error::KairosError;
@@ -72,7 +72,7 @@ pub struct SerializedTexture {
     pub sampler: SamplerConfig,
 }
 
-/// Runtime form held by [`Assets<Texture>`](kairos_asset::next::Assets).
+/// Runtime form held by [`Assets<Texture>`](kairos_asset::Assets).
 ///
 /// Contains the resolved dimensions, the pixel data loaded
 /// from `.texture_bin`, and the sampler configuration.
@@ -152,7 +152,7 @@ impl AssetLoader for TextureLoader {
 
 /// Registers the [`Texture`] asset and its [`TextureLoader`] with the core.
 ///
-/// Must run after [`kairos_asset::next::install`], which creates the
+/// Must run after [`kairos_asset::install`], which creates the
 /// `AssetServer` and the `AssetStages` this reads.
 pub fn install(world: &mut World) {
     world.init_asset_with_capacity::<Texture>(TEXTURE_ASSETS_CAPACITY);
@@ -163,7 +163,7 @@ pub fn install(world: &mut World) {
 mod test {
     use std::{thread, time::Duration};
 
-    use kairos_asset::next::{AssetServer, Assets, install};
+    use kairos_asset::{AssetServer, Assets, install};
     use kairos_ecs::schedule::ScheduleLabel;
     use kairos_ecs::world::World;
 

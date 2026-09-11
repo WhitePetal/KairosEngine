@@ -10,7 +10,6 @@ impl Inspector for DirectoryInspector {
     fn create(
         path: &std::path::Path,
         _world: &kairos_ecs::world::World,
-        _assets_server: &mut crate::asset_loader::assets::AssetsServer,
         _project_graph: &crate::kairos_editor::project_path_tree::ProjectPathGraph,
     ) -> Result<Self, Box<dyn std::error::Error>>
     where
@@ -27,7 +26,6 @@ impl Inspector for DirectoryInspector {
         _reader: &UIReader,
         _messager: &mut crate::kairos_editor::ui::Messager,
         _world: &kairos_ecs::world::World,
-        _assets_server: &crate::asset_loader::assets::AssetsServer,
         _dt: f32,
     ) {
         match fs::read_dir(&self.path) {

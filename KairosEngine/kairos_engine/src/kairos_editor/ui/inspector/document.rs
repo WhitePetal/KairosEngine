@@ -5,7 +5,7 @@ use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
-use kairos_asset::next::{AssetServer, Assets, Handle};
+use kairos_asset::{AssetServer, Assets, Handle};
 use kairos_ecs::world::World;
 
 use crate::{
@@ -48,7 +48,6 @@ impl Inspector for DocumentInspector {
     fn create(
         path: &std::path::Path,
         world: &World,
-        _assets_server: &mut crate::asset_loader::assets::AssetsServer,
         _project_graph: &crate::kairos_editor::project_path_tree::ProjectPathGraph,
     ) -> Result<Self, Box<dyn std::error::Error>>
     where
@@ -82,7 +81,6 @@ impl Inspector for DocumentInspector {
         _reader: &UIReader,
         messager: &mut Messager,
         world: &World,
-        _assets_server: &crate::asset_loader::assets::AssetsServer,
         _dt: f32,
     ) {
         {

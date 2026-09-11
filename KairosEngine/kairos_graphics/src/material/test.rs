@@ -1,8 +1,8 @@
-//! Tests for the next-generation `Material` / `SerializedMaterial` loaders.
+//! Tests for the `Material` / `SerializedMaterial` loaders.
 
 use std::{thread, time::Duration};
 
-use kairos_asset::next::{AssetServer, Assets, install};
+use kairos_asset::{AssetServer, Assets, install};
 use kairos_ecs::schedule::ScheduleLabel;
 use kairos_ecs::world::World;
 

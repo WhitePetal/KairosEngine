@@ -1,8 +1,7 @@
-use kairos_asset::next::Handle;
+use kairos_asset::Handle;
 use kairos_collections::TypeIdMap;
 
 use crate::{
-    asset_loader::assets::AssetsServer,
     graphics::{
         egui_texture_handle::EguiTextureHandle,
         graphics_graph::GraphicsCommand,
@@ -256,7 +255,6 @@ impl TabDrawer for KairosTabDrawer {
 pub trait Drawer: Any {
     fn create(
         world: &kairos_ecs::world::World,
-        assets_server: &mut AssetsServer,
     ) -> Result<Self, Box<dyn std::error::Error>>
     where
         Self: Sized;
@@ -546,7 +544,7 @@ impl Context {
                     if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
                         project_window.select_node(node);
                         let info = project_window
-                            .get_selected_node_info(&engine.world, &mut engine.assets_server);
+                            .get_selected_node_info(&engine.world);
                         if let Some(inspector) = self.get_window_mut::<InspectorWindow>() {
                             let dialog = inspector.set_selected(ui.ctx(), info);
                             if let Some(dialog) = dialog {
@@ -843,11 +841,9 @@ impl Context {
                 }
             }
             None => {
-                let drawer = T::create(&engine.world, &mut engine.assets_server).unwrap_or_else(
-                    |error| {
-                        Context::create_ui_failed(ui, type_name::<T>(), error);
-                    },
-                );
+                let drawer = T::create(&engine.world).unwrap_or_else(|error| {
+                    Context::create_ui_failed(ui, type_name::<T>(), error);
+                });
                 let id = self.push_drawer::<T>(Box::new(drawer));
                 self.tab_tree[zone.surface][zone.node].append_drawer(id);
             }

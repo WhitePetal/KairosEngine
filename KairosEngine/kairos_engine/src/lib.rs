@@ -12,7 +12,11 @@ pub mod kairos_paths;
 pub mod kairos_settings;
 pub mod kairos_ui;
 
-pub mod asset_loader;
+// The asset core is its own crate (`kairos_asset`); re-export it under the name
+// engine code uses, so `crate::asset::…` resolves like `crate::graphics` /
+// `kairos_graphics`.
+pub use kairos_asset as asset;
+
 pub mod audio;
 pub mod inputs;
 pub mod spatial;

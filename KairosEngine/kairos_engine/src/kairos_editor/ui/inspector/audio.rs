@@ -1,12 +1,11 @@
 use std::{cell::Cell, fs, time::Instant};
 
 use egui::{Color32, Pos2, Rect, RichText, Stroke, Vec2};
-use kairos_asset::next::{AssetServer, Assets, Handle};
+use kairos_asset::{AssetServer, Assets, Handle};
 use kairos_ecs::world::World;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    asset_loader::assets::AssetsServer,
     audio::{
         audio::AudioAsset,
         audio_ext::{AudioExt, pcm::PcmData},
@@ -232,7 +231,6 @@ impl Inspector for AudioInspector {
     fn create(
         path: &std::path::Path,
         world: &kairos_ecs::world::World,
-        _assets_server: &mut AssetsServer,
         _project_graph: &crate::kairos_editor::project_path_tree::ProjectPathGraph,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let style = AudioInspectorStyle::new()?;
@@ -265,7 +263,6 @@ impl Inspector for AudioInspector {
         _reader: &UIReader,
         messager: &mut crate::kairos_editor::ui::Messager,
         world: &kairos_ecs::world::World,
-        _assets_server: &AssetsServer,
         _dt: f32,
     ) {
         let Some(pcm) = self.get_pcm(world) else {

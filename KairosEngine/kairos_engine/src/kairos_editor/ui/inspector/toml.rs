@@ -2,7 +2,7 @@ use std::{cell::Cell, fs, ops::DerefMut, path::PathBuf, sync::Arc};
 
 use egui::Vec2;
 use egui_extras::{Column, TableBuilder, TableRow};
-use kairos_asset::next::{AssetServer, Assets, Handle};
+use kairos_asset::{AssetServer, Assets, Handle};
 use kairos_ecs::world::World;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
@@ -62,7 +62,6 @@ impl Inspector for TomlTableInspector {
     fn create(
         path: &std::path::Path,
         world: &World,
-        _assets_server: &mut crate::asset_loader::assets::AssetsServer,
         _project_graph: &crate::kairos_editor::project_path_tree::ProjectPathGraph,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let style = TomlTableInspectorStyle::new()?;
@@ -88,7 +87,6 @@ impl Inspector for TomlTableInspector {
         _reader: &UIReader,
         messager: &mut Messager,
         world: &World,
-        _assets_server: &crate::asset_loader::assets::AssetsServer,
         _dt: f32,
     ) {
         {

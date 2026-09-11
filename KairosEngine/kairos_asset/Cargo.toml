@@ -14,14 +14,9 @@ atomicow = { version = "1.1", default-features = false, features = ["std"] }
 crossbeam-channel = "0.5.15"
 futures-io = "0.3"
 futures-lite = "2.6.1"
-indexmap = { version = "2.5.0", default-features = false, features = ["serde"] }
 kairos_collections = { path = "../kairos_collections" }
 kairos_ecs = { path = "../kairos_ecs" }
 kairos_tasks = { path = "../kairos_tasks" }
 ron = "0.12"
 serde = { version = "1.0.228", features = ["derive"] }
-# Transitional: only the legacy `crate::assets` stack (and therefore this temporary
-# dependency) still uses tokio. The `next` core is tokio-free on purpose (ADR 0001)
-# and must not import it. tokio is removed from this crate when the legacy stack lands.
-tokio = { version = "1.52.3", features = ["sync", "rt"] }
 uuid = { version = "1", features = ["v4", "serde"] }

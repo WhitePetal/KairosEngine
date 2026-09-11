@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use kairos_asset::next::{
+use kairos_asset::{
     Asset, AssetLoader, AssetWorldExt, LoadContext, Reader, VisitAssetDependencies,
 };
 use kairos_ecs::error::KairosError;
@@ -59,7 +59,7 @@ impl AssetLoader for ShaderLoader {
 
 /// Registers the [`ShaderAsset`] asset and its [`ShaderLoader`] with the core.
 ///
-/// Must run after [`kairos_asset::next::install`], which creates the
+/// Must run after [`kairos_asset::install`], which creates the
 /// `AssetServer` and the `AssetStages` this reads.
 pub fn install(world: &mut World) {
     world.init_asset_with_capacity::<ShaderAsset>(SHADER_ASSETS_CAPACITY);
@@ -70,7 +70,7 @@ pub fn install(world: &mut World) {
 mod test {
     use std::{thread, time::Duration};
 
-    use kairos_asset::next::{AssetServer, Assets, install};
+    use kairos_asset::{AssetServer, Assets, install};
     use kairos_ecs::schedule::ScheduleLabel;
     use kairos_ecs::world::World;
 

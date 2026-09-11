@@ -1,4 +1,4 @@
-//! P1 wiring test: the next-generation asset core mounted on the engine's own
+//! P1 wiring test: the asset core mounted on the engine's own
 //! `PreUpdate`/`PostUpdate` stages (#206).
 //!
 //! It drives the real [`build_world`] bootstrap `Engine::new` uses — only the
@@ -17,7 +17,7 @@ use crate::graphics::{
 use crate::kairos_editor::editor_assets::{Text, Toml};
 use crate::kairos_editor::syntax::SyntaxHighlightSettings;
 use crate::kairos_ui::font::Font;
-use kairos_asset::next::{
+use kairos_asset::{
     Asset, AssetEventSystems, AssetServer, AssetStages, AssetTrackingSystems, AssetWorldExt,
     Assets, VisitAssetDependencies,
 };

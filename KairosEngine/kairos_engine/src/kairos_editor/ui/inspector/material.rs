@@ -5,13 +5,12 @@ use egui::{
     menu::{MenuConfig, SubMenuButton},
 };
 use egui_extras::{Column, TableBuilder};
-use kairos_asset::next::{AssetServer, Assets, Handle};
+use kairos_asset::{AssetServer, Assets, Handle};
 use parking_lot::Mutex;
 use serde::Deserialize;
 use strum::IntoEnumIterator;
 
 use crate::{
-    asset_loader::assets::AssetsServer,
     graphics::{
         attachment::{Attachment, AttachmentFormat, AttachmentLoadAction, AttachmentStoreAction},
         camera::Camera,
@@ -1004,7 +1003,6 @@ impl Inspector for MaterialInspector {
     fn create(
         path: &std::path::Path,
         world: &kairos_ecs::world::World,
-        _assets_server: &mut AssetsServer,
         project_graph: &ProjectPathGraph,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let style = MaterialInspectorStyle::new()?;
@@ -1065,7 +1063,6 @@ impl Inspector for MaterialInspector {
         reader: &UIReader,
         messager: &mut Messager,
         world: &kairos_ecs::world::World,
-        _assets_server: &AssetsServer,
         dt: f32,
     ) {
         // ---- Cmd/Ctrl+S 快捷键触发 Apply（issue #36，ADR §4.5.2）----

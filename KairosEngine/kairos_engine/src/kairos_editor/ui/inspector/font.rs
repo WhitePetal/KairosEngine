@@ -1,12 +1,11 @@
 use std::{cell::Cell, fs};
 
 use egui::{FontData, FontFamily, FontId, RichText};
-use kairos_asset::next::{AssetServer, Assets, Handle};
+use kairos_asset::{AssetServer, Assets, Handle};
 use kairos_ecs::world::World;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    asset_loader::assets::AssetsServer,
     kairos_editor::ui::{Messager, UIReader, dialog::Dialog, inspector::Inspector, paths},
     kairos_ui::font::Font,
 };
@@ -91,7 +90,6 @@ impl Inspector for FontInspector {
     fn create(
         path: &std::path::Path,
         world: &World,
-        _assets_server: &mut AssetsServer,
         _project_graph: &crate::kairos_editor::project_path_tree::ProjectPathGraph,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         // The font rides the new core: the `AssetServer` World resource starts
@@ -119,7 +117,6 @@ impl Inspector for FontInspector {
         _reader: &UIReader,
         _messager: &mut Messager,
         world: &World,
-        _assets_server: &AssetsServer,
         _dt: f32,
     ) {
         if !self.is_registered(ui.ctx()) {

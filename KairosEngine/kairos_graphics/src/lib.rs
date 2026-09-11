@@ -18,7 +18,6 @@ use crate::{
 };
 
 pub mod asset_events;
-pub mod assets;
 pub mod consts;
 
 pub mod camera;
@@ -45,7 +44,7 @@ pub mod view_port;
 /// `Material`, and `SerializedMaterial`) and the `Extract`-stage system that
 /// collects their change events for cache invalidation.
 ///
-/// Must run after [`kairos_asset::next::install`], which creates the
+/// Must run after [`kairos_asset::install`], which creates the
 /// `AssetServer` and the `AssetStages` the per-type registration reads.
 pub use asset_events::install_assets;
 

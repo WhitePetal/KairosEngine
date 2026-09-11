@@ -1,4 +1,4 @@
-use kairos_asset::next::Handle;
+use kairos_asset::Handle;
 use kira::{listener::ListenerId, sound::static_sound::StaticSoundHandle};
 use smallvec::SmallVec;
 

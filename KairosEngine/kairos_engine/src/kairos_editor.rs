@@ -1,5 +1,4 @@
 use crate::{
-    asset_loader::assets::AssetsServer,
     audio::AudioEngine,
     graphics::{self, graphics_graph::GraphicsCommand},
     inputs::InputEngine,
@@ -25,7 +24,6 @@ pub mod ui;
 
 pub struct Engine {
     pub world: World,
-    pub assets_server: AssetsServer,
     pub audio_engine: AudioEngine,
     pub input_engine: InputEngine,
 }
@@ -33,13 +31,11 @@ pub struct Engine {
 impl Engine {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let world = build_world();
-        let assets_server = AssetsServer::new();
         let audio_engine = AudioEngine::new()?;
         let input_engine = InputEngine::new();
 
         Ok(Self {
             world,
-            assets_server,
             audio_engine,
             input_engine,
         })
@@ -81,11 +77,11 @@ fn build_world() -> World {
     // resource and its `First`-stage `time_system` — before any game/editor
     // logic gets a chance to register systems.
     schedule::install(&mut world);
-    // The next-generation asset core lands beside the legacy `AssetsServer`: its
-    // `AssetServer` becomes a World resource, its per-type driver systems mount
-    // into the engine's `PreUpdate`/`PostUpdate`, and the `AssetEvent`s it writes
-    // ride the frame's message pass.
-    kairos_asset::next::install(&mut world, schedule::PreUpdate, schedule::PostUpdate);
+    // The asset core: its `AssetServer` becomes a World resource, its per-type
+    // driver systems mount into the engine's `PreUpdate`/`PostUpdate`, and the
+    // `AssetEvent`s it writes ride the frame's message pass. All asset insertion
+    // happens in `PreUpdate`, so no editor step needs to pump a `handle()`.
+    kairos_asset::install(&mut world, schedule::PreUpdate, schedule::PostUpdate);
     // The first migrated asset type: `Font` registers its store, loader, and
     // driver systems with the core just installed. P2 slices add the rest here.
     crate::kairos_ui::font::install(&mut world);
@@ -174,13 +170,8 @@ impl KairosEngine {
         self.ui_context.render(&mut self.engine, &mut self.game)
     }
 
-    fn handle_asset_server(&mut self) {
-        self.engine.assets_server.handle();
-    }
-
     fn on_exit(&mut self) {
         // TODO!
         // self.engine.world.clear();
-        self.engine.assets_server.handle();
     }
 }

@@ -3,7 +3,6 @@ use std::any::Any;
 use kairos_ecs::world::World;
 
 use crate::{
-    asset_loader::assets::AssetsServer,
     graphics::graphics_graph::GraphicsCommand,
     kairos_editor::{
         project_path_tree::ProjectPathGraph,
@@ -28,7 +27,6 @@ pub trait Inspector: Any {
     fn create(
         path: &std::path::Path,
         world: &World,
-        assets_server: &mut AssetsServer,
         _project_graph: &ProjectPathGraph,
     ) -> Result<Self, Box<dyn std::error::Error>>
     where
@@ -40,7 +38,6 @@ pub trait Inspector: Any {
         reader: &UIReader,
         messager: &mut Messager,
         world: &World,
-        assets_server: &AssetsServer,
         dt: f32,
     );
 

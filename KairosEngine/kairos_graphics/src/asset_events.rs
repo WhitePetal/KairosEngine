@@ -1,8 +1,8 @@
 //! Graphics-side consumption of the asset event face.
 //!
 //! The render caches (pipelines, texture bind groups) used to be validated by
-//! comparing per-asset version and `modify_count` numbers each frame. The
-//! next-generation core replaces those counters with [`AssetEvent`]s, so this
+//! comparing per-asset version counters each frame. The asset core replaces
+//! those counters with [`AssetEvent`]s, so this
 //! module collects the `Modified`/`Removed` events of the graphics asset types
 //! into [`GraphicsAssetEvents`] — a World resource the render pipeline drains
 //! before it draws, evicting the stale cache entries.
@@ -14,7 +14,7 @@
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use kairos_asset::next::{AssetEvent, AssetId};
+use kairos_asset::{AssetEvent, AssetId};
 use kairos_ecs::message::MessageReader;
 use kairos_ecs::resource::Resource;
 use kairos_ecs::schedule::{ScheduleLabel, Schedules};
@@ -119,7 +119,7 @@ pub fn collect_graphics_asset_events(
 /// `Material`, and `SerializedMaterial`) into `world`, plus the `Extract`-stage
 /// event collector their caches are invalidated by.
 ///
-/// Must run after [`kairos_asset::next::install`], which creates the
+/// Must run after [`kairos_asset::install`], which creates the
 /// `AssetServer` and the `AssetStages` the per-type registration reads, and
 /// after the schedule holding `extract_stage` exists.
 ///

@@ -10,7 +10,7 @@
 //! resolved value. That is also the *point* of the first group — extraction must
 //! not depend on the asset server.
 
-use kairos_asset::next::Handle;
+use kairos_asset::Handle;
 use kairos_ecs::{
     entity::Entity,
     schedule::{Schedule, ScheduleLabel, Schedules},

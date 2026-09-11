@@ -17,7 +17,7 @@
 //! Swapping what is drawn means calling a different drawer from that view's
 //! extract system; adding to it means calling one more drawer there.
 
-use kairos_asset::next::Handle;
+use kairos_asset::Handle;
 use kairos_ecs::system::Query;
 use kairos_transform::LocalTransform;
 

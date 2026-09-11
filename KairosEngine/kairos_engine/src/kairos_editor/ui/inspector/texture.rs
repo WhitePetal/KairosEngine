@@ -2,13 +2,12 @@ use std::{cell::Cell, fs, ops::DerefMut, path::PathBuf, sync::Arc};
 
 use egui::{ComboBox, Vec2, Widget};
 use egui_extras::{Column, TableBuilder};
-use kairos_asset::next::{AssetServer, Assets, Handle};
+use kairos_asset::{AssetServer, Assets, Handle};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
 
 use crate::{
-    asset_loader::assets::AssetsServer,
     graphics::{
         compare_function::CompareFunction,
         texture::{
@@ -310,7 +309,6 @@ impl Inspector for TextureInspector {
     fn create(
         path: &std::path::Path,
         world: &kairos_ecs::world::World,
-        _assets_server: &mut AssetsServer,
         _project_graph: &crate::kairos_editor::project_path_tree::ProjectPathGraph,
     ) -> Result<Self, Box<dyn std::error::Error>>
     where
@@ -348,7 +346,6 @@ impl Inspector for TextureInspector {
         _reader: &UIReader,
         messager: &mut Messager,
         world: &kairos_ecs::world::World,
-        _assets_server: &AssetsServer,
         _dt: f32,
     ) {
         egui::ScrollArea::vertical().show(ui, |ui| {

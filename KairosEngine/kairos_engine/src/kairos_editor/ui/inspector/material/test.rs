@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use kairos_asset::next::{AssetServer, install};
+use kairos_asset::{AssetServer, install};
 use kairos_ecs::schedule::ScheduleLabel;
 use kairos_ecs::world::World;
 
@@ -31,7 +31,7 @@ impl ScheduleLabel for Events {
     }
 }
 
-/// A world with the next-generation core plus the material stores registered.
+/// A world with the core plus the material stores registered.
 fn asset_world() -> World {
     let mut world = World::new();
     install(&mut world, Tracking, Events);

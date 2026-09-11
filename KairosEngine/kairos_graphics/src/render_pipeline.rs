@@ -30,7 +30,7 @@ use winit::{dpi::PhysicalSize, window::Window};
 use kairos_math::{float4, float4x4};
 use kairos_ecs::world::World;
 
-use kairos_asset::next::{AssetId, AssetServer, Assets, Handle};
+use kairos_asset::{AssetId, AssetServer, Assets, Handle};
 
 use crate::{
     asset_events::GraphicsAssetEvents,
@@ -979,7 +979,7 @@ impl RenderPipeline {
         self.error_material_indices.remove(&material_id);
     }
 
-    /// Applies this frame's collected [`AssetEvent`](kairos_asset::next::AssetEvent)s
+    /// Applies this frame's collected [`AssetEvent`](kairos_asset::AssetEvent)s
     /// to the render caches.
     ///
     /// A modified or removed shader drops every pipeline compiled from it; a

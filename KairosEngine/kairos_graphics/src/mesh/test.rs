@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::{thread, time::Duration};
 
-use kairos_asset::next::{AssetServer, Assets, install};
+use kairos_asset::{AssetServer, Assets, install};
 use kairos_ecs::schedule::ScheduleLabel;
 use kairos_ecs::world::World;
 use kairos_math::float3;

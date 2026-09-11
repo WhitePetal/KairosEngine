@@ -133,7 +133,6 @@ impl ToolBar {
 impl Drawer for ToolBar {
     fn create(
         _world: &kairos_ecs::world::World,
-        _assets_server: &mut crate::asset_loader::assets::AssetsServer,
     ) -> Result<Self, Box<dyn std::error::Error>>
     where
         Self: Sized,

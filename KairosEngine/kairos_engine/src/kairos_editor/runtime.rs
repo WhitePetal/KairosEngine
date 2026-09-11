@@ -250,10 +250,6 @@ impl KairosEditorRuntime {
 
         self.kairos_engine.update();
 
-        // Process pending asset loads before drawing so they are available
-        // this frame (e.g. for widget rect recording).
-        self.kairos_engine.handle_asset_server();
-
         let mut should_close = false;
         let mut repaint_delay = None;
         let mut frame_presented = false;
@@ -278,10 +274,6 @@ impl KairosEditorRuntime {
                         graphics_commands.append(&mut self.kairos_engine.render_ui());
 
                         self.kairos_engine.handle_ui(ui);
-
-                        // Process asset loads triggered by handle_ui before draw_ui
-                        // needs them (e.g. widget rect recording in inspectors).
-                        self.kairos_engine.handle_asset_server();
 
                         self.kairos_engine.draw_ui(ui);
                     });
@@ -412,8 +404,6 @@ impl KairosEditorRuntime {
         if let Some(delay) = repaint_delay {
             self.set_repaint_delay_from_output(delay);
         }
-
-        self.kairos_engine.handle_asset_server();
     }
 
     fn queue_repaint_after(&mut self, delay: Duration) {

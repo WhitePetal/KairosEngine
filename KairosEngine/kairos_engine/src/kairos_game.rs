@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use kairos_asset::next::{AssetServer, Handle};
+use kairos_asset::{AssetServer, Handle};
 
 use crate::{
     audio::audio::AudioAsset,
@@ -421,8 +421,8 @@ impl KairosGame {
         // ── Audio System ──────────────────────────────────────────────
         //
         // Driven by hand: #156 fixed the driver shape to a manual per-frame
-        // call from here (`AudioEngine` stays an `Engine` field, `AssetsServer`
-        // is still passed by reference, `dt` comes from the `Time` resource the
+        // call from here (`AudioEngine` stays an `Engine` field, the asset
+        // server is a `World` resource, `dt` comes from the `Time` resource the
         // `First` stage advanced).
         engine
             .audio_engine

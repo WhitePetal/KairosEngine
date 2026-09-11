@@ -6,11 +6,11 @@
 //! previews the pixels, so it needs both — plus the source image's original
 //! pixels, to resize from when the user picks a new max size.
 //!
-//! [`TextureExt`] bundles those three. It loads through the next-generation core
+//! [`TextureExt`] bundles those three. It loads through the core
 //! and declares its [`Texture`] through [`LoadContext::load`], so a live
 //! composite keeps the runtime texture loaded.
 
-use kairos_asset::next::{
+use kairos_asset::{
     Asset, AssetLoader, AssetWorldExt, Handle, LoadContext, Reader, UntypedAssetId,
     VisitAssetDependencies,
 };
@@ -121,7 +121,7 @@ impl AssetLoader for TextureExtLoader {
 
 /// Registers the [`TextureExt`] asset and its [`TextureExtLoader`] with the core.
 ///
-/// Must run after [`kairos_asset::next::install`] and after
+/// Must run after [`kairos_asset::install`] and after
 /// [`kairos_graphics::texture::install`], whose `Texture` store the loader's
 /// declared dependency targets.
 pub fn install(world: &mut World) {
@@ -133,7 +133,7 @@ pub fn install(world: &mut World) {
 mod test {
     use std::{thread, time::Duration};
 
-    use kairos_asset::next::{AssetServer, Assets, install};
+    use kairos_asset::{AssetServer, Assets, install};
     use kairos_ecs::schedule::ScheduleLabel;
     use kairos_ecs::world::World;
 
