@@ -297,7 +297,7 @@ fn physics_step_system(
             log::warn!("skipping dangling rigid body handle {handle:?} on the physics pull");
             continue;
         };
-        transform.position = to_float3(rapier_body.translation());
+        transform.translation = to_float3(rapier_body.translation());
         transform.rotation = quat_from_rapier(rapier_body.rotation());
     }
 }
@@ -360,7 +360,7 @@ pub fn install(world: &mut World, fixed_update_stage: impl ScheduleLabel) {
 /// the collider's world-space size is passed in pre-scaled by the caller.
 fn pose_from(initial: LocalTransform) -> Pose {
     Pose::from_parts(
-        to_rapier_vec3(initial.position),
+        to_rapier_vec3(initial.translation),
         to_rapier_rotation(initial.rotation),
     )
 }
@@ -372,7 +372,7 @@ fn to_rapier_vec3(v: float3) -> Vector3 {
 }
 
 fn to_rapier_rotation(q: quaternion) -> Rotation {
-    Rotation::from_xyzw(q.0.x(), q.0.y(), q.0.z(), q.0.w())
+    Rotation::from_xyzw(q.0.x, q.0.y, q.0.z, q.0.w)
 }
 
 fn to_float3(v: Vector3) -> float3 {

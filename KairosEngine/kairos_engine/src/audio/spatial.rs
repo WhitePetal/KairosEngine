@@ -232,7 +232,7 @@ impl<B: Backend> SpatialAudioTracks<B> {
                 continue;
             };
             *be_ref = true;
-            handle.set_position(to_mint_vec3(trans.position), Tween::default());
+            handle.set_position(to_mint_vec3(trans.translation), Tween::default());
             handle.set_orientation(to_mint_quaternion(trans.rotation), Tween::default());
             match self
                 .listener_infos
@@ -240,7 +240,7 @@ impl<B: Backend> SpatialAudioTracks<B> {
                 .find(|info| info.listener_id == id)
             {
                 Some(info) => {
-                    info.position = trans.position;
+                    info.position = trans.translation;
                     Self::update_reverbs(info, world);
                 }
                 None => {
@@ -251,7 +251,7 @@ impl<B: Backend> SpatialAudioTracks<B> {
                     let mut info = ListenerInfo {
                         tracks: Tracks::new(self.per_listener_track_capacity),
                         listener_id: id,
-                        position: trans.position,
+                        position: trans.translation,
                         reverb_handle,
                         reverb_send_track,
                     };
@@ -362,7 +362,7 @@ impl<B: Backend> SpatialAudioTracks<B> {
             .iter_mut(&mut *world)
             .filter(|(_, volume)| matches!(volume.state, AudioState::Playing | AudioState::Paused))
             .map(|(trans, volume)| {
-                let dst_sq = float3::distance_sq(listener.position, trans.position);
+                let dst_sq = float3::distance_sq(listener.position, trans.translation);
                 (dst_sq, trans, volume)
             })
             .filter(|(dst, _, _)| *dst < cut_off_dst_sq)
@@ -572,7 +572,7 @@ impl<B: Backend> SpatialAudioTracks<B> {
         if let Some(track_index) = using_track_index {
             let track = &mut listener.tracks.tracks[track_index as usize];
             if let Some(track) = track {
-                track.set_position(to_mint_vec3(trans.position), Tween::default());
+                track.set_position(to_mint_vec3(trans.translation), Tween::default());
             }
             return true;
         }
@@ -599,7 +599,7 @@ impl<B: Backend> SpatialAudioTracks<B> {
         {
             for i in 0..volume.audios.len() {
                 let audio = audios.get(volume.audios[i].id()).unwrap();
-                track.set_position(to_mint_vec3(trans.position), Tween::default());
+                track.set_position(to_mint_vec3(trans.translation), Tween::default());
                 match track.play(
                     audio
                         .sound_data
@@ -638,7 +638,7 @@ impl<B: Backend> SpatialAudioTracks<B> {
                             duration: Duration::from_secs_f32(fade_time),
                             ..Default::default()
                         });
-                        track.set_position(to_mint_vec3(trans.position), Tween::default());
+                        track.set_position(to_mint_vec3(trans.translation), Tween::default());
                     }
                     *track_state =
                         SpatialAudioVolumeTrackState::Leaving(SpatialAudioVolumeTrackLeaving {
@@ -654,7 +654,7 @@ impl<B: Backend> SpatialAudioTracks<B> {
                     if let Some(track) =
                         &mut listener.tracks.tracks[leaving.track_key.track_index as usize]
                     {
-                        track.set_position(to_mint_vec3(trans.position), Tween::default());
+                        track.set_position(to_mint_vec3(trans.translation), Tween::default());
                     }
                     break;
                 }
@@ -678,10 +678,10 @@ fn to_mint_vec3(v: float3) -> mint::Vector3<f32> {
 fn to_mint_quaternion(q: quaternion) -> mint::Quaternion<f32> {
     mint::Quaternion {
         v: mint::Vector3 {
-            x: q.0.x(),
-            y: q.0.y(),
-            z: q.0.z(),
+            x: q.0.x,
+            y: q.0.y,
+            z: q.0.z,
         },
-        s: q.0.w(),
+        s: q.0.w,
     }
 }

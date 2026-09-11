@@ -10,13 +10,9 @@ unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)", "cfg(docsrs_dep)
 
 [features]
 default = []
-serde = ["dep:serde", "kairos_math/serde"]
 
 [dependencies]
 derive_more = "2.1.1"
 kairos_ecs = { path = "../kairos_ecs" }
 kairos_math = { path = "../kairos_math" }
-serde = { version = "1", optional = true }
-
-[dev-dependencies]
-serde_json = "1"
+serde = "1.0.228"

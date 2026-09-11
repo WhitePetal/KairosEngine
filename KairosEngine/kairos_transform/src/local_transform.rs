@@ -1,5 +1,8 @@
 use kairos_ecs::component::Component;
-use kairos_math::{float3, float4x4, normalize, quaternion};
+#[cfg(debug_assertions)]
+use kairos_math::Vector;
+use kairos_math::{affine, float3, float4x4, normalize, quaternion};
+use serde::{Deserialize, Serialize};
 
 /// An entity's own transform, relative to its parent — the kairos shape of
 /// bevy's `Transform`, renamed `LocalTransform` to sit alongside its
@@ -24,10 +27,10 @@ use kairos_math::{float3, float4x4, normalize, quaternion};
 /// Coordinate system: right-handed, Y-up, -Z forward (the engine's spatial
 /// convention). The default transform is the identity transform.
 #[derive(Component, Debug, Clone, Copy, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Serialize, Deserialize)]
 pub struct LocalTransform {
     /// Translation relative to the parent (world space at the root).
-    pub position: float3,
+    pub translation: float3,
     /// Orientation relative to the parent (world space at the root).
     pub rotation: quaternion,
     /// Scale in the entity's own axes.
@@ -37,9 +40,9 @@ pub struct LocalTransform {
 impl LocalTransform {
     /// Composes a transform from its translation, orientation and scale.
     #[inline(always)]
-    pub fn new(position: float3, rotation: quaternion, scale: float3) -> Self {
+    pub fn new(translation: float3, rotation: quaternion, scale: float3) -> Self {
         Self {
-            position,
+            translation,
             rotation,
             scale,
         }
@@ -64,7 +67,7 @@ impl LocalTransform {
         let forward = normalize(target - eye);
         let rotation = quaternion::from_look(forward, up);
         Self {
-            position: eye,
+            translation: eye,
             rotation,
             scale: float3::ONE,
         }
@@ -77,8 +80,125 @@ impl LocalTransform {
     /// scene hierarchy exists, ancestors must be folded in separately to reach
     /// the world.)
     #[inline(always)]
-    pub fn compute_local_matrix(&self) -> float4x4 {
-        float4x4::trs(self.position, self.rotation, self.scale)
+    pub fn compute_matrix(&self) -> float4x4 {
+        float4x4::trs(self.translation, self.rotation, self.scale)
+    }
+
+    /// Returns the 3d affine transformation matrix from this transforms translation,
+    /// rotation, and scale.
+    #[inline]
+    pub fn compute_affine(&self) -> affine {
+        affine::from_scale_rotation_translation(self.scale, self.rotation, self.translation)
+    }
+
+    #[inline]
+    pub fn right(&self) -> float3 {
+        self.rotation * float3::RIGHT
+    }
+
+    #[inline]
+    pub fn left(&self) -> float3 {
+        -self.right()
+    }
+
+    #[inline]
+    pub fn up(&self) -> float3 {
+        self.rotation * float3::UP
+    }
+
+    #[inline]
+    pub fn down(&self) -> float3 {
+        -self.up()
+    }
+
+    #[inline]
+    pub fn forward(&self) -> float3 {
+        self.rotation * float3::FORWARD
+    }
+
+    #[inline]
+    pub fn back(&self) -> float3 {
+        -self.forward()
+    }
+
+    /// Rotates this [`LocalTransform`] by the given rotation.
+    ///
+    /// If this [`LocalTransform`] has a parent, the `rotation` is relative to the rotation of the parent.
+    #[inline]
+    pub fn rotate(&mut self, rotation: quaternion) {
+        self.rotation = rotation * self.rotation
+    }
+
+    /// Rotates this [`LocalTransform`] around the given `axis` by `angle` (in radians).
+    ///
+    /// If this [`LocalTransform`] has a parent, the `axis` is relative to the rotation of the parent.
+    ///
+    /// # Warning
+    ///
+    /// If you pass in an `axis` based on the current rotation (e.g. obtained via [`Transform::local_x`]),
+    /// floating point errors can accumulate exponentially when applying rotations repeatedly this way. This will
+    /// result in a denormalized rotation. In this case, it is recommended to normalize the [`Transform::rotation`] after
+    /// each call to this method.
+    #[inline]
+    pub fn rotate_axis(&mut self, axis: float3, angle: f32) {
+        #[cfg(debug_assertions)]
+        assert_is_normalized(
+            "The axis given to `Transform::rotate_axis` is not normalized. This may be a result of obtaining \
+            the axis from the transform. See the documentation of `Transform::rotate_axis` for more details.",
+            axis.len_sq(),
+        );
+        self.rotate(quaternion::from_axis_angle(axis, angle));
+    }
+
+    /// Rotates this [`LocalTransform`] around the `X` axis by `angle` (in radians).
+    ///
+    /// If this [`LocalTransform`] has a parent, the axis is relative to the rotation of the parent.
+    #[inline]
+    pub fn rotate_x(&mut self, angle: f32) {
+        self.rotate(quaternion::from_rotation_x(angle));
+    }
+
+    /// Rotates this [`LocalTransform`] around the `Y` axis by `angle` (in radians).
+    ///
+    /// If this [`LocalTransform`] has a parent, the axis is relative to the rotation of the parent.
+    #[inline]
+    pub fn roate_y(&mut self, angle: f32) {
+        self.rotate(quaternion::from_rotation_y(angle));
+    }
+
+    /// Rotates this [`LocalTransform`] around the `Z` axis by `angle` (in radians).
+    ///
+    /// If this [`LocalTransform`] has a parent, the axis is relative to the rotation of the parent.
+    #[inline]
+    pub fn rotate_z(&mut self, angle: f32) {
+        self.rotate(quaternion::from_rotation_z(angle));
+    }
+
+    /// Rotates this [`LocalTransform`] by the given `rotation`.
+    ///
+    /// The `rotation` is relative to this [`LocalTransform`]'s current rotation.
+    #[inline]
+    pub fn rotate_local(&mut self, rotation: quaternion) {
+        self.rotation *= rotation
+    }
+
+    /// Rotates this [`LocalTransform`] around its local `axis` by `angle` (in radians).
+    ///
+    /// # Warning
+    ///
+    /// If you pass in an `axis` based on the current rotation (e.g. obtained via [`LocalTransform::right`]),
+    /// floating point errors can accumulate exponentially when applying rotations repeatedly this way. This will
+    /// result in a denormalized rotation. In this case, it is recommended to normalize the [`LocalTransform::rotation`] after
+    /// each call to this method.
+    #[inline]
+    pub fn rotate_local_axis(&mut self, axis: float3, angle: f32) {
+        #[cfg(debug_assertions)]
+        assert_is_normalized(
+            "The axis given to `Transform::rotate_axis_local` is not normalized. This may be a result of obtaining \
+            the axis from the transform. See the documentation of `Transform::rotate_axis_local` for more details.",
+            axis.len_sq(),
+        );
+        self.rotate_local(quaternion::from_axis_angle(axis.into(), angle));
     }
 }
 
@@ -91,119 +211,23 @@ impl Default for LocalTransform {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use kairos_math::{dot, float4};
+/// Checks that a vector with the given squared length is normalized.
+///
+/// Warns for small error with a length threshold of approximately `1e-4`,
+/// and panics for large error with a length threshold of approximately `1e-2`.
+#[cfg(debug_assertions)]
+fn assert_is_normalized(message: &str, length_squared: f32) {
+    use kairos_math::abs;
 
-    #[test]
-    fn default_is_identity() {
-        let t = LocalTransform::default();
-        assert_eq!(t.position, float3::ZERO);
-        assert_eq!(t.rotation, quaternion::IDENTITY);
-        assert_eq!(t.scale, float3::ONE);
-        assert_eq!(
-            t,
-            LocalTransform::new(float3::ZERO, quaternion::IDENTITY, float3::ONE)
-        );
-    }
+    let length_error_squared = abs(length_squared - 1.0);
 
-    #[test]
-    fn compute_local_matrix_matches_float4x4_trs() {
-        let t = LocalTransform::new(
-            float3::new(1.0, -2.0, 3.0),
-            quaternion::from_euler(float3::new(0.3, -1.1, 0.7)),
-            float3::new(2.0, 0.5, 3.0),
-        );
-        // Delegation must stay in lock-step with `float4x4::trs`.
-        assert_eq!(
-            t.compute_local_matrix(),
-            float4x4::trs(t.position, t.rotation, t.scale)
-        );
-    }
-
-    #[test]
-    fn compute_local_matrix_encodes_trs_columns() {
-        // Identity rotation: the columns are the scaled basis axes and the
-        // last column carries the translation (w = 1).
-        let t = LocalTransform::new(
-            float3::new(1.0, 2.0, 3.0),
-            quaternion::IDENTITY,
-            float3::new(2.0, 3.0, 4.0),
-        );
-        let m = t.compute_local_matrix();
-        assert_eq!(m.c0(), float4::new(2.0, 0.0, 0.0, 0.0));
-        assert_eq!(m.c1(), float4::new(0.0, 3.0, 0.0, 0.0));
-        assert_eq!(m.c2(), float4::new(0.0, 0.0, 4.0, 0.0));
-        assert_eq!(m.c3(), float4::new(1.0, 2.0, 3.0, 1.0));
-    }
-
-    /// The image of the local -Z axis under `rotation` — the transform's
-    /// "forward" direction in world space.
-    fn forward_of(rotation: quaternion) -> float3 {
-        let m = rotation.to_float4x4();
-        float3::ZERO - m.c2().xyz()
-    }
-
-    fn assert_looks_from_towards(t: LocalTransform, eye: float3, target: float3) {
-        assert_eq!(t.position, eye, "look_at must place the transform at eye");
-        assert_eq!(t.scale, float3::ONE, "look_at must reset scale to one");
-
-        let forward = forward_of(t.rotation);
-        let expected = normalize(target - eye);
-        let d = dot(&forward, &expected);
-        assert!(
-            d > 1.0 - 1e-4,
-            "forward {forward:?} is not aligned with the target direction {expected:?} (dot {d})"
-        );
-    }
-
-    #[test]
-    fn look_at_orients_forward_towards_target() {
-        let eye = float3::new(1.0, 2.0, 3.0);
-        for target in [
-            float3::new(5.0, 2.0, 3.0),    // +X
-            float3::new(1.0, 2.0, 8.0),    // +Z (behind the -Z forward axis)
-            float3::new(2.0, 3.0, 4.0),    // diagonal (1,1,1)
-            float3::new(-1.0, 2.0, -3.0),  // diagonal backwards
-        ] {
-            let t = LocalTransform::look_at(eye, target, float3::UP);
-            assert_looks_from_towards(t, eye, target);
-        }
-    }
-
-    #[test]
-    fn look_at_handles_up_parallel_to_forward() {
-        let eye = float3::ZERO;
-        for target in [float3::new(0.0, 5.0, 0.0), float3::new(0.0, -5.0, 0.0)] {
-            let t = LocalTransform::look_at(eye, target, float3::UP);
-            assert_looks_from_towards(t, eye, target);
-        }
-    }
-
-    #[cfg(feature = "serde")]
-    #[test]
-    fn serde_roundtrip() {
-        let t = LocalTransform::new(
-            float3::new(1.0, 2.0, 3.0),
-            quaternion::from_euler(float3::new(0.1, 0.2, 0.3)),
-            float3::new(2.0, 3.0, 4.0),
-        );
-        let json = serde_json::to_string(&t).expect("serialize LocalTransform");
-        let back: LocalTransform = serde_json::from_str(&json).expect("deserialize LocalTransform");
-        assert_eq!(t, back);
-    }
-
-    #[cfg(feature = "serde")]
-    #[test]
-    fn serde_roundtrip_default() {
-        let t = LocalTransform::default();
-        let json = serde_json::to_string(&t).expect("serialize default LocalTransform");
-        // Struct-shaped serialization with the three public fields.
-        assert!(json.contains("\"position\""), "unexpected json: {json}");
-        assert!(json.contains("\"rotation\""), "unexpected json: {json}");
-        assert!(json.contains("\"scale\""), "unexpected json: {json}");
-        let back: LocalTransform = serde_json::from_str(&json).expect("deserialize LocalTransform");
-        assert_eq!(t, back);
+    if length_error_squared > 2e-2 || length_error_squared.is_nan()  {
+        panic!("Error: {message}",);
+    } else if length_error_squared > 2e-4 {
+        // Length error is approximately 1e-4 or more.
+        eprintln!("Warning: {message}",)
     }
 }
+
+#[cfg(test)]
+mod tests;

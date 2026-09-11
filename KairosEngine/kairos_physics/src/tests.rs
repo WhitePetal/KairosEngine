@@ -50,7 +50,7 @@ fn insert_movable_sphere_resolves_and_places_the_body() {
         .rigid_body_set
         .get(body.handle)
         .expect("the body handle must resolve in the rigid-body set");
-    assert_eq!(to_float3(rapier_body.translation()), initial.position);
+    assert_eq!(to_float3(rapier_body.translation()), initial.translation);
     assert_eq!(quat_from_rapier(rapier_body.rotation()), initial.rotation);
 
     let rapier_collider = physics
@@ -77,7 +77,7 @@ fn insert_immovable_box_resolves_without_a_body() {
         .get(collider.handle)
         .expect("the collider handle must resolve in the collider set");
     assert_eq!(rapier_collider.parent(), None, "a box must be standalone");
-    assert_eq!(to_float3(rapier_collider.translation()), initial.position);
+    assert_eq!(to_float3(rapier_collider.translation()), initial.translation);
     assert_eq!(quat_from_rapier(&rapier_collider.rotation()), initial.rotation);
 }
 
@@ -327,10 +327,10 @@ fn a_dynamic_ball_falls_while_the_ground_stays_put() {
 
     let ball_end = transform_of(&world, ball);
     assert!(
-        ball_end.position.y() < ball_start.position.y() - FALL_MARGIN,
+        ball_end.translation.y() < ball_start.translation.y() - FALL_MARGIN,
         "the ball must fall significantly: y {} -> {}",
-        ball_start.position.y(),
-        ball_end.position.y()
+        ball_start.translation.y(),
+        ball_end.translation.y()
     );
     assert_eq!(
         transform_of(&world, ground),
@@ -357,7 +357,7 @@ fn synchronisation_never_touches_scale() {
     let ball_end = transform_of(&world, ball);
     assert_eq!(ball_end.scale, scale, "scale must survive every push and pull");
     assert!(
-        ball_end.position.y() < ball_start.position.y(),
+        ball_end.translation.y() < ball_start.translation.y(),
         "the same steps moved the ball, so the run did reach physics"
     );
 }
@@ -390,7 +390,7 @@ fn a_fixed_step_uses_the_fixed_timestep() {
         .timestep()
         .as_secs_f32();
     let expected_drop = 9.81 * dt * dt * (STEPS * (STEPS + 1) / 2) as f32;
-    let drop = start.position.y() - transform_of(&world, ball).position.y();
+    let drop = start.translation.y() - transform_of(&world, ball).translation.y();
     assert!(
         (drop - expected_drop).abs() < 0.2,
         "64 steps must drop ≈{expected_drop} m at the fixed timestep, got {drop} m"

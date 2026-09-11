@@ -1,11 +1,9 @@
-use std::ops::{Add, AddAssign, Div, DivAssign, Index, Mul, MulAssign, Sub, SubAssign};
+use std::ops::{Add, AddAssign, Div, DivAssign, Index, Mul, MulAssign, Neg, Sub, SubAssign};
 
 use glam::{Vec2, Vec3A, Vec4, Vec4Swizzles};
-
-use crate::{Cos, Lerp, LerpFactor, Max, Min, Sin, Sqrt, Tan};
-
-#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
+
+use crate::{Abs, Cos, Lerp, LerpFactor, Max, Min, Sin, Sqrt, Tan};
 
 #[cfg(test)]
 mod test;
@@ -20,6 +18,8 @@ where
         + Sub<Self, Output = Self>
         + Mul
         + Div
+        + Neg<Output = Self>
+        + Abs
         + AddAssign<f32>
         + SubAssign<f32>
         + MulAssign<f32>
@@ -459,7 +459,21 @@ impl Lerp for float2 {
     }
 }
 
-#[cfg(feature = "serde")]
+impl Neg for float2 {
+    type Output = Self;
+
+    #[inline(always)]
+    fn neg(self) -> Self::Output {
+        Self(-self.0)
+    }
+}
+
+impl Abs for float2 {
+    fn abs(self) -> Self {
+        Self(self.0.abs())
+    }
+}
+
 impl Serialize for float2 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -468,7 +482,6 @@ impl Serialize for float2 {
         self.to_array().serialize(serializer)
     }
 }
-#[cfg(feature = "serde")]
 impl<'de> Deserialize<'de> for float2 {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -536,14 +549,22 @@ impl float3 {
     pub const fn new(x: f32, y: f32, z: f32) -> Self {
         Self(Vec3A::new(x, y, z))
     }
+
+    #[inline(always)]
+    pub(crate) fn from_inner(v: Vec3A) -> Self {
+        Self(v)
+    }
+
     #[inline(always)]
     pub fn from_array(arr: [f32; 3]) -> Self {
         Self(Vec3A::from_array(arr))
     }
+
     #[inline(always)]
     pub fn from_array_4(arr: [f32; 4]) -> Self {
         Self(Vec3A::new(arr[0], arr[1], arr[2]))
     }
+
     #[inline(always)]
     pub fn to_array(&self) -> [f32; 4] {
         [self.x(), self.y(), self.z(), 0.0]
@@ -886,7 +907,22 @@ impl From<[f32; 3]> for float3 {
     }
 }
 
-#[cfg(feature = "serde")]
+impl Neg for float3 {
+    type Output = Self;
+
+    #[inline(always)]
+    fn neg(self) -> Self::Output {
+        Self(-self.0)
+    }
+}
+
+impl Abs for float3 {
+    #[inline(always)]
+    fn abs(self) -> Self {
+        Self(self.0.abs())
+    }
+}
+
 impl Serialize for float3 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -895,7 +931,6 @@ impl Serialize for float3 {
         self.to_array().serialize(serializer)
     }
 }
-#[cfg(feature = "serde")]
 impl<'de> Deserialize<'de> for float3 {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -1712,7 +1747,22 @@ impl Lerp for float4 {
     }
 }
 
-#[cfg(feature = "serde")]
+impl Neg for float4 {
+    type Output = Self;
+
+    #[inline(always)]
+    fn neg(self) -> Self::Output {
+        Self(-self.0)
+    }
+}
+
+impl Abs for float4 {
+    #[inline(always)]
+    fn abs(self) -> Self {
+        Self(self.0.abs())
+    }
+}
+
 impl Serialize for float4 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -1721,8 +1771,6 @@ impl Serialize for float4 {
         self.to_array().serialize(serializer)
     }
 }
-
-#[cfg(feature = "serde")]
 impl<'de> Deserialize<'de> for float4 {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where

@@ -79,7 +79,7 @@ kairos_collections = { path = "../kairos_collections" }
 kairos_ecs = { path = "../kairos_ecs" }
 kairos_asset = { path = "../kairos_asset" }
 kairos_graphics = { path = "../kairos_graphics" }
-kairos_math = { path = "../kairos_math", features = ["serde", "rkyv"] }
+kairos_math = { path = "../kairos_math", features = ["rkyv"] }
 kairos_physics = { path = "../kairos_physics" }
 kairos_tasks = { path = "../kairos_tasks" }
 kairos_time = { path = "../kairos_time" }

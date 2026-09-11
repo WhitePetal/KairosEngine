@@ -9,10 +9,10 @@ fn assert_float3_eq(a: float3, b: float3, eps: f32) {
 
 fn assert_quaternion_eq(a: quaternion, b: quaternion, eps: f32) {
     let msg = format!("quaternion {a:?} != {b:?}");
-    assert!((a.0.x() - b.0.x()).abs() < eps, "{msg}");
-    assert!((a.0.y() - b.0.y()).abs() < eps, "{msg}");
-    assert!((a.0.z() - b.0.z()).abs() < eps, "{msg}");
-    assert!((a.0.w() - b.0.w()).abs() < eps, "{msg}");
+    assert!((a.0.x - b.0.x).abs() < eps, "{msg}");
+    assert!((a.0.y - b.0.y).abs() < eps, "{msg}");
+    assert!((a.0.z - b.0.z).abs() < eps, "{msg}");
+    assert!((a.0.w - b.0.w).abs() < eps, "{msg}");
 }
 
 fn assert_matrix_eq(a: float4x4, b: float4x4, eps: f32) {
@@ -96,6 +96,38 @@ fn transform_point_matches_float4x4_mul() {
         via_affine,
         float3::new(via_matrix.x(), via_matrix.y(), via_matrix.z()),
         1e-4,
+    );
+}
+
+#[test]
+fn mul_transforms_point_like_transform_point() {
+    let a = affine::trs(
+        float3::new(1.0, -2.0, 3.0),
+        quaternion::new(0.1, 0.2, 0.3, 0.9).normalized(),
+        float3::new(2.0, 3.0, 4.0),
+    );
+    let point = float3::new(0.5, -1.0, 2.0);
+
+    // `*` is defined as a point transform: it applies translation.
+    assert_float3_eq(a * point, a.transform_point(point), 1e-6);
+}
+
+#[test]
+fn transform_vector_ignores_translation() {
+    let a = affine::trs(
+        float3::new(1.0, -2.0, 3.0),
+        quaternion::IDENTITY,
+        float3::ONE,
+    );
+    let direction = float3::new(0.5, -1.0, 2.0);
+
+    // Pure translation must leave a direction untouched...
+    assert_float3_eq(a.transform_vector(direction), direction, 1e-6);
+    // ...whereas `*`/`transform_point` shifts it by the translation.
+    assert_float3_eq(
+        a.transform_vector(direction),
+        a.transform_point(direction) - a.translation(),
+        1e-6,
     );
 }
 

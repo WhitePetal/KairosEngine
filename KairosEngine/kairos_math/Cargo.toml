@@ -10,18 +10,16 @@ unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)", "cfg(docsrs_dep)
 
 [features]
 default = []
-serde = ["dep:serde"]
 rkyv = ["dep:rkyv"]
 
 [dependencies]
 bytemuck = "1.25"
 glam = { version = "0.33", features = ["bytemuck"] }
-serde = { version = "1", optional = true }
+serde = "1.0.228"
 rkyv = { version = "0.8.16", optional = true }
 
 [dev-dependencies]
 criterion = "0.8"
-serde_json = "1"
 
 [[bench]]
 name = "vec_benchmark"

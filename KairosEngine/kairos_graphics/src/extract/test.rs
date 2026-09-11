@@ -152,7 +152,7 @@ fn a_mesh_entity_yields_one_entry_per_renderable_view() {
 
     for draws in draws_of_every_view(&world) {
         assert_eq!(draws.len(), 1, "one mesh entity = one entry per view");
-        assert_eq!(draws[0].local_to_world, transform.compute_local_matrix());
+        assert_eq!(draws[0].local_to_world, transform.compute_matrix());
     }
 }
 

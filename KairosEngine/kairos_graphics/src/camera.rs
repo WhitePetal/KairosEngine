@@ -63,7 +63,7 @@ impl Camera {
         let r = float3::new(m.c0().x(), m.c0().y(), m.c0().z()); // right
         let u = float3::new(m.c1().x(), m.c1().y(), m.c1().z()); // up
         let f = float3::new(m.c2().x(), m.c2().y(), m.c2().z()) * -1.0; // forward = -c2
-        let p = transform.position;
+        let p = transform.translation;
 
         // view = transpose([r | u | f]) with translation = -(view_3x3) * p
         float4x4::new(

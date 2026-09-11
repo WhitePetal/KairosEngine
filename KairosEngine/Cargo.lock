@@ -2627,7 +2627,6 @@ dependencies = [
  "glam 0.33.1",
  "rkyv",
  "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -2678,7 +2677,6 @@ dependencies = [
  "kairos_ecs",
  "kairos_math",
  "serde",
- "serde_json",
 ]
 
 [[package]]

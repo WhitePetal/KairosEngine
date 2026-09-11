@@ -40,6 +40,12 @@ pub trait Max {
 pub trait Sqrt {
     fn sqrt(self) -> Self;
 }
+pub trait Abs {
+    fn abs(self) -> Self;
+}
+pub trait CopySign {
+    fn copysign(self, sign: Self) -> Self;
+}
 pub trait LerpFactor<T> {
     fn get_factor(self) -> T;
 }
@@ -112,5 +118,37 @@ impl Lerp for f32 {
     #[inline(always)]
     fn lerp(left: Self, right: Self, factor: impl LerpFactor<f32>) -> Self {
         left + (right - left) * factor.get_factor()
+    }
+}
+
+/// Returns a number composed of the magnitude of `x` and the sign of `y`.
+///
+/// Equal to `x` if the sign of `x` and `y` are the same, otherwise equal to `-x`. If `x` is a
+/// `NaN`, then a `NaN` with the sign bit of `y` is returned. Note, however, that conserving the
+/// sign bit on `NaN` across arithmetical operations is not generally guaranteed.
+#[inline]
+pub fn copysign<T: CopySign>(x: T, y: T) -> T {
+    T::copysign(x, y)
+}
+
+impl CopySign for f32 {
+    #[inline(always)]
+    fn copysign(self, sign: Self) -> Self {
+        f32::copysign(self, sign)
+    }
+}
+
+/// Computes the absolute value of x.
+///
+/// This function always returns the precise result.
+#[inline]
+pub fn abs<T: Abs>(x: T) -> T {
+    T::abs(x)
+}
+
+impl Abs for f32 {
+    #[inline(always)]
+    fn abs(self) -> Self {
+        f32::abs(self)
     }
 }

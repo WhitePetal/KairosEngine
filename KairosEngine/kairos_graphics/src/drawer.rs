@@ -67,7 +67,7 @@ pub fn draw_meshes(
         draws.push(DrawCommand {
             mesh: mesh.lod0.clone(),
             material: material.material.clone(),
-            local_to_world: transform.compute_local_matrix(),
+            local_to_world: transform.compute_matrix(),
         });
     }
 }

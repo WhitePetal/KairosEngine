@@ -31,7 +31,7 @@ tokio = { version = "1.52.3", features = ["full"] }
 anyhow = { version = "1.0" }
 kairos_asset = { path = "../kairos_asset" }
 kairos_ecs = { path = "../kairos_ecs" }
-kairos_math = { path = "../kairos_math", features = ["serde", "rkyv"] }
+kairos_math = { path = "../kairos_math", features = ["rkyv"] }
 kairos_tasks = { path = "../kairos_tasks" }
 kairos_transform = { path = "../kairos_transform" }
 
