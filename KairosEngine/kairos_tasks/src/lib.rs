@@ -1,3 +1,4 @@
+mod conditional_send;
 mod executor;
 pub mod futures;
 mod iter;
@@ -7,6 +8,7 @@ mod thread_executor;
 mod usages;
 
 pub use async_task::Task;
+pub use conditional_send::{ConditionalSend, ConditionalSendFuture};
 pub use iter::ParallelIterator;
 pub use slice::{ParallelSlice, ParallelSliceMut};
 pub use task_pool::{Scope, TaskPool, TaskPoolBuilder};
