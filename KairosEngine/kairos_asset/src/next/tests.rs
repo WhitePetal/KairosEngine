@@ -546,3 +546,7 @@ fn asset_event_variants_report_themselves() {
     let failed = AssetLoadFailedEvent::<TestAsset>::new(id);
     assert_eq!(failed.id, id);
 }
+
+mod io;
+mod meta;
+mod path;
