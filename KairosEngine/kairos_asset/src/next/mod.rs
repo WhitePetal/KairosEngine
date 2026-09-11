@@ -22,9 +22,15 @@
 //!   `source://path#label`; [`io::AssetReader`] and [`io::AssetSource`] read its
 //!   bytes; [`meta::AssetMeta`] is the RON `.meta` sidecar that names the
 //!   loader and its settings.
+//! - Loading: [`AssetLoader`] turns bytes into an asset; [`LoadContext`]
+//!   declares dependencies and collects labeled sub-assets, and
+//!   [`LoadContext::finish`] folds them into a [`LoadedAsset`]/
+//!   [`ErasedLoadedAsset`]. [`AssetServer`] tracks each asset's [`LoadState`]
+//!   and hands out path-addressed [`Handle`]s.
 //!
-//! Deliberately absent for now (later tickets): the `AssetServer`, the loader
-//! trait, and the processor. This module does not import `tokio`.
+//! Deliberately absent for now (later tickets): the loading pipeline (task
+//! spawning over `IoTaskPool`, meta/loader selection, the server's public
+//! `load` API) and the processor. This module does not import `tokio`.
 
 mod asset;
 mod assets;
@@ -33,8 +39,10 @@ mod handle;
 mod id;
 mod index;
 pub mod io;
+mod loader;
 pub mod meta;
 mod path;
+mod server;
 
 pub use asset::{Asset, VisitAssetDependencies};
 pub use assets::{AssetMut, Assets, AssetsMutIterator, InvalidGenerationError};
@@ -45,6 +53,13 @@ pub use handle::{
 };
 pub use id::{AssetId, UntypedAssetId, UntypedAssetIdConversionError};
 pub use index::{AssetIndex, AssetIndexAllocator};
+pub use loader::{
+    AssetContainer, AssetLoader, ErasedAssetLoader, ErasedLoadedAsset, LoadContext, LoadedAsset,
+};
+pub use server::{
+    AssetLoadError, AssetLoaderError, AssetServer, DependencyLoadState, LoadState,
+    RecursiveDependencyLoadState,
+};
 pub use io::{
     AssetReader, AssetReaderError, AssetSourceEvent, AssetSourceId, AssetWriter,
     AssetWriterError, ErasedAssetReader, ErasedAssetWriter, Reader, UnapprovedPathMode,

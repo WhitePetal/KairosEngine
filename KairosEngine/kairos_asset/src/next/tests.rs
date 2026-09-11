@@ -548,5 +548,6 @@ fn asset_event_variants_report_themselves() {
 }
 
 mod io;
+mod loader;
 mod meta;
 mod path;
