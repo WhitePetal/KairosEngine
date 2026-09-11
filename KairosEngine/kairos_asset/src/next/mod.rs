@@ -29,6 +29,10 @@
 //!   tracks each asset's [`LoadState`], and runs loads as tasks on the
 //!   `IoTaskPool`; [`handle_internal_asset_events`] inserts the finished values
 //!   into their stores.
+//! - Registration and scheduling: [`install`] records the caller's tracking and
+//!   event stage labels in [`AssetStages`]; [`AssetWorldExt::init_asset`] then
+//!   registers a type's store, its `Messages`, and its per-type driver systems,
+//!   mounted under the [`AssetTrackingSystems`]/[`AssetEventSystems`] sets.
 //!
 //! Deliberately absent for now (later tickets): untyped and folder loads,
 //! `add_async`/guards, `wait_for_asset*`, and the processor. This module does
@@ -40,6 +44,7 @@ mod event;
 mod handle;
 mod id;
 mod index;
+mod install;
 pub mod io;
 mod loader;
 pub mod meta;
@@ -55,6 +60,9 @@ pub use handle::{
 };
 pub use id::{AssetId, UntypedAssetId, UntypedAssetIdConversionError};
 pub use index::{AssetIndex, AssetIndexAllocator};
+pub use install::{
+    AssetEventSystems, AssetStages, AssetTrackingSystems, AssetWorldExt, install,
+};
 pub use loader::{
     AssetContainer, AssetLoader, ErasedAssetLoader, ErasedLoadedAsset, LoadContext, LoadedAsset,
 };

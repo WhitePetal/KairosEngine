@@ -34,13 +34,13 @@ Two independent costs, needing two different fixes.
 **2. Recompiling dependents.** `kairos_ecs` sits at the base of the graph:
 
 ```
-kairos_asset         ← kairos_collections
 kairos_collections   leaf
 kairos_math          leaf
 kairos_ptr           leaf
 kairos_supervisor    leaf
 kairos_tasks         leaf
 kairos_ecs           ← kairos_tasks, kairos_ptr, kairos_collections
+├── kairos_asset     ← kairos_ecs, kairos_collections, kairos_tasks
 ├── kairos_time      ← kairos_ecs
 ├── kairos_transform ← kairos_ecs, kairos_math
 ├── kairos_graphics  ← kairos_asset, kairos_ecs, kairos_math, kairos_transform (+ wgpu, egui, winit, image)
@@ -48,7 +48,12 @@ kairos_ecs           ← kairos_tasks, kairos_ptr, kairos_collections
 └── kairos_engine    ← kairos_asset, kairos_graphics, kairos_physics and all of the above (+ wgpu, egui, winit)
 ```
 
-Touching `kairos_ecs` invalidates `kairos_time`, `kairos_transform`, `kairos_graphics`, `kairos_physics` and `kairos_engine`. Scoping with `-p` skips that rebuild: 3.9s of compiling instead of 9.6s, ~8s wall instead of ~12s. `kairos_engine` is the expensive one — it pulls in wgpu, egui and winit.
+`kairos_asset`'s next-generation core depends on `kairos_ecs` (assets are world
+resources and `AssetEvent` is a `Message`) and is tokio-free by design
+(ADR 0001); the legacy stack it currently lands beside still pulls tokio
+transitionally.
+
+Touching `kairos_ecs` invalidates `kairos_asset`, `kairos_time`, `kairos_transform`, `kairos_graphics`, `kairos_physics` and `kairos_engine`. Scoping with `-p` skips that rebuild: 3.9s of compiling instead of 9.6s, ~8s wall instead of ~12s. Touching `kairos_asset` in turn invalidates `kairos_graphics` and `kairos_engine` — the expensive one, which pulls in wgpu, egui and winit.
 
 The ~920 unit tests themselves execute in well under a second. Test execution is never the problem.
 
@@ -80,5 +85,6 @@ This lists the top-level directories you touched; each `kairos_*` entry is a cra
 ## Notes
 
 - **`RUST_BACKTRACE`** is set to `1` in `.cargo/config.toml`, so `kairos_ecs`'s `filtered_backtrace_test` passes without extra ceremony. That test panics by design when the variable is missing or `0`, and under fail-fast it used to abort the whole workspace run before any downstream crate was tested. Override on the command line if you need `full`.
+- **`kairos_asset` now has tests.** Its tests live in the next-generation core (`kairos_asset/src/next/`), which the rewrite added; before it, the crate had none. `cargo test-crate kairos_asset` is therefore a real check rather than a no-op.
 - **Doctests are documentation.** Keep them green and fix them when they break, but they are the wrong thing to pay three minutes for on every edit.
 - **There is no CI in this repo.** The full suite is therefore the only pre-merge gate and it runs wherever someone remembers to run it. If CI is added, `cargo test-full` belongs there and this file should say so.

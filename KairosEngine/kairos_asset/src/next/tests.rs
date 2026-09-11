@@ -547,6 +547,7 @@ fn asset_event_variants_report_themselves() {
     assert_eq!(failed.id, id);
 }
 
+mod install;
 mod io;
 mod loader;
 mod meta;
