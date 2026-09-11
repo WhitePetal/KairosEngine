@@ -2389,9 +2389,13 @@ dependencies = [
 name = "kairos_asset"
 version = "0.1.0"
 dependencies = [
+ "crossbeam-channel",
  "indexmap",
  "kairos_collections",
+ "kairos_ecs",
+ "serde",
  "tokio",
+ "uuid",
 ]
 
 [[package]]

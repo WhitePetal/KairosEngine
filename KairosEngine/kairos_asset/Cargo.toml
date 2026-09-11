@@ -9,6 +9,10 @@ description = "Async asset server and handle system for the Kairos engine, extra
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)", "cfg(docsrs_dep)"] }
 
 [dependencies]
+crossbeam-channel = "0.5.15"
 indexmap = { version = "2.5.0", default-features = false, features = ["serde"] }
-tokio = { version = "1.52.3", features = ["sync", "rt"] }
 kairos_collections = { path = "../kairos_collections" }
+kairos_ecs = { path = "../kairos_ecs" }
+serde = { version = "1.0.228", features = ["derive"] }
+tokio = { version = "1.52.3", features = ["sync", "rt"] }
+uuid = { version = "1", features = ["v4", "serde"] }

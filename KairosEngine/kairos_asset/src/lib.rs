@@ -10,6 +10,11 @@
 //! (`MeshAssetsSystem`, `MaterialAssetsSystem`, …) in `kairos_graphics`, the
 //! audio/text/syntax/toml ones in `kairos_engine`. Only the generic machinery
 //! lives here, so it is free of any dependency on graphics or engine types.
+//!
+//! The [`next`] module is the landing zone for the `bevy_asset`-style rewrite of
+//! this system. It is additive and unconsumed for now; the stack above it is the
+//! legacy implementation that still drives the engine.
 
 pub mod assets;
 pub mod consts;
+pub mod next;
