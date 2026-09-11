@@ -32,27 +32,7 @@ pub struct Engine {
 
 impl Engine {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let mut world = World::new();
-        // Bootstrap the bevy_app-style schedule rails — including the `Time`
-        // World resource and its `First`-stage `time_system` — before any
-        // game/editor logic gets a chance to register systems.
-        schedule::install(&mut world);
-        // Physics is installed right after the schedule rails: its step system
-        // registers into the `FixedUpdate` stage the skeleton above just
-        // created, so this order is a precondition. It is a World resource, not
-        // an `Engine` field, so from here on every `Engine` carries physics in
-        // its world.
-        physics::install(&mut world, schedule::FixedUpdate);
-        // Then the render rails, which register into the `Extract` stage the
-        // skeleton above just created. The order is a precondition, not a
-        // preference: game assembly runs after `Engine::new` and binds the game
-        // camera to `GameView`, so the view resources must already exist.
-        graphics::install(&mut world, schedule::Extract);
-        // Finally the editor camera controller, whose system the extract stage
-        // must find already written to when it reads the frame. It consumes
-        // `SceneViewInput`, an editor concept, so it is installed here rather
-        // than by the engine-level `graphics::install`.
-        camera::install(&mut world);
+        let world = build_world();
         let assets_server = AssetsServer::new();
         let audio_engine = AudioEngine::new()?;
         let input_engine = InputEngine::new();
@@ -87,6 +67,42 @@ impl Engine {
         self.world.run_schedule(schedule::Main);
         self.world.clear_trackers();
     }
+}
+
+/// Boots the World half of an [`Engine`]: the schedule rails, the asset core,
+/// physics, the render rails, and the editor camera controller, in the order
+/// their preconditions require.
+///
+/// Split out of [`Engine::new`] so a host that does not want an audio device —
+/// a test, or a headless run — can still drive the exact bootstrap order.
+fn build_world() -> World {
+    let mut world = World::new();
+    // Bootstrap the bevy_app-style schedule rails — including the `Time` World
+    // resource and its `First`-stage `time_system` — before any game/editor
+    // logic gets a chance to register systems.
+    schedule::install(&mut world);
+    // The next-generation asset core lands beside the legacy `AssetsServer`: its
+    // `AssetServer` becomes a World resource, its per-type driver systems mount
+    // into the engine's `PreUpdate`/`PostUpdate`, and the `AssetEvent`s it writes
+    // ride the frame's message pass. No asset type is registered yet — each
+    // asset's owning crate calls `init_asset` as it migrates (P2).
+    kairos_asset::next::install(&mut world, schedule::PreUpdate, schedule::PostUpdate);
+    // Physics comes next: its step system registers into the `FixedUpdate` stage
+    // the schedule rails just created, so this order is a precondition. It is a
+    // World resource, not an `Engine` field, so from here on every `Engine`
+    // carries physics in its world.
+    physics::install(&mut world, schedule::FixedUpdate);
+    // Then the render rails, which register into the `Extract` stage the schedule
+    // rails just created. The order is a precondition, not a preference: game
+    // assembly runs after `Engine::new` and binds the game camera to `GameView`,
+    // so the view resources must already exist.
+    graphics::install(&mut world, schedule::Extract);
+    // Finally the editor camera controller, whose system the extract stage must
+    // find already written to when it reads the frame. It consumes
+    // `SceneViewInput`, an editor concept, so it is installed here rather than by
+    // the engine-level `graphics::install`.
+    camera::install(&mut world);
+    world
 }
 
 pub struct KairosEngine {

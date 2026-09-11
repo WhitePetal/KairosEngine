@@ -25,20 +25,31 @@
 //!   accumulated time covers no full step). `FixedUpdate` systems read the
 //!   fixed semantics from `Res<FixedTime>` (constant timestep, fixed elapsed);
 //!   `Res<Time>` stays the per-frame virtual clock and carries no fixed
-//!   meaning.
+//!   meaning. Each step then runs [`FixedPostUpdate`] — the fixed-step
+//!   post-update seam — mirroring bevy's `FixedMain` order.
 //!
 //! [`install`] registers the fixed set of sub-schedules plus the resources the
 //! drivers need: the engine's virtual clock ([`Time`]) and the fixed clock
 //! ([`FixedTime`]) as World resources — [`time_system`], hosted by the
-//! [`First`] sub-stage, advances the former exactly once per frame. When
-//! `FixedUpdate` has no systems a frame costs the driver a few resource
-//! accesses and, whenever the accumulated time covers a full step, one run of
-//! an empty schedule — no user systems, no warn, and no forced first step.
+//! [`First`] sub-stage, advances the former exactly once per frame. The
+//! [`First`] stage also hosts the frame's message pass
+//! ([`message_update_system`]), gated on [`MessageRegistry`] and signalled by
+//! [`singnal_message_update_system`] in [`FixedPostUpdate`]. When `FixedUpdate`
+//! has no systems a frame costs the driver a few resource accesses and,
+//! whenever the accumulated time covers a full step, one run of an empty
+//! schedule — no user systems, no warn, and no forced first step.
 
 use crate::time::{FixedTime, Time};
 use kairos_ecs::{
+    message::{
+        MessageRegistry, MessageUpdateSystems, ShouldUpdateMessages, message_update_comdition,
+        message_update_system, singnal_message_update_system,
+    },
     resource::Resource,
-    schedule::{InternedScheduleLabel, MainThreadExecutor, Schedule, ScheduleLabel, Schedules},
+    schedule::{
+        InternedScheduleLabel, IntoScheduleConfigs, MainThreadExecutor, Schedule, ScheduleLabel,
+        Schedules,
+    },
     system::{Local, ResMut},
     world::World,
 };
@@ -74,6 +85,18 @@ pub struct RunFixedMainLoop;
 /// [`FixedTime`] timestep that the accumulated virtual time pays for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FixedUpdate;
+
+/// The fixed-step post-update sub-schedule: work that reacts to a fixed step
+/// once the step's content has run (bevy parity: `FixedPostUpdate`).
+///
+/// Like [`FixedUpdate`], it is not in the per-frame [`MainScheduleOrder`];
+/// [`run_fixed_main_loop`] runs it once per fixed step, immediately after that
+/// step's `FixedUpdate`. It hosts
+/// [`singnal_message_update_system`](kairos_ecs::message::singnal_message_update_system),
+/// which releases the frame's messages to the next frame's message update, and
+/// is the seam later fixed-rate modules (physics) hook into.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct FixedPostUpdate;
 
 /// The main per-frame sub-stage.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -119,6 +142,7 @@ impl_schedule_label!(
     PreUpdate,
     RunFixedMainLoop,
     FixedUpdate,
+    FixedPostUpdate,
     Update,
     PostUpdate,
     Extract,
@@ -223,13 +247,42 @@ fn run_fixed_main_loop(world: &mut World) {
     let delta = world.resource::<Time>().delta_time();
     world.resource_mut::<FixedTime>().accumulate(delta);
 
-    // Run the fixed schedule until the accumulated time runs out (0..N times).
-    if let Err(error) = world.try_schedule_scope(FixedUpdate, |world, schedule| {
-        while world.resource_mut::<FixedTime>().expend() {
-            schedule.run(world);
+    // Run the fixed schedules until the accumulated time runs out (0..N times).
+    // Each step runs `FixedUpdate` and then `FixedPostUpdate`, matching bevy's
+    // `FixedMain` order (`FixedUpdate` before `FixedPostUpdate`); the post step
+    // is where the message signal lives. Both schedules are scoped around the
+    // whole loop so the 0..N consecutive runs share one system-state cache, and
+    // either may be missing without breaking the frame: the other stage still
+    // runs and the fixed clock still advances.
+    let outcome = world.try_schedule_scope(FixedUpdate, |world, fixed_update| {
+        let post_update = world.try_schedule_scope(FixedPostUpdate, |world, fixed_post_update| {
+            while world.resource_mut::<FixedTime>().expend() {
+                fixed_update.run(world);
+                fixed_post_update.run(world);
+            }
+        });
+
+        match post_update {
+            Ok(()) => None,
+            Err(error) => {
+                // The post stage is missing: still spend every due step on
+                // `FixedUpdate` alone, then report the missing schedule.
+                while world.resource_mut::<FixedTime>().expend() {
+                    fixed_update.run(world);
+                }
+                Some(error)
+            }
         }
-    }) {
-        log::error!("skipping fixed-update schedule `{FixedUpdate:?}`: {error}");
+    });
+
+    match outcome {
+        Ok(None) => {}
+        Ok(Some(error)) => {
+            log::error!("skipping fixed-post-update stage: {error}");
+        }
+        Err(error) => {
+            log::error!("skipping fixed-update schedule `{FixedUpdate:?}`: {error}");
+        }
     }
 }
 
@@ -252,15 +305,34 @@ pub(crate) fn install(world: &mut World) {
     world.insert_resource(Time::new());
     world.insert_resource(FixedTime::new());
 
+    // Messages are held back until a fixed step has run: the registry starts in
+    // `Waiting`, and the `FixedPostUpdate` signal below releases them. This is
+    // bevy's `TimePlugin` posture, and it gives fixed-rate systems a chance to
+    // observe a frame's messages before the message pass clears them.
+    let mut messages = world.get_resource_or_init::<MessageRegistry>();
+    messages.should_update = ShouldUpdateMessages::Waiting;
+
     let mut schedules = world.get_resource_or_init::<Schedules>();
 
     let mut first = Schedule::new(First);
-    first.add_systems(time_system);
+    first.add_systems((
+        // The clock advance and the message pass are independent of each other.
+        time_system.ambiguous_with(message_update_system),
+        // Messages are polled once per frame, but only once a fixed step has
+        // signalled the registry (see `FixedPostUpdate` below).
+        message_update_system
+            .in_set(MessageUpdateSystems)
+            .run_if(message_update_comdition),
+    ));
     schedules.insert(first);
 
     let mut fixed_loop = Schedule::new(RunFixedMainLoop);
     fixed_loop.add_systems(run_fixed_main_loop);
     schedules.insert(fixed_loop);
+
+    let mut fixed_post_update = Schedule::new(FixedPostUpdate);
+    fixed_post_update.add_systems(singnal_message_update_system);
+    schedules.insert(fixed_post_update);
 
     for label in [
         Startup.intern(),
@@ -283,6 +355,9 @@ pub(crate) fn install(world: &mut World) {
     // thread's executor at bootstrap so they always run where they must.
     world.insert_resource(MainThreadExecutor::new());
 }
+
+#[cfg(test)]
+mod asset_test;
 
 #[cfg(test)]
 mod test;

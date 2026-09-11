@@ -14,11 +14,12 @@
 //! scripted delta and the fixed-step counts are exact.
 
 use super::{
-    Extract, First, FixedUpdate, Last, Main, MainScheduleOrder, PostUpdate, PreUpdate,
-    RunFixedMainLoop, Startup, Update, install,
+    Extract, First, FixedPostUpdate, FixedUpdate, Last, Main, MainScheduleOrder, PostUpdate,
+    PreUpdate, RunFixedMainLoop, Startup, Update, install,
 };
 use crate::time::{FixedTime, Time};
 use kairos_ecs::{
+    message::{Message, MessageRegistry, Messages, ShouldUpdateMessages},
     resource::Resource,
     schedule::{InternedScheduleLabel, MainThreadExecutor, Schedule, ScheduleLabel, Schedules},
     system::{Res, ResMut},
@@ -152,6 +153,7 @@ fn boot_installs_all_schedules() {
         PreUpdate.intern(),
         RunFixedMainLoop.intern(),
         FixedUpdate.intern(),
+        FixedPostUpdate.intern(),
         Update.intern(),
         PostUpdate.intern(),
         Extract.intern(),
@@ -824,4 +826,177 @@ fn missing_fixed_update_schedule_is_tolerated() {
     // The remaining per-frame sub-stages still ran once, in canonical order.
     let trace = &world.get_resource::<Trace>().unwrap().0;
     assert_eq!(trace, SUB_STAGE_ORDER.as_slice());
+}
+
+// ---------------------------------------------------------------------------
+// T21–T25: the message pass and the `FixedPostUpdate` step it is gated on
+// (#206)
+// ---------------------------------------------------------------------------
+
+/// A message type registered by hand; stands in for the per-type
+/// `register_message` that `init_asset` performs once an asset crate migrates.
+struct FrameTick;
+
+impl Message for FrameTick {}
+
+/// T21: `install` seeds the message registry in the `Waiting` state, so the
+/// frame's message pass does not run until a fixed step signals it.
+#[test]
+fn install_seeds_the_message_registry_waiting() {
+    let world = boot();
+
+    assert_eq!(
+        world.resource::<MessageRegistry>().should_update,
+        ShouldUpdateMessages::Waiting,
+        "the registry must start Waiting so messages outlive the frame that wrote them"
+    );
+}
+
+/// T22: `FixedPostUpdate` hosts the signal, flipping the registry to `Ready`.
+#[test]
+fn fixed_post_update_signals_the_message_registry() {
+    let mut world = boot();
+    assert_eq!(
+        world.resource::<MessageRegistry>().should_update,
+        ShouldUpdateMessages::Waiting
+    );
+
+    world.run_schedule(FixedPostUpdate);
+
+    assert_eq!(
+        world.resource::<MessageRegistry>().should_update,
+        ShouldUpdateMessages::Ready,
+        "the message signal must run in FixedPostUpdate"
+    );
+}
+
+/// T23: the `First`-stage message pass is gated on the registry — it leaves a
+/// buffered message alone while `Waiting`, and retires it on the second
+/// signalled update once a fixed step has released it.
+#[test]
+fn the_message_pass_is_gated_on_the_fixed_post_update_signal() {
+    let mut world = boot();
+    MessageRegistry::register_message::<FrameTick>(&mut world);
+    world.resource_mut::<Messages<FrameTick>>().write(FrameTick);
+
+    // Waiting: `First` runs the clock but skips the message pass, so the
+    // buffered message stays put no matter how many frames pass.
+    for _ in 0..FRAMES {
+        world.run_schedule(First);
+    }
+    assert_eq!(
+        world.resource::<Messages<FrameTick>>().len(),
+        1,
+        "no message pass may run before a fixed step signals the registry"
+    );
+
+    // A fixed step signals readiness; the next `First` updates the buffers.
+    // The message survives that update, and the one after the next signal
+    // retires it (messages live for two signalled updates).
+    world.run_schedule(FixedPostUpdate);
+    world.run_schedule(First);
+    assert_eq!(world.resource::<Messages<FrameTick>>().len(), 1);
+
+    world.run_schedule(FixedPostUpdate);
+    world.run_schedule(First);
+    assert_eq!(
+        world.resource::<Messages<FrameTick>>().len(),
+        0,
+        "the second signalled update must retire the message"
+    );
+}
+
+/// Records which fixed-stage schedules ran, in order.
+#[derive(Resource, Default)]
+struct FixedStageTrace(Vec<&'static str>);
+
+fn trace_fixed_update(mut trace: ResMut<FixedStageTrace>) {
+    trace.0.push("FixedUpdate");
+}
+
+fn trace_fixed_post_update(mut trace: ResMut<FixedStageTrace>) {
+    trace.0.push("FixedPostUpdate");
+}
+
+/// Attaches the per-step tracers to the two fixed-stage schedules.
+fn add_fixed_stage_tracers(world: &mut World) {
+    world.insert_resource(FixedStageTrace::default());
+    let mut schedules = world.get_resource_mut::<Schedules>().expect("Schedules");
+    schedules
+        .get_mut(FixedUpdate)
+        .expect("FixedUpdate schedule missing")
+        .add_systems(trace_fixed_update);
+    schedules
+        .get_mut(FixedPostUpdate)
+        .expect("FixedPostUpdate schedule missing")
+        .add_systems(trace_fixed_post_update);
+}
+
+/// T24: every fixed step runs `FixedPostUpdate` immediately after its
+/// `FixedUpdate`, once per step — never on a sub-step frame.
+#[test]
+fn fixed_post_update_runs_once_per_fixed_step_after_fixed_update() {
+    let mut world = boot_with_scripted_frames();
+    add_fixed_stage_tracers(&mut world);
+
+    set_frame_dt(&mut world, Duration::from_millis(50)); // 3 full 64 Hz steps
+    run_frame(&mut world);
+
+    assert_eq!(
+        world.get_resource::<FixedStageTrace>().unwrap().0,
+        vec![
+            "FixedUpdate",
+            "FixedPostUpdate",
+            "FixedUpdate",
+            "FixedPostUpdate",
+            "FixedUpdate",
+            "FixedPostUpdate",
+        ],
+        "each fixed step must run FixedPostUpdate right after FixedUpdate"
+    );
+
+    // A sub-step frame runs neither schedule.
+    set_frame_dt(&mut world, Duration::from_millis(1));
+    run_frame(&mut world);
+    assert_eq!(
+        world.get_resource::<FixedStageTrace>().unwrap().0.len(),
+        6,
+        "a frame that pays for no full step must run neither fixed stage"
+    );
+}
+
+/// T25: removing `FixedPostUpdate` must not break a frame — the driver logs
+/// and moves on, `FixedUpdate` still steps, and the fixed clock still advances.
+#[test]
+fn missing_fixed_post_update_schedule_is_tolerated() {
+    let mut world = boot_with_scripted_frames();
+    world.insert_resource(FixedUpdateRuns::default());
+    world
+        .get_resource_mut::<Schedules>()
+        .expect("Schedules")
+        .get_mut(FixedUpdate)
+        .expect("FixedUpdate schedule missing")
+        .add_systems(count_fixed_update_runs);
+
+    let removed = world
+        .get_resource_mut::<Schedules>()
+        .expect("Schedules")
+        .remove(FixedPostUpdate);
+    assert!(
+        removed.is_some(),
+        "FixedPostUpdate schedule should exist before removal"
+    );
+
+    set_frame_dt(&mut world, Duration::from_millis(50)); // 3 steps
+    run_frame(&mut world);
+
+    assert_eq!(
+        fixed_update_runs(&world),
+        3,
+        "FixedUpdate must still step when FixedPostUpdate is missing"
+    );
+    assert_eq!(
+        world.get_resource::<FixedTime>().unwrap().elapsed(),
+        Duration::from_micros(46_875)
+    );
 }
