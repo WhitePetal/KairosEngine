@@ -114,6 +114,12 @@ fn build_world() -> World {
     // the runtime `Texture` as a dependency, so it is registered after the
     // texture store it targets.
     crate::kairos_editor::editor_assets::texture_ext::install(&mut world);
+    // Then the audio cluster: `PcmData` and `AudioAsset` are the leaves, and the
+    // editor's `AudioExt` composite declares both through its loader, so it is
+    // registered after the two stores it targets.
+    crate::audio::audio_ext::pcm::install(&mut world);
+    crate::audio::audio::install(&mut world);
+    crate::audio::audio_ext::install(&mut world);
     // Finally the editor camera controller, whose system the extract stage must
     // find already written to when it reads the frame. It consumes
     // `SceneViewInput`, an editor concept, so it is installed here rather than by

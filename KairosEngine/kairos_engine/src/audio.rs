@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 
+use kairos_asset::next::Assets;
 use kira::{
     AudioManager, AudioManagerSettings, Capacities, DefaultBackend,
     backend::Backend,
@@ -11,13 +12,10 @@ use kira::{
 #[cfg(test)]
 use kira::backend::mock::MockBackend;
 
-use crate::{
-    asset_loader::assets::AssetsServer,
-    audio::{
-        audio::AudioState,
-        background::BackgroundAudio,
-        spatial::{SpatialAudioConfig, SpatialAudioTracks},
-    },
+use crate::audio::{
+    audio::{AudioAsset, AudioState},
+    background::BackgroundAudio,
+    spatial::{SpatialAudioConfig, SpatialAudioTracks},
 };
 
 use kairos_ecs::world::World;
@@ -80,49 +78,61 @@ impl<B: Backend> AudioEngine<B> {
         Ok(handle)
     }
 
-    pub fn update(&mut self, assets_server: &mut AssetsServer, world: &mut World, delta_time: f32) {
-        // spatial audio volumes system
-        self.spatial_tracks
-            .update(assets_server, &mut self.manager, world, delta_time);
+    /// Advances the audio engine by one frame: the spatial listener/volume state
+    /// machine and the background-track state machine, both reading the
+    /// [`Assets<AudioAsset>`] store from `world`.
+    ///
+    /// `AudioAsset` must be registered in `world` (the engine bootstrap does
+    /// this); otherwise the driver has no store to resolve handles against.
+    pub fn update(&mut self, world: &mut World, delta_time: f32) {
+        // The audio store is a World resource, but the per-frame driver needs
+        // `&mut World` for its entity queries at the same time, so the store is
+        // scoped out for the duration of the update (`World::resource_scope`) and
+        // passed down as the read side.
+        world.resource_scope::<Assets<AudioAsset>, _>(|world, audios| {
+            // spatial audio volumes system
+            self.spatial_tracks
+                .update(&*audios, &mut self.manager, world, delta_time);
 
-        // update background
-        //
-        // The pre-fork code took the first `&mut BackgroundAudio` with
-        // `query_mut::<&mut BackgroundAudio>().into_iter().next()`; the fork has no
-        // `query_mut`, so this is the `world.query::<Q>()` + `iter_mut` form of the
-        // same thing (deliberately `.next()`, *not* `single_mut`, which panics
-        // unless the world holds exactly one background entity).
-        let mut background_query = world.query::<&mut BackgroundAudio>();
-        if let Some(mut background) = background_query.iter_mut(&mut *world).next() {
-            match background.state {
-                AudioState::Created => {
-                    if background.auto_play {
-                        background.state = AudioState::WaitLoading;
-                    }
-                }
-                AudioState::WaitLoading => {
-                    // Polls every frame until the asset loader resolves the handle.
-                    let audio = assets_server.get(&background.audio);
-                    if let Some(audio) = audio {
-                        background.handle = self.manager.play(audio.sound_data.clone()).ok();
-                        background.state = AudioState::Playing;
-                    }
-                }
-                AudioState::Playing => {
-                    if let Some(handle) = &background.handle {
-                        if handle.state() == PlaybackState::Stopped {
-                            background.state = AudioState::Completed;
+            // update background
+            //
+            // The pre-fork code took the first `&mut BackgroundAudio` with
+            // `query_mut::<&mut BackgroundAudio>().into_iter().next()`; the fork has no
+            // `query_mut`, so this is the `world.query::<Q>()` + `iter_mut` form of the
+            // same thing (deliberately `.next()`, *not* `single_mut`, which panics
+            // unless the world holds exactly one background entity).
+            let mut background_query = world.query::<&mut BackgroundAudio>();
+            if let Some(mut background) = background_query.iter_mut(&mut *world).next() {
+                match background.state {
+                    AudioState::Created => {
+                        if background.auto_play {
+                            background.state = AudioState::WaitLoading;
                         }
                     }
-                }
-                // Same placeholder as the pre-fork code: nothing ever moves a
-                // background audio into `Paused`, so this arm is unreachable today.
-                AudioState::Paused => todo!(),
-                AudioState::Completed => {
-                    // now do nothing
+                    AudioState::WaitLoading => {
+                        // Polls every frame until the asset loader resolves the handle.
+                        let audio = background.audio.id();
+                        if let Some(audio) = audios.get(audio) {
+                            background.handle = self.manager.play(audio.sound_data.clone()).ok();
+                            background.state = AudioState::Playing;
+                        }
+                    }
+                    AudioState::Playing => {
+                        if let Some(handle) = &background.handle {
+                            if handle.state() == PlaybackState::Stopped {
+                                background.state = AudioState::Completed;
+                            }
+                        }
+                    }
+                    // Same placeholder as the pre-fork code: nothing ever moves a
+                    // background audio into `Paused`, so this arm is unreachable today.
+                    AudioState::Paused => todo!(),
+                    AudioState::Completed => {
+                        // now do nothing
+                    }
                 }
             }
-        }
+        });
     }
 }
 

@@ -1,5 +1,4 @@
-use std::{path::PathBuf, sync::Arc};
-
+use kairos_asset::next::{Assets, Handle};
 use kairos_ecs::{component::Component, entity::Entity, world::World};
 use kira::{
     Frame,
@@ -12,7 +11,6 @@ use kira::{
 use smallvec::SmallVec;
 
 use crate::{
-    asset_loader::assets::{AssetHandle, AssetsServer, AudioAssetHandle, AudioAssetsSystem},
     audio::{
         audio::{AudioAsset, AudioState},
         background::BackgroundAudio,
@@ -92,16 +90,19 @@ fn test_reverb() -> (SpatialAudioReverb, SpatialAudioReverbBound) {
     )
 }
 
-/// Builds an unloaded [`AudioAssetHandle`] for structural tests: the handle is
-/// just an index plus a drop channel, so a standalone channel makes it
-/// constructible and droppable without a real `AssetsServer`. It can be moved
-/// into a component, but never resolves an asset.
-fn test_audio_asset_handle() -> AudioAssetHandle {
-    use crate::asset_loader::assets::asset::{AssetIndex, AssetsSystem};
+/// An unloaded [`Handle<AudioAsset>`] for structural tests: the default weak
+/// handle names nothing, so it can be moved into a component but never resolves
+/// an asset.
+fn test_audio_asset_handle() -> Handle<AudioAsset> {
+    Handle::default()
+}
 
-    let (drop_sender, _drop_receiver) =
-        tokio::sync::mpsc::channel::<<AudioAssetsSystem as AssetsSystem>::DropEvent>(1);
-    Arc::new(AssetHandle::new(AssetIndex::new(0), drop_sender))
+/// A world carrying just the audio asset store the per-frame driver reads. The
+/// store is all `AudioEngine::update` needs beyond the entities.
+fn audio_world() -> World {
+    let mut world = World::new();
+    world.insert_resource(Assets::<AudioAsset>::with_capacity(0));
+    world
 }
 
 // ---------------------------------------------------------------------------
@@ -135,10 +136,9 @@ fn background_audio_with_auto_play_false_stays_created() {
 #[test]
 fn update_without_a_background_entity_is_a_no_op() {
     let mut engine = AudioEngine::new_mock();
-    let mut assets_server = AssetsServer::new();
-    let mut world = World::new();
+    let mut world = audio_world();
 
-    engine.update(&mut assets_server, &mut world, 0.0);
+    engine.update(&mut world, 0.0);
 }
 
 /// The full auto-play chain: `WaitLoading` polls until the asset resolves, then
@@ -178,11 +178,10 @@ fn background_audio_completes_when_playback_stops() {
     assert_eq!(harness.state(), AudioState::Completed);
 }
 
-/// One world, engine and asset server, with a single `BackgroundAudio` entity
+/// One world, engine and asset store, with a single `BackgroundAudio` entity
 /// spawned into it. Keeps the four driver tests down to their actual assertion.
 struct Harness {
     engine: AudioEngine<MockBackend>,
-    assets_server: AssetsServer,
     world: World,
     entity: Entity,
 }
@@ -190,30 +189,31 @@ struct Harness {
 impl Harness {
     /// The handle never resolves, so the state machine parks in `WaitLoading`.
     fn with_unloaded_asset(auto_play: bool) -> Self {
-        let handle = test_audio_asset_handle();
-        Self::new(auto_play, AssetsServer::new(), handle)
+        Self::spawn(auto_play, audio_world(), test_audio_asset_handle())
     }
 
-    /// The handle resolves to a loaded [`AudioAsset`].
+    /// The handle resolves to a loaded [`AudioAsset`] in the world's store.
     fn with_loaded_asset(auto_play: bool) -> Self {
-        let (assets_server, handle) = assets_server_with_audio();
-        Self::new(auto_play, assets_server, handle)
+        let mut world = audio_world();
+        let handle = world
+            .resource_mut::<Assets<AudioAsset>>()
+            .add(AudioAsset {
+                sound_data: test_sound_data(),
+            });
+        Self::spawn(auto_play, world, handle)
     }
 
-    fn new(auto_play: bool, assets_server: AssetsServer, handle: AudioAssetHandle) -> Self {
-        let mut world = World::new();
+    fn spawn(auto_play: bool, mut world: World, handle: Handle<AudioAsset>) -> Self {
         let entity = world.spawn(BackgroundAudio::new(handle, auto_play)).id();
         Self {
             engine: AudioEngine::new_mock(),
-            assets_server,
             world,
             entity,
         }
     }
 
     fn update(&mut self) {
-        self.engine
-            .update(&mut self.assets_server, &mut self.world, 0.0);
+        self.engine.update(&mut self.world, 0.0);
     }
 
     fn state(&self) -> AudioState {
@@ -237,19 +237,6 @@ impl Harness {
             self.engine.backend_mut().on_start_processing();
         }
     }
-}
-
-/// An `AssetsServer` holding one already-loaded [`AudioAsset`], plus the handle
-/// that resolves to it.
-fn assets_server_with_audio() -> (AssetsServer, AudioAssetHandle) {
-    let mut assets_server = AssetsServer::new();
-    let handle = assets_server.insert::<AudioAssetsSystem>(
-        AudioAsset {
-            sound_data: test_sound_data(),
-        },
-        &PathBuf::from("test://background.audio"),
-    );
-    (assets_server, handle)
 }
 
 /// A very short sound so the mock renderer drains it within a few `process`

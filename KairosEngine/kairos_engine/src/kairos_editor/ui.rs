@@ -707,7 +707,7 @@ impl Context {
                     if let Some(inspector) = self.get_window_mut::<InspectorWindow>()
                         && let Some(audio) = inspector.get_inspector_mut::<AudioInspector>()
                     {
-                        audio.tick_playback(&mut engine.assets_server);
+                        audio.tick_playback(&mut engine.world);
                     }
                 }
                 Message::ModelInspectorCreateWireframeMesh(mesh) => {

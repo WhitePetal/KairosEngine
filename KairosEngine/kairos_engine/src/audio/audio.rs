@@ -1,5 +1,11 @@
-use std::{path::PathBuf, time::Duration};
+use std::{io::Cursor, path::PathBuf, time::Duration};
 
+use kairos_asset::next::{
+    Asset, AssetLoader, AssetWorldExt, LoadContext, Reader, VisitAssetDependencies,
+};
+use kairos_ecs::error::KairosError;
+use kairos_ecs::world::World;
+use kairos_tasks::ConditionalSendFuture;
 use kira::{
     Decibels, Panning, PlaybackRate, StartTime, Tween, Value,
     sound::{
@@ -150,10 +156,73 @@ impl SerializedAudioAssetSettings {
     }
 }
 
-/// An audio asset containing both runtime sound data and serializable metadata.
+/// An audio asset: the decoded runtime sound data.
 #[derive(Debug, Clone)]
 pub struct AudioAsset {
     pub sound_data: StaticSoundData,
+}
+
+impl Asset for AudioAsset {}
+impl VisitAssetDependencies for AudioAsset {}
+
+/// How many audio slots [`Assets<AudioAsset>`](kairos_asset::next::Assets)
+/// preallocates. Carried over from the legacy stack's `AUDIO_ASSETS_CAPACITY`.
+pub const AUDIO_ASSETS_CAPACITY: usize = 512;
+
+/// Loads a `.audio` descriptor and the source audio it names into a runtime
+/// [`AudioAsset`].
+///
+/// The descriptor is TOML naming `source_path` plus the settings applied to the
+/// decoded sound; the source itself is decoded with kira into a
+/// [`StaticSoundData`]. The source is read through `async_fs`, not the asset
+/// reader, because it is a sibling file the descriptor points at rather than the
+/// asset's own bytes.
+#[derive(Debug)]
+pub struct AudioAssetLoader;
+
+impl AssetLoader for AudioAssetLoader {
+    type Asset = AudioAsset;
+    type Settings = ();
+    type Error = KairosError;
+
+    fn load(
+        &self,
+        reader: &mut dyn Reader,
+        _settings: &(),
+        _load_context: &mut LoadContext,
+    ) -> impl ConditionalSendFuture<Output = Result<AudioAsset, KairosError>> {
+        async move {
+            let mut toml_bytes = Vec::new();
+            reader.read_to_end(&mut toml_bytes).await?;
+            let serialized: SerializedAudioAsset = toml::from_slice(&toml_bytes)?;
+
+            let source_bytes = async_fs::read(&serialized.source_path).await.map_err(|error| {
+                KairosError::error(format!(
+                    "AudioAsset: failed to read source '{}': {error}",
+                    serialized.source_path.display()
+                ))
+            })?;
+            let sound_data = StaticSoundData::from_cursor(Cursor::new(source_bytes))?;
+            let sound_data = serialized
+                .audio_asset_settings
+                .apply_to_static_sound_data(sound_data);
+
+            Ok(AudioAsset { sound_data })
+        }
+    }
+
+    fn extensions(&self) -> &[&str] {
+        &["audio"]
+    }
+}
+
+/// Registers the [`AudioAsset`] asset and its [`AudioAssetLoader`] with the core.
+///
+/// Must run after [`kairos_asset::next::install`], which creates the
+/// `AssetServer` and the `AssetStages` this reads.
+pub fn install(world: &mut World) {
+    world.init_asset_with_capacity::<AudioAsset>(AUDIO_ASSETS_CAPACITY);
+    world.register_asset_loader(AudioAssetLoader);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -163,4 +232,88 @@ pub enum AudioState {
     Playing,
     Paused,
     Completed,
+}
+
+#[cfg(test)]
+mod test {
+    use std::{thread, time::Duration};
+
+    use kairos_asset::next::{AssetServer, Assets, install};
+    use kairos_ecs::schedule::ScheduleLabel;
+    use kairos_ecs::world::World;
+
+    use super::{
+        AudioAsset, SerializedAudioAsset, SerializedAudioAssetSettings, install as install_audio,
+    };
+    use crate::audio::audio_ext::pcm::wav_bytes;
+
+    /// The two ad-hoc stages the asset drivers are installed into.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    struct Tracking;
+
+    impl ScheduleLabel for Tracking {
+        fn dyn_clone(&self) -> Box<dyn ScheduleLabel> {
+            Box::new(*self)
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    struct Events;
+
+    impl ScheduleLabel for Events {
+        fn dyn_clone(&self) -> Box<dyn ScheduleLabel> {
+            Box::new(*self)
+        }
+    }
+
+    /// A `.audio` descriptor load through the core lands its decoded sound data
+    /// in `Assets<AudioAsset>`.
+    #[test]
+    fn audio_asset_loads_through_the_core() {
+        let dir = tempfile::Builder::new()
+            .tempdir_in(".")
+            .expect("a temp dir in the cwd");
+        let source_path = dir.path().join("Probe.wav");
+        std::fs::write(&source_path, wav_bytes(&[0.0, 0.5, -0.5, 0.0], 44100))
+            .expect("write the source audio");
+
+        let descriptor_path = dir.path().join("Probe.audio");
+        let mut settings = SerializedAudioAssetSettings::default();
+        settings.sample_rate = 22050;
+        let descriptor = SerializedAudioAsset {
+            source_path,
+            audio_asset_settings: settings,
+        };
+        std::fs::write(
+            &descriptor_path,
+            toml::to_string(&descriptor).expect("serialize the audio descriptor"),
+        )
+        .expect("write the audio descriptor");
+
+        let cwd = std::env::current_dir().expect("the cwd");
+        let rel_path = descriptor_path
+            .strip_prefix(&cwd)
+            .expect("the temp dir is under the cwd")
+            .to_path_buf();
+
+        let mut world = World::new();
+        install(&mut world, Tracking, Events);
+        install_audio(&mut world);
+
+        let handle = world.resource::<AssetServer>().load::<AudioAsset>(rel_path);
+
+        // The loader runs on the io task pool, so pump the tracking stage until
+        // its result reaches the store.
+        let mut sample_rate = None;
+        for _ in 0..200 {
+            world.run_schedule(Tracking);
+            if let Some(audio) = world.resource::<Assets<AudioAsset>>().get(handle.id()) {
+                sample_rate = Some(audio.sound_data.sample_rate);
+                break;
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
+
+        assert_eq!(sample_rate, Some(22050));
+    }
 }

@@ -1,7 +1,8 @@
+use kairos_asset::next::Handle;
 use kira::{listener::ListenerId, sound::static_sound::StaticSoundHandle};
 use smallvec::SmallVec;
 
-use crate::{asset_loader::assets::AudioAssetHandle, audio::audio::AudioState};
+use crate::audio::audio::{AudioAsset, AudioState};
 use kairos_ecs::component::Component;
 
 pub const SMALL_VEC_AUDIO_COUNT: usize = 4;
@@ -32,7 +33,7 @@ pub enum SpatialAudioVolumeTrackState {
 
 #[derive(Component)]
 pub struct SpatialAudioVolume {
-    pub audios: SmallVec<[AudioAssetHandle; SMALL_VEC_AUDIO_COUNT]>,
+    pub audios: SmallVec<[Handle<AudioAsset>; SMALL_VEC_AUDIO_COUNT]>,
     pub audio_handles: SmallVec<[SpatialSoundHandle; SMALL_VEC_AUDIO_COUNT]>,
     pub auto_play: bool,
     pub state: AudioState,
@@ -41,7 +42,11 @@ pub struct SpatialAudioVolume {
 }
 
 impl SpatialAudioVolume {
-    pub fn new(audios: SmallVec<[AudioAssetHandle; 4]>, auto_play: bool, start_time: f32) -> Self {
+    pub fn new(
+        audios: SmallVec<[Handle<AudioAsset>; 4]>,
+        auto_play: bool,
+        start_time: f32,
+    ) -> Self {
         Self {
             audios,
             audio_handles: SmallVec::new(),

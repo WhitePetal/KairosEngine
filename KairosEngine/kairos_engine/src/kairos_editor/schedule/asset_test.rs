@@ -6,6 +6,10 @@
 //! top of the types (`Font`) that bootstrap now registers itself (#207).
 
 use super::{PostUpdate, PreUpdate};
+use crate::audio::{
+    audio::AudioAsset,
+    audio_ext::{AudioExt, PcmData},
+};
 use crate::graphics::{
     material::Material, material::SerializedMaterial, mesh::Mesh, shader::ShaderAsset,
     texture::Texture,
@@ -144,5 +148,25 @@ fn build_world_registers_the_s4_mesh_asset() {
     assert!(
         world.get_resource::<Assets<Mesh>>().is_some(),
         "build_world must register the Mesh store"
+    );
+}
+
+/// The S6 audio cluster — the runtime `AudioAsset`, the decoded `PcmData`, and
+/// the editor's `AudioExt` composite — registers its stores during the engine
+/// bootstrap too.
+#[test]
+fn build_world_registers_the_s6_audio_assets() {
+    let world = build_world();
+    assert!(
+        world.get_resource::<Assets<AudioAsset>>().is_some(),
+        "build_world must register the AudioAsset store"
+    );
+    assert!(
+        world.get_resource::<Assets<PcmData>>().is_some(),
+        "build_world must register the PcmData store"
+    );
+    assert!(
+        world.get_resource::<Assets<AudioExt>>().is_some(),
+        "build_world must register the AudioExt store"
     );
 }

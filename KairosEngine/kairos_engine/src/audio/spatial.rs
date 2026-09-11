@@ -1,5 +1,6 @@
 use std::{collections::HashMap, marker::PhantomData, ops::DerefMut, time::Duration};
 
+use kairos_asset::next::Assets;
 use kira::{
     AudioManager, Decibels, DefaultBackend, Easing, Mapping, Mix, Tween, Value,
     backend::Backend,
@@ -12,9 +13,8 @@ use kira::{
 };
 
 use crate::{
-    asset_loader::assets::{AssetsServer, AudioAssetsSystem},
     audio::{
-        audio::AudioState,
+        audio::{AudioAsset, AudioState},
         spatial::{
             spatial_audio_listener::SpatialAudioListenerComponent,
             spatial_audio_reverb::{SpatialAudioReverb, SpatialAudioReverbBound},
@@ -164,7 +164,7 @@ impl<B: Backend> SpatialAudioTracks<B> {
 
     pub fn update(
         &mut self,
-        assets_server: &mut AssetsServer,
+        audios: &Assets<AudioAsset>,
         manager: &mut AudioManager<B>,
         world: &mut World,
         delta_time: f32,
@@ -192,7 +192,7 @@ impl<B: Backend> SpatialAudioTracks<B> {
 
         self.update_listeners_inner(manager, world, &mut listeners[0..listener_capacity]);
 
-        self.update_audios(assets_server, manager, world, delta_time);
+        self.update_audios(audios, manager, world, delta_time);
     }
 
     fn update_listeners_inner(
@@ -304,7 +304,7 @@ impl<B: Backend> SpatialAudioTracks<B> {
 
     fn update_audios(
         &mut self,
-        assets_server: &mut AssetsServer,
+        audios: &Assets<AudioAsset>,
         manager: &mut AudioManager<B>,
         world: &mut World,
         delta_time: f32,
@@ -313,7 +313,7 @@ impl<B: Backend> SpatialAudioTracks<B> {
         let mut volumes_query = world.query::<(&LocalTransform, &mut SpatialAudioVolume)>();
         for (_, mut volume) in volumes_query.iter_mut(&mut *world) {
             Self::update_audio_volume_state(
-                assets_server,
+                audios,
                 delta_time,
                 self.config.audio_volume_leaving_duration,
                 volume.deref_mut(),
@@ -324,7 +324,7 @@ impl<B: Backend> SpatialAudioTracks<B> {
         // 分配 track、播放...
         for listener in &mut self.listener_infos {
             Self::update_listener_audios(
-                assets_server,
+                audios,
                 world,
                 self.config.cut_off_distance_sq,
                 self.config.audio_volume_leaving_duration,
@@ -340,7 +340,7 @@ impl<B: Backend> SpatialAudioTracks<B> {
     }
 
     fn update_listener_audios(
-        assets_server: &mut AssetsServer,
+        audios: &Assets<AudioAsset>,
         world: &mut World,
         cut_off_dst_sq: f32,
         fade_time: f32,
@@ -384,7 +384,7 @@ impl<B: Backend> SpatialAudioTracks<B> {
         // 因此这里 播放/更新的 volumes 数量可能少于k
         for (_, trans, volume) in &mut volumes[0..track_count as usize] {
             if !Self::play_audio_volume_in_track(
-                assets_server,
+                audios,
                 manager,
                 listener,
                 trans,
@@ -403,7 +403,7 @@ impl<B: Backend> SpatialAudioTracks<B> {
     }
 
     fn update_audio_volume_state(
-        assets_server: &mut AssetsServer,
+        audios: &Assets<AudioAsset>,
         delta_time: f32,
         audio_volume_leaving_duration: f32,
         volume: &mut SpatialAudioVolume,
@@ -416,9 +416,9 @@ impl<B: Backend> SpatialAudioTracks<B> {
             }
             AudioState::WaitLoading => {
                 let mut loaded = true;
-                let audios = &volume.audios;
-                for i in 0..audios.len() {
-                    let audio = assets_server.get(&audios[i].clone());
+                let audios_handles = &volume.audios;
+                for i in 0..audios_handles.len() {
+                    let audio = audios.get(audios_handles[i].id());
                     match audio {
                         Some(_) => {}
                         None => {
@@ -537,7 +537,7 @@ impl<B: Backend> SpatialAudioTracks<B> {
     }
 
     fn play_audio_volume_in_track(
-        assets_server: &mut AssetsServer,
+        audios: &Assets<AudioAsset>,
         manager: &mut AudioManager<B>,
         listener: &mut ListenerInfo,
         trans: &LocalTransform,
@@ -598,9 +598,7 @@ impl<B: Backend> SpatialAudioTracks<B> {
             && let Some(track) = track
         {
             for i in 0..volume.audios.len() {
-                let audio = assets_server
-                    .get::<AudioAssetsSystem>(&volume.audios[i])
-                    .unwrap();
+                let audio = audios.get(volume.audios[i].id()).unwrap();
                 track.set_position(to_mint_vec3(trans.position), Tween::default());
                 match track.play(
                     audio

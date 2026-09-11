@@ -1,11 +1,16 @@
-use std::{cell::Cell, fs, sync::Arc, time::Instant};
+use std::{cell::Cell, fs, time::Instant};
 
 use egui::{Color32, Pos2, Rect, RichText, Stroke, Vec2};
+use kairos_asset::next::{AssetServer, Assets, Handle};
+use kairos_ecs::world::World;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    asset_loader::assets::{AssetHandle, AssetsServer, asset::AudioExtAssetsSystem},
-    audio::audio_ext::pcm::PcmData,
+    asset_loader::assets::AssetsServer,
+    audio::{
+        audio::AudioAsset,
+        audio_ext::{AudioExt, pcm::PcmData},
+    },
     kairos_editor::{
         Engine,
         ui::{Message, UIReader, dialog::Dialog, inspector::Inspector, paths},
@@ -196,7 +201,7 @@ impl AudioInspectorStyle {
 
 struct AudioInspectorModel {
     style: AudioInspectorStyle,
-    audio_ext_handle: Arc<AssetHandle<AudioExtAssetsSystem>>,
+    audio_ext_handle: Handle<AudioExt>,
     audio_handle: Option<StaticSoundHandle>,
     // ---- playback state (all plain fields, mutated via messages) ----
     /// Whether audio preview is currently playing.
@@ -226,13 +231,15 @@ pub struct AudioInspector {
 impl Inspector for AudioInspector {
     fn create(
         path: &std::path::Path,
-        _world: &kairos_ecs::world::World,
-        assets_server: &mut AssetsServer,
+        world: &kairos_ecs::world::World,
+        _assets_server: &mut AssetsServer,
         _project_graph: &crate::kairos_editor::project_path_tree::ProjectPathGraph,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let style = AudioInspectorStyle::new()?;
         let asset_path = path.to_path_buf();
-        let audio_ext_handle = assets_server.load(&asset_path);
+        // The composite rides the new core: the `AssetServer` starts the load
+        // (driven by `PreUpdate`) and hands back a lightweight `Handle<AudioExt>`.
+        let audio_ext_handle = world.resource::<AssetServer>().load::<AudioExt>(asset_path);
 
         let model = AudioInspectorModel {
             style,
@@ -257,11 +264,11 @@ impl Inspector for AudioInspector {
         ui: &mut egui::Ui,
         _reader: &UIReader,
         messager: &mut crate::kairos_editor::ui::Messager,
-        _world: &kairos_ecs::world::World,
-        assets_server: &AssetsServer,
+        world: &kairos_ecs::world::World,
+        _assets_server: &AssetsServer,
         _dt: f32,
     ) {
-        let Some(pcm) = self.get_pcm(assets_server) else {
+        let Some(pcm) = self.get_pcm(world) else {
             ui.label("Audio is Loading...");
             return;
         };
@@ -328,7 +335,7 @@ impl AudioInspector {
     /// Seeks to `position` (seconds) and starts/resumes playback.
     pub fn seek_and_play(&mut self, engine: &mut Engine, position: f32) {
         // Clamp to valid range
-        let Some(pcm) = self.get_pcm(&engine.assets_server) else {
+        let Some(pcm) = self.get_pcm(&engine.world) else {
             return;
         };
         let duration = pcm.duration.as_secs_f32();
@@ -357,7 +364,7 @@ impl AudioInspector {
     }
 
     /// Called every frame by Context::handle() to update playback position.
-    pub fn tick_playback(&mut self, assets_server: &mut AssetsServer) {
+    pub fn tick_playback(&mut self, world: &mut World) {
         let Some(instant) = self.model.play_start_instant else {
             return;
         };
@@ -367,7 +374,7 @@ impl AudioInspector {
             self.model.play_start_position + self.model.play_accumulated + elapsed;
 
         // Check if past duration
-        if let Some(pcm) = self.get_pcm(assets_server) {
+        if let Some(pcm) = self.get_pcm(world) {
             let duration = pcm.duration.as_secs_f32();
             if self.model.playback_position >= duration {
                 self.stop_kira_handle();
@@ -386,28 +393,34 @@ impl AudioInspector {
 // ============================================================
 
 impl AudioInspector {
-    fn get_pcm<'a>(&'a self, assets_server: &'a AssetsServer) -> Option<&'a PcmData> {
-        let Some(audio_ext) = assets_server.get(&self.model.audio_ext_handle) else {
-            return None;
-        };
-        let Some(pcm_handle) = &audio_ext.pcm else {
-            return None;
-        };
-        assets_server.get(pcm_handle)
+    fn get_pcm<'a>(&'a self, world: &'a World) -> Option<&'a PcmData> {
+        let audio_ext = world
+            .resource::<Assets<AudioExt>>()
+            .get(self.model.audio_ext_handle.id())?;
+        let pcm_handle = audio_ext.pcm.as_ref()?;
+        world.resource::<Assets<PcmData>>().get(pcm_handle.id())
     }
 
     fn play(&mut self, engine: &mut Engine) {
-        let Some(audio_ext) = engine.assets_server.get(&self.model.audio_ext_handle) else {
-            return;
+        let mut sound_data = {
+            let world = &engine.world;
+            let Some(audio_ext) = world
+                .resource::<Assets<AudioExt>>()
+                .get(self.model.audio_ext_handle.id())
+            else {
+                return;
+            };
+            let Some(audio_handle) = &audio_ext.audio else {
+                return;
+            };
+            let Some(audio) = world
+                .resource::<Assets<AudioAsset>>()
+                .get(audio_handle.id())
+            else {
+                return;
+            };
+            audio.sound_data.clone()
         };
-        let Some(audio_handle) = &audio_ext.audio else {
-            return;
-        };
-        let Some(audio) = engine.assets_server.get(audio_handle) else {
-            return;
-        };
-
-        let mut sound_data = audio.sound_data.clone();
 
         // If resuming, set start_position to the current position
         let resume_pos = self.model.play_accumulated;

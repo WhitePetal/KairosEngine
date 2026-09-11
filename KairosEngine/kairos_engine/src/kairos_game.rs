@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
-use kairos_asset::next::AssetServer;
+use kairos_asset::next::{AssetServer, Handle};
 
 use crate::{
-    asset_loader::assets::{AudioAssetHandle, AudioAssetsSystem},
+    audio::audio::AudioAsset,
     audio::AudioEngine,
     audio::background::BackgroundAudio,
     audio::spatial::{
@@ -186,13 +186,15 @@ impl KairosGame {
             .resource::<AssetServer>()
             .load::<Material>(PathBuf::from("res/materials/material.mat"));
 
-        let assets_server = &mut engine.assets_server;
+        let background_audio = engine
+            .world
+            .resource::<AssetServer>()
+            .load::<AudioAsset>(PathBuf::from("res/audios/pad.audio"));
 
-        let background_audio =
-            assets_server.load::<AudioAssetsSystem>(&PathBuf::from("res/audios/pad.audio"));
-
-        let blip_audio =
-            assets_server.load::<AudioAssetsSystem>(&PathBuf::from("res/audios/blip.audio"));
+        let blip_audio = engine
+            .world
+            .resource::<AssetServer>()
+            .load::<AudioAsset>(PathBuf::from("res/audios/blip.audio"));
 
         // ── Game camera (wayfinder map #158) ──────────────────────────
         //
@@ -322,8 +324,8 @@ impl KairosGame {
     fn spawn_audio_scene(
         world: &mut World,
         audio_engine: &mut AudioEngine,
-        background_audio: AudioAssetHandle,
-        blip_audio: AudioAssetHandle,
+        background_audio: Handle<AudioAsset>,
+        blip_audio: Handle<AudioAsset>,
     ) {
         // The kira listener itself is owned by the audio engine's spatial track
         // table; the entity only carries its id (kira's handles are not `Clone`,
@@ -424,6 +426,6 @@ impl KairosGame {
         // `First` stage advanced).
         engine
             .audio_engine
-            .update(&mut engine.assets_server, &mut engine.world, delta_time);
+            .update(&mut engine.world, delta_time);
     }
 }
