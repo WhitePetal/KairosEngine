@@ -1,6 +1,6 @@
 use std::{cell::Cell, fs, ops::DerefMut, path::PathBuf};
 
-use kairos_asset::{AssetServer, Assets, Handle};
+use crate::asset::{AssetServer, Assets, Handle};
 use strum::{Display, EnumIter};
 
 use egui::Vec2;

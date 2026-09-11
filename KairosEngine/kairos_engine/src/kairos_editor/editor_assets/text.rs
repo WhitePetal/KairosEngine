@@ -7,7 +7,7 @@
 //! foreign trait and `String` a foreign type, so the impl must live on a type
 //! this crate owns.
 
-use kairos_asset::{
+use crate::asset::{
     Asset, AssetLoader, AssetWorldExt, LoadContext, Reader, VisitAssetDependencies,
 };
 use kairos_ecs::world::World;
@@ -20,7 +20,7 @@ pub struct Text(pub String);
 impl Asset for Text {}
 impl VisitAssetDependencies for Text {}
 
-/// How many text slots [`Assets<Text>`](kairos_asset::Assets) preallocates.
+/// How many text slots [`Assets<Text>`](crate::asset::Assets) preallocates.
 ///
 /// Carried over from the legacy stack, where the text store borrowed the
 /// material capacity; text files are numerous, so the store is sized up front.
@@ -58,7 +58,7 @@ impl AssetLoader for TextLoader {
 
 /// Registers the [`Text`] asset and its [`TextLoader`] with the asset core.
 ///
-/// Must run after [`kairos_asset::install`], which creates the
+/// Must run after [`crate::asset::install`], which creates the
 /// `AssetServer` and the `AssetStages` this reads.
 pub fn install(world: &mut World) {
     world.init_asset_with_capacity::<Text>(TEXT_ASSETS_CAPACITY);
@@ -69,7 +69,7 @@ pub fn install(world: &mut World) {
 mod test {
     use std::{thread, time::Duration};
 
-    use kairos_asset::{AssetServer, Assets, install};
+    use crate::asset::{AssetServer, Assets, install};
     use kairos_ecs::schedule::ScheduleLabel;
     use kairos_ecs::world::World;
 

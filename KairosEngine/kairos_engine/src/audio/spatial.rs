@@ -1,6 +1,6 @@
 use std::{collections::HashMap, marker::PhantomData, ops::DerefMut, time::Duration};
 
-use kairos_asset::Assets;
+use crate::asset::Assets;
 use kira::{
     AudioManager, Decibels, DefaultBackend, Easing, Mapping, Mix, Tween, Value,
     backend::Backend,

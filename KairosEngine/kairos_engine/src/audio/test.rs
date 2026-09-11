@@ -1,4 +1,4 @@
-use kairos_asset::{Assets, Handle};
+use crate::asset::{Assets, Handle};
 use kairos_ecs::{component::Component, entity::Entity, world::World};
 use kira::{
     Frame,

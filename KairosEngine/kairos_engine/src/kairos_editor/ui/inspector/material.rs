@@ -5,7 +5,7 @@ use egui::{
     menu::{MenuConfig, SubMenuButton},
 };
 use egui_extras::{Column, TableBuilder};
-use kairos_asset::{AssetServer, Assets, Handle};
+use crate::asset::{AssetServer, Assets, Handle};
 use parking_lot::Mutex;
 use serde::Deserialize;
 use strum::IntoEnumIterator;
@@ -519,7 +519,7 @@ impl MaterialInspector {
         );
         if let Some(texture_path) = current_texture_path {
             // ── 缩略图 ──
-            // 尝试从缓存或 assets_server 取缩略图
+            // 尝试从缓存或 asset server 取缩略图
             let mut thumb_guard = self.model.thumbnail.lock();
             let thumb_mismatch = thumb_guard
                 .as_ref()

@@ -17,7 +17,7 @@ use crate::graphics::{
 use crate::kairos_editor::editor_assets::{Text, Toml};
 use crate::kairos_editor::syntax::SyntaxHighlightSettings;
 use crate::kairos_ui::font::Font;
-use kairos_asset::{
+use crate::asset::{
     Asset, AssetEventSystems, AssetServer, AssetStages, AssetTrackingSystems, AssetWorldExt,
     Assets, VisitAssetDependencies,
 };

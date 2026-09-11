@@ -5,7 +5,7 @@ use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
-use kairos_asset::{AssetServer, Assets, Handle};
+use crate::asset::{AssetServer, Assets, Handle};
 use kairos_ecs::world::World;
 
 use crate::{

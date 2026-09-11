@@ -1,6 +1,6 @@
 use std::{io::Cursor, path::PathBuf, time::Duration};
 
-use kairos_asset::{
+use crate::asset::{
     Asset, AssetLoader, AssetWorldExt, LoadContext, Reader, VisitAssetDependencies,
 };
 use kairos_ecs::error::KairosError;
@@ -165,7 +165,7 @@ pub struct AudioAsset {
 impl Asset for AudioAsset {}
 impl VisitAssetDependencies for AudioAsset {}
 
-/// How many audio slots [`Assets<AudioAsset>`](kairos_asset::Assets)
+/// How many audio slots [`Assets<AudioAsset>`](crate::asset::Assets)
 /// preallocates. Carried over from the legacy stack's `AUDIO_ASSETS_CAPACITY`.
 pub const AUDIO_ASSETS_CAPACITY: usize = 512;
 
@@ -218,7 +218,7 @@ impl AssetLoader for AudioAssetLoader {
 
 /// Registers the [`AudioAsset`] asset and its [`AudioAssetLoader`] with the core.
 ///
-/// Must run after [`kairos_asset::install`], which creates the
+/// Must run after [`crate::asset::install`], which creates the
 /// `AssetServer` and the `AssetStages` this reads.
 pub fn install(world: &mut World) {
     world.init_asset_with_capacity::<AudioAsset>(AUDIO_ASSETS_CAPACITY);
@@ -238,7 +238,7 @@ pub enum AudioState {
 mod test {
     use std::{thread, time::Duration};
 
-    use kairos_asset::{AssetServer, Assets, install};
+    use crate::asset::{AssetServer, Assets, install};
     use kairos_ecs::schedule::ScheduleLabel;
     use kairos_ecs::world::World;
 

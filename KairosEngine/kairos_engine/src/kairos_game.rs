@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use kairos_asset::{AssetServer, Handle};
+use crate::asset::{AssetServer, Handle};
 
 use crate::{
     audio::audio::AudioAsset,

@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use kairos_asset::{AssetServer, install};
+use crate::asset::{AssetServer, install};
 use kairos_ecs::schedule::ScheduleLabel;
 use kairos_ecs::world::World;
 

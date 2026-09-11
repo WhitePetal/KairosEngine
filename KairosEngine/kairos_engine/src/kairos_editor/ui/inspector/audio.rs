@@ -1,7 +1,7 @@
 use std::{cell::Cell, fs, time::Instant};
 
 use egui::{Color32, Pos2, Rect, RichText, Stroke, Vec2};
-use kairos_asset::{AssetServer, Assets, Handle};
+use crate::asset::{AssetServer, Assets, Handle};
 use kairos_ecs::world::World;
 use serde::{Deserialize, Serialize};
 

@@ -4,7 +4,7 @@
 //! (`AssetLoader` + `Assets<Font>` + `Handle<Font>`), so the loader, its
 //! registration, and the capacity knob all live next to the type they belong to.
 
-use kairos_asset::{
+use crate::asset::{
     Asset, AssetLoader, AssetWorldExt, LoadContext, Reader, VisitAssetDependencies,
 };
 use kairos_ecs::world::World;
@@ -19,7 +19,7 @@ pub struct Font {
 impl Asset for Font {}
 impl VisitAssetDependencies for Font {}
 
-/// How many font slots [`Assets<Font>`](kairos_asset::Assets) preallocates.
+/// How many font slots [`Assets<Font>`](crate::asset::Assets) preallocates.
 ///
 /// The capacity is a real knob carried over from the legacy stack; fonts are few
 /// and long-lived, so the store is sized up front.
@@ -54,7 +54,7 @@ impl AssetLoader for FontLoader {
 
 /// Registers the [`Font`] asset and its [`FontLoader`] with the asset core.
 ///
-/// Must run after [`kairos_asset::install`], which creates the
+/// Must run after [`crate::asset::install`], which creates the
 /// `AssetServer` and the `AssetStages` this reads.
 pub fn install(world: &mut World) {
     world.init_asset_with_capacity::<Font>(FONT_ASSETS_CAPACITY);
@@ -65,7 +65,7 @@ pub fn install(world: &mut World) {
 mod test {
     use std::{thread, time::Duration};
 
-    use kairos_asset::{AssetServer, Assets, install};
+    use crate::asset::{AssetServer, Assets, install};
     use kairos_ecs::schedule::ScheduleLabel;
     use kairos_ecs::world::World;
 

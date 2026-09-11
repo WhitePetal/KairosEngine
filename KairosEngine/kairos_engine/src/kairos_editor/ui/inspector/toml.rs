@@ -2,7 +2,7 @@ use std::{cell::Cell, fs, ops::DerefMut, path::PathBuf, sync::Arc};
 
 use egui::Vec2;
 use egui_extras::{Column, TableBuilder, TableRow};
-use kairos_asset::{AssetServer, Assets, Handle};
+use crate::asset::{AssetServer, Assets, Handle};
 use kairos_ecs::world::World;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};

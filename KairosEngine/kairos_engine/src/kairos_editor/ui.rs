@@ -1,4 +1,4 @@
-use kairos_asset::Handle;
+use crate::asset::Handle;
 use kairos_collections::TypeIdMap;
 
 use crate::{

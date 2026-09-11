@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use kairos_asset::Assets;
+use crate::asset::Assets;
 use kira::{
     AudioManager, AudioManagerSettings, Capacities, DefaultBackend,
     backend::Backend,

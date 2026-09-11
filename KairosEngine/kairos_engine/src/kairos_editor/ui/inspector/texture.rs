@@ -2,7 +2,7 @@ use std::{cell::Cell, fs, ops::DerefMut, path::PathBuf, sync::Arc};
 
 use egui::{ComboBox, Vec2, Widget};
 use egui_extras::{Column, TableBuilder};
-use kairos_asset::{AssetServer, Assets, Handle};
+use crate::asset::{AssetServer, Assets, Handle};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;

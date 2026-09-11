@@ -81,7 +81,7 @@ fn build_world() -> World {
     // driver systems mount into the engine's `PreUpdate`/`PostUpdate`, and the
     // `AssetEvent`s it writes ride the frame's message pass. All asset insertion
     // happens in `PreUpdate`, so no editor step needs to pump a `handle()`.
-    kairos_asset::install(&mut world, schedule::PreUpdate, schedule::PostUpdate);
+    crate::asset::install(&mut world, schedule::PreUpdate, schedule::PostUpdate);
     // The first migrated asset type: `Font` registers its store, loader, and
     // driver systems with the core just installed. P2 slices add the rest here.
     crate::kairos_ui::font::install(&mut world);

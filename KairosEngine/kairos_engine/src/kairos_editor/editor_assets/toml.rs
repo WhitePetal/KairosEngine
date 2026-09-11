@@ -5,7 +5,7 @@
 //! itself is the asset. It is a local newtype: `Asset` is a foreign trait and
 //! `toml::Table` a foreign type, so the impl must live on a type this crate owns.
 
-use kairos_asset::{
+use crate::asset::{
     Asset, AssetLoader, AssetWorldExt, LoadContext, Reader, VisitAssetDependencies,
 };
 use kairos_ecs::error::KairosError;
@@ -19,7 +19,7 @@ pub struct Toml(pub toml::Table);
 impl Asset for Toml {}
 impl VisitAssetDependencies for Toml {}
 
-/// How many TOML slots [`Assets<Toml>`](kairos_asset::Assets) preallocates.
+/// How many TOML slots [`Assets<Toml>`](crate::asset::Assets) preallocates.
 ///
 /// Carried over from the legacy stack; the count lands here with the type it
 /// belongs to.
@@ -56,7 +56,7 @@ impl AssetLoader for TomlLoader {
 
 /// Registers the [`Toml`] asset and its [`TomlLoader`] with the asset core.
 ///
-/// Must run after [`kairos_asset::install`], which creates the
+/// Must run after [`crate::asset::install`], which creates the
 /// `AssetServer` and the `AssetStages` this reads.
 pub fn install(world: &mut World) {
     world.init_asset_with_capacity::<Toml>(TOML_TABLE_ASSETS_CAPACITY);
@@ -67,7 +67,7 @@ pub fn install(world: &mut World) {
 mod test {
     use std::{thread, time::Duration};
 
-    use kairos_asset::{AssetServer, Assets, install};
+    use crate::asset::{AssetServer, Assets, install};
     use kairos_ecs::schedule::ScheduleLabel;
     use kairos_ecs::world::World;
 
