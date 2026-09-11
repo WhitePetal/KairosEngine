@@ -97,7 +97,7 @@ impl Inspector for TomlTableInspector {
             if table_mut.is_none() {
                 if let Some(table) = world
                     .resource::<Assets<Toml>>()
-                    .get(self.model.handle.id())
+                    .get(&self.model.handle)
                 {
                     *table_mut = Some(table.0.clone());
                 }
@@ -198,7 +198,7 @@ impl TomlTableInspector {
             if let Err(e) = fs::write(&path, &content) {
                 log::warn!("Failed to write TOML '{}': {e}", path.display());
             }
-            if let Some(mut table_res) = world.resource_mut::<Assets<Toml>>().get_mut(handle.id()) {
+            if let Some(mut table_res) = world.resource_mut::<Assets<Toml>>().get_mut(&handle) {
                 table_res.0 = table;
             }
         }

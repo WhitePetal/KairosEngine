@@ -91,7 +91,7 @@ impl Inspector for DocumentInspector {
             if content_mut.is_none() {
                 if let Some(content) = world
                     .resource::<Assets<Text>>()
-                    .get(self.model.handle.id())
+                    .get(&self.model.handle)
                 {
                     *content_mut = Some(content.0.clone());
                 }
@@ -183,7 +183,7 @@ impl DocumentInspector {
             if let Err(e) = fs::write(path, &content) {
                 log::warn!("Failed to write Document '{}': {e}", path.display());
             }
-            if let Some(mut doc_res) = world.resource_mut::<Assets<Text>>().get_mut(handle.id()) {
+            if let Some(mut doc_res) = world.resource_mut::<Assets<Text>>().get_mut(&handle) {
                 doc_res.0 = content;
             }
         }

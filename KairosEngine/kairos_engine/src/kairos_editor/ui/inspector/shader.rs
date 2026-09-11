@@ -101,7 +101,7 @@ impl Inspector for ShaderInspector {
             if content_mut.is_none() {
                 if let Some(content) = world
                     .resource::<Assets<Text>>()
-                    .get(self.model.handle.id())
+                    .get(&self.model.handle)
                 {
                     *content_mut = Some(content.0.clone());
                 }
@@ -113,7 +113,7 @@ impl Inspector for ShaderInspector {
         // Wait until the syntax settings are loaded.
         let Some(syntax_settings) = world
             .resource::<Assets<SyntaxHighlightSettings>>()
-            .get(self.model.syntax_handle.id())
+            .get(&self.model.syntax_handle)
         else {
             ui.label("WGSL syntax highlighting is loading...");
             return;
@@ -233,7 +233,7 @@ impl ShaderInspector {
             if let Err(e) = fs::write(path, &content) {
                 log::warn!("Failed to write Document '{}': {e}", path.display());
             }
-            if let Some(mut doc_res) = world.resource_mut::<Assets<Text>>().get_mut(handle.id()) {
+            if let Some(mut doc_res) = world.resource_mut::<Assets<Text>>().get_mut(&handle) {
                 doc_res.0 = content;
             }
         }
