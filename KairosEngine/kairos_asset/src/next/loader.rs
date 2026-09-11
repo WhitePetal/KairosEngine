@@ -395,10 +395,7 @@ impl<A: Asset> AssetContainer for A {
 /// [`LoadedAsset`].
 pub struct LoadContext<'a> {
     pub(crate) asset_server: &'a AssetServer,
-    /// Whether dependencies should be loaded when the pipeline lands.
-    ///
-    /// Preserved so the loading-pipeline ticket can honor it; the loader face
-    /// only records the dependency.
+    /// Whether dependencies should be loaded when the loader declares them.
     pub(crate) should_load_dependencies: bool,
     /// Whether to record content hashes while loading (used by the processing
     /// pipeline, which is not here yet).
@@ -582,15 +579,20 @@ impl<'a> LoadContext<'a> {
     /// Returns the handle for the asset at `path` and records it as a
     /// dependency of this asset.
     ///
-    /// This only declares the dependency and reserves the handle; starting the
-    /// actual load is the loading-pipeline ticket's job.
+    /// When this context loads dependencies, the asset at `path` is queued for
+    /// loading; otherwise only the dependency is recorded and the handle is
+    /// reserved.
     pub fn load<'b, A: Asset>(&mut self, path: impl Into<AssetPath<'b>>) -> Handle<A> {
         let path = path.into().into_owned();
         if path.path() == Path::new("") {
             // Reported as a load failure once the pipeline lands.
             return Handle::default();
         }
-        let handle = self.asset_server.get_or_create_path_handle::<A>(path);
+        let handle = if self.should_load_dependencies {
+            self.asset_server.load::<A>(path)
+        } else {
+            self.asset_server.get_or_create_path_handle::<A>(path)
+        };
         self.dependencies.insert(handle.id().untyped());
         handle
     }

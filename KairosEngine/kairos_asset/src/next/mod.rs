@@ -25,12 +25,14 @@
 //! - Loading: [`AssetLoader`] turns bytes into an asset; [`LoadContext`]
 //!   declares dependencies and collects labeled sub-assets, and
 //!   [`LoadContext::finish`] folds them into a [`LoadedAsset`]/
-//!   [`ErasedLoadedAsset`]. [`AssetServer`] tracks each asset's [`LoadState`]
-//!   and hands out path-addressed [`Handle`]s.
+//!   [`ErasedLoadedAsset`]. [`AssetServer`] registers loaders and asset types,
+//!   tracks each asset's [`LoadState`], and runs loads as tasks on the
+//!   `IoTaskPool`; [`handle_internal_asset_events`] inserts the finished values
+//!   into their stores.
 //!
-//! Deliberately absent for now (later tickets): the loading pipeline (task
-//! spawning over `IoTaskPool`, meta/loader selection, the server's public
-//! `load` API) and the processor. This module does not import `tokio`.
+//! Deliberately absent for now (later tickets): untyped and folder loads,
+//! `add_async`/guards, `wait_for_asset*`, and the processor. This module does
+//! not import `tokio`.
 
 mod asset;
 mod assets;
@@ -57,8 +59,8 @@ pub use loader::{
     AssetContainer, AssetLoader, ErasedAssetLoader, ErasedLoadedAsset, LoadContext, LoadedAsset,
 };
 pub use server::{
-    AssetLoadError, AssetLoaderError, AssetServer, DependencyLoadState, LoadState,
-    RecursiveDependencyLoadState,
+    AssetLoadError, AssetLoaderError, AssetServer, AssetServerMode, DependencyLoadState,
+    LoadState, RecursiveDependencyLoadState, handle_internal_asset_events,
 };
 pub use io::{
     AssetReader, AssetReaderError, AssetSourceEvent, AssetSourceId, AssetWriter,
