@@ -1,9 +1,9 @@
+use kairos_asset::next::Handle;
 use kairos_collections::TypeIdMap;
 
 use crate::{
     asset_loader::assets::{
         AssetHandle, AssetsServer, MaterialAssetsSystem, SerializedMaterialAssetsSystem,
-        TomlTableAssetsSystem, asset::TextAssetsSystem,
     },
     graphics::{
         egui_texture_handle::EguiTextureHandle,
@@ -17,7 +17,7 @@ use crate::{
         Engine,
         asset_registry::AssetKind,
         camera::SceneViewInput,
-        editor_assets::{TextureExt, TextureExtAssetsSystem},
+        editor_assets::{Text, TextureExt, TextureExtAssetsSystem, Toml},
         ui::{
             game_window::GameWindow,
             global_styles::{FontDataConfig, FontsConfig, GlobalStyles},
@@ -153,22 +153,22 @@ pub enum Message {
 
     DocumentInspectorSave(
         PathBuf,
-        Arc<AssetHandle<TextAssetsSystem>>,
+        Handle<Text>,
         Arc<parking_lot::Mutex<Option<String>>>,
     ),
     CodeInspectorSave(
         PathBuf,
-        Arc<AssetHandle<TextAssetsSystem>>,
+        Handle<Text>,
         Arc<parking_lot::Mutex<Option<String>>>,
     ),
     TomlInspectorSave(
         PathBuf,
-        Arc<AssetHandle<TomlTableAssetsSystem>>,
+        Handle<Toml>,
         Arc<parking_lot::Mutex<Option<toml::Table>>>,
     ),
     ShaderInspectorSave(
         PathBuf,
-        Arc<AssetHandle<TextAssetsSystem>>,
+        Handle<Text>,
         Arc<parking_lot::Mutex<Option<String>>>,
     ),
     AudioInspectorTick,
@@ -702,21 +702,16 @@ impl Context {
                     input.fly = input.fly + float2::new(right, forward);
                 }
                 Message::DocumentInspectorSave(path, handle, content) => {
-                    DocumentInspector::save_content(
-                        &mut engine.assets_server,
-                        &path,
-                        handle,
-                        content,
-                    );
+                    DocumentInspector::save_content(&mut engine.world, &path, handle, content);
                 }
                 Message::TomlInspectorSave(path, handle, table) => {
-                    TomlTableInspector::save_table(&mut engine.assets_server, &path, handle, table);
+                    TomlTableInspector::save_table(&mut engine.world, &path, handle, table);
                 }
                 Message::CodeInspectorSave(path, handle, content) => {
-                    CodeInspector::save_code(&mut engine.assets_server, &path, handle, content);
+                    CodeInspector::save_code(&mut engine.world, &path, handle, content);
                 }
                 Message::ShaderInspectorSave(path, handle, content) => {
-                    ShaderInspector::save_shader(&mut engine.assets_server, &path, handle, content);
+                    ShaderInspector::save_shader(&mut engine.world, &path, handle, content);
                 }
                 Message::TextureInspectorApply(path, handle, ext) => {
                     if let Some(inspector) = self.get_window_mut::<InspectorWindow>()

@@ -144,7 +144,7 @@ impl SyntaxAssetsSystem {
         let loader = Loader {};
         let assets = Assets::<Self>::new(
             loader,
-            consts::SYNTAX_ASSETS_CAPACITY,
+            crate::kairos_editor::syntax::SYNTAX_ASSETS_CAPACITY,
             consts::SYNTAX_ASSETS_LOADED_CHANNEL_BUFFER_SIZE,
             consts::SYNTAX_ASSETS_DROP_CHANNEL_BUFFER_SIZE,
         );

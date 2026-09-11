@@ -89,6 +89,13 @@ fn build_world() -> World {
     // The first migrated asset type: `Font` registers its store, loader, and
     // driver systems with the core just installed. P2 slices add the rest here.
     crate::kairos_ui::font::install(&mut world);
+    // The next S2 leaf types: `Text` (scripts/documents/shader sources), `Toml`,
+    // and the `SyntaxHighlightSettings` their editors consume. They are mutually
+    // independent, so the order here is a convenience grouping, not a
+    // precondition.
+    crate::kairos_editor::editor_assets::text::install(&mut world);
+    crate::kairos_editor::editor_assets::toml::install(&mut world);
+    crate::kairos_editor::syntax::install(&mut world);
     // Physics comes next: its step system registers into the `FixedUpdate` stage
     // the schedule rails just created, so this order is a precondition. It is a
     // World resource, not an `Engine` field, so from here on every `Engine`

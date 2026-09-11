@@ -2517,6 +2517,7 @@ name = "kairos_engine"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-fs",
  "base64 0.22.1",
  "bytemuck",
  "criterion",

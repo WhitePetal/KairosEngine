@@ -6,13 +6,16 @@
 //! top of the types (`Font`) that bootstrap now registers itself (#207).
 
 use super::{PostUpdate, PreUpdate};
-use crate::kairos_editor::build_world;
+use crate::kairos_editor::editor_assets::{Text, Toml};
+use crate::kairos_editor::syntax::SyntaxHighlightSettings;
 use crate::kairos_ui::font::Font;
 use kairos_asset::next::{
     Asset, AssetEventSystems, AssetServer, AssetStages, AssetTrackingSystems, AssetWorldExt,
     Assets, VisitAssetDependencies,
 };
 use kairos_ecs::schedule::{ScheduleLabel, Schedules, SystemSet};
+
+use crate::kairos_editor::build_world;
 
 /// A loadless asset type, registered only to give the drivers a concrete type
 /// to mount for.
@@ -81,5 +84,26 @@ fn build_world_registers_the_font_asset() {
     assert!(
         world.get_resource::<Assets<Font>>().is_some(),
         "build_world must register the Font store"
+    );
+}
+
+/// The S2 leaf types — `Text`, `Toml`, and the `SyntaxHighlightSettings` their
+/// editors consume — register their stores during the engine bootstrap too.
+#[test]
+fn build_world_registers_the_s2_leaf_assets() {
+    let world = build_world();
+    assert!(
+        world.get_resource::<Assets<Text>>().is_some(),
+        "build_world must register the Text store"
+    );
+    assert!(
+        world.get_resource::<Assets<Toml>>().is_some(),
+        "build_world must register the Toml store"
+    );
+    assert!(
+        world
+            .get_resource::<Assets<SyntaxHighlightSettings>>()
+            .is_some(),
+        "build_world must register the SyntaxHighlightSettings store"
     );
 }

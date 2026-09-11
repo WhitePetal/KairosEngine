@@ -5,13 +5,18 @@ use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 
+use kairos_asset::next::{AssetServer, Assets, Handle};
+use kairos_ecs::world::World;
+
 use crate::{
-    asset_loader::assets::{AssetHandle, AssetsServer, asset::TextAssetsSystem},
-    kairos_editor::ui::{
-        Message, Messager, UIReader,
-        dialog::{ConfirmDialogWindow, Dialog},
-        inspector::Inspector,
-        paths,
+    kairos_editor::{
+        editor_assets::Text,
+        ui::{
+            Message, Messager, UIReader,
+            dialog::{ConfirmDialogWindow, Dialog},
+            inspector::Inspector,
+            paths,
+        },
     },
 };
 
@@ -30,7 +35,7 @@ impl DocumentStyle {
 struct DocumentModel {
     style: DocumentStyle,
     path: PathBuf,
-    handle: Arc<AssetHandle<TextAssetsSystem>>,
+    handle: Handle<Text>,
     content: Arc<Mutex<Option<String>>>,
 }
 
@@ -42,8 +47,8 @@ pub struct DocumentInspector {
 impl Inspector for DocumentInspector {
     fn create(
         path: &std::path::Path,
-        _world: &kairos_ecs::world::World,
-        assets_server: &mut AssetsServer,
+        world: &World,
+        _assets_server: &mut crate::asset_loader::assets::AssetsServer,
         _project_graph: &crate::kairos_editor::project_path_tree::ProjectPathGraph,
     ) -> Result<Self, Box<dyn std::error::Error>>
     where
@@ -51,7 +56,12 @@ impl Inspector for DocumentInspector {
     {
         let style = DocumentStyle::new()?;
         let path = path.to_path_buf();
-        let handle = assets_server.load(&path);
+        // The document rides the new core: the `AssetServer` World resource
+        // starts the load (driven by `PreUpdate`) and hands back a lightweight
+        // `Handle<Text>`, whose value lands in the `Assets<Text>` store.
+        let handle = world
+            .resource::<AssetServer>()
+            .load::<Text>(path.clone());
         let content = Arc::new(Mutex::new(None));
         let model = DocumentModel {
             style,
@@ -71,16 +81,19 @@ impl Inspector for DocumentInspector {
         ui: &mut egui::Ui,
         _reader: &UIReader,
         messager: &mut Messager,
-        _world: &kairos_ecs::world::World,
-        assets_server: &AssetsServer,
+        world: &World,
+        _assets_server: &crate::asset_loader::assets::AssetsServer,
         _dt: f32,
     ) {
         {
             let mut content_mut = self.model.content.lock();
             let content_mut = content_mut.deref_mut();
             if content_mut.is_none() {
-                if let Some(content) = assets_server.get(&self.model.handle) {
-                    *content_mut = Some(content.clone());
+                if let Some(content) = world
+                    .resource::<Assets<Text>>()
+                    .get(self.model.handle.id())
+                {
+                    *content_mut = Some(content.0.clone());
                 }
                 ui.label("Document is Loading...");
                 return;
@@ -160,9 +173,9 @@ impl Inspector for DocumentInspector {
 
 impl DocumentInspector {
     pub fn save_content(
-        assets_server: &mut AssetsServer,
+        world: &mut World,
         path: &PathBuf,
-        handle: Arc<AssetHandle<TextAssetsSystem>>,
+        handle: Handle<Text>,
         content: Arc<Mutex<Option<String>>>,
     ) {
         let mut content = content.lock();
@@ -170,8 +183,8 @@ impl DocumentInspector {
             if let Err(e) = fs::write(path, &content) {
                 log::warn!("Failed to write Document '{}': {e}", path.display());
             }
-            if let Some(doc_res) = assets_server.get_mut(&handle) {
-                *doc_res = content;
+            if let Some(mut doc_res) = world.resource_mut::<Assets<Text>>().get_mut(handle.id()) {
+                doc_res.0 = content;
             }
         }
     }

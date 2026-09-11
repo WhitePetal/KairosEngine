@@ -2,17 +2,21 @@ use std::{cell::Cell, fs, ops::DerefMut, path::PathBuf, sync::Arc};
 
 use egui::Vec2;
 use egui_extras::{Column, TableBuilder, TableRow};
+use kairos_asset::next::{AssetServer, Assets, Handle};
+use kairos_ecs::world::World;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use toml::{Table, Value};
 
 use crate::{
-    asset_loader::assets::{AssetHandle, AssetsServer, TomlTableAssetsSystem},
-    kairos_editor::ui::{
-        self, Message, Messager, UIReader,
-        dialog::{ConfirmDialogWindow, Dialog},
-        inspector::Inspector,
-        paths,
+    kairos_editor::{
+        editor_assets::Toml,
+        ui::{
+            self, Message, Messager, UIReader,
+            dialog::{ConfirmDialogWindow, Dialog},
+            inspector::Inspector,
+            paths,
+        },
     },
     math,
 };
@@ -44,7 +48,7 @@ impl TomlTableInspectorStyle {
 
 struct TomlTableInspectorModle {
     style: TomlTableInspectorStyle,
-    handle: Arc<AssetHandle<TomlTableAssetsSystem>>,
+    handle: Handle<Toml>,
     table: Arc<Mutex<Option<Table>>>,
     path: PathBuf,
     dirty: Cell<bool>,
@@ -57,13 +61,16 @@ pub struct TomlTableInspector {
 impl Inspector for TomlTableInspector {
     fn create(
         path: &std::path::Path,
-        _world: &kairos_ecs::world::World,
-        assets_server: &mut AssetsServer,
+        world: &World,
+        _assets_server: &mut crate::asset_loader::assets::AssetsServer,
         _project_graph: &crate::kairos_editor::project_path_tree::ProjectPathGraph,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let style = TomlTableInspectorStyle::new()?;
         let path = path.to_path_buf();
-        let handle = assets_server.load(&path);
+        // The table rides the new core: the `AssetServer` World resource starts
+        // the load (driven by `PreUpdate`) and hands back a lightweight
+        // `Handle<Toml>`, whose value lands in the `Assets<Toml>` store.
+        let handle = world.resource::<AssetServer>().load::<Toml>(path.clone());
         let model = TomlTableInspectorModle {
             style,
             handle,
@@ -80,16 +87,19 @@ impl Inspector for TomlTableInspector {
         ui: &mut egui::Ui,
         _reader: &UIReader,
         messager: &mut Messager,
-        _world: &kairos_ecs::world::World,
-        assets_server: &AssetsServer,
+        world: &World,
+        _assets_server: &crate::asset_loader::assets::AssetsServer,
         _dt: f32,
     ) {
         {
             let mut table_mut = self.model.table.lock();
             let table_mut = table_mut.deref_mut();
             if table_mut.is_none() {
-                if let Some(table) = assets_server.get(&self.model.handle) {
-                    *table_mut = Some(table.clone());
+                if let Some(table) = world
+                    .resource::<Assets<Toml>>()
+                    .get(self.model.handle.id())
+                {
+                    *table_mut = Some(table.0.clone());
                 }
                 ui.label("Toml is Loading...");
                 return;
@@ -171,9 +181,9 @@ impl Inspector for TomlTableInspector {
 
 impl TomlTableInspector {
     pub fn save_table(
-        assets_server: &mut AssetsServer,
+        world: &mut World,
         path: &PathBuf,
-        handle: Arc<AssetHandle<TomlTableAssetsSystem>>,
+        handle: Handle<Toml>,
         table: Arc<Mutex<Option<Table>>>,
     ) {
         let mut table = table.lock();
@@ -188,8 +198,8 @@ impl TomlTableInspector {
             if let Err(e) = fs::write(&path, &content) {
                 log::warn!("Failed to write TOML '{}': {e}", path.display());
             }
-            if let Some(table_res) = assets_server.get_mut(&handle) {
-                *table_res = table;
+            if let Some(mut table_res) = world.resource_mut::<Assets<Toml>>().get_mut(handle.id()) {
+                table_res.0 = table;
             }
         }
     }

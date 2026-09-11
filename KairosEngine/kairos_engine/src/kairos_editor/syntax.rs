@@ -4,6 +4,12 @@
 
 use std::path::PathBuf;
 
+use kairos_asset::next::{
+    Asset, AssetLoader, AssetWorldExt, LoadContext, Reader, VisitAssetDependencies,
+};
+use kairos_ecs::error::KairosError;
+use kairos_ecs::world::World;
+use kairos_tasks::ConditionalSendFuture;
 use serde::Deserialize;
 
 use crate::math;
@@ -258,5 +264,175 @@ impl SyntaxConfig {
             scopes,
             ..Default::default()
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The `SyntaxHighlightSettings` asset (next-generation core)
+// ---------------------------------------------------------------------------
+
+/// How many syntax slots
+/// [`Assets<SyntaxHighlightSettings>`](kairos_asset::next::Assets) preallocates.
+///
+/// Syntax settings are few and long-lived — one per language — so the store is
+/// sized up front. The constant lands with the type it belongs to.
+pub const SYNTAX_ASSETS_CAPACITY: usize = 8;
+
+impl Asset for SyntaxHighlightSettings {}
+impl VisitAssetDependencies for SyntaxHighlightSettings {}
+
+/// Builds a [`SyntaxHighlightSettings`] from a per-language TOML config.
+#[derive(Debug)]
+pub struct SyntaxHighlightSettingsLoader;
+
+impl AssetLoader for SyntaxHighlightSettingsLoader {
+    type Asset = SyntaxHighlightSettings;
+    type Settings = ();
+    type Error = KairosError;
+
+    fn load(
+        &self,
+        reader: &mut dyn Reader,
+        _settings: &(),
+        _load_context: &mut LoadContext,
+    ) -> impl ConditionalSendFuture<Output = Result<SyntaxHighlightSettings, KairosError>> {
+        async move {
+            let mut bytes = Vec::new();
+            reader.read_to_end(&mut bytes).await?;
+            let toml_str = String::from_utf8(bytes)?;
+            let cfg: SyntaxConfig = toml::from_str(&toml_str)?;
+
+            // Build the SyntaxSet: always start with the built-in syntaxes, then
+            // add the custom sublime-syntax the config names, if any. The path is
+            // relative to the engine root (the process cwd), like every other
+            // asset path in the engine.
+            let default_ss = syntect::parsing::SyntaxSet::load_defaults_newlines();
+            let mut builder = default_ss.into_builder();
+            if let Some(syntax_path) = &cfg.sublime_syntax {
+                let yaml_str = async_fs::read_to_string(syntax_path).await?;
+                let syntax_def = syntect::parsing::SyntaxDefinition::load_from_str(
+                    &yaml_str,
+                    true,
+                    syntax_path.file_stem().and_then(|s| s.to_str()),
+                )?;
+                builder.add(syntax_def);
+            }
+            let ps = builder.build();
+
+            // Build the ThemeSet with the TOML theme, overriding every preset
+            // slot so the custom theme wins regardless of which theme
+            // `egui_extras::CodeTheme` selects.
+            let custom_theme = cfg.build_syntect_theme();
+            let mut ts = syntect::highlighting::ThemeSet::load_defaults();
+            for key in [
+                "base16-eighties.dark",
+                "base16-mocha.dark",
+                "base16-ocean.dark",
+                "base16-ocean.light",
+                "InspiredGitHub",
+                "Solarized (dark)",
+                "Solarized (light)",
+            ] {
+                ts.themes.insert(key.into(), custom_theme.clone());
+            }
+
+            Ok(SyntaxHighlightSettings {
+                language_name: cfg.language_name.clone(),
+                settings: egui_extras::syntax_highlighting::SyntectSettings { ps, ts },
+            })
+        }
+    }
+
+    /// The syntax loader is resolved by asset type, never by extension: the
+    /// config is a `.toml` file, which the [`Toml`](crate::kairos_editor::editor_assets::Toml)
+    /// loader already claims. Claiming it here too would leave which loader an
+    /// untyped `.toml` load picks up to registration order.
+    fn extensions(&self) -> &[&str] {
+        &[]
+    }
+}
+
+/// Registers the [`SyntaxHighlightSettings`] asset and its loader with the core.
+///
+/// Must run after [`kairos_asset::next::install`], which creates the
+/// `AssetServer` and the `AssetStages` this reads.
+pub fn install(world: &mut World) {
+    world.init_asset_with_capacity::<SyntaxHighlightSettings>(SYNTAX_ASSETS_CAPACITY);
+    world.register_asset_loader(SyntaxHighlightSettingsLoader);
+}
+
+#[cfg(test)]
+mod test {
+    use std::{thread, time::Duration};
+
+    use kairos_asset::next::{AssetServer, Assets, install};
+    use kairos_ecs::schedule::ScheduleLabel;
+    use kairos_ecs::world::World;
+
+    use super::{SyntaxHighlightSettings, install as install_syntax};
+
+    /// The two ad-hoc stages the asset drivers are installed into.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    struct Tracking;
+
+    impl ScheduleLabel for Tracking {
+        fn dyn_clone(&self) -> Box<dyn ScheduleLabel> {
+            Box::new(*self)
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    struct Events;
+
+    impl ScheduleLabel for Events {
+        fn dyn_clone(&self) -> Box<dyn ScheduleLabel> {
+            Box::new(*self)
+        }
+    }
+
+    /// A syntax config load through the new core lands its settings in the store.
+    #[test]
+    fn syntax_loads_through_the_core() {
+        // The default source is rooted at the cwd and `UnapprovedPathMode::Forbid`
+        // rejects paths outside it, so the load uses a path relative to the cwd.
+        let dir = tempfile::Builder::new()
+            .tempdir_in(".")
+            .expect("a temp dir in the cwd");
+        let full_path = dir.path().join("probe_syntax.toml");
+        std::fs::write(
+            &full_path,
+            b"language_name = \"Rust\"\n[theme]\nname = \"Probe\"\n",
+        )
+        .expect("write the syntax config");
+        let cwd = std::env::current_dir().expect("the cwd");
+        let rel_path = full_path
+            .strip_prefix(&cwd)
+            .expect("the temp dir is under the cwd")
+            .to_path_buf();
+
+        let mut world = World::new();
+        install(&mut world, Tracking, Events);
+        install_syntax(&mut world);
+
+        let handle = world
+            .resource::<AssetServer>()
+            .load::<SyntaxHighlightSettings>(rel_path);
+
+        // The loader runs on the io task pool, so pump the tracking stage until
+        // its result reaches the store.
+        let mut language = None;
+        for _ in 0..200 {
+            world.run_schedule(Tracking);
+            if let Some(settings) = world
+                .resource::<Assets<SyntaxHighlightSettings>>()
+                .get(handle.id())
+            {
+                language = Some(settings.language_name.clone());
+                break;
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
+
+        assert_eq!(language.as_deref(), Some("Rust"));
     }
 }

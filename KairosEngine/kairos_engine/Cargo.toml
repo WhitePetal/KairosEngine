@@ -26,6 +26,9 @@ unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)", "cfg(docsrs_dep)
 
 toml = "1.1.2"
 anyhow = { version = "1.0" }
+# The next-generation asset loaders run on `kairos_tasks`' io pool, not a tokio
+# runtime, so they read auxiliary files with `async-fs` (as `kairos_asset` does).
+async-fs = "2.1"
 rand = "0.10.1"
 smallvec = { version = "1.15.2", features = ["union", "serde", "const_new", "write"] }
 crossbeam-channel = "0.5.15"

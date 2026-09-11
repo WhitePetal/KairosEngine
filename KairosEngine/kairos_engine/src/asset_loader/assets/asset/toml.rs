@@ -90,9 +90,9 @@ impl TomlTableAssetsSystem {
         let loader = Loader {};
         let assets = Assets::<Self>::new(
             loader,
-            consts::MATERIAL_ASSETS_CAPACITY,
-            consts::MATERIAL_ASSETS_LOADED_CHANNEL_BUFFER_SIZE,
-            consts::MATERIAL_ASSETS_DROP_CHANNEL_BUFFER_SIZE,
+            crate::kairos_editor::editor_assets::toml::TOML_TABLE_ASSETS_CAPACITY,
+            consts::TOML_TABLE_ASSETS_LOADED_CHANNEL_BUFFER_SIZE,
+            consts::TOML_TABLE_ASSETS_DROP_CHANNEL_BUFFER_SIZE,
         );
         Self { assets }
     }
