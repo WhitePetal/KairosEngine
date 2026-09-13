@@ -39,6 +39,7 @@ use crate::asset::Asset;
 use crate::assets::{Assets, LoadedUntypedAsset};
 use crate::event::{AssetEvent, AssetLoadFailedEvent};
 use crate::folder::LoadedFolder;
+use crate::io::embedded::{EMBEDDED, EmbeddedAssetRegistry};
 use crate::io::{AssetSourceBuilders, UnapprovedPathMode};
 use crate::loader::AssetLoader;
 use crate::meta::AssetMetaCheck;
@@ -226,6 +227,13 @@ pub fn install(world: &mut World, options: AssetOptions) {
     let watch = options.watch_for_changes_override.unwrap_or(cfg!(feature = "watch"));
     let use_processor = options.mode == AssetMode::Processed && options.use_asset_processor;
 
+    // The embedded source is registered through the world's
+    // [`EmbeddedAssetRegistry`], so `embedded://` paths resolve and the macros can
+    // populate the registry before or after `install`. A host that pre-registered
+    // an `embedded` source keeps its builder.
+    world.get_resource_or_init::<EmbeddedAssetRegistry>();
+    let embedded_registry = world.resource::<EmbeddedAssetRegistry>().clone();
+
     // Freeze the sources exactly as `AssetPlugin` does: in processed mode the
     // default source gains a processed root, and the watcher slots are chosen by
     // the mode (unprocessed sources watch the source side, processed mode the
@@ -238,6 +246,9 @@ pub fn install(world: &mut World, options: AssetOptions) {
             AssetMode::Processed => Some(AssetOptions::DEFAULT_PROCESSED_FILE_PATH),
         };
         builders.init_default_source(AssetOptions::DEFAULT_UNPROCESSED_FILE_PATH, processed_path);
+        if builders.get_mut(EMBEDDED).is_none() {
+            embedded_registry.register_source(&mut builders);
+        }
         match options.mode {
             AssetMode::Unprocessed => (
                 Arc::new(builders.build_sources(watch, false)),

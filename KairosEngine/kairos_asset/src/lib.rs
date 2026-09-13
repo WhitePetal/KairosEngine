@@ -21,11 +21,17 @@
 //! - Io, paths, and meta: [`AssetPath`]/[`AssetSourceId`] address an asset as
 //!   `source://path#label`; [`io::AssetReader`] and [`io::AssetSource`] read its
 //!   bytes; [`meta::AssetMeta`] is the RON `.meta` sidecar that names the
-//!   loader and its settings.
+//!   loader and its settings. The file source reads the working directory and
+//!   the `embedded` source reads bytes baked into the binary through an
+//!   in-memory [`io::memory::Dir`], populated by the
+//!   [`embedded_asset!`](crate::embedded_asset) macro.
 //! - Hot reload: with the `file_watcher` feature (on by default) each watching
 //!   [`AssetSource`](io::AssetSource) carries a [`FileWatcher`](io::file::FileWatcher);
 //!   [`handle_internal_asset_events`] drains the [`AssetSourceEvent`]s it emits and
-//!   turns a source change into a reload (and, for folders, a fresh walk).
+//!   turns a source change into a reload (and, for folders, a fresh walk). With
+//!   the `embedded_watcher` feature the `embedded` source instead carries an
+//!   `EmbeddedWatcher`, which rereads edited source files over the compiled-in
+//!   bytes.
 //! - Loading: [`AssetLoader`] turns bytes into an asset; [`LoadContext`]
 //!   declares dependencies and collects labeled sub-assets, and
 //!   [`LoadContext::finish`] folds them into a [`LoadedAsset`]/

@@ -17,4 +17,4 @@ kairos 现有资产路径全是**进程 cwd 相对**字面量（`res/models/Suza
 
 - #185 迁移期**零路径改写**；`AssetPath` 的 source 字段仍保留，将来可加多 source。
 - `UnapprovedPathMode` 默认 `Forbid`（拒绝 `..` 逃逸出 source root）；现有路径全在 cwd 之下，不受影响。若将来需读 cwd 之外的用户工程目录，改 `Allow`。
-- `install(world, AssetOptions)` 收下 tracking/event/startup stage 与 `mode`/`meta_check`/`use_asset_processor`/`watch_for_changes_override`；默认 `AssetMode::Unprocessed`（cwd root，无 processed root）、`AssetMetaCheck::Always`、`use_asset_processor` 关、embedded 空。`AssetMode::Processed` 时默认 source 加成品 root `imported_assets/Default`。
+- `install(world, AssetOptions)` 收下 tracking/event/startup stage 与 `mode`/`meta_check`/`use_asset_processor`/`watch_for_changes_override`；默认 `AssetMode::Unprocessed`（cwd root，无 processed root）、`AssetMetaCheck::Always`、`use_asset_processor` 关；`install` 会在 sources 冻结前经 `EmbeddedAssetRegistry` 注册 `embedded` source，`get_base_path()` 取进程 cwd（`KAIROS_ASSET_ROOT` 可覆盖）。`AssetMode::Processed` 时默认 source 加成品 root `imported_assets/Default`。

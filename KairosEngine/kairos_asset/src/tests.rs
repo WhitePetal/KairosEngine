@@ -564,6 +564,7 @@ fn asset_event_variants_report_themselves() {
 }
 
 mod asset_processor;
+mod embedded;
 mod install;
 mod io;
 mod loader;

@@ -25,13 +25,25 @@ use crate::io::{
     get_meta_path,
 };
 
-/// The root the default file source resolves against: the process working
-/// directory.
+/// The root the default file source resolves against.
 ///
-/// This deliberately diverges from bevy's executable-relative `assets` folder;
-/// see ADR 0004.
+/// Defaults to the process working directory. The `KAIROS_ASSET_ROOT`
+/// environment variable, when set, overrides it. This deliberately diverges
+/// from bevy's executable-relative `assets` folder; see ADR 0004.
 pub fn get_base_path() -> PathBuf {
-    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+    resolve_base_path(std::env::var_os("KAIROS_ASSET_ROOT"))
+}
+
+/// Resolves the base path from an optional `KAIROS_ASSET_ROOT` value: an override
+/// wins, otherwise the process working directory is used.
+///
+/// Split from [`get_base_path`] so the override can be exercised without
+/// mutating the process environment.
+pub(crate) fn resolve_base_path(env_override: Option<std::ffi::OsString>) -> PathBuf {
+    match env_override {
+        Some(root) => PathBuf::from(root),
+        None => std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+    }
 }
 
 /// Reads assets from a directory on disk.

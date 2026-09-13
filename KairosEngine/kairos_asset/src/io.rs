@@ -3,8 +3,8 @@
 //! Asset data is addressed by a [`Path`](std::path::Path) inside an
 //! [`AssetSource`](crate::io::AssetSource). A source hands out an
 //! [`AssetReader`] for bytes and an optional [`AssetWriter`] for writing them
-//! back; the loader ticket builds on top of this, and the file and embedded
-//! backends live beside it ([`file`], [`embedded`]).
+//! back; the loader ticket builds on top of this, and the file, embedded, and
+//! in-memory backends live beside it ([`file`], [`embedded`], [`memory`]).
 //!
 //! The read abstraction is a [`Reader`]: anything that is
 //! [`AsyncRead`](futures_io::AsyncRead) [`AsyncSeek`](futures_io::AsyncSeek)
@@ -30,6 +30,7 @@ use thiserror::Error;
 
 pub mod embedded;
 pub mod file;
+pub mod memory;
 mod processor_gated;
 mod source;
 

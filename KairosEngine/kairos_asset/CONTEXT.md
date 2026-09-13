@@ -36,6 +36,10 @@ The per-format code that turns bytes plus settings into an asset value.
 A named root that asset paths are resolved against; the default source is the project's asset folder.
 *Avoid*: virtual file system, mount
 
+**Embedded asset**:
+An asset whose bytes are compiled into the binary, read from the `embedded` source rather than the filesystem; editing its source file can hot-reload it with the `embedded_watcher` feature.
+*Avoid*: baked asset, bundled asset
+
 **Asset path**:
 An asset's address: a source, a path within that source, and optionally a label.
 *Avoid*: file path, URL

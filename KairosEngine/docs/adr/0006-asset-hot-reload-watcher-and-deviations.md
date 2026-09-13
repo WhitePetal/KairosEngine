@@ -33,6 +33,9 @@ feature 面照搬 `watch` / `file_watcher` / `embedded_watcher` 三档，`defaul
 7. **去抖 300ms 硬编码**、不加更上层节流、不暴露配置（照上游）。
 8. **编辑器项目树另起一条 watcher**：`AssetSourceEvent` 不升为公开广播面；已加载资产面走既有
    `AssetEvent`。这是本地决策（上游未把编辑器刷新纳入 `bevy_asset`）。
+9. **embedded watcher 只转发 `ModifiedAsset`**：`EmbeddedEventHandler` 丢掉 Added / Removed / Rename，
+   只把内容修改交给 server（上游把每个能映回 `root_paths` 的事件都转发）。嵌入资产的存在性在编译期
+   由注册表决定，源文件在磁盘上的增删不改变已嵌入的资产，故转发增删只会造成无谓的重载/卸载。
 
 ## 考虑过的替代
 

@@ -12,8 +12,8 @@ use kairos_tasks::ConditionalSendFuture;
 use crate::io::{
     AssetReader, AssetReaderError, AssetSource, AssetSourceBuilder, AssetSourceBuilders,
     AssetSourceId, AssetWatcher, AssetWriter, AssetWriterError, ErasedAssetReader,
-    ErasedAssetWriter, Reader, VecReader, Writer, embedded::EmbeddedAssetReader,
-    embedded::EmbeddedAssetRegistry, file::FileAssetReader, file::FileAssetWriter, get_meta_path,
+    ErasedAssetWriter, Reader, VecReader, Writer, file::FileAssetReader, file::FileAssetWriter,
+    file::resolve_base_path, get_meta_path, memory::MemoryAssetReader,
 };
 
 fn temp_dir(name: &str) -> PathBuf {
@@ -146,11 +146,8 @@ fn vec_reader_reads_and_seeks() {
 }
 
 #[test]
-fn embedded_reader_misses_everything() {
-    // The registry is empty by construction; its reader is the observable part.
-    let _registry = EmbeddedAssetRegistry::new();
-
-    let reader = EmbeddedAssetReader::new();
+fn memory_reader_over_an_empty_dir_misses_everything() {
+    let reader = MemoryAssetReader::default();
     let error = read_all(&reader, Path::new("nope.png")).unwrap_err();
     assert_eq!(
         error,
@@ -159,6 +156,17 @@ fn embedded_reader_misses_everything() {
 
     assert!(dir_entries(&reader, Path::new("")).unwrap().is_empty());
     assert!(!is_dir(&reader, Path::new("anything")).unwrap());
+}
+
+#[test]
+fn base_path_prefers_the_kairos_asset_root_override() {
+    // `KAIROS_ASSET_ROOT`, when set, wins over the working directory.
+    let overridden = resolve_base_path(Some(std::ffi::OsString::from("some/root")));
+    assert_eq!(overridden, PathBuf::from("some/root"));
+
+    // With no override, the base path is the process working directory.
+    let defaulted = resolve_base_path(None);
+    assert_eq!(defaulted, std::env::current_dir().unwrap());
 }
 
 #[test]
@@ -495,7 +503,7 @@ fn build_sources_passes_watch_through_to_every_source() {
 }
 
 fn embedded_reader() -> Box<dyn ErasedAssetReader> {
-    Box::new(EmbeddedAssetReader::new())
+    Box::new(MemoryAssetReader::default())
 }
 
 /// A watcher that does nothing; tests only need one to exist so a watched source
