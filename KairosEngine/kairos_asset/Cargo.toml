@@ -7,9 +7,9 @@ description = "Async asset server and handle system for the Kairos engine, extra
 
 [features]
 default = []
-# Enables the runtime asset processor track. Off by default; the processor body
-# itself lands in a later slice, so `AssetMode::Processed` with this on is not yet
-# supported by `install`.
+# Enables the runtime asset processor track by default: with
+# `AssetMode::Processed` a host can select layout ② (a processor producing the
+# outputs) over layout ③ (outputs shipped ahead of time). Off by default.
 use_asset_processor = []
 
 [lints.rust]

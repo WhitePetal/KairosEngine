@@ -24,22 +24,20 @@
 //! The processor runs its own [`AssetServer`] (mode
 //! [`Processed`](AssetServerMode::Processed), `.meta` always checked) so its id
 //! space is independent of the app's server. The two share the same
-//! [`AssetSources`] and loaders; the decision's layout ② wires them together in
-//! a later slice.
+//! [`AssetSources`] and loaders; layout ② wires them together through
+//! [`AssetProcessor::new`], which gates every source's processed reader on this
+//! processor's [`ProcessingState`] before the app's server reads them.
+//!
+//! The processor's own reads of processed files go through the
+//! [`ungated_processed_reader`](AssetSource::ungated_processed_reader) (the
+//! original reader kept alongside the gated one), so it never waits on its own
+//! output.
 //!
 //! The processor's own write-ahead log ([`ProcessorTransactionLog`] and the
 //! [`FileTransactionLogFactory`] that backs it) makes processing transactional:
 //! [`initialize`](AssetProcessor::initialize) validates the previous run's log
 //! and recovers any transaction that did not finish, and every processing pass
 //! brackets its writes with begin/end entries.
-//!
-//! One later slice extends this body and is deliberately absent here: the gated
-//! reader (`gate_on_processor` / `ProcessorGatedReader`), which is why the
-//! processor reads processed files through the plain
-//! [`processed_reader`](AssetSource::processed_reader) rather than an ungated
-//! copy of it. With gating in place those self-reads move to
-//! [`ungated_processed_reader`](AssetSource::ungated_processed_reader) so the
-//! processor does not wait on its own output.
 
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
@@ -63,7 +61,7 @@ use crate::meta::{
 use crate::path::AssetPath;
 use crate::server::{AssetServer, AssetServerMode};
 
-use super::info::ProcessorAssetInfos;
+use super::info::{ProcessStatus, ProcessorAssetInfos};
 use super::log::{
     FileTransactionLogFactory, LogEntry, LogEntryError, ProcessorTransactionLog,
     ProcessorTransactionLogFactory, SetTransactionLogFactoryError, ValidateLogError, WriteLogError,
@@ -112,8 +110,8 @@ pub(crate) struct ProcessingState {
     state: async_lock::RwLock<ProcessorState>,
     /// Broadcast when initialization completes (consumed by the gated reader).
     initialized_sender: async_broadcast::Sender<()>,
-    /// Reserved for the gated reader; nothing reads it until that slice lands.
-    #[allow(dead_code)]
+    /// The receiving end of the initialization broadcast; cloned by
+    /// [`ProcessingState::wait_until_initialized`].
     initialized_receiver: async_broadcast::Receiver<()>,
     /// Broadcast when a processing pass finishes.
     finished_sender: async_broadcast::Sender<()>,
@@ -176,10 +174,12 @@ impl AssetProcessor {
         watch_processed: bool,
     ) -> (Self, Arc<AssetSources>) {
         let state = Arc::new(ProcessingState::new());
-        let sources = sources.build_sources(true, watch_processed);
-        // The gating slice wraps each source's processed reader here, so the app
-        // server waits for the processor's output instead of reading a partial
-        // file. Until then the processor reads the processed side directly.
+        let mut sources = sources.build_sources(true, watch_processed);
+        // Gate every processed source's reader on this processor's state: the
+        // app's server (layout ②) waits for the processor's output instead of
+        // reading a partial file, while the original reader is kept as the
+        // ungated copy the processor reads itself.
+        sources.gate_on_processor(state.clone());
         let sources = Arc::new(sources);
 
         let data = Arc::new(AssetProcessorData::new(sources.clone(), state));
@@ -528,7 +528,7 @@ impl AssetProcessor {
         }
 
         for source in self.sources().iter_processed() {
-            let Ok(processed_reader) = source.processed_reader() else {
+            let Some(processed_reader) = source.ungated_processed_reader() else {
                 continue;
             };
             let Ok(processed_writer) = source.processed_writer() else {
@@ -676,7 +676,7 @@ impl AssetProcessor {
                 }
             }
             AssetSourceEvent::RemovedUnknown { path, is_meta } => {
-                let Ok(processed_reader) = source.processed_reader() else {
+                let Some(processed_reader) = source.ungated_processed_reader() else {
                     return;
                 };
                 match processed_reader.is_directory(&path).await {
@@ -731,7 +731,7 @@ impl AssetProcessor {
 
     /// Removes every processed file stored under `path`, then the folder itself.
     async fn handle_removed_folder(&self, source: &AssetSource, path: &Path) {
-        let Ok(processed_reader) = source.processed_reader() else {
+        let Some(processed_reader) = source.ungated_processed_reader() else {
             return;
         };
         match processed_reader.read_directory(path).await {
@@ -765,7 +765,7 @@ impl AssetProcessor {
         let lock = {
             // Scope the graph lock so it is not held across the file operations.
             let mut infos = self.data.processing_state.asset_infos.write().await;
-            infos.remove(&asset_path)
+            infos.remove(&asset_path).await
         };
         let Some(lock) = lock else {
             return;
@@ -1230,8 +1230,73 @@ impl ProcessingState {
         *self.state.read().await
     }
 
+    /// Waits until initialization has finished, so a gate never reads a
+    /// half-built in-memory view.
+    pub(crate) async fn wait_until_initialized(&self) {
+        let receiver = {
+            let state = self.state.read().await;
+            match *state {
+                ProcessorState::Initializing => Some(self.initialized_receiver.clone()),
+                ProcessorState::Processing | ProcessorState::Finished => None,
+            }
+        };
+
+        if let Some(mut receiver) = receiver {
+            let _ = receiver.recv().await;
+        }
+    }
+
+    /// Waits until `path` reaches a final [`ProcessStatus`], then returns it.
+    ///
+    /// An asset absent from the graph is [`NonExistent`](ProcessStatus::NonExistent).
+    /// This is what the gated reader blocks on before opening a processed file.
+    pub(crate) async fn wait_until_processed(&self, path: AssetPath<'static>) -> ProcessStatus {
+        self.wait_until_initialized().await;
+
+        // Hold the lock while checking the status and cloning the receiver: if
+        // the status flips in between, the broadcast would be missed.
+        let mut receiver = {
+            let infos = self.asset_infos.write().await;
+            match infos.get(&path) {
+                Some(info) => match info.status() {
+                    Some(status) => return status,
+                    None => info.status_receiver(),
+                },
+                None => return ProcessStatus::NonExistent,
+            }
+        };
+
+        receiver
+            .recv()
+            .await
+            .unwrap_or(ProcessStatus::NonExistent)
+    }
+
+    /// The read guard for `path`'s file transaction lock.
+    ///
+    /// The gated reader holds this for as long as it is reading, so the
+    /// processor cannot overwrite the asset's bytes or `.meta` underneath it. A
+    /// path absent from the graph has no output to lock, so this is
+    /// [`NotFound`](AssetReaderError::NotFound).
+    pub(crate) async fn get_transaction_lock(
+        &self,
+        path: &AssetPath<'static>,
+    ) -> Result<async_lock::RwLockReadGuardArc<()>, AssetReaderError> {
+        // Clone the lock out before awaiting it: holding the graph read lock
+        // while waiting for one path's transaction lock could block every other
+        // path (and deadlock against a writer).
+        let lock = {
+            let infos = self.asset_infos.read().await;
+            let info = infos
+                .get(path)
+                .ok_or_else(|| AssetReaderError::NotFound(path.path().to_owned()))?;
+            info.file_transaction_lock()
+        };
+        Ok(lock.read_arc().await)
+    }
+
     /// Waits until the processor has finished its current pass.
-    async fn wait_until_finished(&self) {
+    pub(crate) async fn wait_until_finished(&self) {
         let receiver = {
             let state = self.state.read().await;
             match *state {

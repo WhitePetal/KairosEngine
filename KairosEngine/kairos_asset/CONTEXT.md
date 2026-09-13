@@ -68,6 +68,10 @@ The output a processor writes for a source asset, loadable in place of it; its `
 An asset's value a processor read while processing this one, recorded so a change to it re-runs processing.
 *Avoid*: load dependency, input
 
+**Processor gating**:
+The rule that a read of a processed asset waits until the processor has finished writing it, holding that asset's file transaction lock so a half-written file is never read. A failed or non-existent processed asset reads as not found.
+*Avoid*: blocking read, synchronization
+
 **Asset saver** (`AssetSaver`):
 The per-format code that turns an asset value back into bytes, the inverse of an asset loader.
 *Avoid*: exporter, encoder, serializer

@@ -29,6 +29,9 @@ use thiserror::Error;
 use crate::io::{
     AssetSourceEvent, AssetWatcher, ErasedAssetReader, ErasedAssetWriter, file::FileAssetReader,
 };
+use crate::processor::ProcessingState;
+
+use super::processor_gated::ProcessorGatedReader;
 
 /// Names an [`AssetSource`].
 ///
@@ -431,6 +434,15 @@ impl AssetSources {
             .map(|id| AssetSourceId::Name(id.clone()))
             .chain(Some(AssetSourceId::Default))
     }
+
+    /// Gates every processed source's processed reader on `processing_state` so
+    /// that readers wait for the processor's output. See
+    /// [`AssetSource::gate_on_processor`].
+    pub(crate) fn gate_on_processor(&mut self, processing_state: Arc<ProcessingState>) {
+        for source in self.iter_processed_mut() {
+            source.gate_on_processor(processing_state.clone());
+        }
+    }
 }
 
 /// One resolvable asset root: its id plus the reader, writer, processed reader
@@ -487,8 +499,9 @@ impl AssetSource {
     /// The ungated processed reader, if one is configured.
     ///
     /// The processor consumes this to seed itself without waiting on its own
-    /// output; nothing else should read through it.
-    #[allow(dead_code)] // consumed by the processor track
+    /// output; nothing else should read through it. It is populated by
+    /// [`AssetSource::gate_on_processor`], which moves the original reader here
+    /// and installs the gated copy as `processed_reader`.
     #[inline]
     pub(crate) fn ungated_processed_reader(&self) -> Option<&dyn ErasedAssetReader> {
         self.ungated_processed_reader.as_deref()
@@ -537,6 +550,29 @@ impl AssetSource {
     #[inline]
     pub fn should_process(&self) -> bool {
         self.processed_writer.is_some()
+    }
+
+    /// Wraps this source's processed reader in a `ProcessorGatedReader`,
+    /// moving the original into `ungated_processed_reader` for the processor's
+    /// own reads.
+    ///
+    /// A source with no processed reader is left alone. Call this at most once
+    /// per source (the processor does, in [`AssetProcessor::new`]): gating an
+    /// already-gated reader would move the gated copy into
+    /// `ungated_processed_reader` and leave the processor waiting on itself.
+    ///
+    /// [`AssetProcessor::new`]: crate::processor::AssetProcessor::new
+    pub(crate) fn gate_on_processor(&mut self, processing_state: Arc<ProcessingState>) {
+        if let Some(reader) = self.processed_reader.take() {
+            let id = self.id();
+            let gated = Arc::new(ProcessorGatedReader::new(
+                id,
+                reader.clone(),
+                processing_state,
+            ));
+            self.ungated_processed_reader = Some(reader);
+            self.processed_reader = Some(gated);
+        }
     }
 }
 

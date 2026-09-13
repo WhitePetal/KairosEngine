@@ -48,7 +48,7 @@ pub(crate) enum ProcessStatus {
 ///
 /// Note: if a new field is added here, make sure it is propagated (where
 /// relevant) by [`ProcessorAssetInfos::rename`].
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct ProcessorAssetInfo {
     processed_info: Option<ProcessedInfo>,
     /// Paths of assets that depend on this asset when they are being processed.
@@ -61,6 +61,28 @@ pub(crate) struct ProcessorAssetInfo {
     /// a reader that acquires the read side can never observe payload bytes and
     /// metadata from different versions of the asset.
     file_transaction_lock: Arc<async_lock::RwLock<()>>,
+    /// Broadcasts every status change to the gated reader waiting on this asset.
+    status_sender: async_broadcast::Sender<ProcessStatus>,
+    /// The receiving end of `status_sender`. Kept alive (and never drained here)
+    /// so the channel is never closed and a late wait can clone it.
+    status_receiver: async_broadcast::Receiver<ProcessStatus>,
+}
+
+impl Default for ProcessorAssetInfo {
+    fn default() -> Self {
+        let (mut status_sender, status_receiver) = async_broadcast::broadcast(1);
+        // Overflow lets a late receiver read the latest status instead of the
+        // broadcast blocking on an unread slot.
+        status_sender.set_overflow(true);
+        Self {
+            processed_info: None,
+            dependents: HashSet::default(),
+            status: None,
+            file_transaction_lock: Arc::new(async_lock::RwLock::new(())),
+            status_sender,
+            status_receiver,
+        }
+    }
 }
 
 impl ProcessorAssetInfo {
@@ -84,9 +106,27 @@ impl ProcessorAssetInfo {
         self.status
     }
 
+    /// A receiver that fires on this asset's next status change.
+    ///
+    /// Callers must read [`ProcessorAssetInfo::status`] under the same lock as
+    /// this clone: if the status flips in between, the broadcast is missed.
+    pub(crate) fn status_receiver(&self) -> async_broadcast::Receiver<ProcessStatus> {
+        self.status_receiver.clone()
+    }
+
     /// The lock guarding writes to this asset's processed output.
     pub(crate) fn file_transaction_lock(&self) -> Arc<async_lock::RwLock<()>> {
         self.file_transaction_lock.clone()
+    }
+
+    /// Records `status` and wakes anything waiting on this asset.
+    ///
+    /// A repeat of the current status is not re-broadcast.
+    async fn update_status(&mut self, status: ProcessStatus) {
+        if self.status != Some(status) {
+            self.status = Some(status);
+            let _ = self.status_sender.broadcast(status).await;
+        }
     }
 }
 
@@ -161,7 +201,7 @@ impl ProcessorAssetInfos {
     /// [`Processed`](ProcessStatus::Processed). Returns the paths that depend on
     /// it, so the caller can queue them for a (possibly skipped) reprocessing
     /// pass.
-    pub(crate) fn insert_processed(
+    pub(crate) async fn insert_processed(
         &mut self,
         asset_path: AssetPath<'static>,
         processed_info: ProcessedInfo,
@@ -180,7 +220,7 @@ impl ProcessorAssetInfos {
 
         let info = self.get_or_insert(asset_path);
         info.processed_info = Some(processed_info);
-        info.status = Some(ProcessStatus::Processed);
+        info.update_status(ProcessStatus::Processed).await;
         info.dependents.iter().cloned().collect()
     }
 
@@ -189,18 +229,32 @@ impl ProcessorAssetInfos {
     ///
     /// This is the `SkippedNotChanged` outcome: the existing output is still
     /// valid, but the asset should be considered ready.
-    pub(crate) fn mark_processed(&mut self, asset_path: &AssetPath<'static>) {
-        self.get_or_insert(asset_path.clone()).status = Some(ProcessStatus::Processed);
+    pub(crate) async fn mark_processed(&mut self, asset_path: &AssetPath<'static>) {
+        let info = self.get_or_insert(asset_path.clone());
+        info.update_status(ProcessStatus::Processed).await;
     }
 
     /// Marks `asset_path` as [`Failed`](ProcessStatus::Failed) to process.
-    pub(crate) fn mark_failed(&mut self, asset_path: AssetPath<'static>) {
-        self.get_or_insert(asset_path).status = Some(ProcessStatus::Failed);
+    pub(crate) async fn mark_failed(&mut self, asset_path: AssetPath<'static>) {
+        let info = self.get_or_insert(asset_path);
+        info.update_status(ProcessStatus::Failed).await;
+    }
+
+    /// Marks `asset_path` as [`NonExistent`](ProcessStatus::NonExistent), so a
+    /// gated reader waiting on it resolves instead of waiting forever.
+    ///
+    /// This is for assets that produce no processed output at all — ignored,
+    /// extension-less, or whose source vanished mid-pass. Upstream leaves their
+    /// status unset, which would hang a `ProcessorGatedReader`; kairos marks
+    /// them non-existent so the gate reports `NotFound` (ADR 0005 deviation).
+    pub(crate) async fn mark_non_existent(&mut self, asset_path: &AssetPath<'static>) {
+        let info = self.get_or_insert(asset_path.clone());
+        info.update_status(ProcessStatus::NonExistent).await;
     }
 
     /// Marks `asset_path` as failed and records `dependency` as something that
     /// must be reprocessed before this asset can be retried.
-    pub(crate) fn mark_failed_with_dependency(
+    pub(crate) async fn mark_failed_with_dependency(
         &mut self,
         asset_path: AssetPath<'static>,
         dependency: AssetPath<'static>,
@@ -211,7 +265,7 @@ impl ProcessorAssetInfos {
             full_hash: AssetHash::default(),
             process_dependencies: Vec::new(),
         });
-        info.status = Some(ProcessStatus::Failed);
+        info.update_status(ProcessStatus::Failed).await;
         self.add_dependent(&dependency, asset_path);
     }
 
@@ -219,9 +273,10 @@ impl ProcessorAssetInfos {
     ///
     /// A successful pass records the new [`ProcessedInfo`] and queues its
     /// dependents through `reprocess_sender`; a skipped pass just marks the asset
-    /// ready; ignored and non-existent assets are left alone; a failure is
-    /// recorded (and, when it stems from a loader dependency, links that
-    /// dependency so the asset is retried after it changes).
+    /// ready; ignored, extension-less, and vanished assets are marked
+    /// non-existent so the gate resolves; a failure is recorded (and, when it
+    /// stems from a loader dependency, links that dependency so the asset is
+    /// retried after it changes).
     pub(crate) async fn finish_processing(
         &mut self,
         asset_path: AssetPath<'static>,
@@ -230,7 +285,7 @@ impl ProcessorAssetInfos {
     ) {
         match result {
             Ok(ProcessResult::Processed(processed_info)) => {
-                let dependents = self.insert_processed(asset_path, processed_info);
+                let dependents = self.insert_processed(asset_path, processed_info).await;
                 for dependent in dependents {
                     let _ = reprocess_sender
                         .send((
@@ -241,23 +296,29 @@ impl ProcessorAssetInfos {
                 }
             }
             Ok(ProcessResult::SkippedNotChanged) => {
-                self.mark_processed(&asset_path);
+                self.mark_processed(&asset_path).await;
             }
-            Ok(ProcessResult::Ignored) => {}
-            Err(ProcessError::ExtensionRequired) => {}
+            Ok(ProcessResult::Ignored) => {
+                self.mark_non_existent(&asset_path).await;
+            }
+            Err(ProcessError::ExtensionRequired) => {
+                self.mark_non_existent(&asset_path).await;
+            }
             Err(ProcessError::AssetReaderError {
                 err: crate::io::AssetReaderError::NotFound(_),
                 ..
-            }) => {}
+            }) => {
+                self.mark_non_existent(&asset_path).await;
+            }
             Err(err) => {
                 if let ProcessError::AssetLoadError(AssetLoadError::AssetLoaderError(
                     loader_error,
                 )) = &err
                 {
                     let dependency = loader_error.path().clone();
-                    self.mark_failed_with_dependency(asset_path, dependency);
+                    self.mark_failed_with_dependency(asset_path, dependency).await;
                 } else {
-                    self.mark_failed(asset_path);
+                    self.mark_failed(asset_path).await;
                 }
             }
         }
@@ -268,14 +329,21 @@ impl ProcessorAssetInfos {
     ///
     /// Returns the asset's transaction lock so the caller can wait for
     /// in-flight reads and writes to finish before deleting the processed files.
-    pub(crate) fn remove(
+    /// Anything waiting on the asset is told it is now
+    /// [`NonExistent`](ProcessStatus::NonExistent).
+    pub(crate) async fn remove(
         &mut self,
         asset_path: &AssetPath<'static>,
     ) -> Option<Arc<async_lock::RwLock<()>>> {
-        let info = self.infos.remove(asset_path)?;
-        if let Some(processed_info) = info.processed_info {
+        let mut info = self.infos.remove(asset_path)?;
+        if let Some(processed_info) = info.processed_info.take() {
             self.clear_dependencies(asset_path, processed_info);
         }
+        // Tell anything waiting on this asset that it is gone.
+        let _ = info
+            .status_sender
+            .broadcast(ProcessStatus::NonExistent)
+            .await;
         if !info.dependents.is_empty() {
             self.non_existent_dependents
                 .insert(asset_path.clone(), info.dependents);
@@ -320,9 +388,20 @@ impl ProcessorAssetInfos {
             }
         }
 
+        // Anything waiting on the old path must be told it no longer exists.
+        let _ = info
+            .status_sender
+            .broadcast(ProcessStatus::NonExistent)
+            .await;
+
         let new_info = self.get_or_insert(new.clone());
         new_info.processed_info = info.processed_info;
         new_info.status = info.status;
+        // Carry the status over to the new path so anything waiting on it learns
+        // the outcome without a fresh processing pass.
+        if let Some(status) = info.status {
+            let _ = new_info.status_sender.broadcast(status).await;
+        }
         let dependents: Vec<AssetPath<'static>> = new_info.dependents.iter().cloned().collect();
 
         // The renamed asset may need new meta, and its dependents may have been

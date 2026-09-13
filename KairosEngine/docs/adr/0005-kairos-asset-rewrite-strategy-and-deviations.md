@@ -66,13 +66,18 @@ Status: accepted
 6. **`Asset` 不含 `TypePath`**：加载器名以 `std::any::type_name` 为准。
 7. **句柄非 `Copy`**：`Handle<A>` 内部的 `Arc` 就是引用计数，最后一个强句柄
    析构才发 `DropEvent`；命名可先于存在（弱句柄只带 id）。
-8. **明确延后**的部分：`add_async`、`wait_for_asset*`；加工侧的 gated 成品 reader 仍未落地。
+8. **明确延后**的部分：`add_async`、`wait_for_asset*`。
    （未类型化加载与 `Handle` guard 已随后续 effort #214 的 A2 片落地；整目录加载
    `load_folder` 与 `LoadedFolder` 已随 A3 片落地；`AssetProcessor` 本体已随加工主轴 S5（#231）落地，
-   写前日志（WAL）与启动恢复已随 S6（#232）落地，gated 成品 reader 归 S7，现有手动加工管线的收编归 S8/S9。）
+   写前日志（WAL）与启动恢复已随 S6（#232）落地，gated 成品 reader 与布局②接线已随 S7（#233）落地，
+   现有手动加工管线的收编归 S8/S9。）
 9. **`load_untyped_async` 也执行 `UnapprovedPathMode` 门**：上游 `LoadBuilder` 的该
    方法不查未批准路径；kairos 让它与其余加载入口一致，`Forbid` 一律拒绝
    （`Deny` 仍可被 `override_unapproved` 覆盖）。
+10. **被忽略 / 无扩展名 / 源已消失的资产在 gated reader 面前标为 `NonExistent`**：
+    上游 `finish_processing` 对这些结果不落状态，`ProcessorGatedReader` 的
+    `wait_until_processed` 会永久等待；kairos 把它们标为 `NonExistent`，让成品读取
+    立即得到 `NotFound`（#233 要求「无成品时按三态给出明确结果」）。
 
 ## 考虑过的替代
 

@@ -17,21 +17,26 @@ use futures_io::AsyncWrite;
 use futures_lite::AsyncWriteExt;
 use futures_lite::future::block_on;
 use kairos_ecs::error::KairosError;
+use kairos_ecs::message::Messages;
 use kairos_ecs::world::World;
-use kairos_tasks::{BoxedFuture, ConditionalSendFuture};
+use kairos_tasks::{BoxedFuture, ConditionalSendFuture, IoTaskPool, TaskPool};
 use serde::{Deserialize, Serialize};
 
 use crate::io::{
     AssetReader, AssetReaderError, AssetSource, AssetSourceBuilder, AssetSourceBuilders,
-    AssetSourceEvent, AssetSourceId, AssetWatcher, AssetWriter, AssetWriterError,
-    ErasedAssetReader, ErasedAssetWriter, PathStream, Reader, VecReader, Writer, get_meta_path,
+    AssetSourceEvent, AssetSourceId, AssetSources, AssetWatcher, AssetWriter, AssetWriterError,
+    ErasedAssetReader, ErasedAssetWriter, PathStream, Reader, UnapprovedPathMode, VecReader, Writer,
+    get_meta_path,
 };
-use crate::meta::{AssetAction, AssetActionMinimal, AssetMeta, AssetMetaDyn, AssetMetaMinimal};
+use crate::meta::{AssetAction, AssetActionMinimal, AssetMeta, AssetMetaCheck, AssetMetaDyn, AssetMetaMinimal};
 use crate::processor::{
     AssetProcessor, LogEntry, Process, ProcessContext, ProcessError, ProcessorTransactionLog,
     ProcessorTransactionLogFactory, SetTransactionLogFactoryError,
 };
-use crate::{Asset, AssetLoader, AssetPath, LoadContext, VisitAssetDependencies};
+use crate::{
+    Asset, AssetEvent, AssetLoadFailedEvent, AssetLoader, AssetPath, AssetServer, AssetServerMode,
+    Assets, LoadContext, VisitAssetDependencies, handle_internal_asset_events,
+};
 
 // ---------------------------------------------------------------------------
 // In-memory asset source
@@ -429,6 +434,8 @@ fn process_meta(prefix: &str) -> Vec<u8> {
 /// halves exposed for assertions.
 struct Harness {
     processor: AssetProcessor,
+    /// The frozen sources shared with the app-facing server (layout ②).
+    sources: Arc<AssetSources>,
     unprocessed: MemoryStore,
     processed: MemoryStore,
     events: EventSender,
@@ -486,7 +493,7 @@ impl Harness {
 
         let mut builders = AssetSourceBuilders::default();
         builders.insert(AssetSourceId::Default, builder);
-        let (processor, _sources) = AssetProcessor::new(&mut builders, false);
+        let (processor, sources) = AssetProcessor::new(&mut builders, false);
 
         processor
             .data()
@@ -499,6 +506,7 @@ impl Harness {
 
         Self {
             processor,
+            sources,
             unprocessed,
             processed,
             events,
@@ -533,6 +541,19 @@ impl Harness {
     /// tasks it queued.
     fn handle(&self, event: AssetSourceEvent) {
         block_on(self.processor.handle_event_for_test(self.source(), event));
+    }
+
+    /// Builds the app-facing server for layout ②: Processed mode over the
+    /// processor's sources, sharing its loaders (exactly what `install` does).
+    fn main_server(&self) -> AssetServer {
+        AssetServer::new_sharing_loaders_with(
+            self.processor.server(),
+            self.sources.clone(),
+            AssetServerMode::Processed,
+            AssetMetaCheck::Always,
+            false,
+            UnapprovedPathMode::Forbid,
+        )
     }
 }
 
@@ -812,4 +833,237 @@ fn setting_the_log_factory_after_start_is_rejected() {
             .set_log_factory(Box::new(TestLogFactory::default())),
         Err(SetTransactionLogFactoryError::AlreadyInUse)
     );
+}
+
+// ---------------------------------------------------------------------------
+// Processor gating (layout ②)
+// ---------------------------------------------------------------------------
+
+/// A sidecar naming a processor that is never registered, so processing fails.
+fn missing_processor_meta() -> Vec<u8> {
+    let meta = AssetMeta::<(), ()>::new(AssetAction::Process {
+        processor: "kairos_asset::tests::asset_processor::NeverRegistered".to_string(),
+        settings: (),
+    });
+    AssetMetaDyn::serialize(&meta)
+}
+
+/// A world holding `server` and a [`TextAsset`] store, so a load can be driven
+/// to completion through the tracking half of the pipeline.
+fn text_world(server: &AssetServer) -> World {
+    let assets = Assets::<TextAsset>::default();
+    server.register_asset(&assets);
+    let mut world = World::new();
+    world.insert_resource(assets);
+    world.insert_resource(server.clone());
+    world.insert_resource(Messages::<AssetEvent<TextAsset>>::default());
+    world.insert_resource(Messages::<AssetLoadFailedEvent<TextAsset>>::default());
+    world
+}
+
+/// Drives the tracking stage until the load for `id` settles.
+fn wait_for_load(
+    world: &mut World,
+    server: &AssetServer,
+    id: impl Into<crate::UntypedAssetId>,
+) {
+    let id = id.into();
+    for _ in 0..5000 {
+        handle_internal_asset_events(world);
+        if server.load_state(id).is_failed() || server.is_loaded_with_dependencies(id) {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    panic!("asset {id:?} never settled: {:?}", server.load_state(id));
+}
+
+#[test]
+fn gated_reader_serves_the_processed_output() {
+    let harness = Harness::new();
+    harness.unprocessed.insert("model.txt", b"hello".to_vec());
+    harness.unprocessed.insert("model.txt.meta", process_meta("P:"));
+    harness.run_initial();
+
+    let reader = harness
+        .source()
+        .processed_reader()
+        .expect("the source is gated");
+    let mut bytes = Vec::new();
+    block_on(async {
+        let mut asset = reader
+            .read(Path::new("model.txt"))
+            .await
+            .expect("the processed read resolves");
+        asset.read_to_end(&mut bytes).await.expect("read to end");
+    });
+    assert_eq!(bytes, b"P:hello");
+}
+
+#[test]
+fn main_server_reads_the_processor_output_end_to_end() {
+    let harness = Harness::new();
+    harness.unprocessed.insert("model.txt", b"hello".to_vec());
+    harness.unprocessed.insert("model.txt.meta", process_meta("P:"));
+    harness.run_initial();
+
+    // The app-facing server (as `install` builds it in layout ②) reads the
+    // processor's output, waiting on the gate rather than reading the source.
+    let server = harness.main_server();
+    let mut world = text_world(&server);
+    let handle = server.load::<TextAsset>("model.txt");
+    wait_for_load(&mut world, &server, handle.id());
+
+    assert_eq!(
+        world.resource::<Assets<TextAsset>>().get(handle.id()),
+        Some(&TextAsset("P:hello".to_string()))
+    );
+}
+
+#[test]
+fn main_server_reports_a_missing_asset_as_a_failed_load() {
+    let harness = Harness::new();
+    harness.run_initial();
+
+    let server = harness.main_server();
+    let mut world = text_world(&server);
+    let handle = server.load::<TextAsset>("ghost.txt");
+    wait_for_load(&mut world, &server, handle.id());
+
+    assert!(
+        server.load_state(handle.id()).is_failed(),
+        "a non-existent asset is a failed load, not a hang"
+    );
+}
+
+#[test]
+fn main_server_reports_a_failed_asset_as_a_failed_load() {
+    let harness = Harness::new();
+    harness.unprocessed.insert("bad.txt", b"bad".to_vec());
+    harness
+        .unprocessed
+        .insert("bad.txt.meta", missing_processor_meta());
+    harness.run_initial();
+
+    let server = harness.main_server();
+    let mut world = text_world(&server);
+    let handle = server.load::<TextAsset>("bad.txt");
+    wait_for_load(&mut world, &server, handle.id());
+
+    assert!(
+        server.load_state(handle.id()).is_failed(),
+        "a failed processed asset is reported, not read"
+    );
+}
+
+#[test]
+fn gated_read_of_an_ignored_asset_reports_not_found() {
+    let harness = Harness::new();
+    harness.unprocessed.insert("skip.txt", b"skip".to_vec());
+    let meta = AssetMeta::<(), ()>::new(AssetAction::Ignore);
+    harness
+        .unprocessed
+        .insert("skip.txt.meta", AssetMetaDyn::serialize(&meta));
+    harness.run_initial();
+
+    // An ignored asset produces no processed output; the gate must resolve to a
+    // clear "not found" rather than wait forever.
+    let sources = harness.sources.clone();
+    let result = Arc::new(Mutex::new(None::<bool>));
+    let task_result = result.clone();
+    IoTaskPool::get_or_init(TaskPool::default)
+        .spawn(async move {
+            let source = sources
+                .get(AssetSourceId::Default)
+                .expect("the default source exists");
+            let read = source
+                .processed_reader()
+                .expect("the source is gated")
+                .read(Path::new("skip.txt"))
+                .await;
+            *task_result.lock().unwrap() = Some(matches!(read, Err(AssetReaderError::NotFound(_))));
+        })
+        .detach();
+
+    wait_for(|| result.lock().unwrap().is_some());
+    assert_eq!(*result.lock().unwrap(), Some(true));
+}
+
+#[test]
+fn a_gated_read_waits_until_the_asset_is_processed() {
+    let harness = Harness::new();
+    harness.unprocessed.insert("model.txt", b"hello".to_vec());
+    harness.unprocessed.insert("model.txt.meta", process_meta("P:"));
+
+    let sources = harness.sources.clone();
+    let result = Arc::new(Mutex::new(None::<Vec<u8>>));
+    let task_result = result.clone();
+    IoTaskPool::get_or_init(TaskPool::default)
+        .spawn(async move {
+            let source = sources
+                .get(AssetSourceId::Default)
+                .expect("the default source exists");
+            let mut asset = source
+                .processed_reader()
+                .expect("the source is gated")
+                .read(Path::new("model.txt"))
+                .await
+                .expect("the read resolves once processed");
+            let mut bytes = Vec::new();
+            asset.read_to_end(&mut bytes).await.expect("read to end");
+            *task_result.lock().unwrap() = Some(bytes);
+        })
+        .detach();
+
+    // Nothing has been processed yet, so the gated read cannot resolve.
+    std::thread::sleep(Duration::from_millis(50));
+    assert!(
+        result.lock().unwrap().is_none(),
+        "the gated read returned before processing finished"
+    );
+
+    harness.run_initial();
+    wait_for(|| result.lock().unwrap().is_some());
+    assert_eq!(
+        result.lock().unwrap().as_deref(),
+        Some(b"P:hello".as_slice())
+    );
+}
+
+#[test]
+fn a_held_gated_reader_blocks_a_concurrent_rewrite() {
+    let harness = Harness::new();
+    harness.unprocessed.insert("model.txt", b"hello".to_vec());
+    harness.run_initial();
+
+    // Taking a gated read acquires the asset's file transaction lock for as long
+    // as the reader lives.
+    let reader = block_on(
+        harness
+            .source()
+            .processed_reader()
+            .expect("the source is gated")
+            .read(Path::new("model.txt")),
+    )
+    .expect("the processed read resolves");
+
+    let asset_path = AssetPath::from(PathBuf::from("model.txt"));
+    let lock = {
+        let infos = block_on(harness.processor.data().processing_state.asset_infos.read());
+        infos
+            .get(&asset_path)
+            .expect("the asset is in the graph")
+            .file_transaction_lock()
+    };
+
+    // The processor's write side cannot be taken while the reader lives, so it
+    // cannot rewrite (or half-write) the bytes the reader is streaming.
+    assert!(
+        block_on(futures_lite::future::poll_once(lock.write())).is_none(),
+        "a held reader must block a rewrite"
+    );
+
+    // Dropping the reader releases the lock for the writer.
+    drop(reader);
+    let _write = block_on(lock.write());
 }

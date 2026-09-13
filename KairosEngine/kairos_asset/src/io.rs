@@ -30,6 +30,7 @@ use thiserror::Error;
 
 pub mod embedded;
 pub mod file;
+mod processor_gated;
 mod source;
 
 pub use source::{

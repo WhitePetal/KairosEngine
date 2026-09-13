@@ -23,8 +23,8 @@ use crate::io::{
 };
 use crate::{
     Asset, AssetEvent, AssetEventSystems, AssetLoadFailedEvent, AssetLoader, AssetMetaCheck,
-    AssetMode, AssetOptions, AssetServer, AssetServerMode, AssetStages, AssetWorldExt, Assets,
-    Handle, LoadContext, VisitAssetDependencies, install,
+    AssetMode, AssetOptions, AssetProcessor, AssetServer, AssetServerMode, AssetStages,
+    AssetWorldExt, Assets, Handle, LoadContext, VisitAssetDependencies, install,
 };
 
 /// The two ad-hoc stages the asset drivers are installed into.
@@ -422,6 +422,47 @@ fn processed_mode_gives_the_default_source_a_processed_reader() {
     assert!(
         source.processed_reader().is_err(),
         "unprocessed mode leaves the processed reader empty"
+    );
+}
+
+#[test]
+fn processed_mode_with_a_processor_wires_layout_2() {
+    let source = AssetSourceBuilder::new({
+        let reader = MemoryReader::new(&[("data.bytes", b"source")]);
+        move || Box::new(reader.clone()) as Box<dyn ErasedAssetReader>
+    });
+    let mut world = World::new();
+    world
+        .get_resource_or_init::<AssetSourceBuilders>()
+        .insert(AssetSourceId::Default, source);
+    install(
+        &mut world,
+        options()
+            .with_mode(AssetMode::Processed)
+            .with_use_asset_processor(true)
+            .with_meta_check(AssetMetaCheck::Never),
+    );
+    world.init_asset::<ByteAsset>();
+    world.register_asset_loader(ByteLoader);
+
+    // The processor is mounted and the app's server runs in Processed mode.
+    let processor = world
+        .get_resource::<AssetProcessor>()
+        .expect("layout ② mounts the processor");
+    assert_eq!(
+        world.resource::<AssetServer>().mode(),
+        AssetServerMode::Processed
+    );
+
+    // The two servers share one loader registry: a loader registered on the
+    // app's server is visible to the processor's server (which needs it to
+    // resolve source-asset loaders while processing).
+    assert!(
+        processor
+            .server()
+            .get_asset_loader_with_type_name(crate::meta::loader_name::<ByteLoader>())
+            .is_ok(),
+        "layout ② shares the loader registry between both servers"
     );
 }
 

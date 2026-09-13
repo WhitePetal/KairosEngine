@@ -43,13 +43,17 @@ mod transformer;
 pub use asset_processor::{
     AssetProcessor, AssetProcessorData, InitializeError, ProcessResult, ProcessorState,
 };
+// The gated reader consumes `ProcessStatus`, and `AssetSource::gate_on_processor`
+// takes the `ProcessingState`.
+pub(crate) use asset_processor::ProcessingState;
 pub use log::{
     FileTransactionLogFactory, LogEntry, LogEntryError, ProcessorTransactionLog,
     ProcessorTransactionLogFactory, ReadLogError, SetTransactionLogFactoryError, ValidateLogError,
 };
-// Re-exported for the crate's own use (the gated reader consumes `ProcessStatus`).
+pub(crate) use info::ProcessStatus;
+// The crate's tests build a `ProcessorAssetInfos` directly.
 #[allow(unused_imports)]
-pub(crate) use info::{ProcessStatus, ProcessorAssetInfos};
+pub(crate) use info::ProcessorAssetInfos;
 pub use registry::{GetProcessorError, Processors};
 
 pub use process::{

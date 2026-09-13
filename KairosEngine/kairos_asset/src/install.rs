@@ -22,9 +22,9 @@
 //!   [`Assets::asset_events`](crate::Assets::asset_events) flushes those
 //!   queued events into `Messages<AssetEvent<A>>`.
 //! - Startup stage (bevy's `Startup`): where the asset processor is launched.
-//!   Nothing mounts here yet — the processor body lands with S5/S7 — but the
-//!   stage is carried from [`AssetOptions`] into [`AssetStages`] so that track
-//!   can attach without re-plumbing `install`.
+//!   In layout ② (a runtime processor) [`AssetProcessor::start`] is mounted
+//!   here; the stage is always created so the processor can attach without
+//!   re-plumbing `install`.
 
 use std::sync::Arc;
 
@@ -42,6 +42,7 @@ use crate::folder::LoadedFolder;
 use crate::io::{AssetSourceBuilders, UnapprovedPathMode};
 use crate::loader::AssetLoader;
 use crate::meta::AssetMetaCheck;
+use crate::processor::AssetProcessor;
 use crate::server::{AssetServer, AssetServerMode, handle_internal_asset_events};
 
 /// The schedule labels the asset drivers are installed into, recorded by
@@ -55,8 +56,9 @@ pub struct AssetStages {
     /// The stage that flushes queued store events to `Messages` (bevy's
     /// `PostUpdate`).
     pub event: InternedScheduleLabel,
-    /// The stage the asset processor starts in (bevy's `Startup`). Nothing
-    /// mounts here yet; the processor track reads it from here when it lands.
+    /// The stage the asset processor starts in (bevy's `Startup`). Layout ②
+    /// mounts [`AssetProcessor::start`] here; otherwise the stage is created
+    /// empty.
     pub startup: InternedScheduleLabel,
 }
 
@@ -69,8 +71,9 @@ pub struct AssetStages {
 ///   consults their `.meta` sidecars.
 /// - `Processed` (layout ②/③): the server reads processed assets. Layout ③ is
 ///   processed assets with no processor running — the artifacts must already
-///   exist on disk. Layout ② (a processor producing them at runtime) lands with
-///   the processor track; see [`AssetOptions::use_asset_processor`].
+///   exist on disk. Layout ② runs a processor that produces them at runtime; it
+///   is selected with [`AssetOptions::use_asset_processor`], and its gated
+///   readers make the app's server wait for the processor's output.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum AssetMode {
     /// Loads assets from their source's unprocessed reader, consulting `.meta`
@@ -104,7 +107,9 @@ pub struct AssetOptions {
     /// Whether a runtime processor should produce the processed store. Defaults
     /// to the `use_asset_processor` cargo feature (off by default).
     ///
-    /// The processor body is deferred, so enabling this is not yet supported.
+    /// Only meaningful with [`AssetMode::Processed`], where it selects layout ②
+    /// (a processor producing the outputs) over layout ③ (outputs shipped ahead
+    /// of time).
     pub use_asset_processor: bool,
     /// Overrides whether the server watches its sources for changes. When
     /// `None`, watching follows the `watch` cargo feature, which the hot-reload
@@ -218,18 +223,14 @@ pub fn install(world: &mut World, options: AssetOptions) {
     // `cfg!(feature = "watch")`. That feature arrives with the hot-reload track,
     // so until then the fallback is off.
     let watch = options.watch_for_changes_override.unwrap_or(false);
-    if options.mode == AssetMode::Processed && options.use_asset_processor {
-        unimplemented!(
-            "AssetMode::Processed with use_asset_processor is not implemented yet; \
-             the AssetProcessor track lands in a later slice",
-        );
-    }
+    let use_processor = options.mode == AssetMode::Processed && options.use_asset_processor;
 
     // Freeze the sources exactly as `AssetPlugin` does: in processed mode the
     // default source gains a processed root, and the watcher slots are chosen by
     // the mode (unprocessed sources watch the source side, processed mode the
-    // processed side).
-    let (sources, server_mode, meta_check) = {
+    // processed side). Layout ② builds the processor over the same sources and
+    // lets it gate their processed readers.
+    let (sources, server_mode, meta_check, processor) = {
         let mut builders = world.get_resource_or_init::<AssetSourceBuilders>();
         let processed_path = match options.mode {
             AssetMode::Unprocessed => None,
@@ -238,27 +239,60 @@ pub fn install(world: &mut World, options: AssetOptions) {
         builders.init_default_source(AssetOptions::DEFAULT_UNPROCESSED_FILE_PATH, processed_path);
         match options.mode {
             AssetMode::Unprocessed => (
-                builders.build_sources(watch, false),
+                Arc::new(builders.build_sources(watch, false)),
                 AssetServerMode::Unprocessed,
                 options.meta_check.clone(),
+                None,
             ),
+            AssetMode::Processed if use_processor => {
+                // Layout ②: the processor freezes the sources (watching the
+                // unprocessed side) and gates their processed readers, so the
+                // app's server waits on the processor's output.
+                let (processor, sources) = AssetProcessor::new(&mut builders, watch);
+                (
+                    sources,
+                    AssetServerMode::Processed,
+                    AssetMetaCheck::Always,
+                    Some(processor),
+                )
+            }
             AssetMode::Processed => (
                 // Layout ③: processed assets shipped ahead of time, so nothing
                 // watches the source side; the processed side may watch.
-                builders.build_sources(false, watch),
+                Arc::new(builders.build_sources(false, watch)),
                 AssetServerMode::Processed,
                 // Processed assets always carry meta (bevy parity).
                 AssetMetaCheck::Always,
+                None,
             ),
         }
     };
-    world.insert_resource(AssetServer::new_with_meta_check(
-        Arc::new(sources),
-        server_mode,
-        meta_check,
-        watch,
-        UnapprovedPathMode::Forbid,
-    ));
+
+    // In layout ② the app's server shares the processor's sources and loaders, so
+    // a loader registered on one is visible to the other and reads wait on the
+    // processor's output.
+    let server = match &processor {
+        Some(processor) => AssetServer::new_sharing_loaders_with(
+            processor.server(),
+            sources,
+            server_mode,
+            meta_check,
+            watch,
+            UnapprovedPathMode::Forbid,
+        ),
+        None => AssetServer::new_with_meta_check(
+            sources,
+            server_mode,
+            meta_check,
+            watch,
+            UnapprovedPathMode::Forbid,
+        ),
+    };
+    let has_processor = processor.is_some();
+    world.insert_resource(server);
+    if let Some(processor) = processor {
+        world.insert_resource(processor);
+    }
     world.insert_resource(stages);
 
     {
@@ -269,9 +303,12 @@ pub fn install(world: &mut World, options: AssetOptions) {
         tracking.configure_sets(AssetTrackingSystems.after(handle_internal_asset_events));
         tracking.add_systems(handle_internal_asset_events.ambiguous_with_all());
         schedules.entry(stages.event).configure_sets(AssetEventSystems);
-        // Create the startup schedule so a later processor track can attach to it
-        // even when the host does not otherwise build a `Startup` schedule.
-        schedules.entry(stages.startup);
+        // Create the startup schedule (and, in layout ②, mount the processor) so
+        // the host does not have to build the stage itself.
+        let startup = schedules.entry(stages.startup);
+        if has_processor {
+            startup.add_systems(AssetProcessor::start);
+        }
     }
 
     // The untyped-load wrapper and the folder value are core asset types, so

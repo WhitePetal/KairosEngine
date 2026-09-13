@@ -130,13 +130,56 @@ impl AssetServer {
         watching_for_changes: bool,
         unapproved_path_mode: UnapprovedPathMode,
     ) -> Self {
+        Self::new_with_loaders(
+            sources,
+            Arc::new(RwLock::new(AssetLoaders::default())),
+            mode,
+            meta_check,
+            watching_for_changes,
+            unapproved_path_mode,
+        )
+    }
+
+    /// Creates a server that shares `shared`'s loader registry.
+    ///
+    /// Layout ② builds the app's server from the processor's [`AssetSources`] and
+    /// its loaders: the processor resolves loaders to read source assets, and the
+    /// app's server must resolve the exact same set, so a loader registered on
+    /// one is visible to the other.
+    pub(crate) fn new_sharing_loaders_with(
+        shared: &AssetServer,
+        sources: Arc<AssetSources>,
+        mode: AssetServerMode,
+        meta_check: AssetMetaCheck,
+        watching_for_changes: bool,
+        unapproved_path_mode: UnapprovedPathMode,
+    ) -> Self {
+        Self::new_with_loaders(
+            sources,
+            shared.data.loaders.clone(),
+            mode,
+            meta_check,
+            watching_for_changes,
+            unapproved_path_mode,
+        )
+    }
+
+    /// Builds a server from its parts, sharing the given loader registry.
+    fn new_with_loaders(
+        sources: Arc<AssetSources>,
+        loaders: Arc<RwLock<AssetLoaders>>,
+        mode: AssetServerMode,
+        meta_check: AssetMetaCheck,
+        watching_for_changes: bool,
+        unapproved_path_mode: UnapprovedPathMode,
+    ) -> Self {
         let (internal_event_sender, internal_event_receiver) = crossbeam_channel::unbounded();
         let mut infos = AssetInfos::default();
         infos.watching_for_changes = watching_for_changes;
         Self {
             data: Arc::new(AssetServerData {
                 infos: RwLock::new(infos),
-                loaders: Arc::new(RwLock::new(AssetLoaders::default())),
+                loaders,
                 sources,
                 mode,
                 meta_check,

@@ -37,15 +37,16 @@
 //!   registers a type's store, its `Messages`, and its per-type driver systems,
 //!   mounted under the [`AssetTrackingSystems`]/[`AssetEventSystems`] sets.
 //!
-//! Deliberately absent for now (later tickets): `add_async`/`wait_for_asset*`,
-//! and the gated processed reader. The
-//! processor trait family — [`Process`], [`ProcessContext`],
+//! Deliberately absent for now (later tickets): `add_async`/`wait_for_asset*`.
+//! The processor trait family — [`Process`], [`ProcessContext`],
 //! [`LoadTransformAndSave`], [`AssetSaver`], and the rest — lives in
 //! `processor`, on top of the hashing,
 //! [`ProcessedInfo`](meta::ProcessedInfo) recording, and the in-memory
 //! dependency graph that this crate also carries; [`AssetProcessor`] is the
-//! background body that drives them, and its write-ahead log
-//! ([`ProcessorTransactionLog`] / [`FileTransactionLogFactory`]) makes their
+//! background body that drives them. Layout ② wires the app's [`AssetServer`]
+//! to it through the gated processed reader, so a load waits for the
+//! processor's output instead of reading a half-written file; its write-ahead
+//! log ([`ProcessorTransactionLog`] / [`FileTransactionLogFactory`]) makes those
 //! writes transactional and recoverable across restarts. This crate does not
 //! import `tokio` (ADR 0001).
 
