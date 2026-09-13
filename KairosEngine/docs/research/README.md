@@ -6,6 +6,12 @@
 |---|---|
 | `hierarchy/unity-hierarchy.md` | Unity Hierarchy 窗口实现分析与架构研究 |
 
+## Asset System
+
+| File | Topic |
+|---|---|
+| `asset-hot-reload-watcher.md` | 资产热重载文件监听后端选型与 bevy_asset watcher 路径（外部事实清点） |
+
 ## Texture Encoding
 
 | File | Topic |
