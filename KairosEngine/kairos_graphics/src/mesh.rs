@@ -1,11 +1,12 @@
-use std::path::PathBuf;
-
+use futures_lite::AsyncWriteExt;
 use gltf::Gltf;
 use rkyv::Archive;
 use serde::{Deserialize, Serialize};
 
 use kairos_asset::{
-    Asset, AssetLoader, AssetWorldExt, LoadContext, Reader, VisitAssetDependencies,
+    Asset, AssetLoader, AssetProcessor, AssetSaver, AssetWorldExt, IdentityAssetTransformer,
+    LoadContext, LoadTransformAndSave, LoadTransformAndSaveSettings, Process, ProcessContext,
+    ProcessError, Reader, SavedAsset, VisitAssetDependencies, Writer,
 };
 use kairos_ecs::error::KairosError;
 use kairos_ecs::world::World;
@@ -29,12 +30,13 @@ pub struct Mesh {
 impl Asset for Mesh {}
 impl VisitAssetDependencies for Mesh {}
 
-/// Reads a `.mesh` descriptor and its companion `.mesh_bin` archive.
+/// Loads the **processed** [`Mesh`] produced by [`MeshProcessor`].
 ///
-/// The `.mesh` file carries only the source path; the geometry lives in the
-/// sibling `.mesh_bin` archive, which the loader decodes with `rkyv` directly
-/// with `async-fs`: the default source is rooted at the process working
-/// directory, which is also what the descriptor's path is relative to.
+/// This is the processor's [`OutputLoader`](Process::OutputLoader): the product
+/// is a single `rkyv` archive of the geometry, so the loader decodes the whole
+/// reader with `rkyv` directly. There is no descriptor file and no companion
+/// anymore — the settings the loader needs are carried by the product's `.meta`
+/// (`AssetAction::Load` naming this loader with `()` settings).
 #[derive(Debug)]
 pub struct MeshLoader;
 
@@ -47,24 +49,120 @@ impl AssetLoader for MeshLoader {
         &self,
         reader: &mut dyn Reader,
         _settings: &(),
-        load_context: &mut LoadContext,
+        _load_context: &mut LoadContext,
     ) -> impl ConditionalSendFuture<Output = Result<Mesh, KairosError>> {
         async move {
-            let mut toml_bytes = Vec::new();
-            reader.read_to_end(&mut toml_bytes).await?;
-            // Parsed only to validate the descriptor; the geometry is in the
-            // binary companion, addressed by this asset's own path.
-            let _serialized: SerializedMeshAsset = toml::from_slice(&toml_bytes)?;
-
-            let bin_path = load_context.path().path().with_extension("mesh_bin");
-            let bytes = async_fs::read(&bin_path).await?;
+            let mut bytes = Vec::new();
+            reader.read_to_end(&mut bytes).await?;
             let mesh = rkyv::from_bytes::<Mesh, rkyv::rancor::Error>(&bytes)?;
             Ok(mesh)
         }
     }
 
     fn extensions(&self) -> &[&str] {
-        &["mesh"]
+        &["mesh_bin"]
+    }
+}
+
+/// Loads a [`Mesh`] from a `.glb` source: the load step of [`MeshProcessor`].
+///
+/// The geometry carries over from the retired `save_from_glb_file` path
+/// byte-for-byte; only the shell changed — the bytes come from the processor's
+/// reader instead of being opened from a path, and errors are typed rather than
+/// printed.
+#[derive(Debug)]
+pub struct GltfMeshLoader;
+
+impl AssetLoader for GltfMeshLoader {
+    type Asset = Mesh;
+    type Settings = ();
+    type Error = KairosError;
+
+    fn load(
+        &self,
+        reader: &mut dyn Reader,
+        _settings: &(),
+        _load_context: &mut LoadContext,
+    ) -> impl ConditionalSendFuture<Output = Result<Mesh, KairosError>> {
+        async move {
+            let mut bytes = Vec::new();
+            reader.read_to_end(&mut bytes).await?;
+            let gltf = Gltf::from_slice(&bytes)?;
+            let buffers = gltf::import_buffers(&gltf.document, None, gltf.blob)?;
+            let mesh = load_first_scene_mesh(&gltf.document, &buffers)
+                .ok_or_else(|| KairosError::error("the .glb holds no triangle mesh"))?;
+            Ok(mesh)
+        }
+    }
+
+    fn extensions(&self) -> &[&str] {
+        &["glb"]
+    }
+}
+
+/// Writes a [`Mesh`] as the `rkyv` archive [`MeshLoader`] reads: the save step of
+/// [`MeshProcessor`].
+#[derive(Debug)]
+pub struct MeshSaver;
+
+impl AssetSaver for MeshSaver {
+    type Asset = Mesh;
+    type Settings = ();
+    type OutputLoader = MeshLoader;
+    type Error = KairosError;
+
+    fn save(
+        &self,
+        writer: &mut Writer,
+        asset: SavedAsset<'_, Mesh>,
+        _settings: &(),
+        _asset_path: kairos_asset::AssetPath<'_>,
+    ) -> impl kairos_tasks::ConditionalSendFuture<Output = Result<(), KairosError>> {
+        async move {
+            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(asset.get())?;
+            writer.write_all(&bytes).await?;
+            Ok(())
+        }
+    }
+}
+
+/// Turns a `.glb` source into the processed [`Mesh`] product.
+///
+/// A `LoadTransformAndSave` wrapper: [`GltfMeshLoader`] loads the source,
+/// an identity transform passes the mesh through, and [`MeshSaver`] writes the
+/// archive. It has no settings of its own, so the `.meta`'s nested
+/// [`LoadTransformAndSaveSettings`] is all-empty.
+pub struct MeshProcessor(
+    LoadTransformAndSave<GltfMeshLoader, IdentityAssetTransformer<Mesh>, MeshSaver>,
+);
+
+impl MeshProcessor {
+    /// Creates the mesh processor.
+    pub fn new() -> Self {
+        Self(LoadTransformAndSave::new(
+            IdentityAssetTransformer::new(),
+            MeshSaver,
+        ))
+    }
+}
+
+impl Default for MeshProcessor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Process for MeshProcessor {
+    type Settings = LoadTransformAndSaveSettings<(), (), ()>;
+    type OutputLoader = MeshLoader;
+
+    fn process(
+        &self,
+        context: &mut ProcessContext,
+        settings: &Self::Settings,
+        writer: &mut Writer,
+    ) -> impl ConditionalSendFuture<Output = Result<(), ProcessError>> {
+        self.0.process(context, settings, writer)
     }
 }
 
@@ -75,182 +173,142 @@ impl AssetLoader for MeshLoader {
 pub fn install(world: &mut World) {
     world.init_asset_with_capacity::<Mesh>(MESH_ASSETS_CAPACITY);
     world.register_asset_loader(MeshLoader);
+    world.register_asset_loader(GltfMeshLoader);
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SerializedMeshAsset {
-    pub source_path: PathBuf,
+/// Registers [`MeshProcessor`] with the processor and makes it the default for
+/// `.glb` sources.
+///
+/// Called by the graphics install when the host runs in layout ②; a host with no
+/// processor has nothing to register against.
+pub fn install_processor(processor: &AssetProcessor) {
+    processor.register_processor(MeshProcessor::new());
+    processor.set_default_processor::<MeshProcessor>("glb");
 }
-impl SerializedMeshAsset {
-    pub fn save_from_glb_file(path: PathBuf) {
-        let Ok(gltf) = Gltf::open(path.clone()) else {
-            println!("Open gltf fiel failed");
-            return;
-        };
-        let Ok(buffer_data) = gltf::import_buffers(&gltf.document, Some(&path), gltf.blob) else {
-            println!("Import mesh buffers failed");
-            return;
-        };
-        let mesh = Self::load_first_scene_mesh(&gltf.document, &buffer_data);
-        let Some(mesh) = mesh else {
-            println!("Load Mesh failed");
-            return;
-        };
-        let Ok(bytes) = rkyv::to_bytes::<rkyv::rancor::Error>(&mesh) else {
-            println!("Serialize mesh to bytes failed");
-            return;
-        };
-        let mut bin_path = path.clone();
-        bin_path.set_extension("mesh_bin");
-        match std::fs::write(bin_path.clone(), bytes) {
-            Ok(_) => {}
-            Err(_) => {
-                println!("Save mesh bytes failed");
-            }
-        }
-        let serialized_mesh = SerializedMeshAsset {
-            source_path: bin_path.clone(),
-        };
-        let Ok(serialized_mesh_toml) = toml::to_string(&serialized_mesh) else {
-            println!("Serialize mesh toml failed");
-            return;
-        };
-        bin_path.set_extension("mesh");
-        match std::fs::write(bin_path, serialized_mesh_toml) {
-            Ok(_) => {}
-            Err(_) => {
-                println!("Save mesh toml failed");
-            }
-        };
+
+fn node_transform_matrix(node: &gltf::Node<'_>) -> float4x4 {
+    let (translation, rotation, scale) = node.transform().decomposed();
+
+    float4x4::trs(
+        float3::from(translation),
+        quaternion::new(rotation[0], rotation[1], rotation[2], rotation[3]),
+        float3::from(scale),
+    )
+}
+
+fn load_mesh_from_primitive(
+    primitive: gltf::Primitive<'_>,
+    node_to_world: float4x4,
+    buffers: &[gltf::buffer::Data],
+) -> Option<Mesh> {
+    if primitive.mode() != gltf::mesh::Mode::Triangles {
+        return None;
     }
 
-    fn node_transform_matrix(node: &gltf::Node<'_>) -> float4x4 {
-        let (translation, rotation, scale) = node.transform().decomposed();
+    let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()].0));
+    let positions = reader.read_positions()?;
+    let vertex_count = positions.len();
+    let mut colors = reader.read_colors(0).map(|colors| colors.into_rgba_f32());
+    let mut texcoords = reader
+        .read_tex_coords(0)
+        .map(|texcoords| texcoords.into_f32());
+    let mut normals = reader.read_normals();
+    let mut tangents = reader.read_tangents();
 
-        float4x4::trs(
-            float3::from(translation),
-            quaternion::new(rotation[0], rotation[1], rotation[2], rotation[3]),
-            float3::from(scale),
-        )
-    }
+    let mut vertices = Vec::with_capacity(vertex_count);
+    for position in positions {
+        let color = colors
+            .as_mut()
+            .and_then(|colors| colors.next())
+            .map(float4::from)
+            .unwrap_or(float4::new(1.0, 1.0, 1.0, 1.0));
+        let texcoord = texcoords
+            .as_mut()
+            .and_then(|texcoords| texcoords.next())
+            .map(float2::from_array)
+            .unwrap_or(float2::new(0.0, 0.0));
+        let normal = normals
+            .as_mut()
+            .and_then(|normals| normals.next())
+            .map(float3::from)
+            .unwrap_or(float3::new(0.0, 0.0, 1.0));
+        let tangent = tangents
+            .as_mut()
+            .and_then(|tangents| tangents.next())
+            .unwrap_or([1.0, 0.0, 0.0, 1.0]);
 
-    fn load_mesh_from_primitive(
-        primitive: gltf::Primitive<'_>,
-        node_to_world: float4x4,
-        buffers: &[gltf::buffer::Data],
-    ) -> Option<Mesh> {
-        if primitive.mode() != gltf::mesh::Mode::Triangles {
-            return None;
-        }
-
-        let reader = primitive.reader(|buffer| Some(&buffers[buffer.index()].0));
-        let positions = reader.read_positions()?;
-        let vertex_count = positions.len();
-        let mut colors = reader.read_colors(0).map(|colors| colors.into_rgba_f32());
-        let mut texcoords = reader
-            .read_tex_coords(0)
-            .map(|texcoords| texcoords.into_f32());
-        let mut normals = reader.read_normals();
-        let mut tangents = reader.read_tangents();
-
-        let mut vertices = Vec::with_capacity(vertex_count);
-        for position in positions {
-            let color = colors
-                .as_mut()
-                .and_then(|colors| colors.next())
-                .map(float4::from)
-                .unwrap_or(float4::new(1.0, 1.0, 1.0, 1.0));
-            let texcoord = texcoords
-                .as_mut()
-                .and_then(|texcoords| texcoords.next())
-                .map(float2::from_array)
-                .unwrap_or(float2::new(0.0, 0.0));
-            let normal = normals
-                .as_mut()
-                .and_then(|normals| normals.next())
-                .map(float3::from)
-                .unwrap_or(float3::new(0.0, 0.0, 1.0));
-            let tangent = tangents
-                .as_mut()
-                .and_then(|tangents| tangents.next())
-                .unwrap_or([1.0, 0.0, 0.0, 1.0]);
-
-            let position = (node_to_world * float4::from((float3::from(position), 1.0))).xyz();
-            let normal = math::normalize((node_to_world * float4::from((normal, 0.0))).xyz());
-            let tangent_xyz = math::normalize(
-                (node_to_world
-                    * float4::from((float3::new(tangent[0], tangent[1], tangent[2]), 0.0)))
+        let position = (node_to_world * float4::from((float3::from(position), 1.0))).xyz();
+        let normal = math::normalize((node_to_world * float4::from((normal, 0.0))).xyz());
+        let tangent_xyz = math::normalize(
+            (node_to_world * float4::from((float3::new(tangent[0], tangent[1], tangent[2]), 0.0)))
                 .xyz(),
-            );
+        );
 
-            vertices.push(Vertex {
-                position: float4::from((position, 1.0)).to_array(),
-                color: color.to_array(),
-                texcoord,
-                normal: Vertex::pack_normal(normal),
-                tangent: float4::from((tangent_xyz, tangent[3])).to_array(),
-            });
-        }
-
-        let indices = reader
-            .read_indices()
-            .map(|indices| {
-                indices
-                    .into_u32()
-                    .map(u16::try_from)
-                    .collect::<Result<Vec<_>, _>>()
-                    .ok()
-            })
-            .unwrap_or_else(|| {
-                (0..vertices.len())
-                    .map(u16::try_from)
-                    .collect::<Result<Vec<_>, _>>()
-                    .ok()
-            })?;
-
-        Some(Mesh::new(vertices, indices))
+        vertices.push(Vertex {
+            position: float4::from((position, 1.0)).to_array(),
+            color: color.to_array(),
+            texcoord,
+            normal: Vertex::pack_normal(normal),
+            tangent: float4::from((tangent_xyz, tangent[3])).to_array(),
+        });
     }
 
-    fn load_mesh_from_node(
-        node: gltf::Node<'_>,
-        parent_to_world: float4x4,
-        buffers: &[gltf::buffer::Data],
-    ) -> Option<Mesh> {
-        let node_to_world = parent_to_world * Self::node_transform_matrix(&node);
+    let indices = reader
+        .read_indices()
+        .map(|indices| {
+            indices
+                .into_u32()
+                .map(u16::try_from)
+                .collect::<Result<Vec<_>, _>>()
+                .ok()
+        })
+        .unwrap_or_else(|| {
+            (0..vertices.len())
+                .map(u16::try_from)
+                .collect::<Result<Vec<_>, _>>()
+                .ok()
+        })?;
 
-        if let Some(gltf_mesh) = node.mesh() {
-            for primitive in gltf_mesh.primitives() {
-                if let Some(mesh) =
-                    Self::load_mesh_from_primitive(primitive, node_to_world, buffers)
-                {
-                    return Some(mesh);
-                }
-            }
-        }
+    Some(Mesh::new(vertices, indices))
+}
 
-        for child in node.children() {
-            if let Some(mesh) = Self::load_mesh_from_node(child, node_to_world, buffers) {
+fn load_mesh_from_node(
+    node: gltf::Node<'_>,
+    parent_to_world: float4x4,
+    buffers: &[gltf::buffer::Data],
+) -> Option<Mesh> {
+    let node_to_world = parent_to_world * node_transform_matrix(&node);
+
+    if let Some(gltf_mesh) = node.mesh() {
+        for primitive in gltf_mesh.primitives() {
+            if let Some(mesh) = load_mesh_from_primitive(primitive, node_to_world, buffers) {
                 return Some(mesh);
             }
         }
-
-        None
     }
 
-    fn load_first_scene_mesh(
-        document: &gltf::Document,
-        buffers: &[gltf::buffer::Data],
-    ) -> Option<Mesh> {
-        for scene in document.scenes() {
-            for node in scene.nodes() {
-                if let Some(mesh) = Self::load_mesh_from_node(node, float4x4::IDENTITY, buffers) {
-                    return Some(mesh);
-                }
+    for child in node.children() {
+        if let Some(mesh) = load_mesh_from_node(child, node_to_world, buffers) {
+            return Some(mesh);
+        }
+    }
+
+    None
+}
+
+fn load_first_scene_mesh(
+    document: &gltf::Document,
+    buffers: &[gltf::buffer::Data],
+) -> Option<Mesh> {
+    for scene in document.scenes() {
+        for node in scene.nodes() {
+            if let Some(mesh) = load_mesh_from_node(node, float4x4::IDENTITY, buffers) {
+                return Some(mesh);
             }
         }
-
-        None
     }
+
+    None
 }
 
 impl Mesh {

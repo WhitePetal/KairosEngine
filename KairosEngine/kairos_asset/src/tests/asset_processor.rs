@@ -534,7 +534,7 @@ impl Harness {
 
     /// Runs the initial scan and processing pass to completion.
     fn run_initial(&self) {
-        block_on(self.processor.run_initial_processing_for_test());
+        block_on(self.processor.run_initial_processing());
     }
 
     /// Routes one source event through the processor's handler and drains any
@@ -973,7 +973,7 @@ fn file_source_writes_the_product_under_imported_assets_and_layout_2_loads_it() 
     assert!(source.writer().is_ok());
     assert!(source.processed_writer().is_ok());
 
-    block_on(processor.run_initial_processing_for_test());
+    block_on(processor.run_initial_processing());
 
     // The product and its sidecar landed under `imported_assets/Default`.
     assert_eq!(

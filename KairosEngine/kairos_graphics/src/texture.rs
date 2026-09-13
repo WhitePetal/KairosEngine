@@ -1,7 +1,7 @@
-use std::path::PathBuf;
-
+use futures_lite::AsyncWriteExt;
 use kairos_asset::{
-    Asset, AssetLoader, AssetWorldExt, LoadContext, Reader, VisitAssetDependencies,
+    Asset, AssetLoader, AssetProcessor, AssetWorldExt, LoadContext, Process, ProcessContext,
+    ProcessError, Reader, VisitAssetDependencies, Writer,
 };
 use kairos_ecs::error::KairosError;
 use kairos_ecs::world::World;
@@ -14,6 +14,9 @@ pub mod format;
 pub mod sampler;
 
 mod serialize;
+
+#[cfg(test)]
+mod test;
 
 pub use format::{PixelDatas, TextureFormat};
 use sampler::SamplerConfig;
@@ -53,30 +56,42 @@ pub fn find_texture_max_size(width: u32, height: u32) -> TextureMaxSize {
     TextureMaxSize::Size4096
 }
 
-/// TOML-serializable form stored in `.texture` files.
+/// The settings of a texture's processing and loading.
 ///
-/// Contains the source image path, texture dimensions, format,
-/// and sampler configuration.
-/// The pixel data is stored separately in the companion `.texture_bin` file.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SerializedTexture {
-    /// Path to the source image file (e.g. PNG).
-    pub source_path: PathBuf,
-    /// Output width in pixels.
+/// The same value is both [`TextureProcessor::Settings`] — the per-asset
+/// configuration carried in the source `.meta` and editable by the inspector —
+/// and [`TextureLoader::Settings`] — the resolved description of the product,
+/// written into the processed `.meta`. A zero `width`/`height` means "keep the
+/// source image's dimension"; the processor resolves it before writing the
+/// product, so the loader always sees concrete dimensions.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TextureSettings {
+    /// Output width in pixels; `0` keeps the source image's width.
     pub width: u32,
-    /// Output height in pixels.
+    /// Output height in pixels; `0` keeps the source image's height.
     pub height: u32,
-    /// GPU texture format.
+    /// GPU texture format the product is encoded in.
     pub format: TextureFormat,
     /// Sampler configuration (filter, wrap, mipmap, etc.).
     pub sampler: SamplerConfig,
 }
 
+impl Default for TextureSettings {
+    fn default() -> Self {
+        Self {
+            width: 0,
+            height: 0,
+            format: TextureFormat::Rgba8Unorm,
+            sampler: SamplerConfig::default(),
+        }
+    }
+}
+
 /// Runtime form held by [`Assets<Texture>`](kairos_asset::Assets).
 ///
-/// Contains the resolved dimensions, the pixel data loaded
-/// from `.texture_bin`, and the sampler configuration.
-/// `data` is a mip-chain: `data[0]` = base level, `data[1..]` = coarser levels.
+/// Contains the resolved dimensions, the pixel data loaded from the product,
+/// and the sampler configuration. `data` is a mip-chain: `data[0]` = base
+/// level, `data[1..]` = coarser levels.
 #[derive(Debug, Clone)]
 pub struct Texture {
     /// Texture width in pixels.
@@ -94,59 +109,99 @@ pub struct Texture {
 impl Asset for Texture {}
 impl VisitAssetDependencies for Texture {}
 
-/// Reads a `.texture` TOML descriptor and its companion `.texture_bin` payload.
+/// Loads the **processed** [`Texture`] produced by [`TextureProcessor`].
 ///
-/// The pixel data lives beside the descriptor rather than in an asset of its
-/// own, so the loader reads it directly with `async-fs`: the default source is
-/// rooted at the process working directory, which is also what the descriptor's
-/// path is relative to.
+/// This is the processor's [`OutputLoader`](Process::OutputLoader): the product
+/// is the concatenated mip chain, and the dimensions, format, and sampler live
+/// in the settings carried by the product's `.meta`; the loader needs no
+/// descriptor file and no companion.
 #[derive(Debug)]
 pub struct TextureLoader;
 
 impl AssetLoader for TextureLoader {
     type Asset = Texture;
-    type Settings = ();
+    type Settings = TextureSettings;
     type Error = KairosError;
 
     fn load(
         &self,
         reader: &mut dyn Reader,
-        _settings: &(),
-        load_context: &mut LoadContext,
+        settings: &TextureSettings,
+        _load_context: &mut LoadContext,
     ) -> impl ConditionalSendFuture<Output = Result<Texture, KairosError>> {
         async move {
-            let mut toml_bytes = Vec::new();
-            reader.read_to_end(&mut toml_bytes).await?;
-            let serialized: SerializedTexture = toml::from_slice(&toml_bytes)?;
+            let mut bytes = Vec::new();
+            reader.read_to_end(&mut bytes).await?;
 
-            let lod_max_clamp = serialized
+            let lod_max_clamp = settings
                 .sampler
                 .mipmap
                 .as_ref()
-                .map(|m| m.lod_max_clamp)
+                .map(|mipmap| mipmap.lod_max_clamp)
                 .unwrap_or(0.0);
-            let bin_path = load_context.path().path().with_extension("texture_bin");
-            let bytes = async_fs::read(&bin_path).await?;
-            let data = SerializedTexture::deserialize_pixel_datas(
+            let data = TextureSettings::deserialize_pixel_datas(
                 &bytes,
-                serialized.width,
-                serialized.height,
+                settings.width,
+                settings.height,
                 lod_max_clamp,
-                serialized.format,
+                settings.format,
             )?;
 
             Ok(Texture {
-                width: serialized.width,
-                height: serialized.height,
-                format: serialized.format,
+                width: settings.width,
+                height: settings.height,
+                format: settings.format,
                 data,
-                sampler: serialized.sampler,
+                sampler: settings.sampler.clone(),
             })
         }
     }
 
     fn extensions(&self) -> &[&str] {
-        &["texture"]
+        &["texture_bin"]
+    }
+}
+
+/// Turns a source image into the processed [`Texture`] product.
+///
+/// The low-level [`Process`] shell around the retained conversion algorithm
+/// ([`TextureSettings::convert_source`]): decode, resize, mip, encode. It reads
+/// the source bytes through the [`ProcessContext`] and writes only the encoded
+/// mip chain, returning the resolved settings the product `.meta` records.
+pub struct TextureProcessor;
+
+impl Process for TextureProcessor {
+    type Settings = TextureSettings;
+    type OutputLoader = TextureLoader;
+
+    fn process(
+        &self,
+        context: &mut ProcessContext,
+        settings: &Self::Settings,
+        writer: &mut Writer,
+    ) -> impl ConditionalSendFuture<Output = Result<TextureSettings, ProcessError>> {
+        async move {
+            let mut bytes = Vec::new();
+            context.asset_reader().read_to_end(&mut bytes).await.map_err(
+                |error| ProcessError::AssetReaderError {
+                    path: context.path().clone(),
+                    err: error.into(),
+                },
+            )?;
+
+            let (resolved, data) = TextureSettings::convert_source(&bytes, settings)
+                .map_err(|error| ProcessError::AssetTransformError(error.into()))?;
+
+            let encoded = TextureSettings::serialize_pixel_datas(&data);
+            writer.write_all(&encoded).await.map_err(|error| {
+                ProcessError::AssetWriterError {
+                    path: context.path().clone(),
+                    err: error.into(),
+                }
+            })?;
+
+            Ok(resolved)
+        }
     }
 }
 
@@ -159,103 +214,12 @@ pub fn install(world: &mut World) {
     world.register_asset_loader(TextureLoader);
 }
 
-#[cfg(test)]
-mod test {
-    use std::{thread, time::Duration};
-
-    use kairos_asset::{AssetOptions, AssetServer, Assets, install};
-    use kairos_ecs::schedule::ScheduleLabel;
-    use kairos_ecs::world::World;
-
-    use super::{PixelDatas, Texture, TextureFormat, install as install_texture};
-    use crate::texture::sampler::{AddressMode, FilterMode, SamplerConfig};
-    use crate::texture::SerializedTexture;
-
-    /// The three ad-hoc stages the asset drivers are installed into.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    struct Tracking;
-
-    impl ScheduleLabel for Tracking {
-        fn dyn_clone(&self) -> Box<dyn ScheduleLabel> {
-            Box::new(*self)
-        }
-    }
-
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    struct Events;
-
-    impl ScheduleLabel for Events {
-        fn dyn_clone(&self) -> Box<dyn ScheduleLabel> {
-            Box::new(*self)
-        }
-    }
-
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    struct Boot;
-
-    impl ScheduleLabel for Boot {
-        fn dyn_clone(&self) -> Box<dyn ScheduleLabel> {
-            Box::new(*self)
-        }
-    }
-
-    fn sampler() -> SamplerConfig {
-        SamplerConfig {
-            filter_mode: FilterMode::Nearest,
-            address_mode_u: AddressMode::ClampToEdge,
-            address_mode_v: AddressMode::ClampToEdge,
-            address_mode_w: AddressMode::ClampToEdge,
-            mipmap: None,
-            compare: None,
-            border_color: None,
-        }
-    }
-
-    /// A `.texture` + `.texture_bin` pair loads through the new core.
-    #[test]
-    fn texture_loads_through_the_core() {
-        let dir = tempfile::Builder::new()
-            .tempdir_in(".")
-            .expect("a temp dir in the cwd");
-        let full_path = dir.path().join("Probe.texture");
-        let descriptor = SerializedTexture {
-            source_path: full_path.clone(),
-            width: 1,
-            height: 1,
-            format: TextureFormat::Rgba8Unorm,
-            sampler: sampler(),
-        };
-        std::fs::write(&full_path, toml::to_string(&descriptor).unwrap())
-            .expect("write the texture descriptor");
-        std::fs::write(
-            full_path.with_extension("texture_bin"),
-            SerializedTexture::serialize_pixel_datas(&[PixelDatas::U8(vec![
-                10, 20, 30, 255,
-            ])]),
-        )
-        .expect("write the texture binary");
-        let cwd = std::env::current_dir().expect("the cwd");
-        let rel_path = full_path
-            .strip_prefix(&cwd)
-            .expect("the temp dir is under the cwd")
-            .to_path_buf();
-
-        let mut world = World::new();
-        install(&mut world, AssetOptions::new(Tracking, Events, Boot));
-        install_texture(&mut world);
-
-        let handle = world.resource::<AssetServer>().load::<Texture>(rel_path);
-
-        let mut loaded = None;
-        for _ in 0..200 {
-            world.run_schedule(Tracking);
-            if let Some(texture) = world.resource::<Assets<Texture>>().get(handle.id()) {
-                loaded = Some((texture.width, texture.height));
-                break;
-            }
-            thread::sleep(Duration::from_millis(5));
-        }
-
-        assert_eq!(loaded, Some((1, 1)));
-    }
+/// Registers [`TextureProcessor`] with the processor and makes it the default
+/// for `.png` sources.
+///
+/// Called by the graphics install when the host runs in layout ②; a host with no
+/// processor has nothing to register against.
+pub fn install_processor(processor: &AssetProcessor) {
+    processor.register_processor(TextureProcessor);
+    processor.set_default_processor::<TextureProcessor>("png");
 }

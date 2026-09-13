@@ -154,6 +154,22 @@ pub struct SamplerConfig {
     pub border_color: Option<BorderColor>,
 }
 
+impl Default for SamplerConfig {
+    /// A linear, repeat-sampled configuration with no mipmapping, comparison, or
+    /// border color — the neutral default a processor starts from.
+    fn default() -> Self {
+        Self {
+            filter_mode: FilterMode::Linear,
+            address_mode_u: AddressMode::Repeat,
+            address_mode_v: AddressMode::Repeat,
+            address_mode_w: AddressMode::Repeat,
+            mipmap: None,
+            compare: None,
+            border_color: None,
+        }
+    }
+}
+
 // ============================================================
 // Into<wgpu::...> conversions
 // ============================================================

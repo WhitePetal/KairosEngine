@@ -1,18 +1,23 @@
 use std::path::{Path, PathBuf};
 use std::{thread, time::Duration};
 
-use kairos_asset::{AssetOptions, AssetServer, Assets, install};
+use futures_lite::future::block_on;
+use kairos_asset::io::{AssetSourceBuilder, AssetSourceBuilders, AssetSourceId};
+use kairos_asset::{
+    AssetAction, AssetMeta, AssetMetaDyn, AssetOptions, AssetProcessor, AssetServer, Assets,
+    FileTransactionLogFactory, install,
+};
 use kairos_ecs::schedule::ScheduleLabel;
 use kairos_ecs::world::World;
 use kairos_math::float3;
 
-use super::{Mesh, SerializedMeshAsset, install as install_mesh};
+use super::{GltfMeshLoader, Mesh, MeshLoader, MeshProcessor, install as install_mesh};
 use crate::vertex::Vertex;
 
 /// The three committed sample models (issue #149). They are decoded
 /// exactly the way the runtime asset loader does (`rkyv::from_bytes` on
-/// the `.mesh_bin` companion), so a future `Vertex` archive-layout change
-/// that invalidates the checked-in binaries fails `cargo test` instead of
+/// the product), so a future `Vertex` archive-layout change that
+/// invalidates the checked-in binaries fails `cargo test` instead of
 /// producing silent garbage or a runtime deserialization error.
 ///
 /// Verification context (#149): exporting from the checked-in `.glb`
@@ -39,6 +44,37 @@ fn committed_bin(name: &str) -> Vec<u8> {
     read_or_panic(&models_dir().join(name).with_extension("mesh_bin"))
 }
 
+/// A processor over a real file source under a fresh temp directory, with the
+/// mesh loaders / processor registered and the transaction log kept inside the
+/// temp tree. Returns the processor and its `(unprocessed, processed)` roots.
+fn mesh_processor(name: &str) -> (AssetProcessor, PathBuf, PathBuf) {
+    let root = crate::test_support::file_dir(name);
+    let unprocessed = root.join("res");
+    let processed = root.join("imported_assets/Default");
+    std::fs::create_dir_all(&unprocessed).unwrap();
+
+    let builder = AssetSourceBuilder::platform_default(
+        unprocessed.to_str().unwrap(),
+        Some(processed.to_str().unwrap()),
+    );
+    let mut builders = AssetSourceBuilders::default();
+    builders.insert(AssetSourceId::Default, builder);
+    let (processor, _sources) = AssetProcessor::new(&mut builders, false);
+
+    processor
+        .data()
+        .set_log_factory(Box::new(FileTransactionLogFactory {
+            file_path: root.join("log"),
+        }))
+        .expect("the log factory is set before the processor starts");
+    processor.server().register_loader(MeshLoader);
+    processor.server().register_loader(GltfMeshLoader);
+    processor.register_processor(MeshProcessor::new());
+    processor.set_default_processor::<MeshProcessor>("glb");
+
+    (processor, unprocessed, processed)
+}
+
 #[test]
 fn committed_model_binaries_decode_at_current_layout() {
     for name in SAMPLE_MODELS {
@@ -47,24 +83,34 @@ fn committed_model_binaries_decode_at_current_layout() {
     }
 }
 
-/// A fresh export must be byte-identical to the committed binaries
-/// (guards the runtime exporter against drift). The export runs in a
-/// throwaway directory so tracked `res/models` files are never touched.
+/// A fresh run through [`MeshProcessor`] must be byte-identical to the committed
+/// products (guards the processor against drift). The run happens in a throwaway
+/// directory rooted outside `res/models`, so tracked files are never touched.
 #[test]
-fn fresh_export_is_byte_identical_to_committed_binaries() {
+fn fresh_processing_is_byte_identical_to_committed_binaries() {
     for name in SAMPLE_MODELS {
-        let temp = tempfile::tempdir().expect("temp dir for export");
-        let glb_path = temp.path().join(name).with_extension("glb");
-        std::fs::copy(models_dir().join(name).with_extension("glb"), &glb_path)
-            .unwrap_or_else(|e| panic!("copy {name}.glb into temp dir: {e}"));
+        let (processor, unprocessed, processed) = mesh_processor(&format!("mesh_export_{name}"));
 
-        SerializedMeshAsset::save_from_glb_file(glb_path.clone());
-        let exported = read_or_panic(&glb_path.with_extension("mesh_bin"));
+        // Copy the committed `.glb` into the processor's unprocessed root.
+        let source = unprocessed.join(format!("{name}.glb"));
+        std::fs::copy(models_dir().join(name).with_extension("glb"), &source)
+            .unwrap_or_else(|e| panic!("copy {name}.glb into the temp root: {e}"));
+
+        block_on(processor.run_initial_processing());
+
+        // The product mirrors the source's relative path under the processed
+        // root; its `.meta` names `MeshLoader`.
+        let product = processed.join(format!("{name}.glb"));
+        let exported = read_or_panic(&product);
 
         assert_eq!(
             exported,
             committed_bin(name),
-            "{name}: fresh export differs from the committed .mesh_bin"
+            "{name}: fresh processor output differs from the committed .mesh_bin"
+        );
+        assert!(
+            processed.join(format!("{name}.glb.meta")).is_file(),
+            "{name}: the product sidecar was not written"
         );
     }
 }
@@ -151,19 +197,14 @@ impl ScheduleLabel for Boot {
     }
 }
 
-/// A `.mesh` + `.mesh_bin` pair loads through the new core.
+/// A product + `.meta` pair loads through the core: the sidecar names the output
+/// loader, so the extension is only a fallback.
 #[test]
 fn mesh_loads_through_the_core() {
     let dir = tempfile::Builder::new()
         .tempdir_in(".")
         .expect("a temp dir in the cwd");
-    let full_path = dir.path().join("Probe.mesh");
-
-    let descriptor = SerializedMeshAsset {
-        source_path: full_path.with_extension("mesh_bin"),
-    };
-    std::fs::write(&full_path, toml::to_string(&descriptor).unwrap())
-        .expect("write the mesh descriptor");
+    let full_path = dir.path().join("Probe").with_extension("mesh_bin");
 
     let mesh = Mesh::new(
         vec![
@@ -174,10 +215,20 @@ fn mesh_loads_through_the_core() {
         vec![0, 1, 2],
     );
     std::fs::write(
-        full_path.with_extension("mesh_bin"),
+        &full_path,
         rkyv::to_bytes::<rkyv::rancor::Error>(&mesh).expect("archive the mesh"),
     )
-    .expect("write the mesh binary");
+    .expect("write the mesh product");
+
+    let meta = AssetMeta::<(), ()>::new(AssetAction::Load {
+        loader: kairos_asset::loader_name::<MeshLoader>().to_string(),
+        settings: (),
+    });
+    std::fs::write(
+        kairos_asset::io::get_meta_path(&full_path),
+        AssetMetaDyn::serialize(&meta),
+    )
+    .expect("write the mesh meta");
 
     let cwd = std::env::current_dir().expect("the cwd");
     let rel_path = full_path

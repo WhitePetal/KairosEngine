@@ -14,7 +14,7 @@
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use kairos_asset::{AssetEvent, AssetId};
+use kairos_asset::{AssetEvent, AssetId, AssetProcessor};
 use kairos_ecs::message::MessageReader;
 use kairos_ecs::resource::Resource;
 use kairos_ecs::schedule::{ScheduleLabel, Schedules};
@@ -139,4 +139,14 @@ pub fn install_assets(world: &mut World, extract_stage: impl ScheduleLabel) {
         .get_mut(extract_stage)
         .expect("the extract schedule must exist: install the schedule rails first")
         .add_systems(collect_graphics_asset_events);
+    drop(schedules);
+
+    // In layout ② the host carries an `AssetProcessor`; register the graphics
+    // processors with it so `.glb`/`.png` sources are processed into the mesh and
+    // texture products. A host with no processor (unprocessed mode, layout ③)
+    // registers nothing and reads the products directly.
+    if let Some(processor) = world.get_resource::<AssetProcessor>() {
+        crate::texture::install_processor(processor);
+        crate::mesh::install_processor(processor);
+    }
 }

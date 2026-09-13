@@ -1,219 +1,58 @@
-use std::path::Path;
-
 use anyhow::{Error, Ok};
+use half::f16;
 
-use crate::texture::{
-    PixelDatas, SerializedTexture,
-    format::TextureFormat,
-    sampler::{
-        AddressMode, AnisotropyLevel, FilterMode, MipmapConfig, MipmapFilter, SamplerConfig,
-    },
-};
+use crate::texture::{PixelDatas, TextureSettings, format};
 
-impl SerializedTexture {
-    /// Convert a source image file into a `SerializedTexture` + raw pixel data.
+/// The decode/mip/encode algorithm shared by the texture processor.
+///
+/// This is the retained manual pipeline — the former `convert_img_to_asset` plus
+/// the inspector's encode loop — with no file IO: it takes the source image
+/// bytes the processor read and returns the encoded mip chain plus the resolved
+/// [`TextureSettings`] its output loader should be configured with.
+impl TextureSettings {
+    /// Decodes `bytes` and produces the encoded mip chain `format` prescribes.
     ///
-    /// Auto-detects HDR / high-bit-depth images and routes them to the f16
-    /// half-float pipeline. SDR 8-bit images go through the existing u8 path.
-    pub fn convert_img_to_asset(
-        path: &Path,
-    ) -> Result<(SerializedTexture, Vec<PixelDatas>), Error> {
-        let texture_bytes = std::fs::read(path)?;
-        let texture_image = image::load_from_memory(&texture_bytes)?;
+    /// A zero `width`/`height` keeps the source image's dimension. SDR 8-bit
+    /// sources take the u8 path; HDR / high-bit-depth sources take the f16 path,
+    /// matching the loader's [`deserialize_pixel_datas`](Self::deserialize_pixel_datas).
+    pub fn convert_source(
+        bytes: &[u8],
+        settings: &TextureSettings,
+    ) -> Result<(TextureSettings, Vec<PixelDatas>), Error> {
+        let image = image::load_from_memory(bytes)?;
+        let width = if settings.width == 0 {
+            image.width()
+        } else {
+            settings.width
+        };
+        let height = if settings.height == 0 {
+            image.height()
+        } else {
+            settings.height
+        };
 
-        match &texture_image {
-            // HDR / high-bit-depth → f16 half-float pipeline
-            image::DynamicImage::ImageRgb32F(_)
-            | image::DynamicImage::ImageRgba32F(_)
-            | image::DynamicImage::ImageLuma16(_)
-            | image::DynamicImage::ImageLumaA16(_)
-            | image::DynamicImage::ImageRgb16(_)
-            | image::DynamicImage::ImageRgba16(_) => Self::convert_hdr(texture_image, path),
-
-            // SDR 8-bit → u8 pipeline
-            _ => Self::convert_sdr(texture_image, path),
-        }
-    }
-
-    /// SDR path: 8-bit images → u8 mip chain → `PixelDatas::U8`.
-    fn convert_sdr(
-        img: image::DynamicImage,
-        path: &Path,
-    ) -> Result<(SerializedTexture, Vec<PixelDatas>), Error> {
-        let texture_data = img.into_rgba8();
-        let width = texture_data.width();
-        let height = texture_data.height();
-
-        let max_mip_level = (width.max(height) as f32).log2().floor() as u32;
-        let level_count = max_mip_level + 1;
-        let raw = texture_data.into_raw();
-        let mut data: Vec<PixelDatas> = Vec::with_capacity(level_count as usize);
-        let mut current_rgba = raw;
-        let mut current_w = width;
-        let mut current_h = height;
-
-        for _ in 0..level_count {
-            data.push(PixelDatas::U8(current_rgba.clone()));
-            let (pw, ph) = (current_w, current_h);
-            current_w = (current_w / 2).max(1);
-            current_h = (current_h / 2).max(1);
-            if let Some(source) = image::RgbaImage::from_raw(pw, ph, current_rgba) {
-                current_rgba = image::imageops::resize(
-                    &source,
-                    current_w,
-                    current_h,
-                    image::imageops::FilterType::Lanczos3,
-                )
-                .into_vec();
-            } else {
-                break;
-            }
-        }
+        let data = if is_hdr_source(&image) {
+            encode_f16_chain(image, width, height, settings.format, settings.sampler.mipmap.as_ref())
+        } else {
+            encode_u8_chain(image, width, height, settings.format, settings.sampler.mipmap.as_ref())
+        };
 
         Ok((
-            SerializedTexture {
-                source_path: path.to_path_buf(),
+            TextureSettings {
                 width,
                 height,
-                format: TextureFormat::Rgba8Unorm,
-                sampler: SamplerConfig {
-                    filter_mode: FilterMode::Linear,
-                    address_mode_u: AddressMode::Repeat,
-                    address_mode_v: AddressMode::Repeat,
-                    address_mode_w: AddressMode::Repeat,
-                    mipmap: Some(MipmapConfig {
-                        filter: MipmapFilter::Linear,
-                        anisotropy_clamp: AnisotropyLevel::Level2.as_u16(),
-                        lod_min_clamp: 0.0,
-                        lod_max_clamp: max_mip_level as f32,
-                    }),
-                    compare: None,
-                    border_color: None,
-                },
+                format: settings.format,
+                sampler: settings.sampler.clone(),
             },
             data,
         ))
     }
 
-    /// HDR path: f32 / 16-bit images → f32 mip chain → `PixelDatas::F16`.
+    /// Serializes a mip chain into the headerless product bytes.
     ///
-    /// F32 sources (EXR, Radiance HDR) preserve their original float range.
-    /// 16-bit integer sources (PNG, TIFF) are normalized to 0–1 before f16
-    /// conversion to avoid precision loss near f16's max (~65504).
-    fn convert_hdr(
-        img: image::DynamicImage,
-        path: &Path,
-    ) -> Result<(SerializedTexture, Vec<PixelDatas>), Error> {
-        // Detect u16 source so we can normalize before f16 conversion.
-        let needs_normalize = matches!(
-            &img,
-            image::DynamicImage::ImageLuma16(_)
-                | image::DynamicImage::ImageLumaA16(_)
-                | image::DynamicImage::ImageRgb16(_)
-                | image::DynamicImage::ImageRgba16(_)
-        );
-
-        let texture_data = img.into_rgba32f();
-        let width = texture_data.width();
-        let height = texture_data.height();
-
-        let max_mip_level = (width.max(height) as f32).log2().floor() as u32;
-        let level_count = max_mip_level + 1;
-        let raw = texture_data.into_raw();
-        let mut data: Vec<PixelDatas> = Vec::with_capacity(level_count as usize);
-        let mut current = raw;
-        let mut current_w = width;
-        let mut current_h = height;
-
-        for _ in 0..level_count {
-            // f32 → f16, normalizing u16-sourced values to 0–1
-            let f16: Vec<half::f16> = current
-                .iter()
-                .map(|&v| {
-                    let v = if needs_normalize {
-                        (v / 65535.0).clamp(0.0, 1.0)
-                    } else {
-                        v
-                    };
-                    half::f16::from_f32(v)
-                })
-                .collect();
-            data.push(PixelDatas::F16(f16));
-
-            let (pw, ph) = (current_w, current_h);
-            current_w = (current_w / 2).max(1);
-            current_h = (current_h / 2).max(1);
-
-            if let Some(source) = image::Rgba32FImage::from_raw(pw, ph, current) {
-                current = image::imageops::resize(
-                    &source,
-                    current_w,
-                    current_h,
-                    image::imageops::FilterType::Lanczos3,
-                )
-                .into_raw();
-            } else {
-                break;
-            }
-        }
-
-        Ok((
-            SerializedTexture {
-                source_path: path.to_path_buf(),
-                width,
-                height,
-                format: TextureFormat::Rgba16Float,
-                sampler: SamplerConfig {
-                    filter_mode: FilterMode::Linear,
-                    address_mode_u: AddressMode::Repeat,
-                    address_mode_v: AddressMode::Repeat,
-                    address_mode_w: AddressMode::Repeat,
-                    mipmap: Some(MipmapConfig {
-                        filter: MipmapFilter::Linear,
-                        anisotropy_clamp: AnisotropyLevel::Level2.as_u16(),
-                        lod_min_clamp: 0.0,
-                        lod_max_clamp: max_mip_level as f32,
-                    }),
-                    compare: None,
-                    border_color: None,
-                },
-            },
-            data,
-        ))
-    }
-
-    /// Write the `.texture` TOML and `.texture_bin` companion files.
-    ///
-    /// `.texture_bin` uses a headerless format:
-    /// each mip level's raw encoded bytes are concatenated back-to-back.
-    /// The number of levels and per-level byte boundaries are computed at
-    /// load time from the `.texture` TOML's width, height, format,
-    /// lod_min_clamp and lod_max_clamp.
-    pub fn save_to_file(&self, data: &Vec<PixelDatas>) -> Result<(), Error> {
-        let path = &self.source_path;
-
-        // Write .texture_bin (custom format)
-        let bin_path = path.with_extension("texture_bin");
-        let bin_bytes = Self::serialize_pixel_datas(data);
-        std::fs::write(&bin_path, bin_bytes)?;
-
-        // Write .texture TOML (data excluded via SerializedTexture having no data field)
-        let toml_content = toml::to_string(self)?;
-        let toml_path = path.with_extension("texture");
-        std::fs::write(&toml_path, toml_content)?;
-
-        Ok(())
-    }
-
-    /// Serialize `Vec<PixelDatas>` into raw binary.
-    ///
-    /// Format:
-    ///   Raw bytes of each mip level are concatenated — **no headers**.
-    ///   The deserializer recomputes per-level byte boundaries from
-    ///   the `.texture` TOML metadata (width, height, format,
-    ///   lod_min_clamp, lod_max_clamp).
-    ///
-    /// No type tags — the `.texture` TOML's `format` field determines the variant.
+    /// Raw bytes of each mip level are concatenated with **no headers**; the
+    /// loader recomputes the per-level boundaries from its settings. No type tags
+    /// — the format determines the variant.
     pub fn serialize_pixel_datas(data: &[PixelDatas]) -> Vec<u8> {
         let mut buf = Vec::new();
         for level in data {
@@ -222,16 +61,17 @@ impl SerializedTexture {
         buf
     }
 
-    /// Deserialize raw binary into `Vec<PixelDatas>`.
+    /// Deserializes raw product bytes back into a mip chain.
     ///
-    /// The mip count and per-level byte boundaries are computed from the
-    /// `.texture` TOML metadata — the binary itself has no headers.
+    /// The mip count and per-level byte boundaries are computed from
+    /// `width`/`height`/`lod_max_clamp`/`format` — the binary itself has no
+    /// headers.
     pub fn deserialize_pixel_datas(
         bytes: &[u8],
         width: u32,
         height: u32,
         lod_max_clamp: f32,
-        format: TextureFormat,
+        format: format::TextureFormat,
     ) -> Result<Vec<PixelDatas>, Error> {
         let mip_count = format.stored_mip_count(width, height, lod_max_clamp);
 
@@ -241,7 +81,7 @@ impl SerializedTexture {
             let expected_len = format.mip_level_byte_count(width, height, level_idx as u32);
             if pos + expected_len > bytes.len() {
                 return Err(Error::msg(format!(
-                    "texture_bin: mip level {level_idx} truncated (need {expected_len} bytes, have {})",
+                    "texture product: mip level {level_idx} truncated (need {expected_len} bytes, have {})",
                     bytes.len() - pos
                 )));
             }
@@ -251,10 +91,143 @@ impl SerializedTexture {
         }
         if pos != bytes.len() {
             return Err(Error::msg(format!(
-                "texture_bin: {} trailing bytes after last mip level",
+                "texture product: {} trailing bytes after last mip level",
                 bytes.len() - pos
             )));
         }
         Ok(levels)
     }
+}
+
+/// Whether the decoded image is a float / 16-bit source that takes the f16 path.
+fn is_hdr_source(image: &image::DynamicImage) -> bool {
+    matches!(
+        image,
+        image::DynamicImage::ImageRgb32F(_)
+            | image::DynamicImage::ImageRgba32F(_)
+            | image::DynamicImage::ImageLuma16(_)
+            | image::DynamicImage::ImageLumaA16(_)
+            | image::DynamicImage::ImageRgb16(_)
+            | image::DynamicImage::ImageRgba16(_)
+    )
+}
+
+/// The last mip level to store, per the inspector's loop: `lod_max_clamp`
+/// bounded by the deepest level the dimensions allow.
+fn end_level(width: u32, height: u32, mipmap: Option<&crate::texture::sampler::MipmapConfig>) -> u32 {
+    let Some(mipmap) = mipmap else {
+        return 0;
+    };
+    let max_possible = (width.max(height) as f32).log2().floor() as u32;
+    (mipmap.lod_max_clamp.floor() as u32).min(max_possible)
+}
+
+/// SDR path: 8-bit RGBA intermediate, encoded per level.
+fn encode_u8_chain(
+    image: image::DynamicImage,
+    width: u32,
+    height: u32,
+    format: format::TextureFormat,
+    mipmap: Option<&crate::texture::sampler::MipmapConfig>,
+) -> Vec<PixelDatas> {
+    let mut rgba = image.into_rgba8();
+    if (width, height) != (rgba.width(), rgba.height()) {
+        rgba = image::imageops::resize(&rgba, width, height, image::imageops::FilterType::Lanczos3);
+    }
+
+    let (block_w, block_h) = format.block_dimensions();
+    let mut levels = Vec::new();
+    let mut current = rgba.into_raw();
+    let mut current_w = width;
+    let mut current_h = height;
+
+    for _ in 0..=end_level(width, height, mipmap) {
+        if current_w < block_w || current_h < block_h {
+            break;
+        }
+        let pixels = PixelDatas::U8(current.clone());
+        levels.push(format::encode(&pixels, current_w, current_h, format));
+
+        let (previous_w, previous_h) = (current_w, current_h);
+        current_w = (current_w / 2).max(1);
+        current_h = (current_h / 2).max(1);
+        if let Some(source) = image::RgbaImage::from_raw(previous_w, previous_h, current) {
+            current = image::imageops::resize(
+                &source,
+                current_w,
+                current_h,
+                image::imageops::FilterType::Lanczos3,
+            )
+            .into_vec();
+        } else {
+            break;
+        }
+    }
+
+    levels
+}
+
+/// HDR path: f32 RGBA intermediate, normalized when the source was 16-bit
+/// integer, encoded per level.
+fn encode_f16_chain(
+    image: image::DynamicImage,
+    width: u32,
+    height: u32,
+    format: format::TextureFormat,
+    mipmap: Option<&crate::texture::sampler::MipmapConfig>,
+) -> Vec<PixelDatas> {
+    let needs_normalize = matches!(
+        &image,
+        image::DynamicImage::ImageLuma16(_)
+            | image::DynamicImage::ImageLumaA16(_)
+            | image::DynamicImage::ImageRgb16(_)
+            | image::DynamicImage::ImageRgba16(_)
+    );
+
+    let mut rgba = image.into_rgba32f();
+    if (width, height) != (rgba.width(), rgba.height()) {
+        rgba = image::imageops::resize(&rgba, width, height, image::imageops::FilterType::Lanczos3);
+    }
+
+    let (block_w, block_h) = format.block_dimensions();
+    let mut levels = Vec::new();
+    let mut current: Vec<f32> = rgba
+        .into_raw()
+        .into_iter()
+        .map(|value| {
+            if needs_normalize {
+                (value / 65535.0).clamp(0.0, 1.0)
+            } else {
+                value
+            }
+        })
+        .collect();
+    let mut current_w = width;
+    let mut current_h = height;
+
+    for _ in 0..=end_level(width, height, mipmap) {
+        if current_w < block_w || current_h < block_h {
+            break;
+        }
+        let halves: Vec<f16> = current.iter().map(|&value| f16::from_f32(value)).collect();
+        let pixels = PixelDatas::F16(halves);
+        levels.push(format::encode(&pixels, current_w, current_h, format));
+
+        let (previous_w, previous_h) = (current_w, current_h);
+        current_w = (current_w / 2).max(1);
+        current_h = (current_h / 2).max(1);
+        if let Some(source) = image::Rgba32FImage::from_raw(previous_w, previous_h, current) {
+            current = image::imageops::resize(
+                &source,
+                current_w,
+                current_h,
+                image::imageops::FilterType::Lanczos3,
+            )
+            .into_raw();
+        } else {
+            break;
+        }
+    }
+
+    levels
 }

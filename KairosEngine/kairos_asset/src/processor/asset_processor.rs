@@ -1323,20 +1323,6 @@ fn io_task_pool() -> &'static IoTaskPool {
 
 #[cfg(test)]
 impl AssetProcessor {
-    /// Runs the startup pipeline to completion without starting the long-lived
-    /// event listeners, so tests can drive processing deterministically:
-    /// initialize, queue every source asset, then process the queue (and any
-    /// dependents it re-queues) in order. Mirrors [`AssetProcessor::start`].
-    pub(crate) async fn run_initial_processing_for_test(&self) {
-        self.initialize()
-            .await
-            .expect("the asset processor failed to initialize");
-        let (new_task_sender, new_task_receiver) = async_channel::unbounded();
-        self.queue_initial_processing_tasks(&new_task_sender).await;
-        self.drain_queue_for_test(&new_task_sender, &new_task_receiver)
-            .await;
-    }
-
     /// Runs one source event through the real handler and then processes any
     /// tasks it queued, so tests can exercise incremental processing without the
     /// background listener loop.
@@ -1348,13 +1334,36 @@ impl AssetProcessor {
         let (new_task_sender, new_task_receiver) = async_channel::unbounded();
         self.handle_asset_source_event(source, event, &new_task_sender)
             .await;
-        self.drain_queue_for_test(&new_task_sender, &new_task_receiver)
+        self.drain_queue(&new_task_sender, &new_task_receiver)
+            .await;
+    }
+}
+
+impl AssetProcessor {
+    /// Runs the startup pipeline to completion without starting the long-lived
+    /// event listeners, so a caller can drive processing deterministically:
+    /// initialize, queue every source asset, then process the queue (and any
+    /// dependents it re-queues) in order. Mirrors [`AssetProcessor::start`].
+    ///
+    /// This is the deterministic entry point for tests and for tools that want
+    /// to process on demand rather than on the processor's background schedule.
+    pub async fn run_initial_processing(&self) {
+        self.initialize()
+            .await
+            .expect("the asset processor failed to initialize");
+        let (new_task_sender, new_task_receiver) = async_channel::unbounded();
+        self.queue_initial_processing_tasks(&new_task_sender).await;
+        self.drain_queue(&new_task_sender, &new_task_receiver)
             .await;
     }
 
     /// Processes queued tasks until the queue is empty, keeping a strong sender
     /// alive so dependent assets can be re-queued.
-    async fn drain_queue_for_test(&self, sender: &async_channel::Sender<(AssetSourceId<'static>, PathBuf)>, receiver: &async_channel::Receiver<(AssetSourceId<'static>, PathBuf)>) {
+    async fn drain_queue(
+        &self,
+        sender: &async_channel::Sender<(AssetSourceId<'static>, PathBuf)>,
+        receiver: &async_channel::Receiver<(AssetSourceId<'static>, PathBuf)>,
+    ) {
         while !receiver.is_empty() {
             let Ok((source_id, path)) = receiver.recv().await else {
                 return;

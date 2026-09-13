@@ -12,8 +12,7 @@ use crate::{
     },
     graphics::{
         camera::Camera, lod_mesh_component::LODMesh, material::Material,
-        material_component::MaterialComponent, mesh::{Mesh, SerializedMeshAsset},
-        view_port::GameView,
+        material_component::MaterialComponent, mesh::Mesh, view_port::GameView,
     },
     inputs::Input,
     kairos_editor::Engine,
@@ -260,16 +259,16 @@ impl KairosGame {
             ball_transform,
         );
 
-        SerializedMeshAsset::save_from_glb_file(PathBuf::from("res/models/Ball.glb"));
-
+        // The mesh products are produced by the asset processor (see
+        // `kairos_graphics::mesh::MeshProcessor`); the game only loads them.
         let plan_mesh_asset = engine
             .world
             .resource::<AssetServer>()
-            .load::<Mesh>(PathBuf::from("res/models/Plane.mesh"));
+            .load::<Mesh>(PathBuf::from("res/models/Plane.mesh_bin"));
         let ball_mesh_asset = engine
             .world
             .resource::<AssetServer>()
-            .load::<Mesh>(PathBuf::from("res/models/Ball.mesh"));
+            .load::<Mesh>(PathBuf::from("res/models/Ball.mesh_bin"));
         let plane_mesh = LODMesh::new(plan_mesh_asset);
         let ball_mesh = LODMesh::new(ball_mesh_asset);
 

@@ -40,6 +40,9 @@ pub mod lod_mesh_component;
 pub mod material_component;
 pub mod view_port;
 
+#[cfg(test)]
+mod test_support;
+
 /// Installs the graphics asset types (`ShaderAsset`, `Texture`, `Mesh`,
 /// `Material`, and `SerializedMaterial`) and the `Extract`-stage system that
 /// collects their change events for cache invalidation.

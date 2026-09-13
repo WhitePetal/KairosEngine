@@ -11,13 +11,13 @@ use crate::{
     graphics::{
         compare_function::CompareFunction,
         texture::{
-            Texture, TextureMaxSize, find_texture_max_size,
+            Texture, TextureMaxSize, TextureSettings, find_texture_max_size,
             format::{TextureCompressionConfig, TextureFormat},
             sampler::{AddressMode, AnisotropyLevel, BorderColor, FilterMode, MipmapFilter},
         },
     },
     kairos_editor::{
-        editor_assets::TextureExt,
+        editor_assets::{SerializedTexture, TextureExt},
         ui::{
             Message, Messager, UIReader,
             dialog::{ConfirmDialogWindow, Dialog},
@@ -269,17 +269,25 @@ impl TextureInspector {
                 vec![encoded]
             };
 
-        // 3. Save to file
-        match ext.serialized.save_to_file(&mip_data) {
-            Ok(_) => {}
-            Err(err) => {
-                log::error!(
-                    "Failed to save texture, error: {}, texture_path: {:?}",
-                    err,
-                    path
-                );
-                return;
-            }
+        // 3. Persist the processor settings rather than the product: the editor
+        //    writes the `.texture` descriptor and the source's `.meta`, and the
+        //    processor — the only writer of the product — regenerates the
+        //    processed bytes from them.
+        if let Err(err) = ext.serialized.save_to_file() {
+            log::error!(
+                "Failed to save texture settings, error: {}, texture_path: {:?}",
+                err,
+                path
+            );
+            return;
+        }
+        if let Err(err) = write_process_meta(&ext.serialized) {
+            log::error!(
+                "Failed to write texture processor meta, error: {}, texture_path: {:?}",
+                err,
+                path
+            );
+            return;
         }
 
         // 4. Update in-memory asset
@@ -303,6 +311,27 @@ impl TextureInspector {
             *ext_source = ext
         }
     }
+}
+
+/// Writes the source's `.meta` processor settings.
+///
+/// The editor never writes the product: it records the [`TextureSettings`] as an
+/// `AssetAction::Process` beside the source image, and the asset processor — when
+/// the host runs in layout ② — regenerates the processed bytes from them.
+fn write_process_meta(serialized: &SerializedTexture) -> Result<(), Box<dyn std::error::Error>> {
+    use crate::asset::{
+        AssetAction, AssetMeta, AssetMetaDyn, io::get_meta_path, meta::processor_name,
+    };
+
+    let meta = AssetMeta::<(), TextureSettings>::new(AssetAction::Process {
+        processor: processor_name::<crate::graphics::texture::TextureProcessor>().to_string(),
+        settings: serialized.settings(),
+    });
+    std::fs::write(
+        get_meta_path(&serialized.source_path),
+        AssetMetaDyn::serialize(&meta),
+    )?;
+    Ok(())
 }
 
 impl Inspector for TextureInspector {
@@ -755,7 +784,7 @@ fn draw_address_mode_rows(
     body: &mut egui_extras::TableBody,
     row_h: f32,
     combo_width: f32,
-    serialized: &mut crate::graphics::texture::SerializedTexture,
+    serialized: &mut SerializedTexture,
     dirty: &Cell<bool>,
     per_axis_mode: &Cell<bool>,
 ) {
@@ -866,7 +895,7 @@ fn draw_compare_row(
     body: &mut egui_extras::TableBody,
     row_h: f32,
     combo_width: f32,
-    serialized: &mut crate::graphics::texture::SerializedTexture,
+    serialized: &mut SerializedTexture,
     dirty: &Cell<bool>,
 ) {
     body.row(row_h, |mut row| {
