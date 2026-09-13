@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::asset::{AssetServer, install};
+use crate::asset::{AssetOptions, AssetServer, install};
 use kairos_ecs::schedule::ScheduleLabel;
 use kairos_ecs::world::World;
 
@@ -12,7 +12,7 @@ use crate::kairos_editor::ui::inspector::material::MaterialInspector;
 use parking_lot::Mutex;
 use tempfile::TempDir;
 
-/// The two ad-hoc stages the asset drivers are installed into.
+/// The three ad-hoc stages the asset drivers are installed into.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct Tracking;
 
@@ -31,10 +31,19 @@ impl ScheduleLabel for Events {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct Boot;
+
+impl ScheduleLabel for Boot {
+    fn dyn_clone(&self) -> Box<dyn ScheduleLabel> {
+        Box::new(*self)
+    }
+}
+
 /// A world with the core plus the material stores registered.
 fn asset_world() -> World {
     let mut world = World::new();
-    install(&mut world, Tracking, Events);
+    install(&mut world, AssetOptions::new(Tracking, Events, Boot));
     kairos_graphics::material::install(&mut world);
     world
 }

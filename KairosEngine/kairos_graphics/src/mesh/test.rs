@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::{thread, time::Duration};
 
-use kairos_asset::{AssetServer, Assets, install};
+use kairos_asset::{AssetOptions, AssetServer, Assets, install};
 use kairos_ecs::schedule::ScheduleLabel;
 use kairos_ecs::world::World;
 use kairos_math::float3;
@@ -123,7 +123,7 @@ fn assert_mesh_sane(name: &str, mesh: &Mesh) {
     }
 }
 
-/// The two ad-hoc stages the asset drivers are installed into.
+/// The three ad-hoc stages the asset drivers are installed into.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct Tracking;
 
@@ -137,6 +137,15 @@ impl ScheduleLabel for Tracking {
 struct Events;
 
 impl ScheduleLabel for Events {
+    fn dyn_clone(&self) -> Box<dyn ScheduleLabel> {
+        Box::new(*self)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct Boot;
+
+impl ScheduleLabel for Boot {
     fn dyn_clone(&self) -> Box<dyn ScheduleLabel> {
         Box::new(*self)
     }
@@ -177,7 +186,7 @@ fn mesh_loads_through_the_core() {
         .to_path_buf();
 
     let mut world = World::new();
-    install(&mut world, Tracking, Events);
+    install(&mut world, AssetOptions::new(Tracking, Events, Boot));
     install_mesh(&mut world);
 
     let handle = world.resource::<AssetServer>().load::<Mesh>(rel_path);

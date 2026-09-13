@@ -54,8 +54,8 @@ Status: accepted
 1. **没有 `App` / `Plugin`**：注册面做成 `World` 的扩展 trait
    `AssetWorldExt::{init_asset, init_asset_with_capacity, register_asset_loader,
    init_asset_loader}`，对位 `AssetApp`。stage label 的家在依赖上游，详见 ADR 0003。
-2. **stage 由调用方注入**：`install(world, tracking_stage, event_stage)` 把
-   `PreUpdate`/`PostUpdate` 收进 `AssetStages` World 资源，`MainScheduleOrder` 不动。
+2. **stage 由调用方注入**：`install(world, AssetOptions)` 把
+   `PreUpdate`/`PostUpdate`/`Startup` 收进 `AssetStages` World 资源，`MainScheduleOrder` 不动。
    这是相对 bevy（`AssetPlugin` 直挂）的唯一结构性偏离，详见 ADR 0003。
 3. **异步运行时是 `kairos_tasks`，不是 tokio**：加载任务跑 `IoTaskPool`，IO 走
    futures-io + async-fs，loader 返回 `ConditionalSendFuture`。详见 ADR 0001。
@@ -83,8 +83,8 @@ Status: accepted
 - `kairos_asset` 成为唯一资产核心，且不依赖 tokio；`AssetKind`、`kairos_asset/CONTEXT.md`
   的领域词表均不变。
 - 引擎引导顺序固定为 `schedule::install` →
-  `kairos_asset::install(world, PreUpdate, PostUpdate)` → 各 crate 在自己的
-  `install` 里 `init_asset` / `register_asset_loader`。
+  `kairos_asset::install(world, AssetOptions::new(PreUpdate, PostUpdate, Startup))` → 各 crate 在
+  自己的 `install` 里 `init_asset` / `register_asset_loader`。
 - 编辑器的资产时序收口到 `PreUpdate`，四处手摇 `handle()` 消失；渲染缓存改吃
   `AssetEvent`。
 - 后续资产类型只需在自己的 crate 里 `install`，不必改 `kairos_asset`。

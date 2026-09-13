@@ -2,7 +2,7 @@
 
 use std::{thread, time::Duration};
 
-use kairos_asset::{AssetServer, Assets, install};
+use kairos_asset::{AssetOptions, AssetServer, Assets, install};
 use kairos_ecs::schedule::ScheduleLabel;
 use kairos_ecs::world::World;
 
@@ -11,7 +11,7 @@ use super::{
 };
 use crate::{render_state::RenderState, shader::ShaderAsset, shader::install as install_shader};
 
-/// The two ad-hoc stages the asset drivers are installed into.
+/// The three ad-hoc stages the asset drivers are installed into.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct Tracking;
 
@@ -30,10 +30,19 @@ impl ScheduleLabel for Events {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct Boot;
+
+impl ScheduleLabel for Boot {
+    fn dyn_clone(&self) -> Box<dyn ScheduleLabel> {
+        Box::new(*self)
+    }
+}
+
 /// Builds a world with the core plus the shader and material stores.
 fn installed_world() -> World {
     let mut world = World::new();
-    install(&mut world, Tracking, Events);
+    install(&mut world, AssetOptions::new(Tracking, Events, Boot));
     install_shader(&mut world);
     install_material(&mut world);
     world

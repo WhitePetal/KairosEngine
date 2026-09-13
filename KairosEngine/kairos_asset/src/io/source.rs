@@ -23,6 +23,8 @@ use std::{
 
 use atomicow::CowArc;
 
+use kairos_ecs::resource::Resource;
+
 use crate::io::{
     AssetSourceEvent, AssetWatcher, ErasedAssetReader, ErasedAssetWriter, file::FileAssetReader,
 };
@@ -317,7 +319,7 @@ impl AssetSourceBuilder {
 /// This is the resource the engine fills in during startup and then builds
 /// once; keeping the builders separate means a source can still be replaced
 /// before anything reads from it.
-#[derive(Default)]
+#[derive(Resource, Default)]
 pub struct AssetSourceBuilders {
     sources: HashMap<CowArc<'static, str>, AssetSourceBuilder>,
     default: Option<AssetSourceBuilder>,

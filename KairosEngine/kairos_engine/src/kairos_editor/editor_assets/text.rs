@@ -69,13 +69,13 @@ pub fn install(world: &mut World) {
 mod test {
     use std::{thread, time::Duration};
 
-    use crate::asset::{AssetServer, Assets, install};
+    use crate::asset::{AssetOptions, AssetServer, Assets, install};
     use kairos_ecs::schedule::ScheduleLabel;
     use kairos_ecs::world::World;
 
     use super::{Text, install as install_text};
 
-    /// The two ad-hoc stages the asset drivers are installed into.
+    /// The three ad-hoc stages the asset drivers are installed into.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     struct Tracking;
 
@@ -89,6 +89,15 @@ mod test {
     struct Events;
 
     impl ScheduleLabel for Events {
+        fn dyn_clone(&self) -> Box<dyn ScheduleLabel> {
+            Box::new(*self)
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    struct Boot;
+
+    impl ScheduleLabel for Boot {
         fn dyn_clone(&self) -> Box<dyn ScheduleLabel> {
             Box::new(*self)
         }
@@ -111,7 +120,7 @@ mod test {
             .to_path_buf();
 
         let mut world = World::new();
-        install(&mut world, Tracking, Events);
+        install(&mut world, AssetOptions::new(Tracking, Events, Boot));
         install_text(&mut world);
 
         let handle = world.resource::<AssetServer>().load::<Text>(rel_path);

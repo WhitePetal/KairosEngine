@@ -5,7 +5,7 @@
 //! audio device is skipped — then registers one stand-in asset type by hand, on
 //! top of the types (`Font`) that bootstrap now registers itself (#207).
 
-use super::{PostUpdate, PreUpdate};
+use super::{PostUpdate, PreUpdate, Startup};
 use crate::audio::{
     audio::AudioAsset,
     audio_ext::{AudioExt, PcmData},
@@ -44,6 +44,7 @@ fn asset_core_mounts_on_the_engine_stages() {
     let stages = world.resource::<AssetStages>();
     assert_eq!(stages.tracking, PreUpdate.intern());
     assert_eq!(stages.event, PostUpdate.intern());
+    assert_eq!(stages.startup, Startup.intern());
 
     // The server and the per-type store are World resources.
     assert!(

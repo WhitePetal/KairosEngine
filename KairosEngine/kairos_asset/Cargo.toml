@@ -5,6 +5,13 @@ edition.workspace = true
 license.workspace = true
 description = "Async asset server and handle system for the Kairos engine, extracted as a standalone crate"
 
+[features]
+default = []
+# Enables the runtime asset processor track. Off by default; the processor body
+# itself lands in a later slice, so `AssetMode::Processed` with this on is not yet
+# supported by `install`.
+use_asset_processor = []
+
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)", "cfg(docsrs_dep)"] }
 

@@ -270,13 +270,13 @@ pub(crate) fn wav_bytes(samples: &[f32], sample_rate: u32) -> Vec<u8> {
 mod test {
     use std::{thread, time::Duration};
 
-    use crate::asset::{AssetServer, Assets, install};
+    use crate::asset::{AssetOptions, AssetServer, Assets, install};
     use kairos_ecs::schedule::ScheduleLabel;
     use kairos_ecs::world::World;
 
     use super::{PcmData, install as install_pcm, wav_bytes};
 
-    /// The two ad-hoc stages the asset drivers are installed into.
+    /// The three ad-hoc stages the asset drivers are installed into.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     struct Tracking;
 
@@ -290,6 +290,15 @@ mod test {
     struct Events;
 
     impl ScheduleLabel for Events {
+        fn dyn_clone(&self) -> Box<dyn ScheduleLabel> {
+            Box::new(*self)
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    struct Boot;
+
+    impl ScheduleLabel for Boot {
         fn dyn_clone(&self) -> Box<dyn ScheduleLabel> {
             Box::new(*self)
         }
@@ -312,7 +321,7 @@ mod test {
             .to_path_buf();
 
         let mut world = World::new();
-        install(&mut world, Tracking, Events);
+        install(&mut world, AssetOptions::new(Tracking, Events, Boot));
         install_pcm(&mut world);
 
         let handle = world.resource::<AssetServer>().load::<PcmData>(rel_path);

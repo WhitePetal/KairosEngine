@@ -3,14 +3,14 @@
 //!
 //! `kairos_asset` cannot depend on `kairos_engine` (engine reaches this crate
 //! through graphics), so it does not name the engine's stages itself. Instead
-//! [`install`] takes the two stage labels from the caller and records them in the
-//! [`AssetStages`] world resource; every later [`AssetWorldExt::init_asset`] call
-//! reads them when it mounts its driver systems. This is the one structural
-//! deviation from `bevy_asset`, where `AssetPlugin` mounts into
-//! `PreUpdate`/`PostUpdate` directly (ADR 0003).
+//! [`install`] takes an [`AssetOptions`] carrying the three stage labels from the
+//! caller and records them in the [`AssetStages`] world resource; every later
+//! [`AssetWorldExt::init_asset`] call reads them when it mounts its driver
+//! systems. This is the one structural deviation from `bevy_asset`, where
+//! `AssetPlugin` mounts into `PreUpdate`/`PostUpdate` directly (ADR 0003).
 //!
-//! The work is split across the two stages so that the event face lines up with
-//! `bevy_asset`:
+//! The work is split across the tracking and event stages so that the event face
+//! lines up with `bevy_asset`:
 //!
 //! - Tracking stage (bevy's `PreUpdate`): [`handle_internal_asset_events`] drains
 //!   the load results tasks sent back, inserts values into their stores, and
@@ -21,6 +21,12 @@
 //! - Event stage (bevy's `PostUpdate`): the per-type
 //!   [`Assets::asset_events`](crate::Assets::asset_events) flushes those
 //!   queued events into `Messages<AssetEvent<A>>`.
+//! - Startup stage (bevy's `Startup`): where the asset processor is launched.
+//!   Nothing mounts here yet — the processor body lands with S5/S7 — but the
+//!   stage is carried from [`AssetOptions`] into [`AssetStages`] so that track
+//!   can attach without re-plumbing `install`.
+
+use std::sync::Arc;
 
 use kairos_ecs::message::MessageRegistry;
 use kairos_ecs::resource::Resource;
@@ -32,8 +38,10 @@ use kairos_ecs::world::{FromWorld, World};
 use crate::asset::Asset;
 use crate::assets::Assets;
 use crate::event::{AssetEvent, AssetLoadFailedEvent};
+use crate::io::{AssetSourceBuilders, UnapprovedPathMode};
 use crate::loader::AssetLoader;
-use crate::server::{AssetServer, handle_internal_asset_events};
+use crate::meta::AssetMetaCheck;
+use crate::server::{AssetServer, AssetServerMode, handle_internal_asset_events};
 
 /// The schedule labels the asset drivers are installed into, recorded by
 /// [`install`] so later `init_asset` calls can mount their systems without
@@ -46,6 +54,111 @@ pub struct AssetStages {
     /// The stage that flushes queued store events to `Messages` (bevy's
     /// `PostUpdate`).
     pub event: InternedScheduleLabel,
+    /// The stage the asset processor starts in (bevy's `Startup`). Nothing
+    /// mounts here yet; the processor track reads it from here when it lands.
+    pub startup: InternedScheduleLabel,
+}
+
+/// The asset pipeline layout the server runs in.
+///
+/// Mirrors `bevy_asset`'s `AssetMode`, but selects between the layouts kairos
+/// supports today (ADR 0004):
+///
+/// - `Unprocessed` (layout ①): the server reads source assets directly and
+///   consults their `.meta` sidecars.
+/// - `Processed` (layout ②/③): the server reads processed assets. Layout ③ is
+///   processed assets with no processor running — the artifacts must already
+///   exist on disk. Layout ② (a processor producing them at runtime) lands with
+///   the processor track; see [`AssetOptions::use_asset_processor`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum AssetMode {
+    /// Loads assets from their source's unprocessed reader, consulting `.meta`
+    /// sidecars. The default.
+    #[default]
+    Unprocessed,
+    /// Loads assets from their source's processed reader.
+    Processed,
+}
+
+/// The configuration [`install`] takes: the caller's stage labels plus the
+/// server options `bevy_asset`'s `AssetPlugin` carries.
+///
+/// The stage labels are the one structural deviation from `bevy_asset` (ADR
+/// 0003); the rest mirrors `AssetPlugin`'s fields. `kairos_asset` cannot name
+/// the engine's stages, so the host injects them here rather than the crate
+/// reaching back up into `kairos_engine`.
+#[derive(Clone, Debug)]
+pub struct AssetOptions {
+    /// The stage that processes load results (bevy's `PreUpdate`).
+    pub tracking_stage: InternedScheduleLabel,
+    /// The stage that flushes queued store events (bevy's `PostUpdate`).
+    pub event_stage: InternedScheduleLabel,
+    /// The stage a runtime processor would start in (bevy's `Startup`).
+    pub startup_stage: InternedScheduleLabel,
+    /// Which pipeline layout to run in. Defaults to [`AssetMode::Unprocessed`].
+    pub mode: AssetMode,
+    /// How and where `.meta` sidecars are consulted. Ignored in
+    /// [`AssetMode::Processed`], which always reads meta (ADR 0002).
+    pub meta_check: AssetMetaCheck,
+    /// Whether a runtime processor should produce the processed store. Defaults
+    /// to the `use_asset_processor` cargo feature (off by default).
+    ///
+    /// The processor body is deferred, so enabling this is not yet supported.
+    pub use_asset_processor: bool,
+    /// Overrides whether the server watches its sources for changes. When
+    /// `None`, watching follows the `watch` cargo feature, which the hot-reload
+    /// track adds; until then the effective default is off.
+    pub watch_for_changes_override: Option<bool>,
+}
+
+impl AssetOptions {
+    /// The default unprocessed root: the process working directory (ADR 0004).
+    const DEFAULT_UNPROCESSED_FILE_PATH: &'static str = "";
+    /// The default processed root, relative to the working directory.
+    const DEFAULT_PROCESSED_FILE_PATH: &'static str = "imported_assets/Default";
+
+    /// Options for the three stages, with bevy's defaults for everything else:
+    /// unprocessed mode, `.meta` always checked, no processor, no watch
+    /// override.
+    pub fn new(
+        tracking_stage: impl ScheduleLabel,
+        event_stage: impl ScheduleLabel,
+        startup_stage: impl ScheduleLabel,
+    ) -> Self {
+        Self {
+            tracking_stage: tracking_stage.intern(),
+            event_stage: event_stage.intern(),
+            startup_stage: startup_stage.intern(),
+            mode: AssetMode::default(),
+            meta_check: AssetMetaCheck::default(),
+            use_asset_processor: cfg!(feature = "use_asset_processor"),
+            watch_for_changes_override: None,
+        }
+    }
+
+    /// Sets the pipeline layout.
+    pub fn with_mode(mut self, mode: AssetMode) -> Self {
+        self.mode = mode;
+        self
+    }
+
+    /// Sets how and where `.meta` sidecars are consulted.
+    pub fn with_meta_check(mut self, meta_check: AssetMetaCheck) -> Self {
+        self.meta_check = meta_check;
+        self
+    }
+
+    /// Sets whether a runtime processor should produce the processed store.
+    pub fn with_use_asset_processor(mut self, use_asset_processor: bool) -> Self {
+        self.use_asset_processor = use_asset_processor;
+        self
+    }
+
+    /// Overrides whether the server watches its sources for changes.
+    pub fn with_watch_for_changes_override(mut self, watch: bool) -> Self {
+        self.watch_for_changes_override = Some(watch);
+        self
+    }
 }
 
 /// The system set that groups the per-type tracking-stage drivers, so callers can
@@ -79,25 +192,72 @@ impl_system_set!(AssetTrackingSystems, AssetEventSystems);
 /// Installs the asset core into `world`: the [`AssetServer`] resource, the
 /// [`AssetStages`] record, and the exclusive driver system.
 ///
-/// The caller supplies the two stage labels because this crate cannot name the
-/// engine's stages (ADR 0003). The engine calls this with `PreUpdate` and
-/// `PostUpdate`; tests and other hosts may pass their own labels, which are
-/// created if they do not exist yet — unlike `kairos_physics::install`, which
-/// treats a missing stage as a bootstrap-order bug. Creating on demand is what
-/// `bevy_asset`'s `AssetPlugin` does through `App::add_systems`.
+/// The caller supplies the stage labels through [`AssetOptions`] because this
+/// crate cannot name the engine's stages (ADR 0003). The engine passes
+/// `PreUpdate`/`PostUpdate`/`Startup`; tests and other hosts may pass their own
+/// labels, which are created if they do not exist yet — unlike
+/// `kairos_physics::install`, which treats a missing stage as a bootstrap-order
+/// bug. Creating on demand is what `bevy_asset`'s `AssetPlugin` does through
+/// `App::add_systems`.
+///
+/// The [`AssetServer`] is built from the [`AssetSourceBuilders`] resource, so a
+/// host may register named sources (or a custom default source) before calling
+/// this; a missing default is filled in per [`AssetOptions::mode`].
 ///
 /// Per-type work (stores, messages, drivers) is registered separately, after the
 /// asset type's own crate is known, through [`AssetWorldExt::init_asset`].
-pub fn install(
-    world: &mut World,
-    tracking_stage: impl ScheduleLabel,
-    event_stage: impl ScheduleLabel,
-) {
-    world.init_resource::<AssetServer>();
+pub fn install(world: &mut World, options: AssetOptions) {
     let stages = AssetStages {
-        tracking: tracking_stage.intern(),
-        event: event_stage.intern(),
+        tracking: options.tracking_stage,
+        event: options.event_stage,
+        startup: options.startup_stage,
     };
+
+    // The effective value follows ADR 0006 — the caller's override, else
+    // `cfg!(feature = "watch")`. That feature arrives with the hot-reload track,
+    // so until then the fallback is off.
+    let watch = options.watch_for_changes_override.unwrap_or(false);
+    if options.mode == AssetMode::Processed && options.use_asset_processor {
+        unimplemented!(
+            "AssetMode::Processed with use_asset_processor is not implemented yet; \
+             the AssetProcessor track lands in a later slice",
+        );
+    }
+
+    // Freeze the sources exactly as `AssetPlugin` does: in processed mode the
+    // default source gains a processed root, and the watcher slots are chosen by
+    // the mode (unprocessed sources watch the source side, processed mode the
+    // processed side).
+    let (sources, server_mode, meta_check) = {
+        let mut builders = world.get_resource_or_init::<AssetSourceBuilders>();
+        let processed_path = match options.mode {
+            AssetMode::Unprocessed => None,
+            AssetMode::Processed => Some(AssetOptions::DEFAULT_PROCESSED_FILE_PATH),
+        };
+        builders.init_default_source(AssetOptions::DEFAULT_UNPROCESSED_FILE_PATH, processed_path);
+        match options.mode {
+            AssetMode::Unprocessed => (
+                builders.build_sources(watch, false),
+                AssetServerMode::Unprocessed,
+                options.meta_check.clone(),
+            ),
+            AssetMode::Processed => (
+                // Layout ③: processed assets shipped ahead of time, so nothing
+                // watches the source side; the processed side may watch.
+                builders.build_sources(false, watch),
+                AssetServerMode::Processed,
+                // Processed assets always carry meta (bevy parity).
+                AssetMetaCheck::Always,
+            ),
+        }
+    };
+    world.insert_resource(AssetServer::new_with_meta_check(
+        Arc::new(sources),
+        server_mode,
+        meta_check,
+        watch,
+        UnapprovedPathMode::Forbid,
+    ));
     world.insert_resource(stages);
 
     let mut schedules = world.get_resource_or_init::<Schedules>();
@@ -107,6 +267,9 @@ pub fn install(
     tracking.configure_sets(AssetTrackingSystems.after(handle_internal_asset_events));
     tracking.add_systems(handle_internal_asset_events.ambiguous_with_all());
     schedules.entry(stages.event).configure_sets(AssetEventSystems);
+    // Create the startup schedule so a later processor track can attach to it
+    // even when the host does not otherwise build a `Startup` schedule.
+    schedules.entry(stages.startup);
 }
 
 /// The per-type registration API, the `World` counterpart to `bevy_asset`'s
