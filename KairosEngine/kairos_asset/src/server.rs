@@ -108,7 +108,7 @@ impl AssetServer {
     pub fn new() -> Self {
         let mut builders = AssetSourceBuilders::default();
         builders.init_default_source("", None);
-        let sources = Arc::new(builders.build_sources());
+        let sources = Arc::new(builders.build_sources(false, false));
         Self::new_with_meta_check(
             sources,
             AssetServerMode::Unprocessed,

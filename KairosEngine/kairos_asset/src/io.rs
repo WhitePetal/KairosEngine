@@ -34,6 +34,7 @@ mod source;
 pub use source::{
     AssetSource, AssetSourceBuilder, AssetSourceBuilders, AssetSourceId, AssetSources,
     MissingAssetSourceError, MissingAssetWriterError, MissingProcessedAssetReaderError,
+    MissingProcessedAssetWriterError,
 };
 
 /// A boxed future that may cross threads. The box is what makes the erased

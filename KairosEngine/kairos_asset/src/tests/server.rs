@@ -219,7 +219,7 @@ fn server_with_reader(reader: MutableReader) -> AssetServer {
             move || Box::new(reader.clone()) as Box<dyn ErasedAssetReader>,
         ),
     );
-    let sources = Arc::new(builders.build_sources());
+    let sources = Arc::new(builders.build_sources(false, false));
     AssetServer::new_with_meta_check(
         sources,
         AssetServerMode::Unprocessed,
@@ -244,7 +244,7 @@ fn server_with_files(files: &[(&str, &[u8])]) -> AssetServer {
             move || Box::new(MemoryReader(files.clone())) as Box<dyn ErasedAssetReader>,
         ),
     );
-    let sources = Arc::new(builders.build_sources());
+    let sources = Arc::new(builders.build_sources(false, false));
     AssetServer::new_with_meta_check(
         sources,
         AssetServerMode::Unprocessed,

@@ -7,10 +7,12 @@ use std::{
 };
 
 use futures_lite::{StreamExt, future::block_on};
+use kairos_tasks::ConditionalSendFuture;
 
 use crate::io::{
     AssetReader, AssetReaderError, AssetSource, AssetSourceBuilder, AssetSourceBuilders,
-    AssetSourceId, Reader, VecReader, embedded::EmbeddedAssetRegistry,
+    AssetSourceId, AssetWatcher, AssetWriter, AssetWriterError, ErasedAssetReader,
+    ErasedAssetWriter, Reader, VecReader, Writer, embedded::EmbeddedAssetRegistry,
     embedded::EmbeddedAssetReader, file::FileAssetReader, get_meta_path,
 };
 
@@ -116,7 +118,7 @@ fn builders_freeze_default_and_named_sources() {
     let mut builders = AssetSourceBuilders::default();
     builders.init_default_source("", None);
     builders.insert("named", AssetSourceBuilder::platform_default("res", None));
-    let mut sources = builders.build_sources();
+    let mut sources = builders.build_sources(false, false);
 
     let default = sources.get(AssetSourceId::Default).unwrap();
     assert_eq!(default.id(), AssetSourceId::Default);
@@ -193,7 +195,7 @@ fn erased_reader_reads_through_a_source() {
         "named",
         AssetSourceBuilder::platform_default(dir.to_str().unwrap(), None),
     );
-    let sources = builders.build_sources();
+    let sources = builders.build_sources(false, false);
 
     let source: &AssetSource = sources.get("named").unwrap();
     let bytes = block_on(async {
@@ -208,9 +210,162 @@ fn erased_reader_reads_through_a_source() {
 }
 
 #[test]
-fn platform_default_with_a_processed_root_marks_the_source_processed() {
-    let mut builder = AssetSourceBuilder::platform_default("res", Some("imported"));
-    let source = builder.build(AssetSourceId::Default);
-    assert!(source.should_process());
+fn should_process_follows_the_processed_writer() {
+    // A processed reader alone does not make the source a processor source.
+    let mut reader_only = AssetSourceBuilder::platform_default("res", Some("imported"));
+    let source = reader_only.build(AssetSourceId::Default, false, false);
     assert!(source.processed_reader().is_ok());
+    assert!(source.processed_writer().is_err());
+    assert!(!source.should_process());
+
+    // The processed writer is what marks a source as processed.
+    let mut writer_backed = AssetSourceBuilder::new(embedded_reader).with_processed_writer(
+        |_create_root| Some(Box::new(NoopWriter) as Box<dyn ErasedAssetWriter>),
+    );
+    let source = writer_backed.build(AssetSourceId::Default, false, false);
+    assert!(source.processed_writer().is_ok());
+    assert!(source.should_process());
+}
+
+#[test]
+fn build_watch_creates_the_unprocessed_event_channel() {
+    let mut builder = AssetSourceBuilder::new(embedded_reader)
+        .with_watcher(|_sender| Some(Box::new(TestWatcher) as Box<dyn AssetWatcher>));
+
+    let unwatched = builder.build(AssetSourceId::Default, false, false);
+    assert!(unwatched.watcher().is_none());
+    assert!(unwatched.event_receiver().is_none());
+
+    let watched = builder.build(AssetSourceId::Default, true, false);
+    assert!(watched.watcher().is_some());
+    assert!(watched.event_receiver().is_some());
+    assert!(watched.processed_watcher().is_none());
+    assert!(watched.processed_event_receiver().is_none());
+}
+
+#[test]
+fn build_watch_processed_creates_the_processed_event_channel() {
+    let mut builder = AssetSourceBuilder::new(embedded_reader)
+        .with_processed_watcher(|_sender| Some(Box::new(TestWatcher) as Box<dyn AssetWatcher>));
+
+    let watched = builder.build(AssetSourceId::Default, false, true);
+    assert!(watched.processed_watcher().is_some());
+    assert!(watched.processed_event_receiver().is_some());
+    assert!(watched.watcher().is_none());
+    assert!(watched.event_receiver().is_none());
+}
+
+#[test]
+fn build_sources_passes_watch_through_to_every_source() {
+    let mut builders = AssetSourceBuilders::default();
+    builders.init_default_source("res", None);
+    builders.insert(
+        "watched",
+        AssetSourceBuilder::new(embedded_reader)
+            .with_watcher(|_sender| Some(Box::new(TestWatcher) as Box<dyn AssetWatcher>)),
+    );
+
+    let sources = builders.build_sources(true, false);
+    assert!(
+        sources
+            .get(AssetSourceId::Default)
+            .unwrap()
+            .event_receiver()
+            .is_none()
+    );
+    assert!(
+        sources
+            .get("watched")
+            .unwrap()
+            .event_receiver()
+            .is_some()
+    );
+}
+
+fn embedded_reader() -> Box<dyn ErasedAssetReader> {
+    Box::new(EmbeddedAssetReader::new())
+}
+
+/// A watcher that does nothing; tests only need one to exist so a watched source
+/// can be built.
+struct TestWatcher;
+
+impl AssetWatcher for TestWatcher {}
+
+/// A writer that panics if used; a source only needs a writer to exist to report
+/// itself as processed.
+struct NoopWriter;
+
+impl AssetWriter for NoopWriter {
+    fn write<'a>(
+        &'a self,
+        _path: &'a Path,
+    ) -> impl ConditionalSendFuture<Output = Result<Box<Writer>, AssetWriterError>> {
+        async move { unimplemented!("NoopWriter") }
+    }
+
+    fn write_meta<'a>(
+        &'a self,
+        _path: &'a Path,
+    ) -> impl ConditionalSendFuture<Output = Result<Box<Writer>, AssetWriterError>> {
+        async move { unimplemented!("NoopWriter") }
+    }
+
+    fn remove<'a>(
+        &'a self,
+        _path: &'a Path,
+    ) -> impl ConditionalSendFuture<Output = Result<(), AssetWriterError>> {
+        async move { unimplemented!("NoopWriter") }
+    }
+
+    fn remove_meta<'a>(
+        &'a self,
+        _path: &'a Path,
+    ) -> impl ConditionalSendFuture<Output = Result<(), AssetWriterError>> {
+        async move { unimplemented!("NoopWriter") }
+    }
+
+    fn rename<'a>(
+        &'a self,
+        _old_path: &'a Path,
+        _new_path: &'a Path,
+    ) -> impl ConditionalSendFuture<Output = Result<(), AssetWriterError>> {
+        async move { unimplemented!("NoopWriter") }
+    }
+
+    fn rename_meta<'a>(
+        &'a self,
+        _old_path: &'a Path,
+        _new_path: &'a Path,
+    ) -> impl ConditionalSendFuture<Output = Result<(), AssetWriterError>> {
+        async move { unimplemented!("NoopWriter") }
+    }
+
+    fn create_directory<'a>(
+        &'a self,
+        _path: &'a Path,
+    ) -> impl ConditionalSendFuture<Output = Result<(), AssetWriterError>> {
+        async move { unimplemented!("NoopWriter") }
+    }
+
+    fn remove_directory<'a>(
+        &'a self,
+        _path: &'a Path,
+    ) -> impl ConditionalSendFuture<Output = Result<(), AssetWriterError>> {
+        async move { unimplemented!("NoopWriter") }
+    }
+
+    fn remove_empty_directory<'a>(
+        &'a self,
+        _path: &'a Path,
+    ) -> impl ConditionalSendFuture<Output = Result<(), AssetWriterError>> {
+        async move { unimplemented!("NoopWriter") }
+    }
+
+    fn remove_assets_in_directory<'a>(
+        &'a self,
+        _path: &'a Path,
+    ) -> impl ConditionalSendFuture<Output = Result<(), AssetWriterError>> {
+        async move { unimplemented!("NoopWriter") }
+    }
 }
