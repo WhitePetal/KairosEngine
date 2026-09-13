@@ -141,9 +141,14 @@ fn default_file_reader_is_rooted_at_the_working_directory() {
     let reader = FileAssetReader::new("");
     assert_eq!(reader.root_path(), std::env::current_dir().unwrap());
 
-    // An absolute root replaces the cwd base rather than nesting under it.
-    let reader = FileAssetReader::new("/tmp");
-    assert_eq!(reader.root_path(), Path::new("/tmp"));
+    // An absolute root replaces the cwd base rather than nesting under it. Use an
+    // absolute path that is absolute on this platform: a Unix literal like
+    // `/tmp` is only drive-relative on Windows, so `join` nests it under the cwd
+    // instead of replacing it.
+    let absolute = std::env::temp_dir();
+    assert!(absolute.is_absolute(), "expected an absolute temp dir");
+    let reader = FileAssetReader::new(&absolute);
+    assert_eq!(reader.root_path(), absolute.as_path());
 }
 
 #[test]
