@@ -37,13 +37,13 @@ use kairos_ecs::world::{FromWorld, World};
 
 use crate::asset::Asset;
 use crate::assets::{Assets, LoadedUntypedAsset};
-use crate::event::{AssetEvent, AssetLoadFailedEvent};
+use crate::event::{AssetEvent, AssetLoadFailedEvent, UntypedAssetLoadFailedEvent};
 use crate::folder::LoadedFolder;
 use crate::io::embedded::{EMBEDDED, EmbeddedAssetRegistry};
-use crate::io::{AssetSourceBuilders, UnapprovedPathMode};
+use crate::io::{AssetSourceBuilder, AssetSourceBuilders, AssetSourceId, UnapprovedPathMode};
 use crate::loader::AssetLoader;
 use crate::meta::AssetMetaCheck;
-use crate::processor::AssetProcessor;
+use crate::processor::{AssetProcessor, Process};
 use crate::server::{AssetServer, AssetServerMode, handle_internal_asset_events};
 
 /// The schedule labels the asset drivers are installed into, recorded by
@@ -105,8 +105,12 @@ pub struct AssetOptions {
     /// How and where `.meta` sidecars are consulted. Ignored in
     /// [`AssetMode::Processed`], which always reads meta (ADR 0002).
     pub meta_check: AssetMetaCheck,
+    /// How paths that escape their source root are treated. Defaults to
+    /// [`UnapprovedPathMode::Forbid`], so a `..` that climbs out of a source is
+    /// rejected (ADR 0004).
+    pub unapproved_path_mode: UnapprovedPathMode,
     /// Whether a runtime processor should produce the processed store. Defaults
-    /// to the `use_asset_processor` cargo feature (off by default).
+    /// to the `asset_processor` cargo feature (off by default).
     ///
     /// Only meaningful with [`AssetMode::Processed`], where it selects layout ②
     /// (a processor producing the outputs) over layout ③ (outputs shipped ahead
@@ -142,7 +146,8 @@ impl AssetOptions {
             startup_stage: startup_stage.intern(),
             mode: AssetMode::default(),
             meta_check: AssetMetaCheck::default(),
-            use_asset_processor: cfg!(feature = "use_asset_processor"),
+            unapproved_path_mode: UnapprovedPathMode::default(),
+            use_asset_processor: cfg!(feature = "asset_processor"),
             watch_for_changes_override: None,
             processed_file_path: None,
         }
@@ -157,6 +162,12 @@ impl AssetOptions {
     /// Sets how and where `.meta` sidecars are consulted.
     pub fn with_meta_check(mut self, meta_check: AssetMetaCheck) -> Self {
         self.meta_check = meta_check;
+        self
+    }
+
+    /// Sets how paths that escape their source root are treated.
+    pub fn with_unapproved_path_mode(mut self, mode: UnapprovedPathMode) -> Self {
+        self.unapproved_path_mode = mode;
         self
     }
 
@@ -309,14 +320,14 @@ pub fn install(world: &mut World, options: AssetOptions) {
             server_mode,
             meta_check,
             watch,
-            UnapprovedPathMode::Forbid,
+            options.unapproved_path_mode,
         ),
         None => AssetServer::new_with_meta_check(
             sources,
             server_mode,
             meta_check,
             watch,
-            UnapprovedPathMode::Forbid,
+            options.unapproved_path_mode,
         ),
     };
     let has_processor = processor.is_some();
@@ -347,40 +358,67 @@ pub fn install(world: &mut World, options: AssetOptions) {
     // does the same in `AssetPlugin`).
     world.init_asset::<LoadedUntypedAsset>();
     world.init_asset::<LoadedFolder>();
+
+    // The untyped failure message is core too: one stream carries every asset
+    // type's load failures, whatever the type.
+    MessageRegistry::register_message::<UntypedAssetLoadFailedEvent>(world);
 }
 
 /// The per-type registration API, the `World` counterpart to `bevy_asset`'s
 /// `AssetApp`.
 ///
 /// A type is registered once, after [`install`], by the crate that owns it.
+/// Every method returns `&mut Self` so registrations chain, matching `AssetApp`.
 pub trait AssetWorldExt {
     /// Registers the asset type `A`: its store, its event messages, and its
     /// tracking/event driver systems.
     ///
     /// Call once per type, after [`install`].
-    fn init_asset<A: Asset>(&mut self);
+    fn init_asset<A: Asset>(&mut self) -> &mut Self;
 
     /// [`AssetWorldExt::init_asset`] with a preallocated store.
-    fn init_asset_with_capacity<A: Asset>(&mut self, capacity: usize);
+    fn init_asset_with_capacity<A: Asset>(&mut self, capacity: usize) -> &mut Self;
 
     /// Registers `loader` so loads of the formats it names can resolve it.
-    fn register_asset_loader<L: AssetLoader>(&mut self, loader: L);
+    fn register_asset_loader<L: AssetLoader>(&mut self, loader: L) -> &mut Self;
 
     /// Pre-registers a loader for `extensions`, blocking loads of those formats
     /// until a real loader named [`loader_name::<L>()`](crate::meta::loader_name)
     /// is registered.
-    fn preregister_asset_loader<L: AssetLoader>(&mut self, extensions: &[&str]);
+    fn preregister_asset_loader<L: AssetLoader>(&mut self, extensions: &[&str]) -> &mut Self;
 
     /// Builds a loader through [`FromWorld`] and registers it.
-    fn init_asset_loader<L: AssetLoader + FromWorld>(&mut self);
+    fn init_asset_loader<L: AssetLoader + FromWorld>(&mut self) -> &mut Self;
+
+    /// Registers `source` under `id`, so paths of the `id://…` form resolve
+    /// against it.
+    ///
+    /// Sources must be registered *before* [`install`], which builds the
+    /// [`AssetServer`] from the [`AssetSourceBuilders`] resource and freezes
+    /// them; a source registered afterwards is logged and never read.
+    fn register_asset_source(
+        &mut self,
+        id: impl Into<AssetSourceId<'static>>,
+        source: AssetSourceBuilder,
+    ) -> &mut Self;
+
+    /// Registers a [`Process`] implementation with the runtime
+    /// [`AssetProcessor`], when one is installed (layout ②).
+    ///
+    /// A no-op for a host that runs without a processor (layout ① or ③).
+    fn register_asset_processor<P: Process>(&mut self, processor: P) -> &mut Self;
+
+    /// Makes `P` the default [`Process`] for `extension` in the runtime
+    /// [`AssetProcessor`], when one is installed (layout ②).
+    fn set_default_asset_processor<P: Process>(&mut self, extension: &str) -> &mut Self;
 }
 
 impl AssetWorldExt for World {
-    fn init_asset<A: Asset>(&mut self) {
-        self.init_asset_with_capacity::<A>(0);
+    fn init_asset<A: Asset>(&mut self) -> &mut Self {
+        self.init_asset_with_capacity::<A>(0)
     }
 
-    fn init_asset_with_capacity<A: Asset>(&mut self, capacity: usize) {
+    fn init_asset_with_capacity<A: Asset>(&mut self, capacity: usize) -> &mut Self {
         // Step 1: the server takes the store's handle provider (so both allocate
         // slots from the same allocator) and fills the two typed sender maps
         // (`LoadedWithDependencies` / load failed).
@@ -409,19 +447,53 @@ impl AssetWorldExt for World {
                     .run_if(Assets::<A>::asset_events_condition),
             );
         });
+        self
     }
 
-    fn register_asset_loader<L: AssetLoader>(&mut self, loader: L) {
+    fn register_asset_loader<L: AssetLoader>(&mut self, loader: L) -> &mut Self {
         self.resource::<AssetServer>().register_loader(loader);
+        self
     }
 
-    fn preregister_asset_loader<L: AssetLoader>(&mut self, extensions: &[&str]) {
+    fn preregister_asset_loader<L: AssetLoader>(&mut self, extensions: &[&str]) -> &mut Self {
         self.resource::<AssetServer>()
             .preregister_loader::<L>(extensions);
+        self
     }
 
-    fn init_asset_loader<L: AssetLoader + FromWorld>(&mut self) {
+    fn init_asset_loader<L: AssetLoader + FromWorld>(&mut self) -> &mut Self {
         let loader = L::from_world(self);
-        self.register_asset_loader(loader);
+        self.register_asset_loader(loader)
+    }
+
+    fn register_asset_source(
+        &mut self,
+        id: impl Into<AssetSourceId<'static>>,
+        source: AssetSourceBuilder,
+    ) -> &mut Self {
+        let id = id.into();
+        if self.get_resource::<AssetServer>().is_some() {
+            tracing::error!(
+                "asset source '{id}' was registered after `install`; the server's sources are \
+                 already frozen, so it will never be read"
+            );
+        }
+        self.get_resource_or_init::<AssetSourceBuilders>()
+            .insert(id, source);
+        self
+    }
+
+    fn register_asset_processor<P: Process>(&mut self, processor: P) -> &mut Self {
+        if let Some(asset_processor) = self.get_resource::<AssetProcessor>() {
+            asset_processor.register_processor(processor);
+        }
+        self
+    }
+
+    fn set_default_asset_processor<P: Process>(&mut self, extension: &str) -> &mut Self {
+        if let Some(asset_processor) = self.get_resource::<AssetProcessor>() {
+            asset_processor.set_default_processor::<P>(extension);
+        }
+        self
     }
 }

@@ -53,7 +53,9 @@ Status: accepted
 
 1. **没有 `App` / `Plugin`**：注册面做成 `World` 的扩展 trait
    `AssetWorldExt::{init_asset, init_asset_with_capacity, register_asset_loader,
-   init_asset_loader}`，对位 `AssetApp`。stage label 的家在依赖上游，详见 ADR 0003。
+   preregister_asset_loader, init_asset_loader, register_asset_source,
+   register_asset_processor, set_default_asset_processor}`，对位 `AssetApp`；与上游一样，
+   各方法返回 `&mut Self` 以便链式调用。stage label 的家在依赖上游，详见 ADR 0003。
 2. **stage 由调用方注入**：`install(world, AssetOptions)` 把
    `PreUpdate`/`PostUpdate`/`Startup` 收进 `AssetStages` World 资源，`MainScheduleOrder` 不动。
    这是相对 bevy（`AssetPlugin` 直挂）的唯一结构性偏离，详见 ADR 0003。
@@ -62,7 +64,8 @@ Status: accepted
 4. **meta 统一为 `.meta` 边车（RON）**：退役每类型 TOML wrapper，
    `AssetMetaCheck` 默认 `Always`。详见 ADR 0002。
 5. **默认 source root = 进程 cwd**，不是 bevy 的 `"assets"`；`UnapprovedPathMode`
-   默认 `Forbid`。详见 ADR 0004。
+   默认 `Forbid`（可由 `AssetOptions::unapproved_path_mode` 覆盖，对位上游
+   `AssetPlugin::unapproved_path_mode`）。详见 ADR 0004。
 6. **`Asset` 不含 `TypePath`**：加载器名以 `std::any::type_name` 为准。
 7. **句柄非 `Copy`**：`Handle<A>` 内部的 `Arc` 就是引用计数，最后一个强句柄
    析构才发 `DropEvent`；命名可先于存在（弱句柄只带 id）。

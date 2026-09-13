@@ -47,7 +47,7 @@ use thiserror::Error;
 
 use crate::asset::{Asset, VisitAssetDependencies};
 use crate::assets::{Assets, LoadedUntypedAsset};
-use crate::event::{AssetEvent, AssetLoadFailedEvent};
+use crate::event::{AssetEvent, AssetLoadFailedEvent, UntypedAssetLoadFailedEvent};
 use crate::folder::LoadedFolder;
 use crate::handle::{Handle, UntypedHandle};
 use crate::id::{AssetId, UntypedAssetId};
@@ -123,7 +123,7 @@ impl AssetServer {
     }
 
     /// Creates a server with explicit sources and meta handling.
-    pub(crate) fn new_with_meta_check(
+    pub fn new_with_meta_check(
         sources: Arc<AssetSources>,
         mode: AssetServerMode,
         meta_check: AssetMetaCheck,
@@ -259,13 +259,14 @@ impl AssetServer {
         fn failed_sender<A: Asset>(
             world: &mut World,
             id: UntypedAssetId,
-            _path: AssetPath<'static>,
-            _error: Arc<AssetLoadError>,
+            path: AssetPath<'static>,
+            error: AssetLoadError,
         ) {
-            // The failed event carries only the id for now: the path and error
-            // are available once `AssetLoadFailedEvent` grows them.
-            let id = id.typed_debug_checked::<A>();
-            world.write_message(AssetLoadFailedEvent::new(id));
+            world.write_message(AssetLoadFailedEvent {
+                id: id.typed_debug_checked::<A>(),
+                path,
+                error,
+            });
         }
 
         let mut infos = self.write_infos();
@@ -1708,6 +1709,16 @@ pub fn handle_internal_asset_events(world: &mut World) {
                 }
                 InternalAssetEvent::Failed { id, path, error } => {
                     server.write_infos().process_asset_fail(id, error.clone());
+
+                    // The untyped failure is emitted for every failure, whatever
+                    // the asset type, so a host can observe them all.
+                    let error = (*error).clone();
+                    world.write_message(UntypedAssetLoadFailedEvent {
+                        id,
+                        path: path.clone(),
+                        error: error.clone(),
+                    });
+
                     let sender = server
                         .read_infos()
                         .dependency_failed_event_sender

@@ -35,6 +35,7 @@ use crate::event::AssetEvent;
 use crate::handle::{AssetHandleProvider, Handle, UntypedHandle};
 use crate::id::{AssetId, UntypedAssetId};
 use crate::index::{AssetIndex, AssetIndexAllocator};
+use crate::server::AssetServer;
 
 /// One slot in a [`DenseAssetStorage`].
 ///
@@ -356,7 +357,7 @@ impl<A: Asset> Assets<A> {
         let index = self.dense_storage.allocator.reserve();
         self.insert_with_index(index, asset.into())
             .expect("a freshly reserved index is always insertable");
-        Handle::Strong(self.handle_provider.get_handle(index, None))
+        Handle::Strong(self.handle_provider.get_handle(index, false, None, None))
     }
 
     /// Upgrades an [`AssetId`] into a strong [`Handle`] that keeps the asset
@@ -374,7 +375,9 @@ impl<A: Asset> Assets<A> {
             AssetId::Uuid { .. } => return None,
         };
         *self.duplicate_handles.entry(index).or_insert(0) += 1;
-        Some(Handle::Strong(self.handle_provider.get_handle(index, None)))
+        Some(Handle::Strong(
+            self.handle_provider.get_handle(index, false, None, None),
+        ))
     }
 
     /// Retrieves a reference to the asset with `id`, if it exists.
@@ -472,6 +475,12 @@ impl<A: Asset> Assets<A> {
     ///
     /// Always queues [`AssetEvent::Unused`] and, when a value was actually present,
     /// [`AssetEvent::Removed`] as well — in that order.
+    ///
+    /// This is the server-less half of [`Assets::track_assets`], for stores whose
+    /// handles all come from [`Assets::add`] (tests, and hosts that never load by
+    /// path). It ignores server bookkeeping, because such handles report
+    /// `asset_server_managed == false`.
+    #[cfg(test)]
     pub(crate) fn drain_dropped_assets(&mut self) {
         let drop_receiver = self.handle_provider.drop_receiver();
         while let Ok(drop_event) = drop_receiver.try_recv() {
@@ -480,9 +489,26 @@ impl<A: Asset> Assets<A> {
     }
 
     /// The per-type driver system that releases assets whose last strong handle
-    /// was dropped since it last ran.
-    pub fn track_assets(mut assets: ResMut<Self>) {
-        assets.drain_dropped_assets();
+    /// was dropped since it last ran, and clears the server's bookkeeping for
+    /// handles the server handed out.
+    ///
+    /// A drop of a server-managed handle is only acted on once
+    /// [`AssetInfos::process_handle_drop`] confirms no replacement handle has
+    /// been created for the same slot; that is what keeps a re-`load` after the
+    /// last handle dropped from releasing the freshly requested asset.
+    ///
+    /// [`AssetInfos::process_handle_drop`]: crate::server::AssetInfos::process_handle_drop
+    pub fn track_assets(mut assets: ResMut<Self>, asset_server: Res<AssetServer>) {
+        let mut infos = asset_server.write_infos();
+        let drop_receiver = assets.handle_provider.drop_receiver();
+        while let Ok(drop_event) = drop_receiver.try_recv() {
+            if drop_event.asset_server_managed && !infos.process_handle_drop(drop_event.id()) {
+                // A replacement handle exists for this slot, or the asset is not
+                // tracked here: keep the value.
+                continue;
+            }
+            assets.remove_dropped(drop_event.index());
+        }
     }
 
     /// Flushes queued [`AssetEvent`]s to `Messages<AssetEvent<A>>`.

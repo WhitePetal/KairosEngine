@@ -24,8 +24,9 @@ use crate::io::{
 use crate::{
     Asset, AssetEvent, AssetId, AssetLoadError, AssetLoadFailedEvent, AssetLoader, AssetMetaCheck,
     AssetPath, AssetServer, AssetServerMode, Assets, Handle, HandleTemplate, LoadContext, LoadState,
-    LoadedFolder, LoadedUntypedAsset, ReadAssetBytesError, UntypedAssetId, VisitAssetDependencies,
-    WaitForAssetError, WriteDefaultMetaError, handle_internal_asset_events,
+    LoadedFolder, LoadedUntypedAsset, ReadAssetBytesError, UntypedAssetId,
+    UntypedAssetLoadFailedEvent, VisitAssetDependencies, WaitForAssetError, WriteDefaultMetaError,
+    handle_internal_asset_events,
 };
 use crate::meta::{
     AssetActionMinimal, AssetMetaMinimal, ProcessedInfo, ProcessedInfoMinimal,
@@ -394,6 +395,7 @@ fn world_for(server: &AssetServer) -> World {
     world.insert_resource(Messages::<AssetLoadFailedEvent<LoadedUntypedAsset>>::default());
     world.insert_resource(Messages::<AssetEvent<LoadedFolder>>::default());
     world.insert_resource(Messages::<AssetLoadFailedEvent<LoadedFolder>>::default());
+    world.insert_resource(Messages::<UntypedAssetLoadFailedEvent>::default());
     world
 }
 
@@ -459,6 +461,45 @@ fn missing_file_fails_without_panicking() {
 }
 
 #[test]
+fn a_failed_load_reports_its_path_and_error_on_both_failure_messages() {
+    let server = server_with_files(&[]);
+    server.register_loader(ByteLoader);
+    let mut world = world_for(&server);
+
+    let handle = server.load::<ByteAsset>("missing.bytes");
+    let id = handle.id().untyped();
+    wait_for(&mut world, &server, id);
+
+    let typed: Vec<AssetLoadFailedEvent<ByteAsset>> = world
+        .resource_mut::<Messages<AssetLoadFailedEvent<ByteAsset>>>()
+        .drain()
+        .collect();
+    let untyped: Vec<UntypedAssetLoadFailedEvent> = world
+        .resource_mut::<Messages<UntypedAssetLoadFailedEvent>>()
+        .drain()
+        .collect();
+
+    assert_eq!(typed.len(), 1, "one typed failure for one failed load");
+    assert_eq!(untyped.len(), 1, "one untyped failure for one failed load");
+
+    let expected_path = AssetPath::from("missing.bytes");
+    assert_eq!(typed[0].id, handle.id());
+    assert_eq!(typed[0].path, expected_path);
+    assert_eq!(untyped[0].id, id);
+    assert_eq!(untyped[0].path, expected_path);
+    assert!(
+        matches!(
+            typed[0].error,
+            AssetLoadError::AssetReaderError(AssetReaderError::NotFound(_))
+        ),
+        "the missing file should fail with NotFound, got {:?}",
+        typed[0].error
+    );
+    // The untyped event mirrors the typed one, with the type erased.
+    assert_eq!(untyped[0].error.to_string(), typed[0].error.to_string());
+}
+
+#[test]
 fn a_loaded_asset_is_inserted_into_its_store() {
     let server = server_with_files(&[("data.bytes", b"hello")]);
     server.register_loader(ByteLoader);
@@ -494,6 +535,7 @@ fn a_declared_dependency_is_waited_on() {
     world.insert_resource(Messages::<AssetEvent<ByteAsset>>::default());
     world.insert_resource(Messages::<AssetLoadFailedEvent<ParentAsset>>::default());
     world.insert_resource(Messages::<AssetLoadFailedEvent<ByteAsset>>::default());
+    world.insert_resource(Messages::<UntypedAssetLoadFailedEvent>::default());
 
     let handle = server.load::<ParentAsset>("main.parent");
     let id = handle.id().untyped();
@@ -657,6 +699,7 @@ fn wait_for_asset_untyped_reports_a_dependency_failure() {
     world.insert_resource(Messages::<AssetEvent<ByteAsset>>::default());
     world.insert_resource(Messages::<AssetLoadFailedEvent<ParentAsset>>::default());
     world.insert_resource(Messages::<AssetLoadFailedEvent<ByteAsset>>::default());
+    world.insert_resource(Messages::<UntypedAssetLoadFailedEvent>::default());
 
     let handle = server.load::<ParentAsset>("main.parent");
     let handle = handle.untyped();
@@ -693,6 +736,20 @@ fn handles_and_paths_are_reported_for_a_loaded_asset() {
     assert_eq!(
         server.get_path(id).map(|path| path.path().to_path_buf()),
         Some(PathBuf::from("data.bytes"))
+    );
+    // The handle itself carries the path it was loaded from.
+    let expected_path = PathBuf::from("data.bytes");
+    assert_eq!(
+        handle.path().map(|path| path.path().to_path_buf()),
+        Some(expected_path.clone())
+    );
+    assert_eq!(
+        handle
+            .clone()
+            .untyped()
+            .path()
+            .map(|path| path.path().to_path_buf()),
+        Some(expected_path)
     );
 }
 

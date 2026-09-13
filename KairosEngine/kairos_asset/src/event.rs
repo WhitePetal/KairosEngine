@@ -11,7 +11,9 @@ use core::fmt::{self, Debug};
 use kairos_ecs::message::Message;
 
 use crate::asset::Asset;
-use crate::id::AssetId;
+use crate::id::{AssetId, UntypedAssetId};
+use crate::path::AssetPath;
+use crate::server::AssetLoadError;
 
 /// A notification that something happened to an [`Asset`] of type `A`.
 ///
@@ -108,35 +110,68 @@ impl<A: Asset> Eq for AssetEvent<A> {}
 
 /// A [`Message`] emitted when a specific [`Asset`] fails to load.
 ///
-/// The loader that produced the failure is added by the loader ticket: this
-/// carries only the identity of the failed asset for now, because the asset path
-/// and load-error types land with the IO and loader layers.
+/// For an untyped equivalent, see [`UntypedAssetLoadFailedEvent`].
 #[derive(Message)]
 pub struct AssetLoadFailedEvent<A: Asset> {
     /// The stable identifier of the asset that failed to load.
     pub id: AssetId<A>,
+    /// The asset path that was attempted.
+    pub path: AssetPath<'static>,
+    /// Why the asset failed to load.
+    pub error: AssetLoadError,
 }
 
 impl<A: Asset> AssetLoadFailedEvent<A> {
-    /// Creates a failure event for the asset identified by `id`.
-    pub fn new(id: impl Into<AssetId<A>>) -> Self {
-        Self { id: id.into() }
+    /// Converts this to an untyped failure event that stores the asset type.
+    pub fn untyped(&self) -> UntypedAssetLoadFailedEvent {
+        self.into()
     }
 }
 
-// `AssetId<A>` is `Copy`/`Debug` regardless of `A`; derive would add `A` bounds.
+/// An untyped version of [`AssetLoadFailedEvent`].
+///
+/// This is emitted once per failure regardless of asset type, so a host can
+/// observe every failure — with its path and error — without knowing the type
+/// in advance.
+#[derive(Message, Clone, Debug)]
+pub struct UntypedAssetLoadFailedEvent {
+    /// The stable identifier of the asset that failed to load.
+    pub id: UntypedAssetId,
+    /// The asset path that was attempted.
+    pub path: AssetPath<'static>,
+    /// Why the asset failed to load.
+    pub error: AssetLoadError,
+}
+
+impl<A: Asset> From<&AssetLoadFailedEvent<A>> for UntypedAssetLoadFailedEvent {
+    fn from(value: &AssetLoadFailedEvent<A>) -> Self {
+        UntypedAssetLoadFailedEvent {
+            id: value.id.untyped(),
+            path: value.path.clone(),
+            error: value.error.clone(),
+        }
+    }
+}
+
+// `AssetId<A>` is `Copy`/`Debug` regardless of `A`, so these are implemented by
+// hand rather than derived: a derive would wrongly require `A: Debug` and could
+// not produce `Copy` now that the event also carries a path and an error.
 impl<A: Asset> Clone for AssetLoadFailedEvent<A> {
     fn clone(&self) -> Self {
-        *self
+        Self {
+            id: self.id,
+            path: self.path.clone(),
+            error: self.error.clone(),
+        }
     }
 }
-
-impl<A: Asset> Copy for AssetLoadFailedEvent<A> {}
 
 impl<A: Asset> Debug for AssetLoadFailedEvent<A> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("AssetLoadFailedEvent")
             .field("id", &self.id)
+            .field("path", &self.path)
+            .field("error", &self.error)
             .finish()
     }
 }

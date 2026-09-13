@@ -21,7 +21,9 @@ embedded_watcher = ["file_watcher"]
 # Enables the runtime asset processor track by default: with
 # `AssetMode::Processed` a host can select layout ② (a processor producing the
 # outputs) over layout ③ (outputs shipped ahead of time). Off by default.
-use_asset_processor = []
+#
+# Named `asset_processor` for parity with `bevy_asset`.
+asset_processor = []
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)", "cfg(docsrs_dep)"] }

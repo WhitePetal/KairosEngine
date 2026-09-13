@@ -3,7 +3,7 @@
 //! A [`Handle<A>`] is either [`Handle::Strong`] — keeping the asset alive while
 //! any clone exists — or [`Handle::Uuid`], the weak form, which only names the
 //! asset. Strong handles share an [`Arc<StrongHandle>`], so the reference count
-//! *is* the `Arc` strong count and the last clone to drop sends a [`DropEvent`]
+//! *is* the `Arc` strong count and the last clone to drop sends a `DropEvent`
 //! down a [`crossbeam_channel`] that the owning asset store drains.
 
 use core::{
@@ -33,28 +33,39 @@ use crate::server::AssetServer;
 /// The event carries the erased index of the freed slot; the asset store uses
 /// it to release (and recycle) the stored value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct DropEvent {
+pub(crate) struct DropEvent {
     pub(crate) index: AssetIndex,
     pub(crate) type_id: TypeId,
+    /// Whether the asset is managed by the [`AssetServer`].
+    ///
+    /// A handle the server handed out reports `true`, so the drop also releases
+    /// the server's [`AssetInfo`]; a handle from [`Assets::add`] reports
+    /// `false`, so there is nothing server-side to release.
+    ///
+    /// [`AssetInfo`]: crate::server::AssetInfos
+    pub(crate) asset_server_managed: bool,
 }
 
 impl DropEvent {
     /// The slot whose last strong handle was dropped.
     #[inline]
-    pub fn index(&self) -> AssetIndex {
+    pub(crate) fn index(&self) -> AssetIndex {
         self.index
     }
 
-    /// The asset type the dropped handle named.
+    /// The erased id of the asset whose last strong handle was dropped.
     #[inline]
-    pub fn type_id(&self) -> TypeId {
-        self.type_id
+    pub(crate) fn id(&self) -> UntypedAssetId {
+        UntypedAssetId::Index {
+            type_id: self.type_id,
+            index: self.index,
+        }
     }
 }
 
 /// The shared storage behind every [`Handle::Strong`] clone of one asset.
 ///
-/// Its [`Drop`] is the reference count hitting zero: it sends the [`DropEvent`]
+/// Its [`Drop`] is the reference count hitting zero: it sends the `DropEvent`
 /// that tells the asset store the value is no longer needed.
 ///
 /// It also carries the [`MetaTransform`] the asset was loaded with. It is stored
@@ -63,6 +74,12 @@ impl DropEvent {
 pub struct StrongHandle {
     pub(crate) index: AssetIndex,
     pub(crate) type_id: TypeId,
+    /// Whether the asset is managed by the [`AssetServer`]: its drops are
+    /// reported back so the server can clear its bookkeeping too.
+    pub(crate) asset_server_managed: bool,
+    /// The path the asset was loaded from, if it was loaded by path rather than
+    /// added directly. Lets [`Handle::path`] recover it without the server.
+    pub(crate) path: Option<AssetPath<'static>>,
     /// The settings override applied when the asset was loaded, replayed on
     /// reload.
     pub(crate) meta_transform: Option<MetaTransform>,
@@ -76,6 +93,8 @@ impl Debug for StrongHandle {
         f.debug_struct("StrongHandle")
             .field("index", &self.index)
             .field("type_id", &self.type_id)
+            .field("asset_server_managed", &self.asset_server_managed)
+            .field("path", &self.path)
             .field("drop_sender", &self.drop_sender)
             .finish_non_exhaustive()
     }
@@ -86,6 +105,7 @@ impl Drop for StrongHandle {
         let _ = self.drop_sender.send(DropEvent {
             index: self.index,
             type_id: self.type_id,
+            asset_server_managed: self.asset_server_managed,
         });
     }
 }
@@ -114,29 +134,37 @@ impl AssetHandleProvider {
 
     /// Reserves a fresh strong [`UntypedHandle`], allocating a new index.
     pub fn reserve_handle(&self) -> UntypedHandle {
-        self.reserve_handle_internal(None)
+        self.reserve_handle_internal(false, None, None)
     }
 
-    /// [`AssetHandleProvider::reserve_handle`] with a [`MetaTransform`] attached
-    /// so a hot-reload replays the same loader settings.
+    /// [`AssetHandleProvider::reserve_handle`] with the server-managed flag, a
+    /// path, and a [`MetaTransform`] attached so a hot-reload replays the same
+    /// loader settings.
     pub(crate) fn reserve_handle_internal(
         &self,
+        asset_server_managed: bool,
+        path: Option<AssetPath<'static>>,
         meta_transform: Option<MetaTransform>,
     ) -> UntypedHandle {
         let index = self.allocator.reserve();
-        UntypedHandle::Strong(self.get_handle(index, meta_transform))
+        UntypedHandle::Strong(self.get_handle(index, asset_server_managed, path, meta_transform))
     }
 
-    /// Wraps an already-reserved index in a strong handle, attaching
-    /// `meta_transform` so a hot-reload replays the same loader settings.
+    /// Wraps an already-reserved index in a strong handle, recording whether the
+    /// server manages it, the path it was loaded from, and the
+    /// [`MetaTransform`] a hot-reload replays.
     pub(crate) fn get_handle(
         &self,
         index: AssetIndex,
+        asset_server_managed: bool,
+        path: Option<AssetPath<'static>>,
         meta_transform: Option<MetaTransform>,
     ) -> Arc<StrongHandle> {
         Arc::new(StrongHandle {
             index,
             type_id: self.type_id,
+            asset_server_managed,
+            path,
             meta_transform,
             drop_sender: self.drop_sender.clone(),
         })
@@ -144,7 +172,7 @@ impl AssetHandleProvider {
 
     /// The receiving half of the drop channel. The asset store drains this to
     /// learn which assets have lost their last strong handle.
-    pub fn drop_receiver(&self) -> Receiver<DropEvent> {
+    pub(crate) fn drop_receiver(&self) -> Receiver<DropEvent> {
         self.drop_receiver.clone()
     }
 
@@ -177,6 +205,19 @@ impl<A: Asset> Handle<A> {
                 marker: PhantomData,
             },
             Handle::Uuid(uuid, _) => AssetId::Uuid { uuid: *uuid },
+        }
+    }
+
+    /// The path the asset was loaded from, if this is a [`Handle::Strong`] that
+    /// has one.
+    ///
+    /// A [`Handle::Uuid`] never has a path, and neither does an asset that was
+    /// added directly rather than loaded by path.
+    #[inline]
+    pub fn path(&self) -> Option<&AssetPath<'static>> {
+        match self {
+            Handle::Strong(handle) => handle.path.as_ref(),
+            Handle::Uuid(..) => None,
         }
     }
 
@@ -351,8 +392,8 @@ impl<A: Asset> Debug for Handle<A> {
         match self {
             Handle::Strong(handle) => write!(
                 f,
-                "StrongHandle<{name}>{{ index: {:?}, type_id: {:?} }}",
-                handle.index, handle.type_id
+                "StrongHandle<{name}>{{ index: {:?}, type_id: {:?}, path: {:?} }}",
+                handle.index, handle.type_id, handle.path
             ),
             Handle::Uuid(uuid, _) => write!(f, "UuidHandle<{name}>({uuid})"),
         }
@@ -483,6 +524,16 @@ impl UntypedHandle {
         }
     }
 
+    /// The path the asset was loaded from, if this is an
+    /// [`UntypedHandle::Strong`] that has one.
+    #[inline]
+    pub fn path(&self) -> Option<&AssetPath<'static>> {
+        match self {
+            UntypedHandle::Strong(handle) => handle.path.as_ref(),
+            UntypedHandle::Uuid { .. } => None,
+        }
+    }
+
     /// The asset type this handle names.
     #[inline]
     pub fn type_id(&self) -> TypeId {
@@ -552,8 +603,8 @@ impl Debug for UntypedHandle {
         match self {
             UntypedHandle::Strong(handle) => write!(
                 f,
-                "StrongHandle{{ type_id: {:?}, index: {:?} }}",
-                handle.type_id, handle.index
+                "StrongHandle{{ type_id: {:?}, index: {:?}, path: {:?} }}",
+                handle.type_id, handle.index, handle.path
             ),
             UntypedHandle::Uuid { type_id, uuid } => {
                 write!(f, "UuidHandle{{ type_id: {type_id:?}, uuid: {uuid} }}")

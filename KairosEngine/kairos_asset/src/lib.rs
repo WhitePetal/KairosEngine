@@ -13,7 +13,7 @@
 //!   [`Handle`]/[`UntypedHandle`] — reference-counted borrows backed by
 //!   [`StrongHandle`]. Handles are **not** [`Copy`](core::marker::Copy): the
 //!   `Arc` inside a strong handle is the reference count, and the last clone to
-//!   drop sends a [`DropEvent`]. [`Asset`]/[`VisitAssetDependencies`] are the
+//!   drop sends a `DropEvent`. [`Asset`]/[`VisitAssetDependencies`] are the
 //!   trait bound and dependency visitor every asset participates in.
 //! - Storage and events: [`Assets<A>`] — the per-type asset store, with
 //!   stores, with [`AssetMut`] for tracked mutation; [`AssetEvent<A>`] — the five-variant
@@ -89,10 +89,10 @@ pub use assets::{
     AssetMut, Assets, AssetsMutIterator, InvalidGenerationError, LoadedUntypedAsset,
 };
 pub use direct_access::DirectAssetAccessExt;
-pub use event::{AssetEvent, AssetLoadFailedEvent};
+pub use event::{AssetEvent, AssetLoadFailedEvent, UntypedAssetLoadFailedEvent};
 pub use folder::LoadedFolder;
 pub use handle::{
-    ArcMutexValue, AssetHandleProvider, DropEvent, Handle, HandleTemplate, StrongHandle,
+    ArcMutexValue, AssetHandleProvider, Handle, HandleTemplate, StrongHandle,
     UntypedAssetConversionError, UntypedHandle, asset_value,
 };
 pub use id::{AssetId, UntypedAssetId, UntypedAssetIdConversionError};
@@ -135,6 +135,20 @@ pub use processor::{
     ProcessorTransactionLog, ProcessorTransactionLogFactory, Processors, ReadLogError, SavedAsset,
     SetTransactionLogFactoryError, TransformedAsset, ValidateLogError,
 };
+
+/// The asset prelude: the types most code needs in scope.
+///
+/// This is the `kairos_asset` counterpart of `bevy_asset::prelude`. There is no
+/// `AssetApp` or `AssetPlugin` here — registration hangs off [`AssetWorldExt`]
+/// and [`install`] instead (ADR 0003).
+pub mod prelude {
+    pub use crate::asset_changed::AssetChanged;
+
+    pub use crate::{
+        Asset, AssetEvent, AssetId, AssetMode, AssetServer, AssetWorldExt, Assets,
+        DirectAssetAccessExt, Handle, UntypedHandle, asset_value,
+    };
+}
 
 #[cfg(test)]
 mod tests;

@@ -5,8 +5,8 @@ use futures_lite::future::block_on;
 use kairos_asset::io::{AssetSourceBuilder, AssetSourceBuilders, AssetSourceId};
 use kairos_asset::{
     AssetAction, AssetEvent, AssetLoadFailedEvent, AssetMeta, AssetMetaDyn, AssetOptions,
-    AssetProcessor, AssetServer, Assets, FileTransactionLogFactory, handle_internal_asset_events,
-    install,
+    AssetProcessor, AssetServer, Assets, FileTransactionLogFactory, UntypedAssetLoadFailedEvent,
+    handle_internal_asset_events, install,
 };
 use kairos_ecs::message::Messages;
 use kairos_ecs::schedule::ScheduleLabel;
@@ -152,6 +152,7 @@ fn load_through_processor(processor: &AssetProcessor, rel_path: String) -> Optio
     world.insert_resource(server.clone());
     world.insert_resource(Messages::<AssetEvent<Mesh>>::default());
     world.insert_resource(Messages::<AssetLoadFailedEvent<Mesh>>::default());
+    world.insert_resource(Messages::<UntypedAssetLoadFailedEvent>::default());
 
     let handle = server.load::<Mesh>(rel_path);
     for _ in 0..500 {

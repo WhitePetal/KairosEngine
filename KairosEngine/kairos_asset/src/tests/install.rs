@@ -20,7 +20,8 @@ use kairos_tasks::ConditionalSendFuture;
 
 use crate::io::{
     AssetReader, AssetReaderError, AssetReaderFuture, AssetSourceBuilder, AssetSourceBuilders,
-    AssetSourceId, ErasedAssetReader, PathStream, Reader, VecReader, empty_path_stream,
+    AssetSourceId, ErasedAssetReader, PathStream, Reader, UnapprovedPathMode, VecReader,
+    empty_path_stream,
 };
 use crate::{
     Asset, AssetEvent, AssetEventSystems, AssetLoadFailedEvent, AssetLoader, AssetMetaCheck,
@@ -348,7 +349,7 @@ fn load_until_settled(world: &mut World, server: &AssetServer, handle: &Handle<B
 fn asset_options_default_to_unprocessed_with_the_processor_feature_off() {
     let options = options();
     assert_eq!(options.mode, AssetMode::Unprocessed);
-    assert_eq!(options.use_asset_processor, cfg!(feature = "use_asset_processor"));
+    assert_eq!(options.use_asset_processor, cfg!(feature = "asset_processor"));
     assert!(options.watch_for_changes_override.is_none());
 }
 
@@ -370,6 +371,147 @@ fn unprocessed_mode_loads_from_the_source_reader() {
     assert_eq!(
         world.resource::<Assets<ByteAsset>>().get(handle.id()),
         Some(&ByteAsset(b"source".to_vec()))
+    );
+}
+
+/// Reloading a path after the last handle dropped and the tracking stage ran
+/// resolves to a fresh, present value.
+///
+/// This is the regression for the asset server keeping an [`AssetInfo`] whose
+/// strong handle is dead: a later `load` used to reuse the recycled slot and
+/// hand back a handle that would never resolve.
+///
+/// [`AssetInfo`]: crate::server::AssetInfos
+#[test]
+fn reloading_after_the_last_handle_dropped_loads_again() {
+    let source = AssetSourceBuilder::new({
+        let reader = MemoryReader::new(&[("data.bytes", b"source")]);
+        move || Box::new(reader.clone()) as Box<dyn ErasedAssetReader>
+    });
+    let mut world = world_for_layout(source, AssetMode::Unprocessed);
+    let server = world.resource::<AssetServer>().clone();
+
+    let handle = server.load::<ByteAsset>("data.bytes");
+    let first_id = handle.id();
+    load_until_settled(&mut world, &server, &handle);
+    assert_eq!(
+        world.resource::<Assets<ByteAsset>>().get(first_id),
+        Some(&ByteAsset(b"source".to_vec()))
+    );
+
+    // The holder closes: the last strong handle drops, and the tracking stage
+    // releases both the value and the server's bookkeeping for it.
+    drop(handle);
+    world.run_schedule(Tracking);
+    assert_eq!(world.resource::<Assets<ByteAsset>>().get(first_id), None);
+
+    // Asking for the same path again must load it afresh rather than hand back
+    // a handle to a slot nothing will fill.
+    let handle = server.load::<ByteAsset>("data.bytes");
+    load_until_settled(&mut world, &server, &handle);
+    assert_eq!(
+        world.resource::<Assets<ByteAsset>>().get(handle.id()),
+        Some(&ByteAsset(b"source".to_vec())),
+        "the value must be present again after the previous handles dropped"
+    );
+}
+
+/// Re-requesting a path before the tracking stage has consumed the pending drop
+/// keeps the value, because the fresh handle shares the still-pending slot.
+#[test]
+fn loading_again_before_tracking_consumes_the_pending_drop() {
+    let source = AssetSourceBuilder::new({
+        let reader = MemoryReader::new(&[("data.bytes", b"source")]);
+        move || Box::new(reader.clone()) as Box<dyn ErasedAssetReader>
+    });
+    let mut world = world_for_layout(source, AssetMode::Unprocessed);
+    let server = world.resource::<AssetServer>().clone();
+
+    let handle = server.load::<ByteAsset>("data.bytes");
+    let id = handle.id();
+    load_until_settled(&mut world, &server, &handle);
+
+    // The last handle drops, but no tracking stage runs before the path is
+    // asked for again: the drop event is still queued.
+    drop(handle);
+    let handle = server.load::<ByteAsset>("data.bytes");
+    assert_eq!(handle.id(), id, "the pending slot is reused");
+
+    // The tracking stage now sees the stale drop; it must skip it rather than
+    // release the value the fresh handle is holding.
+    load_until_settled(&mut world, &server, &handle);
+    assert_eq!(
+        world.resource::<Assets<ByteAsset>>().get(handle.id()),
+        Some(&ByteAsset(b"source".to_vec())),
+        "a stale drop must not release a slot that was just re-opened"
+    );
+}
+
+/// The `unapproved_path_mode` option reaches the server that `install` builds.
+#[test]
+fn the_unapproved_path_mode_option_reaches_the_server() {
+    // A reader holding `../escape.bytes`, which only loads when an escaping path
+    // is permitted.
+    fn escape_source() -> AssetSourceBuilder {
+        let reader = MemoryReader::new(&[("../escape.bytes", b"escaped")]);
+        AssetSourceBuilder::new(move || Box::new(reader.clone()) as Box<dyn ErasedAssetReader>)
+    }
+
+    // The default is `Forbid`: the escaping path is refused outright, before
+    // any handle is allocated.
+    let forbidden = world_for_layout(escape_source(), AssetMode::Unprocessed);
+    {
+        let server = forbidden.resource::<AssetServer>();
+        assert_eq!(
+            server.load::<ByteAsset>("../escape.bytes"),
+            Handle::<ByteAsset>::default(),
+            "the default mode must refuse an escaping path"
+        );
+    }
+
+    // Overriding the option on `AssetOptions` lets it load.
+    let mut allowing = World::new();
+    allowing
+        .get_resource_or_init::<AssetSourceBuilders>()
+        .insert(AssetSourceId::Default, escape_source());
+    install(
+        &mut allowing,
+        options()
+            .with_meta_check(AssetMetaCheck::Never)
+            .with_unapproved_path_mode(UnapprovedPathMode::Allow),
+    );
+    allowing.init_asset::<ByteAsset>();
+    allowing.register_asset_loader(ByteLoader);
+
+    let server = allowing.resource::<AssetServer>().clone();
+    let handle = server.load::<ByteAsset>("../escape.bytes");
+    load_until_settled(&mut allowing, &server, &handle);
+    assert_eq!(
+        allowing.resource::<Assets<ByteAsset>>().get(handle.id()),
+        Some(&ByteAsset(b"escaped".to_vec()))
+    );
+}
+
+/// `register_asset_source` makes a named source resolvable, and the per-type
+/// registration calls chain.
+#[test]
+fn register_asset_source_registers_a_named_source() {
+    let mut world = World::new();
+    let reader = MemoryReader::new(&[("data.bytes", b"named")]);
+    world.register_asset_source(
+        "named",
+        AssetSourceBuilder::new(move || Box::new(reader.clone()) as Box<dyn ErasedAssetReader>),
+    );
+
+    install(&mut world, options().with_meta_check(AssetMetaCheck::Never));
+    world.init_asset::<ByteAsset>().register_asset_loader(ByteLoader);
+
+    let server = world.resource::<AssetServer>().clone();
+    let handle = server.load::<ByteAsset>("named://data.bytes");
+    load_until_settled(&mut world, &server, &handle);
+    assert_eq!(
+        world.resource::<Assets<ByteAsset>>().get(handle.id()),
+        Some(&ByteAsset(b"named".to_vec()))
     );
 }
 

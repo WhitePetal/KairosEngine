@@ -35,7 +35,8 @@ use crate::processor::{
 };
 use crate::{
     Asset, AssetEvent, AssetLoadFailedEvent, AssetLoader, AssetPath, AssetServer, AssetServerMode,
-    Assets, LoadContext, VisitAssetDependencies, handle_internal_asset_events,
+    Assets, LoadContext, UntypedAssetLoadFailedEvent, VisitAssetDependencies,
+    handle_internal_asset_events,
 };
 
 // ---------------------------------------------------------------------------
@@ -858,6 +859,7 @@ fn text_world(server: &AssetServer) -> World {
     world.insert_resource(server.clone());
     world.insert_resource(Messages::<AssetEvent<TextAsset>>::default());
     world.insert_resource(Messages::<AssetLoadFailedEvent<TextAsset>>::default());
+    world.insert_resource(Messages::<UntypedAssetLoadFailedEvent>::default());
     world
 }
 

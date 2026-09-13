@@ -57,6 +57,15 @@ pub(crate) struct AssetInfo {
     /// as processing inputs rather than as loaded-handle edges. Only populated
     /// when watching for changes, to save memory.
     loader_dependencies: HashMap<AssetPath<'static>, AssetHash>,
+    /// How many handle drops to ignore before this asset's bookkeeping is
+    /// removed.
+    ///
+    /// A `load` whose previous handles were all dropped before the tracking
+    /// system ran creates a fresh strong handle for the existing slot, so the
+    /// pending drop must not release the new handle's asset. Each such re-open
+    /// increments this counter; [`AssetInfos::process_handle_drop`] decrements
+    /// it instead of removing the asset.
+    handle_drops_to_skip: usize,
     /// Tasks waiting for this asset's load to settle, woken when it does.
     pub(crate) waiting_tasks: Vec<Waker>,
 }
@@ -75,6 +84,7 @@ impl AssetInfo {
             dependents_waiting_on_load: HashSet::default(),
             dependents_waiting_on_recursive_dep_load: HashSet::default(),
             loader_dependencies: HashMap::default(),
+            handle_drops_to_skip: 0,
             waiting_tasks: Vec::new(),
         }
     }
@@ -97,6 +107,14 @@ impl AssetInfo {
         }
     }
 }
+
+/// Writes a typed load-failure event for an asset of one type, carrying the
+/// path that was attempted and the error that failed it.
+///
+/// A `fn` pointer rather than a closure: it is stored per asset type and must be
+/// callable without a captured environment.
+pub(crate) type FailedEventSender =
+    fn(&mut World, UntypedAssetId, AssetPath<'static>, AssetLoadError);
 
 /// The server's per-asset bookkeeping: path-addressed handles, the handle
 /// providers that allocate them, and the load state of every known asset.
@@ -127,8 +145,7 @@ pub(crate) struct AssetInfos {
     pub(crate) dependency_loaded_event_sender: HashMap<TypeId, fn(&mut World, UntypedAssetId)>,
     /// Writes a typed [`AssetLoadFailedEvent`] for an asset of each registered
     /// type.
-    pub(crate) dependency_failed_event_sender:
-        HashMap<TypeId, fn(&mut World, UntypedAssetId, AssetPath<'static>, Arc<AssetLoadError>)>,
+    pub(crate) dependency_failed_event_sender: HashMap<TypeId, FailedEventSender>,
     /// The in-flight load tasks, kept alive so they are not cancelled.
     pub(crate) pending_tasks: HashMap<UntypedAssetId, Task<()>>,
 }
@@ -241,12 +258,16 @@ impl AssetInfos {
                 if let Some(strong) = info.weak_handle.upgrade() {
                     (UntypedHandle::Strong(strong), should_load)
                 } else {
-                    // Every live handle was dropped while the info lingered;
-                    // re-open the slot for the caller asking to load it again.
+                    // Every live handle was dropped while the info lingered, and
+                    // the tracking system has not processed those drops yet.
+                    // Re-open the slot for the caller asking for it again, and
+                    // skip one pending drop so it does not release the asset we
+                    // are about to hand back.
                     let UntypedAssetId::Index { index, .. } = id else {
                         unreachable!("path-registered ids are always strong")
                     };
-                    let handle = provider.get_handle(index, meta_transform);
+                    info.handle_drops_to_skip += 1;
+                    let handle = provider.get_handle(index, true, Some(path), meta_transform);
                     info.weak_handle = Arc::downgrade(&handle);
                     (UntypedHandle::Strong(handle), should_load)
                 }
@@ -326,7 +347,7 @@ impl AssetInfos {
             }
         }
 
-        let handle = provider.reserve_handle_internal(meta_transform);
+        let handle = provider.reserve_handle_internal(true, path.clone(), meta_transform);
         let weak_handle = match &handle {
             UntypedHandle::Strong(strong) => Arc::downgrade(strong),
             UntypedHandle::Uuid { .. } => unreachable!("reserve_handle returns a strong handle"),
@@ -520,6 +541,27 @@ impl AssetInfos {
             }
         }
         self.pending_tasks.remove(&id);
+    }
+
+    /// Processes a dropped handle for the asset `id`.
+    ///
+    /// Returns `true` when the asset's bookkeeping was removed, so its store
+    /// should release the value too. Returns `false` when the drop must be
+    /// ignored: either the asset is not tracked here (a non-server-managed
+    /// handle), or a replacement handle was handed out for the same slot before
+    /// the drop was processed, in which case the pending drop is consumed and
+    /// the asset stays alive.
+    pub(crate) fn process_handle_drop(&mut self, id: UntypedAssetId) -> bool {
+        match self.infos.get_mut(&id) {
+            None => return false,
+            Some(info) if info.handle_drops_to_skip > 0 => {
+                info.handle_drops_to_skip -= 1;
+                return false;
+            }
+            Some(_) => {}
+        }
+        self.remove_info(id);
+        true
     }
 
     /// Records that an asset finished loading, inserting its value into its

@@ -51,7 +51,7 @@ feature 面照搬 `watch` / `file_watcher` / `embedded_watcher` 三档，`defaul
 - 新依赖 `notify-debouncer-full 0.7.0`（随 `notify 8.2.0` / `notify-types 2.0.0` / `file-id 0.2.3` /
   `walkdir` / `log`），仅非 web 目标。
 - `AssetInfos` 在 `watching_for_changes` 下多维护 `loader_dependents`、labeled / folder 寻址，属额外存储
-  成本；`StrongHandle` 增存 `meta_transform`，因此失去 `Debug` derive。
+  成本；`StrongHandle` 增存 `meta_transform`、`path` 与 `asset_server_managed`，因此失去 `Debug` derive。
 - 实现切片多出「嵌入资产（memory 后端 + 宏 + 嵌入源 + embedded watcher）」一块，落地顺序归 map #214 的
   #223。
 - folder 重载的端到端验证依赖 #215 的 `load_folder` 实现票先落地。

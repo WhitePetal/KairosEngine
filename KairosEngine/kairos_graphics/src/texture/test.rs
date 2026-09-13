@@ -6,7 +6,7 @@ use futures_lite::future::block_on;
 use kairos_asset::io::{AssetSourceBuilder, AssetSourceBuilders, AssetSourceId};
 use kairos_asset::{
     AssetEvent, AssetLoadFailedEvent, AssetProcessor, Assets, FileTransactionLogFactory,
-    handle_internal_asset_events,
+    UntypedAssetLoadFailedEvent, handle_internal_asset_events,
 };
 use kairos_ecs::message::Messages;
 use kairos_ecs::world::World;
@@ -67,6 +67,7 @@ fn texture_processor_produces_the_product_and_it_loads() {
     world.insert_resource(server.clone());
     world.insert_resource(Messages::<AssetEvent<Texture>>::default());
     world.insert_resource(Messages::<AssetLoadFailedEvent<Texture>>::default());
+    world.insert_resource(Messages::<UntypedAssetLoadFailedEvent>::default());
 
     let handle = server.load::<Texture>("Probe.png");
 
@@ -149,6 +150,7 @@ fn committed_white_texture_processes_and_loads() {
     world.insert_resource(server.clone());
     world.insert_resource(Messages::<AssetEvent<Texture>>::default());
     world.insert_resource(Messages::<AssetLoadFailedEvent<Texture>>::default());
+    world.insert_resource(Messages::<UntypedAssetLoadFailedEvent>::default());
 
     let handle = server.load::<Texture>("textures/white.png");
     let mut loaded = None;

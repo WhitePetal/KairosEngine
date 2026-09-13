@@ -39,10 +39,10 @@ mod test;
 
 /// The bake's asset options: layout ② over the sources, with watching off.
 ///
-/// `use_asset_processor` is forced on rather than read from the crate feature,
-/// because the bake is the host that selects layout ② — the runtime host stays
-/// in the default [`AssetMode::Unprocessed`] layout and reads the processed
-/// assets as plain files.
+/// `use_asset_processor` is forced on rather than read from the `asset_processor`
+/// crate feature, because the bake is the host that selects layout ② — the
+/// runtime host stays in the default [`AssetMode::Unprocessed`] layout and reads
+/// the processed assets as plain files.
 fn bake_options() -> AssetOptions {
     AssetOptions::new(schedule::PreUpdate, schedule::PostUpdate, schedule::Startup)
         .with_mode(AssetMode::Processed)

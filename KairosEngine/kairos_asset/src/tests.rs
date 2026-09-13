@@ -94,7 +94,11 @@ fn strong_handle_refcount_is_arc_strong_count_and_drop_sends_event() {
         .try_recv()
         .expect("last clone must send a drop event");
     assert_eq!(event.index(), index);
-    assert_eq!(event.type_id(), TypeId::of::<TestAsset>());
+    assert_eq!(event.id().type_id(), TypeId::of::<TestAsset>());
+    assert!(
+        !event.asset_server_managed,
+        "a store-owned handle is not server-managed"
+    );
 }
 
 #[test]
@@ -116,7 +120,7 @@ fn handle_identity_is_by_id() {
     let provider = provider::<TestAsset>();
     let first: Handle<TestAsset> = provider.reserve_handle().typed();
     let index = index_of(&first);
-    let second = Handle::<TestAsset>::Strong(provider.get_handle(index, None));
+    let second = Handle::<TestAsset>::Strong(provider.get_handle(index, false, None, None));
 
     assert_eq!(first, second);
     assert_eq!(first.cmp(&second), Ordering::Equal);
@@ -544,6 +548,17 @@ fn assets_with_capacity_is_an_empty_store_that_works() {
 }
 
 #[test]
+fn a_store_added_handle_has_no_path() {
+    let mut assets = Assets::<TestAsset>::default();
+    let handle = assets.add(TestAsset);
+
+    // Only a handle the server loaded by path carries one; a runtime `add` does
+    // not.
+    assert!(handle.path().is_none());
+    assert!(handle.clone().untyped().path().is_none());
+}
+
+#[test]
 fn asset_event_variants_report_themselves() {
     let id = AssetId::<TestAsset>::Uuid {
         uuid: Uuid::from_u128(3),
@@ -559,8 +574,14 @@ fn asset_event_variants_report_themselves() {
     assert_ne!(AssetEvent::Added { id }, AssetEvent::Removed { id });
     assert_eq!(AssetEvent::Added { id }, AssetEvent::Added { id });
 
-    let failed = AssetLoadFailedEvent::<TestAsset>::new(id);
+    let failed = AssetLoadFailedEvent::<TestAsset> {
+        id,
+        path: AssetPath::from("test.asset"),
+        error: AssetLoadError::EmptyPath(AssetPath::default()),
+    };
     assert_eq!(failed.id, id);
+    assert_eq!(failed.path, AssetPath::from("test.asset"));
+    assert_eq!(failed.untyped().id, id.untyped());
 }
 
 mod asset_changed;
