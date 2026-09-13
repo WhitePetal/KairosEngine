@@ -233,6 +233,15 @@ impl AssetServer {
         self.write_loaders().push(loader);
     }
 
+    /// Pre-registers a loader that will later be added.
+    ///
+    /// A load whose path resolves to the placeholder blocks until a loader named
+    /// [`loader_name::<L>()`](crate::meta::loader_name) is registered with
+    /// [`AssetServer::register_loader`].
+    pub fn preregister_loader<L: crate::AssetLoader>(&self, extensions: &[&str]) {
+        self.write_loaders().reserve::<L>(extensions);
+    }
+
     /// Registers a new [`Asset`] type.
     ///
     /// Asset types must be registered before assets of that type can be loaded,
@@ -268,42 +277,100 @@ impl AssetServer {
             .insert(TypeId::of::<A>(), failed_sender::<A>);
     }
 
-    /// Returns the registered [`ErasedAssetLoader`] with `type_name`, if any.
-    pub(crate) fn get_asset_loader_with_type_name(
+    /// Returns the registered [`ErasedAssetLoader`] associated with
+    /// `extension`, if one exists.
+    pub async fn get_asset_loader_with_extension(
+        &self,
+        extension: &str,
+    ) -> Result<Arc<dyn ErasedAssetLoader>, MissingAssetLoaderForExtensionError> {
+        let error = || MissingAssetLoaderForExtensionError {
+            extensions: vec![extension.to_string()],
+        };
+        let loader = self
+            .read_loaders()
+            .get_by_extension(extension)
+            .ok_or_else(error)?;
+        loader.get().await.map_err(|_| error())
+    }
+
+    /// Returns the registered [`ErasedAssetLoader`] with `type_name`, if one
+    /// exists.
+    pub async fn get_asset_loader_with_type_name(
         &self,
         type_name: &str,
-    ) -> Result<Arc<dyn ErasedAssetLoader>, AssetLoadError> {
-        self.read_loaders().get_by_name(type_name).ok_or_else(|| {
-            AssetLoadError::MissingAssetLoaderForTypeName {
-                type_name: type_name.to_owned(),
-            }
-        })
+    ) -> Result<Arc<dyn ErasedAssetLoader>, MissingAssetLoaderForTypeNameError> {
+        let error = || MissingAssetLoaderForTypeNameError {
+            type_name: type_name.to_string(),
+        };
+        let loader = self.read_loaders().get_by_name(type_name).ok_or_else(error)?;
+        loader.get().await.map_err(|_| error())
+    }
+
+    /// Retrieves the default [`ErasedAssetLoader`] for the given path, if one
+    /// can be found.
+    ///
+    /// Used by the processor to build a default `.meta` for an asset that has
+    /// none.
+    pub async fn get_path_asset_loader<'a>(
+        &self,
+        path: impl Into<AssetPath<'a>>,
+    ) -> Result<Arc<dyn ErasedAssetLoader>, MissingAssetLoaderForExtensionError> {
+        let path = path.into();
+
+        let error = || {
+            let Some(full_extension) = path.get_full_extension() else {
+                return MissingAssetLoaderForExtensionError {
+                    extensions: Vec::new(),
+                };
+            };
+            let mut extensions = vec![full_extension.to_string()];
+            extensions.extend(
+                AssetPath::iter_secondary_extensions(full_extension).map(ToString::to_string),
+            );
+            MissingAssetLoaderForExtensionError { extensions }
+        };
+
+        let loader = self.read_loaders().get_by_path(&path).ok_or_else(error)?;
+        loader.get().await.map_err(|_| error())
+    }
+
+    /// Retrieves the default [`ErasedAssetLoader`] for the given asset
+    /// [`TypeId`], if one can be found.
+    pub async fn get_asset_loader_with_asset_type_id(
+        &self,
+        type_id: TypeId,
+    ) -> Result<Arc<dyn ErasedAssetLoader>, MissingAssetLoaderForTypeIdError> {
+        let error = || MissingAssetLoaderForTypeIdError { type_id };
+        let loader = self.read_loaders().get_by_type(type_id).ok_or_else(error)?;
+        loader.get().await.map_err(|_| error())
+    }
+
+    /// Retrieves the default [`ErasedAssetLoader`] for the given [`Asset`]
+    /// type, if one can be found.
+    pub async fn get_asset_loader_with_asset_type<A: Asset>(
+        &self,
+    ) -> Result<Arc<dyn ErasedAssetLoader>, MissingAssetLoaderForTypeIdError> {
+        self.get_asset_loader_with_asset_type_id(TypeId::of::<A>())
+            .await
     }
 
     /// Resolves the loader for `path`, preferring the asset type when known.
-    fn find_loader(
+    ///
+    /// The lookup is async so a pre-registered (pending) loader can be awaited
+    /// until the real one is registered.
+    async fn find_loader(
         &self,
         asset_type_id: Option<TypeId>,
         asset_path: &AssetPath<'_>,
     ) -> Result<Arc<dyn ErasedAssetLoader>, AssetLoadError> {
-        self.read_loaders()
-            .find(asset_type_id, asset_path)
-            .ok_or_else(|| AssetLoadError::MissingAssetLoader {
-                asset_type_id,
-                asset_path: asset_path.to_string(),
-            })
-    }
-
-    /// Resolves the loader for `path` from its file extension, when the asset
-    /// type is not statically known.
-    ///
-    /// This is the path-only counterpart of [`AssetServer::find_loader`], used by
-    /// the processor to build a default `.meta` for an asset that has none.
-    pub(crate) fn get_path_asset_loader(
-        &self,
-        asset_path: &AssetPath<'_>,
-    ) -> Result<Arc<dyn ErasedAssetLoader>, AssetLoadError> {
-        self.find_loader(None, asset_path)
+        let error = || AssetLoadError::MissingAssetLoader {
+            asset_type_id,
+            asset_path: asset_path.to_string(),
+        };
+        // Scope the read guard so it is not held across the await: holding it
+        // would make the future non-`Send` and could deadlock the registry.
+        let loader = { self.read_loaders().find(asset_type_id, asset_path) };
+        loader.ok_or_else(error)?.get().await.map_err(|_| error())
     }
 
     /// Begins loading an [`Asset`] of type `A` stored at `path`.
@@ -612,7 +679,7 @@ impl AssetServer {
                             });
                         }
                     };
-                    let loader = self.get_asset_loader_with_type_name(&loader_name)?;
+                    let loader = self.get_asset_loader_with_type_name(&loader_name).await?;
                     let meta = loader.deserialize_meta(&meta_bytes).map_err(|error| {
                         AssetLoadError::DeserializeMeta {
                             path: asset_path.clone_owned(),
@@ -622,14 +689,14 @@ impl AssetServer {
                     (meta, loader)
                 }
                 Err(AssetReaderError::NotFound(_)) => {
-                    let loader = self.find_loader(asset_type_id, asset_path)?;
+                    let loader = self.find_loader(asset_type_id, asset_path).await?;
                     let meta = loader.default_meta();
                     (meta, loader)
                 }
                 Err(error) => return Err(AssetLoadError::AssetReaderError(error)),
             }
         } else {
-            let loader = self.find_loader(asset_type_id, asset_path)?;
+            let loader = self.find_loader(asset_type_id, asset_path).await?;
             let meta = loader.default_meta();
             (meta, loader)
         };
@@ -869,7 +936,8 @@ impl AssetServer {
                             // server; skip it instead of failing the folder.
                             Err(
                                 AssetLoadError::MissingAssetLoader { .. }
-                                | AssetLoadError::MissingAssetLoaderForTypeName { .. },
+                                | AssetLoadError::MissingAssetLoaderForTypeName(_)
+                                | AssetLoadError::MissingAssetLoaderForExtension(_),
                             ) => {}
                             Err(error) => return Err(error),
                         }
@@ -1376,7 +1444,7 @@ pub fn handle_internal_asset_events(world: &mut World) {
 ///
 /// The pool is initialized on first use so loading works without an explicit
 /// startup step (ADR 0001).
-fn io_task_pool() -> &'static IoTaskPool {
+pub(crate) fn io_task_pool() -> &'static IoTaskPool {
     IoTaskPool::get_or_init(TaskPool::default)
 }
 
@@ -1464,11 +1532,14 @@ pub enum AssetLoadError {
         asset_path: String,
     },
     /// No loader is registered under the requested name.
-    #[error("no `AssetLoader` found with the name '{type_name}'")]
-    MissingAssetLoaderForTypeName {
-        /// The loader name that was not found.
-        type_name: String,
-    },
+    #[error(transparent)]
+    MissingAssetLoaderForTypeName(#[from] MissingAssetLoaderForTypeNameError),
+    /// No loader is registered for the requested extension.
+    #[error(transparent)]
+    MissingAssetLoaderForExtension(#[from] MissingAssetLoaderForExtensionError),
+    /// No loader is registered for the requested asset type id.
+    #[error(transparent)]
+    MissingAssetLoaderForTypeIdError(#[from] MissingAssetLoaderForTypeIdError),
     /// Reading the asset's bytes failed.
     #[error("{0}")]
     AssetReaderError(AssetReaderError),
@@ -1544,6 +1615,47 @@ impl From<MissingProcessedAssetReaderError> for AssetLoadError {
     fn from(error: MissingProcessedAssetReaderError) -> Self {
         Self::MissingProcessedAssetReaderError(error)
     }
+}
+
+/// An error that occurs when an
+/// [`AssetLoader`](crate::AssetLoader) is not registered for a given extension.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("no `AssetLoader` found{}", format_missing_asset_ext(extensions))]
+pub struct MissingAssetLoaderForExtensionError {
+    extensions: Vec<String>,
+}
+
+/// Formats the extensions a loader was looked up by for the error message.
+fn format_missing_asset_ext(extensions: &[String]) -> String {
+    if !extensions.is_empty() {
+        format!(
+            " for the following extension{}: {}",
+            if extensions.len() > 1 { "s" } else { "" },
+            extensions.join(", ")
+        )
+    } else {
+        " for file with no extension".to_string()
+    }
+}
+
+/// An error that occurs when an
+/// [`AssetLoader`](crate::AssetLoader) is not registered under a given loader
+/// name.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("no `AssetLoader` found with the name '{type_name}'")]
+pub struct MissingAssetLoaderForTypeNameError {
+    /// The loader name that was not found.
+    pub type_name: String,
+}
+
+/// An error that occurs when an
+/// [`AssetLoader`](crate::AssetLoader) is not registered for a given asset
+/// [`TypeId`].
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("no `AssetLoader` found with the ID '{type_id:?}'")]
+pub struct MissingAssetLoaderForTypeIdError {
+    /// The asset type id that was not found.
+    pub type_id: TypeId,
 }
 
 /// The failure of one [`AssetLoader`](crate::AssetLoader).

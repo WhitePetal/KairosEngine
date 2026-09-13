@@ -363,3 +363,115 @@ fn direct_load_records_a_loader_dependency_without_a_handle_dependency() {
         "without processed info the dependency records the zero hash"
     );
 }
+
+#[test]
+fn async_queries_resolve_registered_loaders() {
+    let server = server();
+    server.register_loader(ByteLoader);
+
+    let by_extension =
+        block_on(server.get_asset_loader_with_extension("bytes")).expect("extension resolves");
+    assert_eq!(by_extension.type_name(), core::any::type_name::<ByteLoader>());
+
+    let by_name =
+        block_on(server.get_asset_loader_with_type_name(core::any::type_name::<ByteLoader>()))
+            .expect("name resolves");
+    assert_eq!(
+        by_name.asset_type_id(),
+        core::any::TypeId::of::<ByteAsset>()
+    );
+
+    let by_type_id = block_on(
+        server.get_asset_loader_with_asset_type_id(core::any::TypeId::of::<ByteAsset>()),
+    )
+    .expect("asset type id resolves");
+    assert_eq!(by_type_id.extensions(), &["bytes"]);
+
+    let by_type = block_on(server.get_asset_loader_with_asset_type::<ByteAsset>())
+        .expect("asset type resolves");
+    assert_eq!(by_type.extensions(), &["bytes"]);
+
+    let by_path = block_on(server.get_path_asset_loader("some.bytes")).expect("path resolves");
+    assert_eq!(by_path.extensions(), &["bytes"]);
+}
+
+#[test]
+fn unknown_loaders_report_the_matching_error() {
+    let server = server();
+
+    match block_on(server.get_asset_loader_with_extension("nope")) {
+        Ok(_) => panic!("an unknown extension should not resolve a loader"),
+        Err(error) => assert_eq!(
+            error.to_string(),
+            "no `AssetLoader` found for the following extension: nope"
+        ),
+    }
+
+    match block_on(server.get_asset_loader_with_type_name("nope")) {
+        Ok(_) => panic!("an unknown loader name should not resolve a loader"),
+        Err(error) => assert_eq!(error.type_name, "nope"),
+    }
+
+    match block_on(server.get_asset_loader_with_asset_type::<OtherAsset>()) {
+        Ok(_) => panic!("an unregistered asset type should not resolve a loader"),
+        Err(error) => assert_eq!(error.type_id, core::any::TypeId::of::<OtherAsset>()),
+    }
+
+    match block_on(server.get_path_asset_loader("no_extension")) {
+        Ok(_) => panic!("a path with no extension should not resolve a loader"),
+        Err(error) => assert_eq!(
+            error.to_string(),
+            "no `AssetLoader` found for file with no extension"
+        ),
+    }
+}
+
+#[test]
+fn a_preregistered_loader_resolves_after_registration() {
+    let server = server();
+
+    // The placeholder covers `ByteLoader`'s name, type, and extension, so a load
+    // of `*.bytes` would block here rather than fail; registering fills the slot.
+    server.preregister_loader::<ByteLoader>(&["bytes"]);
+    server.register_loader(ByteLoader);
+
+    let loader = block_on(server.get_asset_loader_with_extension("bytes"))
+        .expect("the preregistered loader resolves once registered");
+    assert_eq!(loader.type_name(), core::any::type_name::<ByteLoader>());
+}
+
+#[test]
+fn a_pending_query_blocks_until_the_loader_is_registered() {
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    let server = server();
+    server.preregister_loader::<ByteLoader>(&["bytes"]);
+
+    // Query from another thread so the await is driven while the main thread
+    // registers the loader underneath it.
+    let (sender, receiver) = mpsc::channel();
+    let query_server = server.clone();
+    let query = std::thread::spawn(move || {
+        let resolved = block_on(query_server.get_asset_loader_with_extension("bytes"))
+            .map(|loader| loader.type_name());
+        let _ = sender.send(resolved);
+    });
+
+    // Only the placeholder exists, so the query is still pending: nothing has
+    // come back yet.
+    assert!(
+        receiver.recv_timeout(Duration::from_millis(100)).is_err(),
+        "the query should block until the loader is registered"
+    );
+
+    server.register_loader(ByteLoader);
+
+    let resolved = receiver
+        .recv_timeout(Duration::from_secs(5))
+        .expect("registering the loader wakes the pending query")
+        .expect("the pending query resolves");
+    assert_eq!(resolved, core::any::type_name::<ByteLoader>());
+
+    query.join().expect("the query thread finishes");
+}

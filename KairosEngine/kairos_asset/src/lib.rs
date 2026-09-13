@@ -87,7 +87,8 @@ pub use loader::{
 };
 pub use server::{
     AssetLoadError, AssetLoaderError, AssetServer, AssetServerMode, DependencyLoadState,
-    LoadState, RecursiveDependencyLoadState, handle_internal_asset_events,
+    LoadState, MissingAssetLoaderForExtensionError, MissingAssetLoaderForTypeIdError,
+    MissingAssetLoaderForTypeNameError, RecursiveDependencyLoadState, handle_internal_asset_events,
 };
 pub use io::{
     AssetReader, AssetReaderError, AssetSourceEvent, AssetSourceId, AssetWriter,

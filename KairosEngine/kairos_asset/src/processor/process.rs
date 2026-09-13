@@ -372,7 +372,7 @@ impl<'a> ProcessContext<'a> {
     ) -> Result<ErasedLoadedAsset, AssetLoadError> {
         let server = self.server;
         let path = self.path;
-        let loader = server.get_asset_loader_with_type_name(loader_name::<L>())?;
+        let loader = server.get_asset_loader_with_type_name(loader_name::<L>()).await?;
         let loaded_asset = server
             .load_with_settings_loader_and_reader(
                 path,

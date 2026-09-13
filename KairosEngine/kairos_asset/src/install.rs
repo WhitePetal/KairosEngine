@@ -335,6 +335,11 @@ pub trait AssetWorldExt {
     /// Registers `loader` so loads of the formats it names can resolve it.
     fn register_asset_loader<L: AssetLoader>(&mut self, loader: L);
 
+    /// Pre-registers a loader for `extensions`, blocking loads of those formats
+    /// until a real loader named [`loader_name::<L>()`](crate::meta::loader_name)
+    /// is registered.
+    fn preregister_asset_loader<L: AssetLoader>(&mut self, extensions: &[&str]);
+
     /// Builds a loader through [`FromWorld`] and registers it.
     fn init_asset_loader<L: AssetLoader + FromWorld>(&mut self);
 }
@@ -377,6 +382,11 @@ impl AssetWorldExt for World {
 
     fn register_asset_loader<L: AssetLoader>(&mut self, loader: L) {
         self.resource::<AssetServer>().register_loader(loader);
+    }
+
+    fn preregister_asset_loader<L: AssetLoader>(&mut self, extensions: &[&str]) {
+        self.resource::<AssetServer>()
+            .preregister_loader::<L>(extensions);
     }
 
     fn init_asset_loader<L: AssetLoader + FromWorld>(&mut self) {

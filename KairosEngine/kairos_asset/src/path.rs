@@ -449,6 +449,18 @@ impl<'a> AssetPath<'a> {
         })
     }
 
+    /// The extensions after each dot in `full_extension`, from most to least
+    /// specific.
+    ///
+    /// For `"config.ron"` this yields `"ron"`; for `"a.b.c"` it yields
+    /// `"b.c"` then `"c"`. Loader resolution uses this to fall back to a less
+    /// specific extension when no loader declares the full one.
+    pub fn iter_secondary_extensions(full_extension: &str) -> impl Iterator<Item = &str> {
+        full_extension
+            .match_indices('.')
+            .map(move |(index, _)| &full_extension[index + 1..])
+    }
+
     /// Whether this path escapes its [`AssetSource`](crate::io::AssetSource)
     /// root, by starting at the filesystem root or climbing above it with `..`.
     ///

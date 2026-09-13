@@ -10,6 +10,7 @@
 
 use std::sync::Arc;
 
+use futures_lite::future::block_on;
 use kairos_ecs::message::{Message, MessageReader, MessageRegistry, Messages};
 use kairos_ecs::resource::Resource;
 use kairos_ecs::schedule::{IntoScheduleConfigs, ScheduleLabel, Schedules};
@@ -458,10 +459,12 @@ fn processed_mode_with_a_processor_wires_layout_2() {
     // app's server is visible to the processor's server (which needs it to
     // resolve source-asset loaders while processing).
     assert!(
-        processor
-            .server()
-            .get_asset_loader_with_type_name(crate::meta::loader_name::<ByteLoader>())
-            .is_ok(),
+        block_on(
+            processor
+                .server()
+                .get_asset_loader_with_type_name(crate::meta::loader_name::<ByteLoader>())
+        )
+        .is_ok(),
         "layout ② shares the loader registry between both servers"
     );
 }
@@ -485,4 +488,19 @@ fn watch_for_changes_override_sets_the_servers_watching_flag() {
     assert!(watched_world
         .resource::<AssetServer>()
         .watching_for_changes());
+}
+
+#[test]
+fn preregister_asset_loader_registers_through_the_world() {
+    let mut world = World::new();
+    install(&mut world, options());
+    world.init_asset::<ByteAsset>();
+
+    world.preregister_asset_loader::<ByteLoader>(&["bytes"]);
+    world.register_asset_loader(ByteLoader);
+
+    let server = world.resource::<AssetServer>().clone();
+    let loader = block_on(server.get_asset_loader_with_extension("bytes"))
+        .expect("a loader preregistered and registered through the world resolves");
+    assert_eq!(loader.type_name(), crate::meta::loader_name::<ByteLoader>());
 }

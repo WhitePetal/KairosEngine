@@ -888,7 +888,10 @@ impl AssetProcessor {
                     .map_err(ProcessError::DeserializeMetaError)?;
                 let (meta, processor) = match minimal.asset {
                     AssetActionMinimal::Load { loader } => {
-                        let loader = server.get_asset_loader_with_type_name(&loader)?;
+                        let loader = server
+                            .get_asset_loader_with_type_name(&loader)
+                            .await
+                            .map_err(crate::AssetLoadError::from)?;
                         let meta = loader
                             .deserialize_meta(&meta_bytes)
                             .map_err(ProcessError::DeserializeMetaError)?;
@@ -919,7 +922,7 @@ impl AssetProcessor {
                     let meta = processor.default_meta(MetaTypePathKind::Long);
                     (meta, Some(processor))
                 } else {
-                    match server.get_path_asset_loader(asset_path) {
+                    match server.get_path_asset_loader(asset_path).await {
                         Ok(loader) => (loader.default_meta(), None),
                         Err(_) => {
                             let meta: Box<dyn AssetMetaDyn> =
