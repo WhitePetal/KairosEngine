@@ -6,6 +6,12 @@
 |---|---|
 | `hierarchy/unity-hierarchy.md` | Unity Hierarchy 窗口实现分析与架构研究 |
 
+## Asset System
+
+| File | Topic |
+|---|---|
+| `asset-processor-0.19.1.md` | bevy_asset 0.19.1 的 AssetProcessor 实现清点：处理管线 / 调度 / processed_info 回写（外部事实清点） |
+
 ## Texture Encoding
 
 | File | Topic |
