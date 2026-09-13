@@ -4,14 +4,11 @@
 //! watcher watches the asset base path (`get_base_path`), maps changed absolute
 //! paths back to asset paths through the [`EmbeddedAssetRegistry`]'s recorded
 //! `root_paths`, reads the changed file from disk, and overwrites the
-//! compiled-in bytes in the in-memory [`Dir`]. Only [`AssetSourceEvent::ModifiedAsset`]
-//! is forwarded; embedded metadata is not hot-reloaded (it is only warned
-//! about).
-//!
-//! Forwarding only modifications is a deliberate deviation from upstream, which
-//! forwards every event: the registry's contents are fixed at compile time, so a
-//! source file appearing or disappearing on disk does not change which embedded
-//! assets exist.
+//! compiled-in bytes in the in-memory [`Dir`]. Only an
+//! [`AssetSourceEvent::ModifiedAsset`] triggers the byte overwrite, but — as
+//! upstream — every event that maps back through `root_paths` is forwarded to
+//! the source's channel. Embedded metadata is not hot-reloaded (a change to a
+//! `.meta` sidecar is only warned about).
 //!
 //! [`EmbeddedAssetRegistry`]: super::EmbeddedAssetRegistry
 
@@ -111,34 +108,25 @@ impl FilesystemEventHandler for EmbeddedEventHandler {
     }
 
     fn handle(&mut self, absolute_paths: &[PathBuf], event: AssetSourceEvent) {
-        // Only content changes are meaningful for compiled-in assets: the
-        // registry is populated at compile time, so a source file appearing or
-        // disappearing on disk does not change which embedded assets exist.
-        let AssetSourceEvent::ModifiedAsset(path) = &event else {
-            return;
-        };
-        if self.last_event.as_ref() == Some(&event) {
-            // Adjacent duplicate suppression within one debounced batch.
-            return;
-        }
-        self.last_event = Some(event.clone());
+        if self.last_event.as_ref() != Some(&event) {
+            if let AssetSourceEvent::ModifiedAsset(path) = &event
+                && let Ok(file) = File::open(&absolute_paths[0])
+            {
+                let mut reader = BufReader::new(file);
+                let mut buffer = Vec::new();
 
-        if let Some(absolute_path) = absolute_paths.first()
-            && let Ok(file) = File::open(absolute_path)
-        {
-            let mut reader = BufReader::new(file);
-            let mut buffer = Vec::new();
-
-            // Read the file into the buffer and overwrite the static bytes.
-            if reader.read_to_end(&mut buffer).is_ok() {
-                self.dir.insert_asset(path, buffer);
+                // Read the file into the buffer and overwrite the static bytes.
+                if reader.read_to_end(&mut buffer).is_ok() {
+                    self.dir.insert_asset(path, buffer);
+                }
             }
-        }
-
-        if self.sender.send_blocking(event).is_err() {
-            // The receiver is gone: the source is being torn down. Nothing to do
-            // but stop forwarding.
-            warn!("EmbeddedWatcher event channel closed; stopping event forwarding");
+            self.last_event = Some(event.clone());
+            if self.sender.send_blocking(event).is_err() {
+                // The receiver is gone: the source is being torn down. Nothing to
+                // do but stop forwarding. (Upstream unwraps here; like
+                // `FileEventHandler`, watching degrades rather than aborts.)
+                warn!("EmbeddedWatcher event channel closed; stopping event forwarding");
+            }
         }
     }
 }
@@ -238,31 +226,50 @@ mod tests {
         let _ = receiver;
     }
 
-    /// Only content changes matter for compiled-in assets, so non-modification
-    /// events are dropped rather than forwarded.
+    /// Upstream forwards every event that maps back through `root_paths`, even
+    /// though only `ModifiedAsset` overwrites the compiled-in bytes.
     #[test]
-    fn handler_drops_non_modification_events() {
-        let root = temp_dir("drop");
+    fn handler_forwards_non_modification_events_without_overwriting_bytes() {
+        let root = temp_dir("forward");
+        let asset_path = "my_crate/thing.bytes";
+        let watched = root.join("src").join("thing.bytes");
+        std::fs::create_dir_all(watched.parent().unwrap()).unwrap();
+        std::fs::write(&watched, b"on disk").unwrap();
+
+        let dir = Dir::default();
+        dir.insert_asset(Path::new(asset_path), b"compiled".to_vec());
+
+        let mut root_paths = HashMap::default();
+        root_paths.insert(
+            PathBuf::from("src").join("thing.bytes").into_boxed_path(),
+            PathBuf::from(asset_path),
+        );
 
         let (sender, receiver) = async_channel::unbounded();
         let mut handler = EmbeddedEventHandler {
             sender,
-            root_paths: Arc::new(RwLock::new(HashMap::default())),
+            root_paths: Arc::new(RwLock::new(root_paths)),
             root: root.clone(),
-            dir: Dir::default(),
+            dir: dir.clone(),
             last_event: None,
         };
 
         handler.begin();
         handler.handle(
-            std::slice::from_ref(&root.join("src").join("thing.bytes")),
-            AssetSourceEvent::AddedAsset(PathBuf::from("my_crate/thing.bytes")),
-        );
-        handler.handle(
-            std::slice::from_ref(&root.join("src").join("thing.bytes")),
-            AssetSourceEvent::RemovedAsset(PathBuf::from("my_crate/thing.bytes")),
+            std::slice::from_ref(&watched),
+            AssetSourceEvent::AddedAsset(PathBuf::from(asset_path)),
         );
 
-        assert!(receiver.try_recv().is_err());
+        // The event is forwarded...
+        assert_eq!(
+            receiver.try_recv().unwrap(),
+            AssetSourceEvent::AddedAsset(PathBuf::from(asset_path))
+        );
+        // ...but the compiled-in bytes are untouched; only `ModifiedAsset`
+        // rereads the file.
+        assert_eq!(
+            dir.get_asset(Path::new(asset_path)).unwrap().value(),
+            b"compiled"
+        );
     }
 }
