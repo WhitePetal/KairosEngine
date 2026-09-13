@@ -32,7 +32,11 @@ feature 面照搬 `watch` / `file_watcher` / `embedded_watcher` 三档，`defaul
 6. **embedded meta 不热重载**（照上游）：改 `.meta` 只 warn，不重读。
 7. **去抖 300ms 硬编码**、不加更上层节流、不暴露配置（照上游）。
 8. **编辑器项目树另起一条 watcher**：`AssetSourceEvent` 不升为公开广播面；已加载资产面走既有
-   `AssetEvent`。这是本地决策（上游未把编辑器刷新纳入 `bevy_asset`）。
+   `AssetEvent`。这是本地决策（上游未把编辑器刷新纳入 `bevy_asset`）。（落地：`kairos_engine`
+   的 `kairos_editor::project_watcher::ProjectTreeWatcher` 监听 `ProjectPathGraph::scan_root`，
+   `ui::Context::handle` 每帧排空一次并让项目树重扫；重扫只在注册了新 GUID 时写回注册表，
+   否则注册表自身的写入会把刚叫醒它的 watcher 再叫一次。因此 `kairos_engine` 也直接依赖
+   `notify-debouncer-full`。）
 
 ## 考虑过的替代
 

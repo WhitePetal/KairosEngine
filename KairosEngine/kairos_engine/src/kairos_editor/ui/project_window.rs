@@ -7,10 +7,11 @@ use std::{any::type_name, cell::Cell, fs, ops::Deref, path::PathBuf, sync::Arc};
 use crate::{
     kairos_editor::{
         Engine,
-        asset_registry::{AssetKind, AssetRegistry},
+        asset_registry::{AssetKind, AssetRegistry, Guid},
         project_path_tree::{
             ProjectPathGraph, create_request::CreateRequest, tree_node::ProjectTreeNode,
         },
+        project_watcher::ProjectTreeWatcher,
         ui::{
             self, Messager, UIReader,
             drag::Drag,
@@ -65,6 +66,12 @@ struct ProjectWindowModel {
     /// 渲染后立即清除。用 `Cell` 使得 `ui(&self)` 中也能写入。
     force_expand_to: Cell<Option<NodeIndex>>,
     drag: Option<Drag<PathBuf>>,
+    /// 监听项目根的 watcher：编辑器之外改了项目文件时，项目树自己知道要重扫。
+    /// 后端起不来时为 `None`，此时树只跟随编辑器自己的增删改。
+    watcher: Option<ProjectTreeWatcher>,
+    /// 重扫请求到达时正在重命名：延迟到重命名结束后再重扫，否则会把正在编辑的
+    /// 节点从编辑器脚下抽走。
+    refresh_pending: Cell<bool>,
 }
 
 // ============================================================
@@ -109,6 +116,17 @@ impl ProjectWindowModel {
             println!("Failed to save AssetRegistry: {}", e);
         }
 
+        // ADR 0006 偏离 8：项目树另起一条 watcher，监听它实际扫描的那个目录。
+        let watcher = match ProjectTreeWatcher::new(&project_path_graph.scan_root()) {
+            Ok(watcher) => Some(watcher),
+            Err(error) => {
+                log::warn!(
+                    "the project tree will not follow changes made outside the editor: {error}"
+                );
+                None
+            }
+        };
+
         Ok(Self {
             style,
             asset_registry: asset_registry,
@@ -119,6 +137,8 @@ impl ProjectWindowModel {
             renaming_buffer: None,
             force_expand_to: Cell::new(None),
             drag: None,
+            watcher,
+            refresh_pending: Cell::new(false),
         })
     }
 }
@@ -134,6 +154,61 @@ impl ProjectWindow {
     /// 锁定时拒绝取消选中（`None`）。
     pub fn select_node(&mut self, node: Option<NodeIndex>) {
         self.model.selected_node = node;
+    }
+
+    /// 把 watcher 看到的项目变化落到树上（UI 每帧调一次）。
+    ///
+    /// 重扫会重建所有节点索引，所以选中项按 GUID 搬过去；正在重命名时暂缓，等
+    /// 重命名结束后的下一帧再重扫。
+    pub fn poll_external_changes(&mut self) {
+        let Some(changed) = self.model.watcher.as_ref().map(|w| w.take_change()) else {
+            return;
+        };
+        if !changed && !self.model.refresh_pending.get() {
+            return;
+        }
+        if self.model.renaming_node.is_some() {
+            self.model.refresh_pending.set(true);
+            return;
+        }
+        self.refresh_from_disk();
+    }
+
+    /// 从文件系统重建项目树，保持当前选中项。
+    ///
+    /// 只在重扫注册了新路径时才写回 registry：注册表文件在 `Library/` 下，无条件
+    /// 落盘会把自己刚叫醒的 watcher 再叫一次。
+    fn refresh_from_disk(&mut self) {
+        self.model.refresh_pending.set(false);
+
+        let selected = self.guid_of(self.model.selected_node);
+        let active_directory = self.guid_of(self.model.active_directory);
+
+        let before = self.model.asset_registry.registered_path_count();
+        self.model
+            .project_path_graph
+            .refresh(&mut self.model.asset_registry);
+        if self.model.asset_registry.registered_path_count() > before
+            && let Err(error) = self.model.asset_registry.save()
+        {
+            log::error!("save asset registry failed: {error}");
+        }
+
+        let find = |guid| self.model.project_path_graph.find_by_guid(guid);
+        self.model.selected_node = selected.and_then(find);
+        self.model.active_directory = active_directory.and_then(find);
+        // 树已被重建：进行中的重命名无法幸存，一次性展开标记的索引也已失效。
+        self.model.renaming_node = None;
+        self.model.renaming_buffer = None;
+        self.model.force_expand_to.set(None);
+    }
+
+    /// 节点当前绑定的 GUID（重扫后用它把选中项找回来）。
+    fn guid_of(&self, node: Option<NodeIndex>) -> Option<Guid> {
+        self.model
+            .project_path_graph
+            .get_node(node?)
+            .map(|data| data.guid)
     }
 
     /// 获取当前选中节点的身份信息（供 InspectorWindow 使用）。

@@ -300,6 +300,15 @@ impl AssetRegistry {
         self.path_to_guid.contains_key(path)
     }
 
+    /// 已注册路径的数量。
+    ///
+    /// 重新扫描只会为新路径分配 GUID，所以计数不变就说明没有新东西需要落盘：项目树
+    /// 据此决定是否写回磁盘（见 `ProjectWindow::refresh_from_disk`），避免自己写
+    /// 自己的注册表文件又把 watcher 叫醒。
+    pub fn registered_path_count(&self) -> usize {
+        self.path_to_guid.len()
+    }
+
     // ----------------------------------------------------------
     // 注册 / 更新 / 移除
     // ----------------------------------------------------------

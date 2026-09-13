@@ -414,6 +414,13 @@ impl Context {
     }
 
     pub fn handle(&mut self, engine: &mut Engine, ui: &egui::Ui) {
+        // Changes made outside the editor reach the project tree through its own
+        // watcher (ADR 0006 deviation 8), not through the asset events: this is
+        // the once-per-frame point where that watcher is drained and applied.
+        if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
+            project_window.poll_external_changes();
+        }
+
         while let Some(msg) = self.messager.messages.pop_front() {
             match msg {
                 Message::CreateToolbar => {

@@ -1,7 +1,7 @@
 use tempfile::TempDir;
 
 use crate::kairos_editor::{
-    asset_registry::{AssetKind, AssetRegistry},
+    asset_registry::{AssetKind, AssetRegistry, Guid},
     project_path_tree::{
         ProjectPathGraph, create_request::CreateRequest, tree_node::ProjectTreeNode,
     },
@@ -687,6 +687,69 @@ fn meta_sidecars_are_hidden() {
     );
 
     assert!(node_at(&graph, "res/textures/hero.png.meta").is_none());
+}
+
+// ---- refresh / GUID lookups (the project watcher's seam) ----
+
+#[test]
+fn find_by_guid_returns_the_node_that_holds_it() {
+    let tmp = TempDir::new().unwrap();
+    let mut registry = AssetRegistry::new();
+    let graph = scan(&tmp, &mut registry, &["res/materials/hero.mat"]);
+
+    let hero = graph
+        .find_by_path(std::path::Path::new("res/materials/hero.mat"))
+        .expect("the material is a node");
+    let guid = graph.get_node(hero).expect("the node has data").guid;
+
+    assert_eq!(graph.find_by_guid(guid), Some(hero));
+    assert_eq!(graph.find_by_guid(Guid::new()), None);
+}
+
+#[test]
+fn refresh_picks_up_files_created_outside_the_editor_and_keeps_guids() {
+    let tmp = TempDir::new().unwrap();
+    let mut registry = AssetRegistry::new();
+    let mut graph = scan(&tmp, &mut registry, &["res/materials/hero.mat"]);
+
+    let hero = graph
+        .find_by_path(std::path::Path::new("res/materials/hero.mat"))
+        .expect("the material is a node");
+    let guid = graph.get_node(hero).expect("the node has data").guid;
+
+    // A file another program wrote after the tree was built.
+    let textures = tmp.path().join("res/textures");
+    std::fs::create_dir_all(&textures).unwrap();
+    std::fs::write(textures.join("hero.png"), b"placeholder").unwrap();
+    std::fs::write(textures.join("hero.png.meta"), b"placeholder").unwrap();
+
+    graph.refresh(&mut registry);
+
+    // The new source is in the tree, paired with its product, and the path that
+    // was already known kept its GUID (that is what carries the selection across
+    // a rescan).
+    let texture = node_at(&graph, "res/textures/hero.png").expect("the new texture is a node");
+    assert_eq!(texture.kind, AssetKind::Texture);
+    assert!(texture.asset_path.is_some(), "the texture pairs with its product");
+
+    let hero_after = graph
+        .find_by_guid(guid)
+        .expect("the known path keeps its GUID");
+    let path = graph.get_node(hero_after).expect("the node has data").path.clone();
+    assert_eq!(
+        path.to_string_lossy().replace('\\', "/"),
+        tmp.path()
+            .join("res/materials/hero.mat")
+            .to_string_lossy()
+            .replace('\\', "/")
+    );
+}
+
+#[test]
+fn scan_root_is_the_directory_the_tree_was_built_over() {
+    let (tmp, graph, _registry) = setup();
+
+    assert_eq!(graph.scan_root(), tmp.path());
 }
 
 #[test]

@@ -15,7 +15,9 @@ use petgraph::{
 
 use crate::{
     kairos_dialog,
-    kairos_editor::asset_registry::{AssetKind, AssetRegistry, AssetRoots, processed_asset_path},
+    kairos_editor::asset_registry::{
+        AssetKind, AssetRegistry, AssetRoots, Guid, processed_asset_path,
+    },
 };
 use create_request::CreateRequest;
 use tree_node::ProjectTreeNode;
@@ -64,33 +66,45 @@ impl ProjectPathGraph {
         let root_node = graph.add_node(root_node_data);
 
         // root_path 归一化后可能为空（原 `./`），但 read_dir 需要有效路径
-        let scan_root = if root_path.as_os_str().is_empty() {
-            PathBuf::from(".")
-        } else {
-            root_path.clone()
-        };
+        let scan_root = Self::readable_root(&root_path);
         let roots = AssetRoots::new(root_path);
         Self::scan_dir(&scan_root, &roots, root_node, &mut graph, registry);
 
         Self { graph }
     }
 
+    /// 根节点记录的路径（已归一化；`./` 会归一化为空）。
+    fn root_path(&self) -> PathBuf {
+        self.graph
+            .node_weight(self.get_root_node())
+            .map(|node| Self::normalize_path(node.path.clone()))
+            .unwrap_or_default()
+    }
+
+    /// 树实际扫描的目录：根节点记录的路径，为空时退回 `"."`。
+    ///
+    /// [`refresh`](Self::refresh) 重新扫描它，编辑器项目树的 watcher 也监听它。
+    pub fn scan_root(&self) -> PathBuf {
+        Self::readable_root(&self.root_path())
+    }
+
+    /// 归一化后的根路径可能为空（原 `./`），但 `read_dir` 需要有效路径。
+    fn readable_root(root_path: &Path) -> PathBuf {
+        if root_path.as_os_str().is_empty() {
+            PathBuf::from(".")
+        } else {
+            root_path.to_path_buf()
+        }
+    }
+
     /// 刷新整个树（重新扫描）。
     ///
     /// 会保留 Registry 中已有的 GUID，新文件自动注册。
     pub fn refresh(&mut self, registry: &mut AssetRegistry) {
-        let root_path = self
-            .graph
-            .node_weight(self.get_root_node())
-            .map(|n| Self::normalize_path(n.path.clone()))
-            .unwrap_or_else(|| PathBuf::from("./"));
-
-        // normalize the root path, but keep `./` for read_dir
-        let root_path_for_read = if root_path.as_os_str().is_empty() {
-            PathBuf::from("./")
-        } else {
-            root_path.clone()
-        };
+        // The root node's path and the directory it is actually scanned as: the
+        // normalized root path can be empty (`./`), which `read_dir` cannot take.
+        let root_path = self.root_path();
+        let scan_root = self.scan_root();
 
         self.graph.clear();
         let root_guid = registry.get_or_create_guid(&root_path);
@@ -105,7 +119,7 @@ impl ProjectPathGraph {
         let root_node = self.graph.add_node(root_node_data);
 
         Self::scan_dir(
-            &root_path_for_read,
+            &scan_root,
             &AssetRoots::new(root_path),
             root_node,
             &mut self.graph,
@@ -259,6 +273,16 @@ impl ProjectPathGraph {
             }
         }
         None
+    }
+
+    /// 根据 GUID 查找节点索引。
+    ///
+    /// 重新扫描会重建所有节点索引（GUID 来自 registry，保持不变），所以跨扫描
+    /// 保持选中项时用它定位，见 `ProjectWindow::refresh_from_disk`。
+    pub fn find_by_guid(&self, guid: Guid) -> Option<NodeIndex> {
+        self.graph
+            .node_indices()
+            .find(|&idx| self.graph[idx].guid == guid)
     }
 
     /// 反查引擎资产路径对应的源文件（[`AssetRegistry::analyse_path`] 配对的
