@@ -30,10 +30,10 @@ use winit::{dpi::PhysicalSize, window::Window};
 use kairos_math::{float4, float4x4};
 use kairos_ecs::world::World;
 
-use kairos_asset::{AssetId, AssetServer, Assets, Handle};
+use kairos_asset::{AssetId, AssetServer, Assets, Handle, UntypedAssetId};
 
 use crate::{
-    asset_events::GraphicsAssetEvents,
+    asset_events::{GraphicsAssetEventSets, GraphicsAssetEvents},
     attachment::{AttachmentFormat, InternalAttachmentId},
     egui_texture_handle::EguiTextureHandle,
     graphics_graph::{self, GraphicsGraph, graphics_node::RenderPassNode},
@@ -94,6 +94,85 @@ struct PreparedDrawCall {
     instance_count: u32,
 }
 
+/// Why a draw instance did not make it into a frame: one of the assets it
+/// resolves to is not in its store yet.
+///
+/// A skip is reported once per asset ([`report_unready`]) and the report is
+/// evicted when that asset changes ([`RenderPipeline::invalidate_caches`]),
+/// because an unready asset stays unready for many frames and an unconditional
+/// warning would be a per-frame flood. Without a report, a skipped draw is
+/// indistinguishable from a draw that ran and produced nothing — a missing
+/// wireframe material looked like a shading problem for exactly that reason.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum UnreadyAsset {
+    /// The draw instance's mesh is absent from `Assets<Mesh>`.
+    Mesh(AssetId<Mesh>),
+    /// The draw instance's material is absent from `Assets<Material>`.
+    Material(AssetId<Material>),
+    /// The material declares no shader at all, so no pipeline can be built.
+    MaterialWithoutShader(AssetId<Material>),
+    /// The material's shader is absent from `Assets<ShaderAsset>`.
+    Shader(AssetId<ShaderAsset>),
+    /// The material's texture is absent from `Assets<Texture>`.
+    Texture(AssetId<Texture>),
+    /// A material without a texture, and the built-in white fallback it falls
+    /// back to, has not loaded.
+    FallbackTexture(AssetId<Texture>),
+}
+
+impl UnreadyAsset {
+    /// The asset the warning is about, and the reason to phrase it with.
+    ///
+    /// The id is what [`AssetServer::get_path`] takes, so the warning can name
+    /// the file the asset came from instead of an opaque id.
+    fn id_and_reason(self) -> (UntypedAssetId, &'static str) {
+        match self {
+            Self::Mesh(id) => (id.untyped(), "the draw instance's mesh is not in Assets<Mesh>"),
+            Self::Material(id) => (
+                id.untyped(),
+                "the draw instance's material is not in Assets<Material>",
+            ),
+            Self::MaterialWithoutShader(id) => {
+                (id.untyped(), "the material declares no shader")
+            }
+            Self::Shader(id) => (
+                id.untyped(),
+                "the material's shader is not in Assets<ShaderAsset>",
+            ),
+            Self::Texture(id) => (
+                id.untyped(),
+                "the material's texture is not in Assets<Texture>",
+            ),
+            Self::FallbackTexture(id) => (
+                id.untyped(),
+                "the built-in white fallback texture has not loaded",
+            ),
+        }
+    }
+}
+
+/// Warns about an unready asset the first time it is seen, and stays quiet
+/// afterwards.
+///
+/// The path lookup runs only on the first report, so the steady state is one
+/// hash-set probe per skipped draw.
+fn report_unready(reports: &mut HashSet<UnreadyAsset>, world: &World, unready: UnreadyAsset) {
+    if !reports.insert(unready) {
+        return;
+    }
+
+    let (id, reason) = unready.id_and_reason();
+    let path = world
+        .get_resource::<AssetServer>()
+        .and_then(|server| server.get_path(id))
+        .and_then(|path| path.path().to_str().map(str::to_owned));
+
+    match path {
+        Some(path) => log::warn!("Skipped a draw: {reason}, so \"{path}\" is not drawn yet"),
+        None => log::warn!("Skipped a draw: {reason} (asset {id:?})"),
+    }
+}
+
 pub struct RenderPipeline {
     window: Arc<Window>,
     pub device: Device,
@@ -118,6 +197,10 @@ pub struct RenderPipeline {
     // #1: purple fallback for errored materials.
     purple_fallback: Option<(BindGroup, BindGroupLayout)>,
     error_material_indices: HashSet<AssetId<Material>>,
+    /// The unready assets already warned about, so a draw skipped for many
+    /// frames is reported once rather than every frame. Entries are evicted by
+    /// [`RenderPipeline::invalidate_caches`] when the asset changes.
+    unready_assets: HashSet<UnreadyAsset>,
     white_texture_fallback: Handle<Texture>,
 }
 
@@ -227,6 +310,7 @@ impl RenderPipeline {
             global_vp_bind_group_layout,
             purple_fallback: Some(purple_fb),
             error_material_indices: HashSet::new(),
+            unready_assets: HashSet::new(),
             white_texture_fallback: world
                 .resource::<AssetServer>()
                 .load::<Texture>(PathBuf::from(PATH_WHITE_TEXTURE)),
@@ -423,6 +507,7 @@ impl RenderPipeline {
                         &mut self.error_material_indices,
                         &self.purple_fallback,
                         &mut all_error_scopes,
+                        &mut self.unready_assets,
                         &self.white_texture_fallback,
                     );
                     if let Some(command_buffers) = &mut command_buffers {
@@ -511,6 +596,7 @@ impl RenderPipeline {
         error_material_indices: &mut HashSet<AssetId<Material>>,
         purple_fallback: &Option<(BindGroup, BindGroupLayout)>,
         error_scopes: &mut Vec<(AssetId<Material>, wgpu::ErrorScopeGuard)>,
+        unready_assets: &mut HashSet<UnreadyAsset>,
         white_texture_fallback: &Handle<Texture>,
     ) -> Option<Vec<CommandBuffer>> {
         let materials = world.resource::<Assets<Material>>();
@@ -644,9 +730,19 @@ impl RenderPipeline {
 
         for draw in &render_pass_node.draw_instances {
             let Some(mesh) = meshes.get(&draw.renderer.mesh) else {
+                report_unready(
+                    unready_assets,
+                    world,
+                    UnreadyAsset::Mesh(draw.renderer.mesh.id()),
+                );
                 continue;
             };
             let Some(material) = materials.get(&draw.renderer.material) else {
+                report_unready(
+                    unready_assets,
+                    world,
+                    UnreadyAsset::Material(draw.renderer.material.id()),
+                );
                 continue;
             };
             let texture_handle = match &material.texture {
@@ -658,9 +754,19 @@ impl RenderPipeline {
             let material_errored = error_material_indices.contains(&material_id);
 
             let Some(shader_asset) = &material.shader else {
+                report_unready(
+                    unready_assets,
+                    world,
+                    UnreadyAsset::MaterialWithoutShader(material_id),
+                );
                 continue;
             };
             let Some(shader) = shaders.get(shader_asset) else {
+                report_unready(
+                    unready_assets,
+                    world,
+                    UnreadyAsset::Shader(shader_asset.id()),
+                );
                 continue;
             };
 
@@ -678,6 +784,12 @@ impl RenderPipeline {
                 }
             } else {
                 let Some(texture_asset) = textures.get(texture_handle) else {
+                    let unready = if material.texture.is_none() {
+                        UnreadyAsset::FallbackTexture(texture_handle.id())
+                    } else {
+                        UnreadyAsset::Texture(texture_handle.id())
+                    };
+                    report_unready(unready_assets, world, unready);
                     continue;
                 };
                 let texture_id = texture_handle.id();
@@ -986,37 +1098,70 @@ impl RenderPipeline {
     /// A modified or removed shader drops every pipeline compiled from it; a
     /// modified or removed texture drops its bind group; a modified or removed
     /// mesh drops its vertex/index buffers; a modified or removed material clears
-    /// any render error recorded against it so the next frame retries it.
+    /// any render error recorded against it so the next frame retries it. Each
+    /// one also forgets its pending "unready" report, so an asset that comes
+    /// back and then breaks again is warned about again.
+    ///
+    /// Modified and removed are treated identically: both leave the cache entry
+    /// it names stale. Removing is what finally bounds the caches, because a
+    /// recycled slot names a different `AssetId` and so cannot reuse the entry.
     fn invalidate_caches(&mut self, world: &World) {
         let events = world.resource::<GraphicsAssetEvents>().clone();
         let mut sets = events.lock();
+        let GraphicsAssetEventSets {
+            modified_shaders,
+            removed_shaders,
+            modified_textures,
+            removed_textures,
+            modified_materials,
+            removed_materials,
+            modified_meshes,
+            removed_meshes,
+        } = &mut *sets;
 
-        for id in sets.modified_textures.drain() {
+        let before = self.cache_sizes();
+
+        for id in modified_textures.drain().chain(removed_textures.drain()) {
             self.texture_cache.remove(&id);
+            self.unready_assets.remove(&UnreadyAsset::Texture(id));
+            self.unready_assets.remove(&UnreadyAsset::FallbackTexture(id));
         }
-        for id in sets.removed_textures.drain() {
-            self.texture_cache.remove(&id);
+        for id in modified_shaders.drain().chain(removed_shaders.drain()) {
+            self.pipeline_cache.retain(|key, _| key.shader != Some(id));
+            self.unready_assets.remove(&UnreadyAsset::Shader(id));
         }
-        for id in sets.modified_shaders.drain() {
-            self.pipeline_cache
-                .retain(|key, _| key.shader != Some(id));
-        }
-        for id in sets.removed_shaders.drain() {
-            self.pipeline_cache
-                .retain(|key, _| key.shader != Some(id));
-        }
-        for id in sets.modified_materials.drain() {
+        for id in modified_materials.drain().chain(removed_materials.drain()) {
             self.error_material_indices.remove(&id);
+            self.unready_assets.remove(&UnreadyAsset::Material(id));
+            self.unready_assets.remove(&UnreadyAsset::MaterialWithoutShader(id));
         }
-        for id in sets.removed_materials.drain() {
-            self.error_material_indices.remove(&id);
-        }
-        for id in sets.modified_meshes.drain() {
+        for id in modified_meshes.drain().chain(removed_meshes.drain()) {
             self.mesh_buffer_cache.remove(&id);
+            self.unready_assets.remove(&UnreadyAsset::Mesh(id));
         }
-        for id in sets.removed_meshes.drain() {
-            self.mesh_buffer_cache.remove(&id);
+
+        let after = self.cache_sizes();
+        if before != after {
+            log::debug!(
+                "Invalidated render caches for changed graphics assets: \
+                 textures {}→{}, pipelines {}→{}, meshes {}→{}",
+                before.0,
+                after.0,
+                before.1,
+                after.1,
+                before.2,
+                after.2,
+            );
         }
+    }
+
+    /// The sizes of the three asset-keyed caches, for the invalidation log.
+    fn cache_sizes(&self) -> (usize, usize, usize) {
+        (
+            self.texture_cache.len(),
+            self.pipeline_cache.len(),
+            self.mesh_buffer_cache.len(),
+        )
     }
 
     /// Clear all cached pipelines.
