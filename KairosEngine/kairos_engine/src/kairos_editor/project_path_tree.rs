@@ -3,7 +3,7 @@ pub mod texture_path;
 pub mod tree_node;
 
 use std::{
-    ffi::OsString,
+    ffi::{OsStr, OsString},
     path::{Path, PathBuf},
 };
 
@@ -15,7 +15,7 @@ use petgraph::{
 
 use crate::{
     kairos_dialog,
-    kairos_editor::asset_registry::{AssetKind, AssetRegistry},
+    kairos_editor::asset_registry::{AssetKind, AssetRegistry, AssetRoots, processed_asset_path},
 };
 use create_request::CreateRequest;
 use tree_node::ProjectTreeNode;
@@ -65,11 +65,12 @@ impl ProjectPathGraph {
 
         // root_path 归一化后可能为空（原 `./`），但 read_dir 需要有效路径
         let scan_root = if root_path.as_os_str().is_empty() {
-            Path::new(".")
+            PathBuf::from(".")
         } else {
-            &root_path
+            root_path.clone()
         };
-        Self::scan_dir(scan_root, root_node, &mut graph, registry);
+        let roots = AssetRoots::new(root_path);
+        Self::scan_dir(&scan_root, &roots, root_node, &mut graph, registry);
 
         Self { graph }
     }
@@ -94,11 +95,22 @@ impl ProjectPathGraph {
         self.graph.clear();
         let root_guid = registry.get_or_create_guid(&root_path);
         let root_name = OsString::from("KairosEngine");
-        let root_node_data =
-            ProjectTreeNode::new(root_guid, root_name, root_path, None, AssetKind::Directory);
+        let root_node_data = ProjectTreeNode::new(
+            root_guid,
+            root_name,
+            root_path.clone(),
+            None,
+            AssetKind::Directory,
+        );
         let root_node = self.graph.add_node(root_node_data);
 
-        Self::scan_dir(&root_path_for_read, root_node, &mut self.graph, registry);
+        Self::scan_dir(
+            &root_path_for_read,
+            &AssetRoots::new(root_path),
+            root_node,
+            &mut self.graph,
+            registry,
+        );
     }
 
     // ----------------------------------------------------------
@@ -107,6 +119,7 @@ impl ProjectPathGraph {
 
     fn scan_dir(
         dir_path: &Path,
+        roots: &AssetRoots,
         parent_node: NodeIndex,
         graph: &mut Graph<ProjectTreeNode, ()>,
         registry: &mut AssetRegistry,
@@ -123,8 +136,8 @@ impl ProjectPathGraph {
             let Ok(entry) = entry else { continue };
             let path = Self::normalize_path(entry.path());
 
-            // 跳过隐藏文件/目录和 target 目录
-            if Self::should_skip(&path) {
+            // 跳过隐藏文件/目录、target/Library 与成品目录
+            if Self::should_skip(&path, roots) {
                 continue;
             }
 
@@ -146,12 +159,12 @@ impl ProjectPathGraph {
                 ProjectTreeNode::new(guid, name, path.clone(), None, AssetKind::Directory);
             let child_node = graph.add_node(node_data);
             graph.add_edge(parent_node, child_node, ());
-            Self::scan_dir(&path, child_node, graph, registry);
+            Self::scan_dir(&path, roots, child_node, graph, registry);
         }
 
         // 再处理文件
         for path in files {
-            let Some((kind, guid, asset_path)) = registry.analyse_path(&path) else {
+            let Some((kind, guid, asset_path)) = registry.analyse_path(&path, roots) else {
                 continue;
             };
 
@@ -164,6 +177,13 @@ impl ProjectPathGraph {
             let child_node = graph.add_node(node_data);
             graph.add_edge(parent_node, child_node, ());
         }
+    }
+
+    /// `parent/{stem}{suffix}`：源文件在主资产、`.meta` 边车等后缀下的兄弟路径。
+    fn sibling_path<S: AsRef<OsStr>>(parent: &Path, stem: S, suffix: &str) -> PathBuf {
+        let mut file_name = stem.as_ref().to_os_string();
+        file_name.push(suffix);
+        parent.join(file_name)
     }
 
     /// 归一化路径：去掉前导 `./`，并将所有分隔符统一为 `/`（POSIX 风格），
@@ -180,21 +200,32 @@ impl ProjectPathGraph {
     }
 
     /// 判断路径是否应跳过扫描。
-    fn should_skip(path: &Path) -> bool {
+    fn should_skip(path: &Path, roots: &AssetRoots) -> bool {
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            return false;
+        };
         // 跳过隐藏文件/目录
-        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-            if name.starts_with('.') {
-                return true;
-            }
+        if name.starts_with('.') {
+            return true;
         }
         // 跳过 target 构建目录和 Library 引擎内部目录
-        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-            match name {
-                "target" | "Library" => {
-                    return true;
-                }
-                _ => {}
-            }
+        if matches!(name, "target" | "Library") {
+            return true;
+        }
+        // 只跳过源根下顶层的成品目录（如 `imported_assets`）：其内部文件不展示。
+        // 同名子目录不受影响；其顶层名字与引擎的 `unprocessed_exclude` 一致。
+        let relative = if roots.source.as_os_str().is_empty() {
+            path
+        } else {
+            path.strip_prefix(&roots.source).unwrap_or(path)
+        };
+        let processed_top = roots
+            .processed
+            .components()
+            .next()
+            .map(|c| Path::new(c.as_os_str()));
+        if processed_top == Some(relative) {
+            return true;
         }
         false
     }
@@ -392,7 +423,7 @@ impl ProjectPathGraph {
         Some(new_node)
     }
 
-    /// 重命名节点及其关联文件（Texture: png+texture+texture_bin; Mesh: mesh+mesh_bin）。
+    /// 重命名节点及其关联文件（主资产 + 它的 `.meta` 边车）。
     /// GUID 不变，registry 中的路径同步更新。
     pub fn rename_node(
         &mut self,
@@ -413,58 +444,60 @@ impl ProjectPathGraph {
         }
 
         let old_path = node_data.path.clone();
+        let kind = node_data.kind;
         let parent_path = old_path
             .parent()
             .unwrap_or_else(|| std::path::Path::new("./"));
+        let stem = old_path
+            .file_stem()
+            .map(|s| s.to_os_string())
+            .unwrap_or_default();
 
-        // 收集所有需要重命名的文件路径
-        let related = node_data.kind.related_extensions();
-        let old_paths: Vec<std::path::PathBuf> = if related.is_empty() {
-            vec![old_path.clone()]
+        // 收集所有需要重命名的文件路径：主资产 + `.meta` 边车（目录则只有自身）。
+        let suffixes = kind.related_suffixes();
+        let mut renames: Vec<(std::path::PathBuf, std::path::PathBuf)> = Vec::new();
+        if suffixes.is_empty() {
+            renames.push((old_path.clone(), parent_path.join(new_name)));
         } else {
-            let mut paths = Vec::new();
-            for ext in &related {
-                let mut p = old_path.clone();
-                p.set_extension(ext);
-                if p.exists() {
-                    paths.push(p);
+            for suffix in &suffixes {
+                let old = Self::sibling_path(parent_path, &stem, suffix);
+                if old.exists() {
+                    renames.push((old, Self::sibling_path(parent_path, new_name, suffix)));
                 }
             }
-            paths
-        };
+        }
 
         // 计算新路径并 rename
-        for old in &old_paths {
-            let ext = old.extension();
-            let mut new_path = parent_path.join(new_name);
-            if let Some(ext) = ext {
-                new_path.set_extension(ext);
-            }
-            std::fs::rename(old, &new_path).map_err(|e| {
+        for (old, new_path) in &renames {
+            std::fs::rename(old, new_path).map_err(|e| {
                 format!(
                     "failed to rename '{}' -> '{}': {e}",
                     old.display(),
                     new_path.display()
                 )
             })?;
-            registry.update_path(old, &new_path);
+            registry.update_path(old, new_path);
         }
 
-        // 更新 graph 节点
+        // 更新 graph 节点；加工类资产重新配对到改名后的成品路径。
         let new_name_os = std::ffi::OsString::from(new_name);
-        let new_main_path = parent_path.join(&new_name_os);
-        // 对于 Texture，保持路径扩展名不变（仍指向新 .png）
-        let new_main_path = if !related.is_empty() {
-            let mut p = new_main_path;
-            p.set_extension(old_path.extension().unwrap_or_default());
-            p
-        } else {
-            new_main_path
+        let new_main_path = match kind.extension() {
+            Some(ext) => Self::sibling_path(parent_path, &new_name_os, &format!(".{ext}")),
+            None => parent_path.join(&new_name_os),
         };
+        let source_root = self
+            .graph
+            .node_weight(self.get_root_node())
+            .map(|n| n.path.clone())
+            .unwrap_or_default();
+        let new_asset_path = kind
+            .is_processed()
+            .then(|| processed_asset_path(&new_main_path, &AssetRoots::new(source_root)));
 
         if let Some(node_weight) = self.graph.node_weight_mut(node) {
             node_weight.name = new_name_os;
             node_weight.path = new_main_path;
+            node_weight.asset_path = new_asset_path;
         }
 
         Ok(())
@@ -472,7 +505,7 @@ impl ProjectPathGraph {
 
     /// 删除节点及其关联文件。
     ///
-    /// - 文件节点：删除主文件 + 关联文件（Texture: png/texture/texture_bin; Mesh: mesh/mesh_bin）
+    /// - 文件节点：删除主文件 + 它的 `.meta` 边车
     /// - 目录节点：先递归删除所有子节点，再删除目录本身
     /// - 同步清理 registry
     pub fn delete_node(
@@ -503,9 +536,9 @@ impl ProjectPathGraph {
                 .map_err(|e| format!("failed to delete directory '{}': {e}", dir_path.display()))?;
             registry.unregister(&dir_path);
         } else {
-            // 1. 收集所有关联文件路径
-            let related = node_kind.related_extensions();
-            if related.is_empty() {
+            // 1. 收集所有关联文件路径：主资产 + `.meta` 边车
+            let suffixes = node_kind.related_suffixes();
+            if suffixes.is_empty() {
                 let path = node_path.clone();
                 if path.exists() {
                     std::fs::remove_file(&path)
@@ -513,9 +546,15 @@ impl ProjectPathGraph {
                 }
                 registry.unregister(&path);
             } else {
-                for ext in related {
-                    let mut p = node_path.clone();
-                    p.set_extension(ext);
+                let parent_path = node_path
+                    .parent()
+                    .unwrap_or_else(|| std::path::Path::new("./"));
+                let stem = node_path
+                    .file_stem()
+                    .map(|s| s.to_os_string())
+                    .unwrap_or_default();
+                for suffix in &suffixes {
+                    let p = Self::sibling_path(parent_path, &stem, suffix);
                     if p.exists() {
                         std::fs::remove_file(&p)
                             .map_err(|e| format!("failed to delete '{}': {e}", p.display()))?;

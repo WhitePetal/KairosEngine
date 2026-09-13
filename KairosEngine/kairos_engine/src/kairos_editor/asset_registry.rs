@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 use strum::{EnumIter, IntoEnumIterator};
 use uuid::Uuid;
 
+use crate::asset::io::get_meta_path;
+
 /// 项目资源类型。
 ///
 /// 通过文件扩展名映射：
@@ -15,16 +17,20 @@ use uuid::Uuid;
 /// | 扩展名        | 对应变体          |
 /// |---------------|-------------------|
 /// | (Directory)   | `Directory`       |
-/// | `.texture`    | `Texture`         |
-/// | `.mesh`       | `Mesh`            |
+/// | `.png`        | `Texture`         |
+/// | `.glb`        | `Mesh`            |
 /// | `.mat`        | `Material`        |
 /// | `.audio`      | `Audio`           |
 /// | `.wgsl`       | `Shader`          |
-/// | `.asset`      | `GenericAsset`    |
 /// | `.rs`         | `Script`          |
-/// | `.md` / `.txt`| `Document`        |
+/// | `.md`         | `Document`        |
+/// | `.toml`       | `Toml`            |
 /// | `.ttf`        | `Font`            |
 /// | Other         | `Unknown`         |
+///
+/// 图形资产（`Texture` / `Mesh`）的节点指向源文件（`.png` / `.glb`）；
+/// 其 `.meta` 边车与 `imported_assets/Default` 下的成品都是伴生文件，
+/// 不出现在树中（见 ADR 0002 / 0004）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter)]
 pub enum AssetKind {
     Directory,
@@ -59,13 +65,16 @@ impl AssetKind {
         matches!(self, Self::Directory)
     }
 
-    /// 扩展名，用于创建新文件。
-    /// 必须为 `const fn` 内联匹配以保持 `'static` 生命周期。
+    /// 资产文件的磁盘扩展名。
+    ///
+    /// 图形资产在 `.meta` 迁移后以源文件本身为项目资产：`Texture` 是 `.png`，
+    /// `Mesh` 是 `.glb`；引擎实际加载的是 processor 写在
+    /// `imported_assets/Default` 下的成品（ADR 0002 / 0004）。
     pub const fn extension(&self) -> Option<&'static str> {
         match self {
             AssetKind::Directory | AssetKind::Unknown => None,
-            AssetKind::Texture => Some("texture"),
-            AssetKind::Mesh => Some("mesh"),
+            AssetKind::Texture => Some("png"),
+            AssetKind::Mesh => Some("glb"),
             AssetKind::Material => Some("mat"),
             AssetKind::Audio => Some("audio"),
             AssetKind::Shader => Some("wgsl"),
@@ -76,95 +85,75 @@ impl AssetKind {
         }
     }
 
-    /// 源文件扩展名：导入前的原始文件，需要在同目录存在对应的主资产文件才能识别。
-    /// 例如 `.png` → 检查 `.texture` 是否存在。
-    pub const fn source_extensions(&self) -> Option<&'static str> {
-        match self {
-            AssetKind::Texture => Some("png"),
-            AssetKind::Mesh => Some("glb"),
-            AssetKind::Directory => None,
-            AssetKind::Material => None,
-            AssetKind::Audio => None,
-            AssetKind::Shader => None,
-            AssetKind::Script => None,
-            AssetKind::Document => None,
-            AssetKind::Toml => None,
-            AssetKind::Font => None,
-            AssetKind::Unknown => None,
-        }
-    }
-
-    /// 根据源文件扩展名查找对应的 AssetKind。遍历所有变体的 [`source_extensions`]。
-    pub fn from_source_extension(ext: &str) -> Option<Self> {
-        for kind in Self::iter() {
-            if kind.source_extensions() == Some(ext) {
-                return Some(kind);
-            }
-        }
-        None
+    /// 该类型是否由 asset processor 加工。
+    ///
+    /// 加工类资产的项目节点指向源文件（`.png` / `.glb`），源文件旁有一份
+    /// `.meta` 边车（`AssetAction::Process`）；引擎通过成品目录里的
+    /// `AssetAction::Load` 边车加载（ADR 0002 / 0004）。
+    pub const fn is_processed(&self) -> bool {
+        matches!(self, Self::Texture | Self::Mesh)
     }
 
     /// 伴生扩展名：仅作为主资产的附属文件，不应在项目树中单独显示。
-    pub const fn companion_extensions(&self) -> Option<&'static str> {
-        match self {
-            AssetKind::Texture => Some("texture_bin"),
-            AssetKind::Mesh => Some("mesh_bin"),
-            AssetKind::Directory => None,
-            AssetKind::Material => None,
-            AssetKind::Audio => None,
-            AssetKind::Shader => None,
-            AssetKind::Script => None,
-            AssetKind::Document => None,
-            AssetKind::Toml => None,
-            AssetKind::Font => None,
-            AssetKind::Unknown => None,
-        }
-    }
-
-    /// 判断扩展名是否为伴生文件（应隐藏）。遍历所有变体的 [`companion_extensions`]。
+    ///
+    /// `.meta` 是每个资产旁统一的边车（ADR 0002）；旧 `_bin` 成品扩展名已退役，
+    /// 它们会作为 `Unknown` 一并隐藏。
     pub fn is_companion_extension(ext: &str) -> bool {
-        for kind in Self::iter() {
-            if kind.companion_extensions() == Some(ext) {
-                return true;
-            }
-        }
-        false
+        ext == "meta"
     }
 
-    /// 判断扩展名是否属于有源文件映射的主资产扩展名（如 `texture`, `mesh`）。
-    /// 这类主资产文件在扫描时由源文件（png/glb）负责创建节点，自身应跳过。
-    pub fn is_imported_primary_extension(ext: &str) -> bool {
-        for kind in Self::iter() {
-            if kind.source_extensions().is_some() && kind.extension() == Some(ext) {
-                return true;
-            }
-        }
-        false
-    }
-
+    /// 展示用的扩展名（带前导点），如 `.png`。
     pub fn suffix(&self) -> Option<String> {
-        let extension = self.extension();
-        match extension {
-            Some(ext) => Some(format!(".{}", ext)),
-            None => None,
-        }
+        self.extension().map(|ext| format!(".{ext}"))
     }
 
-    /// 重命名/删除时需要同步的所有关联扩展名（不含点）。
-    /// 包含源文件、主资产和伴生文件。
-    pub fn related_extensions(&self) -> Vec<&str> {
-        let mut all: Vec<&str> = Vec::new();
-        if let Some(ext) = self.source_extensions() {
-            all.push(ext);
+    /// 重命名/删除时需要同步的兄弟文件后缀（含点，从节点文件名 stem 起算）。
+    ///
+    /// 主资产 + 它的 `.meta` 边车，例如 `foo.png` → `[".png", ".png.meta"]`。
+    /// 目录与 `Unknown` 无后缀。
+    pub fn related_suffixes(&self) -> Vec<String> {
+        match self.extension() {
+            Some(ext) => vec![format!(".{ext}"), format!(".{ext}.meta")],
+            None => Vec::new(),
         }
-        if let Some(ext) = self.extension() {
-            all.push(ext);
-        }
-        if let Some(ext) = self.companion_extensions() {
-            all.push(ext);
-        }
-        all
     }
+}
+
+// ============================================================
+// AssetRoots — 扫描时的源根 / 成品根
+// ============================================================
+
+/// 扫描资产树时的一组根：源根，以及相对于它的成品根（默认
+/// `imported_assets/Default`，见 ADR 0004）。
+#[derive(Debug, Clone)]
+pub struct AssetRoots {
+    /// 源根。编辑器里为空，表示进程工作目录。
+    pub source: PathBuf,
+    /// 成品根，相对 [`source`](Self::source)。
+    pub processed: PathBuf,
+}
+
+impl AssetRoots {
+    /// 以 `source` 为源根、默认成品根构造。
+    pub fn new(source: PathBuf) -> Self {
+        Self {
+            source,
+            processed: PathBuf::from(crate::asset::AssetOptions::DEFAULT_PROCESSED_FILE_PATH),
+        }
+    }
+}
+
+/// 成品路径：`source_root / processed_root /` + 源相对路径（镜像源目录布局）。
+pub fn processed_asset_path(source: &Path, roots: &AssetRoots) -> PathBuf {
+    let relative = if roots.source.as_os_str().is_empty() {
+        source.to_path_buf()
+    } else {
+        source
+            .strip_prefix(&roots.source)
+            .unwrap_or(source)
+            .to_path_buf()
+    };
+    roots.source.join(&roots.processed).join(relative)
 }
 
 // ============================================================
@@ -326,13 +315,18 @@ impl AssetRegistry {
         guid
     }
 
-    /// 分析路径：根据扩展名识别 [`AssetKind`] 并返回对应 GUID。
+    /// 分析路径：根据扩展名识别 [`AssetKind`] 并返回对应 GUID 与引擎资产路径。
     ///
-    /// - 源文件（如 `.png`）：检查同目录是否存在主资产文件（如 `.texture`），
-    ///   若存在则返回主资产路径的 GUID + Kind + AssetPath。
-    /// - 主资产文件（如 `.mat`, `.wgsl`）：直接识别并返回。
-    /// - 伴生文件（如 `.texture_bin`）：返回 `None`，应被隐藏。
-    pub fn analyse_path(&mut self, path: &PathBuf) -> Option<(AssetKind, Guid, Option<PathBuf>)> {
+    /// - 伴生文件（`.meta` 边车）：返回 `None`，应被隐藏。
+    /// - 加工类源文件（`.png` / `.glb`）：其 `.meta` 边车存在时识别为资产，
+    ///   引擎资产路径配对到 `imported_assets/Default` 下镜像源相对路径的成品；
+    ///   缺少 `.meta`（尚未导入）时跳过。
+    /// - 普通主资产文件（`.mat`, `.wgsl`, ...）：直接识别，引擎资产即自身。
+    pub fn analyse_path(
+        &mut self,
+        path: &Path,
+        roots: &AssetRoots,
+    ) -> Option<(AssetKind, Guid, Option<PathBuf>)> {
         let ext = path.extension().and_then(|e| e.to_str())?;
 
         // 伴生文件：隐藏
@@ -340,31 +334,24 @@ impl AssetRegistry {
             return None;
         }
 
-        // 源文件：检查主资产伴生文件
-        if let Some(kind) = AssetKind::from_source_extension(ext) {
-            if let Some(primary_ext) = kind.extension() {
-                let asset_path = path.with_extension(primary_ext);
-                if asset_path.exists() {
-                    let guid = self.get_or_create_guid(&asset_path);
-                    return Some((kind, guid, Some(asset_path)));
-                }
-            }
-            return None; // 源文件存在但未导入 → 跳过
-        }
-
-        // 有源文件的资产的主扩展名（如 `.texture`, `.mesh`）：由源文件处理，跳过
-        if AssetKind::is_imported_primary_extension(ext) {
-            return None;
-        }
-
-        // 普通主资产文件
         let kind = AssetKind::from_extension(Some(ext));
         if kind == AssetKind::Unknown {
             return None;
         }
 
+        // 加工类资产以源文件为节点；未导入（无 `.meta` 边车）时跳过，同时把
+        // 引擎资产路径配对到同名的成品。
+        let asset_path = if kind.is_processed() {
+            if !get_meta_path(path).exists() {
+                return None;
+            }
+            Some(processed_asset_path(path, roots))
+        } else {
+            None
+        };
+
         let guid = self.get_or_create_guid(path);
-        Some((kind, guid, None))
+        Some((kind, guid, asset_path))
     }
 
     /// 手动注册一个路径（使用已有 GUID），如果路径已存在则更新。

@@ -137,18 +137,14 @@ fn rename_texture_sync_related_files() {
         .unwrap();
     let dir_path = graph.get_node(dir).unwrap().path.clone();
 
-    // 手动创建 Texture 的关联文件
+    // 手动创建 Texture 的源文件与 `.meta` 边车
     let png_path = dir_path.join("my_texture.png");
-    let texture_path = dir_path.join("my_texture.texture");
-    let texture_bin_path = dir_path.join("my_texture.texture_bin");
+    let meta_path = dir_path.join("my_texture.png.meta");
     std::fs::write(&png_path, "fake").unwrap();
-    std::fs::write(&texture_path, "fake").unwrap();
-    std::fs::write(&texture_bin_path, "fake").unwrap();
+    std::fs::write(&meta_path, "fake").unwrap();
 
     // 注册 GUID（创建/导入流程会做，这里手动模拟）
     let guid = registry.get_or_create_guid(&png_path);
-    registry.get_or_create_guid(&texture_path);
-    registry.get_or_create_guid(&texture_bin_path);
 
     // 手动在图里添加 Texture 节点
     let node_data = ProjectTreeNode::new(
@@ -171,20 +167,14 @@ fn rename_texture_sync_related_files() {
 
     // 旧文件全部消失
     assert!(!png_path.exists());
-    assert!(!texture_path.exists());
-    assert!(!texture_bin_path.exists());
+    assert!(!meta_path.exists());
 
     // 新文件全部存在
     let new_png = dir_path.join("renamed.png");
-    let new_texture = dir_path.join("renamed.texture");
-    let new_texture_bin = dir_path.join("renamed.texture_bin");
+    let new_meta = dir_path.join("renamed.png.meta");
     assert!(new_png.exists(), "{:?} should exist", new_png);
-    assert!(new_texture.exists(), "{:?} should exist", new_texture);
-    assert!(
-        new_texture_bin.exists(),
-        "{:?} should exist",
-        new_texture_bin
-    );
+    assert!(new_meta.exists(), "{:?} should exist", new_meta);
+    assert_eq!(data.path, new_png);
 
     // Registry 中路径已更新
     let reg_path = registry.get_path(&guid).unwrap();
@@ -208,13 +198,12 @@ fn rename_mesh_sync_related_files() {
         .unwrap();
     let dir_path = graph.get_node(dir).unwrap().path.clone();
 
-    let mesh_path = dir_path.join("cube.mesh");
-    let mesh_bin_path = dir_path.join("cube.mesh_bin");
+    let mesh_path = dir_path.join("cube.glb");
+    let meta_path = dir_path.join("cube.glb.meta");
     std::fs::write(&mesh_path, "fake").unwrap();
-    std::fs::write(&mesh_bin_path, "fake").unwrap();
+    std::fs::write(&meta_path, "fake").unwrap();
 
     let guid = registry.get_or_create_guid(&mesh_path);
-    registry.get_or_create_guid(&mesh_bin_path);
 
     let node_data = ProjectTreeNode::new(
         guid,
@@ -234,12 +223,13 @@ fn rename_mesh_sync_related_files() {
     assert_eq!(data.name.to_string_lossy(), "sphere");
 
     assert!(!mesh_path.exists());
-    assert!(!mesh_bin_path.exists());
+    assert!(!meta_path.exists());
 
-    let new_mesh = dir_path.join("sphere.mesh");
-    let new_mesh_bin = dir_path.join("sphere.mesh_bin");
+    let new_mesh = dir_path.join("sphere.glb");
+    let new_meta = dir_path.join("sphere.glb.meta");
     assert!(new_mesh.exists());
-    assert!(new_mesh_bin.exists());
+    assert!(new_meta.exists());
+    assert_eq!(data.path, new_mesh);
 
     let reg_path = registry.get_path(&guid).unwrap();
     assert_eq!(*reg_path, new_mesh);
@@ -384,15 +374,12 @@ fn delete_texture_with_related_files() {
     let dir_path = graph.get_node(dir).unwrap().path.clone();
 
     let png = dir_path.join("player.png");
-    let texture = dir_path.join("player.texture");
-    let texture_bin = dir_path.join("player.texture_bin");
+    let meta = dir_path.join("player.png.meta");
     std::fs::write(&png, "fake").unwrap();
-    std::fs::write(&texture, "fake").unwrap();
-    std::fs::write(&texture_bin, "fake").unwrap();
+    std::fs::write(&meta, "fake").unwrap();
 
     let guid = registry.get_or_create_guid(&png);
-    registry.get_or_create_guid(&texture);
-    registry.get_or_create_guid(&texture_bin);
+    registry.get_or_create_guid(&meta);
 
     let node_data =
         ProjectTreeNode::new(guid, "player".into(), png.clone(), None, AssetKind::Texture);
@@ -402,12 +389,10 @@ fn delete_texture_with_related_files() {
     graph.delete_node(&mut registry, tex_node).unwrap();
 
     assert!(!png.exists());
-    assert!(!texture.exists());
-    assert!(!texture_bin.exists());
+    assert!(!meta.exists());
     assert!(graph.get_node(tex_node).is_none());
     assert!(registry.get_guid(&png).is_none());
-    assert!(registry.get_guid(&texture).is_none());
-    assert!(registry.get_guid(&texture_bin).is_none());
+    assert!(registry.get_guid(&meta).is_none());
 }
 
 #[test]
@@ -628,4 +613,172 @@ fn find_assets_by_kind_nested_nodes() {
     let names: Vec<String> = shaders.iter().map(|n| n.name()).collect();
     assert!(names.contains(&"vertex".into()));
     assert!(names.contains(&"fragment".into()));
+}
+
+// ---- companion pairing / hiding (S10) ----
+
+/// Creates `files` (with placeholder content) under `tmp` and builds the tree.
+fn scan(tmp: &TempDir, registry: &mut AssetRegistry, files: &[&str]) -> ProjectPathGraph {
+    for rel in files {
+        let path = tmp.path().join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, b"placeholder").unwrap();
+    }
+    ProjectPathGraph::new_at_root(tmp.path(), registry)
+}
+
+/// The node at the given relative path, if the tree contains one.
+fn node_at(graph: &ProjectPathGraph, rel: &str) -> Option<ProjectTreeNode> {
+    graph
+        .find_by_path(std::path::Path::new(rel))
+        .and_then(|idx| graph.get_node(idx).cloned())
+}
+
+#[test]
+fn source_with_meta_pairs_to_its_product() {
+    let tmp = TempDir::new().unwrap();
+    let mut registry = AssetRegistry::new();
+    let graph = scan(
+        &tmp,
+        &mut registry,
+        &[
+            "res/textures/hero.png",
+            "res/textures/hero.png.meta",
+            "res/models/hero.glb",
+            "res/models/hero.glb.meta",
+        ],
+    );
+
+    let texture = node_at(&graph, "res/textures/hero.png").expect("the texture source is a node");
+    assert_eq!(texture.kind, AssetKind::Texture);
+    let product = texture
+        .asset_path
+        .expect("the source pairs with its product");
+    assert!(
+        product
+            .to_string_lossy()
+            .replace('\\', "/")
+            .ends_with("imported_assets/Default/res/textures/hero.png"),
+        "unexpected product path: {}",
+        product.display()
+    );
+
+    let mesh = node_at(&graph, "res/models/hero.glb").expect("the mesh source is a node");
+    assert_eq!(mesh.kind, AssetKind::Mesh);
+    let product = mesh.asset_path.expect("the source pairs with its product");
+    assert!(
+        product
+            .to_string_lossy()
+            .replace('\\', "/")
+            .ends_with("imported_assets/Default/res/models/hero.glb"),
+        "unexpected product path: {}",
+        product.display()
+    );
+}
+
+#[test]
+fn meta_sidecars_are_hidden() {
+    let tmp = TempDir::new().unwrap();
+    let mut registry = AssetRegistry::new();
+    let graph = scan(
+        &tmp,
+        &mut registry,
+        &["res/textures/hero.png", "res/textures/hero.png.meta"],
+    );
+
+    assert!(node_at(&graph, "res/textures/hero.png.meta").is_none());
+}
+
+#[test]
+fn unimported_source_is_hidden() {
+    let tmp = TempDir::new().unwrap();
+    let mut registry = AssetRegistry::new();
+    // No `.meta` beside it: the source has not been imported yet.
+    let graph = scan(&tmp, &mut registry, &["res/textures/raw.png"]);
+
+    assert!(node_at(&graph, "res/textures/raw.png").is_none());
+}
+
+#[test]
+fn product_directory_is_hidden() {
+    let tmp = TempDir::new().unwrap();
+    let mut registry = AssetRegistry::new();
+    let graph = scan(
+        &tmp,
+        &mut registry,
+        &[
+            "res/textures/hero.png",
+            "res/textures/hero.png.meta",
+            "imported_assets/Default/res/textures/hero.png",
+            "imported_assets/Default/res/textures/hero.png.meta",
+        ],
+    );
+
+    assert!(node_at(&graph, "imported_assets").is_none());
+    assert!(node_at(&graph, "imported_assets/Default/res/textures/hero.png").is_none());
+}
+
+#[test]
+fn legacy_companion_extensions_are_hidden() {
+    let tmp = TempDir::new().unwrap();
+    let mut registry = AssetRegistry::new();
+    let graph = scan(
+        &tmp,
+        &mut registry,
+        &["res/textures/old.texture_bin", "res/models/old.mesh_bin"],
+    );
+
+    assert!(node_at(&graph, "res/textures/old.texture_bin").is_none());
+    assert!(node_at(&graph, "res/models/old.mesh_bin").is_none());
+}
+
+#[test]
+fn plain_asset_shows_without_a_product_pair() {
+    let tmp = TempDir::new().unwrap();
+    let mut registry = AssetRegistry::new();
+    let graph = scan(&tmp, &mut registry, &["res/materials/hero.mat"]);
+
+    let material = node_at(&graph, "res/materials/hero.mat").expect("a `.mat` is a node");
+    assert_eq!(material.kind, AssetKind::Material);
+    assert!(material.asset_path.is_none());
+}
+
+#[test]
+fn nested_imported_assets_directory_is_not_skipped() {
+    let tmp = TempDir::new().unwrap();
+    let mut registry = AssetRegistry::new();
+    // Only the top-level product root is hidden; a same-named source subdir stays.
+    let graph = scan(&tmp, &mut registry, &["res/imported_assets/notes.txt"]);
+
+    assert!(node_at(&graph, "res/imported_assets").is_some());
+}
+
+#[test]
+fn rename_recomputes_the_product_pair() {
+    let tmp = TempDir::new().unwrap();
+    let mut registry = AssetRegistry::new();
+    let mut graph = scan(
+        &tmp,
+        &mut registry,
+        &["res/textures/hero.png", "res/textures/hero.png.meta"],
+    );
+
+    let node = graph
+        .find_by_path(std::path::Path::new("res/textures/hero.png"))
+        .expect("the source is a node");
+    graph
+        .rename_node(&mut registry, node, "villain")
+        .expect("rename succeeds");
+
+    let renamed = graph.get_node(node).expect("the node survives");
+    let product = renamed
+        .asset_path
+        .as_ref()
+        .expect("the pair is kept")
+        .to_string_lossy()
+        .replace('\\', "/");
+    assert!(
+        product.ends_with("imported_assets/Default/res/textures/villain.png"),
+        "unexpected product path: {product}"
+    );
 }

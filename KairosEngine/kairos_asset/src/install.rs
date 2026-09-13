@@ -126,7 +126,7 @@ impl AssetOptions {
     /// The default unprocessed root: the process working directory (ADR 0004).
     const DEFAULT_UNPROCESSED_FILE_PATH: &'static str = "";
     /// The default processed root, relative to the working directory.
-    const DEFAULT_PROCESSED_FILE_PATH: &'static str = "imported_assets/Default";
+    pub const DEFAULT_PROCESSED_FILE_PATH: &'static str = "imported_assets/Default";
 
     /// Options for the three stages, with bevy's defaults for everything else:
     /// unprocessed mode, `.meta` always checked, no processor, no watch
