@@ -2,11 +2,10 @@
 //! handles, and querying load state.
 //!
 //! This mirrors `bevy_asset`'s `server/mod.rs`. The pieces that are out of scope
-//! for the P0 core are deliberately absent: `add_async` and the
-//! `wait_for_asset*` family. What is here is the
-//! pipeline the A-tier API needs: registration, `load`/`load_builder`/`add`,
-//! `reload`, untyped loads, folder loads, and the load-state and handle
-//! accessors.
+//! for the P0 core are deliberately absent: the `wait_for_asset*` family. What is
+//! here is the pipeline the A-tier API needs: registration,
+//! `load`/`load_builder`/`add`/`add_async`, `reload`, untyped loads, folder
+//! loads, and the load-state and handle accessors.
 //!
 //! Loading itself is asynchronous. A `load` records the handle and spawns a task
 //! on the [`IoTaskPool`]; that task reads the source, runs the loader, and
@@ -29,6 +28,7 @@ mod loaders;
 pub use info::{DependencyLoadState, LoadState, RecursiveDependencyLoadState};
 
 use core::any::{TypeId, type_name};
+use core::future::Future;
 use std::{
     fmt,
     panic::AssertUnwindSafe,
@@ -874,6 +874,49 @@ impl AssetServer {
         handle
     }
 
+    /// Asynchronously adds an asset to the server, returning a handle to it.
+    ///
+    /// The handle is available immediately, while the asset is still
+    /// [`LoadState::Loading`]; its value appears in the associated [`Assets`]
+    /// store once `future` resolves and [`handle_internal_asset_events`] runs.
+    ///
+    /// A future that resolves to an error puts the asset into
+    /// [`LoadState::Failed`] with an [`AssetLoadError::AddAsyncError`].
+    #[must_use = "not using the returned strong handle may result in the unexpected release of the asset"]
+    pub fn add_async<A: Asset, E: core::error::Error + Send + Sync + 'static>(
+        &self,
+        future: impl Future<Output = Result<A, E>> + Send + 'static,
+    ) -> Handle<A> {
+        let mut infos = self.write_infos();
+        let handle = infos.create_loading_handle_untyped(TypeId::of::<A>(), type_name::<A>());
+        let id = handle.id();
+
+        let sender = self.data.internal_event_sender.clone();
+        let task = io_task_pool().spawn(async move {
+            match future.await {
+                Ok(asset) => {
+                    let loaded_asset: crate::loader::ErasedLoadedAsset =
+                        LoadedAsset::new_with_dependencies(asset).into();
+                    let _ = sender.send(InternalAssetEvent::Loaded { id, loaded_asset });
+                }
+                Err(error) => {
+                    let error = AddAsyncError {
+                        error: Arc::new(error),
+                    };
+                    tracing::error!("{error}");
+                    let _ = sender.send(InternalAssetEvent::Failed {
+                        id,
+                        path: AssetPath::default(),
+                        error: Arc::new(AssetLoadError::AddAsyncError(error)),
+                    });
+                }
+            }
+        });
+        infos.pending_tasks.insert(id, task);
+
+        handle.typed_debug_checked()
+    }
+
     /// Loads every asset under `path` recursively.
     ///
     /// The returned handle names a [`LoadedFolder`] whose value lists the
@@ -1583,6 +1626,9 @@ pub enum AssetLoadError {
     /// The loader itself returned an error.
     #[error("{0}")]
     AssetLoaderError(AssetLoaderError),
+    /// Resolving an asset added by [`AssetServer::add_async`] failed.
+    #[error(transparent)]
+    AddAsyncError(#[from] AddAsyncError),
     /// The requested label does not exist on the loaded asset.
     #[error(
         "The file at '{base_path}' does not contain the labeled asset '{label}'; it contains the following {} assets: {}",
@@ -1704,4 +1750,15 @@ impl AssetLoaderError {
     pub fn error(&self) -> &kairos_ecs::error::KairosError {
         &self.error
     }
+}
+
+/// An error that occurred while resolving an asset added by
+/// [`AssetServer::add_async`].
+///
+/// The future's error type is erased into a trait object here so it can travel
+/// through [`AssetLoadError`] without naming the caller's error type.
+#[derive(Error, Debug, Clone)]
+#[error("An error occurred while resolving an asset added by `add_async`: {error}")]
+pub struct AddAsyncError {
+    error: Arc<dyn core::error::Error + Send + Sync + 'static>,
 }

@@ -22,9 +22,10 @@ use crate::io::{
     empty_path_stream, file::FileAssetReader, get_meta_path,
 };
 use crate::{
-    Asset, AssetEvent, AssetLoadFailedEvent, AssetLoader, AssetMetaCheck, AssetPath, AssetServer,
-    AssetServerMode, Assets, Handle, LoadContext, LoadedFolder, LoadedUntypedAsset,
-    ReadAssetBytesError, UntypedAssetId, VisitAssetDependencies, handle_internal_asset_events,
+    Asset, AssetEvent, AssetLoadError, AssetLoadFailedEvent, AssetLoader, AssetMetaCheck,
+    AssetPath, AssetServer, AssetServerMode, Assets, Handle, LoadContext, LoadState, LoadedFolder,
+    LoadedUntypedAsset, ReadAssetBytesError, UntypedAssetId, VisitAssetDependencies,
+    handle_internal_asset_events,
 };
 use crate::meta::{ProcessedInfo, ProcessedInfoMinimal};
 
@@ -528,6 +529,47 @@ fn add_inserts_a_runtime_asset() {
         world.resource::<Assets<ByteAsset>>().get(handle.id()),
         Some(&ByteAsset(vec![1, 2, 3]))
     );
+}
+
+#[test]
+fn add_async_hands_out_a_handle_before_the_future_resolves() {
+    let server = server_with_files(&[]);
+    let mut world = world_for(&server);
+
+    let handle =
+        server.add_async::<ByteAsset, std::io::Error>(async { Ok(ByteAsset(vec![1, 2, 3])) });
+    let id = handle.id().untyped();
+
+    // The handle exists and the asset is loading straight away, before the
+    // spawned task has had a chance to send its result.
+    assert!(server.is_managed(id));
+    assert!(server.load_state(id).is_loading());
+
+    wait_for(&mut world, &server, id);
+
+    assert!(server.is_loaded_with_dependencies(id));
+    assert_eq!(
+        world.resource::<Assets<ByteAsset>>().get(handle.id()),
+        Some(&ByteAsset(vec![1, 2, 3]))
+    );
+}
+
+#[test]
+fn add_async_marks_the_asset_failed_when_the_future_errors() {
+    let server = server_with_files(&[]);
+    let mut world = world_for(&server);
+
+    let handle = server.add_async::<ByteAsset, std::io::Error>(async {
+        Err(std::io::Error::new(std::io::ErrorKind::Other, "nope"))
+    });
+    let id = handle.id().untyped();
+    wait_for(&mut world, &server, id);
+
+    assert_eq!(world.resource::<Assets<ByteAsset>>().get(handle.id()), None);
+    let LoadState::Failed(error) = server.load_state(id) else {
+        panic!("the asset should have failed");
+    };
+    assert!(matches!(&*error, AssetLoadError::AddAsyncError(_)));
 }
 
 #[test]
