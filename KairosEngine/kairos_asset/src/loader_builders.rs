@@ -362,6 +362,10 @@ impl ReaderRef<'_> {
 /// A refused load (an empty or unapproved path) yields the default `Uuid`
 /// handle, which is not a handle edge, so only strong (`Index`) handles are
 /// recorded.
+///
+/// `bevy_asset` 0.19.1 instead unwraps the handle-to-index conversion here and
+/// panics on a refused unapproved path; this matches the fix `bevy` later
+/// adopted for `bevy` #21584 (PR #25435).
 fn record_dependency(load_context: &mut LoadContext, id: UntypedAssetId) {
     if matches!(id, UntypedAssetId::Index { .. }) {
         load_context.dependencies.insert(id);
