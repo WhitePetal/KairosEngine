@@ -22,8 +22,10 @@
 use core::any::Any;
 use std::{collections::HashSet, sync::Arc};
 
+use futures_lite::AsyncReadExt;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
+use crate::io::{AssetReaderError, Reader};
 use crate::path::AssetPath;
 
 /// The version of the `.meta` format. Bump it on any breaking change to the
@@ -36,6 +38,58 @@ pub type MetaTransform = Box<dyn Fn(&mut dyn AssetMetaDyn) + Send + Sync>;
 
 /// A content hash, as recorded by the (deferred) asset processor.
 pub type AssetHash = [u8; 32];
+
+/// Hashes an asset's bytes folded with its `.meta` bytes.
+///
+/// This is the [`ProcessedInfo::hash`] the processor records: a change to either
+/// the asset bytes or the sidecar produces a different hash, which is what lets
+/// the processor skip an unchanged asset.
+///
+/// Changing the hashing logic here is a **breaking change** that requires a
+/// [`META_FORMAT_VERSION`] bump.
+#[allow(dead_code)] // consumed by the AssetProcessor (S5)
+pub(crate) async fn get_asset_hash(
+    meta_bytes: &[u8],
+    asset_reader: &mut impl Reader,
+) -> Result<AssetHash, AssetReaderError> {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(meta_bytes);
+    let mut buffer = [0; blake3::CHUNK_LEN];
+    loop {
+        let bytes_read = asset_reader.read(&mut buffer).await?;
+        hasher.update(&buffer[..bytes_read]);
+        if bytes_read == 0 {
+            // EOF: the asset bytes are fully consumed.
+            break;
+        }
+    }
+    Ok(*hasher.finalize().as_bytes())
+}
+
+/// Folds an asset's own hash with the `full_hash` of each process dependency.
+///
+/// This is the [`ProcessedInfo::full_hash`]: an asset's `full_hash` changes when
+/// the asset changes *or* when any dependency it was processed against changes,
+/// which is what lets a dependent processor skip work it has already done.
+///
+/// The dependency hashes are folded in iteration order, so the caller must
+/// supply a deterministic order (for example, sorted by path) for the result to
+/// be stable across runs.
+///
+/// Changing the folding logic here is a **breaking change** that requires a
+/// [`META_FORMAT_VERSION`] bump.
+#[allow(dead_code)] // consumed by the AssetProcessor (S5)
+pub(crate) fn get_full_asset_hash(
+    asset_hash: AssetHash,
+    dependency_hashes: impl Iterator<Item = AssetHash>,
+) -> AssetHash {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(&asset_hash);
+    for hash in dependency_hashes {
+        hasher.update(&hash);
+    }
+    *hasher.finalize().as_bytes()
+}
 
 /// Marker for the settings types a loader, processor, or saver accepts.
 ///
@@ -288,6 +342,14 @@ pub struct ProcessDependencyInfo {
 pub struct ProcessedInfoMinimal {
     /// The processed info, if present.
     pub processed_info: Option<ProcessedInfo>,
+}
+
+impl ProcessedInfoMinimal {
+    /// Deserializes a lean processed-info sidecar from its RON bytes.
+    pub fn deserialize(bytes: &[u8]) -> Result<Self, DeserializeMetaError> {
+        ron::de::from_bytes(bytes)
+            .map_err(|error| DeserializeMetaError::DeserializeMinimal(Arc::new(error)))
+    }
 }
 
 /// Whether, and for which paths, an asset's `.meta` sidecar is consulted.

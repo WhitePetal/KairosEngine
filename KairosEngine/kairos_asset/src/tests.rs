@@ -552,4 +552,5 @@ mod io;
 mod loader;
 mod meta;
 mod path;
+mod processor;
 mod server;

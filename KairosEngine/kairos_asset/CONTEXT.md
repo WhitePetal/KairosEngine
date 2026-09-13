@@ -48,6 +48,10 @@ A secondary asset a loader produces alongside its primary asset, addressed by a 
 Another asset that must finish loading before this one is ready. Direct dependencies are declared by the loader; recursive dependencies are all those reached transitively.
 *Avoid*: reference, link
 
+**Loader dependency**:
+A path whose value a loader read while loading, recorded as a processing input rather than as a loaded-handle edge. Unlike an asset dependency it is not a readiness signal; when the asset is processed it becomes one of the processed asset's `process_dependencies`, so a change to any of them re-runs processing.
+*Avoid*: direct dependency, direct load
+
 **Load state**:
 How far an asset has got — not loaded, loading, loaded, or failed. Tracked for the asset itself, its direct dependencies, and its recursive dependencies.
 *Avoid*: status, progress

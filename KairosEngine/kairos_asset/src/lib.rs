@@ -38,7 +38,9 @@
 //!   mounted under the [`AssetTrackingSystems`]/[`AssetEventSystems`] sets.
 //!
 //! Deliberately absent for now (later tickets): `add_async`/`wait_for_asset*`,
-//! and the processor. This crate does not import `tokio` (ADR 0001).
+//! and the processor body. The processor base — hashing, `ProcessedInfo`
+//! recording, and the in-memory dependency graph — is in `processor`. This crate
+//! does not import `tokio` (ADR 0001).
 
 mod asset;
 mod assets;
@@ -52,6 +54,7 @@ pub mod io;
 mod loader;
 pub mod meta;
 mod path;
+mod processor;
 mod server;
 
 pub use asset::{Asset, VisitAssetDependencies};
@@ -71,7 +74,8 @@ pub use install::{
     install,
 };
 pub use loader::{
-    AssetContainer, AssetLoader, ErasedAssetLoader, ErasedLoadedAsset, LoadContext, LoadedAsset,
+    AssetContainer, AssetLoader, ErasedAssetLoader, ErasedLoadedAsset, LoadContext, LoadDirectError,
+    LoadedAsset, ReadAssetBytesError,
 };
 pub use server::{
     AssetLoadError, AssetLoaderError, AssetServer, AssetServerMode, DependencyLoadState,

@@ -19,13 +19,14 @@ use kairos_tasks::ConditionalSendFuture;
 use crate::io::{
     AssetReader, AssetReaderError, AssetReaderFuture, AssetSourceBuilder, AssetSourceBuilders,
     AssetSourceId, ErasedAssetReader, PathStream, Reader, UnapprovedPathMode, VecReader,
-    empty_path_stream, file::FileAssetReader,
+    empty_path_stream, file::FileAssetReader, get_meta_path,
 };
 use crate::{
     Asset, AssetEvent, AssetLoadFailedEvent, AssetLoader, AssetMetaCheck, AssetPath, AssetServer,
-    AssetServerMode, Assets, Handle, LoadContext, LoadedFolder, LoadedUntypedAsset, UntypedAssetId,
-    VisitAssetDependencies, handle_internal_asset_events,
+    AssetServerMode, Assets, Handle, LoadContext, LoadedFolder, LoadedUntypedAsset,
+    ReadAssetBytesError, UntypedAssetId, VisitAssetDependencies, handle_internal_asset_events,
 };
+use crate::meta::{ProcessedInfo, ProcessedInfoMinimal};
 
 /// An asset whose value is the bytes it was loaded from.
 #[derive(Debug, PartialEq, Eq)]
@@ -140,7 +141,14 @@ impl AssetReader for MemoryReader {
     }
 
     fn read_meta<'a>(&'a self, path: &'a Path) -> impl AssetReaderFuture<Value: Reader + 'a> {
-        async move { Err::<VecReader, _>(AssetReaderError::NotFound(path.to_path_buf())) }
+        // Meta sidecars are stored under their real `<path>.meta` name.
+        let meta_path = get_meta_path(path);
+        let bytes = self.0.get(&meta_path).cloned();
+        async move {
+            bytes
+                .map(VecReader::new)
+                .ok_or_else(|| AssetReaderError::NotFound(meta_path))
+        }
     }
 
     fn read_directory<'a>(
@@ -1113,4 +1121,84 @@ fn load_folder_walks_a_real_directory() {
     );
 
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn read_asset_bytes_returns_bytes_and_records_a_loader_dependency() {
+    let server = server_with_files(&[("data.bytes", b"hello")]);
+    let mut context = LoadContext::new(&server, AssetPath::from("root.bytes"), true, false);
+
+    let bytes = futures_lite::future::block_on(context.read_asset_bytes("data.bytes"))
+        .expect("the bytes are read");
+    assert_eq!(bytes, b"hello");
+
+    // The read is a loader dependency (the processor's input), not a handle
+    // dependency: nothing was added to `dependencies`.
+    let loaded = context.finish(ByteAsset(vec![]));
+    assert!(loaded.dependencies.is_empty());
+    assert_eq!(
+        loaded.loader_dependencies.get(&AssetPath::from("data.bytes")),
+        Some(&[0u8; 32]),
+        "without hash population the dependency records the zero hash"
+    );
+}
+
+#[test]
+fn read_asset_bytes_records_the_processed_full_hash() {
+    let full_hash = [7u8; 32];
+    let meta_bytes = ron::ser::to_string(&ProcessedInfoMinimal {
+        processed_info: Some(ProcessedInfo {
+            hash: [1u8; 32],
+            full_hash,
+            process_dependencies: vec![],
+        }),
+    })
+    .expect("the processed info serializes")
+    .into_bytes();
+
+    let server = server_with_files(&[
+        ("data.bytes", b"hello"),
+        ("data.bytes.meta", &meta_bytes),
+    ]);
+    // A context that populates hashes, as the processor's would.
+    let mut context = LoadContext::new(&server, AssetPath::from("root.bytes"), false, true);
+
+    let bytes = futures_lite::future::block_on(context.read_asset_bytes("data.bytes"))
+        .expect("the bytes are read");
+    assert_eq!(bytes, b"hello");
+
+    let loaded = context.finish(ByteAsset(vec![]));
+    assert_eq!(
+        loaded.loader_dependencies.get(&AssetPath::from("data.bytes")),
+        Some(&full_hash),
+        "the processed asset's full_hash is what a dependent records"
+    );
+}
+
+#[test]
+fn read_asset_bytes_rejects_an_empty_path() {
+    let server = server_with_files(&[]);
+    let mut context = LoadContext::new(&server, AssetPath::from("root.bytes"), true, false);
+
+    let error = futures_lite::future::block_on(context.read_asset_bytes(""))
+        .expect_err("an empty path is rejected");
+    assert!(matches!(error, ReadAssetBytesError::EmptyPath(_)));
+}
+
+#[test]
+fn read_asset_bytes_requires_hash_metadata_when_populating_hashes() {
+    let meta_bytes = ron::ser::to_string(&ProcessedInfoMinimal {
+        processed_info: None,
+    })
+    .expect("the processed info serializes")
+    .into_bytes();
+    let server = server_with_files(&[
+        ("data.bytes", b"hello"),
+        ("data.bytes.meta", &meta_bytes),
+    ]);
+    let mut context = LoadContext::new(&server, AssetPath::from("root.bytes"), false, true);
+
+    let error = futures_lite::future::block_on(context.read_asset_bytes("data.bytes"))
+        .expect_err("hash metadata is required");
+    assert!(matches!(error, ReadAssetBytesError::MissingAssetHash));
 }

@@ -30,7 +30,7 @@ use core::{
 };
 use std::{
     collections::{HashMap, HashSet, hash_map::Entry},
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 use atomicow::CowArc;
@@ -44,12 +44,15 @@ use crate::assets::Assets;
 use crate::handle::{Handle, UntypedHandle};
 use crate::id::UntypedAssetId;
 use crate::index::AssetIndex;
-use crate::io::{BoxedFuture, Reader};
+use crate::io::{
+    AssetReaderError, BoxedFuture, MissingAssetSourceError, MissingProcessedAssetReaderError, Reader,
+};
 use crate::meta::{
-    AssetAction, AssetHash, AssetMeta, AssetMetaDyn, DeserializeMetaError, Settings, loader_name,
+    AssetAction, AssetHash, AssetMeta, AssetMetaDyn, DeserializeMetaError, ProcessedInfo,
+    ProcessedInfoMinimal, Settings, loader_name,
 };
 use crate::path::AssetPath;
-use crate::server::AssetServer;
+use crate::server::{AssetServer, AssetServerMode};
 
 /// Loads an [`Asset`] from a byte [`Reader`].
 ///
@@ -397,17 +400,23 @@ pub struct LoadContext<'a> {
     pub(crate) asset_server: &'a AssetServer,
     /// Whether dependencies should be loaded when the loader declares them.
     pub(crate) should_load_dependencies: bool,
-    /// Whether to record content hashes while loading (used by the processing
-    /// pipeline, which is not here yet).
-    #[allow(dead_code)]
+    /// Whether to record content hashes while loading.
+    ///
+    /// The processor sets this so [`read_asset_bytes`](LoadContext::read_asset_bytes)
+    /// and [`load_direct_internal`](LoadContext::load_direct_internal) record the
+    /// processed asset's `full_hash` instead of a zero hash. Ordinary server
+    /// loads leave it false.
     populate_hashes: bool,
     /// The path of the asset being loaded; labeled sub-assets hang off it.
     asset_path: AssetPath<'static>,
     /// The ids this load depends on.
     dependencies: HashSet<UntypedAssetId>,
-    /// Dependencies whose *values* were read while loading (used by the
-    /// processing pipeline, which is not here yet).
-    #[allow(dead_code)]
+    /// Paths whose *values* were read while loading, and the `full_hash` they
+    /// were read at.
+    ///
+    /// Unlike [`dependencies`](Self::dependencies), these do not create handle
+    /// edges: they exist so the processor can turn them into a processed asset's
+    /// `process_dependencies`.
     loader_dependencies: HashMap<AssetPath<'static>, AssetHash>,
     /// The labeled sub-assets produced so far.
     labeled_assets: Vec<LabeledAsset>,
@@ -549,6 +558,58 @@ impl<'a> LoadContext<'a> {
         &self.asset_path
     }
 
+    /// Reads the asset at `path` and returns its bytes, recording it as a
+    /// loader dependency.
+    ///
+    /// The bytes are read through the server's reader for its current
+    /// [`AssetServerMode`]: the unprocessed reader in
+    /// [`Unprocessed`](AssetServerMode::Unprocessed), the processed reader in
+    /// [`Processed`](AssetServerMode::Processed).
+    ///
+    /// When the context was created with `populate_hashes`, the processed
+    /// asset's `.meta` is read while the bytes reader is still open, so a reader
+    /// that guards the pair (the gated reader, deferred) cannot interleave a
+    /// write between them. Its `full_hash` is what gets recorded. A processed
+    /// asset without that info is an error, since the hash is the whole point of
+    /// the mode.
+    pub async fn read_asset_bytes<'b, 'c>(
+        &'b mut self,
+        path: impl Into<AssetPath<'c>>,
+    ) -> Result<Vec<u8>, ReadAssetBytesError> {
+        let path = path.into();
+        if path.path() == Path::new("") {
+            return Err(ReadAssetBytesError::EmptyPath(path.into_owned()));
+        }
+
+        let asset_server = self.asset_server;
+        let source = asset_server.get_source(path.source())?;
+        let asset_reader = match asset_server.mode() {
+            AssetServerMode::Unprocessed => source.reader(),
+            AssetServerMode::Processed => source.processed_reader()?,
+        };
+        let mut reader = asset_reader.read(path.path()).await?;
+        let hash = if self.populate_hashes {
+            let meta_bytes = asset_reader.read_meta_bytes(path.path()).await?;
+            let minimal = ProcessedInfoMinimal::deserialize(&meta_bytes)?;
+            let processed_info = minimal
+                .processed_info
+                .ok_or(ReadAssetBytesError::MissingAssetHash)?;
+            processed_info.full_hash
+        } else {
+            AssetHash::default()
+        };
+        let mut bytes = Vec::new();
+        reader
+            .read_to_end(&mut bytes)
+            .await
+            .map_err(|source| ReadAssetBytesError::Io {
+                path: path.path().to_path_buf(),
+                source,
+            })?;
+        self.loader_dependencies.insert(path.clone_owned(), hash);
+        Ok(bytes)
+    }
+
     /// Returns the handle for the labeled sub-asset `label` and records it as a
     /// dependency of this asset.
     ///
@@ -574,6 +635,45 @@ impl<'a> LoadContext<'a> {
     pub fn get_labeled_by_id(&self, id: impl Into<UntypedAssetId>) -> Option<&ErasedLoadedAsset> {
         let index = *self.asset_id_to_asset_index.get(&id.into())?;
         Some(&self.labeled_assets[index].asset)
+    }
+
+    /// Runs `loader` over `reader` and records the loaded path as a loader
+    /// dependency, without declaring a handle dependency.
+    ///
+    /// This is the immediate (direct) half of the loading surface: the caller
+    /// gets the loaded value now, and the path plus `processed_info`'s
+    /// `full_hash` become a [`process_dependencies`](ProcessedInfo::process_dependencies)
+    /// input for the processor. Unlike [`LoadContext::load`], it does not add
+    /// the path to this context's handle `dependencies`.
+    ///
+    /// Consumed by the `NestedLoadBuilder` methods, which land separately.
+    #[allow(dead_code)] // consumed by `NestedLoadBuilder` (deferred slice)
+    pub(crate) async fn load_direct_internal(
+        &mut self,
+        path: AssetPath<'static>,
+        settings: &dyn Settings,
+        loader: &dyn ErasedAssetLoader,
+        reader: &mut dyn Reader,
+        processed_info: Option<&ProcessedInfo>,
+    ) -> Result<ErasedLoadedAsset, LoadDirectError> {
+        let loaded_asset = self
+            .asset_server
+            .load_with_settings_loader_and_reader(
+                &path,
+                settings,
+                loader,
+                reader,
+                self.should_load_dependencies,
+                self.populate_hashes,
+            )
+            .await
+            .map_err(|error| LoadDirectError::LoadError {
+                dependency: path.clone(),
+                error,
+            })?;
+        let hash = processed_info.map(|info| info.full_hash).unwrap_or_default();
+        self.loader_dependencies.insert(path, hash);
+        Ok(loaded_asset)
     }
 
     /// Returns the handle for the asset at `path` and records it as a
@@ -602,4 +702,129 @@ impl<'a> LoadContext<'a> {
 /// not force an allocation at the call site.
 fn label_index(map: &HashMap<CowArc<'static, str>, usize>, label: &str) -> Option<usize> {
     map.get(label).copied()
+}
+
+/// An error from [`LoadContext::read_asset_bytes`].
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum ReadAssetBytesError {
+    /// The requested path was empty.
+    EmptyPath(AssetPath<'static>),
+    /// The processed asset's `.meta` could not be parsed.
+    DeserializeMetaError(DeserializeMetaError),
+    /// The asset bytes or meta could not be read.
+    AssetReaderError(AssetReaderError),
+    /// The path named an [`AssetSource`](crate::io::AssetSource) that does not
+    /// exist.
+    MissingAssetSourceError(MissingAssetSourceError),
+    /// The server runs in [`Processed`](AssetServerMode::Processed) mode but the
+    /// source has no processed reader.
+    MissingProcessedAssetReaderError(MissingProcessedAssetReaderError),
+    /// Reading the asset bytes failed at the io layer.
+    Io {
+        /// The path that was being read.
+        path: PathBuf,
+        /// The underlying io error.
+        source: std::io::Error,
+    },
+    /// Hash metadata was required but the processed `.meta` did not carry it.
+    /// This is an internal inconsistency — a processed asset is always written
+    /// with [`ProcessedInfo`].
+    MissingAssetHash,
+}
+
+impl core::fmt::Display for ReadAssetBytesError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::EmptyPath(path) => {
+                write!(f, "Attempted to load an asset with an empty path \"{path}\"")
+            }
+            Self::DeserializeMetaError(error) => core::fmt::Display::fmt(error, f),
+            Self::AssetReaderError(error) => core::fmt::Display::fmt(error, f),
+            Self::MissingAssetSourceError(error) => core::fmt::Display::fmt(error, f),
+            Self::MissingProcessedAssetReaderError(error) => core::fmt::Display::fmt(error, f),
+            Self::Io { path, source } => write!(
+                f,
+                "Encountered an io error while loading asset at `{}`: {source}",
+                path.display()
+            ),
+            Self::MissingAssetHash => write!(
+                f,
+                "The LoadContext for this read_asset_bytes call requires hash metadata, \
+                 but it was not provided. This is likely an internal implementation error."
+            ),
+        }
+    }
+}
+
+impl std::error::Error for ReadAssetBytesError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::EmptyPath(_) | Self::MissingAssetHash => None,
+            Self::DeserializeMetaError(error) => Some(error),
+            Self::AssetReaderError(error) => Some(error),
+            Self::MissingAssetSourceError(error) => Some(error),
+            Self::MissingProcessedAssetReaderError(error) => Some(error),
+            Self::Io { source, .. } => Some(source),
+        }
+    }
+}
+
+impl From<DeserializeMetaError> for ReadAssetBytesError {
+    fn from(error: DeserializeMetaError) -> Self {
+        Self::DeserializeMetaError(error)
+    }
+}
+
+impl From<AssetReaderError> for ReadAssetBytesError {
+    fn from(error: AssetReaderError) -> Self {
+        Self::AssetReaderError(error)
+    }
+}
+
+impl From<MissingAssetSourceError> for ReadAssetBytesError {
+    fn from(error: MissingAssetSourceError) -> Self {
+        Self::MissingAssetSourceError(error)
+    }
+}
+
+impl From<MissingProcessedAssetReaderError> for ReadAssetBytesError {
+    fn from(error: MissingProcessedAssetReaderError) -> Self {
+        Self::MissingProcessedAssetReaderError(error)
+    }
+}
+
+/// An error from [`LoadContext::load_direct_internal`].
+///
+/// The full face — the empty-path and sub-asset rejections the public
+/// `NestedLoadBuilder` methods raise before reaching the load — arrives with the
+/// builder; the load path itself only produces [`LoadError`](LoadDirectError::LoadError).
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum LoadDirectError {
+    /// The asset failed to load.
+    LoadError {
+        /// The dependency that failed to load.
+        dependency: AssetPath<'static>,
+        /// The underlying load error.
+        error: crate::server::AssetLoadError,
+    },
+}
+
+impl core::fmt::Display for LoadDirectError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::LoadError { dependency, error } => {
+                write!(f, "Failed to load dependency {dependency:?} {error}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for LoadDirectError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::LoadError { error, .. } => Some(error),
+        }
+    }
 }

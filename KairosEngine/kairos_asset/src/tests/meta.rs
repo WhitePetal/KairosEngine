@@ -1,10 +1,13 @@
 //! Tests for the `.meta` sidecar types.
 
+use crate::io::VecReader;
 use crate::meta::{
-    AssetAction, AssetActionMinimal, AssetMeta, AssetMetaCheck, AssetMetaDyn, AssetMetaMinimal,
-    META_FORMAT_VERSION, Settings, loader_name, loader_settings_meta_transform,
+    AssetAction, AssetActionMinimal, AssetHash, AssetMeta, AssetMetaCheck, AssetMetaDyn,
+    AssetMetaMinimal, META_FORMAT_VERSION, Settings, get_asset_hash, get_full_asset_hash,
+    loader_name, loader_settings_meta_transform,
 };
 use crate::path::AssetPath;
+use futures_lite::future::block_on;
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct TestSettings {
@@ -147,4 +150,47 @@ fn meta_check_defaults_to_always() {
         )
     );
     assert_ne!(AssetMetaCheck::Always, AssetMetaCheck::Never);
+}
+
+fn hash_of(meta: &[u8], body: &[u8]) -> AssetHash {
+    let mut reader = VecReader::new(body.to_vec());
+    block_on(get_asset_hash(meta, &mut reader)).expect("hashing a reader succeeds")
+}
+
+#[test]
+fn asset_hash_is_stable_for_the_same_input() {
+    assert_eq!(hash_of(b"meta", b"body"), hash_of(b"meta", b"body"));
+}
+
+#[test]
+fn asset_hash_changes_with_either_input() {
+    let baseline = hash_of(b"meta", b"body");
+    assert_ne!(baseline, hash_of(b"other", b"body"));
+    assert_ne!(baseline, hash_of(b"meta", b"other"));
+    // Length alone matters too: a prefix is not the same asset.
+    assert_ne!(baseline, hash_of(b"meta", b"bod"));
+}
+
+#[test]
+fn full_hash_folds_dependency_hashes_in_order() {
+    let asset = [1u8; 32];
+    let a = [2u8; 32];
+    let b = [3u8; 32];
+
+    let no_deps = get_full_asset_hash(asset, std::iter::empty());
+    assert_eq!(no_deps, get_full_asset_hash(asset, std::iter::empty()));
+    // A different asset hash changes the full hash.
+    assert_ne!(no_deps, get_full_asset_hash([9u8; 32], std::iter::empty()));
+    // Adding a dependency changes the full hash.
+    assert_ne!(no_deps, get_full_asset_hash(asset, std::iter::once(a)));
+    // Order is significant.
+    assert_ne!(
+        get_full_asset_hash(asset, [a, b].into_iter()),
+        get_full_asset_hash(asset, [b, a].into_iter())
+    );
+    // A changed dependency changes the full hash.
+    assert_ne!(
+        get_full_asset_hash(asset, [a, b].into_iter()),
+        get_full_asset_hash(asset, [a, [4u8; 32]].into_iter())
+    );
 }

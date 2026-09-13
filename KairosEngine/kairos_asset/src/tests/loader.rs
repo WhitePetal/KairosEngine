@@ -331,3 +331,35 @@ fn empty_path_returns_the_default_handle() {
     assert!(handle.is_uuid());
     assert_eq!(handle.id(), crate::AssetId::default());
 }
+
+#[test]
+fn direct_load_records_a_loader_dependency_without_a_handle_dependency() {
+    let server = server();
+    let loader = ByteLoader;
+    let mut reader = VecReader::new(b"body".to_vec());
+    let mut context = context(&server, "root.bytes");
+
+    let loaded = block_on(context.load_direct_internal(
+        AssetPath::from("inner.bytes"),
+        &(),
+        &loader,
+        &mut reader,
+        None,
+    ))
+    .expect("the direct load succeeds");
+
+    // The nested value is returned immediately.
+    assert_eq!(loaded.get::<ByteAsset>(), Some(&ByteAsset(b"body".to_vec())));
+
+    // It is recorded as a loader dependency (a processed-info input) but adds no
+    // handle dependency.
+    let finished = context.finish(ByteAsset(vec![]));
+    assert!(finished.dependencies.is_empty());
+    assert_eq!(
+        finished
+            .loader_dependencies
+            .get(&AssetPath::from("inner.bytes")),
+        Some(&[0u8; 32]),
+        "without processed info the dependency records the zero hash"
+    );
+}
