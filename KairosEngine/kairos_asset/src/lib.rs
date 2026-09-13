@@ -38,9 +38,11 @@
 //!   mounted under the [`AssetTrackingSystems`]/[`AssetEventSystems`] sets.
 //!
 //! Deliberately absent for now (later tickets): `add_async`/`wait_for_asset*`,
-//! and the processor body. The processor base — hashing, `ProcessedInfo`
-//! recording, and the in-memory dependency graph — is in `processor`. This crate
-//! does not import `tokio` (ADR 0001).
+//! and the processor body. The processor trait family — [`Process`],
+//! [`ProcessContext`], [`LoadTransformAndSave`], [`AssetSaver`], and the rest —
+//! lives in `processor`, on top of the hashing, [`ProcessedInfo`](meta::ProcessedInfo)
+//! recording, and the in-memory dependency graph. This crate does not import
+//! `tokio` (ADR 0001).
 
 mod asset;
 mod assets;
@@ -92,6 +94,11 @@ pub use meta::{
     loader_name, loader_settings_meta_transform, meta_transform_settings,
 };
 pub use path::{AssetPath, ParseAssetPathError};
+pub use processor::{
+    AssetSaver, AssetTransformer, ErasedAssetSaver, ErasedProcessor, GetProcessorError,
+    IdentityAssetTransformer, LoadTransformAndSave, LoadTransformAndSaveSettings, MetaTypePathKind,
+    Process, ProcessContext, ProcessError, Processors, SavedAsset, TransformedAsset,
+};
 
 #[cfg(test)]
 mod tests;

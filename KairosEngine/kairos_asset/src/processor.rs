@@ -1,10 +1,25 @@
-//! Asset processing: the in-memory view of the processed asset space.
+//! Asset processing: the [`Process`] trait family and the processor registry.
 //!
-//! The processor itself — the background task, the [`Process`](crate::meta)
-//! trait family, the transaction log, and the gated reader — lands in later
-//! slices. This module carries the base those slices build on:
-//! [`ProcessorAssetInfos`], the per-asset dependency graph, and [`ProcessStatus`],
-//! the three states an asset's processed output can be in.
+//! A processor turns a source asset into a processed asset with a different
+//! representation — a texture compressed, a mesh packed, a format converted.
+//! This module carries the extension points the processor body (a later slice)
+//! drives:
+//!
+//! - [`Process`] — the low-level "read the source, write the processed bytes"
+//!   trait; [`LoadTransformAndSave`] is the high-level implementation that
+//!   loads with an [`AssetLoader`](crate::AssetLoader), transforms through an
+//!   [`AssetTransformer`], and saves through an [`AssetSaver`].
+//! - [`ProcessContext`] — the scoped view a processor is handed: it reads the
+//!   source asset (recording every asset value it touches as a process
+//!   dependency) and exposes the reader for the raw bytes.
+//! - [`ErasedProcessor`] — the type-erased handle the registry stores and the
+//!   processor resolves `.meta` names against.
+//! - [`Processors`] — the registration surface: name, short-name, and
+//!   default-by-extension lookups.
+//!
+//! It also carries the base the processor body builds on: [`ProcessorAssetInfos`],
+//! the per-asset dependency graph, and [`ProcessStatus`], the three states an
+//! asset's processed output can be in.
 //!
 //! [`ProcessedInfo`](crate::meta::ProcessedInfo) recorded here is used **only**
 //! to decide whether a reprocessing pass can be skipped: if the asset's own hash
@@ -12,9 +27,25 @@
 //! existing output alone. It is never a readiness signal — a reader waiting on a
 //! processed asset waits on the gated reader, which does not consult these
 //! hashes.
+//!
+//! Processor names follow the [`processor_name`](crate::meta::processor_name)
+//! convention (`std::any::type_name`), matching loaders; kairos deliberately has
+//! no `TypePath`.
 
 mod info;
+mod process;
+mod registry;
+mod saver;
+mod transformer;
 
 // Re-exported for the crate's own use (tests now, the `AssetProcessor` later).
 #[allow(unused_imports)]
 pub(crate) use info::{ProcessStatus, ProcessorAssetInfos};
+pub use registry::{GetProcessorError, Processors};
+
+pub use process::{
+    ErasedProcessor, LoadTransformAndSave, LoadTransformAndSaveSettings, MetaTypePathKind, Process,
+    ProcessContext, ProcessError,
+};
+pub use saver::{AssetSaver, ErasedAssetSaver, SavedAsset};
+pub use transformer::{AssetTransformer, IdentityAssetTransformer, TransformedAsset};

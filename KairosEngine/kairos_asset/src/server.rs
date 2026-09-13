@@ -219,7 +219,7 @@ impl AssetServer {
     }
 
     /// Returns the registered [`ErasedAssetLoader`] with `type_name`, if any.
-    fn get_asset_loader_with_type_name(
+    pub(crate) fn get_asset_loader_with_type_name(
         &self,
         type_name: &str,
     ) -> Result<Arc<dyn ErasedAssetLoader>, AssetLoadError> {

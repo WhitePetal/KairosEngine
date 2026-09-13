@@ -52,6 +52,26 @@ Another asset that must finish loading before this one is ready. Direct dependen
 A path whose value a loader read while loading, recorded as a processing input rather than as a loaded-handle edge. Unlike an asset dependency it is not a readiness signal; when the asset is processed it becomes one of the processed asset's `process_dependencies`, so a change to any of them re-runs processing.
 *Avoid*: direct dependency, direct load
 
+**Processor** (`Process`):
+The code that turns a source asset into a processed one, configured per asset by an `AssetAction::Process` sidecar.
+*Avoid*: importer, converter, build step
+
+**Processed asset**:
+The output a processor writes for a source asset, loadable in place of it; its `.meta` action is always a load.
+*Avoid*: imported asset, output asset
+
+**Process dependency**:
+An asset's value a processor read while processing this one, recorded so a change to it re-runs processing.
+*Avoid*: load dependency, input
+
+**Asset saver** (`AssetSaver`):
+The per-format code that turns an asset value back into bytes, the inverse of an asset loader.
+*Avoid*: exporter, encoder, serializer
+
+**Asset transformer** (`AssetTransformer`):
+The processing step that converts a loaded asset from one asset type into another, between loading and saving it.
+*Avoid*: converter, mapper
+
 **Load state**:
 How far an asset has got — not loaded, loading, loaded, or failed. Tracked for the asset itself, its direct dependencies, and its recursive dependencies.
 *Avoid*: status, progress

@@ -16,8 +16,9 @@
 //! natively where TOML would need a workaround (ADR 0002). The per-asset-type
 //! TOML wrappers of the legacy stack are retired in favour of this one format.
 //!
-//! Only `Ignore` has behaviour in the new core so far; the processing pipeline
-//! is deferred, so `Process` exists as a type but nothing consumes it.
+//! `Load` and `Ignore` drive the load pipeline; `Process` is resolved by the
+//! processor through the [`Process`](crate::processor::Process) trait family
+//! (the processor body itself is a later slice).
 
 use core::any::Any;
 use std::{collections::HashSet, sync::Arc};
@@ -126,6 +127,16 @@ pub fn loader_name<L>() -> &'static str {
     core::any::type_name::<L>()
 }
 
+/// The name a processor is recorded under in a `.meta` sidecar.
+///
+/// Like [`loader_name`], kairos has no `TypePath`, so the sidecar stores the
+/// fully-qualified [`std::any::type_name`]. A processor may alternatively be
+/// addressed by its short name — the final path segment of this value — when
+/// that is unambiguous.
+pub fn processor_name<P>() -> &'static str {
+    core::any::type_name::<P>()
+}
+
 /// How the asset system should handle one asset file.
 ///
 /// The generic parameters are the loader's and processor's settings types;
@@ -142,8 +153,6 @@ pub enum AssetAction<LoaderSettings, ProcessSettings> {
         settings: LoaderSettings,
     },
     /// Process the asset with the named processor and these settings.
-    ///
-    /// Only the type surface exists for now; the processor itself is deferred.
     Process {
         /// The processor's name.
         processor: String,
