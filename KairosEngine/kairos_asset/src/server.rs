@@ -1620,9 +1620,7 @@ pub fn handle_internal_asset_events(world: &mut World) {
                     // dependency tree) is ready.
                     let mut infos = server.write_infos();
                     if let Some(info) = infos.get_mut(id) {
-                        for waker in info.waiting_tasks.drain(..) {
-                            waker.wake();
-                        }
+                        info.wake_waiting_tasks();
                     }
                 }
                 InternalAssetEvent::Failed { id, path, error } => {

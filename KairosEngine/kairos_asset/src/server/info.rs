@@ -79,6 +79,17 @@ impl AssetInfo {
         self.dep_load_state = DependencyLoadState::Loading;
         self.rec_dep_load_state = RecursiveDependencyLoadState::Loading;
     }
+
+    /// Wakes every task parked on this asset, clearing the list.
+    ///
+    /// Called once an asset's load has settled — successfully or not — or when
+    /// a failure reaches it through its dependency tree, so a
+    /// `wait_for_asset*` caller can observe the new state.
+    pub(crate) fn wake_waiting_tasks(&mut self) {
+        for waker in self.waiting_tasks.drain(..) {
+            waker.wake();
+        }
+    }
 }
 
 /// The server's per-asset bookkeeping: path-addressed handles, the handle
@@ -554,9 +565,7 @@ impl AssetInfos {
             // `Failed` here, with no `LoadedWithDependencies` event to carry the
             // wake-up. Wake anyone parked on it directly.
             if rec_dep_load_state.is_failed() {
-                for waker in info.waiting_tasks.drain(..) {
-                    waker.wake();
-                }
+                info.wake_waiting_tasks();
             }
 
             let rec_waiting = if rec_dep_load_state.is_loaded() || rec_dep_load_state.is_failed() {
@@ -649,9 +658,7 @@ impl AssetInfos {
             info.loading_rec_dependencies.remove(&failed_id);
             info.failed_rec_dependencies.insert(failed_id);
             info.rec_dep_load_state = RecursiveDependencyLoadState::Failed(error.clone());
-            for waker in info.waiting_tasks.drain(..) {
-                waker.wake();
-            }
+            info.wake_waiting_tasks();
             Some(std::mem::take(
                 &mut info.dependents_waiting_on_recursive_dep_load,
             ))
@@ -685,9 +692,7 @@ impl AssetInfos {
             info.load_state = LoadState::Failed(error.clone());
             info.dep_load_state = DependencyLoadState::Failed(error.clone());
             info.rec_dep_load_state = RecursiveDependencyLoadState::Failed(error.clone());
-            for waker in info.waiting_tasks.drain(..) {
-                waker.wake();
-            }
+            info.wake_waiting_tasks();
             (
                 std::mem::take(&mut info.dependents_waiting_on_load),
                 std::mem::take(&mut info.dependents_waiting_on_recursive_dep_load),
