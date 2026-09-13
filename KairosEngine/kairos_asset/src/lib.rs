@@ -38,14 +38,16 @@
 //!   mounted under the [`AssetTrackingSystems`]/[`AssetEventSystems`] sets.
 //!
 //! Deliberately absent for now (later tickets): `add_async`/`wait_for_asset*`,
-//! the processor's write-ahead log, and the gated processed reader. The
+//! and the gated processed reader. The
 //! processor trait family — [`Process`], [`ProcessContext`],
 //! [`LoadTransformAndSave`], [`AssetSaver`], and the rest — lives in
 //! `processor`, on top of the hashing,
 //! [`ProcessedInfo`](meta::ProcessedInfo) recording, and the in-memory
 //! dependency graph that this crate also carries; [`AssetProcessor`] is the
-//! background body that drives them. This crate does not import `tokio`
-//! (ADR 0001).
+//! background body that drives them, and its write-ahead log
+//! ([`ProcessorTransactionLog`] / [`FileTransactionLogFactory`]) makes their
+//! writes transactional and recoverable across restarts. This crate does not
+//! import `tokio` (ADR 0001).
 
 mod asset;
 mod assets;
@@ -99,9 +101,11 @@ pub use meta::{
 pub use path::{AssetPath, ParseAssetPathError};
 pub use processor::{
     AssetProcessor, AssetProcessorData, AssetSaver, AssetTransformer, ErasedAssetSaver,
-    ErasedProcessor, GetProcessorError, IdentityAssetTransformer, InitializeError,
-    LoadTransformAndSave, LoadTransformAndSaveSettings, MetaTypePathKind, Process, ProcessContext,
-    ProcessError, ProcessResult, ProcessorState, Processors, SavedAsset, TransformedAsset,
+    ErasedProcessor, FileTransactionLogFactory, GetProcessorError, IdentityAssetTransformer,
+    InitializeError, LoadTransformAndSave, LoadTransformAndSaveSettings, LogEntry, LogEntryError,
+    MetaTypePathKind, Process, ProcessContext, ProcessError, ProcessResult, ProcessorState,
+    ProcessorTransactionLog, ProcessorTransactionLogFactory, Processors, ReadLogError, SavedAsset,
+    SetTransactionLogFactoryError, TransformedAsset, ValidateLogError,
 };
 
 #[cfg(test)]

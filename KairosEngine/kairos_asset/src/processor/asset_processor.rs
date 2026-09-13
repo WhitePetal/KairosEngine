@@ -27,19 +27,23 @@
 //! [`AssetSources`] and loaders; the decision's layout ② wires them together in
 //! a later slice.
 //!
-//! Two later slices extend this body and are deliberately absent here:
+//! The processor's own write-ahead log ([`ProcessorTransactionLog`] and the
+//! [`FileTransactionLogFactory`] that backs it) makes processing transactional:
+//! [`initialize`](AssetProcessor::initialize) validates the previous run's log
+//! and recovers any transaction that did not finish, and every processing pass
+//! brackets its writes with begin/end entries.
 //!
-//! - the write-ahead log and its startup recovery (`ProcessorTransactionLog`,
-//!   `validate_transaction_log_and_recover`), and
-//! - the gated reader (`gate_on_processor` / `ProcessorGatedReader`), which is
-//!   why the processor reads processed files through the plain
-//!   [`processed_reader`](AssetSource::processed_reader) rather than an ungated
-//!   copy of it. With gating in place those self-reads move to
-//!   [`ungated_processed_reader`](AssetSource::ungated_processed_reader) so the
-//!   processor does not wait on its own output.
+//! One later slice extends this body and is deliberately absent here: the gated
+//! reader (`gate_on_processor` / `ProcessorGatedReader`), which is why the
+//! processor reads processed files through the plain
+//! [`processed_reader`](AssetSource::processed_reader) rather than an ungated
+//! copy of it. With gating in place those self-reads move to
+//! [`ungated_processed_reader`](AssetSource::ungated_processed_reader) so the
+//! processor does not wait on its own output.
 
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
 use futures_lite::{AsyncWriteExt, StreamExt};
 use futures_util::{FutureExt, select_biased};
@@ -60,6 +64,11 @@ use crate::path::AssetPath;
 use crate::server::{AssetServer, AssetServerMode};
 
 use super::info::ProcessorAssetInfos;
+use super::log::{
+    FileTransactionLogFactory, LogEntry, LogEntryError, ProcessorTransactionLog,
+    ProcessorTransactionLogFactory, SetTransactionLogFactoryError, ValidateLogError, WriteLogError,
+    validate_transaction_log,
+};
 use super::process::{
     ErasedProcessor, MetaTypePathKind, Process, ProcessContext, ProcessError,
 };
@@ -82,6 +91,14 @@ pub struct AssetProcessor {
 pub struct AssetProcessorData {
     /// The overall processing state and the per-asset graph.
     pub(crate) processing_state: Arc<ProcessingState>,
+    /// The factory that builds the transaction log.
+    ///
+    /// A plain [`Mutex`], not an async one: the factory is set once, before the
+    /// processor starts, and no guard is ever held across an `await`.
+    log_factory: Mutex<Option<Box<dyn ProcessorTransactionLogFactory>>>,
+    /// The active transaction log, created once [`AssetProcessor::initialize`]
+    /// has validated and recovered the previous run's log.
+    log: async_lock::RwLock<Option<Box<dyn ProcessorTransactionLog>>>,
     /// The registered processors, behind a plain lock: registration and lookup
     /// are synchronous, and no guard is ever held across an `await`.
     processors: RwLock<Processors>,
@@ -129,35 +146,17 @@ pub enum ProcessResult {
 }
 
 /// An error from [`AssetProcessor::initialize`].
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum InitializeError {
     /// Reading the unprocessed folder failed.
+    #[error(transparent)]
     FailedToReadSourcePaths(AssetReaderError),
     /// Reading the processed folder failed.
+    #[error(transparent)]
     FailedToReadDestinationPaths(AssetReaderError),
-}
-
-impl core::fmt::Display for InitializeError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Self::FailedToReadSourcePaths(error) => {
-                write!(f, "failed to read the source asset folder: {error}")
-            }
-            Self::FailedToReadDestinationPaths(error) => {
-                write!(f, "failed to read the processed asset folder: {error}")
-            }
-        }
-    }
-}
-
-impl std::error::Error for InitializeError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::FailedToReadSourcePaths(error) | Self::FailedToReadDestinationPaths(error) => {
-                Some(error)
-            }
-        }
-    }
+    /// Validating the previous run's transaction log failed.
+    #[error("Failed to validate asset log: {0}")]
+    ValidateLogError(#[from] ValidateLogError),
 }
 
 impl AssetProcessor {
@@ -265,6 +264,52 @@ impl AssetProcessor {
             .read()
             .expect("processor registry lock poisoned")
             .get_processor(processor_type_name)
+    }
+
+    /// Logs an unrecoverable error. On the next run of the processor, all
+    /// assets will be regenerated. This should only be used as a last resort.
+    /// Every call to this should be considered with scrutiny and ideally
+    /// replaced with something more granular.
+    async fn log_unrecoverable(&self) {
+        let mut log = self.data.log.write().await;
+        let log = log.as_mut().expect("the transaction log is started");
+        log.unrecoverable()
+            .await
+            .map_err(|error| WriteLogError {
+                log_entry: LogEntry::UnrecoverableError,
+                error,
+            })
+            .unwrap();
+    }
+
+    /// Logs the start of an asset being processed. If this is not followed at
+    /// some point by a closing [`AssetProcessor::log_end_processing`], the next
+    /// run of the processor treats the asset as incompletely processed and
+    /// reprocesses it.
+    async fn log_begin_processing(&self, path: &AssetPath<'_>) {
+        let mut log = self.data.log.write().await;
+        let log = log.as_mut().expect("the transaction log is started");
+        log.begin_processing(path)
+            .await
+            .map_err(|error| WriteLogError {
+                log_entry: LogEntry::BeginProcessing(path.clone_owned()),
+                error,
+            })
+            .unwrap();
+    }
+
+    /// Logs the end of an asset being successfully processed. See
+    /// [`AssetProcessor::log_begin_processing`].
+    async fn log_end_processing(&self, path: &AssetPath<'_>) {
+        let mut log = self.data.log.write().await;
+        let log = log.as_mut().expect("the transaction log is started");
+        log.end_processing(path)
+            .await
+            .map_err(|error| WriteLogError {
+                log_entry: LogEntry::EndProcessing(path.clone_owned()),
+                error,
+            })
+            .unwrap();
     }
 
     /// Starts the processor in the background.
@@ -440,11 +485,15 @@ impl AssetProcessor {
     /// Builds the initial in-memory view by scanning every processed source's
     /// unprocessed and processed folders.
     ///
-    /// Unprocessed files are recorded as existing; a processed file whose
-    /// metadata parses has its [`ProcessedInfo`] and dependency edges restored,
-    /// and a processed file whose metadata is missing or unparsable (or whose
-    /// source is gone) is deleted so it can be regenerated.
+    /// This first validates the previous run's transaction log and recovers any
+    /// half-finished transactions (see
+    /// [`validate_transaction_log_and_recover`](AssetProcessor::validate_transaction_log_and_recover)),
+    /// then scans: unprocessed files are recorded as existing; a processed file
+    /// whose metadata parses has its [`ProcessedInfo`] and dependency edges
+    /// restored, and a processed file whose metadata is missing or unparsable
+    /// (or whose source is gone) is deleted so it can be regenerated.
     async fn initialize(&self) -> Result<(), InitializeError> {
+        self.validate_transaction_log_and_recover().await;
         let mut asset_infos = self.data.processing_state.asset_infos.write().await;
 
         /// Recursively collects the file paths under `path`. When `empty_dirs` is
@@ -694,7 +743,12 @@ impl AssetProcessor {
             Err(AssetReaderError::NotFound(_)) => {
                 // The processed folder does not exist; nothing to update.
             }
-            Err(_) => {}
+            Err(_) => {
+                // The processed folder could not be read, so the in-memory view
+                // can no longer be trusted: mark the run unrecoverable so the
+                // next start regenerates everything.
+                self.log_unrecoverable().await;
+            }
         }
 
         // Best-effort: a folder that is not there (or could not be removed) is
@@ -927,6 +981,11 @@ impl AssetProcessor {
         };
         let _transaction_lock = transaction_lock.write().await;
 
+        // Bracketing the write with begin/end entries is what makes a crash
+        // mid-write detectable: the next run deletes any output whose `Begin`
+        // never got its `End`.
+        self.log_begin_processing(asset_path).await;
+
         if let Some(processor) = processor {
             let settings = source_meta
                 .process_settings()
@@ -993,7 +1052,100 @@ impl AssetProcessor {
                 .map_err(&writer_err)?;
         }
 
+        self.log_end_processing(asset_path).await;
+
         Ok(ProcessResult::Processed(new_processed_info))
+    }
+
+    /// Validates the previous run's transaction log and recovers from any
+    /// transactions that did not complete, then starts a fresh log.
+    ///
+    /// A half-finished transaction means the processor crashed (or failed)
+    /// between a `Begin` and its matching `End`: the asset's processed bytes and
+    /// `.meta` may be torn, so they are deleted here and regenerated by the
+    /// ordinary initial pass, rather than being trusted because the asset was
+    /// "already processed".
+    ///
+    /// Anything unrecoverable — an unreadable log, an explicit unrecoverable
+    /// entry, or a log that is not a valid begin/end sequence — invalidates the
+    /// whole processed folder so a full rebuild replaces any partial output.
+    async fn validate_transaction_log_and_recover(&self) {
+        let log_factory = self
+            .data
+            .log_factory
+            .lock()
+            .expect("the transaction log factory lock poisoned")
+            // Taking the factory marks startup as done, so a factory can no
+            // longer be swapped in.
+            .take()
+            .expect("the asset processor only starts once");
+
+        if let Err(err) = validate_transaction_log(log_factory.as_ref()).await {
+            let state_is_valid = match err {
+                ValidateLogError::ReadLogError(_) | ValidateLogError::UnrecoverableError => false,
+                ValidateLogError::EntryErrors(entry_errors) => {
+                    let mut state_is_valid = true;
+                    for entry_error in entry_errors {
+                        match entry_error {
+                            LogEntryError::DuplicateTransaction(_)
+                            | LogEntryError::EndedMissingTransaction(_) => {
+                                state_is_valid = false;
+                                break;
+                            }
+                            LogEntryError::UnfinishedTransaction(path) => {
+                                let Ok(source) = self.get_source(path.source()) else {
+                                    state_is_valid = false;
+                                    continue;
+                                };
+                                let Ok(processed_writer) = source.processed_writer() else {
+                                    state_is_valid = false;
+                                    continue;
+                                };
+                                // NotFound is fine (the crash may have happened
+                                // before the write); any other failure means the
+                                // processed folder cannot be made consistent.
+                                for result in [
+                                    processed_writer.remove(path.path()).await,
+                                    processed_writer.remove_meta(path.path()).await,
+                                ] {
+                                    if let Err(AssetWriterError::Io(err)) = result
+                                        && err.kind() != ErrorKind::NotFound
+                                    {
+                                        state_is_valid = false;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    state_is_valid
+                }
+            };
+
+            if !state_is_valid {
+                // The log cannot be trusted, so every processed asset is dropped
+                // and regenerated instead of serving a possibly-torn output.
+                for source in self.sources().iter_processed() {
+                    let Ok(processed_writer) = source.processed_writer() else {
+                        continue;
+                    };
+                    processed_writer
+                        .remove_assets_in_directory(Path::new(""))
+                        .await
+                        .expect(
+                            "processed assets were in a bad state and could not be removed to \
+                             restart from scratch",
+                        );
+                }
+            }
+        }
+
+        let mut log = self.data.log.write().await;
+        *log = Some(
+            log_factory
+                .create_new_log()
+                .await
+                .expect("failed to initialize the asset processor transaction log"),
+        );
     }
 }
 
@@ -1002,9 +1154,35 @@ impl AssetProcessorData {
     pub(crate) fn new(sources: Arc<AssetSources>, processing_state: Arc<ProcessingState>) -> Self {
         Self {
             processing_state,
+            // The default log is file-backed; hosts can replace it before start.
+            log_factory: Mutex::new(Some(Box::new(FileTransactionLogFactory::default()))),
+            log: Default::default(),
             processors: RwLock::new(Processors::default()),
             sources,
         }
+    }
+
+    /// Sets the transaction log factory for the processor.
+    ///
+    /// If this is called after asset processing has begun (in the `Startup`
+    /// stage), it returns an error and does nothing. If it is never called, the
+    /// default file-backed log is used.
+    pub fn set_log_factory(
+        &self,
+        factory: Box<dyn ProcessorTransactionLogFactory>,
+    ) -> Result<(), SetTransactionLogFactoryError> {
+        let mut log_factory = self
+            .log_factory
+            .lock()
+            .expect("the transaction log factory lock poisoned");
+        if log_factory.is_none() {
+            // This indicates the asset processor has already started, so setting
+            // the factory does nothing here.
+            return Err(SetTransactionLogFactoryError::AlreadyInUse);
+        }
+
+        *log_factory = Some(factory);
+        Ok(())
     }
 
     /// Waits until the processor has finished its current pass.

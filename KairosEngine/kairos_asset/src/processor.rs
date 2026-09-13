@@ -34,6 +34,7 @@
 
 mod asset_processor;
 mod info;
+mod log;
 mod process;
 mod registry;
 mod saver;
@@ -41,6 +42,10 @@ mod transformer;
 
 pub use asset_processor::{
     AssetProcessor, AssetProcessorData, InitializeError, ProcessResult, ProcessorState,
+};
+pub use log::{
+    FileTransactionLogFactory, LogEntry, LogEntryError, ProcessorTransactionLog,
+    ProcessorTransactionLogFactory, ReadLogError, SetTransactionLogFactoryError, ValidateLogError,
 };
 // Re-exported for the crate's own use (the gated reader consumes `ProcessStatus`).
 #[allow(unused_imports)]

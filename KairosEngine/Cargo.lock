@@ -2480,6 +2480,7 @@ dependencies = [
  "kairos_tasks",
  "ron",
  "serde",
+ "thiserror 2.0.19",
  "uuid",
 ]
 

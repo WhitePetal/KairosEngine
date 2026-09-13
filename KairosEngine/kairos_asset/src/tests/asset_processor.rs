@@ -14,20 +14,24 @@ use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
 use futures_io::AsyncWrite;
-use futures_lite::future::block_on;
 use futures_lite::AsyncWriteExt;
+use futures_lite::future::block_on;
+use kairos_ecs::error::KairosError;
 use kairos_ecs::world::World;
 use kairos_tasks::ConditionalSendFuture;
 use serde::{Deserialize, Serialize};
 
 use crate::io::{
     AssetReader, AssetReaderError, AssetSource, AssetSourceBuilder, AssetSourceBuilders,
-    AssetSourceEvent, AssetSourceId, AssetWatcher, AssetWriter, AssetWriterError,
+    AssetSourceEvent, AssetSourceId, AssetWatcher, AssetWriter, AssetWriterError, BoxedFuture,
     ErasedAssetReader, ErasedAssetWriter, PathStream, Reader, VecReader, Writer, get_meta_path,
 };
 use crate::meta::{AssetAction, AssetActionMinimal, AssetMeta, AssetMetaDyn, AssetMetaMinimal};
-use crate::processor::{AssetProcessor, Process, ProcessContext, ProcessError};
-use crate::{Asset, AssetLoader, LoadContext, VisitAssetDependencies};
+use crate::processor::{
+    AssetProcessor, LogEntry, Process, ProcessContext, ProcessError, ProcessorTransactionLog,
+    ProcessorTransactionLogFactory, SetTransactionLogFactoryError,
+};
+use crate::{Asset, AssetLoader, AssetPath, LoadContext, VisitAssetDependencies};
 
 // ---------------------------------------------------------------------------
 // In-memory asset source
@@ -96,12 +100,25 @@ impl AssetReader for MemoryReader {
         path: &'a Path,
     ) -> Result<Box<PathStream>, AssetReaderError> {
         // Entries are source-root relative (mirroring `FileAssetReader`), so a
-        // subdirectory request still yields full-relative paths.
+        // subdirectory request still yields full-relative paths. Meta sidecars
+        // and hidden files are addressable but not listed, exactly as the file
+        // reader skips them.
         let entries = self
             .store
             .keys()
             .into_iter()
             .filter(|key| path == Path::new("") || key.starts_with(path))
+            .filter(|key| {
+                let is_meta = key
+                    .extension()
+                    .and_then(|extension| extension.to_str())
+                    .is_some_and(|extension| extension.eq_ignore_ascii_case("meta"));
+                let is_hidden = key
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with('.'));
+                !is_meta && !is_hidden
+            })
             .collect::<Vec<_>>();
         Ok(Box::new(futures_lite::stream::iter(entries)))
     }
@@ -244,6 +261,76 @@ struct TestWatcher;
 impl AssetWatcher for TestWatcher {}
 
 // ---------------------------------------------------------------------------
+// In-memory transaction log
+// ---------------------------------------------------------------------------
+
+/// A [`ProcessorTransactionLogFactory`] backed by in-memory entry lists, so
+/// tests never touch the filesystem and can simulate a previous run that
+/// crashed mid-transaction.
+#[derive(Clone, Default)]
+struct TestLogFactory {
+    /// The entries a previous run left behind; returned by `read`.
+    previous: Arc<Mutex<Vec<LogEntry>>>,
+    /// The entries written by this run; recorded by the created log.
+    written: Arc<Mutex<Vec<LogEntry>>>,
+}
+
+impl ProcessorTransactionLogFactory for TestLogFactory {
+    fn read(&self) -> BoxedFuture<'_, Result<Vec<LogEntry>, KairosError>> {
+        let entries = self.previous.lock().unwrap().clone();
+        Box::pin(async move { Ok(entries) })
+    }
+
+    fn create_new_log(
+        &self,
+    ) -> BoxedFuture<'_, Result<Box<dyn ProcessorTransactionLog>, KairosError>> {
+        self.written.lock().unwrap().clear();
+        let written = self.written.clone();
+        Box::pin(async move {
+            Ok(Box::new(TestTransactionLog { written }) as Box<dyn ProcessorTransactionLog>)
+        })
+    }
+}
+
+/// A [`ProcessorTransactionLog`] that records entries in the factory's `written`
+/// list.
+struct TestTransactionLog {
+    written: Arc<Mutex<Vec<LogEntry>>>,
+}
+
+impl ProcessorTransactionLog for TestTransactionLog {
+    fn begin_processing<'a>(
+        &'a mut self,
+        asset: &'a AssetPath<'_>,
+    ) -> BoxedFuture<'a, Result<(), KairosError>> {
+        self.written
+            .lock()
+            .unwrap()
+            .push(LogEntry::BeginProcessing(asset.clone_owned()));
+        Box::pin(async move { Ok(()) })
+    }
+
+    fn end_processing<'a>(
+        &'a mut self,
+        asset: &'a AssetPath<'_>,
+    ) -> BoxedFuture<'a, Result<(), KairosError>> {
+        self.written
+            .lock()
+            .unwrap()
+            .push(LogEntry::EndProcessing(asset.clone_owned()));
+        Box::pin(async move { Ok(()) })
+    }
+
+    fn unrecoverable(&mut self) -> BoxedFuture<'_, Result<(), KairosError>> {
+        self.written
+            .lock()
+            .unwrap()
+            .push(LogEntry::UnrecoverableError);
+        Box::pin(async move { Ok(()) })
+    }
+}
+
+// ---------------------------------------------------------------------------
 // A text asset, loader, and processor
 // ---------------------------------------------------------------------------
 
@@ -340,12 +427,25 @@ struct Harness {
     unprocessed: MemoryStore,
     processed: MemoryStore,
     events: EventSender,
+    log_factory: TestLogFactory,
 }
 
 impl Harness {
     fn new() -> Self {
-        let unprocessed = MemoryStore::default();
-        let processed = MemoryStore::default();
+        Self::with_stores(
+            MemoryStore::default(),
+            MemoryStore::default(),
+            TestLogFactory::default(),
+        )
+    }
+
+    /// Builds a processor over the given stores and log factory, so a test can
+    /// reuse the on-disk state of a previous processor (a restart).
+    fn with_stores(
+        unprocessed: MemoryStore,
+        processed: MemoryStore,
+        log_factory: TestLogFactory,
+    ) -> Self {
         let events = EventSender::default();
 
         let source_reader = unprocessed.clone();
@@ -383,6 +483,11 @@ impl Harness {
         builders.insert(AssetSourceId::Default, builder);
         let (processor, _sources) = AssetProcessor::new(&mut builders, false);
 
+        processor
+            .data()
+            .set_log_factory(Box::new(log_factory.clone()))
+            .expect("the log factory is set before the processor starts");
+
         processor.server().register_loader(TextLoader);
         processor.register_processor(TextProcessor);
         processor.set_default_processor::<TextProcessor>("txt");
@@ -392,7 +497,20 @@ impl Harness {
             unprocessed,
             processed,
             events,
+            log_factory,
         }
+    }
+
+    /// A fresh processor over the same stores, as if the process had restarted
+    /// with `previous` as the transaction log the crashed run left behind.
+    fn restart_with_log(&self, previous: Vec<LogEntry>) -> Self {
+        let log_factory = TestLogFactory::default();
+        *log_factory.previous.lock().unwrap() = previous;
+        Self::with_stores(
+            self.unprocessed.clone(),
+            self.processed.clone(),
+            log_factory,
+        )
     }
 
     fn source(&self) -> &AssetSource {
@@ -593,4 +711,92 @@ fn start_scans_and_reacts_to_watcher_events() {
     harness.unprocessed.remove(Path::new("boot.txt"));
     harness.events.send(AssetSourceEvent::RemovedAsset(PathBuf::from("boot.txt")));
     wait_for(|| !harness.processed.contains(Path::new("boot.txt")));
+}
+
+#[test]
+fn startup_recovery_reprocesses_unfinished_transactions() {
+    let first = Harness::new();
+    first.unprocessed.insert("recover.txt", b"recover".to_vec());
+    first.unprocessed.insert("keep.txt", b"keep".to_vec());
+    first.run_initial();
+    assert_eq!(
+        first.processed.get(Path::new("recover.txt")),
+        Some(b"recover".to_vec())
+    );
+    assert_eq!(
+        first.processed.get(Path::new("keep.txt")),
+        Some(b"keep".to_vec())
+    );
+
+    // Simulate a crash mid-write: both processed payloads are torn, but only
+    // `recover.txt`'s transaction was left open without an `End`.
+    first.processed.insert("recover.txt", b"CORRUPT".to_vec());
+    first.processed.insert("keep.txt", b"CORRUPT".to_vec());
+
+    let restarted = first.restart_with_log(vec![
+        LogEntry::BeginProcessing(AssetPath::from("recover.txt")),
+        LogEntry::BeginProcessing(AssetPath::from("keep.txt")),
+        LogEntry::EndProcessing(AssetPath::from("keep.txt")),
+    ]);
+    restarted.run_initial();
+
+    // The unfinished asset's output was deleted and regenerated from source...
+    assert_eq!(
+        restarted.processed.get(Path::new("recover.txt")),
+        Some(b"recover".to_vec())
+    );
+    // ...while the completed transaction's output was left exactly as it was:
+    // recovery only removes assets whose transaction never ended.
+    assert_eq!(
+        restarted.processed.get(Path::new("keep.txt")),
+        Some(b"CORRUPT".to_vec())
+    );
+
+    // The fresh log records exactly the one reprocess as a balanced transaction.
+    assert_eq!(
+        *restarted.log_factory.written.lock().unwrap(),
+        vec![
+            LogEntry::BeginProcessing(AssetPath::from("recover.txt")),
+            LogEntry::EndProcessing(AssetPath::from("recover.txt")),
+        ],
+    );
+}
+
+#[test]
+fn an_unrecoverable_log_invalidates_every_processed_asset() {
+    let first = Harness::new();
+    first.unprocessed.insert("a.txt", b"a".to_vec());
+    first.unprocessed.insert("b.txt", b"b".to_vec());
+    first.run_initial();
+
+    // Both outputs are torn, so a rebuild is the only safe response.
+    first.processed.insert("a.txt", b"CORRUPT".to_vec());
+    first.processed.insert("b.txt", b"CORRUPT".to_vec());
+
+    let restarted = first.restart_with_log(vec![LogEntry::UnrecoverableError]);
+    restarted.run_initial();
+
+    // The whole processed folder was dropped and regenerated, not trusted.
+    assert_eq!(
+        restarted.processed.get(Path::new("a.txt")),
+        Some(b"a".to_vec())
+    );
+    assert_eq!(
+        restarted.processed.get(Path::new("b.txt")),
+        Some(b"b".to_vec())
+    );
+}
+
+#[test]
+fn setting_the_log_factory_after_start_is_rejected() {
+    let harness = Harness::new();
+    harness.run_initial();
+
+    assert_eq!(
+        harness
+            .processor
+            .data()
+            .set_log_factory(Box::new(TestLogFactory::default())),
+        Err(SetTransactionLogFactoryError::AlreadyInUse)
+    );
 }
