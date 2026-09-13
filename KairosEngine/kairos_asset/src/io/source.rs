@@ -27,7 +27,8 @@ use kairos_ecs::resource::Resource;
 use thiserror::Error;
 
 use crate::io::{
-    AssetSourceEvent, AssetWatcher, ErasedAssetReader, ErasedAssetWriter, file::FileAssetReader,
+    AssetSourceEvent, AssetWatcher, ErasedAssetReader, ErasedAssetWriter,
+    file::{FileAssetReader, FileAssetWriter},
 };
 use crate::processor::ProcessingState;
 
@@ -131,10 +132,10 @@ impl Eq for AssetSourceId<'_> {}
 /// A blueprint for one [`AssetSource`].
 ///
 /// Each slot holds a repeatable constructor rather than a built value, so a
-/// source can be rebuilt (for example when a watcher restarts). Readers are
-/// populated by [`platform_default`](AssetSourceBuilder::platform_default);
-/// writers and watchers stay empty until the asset processor and the hot-reload
-/// watcher land.
+/// source can be rebuilt (for example when a watcher restarts). Readers and
+/// writers are populated by
+/// [`platform_default`](AssetSourceBuilder::platform_default); the watcher slot
+/// stays empty until the hot-reload watcher lands.
 pub struct AssetSourceBuilder {
     /// Builds the unprocessed reader.
     pub reader: Box<dyn FnMut() -> Box<dyn ErasedAssetReader> + Send + Sync>,
@@ -297,19 +298,36 @@ impl AssetSourceBuilder {
     /// A builder rooted at `path` (relative to the process working directory),
     /// with an optional processed root at `processed_path`.
     ///
-    /// The readers are [`FileAssetReader`]s. No writer or watcher is configured:
-    /// writing assets back is the processor's job, and watching is the hot-reload
-    /// layer's. Both are deferred.
+    /// The readers and writers are [`FileAssetReader`]s and [`FileAssetWriter`]s.
+    /// The unprocessed writer is always configured so the source tree is
+    /// writable; the processed reader and writer are added only when
+    /// `processed_path` is given, which is also what makes
+    /// [`AssetSource::should_process`] true. No watcher is configured: watching
+    /// is the hot-reload layer's, and is still deferred.
     pub fn platform_default(path: &str, processed_path: Option<&str>) -> Self {
         let reader_path = path.to_owned();
+        let writer_path = path.to_owned();
         let mut builder = Self::new(move || {
             Box::new(FileAssetReader::new(&reader_path)) as Box<dyn ErasedAssetReader>
+        })
+        .with_writer(move |create_root| {
+            Some(Box::new(FileAssetWriter::new(&writer_path, create_root))
+                as Box<dyn ErasedAssetWriter>)
         });
         if let Some(processed_path) = processed_path {
-            let processed_path = processed_path.to_owned();
-            builder = builder.with_processed_reader(move || {
-                Box::new(FileAssetReader::new(&processed_path)) as Box<dyn ErasedAssetReader>
-            });
+            let processed_reader_path = processed_path.to_owned();
+            let processed_writer_path = processed_path.to_owned();
+            builder = builder
+                .with_processed_reader(move || {
+                    Box::new(FileAssetReader::new(&processed_reader_path))
+                        as Box<dyn ErasedAssetReader>
+                })
+                .with_processed_writer(move |create_root| {
+                    Some(
+                        Box::new(FileAssetWriter::new(&processed_writer_path, create_root))
+                            as Box<dyn ErasedAssetWriter>,
+                    )
+                });
         }
         builder
     }

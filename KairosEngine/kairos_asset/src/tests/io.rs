@@ -6,14 +6,14 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use futures_lite::{StreamExt, future::block_on};
+use futures_lite::{AsyncWriteExt, StreamExt, future::block_on};
 use kairos_tasks::ConditionalSendFuture;
 
 use crate::io::{
     AssetReader, AssetReaderError, AssetSource, AssetSourceBuilder, AssetSourceBuilders,
     AssetSourceId, AssetWatcher, AssetWriter, AssetWriterError, ErasedAssetReader,
-    ErasedAssetWriter, Reader, VecReader, Writer, embedded::EmbeddedAssetRegistry,
-    embedded::EmbeddedAssetReader, file::FileAssetReader, get_meta_path,
+    ErasedAssetWriter, Reader, VecReader, Writer, embedded::EmbeddedAssetReader,
+    embedded::EmbeddedAssetRegistry, file::FileAssetReader, file::FileAssetWriter, get_meta_path,
 };
 
 fn temp_dir(name: &str) -> PathBuf {
@@ -57,6 +57,54 @@ fn dir_entries<R: AssetReader>(
 
 fn is_dir<R: AssetReader>(reader: &R, path: &Path) -> Result<bool, AssetReaderError> {
     block_on(AssetReader::is_directory(reader, path))
+}
+
+/// UFCS helpers for the write side. `FileAssetWriter` implements both
+/// [`AssetWriter`] and its erased blanket impl, so the concrete trait is named
+/// explicitly to avoid an ambiguous call.
+fn write_bytes<W: AssetWriter>(
+    writer: &W,
+    path: &Path,
+    bytes: &[u8],
+) -> Result<(), AssetWriterError> {
+    block_on(AssetWriter::write_bytes(writer, path, bytes))
+}
+
+fn write_meta_bytes<W: AssetWriter>(
+    writer: &W,
+    path: &Path,
+    bytes: &[u8],
+) -> Result<(), AssetWriterError> {
+    block_on(AssetWriter::write_meta_bytes(writer, path, bytes))
+}
+
+/// Writes `bytes` through the byte-sink returned by [`AssetWriter::write`].
+fn write_sink<W: AssetWriter>(
+    writer: &W,
+    path: &Path,
+    bytes: &[u8],
+) -> Result<(), AssetWriterError> {
+    block_on(async {
+        let mut sink = AssetWriter::write(writer, path).await?;
+        futures_lite::AsyncWriteExt::write_all(&mut sink, bytes).await?;
+        futures_lite::AsyncWriteExt::flush(&mut sink).await?;
+        Ok(())
+    })
+}
+
+/// Writes `bytes` through the meta byte-sink returned by
+/// [`AssetWriter::write_meta`].
+fn write_meta_sink<W: AssetWriter>(
+    writer: &W,
+    path: &Path,
+    bytes: &[u8],
+) -> Result<(), AssetWriterError> {
+    block_on(async {
+        let mut sink = AssetWriter::write_meta(writer, path).await?;
+        AsyncWriteExt::write_all(&mut sink, bytes).await?;
+        AsyncWriteExt::flush(&mut sink).await?;
+        Ok(())
+    })
 }
 
 #[test]
@@ -122,8 +170,11 @@ fn builders_freeze_default_and_named_sources() {
 
     let default = sources.get(AssetSourceId::Default).unwrap();
     assert_eq!(default.id(), AssetSourceId::Default);
+    // `platform_default` always wires the unprocessed writer (the processor
+    // writes source-side `.meta` through it), but only a processed writer —
+    // which needs a processed path — makes `should_process` true.
     assert!(!default.should_process());
-    assert!(default.writer().is_err());
+    assert!(default.writer().is_ok());
 
     let named = sources.get("named").unwrap();
     assert_eq!(named.id().as_str(), Some("named"));
@@ -190,6 +241,117 @@ fn file_reader_reads_bytes_meta_directories_and_misses() {
 }
 
 #[test]
+fn file_writer_round_trips_bytes_meta_rename_and_directories() {
+    let dir = temp_dir("file_writer");
+
+    // `create_root = true` creates the root eagerly; `false` leaves the tree
+    // alone.
+    let nested_root = dir.join("nested/root");
+    let root = FileAssetWriter::new(&nested_root, true);
+    assert_eq!(root.root_path(), nested_root.as_path());
+    assert!(nested_root.is_dir());
+    let untouched = dir.join("absent");
+    let _ = FileAssetWriter::new(&untouched, false);
+    assert!(!untouched.exists());
+
+    let writer = FileAssetWriter::new(&dir, true);
+    let reader = FileAssetReader::new(&dir);
+
+    // The byte-sink form of `write`/`write_meta` creates missing parents.
+    write_sink(&writer, Path::new("sink/asset.bin"), b"sink").unwrap();
+    write_meta_sink(&writer, Path::new("sink/asset.bin"), b"sink-meta").unwrap();
+    assert_eq!(
+        read_all(&reader, Path::new("sink/asset.bin")).unwrap(),
+        b"sink"
+    );
+    assert_eq!(
+        read_meta_all(&reader, Path::new("sink/asset.bin")).unwrap(),
+        b"sink-meta"
+    );
+
+    // The byte-slice form does too.
+    write_bytes(&writer, Path::new("sub/hello.txt"), b"hello").unwrap();
+    write_meta_bytes(&writer, Path::new("sub/hello.txt"), b"meta").unwrap();
+    assert_eq!(
+        read_all(&reader, Path::new("sub/hello.txt")).unwrap(),
+        b"hello"
+    );
+    assert_eq!(
+        read_meta_all(&reader, Path::new("sub/hello.txt")).unwrap(),
+        b"meta"
+    );
+
+    // Renames move the asset and its sidecar, creating the destination parent.
+    block_on(AssetWriter::rename(
+        &writer,
+        Path::new("sub/hello.txt"),
+        Path::new("moved/hello.txt"),
+    ))
+    .unwrap();
+    block_on(AssetWriter::rename_meta(
+        &writer,
+        Path::new("sub/hello.txt"),
+        Path::new("moved/hello.txt"),
+    ))
+    .unwrap();
+    assert!(read_all(&reader, Path::new("sub/hello.txt")).is_err());
+    assert_eq!(
+        read_all(&reader, Path::new("moved/hello.txt")).unwrap(),
+        b"hello"
+    );
+    assert_eq!(
+        read_meta_all(&reader, Path::new("moved/hello.txt")).unwrap(),
+        b"meta"
+    );
+
+    // Removal takes the bytes and the sidecar.
+    block_on(AssetWriter::remove(&writer, Path::new("moved/hello.txt"))).unwrap();
+    block_on(AssetWriter::remove_meta(
+        &writer,
+        Path::new("moved/hello.txt"),
+    ))
+    .unwrap();
+    assert!(read_all(&reader, Path::new("moved/hello.txt")).is_err());
+    assert!(read_meta_all(&reader, Path::new("moved/hello.txt")).is_err());
+
+    // Directories: create, refuse to remove a non-empty one, empty in place,
+    // then remove outright.
+    block_on(AssetWriter::create_directory(
+        &writer,
+        Path::new("tree/child"),
+    ))
+    .unwrap();
+    assert!(is_dir(&reader, Path::new("tree/child")).unwrap());
+    write_bytes(&writer, Path::new("tree/keep.txt"), b"x").unwrap();
+    assert!(
+        block_on(AssetWriter::remove_empty_directory(
+            &writer,
+            Path::new("tree")
+        ))
+        .is_err(),
+        "remove_empty_directory refuses a non-empty directory"
+    );
+
+    block_on(AssetWriter::remove_assets_in_directory(
+        &writer,
+        Path::new("tree"),
+    ))
+    .unwrap();
+    assert!(
+        is_dir(&reader, Path::new("tree")).unwrap(),
+        "the directory itself survives"
+    );
+    assert!(read_all(&reader, Path::new("tree/keep.txt")).is_err());
+    assert!(is_dir(&reader, Path::new("tree/child")).is_err());
+
+    write_bytes(&writer, Path::new("tree/again.txt"), b"y").unwrap();
+    block_on(AssetWriter::remove_directory(&writer, Path::new("tree"))).unwrap();
+    assert!(is_dir(&reader, Path::new("tree")).is_err());
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn erased_reader_reads_through_a_source() {
     let dir = temp_dir("erased_reader");
     std::fs::write(dir.join("hello.txt"), b"erased").unwrap();
@@ -215,9 +377,35 @@ fn erased_reader_reads_through_a_source() {
 }
 
 #[test]
+fn platform_default_wires_writers_and_should_process() {
+    let dir = temp_dir("platform_default");
+    let source_dir = dir.join("res");
+    let processed_dir = dir.join("imported_assets/Default");
+    std::fs::create_dir_all(&source_dir).unwrap();
+
+    let mut builder = AssetSourceBuilder::platform_default(
+        source_dir.to_str().unwrap(),
+        Some(processed_dir.to_str().unwrap()),
+    );
+    let source = builder.build(AssetSourceId::Default, false, false);
+
+    assert!(source.writer().is_ok());
+    assert!(source.processed_reader().is_ok());
+    assert!(source.processed_writer().is_ok());
+    assert!(source.should_process());
+    assert!(
+        processed_dir.is_dir(),
+        "the processed root is created eagerly so the first write has a home"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn should_process_follows_the_processed_writer() {
     // A processed reader alone does not make the source a processor source.
-    let mut reader_only = AssetSourceBuilder::platform_default("res", Some("imported"));
+    let mut reader_only =
+        AssetSourceBuilder::new(embedded_reader).with_processed_reader(embedded_reader);
     let source = reader_only.build(AssetSourceId::Default, false, false);
     assert!(source.processed_reader().is_ok());
     assert!(source.processed_writer().is_err());

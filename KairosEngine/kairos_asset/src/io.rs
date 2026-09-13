@@ -274,9 +274,9 @@ impl<T: AssetReader> ErasedAssetReader for T {
 /// Writes asset bytes and asset meta bytes to a storage backend.
 ///
 /// This is the non-object-safe (RPITIT) trait; use [`ErasedAssetWriter`] when a
-/// `dyn` writer is needed. No backend implements it yet — the processed-asset
-/// pipeline that writes bytes back is deferred — but the surface exists so
-/// sources can carry a writer slot.
+/// `dyn` writer is needed. [`FileAssetWriter`](file::FileAssetWriter) is the
+/// filesystem backend; sources carry writer slots so the write side — source-side
+/// `.meta` generation and processed output — has a home.
 pub trait AssetWriter: Send + Sync + 'static {
     /// Opens a byte sink for the asset at `path`.
     fn write<'a>(

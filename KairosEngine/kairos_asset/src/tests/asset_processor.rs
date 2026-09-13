@@ -920,6 +920,89 @@ fn main_server_reads_the_processor_output_end_to_end() {
     );
 }
 
+/// A unique directory under the system temp dir, removed first so a rerun starts
+/// clean.
+fn file_dir(name: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+        "kairos_asset_next_processor_{name}_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
+
+/// The real-filesystem counterpart of
+/// [`main_server_reads_the_processor_output_end_to_end`]: a `platform_default`
+/// source over absolute temp roots, so the product actually lands under
+/// `imported_assets/Default` and is loaded from disk through layout ②.
+#[test]
+fn file_source_writes_the_product_under_imported_assets_and_layout_2_loads_it() {
+    let root = file_dir("layout2");
+    let unprocessed = root.join("res");
+    let processed = root.join("imported_assets/Default");
+    std::fs::create_dir_all(&unprocessed).unwrap();
+    std::fs::write(unprocessed.join("model.txt"), b"hello").unwrap();
+    std::fs::write(unprocessed.join("model.txt.meta"), process_meta("P:")).unwrap();
+
+    // The platform-default file source, rooted at the temp dirs.
+    let builder = AssetSourceBuilder::platform_default(
+        unprocessed.to_str().unwrap(),
+        Some(processed.to_str().unwrap()),
+    );
+    let mut builders = AssetSourceBuilders::default();
+    builders.insert(AssetSourceId::Default, builder);
+    let (processor, sources) = AssetProcessor::new(&mut builders, false);
+
+    // Keep the transaction log in memory so the test writes nothing outside its
+    // temp tree.
+    processor
+        .data()
+        .set_log_factory(Box::new(TestLogFactory::default()))
+        .expect("the log factory is set before the processor starts");
+    processor.server().register_loader(TextLoader);
+    processor.register_processor(TextProcessor);
+    processor.set_default_processor::<TextProcessor>("txt");
+
+    // The fix: the default source now reports itself processed and exposes both
+    // the unprocessed and processed writers.
+    let source = processor
+        .get_source(AssetSourceId::Default)
+        .expect("the default source is registered");
+    assert!(source.should_process());
+    assert!(source.writer().is_ok());
+    assert!(source.processed_writer().is_ok());
+
+    block_on(processor.run_initial_processing_for_test());
+
+    // The product and its sidecar landed under `imported_assets/Default`.
+    assert_eq!(
+        std::fs::read(processed.join("model.txt")).unwrap(),
+        b"P:hello"
+    );
+    assert!(processed.join("model.txt.meta").is_file());
+
+    // The app-facing server (layout ②) loads the on-disk product end-to-end.
+    let server = AssetServer::new_sharing_loaders_with(
+        processor.server(),
+        sources.clone(),
+        AssetServerMode::Processed,
+        AssetMetaCheck::Always,
+        false,
+        UnapprovedPathMode::Forbid,
+    );
+    let mut world = text_world(&server);
+    let handle = server.load::<TextAsset>("model.txt");
+    wait_for_load(&mut world, &server, handle.id());
+
+    assert_eq!(
+        world.resource::<Assets<TextAsset>>().get(handle.id()),
+        Some(&TextAsset("P:hello".to_string()))
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 #[test]
 fn main_server_reports_a_missing_asset_as_a_failed_load() {
     let harness = Harness::new();
