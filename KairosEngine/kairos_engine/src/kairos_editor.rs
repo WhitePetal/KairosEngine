@@ -115,13 +115,11 @@ fn build_world() -> World {
     // the extract-stage system that collects their change events for render
     // cache invalidation.
     graphics::install_assets(&mut world, schedule::Extract);
-    // The editor's `TextureExt` composite rides the core too. Its loader declares
-    // the runtime `Texture` as a dependency, so it is registered after the
-    // texture store it targets.
-    crate::kairos_editor::editor_assets::texture_ext::install(&mut world);
-    // Then the audio cluster: `PcmData` and `AudioAsset` are the leaves, and the
-    // editor's `AudioExt` composite declares both through its loader, so it is
-    // registered after the two stores it targets.
+    // The editor's texture inspector reads the source image and its `.meta`
+    // directly (off the UI thread) — it is not an asset — so nothing to install
+    // for it here. Audio comes next: `PcmData` and `AudioAsset` are the leaves,
+    // and the editor's `AudioExt` composite declares both through its loader, so
+    // it is registered after the two stores it targets.
     crate::audio::audio_ext::pcm::install(&mut world);
     crate::audio::audio::install(&mut world);
     crate::audio::audio_ext::install(&mut world);

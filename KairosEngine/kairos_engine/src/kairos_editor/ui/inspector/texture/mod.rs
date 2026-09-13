@@ -1,29 +1,35 @@
-use std::{cell::Cell, fs, ops::DerefMut, path::PathBuf, sync::Arc};
+mod edit;
+
+use std::{
+    cell::Cell,
+    fs,
+    sync::Arc,
+};
 
 use egui::{ComboBox, Vec2, Widget};
 use egui_extras::{Column, TableBuilder};
-use crate::asset::{AssetServer, Assets, Handle, io::get_meta_path};
+use kairos_tasks::{IoTaskPool, TaskPool};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
+
+use edit::{load_texture_edit, write_settings_meta};
+pub use edit::TextureEdit;
 
 use crate::{
     graphics::{
         compare_function::CompareFunction,
         texture::{
-            Texture, TextureMaxSize, find_texture_max_size,
+            Texture, TextureMaxSize, TextureSettings, find_texture_max_size,
             format::{TextureCompressionConfig, TextureFormat},
             sampler::{AddressMode, AnisotropyLevel, BorderColor, FilterMode, MipmapFilter},
         },
     },
-    kairos_editor::{
-        editor_assets::{EditableTexture, TextureExt},
-        ui::{
-            Message, Messager, UIReader,
-            dialog::{ConfirmDialogWindow, Dialog},
-            inspector::Inspector,
-            paths,
-        },
+    kairos_editor::ui::{
+        Message, Messager, UIReader,
+        dialog::{ConfirmDialogWindow, Dialog},
+        inspector::Inspector,
+        paths,
     },
     kairos_paths,
     kairos_settings::EngineSettings,
@@ -69,11 +75,8 @@ impl TextureInspectorStyle {
 
 struct TextureInspectorModel {
     style: TextureInspectorStyle,
-    /// Path to the source's `.meta` (the composite's asset path; for Apply writes).
-    texture_path: PathBuf,
-    /// Handle to the editor runtime composite (loaded asynchronously).
-    handle: Handle<TextureExt>,
-    texture_ext: Arc<Mutex<Option<TextureExt>>>,
+    /// The loaded edit, filled by the background task started in `create`.
+    edit: Arc<Mutex<Option<TextureEdit>>>,
     /// Compression feature flags from `Preferences/texture_compression.toml`.
     compression_config: TextureCompressionConfig,
 }
@@ -179,20 +182,15 @@ impl TextureInspector {
         self.preview_texture.lock().take();
     }
 
-    pub fn save_texture(
-        world: &mut kairos_ecs::world::World,
-        path: &PathBuf,
-        handle: &Handle<TextureExt>,
-        ext: &Arc<Mutex<Option<TextureExt>>>,
-    ) {
-        let mut ext_guard = ext.lock();
-        let Some(ext) = ext_guard.deref_mut().take() else {
+    pub fn save_texture(edit: &Arc<Mutex<Option<TextureEdit>>>) {
+        let mut guard = edit.lock();
+        let Some(edit) = guard.as_mut() else {
             return;
         };
 
-        let (new_w, new_h) = (ext.serialized.width, ext.serialized.height);
-        let (orig_w, orig_h) = (ext.original_width, ext.original_height);
-        let original_rgba = ext.original_rgba.clone();
+        let (new_w, new_h) = (edit.settings.width, edit.settings.height);
+        let (orig_w, orig_h) = (edit.original_width, edit.original_height);
+        let original_rgba = edit.original_rgba.clone();
 
         // 1. Resize from cached original RGBA
         let rgba_data = if new_w == orig_w && new_h == orig_h {
@@ -210,8 +208,8 @@ impl TextureInspector {
                 }
                 None => {
                     log::error!(
-                        "Failed to reconstruct source image from cached data, texture_path: {:?}",
-                        path
+                        "Failed to reconstruct source image from cached data, source_path: {:?}",
+                        edit.source_path
                     );
                     Vec::new()
                 }
@@ -220,11 +218,11 @@ impl TextureInspector {
 
         // 2. Encode base level + generate cascading mip-chain.
         let mip_data: Vec<crate::graphics::texture::PixelDatas> =
-            if let Some(ref mip) = ext.serialized.sampler.mipmap {
+            if let Some(ref mip) = edit.settings.sampler.mipmap {
                 let max_possible = (new_w.max(new_h) as f32).log2().floor() as u32;
                 let end_level = (mip.lod_max_clamp.floor() as u32).min(max_possible);
                 let total_levels = end_level + 1;
-                let (block_w, block_h) = ext.serialized.format.block_dimensions();
+                let (block_w, block_h) = edit.settings.format.block_dimensions();
                 let mut levels = Vec::with_capacity(total_levels as usize);
                 let mut current_w = new_w;
                 let mut current_h = new_h;
@@ -239,7 +237,7 @@ impl TextureInspector {
                         &pixels,
                         current_w,
                         current_h,
-                        ext.serialized.format,
+                        edit.settings.format,
                     );
                     levels.push(encoded);
                     let (pw, ph) = (current_w, current_h);
@@ -264,7 +262,7 @@ impl TextureInspector {
                     &pixels,
                     new_w,
                     new_h,
-                    ext.serialized.format,
+                    edit.settings.format,
                 );
                 vec![encoded]
             };
@@ -272,42 +270,30 @@ impl TextureInspector {
         // 3. Persist the processor settings to the source's `.meta` rather than
         //    the product: the processor — the only writer of the product —
         //    regenerates the processed bytes from them.
-        if let Err(err) = ext.serialized.write_meta() {
+        if let Err(err) = write_settings_meta(&edit.source_path, &edit.settings) {
             log::error!(
-                "Failed to write texture `.meta`, error: {}, texture_path: {:?}",
+                "Failed to write texture `.meta`, error: {}, source_path: {:?}",
                 err,
-                path
+                edit.source_path
             );
             return;
         }
 
-        // 4. Update in-memory asset
-        let texture_asset = Texture {
+        // 4. Update the in-memory preview the inspector shows.
+        edit.texture = Texture {
             width: new_w,
             height: new_h,
-            format: ext.serialized.format,
+            format: edit.settings.format,
             data: mip_data,
-            sampler: ext.serialized.sampler.clone(),
+            sampler: edit.settings.sampler.clone(),
         };
-        if let Some(mut asset) = world
-            .resource_mut::<Assets<Texture>>()
-            .get_mut(ext.texture.id())
-        {
-            *asset = texture_asset;
-        }
-        if let Some(mut ext_source) = world
-            .resource_mut::<Assets<TextureExt>>()
-            .get_mut(handle.id())
-        {
-            *ext_source = ext
-        }
     }
 }
 
 impl Inspector for TextureInspector {
     fn create(
         path: &std::path::Path,
-        world: &kairos_ecs::world::World,
+        _world: &kairos_ecs::world::World,
         project_graph: &crate::kairos_editor::project_path_tree::ProjectPathGraph,
     ) -> Result<Self, Box<dyn std::error::Error>>
     where
@@ -325,20 +311,21 @@ impl Inspector for TextureInspector {
                 path.display()
             )
         })?;
-        let texture_path = get_meta_path(&source_path);
-
-        // Load the editor runtime composite asynchronously through the core.
-        let handle = world
-            .resource::<AssetServer>()
-            .load::<TextureExt>(texture_path.clone());
+        // Read the source image and its `.meta` and build the preview off the UI
+        // thread; the model polls the slot the task fills.
+        let edit = Arc::new(Mutex::new(None));
+        let task_edit = edit.clone();
+        IoTaskPool::get_or_init(TaskPool::default)
+            .spawn(async move {
+                *task_edit.lock() = Some(load_texture_edit(source_path).await);
+            })
+            .detach();
 
         let compression_config = load_compression_config()?;
 
         let model = TextureInspectorModel {
             style,
-            texture_path,
-            handle,
-            texture_ext: Arc::new(Mutex::new(None)),
+            edit,
             compression_config,
         };
 
@@ -355,37 +342,20 @@ impl Inspector for TextureInspector {
         ui: &mut egui::Ui,
         _reader: &UIReader,
         messager: &mut Messager,
-        world: &kairos_ecs::world::World,
+        _world: &kairos_ecs::world::World,
         _dt: f32,
     ) {
         egui::ScrollArea::vertical().show(ui, |ui| {
-            let texture;
             {
-                // Wait for the TextureExt composite to load asynchronously.
-                let mut ext_guard = self.model.texture_ext.lock();
-                let Some(ext) = ext_guard.deref_mut() else {
-                    if let Some(ext_source) = world
-                        .resource::<Assets<TextureExt>>()
-                        .get(self.model.handle.id())
-                    {
-                        *ext_guard = Some(ext_source.clone());
-                    }
+                // The edit is built by the background task `create` started; poll it.
+                let mut edit_guard = self.model.edit.lock();
+                let Some(edit) = edit_guard.as_mut() else {
                     ui.label("Texture is Loading...");
                     return;
                 };
 
-                // Also wait for the runtime Texture (pixel data) to be ready.
-                let Some(texture_inner) = world
-                    .resource::<Assets<Texture>>()
-                    .get(ext.texture.id())
-                else {
-                    ui.label("Texture data is Loading...");
-                    return;
-                };
-                texture = texture_inner;
-
                 // ---- Source ----
-                ui.label(format!("Source: {}", ext.serialized.source_path.display()));
+                ui.label(format!("Source: {}", edit.source_path.display()));
 
                 // ---- Properties table ----
                 let row_h = self.model.style.row_height;
@@ -393,9 +363,9 @@ impl Inspector for TextureInspector {
                 let w_narrow = self.model.style.combo_width_narrow;
                 let w_aniso = self.model.style.combo_width_anisotropy;
                 let w_format = self.model.style.combo_width_format;
-                let original_max = ext.original_width.max(ext.original_height);
+                let original_max = edit.original_width.max(edit.original_height);
                 let mut selected_size =
-                    find_texture_max_size(ext.serialized.width, ext.serialized.height);
+                    find_texture_max_size(edit.settings.width, edit.settings.height);
 
                 TableBuilder::new(ui)
                     .striped(true)
@@ -411,7 +381,7 @@ impl Inspector for TextureInspector {
                             row.col(|ui| {
                                 ui.label(format!(
                                     "{} x {}",
-                                    ext.original_width, ext.original_height
+                                    edit.original_width, edit.original_height
                                 ));
                             });
                         });
@@ -422,7 +392,7 @@ impl Inspector for TextureInspector {
                                 ui.label("Current Size:");
                             });
                             row.col(|ui| {
-                                ui.label(format!("{} x {}", texture.width, texture.height));
+                                ui.label(format!("{} x {}", edit.texture.width, edit.texture.height));
                             });
                         });
 
@@ -448,10 +418,10 @@ impl Inspector for TextureInspector {
                                                 )
                                                 .changed()
                                             {
-                                                (ext.serialized.width, ext.serialized.height) =
+                                                (edit.settings.width, edit.settings.height) =
                                                     Self::compute_target_size(
-                                                        ext.original_width,
-                                                        ext.original_height,
+                                                        edit.original_width,
+                                                        edit.original_height,
                                                         selected_size.as_u32(),
                                                     );
                                                 self.dirty.set(true);
@@ -471,7 +441,7 @@ impl Inspector for TextureInspector {
                                 ui.push_id("format_dropdown", |ui| {
                                     let _combo_resp = ComboBox::from_id_salt("texture_format")
                                         .width(w_format)
-                                        .selected_text(format!("{:?}", ext.serialized.format))
+                                        .selected_text(format!("{:?}", edit.settings.format))
                                         .show_ui(ui, |ui| {
                                             for format in TextureFormat::iter() {
                                                 ui.add_enabled_ui(
@@ -480,19 +450,19 @@ impl Inspector for TextureInspector {
                                                     ),
                                                     |ui| {
                                                         let resp = ui.selectable_value(
-                                                            &mut ext.serialized.format,
+                                                            &mut edit.settings.format,
                                                             format,
                                                             format!("{format:?}"),
                                                         );
                                                         if resp.changed() {
                                                             // #2: auto-adjust sampler for non-filterable formats.
                                                             if !format.is_filterable() {
-                                                                ext.serialized
+                                                                edit.settings
                                                                     .sampler
                                                                     .filter_mode =
                                                                     FilterMode::Nearest;
                                                                 if let Some(ref mut mip) =
-                                                                    ext.serialized.sampler.mipmap
+                                                                    edit.settings.sampler.mipmap
                                                                 {
                                                                     mip.filter =
                                                                         MipmapFilter::Nearest;
@@ -517,7 +487,7 @@ impl Inspector for TextureInspector {
                                 ui.label("Filter Mode:");
                             });
                             row.col(|ui| {
-                                let mut current = ext.serialized.sampler.filter_mode;
+                                let mut current = edit.settings.sampler.filter_mode;
                                 egui::ComboBox::from_id_salt("texture_filter_mode")
                                     .width(w_narrow)
                                     .selected_text(current.label())
@@ -527,11 +497,11 @@ impl Inspector for TextureInspector {
                                                 .selectable_value(&mut current, mode, mode.label())
                                                 .changed()
                                             {
-                                                ext.serialized.sampler.filter_mode = current;
+                                                edit.settings.sampler.filter_mode = current;
                                                 // Anisotropy requires Linear filtering.
                                                 if current == FilterMode::Nearest {
                                                     if let Some(ref mut mip) =
-                                                        ext.serialized.sampler.mipmap
+                                                        edit.settings.sampler.mipmap
                                                     {
                                                         mip.anisotropy_clamp = 1;
                                                     }
@@ -548,7 +518,7 @@ impl Inspector for TextureInspector {
                             &mut body,
                             row_h,
                             w_default,
-                            &mut ext.serialized,
+                            &mut edit.settings,
                             &self.dirty,
                             &self.per_axis_mode,
                         );
@@ -559,13 +529,13 @@ impl Inspector for TextureInspector {
                                 ui.label("Enable Mipmap:");
                             });
                             row.col(|ui| {
-                                let mut enabled = ext.serialized.sampler.mipmap.is_some();
+                                let mut enabled = edit.settings.sampler.mipmap.is_some();
                                 if ui.checkbox(&mut enabled, "").changed() {
                                     if enabled {
                                         let max_dim =
-                                            ext.serialized.width.max(ext.serialized.height);
+                                            edit.settings.width.max(edit.settings.height);
                                         let max_level = (max_dim as f32).log2().floor();
-                                        ext.serialized.sampler.mipmap =
+                                        edit.settings.sampler.mipmap =
                                             Some(crate::graphics::texture::sampler::MipmapConfig {
                                                 filter: MipmapFilter::Linear,
                                                 anisotropy_clamp: AnisotropyLevel::Level2.as_u16(),
@@ -573,7 +543,7 @@ impl Inspector for TextureInspector {
                                                 lod_max_clamp: max_level,
                                             });
                                     } else {
-                                        ext.serialized.sampler.mipmap = None;
+                                        edit.settings.sampler.mipmap = None;
                                     }
                                     self.dirty.set(true);
                                 }
@@ -581,10 +551,10 @@ impl Inspector for TextureInspector {
                         });
 
                         // Pre-compute LOD bounds before mutably borrowing sampler.
-                        let max_dim = ext.serialized.width.max(ext.serialized.height);
+                        let max_dim = edit.settings.width.max(edit.settings.height);
                         let max_level = (max_dim as f32).log2().floor();
 
-                        if let Some(ref mut mip) = ext.serialized.sampler.mipmap {
+                        if let Some(ref mut mip) = edit.settings.sampler.mipmap {
                             // Mipmap Filter
                             body.row(row_h, |mut row| {
                                 row.col(|ui| {
@@ -622,7 +592,7 @@ impl Inspector for TextureInspector {
                                     ui.label("  Anisotropic:");
                                 });
                                 row.col(|ui| {
-                                    let can_aniso = ext.serialized.sampler.filter_mode
+                                    let can_aniso = edit.settings.sampler.filter_mode
                                         == FilterMode::Linear
                                         && mip.filter == MipmapFilter::Linear;
                                     let mut aniso_on = mip.anisotropy_clamp > 1 && can_aniso;
@@ -686,10 +656,14 @@ impl Inspector for TextureInspector {
                             &mut body,
                             row_h,
                             w_default,
-                            &mut ext.serialized,
+                            &mut edit.settings,
                             &self.dirty,
                         );
                     });
+
+                // Build the egui preview from the current pixels (cached until
+                // Apply clears it).
+                self.ensure_preview(ui, &edit.texture);
             }
 
             // ---- Apply button ----
@@ -705,11 +679,7 @@ impl Inspector for TextureInspector {
                     let resp = ui.add_enabled(changed, apply_btn);
 
                     if resp.clicked() {
-                        messager.send(Message::TextureInspectorApply(
-                            self.model.texture_path.clone(),
-                            self.model.handle.clone(),
-                            self.model.texture_ext.clone(),
-                        ));
+                        messager.send(Message::TextureInspectorApply(self.model.edit.clone()));
                     }
                     if changed {
                         ui.label("* unsaved changes");
@@ -720,7 +690,6 @@ impl Inspector for TextureInspector {
             ui.separator();
 
             // ---- Preview panel ----
-            self.ensure_preview(ui, texture);
             self.draw_preview(ui);
         });
     }
@@ -730,18 +699,12 @@ impl Inspector for TextureInspector {
             return None;
         }
 
-        // Read source_path from the ext_handle -- the handler resolves it.
-        // We use a placeholder; the handler reads from TextureExt in asset system.
         let dialog = ConfirmDialogWindow::new(
             "Unsaved texture changes".into(),
             "Apply the changes before leaving?".into(),
             "Apply".into(),
             "Discard".into(),
-            Some(Message::TextureInspectorApply(
-                self.model.texture_path.clone(),
-                self.model.handle.clone(),
-                self.model.texture_ext.clone(),
-            )),
+            Some(Message::TextureInspectorApply(self.model.edit.clone())),
             None,
             None::<fn()>,
             None::<fn()>,
@@ -765,13 +728,13 @@ fn draw_address_mode_rows(
     body: &mut egui_extras::TableBody,
     row_h: f32,
     combo_width: f32,
-    serialized: &mut EditableTexture,
+    settings: &mut TextureSettings,
     dirty: &Cell<bool>,
     per_axis_mode: &Cell<bool>,
 ) {
     use strum::IntoEnumIterator;
 
-    let s = &mut serialized.sampler;
+    let s = &mut settings.sampler;
     let modes_equal = s.address_mode_u == s.address_mode_v && s.address_mode_v == s.address_mode_w;
     let is_per_axis = per_axis_mode.get();
 
@@ -876,7 +839,7 @@ fn draw_compare_row(
     body: &mut egui_extras::TableBody,
     row_h: f32,
     combo_width: f32,
-    serialized: &mut EditableTexture,
+    settings: &mut TextureSettings,
     dirty: &Cell<bool>,
 ) {
     body.row(row_h, |mut row| {
@@ -884,14 +847,14 @@ fn draw_compare_row(
             ui.label("Compare:");
         });
         row.col(|ui| {
-            let mut current = serialized.sampler.compare;
+            let mut current = settings.sampler.compare;
             let label = current.map_or("None", |c| c.label());
             egui::ComboBox::from_id_salt("texture_compare")
                 .width(combo_width)
                 .selected_text(label)
                 .show_ui(ui, |ui| {
                     if ui.selectable_label(current.is_none(), "None").clicked() {
-                        serialized.sampler.compare = None;
+                        settings.sampler.compare = None;
                         dirty.set(true);
                     }
                     for func in CompareFunction::iter() {
@@ -899,7 +862,7 @@ fn draw_compare_row(
                             .selectable_value(&mut current, Some(func), func.label())
                             .changed()
                         {
-                            serialized.sampler.compare = Some(func);
+                            settings.sampler.compare = Some(func);
                             dirty.set(true);
                         }
                     }

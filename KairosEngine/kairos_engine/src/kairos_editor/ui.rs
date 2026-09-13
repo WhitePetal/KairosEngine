@@ -14,14 +14,14 @@ use crate::{
         Engine,
         asset_registry::AssetKind,
         camera::SceneViewInput,
-        editor_assets::{Text, TextureExt, Toml},
+        editor_assets::{Text, Toml},
         ui::{
             game_window::GameWindow,
             global_styles::{FontDataConfig, FontsConfig, GlobalStyles},
             inspector::{
                 audio::AudioInspector, code::CodeInspector, document::DocumentInspector,
                 material::MaterialInspector, mesh::MeshInspector, shader::ShaderInspector,
-                texture::TextureInspector, toml::TomlTableInspector,
+                texture::{TextureEdit, TextureInspector}, toml::TomlTableInspector,
             },
             layout::{
                 EditorLayout, LayoutBottomContainer, LayoutContainerIds, LayoutLeftContainer,
@@ -173,12 +173,8 @@ pub enum Message {
     AudioInspectorTogglePreview,
     /// Audio Inspector: seek to position (seconds) and start playback.
     AudioInspectorSeekPreview(f32),
-    /// Texture Inspector: apply size settings.
-    TextureInspectorApply(
-        PathBuf,
-        Handle<TextureExt>,
-        Arc<parking_lot::Mutex<Option<TextureExt>>>,
-    ),
+    /// Texture Inspector: apply the edited settings to the source's `.meta`.
+    TextureInspectorApply(Arc<parking_lot::Mutex<Option<TextureEdit>>>),
     ModelInspectorCreateWireframeMesh(Mesh),
     /// Material Inspector: user selected a different shader.
     /// Carries (new shader path).
@@ -693,13 +689,13 @@ impl Context {
                 Message::ShaderInspectorSave(path, handle, content) => {
                     ShaderInspector::save_shader(&mut engine.world, &path, handle, content);
                 }
-                Message::TextureInspectorApply(path, handle, ext) => {
+                Message::TextureInspectorApply(edit) => {
                     if let Some(inspector) = self.get_window_mut::<InspectorWindow>()
                         && let Some(texture) = inspector.get_inspector_mut::<TextureInspector>()
                     {
                         texture.apply();
                     }
-                    TextureInspector::save_texture(&mut engine.world, &path, &handle, &ext);
+                    TextureInspector::save_texture(&edit);
                 }
                 Message::AudioInspectorTick => {
                     if let Some(inspector) = self.get_window_mut::<InspectorWindow>()
