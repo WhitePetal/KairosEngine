@@ -5,13 +5,14 @@ use std::{path::Path, sync::Arc};
 
 use futures_lite::future::block_on;
 use kairos_tasks::ConditionalSendFuture;
+use serde::{Deserialize, Serialize};
 
 use crate::io::{Reader, VecReader};
 use crate::path::AssetPath;
 use crate::{
     AssetLoadError, AssetLoader, AssetServer, DependencyLoadState, ErasedAssetLoader,
-    ErasedLoadedAsset, Handle, LoadContext, LoadState, LoadedAsset,
-    RecursiveDependencyLoadState, UntypedAssetId, VisitAssetDependencies,
+    ErasedLoadedAsset, Handle, LoadContext, LoadDirectError, LoadState, LoadedAsset,
+    LoadedUntypedAsset, RecursiveDependencyLoadState, UntypedAssetId, VisitAssetDependencies,
 };
 
 /// An asset whose value is the bytes it was loaded from.
@@ -474,4 +475,151 @@ fn a_pending_query_blocks_until_the_loader_is_registered() {
     assert_eq!(resolved, core::any::type_name::<ByteLoader>());
 
     query.join().expect("the query thread finishes");
+}
+
+/// A loader whose settings drive the produced value.
+struct CountLoader;
+
+#[derive(Default, Serialize, Deserialize)]
+struct CountSettings {
+    count: u32,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct CountAsset(u32);
+
+impl crate::Asset for CountAsset {}
+impl VisitAssetDependencies for CountAsset {}
+
+impl AssetLoader for CountLoader {
+    type Asset = CountAsset;
+    type Settings = CountSettings;
+    type Error = std::io::Error;
+
+    fn load(
+        &self,
+        _reader: &mut dyn Reader,
+        settings: &CountSettings,
+        _load_context: &mut LoadContext,
+    ) -> impl ConditionalSendFuture<Output = Result<CountAsset, std::io::Error>> {
+        let count = settings.count;
+        async move { Ok(CountAsset(count)) }
+    }
+
+    fn extensions(&self) -> &[&str] {
+        &["count"]
+    }
+}
+
+#[test]
+fn builder_load_value_from_reader_returns_the_value() {
+    let server = server();
+    server.register_loader(ByteLoader);
+    let mut reader = VecReader::new(b"body".to_vec());
+    let mut context = context(&server, "root.bytes");
+
+    let loaded = block_on(
+        context
+            .load_builder()
+            .load_value_from_reader::<ByteAsset>("inner.bytes", &mut reader),
+    )
+    .expect("the immediate load succeeds");
+
+    assert_eq!(loaded.get(), &ByteAsset(b"body".to_vec()));
+
+    // The value is recorded as a loader dependency, never a handle dependency.
+    let finished = context.finish(ByteAsset(vec![]));
+    assert!(finished.dependencies.is_empty());
+    assert!(
+        finished
+            .loader_dependencies
+            .contains_key(&AssetPath::from("inner.bytes")),
+        "the direct load records a loader dependency"
+    );
+}
+
+#[test]
+fn builder_load_untyped_value_from_reader_resolves_the_loader_by_path() {
+    let server = server();
+    server.register_loader(ByteLoader);
+    let mut reader = VecReader::new(b"body".to_vec());
+    let mut context = context(&server, "root.bytes");
+
+    let loaded = block_on(
+        context
+            .load_builder()
+            .load_untyped_value_from_reader("inner.bytes", &mut reader),
+    )
+    .expect("the immediate load succeeds");
+
+    assert_eq!(loaded.get::<ByteAsset>(), Some(&ByteAsset(b"body".to_vec())));
+}
+
+#[test]
+fn builder_load_value_rejects_empty_and_labeled_paths() {
+    let server = server();
+    server.register_loader(ByteLoader);
+    let mut context = context(&server, "root.bytes");
+
+    let error = block_on(context.load_builder().load_value::<ByteAsset>(""))
+        .err()
+        .expect("an empty path is rejected");
+    assert!(matches!(error, LoadDirectError::EmptyPath(_)));
+
+    let error = block_on(context.load_builder().load_value::<ByteAsset>("inner.bytes#sub"))
+        .err()
+        .expect("a labeled path is rejected");
+    assert!(matches!(error, LoadDirectError::RequestedSubasset(_)));
+
+    // The erased/untyped variants share the same guard.
+    let error = block_on(context.load_builder().load_untyped_value(""))
+        .err()
+        .expect("an empty path is rejected");
+    assert!(matches!(error, LoadDirectError::EmptyPath(_)));
+}
+
+#[test]
+fn builder_load_defers_and_records_a_handle_dependency() {
+    let server = server();
+    let mut context = context(&server, "root.bytes");
+
+    let handle: Handle<ByteAsset> = context.load_builder().load("dep.bytes");
+
+    let loaded = context.finish(ByteAsset(vec![]));
+    assert_eq!(loaded.dependencies.len(), 1);
+    assert!(loaded.dependencies.contains(&handle.id().untyped()));
+    assert!(loaded.loader_dependencies.is_empty());
+}
+
+#[test]
+fn builder_load_untyped_defers_and_records_a_handle_dependency() {
+    let server = server();
+    server
+        .write_infos()
+        .register_handle_provider::<LoadedUntypedAsset>();
+    let mut context = context(&server, "root.bytes");
+
+    let handle: Handle<LoadedUntypedAsset> = context.load_builder().load_untyped("thing.bytes");
+
+    let loaded = context.finish(ByteAsset(vec![]));
+    assert!(loaded.dependencies.contains(&handle.id().untyped()));
+}
+
+#[test]
+fn builder_with_settings_overrides_the_loader_settings() {
+    let server = server();
+    server.register_loader(CountLoader);
+    server.write_infos().register_handle_provider::<CountAsset>();
+    let mut reader = VecReader::new(Vec::new());
+    let mut context = context(&server, "root.bytes");
+
+    let loaded = block_on(
+        context
+            .load_builder()
+            .with_settings::<CountSettings>(|settings| settings.count = 7)
+            .load_value_from_reader::<CountAsset>("inner.count", &mut reader),
+    )
+    .expect("the immediate load succeeds");
+
+    assert_eq!(loaded.get(), &CountAsset(7));
 }

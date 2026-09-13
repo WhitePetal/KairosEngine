@@ -1348,6 +1348,52 @@ fn read_asset_bytes_requires_hash_metadata_when_populating_hashes() {
 }
 
 #[test]
+fn builder_load_value_loads_from_the_source() {
+    let server = server_with_files(&[("data.bytes", b"hello")]);
+    server.register_loader(ByteLoader);
+    let mut context = LoadContext::new(&server, AssetPath::from("root.bytes"), true, false);
+
+    let loaded =
+        futures_lite::future::block_on(context.load_builder().load_value::<ByteAsset>("data.bytes"))
+            .expect("the immediate load succeeds");
+    assert_eq!(loaded.get(), &ByteAsset(b"hello".to_vec()));
+
+    // The direct load records a loader dependency and no handle dependency.
+    let loaded = context.finish(ByteAsset(vec![]));
+    assert!(loaded.dependencies.is_empty());
+    assert!(
+        loaded
+            .loader_dependencies
+            .contains_key(&AssetPath::from("data.bytes"))
+    );
+}
+
+#[test]
+fn builder_override_unapproved_allows_a_denied_path() {
+    let denied = server_with_files_and_mode(&[("../escape.bytes", b"ok")], UnapprovedPathMode::Deny);
+    denied.write_infos().register_handle_provider::<ByteAsset>();
+    let mut context = LoadContext::new(&denied, AssetPath::from("root.bytes"), true, false);
+
+    // `Deny` rejects the escaping path by default, yielding the default handle.
+    let rejected: Handle<ByteAsset> = context.load_builder().load("../escape.bytes");
+    assert!(rejected.is_uuid());
+
+    // The nested builder's override lets the deferred load through.
+    let allowed: Handle<ByteAsset> = context
+        .load_builder()
+        .override_unapproved()
+        .load("../escape.bytes");
+    assert!(allowed.is_strong());
+
+    // The refused load's default handle is not a handle edge; only the allowed
+    // load is recorded as a dependency.
+    let loaded = context.finish(ByteAsset(vec![]));
+    assert_eq!(loaded.dependencies.len(), 1);
+    assert!(loaded.dependencies.contains(&allowed.id().untyped()));
+    assert!(!loaded.dependencies.contains(&rejected.id().untyped()));
+}
+
+#[test]
 fn write_default_loader_meta_file_writes_an_idempotent_sidecar() {
     let dir = std::env::temp_dir().join(format!(
         "kairos_asset_default_meta_{}",

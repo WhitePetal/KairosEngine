@@ -19,9 +19,11 @@
 //! [`std::any::type_name`]. A loader's error type only has to convert into
 //! [`KairosError`].
 //!
-//! The immediate (direct) loading surface — [`LoadContext::load_builder`] and
-//! the `load_value*` family that synchronously returns a loaded value — is
-//! deliberately not here; it is a separate deferred item.
+//! Nested loading is expressed through [`LoadContext::load_builder`], which
+//! returns a [`NestedLoadBuilder`]: its deferred `load*` methods declare handle
+//! dependencies, while its immediate (direct) `load_value*` methods return the
+//! loaded value now and record only a
+//! [`loader_dependency`](LoadContext::read_asset_bytes).
 
 use core::{
     any::{Any, TypeId},
@@ -43,6 +45,7 @@ use crate::asset::Asset;
 use crate::assets::Assets;
 use crate::handle::{Handle, UntypedHandle};
 use crate::id::UntypedAssetId;
+use crate::loader_builders::NestedLoadBuilder;
 use crate::index::AssetIndex;
 use crate::io::{
     AssetReaderError, MissingAssetSourceError, MissingProcessedAssetReaderError, Reader,
@@ -414,7 +417,7 @@ pub struct LoadContext<'a> {
     /// The path of the asset being loaded; labeled sub-assets hang off it.
     asset_path: AssetPath<'static>,
     /// The ids this load depends on.
-    dependencies: HashSet<UntypedAssetId>,
+    pub(crate) dependencies: HashSet<UntypedAssetId>,
     /// Paths whose *values* were read while loading, and the `full_hash` they
     /// were read at.
     ///
@@ -652,8 +655,7 @@ impl<'a> LoadContext<'a> {
     /// input for the processor. Unlike [`LoadContext::load`], it does not add
     /// the path to this context's handle `dependencies`.
     ///
-    /// Consumed by the `NestedLoadBuilder` methods, which land separately.
-    #[allow(dead_code)] // consumed by `NestedLoadBuilder` (deferred slice)
+    /// Consumed by [`NestedLoadBuilder`]'s immediate `load_value*` methods.
     pub(crate) async fn load_direct_internal(
         &mut self,
         path: AssetPath<'static>,
@@ -684,6 +686,16 @@ impl<'a> LoadContext<'a> {
         Ok(loaded_asset)
     }
 
+    /// Returns a [`NestedLoadBuilder`] for loading another asset while this one
+    /// loads.
+    ///
+    /// The builder's deferred `load*` methods behave like
+    /// [`LoadContext::load`]; its immediate `load_value*` methods return the
+    /// loaded value now and record only a loader dependency.
+    pub fn load_builder(&mut self) -> NestedLoadBuilder<'a, '_> {
+        NestedLoadBuilder::new(self)
+    }
+
     /// Returns the handle for the asset at `path` and records it as a
     /// dependency of this asset.
     ///
@@ -691,18 +703,7 @@ impl<'a> LoadContext<'a> {
     /// loading; otherwise only the dependency is recorded and the handle is
     /// reserved.
     pub fn load<'b, A: Asset>(&mut self, path: impl Into<AssetPath<'b>>) -> Handle<A> {
-        let path = path.into().into_owned();
-        if path.path() == Path::new("") {
-            // Reported as a load failure once the pipeline lands.
-            return Handle::default();
-        }
-        let handle = if self.should_load_dependencies {
-            self.asset_server.load::<A>(path)
-        } else {
-            self.asset_server.get_or_create_path_handle::<A>(path)
-        };
-        self.dependencies.insert(handle.id().untyped());
-        handle
+        self.load_builder().load(path)
     }
 }
 
@@ -751,14 +752,21 @@ pub enum ReadAssetBytesError {
     MissingAssetHash,
 }
 
-/// An error from [`LoadContext::load_direct_internal`].
-///
-/// The full face — the empty-path and sub-asset rejections the public
-/// `NestedLoadBuilder` methods raise before reaching the load — arrives with the
-/// builder; the load path itself only produces [`LoadError`](LoadDirectError::LoadError).
+/// An error from [`NestedLoadBuilder`]'s immediate (direct) loading surface.
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum LoadDirectError {
+    /// The requested path was empty.
+    #[error("Attempted to load an asset with an empty path \"{0}\"")]
+    EmptyPath(AssetPath<'static>),
+    /// The requested path carried a label. A labeled asset cannot be the root
+    /// of a direct load.
+    ///
+    /// Inherited from upstream (`bevy` #18291): reading a labeled sub-asset
+    /// would need to load its parent and extract the label, and there is no
+    /// consumer for that yet.
+    #[error("Requested a subasset \"{0}\"")]
+    RequestedSubasset(AssetPath<'static>),
     /// The asset failed to load.
     #[error("Failed to load dependency {dependency:?} {error}")]
     LoadError {

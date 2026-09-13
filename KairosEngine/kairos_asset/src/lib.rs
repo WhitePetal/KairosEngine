@@ -77,6 +77,7 @@ mod index;
 mod install;
 pub mod io;
 mod loader;
+mod loader_builders;
 pub mod meta;
 mod path;
 mod processor;
@@ -104,6 +105,7 @@ pub use loader::{
     AssetContainer, AssetLoader, ErasedAssetLoader, ErasedLoadedAsset, LoadContext, LoadDirectError,
     LoadedAsset, ReadAssetBytesError,
 };
+pub use loader_builders::NestedLoadBuilder;
 pub use server::{
     AddAsyncError, AssetLoadError, AssetLoaderError, AssetServer, AssetServerMode,
     DependencyLoadState, LoadBuilder, LoadState, MissingAssetLoaderForExtensionError,

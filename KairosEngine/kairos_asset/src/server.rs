@@ -1410,6 +1410,28 @@ impl AssetServer {
         self.write_infos().get_or_create_path_handle(path, None).0
     }
 
+    /// The type-erased counterpart of [`AssetServer::get_or_create_path_handle`].
+    ///
+    /// Used by [`NestedLoadBuilder`](crate::NestedLoadBuilder) when a nested load
+    /// declares a dependency without starting it.
+    pub(crate) fn get_or_create_path_handle_erased(
+        &self,
+        path: AssetPath<'static>,
+        type_id: TypeId,
+        type_name: Option<&str>,
+        meta_transform: Option<MetaTransform>,
+    ) -> UntypedHandle {
+        self.write_infos()
+            .get_or_create_path_handle_erased(
+                path,
+                type_id,
+                type_name,
+                HandleLoadingMode::NotLoading,
+                meta_transform,
+            )
+            .0
+    }
+
     /// Writes a default loader `.meta` sidecar for `path`.
     ///
     /// The sidecar names the loader that [`get_path_asset_loader`] resolves for
