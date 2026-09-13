@@ -352,6 +352,25 @@ fn file_writer_round_trips_bytes_meta_rename_and_directories() {
 }
 
 #[test]
+fn file_writer_create_root_failure_is_logged_not_fatal() {
+    let dir = temp_dir("file_writer_create_root");
+    // A plain file in the way makes `create_dir_all` fail.
+    std::fs::write(dir.join("blocker"), b"x").unwrap();
+    let blocked = dir.join("blocker/sub");
+
+    // Bevy parity: a failed eager root creation is logged, not fatal; the
+    // unwritable root surfaces on the first write instead.
+    let writer = FileAssetWriter::new(&blocked, true);
+    assert_eq!(writer.root_path(), blocked.as_path());
+    assert!(
+        write_bytes(&writer, Path::new("a.txt"), b"a").is_err(),
+        "the unwritable root surfaces as a write error"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn erased_reader_reads_through_a_source() {
     let dir = temp_dir("erased_reader");
     std::fs::write(dir.join("hello.txt"), b"erased").unwrap();

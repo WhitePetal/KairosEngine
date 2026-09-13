@@ -33,4 +33,5 @@ kairos_tasks = { path = "../kairos_tasks" }
 ron = "0.12"
 serde = { version = "1.0.228", features = ["derive"] }
 thiserror = "2.0.19"
+tracing = "0.1"
 uuid = { version = "1", features = ["v4", "serde"] }

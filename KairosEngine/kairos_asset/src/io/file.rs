@@ -9,6 +9,7 @@
 use std::path::{Path, PathBuf};
 
 use futures_lite::StreamExt;
+use tracing::error;
 
 use crate::io::{
     AssetReader, AssetReaderError, AssetWriter, AssetWriterError, PathStream, Reader, Writer,
@@ -133,7 +134,8 @@ pub struct FileAssetWriter {
 impl FileAssetWriter {
     /// Creates a writer rooted at `path` under [`get_base_path`]. An empty `path`
     /// means the base path itself. When `create_root` is true the root directory
-    /// is created (with its parents) if it does not already exist.
+    /// is created (with its parents) if it does not already exist; a failure to
+    /// create it is logged and left for the first write to surface.
     pub fn new<P: AsRef<Path>>(path: P, create_root: bool) -> Self {
         let path = path.as_ref();
         let root_path = if path.as_os_str().is_empty() {
@@ -141,13 +143,13 @@ impl FileAssetWriter {
         } else {
             get_base_path().join(path)
         };
-        if create_root {
-            std::fs::create_dir_all(&root_path).unwrap_or_else(|error| {
-                panic!(
-                    "failed to create the asset writer root {}: {error}",
-                    root_path.display()
-                )
-            });
+        if create_root
+            && let Err(error) = std::fs::create_dir_all(&root_path)
+        {
+            error!(
+                "failed to create the asset writer root {}: {error}",
+                root_path.display()
+            );
         }
         Self { root_path }
     }
