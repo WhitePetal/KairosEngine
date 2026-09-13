@@ -37,7 +37,9 @@
 //!   registers a type's store, its `Messages`, and its per-type driver systems,
 //!   mounted under the [`AssetTrackingSystems`]/[`AssetEventSystems`] sets.
 //!
-//! Deliberately absent for now (later tickets): `wait_for_asset*`.
+//! The load state of an asset is queried through the server's accessors, and
+//! [`AssetServer::wait_for_asset`] (and its untyped/id variants) suspends until
+//! an asset and its dependency tree settle.
 //! The processor trait family — [`Process`], [`ProcessContext`],
 //! [`LoadTransformAndSave`], [`AssetSaver`], and the rest — lives in
 //! `processor`, on top of the hashing,
@@ -89,7 +91,7 @@ pub use server::{
     AddAsyncError, AssetLoadError, AssetLoaderError, AssetServer, AssetServerMode,
     DependencyLoadState, LoadState, MissingAssetLoaderForExtensionError,
     MissingAssetLoaderForTypeIdError, MissingAssetLoaderForTypeNameError,
-    RecursiveDependencyLoadState, handle_internal_asset_events,
+    RecursiveDependencyLoadState, WaitForAssetError, handle_internal_asset_events,
 };
 pub use io::{
     AssetReader, AssetReaderError, AssetSourceEvent, AssetSourceId, AssetWriter,

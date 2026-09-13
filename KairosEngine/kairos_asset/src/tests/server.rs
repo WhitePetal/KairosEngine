@@ -22,10 +22,10 @@ use crate::io::{
     empty_path_stream, file::FileAssetReader, get_meta_path,
 };
 use crate::{
-    Asset, AssetEvent, AssetLoadError, AssetLoadFailedEvent, AssetLoader, AssetMetaCheck,
+    Asset, AssetEvent, AssetId, AssetLoadError, AssetLoadFailedEvent, AssetLoader, AssetMetaCheck,
     AssetPath, AssetServer, AssetServerMode, Assets, Handle, LoadContext, LoadState, LoadedFolder,
     LoadedUntypedAsset, ReadAssetBytesError, UntypedAssetId, VisitAssetDependencies,
-    handle_internal_asset_events,
+    WaitForAssetError, handle_internal_asset_events,
 };
 use crate::meta::{ProcessedInfo, ProcessedInfoMinimal};
 
@@ -408,6 +408,23 @@ fn wait_for(world: &mut World, server: &AssetServer, id: UntypedAssetId) {
     panic!("asset {id:?} never settled; state was {:?}", server.load_state(id));
 }
 
+/// Drives the main-thread pipeline until `waiter` finishes, then returns its
+/// result.
+///
+/// The waiting future parks until a load result is processed, so the world must
+/// keep being pumped for it to complete; a generous cap turns a missing wake-up
+/// into a failure instead of a hang.
+fn drive_until_finished<T>(world: &mut World, waiter: std::thread::JoinHandle<T>) -> T {
+    for _ in 0..5000 {
+        handle_internal_asset_events(world);
+        if waiter.is_finished() {
+            return waiter.join().expect("the waiting thread should not panic");
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    panic!("the wait future never resolved");
+}
+
 #[test]
 fn repeated_loads_reuse_the_same_id() {
     let server = server_with_files(&[("data.bytes", b"hello")]);
@@ -570,6 +587,89 @@ fn add_async_marks_the_asset_failed_when_the_future_errors() {
         panic!("the asset should have failed");
     };
     assert!(matches!(&*error, AssetLoadError::AddAsyncError(_)));
+}
+
+#[test]
+fn wait_for_asset_id_reports_an_unknown_asset() {
+    let server = server_with_files(&[]);
+    let id = AssetId::<ByteAsset>::default().untyped();
+
+    let result = futures_lite::future::block_on(server.wait_for_asset_id(id));
+
+    assert!(matches!(result, Err(WaitForAssetError::NotLoaded)));
+}
+
+#[test]
+fn wait_for_asset_resolves_when_the_load_completes() {
+    let server = server_with_files(&[("data.bytes", b"hello")]);
+    server.register_loader(ByteLoader);
+    let mut world = world_for(&server);
+
+    let handle = server.load::<ByteAsset>("data.bytes");
+    let waiter = {
+        let server = server.clone();
+        let handle = handle.clone();
+        std::thread::spawn(move || {
+            futures_lite::future::block_on(server.wait_for_asset(&handle))
+        })
+    };
+
+    assert!(drive_until_finished(&mut world, waiter).is_ok());
+}
+
+#[test]
+fn wait_for_asset_id_reports_a_failed_load() {
+    let server = server_with_files(&[]);
+    server.register_loader(ByteLoader);
+    let mut world = world_for(&server);
+
+    let handle = server.load::<ByteAsset>("missing.bytes");
+    let id = handle.id().untyped();
+    let waiter = {
+        let server = server.clone();
+        std::thread::spawn(move || {
+            futures_lite::future::block_on(server.wait_for_asset_id(id))
+        })
+    };
+
+    let result = drive_until_finished(&mut world, waiter);
+    assert!(matches!(result, Err(WaitForAssetError::Failed(_))));
+}
+
+#[test]
+fn wait_for_asset_untyped_reports_a_dependency_failure() {
+    // `main.parent` loads, but the `dep.bytes` it depends on does not.
+    let server = server_with_files(&[("main.parent", b"body")]);
+    server.register_loader(ByteLoader);
+    server.register_loader(ParentLoader);
+
+    let parent_assets = Assets::<ParentAsset>::default();
+    let byte_assets = Assets::<ByteAsset>::default();
+    server.register_asset(&parent_assets);
+    server.register_asset(&byte_assets);
+    let mut world = World::new();
+    world.insert_resource(parent_assets);
+    world.insert_resource(byte_assets);
+    world.insert_resource(server.clone());
+    world.insert_resource(Messages::<AssetEvent<ParentAsset>>::default());
+    world.insert_resource(Messages::<AssetEvent<ByteAsset>>::default());
+    world.insert_resource(Messages::<AssetLoadFailedEvent<ParentAsset>>::default());
+    world.insert_resource(Messages::<AssetLoadFailedEvent<ByteAsset>>::default());
+
+    let handle = server.load::<ParentAsset>("main.parent");
+    let handle = handle.untyped();
+    let waiter = {
+        let server = server.clone();
+        std::thread::spawn(move || {
+            futures_lite::future::block_on(server.wait_for_asset_untyped(&handle))
+        })
+    };
+
+    let result = drive_until_finished(&mut world, waiter);
+    assert!(matches!(
+        result,
+        Err(WaitForAssetError::DependencyFailed(_))
+    ));
 }
 
 #[test]

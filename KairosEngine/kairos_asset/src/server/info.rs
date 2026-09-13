@@ -9,6 +9,7 @@
 //! erased-index type.
 
 use core::any::TypeId;
+use core::task::Waker;
 use std::sync::{Arc, Weak};
 
 use crossbeam_channel::Sender;
@@ -51,6 +52,8 @@ pub(crate) struct AssetInfo {
     dependents_waiting_on_load: HashSet<UntypedAssetId>,
     /// Assets waiting for this asset's recursive dependencies to finish.
     dependents_waiting_on_recursive_dep_load: HashSet<UntypedAssetId>,
+    /// Tasks waiting for this asset's load to settle, woken when it does.
+    pub(crate) waiting_tasks: Vec<Waker>,
 }
 
 impl AssetInfo {
@@ -66,6 +69,7 @@ impl AssetInfo {
             failed_rec_dependencies: HashSet::default(),
             dependents_waiting_on_load: HashSet::default(),
             dependents_waiting_on_recursive_dep_load: HashSet::default(),
+            waiting_tasks: Vec::new(),
         }
     }
 
@@ -546,6 +550,14 @@ impl AssetInfos {
             info.load_state = LoadState::Loaded;
             info.dep_load_state = dep_load_state;
             info.rec_dep_load_state = rec_dep_load_state.clone();
+            // An asset whose dependency tree already failed settles straight to
+            // `Failed` here, with no `LoadedWithDependencies` event to carry the
+            // wake-up. Wake anyone parked on it directly.
+            if rec_dep_load_state.is_failed() {
+                for waker in info.waiting_tasks.drain(..) {
+                    waker.wake();
+                }
+            }
 
             let rec_waiting = if rec_dep_load_state.is_loaded() || rec_dep_load_state.is_failed() {
                 Some(std::mem::take(
@@ -621,6 +633,12 @@ impl AssetInfos {
     }
 
     /// Walks a failure up the tree from `failed_id` to `waiting_id`.
+    ///
+    /// Also wakes anyone parked on `waiting_id`: its recursive dependency state
+    /// has just settled (to a failure), which is something a
+    /// [`wait_for_asset`](super::AssetServer::wait_for_asset) caller must
+    /// observe. bevy leaves this to the failed asset's own wakers, which cannot
+    /// wake a task waiting on a *dependent*.
     fn propagate_failed_state(
         infos: &mut AssetInfos,
         failed_id: UntypedAssetId,
@@ -631,6 +649,9 @@ impl AssetInfos {
             info.loading_rec_dependencies.remove(&failed_id);
             info.failed_rec_dependencies.insert(failed_id);
             info.rec_dep_load_state = RecursiveDependencyLoadState::Failed(error.clone());
+            for waker in info.waiting_tasks.drain(..) {
+                waker.wake();
+            }
             Some(std::mem::take(
                 &mut info.dependents_waiting_on_recursive_dep_load,
             ))
@@ -664,6 +685,9 @@ impl AssetInfos {
             info.load_state = LoadState::Failed(error.clone());
             info.dep_load_state = DependencyLoadState::Failed(error.clone());
             info.rec_dep_load_state = RecursiveDependencyLoadState::Failed(error.clone());
+            for waker in info.waiting_tasks.drain(..) {
+                waker.wake();
+            }
             (
                 std::mem::take(&mut info.dependents_waiting_on_load),
                 std::mem::take(&mut info.dependents_waiting_on_recursive_dep_load),

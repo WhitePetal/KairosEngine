@@ -1,11 +1,10 @@
 //! The asset server: the single entry point for loading assets, obtaining
 //! handles, and querying load state.
 //!
-//! This mirrors `bevy_asset`'s `server/mod.rs`. The pieces that are out of scope
-//! for the P0 core are deliberately absent: the `wait_for_asset*` family. What is
-//! here is the pipeline the A-tier API needs: registration,
-//! `load`/`load_builder`/`add`/`add_async`, `reload`, untyped loads, folder
-//! loads, and the load-state and handle accessors.
+//! This mirrors `bevy_asset`'s `server/mod.rs`. What is here is the pipeline
+//! the A-tier API needs: registration, `load`/`load_builder`/`add`/`add_async`,
+//! `reload`, untyped and folder loads, the `wait_for_asset*` family, and the
+//! load-state and handle accessors.
 //!
 //! Loading itself is asynchronous. A `load` records the handle and spawns a task
 //! on the [`IoTaskPool`]; that task reads the source, runs the loader, and
@@ -28,7 +27,8 @@ mod loaders;
 pub use info::{DependencyLoadState, LoadState, RecursiveDependencyLoadState};
 
 use core::any::{TypeId, type_name};
-use core::future::Future;
+use core::future::{Future, poll_fn};
+use core::task::{Context, Poll};
 use std::{
     fmt,
     panic::AssertUnwindSafe,
@@ -1156,6 +1156,119 @@ impl AssetServer {
         loaded
     }
 
+    /// Waits until `handle`'s asset and its whole dependency tree finish
+    /// loading.
+    ///
+    /// Holding a strong handle for the duration of the wait keeps the asset
+    /// alive; an id alone does not (see
+    /// [`wait_for_asset_id`](Self::wait_for_asset_id)).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`WaitForAssetError::NotLoaded`] when the asset is not being
+    /// loaded, [`WaitForAssetError::Failed`] when it failed, and
+    /// [`WaitForAssetError::DependencyFailed`] when something it depends on
+    /// failed.
+    pub async fn wait_for_asset<A: Asset>(
+        &self,
+        handle: &Handle<A>,
+    ) -> Result<(), WaitForAssetError> {
+        self.wait_for_asset_id(handle.id().untyped()).await
+    }
+
+    /// The type-erased counterpart of [`AssetServer::wait_for_asset`].
+    ///
+    /// # Errors
+    ///
+    /// As [`wait_for_asset`](Self::wait_for_asset).
+    pub async fn wait_for_asset_untyped(
+        &self,
+        handle: &UntypedHandle,
+    ) -> Result<(), WaitForAssetError> {
+        self.wait_for_asset_id(handle.id()).await
+    }
+
+    /// Waits until the asset named by `id` and its whole dependency tree finish
+    /// loading.
+    ///
+    /// An id does not keep the asset alive, so hold a strong handle elsewhere
+    /// for the duration of the wait; otherwise the load may be discarded before
+    /// it settles.
+    ///
+    /// # Errors
+    ///
+    /// As [`wait_for_asset`](Self::wait_for_asset).
+    pub async fn wait_for_asset_id(
+        &self,
+        id: impl Into<UntypedAssetId>,
+    ) -> Result<(), WaitForAssetError> {
+        let id = id.into();
+        poll_fn(move |cx| self.wait_for_asset_id_poll_fn(cx, id)).await
+    }
+
+    /// The poll half of [`AssetServer::wait_for_asset_id`]. It leaves the
+    /// caller's [`Waker`](core::task::Waker) on the asset's [`AssetInfo`] so the
+    /// load's completion (or failure) wakes the task.
+    fn wait_for_asset_id_poll_fn(
+        &self,
+        cx: &mut Context<'_>,
+        id: UntypedAssetId,
+    ) -> Poll<Result<(), WaitForAssetError>> {
+        let infos = self.read_infos();
+
+        let Some(info) = infos.get(id) else {
+            return Poll::Ready(Err(WaitForAssetError::NotLoaded));
+        };
+
+        match (&info.load_state, &info.rec_dep_load_state) {
+            (LoadState::Loaded, RecursiveDependencyLoadState::Loaded) => Poll::Ready(Ok(())),
+            // Waiting on an asset that has not even started loading is a caller
+            // error, so fail immediately rather than parking forever.
+            (LoadState::NotLoaded, _) => Poll::Ready(Err(WaitForAssetError::NotLoaded)),
+            (LoadState::Loading, _)
+            | (_, RecursiveDependencyLoadState::Loading)
+            | (LoadState::Loaded, RecursiveDependencyLoadState::NotLoaded) => {
+                // Skip re-registering a waker we already hold.
+                let already_waiting = info
+                    .waiting_tasks
+                    .iter()
+                    .any(|waker| waker.will_wake(cx.waker()));
+                if already_waiting {
+                    return Poll::Pending;
+                }
+
+                // Re-check under the write lock: the state may have settled
+                // between the read above and the upgrade, in which case the
+                // completion's wake was missed.
+                let mut infos = {
+                    drop(infos);
+                    self.write_infos()
+                };
+                let Some(info) = infos.get_mut(id) else {
+                    return Poll::Ready(Err(WaitForAssetError::NotLoaded));
+                };
+                let still_loading = matches!(
+                    (&info.load_state, &info.rec_dep_load_state),
+                    (LoadState::Loading, _)
+                        | (_, RecursiveDependencyLoadState::Loading)
+                        | (LoadState::Loaded, RecursiveDependencyLoadState::NotLoaded)
+                );
+                if still_loading {
+                    info.waiting_tasks.push(cx.waker().clone());
+                } else {
+                    cx.waker().wake_by_ref();
+                }
+                Poll::Pending
+            }
+            (LoadState::Failed(error), _) => {
+                Poll::Ready(Err(WaitForAssetError::Failed(error.clone())))
+            }
+            (_, RecursiveDependencyLoadState::Failed(error)) => {
+                Poll::Ready(Err(WaitForAssetError::DependencyFailed(error.clone())))
+            }
+        }
+    }
+
     /// An active handle for `path`, if the asset has started loading or is alive.
     pub fn get_handle<'a, A: Asset>(&self, path: impl Into<AssetPath<'a>>) -> Option<Handle<A>> {
         self.get_path_and_type_id_handle(&path.into(), TypeId::of::<A>())
@@ -1462,6 +1575,14 @@ pub fn handle_internal_asset_events(world: &mut World) {
                     if let Some(sender) = sender {
                         sender(world, id);
                     }
+                    // Wake everyone parked on this asset now that it (and its
+                    // dependency tree) is ready.
+                    let mut infos = server.write_infos();
+                    if let Some(info) = infos.get_mut(id) {
+                        for waker in info.waiting_tasks.drain(..) {
+                            waker.wake();
+                        }
+                    }
                 }
                 InternalAssetEvent::Failed { id, path, error } => {
                     server.write_infos().process_asset_fail(id, error.clone());
@@ -1752,7 +1873,21 @@ impl AssetLoaderError {
     }
 }
 
-/// An error that occurred while resolving an asset added by
+/// An error from waiting for an [`Asset`] to finish loading.
+#[derive(Error, Debug, Clone)]
+pub enum WaitForAssetError {
+    /// The asset is not being loaded, so waiting for it is meaningless.
+    #[error("tried to wait for an asset that is not being loaded")]
+    NotLoaded,
+    /// The asset failed to load.
+    #[error(transparent)]
+    Failed(Arc<AssetLoadError>),
+    /// A dependency of the asset failed to load.
+    #[error(transparent)]
+    DependencyFailed(Arc<AssetLoadError>),
+}
+
+/// An error that occurs while resolving an asset added by
 /// [`AssetServer::add_async`].
 ///
 /// The future's error type is erased into a trait object here so it can travel
