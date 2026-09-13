@@ -75,7 +75,9 @@ Status: accepted
    [docs/research/asset-load-error-shape-change.md](../research/asset-load-error-shape-change.md)；
    `AssetProcessor` 本体已随加工主轴 S5（#231）落地，
    写前日志（WAL）与启动恢复已随 S6（#232）落地，gated 成品 reader 与布局②接线已随 S7（#233）落地，
-   现有手动加工管线的收编归 S8/S9。）
+   现有手动加工管线的收编归 S8/S9。产物的生成入口在宿主侧：`kairos_engine::asset_pipeline`
+   按布局②跑一遍 processor（`cargo run --bin bake_assets`），运行时宿主本身仍走布局①，
+   按路径读 `imported_assets/Default` 下的成品。）
 9. **`load_untyped_async` 也执行 `UnapprovedPathMode` 门**：上游 `LoadBuilder` 的该
    方法不查未批准路径；kairos 让它与其余加载入口一致，`Forbid` 一律拒绝
    （`Deny` 仍可被 `override_unapproved` 覆盖）。

@@ -21,6 +21,12 @@ pub mod audio;
 pub mod inputs;
 pub mod spatial;
 
+// The offline half of the asset pipeline: the entry that runs the engine's own
+// `AssetProcessor` over the project sources and writes the processed assets
+// under `imported_assets/Default`. The runtime host reads those assets; this
+// module is what produces them.
+pub mod asset_pipeline;
+
 // The physics subsystem is its own crate (`kairos_physics`); re-export it under
 // the name engine code already uses, so `crate::physics::…` keeps resolving
 // exactly like `crate::graphics` / `kairos_graphics`.
