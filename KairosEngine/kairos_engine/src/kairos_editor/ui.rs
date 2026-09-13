@@ -174,7 +174,10 @@ pub enum Message {
     /// Audio Inspector: seek to position (seconds) and start playback.
     AudioInspectorSeekPreview(f32),
     /// Texture Inspector: apply the edited settings to the source's `.meta`.
-    TextureInspectorApply(Arc<parking_lot::Mutex<Option<TextureEdit>>>),
+    TextureInspectorApply(
+        Handle<TextureEdit>,
+        Arc<parking_lot::Mutex<Option<TextureEdit>>>,
+    ),
     ModelInspectorCreateWireframeMesh(Mesh),
     /// Material Inspector: user selected a different shader.
     /// Carries (new shader path).
@@ -689,13 +692,13 @@ impl Context {
                 Message::ShaderInspectorSave(path, handle, content) => {
                     ShaderInspector::save_shader(&mut engine.world, &path, handle, content);
                 }
-                Message::TextureInspectorApply(edit) => {
+                Message::TextureInspectorApply(handle, edit) => {
                     if let Some(inspector) = self.get_window_mut::<InspectorWindow>()
                         && let Some(texture) = inspector.get_inspector_mut::<TextureInspector>()
                     {
                         texture.apply();
                     }
-                    TextureInspector::save_texture(&edit);
+                    TextureInspector::save_texture(&mut engine.world, &handle, &edit);
                 }
                 Message::AudioInspectorTick => {
                     if let Some(inspector) = self.get_window_mut::<InspectorWindow>()

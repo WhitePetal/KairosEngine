@@ -7,15 +7,15 @@
 //! original pixels (to resize from), and a preview, so [`TextureEdit`] bundles
 //! them.
 //!
-//! It is loaded off the UI thread but is deliberately *not* an asset: nothing
-//! else references it, and the preview never belongs in `Assets<Texture>` — the
-//! inspector builds its egui texture straight from the pixels. The product
+//! It is loaded through the asset pipeline: `create` hands `load_texture_edit`
+//! to [`AssetServer::add_async`](crate::asset::AssetServer::add_async), so the
+//! value lands in `Assets<TextureEdit>` like any other asset. The product
 //! itself is written only by the processor, never by the editor.
 
 use std::path::{Path, PathBuf};
 
 use crate::asset::io::get_meta_path;
-use crate::asset::{AssetAction, AssetMeta};
+use crate::asset::{Asset, AssetAction, AssetMeta, VisitAssetDependencies};
 
 use crate::graphics::texture::{PixelDatas, Texture, TextureSettings};
 
@@ -38,11 +38,16 @@ pub struct TextureEdit {
     pub original_rgba: Vec<u8>,
 }
 
+impl Asset for TextureEdit {}
+impl VisitAssetDependencies for TextureEdit {}
+
 /// Reads `source_path`'s `.meta` settings and image, and builds the preview.
 ///
-/// Missing or unreadable inputs are not fatal: the settings fall back to
-/// [`TextureSettings::default`] and the preview to a 1x1 placeholder.
-pub(super) async fn load_texture_edit(source_path: PathBuf) -> TextureEdit {
+/// Handed to [`AssetServer::add_async`](crate::asset::AssetServer::add_async),
+/// so it runs on the IO pool. Missing or unreadable inputs are not fatal: the
+/// settings fall back to [`TextureSettings::default`] and the preview to a 1x1
+/// placeholder.
+pub async fn load_texture_edit(source_path: PathBuf) -> TextureEdit {
     let settings = read_settings(&source_path).await;
     let source_bytes = async_fs::read(&source_path).await.ok();
 

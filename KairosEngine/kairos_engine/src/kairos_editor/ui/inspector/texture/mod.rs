@@ -2,16 +2,20 @@ mod edit;
 
 use std::{
     cell::Cell,
+    convert::Infallible,
     fs,
+    ops::DerefMut,
     sync::Arc,
 };
 
 use egui::{ComboBox, Vec2, Widget};
 use egui_extras::{Column, TableBuilder};
-use kairos_tasks::{IoTaskPool, TaskPool};
+use kairos_ecs::world::World;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
+
+use crate::asset::{AssetServer, AssetWorldExt, Assets, Handle};
 
 use edit::{load_texture_edit, write_settings_meta};
 pub use edit::TextureEdit;
@@ -75,7 +79,10 @@ impl TextureInspectorStyle {
 
 struct TextureInspectorModel {
     style: TextureInspectorStyle,
-    /// The loaded edit, filled by the background task started in `create`.
+    /// Handle to the asset-pipeline-loaded edit.
+    handle: Handle<TextureEdit>,
+    /// Shared snapshot for Apply, populated from `Assets<TextureEdit>` so a
+    /// save targets the right data even if the inspector is since replaced.
     edit: Arc<Mutex<Option<TextureEdit>>>,
     /// Compression feature flags from `Preferences/texture_compression.toml`.
     compression_config: TextureCompressionConfig,
@@ -182,9 +189,13 @@ impl TextureInspector {
         self.preview_texture.lock().take();
     }
 
-    pub fn save_texture(edit: &Arc<Mutex<Option<TextureEdit>>>) {
+    pub fn save_texture(
+        world: &mut kairos_ecs::world::World,
+        handle: &Handle<TextureEdit>,
+        edit: &Arc<Mutex<Option<TextureEdit>>>,
+    ) {
         let mut guard = edit.lock();
-        let Some(edit) = guard.as_mut() else {
+        let Some(mut edit) = guard.deref_mut().take() else {
             return;
         };
 
@@ -279,7 +290,7 @@ impl TextureInspector {
             return;
         }
 
-        // 4. Update the in-memory preview the inspector shows.
+        // 4. Update the edit and store it back for the inspector to poll.
         edit.texture = Texture {
             width: new_w,
             height: new_h,
@@ -287,13 +298,19 @@ impl TextureInspector {
             data: mip_data,
             sampler: edit.settings.sampler.clone(),
         };
+        if let Some(mut stored) = world
+            .resource_mut::<Assets<TextureEdit>>()
+            .get_mut(handle.id())
+        {
+            *stored = edit;
+        }
     }
 }
 
 impl Inspector for TextureInspector {
     fn create(
         path: &std::path::Path,
-        _world: &kairos_ecs::world::World,
+        world: &kairos_ecs::world::World,
         project_graph: &crate::kairos_editor::project_path_tree::ProjectPathGraph,
     ) -> Result<Self, Box<dyn std::error::Error>>
     where
@@ -311,21 +328,21 @@ impl Inspector for TextureInspector {
                 path.display()
             )
         })?;
-        // Read the source image and its `.meta` and build the preview off the UI
-        // thread; the model polls the slot the task fills.
-        let edit = Arc::new(Mutex::new(None));
-        let task_edit = edit.clone();
-        IoTaskPool::get_or_init(TaskPool::default)
-            .spawn(async move {
-                *task_edit.lock() = Some(load_texture_edit(source_path).await);
-            })
-            .detach();
+        // Loading goes through the asset pipeline like every other load:
+        // `add_async` runs the future on the IO pool and lands the value in
+        // `Assets<TextureEdit>` once `handle_internal_asset_events` runs.
+        let handle = world
+            .resource::<AssetServer>()
+            .add_async::<TextureEdit, Infallible>(async move {
+                Ok(load_texture_edit(source_path).await)
+            });
 
         let compression_config = load_compression_config()?;
 
         let model = TextureInspectorModel {
             style,
-            edit,
+            handle,
+            edit: Arc::new(Mutex::new(None)),
             compression_config,
         };
 
@@ -342,14 +359,21 @@ impl Inspector for TextureInspector {
         ui: &mut egui::Ui,
         _reader: &UIReader,
         messager: &mut Messager,
-        _world: &kairos_ecs::world::World,
+        world: &kairos_ecs::world::World,
         _dt: f32,
     ) {
         egui::ScrollArea::vertical().show(ui, |ui| {
             {
-                // The edit is built by the background task `create` started; poll it.
+                // Poll the asset-pipeline load; the value lands in
+                // `Assets<TextureEdit>` once the load task's event is handled.
                 let mut edit_guard = self.model.edit.lock();
-                let Some(edit) = edit_guard.as_mut() else {
+                let Some(edit) = edit_guard.deref_mut() else {
+                    if let Some(stored) = world
+                        .resource::<Assets<TextureEdit>>()
+                        .get(self.model.handle.id())
+                    {
+                        *edit_guard = Some(stored.clone());
+                    }
                     ui.label("Texture is Loading...");
                     return;
                 };
@@ -679,7 +703,10 @@ impl Inspector for TextureInspector {
                     let resp = ui.add_enabled(changed, apply_btn);
 
                     if resp.clicked() {
-                        messager.send(Message::TextureInspectorApply(self.model.edit.clone()));
+                        messager.send(Message::TextureInspectorApply(
+                            self.model.handle.clone(),
+                            self.model.edit.clone(),
+                        ));
                     }
                     if changed {
                         ui.label("* unsaved changes");
@@ -704,7 +731,10 @@ impl Inspector for TextureInspector {
             "Apply the changes before leaving?".into(),
             "Apply".into(),
             "Discard".into(),
-            Some(Message::TextureInspectorApply(self.model.edit.clone())),
+            Some(Message::TextureInspectorApply(
+                self.model.handle.clone(),
+                self.model.edit.clone(),
+            )),
             None,
             None::<fn()>,
             None::<fn()>,
@@ -713,10 +743,121 @@ impl Inspector for TextureInspector {
     }
 }
 
+/// Registers the `TextureEdit` store the inspector's `add_async` loads target.
+///
+/// Must run after [`crate::asset::install`], which creates the `AssetServer` the
+/// store's handle provider comes from.
+pub fn install(world: &mut World) {
+    world.init_asset::<TextureEdit>();
+}
+
 fn load_compression_config() -> Result<TextureCompressionConfig, Box<dyn std::error::Error>> {
     let bytes = std::fs::read(kairos_paths::PATH_KAIROS_SETTINGS)?;
     let engine_settings = toml::from_slice::<EngineSettings>(&bytes)?;
     Ok(engine_settings.texture_compression)
+}
+
+#[cfg(test)]
+mod test {
+    use std::{convert::Infallible, thread, time::Duration};
+
+    use kairos_ecs::schedule::ScheduleLabel;
+    use kairos_ecs::world::World;
+
+    use crate::asset::{AssetOptions, AssetServer, Assets, install};
+    use crate::graphics::texture::{
+        TextureFormat, TextureSettings,
+        sampler::{AddressMode, FilterMode, SamplerConfig},
+    };
+
+    use super::edit::{load_texture_edit, write_settings_meta};
+    use super::{TextureEdit, install as install_texture};
+
+    /// The three ad-hoc stages the asset drivers are installed into.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    struct Tracking;
+
+    impl ScheduleLabel for Tracking {
+        fn dyn_clone(&self) -> Box<dyn ScheduleLabel> {
+            Box::new(*self)
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    struct Events;
+
+    impl ScheduleLabel for Events {
+        fn dyn_clone(&self) -> Box<dyn ScheduleLabel> {
+            Box::new(*self)
+        }
+    }
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    struct Boot;
+
+    impl ScheduleLabel for Boot {
+        fn dyn_clone(&self) -> Box<dyn ScheduleLabel> {
+            Box::new(*self)
+        }
+    }
+
+    fn settings() -> TextureSettings {
+        TextureSettings {
+            width: 0,
+            height: 0,
+            format: TextureFormat::Rgba8Unorm,
+            sampler: SamplerConfig {
+                filter_mode: FilterMode::Nearest,
+                address_mode_u: AddressMode::ClampToEdge,
+                address_mode_v: AddressMode::ClampToEdge,
+                address_mode_w: AddressMode::ClampToEdge,
+                mipmap: None,
+                compare: None,
+                border_color: None,
+            },
+        }
+    }
+
+    /// `add_async` lands the edit in `Assets<TextureEdit>`, where the inspector
+    /// polls it.
+    #[test]
+    fn the_edit_lands_in_assets_through_add_async() {
+        let dir = tempfile::Builder::new()
+            .tempdir_in(".")
+            .expect("a temp dir in the cwd");
+        let source_path = dir.path().join("Probe.png");
+        image::RgbaImage::from_pixel(2, 2, image::Rgba([10, 20, 30, 255]))
+            .save(&source_path)
+            .expect("write the source png");
+        write_settings_meta(&source_path, &settings()).expect("write the source meta");
+
+        let mut world = World::new();
+        install(&mut world, AssetOptions::new(Tracking, Events, Boot));
+        install_texture(&mut world);
+
+        let handle = world
+            .resource::<AssetServer>()
+            .add_async::<TextureEdit, Infallible>(async move {
+                Ok(load_texture_edit(source_path).await)
+            });
+
+        let mut loaded = None;
+        for _ in 0..400 {
+            world.run_schedule(Tracking);
+            if let Some(edit) = world.resource::<Assets<TextureEdit>>().get(handle.id()) {
+                loaded = Some((
+                    edit.original_width,
+                    edit.original_height,
+                    edit.texture.width,
+                    edit.texture.height,
+                ));
+                break;
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
+
+        assert_eq!(loaded, Some((2, 2, 2, 2)));
+    }
 }
 
 // ============================================================
