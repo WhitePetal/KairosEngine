@@ -95,7 +95,8 @@ pub use server::{
     AddAsyncError, AssetLoadError, AssetLoaderError, AssetServer, AssetServerMode,
     DependencyLoadState, LoadBuilder, LoadState, MissingAssetLoaderForExtensionError,
     MissingAssetLoaderForTypeIdError, MissingAssetLoaderForTypeNameError,
-    RecursiveDependencyLoadState, WaitForAssetError, handle_internal_asset_events,
+    RecursiveDependencyLoadState, WaitForAssetError, WriteDefaultMetaError,
+    handle_internal_asset_events,
 };
 pub use io::{
     AssetReader, AssetReaderError, AssetSourceEvent, AssetSourceId, AssetWriter,

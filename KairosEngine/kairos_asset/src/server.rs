@@ -53,8 +53,8 @@ use crate::handle::{Handle, UntypedHandle};
 use crate::id::{AssetId, UntypedAssetId};
 use crate::io::{
     AssetReaderError, AssetSource, AssetSourceBuilders, AssetSourceId, AssetSources,
-    ErasedAssetReader, MissingAssetSourceError, MissingProcessedAssetReaderError, Reader,
-    UnapprovedPathMode,
+    AssetWriterError, ErasedAssetReader, MissingAssetSourceError, MissingAssetWriterError,
+    MissingProcessedAssetReaderError, Reader, UnapprovedPathMode,
 };
 use crate::loader::{ErasedAssetLoader, LoadContext, LoadedAsset};
 use crate::meta::{
@@ -1354,6 +1354,47 @@ impl AssetServer {
         self.write_infos().get_or_create_path_handle(path).0
     }
 
+    /// Writes a default loader `.meta` sidecar for `path`.
+    ///
+    /// The sidecar names the loader that [`get_path_asset_loader`] resolves for
+    /// the path and carries that loader's default settings. It is written only
+    /// when no sidecar exists yet; an existing one is left untouched and
+    /// reported as [`WriteDefaultMetaError::MetaAlreadyExists`].
+    ///
+    /// This writes a plain load sidecar. A sidecar that routes the asset through
+    /// the processor is the processor's to write.
+    ///
+    /// [`get_path_asset_loader`]: Self::get_path_asset_loader
+    pub async fn write_default_loader_meta_file_for_path(
+        &self,
+        path: impl Into<AssetPath<'_>>,
+    ) -> Result<(), WriteDefaultMetaError> {
+        let path = path.into();
+        let loader = self.get_path_asset_loader(&path).await?;
+
+        let meta = loader.default_meta();
+        let serialized_meta = meta.serialize();
+
+        let source = self.get_source(path.source())?;
+        let reader = source.reader();
+        match reader.read_meta_bytes(path.path()).await {
+            Ok(_) => return Err(WriteDefaultMetaError::MetaAlreadyExists),
+            Err(AssetReaderError::NotFound(_)) => {
+                // No sidecar yet; fall through and write one.
+            }
+            Err(AssetReaderError::Io(error)) => {
+                return Err(WriteDefaultMetaError::IoErrorFromExistingMetaCheck(error));
+            }
+            Err(AssetReaderError::HttpError(status)) => {
+                return Err(WriteDefaultMetaError::HttpErrorFromExistingMetaCheck(status));
+            }
+        }
+
+        let writer = source.writer()?;
+        writer.write_meta_bytes(path.path(), &serialized_meta).await?;
+        Ok(())
+    }
+
     /// Sends a load result to the main thread.
     fn send_asset_event(&self, event: InternalAssetEvent) {
         let _ = self.data.internal_event_sender.send(event);
@@ -1896,4 +1937,31 @@ pub enum WaitForAssetError {
 #[error("An error occurred while resolving an asset added by `add_async`: {error}")]
 pub struct AddAsyncError {
     error: Arc<dyn core::error::Error + Send + Sync + 'static>,
+}
+
+/// An error from writing a default loader `.meta` sidecar through
+/// [`AssetServer::write_default_loader_meta_file_for_path`].
+#[derive(Error, Debug)]
+pub enum WriteDefaultMetaError {
+    /// No loader matches the path.
+    #[error(transparent)]
+    MissingAssetLoader(#[from] MissingAssetLoaderForExtensionError),
+    /// The path's source does not exist.
+    #[error(transparent)]
+    MissingAssetSource(#[from] MissingAssetSourceError),
+    /// The source has no writer configured.
+    #[error(transparent)]
+    MissingAssetWriter(#[from] MissingAssetWriterError),
+    /// Writing the sidecar failed.
+    #[error("failed to write default asset meta file: {0}")]
+    FailedToWriteMeta(#[from] AssetWriterError),
+    /// A sidecar already exists at the path.
+    #[error("asset meta file already exists, so avoiding overwrite")]
+    MetaAlreadyExists,
+    /// Checking for an existing sidecar hit an I/O error.
+    #[error("encountered an I/O error while reading the existing meta file: {0}")]
+    IoErrorFromExistingMetaCheck(Arc<std::io::Error>),
+    /// Checking for an existing sidecar hit an HTTP error.
+    #[error("encountered HTTP status {0} when reading the existing meta file")]
+    HttpErrorFromExistingMetaCheck(u16),
 }

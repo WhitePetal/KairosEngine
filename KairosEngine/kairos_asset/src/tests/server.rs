@@ -19,15 +19,17 @@ use kairos_tasks::ConditionalSendFuture;
 use crate::io::{
     AssetReader, AssetReaderError, AssetReaderFuture, AssetSourceBuilder, AssetSourceBuilders,
     AssetSourceId, ErasedAssetReader, PathStream, Reader, UnapprovedPathMode, VecReader,
-    empty_path_stream, file::FileAssetReader, get_meta_path,
+    empty_path_stream, file::FileAssetReader, file::FileAssetWriter, get_meta_path,
 };
 use crate::{
     Asset, AssetEvent, AssetId, AssetLoadError, AssetLoadFailedEvent, AssetLoader, AssetMetaCheck,
     AssetPath, AssetServer, AssetServerMode, Assets, Handle, LoadContext, LoadState, LoadedFolder,
     LoadedUntypedAsset, ReadAssetBytesError, UntypedAssetId, VisitAssetDependencies,
-    WaitForAssetError, handle_internal_asset_events,
+    WaitForAssetError, WriteDefaultMetaError, handle_internal_asset_events,
 };
-use crate::meta::{ProcessedInfo, ProcessedInfoMinimal};
+use crate::meta::{
+    AssetActionMinimal, AssetMetaMinimal, ProcessedInfo, ProcessedInfoMinimal,
+};
 
 /// An asset whose value is the bytes it was loaded from.
 #[derive(Debug, PartialEq, Eq)]
@@ -1343,4 +1345,64 @@ fn read_asset_bytes_requires_hash_metadata_when_populating_hashes() {
     let error = futures_lite::future::block_on(context.read_asset_bytes("data.bytes"))
         .expect_err("hash metadata is required");
     assert!(matches!(error, ReadAssetBytesError::MissingAssetHash));
+}
+
+#[test]
+fn write_default_loader_meta_file_writes_an_idempotent_sidecar() {
+    let dir = std::env::temp_dir().join(format!(
+        "kairos_asset_default_meta_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("data.bytes"), b"payload").unwrap();
+
+    let reader_root = dir.clone();
+    let writer_root = dir.clone();
+    let mut builders = AssetSourceBuilders::default();
+    builders.insert(
+        AssetSourceId::Default,
+        AssetSourceBuilder::new(move || {
+            Box::new(FileAssetReader::new(&reader_root)) as Box<dyn ErasedAssetReader>
+        })
+        .with_writer(move |create_root| {
+            Some(Box::new(FileAssetWriter::new(&writer_root, create_root))
+                as Box<dyn crate::io::ErasedAssetWriter>)
+        }),
+    );
+    let sources = Arc::new(builders.build_sources(false, false));
+    let server = AssetServer::new_with_meta_check(
+        sources,
+        AssetServerMode::Unprocessed,
+        AssetMetaCheck::Never,
+        false,
+        UnapprovedPathMode::Forbid,
+    );
+    server.register_loader(ByteLoader);
+
+    futures_lite::future::block_on(server.write_default_loader_meta_file_for_path("data.bytes"))
+        .expect("the default meta is written");
+
+    // The sidecar names the loader that a path-only lookup resolves.
+    let meta_bytes = std::fs::read(dir.join("data.bytes.meta")).expect("the sidecar exists");
+    let minimal = AssetMetaMinimal::deserialize(&meta_bytes).expect("the sidecar parses");
+    let AssetActionMinimal::Load { loader } = minimal.asset else {
+        panic!("a default loader meta is a load action");
+    };
+    assert_eq!(loader, crate::meta::loader_name::<ByteLoader>());
+
+    // A second write refuses to clobber the existing sidecar.
+    let error =
+        futures_lite::future::block_on(server.write_default_loader_meta_file_for_path("data.bytes"))
+            .expect_err("an existing sidecar is not overwritten");
+    assert!(matches!(error, WriteDefaultMetaError::MetaAlreadyExists));
+
+    // A path no loader matches reports the loader error.
+    let error = futures_lite::future::block_on(
+        server.write_default_loader_meta_file_for_path("unknown.xyz"),
+    )
+    .expect_err("a path with no loader cannot get a default meta");
+    assert!(matches!(error, WriteDefaultMetaError::MissingAssetLoader(_)));
+
+    let _ = std::fs::remove_dir_all(&dir);
 }

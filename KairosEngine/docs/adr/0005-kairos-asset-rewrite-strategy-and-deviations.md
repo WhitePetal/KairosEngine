@@ -66,8 +66,9 @@ Status: accepted
 6. **`Asset` 不含 `TypePath`**：加载器名以 `std::any::type_name` 为准。
 7. **句柄非 `Copy`**：`Handle<A>` 内部的 `Arc` 就是引用计数，最后一个强句柄
    析构才发 `DropEvent`；命名可先于存在（弱句柄只带 id）。
-8. **明确延后**的部分：`add_async`、`wait_for_asset*`。
-   （未类型化加载与 `Handle` guard 已随后续 effort #214 的 A2 片落地；整目录加载
+8. **`add_async` 与 `wait_for_asset*`**：随后续 effort #214 的 A4/A6 片落地（#235）；
+   `DirectAssetAccessExt`（A7）与默认 loader `.meta` 写出（A8）同批落地。
+   （未类型化加载与 `Handle` guard 已随 A2 片落地；整目录加载
    `load_folder` 与 `LoadedFolder` 已随 A3 片落地；`AssetProcessor` 本体已随加工主轴 S5（#231）落地，
    写前日志（WAL）与启动恢复已随 S6（#232）落地，gated 成品 reader 与布局②接线已随 S7（#233）落地，
    现有手动加工管线的收编归 S8/S9。）
@@ -78,6 +79,11 @@ Status: accepted
     上游 `finish_processing` 对这些结果不落状态，`ProcessorGatedReader` 的
     `wait_until_processed` 会永久等待；kairos 把它们标为 `NonExistent`，让成品读取
     立即得到 `NotFound`（#233 要求「无成品时按三态给出明确结果」）。
+11. **`wait_for_asset*` 在依赖失败时也唤醒**：上游只在某个资产的
+    `LoadedWithDependencies` 或该资产自身加载失败时唤醒它的等待任务；等待**依赖方**的
+    任务在依赖已失败后不会被唤醒。kairos 在失败沿依赖树向上传播时（`propagate_failed_state`）
+    以及资产带着已失败的依赖树落定时唤醒，`WaitForAssetError::DependencyFailed`
+    因此可被观测。
 
 ## 考虑过的替代
 
