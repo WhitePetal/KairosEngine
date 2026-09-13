@@ -28,6 +28,13 @@
 |---|---|
 | `material-dynamic-properties-competitor-analysis.md` | Unity/Unreal/Godot/Bevy 材质动态属性系统竞品分析 |
 
+## Rendering
+
+| File | Topic |
+|---|---|
+| `render-cache-defect-inventory.md` | **渲染模块缺陷清单**（资源变更下的缓存键 / 失效 / 引用 / 泄漏；渲染模块重构参考单） |
+| `pipeline-cache-key-design.md` | UE / Unity / Godot / Bevy 的 PSO 缓存键设计竞品调研 |
+
 ## Animation / Motion Matching
 
 | File | Topic |
