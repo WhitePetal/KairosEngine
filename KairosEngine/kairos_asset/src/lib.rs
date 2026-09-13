@@ -88,8 +88,8 @@ pub use direct_access::DirectAssetAccessExt;
 pub use event::{AssetEvent, AssetLoadFailedEvent};
 pub use folder::LoadedFolder;
 pub use handle::{
-    AssetHandleProvider, DropEvent, Handle, StrongHandle, UntypedAssetConversionError,
-    UntypedHandle,
+    ArcMutexValue, AssetHandleProvider, DropEvent, Handle, HandleTemplate, StrongHandle,
+    UntypedAssetConversionError, UntypedHandle, asset_value,
 };
 pub use id::{AssetId, UntypedAssetId, UntypedAssetIdConversionError};
 pub use index::{AssetIndex, AssetIndexAllocator};
@@ -119,6 +119,9 @@ pub use meta::{
     loader_name, loader_settings_meta_transform, meta_transform_settings,
 };
 pub use path::{AssetPath, ParseAssetPathError};
+// Re-exported so the [`uuid_handle!`](crate::uuid_handle) macro can resolve
+// `$crate::uuid::uuid!` from a downstream crate.
+pub use uuid;
 pub use processor::{
     AssetProcessor, AssetProcessorData, AssetSaver, AssetTransformer, ErasedAssetSaver,
     ErasedProcessor, FileTransactionLogFactory, GetProcessorError, IdentityAssetTransformer,

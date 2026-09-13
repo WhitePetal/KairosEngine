@@ -48,3 +48,8 @@ serde = { version = "1.0.228", features = ["derive"] }
 thiserror = "2.0.19"
 tracing = "0.1"
 uuid = { version = "1", features = ["v4", "serde"] }
+
+[dev-dependencies]
+# The `FromTemplate` derive, used to test how `Handle<A>` fields resolve to
+# `HandleTemplate<A>` in a template.
+kairos_ecs_macros = { path = "../kairos_ecs/macros" }

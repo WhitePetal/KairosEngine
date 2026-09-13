@@ -23,8 +23,8 @@ use crate::io::{
 };
 use crate::{
     Asset, AssetEvent, AssetId, AssetLoadError, AssetLoadFailedEvent, AssetLoader, AssetMetaCheck,
-    AssetPath, AssetServer, AssetServerMode, Assets, Handle, LoadContext, LoadState, LoadedFolder,
-    LoadedUntypedAsset, ReadAssetBytesError, UntypedAssetId, VisitAssetDependencies,
+    AssetPath, AssetServer, AssetServerMode, Assets, Handle, HandleTemplate, LoadContext, LoadState,
+    LoadedFolder, LoadedUntypedAsset, ReadAssetBytesError, UntypedAssetId, VisitAssetDependencies,
     WaitForAssetError, WriteDefaultMetaError, handle_internal_asset_events,
 };
 use crate::meta::{
@@ -1405,4 +1405,17 @@ fn write_default_loader_meta_file_writes_an_idempotent_sidecar() {
     assert!(matches!(error, WriteDefaultMetaError::MissingAssetLoader(_)));
 
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn handle_template_path_loads_through_the_server() {
+    let server = server_with_files(&[("thing.bytes", b"bytes")]);
+    server.register_loader(ByteLoader);
+    let mut world = world_for(&server);
+
+    let template = HandleTemplate::<ByteAsset>::from("thing.bytes");
+    let built = world.spawn_empty().build_template(&template).unwrap();
+
+    assert!(built.is_strong());
+    assert_eq!(built, server.load::<ByteAsset>("thing.bytes"));
 }

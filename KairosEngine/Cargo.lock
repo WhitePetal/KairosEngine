@@ -2516,6 +2516,7 @@ dependencies = [
  "hashbrown 0.17.1",
  "kairos_collections",
  "kairos_ecs",
+ "kairos_ecs_macros",
  "kairos_tasks",
  "notify-debouncer-full",
  "ron",

@@ -16,6 +16,10 @@ An asset's identity, independent of who holds it. A weak handle carries only an 
 A reference to an asset. A strong handle keeps the asset loaded while it lives; a weak handle names it without keeping it alive.
 *Avoid*: pointer, reference, Arc
 
+**Handle template** (`HandleTemplate<A>`):
+The template-layer stand-in for a handle: a path to load from, a handle to clone, or an inline value to add. Lets a component definition name an asset before a runtime handle exists.
+*Avoid*: asset reference, handle path
+
 **Asset store** (`Assets<A>`):
 The collection of loaded values for one asset type, addressed by handle or id.
 *Avoid*: asset manager, asset cache

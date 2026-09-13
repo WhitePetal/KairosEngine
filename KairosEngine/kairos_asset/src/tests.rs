@@ -573,5 +573,6 @@ mod path;
 mod process;
 mod processor;
 mod server;
+mod template;
 #[cfg(feature = "file_watcher")]
 mod watch;

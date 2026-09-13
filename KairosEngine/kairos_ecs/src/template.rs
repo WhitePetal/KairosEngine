@@ -10,11 +10,14 @@ use kairos_collections::PreHashMap;
 use kairos_collections::hash::FixedHashed;
 
 use crate::{
+    change_detection::Mut,
+    component::Mutable,
     entity::Entity,
     error::{
         KairosError,
         Result,
     },
+    resource::Resource,
     world::{
         EntityWorldMut,
         World,
@@ -74,6 +77,36 @@ impl<'a, 'w> TemplateContext<'a, 'w> {
     pub fn get_entity(&mut self, reference: SceneEntityReference) -> Entity {
         self.entity_references
             .get(reference, unsafe { self.entity.world_mut() })
+    }
+
+    /// Gets a reference to the resource of the given type.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the resource does not exist.
+    /// Use [`get_resource`](EntityWorldMut::get_resource) instead if you want to handle this case.
+    #[inline]
+    #[track_caller]
+    pub fn resource<R: Resource>(&self) -> &R {
+        self.entity.resource::<R>()
+    }
+
+    /// Gets a mutable reference to the resource of the given type.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the resource does not exist.
+    /// Use [`get_resource_mut`](EntityWorldMut::get_resource_mut) instead if you want to handle this case.
+    #[inline]
+    #[track_caller]
+    pub fn resource_mut<R: Resource<Mutability = Mutable>>(&mut self) -> Mut<'_, R> {
+        self.entity.resource_mut::<R>()
+    }
+
+    /// Retrieves the [`Entity`] associated with the resource of type `R`, if it exists.
+    #[inline]
+    pub fn resource_entity<R: Resource>(&self) -> Option<Entity> {
+        self.entity.resource_entity::<R>()
     }
 }
 
