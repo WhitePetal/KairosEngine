@@ -1209,3 +1209,24 @@ fn a_held_gated_reader_blocks_a_concurrent_rewrite() {
     drop(reader);
     let _write = block_on(lock.write());
 }
+
+/// A source that neither a default processor nor a loader claims - here a file
+/// with an extension nothing registered - falls back to `AssetAction::Ignore`,
+/// which means "skip it". Nothing may reach the processed side.
+#[test]
+fn a_source_with_no_meta_and_no_loader_is_ignored() {
+    let harness = Harness::new();
+    harness
+        .unprocessed
+        .insert("mystery.xyz", b"junk".to_vec());
+    harness.run_initial();
+
+    assert!(
+        !harness.processed.contains(Path::new("mystery.xyz")),
+        "an ignored source must not be copied to the processed side"
+    );
+    assert!(
+        !harness.processed.contains(Path::new("mystery.xyz.meta")),
+        "an ignored source must not get a product `.meta`"
+    );
+}

@@ -55,8 +55,8 @@ use crate::io::{
     UnapprovedPathMode,
 };
 use crate::meta::{
-    AssetAction, AssetActionMinimal, AssetMeta, AssetMetaCheck, AssetMetaDyn, AssetMetaMinimal,
-    ProcessedInfo, ProcessedInfoMinimal, get_asset_hash, get_full_asset_hash,
+    AssetActionMinimal, AssetMetaCheck, AssetMetaMinimal, ProcessedInfo, ProcessedInfoMinimal,
+    get_asset_hash, get_full_asset_hash,
 };
 use crate::path::AssetPath;
 use crate::server::{AssetServer, AssetServerMode};
@@ -139,7 +139,7 @@ pub enum ProcessResult {
     Processed(ProcessedInfo),
     /// The asset was left alone because neither it nor its dependencies changed.
     SkippedNotChanged,
-    /// The asset's `.meta` says [`Ignore`](AssetAction::Ignore).
+    /// The asset's `.meta` says [`Ignore`](crate::meta::AssetAction::Ignore).
     Ignored,
 }
 
@@ -960,11 +960,13 @@ impl AssetProcessor {
                 } else {
                     match server.get_path_asset_loader(asset_path).await {
                         Ok(loader) => (loader.default_meta(), None),
-                        Err(_) => {
-                            let meta: Box<dyn AssetMetaDyn> =
-                                Box::new(AssetMeta::<(), ()>::new(AssetAction::Ignore));
-                            (meta, None)
-                        }
+                        // Nothing claims the source, so it is ignored - exactly
+                        // what an explicit `AssetAction::Ignore` means. Falling
+                        // through to the copy below would turn every unclaimed
+                        // file in the source tree into a product, and
+                        // `finish_processing` would then record it as processed
+                        // instead of non-existent (ADR 0005 deviation 10).
+                        Err(_) => return Ok(ProcessResult::Ignored),
                     }
                 };
                 let meta_bytes = meta.serialize();
