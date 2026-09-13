@@ -563,6 +563,7 @@ fn asset_event_variants_report_themselves() {
     assert_eq!(failed.id, id);
 }
 
+mod asset_changed;
 mod asset_processor;
 mod embedded;
 mod install;

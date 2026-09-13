@@ -17,7 +17,8 @@
 //!   trait bound and dependency visitor every asset participates in.
 //! - Storage and events: [`Assets<A>`] — the per-type asset store, with
 //!   stores, with [`AssetMut`] for tracked mutation; [`AssetEvent<A>`] — the five-variant
-//!   event face (a `Message`).
+//!   event face (a `Message`); [`AssetChanged`]/[`AsAssetId`] — a filter-only
+//!   query that reacts to an asset changing behind a handle-holding component.
 //! - Io, paths, and meta: [`AssetPath`]/[`AssetSourceId`] address an asset as
 //!   `source://path#label`; [`io::AssetReader`] and [`io::AssetSource`] read its
 //!   bytes; [`meta::AssetMeta`] is the RON `.meta` sidecar that names the
@@ -65,6 +66,7 @@
 //! import `tokio` (ADR 0001).
 
 mod asset;
+mod asset_changed;
 mod assets;
 mod direct_access;
 mod event;
@@ -81,6 +83,7 @@ mod processor;
 mod server;
 
 pub use asset::{Asset, VisitAssetDependencies};
+pub use asset_changed::{AsAssetId, AssetChanged};
 pub use assets::{
     AssetMut, Assets, AssetsMutIterator, InvalidGenerationError, LoadedUntypedAsset,
 };

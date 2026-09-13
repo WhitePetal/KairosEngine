@@ -25,11 +25,12 @@ use kairos_collections::FixedHashMap as HashMap;
 
 use kairos_ecs::message::MessageWriter;
 use kairos_ecs::resource::Resource;
-use kairos_ecs::system::{Res, ResMut};
+use kairos_ecs::system::{Res, ResMut, SystemChangeTick};
 use thiserror::Error;
 use uuid::Uuid;
 
 use crate::asset::{Asset, VisitAssetDependencies};
+use crate::asset_changed::AssetChanges;
 use crate::event::AssetEvent;
 use crate::handle::{AssetHandleProvider, Handle, UntypedHandle};
 use crate::id::{AssetId, UntypedAssetId};
@@ -485,13 +486,37 @@ impl<A: Asset> Assets<A> {
     }
 
     /// Flushes queued [`AssetEvent`]s to `Messages<AssetEvent<A>>`.
-    pub fn asset_events(mut assets: ResMut<Self>, mut messages: MessageWriter<AssetEvent<A>>) {
+    ///
+    /// While flushing, each change is also recorded in the optional
+    /// [`AssetChanges<A>`](crate::asset_changed::AssetChanges) resource so that
+    /// [`AssetChanged`](crate::AssetChanged) queries can see it. The resource is
+    /// only present once an `AssetChanged` query has been initialized.
+    pub(crate) fn asset_events(
+        mut assets: ResMut<Self>,
+        mut messages: MessageWriter<AssetEvent<A>>,
+        asset_changes: Option<ResMut<AssetChanges<A>>>,
+        ticks: SystemChangeTick,
+    ) {
+        use AssetEvent::{Added, LoadedWithDependencies, Modified, Removed};
+
+        if let Some(mut asset_changes) = asset_changes {
+            for new_event in &assets.queued_events {
+                match new_event {
+                    Removed { id } | AssetEvent::Unused { id } => asset_changes.remove(id),
+                    Added { id } | Modified { id } | LoadedWithDependencies { id } => {
+                        asset_changes.insert(*id, ticks.this_run());
+                    }
+                };
+            }
+        }
         messages.write_batch(assets.queued_events.drain(..));
     }
 
-    /// A run condition for [`Assets::asset_events`]: it returns `false` when
-    /// there is nothing to flush.
-    pub fn asset_events_condition(assets: Res<Self>) -> bool {
+    /// A run condition for [`asset_events`]: it returns `false` when there is
+    /// nothing to flush.
+    ///
+    /// [`asset_events`]: Self::asset_events
+    pub(crate) fn asset_events_condition(assets: Res<Self>) -> bool {
         !assets.queued_events.is_empty()
     }
 

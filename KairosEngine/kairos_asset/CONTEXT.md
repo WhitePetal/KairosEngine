@@ -107,3 +107,11 @@ A file beside an asset recording which loader handles it and the settings to loa
 **Asset event**:
 A notification that an asset was added, modified, removed, released, or finished loading together with all its dependencies.
 *Avoid*: signal, message
+
+**Asset changed** (`AssetChanged<A>`):
+A query filter that matches entities holding a component whose asset changed since the system last ran; it reacts to the asset itself changing even when the component did not.
+*Avoid*: dirty filter, change detector
+
+**Asset id component** (`AsAssetId`):
+A component that names the asset it uses — in practice a handle — so the asset-changed filter can look through it to the asset's identity.
+*Avoid*: handle wrapper, asset reference
