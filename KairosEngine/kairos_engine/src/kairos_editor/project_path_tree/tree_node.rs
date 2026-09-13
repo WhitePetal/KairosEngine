@@ -16,9 +16,10 @@ pub struct ProjectTreeNode {
     pub guid: Guid,
     /// 文件名（不含路径前缀）
     pub name: OsString,
-    /// 相对于项目根目录的完整路径（对于 Texture 类型，指向 .png 展示路径）
+    /// 相对于项目根目录的完整路径（加工类资产指向源文件，如 `.png` / `.glb`）
     pub path: PathBuf,
-    /// 引擎资产路径（Texture: .texture 路径；其他: None 表示与 path 相同）
+    /// 引擎资产路径（加工类资产为 `imported_assets/Default` 下的成品；
+    /// `None` 表示与 `path` 相同）
     pub asset_path: Option<PathBuf>,
     /// 节点类型
     pub kind: AssetKind,

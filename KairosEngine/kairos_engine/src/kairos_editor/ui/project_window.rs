@@ -143,7 +143,8 @@ impl ProjectWindow {
     ) -> Option<super::inspector_window::InspectorNodeInfo> {
         let node = self.model.selected_node?;
         let data = self.model.project_path_graph.get_node(node)?;
-        // Use the asset path for imported types (Texture → .texture, not .png).
+        // Use the engine asset path for imported types (Texture → the processed
+        // product under `imported_assets/Default`, not the source `.png`).
         let inspector_path = data.asset_path.as_ref().unwrap_or(&data.path);
         let inspector = InspectorCreater::create_from_asseet_kind(
             data.kind,

@@ -1,45 +1,37 @@
-//! The `TextureExt` asset: the editor's runtime composite for a `.texture`.
+//! The `TextureExt` asset: the editor's runtime composite for a texture source.
 //!
-//! A `.texture` descriptor carries the editable [`SerializedTexture`] settings
-//! (source path, size, format, sampler) while the pixel data is produced by the
-//! asset processor and loaded as the runtime [`Texture`] asset. The texture
-//! inspector edits the settings *and* previews the pixels, so it needs both —
-//! plus the source image's original pixels, to resize from when the user picks a
-//! new max size.
-//!
-//! [`TextureExt`] bundles those three. Its loader builds the preview [`Texture`]
-//! from the source image with the same processor algorithm the product uses
-//! ([`TextureSettings::convert_source`]); the product itself is written only by
+//! After the `.meta` migration (ADR 0002) a texture is a source image (`.png`)
+//! plus a `.meta` sidecar whose `AssetAction::Process` carries the editable
+//! [`TextureSettings`]; the pixel data is produced by the processor under
+//! `imported_assets/Default`. The editor still needs the settings *and* a
+//! preview, so [`TextureExt`] bundles them. Its loader reads the settings from
+//! the source's `.meta`, caches the source image's original pixels, and builds
+//! the preview [`Texture`] with the same algorithm the product uses
+//! ([`TextureSettings::convert_source`]). The product itself is written only by
 //! the processor, never by the editor.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::asset::{
-    Asset, AssetLoader, AssetWorldExt, Handle, LoadContext, Reader, UntypedAssetId,
-    VisitAssetDependencies,
+    Asset, AssetAction, AssetLoader, AssetMeta, AssetMetaDyn, AssetWorldExt, Handle, LoadContext,
+    Reader, UntypedAssetId, VisitAssetDependencies, io::get_meta_path, meta::processor_name,
 };
 use kairos_ecs::error::KairosError;
 use kairos_ecs::world::World;
 use kairos_tasks::ConditionalSendFuture;
-use serde::{Deserialize, Serialize};
 
 use crate::{
-    graphics::texture::{
-        Texture, TextureSettings,
-        sampler::SamplerConfig,
-        format::TextureFormat,
-    },
+    graphics::texture::{Texture, TextureSettings, format::TextureFormat, sampler::SamplerConfig},
     kairos_editor::consts,
 };
 
-/// The editor's editable `.texture` descriptor.
+/// The editor's editable view of a texture's `.meta` processor settings.
 ///
-/// This is the legacy per-type TOML wrapper: it stores the source path and the
-/// [`TextureSettings`] the inspector edits. It is no longer a product
-/// descriptor — the pixel data lives in the processor's product — and the
-/// migration retires it in favour of the source's `.meta` sidecar.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SerializedTexture {
+/// Mirrors [`TextureSettings`] plus the source path so the inspector can label
+/// and write back the sidecar. It is no longer a product descriptor — the pixel
+/// data lives in the processor's product.
+#[derive(Debug, Clone)]
+pub struct EditableTexture {
     /// Path to the source image file (e.g. PNG).
     pub source_path: PathBuf,
     /// Output width in pixels; `0` keeps the source image's width.
@@ -52,7 +44,7 @@ pub struct SerializedTexture {
     pub sampler: SamplerConfig,
 }
 
-impl SerializedTexture {
+impl EditableTexture {
     /// The processor settings this descriptor carries.
     pub fn settings(&self) -> TextureSettings {
         TextureSettings {
@@ -63,23 +55,42 @@ impl SerializedTexture {
         }
     }
 
-    /// Writes the settings back to the `.texture` TOML descriptor.
+    /// The editable view backed by `source_path` and `settings`.
+    pub fn from_settings(source_path: PathBuf, settings: TextureSettings) -> Self {
+        Self {
+            source_path,
+            width: settings.width,
+            height: settings.height,
+            format: settings.format,
+            sampler: settings.sampler,
+        }
+    }
+
+    /// Writes the source's `.meta` processor settings.
     ///
-    /// This no longer writes the pixel data: the product is written only by the
-    /// processor.
-    pub fn save_to_file(&self) -> Result<(), anyhow::Error> {
-        let toml_content = toml::to_string(self)?;
-        std::fs::write(&self.source_path.with_extension("texture"), toml_content)?;
+    /// The editor never writes the product: it records the [`TextureSettings`]
+    /// as an `AssetAction::Process` beside the source image, and the asset
+    /// processor — when the host runs in layout ② — regenerates the processed
+    /// bytes from them.
+    pub fn write_meta(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let meta = AssetMeta::<(), TextureSettings>::new(AssetAction::Process {
+            processor: processor_name::<crate::graphics::texture::TextureProcessor>().to_string(),
+            settings: self.settings(),
+        });
+        std::fs::write(
+            get_meta_path(&self.source_path),
+            AssetMetaDyn::serialize(&meta),
+        )?;
         Ok(())
     }
 }
 
-/// Editor runtime composite for one `.texture`: the editable settings, a handle
-/// to the runtime pixel data, and the cached original source image.
+/// Editor runtime composite for one texture source: the editable settings, a
+/// handle to the runtime pixel data, and the cached original source image.
 #[derive(Debug, Clone)]
 pub struct TextureExt {
     /// Canonical settings — modifiable by the inspector.
-    pub serialized: SerializedTexture,
+    pub serialized: EditableTexture,
     /// Handle to the runtime `Texture` (RGBA pixel data for preview).
     pub texture: Handle<Texture>,
     /// Original image width from the source PNG.
@@ -97,8 +108,11 @@ impl VisitAssetDependencies for TextureExt {
     }
 }
 
-/// Reads a `.texture` descriptor, caches the source image's original pixels, and
-/// builds the runtime [`Texture`] preview through the processor's algorithm.
+/// Reads a source's `.meta` settings, caches the source image's original pixels,
+/// and builds the runtime [`Texture`] preview through the processor's algorithm.
+///
+/// The composite is loaded from the source's `.meta` path (`foo.png.meta`), a
+/// path no loader claims, so the server resolves this loader by asset type.
 #[derive(Debug)]
 pub struct TextureExtLoader;
 
@@ -114,16 +128,16 @@ impl AssetLoader for TextureExtLoader {
         load_context: &mut LoadContext,
     ) -> impl ConditionalSendFuture<Output = Result<TextureExt, KairosError>> {
         async move {
-            // 1. Read the `.texture` TOML into its editable form.
-            let mut toml_bytes = Vec::new();
-            reader.read_to_end(&mut toml_bytes).await?;
-            let serialized: SerializedTexture = toml::from_slice(&toml_bytes)?;
+            // 1. Read the source's `.meta` into its editable form.
+            let mut meta_bytes = Vec::new();
+            reader.read_to_end(&mut meta_bytes).await?;
+            let source_path = source_from_meta_path(load_context.path().path());
+            let settings = read_process_settings(&meta_bytes);
 
             // 2. Read the source image for the original dimensions / RGBA cache
             //    and the preview the processor's algorithm would produce. A
             //    missing or unreadable source is not fatal: the composite
             //    degrades to a 1x1 placeholder.
-            let source_path = serialized.source_path.clone();
             let source_bytes = async_fs::read(&source_path).await.ok();
             let decoded = source_bytes
                 .as_deref()
@@ -145,7 +159,6 @@ impl AssetLoader for TextureExtLoader {
 
             // 3. Build the preview through the processor's conversion the product
             //    is produced with, so the inspector shows what will be processed.
-            let settings = serialized.settings();
             let (resolved, data) = match source_bytes.as_deref() {
                 Some(bytes) => TextureSettings::convert_source(bytes, &settings)
                     .map_err(|error| KairosError::error(error))?,
@@ -164,7 +177,7 @@ impl AssetLoader for TextureExtLoader {
             let texture = load_context.add_labeled_asset("texture", texture);
 
             Ok(TextureExt {
-                serialized,
+                serialized: EditableTexture::from_settings(source_path, settings),
                 texture,
                 original_width,
                 original_height,
@@ -173,11 +186,31 @@ impl AssetLoader for TextureExtLoader {
         }
     }
 
-    /// This loader is resolved by asset type, never by extension: the `.texture`
-    /// extension is claimed by the editor's descriptor, and the composite is
-    /// always loaded with an explicit asset type.
+    /// This loader is resolved by asset type, never by extension: the composite
+    /// is always loaded with an explicit asset type from the source's `.meta`
+    /// path, whose `png.meta` extension no loader claims.
     fn extensions(&self) -> &[&str] {
         &[]
+    }
+}
+
+/// The source file a `.meta` asset path belongs to (`foo.png.meta` → `foo.png`).
+fn source_from_meta_path(meta_path: &Path) -> PathBuf {
+    meta_path.with_extension("")
+}
+
+/// The settings a source's `.meta` carries, or the default when the sidecar is
+/// not a `Process` action or fails to parse.
+fn read_process_settings(meta_bytes: &[u8]) -> TextureSettings {
+    match AssetMeta::<(), TextureSettings>::deserialize(meta_bytes) {
+        Ok(meta) => match meta.asset {
+            AssetAction::Process { settings, .. } => settings,
+            _ => TextureSettings::default(),
+        },
+        Err(error) => {
+            log::warn!("TextureExt: unreadable texture `.meta`, using defaults: {error}");
+            TextureSettings::default()
+        }
     }
 }
 
@@ -199,9 +232,9 @@ mod test {
     use kairos_ecs::schedule::ScheduleLabel;
     use kairos_ecs::world::World;
 
-    use super::{SerializedTexture, TextureExt, install as install_texture_ext};
+    use super::{EditableTexture, TextureExt, install as install_texture_ext};
     use crate::graphics::texture::{
-        Texture, TextureFormat,
+        Texture, TextureFormat, TextureSettings,
         sampler::{AddressMode, FilterMode, SamplerConfig},
     };
 
@@ -245,11 +278,11 @@ mod test {
         }
     }
 
-    /// A `.texture` load through the core lands the composite in
+    /// A source `.meta` load through the core lands the composite in
     /// `Assets<TextureExt>` *and* pulls its preview `Texture` in, and the
     /// loader caches the source image's original dimensions.
     #[test]
-    fn texture_ext_loads_with_its_texture_dependency() {
+    fn texture_ext_loads_from_the_source_meta() {
         // The default source is rooted at the cwd and `UnapprovedPathMode::Forbid`
         // rejects paths outside it, so the load uses a path relative to the cwd.
         let dir = tempfile::Builder::new()
@@ -261,19 +294,19 @@ mod test {
             .save(&source_path)
             .expect("write the source png");
 
-        let texture_path = dir.path().join("Probe.texture");
-        let descriptor = SerializedTexture {
-            source_path: source_path.clone(),
+        let settings = TextureSettings {
             width: 0,
             height: 0,
             format: TextureFormat::Rgba8Unorm,
             sampler: sampler(),
         };
-        std::fs::write(&texture_path, toml::to_string(&descriptor).unwrap())
-            .expect("write the texture descriptor");
+        EditableTexture::from_settings(source_path.clone(), settings)
+            .write_meta()
+            .expect("write the source meta");
 
         let cwd = std::env::current_dir().expect("the cwd");
-        let rel_path = texture_path
+        let meta_path = source_path.with_extension("png.meta");
+        let rel_path = meta_path
             .strip_prefix(&cwd)
             .expect("the temp dir is under the cwd")
             .to_path_buf();
@@ -287,23 +320,30 @@ mod test {
 
         // The composite lands once the loader returns; its preview texture
         // resolves as a labeled asset, so pump until both are in their stores.
+        // Also carry the settings back out, so a defaults-only load is caught.
         let mut loaded = None;
         for _ in 0..400 {
             world.run_schedule(Tracking);
             if let Some(ext) = world.resource::<Assets<TextureExt>>().get(handle.id())
                 && let Some(texture) = world.resource::<Assets<Texture>>().get(ext.texture.id())
             {
+                let settings = ext.serialized.settings();
                 loaded = Some((
                     ext.original_width,
                     ext.original_height,
                     texture.width,
                     texture.height,
+                    settings.format,
+                    settings.sampler.filter_mode,
                 ));
                 break;
             }
             thread::sleep(Duration::from_millis(5));
         }
 
-        assert_eq!(loaded, Some((2, 2, 2, 2)));
+        assert_eq!(
+            loaded,
+            Some((2, 2, 2, 2, TextureFormat::Rgba8Unorm, FilterMode::Nearest))
+        );
     }
 }

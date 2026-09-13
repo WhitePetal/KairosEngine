@@ -782,3 +782,28 @@ fn rename_recomputes_the_product_pair() {
         "unexpected product path: {product}"
     );
 }
+
+#[test]
+fn source_path_for_resolves_the_paired_source() {
+    let tmp = TempDir::new().unwrap();
+    let mut registry = AssetRegistry::new();
+    let graph = scan(
+        &tmp,
+        &mut registry,
+        &["res/textures/hero.png", "res/textures/hero.png.meta"],
+    );
+
+    let hero = node_at(&graph, "res/textures/hero.png").expect("the source is a node");
+    let product = hero.asset_path.expect("the source pairs with its product");
+    let source = graph
+        .source_path_for(&product)
+        .expect("the product maps back to its source");
+    assert!(
+        source
+            .to_string_lossy()
+            .replace('\\', "/")
+            .ends_with("res/textures/hero.png"),
+        "unexpected source path: {}",
+        source.display()
+    );
+}

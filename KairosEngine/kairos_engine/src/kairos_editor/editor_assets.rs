@@ -3,5 +3,5 @@ pub mod texture_ext;
 pub mod toml;
 
 pub use text::Text;
-pub use texture_ext::{SerializedTexture, TextureExt};
+pub use texture_ext::{EditableTexture, TextureExt};
 pub use toml::Toml;

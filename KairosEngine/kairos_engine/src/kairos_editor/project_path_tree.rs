@@ -261,6 +261,15 @@ impl ProjectPathGraph {
         None
     }
 
+    /// 反查引擎资产路径对应的源文件（[`AssetRegistry::analyse_path`] 配对的
+    /// 反向）：加工类资产的 `asset_path` 是成品，编辑器要重读源图与它的
+    /// `.meta` 时先回到源。没有配对节点时返回 `None`。
+    pub fn source_path_for(&self, asset_path: &Path) -> Option<PathBuf> {
+        self.graph.node_weights().find_map(|node| {
+            (node.asset_path.as_deref() == Some(asset_path)).then(|| node.path.clone())
+        })
+    }
+
     /// 按 [`AssetKind`] 过滤所有节点，返回匹配的节点引用。
     ///
     /// 遍历图中所有节点，筛选出 `kind` 与指定类型相匹配的节点。

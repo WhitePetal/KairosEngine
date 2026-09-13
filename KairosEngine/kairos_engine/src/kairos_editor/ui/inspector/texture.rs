@@ -2,7 +2,7 @@ use std::{cell::Cell, fs, ops::DerefMut, path::PathBuf, sync::Arc};
 
 use egui::{ComboBox, Vec2, Widget};
 use egui_extras::{Column, TableBuilder};
-use crate::asset::{AssetServer, Assets, Handle};
+use crate::asset::{AssetServer, Assets, Handle, io::get_meta_path};
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use strum::IntoEnumIterator;
@@ -11,13 +11,13 @@ use crate::{
     graphics::{
         compare_function::CompareFunction,
         texture::{
-            Texture, TextureMaxSize, TextureSettings, find_texture_max_size,
+            Texture, TextureMaxSize, find_texture_max_size,
             format::{TextureCompressionConfig, TextureFormat},
             sampler::{AddressMode, AnisotropyLevel, BorderColor, FilterMode, MipmapFilter},
         },
     },
     kairos_editor::{
-        editor_assets::{SerializedTexture, TextureExt},
+        editor_assets::{EditableTexture, TextureExt},
         ui::{
             Message, Messager, UIReader,
             dialog::{ConfirmDialogWindow, Dialog},
@@ -69,7 +69,7 @@ impl TextureInspectorStyle {
 
 struct TextureInspectorModel {
     style: TextureInspectorStyle,
-    /// Path to the `.texture` asset file (for Apply writes).
+    /// Path to the source's `.meta` (the composite's asset path; for Apply writes).
     texture_path: PathBuf,
     /// Handle to the editor runtime composite (loaded asynchronously).
     handle: Handle<TextureExt>,
@@ -269,21 +269,12 @@ impl TextureInspector {
                 vec![encoded]
             };
 
-        // 3. Persist the processor settings rather than the product: the editor
-        //    writes the `.texture` descriptor and the source's `.meta`, and the
-        //    processor — the only writer of the product — regenerates the
-        //    processed bytes from them.
-        if let Err(err) = ext.serialized.save_to_file() {
+        // 3. Persist the processor settings to the source's `.meta` rather than
+        //    the product: the processor — the only writer of the product —
+        //    regenerates the processed bytes from them.
+        if let Err(err) = ext.serialized.write_meta() {
             log::error!(
-                "Failed to save texture settings, error: {}, texture_path: {:?}",
-                err,
-                path
-            );
-            return;
-        }
-        if let Err(err) = write_process_meta(&ext.serialized) {
-            log::error!(
-                "Failed to write texture processor meta, error: {}, texture_path: {:?}",
+                "Failed to write texture `.meta`, error: {}, texture_path: {:?}",
                 err,
                 path
             );
@@ -313,38 +304,28 @@ impl TextureInspector {
     }
 }
 
-/// Writes the source's `.meta` processor settings.
-///
-/// The editor never writes the product: it records the [`TextureSettings`] as an
-/// `AssetAction::Process` beside the source image, and the asset processor — when
-/// the host runs in layout ② — regenerates the processed bytes from them.
-fn write_process_meta(serialized: &SerializedTexture) -> Result<(), Box<dyn std::error::Error>> {
-    use crate::asset::{
-        AssetAction, AssetMeta, AssetMetaDyn, io::get_meta_path, meta::processor_name,
-    };
-
-    let meta = AssetMeta::<(), TextureSettings>::new(AssetAction::Process {
-        processor: processor_name::<crate::graphics::texture::TextureProcessor>().to_string(),
-        settings: serialized.settings(),
-    });
-    std::fs::write(
-        get_meta_path(&serialized.source_path),
-        AssetMetaDyn::serialize(&meta),
-    )?;
-    Ok(())
-}
-
 impl Inspector for TextureInspector {
     fn create(
         path: &std::path::Path,
         world: &kairos_ecs::world::World,
-        _project_graph: &crate::kairos_editor::project_path_tree::ProjectPathGraph,
+        project_graph: &crate::kairos_editor::project_path_tree::ProjectPathGraph,
     ) -> Result<Self, Box<dyn std::error::Error>>
     where
         Self: Sized,
     {
         let style = TextureInspectorStyle::new()?;
-        let texture_path = path.to_path_buf();
+
+        // The node's engine path is the processed product; the composite needs
+        // the paired source image and its `.meta`. Fail rather than fall back to
+        // the product path, whose `.meta` is a `Load` sidecar the editor must
+        // never rewrite.
+        let source_path = project_graph.source_path_for(path).ok_or_else(|| {
+            format!(
+                "texture inspector: '{}' is not paired with a source node",
+                path.display()
+            )
+        })?;
+        let texture_path = get_meta_path(&source_path);
 
         // Load the editor runtime composite asynchronously through the core.
         let handle = world
@@ -784,7 +765,7 @@ fn draw_address_mode_rows(
     body: &mut egui_extras::TableBody,
     row_h: f32,
     combo_width: f32,
-    serialized: &mut SerializedTexture,
+    serialized: &mut EditableTexture,
     dirty: &Cell<bool>,
     per_axis_mode: &Cell<bool>,
 ) {
@@ -895,7 +876,7 @@ fn draw_compare_row(
     body: &mut egui_extras::TableBody,
     row_h: f32,
     combo_width: f32,
-    serialized: &mut SerializedTexture,
+    serialized: &mut EditableTexture,
     dirty: &Cell<bool>,
 ) {
     body.row(row_h, |mut row| {
