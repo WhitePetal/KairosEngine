@@ -5,7 +5,10 @@ use std::{
     any::TypeId,
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     time::Duration,
 };
 
@@ -20,8 +23,8 @@ use crate::io::{
 };
 use crate::{
     Asset, AssetEvent, AssetLoadFailedEvent, AssetLoader, AssetMetaCheck, AssetPath, AssetServer,
-    AssetServerMode, Assets, Handle, LoadContext, UntypedAssetId, VisitAssetDependencies,
-    handle_internal_asset_events,
+    AssetServerMode, Assets, Handle, LoadContext, LoadedUntypedAsset, UntypedAssetId,
+    VisitAssetDependencies, handle_internal_asset_events,
 };
 
 /// An asset whose value is the bytes it was loaded from.
@@ -232,6 +235,14 @@ fn server_with_reader(reader: MutableReader) -> AssetServer {
 
 /// A server whose default source is `files`, with no meta sidecars.
 fn server_with_files(files: &[(&str, &[u8])]) -> AssetServer {
+    server_with_files_and_mode(files, UnapprovedPathMode::Forbid)
+}
+
+/// A server whose default source is `files`, in `unapproved` path mode.
+fn server_with_files_and_mode(
+    files: &[(&str, &[u8])],
+    unapproved: UnapprovedPathMode,
+) -> AssetServer {
     let files: HashMap<PathBuf, Vec<u8>> = files
         .iter()
         .map(|(path, bytes)| (PathBuf::from(path), bytes.to_vec()))
@@ -251,20 +262,26 @@ fn server_with_files(files: &[(&str, &[u8])]) -> AssetServer {
         AssetServerMode::Unprocessed,
         AssetMetaCheck::Never,
         false,
-        UnapprovedPathMode::Forbid,
+        unapproved,
     )
 }
 
-/// A world holding the server, a [`ByteAsset`] store, and the asset messages.
+/// A world holding the server, a [`ByteAsset`] store, a
+/// [`LoadedUntypedAsset`] store, and the asset messages.
 fn world_for(server: &AssetServer) -> World {
     let assets = Assets::<ByteAsset>::default();
     server.register_asset(&assets);
+    let untyped = Assets::<LoadedUntypedAsset>::default();
+    server.register_asset(&untyped);
 
     let mut world = World::new();
     world.insert_resource(assets);
+    world.insert_resource(untyped);
     world.insert_resource(server.clone());
     world.insert_resource(Messages::<AssetEvent<ByteAsset>>::default());
     world.insert_resource(Messages::<AssetLoadFailedEvent<ByteAsset>>::default());
+    world.insert_resource(Messages::<AssetEvent<LoadedUntypedAsset>>::default());
+    world.insert_resource(Messages::<AssetLoadFailedEvent<LoadedUntypedAsset>>::default());
     world
 }
 
@@ -517,4 +534,319 @@ fn a_uuid_handle_is_not_managed() {
     let server = server_with_files(&[]);
     let uuid_id = crate::AssetId::<ByteAsset>::invalid().untyped();
     assert!(!server.is_managed(uuid_id));
+}
+
+/// Sets its flag when dropped, so a load's guard lifetime can be observed.
+struct DropFlag(Arc<AtomicBool>);
+
+impl Drop for DropFlag {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+}
+
+/// A loader that announces it has started and then blocks until the gate is
+/// released, so a test can inspect the world while a load is in flight.
+struct GatedLoader {
+    started: async_channel::Sender<()>,
+    gate: async_channel::Receiver<()>,
+}
+
+impl AssetLoader for GatedLoader {
+    type Asset = ByteAsset;
+    type Settings = ();
+    type Error = std::io::Error;
+
+    fn load(
+        &self,
+        reader: &mut dyn Reader,
+        _settings: &(),
+        _load_context: &mut LoadContext,
+    ) -> impl ConditionalSendFuture<Output = Result<ByteAsset, std::io::Error>> {
+        async move {
+            self.started
+                .send(())
+                .await
+                .expect("the started channel is open");
+            self.gate.recv().await.expect("the gate channel is open");
+            let mut bytes = Vec::new();
+            reader.read_to_end(&mut bytes).await?;
+            Ok(ByteAsset(bytes))
+        }
+    }
+
+    fn extensions(&self) -> &[&str] {
+        &["bytes"]
+    }
+}
+
+/// A loader whose load always fails, so the failure paths can be exercised.
+struct FailingLoader;
+
+impl AssetLoader for FailingLoader {
+    type Asset = ByteAsset;
+    type Settings = ();
+    type Error = std::io::Error;
+
+    fn load(
+        &self,
+        _reader: &mut dyn Reader,
+        _settings: &(),
+        _load_context: &mut LoadContext,
+    ) -> impl ConditionalSendFuture<Output = Result<ByteAsset, std::io::Error>> {
+        async move { Err(std::io::Error::new(std::io::ErrorKind::InvalidData, "boom")) }
+    }
+
+    fn extensions(&self) -> &[&str] {
+        &["failing"]
+    }
+}
+
+#[test]
+fn untyped_load_resolves_the_asset_under_its_synthetic_source() {
+    let server = server_with_files(&[("data.bytes", b"hello")]);
+    server.register_loader(ByteLoader);
+    let mut world = world_for(&server);
+
+    let untyped_handle = server.load_builder().load_untyped("data.bytes");
+    let untyped_id = untyped_handle.id().untyped();
+    wait_for(&mut world, &server, untyped_id);
+
+    // The wrapper resolved the real asset's handle.
+    let resolved = world
+        .resource::<Assets<LoadedUntypedAsset>>()
+        .get(untyped_handle.id())
+        .expect("the untyped wrapper loaded")
+        .handle
+        .clone();
+    let typed = server
+        .get_handle::<ByteAsset>("data.bytes")
+        .expect("the resolved asset has a typed handle");
+    assert_eq!(resolved.id(), typed.id().untyped());
+    assert_eq!(
+        world.resource::<Assets<ByteAsset>>().get(&typed),
+        Some(&ByteAsset(b"hello".to_vec()))
+    );
+
+    // It is addressed under the synthetic `--untyped` source, so it cannot
+    // collide with the typed load of the same path.
+    let wrapper_path = server.get_path(untyped_id).expect("the wrapper has a path");
+    assert_eq!(wrapper_path.source().as_str(), Some("--untyped"));
+    assert_eq!(wrapper_path.path(), Path::new("data.bytes"));
+}
+
+#[test]
+fn load_erased_matches_the_typed_load() {
+    let server = server_with_files(&[("data.bytes", b"hello")]);
+    server.register_loader(ByteLoader);
+    let mut world = world_for(&server);
+
+    let untyped = server
+        .load_builder()
+        .load_erased(TypeId::of::<ByteAsset>(), "data.bytes");
+    assert_eq!(untyped.type_id(), TypeId::of::<ByteAsset>());
+    wait_for(&mut world, &server, untyped.id());
+
+    let typed: Handle<ByteAsset> = untyped.typed_debug_checked();
+    assert_eq!(
+        world.resource::<Assets<ByteAsset>>().get(&typed),
+        Some(&ByteAsset(b"hello".to_vec()))
+    );
+    assert_eq!(
+        server.get_handle::<ByteAsset>("data.bytes").map(|handle| handle.id()),
+        Some(typed.id())
+    );
+}
+
+#[test]
+fn load_untyped_async_resolves_the_handle() {
+    let server = server_with_files(&[("data.bytes", b"hello")]);
+    server.register_loader(ByteLoader);
+    let mut world = world_for(&server);
+
+    let resolved =
+        futures_lite::future::block_on(server.load_builder().load_untyped_async("data.bytes"))
+            .expect("the untyped load resolves");
+    assert_eq!(resolved.type_id(), TypeId::of::<ByteAsset>());
+    wait_for(&mut world, &server, resolved.id());
+
+    assert_eq!(
+        server.get_handle::<ByteAsset>("data.bytes").map(|handle| handle.id().untyped()),
+        Some(resolved.id())
+    );
+    let typed: Handle<ByteAsset> = resolved.typed_debug_checked();
+    assert_eq!(
+        world.resource::<Assets<ByteAsset>>().get(&typed),
+        Some(&ByteAsset(b"hello".to_vec()))
+    );
+}
+
+#[test]
+fn load_untyped_async_rejects_an_empty_path() {
+    let server = server_with_files(&[]);
+
+    let error = futures_lite::future::block_on(server.load_builder().load_untyped_async(""))
+        .expect_err("an empty path is rejected");
+    assert!(matches!(error, crate::AssetLoadError::EmptyPath(_)));
+}
+
+#[test]
+fn load_untyped_async_reports_a_loader_error() {
+    let server = server_with_files(&[("bad.failing", b"")]);
+    server.register_loader(FailingLoader);
+    let _world = world_for(&server);
+
+    let error = futures_lite::future::block_on(
+        server.load_builder().load_untyped_async("bad.failing"),
+    )
+    .expect_err("the loader fails");
+    assert!(matches!(error, crate::AssetLoadError::AssetLoaderError(_)));
+}
+
+#[test]
+fn a_failed_untyped_load_marks_the_resolved_handle_failed() {
+    let server = server_with_files(&[("bad.failing", b"")]);
+    server.register_loader(FailingLoader);
+    let mut world = world_for(&server);
+
+    let handle = server.load_builder().load_untyped("bad.failing");
+    let wrapper_id = handle.id().untyped();
+    wait_for(&mut world, &server, wrapper_id);
+    assert!(server.load_state(wrapper_id).is_failed());
+
+    // The resolved typed handle is failed too, not left loading, so a later load
+    // of the same path can retry instead of joining a stuck handle.
+    let resolved_id = server
+        .get_path_id("bad.failing")
+        .expect("the resolved handle is registered");
+    assert_eq!(resolved_id.type_id(), TypeId::of::<ByteAsset>());
+    assert!(server.load_state(resolved_id).is_failed());
+}
+
+#[test]
+fn override_unapproved_loads_denied_paths_but_never_forbidden_ones() {
+    // `Forbid` rejects an escaping path even when the builder overrides.
+    let forbidden = server_with_files_and_mode(
+        &[("../escape.bytes", b"no")],
+        UnapprovedPathMode::Forbid,
+    );
+    forbidden.register_loader(ByteLoader);
+    let rejected = forbidden
+        .load_builder()
+        .override_unapproved()
+        .load::<ByteAsset>("../escape.bytes");
+    assert_eq!(rejected, Handle::<ByteAsset>::default());
+
+    // `Deny` rejects the plain load but yields to the builder override.
+    let denied =
+        server_with_files_and_mode(&[("../escape.bytes", b"ok")], UnapprovedPathMode::Deny);
+    denied.register_loader(ByteLoader);
+    let mut world = world_for(&denied);
+
+    let rejected = denied.load::<ByteAsset>("../escape.bytes");
+    assert_eq!(rejected, Handle::<ByteAsset>::default());
+
+    let handle = denied
+        .load_builder()
+        .override_unapproved()
+        .load::<ByteAsset>("../escape.bytes");
+    assert_ne!(handle, Handle::<ByteAsset>::default());
+    wait_for(&mut world, &denied, handle.id().untyped());
+    assert_eq!(
+        world.resource::<Assets<ByteAsset>>().get(&handle),
+        Some(&ByteAsset(b"ok".to_vec()))
+    );
+}
+
+#[test]
+fn load_untyped_async_enforces_the_unapproved_gate() {
+    // `Forbid` rejects, and cannot be overridden.
+    let forbidden =
+        server_with_files_and_mode(&[("../escape.bytes", b"no")], UnapprovedPathMode::Forbid);
+    let _world = world_for(&forbidden);
+    let error = futures_lite::future::block_on(
+        forbidden
+            .load_builder()
+            .override_unapproved()
+            .load_untyped_async("../escape.bytes"),
+    )
+    .expect_err("forbid rejects an unapproved path");
+    assert!(matches!(error, crate::AssetLoadError::UnapprovedPath { .. }));
+
+    // `Deny` rejects by default and yields to the builder override.
+    let denied =
+        server_with_files_and_mode(&[("../escape.bytes", b"ok")], UnapprovedPathMode::Deny);
+    denied.register_loader(ByteLoader);
+    let mut world = world_for(&denied);
+
+    let rejected = futures_lite::future::block_on(
+        denied.load_builder().load_untyped_async("../escape.bytes"),
+    );
+    assert!(matches!(
+        rejected,
+        Err(crate::AssetLoadError::UnapprovedPath { .. })
+    ));
+
+    let resolved = futures_lite::future::block_on(
+        denied
+            .load_builder()
+            .override_unapproved()
+            .load_untyped_async("../escape.bytes"),
+    )
+    .expect("the override loads the denied path");
+    wait_for(&mut world, &denied, resolved.id());
+}
+
+#[test]
+fn a_guard_is_held_until_the_load_settles() {
+    let server = server_with_files(&[("data.bytes", b"hello")]);
+    let (started, started_rx) = async_channel::bounded(1);
+    let (gate, gate_rx) = async_channel::bounded(1);
+    server.register_loader(GatedLoader {
+        started,
+        gate: gate_rx,
+    });
+    let mut world = world_for(&server);
+
+    let dropped = Arc::new(AtomicBool::new(false));
+    let handle = server
+        .load_builder()
+        .with_guard(DropFlag(dropped.clone()))
+        .load::<ByteAsset>("data.bytes");
+
+    // Wait until the loader is running: the guard must still be held while the
+    // load is in flight.
+    started_rx.recv_blocking().expect("the loader started");
+    assert!(
+        !dropped.load(Ordering::SeqCst),
+        "the guard is held while the load runs"
+    );
+
+    // Release the loader; once the load settles the guard drops.
+    gate.send_blocking(()).expect("release the loader gate");
+    wait_for(&mut world, &server, handle.id().untyped());
+    assert!(
+        dropped.load(Ordering::SeqCst),
+        "the guard is dropped once the load settles"
+    );
+}
+
+#[test]
+fn a_guard_is_dropped_when_the_load_fails() {
+    let server = server_with_files(&[]);
+    server.register_loader(ByteLoader);
+    let mut world = world_for(&server);
+
+    let dropped = Arc::new(AtomicBool::new(false));
+    let handle = server
+        .load_builder()
+        .with_guard(DropFlag(dropped.clone()))
+        .load::<ByteAsset>("missing.bytes");
+    wait_for(&mut world, &server, handle.id().untyped());
+
+    assert!(server.load_state(handle.id().untyped()).is_failed());
+    assert!(
+        dropped.load(Ordering::SeqCst),
+        "the guard is dropped when the load fails"
+    );
 }

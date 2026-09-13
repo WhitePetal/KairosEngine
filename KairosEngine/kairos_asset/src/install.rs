@@ -36,7 +36,7 @@ use kairos_ecs::schedule::{
 use kairos_ecs::world::{FromWorld, World};
 
 use crate::asset::Asset;
-use crate::assets::Assets;
+use crate::assets::{Assets, LoadedUntypedAsset};
 use crate::event::{AssetEvent, AssetLoadFailedEvent};
 use crate::io::{AssetSourceBuilders, UnapprovedPathMode};
 use crate::loader::AssetLoader;
@@ -260,16 +260,22 @@ pub fn install(world: &mut World, options: AssetOptions) {
     ));
     world.insert_resource(stages);
 
-    let mut schedules = world.get_resource_or_init::<Schedules>();
-    let tracking = schedules.entry(stages.tracking);
-    // The per-type tracking drivers run after the exclusive handler has drained
-    // the load results, so they observe the freshly inserted values.
-    tracking.configure_sets(AssetTrackingSystems.after(handle_internal_asset_events));
-    tracking.add_systems(handle_internal_asset_events.ambiguous_with_all());
-    schedules.entry(stages.event).configure_sets(AssetEventSystems);
-    // Create the startup schedule so a later processor track can attach to it
-    // even when the host does not otherwise build a `Startup` schedule.
-    schedules.entry(stages.startup);
+    {
+        let mut schedules = world.get_resource_or_init::<Schedules>();
+        let tracking = schedules.entry(stages.tracking);
+        // The per-type tracking drivers run after the exclusive handler has drained
+        // the load results, so they observe the freshly inserted values.
+        tracking.configure_sets(AssetTrackingSystems.after(handle_internal_asset_events));
+        tracking.add_systems(handle_internal_asset_events.ambiguous_with_all());
+        schedules.entry(stages.event).configure_sets(AssetEventSystems);
+        // Create the startup schedule so a later processor track can attach to it
+        // even when the host does not otherwise build a `Startup` schedule.
+        schedules.entry(stages.startup);
+    }
+
+    // The untyped-load wrapper is a core asset type, so its store and drivers are
+    // registered with the rest of the core (bevy does the same in `AssetPlugin`).
+    world.init_asset::<LoadedUntypedAsset>();
 }
 
 /// The per-type registration API, the `World` counterpart to `bevy_asset`'s

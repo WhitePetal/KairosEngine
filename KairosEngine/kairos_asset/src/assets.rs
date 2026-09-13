@@ -26,10 +26,10 @@ use kairos_ecs::resource::Resource;
 use kairos_ecs::system::{Res, ResMut};
 use uuid::Uuid;
 
-use crate::asset::Asset;
+use crate::asset::{Asset, VisitAssetDependencies};
 use crate::event::AssetEvent;
-use crate::handle::{AssetHandleProvider, Handle};
-use crate::id::AssetId;
+use crate::handle::{AssetHandleProvider, Handle, UntypedHandle};
+use crate::id::{AssetId, UntypedAssetId};
 use crate::index::{AssetIndex, AssetIndexAllocator};
 
 /// One slot in a [`DenseAssetStorage`].
@@ -707,3 +707,26 @@ impl fmt::Display for InvalidGenerationError {
 }
 
 impl std::error::Error for InvalidGenerationError {}
+
+/// A "loaded asset" holding the untyped handle for an asset requested without a
+/// statically known type.
+///
+/// [`AssetServer::load_untyped`](crate::AssetServer::load_untyped) cannot return
+/// the asset's own handle directly, because the asset type is only known after
+/// the loader has been resolved. It returns a handle to this wrapper instead;
+/// once it has loaded, the resolved handle can be read from [`Self::handle`].
+///
+/// This mirrors `bevy_asset`'s `LoadedUntypedAsset` (which lives in its
+/// `assets` module for the same reason).
+pub struct LoadedUntypedAsset {
+    /// The handle to the loaded asset.
+    pub handle: UntypedHandle,
+}
+
+impl Asset for LoadedUntypedAsset {}
+
+impl VisitAssetDependencies for LoadedUntypedAsset {
+    fn visit_dependencies(&self, visit: &mut impl FnMut(UntypedAssetId)) {
+        self.handle.visit_dependencies(visit);
+    }
+}

@@ -20,7 +20,7 @@
 //! is deferred, so `Process` exists as a type but nothing consumes it.
 
 use core::any::Any;
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
@@ -239,7 +239,8 @@ pub struct AssetMetaMinimal {
 impl AssetMetaMinimal {
     /// Deserializes a minimal sidecar from its RON bytes.
     pub fn deserialize(bytes: &[u8]) -> Result<Self, DeserializeMetaError> {
-        ron::de::from_bytes(bytes).map_err(DeserializeMetaError::DeserializeMinimal)
+        ron::de::from_bytes(bytes)
+            .map_err(|error| DeserializeMetaError::DeserializeMinimal(Arc::new(error)))
     }
 }
 
@@ -305,18 +306,21 @@ pub enum AssetMetaCheck {
 }
 
 /// An error from parsing a `.meta` sidecar.
-#[derive(Debug)]
+///
+/// The RON errors are wrapped in an [`Arc`] so this error can be cloned (and so
+/// [`AssetLoadError`](crate::AssetLoadError) can be, matching `bevy_asset`).
+#[derive(Debug, Clone)]
 #[non_exhaustive]
 pub enum DeserializeMetaError {
     /// The typed meta could not be deserialized.
-    DeserializeSettings(ron::error::SpannedError),
+    DeserializeSettings(Arc<ron::error::SpannedError>),
     /// The minimal meta could not be deserialized.
-    DeserializeMinimal(ron::error::SpannedError),
+    DeserializeMinimal(Arc<ron::error::SpannedError>),
 }
 
 impl From<ron::error::SpannedError> for DeserializeMetaError {
     fn from(error: ron::error::SpannedError) -> Self {
-        Self::DeserializeSettings(error)
+        Self::DeserializeSettings(Arc::new(error))
     }
 }
 
