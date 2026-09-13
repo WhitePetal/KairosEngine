@@ -25,7 +25,7 @@ use crate::io::{
 use crate::{
     Asset, AssetEvent, AssetEventSystems, AssetLoadFailedEvent, AssetLoader, AssetMetaCheck,
     AssetMode, AssetOptions, AssetProcessor, AssetServer, AssetServerMode, AssetStages,
-    AssetWorldExt, Assets, Handle, LoadContext, VisitAssetDependencies, install,
+    AssetWorldExt, Assets, DirectAssetAccessExt, Handle, LoadContext, VisitAssetDependencies, install,
 };
 
 /// The two ad-hoc stages the asset drivers are installed into.
@@ -503,4 +503,52 @@ fn preregister_asset_loader_registers_through_the_world() {
     let loader = block_on(server.get_asset_loader_with_extension("bytes"))
         .expect("a loader preregistered and registered through the world resolves");
     assert_eq!(loader.type_name(), crate::meta::loader_name::<ByteLoader>());
+}
+
+#[test]
+fn direct_access_adds_an_asset_through_the_world() {
+    let mut world = installed_world();
+
+    let handle = world.add_asset(ByteAsset(b"direct".to_vec()));
+
+    assert_eq!(
+        world.resource::<Assets<ByteAsset>>().get(handle.id()),
+        Some(&ByteAsset(b"direct".to_vec()))
+    );
+}
+
+#[test]
+fn direct_access_loads_an_asset_through_the_world() {
+    let reader = MemoryReader::new(&[("data.bytes", b"loaded")]);
+    let mut world = world_for_layout(
+        AssetSourceBuilder::new(move || Box::new(reader.clone()) as Box<dyn ErasedAssetReader>),
+        AssetMode::Unprocessed,
+    );
+    let server = world.resource::<AssetServer>().clone();
+
+    let handle = world.load_asset::<ByteAsset>("data.bytes");
+    load_until_settled(&mut world, &server, &handle);
+
+    assert_eq!(
+        world.resource::<Assets<ByteAsset>>().get(handle.id()),
+        Some(&ByteAsset(b"loaded".to_vec()))
+    );
+}
+
+#[test]
+fn direct_access_load_builder_starts_a_load_through_the_world() {
+    let reader = MemoryReader::new(&[("data.bytes", b"built")]);
+    let mut world = world_for_layout(
+        AssetSourceBuilder::new(move || Box::new(reader.clone()) as Box<dyn ErasedAssetReader>),
+        AssetMode::Unprocessed,
+    );
+    let server = world.resource::<AssetServer>().clone();
+
+    let handle = world.load_builder().load::<ByteAsset>("data.bytes");
+    load_until_settled(&mut world, &server, &handle);
+
+    assert_eq!(
+        world.resource::<Assets<ByteAsset>>().get(handle.id()),
+        Some(&ByteAsset(b"built".to_vec()))
+    );
 }

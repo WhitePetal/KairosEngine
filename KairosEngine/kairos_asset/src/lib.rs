@@ -36,6 +36,8 @@
 //!   [`AssetWorldExt::init_asset`] then
 //!   registers a type's store, its `Messages`, and its per-type driver systems,
 //!   mounted under the [`AssetTrackingSystems`]/[`AssetEventSystems`] sets.
+//!   Callers that hold only a `World` reach the same server and store through
+//!   [`DirectAssetAccessExt`].
 //!
 //! The load state of an asset is queried through the server's accessors, and
 //! [`AssetServer::wait_for_asset`] (and its untyped/id variants) suspends until
@@ -54,6 +56,7 @@
 
 mod asset;
 mod assets;
+mod direct_access;
 mod event;
 mod folder;
 mod handle;
@@ -71,6 +74,7 @@ pub use asset::{Asset, VisitAssetDependencies};
 pub use assets::{
     AssetMut, Assets, AssetsMutIterator, InvalidGenerationError, LoadedUntypedAsset,
 };
+pub use direct_access::DirectAssetAccessExt;
 pub use event::{AssetEvent, AssetLoadFailedEvent};
 pub use folder::LoadedFolder;
 pub use handle::{
@@ -89,7 +93,7 @@ pub use loader::{
 };
 pub use server::{
     AddAsyncError, AssetLoadError, AssetLoaderError, AssetServer, AssetServerMode,
-    DependencyLoadState, LoadState, MissingAssetLoaderForExtensionError,
+    DependencyLoadState, LoadBuilder, LoadState, MissingAssetLoaderForExtensionError,
     MissingAssetLoaderForTypeIdError, MissingAssetLoaderForTypeNameError,
     RecursiveDependencyLoadState, WaitForAssetError, handle_internal_asset_events,
 };
