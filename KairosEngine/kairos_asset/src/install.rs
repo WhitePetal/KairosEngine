@@ -38,6 +38,7 @@ use kairos_ecs::world::{FromWorld, World};
 use crate::asset::Asset;
 use crate::assets::{Assets, LoadedUntypedAsset};
 use crate::event::{AssetEvent, AssetLoadFailedEvent};
+use crate::folder::LoadedFolder;
 use crate::io::{AssetSourceBuilders, UnapprovedPathMode};
 use crate::loader::AssetLoader;
 use crate::meta::AssetMetaCheck;
@@ -273,9 +274,11 @@ pub fn install(world: &mut World, options: AssetOptions) {
         schedules.entry(stages.startup);
     }
 
-    // The untyped-load wrapper is a core asset type, so its store and drivers are
-    // registered with the rest of the core (bevy does the same in `AssetPlugin`).
+    // The untyped-load wrapper and the folder value are core asset types, so
+    // their stores and drivers are registered with the rest of the core (bevy
+    // does the same in `AssetPlugin`).
     world.init_asset::<LoadedUntypedAsset>();
+    world.init_asset::<LoadedFolder>();
 }
 
 /// The per-type registration API, the `World` counterpart to `bevy_asset`'s

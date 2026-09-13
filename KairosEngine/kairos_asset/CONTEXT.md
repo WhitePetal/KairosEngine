@@ -56,6 +56,10 @@ How far an asset has got — not loaded, loading, loaded, or failed. Tracked for
 A load started without a statically known asset type: the path is resolved to a loader first, and the result is handed back through a `LoadedUntypedAsset` wrapper rather than a typed handle.
 *Avoid*: dynamic asset, erased asset
 
+**Folder load**:
+A load of a whole directory: the folder is walked recursively, each file it holds is resolved through the untyped-load path, and the result is a `LoadedFolder` asset listing the handles of everything found.
+*Avoid*: directory load, folder scan
+
 **Meta sidecar**:
 A file beside an asset recording which loader handles it and the settings to load it with.
 *Avoid*: config, manifest

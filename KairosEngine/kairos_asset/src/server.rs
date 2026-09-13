@@ -2,10 +2,11 @@
 //! handles, and querying load state.
 //!
 //! This mirrors `bevy_asset`'s `server/mod.rs`. The pieces that are out of scope
-//! for the P0 core are deliberately absent: `load_folder` loads, `add_async`, and
-//! the `wait_for_asset*` family. What is here is the
+//! for the P0 core are deliberately absent: `add_async` and the
+//! `wait_for_asset*` family. What is here is the
 //! pipeline the A-tier API needs: registration, `load`/`load_builder`/`add`,
-//! `reload`, untyped loads, and the load-state and handle accessors.
+//! `reload`, untyped loads, folder loads, and the load-state and handle
+//! accessors.
 //!
 //! Loading itself is asynchronous. A `load` records the handle and spawns a task
 //! on the [`IoTaskPool`]; that task reads the source, runs the loader, and
@@ -37,7 +38,7 @@ use std::{
 
 use atomicow::CowArc;
 use crossbeam_channel::{Receiver, Sender};
-use futures_lite::FutureExt;
+use futures_lite::{FutureExt, StreamExt};
 use kairos_ecs::change_detection::Mut;
 use kairos_ecs::resource::Resource;
 use kairos_ecs::world::World;
@@ -46,6 +47,7 @@ use kairos_tasks::{IoTaskPool, TaskPool};
 use crate::asset::{Asset, VisitAssetDependencies};
 use crate::assets::{Assets, LoadedUntypedAsset};
 use crate::event::{AssetEvent, AssetLoadFailedEvent};
+use crate::folder::LoadedFolder;
 use crate::handle::{Handle, UntypedHandle};
 use crate::id::{AssetId, UntypedAssetId};
 use crate::io::{
@@ -741,6 +743,113 @@ impl AssetServer {
             loaded_asset,
         });
         handle
+    }
+
+    /// Loads every asset under `path` recursively.
+    ///
+    /// The returned handle names a [`LoadedFolder`] whose value lists the
+    /// handles to all discovered assets. Loading the same folder again returns
+    /// the same handle; its
+    /// [`RecursiveDependencyLoadState`](crate::RecursiveDependencyLoadState)
+    /// reports whether every asset it discovered has finished loading too.
+    ///
+    /// A file that no registered loader can read is skipped rather than failing
+    /// the whole folder. An empty directory loads an empty folder; a directory
+    /// that does not exist fails the load.
+    #[must_use = "not using the returned strong handle may result in the unexpected release of the assets"]
+    pub fn load_folder<'a>(&self, path: impl Into<AssetPath<'a>>) -> Handle<LoadedFolder> {
+        let path = path.into().into_owned();
+        let (handle, should_load) = self.write_infos().get_or_create_path_handle_erased(
+            path.clone(),
+            TypeId::of::<LoadedFolder>(),
+            Some(type_name::<LoadedFolder>()),
+            HandleLoadingMode::Request,
+        );
+        if should_load {
+            self.load_folder_internal(handle.id(), path);
+        }
+        handle.typed_debug_checked()
+    }
+
+    /// Spawns the task that walks a folder and collects its assets' handles.
+    ///
+    /// Kept separate from [`AssetServer::load_folder`] so the hot-reload track
+    /// can re-run a folder walk for a handle that already exists.
+    pub(crate) fn load_folder_internal(&self, id: UntypedAssetId, path: AssetPath<'static>) {
+        /// Walks `path` in `reader`, pushing one handle per discovered asset.
+        async fn load_folder<'a>(
+            source: AssetSourceId<'static>,
+            path: &'a Path,
+            reader: &'a dyn ErasedAssetReader,
+            server: &'a AssetServer,
+            handles: &'a mut Vec<UntypedHandle>,
+        ) -> Result<(), AssetLoadError> {
+            if reader.is_directory(path).await? {
+                let mut path_stream = reader.read_directory(path).await?;
+                while let Some(child_path) = path_stream.next().await {
+                    if reader.is_directory(&child_path).await? {
+                        Box::pin(load_folder(
+                            source.clone(),
+                            &child_path,
+                            reader,
+                            server,
+                            handles,
+                        ))
+                        .await?;
+                    } else {
+                        // Build the path directly instead of parsing a string,
+                        // so a `#` in a filename is not read as a label.
+                        let asset_path = AssetPath::from_path_buf(child_path)
+                            .with_source(source.clone());
+                        match server.load_builder().load_untyped_async(asset_path).await {
+                            Ok(handle) => handles.push(handle),
+                            // A file no loader recognizes is not an asset of this
+                            // server; skip it instead of failing the folder.
+                            Err(
+                                AssetLoadError::MissingAssetLoader { .. }
+                                | AssetLoadError::MissingAssetLoaderForTypeName { .. },
+                            ) => {}
+                            Err(error) => return Err(error),
+                        }
+                    }
+                }
+            }
+            Ok(())
+        }
+
+        let server = self.clone();
+        io_task_pool()
+            .spawn(async move {
+                let result = async {
+                    let source = server
+                        .get_source(path.source())
+                        .map_err(AssetLoadError::MissingAssetSourceError)?;
+                    let reader: &dyn ErasedAssetReader = match server.data.mode {
+                        AssetServerMode::Unprocessed => source.reader(),
+                        AssetServerMode::Processed => source.processed_reader()?,
+                    };
+                    let mut handles = Vec::new();
+                    load_folder(source.id(), path.path(), reader, &server, &mut handles).await?;
+                    Ok(handles)
+                }
+                .await;
+
+                match result {
+                    Ok(handles) => server.send_asset_event(InternalAssetEvent::Loaded {
+                        id,
+                        loaded_asset: LoadedAsset::new_with_dependencies(LoadedFolder {
+                            handles,
+                        })
+                        .into(),
+                    }),
+                    Err(error) => server.send_asset_event(InternalAssetEvent::Failed {
+                        id,
+                        path,
+                        error: Arc::new(error),
+                    }),
+                }
+            })
+            .detach();
     }
 
     /// The load states of `id`: its own, its direct dependencies', and its

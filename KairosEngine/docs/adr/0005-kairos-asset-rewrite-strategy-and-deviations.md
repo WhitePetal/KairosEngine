@@ -66,9 +66,9 @@ Status: accepted
 6. **`Asset` 不含 `TypePath`**：加载器名以 `std::any::type_name` 为准。
 7. **句柄非 `Copy`**：`Handle<A>` 内部的 `Arc` 就是引用计数，最后一个强句柄
    析构才发 `DropEvent`；命名可先于存在（弱句柄只带 id）。
-8. **明确延后**的部分：整目录加载（`load_folder`）、`add_async`、
-   `wait_for_asset*`、`AssetProcessor`。迁移期保留现有手动加工管线（ADR 0002）。
-   （未类型化加载与 `Handle` guard 已随后续 effort #214 的 A2 片落地。）
+8. **明确延后**的部分：`add_async`、`wait_for_asset*`、`AssetProcessor`。迁移期保留现有手动加工管线（ADR 0002）。
+   （未类型化加载与 `Handle` guard 已随后续 effort #214 的 A2 片落地；整目录加载 `load_folder`
+   与 `LoadedFolder` 已随 A3 片落地。）
 9. **`load_untyped_async` 也执行 `UnapprovedPathMode` 门**：上游 `LoadBuilder` 的该
    方法不查未批准路径；kairos 让它与其余加载入口一致，`Forbid` 一律拒绝
    （`Deny` 仍可被 `override_unapproved` 覆盖）。

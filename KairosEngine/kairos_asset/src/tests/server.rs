@@ -3,7 +3,7 @@
 
 use std::{
     any::TypeId,
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
@@ -19,11 +19,11 @@ use kairos_tasks::ConditionalSendFuture;
 use crate::io::{
     AssetReader, AssetReaderError, AssetReaderFuture, AssetSourceBuilder, AssetSourceBuilders,
     AssetSourceId, ErasedAssetReader, PathStream, Reader, UnapprovedPathMode, VecReader,
-    empty_path_stream,
+    empty_path_stream, file::FileAssetReader,
 };
 use crate::{
     Asset, AssetEvent, AssetLoadFailedEvent, AssetLoader, AssetMetaCheck, AssetPath, AssetServer,
-    AssetServerMode, Assets, Handle, LoadContext, LoadedUntypedAsset, UntypedAssetId,
+    AssetServerMode, Assets, Handle, LoadContext, LoadedFolder, LoadedUntypedAsset, UntypedAssetId,
     VisitAssetDependencies, handle_internal_asset_events,
 };
 
@@ -214,6 +214,101 @@ impl AssetReader for MutableReader {
     }
 }
 
+/// An in-memory reader with real directories, so a folder load has a tree to
+/// walk. Files and directories are declared explicitly; a path that is neither
+/// is a miss.
+#[derive(Clone, Default)]
+struct TreeReader {
+    files: Arc<HashMap<PathBuf, Vec<u8>>>,
+    dirs: Arc<HashSet<PathBuf>>,
+}
+
+impl TreeReader {
+    fn new(files: &[(&str, &[u8])], dirs: &[&str]) -> Self {
+        Self {
+            files: Arc::new(
+                files
+                    .iter()
+                    .map(|(path, bytes)| (PathBuf::from(path), bytes.to_vec()))
+                    .collect(),
+            ),
+            dirs: Arc::new(dirs.iter().map(PathBuf::from).collect()),
+        }
+    }
+}
+
+impl AssetReader for TreeReader {
+    fn read<'a>(&'a self, path: &'a Path) -> impl AssetReaderFuture<Value: Reader + 'a> {
+        let bytes = self.files.get(path).cloned();
+        async move {
+            bytes
+                .map(VecReader::new)
+                .ok_or_else(|| AssetReaderError::NotFound(path.to_path_buf()))
+        }
+    }
+
+    fn read_meta<'a>(&'a self, path: &'a Path) -> impl AssetReaderFuture<Value: Reader + 'a> {
+        async move { Err::<VecReader, _>(AssetReaderError::NotFound(path.to_path_buf())) }
+    }
+
+    fn read_directory<'a>(
+        &'a self,
+        path: &'a Path,
+    ) -> impl ConditionalSendFuture<Output = Result<Box<PathStream>, AssetReaderError>> {
+        let mut entries: Vec<PathBuf> = self
+            .files
+            .keys()
+            .chain(self.dirs.iter())
+            .filter(|entry| entry.parent() == Some(path))
+            .cloned()
+            .collect();
+        entries.sort();
+        let is_dir = self.dirs.contains(path);
+        async move {
+            if is_dir {
+                Ok(Box::new(futures_lite::stream::iter(entries)) as Box<PathStream>)
+            } else {
+                Err(AssetReaderError::NotFound(path.to_path_buf()))
+            }
+        }
+    }
+
+    fn is_directory<'a>(
+        &'a self,
+        path: &'a Path,
+    ) -> impl ConditionalSendFuture<Output = Result<bool, AssetReaderError>> {
+        let is_dir = self.dirs.contains(path);
+        let is_file = self.files.contains_key(path);
+        async move {
+            if is_dir {
+                Ok(true)
+            } else if is_file {
+                Ok(false)
+            } else {
+                Err(AssetReaderError::NotFound(path.to_path_buf()))
+            }
+        }
+    }
+}
+
+/// A server whose default source is the file/directory `tree`.
+fn server_with_tree(files: &[(&str, &[u8])], dirs: &[&str]) -> AssetServer {
+    let reader = TreeReader::new(files, dirs);
+    let mut builders = AssetSourceBuilders::default();
+    builders.insert(
+        AssetSourceId::Default,
+        AssetSourceBuilder::new(move || Box::new(reader.clone()) as Box<dyn ErasedAssetReader>),
+    );
+    let sources = Arc::new(builders.build_sources(false, false));
+    AssetServer::new_with_meta_check(
+        sources,
+        AssetServerMode::Unprocessed,
+        AssetMetaCheck::Never,
+        false,
+        UnapprovedPathMode::Forbid,
+    )
+}
+
 /// A server whose default source is `reader`.
 fn server_with_reader(reader: MutableReader) -> AssetServer {
     let mut builders = AssetSourceBuilders::default();
@@ -267,21 +362,27 @@ fn server_with_files_and_mode(
 }
 
 /// A world holding the server, a [`ByteAsset`] store, a
-/// [`LoadedUntypedAsset`] store, and the asset messages.
+/// [`LoadedUntypedAsset`] store, a [`LoadedFolder`] store, and the asset
+/// messages.
 fn world_for(server: &AssetServer) -> World {
     let assets = Assets::<ByteAsset>::default();
     server.register_asset(&assets);
     let untyped = Assets::<LoadedUntypedAsset>::default();
     server.register_asset(&untyped);
+    let folders = Assets::<LoadedFolder>::default();
+    server.register_asset(&folders);
 
     let mut world = World::new();
     world.insert_resource(assets);
     world.insert_resource(untyped);
+    world.insert_resource(folders);
     world.insert_resource(server.clone());
     world.insert_resource(Messages::<AssetEvent<ByteAsset>>::default());
     world.insert_resource(Messages::<AssetLoadFailedEvent<ByteAsset>>::default());
     world.insert_resource(Messages::<AssetEvent<LoadedUntypedAsset>>::default());
     world.insert_resource(Messages::<AssetLoadFailedEvent<LoadedUntypedAsset>>::default());
+    world.insert_resource(Messages::<AssetEvent<LoadedFolder>>::default());
+    world.insert_resource(Messages::<AssetLoadFailedEvent<LoadedFolder>>::default());
     world
 }
 
@@ -849,4 +950,167 @@ fn a_guard_is_dropped_when_the_load_fails() {
         dropped.load(Ordering::SeqCst),
         "the guard is dropped when the load fails"
     );
+}
+
+#[test]
+fn load_folder_collects_every_asset_recursively() {
+    let server = server_with_tree(
+        &[
+            ("folder/a.bytes", b"a"),
+            ("folder/sub/b.bytes", b"b"),
+            ("folder/sub/deeper/c.bytes", b"c"),
+        ],
+        &["folder", "folder/sub", "folder/sub/deeper"],
+    );
+    server.register_loader(ByteLoader);
+    let mut world = world_for(&server);
+
+    let handle = server.load_folder("folder");
+    let id = handle.id().untyped();
+    wait_for(&mut world, &server, id);
+
+    assert!(server.is_loaded_with_dependencies(id));
+    let folder = world
+        .resource::<Assets<LoadedFolder>>()
+        .get(handle.id())
+        .expect("the folder asset loaded");
+    assert_eq!(folder.handles.len(), 3, "every nested asset is collected");
+
+    let bytes = world.resource::<Assets<ByteAsset>>();
+    let mut values: Vec<Vec<u8>> = folder
+        .handles
+        .iter()
+        .map(|handle| {
+            assert_eq!(handle.type_id(), TypeId::of::<ByteAsset>());
+            bytes
+                .get(&handle.clone().typed_debug_checked::<ByteAsset>())
+                .expect("every discovered asset is loaded")
+                .0
+                .clone()
+        })
+        .collect();
+    values.sort();
+    assert_eq!(values, vec![b"a".to_vec(), b"b".to_vec(), b"c".to_vec()]);
+}
+
+#[test]
+fn load_folder_of_an_empty_directory_loads_with_no_handles() {
+    let server = server_with_tree(&[], &["empty"]);
+    server.register_loader(ByteLoader);
+    let mut world = world_for(&server);
+
+    let handle = server.load_folder("empty");
+    let id = handle.id().untyped();
+    wait_for(&mut world, &server, id);
+
+    assert!(server.is_loaded_with_dependencies(id));
+    let folder = world
+        .resource::<Assets<LoadedFolder>>()
+        .get(handle.id())
+        .expect("the empty folder loaded");
+    assert!(folder.handles.is_empty());
+}
+
+#[test]
+fn load_folder_of_a_missing_directory_fails() {
+    let server = server_with_tree(&[], &[]);
+    server.register_loader(ByteLoader);
+    let mut world = world_for(&server);
+
+    let handle = server.load_folder("missing");
+    let id = handle.id().untyped();
+    wait_for(&mut world, &server, id);
+
+    assert!(server.load_state(id).is_failed());
+    assert!(
+        world
+            .resource::<Assets<LoadedFolder>>()
+            .get(handle.id())
+            .is_none()
+    );
+}
+
+#[test]
+fn load_folder_skips_files_without_a_loader() {
+    let server = server_with_tree(
+        &[("mixed/a.bytes", b"a"), ("mixed/readme.txt", b"text")],
+        &["mixed"],
+    );
+    server.register_loader(ByteLoader);
+    let mut world = world_for(&server);
+
+    let handle = server.load_folder("mixed");
+    let id = handle.id().untyped();
+    wait_for(&mut world, &server, id);
+
+    let folder = world
+        .resource::<Assets<LoadedFolder>>()
+        .get(handle.id())
+        .expect("the folder loaded despite the unloadable file");
+    assert_eq!(folder.handles.len(), 1);
+    assert_eq!(folder.handles[0].type_id(), TypeId::of::<ByteAsset>());
+}
+
+#[test]
+fn repeated_folder_loads_reuse_the_same_handle() {
+    let server = server_with_tree(&[("folder/a.bytes", b"a")], &["folder"]);
+    server.register_loader(ByteLoader);
+    let mut world = world_for(&server);
+
+    let first = server.load_folder("folder");
+    let second = server.load_folder("folder");
+    assert_eq!(first.id(), second.id());
+
+    wait_for(&mut world, &server, first.id().untyped());
+    assert!(server.is_loaded_with_dependencies(first.id().untyped()));
+}
+
+#[test]
+fn load_folder_walks_a_real_directory() {
+    let dir = std::env::temp_dir().join(format!(
+        "kairos_asset_load_folder_{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(dir.join("sub")).unwrap();
+    std::fs::write(dir.join("a.bytes"), b"a").unwrap();
+    std::fs::write(dir.join("sub").join("b.bytes"), b"b").unwrap();
+    std::fs::write(dir.join("sub").join("note.txt"), b"unloadable").unwrap();
+    // A meta sidecar is addressable but must not be collected as an asset.
+    std::fs::write(dir.join("a.bytes.meta"), b"unused").unwrap();
+
+    let root = dir.clone();
+    let mut builders = AssetSourceBuilders::default();
+    builders.insert(
+        AssetSourceId::Default,
+        AssetSourceBuilder::new(move || {
+            Box::new(FileAssetReader::new(&root)) as Box<dyn ErasedAssetReader>
+        }),
+    );
+    let sources = Arc::new(builders.build_sources(false, false));
+    let server = AssetServer::new_with_meta_check(
+        sources,
+        AssetServerMode::Unprocessed,
+        AssetMetaCheck::Never,
+        false,
+        UnapprovedPathMode::Forbid,
+    );
+    server.register_loader(ByteLoader);
+    let mut world = world_for(&server);
+
+    let handle = server.load_folder("");
+    let id = handle.id().untyped();
+    wait_for(&mut world, &server, id);
+
+    let folder = world
+        .resource::<Assets<LoadedFolder>>()
+        .get(handle.id())
+        .expect("the folder loaded");
+    assert_eq!(
+        folder.handles.len(),
+        2,
+        "the nested byte assets load; the meta sidecar is not listed and the unloadable text file is skipped"
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
 }

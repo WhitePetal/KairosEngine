@@ -28,7 +28,8 @@
 //!   [`ErasedLoadedAsset`]. [`AssetServer`] registers loaders and asset types,
 //!   tracks each asset's [`LoadState`], and runs loads as tasks on the
 //!   `IoTaskPool`; [`handle_internal_asset_events`] inserts the finished values
-//!   into their stores. Untyped loads go through [`LoadedUntypedAsset`].
+//!   into their stores. Untyped loads go through [`LoadedUntypedAsset`], and
+//!   recursive folder loads through [`LoadedFolder`].
 //! - Registration and scheduling: [`install`] records the caller's tracking,
 //!   event, and startup stage labels in [`AssetStages`] and builds the
 //!   [`AssetServer`] from the [`AssetOptions`] it is given;
@@ -36,13 +37,13 @@
 //!   registers a type's store, its `Messages`, and its per-type driver systems,
 //!   mounted under the [`AssetTrackingSystems`]/[`AssetEventSystems`] sets.
 //!
-//! Deliberately absent for now (later tickets): folder loads,
-//! `add_async`/`wait_for_asset*`, and the processor. This crate does
-//! not import `tokio` (ADR 0001).
+//! Deliberately absent for now (later tickets): `add_async`/`wait_for_asset*`,
+//! and the processor. This crate does not import `tokio` (ADR 0001).
 
 mod asset;
 mod assets;
 mod event;
+mod folder;
 mod handle;
 mod id;
 mod index;
@@ -58,6 +59,7 @@ pub use assets::{
     AssetMut, Assets, AssetsMutIterator, InvalidGenerationError, LoadedUntypedAsset,
 };
 pub use event::{AssetEvent, AssetLoadFailedEvent};
+pub use folder::LoadedFolder;
 pub use handle::{
     AssetHandleProvider, DropEvent, Handle, StrongHandle, UntypedAssetConversionError,
     UntypedHandle,
