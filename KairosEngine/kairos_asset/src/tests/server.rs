@@ -2,6 +2,7 @@
 //! A-tier public API.
 
 use std::{
+    any::TypeId,
     collections::HashMap,
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
@@ -18,7 +19,7 @@ use crate::io::{
     empty_path_stream,
 };
 use crate::{
-    Asset, AssetEvent, AssetLoadFailedEvent, AssetLoader, AssetMetaCheck, AssetServer,
+    Asset, AssetEvent, AssetLoadFailedEvent, AssetLoader, AssetMetaCheck, AssetPath, AssetServer,
     AssetServerMode, Assets, Handle, LoadContext, UntypedAssetId, VisitAssetDependencies,
     handle_internal_asset_events,
 };
@@ -423,6 +424,40 @@ fn handles_and_paths_are_reported_for_a_loaded_asset() {
         server.get_path(id).map(|path| path.path().to_path_buf()),
         Some(PathBuf::from("data.bytes"))
     );
+}
+
+#[test]
+fn the_untyped_accessors_expose_the_loaded_asset() {
+    let server = server_with_files(&[("data.bytes", b"hello")]);
+    server.register_loader(ByteLoader);
+    let mut world = world_for(&server);
+
+    let handle = server.load::<ByteAsset>("data.bytes");
+    let id = handle.id().untyped();
+    wait_for(&mut world, &server, id);
+
+    // Handle accessors, by id and by path.
+    assert_eq!(server.get_id_handle_untyped(id).map(|h| h.id()), Some(id));
+    assert_eq!(
+        server
+            .get_path_and_type_id_handle(&AssetPath::from("data.bytes"), TypeId::of::<ByteAsset>())
+            .map(|h| h.id()),
+        Some(id)
+    );
+    assert_eq!(server.get_handle_untyped("data.bytes").map(|h| h.id()), Some(id));
+    assert_eq!(server.get_handles_untyped("data.bytes").len(), 1);
+
+    // Path id accessors.
+    assert_eq!(server.get_path_id("data.bytes"), Some(id));
+    assert_eq!(server.get_path_ids("data.bytes"), vec![id]);
+
+    // Source accessor.
+    assert!(server.get_source(AssetSourceId::Default).is_ok());
+    assert!(server.get_source("nope").is_err());
+
+    // The handle visits its own id, whose dependency states are loaded.
+    assert!(server.are_dependencies_loaded(&handle));
+    assert!(server.are_direct_dependencies_loaded(&handle));
 }
 
 #[test]

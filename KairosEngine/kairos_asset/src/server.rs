@@ -42,7 +42,7 @@ use kairos_ecs::resource::Resource;
 use kairos_ecs::world::World;
 use kairos_tasks::{IoTaskPool, TaskPool};
 
-use crate::asset::Asset;
+use crate::asset::{Asset, VisitAssetDependencies};
 use crate::assets::Assets;
 use crate::event::{AssetEvent, AssetLoadFailedEvent};
 use crate::handle::{Handle, UntypedHandle};
@@ -162,7 +162,7 @@ impl AssetServer {
     }
 
     /// The [`AssetSource`] named by `source`.
-    pub(crate) fn get_source<'a>(
+    pub fn get_source<'a>(
         &self,
         source: impl Into<AssetSourceId<'a>>,
     ) -> Result<&AssetSource, MissingAssetSourceError> {
@@ -704,10 +704,72 @@ impl AssetServer {
         )
     }
 
+    /// Whether every asset `value` depends on — directly or transitively — has
+    /// finished loading.
+    ///
+    /// Lets callers ask whether all handles held in a resource or component are
+    /// ready without naming each one.
+    pub fn are_dependencies_loaded(&self, value: &impl VisitAssetDependencies) -> bool {
+        let infos = self.read_infos();
+        let mut loaded = true;
+        value.visit_dependencies(&mut |asset_id| {
+            // UUID assets are not tracked by the server, so they count as loaded.
+            if matches!(asset_id, UntypedAssetId::Uuid { .. }) {
+                return;
+            }
+            let Some(info) = infos.get(asset_id) else {
+                // An id the server no longer knows cannot be proven loaded.
+                loaded = false;
+                return;
+            };
+            if !info.rec_dep_load_state.is_loaded() {
+                loaded = false;
+            }
+        });
+        loaded
+    }
+
+    /// Whether every direct dependency of `value` has finished loading.
+    ///
+    /// Recursive dependencies are not considered; see
+    /// [`are_dependencies_loaded`](Self::are_dependencies_loaded) for those.
+    pub fn are_direct_dependencies_loaded(&self, value: &impl VisitAssetDependencies) -> bool {
+        let infos = self.read_infos();
+        let mut loaded = true;
+        value.visit_dependencies(&mut |asset_id| {
+            // UUID assets are not tracked by the server, so they count as loaded.
+            if matches!(asset_id, UntypedAssetId::Uuid { .. }) {
+                return;
+            }
+            let Some(info) = infos.get(asset_id) else {
+                // An id the server no longer knows cannot be proven loaded.
+                loaded = false;
+                return;
+            };
+            if !info.dep_load_state.is_loaded() {
+                loaded = false;
+            }
+        });
+        loaded
+    }
+
     /// An active handle for `path`, if the asset has started loading or is alive.
     pub fn get_handle<'a, A: Asset>(&self, path: impl Into<AssetPath<'a>>) -> Option<Handle<A>> {
         self.get_path_and_type_id_handle(&path.into(), TypeId::of::<A>())
             .map(UntypedHandle::typed_debug_checked)
+    }
+
+    /// An active untyped handle for `path`, if any asset at that path has
+    /// started loading or is still alive.
+    ///
+    /// Returns the first handle when several asset types are registered for one
+    /// path; see [`get_handles_untyped`](Self::get_handles_untyped) for all of
+    /// them.
+    pub fn get_handle_untyped<'a>(&self, path: impl Into<AssetPath<'a>>) -> Option<UntypedHandle> {
+        self.read_infos()
+            .get_handles_untyped(&path.into())
+            .into_iter()
+            .next()
     }
 
     /// An active handle for `id`, if the server manages that asset.
@@ -717,7 +779,7 @@ impl AssetServer {
     }
 
     /// The type-erased counterpart of [`AssetServer::get_id_handle`].
-    pub(crate) fn get_id_handle_untyped(&self, id: UntypedAssetId) -> Option<UntypedHandle> {
+    pub fn get_id_handle_untyped(&self, id: UntypedAssetId) -> Option<UntypedHandle> {
         self.read_infos().get_index_handle(id)
     }
 
@@ -726,13 +788,27 @@ impl AssetServer {
         self.read_infos().contains_key(id)
     }
 
-    /// Every active untyped handle for `path`.
-    pub(crate) fn get_handles_untyped<'a>(&self, path: impl Into<AssetPath<'a>>) -> Vec<UntypedHandle> {
+    /// An active untyped asset id for `path`, if any asset at that path has
+    /// started loading or is still alive.
+    ///
+    /// Returns the first id when several assets are registered for one path; see
+    /// [`get_path_ids`](Self::get_path_ids) for all of them.
+    pub fn get_path_id<'a>(&self, path: impl Into<AssetPath<'a>>) -> Option<UntypedAssetId> {
+        self.read_infos().get_path_ids(&path.into()).into_iter().next()
+    }
+
+    /// Every active untyped asset id for `path`, across every asset type.
+    pub fn get_path_ids<'a>(&self, path: impl Into<AssetPath<'a>>) -> Vec<UntypedAssetId> {
+        self.read_infos().get_path_ids(&path.into())
+    }
+
+    /// Every active untyped handle for `path`, across every asset type.
+    pub fn get_handles_untyped<'a>(&self, path: impl Into<AssetPath<'a>>) -> Vec<UntypedHandle> {
         self.read_infos().get_handles_untyped(&path.into())
     }
 
     /// An active handle for `path` and `type_id`.
-    fn get_path_and_type_id_handle(
+    pub fn get_path_and_type_id_handle(
         &self,
         path: &AssetPath<'_>,
         type_id: TypeId,

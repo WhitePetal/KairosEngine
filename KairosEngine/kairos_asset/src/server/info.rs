@@ -288,6 +288,14 @@ impl AssetInfos {
         by_type.values().filter_map(|id| self.get_index_handle(*id)).collect()
     }
 
+    /// The ids currently registered for `path`, across every type.
+    pub(crate) fn get_path_ids(&self, path: &AssetPath<'_>) -> Vec<UntypedAssetId> {
+        let Some(by_type) = self.path_to_index.get(&path.clone_owned()) else {
+            return Vec::new();
+        };
+        by_type.values().copied().collect()
+    }
+
     /// The handle for `path` and `type_id`, if one is registered and alive.
     pub(crate) fn get_path_and_type_id_handle(
         &self,
