@@ -1,0 +1,30 @@
+(
+    meta_format_version: "1.0",
+    processed_info: Some((
+        hash: (50, 209, 220, 145, 106, 170, 8, 222, 239, 5, 239, 9, 116, 237, 171, 147, 75, 180, 85, 70, 238, 157, 186, 211, 75, 236, 163, 254, 28, 145, 80, 220),
+        full_hash: (140, 22, 75, 152, 127, 213, 92, 61, 107, 116, 96, 47, 9, 35, 90, 74, 20, 143, 179, 64, 100, 37, 173, 246, 230, 151, 116, 238, 104, 188, 190, 41),
+        process_dependencies: [],
+    )),
+    asset: Load(
+        loader: "kairos_graphics::texture::TextureLoader",
+        settings: (
+            width: 2,
+            height: 2,
+            format: Rgba8Unorm,
+            sampler: (
+                filter_mode: Linear,
+                address_mode_u: Repeat,
+                address_mode_v: Repeat,
+                address_mode_w: Repeat,
+                mipmap: Some((
+                    filter: Linear,
+                    anisotropy_clamp: 2,
+                    lod_min_clamp: 0.0,
+                    lod_max_clamp: 1.0,
+                )),
+                compare: None,
+                border_color: None,
+            ),
+        ),
+    ),
+)

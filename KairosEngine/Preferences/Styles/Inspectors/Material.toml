@@ -25,4 +25,4 @@ camera_orbit_speed = 0.008
 camera_zoom_speed = 0.01
 camera_min_distance = 0.03
 camera_max_distance = 3000.0
-preview_meshes = ["res/models/Suzanne.mesh"]
+preview_meshes = ["imported_assets/Default/res/models/Suzanne.glb"]

@@ -427,6 +427,30 @@ fn processed_mode_gives_the_default_source_a_processed_reader() {
 }
 
 #[test]
+fn processed_file_path_is_configurable_and_excluded() {
+    let mut world = World::new();
+    install(
+        &mut world,
+        options()
+            .with_mode(AssetMode::Processed)
+            .with_processed_file_path("out/imported"),
+    );
+    let source = world
+        .resource::<AssetServer>()
+        .get_source(AssetSourceId::Default)
+        .expect("the default source exists");
+    assert!(
+        source.processed_reader().is_ok(),
+        "the custom processed root wires a processed reader"
+    );
+    assert_eq!(
+        source.unprocessed_exclude(),
+        Some(std::path::Path::new("out")),
+        "the custom processed root's top-level directory is excluded from the source scan"
+    );
+}
+
+#[test]
 fn processed_mode_with_a_processor_wires_layout_2() {
     let source = AssetSourceBuilder::new({
         let reader = MemoryReader::new(&[("data.bytes", b"source")]);

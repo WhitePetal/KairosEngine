@@ -84,6 +84,13 @@ Status: accepted
     任务在依赖已失败后不会被唤醒。kairos 在失败沿依赖树向上传播时（`propagate_failed_state`）
     以及资产带着已失败的依赖树落定时唤醒，`WaitForAssetError::DependencyFailed`
     因此可被观测。
+12. **默认 source 排除成品子树**：ADR 0004 把默认 source root 定在进程 cwd，
+    成品 root `imported_assets/Default` 因此落在未处理 root 之内；上游 bevy 的
+    `assets/` 与 `imported_assets/` 互不嵌套，无此问题。kairos 让
+    `AssetSourceBuilder::platform_default`
+    在成品 root 嵌套于未处理 root 时，自动把成品路径的顶层目录（`imported_assets`，
+    连带旁边的 WAL `log`）记为 source 的 `unprocessed_exclude`；processor 的
+    初扫与 `AssetSourceEvent` 处理都跳过它，成品不会被当源二次加工（#239）。
 
 ## 考虑过的替代
 

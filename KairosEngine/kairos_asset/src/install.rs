@@ -116,6 +116,10 @@ pub struct AssetOptions {
     /// `None`, watching follows the `watch` cargo feature, which the default
     /// feature set turns on through `file_watcher`.
     pub watch_for_changes_override: Option<bool>,
+    /// The processed root, relative to the working directory. `None` keeps the
+    /// default `imported_assets/Default` (ADR 0004). Only consulted in
+    /// [`AssetMode::Processed`].
+    pub processed_file_path: Option<String>,
 }
 
 impl AssetOptions {
@@ -140,6 +144,7 @@ impl AssetOptions {
             meta_check: AssetMetaCheck::default(),
             use_asset_processor: cfg!(feature = "use_asset_processor"),
             watch_for_changes_override: None,
+            processed_file_path: None,
         }
     }
 
@@ -164,6 +169,15 @@ impl AssetOptions {
     /// Overrides whether the server watches its sources for changes.
     pub fn with_watch_for_changes_override(mut self, watch: bool) -> Self {
         self.watch_for_changes_override = Some(watch);
+        self
+    }
+
+    /// Sets the processed root, relative to the working directory.
+    ///
+    /// Defaults to `imported_assets/Default`; only consulted in
+    /// [`AssetMode::Processed`].
+    pub fn with_processed_file_path(mut self, path: impl Into<String>) -> Self {
+        self.processed_file_path = Some(path.into());
         self
     }
 }
@@ -243,7 +257,12 @@ pub fn install(world: &mut World, options: AssetOptions) {
         let mut builders = world.get_resource_or_init::<AssetSourceBuilders>();
         let processed_path = match options.mode {
             AssetMode::Unprocessed => None,
-            AssetMode::Processed => Some(AssetOptions::DEFAULT_PROCESSED_FILE_PATH),
+            AssetMode::Processed => Some(
+                options
+                    .processed_file_path
+                    .as_deref()
+                    .unwrap_or(AssetOptions::DEFAULT_PROCESSED_FILE_PATH),
+            ),
         };
         builders.init_default_source(AssetOptions::DEFAULT_UNPROCESSED_FILE_PATH, processed_path);
         if builders.get_mut(EMBEDDED).is_none() {

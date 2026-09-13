@@ -260,15 +260,20 @@ impl KairosGame {
         );
 
         // The mesh products are produced by the asset processor (see
-        // `kairos_graphics::mesh::MeshProcessor`); the game only loads them.
+        // `kairos_graphics::mesh::MeshProcessor`) and committed under the
+        // processed root; the game only loads them.
         let plan_mesh_asset = engine
             .world
             .resource::<AssetServer>()
-            .load::<Mesh>(PathBuf::from("res/models/Plane.mesh_bin"));
+            .load::<Mesh>(PathBuf::from(
+                "imported_assets/Default/res/models/Plane.glb",
+            ));
         let ball_mesh_asset = engine
             .world
             .resource::<AssetServer>()
-            .load::<Mesh>(PathBuf::from("res/models/Ball.mesh_bin"));
+            .load::<Mesh>(PathBuf::from(
+                "imported_assets/Default/res/models/Ball.glb",
+            ));
         let plane_mesh = LODMesh::new(plan_mesh_asset);
         let ball_mesh = LODMesh::new(ball_mesh_asset);
 

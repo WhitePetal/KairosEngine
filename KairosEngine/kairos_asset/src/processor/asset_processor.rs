@@ -563,6 +563,13 @@ impl AssetProcessor {
             }
 
             for path in unprocessed_paths {
+                // The processed root can sit inside the unprocessed root (ADR
+                // 0004 roots the default source at the working directory), so
+                // drop this source's own output before it is mistaken for source
+                // content.
+                if source.is_excluded_from_unprocessed(&path) {
+                    continue;
+                }
                 asset_infos.get_or_insert(AssetPath::from(path).with_source(source.id()));
             }
 
@@ -620,6 +627,9 @@ impl AssetProcessor {
         event: AssetSourceEvent,
         new_task_sender: &async_channel::Sender<(AssetSourceId<'static>, PathBuf)>,
     ) {
+        if Self::event_is_excluded(source, &event) {
+            return;
+        }
         match event {
             AssetSourceEvent::AddedAsset(path)
             | AssetSourceEvent::AddedMeta(path)
@@ -717,6 +727,9 @@ impl AssetProcessor {
         path: PathBuf,
         new_task_sender: &async_channel::Sender<(AssetSourceId<'static>, PathBuf)>,
     ) -> Result<(), AssetReaderError> {
+        if source.is_excluded_from_unprocessed(&path) {
+            return Ok(());
+        }
         if source.reader().is_directory(&path).await? {
             let mut path_stream = source.reader().read_directory(&path).await?;
             while let Some(path) = path_stream.next().await {
@@ -857,6 +870,29 @@ impl AssetProcessor {
         infos
             .finish_processing(asset_path, result, &new_task_sender)
             .await;
+    }
+
+    /// Whether an event names a path inside the source's processed subtree.
+    ///
+    /// A rename is skipped if either side lies in the subtree: the scan-based initial
+    /// pass is the authority on what counts as source content, so no watcher event
+    /// may drag processed output back in as a source.
+    fn event_is_excluded(source: &AssetSource, event: &AssetSourceEvent) -> bool {
+        let excluded = |path: &Path| source.is_excluded_from_unprocessed(path);
+        match event {
+            AssetSourceEvent::AddedAsset(path)
+            | AssetSourceEvent::ModifiedAsset(path)
+            | AssetSourceEvent::RemovedAsset(path)
+            | AssetSourceEvent::AddedMeta(path)
+            | AssetSourceEvent::ModifiedMeta(path)
+            | AssetSourceEvent::RemovedMeta(path)
+            | AssetSourceEvent::AddedFolder(path)
+            | AssetSourceEvent::RemovedFolder(path)
+            | AssetSourceEvent::RemovedUnknown { path, .. } => excluded(path),
+            AssetSourceEvent::RenamedAsset { old, new }
+            | AssetSourceEvent::RenamedMeta { old, new }
+            | AssetSourceEvent::RenamedFolder { old, new } => excluded(old) || excluded(new),
+        }
     }
 
     /// Runs one asset through its `.meta`'s processor (or copies it verbatim when

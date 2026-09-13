@@ -17,6 +17,7 @@
 use std::{
     fmt::{self, Display},
     hash::{Hash, Hasher},
+    path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
 };
@@ -170,6 +171,16 @@ pub struct AssetSourceBuilder {
     /// The warning to log when processed watching is on but the processed slot
     /// has no watcher.
     pub processed_watch_warning: Option<&'static str>,
+    /// The unprocessed subtree to skip because it holds this source's processed
+    /// output.
+    ///
+    /// Only set when the processed root sits inside the unprocessed root (which
+    /// ADR 0004's working-directory root makes the norm). [`platform_default`]
+    /// derives it; the processor consults it so processed output is never
+    /// mistaken for a source asset.
+    ///
+    /// [`platform_default`]: AssetSourceBuilder::platform_default
+    pub unprocessed_exclude: Option<PathBuf>,
 }
 
 impl AssetSourceBuilder {
@@ -184,6 +195,7 @@ impl AssetSourceBuilder {
             processed_watcher: None,
             watch_warning: None,
             processed_watch_warning: None,
+            unprocessed_exclude: None,
         }
     }
 
@@ -261,6 +273,19 @@ impl AssetSourceBuilder {
         self
     }
 
+    /// Excludes `path` and everything under it from the unprocessed scan.
+    ///
+    /// The path is relative to this source's unprocessed root and is a single
+    /// top-level component (so the processed root and the transaction log beside
+    /// it share one exclusion). [`platform_default`] sets this automatically when
+    /// the processed root is nested under the unprocessed root.
+    ///
+    /// [`platform_default`]: AssetSourceBuilder::platform_default
+    pub(crate) fn with_unprocessed_exclude(mut self, path: impl Into<PathBuf>) -> Self {
+        self.unprocessed_exclude = Some(path.into());
+        self
+    }
+
     /// Builds the [`AssetSource`] for `id`.
     ///
     /// When `watch` is true the source watches for changes to unprocessed assets;
@@ -294,6 +319,7 @@ impl AssetSourceBuilder {
             processed_watcher: None,
             event_receiver: None,
             processed_event_receiver: None,
+            unprocessed_exclude: self.unprocessed_exclude.clone(),
         };
 
         if watch {
@@ -360,6 +386,14 @@ impl AssetSourceBuilder {
         ))
         .with_watch_warning(AssetSource::get_default_watch_warning());
         if let Some(processed_path) = processed_path {
+            // When the processed root lives under the source root, the processor
+            // must not walk into it: ADR 0004 roots the default source at the
+            // working directory, and `imported_assets/Default` sits inside it.
+            // Excluding the processed path's top-level component also skips the
+            // transaction log written beside `Default`.
+            if let Some(exclude) = processed_subtree_exclude(path, processed_path) {
+                builder = builder.with_unprocessed_exclude(exclude);
+            }
             let processed_reader_path = processed_path.to_owned();
             let processed_writer_path = processed_path.to_owned();
             builder = builder
@@ -381,6 +415,26 @@ impl AssetSourceBuilder {
         }
         builder
     }
+}
+
+/// The unprocessed subtree to skip when the processed root is nested under the
+/// unprocessed root.
+///
+/// Returns the processed path's first component relative to the unprocessed
+/// root — the whole `imported_assets` directory rather than just
+/// `imported_assets/Default`, so the transaction log beside `Default` is skipped
+/// too — or [`None`] when the roots do not overlap.
+fn processed_subtree_exclude(unprocessed: &str, processed: &str) -> Option<PathBuf> {
+    let unprocessed = Path::new(unprocessed);
+    let relative = if unprocessed.as_os_str().is_empty() {
+        Path::new(processed)
+    } else {
+        Path::new(processed).strip_prefix(unprocessed).ok()?
+    };
+    relative
+        .components()
+        .next()
+        .map(|component| PathBuf::from(component.as_os_str()))
 }
 
 /// Holds the [`AssetSourceBuilder`]s registered before the sources are frozen
@@ -531,6 +585,10 @@ pub struct AssetSource {
     processed_watcher: Option<Box<dyn AssetWatcher>>,
     event_receiver: Option<async_channel::Receiver<AssetSourceEvent>>,
     processed_event_receiver: Option<async_channel::Receiver<AssetSourceEvent>>,
+    /// The unprocessed subtree that holds this source's processed output and must
+    /// not be scanned as source content. See
+    /// [`AssetSourceBuilder::unprocessed_exclude`].
+    unprocessed_exclude: Option<PathBuf>,
 }
 
 impl AssetSource {
@@ -618,6 +676,24 @@ impl AssetSource {
     #[inline]
     pub fn should_process(&self) -> bool {
         self.processed_writer.is_some()
+    }
+
+    /// The unprocessed subtree that holds this source's processed output, if any.
+    ///
+    /// The path is relative to the unprocessed root; the processor skips it so
+    /// processed output is never reprocessed as source content.
+    #[inline]
+    pub fn unprocessed_exclude(&self) -> Option<&Path> {
+        self.unprocessed_exclude.as_deref()
+    }
+
+    /// Whether `path` (relative to the unprocessed root) lies inside the
+    /// processed subtree that must not be scanned as source content.
+    #[inline]
+    pub(crate) fn is_excluded_from_unprocessed(&self, path: &Path) -> bool {
+        self.unprocessed_exclude
+            .as_deref()
+            .is_some_and(|exclude| path.starts_with(exclude))
     }
 
     /// The warning to log for the current platform when watching is enabled but

@@ -4,9 +4,11 @@ use std::{thread, time::Duration};
 use futures_lite::future::block_on;
 use kairos_asset::io::{AssetSourceBuilder, AssetSourceBuilders, AssetSourceId};
 use kairos_asset::{
-    AssetAction, AssetMeta, AssetMetaDyn, AssetOptions, AssetProcessor, AssetServer, Assets,
-    FileTransactionLogFactory, install,
+    AssetAction, AssetEvent, AssetLoadFailedEvent, AssetMeta, AssetMetaDyn, AssetOptions,
+    AssetProcessor, AssetServer, Assets, FileTransactionLogFactory, handle_internal_asset_events,
+    install,
 };
+use kairos_ecs::message::Messages;
 use kairos_ecs::schedule::ScheduleLabel;
 use kairos_ecs::world::World;
 use kairos_math::float3;
@@ -36,12 +38,21 @@ fn models_dir() -> PathBuf {
         .join("res/models")
 }
 
+/// The committed products mirror the sources under the processed root
+/// (ADR 0004's `imported_assets/Default`, issue #239).
+fn imported_models_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("kairos_engine sits under the workspace root")
+        .join("imported_assets/Default/res/models")
+}
+
 fn read_or_panic(path: &Path) -> Vec<u8> {
     std::fs::read(path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
 }
 
-fn committed_bin(name: &str) -> Vec<u8> {
-    read_or_panic(&models_dir().join(name).with_extension("mesh_bin"))
+fn committed_product(name: &str) -> Vec<u8> {
+    read_or_panic(&imported_models_dir().join(format!("{name}.glb")))
 }
 
 /// A processor over a real file source under a fresh temp directory, with the
@@ -78,23 +89,32 @@ fn mesh_processor(name: &str) -> (AssetProcessor, PathBuf, PathBuf) {
 #[test]
 fn committed_model_binaries_decode_at_current_layout() {
     for name in SAMPLE_MODELS {
-        let mesh = decode_mesh(&committed_bin(name), name);
+        let mesh = decode_mesh(&committed_product(name), name);
         assert_mesh_sane(name, &mesh);
     }
 }
 
 /// A fresh run through [`MeshProcessor`] must be byte-identical to the committed
-/// products (guards the processor against drift). The run happens in a throwaway
-/// directory rooted outside `res/models`, so tracked files are never touched.
+/// products (guards the processor against drift), and the product must load back
+/// through the processor's own server. The run happens in a throwaway directory
+/// rooted outside `res/models`, so tracked files are never touched.
 #[test]
-fn fresh_processing_is_byte_identical_to_committed_binaries() {
+fn committed_model_sources_process_and_load_end_to_end() {
     for name in SAMPLE_MODELS {
         let (processor, unprocessed, processed) = mesh_processor(&format!("mesh_export_{name}"));
 
-        // Copy the committed `.glb` into the processor's unprocessed root.
-        let source = unprocessed.join(format!("{name}.glb"));
-        std::fs::copy(models_dir().join(name).with_extension("glb"), &source)
-            .unwrap_or_else(|e| panic!("copy {name}.glb into the temp root: {e}"));
+        // Stage the committed `.glb` source *and* its `.meta` sidecar, so the run
+        // exercises the `AssetAction::Process` path the migrated `res/` uses.
+        std::fs::copy(
+            models_dir().join(format!("{name}.glb")),
+            unprocessed.join(format!("{name}.glb")),
+        )
+        .unwrap_or_else(|e| panic!("copy {name}.glb into the temp root: {e}"));
+        std::fs::copy(
+            models_dir().join(format!("{name}.glb.meta")),
+            unprocessed.join(format!("{name}.glb.meta")),
+        )
+        .unwrap_or_else(|e| panic!("copy {name}.glb.meta into the temp root: {e}"));
 
         block_on(processor.run_initial_processing());
 
@@ -105,14 +125,43 @@ fn fresh_processing_is_byte_identical_to_committed_binaries() {
 
         assert_eq!(
             exported,
-            committed_bin(name),
-            "{name}: fresh processor output differs from the committed .mesh_bin"
+            committed_product(name),
+            "{name}: fresh processor output differs from the committed product"
         );
         assert!(
             processed.join(format!("{name}.glb.meta")).is_file(),
             "{name}: the product sidecar was not written"
         );
+
+        // The gate lets the product load back through the processor's server.
+        assert!(
+            load_through_processor(&processor, format!("{name}.glb")).is_some(),
+            "{name}: the processed product did not load"
+        );
     }
+}
+
+/// Loads `rel_path` through the processor's gated server, pumping until the
+/// asset lands or the retry budget runs out.
+fn load_through_processor(processor: &AssetProcessor, rel_path: String) -> Option<Mesh> {
+    let server = processor.server().clone();
+    let assets = Assets::<Mesh>::default();
+    server.register_asset(&assets);
+    let mut world = World::new();
+    world.insert_resource(assets);
+    world.insert_resource(server.clone());
+    world.insert_resource(Messages::<AssetEvent<Mesh>>::default());
+    world.insert_resource(Messages::<AssetLoadFailedEvent<Mesh>>::default());
+
+    let handle = server.load::<Mesh>(rel_path);
+    for _ in 0..500 {
+        handle_internal_asset_events(&mut world);
+        if let Some(mesh) = world.resource::<Assets<Mesh>>().get(handle.id()) {
+            return Some(mesh.clone());
+        }
+        thread::sleep(Duration::from_millis(5));
+    }
+    None
 }
 
 fn decode_mesh(bytes: &[u8], what: &str) -> Mesh {

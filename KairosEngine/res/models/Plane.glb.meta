@@ -1,0 +1,11 @@
+(
+    meta_format_version: "1.0",
+    asset: Process(
+        processor: "kairos_graphics::mesh::MeshProcessor",
+        settings: (
+            loader_settings: (),
+            transformer_settings: (),
+            saver_settings: (),
+        ),
+    ),
+)

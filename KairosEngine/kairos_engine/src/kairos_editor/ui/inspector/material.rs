@@ -86,7 +86,7 @@ struct MaterialInspectorStyle {
 }
 
 /// preview_meshes 为空时的回退预览网格（issue #37 默认配置）。
-const DEFAULT_PREVIEW_MESH: &str = "res/models/Suzanne.mesh";
+const DEFAULT_PREVIEW_MESH: &str = "imported_assets/Default/res/models/Suzanne.glb";
 
 impl MaterialInspectorStyle {
     fn new() -> Result<Self, Box<dyn std::error::Error>> {

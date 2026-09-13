@@ -1003,6 +1003,65 @@ fn file_source_writes_the_product_under_imported_assets_and_layout_2_loads_it() 
     let _ = std::fs::remove_dir_all(&root);
 }
 
+/// The default source's unprocessed root is the working directory and the
+/// processed root lives inside it (ADR 0004), so the processor must skip its own
+/// output. Without the exclusion a second pass would scan
+/// `imported_assets/Default/...` as source and nest a copy of the whole tree.
+#[test]
+fn nested_processed_root_is_not_scanned_as_source() {
+    let root = file_dir("nested_layout");
+    let processed = root.join("imported_assets/Default");
+    std::fs::create_dir_all(root.join("res")).unwrap();
+    std::fs::write(root.join("res/model.txt"), b"hello").unwrap();
+    std::fs::write(root.join("res/model.txt.meta"), process_meta("P:")).unwrap();
+
+    // The unprocessed root is the whole temp tree, with the processed root nested
+    // under it - exactly the default source's shape.
+    let builder = AssetSourceBuilder::platform_default(
+        root.to_str().unwrap(),
+        Some(processed.to_str().unwrap()),
+    );
+    let mut builders = AssetSourceBuilders::default();
+    builders.insert(AssetSourceId::Default, builder);
+    let (processor, _sources) = AssetProcessor::new(&mut builders, false);
+
+    processor
+        .data()
+        .set_log_factory(Box::new(TestLogFactory::default()))
+        .expect("the log factory is set before the processor starts");
+    processor.server().register_loader(TextLoader);
+    processor.register_processor(TextProcessor);
+    processor.set_default_processor::<TextProcessor>("txt");
+
+    let source = processor
+        .get_source(AssetSourceId::Default)
+        .expect("the default source is registered");
+    assert_eq!(
+        source.unprocessed_exclude(),
+        Some(Path::new("imported_assets"))
+    );
+
+    block_on(processor.run_initial_processing());
+    assert_eq!(
+        std::fs::read(processed.join("res/model.txt")).unwrap(),
+        b"P:hello"
+    );
+
+    // The exclusion kept the product out of the source view: only the real source
+    // path is known, not the copy the first pass wrote under the processed root
+    // (which a second pass with no exclusion would treat as a source and reprocess
+    // into `imported_assets/Default/imported_assets/...`).
+    let infos = block_on(processor.data().processing_state.asset_infos.read());
+    let product_path = AssetPath::from(PathBuf::from("imported_assets/Default/res/model.txt"))
+        .with_source(AssetSourceId::Default);
+    assert!(
+        infos.get(&product_path).is_none(),
+        "the processed root was scanned as source content"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 #[test]
 fn main_server_reports_a_missing_asset_as_a_failed_load() {
     let harness = Harness::new();
