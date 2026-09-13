@@ -21,6 +21,7 @@ use uuid::Uuid;
 use crate::asset::Asset;
 use crate::id::{AssetId, DEFAULT_UUID, UntypedAssetId};
 use crate::index::{AssetIndex, AssetIndexAllocator};
+use crate::meta::MetaTransform;
 
 /// Announces that the last strong handle to an asset was dropped.
 ///
@@ -50,11 +51,29 @@ impl DropEvent {
 ///
 /// Its [`Drop`] is the reference count hitting zero: it sends the [`DropEvent`]
 /// that tells the asset store the value is no longer needed.
-#[derive(Debug)]
+///
+/// It also carries the [`MetaTransform`] the asset was loaded with. It is stored
+/// on the handle because it is configuration tied to the lifetime of one load
+/// and it must be repeatable when the asset is hot-reloaded.
 pub struct StrongHandle {
     pub(crate) index: AssetIndex,
     pub(crate) type_id: TypeId,
+    /// The settings override applied when the asset was loaded, replayed on
+    /// reload.
+    pub(crate) meta_transform: Option<MetaTransform>,
     pub(crate) drop_sender: Sender<DropEvent>,
+}
+
+// Hand-written because [`MetaTransform`] is a boxed closure and therefore not
+// [`Debug`].
+impl Debug for StrongHandle {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("StrongHandle")
+            .field("index", &self.index)
+            .field("type_id", &self.type_id)
+            .field("drop_sender", &self.drop_sender)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Drop for StrongHandle {
@@ -90,15 +109,30 @@ impl AssetHandleProvider {
 
     /// Reserves a fresh strong [`UntypedHandle`], allocating a new index.
     pub fn reserve_handle(&self) -> UntypedHandle {
-        let index = self.allocator.reserve();
-        UntypedHandle::Strong(self.get_handle(index))
+        self.reserve_handle_internal(None)
     }
 
-    /// Wraps an already-reserved index in a strong handle.
-    pub(crate) fn get_handle(&self, index: AssetIndex) -> Arc<StrongHandle> {
+    /// [`AssetHandleProvider::reserve_handle`] with a [`MetaTransform`] attached
+    /// so a hot-reload replays the same loader settings.
+    pub(crate) fn reserve_handle_internal(
+        &self,
+        meta_transform: Option<MetaTransform>,
+    ) -> UntypedHandle {
+        let index = self.allocator.reserve();
+        UntypedHandle::Strong(self.get_handle(index, meta_transform))
+    }
+
+    /// Wraps an already-reserved index in a strong handle, attaching
+    /// `meta_transform` so a hot-reload replays the same loader settings.
+    pub(crate) fn get_handle(
+        &self,
+        index: AssetIndex,
+        meta_transform: Option<MetaTransform>,
+    ) -> Arc<StrongHandle> {
         Arc::new(StrongHandle {
             index,
             type_id: self.type_id,
+            meta_transform,
             drop_sender: self.drop_sender.clone(),
         })
     }
@@ -345,6 +379,16 @@ impl UntypedHandle {
     #[inline]
     pub fn try_typed<A: Asset>(self) -> Result<Handle<A>, UntypedAssetConversionError> {
         Handle::try_from(self)
+    }
+
+    /// The [`MetaTransform`] stored on the handle, if it is strong and was
+    /// loaded with one.
+    #[inline]
+    pub(crate) fn meta_transform(&self) -> Option<&MetaTransform> {
+        match self {
+            UntypedHandle::Strong(handle) => handle.meta_transform.as_ref(),
+            UntypedHandle::Uuid { .. } => None,
+        }
     }
 }
 

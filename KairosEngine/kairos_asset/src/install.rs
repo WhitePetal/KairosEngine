@@ -112,8 +112,8 @@ pub struct AssetOptions {
     /// of time).
     pub use_asset_processor: bool,
     /// Overrides whether the server watches its sources for changes. When
-    /// `None`, watching follows the `watch` cargo feature, which the hot-reload
-    /// track adds; until then the effective default is off.
+    /// `None`, watching follows the `watch` cargo feature, which the default
+    /// feature set turns on through `file_watcher`.
     pub watch_for_changes_override: Option<bool>,
 }
 
@@ -219,10 +219,11 @@ pub fn install(world: &mut World, options: AssetOptions) {
         startup: options.startup_stage,
     };
 
-    // The effective value follows ADR 0006 — the caller's override, else
-    // `cfg!(feature = "watch")`. That feature arrives with the hot-reload track,
-    // so until then the fallback is off.
-    let watch = options.watch_for_changes_override.unwrap_or(false);
+    // The effective value follows ADR 0006: the caller's override, else
+    // `cfg!(feature = "watch")`. `watch` is on by default (the default feature set
+    // turns on `file_watcher`, which implies `watch`), so a host opts *out* to
+    // disable watching.
+    let watch = options.watch_for_changes_override.unwrap_or(cfg!(feature = "watch"));
     let use_processor = options.mode == AssetMode::Processed && options.use_asset_processor;
 
     // Freeze the sources exactly as `AssetPlugin` does: in processed mode the

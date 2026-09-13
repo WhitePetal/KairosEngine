@@ -18,6 +18,7 @@ use std::{
     fmt::{self, Display},
     hash::{Hash, Hasher},
     sync::Arc,
+    time::Duration,
 };
 
 use atomicow::CowArc;
@@ -25,6 +26,7 @@ use atomicow::CowArc;
 use kairos_collections::FixedHashMap as HashMap;
 use kairos_ecs::resource::Resource;
 use thiserror::Error;
+use tracing::warn;
 
 use crate::io::{
     AssetSourceEvent, AssetWatcher, ErasedAssetReader, ErasedAssetWriter,
@@ -162,6 +164,12 @@ pub struct AssetSourceBuilder {
                 + Sync,
         >,
     >,
+    /// The warning to log when watching is on but the unprocessed slot has no
+    /// watcher.
+    pub watch_warning: Option<&'static str>,
+    /// The warning to log when processed watching is on but the processed slot
+    /// has no watcher.
+    pub processed_watch_warning: Option<&'static str>,
 }
 
 impl AssetSourceBuilder {
@@ -174,6 +182,8 @@ impl AssetSourceBuilder {
             processed_reader: None,
             processed_writer: None,
             processed_watcher: None,
+            watch_warning: None,
+            processed_watch_warning: None,
         }
     }
 
@@ -237,6 +247,20 @@ impl AssetSourceBuilder {
         self
     }
 
+    /// Sets the warning logged when watching is on but there is no unprocessed
+    /// watcher.
+    pub fn with_watch_warning(mut self, warning: &'static str) -> Self {
+        self.watch_warning = Some(warning);
+        self
+    }
+
+    /// Sets the warning logged when processed watching is on but there is no
+    /// processed watcher.
+    pub fn with_processed_watch_warning(mut self, warning: &'static str) -> Self {
+        self.processed_watch_warning = Some(warning);
+        self
+    }
+
     /// Builds the [`AssetSource`] for `id`.
     ///
     /// When `watch` is true the source watches for changes to unprocessed assets;
@@ -274,21 +298,35 @@ impl AssetSourceBuilder {
 
         if watch {
             let (sender, receiver) = async_channel::unbounded();
-            if let Some(watcher) = self.watcher.as_mut().and_then(|watcher| watcher(sender)) {
-                source.watcher = Some(watcher);
-                source.event_receiver = Some(receiver);
+            match self.watcher.as_mut().and_then(|watcher| watcher(sender)) {
+                Some(watcher) => {
+                    source.watcher = Some(watcher);
+                    source.event_receiver = Some(receiver);
+                }
+                None => {
+                    if let Some(warning) = self.watch_warning {
+                        warn!("{id} does not have an AssetWatcher configured. {warning}");
+                    }
+                }
             }
         }
 
         if watch_processed {
             let (sender, receiver) = async_channel::unbounded();
-            if let Some(watcher) = self
+            match self
                 .processed_watcher
                 .as_mut()
                 .and_then(|watcher| watcher(sender))
             {
-                source.processed_watcher = Some(watcher);
-                source.processed_event_receiver = Some(receiver);
+                Some(watcher) => {
+                    source.processed_watcher = Some(watcher);
+                    source.processed_event_receiver = Some(receiver);
+                }
+                None => {
+                    if let Some(warning) = self.processed_watch_warning {
+                        warn!("{id} does not have a processed AssetWatcher configured. {warning}");
+                    }
+                }
             }
         }
 
@@ -302,8 +340,10 @@ impl AssetSourceBuilder {
     /// The unprocessed writer is always configured so the source tree is
     /// writable; the processed reader and writer are added only when
     /// `processed_path` is given, which is also what makes
-    /// [`AssetSource::should_process`] true. No watcher is configured: watching
-    /// is the hot-reload layer's, and is still deferred.
+    /// [`AssetSource::should_process`] true. Both watcher slots are configured
+    /// with the platform-default watcher and a 300 ms debounce window, so a
+    /// source built with `watch` (or `watch_processed`) actually watches; the
+    /// matching warning is logged when no watcher backend exists.
     pub fn platform_default(path: &str, processed_path: Option<&str>) -> Self {
         let reader_path = path.to_owned();
         let writer_path = path.to_owned();
@@ -313,7 +353,12 @@ impl AssetSourceBuilder {
         .with_writer(move |create_root| {
             Some(Box::new(FileAssetWriter::new(&writer_path, create_root))
                 as Box<dyn ErasedAssetWriter>)
-        });
+        })
+        .with_watcher(AssetSource::get_default_watcher(
+            path.to_owned(),
+            Duration::from_millis(300),
+        ))
+        .with_watch_warning(AssetSource::get_default_watch_warning());
         if let Some(processed_path) = processed_path {
             let processed_reader_path = processed_path.to_owned();
             let processed_writer_path = processed_path.to_owned();
@@ -327,7 +372,12 @@ impl AssetSourceBuilder {
                         Box::new(FileAssetWriter::new(&processed_writer_path, create_root))
                             as Box<dyn ErasedAssetWriter>,
                     )
-                });
+                })
+                .with_processed_watcher(AssetSource::get_default_watcher(
+                    processed_path.to_owned(),
+                    Duration::from_millis(300),
+                ))
+                .with_processed_watch_warning(AssetSource::get_default_watch_warning());
         }
         builder
     }
@@ -568,6 +618,71 @@ impl AssetSource {
     #[inline]
     pub fn should_process(&self) -> bool {
         self.processed_writer.is_some()
+    }
+
+    /// The warning to log for the current platform when watching is enabled but
+    /// no watcher could be built.
+    pub fn get_default_watch_warning() -> &'static str {
+        #[cfg(target_os = "android")]
+        return "Android does not currently support watching assets.";
+        #[cfg(all(not(target_os = "android"), not(feature = "file_watcher")))]
+        return "Consider enabling the `file_watcher` feature.";
+        #[cfg(all(not(target_os = "android"), feature = "file_watcher"))]
+        return "Consider adding the asset root under the working directory.";
+    }
+
+    /// A builder function for the platform's default [`AssetWatcher`]. `path` is
+    /// the relative path to the asset root and `file_debounce_wait_time` is the
+    /// window used to debounce duplicate events: larger windows reduce
+    /// duplicates but increase the delay before a change is processed, while a
+    /// window that is too small can surface an event before the filesystem has
+    /// applied the change.
+    ///
+    /// Returns [`None`] when this platform (or build) has no watching backend,
+    /// or when the root does not exist. A failure to create a watcher is logged
+    /// and degrades to [`None`] rather than panicking, so watching stays
+    /// best-effort.
+    #[cfg_attr(
+        any(not(feature = "file_watcher"), target_os = "android"),
+        expect(
+            unused_variables,
+            reason = "`path` and `file_debounce_wait_time` are unused when there is no backend"
+        )
+    )]
+    pub fn get_default_watcher(
+        path: String,
+        file_debounce_wait_time: Duration,
+    ) -> impl FnMut(async_channel::Sender<AssetSourceEvent>) -> Option<Box<dyn AssetWatcher>>
+    + Send
+    + Sync
+    {
+        move |sender: async_channel::Sender<AssetSourceEvent>| {
+            #[cfg(all(feature = "file_watcher", not(target_os = "android")))]
+            {
+                let full_path = super::file::get_base_path().join(path.clone());
+                if !full_path.exists() {
+                    warn!(
+                        "Skip creating file watcher because path {full_path:?} does not exist."
+                    );
+                    return None;
+                }
+                match super::file::FileWatcher::new(
+                    full_path.clone(),
+                    sender,
+                    file_debounce_wait_time,
+                ) {
+                    Ok(watcher) => Some(Box::new(watcher)),
+                    Err(error) => {
+                        warn!("Failed to create file watcher from path {full_path:?}: {error:?}");
+                        None
+                    }
+                }
+            }
+            #[cfg(any(not(feature = "file_watcher"), target_os = "android"))]
+            {
+                None
+            }
+        }
     }
 
     /// Wraps this source's processed reader in a `ProcessorGatedReader`,

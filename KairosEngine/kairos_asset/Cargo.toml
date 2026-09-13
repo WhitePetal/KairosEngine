@@ -6,7 +6,18 @@ license.workspace = true
 description = "Async asset server and handle system for the Kairos engine, extracted as a standalone crate"
 
 [features]
-default = []
+# The file watcher (hot reload) is on by default: without a backend there is no
+# way to observe source changes at runtime.
+default = ["file_watcher"]
+# Enables the `watching_for_changes` switch without forcing a watcher backend.
+# A host can run with watching on and no configured watcher; a source that has
+# no watcher only warns.
+watch = []
+# The filesystem watcher backend (`notify-debouncer-full`). Implies `watch`.
+file_watcher = ["dep:notify-debouncer-full", "watch"]
+# The embedded-asset watcher backend. Implies `file_watcher`; the embedded
+# backend itself is a separate slice.
+embedded_watcher = ["file_watcher"]
 # Enables the runtime asset processor track by default: with
 # `AssetMode::Processed` a host can select layout ② (a processor producing the
 # outputs) over layout ③ (outputs shipped ahead of time). Off by default.
@@ -30,6 +41,8 @@ hashbrown = "0.17.1"
 kairos_collections = { path = "../kairos_collections" }
 kairos_ecs = { path = "../kairos_ecs" }
 kairos_tasks = { path = "../kairos_tasks" }
+# The file-watcher backend, only compiled with the `file_watcher` feature.
+notify-debouncer-full = { version = "0.7.0", default-features = false, optional = true }
 ron = "0.12"
 serde = { version = "1.0.228", features = ["derive"] }
 thiserror = "2.0.19"

@@ -16,12 +16,16 @@
 //!   drop sends a [`DropEvent`]. [`Asset`]/[`VisitAssetDependencies`] are the
 //!   trait bound and dependency visitor every asset participates in.
 //! - Storage and events: [`Assets<A>`] — the per-type asset store, with
-//!   [`AssetMut`] for tracked mutation; [`AssetEvent<A>`] — the five-variant
+//!   stores, with [`AssetMut`] for tracked mutation; [`AssetEvent<A>`] — the five-variant
 //!   event face (a `Message`).
 //! - Io, paths, and meta: [`AssetPath`]/[`AssetSourceId`] address an asset as
 //!   `source://path#label`; [`io::AssetReader`] and [`io::AssetSource`] read its
 //!   bytes; [`meta::AssetMeta`] is the RON `.meta` sidecar that names the
 //!   loader and its settings.
+//! - Hot reload: with the `file_watcher` feature (on by default) each watching
+//!   [`AssetSource`](io::AssetSource) carries a [`FileWatcher`](io::file::FileWatcher);
+//!   [`handle_internal_asset_events`] drains the [`AssetSourceEvent`]s it emits and
+//!   turns a source change into a reload (and, for folders, a fresh walk).
 //! - Loading: [`AssetLoader`] turns bytes into an asset; [`LoadContext`]
 //!   declares dependencies and collects labeled sub-assets, and
 //!   [`LoadContext::finish`] folds them into a [`LoadedAsset`]/
@@ -99,7 +103,7 @@ pub use server::{
     handle_internal_asset_events,
 };
 pub use io::{
-    AssetReader, AssetReaderError, AssetSourceEvent, AssetSourceId, AssetWriter,
+    AssetReader, AssetReaderError, AssetSourceEvent, AssetSourceId, AssetWatcher, AssetWriter,
     AssetWriterError, ErasedAssetReader, ErasedAssetWriter, Reader, UnapprovedPathMode,
     VecReader, Writer, get_meta_path,
 };

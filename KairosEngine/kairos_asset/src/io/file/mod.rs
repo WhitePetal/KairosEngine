@@ -5,6 +5,15 @@
 //! and friends) keep resolving to the same files (ADR 0004). Reads and writes go
 //! through [`async_fs`] so they run on whatever executor drives them, without a
 //! tokio runtime (ADR 0001).
+//!
+//! With the `file_watcher` feature the module also carries [`FileWatcher`], the
+//! filesystem hot-reload backend (see [`file_watcher`]).
+
+#[cfg(feature = "file_watcher")]
+pub(crate) mod file_watcher;
+
+#[cfg(feature = "file_watcher")]
+pub use file_watcher::FileWatcher;
 
 use std::path::{Path, PathBuf};
 

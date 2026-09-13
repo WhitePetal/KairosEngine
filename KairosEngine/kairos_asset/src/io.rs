@@ -529,9 +529,11 @@ impl<T: AssetWriter> ErasedAssetWriter for T {
 
 /// An asset source change event.
 ///
-/// Nothing emits these yet — the file watcher that would is deferred — but the
-/// type is the contract a watcher backend will produce and the asset server
-/// will consume.
+/// With the `file_watcher` feature the source's [`AssetWatcher`] produces these;
+/// the asset server's [`handle_internal_asset_events`]
+/// consumes them to reload the assets a change affects.
+///
+/// [`handle_internal_asset_events`]: crate::handle_internal_asset_events
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AssetSourceEvent {
     /// An asset at this path was added.
@@ -568,8 +570,9 @@ pub enum AssetSourceEvent {
 
 /// A handle to a process watching an asset source for [`AssetSourceEvent`]s.
 ///
-/// The handle must be kept alive for as long as watching should continue. No
-/// backend implements it yet.
+/// The handle must be kept alive for as long as watching should continue: when
+/// it is dropped, the watcher stops. The `file_watcher` feature supplies
+/// [`FileWatcher`](crate::io::file::FileWatcher) as the default implementation.
 pub trait AssetWatcher: Send + Sync + 'static {}
 
 /// How the asset server reacts to load requests for paths outside the approved

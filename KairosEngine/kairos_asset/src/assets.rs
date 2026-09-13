@@ -355,7 +355,7 @@ impl<A: Asset> Assets<A> {
         let index = self.dense_storage.allocator.reserve();
         self.insert_with_index(index, asset.into())
             .expect("a freshly reserved index is always insertable");
-        Handle::Strong(self.handle_provider.get_handle(index))
+        Handle::Strong(self.handle_provider.get_handle(index, None))
     }
 
     /// Upgrades an [`AssetId`] into a strong [`Handle`] that keeps the asset
@@ -373,7 +373,7 @@ impl<A: Asset> Assets<A> {
             AssetId::Uuid { .. } => return None,
         };
         *self.duplicate_handles.entry(index).or_insert(0) += 1;
-        Some(Handle::Strong(self.handle_provider.get_handle(index)))
+        Some(Handle::Strong(self.handle_provider.get_handle(index, None)))
     }
 
     /// Retrieves a reference to the asset with `id`, if it exists.

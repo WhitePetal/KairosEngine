@@ -471,13 +471,28 @@ fn processed_mode_with_a_processor_wires_layout_2() {
 
 #[test]
 fn watch_for_changes_override_sets_the_servers_watching_flag() {
+    // Watching follows the `watch` feature unless overridden, and the default
+    // feature set enables `file_watcher` (which implies `watch`).
     let mut default_world = World::new();
     install(&mut default_world, options());
-    assert!(
-        !default_world
+    assert_eq!(
+        default_world
             .resource::<AssetServer>()
             .watching_for_changes(),
-        "watching defaults to off until the watch feature lands"
+        cfg!(feature = "watch"),
+        "watching follows the `watch` feature when it is not overridden"
+    );
+
+    let mut unwatched_world = World::new();
+    install(
+        &mut unwatched_world,
+        options().with_watch_for_changes_override(false),
+    );
+    assert!(
+        !unwatched_world
+            .resource::<AssetServer>()
+            .watching_for_changes(),
+        "an explicit `false` turns watching off"
     );
 
     let mut watched_world = World::new();

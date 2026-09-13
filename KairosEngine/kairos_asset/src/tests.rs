@@ -116,7 +116,7 @@ fn handle_identity_is_by_id() {
     let provider = provider::<TestAsset>();
     let first: Handle<TestAsset> = provider.reserve_handle().typed();
     let index = index_of(&first);
-    let second = Handle::<TestAsset>::Strong(provider.get_handle(index));
+    let second = Handle::<TestAsset>::Strong(provider.get_handle(index, None));
 
     assert_eq!(first, second);
     assert_eq!(first.cmp(&second), Ordering::Equal);
@@ -572,3 +572,5 @@ mod path;
 mod process;
 mod processor;
 mod server;
+#[cfg(feature = "file_watcher")]
+mod watch;

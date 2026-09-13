@@ -32,7 +32,7 @@ use core::task::{Context, Poll};
 use std::{
     fmt,
     panic::AssertUnwindSafe,
-    path::Path,
+    path::{Path, PathBuf},
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
@@ -52,9 +52,9 @@ use crate::folder::LoadedFolder;
 use crate::handle::{Handle, UntypedHandle};
 use crate::id::{AssetId, UntypedAssetId};
 use crate::io::{
-    AssetReaderError, AssetSource, AssetSourceBuilders, AssetSourceId, AssetSources,
-    AssetWriterError, ErasedAssetReader, MissingAssetSourceError, MissingAssetWriterError,
-    MissingProcessedAssetReaderError, Reader, UnapprovedPathMode,
+    AssetReaderError, AssetSource, AssetSourceBuilders, AssetSourceEvent, AssetSourceId,
+    AssetSources, AssetWriterError, ErasedAssetReader, MissingAssetSourceError,
+    MissingAssetWriterError, MissingProcessedAssetReaderError, Reader, UnapprovedPathMode,
 };
 use crate::loader::{ErasedAssetLoader, LoadContext, LoadedAsset};
 use crate::meta::{
@@ -421,9 +421,10 @@ impl AssetServer {
             type_id,
             type_name,
             HandleLoadingMode::Request,
+            meta_transform,
         );
         if should_load {
-            self.spawn_load_task(handle.clone(), path, infos, meta_transform, guard);
+            self.spawn_load_task(handle.clone(), path, infos, guard);
         }
         handle
     }
@@ -432,21 +433,22 @@ impl AssetServer {
     ///
     /// The task is stored in [`AssetInfos::pending_tasks`] so dropping the
     /// handle does not cancel it; it is cancelled only when the store's drop
-    /// processing removes the asset, or when the task finishes. `guard` is moved
+    /// processing removes the asset, or when the task finishes. The [`MetaTransform`]
+    /// is carried on the handle, so the task reads it back from there (which is
+    /// what makes a hot-reload replay the original settings). `guard` is moved
     /// into the task and dropped once the load settles.
     fn spawn_load_task<G: Send + Sync + 'static>(
         &self,
         handle: UntypedHandle,
         path: AssetPath<'static>,
         mut infos: RwLockWriteGuard<'_, AssetInfos>,
-        meta_transform: Option<MetaTransform>,
         guard: G,
     ) {
         let owned_handle = handle.clone();
         let server = self.clone();
         let task = io_task_pool().spawn(async move {
             let _ = server
-                .load_internal(Some(owned_handle), path, meta_transform)
+                .load_internal(Some(owned_handle), path, false, None)
                 .await;
             drop(guard);
         });
@@ -464,10 +466,15 @@ impl AssetServer {
     /// The owned `input_handle` is dropped once the load is underway, so if
     /// every other strong handle disappears before it completes,
     /// [`AssetInfos::process_asset_load`] discards the result.
+    ///
+    /// `force` reloads an already-loaded asset; a hot-reload passes `true` so the
+    /// fresh bytes overwrite the live value even though the old one is still
+    /// present.
     async fn load_internal(
         &self,
         input_handle: Option<UntypedHandle>,
         path: AssetPath<'static>,
+        force: bool,
         meta_transform: Option<MetaTransform>,
     ) -> Result<Option<UntypedHandle>, AssetLoadError> {
         let input_handle_type_id = input_handle.as_ref().map(UntypedHandle::type_id);
@@ -481,8 +488,15 @@ impl AssetServer {
             }
         };
 
+        // An explicit transform wins; otherwise the one stored on the input handle
+        // is replayed, which is what makes a hot-reload keep its loader settings.
         if let Some(meta_transform) = meta_transform {
             meta_transform(&mut *meta);
+        } else if let Some(meta_transform) = input_handle
+            .as_ref()
+            .and_then(|handle| handle.meta_transform())
+        {
+            (*meta_transform)(&mut *meta);
         }
 
         // The id the load reports against, plus the handle to return when the
@@ -510,8 +524,9 @@ impl AssetServer {
                 loader.asset_type_id(),
                 Some(loader.asset_type_name()),
                 HandleLoadingMode::Request,
+                None,
             );
-            if !should_load {
+            if !should_load && !force {
                 return Ok(Some(handle));
             }
             (Some(handle.id()), Some(handle))
@@ -532,6 +547,7 @@ impl AssetServer {
                     loader.asset_type_id(),
                     Some(loader.asset_type_name()),
                     HandleLoadingMode::Force,
+                    None,
                 )
                 .0;
             (base_handle.id(), Some(base_handle), base_path)
@@ -738,16 +754,53 @@ impl AssetServer {
 
     /// Kicks off a reload of the assets at `path`, if any are alive.
     pub fn reload<'a>(&self, path: impl Into<AssetPath<'a>>) {
-        let path = path.into().into_owned();
-        if !self.read_infos().should_reload(&path) {
-            return;
-        }
+        self.reload_internal(path, false);
+    }
+
+    /// Reloads every live handle for `path`, plus the untyped fallback for a
+    /// path whose root asset is gone but whose labeled sub-assets survive.
+    ///
+    /// `log` reports a successful reload at info level. Errors are logged and
+    /// swallowed: a reload is best-effort and must not abort the frame.
+    fn reload_internal<'a>(&self, path: impl Into<AssetPath<'a>>, log: bool) {
         let server = self.clone();
+        let path = path.into().into_owned();
         io_task_pool()
             .spawn(async move {
-                let handles = server.read_infos().get_handles_untyped(&path);
-                for handle in handles {
-                    let _ = server.load_internal(Some(handle), path.clone(), None).await;
+                let mut reloaded = false;
+
+                // First, try to reload every handle registered at the exact path.
+                // This covers the root asset; a labeled sub-asset lives at
+                // `path#label` and is only reached by the untyped fallback below.
+                let requests = server
+                    .read_infos()
+                    .get_handles_untyped(&path)
+                    .into_iter()
+                    .map(|handle| server.load_internal(Some(handle), path.clone(), true, None))
+                    .collect::<Vec<_>>();
+
+                for result in requests {
+                    match result.await {
+                        Ok(_) => reloaded = true,
+                        Err(error) => tracing::error!("{error}"),
+                    }
+                }
+
+                // If nothing above reloaded and there are still living
+                // sub-assets, try an untyped load. This catches the case where the
+                // root asset's handle was dropped but its labeled sub-assets are
+                // still in use: the typed reload above would have looked for a
+                // loader by the root asset's type, so the untyped path is the only
+                // way to find the right loader again.
+                if !reloaded && server.read_infos().should_reload(&path) {
+                    match server.load_internal(None, path.clone(), true, None).await {
+                        Ok(_) => reloaded = true,
+                        Err(error) => tracing::error!("{error}"),
+                    }
+                }
+
+                if log && reloaded {
+                    tracing::info!("Reloaded {path}");
                 }
             })
             .detach();
@@ -762,12 +815,12 @@ impl AssetServer {
     /// it settles, the resolved handle is placed in the store under this
     /// wrapper.
     ///
-    /// `meta_transform` is accepted for parity with the typed path but not yet
-    /// applied: kairos does not store it on the handle for hot-reload reuse.
+    /// `meta_transform` is stored on the wrapper handle so a hot-reload of the
+    /// untyped path replays the same loader settings.
     pub(crate) fn load_unknown_type_with_meta_transform<'a, G: Send + Sync + 'static>(
         &self,
         path: impl Into<AssetPath<'a>>,
-        _meta_transform: Option<MetaTransform>,
+        meta_transform: Option<MetaTransform>,
         guard: G,
         override_unapproved: bool,
     ) -> Handle<LoadedUntypedAsset> {
@@ -794,6 +847,7 @@ impl AssetServer {
             TypeId::of::<LoadedUntypedAsset>(),
             Some(type_name::<LoadedUntypedAsset>()),
             HandleLoadingMode::Request,
+            meta_transform,
         );
         if !should_load {
             return handle.typed_debug_checked();
@@ -803,7 +857,7 @@ impl AssetServer {
         let server = self.clone();
         let task = io_task_pool().spawn(async move {
             let path_clone = path.clone();
-            match server.load_internal(None, path, None).await {
+            match server.load_internal(None, path, false, None).await {
                 Ok(Some(resolved_handle)) => {
                     server.send_asset_event(InternalAssetEvent::Loaded {
                         id: untyped_asset_id,
@@ -859,6 +913,7 @@ impl AssetServer {
                     loaded_asset.asset_type_id(),
                     Some(loaded_asset.asset_type_name()),
                     HandleLoadingMode::NotLoading,
+                    None,
                 )
                 .0
         } else {
@@ -936,6 +991,7 @@ impl AssetServer {
             TypeId::of::<LoadedFolder>(),
             Some(type_name::<LoadedFolder>()),
             HandleLoadingMode::Request,
+            None,
         );
         if should_load {
             self.load_folder_internal(handle.id(), path);
@@ -1351,7 +1407,7 @@ impl AssetServer {
         &self,
         path: AssetPath<'static>,
     ) -> Handle<A> {
-        self.write_infos().get_or_create_path_handle(path).0
+        self.write_infos().get_or_create_path_handle(path, None).0
     }
 
     /// Writes a default loader `.meta` sidecar for `path`.
@@ -1556,7 +1612,7 @@ impl<'a> LoadBuilder<'a> {
         }
 
         match asset_server
-            .load_internal(None, path.into_owned(), None)
+            .load_internal(None, path.into_owned(), false, None)
             .await
         {
             Ok(Some(handle)) => Ok(handle),
@@ -1592,9 +1648,14 @@ impl<'a> LoadBuilder<'a> {
 /// Processes the load results that load tasks have sent back to the server.
 ///
 /// This is the main-thread half of the pipeline: it inserts loaded values into
-/// their [`Assets<A>`](crate::Assets) stores and advances load state. It
-/// is a plain function over [`World`] so callers can schedule it in whatever
-/// stage they use for asset work.
+/// their [`Assets<A>`](crate::Assets) stores and advances load state. It is a
+/// plain function over [`World`] so callers can schedule it in whatever stage
+/// they use for asset work.
+///
+/// When the server is watching for changes this same drain also consumes the
+/// [`AssetSourceEvent`]s the watchers produced, turning a source change into a
+/// reload of every live asset the change affects (and, for folders, a fresh
+/// folder walk).
 pub fn handle_internal_asset_events(world: &mut World) {
     world.resource_scope(|world, server: Mut<AssetServer>| {
         for event in server.data.internal_event_receiver.try_iter() {
@@ -1636,11 +1697,132 @@ pub fn handle_internal_asset_events(world: &mut World) {
                 }
             }
         }
+
+        // Hot reload. Skipped entirely when the server is not watching.
+        if server.read_infos().watching_for_changes {
+            let (folders_to_reload, paths_to_reload) = {
+                let infos = server.read_infos();
+                let mut folders_to_reload = Vec::new();
+                let mut paths_to_reload = <kairos_collections::FixedHashSet<_>>::default();
+
+                for source in server.data.sources.iter() {
+                    // The event channel depends on which side of the pipeline this
+                    // server reads: an unprocessed server watches the source side,
+                    // a processed one the processed side.
+                    let receiver = match server.data.mode {
+                        AssetServerMode::Unprocessed => source.event_receiver(),
+                        AssetServerMode::Processed => source.processed_event_receiver(),
+                    };
+                    if let Some(receiver) = receiver {
+                        while let Ok(event) = receiver.try_recv() {
+                            handle_source_event(
+                                source.id(),
+                                event,
+                                &infos,
+                                &mut folders_to_reload,
+                                &mut paths_to_reload,
+                            );
+                        }
+                    }
+                }
+
+                (folders_to_reload, paths_to_reload)
+            };
+
+            // Lock is released above so the spawned reload tasks do not block on it.
+            for (handle, path) in folders_to_reload {
+                server.load_folder_internal(handle.id(), path);
+            }
+            // `paths_to_reload` is a set, so a path touched several times in one
+            // batch is reloaded once.
+            for path in paths_to_reload {
+                server.reload_internal(path, true);
+            }
+        }
+
         server
             .write_infos()
             .pending_tasks
             .retain(|_, task| !task.is_finished());
     });
+}
+
+/// Turns one source change into the set of reloads it implies.
+///
+/// `paths_to_reload` is filled with the changed path and every asset that read
+/// it as a loader input; `folders_to_reload` with every live folder handle above
+/// the changed path (a folder's contents changed, so the folder must be re-walked).
+fn handle_source_event(
+    source: AssetSourceId<'static>,
+    event: AssetSourceEvent,
+    infos: &AssetInfos,
+    folders_to_reload: &mut Vec<(UntypedHandle, AssetPath<'static>)>,
+    paths_to_reload: &mut kairos_collections::FixedHashSet<AssetPath<'static>>,
+) {
+    /// Adds `asset_path` and every asset that depends on it to `paths_to_reload`.
+    fn queue_ancestors(
+        asset_path: &AssetPath<'_>,
+        infos: &AssetInfos,
+        paths_to_reload: &mut kairos_collections::FixedHashSet<AssetPath<'static>>,
+    ) {
+        if let Some(dependents) = infos.loader_dependents.get(&asset_path.clone_owned()) {
+            for dependent in dependents {
+                paths_to_reload.insert(dependent.to_owned());
+                queue_ancestors(dependent, infos, paths_to_reload);
+            }
+        }
+    }
+
+    /// Queues every live folder handle above `path` for a fresh walk.
+    fn reload_parent_folders(
+        path: &Path,
+        source: &AssetSourceId<'static>,
+        infos: &AssetInfos,
+        folders_to_reload: &mut Vec<(UntypedHandle, AssetPath<'static>)>,
+    ) {
+        for parent in path.ancestors().skip(1) {
+            let parent_asset_path =
+                AssetPath::from(parent.to_path_buf()).with_source(source.clone());
+            for folder_handle in infos.get_handles_untyped(&parent_asset_path) {
+                folders_to_reload.push((folder_handle, parent_asset_path.clone()));
+            }
+        }
+    }
+
+    /// Queues `path` and every asset that read it as a loader input for reload.
+    fn reload_path(
+        path: PathBuf,
+        source: &AssetSourceId<'static>,
+        infos: &AssetInfos,
+        paths_to_reload: &mut kairos_collections::FixedHashSet<AssetPath<'static>>,
+    ) {
+        let asset_path = AssetPath::from(path).with_source(source.clone());
+        queue_ancestors(&asset_path, infos, paths_to_reload);
+        paths_to_reload.insert(asset_path);
+    }
+
+    match event {
+        AssetSourceEvent::AddedAsset(path) => {
+            reload_parent_folders(&path, &source, infos, folders_to_reload);
+            reload_path(path, &source, infos, paths_to_reload);
+        }
+        AssetSourceEvent::ModifiedAsset(path) | AssetSourceEvent::ModifiedMeta(path) => {
+            reload_path(path, &source, infos, paths_to_reload);
+        }
+        AssetSourceEvent::RenamedFolder { old, new } => {
+            reload_parent_folders(&old, &source, infos, folders_to_reload);
+            reload_parent_folders(&new, &source, infos, folders_to_reload);
+        }
+        AssetSourceEvent::RemovedAsset(path)
+        | AssetSourceEvent::RemovedFolder(path)
+        | AssetSourceEvent::AddedFolder(path) => {
+            reload_parent_folders(&path, &source, infos, folders_to_reload);
+        }
+        // A pure rename does not reload the main server: its handler lives in the
+        // `AssetProcessor`, which owns the rename bookkeeping. Everything else
+        // (`RemovedUnknown`, meta-only removals, ...) has no main-server action.
+        _ => {}
+    }
 }
 
 /// The lazy default [`IoTaskPool`].
