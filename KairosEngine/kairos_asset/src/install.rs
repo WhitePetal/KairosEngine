@@ -26,6 +26,7 @@
 //!   here; the stage is always created so the processor can attach without
 //!   re-plumbing `install`.
 
+use std::any::TypeId;
 use std::sync::Arc;
 
 use kairos_ecs::message::MessageRegistry;
@@ -39,6 +40,8 @@ use crate::asset::Asset;
 use crate::assets::{Assets, LoadedUntypedAsset};
 use crate::event::{AssetEvent, AssetLoadFailedEvent, UntypedAssetLoadFailedEvent};
 use crate::folder::LoadedFolder;
+use crate::handle::AssetHandleProvider;
+use crate::index::AssetIndexAllocator;
 use crate::io::embedded::{EMBEDDED, EmbeddedAssetRegistry};
 use crate::io::{AssetSourceBuilder, AssetSourceBuilders, AssetSourceId, UnapprovedPathMode};
 use crate::loader::AssetLoader;
@@ -425,6 +428,18 @@ impl AssetWorldExt for World {
         let assets = Assets::<A>::with_capacity(capacity);
         let server = self.resource::<AssetServer>().clone();
         server.register_asset(&assets);
+
+        // In layout ② the processor's own server is not backed by a store, so it
+        // needs a provider for this type too: that keeps its id space separate
+        // from the store's (bevy parity).
+        if let Some(processor) = self.get_resource::<AssetProcessor>() {
+            processor
+                .server()
+                .register_handle_provider(AssetHandleProvider::new(
+                    TypeId::of::<A>(),
+                    Arc::new(AssetIndexAllocator::default()),
+                ));
+        }
 
         // Step 2: the store itself.
         self.insert_resource(assets);

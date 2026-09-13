@@ -270,7 +270,7 @@ fn mesh_loads_through_the_core() {
     )
     .expect("write the mesh product");
 
-    let meta = AssetMeta::<(), ()>::new(AssetAction::Load {
+    let meta = AssetMeta::<MeshLoader, ()>::new(AssetAction::Load {
         loader: kairos_asset::loader_name::<MeshLoader>().to_string(),
         settings: (),
     });

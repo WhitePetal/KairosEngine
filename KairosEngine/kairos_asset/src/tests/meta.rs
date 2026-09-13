@@ -1,13 +1,16 @@
 //! Tests for the `.meta` sidecar types.
 
-use crate::io::VecReader;
+use crate::io::{Reader, VecReader, Writer};
+use crate::loader::{AssetLoader, LoadContext};
 use crate::meta::{
     AssetAction, AssetActionMinimal, AssetHash, AssetMeta, AssetMetaCheck, AssetMetaDyn,
     AssetMetaMinimal, META_FORMAT_VERSION, Settings, get_asset_hash, get_full_asset_hash,
     loader_name, loader_settings_meta_transform,
 };
 use crate::path::AssetPath;
+use crate::processor::{Process, ProcessContext, ProcessError};
 use futures_lite::future::block_on;
+use kairos_tasks::ConditionalSendFuture;
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 struct TestSettings {
@@ -20,7 +23,45 @@ impl Default for TestSettings {
     }
 }
 
-fn load_meta(settings: TestSettings) -> AssetMeta<TestSettings, ()> {
+/// A loader whose settings are [`TestSettings`].
+///
+/// `AssetMeta<L, P>` is parameterised by the loader and processor *types*, so the
+/// meta tests need names for them. Neither is ever called.
+struct TestLoader;
+
+impl AssetLoader for TestLoader {
+    type Asset = ();
+    type Settings = TestSettings;
+    type Error = std::io::Error;
+
+    fn load(
+        &self,
+        _reader: &mut dyn Reader,
+        _settings: &Self::Settings,
+        _load_context: &mut LoadContext,
+    ) -> impl ConditionalSendFuture<Output = Result<Self::Asset, Self::Error>> {
+        async { unreachable!("the meta tests never load anything") }
+    }
+}
+
+/// A processor whose settings are [`TestSettings`], for the process-only meta.
+struct TestProcessor;
+
+impl Process for TestProcessor {
+    type Settings = TestSettings;
+    type OutputLoader = ();
+
+    fn process(
+        &self,
+        _context: &mut ProcessContext,
+        _settings: &Self::Settings,
+        _writer: &mut Writer,
+    ) -> impl ConditionalSendFuture<Output = Result<(), ProcessError>> {
+        async { unreachable!("the meta tests never process anything") }
+    }
+}
+
+fn load_meta(settings: TestSettings) -> AssetMeta<TestLoader, ()> {
     AssetMeta::new(AssetAction::Load {
         loader: loader_name::<TestSettings>().to_string(),
         settings,
@@ -41,7 +82,7 @@ fn typed_meta_round_trips_through_ron() {
     let meta = load_meta(TestSettings { value: 42 });
     let bytes = AssetMetaDyn::serialize(&meta);
 
-    let parsed = AssetMeta::<TestSettings, ()>::deserialize(&bytes).unwrap();
+    let parsed = AssetMeta::<TestLoader, ()>::deserialize(&bytes).unwrap();
     assert_eq!(parsed.meta_format_version, META_FORMAT_VERSION);
     match parsed.asset {
         AssetAction::Load { loader, settings } => {
@@ -54,10 +95,10 @@ fn typed_meta_round_trips_through_ron() {
 
 #[test]
 fn ignore_is_a_real_variant() {
-    let meta = AssetMeta::<TestSettings, ()>::new(AssetAction::Ignore);
+    let meta = AssetMeta::<TestLoader, ()>::new(AssetAction::Ignore);
     let bytes = AssetMetaDyn::serialize(&meta);
 
-    let parsed = AssetMeta::<TestSettings, ()>::deserialize(&bytes).unwrap();
+    let parsed = AssetMeta::<TestLoader, ()>::deserialize(&bytes).unwrap();
     assert!(parsed.asset.is_ignore());
     assert_eq!(parsed.asset.loader_name(), None);
     assert_eq!(parsed.asset.processor_name(), None);
@@ -65,13 +106,13 @@ fn ignore_is_a_real_variant() {
 
 #[test]
 fn process_only_carries_its_type_surface() {
-    let meta = AssetMeta::<(), TestSettings>::new(AssetAction::Process {
+    let meta = AssetMeta::<(), TestProcessor>::new(AssetAction::Process {
         processor: "kairos::MyProcessor".to_string(),
         settings: TestSettings { value: 3 },
     });
     let bytes = AssetMetaDyn::serialize(&meta);
 
-    let parsed = AssetMeta::<(), TestSettings>::deserialize(&bytes).unwrap();
+    let parsed = AssetMeta::<(), TestProcessor>::deserialize(&bytes).unwrap();
     assert_eq!(parsed.asset.processor_name(), Some("kairos::MyProcessor"));
     assert_eq!(parsed.asset.loader_name(), None);
 }
@@ -131,7 +172,7 @@ fn meta_dyn_recovers_the_concrete_meta() {
     let meta: Box<dyn AssetMetaDyn> = Box::new(load_meta(TestSettings { value: 5 }));
     let any: &dyn Any = &*meta;
     let recovered = any
-        .downcast_ref::<AssetMeta<TestSettings, ()>>()
+        .downcast_ref::<AssetMeta<TestLoader, ()>>()
         .expect("AssetMetaDyn is Any, so the concrete meta is recoverable");
     assert_eq!(recovered.meta_format_version, META_FORMAT_VERSION);
 }

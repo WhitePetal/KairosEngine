@@ -393,7 +393,7 @@ fn settings_round_trip_through_a_meta_sidecar() {
         .get_processor(type_name::<TextProcessor>())
         .expect("registered");
 
-    let meta = AssetMeta::<(), TextSettings>::new(AssetAction::Process {
+    let meta = AssetMeta::<(), TextProcessor>::new(AssetAction::Process {
         processor: type_name::<TextProcessor>().to_string(),
         settings: TextSettings {
             prefix: "// ".into(),

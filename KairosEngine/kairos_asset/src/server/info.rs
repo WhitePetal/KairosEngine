@@ -564,6 +564,31 @@ impl AssetInfos {
         true
     }
 
+    /// Consumes every pending handle-drop event, updating the bookkeeping here but
+    /// leaving any [`Assets`](crate::Assets) store untouched.
+    ///
+    /// For the normal case prefer
+    /// [`Assets::track_assets`](crate::Assets::track_assets), which also releases
+    /// the stored values. A server with no store — the runtime
+    /// [`AssetProcessor`](crate::processor::AssetProcessor)'s internal server —
+    /// uses this instead, so its bookkeeping does not grow without bound.
+    pub(crate) fn consume_handle_drop_events(&mut self) {
+        // Clone the receivers first: walking `handle_providers` immutably cannot
+        // overlap the mutable borrow `process_handle_drop` needs.
+        let receivers: Vec<_> = self
+            .handle_providers
+            .values()
+            .map(|provider| provider.drop_receiver())
+            .collect();
+        for receiver in receivers {
+            while let Ok(drop_event) = receiver.try_recv() {
+                if drop_event.asset_server_managed {
+                    self.process_handle_drop(drop_event.id());
+                }
+            }
+        }
+    }
+
     /// Records that an asset finished loading, inserting its value into its
     /// store and updating dependency state across the tree.
     pub(crate) fn process_asset_load(

@@ -418,7 +418,7 @@ impl Process for TextProcessor {
 /// Serializes a source `.meta` that processes `path` with [`TextProcessor`] and
 /// `prefix`.
 fn process_meta(prefix: &str) -> Vec<u8> {
-    let meta = AssetMeta::<(), TextSettings>::new(AssetAction::Process {
+    let meta = AssetMeta::<(), TextProcessor>::new(AssetAction::Process {
         processor: core::any::type_name::<TextProcessor>().to_string(),
         settings: TextSettings {
             prefix: prefix.to_string(),

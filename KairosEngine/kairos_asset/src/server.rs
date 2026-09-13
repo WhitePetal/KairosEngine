@@ -49,7 +49,7 @@ use crate::asset::{Asset, VisitAssetDependencies};
 use crate::assets::{Assets, LoadedUntypedAsset};
 use crate::event::{AssetEvent, AssetLoadFailedEvent, UntypedAssetLoadFailedEvent};
 use crate::folder::LoadedFolder;
-use crate::handle::{Handle, UntypedHandle};
+use crate::handle::{AssetHandleProvider, Handle, UntypedHandle};
 use crate::id::{AssetId, UntypedAssetId};
 use crate::io::{
     AssetReaderError, AssetSource, AssetSourceBuilders, AssetSourceEvent, AssetSourceId,
@@ -276,6 +276,17 @@ impl AssetServer {
         infos
             .dependency_failed_event_sender
             .insert(TypeId::of::<A>(), failed_sender::<A>);
+    }
+
+    /// Registers `provider` as this server's handle allocator for its asset
+    /// type.
+    ///
+    /// The runtime [`AssetProcessor`](crate::processor::AssetProcessor) has its
+    /// own server, which is not backed by an [`Assets`] store; a type it loads
+    /// therefore needs a provider registered here so its id space stays
+    /// separate from the store's.
+    pub fn register_handle_provider(&self, provider: AssetHandleProvider) {
+        self.write_infos().register_handle_provider_erased(provider);
     }
 
     /// Returns the registered [`ErasedAssetLoader`] associated with

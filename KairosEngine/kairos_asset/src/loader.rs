@@ -149,12 +149,12 @@ impl<L: AssetLoader> ErasedAssetLoader for L {
     }
 
     fn deserialize_meta(&self, meta: &[u8]) -> Result<Box<dyn AssetMetaDyn>, DeserializeMetaError> {
-        let meta = AssetMeta::<L::Settings, ()>::deserialize(meta)?;
+        let meta = AssetMeta::<L, ()>::deserialize(meta)?;
         Ok(Box::new(meta))
     }
 
     fn default_meta(&self) -> Box<dyn AssetMetaDyn> {
-        Box::new(AssetMeta::<L::Settings, ()>::new(AssetAction::Load {
+        Box::new(AssetMeta::<L, ()>::new(AssetAction::Load {
             loader: loader_name::<L>().to_string(),
             settings: L::Settings::default(),
         }))

@@ -36,6 +36,24 @@ fn index_of<A: Asset>(handle: &Handle<A>) -> AssetIndex {
     slot_of_id(handle.id())
 }
 
+/// The server-less half of [`Assets::track_assets`], for the store tests below
+/// whose handles all come from [`Assets::add`].
+///
+/// Kept in the test module rather than on `Assets`: `bevy_asset` has no such
+/// method, so production drops stay on the server-backed `track_assets` path.
+trait DrainDroppedAssets {
+    fn drain_dropped_assets(&mut self);
+}
+
+impl<A: Asset> DrainDroppedAssets for Assets<A> {
+    fn drain_dropped_assets(&mut self) {
+        let drop_receiver = self.get_handle_provider().drop_receiver();
+        while let Ok(drop_event) = drop_receiver.try_recv() {
+            self.remove_dropped(drop_event.index());
+        }
+    }
+}
+
 #[test]
 fn asset_index_round_trip() {
     let index = AssetIndex {

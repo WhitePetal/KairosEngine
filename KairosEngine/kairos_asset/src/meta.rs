@@ -17,19 +17,24 @@
 //! TOML wrappers of the legacy stack are retired in favour of this one format.
 //!
 //! `Load` and `Ignore` drive the load pipeline; `Process` is resolved by the
-//! processor through the [`Process`](crate::processor::Process) trait family
-//! (the processor body itself is a later slice).
+//! processor through the [`Process`] trait family (the processor body itself is
+//! a later slice).
 
 use core::any::Any;
 use std::sync::Arc;
 
 use futures_lite::AsyncReadExt;
 use kairos_collections::FixedHashSet as HashSet;
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use kairos_tasks::ConditionalSendFuture;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::io::{AssetReaderError, Reader};
+use crate::asset::{Asset, VisitAssetDependencies};
+use crate::id::UntypedAssetId;
+use crate::io::{AssetReaderError, Reader, Writer};
+use crate::loader::{AssetLoader, LoadContext};
 use crate::path::AssetPath;
+use crate::processor::{Process, ProcessContext, ProcessError};
 
 /// The version of the `.meta` format. Bump it on any breaking change to the
 /// sidecar layout or its hashing.
@@ -141,10 +146,9 @@ pub fn processor_name<P>() -> &'static str {
 
 /// How the asset system should handle one asset file.
 ///
-/// The generic parameters are the loader's and processor's settings types;
-/// both are `()` when that action is unused. This mirrors bevy's
-/// `AssetAction<L::Settings, P::Settings>` without requiring the loader and
-/// processor traits here — those land with the loader and processor tickets.
+/// The generic parameters are the loader's and processor's settings types; both
+/// are `()` when that action is unused. [`AssetMeta`] projects them off its own
+/// `L: AssetLoader` / `P: Process` parameters, as bevy does.
 #[derive(Serialize, Deserialize)]
 pub enum AssetAction<LoaderSettings, ProcessSettings> {
     /// Load the asset with the named loader and these settings.
@@ -190,12 +194,17 @@ impl<LoaderSettings, ProcessSettings> AssetAction<LoaderSettings, ProcessSetting
 
 /// The full contents of a `.meta` sidecar.
 ///
+/// `L` is the [`AssetLoader`] the sidecar may name and `P` the [`Process`]
+/// processor; either may be `()` when that action is unused, which is what
+/// `AssetMeta<(), ()>` is for. The settings each action carries come from
+/// `L::Settings` / `P::Settings`.
+///
 /// Serialize it with [`AssetMetaDyn::serialize`] and parse it with
 /// [`AssetMeta::deserialize`]. When only the loader or processor name is needed
 /// (before its settings type is known), parse
 /// [`AssetMetaMinimal`] instead.
 #[derive(Serialize, Deserialize)]
-pub struct AssetMeta<LoaderSettings, ProcessSettings> {
+pub struct AssetMeta<L: AssetLoader, P: Process> {
     /// The version of the meta format, for migration checks.
     pub meta_format_version: String,
     /// Written by the asset processor after it processes the asset. It should
@@ -203,24 +212,20 @@ pub struct AssetMeta<LoaderSettings, ProcessSettings> {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub processed_info: Option<ProcessedInfo>,
     /// How this asset should be handled.
-    pub asset: AssetAction<LoaderSettings, ProcessSettings>,
+    pub asset: AssetAction<L::Settings, P::Settings>,
 }
 
-impl<LoaderSettings, ProcessSettings> AssetMeta<LoaderSettings, ProcessSettings> {
+impl<L: AssetLoader, P: Process> AssetMeta<L, P> {
     /// Creates a meta at the current [`META_FORMAT_VERSION`] with no processed
     /// info.
-    pub fn new(asset: AssetAction<LoaderSettings, ProcessSettings>) -> Self {
+    pub fn new(asset: AssetAction<L::Settings, P::Settings>) -> Self {
         Self {
             meta_format_version: META_FORMAT_VERSION.to_string(),
             processed_info: None,
             asset,
         }
     }
-}
 
-impl<LoaderSettings: DeserializeOwned, ProcessSettings: DeserializeOwned>
-    AssetMeta<LoaderSettings, ProcessSettings>
-{
     /// Deserializes a sidecar from its RON bytes.
     pub fn deserialize(bytes: &[u8]) -> Result<Self, DeserializeMetaError> {
         Ok(ron::de::from_bytes(bytes)?)
@@ -247,11 +252,7 @@ pub trait AssetMetaDyn: Any + Send + Sync {
     fn processed_info_mut(&mut self) -> &mut Option<ProcessedInfo>;
 }
 
-impl<LoaderSettings, ProcessSettings> AssetMetaDyn for AssetMeta<LoaderSettings, ProcessSettings>
-where
-    LoaderSettings: Settings + Serialize,
-    ProcessSettings: Settings + Serialize,
-{
+impl<L: AssetLoader, P: Process> AssetMetaDyn for AssetMeta<L, P> {
     fn loader_settings(&self) -> Option<&dyn Settings> {
         match &self.asset {
             AssetAction::Load { settings, .. } => Some(settings),
@@ -289,6 +290,55 @@ where
 
     fn processed_info_mut(&mut self) -> &mut Option<ProcessedInfo> {
         &mut self.processed_info
+    }
+}
+
+// The unit type is the "no loader" / "no processor" placeholder the meta format
+// needs, so `AssetMeta<(), ()>` and its one-sided forms are expressible. The
+// impls should never be called: bevy does the same.
+
+impl Asset for () {}
+
+impl VisitAssetDependencies for () {
+    fn visit_dependencies(&self, _visit: &mut impl FnMut(UntypedAssetId)) {
+        unreachable!("the unit asset has no dependencies")
+    }
+}
+
+/// The `()` loader should never be called. This implementation exists to make the
+/// meta format nicer to work with.
+impl AssetLoader for () {
+    type Asset = ();
+    type Settings = ();
+    type Error = std::io::Error;
+
+    fn load(
+        &self,
+        _reader: &mut dyn Reader,
+        _settings: &Self::Settings,
+        _load_context: &mut LoadContext,
+    ) -> impl ConditionalSendFuture<Output = Result<Self::Asset, Self::Error>> {
+        async { unreachable!("the unit loader has no formats") }
+    }
+
+    fn extensions(&self) -> &[&str] {
+        unreachable!("the unit loader has no formats")
+    }
+}
+
+/// The `()` processor should never be called. This implementation exists to make
+/// the meta format nicer to work with.
+impl Process for () {
+    type Settings = ();
+    type OutputLoader = ();
+
+    fn process(
+        &self,
+        _context: &mut ProcessContext,
+        _settings: &Self::Settings,
+        _writer: &mut Writer,
+    ) -> impl ConditionalSendFuture<Output = Result<(), ProcessError>> {
+        async { unreachable!("the unit processor has no action") }
     }
 }
 

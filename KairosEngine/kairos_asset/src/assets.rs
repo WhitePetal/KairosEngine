@@ -470,24 +470,6 @@ impl<A: Asset> Assets<A> {
         }
     }
 
-    /// Drains the handle provider's drop channel, releasing every asset whose last
-    /// strong handle has been dropped since the last call.
-    ///
-    /// Always queues [`AssetEvent::Unused`] and, when a value was actually present,
-    /// [`AssetEvent::Removed`] as well — in that order.
-    ///
-    /// This is the server-less half of [`Assets::track_assets`], for stores whose
-    /// handles all come from [`Assets::add`] (tests, and hosts that never load by
-    /// path). It ignores server bookkeeping, because such handles report
-    /// `asset_server_managed == false`.
-    #[cfg(test)]
-    pub(crate) fn drain_dropped_assets(&mut self) {
-        let drop_receiver = self.handle_provider.drop_receiver();
-        while let Ok(drop_event) = drop_receiver.try_recv() {
-            self.remove_dropped(drop_event.index());
-        }
-    }
-
     /// The per-type driver system that releases assets whose last strong handle
     /// was dropped since it last ran, and clears the server's bookkeeping for
     /// handles the server handed out.

@@ -472,6 +472,10 @@ impl AssetProcessor {
                 ProcessorTaskEvent::Finished => {
                     pending_tasks -= 1;
                     if pending_tasks == 0 {
+                        // The processor's server has no `Assets` store, so it
+                        // flushes its handle-drop bookkeeping here instead of
+                        // through `track_assets`.
+                        self.server.write_infos().consume_handle_drop_events();
                         self.data
                             .processing_state
                             .set_state(ProcessorState::Finished)

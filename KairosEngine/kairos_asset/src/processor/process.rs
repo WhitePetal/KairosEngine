@@ -289,21 +289,17 @@ impl<P: Process> ErasedProcessor for P {
                 .downcast_ref::<P::Settings>()
                 .ok_or(ProcessError::WrongMetaType)?;
             let loader_settings = <P as Process>::process(self, context, settings, writer).await?;
-            let output_meta: Box<dyn AssetMetaDyn> = Box::new(AssetMeta::<
-                <P::OutputLoader as AssetLoader>::Settings,
-                (),
-            >::new(
-                AssetAction::Load {
+            let output_meta: Box<dyn AssetMetaDyn> =
+                Box::new(AssetMeta::<P::OutputLoader, ()>::new(AssetAction::Load {
                     loader: loader_name::<P::OutputLoader>().to_string(),
                     settings: loader_settings,
-                },
-            ));
+                }));
             Ok(output_meta)
         })
     }
 
     fn deserialize_meta(&self, meta: &[u8]) -> Result<Box<dyn AssetMetaDyn>, DeserializeMetaError> {
-        let meta: AssetMeta<(), P::Settings> = AssetMeta::deserialize(meta)?;
+        let meta: AssetMeta<(), P> = AssetMeta::deserialize(meta)?;
         Ok(Box::new(meta))
     }
 
@@ -320,7 +316,7 @@ impl<P: Process> ErasedProcessor for P {
             MetaTypePathKind::Short => self.short_type_path(),
             MetaTypePathKind::Long => self.type_path(),
         };
-        Box::new(AssetMeta::<(), P::Settings>::new(AssetAction::Process {
+        Box::new(AssetMeta::<(), P>::new(AssetAction::Process {
             processor: processor.to_string(),
             settings: P::Settings::default(),
         }))
