@@ -69,7 +69,11 @@ Status: accepted
 8. **`add_async` 与 `wait_for_asset*`**：随后续 effort #214 的 A4/A6 片落地（#235）；
    `DirectAssetAccessExt`（A7）与默认 loader `.meta` 写出（A8）同批落地。
    （未类型化加载与 `Handle` guard 已随 A2 片落地；整目录加载
-   `load_folder` 与 `LoadedFolder` 已随 A3 片落地；`AssetProcessor` 本体已随加工主轴 S5（#231）落地，
+   `load_folder` 与 `LoadedFolder` 已随 A3 片落地；loader 门控与异步 loader 查询（A5，#234）已落地，
+   其缺 loader 的错误面（`AssetLoadError` 的 `MissingAssetLoaderFor{Extension,TypeName,TypeId}Error`）
+   由结构体变体改元组变体，属破坏性变更，下游同步见
+   [docs/research/asset-load-error-shape-change.md](../research/asset-load-error-shape-change.md)；
+   `AssetProcessor` 本体已随加工主轴 S5（#231）落地，
    写前日志（WAL）与启动恢复已随 S6（#232）落地，gated 成品 reader 与布局②接线已随 S7（#233）落地，
    现有手动加工管线的收编归 S8/S9。）
 9. **`load_untyped_async` 也执行 `UnapprovedPathMode` 门**：上游 `LoadBuilder` 的该
