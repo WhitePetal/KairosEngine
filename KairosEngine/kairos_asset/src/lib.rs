@@ -38,11 +38,14 @@
 //!   mounted under the [`AssetTrackingSystems`]/[`AssetEventSystems`] sets.
 //!
 //! Deliberately absent for now (later tickets): `add_async`/`wait_for_asset*`,
-//! and the processor body. The processor trait family — [`Process`],
-//! [`ProcessContext`], [`LoadTransformAndSave`], [`AssetSaver`], and the rest —
-//! lives in `processor`, on top of the hashing, [`ProcessedInfo`](meta::ProcessedInfo)
-//! recording, and the in-memory dependency graph. This crate does not import
-//! `tokio` (ADR 0001).
+//! the processor's write-ahead log, and the gated processed reader. The
+//! processor trait family — [`Process`], [`ProcessContext`],
+//! [`LoadTransformAndSave`], [`AssetSaver`], and the rest — lives in
+//! `processor`, on top of the hashing,
+//! [`ProcessedInfo`](meta::ProcessedInfo) recording, and the in-memory
+//! dependency graph that this crate also carries; [`AssetProcessor`] is the
+//! background body that drives them. This crate does not import `tokio`
+//! (ADR 0001).
 
 mod asset;
 mod assets;
@@ -95,9 +98,10 @@ pub use meta::{
 };
 pub use path::{AssetPath, ParseAssetPathError};
 pub use processor::{
-    AssetSaver, AssetTransformer, ErasedAssetSaver, ErasedProcessor, GetProcessorError,
-    IdentityAssetTransformer, LoadTransformAndSave, LoadTransformAndSaveSettings, MetaTypePathKind,
-    Process, ProcessContext, ProcessError, Processors, SavedAsset, TransformedAsset,
+    AssetProcessor, AssetProcessorData, AssetSaver, AssetTransformer, ErasedAssetSaver,
+    ErasedProcessor, GetProcessorError, IdentityAssetTransformer, InitializeError,
+    LoadTransformAndSave, LoadTransformAndSaveSettings, MetaTypePathKind, Process, ProcessContext,
+    ProcessError, ProcessResult, ProcessorState, Processors, SavedAsset, TransformedAsset,
 };
 
 #[cfg(test)]

@@ -56,6 +56,10 @@ A path whose value a loader read while loading, recorded as a processing input r
 The code that turns a source asset into a processed one, configured per asset by an `AssetAction::Process` sidecar.
 *Avoid*: importer, converter, build step
 
+**Asset processor** (`AssetProcessor`):
+The background body that drives processors: it scans every processed source, writes the processed outputs, and reacts to source changes. It is not an ECS system — it is started once in `Startup` and then runs on the IO task pool.
+*Avoid*: processor (for the `Process` implementation), build system
+
 **Processed asset**:
 The output a processor writes for a source asset, loadable in place of it; its `.meta` action is always a load.
 *Avoid*: imported asset, output asset

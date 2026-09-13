@@ -16,5 +16,5 @@ Status: accepted
 ## 影响
 
 - `.audio` 拆成「源音频文件 + `.meta`(settings)」；`.mat` 保留为 loader 自有格式、旁边加 `.meta`。字段级落点归迁移路径 #185。
-- `.mesh_bin` / `.texture_bin` 这类「已加工产物」定位为 processed mode 的产物；`AssetProcessor` 本体延后（#196），迁移期现有手动加工管线原样保留。
+- `.mesh_bin` / `.texture_bin` 这类「已加工产物」定位为 processed mode 的产物；`AssetProcessor` 本体已随加工主轴 S5（#231）落地，迁移期现有手动加工管线暂原样保留，收编归 S8/S9。
 - `.meta` 里的 loader 名以 `std::any::type_name` 为准（`Asset` 已去 `TypePath`，见 #188）。

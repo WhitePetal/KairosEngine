@@ -244,6 +244,18 @@ impl AssetServer {
             })
     }
 
+    /// Resolves the loader for `path` from its file extension, when the asset
+    /// type is not statically known.
+    ///
+    /// This is the path-only counterpart of [`AssetServer::find_loader`], used by
+    /// the processor to build a default `.meta` for an asset that has none.
+    pub(crate) fn get_path_asset_loader(
+        &self,
+        asset_path: &AssetPath<'_>,
+    ) -> Result<Arc<dyn ErasedAssetLoader>, AssetLoadError> {
+        self.find_loader(None, asset_path)
+    }
+
     /// Begins loading an [`Asset`] of type `A` stored at `path`.
     ///
     /// The returned "strong" handle keeps the asset alive while it lives. Once

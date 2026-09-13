@@ -5,21 +5,32 @@
 //! depend on it (its `dependents`), and its [`ProcessStatus`]. Forward edges
 //! live in [`ProcessedInfo::process_dependencies`]; the reverse `dependents`
 //! edges live here, kept in sync as assets are processed, removed, and re-pointed
-//! at new dependencies.
+//! at new dependencies. Each asset also carries a `file_transaction_lock` that
+//! the processor holds while writing its processed output, so a concurrent reader
+//! never sees a half-written asset (the gated reader holds the read side; it
+//! lands with the gating slice).
 //!
 //! An asset absent from the graph is treated as **non-existent**; a dependency
 //! that does not exist yet is parked in `non_existent_dependents` so that when
 //! it appears its dependents are still linked to it. This mirrors `bevy_asset`'s
-//! structure, minus the processor's I/O, scheduling, and gated-reader state,
-//! which arrive with those slices.
-// Nothing outside the tests consumes this yet; the `AssetProcessor` (S5) and the
-// gated reader (S7) do.
+//! structure, minus the processor's I/O, scheduling, and gated-reader state.
+//!
+//! [`ProcessorAssetInfos::finish_processing`] folds a completed (or skipped, or
+//! failed) pass back into the graph and hands the caller the dependents that must
+//! be re-checked.
 #![allow(dead_code)]
 
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
+use std::sync::Arc;
 
+use crate::io::AssetSourceId;
 use crate::meta::{AssetHash, ProcessedInfo};
 use crate::path::AssetPath;
+use crate::server::AssetLoadError;
+
+use super::asset_processor::ProcessResult;
+use super::process::ProcessError;
 
 /// The final status of processing one asset.
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
@@ -35,19 +46,31 @@ pub(crate) enum ProcessStatus {
 /// The graph's record for one asset.
 ///
 /// Note: if a new field is added here, make sure it is propagated (where
-/// relevant) by the rename handling the processor adds later.
+/// relevant) by [`ProcessorAssetInfos::rename`].
 #[derive(Debug, Default)]
 pub(crate) struct ProcessorAssetInfo {
     processed_info: Option<ProcessedInfo>,
     /// Paths of assets that depend on this asset when they are being processed.
     dependents: HashSet<AssetPath<'static>>,
     status: Option<ProcessStatus>,
+    /// A lock that controls read/write access to the processed asset's bytes and
+    /// its `.meta` sidecar.
+    ///
+    /// The processor holds the write side for the whole of a processing pass, so
+    /// a reader that acquires the read side can never observe payload bytes and
+    /// metadata from different versions of the asset.
+    file_transaction_lock: Arc<async_lock::RwLock<()>>,
 }
 
 impl ProcessorAssetInfo {
     /// The info this asset was last processed to, if it has been processed.
     pub(crate) fn processed_info(&self) -> Option<&ProcessedInfo> {
         self.processed_info.as_ref()
+    }
+
+    /// Replaces this asset's recorded [`ProcessedInfo`].
+    pub(crate) fn set_processed_info(&mut self, processed_info: Option<ProcessedInfo>) {
+        self.processed_info = processed_info;
     }
 
     /// The paths that depend on this asset when they are processed.
@@ -58,6 +81,11 @@ impl ProcessorAssetInfo {
     /// The asset's current [`ProcessStatus`], if it has one yet.
     pub(crate) fn status(&self) -> Option<ProcessStatus> {
         self.status
+    }
+
+    /// The lock guarding writes to this asset's processed output.
+    pub(crate) fn file_transaction_lock(&self) -> Arc<async_lock::RwLock<()>> {
+        self.file_transaction_lock.clone()
     }
 }
 
@@ -81,7 +109,7 @@ pub(crate) struct ProcessorAssetInfos {
 }
 
 impl ProcessorAssetInfos {
-    fn get_or_insert(&mut self, asset_path: AssetPath<'static>) -> &mut ProcessorAssetInfo {
+    pub(crate) fn get_or_insert(&mut self, asset_path: AssetPath<'static>) -> &mut ProcessorAssetInfo {
         self.infos.entry(asset_path.clone()).or_insert_with(|| {
             let mut info = ProcessorAssetInfo::default();
             // Resolve any dependents that were waiting for this asset.
@@ -99,11 +127,18 @@ impl ProcessorAssetInfos {
         self.infos.get(asset_path)
     }
 
-    fn get_mut(&mut self, asset_path: &AssetPath<'static>) -> Option<&mut ProcessorAssetInfo> {
+    pub(crate) fn get_mut(
+        &mut self,
+        asset_path: &AssetPath<'static>,
+    ) -> Option<&mut ProcessorAssetInfo> {
         self.infos.get_mut(asset_path)
     }
 
-    fn add_dependent(&mut self, asset_path: &AssetPath<'static>, dependent: AssetPath<'static>) {
+    pub(crate) fn add_dependent(
+        &mut self,
+        asset_path: &AssetPath<'static>,
+        dependent: AssetPath<'static>,
+    ) {
         if let Some(info) = self.get_mut(asset_path) {
             info.dependents.insert(dependent);
         } else {
@@ -145,17 +180,91 @@ impl ProcessorAssetInfos {
         info.dependents.iter().cloned().collect()
     }
 
+    /// Marks `asset_path` as [`Processed`](ProcessStatus::Processed) without
+    /// changing its recorded [`ProcessedInfo`].
+    ///
+    /// This is the `SkippedNotChanged` outcome: the existing output is still
+    /// valid, but the asset should be considered ready.
+    pub(crate) fn mark_processed(&mut self, asset_path: &AssetPath<'static>) {
+        self.get_or_insert(asset_path.clone()).status = Some(ProcessStatus::Processed);
+    }
+
     /// Marks `asset_path` as [`Failed`](ProcessStatus::Failed) to process.
     pub(crate) fn mark_failed(&mut self, asset_path: AssetPath<'static>) {
         self.get_or_insert(asset_path).status = Some(ProcessStatus::Failed);
     }
 
+    /// Marks `asset_path` as failed and records `dependency` as something that
+    /// must be reprocessed before this asset can be retried.
+    pub(crate) fn mark_failed_with_dependency(
+        &mut self,
+        asset_path: AssetPath<'static>,
+        dependency: AssetPath<'static>,
+    ) {
+        let info = self.get_or_insert(asset_path.clone());
+        info.processed_info = Some(ProcessedInfo {
+            hash: AssetHash::default(),
+            full_hash: AssetHash::default(),
+            process_dependencies: Vec::new(),
+        });
+        info.status = Some(ProcessStatus::Failed);
+        self.add_dependent(&dependency, asset_path);
+    }
+
+    /// Folds one finished pass into the graph.
+    ///
+    /// A successful pass records the new [`ProcessedInfo`] and queues its
+    /// dependents through `reprocess_sender`; a skipped pass just marks the asset
+    /// ready; ignored and non-existent assets are left alone; a failure is
+    /// recorded (and, when it stems from a loader dependency, links that
+    /// dependency so the asset is retried after it changes).
+    pub(crate) async fn finish_processing(
+        &mut self,
+        asset_path: AssetPath<'static>,
+        result: Result<ProcessResult, ProcessError>,
+        reprocess_sender: &async_channel::Sender<(AssetSourceId<'static>, PathBuf)>,
+    ) {
+        match result {
+            Ok(ProcessResult::Processed(processed_info)) => {
+                let dependents = self.insert_processed(asset_path, processed_info);
+                for dependent in dependents {
+                    let _ = reprocess_sender
+                        .send((dependent.source().clone_owned(), dependent.path().to_owned()))
+                        .await;
+                }
+            }
+            Ok(ProcessResult::SkippedNotChanged) => {
+                self.mark_processed(&asset_path);
+            }
+            Ok(ProcessResult::Ignored) => {}
+            Err(ProcessError::ExtensionRequired) => {}
+            Err(ProcessError::AssetReaderError {
+                err: crate::io::AssetReaderError::NotFound(_),
+                ..
+            }) => {}
+            Err(err) => {
+                if let ProcessError::AssetLoadError(AssetLoadError::AssetLoaderError(loader_error)) =
+                    &err
+                {
+                    let dependency = loader_error.path().clone();
+                    self.mark_failed_with_dependency(asset_path, dependency);
+                } else {
+                    self.mark_failed(asset_path);
+                }
+            }
+        }
+    }
+
     /// Removes `asset_path` from the graph. A removed asset reads as
     /// non-existent, and its dependents are parked until it reappears.
-    pub(crate) fn remove(&mut self, asset_path: &AssetPath<'static>) {
-        let Some(info) = self.infos.remove(asset_path) else {
-            return;
-        };
+    ///
+    /// Returns the asset's transaction lock so the caller can wait for
+    /// in-flight reads and writes to finish before deleting the processed files.
+    pub(crate) fn remove(
+        &mut self,
+        asset_path: &AssetPath<'static>,
+    ) -> Option<Arc<async_lock::RwLock<()>>> {
+        let info = self.infos.remove(asset_path)?;
         if let Some(processed_info) = info.processed_info {
             self.clear_dependencies(asset_path, processed_info);
         }
@@ -163,6 +272,66 @@ impl ProcessorAssetInfos {
             self.non_existent_dependents
                 .insert(asset_path.clone(), info.dependents);
         }
+        Some(info.file_transaction_lock)
+    }
+
+    /// Moves the graph's record for `old` to `new`, re-pointing the dependents
+    /// edges of both.
+    ///
+    /// Returns the transaction locks for the old and new paths so the caller can
+    /// wait for in-flight access before moving the processed files.
+    pub(crate) async fn rename(
+        &mut self,
+        old: &AssetPath<'static>,
+        new: &AssetPath<'static>,
+        new_task_sender: &async_channel::Sender<(AssetSourceId<'static>, PathBuf)>,
+    ) -> Option<(Arc<async_lock::RwLock<()>>, Arc<async_lock::RwLock<()>>)> {
+        let mut info = self.infos.remove(old)?;
+
+        if !info.dependents.is_empty() {
+            // Folder renames with relative paths cannot be rewritten yet, so the
+            // old path's dependents are parked until the path or they change.
+            // (See `bevy_asset`'s equivalent TODO: AssetPath erases
+            // relativeness, so a renamed folder's dependents cannot be matched.)
+            self.non_existent_dependents
+                .insert(old.clone(), core::mem::take(&mut info.dependents));
+        }
+
+        if let Some(processed_info) = &info.processed_info {
+            // Re-point the dependents of this asset's process dependencies.
+            for dependency in &processed_info.process_dependencies {
+                if let Some(dependency_info) = self.infos.get_mut(&dependency.path) {
+                    dependency_info.dependents.remove(old);
+                    dependency_info.dependents.insert(new.clone());
+                } else if let Some(dependents) =
+                    self.non_existent_dependents.get_mut(&dependency.path)
+                {
+                    dependents.remove(old);
+                    dependents.insert(new.clone());
+                }
+            }
+        }
+
+        let new_info = self.get_or_insert(new.clone());
+        new_info.processed_info = info.processed_info;
+        new_info.status = info.status;
+        let dependents: Vec<AssetPath<'static>> = new_info.dependents.iter().cloned().collect();
+
+        // The renamed asset may need new meta, and its dependents may have been
+        // waiting for it, so both are queued for a reprocess check.
+        let _ = new_task_sender
+            .send((new.source().clone_owned(), new.path().to_owned()))
+            .await;
+        for dependent in dependents {
+            let _ = new_task_sender
+                .send((dependent.source().clone_owned(), dependent.path().to_owned()))
+                .await;
+        }
+
+        Some((
+            info.file_transaction_lock,
+            new_info.file_transaction_lock.clone(),
+        ))
     }
 
     /// Whether reprocessing `asset_path` can be skipped: its own content hash is

@@ -2,8 +2,8 @@
 //!
 //! A processor turns a source asset into a processed asset with a different
 //! representation — a texture compressed, a mesh packed, a format converted.
-//! This module carries the extension points the processor body (a later slice)
-//! drives:
+//! This module carries both the extension points a processor is written against
+//! and the background body ([`AssetProcessor`]) that drives them:
 //!
 //! - [`Process`] — the low-level "read the source, write the processed bytes"
 //!   trait; [`LoadTransformAndSave`] is the high-level implementation that
@@ -32,13 +32,17 @@
 //! convention (`std::any::type_name`), matching loaders; kairos deliberately has
 //! no `TypePath`.
 
+mod asset_processor;
 mod info;
 mod process;
 mod registry;
 mod saver;
 mod transformer;
 
-// Re-exported for the crate's own use (tests now, the `AssetProcessor` later).
+pub use asset_processor::{
+    AssetProcessor, AssetProcessorData, InitializeError, ProcessResult, ProcessorState,
+};
+// Re-exported for the crate's own use (the gated reader consumes `ProcessStatus`).
 #[allow(unused_imports)]
 pub(crate) use info::{ProcessStatus, ProcessorAssetInfos};
 pub use registry::{GetProcessorError, Processors};
