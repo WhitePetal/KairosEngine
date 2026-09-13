@@ -25,7 +25,8 @@ use std::{
 
 use futures_io::{AsyncRead, AsyncSeek, AsyncWrite};
 use futures_lite::Stream;
-use kairos_tasks::ConditionalSendFuture;
+use kairos_tasks::{BoxedFuture, ConditionalSendFuture};
+use thiserror::Error;
 
 pub mod embedded;
 pub mod file;
@@ -36,10 +37,6 @@ pub use source::{
     MissingAssetSourceError, MissingAssetWriterError, MissingProcessedAssetReaderError,
     MissingProcessedAssetWriterError,
 };
-
-/// A boxed future that may cross threads. The box is what makes the erased
-/// (object-safe) reader and writer traits possible.
-pub type BoxedFuture<'a, T> = Pin<Box<dyn ConditionalSendFuture<Output = T> + 'a>>;
 
 /// A stream of directory entry paths, as returned by
 /// [`AssetReader::read_directory`].
@@ -54,13 +51,16 @@ pub fn empty_path_stream() -> Box<PathStream> {
 }
 
 /// Errors that can occur while reading an asset.
-#[derive(Debug, Clone)]
+#[derive(Error, Debug, Clone)]
 pub enum AssetReaderError {
     /// The path does not exist in this source.
+    #[error("Path not found: {}", .0.display())]
     NotFound(PathBuf),
     /// An OS-level IO error occurred.
+    #[error("Encountered an I/O error while loading asset: {0}")]
     Io(std::sync::Arc<std::io::Error>),
     /// An HTTP source returned an unexpected status code.
+    #[error("Encountered HTTP status {0:?} when loading asset")]
     HttpError(u16),
 }
 
@@ -86,25 +86,12 @@ impl From<std::io::Error> for AssetReaderError {
     }
 }
 
-impl core::fmt::Display for AssetReaderError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Self::NotFound(path) => write!(f, "Path not found: {}", path.display()),
-            Self::Io(error) => write!(f, "Encountered an I/O error while loading asset: {error}"),
-            Self::HttpError(code) => {
-                write!(f, "Encountered HTTP status {code:?} when loading asset")
-            }
-        }
-    }
-}
-
-impl std::error::Error for AssetReaderError {}
-
 /// Errors that can occur while writing an asset.
-#[derive(Debug)]
+#[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum AssetWriterError {
     /// An OS-level IO error occurred.
+    #[error("Encountered an I/O error while writing asset: {0}")]
     Io(std::io::Error),
 }
 
@@ -113,16 +100,6 @@ impl From<std::io::Error> for AssetWriterError {
         Self::Io(value)
     }
 }
-
-impl core::fmt::Display for AssetWriterError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Self::Io(error) => write!(f, "Encountered an I/O error while writing asset: {error}"),
-        }
-    }
-}
-
-impl std::error::Error for AssetWriterError {}
 
 /// The bytes of one asset (or one asset's meta sidecar).
 ///
@@ -139,13 +116,19 @@ pub trait Reader: AsyncRead + AsyncSeek + Unpin + Send + Sync {
     ///
     /// Implementors may override this to fill the buffer more efficiently than
     /// the default poll loop.
-    fn read_to_end<'a>(&'a mut self, buf: &'a mut Vec<u8>) -> BoxedFuture<'a, std::io::Result<usize>> {
+    fn read_to_end<'a>(
+        &'a mut self,
+        buf: &'a mut Vec<u8>,
+    ) -> BoxedFuture<'a, std::io::Result<usize>> {
         Box::pin(async move { futures_lite::AsyncReadExt::read_to_end(self, buf).await })
     }
 }
 
 impl Reader for Box<dyn Reader + '_> {
-    fn read_to_end<'a>(&'a mut self, buf: &'a mut Vec<u8>) -> BoxedFuture<'a, std::io::Result<usize>> {
+    fn read_to_end<'a>(
+        &'a mut self,
+        buf: &'a mut Vec<u8>,
+    ) -> BoxedFuture<'a, std::io::Result<usize>> {
         (**self).read_to_end(buf)
     }
 }
@@ -213,8 +196,10 @@ pub trait AssetReader: Send + Sync + 'static {
 /// The object-safe counterpart of [`AssetReader`], used behind a `dyn`.
 pub trait ErasedAssetReader: Send + Sync + 'static {
     /// Opens the asset's bytes at `path`.
-    fn read<'a>(&'a self, path: &'a Path)
-    -> BoxedFuture<'a, Result<Box<dyn Reader + 'a>, AssetReaderError>>;
+    fn read<'a>(
+        &'a self,
+        path: &'a Path,
+    ) -> BoxedFuture<'a, Result<Box<dyn Reader + 'a>, AssetReaderError>>;
 
     /// Opens the asset meta sidecar's bytes at `path`.
     fn read_meta<'a>(

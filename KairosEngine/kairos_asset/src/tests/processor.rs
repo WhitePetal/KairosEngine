@@ -1,6 +1,6 @@
 //! Tests for the in-memory processed-asset graph.
 
-use std::collections::HashSet;
+use kairos_collections::FixedHashSet as HashSet;
 
 use crate::meta::{ProcessDependencyInfo, ProcessedInfo};
 use crate::path::AssetPath;
@@ -45,7 +45,10 @@ fn the_three_states_are_representable() {
     );
 
     infos.remove(&path);
-    assert!(infos.get(&path).is_none(), "a removed asset is non-existent");
+    assert!(
+        infos.get(&path).is_none(),
+        "a removed asset is non-existent"
+    );
 }
 
 #[test]
@@ -58,7 +61,10 @@ fn the_graph_is_queryable_in_both_directions() {
     // b depends on a; c depends on a and b.
     infos.insert_processed(a.clone(), processed_info(1, 10, &[]));
     infos.insert_processed(b.clone(), processed_info(2, 20, &[("a.bin", 10)]));
-    infos.insert_processed(c.clone(), processed_info(3, 30, &[("a.bin", 10), ("b.bin", 20)]));
+    infos.insert_processed(
+        c.clone(),
+        processed_info(3, 30, &[("a.bin", 10), ("b.bin", 20)]),
+    );
 
     // Forward: c's own recorded dependencies.
     let c_dependencies: HashSet<AssetPath<'static>> = infos

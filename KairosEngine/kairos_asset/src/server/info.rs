@@ -9,12 +9,11 @@
 //! erased-index type.
 
 use core::any::TypeId;
-use std::{
-    collections::{HashMap, HashSet, hash_map::Entry},
-    sync::{Arc, Weak},
-};
+use std::sync::{Arc, Weak};
 
 use crossbeam_channel::Sender;
+use hashbrown::hash_map::Entry;
+use kairos_collections::{FixedHashMap as HashMap, FixedHashSet as HashSet};
 use kairos_ecs::world::World;
 use kairos_tasks::Task;
 
@@ -97,8 +96,7 @@ pub(crate) struct AssetInfos {
     pub(crate) watching_for_changes: bool,
     /// Writes a typed [`AssetEvent::LoadedWithDependencies`] for an asset of
     /// each registered type.
-    pub(crate) dependency_loaded_event_sender:
-        HashMap<TypeId, fn(&mut World, UntypedAssetId)>,
+    pub(crate) dependency_loaded_event_sender: HashMap<TypeId, fn(&mut World, UntypedAssetId)>,
     /// Writes a typed [`AssetLoadFailedEvent`] for an asset of each registered
     /// type.
     pub(crate) dependency_failed_event_sender:
@@ -124,7 +122,10 @@ impl AssetInfos {
         self.handle_providers
             .entry(TypeId::of::<A>())
             .or_insert_with(|| {
-                AssetHandleProvider::new(TypeId::of::<A>(), Arc::new(AssetIndexAllocator::default()))
+                AssetHandleProvider::new(
+                    TypeId::of::<A>(),
+                    Arc::new(AssetIndexAllocator::default()),
+                )
             });
     }
 
@@ -193,7 +194,10 @@ impl AssetInfos {
                 let should_load = match loading_mode {
                     HandleLoadingMode::Force => true,
                     HandleLoadingMode::Request
-                        if matches!(info.load_state, LoadState::NotLoaded | LoadState::Failed(_)) =>
+                        if matches!(
+                            info.load_state,
+                            LoadState::NotLoaded | LoadState::Failed(_)
+                        ) =>
                     {
                         true
                     }
@@ -285,7 +289,10 @@ impl AssetInfos {
         let Some(by_type) = self.path_to_index.get(&path.clone_owned()) else {
             return Vec::new();
         };
-        by_type.values().filter_map(|id| self.get_index_handle(*id)).collect()
+        by_type
+            .values()
+            .filter_map(|id| self.get_index_handle(*id))
+            .collect()
     }
 
     /// The ids currently registered for `path`, across every type.
@@ -593,7 +600,8 @@ impl AssetInfos {
             if info.loading_rec_dependencies.is_empty() && info.failed_rec_dependencies.is_empty() {
                 info.rec_dep_load_state = RecursiveDependencyLoadState::Loaded;
                 if info.load_state.is_loaded() {
-                    let _ = sender.send(InternalAssetEvent::LoadedWithDependencies { id: waiting_id });
+                    let _ =
+                        sender.send(InternalAssetEvent::LoadedWithDependencies { id: waiting_id });
                 }
                 Some(std::mem::take(
                     &mut info.dependents_waiting_on_recursive_dep_load,

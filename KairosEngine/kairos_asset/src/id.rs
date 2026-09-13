@@ -12,6 +12,7 @@ use core::{
 };
 
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 use uuid::Uuid;
 
 use crate::asset::Asset;
@@ -111,7 +112,12 @@ impl<A: Asset> Debug for AssetId<A> {
                 index.generation()
             ),
             AssetId::Uuid { uuid } => {
-                write!(f, "AssetId<{}>{{ uuid: {} }}", core::any::type_name::<A>(), uuid)
+                write!(
+                    f,
+                    "AssetId<{}>{{ uuid: {} }}",
+                    core::any::type_name::<A>(),
+                    uuid
+                )
             }
         }
     }
@@ -241,7 +247,9 @@ impl UntypedAssetId {
     #[inline]
     pub fn type_id(&self) -> TypeId {
         match self {
-            UntypedAssetId::Index { type_id, .. } | UntypedAssetId::Uuid { type_id, .. } => *type_id,
+            UntypedAssetId::Index { type_id, .. } | UntypedAssetId::Uuid { type_id, .. } => {
+                *type_id
+            }
         }
     }
 
@@ -359,10 +367,13 @@ impl<A: Asset> TryFrom<UntypedAssetId> for AssetId<A> {
 
 /// The error returned when an [`UntypedAssetId`] is converted to the wrong
 /// typed [`AssetId`].
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum UntypedAssetIdConversionError {
     /// The recorded [`TypeId`] does not match the target asset type.
+    #[error(
+        "this UntypedAssetId is for {found:?} and cannot be converted into an AssetId<{expected:?}>"
+    )]
     TypeIdMismatch {
         /// The [`TypeId`] of the asset type being converted to.
         expected: TypeId,
@@ -370,16 +381,3 @@ pub enum UntypedAssetIdConversionError {
         found: TypeId,
     },
 }
-
-impl fmt::Display for UntypedAssetIdConversionError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::TypeIdMismatch { expected, found } => write!(
-                f,
-                "this UntypedAssetId is for {found:?} and cannot be converted into an AssetId<{expected:?}>"
-            ),
-        }
-    }
-}
-
-impl std::error::Error for UntypedAssetIdConversionError {}

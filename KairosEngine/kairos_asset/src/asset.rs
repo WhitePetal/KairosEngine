@@ -5,7 +5,9 @@
 //! discovered by [`VisitAssetDependencies`]. There is no `#[derive(Asset)]`
 //! macro; implement the two traits directly.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
+
+use kairos_collections::{FixedHashMap as HashMap, FixedHashSet as HashSet};
 
 use crate::handle::{Handle, UntypedHandle};
 use crate::id::UntypedAssetId;

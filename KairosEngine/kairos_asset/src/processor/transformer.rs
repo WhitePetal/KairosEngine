@@ -8,9 +8,10 @@
 //! transformation can use [`IdentityAssetTransformer`] and skip it.
 
 use core::marker::PhantomData;
-use std::collections::{HashMap, hash_map::Entry};
 
 use atomicow::CowArc;
+use hashbrown::hash_map::Entry;
+use kairos_collections::FixedHashMap as HashMap;
 use kairos_ecs::error::KairosError;
 use kairos_tasks::ConditionalSendFuture;
 use serde::{Deserialize, Serialize};

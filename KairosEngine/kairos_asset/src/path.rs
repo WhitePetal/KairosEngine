@@ -24,6 +24,7 @@ use std::path::{Path, PathBuf};
 
 use atomicow::CowArc;
 use serde::{Deserialize, Serialize, de::Visitor};
+use thiserror::Error;
 
 use crate::io::AssetSourceId;
 
@@ -59,45 +60,28 @@ impl<'a> Display for AssetPath<'a> {
 }
 
 /// An error returned when a string cannot be parsed as an [`AssetPath`].
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ParseAssetPathError {
     /// The source section contains the label delimiter `#`, e.g.
     /// `bad#source://file.test`.
+    #[error("Asset source must not contain a `#` character")]
     InvalidSourceSyntax,
     /// The label section contains the source delimiter `://`, e.g.
     /// `source://file.test#bad://label`.
+    #[error("Asset label must not contain a `://` substring")]
     InvalidLabelSyntax,
     /// A `://` delimiter has no source name before it, e.g. `://file.test`.
+    #[error(
+        "Asset source must be at least one character. Either specify the source before the '://' or remove the `://`"
+    )]
     MissingSource,
     /// A `#` delimiter has no label after it, e.g. `file.test#`.
+    #[error(
+        "Asset label must be at least one character. Either specify the label after the '#' or remove the '#'"
+    )]
     MissingLabel,
 }
-
-impl Display for ParseAssetPathError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Self::InvalidSourceSyntax => {
-                write!(f, "Asset source must not contain a `#` character")
-            }
-            Self::InvalidLabelSyntax => {
-                write!(f, "Asset label must not contain a `://` substring")
-            }
-            Self::MissingSource => write!(
-                f,
-                "Asset source must be at least one character. Either specify the source before \
-                 the '://' or remove the `://`"
-            ),
-            Self::MissingLabel => write!(
-                f,
-                "Asset label must be at least one character. Either specify the label after the \
-                 '#' or remove the '#'"
-            ),
-        }
-    }
-}
-
-impl std::error::Error for ParseAssetPathError {}
 
 impl<'a> AssetPath<'a> {
     /// Parses an asset path from its string form.

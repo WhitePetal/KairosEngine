@@ -26,6 +26,7 @@ crossbeam-channel = "0.5.15"
 futures-io = "0.3"
 futures-lite = "2.6.1"
 futures-util = "0.3"
+hashbrown = "0.17.1"
 kairos_collections = { path = "../kairos_collections" }
 kairos_ecs = { path = "../kairos_ecs" }
 kairos_tasks = { path = "../kairos_tasks" }

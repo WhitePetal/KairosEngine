@@ -31,8 +31,8 @@ pub use info::{DependencyLoadState, LoadState, RecursiveDependencyLoadState};
 use core::any::{TypeId, type_name};
 use std::{
     fmt,
-    path::Path,
     panic::AssertUnwindSafe,
+    path::Path,
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
@@ -43,6 +43,7 @@ use kairos_ecs::change_detection::Mut;
 use kairos_ecs::resource::Resource;
 use kairos_ecs::world::World;
 use kairos_tasks::{IoTaskPool, TaskPool};
+use thiserror::Error;
 
 use crate::asset::{Asset, VisitAssetDependencies};
 use crate::assets::{Assets, LoadedUntypedAsset};
@@ -157,11 +158,17 @@ impl AssetServer {
     }
 
     fn read_loaders(&self) -> RwLockReadGuard<'_, AssetLoaders> {
-        self.data.loaders.read().expect("asset loaders lock poisoned")
+        self.data
+            .loaders
+            .read()
+            .expect("asset loaders lock poisoned")
     }
 
     fn write_loaders(&self) -> RwLockWriteGuard<'_, AssetLoaders> {
-        self.data.loaders.write().expect("asset loaders lock poisoned")
+        self.data
+            .loaders
+            .write()
+            .expect("asset loaders lock poisoned")
     }
 
     /// The [`AssetSource`] named by `source`.
@@ -360,7 +367,7 @@ impl AssetServer {
         {
             Ok(found) => found,
             Err(error) => {
-                return self.fail_load(input_handle.as_ref().map(UntypedHandle::id), &path, error)
+                return self.fail_load(input_handle.as_ref().map(UntypedHandle::id), &path, error);
             }
         };
 
@@ -811,8 +818,8 @@ impl AssetServer {
                     } else {
                         // Build the path directly instead of parsing a string,
                         // so a `#` in a filename is not read as a label.
-                        let asset_path = AssetPath::from_path_buf(child_path)
-                            .with_source(source.clone());
+                        let asset_path =
+                            AssetPath::from_path_buf(child_path).with_source(source.clone());
                         match server.load_builder().load_untyped_async(asset_path).await {
                             Ok(handle) => handles.push(handle),
                             // A file no loader recognizes is not an asset of this
@@ -849,10 +856,8 @@ impl AssetServer {
                 match result {
                     Ok(handles) => server.send_asset_event(InternalAssetEvent::Loaded {
                         id,
-                        loaded_asset: LoadedAsset::new_with_dependencies(LoadedFolder {
-                            handles,
-                        })
-                        .into(),
+                        loaded_asset: LoadedAsset::new_with_dependencies(LoadedFolder { handles })
+                            .into(),
                     }),
                     Err(error) => server.send_asset_event(InternalAssetEvent::Failed {
                         id,
@@ -1038,7 +1043,10 @@ impl AssetServer {
     /// Returns the first id when several assets are registered for one path; see
     /// [`get_path_ids`](Self::get_path_ids) for all of them.
     pub fn get_path_id<'a>(&self, path: impl Into<AssetPath<'a>>) -> Option<UntypedAssetId> {
-        self.read_infos().get_path_ids(&path.into()).into_iter().next()
+        self.read_infos()
+            .get_path_ids(&path.into())
+            .into_iter()
+            .next()
     }
 
     /// Every active untyped asset id for `path`, across every asset type.
@@ -1232,10 +1240,7 @@ impl<'a> LoadBuilder<'a> {
             return Err(AssetLoadError::EmptyPath(path.into_owned()));
         }
         if path.is_unapproved()
-            && !unapproved_allowed(
-                asset_server.data.unapproved_path_mode,
-                override_unapproved,
-            )
+            && !unapproved_allowed(asset_server.data.unapproved_path_mode, override_unapproved)
         {
             return Err(AssetLoadError::UnapprovedPath {
                 path: path.into_owned(),
@@ -1380,16 +1385,21 @@ pub(crate) enum InternalAssetEvent {
 /// `Clone` lets the same failure be both reported over the event channel and
 /// returned to the caller (mirroring `bevy_asset`).
 #[non_exhaustive]
-#[derive(Debug, Clone)]
+#[derive(Error, Debug, Clone)]
 pub enum AssetLoadError {
     /// A load was requested for a path with no file component.
+    #[error("Attempted to load an asset with an empty path \"{0}\"")]
     EmptyPath(AssetPath<'static>),
     /// A load was requested for an unapproved path while the server forbade it.
+    #[error("Asset path {path} is unapproved. See UnapprovedPathMode for details.")]
     UnapprovedPath {
         /// The path that was requested.
         path: AssetPath<'static>,
     },
     /// A handle of the wrong asset type was requested for a path.
+    #[error(
+        "Requested handle of type {requested:?} for asset '{path}' does not match actual asset type '{actual_asset_name}', which used loader '{loader_name}'"
+    )]
     RequestedHandleTypeMismatch {
         /// The path that was requested.
         path: AssetPath<'static>,
@@ -1401,6 +1411,9 @@ pub enum AssetLoadError {
         loader_name: &'static str,
     },
     /// No loader matched the requested asset type and path.
+    #[error(
+        "Could not find an asset loader matching: Asset Type: {asset_type_id:?}; Path: {asset_path:?};"
+    )]
     MissingAssetLoader {
         /// The asset type the caller asked for, if it was known.
         asset_type_id: Option<TypeId>,
@@ -1408,19 +1421,25 @@ pub enum AssetLoadError {
         asset_path: String,
     },
     /// No loader is registered under the requested name.
+    #[error("no `AssetLoader` found with the name '{type_name}'")]
     MissingAssetLoaderForTypeName {
         /// The loader name that was not found.
         type_name: String,
     },
     /// Reading the asset's bytes failed.
+    #[error("{0}")]
     AssetReaderError(AssetReaderError),
     /// The asset's source does not exist.
+    #[error("{0}")]
     MissingAssetSourceError(MissingAssetSourceError),
     /// The asset's source has no processed reader.
+    #[error("{0}")]
     MissingProcessedAssetReaderError(MissingProcessedAssetReaderError),
     /// Reading the asset's meta sidecar failed.
+    #[error("Encountered an error while reading asset metadata bytes")]
     AssetMetaReadError,
     /// The asset's meta sidecar could not be deserialized.
+    #[error("Failed to deserialize meta for asset {path}: {error}")]
     DeserializeMeta {
         /// The path whose meta failed to parse.
         path: AssetPath<'static>,
@@ -1428,16 +1447,19 @@ pub enum AssetLoadError {
         error: Box<DeserializeMetaError>,
     },
     /// The asset is configured to be processed and cannot be loaded directly.
+    #[error("Asset '{path}' is configured to be processed. It cannot be loaded directly.")]
     CannotLoadProcessedAsset {
         /// The path of the asset.
         path: AssetPath<'static>,
     },
     /// The asset is configured to be ignored and cannot be loaded.
+    #[error("Asset '{path}' is configured to be ignored. It cannot be loaded.")]
     CannotLoadIgnoredAsset {
         /// The path of the asset.
         path: AssetPath<'static>,
     },
     /// The loader panicked.
+    #[error("Failed to load asset '{path}', asset loader '{loader_name}' panicked")]
     AssetLoaderPanic {
         /// The path of the asset that was loading.
         path: AssetPath<'static>,
@@ -1445,8 +1467,14 @@ pub enum AssetLoadError {
         loader_name: &'static str,
     },
     /// The loader itself returned an error.
+    #[error("{0}")]
     AssetLoaderError(AssetLoaderError),
     /// The requested label does not exist on the loaded asset.
+    #[error(
+        "The file at '{base_path}' does not contain the labeled asset '{label}'; it contains the following {} assets: {}",
+        all_labels.len(),
+        all_labels.iter().map(|label| format!("'{label}'")).collect::<Vec<_>>().join(", ")
+    )]
     MissingLabel {
         /// The path of the asset that was loaded.
         base_path: AssetPath<'static>,
@@ -1456,79 +1484,6 @@ pub enum AssetLoadError {
         all_labels: Vec<String>,
     },
 }
-
-impl fmt::Display for AssetLoadError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::EmptyPath(path) => {
-                write!(f, "Attempted to load an asset with an empty path \"{path}\"")
-            }
-            Self::UnapprovedPath { path } => write!(
-                f,
-                "Asset path {path} is unapproved. See UnapprovedPathMode for details."
-            ),
-            Self::RequestedHandleTypeMismatch {
-                path,
-                requested,
-                actual_asset_name,
-                loader_name,
-            } => write!(
-                f,
-                "Requested handle of type {requested:?} for asset '{path}' does not match actual \
-                 asset type '{actual_asset_name}', which used loader '{loader_name}'"
-            ),
-            Self::MissingAssetLoader {
-                asset_type_id,
-                asset_path,
-            } => write!(
-                f,
-                "Could not find an asset loader matching: Asset Type: {asset_type_id:?}; Path: \
-                 {asset_path:?};"
-            ),
-            Self::MissingAssetLoaderForTypeName { type_name } => {
-                write!(f, "no `AssetLoader` found with the name '{type_name}'")
-            }
-            Self::AssetReaderError(error) => write!(f, "{error}"),
-            Self::MissingAssetSourceError(error) => write!(f, "{error}"),
-            Self::MissingProcessedAssetReaderError(error) => write!(f, "{error}"),
-            Self::AssetMetaReadError => {
-                write!(f, "Encountered an error while reading asset metadata bytes")
-            }
-            Self::DeserializeMeta { path, error } => {
-                write!(f, "Failed to deserialize meta for asset {path}: {error}")
-            }
-            Self::CannotLoadProcessedAsset { path } => write!(
-                f,
-                "Asset '{path}' is configured to be processed. It cannot be loaded directly."
-            ),
-            Self::CannotLoadIgnoredAsset { path } => {
-                write!(f, "Asset '{path}' is configured to be ignored. It cannot be loaded.")
-            }
-            Self::AssetLoaderPanic { path, loader_name } => write!(
-                f,
-                "Failed to load asset '{path}', asset loader '{loader_name}' panicked"
-            ),
-            Self::AssetLoaderError(error) => write!(f, "{error}"),
-            Self::MissingLabel {
-                base_path,
-                label,
-                all_labels,
-            } => write!(
-                f,
-                "The file at '{base_path}' does not contain the labeled asset '{label}'; it \
-                 contains the following {} assets: {}",
-                all_labels.len(),
-                all_labels
-                    .iter()
-                    .map(|label| format!("'{label}'"))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ),
-        }
-    }
-}
-
-impl std::error::Error for AssetLoadError {}
 
 impl From<AssetReaderError> for AssetLoadError {
     fn from(error: AssetReaderError) -> Self {
@@ -1553,7 +1508,13 @@ impl From<MissingProcessedAssetReaderError> for AssetLoadError {
 /// The loader's error type only has to convert into [`KairosError`], so it is
 /// erased into one here; `Arc` lets clones share it across the dependent states
 /// that reference the same failure.
-#[derive(Debug, Clone)]
+#[derive(Error, Debug, Clone)]
+#[error(
+    "Failed to load asset '{}' with asset loader '{}': {}",
+    path,
+    loader_name,
+    error
+)]
 pub struct AssetLoaderError {
     path: AssetPath<'static>,
     loader_name: &'static str,
@@ -1589,15 +1550,3 @@ impl AssetLoaderError {
         &self.error
     }
 }
-
-impl fmt::Display for AssetLoaderError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Failed to load asset '{}' with asset loader '{}': {}",
-            self.path, self.loader_name, self.error
-        )
-    }
-}
-
-impl std::error::Error for AssetLoaderError {}

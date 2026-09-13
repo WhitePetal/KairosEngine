@@ -15,6 +15,7 @@ use core::{
 use std::sync::Arc;
 
 use crossbeam_channel::{Receiver, Sender};
+use thiserror::Error;
 use uuid::Uuid;
 
 use crate::asset::Asset;
@@ -459,10 +460,13 @@ impl<A: Asset> TryFrom<UntypedHandle> for Handle<A> {
 
 /// The error returned when an [`UntypedHandle`] is converted to the wrong typed
 /// [`Handle`].
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum UntypedAssetConversionError {
     /// The recorded [`TypeId`] does not match the target asset type.
+    #[error(
+        "this UntypedHandle is for {found:?} and cannot be converted into a Handle<{expected:?}>"
+    )]
     TypeIdMismatch {
         /// The [`TypeId`] of the asset type being converted to.
         expected: TypeId,
@@ -470,16 +474,3 @@ pub enum UntypedAssetConversionError {
         found: TypeId,
     },
 }
-
-impl fmt::Display for UntypedAssetConversionError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::TypeIdMismatch { expected, found } => write!(
-                f,
-                "this UntypedHandle is for {found:?} and cannot be converted into a Handle<{expected:?}>"
-            ),
-        }
-    }
-}
-
-impl std::error::Error for UntypedAssetConversionError {}

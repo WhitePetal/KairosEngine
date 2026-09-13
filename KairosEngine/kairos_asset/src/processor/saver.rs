@@ -6,17 +6,17 @@
 //! [`LoadTransformAndSave`](super::LoadTransformAndSave).
 
 use core::ops::Deref;
-use std::collections::HashMap;
 
 use atomicow::CowArc;
+use kairos_collections::FixedHashMap as HashMap;
 use kairos_ecs::error::KairosError;
-use kairos_tasks::ConditionalSendFuture;
+use kairos_tasks::{BoxedFuture, ConditionalSendFuture};
 use serde::{Deserialize, Serialize};
 
 use crate::asset::Asset;
 use crate::handle::{Handle, UntypedHandle};
 use crate::id::UntypedAssetId;
-use crate::io::{BoxedFuture, Writer};
+use crate::io::Writer;
 use crate::loader::{AssetLoader, ErasedLoadedAsset, LabeledAsset};
 use crate::meta::Settings;
 use crate::path::AssetPath;

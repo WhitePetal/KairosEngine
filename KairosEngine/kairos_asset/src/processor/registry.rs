@@ -12,10 +12,11 @@
 //! `set_default_processor`, and the two lookups. The `AssetProcessor` (a later
 //! slice) owns an instance and re-exposes these methods.
 
-use std::{
-    collections::{HashMap, hash_map::Entry},
-    sync::Arc,
-};
+use std::sync::Arc;
+
+use hashbrown::hash_map::Entry;
+use kairos_collections::FixedHashMap as HashMap;
+use thiserror::Error;
 
 use super::process::{ErasedProcessor, Process, ProcessError};
 
@@ -104,10 +105,7 @@ impl Processors {
     }
 
     /// The default processor for `extension`, if one is registered.
-    pub fn get_default_processor(
-        &self,
-        extension: &str,
-    ) -> Option<Arc<dyn ErasedProcessor>> {
+    pub fn get_default_processor(&self, extension: &str) -> Option<Arc<dyn ErasedProcessor>> {
         let type_name = self.extension_to_default_processor.get(extension)?;
         self.type_name_to_processor.get(type_name).cloned()
     }
@@ -135,11 +133,15 @@ impl Processors {
 }
 
 /// An error from resolving a processor by name or short name.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Error, Debug, PartialEq, Eq)]
 pub enum GetProcessorError {
     /// No processor is registered under the requested name.
+    #[error("The processor '{0}' does not exist")]
     Missing(String),
     /// The requested short name matches several processors; name one fully.
+    #[error(
+        "The processor '{processor_short_name}' is ambiguous between several processors: {ambiguous_processor_names:?}"
+    )]
     Ambiguous {
         /// The short name that was requested.
         processor_short_name: String,
@@ -147,24 +149,6 @@ pub enum GetProcessorError {
         ambiguous_processor_names: Vec<&'static str>,
     },
 }
-
-impl core::fmt::Display for GetProcessorError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Self::Missing(name) => write!(f, "The processor '{name}' does not exist"),
-            Self::Ambiguous {
-                processor_short_name,
-                ambiguous_processor_names,
-            } => write!(
-                f,
-                "The processor '{processor_short_name}' is ambiguous between several processors: \
-                 {ambiguous_processor_names:?}"
-            ),
-        }
-    }
-}
-
-impl std::error::Error for GetProcessorError {}
 
 impl From<GetProcessorError> for ProcessError {
     fn from(error: GetProcessorError) -> Self {

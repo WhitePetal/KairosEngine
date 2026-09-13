@@ -15,7 +15,6 @@
 //! resolving to the same files (ADR 0004).
 
 use std::{
-    collections::HashMap,
     fmt::{self, Display},
     hash::{Hash, Hasher},
     sync::Arc,
@@ -23,7 +22,9 @@ use std::{
 
 use atomicow::CowArc;
 
+use kairos_collections::FixedHashMap as HashMap;
 use kairos_ecs::resource::Resource;
+use thiserror::Error;
 
 use crate::io::{
     AssetSourceEvent, AssetWatcher, ErasedAssetReader, ErasedAssetWriter, file::FileAssetReader,
@@ -161,9 +162,7 @@ pub struct AssetSourceBuilder {
 
 impl AssetSourceBuilder {
     /// Creates a builder whose reader is produced by `reader`.
-    pub fn new(
-        reader: impl FnMut() -> Box<dyn ErasedAssetReader> + Send + Sync + 'static,
-    ) -> Self {
+    pub fn new(reader: impl FnMut() -> Box<dyn ErasedAssetReader> + Send + Sync + 'static) -> Self {
         Self {
             reader: Box::new(reader),
             writer: None,
@@ -196,9 +195,9 @@ impl AssetSourceBuilder {
     pub fn with_watcher(
         mut self,
         watcher: impl FnMut(async_channel::Sender<AssetSourceEvent>) -> Option<Box<dyn AssetWatcher>>
-            + Send
-            + Sync
-            + 'static,
+        + Send
+        + Sync
+        + 'static,
     ) -> Self {
         self.watcher = Some(Box::new(watcher));
         self
@@ -226,9 +225,9 @@ impl AssetSourceBuilder {
     pub fn with_processed_watcher(
         mut self,
         watcher: impl FnMut(async_channel::Sender<AssetSourceEvent>) -> Option<Box<dyn AssetWatcher>>
-            + Send
-            + Sync
-            + 'static,
+        + Send
+        + Sync
+        + 'static,
     ) -> Self {
         self.processed_watcher = Some(Box::new(watcher));
         self
@@ -542,62 +541,26 @@ impl AssetSource {
 }
 
 /// Returned by [`AssetSources::get`] when no source has the requested id.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
+#[error("Asset Source '{0}' does not exist")]
 pub struct MissingAssetSourceError(pub AssetSourceId<'static>);
 
-impl Display for MissingAssetSourceError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Asset Source '{}' does not exist", self.0)
-    }
-}
-
-impl std::error::Error for MissingAssetSourceError {}
-
 /// Returned by [`AssetSource::writer`] when the source has no writer.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
+#[error("Asset Source '{0}' does not have an AssetWriter.")]
 pub struct MissingAssetWriterError(pub AssetSourceId<'static>);
-
-impl Display for MissingAssetWriterError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Asset Source '{}' does not have an AssetWriter.", self.0)
-    }
-}
-
-impl std::error::Error for MissingAssetWriterError {}
 
 /// Returned by [`AssetSource::processed_reader`] when the source has no
 /// processed reader.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
+#[error("Asset Source '{0}' does not have a processed AssetReader.")]
 pub struct MissingProcessedAssetReaderError(pub AssetSourceId<'static>);
-
-impl Display for MissingProcessedAssetReaderError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Asset Source '{}' does not have a processed AssetReader.",
-            self.0
-        )
-    }
-}
-
-impl std::error::Error for MissingProcessedAssetReaderError {}
 
 /// Returned by [`AssetSource::processed_writer`] when the source has no
 /// processed writer.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
+#[error("Asset Source '{0}' does not have a processed AssetWriter.")]
 pub struct MissingProcessedAssetWriterError(pub AssetSourceId<'static>);
-
-impl Display for MissingProcessedAssetWriterError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "Asset Source '{}' does not have a processed AssetWriter.",
-            self.0
-        )
-    }
-}
-
-impl std::error::Error for MissingProcessedAssetWriterError {}
 
 const MISSING_DEFAULT_SOURCE: &str =
     "A default AssetSource is required. Add one to `AssetSourceBuilders`";

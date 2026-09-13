@@ -10,7 +10,9 @@
 //! [`loader_name`]: crate::meta::loader_name
 
 use core::any::TypeId;
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
+
+use kairos_collections::FixedHashMap as HashMap;
 
 use crate::loader::{AssetLoader, ErasedAssetLoader};
 use crate::path::AssetPath;
@@ -112,6 +114,9 @@ impl AssetLoaders {
             }
         }
 
-        candidates?.last().copied().and_then(|index| self.get_by_index(index))
+        candidates?
+            .last()
+            .copied()
+            .and_then(|index| self.get_by_index(index))
     }
 }

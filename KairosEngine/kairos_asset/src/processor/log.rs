@@ -29,9 +29,9 @@ use async_fs::File;
 use futures_lite::{AsyncReadExt, AsyncWriteExt};
 use kairos_collections::FixedHashSet;
 use kairos_ecs::error::KairosError;
+use kairos_tasks::BoxedFuture;
 use thiserror::Error;
 
-use crate::io::BoxedFuture;
 use crate::path::AssetPath;
 
 /// An in-memory representation of a single [`ProcessorTransactionLog`] entry.
@@ -309,9 +309,9 @@ mod tests {
         FileTransactionLogFactory, LogEntry, LogEntryError, ProcessorTransactionLog,
         ProcessorTransactionLogFactory, ReadLogError, ValidateLogError, validate_transaction_log,
     };
-    use crate::io::BoxedFuture;
     use crate::path::AssetPath;
     use kairos_ecs::error::KairosError;
+    use kairos_tasks::BoxedFuture;
 
     /// A [`ProcessorTransactionLogFactory`] backed by an in-memory entry list.
     #[derive(Clone, Default)]

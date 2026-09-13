@@ -2475,6 +2475,7 @@ dependencies = [
  "futures-io",
  "futures-lite",
  "futures-util",
+ "hashbrown 0.17.1",
  "kairos_collections",
  "kairos_ecs",
  "kairos_tasks",

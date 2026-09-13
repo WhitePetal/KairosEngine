@@ -1,9 +1,10 @@
 use core::{any::TypeId, cmp::Ordering};
 use std::{
-    collections::{HashMap, HashSet},
     hash::{Hash, Hasher},
     sync::Arc,
 };
+
+use kairos_collections::{FixedHashMap as HashMap, FixedHashSet as HashSet};
 
 use uuid::Uuid;
 
@@ -351,7 +352,10 @@ fn assets_recycles_slot_and_bumps_generation() {
     let second = assets.add(TestAsset);
     let second_id = second.id();
     assert!(assets.get(second_id).is_some());
-    assert_ne!(first_id, second_id, "a recycled slot must not alias its old id");
+    assert_ne!(
+        first_id, second_id,
+        "a recycled slot must not alias its old id"
+    );
 
     let first_slot = slot_of_id(first_id);
     let second_slot = slot_of_id(second_id);
@@ -451,14 +455,19 @@ fn assets_get_strong_handle_keeps_the_value_alive() {
     let handle = assets.add(TestAsset);
     let id = handle.id();
 
-    let extra = assets.get_strong_handle(id).expect("a stored asset can be upgraded");
+    let extra = assets
+        .get_strong_handle(id)
+        .expect("a stored asset can be upgraded");
     drop(handle);
     assets.drain_dropped_assets();
 
     // The duplicate handle still keeps the value alive, so the drop is a no-op.
     assert!(assets.contains(id));
     assert!(assets.get(id).is_some());
-    assert_ne!(assets.queued_events().last(), Some(&AssetEvent::Removed { id }));
+    assert_ne!(
+        assets.queued_events().last(),
+        Some(&AssetEvent::Removed { id })
+    );
 
     drop(extra);
     assets.drain_dropped_assets();
@@ -478,7 +487,10 @@ fn assets_uuid_insert_replace_and_remove() {
 
     assets.insert(id, TestAsset).unwrap();
     assert!(assets.contains(id));
-    assert!(matches!(assets.queued_events().last(), Some(AssetEvent::Added { .. })));
+    assert!(matches!(
+        assets.queued_events().last(),
+        Some(AssetEvent::Added { .. })
+    ));
 
     assets.insert(id, TestAsset).unwrap();
     assert!(matches!(
@@ -512,7 +524,11 @@ fn assets_iter_ids_and_iter_mut() {
     }
     assert_eq!(assets.get(slot_id).unwrap().value, 2);
     assert_eq!(assets.get(uuid_id).unwrap().value, 11);
-    assert_eq!(modified_count(&assets), 2, "every visited asset is Modified");
+    assert_eq!(
+        modified_count(&assets),
+        2,
+        "every visited asset is Modified"
+    );
 }
 
 #[test]

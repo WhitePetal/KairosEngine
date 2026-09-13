@@ -18,12 +18,12 @@ use futures_lite::AsyncWriteExt;
 use futures_lite::future::block_on;
 use kairos_ecs::error::KairosError;
 use kairos_ecs::world::World;
-use kairos_tasks::ConditionalSendFuture;
+use kairos_tasks::{BoxedFuture, ConditionalSendFuture};
 use serde::{Deserialize, Serialize};
 
 use crate::io::{
     AssetReader, AssetReaderError, AssetSource, AssetSourceBuilder, AssetSourceBuilders,
-    AssetSourceEvent, AssetSourceId, AssetWatcher, AssetWriter, AssetWriterError, BoxedFuture,
+    AssetSourceEvent, AssetSourceId, AssetWatcher, AssetWriter, AssetWriterError,
     ErasedAssetReader, ErasedAssetWriter, PathStream, Reader, VecReader, Writer, get_meta_path,
 };
 use crate::meta::{AssetAction, AssetActionMinimal, AssetMeta, AssetMetaDyn, AssetMetaMinimal};
@@ -47,10 +47,7 @@ struct MemoryStore {
 
 impl MemoryStore {
     fn insert(&self, path: impl Into<PathBuf>, bytes: impl Into<Vec<u8>>) {
-        self.files
-            .lock()
-            .unwrap()
-            .insert(path.into(), bytes.into());
+        self.files.lock().unwrap().insert(path.into(), bytes.into());
     }
 
     fn get(&self, path: &Path) -> Option<Vec<u8>> {
@@ -178,7 +175,11 @@ impl AssetWriter for MemoryWriter {
         Ok(())
     }
 
-    async fn rename_meta<'a>(&'a self, old: &'a Path, new: &'a Path) -> Result<(), AssetWriterError> {
+    async fn rename_meta<'a>(
+        &'a self,
+        old: &'a Path,
+        new: &'a Path,
+    ) -> Result<(), AssetWriterError> {
         AssetWriter::rename(self, &get_meta_path(old), &get_meta_path(new)).await
     }
 
@@ -249,7 +250,12 @@ struct EventSender(Arc<Mutex<Option<async_channel::Sender<AssetSourceEvent>>>>);
 
 impl EventSender {
     fn send(&self, event: AssetSourceEvent) {
-        let sender = self.0.lock().unwrap().clone().expect("the source is watched");
+        let sender = self
+            .0
+            .lock()
+            .unwrap()
+            .clone()
+            .expect("the source is watched");
         block_on(sender.send(event)).expect("the event channel is open");
     }
 }
@@ -392,13 +398,12 @@ impl Process for TextProcessor {
                 .get::<TextAsset>()
                 .expect("the source loader produced a TextAsset");
             let text = format!("{}{}", settings.prefix, value.0);
-            writer
-                .write_all(text.as_bytes())
-                .await
-                .map_err(|err| ProcessError::AssetWriterError {
+            writer.write_all(text.as_bytes()).await.map_err(|err| {
+                ProcessError::AssetWriterError {
                     path: context.path().clone(),
                     err: err.into(),
-                })?;
+                }
+            })?;
             Ok(())
         }
     }
@@ -575,7 +580,9 @@ fn initial_processing_processes_existing_assets() {
 fn a_source_meta_configures_the_processor() {
     let harness = Harness::new();
     harness.unprocessed.insert("model.txt", b"hello".to_vec());
-    harness.unprocessed.insert("model.txt.meta", process_meta("> "));
+    harness
+        .unprocessed
+        .insert("model.txt.meta", process_meta("> "));
 
     harness.run_initial();
 
@@ -677,7 +684,9 @@ fn unchanged_assets_are_not_rewritten() {
 #[test]
 fn a_removed_unknown_resolves_to_a_removed_asset() {
     let harness = Harness::new();
-    harness.unprocessed.insert("model.txt", b"gone soon".to_vec());
+    harness
+        .unprocessed
+        .insert("model.txt", b"gone soon".to_vec());
     harness.run_initial();
     assert!(harness.processed.contains(Path::new("model.txt")));
 
@@ -704,12 +713,16 @@ fn start_scans_and_reacts_to_watcher_events() {
 
     // A watcher event on the unprocessed side drives incremental processing.
     harness.unprocessed.insert("boot.txt", b"booted".to_vec());
-    harness.events.send(AssetSourceEvent::ModifiedAsset(PathBuf::from("boot.txt")));
+    harness
+        .events
+        .send(AssetSourceEvent::ModifiedAsset(PathBuf::from("boot.txt")));
     wait_for(|| harness.processed.get(Path::new("boot.txt")) == Some(b"booted".to_vec()));
 
     // And a removal deletes the processed output.
     harness.unprocessed.remove(Path::new("boot.txt"));
-    harness.events.send(AssetSourceEvent::RemovedAsset(PathBuf::from("boot.txt")));
+    harness
+        .events
+        .send(AssetSourceEvent::RemovedAsset(PathBuf::from("boot.txt")));
     wait_for(|| !harness.processed.contains(Path::new("boot.txt")));
 }
 

@@ -92,7 +92,10 @@ fn minimal_meta_names_the_loader_without_settings() {
 
 #[test]
 fn loader_name_is_the_fully_qualified_type_name() {
-    assert_eq!(loader_name::<TestSettings>(), core::any::type_name::<TestSettings>());
+    assert_eq!(
+        loader_name::<TestSettings>(),
+        core::any::type_name::<TestSettings>()
+    );
     assert!(loader_name::<TestSettings>().contains("TestSettings"));
 }
 
@@ -102,7 +105,9 @@ fn loader_settings_downcast_and_transform() {
 
     assert!(meta.loader_settings().unwrap().is::<TestSettings>());
     assert_eq!(
-        meta.loader_settings().unwrap().downcast_ref::<TestSettings>(),
+        meta.loader_settings()
+            .unwrap()
+            .downcast_ref::<TestSettings>(),
         Some(&TestSettings { value: 1 })
     );
 
@@ -112,7 +117,9 @@ fn loader_settings_downcast_and_transform() {
     transform(meta.as_mut());
 
     assert_eq!(
-        meta.loader_settings().unwrap().downcast_ref::<TestSettings>(),
+        meta.loader_settings()
+            .unwrap()
+            .downcast_ref::<TestSettings>(),
         Some(&TestSettings { value: 99 })
     );
 }
@@ -141,13 +148,11 @@ fn settings_is_blanket_implemented() {
 fn meta_check_defaults_to_always() {
     assert_eq!(AssetMetaCheck::default(), AssetMetaCheck::Always);
 
-    let mut paths = std::collections::HashSet::new();
+    let mut paths = kairos_collections::FixedHashSet::new();
     paths.insert(AssetPath::parse("a/b.ron"));
     assert_eq!(
         AssetMetaCheck::Paths(paths),
-        AssetMetaCheck::Paths(
-            std::iter::once(AssetPath::parse("a/b.ron")).collect()
-        )
+        AssetMetaCheck::Paths(std::iter::once(AssetPath::parse("a/b.ron")).collect())
     );
     assert_ne!(AssetMetaCheck::Always, AssetMetaCheck::Never);
 }

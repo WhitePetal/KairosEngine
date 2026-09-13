@@ -19,11 +19,14 @@ use core::{
     ops::{Deref, DerefMut},
     slice::IterMut,
 };
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
+
+use kairos_collections::FixedHashMap as HashMap;
 
 use kairos_ecs::message::MessageWriter;
 use kairos_ecs::resource::Resource;
 use kairos_ecs::system::{Res, ResMut};
+use thiserror::Error;
 use uuid::Uuid;
 
 use crate::asset::{Asset, VisitAssetDependencies};
@@ -91,11 +94,7 @@ impl<A: Asset> DenseAssetStorage<A> {
 
     /// Inserts `asset` at `index`, returning `true` if a value was already there
     /// (and was replaced).
-    fn insert(
-        &mut self,
-        index: AssetIndex,
-        asset: A,
-    ) -> Result<bool, InvalidGenerationError> {
+    fn insert(&mut self, index: AssetIndex, asset: A) -> Result<bool, InvalidGenerationError> {
         self.flush();
         let entry = match self.storage.get_mut(index.index() as usize) {
             Some(entry) => entry,
@@ -637,7 +636,7 @@ impl<A: Asset> Drop for AssetMutChangeNotifier<'_, A> {
 pub struct AssetsMutIterator<'a, A: Asset> {
     queued_events: &'a mut Vec<AssetEvent<A>>,
     dense_storage: Enumerate<IterMut<'a, Entry<A>>>,
-    hash_map: std::collections::hash_map::IterMut<'a, Uuid, A>,
+    hash_map: hashbrown::hash_map::IterMut<'a, Uuid, A>,
 }
 
 impl<'a, A: Asset> Iterator for AssetsMutIterator<'a, A> {
@@ -673,9 +672,12 @@ impl<'a, A: Asset> Iterator for AssetsMutIterator<'a, A> {
 }
 
 /// The error returned when an [`AssetIndex`] cannot be inserted at.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum InvalidGenerationError {
     /// A value with a different generation currently occupies the slot.
+    #[error(
+        "AssetIndex {index:?} has an invalid generation. The current generation is '{current_generation}'."
+    )]
     Occupied {
         /// The index that was requested.
         index: AssetIndex,
@@ -683,30 +685,12 @@ pub enum InvalidGenerationError {
         current_generation: u32,
     },
     /// The slot has been removed and is no longer insertable.
+    #[error("AssetIndex {index:?} has been removed")]
     Removed {
         /// The index that was requested.
         index: AssetIndex,
     },
 }
-
-impl fmt::Display for InvalidGenerationError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            InvalidGenerationError::Occupied {
-                index,
-                current_generation,
-            } => write!(
-                f,
-                "AssetIndex {index:?} has an invalid generation. The current generation is '{current_generation}'."
-            ),
-            InvalidGenerationError::Removed { index } => {
-                write!(f, "AssetIndex {index:?} has been removed")
-            }
-        }
-    }
-}
-
-impl std::error::Error for InvalidGenerationError {}
 
 /// A "loaded asset" holding the untyped handle for an asset requested without a
 /// statically known type.

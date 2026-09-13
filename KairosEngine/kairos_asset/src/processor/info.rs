@@ -20,9 +20,10 @@
 //! be re-checked.
 #![allow(dead_code)]
 
-use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
+
+use kairos_collections::{FixedHashMap as HashMap, FixedHashSet as HashSet};
 
 use crate::io::AssetSourceId;
 use crate::meta::{AssetHash, ProcessedInfo};
@@ -109,7 +110,10 @@ pub(crate) struct ProcessorAssetInfos {
 }
 
 impl ProcessorAssetInfos {
-    pub(crate) fn get_or_insert(&mut self, asset_path: AssetPath<'static>) -> &mut ProcessorAssetInfo {
+    pub(crate) fn get_or_insert(
+        &mut self,
+        asset_path: AssetPath<'static>,
+    ) -> &mut ProcessorAssetInfo {
         self.infos.entry(asset_path.clone()).or_insert_with(|| {
             let mut info = ProcessorAssetInfo::default();
             // Resolve any dependents that were waiting for this asset.
@@ -229,7 +233,10 @@ impl ProcessorAssetInfos {
                 let dependents = self.insert_processed(asset_path, processed_info);
                 for dependent in dependents {
                     let _ = reprocess_sender
-                        .send((dependent.source().clone_owned(), dependent.path().to_owned()))
+                        .send((
+                            dependent.source().clone_owned(),
+                            dependent.path().to_owned(),
+                        ))
                         .await;
                 }
             }
@@ -243,8 +250,9 @@ impl ProcessorAssetInfos {
                 ..
             }) => {}
             Err(err) => {
-                if let ProcessError::AssetLoadError(AssetLoadError::AssetLoaderError(loader_error)) =
-                    &err
+                if let ProcessError::AssetLoadError(AssetLoadError::AssetLoaderError(
+                    loader_error,
+                )) = &err
                 {
                     let dependency = loader_error.path().clone();
                     self.mark_failed_with_dependency(asset_path, dependency);
@@ -324,7 +332,10 @@ impl ProcessorAssetInfos {
             .await;
         for dependent in dependents {
             let _ = new_task_sender
-                .send((dependent.source().clone_owned(), dependent.path().to_owned()))
+                .send((
+                    dependent.source().clone_owned(),
+                    dependent.path().to_owned(),
+                ))
                 .await;
         }
 
@@ -368,9 +379,8 @@ impl ProcessorAssetInfos {
         for old_dependency in removed_info.process_dependencies {
             if let Some(info) = self.infos.get_mut(&old_dependency.path) {
                 info.dependents.remove(asset_path);
-            } else if let Some(dependents) = self
-                .non_existent_dependents
-                .get_mut(&old_dependency.path)
+            } else if let Some(dependents) =
+                self.non_existent_dependents.get_mut(&old_dependency.path)
             {
                 dependents.remove(asset_path);
             }

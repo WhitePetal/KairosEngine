@@ -21,10 +21,12 @@
 //! (the processor body itself is a later slice).
 
 use core::any::Any;
-use std::{collections::HashSet, sync::Arc};
+use std::sync::Arc;
 
 use futures_lite::AsyncReadExt;
+use kairos_collections::FixedHashSet as HashSet;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use thiserror::Error;
 
 use crate::io::{AssetReaderError, Reader};
 use crate::path::AssetPath;
@@ -245,8 +247,7 @@ pub trait AssetMetaDyn: Any + Send + Sync {
     fn processed_info_mut(&mut self) -> &mut Option<ProcessedInfo>;
 }
 
-impl<LoaderSettings, ProcessSettings> AssetMetaDyn
-    for AssetMeta<LoaderSettings, ProcessSettings>
+impl<LoaderSettings, ProcessSettings> AssetMetaDyn for AssetMeta<LoaderSettings, ProcessSettings>
 where
     LoaderSettings: Settings + Serialize,
     ProcessSettings: Settings + Serialize,
@@ -380,12 +381,14 @@ pub enum AssetMetaCheck {
 ///
 /// The RON errors are wrapped in an [`Arc`] so this error can be cloned (and so
 /// [`AssetLoadError`](crate::AssetLoadError) can be, matching `bevy_asset`).
-#[derive(Debug, Clone)]
+#[derive(Error, Debug, Clone)]
 #[non_exhaustive]
 pub enum DeserializeMetaError {
     /// The typed meta could not be deserialized.
+    #[error("Failed to deserialize asset meta: {0:?}")]
     DeserializeSettings(Arc<ron::error::SpannedError>),
     /// The minimal meta could not be deserialized.
+    #[error("Failed to deserialize minimal asset meta: {0:?}")]
     DeserializeMinimal(Arc<ron::error::SpannedError>),
 }
 
@@ -394,21 +397,6 @@ impl From<ron::error::SpannedError> for DeserializeMetaError {
         Self::DeserializeSettings(Arc::new(error))
     }
 }
-
-impl core::fmt::Display for DeserializeMetaError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Self::DeserializeSettings(error) => {
-                write!(f, "Failed to deserialize asset meta: {error:?}")
-            }
-            Self::DeserializeMinimal(error) => {
-                write!(f, "Failed to deserialize minimal asset meta: {error:?}")
-            }
-        }
-    }
-}
-
-impl std::error::Error for DeserializeMetaError {}
 
 /// Applies `settings` to the loader settings inside `meta`, if their types
 /// match.

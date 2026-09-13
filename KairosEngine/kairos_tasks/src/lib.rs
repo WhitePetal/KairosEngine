@@ -7,6 +7,8 @@ mod task_pool;
 mod thread_executor;
 mod usages;
 
+use core::pin::Pin;
+
 pub use async_task::Task;
 pub use conditional_send::{ConditionalSend, ConditionalSendFuture};
 pub use iter::ParallelIterator;
@@ -16,6 +18,14 @@ pub use thread_executor::{ThreadExecutor, ThreadExecutorTicker};
 pub use usages::{AsyncComputeTaskPool, ComputeTaskPool, IoTaskPool};
 
 pub use usages::tick_global_task_pools_on_main_thread;
+
+/// A boxed future that may cross threads.
+///
+/// The box is what makes erased (object-safe) async traits possible: a trait
+/// method can return `BoxedFuture<'a, T>` without naming the future's type,
+/// while still requiring [`Send`] where the target needs it (see
+/// [`ConditionalSendFuture`]).
+pub type BoxedFuture<'a, T> = Pin<Box<dyn ConditionalSendFuture<Output = T> + 'a>>;
 
 /// Gets the logical CPU core count available to the current process.
 ///

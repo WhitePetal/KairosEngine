@@ -13,12 +13,13 @@
 use core::marker::PhantomData;
 
 use kairos_ecs::error::KairosError;
-use kairos_tasks::ConditionalSendFuture;
+use kairos_tasks::{BoxedFuture, ConditionalSendFuture};
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use crate::io::{
-    AssetReaderError, AssetWriterError, BoxedFuture, MissingAssetWriterError,
-    MissingProcessedAssetReaderError, MissingProcessedAssetWriterError, Reader, Writer,
+    AssetReaderError, AssetWriterError, MissingAssetWriterError, MissingProcessedAssetReaderError,
+    MissingProcessedAssetWriterError, Reader, Writer,
 };
 use crate::loader::{AssetLoader, ErasedLoadedAsset};
 use crate::meta::{
@@ -118,12 +119,16 @@ pub struct LoadTransformAndSaveSettings<LoaderSettings, TransformerSettings, Sav
 }
 
 /// An error encountered while processing an asset.
-#[derive(Debug)]
+#[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum ProcessError {
     /// No processor is registered under the name from the `.meta`.
+    #[error("The processor '{0}' does not exist")]
     MissingProcessor(String),
     /// The `.meta`'s short processor name matches several processors.
+    #[error(
+        "The processor '{processor_short_name}' is ambiguous between several processors: {ambiguous_processor_names:?}"
+    )]
     AmbiguousProcessor {
         /// The requested short name.
         processor_short_name: String,
@@ -131,6 +136,7 @@ pub enum ProcessError {
         ambiguous_processor_names: Vec<&'static str>,
     },
     /// Reading the source asset failed.
+    #[error("Encountered an AssetReader error for '{path}': {err}")]
     AssetReaderError {
         /// The asset being processed.
         path: AssetPath<'static>,
@@ -138,6 +144,7 @@ pub enum ProcessError {
         err: AssetReaderError,
     },
     /// Writing the processed asset failed.
+    #[error("Encountered an AssetWriter error for '{path}': {err}")]
     AssetWriterError {
         /// The asset being processed.
         path: AssetPath<'static>,
@@ -145,12 +152,16 @@ pub enum ProcessError {
         err: AssetWriterError,
     },
     /// The source has no writer.
+    #[error("{0}")]
     MissingAssetWriterError(MissingAssetWriterError),
     /// The source has no processed reader.
+    #[error("{0}")]
     MissingProcessedAssetReaderError(MissingProcessedAssetReaderError),
     /// The source has no processed writer.
+    #[error("{0}")]
     MissingProcessedAssetWriterError(MissingProcessedAssetWriterError),
     /// Reading the source `.meta` failed.
+    #[error("Failed to read asset metadata for {path}: {err}")]
     ReadAssetMetaError {
         /// The asset being processed.
         path: AssetPath<'static>,
@@ -158,65 +169,26 @@ pub enum ProcessError {
         err: AssetReaderError,
     },
     /// The `.meta` could not be deserialized.
+    #[error("{0}")]
     DeserializeMetaError(DeserializeMetaError),
     /// A source asset could not be loaded.
+    #[error("{0}")]
     AssetLoadError(AssetLoadError),
     /// The settings handed to a processor had the wrong type for it.
+    #[error(
+        "The wrong meta type was passed into a processor. This is probably an internal implementation error."
+    )]
     WrongMetaType,
     /// The saver failed.
+    #[error("Encountered an error while saving the asset: {0}")]
     AssetSaveError(KairosError),
     /// The transformer failed.
+    #[error("Encountered an error while transforming the asset: {0}")]
     AssetTransformError(KairosError),
     /// A processor was requested for an asset with no extension.
+    #[error("Assets without extensions are not supported.")]
     ExtensionRequired,
 }
-
-impl core::fmt::Display for ProcessError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Self::MissingProcessor(name) => write!(f, "The processor '{name}' does not exist"),
-            Self::AmbiguousProcessor {
-                processor_short_name,
-                ambiguous_processor_names,
-            } => write!(
-                f,
-                "The processor '{processor_short_name}' is ambiguous between several processors: \
-                 {ambiguous_processor_names:?}"
-            ),
-            Self::AssetReaderError { path, err } => {
-                write!(f, "Encountered an AssetReader error for '{path}': {err}")
-            }
-            Self::AssetWriterError { path, err } => {
-                write!(f, "Encountered an AssetWriter error for '{path}': {err}")
-            }
-            Self::MissingAssetWriterError(err) => core::fmt::Display::fmt(err, f),
-            Self::MissingProcessedAssetReaderError(err) => core::fmt::Display::fmt(err, f),
-            Self::MissingProcessedAssetWriterError(err) => core::fmt::Display::fmt(err, f),
-            Self::ReadAssetMetaError { path, err } => {
-                write!(f, "Failed to read asset metadata for {path}: {err}")
-            }
-            Self::DeserializeMetaError(err) => core::fmt::Display::fmt(err, f),
-            Self::AssetLoadError(err) => core::fmt::Display::fmt(err, f),
-            Self::WrongMetaType => write!(
-                f,
-                "The wrong meta type was passed into a processor. This is probably an internal \
-                 implementation error."
-            ),
-            Self::AssetSaveError(err) => {
-                write!(f, "Encountered an error while saving the asset: {err}")
-            }
-            Self::AssetTransformError(err) => {
-                write!(
-                    f,
-                    "Encountered an error while transforming the asset: {err}"
-                )
-            }
-            Self::ExtensionRequired => write!(f, "Assets without extensions are not supported."),
-        }
-    }
-}
-
-impl std::error::Error for ProcessError {}
 
 impl From<AssetLoadError> for ProcessError {
     fn from(error: AssetLoadError) -> Self {
