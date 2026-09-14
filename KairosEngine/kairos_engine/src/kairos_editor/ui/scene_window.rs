@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use toml::from_str;
 
 use crate::{
+    Engine,
     graphics::{
         attachment::{Attachment, AttachmentLoadAction, AttachmentStoreAction},
         camera::{Camera, CameraView},
@@ -18,7 +19,6 @@ use crate::{
     },
     kairos_dialog,
     kairos_editor::{
-        Engine,
         camera::{EditorCameraController, OrbitState, OrbitTuning},
         ui::{
             Drawer, Message, UIReader, paths,

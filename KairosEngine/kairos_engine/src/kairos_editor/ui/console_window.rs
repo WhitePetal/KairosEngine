@@ -1,9 +1,6 @@
 use std::{any::type_name, fs};
 
-use crate::{
-    kairos_editor::{Engine, ui::UIReader},
-    log::Log,
-};
+use crate::{Engine, kairos_editor::ui::UIReader, log::Log};
 use egui;
 use serde::{Deserialize, Serialize};
 use toml::from_str;

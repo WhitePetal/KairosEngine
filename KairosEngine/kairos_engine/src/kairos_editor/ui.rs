@@ -2,6 +2,7 @@ use crate::asset::Handle;
 use kairos_collections::TypeIdMap;
 
 use crate::{
+    Engine,
     graphics::{
         egui_texture_handle::EguiTextureHandle,
         graphics_graph::GraphicsCommand,
@@ -11,7 +12,6 @@ use crate::{
         view_port::{GameView, SceneView, ViewportSize},
     },
     kairos_editor::{
-        Engine,
         asset_registry::AssetKind,
         camera::SceneViewInput,
         editor_assets::{Text, Toml},

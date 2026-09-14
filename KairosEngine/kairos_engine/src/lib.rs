@@ -1,5 +1,11 @@
 extern crate self as kairos_engine;
 
+// The engine core: `Engine` and its private `build_world` bootstrap. `Engine`
+// lives at the crate root (`kairos_engine::Engine`) because it is engine core,
+// not a host concept — hosts (the editor) consume it from there.
+pub mod engine;
+pub use engine::Engine;
+
 pub mod math;
 
 pub mod kairos_dialog;

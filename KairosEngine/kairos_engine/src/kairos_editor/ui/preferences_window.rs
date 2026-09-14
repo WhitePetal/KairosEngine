@@ -1,10 +1,8 @@
 use std::{any::type_name, fs};
 
 use crate::{
-    kairos_editor::{
-        Engine,
-        ui::{Messager, UIReader, egui_ext::UiExt},
-    },
+    Engine,
+    kairos_editor::ui::{Messager, UIReader, egui_ext::UiExt},
     log::Log,
     math::{self, float2},
 };

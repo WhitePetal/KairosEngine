@@ -1,11 +1,9 @@
 use std::any::type_name;
 
 use crate::{
+    Engine,
     graphics::graphics_graph::GraphicsCommand,
-    kairos_editor::{
-        Engine,
-        ui::{Drawer, Messager, UIReader},
-    },
+    kairos_editor::ui::{Drawer, Messager, UIReader},
     log::Log,
 };
 

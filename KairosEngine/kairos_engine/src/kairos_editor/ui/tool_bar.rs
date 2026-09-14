@@ -7,10 +7,8 @@ use std::{
 use parking_lot::Mutex;
 
 use crate::{
-    kairos_editor::{
-        Engine,
-        ui::{Messager, UIReader},
-    },
+    Engine,
+    kairos_editor::ui::{Messager, UIReader},
     log::Log,
     math,
 };

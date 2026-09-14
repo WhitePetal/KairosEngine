@@ -6,15 +6,13 @@ use kairos_ecs::world::World;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    Engine,
     audio::{
         AudioEngine,
         audio::AudioAsset,
         audio_ext::{AudioExt, pcm::PcmData},
     },
-    kairos_editor::{
-        Engine,
-        ui::{Message, UIReader, dialog::Dialog, inspector::Inspector, paths},
-    },
+    kairos_editor::ui::{Message, UIReader, dialog::Dialog, inspector::Inspector, paths},
     math,
 };
 use kira::sound::static_sound::StaticSoundHandle;

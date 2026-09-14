@@ -1,9 +1,6 @@
 use std::ops::RangeInclusive;
 
-use crate::{
-    kairos_editor::{Engine, ui::UIReader},
-    log::Log,
-};
+use crate::{Engine, kairos_editor::ui::UIReader, log::Log};
 use egui::{
     self, Align, Align2, Button, CentralPanel, Color32, Context, CornerRadius, CursorIcon,
     EventFilter, Frame, Id, Key, LayerId, Layout, Modifiers, NumExt, Order, Popup,

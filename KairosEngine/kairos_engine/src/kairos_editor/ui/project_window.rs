@@ -5,8 +5,8 @@ pub mod hierarchy_panel;
 use std::{any::type_name, cell::Cell, fs, ops::Deref, path::PathBuf, sync::Arc};
 
 use crate::{
+    Engine,
     kairos_editor::{
-        Engine,
         asset_registry::{AssetKind, AssetRegistry, Guid},
         project_path_tree::{
             ProjectPathGraph, create_request::CreateRequest, tree_node::ProjectTreeNode,

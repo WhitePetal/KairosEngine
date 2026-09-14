@@ -357,7 +357,4 @@ pub(crate) fn install(world: &mut World) {
 }
 
 #[cfg(test)]
-mod asset_test;
-
-#[cfg(test)]
 mod test;

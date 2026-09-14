@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use crate::asset::{AssetServer, Handle};
 
 use crate::{
+    Engine,
     audio::audio::AudioAsset,
     audio::background::BackgroundAudio,
     audio::spatial::{
@@ -15,7 +16,7 @@ use crate::{
         material_component::MaterialComponent, mesh::Mesh, view_port::GameView,
     },
     inputs::Input,
-    kairos_editor::{Engine, schedule},
+    kairos_editor::schedule,
     math::{float3, quaternion},
     physics::{PhysicsEngine, collider::ColliderMaterial},
     spatial::AABB,

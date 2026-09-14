@@ -1,7 +1,4 @@
-use crate::{
-    kairos_editor::{Engine, ui::UIReader},
-    log::Log,
-};
+use crate::{Engine, kairos_editor::ui::UIReader, log::Log};
 use egui::{self, Id, Ui, WidgetText};
 
 use crate::kairos_editor::ui::{

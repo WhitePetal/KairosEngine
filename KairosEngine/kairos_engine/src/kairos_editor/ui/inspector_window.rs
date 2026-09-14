@@ -6,8 +6,8 @@ use std::{
 };
 
 use crate::{
+    Engine,
     kairos_editor::{
-        Engine,
         asset_registry::{AssetKind, Guid},
         ui::{Messager, UIReader, dialog::Dialog, inspector::Inspector},
     },
