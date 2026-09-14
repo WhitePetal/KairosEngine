@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use anyhow::Error;
 
-use crate::audio::audio::{SerializedAudioAsset, SerializedAudioAssetSettings};
+use crate::audio::{SerializedAudioAsset, SerializedAudioAssetSettings};
 
 impl SerializedAudioAsset {
     /// Convert a raw audio source file into an AudioAsset.

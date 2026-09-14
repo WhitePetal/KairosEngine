@@ -10,9 +10,9 @@ cargo test-crate kairos_ecs
 
 Defined in `.cargo/config.toml` as `cargo test --lib --bins --tests --no-fail-fast -p`. The crate name is the only argument, and you already know it — it is the crate whose files you edited. A trailing test-name filter also works: `cargo test-crate kairos_ecs filtered_backtrace`.
 
-**Do not run bare `cargo test` from the workspace root.** This is a virtual workspace, so a root-level `cargo test` compiles and tests all 11 member crates, aborts on the first failure, and includes the doctests. That is the 183-second path described below, and it is never what you want after an edit.
+**Do not run bare `cargo test` from the workspace root.** This is a virtual workspace, so a root-level `cargo test` compiles and tests all 12 member crates, aborts on the first failure, and includes the doctests. That is the 183-second path described below, and it is never what you want after an edit.
 
-If you would rather not name the crate, `cd` into it and run the command there — inside a crate directory cargo scopes to that crate only. From the workspace root the identical command tests all 11.
+If you would rather not name the crate, `cd` into it and run the command there — inside a crate directory cargo scopes to that crate only. From the workspace root the identical command tests all 12.
 
 ## Commands
 
@@ -43,6 +43,7 @@ kairos_ecs           ← kairos_tasks, kairos_ptr, kairos_collections
 ├── kairos_asset     ← kairos_ecs, kairos_collections, kairos_tasks
 ├── kairos_time      ← kairos_ecs
 ├── kairos_transform ← kairos_ecs, kairos_math
+├── kairos_audio     ← kairos_asset, kairos_ecs, kairos_math, kairos_tasks, kairos_time, kairos_transform (不可反向依赖 kairos_engine)
 ├── kairos_graphics  ← kairos_asset, kairos_ecs, kairos_math, kairos_transform (+ wgpu, egui, winit, image)
 ├── kairos_physics   ← kairos_ecs, kairos_math, kairos_time, kairos_transform (+ rapier3d)
 └── kairos_engine    ← kairos_asset, kairos_graphics, kairos_physics and all of the above (+ wgpu, egui, winit)
@@ -87,5 +88,9 @@ This lists the top-level directories you touched; each `kairos_*` entry is a cra
 - **`kairos_asset` now has tests.** Its tests live beside the core
   (`kairos_asset/src/tests/`), which the rewrite added; before it, the crate had
   none. `cargo test-crate kairos_asset` is therefore a real check rather than a no-op.
+- **`kairos_audio` carries its migrated tests.** The audio subsystem was moved
+  out of `kairos_engine` into its own crate with the tests unchanged, so
+  `cargo test-crate kairos_audio` is a real check: the 11 migrated tests
+  (`src/test.rs`'s 8 plus one per loader).
 - **Doctests are documentation.** Keep them green and fix them when they break, but they are the wrong thing to pay three minutes for on every edit.
 - **There is no CI in this repo.** The full suite is therefore the only pre-merge gate and it runs wherever someone remembers to run it. If CI is added, `cargo test-full` belongs there and this file should say so.

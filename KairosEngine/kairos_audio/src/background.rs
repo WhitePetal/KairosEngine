@@ -1,7 +1,7 @@
-use crate::asset::Handle;
+use kairos_asset::Handle;
 use kira::sound::static_sound::StaticSoundHandle;
 
-use crate::audio::audio::{AudioAsset, AudioState};
+use crate::audio::{AudioAsset, AudioState};
 use kairos_ecs::component::Component;
 
 #[derive(Component)]

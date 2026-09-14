@@ -17,7 +17,11 @@ pub mod kairos_ui;
 // `kairos_graphics`.
 pub use kairos_asset as asset;
 
-pub mod audio;
+// The audio subsystem is its own crate (`kairos_audio`); re-export it under the
+// name engine code already uses, so `crate::audio::…` keeps resolving exactly
+// like `crate::graphics` / `kairos_graphics`.
+pub use kairos_audio as audio;
+
 pub mod inputs;
 pub mod spatial;
 

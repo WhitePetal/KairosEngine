@@ -7,7 +7,7 @@
 //! core and declares both through [`LoadContext::load`], so a live composite
 //! keeps them loaded.
 
-use crate::asset::{
+use kairos_asset::{
     Asset, AssetLoader, AssetWorldExt, Handle, LoadContext, Reader, UntypedAssetId,
     VisitAssetDependencies,
 };
@@ -15,7 +15,7 @@ use kairos_ecs::error::KairosError;
 use kairos_ecs::world::World;
 use kairos_tasks::ConditionalSendFuture;
 
-use crate::audio::audio::{AudioAsset, SerializedAudioAsset};
+use crate::audio::{AudioAsset, SerializedAudioAsset};
 
 pub mod pcm;
 pub use pcm::PcmData;
@@ -36,7 +36,7 @@ impl VisitAssetDependencies for AudioExt {
     }
 }
 
-/// How many composite slots [`Assets<AudioExt>`](crate::asset::Assets)
+/// How many composite slots [`Assets<AudioExt>`](kairos_asset::Assets)
 /// preallocates. Carried over from the legacy stack's
 /// `AUDIO_EXT_ASSETS_CAPACITY`.
 pub const AUDIO_EXT_ASSETS_CAPACITY: usize = 8;
@@ -77,7 +77,7 @@ impl AssetLoader for AudioExtLoader {
 
     /// This loader is resolved by asset type, never by extension: the `.audio`
     /// extension is claimed by
-    /// [`AudioAssetLoader`](crate::audio::audio::AudioAssetLoader), and both are
+    /// [`AudioAssetLoader`](crate::audio::AudioAssetLoader), and both are
     /// always loaded with an explicit asset type.
     fn extensions(&self) -> &[&str] {
         &[]
@@ -86,7 +86,7 @@ impl AssetLoader for AudioExtLoader {
 
 /// Registers the [`AudioExt`] asset and its [`AudioExtLoader`] with the core.
 ///
-/// Must run after [`crate::asset::install`] and after the `AudioAsset` and
+/// Must run after [`kairos_asset::install`] and after the `AudioAsset` and
 /// `PcmData` stores its loader declares dependencies on.
 pub fn install(world: &mut World) {
     world.init_asset_with_capacity::<AudioExt>(AUDIO_EXT_ASSETS_CAPACITY);
@@ -97,15 +97,15 @@ pub fn install(world: &mut World) {
 mod test {
     use std::{thread, time::Duration};
 
-    use crate::asset::{AssetOptions, AssetServer, Assets, install};
+    use kairos_asset::{AssetOptions, AssetServer, Assets, install};
     use kairos_ecs::schedule::ScheduleLabel;
     use kairos_ecs::world::World;
 
     use super::{AudioExt, PcmData, install as install_audio_ext};
-    use crate::audio::audio::{
+    use crate::audio::{
         AudioAsset, SerializedAudioAsset, SerializedAudioAssetSettings, install as install_audio,
     };
-    use crate::audio::audio_ext::pcm::wav_bytes;
+    use crate::audio_ext::pcm::wav_bytes;
 
     /// The three ad-hoc stages the asset drivers are installed into.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -172,7 +172,7 @@ mod test {
         let mut world = World::new();
         install(&mut world, AssetOptions::new(Tracking, Events, Boot));
         install_audio(&mut world);
-        crate::audio::audio_ext::pcm::install(&mut world);
+        crate::audio_ext::pcm::install(&mut world);
         install_audio_ext(&mut world);
 
         let handle = world.resource::<AssetServer>().load::<AudioExt>(rel_descriptor);

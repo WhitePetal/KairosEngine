@@ -2527,6 +2527,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "kairos_audio"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-fs",
+ "kairos_asset",
+ "kairos_ecs",
+ "kairos_math",
+ "kairos_tasks",
+ "kairos_time",
+ "kairos_transform",
+ "kira",
+ "mint",
+ "serde",
+ "smallvec",
+ "symphonia",
+ "tempfile",
+ "toml",
+]
+
+[[package]]
 name = "kairos_collections"
 version = "0.1.0"
 dependencies = [
@@ -2615,6 +2636,7 @@ dependencies = [
  "image",
  "indexmap",
  "kairos_asset",
+ "kairos_audio",
  "kairos_collections",
  "kairos_ecs",
  "kairos_graphics",
@@ -2625,7 +2647,6 @@ dependencies = [
  "kairos_transform",
  "kira",
  "log",
- "mint",
  "native-dialog",
  "notify-debouncer-full",
  "objc2 0.6.4",
@@ -2645,7 +2666,6 @@ dependencies = [
  "smallvec",
  "sonic-rs",
  "strum",
- "symphonia",
  "syntect",
  "tempfile",
  "tokio",

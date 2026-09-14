@@ -1,6 +1,6 @@
 use std::{collections::HashMap, marker::PhantomData, ops::DerefMut, time::Duration};
 
-use crate::asset::Assets;
+use kairos_asset::Assets;
 use kira::{
     AudioManager, Decibels, DefaultBackend, Easing, Mapping, Mix, Tween, Value,
     backend::Backend,
@@ -13,19 +13,18 @@ use kira::{
 };
 
 use crate::{
-    audio::{
-        audio::{AudioAsset, AudioState},
-        spatial::{
-            spatial_audio_listener::SpatialAudioListenerComponent,
-            spatial_audio_reverb::{SpatialAudioReverb, SpatialAudioReverbBound},
-            spatial_audio_volume::{
-                SpatialAudioVolume, SpatialAudioVolumeTrackKey, SpatialAudioVolumeTrackLeaving,
-                SpatialAudioVolumeTrackState, SpatialSoundHandle,
-            },
+    audio::{AudioAsset, AudioState},
+    spatial::{
+        spatial_audio_listener::SpatialAudioListenerComponent,
+        spatial_audio_reverb::{SpatialAudioReverb, SpatialAudioReverbBound},
+        spatial_audio_volume::{
+            SpatialAudioVolume, SpatialAudioVolumeTrackKey, SpatialAudioVolumeTrackLeaving,
+            SpatialAudioVolumeTrackState, SpatialSoundHandle,
         },
     },
-    math::{Vector, float3, quaternion},
 };
+
+use kairos_math::{Vector, float3, quaternion};
 
 use kairos_ecs::world::World;
 use kairos_transform::LocalTransform;

@@ -1,6 +1,6 @@
 use std::{io::Cursor, path::PathBuf, time::Duration};
 
-use crate::asset::{
+use kairos_asset::{
     Asset, AssetLoader, AssetWorldExt, LoadContext, Reader, VisitAssetDependencies,
 };
 use kairos_ecs::error::KairosError;
@@ -14,6 +14,8 @@ use kira::{
     },
 };
 use serde::{Deserialize, Serialize};
+
+mod serialize;
 
 #[derive(Serialize, Deserialize)]
 pub struct SerializedAudioAsset {
@@ -165,7 +167,7 @@ pub struct AudioAsset {
 impl Asset for AudioAsset {}
 impl VisitAssetDependencies for AudioAsset {}
 
-/// How many audio slots [`Assets<AudioAsset>`](crate::asset::Assets)
+/// How many audio slots [`Assets<AudioAsset>`](kairos_asset::Assets)
 /// preallocates. Carried over from the legacy stack's `AUDIO_ASSETS_CAPACITY`.
 pub const AUDIO_ASSETS_CAPACITY: usize = 512;
 
@@ -218,7 +220,7 @@ impl AssetLoader for AudioAssetLoader {
 
 /// Registers the [`AudioAsset`] asset and its [`AudioAssetLoader`] with the core.
 ///
-/// Must run after [`crate::asset::install`], which creates the
+/// Must run after [`kairos_asset::install`], which creates the
 /// `AssetServer` and the `AssetStages` this reads.
 pub fn install(world: &mut World) {
     world.init_asset_with_capacity::<AudioAsset>(AUDIO_ASSETS_CAPACITY);
@@ -238,14 +240,14 @@ pub enum AudioState {
 mod test {
     use std::{thread, time::Duration};
 
-    use crate::asset::{AssetOptions, AssetServer, Assets, install};
+    use kairos_asset::{AssetOptions, AssetServer, Assets, install};
     use kairos_ecs::schedule::ScheduleLabel;
     use kairos_ecs::world::World;
 
     use super::{
         AudioAsset, SerializedAudioAsset, SerializedAudioAssetSettings, install as install_audio,
     };
-    use crate::audio::audio_ext::pcm::wav_bytes;
+    use crate::audio_ext::pcm::wav_bytes;
 
     /// The three ad-hoc stages the asset drivers are installed into.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

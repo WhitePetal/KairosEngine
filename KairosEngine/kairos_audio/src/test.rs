@@ -1,4 +1,4 @@
-use crate::asset::{Assets, Handle};
+use kairos_asset::{Assets, Handle};
 use kairos_ecs::{component::Component, entity::Entity, world::World};
 use kira::{
     Frame,
@@ -11,18 +11,16 @@ use kira::{
 use smallvec::SmallVec;
 
 use crate::{
-    audio::{
-        audio::{AudioAsset, AudioState},
-        background::BackgroundAudio,
-        spatial::{
-            spatial_audio_listener::SpatialAudioListenerComponent,
-            spatial_audio_reverb::{SpatialAudioReverb, SpatialAudioReverbBound},
-            spatial_audio_volume::SpatialAudioVolume,
-        },
+    audio::{AudioAsset, AudioState},
+    background::BackgroundAudio,
+    spatial::{
+        spatial_audio_listener::SpatialAudioListenerComponent,
+        spatial_audio_reverb::{SpatialAudioReverb, SpatialAudioReverbBound},
+        spatial_audio_volume::SpatialAudioVolume,
     },
-    math::float3,
-    spatial::AABB,
 };
+
+use kairos_math::{AABB, float3};
 
 use super::AudioEngine;
 

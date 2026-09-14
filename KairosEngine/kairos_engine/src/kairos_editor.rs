@@ -19,7 +19,6 @@ pub mod project_path_tree;
 pub mod project_watcher;
 pub mod runtime;
 pub mod schedule;
-pub mod serialize_asset;
 pub mod syntax;
 pub mod ui;
 

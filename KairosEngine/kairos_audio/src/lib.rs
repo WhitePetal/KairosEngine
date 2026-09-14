@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use crate::asset::Assets;
+use kairos_asset::Assets;
 use kira::{
     AudioManager, AudioManagerSettings, Capacities, DefaultBackend,
     backend::Backend,
@@ -12,7 +12,7 @@ use kira::{
 #[cfg(test)]
 use kira::backend::mock::MockBackend;
 
-use crate::audio::{
+use crate::{
     audio::{AudioAsset, AudioState},
     background::BackgroundAudio,
     spatial::{SpatialAudioConfig, SpatialAudioTracks},

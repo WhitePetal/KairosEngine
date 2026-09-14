@@ -63,10 +63,8 @@ parking_lot = "0.12.5"
 gltf = "1.4.1"
 uuid = { version = "1", features = ["v4", "serde"] }
 kira = { version = "0.12.0", features = ["serde"] }
-symphonia = { version = "0.5", default-features = false, features = ["mp3", "wav", "flac", "ogg", "isomp4"] }
 rustfft = "6"
 half = { version = "2.4", features = ["bytemuck"] }
-mint = "0.5"
 glam = { version = "0.33", features = ["bytemuck"] }
 egui_commonmark = "0.24.0"
 syntect = { version = "5.3", default-features = false, features = ["default-fancy"] }
@@ -78,6 +76,7 @@ indexmap = { version = "2.5.0", default-features = false, features = ["serde"] }
 kairos_collections = { path = "../kairos_collections" }
 kairos_ecs = { path = "../kairos_ecs" }
 kairos_asset = { path = "../kairos_asset" }
+kairos_audio = { path = "../kairos_audio" }
 kairos_graphics = { path = "../kairos_graphics" }
 kairos_math = { path = "../kairos_math", features = ["rkyv"] }
 kairos_physics = { path = "../kairos_physics" }
