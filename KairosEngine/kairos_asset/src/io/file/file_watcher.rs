@@ -72,24 +72,13 @@ fn make_absolute_path(path: &Path) -> Result<PathBuf, std::io::Error> {
     Ok(normalize_path(&std::path::absolute(path)?))
 }
 
-/// Maps an absolute path back onto a source-relative asset path.
+/// Strips `root` from `absolute_path` and classifies the result.
 ///
 /// Returns the asset path and whether it names a `.meta` sidecar. The sidecar's
 /// `.meta` suffix is stripped so both a source file and its sidecar address the
-/// same asset. Returns [`None`] when the path does not sit under `root`, which
-/// can only happen for an event the backend reported outside the watched tree.
-pub(crate) fn get_asset_path(root: &Path, absolute_path: &Path) -> Option<(PathBuf, bool)> {
-    let relative_path = match absolute_path.strip_prefix(root) {
-        Ok(relative_path) => relative_path,
-        Err(_) => {
-            warn!(
-                "FileWatcher dropped a change outside its watched root: absolute_path={}, root={}",
-                absolute_path.display(),
-                root.display()
-            );
-            return None;
-        }
-    };
+/// same asset. Returns [`None`] when the path does not sit under `root`.
+fn strip_asset_path(root: &Path, absolute_path: &Path) -> Option<(PathBuf, bool)> {
+    let relative_path = absolute_path.strip_prefix(root).ok()?;
     let is_meta = relative_path
         .extension()
         .is_some_and(|extension| extension == "meta");
@@ -99,6 +88,35 @@ pub(crate) fn get_asset_path(root: &Path, absolute_path: &Path) -> Option<(PathB
         relative_path.to_owned()
     };
     Some((asset_path, is_meta))
+}
+
+/// Maps an absolute path back onto a source-relative asset path.
+///
+/// Returns the asset path and whether it names a `.meta` sidecar, or [`None`]
+/// when the path does not sit under `root` (only possible for an event the
+/// backend reported outside the watched tree).
+///
+/// The backend may report a path with symlinks resolved: macOS FSEvents reports
+/// `/private/tmp/...` for a watcher rooted at the `/tmp` symlink, and
+/// `/private/var/...` for the `/var/folders/...` a login session hands out. When
+/// the root as spelled does not match, the canonical root is tried as a
+/// fallback, so hot reload keeps working through a symlinked root.
+pub(crate) fn get_asset_path(root: &Path, absolute_path: &Path) -> Option<(PathBuf, bool)> {
+    if let Some(result) = strip_asset_path(root, absolute_path) {
+        return Some(result);
+    }
+    if let Ok(canonical) = std::fs::canonicalize(root)
+        && canonical != root
+        && let Some(result) = strip_asset_path(&canonical, absolute_path)
+    {
+        return Some(result);
+    }
+    warn!(
+        "FileWatcher dropped a change outside its watched root: absolute_path={}, root={}",
+        absolute_path.display(),
+        root.display()
+    );
+    None
 }
 
 /// Builds a debouncer over the platform-recommended backend, turning its events

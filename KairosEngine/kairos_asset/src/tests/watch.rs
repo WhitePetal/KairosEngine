@@ -553,3 +553,75 @@ fn asset_path_helpers_used_by_the_reload_drain_work() {
     let path = AssetPath::from(PathBuf::from("folder")).with_source(AssetSourceId::Default);
     assert_eq!(path.path(), Path::new("folder"));
 }
+
+/// On macOS the OS watcher reports event paths with symlinks resolved
+/// (`/private/tmp/...` for a root spelled `/tmp`, and `/private/var/...` for the
+/// non-canonical `/var/folders/...` a login session hands out), so a watcher must
+/// fall back to the canonical root. Before that, a symlinked root silently
+/// dropped every event.
+#[test]
+#[cfg(unix)]
+fn symlinked_root_maps_canonical_event_paths() {
+    use crate::io::file::file_watcher::get_asset_path;
+
+    let base = temp_dir("symlink_roots");
+    let real = base.join("real");
+    std::fs::create_dir_all(&real).unwrap();
+    let link = base.join("link");
+    std::os::unix::fs::symlink(&real, &link).unwrap();
+
+    let canonical = std::fs::canonicalize(&real).unwrap();
+
+    // The canonical event path still maps back onto a source-relative path.
+    let (asset, is_meta) = get_asset_path(&link, &canonical.join("folder/b.bytes")).unwrap();
+    assert_eq!(asset, PathBuf::from("folder/b.bytes"));
+    assert!(!is_meta);
+
+    // So does the path spelled exactly as the root was given.
+    let (asset, _) = get_asset_path(&link, &link.join("folder/b.bytes")).unwrap();
+    assert_eq!(asset, PathBuf::from("folder/b.bytes"));
+}
+
+/// The end-to-end shape of the same bug: a folder loaded through a symlinked
+/// root must still be re-walked when a file is added to it.
+#[test]
+#[cfg(unix)]
+fn real_folder_change_under_a_symlinked_root_rewalks_the_folder() {
+    let base = temp_dir("symlink_folder");
+    let real = base.join("real");
+    let folder = real.join("folder");
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join("a.bytes"), b"a").unwrap();
+    let link = base.join("link");
+    std::os::unix::fs::symlink(&real, &link).unwrap();
+
+    let mut world = watched_world(file_builder(&link), true);
+    let server = world.resource::<AssetServer>().clone();
+
+    let handle = server.load_folder("folder");
+    let id = handle.id().untyped();
+    settle(&mut world, &server, id);
+    assert_eq!(
+        world
+            .resource::<Assets<LoadedFolder>>()
+            .get(handle.id())
+            .map(|loaded| loaded.handles.len()),
+        Some(1)
+    );
+
+    std::fs::write(folder.join("b.bytes"), b"b").unwrap();
+
+    let start = Instant::now();
+    while start.elapsed() < Duration::from_secs(20) {
+        pump(&mut world);
+        let count = world
+            .resource::<Assets<LoadedFolder>>()
+            .get(handle.id())
+            .map(|loaded| loaded.handles.len());
+        if count == Some(2) {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    panic!("the folder was never re-walked through a symlinked root");
+}

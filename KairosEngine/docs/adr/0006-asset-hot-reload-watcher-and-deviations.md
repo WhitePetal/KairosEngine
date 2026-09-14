@@ -37,6 +37,11 @@ feature 面照搬 `watch` / `file_watcher` / `embedded_watcher` 三档，`defaul
    `ui::Context::handle` 每帧排空一次并让项目树重扫；重扫只在注册了新 GUID 时写回注册表，
    否则注册表自身的写入会把刚叫醒它的 watcher 再叫一次。因此 `kairos_engine` 也直接依赖
    `notify-debouncer-full`。）
+9. **`get_asset_path` 在根拼写不匹配时回退到 canonical 根**：macOS FSEvents 报告的事件路径会解析
+   符号链接——根写作 `/tmp` 时报 `/private/tmp/...`，而登录会话给的 `TMPDIR=/var/folders/...`
+   会被报成 `/private/var/...`。上游只按原样根做 `strip_prefix`（失败即 panic），于是这类环境下
+   所有事件都匹配不上、热重载失效。本地在 `strip_prefix` 失败后再用 `canonicalize(root)` 试一次；
+   事件语义不变，只是让符号链接根也能映射成功。
 
 ## 考虑过的替代
 

@@ -143,7 +143,7 @@ impl GlobalTransform {
         }
     }
 
-    /// Returns the [`Transform`] `self` would have if it was a child of an entity
+    /// Returns the [`LocalTransform`] `self` would have if it was a child of an entity
     /// with the `parent` [`GlobalTransform`].
     ///
     /// This is useful if you want to "reparent" an [`Entity`](bevy_ecs::entity::Entity).
@@ -151,7 +151,7 @@ impl GlobalTransform {
     /// but you want `e1` to keep the same global transform, even after re-parenting. You would use:
     ///
     /// ```
-    /// # use kairos_transform::{GlobalTransform, Transform};
+    /// # use kairos_transform::{GlobalTransform, LocalTransform};
     /// # use kairos_ecs::{Entity, Query, Component, Commands, ChildOf};
     /// #[derive(Component)]
     /// struct ToReparent {
@@ -159,7 +159,7 @@ impl GlobalTransform {
     /// }
     /// fn reparent_system(
     ///     mut commands: Commands,
-    ///     mut targets: Query<(&mut Transform, Entity, &GlobalTransform, &ToReparent)>,
+    ///     mut targets: Query<(&mut LocalTransform, Entity, &GlobalTransform, &ToReparent)>,
     ///     transforms: Query<&GlobalTransform>,
     /// ) {
     ///     for (mut transform, entity, initial, to_reparent) in targets.iter_mut() {
