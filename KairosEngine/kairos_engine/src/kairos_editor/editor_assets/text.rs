@@ -50,8 +50,13 @@ impl AssetLoader for TextLoader {
         }
     }
 
+    /// `.wgsl` is resolved by asset type, never by extension: the extension is
+    /// claimed by [`ShaderLoader`](kairos_graphics::shader::ShaderLoader), and
+    /// both loaders are always used with an explicit asset type. Claiming it
+    /// here too would leave which loader an untyped `.wgsl` load picks up to
+    /// registration order.
     fn extensions(&self) -> &[&str] {
-        &["rs", "md", "txt", "wgsl"]
+        &["rs", "md", "txt"]
     }
 }
 
