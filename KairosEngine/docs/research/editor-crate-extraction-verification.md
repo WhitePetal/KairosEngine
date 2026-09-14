@@ -3,21 +3,21 @@
 - **日期**：2026-09-14
 - **对象**：[#270](https://github.com/WhitePetal/KairosEngine/issues/270) 把 `kairos_editor` 抽出为独立 crate（纯迁移）
 - **基线**：[#254](https://github.com/WhitePetal/KairosEngine/issues/254) §7 的测试与验收基线
-- **口径**：本票只验证，不改代码；发现的问题按「只迁移不重构」登记，不顺手修。
-- **被测树**：`HEAD = 0a7dac6`（`main`）。工作区仅 `Library/asset_registry.toml`（数据文件，不参与编译 / 单测）有改动，且该改动早于本次运行；其余与 `0a7dac6` 逐字节一致。工作区根为 `KairosEngine/`（仓库根 `KairosEngine/` 的子目录）。
+- **口径**：本票只验证，不改代码；发现的问题按「只迁移不重构」登记，不顺手修。**首轮验证发现合并闸门红（见 §1.1）后，经决定对唯一那处既有 doctest 做了单行修复（见 §1.2 与 §5），故本文同时记录修复前 / 修复后两次 `cargo test-full`。**
+- **被测树**：`HEAD = 0a7dac6`（`main`），另加一处 doctest 导入修复（`kairos_transform/src/global_transform.rs:155`）。工作区仅 `Library/asset_registry.toml`（数据文件，不参与编译 / 单测）有改动，且该改动早于本次运行。工作区根为 `KairosEngine/`（仓库根 `KairosEngine/` 的子目录）。
 
 ## 结论摘要
 
 | 项 | 结论 |
 |---|---|
 | 三件套（`test-crate kairos_editor` / `check --workspace --all-targets` / `test-crate kairos_engine`） | ✅ 全绿 |
-| `cargo test-full`（含 doctest，合并闸门） | ❌ **红**（1 处，`kairos_transform` doctest） |
+| `cargo test-full`（含 doctest，合并闸门） | 首轮 ❌ **红**（1 处，`kairos_transform` doctest）→ 修复后 ✅ **全绿** |
 | `cargo check -p kairos_editor`（正向独立性） | ✅ 通过 |
 | `cargo tree --invert kairos_editor`（反向独立性） | ✅ 不含 `kairos_engine` |
 | 编辑器人工冒烟（0–5 步） | ⏸ **未执行**（需要人在 GUI 前；本文只给出可自动化的前置证据） |
 | P0 / P1 回归项 | 逐条核对，见下；**无一由 #270 引入** |
 
-> **验收判定**：抽出本身在编译、单测、独立性三个维度成立；但「合并闸门全绿」这一条**未达成**。唯一的红是 `kairos_transform` 一处**既有** doctest 编译失败，与 #270 无因果关系（证据见 §1.2）。按「只迁移不重构」，本票**不修**，登记为独立缺陷。
+> **验收判定**：抽出本身在编译、单测、独立性三个维度成立。首轮唯一的红是 `kairos_transform` 一处**既有** doctest 编译失败，与 #270 无因果关系（证据见 §1.2）；已按单行修复处理，修复后 `cargo test-full` **全绿**。除「编辑器人工冒烟 0–5 步」（需人在 GUI 前）外，自动化验收项**全部达成**。
 
 ---
 
@@ -30,9 +30,10 @@
 | 1 | `cargo test-crate kairos_editor` | ✅ **74 passed; 0 failed**（`src/lib.rs`）；`src/main.rs` 0 tests | `01-test-crate-editor.log` |
 | 2 | `cargo check --workspace --all-targets` | ✅ `Finished dev profile ... in 0.38s`，0 error | `02-check-workspace.log` |
 | 3 | `cargo test-crate kairos_engine` | ✅ **29 passed; 0 failed**（`src/lib.rs`）；`bake_assets` 0 tests | `03-test-crate-engine.log` |
-| 4 | `cargo test-full` | ❌ **1 failed**（详见 §1.1）；其余全绿 | `04-test-full.log` |
+| 4 | `cargo test-full`（修复前） | ❌ **1 failed**（详见 §1.1）；其余全绿 | `04-test-full.log` |
+| 4′ | `cargo test-full`（修复后） | ✅ **全绿**：38 个 `test result`，全部 `0 failed` | `07-test-full-after-fix.log` |
 
-### 1.1 `cargo test-full` 实际记录
+### 1.1 `cargo test-full` 实际记录（修复前 → 修复后）
 
 `test-full`（= `test --workspace --no-fail-fast`）跑完了每个成员的单测与 doctest。`04-test-full.log` 里每个目标的 `test result` 均为 `ok`，唯一的 `FAILED` 出现在末位的 `-p kairos_transform --doc`：
 
@@ -52,7 +53,20 @@ error: doctest failed, to rerun pass `-p kairos_transform --doc`
 error: 1 target failed: `-p kairos_transform --doc`
 ```
 
-同一全量运行里，**编辑器抽出的核心目标是通过的**，特别值得注意的是 #254 §4.3 点名的那 13 处 doctest：
+**修复后**（`07-test-full-after-fix.log`）：
+
+```
+   Doc-tests kairos_transform
+
+running 1 test
+test kairos_transform/src/global_transform.rs - global_transform::GlobalTransform::reparented_to (line 153) ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+```
+
+修复后整份日志的 38 个 `test result` 行全部 `0 failed`，无 `FAILED` / `error`。
+
+同一全量运行里（修复前那次），**编辑器抽出的核心目标是通过的**，特别值得注意的是 #254 §4.3 点名的那 13 处 doctest：
 
 ```
    Doc-tests kairos_editor
@@ -64,7 +78,7 @@ test result: ok. 453 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; fi
 
 即：**13 处路径改写（`kairos_engine::kairos_editor::…` → `kairos_editor::…`）全部改对、全部通过**；红的是另一处。
 
-### 1.2 红的根因：一处**既有** doctest，与 #270 无关
+### 1.2 红的根因与修复：一处**既有** doctest，与 #270 无关
 
 `kairos_transform/src/global_transform.rs:156` 的示例从 `kairos_ecs` **根**导入 `Entity / Query / Component / Commands / ChildOf`，而这些名字只存在于 `kairos_ecs::prelude`（`kairos_ecs/src/lib.rs:45-98` 的 `pub mod prelude`；根部只有 `pub use kairos_ptr as ptr;`）。因此这处 doctest **从来没有编译过**。
 
@@ -79,7 +93,14 @@ test result: ok. 453 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; fi
    `78098bc`、`26770e4`、`78bab5e`、`0a7dac6` 的 `--stat` 里没有 `kairos_ecs/` 或 `kairos_transform/` 下任何文件。
 4. 与 §9 已登记的文档层既有缺陷同类（`node.rs` 残缺 fence、`create::` 拼写、egui_dock fork 死链），只是这一处是 **error**（编译失败），故会挡住 `test-full`。
 
-**登记（不在本票修复）**：`kairos_transform` doctest 路径失效。修法是把导入改到 `kairos_ecs::prelude::{…}`（或具体模块路径），期望结果：`cargo test-full` 全绿。是否修由后续票决定；本票只登记。
+**修复（单行）**：把导入改到 `kairos_ecs::prelude::{…}`：
+
+```diff
+- /// # use kairos_ecs::{Entity, Query, Component, Commands, ChildOf};
++ /// # use kairos_ecs::prelude::{Entity, Query, Component, Commands, ChildOf};
+```
+
+`prelude` 同时导出 `Component` 的 trait 与 derive 宏（`kairos_ecs/src/component.rs:19`），故 `#[derive(Component)]` 仍成立。修复后 `cargo test -p kairos_transform --doc` 与 `cargo test-full` 均通过；改动仅此一行，不触碰引擎 / 编辑器的迁移产物。
 
 > `test-crate` 别名是 `test --lib --bins --tests`，**不含 `--doc`**，所以三件套全绿确实掩盖了它——正是 #254 §4.3 预告的口径。#255 标记的关键输入得到实测确认，只是位置在 `kairos_transform` 而非编辑器。
 
@@ -106,7 +127,7 @@ test result: ok. 453 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; fi
 | P1 | 某类检查器打不开（各 loader 的 `install` 随迁 + `AssetKind` 路由） | ✅ 路由与安装在位（逐类实开仍需人） | `lib.rs:107-113` 的 `install` 覆盖 `editor_assets::text` / `editor_assets::toml` / `syntax` / `ui::inspector::texture` / `camera`；`ui/inspector/creater.rs:19-82` 的 `create_from_asseet_kind` 对 `AssetKind` **11 个变体**全部有分支。texture/material/audio/text/toml 相关测试通过。 |
 | P1 | 场景无画面 / 相机不动 | ✅ 安装在位（画面/操作仍需人） | `camera.rs:194-204` `camera::install` 注册 `editor_camera_controller_system` 到 `PostUpdate`；`camera/test.rs` 通过；场景窗口代码随迁。 |
 | P1 | 保存不落盘（bin 迁移后裸 `cargo run` 的 cwd 仍是 workspace root） | ✅ 路径相对 cwd，落点正确（实存仍需人） | 注册表用相对路径 `Library/asset_registry.toml`（`asset_registry.rs:208`）。`git status` 显示 `KairosEngine/Library/asset_registry.toml` 有改动——即从 workspace 根运行时文件确实写在 workspace 根下，与迁移前一致。 |
-| P1 | doctest 漏改（三件套绿而 `test-full` 红） | ❌ **命中，但非编辑器漏改** | 见 §1.1 / §1.2：13 处编辑器 doctest 全绿；红的是 `kairos_transform` 的**既有** doctest。 |
+| P1 | doctest 漏改（三件套绿而 `test-full` 红） | ✅ 13 处编辑器 doctest 全绿；唯一红的是 `kairos_transform` **既有** doctest，已修复 | 见 §1.1 / §1.2；修复后 `cargo test-full` 全绿。 |
 | P2 | syntax 高亮失效 | ✅ 安装在位（渲染效果仍需人） | `syntax.rs:359-362` `syntax::install` 注册 `SyntaxHighlightSettingsLoader`；`syntax::test::syntax_loads_through_the_core` 通过。 |
 
 **未执行（需人在 GUI 前）**：上表标「仍需人」的观察项，以及 §4。
@@ -130,11 +151,11 @@ test result: ok. 453 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; fi
 
 ---
 
-## 5. 发现的问题登记（只迁移不重构，未顺手修）
+## 5. 发现的问题登记
 
 | # | 问题 | 级别 | 证据 | 归属 |
 |---|---|---|---|---|
-| 1 | `kairos_transform/src/global_transform.rs:153-156` doctest 从 `kairos_ecs` 根导入 `Entity/Query/Component/Commands/ChildOf`，实际只在 `kairos_ecs::prelude`；该 doctest 从未编译，令 `cargo test-full` 红 | 阻塞合并闸门 | §1.1 / §1.2 | **既有缺陷**（`3e91e91`），非 #270 |
+| 1 | `kairos_transform/src/global_transform.rs:153-156` doctest 从 `kairos_ecs` 根导入 `Entity/Query/Component/Commands/ChildOf`，实际只在 `kairos_ecs::prelude`；该 doctest 从未编译，令 `cargo test-full` 红 | 原阻塞合并闸门，**已修复** | §1.1 / §1.2 | **既有缺陷**（`3e91e91`），非 #270；单行把导入改到 `kairos_ecs::prelude::{…}` |
 
 既有「明确不计回归」项（层级/控制台/关于窗口 `TODO`、右键新建五类资源 `todo!()`、`Scene → New Scene` `todo!()`、docking 拖拽 collection `todo!()`、文档层既有缺陷、`math/color/converts.rs` 反赖 egui/syntect、无 `[workspace.dependencies]`、`KairosGame` 只服务编辑器、`Engine`/`Editor`/crate 同名易混）本票复核期间**未观察到新增或恶化**；按 #272 口径不报。
 
@@ -147,7 +168,7 @@ cd KairosEngine            # 工作区根
 cargo test-crate kairos_editor
 cargo check --workspace --all-targets
 cargo test-crate kairos_engine
-cargo test-full            # 红：kairos_transform doctest
+cargo test-full            # 修复后全绿
 cargo check -p kairos_editor
 cargo tree --invert kairos_editor
 ```
