@@ -7,6 +7,7 @@ members = [
     "kairos_ecs/macros",
     "kairos_ecs/macro_logic",
     "kairos_ecs/macro_utils",
+    "kairos_editor",
     "kairos_engine",
     "kairos_graphics",
     "kairos_math",
@@ -18,6 +19,11 @@ members = [
     "kairos_transform",
 ]
 resolver = "3"
+
+# Working-directory `cargo run` starts the editor: exactly one workspace member
+# sets `default-run` (`kairos_editor`). `kairos_engine` no longer does, and
+# `kairos_supervisor` has a `src/main.rs` but must not add one — keep that
+# invariant when adding members.
 
 [workspace.package]
 version = "0.1.0"

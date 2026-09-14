@@ -1,0 +1,74 @@
+[package]
+name = "kairos_editor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+# The editor is a host/authoring tool built on top of `kairos_engine`, not an
+# engine subsystem. It owns the window, the UI, and the project browser; the
+# engine owns the ECS, rendering, physics, and audio it drives.
+description = "The Kairos editor: the host and authoring tool built on the Kairos engine"
+default-run = "kairos_editor"
+
+[features]
+default = ["debug", "trace"]
+track_location = ["kairos_engine/track_location"]
+debug = ["kairos_engine/debug"]
+trace = ["kairos_engine/trace"]
+kairos_reflect = ["kairos_engine/kairos_reflect"]
+hotpatching = ["kairos_engine/hotpatching"]
+debug_stepping = ["kairos_engine/debug_stepping"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)", "cfg(docsrs_dep)"] }
+
+[dependencies]
+# The engine (and, through its re-exports, the graphics/asset/audio/physics/
+# math/log/time/kairos_ui subsystems the editor drives).
+kairos_engine = { path = "../kairos_engine" }
+# Path crates the editor uses directly.
+kairos_collections = { path = "../kairos_collections" }
+kairos_ecs = { path = "../kairos_ecs" }
+kairos_tasks = { path = "../kairos_tasks" }
+kairos_transform = { path = "../kairos_transform" }
+
+toml = "1.1.2"
+async-fs = "2.1"
+crossbeam-channel = "0.5.15"
+tokio = { version = "1.52.3", features = ["full"] }
+petgraph = "0.8.3"
+winit = { version = "0.30", features = ["android-native-activity"] }
+env_logger = "0.10"
+log = "0.4"
+open = "5.4.0"
+native-dialog = "0.9.6"
+serde = "1.0.228"
+strum = { version = "0.26", features = ["derive"] }
+duplicate = "2.0"
+paste = "1.0"
+image = { version = "0.25.10", features = ["rayon", "serde", "png"] }
+wgpu = { version = "29.0.3", features = ["serde"] }
+pollster = "0.3"
+egui = "0.35.0"
+egui_extras = { version = "0.35.0", features = ["all_loaders", "datepicker", "syntect"] }
+emath = "0.35.0"
+epaint = "0.35.0"
+egui-winit = "0.35.0"
+egui-wgpu = "0.35.0"
+parking_lot = "0.12.5"
+uuid = { version = "1", features = ["v4", "serde"] }
+kira = { version = "0.12.0", features = ["serde"] }
+rustfft = "6"
+egui_commonmark = "0.24.0"
+syntect = { version = "5.3", default-features = false, features = ["default-fancy"] }
+# The editor project tree watches its root itself (ADR 0006 deviation 8): the
+# asset sources' watcher stays internal to `kairos_asset`, and the tree is not a
+# set of loaded assets. Same backend and debounce window as the asset watcher.
+notify-debouncer-full = { version = "0.7.0", default-features = false }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6.4"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSApplication", "NSImage"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSString"] }
+
+[dev-dependencies]
+tempfile = "3"

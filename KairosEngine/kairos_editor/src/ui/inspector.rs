@@ -1,0 +1,51 @@
+use std::any::Any;
+
+use kairos_ecs::world::World;
+
+use crate::{
+    project_path_tree::ProjectPathGraph,
+    ui::{Messager, UIReader, dialog::Dialog},
+};
+use kairos_engine::graphics::graphics_graph::GraphicsCommand;
+
+pub mod audio;
+pub mod code;
+pub mod creater;
+pub mod directory;
+pub mod document;
+pub mod font;
+pub mod material;
+pub mod mesh;
+pub mod shader;
+pub mod texture;
+pub mod toml;
+pub mod unknown;
+
+pub trait Inspector: Any {
+    fn create(
+        path: &std::path::Path,
+        world: &World,
+        _project_graph: &ProjectPathGraph,
+    ) -> Result<Self, Box<dyn std::error::Error>>
+    where
+        Self: Sized;
+
+    fn draw(
+        &self,
+        ui: &mut egui::Ui,
+        reader: &UIReader,
+        messager: &mut Messager,
+        world: &World,
+        dt: f32,
+    );
+
+    fn on_exit(&mut self, _ctx: &egui::Context) -> Option<Box<dyn Dialog>> {
+        None
+    }
+
+    /// Optional: return preview render commands (e.g., 3D model preview).
+    /// Called during `Context::render()` alongside other Drawer::render() calls.
+    fn render(&self) -> Option<GraphicsCommand> {
+        None
+    }
+}

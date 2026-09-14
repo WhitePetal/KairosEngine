@@ -13,11 +13,8 @@ pub mod schedule;
 
 pub mod math;
 
-pub mod dialog;
-
 pub mod log;
 
-pub mod kairos_editor;
 pub mod kairos_game;
 pub mod kairos_paths;
 pub mod kairos_settings;

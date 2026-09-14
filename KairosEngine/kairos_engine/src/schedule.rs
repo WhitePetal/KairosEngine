@@ -295,7 +295,11 @@ fn run_fixed_main_loop(world: &mut World) {
 /// [`FixedTime`], [`MainScheduleOrder`], plus a [`MainThreadExecutor`]
 /// captured on the calling thread). `Schedules` itself is created on demand by
 /// the world.
-pub(crate) fn install(world: &mut World) {
+///
+/// Public so a host can build a bare world without opening the audio device
+/// [`Engine::new`](crate::Engine::new) owns: the editor and its tests install
+/// the rails, then the asset core on top, and drive the stages directly.
+pub fn install(world: &mut World) {
     log::debug!("installing the main-schedule rails");
 
     // The engine's virtual clock lives in the World as a resource and is

@@ -2,7 +2,6 @@
 name = "kairos_engine"
 version = "0.1.0"
 edition = "2024"
-default-run = "kairos_engine"
 description = "A Game Engine"
 license = "MIT OR Apache-2.0"
 
@@ -23,57 +22,19 @@ debug_stepping = ["kairos_ecs/debug_stepping"]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)", "cfg(docsrs_dep)"] }
 
 [dependencies]
-
-toml = "1.1.2"
-anyhow = { version = "1.0" }
-# The next-generation asset loaders run on `kairos_tasks`' io pool, not a tokio
-# runtime, so they read auxiliary files with `async-fs` (as `kairos_asset` does).
-async-fs = "2.1"
+rkyv = "0.8.16"
 rand = "0.10.1"
 smallvec = { version = "1.15.2", features = ["union", "serde", "const_new", "write"] }
-crossbeam-channel = "0.5.15"
-bytemuck = { version = "1.25.0", features = ["derive"] }
-tokio = { version = "1.52.3", features = ["full"] }
-rayon = "1.12.0"
-rkyv = "0.8.16"
-petgraph = "0.8.3"
 winit = { version = "0.30", features = ["android-native-activity"] }
 env_logger = "0.10"
 log = "0.4"
-open = "5.4.0"
-native-dialog = "0.9.6"
 serde = "1.0.228"
-sonic-rs = "0.5.7"
-strum = { version = "0.26", features = ["derive"] }
-duplicate = "2.0"
-paste = "1.0"
-image = { version = "0.25.10", features = ["rayon", "serde", "png"] }
-base64 = "0.22.1"
-wgpu = { version = "29.0.3", features = ["serde"] }
-pollster = "0.3"
-# eframe = { version = "0.34.2", features = ["wgpu"] }
+# `math/color/converts.rs` converts the engine's colors to egui/syntect colors,
+# so the engine keeps these two UI-ecosystem crates even without the editor.
 egui = "0.35.0"
-egui_extras = { version = "0.35.0", features = ["all_loaders", "datepicker", "syntect"] }
-emath = "0.35.0"
-epaint = "0.35.0"
-# egui_dock = "0.18.0"
-egui-winit = "0.35.0"
-egui-wgpu = "0.35.0"
-parking_lot = "0.12.5"
-gltf = "1.4.1"
-uuid = { version = "1", features = ["v4", "serde"] }
-kira = { version = "0.12.0", features = ["serde"] }
-rustfft = "6"
-half = { version = "2.4", features = ["bytemuck"] }
-glam = { version = "0.33", features = ["bytemuck"] }
-egui_commonmark = "0.24.0"
 syntect = { version = "5.3", default-features = false, features = ["default-fancy"] }
-# puffin = "0.20.0"
-tokio-tungstenite = { version = "0.24", optional = true }
-futures-util = { version = "0.3", optional = true }
-serde_json = { version = "1.0", optional = true }
-indexmap = { version = "2.5.0", default-features = false, features = ["serde"] }
-kairos_collections = { path = "../kairos_collections" }
+pollster = "0.3"
+half = { version = "2.4", features = ["bytemuck"] }
 kairos_ecs = { path = "../kairos_ecs" }
 kairos_asset = { path = "../kairos_asset" }
 kairos_audio = { path = "../kairos_audio" }
@@ -83,15 +44,6 @@ kairos_physics = { path = "../kairos_physics" }
 kairos_tasks = { path = "../kairos_tasks" }
 kairos_time = { path = "../kairos_time" }
 kairos_transform = { path = "../kairos_transform" }
-# The editor project tree watches its root itself (ADR 0006 deviation 8): the
-# asset sources' watcher stays internal to `kairos_asset`, and the tree is not a
-# set of loaded assets. Same backend and debounce window as the asset watcher.
-notify-debouncer-full = { version = "0.7.0", default-features = false }
-
-[target.'cfg(target_os = "macos")'.dependencies]
-objc2 = "0.6.4"
-objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSApplication", "NSImage"] }
-objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSString"] }
 
 [[bench]]
 name = "texture_encode_decode"
