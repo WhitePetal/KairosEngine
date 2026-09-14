@@ -152,7 +152,7 @@ impl GlobalTransform {
     ///
     /// ```
     /// # use kairos_transform::{GlobalTransform, LocalTransform};
-    /// # use kairos_ecs::{Entity, Query, Component, Commands, ChildOf};
+    /// # use kairos_ecs::prelude::{Entity, Query, Component, Commands, ChildOf};
     /// #[derive(Component)]
     /// struct ToReparent {
     ///     new_parent: Entity,
