@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     audio::{
+        AudioEngine,
         audio::AudioAsset,
         audio_ext::{AudioExt, pcm::PcmData},
     },
@@ -430,8 +431,10 @@ impl AudioInspector {
         // Stop any existing playback before starting a new one
         self.stop_kira_handle();
 
-        // Start playback
-        let handle = engine.audio_engine.play_sound(sound_data);
+        // Start playback. The engine is a World resource now, so this is a
+        // resource borrow rather than an `Engine` field; `sound_data` is already
+        // a clone, so no `resource_scope` is needed.
+        let handle = engine.world.resource_mut::<AudioEngine>().play_sound(sound_data);
         let handle = match handle {
             Ok(h) => h,
             Err(_) => return,

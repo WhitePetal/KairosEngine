@@ -20,7 +20,6 @@ use crate::{
         Engine,
         ui::{Drawer, Message, UIReader, paths},
     },
-    kairos_game::KairosGame,
     math::float4x4,
 };
 
@@ -179,7 +178,6 @@ impl Drawer for GameWindow {
     fn render(
         &self,
         engine: &mut Engine,
-        _game: &mut KairosGame,
         messager: &mut super::Messager,
     ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {
         let mut graphics_command = GraphicsCommand::new(16, 2, 4, 16);

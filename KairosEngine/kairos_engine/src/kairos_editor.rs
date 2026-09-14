@@ -24,19 +24,21 @@ pub mod ui;
 
 pub struct Engine {
     pub world: World,
-    pub audio_engine: AudioEngine,
     pub input_engine: InputEngine,
 }
 
 impl Engine {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        let world = build_world();
-        let audio_engine = AudioEngine::new()?;
+        let mut world = build_world();
+        // Audio goes last: its `install` mounts the per-frame driver into the
+        // `Update` stage `build_world` just created and inserts the
+        // `AudioEngine` as a World resource. Opening a real audio device can
+        // fail, so this is the one step that keeps `Engine::new` fallible.
+        crate::audio::install(&mut world, AudioEngine::new()?, schedule::Update);
         let input_engine = InputEngine::new();
 
         Ok(Self {
             world,
-            audio_engine,
             input_engine,
         })
     }
@@ -69,8 +71,10 @@ impl Engine {
 /// physics, the render rails, and the editor camera controller, in the order
 /// their preconditions require.
 ///
-/// Split out of [`Engine::new`] so a host that does not want an audio device —
-/// a test, or a headless run — can still drive the exact bootstrap order.
+/// Audio is deliberately *not* here: it belongs to [`Engine::new`], which owns
+/// the fallible device open. Keeping this function infallible and audio-free is
+/// what lets a host that does not want an audio device — a test, or a headless
+/// run — drive the exact bootstrap order.
 fn build_world() -> World {
     let mut world = World::new();
     // Bootstrap the bevy_app-style schedule rails — including the `Time` World
@@ -134,7 +138,6 @@ fn build_world() -> World {
 
 pub struct KairosEngine {
     engine: Engine,
-    game: KairosGame,
     ui_context: ui::Context,
     log: Log,
 }
@@ -142,12 +145,15 @@ pub struct KairosEngine {
 impl KairosEngine {
     pub fn new(egui_ctx: &egui::Context) -> Result<Self, Box<dyn std::error::Error>> {
         let mut engine = Engine::new()?;
-        let game = KairosGame::new(&mut engine);
+        // The game is a stateless assembly entry: its `new` spawns the demo
+        // scene and registers the drifting-listener system into the engine's
+        // rails. The value it returns is not kept — per-frame work rides the
+        // schedule now.
+        let _ = KairosGame::new(&mut engine);
         let ui_context = ui::Context::new(egui_ctx)?;
         let log = Log::new();
         Ok(Self {
             engine,
-            game,
             ui_context,
             log,
         })
@@ -158,9 +164,10 @@ impl KairosEngine {
     }
 
     fn update(&mut self) {
-        // Frame start: drive the engine's schedule rails first.
+        // Frame start: the game's per-frame work (the drifting listener, the
+        // audio driver) is scheduled into the rails, so driving the rails *is*
+        // the frame — there is no second hand-driven step.
         self.engine.update();
-        self.game.update(&mut self.engine);
     }
 
     fn handle_ui(&mut self, ui: &mut egui::Ui) {
@@ -175,7 +182,7 @@ impl KairosEngine {
     }
 
     fn render_ui(&mut self) -> Vec<GraphicsCommand> {
-        self.ui_context.render(&mut self.engine, &mut self.game)
+        self.ui_context.render(&mut self.engine)
     }
 
     fn on_exit(&mut self) {

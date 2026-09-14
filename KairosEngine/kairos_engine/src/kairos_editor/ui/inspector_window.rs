@@ -11,7 +11,6 @@ use crate::{
         asset_registry::{AssetKind, Guid},
         ui::{Messager, UIReader, dialog::Dialog, inspector::Inspector},
     },
-    kairos_game::KairosGame,
     log::Log,
 };
 use serde::{Deserialize, Serialize};
@@ -210,7 +209,6 @@ impl Drawer for InspectorWindow {
     fn render(
         &self,
         _engine: &mut Engine,
-        _game: &mut KairosGame,
         _messager: &mut Messager,
     ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {
         self.model

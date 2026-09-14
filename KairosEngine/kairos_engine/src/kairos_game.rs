@@ -4,7 +4,7 @@ use crate::asset::{AssetServer, Handle};
 
 use crate::{
     audio::audio::AudioAsset,
-    audio::AudioEngine,
+    audio::{AudioEngine, AudioUpdateSystems},
     audio::background::BackgroundAudio,
     audio::spatial::{
         spatial_audio_listener::SpatialAudioListenerComponent,
@@ -15,12 +15,17 @@ use crate::{
         material_component::MaterialComponent, mesh::Mesh, view_port::GameView,
     },
     inputs::Input,
-    kairos_editor::Engine,
+    kairos_editor::{Engine, schedule},
     math::{float3, quaternion},
     physics::{PhysicsEngine, collider::ColliderMaterial},
     spatial::AABB,
+    time::Time,
 };
-use kairos_ecs::world::World;
+use kairos_ecs::{
+    schedule::{IntoScheduleConfigs, Schedules},
+    system::{Local, Query, Res},
+    world::{FromWorld, World},
+};
 use kairos_transform::LocalTransform;
 
 // ── Minimal audible scene ─────────────────────────────────────────────
@@ -32,8 +37,8 @@ use kairos_transform::LocalTransform;
 // The listener's circular drift is **temporary scaffolding** — it is what gives
 // the spatial path something to react to while input and the camera are still
 // being migrated, and it is deliberately pure local arithmetic so that it can be
-// deleted in one piece: when camera/input land, drop `listener_drift_angle`,
-// `KairosGame::drift_listener` and the `LISTENER_DRIFT_*` constants, and hang
+// deleted in one piece: when camera/input land, drop the `ListenerDrift` state,
+// `drift_listener_system` and the `LISTENER_DRIFT_*` constants, and hang
 // the listener component on the camera entity instead.
 
 /// Centre of the listener's circular drift, in world space — the axis the volume
@@ -155,11 +160,12 @@ fn listener_drift_transform(angle: f32) -> LocalTransform {
 
 // ── KairosGame ────────────────────────────────────────────────────────
 
-pub struct KairosGame {
-    /// Current angle, in radians, of the listener's circular drift — see the
-    /// scene notes above for why this is temporary.
-    listener_drift_angle: f32,
-}
+/// The demo's assembly entry.
+///
+/// Stateless: everything the demo spawns lives in the `World`, and everything
+/// it does per frame rides the engine's schedules, so there is no per-frame
+/// state to keep. See the scene notes above for the temporary listener drift.
+pub struct KairosGame;
 
 impl KairosGame {
     pub fn new(engine: &mut Engine) -> Self {
@@ -217,12 +223,7 @@ impl KairosGame {
             .id();
         engine.world.resource_mut::<GameView>().camera = Some(game_camera_entity);
 
-        Self::spawn_audio_scene(
-            &mut engine.world,
-            &mut engine.audio_engine,
-            background_audio,
-            blip_audio,
-        );
+        Self::spawn_audio_scene(&mut engine.world, background_audio, blip_audio);
 
         // ── Physics bodies (wayfinder map #150) ───────────────────────
         //
@@ -310,9 +311,17 @@ impl KairosGame {
             .entity_mut(ball_entity)
             .insert((ball_rigid_body, ball_collider));
 
-        Self {
-            listener_drift_angle: LISTENER_DRIFT_START_ANGLE,
-        }
+        // Register the listener drift into the engine's `Update` stage, ordered
+        // *before* the audio driver: this frame's listener position must be
+        // written before the driver spatialises against it, so "audio reads the
+        // listener" is a schedule edge rather than a hand-call order.
+        let mut schedules = engine.world.get_resource_or_init::<Schedules>();
+        schedules.add_systems(
+            schedule::Update,
+            drift_listener_system.before(AudioUpdateSystems),
+        );
+
+        Self
     }
 
     /// Spawns the minimal audible scene — the listener, the reverb zone, the
@@ -322,19 +331,21 @@ impl KairosGame {
     /// from `kairos_transform` types plus the audio components, so the scene
     /// stays runnable while those subsystems are still being migrated.
     ///
-    /// The listener entity is not returned or kept: [`Self::drift_listener`]
+    /// The listener entity is not returned or kept: [`drift_listener_system`]
     /// finds it through its component, so the scene needs no entity bookkeeping
     /// in [`KairosGame`] and disappears cleanly when the drift does.
     fn spawn_audio_scene(
         world: &mut World,
-        audio_engine: &mut AudioEngine,
         background_audio: Handle<AudioAsset>,
         blip_audio: Handle<AudioAsset>,
     ) {
         // The kira listener itself is owned by the audio engine's spatial track
-        // table; the entity only carries its id (kira's handles are not `Clone`,
-        // so id-as-bookkeeping/handle-as-owner is the split the engine uses).
-        if let Some(listener_id) = audio_engine.create_listener() {
+        // table — the `AudioEngine` World resource now — and the entity only
+        // carries its id (kira's handles are not `Clone`, so
+        // id-as-bookkeeping/handle-as-owner is the split the engine uses).
+        let listener_id =
+            world.resource_scope::<AudioEngine, _>(|_, mut audio| audio.create_listener());
+        if let Some(listener_id) = listener_id {
             world.spawn((
                 listener_drift_transform(LISTENER_DRIFT_START_ANGLE),
                 SpatialAudioListenerComponent {
@@ -388,48 +399,51 @@ impl KairosGame {
         // happens to be.
         world.spawn(BackgroundAudio::new(background_audio, true));
     }
+}
 
-    /// Advances the listener's purely-local circular drift by one frame.
-    ///
-    /// The listener orbits [`LISTENER_DRIFT_CENTER`] at a constant radius and
-    /// angular speed, always facing the centre. No input, camera or physics is
-    /// consulted — see the scene notes above `KairosGame` for why, and for how
-    /// to delete this.
-    fn drift_listener(&mut self, world: &mut World, delta_time: f32) {
-        self.listener_drift_angle = (self.listener_drift_angle
-            + LISTENER_DRIFT_ANGULAR_SPEED * delta_time)
-            .rem_euclid(std::f32::consts::TAU);
+/// The drifting listener's per-frame angle, held in [`drift_listener_system`]'s
+/// `Local` state.
+///
+/// A bare `Local<f32>` would seed to `0.0` (via the blanket
+/// `impl<T: Default> FromWorld for T`); wrapping the angle is what lets
+/// [`FromWorld`] start the drift at [`LISTENER_DRIFT_START_ANGLE`] instead, so
+/// the first frame matches the pose `spawn_audio_scene` spawned.
+struct ListenerDrift {
+    angle: f32,
+}
 
-        let transform = listener_drift_transform(self.listener_drift_angle);
-
-        // A no-op while the scene holds no listener entity — the query is simply
-        // empty, so a failed `create_listener` degrades to a silent spatial path
-        // rather than a panic.
-        let mut listeners = world.query::<(&mut LocalTransform, &SpatialAudioListenerComponent)>();
-        for (mut local_transform, _) in listeners.iter_mut(&mut *world) {
-            *local_transform = transform;
+impl FromWorld for ListenerDrift {
+    fn from_world(_world: &mut World) -> Self {
+        Self {
+            angle: LISTENER_DRIFT_START_ANGLE,
         }
     }
+}
 
-    pub fn update(&mut self, engine: &mut Engine) {
-        // Time is advanced exactly once per frame by `time_system` at the
-        // `First` stage (frame start); game-side code only reads it here, to
-        // feed subsystem update parameters.
-        let _total_time = engine.time().total_time().as_secs_f32();
-        let delta_time = engine.time().delta_time().as_secs_f32();
+/// Advances the listener's purely-local circular drift by one frame.
+///
+/// The listener orbits [`LISTENER_DRIFT_CENTER`] at a constant radius and
+/// angular speed, always facing the centre. No input, camera or physics is
+/// consulted — see the scene notes above [`KairosGame`] for why, and for how to
+/// delete this.
+///
+/// Registered in the engine's `Update` stage, ordered before
+/// [`AudioUpdateSystems`]: this frame's listener position must be written before
+/// the audio driver spatialises against it.
+fn drift_listener_system(
+    time: Res<Time>,
+    mut drift: Local<ListenerDrift>,
+    mut listeners: Query<(&mut LocalTransform, &SpatialAudioListenerComponent)>,
+) {
+    drift.angle = (drift.angle + LISTENER_DRIFT_ANGULAR_SPEED * time.delta_time().as_secs_f32())
+        .rem_euclid(std::f32::consts::TAU);
 
-        // Drift the listener first, so this frame's audio is spatialised against
-        // this frame's listener position rather than the previous one's.
-        self.drift_listener(&mut engine.world, delta_time);
+    let transform = listener_drift_transform(drift.angle);
 
-        // ── Audio System ──────────────────────────────────────────────
-        //
-        // Driven by hand: #156 fixed the driver shape to a manual per-frame
-        // call from here (`AudioEngine` stays an `Engine` field, the asset
-        // server is a `World` resource, `dt` comes from the `Time` resource the
-        // `First` stage advanced).
-        engine
-            .audio_engine
-            .update(&mut engine.world, delta_time);
+    // A no-op while the scene holds no listener entity — the query is simply
+    // empty, so a failed `create_listener` degrades to a silent spatial path
+    // rather than a panic.
+    for (mut local_transform, _) in listeners.iter_mut() {
+        *local_transform = transform;
     }
 }

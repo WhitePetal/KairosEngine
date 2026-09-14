@@ -6,7 +6,6 @@ use crate::{
         Engine,
         ui::{Drawer, Messager, UIReader},
     },
-    kairos_game::KairosGame,
     log::Log,
 };
 
@@ -52,7 +51,6 @@ impl Drawer for LayoutLeftContainer {
     fn render(
         &self,
         _engine: &mut Engine,
-        _game: &mut KairosGame,
         _messager: &mut Messager,
     ) -> Option<GraphicsCommand> {
         None
@@ -104,7 +102,6 @@ impl Drawer for LayoutRightContainer {
     fn render(
         &self,
         _engine: &mut Engine,
-        _game: &mut KairosGame,
         _messager: &mut Messager,
     ) -> Option<GraphicsCommand> {
         None
@@ -151,7 +148,6 @@ impl Drawer for LayoutBottomContainer {
     fn render(
         &self,
         _engine: &mut Engine,
-        _game: &mut KairosGame,
         _messager: &mut Messager,
     ) -> Option<GraphicsCommand> {
         None
@@ -198,7 +194,6 @@ impl Drawer for LayoutCenterContainer {
     fn render(
         &self,
         _engine: &mut Engine,
-        _game: &mut KairosGame,
         _messager: &mut Messager,
     ) -> Option<GraphicsCommand> {
         None

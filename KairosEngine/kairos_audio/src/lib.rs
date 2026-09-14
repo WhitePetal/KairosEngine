@@ -18,7 +18,11 @@ use crate::{
     spatial::{SpatialAudioConfig, SpatialAudioTracks},
 };
 
-use kairos_ecs::world::World;
+use kairos_ecs::{
+    resource::Resource,
+    schedule::{IntoScheduleConfigs, ScheduleLabel, Schedules, SystemSet},
+    world::World,
+};
 
 pub mod audio;
 pub mod audio_ext;
@@ -26,11 +30,20 @@ pub mod background;
 pub mod consts;
 pub mod spatial;
 
+mod driver;
+
 #[cfg(test)]
 mod test;
 
 /// The backend is a type parameter purely so tests can run the per-frame driver
 /// without an audio device; every call site uses the default (real) backend.
+///
+/// A [`Resource`], so the engine lives in the `World` and the per-frame driver
+/// installed by [`install`] can reach it as a resource while also holding the
+/// `&mut World` its entity queries need. The backend parameter is
+/// deliberately left generic: the resource is keyed by the concrete type's
+/// `TypeId`, and production only ever stores `AudioEngine<DefaultBackend>`.
+#[derive(Resource)]
 pub struct AudioEngine<B: Backend = DefaultBackend> {
     manager: AudioManager<B>,
     spatial_tracks: SpatialAudioTracks<B>,
@@ -84,7 +97,11 @@ impl<B: Backend> AudioEngine<B> {
     ///
     /// `AudioAsset` must be registered in `world` (the engine bootstrap does
     /// this); otherwise the driver has no store to resolve handles against.
-    pub fn update(&mut self, world: &mut World, delta_time: f32) {
+    ///
+    /// Crate-private: the driver (`driver::audio_update_system`) is the only
+    /// caller, and exposing it would invite callers to drive the engine by hand
+    /// and bypass the schedule.
+    pub(crate) fn update(&mut self, world: &mut World, delta_time: f32) {
         // The audio store is a World resource, but the per-frame driver needs
         // `&mut World` for its entity queries at the same time, so the store is
         // scoped out for the duration of the update (`World::resource_scope`) and
@@ -168,4 +185,49 @@ impl AudioEngine<MockBackend> {
     pub(crate) fn backend_mut(&mut self) -> &mut MockBackend {
         self.manager.backend_mut()
     }
+}
+
+/// The system set that groups the per-frame audio driver, so callers can order
+/// their own systems relative to it.
+///
+/// The set exists so that "audio must run after the systems that write the
+/// listener's position" is an explicit scheduling interface rather than a
+/// convention of the stage the driver happens to be mounted in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct AudioUpdateSystems;
+
+// Implemented by hand rather than derived: the `SystemSet` derive lives in
+// `kairos_ecs_macros`, which this crate does not depend on. `kairos_asset`'s
+// `AssetTrackingSystems` folds its repeated impls the same way.
+impl SystemSet for AudioUpdateSystems {
+    fn dyn_clone(&self) -> Box<dyn SystemSet> {
+        Box::new(*self)
+    }
+}
+
+/// Installs audio into `world`: the [`AudioEngine`] resource and its per-frame
+/// audio driver, mounted into `update_stage` under [`AudioUpdateSystems`].
+///
+/// `update_stage` is the per-frame schedule the driver registers into — the
+/// stage that runs strictly after the `First`-stage clock advance and the
+/// `PreUpdate` asset tracking, so a frame's `delta_time` and freshly resolved
+/// [`AudioAsset`] handles are both in hand. The schedule
+/// skeleton (and its label) belongs to the application, not to this crate, so
+/// the caller passes it in: `kairos_engine` supplies its `Update` stage.
+///
+/// # Panics
+///
+/// If the schedule named by `update_stage` does not exist yet: registering the
+/// driver into a stage that is about to be replaced would silently drop it, so a
+/// missing stage at install time is a bootstrap order bug (mirroring
+/// `kairos_physics::install` and `kairos_graphics::install`).
+pub fn install(world: &mut World, engine: AudioEngine, update_stage: impl ScheduleLabel) {
+    world.insert_resource(engine);
+
+    let mut schedules = world.get_resource_or_init::<Schedules>();
+    let update = schedules
+        .get_mut(update_stage)
+        .expect("the `Update` schedule must exist: install the schedule rails first");
+    update.configure_sets(AudioUpdateSystems);
+    update.add_systems(driver::audio_update_system.in_set(AudioUpdateSystems));
 }

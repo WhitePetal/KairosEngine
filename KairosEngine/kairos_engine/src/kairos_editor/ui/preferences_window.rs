@@ -5,7 +5,6 @@ use crate::{
         Engine,
         ui::{Messager, UIReader, egui_ext::UiExt},
     },
-    kairos_game::KairosGame,
     log::Log,
     math::{self, float2},
 };
@@ -178,7 +177,6 @@ impl Drawer for PreferencesWindow {
     fn render(
         &self,
         _engine: &mut Engine,
-        _game: &mut KairosGame,
         _messager: &mut Messager,
     ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {
         None

@@ -29,7 +29,6 @@ use crate::{
             },
         },
     },
-    kairos_game::KairosGame,
     math::{self, float2, float3, float4x4},
 };
 use kairos_ecs::{entity::Entity, world::World};
@@ -362,7 +361,6 @@ impl Drawer for SceneWindow {
     fn render(
         &self,
         engine: &mut Engine,
-        _game: &mut KairosGame,
         messager: &mut super::Messager,
     ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {
         let mut graphics_command = GraphicsCommand::new(16, 2, 4, 16);

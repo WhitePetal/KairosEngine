@@ -29,7 +29,6 @@ use crate::{
             },
         },
     },
-    kairos_game::KairosGame,
     log::Log,
     math::float2,
 };
@@ -272,7 +271,6 @@ pub trait Drawer: Any {
     fn render(
         &self,
         engine: &mut Engine,
-        game: &mut KairosGame,
         messager: &mut Messager,
     ) -> Option<GraphicsCommand>;
 
@@ -777,10 +775,10 @@ impl Context {
         }
     }
 
-    pub fn render(&mut self, engine: &mut Engine, game: &mut KairosGame) -> Vec<GraphicsCommand> {
+    pub fn render(&mut self, engine: &mut Engine) -> Vec<GraphicsCommand> {
         let mut commands = Vec::new();
         self.drawers.iter().for_each(|drawer| {
-            let cmd = drawer.render(engine, game, &mut self.messager);
+            let cmd = drawer.render(engine, &mut self.messager);
             if let Some(cmd) = cmd {
                 commands.push(cmd);
             }

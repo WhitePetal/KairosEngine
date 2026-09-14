@@ -24,7 +24,6 @@ use crate::{
             },
         },
     },
-    kairos_game::KairosGame,
     log::Log,
 };
 use egui::{RichText, Vec2};
@@ -621,7 +620,6 @@ impl Drawer for ProjectWindow {
     fn render(
         &self,
         _engine: &mut Engine,
-        _game: &mut KairosGame,
         _messager: &mut Messager,
     ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {
         None

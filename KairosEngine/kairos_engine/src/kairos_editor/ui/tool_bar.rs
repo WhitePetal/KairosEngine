@@ -11,7 +11,6 @@ use crate::{
         Engine,
         ui::{Messager, UIReader},
     },
-    kairos_game::KairosGame,
     log::Log,
     math,
 };
@@ -341,7 +340,6 @@ impl Drawer for ToolBar {
     fn render(
         &self,
         _engine: &mut Engine,
-        _game: &mut KairosGame,
         _messager: &mut Messager,
     ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {
         None

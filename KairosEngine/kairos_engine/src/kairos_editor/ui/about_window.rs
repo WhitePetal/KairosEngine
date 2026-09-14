@@ -1,7 +1,6 @@
 use std::{any::type_name, fs};
 
 use crate::kairos_dialog;
-use crate::kairos_game::KairosGame;
 use crate::log::Log;
 use egui::{self, Vec2};
 use serde::{Deserialize, Serialize};
@@ -176,7 +175,6 @@ impl Drawer for AboutWindow {
     fn render(
         &self,
         _engine: &mut Engine,
-        _game: &mut KairosGame,
         _messager: &mut Messager,
     ) -> Option<crate::graphics::graphics_graph::GraphicsCommand> {
         None
