@@ -156,6 +156,9 @@ test result: ok. 453 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; fi
 | # | 问题 | 级别 | 证据 | 归属 |
 |---|---|---|---|---|
 | 1 | `kairos_transform/src/global_transform.rs:153-156` doctest 从 `kairos_ecs` 根导入 `Entity/Query/Component/Commands/ChildOf`，实际只在 `kairos_ecs::prelude`；该 doctest 从未编译，令 `cargo test-full` 红 | 原阻塞合并闸门，**已修复** | §1.1 / §1.2 | **既有缺陷**（`3e91e91`），非 #270；单行把导入改到 `kairos_ecs::prelude::{…}` |
+| 2 | `kairos_transform/src/global_transform.rs:149` intra-doc 链接 `[`Entity`](bevy_ecs::entity::Entity)` 失效（`bevy_ecs` 不是依赖） | 文档告警，**已修复** | `cargo doc -p kairos_transform --no-deps` 的告警 6 → 5 | 既有缺陷，非 #270；改指 `kairos_ecs::entity::Entity` |
+
+`kairos_transform` 尚有 **5 处**既有失效 intra-doc 链接（`Self::position`、`Self::compute_local_matrix`、`Transform::local_x`、`Transform::rotation`、`GlobalTransform::transform_point`）——均指向本 crate 不存在的方法（upstream bevy 命名残留），修法需要内容判断而非机械改路径，故本轮**未动**，仅登记。
 
 既有「明确不计回归」项（层级/控制台/关于窗口 `TODO`、右键新建五类资源 `todo!()`、`Scene → New Scene` `todo!()`、docking 拖拽 collection `todo!()`、文档层既有缺陷、`math/color/converts.rs` 反赖 egui/syntect、无 `[workspace.dependencies]`、`KairosGame` 只服务编辑器、`Engine`/`Editor`/crate 同名易混）本票复核期间**未观察到新增或恶化**；按 #272 口径不报。
 
