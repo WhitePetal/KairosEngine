@@ -18,3 +18,4 @@ derive_more = { version = "2.1.1", default-features = false, features = [
   "deref_mut"
 ] }
 futures-lite = "2.6.1"
+thread_local = "1.1.10"

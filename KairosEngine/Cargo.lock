@@ -2703,6 +2703,7 @@ dependencies = [
  "concurrent-queue",
  "derive_more",
  "futures-lite",
+ "thread_local",
 ]
 
 [[package]]
@@ -2719,7 +2720,10 @@ dependencies = [
  "derive_more",
  "kairos_ecs",
  "kairos_math",
+ "kairos_tasks",
  "serde",
+ "thiserror 2.0.20",
+ "tracing",
 ]
 
 [[package]]

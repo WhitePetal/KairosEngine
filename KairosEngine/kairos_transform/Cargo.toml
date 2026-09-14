@@ -10,9 +10,13 @@ unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)", "cfg(docsrs_dep)
 
 [features]
 default = []
+trace = ["dep:tracing"]
 
 [dependencies]
 derive_more = "2.1.1"
 kairos_ecs = { path = "../kairos_ecs" }
 kairos_math = { path = "../kairos_math" }
+kairos_tasks = { path = "../kairos_tasks" }
 serde = "1.0.228"
+thiserror = "2.0.20"
+tracing = { version = "0.1.44", optional = true }

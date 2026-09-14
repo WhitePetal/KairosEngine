@@ -25,8 +25,15 @@
 //!   [`Default`] (the identity transform) so the API is in place for the
 //!   propagation system.
 
-mod global_transform;
-mod local_transform;
+pub mod global_transform;
+pub mod local_transform;
+
+pub mod commands;
+pub mod helper;
+pub mod systems;
 
 pub use global_transform::GlobalTransform;
 pub use local_transform::{LocalTransform, TransformTreeChanged};
+
+pub use commands::BuildChildrenTransformExt;
+pub use helper::TransformHelper;

@@ -6,6 +6,8 @@ mod slice;
 mod task_pool;
 mod thread_executor;
 mod usages;
+pub mod parallel_queue;
+pub mod buffered_channel;
 
 use core::pin::Pin;
 

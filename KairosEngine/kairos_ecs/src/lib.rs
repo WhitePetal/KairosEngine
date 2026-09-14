@@ -21,7 +21,6 @@ pub mod name;
 pub mod never;
 pub mod observer;
 pub mod on_drop;
-pub mod parallel_queue;
 pub mod query;
 #[cfg(feature = "kairos_reflect")]
 pub mod reflect;

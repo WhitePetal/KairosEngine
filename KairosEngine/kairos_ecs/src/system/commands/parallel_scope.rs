@@ -1,6 +1,7 @@
+use kairos_tasks::parallel_queue::Parallel;
+
 use crate::{
     entity::{Entities, EntityAllocator},
-    parallel_queue::Parallel,
     system::{Commands, Deferred, SystemBuffer, SystemMeta, SystemParam},
     world::{DeferredWorld, World, command_queue::CommandQueue},
 };

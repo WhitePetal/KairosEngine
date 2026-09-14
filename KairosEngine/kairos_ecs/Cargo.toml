@@ -7,6 +7,7 @@ description = "A bevy_ecs-style ECS for the Kairos engine, extracted as a standa
 
 [features]
 default = ["debug", "trace"]
+multi_threaded = []
 debug = []
 trace = ["dep:tracing"]
 track_location = []
