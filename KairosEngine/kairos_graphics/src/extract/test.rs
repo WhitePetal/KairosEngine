@@ -34,7 +34,7 @@ use crate::{
 // ---------------------------------------------------------------------------
 
 /// The extract stage the rail is installed into. The real engine uses its
-/// `kairos_editor::schedule::Extract`; a standalone crate cannot know about it,
+/// `kairos_engine::schedule::Extract`; a standalone crate cannot know about it,
 /// so the test declares its own label — `install` takes the stage as a
 /// parameter for exactly this reason.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

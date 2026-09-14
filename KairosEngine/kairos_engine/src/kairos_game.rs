@@ -16,9 +16,9 @@ use crate::{
         material_component::MaterialComponent, mesh::Mesh, view_port::GameView,
     },
     inputs::Input,
-    kairos_editor::schedule,
     math::{float3, quaternion},
     physics::{PhysicsEngine, collider::ColliderMaterial},
+    schedule,
     spatial::AABB,
     time::Time,
 };

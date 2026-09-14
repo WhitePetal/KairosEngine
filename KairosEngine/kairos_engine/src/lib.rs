@@ -6,6 +6,11 @@ extern crate self as kairos_engine;
 pub mod engine;
 pub use engine::Engine;
 
+// The bevy_app-style schedule rails: the labeled sub-schedules the engine drives
+// each frame, plus the `install` bootstrap that creates them. Engine core, like
+// `engine`, so it lives at the crate root (was `kairos_editor::schedule`).
+pub mod schedule;
+
 pub mod math;
 
 pub mod kairos_dialog;

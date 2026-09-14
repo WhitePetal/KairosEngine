@@ -1,9 +1,5 @@
 use crate::{
-    audio::AudioEngine,
-    graphics,
-    inputs::InputEngine,
-    kairos_editor::{camera, schedule},
-    physics,
+    audio::AudioEngine, graphics, inputs::InputEngine, kairos_editor::camera, physics, schedule,
     time::Time,
 };
 use kairos_ecs::world::World;
@@ -121,3 +117,6 @@ fn build_world() -> World {
     camera::install(&mut world);
     world
 }
+
+#[cfg(test)]
+mod test;

@@ -1,4 +1,4 @@
-//! bevy_app-style "main schedule" rails for the editor engine.
+//! bevy_app-style "main schedule" rails for the engine.
 //!
 //! This module bootstraps the per-frame scheduling skeleton that engine and
 //! game code register systems into. It mirrors the structure of bevy's
@@ -54,7 +54,7 @@ use kairos_ecs::{
     world::World,
 };
 
-/// The top-level schedule driven once per editor frame; hosts [`run_main`].
+/// The top-level schedule driven once per frame; hosts [`run_main`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Main;
 

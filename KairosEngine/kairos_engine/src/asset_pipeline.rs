@@ -32,7 +32,7 @@ use kairos_asset::io::AssetSourceBuilders;
 use kairos_asset::{AssetMode, AssetOptions, AssetProcessor};
 use kairos_ecs::world::World;
 
-use crate::kairos_editor::schedule;
+use crate::schedule;
 
 #[cfg(test)]
 mod test;

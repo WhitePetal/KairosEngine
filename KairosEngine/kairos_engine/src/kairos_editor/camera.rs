@@ -25,8 +25,8 @@ use kairos_math::quaternion;
 use kairos_transform::LocalTransform;
 
 use crate::{
-    kairos_editor::schedule::PostUpdate,
     math::{self, float2, float3},
+    schedule::PostUpdate,
     time::Time,
 };
 

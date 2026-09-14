@@ -1,13 +1,16 @@
 //! Editor-camera controller tests (T4 assertions 4–5 of the render/view
 //! pipeline map).
 //!
-//! Everything runs on a bare [`World`] — `schedule::install` +
-//! `graphics::install` + [`install`], one frame being
-//! `run_schedule(Main)` + `clear_trackers()`. `Engine::new()` is deliberately
-//! avoided (it builds an audio device), and nothing here touches wgpu, so the
-//! suite is headless.
+//! Everything runs on a bare [`World`] — the three stages this suite drives
+//! ([`First`], [`PostUpdate`], [`Extract`]) built by hand from the public
+//! labels, then `graphics::install` + [`install`] wired into them; one frame is
+//! `First` → `PostUpdate` → `Extract` followed by `clear_trackers()`. The
+//! engine's own `schedule::install` is deliberately not called: it is
+//! `pub(crate)` bootstrap wiring for `Main`, the fixed loop and the stages this
+//! suite does not touch. `Engine::new()` is avoided too (it builds an audio
+//! device), and nothing here touches wgpu, so the suite is headless.
 //!
-//! The `First`-stage wall-clock advance is swapped for a scripted one so the
+//! The `First`-stage wall-clock advance is replaced by a scripted one so the
 //! controller's per-frame `dt` is exact, exactly as the schedule rails' fixed
 //! step tests do it.
 
@@ -29,8 +32,8 @@ use crate::{
         camera::{Camera, CameraView},
         view_port::{SceneView, ViewportSize},
     },
-    kairos_editor::schedule::{self, First, Main},
     math::{float2, float3, float4x4},
+    schedule::{Extract, First, PostUpdate},
     time::Time,
 };
 
@@ -47,7 +50,8 @@ const FRAME_DT: Duration = Duration::from_millis(16);
 struct ScriptedFrameDelta(Duration);
 
 /// Advances the virtual clock by the scripted frame delta instead of sampling
-/// the wall clock. Replaces the `First`-stage `time_system`.
+/// the wall clock — the `First`-stage clock advance this suite builds in place
+/// of the schedule rails' `time_system`, which is never installed here.
 fn scripted_time_system(mut time: ResMut<Time>, scripted: Res<ScriptedFrameDelta>) {
     time.update_with_raw_delta(scripted.0);
 }
@@ -55,24 +59,41 @@ fn scripted_time_system(mut time: ResMut<Time>, scripted: Res<ScriptedFrameDelta
 /// Schedules first (they create the stages), then the render rails, then the
 /// controller — the same order `Engine::new` uses — with the wall-clock advance
 /// swapped for a deterministic one.
+///
+/// Only the three stages this suite drives are built, by hand, from the public
+/// labels — the crate-local schedule pattern `kairos_graphics`' extract tests
+/// use for a stage the crate does not own. The engine's `schedule::install` is
+/// not called, so no other stage (`Main`, the fixed loop, `PreUpdate`, …) is
+/// created here.
 fn boot() -> World {
     let mut world = World::new();
-    schedule::install(&mut world);
-    graphics::install(&mut world, schedule::Extract);
+
+    // The stages the rails and the controller register into, created before
+    // their `install`s run (a missing stage at install time is a bootstrap bug).
+    world.add_schedule(Schedule::new(PostUpdate));
+    world.add_schedule(Schedule::new(Extract));
+
+    graphics::install(&mut world, Extract);
     install(&mut world);
 
+    world.insert_resource(Time::new());
     world.insert_resource(ScriptedFrameDelta(FRAME_DT));
-    // Inserting a schedule with the `First` label replaces the booted one and
-    // drops its wall-clock `time_system`.
+    // The clock advance is the `First` stage's only system here, so it is added
+    // with that system already in place — there is no wall-clock `time_system`
+    // to replace.
     let mut first = Schedule::new(First);
     first.add_systems(scripted_time_system);
     world.add_schedule(first);
     world
 }
 
-/// One frame, exactly as `Engine::update` drives it.
+/// One frame in `MainScheduleOrder` order, restricted to the stages this suite
+/// builds: `First` (clock) → `PostUpdate` (controller) → `Extract` (frame read),
+/// then the trackers clear exactly as `Engine::update` closes a frame.
 fn run_frame(world: &mut World) {
-    world.run_schedule(Main);
+    world.run_schedule(First);
+    world.run_schedule(PostUpdate);
+    world.run_schedule(Extract);
     world.clear_trackers();
 }
 

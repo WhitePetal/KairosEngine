@@ -7,7 +7,7 @@ use kairos_ecs::{
 use rapier3d::{dynamics::RigidBodyHandle, geometry::ColliderHandle};
 
 /// The fixed-step stage the step system is installed into. The real engine uses
-/// its `kairos_editor::schedule::FixedUpdate`; a standalone crate cannot know
+/// its `kairos_engine::schedule::FixedUpdate`; a standalone crate cannot know
 /// about it, so the test declares its own label — `install` takes the stage as a
 /// parameter for exactly this reason.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
