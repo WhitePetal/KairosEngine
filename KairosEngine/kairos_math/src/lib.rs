@@ -22,6 +22,7 @@ mod matrix;
 mod quaternions;
 mod trigonometric;
 mod vec;
+mod direction;
 
 pub use aabb::*;
 pub use affine_impl::affine;
@@ -30,6 +31,7 @@ pub use matrix::*;
 pub use quaternions::*;
 pub use trigonometric::*;
 pub use vec::*;
+pub use direction::*;
 
 pub trait Min {
     fn min(self, other: Self) -> Self;

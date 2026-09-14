@@ -247,7 +247,7 @@ impl PreviewState {
         let max_extent = size.x().max(size.y()).max(size.z()).max(0.001);
         let fov_rad = style.camera_fov.to_radians();
         let distance = max_extent / (2.0 * (fov_rad * 0.5).tan()) * 1.5;
-        let direction = style.camera_direction.normalize();
+        let direction = style.camera_direction.normalized();
         let eye = center - direction * distance;
 
         OrbitState::from_eye_pivot(eye, center)

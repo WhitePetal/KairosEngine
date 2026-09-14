@@ -1,8 +1,15 @@
+use std::ops::Mul;
+
 use kairos_ecs::component::Component;
 #[cfg(debug_assertions)]
 use kairos_math::Vector;
-use kairos_math::{affine, float3, float4x4, normalize, quaternion};
+use kairos_math::{Dir3, affine, float3, float4x4, quaternion};
 use serde::{Deserialize, Serialize};
+
+use crate::GlobalTransform;
+
+#[cfg(test)]
+mod tests;
 
 /// An entity's own transform, relative to its parent — the kairos shape of
 /// bevy's `Transform`, renamed `LocalTransform` to sit alongside its
@@ -66,32 +73,32 @@ impl LocalTransform {
     }
 
     #[inline]
-    pub fn right(&self) -> float3 {
-        self.rotation * float3::RIGHT
+    pub fn right(&self) -> Dir3 {
+        Dir3::new_unchecked(self.rotation * float3::RIGHT)
     }
 
     #[inline]
-    pub fn left(&self) -> float3 {
+    pub fn left(&self) -> Dir3 {
         -self.right()
     }
 
     #[inline]
-    pub fn up(&self) -> float3 {
-        self.rotation * float3::UP
+    pub fn up(&self) -> Dir3 {
+        Dir3::new_unchecked(self.rotation * float3::UP)
     }
 
     #[inline]
-    pub fn down(&self) -> float3 {
+    pub fn down(&self) -> Dir3 {
         -self.up()
     }
 
     #[inline]
-    pub fn forward(&self) -> float3 {
-        self.rotation * float3::FORWARD
+    pub fn forward(&self) -> Dir3 {
+        Dir3::new_unchecked(self.rotation * float3::FORWARD)
     }
 
     #[inline]
-    pub fn back(&self) -> float3 {
+    pub fn back(&self) -> Dir3 {
         -self.forward()
     }
 
@@ -114,14 +121,14 @@ impl LocalTransform {
     /// result in a denormalized rotation. In this case, it is recommended to normalize the [`Transform::rotation`] after
     /// each call to this method.
     #[inline]
-    pub fn rotate_axis(&mut self, axis: float3, angle: f32) {
+    pub fn rotate_axis(&mut self, axis: Dir3, angle: f32) {
         #[cfg(debug_assertions)]
         assert_is_normalized(
             "The axis given to `Transform::rotate_axis` is not normalized. This may be a result of obtaining \
             the axis from the transform. See the documentation of `Transform::rotate_axis` for more details.",
             axis.len_sq(),
         );
-        self.rotate(quaternion::from_axis_angle(axis, angle));
+        self.rotate(quaternion::from_axis_angle(axis.into(), angle));
     }
 
     /// Rotates this [`LocalTransform`] around the `X` axis by `angle` (in radians).
@@ -165,7 +172,7 @@ impl LocalTransform {
     /// result in a denormalized rotation. In this case, it is recommended to normalize the [`LocalTransform::rotation`] after
     /// each call to this method.
     #[inline]
-    pub fn rotate_local_axis(&mut self, axis: float3, angle: f32) {
+    pub fn rotate_local_axis(&mut self, axis: Dir3, angle: f32) {
         #[cfg(debug_assertions)]
         assert_is_normalized(
             "The axis given to `Transform::rotate_axis_local` is not normalized. This may be a result of obtaining \
@@ -210,24 +217,15 @@ impl LocalTransform {
         self.rotate(rotation);
     }
 
-    /// Returns a root-level transform placed at `eye` and oriented to look
-    /// toward `target`.
+    /// Rotates this [`LocalTransform`] so that [`LocalTransform::forward`] points towards the `target` position,
+    /// and [`LocalTransform::up`] points towards `up`.
     ///
-    /// `eye` and `target` are **world-space** coordinates, so this builds a
-    /// world-space (parent-less) transform — use it for root-level entities
-    /// only; with a parent, the world orientation would need converting into
-    /// parent space first.
-    ///
-    /// The rotation is built so the entity's local -Z axis (its forward, see
-    /// the coordinate-system notes on [`LocalTransform`]) points from `eye`
-    /// toward `target`; `up` selects the remaining roll degree of freedom.
-    /// [`scale`](Self::scale) is reset to [`float3::ONE`]: looking at
-    /// something is a rotation plus placement.
-    ///
-    /// Mirrors the legacy engine `Transform::look_at`, which this replaces.
-    pub fn look_at(&mut self, target: float3, up: float3) {
-        let forward = normalize(target - self.translation);
-        let rotation = quaternion::from_look(forward, up);
+    /// In some cases it's not possible to construct a rotation. Another axis will be picked in those cases:
+    /// * if `target` is the same as the transform translation, `float3::FORWARD` is used instead
+    /// * if `up` fails converting to `Dir3` (e.g if it is `float3::ZERO`), `Dir3::UP` is used instead
+    /// * if the resulting forward direction is parallel with `up`, an orthogonal vector is used as the "right" direction
+    pub fn look_at(&mut self, target: float3, up: impl TryInto<Dir3>) {
+        let rotation = quaternion::from_look_to(target - self.translation, up);
         self.rotation = rotation;
     }
 
@@ -235,12 +233,13 @@ impl LocalTransform {
     /// and [`LocalTransform::up`] points towards `up`.
     ///
     /// In some cases it's not possible to construct a rotation. Another axis will be picked in those cases:
+    /// * if `direction` fails converting to `Dir3` (e.g if it is `float3::ZERO`), `Dir3::BACK` is used instead
+    /// * if `up` fails converting to `Dir3`, `Dir3::UP` is used instead
     /// * if `direction` is parallel with `up`, an orthogonal vector is used as the "right" direction
     #[inline]
-    pub fn look_to(&mut self, direction: float3, up: float3) {
-        let eye = self.translation;
-        let target = eye + direction;
-        self.look_at(target, up);
+    pub fn look_to(&mut self, direction: impl TryInto<Dir3>, up: impl TryInto<Dir3>) {
+        let rotation = quaternion::from_look_to(direction, up);
+        self.rotation = rotation
     }
 
     /// Multiplies `self` with `transform` component by component, returning the
@@ -276,6 +275,114 @@ impl LocalTransform {
         point += self.translation;
         point
     }
+
+    /// Rotates this [`LocalTransform`] so that the `main_axis` vector, reinterpreted in local coordinates, points
+    /// in the given `main_direction`, while `secondary_axis` points towards `secondary_direction`.
+    ///
+    /// For example, if a spaceship model has its nose pointing in the X-direction in its own local coordinates
+    /// and its dorsal fin pointing in the Y-direction, then `align(Dir3::X, v, Dir3::Y, w)` will make the spaceship's
+    /// nose point in the direction of `v`, while the dorsal fin does its best to point in the direction `w`.
+    ///
+    /// More precisely, the [`LocalTransform::rotation`] produced will be such that:
+    /// * applying it to `main_axis` results in `main_direction`
+    /// * applying it to `secondary_axis` produces a vector that lies in the half-plane generated by `main_direction` and
+    ///   `secondary_direction` (with positive contribution by `secondary_direction`)
+    ///
+    /// [`LocalTransform::look_to`] is recovered, for instance, when `main_axis` is `Dir3::BACK` (the [`LocalTransform::forward`]
+    /// direction in the default orientation) and `secondary_axis` is `Dir3::UP` (the [`LocalTransform::up`] direction in the default
+    /// orientation). (Failure cases may differ somewhat.)
+    ///
+    /// In some cases a rotation cannot be constructed. Another axis will be picked in those cases:
+    /// * if `main_axis` or `main_direction` fail converting to `Dir3` (e.g are zero), `Dir3::RIGHT` takes their place
+    /// * if `secondary_axis` or `secondary_direction` fail converting, `Dir3::UP` takes their place
+    /// * if `main_axis` is parallel with `secondary_axis` or `main_direction` is parallel with `secondary_direction`,
+    ///   a rotation is constructed which takes `main_axis` to `main_direction` along a great circle, ignoring the secondary
+    ///   counterparts
+    ///
+    /// Example
+    /// ```
+    /// # use kairos_math::{Dir3, float3, quaternion};
+    /// # use kairos_transform::LocalTransform;
+    /// # let mut t1 = LocalTransform::IDENTITY;
+    /// # let mut t2 = LocalTransform::IDENTITY;
+    /// t1.align(Dir3::RIGHT, Dir3::UP, float3::new(1., 1., 0.), Dir3::FORWARD);
+    /// let main_axis_image = t1.rotation * Dir3::RIGHT;
+    /// let secondary_axis_image = t1.rotation * float3::new(1., 1., 0.);
+    /// assert!(main_axis_image.abs_diff_eq(float3::UP, 1e-5));
+    /// assert!(secondary_axis_image.abs_diff_eq(float3::new(0., 1., 1.), 1e-5));
+    ///
+    /// t1.align(float3::ZERO, Dir3::FORWARD, float3::ZERO, Dir3::RIGHT);
+    /// t2.align(Dir3::RIGHT, Dir3::FORWARD, Dir3::UP, Dir3::RIGHT);
+    /// assert_eq!(t1.rotation, t2.rotation);
+    ///
+    /// t1.align(Dir3::RIGHT, Dir3::FOWARD, Dir3::RIGHT, Dir3::UP);
+    /// assert_eq!(t1.rotation, quaternion::from_rotation_arc(float3::RIGHT, float3::FORWARD));
+    /// ```
+    #[inline]
+    pub fn align(
+        &mut self,
+        main_axis: impl TryInto<Dir3>,
+        main_direction: impl TryInto<Dir3>,
+        secondary_axis: impl TryInto<Dir3>,
+        secondary_direction: impl TryInto<Dir3>,
+    ) {
+        let main_axis = main_axis.try_into().unwrap_or(Dir3::RIGHT);
+        let main_direction = main_direction.try_into().unwrap_or(Dir3::RIGHT);
+        let secondary_axis = secondary_axis.try_into().unwrap_or(Dir3::UP);
+        let secondary_direction = secondary_direction.try_into().unwrap_or(Dir3::UP);
+
+        // The solution quaternion will be constructed in two steps.
+        // First, we start with a rotation that takes `main_axis` to `main_direction`.
+        let first_rotation = quaternion::from_rotation_arc(main_axis.into(), main_direction.into());
+
+        // Let's follow by rotating about the `main_direction` axis so that the image of `secondary_axis`
+        // is taken to something that lies in the plane of `main_direction` and `secondary_direction`. Since
+        // `main_direction` is fixed by this rotation, the first criterion is still satisfied.
+        let secondary_image = first_rotation * secondary_axis;
+        let secondary_image_ortho = secondary_image
+            .reject_from_normalized(main_direction.into())
+            .try_normalized();
+        let secondary_direction_ortho = secondary_direction
+            .reject_from_normalized(main_direction.into())
+            .try_normalized();
+
+        // If one of the two weak vectors was parallel to `main_direction`, then we just do the first part
+        self.rotation = match (secondary_image_ortho, secondary_direction_ortho) {
+            (Some(secondary_img_ortho), Some(secondary_dir_ortho)) => {
+                let second_rotation = quaternion::from_rotation_arc(secondary_img_ortho, secondary_dir_ortho);
+                second_rotation * first_rotation
+            },
+            _ => first_rotation
+        }
+    }
+
+    /// Rotates this [`LocalTransform`] so that the `main_axis` vector, reinterpreted in local coordinates, points
+    /// in the given `main_direction`, while `secondary_axis` points towards `secondary_direction`.
+    /// For example, if a spaceship model has its nose pointing in the X-direction in its own local coordinates
+    /// and its dorsal fin pointing in the Y-direction, then `align(Dir3::RIGHT, v, Dir3::UP, w)` will make the spaceship's
+    /// nose point in the direction of `v`, while the dorsal fin does its best to point in the direction `w`.
+    ///
+    ///
+    /// In some cases a rotation cannot be constructed. Another axis will be picked in those cases:
+    /// * if `main_axis` or `main_direction` fail converting to `Dir3` (e.g are zero), `Dir3::RIGHT` takes their place
+    /// * if `secondary_axis` or `secondary_direction` fail converting, `Dir3::UP` takes their place
+    /// * if `main_axis` is parallel with `secondary_axis` or `main_direction` is parallel with `secondary_direction`,
+    ///   a rotation is constructed which takes `main_axis` to `main_direction` along a great circle, ignoring the secondary
+    ///   counterparts
+    ///
+    /// See [`Transform::align`] for additional details.
+    #[inline]
+    #[must_use]
+    pub fn aligned_by(
+        mut self,
+        main_axis: impl TryInto<Dir3>,
+        main_direction: impl TryInto<Dir3>,
+        secondary_axis: impl TryInto<Dir3>,
+        secondary_direction: impl TryInto<Dir3>,
+    ) -> Self {
+        self.align(main_axis, main_direction, secondary_axis, secondary_direction);
+        self
+    }
 }
 
 impl Default for LocalTransform {
@@ -284,6 +391,37 @@ impl Default for LocalTransform {
     #[inline(always)]
     fn default() -> Self {
         Self::new(float3::ZERO, quaternion::IDENTITY, float3::ONE)
+    }
+}
+
+impl From<GlobalTransform> for LocalTransform {
+    fn from(transform: GlobalTransform) -> Self {
+        transform.to_local_transform()
+    }
+}
+
+impl Mul<LocalTransform> for LocalTransform {
+    type Output = Self;
+
+    fn mul(self, transform: LocalTransform) -> Self::Output {
+        self.mul_transform(transform)
+    }
+}
+
+impl Mul<GlobalTransform> for LocalTransform {
+    type Output = GlobalTransform;
+
+    #[inline]
+    fn mul(self, global_transform: GlobalTransform) -> Self::Output {
+        GlobalTransform::from(self) * global_transform
+    }
+}
+
+impl Mul<float3> for LocalTransform {
+    type Output = float3;
+
+    fn mul(self, rhs: float3) -> Self::Output {
+        self.transform_point(rhs)
     }
 }
 
@@ -305,5 +443,8 @@ fn assert_is_normalized(message: &str, length_squared: f32) {
     }
 }
 
-#[cfg(test)]
-mod tests;
+/// An optimization for transform propagation. This ZST marker component uses change detection to
+/// mark all entities of the hierarchy as "dirty" if any of their descendants have a changed
+/// `Transform`. If this component is *not* marked `is_changed()`, propagation will halt.
+#[derive(Component, Clone, Copy, Default, PartialEq, Debug)]
+pub struct TransformTreeChanged;

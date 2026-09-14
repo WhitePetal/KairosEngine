@@ -166,7 +166,7 @@ fn from_look_matches_legacy_formula() {
             rng.range(-1.0, 1.0),
             rng.range(-1.0, 1.0),
         );
-        let got = quaternion::from_look(forward, up).0.to_array();
+        let got = quaternion::from_look_to(forward, up).0.to_array();
         let want = legacy_from_look(forward, up);
         assert!(
             quat_abs_dot(got, want) > 1.0 - 1e-4,
@@ -179,7 +179,7 @@ fn from_look_matches_legacy_formula() {
 fn from_look_handles_parallel_forward_and_up() {
     let forward = float3::new(0.0, 1.0, 0.0);
     let up = float3::new(0.0, 1.0, 0.0);
-    let got = quaternion::from_look(forward, up).0.to_array();
+    let got = quaternion::from_look_to(forward, up).0.to_array();
     let want = legacy_from_look(forward, up);
     assert!(quat_abs_dot(got, want) > 1.0 - 1e-4);
 }

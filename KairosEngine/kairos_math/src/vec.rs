@@ -1,9 +1,10 @@
-use std::ops::{Add, AddAssign, Div, DivAssign, Index, Mul, MulAssign, Neg, Sub, SubAssign};
+use std::{fmt::Display, ops::{Add, AddAssign, Div, DivAssign, Index, Mul, MulAssign, Neg, Sub, SubAssign}};
 
 use glam::{Vec2, Vec3A, Vec4, Vec4Swizzles};
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
-use crate::{Abs, Cos, Lerp, LerpFactor, Max, Min, Sin, Sqrt, Tan};
+use crate::{Abs, Cos, Dir3, Lerp, LerpFactor, Max, Min, Sin, Sqrt, Tan};
 
 #[cfg(test)]
 mod test;
@@ -38,7 +39,9 @@ where
         + Cos
         + Tan
         + Sqrt
-        + Lerp,
+        + Lerp
+        + Serialize
+        + Deserialize<'static>,
 {
     fn dot(&self, r: &Self) -> f32;
 
@@ -55,15 +58,13 @@ where
         self.len_sq().sqrt()
     }
 
-    #[inline(always)]
-    fn normalize(self) -> Self {
-        self / self.len()
-    }
+    fn normalize(&mut self);
 
-    #[inline(always)]
-    fn normalized(&mut self) {
-        *self /= self.len();
-    }
+    fn normalized(self) -> Self;
+
+    fn try_normalize(&mut self) -> Result<(), VectorNormalizeError>;
+
+    fn try_normalized(self) -> Option<Self>;
 
     #[inline(always)]
     fn distance(l: Self, r: Self) -> f32 {
@@ -75,6 +76,27 @@ where
     fn distance_sq(l: Self, r: Self) -> f32 {
         let v = l - r;
         v.len_sq()
+    }
+
+    /// Returns the vector rejection of `self` from `rhs`.
+    ///
+    /// The vector rejection is the vector perpendicular to the projection of `self` onto
+    /// `rhs`, in rhs words the result of `self - self.project_onto(rhs)`.
+    ///
+    /// `rhs` must be normalized.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if `rhs` is not normalized when `glam_assert` is enabled.
+    fn reject_from_normalized(self, rhs: Self) -> Self;
+}
+
+#[derive(Debug, Error)]
+pub struct VectorNormalizeError {}
+
+impl Display for VectorNormalizeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Vector Normalize Failed")
     }
 }
 
@@ -115,15 +137,15 @@ pub fn normalize<T>(v: T) -> T
 where
     T: Vector,
 {
-    v.normalize()
+    v.normalized()
 }
 
 #[inline(always)]
-pub fn normalized<T>(mut v: T)
+pub fn try_normalize<T>(v: T) -> Option<T>
 where
     T: Vector,
 {
-    v.normalized();
+    v.try_normalized()
 }
 
 // ============================================================
@@ -172,6 +194,36 @@ impl Vector for float2 {
     #[inline(always)]
     fn cross(&self, other: Self) -> Self::CrossOutput {
         self.0[0] * other.0[1] - self.0[1] * other.0[0]
+    }
+
+    #[inline(always)]
+    fn normalize(&mut self) {
+        *self = Self(self.0.normalize())
+    }
+
+    #[inline(always)]
+    fn normalized(self) -> Self {
+        todo!()
+    }
+
+    #[inline(always)]
+    fn try_normalize(&mut self) -> Result<(), VectorNormalizeError> {
+        if let Some(v) = self.0.try_normalize() {
+            *self = Self(v);
+            Ok(())
+        } else {
+            Err(VectorNormalizeError {})
+        }
+    }
+
+    #[inline(always)]
+    fn try_normalized(self) -> Option<Self> {
+        self.0.try_normalize().map(|v| Self(v))
+    }
+
+    #[inline(always)]
+    fn reject_from_normalized(self, rhs: Self) -> Self {
+        Self(self.0.reject_from_normalized(rhs.0))
     }
 }
 
@@ -617,6 +669,25 @@ impl float3 {
     pub fn append(&self, w: f32) -> float4 {
         float4(Vec4::new(self.x(), self.y(), self.z(), w))
     }
+
+    /// Returns any unit vector that is orthogonal to the given one.
+    ///
+    /// The input vector must be unit length.
+    ///
+    /// # Panics
+    ///
+    /// Will panic if `self` is not normalized when `glam_assert` is enabled.
+    #[inline(always)]
+    pub fn any_orthonormal_vector(self) -> Self {
+        Self(self.0.any_orthonormal_vector())
+    }
+}
+
+impl From<Dir3> for float3 {
+    #[inline(always)]
+    fn from(value: Dir3) -> Self {
+        value.0
+    }
 }
 
 impl Vector for float3 {
@@ -629,6 +700,36 @@ impl Vector for float3 {
     #[inline(always)]
     fn cross(&self, other: Self) -> Self::CrossOutput {
         Self(self.0.cross(other.0))
+    }
+
+    #[inline(always)]
+    fn normalize(&mut self) {
+        *self = Self(self.0.normalize());
+    }
+
+    #[inline(always)]
+    fn normalized(self) -> Self {
+        Self(self.0.normalize())
+    }
+
+    #[inline(always)]
+    fn try_normalize(&mut self) -> Result<(), VectorNormalizeError> {
+        if let Some(v) = self.0.try_normalize() {
+            *self = Self(v);
+            Ok(())
+        } else {
+            Err(VectorNormalizeError {  })
+        }
+    }
+
+    #[inline(always)]
+    fn try_normalized(self) -> Option<Self> {
+        self.0.try_normalize().map(|v| Self(v))
+    }
+
+    #[inline(always)]
+    fn reject_from_normalized(self, rhs: Self) -> Self {
+        Self(self.0.reject_from_normalized(rhs.0))
     }
 }
 
@@ -1444,6 +1545,36 @@ impl Vector for float4 {
         let b_zxyw = b.zxyw();
 
         Self(a_yzxw * b_zxyw - a_zxyw * b_yzxw)
+    }
+
+    #[inline(always)]
+    fn normalize(&mut self) {
+        *self = Self(self.0.normalize())
+    }
+
+    #[inline(always)]
+    fn normalized(self) -> Self {
+        Self(self.0.normalize())
+    }
+
+    #[inline(always)]
+    fn try_normalize(&mut self) -> Result<(), VectorNormalizeError> {
+        if let Some(v) = self.0.try_normalize() {
+            *self = Self(v);
+            Ok(())
+        } else {
+            Err(VectorNormalizeError {  })
+        }
+    }
+
+    #[inline(always)]
+    fn try_normalized(self) -> Option<Self> {
+        self.0.try_normalize().map(|v| Self(v))
+    }
+
+    #[inline(always)]
+    fn reject_from_normalized(self, rhs: Self) -> Self {
+        Self(self.0.reject_from_normalized(rhs.0))
     }
 }
 

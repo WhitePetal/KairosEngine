@@ -1,9 +1,11 @@
 use std::ops::{Mul, MulAssign};
 
-use glam::{EulerRot, Quat, Vec3};
+use glam::{EulerRot, Mat3A, Quat};
 use serde::{Deserialize, Serialize};
 
-use crate::{float3, float4x4};
+#[cfg(debug_assertions)]
+use crate::{Vector, direction};
+use crate::{Dir3, float3, float4x4};
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -69,44 +71,12 @@ impl quaternion {
     }
 
     #[inline]
-    pub fn from_look(forward: float3, up_world: float3) -> Self {
-        let f = super::normalize(forward);
-        let mut r = super::cross(f, up_world);
-        let r_len = super::length(&r);
-
-        let (right, up) = if r_len < 1e-7 {
-            let alt_up = if up_world.y().abs() > 0.999 {
-                float3::new(1.0, 0.0, 0.0)
-            } else {
-                float3::new(0.0, 1.0, 0.0)
-            };
-            let right = super::normalize(super::cross(f, alt_up));
-            let up = super::cross(right, f);
-            (right, up)
-        } else {
-            r *= 1.0 / r_len;
-            let up = super::cross(r, f);
-            (r, up)
-        };
-
-        let m00 = right.x();
-        let m01 = up.x();
-        let m02 = -f.x();
-        let m10 = right.y();
-        let m11 = up.y();
-        let m12 = -f.y();
-        let m20 = right.z();
-        let m21 = up.z();
-        let m22 = -f.z();
-
-        // `from_rotation_axes` takes the columns of the rotation matrix, which
-        // are `right`, `up` and `-forward` for the engine's right-handed Y-up,
-        // -Z forward basis.
-        Self(Quat::from_rotation_axes(
-            Vec3::new(m00, m10, m20),
-            Vec3::new(m01, m11, m21),
-            Vec3::new(m02, m12, m22),
-        ))
+    pub fn from_look_to(direction: impl TryInto<Dir3>, up: impl TryInto<Dir3>) -> Self {
+        let back = -direction.try_into().unwrap_or(Dir3::BACK);
+        let up = up.try_into().unwrap_or(Dir3::UP);
+        let right = up.cross(back.into()).try_normalized().unwrap_or_else(|| up.any_orthonormal_vector());
+        let up = back.cross(right);
+        Self(Quat::from_mat3a(&Mat3A::from_cols(right.0, up.0, back.0.0)))
     }
 
     /// Decomposes the rotation into intrinsic roll (`x`), pitch (`y`) and yaw
@@ -137,6 +107,24 @@ impl quaternion {
         // implementation.
         float4x4(glam::Mat4::from_quat(self.0.normalize()))
     }
+
+    /// Gets the minimal rotation for transforming `from` to `to`.  The rotation is in the
+    /// plane spanned by the two vectors.  Will rotate at most 180 degrees.
+    ///
+    /// The inputs must be unit vectors.
+    ///
+    /// `from_rotation_arc(from, to) * from ≈ to`.
+    ///
+    /// For near-singular cases (from≈to and from≈-to) the current implementation
+    /// is only accurate to about 0.001 (for `f32`).
+    ///
+    /// # Panics
+    ///
+    /// Will panic if `from` or `to` are not normalized when `glam_assert` is enabled.
+    #[inline(always)]
+    pub fn from_rotation_arc(from: float3, to: float3) -> quaternion {
+        Self(Quat::from_rotation_arc(from.0.to_vec3(), to.0.to_vec3()))
+    }
 }
 
 impl Mul for quaternion {
@@ -161,6 +149,22 @@ impl MulAssign for quaternion {
     #[inline(always)]
     fn mul_assign(&mut self, rhs: Self) {
         self.0 = self.0 * rhs.0
+    }
+}
+
+impl Mul<Dir3> for quaternion {
+    type Output = Dir3;
+
+    /// Rotates the [`Dir3`] using a [`quaternion`].
+    fn mul(self, rhs: Dir3) -> Self::Output {
+        let rotated = self * *rhs;
+        #[cfg(debug_assertions)]
+        direction::assert_is_normalized(
+            "`Dir3` is denormalized after rotation.",
+            rotated.len_sq(),
+        );
+
+        Dir3(rotated)
     }
 }
 

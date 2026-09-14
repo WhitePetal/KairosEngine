@@ -207,7 +207,7 @@ fn bench_float4_normalize(c: &mut Criterion) {
         g.bench_with_input(
             BenchmarkId::new("kairos", i),
             &math::float4::new(*x, *y, *z, *w),
-            |b, inp| b.iter(|| black_box(inp.normalize())),
+            |b, inp| b.iter(|| black_box(inp.normalized())),
         );
     }
 }

@@ -1,5 +1,5 @@
 use super::*;
-use kairos_math::{dot, float4};
+use kairos_math::{dot, float4, normalize};
 
 #[test]
 fn default_is_identity() {

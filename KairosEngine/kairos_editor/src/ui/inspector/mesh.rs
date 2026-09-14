@@ -95,7 +95,7 @@ impl PreviewState {
         let fov = style.camera_fov;
         let fov_rad = fov.to_radians();
         let distance = max_extent / (2.0 * (fov_rad * 0.5).tan()) * 1.5;
-        let direction = style.camera_direction.normalize();
+        let direction = style.camera_direction.normalized();
         let eye = center - direction * distance;
 
         let camera = Camera::new(fov, 0.03, 3000.0);

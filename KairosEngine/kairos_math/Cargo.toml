@@ -17,6 +17,7 @@ bytemuck = "1.25"
 glam = { version = "0.33", features = ["bytemuck"] }
 serde = "1.0.228"
 rkyv = { version = "0.8.16", optional = true }
+thiserror = "2.0.20"
 
 [dev-dependencies]
 criterion = "0.8"

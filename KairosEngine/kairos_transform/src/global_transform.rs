@@ -2,9 +2,12 @@ use std::ops::Mul;
 
 use derive_more::From;
 use kairos_ecs::component::Component;
-use kairos_math::{Vector, affine, copysign, float3, float4x4, quaternion};
+use kairos_math::{Dir3, InvalidDirectionError, affine, copysign, float3, float4x4, quaternion};
 
 use crate::LocalTransform;
+
+#[cfg(test)]
+mod tests;
 
 /// An entity's absolute (world-space) transform.
 ///
@@ -79,33 +82,33 @@ impl GlobalTransform {
     }
 
     #[inline]
-    pub fn right(&self) -> float3 {
-        float3::normalize(self.0 * float3::RIGHT)
+    pub fn right(&self) -> Result<Dir3, InvalidDirectionError> {
+        Dir3::new(self.0 * float3::RIGHT)
     }
 
     #[inline]
-    pub fn left(&self) -> float3 {
-        -self.right()
+    pub fn left(&self) -> Result<Dir3, InvalidDirectionError> {
+        self.right().map(|dir| -dir)
     }
 
     #[inline]
-    pub fn up(&self) -> float3 {
-        float3::normalize(self.0 * float3::UP)
+    pub fn up(&self) -> Result<Dir3, InvalidDirectionError> {
+        Dir3::new(self.0 * float3::UP)
     }
 
     #[inline]
-    pub fn down(&self) -> float3 {
-        -self.up()
+    pub fn down(&self) -> Result<Dir3, InvalidDirectionError> {
+        self.up().map(|dir| -dir)
     }
 
     #[inline]
-    pub fn forward(&self) -> float3 {
-        float3::normalize(self.0 * float3::FORWARD)
+    pub fn forward(&self) -> Result<Dir3, InvalidDirectionError> {
+        Dir3::new(self.0 * float3::FORWARD)
     }
 
     #[inline]
-    pub fn back(&self) -> float3 {
-        -self.forward()
+    pub fn back(&self) -> Result<Dir3, InvalidDirectionError> {
+        self.forward().map(|dir| -dir)
     }
 
     #[inline]
@@ -236,6 +239,3 @@ impl Mul<float3> for GlobalTransform {
         self.transform_point(value)
     }
 }
-
-#[cfg(test)]
-mod tests;

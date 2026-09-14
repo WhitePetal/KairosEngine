@@ -29,4 +29,4 @@ mod global_transform;
 mod local_transform;
 
 pub use global_transform::GlobalTransform;
-pub use local_transform::LocalTransform;
+pub use local_transform::{LocalTransform, TransformTreeChanged};
