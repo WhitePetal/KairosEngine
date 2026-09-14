@@ -1,6 +1,6 @@
 use std::{any::type_name, fs};
 
-use crate::kairos_dialog;
+use crate::dialog;
 use crate::log::Log;
 use egui::{self, Vec2};
 use serde::{Deserialize, Serialize};
@@ -142,7 +142,7 @@ impl Drawer for AboutWindow {
             Ok(toml) => match std::fs::write(paths::PATH_ABOUT_WINDOW_STYLE, toml) {
                 Ok(_) => (),
                 Err(error) => {
-                    kairos_dialog::error_message_window(
+                    dialog::error_message_window(
                         "Write File Falied",
                         &format!(
                             "Write the AboutWindowStyle toml file Failed, Error: {}",
@@ -152,7 +152,7 @@ impl Drawer for AboutWindow {
                 }
             },
             Err(error) => {
-                kairos_dialog::error_message_window(
+                dialog::error_message_window(
                     "Serialize Data Failed",
                     &format!(
                         "Serialize the AboutWindowStyle toml file Failed, Erro: {}",

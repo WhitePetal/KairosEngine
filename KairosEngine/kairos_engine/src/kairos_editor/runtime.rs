@@ -20,14 +20,14 @@ use crate::graphics::{
 };
 use crate::math::float4x4;
 use crate::{
+    dialog,
+    graphics::render_pipeline::RenderPipeline,
+    kairos_editor::{Editor, consts, ui::paths},
+};
+use crate::{
     graphics::graphics_graph::{GraphicsCommand, GraphicsGraph},
     kairos_paths,
     kairos_settings::EngineSettings,
-};
-use crate::{
-    graphics::render_pipeline::RenderPipeline,
-    kairos_dialog,
-    kairos_editor::{KairosEngine, consts, ui::paths},
 };
 
 type RuntimeResult<T> = Result<T, Box<dyn Error>>;
@@ -76,7 +76,7 @@ impl FrameRateCounter {
 }
 
 #[derive(Debug, Clone)]
-pub enum KairosEditorRuntimeEvent {
+pub enum EditorRuntimeEvent {
     RequestRepaint {
         viewport_id: ViewportId,
         delay: Duration,
@@ -84,11 +84,11 @@ pub enum KairosEditorRuntimeEvent {
     RenderPipelineCrash,
 }
 
-pub struct KairosEditorRuntime {
+pub struct EditorRuntime {
     window: Option<Arc<Window>>,
-    event_proxy: EventLoopProxy<KairosEditorRuntimeEvent>,
+    event_proxy: EventLoopProxy<EditorRuntimeEvent>,
     render_pipeline: Arc<Mutex<Option<RenderPipeline>>>,
-    kairos_engine: KairosEngine,
+    editor: Editor,
     egui_ctx: egui::Context,
     egui_state: Option<egui_winit::State>,
     repaint_at: Option<Instant>,
@@ -98,14 +98,14 @@ pub struct KairosEditorRuntime {
     didi_exit: bool,
 }
 
-impl KairosEditorRuntime {
-    pub fn new(proxy: EventLoopProxy<KairosEditorRuntimeEvent>) -> RuntimeResult<Self> {
+impl EditorRuntime {
+    pub fn new(proxy: EventLoopProxy<EditorRuntimeEvent>) -> RuntimeResult<Self> {
         let egui_ctx = egui::Context::default();
         egui_extras::install_image_loaders(&egui_ctx);
 
         let egui_event_proxy = proxy.clone();
         egui_ctx.set_request_repaint_callback(move |info| {
-            let _ = egui_event_proxy.send_event(KairosEditorRuntimeEvent::RequestRepaint {
+            let _ = egui_event_proxy.send_event(EditorRuntimeEvent::RequestRepaint {
                 viewport_id: info.viewport_id,
                 delay: info.delay,
             });
@@ -115,7 +115,7 @@ impl KairosEditorRuntime {
             window: None,
             event_proxy: proxy,
             render_pipeline: Arc::new(Mutex::new(None)),
-            kairos_engine: KairosEngine::new(&egui_ctx)?,
+            editor: Editor::new(&egui_ctx)?,
             egui_ctx,
             egui_state: None,
             repaint_at: None,
@@ -190,7 +190,7 @@ impl KairosEditorRuntime {
         let render_pipeline = pollster::block_on(RenderPipeline::new(
             window.clone(),
             &settings.texture_compression,
-            &self.kairos_engine.engine.world,
+            &self.editor.engine.world,
         ))?;
         let render_pipeline_event_proxy = self.event_proxy.clone();
         render_pipeline
@@ -198,7 +198,7 @@ impl KairosEditorRuntime {
             .set_device_lost_callback(move |reson, msg| {
                 log::error!("GPU device lost ({reson:?}): {msg}");
                 render_pipeline_event_proxy
-                    .send_event(KairosEditorRuntimeEvent::RenderPipelineCrash)
+                    .send_event(EditorRuntimeEvent::RenderPipelineCrash)
                     .unwrap();
             });
         render_pipeline
@@ -234,7 +234,7 @@ impl KairosEditorRuntime {
         if event.repeat {
             return;
         }
-        self.kairos_engine.update_keyboard_input(event)
+        self.editor.update_keyboard_input(event)
     }
 
     fn redraw(&mut self, event_loop: &ActiveEventLoop) {
@@ -242,7 +242,7 @@ impl KairosEditorRuntime {
             return;
         };
 
-        self.kairos_engine.update();
+        self.editor.update();
 
         let mut should_close = false;
         let mut repaint_delay = None;
@@ -265,11 +265,11 @@ impl KairosEditorRuntime {
                     let raw_input = egui_state.take_egui_input(&window);
 
                     let full_output = self.egui_ctx.run_ui(raw_input, |ui| {
-                        graphics_commands.append(&mut self.kairos_engine.render_ui());
+                        graphics_commands.append(&mut self.editor.render_ui());
 
-                        self.kairos_engine.handle_ui(ui);
+                        self.editor.handle_ui(ui);
 
-                        self.kairos_engine.draw_ui(ui);
+                        self.editor.draw_ui(ui);
                     });
 
                     egui_state.handle_platform_output(&window, full_output.platform_output);
@@ -351,11 +351,7 @@ impl KairosEditorRuntime {
                     graphics_commands.push(egui_graphics_command);
 
                     let graphics_graph = GraphicsGraph::build(graphics_commands);
-                    render_pipeline.present(
-                        &self.kairos_engine.engine.world,
-                        output,
-                        graphics_graph,
-                    );
+                    render_pipeline.present(&self.editor.engine.world, output, graphics_graph);
                     frame_presented = true;
                 }
                 Err(error) => match error {
@@ -448,7 +444,7 @@ impl KairosEditorRuntime {
 
     fn shutdown(&mut self, event_loop: &ActiveEventLoop) {
         if !self.didi_exit {
-            self.kairos_engine.on_exit();
+            self.editor.on_exit();
             self.didi_exit = true;
         }
 
@@ -456,7 +452,7 @@ impl KairosEditorRuntime {
     }
 }
 
-impl ApplicationHandler<KairosEditorRuntimeEvent> for KairosEditorRuntime {
+impl ApplicationHandler<EditorRuntimeEvent> for EditorRuntime {
     // create the window
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         if self.window.is_some() {
@@ -464,7 +460,7 @@ impl ApplicationHandler<KairosEditorRuntimeEvent> for KairosEditorRuntime {
         }
 
         if let Err(error) = self.create_window(event_loop) {
-            kairos_dialog::error_message_window(
+            dialog::error_message_window(
                 "Init Failed",
                 &format!("Create KairosEditor window/runtime failed:\n{error}"),
             );
@@ -472,15 +468,15 @@ impl ApplicationHandler<KairosEditorRuntimeEvent> for KairosEditorRuntime {
         }
     }
 
-    fn user_event(&mut self, event_loop: &ActiveEventLoop, event: KairosEditorRuntimeEvent) {
+    fn user_event(&mut self, event_loop: &ActiveEventLoop, event: EditorRuntimeEvent) {
         match event {
-            KairosEditorRuntimeEvent::RequestRepaint { viewport_id, delay } => {
+            EditorRuntimeEvent::RequestRepaint { viewport_id, delay } => {
                 if viewport_id == ViewportId::ROOT {
                     self.queue_repaint_after(delay);
                 }
             }
-            KairosEditorRuntimeEvent::RenderPipelineCrash => {
-                println!("KairosEditorRuntimeEvent::RenderPipelineCrash");
+            EditorRuntimeEvent::RenderPipelineCrash => {
+                println!("EditorRuntimeEvent::RenderPipelineCrash");
                 self.shutdown(event_loop);
             }
         }

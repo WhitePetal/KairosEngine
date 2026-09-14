@@ -13,7 +13,7 @@ pub mod schedule;
 
 pub mod math;
 
-pub mod kairos_dialog;
+pub mod dialog;
 
 pub mod log;
 

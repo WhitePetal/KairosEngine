@@ -14,7 +14,7 @@ use petgraph::{
 };
 
 use crate::{
-    kairos_dialog,
+    dialog,
     kairos_editor::asset_registry::{
         AssetKind, AssetRegistry, AssetRoots, Guid, processed_asset_path,
     },
@@ -382,7 +382,7 @@ impl ProjectPathGraph {
             AssetKind::Directory => {
                 // ---- 1. 获取parent节点数据 ----
                 let Some(folder) = self.get_folder_node(request.base_node) else {
-                    kairos_dialog::error_message_window(
+                    dialog::error_message_window(
                         "Create Folder Failed",
                         "folder node not found in graph",
                     );
@@ -395,7 +395,7 @@ impl ProjectPathGraph {
                 // ---- 3. 构建路径 + 文件系统操作 ----
                 full_path = folder_data.path.join(&name);
                 if let Err(err) = std::fs::create_dir(&full_path) {
-                    kairos_dialog::error_message_window(
+                    dialog::error_message_window(
                         "Create Node Failed",
                         &format!(
                             "failed to create directory '{}': {err}",
@@ -412,7 +412,7 @@ impl ProjectPathGraph {
             AssetKind::Font => todo!(),
             AssetKind::Shader | AssetKind::Script | AssetKind::Document | AssetKind::Toml => {
                 let Some(folder) = self.get_folder_node(request.base_node) else {
-                    kairos_dialog::error_message_window(
+                    dialog::error_message_window(
                         "Create File Failed",
                         "folder node not found in graph",
                     );
@@ -430,7 +430,7 @@ impl ProjectPathGraph {
                     _ => "",
                 };
                 if let Err(err) = std::fs::write(&full_path, content) {
-                    kairos_dialog::error_message_window(
+                    dialog::error_message_window(
                         "Create File Failed",
                         &format!("failed to create file '{}': {err}", full_path.display()),
                     );
@@ -438,7 +438,7 @@ impl ProjectPathGraph {
                 }
             }
             AssetKind::Unknown => {
-                kairos_dialog::error_message_window("Create Failed", "Unknown Create Kind");
+                dialog::error_message_window("Create Failed", "Unknown Create Kind");
                 return None;
             }
         }

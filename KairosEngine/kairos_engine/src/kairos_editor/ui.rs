@@ -45,25 +45,22 @@ use std::{
     sync::Arc,
 };
 
-use crate::{
-    kairos_dialog,
-    kairos_editor::ui::{
-        about_window::AboutWindow,
-        console_window::ConsoleWindow,
-        docking_tab::{
-            DockArea,
-            dock_state::DockState,
-            tab_drawer::{OnCloseResponse, TabDrawer},
-            window_state::WindowState,
-        },
-        hierarchy_window::HierarchyWindow,
-        inspector_window::InspectorWindow,
-        preferences_window::PreferencesWindow,
-        project_window::ProjectWindow,
-        scene_window::SceneWindow,
-        tool_bar::ToolBar,
-        ui_style_fields::{StyleField, StylePage},
+use crate::kairos_editor::ui::{
+    about_window::AboutWindow,
+    console_window::ConsoleWindow,
+    docking_tab::{
+        DockArea,
+        dock_state::DockState,
+        tab_drawer::{OnCloseResponse, TabDrawer},
+        window_state::WindowState,
     },
+    hierarchy_window::HierarchyWindow,
+    inspector_window::InspectorWindow,
+    preferences_window::PreferencesWindow,
+    project_window::ProjectWindow,
+    scene_window::SceneWindow,
+    tool_bar::ToolBar,
+    ui_style_fields::{StyleField, StylePage},
 };
 
 pub mod about_window;
@@ -501,7 +498,9 @@ impl Context {
                             drawer.update_style(&style_page.fields);
                         }
                         None => {
-                            kairos_dialog::error_message_window(
+                            // Fully qualified: this module's own `pub mod dialog`
+                            // makes a bare `dialog` import a duplicate name.
+                            crate::dialog::error_message_window(
                                 "PreferenceWindow Error",
                                 "Get PreferenceWindow Failed",
                             );

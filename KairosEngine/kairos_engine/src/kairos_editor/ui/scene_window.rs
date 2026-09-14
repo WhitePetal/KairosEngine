@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use toml::from_str;
 
 use crate::{
-    Engine,
+    Engine, dialog,
     graphics::{
         attachment::{Attachment, AttachmentLoadAction, AttachmentStoreAction},
         camera::{Camera, CameraView},
@@ -17,7 +17,6 @@ use crate::{
         },
         view_port::SceneView,
     },
-    kairos_dialog,
     kairos_editor::{
         camera::{EditorCameraController, OrbitState, OrbitTuning},
         ui::{
@@ -335,7 +334,7 @@ impl Drawer for SceneWindow {
             Ok(toml) => match std::fs::write(paths::PATH_SCENE_WINDOW_STYLE, toml) {
                 Ok(_) => (),
                 Err(error) => {
-                    kairos_dialog::error_message_window(
+                    dialog::error_message_window(
                         "Write File Falied",
                         &format!(
                             "Write the SceneWindowStyle toml file Failed, Error: {}",
@@ -345,7 +344,7 @@ impl Drawer for SceneWindow {
                 }
             },
             Err(error) => {
-                kairos_dialog::error_message_window(
+                dialog::error_message_window(
                     "Serialize Data Failed",
                     &format!(
                         "Serialize the SceneWindowStyle toml file Failed, Erro: {}",

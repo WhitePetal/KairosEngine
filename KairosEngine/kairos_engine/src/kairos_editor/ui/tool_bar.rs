@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use toml::from_str;
 
 use crate::{
-    kairos_dialog,
+    dialog,
     kairos_editor::ui::{
         Drawer, Message, paths,
         ui_style_fields::{ColorStyleField, FloatFieldEditViewType, FloatStyleField, StyleField},
@@ -311,14 +311,14 @@ impl Drawer for ToolBar {
             Ok(toml) => match std::fs::write(paths::PATH_EDITOR_WINDO_TOOL_BAR_STYLE, toml) {
                 Ok(_) => (),
                 Err(error) => {
-                    kairos_dialog::error_message_window(
+                    dialog::error_message_window(
                         "Write File Falied",
                         &format!("Write the ToolBarStyle toml file Failed, Error: {}", error),
                     );
                 }
             },
             Err(error) => {
-                kairos_dialog::error_message_window(
+                dialog::error_message_window(
                     "Serialize Data Failed",
                     &format!(
                         "Serialize the ToolBarStyle toml file Failed, Erro: {}",

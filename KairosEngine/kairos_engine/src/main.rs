@@ -1,6 +1,6 @@
 use kairos_engine::{
-    kairos_dialog,
-    kairos_editor::runtime::{KairosEditorRuntime, KairosEditorRuntimeEvent},
+    dialog,
+    kairos_editor::runtime::{EditorRuntime, EditorRuntimeEvent},
 };
 use winit::event_loop::EventLoop;
 
@@ -12,10 +12,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .init();
 
     // --- Windowed (normal editor) mode ---
-    let event_loop = EventLoop::<KairosEditorRuntimeEvent>::with_user_event().build()?;
+    let event_loop = EventLoop::<EditorRuntimeEvent>::with_user_event().build()?;
     let proxy = event_loop.create_proxy();
-    let mut runtime = KairosEditorRuntime::new(proxy.clone()).unwrap_or_else(|error| {
-        kairos_dialog::error_message_window(
+    let mut runtime = EditorRuntime::new(proxy.clone()).unwrap_or_else(|error| {
+        dialog::error_message_window(
             "Init Failed",
             &format!("new MainEditorWindow struct Failed:\n {}", error),
         );

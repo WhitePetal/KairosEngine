@@ -13,13 +13,13 @@ pub mod runtime;
 pub mod syntax;
 pub mod ui;
 
-pub struct KairosEngine {
+pub struct Editor {
     engine: Engine,
     ui_context: ui::Context,
     log: Log,
 }
 
-impl KairosEngine {
+impl Editor {
     pub fn new(egui_ctx: &egui::Context) -> Result<Self, Box<dyn std::error::Error>> {
         let mut engine = Engine::new()?;
         // The editor's own assets and camera go on immediately after the engine
@@ -89,7 +89,7 @@ impl KairosEngine {
 /// # Exactly once
 ///
 /// Must be called exactly once, after [`Engine::new`] — the one caller is
-/// `KairosEngine::new`, which installs after `Engine::new()?` and before
+/// `Editor::new`, which installs after `Engine::new()?` and before
 /// `KairosGame::new`. There is deliberately no idempotency guard: a second call
 /// would register a second loader and system over the first, silently
 /// corrupting the world rather than panicking. The sole caller is known, so a
