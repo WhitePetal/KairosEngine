@@ -66,7 +66,10 @@ fn without_label_and_parent_drop_the_label() {
 #[test]
 fn with_label_and_with_source_replace_existing_parts() {
     let path = AssetPath::parse("a/b.test#Foo");
-    assert_eq!(path.clone().with_label("Bar"), AssetPath::parse("a/b.test#Bar"));
+    assert_eq!(
+        path.clone().with_label("Bar"),
+        AssetPath::parse("a/b.test#Bar")
+    );
     assert_eq!(
         path.with_source("ftp"),
         AssetPath::parse("ftp://a/b.test#Foo")
@@ -99,9 +102,18 @@ fn extensions_handle_multiple_dots_and_queries() {
 #[test]
 fn resolve_concatenates_and_normalizes() {
     let base = AssetPath::parse("a/b");
-    assert_eq!(base.resolve(&AssetPath::parse("c")), AssetPath::parse("a/b/c"));
-    assert_eq!(base.resolve(&AssetPath::parse("./c")), AssetPath::parse("a/b/c"));
-    assert_eq!(base.resolve(&AssetPath::parse("../c")), AssetPath::parse("a/c"));
+    assert_eq!(
+        base.resolve(&AssetPath::parse("c")),
+        AssetPath::parse("a/b/c")
+    );
+    assert_eq!(
+        base.resolve(&AssetPath::parse("./c")),
+        AssetPath::parse("a/b/c")
+    );
+    assert_eq!(
+        base.resolve(&AssetPath::parse("../c")),
+        AssetPath::parse("a/c")
+    );
     assert_eq!(base.resolve(&AssetPath::parse("/c")), AssetPath::parse("c"));
     assert_eq!(
         AssetPath::parse("a/b.png").resolve(&AssetPath::parse("#c")),
@@ -144,10 +156,13 @@ fn from_path_buf_uses_the_default_source() {
 #[test]
 fn asset_source_id_reports_its_name() {
     assert_eq!(AssetSourceId::Default.as_str(), None);
-    assert_eq!(AssetSourceId::Name("remote".into()).as_str(), Some("remote"));
     assert_eq!(
-        AssetSourceId::from(Some("remote")).as_str(),
+        AssetSourceId::Name("remote".into()).as_str(),
         Some("remote")
     );
-    assert_eq!(AssetSourceId::from(None::<&'static str>), AssetSourceId::Default);
+    assert_eq!(AssetSourceId::from(Some("remote")).as_str(), Some("remote"));
+    assert_eq!(
+        AssetSourceId::from(None::<&'static str>),
+        AssetSourceId::Default
+    );
 }

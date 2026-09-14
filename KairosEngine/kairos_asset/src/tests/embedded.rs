@@ -12,7 +12,7 @@ use kairos_ecs::message::Messages;
 use kairos_ecs::schedule::ScheduleLabel;
 use kairos_ecs::world::World;
 
-use crate::io::embedded::{EMBEDDED, EmbeddedAssetRegistry, _embedded_asset_path};
+use crate::io::embedded::{_embedded_asset_path, EMBEDDED, EmbeddedAssetRegistry};
 use crate::io::memory::{Dir, MemoryAssetReader, MemoryAssetWriter};
 use crate::io::{
     AssetReader, AssetSourceBuilder, AssetSourceBuilders, AssetSourceEvent, AssetWatcher,
@@ -208,9 +208,7 @@ fn memory_dir_stores_assets_and_metadata() {
 #[test]
 fn memory_writer_round_trips_bytes_meta_and_rename() {
     let dir = Dir::default();
-    let writer = MemoryAssetWriter {
-        root: dir.clone(),
-    };
+    let writer = MemoryAssetWriter { root: dir.clone() };
 
     let write = |path: &Path, bytes: &[u8]| {
         block_on(async {
@@ -223,7 +221,10 @@ fn memory_writer_round_trips_bytes_meta_and_rename() {
     };
 
     write(Path::new("data.bytes"), b"one");
-    assert_eq!(dir.get_asset(Path::new("data.bytes")).unwrap().value(), b"one");
+    assert_eq!(
+        dir.get_asset(Path::new("data.bytes")).unwrap().value(),
+        b"one"
+    );
 
     block_on(async {
         let mut sink = AssetWriter::write_meta(&writer, Path::new("data.bytes"))
@@ -239,8 +240,12 @@ fn memory_writer_round_trips_bytes_meta_and_rename() {
         b"meta"
     );
 
-    block_on(AssetWriter::rename(&writer, Path::new("data.bytes"), Path::new("renamed.bytes")))
-        .unwrap();
+    block_on(AssetWriter::rename(
+        &writer,
+        Path::new("data.bytes"),
+        Path::new("renamed.bytes"),
+    ))
+    .unwrap();
     assert!(dir.get_asset(Path::new("data.bytes")).is_none());
     assert_eq!(
         dir.get_asset(Path::new("renamed.bytes")).unwrap().value(),
@@ -422,8 +427,20 @@ fn embedded_source_reads_through_the_registry_dir() {
     .unwrap();
     assert_eq!(meta, b"meta");
 
-    assert_eq!(registry.remove_asset(Path::new("my_crate/thing.bytes")).unwrap().value(), b"one");
-    assert!(block_on(AssetReader::read(&reader, Path::new("my_crate/thing.bytes"))).is_err());
+    assert_eq!(
+        registry
+            .remove_asset(Path::new("my_crate/thing.bytes"))
+            .unwrap()
+            .value(),
+        b"one"
+    );
+    assert!(
+        block_on(AssetReader::read(
+            &reader,
+            Path::new("my_crate/thing.bytes")
+        ))
+        .is_err()
+    );
 }
 
 /// Builds a world whose `embedded` source has an injected watcher, returning the

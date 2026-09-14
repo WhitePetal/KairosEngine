@@ -46,11 +46,11 @@ pub use asset_processor::{
 // The gated reader consumes `ProcessStatus`, and `AssetSource::gate_on_processor`
 // takes the `ProcessingState`.
 pub(crate) use asset_processor::ProcessingState;
+pub(crate) use info::ProcessStatus;
 pub use log::{
     FileTransactionLogFactory, LogEntry, LogEntryError, ProcessorTransactionLog,
     ProcessorTransactionLogFactory, ReadLogError, SetTransactionLogFactoryError, ValidateLogError,
 };
-pub(crate) use info::ProcessStatus;
 // The crate's tests build a `ProcessorAssetInfos` directly.
 #[allow(unused_imports)]
 pub(crate) use info::ProcessorAssetInfos;

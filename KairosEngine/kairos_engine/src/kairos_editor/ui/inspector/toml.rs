@@ -1,8 +1,8 @@
 use std::{cell::Cell, fs, ops::DerefMut, path::PathBuf, sync::Arc};
 
+use crate::asset::{AssetServer, Assets, Handle};
 use egui::Vec2;
 use egui_extras::{Column, TableBuilder, TableRow};
-use crate::asset::{AssetServer, Assets, Handle};
 use kairos_ecs::world::World;
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
@@ -93,10 +93,7 @@ impl Inspector for TomlTableInspector {
             let mut table_mut = self.model.table.lock();
             let table_mut = table_mut.deref_mut();
             if table_mut.is_none() {
-                if let Some(table) = world
-                    .resource::<Assets<Toml>>()
-                    .get(&self.model.handle)
-                {
+                if let Some(table) = world.resource::<Assets<Toml>>().get(&self.model.handle) {
                     *table_mut = Some(table.0.clone());
                 }
                 ui.label("Toml is Loading...");

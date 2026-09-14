@@ -5,32 +5,12 @@ use kairos_ecs_macros::{Resource, ScheduleLabel, SystemSet};
 use kairos_collections::hash::FixedHasher;
 
 use crate::{
-    change_detection::{
-        Res,
-        ResMut,
-    },
-    error::{
-        FallbackErrorHandler,
-        Result,
-        ignore,
-        panic,
-    },
+    change_detection::{Res, ResMut},
+    error::{FallbackErrorHandler, Result, ignore, panic},
     schedule::{
-        ApplyDeferred,
-        FlattenedDependencies,
-        IntoScheduleConfigs,
-        IntoSystemSet,
-        NodeId,
-        Schedule,
-        ScheduleBuildError,
-        ScheduleBuildPass,
-        ScheduleBuildSettings,
-        ScheduleCleanupPolicy,
-        Schedules,
-        SystemKey,
-        SystemSet,
-        SystemSetKey,
-        graph::DiGraph,
+        ApplyDeferred, FlattenedDependencies, IntoScheduleConfigs, IntoSystemSet, NodeId, Schedule,
+        ScheduleBuildError, ScheduleBuildPass, ScheduleBuildSettings, ScheduleCleanupPolicy,
+        Schedules, SystemKey, SystemSet, SystemSetKey, graph::DiGraph,
         passes::AutoInsertApplyDeferredPass,
     },
     system::Commands,

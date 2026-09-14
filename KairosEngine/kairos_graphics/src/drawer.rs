@@ -24,9 +24,7 @@ use kairos_transform::LocalTransform;
 use kairos_math::float4x4;
 
 use crate::{
-    lod_mesh_component::LODMesh,
-    material::Material,
-    material_component::MaterialComponent,
+    lod_mesh_component::LODMesh, material::Material, material_component::MaterialComponent,
     mesh::Mesh,
 };
 

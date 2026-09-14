@@ -95,10 +95,7 @@ impl Inspector for CodeInspector {
             let mut content_mut = self.model.content.lock();
             let content_mut = content_mut.deref_mut();
             if content_mut.is_none() {
-                if let Some(content) = world
-                    .resource::<Assets<Text>>()
-                    .get(&self.model.handle)
-                {
+                if let Some(content) = world.resource::<Assets<Text>>().get(&self.model.handle) {
                     *content_mut = Some(content.0.clone());
                 }
                 ui.label("Rust File is Loading...");

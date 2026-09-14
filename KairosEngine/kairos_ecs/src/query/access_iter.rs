@@ -2,15 +2,8 @@ use std::fmt::Display;
 
 use crate::{
     bloom_filter::BloomFilter,
-    component::{
-        ComponentId,
-        Components,
-    },
-    query::{
-        Access,
-        ComponentAccessKind,
-        QueryData,
-    },
+    component::{ComponentId, Components},
+    query::{Access, ComponentAccessKind, QueryData},
 };
 
 #[cfg(test)]

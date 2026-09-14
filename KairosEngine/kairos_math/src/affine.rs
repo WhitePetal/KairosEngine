@@ -84,8 +84,16 @@ impl affine {
     }
 
     #[inline(always)]
-    pub fn from_scale_rotation_translation(scale: float3, rotation: quaternion, translation: float3) -> Self {
-        Self(Affine3A::from_scale_rotation_translation(scale.0.to_vec3(), rotation.0, translation.0.to_vec3()))
+    pub fn from_scale_rotation_translation(
+        scale: float3,
+        rotation: quaternion,
+        translation: float3,
+    ) -> Self {
+        Self(Affine3A::from_scale_rotation_translation(
+            scale.0.to_vec3(),
+            rotation.0,
+            translation.0.to_vec3(),
+        ))
     }
 
     #[inline(always)]
@@ -142,7 +150,6 @@ impl Default for affine {
 // all-zero bytes are a valid transform, but a strict `Pod` impl would be
 // unsound for a padded layout.
 unsafe impl bytemuck::Zeroable for affine {}
-
 
 impl Mul for affine {
     type Output = Self;

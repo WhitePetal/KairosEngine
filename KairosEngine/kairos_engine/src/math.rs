@@ -1,4 +1,4 @@
 mod color;
 
-pub use kairos_math::*;
 pub use color::Color32;
+pub use kairos_math::*;

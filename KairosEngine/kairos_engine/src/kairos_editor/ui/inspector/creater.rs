@@ -2,16 +2,14 @@ use std::path::Path;
 
 use kairos_ecs::world::World;
 
-use crate::{
-    kairos_editor::{
-        asset_registry::AssetKind,
-        project_path_tree::ProjectPathGraph,
-        ui::inspector::{
-            Inspector, audio::AudioInspector, code::CodeInspector, directory::DirectoryInspector,
-            document::DocumentInspector, font::FontInspector, material::MaterialInspector,
-            mesh::MeshInspector, shader::ShaderInspector, texture::TextureInspector,
-            toml::TomlTableInspector, unknown::UnknownInspector,
-        },
+use crate::kairos_editor::{
+    asset_registry::AssetKind,
+    project_path_tree::ProjectPathGraph,
+    ui::inspector::{
+        Inspector, audio::AudioInspector, code::CodeInspector, directory::DirectoryInspector,
+        document::DocumentInspector, font::FontInspector, material::MaterialInspector,
+        mesh::MeshInspector, shader::ShaderInspector, texture::TextureInspector,
+        toml::TomlTableInspector, unknown::UnknownInspector,
     },
 };
 

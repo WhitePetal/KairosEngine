@@ -13,15 +13,10 @@ use indexmap::IndexMap;
 use smallvec::SmallVec;
 use thiserror::Error;
 
-use kairos_collections::{FixedHashMap, FixedHashSet};
 use kairos_collections::hash::FixedHasher;
+use kairos_collections::{FixedHashMap, FixedHashSet};
 
-use crate::{
-    schedule::graph::graph_map::Direction::{
-        Incoming,
-        Outgoing,
-    },
-};
+use crate::schedule::graph::graph_map::Direction::{Incoming, Outgoing};
 
 #[cfg(test)]
 mod tests;

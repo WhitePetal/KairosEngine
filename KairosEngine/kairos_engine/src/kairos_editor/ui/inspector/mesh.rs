@@ -255,25 +255,34 @@ impl Inspector for MeshInspector {
         let mesh_handle = world
             .resource::<AssetServer>()
             .load::<Mesh>(mesh_path.clone());
-        let wireframe_material_handle = world
-            .resource::<AssetServer>()
-            .load::<Material>(PathBuf::from(
-                paths::PATH_MESH_INSPECTOR_PREVIEW_WIREFRAME_MATERIAL,
-            ));
+        let wireframe_material_handle =
+            world
+                .resource::<AssetServer>()
+                .load::<Material>(PathBuf::from(
+                    paths::PATH_MESH_INSPECTOR_PREVIEW_WIREFRAME_MATERIAL,
+                ));
 
         let mode_material_handles = [
-            world.resource::<AssetServer>().load::<Material>(PathBuf::from(
-                paths::PATH_MESH_INSPECTOR_PREVIEW_SHADED_MATERIAL,
-            )),
-            world.resource::<AssetServer>().load::<Material>(PathBuf::from(
-                paths::PATH_MESH_INSPECTOR_PREVIEW_NORMAL_MATERIAL,
-            )),
-            world.resource::<AssetServer>().load::<Material>(PathBuf::from(
-                paths::PATH_MESH_INSPECTOR_PREVIEW_TANGENT_MATERIAL,
-            )),
-            world.resource::<AssetServer>().load::<Material>(PathBuf::from(
-                paths::PATH_MESH_INSPECTOR_PREVIEW_VERTEX_COLOR_MATERIAL,
-            )),
+            world
+                .resource::<AssetServer>()
+                .load::<Material>(PathBuf::from(
+                    paths::PATH_MESH_INSPECTOR_PREVIEW_SHADED_MATERIAL,
+                )),
+            world
+                .resource::<AssetServer>()
+                .load::<Material>(PathBuf::from(
+                    paths::PATH_MESH_INSPECTOR_PREVIEW_NORMAL_MATERIAL,
+                )),
+            world
+                .resource::<AssetServer>()
+                .load::<Material>(PathBuf::from(
+                    paths::PATH_MESH_INSPECTOR_PREVIEW_TANGENT_MATERIAL,
+                )),
+            world
+                .resource::<AssetServer>()
+                .load::<Material>(PathBuf::from(
+                    paths::PATH_MESH_INSPECTOR_PREVIEW_VERTEX_COLOR_MATERIAL,
+                )),
         ];
 
         let model = MeshInspectorModel {
@@ -465,10 +474,9 @@ impl Inspector for MeshInspector {
 
         let (width, height) = preview.size;
 
-        let vp = preview.camera.get_view_projection_matrix(
-            preview.orbit.transform(),
-            width as f32 / height as f32,
-        );
+        let vp = preview
+            .camera
+            .get_view_projection_matrix(preview.orbit.transform(), width as f32 / height as f32);
 
         let mut command = GraphicsCommand::new(3, 2, 1, 6);
 

@@ -5,39 +5,16 @@
 //! [`Commands`](crate::system::Commands).
 
 use crate::{
-    debug::{
-        DebugName,
-        MaybeLocation,
-    },
-    bundle::{
-        Bundle,
-        InsertMode,
-        NoBundleEffect,
-    },
+    bundle::{Bundle, InsertMode, NoBundleEffect},
+    debug::{DebugName, MaybeLocation},
     entity::Entity,
-    error::{
-        CommandOutput,
-        ErrorContext,
-        ErrorHandler,
-        Result,
-    },
+    error::{CommandOutput, ErrorContext, ErrorHandler, Result},
     event::Event,
-    message::{
-        Message,
-        Messages,
-    },
+    message::{Message, Messages},
     resource::Resource,
     schedule::ScheduleLabel,
-    system::{
-        IntoSystem,
-        SystemId,
-        SystemInput,
-    },
-    world::{
-        FromWorld,
-        SpawnBatchIter,
-        World,
-    },
+    system::{IntoSystem, SystemId, SystemInput},
+    world::{FromWorld, SpawnBatchIter, World},
 };
 
 /// A [`World`] mutation.

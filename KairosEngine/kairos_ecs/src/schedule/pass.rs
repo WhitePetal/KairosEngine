@@ -6,22 +6,13 @@ use std::{
 
 use indexmap::IndexSet;
 
-use kairos_collections::{FixedHashSet, TypeIdMap};
 use kairos_collections::hash::FixedHasher;
+use kairos_collections::{FixedHashSet, TypeIdMap};
 
 use crate::{
     schedule::{
-        NodeId,
-        ScheduleBuildError,
-        ScheduleGraph,
-        SystemKey,
-        SystemSetKey,
-        graph::{
-            Dag,
-            DagAnalysis,
-            DiGraph,
-            DiGraphToposortError,
-        },
+        NodeId, ScheduleBuildError, ScheduleGraph, SystemKey, SystemSetKey,
+        graph::{Dag, DagAnalysis, DiGraph, DiGraphToposortError},
     },
     world::World,
 };

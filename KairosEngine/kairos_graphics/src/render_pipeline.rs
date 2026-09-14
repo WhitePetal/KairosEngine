@@ -27,8 +27,8 @@ use wgpu::{
 };
 use winit::{dpi::PhysicalSize, window::Window};
 
-use kairos_math::{float4, float4x4};
 use kairos_ecs::world::World;
+use kairos_math::{float4, float4x4};
 
 use kairos_asset::{AssetId, AssetServer, Assets, Handle, UntypedAssetId};
 
@@ -127,14 +127,15 @@ impl UnreadyAsset {
     /// the file the asset came from instead of an opaque id.
     fn id_and_reason(self) -> (UntypedAssetId, &'static str) {
         match self {
-            Self::Mesh(id) => (id.untyped(), "the draw instance's mesh is not in Assets<Mesh>"),
+            Self::Mesh(id) => (
+                id.untyped(),
+                "the draw instance's mesh is not in Assets<Mesh>",
+            ),
             Self::Material(id) => (
                 id.untyped(),
                 "the draw instance's material is not in Assets<Material>",
             ),
-            Self::MaterialWithoutShader(id) => {
-                (id.untyped(), "the material declares no shader")
-            }
+            Self::MaterialWithoutShader(id) => (id.untyped(), "the material declares no shader"),
             Self::Shader(id) => (
                 id.untyped(),
                 "the material's shader is not in Assets<ShaderAsset>",
@@ -823,9 +824,7 @@ impl RenderPipeline {
             // entry is always current.
             let pipeline_key = PipelineKey::from_material(material);
             let pipeline = match pipeline_cache.entry(pipeline_key) {
-                std::collections::hash_map::Entry::Occupied(entry) => {
-                    entry.get().pipeline.clone()
-                }
+                std::collections::hash_map::Entry::Occupied(entry) => entry.get().pipeline.clone(),
                 std::collections::hash_map::Entry::Vacant(entry) => {
                     error_scopes.push((
                         material_id,
@@ -1124,7 +1123,8 @@ impl RenderPipeline {
         for id in modified_textures.drain().chain(removed_textures.drain()) {
             self.texture_cache.remove(&id);
             self.unready_assets.remove(&UnreadyAsset::Texture(id));
-            self.unready_assets.remove(&UnreadyAsset::FallbackTexture(id));
+            self.unready_assets
+                .remove(&UnreadyAsset::FallbackTexture(id));
         }
         for id in modified_shaders.drain().chain(removed_shaders.drain()) {
             self.pipeline_cache.retain(|key, _| key.shader != Some(id));
@@ -1133,7 +1133,8 @@ impl RenderPipeline {
         for id in modified_materials.drain().chain(removed_materials.drain()) {
             self.error_material_indices.remove(&id);
             self.unready_assets.remove(&UnreadyAsset::Material(id));
-            self.unready_assets.remove(&UnreadyAsset::MaterialWithoutShader(id));
+            self.unready_assets
+                .remove(&UnreadyAsset::MaterialWithoutShader(id));
         }
         for id in modified_meshes.drain().chain(removed_meshes.drain()) {
             self.mesh_buffer_cache.remove(&id);

@@ -1,21 +1,10 @@
 use crate::{
-    change_detection::{
-        ComponentTicksMut,
-        ComponentTicksRef,
-        Mut,
-        MutUntyped,
-        Ref,
-        Tick,
-    },
+    change_detection::{ComponentTicksMut, ComponentTicksRef, Mut, MutUntyped, Ref, Tick},
     component::ComponentId,
+    ptr::Ptr,
     query::Access,
     resource::Resource,
-    world::{
-        World,
-        error::ResourceFetchError,
-        unsafe_world_cell::UnsafeWorldCell,
-    },
-    ptr::Ptr,
+    world::{World, error::ResourceFetchError, unsafe_world_cell::UnsafeWorldCell},
 };
 
 /// Provides read-only access to a set of [`Resource`]s defined by the contained [`Access`].

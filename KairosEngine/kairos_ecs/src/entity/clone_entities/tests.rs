@@ -4,27 +4,12 @@ use kairos_ecs_macros::Component;
 
 use crate::{
     bundle::InsertMode,
-    component::{
-        ComponentCloneBehavior,
-        ComponentDescriptor,
-        StorageType,
-    },
-    entity::{
-        ComponentCloneCtx,
-        Entity,
-        EntityCloner,
-        SourceComponent,
-    },
-    hierarchy::{
-        ChildOf,
-        Children,
-    },
+    component::{ComponentCloneBehavior, ComponentDescriptor, StorageType},
+    entity::{ComponentCloneCtx, Entity, EntityCloner, SourceComponent},
+    hierarchy::{ChildOf, Children},
     lifecycle::HookContext,
-    world::{
-        DeferredWorld,
-        World,
-    },
     ptr::OwningPtr,
+    world::{DeferredWorld, World},
 };
 
 #[cfg(feature = "kairos_reflect")]
@@ -32,7 +17,7 @@ mod reflect {
     use super::*;
     use crate::reflect::{AppTypeRegistry, ReflectComponent, ReflectFromWorld};
     use alloc::vec;
-    use bevy_reflect::{std_traits::ReflectDefault, FromType, Reflect, ReflectFromPtr};
+    use bevy_reflect::{FromType, Reflect, ReflectFromPtr, std_traits::ReflectDefault};
 
     #[test]
     fn clone_entity_using_reflect() {
@@ -210,9 +195,11 @@ mod reflect {
 
         EntityCloner::build_opt_out(&mut world).clone_entity(e, e_clone);
 
-        assert!(world
-            .get::<A>(e_clone)
-            .is_some_and(|comp| *comp == A { field: 10 }));
+        assert!(
+            world
+                .get::<A>(e_clone)
+                .is_some_and(|comp| *comp == A { field: 10 })
+        );
     }
 
     #[test]
@@ -389,9 +376,11 @@ fn clone_entity_with_deny_filter_without_required_by() {
         .clone_entity(e, e_clone);
 
     assert!(world.get::<A>(e_clone).is_some());
-    assert!(world
-        .get::<B>(e_clone)
-        .is_some_and(|c| *c == B { field: 5 }));
+    assert!(
+        world
+            .get::<B>(e_clone)
+            .is_some_and(|c| *c == B { field: 5 })
+    );
 }
 
 #[test]
@@ -417,9 +406,11 @@ fn clone_entity_with_deny_filter_if_new() {
         .insert_mode(InsertMode::Keep)
         .clone_entity(e, e_clone);
 
-    assert!(world
-        .get::<A>(e_clone)
-        .is_some_and(|c| *c == A { field: 8 }));
+    assert!(
+        world
+            .get::<A>(e_clone)
+            .is_some_and(|c| *c == A { field: 8 })
+    );
     assert!(world.get::<B>(e_clone).is_none());
     assert!(world.get::<C>(e_clone).is_some());
 }

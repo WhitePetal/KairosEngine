@@ -206,7 +206,7 @@ impl KairosError {
                             continue;
                         }
                         if line.contains("std::backtrace::Backtrace::")
-                        || line.contains("<std::backtrace::Backtrace>::")
+                            || line.contains("<std::backtrace::Backtrace>::")
                         {
                             skip_next_location_line = true;
                             continue;

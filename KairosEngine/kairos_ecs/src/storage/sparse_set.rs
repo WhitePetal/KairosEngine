@@ -5,31 +5,13 @@ use nonmax::{NonMaxU32, NonMaxUsize};
 #[cfg(debug_assertions)]
 use crate::entity::Entity;
 use crate::{
-    debug::{
-        DebugCheckedUnwrap,
-        MaybeLocation,
-    },
-    change_detection::{
-        CheckChangeTicks,
-        ComponentTickCells,
-        ComponentTicks,
-        Tick,
-    },
-    component::{
-        ComponentId,
-        ComponentInfo,
-    },
+    change_detection::{CheckChangeTicks, ComponentTickCells, ComponentTicks, Tick},
+    component::{ComponentId, ComponentInfo},
+    debug::{DebugCheckedUnwrap, MaybeLocation},
     entity::EntityIndex,
-    storage::{
-        Column,
-        TableRow,
-        VecExtensions,
-    },
     on_drop::AbortOnPanic,
-    ptr::{
-        OwningPtr,
-        Ptr,
-    },
+    ptr::{OwningPtr, Ptr},
+    storage::{Column, TableRow, VecExtensions},
 };
 
 #[cfg(test)]

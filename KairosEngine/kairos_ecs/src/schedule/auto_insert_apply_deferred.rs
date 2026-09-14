@@ -7,26 +7,12 @@ use kairos_collections::hash::FixedHasher;
 
 use crate::{
     schedule::{
-        ApplyDeferred,
-        NodeId,
-        ScheduleBuildError,
-        ScheduleGraph,
-        SystemKey,
-        SystemSetKey,
-        graph::{
-            DiGraph,
-            Direction,
-        },
+        ApplyDeferred, NodeId, ScheduleBuildError, ScheduleGraph, SystemKey, SystemSetKey,
+        graph::{DiGraph, Direction},
         is_apply_deferred,
-        pass::{
-            FlattenedDependencies,
-            ScheduleBuildPass,
-        },
+        pass::{FlattenedDependencies, ScheduleBuildPass},
     },
-    system::{
-        IntoSystem,
-        System,
-    },
+    system::{IntoSystem, System},
     world::World,
 };
 

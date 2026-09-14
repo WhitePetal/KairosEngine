@@ -9,13 +9,7 @@ use kairos_collections::{FixedHashMap, TypeIdMap};
 
 use crate::{
     change_detection::ResMut,
-    schedule::{
-        InternedScheduleLabel,
-        NodeId,
-        Schedule,
-        ScheduleLabel,
-        SystemKey,
-    },
+    schedule::{InternedScheduleLabel, NodeId, Schedule, ScheduleLabel, SystemKey},
     system::IntoSystem,
 };
 

@@ -10,12 +10,8 @@ use crate::{
     define_label,
     intern::Interned,
     system::{
-        ExclusiveSystemParamFunction,
-        FromInput,
-        IntoResult,
-        IsExclusiveFunctionSystem,
-        IsFunctionSystem,
-        SystemParamFunction,
+        ExclusiveSystemParamFunction, FromInput, IntoResult, IsExclusiveFunctionSystem,
+        IsFunctionSystem, SystemParamFunction,
     },
 };
 

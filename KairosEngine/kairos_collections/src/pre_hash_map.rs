@@ -1,8 +1,8 @@
 use std::hash::Hash;
 
 use crate::{
-    hash::{FixedHashed, PassHash},
     FixedHashMap,
+    hash::{FixedHashed, PassHash},
 };
 
 /// A [`HashMap`] pre-configured to use [`Hashed`] keys and [`PassHash`] passthrough hashing.

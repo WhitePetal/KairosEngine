@@ -12,69 +12,29 @@ use thiserror::Error;
 #[cfg(feature = "trace")]
 use tracing::info_span;
 
-use kairos_collections::{FixedHashMap, FixedHashSet, TypeIdMap};
 use kairos_collections::hash::FixedHasher;
+use kairos_collections::{FixedHashMap, FixedHashSet, TypeIdMap};
 
 use crate::{
     change_detection::CheckChangeTicks,
-    component::{
-        Component,
-        ComponentId,
-        Components,
-    },
+    component::{Component, ComponentId, Components},
     resource::Resource,
     schedule::{
-        AnonymousSet,
-        BoxedCondition,
-        ConflictingSystems,
-        InternedScheduleLabel,
-        InternedSystemSet,
-        IntoScheduleConfigs,
-        IntoSystemSet,
-        NodeId,
-        Schedulable,
-        ScheduleBuildError,
-        ScheduleBuildWarning,
-        ScheduleConfig,
-        ScheduleConfigs,
-        ScheduleError,
-        ScheduleLabel,
-        SystemExecutor,
-        SystemKey,
-        SystemSchedule,
-        SystemSet,
-        SystemSetKey,
-        SystemSets,
-        SystemWithAccess,
-        Systems,
-        default_executor,
+        AnonymousSet, BoxedCondition, ConflictingSystems, InternedScheduleLabel, InternedSystemSet,
+        IntoScheduleConfigs, IntoSystemSet, NodeId, Schedulable, ScheduleBuildError,
+        ScheduleBuildWarning, ScheduleConfig, ScheduleConfigs, ScheduleError, ScheduleLabel,
+        SystemExecutor, SystemKey, SystemSchedule, SystemSet, SystemSetKey, SystemSets,
+        SystemWithAccess, Systems, default_executor,
         graph::{
-            Ambiguity,
-            Dag,
-            DagAnalysis,
-            DagGroups,
-            Dependency,
-            DependencyKind,
-            Direction::{
-                Incoming,
-                Outgoing,
-            },
-            GraphInfo,
-            UnGraph,
-            index,
+            Ambiguity, Dag, DagAnalysis, DagGroups, Dependency, DependencyKind,
+            Direction::{Incoming, Outgoing},
+            GraphInfo, UnGraph, index,
         },
         is_apply_deferred,
-        pass::{
-            FlattenedDependencies,
-            ScheduleBuildPass,
-            ScheduleBuildPassObj,
-        },
+        pass::{FlattenedDependencies, ScheduleBuildPass, ScheduleBuildPassObj},
         passes,
     },
-    system::{
-        ScheduleSystem,
-        System,
-    },
+    system::{ScheduleSystem, System},
     world::World,
 };
 

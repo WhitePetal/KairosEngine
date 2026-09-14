@@ -32,9 +32,21 @@ impl TextureSettings {
         };
 
         let data = if is_hdr_source(&image) {
-            encode_f16_chain(image, width, height, settings.format, settings.sampler.mipmap.as_ref())
+            encode_f16_chain(
+                image,
+                width,
+                height,
+                settings.format,
+                settings.sampler.mipmap.as_ref(),
+            )
         } else {
-            encode_u8_chain(image, width, height, settings.format, settings.sampler.mipmap.as_ref())
+            encode_u8_chain(
+                image,
+                width,
+                height,
+                settings.format,
+                settings.sampler.mipmap.as_ref(),
+            )
         };
 
         Ok((
@@ -114,7 +126,11 @@ fn is_hdr_source(image: &image::DynamicImage) -> bool {
 
 /// The last mip level to store, per the inspector's loop: `lod_max_clamp`
 /// bounded by the deepest level the dimensions allow.
-fn end_level(width: u32, height: u32, mipmap: Option<&crate::texture::sampler::MipmapConfig>) -> u32 {
+fn end_level(
+    width: u32,
+    height: u32,
+    mipmap: Option<&crate::texture::sampler::MipmapConfig>,
+) -> u32 {
     let Some(mipmap) = mipmap else {
         return 0;
     };

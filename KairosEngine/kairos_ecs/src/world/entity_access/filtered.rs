@@ -7,33 +7,14 @@ use std::{
 use thiserror::Error;
 
 use crate::{
-    debug::MaybeLocation,
     archetype::Archetype,
-    change_detection::{
-        ComponentTicks,
-        Mut,
-        MutUntyped,
-        Ref,
-        Tick,
-    },
-    component::{
-        Component,
-        ComponentId,
-        Mutable,
-    },
-    entity::{
-        ContainsEntity,
-        Entity,
-        EntityEquivalent,
-        EntityLocation,
-    },
-    query::Access,
-    world::{
-        EntityMut,
-        EntityRef,
-        unsafe_world_cell::UnsafeEntityCell,
-    },
+    change_detection::{ComponentTicks, Mut, MutUntyped, Ref, Tick},
+    component::{Component, ComponentId, Mutable},
+    debug::MaybeLocation,
+    entity::{ContainsEntity, Entity, EntityEquivalent, EntityLocation},
     ptr::Ptr,
+    query::Access,
+    world::{EntityMut, EntityRef, unsafe_world_cell::UnsafeEntityCell},
 };
 
 /// Provides read-only access to a single entity and some of its components defined by the contained [`Access`].

@@ -1,47 +1,18 @@
 use std::ptr::NonNull;
 
 use crate::{
+    archetype::{Archetype, ArchetypeCreated, ArchetypeId, Archetypes},
+    bundle::{Bundle, BundleId, BundleInfo},
+    component::{ComponentId, Components, StorageType},
     debug::MaybeLocation,
-    archetype::{
-        Archetype,
-        ArchetypeCreated,
-        ArchetypeId,
-        Archetypes,
-    },
-    bundle::{
-        Bundle,
-        BundleId,
-        BundleInfo,
-    },
-    component::{
-        ComponentId,
-        Components,
-        StorageType,
-    },
-    entity::{
-        Entity,
-        EntityLocation,
-    },
+    entity::{Entity, EntityLocation},
     event::EntityComponentsTrigger,
-    lifecycle::{
-        DISCARD,
-        Discard,
-        REMOVE,
-        Remove,
-    },
+    lifecycle::{DISCARD, Discard, REMOVE, Remove},
     observer::Observers,
-    relationship::RelationshipHookMode,
-    storage::{
-        SparseSets,
-        Storages,
-        Table,
-        TableId,
-    },
-    world::{
-        World,
-        unsafe_world_cell::UnsafeWorldCell,
-    },
     ptr::ConstNonNull,
+    relationship::RelationshipHookMode,
+    storage::{SparseSets, Storages, Table, TableId},
+    world::{World, unsafe_world_cell::UnsafeWorldCell},
 };
 
 #[cfg(test)]

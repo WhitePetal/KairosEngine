@@ -22,10 +22,7 @@ use std::{
 
 use async_channel::Sender;
 use kairos_collections::FixedHashMap as HashMap;
-use notify_debouncer_full::{
-    Debouncer, RecommendedCache,
-    notify::RecommendedWatcher,
-};
+use notify_debouncer_full::{Debouncer, RecommendedCache, notify::RecommendedWatcher};
 use tracing::warn;
 
 use crate::io::file::file_watcher::{
@@ -134,9 +131,9 @@ impl FilesystemEventHandler for EmbeddedEventHandler {
 #[cfg(test)]
 mod tests {
     use super::EmbeddedEventHandler;
+    use crate::io::AssetSourceEvent;
     use crate::io::file::file_watcher::FilesystemEventHandler;
     use crate::io::memory::Dir;
-    use crate::io::AssetSourceEvent;
     use kairos_collections::FixedHashMap as HashMap;
     use std::{
         path::{Path, PathBuf},
@@ -188,7 +185,10 @@ mod tests {
             AssetSourceEvent::ModifiedAsset(PathBuf::from(asset_path)),
         );
 
-        assert_eq!(dir.get_asset(Path::new(asset_path)).unwrap().value(), b"two, longer");
+        assert_eq!(
+            dir.get_asset(Path::new(asset_path)).unwrap().value(),
+            b"two, longer"
+        );
         assert_eq!(
             receiver.try_recv().unwrap(),
             AssetSourceEvent::ModifiedAsset(PathBuf::from(asset_path))
@@ -221,7 +221,9 @@ mod tests {
             last_event: None,
         };
 
-        let path = handler.get_path(&watched.with_extension("bytes.meta")).unwrap();
+        let path = handler
+            .get_path(&watched.with_extension("bytes.meta"))
+            .unwrap();
         assert_eq!(path, (PathBuf::from(asset_path), false));
         let _ = receiver;
     }

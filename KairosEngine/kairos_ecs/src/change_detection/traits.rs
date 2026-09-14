@@ -1,7 +1,4 @@
-use crate::{
-    debug::MaybeLocation,
-    change_detection::Tick,
-};
+use crate::{change_detection::Tick, debug::MaybeLocation};
 
 /// Types that can read change detection information.
 /// This change detection is controlled by [`DetectChangesMut`] types such as [`ResMut`].

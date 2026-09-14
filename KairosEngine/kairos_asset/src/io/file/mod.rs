@@ -164,9 +164,7 @@ impl FileAssetWriter {
         } else {
             get_base_path().join(path)
         };
-        if create_root
-            && let Err(error) = std::fs::create_dir_all(&root_path)
-        {
+        if create_root && let Err(error) = std::fs::create_dir_all(&root_path) {
             error!(
                 "failed to create the asset writer root {}: {error}",
                 root_path.display()

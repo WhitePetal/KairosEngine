@@ -85,9 +85,7 @@ mod server;
 
 pub use asset::{Asset, VisitAssetDependencies};
 pub use asset_changed::{AsAssetId, AssetChanged};
-pub use assets::{
-    AssetMut, Assets, AssetsMutIterator, InvalidGenerationError, LoadedUntypedAsset,
-};
+pub use assets::{AssetMut, Assets, AssetsMutIterator, InvalidGenerationError, LoadedUntypedAsset};
 pub use direct_access::DirectAssetAccessExt;
 pub use event::{AssetEvent, AssetLoadFailedEvent, UntypedAssetLoadFailedEvent};
 pub use folder::LoadedFolder;
@@ -101,11 +99,22 @@ pub use install::{
     AssetEventSystems, AssetMode, AssetOptions, AssetStages, AssetTrackingSystems, AssetWorldExt,
     install,
 };
+pub use io::{
+    AssetReader, AssetReaderError, AssetSourceEvent, AssetSourceId, AssetWatcher, AssetWriter,
+    AssetWriterError, ErasedAssetReader, ErasedAssetWriter, Reader, UnapprovedPathMode, VecReader,
+    Writer, get_meta_path,
+};
 pub use loader::{
-    AssetContainer, AssetLoader, ErasedAssetLoader, ErasedLoadedAsset, LoadContext, LoadDirectError,
-    LoadedAsset, ReadAssetBytesError,
+    AssetContainer, AssetLoader, ErasedAssetLoader, ErasedLoadedAsset, LoadContext,
+    LoadDirectError, LoadedAsset, ReadAssetBytesError,
 };
 pub use loader_builders::NestedLoadBuilder;
+pub use meta::{
+    AssetAction, AssetActionMinimal, AssetHash, AssetMeta, AssetMetaCheck, AssetMetaDyn,
+    AssetMetaMinimal, DeserializeMetaError, META_FORMAT_VERSION, MetaTransform, Settings,
+    loader_name, loader_settings_meta_transform, meta_transform_settings,
+};
+pub use path::{AssetPath, ParseAssetPathError};
 pub use server::{
     AddAsyncError, AssetLoadError, AssetLoaderError, AssetServer, AssetServerMode,
     DependencyLoadState, LoadBuilder, LoadState, MissingAssetLoaderForExtensionError,
@@ -113,20 +122,8 @@ pub use server::{
     RecursiveDependencyLoadState, WaitForAssetError, WriteDefaultMetaError,
     handle_internal_asset_events,
 };
-pub use io::{
-    AssetReader, AssetReaderError, AssetSourceEvent, AssetSourceId, AssetWatcher, AssetWriter,
-    AssetWriterError, ErasedAssetReader, ErasedAssetWriter, Reader, UnapprovedPathMode,
-    VecReader, Writer, get_meta_path,
-};
-pub use meta::{
-    AssetAction, AssetActionMinimal, AssetHash, AssetMeta, AssetMetaCheck, AssetMetaDyn,
-    AssetMetaMinimal, DeserializeMetaError, MetaTransform, META_FORMAT_VERSION, Settings,
-    loader_name, loader_settings_meta_transform, meta_transform_settings,
-};
-pub use path::{AssetPath, ParseAssetPathError};
 // Re-exported so the [`uuid_handle!`](crate::uuid_handle) macro can resolve
 // `$crate::uuid::uuid!` from a downstream crate.
-pub use uuid;
 pub use processor::{
     AssetProcessor, AssetProcessorData, AssetSaver, AssetTransformer, ErasedAssetSaver,
     ErasedProcessor, FileTransactionLogFactory, GetProcessorError, IdentityAssetTransformer,
@@ -135,6 +132,7 @@ pub use processor::{
     ProcessorTransactionLog, ProcessorTransactionLogFactory, Processors, ReadLogError, SavedAsset,
     SetTransactionLogFactoryError, TransformedAsset, ValidateLogError,
 };
+pub use uuid;
 
 /// The asset prelude: the types most code needs in scope.
 ///

@@ -9,19 +9,9 @@ use log::warn;
 
 use crate::{
     debug::MaybeLocation,
-    system::{
-        Command,
-        SystemBuffer,
-        SystemMeta,
-    },
-    world::{
-        DeferredWorld,
-        World,
-    },
-    ptr::{
-        OwningPtr,
-        Unaligned,
-    },
+    ptr::{OwningPtr, Unaligned},
+    system::{Command, SystemBuffer, SystemMeta},
+    world::{DeferredWorld, World},
 };
 
 #[cfg(test)]

@@ -13,15 +13,9 @@ use crate::{
     change_detection::Mut,
     component::Mutable,
     entity::Entity,
-    error::{
-        KairosError,
-        Result,
-    },
+    error::{KairosError, Result},
     resource::Resource,
-    world::{
-        EntityWorldMut,
-        World,
-    },
+    world::{EntityWorldMut, World},
 };
 
 #[cfg(test)]

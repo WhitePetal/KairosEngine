@@ -12,12 +12,7 @@ use std::{
 
 use kairos_collections::FixedHashSet;
 
-use crate::{
-    entity::{
-        Entity,
-        UniqueEntityEquivalentSlice,
-    },
-};
+use crate::entity::{Entity, UniqueEntityEquivalentSlice};
 
 #[cfg(test)]
 mod tests;

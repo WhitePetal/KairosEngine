@@ -184,8 +184,8 @@ fn texture_processor_resizes_to_the_requested_dimensions() {
         height: 2,
         ..Default::default()
     };
-    let (resolved, data) = super::TextureSettings::convert_source(&bytes, &settings)
-        .expect("the source converts");
+    let (resolved, data) =
+        super::TextureSettings::convert_source(&bytes, &settings).expect("the source converts");
     assert_eq!((resolved.width, resolved.height), (2, 2));
     assert_eq!(data.len(), 1);
 }

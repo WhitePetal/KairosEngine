@@ -1,10 +1,7 @@
 use crate::{
-    debug::DebugName,
     component::ComponentId,
-    entity::{
-        Entity,
-        EntityNotSpawnedError,
-    },
+    debug::DebugName,
+    entity::{Entity, EntityNotSpawnedError},
     schedule::InternedScheduleLabel,
 };
 

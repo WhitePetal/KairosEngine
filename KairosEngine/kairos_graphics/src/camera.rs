@@ -1,5 +1,5 @@
-use kairos_math::{self as math, float3, float4, float4x4};
 use kairos_ecs::component::Component;
+use kairos_math::{self as math, float3, float4, float4x4};
 use kairos_transform::LocalTransform;
 
 /// Pure projection parameters; view matrix is derived from a `LocalTransform`.
@@ -96,11 +96,7 @@ impl Camera {
     }
 
     #[inline(always)]
-    pub fn get_view_projection_matrix(
-        &self,
-        transform: LocalTransform,
-        aspect: f32,
-    ) -> float4x4 {
+    pub fn get_view_projection_matrix(&self, transform: LocalTransform, aspect: f32) -> float4x4 {
         self.get_projection_matrix(aspect) * self.get_view_matrix(transform)
     }
 }

@@ -5,11 +5,8 @@ use kairos_collections::{FixedHashMap, FixedHashSet};
 use crate::{
     change_detection::MutUntyped,
     component::ComponentId,
-    world::{
-        error::EntityComponentError,
-        unsafe_world_cell::UnsafeEntityCell,
-    },
     ptr::Ptr,
+    world::{error::EntityComponentError, unsafe_world_cell::UnsafeEntityCell},
 };
 
 /// Types that can be used to fetch components from an entity dynamically by

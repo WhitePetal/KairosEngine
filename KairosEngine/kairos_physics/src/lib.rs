@@ -114,9 +114,7 @@ impl PhysicsEngine {
         material: ColliderMaterial,
         initial: LocalTransform,
     ) -> (RigidBody, Collider) {
-        let rigid_body = RigidBodyBuilder::dynamic()
-            .pose(pose_from(initial))
-            .build();
+        let rigid_body = RigidBodyBuilder::dynamic().pose(pose_from(initial)).build();
         let rigid_body_handle = self.rigid_body_set.insert(rigid_body);
 
         let collider = ColliderBuilder::ball(radius)
@@ -149,13 +147,10 @@ impl PhysicsEngine {
         half_extents: float3,
         initial: LocalTransform,
     ) -> Collider {
-        let collider = ColliderBuilder::cuboid(
-            half_extents.x(),
-            half_extents.y(),
-            half_extents.z(),
-        )
-        .position(pose_from(initial))
-        .build();
+        let collider =
+            ColliderBuilder::cuboid(half_extents.x(), half_extents.y(), half_extents.z())
+                .position(pose_from(initial))
+                .build();
 
         Collider {
             handle: self.collider_set.insert(collider),
@@ -216,7 +211,12 @@ impl PhysicsEngine {
     /// rapier types never leave this crate.
     fn remove_collider(&mut self, handle: ColliderHandle) -> bool {
         self.collider_set
-            .remove(handle, &mut self.island_manager, &mut self.rigid_body_set, false)
+            .remove(
+                handle,
+                &mut self.island_manager,
+                &mut self.rigid_body_set,
+                false,
+            )
             .is_some()
     }
 }
@@ -231,7 +231,11 @@ impl PhysicsEngine {
 /// `remove_attached_colliders = false`, so it is reported with a `warn!` rather
 /// than a panic.
 fn on_discard_rigid_body(mut world: DeferredWorld, HookContext { entity, .. }: HookContext) {
-    let Some(handle) = world.entity(entity).get::<RigidBody>().map(|body| body.handle) else {
+    let Some(handle) = world
+        .entity(entity)
+        .get::<RigidBody>()
+        .map(|body| body.handle)
+    else {
         return;
     };
     let mut physics = world.resource_mut::<PhysicsEngine>();
@@ -247,7 +251,10 @@ fn on_discard_rigid_body(mut world: DeferredWorld, HookContext { entity, .. }: H
 /// hook deletes exactly the object its own component holds. A handle that no
 /// longer resolves is reported with a `warn!`, never a panic.
 fn on_discard_collider(mut world: DeferredWorld, HookContext { entity, .. }: HookContext) {
-    let Some(handle) = world.entity(entity).get::<Collider>().map(|collider| collider.handle)
+    let Some(handle) = world
+        .entity(entity)
+        .get::<Collider>()
+        .map(|collider| collider.handle)
     else {
         return;
     };

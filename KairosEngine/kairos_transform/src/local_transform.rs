@@ -26,8 +26,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// Coordinate system: right-handed, Y-up, -Z forward (the engine's spatial
 /// convention). The default transform is the identity transform.
-#[derive(Component, Debug, Clone, Copy, PartialEq)]
-#[derive(Serialize, Deserialize)]
+#[derive(Component, Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct LocalTransform {
     /// Translation relative to the parent (world space at the root).
     pub translation: float3,
@@ -45,31 +44,6 @@ impl LocalTransform {
             translation,
             rotation,
             scale,
-        }
-    }
-
-    /// Returns a root-level transform placed at `eye` and oriented to look
-    /// toward `target`.
-    ///
-    /// `eye` and `target` are **world-space** coordinates, so this builds a
-    /// world-space (parent-less) transform — use it for root-level entities
-    /// only; with a parent, the world orientation would need converting into
-    /// parent space first.
-    ///
-    /// The rotation is built so the entity's local -Z axis (its forward, see
-    /// the coordinate-system notes on [`LocalTransform`]) points from `eye`
-    /// toward `target`; `up` selects the remaining roll degree of freedom.
-    /// [`scale`](Self::scale) is reset to [`float3::ONE`]: looking at
-    /// something is a rotation plus placement.
-    ///
-    /// Mirrors the legacy engine `Transform::look_at`, which this replaces.
-    pub fn look_at(eye: float3, target: float3, up: float3) -> Self {
-        let forward = normalize(target - eye);
-        let rotation = quaternion::from_look(forward, up);
-        Self {
-            translation: eye,
-            rotation,
-            scale: float3::ONE,
         }
     }
 
@@ -200,6 +174,108 @@ impl LocalTransform {
         );
         self.rotate_local(quaternion::from_axis_angle(axis.into(), angle));
     }
+
+    /// Rotates this [`LocalTransform`] around its local `X` axis by `angle` (in radians).
+    #[inline]
+    pub fn rotate_local_x(&mut self, angle: f32) {
+        self.rotate_local(quaternion::from_rotation_x(angle));
+    }
+
+    /// Rotates this [`LocalTransform`] around its local `Y` axis by `angle` (in radians).
+    #[inline]
+    pub fn rotate_local_y(&mut self, angle: f32) {
+        self.rotate_local(quaternion::from_rotation_y(angle));
+    }
+
+    /// Rotates this [`LocalTransform`] around its local `Z` axis by `angle` (in radians).
+    #[inline]
+    pub fn rotate_local_z(&mut self, angle: f32) {
+        self.rotate_local(quaternion::from_rotation_z(angle));
+    }
+
+    /// Translates this [`LocalTransform`] around a `point` in space.
+    ///
+    /// If this [`LocalTransform`] has a parent, the `point` is relative to the [`LocalTransform`] of the parent.
+    #[inline]
+    pub fn translate_around(&mut self, point: float3, rotation: quaternion) {
+        self.translation = point + rotation * (self.translation - point);
+    }
+
+    /// Rotates this [`LocalTransform`] around a `point` in space.
+    ///
+    /// If this [`LocalTransform`] has a parent, the `point` is relative to the [`LocalTransform`] of the parent.
+    #[inline]
+    pub fn rotate_around(&mut self, point: float3, rotation: quaternion) {
+        self.translate_around(point, rotation);
+        self.rotate(rotation);
+    }
+
+    /// Returns a root-level transform placed at `eye` and oriented to look
+    /// toward `target`.
+    ///
+    /// `eye` and `target` are **world-space** coordinates, so this builds a
+    /// world-space (parent-less) transform — use it for root-level entities
+    /// only; with a parent, the world orientation would need converting into
+    /// parent space first.
+    ///
+    /// The rotation is built so the entity's local -Z axis (its forward, see
+    /// the coordinate-system notes on [`LocalTransform`]) points from `eye`
+    /// toward `target`; `up` selects the remaining roll degree of freedom.
+    /// [`scale`](Self::scale) is reset to [`float3::ONE`]: looking at
+    /// something is a rotation plus placement.
+    ///
+    /// Mirrors the legacy engine `Transform::look_at`, which this replaces.
+    pub fn look_at(&mut self, target: float3, up: float3) {
+        let forward = normalize(target - self.translation);
+        let rotation = quaternion::from_look(forward, up);
+        self.rotation = rotation;
+    }
+
+    /// Rotates this [`LocalTransform`] so that [`LocalTransform::forward`] points in the given `direction`
+    /// and [`LocalTransform::up`] points towards `up`.
+    ///
+    /// In some cases it's not possible to construct a rotation. Another axis will be picked in those cases:
+    /// * if `direction` is parallel with `up`, an orthogonal vector is used as the "right" direction
+    #[inline]
+    pub fn look_to(&mut self, direction: float3, up: float3) {
+        let eye = self.translation;
+        let target = eye + direction;
+        self.look_at(target, up);
+    }
+
+    /// Multiplies `self` with `transform` component by component, returning the
+    /// resulting [`LocalTransform`]
+    #[inline]
+    #[must_use]
+    pub fn mul_transform(&self, transform: LocalTransform) -> Self {
+        let translation = self.transform_point(transform.translation);
+        let rotation = self.rotation * transform.rotation;
+        let scale = self.scale * transform.scale;
+        LocalTransform {
+            translation,
+            rotation,
+            scale,
+        }
+    }
+
+    /// Transforms the given `point`, applying scale, rotation and translation.
+    ///
+    /// If this [`LocalTransform`] has an ancestor entity with a [`LocalTransform`] component,
+    /// [`LocalTransform::transform_point`] will transform a point in local space into its
+    /// parent transform's space.
+    ///
+    /// If this [`LocalTransform`] does not have a parent, [`LocalTransform::transform_point`] will
+    /// transform a point in local space into worldspace coordinates.
+    ///
+    /// If you always want to transform a point in local space to worldspace, or if you need
+    /// the inverse transformations, see [`GlobalTransform::transform_point()`].
+    #[inline]
+    pub fn transform_point(&self, mut point: float3) -> float3 {
+        point = self.scale * point;
+        point = self.rotation * point;
+        point += self.translation;
+        point
+    }
 }
 
 impl Default for LocalTransform {
@@ -221,7 +297,7 @@ fn assert_is_normalized(message: &str, length_squared: f32) {
 
     let length_error_squared = abs(length_squared - 1.0);
 
-    if length_error_squared > 2e-2 || length_error_squared.is_nan()  {
+    if length_error_squared > 2e-2 || length_error_squared.is_nan() {
         panic!("Error: {message}",);
     } else if length_error_squared > 2e-4 {
         // Length error is approximately 1e-4 or more.

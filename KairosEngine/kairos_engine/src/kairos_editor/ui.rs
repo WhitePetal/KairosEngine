@@ -19,9 +19,14 @@ use crate::{
             game_window::GameWindow,
             global_styles::{FontDataConfig, FontsConfig, GlobalStyles},
             inspector::{
-                audio::AudioInspector, code::CodeInspector, document::DocumentInspector,
-                material::MaterialInspector, mesh::MeshInspector, shader::ShaderInspector,
-                texture::{TextureEdit, TextureInspector}, toml::TomlTableInspector,
+                audio::AudioInspector,
+                code::CodeInspector,
+                document::DocumentInspector,
+                material::MaterialInspector,
+                mesh::MeshInspector,
+                shader::ShaderInspector,
+                texture::{TextureEdit, TextureInspector},
+                toml::TomlTableInspector,
             },
             layout::{
                 EditorLayout, LayoutBottomContainer, LayoutContainerIds, LayoutLeftContainer,
@@ -251,9 +256,7 @@ impl TabDrawer for KairosTabDrawer {
 }
 
 pub trait Drawer: Any {
-    fn create(
-        world: &kairos_ecs::world::World,
-    ) -> Result<Self, Box<dyn std::error::Error>>
+    fn create(world: &kairos_ecs::world::World) -> Result<Self, Box<dyn std::error::Error>>
     where
         Self: Sized;
 
@@ -268,11 +271,7 @@ pub trait Drawer: Any {
         log: &mut Log,
     );
 
-    fn render(
-        &self,
-        engine: &mut Engine,
-        messager: &mut Messager,
-    ) -> Option<GraphicsCommand>;
+    fn render(&self, engine: &mut Engine, messager: &mut Messager) -> Option<GraphicsCommand>;
 
     fn close(&self, messager: &mut Messager);
 
@@ -547,8 +546,7 @@ impl Context {
                 Message::SelectProjectNode(node) => {
                     if let Some(project_window) = self.get_window_mut::<ProjectWindow>() {
                         project_window.select_node(node);
-                        let info = project_window
-                            .get_selected_node_info(&engine.world);
+                        let info = project_window.get_selected_node_info(&engine.world);
                         if let Some(inspector) = self.get_window_mut::<InspectorWindow>() {
                             let dialog = inspector.set_selected(ui.ctx(), info);
                             if let Some(dialog) = dialog {
@@ -639,7 +637,8 @@ impl Context {
                     engine.world.resource_mut::<SceneView>().size = ViewportSize::new(0, 0);
                 }
                 Message::UpdateSceneWindowSize(width, height) => {
-                    engine.world.resource_mut::<SceneView>().size = ViewportSize::new(width, height);
+                    engine.world.resource_mut::<SceneView>().size =
+                        ViewportSize::new(width, height);
                 }
                 Message::RegisteSceneWindowViewBind(recever) => {
                     if let Some(scene_window) = self.get_window_mut::<SceneWindow>() {

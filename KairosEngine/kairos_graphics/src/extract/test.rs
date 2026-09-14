@@ -75,7 +75,9 @@ fn test_transform() -> LocalTransform {
 
 /// A camera transform at the given eye, looking at the origin.
 fn camera_transform(eye: float3) -> LocalTransform {
-    LocalTransform::look_at(eye, float3::ZERO, float3::UP)
+    let mut transform = LocalTransform::new(eye, quaternion::IDENTITY, float3::ONE);
+    transform.look_at(float3::ZERO, float3::UP);
+    transform
 }
 
 /// Spawns a mesh instance: the exact tuple the demo scene and the extract
@@ -315,7 +317,11 @@ fn a_projection_is_reset_when_its_view_unbinds_the_camera() {
         "a view that no longer renders this camera must not leave its projection behind"
     );
     assert_eq!(
-        world.entity(camera).get::<CameraView>().expect("CameraView").aspect,
+        world
+            .entity(camera)
+            .get::<CameraView>()
+            .expect("CameraView")
+            .aspect,
         1.0,
         "the camera's derived state is back to `CameraView::default`"
     );
@@ -332,7 +338,11 @@ fn a_view_without_a_camera_does_not_panic() {
 
     run_frame(&mut world);
     for draws in draws_of_every_view(&world) {
-        assert_eq!(draws.len(), 1, "draws are gated on view size, not on a camera");
+        assert_eq!(
+            draws.len(),
+            1,
+            "draws are gated on view size, not on a camera"
+        );
     }
 
     // A binding that outlives its entity must not panic either.
@@ -367,8 +377,14 @@ fn each_view_derives_its_own_projection() {
     let scene = projection_of(&world, scene_camera).expect("scene view derives a projection");
     let game = projection_of(&world, game_camera).expect("game view derives a projection");
 
-    assert_eq!(scene, expected_projection(&world, scene_camera, 1280.0 / 720.0));
-    assert_eq!(game, expected_projection(&world, game_camera, 720.0 / 1280.0));
+    assert_eq!(
+        scene,
+        expected_projection(&world, scene_camera, 1280.0 / 720.0)
+    );
+    assert_eq!(
+        game,
+        expected_projection(&world, game_camera, 720.0 / 1280.0)
+    );
     assert_ne!(
         scene, game,
         "two cameras with different poses and aspects must not share a projection"

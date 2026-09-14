@@ -373,7 +373,14 @@ fn missing_substage_warns_and_continues() {
     assert_eq!(fixed.delta(), Duration::ZERO);
     assert_eq!(fixed.elapsed(), Duration::ZERO);
 
-    let remaining: [&str; 6] = ["First", "PreUpdate", "Update", "PostUpdate", "Extract", "Last"];
+    let remaining: [&str; 6] = [
+        "First",
+        "PreUpdate",
+        "Update",
+        "PostUpdate",
+        "Extract",
+        "Last",
+    ];
     let trace = &world.get_resource::<Trace>().expect("Trace resource").0;
     assert_eq!(trace.len(), FRAMES * remaining.len());
     for (frame, chunk) in trace.chunks_exact(remaining.len()).enumerate() {
@@ -448,7 +455,10 @@ fn only_first_advances_the_clock() {
         world.run_schedule(label);
     }
     assert_eq!(
-        world.get_resource::<Time>().expect("Time resource").total_frame(),
+        world
+            .get_resource::<Time>()
+            .expect("Time resource")
+            .total_frame(),
         0,
         "stages other than First must not advance the clock"
     );
@@ -456,7 +466,10 @@ fn only_first_advances_the_clock() {
     // Running `First` alone is one frame's worth of advancement.
     world.run_schedule(First);
     assert_eq!(
-        world.get_resource::<Time>().expect("Time resource").total_frame(),
+        world
+            .get_resource::<Time>()
+            .expect("Time resource")
+            .total_frame(),
         1,
         "First must advance the clock exactly once per run"
     );

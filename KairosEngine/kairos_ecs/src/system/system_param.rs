@@ -11,54 +11,24 @@ use thiserror::Error;
 use variadics_please::{all_tuples, all_tuples_enumerated};
 
 use crate::{
-    cell::SyncCell,
-    debug::DebugName,
     archetype::Archetypes,
     bundle::Bundles,
-    change_detection::{
-        ComponentTicksMut,
-        ComponentTicksRef,
-        Tick,
-    },
-    component::{
-        ComponentId,
-        Components,
-        Mutable,
-    },
-    entity::{
-        Entities,
-        EntityAllocator,
-    },
+    cell::SyncCell,
+    change_detection::{ComponentTicksMut, ComponentTicksRef, Tick},
+    component::{ComponentId, Components, Mutable},
+    debug::DebugName,
+    entity::{Entities, EntityAllocator},
+    ptr::UnsafeCellDeref,
     query::{
-        Access,
-        FilteredAccess,
-        FilteredAccessSet,
-        IterQueryData,
-        QueryData,
-        QueryFilter,
-        QuerySingleError,
-        QueryState,
-        ReadOnlyQueryData,
+        Access, FilteredAccess, FilteredAccessSet, IterQueryData, QueryData, QueryFilter,
+        QuerySingleError, QueryState, ReadOnlyQueryData,
     },
-    resource::{
-        IS_RESOURCE,
-        Resource,
-    },
-    system::{
-        Populated,
-        Query,
-        Single,
-        SystemMeta,
-    },
+    resource::{IS_RESOURCE, Resource},
+    system::{Populated, Query, Single, SystemMeta},
     world::{
-        DeferredWorld,
-        FilteredResources,
-        FilteredResourcesMut,
-        FromWorld,
-        World,
+        DeferredWorld, FilteredResources, FilteredResourcesMut, FromWorld, World,
         unsafe_world_cell::UnsafeWorldCell,
     },
-    ptr::UnsafeCellDeref,
 };
 
 pub use kairos_ecs_macros::SystemParam;

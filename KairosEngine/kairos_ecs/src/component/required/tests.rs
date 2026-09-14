@@ -1,10 +1,6 @@
 use kairos_ecs_macros::{Bundle, Component, Resource};
 
-use crate::{
-    component::RequiredComponentsError,
-    world::World,
-    ptr::OwningPtr,
-};
+use crate::{component::RequiredComponentsError, ptr::OwningPtr, world::World};
 
 #[test]
 fn required_components() {
@@ -579,8 +575,8 @@ fn runtime_required_components_deep_require_does_not_override_shallow_require() 
 }
 
 #[test]
-fn runtime_required_components_deep_require_does_not_override_shallow_require_deep_subtree_after_shallow(
-) {
+fn runtime_required_components_deep_require_does_not_override_shallow_require_deep_subtree_after_shallow()
+ {
     #[derive(Component)]
     struct A;
     #[derive(Component, Default)]
@@ -866,20 +862,24 @@ fn runtime_required_components_propagate_metadata_alternate() {
     world.register_required_components::<L1, L2>();
     world.register_required_components::<L3, L4>();
     let e = world.spawn(L0).id();
-    assert!(world
-        .query::<(&L0, &L1, &L2, &L3, &L4, &L5)>()
-        .get(&world, e)
-        .is_ok());
+    assert!(
+        world
+            .query::<(&L0, &L1, &L2, &L3, &L4, &L5)>()
+            .get(&world, e)
+            .is_ok()
+    );
 
     // Repeat but in the opposite order
     let mut world = World::new();
     world.register_required_components::<L3, L4>();
     world.register_required_components::<L1, L2>();
     let e = world.spawn(L0).id();
-    assert!(world
-        .query::<(&L0, &L1, &L2, &L3, &L4, &L5)>()
-        .get(&world, e)
-        .is_ok());
+    assert!(
+        world
+            .query::<(&L0, &L1, &L2, &L3, &L4, &L5)>()
+            .get(&world, e)
+            .is_ok()
+    );
 }
 
 #[test]
@@ -906,20 +906,24 @@ fn runtime_required_components_propagate_metadata_chain() {
     world.register_required_components::<L1, L2>();
     world.register_required_components::<L2, L3>();
     let e = world.spawn(L0).id();
-    assert!(world
-        .query::<(&L0, &L1, &L2, &L3, &L4)>()
-        .get(&world, e)
-        .is_ok());
+    assert!(
+        world
+            .query::<(&L0, &L1, &L2, &L3, &L4)>()
+            .get(&world, e)
+            .is_ok()
+    );
 
     // Repeat but in the opposite order
     let mut world = World::new();
     world.register_required_components::<L2, L3>();
     world.register_required_components::<L1, L2>();
     let e = world.spawn(L0).id();
-    assert!(world
-        .query::<(&L0, &L1, &L2, &L3, &L4)>()
-        .get(&world, e)
-        .is_ok());
+    assert!(
+        world
+            .query::<(&L0, &L1, &L2, &L3, &L4)>()
+            .get(&world, e)
+            .is_ok()
+    );
 }
 
 #[test]

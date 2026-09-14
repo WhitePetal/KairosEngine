@@ -205,17 +205,15 @@ fn changed() {
     world
         .get_resource_or_init::<Schedules>()
         .entry(Boot)
-        .add_systems(
-            |mut cmds: Commands, mut assets: ResMut<Assets<MyAsset>>| {
-                let asset0 = assets.add(MyAsset(0, "init"));
-                let asset1 = assets.add(MyAsset(1, "init"));
-                cmds.spawn(MyComponent(asset0.clone()));
-                cmds.spawn(MyComponent(asset0));
-                cmds.spawn(MyComponent(asset1.clone()));
-                cmds.spawn(MyComponent(asset1.clone()));
-                cmds.spawn(MyComponent(asset1));
-            },
-        );
+        .add_systems(|mut cmds: Commands, mut assets: ResMut<Assets<MyAsset>>| {
+            let asset0 = assets.add(MyAsset(0, "init"));
+            let asset1 = assets.add(MyAsset(1, "init"));
+            cmds.spawn(MyComponent(asset0.clone()));
+            cmds.spawn(MyComponent(asset0));
+            cmds.spawn(MyComponent(asset1.clone()));
+            cmds.spawn(MyComponent(asset1.clone()));
+            cmds.spawn(MyComponent(asset1));
+        });
     world
         .get_resource_or_init::<Schedules>()
         .entry(Update)

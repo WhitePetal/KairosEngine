@@ -7,69 +7,25 @@ use std::{
 use thiserror::Error;
 
 use crate::{
-    debug::{
-        DebugCheckedUnwrap,
-        MaybeLocation,
-    },
-    archetype::{
-        Archetype,
-        Archetypes,
-    },
+    archetype::{Archetype, Archetypes},
     bundle::Bundles,
     change_detection::{
-        ComponentTickCells,
-        ComponentTicks,
-        ComponentTicksMut,
-        ComponentTicksRef,
-        Mut,
-        MutUntyped,
-        Ref,
-        Tick,
+        ComponentTickCells, ComponentTicks, ComponentTicksMut, ComponentTicksRef, Mut, MutUntyped,
+        Ref, Tick,
     },
-    component::{
-        Component,
-        ComponentId,
-        Components,
-        Mutable,
-        StorageType,
-    },
+    component::{Component, ComponentId, Components, Mutable, StorageType},
+    debug::{DebugCheckedUnwrap, MaybeLocation},
     entity::{
-        ContainsEntity,
-        Entities,
-        Entity,
-        EntityAllocator,
-        EntityLocation,
-        EntityNotSpawnedError,
+        ContainsEntity, Entities, Entity, EntityAllocator, EntityLocation, EntityNotSpawnedError,
     },
-    error::{
-        ErrorHandler,
-        FallbackErrorHandler,
-    },
+    error::{ErrorHandler, FallbackErrorHandler},
     lifecycle::RemovedComponentMessages,
     observer::Observers,
-    query::{
-        QueryAccessError,
-        ReleaseStateQueryData,
-        SingleEntityQueryData,
-    },
-    resource::{
-        Resource,
-        ResourceEntities,
-    },
-    storage::{
-        ComponentSparseSet,
-        Storages,
-        Table,
-    },
-    world::{
-        World,
-        WorldId,
-        command_queue::RawCommandQueue,
-    },
-    ptr::{
-        Ptr,
-        UnsafeCellDeref,
-    },
+    ptr::{Ptr, UnsafeCellDeref},
+    query::{QueryAccessError, ReleaseStateQueryData, SingleEntityQueryData},
+    resource::{Resource, ResourceEntities},
+    storage::{ComponentSparseSet, Storages, Table},
+    world::{World, WorldId, command_queue::RawCommandQueue},
 };
 
 #[cfg(test)]

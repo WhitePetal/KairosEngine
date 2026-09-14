@@ -90,20 +90,10 @@ use nonmax::NonMaxU32;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    archetype::{ArchetypeId, ArchetypeRow},
+    change_detection::{CheckChangeTicks, Tick},
     debug::MaybeLocation,
-    archetype::{
-        ArchetypeId,
-        ArchetypeRow,
-    },
-    change_detection::{
-        CheckChangeTicks,
-        Tick,
-    },
-    storage::{
-        SparseSetIndex,
-        TableId,
-        TableRow,
-    },
+    storage::{SparseSetIndex, TableId, TableRow},
 };
 
 mod clone_entities;

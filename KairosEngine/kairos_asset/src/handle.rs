@@ -359,7 +359,9 @@ impl<A: Asset> Template for HandleTemplate<A> {
                         // This unwrap is ok because the private `AssetOrHandle`
                         // only holds `None` briefly, between `take` and the line
                         // below that replaces it with the cached handle.
-                        let handle = context.resource_mut::<Assets<A>>().add(value.take().unwrap());
+                        let handle = context
+                            .resource_mut::<Assets<A>>()
+                            .add(value.take().unwrap());
                         *value_or_handle = AssetOrHandle::Handle(handle.clone());
                         Ok(handle)
                     }
@@ -479,9 +481,7 @@ impl<A: Asset> From<Uuid> for Handle<A> {
 /// ```
 #[macro_export]
 macro_rules! uuid_handle {
-    ($uuid:expr) => {{
-        $crate::Handle::Uuid($crate::uuid::uuid!($uuid), core::marker::PhantomData)
-    }};
+    ($uuid:expr) => {{ $crate::Handle::Uuid($crate::uuid::uuid!($uuid), core::marker::PhantomData) }};
 }
 
 /// A [`Handle`] with its asset type erased into runtime [`TypeId`]

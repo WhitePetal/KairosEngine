@@ -1,10 +1,7 @@
 use crate::{
-    debug::DebugName,
     archetype::ArchetypeId,
-    entity::{
-        Entity,
-        EntityNotSpawnedError,
-    },
+    debug::DebugName,
+    entity::{Entity, EntityNotSpawnedError},
 };
 
 #[cfg(test)]

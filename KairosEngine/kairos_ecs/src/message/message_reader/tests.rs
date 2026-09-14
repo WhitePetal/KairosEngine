@@ -5,7 +5,11 @@ use std::sync::{
 
 use kairos_ecs_macros::Message;
 
-use crate::{message::{MessageRegistry, PopulatedMessageReader}, schedule::Schedule, world::World};
+use crate::{
+    message::{MessageRegistry, PopulatedMessageReader},
+    schedule::Schedule,
+    world::World,
+};
 
 #[test]
 fn test_populated_message_reader() {

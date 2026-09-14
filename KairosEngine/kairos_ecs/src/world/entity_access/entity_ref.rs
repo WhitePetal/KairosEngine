@@ -1,34 +1,16 @@
 use std::{any::TypeId, hash::Hash};
 
 use crate::{
-    debug::MaybeLocation,
     archetype::Archetype,
-    change_detection::{
-        ComponentTicks,
-        Ref,
-        Tick,
-    },
-    component::{
-        Component,
-        ComponentId,
-    },
-    entity::{
-        ContainsEntity,
-        Entity,
-        EntityEquivalent,
-        EntityLocation,
-    },
+    change_detection::{ComponentTicks, Ref, Tick},
+    component::{Component, ComponentId},
+    debug::MaybeLocation,
+    entity::{ContainsEntity, Entity, EntityEquivalent, EntityLocation},
     query::{
-        Access,
-        QueryAccessError,
-        ReadOnlyQueryData,
-        ReleaseStateQueryData,
-        SingleEntityQueryData,
+        Access, QueryAccessError, ReadOnlyQueryData, ReleaseStateQueryData, SingleEntityQueryData,
     },
     world::{
-        FilteredEntityRef,
-        entity_access::DynamicComponentFetch,
-        error::EntityComponentError,
+        FilteredEntityRef, entity_access::DynamicComponentFetch, error::EntityComponentError,
         unsafe_world_cell::UnsafeEntityCell,
     },
 };

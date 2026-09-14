@@ -29,10 +29,7 @@ fn spawning_a_camera_requires_a_camera_view() {
     let mut world = World::new();
 
     let entity = world
-        .spawn((
-            LocalTransform::default(),
-            Camera::new(45.0, 0.3, 100.0),
-        ))
+        .spawn((LocalTransform::default(), Camera::new(45.0, 0.3, 100.0)))
         .id();
 
     let view = world

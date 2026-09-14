@@ -27,27 +27,13 @@ use nonmax::NonMaxU32;
 use kairos_collections::FixedHashMap;
 
 use crate::{
-    debug::DebugCheckedUnwrap,
     bundle::BundleId,
-    component::{
-        ComponentId,
-        Components,
-        RequiredComponentConstructor,
-        StorageType,
-    },
-    entity::{
-        Entity,
-        EntityLocation,
-    },
+    component::{ComponentId, Components, RequiredComponentConstructor, StorageType},
+    debug::DebugCheckedUnwrap,
+    entity::{Entity, EntityLocation},
     event::Event,
     observer::Observers,
-    storage::{
-        ImmutableSparseSet,
-        SparseArray,
-        SparseSet,
-        TableId,
-        TableRow,
-    },
+    storage::{ImmutableSparseSet, SparseArray, SparseSet, TableId, TableRow},
 };
 
 #[derive(Event)]

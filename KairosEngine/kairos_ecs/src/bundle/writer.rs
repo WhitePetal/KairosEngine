@@ -3,15 +3,10 @@ use std::{alloc::Layout, ptr::NonNull};
 use bumpalo::Bump;
 
 use crate::{
-    component::{
-        Component,
-        ComponentId,
-        Components,
-        ComponentsRegistrator,
-    },
+    component::{Component, ComponentId, Components, ComponentsRegistrator},
+    ptr::OwningPtr,
     relationship::RelationshipHookMode,
     world::EntityWorldMut,
-    ptr::OwningPtr,
 };
 
 #[cfg(test)]

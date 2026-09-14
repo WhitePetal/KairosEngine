@@ -5,12 +5,7 @@ use std::{
 
 use crate::{
     debug::MaybeLocation,
-    message::{
-        Message,
-        MessageCursor,
-        MessageId,
-        MessageInstance,
-    },
+    message::{Message, MessageCursor, MessageId, MessageInstance},
     resource::Resource,
 };
 

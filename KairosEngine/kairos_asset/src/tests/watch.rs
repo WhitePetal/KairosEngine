@@ -19,11 +19,11 @@ use kairos_tasks::ConditionalSendFuture;
 
 use crate::io::{
     AssetReader, AssetReaderError, AssetReaderFuture, AssetSourceBuilder, AssetSourceBuilders,
-    AssetSourceEvent, AssetSourceId, AssetWatcher, ErasedAssetReader, PathStream, Reader, VecReader,
-    empty_path_stream,
+    AssetSourceEvent, AssetSourceId, AssetWatcher, ErasedAssetReader, PathStream, Reader,
+    VecReader, empty_path_stream,
 };
 use crate::{
-    Asset, AssetEvent, AssetLoader, AssetOptions, AssetPath, AssetServer, Assets, AssetWorldExt,
+    Asset, AssetEvent, AssetLoader, AssetOptions, AssetPath, AssetServer, AssetWorldExt, Assets,
     LoadContext, LoadedFolder, ReadAssetBytesError, UntypedAssetId, VisitAssetDependencies,
     install,
 };
@@ -206,17 +206,19 @@ impl AssetReader for MemoryReader {
 /// channel, so it can post source changes by hand.
 fn injected_builder(
     files: &[(&str, &[u8])],
-) -> (AssetSourceBuilder, Arc<Mutex<Option<async_channel::Sender<AssetSourceEvent>>>>) {
+) -> (
+    AssetSourceBuilder,
+    Arc<Mutex<Option<async_channel::Sender<AssetSourceEvent>>>>,
+) {
     let reader = MemoryReader::new(files);
     let captured = Arc::new(Mutex::new(None));
     let captured_by_watcher = captured.clone();
-    let builder = AssetSourceBuilder::new(move || {
-        Box::new(reader.clone()) as Box<dyn ErasedAssetReader>
-    })
-    .with_watcher(move |sender| {
-        *captured_by_watcher.lock().unwrap() = Some(sender);
-        Some(Box::new(InjectedWatcher) as Box<dyn AssetWatcher>)
-    });
+    let builder =
+        AssetSourceBuilder::new(move || Box::new(reader.clone()) as Box<dyn ErasedAssetReader>)
+            .with_watcher(move |sender| {
+                *captured_by_watcher.lock().unwrap() = Some(sender);
+                Some(Box::new(InjectedWatcher) as Box<dyn AssetWatcher>)
+            });
     (builder, captured)
 }
 
@@ -266,7 +268,8 @@ fn settle(world: &mut World, server: &AssetServer, id: UntypedAssetId) {
 
 /// A unique temporary directory for one test, recreated empty.
 fn temp_dir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("kairos_asset_watch_{name}_{}", std::process::id()));
+    let dir =
+        std::env::temp_dir().join(format!("kairos_asset_watch_{name}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
@@ -278,9 +281,7 @@ fn file_builder(dir: &Path) -> AssetSourceBuilder {
 }
 
 /// Builds an injected world and returns it with the channel to post events on.
-fn injected_world(
-    files: &[(&str, &[u8])],
-) -> (World, async_channel::Sender<AssetSourceEvent>) {
+fn injected_world(files: &[(&str, &[u8])]) -> (World, async_channel::Sender<AssetSourceEvent>) {
     let (builder, captured) = injected_builder(files);
     let world = watched_world(builder, true);
     let sender = captured
@@ -490,7 +491,9 @@ fn labeled_subasset_reloads_when_only_its_handle_lives() {
     let _ = drain_events(&mut world);
 
     sender
-        .send_blocking(AssetSourceEvent::ModifiedAsset(PathBuf::from("base.labeled")))
+        .send_blocking(AssetSourceEvent::ModifiedAsset(PathBuf::from(
+            "base.labeled",
+        )))
         .unwrap();
 
     // The base path itself has no live handle; the reload is triggered by the

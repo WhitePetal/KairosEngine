@@ -193,11 +193,9 @@ impl Harness {
     /// The handle resolves to a loaded [`AudioAsset`] in the world's store.
     fn with_loaded_asset(auto_play: bool) -> Self {
         let mut world = audio_world();
-        let handle = world
-            .resource_mut::<Assets<AudioAsset>>()
-            .add(AudioAsset {
-                sound_data: test_sound_data(),
-            });
+        let handle = world.resource_mut::<Assets<AudioAsset>>().add(AudioAsset {
+            sound_data: test_sound_data(),
+        });
         Self::spawn(auto_play, world, handle)
     }
 

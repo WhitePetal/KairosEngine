@@ -1,29 +1,11 @@
 use std::{cell::UnsafeCell, panic::Location, thread::ThreadId};
 
 use crate::{
-    debug::{
-        DebugName,
-        MaybeLocation,
-    },
-    change_detection::{
-        CheckChangeTicks,
-        ComponentTickCells,
-        ComponentTicks,
-        Tick,
-    },
-    component::{
-        ComponentId,
-        Components,
-    },
-    storage::{
-        SparseSet,
-        blob_array::BlobArray,
-    },
-    ptr::{
-        OwningPtr,
-        Ptr,
-        UnsafeCellDeref,
-    },
+    change_detection::{CheckChangeTicks, ComponentTickCells, ComponentTicks, Tick},
+    component::{ComponentId, Components},
+    debug::{DebugName, MaybeLocation},
+    ptr::{OwningPtr, Ptr, UnsafeCellDeref},
+    storage::{SparseSet, blob_array::BlobArray},
 };
 
 /// The type-erased backing storage and metadata for a single resource within a [`World`].

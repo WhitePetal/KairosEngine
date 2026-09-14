@@ -9,47 +9,19 @@ use std::{
 use nonmax::NonMaxU32;
 
 use crate::{
-    debug::DebugCheckedUnwrap,
-    archetype::{
-        Archetype,
-        ArchetypeEntity,
-        Archetypes,
-    },
+    archetype::{Archetype, ArchetypeEntity, Archetypes},
     bundle::Bundle,
     change_detection::Tick,
-    entity::{
-        ContainsEntity,
-        Entities,
-        Entity,
-        EntityEquivalent,
-        EntitySet,
-        EntitySetIterator,
-    },
+    debug::DebugCheckedUnwrap,
+    entity::{ContainsEntity, Entities, Entity, EntityEquivalent, EntitySet, EntitySetIterator},
     query::{
-        ArchetypeFilter,
-        ArchetypeQueryData,
-        ContiguousQueryData,
-        IterQueryData,
-        QueryData,
-        QueryFilter,
-        QueryState,
-        ReadOnlyQueryData,
-        SingleEntityQueryData,
-        StorageId,
+        ArchetypeFilter, ArchetypeQueryData, ContiguousQueryData, IterQueryData, QueryData,
+        QueryFilter, QueryState, ReadOnlyQueryData, SingleEntityQueryData, StorageId,
     },
-    storage::{
-        Table,
-        TableRow,
-        Tables,
-    },
+    storage::{Table, TableRow, Tables},
     world::{
-        EntityMut,
-        EntityMutExcept,
-        EntityRef,
-        EntityRefExcept,
-        FilteredEntityMut,
-        FilteredEntityRef,
-        unsafe_world_cell::UnsafeWorldCell,
+        EntityMut, EntityMutExcept, EntityRef, EntityRefExcept, FilteredEntityMut,
+        FilteredEntityRef, unsafe_world_cell::UnsafeWorldCell,
     },
 };
 

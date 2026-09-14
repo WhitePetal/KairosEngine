@@ -1,11 +1,11 @@
 use std::{cell::Cell, fs, ops::DerefMut, path::PathBuf, sync::Arc};
 
+use crate::asset::{AssetServer, Assets, Handle};
 use egui::{
     Vec2,
     menu::{MenuConfig, SubMenuButton},
 };
 use egui_extras::{Column, TableBuilder};
-use crate::asset::{AssetServer, Assets, Handle};
 use parking_lot::Mutex;
 use serde::Deserialize;
 use strum::IntoEnumIterator;
@@ -533,9 +533,7 @@ impl MaterialInspector {
                     .resource::<Assets<Material>>()
                     .get(self.model.material_handle.id())
                     && let Some(tex_handle) = &mat.texture
-                    && let Some(texture) = world
-                        .resource::<Assets<Texture>>()
-                        .get(tex_handle.id())
+                    && let Some(texture) = world.resource::<Assets<Texture>>().get(tex_handle.id())
                 {
                     *thumb_guard = Some(Thumbnail::new(ui, texture_path, texture));
                 }
@@ -1033,9 +1031,7 @@ impl Inspector for MaterialInspector {
             .map(|path| {
                 (
                     path.clone(),
-                    world
-                        .resource::<AssetServer>()
-                        .load::<Mesh>(path.clone()),
+                    world.resource::<AssetServer>().load::<Mesh>(path.clone()),
                 )
             })
             .collect();
@@ -1232,10 +1228,9 @@ impl Inspector for MaterialInspector {
         };
 
         let (width, height) = preview.size;
-        let vp = preview.camera.get_view_projection_matrix(
-            preview.orbit.transform(),
-            width as f32 / height as f32,
-        );
+        let vp = preview
+            .camera
+            .get_view_projection_matrix(preview.orbit.transform(), width as f32 / height as f32);
 
         let mut command = GraphicsCommand::new(1, 1, 1, 3);
 
@@ -1347,11 +1342,7 @@ impl MaterialInspector {
     }
 
     /// 拖入 / 设置纹理：加载 texture → 更新运行时 Material → 标记 dirty
-    pub fn drop_texture(
-        &mut self,
-        world: &mut kairos_ecs::world::World,
-        texture_path: PathBuf,
-    ) {
+    pub fn drop_texture(&mut self, world: &mut kairos_ecs::world::World, texture_path: PathBuf) {
         // 加载 texture（异步，句柄立即返回）
         let texture_handle = world
             .resource::<AssetServer>()

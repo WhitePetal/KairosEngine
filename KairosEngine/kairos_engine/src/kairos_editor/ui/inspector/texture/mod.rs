@@ -1,12 +1,6 @@
 mod edit;
 
-use std::{
-    cell::Cell,
-    convert::Infallible,
-    fs,
-    ops::DerefMut,
-    sync::Arc,
-};
+use std::{cell::Cell, convert::Infallible, fs, ops::DerefMut, sync::Arc};
 
 use egui::{ComboBox, Vec2, Widget};
 use egui_extras::{Column, TableBuilder};
@@ -17,8 +11,8 @@ use strum::IntoEnumIterator;
 
 use crate::asset::{AssetServer, AssetWorldExt, Assets, Handle};
 
-use edit::{load_texture_edit, write_settings_meta};
 pub use edit::TextureEdit;
+use edit::{load_texture_edit, write_settings_meta};
 
 use crate::{
     graphics::{
@@ -416,7 +410,10 @@ impl Inspector for TextureInspector {
                                 ui.label("Current Size:");
                             });
                             row.col(|ui| {
-                                ui.label(format!("{} x {}", edit.texture.width, edit.texture.height));
+                                ui.label(format!(
+                                    "{} x {}",
+                                    edit.texture.width, edit.texture.height
+                                ));
                             });
                         });
 
@@ -481,9 +478,7 @@ impl Inspector for TextureInspector {
                                                         if resp.changed() {
                                                             // #2: auto-adjust sampler for non-filterable formats.
                                                             if !format.is_filterable() {
-                                                                edit.settings
-                                                                    .sampler
-                                                                    .filter_mode =
+                                                                edit.settings.sampler.filter_mode =
                                                                     FilterMode::Nearest;
                                                                 if let Some(ref mut mip) =
                                                                     edit.settings.sampler.mipmap
@@ -556,8 +551,7 @@ impl Inspector for TextureInspector {
                                 let mut enabled = edit.settings.sampler.mipmap.is_some();
                                 if ui.checkbox(&mut enabled, "").changed() {
                                     if enabled {
-                                        let max_dim =
-                                            edit.settings.width.max(edit.settings.height);
+                                        let max_dim = edit.settings.width.max(edit.settings.height);
                                         let max_level = (max_dim as f32).log2().floor();
                                         edit.settings.sampler.mipmap =
                                             Some(crate::graphics::texture::sampler::MipmapConfig {

@@ -6,35 +6,13 @@ use std::{marker::PhantomData, mem};
 use variadics_please::all_tuples_enumerated;
 
 use crate::{
+    bundle::{Bundle, DynamicBundle, InsertMode, NoBundleEffect},
+    component::{ComponentId, Components, ComponentsRegistrator, StorageType},
     debug::MaybeLocation,
-    bundle::{
-        Bundle,
-        DynamicBundle,
-        InsertMode,
-        NoBundleEffect,
-    },
-    component::{
-        ComponentId,
-        Components,
-        ComponentsRegistrator,
-        StorageType,
-    },
     entity::Entity,
-    relationship::{
-        RelatedSpawner,
-        Relationship,
-        RelationshipHookMode,
-        RelationshipTarget,
-    },
-    world::{
-        EntityWorldMut,
-        World,
-    },
-    ptr::{
-        self,
-        move_as_ptr,
-        MovingPtr,
-    },
+    ptr::{self, MovingPtr, move_as_ptr},
+    relationship::{RelatedSpawner, Relationship, RelationshipHookMode, RelationshipTarget},
+    world::{EntityWorldMut, World},
 };
 
 #[cfg(test)]

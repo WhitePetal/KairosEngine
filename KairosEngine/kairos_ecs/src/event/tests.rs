@@ -1,7 +1,11 @@
 use kairos_ecs_macros::{EntityEvent, Resource};
 
 use crate::{
-    entity::{ContainsEntity, Entity}, message::{Message, MessageCursor, MessageMutator, MessageReader, MessageRegistry, Messages}, schedule::Schedule, system::{IntoSystem, Local, Res, ResMut, System, assert_is_read_only_system}, world::World,
+    entity::{ContainsEntity, Entity},
+    message::{Message, MessageCursor, MessageMutator, MessageReader, MessageRegistry, Messages},
+    schedule::Schedule,
+    system::{IntoSystem, Local, Res, ResMut, System, assert_is_read_only_system},
+    world::World,
 };
 
 #[derive(Message, Copy, Clone, PartialEq, Eq, Debug)]
@@ -12,10 +16,7 @@ struct TestEvent {
 #[derive(Message, Clone, PartialEq, Debug, Default)]
 struct EmptyTestEvent;
 
-fn get_events<E: Message + Clone>(
-    events: &Messages<E>,
-    cursor: &mut MessageCursor<E>,
-) -> Vec<E> {
+fn get_events<E: Message + Clone>(events: &Messages<E>, cursor: &mut MessageCursor<E>) -> Vec<E> {
     cursor.read(events).cloned().collect::<Vec<E>>()
 }
 
@@ -129,9 +130,11 @@ fn events_clear_and_read_impl(clear_func: impl FnOnce(&mut Messages<TestEvent>))
     events.update();
     events.write(TestEvent { i: 3 });
 
-    assert!(reader
-        .read(&events)
-        .eq([TestEvent { i: 2 }, TestEvent { i: 3 }].iter()));
+    assert!(
+        reader
+            .read(&events)
+            .eq([TestEvent { i: 2 }, TestEvent { i: 3 }].iter())
+    );
 }
 
 #[test]
@@ -142,9 +145,11 @@ fn test_events_clear_and_read() {
 #[test]
 fn test_events_drain_and_read() {
     events_clear_and_read_impl(|events| {
-        assert!(events
-            .drain()
-            .eq(vec![TestEvent { i: 0 }, TestEvent { i: 1 }].into_iter()));
+        assert!(
+            events
+                .drain()
+                .eq(vec![TestEvent { i: 0 }, TestEvent { i: 1 }].into_iter())
+        );
     });
 }
 
@@ -258,9 +263,11 @@ fn test_events_extend_impl() {
     let mut reader = events.get_cursor();
 
     events.extend(vec![TestEvent { i: 0 }, TestEvent { i: 1 }]);
-    assert!(reader
-        .read(&events)
-        .eq([TestEvent { i: 0 }, TestEvent { i: 1 }].iter()));
+    assert!(
+        reader
+            .read(&events)
+            .eq([TestEvent { i: 0 }, TestEvent { i: 1 }].iter())
+    );
 }
 
 // Cursor

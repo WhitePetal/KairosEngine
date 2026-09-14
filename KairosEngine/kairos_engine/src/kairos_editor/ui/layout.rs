@@ -27,9 +27,7 @@ pub struct LayoutBottomContainer {}
 pub struct LayoutCenterContainer {}
 
 impl Drawer for LayoutLeftContainer {
-    fn create(
-        _world: &kairos_ecs::world::World,
-    ) -> Result<Self, Box<dyn std::error::Error>>
+    fn create(_world: &kairos_ecs::world::World) -> Result<Self, Box<dyn std::error::Error>>
     where
         Self: Sized,
     {
@@ -48,11 +46,7 @@ impl Drawer for LayoutLeftContainer {
     ) {
     }
 
-    fn render(
-        &self,
-        _engine: &mut Engine,
-        _messager: &mut Messager,
-    ) -> Option<GraphicsCommand> {
+    fn render(&self, _engine: &mut Engine, _messager: &mut Messager) -> Option<GraphicsCommand> {
         None
     }
 
@@ -78,9 +72,7 @@ impl Drawer for LayoutLeftContainer {
     fn update_style(&mut self, _style_fields: &Vec<StyleField>) {}
 }
 impl Drawer for LayoutRightContainer {
-    fn create(
-        _world: &kairos_ecs::world::World,
-    ) -> Result<Self, Box<dyn std::error::Error>>
+    fn create(_world: &kairos_ecs::world::World) -> Result<Self, Box<dyn std::error::Error>>
     where
         Self: Sized,
     {
@@ -99,11 +91,7 @@ impl Drawer for LayoutRightContainer {
     ) {
     }
 
-    fn render(
-        &self,
-        _engine: &mut Engine,
-        _messager: &mut Messager,
-    ) -> Option<GraphicsCommand> {
+    fn render(&self, _engine: &mut Engine, _messager: &mut Messager) -> Option<GraphicsCommand> {
         None
     }
 
@@ -124,9 +112,7 @@ impl Drawer for LayoutRightContainer {
     fn update_style(&mut self, _style_fields: &Vec<StyleField>) {}
 }
 impl Drawer for LayoutBottomContainer {
-    fn create(
-        _world: &kairos_ecs::world::World,
-    ) -> Result<Self, Box<dyn std::error::Error>>
+    fn create(_world: &kairos_ecs::world::World) -> Result<Self, Box<dyn std::error::Error>>
     where
         Self: Sized,
     {
@@ -145,11 +131,7 @@ impl Drawer for LayoutBottomContainer {
     ) {
     }
 
-    fn render(
-        &self,
-        _engine: &mut Engine,
-        _messager: &mut Messager,
-    ) -> Option<GraphicsCommand> {
+    fn render(&self, _engine: &mut Engine, _messager: &mut Messager) -> Option<GraphicsCommand> {
         None
     }
 
@@ -170,9 +152,7 @@ impl Drawer for LayoutBottomContainer {
     fn update_style(&mut self, _style_fields: &Vec<StyleField>) {}
 }
 impl Drawer for LayoutCenterContainer {
-    fn create(
-        _world: &kairos_ecs::world::World,
-    ) -> Result<Self, Box<dyn std::error::Error>>
+    fn create(_world: &kairos_ecs::world::World) -> Result<Self, Box<dyn std::error::Error>>
     where
         Self: Sized,
     {
@@ -191,11 +171,7 @@ impl Drawer for LayoutCenterContainer {
     ) {
     }
 
-    fn render(
-        &self,
-        _engine: &mut Engine,
-        _messager: &mut Messager,
-    ) -> Option<GraphicsCommand> {
+    fn render(&self, _engine: &mut Engine, _messager: &mut Messager) -> Option<GraphicsCommand> {
         None
     }
 

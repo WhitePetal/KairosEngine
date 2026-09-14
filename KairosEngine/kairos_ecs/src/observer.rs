@@ -16,20 +16,12 @@ pub use runner::*;
 pub use system_param::*;
 
 use crate::{
-    debug::MaybeLocation,
     component::ComponentId,
+    debug::MaybeLocation,
     entity::Entity,
-    event::{
-        Event,
-        EventKey,
-        trigger_entity_internal,
-    },
-    world::{
-        DeferredWorld,
-        EntityWorldMut,
-        World,
-    },
+    event::{Event, EventKey, trigger_entity_internal},
     ptr::PtrMut,
+    world::{DeferredWorld, EntityWorldMut, World},
 };
 
 #[cfg(test)]

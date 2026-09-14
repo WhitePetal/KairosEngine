@@ -8,17 +8,11 @@ use std::{
 use kairos_collections::TypeIdMap;
 
 use crate::{
-    debug::DebugCheckedUnwrap,
     component::{
-        Component,
-        ComponentDescriptor,
-        ComponentId,
-        Components,
-        RequiredComponents,
-        RequiredComponentsRegistrator,
-        StorageType,
-        enforce_no_required_components_recursion,
+        Component, ComponentDescriptor, ComponentId, Components, RequiredComponents,
+        RequiredComponentsRegistrator, StorageType, enforce_no_required_components_recursion,
     },
+    debug::DebugCheckedUnwrap,
     lifecycle::ComponentHooks,
 };
 

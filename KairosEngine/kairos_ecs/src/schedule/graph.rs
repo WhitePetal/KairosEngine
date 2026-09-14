@@ -7,8 +7,8 @@ use std::any::{Any, TypeId};
 pub use dag::*;
 pub use graph_map::{DiGraph, DiGraphToposortError, Direction, GraphNodeId, UnGraph};
 
-use kairos_collections::TypeIdMap;
 use crate::schedule::InternedSystemSet;
+use kairos_collections::TypeIdMap;
 
 /// Specifies what kind of edge should be added to the dependency graph.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Ord, Hash)]

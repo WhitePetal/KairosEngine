@@ -1,7 +1,7 @@
 use std::{cell::Cell, fs};
 
-use egui::{FontData, FontFamily, FontId, RichText};
 use crate::asset::{AssetServer, Assets, Handle};
+use egui::{FontData, FontFamily, FontId, RichText};
 use kairos_ecs::world::World;
 use serde::{Deserialize, Serialize};
 

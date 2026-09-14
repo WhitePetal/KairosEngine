@@ -6,34 +6,17 @@ use std::{
 };
 
 use crate::{
-    debug::MaybeLocation,
     bundle::Bundle,
-    change_detection::{
-        ComponentTicks,
-        Mut,
-        MutUntyped,
-        Ref,
-        Tick,
-    },
-    component::{
-        Component,
-        ComponentId,
-        Components,
-        Mutable,
-    },
-    entity::{
-        ContainsEntity,
-        Entity,
-        EntityEquivalent,
-    },
+    change_detection::{ComponentTicks, Mut, MutUntyped, Ref, Tick},
+    component::{Component, ComponentId, Components, Mutable},
+    debug::MaybeLocation,
+    entity::{ContainsEntity, Entity, EntityEquivalent},
+    ptr::Ptr,
     query::Access,
     world::{
-        FilteredEntityMut,
-        FilteredEntityRef,
-        entity_access::DynamicComponentFetch,
+        FilteredEntityMut, FilteredEntityRef, entity_access::DynamicComponentFetch,
         unsafe_world_cell::UnsafeEntityCell,
     },
-    ptr::Ptr,
 };
 
 /// Provides read-only access to a single entity and all its components, save

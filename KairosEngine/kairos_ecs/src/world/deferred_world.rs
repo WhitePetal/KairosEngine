@@ -1,58 +1,21 @@
 use std::ops::Deref;
 
 use crate::{
-    debug::{
-        DebugName,
-        MaybeLocation,
-    },
     archetype::Archetype,
-    change_detection::{
-        Mut,
-        MutUntyped,
-        Tick,
-    },
-    component::{
-        Component,
-        ComponentId,
-        Mutable,
-    },
+    change_detection::{Mut, MutUntyped, Tick},
+    component::{Component, ComponentId, Mutable},
+    debug::{DebugName, MaybeLocation},
     entity::Entity,
-    event::{
-        EntityComponentsTrigger,
-        Event,
-        EventKey,
-        Trigger,
-    },
-    lifecycle::{
-        DISCARD,
-        Discard,
-        HookContext,
-        INSERT,
-        Insert,
-    },
-    message::{
-        Message,
-        MessageId,
-        Messages,
-        WriteBatchIds,
-    },
+    event::{EntityComponentsTrigger, Event, EventKey, Trigger},
+    lifecycle::{DISCARD, Discard, HookContext, INSERT, Insert},
+    message::{Message, MessageId, Messages, WriteBatchIds},
     observer::TriggerContext,
-    query::{
-        QueryData,
-        QueryFilter,
-        QueryState,
-    },
+    query::{QueryData, QueryFilter, QueryState},
     relationship::RelationshipHookMode,
     resource::Resource,
-    system::{
-        Commands,
-        Query,
-    },
+    system::{Commands, Query},
     world::{
-        EntityFetcher,
-        World,
-        WorldEntityFetch,
-        error::EntityMutableFetchError,
+        EntityFetcher, World, WorldEntityFetch, error::EntityMutableFetchError,
         unsafe_world_cell::UnsafeWorldCell,
     },
 };

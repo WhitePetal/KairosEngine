@@ -54,7 +54,7 @@ impl GlobalTransform {
         float3::new(
             self.0.x_axis_length() * copysign(1., det),
             self.0.y_axis_length(),
-            self.0.z_axis_length()
+            self.0.z_axis_length(),
         )
     }
 

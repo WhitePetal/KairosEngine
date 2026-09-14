@@ -51,8 +51,7 @@ use kairos_tasks::{IoTaskPool, TaskPool};
 
 use crate::io::{
     AssetReaderError, AssetSource, AssetSourceBuilders, AssetSourceEvent, AssetSourceId,
-    AssetSources, AssetWriterError, ErasedAssetReader, MissingAssetSourceError,
-    UnapprovedPathMode,
+    AssetSources, AssetWriterError, ErasedAssetReader, MissingAssetSourceError, UnapprovedPathMode,
 };
 use crate::meta::{
     AssetActionMinimal, AssetMetaCheck, AssetMetaMinimal, ProcessedInfo, ProcessedInfoMinimal,
@@ -67,9 +66,7 @@ use super::log::{
     ProcessorTransactionLogFactory, SetTransactionLogFactoryError, ValidateLogError, WriteLogError,
     validate_transaction_log,
 };
-use super::process::{
-    ErasedProcessor, MetaTypePathKind, Process, ProcessContext, ProcessError,
-};
+use super::process::{ErasedProcessor, MetaTypePathKind, Process, ProcessContext, ProcessError};
 use super::registry::{GetProcessorError, Processors};
 
 /// A "background" asset processor: it reads source assets from each processed
@@ -457,9 +454,7 @@ impl AssetProcessor {
                             // `pending_tasks` never reaches zero and
                             // `wait_until_finished` hangs.
                             if let Ok(source) = processor.get_source(source_id) {
-                                processor
-                                    .process_asset(source, path, new_task_sender)
-                                    .await;
+                                processor.process_asset(source, path, new_task_sender).await;
                             }
                             let _ = task_finished_sender.send(()).await;
                         })
@@ -521,7 +516,10 @@ impl AssetProcessor {
                     ))
                     .await?;
                 }
-                if !contains_files && path.parent().is_some() && let Some(empty_dirs) = empty_dirs {
+                if !contains_files
+                    && path.parent().is_some()
+                    && let Some(empty_dirs) = empty_dirs
+                {
                     empty_dirs.push(path);
                 }
                 Ok(contains_files)
@@ -678,15 +676,13 @@ impl AssetProcessor {
             }
             AssetSourceEvent::RenamedFolder { old, new } => {
                 if old == new {
-                    self.handle_added_folder(source, new, new_task_sender)
-                        .await;
+                    self.handle_added_folder(source, new, new_task_sender).await;
                 } else {
                     // This reprocesses everything in the moved folder; matching
                     // moved subtrees is not possible while `AssetPath` erases
                     // relativeness.
                     self.handle_removed_folder(source, &old).await;
-                    self.handle_added_folder(source, new, new_task_sender)
-                        .await;
+                    self.handle_added_folder(source, new, new_task_sender).await;
                 }
             }
             AssetSourceEvent::RemovedUnknown { path, is_meta } => {
@@ -838,11 +834,7 @@ impl AssetProcessor {
 
     /// Removes now-empty ancestor folders of a processed file, walking upwards
     /// until a folder cannot be removed.
-    async fn clean_empty_processed_ancestor_folders(
-        &self,
-        source: &AssetSource,
-        mut path: &Path,
-    ) {
+    async fn clean_empty_processed_ancestor_folders(&self, source: &AssetSource, mut path: &Path) {
         // Never delete outside the processed root.
         if path.is_absolute() {
             return;
@@ -855,7 +847,11 @@ impl AssetProcessor {
             if parent == Path::new("") {
                 break;
             }
-            if processed_writer.remove_empty_directory(parent).await.is_err() {
+            if processed_writer
+                .remove_empty_directory(parent)
+                .await
+                .is_err()
+            {
                 break;
             }
         }
@@ -1038,10 +1034,7 @@ impl AssetProcessor {
 
             // A fresh reader: the hash reader was scoped and dropped above.
             let reader_for_process = reader.read(path).await.map_err(&reader_err)?;
-            let mut writer = processed_writer
-                .write(path)
-                .await
-                .map_err(&writer_err)?;
+            let mut writer = processed_writer.write(path).await.map_err(&writer_err)?;
 
             let mut processed_meta = {
                 let mut context = ProcessContext::new(
@@ -1050,15 +1043,18 @@ impl AssetProcessor {
                     reader_for_process,
                     &mut new_processed_info,
                 );
-                processor.process(&mut context, settings, &mut *writer).await?
+                processor
+                    .process(&mut context, settings, &mut *writer)
+                    .await?
             };
 
-            writer.flush().await.map_err(|error| {
-                ProcessError::AssetWriterError {
+            writer
+                .flush()
+                .await
+                .map_err(|error| ProcessError::AssetWriterError {
                     path: asset_path.clone(),
                     err: AssetWriterError::Io(error),
-                }
-            })?;
+                })?;
 
             let full_hash = get_full_asset_hash(
                 new_hash,
@@ -1078,10 +1074,7 @@ impl AssetProcessor {
             // No processor: the source is copied verbatim to the processed side,
             // with the processed info recorded in a copy of its `.meta`.
             let mut reader_for_copy = reader.read(path).await.map_err(&reader_err)?;
-            let mut writer = processed_writer
-                .write(path)
-                .await
-                .map_err(&writer_err)?;
+            let mut writer = processed_writer.write(path).await.map_err(&writer_err)?;
             futures_lite::io::copy(&mut reader_for_copy, &mut writer)
                 .await
                 .map_err(|error| ProcessError::AssetWriterError {
@@ -1311,10 +1304,7 @@ impl ProcessingState {
             }
         };
 
-        receiver
-            .recv()
-            .await
-            .unwrap_or(ProcessStatus::NonExistent)
+        receiver.recv().await.unwrap_or(ProcessStatus::NonExistent)
     }
 
     /// The read guard for `path`'s file transaction lock.
@@ -1376,8 +1366,7 @@ impl AssetProcessor {
         let (new_task_sender, new_task_receiver) = async_channel::unbounded();
         self.handle_asset_source_event(source, event, &new_task_sender)
             .await;
-        self.drain_queue(&new_task_sender, &new_task_receiver)
-            .await;
+        self.drain_queue(&new_task_sender, &new_task_receiver).await;
     }
 }
 
@@ -1395,8 +1384,7 @@ impl AssetProcessor {
             .expect("the asset processor failed to initialize");
         let (new_task_sender, new_task_receiver) = async_channel::unbounded();
         self.queue_initial_processing_tasks(&new_task_sender).await;
-        self.drain_queue(&new_task_sender, &new_task_receiver)
-            .await;
+        self.drain_queue(&new_task_sender, &new_task_receiver).await;
     }
 
     /// Processes queued tasks until the queue is empty, keeping a strong sender

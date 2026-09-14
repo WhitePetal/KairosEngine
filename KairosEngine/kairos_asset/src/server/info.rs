@@ -335,9 +335,7 @@ impl AssetInfos {
 
         // While watching, remember every label that is alive so a reload can
         // tell that a base asset still has labeled sub-assets in use.
-        if watching_for_changes
-            && let Some(path) = &path
-        {
+        if watching_for_changes && let Some(path) = &path {
             let mut without_label = path.to_owned();
             if let Some(label) = without_label.take_label() {
                 living_labeled_assets

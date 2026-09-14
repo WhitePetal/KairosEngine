@@ -5,36 +5,17 @@
 //! [`EntityCommands`](crate::system::EntityCommands).
 
 use crate::{
+    bundle::{Bundle, InsertMode},
+    component::{Component, ComponentId},
     debug::MaybeLocation,
-    bundle::{
-        Bundle,
-        InsertMode,
-    },
-    component::{
-        Component,
-        ComponentId,
-    },
-    entity::{
-        Entity,
-        EntityClonerBuilder,
-        OptIn,
-        OptOut,
-    },
+    entity::{Entity, EntityClonerBuilder, OptIn, OptOut},
     error::EntityCommandOutput,
     name::Name,
     observer::IntoEntityObserver,
+    ptr::{OwningPtr, move_as_ptr},
     relationship::RelationshipHookMode,
     system::Command,
-    world::{
-        EntityWorldMut,
-        FromWorld,
-        World,
-        error::EntityMutableFetchError,
-    },
-    ptr::{
-        move_as_ptr,
-        OwningPtr,
-    },
+    world::{EntityWorldMut, FromWorld, World, error::EntityMutableFetchError},
 };
 
 #[cfg(not(feature = "trace"))]

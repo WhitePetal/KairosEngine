@@ -21,6 +21,7 @@ use kairos_ecs::{
     system::{Query, Res, ResMut},
     world::World,
 };
+use kairos_math::quaternion;
 use kairos_transform::LocalTransform;
 
 use crate::{
@@ -90,7 +91,9 @@ impl OrbitState {
     /// Scroll delta → zoom in/out.
     pub fn zoom(&mut self, delta: f32, tuning: &OrbitTuning, dt: f32) {
         self.distance -= delta * tuning.zoom_speed * dt * 60.0;
-        self.distance = self.distance.clamp(tuning.min_distance, tuning.max_distance);
+        self.distance = self
+            .distance
+            .clamp(tuning.min_distance, tuning.max_distance);
     }
 
     /// WASD-style movement with smooth acceleration.
@@ -129,7 +132,9 @@ impl OrbitState {
     }
 
     pub fn transform(&self) -> LocalTransform {
-        LocalTransform::look_at(self.position(), self.pivot, float3::UP)
+        let mut transform = LocalTransform::new(self.position(), quaternion::IDENTITY, float3::ONE);
+        transform.look_at(self.pivot, float3::UP);
+        transform
     }
 }
 

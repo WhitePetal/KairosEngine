@@ -7,15 +7,10 @@ use std::{
 };
 
 use crate::{
-    debug::MaybeLocation,
     bundle::Bundle,
+    debug::MaybeLocation,
     entity::Entity,
-    event::{
-        EntityEvent,
-        Event,
-        EventKey,
-        PropagateEntityTrigger,
-    },
+    event::{EntityEvent, Event, EventKey, PropagateEntityTrigger},
     traversal::Traversal,
 };
 

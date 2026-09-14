@@ -13,27 +13,18 @@ use kairos_collections::TypeIdMap;
 use kairos_collections::hash::FixedHasher;
 
 use crate::{
-    debug::{
-        DebugCheckedUnwrap,
-        DebugName,
-    },
     archetype::ArchetypeFlags,
     component::{
-        Component,
-        ComponentCloneBehavior,
-        ComponentMutability,
-        QueuedComponents,
-        RequiredComponents,
-        StorageType,
+        Component, ComponentCloneBehavior, ComponentMutability, QueuedComponents,
+        RequiredComponents, StorageType,
     },
+    debug::{DebugCheckedUnwrap, DebugName},
     lifecycle::ComponentHooks,
+    ptr::OwningPtr,
     relationship::{
-        MaybeRelationshipAccessor,
-        RelationshipAccessor,
-        RelationshipAccessorInitializer,
+        MaybeRelationshipAccessor, RelationshipAccessor, RelationshipAccessorInitializer,
     },
     storage::SparseSetIndex,
-    ptr::OwningPtr,
 };
 
 /// A value which uniquely identifies the type of a [`Component`] or [`Resource`] within a

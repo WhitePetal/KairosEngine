@@ -41,10 +41,7 @@ fn read_meta_all<R: AssetReader>(reader: &R, path: &Path) -> Result<Vec<u8>, Ass
     block_on(AssetReader::read_meta_bytes(reader, path))
 }
 
-fn dir_entries<R: AssetReader>(
-    reader: &R,
-    path: &Path,
-) -> Result<Vec<PathBuf>, AssetReaderError> {
+fn dir_entries<R: AssetReader>(reader: &R, path: &Path) -> Result<Vec<PathBuf>, AssetReaderError> {
     block_on(async {
         let mut stream = AssetReader::read_directory(reader, path).await?;
         let mut entries = Vec::new();
@@ -149,10 +146,7 @@ fn vec_reader_reads_and_seeks() {
 fn memory_reader_over_an_empty_dir_misses_everything() {
     let reader = MemoryAssetReader::default();
     let error = read_all(&reader, Path::new("nope.png")).unwrap_err();
-    assert_eq!(
-        error,
-        AssetReaderError::NotFound(PathBuf::from("nope.png"))
-    );
+    assert_eq!(error, AssetReaderError::NotFound(PathBuf::from("nope.png")));
 
     assert!(dir_entries(&reader, Path::new("")).unwrap().is_empty());
     assert!(!is_dir(&reader, Path::new("anything")).unwrap());
@@ -439,9 +433,10 @@ fn should_process_follows_the_processed_writer() {
     assert!(!source.should_process());
 
     // The processed writer is what marks a source as processed.
-    let mut writer_backed = AssetSourceBuilder::new(embedded_reader).with_processed_writer(
-        |_create_root| Some(Box::new(NoopWriter) as Box<dyn ErasedAssetWriter>),
-    );
+    let mut writer_backed =
+        AssetSourceBuilder::new(embedded_reader).with_processed_writer(|_create_root| {
+            Some(Box::new(NoopWriter) as Box<dyn ErasedAssetWriter>)
+        });
     let source = writer_backed.build(AssetSourceId::Default, false, false);
     assert!(source.processed_writer().is_ok());
     assert!(source.should_process());
@@ -493,13 +488,7 @@ fn build_sources_passes_watch_through_to_every_source() {
             .event_receiver()
             .is_none()
     );
-    assert!(
-        sources
-            .get("watched")
-            .unwrap()
-            .event_receiver()
-            .is_some()
-    );
+    assert!(sources.get("watched").unwrap().event_receiver().is_some());
 }
 
 fn embedded_reader() -> Box<dyn ErasedAssetReader> {

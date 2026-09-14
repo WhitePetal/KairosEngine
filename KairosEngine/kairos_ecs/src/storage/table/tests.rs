@@ -1,23 +1,10 @@
 use crate::{
-    debug::MaybeLocation,
     change_detection::Tick,
-    component::{
-        Component,
-        ComponentIds,
-        Components,
-        ComponentsRegistrator,
-    },
-    entity::{
-        Entity,
-        EntityIndex,
-    },
-    storage::{
-        TableBuilder,
-        TableId,
-        TableRow,
-        Tables,
-    },
+    component::{Component, ComponentIds, Components, ComponentsRegistrator},
+    debug::MaybeLocation,
+    entity::{Entity, EntityIndex},
     ptr::OwningPtr,
+    storage::{TableBuilder, TableId, TableRow, Tables},
 };
 
 #[derive(Component)]

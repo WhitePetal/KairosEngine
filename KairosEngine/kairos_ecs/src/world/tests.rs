@@ -9,38 +9,18 @@ use std::{
 use kairos_collections::{FixedHashMap, FixedHashSet};
 
 use crate::{
-    debug::{
-        DebugName,
-        MaybeLocation,
-    },
-    change_detection::{
-        DetectChanges,
-        DetectChangesMut,
-        Mut,
-        Res,
-    },
+    change_detection::{DetectChanges, DetectChangesMut, Mut, Res},
     component::{
-        Component,
-        ComponentCloneBehavior,
-        ComponentDescriptor,
-        ComponentInfo,
-        StorageType,
+        Component, ComponentCloneBehavior, ComponentDescriptor, ComponentInfo, StorageType,
     },
+    debug::{DebugName, MaybeLocation},
     entity::EntityHashSet,
-    entity_disabling::{
-        DefaultQueryFilters,
-        Disabled,
-    },
+    entity_disabling::{DefaultQueryFilters, Disabled},
     event::Event,
     observer::On,
-    resource::Resource,
-    world::{
-        DeferredWorld,
-        FromWorld,
-        World,
-        error::EntityMutableFetchError,
-    },
     ptr::OwningPtr,
+    resource::Resource,
+    world::{DeferredWorld, FromWorld, World, error::EntityMutableFetchError},
 };
 
 type ID = u8;

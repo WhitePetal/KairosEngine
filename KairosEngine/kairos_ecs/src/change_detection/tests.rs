@@ -3,26 +3,12 @@ use std::ops::{Deref, DerefMut};
 use kairos_ecs_macros::{Component, Resource};
 
 use crate::{
-    debug::MaybeLocation,
     change_detection::{
-        CHECK_TICK_THRESHOLD,
-        ComponentTicks,
-        ComponentTicksMut,
-        DetectChanges,
-        DetectChangesMut,
-        MAX_CHANGE_AGE,
-        Mut,
-        MutUntyped,
-        Ref,
-        Tick,
+        CHECK_TICK_THRESHOLD, ComponentTicks, ComponentTicksMut, DetectChanges, DetectChangesMut,
+        MAX_CHANGE_AGE, Mut, MutUntyped, Ref, Tick,
     },
-    system::{
-        IntoSystem,
-        NonSendMut,
-        ResMut,
-        Single,
-        System,
-    },
+    debug::MaybeLocation,
+    system::{IntoSystem, NonSendMut, ResMut, Single, System},
     world::World,
 };
 

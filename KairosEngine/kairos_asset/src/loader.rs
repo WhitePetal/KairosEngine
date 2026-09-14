@@ -45,11 +45,11 @@ use crate::asset::Asset;
 use crate::assets::Assets;
 use crate::handle::{Handle, UntypedHandle};
 use crate::id::UntypedAssetId;
-use crate::loader_builders::NestedLoadBuilder;
 use crate::index::AssetIndex;
 use crate::io::{
     AssetReaderError, MissingAssetSourceError, MissingProcessedAssetReaderError, Reader,
 };
+use crate::loader_builders::NestedLoadBuilder;
 use crate::meta::{
     AssetAction, AssetHash, AssetMeta, AssetMetaDyn, DeserializeMetaError, ProcessedInfo,
     ProcessedInfoMinimal, Settings, loader_name,

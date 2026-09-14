@@ -182,23 +182,26 @@ impl Process for TextureProcessor {
     ) -> impl ConditionalSendFuture<Output = Result<TextureSettings, ProcessError>> {
         async move {
             let mut bytes = Vec::new();
-            context.asset_reader().read_to_end(&mut bytes).await.map_err(
-                |error| ProcessError::AssetReaderError {
+            context
+                .asset_reader()
+                .read_to_end(&mut bytes)
+                .await
+                .map_err(|error| ProcessError::AssetReaderError {
                     path: context.path().clone(),
                     err: error.into(),
-                },
-            )?;
+                })?;
 
             let (resolved, data) = TextureSettings::convert_source(&bytes, settings)
                 .map_err(|error| ProcessError::AssetTransformError(error.into()))?;
 
             let encoded = TextureSettings::serialize_pixel_datas(&data);
-            writer.write_all(&encoded).await.map_err(|error| {
-                ProcessError::AssetWriterError {
+            writer
+                .write_all(&encoded)
+                .await
+                .map_err(|error| ProcessError::AssetWriterError {
                     path: context.path().clone(),
                     err: error.into(),
-                }
-            })?;
+                })?;
 
             Ok(resolved)
         }

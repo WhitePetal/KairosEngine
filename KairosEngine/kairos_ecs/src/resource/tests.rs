@@ -6,12 +6,9 @@ use crate::{
     debug::MaybeLocation,
     entity::Entity,
     lifecycle::HookContext,
-    resource::IsResource,
-    world::{
-        DeferredWorld,
-        World,
-    },
     ptr::OwningPtr,
+    resource::IsResource,
+    world::{DeferredWorld, World},
 };
 
 #[test]

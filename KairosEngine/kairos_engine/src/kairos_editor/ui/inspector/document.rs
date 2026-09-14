@@ -8,15 +8,13 @@ use serde::{Deserialize, Serialize};
 use crate::asset::{AssetServer, Assets, Handle};
 use kairos_ecs::world::World;
 
-use crate::{
-    kairos_editor::{
-        editor_assets::Text,
-        ui::{
-            Message, Messager, UIReader,
-            dialog::{ConfirmDialogWindow, Dialog},
-            inspector::Inspector,
-            paths,
-        },
+use crate::kairos_editor::{
+    editor_assets::Text,
+    ui::{
+        Message, Messager, UIReader,
+        dialog::{ConfirmDialogWindow, Dialog},
+        inspector::Inspector,
+        paths,
     },
 };
 
@@ -58,9 +56,7 @@ impl Inspector for DocumentInspector {
         // The document rides the new core: the `AssetServer` World resource
         // starts the load (driven by `PreUpdate`) and hands back a lightweight
         // `Handle<Text>`, whose value lands in the `Assets<Text>` store.
-        let handle = world
-            .resource::<AssetServer>()
-            .load::<Text>(path.clone());
+        let handle = world.resource::<AssetServer>().load::<Text>(path.clone());
         let content = Arc::new(Mutex::new(None));
         let model = DocumentModel {
             style,
@@ -87,10 +83,7 @@ impl Inspector for DocumentInspector {
             let mut content_mut = self.model.content.lock();
             let content_mut = content_mut.deref_mut();
             if content_mut.is_none() {
-                if let Some(content) = world
-                    .resource::<Assets<Text>>()
-                    .get(&self.model.handle)
-                {
+                if let Some(content) = world.resource::<Assets<Text>>().get(&self.model.handle) {
                     *content_mut = Some(content.0.clone());
                 }
                 ui.label("Document is Loading...");

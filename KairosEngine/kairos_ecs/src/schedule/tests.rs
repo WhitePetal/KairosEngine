@@ -1178,22 +1178,30 @@ mod system_execution {
                 (
                     "system_d".to_string(),
                     "system_a".to_string(),
-                    vec!["kairos_ecs::schedule::tests::system_execution::system_ambiguity::R".into()],
+                    vec![
+                        "kairos_ecs::schedule::tests::system_execution::system_ambiguity::R".into(),
+                    ],
                 ),
                 (
                     "system_d".to_string(),
                     "system_e".to_string(),
-                    vec!["kairos_ecs::schedule::tests::system_execution::system_ambiguity::R".into()],
+                    vec![
+                        "kairos_ecs::schedule::tests::system_execution::system_ambiguity::R".into(),
+                    ],
                 ),
                 (
                     "system_b".to_string(),
                     "system_a".to_string(),
-                    vec!["kairos_ecs::schedule::tests::system_execution::system_ambiguity::R".into()],
+                    vec![
+                        "kairos_ecs::schedule::tests::system_execution::system_ambiguity::R".into(),
+                    ],
                 ),
                 (
                     "system_b".to_string(),
                     "system_e".to_string(),
-                    vec!["kairos_ecs::schedule::tests::system_execution::system_ambiguity::R".into()],
+                    vec![
+                        "kairos_ecs::schedule::tests::system_execution::system_ambiguity::R".into(),
+                    ],
                 ),
             ];
 
@@ -1238,7 +1246,9 @@ mod system_execution {
                 (
                     "resmut_system (in set (resmut_system, resmut_system))".to_string(),
                     "resmut_system (in set (resmut_system, resmut_system))".to_string(),
-                    vec!["kairos_ecs::schedule::tests::system_execution::system_ambiguity::R".into()],
+                    vec![
+                        "kairos_ecs::schedule::tests::system_execution::system_ambiguity::R".into()
+                    ],
                 )
             );
         }

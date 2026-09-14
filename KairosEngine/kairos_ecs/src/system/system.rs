@@ -7,25 +7,13 @@ use bitflags::bitflags;
 use log::warn;
 
 use crate::{
+    change_detection::{CheckChangeTicks, Tick},
     debug::DebugName,
-    change_detection::{
-        CheckChangeTicks,
-        Tick,
-    },
     error::KairosError,
     query::FilteredAccessSet,
     schedule::InternedSystemSet,
-    system::{
-        IntoSystem,
-        SystemIn,
-        SystemInput,
-        SystemParamValidationError,
-    },
-    world::{
-        DeferredWorld,
-        World,
-        unsafe_world_cell::UnsafeWorldCell,
-    },
+    system::{IntoSystem, SystemIn, SystemInput, SystemParamValidationError},
+    world::{DeferredWorld, World, unsafe_world_cell::UnsafeWorldCell},
 };
 
 #[cfg(test)]

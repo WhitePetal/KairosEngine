@@ -1,62 +1,27 @@
 use std::marker::PhantomData;
 
 use crate::{
-    debug::MaybeLocation,
-    bundle::{
-        Bundle,
-        InsertMode,
-        NoBundleEffect,
-    },
+    bundle::{Bundle, InsertMode, NoBundleEffect},
     change_detection::Mut,
-    component::{
-        Component,
-        ComponentId,
-        Mutable,
-    },
+    component::{Component, ComponentId, Mutable},
+    debug::MaybeLocation,
     entity::{
-        Entities,
-        Entity,
-        EntityAllocator,
-        EntityClonerBuilder,
-        EntityNotSpawnedError,
-        InvalidEntityError,
-        OptIn,
-        OptOut,
+        Entities, Entity, EntityAllocator, EntityClonerBuilder, EntityNotSpawnedError,
+        InvalidEntityError, OptIn, OptOut,
     },
-    error::{
-        ErrorContext,
-        KairosError,
-        warn,
-    },
-    event::{
-        EntityEvent,
-        Event,
-    },
+    error::{ErrorContext, KairosError, warn},
+    event::{EntityEvent, Event},
     message::Message,
-    observer::{
-        IntoEntityObserver,
-        IntoObserver,
-    },
+    observer::{IntoEntityObserver, IntoObserver},
+    ptr::move_as_ptr,
     relationship::RelationshipHookMode,
     resource::Resource,
     schedule::ScheduleLabel,
-    system::{
-        Deferred,
-        IntoSystem,
-        RegisteredSystem,
-        SystemId,
-        SystemInput,
-    },
+    system::{Deferred, IntoSystem, RegisteredSystem, SystemId, SystemInput},
     world::{
-        EntityWorldMut,
-        FromWorld,
-        World,
-        command_queue::{
-            CommandQueue,
-            RawCommandQueue,
-        },
+        EntityWorldMut, FromWorld, World,
+        command_queue::{CommandQueue, RawCommandQueue},
     },
-    ptr::move_as_ptr,
 };
 
 pub mod command;
@@ -166,7 +131,9 @@ const _: () = {
         #[track_caller]
         fn init_state(world: &mut World) -> Self::State {
             FetchState {
-                state: <__StructFieldsAlias<'_, '_> as crate::system::SystemParam>::init_state(world),
+                state: <__StructFieldsAlias<'_, '_> as crate::system::SystemParam>::init_state(
+                    world,
+                ),
             }
         }
 

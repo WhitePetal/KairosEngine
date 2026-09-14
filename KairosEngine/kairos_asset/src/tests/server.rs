@@ -21,15 +21,13 @@ use crate::io::{
     AssetSourceId, ErasedAssetReader, PathStream, Reader, UnapprovedPathMode, VecReader,
     empty_path_stream, file::FileAssetReader, file::FileAssetWriter, get_meta_path,
 };
+use crate::meta::{AssetActionMinimal, AssetMetaMinimal, ProcessedInfo, ProcessedInfoMinimal};
 use crate::{
     Asset, AssetEvent, AssetId, AssetLoadError, AssetLoadFailedEvent, AssetLoader, AssetMetaCheck,
-    AssetPath, AssetServer, AssetServerMode, Assets, Handle, HandleTemplate, LoadContext, LoadState,
-    LoadedFolder, LoadedUntypedAsset, ReadAssetBytesError, UntypedAssetId,
+    AssetPath, AssetServer, AssetServerMode, Assets, Handle, HandleTemplate, LoadContext,
+    LoadState, LoadedFolder, LoadedUntypedAsset, ReadAssetBytesError, UntypedAssetId,
     UntypedAssetLoadFailedEvent, VisitAssetDependencies, WaitForAssetError, WriteDefaultMetaError,
     handle_internal_asset_events,
-};
-use crate::meta::{
-    AssetActionMinimal, AssetMetaMinimal, ProcessedInfo, ProcessedInfoMinimal,
 };
 
 /// An asset whose value is the bytes it was loaded from.
@@ -326,9 +324,7 @@ fn server_with_reader(reader: MutableReader) -> AssetServer {
     let mut builders = AssetSourceBuilders::default();
     builders.insert(
         AssetSourceId::Default,
-        AssetSourceBuilder::new(
-            move || Box::new(reader.clone()) as Box<dyn ErasedAssetReader>,
-        ),
+        AssetSourceBuilder::new(move || Box::new(reader.clone()) as Box<dyn ErasedAssetReader>),
     );
     let sources = Arc::new(builders.build_sources(false, false));
     AssetServer::new_with_meta_check(
@@ -359,9 +355,9 @@ fn server_with_files_and_mode(
     let mut builders = AssetSourceBuilders::default();
     builders.insert(
         AssetSourceId::Default,
-        AssetSourceBuilder::new(
-            move || Box::new(MemoryReader(files.clone())) as Box<dyn ErasedAssetReader>,
-        ),
+        AssetSourceBuilder::new(move || {
+            Box::new(MemoryReader(files.clone())) as Box<dyn ErasedAssetReader>
+        }),
     );
     let sources = Arc::new(builders.build_sources(false, false));
     AssetServer::new_with_meta_check(
@@ -409,7 +405,10 @@ fn wait_for(world: &mut World, server: &AssetServer, id: UntypedAssetId) {
         }
         std::thread::sleep(Duration::from_millis(1));
     }
-    panic!("asset {id:?} never settled; state was {:?}", server.load_state(id));
+    panic!(
+        "asset {id:?} never settled; state was {:?}",
+        server.load_state(id)
+    );
 }
 
 /// Drives the main-thread pipeline until `waiter` finishes, then returns its
@@ -456,7 +455,10 @@ fn missing_file_fails_without_panicking() {
     wait_for(&mut world, &server, id);
 
     assert!(server.load_state(id).is_failed());
-    assert_eq!(server.get_load_state(id).map(|state| state.is_failed()), Some(true));
+    assert_eq!(
+        server.get_load_state(id).map(|state| state.is_failed()),
+        Some(true)
+    );
     assert_eq!(world.resource::<Assets<ByteAsset>>().get(handle.id()), None);
 }
 
@@ -542,7 +544,10 @@ fn a_declared_dependency_is_waited_on() {
     wait_for(&mut world, &server, id);
 
     assert!(server.is_loaded_with_dependencies(id));
-    let loaded = world.resource::<Assets<ParentAsset>>().get(handle.id()).unwrap();
+    let loaded = world
+        .resource::<Assets<ParentAsset>>()
+        .get(handle.id())
+        .unwrap();
     assert_eq!(loaded.body, b"body");
     // The dependency was loaded too, and the parent's handle names it.
     let dep_id = loaded.dep.id();
@@ -653,9 +658,7 @@ fn wait_for_asset_resolves_when_the_load_completes() {
     let waiter = {
         let server = server.clone();
         let handle = handle.clone();
-        std::thread::spawn(move || {
-            futures_lite::future::block_on(server.wait_for_asset(&handle))
-        })
+        std::thread::spawn(move || futures_lite::future::block_on(server.wait_for_asset(&handle)))
     };
 
     assert!(drive_until_finished(&mut world, waiter).is_ok());
@@ -671,9 +674,7 @@ fn wait_for_asset_id_reports_a_failed_load() {
     let id = handle.id().untyped();
     let waiter = {
         let server = server.clone();
-        std::thread::spawn(move || {
-            futures_lite::future::block_on(server.wait_for_asset_id(id))
-        })
+        std::thread::spawn(move || futures_lite::future::block_on(server.wait_for_asset_id(id)))
     };
 
     let result = drive_until_finished(&mut world, waiter);
@@ -730,7 +731,9 @@ fn handles_and_paths_are_reported_for_a_loaded_asset() {
     assert!(server.is_managed(id));
     assert_eq!(server.get_id_handle(id).map(|handle| handle.id()), Some(id));
     assert_eq!(
-        server.get_handle::<ByteAsset>("data.bytes").map(|handle| handle.id()),
+        server
+            .get_handle::<ByteAsset>("data.bytes")
+            .map(|handle| handle.id()),
         Some(id)
     );
     assert_eq!(
@@ -771,7 +774,10 @@ fn the_untyped_accessors_expose_the_loaded_asset() {
             .map(|h| h.id()),
         Some(id)
     );
-    assert_eq!(server.get_handle_untyped("data.bytes").map(|h| h.id()), Some(id));
+    assert_eq!(
+        server.get_handle_untyped("data.bytes").map(|h| h.id()),
+        Some(id)
+    );
     assert_eq!(server.get_handles_untyped("data.bytes").len(), 1);
 
     // Path id accessors.
@@ -963,7 +969,9 @@ fn load_erased_matches_the_typed_load() {
         Some(&ByteAsset(b"hello".to_vec()))
     );
     assert_eq!(
-        server.get_handle::<ByteAsset>("data.bytes").map(|handle| handle.id()),
+        server
+            .get_handle::<ByteAsset>("data.bytes")
+            .map(|handle| handle.id()),
         Some(typed.id())
     );
 }
@@ -981,7 +989,9 @@ fn load_untyped_async_resolves_the_handle() {
     wait_for(&mut world, &server, resolved.id());
 
     assert_eq!(
-        server.get_handle::<ByteAsset>("data.bytes").map(|handle| handle.id().untyped()),
+        server
+            .get_handle::<ByteAsset>("data.bytes")
+            .map(|handle| handle.id().untyped()),
         Some(resolved.id())
     );
     let typed: Handle<ByteAsset> = resolved.typed_debug_checked();
@@ -1006,10 +1016,9 @@ fn load_untyped_async_reports_a_loader_error() {
     server.register_loader(FailingLoader);
     let _world = world_for(&server);
 
-    let error = futures_lite::future::block_on(
-        server.load_builder().load_untyped_async("bad.failing"),
-    )
-    .expect_err("the loader fails");
+    let error =
+        futures_lite::future::block_on(server.load_builder().load_untyped_async("bad.failing"))
+            .expect_err("the loader fails");
     assert!(matches!(error, crate::AssetLoadError::AssetLoaderError(_)));
 }
 
@@ -1036,10 +1045,8 @@ fn a_failed_untyped_load_marks_the_resolved_handle_failed() {
 #[test]
 fn override_unapproved_loads_denied_paths_but_never_forbidden_ones() {
     // `Forbid` rejects an escaping path even when the builder overrides.
-    let forbidden = server_with_files_and_mode(
-        &[("../escape.bytes", b"no")],
-        UnapprovedPathMode::Forbid,
-    );
+    let forbidden =
+        server_with_files_and_mode(&[("../escape.bytes", b"no")], UnapprovedPathMode::Forbid);
     forbidden.register_loader(ByteLoader);
     let rejected = forbidden
         .load_builder()
@@ -1081,7 +1088,10 @@ fn load_untyped_async_enforces_the_unapproved_gate() {
             .load_untyped_async("../escape.bytes"),
     )
     .expect_err("forbid rejects an unapproved path");
-    assert!(matches!(error, crate::AssetLoadError::UnapprovedPath { .. }));
+    assert!(matches!(
+        error,
+        crate::AssetLoadError::UnapprovedPath { .. }
+    ));
 
     // `Deny` rejects by default and yields to the builder override.
     let denied =
@@ -1089,9 +1099,8 @@ fn load_untyped_async_enforces_the_unapproved_gate() {
     denied.register_loader(ByteLoader);
     let mut world = world_for(&denied);
 
-    let rejected = futures_lite::future::block_on(
-        denied.load_builder().load_untyped_async("../escape.bytes"),
-    );
+    let rejected =
+        futures_lite::future::block_on(denied.load_builder().load_untyped_async("../escape.bytes"));
     assert!(matches!(
         rejected,
         Err(crate::AssetLoadError::UnapprovedPath { .. })
@@ -1276,10 +1285,7 @@ fn repeated_folder_loads_reuse_the_same_handle() {
 
 #[test]
 fn load_folder_walks_a_real_directory() {
-    let dir = std::env::temp_dir().join(format!(
-        "kairos_asset_load_folder_{}",
-        std::process::id()
-    ));
+    let dir = std::env::temp_dir().join(format!("kairos_asset_load_folder_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(dir.join("sub")).unwrap();
     std::fs::write(dir.join("a.bytes"), b"a").unwrap();
@@ -1338,7 +1344,9 @@ fn read_asset_bytes_returns_bytes_and_records_a_loader_dependency() {
     let loaded = context.finish(ByteAsset(vec![]));
     assert!(loaded.dependencies.is_empty());
     assert_eq!(
-        loaded.loader_dependencies.get(&AssetPath::from("data.bytes")),
+        loaded
+            .loader_dependencies
+            .get(&AssetPath::from("data.bytes")),
         Some(&[0u8; 32]),
         "without hash population the dependency records the zero hash"
     );
@@ -1357,10 +1365,7 @@ fn read_asset_bytes_records_the_processed_full_hash() {
     .expect("the processed info serializes")
     .into_bytes();
 
-    let server = server_with_files(&[
-        ("data.bytes", b"hello"),
-        ("data.bytes.meta", &meta_bytes),
-    ]);
+    let server = server_with_files(&[("data.bytes", b"hello"), ("data.bytes.meta", &meta_bytes)]);
     // A context that populates hashes, as the processor's would.
     let mut context = LoadContext::new(&server, AssetPath::from("root.bytes"), false, true);
 
@@ -1370,7 +1375,9 @@ fn read_asset_bytes_records_the_processed_full_hash() {
 
     let loaded = context.finish(ByteAsset(vec![]));
     assert_eq!(
-        loaded.loader_dependencies.get(&AssetPath::from("data.bytes")),
+        loaded
+            .loader_dependencies
+            .get(&AssetPath::from("data.bytes")),
         Some(&full_hash),
         "the processed asset's full_hash is what a dependent records"
     );
@@ -1393,10 +1400,7 @@ fn read_asset_bytes_requires_hash_metadata_when_populating_hashes() {
     })
     .expect("the processed info serializes")
     .into_bytes();
-    let server = server_with_files(&[
-        ("data.bytes", b"hello"),
-        ("data.bytes.meta", &meta_bytes),
-    ]);
+    let server = server_with_files(&[("data.bytes", b"hello"), ("data.bytes.meta", &meta_bytes)]);
     let mut context = LoadContext::new(&server, AssetPath::from("root.bytes"), false, true);
 
     let error = futures_lite::future::block_on(context.read_asset_bytes("data.bytes"))
@@ -1410,9 +1414,10 @@ fn builder_load_value_loads_from_the_source() {
     server.register_loader(ByteLoader);
     let mut context = LoadContext::new(&server, AssetPath::from("root.bytes"), true, false);
 
-    let loaded =
-        futures_lite::future::block_on(context.load_builder().load_value::<ByteAsset>("data.bytes"))
-            .expect("the immediate load succeeds");
+    let loaded = futures_lite::future::block_on(
+        context.load_builder().load_value::<ByteAsset>("data.bytes"),
+    )
+    .expect("the immediate load succeeds");
     assert_eq!(loaded.get(), &ByteAsset(b"hello".to_vec()));
 
     // The direct load records a loader dependency and no handle dependency.
@@ -1427,7 +1432,8 @@ fn builder_load_value_loads_from_the_source() {
 
 #[test]
 fn builder_override_unapproved_allows_a_denied_path() {
-    let denied = server_with_files_and_mode(&[("../escape.bytes", b"ok")], UnapprovedPathMode::Deny);
+    let denied =
+        server_with_files_and_mode(&[("../escape.bytes", b"ok")], UnapprovedPathMode::Deny);
     denied.write_infos().register_handle_provider::<ByteAsset>();
     let mut context = LoadContext::new(&denied, AssetPath::from("root.bytes"), true, false);
 
@@ -1452,10 +1458,8 @@ fn builder_override_unapproved_allows_a_denied_path() {
 
 #[test]
 fn write_default_loader_meta_file_writes_an_idempotent_sidecar() {
-    let dir = std::env::temp_dir().join(format!(
-        "kairos_asset_default_meta_{}",
-        std::process::id()
-    ));
+    let dir =
+        std::env::temp_dir().join(format!("kairos_asset_default_meta_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("data.bytes"), b"payload").unwrap();
@@ -1495,9 +1499,10 @@ fn write_default_loader_meta_file_writes_an_idempotent_sidecar() {
     assert_eq!(loader, crate::meta::loader_name::<ByteLoader>());
 
     // A second write refuses to clobber the existing sidecar.
-    let error =
-        futures_lite::future::block_on(server.write_default_loader_meta_file_for_path("data.bytes"))
-            .expect_err("an existing sidecar is not overwritten");
+    let error = futures_lite::future::block_on(
+        server.write_default_loader_meta_file_for_path("data.bytes"),
+    )
+    .expect_err("an existing sidecar is not overwritten");
     assert!(matches!(error, WriteDefaultMetaError::MetaAlreadyExists));
 
     // A path no loader matches reports the loader error.
@@ -1505,7 +1510,10 @@ fn write_default_loader_meta_file_writes_an_idempotent_sidecar() {
         server.write_default_loader_meta_file_for_path("unknown.xyz"),
     )
     .expect_err("a path with no loader cannot get a default meta");
-    assert!(matches!(error, WriteDefaultMetaError::MissingAssetLoader(_)));
+    assert!(matches!(
+        error,
+        WriteDefaultMetaError::MissingAssetLoader(_)
+    ));
 
     let _ = std::fs::remove_dir_all(&dir);
 }

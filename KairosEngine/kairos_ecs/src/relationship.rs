@@ -16,25 +16,13 @@ use std::{any::TypeId, marker::PhantomData, sync::Arc};
 use log::warn;
 
 use crate::{
+    component::{Component, ComponentCloneBehavior, ComponentId, Components, Mutable},
     debug::DebugName,
-    component::{
-        Component,
-        ComponentCloneBehavior,
-        ComponentId,
-        Components,
-        Mutable,
-    },
-    entity::{
-        ComponentCloneCtx,
-        Entity,
-    },
+    entity::{ComponentCloneCtx, Entity},
     lifecycle::HookContext,
-    system::EntityCommand,
-    world::{
-        DeferredWorld,
-        EntityWorldMut,
-    },
     ptr::Ptr,
+    system::EntityCommand,
+    world::{DeferredWorld, EntityWorldMut},
 };
 
 /// A [`Component`] on a "source" [`Entity`] that references another target [`Entity`], creating a "relationship" between them. Every [`Relationship`]

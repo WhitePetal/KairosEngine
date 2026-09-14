@@ -2,10 +2,7 @@
 
 use crate::{
     cell::SyncUnsafeCell,
-    component::{
-        Component,
-        ComponentId,
-    },
+    component::{Component, ComponentId},
     entity::Entity,
     lifecycle::HookContext,
     storage::SparseArray,

@@ -125,9 +125,7 @@ impl SceneWindow {
 }
 
 impl Drawer for SceneWindow {
-    fn create(
-        world: &kairos_ecs::world::World,
-    ) -> Result<Self, Box<dyn std::error::Error>>
+    fn create(world: &kairos_ecs::world::World) -> Result<Self, Box<dyn std::error::Error>>
     where
         Self: Sized,
     {
@@ -500,7 +498,8 @@ impl SceneWindow {
         }
 
         let style = &self.model.style;
-        let orbit = OrbitState::from_eye_pivot(style.cam_default_position, style.cam_default_target);
+        let orbit =
+            OrbitState::from_eye_pivot(style.cam_default_position, style.cam_default_target);
         let camera = Camera::new(
             style.cam_default_fov,
             style.cam_default_near,

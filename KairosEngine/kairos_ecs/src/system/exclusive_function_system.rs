@@ -3,34 +3,15 @@ use std::{borrow::Cow, marker::PhantomData};
 use variadics_please::all_tuples;
 
 use crate::{
+    change_detection::{CheckChangeTicks, Tick},
     debug::DebugName,
-    change_detection::{
-        CheckChangeTicks,
-        Tick,
-    },
     query::FilteredAccessSet,
-    schedule::{
-        InternedSystemSet,
-        SystemSet,
-        SystemTypeSet,
-    },
+    schedule::{InternedSystemSet, SystemSet, SystemTypeSet},
     system::{
-        ExclusiveSystemParam,
-        ExclusiveSystemParamItem,
-        IntoResult,
-        IntoSystem,
-        System,
-        SystemIn,
-        SystemInput,
-        SystemMeta,
-        SystemStateFlags,
-        check_system_change_tick,
+        ExclusiveSystemParam, ExclusiveSystemParamItem, IntoResult, IntoSystem, System, SystemIn,
+        SystemInput, SystemMeta, SystemStateFlags, check_system_change_tick,
     },
-    world::{
-        DeferredWorld,
-        World,
-        unsafe_world_cell::UnsafeWorldCell,
-    },
+    world::{DeferredWorld, World, unsafe_world_cell::UnsafeWorldCell},
 };
 
 #[cfg(test)]

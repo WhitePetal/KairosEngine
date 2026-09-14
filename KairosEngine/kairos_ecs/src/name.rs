@@ -14,10 +14,7 @@ use serde::{
 
 use kairos_collections::hash::FixedHashed;
 
-use crate::{
-    component::Component,
-    entity::Entity,
-};
+use crate::{component::Component, entity::Entity};
 
 #[cfg(test)]
 mod tests;

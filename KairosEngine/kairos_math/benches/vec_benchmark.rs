@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use glam::Vec4Swizzles;
 use kairos_math::{self as math, Vector};
 use std::hint::black_box;

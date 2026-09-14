@@ -1,23 +1,11 @@
 use std::{cell::UnsafeCell, mem::needs_drop, num::NonZeroUsize, panic::Location};
 
 use crate::{
-    debug::MaybeLocation,
-    change_detection::{
-        CheckChangeTicks,
-        ComponentTicks,
-        Tick,
-    },
+    change_detection::{CheckChangeTicks, ComponentTicks, Tick},
     component::ComponentInfo,
-    storage::{
-        TableRow,
-        blob_array::BlobArray,
-        thin_array_ptr::ThinArrayPtr,
-    },
-    ptr::{
-        OwningPtr,
-        Ptr,
-        UnsafeCellDeref,
-    },
+    debug::MaybeLocation,
+    ptr::{OwningPtr, Ptr, UnsafeCellDeref},
+    storage::{TableRow, blob_array::BlobArray, thin_array_ptr::ThinArrayPtr},
 };
 
 /// A type-erased contiguous container for data of a homogeneous type.

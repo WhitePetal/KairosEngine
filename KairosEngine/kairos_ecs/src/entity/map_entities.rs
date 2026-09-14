@@ -10,11 +10,7 @@ use smallvec::SmallVec;
 use kairos_collections::{FixedHashMap, FixedHashSet};
 
 use crate::{
-    entity::{
-        Entity,
-        EntityHashMap,
-        index_set::EntityIndexSet,
-    },
+    entity::{Entity, EntityHashMap, index_set::EntityIndexSet},
     world::World,
 };
 

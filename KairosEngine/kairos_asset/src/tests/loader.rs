@@ -104,7 +104,11 @@ fn context<'a>(server: &'a AssetServer, path: &'static str) -> LoadContext<'a> {
     LoadContext::new(server, AssetPath::from(path), true, false)
 }
 
-fn load_bytes(loader: &dyn ErasedAssetLoader, server: &AssetServer, bytes: &[u8]) -> ErasedLoadedAsset {
+fn load_bytes(
+    loader: &dyn ErasedAssetLoader,
+    server: &AssetServer,
+    bytes: &[u8],
+) -> ErasedLoadedAsset {
     let mut reader = VecReader::new(bytes.to_vec());
     let settings = ();
     let context = context(server, "asset.bytes");
@@ -128,11 +132,11 @@ fn loader_extensions_and_erased_type_metadata() {
     assert_eq!(erased.extensions(), &["bytes"]);
     assert_eq!(erased.type_name(), core::any::type_name::<ByteLoader>());
     assert_eq!(erased.type_id(), core::any::TypeId::of::<ByteLoader>());
-    assert_eq!(erased.asset_type_name(), core::any::type_name::<ByteAsset>());
     assert_eq!(
-        erased.asset_type_id(),
-        core::any::TypeId::of::<ByteAsset>()
+        erased.asset_type_name(),
+        core::any::type_name::<ByteAsset>()
     );
+    assert_eq!(erased.asset_type_id(), core::any::TypeId::of::<ByteAsset>());
 }
 
 #[test]
@@ -208,7 +212,9 @@ fn labeled_assets_get_independent_path_handles() {
     // The labeled assets are reachable from the loaded asset by label and id.
     assert_eq!(loaded.iter_labels().collect::<Vec<_>>(), vec!["sub"]);
     assert_eq!(
-        loaded.get_labeled("sub").and_then(|a| a.get::<OtherAsset>()),
+        loaded
+            .get_labeled("sub")
+            .and_then(|a| a.get::<OtherAsset>()),
         Some(&OtherAsset(7))
     );
     assert_eq!(
@@ -240,8 +246,7 @@ fn each_label_is_independent() {
 #[test]
 fn load_state_tracks_the_three_states_and_failure() {
     let server = server();
-    let handle: Handle<ByteAsset> =
-        server.get_or_create_path_handle(AssetPath::from("a.bytes"));
+    let handle: Handle<ByteAsset> = server.get_or_create_path_handle(AssetPath::from("a.bytes"));
     let id = handle.id().untyped();
 
     assert!(matches!(
@@ -258,9 +263,10 @@ fn load_state_tracks_the_three_states_and_failure() {
     // The dependency states are still `NotLoaded`.
     assert!(!server.read_infos().is_loaded_with_dependencies(id));
 
-    server
-        .write_infos()
-        .set_load_state(id, LoadState::Failed(Arc::new(AssetLoadError::AssetMetaReadError)));
+    server.write_infos().set_load_state(
+        id,
+        LoadState::Failed(Arc::new(AssetLoadError::AssetMetaReadError)),
+    );
     let state = server.read_infos().load_state(id).unwrap();
     assert!(state.is_failed());
     assert!(!state.is_loaded());
@@ -273,9 +279,7 @@ fn dependency_load_states_report_themselves() {
     assert!(DependencyLoadState::Loading.is_loading());
     assert!(DependencyLoadState::Loaded.is_loaded());
     assert!(!DependencyLoadState::NotLoaded.is_loaded());
-    assert!(
-        DependencyLoadState::Failed(Arc::new(AssetLoadError::AssetMetaReadError)).is_failed()
-    );
+    assert!(DependencyLoadState::Failed(Arc::new(AssetLoadError::AssetMetaReadError)).is_failed());
 
     assert!(RecursiveDependencyLoadState::Loading.is_loading());
     assert!(RecursiveDependencyLoadState::Loaded.is_loaded());
@@ -310,7 +314,10 @@ fn erased_loaded_asset_round_trips_its_type() {
     let loaded: ErasedLoadedAsset = LoadedAsset::new_with_dependencies(ByteAsset(vec![3])).into();
 
     assert_eq!(loaded.asset_type_id(), core::any::TypeId::of::<ByteAsset>());
-    assert_eq!(loaded.asset_type_name(), core::any::type_name::<ByteAsset>());
+    assert_eq!(
+        loaded.asset_type_name(),
+        core::any::type_name::<ByteAsset>()
+    );
     assert_eq!(loaded.get::<OtherAsset>(), None);
     assert_eq!(loaded.get::<ByteAsset>(), Some(&ByteAsset(vec![3])));
 
@@ -350,7 +357,10 @@ fn direct_load_records_a_loader_dependency_without_a_handle_dependency() {
     .expect("the direct load succeeds");
 
     // The nested value is returned immediately.
-    assert_eq!(loaded.get::<ByteAsset>(), Some(&ByteAsset(b"body".to_vec())));
+    assert_eq!(
+        loaded.get::<ByteAsset>(),
+        Some(&ByteAsset(b"body".to_vec()))
+    );
 
     // It is recorded as a loader dependency (a processed-info input) but adds no
     // handle dependency.
@@ -372,7 +382,10 @@ fn async_queries_resolve_registered_loaders() {
 
     let by_extension =
         block_on(server.get_asset_loader_with_extension("bytes")).expect("extension resolves");
-    assert_eq!(by_extension.type_name(), core::any::type_name::<ByteLoader>());
+    assert_eq!(
+        by_extension.type_name(),
+        core::any::type_name::<ByteLoader>()
+    );
 
     let by_name =
         block_on(server.get_asset_loader_with_type_name(core::any::type_name::<ByteLoader>()))
@@ -382,10 +395,9 @@ fn async_queries_resolve_registered_loaders() {
         core::any::TypeId::of::<ByteAsset>()
     );
 
-    let by_type_id = block_on(
-        server.get_asset_loader_with_asset_type_id(core::any::TypeId::of::<ByteAsset>()),
-    )
-    .expect("asset type id resolves");
+    let by_type_id =
+        block_on(server.get_asset_loader_with_asset_type_id(core::any::TypeId::of::<ByteAsset>()))
+            .expect("asset type id resolves");
     assert_eq!(by_type_id.extensions(), &["bytes"]);
 
     let by_type = block_on(server.get_asset_loader_with_asset_type::<ByteAsset>())
@@ -552,7 +564,10 @@ fn builder_load_untyped_value_from_reader_resolves_the_loader_by_path() {
     )
     .expect("the immediate load succeeds");
 
-    assert_eq!(loaded.get::<ByteAsset>(), Some(&ByteAsset(b"body".to_vec())));
+    assert_eq!(
+        loaded.get::<ByteAsset>(),
+        Some(&ByteAsset(b"body".to_vec()))
+    );
 }
 
 #[test]
@@ -566,9 +581,13 @@ fn builder_load_value_rejects_empty_and_labeled_paths() {
         .expect("an empty path is rejected");
     assert!(matches!(error, LoadDirectError::EmptyPath(_)));
 
-    let error = block_on(context.load_builder().load_value::<ByteAsset>("inner.bytes#sub"))
-        .err()
-        .expect("a labeled path is rejected");
+    let error = block_on(
+        context
+            .load_builder()
+            .load_value::<ByteAsset>("inner.bytes#sub"),
+    )
+    .err()
+    .expect("a labeled path is rejected");
     assert!(matches!(error, LoadDirectError::RequestedSubasset(_)));
 
     // The erased/untyped variants share the same guard.
@@ -609,7 +628,9 @@ fn builder_load_untyped_defers_and_records_a_handle_dependency() {
 fn builder_with_settings_overrides_the_loader_settings() {
     let server = server();
     server.register_loader(CountLoader);
-    server.write_infos().register_handle_provider::<CountAsset>();
+    server
+        .write_infos()
+        .register_handle_provider::<CountAsset>();
     let mut reader = VecReader::new(Vec::new());
     let mut context = context(&server, "root.bytes");
 

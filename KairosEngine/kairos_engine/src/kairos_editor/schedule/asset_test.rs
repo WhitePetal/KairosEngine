@@ -6,6 +6,10 @@
 //! top of the types (`Font`) that bootstrap now registers itself (#207).
 
 use super::{PostUpdate, PreUpdate, Startup};
+use crate::asset::{
+    Asset, AssetEventSystems, AssetServer, AssetStages, AssetTrackingSystems, AssetWorldExt,
+    Assets, VisitAssetDependencies,
+};
 use crate::audio::{
     audio::AudioAsset,
     audio_ext::{AudioExt, PcmData},
@@ -17,10 +21,6 @@ use crate::graphics::{
 use crate::kairos_editor::editor_assets::{Text, Toml};
 use crate::kairos_editor::syntax::SyntaxHighlightSettings;
 use crate::kairos_ui::font::Font;
-use crate::asset::{
-    Asset, AssetEventSystems, AssetServer, AssetStages, AssetTrackingSystems, AssetWorldExt,
-    Assets, VisitAssetDependencies,
-};
 use kairos_ecs::schedule::{ScheduleLabel, Schedules, SystemSet};
 
 use crate::kairos_editor::build_world;

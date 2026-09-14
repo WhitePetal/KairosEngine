@@ -8,22 +8,13 @@ use fixedbitset::FixedBitSet;
 use indexmap::IndexSet;
 use thiserror::Error;
 
-use kairos_collections::{FixedHashMap, FixedHashSet};
 use kairos_collections::hash::FixedHasher;
+use kairos_collections::{FixedHashMap, FixedHashSet};
 
-use crate::{
-    schedule::graph::{
-        DiGraph,
-        DiGraphToposortError,
-        Direction::{
-            Incoming,
-            Outgoing,
-        },
-        GraphNodeId,
-        UnGraph,
-        index,
-        row_col,
-    },
+use crate::schedule::graph::{
+    DiGraph, DiGraphToposortError,
+    Direction::{Incoming, Outgoing},
+    GraphNodeId, UnGraph, index, row_col,
 };
 
 #[cfg(test)]

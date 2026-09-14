@@ -2,10 +2,7 @@ use std::{cell::UnsafeCell, panic::Location};
 
 use kairos_ecs_macros::Event;
 
-use crate::{
-    debug::MaybeLocation,
-    change_detection::MAX_CHANGE_AGE,
-};
+use crate::{change_detection::MAX_CHANGE_AGE, debug::MaybeLocation};
 
 /// A value that tracks when a system ran relative to other systems.
 /// This is used to power change detection.

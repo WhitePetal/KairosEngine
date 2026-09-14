@@ -2,13 +2,7 @@ use std::hash::{BuildHasher, Hasher};
 
 use kairos_collections::hash::FixedHasher;
 
-use crate::{
-    intern::{
-        Internable,
-        Interned,
-        Interner,
-    },
-};
+use crate::intern::{Internable, Interned, Interner};
 
 #[test]
 fn zero_sized_type() {

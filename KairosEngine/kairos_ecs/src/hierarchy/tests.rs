@@ -1,18 +1,9 @@
 use crate::{
     children,
     entity::Entity,
-    hierarchy::{
-        ChildOf,
-        Children,
-    },
-    relationship::{
-        RelationshipHookMode,
-        RelationshipTarget,
-    },
-    spawn::{
-        Spawn,
-        SpawnRelated,
-    },
+    hierarchy::{ChildOf, Children},
+    relationship::{RelationshipHookMode, RelationshipTarget},
+    spawn::{Spawn, SpawnRelated},
     world::World,
 };
 

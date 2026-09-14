@@ -6,21 +6,11 @@ use std::{
 };
 
 use crate::{
-    debug::MaybeLocation,
-    change_detection::{
-        ComponentTickCells,
-        DetectChanges,
-        Tick,
-        traits::*,
-    },
+    change_detection::{ComponentTickCells, DetectChanges, Tick, traits::*},
     component::Mutable,
+    debug::MaybeLocation,
+    ptr::{Ptr, PtrMut, ThinSlicePtr, UnsafeCellDeref},
     resource::Resource,
-    ptr::{
-        Ptr,
-        PtrMut,
-        ThinSlicePtr,
-        UnsafeCellDeref,
-    },
 };
 
 /// Used by immutable query parameters (such as [`Ref`] and [`Res`])

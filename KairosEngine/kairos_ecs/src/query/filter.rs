@@ -3,41 +3,15 @@ use std::{cell::UnsafeCell, marker::PhantomData};
 use variadics_please::all_tuples;
 
 use crate::{
-    debug::{
-        DebugCheckedUnwrap,
-        DebugName,
-    },
     archetype::Archetype,
     change_detection::Tick,
-    component::{
-        Component,
-        ComponentId,
-        Components,
-        StorageType,
-    },
-    entity::{
-        Entities,
-        Entity,
-    },
-    query::{
-        FilteredAccess,
-        FilteredAccessSet,
-        StorageSwitch,
-        WorldQuery,
-    },
-    storage::{
-        ComponentSparseSet,
-        Table,
-        TableRow,
-    },
-    world::{
-        World,
-        unsafe_world_cell::UnsafeWorldCell,
-    },
-    ptr::{
-        ThinSlicePtr,
-        UnsafeCellDeref,
-    },
+    component::{Component, ComponentId, Components, StorageType},
+    debug::{DebugCheckedUnwrap, DebugName},
+    entity::{Entities, Entity},
+    ptr::{ThinSlicePtr, UnsafeCellDeref},
+    query::{FilteredAccess, FilteredAccessSet, StorageSwitch, WorldQuery},
+    storage::{ComponentSparseSet, Table, TableRow},
+    world::{World, unsafe_world_cell::UnsafeWorldCell},
 };
 
 /// Types that filter the results of a [`Query`].

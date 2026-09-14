@@ -14,14 +14,7 @@ use serde::{Deserialize, Serialize};
 
 use kairos_collections::FixedHashMap;
 
-use crate::{
-    entity::{
-        Entity,
-        EntityEquivalent,
-        EntityHash,
-        EntitySetIterator,
-    },
-};
+use crate::entity::{Entity, EntityEquivalent, EntityHash, EntitySetIterator};
 
 #[cfg(test)]
 mod test;

@@ -13,27 +13,13 @@ use tracing::{Span, info_span};
 
 use crate::{
     cell::SyncUnsafeCell,
-    error::{
-        ErrorContext,
-        ErrorHandler,
-        KairosError,
-    },
+    error::{ErrorContext, ErrorHandler, KairosError},
     schedule::{
-        ConditionWithAccess,
-        SystemExecutor,
-        SystemSchedule,
-        SystemWithAccess,
-        executor::__rust_begin_short_backtrace,
-        is_apply_deferred,
+        ConditionWithAccess, SystemExecutor, SystemSchedule, SystemWithAccess,
+        executor::__rust_begin_short_backtrace, is_apply_deferred,
     },
-    system::{
-        RunSystemError,
-        ScheduleSystem,
-    },
-    world::{
-        World,
-        unsafe_world_cell::UnsafeWorldCell,
-    },
+    system::{RunSystemError, ScheduleSystem},
+    world::{World, unsafe_world_cell::UnsafeWorldCell},
 };
 
 #[cfg(test)]

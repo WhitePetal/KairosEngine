@@ -53,9 +53,7 @@ impl GridPlaneModel {
         let material = world
             .resource::<AssetServer>()
             .load::<Material>(PathBuf::from("res/materials/gizmos/grid_plane.mat"));
-        let mesh = world
-            .resource::<AssetServer>()
-            .add(build_grid_lines(100));
+        let mesh = world.resource::<AssetServer>().add(build_grid_lines(100));
 
         Self { material, mesh }
     }

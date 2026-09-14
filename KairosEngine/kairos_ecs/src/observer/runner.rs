@@ -3,22 +3,15 @@
 use std::any::Any;
 
 use crate::{
-    debug::DebugCheckedUnwrap,
     bundle::Bundle,
+    debug::DebugCheckedUnwrap,
     entity::Entity,
     error::ErrorContext,
     event::Event,
-    observer::{
-        Observer,
-        On,
-        TriggerContext,
-    },
-    system::{
-        ObserverSystem,
-        RunSystemError,
-    },
-    world::DeferredWorld,
+    observer::{Observer, On, TriggerContext},
     ptr::PtrMut,
+    system::{ObserverSystem, RunSystemError},
+    world::DeferredWorld,
 };
 
 #[cfg(test)]

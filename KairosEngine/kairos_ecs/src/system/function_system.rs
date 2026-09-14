@@ -5,40 +5,18 @@ use tracing::{Span, info_span};
 use variadics_please::all_tuples;
 
 use crate::{
+    change_detection::{CheckChangeTicks, Tick},
     debug::DebugName,
-    change_detection::{
-        CheckChangeTicks,
-        Tick,
-    },
     error::KairosError,
     never::Never,
     query::FilteredAccessSet,
-    schedule::{
-        InternedSystemSet,
-        SystemSet,
-    },
+    schedule::{InternedSystemSet, SystemSet},
     system::{
-        FromInput,
-        IntoSystem,
-        ReadOnlySystem,
-        ReadOnlySystemParam,
-        RunSystemError,
-        System,
-        SystemInput,
-        SystemParam,
-        SystemParamBuilder,
-        SystemParamItem,
-        SystemParamValidationError,
-        SystemStateFlags,
-        check_system_change_tick,
+        FromInput, IntoSystem, ReadOnlySystem, ReadOnlySystemParam, RunSystemError, System,
+        SystemInput, SystemParam, SystemParamBuilder, SystemParamItem, SystemParamValidationError,
+        SystemStateFlags, check_system_change_tick,
     },
-    world::{
-        DeferredWorld,
-        FromWorld,
-        World,
-        WorldId,
-        unsafe_world_cell::UnsafeWorldCell,
-    },
+    world::{DeferredWorld, FromWorld, World, WorldId, unsafe_world_cell::UnsafeWorldCell},
 };
 
 #[cfg(test)]

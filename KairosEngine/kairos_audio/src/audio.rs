@@ -198,12 +198,14 @@ impl AssetLoader for AudioAssetLoader {
             reader.read_to_end(&mut toml_bytes).await?;
             let serialized: SerializedAudioAsset = toml::from_slice(&toml_bytes)?;
 
-            let source_bytes = async_fs::read(&serialized.source_path).await.map_err(|error| {
-                KairosError::error(format!(
-                    "AudioAsset: failed to read source '{}': {error}",
-                    serialized.source_path.display()
-                ))
-            })?;
+            let source_bytes = async_fs::read(&serialized.source_path)
+                .await
+                .map_err(|error| {
+                    KairosError::error(format!(
+                        "AudioAsset: failed to read source '{}': {error}",
+                        serialized.source_path.display()
+                    ))
+                })?;
             let sound_data = StaticSoundData::from_cursor(Cursor::new(source_bytes))?;
             let sound_data = serialized
                 .audio_asset_settings

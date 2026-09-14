@@ -175,7 +175,9 @@ mod test {
         crate::audio_ext::pcm::install(&mut world);
         install_audio_ext(&mut world);
 
-        let handle = world.resource::<AssetServer>().load::<AudioExt>(rel_descriptor);
+        let handle = world
+            .resource::<AssetServer>()
+            .load::<AudioExt>(rel_descriptor);
 
         // The composite's dependencies resolve on their own tasks, so pump until
         // all three values are in their stores.

@@ -44,9 +44,8 @@ impl AssetLoader for TextLoader {
         async move {
             let mut bytes = Vec::new();
             reader.read_to_end(&mut bytes).await?;
-            let content = String::from_utf8(bytes).map_err(|error| {
-                std::io::Error::new(std::io::ErrorKind::InvalidData, error)
-            })?;
+            let content = String::from_utf8(bytes)
+                .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))?;
             Ok(Text(content))
         }
     }

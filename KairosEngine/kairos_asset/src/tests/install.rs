@@ -26,7 +26,8 @@ use crate::io::{
 use crate::{
     Asset, AssetEvent, AssetEventSystems, AssetLoadFailedEvent, AssetLoader, AssetMetaCheck,
     AssetMode, AssetOptions, AssetProcessor, AssetServer, AssetServerMode, AssetStages,
-    AssetWorldExt, Assets, DirectAssetAccessExt, Handle, LoadContext, VisitAssetDependencies, install,
+    AssetWorldExt, Assets, DirectAssetAccessExt, Handle, LoadContext, VisitAssetDependencies,
+    install,
 };
 
 /// The two ad-hoc stages the asset drivers are installed into.
@@ -111,27 +112,43 @@ fn init_asset_registers_the_store_the_messages_and_the_drivers() {
     let mut world = installed_world();
 
     assert!(world.get_resource::<Assets<ByteAsset>>().is_some());
-    assert!(world.get_resource::<Messages<AssetEvent<ByteAsset>>>().is_some());
-    assert!(world.get_resource::<Messages<AssetLoadFailedEvent<ByteAsset>>>().is_some());
+    assert!(
+        world
+            .get_resource::<Messages<AssetEvent<ByteAsset>>>()
+            .is_some()
+    );
+    assert!(
+        world
+            .get_resource::<Messages<AssetLoadFailedEvent<ByteAsset>>>()
+            .is_some()
+    );
     assert!(world.get_resource::<MessageRegistry>().is_some());
 
     // The handle provider and both sender maps are registered with the server:
     // an `add` produces a handle whose value reaches the store, and a
     // `LoadedWithDependencies` event, once the drivers run.
-    let handle = world.resource::<AssetServer>().add(ByteAsset(b"hi".to_vec()));
+    let handle = world
+        .resource::<AssetServer>()
+        .add(ByteAsset(b"hi".to_vec()));
     let id = handle.id();
     world.run_schedule(Tracking);
 
     assert!(world.resource::<Assets<ByteAsset>>().get(id).is_some());
     let events = drain::<AssetEvent<ByteAsset>>(&mut world);
-    assert!(events.iter().any(|event| event.is_loaded_with_dependencies(id)));
+    assert!(
+        events
+            .iter()
+            .any(|event| event.is_loaded_with_dependencies(id))
+    );
 }
 
 #[test]
 fn loaded_with_dependencies_lands_in_tracking_and_added_waits_for_the_event_stage() {
     let mut world = installed_world();
 
-    let handle = world.resource::<AssetServer>().add(ByteAsset(b"hi".to_vec()));
+    let handle = world
+        .resource::<AssetServer>()
+        .add(ByteAsset(b"hi".to_vec()));
     let id = handle.id();
 
     // `add` only queues the value; nothing is stored until the tracking stage
@@ -177,7 +194,9 @@ fn asset_events_reach_a_message_reader_after_the_event_stage() {
         .entry(Events)
         .add_systems(observe.after(AssetEventSystems));
 
-    let handle = world.resource::<AssetServer>().add(ByteAsset(b"hi".to_vec()));
+    let handle = world
+        .resource::<AssetServer>()
+        .add(ByteAsset(b"hi".to_vec()));
     let id = handle.id();
 
     world.run_schedule(Tracking);
@@ -185,7 +204,12 @@ fn asset_events_reach_a_message_reader_after_the_event_stage() {
 
     let observed = world.resource::<Observed>();
     assert!(observed.0.iter().any(|event| event.is_added(id)));
-    assert!(observed.0.iter().any(|event| event.is_loaded_with_dependencies(id)));
+    assert!(
+        observed
+            .0
+            .iter()
+            .any(|event| event.is_loaded_with_dependencies(id))
+    );
 }
 
 #[test]
@@ -205,7 +229,9 @@ fn insert_is_immediately_visible_through_the_registered_store() {
 fn dropping_the_last_strong_handle_releases_the_asset_in_the_tracking_stage() {
     let mut world = installed_world();
 
-    let handle = world.resource::<AssetServer>().add(ByteAsset(b"x".to_vec()));
+    let handle = world
+        .resource::<AssetServer>()
+        .add(ByteAsset(b"x".to_vec()));
     let id = handle.id();
     world.run_schedule(Tracking);
     assert!(world.resource::<Assets<ByteAsset>>().contains(id));
@@ -230,10 +256,22 @@ fn stores_are_independent_per_registered_type() {
     let bytes = world
         .resource_mut::<Assets<ByteAsset>>()
         .add(ByteAsset(b"b".to_vec()));
-    let other = world.resource_mut::<Assets<OtherAsset>>().add(OtherAsset(7));
+    let other = world
+        .resource_mut::<Assets<OtherAsset>>()
+        .add(OtherAsset(7));
 
-    assert!(world.resource::<Assets<ByteAsset>>().get(bytes.id()).is_some());
-    assert!(world.resource::<Assets<OtherAsset>>().get(other.id()).is_some());
+    assert!(
+        world
+            .resource::<Assets<ByteAsset>>()
+            .get(bytes.id())
+            .is_some()
+    );
+    assert!(
+        world
+            .resource::<Assets<OtherAsset>>()
+            .get(other.id())
+            .is_some()
+    );
     assert_eq!(world.resource::<Assets<ByteAsset>>().len(), 1);
     assert_eq!(world.resource::<Assets<OtherAsset>>().len(), 1);
 }
@@ -324,7 +362,9 @@ fn world_for_layout(builder: AssetSourceBuilder, mode: AssetMode) -> World {
         .insert(AssetSourceId::Default, builder);
     install(
         &mut world,
-        options().with_mode(mode).with_meta_check(AssetMetaCheck::Never),
+        options()
+            .with_mode(mode)
+            .with_meta_check(AssetMetaCheck::Never),
     );
     world.init_asset::<ByteAsset>();
     world.register_asset_loader(ByteLoader);
@@ -342,14 +382,20 @@ fn load_until_settled(world: &mut World, server: &AssetServer, handle: &Handle<B
         }
         std::thread::sleep(std::time::Duration::from_millis(1));
     }
-    panic!("asset {id:?} never settled; state was {:?}", server.load_state(id));
+    panic!(
+        "asset {id:?} never settled; state was {:?}",
+        server.load_state(id)
+    );
 }
 
 #[test]
 fn asset_options_default_to_unprocessed_with_the_processor_feature_off() {
     let options = options();
     assert_eq!(options.mode, AssetMode::Unprocessed);
-    assert_eq!(options.use_asset_processor, cfg!(feature = "asset_processor"));
+    assert_eq!(
+        options.use_asset_processor,
+        cfg!(feature = "asset_processor")
+    );
     assert!(options.watch_for_changes_override.is_none());
 }
 
@@ -504,7 +550,9 @@ fn register_asset_source_registers_a_named_source() {
     );
 
     install(&mut world, options().with_meta_check(AssetMetaCheck::Never));
-    world.init_asset::<ByteAsset>().register_asset_loader(ByteLoader);
+    world
+        .init_asset::<ByteAsset>()
+        .register_asset_loader(ByteLoader);
 
     let server = world.resource::<AssetServer>().clone();
     let handle = server.load::<ByteAsset>("named://data.bytes");
@@ -546,7 +594,10 @@ fn processed_mode_gives_the_default_source_a_processed_reader() {
     // With no host-supplied default source, `install` roots the processed reader
     // at the crate's default processed path.
     let mut processed_world = World::new();
-    install(&mut processed_world, options().with_mode(AssetMode::Processed));
+    install(
+        &mut processed_world,
+        options().with_mode(AssetMode::Processed),
+    );
     let source = processed_world
         .resource::<AssetServer>()
         .get_source(AssetSourceId::Default)
@@ -666,9 +717,11 @@ fn watch_for_changes_override_sets_the_servers_watching_flag() {
         &mut watched_world,
         options().with_watch_for_changes_override(true),
     );
-    assert!(watched_world
-        .resource::<AssetServer>()
-        .watching_for_changes());
+    assert!(
+        watched_world
+            .resource::<AssetServer>()
+            .watching_for_changes()
+    );
 }
 
 #[test]

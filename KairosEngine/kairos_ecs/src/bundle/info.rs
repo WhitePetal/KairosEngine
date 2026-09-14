@@ -2,43 +2,20 @@ use std::{any::TypeId, ptr::NonNull};
 
 use indexmap::{IndexMap, IndexSet};
 
-use kairos_collections::{FixedHashMap, FixedHashSet, TypeIdMap};
 use kairos_collections::hash::FixedHasher;
+use kairos_collections::{FixedHashMap, FixedHashSet, TypeIdMap};
 
 use crate::{
-    debug::{
-        DebugCheckedUnwrap,
-        MaybeLocation,
-    },
-    archetype::{
-        Archetype,
-        BundleComponentStatus,
-        ComponentStatus,
-    },
-    bundle::{
-        Bundle,
-        DynamicBundle,
-    },
+    archetype::{Archetype, BundleComponentStatus, ComponentStatus},
+    bundle::{Bundle, DynamicBundle},
     change_detection::Tick,
     component::{
-        ComponentId,
-        Components,
-        ComponentsRegistrator,
-        RequiredComponentConstructor,
-        StorageType,
+        ComponentId, Components, ComponentsRegistrator, RequiredComponentConstructor, StorageType,
     },
+    debug::{DebugCheckedUnwrap, MaybeLocation},
     entity::Entity,
-    storage::{
-        SparseSetIndex,
-        SparseSets,
-        Storages,
-        Table,
-        TableRow,
-    },
-    ptr::{
-        MovingPtr,
-        OwningPtr,
-    },
+    ptr::{MovingPtr, OwningPtr},
+    storage::{SparseSetIndex, SparseSets, Storages, Table, TableRow},
 };
 
 /// For a specific [`World`], this stores a unique value identifying a type of a registered [`Bundle`].

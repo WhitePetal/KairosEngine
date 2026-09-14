@@ -17,15 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use kairos_collections::FixedHashSet;
 
-use crate::{
-    entity::{
-        Entity,
-        EntityHash,
-        EntitySet,
-        EntitySetIterator,
-        FromEntitySetIterator,
-    },
-};
+use crate::entity::{Entity, EntityHash, EntitySet, EntitySetIterator, FromEntitySetIterator};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EntityHashSet(FixedHashSet<Entity, EntityHash>);

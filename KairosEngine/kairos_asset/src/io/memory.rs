@@ -10,10 +10,7 @@
 //! whole virtual filesystem unusable, so poisoning is recovered from rather than
 //! propagated.
 
-use core::{
-    pin::Pin,
-    task::Poll,
-};
+use core::{pin::Pin, task::Poll};
 use std::{
     io::{Error, ErrorKind, SeekFrom},
     path::{Path, PathBuf},
@@ -359,11 +356,7 @@ impl AsyncRead for DataReader {
         // Get the mut borrow to avoid trying to borrow the pin itself multiple
         // times.
         let this = self.get_mut();
-        Poll::Ready(Ok(slice_read(
-            this.data.value(),
-            &mut this.bytes_read,
-            buf,
-        )))
+        Poll::Ready(Ok(slice_read(this.data.value(), &mut this.bytes_read, buf)))
     }
 }
 
@@ -376,11 +369,7 @@ impl AsyncSeek for DataReader {
         // Get the mut borrow to avoid trying to borrow the pin itself multiple
         // times.
         let this = self.get_mut();
-        Poll::Ready(slice_seek(
-            this.data.value(),
-            &mut this.bytes_read,
-            pos,
-        ))
+        Poll::Ready(slice_seek(this.data.value(), &mut this.bytes_read, pos))
     }
 }
 

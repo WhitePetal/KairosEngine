@@ -1,21 +1,8 @@
 use crate::{
-    entity::{
-        Entities,
-        EntityAllocator,
-    },
-    system::{
-        Commands,
-        Deferred,
-        SystemBuffer,
-        SystemMeta,
-        SystemParam,
-    },
-    world::{
-        DeferredWorld,
-        World,
-        command_queue::CommandQueue,
-    },
+    entity::{Entities, EntityAllocator},
     parallel_queue::Parallel,
+    system::{Commands, Deferred, SystemBuffer, SystemMeta, SystemParam},
+    world::{DeferredWorld, World, command_queue::CommandQueue},
 };
 
 #[derive(Default)]

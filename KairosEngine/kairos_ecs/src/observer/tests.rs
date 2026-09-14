@@ -1,58 +1,20 @@
 use std::any::type_name;
 
 use crate::{
+    archetype::{Archetype, ArchetypeId},
+    change_detection::{DetectChanges, Res, ResMut},
+    component::{Component, ComponentCloneBehavior, ComponentDescriptor, StorageType},
     debug::MaybeLocation,
-    archetype::{
-        Archetype,
-        ArchetypeId,
-    },
-    change_detection::{
-        DetectChanges,
-        Res,
-        ResMut,
-    },
-    component::{
-        Component,
-        ComponentCloneBehavior,
-        ComponentDescriptor,
-        StorageType,
-    },
     entity::Entity,
     error::Result,
-    event::{
-        EntityComponentsTrigger,
-        EntityEvent,
-        Event,
-        EventKey,
-        GlobalTrigger,
-    },
+    event::{EntityComponentsTrigger, EntityEvent, Event, EventKey, GlobalTrigger},
     hierarchy::ChildOf,
-    lifecycle::{
-        Add,
-        Despawn,
-        Discard,
-        Insert,
-        Remove,
-    },
-    observer::{
-        Observer,
-        ObserverSystemExt,
-        On,
-    },
+    lifecycle::{Add, Despawn, Discard, Insert, Remove},
+    observer::{Observer, ObserverSystemExt, On},
+    ptr::{OwningPtr, PtrMut},
     resource::Resource,
-    system::{
-        Commands,
-        ParamSet,
-        Query,
-    },
-    world::{
-        DeferredWorld,
-        World,
-    },
-    ptr::{
-        OwningPtr,
-        PtrMut,
-    },
+    system::{Commands, ParamSet, Query},
+    world::{DeferredWorld, World},
 };
 
 #[derive(Component)]

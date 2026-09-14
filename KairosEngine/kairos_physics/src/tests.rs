@@ -40,11 +40,8 @@ fn insert_movable_sphere_resolves_and_places_the_body() {
     let mut physics = PhysicsEngine::new();
     let initial = initial_transform();
 
-    let (body, collider) = physics.insert_movable_sphere(
-        0.5,
-        ColliderMaterial { restitution: 0.8 },
-        initial,
-    );
+    let (body, collider) =
+        physics.insert_movable_sphere(0.5, ColliderMaterial { restitution: 0.8 }, initial);
 
     let rapier_body = physics
         .rigid_body_set
@@ -69,16 +66,21 @@ fn insert_immovable_box_resolves_without_a_body() {
     let mut physics = PhysicsEngine::new();
     let initial = initial_transform();
 
-    let collider =
-        physics.insert_immovable_box(float3::new(100.0, 1.0, 100.0), initial);
+    let collider = physics.insert_immovable_box(float3::new(100.0, 1.0, 100.0), initial);
 
     let rapier_collider = physics
         .collider_set
         .get(collider.handle)
         .expect("the collider handle must resolve in the collider set");
     assert_eq!(rapier_collider.parent(), None, "a box must be standalone");
-    assert_eq!(to_float3(rapier_collider.translation()), initial.translation);
-    assert_eq!(quat_from_rapier(&rapier_collider.rotation()), initial.rotation);
+    assert_eq!(
+        to_float3(rapier_collider.translation()),
+        initial.translation
+    );
+    assert_eq!(
+        quat_from_rapier(&rapier_collider.rotation()),
+        initial.rotation
+    );
 }
 
 #[test]
@@ -346,8 +348,7 @@ fn synchronisation_never_touches_scale() {
     let mut world = boot();
 
     let scale = float3::new(2.0, 3.0, 4.0);
-    let ball_start =
-        LocalTransform::new(float3::new(0.0, 5.0, 0.0), quaternion::IDENTITY, scale);
+    let ball_start = LocalTransform::new(float3::new(0.0, 5.0, 0.0), quaternion::IDENTITY, scale);
     let ball = spawn_ball(&mut world, ball_start);
 
     for _ in 0..STEPS {
@@ -355,7 +356,10 @@ fn synchronisation_never_touches_scale() {
     }
 
     let ball_end = transform_of(&world, ball);
-    assert_eq!(ball_end.scale, scale, "scale must survive every push and pull");
+    assert_eq!(
+        ball_end.scale, scale,
+        "scale must survive every push and pull"
+    );
     assert!(
         ball_end.translation.y() < ball_start.translation.y(),
         "the same steps moved the ball, so the run did reach physics"

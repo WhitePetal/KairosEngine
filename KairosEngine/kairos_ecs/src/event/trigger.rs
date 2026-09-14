@@ -4,18 +4,11 @@ use crate::{
     archetype::Archetype,
     component::ComponentId,
     entity::Entity,
-    event::{
-        EntityEvent,
-        Event,
-        SetEntityEventTarget,
-    },
-    observer::{
-        CachedObservers,
-        TriggerContext,
-    },
+    event::{EntityEvent, Event, SetEntityEventTarget},
+    observer::{CachedObservers, TriggerContext},
+    ptr::PtrMut,
     traversal::Traversal,
     world::DeferredWorld,
-    ptr::PtrMut,
 };
 
 /// [`Trigger`] determines _how_ an [`Event`] is triggered when [`World::trigger`](crate::world::World::trigger) is called.

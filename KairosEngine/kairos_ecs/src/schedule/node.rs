@@ -11,46 +11,19 @@ use thiserror::Error;
 use kairos_collections::{FixedHashMap, FixedHashSet};
 
 use crate::{
+    component::{ComponentId, Components},
     debug::DebugName,
-    component::{
-        ComponentId,
-        Components,
-    },
-    query::{
-        AccessConflicts,
-        FilteredAccessSet,
-    },
+    query::{AccessConflicts, FilteredAccessSet},
     schedule::{
-        BoxedCondition,
-        InternedSystemSet,
-        ScheduleGraph,
-        SystemSet,
+        BoxedCondition, InternedSystemSet, ScheduleGraph, SystemSet,
         graph::{
-            DagAnalysis,
-            DagGroups,
-            DiGraph,
-            Direction::{
-                self,
-                Incoming,
-                Outgoing,
-            },
-            GraphNodeId,
-            UnGraph,
+            DagAnalysis, DagGroups, DiGraph,
+            Direction::{self, Incoming, Outgoing},
+            GraphNodeId, UnGraph,
         },
     },
-    system::{
-        ReadOnlySystem,
-        RunSystemError,
-        ScheduleSystem,
-        System,
-        SystemIn,
-        SystemStateFlags,
-    },
-    world::{
-        DeferredWorld,
-        World,
-        unsafe_world_cell::UnsafeWorldCell,
-    },
+    system::{ReadOnlySystem, RunSystemError, ScheduleSystem, System, SystemIn, SystemStateFlags},
+    world::{DeferredWorld, World, unsafe_world_cell::UnsafeWorldCell},
 };
 
 #[cfg(test)]

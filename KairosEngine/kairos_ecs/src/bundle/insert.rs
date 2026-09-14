@@ -1,62 +1,22 @@
 use std::ptr::NonNull;
 
 use crate::{
-    debug::{
-        DebugCheckedUnwrap,
-        MaybeLocation,
-    },
     archetype::{
-        Archetype,
-        ArchetypeAfterBundleInsert,
-        ArchetypeCreated,
-        ArchetypeId,
-        Archetypes,
+        Archetype, ArchetypeAfterBundleInsert, ArchetypeCreated, ArchetypeId, Archetypes,
         ComponentStatus,
     },
-    bundle::{
-        ArchetypeMoveType,
-        Bundle,
-        BundleId,
-        BundleInfo,
-        DynamicBundle,
-        InsertMode,
-    },
+    bundle::{ArchetypeMoveType, Bundle, BundleId, BundleInfo, DynamicBundle, InsertMode},
     change_detection::Tick,
-    component::{
-        Components,
-        StorageType,
-    },
-    entity::{
-        Entities,
-        Entity,
-        EntityLocation,
-    },
+    component::{Components, StorageType},
+    debug::{DebugCheckedUnwrap, MaybeLocation},
+    entity::{Entities, Entity, EntityLocation},
     event::EntityComponentsTrigger,
-    lifecycle::{
-        ADD,
-        Add,
-        DISCARD,
-        Discard,
-        INSERT,
-        Insert,
-    },
+    lifecycle::{ADD, Add, DISCARD, Discard, INSERT, Insert},
     observer::Observers,
+    ptr::{ConstNonNull, MovingPtr},
     relationship::RelationshipHookMode,
-    storage::{
-        SparseSets,
-        Storages,
-        Table,
-        TableRow,
-    },
-    world::{
-        DeferredWorld,
-        World,
-        unsafe_world_cell::UnsafeWorldCell,
-    },
-    ptr::{
-        ConstNonNull,
-        MovingPtr,
-    },
+    storage::{SparseSets, Storages, Table, TableRow},
+    world::{DeferredWorld, World, unsafe_world_cell::UnsafeWorldCell},
 };
 
 // SAFETY: We have exclusive world access so our pointers can't be invalidated externally

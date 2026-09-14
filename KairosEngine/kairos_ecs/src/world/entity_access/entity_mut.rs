@@ -5,40 +5,18 @@ use std::{
 };
 
 use crate::{
-    debug::MaybeLocation,
     archetype::Archetype,
-    change_detection::{
-        ComponentTicks,
-        Mut,
-        Ref,
-        Tick,
-    },
-    component::{
-        Component,
-        ComponentId,
-        Mutable,
-    },
-    entity::{
-        ContainsEntity,
-        Entity,
-        EntityEquivalent,
-        EntityLocation,
-    },
+    change_detection::{ComponentTicks, Mut, Ref, Tick},
+    component::{Component, ComponentId, Mutable},
+    debug::MaybeLocation,
+    entity::{ContainsEntity, Entity, EntityEquivalent, EntityLocation},
     query::{
-        Access,
-        QueryAccessError,
-        ReadOnlyQueryData,
-        ReleaseStateQueryData,
-        SingleEntityQueryData,
+        Access, QueryAccessError, ReadOnlyQueryData, ReleaseStateQueryData, SingleEntityQueryData,
         has_conflicts,
     },
     world::{
-        EntityRef,
-        FilteredEntityMut,
-        FilteredEntityRef,
-        entity_access::DynamicComponentFetch,
-        error::EntityComponentError,
-        unsafe_world_cell::UnsafeEntityCell,
+        EntityRef, FilteredEntityMut, FilteredEntityRef, entity_access::DynamicComponentFetch,
+        error::EntityComponentError, unsafe_world_cell::UnsafeEntityCell,
     },
 };
 

@@ -6,9 +6,7 @@ use kairos_asset::{AssetOptions, AssetServer, Assets, install};
 use kairos_ecs::schedule::ScheduleLabel;
 use kairos_ecs::world::World;
 
-use super::{
-    Material, SerializedMaterial, install as install_material,
-};
+use super::{Material, SerializedMaterial, install as install_material};
 use crate::{render_state::RenderState, shader::ShaderAsset, shader::install as install_shader};
 
 /// The three ad-hoc stages the asset drivers are installed into.
@@ -85,7 +83,9 @@ fn material_declares_and_resolves_its_shader_dependency() {
     let mut resolved = false;
     for _ in 0..200 {
         world.run_schedule(Tracking);
-        if let Some(material) = world.resource::<Assets<Material>>().get(material_handle.id())
+        if let Some(material) = world
+            .resource::<Assets<Material>>()
+            .get(material_handle.id())
             && let Some(shader_handle) = &material.shader
             && world
                 .resource::<Assets<ShaderAsset>>()

@@ -49,12 +49,12 @@ impl AssetLoaders {
         let type_name = loader_name::<L>();
         let loader: Arc<dyn ErasedAssetLoader> = Arc::new(loader);
 
-        let (index, is_new) = if let Some(index) = self.name_to_preregistered_loader.remove(type_name)
-        {
-            (index, false)
-        } else {
-            (self.loaders.len(), true)
-        };
+        let (index, is_new) =
+            if let Some(index) = self.name_to_preregistered_loader.remove(type_name) {
+                (index, false)
+            } else {
+                (self.loaders.len(), true)
+            };
 
         if is_new {
             self.name_to_loader.insert(type_name, index);
@@ -102,8 +102,7 @@ impl AssetLoaders {
         let type_name = loader_name::<L>();
         let index = self.loaders.len();
 
-        self.name_to_preregistered_loader
-            .insert(type_name, index);
+        self.name_to_preregistered_loader.insert(type_name, index);
         self.name_to_loader.insert(type_name, index);
 
         for extension in extensions {
@@ -317,15 +316,7 @@ mod tests {
 
         let path = AssetPath::from("thing.a");
 
-        assert!(
-            block_on(
-                loaders
-                    .get_by_name(loader_name::<LoaderA>())
-                    .unwrap()
-                    .get()
-            )
-            .is_ok()
-        );
+        assert!(block_on(loaders.get_by_name(loader_name::<LoaderA>()).unwrap().get()).is_ok());
 
         let a = block_on(loaders.get_by_type(TypeId::of::<AssetA>()).unwrap().get()).unwrap();
         assert_eq!(a.extensions(), &["a"]);
@@ -359,7 +350,8 @@ mod tests {
 
         loaders.push(LoaderA);
 
-        let loader = block_on(pending.get()).expect("the pending loader resolves after registration");
+        let loader =
+            block_on(pending.get()).expect("the pending loader resolves after registration");
         assert_eq!(loader.extensions(), &["a"]);
     }
 
@@ -370,7 +362,11 @@ mod tests {
         assert!(loaders.get_by_extension("nope").is_none());
         assert!(loaders.get_by_type(TypeId::of::<AssetA>()).is_none());
         assert!(loaders.get_by_name("nope").is_none());
-        assert!(loaders.get_by_path(&AssetPath::from("thing.nope")).is_none());
+        assert!(
+            loaders
+                .get_by_path(&AssetPath::from("thing.nope"))
+                .is_none()
+        );
         assert!(loaders.find(None, &AssetPath::from("thing.nope")).is_none());
     }
 }

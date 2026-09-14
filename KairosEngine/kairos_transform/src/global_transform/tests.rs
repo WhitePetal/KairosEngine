@@ -26,7 +26,11 @@ fn default_is_identity() {
     assert_eq!(g.translation(), float3::ZERO);
     // Rotation compare is sign-agnostic (`q` and `-q` are the same
     // rotation), so go through matrices.
-    assert_matrix_approx_eq(&g.rotation().to_float4x4(), &quaternion::IDENTITY.to_float4x4(), 1e-6);
+    assert_matrix_approx_eq(
+        &g.rotation().to_float4x4(),
+        &quaternion::IDENTITY.to_float4x4(),
+        1e-6,
+    );
 }
 
 #[test]

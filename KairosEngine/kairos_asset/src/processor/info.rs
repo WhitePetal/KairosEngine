@@ -316,7 +316,8 @@ impl ProcessorAssetInfos {
                 )) = &err
                 {
                     let dependency = loader_error.path().clone();
-                    self.mark_failed_with_dependency(asset_path, dependency).await;
+                    self.mark_failed_with_dependency(asset_path, dependency)
+                        .await;
                 } else {
                     self.mark_failed(asset_path).await;
                 }

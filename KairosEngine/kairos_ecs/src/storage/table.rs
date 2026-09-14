@@ -10,31 +10,13 @@ use nonmax::NonMaxU32;
 use kairos_collections::FixedHashMap;
 
 use crate::{
-    debug::{
-        DebugCheckedUnwrap,
-        MaybeLocation,
-    },
-    change_detection::{
-        CheckChangeTicks,
-        ComponentTicks,
-        Tick,
-    },
-    component::{
-        ComponentId,
-        ComponentInfo,
-        Components,
-    },
+    change_detection::{CheckChangeTicks, ComponentTicks, Tick},
+    component::{ComponentId, ComponentInfo, Components},
+    debug::{DebugCheckedUnwrap, MaybeLocation},
     entity::Entity,
-    storage::{
-        ImmutableSparseSet,
-        SparseSet,
-    },
     on_drop::AbortOnPanic,
-    ptr::{
-        OwningPtr,
-        Ptr,
-        UnsafeCellDeref,
-    },
+    ptr::{OwningPtr, Ptr, UnsafeCellDeref},
+    storage::{ImmutableSparseSet, SparseSet},
 };
 
 mod column;

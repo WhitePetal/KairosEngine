@@ -3,16 +3,8 @@ use std::ops::Not;
 use crate::{
     debug::DebugName,
     system::{
-        Adapt,
-        AdapterSystem,
-        CombinatorSystem,
-        Combine,
-        IntoSystem,
-        ReadOnlySystem,
-        RunSystemError,
-        System,
-        SystemIn,
-        SystemInput,
+        Adapt, AdapterSystem, CombinatorSystem, Combine, IntoSystem, ReadOnlySystem,
+        RunSystemError, System, SystemIn, SystemInput,
     },
 };
 

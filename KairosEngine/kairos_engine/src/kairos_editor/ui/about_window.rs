@@ -66,9 +66,7 @@ impl AboutWindow {
 }
 
 impl Drawer for AboutWindow {
-    fn create(
-        _world: &kairos_ecs::world::World,
-    ) -> Result<Self, Box<dyn std::error::Error>>
+    fn create(_world: &kairos_ecs::world::World) -> Result<Self, Box<dyn std::error::Error>>
     where
         Self: Sized,
     {

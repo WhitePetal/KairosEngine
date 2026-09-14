@@ -1,19 +1,11 @@
 use std::iter::FusedIterator;
 
 use crate::{
+    bundle::{Bundle, BundleSpawner, NoBundleEffect},
     debug::MaybeLocation,
-    bundle::{
-        Bundle,
-        BundleSpawner,
-        NoBundleEffect,
-    },
-    entity::{
-        AllocEntitiesIterator,
-        Entity,
-        EntitySetIterator,
-    },
-    world::World,
+    entity::{AllocEntitiesIterator, Entity, EntitySetIterator},
     ptr::move_as_ptr,
+    world::World,
 };
 
 #[cfg(test)]

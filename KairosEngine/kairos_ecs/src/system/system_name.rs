@@ -2,12 +2,7 @@ use derive_more::{Display, Into};
 
 use crate::{
     debug::DebugName,
-    system::{
-        ExclusiveSystemParam,
-        ReadOnlySystemParam,
-        SystemMeta,
-        SystemParam,
-    },
+    system::{ExclusiveSystemParam, ReadOnlySystemParam, SystemMeta, SystemParam},
     world::World,
 };
 

@@ -1,30 +1,13 @@
 use std::marker::PhantomData;
 
 use crate::{
+    change_detection::{CheckChangeTicks, Tick},
     debug::DebugName,
-    change_detection::{
-        CheckChangeTicks,
-        Tick,
-    },
-    error::{
-        ErrorContext,
-        FallbackErrorHandler,
-    },
+    error::{ErrorContext, FallbackErrorHandler},
     query::FilteredAccessSet,
     schedule::InternedSystemSet,
-    system::{
-        IntoSystem,
-        ReadOnlySystem,
-        RunSystemError,
-        System,
-        SystemIn,
-        SystemInput,
-    },
-    world::{
-        DeferredWorld,
-        World,
-        unsafe_world_cell::UnsafeWorldCell,
-    },
+    system::{IntoSystem, ReadOnlySystem, RunSystemError, System, SystemIn, SystemInput},
+    world::{DeferredWorld, World, unsafe_world_cell::UnsafeWorldCell},
 };
 
 #[cfg(test)]

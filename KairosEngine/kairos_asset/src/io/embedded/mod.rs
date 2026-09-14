@@ -195,9 +195,7 @@ impl GetAssetServer for AssetServer {
 /// [`Path`] that matches the [`AssetPath`](crate::AssetPath) used by that asset.
 #[macro_export]
 macro_rules! embedded_path {
-    ($path_str: expr) => {{
-        $crate::embedded_path!("src", $path_str)
-    }};
+    ($path_str: expr) => {{ $crate::embedded_path!("src", $path_str) }};
 
     ($source_path: expr, $path_str: expr) => {{
         let crate_name = module_path!().split(':').next().unwrap();
@@ -319,13 +317,10 @@ macro_rules! load_embedded_asset {
 /// `embedded_watcher` cargo feature is enabled.
 #[macro_export]
 macro_rules! embedded_asset {
-    ($world: expr, $path: expr) => {{
-        $crate::embedded_asset!($world, "src", $path)
-    }};
+    ($world: expr, $path: expr) => {{ $crate::embedded_asset!($world, "src", $path) }};
 
     ($world: expr, $source_path: expr, $path: expr) => {{
-        let embedded = $world
-            .resource_mut::<$crate::io::embedded::EmbeddedAssetRegistry>();
+        let embedded = $world.resource_mut::<$crate::io::embedded::EmbeddedAssetRegistry>();
         let path = $crate::embedded_path!($source_path, $path);
         let watched_path = $crate::io::embedded::watched_path(file!(), $path);
         embedded.insert_asset(watched_path, &path, include_bytes!($path));

@@ -252,7 +252,9 @@ pub fn install(world: &mut World, options: AssetOptions) {
     // `cfg!(feature = "watch")`. `watch` is on by default (the default feature set
     // turns on `file_watcher`, which implies `watch`), so a host opts *out* to
     // disable watching.
-    let watch = options.watch_for_changes_override.unwrap_or(cfg!(feature = "watch"));
+    let watch = options
+        .watch_for_changes_override
+        .unwrap_or(cfg!(feature = "watch"));
     let use_processor = options.mode == AssetMode::Processed && options.use_asset_processor;
 
     // The embedded source is registered through the world's
@@ -347,7 +349,9 @@ pub fn install(world: &mut World, options: AssetOptions) {
         // the load results, so they observe the freshly inserted values.
         tracking.configure_sets(AssetTrackingSystems.after(handle_internal_asset_events));
         tracking.add_systems(handle_internal_asset_events.ambiguous_with_all());
-        schedules.entry(stages.event).configure_sets(AssetEventSystems);
+        schedules
+            .entry(stages.event)
+            .configure_sets(AssetEventSystems);
         // Create the startup schedule (and, in layout ②, mount the processor) so
         // the host does not have to build the stage itself.
         let startup = schedules.entry(stages.startup);

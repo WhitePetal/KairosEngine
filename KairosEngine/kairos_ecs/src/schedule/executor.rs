@@ -3,37 +3,16 @@ use std::any::TypeId;
 use fixedbitset::FixedBitSet;
 
 use crate::{
+    change_detection::{CheckChangeTicks, Tick},
     debug::DebugName,
-    change_detection::{
-        CheckChangeTicks,
-        Tick,
-    },
-    error::{
-        ErrorContext,
-        KairosError,
-    },
+    error::{ErrorContext, KairosError},
     query::FilteredAccessSet,
     schedule::{
-        ConditionWithAccess,
-        InternedSystemSet,
-        IntoSystemSet,
-        SystemKey,
-        SystemSet,
-        SystemSetKey,
-        SystemTypeSet,
-        SystemWithAccess,
+        ConditionWithAccess, InternedSystemSet, IntoSystemSet, SystemKey, SystemSet, SystemSetKey,
+        SystemTypeSet, SystemWithAccess,
     },
-    system::{
-        RunSystemError,
-        System,
-        SystemIn,
-        SystemStateFlags,
-    },
-    world::{
-        DeferredWorld,
-        World,
-        unsafe_world_cell::UnsafeWorldCell,
-    },
+    system::{RunSystemError, System, SystemIn, SystemStateFlags},
+    world::{DeferredWorld, World, unsafe_world_cell::UnsafeWorldCell},
 };
 
 mod multi_threaded;

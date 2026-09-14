@@ -3,25 +3,10 @@ use std::{any::TypeId, iter, mem::MaybeUninit};
 use variadics_please::all_tuples_enumerated;
 
 use crate::{
-    bundle::{
-        Bundle,
-        BundleFromComponents,
-        DynamicBundle,
-        NoBundleEffect,
-    },
-    component::{
-        Component,
-        ComponentId,
-        Components,
-        ComponentsRegistrator,
-        StorageType,
-    },
+    bundle::{Bundle, BundleFromComponents, DynamicBundle, NoBundleEffect},
+    component::{Component, ComponentId, Components, ComponentsRegistrator, StorageType},
+    ptr::{self, MovingPtr, OwningPtr},
     world::EntityWorldMut,
-    ptr::{
-        self,
-        MovingPtr,
-        OwningPtr,
-    },
 };
 
 // SAFETY:

@@ -1,23 +1,10 @@
 use crate::{
+    change_detection::{CheckChangeTicks, Tick},
     debug::DebugName,
-    change_detection::{
-        CheckChangeTicks,
-        Tick,
-    },
     query::FilteredAccessSet,
     schedule::InternedSystemSet,
-    system::{
-        IntoSystem,
-        ReadOnlySystem,
-        RunSystemError,
-        System,
-        SystemIn,
-        SystemInput,
-    },
-    world::{
-        DeferredWorld,
-        World,
-    },
+    system::{IntoSystem, ReadOnlySystem, RunSystemError, System, SystemIn, SystemInput},
+    world::{DeferredWorld, World},
 };
 
 pub trait Adapt<S: System>: Send + Sync + 'static {

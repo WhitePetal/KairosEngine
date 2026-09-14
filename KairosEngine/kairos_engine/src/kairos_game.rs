@@ -4,12 +4,12 @@ use crate::asset::{AssetServer, Handle};
 
 use crate::{
     audio::audio::AudioAsset,
-    audio::{AudioEngine, AudioUpdateSystems},
     audio::background::BackgroundAudio,
     audio::spatial::{
         spatial_audio_listener::SpatialAudioListenerComponent,
         spatial_audio_reverb::SpatialAudioReverb, spatial_audio_volume::SpatialAudioVolume,
     },
+    audio::{AudioEngine, AudioUpdateSystems},
     graphics::{
         camera::Camera, lod_mesh_component::LODMesh, material::Material,
         material_component::MaterialComponent, mesh::Mesh, view_port::GameView,
@@ -151,11 +151,13 @@ fn listener_drift_position(angle: f32) -> float3 {
 /// so the drift is heard as the ring sweeping past rather than as the listener
 /// turning away from it.
 fn listener_drift_transform(angle: f32) -> LocalTransform {
-    LocalTransform::look_at(
+    let mut transform = LocalTransform::new(
         listener_drift_position(angle),
-        LISTENER_DRIFT_CENTER,
-        float3::UP,
-    )
+        quaternion::IDENTITY,
+        float3::ONE,
+    );
+    transform.look_at(LISTENER_DRIFT_CENTER, float3::UP);
+    transform
 }
 
 // ── KairosGame ────────────────────────────────────────────────────────
@@ -214,7 +216,9 @@ impl KairosGame {
         // the 200x200 ground a receding plane rather than an edge-on line.
         let cam_pos = float3::new(0.0, 8.0, -18.0);
         let cam_target = float3::new(0.0, 0.0, 0.0);
-        let game_camera_transform = LocalTransform::look_at(cam_pos, cam_target, float3::UP);
+        let mut game_camera_transform =
+            LocalTransform::new(cam_pos, quaternion::IDENTITY, float3::ONE);
+        game_camera_transform.look_at(cam_target, float3::UP);
         // Intrinsics are unchanged from the pre-fork values.
         let game_camera = Camera::new(45.0, 0.3, 1000.0);
         let game_camera_entity = engine
@@ -272,9 +276,7 @@ impl KairosGame {
         let ball_mesh_asset = engine
             .world
             .resource::<AssetServer>()
-            .load::<Mesh>(PathBuf::from(
-                "imported_assets/Default/res/models/Ball.glb",
-            ));
+            .load::<Mesh>(PathBuf::from("imported_assets/Default/res/models/Ball.glb"));
         let plane_mesh = LODMesh::new(plan_mesh_asset);
         let ball_mesh = LODMesh::new(ball_mesh_asset);
 

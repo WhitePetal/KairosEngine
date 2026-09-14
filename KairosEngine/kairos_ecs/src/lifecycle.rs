@@ -62,34 +62,16 @@ use std::{
 use derive_more::Into;
 
 use crate::{
+    component::{self, Component, ComponentId, ComponentIdFor},
     debug::MaybeLocation,
-    component::{
-        self,
-        Component,
-        ComponentId,
-        ComponentIdFor,
-    },
     entity::Entity,
-    event::{
-        EntityComponentsTrigger,
-        EntityEvent,
-        EventKey,
-    },
+    event::{EntityComponentsTrigger, EntityEvent, EventKey},
     message::{
-        Message,
-        MessageCursor,
-        MessageId,
-        MessageIterator,
-        MessageIteratorWithId,
-        Messages,
+        Message, MessageCursor, MessageId, MessageIterator, MessageIteratorWithId, Messages,
     },
     relationship::RelationshipHookMode,
     storage::SparseSet,
-    system::{
-        Local,
-        ReadOnlySystemParam,
-        SystemParam,
-    },
+    system::{Local, ReadOnlySystemParam, SystemParam},
     world::DeferredWorld,
 };
 

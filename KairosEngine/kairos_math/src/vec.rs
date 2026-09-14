@@ -21,9 +21,13 @@ where
         + Neg<Output = Self>
         + Abs
         + AddAssign<f32>
+        + AddAssign<Self>
         + SubAssign<f32>
+        + SubAssign<Self>
         + MulAssign<f32>
+        + MulAssign<Self>
         + DivAssign<f32>
+        + DivAssign<Self>
         + Index<usize>
         + Clone
         + Copy
@@ -221,6 +225,12 @@ impl AddAssign<f32> for float2 {
         *self = *self + rhs;
     }
 }
+impl AddAssign<Self> for float2 {
+    #[inline(always)]
+    fn add_assign(&mut self, rhs: Self) {
+        *self = *self + rhs
+    }
+}
 
 impl Sub<f32> for float2 {
     type Output = Self;
@@ -257,6 +267,12 @@ impl SubAssign<f32> for float2 {
     #[inline(always)]
     fn sub_assign(&mut self, rhs: f32) {
         *self = *self - rhs;
+    }
+}
+impl SubAssign<Self> for float2 {
+    #[inline(always)]
+    fn sub_assign(&mut self, rhs: Self) {
+        *self = *self - rhs
     }
 }
 
@@ -298,6 +314,12 @@ impl MulAssign<f32> for float2 {
         *self = *self * rhs;
     }
 }
+impl MulAssign<Self> for float2 {
+    #[inline(always)]
+    fn mul_assign(&mut self, rhs: Self) {
+        *self = *self * rhs
+    }
+}
 
 impl Div<f32> for float2 {
     type Output = Self;
@@ -333,6 +355,12 @@ impl Div<&float2> for f32 {
 impl DivAssign<f32> for float2 {
     #[inline(always)]
     fn div_assign(&mut self, rhs: f32) {
+        *self = *self / rhs;
+    }
+}
+impl DivAssign<Self> for float2 {
+    #[inline(always)]
+    fn div_assign(&mut self, rhs: Self) {
         *self = *self / rhs;
     }
 }
@@ -650,6 +678,12 @@ impl AddAssign<f32> for float3 {
         *self = *self + rhs;
     }
 }
+impl AddAssign<Self> for float3 {
+    #[inline(always)]
+    fn add_assign(&mut self, rhs: Self) {
+        *self = *self + rhs
+    }
+}
 
 impl Sub<f32> for float3 {
     type Output = Self;
@@ -686,6 +720,12 @@ impl Sub<&float3> for f32 {
 impl SubAssign<f32> for float3 {
     #[inline(always)]
     fn sub_assign(&mut self, rhs: f32) {
+        *self = *self - rhs
+    }
+}
+impl SubAssign<Self> for float3 {
+    #[inline(always)]
+    fn sub_assign(&mut self, rhs: Self) {
         *self = *self - rhs
     }
 }
@@ -728,6 +768,12 @@ impl MulAssign<f32> for float3 {
         *self = *self * rhs;
     }
 }
+impl MulAssign<Self> for float3 {
+    #[inline(always)]
+    fn mul_assign(&mut self, rhs: Self) {
+        *self = *self * rhs
+    }
+}
 
 impl Div<f32> for float3 {
     type Output = Self;
@@ -765,6 +811,12 @@ impl DivAssign<f32> for float3 {
     #[inline(always)]
     fn div_assign(&mut self, rhs: f32) {
         *self = *self / rhs;
+    }
+}
+impl DivAssign<Self> for float3 {
+    #[inline(always)]
+    fn div_assign(&mut self, rhs: Self) {
+        *self = *self / rhs
     }
 }
 
@@ -1486,6 +1538,12 @@ impl AddAssign<f32> for float4 {
         *self = *self + rhs;
     }
 }
+impl AddAssign<Self> for float4 {
+    #[inline(always)]
+    fn add_assign(&mut self, rhs: Self) {
+        *self = *self + rhs
+    }
+}
 
 impl Sub<f32> for float4 {
     type Output = Self;
@@ -1523,6 +1581,12 @@ impl SubAssign<f32> for float4 {
     #[inline(always)]
     fn sub_assign(&mut self, rhs: f32) {
         *self = *self - rhs;
+    }
+}
+impl SubAssign<Self> for float4 {
+    #[inline(always)]
+    fn sub_assign(&mut self, rhs: Self) {
+        *self = *self - rhs
     }
 }
 
@@ -1564,6 +1628,12 @@ impl MulAssign<f32> for float4 {
         *self = *self * rhs;
     }
 }
+impl MulAssign<Self> for float4 {
+    #[inline(always)]
+    fn mul_assign(&mut self, rhs: Self) {
+        *self = *self * rhs
+    }
+}
 
 impl Div<f32> for float4 {
     type Output = Self;
@@ -1601,6 +1671,12 @@ impl DivAssign<f32> for float4 {
     #[inline(always)]
     fn div_assign(&mut self, rhs: f32) {
         *self = *self / rhs;
+    }
+}
+impl DivAssign<Self> for float4 {
+    #[inline(always)]
+    fn div_assign(&mut self, rhs: Self) {
+        *self = *self / rhs
     }
 }
 

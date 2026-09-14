@@ -4,22 +4,9 @@ use variadics_please::all_tuples;
 
 use crate::{
     cell::SyncCell,
-    query::{
-        QueryData,
-        QueryFilter,
-        QueryState,
-    },
-    system::{
-        Local,
-        SystemMeta,
-        SystemParam,
-        SystemParamValidationError,
-        SystemState,
-    },
-    world::{
-        FromWorld,
-        World,
-    },
+    query::{QueryData, QueryFilter, QueryState},
+    system::{Local, SystemMeta, SystemParam, SystemParamValidationError, SystemState},
+    world::{FromWorld, World},
 };
 
 #[cfg(test)]

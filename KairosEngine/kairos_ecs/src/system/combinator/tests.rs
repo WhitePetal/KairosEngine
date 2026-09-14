@@ -1,17 +1,9 @@
 use crate::{
-    debug::DebugName,
     change_detection::ResMut,
+    debug::DebugName,
     error::FallbackErrorHandler,
-    schedule::{
-        OrElseMarker,
-        Schedule,
-    },
-    system::{
-        CombinatorSystem,
-        In,
-        IntoSystem,
-        assert_system_does_not_conflict,
-    },
+    schedule::{OrElseMarker, Schedule},
+    system::{CombinatorSystem, In, IntoSystem, assert_system_does_not_conflict},
     world::World,
 };
 

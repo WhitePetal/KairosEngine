@@ -728,18 +728,14 @@ impl AssetSource {
     pub fn get_default_watcher(
         path: String,
         file_debounce_wait_time: Duration,
-    ) -> impl FnMut(async_channel::Sender<AssetSourceEvent>) -> Option<Box<dyn AssetWatcher>>
-    + Send
-    + Sync
+    ) -> impl FnMut(async_channel::Sender<AssetSourceEvent>) -> Option<Box<dyn AssetWatcher>> + Send + Sync
     {
         move |sender: async_channel::Sender<AssetSourceEvent>| {
             #[cfg(all(feature = "file_watcher", not(target_os = "android")))]
             {
                 let full_path = super::file::get_base_path().join(path.clone());
                 if !full_path.exists() {
-                    warn!(
-                        "Skip creating file watcher because path {full_path:?} does not exist."
-                    );
+                    warn!("Skip creating file watcher because path {full_path:?} does not exist.");
                     return None;
                 }
                 match super::file::FileWatcher::new(

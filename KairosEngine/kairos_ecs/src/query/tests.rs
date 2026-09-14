@@ -8,29 +8,11 @@ use crate::{
     component::Component,
     entity::Entity,
     query::{
-        Added,
-        AnyOf,
-        ArchetypeFilter,
-        ArchetypeQueryData,
-        Changed,
-        Has,
-        Or,
-        QueryCombinationIter,
-        QueryState,
-        ReadOnlyQueryData,
-        With,
-        Without,
+        Added, AnyOf, ArchetypeFilter, ArchetypeQueryData, Changed, Has, Or, QueryCombinationIter,
+        QueryState, ReadOnlyQueryData, With, Without,
     },
-    schedule::{
-        IntoScheduleConfigs,
-        Schedule,
-    },
-    system::{
-        IntoSystem,
-        Query,
-        System,
-        SystemState,
-    },
+    schedule::{IntoScheduleConfigs, Schedule},
+    system::{IntoSystem, Query, System, SystemState},
     world::World,
 };
 

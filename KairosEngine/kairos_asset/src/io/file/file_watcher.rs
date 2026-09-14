@@ -17,9 +17,8 @@ use async_channel::Sender;
 use notify_debouncer_full::{
     DebounceEventResult, Debouncer, RecommendedCache, new_debouncer,
     notify::{
-        self,
+        self, RecommendedWatcher, RecursiveMode,
         event::{AccessKind, AccessMode, CreateKind, ModifyKind, RemoveKind, RenameMode},
-        RecommendedWatcher, RecursiveMode,
     },
 };
 use tracing::warn;

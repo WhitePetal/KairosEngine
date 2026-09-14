@@ -12,48 +12,20 @@
 use std::{any::Any, marker::PhantomData};
 
 use crate::{
-    debug::DebugName,
     bundle::Bundle,
-    component::{
-        Component,
-        ComponentCloneBehavior,
-        ComponentId,
-        Mutable,
-        StorageType,
-    },
+    component::{Component, ComponentCloneBehavior, ComponentId, Mutable, StorageType},
+    debug::DebugName,
     entity::Entity,
-    error::{
-        ErrorContext,
-        ErrorHandler,
-        KairosError,
-    },
-    event::{
-        EntityEvent,
-        Event,
-        EventKey,
-    },
-    lifecycle::{
-        ComponentHook,
-        HookContext,
-    },
+    error::{ErrorContext, ErrorHandler, KairosError},
+    event::{EntityEvent, Event, EventKey},
+    lifecycle::{ComponentHook, HookContext},
     observer::{
-        ObserverCondition,
-        ObserverRunner,
-        ObserverWithCondition,
-        ObserverWithConditionMarker,
+        ObserverCondition, ObserverRunner, ObserverWithCondition, ObserverWithConditionMarker,
         observer_system_runner,
     },
     schedule::SystemCondition,
-    system::{
-        IntoObserverSystem,
-        IntoSystem,
-        ObserverSystem,
-        System,
-    },
-    world::{
-        DeferredWorld,
-        World,
-    },
+    system::{IntoObserverSystem, IntoSystem, ObserverSystem, System},
+    world::{DeferredWorld, World},
 };
 
 /// An [`Observer`] system. Add this [`Component`] to an [`Entity`] to turn it into an "observer".

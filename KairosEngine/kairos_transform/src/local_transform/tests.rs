@@ -51,7 +51,10 @@ fn forward_of(rotation: quaternion) -> float3 {
 }
 
 fn assert_looks_from_towards(t: LocalTransform, eye: float3, target: float3) {
-    assert_eq!(t.translation, eye, "look_at must place the transform at eye");
+    assert_eq!(
+        t.translation, eye,
+        "look_at must place the transform at eye"
+    );
     assert_eq!(t.scale, float3::ONE, "look_at must reset scale to one");
 
     let forward = forward_of(t.rotation);
@@ -67,12 +70,13 @@ fn assert_looks_from_towards(t: LocalTransform, eye: float3, target: float3) {
 fn look_at_orients_forward_towards_target() {
     let eye = float3::new(1.0, 2.0, 3.0);
     for target in [
-        float3::new(5.0, 2.0, 3.0),    // +X
-        float3::new(1.0, 2.0, 8.0),    // +Z (behind the -Z forward axis)
-        float3::new(2.0, 3.0, 4.0),    // diagonal (1,1,1)
-        float3::new(-1.0, 2.0, -3.0),  // diagonal backwards
+        float3::new(5.0, 2.0, 3.0),   // +X
+        float3::new(1.0, 2.0, 8.0),   // +Z (behind the -Z forward axis)
+        float3::new(2.0, 3.0, 4.0),   // diagonal (1,1,1)
+        float3::new(-1.0, 2.0, -3.0), // diagonal backwards
     ] {
-        let t = LocalTransform::look_at(eye, target, float3::UP);
+        let mut t = LocalTransform::new(eye, quaternion::IDENTITY, float3::ONE);
+        t.look_at(target, float3::UP);
         assert_looks_from_towards(t, eye, target);
     }
 }
@@ -81,7 +85,8 @@ fn look_at_orients_forward_towards_target() {
 fn look_at_handles_up_parallel_to_forward() {
     let eye = float3::ZERO;
     for target in [float3::new(0.0, 5.0, 0.0), float3::new(0.0, -5.0, 0.0)] {
-        let t = LocalTransform::look_at(eye, target, float3::UP);
+        let mut t = LocalTransform::new(eye, quaternion::IDENTITY, float3::ONE);
+        t.look_at(target, float3::UP);
         assert_looks_from_towards(t, eye, target);
     }
 }

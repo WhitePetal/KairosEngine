@@ -3,12 +3,9 @@ use std::fmt::Display;
 use derive_more::{Deref, DerefMut};
 
 use crate::{
-    debug::DebugName,
     change_detection::Tick,
-    error::{
-        KairosError,
-        Severity,
-    },
+    debug::DebugName,
+    error::{KairosError, Severity},
     resource::Resource,
 };
 /// Context for a [`KairosError`] to aid in debugging.

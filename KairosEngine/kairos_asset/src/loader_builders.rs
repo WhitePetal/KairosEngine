@@ -11,7 +11,7 @@
 //!   [`loader_dependency`](LoadContext::read_asset_bytes) — a processing input,
 //!   not a readiness edge.
 
-use core::any::{type_name, TypeId};
+use core::any::{TypeId, type_name};
 use std::path::Path;
 
 use crate::asset::Asset;

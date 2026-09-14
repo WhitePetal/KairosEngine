@@ -314,7 +314,10 @@ impl AssetServer {
         let error = || MissingAssetLoaderForTypeNameError {
             type_name: type_name.to_string(),
         };
-        let loader = self.read_loaders().get_by_name(type_name).ok_or_else(error)?;
+        let loader = self
+            .read_loaders()
+            .get_by_name(type_name)
+            .ok_or_else(error)?;
         loader.get().await.map_err(|_| error())
     }
 
@@ -1476,12 +1479,16 @@ impl AssetServer {
                 return Err(WriteDefaultMetaError::IoErrorFromExistingMetaCheck(error));
             }
             Err(AssetReaderError::HttpError(status)) => {
-                return Err(WriteDefaultMetaError::HttpErrorFromExistingMetaCheck(status));
+                return Err(WriteDefaultMetaError::HttpErrorFromExistingMetaCheck(
+                    status,
+                ));
             }
         }
 
         let writer = source.writer()?;
-        writer.write_meta_bytes(path.path(), &serialized_meta).await?;
+        writer
+            .write_meta_bytes(path.path(), &serialized_meta)
+            .await?;
         Ok(())
     }
 

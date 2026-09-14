@@ -221,32 +221,20 @@ fn entity_ref_except_compatible() {
 
     let state =
         <(&mut C1, &mut C2, EntityRefExcept<(C1, C2)>) as WorldQuery>::get_state(c).unwrap();
-    assert!(
-        has_conflicts_small::<(&mut C1, &mut C2, EntityRefExcept<(C1, C2)>)>(&state).is_ok()
-    );
-    assert!(
-        has_conflicts_large::<(&mut C1, &mut C2, EntityRefExcept<(C1, C2)>)>(&state).is_ok()
-    );
+    assert!(has_conflicts_small::<(&mut C1, &mut C2, EntityRefExcept<(C1, C2)>)>(&state).is_ok());
+    assert!(has_conflicts_large::<(&mut C1, &mut C2, EntityRefExcept<(C1, C2)>)>(&state).is_ok());
     assert!(has_conflicts::<(&mut C1, &mut C2, EntityRefExcept<(C1, C2)>)>(c).is_ok());
 
     let state =
         <(&mut C1, EntityRefExcept<(C1, C2)>, &mut C2) as WorldQuery>::get_state(c).unwrap();
-    assert!(
-        has_conflicts_small::<(&mut C1, EntityRefExcept<(C1, C2)>, &mut C2)>(&state).is_ok()
-    );
-    assert!(
-        has_conflicts_large::<(&mut C1, EntityRefExcept<(C1, C2)>, &mut C2)>(&state).is_ok()
-    );
+    assert!(has_conflicts_small::<(&mut C1, EntityRefExcept<(C1, C2)>, &mut C2)>(&state).is_ok());
+    assert!(has_conflicts_large::<(&mut C1, EntityRefExcept<(C1, C2)>, &mut C2)>(&state).is_ok());
     assert!(has_conflicts::<(&mut C1, EntityRefExcept<(C1, C2)>, &mut C2)>(c).is_ok());
 
     let state =
         <(EntityRefExcept<(C1, C2)>, &mut C1, &mut C2) as WorldQuery>::get_state(c).unwrap();
-    assert!(
-        has_conflicts_small::<(EntityRefExcept<(C1, C2)>, &mut C1, &mut C2)>(&state).is_ok()
-    );
-    assert!(
-        has_conflicts_large::<(EntityRefExcept<(C1, C2)>, &mut C1, &mut C2)>(&state).is_ok()
-    );
+    assert!(has_conflicts_small::<(EntityRefExcept<(C1, C2)>, &mut C1, &mut C2)>(&state).is_ok());
+    assert!(has_conflicts_large::<(EntityRefExcept<(C1, C2)>, &mut C1, &mut C2)>(&state).is_ok());
     assert!(has_conflicts::<(EntityRefExcept<(C1, C2)>, &mut C1, &mut C2)>(c).is_ok());
 }
 
@@ -300,32 +288,20 @@ fn entity_mut_except_compatible() {
 
     let state =
         <(&mut C1, &mut C2, EntityMutExcept<(C1, C2)>) as WorldQuery>::get_state(c).unwrap();
-    assert!(
-        has_conflicts_small::<(&mut C1, &mut C2, EntityMutExcept<(C1, C2)>)>(&state).is_ok()
-    );
-    assert!(
-        has_conflicts_large::<(&mut C1, &mut C2, EntityMutExcept<(C1, C2)>)>(&state).is_ok()
-    );
+    assert!(has_conflicts_small::<(&mut C1, &mut C2, EntityMutExcept<(C1, C2)>)>(&state).is_ok());
+    assert!(has_conflicts_large::<(&mut C1, &mut C2, EntityMutExcept<(C1, C2)>)>(&state).is_ok());
     assert!(has_conflicts::<(&mut C1, &mut C2, EntityMutExcept<(C1, C2)>)>(c).is_ok());
 
     let state =
         <(&mut C1, EntityMutExcept<(C1, C2)>, &mut C2) as WorldQuery>::get_state(c).unwrap();
-    assert!(
-        has_conflicts_small::<(&mut C1, EntityMutExcept<(C1, C2)>, &mut C2)>(&state).is_ok()
-    );
-    assert!(
-        has_conflicts_large::<(&mut C1, EntityMutExcept<(C1, C2)>, &mut C2)>(&state).is_ok()
-    );
+    assert!(has_conflicts_small::<(&mut C1, EntityMutExcept<(C1, C2)>, &mut C2)>(&state).is_ok());
+    assert!(has_conflicts_large::<(&mut C1, EntityMutExcept<(C1, C2)>, &mut C2)>(&state).is_ok());
     assert!(has_conflicts::<(&mut C1, EntityMutExcept<(C1, C2)>, &mut C2)>(c).is_ok());
 
     let state =
         <(EntityMutExcept<(C1, C2)>, &mut C1, &mut C2) as WorldQuery>::get_state(c).unwrap();
-    assert!(
-        has_conflicts_small::<(EntityMutExcept<(C1, C2)>, &mut C1, &mut C2)>(&state).is_ok()
-    );
-    assert!(
-        has_conflicts_large::<(EntityMutExcept<(C1, C2)>, &mut C1, &mut C2)>(&state).is_ok()
-    );
+    assert!(has_conflicts_small::<(EntityMutExcept<(C1, C2)>, &mut C1, &mut C2)>(&state).is_ok());
+    assert!(has_conflicts_large::<(EntityMutExcept<(C1, C2)>, &mut C1, &mut C2)>(&state).is_ok());
     assert!(has_conflicts::<(EntityMutExcept<(C1, C2)>, &mut C1, &mut C2)>(c).is_ok());
 }
 

@@ -730,12 +730,19 @@ fn refresh_picks_up_files_created_outside_the_editor_and_keeps_guids() {
     // a rescan).
     let texture = node_at(&graph, "res/textures/hero.png").expect("the new texture is a node");
     assert_eq!(texture.kind, AssetKind::Texture);
-    assert!(texture.asset_path.is_some(), "the texture pairs with its product");
+    assert!(
+        texture.asset_path.is_some(),
+        "the texture pairs with its product"
+    );
 
     let hero_after = graph
         .find_by_guid(guid)
         .expect("the known path keeps its GUID");
-    let path = graph.get_node(hero_after).expect("the node has data").path.clone();
+    let path = graph
+        .get_node(hero_after)
+        .expect("the node has data")
+        .path
+        .clone();
     assert_eq!(
         path.to_string_lossy().replace('\\', "/"),
         tmp.path()

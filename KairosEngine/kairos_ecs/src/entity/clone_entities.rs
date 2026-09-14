@@ -7,41 +7,17 @@ use hashbrown::hash_map::Entry;
 use kairos_collections::{FixedHashMap, FixedHashSet};
 
 use crate::{
-    debug::{
-        DebugCheckedUnwrap,
-        DebugName,
-        MaybeLocation,
-    },
     archetype::Archetype,
-    bundle::{
-        Bundle,
-        BundleRemover,
-        InsertMode,
-    },
-    component::{
-        Component,
-        ComponentCloneBehavior,
-        ComponentCloneFn,
-        ComponentId,
-        ComponentInfo,
-    },
+    bundle::{Bundle, BundleRemover, InsertMode},
+    component::{Component, ComponentCloneBehavior, ComponentCloneFn, ComponentId, ComponentInfo},
+    debug::{DebugCheckedUnwrap, DebugName, MaybeLocation},
     entity::{
-        Entity,
-        EntityAllocator,
-        EntityHashMap,
-        EntityMapper,
-        clone_entities::private::{
-            FilterableId,
-            FilterableIds,
-            Marker,
-        },
+        Entity, EntityAllocator, EntityHashMap, EntityMapper,
+        clone_entities::private::{FilterableId, FilterableIds, Marker},
     },
+    ptr::{Ptr, PtrMut},
     relationship::RelationshipHookMode,
     world::World,
-    ptr::{
-        Ptr,
-        PtrMut,
-    },
 };
 
 #[cfg(test)]

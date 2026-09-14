@@ -25,10 +25,12 @@ use serde::{Deserialize, Serialize};
 use crate::io::{
     AssetReader, AssetReaderError, AssetSource, AssetSourceBuilder, AssetSourceBuilders,
     AssetSourceEvent, AssetSourceId, AssetSources, AssetWatcher, AssetWriter, AssetWriterError,
-    ErasedAssetReader, ErasedAssetWriter, PathStream, Reader, UnapprovedPathMode, VecReader, Writer,
-    get_meta_path,
+    ErasedAssetReader, ErasedAssetWriter, PathStream, Reader, UnapprovedPathMode, VecReader,
+    Writer, get_meta_path,
 };
-use crate::meta::{AssetAction, AssetActionMinimal, AssetMeta, AssetMetaCheck, AssetMetaDyn, AssetMetaMinimal};
+use crate::meta::{
+    AssetAction, AssetActionMinimal, AssetMeta, AssetMetaCheck, AssetMetaDyn, AssetMetaMinimal,
+};
 use crate::processor::{
     AssetProcessor, LogEntry, Process, ProcessContext, ProcessError, ProcessorTransactionLog,
     ProcessorTransactionLogFactory, SetTransactionLogFactoryError,
@@ -864,11 +866,7 @@ fn text_world(server: &AssetServer) -> World {
 }
 
 /// Drives the tracking stage until the load for `id` settles.
-fn wait_for_load(
-    world: &mut World,
-    server: &AssetServer,
-    id: impl Into<crate::UntypedAssetId>,
-) {
+fn wait_for_load(world: &mut World, server: &AssetServer, id: impl Into<crate::UntypedAssetId>) {
     let id = id.into();
     for _ in 0..5000 {
         handle_internal_asset_events(world);
@@ -884,7 +882,9 @@ fn wait_for_load(
 fn gated_reader_serves_the_processed_output() {
     let harness = Harness::new();
     harness.unprocessed.insert("model.txt", b"hello".to_vec());
-    harness.unprocessed.insert("model.txt.meta", process_meta("P:"));
+    harness
+        .unprocessed
+        .insert("model.txt.meta", process_meta("P:"));
     harness.run_initial();
 
     let reader = harness
@@ -906,7 +906,9 @@ fn gated_reader_serves_the_processed_output() {
 fn main_server_reads_the_processor_output_end_to_end() {
     let harness = Harness::new();
     harness.unprocessed.insert("model.txt", b"hello".to_vec());
-    harness.unprocessed.insert("model.txt.meta", process_meta("P:"));
+    harness
+        .unprocessed
+        .insert("model.txt.meta", process_meta("P:"));
     harness.run_initial();
 
     // The app-facing server (as `install` builds it in layout ②) reads the
@@ -1137,7 +1139,9 @@ fn gated_read_of_an_ignored_asset_reports_not_found() {
 fn a_gated_read_waits_until_the_asset_is_processed() {
     let harness = Harness::new();
     harness.unprocessed.insert("model.txt", b"hello".to_vec());
-    harness.unprocessed.insert("model.txt.meta", process_meta("P:"));
+    harness
+        .unprocessed
+        .insert("model.txt.meta", process_meta("P:"));
 
     let sources = harness.sources.clone();
     let result = Arc::new(Mutex::new(None::<Vec<u8>>));
@@ -1218,9 +1222,7 @@ fn a_held_gated_reader_blocks_a_concurrent_rewrite() {
 #[test]
 fn a_source_with_no_meta_and_no_loader_is_ignored() {
     let harness = Harness::new();
-    harness
-        .unprocessed
-        .insert("mystery.xyz", b"junk".to_vec());
+    harness.unprocessed.insert("mystery.xyz", b"junk".to_vec());
     harness.run_initial();
 
     assert!(

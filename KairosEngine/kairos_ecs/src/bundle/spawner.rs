@@ -1,43 +1,17 @@
 use std::ptr::NonNull;
 
 use crate::{
-    debug::MaybeLocation,
-    archetype::{
-        Archetype,
-        ArchetypeCreated,
-        ArchetypeId,
-        SpawnBundleStatus,
-    },
-    bundle::{
-        Bundle,
-        BundleId,
-        BundleInfo,
-        DynamicBundle,
-        InsertMode,
-    },
+    archetype::{Archetype, ArchetypeCreated, ArchetypeId, SpawnBundleStatus},
+    bundle::{Bundle, BundleId, BundleInfo, DynamicBundle, InsertMode},
     change_detection::Tick,
-    entity::{
-        Entity,
-        EntityAllocator,
-        EntityLocation,
-    },
+    debug::MaybeLocation,
+    entity::{Entity, EntityAllocator, EntityLocation},
     event::EntityComponentsTrigger,
-    lifecycle::{
-        ADD,
-        Add,
-        INSERT,
-        Insert,
-    },
+    lifecycle::{ADD, Add, INSERT, Insert},
+    ptr::{ConstNonNull, MovingPtr},
     relationship::RelationshipHookMode,
     storage::Table,
-    world::{
-        World,
-        unsafe_world_cell::UnsafeWorldCell,
-    },
-    ptr::{
-        ConstNonNull,
-        MovingPtr,
-    },
+    world::{World, unsafe_world_cell::UnsafeWorldCell},
 };
 
 // SAFETY: We have exclusive world access so our pointers can't be invalidated externally

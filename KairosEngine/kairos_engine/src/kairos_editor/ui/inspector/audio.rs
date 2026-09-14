@@ -1,7 +1,7 @@
 use std::{cell::Cell, fs, time::Instant};
 
-use egui::{Color32, Pos2, Rect, RichText, Stroke, Vec2};
 use crate::asset::{AssetServer, Assets, Handle};
+use egui::{Color32, Pos2, Rect, RichText, Stroke, Vec2};
 use kairos_ecs::world::World;
 use serde::{Deserialize, Serialize};
 
@@ -434,7 +434,10 @@ impl AudioInspector {
         // Start playback. The engine is a World resource now, so this is a
         // resource borrow rather than an `Engine` field; `sound_data` is already
         // a clone, so no `resource_scope` is needed.
-        let handle = engine.world.resource_mut::<AudioEngine>().play_sound(sound_data);
+        let handle = engine
+            .world
+            .resource_mut::<AudioEngine>()
+            .play_sound(sound_data);
         let handle = match handle {
             Ok(h) => h,
             Err(_) => return,

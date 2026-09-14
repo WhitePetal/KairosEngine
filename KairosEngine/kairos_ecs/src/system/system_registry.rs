@@ -9,31 +9,16 @@ use kairos_ecs_macros::Resource;
 use thiserror::Error;
 
 use crate::{
-    debug::DebugName,
-    change_detection::{
-        Mut,
-        Res,
-    },
+    change_detection::{Mut, Res},
     component::Component,
+    debug::DebugName,
     entity::Entity,
-    error::{
-        KairosError,
-        Result,
-    },
+    error::{KairosError, Result},
     system::{
-        BoxedSystem,
-        Commands,
-        If,
-        IntoSystem,
-        RunSystemError,
-        SystemInput,
+        BoxedSystem, Commands, If, IntoSystem, RunSystemError, SystemInput,
         SystemParamValidationError,
     },
-    template::{
-        FromTemplate,
-        Template,
-        TemplateContext,
-    },
+    template::{FromTemplate, Template, TemplateContext},
     world::World,
 };
 

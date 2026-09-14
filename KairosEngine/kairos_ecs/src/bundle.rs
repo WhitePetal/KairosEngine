@@ -80,17 +80,9 @@ pub(crate) use spawner::BundleSpawner;
 pub use kairos_ecs_macros::Bundle;
 
 use crate::{
-    component::{
-        ComponentId,
-        Components,
-        ComponentsRegistrator,
-        StorageType,
-    },
+    component::{ComponentId, Components, ComponentsRegistrator, StorageType},
+    ptr::{MovingPtr, OwningPtr},
     world::EntityWorldMut,
-    ptr::{
-        MovingPtr,
-        OwningPtr,
-    },
 };
 
 /// The `Bundle` trait enables insertion and removal of [`Component`]s from an entity.

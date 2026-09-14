@@ -6,25 +6,13 @@ use thiserror::Error;
 use kairos_collections::hash::FixedHasher;
 
 use crate::{
-    debug::{
-        DebugCheckedUnwrap,
-        MaybeLocation,
-    },
     bundle::BundleInfo,
     change_detection::Tick,
-    component::{
-        Component,
-        ComponentId,
-        Components,
-        ComponentsRegistrator,
-    },
+    component::{Component, ComponentId, Components, ComponentsRegistrator},
+    debug::{DebugCheckedUnwrap, MaybeLocation},
     entity::Entity,
-    storage::{
-        SparseSets,
-        Table,
-        TableRow,
-    },
     ptr::OwningPtr,
+    storage::{SparseSets, Table, TableRow},
 };
 
 #[cfg(test)]

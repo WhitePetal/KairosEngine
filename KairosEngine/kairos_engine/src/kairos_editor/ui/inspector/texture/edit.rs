@@ -108,15 +108,14 @@ pub(super) fn write_settings_meta(
     source_path: &Path,
     settings: &TextureSettings,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let meta = AssetMeta::<(), crate::graphics::texture::TextureProcessor>::new(
-        AssetAction::Process {
+    let meta =
+        AssetMeta::<(), crate::graphics::texture::TextureProcessor>::new(AssetAction::Process {
             processor: crate::asset::meta::processor_name::<
                 crate::graphics::texture::TextureProcessor,
             >()
             .to_string(),
             settings: settings.clone(),
-        },
-    );
+        });
     std::fs::write(
         get_meta_path(source_path),
         crate::asset::AssetMetaDyn::serialize(&meta),
