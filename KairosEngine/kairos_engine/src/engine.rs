@@ -1,7 +1,4 @@
-use crate::{
-    audio::AudioEngine, graphics, inputs::InputEngine, kairos_editor::camera, physics, schedule,
-    time::Time,
-};
+use crate::{audio::AudioEngine, graphics, inputs::InputEngine, physics, schedule, time::Time};
 use kairos_ecs::world::World;
 
 pub struct Engine {
@@ -50,13 +47,17 @@ impl Engine {
 }
 
 /// Boots the World half of an [`Engine`]: the schedule rails, the asset core,
-/// physics, the render rails, and the editor camera controller, in the order
-/// their preconditions require.
+/// physics, the render rails, and the audio asset types, in the order their
+/// preconditions require.
 ///
-/// Audio is deliberately *not* here: it belongs to [`Engine::new`], which owns
-/// the fallible device open. Keeping this function infallible and audio-free is
-/// what lets a host that does not want an audio device — a test, or a headless
-/// run — drive the exact bootstrap order.
+/// The audio engine is deliberately *not* here: it belongs to [`Engine::new`],
+/// which owns the fallible device open. Keeping this function infallible and
+/// audio-device-free is what lets a host that does not want an audio device — a
+/// test, or a headless run — drive the exact bootstrap order.
+///
+/// The editor's own assets and camera are not here either: they belong to the
+/// host, which adds them through `kairos_editor::install` once [`Engine::new`]
+/// returns. This function bootstraps engine subsystems only.
 fn build_world() -> World {
     let mut world = World::new();
     // Bootstrap the bevy_app-style schedule rails — including the `Time` World
@@ -80,13 +81,6 @@ fn build_world() -> World {
     // The first migrated asset type: `Font` registers its store, loader, and
     // driver systems with the core just installed. P2 slices add the rest here.
     crate::kairos_ui::font::install(&mut world);
-    // The next S2 leaf types: `Text` (scripts/documents/shader sources), `Toml`,
-    // and the `SyntaxHighlightSettings` their editors consume. They are mutually
-    // independent, so the order here is a convenience grouping, not a
-    // precondition.
-    crate::kairos_editor::editor_assets::text::install(&mut world);
-    crate::kairos_editor::editor_assets::toml::install(&mut world);
-    crate::kairos_editor::syntax::install(&mut world);
     // Physics comes next: its step system registers into the `FixedUpdate` stage
     // the schedule rails just created, so this order is a precondition. It is a
     // World resource, not an `Engine` field, so from here on every `Engine`
@@ -101,20 +95,12 @@ fn build_world() -> World {
     // the extract-stage system that collects their change events for render
     // cache invalidation.
     graphics::install_assets(&mut world, schedule::Extract);
-    // The editor's texture inspector loads its `TextureEdit` composite through
-    // the asset server (`add_async`), so its store is registered here. Audio
-    // comes next: `PcmData` and `AudioAsset` are the leaves, and the editor's
+    // The audio asset types: `PcmData` and `AudioAsset` are the leaves, and the
     // `AudioExt` composite declares both through its loader, so it is registered
     // after the two stores it targets.
-    crate::kairos_editor::ui::inspector::texture::install(&mut world);
     crate::audio::audio_ext::pcm::install(&mut world);
     crate::audio::audio::install(&mut world);
     crate::audio::audio_ext::install(&mut world);
-    // Finally the editor camera controller, whose system the extract stage must
-    // find already written to when it reads the frame. It consumes
-    // `SceneViewInput`, an editor concept, so it is installed here rather than by
-    // the engine-level `graphics::install`.
-    camera::install(&mut world);
     world
 }
 

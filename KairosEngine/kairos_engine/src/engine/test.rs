@@ -1,6 +1,6 @@
 //! Composition test for the engine bootstrap.
 //!
-//! `build_world` composes every subsystem by calling its `install`. Each
+//! `build_world` composes every engine subsystem by calling its `install`. Each
 //! module's own tests prove its `install` mounts the right things; this file
 //! proves only *composition* — that the bootstrap actually reached each module
 //! — so it asserts one representative World resource per install, plus the
@@ -12,10 +12,6 @@ use crate::asset::{AssetServer, AssetStages, Assets};
 use crate::audio::audio::AudioAsset;
 use crate::graphics::material::Material;
 use crate::graphics::view_port::SceneView;
-use crate::kairos_editor::camera::SceneViewInput;
-use crate::kairos_editor::editor_assets::{Text, Toml};
-use crate::kairos_editor::syntax::SyntaxHighlightSettings;
-use crate::kairos_editor::ui::inspector::texture::TextureEdit;
 use crate::kairos_ui::font::Font;
 use crate::physics::PhysicsEngine;
 use crate::schedule::{PostUpdate, PreUpdate, Startup};
@@ -28,8 +24,12 @@ use kairos_ecs::schedule::ScheduleLabel;
 /// The individual asset types are deliberately not re-listed — that is what the
 /// modules' own install tests are for. What is under test here is that the
 /// engine's bootstrap reached each module at all.
+///
+/// The editor's own assets and camera are *not* asserted here: `build_world`
+/// does not install them. `kairos_editor::install` owns them, and its own
+/// composition test covers them.
 #[test]
-fn build_world_installs_every_subsystem() {
+fn build_world_installs_every_engine_subsystem() {
     let world = super::build_world();
 
     // The schedule rails and the asset core mounted on them.
@@ -53,30 +53,12 @@ fn build_world_installs_every_subsystem() {
     );
 
     // One representative store per asset install.
-    let representative_stores: [(&str, bool); 7] = [
+    let representative_stores: [(&str, bool); 3] = [
         (
             "the graphics asset types",
             world.get_resource::<Assets<Material>>().is_some(),
         ),
         ("the font", world.get_resource::<Assets<Font>>().is_some()),
-        (
-            "the editor text",
-            world.get_resource::<Assets<Text>>().is_some(),
-        ),
-        (
-            "the editor toml",
-            world.get_resource::<Assets<Toml>>().is_some(),
-        ),
-        (
-            "the syntax highlighting settings",
-            world
-                .get_resource::<Assets<SyntaxHighlightSettings>>()
-                .is_some(),
-        ),
-        (
-            "the texture edit",
-            world.get_resource::<Assets<TextureEdit>>().is_some(),
-        ),
         (
             "the runtime audio asset",
             world.get_resource::<Assets<AudioAsset>>().is_some(),
@@ -85,13 +67,6 @@ fn build_world_installs_every_subsystem() {
     for (subsystem, present) in representative_stores {
         assert!(present, "`build_world` must install {subsystem}");
     }
-
-    // The editor camera controller, installed last because its `PostUpdate`
-    // system must find the render rails already registered.
-    assert!(
-        world.get_resource::<SceneViewInput>().is_some(),
-        "`build_world` must install the editor camera controller"
-    );
 }
 
 /// The asset core is mounted on the engine's *own* stages, not ad-hoc labels:
