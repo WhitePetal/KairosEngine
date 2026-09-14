@@ -74,7 +74,7 @@ Week 7:   F6 Project Window 集成
 | F2.3 | 实现 `World → SerializedWorld` 序列化 | 遍历 Entity：读取 Name→名称、Parent→路径、Children→构建树；每个 Component 调用 `EntityComponentInspector::try_serialize` |
 | F2.4 | 实现 `SerializedWorld → World` 反序列化 | 两步加载：Pass1 创建所有 Entity + insert 所有 Component；Pass2 统一 set_parent |
 | F2.5 | Cmd+S 保存处理 | `ui.rs` 中新增 `Message::SaveWorld`；快捷键 Ctrl+S 触发；SceneWorld → TOML → 写文件 |
-| F2.6 | 编辑器启动加载 | `KairosEditorRuntime::new()` 中从 `res/worlds/World.world` 加载到 SceneWorld |
+| F2.6 | 编辑器启动加载 | `EditorRuntime::new()` 中从 `res/worlds/World.world` 加载到 SceneWorld |
 | F2.7 | 创建默认 `res/worlds/World.world` | 含最小 meta 的合法空 .world 文件，随项目提交 |
 | F2.8 | Round-trip 测试 | SceneWorld → 序列化 → 文件 → 反序列化 → 新 World → 验证 Entity/Component/Parent 一致性 |
 
@@ -151,7 +151,7 @@ Week 7:   F6 Project Window 集成
 |----|------|------|
 | F5.1 | 新增 `EditorMode` 枚举 | `enum EditorMode { Edit, Play }` |
 | F5.2 | 新增 `WorldManager` struct | `{ scene_world: World, game_world: Option<World>, mode: EditorMode }` + `active_world()` / `active_world_mut()` |
-| F5.3 | 改造 `KairosEditorRuntime` | 替换 `engine.world` → `WorldManager` |
+| F5.3 | 改造 `EditorRuntime` | 替换 `engine.world` → `WorldManager` |
 | F5.4 | Play 流程 | 1) 检查 SceneWorld 未保存修改 2) 从 .world 文件加载 GameWorld 3) 切换 mode→Play 4) 面板自动指向 GameWorld |
 | F5.5 | Stop 流程 | 1) 停止游戏 Systems 2) 销毁 GameWorld 3) 切换 mode→Edit 4) 面板切回 SceneWorld |
 | F5.6 | Toolbar Play/Stop 按钮 | 连接现有 ToolBar UI，Play（▶）和 Stop（■）按钮 |

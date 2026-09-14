@@ -226,16 +226,16 @@
 | F5.5 | Stop 流程 | 1) 停止游戏 Systems；2) 销毁 GameWorld；3) mode 切回 Edit；4) 面板切回 SceneWorld |
 | F5.6 | 工具栏 Play/Stop 按钮 | 连接现有的 ToolBar UI，新增 Play（▶）和 Stop（■）按钮 |
 
-**对 `KairosEditorRuntime` 的改造**：
+**对 `EditorRuntime` 的改造**：
 
 当前结构：
 ```rust
-struct KairosEditorRuntime { engine: Engine /* 含 world: World */ }
+struct EditorRuntime { engine: Engine /* 含 world: World */ }
 ```
 
 改造为：
 ```rust
-struct KairosEditorRuntime {
+struct EditorRuntime {
     scene_world: World,
     game_world: Option<World>,
     editor_mode: EditorMode,

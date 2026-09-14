@@ -5,6 +5,8 @@
 **状态**: 路线图定稿，实现未开始
 **前置阅读**: `docs/adr/0003-asset-registration-and-stage-ownership.md`（stage label 归属惯例）、`kairos_engine/src/kairos_editor/schedule.rs`（调度骨架）
 
+> **2026-09 注记**：本文写于宿主拆分之前——此后编辑器已成独立 crate `kairos_editor`；`schedule` 已上移到 `kairos_engine/src/schedule/`；`KairosEngine` 改名 `Editor`、`KairosEditorRuntime` 改名 `EditorRuntime`。文中旧名与行号不逐一回改，引用时以当前树为准。
+
 ---
 
 ## 0. 先回答出发时那个困惑：消息从哪来、谁消费

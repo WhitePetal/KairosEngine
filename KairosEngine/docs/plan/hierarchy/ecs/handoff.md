@@ -85,7 +85,7 @@ run(): this_run = world.increment_change_tick()
 | `audio.rs` | | | | | | ✓ |
 | `audio/spatial.rs` | | | | | | ✓ |
 | `physics.rs` | | | | | | ✓ |
-| `kairos_editor/ui/game_window.rs` | | | | | | ✓ |
+| `kairos_editor/src/ui/game_window.rs` | | | | | | ✓ |
 
 ## Suggested Skills
 

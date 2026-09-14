@@ -32,11 +32,13 @@ feature 面照搬 `watch` / `file_watcher` / `embedded_watcher` 三档，`defaul
 6. **embedded meta 不热重载**（照上游）：改 `.meta` 只 warn，不重读。
 7. **去抖 300ms 硬编码**、不加更上层节流、不暴露配置（照上游）。
 8. **编辑器项目树另起一条 watcher**：`AssetSourceEvent` 不升为公开广播面；已加载资产面走既有
-   `AssetEvent`。这是本地决策（上游未把编辑器刷新纳入 `bevy_asset`）。（落地：`kairos_engine`
-   的 `kairos_editor::project_watcher::ProjectTreeWatcher` 监听 `ProjectPathGraph::scan_root`，
+   `AssetEvent`。这是本地决策（上游未把编辑器刷新纳入 `bevy_asset`）。（落地：`kairos_editor`
+   的 `project_watcher::ProjectTreeWatcher` 监听 `ProjectPathGraph::scan_root`，
    `ui::Context::handle` 每帧排空一次并让项目树重扫；重扫只在注册了新 GUID 时写回注册表，
-   否则注册表自身的写入会把刚叫醒它的 watcher 再叫一次。因此 `kairos_engine` 也直接依赖
+   否则注册表自身的写入会把刚叫醒它的 watcher 再叫一次。因此 `kairos_editor` 也直接依赖
    `notify-debouncer-full`。）
+
+   > **2026-09 修订**：宿主拆分后归属变化——`ProjectTreeWatcher` 与 `notify-debouncer-full` 直接依赖均由 `kairos_engine` 移到 `kairos_editor`；决策本身未变。
 9. **`get_asset_path` 在根拼写不匹配时回退到 canonical 根**：macOS FSEvents 报告的事件路径会解析
    符号链接——根写作 `/tmp` 时报 `/private/tmp/...`，而登录会话给的 `TMPDIR=/var/folders/...`
    会被报成 `/private/var/...`。上游只按原样根做 `strip_prefix`（失败即 panic），于是这类环境下

@@ -139,7 +139,7 @@ ECS Change Detection → Transform 层级系统 → Hierarchy 面板
 - `EditorMode::Play` → 活跃 World = GameWorld，面板读写 GameWorld
 - Stop 后切回 Edit 模式，面板重新指向 SceneWorld
 
-**对 `KairosEditorRuntime` 的影响**：当前只持有 `engine.world`，需要扩展为 SceneWorld + `Option<GameWorld>` + EditorMode 状态机。
+**对 `EditorRuntime` 的影响**：当前只持有 `engine.world`，需要扩展为 SceneWorld + `Option<GameWorld>` + EditorMode 状态机。
 
 **Play 时 Inspector 权限**：允许临时读写（调试用），Stop 后修改随 GameWorld 丢弃。
 
@@ -167,8 +167,10 @@ ECS Change Detection → Transform 层级系统 → Hierarchy 面板
 
 ```
 kairos_engine/src/
-├── spatial/transform.rs                    ← Transform struct + #[derive(Component)]（运行时）
-└── kairos_editor/ui/inspector/entity/
+└── spatial/transform.rs                    ← Transform struct + #[derive(Component)]（运行时）
+
+kairos_editor/src/
+└── ui/inspector/entity/
     ├── registry.rs                         ← ComponentMeta + inventory::collect!
     ├── trait.rs                            ← EntityComponentInspector trait
     ├── transform_inspector.rs              ← impl EntityComponentInspector<Transform>（编辑器）
