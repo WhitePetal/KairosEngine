@@ -323,12 +323,12 @@ unsafe impl<D: QueryData + 'static, F: QueryFilter + 'static> SystemParam for Qu
     }
 
     #[inline]
-    unsafe fn get_param<'world, 'state>(
-        state: &'state mut Self::State,
+    unsafe fn get_param<'w, 's>(
+        state: &'s mut Self::State,
         system_meta: &SystemMeta,
-        world: UnsafeWorldCell<'world>,
+        world: UnsafeWorldCell<'w>,
         change_tick: Tick,
-    ) -> Result<Self::Item<'world, 'state>, SystemParamValidationError> {
+    ) -> Result<Self::Item<'w, 's>, SystemParamValidationError> {
         // SAFETY: We have registered all of the query's world accesses,
         // so the caller ensures that `world` has permission to access any
         // world data that the query needs.
@@ -360,12 +360,12 @@ unsafe impl<'a, 'b, D: IterQueryData + 'static, F: QueryFilter + 'static> System
     }
 
     #[inline]
-    unsafe fn get_param<'world, 'state>(
-        state: &'state mut Self::State,
+    unsafe fn get_param<'w, 's>(
+        state: &'s mut Self::State,
         system_meta: &SystemMeta,
-        world: UnsafeWorldCell<'world>,
+        world: UnsafeWorldCell<'w>,
         change_tick: Tick,
-    ) -> Result<Self::Item<'world, 'state>, SystemParamValidationError> {
+    ) -> Result<Self::Item<'w, 's>, SystemParamValidationError> {
         // SAFETY: State ensures that the components it accesses are not accessible somewhere elsewhere.
         // The caller ensures the world matches the one used in init_state.
         let query =
@@ -414,12 +414,12 @@ unsafe impl<D: QueryData + 'static, F: QueryFilter + 'static> SystemParam
     }
 
     #[inline]
-    unsafe fn get_param<'world, 'state>(
-        state: &'state mut Self::State,
+    unsafe fn get_param<'w, 's>(
+        state: &'s mut Self::State,
         system_meta: &SystemMeta,
-        world: UnsafeWorldCell<'world>,
+        world: UnsafeWorldCell<'w>,
         change_tick: Tick,
-    ) -> Result<Self::Item<'world, 'state>, SystemParamValidationError> {
+    ) -> Result<Self::Item<'w, 's>, SystemParamValidationError> {
         let query = unsafe { Query::get_param(state, system_meta, world, change_tick)? };
         if query.is_empty() {
             Err(SystemParamValidationError::skipped::<Self>(
@@ -775,12 +775,12 @@ unsafe impl<'a, T: Resource<Mutability = Mutable>> SystemParam for ResMut<'a, T>
     }
 
     #[inline]
-    unsafe fn get_param<'world, 'state>(
-        &mut component_id: &'state mut Self::State,
+    unsafe fn get_param<'w, 's>(
+        &mut component_id: &'s mut Self::State,
         system_meta: &SystemMeta,
-        world: UnsafeWorldCell<'world>,
+        world: UnsafeWorldCell<'w>,
         change_tick: Tick,
-    ) -> Result<Self::Item<'world, 'state>, SystemParamValidationError> {
+    ) -> Result<Self::Item<'w, 's>, SystemParamValidationError> {
         let value = unsafe {
             world.get_resource_mut_by_id(component_id).ok_or_else(|| {
                 SystemParamValidationError::invalid::<Self>("Resource does not exist")
@@ -831,12 +831,12 @@ unsafe impl SystemParam for &'_ World {
     }
 
     #[inline]
-    unsafe fn get_param<'world, 'state>(
-        _state: &'state mut Self::State,
+    unsafe fn get_param<'w, 's>(
+        _state: &'s mut Self::State,
         _system_meta: &SystemMeta,
-        world: UnsafeWorldCell<'world>,
+        world: UnsafeWorldCell<'w>,
         _change_tick: Tick,
-    ) -> Result<Self::Item<'world, 'state>, SystemParamValidationError> {
+    ) -> Result<Self::Item<'w, 's>, SystemParamValidationError> {
         // SAFETY: Read-only access to the entire world was registered in `init_state`.
         Ok(unsafe { world.world() })
     }
@@ -1057,12 +1057,12 @@ unsafe impl<'a, T: FromWorld + Send + 'static> SystemParam for Local<'a, T> {
     }
 
     #[inline]
-    unsafe fn get_param<'world, 'state>(
-        state: &'state mut Self::State,
+    unsafe fn get_param<'w, 's>(
+        state: &'s mut Self::State,
         _system_meta: &SystemMeta,
-        _world: UnsafeWorldCell<'world>,
+        _world: UnsafeWorldCell<'w>,
         _change_tick: Tick,
-    ) -> Result<Self::Item<'world, 'state>, SystemParamValidationError> {
+    ) -> Result<Self::Item<'w, 's>, SystemParamValidationError> {
         Ok(Local(state.get()))
     }
 }
@@ -1263,12 +1263,12 @@ unsafe impl<T: SystemBuffer> SystemParam for Deferred<'_, T> {
     }
 
     #[inline]
-    unsafe fn get_param<'world, 'state>(
-        state: &'state mut Self::State,
+    unsafe fn get_param<'w, 's>(
+        state: &'s mut Self::State,
         _system_meta: &SystemMeta,
-        _world: UnsafeWorldCell<'world>,
+        _world: UnsafeWorldCell<'w>,
         _change_tick: Tick,
-    ) -> Result<Self::Item<'world, 'state>, SystemParamValidationError> {
+    ) -> Result<Self::Item<'w, 's>, SystemParamValidationError> {
         Ok(Deferred(state.get()))
     }
 }
@@ -1295,12 +1295,12 @@ unsafe impl SystemParam for ExclusiveMarker {
     }
 
     #[inline]
-    unsafe fn get_param<'world, 'state>(
-        _state: &'state mut Self::State,
+    unsafe fn get_param<'w, 's>(
+        _state: &'s mut Self::State,
         _system_meta: &SystemMeta,
-        _world: UnsafeWorldCell<'world>,
+        _world: UnsafeWorldCell<'w>,
         _change_tick: Tick,
-    ) -> Result<Self::Item<'world, 'state>, SystemParamValidationError> {
+    ) -> Result<Self::Item<'w, 's>, SystemParamValidationError> {
         Ok(Self(PhantomData))
     }
 }
@@ -1330,12 +1330,12 @@ unsafe impl SystemParam for NonSendMarker {
     }
 
     #[inline]
-    unsafe fn get_param<'world, 'state>(
-        _state: &'state mut Self::State,
+    unsafe fn get_param<'w, 's>(
+        _state: &'s mut Self::State,
         _system_meta: &SystemMeta,
-        _world: UnsafeWorldCell<'world>,
+        _world: UnsafeWorldCell<'w>,
         _change_tick: Tick,
-    ) -> Result<Self::Item<'world, 'state>, SystemParamValidationError> {
+    ) -> Result<Self::Item<'w, 's>, SystemParamValidationError> {
         Ok(Self(PhantomData))
     }
 }
@@ -1374,12 +1374,12 @@ unsafe impl<'a, T: 'static> SystemParam for NonSend<'a, T> {
     }
 
     #[inline]
-    unsafe fn get_param<'world, 'state>(
-        &mut component_id: &'state mut Self::State,
+    unsafe fn get_param<'w, 's>(
+        &mut component_id: &'s mut Self::State,
         system_meta: &SystemMeta,
-        world: UnsafeWorldCell<'world>,
+        world: UnsafeWorldCell<'w>,
         change_tick: Tick,
-    ) -> Result<Self::Item<'world, 'state>, SystemParamValidationError> {
+    ) -> Result<Self::Item<'w, 's>, SystemParamValidationError> {
         let (ptr, ticks) = unsafe {
             world.get_non_send_with_ticks(component_id).ok_or_else(|| {
                 SystemParamValidationError::invalid::<Self>("Non-send data not found")
