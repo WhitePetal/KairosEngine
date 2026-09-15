@@ -1,12 +1,13 @@
 # Bevy 0.19.1 `ParamSet<(Query<&T>,)>` 生命周期 E0477 排查记录
 
 > 研究票：定位 `kairos_ecs` fork 里 `ParamSet<(Query<&T>, …)>` 必须显式标注 `'static`，而上游 `bevy_ecs 0.19.1` 无需标注的根因。
-> 日期：2026-09-14。上游基准：`bevy_ecs-0.19.1`（本地 registry 直读）。方法：受控复现 + 逐文件归一化 diff + 二分替换（含一个并行 sub-agent）。**未完成根因定位**，本文记录已确认的事实、悖论与下一步。
+> 日期：2026-09-14 → 2026-09-15。上游基准：`bevy_ecs-0.19.1`（本地 registry 直读）。方法：受控复现 + 逐文件归一化 diff + 二分替换（含一个并行 sub-agent）+ rustc 源码取证。**根因已定位**（见 §0.1 与 §4）。
 
 ---
 
 ## 0. 结论速览
 
+- **根因（已定位）**：这不是 `kairos_ecs` 的源码 bug，而是 **rustc 1.97.1 内建的一个「implied-bounds 兼容性 hack」，按字面量 crate 名 `bevy_ecs` + 类型名 `ParamSet` 匹配**。详见 §0.1 与 §4。
 - **触发点**：`kairos_transform/src/systems.rs::sync_simple_transforms` 的 `ParamSet<(Query<(&LocalTransform, &mut GlobalTransform), …>, Query<(Ref<LocalTransform>, &mut GlobalTransform), …>)>` 报 E0477：`(&LocalTransform, &mut GlobalTransform)` 必须满足 `'static`。
 - **义务来源（已确认）**：`kairos_ecs/src/system/system_param.rs:304`
 
@@ -17,7 +18,36 @@
 
   经 `ParamSet<'w,'s,T: SystemParam>` 的结构体 bound 传导为 `D: 'static` → `&T: 'static`。
 - **上游能编译完全省略写法（已两次验证）**：bevy 0.19.1 在 stable `1.97.1` 与 nightly `1.99.0` 下，`fn sig<'a>(_: ParamSet<(Query<&'a A>,)>)` 都通过；kairos 在两版 rustc 下都失败。
-- **触发差异尚未定位**：所有相关 trait/struct/impl 定义经归一化 diff 逐行确认为语义一致（只有 `std/core/alloc`、`crate::/bevy_ecs::`、`kairos_ptr/bevy_ptr` 等重命名差异）。行为差异被锁定为「bevy 对 `ParamSet` 结构体 bound 的 WF 检查是惰性的，kairos 是急切的」，但具体源码触发点未找到。
+- **触发差异（已定位）**：所有相关 trait/struct/impl 定义经归一化 diff 逐行确认为语义一致（只有 `std/core/alloc`、`crate::/bevy_ecs::`、`kairos_ptr/bevy_ptr` 等重命名差异）——因为差异根本不在 `.rs` 里，而在 rustc 的 metadata 驱动的特判里。行为差异「bevy 惰性 / kairos 急切」的触发点是 **crate 名**。
+
+---
+
+## 0.1 根因：rustc 的 `bevy_ecs::ParamSet` implied-bounds 兼容 hack
+
+rustc 1.97.1 在 `compiler/rustc_trait_selection/src/traits/query/type_op/implied_outlives_bounds.rs` 里对**恰好叫做 `ParamSet`、且定义在恰好叫做 `bevy_ecs` 的 crate 里的类型**做特殊处理（`ContainsBevyParamSet` 访问者）：
+
+```rust
+// 伪码（实际源码见该文件）
+fn visit_ty(&mut self, t) {
+    if let ty::Adt(def, _) = t.kind() {
+        if tcx.item_name(def.did()) == sym::ParamSet
+            && tcx.crate_name(def.did().krate) == sym::bevy_ecs
+        {
+            return ControlFlow::Break(());   // 命中 hack
+        }
+    }
+}
+```
+
+命中后，rustc 把已经登记的 `TypeOutlives` 区域义务（即 `&'a A: 'static`）**转成 implied bounds（假设）而不是强制执行**——这就是 bevy 侧「惰性」的真正来源。`rustc_hir_analysis::check::wfcheck` 里是一个两阶段区域解析：先按正确语义跑（这里会出 E0477），失败后再带 hack 重跑一次。
+
+**三个独立实证**：
+
+1. 对 bevy 复现 crate 加 `-Zno-implied-bounds-compat`（关闭该 hack）→ 立即报 E0477，与 kairos 完全一致。
+2. 把一个**忠实最小复现**的 `[package] name` 改成 `bevy_ecs`（其余源码一字不动）→ E0477 消失、编译通过；改回 `kairos_ecs` / 任意其它名 → E0477 复现。
+3. `rustup run nightly rustc -Z help` 明确列出 `-Zno-implied-bounds-compat=val -- disable the compatibility version of the implied_bounds_ty query`。
+
+因此：`kairos_ecs` 之所以「必须标 `'static` 而 bevy 不用」，唯一原因是 **fork 把 crate 名从 `bevy_ecs` 改成了 `kairos_ecs`**，使 rustc 的特判不再命中。
 
 ---
 
@@ -69,16 +99,16 @@ ParamSet<(Query<D, F>,)>   // 命名该类型
 
 ---
 
-## 4. 关键行为差异（悖论）
+## 4. 关键行为差异（已解开）
 
 在 bevy 0.19.1 里：
 
 - `assert_param::<(Query<&'a A>,)>()`（显式 `P: SystemParam` bound）→ **失败**，要求 `'a: 'static`。
 - `fn sig<'a>(_: ParamSet<(Query<&'a A>,)>)`（命名 `ParamSet` 类型，结构体 WF bound）→ **通过**。
 
-即：**同一个义务 `(Query<&'a A>,): SystemParam`，走显式 bound 会失败，走 `ParamSet` 结构体 WF 命名却通过**。kairos 里两者都失败。
+即：同一个义务 `(Query<&'a A>,): SystemParam`，走显式 bound 会失败，走 `ParamSet` 结构体 WF 命名却通过。kairos 里两者都失败。
 
-这指向 rustc 对「结构体 where 子句的 WF 义务」与「显式 trait bound」使用了不同的（更懒的）解析；但 `ParamSet` 结构体与 `SystemParam` trait 定义两侧逐字节一致，故触发该差异的根源仍在某个尚未定位的 fork 差异点。
+**这不再是一个悖论**：`assert_param` 的显式 bound 不经过 `ParamSet` 类型本身，因此不命中 rustc 的 `bevy_ecs::ParamSet` 特判；而 `fn sig` 的参数类型里出现了 `ParamSet`，bevy 侧命中特判、被降级为 implied bounds；kairos 侧因 crate 名不符而不命中、按正确语义报 E0477。
 
 ---
 
@@ -98,20 +128,17 @@ Query<&'static mut Health, With<Enemy>>
 
 ## 6. 当前状态
 
+- 根因已定位：rustc 的 `bevy_ecs::ParamSet` implied-bounds 兼容 hack（见 §0.1）。
 - 本次会话未改调用处、未改 `kairos_ecs` 侧实现（所有实验改动已还原）。
-- WIP（transform 传播系统 + `Parallel` 从 `kairos_ecs` 迁到 `kairos_tasks`）已随本次一并提交。
-- `kairos_transform/src/systems.rs::sync_simple_transforms` 目前仍是**未加 `'static` 的失败写法**，`cargo check -p kairos_transform` 会报 E0477（这是预期，用于继续复现）。
-- 已知可编译的临时写法（用户明确不想用）：`Query<'static, 'static, D, F>`（只内联 world/state 两个生命周期，data 借用照旧省略）。
+- `kairos_transform/src/systems.rs::sync_simple_transforms` 目前仍是**未加 `'static` 的失败写法**，`cargo check -p kairos_transform` 会报 E0477。
 
----
+## 7. 修复选项（按推荐度）
 
-## 7. 建议的下一步
+1. **类型擦除（真正的修法，破坏性重构）**：让 `QueryState` 不再携带 `D`/`F` 泛型参数（`D::State`/`F::State` 擦除为 `Box<dyn Any + Send + Sync>` 之类），从而 `QueryState: 'static` 不再要求 `D: 'static`。这是 bevy 上游本应做但一直没做的（rustc 注释里就是 `FIXME: Once we fix bevy, …`）；副作用是波及整个 query 子系统，改动面大。
+2. **调用处 `'static` 标注（工作区级绕过）**：`Query<'static, 'static, D, F>`（或 `&'static T` data 借用）。用户已明确拒绝，但这是不改 crate 名前提下唯一「零重构」手段。
+3. **改 crate 名**：把 fork 的 `[package] name` / `extern crate self as` 改回 `bevy_ecs` 以命中 hack——不合理，破坏 fork 独立性，仅作反证用。
 
-1. **rustc trait solver 取证**：对 bevy 和 kairos 各跑一次
-   `RUSTFLAGS="-Znext-solver=globally -Zdump-solver-proof-tree=all" cargo +nightly check -p …`
-   对比 `ParamSet<(Query<&'a A>,)>` 的 WF obligation 链，看 bevy 在哪一步跳过 `D:'static`。
-2. **全 crate 结构级 diff（variance 方向）**：只保留 `struct/trait/impl/type/where` 签名做归一化，重点比对 `QueryState`/`Query`/`ParamSet`/`UnsafeWorldCell`/`SystemMeta` 里 `PhantomData` 用法、`&mut` vs `&`、`UnsafeCell` 包裹等会影响 variance 的字段。
-3. 若需先落地可编译，唯一已知手段仍是调用处 `Query<'static, 'static, D, F>` 标注（用户已拒绝，故未采用）。
+结论：**在「不标 `'static`、不破坏性重构、不改 crate 名」的约束下，`kairos_ecs` 侧没有可落地的修复**。要真正根治必须走选项 1（类型擦除）。
 
 ---
 
