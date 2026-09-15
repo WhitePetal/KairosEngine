@@ -34,6 +34,7 @@ mod tests;
 /// Coordinate system: right-handed, Y-up, -Z forward (the engine's spatial
 /// convention). The default transform is the identity transform.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[require(GlobalTransform, TransformTreeChanged)]
 pub struct LocalTransform {
     /// Translation relative to the parent (world space at the root).
     pub translation: float3,

@@ -264,6 +264,10 @@ macro_rules! impl_build_system {
                 self.build_any_system(func)
             }
 
+            /// Create a [`FunctionSystem`] from a [`SystemState`].
+            /// This method signature allows type inference of closure parameters for a system with input.
+            /// You can use [`SystemState::build_system()`] if you have no input, or [`SystemState::build_any_system()`] if you don't need type inference.
+            #[inline]
             pub fn build_system_with_input<
                 InnerIn: SystemInput + FromInput<In>,
                 In: SystemInput,
