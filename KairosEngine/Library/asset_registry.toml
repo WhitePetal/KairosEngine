@@ -471,6 +471,10 @@ guid = "3a793235-4966-49ca-b2a2-f2c631a49926"
 path = "docs/research/bevy-0.19.1-nested-load-builder-unapproved-panic.md"
 
 [[entries]]
+guid = "0dfb3a86-cd74-41ec-a52f-7ce2a30ebdc4"
+path = "docs/research/bevy-0.19.1-paramset-query-lifetime-E0477.md"
+
+[[entries]]
 guid = "aa0da248-a747-41e4-8963-22cae0d0d33e"
 path = "docs/research/bevy-app-schedule-reference.md"
 
@@ -3039,6 +3043,10 @@ guid = "af31bff6-39a7-4fd0-b061-d7c1cfa5700b"
 path = "kairos_math/src/consts.rs"
 
 [[entries]]
+guid = "7f158edb-2e97-4629-b013-9f5fc44622eb"
+path = "kairos_math/src/direction.rs"
+
+[[entries]]
 guid = "def7b276-d85d-45ac-aa2a-5cad8345eb75"
 path = "kairos_math/src/lib.rs"
 
@@ -3155,6 +3163,10 @@ guid = "4be1a5a9-39b4-4f3d-8757-f1e2d4ad16f1"
 path = "kairos_tasks/src"
 
 [[entries]]
+guid = "3d062512-8568-4a06-8663-d44e567262a7"
+path = "kairos_tasks/src/buffered_channel.rs"
+
+[[entries]]
 guid = "0c96b31b-1ec2-49a5-8911-3450a73e7204"
 path = "kairos_tasks/src/conditional_send.rs"
 
@@ -3181,6 +3193,10 @@ path = "kairos_tasks/src/iter.rs"
 [[entries]]
 guid = "fb34f51b-f857-40ee-ab58-4b20a3bef3d0"
 path = "kairos_tasks/src/lib.rs"
+
+[[entries]]
+guid = "f1f25be1-99c0-4e6a-85e8-a822764a01cd"
+path = "kairos_tasks/src/parallel_queue.rs"
 
 [[entries]]
 guid = "60ded1d4-b908-47cd-bba2-ecfc4cf3b873"
@@ -3255,6 +3271,10 @@ guid = "51513fdf-23c3-459e-9a62-3de4b6354d97"
 path = "kairos_transform/src"
 
 [[entries]]
+guid = "79f8c95b-b5c6-4b64-bac4-38f31588c9f5"
+path = "kairos_transform/src/commands.rs"
+
+[[entries]]
 guid = "6194b371-293b-4f08-9f00-f6f9878bcfe8"
 path = "kairos_transform/src/global_transform"
 
@@ -3265,6 +3285,10 @@ path = "kairos_transform/src/global_transform/tests.rs"
 [[entries]]
 guid = "6b4964f1-11bb-4724-9663-3319d313f427"
 path = "kairos_transform/src/global_transform.rs"
+
+[[entries]]
+guid = "a96f25ac-a3eb-455d-a2c3-d7d6ed186e4c"
+path = "kairos_transform/src/helper.rs"
 
 [[entries]]
 guid = "68ca7aa2-c05a-47ff-8948-d9a9d2efa740"
@@ -3281,6 +3305,10 @@ path = "kairos_transform/src/local_transform/tests.rs"
 [[entries]]
 guid = "c16269be-8984-41bf-9aad-733155cec544"
 path = "kairos_transform/src/local_transform.rs"
+
+[[entries]]
+guid = "46fdbdc7-bc11-4c43-802c-ad39155b068c"
+path = "kairos_transform/src/systems.rs"
 
 [[entries]]
 guid = "dcecad95-f64e-4837-98b0-a37a35912029"

@@ -1,0 +1,11 @@
+[package]
+name = "editor-components-prototype"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Throwaway prototype: feature components mapping editor-core state <-> ui-widgets, returning Actions"
+
+[dependencies]
+egui = "=0.35.0"
+ui-widgets-prototype = { path = "../ui-widgets" }
+editor-core-prototype = { path = "../editor-core" }

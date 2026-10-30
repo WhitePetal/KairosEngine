@@ -5,6 +5,12 @@
 | File | Topic |
 |---|---|
 | `hierarchy/unity-hierarchy.md` | Unity Hierarchy 窗口实现分析与架构研究 |
+| `editor-ui-messager-mvc-audit.md` | **现状审计**：Messager/Message 总线与「window = model」结构的证据清单（57 变体、365 行 god handle、73 个发送点、0 个交互测试） |
+| `editor-ui-architecture-patterns.md` | 成熟编辑器 UI 架构模式：Unreal Slate / Godot / Unity / VS Code / JetBrains / Zed / Blender / Rerun 的 command、selection、inspector、undo、layout、plugin |
+| `rust-ui-architecture-survey.md` | Rust UI 架构调研：MVC→MVU 谱系、iced / egui+Rerun / Slint / Xilem / GPUI / signals / Bevy，8 个可迁移模式 |
+| `editor-ui-engine-integration.md` | kairos_engine 帧循环、World 资源、线程/资产时序约束，以及对新 UI 架构的 must/should/must-not 集成要求 |
+| `ui-widget-component-layer-survey.md` | 纯外观 widgets 与功能 components 的分层/契约/主题/测试调研：React/Flutter/Atomic Design + Rerun re_ui / Zed ui / egui Widget / egui_kittest |
+| `editor-ui-widget-catalog.md` | 现状 UI 逐文件审计 + 25 个纯 widget 目录 + 22 个 component 目录 + Theme token 清单 + 三个代表文件 before/after |
 
 ## Texture Encoding
 

@@ -1,0 +1,9 @@
+[package]
+name = "ui-widgets-prototype"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Throwaway prototype: pure, theme-driven egui widget kit (no domain types)"
+
+[dependencies]
+egui = "=0.35.0"

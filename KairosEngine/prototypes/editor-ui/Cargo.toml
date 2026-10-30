@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "crates/editor-core",
+    "crates/ui-widgets",
+    "crates/editor-components",
+]
+resolver = "3"

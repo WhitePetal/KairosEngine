@@ -1,0 +1,8 @@
+[package]
+name = "editor-core-prototype"
+version = "0.1.0"
+edition = "2024"
+description = "Throwaway prototype: single owned editor state + pure reducers + effects as data + command registry + document undo"
+publish = false
+
+[dependencies]
