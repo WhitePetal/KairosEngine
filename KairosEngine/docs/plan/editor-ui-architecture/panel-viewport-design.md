@@ -1,7 +1,7 @@
 # 面板系统与 3D 视口设计
 
 > **配套**：[ADR 0009](../../adr/0009-editor-panel-host-and-viewport.md)（决策）· [README](./README.md) §3.3-3.5 / §4.3（总架构）· [rewrite-plan.md](./rewrite-plan.md) Phase 1-2（排期）· [widget-layer.md](./widget-layer.md)（L0/L1/L2 分层）
-> **状态**：设计稿（2026-11-09）。原型实现并行落地中；§7「原型证据」在代码全部落地后补，届时统一刷新引用行号与测试数量。
+> **状态**：设计稿（2026-11-09），2026-11-12 更新：docking 与面板层已落地（`kairos_editor_docking`、`kairos_editor_core`、`kairos_editor_component`，见 §6.1）；§7「原型证据」在代码全部落地后补，届时统一刷新引用行号与测试数量。
 > **范围**：只回答两件事——(a) 面板如何组织：trait/registry/host、身份、状态归属、生命周期、多实例/焦点/关闭/重绘；(b) 3D 场景如何以 **egui + wgpu** 在真实 kairos 引擎里落地：渲染链路、纹理生命周期、交互与拾取、帧阶段、测试与迁移。ADR 0009 已拍板的决策本文只引用、不重复论证；这里给的是可实施细节、代码形状与 `file:line` 证据。
 > **证据口径**：仓库内 `path:line` 均为 2026-11-09 工作区 HEAD 实读；原型（`prototypes/editor-ui/`）行号会随并行实现漂移，§7 统一复核。外部 API 事实以本机 cargo registry 的 `egui-0.35.0` / `egui-wgpu-0.35.0` 源码为准（与主 workspace 的 `egui = "0.35.0"` 同版本，见 `kairos_editor/Cargo.toml:50-55`）。
 
@@ -9,7 +9,7 @@
 
 ## 0. 结论摘要（TL;DR）
 
-1. **面板身份是数据，不是 Rust 类型。** `PanelId(&'static str)` 在 core 里只被当作不透明键（open/focus 集合），`PanelInstanceId { kind, serial }` 从第一天就有；面板实现是 `kairos_editor_ui` 里的 `trait Panel` 对象，由 `PanelRegistry` 按 id 造实例、由 `PanelHost` 持有实例与 dock 摆放。**加一个面板 = 实现一个 `Panel` + 组合根注册一行工厂**，不改 core、不改 app、不加 `Message` 变体（ADR 0009 决策 1/2）。
+1. **面板身份是数据，不是 Rust 类型。** `PanelId(&'static str)` 在 core 里只被当作不透明键（open/focus 集合），`PanelInstanceId { kind, serial }` 从第一天就有；面板实现是 `kairos_editor_component` 里的 `trait Panel` 对象，由 `PanelRegistry` 按 id 造实例、由 `PanelHost` 持有实例与 dock 摆放。**加一个面板 = 实现一个 `Panel` + 组合根注册一行工厂**，不改 core、不改 app、不加 `Message` 变体（ADR 0009 决策 1/2）。
 2. **`EditorApp` 只是组合根。** 它持有 `PanelHost` 和状态树，不持有任何具体的 `ProjectPanel`/`InspectorPanel` 字段。重构前的原型曾把两个面板写成字段（ADR 0009 的 Context 引用了当时的 `app.rs:34-35`），2026-11-09 的重构已改成「registry 注册 + PanelHost」；现在 `EditorApp` 只有 `core / panels / host / ui_out / frame_count`（`editor-app/src/app/mod.rs` 的 `EditorApp`），gallery 面板甚至在 host crate 里注册（§7）。
 3. **状态四归属**（§2.6）：打开/焦点 → `core::LayoutState`（可持久化、MCP 可查）；dock 树/tab 顺序/分割比例/拖拽瞬态 → host/UI（`kairos_editor_docking`，独立布局文件）；面板会话态（滚动/展开/搜索/重命名缓冲/lock）→ `ViewStates[PanelInstanceId]`；GPU 纹理句柄 → host 的 `HostView`（`ViewportId → egui::TextureId`）；相机位姿 → 引擎 `World`（`EditorCameraController` 是唯一真值）。
 4. **3D 视口链路（真实引擎，唯一的 UI→GPU 路径）**：`World` 的 `SceneView/GameView`（size/camera/draws）→ `Extract` 每帧重建 draws → `RenderViewports` 生成 `GraphicsCommand`（离屏 color/depth attachment + render pass）→ `bind_attachment_to_egui` → `present` 里建 texture、`register_native_texture`、oneshot 回传 `EguiTextureHandle` → host 存 `egui::TextureId` → 面板只 `painter.image(tex_id, rect, uv, tint)`。UI crate 永远看不到 wgpu 类型。
@@ -110,9 +110,9 @@ pub struct EditorApp {
 
 | 对象 | 所在层 | 职责 | 不做什么 |
 |---|---|---|---|
-| `Panel` | `kairos_editor_ui` | `draw(&mut self, ui, frame, out)`：读 `&Frame`、画 widget、往 `UiOut` 推 `Action` | 不碰 `&mut World`、不做 IO、不持有领域状态、不调 `ctx.request_repaint` |
-| `PanelRegistry` | `kairos_editor_ui`（组合根填充） | `PanelId → PanelFactory`；启动时注册一次；提供 descriptor（标题/默认槽位/是否单例/是否拥有视口） | 不持有活实例 |
-| `PanelHost` | `kairos_editor_ui`（由 `kairos_editor_app` 持有并驱动） | 持有活实例、`ViewStates`、dock 树、焦点；`sync(&EditorState)` 幂等对齐；按 dock 树顺序绘制 | 不实现面板、不解释领域语义、不做 IO |
+| `Panel` | `kairos_editor_component` | `draw(&mut self, ui, frame, out)`：读 `&Frame`、画 widget、往 `UiOut` 推 `Action` | 不碰 `&mut World`、不做 IO、不持有领域状态、不调 `ctx.request_repaint` |
+| `PanelRegistry` | `kairos_editor_component`（组合根填充） | `PanelId → PanelFactory`；启动时注册一次；提供 descriptor（标题/默认槽位/是否单例/是否拥有视口） | 不持有活实例 |
+| `PanelHost` | `kairos_editor_component`（由 `kairos_editor_app` 持有并驱动） | 持有活实例、`ViewStates`、dock 树、焦点；`sync(&EditorState)` 幂等对齐；按 dock 树顺序绘制 | 不实现面板、不解释领域语义、不做 IO |
 | `EditorApp` | `kairos_editor_app` | 组合根 + 帧循环编排 + EffectExecutor + ViewportHost | 不持有任何具体面板类型字段 |
 
 ### 2.2 `Panel` trait
@@ -120,7 +120,7 @@ pub struct EditorApp {
 ADR 0009 已给出签名（`docs/adr/0009-editor-panel-host-and-viewport.md`，决策 1）：
 
 ```rust
-// kairos_editor_ui::panel（生产目标形状；原型已按此落地，见 editor-components/src/panel/mod.rs）
+// kairos_editor_component::panel（生产目标形状；原型已按此落地，见 editor-components/src/panel/mod.rs）
 pub trait Panel {
     fn kind(&self) -> PanelId;
     fn title(&self, frame: &Frame) -> String;
@@ -147,7 +147,7 @@ pub type PanelFactory = Box<dyn Fn(&EditorState) -> Box<dyn Panel>>;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct PanelId(pub &'static str);
 
-// kairos_editor_ui（实例身份属于 UI/host；若生产把 LayoutState 改成按实例键，再上移到 core）
+// kairos_editor_component（实例身份属于 UI/host；若生产把 LayoutState 改成按实例键，再上移到 core）
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct PanelInstanceId { pub kind: PanelId, pub serial: u32 }
 ```
@@ -559,7 +559,7 @@ pub fn sync(&mut self, state: &EditorState) {
 面板侧（全部在 `ViewState`，不进 core）：
 
 ```rust
-// kairos_editor_ui::panels::viewport 的 ViewState（形状示意）
+// kairos_editor_component::panels::viewport 的 ViewState（形状示意）
 pub struct ViewportViewState {
     /// 正在视口里拖拽相机；egui 在按钮释放前会持续 dragged()
     drag: Option<CameraDrag>,
@@ -780,7 +780,7 @@ dispatch(out.take());
 | 层 | 测什么 | 工具/命令 | 现状/原型 |
 |---|---|---|---|
 | core reducer（纯） | open/close/focus、多实例、Viewport 的 Ensure/尺寸/bind/pick ticket、陈旧 completion、effect 阶段 | `#[test]`；`cargo test-crate kairos_editor_core` | 原型 `editor-core/tests/viewport_flow.rs` 已有 11 个测试（§7） |
-| panel host（纯 + headless egui） | 注册/工厂唯一调用、sync 幂等、打开→实例化→关闭 drop、多实例、焦点映射、未知 id 降级 | `egui::Context::default()` + `run_ui`（无需 GPU/window，research §6.3）；`cargo test-crate kairos_editor_ui` | 原型 14 个（`editor-components/tests/panel_host.rs`，§7） |
+| panel host（纯 + headless egui） | 注册/工厂唯一调用、sync 幂等、打开→实例化→关闭 drop、多实例、焦点映射、未知 id 降级 | `egui::Context::default()` + `run_ui`（无需 GPU/window，research §6.3）；`cargo test-crate kairos_editor_component` | 原型 14 个（`editor-components/tests/panel_host.rs`，§7） |
 | 面板绘制/交互 | 合成 `RawInput` 点击/拖拽 → 断言 `UiOut` 的 Action 序列；视口面板的 Ensure/Orbit/Pick | 同上（原型 harness `Context::run` 已用于 widget/components） | 原型 `viewport_panel` 7 个（单位/NDC）+ components 8+7；§7 |
 | 相机数学（纯） | orbit/zoom/fly/pan 的公式与 clamp；无输入不改 transform | `#[test]` + bare `World` + 手工 stage（`camera/test.rs:1-15, 68-98`） | 原型 `editor-viewport` camera 16 个；生产现状 3 个 camera 测试；补 pan（§3.8.2） |
 | World 级相机/Extract 契约 | `SceneViewInput` 写入 → `PostUpdate` 消费清零 → `Extract` 派生 VP/draws；`SceneView.size` 门控 | bare `World`（不建 `Engine::new()`、不碰 wgpu，`camera/test.rs:1-15`） | 可复用现有 harness |
@@ -819,14 +819,14 @@ dispatch(out.take());
 
 ### 5.5 质量门
 
-按 `docs/agents/testing.md:5-24` 的约定：**改哪个 crate 就测哪个**，不跑 `cargo test-full`（~`183s`，是 merge gate，`:72-76`）。`kairos_editor_core` / `kairos_editor_ui` 为**独立 crate**（ADR-0008 方案，cargo 强制边界，§6.1），目前尚未创建；创建前对应的领域/UI 测试由 `kairos_editor_app` 承载，crate 落地后按上面的命令分别跑。若 owner 以后选择合并成模块，测试命令按 app crate 收敛，但设计边界不变（§6.1 已标注影响面）。
+按 `docs/agents/testing.md:5-24` 的约定：**改哪个 crate 就测哪个**，不跑 `cargo test-full`（~`183s`，是 merge gate，`:72-76`）。`kairos_editor_core` / `kairos_editor_component` 为**独立 crate**（ADR-0008 方案，cargo 强制边界，§6.1），已于 2026-11-12 创建：core 承载布局/状态测试，component 承载面板框架与面板绘制测试，`kairos_editor_app` 只保留组合根集成测试（dock reconcile / 整帧绘制）。注意 `kairos_editor_app` 是 bin-only crate，`cargo test-crate kairos_editor_app` 的 `--lib` 会报 no library targets，用 `cargo test -p kairos_editor_app --bins --tests`。
 
 ```sh
 # 领域（core）
 cargo test-crate kairos_editor_core        # reducer/viewport slice
 
 # UI（面板/组件）
-cargo test-crate kairos_editor_ui          # PanelHost/面板绘制/适配函数
+cargo test-crate kairos_editor_component          # PanelHost/面板绘制/适配函数
 
 # widget kit
 cargo test-crate kairos_editor_widgets
@@ -852,26 +852,28 @@ cd prototypes/editor-ui && cargo test && cargo run   # 手动窗口 smoke
 
 | 原型（`prototypes/editor-ui/`） | 生产目标 | 现状 | 说明 |
 |---|---|---|---|
-| `editor-core-prototype` | **`kairos_editor_core`（独立 crate）** | 未建（P1 创建） | 状态/reducer/effect/command/viewport slice 原样迁；cargo 强制边界：不得依赖 egui/winit/wgpu/`World`（ADR-0008 方案）。若 owner 以后改为 `kairos_editor_app::core` 模块，只是把编译期边界降级为约定（影响面：边界失去 cargo 强制、app 可越层引用），设计内容不变。 |
-| `editor-components-prototype`（`Frame`/`UiOut`/面板/组件） | **`kairos_editor_ui`（独立 crate）** | 未建（P1 创建） | L2：读 core + 用 widget kit + 发 Action；不依赖 host（`kairos_editor_app`）、不做 IO；独立 crate 由 cargo 强制边界。合并成模块的影响面同 core 行。 |
+| `editor-core-prototype` | **`kairos_editor_core`（独立 crate）** | 已建（2026-11-12，仅状态层） | `EditorState`/`LayoutState`/`PanelId`/`PanelInstanceId` 已迁入；reducer/effect/command/viewport slice 仍留原型，等领域逻辑长出来再落这里。cargo 强制边界：不得依赖 egui/winit/wgpu/`World`。 |
+| `editor-components-prototype`（`Frame`/`UiOut`/面板/组件） | **`kairos_editor_component`（独立 crate）** | 已建（2026-11-12） | 已有 `Panel`/`PanelRegistry`/`PanelHost`/`TabViewer` 适配 + `panels/` 内置面板（先迁 demo 面板，真面板按 P1 逐页迁）；L2：读 core + 用 widget kit，不依赖 host（`kairos_editor_app`）、不做 IO；cargo 强制边界。 |
 | `ui-widgets-prototype` | **`kairos_editor_widgets`** | 已存在（workspace 成员，骨架 `theme.rs`） | L0/L1：只依赖 egui；widget 里出现领域类型即编译失败 |
 | `editor-viewport-prototype` | **`kairos_editor_app` 的 host 侧 viewport 模块**（`ViewportHost`；将来若值得再独立成 crate） | 未建 | 唯一封装 wgpu/离屏渲染的 UI 侧模块；UI crate 不依赖它 |
 | `editor-app-prototype` | **`kairos_editor_app`** | 已存在（骨架，当前用 eframe 脚手架） | 组合根 + 帧阶段 + EffectExecutor + ViewportHost + 事件循环/窗口。生产接管 winit/wgpu 循环，eframe 只属于原型（见下） |
-| 原型 `PanelHost` 的四槽布局（Left/Center/Right/Bottom + tab） | **`kairos_editor_docking`** 的 DockState/dock 控件（最终替身） | 已存在（`DockState<Id>` + `TabViewer` + `Docker` 单入口；app 侧 `PanelHost` 已接线） | 四槽是原型的**最小替身**，用于先证明面板 API；最终 `PanelHost` 内部把四槽换成 docking 的 `DockState<PanelInstanceId>`。docking 只负责渲染/拖拽；tab 内容由 app 的 `TabViewer`（`PanelHost`）提供，**open/focus 意图在 app `LayoutState`，布局树在 app `DockState` 并可序列化**（core `LayoutState` 尚未建） |
+| 原型 `PanelHost` 的四槽布局（Left/Center/Right/Bottom + tab） | **`kairos_editor_docking`** 的 DockState/dock 控件（最终替身） | 已存在（`DockState<Id>` + `TabViewer` + `Docker` 单入口；app 侧 `PanelHost` 已接线） | 四槽是原型的**最小替身**，用于先证明面板 API；最终 `PanelHost` 内部把四槽换成 docking 的 `DockState<PanelInstanceId>`。docking 只负责渲染/拖拽；tab 内容由 app 的 `TabViewer`（`PanelHost`）提供，**open/focus 意图在 `kairos_editor_core::LayoutState`，布局树在 app `DockState` 并可序列化** |
 | 旧 `kairos_editor`（Drawer/`ui::Context`） | 最终收缩为 runtime/engine 胶水并退役 | 现有 | 迁移完成前保留；不再接新功能（rewrite-plan §0「旧 UI 冻结」） |
 
 **宿主形态（已拍板）**：`kairos_editor_app` **接管现有 winit + wgpu + `RenderPipeline::present` 事件循环**；**eframe 只是原型（throwaway）的 window backend，生产不得让 eframe 拥有 surface/present**。理由：真实渲染路径是 `GraphicsCommand → GraphicsGraph::build → RenderPipeline::present`，UI 只拿 `TextureId`（§3.1）；eframe 的 surface/帧序会与引擎的渲染图冲突。迁移映射：原型的 `eframe::App::{logic, ui}` 内阶段（§4.3）→ 生产的 `runtime.rs` `redraw()` 内阶段（§4.1）；原型的 `ViewportHost`（自有 `queue.submit`）→ 生产的 `RenderViewports` + `BindAttachmentToEgui` + 引擎 present；`PanelHost`/`HostView`/`Frame`/`UiOut` 接口不变。
 
-**原型与生产 crate 的现状（2026-11-09）**：原型侧已全部落地（逐项位置与测试见 §7）；主 workspace 里只有三个新 crate 的骨架——`kairos_editor_widgets`（`theme.rs` 骨架）、`kairos_editor_app`（eframe 脚手架）、`kairos_editor_docking`（空）；`kairos_editor_core` / `kairos_editor_ui` 尚未创建。因此 P1 的第一件事是把原型代码按上表搬进生产 crate，而不是从零设计。
+**原型与生产 crate 的现状（2026-11-09）**：原型侧已全部落地（逐项位置与测试见 §7）；主 workspace 里只有三个新 crate 的骨架——`kairos_editor_widgets`（`theme.rs` 骨架）、`kairos_editor_app`（eframe 脚手架）、`kairos_editor_docking`（空）；`kairos_editor_core` / `kairos_editor_component` 当时尚未创建（2026-11-12 已拆出，见下一段）。因此 P1 的第一件事是把原型代码按上表搬进生产 crate，而不是从零设计。
 
-**2026-11-12 更新（docking/PanelHost 已落地）**：`kairos_editor_docking` 已重构为 **id 布局 + `TabViewer` seam**（`DockState<Id>` 只存稳定 id/分割树/tab 顺序；`Docker::show(ui, &mut viewer)` 是唯一绘制/交互入口；close/focus 走 viewer 回调，不在 dock 内部改布局）。`kairos_editor_app` 已有 `Panel` / `PanelInstanceId` / `PanelRegistry` / `PanelHost`（实现 `TabViewer`）、`LayoutState`（open/focus）和 4 个 demo 面板；每帧 `host.sync → dock tab reconcile → Docker::show`。按 owner 决定**不创建独立 headless core/UI crate**：`EditorState` 与面板 trait 暂留 app，面板通过 `PanelContext` 直接读写具体 app 状态（无 `Frame`/`UiOut` 抽象）；`kairos_editor_core` / `kairos_editor_ui` 仍可作为后续可选项。
+**2026-11-12 更新（docking/PanelHost 已落地）**：`kairos_editor_docking` 已重构为 **id 布局 + `TabViewer` seam**（`DockState<Id>` 只存稳定 id/分割树/tab 顺序；`Docker::show(ui, &mut viewer)` 是唯一绘制/交互入口；close/focus 走 viewer 回调，不在 dock 内部改布局）。`kairos_editor_app` 已有 `Panel` / `PanelInstanceId` / `PanelRegistry` / `PanelHost`（实现 `TabViewer`）、`LayoutState`（open/focus）和 4 个 demo 面板；每帧 `host.sync → dock tab reconcile → Docker::show`。按 owner 决定**不创建独立 headless core/UI crate**：`EditorState` 与面板 trait 暂留 app，面板通过 `PanelContext` 直接读写具体 app 状态（无 `Frame`/`UiOut` 抽象）；`kairos_editor_core` / `kairos_editor_component` 仍可作为后续可选项。
+
+**2026-11-12 拆分（core / component 落地）**：面板层已按本节映射表拆成两个 crate：`kairos_editor_core`（`EditorState`/`LayoutState`/`PanelId`/`PanelInstanceId`，零依赖、不碰 egui）与 `kairos_editor_component`（`Panel` trait / `PanelRegistry` / `PanelHost` / `TabViewer` 适配 / `panels/` 内置面板）。`kairos_editor_app` 只剩组合根：注册表、默认 dock 布局、工具栏、窗口后端；每帧 `host.sync(&state.layout) → dock tab reconcile → Docker::show(ui, &mut host.viewer(&mut state))`。依赖方向 `core → component → app` 由 cargo 强制；原型的 `Frame`/`UiOut` 确认不迁（生产用 `PanelContext`）。`docs/research/` 与 ADR 中的历史名称 `kairos_editor_ui` 指同一层，生产命名为 `kairos_editor_component`。
 
 ### 6.2 分阶段落地清单
 
 | 阶段 | 交付 | 关键文件（生产） | 验收 |
 |---|---|---|---|
-| **P1 面板框架** | `Panel`/`PanelId`/`PanelInstanceId`/`PanelRegistry`/`PanelHost` + 四槽 dock + Project/Inspector/Console 只读面板；`EditorApp` 变组合根 | `kairos_editor_core`（LayoutState/panel ids）、`kairos_editor_ui/panel*.rs`、`kairos_editor_app/{app,install}.rs` | open/close/focus/多实例测试；「新增一个测试面板只改组合根」；`cargo test-crate` 全绿 |
-| **P2 视口** | `core::ViewportState` + `ViewportHost`（离屏 target、tex 注册、相机输入、CPU picking）+ scene 视口面板；补 pan/fly | `kairos_editor_core/viewport.rs`、`kairos_editor_app/viewport_host.rs`、`kairos_editor_ui/panels/viewport.rs`；`camera.rs` 补 pan | orbit/zoom/pan/fly；resize；关闭→free；重开；bind 完成/陈旧 ticket；GPU smoke |
+| **P1 面板框架** | `Panel`/`PanelId`/`PanelInstanceId`/`PanelRegistry`/`PanelHost` + 四槽 dock + Project/Inspector/Console 只读面板；`EditorApp` 变组合根 | `kairos_editor_core`（LayoutState/panel ids）、`kairos_editor_component/panel*.rs`、`kairos_editor_app/{app,install}.rs` | open/close/focus/多实例测试；「新增一个测试面板只改组合根」；`cargo test-crate` 全绿 |
+| **P2 视口** | `core::ViewportState` + `ViewportHost`（离屏 target、tex 注册、相机输入、CPU picking）+ scene 视口面板；补 pan/fly | `kairos_editor_core/viewport.rs`、`kairos_editor_app/viewport_host.rs`、`kairos_editor_component/panels/viewport.rs`；`camera.rs` 补 pan | orbit/zoom/pan/fly；resize；关闭→free；重开；bind 完成/陈旧 ticket；GPU smoke |
 | **P3 dock + 布局持久化** | 四槽替身换 `kairos_editor_docking`；布局文件 `version` + 未知 id 丢弃；MCP layout 快照 | `kairos_editor_docking`、`kairos_editor_app/layout_io.rs` | 重启布局保持；旧布局不崩；dock 拖拽回归测试 |
 | **P4 拾取 + gizmo A/B** | scene query 或 id-buffer readback 接入；选中高亮；gizmo 状态与几何（A/B） | `kairos_editor_core/gizmo.rs`（新）、engine pick API、editor-viewport gizmo pass | 点选/清空/重选；hover outline；gizmo 模式切换 |
 | **P5 收尾删旧** | 删 `Drawer`/`Messager`/`Message`/`UIReader`/`Context`/假 layout/旧 scene/game 窗口；`kairos_editor` 退役 | 见 §6.3 | grep 无残留；`cargo test-crate` 全绿；手动 smoke 清单全过 |
@@ -904,7 +906,7 @@ kairos_editor/src/lib.rs
 |---|---|
 | core 不碰 UI/GPU/IO | `grep -rn "egui\|winit\|wgpu\|unsafe" kairos_editor_core/src` 为空；`cargo tree -p kairos_editor_core \| grep -E "egui\|wgpu"` 为空 |
 | widgets 只依赖 egui | `cargo tree -p kairos_editor_widgets \| grep kairos` 为空 |
-| ui crate 不依赖 host/IO | `cargo tree -p kairos_editor_ui \| grep kairos_editor_app` 为空；无 `std::fs`/`tokio` |
+| ui crate 不依赖 host/IO | `cargo tree -p kairos_editor_component \| grep kairos_editor_app` 为空；无 `std::fs`/`tokio` |
 | 唯一 wgpu 边界 | 只有 `kairos_editor_app` 的 viewport 模块与 `kairos_graphics` 出现 `wgpu::`；面板/组件代码中 0 处 |
 | 面板身份稳定 | 无 `TypeId`/`usize` 作为面板/视口 id；布局序列化只用 `PanelId/PanelInstanceId/ViewportId` |
 | 加面板零核心改动 | 新增面板 PR 的 `git diff --stat` 只含新文件 + 组合根注册行；`grep <PanelId> kairos_editor_core` 为空 |

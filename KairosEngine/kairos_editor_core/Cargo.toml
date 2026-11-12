@@ -1,0 +1,12 @@
+[package]
+name = "kairos_editor_core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+description = "kairos editor's core state (no egui, no IO)"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)", "cfg(docsrs_dep)"] }
+
+[dependencies]

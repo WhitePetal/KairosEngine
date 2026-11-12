@@ -3,7 +3,7 @@
 > **状态**：一次性设计验证原型，**不是生产代码**。独立 `[workspace]`，不进主 workspace 构建。
 > **但代码形状按最终编辑器来写**：面板是 `Panel trait + PanelRegistry + PanelHost`（`EditorApp` 里没有
 > 任何一个面板字段），3D 视口是真的 offscreen wgpu render target + egui texture，而不是占位符。
-> 目的是让这个原型能直接指导 `kairos_editor_app / kairos_editor_core / kairos_editor_ui /
+> 目的是让这个原型能直接指导 `kairos_editor_app / kairos_editor_core / kairos_editor_component /
 > kairos_editor_widgets / kairos_editor_docking` 的实现（迁移表见
 > [panel-viewport-design.md](../../docs/plan/editor-ui-architecture/panel-viewport-design.md) §6）。
 >
@@ -16,6 +16,11 @@
 > `PanelHost` 实现 `TabViewer`；生产 app 用 `PanelContext`（无 headless core），原型保留
 > `Frame/UiOut` 作为更严格的视图边界。实现时对照
 > [architecture-tour §9](docs/architecture-tour.md) 的差异清单，不要引入第二个 `Tab` trait。
+>
+> **拆分（2026-11-12）**：生产已按本原型的 crate 分层落地 `kairos_editor_core`
+> （`EditorState`/`LayoutState`/panel id，零依赖）与 `kairos_editor_component`
+> （`panel/` + `panels/` + `TabViewer` 适配），`kairos_editor_app` 只剩组合根
+> （注册表、默认布局、工具栏、窗口后端）。依赖方向 `core → component → app`。
 >
 > **先读**：[docs/architecture-tour.md](docs/architecture-tour.md) —— 一页回答「面板在哪里被画」、一帧的绘制阶段、交互/消息链路，以及 7 张架构图。
 > 本 README 是证据/清单；tour 是导读。
@@ -404,7 +409,7 @@ editor-app                   840          -
 - 本目录由 `prototypes/editor-ui-core` 与 `prototypes/editor-ui-widgets` 合并而来（旧目录已删）；
   2026-11-09 这轮把 "两个面板写死在 app" 重构为 **Panel trait/registry/host**，并新增真实 3D 视口
   （`editor-viewport`）与 host `gallery` 面板。旧的 49 个测试全部保留/迁移（现 127 = 126 headless + 1 doctest）。
-- 生产迁移：`prototypes/editor-ui` → `kairos_editor_core / kairos_editor_ui / kairos_editor_widgets /
+- 生产迁移：`prototypes/editor-ui` → `kairos_editor_core / kairos_editor_component / kairos_editor_widgets /
   kairos_editor_docking / kairos_editor_app` 的逐 crate 映射、P1-P5 清单、删除项与质量门见
   [panel-viewport-design.md](../../docs/plan/editor-ui-architecture/panel-viewport-design.md) §6。
 - 决策记录：ADR 0008（单状态树/reducer/effect/命令）、ADR 0009（panel registry/host + egui↔wgpu 视口）。

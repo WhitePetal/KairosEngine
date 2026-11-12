@@ -2723,6 +2723,18 @@ guid = "97429c7b-7e9c-4146-bc43-aaf7183c975d"
 path = "kairos_editor_app/src/main.rs"
 
 [[entries]]
+guid = "7700f336-3626-4203-8fbd-ebe69ca6bf79"
+path = "kairos_editor_app/src/panel.rs"
+
+[[entries]]
+guid = "5373a86b-0017-436d-acfb-8cd94c5ca38e"
+path = "kairos_editor_app/src/panels.rs"
+
+[[entries]]
+guid = "69443e91-73fa-488f-b96f-7250ca8dd0d1"
+path = "kairos_editor_app/src/state.rs"
+
+[[entries]]
 guid = "4f47d250-7116-41d8-a27f-11524ba116d4"
 path = "kairos_editor_docking"
 
@@ -2769,6 +2781,22 @@ path = "kairos_editor_docking/src/translations.rs"
 [[entries]]
 guid = "04995c7a-f8f3-4e2f-b68b-2b404771eed7"
 path = "kairos_editor_docking/src/tree.rs"
+
+[[entries]]
+guid = "bdbccff0-7c44-44a1-87ec-1965c93667e5"
+path = "kairos_editor_docking/src/viewer.rs"
+
+[[entries]]
+guid = "40e642af-e9b0-4dd8-b346-bfcd1c60bb0b"
+path = "kairos_editor_docking/tests"
+
+[[entries]]
+guid = "bf93e827-9e27-4458-9d4f-49afc98c0e3b"
+path = "kairos_editor_docking/tests/dock_state.rs"
+
+[[entries]]
+guid = "8e801f52-c86f-4653-a3e5-d15bdce86a7e"
+path = "kairos_editor_docking/tests/docker_ui.rs"
 
 [[entries]]
 guid = "cda6a323-dc6c-436e-bfc4-83afd98b81ec"
@@ -3569,6 +3597,10 @@ path = "prototypes/editor-ui/crates/editor-components/src/panel/mod.rs"
 [[entries]]
 guid = "aa4c9b7f-918d-4f05-b80c-e2392803d8e8"
 path = "prototypes/editor-ui/crates/editor-components/src/panel/registry.rs"
+
+[[entries]]
+guid = "28f5e321-0f0e-4295-b3ae-813ecb0e9b3d"
+path = "prototypes/editor-ui/crates/editor-components/src/panel/viewer.rs"
 
 [[entries]]
 guid = "2d0ee543-b487-4e59-9644-ac9087e2bffa"

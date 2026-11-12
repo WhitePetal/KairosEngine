@@ -1,25 +1,23 @@
-//! Kairos editor app shell.
+//! Kairos editor app shell (composition root).
 //!
 //! This crate is the composition root: it registers panels, owns the concrete
 //! `EditorState`, reconciles open panels with the dock layout, and draws the
-//! dock through `kairos_editor_docking`. It deliberately has no separate
-//! headless core: panels get `&mut EditorState` through `PanelContext`.
+//! dock through `kairos_editor_docking`. Panel implementations live in
+//! `kairos_editor_component` and the state tree in `kairos_editor_core`; this
+//! crate has no panel impls and no headless core of its own.
 //!
 //! eframe is still the window backend while the production winit/wgpu event
 //! loop is prepared; switching it does not change panel/dock APIs.
 
 mod app;
 mod consts;
-mod panel;
-mod panels;
-mod state;
 
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1280.0, 820.0])
             .with_min_inner_size([960.0, 600.0])
-            .with_title(consts::APP_NAME),
+            .with_title(format!("{} {}", consts::APP_NAME, consts::VERSION)),
         ..Default::default()
     };
 

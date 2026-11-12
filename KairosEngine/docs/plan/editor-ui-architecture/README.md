@@ -1,6 +1,6 @@
 # Kairos Editor UI 架构重设计
 
-> **状态**：提案（未实施）
+> **状态**：提案（部分实施：docking / core / component 已落地，见 [panel-viewport-design.md](./panel-viewport-design.md) §6.1）
 > **日期**：2026-10-30
 > **触发**：现有 `Messager` 消息回调机制与"每窗口一个 Model+View"的 MVC 结构被认为过时、难扩展；作者明确接受完全重写。
 > **证据**：[editor-ui-messager-mvc-audit.md](../../research/editor-ui-messager-mvc-audit.md) · [rust-ui-architecture-survey.md](../../research/rust-ui-architecture-survey.md) · [editor-ui-architecture-patterns.md](../../research/editor-ui-architecture-patterns.md) · [editor-ui-engine-integration.md](../../research/editor-ui-engine-integration.md)
@@ -248,7 +248,7 @@ kairos_editor_core     （新 crate，纯逻辑：无 egui / winit / wgpu / Worl
   query.rs      只读查询 DTO（供 MCP/自动化，快照语义）
   tests/        reducer 单测（无 GPU、无窗口）
 
-kairos_editor_ui       （新 crate，L2 功能组件：同时依赖 widgets + core，不依赖 host）
+kairos_editor_component       （新 crate，L2 功能组件：同时依赖 widgets + core，不依赖 host）
   frame.rs      Frame<'a>（state + world + host 资源）、UiOut（收集 Action）
   components/   project / hierarchy / inspector / material / scene / game / console /
                 preferences；每个组件 = 布局 + **纯适配函数**
@@ -270,7 +270,7 @@ kairos_editor           （现有 crate 收缩为 host + bin）
 kairos_editor_widgets   （leaf，只依赖 egui）
 kairos_editor_core      （leaf，纯领域；只允许 engine 的纯数据类型）
           │                        │
-          └────────► kairos_editor_ui ◄───────┘   （components = widgets + core）
+          └────────► kairos_editor_component ◄───────┘   （components = widgets + core）
                           │
                     kairos_editor（host + bin）
 ```
@@ -279,7 +279,7 @@ kairos_editor_core      （leaf，纯领域；只允许 engine 的纯数据类�
 
 **为什么再拆 widgets（本轮新增）**：把「纯外观组件」物理隔离成一个只依赖 egui 的 crate，**widget 里一写业务类型就编译失败**——这比"约定先做组件再做逻辑"可靠得多。同时获得一个可复用的 widget kit（10+ 面板共享，同一种树/行/按钮只有一份实现）和 gallery 视觉评审入口。详见 [widget-layer.md](./widget-layer.md)。
 
-**拆分粒度可以分期**：`kairos_editor_core` 与 `kairos_editor_widgets` 建议从一开始就独立成 crate（两者的边界强制力正是设计价值所在）；`kairos_editor_ui` 前期可以作为 `kairos_editor` 的 module 目录，等稳定后再抽 crate。
+**拆分粒度可以分期**：`kairos_editor_core` 与 `kairos_editor_widgets` 建议从一开始就独立成 crate（两者的边界强制力正是设计价值所在）；`kairos_editor_component` 前期可以作为 `kairos_editor` 的 module 目录，等稳定后再抽 crate。
 
 
 ### 3.2 核心抽象（代码骨架）

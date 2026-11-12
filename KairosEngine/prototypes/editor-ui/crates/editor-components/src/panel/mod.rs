@@ -37,6 +37,14 @@
 //! keeps the four-slot host as the minimal stand-in; `Panel` remains the only
 //! panel abstraction. See `docs/architecture-tour.md` §9 for the migration
 //! checklist (including the production `PanelContext` substitution).
+//!
+//! Split-out (2026-11-12): production now has `kairos_editor_core`
+//! (`EditorState`/`LayoutState`/`PanelId`/`PanelInstanceId`) and
+//! `kairos_editor_component` — the production counterpart of this module
+//! (`Panel`/`PanelRegistry`/`PanelHost` + `TabViewer` adapter + `panels/`) —
+//! with `kairos_editor_app` left as the composition root. Same layering as this
+//! crate; `Frame`/`UiOut` are not ported (production panels get
+//! `&mut EditorState` through `PanelContext`).
 
 mod host;
 mod registry;

@@ -288,7 +288,7 @@ egui 合成 pass（生产：同一个 render graph 的 egui pass）
 | 原型 | 生产目标 | 迁移要点 |
 |---|---|---|
 | `editor-core` | `kairos_editor_core` | 基本照搬；`DocumentAction::Open` 的 content 改异步 LoadDocument |
-| `editor-components` | `kairos_editor_ui` (+ 现有 ui 模块) | `Panel`/`Frame`/`UiOut` 形状不变；接现有 Drawer/UI host |
+| `editor-components` | `kairos_editor_component` | `Panel` 形状不变（改成收 `&mut EditorState` 的 `PanelContext`）；`Frame`/`UiOut` 不迁；面板/关闭已接 `kairos_editor_docking` |
 | `ui-widgets` | `kairos_editor_widgets` | 纯 egui 组件直接搬 |
 | `editor-viewport` | `kairos_editor_app` 的 viewport host 模块 | `ViewportHost` 换成 `RenderViewports` + `bind_attachment_to_egui` |
 | `editor-app` | `kairos_editor_app` | eframe 只留原型；生产接管 winit/wgpu + `RenderPipeline::present` |

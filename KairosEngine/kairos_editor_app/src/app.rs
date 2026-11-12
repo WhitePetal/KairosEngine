@@ -1,12 +1,13 @@
 use eframe::egui;
-use kairos_editor_docking::{docker::DockState, split::Fraction, tree::NodeIndex};
-
-use crate::{
-    consts::VERSION,
-    panel::{PanelHost, PanelInstanceId, PanelRegistry},
-    panels,
-    state::EditorState,
+use kairos_editor_component::{PanelHost, PanelInstanceId, PanelRegistry, panels};
+use kairos_editor_core::EditorState;
+use kairos_editor_docking::{
+    docker::{DockState, Docker},
+    split::Fraction,
+    tree::NodeIndex,
 };
+
+use crate::consts::VERSION;
 
 /// Build the first-run layout from the ids the host created for the four
 /// default panels. User drags/splits after this are pure dock-state changes.
@@ -42,7 +43,7 @@ impl EditorApp {
         kairos_editor_widgets::theme::Theme::dark().install(&cc.egui_ctx);
 
         let mut registry = PanelRegistry::new();
-        panels::register_all(&mut registry);
+        panels::register_default(&mut registry);
 
         let mut state = EditorState::new();
         for kind in [
@@ -55,7 +56,7 @@ impl EditorApp {
         }
 
         let mut host = PanelHost::new(registry);
-        host.sync(&state);
+        host.sync(&state.layout);
         let dock = default_dock(&host);
 
         Self { state, host, dock }
@@ -65,7 +66,7 @@ impl EditorApp {
     /// derived from `LayoutState`, so closing a panel or restoring a layout
     /// converges without special-case code in the UI.
     fn sync(&mut self) {
-        self.host.sync(&self.state);
+        self.host.sync(&self.state.layout);
 
         let ids: Vec<PanelInstanceId> = self.host.ids().collect();
         for stale in self.dock.tabs().into_iter().filter(|id| !ids.contains(id)) {
@@ -78,7 +79,7 @@ impl EditorApp {
         }
     }
 
-    fn top_bar(&mut self, ui: &mut egui::Ui) {
+    fn show_tool_bar(&mut self, ui: &mut egui::Ui) {
         let kinds: Vec<_> = self.host.kinds().collect();
         let mut toggles = Vec::new();
 
@@ -111,18 +112,17 @@ impl EditorApp {
 
 impl EditorApp {
     /// One frame, independent of the window backend (also used by smoke tests).
-    fn draw(&mut self, ui: &mut egui::Ui) {
+    fn ui(&mut self, ui: &mut egui::Ui) {
         // Editor chrome is not a text document; dragging tabs must not select
         // labels in the panel bodies.
         ui.style_mut().interaction.selectable_labels = false;
-        self.top_bar(ui);
+        self.show_tool_bar(ui);
         self.sync();
 
         let Self { state, host, dock } = self;
         {
             let mut viewer = host.viewer(state);
-            kairos_editor_docking::docker::Docker::new("kairos-editor-dock", dock)
-                .show(ui, &mut viewer);
+            Docker::new("kairos_editor_docker", dock).show(ui, &mut viewer);
         }
 
         state.layout.set_focus(dock.focused_tab());
@@ -131,19 +131,18 @@ impl EditorApp {
 
 impl eframe::App for EditorApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        self.draw(ui);
+        self.ui(ui);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::panel::PanelRegistry;
     use kairos_editor_docking::viewer::TabViewer;
 
     fn build() -> EditorApp {
         let mut registry = PanelRegistry::new();
-        panels::register_all(&mut registry);
+        panels::register_default(&mut registry);
         let mut state = EditorState::new();
         for kind in [
             panels::SCENE,
@@ -154,7 +153,7 @@ mod tests {
             state.layout.open(kind);
         }
         let mut host = PanelHost::new(registry);
-        host.sync(&state);
+        host.sync(&state.layout);
         let dock = default_dock(&host);
         EditorApp { state, host, dock }
     }
@@ -176,7 +175,7 @@ mod tests {
             egui::Vec2::new(1280.0, 820.0),
         ));
 
-        let _ = ctx.run_ui(input, |ui| app.draw(ui));
+        let _ = ctx.run_ui(input, |ui| app.ui(ui));
 
         assert_eq!(app.host.ids().count(), 4);
         assert_eq!(app.dock.tabs().len(), 4);

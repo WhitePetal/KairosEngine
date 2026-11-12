@@ -2863,9 +2863,25 @@ version = "0.1.0"
 dependencies = [
  "eframe",
  "egui",
+ "kairos_editor_component",
+ "kairos_editor_core",
  "kairos_editor_docking",
  "kairos_editor_widgets",
 ]
+
+[[package]]
+name = "kairos_editor_component"
+version = "0.1.0"
+dependencies = [
+ "egui",
+ "kairos_editor_core",
+ "kairos_editor_docking",
+ "kairos_editor_widgets",
+]
+
+[[package]]
+name = "kairos_editor_core"
+version = "0.1.0"
 
 [[package]]
 name = "kairos_editor_docking"

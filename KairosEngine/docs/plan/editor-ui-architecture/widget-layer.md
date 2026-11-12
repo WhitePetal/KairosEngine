@@ -1,6 +1,6 @@
 # Widget / Component 分层设计
 
-> **状态**：提案（未实施；本阶段只定方向 + 原型，不写生产代码）
+> **状态**：提案（部分实施：`kairos_editor_widgets` 仍为骨架；`kairos_editor_core` / `kairos_editor_component` 已建，见 [panel-viewport-design.md](./panel-viewport-design.md) §6.1）
 > **日期**：2026-10-30
 > **配套**：[总架构](./README.md) · [重写计划](./rewrite-plan.md) · [ADR 0008](../../adr/0008-editor-ui-architecture.md)
 > **调研**：[ui-widget-component-layer-survey.md](../../research/ui-widget-component-layer-survey.md) · [editor-ui-widget-catalog.md](../../research/editor-ui-widget-catalog.md)
@@ -19,7 +19,7 @@ L2  Components（功能组件）      ← 读 EditorState、组合 Widgets、发
 L3  Panels / Assembly（装配）   ← dock 面板注册、布局、面板实例
 ```
 
-**关键设计**：L1 独立成 crate `kairos_editor_widgets`，只依赖 egui，**不依赖 core/engine**——于是「widget 里混进业务逻辑」不是靠 review 拦，而是**编译不过**。L2 在 `kairos_editor_ui`，只做「状态 → props、事件 → Action」的适配；适配函数是纯函数，可以脱离 egui 单测（这正是把逻辑从 .rs 里抽出来的落点）。
+**关键设计**：L1 独立成 crate `kairos_editor_widgets`，只依赖 egui，**不依赖 core/engine**——于是「widget 里混进业务逻辑」不是靠 review 拦，而是**编译不过**。L2 在 `kairos_editor_component`，只做「状态 → props、事件 → Action」的适配；适配函数是纯函数，可以脱离 egui 单测（这正是把逻辑从 .rs 里抽出来的落点）。
 
 L2 与总架构（MVU）的关系：总架构里的 `Panel`/component 就是这里的 L2；L1 是它下面新增的一层纯外观库。**Widget 层不改变 store/reducer/effect 设计，只改变「视图内部怎么写」**。
 
@@ -36,7 +36,7 @@ L2 与总架构（MVU）的关系：总架构里的 `Panel`/component 就是这�
 | **Rerun re_viewer** | **`re_ui`（独立 design-system crate）** | `re_viewer` / 各 feature 组件 | 与本提案同构度最高；re_ui 正是独立 crate |
 | Zed | `ui` crate（Button/IconButton/Label/List/h_flex） | `editor`/`project`/`workspace` crates | GPUI retained element，但分层思路相同 |
 | iced | `iced::widget`（纯渲染 + Message 事件） | 应用 `update`/`view` | widget 只出 Message，业务在 update |
-| **Kairos（本提案）** | **`kairos_editor_widgets` crate（L0+L1）** | **`kairos_editor_ui` components（L2）** | widget Output → Component → Action |
+| **Kairos（本提案）** | **`kairos_editor_widgets` crate（L0+L1）** | **`kairos_editor_component` components（L2）** | widget Output → Component → Action |
 
 共同点（也是本提案的依据）：**纯外观层都是独立 crate/模块，且业务逻辑层只做「数据 → props、事件 → 意图」的翻译**。区别只在语法（Flutter/React 有 retain 树，egui/iced 是立即模式函数），所以不要照抄它们的组件框架，只照抄分层与契约。
 
@@ -189,16 +189,16 @@ fn save(state: &mut EditorState, id: DocumentId) -> Vec<Effect> {
 ```
 kairos_editor_widgets（leaf，L0+L1；只依赖 egui）    kairos_editor_core（leaf，纯领域；不依赖 egui）
                     │                                             │
-                    └──────────────► kairos_editor_ui ◄───────────┘
+                    └──────────────► kairos_editor_component ◄───────────┘
                                             │
                                       kairos_editor（host + bin）
 ```
 
 - **widgets crate 的依赖只有 egui** ⇒ 想写 `use kairos_editor_core::...` 直接编译失败。这是本设计最重要的一条：**边界由 cargo 强制，不靠自觉**。
-- `kairos_editor_ui` 不依赖 `kairos_editor`（host）⇒ 组件不可能做 IO / 改 World。
+- `kairos_editor_component` 不依赖 `kairos_editor`（host）⇒ 组件不可能做 IO / 改 World。
 - 工程化检查（建议进 CI / deny.toml）：
   - `cargo tree -p kairos_editor_widgets | grep kairos` 必须为空；
-  - `kairos_editor_ui` 的依赖里没有 `kairos_editor`；
+  - `kairos_editor_component` 的依赖里没有 `kairos_editor`；
   - widget 目录禁止 `Cell/RefCell/Mutex/unsafe`（clippy lint + review）。
 
 **推荐目录（生产）**：
@@ -215,7 +215,7 @@ kairos_editor_widgets/src/
   media/         thumbnail.rs drag_ghost.rs
   gallery.rs     （dev bin：全 widget storybook）
 
-kairos_editor_ui/src/
+kairos_editor_component/src/
   frame.rs       Frame<'a> / UiOut / ViewStates
   components/    project.rs inspector/{mod.rs, material.rs, texture.rs, text.rs, ...}
                  scene.rs game.rs toolbar.rs preferences.rs console.rs
@@ -296,10 +296,10 @@ kairos_editor_ui/src/
 ## 8. 迁移策略（仅方向，本阶段不动生产代码）
 
 1. **原型验证（本轮）**：`prototypes/editor-ui/` —— 一个 workspace 三个 crate，egui 0.35 下验证 widgets crate 纯度、theme、复合 Output、无头测试，以及 **widget 点击 → Action → 真实 core reducer → Effect** 的完整链路（详见原型 README）。
-2. **Phase 0.5（重写计划的插入阶段）**：生产实现 `kairos_editor_widgets`（Theme + 首版 20 个 widget + gallery bin）+ `kairos_editor_ui` 骨架；用 gallery 做视觉评审；把现有 `global_styles`/`*Style` 映射成 Theme（视觉 1:1）。
+2. **Phase 0.5（重写计划的插入阶段）**：生产实现 `kairos_editor_widgets`（Theme + 首版 20 个 widget + gallery bin）+ `kairos_editor_component` 骨架；用 gallery 做视觉评审；把现有 `global_styles`/`*Style` 映射成 Theme（视觉 1:1）。
 3. **Phase 1**：**先迁 ProjectPanel**（widget 需求最集中、验证 TreeView/ContextMenu/StatusBar），再迁 Inspector 系列（验证 PropertyRow 抽象），最后 Toolbar/Preferences/Console。
 4. 旧面板在对应新面板验收后再删；widgets 与旧样式可以短期共存（Theme 映射保证外观不变）。
-5. 每阶段质量门：`cargo test-crate kairos_editor_widgets`（无 GPU）、`cargo test-crate kairos_editor_ui`、`cargo check --workspace --all-targets`。
+5. 每阶段质量门：`cargo test-crate kairos_editor_widgets`（无 GPU）、`cargo test-crate kairos_editor_component`、`cargo check --workspace --all-targets`。
 
 ---
 

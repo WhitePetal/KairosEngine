@@ -1,7 +1,7 @@
 # Editor UI 重写计划
 
 > **配套**：[架构设计](./README.md) · [ADR 0008](../../adr/0008-editor-ui-architecture.md)
-> **状态**：提案（未排期）
+> **状态**：提案（实施中：docking / core / component 已落地，见 [panel-viewport-design.md](./panel-viewport-design.md) §6.1）
 > **前置**：本计划假定采用"新 crate 并行、旧 UI 冻结、按面板迁移"的 strangler 路径，而不是一次性删库重写。
 
 ---
@@ -24,7 +24,7 @@ kairos_editor_widgets/      新 crate（L0+L1 纯外观：只依赖 egui）
   tests/                    headless egui 测试（无 GPU）
 kairos_editor_core/         新 crate（纯领域）
   src/state.rs action.rs effect.rs reduce/ document.rs command.rs query.rs
-kairos_editor_ui/           新 crate（L2 功能组件：依赖 widgets + core，不依赖 host）
+kairos_editor_component/           新 crate（L2 功能组件：依赖 widgets + core，不依赖 host）
   src/frame.rs components/ view_state.rs docking/
 kairos_editor/              现有 crate 收缩为 host + bin
   src/app.rs host.rs runtime.rs install.rs main.rs
@@ -37,7 +37,7 @@ kairos_editor/              现有 crate 收缩为 host + bin
 kairos_editor_widgets      （leaf，只依赖 egui；widget 里写业务类型会编译失败）
 kairos_editor_core         （leaf，纯领域；只允许 engine 纯数据类型）
          │                          │
-         └──────► kairos_editor_ui ◄┘
+         └──────► kairos_editor_component ◄┘
                         │
                   kairos_editor
 ```
@@ -81,7 +81,7 @@ core 允许依赖 `kairos_engine` 的**纯数据类型**（`Handle`、`Mesh`、`
 
 **交付**
 - 新 crate `kairos_editor_widgets`（只依赖 egui）：`Theme` tokens（从现有 `Preferences/Styles/*.toml` 1:1 映射，保证视觉不变）、`IconId/IconProvider`、首版 20-25 个 widget（[widget-layer.md](./widget-layer.md) §2.2 的目录）、`gallery` 开发 bin。
-- `kairos_editor_ui` 骨架：`Frame`/`UiOut`/`ViewStates` + 一个 **vertical slice**：只迁 ProjectPanel 一页（验证 TreeView/ContextMenu/StatusBar/PanelChrome 是否够用）。
+- `kairos_editor_component` 骨架：`Frame`/`UiOut`/`ViewStates` + 一个 **vertical slice**：只迁 ProjectPanel 一页（验证 TreeView/ContextMenu/StatusBar/PanelChrome 是否够用）。
 - widget 级 headless 测试（egui `Context::run` + 合成指针输入）；每个 widget 至少 smoke 一帧，交互控件有 click/emit 断言。
 
 **验收**
@@ -96,7 +96,7 @@ core 允许依赖 `kairos_engine` 的**纯数据类型**（`Handle`、`Mesh`、`
 
 **交付**
 - `kairos_editor` 新增 `app.rs`（编排 dispatch/effect/draw）+ `host.rs`（`EffectExecutor` 实现：IO、tokio、原生对话框）；`runtime.rs` 改为调用 `App::frame`。
-- `kairos_editor_ui`：`Frame`/`UiOut`/`Panel` trait、`PanelInstanceId`、dock 迁移（`DockState<PanelInstanceId>`）、项目/层级/Inspector/控制台四个面板的只读绘制版。
+- `kairos_editor_component`：`Frame`/`UiOut`/`Panel` trait、`PanelInstanceId`、dock 迁移（`DockState<PanelInstanceId>`）、项目/层级/Inspector/控制台四个面板的只读绘制版。
 - 选择成为全局服务；Inspector 从"选中资产 → 打开 Document"改为读 `SelectionState` + `DocumentsState`。
 - 用编译期 feature（如 `new_editor_ui`）或环境变量切换新旧 UI；默认先旧，验收后默认新。
 
@@ -126,7 +126,7 @@ core 允许依赖 `kairos_engine` 的**纯数据类型**（`Handle`、`Mesh`、`
 **交付**
 - `Document` 覆盖 text/toml/material/texture/shader；load/save/revert/undo/redo 全链路。
 - 材质编辑从 edit-in-place 改为"文档缓冲 + preview effect"；保存失败进 `ModalState::Error`；关闭有未保存修改 → `ModalState::Confirm`（纯数据模态）。
-- `kairos_editor_ui` 的 text/toml/material/texture/shader 编辑器面板（可从旧 `inspector/*.rs` 迁移绘制代码，但改为 `&Frame + &mut UiOut` 签名）。
+- `kairos_editor_component` 的 text/toml/material/texture/shader 编辑器面板（可从旧 `inspector/*.rs` 迁移绘制代码，但改为 `&Frame + &mut UiOut` 签名）。
 - 删除 `Box<dyn Inspector>`、`InspectorCreater`、`get_inspector_mut`、`on_exit` 对话框回调、`Arc<Mutex<...>>` 快照消息。
 
 **验收**
@@ -151,7 +151,7 @@ core 允许依赖 `kairos_engine` 的**纯数据类型**（`Handle`、`Mesh`、`
 ### Phase 5 — 收尾（约 1 周，可并行）
 
 **交付**
-- 删除 `kairos_editor/src/ui/**` 中旧文件与 `Messager`/`Message`/`Drawer`/`UIReader`（保留 dock 控件与通用绘制工具到 `kairos_editor_ui`）。
+- 删除 `kairos_editor/src/ui/**` 中旧文件与 `Messager`/`Message`/`Drawer`/`UIReader`（保留 dock 控件与通用绘制工具到 `kairos_editor_component`）。
 - 场景编辑文档/实体选择 + 事务撤销（可选，取决于 §7.3 决策）。
 - `egui_kittest` 交互测试补齐关键路径；`docs/research/editor-ui-*` 与 ADR 状态更新。
 
@@ -200,7 +200,7 @@ core 允许依赖 `kairos_engine` 的**纯数据类型**（`Handle`、`Mesh`、`
 | `layout.rs`（假抽屉） | 删除；`LayoutState` + `PanelInstanceId` + dock 直接构造 |
 | `dialog.rs`（`Cell<FnOnce>` 回调） | `core::ModalState` + `Effect::NativeDialog` |
 | `docking_tab/*`（2.5k 行） | 保留为 ui 层组件；改泛型参数与 `TabDrawer` 签名 |
-| `egui_ext.rs`/`global_styles.rs`/`paths.rs`/`ide_detection.rs`/`drag.rs` | 原样迁入 `kairos_editor_ui`（低风险） |
+| `egui_ext.rs`/`global_styles.rs`/`paths.rs`/`ide_detection.rs`/`drag.rs` | 原样迁入 `kairos_editor_component`（低风险） |
 | `camera.rs`/`asset_registry.rs`/`project_path_tree.rs`/`project_watcher.rs`/`editor_assets/*`/`syntax.rs` | 保留；领域逻辑逐步上移 core |
 
 ---
@@ -210,7 +210,7 @@ core 允许依赖 `kairos_engine` 的**纯数据类型**（`Handle`、`Mesh`、`
 ```sh
 cargo test-crate kairos_editor_widgets   # 无 GPU，widget headless 测试
 cargo test-crate kairos_editor_core      # reducer/领域测试
-cargo test-crate kairos_editor_ui        # 组件/适配函数测试
+cargo test-crate kairos_editor_component        # 组件/适配函数测试
 cargo test-crate kairos_editor
 cargo check --workspace --all-targets
 ```
@@ -218,9 +218,9 @@ cargo check --workspace --all-targets
 **新增硬约束**（建议加进 CI/AGENTS.md）：
 - `kairos_editor_core` 不得 `use egui` / `use winit` / `use wgpu` / `use kairos_ecs::world::World`。
 - `kairos_editor_widgets` 只能依赖 egui（`cargo tree -p kairos_editor_widgets | grep kairos` 必须为空）；widget 代码里禁止 `Cell/RefCell/Mutex/unsafe` 与任何领域类型。
-- `kairos_editor_ui` 不得依赖 `kairos_editor`（host），组件里禁止 IO / `&mut World` / `std::fs`。
+- `kairos_editor_component` 不得依赖 `kairos_editor`（host），组件里禁止 IO / `&mut World` / `std::fs`。
 - widget 的语义状态（选中/展开/值）必须由 props 传入；组件会话态放 `ViewStates`；egui `Memory` 只放纯瞬态。
-- `kairos_editor_ui` 不得 `use crate::host`（UI 不能直接做 IO）。
+- `kairos_editor_component` 不得 `use crate::host`（UI 不能直接做 IO）。
 - 面板代码不得出现 `Cell`/`RefCell`/`Mutex`/`Rc`。
 
 ---

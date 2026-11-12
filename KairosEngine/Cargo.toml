@@ -10,6 +10,8 @@ members = [
     "kairos_editor",
     "kairos_editor_widgets",
     "kairos_editor_app",
+    "kairos_editor_component",
+    "kairos_editor_core",
     "kairos_editor_docking",
     "kairos_engine",
     "kairos_graphics",

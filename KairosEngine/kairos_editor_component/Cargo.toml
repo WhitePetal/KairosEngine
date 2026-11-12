@@ -1,0 +1,17 @@
+[package]
+name = "kairos_editor_component"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+description = "kairos editor's panel components"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)", "cfg(docsrs_dep)"] }
+
+[dependencies]
+egui = "0.35.0"
+
+kairos_editor_core = { path = "../kairos_editor_core" }
+kairos_editor_docking = { path = "../kairos_editor_docking" }
+kairos_editor_widgets = { path = "../kairos_editor_widgets" }
