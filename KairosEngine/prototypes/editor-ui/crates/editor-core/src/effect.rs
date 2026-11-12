@@ -4,6 +4,7 @@
 //! `App::complete(ticket, outcome)` when an async request finishes.
 
 use crate::state::{AssetId, DocumentId, LayoutState, PanelId};
+use crate::viewport::{CameraInput, SceneObjectId, ViewportId};
 
 /// Identifies one in-flight host request.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -15,9 +16,24 @@ pub type RequestId = EffectTicket;
 /// What kind of completion a ticket expects. Stored in `EditorState::inflight`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RequestKind {
-    SaveDocument { document: DocumentId },
-    LoadAsset { asset: AssetId },
-    SpawnPreview { asset: AssetId },
+    SaveDocument {
+        document: DocumentId,
+    },
+    LoadAsset {
+        asset: AssetId,
+    },
+    SpawnPreview {
+        asset: AssetId,
+    },
+    /// A viewport render target is being created by the host.
+    BindViewport {
+        viewport: ViewportId,
+    },
+    /// A pick request is in flight (CPU ray cast in the prototype, GPU id
+    /// buffer / engine query in production).
+    PickSceneObject {
+        viewport: ViewportId,
+    },
 }
 
 /// Host work described as plain data.
@@ -55,6 +71,39 @@ pub enum Effect {
     /// owns the file; the data stays in `ProjectState` (same philosophy as
     /// `PersistLayout`).
     PersistProject,
+
+    // --- viewport / GPU ---------------------------------------------------
+    /// Create the host render target for a viewport. In the real editor this is
+    /// the "open scene tab -> create view + bind its attachment to egui" path.
+    CreateViewport {
+        ticket: EffectTicket,
+        viewport: ViewportId,
+        width: u32,
+        height: u32,
+    },
+    /// Resize an existing host render target (panel/dock/DPI size change).
+    SyncViewportSize {
+        viewport: ViewportId,
+        width: u32,
+        height: u32,
+    },
+    /// Drop the render target (panel closed). The host frees the egui texture.
+    DestroyViewport {
+        viewport: ViewportId,
+    },
+    /// Apply a camera intent to the host camera controller. Must run before the
+    /// engine update / scene render in the real frame loop (one-frame latency is
+    /// accepted and explicit; see the design doc).
+    ViewportCameraInput {
+        viewport: ViewportId,
+        input: CameraInput,
+    },
+    /// Ray-pick a scene object for a viewport.
+    PickViewport {
+        ticket: EffectTicket,
+        viewport: ViewportId,
+        ndc: [f32; 2],
+    },
 }
 
 impl Effect {
@@ -63,7 +112,9 @@ impl Effect {
         match self {
             Effect::SaveDocument { ticket, .. }
             | Effect::LoadAsset { ticket, .. }
-            | Effect::SpawnPreview { ticket, .. } => Some(*ticket),
+            | Effect::SpawnPreview { ticket, .. }
+            | Effect::CreateViewport { ticket, .. }
+            | Effect::PickViewport { ticket, .. } => Some(*ticket),
             _ => None,
         }
     }
@@ -73,8 +124,21 @@ impl Effect {
 #[derive(Clone, Debug, PartialEq)]
 pub enum EffectOutcome {
     DocumentSaved,
-    DocumentSaveFailed { error: String },
+    DocumentSaveFailed {
+        error: String,
+    },
     AssetLoaded,
-    AssetLoadFailed { error: String },
+    AssetLoadFailed {
+        error: String,
+    },
     PreviewSpawned,
+    /// Host finished creating + binding the viewport render target.
+    ViewportBound,
+    ViewportBindFailed {
+        error: String,
+    },
+    /// Host finished a pick request (`None` = clicked empty space).
+    SceneObjectPicked {
+        object: Option<SceneObjectId>,
+    },
 }

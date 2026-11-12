@@ -62,6 +62,7 @@
     `docs/plan/kairos-editor-mcp`): rejected as the end state — it keeps the root causes
     ("window = model", global writable state) and only adds per-window boilerplate.
 - **References**:
+  - `docs/adr/0009-editor-panel-host-and-viewport.md` (panel registry/host and egui↔wgpu viewport seam)
   - `docs/plan/editor-ui-architecture/widget-layer.md` (widget/component layering)
   - `docs/research/ui-widget-component-layer-survey.md` / `docs/research/editor-ui-widget-catalog.md` (design-system prior art + current-UI widget catalog)
-- `prototypes/editor-ui/` (one merged, runnable prototype: `editor-core` reducers/effects/undo, pure `ui-widgets` kit, `editor-components` feature components; 49 headless tests incl. 7 full-stack round-trips)
+- `prototypes/editor-ui/` (one merged, runnable prototype: `editor-core` reducers/effects/undo + viewport slice, pure `ui-widgets` kit, `editor-components` Panel trait/registry/host + panels, `editor-viewport` wgpu RTT/camera/pick host, `editor-app` frame phases; 126 tests = 125 headless + 1 doctest, incl. 7 full-stack, 14 panel-host and 3 viewport-panel interaction tests; see ADR 0009)

@@ -199,6 +199,14 @@ guid = "d9c183b6-a068-4948-a125-213a4bd14b26"
 path = "docs/adr/0007-asset-product-beside-source.md"
 
 [[entries]]
+guid = "1ea239dd-a553-4a10-b565-20e2cde35ead"
+path = "docs/adr/0008-editor-ui-architecture.md"
+
+[[entries]]
+guid = "92d377d7-0e1b-455e-bf4d-7a0b05fbaba1"
+path = "docs/adr/0009-editor-panel-host-and-viewport.md"
+
+[[entries]]
 guid = "e71a5e83-9016-44af-b521-98f5bd08f517"
 path = "docs/agents"
 
@@ -261,6 +269,26 @@ path = "docs/performance/texture-encode-decode.md"
 [[entries]]
 guid = "4e65397b-fb97-4ed6-b83e-498e00fab092"
 path = "docs/plan"
+
+[[entries]]
+guid = "9556b751-4639-4e23-ac06-43bdf3a30c35"
+path = "docs/plan/editor-ui-architecture"
+
+[[entries]]
+guid = "ae5f8834-4f97-42d6-93dc-c41a94770c42"
+path = "docs/plan/editor-ui-architecture/README.md"
+
+[[entries]]
+guid = "af92ac86-b6fc-458b-8b2c-72a6dfa7bd49"
+path = "docs/plan/editor-ui-architecture/panel-viewport-design.md"
+
+[[entries]]
+guid = "45308960-1fcc-4966-91b1-a3510d1fafd7"
+path = "docs/plan/editor-ui-architecture/rewrite-plan.md"
+
+[[entries]]
+guid = "8296bd02-2c40-4118-b1a6-f9bded2cb5c4"
+path = "docs/plan/editor-ui-architecture/widget-layer.md"
 
 [[entries]]
 guid = "e697b062-3e3c-4deb-af91-43e830da846b"
@@ -511,6 +539,22 @@ guid = "ae4e8eb5-4dac-46ec-9e60-dcfe3f018748"
 path = "docs/research/editor-install-order-preconditions.md"
 
 [[entries]]
+guid = "51a93a92-b8e5-4a0a-971c-b5fb2303a6ec"
+path = "docs/research/editor-ui-architecture-patterns.md"
+
+[[entries]]
+guid = "c50d4453-52f2-4e75-9439-b9a5745a5adf"
+path = "docs/research/editor-ui-engine-integration.md"
+
+[[entries]]
+guid = "e24c2796-afbf-4f42-959a-35770597ebbe"
+path = "docs/research/editor-ui-messager-mvc-audit.md"
+
+[[entries]]
+guid = "b3165f6f-368e-4b40-be39-16a0774ede56"
+path = "docs/research/editor-ui-widget-catalog.md"
+
+[[entries]]
 guid = "3c08d7db-6a71-4016-bb18-61c1d1e8336e"
 path = "docs/research/egui-mcp-analysis.md"
 
@@ -559,6 +603,10 @@ guid = "48a61709-6901-4b0e-a308-a243a2af5136"
 path = "docs/research/render-cache-defect-inventory.md"
 
 [[entries]]
+guid = "ea504991-173c-49ae-83bf-d292aa477ccb"
+path = "docs/research/rust-ui-architecture-survey.md"
+
+[[entries]]
 guid = "8dc17dd6-613a-4204-a213-b510b19111db"
 path = "docs/research/spatial-math-call-sites-inventory.md"
 
@@ -589,6 +637,10 @@ path = "docs/research/texture-encoding/wgpu-srgb-handling.md"
 [[entries]]
 guid = "bb4d83fd-210b-4f29-a56f-1ee2e1a0dade"
 path = "docs/research/ue5-terrain-landscape-system.md"
+
+[[entries]]
+guid = "2280bc99-edb7-4cfb-80c2-1fcf9f15308e"
+path = "docs/research/ui-widget-component-layer-survey.md"
 
 [[entries]]
 guid = "c0a15e68-6952-4f79-a611-e8460f794fe8"
@@ -2647,6 +2699,98 @@ guid = "acd81186-fb31-4fe3-981f-fe0d51ad87c3"
 path = "kairos_editor/src/ui.rs"
 
 [[entries]]
+guid = "d6ba5699-f0fb-4832-93fd-82b76cb214c5"
+path = "kairos_editor_app"
+
+[[entries]]
+guid = "d5a4b437-2f16-4c92-bc7f-63e6ee0b9296"
+path = "kairos_editor_app/Cargo.toml"
+
+[[entries]]
+guid = "fc27a185-cf2e-45df-aa3e-a32e919f90ad"
+path = "kairos_editor_app/src"
+
+[[entries]]
+guid = "fb0c19d3-67f5-48a2-b1cc-a83b1b4c5cb8"
+path = "kairos_editor_app/src/app.rs"
+
+[[entries]]
+guid = "9b641b8a-254a-4ccd-b00e-4444cbad00aa"
+path = "kairos_editor_app/src/consts.rs"
+
+[[entries]]
+guid = "97429c7b-7e9c-4146-bc43-aaf7183c975d"
+path = "kairos_editor_app/src/main.rs"
+
+[[entries]]
+guid = "4f47d250-7116-41d8-a27f-11524ba116d4"
+path = "kairos_editor_docking"
+
+[[entries]]
+guid = "ab227987-ec03-47f5-8713-b9d9a52020fc"
+path = "kairos_editor_docking/Cargo.toml"
+
+[[entries]]
+guid = "8ad6ca09-2c6f-438b-8232-11ebdd532def"
+path = "kairos_editor_docking/src"
+
+[[entries]]
+guid = "308a8854-cb4b-4207-9a77-9892c06eaee2"
+path = "kairos_editor_docking/src/docker.rs"
+
+[[entries]]
+guid = "17cedbd5-2d59-4061-9ee3-4fb2fa7b2b3c"
+path = "kairos_editor_docking/src/drag.rs"
+
+[[entries]]
+guid = "faa282d5-2b9b-4de4-8ef0-be082dbac430"
+path = "kairos_editor_docking/src/lib.rs"
+
+[[entries]]
+guid = "5c4c3661-e6b5-4a26-b591-eb529abe2aa5"
+path = "kairos_editor_docking/src/split.rs"
+
+[[entries]]
+guid = "900edb8a-9a1b-406d-aa7c-fbe793bef467"
+path = "kairos_editor_docking/src/styles.rs"
+
+[[entries]]
+guid = "b12deb73-e937-4af5-a53d-92ed9671a350"
+path = "kairos_editor_docking/src/surface.rs"
+
+[[entries]]
+guid = "ea7c9418-e712-412a-97d9-1380be02c19e"
+path = "kairos_editor_docking/src/tab.rs"
+
+[[entries]]
+guid = "7959e214-f5df-4b5f-8dc3-bbb859cc279c"
+path = "kairos_editor_docking/src/translations.rs"
+
+[[entries]]
+guid = "04995c7a-f8f3-4e2f-b68b-2b404771eed7"
+path = "kairos_editor_docking/src/tree.rs"
+
+[[entries]]
+guid = "cda6a323-dc6c-436e-bfc4-83afd98b81ec"
+path = "kairos_editor_widgets"
+
+[[entries]]
+guid = "a2fb6cb4-ecdb-4d65-9791-96db343f3a5d"
+path = "kairos_editor_widgets/Cargo.toml"
+
+[[entries]]
+guid = "726783f1-333a-4cfd-883e-fa2cce2adf37"
+path = "kairos_editor_widgets/src"
+
+[[entries]]
+guid = "1c67e9c8-a05c-4c16-bade-9c04d4c70bc7"
+path = "kairos_editor_widgets/src/lib.rs"
+
+[[entries]]
+guid = "985bf966-9ec3-4f92-a7fe-d8b15d6fc002"
+path = "kairos_editor_widgets/src/theme.rs"
+
+[[entries]]
 guid = "a0e67aa3-64ef-4031-b417-c027f9ace2a5"
 path = "kairos_engine"
 
@@ -3313,6 +3457,350 @@ path = "kairos_transform/src/systems.rs"
 [[entries]]
 guid = "dcecad95-f64e-4837-98b0-a37a35912029"
 path = "prototypes"
+
+[[entries]]
+guid = "aba5ffd9-9f68-471e-b98c-309de70f3bf2"
+path = "prototypes/editor-ui"
+
+[[entries]]
+guid = "f170d574-25dc-4ec6-b692-ae7f9e3ce619"
+path = "prototypes/editor-ui/Cargo.toml"
+
+[[entries]]
+guid = "8b8f6ee9-e80f-4719-9a86-4f17916bc760"
+path = "prototypes/editor-ui/README.md"
+
+[[entries]]
+guid = "5a0819f9-3419-4f33-82cc-c98f62abff11"
+path = "prototypes/editor-ui/crates"
+
+[[entries]]
+guid = "22ea9ec2-b416-4f21-bbd9-680a00769bb7"
+path = "prototypes/editor-ui/crates/editor-app"
+
+[[entries]]
+guid = "00713156-cd44-40a5-8d1b-7054e4e77093"
+path = "prototypes/editor-ui/crates/editor-app/Cargo.toml"
+
+[[entries]]
+guid = "e0efbd51-d9bf-4c5c-8af8-ef7987cb5d30"
+path = "prototypes/editor-ui/crates/editor-app/src"
+
+[[entries]]
+guid = "649f1122-efce-46f0-9664-e9dabdb8761c"
+path = "prototypes/editor-ui/crates/editor-app/src/app"
+
+[[entries]]
+guid = "55767760-15dc-4225-b063-7bc6bfa92a21"
+path = "prototypes/editor-ui/crates/editor-app/src/app/effects.rs"
+
+[[entries]]
+guid = "2e2f7143-a936-41ae-8c8e-3df024b69d8e"
+path = "prototypes/editor-ui/crates/editor-app/src/app/mod.rs"
+
+[[entries]]
+guid = "6ee277ca-e243-41c8-bf7a-66c6b883b0b3"
+path = "prototypes/editor-ui/crates/editor-app/src/app/pipeline.rs"
+
+[[entries]]
+guid = "e005333a-c350-4c04-880e-d83893a66d4d"
+path = "prototypes/editor-ui/crates/editor-app/src/app/seed.rs"
+
+[[entries]]
+guid = "8e46ba23-b08e-4c3e-a198-c2db9532a28b"
+path = "prototypes/editor-ui/crates/editor-app/src/app/shell.rs"
+
+[[entries]]
+guid = "74b33185-f518-4d30-bb40-993d8210f489"
+path = "prototypes/editor-ui/crates/editor-app/src/app.rs"
+
+[[entries]]
+guid = "3f68cd64-8323-45fe-828c-7fa1eef6536a"
+path = "prototypes/editor-ui/crates/editor-app/src/gallery.rs"
+
+[[entries]]
+guid = "607e7ef2-98d3-467c-a611-ad842c73010a"
+path = "prototypes/editor-ui/crates/editor-app/src/host.rs"
+
+[[entries]]
+guid = "916aeeb3-2864-4782-930e-82b9036134da"
+path = "prototypes/editor-ui/crates/editor-app/src/main.rs"
+
+[[entries]]
+guid = "a31e5c67-7a91-456d-bca9-5aabdb18695e"
+path = "prototypes/editor-ui/crates/editor-components"
+
+[[entries]]
+guid = "af1a96fd-6d6b-45a8-b2d7-039c4884ed21"
+path = "prototypes/editor-ui/crates/editor-components/Cargo.toml"
+
+[[entries]]
+guid = "7a8f5bf3-5d01-4b93-ad6c-a905d8039178"
+path = "prototypes/editor-ui/crates/editor-components/src"
+
+[[entries]]
+guid = "b8a986fe-968b-4285-874e-49f332bd3943"
+path = "prototypes/editor-ui/crates/editor-components/src/console_panel.rs"
+
+[[entries]]
+guid = "5c56cf01-6a4f-4c36-99e9-7c6b1e06d75c"
+path = "prototypes/editor-ui/crates/editor-components/src/frame.rs"
+
+[[entries]]
+guid = "49d56ee4-5236-40b1-9473-9a2f46c7a527"
+path = "prototypes/editor-ui/crates/editor-components/src/inspector_panel.rs"
+
+[[entries]]
+guid = "7059733b-159e-45ce-af35-ecaf3762b031"
+path = "prototypes/editor-ui/crates/editor-components/src/lib.rs"
+
+[[entries]]
+guid = "b0bd1d34-7dec-4e6e-8b02-189fb2998a45"
+path = "prototypes/editor-ui/crates/editor-components/src/panel"
+
+[[entries]]
+guid = "c2bc483a-f1e8-43ec-814d-eddb3638d4ad"
+path = "prototypes/editor-ui/crates/editor-components/src/panel/host.rs"
+
+[[entries]]
+guid = "9ca9faac-5d8d-4c19-80a9-d5b91995f44e"
+path = "prototypes/editor-ui/crates/editor-components/src/panel/mod.rs"
+
+[[entries]]
+guid = "aa4c9b7f-918d-4f05-b80c-e2392803d8e8"
+path = "prototypes/editor-ui/crates/editor-components/src/panel/registry.rs"
+
+[[entries]]
+guid = "2d0ee543-b487-4e59-9644-ac9087e2bffa"
+path = "prototypes/editor-ui/crates/editor-components/src/panel.rs"
+
+[[entries]]
+guid = "cd105736-5b59-4b1e-b3a4-0f88530144ec"
+path = "prototypes/editor-ui/crates/editor-components/src/project_panel.rs"
+
+[[entries]]
+guid = "d257b879-a1fe-4d3e-8cc7-42a5ad17e21c"
+path = "prototypes/editor-ui/crates/editor-components/src/viewport_panel.rs"
+
+[[entries]]
+guid = "b4e8c414-6f62-4a4d-93d8-b4b9200c8fcd"
+path = "prototypes/editor-ui/crates/editor-components/tests"
+
+[[entries]]
+guid = "320346db-d208-4468-8926-336cc713b495"
+path = "prototypes/editor-ui/crates/editor-components/tests/component_actions.rs"
+
+[[entries]]
+guid = "34da51f5-dfec-4a39-bdc0-06a5e8bc8872"
+path = "prototypes/editor-ui/crates/editor-components/tests/full_stack.rs"
+
+[[entries]]
+guid = "406518eb-0246-42e6-9e0c-e1a5bc0d7160"
+path = "prototypes/editor-ui/crates/editor-components/tests/panel_host.rs"
+
+[[entries]]
+guid = "bc4a9b49-cf0b-400b-9182-03d6a05a1ac3"
+path = "prototypes/editor-ui/crates/editor-components/tests/viewport_panel.rs"
+
+[[entries]]
+guid = "60a6294c-bbaf-49aa-9bfe-f364ecbec497"
+path = "prototypes/editor-ui/crates/editor-core"
+
+[[entries]]
+guid = "806c3bf9-40ea-4634-86b5-6fcead165282"
+path = "prototypes/editor-ui/crates/editor-core/Cargo.toml"
+
+[[entries]]
+guid = "281d5892-2cf6-4a25-8c6e-65aac836c088"
+path = "prototypes/editor-ui/crates/editor-core/src"
+
+[[entries]]
+guid = "b827b890-2b0a-4adb-a4a7-d758c5a76a6f"
+path = "prototypes/editor-ui/crates/editor-core/src/action.rs"
+
+[[entries]]
+guid = "4607a84f-ee83-41cf-bde6-a31eb035073c"
+path = "prototypes/editor-ui/crates/editor-core/src/command.rs"
+
+[[entries]]
+guid = "a39a7ce2-6c69-4177-b96d-ce653f4cd9cd"
+path = "prototypes/editor-ui/crates/editor-core/src/document.rs"
+
+[[entries]]
+guid = "8c143791-bbf7-4087-95d3-ce7d079ea80f"
+path = "prototypes/editor-ui/crates/editor-core/src/effect.rs"
+
+[[entries]]
+guid = "5cfe034c-77de-4e76-81dd-ad1b1292826a"
+path = "prototypes/editor-ui/crates/editor-core/src/lib.rs"
+
+[[entries]]
+guid = "19978af3-ab8e-4113-bed3-71aca2f44f78"
+path = "prototypes/editor-ui/crates/editor-core/src/modal.rs"
+
+[[entries]]
+guid = "c3feeb21-4385-4d24-89b7-2ae8836489ec"
+path = "prototypes/editor-ui/crates/editor-core/src/reduce"
+
+[[entries]]
+guid = "32a4a5dc-ac2f-41c3-974a-35c60bcb18d1"
+path = "prototypes/editor-ui/crates/editor-core/src/reduce/document.rs"
+
+[[entries]]
+guid = "ee90387b-5539-473a-a716-b3df69946688"
+path = "prototypes/editor-ui/crates/editor-core/src/reduce/layout.rs"
+
+[[entries]]
+guid = "16cc7535-4a7d-4e26-b264-5896f1b96409"
+path = "prototypes/editor-ui/crates/editor-core/src/reduce/modal.rs"
+
+[[entries]]
+guid = "3d66a1e8-6874-43e0-9d4a-18d6b2917834"
+path = "prototypes/editor-ui/crates/editor-core/src/reduce/project.rs"
+
+[[entries]]
+guid = "9d593243-e1ac-4e5d-9bca-47b7fab0e86a"
+path = "prototypes/editor-ui/crates/editor-core/src/reduce/selection.rs"
+
+[[entries]]
+guid = "09b3d99a-dd8b-4fa7-a44b-43cf981d5237"
+path = "prototypes/editor-ui/crates/editor-core/src/reduce/viewport.rs"
+
+[[entries]]
+guid = "ba06be86-1613-4488-86ef-7055275afe78"
+path = "prototypes/editor-ui/crates/editor-core/src/reduce.rs"
+
+[[entries]]
+guid = "5f3cbf0b-e30e-4902-a556-2b6334e7d6ec"
+path = "prototypes/editor-ui/crates/editor-core/src/state.rs"
+
+[[entries]]
+guid = "23a4742e-734f-4c7e-830f-a8d4a8193ce0"
+path = "prototypes/editor-ui/crates/editor-core/src/viewport.rs"
+
+[[entries]]
+guid = "63661b2f-0773-46ae-946b-54fe2bedef78"
+path = "prototypes/editor-ui/crates/editor-core/tests"
+
+[[entries]]
+guid = "cedf3cff-2221-4248-85ef-1bd98bf64355"
+path = "prototypes/editor-ui/crates/editor-core/tests/core_flow.rs"
+
+[[entries]]
+guid = "65dc6837-bf86-456b-bc23-9170d51266a2"
+path = "prototypes/editor-ui/crates/editor-core/tests/viewport_flow.rs"
+
+[[entries]]
+guid = "03714787-d451-49b6-b3d5-c49547966bf7"
+path = "prototypes/editor-ui/crates/editor-viewport"
+
+[[entries]]
+guid = "662f1a29-fe22-4fb0-bb7e-bd0f64724e6f"
+path = "prototypes/editor-ui/crates/editor-viewport/Cargo.toml"
+
+[[entries]]
+guid = "658fc2d3-14c9-4b86-8dad-932ea877d283"
+path = "prototypes/editor-ui/crates/editor-viewport/src"
+
+[[entries]]
+guid = "ab690d0b-f801-4ae7-837e-b500a12a99a8"
+path = "prototypes/editor-ui/crates/editor-viewport/src/camera.rs"
+
+[[entries]]
+guid = "60df3f40-cf18-4cd2-b473-071e98807622"
+path = "prototypes/editor-ui/crates/editor-viewport/src/error.rs"
+
+[[entries]]
+guid = "35c19b94-ade4-438f-ba5f-946add38d760"
+path = "prototypes/editor-ui/crates/editor-viewport/src/host.rs"
+
+[[entries]]
+guid = "67bd2a01-441d-42ec-bf27-aa23998e9fc4"
+path = "prototypes/editor-ui/crates/editor-viewport/src/lib.rs"
+
+[[entries]]
+guid = "cfdc7867-6311-41aa-ac25-3660a3eb728e"
+path = "prototypes/editor-ui/crates/editor-viewport/src/pick.rs"
+
+[[entries]]
+guid = "7ea09fce-e264-401b-b76d-bb657b427352"
+path = "prototypes/editor-ui/crates/editor-viewport/src/renderer.rs"
+
+[[entries]]
+guid = "bbac5538-02d0-4551-8e07-3824b5551f3c"
+path = "prototypes/editor-ui/crates/editor-viewport/src/scene.wgsl"
+
+[[entries]]
+guid = "533a279f-ba84-4334-94f6-3a52ca5debef"
+path = "prototypes/editor-ui/crates/ui-widgets"
+
+[[entries]]
+guid = "9f7a11a5-f6b6-4cd9-8e4b-d8e035011866"
+path = "prototypes/editor-ui/crates/ui-widgets/Cargo.toml"
+
+[[entries]]
+guid = "a4868d10-422c-4316-95d1-f60667fb94d2"
+path = "prototypes/editor-ui/crates/ui-widgets/src"
+
+[[entries]]
+guid = "f5c12341-ed28-4643-bf95-ddebb3e62dab"
+path = "prototypes/editor-ui/crates/ui-widgets/src/atoms.rs"
+
+[[entries]]
+guid = "7901f181-30ab-4769-b249-a115d878c22d"
+path = "prototypes/editor-ui/crates/ui-widgets/src/compounds.rs"
+
+[[entries]]
+guid = "f0034d8a-af21-4d2c-a1dd-aeb862a7a113"
+path = "prototypes/editor-ui/crates/ui-widgets/src/icon.rs"
+
+[[entries]]
+guid = "b677136d-1552-4d31-a049-376d72841a41"
+path = "prototypes/editor-ui/crates/ui-widgets/src/lib.rs"
+
+[[entries]]
+guid = "c6208854-b790-4a8e-9489-8e3379bdc1ce"
+path = "prototypes/editor-ui/crates/ui-widgets/src/testing.rs"
+
+[[entries]]
+guid = "eb49506c-dfff-45d5-956a-5b41be746a92"
+path = "prototypes/editor-ui/crates/ui-widgets/src/theme.rs"
+
+[[entries]]
+guid = "5b89c576-4592-491f-b17f-fa7796338be7"
+path = "prototypes/editor-ui/crates/ui-widgets/tests"
+
+[[entries]]
+guid = "1b2af5f5-cf08-4277-9ad1-6dfa60d444fe"
+path = "prototypes/editor-ui/crates/ui-widgets/tests/atoms.rs"
+
+[[entries]]
+guid = "1f0828d0-fb24-4b1a-928a-205c39990aef"
+path = "prototypes/editor-ui/crates/ui-widgets/tests/compounds.rs"
+
+[[entries]]
+guid = "235cb6c3-b1bf-4470-9128-2fbfec6eded3"
+path = "prototypes/editor-ui/crates/ui-widgets/tests/purity.rs"
+
+[[entries]]
+guid = "c2a5de46-1b1f-440b-adbb-625e4bc7e674"
+path = "prototypes/editor-ui/crates/ui-widgets/tests/tab_bar.rs"
+
+[[entries]]
+guid = "06680c13-e5a6-4d39-90c9-fa960a0f04e2"
+path = "prototypes/editor-ui/docs"
+
+[[entries]]
+guid = "c7662317-eff9-448d-9bc5-043b7467ebc4"
+path = "prototypes/editor-ui/docs/architecture-tour.md"
+
+[[entries]]
+guid = "cf2fb1b9-0e92-4908-88dd-fb3aff767239"
+path = "prototypes/editor-ui/docs/diagrams"
+
+[[entries]]
+guid = "3bb0c0f8-e8bf-4a19-bf5e-48a16523e66a"
+path = "prototypes/editor-ui/docs/diagrams/README.md"
 
 [[entries]]
 guid = "a314f249-ef3e-4c34-b320-750543c5798f"

@@ -100,7 +100,9 @@ impl Theme {
 
     /// Read the theme installed for this frame, falling back to the dark theme.
     pub fn get(ui: &Ui) -> Self {
-        ui.ctx().data(|d| d.get_temp(theme_key())).unwrap_or_default()
+        ui.ctx()
+            .data(|d| d.get_temp(theme_key()))
+            .unwrap_or_default()
     }
 
     /// Install (or refresh) the theme for subsequent frames. Call once per frame
@@ -171,18 +173,22 @@ impl Theme {
             style
                 .text_styles
                 .insert(TextStyle::Body, egui::FontId::proportional(self.font_body));
-            style
-                .text_styles
-                .insert(TextStyle::Button, egui::FontId::proportional(self.font_body));
-            style
-                .text_styles
-                .insert(TextStyle::Small, egui::FontId::proportional(self.font_caption));
-            style
-                .text_styles
-                .insert(TextStyle::Heading, egui::FontId::proportional(self.font_subtitle + 4.0));
-            style
-                .text_styles
-                .insert(TextStyle::Monospace, egui::FontId::monospace(self.font_body));
+            style.text_styles.insert(
+                TextStyle::Button,
+                egui::FontId::proportional(self.font_body),
+            );
+            style.text_styles.insert(
+                TextStyle::Small,
+                egui::FontId::proportional(self.font_caption),
+            );
+            style.text_styles.insert(
+                TextStyle::Heading,
+                egui::FontId::proportional(self.font_subtitle + 4.0),
+            );
+            style.text_styles.insert(
+                TextStyle::Monospace,
+                egui::FontId::monospace(self.font_body),
+            );
             style.spacing.item_spacing = vec2(self.space_sm, self.space_xs);
             style.spacing.button_padding = vec2(self.space_sm, self.space_xs);
         });

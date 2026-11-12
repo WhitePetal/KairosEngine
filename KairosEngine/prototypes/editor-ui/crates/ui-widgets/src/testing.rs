@@ -12,7 +12,7 @@
 //! from the previous pass"). A synthetic click therefore needs three passes:
 //!
 //! 1. draw pass            -- records widget rects (this is where the test
-//!                            reads a widget's rect from its Output),
+//!    reads a widget's rect from its Output),
 //! 2. PointerMoved(pos)    -- hover is established against pass-1 rects,
 //! 3. press + release      -- click is reported by the widget in this pass.
 //!
@@ -83,13 +83,28 @@ impl Harness {
         self.click_button(pos, PointerButton::Secondary, draw);
     }
 
-    pub fn click_button(&mut self, pos: Pos2, button: PointerButton, mut draw: impl FnMut(&mut Ui)) {
+    pub fn click_button(
+        &mut self,
+        pos: Pos2,
+        button: PointerButton,
+        mut draw: impl FnMut(&mut Ui),
+    ) {
         self.frame(Vec::new(), &mut draw);
         self.frame(vec![Event::PointerMoved(pos)], &mut draw);
         self.frame(
             vec![
-                Event::PointerButton { pos, button, pressed: true, modifiers: Modifiers::NONE },
-                Event::PointerButton { pos, button, pressed: false, modifiers: Modifiers::NONE },
+                Event::PointerButton {
+                    pos,
+                    button,
+                    pressed: true,
+                    modifiers: Modifiers::NONE,
+                },
+                Event::PointerButton {
+                    pos,
+                    button,
+                    pressed: false,
+                    modifiers: Modifiers::NONE,
+                },
             ],
             &mut draw,
         );
@@ -141,8 +156,20 @@ impl Harness {
     pub fn press_key(&mut self, key: Key, draw: impl FnMut(&mut Ui)) {
         self.frame(
             vec![
-                Event::Key { key, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE },
-                Event::Key { key, physical_key: None, pressed: false, repeat: false, modifiers: Modifiers::NONE },
+                Event::Key {
+                    key,
+                    physical_key: None,
+                    pressed: true,
+                    repeat: false,
+                    modifiers: Modifiers::NONE,
+                },
+                Event::Key {
+                    key,
+                    physical_key: None,
+                    pressed: false,
+                    repeat: false,
+                    modifiers: Modifiers::NONE,
+                },
             ],
             draw,
         );

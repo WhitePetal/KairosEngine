@@ -25,7 +25,10 @@ const FORBIDDEN: &[&str] = &[
 fn widgets_crate_has_no_domain_or_io_types() {
     let manifest = include_str!("../Cargo.toml");
     assert!(manifest.contains("egui = \"=0.35.0\""));
-    assert!(!manifest.contains("kairos-editor"), "widgets crate must not depend on components");
+    assert!(
+        !manifest.contains("kairos-editor"),
+        "widgets crate must not depend on components"
+    );
     assert_eq!(
         manifest.matches("[dependencies]").count(),
         1,
@@ -57,5 +60,8 @@ fn widgets_crate_has_no_domain_or_io_types() {
             );
         }
     }
-    assert!(checked >= 5, "expected to scan all widget modules, scanned {checked}");
+    assert!(
+        checked >= 5,
+        "expected to scan all widget modules, scanned {checked}"
+    );
 }

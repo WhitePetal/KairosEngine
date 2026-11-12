@@ -10,6 +10,7 @@ pub mod layout;
 pub mod modal;
 pub mod project;
 pub mod selection;
+pub mod viewport;
 
 use crate::action::{Action, AppAction, DocumentAction, ModalAction};
 use crate::effect::Effect;
@@ -28,6 +29,7 @@ pub fn reduce(state: &mut EditorState, action: Action) -> Vec<Effect> {
         Action::Document(action) => document::reduce(state, action),
         Action::Layout(action) => layout::reduce(state, action),
         Action::Modal(action) => modal::reduce(state, action),
+        Action::Viewport(action) => viewport::reduce(state, action),
         Action::App(action) => reduce_app(state, action),
     }
 }

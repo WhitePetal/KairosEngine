@@ -37,12 +37,12 @@ pub use atoms::{
     Heading, IconButton, Label, LabelTone, NumberRow, Separator, SliderRow, Spinner, TextInput,
 };
 pub use compounds::{
-    Breadcrumb, BreadcrumbOutput, ConfirmDialog, ConfirmDialogOutput, ContextMenu,
-    ContextMenuItem, ContextMenuOutput, EmptyState, EmptyStateOutput, Expander, FormSection,
-    FormSectionOutput, ListItem, ListItemOutput, PanelChrome, PanelChromeOutput, PropertyRow,
-    PropertyRowOutput, SearchBox, SearchBoxOutput, StatusBar, StatusBarOutput, StatusTone, Toast,
-    ToastOutput, ToastTone, Toolbar, ToolbarItem, ToolbarItemKind, ToolbarOutput, TreeOutput,
-    TreeRow, TreeView,
+    Breadcrumb, BreadcrumbOutput, ConfirmDialog, ConfirmDialogOutput, ContextMenu, ContextMenuItem,
+    ContextMenuOutput, EmptyState, EmptyStateOutput, Expander, FormSection, FormSectionOutput,
+    ListItem, ListItemOutput, PanelChrome, PanelChromeOutput, PropertyRow, PropertyRowOutput,
+    SearchBox, SearchBoxOutput, StatusBar, StatusBarOutput, StatusTone, TabBar, TabBarItem,
+    TabBarOutput, Toast, ToastOutput, ToastTone, Toolbar, ToolbarItem, ToolbarItemKind,
+    ToolbarOutput, TreeOutput, TreeRow, TreeView,
 };
 pub use icon::{GlyphIcons, IconId, IconProvider};
 pub use theme::Theme;

@@ -77,7 +77,7 @@ core 允许依赖 `kairos_engine` 的**纯数据类型**（`Handle`、`Mesh`、`
 
 ### Phase 0.5 — Widget kit + Theme + Gallery（约 1-1.5 周，**先于面板迁移**）
 
-> **原型已验证（2026-10-30）**：合并原型 [`prototypes/editor-ui/`](../../../prototypes/editor-ui/) 在 egui 0.35 上跑通 **49 个 headless 测试**（13 atom + 13 compound + 2 个 feature component + 7 个 full-stack 真实链路），0 GPU/0 窗口/0 网络；证明 widget kit 的纯度可由 Cargo 强制、components 的适配函数可纯函数单测，且「点击 → Action → 真实 core reducer → Effect → completion」闭环成立。Phase 0.5 的主要工作从「验证可行性」变成「定 API + 迁移 Theme + 补 25 个 widget 中的剩余项」。
+> **原型已验证（2026-10-30，2026-11-09 扩展）**：合并原型 [`prototypes/editor-ui/`](../../../prototypes/editor-ui/) 在 egui 0.35 上跑通 **126 个测试**（125 headless + 1 doctest，5 个 crate）；除 widget kit 纯度、components 适配函数、真实 reducer/effect 闭环外，2026-11-09 又验证了 **Panel trait/Registry/Host**（面板不写进 `EditorApp`、新增面板零 core 改动）、**四槽 tab 停靠 + Console 只读 host 日志**，以及 **egui↔wgpu 视口接缝**（offscreen RTT→`TextureId`→egui image；orbit/pan/zoom/pick→`ViewportAction`→reducer→`Effect`→host camera/raycast，11 个 viewport slice 测试 + 35 个 camera/pick 测试 + 窗口 smoke 截图）。Phase 1/2 的「App shell/视口」从「待验证」变成「有可抄形状」，见 [panel-viewport-design.md](./panel-viewport-design.md)。
 
 **交付**
 - 新 crate `kairos_editor_widgets`（只依赖 egui）：`Theme` tokens（从现有 `Preferences/Styles/*.toml` 1:1 映射，保证视觉不变）、`IconId/IconProvider`、首版 20-25 个 widget（[widget-layer.md](./widget-layer.md) §2.2 的目录）、`gallery` 开发 bin。
@@ -177,7 +177,7 @@ core 允许依赖 `kairos_engine` 的**纯数据类型**（`Handle`、`Mesh`、`
 
 两人并行（core+widgets/gallery 与 host+viewport 分工）可压到约 5-6 周；主要串行瓶颈是 Phase 0 的领域设计 + Phase 0.5 的 widget API。**估算的前提**是保留现有 dock、字体/样式资源与资产加载，不重写引擎侧。
 
-> 本阶段（2026-10-30）只做**方案 + 原型**：合并原型见 [`prototypes/editor-ui/`](../../../prototypes/editor-ui/)（一个 workspace，core + ui-widgets + editor-components 三层，49 测试含 7 个 full-stack）；生产实施从 Phase 0 起，需作者拍板后再排期。
+> 本阶段（2026-10-30 方案 + 原型；2026-11-09 面板/视口重构）只做**方案 + 原型**：合并原型见 [`prototypes/editor-ui/`](../../../prototypes/editor-ui/)（一个 workspace 五个 crate：core + ui-widgets + editor-components + editor-viewport + editor-app；120 测试，含 7 个 full-stack、14 个 panel host、11 个 viewport slice，窗口 smoke 截图）；生产实施从 Phase 0 起，需作者拍板后再排期。
 
 ---
 

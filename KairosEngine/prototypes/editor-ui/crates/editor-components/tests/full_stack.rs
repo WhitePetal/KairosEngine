@@ -16,12 +16,12 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use editor_components_prototype::{row_id, Frame, InspectorPanel, ProjectPanel, UiOut};
+use editor_components_prototype::{Frame, InspectorPanel, ProjectPanel, UiOut, row_id};
 use editor_core_prototype::{
     Action, App, AssetId, AssetKind, DocumentAction, DocumentId, DocumentKind, EditData, Effect,
     EffectOutcome, MaterialData, PanelId, ProjectAction, ProjectState,
 };
-use egui::{Ui, pos2, Rect};
+use egui::{Rect, Ui, pos2};
 use ui_widgets_prototype::Theme;
 use ui_widgets_prototype::testing::Harness;
 
@@ -187,14 +187,16 @@ fn project_row_click_round_trips_into_core_reducer() {
     );
 
     assert_eq!(app.state.selection.selected_asset, Some(AssetId(2)));
-    assert_eq!(app.state.layout.focus, PanelId::Inspector);
+    assert_eq!(app.state.layout.focus, PanelId::INSPECTOR);
     assert!(
         app.state.project.loading_assets.contains(&AssetId(2)),
         "selection starts the async asset load through the real reducer"
     );
     assert!(effects.iter().any(|effect| matches!(
         effect,
-        Effect::FocusPanel { panel: PanelId::Inspector }
+        Effect::FocusPanel {
+            panel: PanelId::INSPECTOR
+        }
     )));
 
     let ticket = effects
@@ -234,7 +236,11 @@ fn project_double_click_opens_material_document_via_core() {
         .selection
         .active_document
         .expect("double click opens a document through DocumentAction::Open");
-    let document = app.state.documents.get(document_id).expect("document exists");
+    let document = app
+        .state
+        .documents
+        .get(document_id)
+        .expect("document exists");
     assert_eq!(document.path, "assets/models/crate.material");
     assert_eq!(document.kind, DocumentKind::Material);
     assert!(matches!(document.edit, EditData::Material(_)));
@@ -310,7 +316,11 @@ fn material_slider_click_round_trips_set_material() {
     assert!(!collected.is_empty(), "slider change must emit SetMaterial");
     dispatch_all(&mut app, collected);
 
-    let document = app.state.documents.get(document_id).expect("document exists");
+    let document = app
+        .state
+        .documents
+        .get(document_id)
+        .expect("document exists");
     match &document.edit {
         EditData::Material(material) => {
             assert!(
@@ -330,7 +340,10 @@ fn inspector_save_click_round_trips_effect_then_completion() {
     let document_id = open_material(&mut app);
     app.dispatch(Action::Document(DocumentAction::SetMaterial {
         document: document_id,
-        material: MaterialData { roughness: 0.9, ..Default::default() },
+        material: MaterialData {
+            roughness: 0.9,
+            ..Default::default()
+        },
     }));
     assert!(app.state.documents.get(document_id).unwrap().dirty);
 
@@ -339,14 +352,24 @@ fn inspector_save_click_round_trips_effect_then_completion() {
     let effects = click_inspector_toolbar(&mut app, &mut panel, &mut harness, "save");
 
     let document = app.state.documents.get(document_id).unwrap();
-    assert!(document.dirty, "dirty until the host acknowledges the write");
+    assert!(
+        document.dirty,
+        "dirty until the host acknowledges the write"
+    );
     assert!(document.is_saving());
 
     let ticket = effects
         .iter()
         .find_map(|effect| match effect {
-            Effect::SaveDocument { ticket, document, bytes } if *document == document_id => {
-                assert!(!bytes.is_empty(), "save effect carries the serialized document");
+            Effect::SaveDocument {
+                ticket,
+                document,
+                bytes,
+            } if *document == document_id => {
+                assert!(
+                    !bytes.is_empty(),
+                    "save effect carries the serialized document"
+                );
                 Some(*ticket)
             }
             _ => None,
@@ -397,7 +420,11 @@ fn inspector_text_typing_round_trips_set_text() {
     assert!(!collected.is_empty(), "typing must emit SetText");
     dispatch_all(&mut app, collected);
 
-    let document = app.state.documents.get(document_id).expect("document exists");
+    let document = app
+        .state
+        .documents
+        .get(document_id)
+        .expect("document exists");
     assert_eq!(document.edit.as_text(), Some("hello world"));
     assert!(document.dirty);
 }

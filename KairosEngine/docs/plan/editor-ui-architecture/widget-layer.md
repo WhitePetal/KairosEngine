@@ -305,7 +305,7 @@ kairos_editor_ui/src/
 
 ### 8.1 原型验证结果（2026-10-30，合并后）
 
-[`prototypes/editor-ui/`](../../../prototypes/editor-ui/) 是**合并后的统一原型工作区**：一个 `[workspace]`、一份 Cargo.lock、一份 README、三个分层 crate、**49 个测试全绿**（core 20 + ui-widgets 14 + editor-components 15，其中 **7 个 full-stack**），全部离线编译运行（egui 0.35 来自本机 cargo cache）：
+[`prototypes/editor-ui/`](../../../prototypes/editor-ui/) 是**合并后的统一原型工作区**：一个 `[workspace]`、一份 Cargo.lock、一份 README、**五个 crate（core / ui-widgets / components / viewport / app）、126 个测试**（125 headless + 1 doctest；其中 7 个 full-stack、14 个 panel host、11 个 viewport slice），全部离线编译运行（egui 0.35 + wgpu 29 来自本机 cargo cache）：
 
 | crate | 依赖 | 内容 | 测试 |
 |---|---|---|---|
@@ -329,6 +329,7 @@ kairos_editor_ui/src/
 - egui `Slider` 是 `Sense::drag` 控件，合成 click 不改值 → harness 新增 `double_click`/`drag`；且 `changed()` 只在中间帧出现，full-stack 测试需逐帧 dispatch 或累积 Action（reducer 对等值编辑幂等）。
 - toolbar 仍直接发 Action，没有走 core 的 `CommandRegistry`；生产应让 toolbar item id == `CommandId`。
 
+- **窗口 demo（2026-11-09 追加）**：原型新增 `editor-app`（eframe 0.35/wgpu）作为 host 替身，`cd prototypes/editor-ui && cargo run` 打开真实窗口：同一套 core reducer、components、widget kit 在窗口里跑，点击资产/拖 slider/Save/Quit 都走真实 Action → reducer → Effect（SaveDocument 写临时文件、LoadAsset/SpawnPreview 同步 completion、Quit 关窗）；截图见原型 README §2.5。
 **未证明**：视觉观感/截图（headless 无像素）、真实 dock/多实例/wgpu 视口/`EffectExecutor`/World 边界、真实磁盘持久化、IME/剪贴板等输入。
 
 

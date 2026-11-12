@@ -76,7 +76,10 @@ fn collapsed_folders_hide_children() {
     let mut view = ProjectViewState::default();
     view.expanded.insert("assets".to_string());
     let expanded_root = project_nodes(&project, &view);
-    let names: Vec<&str> = expanded_root.iter().map(|node| node.name.as_str()).collect();
+    let names: Vec<&str> = expanded_root
+        .iter()
+        .map(|node| node.name.as_str())
+        .collect();
     assert_eq!(
         names,
         vec!["assets", "audio", "config", "models", "scenes", "textures"]
@@ -86,7 +89,10 @@ fn collapsed_folders_hide_children() {
 #[test]
 fn search_shows_matching_assets_and_their_ancestors() {
     let project = demo_project();
-    let view = ProjectViewState { search: "hero".to_string(), expanded: Default::default() };
+    let view = ProjectViewState {
+        search: "hero".to_string(),
+        expanded: Default::default(),
+    };
     let nodes = project_nodes(&project, &view);
     let names: Vec<&str> = nodes.iter().map(|node| node.name.as_str()).collect();
     assert_eq!(
@@ -105,7 +111,10 @@ fn tree_rows_carry_labels_indent_expander_and_selection() {
 
     assert_eq!(rows.len(), nodes.len());
 
-    let crate_row = rows.iter().find(|row| row.label == "crate.material").unwrap();
+    let crate_row = rows
+        .iter()
+        .find(|row| row.label == "crate.material")
+        .unwrap();
     assert!(crate_row.selected, "crate.material is the selected asset");
     assert_eq!(crate_row.indent, 2);
     assert_eq!(crate_row.suffix, Some("mat"));
@@ -116,7 +125,10 @@ fn tree_rows_carry_labels_indent_expander_and_selection() {
     assert!(!models_row.selected);
 
     let collapsed_rows = tree_rows(&nodes, &Default::default(), None);
-    let collapsed_models = collapsed_rows.iter().find(|row| row.label == "models").unwrap();
+    let collapsed_models = collapsed_rows
+        .iter()
+        .find(|row| row.label == "models")
+        .unwrap();
     assert_eq!(collapsed_models.expander, Expander::Collapsed);
 }
 
@@ -127,15 +139,23 @@ fn tree_click_maps_to_core_selection_action() {
     let nodes = project_nodes(&project, &view);
 
     let crate_node = node(&nodes, "assets/models/crate.material");
-    let output = TreeOutput { clicked: Some(row_id(&crate_node.path)), ..Default::default() };
+    let output = TreeOutput {
+        clicked: Some(row_id(&crate_node.path)),
+        ..Default::default()
+    };
     assert_eq!(
         project_actions_from_tree(&nodes, &output),
-        vec![Action::Selection(SelectionAction::SelectAsset { asset: AssetId(2) })]
+        vec![Action::Selection(SelectionAction::SelectAsset {
+            asset: AssetId(2)
+        })]
     );
 
     // Clicking a folder is a view toggle, never a domain action.
     let models = node(&nodes, "assets/models");
-    let output = TreeOutput { clicked: Some(row_id(&models.path)), ..Default::default() };
+    let output = TreeOutput {
+        clicked: Some(row_id(&models.path)),
+        ..Default::default()
+    };
     assert!(project_actions_from_tree(&nodes, &output).is_empty());
 }
 
@@ -149,7 +169,10 @@ fn double_click_maps_to_open_with_content_by_kind() {
         let node = node(&nodes, path);
         project_actions_from_tree(
             &nodes,
-            &TreeOutput { double_clicked: Some(row_id(&node.path)), ..Default::default() },
+            &TreeOutput {
+                double_clicked: Some(row_id(&node.path)),
+                ..Default::default()
+            },
         )
     };
 
@@ -177,15 +200,20 @@ fn double_click_maps_to_open_with_content_by_kind() {
             content: EditData::Text(String::new()),
         })]
     );
-    assert!(open_for("assets/models").is_empty(), "double-clicking a folder opens nothing");
+    assert!(
+        open_for("assets/models").is_empty(),
+        "double-clicking a folder opens nothing"
+    );
 }
 
 #[test]
 fn project_toolbar_maps_to_core_project_and_layout_actions() {
     let project = demo_project();
-    let mut output = ToolbarOutput::default();
+    let mut output = ToolbarOutput {
+        clicked: Some("create-folder"),
+        ..Default::default()
+    };
 
-    output.clicked = Some("create-folder");
     assert_eq!(
         project_actions_from_toolbar(&project, None, &output),
         vec![Action::Project(ProjectAction::CreateAsset {
@@ -198,13 +226,17 @@ fn project_toolbar_maps_to_core_project_and_layout_actions() {
     output.clicked = Some("delete");
     assert_eq!(
         project_actions_from_toolbar(&project, Some(AssetId(3)), &output),
-        vec![Action::Project(ProjectAction::DeleteAsset { asset: AssetId(3) })]
+        vec![Action::Project(ProjectAction::DeleteAsset {
+            asset: AssetId(3)
+        })]
     );
 
     output.clicked = Some("focus-inspector");
     assert_eq!(
         project_actions_from_toolbar(&project, None, &output),
-        vec![Action::Layout(LayoutAction::FocusPanel { panel: PanelId::Inspector })]
+        vec![Action::Layout(LayoutAction::FocusPanel {
+            panel: PanelId::INSPECTOR
+        })]
     );
 
     // A selected folder *entry* (only explicit folder assets have ids) is used
@@ -234,9 +266,11 @@ fn inspector_toolbar_maps_to_core_document_actions() {
     let document = state.documents.demo_material();
     state.selection.active_document = Some(document);
     let document_ref = state.active_document().expect("document exists");
-    let mut output = ToolbarOutput::default();
+    let mut output = ToolbarOutput {
+        clicked: Some("save"),
+        ..Default::default()
+    };
 
-    output.clicked = Some("save");
     assert_eq!(
         inspector_actions_from_toolbar(document_ref, &output),
         vec![Action::Document(DocumentAction::Save { document })]
@@ -257,7 +291,11 @@ fn inspector_toolbar_maps_to_core_document_actions() {
         vec![Action::Document(DocumentAction::Revert { document })]
     );
 
-    let material = MaterialData { roughness: 0.9, metallic: 1.0, ..Default::default() };
+    let material = MaterialData {
+        roughness: 0.9,
+        metallic: 1.0,
+        ..Default::default()
+    };
     assert_eq!(
         set_material_action(document_ref, material.clone()),
         Action::Document(DocumentAction::SetMaterial { document, material })

@@ -1,0 +1,22 @@
+[package]
+name = "kairos_editor_app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+description = "kairos editor's app"
+default-run = "kairos_editor_app"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)", "cfg(docsrs_dep)"] }
+
+[dependencies]
+egui = "0.35.0"
+eframe = { version = "=0.35.0", default-features = false, features = [
+    "accesskit",
+    "default_fonts",
+    "wgpu",
+] }
+
+kairos_editor_widgets = { path = "../kairos_editor_widgets" }
+kairos_editor_docking = { path = "../kairos_editor_docking" }

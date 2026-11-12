@@ -3,5 +3,16 @@ members = [
     "crates/editor-core",
     "crates/ui-widgets",
     "crates/editor-components",
+    "crates/editor-app",
+    "crates/editor-viewport",
+]
+# Default members: all crates (so `cargo test` keeps covering the whole
+# workspace) while `cargo run` still resolves the single binary in editor-app.
+default-members = [
+    "crates/editor-core",
+    "crates/ui-widgets",
+    "crates/editor-components",
+    "crates/editor-app",
+    "crates/editor-viewport",
 ]
 resolver = "3"

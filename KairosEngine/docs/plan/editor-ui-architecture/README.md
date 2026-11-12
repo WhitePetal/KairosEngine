@@ -30,7 +30,7 @@ View（egui，只读状态、只发 Action）
 
 视图层内部再分三层（本轮新增，详见 [widget-layer.md](./widget-layer.md)）：**Theme tokens → Widgets（纯外观，独立 crate，编译期不认领域类型）→ Components（读状态、组合 widget、发 Action）**。这样「一个 .rs 同时带外观和逻辑」被拆成「widget 只画、component 只接线、core 只改状态」，且边界由 cargo 强制。
 
-**收益**：删掉 `Messager`/`Message`/`Drawer`/`UIReader`；核心逻辑可无 GPU/无窗口单测；新增一个面板/资产编辑器是「加一个领域模块 + 一个绘制函数」，不再改中心文件；`docs/plan/kairos-editor-mcp` 的绕行方案（给 `Drawer` 加 `QueryHandler`）不再需要。 本轮已交付**一个合并原型** [`prototypes/editor-ui/`](../../../prototypes/editor-ui/)：**49 个测试**（editor-core 20 + ui-widgets 14 + editor-components 15，其中 7 个 full-stack），把「core reducer → feature component → 纯 widget → 合成点击 → Action → 真实 reducer → Effect → completion」跑成一条链路；不进入主 workspace 构建。
+**收益**：删掉 `Messager`/`Message`/`Drawer`/`UIReader`；核心逻辑可无 GPU/无窗口单测；新增一个面板/资产编辑器是「加一个领域模块 + 一个绘制函数」，不再改中心文件；`docs/plan/kairos-editor-mcp` 的绕行方案（给 `Drawer` 加 `QueryHandler`）不再需要。 本轮已交付**架构原型** [`prototypes/editor-ui/`](../../../prototypes/editor-ui/)：**126 个测试**（125 headless + 1 doctest，5 个 crate），把「core reducer → feature component → 纯 widget → 合成点击 → Action → 真实 reducer → Effect → completion」跑成一条链路；**Panel trait + Registry + Host** 已在窗口里替代写死在 `EditorApp` 的面板字段（加面板 = 注册 factory），且 **`cd prototypes/editor-ui && cargo run` 打开真实窗口 demo**：Project/Inspector/Console/**真实 wgpu 3D Scene 视口**/Widget gallery 五个面板、四槽 tab 停靠，视口走 offscreen RTT→egui TextureId→orbit/pan/zoom/pick 完整交互链路。不进入主 workspace 构建。面板/视口细节见 [panel-viewport-design.md](./panel-viewport-design.md) 与 [ADR 0009](../../adr/0009-editor-panel-host-and-viewport.md)。
 
 ---
 
@@ -302,10 +302,10 @@ pub enum Action {
     Project(ProjectAction),       // SelectAsset / RenameAsset / CreateAsset / ...
     Selection(SelectionAction),   // SelectAsset / SelectEntity / Clear
     Document(DocumentAction),     // Open / Edit / Save / Revert / Undo / Redo / Close
-    Layout(LayoutAction),         // OpenPanel / ClosePanel / FocusPanel / MovePanel
+    Layout(LayoutAction),         // TogglePanel / ShowPanel / ClosePanel / FocusPanel / PersistLayout
     Style(StyleAction),           // SetField / Reset
     Modal(ModalAction),           // Open / Confirm / Cancel / Close
-    Viewport(ViewportAction),   // 打开/关闭/尺寸/纹理绑定/相机输入
+    Viewport(ViewportAction),   // Ensure(尺寸/绑定) / Orbit / Pan / Zoom / Pick / *Completed
     Play(PlayAction),             // Play / Pause / Stop
     Effect(EffectOutcome),        // 异步完成 / 失败
     Quit,
@@ -338,12 +338,14 @@ pub enum Effect {
     WriteDocument { doc: DocumentId, path: PathBuf, bytes: Vec<u8> },
     LoadDocument { req: RequestId, path: PathBuf, kind: DocumentKind },
     PersistLayout { bytes: Vec<u8> },
-    // 引擎 / 渲染
+    // 引擎 / 渲染（viewport 词表已由原型验证，见 ADR 0009）
     ApplyDocumentPreview { doc: DocumentId, payload: PreviewPayload },
-    SyncViewport { view: ViewportId, size: ViewportSize },
-    CreateViewport { req: RequestId, view: ViewportId },
-    DestroyViewport { view: ViewportId },
-    SpawnEditorCamera,
+    CreateViewport { ticket: EffectTicket, viewport: ViewportId, width: u32, height: u32 },
+    SyncViewportSize { viewport: ViewportId, width: u32, height: u32 },
+    DestroyViewport { viewport: ViewportId },
+    ViewportCameraInput { viewport: ViewportId, input: CameraInput },
+    PickViewport { ticket: EffectTicket, viewport: ViewportId, ndc: [f32; 2] },
+    SpawnEditorCamera,   // production: spawn the editor camera entity
     // host / 平台
     FocusPanel(PanelId),
     NativeDialog(NativeDialog),
@@ -356,8 +358,9 @@ pub enum Effect {
 pub enum EffectOutcome {
     DocumentLoaded { req: RequestId, result: Result<LoadedDocument, String> },
     DocumentSaved  { doc: DocumentId, result: Result<(), String> },
-    ViewportBound  { req: RequestId, view: ViewportId },
-    ViewportFailed { req: RequestId, error: String },
+    ViewportBound,                                    // reducer 用自己记录的 ticket 校验
+    ViewportBindFailed { error: String },
+    SceneObjectPicked { object: Option<SceneObjectId> },
 }
 ```
 
@@ -429,7 +432,7 @@ redraw():
 | 面板打开/关闭/焦点 | `core::LayoutState` | 可持久化、可被 MCP 查询 |
 | dock 分割树、拖拽中的临时 rect、滚动位置、展开状态、重命名输入框缓冲 | `ui::ViewStates`（`PanelInstance` 为 key） | 纯 UI 临时态；重启无需恢复，或单独持久化 |
 | 样式值（TOML 的纯数据） | `core::StyleState` | 偏好设置、主题、MCP 可读写 |
-| egui 纹理句柄、字体、图标 | `ui::HostView` | GPU 资源不属于领域模型；用 plain `HostTextureId` 关联 |
+| egui 纹理句柄、字体、图标 | `ui::HostView` | GPU 资源不属于领域模型；UI 只拿 plain `egui::TextureId`，core 不存句柄 |
 | ECS 实体/组件、渲染资源 | `Engine.world` | 引擎所有；UI 只读 `&World`，变更走 Effect |
 | 异步任务、通道、文件句柄 | host 的 `EffectExecutor` | 不属于可序列化状态 |
 
@@ -445,28 +448,33 @@ redraw():
 
 ### 3.5 面板、dock 与多实例
 
-> 面板的实现形态 = **Component（L2）** = `PanelChrome` + 一组 Widgets + 纯适配函数。细节见 [widget-layer.md](./widget-layer.md) §2.3/§6。
+> 实现形态（原型已验证，2026-11-09）：**Panel trait + PanelRegistry + PanelHost**；面板**不**写进
+> `EditorApp` 字段，`PanelId` 是稳定字符串而不是核心 enum，新增一个面板 = 实现 trait + 注册 factory。
+> 完整设计/真引擎映射见 [panel-viewport-design.md](./panel-viewport-design.md)，决策见
+> [ADR 0009](../../adr/0009-editor-panel-host-and-viewport.md)。
 
 ```rust
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct PanelInstanceId(pub PanelKind, pub u32);   // (类型, 实例序号) —— 支持多实例
+// core：身份是数据（新增面板不改 core），布局是可持久化/可查询的领域状态
+pub struct PanelId(pub &'static str);            // "project" / "inspector" / "viewport" / ...
+pub struct PanelInstanceId { pub kind: PanelId, pub serial: u32 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub enum PanelKind { Project, Hierarchy, Inspector, Scene, Game, Console, Preferences, About }
-
+// ui（L2）：面板只读 Frame、只发 Action；实例与 view state 由 host 持有
 pub trait Panel {
-    type ViewState: Default;
-    fn title(frame: &Frame, inst: PanelInstanceId) -> egui::WidgetText;
-    fn draw(ui: &mut egui::Ui, frame: &Frame, out: &mut UiOut, inst: PanelInstanceId,
-            view: &mut Self::ViewState);
-    fn closable() -> bool { true }
+    fn kind(&self) -> PanelId;
+    fn title(&self, frame: &Frame) -> String;
+    fn draw(&mut self, ui: &mut egui::Ui, frame: &Frame, out: &mut UiOut);
+    fn closable(&self) -> bool { true }
+    fn wants_continuous_repaint(&self) -> bool { false }
 }
+pub struct PanelRegistry { /* PanelId -> (DockSlot, factory) */ }
+pub struct PanelHost { /* instances + slot/tab layout */ }
 ```
 
-- dock 树由现有 `DockState<PanelInstanceId>` 承载（它已经是泛型的；从 `usize` 换成 `PanelInstanceId` 即可），`TabDrawer` 不再携带 `&Vec<Box<dyn Drawer>>`/`&mut Messager`/`&Engine`，只调用 `Panel::draw`。
-- 注册是**一个 enum + 一个 match**（固定面板），比现状少 3 处样板；将来要插件化再改 trait object。
-- 多实例免费获得：两个场景视口 = `Scene(0)`、`Scene(1)`，状态在 `ViewStates` 按实例 key 分开。
-- 布局持久化：`Effect::PersistLayout` 序列化 dock 树（`serde`）；启动时 `LayoutState` 恢复。
+- **归属**：打开/焦点在 core `LayoutState`（可持久化、MCP 可查询）；dock 树、tab 顺序、分割比例、拖拽瞬态在 host/UI view state；面板会话态（搜索词、展开集合、滚动）跟实例走，不进 core。
+- **新增面板成本**：实现 `Panel` + 组合根里 `registry.register(kind, slot, factory)` 一行；不改 `editor-core`、不改 `EditorApp`、不新增 `Message`。原型的 Gallery 面板就注册在 host crate 里，core 完全不知道它。
+- **多实例**：`PanelInstanceId(kind, serial)` 从第一天就有；两个场景视口 = `viewport#0`、`viewport#1`（kind 相同、serial 不同），view state 按实例 key 分离，布局 API 不用改。
+- **dock**：原型的四槽（left/center/right/bottom）+ tab bar 是 `PanelHost` 的最小实现；生产把现有 `DockState` 泛型化为 `PanelInstanceId` 后接到 `kairos_editor_docking`，`PanelHost` 接口不变（`TabDrawer` 只调 `Panel::draw`，不再携带 `&Vec<Box<dyn Drawer>>`/`&mut Messager`/`&Engine`）。
+- **布局持久化**：`Effect::PersistLayout` 序列化 dock 树（`serde`）；启动时恢复 `LayoutState` + dock 布局。
 
 ### 3.6 文档、选择、撤销
 
@@ -604,17 +612,29 @@ out.emit(Action::Document(Revert { id }));     // doc.edit = doc.saved; → Effe
 
 ### 4.3 场景视口 + 异步纹理回绑
 
+> **原型已实现（2026-11-09）**：`prototypes/editor-ui` 的 `editor-viewport` 用 wgpu offscreen
+> Rgba8UnormSrgb + `register_native_texture` 走通「host 渲染 → TextureId → egui image」；core 的
+> `ViewportAction/Effect`（Ensure/CreateViewport/SyncViewportSize/DestroyViewport/ViewportCameraInput/
+> PickViewport）与 ticket 校验、resize 回放、关闭面板 destroy 都有测试；视口面板在
+> `editor-components/src/viewport_panel.rs`，host 在 `editor-viewport/src/{host,renderer}.rs`。
+> 生产替换点（引擎 render graph / BindAttachmentToEgui / 纹理缓存 / pass 顺序 / pan / 拾取）见
+> [panel-viewport-design.md](./panel-viewport-design.md) §3、§6。
+
 **现在**：`OpenSceneTab` → `SceneWindow` 创建 oneshot channel → `Message::RegisteSceneWindowViewBind(receiver)` → 每帧 `render()` 里发 `Message::SceneWindowTryReceTextureId` → `handle` 里 `try_rece`；窗口大小、相机输入、关闭全部走消息。
 
 **之后**：
 ```rust
-// open
-Action::Layout(OpenPanel(PanelKind::Scene)) → Effect::CreateViewport { req, view }
-// host 异步创建 render target，完成后
-Action::Effect(EffectOutcome::ViewportBound { req, view })
-// reducer 记录 view 已绑定（HostView 里持有 egui texture handle，状态只存 HostTextureId）
-// 每帧：views 读 frame.host.viewport_texture(view)；尺寸变化 → Action::Viewport(Resize)
-// 关闭 → Effect::DestroyViewport；陈旧 completion 按 req 丢弃
+// 打开面板（layout 是 core 数据）
+Action::Layout(LayoutAction::ShowPanel { panel: PanelId::VIEWPORT })
+// 面板首帧上报物理尺寸并请求绑定（幂等）：
+Action::Viewport(ViewportAction::Ensure { viewport, width, height })
+  → Effect::CreateViewport { ticket, viewport, width, height }
+// host 创建 render target，完成后：
+Action::Effect(EffectOutcome::ViewportBound)      // reducer 用自己记录的 ticket 校验
+// 每帧：views 读 frame.host.viewport_texture(viewport)（egui::TextureId）；
+// 尺寸变化 → Ensure → Effect::SyncViewportSize；相机 → Effect::ViewportCameraInput；
+// 点击 → Effect::PickViewport → SceneObjectPicked
+// 关闭 → Action::Layout(ClosePanel) → Effect::DestroyViewport；陈旧 completion 按 ticket 丢弃
 ```
 
 ---
@@ -664,7 +684,7 @@ Action::Effect(EffectOutcome::ViewportBound { req, view })
 2. **"顺手在 view 里改状态"回潮**：`Frame` 只给 `&EditorState` + `&World`，编译器强制；code review 禁止 `UnsafeCell`/`RefCell` 出现在面板代码。
 3. **Effect 顺序依赖**：effect 由 host 按序执行；有依赖的操作用 `Action::Batch` 表达，不要依赖"先发哪个 effect"。
 4. **过度抽象**：不要造通用框架/反射式属性系统；先 hand-written 面板，重复出现三次再抽。
-5. **丢失 GPU 侧状态**：纹理句柄不进 core；`HostView` 做 `HostTextureId ↔ egui::TextureHandle` 映射，避免 core 依赖 egui。
+5. **丢失 GPU 侧状态**：纹理句柄不进 core；host `HostView` 只暴露 `egui::TextureId`（原型已验证），core 不依赖 egui/wgpu。
 6. **dock 控件重构范围失控**：phase 1 保留现有 dock 实现，只换 `PanelInstanceId` 和 `TabDrawer` 签名；不要顺手重写 2.5k 行 dock。
 7. **迁移期双写**：新旧架构并存期，旧 `ui` 模块冻结、只修 bug；新入口用 feature flag 切换，避免两边同时演进。
 
@@ -697,4 +717,4 @@ Action::Effect(EffectOutcome::ViewportBound { req, view })
 - 重写计划：[rewrite-plan.md](./rewrite-plan.md)
 - 决策记录：[ADR 0008](../../adr/0008-editor-ui-architecture.md)
 - 现有 MCP 方案（将被本架构取代其中间层）：[phase3-middleware-architecture.md](../../plan/kairos-editor-mcp/phase3-middleware-architecture.md)
-- 可运行原型：[`prototypes/editor-ui/`](../../../prototypes/editor-ui/)（三 crate 合并原型：`editor-core` 状态/reducer/effect/undo + `ui-widgets` 纯外观 kit + `editor-components` 真实组件→Action 映射；`cargo test` **49 个测试全绿**，含 7 个 full-stack 往返）
+- 可运行原型：[`prototypes/editor-ui/`](../../../prototypes/editor-ui/)（五 crate：`editor-core` 状态/reducer/effect/viewport slice + `ui-widgets` 纯外观 kit + `editor-components` Panel trait/Registry/Host 与面板 + `editor-viewport` wgpu RTT/camera/pick + `editor-app` 帧阶段/host；`cargo test` **126 个测试**，含 7 个 full-stack + 14 个 panel host + 11 个 viewport slice；`cargo run` 打开真实窗口，截图见原型 README）

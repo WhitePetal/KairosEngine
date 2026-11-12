@@ -1,0 +1,14 @@
+[package]
+name = "editor-viewport-prototype"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Host-side wgpu 3D viewport renderer for the merged editor UI prototype"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+egui = "=0.35.0"
+egui-wgpu = "=0.35.0"
+bytemuck = { version = "1.25", features = ["derive"] }

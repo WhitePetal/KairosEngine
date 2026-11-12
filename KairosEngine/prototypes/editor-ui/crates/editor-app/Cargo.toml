@@ -1,0 +1,22 @@
+[package]
+name = "editor-app-prototype"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Prototype host for the merged editor UI (eframe is only the throwaway window backend)"
+
+[[bin]]
+name = "editor-app"
+path = "src/main.rs"
+
+[dependencies]
+egui = "=0.35.0"
+eframe = { version = "=0.35.0", default-features = false, features = [
+    "accesskit",
+    "default_fonts",
+    "wgpu",
+] }
+editor-core-prototype = { path = "../editor-core" }
+editor-components-prototype = { path = "../editor-components" }
+editor-viewport-prototype = { path = "../editor-viewport" }
+ui-widgets-prototype = { path = "../ui-widgets" }

@@ -28,9 +28,11 @@ use crate::theme::Theme;
 
 fn row_background(ui: &Ui, rect: Rect, theme: &Theme, selected: bool, hovered: bool) {
     if selected {
-        ui.painter().rect_filled(rect, CornerRadius::ZERO, theme.selected_fill());
+        ui.painter()
+            .rect_filled(rect, CornerRadius::ZERO, theme.selected_fill());
     } else if hovered {
-        ui.painter().rect_filled(rect, CornerRadius::ZERO, theme.hover_fill());
+        ui.painter()
+            .rect_filled(rect, CornerRadius::ZERO, theme.hover_fill());
     }
 }
 
@@ -85,7 +87,11 @@ impl ToolbarItem {
     }
 
     pub fn toggle(id: &'static str, active: bool) -> Self {
-        Self { kind: ToolbarItemKind::Toggle, active, ..Self::button(id) }
+        Self {
+            kind: ToolbarItemKind::Toggle,
+            active,
+            ..Self::button(id)
+        }
     }
 
     pub fn icon(mut self, icon: IconId) -> Self {
@@ -189,13 +195,21 @@ pub struct PanelChromeOutput {
 
 impl Default for PanelChromeOutput {
     fn default() -> Self {
-        Self { close_clicked: false, toolbar: None, header_rect: Rect::NOTHING }
+        Self {
+            close_clicked: false,
+            toolbar: None,
+            header_rect: Rect::NOTHING,
+        }
     }
 }
 
 impl<'a> PanelChrome<'a> {
     pub fn new(title: &'a str) -> Self {
-        Self { title, closable: false, toolbar: None }
+        Self {
+            title,
+            closable: false,
+            toolbar: None,
+        }
     }
 
     pub fn closable(mut self, closable: bool) -> Self {
@@ -234,8 +248,9 @@ impl<'a> PanelChrome<'a> {
                     );
                     ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
                         if self.closable {
-                            close_clicked =
-                                ui.add(IconButton::new(IconId::Close).tooltip("Close")).clicked();
+                            close_clicked = ui
+                                .add(IconButton::new(IconId::Close).tooltip("Close"))
+                                .clicked();
                         }
                         if let Some(toolbar) = &mut self.toolbar {
                             toolbar_output = Some(toolbar.show(ui));
@@ -251,7 +266,11 @@ impl<'a> PanelChrome<'a> {
         );
         ui.add_space(theme.space_xs);
         body(ui);
-        PanelChromeOutput { close_clicked, toolbar: toolbar_output, header_rect: header.rect }
+        PanelChromeOutput {
+            close_clicked,
+            toolbar: toolbar_output,
+            header_rect: header.rect,
+        }
     }
 }
 
@@ -275,7 +294,13 @@ pub struct ListItemOutput {
 
 impl<'a> ListItem<'a> {
     pub fn new(label: &'a str) -> Self {
-        Self { label, icon: None, suffix: None, selected: false, disabled: false }
+        Self {
+            label,
+            icon: None,
+            suffix: None,
+            selected: false,
+            disabled: false,
+        }
     }
 
     pub fn icon(mut self, icon: IconId) -> Self {
@@ -303,10 +328,24 @@ impl<'a> ListItem<'a> {
         let width = ui.available_width();
         let (rect, _) = ui.allocate_exact_size(vec2(width, theme.row_height), Sense::hover());
         let id = ui.make_persistent_id(("kairos-ui.list-item", self.label));
-        let sense = if self.disabled { Sense::hover() } else { Sense::click() };
+        let sense = if self.disabled {
+            Sense::hover()
+        } else {
+            Sense::click()
+        };
         let response = ui.interact(rect, id, sense);
-        row_background(ui, rect, &theme, self.selected, response.hovered() && !self.disabled);
-        let color = if self.disabled { theme.text_muted } else { theme.text };
+        row_background(
+            ui,
+            rect,
+            &theme,
+            self.selected,
+            response.hovered() && !self.disabled,
+        );
+        let color = if self.disabled {
+            theme.text_muted
+        } else {
+            theme.text
+        };
         let mut x = rect.left() + theme.space_sm;
         if let Some(icon) = self.icon {
             paint_glyph(
@@ -318,7 +357,14 @@ impl<'a> ListItem<'a> {
             );
             x += theme.icon_md + theme.space_sm;
         }
-        paint_text(ui, pos2(x, rect.center().y), Align2::LEFT_CENTER, self.label, theme.font_body, color);
+        paint_text(
+            ui,
+            pos2(x, rect.center().y),
+            Align2::LEFT_CENTER,
+            self.label,
+            theme.font_body,
+            color,
+        );
         if let Some(suffix) = self.suffix {
             paint_text(
                 ui,
@@ -426,7 +472,10 @@ pub struct TreeView<'a> {
 
 impl<'a> TreeView<'a> {
     pub fn new(salt: &'a str) -> Self {
-        Self { salt, rows: Vec::new() }
+        Self {
+            salt,
+            rows: Vec::new(),
+        }
     }
 
     pub fn rows(mut self, rows: Vec<TreeRow<'a>>) -> Self {
@@ -444,10 +493,24 @@ impl<'a> TreeView<'a> {
             let width = ui.available_width();
             let (rect, _) = ui.allocate_exact_size(vec2(width, theme.row_height), Sense::hover());
             let id = root.with(row.id);
-            let sense = if row.disabled { Sense::hover() } else { Sense::click_and_drag() };
+            let sense = if row.disabled {
+                Sense::hover()
+            } else {
+                Sense::click_and_drag()
+            };
             let response = ui.interact(rect, id, sense);
-            row_background(ui, rect, &theme, row.selected, response.hovered() && !row.disabled);
-            let color = if row.disabled { theme.text_muted } else { theme.text };
+            row_background(
+                ui,
+                rect,
+                &theme,
+                row.selected,
+                response.hovered() && !row.disabled,
+            );
+            let color = if row.disabled {
+                theme.text_muted
+            } else {
+                theme.text
+            };
 
             let mut x = rect.left() + theme.space_sm + row.indent as f32 * indent_step;
             let mut expander_rect = None;
@@ -464,7 +527,13 @@ impl<'a> TreeView<'a> {
                         Expander::Expanded => theme.icon(IconId::ChevronDown),
                         Expander::None => "",
                     };
-                    paint_glyph(ui, expander.center(), glyph, theme.icon_sm, theme.text_muted);
+                    paint_glyph(
+                        ui,
+                        expander.center(),
+                        glyph,
+                        theme.icon_sm,
+                        theme.text_muted,
+                    );
                     x += theme.icon_sm + theme.space_xs * 2.0;
                 }
             }
@@ -478,7 +547,14 @@ impl<'a> TreeView<'a> {
                 );
                 x += theme.icon_md + theme.space_sm;
             }
-            paint_text(ui, pos2(x, rect.center().y), Align2::LEFT_CENTER, row.label, theme.font_body, color);
+            paint_text(
+                ui,
+                pos2(x, rect.center().y),
+                Align2::LEFT_CENTER,
+                row.label,
+                theme.font_body,
+                color,
+            );
             if let Some(suffix) = row.suffix {
                 paint_text(
                     ui,
@@ -494,7 +570,8 @@ impl<'a> TreeView<'a> {
 
             if response.clicked() {
                 let pointer = response.interact_pointer_pos().unwrap_or(rect.center());
-                if let Some(expander) = expander_rect.filter(|expander| expander.contains(pointer)) {
+                if let Some(expander) = expander_rect.filter(|expander| expander.contains(pointer))
+                {
                     let _ = expander;
                     output.expander_toggled = Some(row.id);
                 } else {
@@ -539,13 +616,21 @@ pub struct PropertyRowOutput {
 
 impl Default for PropertyRowOutput {
     fn default() -> Self {
-        Self { changed: false, reset_clicked: false, editor_rect: Rect::NOTHING, reset_rect: None }
+        Self {
+            changed: false,
+            reset_clicked: false,
+            editor_rect: Rect::NOTHING,
+            reset_rect: None,
+        }
     }
 }
 
 impl<'a> PropertyRow<'a> {
     pub fn new(label: &'a str) -> Self {
-        Self { label, reset_enabled: false }
+        Self {
+            label,
+            reset_enabled: false,
+        }
     }
 
     pub fn reset_enabled(mut self, reset_enabled: bool) -> Self {
@@ -573,7 +658,11 @@ impl<'a> PropertyRow<'a> {
                 )
                 .selectable(false),
             );
-            let reset_width = if self.reset_enabled { theme.row_height + theme.space_xs } else { 0.0 };
+            let reset_width = if self.reset_enabled {
+                theme.row_height + theme.space_xs
+            } else {
+                0.0
+            };
             let editor_width = (ui.available_width() - reset_width - theme.space_sm).max(48.0);
             let response = ui
                 .allocate_ui_with_layout(
@@ -612,7 +701,10 @@ pub struct FormSectionOutput {
 
 impl<'a> FormSection<'a> {
     pub fn new(title: &'a str) -> Self {
-        Self { title, default_open: true }
+        Self {
+            title,
+            default_open: true,
+        }
     }
 
     pub fn default_open(mut self, default_open: bool) -> Self {
@@ -630,7 +722,9 @@ impl<'a> FormSection<'a> {
         )
         .default_open(self.default_open)
         .show(ui, body);
-        FormSectionOutput { open: response.body_response.is_some() }
+        FormSectionOutput {
+            open: response.body_response.is_some(),
+        }
     }
 }
 
@@ -652,7 +746,11 @@ pub struct SearchBoxOutput {
 
 impl Default for SearchBoxOutput {
     fn default() -> Self {
-        Self { changed: false, submitted: false, rect: Rect::NOTHING }
+        Self {
+            changed: false,
+            submitted: false,
+            rect: Rect::NOTHING,
+        }
     }
 }
 
@@ -679,14 +777,22 @@ impl<'a> SearchBox<'a> {
                 )
                 .selectable(false),
             );
-            let width = self
-                .width
-                .unwrap_or_else(|| (ui.available_width() - theme.row_height - theme.space_md).max(64.0));
-            let response = ui.add(TextInput::new(&mut *text).hint(self.hint).desired_width(width));
+            let width = self.width.unwrap_or_else(|| {
+                (ui.available_width() - theme.row_height - theme.space_md).max(64.0)
+            });
+            let response = ui.add(
+                TextInput::new(&mut *text)
+                    .hint(self.hint)
+                    .desired_width(width),
+            );
             output.rect = response.rect;
             output.changed = response.changed();
             output.submitted = response.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
-            if !text.is_empty() && ui.add(IconButton::new(IconId::Close).tooltip("Clear")).clicked() {
+            if !text.is_empty()
+                && ui
+                    .add(IconButton::new(IconId::Close).tooltip("Clear"))
+                    .clicked()
+            {
                 text.clear();
                 output.changed = true;
             }
@@ -711,7 +817,10 @@ pub struct BreadcrumbOutput {
 
 impl Default for BreadcrumbOutput {
     fn default() -> Self {
-        Self { clicked: None, rect: Rect::NOTHING }
+        Self {
+            clicked: None,
+            rect: Rect::NOTHING,
+        }
     }
 }
 
@@ -783,7 +892,11 @@ pub struct StatusBarOutput {
 
 impl<'a> StatusBar<'a> {
     pub fn new(left: &'a str, right: &'a str) -> Self {
-        Self { left, right, tone: StatusTone::Normal }
+        Self {
+            left,
+            right,
+            tone: StatusTone::Normal,
+        }
     }
 
     pub fn tone(mut self, tone: StatusTone) -> Self {
@@ -803,8 +916,22 @@ impl<'a> StatusBar<'a> {
             StatusTone::Error => theme.error,
             StatusTone::Success => theme.success,
         };
-        paint_text(ui, pos2(rect.left() + theme.space_sm, rect.center().y), Align2::LEFT_CENTER, self.left, theme.font_caption, color);
-        paint_text(ui, pos2(rect.right() - theme.space_sm, rect.center().y), Align2::RIGHT_CENTER, self.right, theme.font_caption, theme.text_muted);
+        paint_text(
+            ui,
+            pos2(rect.left() + theme.space_sm, rect.center().y),
+            Align2::LEFT_CENTER,
+            self.left,
+            theme.font_caption,
+            color,
+        );
+        paint_text(
+            ui,
+            pos2(rect.right() - theme.space_sm, rect.center().y),
+            Align2::RIGHT_CENTER,
+            self.right,
+            theme.font_caption,
+            theme.text_muted,
+        );
         StatusBarOutput { rect }
     }
 }
@@ -831,7 +958,12 @@ pub struct ConfirmDialogOutput {
 
 impl Default for ConfirmDialogOutput {
     fn default() -> Self {
-        Self { confirm: false, cancel: false, confirm_rect: Rect::NOTHING, cancel_rect: Rect::NOTHING }
+        Self {
+            confirm: false,
+            cancel: false,
+            confirm_rect: Rect::NOTHING,
+            cancel_rect: Rect::NOTHING,
+        }
     }
 }
 
@@ -884,13 +1016,12 @@ impl<'a> ConfirmDialog<'a> {
                 );
                 ui.add_space(theme.space_md);
                 ui.horizontal(|ui| {
-                    let response = ui.add(
-                        Button::new(self.confirm_label).variant(if self.danger {
+                    let response =
+                        ui.add(Button::new(self.confirm_label).variant(if self.danger {
                             ButtonVariant::Danger
                         } else {
                             ButtonVariant::Primary
-                        }),
-                    );
+                        }));
                     output.confirm_rect = response.rect;
                     if response.clicked() {
                         output.confirm = true;
@@ -922,7 +1053,11 @@ pub struct EmptyStateOutput {
 
 impl<'a> EmptyState<'a> {
     pub fn new(title: &'a str, hint: &'a str) -> Self {
-        Self { title, hint, icon: None }
+        Self {
+            title,
+            hint,
+            icon: None,
+        }
     }
 
     pub fn icon(mut self, icon: IconId) -> Self {
@@ -962,7 +1097,9 @@ impl<'a> EmptyState<'a> {
                 .selectable(false),
             );
         });
-        EmptyStateOutput { rect: ui.min_rect() }
+        EmptyStateOutput {
+            rect: ui.min_rect(),
+        }
     }
 }
 
@@ -981,7 +1118,13 @@ pub struct ContextMenuItem {
 
 impl ContextMenuItem {
     pub fn new(id: &'static str, label: &'static str) -> Self {
-        Self { id, label, icon: None, enabled: true, danger: false }
+        Self {
+            id,
+            label,
+            icon: None,
+            enabled: true,
+            danger: false,
+        }
     }
 
     pub fn icon(mut self, icon: IconId) -> Self {
@@ -1014,13 +1157,20 @@ pub struct ContextMenuOutput {
 
 impl Default for ContextMenuOutput {
     fn default() -> Self {
-        Self { selected: None, rect: Rect::NOTHING }
+        Self {
+            selected: None,
+            rect: Rect::NOTHING,
+        }
     }
 }
 
 impl ContextMenu {
     pub fn new(id: &'static str, pos: Pos2) -> Self {
-        Self { id, pos, items: Vec::new() }
+        Self {
+            id,
+            pos,
+            items: Vec::new(),
+        }
     }
 
     pub fn items(mut self, items: Vec<ContextMenuItem>) -> Self {
@@ -1060,7 +1210,10 @@ impl ContextMenu {
                     }
                 });
             });
-        ContextMenuOutput { selected, rect: area.response.rect }
+        ContextMenuOutput {
+            selected,
+            rect: area.response.rect,
+        }
     }
 }
 
@@ -1089,7 +1242,12 @@ pub struct ToastOutput {
 
 impl<'a> Toast<'a> {
     pub fn new(id: &'a str, message: &'a str) -> Self {
-        Self { id, message, tone: ToastTone::Info, dismissible: false }
+        Self {
+            id,
+            message,
+            tone: ToastTone::Info,
+            dismissible: false,
+        }
     }
 
     pub fn tone(mut self, tone: ToastTone) -> Self {
@@ -1142,13 +1300,199 @@ impl<'a> Toast<'a> {
                             .selectable(false),
                         );
                         if self.dismissible
-                            && ui.add(IconButton::new(IconId::Close).tooltip("Dismiss")).clicked()
+                            && ui
+                                .add(IconButton::new(IconId::Close).tooltip("Dismiss"))
+                                .clicked()
                         {
                             dismissed = true;
                         }
                     });
                 });
             });
-        ToastOutput { dismissed, rect: area.response.rect }
+        ToastOutput {
+            dismissed,
+            rect: area.response.rect,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// TabBar
+// ---------------------------------------------------------------------------
+
+/// One tab in a [TabBar].
+///
+/// Plain data: the bar has no domain knowledge. The feature component maps its
+/// panel titles to items and maps the returned indices back to domain ids.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TabBarItem {
+    pub title: String,
+    /// When false the tab draws no close affordance and never reports
+    /// close_clicked for this index.
+    pub closable: bool,
+}
+
+impl TabBarItem {
+    pub fn new(title: impl Into<String>) -> Self {
+        Self {
+            title: title.into(),
+            closable: true,
+        }
+    }
+
+    pub fn closable(mut self, closable: bool) -> Self {
+        self.closable = closable;
+        self
+    }
+}
+
+/// Interaction data of one [TabBar] frame.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct TabBarOutput {
+    /// Index of the tab clicked by the user. None when nothing was clicked and
+    /// when the click landed on a close affordance (close must not also focus).
+    pub activated: Option<usize>,
+    /// Index of the tab whose close affordance was clicked.
+    pub close_clicked: Option<usize>,
+    /// Hit rects keyed by tab index (tests + host-side overlay anchoring).
+    pub tab_rects: Vec<(usize, Rect)>,
+    /// Hit rects of the close affordances keyed by tab index. Only closable tabs
+    /// contribute an entry.
+    pub close_rects: Vec<(usize, Rect)>,
+}
+
+/// Horizontal tab strip: the pure, themed compound used for panel tab bars.
+///
+/// The bar owns no persistent state: the active tab is passed in each frame
+/// (the feature component derives it from domain state) and interaction is
+/// returned as plain indices. The calling host owns the tab/title bar, so panel
+/// bodies must not repeat the title.
+///
+/// Interaction ids are derived from the parent Ui id, so two TabBars in the same
+/// Ui layout need distinct parent ids (docked panels get that for free). Tabs
+/// that exceed the available width are clipped by the host panel; an overflow
+/// menu is a caller-level extension, not part of this compound yet.
+pub struct TabBar {
+    items: Vec<TabBarItem>,
+    active: Option<usize>,
+}
+
+impl TabBar {
+    pub fn new(items: Vec<TabBarItem>) -> Self {
+        Self {
+            items,
+            active: None,
+        }
+    }
+
+    /// Mark tab index as active. An out-of-range index simply selects nothing.
+    pub fn active(mut self, index: usize) -> Self {
+        self.active = Some(index);
+        self
+    }
+
+    pub fn show(&mut self, ui: &mut Ui) -> TabBarOutput {
+        let theme = Theme::get(ui);
+        let mut output = TabBarOutput::default();
+
+        let bar_height = theme.row_height + theme.space_sm;
+        let (bar_rect, _) =
+            ui.allocate_exact_size(vec2(ui.available_width(), bar_height), Sense::hover());
+        ui.painter()
+            .rect_filled(bar_rect, CornerRadius::ZERO, theme.panel);
+        ui.painter().hline(
+            bar_rect.x_range(),
+            bar_rect.bottom(),
+            Stroke::new(1.0, theme.border),
+        );
+
+        let font = egui::FontId::proportional(theme.font_body);
+        let mut left = bar_rect.left();
+        for (index, item) in self.items.iter().enumerate() {
+            // Measure first so the tab can be sized before it is painted.
+            let text_width = ui
+                .painter()
+                .layout_no_wrap(item.title.clone(), font.clone(), theme.text)
+                .size()
+                .x;
+            let close_width = if item.closable {
+                theme.icon_sm + theme.space_xs
+            } else {
+                0.0
+            };
+            let tab_width = theme.space_md + text_width + theme.space_md + close_width;
+            let tab_rect = Rect::from_min_size(
+                pos2(left, bar_rect.top()),
+                vec2(tab_width, bar_rect.height()),
+            );
+
+            let tab_id = ui.make_persistent_id(("kairos-ui.tabbar.tab", index));
+            let response = ui.interact(tab_rect, tab_id, Sense::click());
+            let active = self.active == Some(index);
+
+            // Tab surface: active tabs get the panel body color plus an accent
+            // underline; hovered inactive tabs get the shared hover token.
+            if active {
+                ui.painter()
+                    .rect_filled(tab_rect, CornerRadius::ZERO, theme.bg);
+                ui.painter().hline(
+                    tab_rect.x_range(),
+                    tab_rect.bottom(),
+                    Stroke::new(2.0, theme.accent),
+                );
+            } else if response.hovered() {
+                ui.painter()
+                    .rect_filled(tab_rect, CornerRadius::ZERO, theme.hover_fill());
+            }
+            let text_color = if active || response.hovered() {
+                theme.text
+            } else {
+                theme.text_muted
+            };
+            paint_text(
+                ui,
+                pos2(tab_rect.left() + theme.space_md, tab_rect.center().y),
+                Align2::LEFT_CENTER,
+                &item.title,
+                theme.font_body,
+                text_color,
+            );
+
+            if item.closable {
+                let close_rect = Rect::from_center_size(
+                    pos2(
+                        tab_rect.right() - theme.space_sm - theme.icon_sm * 0.5,
+                        tab_rect.center().y,
+                    ),
+                    vec2(theme.icon_sm + theme.space_xs * 2.0, tab_rect.height()),
+                );
+                let close_id = ui.make_persistent_id(("kairos-ui.tabbar.close", index));
+                let close_response = ui.interact(close_rect, close_id, Sense::click());
+                let close_color = if close_response.hovered() {
+                    theme.text
+                } else {
+                    theme.text_muted
+                };
+                paint_glyph(
+                    ui,
+                    close_rect.center(),
+                    theme.icon(IconId::Close),
+                    theme.icon_sm,
+                    close_color,
+                );
+                if close_response.clicked() {
+                    output.close_clicked = Some(index);
+                }
+                output.close_rects.push((index, close_rect));
+            }
+
+            // A close click must never be reported as an activation as well.
+            if response.clicked() && output.close_clicked != Some(index) {
+                output.activated = Some(index);
+            }
+            output.tab_rects.push((index, tab_rect));
+            left += tab_width;
+        }
+        output
     }
 }

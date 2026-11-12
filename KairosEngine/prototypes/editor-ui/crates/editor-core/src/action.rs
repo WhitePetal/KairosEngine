@@ -6,6 +6,7 @@ use crate::document::{DocumentKind, EditData, MaterialData, SaveResult};
 use crate::effect::EffectTicket;
 use crate::modal::ConfirmDialog;
 use crate::state::{AssetEntry, AssetId, AssetKind, DocumentId, PanelId};
+use crate::viewport::{SceneObjectId, ViewportBindResult, ViewportId};
 
 /// Aggregate action: one routing enum instead of a 57-arm "Message" god-enum.
 #[derive(Clone, Debug, PartialEq)]
@@ -15,6 +16,7 @@ pub enum Action {
     Document(DocumentAction),
     Layout(LayoutAction),
     Modal(ModalAction),
+    Viewport(ViewportAction),
     App(AppAction),
 }
 
@@ -114,10 +116,17 @@ pub enum DocumentAction {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum LayoutAction {
+    /// Show/hide the panel. Closing a viewport panel also destroys its render
+    /// target (cross-slice rule owned by the layout reducer).
     TogglePanel {
         panel: PanelId,
     },
     ShowPanel {
+        panel: PanelId,
+    },
+    /// Explicit close, used by panel chrome (tab close button). Unlike
+    /// `TogglePanel` it is idempotent and never opens a panel by accident.
+    ClosePanel {
         panel: PanelId,
     },
     FocusPanel {
@@ -125,6 +134,49 @@ pub enum LayoutAction {
     },
     /// Ask the host to persist the current layout data.
     PersistLayout,
+}
+
+/// Intents produced by a viewport panel.
+///
+/// The panel only observes egui input and the size it was given; it never sees
+/// the camera, the wgpu texture, or the engine world. The host turns these into
+/// camera/pick work in the explicit frame phases (see the app shell).
+#[derive(Clone, Debug, PartialEq)]
+pub enum ViewportAction {
+    /// The panel is visible and laid out at `width` x `height` physical pixels.
+    /// Idempotent: the reducer only acts when the size differs from the recorded
+    /// one, or when the viewport has not been bound yet.
+    Ensure {
+        viewport: ViewportId,
+        width: u32,
+        height: u32,
+    },
+    /// Orbit the camera by a delta in radians, `[yaw, pitch]`.
+    Orbit {
+        viewport: ViewportId,
+        delta: [f32; 2],
+    },
+    /// Pan the camera by a delta normalized to the viewport height.
+    Pan {
+        viewport: ViewportId,
+        delta: [f32; 2],
+    },
+    /// Zoom by a unitless delta; positive zooms in.
+    Zoom { viewport: ViewportId, delta: f32 },
+    /// Click-to-pick at normalized device coordinates in [-1, 1], y up.
+    Pick { viewport: ViewportId, ndc: [f32; 2] },
+    /// Host completion for an `Effect::CreateViewport` request.
+    BindCompleted {
+        viewport: ViewportId,
+        ticket: EffectTicket,
+        result: ViewportBindResult,
+    },
+    /// Host completion for an `Effect::PickViewport` request.
+    PickCompleted {
+        viewport: ViewportId,
+        ticket: EffectTicket,
+        object: Option<SceneObjectId>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -31,7 +31,11 @@ fn all_atoms_render_without_panic() {
             ui.add(Button::new("Ghost").variant(ButtonVariant::Ghost).small());
             ui.add(Button::danger("Delete"));
             ui.add(Button::new("Disabled").enabled(false));
-            ui.add(IconButton::new(IconId::Settings).tooltip("Settings").active(true));
+            ui.add(
+                IconButton::new(IconId::Settings)
+                    .tooltip("Settings")
+                    .active(true),
+            );
             ui.add(IconButton::new(IconId::Trash).enabled(false));
             changed = ui.add(Checkbox::new(true, "Metallic")).clicked();
             let mut text = "crate.material".to_owned();
@@ -39,7 +43,11 @@ fn all_atoms_render_without_panic() {
             let mut roughness = 0.4f32;
             ui.add(SliderRow::new("Roughness", &mut roughness, 0.0..=1.0));
             let mut count = 3.0f64;
-            ui.add(NumberRow::new("Count", &mut count).range(0.0..=10.0).suffix("px"));
+            ui.add(
+                NumberRow::new("Count", &mut count)
+                    .range(0.0..=10.0)
+                    .suffix("px"),
+            );
             let options = ["Low", "Medium", "High"];
             ui.add(ComboSelect::new(&options, &mut selected));
             ui.add(ColorSwatch::new(Color32::from_rgb(200, 120, 60)));
@@ -75,7 +83,11 @@ fn primary_button_click_reports_clicked() {
             *clicked.borrow_mut() = ui.add(Button::primary("Save")).clicked();
         });
     }
-    assert!(*clicked.borrow(), "click should be reported in the release pass (passes={})", harness.passes);
+    assert!(
+        *clicked.borrow(),
+        "click should be reported in the release pass (passes={})",
+        harness.passes
+    );
 }
 
 #[test]
@@ -117,7 +129,10 @@ fn checkbox_click_is_reported() {
             *clicked.borrow_mut() = ui.add(Checkbox::new(true, "Metallic")).clicked();
         });
     }
-    assert!(*clicked.borrow(), "checkbox should report a click so the caller can toggle the domain value");
+    assert!(
+        *clicked.borrow(),
+        "checkbox should report a click so the caller can toggle the domain value"
+    );
 }
 
 #[test]
@@ -147,7 +162,10 @@ fn text_input_accepts_synthetic_typing() {
     harness.type_text("hero", &mut draw);
 
     assert_eq!(&*buffer.borrow(), "hero");
-    assert!(*changed.borrow(), "TextInput response should report changed after typing");
+    assert!(
+        *changed.borrow(),
+        "TextInput response should report changed after typing"
+    );
 }
 
 struct TestIcons;
@@ -162,16 +180,25 @@ static TEST_ICONS: TestIcons = TestIcons;
 
 #[test]
 fn icon_provider_is_swappable() {
-    let custom = Theme { icons: &TEST_ICONS, ..Theme::dark() };
+    let custom = Theme {
+        icons: &TEST_ICONS,
+        ..Theme::dark()
+    };
     assert_eq!(custom.icon(IconId::Folder), "X");
     let default = Theme::dark();
-    assert_eq!(default.icon(IconId::Folder), GlyphIcons.glyph(IconId::Folder));
+    assert_eq!(
+        default.icon(IconId::Folder),
+        GlyphIcons.glyph(IconId::Folder)
+    );
 }
 
 #[test]
 fn theme_is_installed_into_context_data() {
     let mut harness = Harness::default();
-    let custom = Theme { accent: Color32::from_rgb(255, 0, 0), ..Theme::dark() };
+    let custom = Theme {
+        accent: Color32::from_rgb(255, 0, 0),
+        ..Theme::dark()
+    };
     custom.install(&harness.ctx);
 
     let seen = Rc::new(RefCell::new(None));
@@ -181,7 +208,9 @@ fn theme_is_installed_into_context_data() {
             *seen.borrow_mut() = Some(Theme::get(ui));
         });
     }
-    let seen = seen.borrow().expect("frame should read the installed theme");
+    let seen = seen
+        .borrow()
+        .expect("frame should read the installed theme");
     assert_eq!(seen.accent, Color32::from_rgb(255, 0, 0));
 }
 

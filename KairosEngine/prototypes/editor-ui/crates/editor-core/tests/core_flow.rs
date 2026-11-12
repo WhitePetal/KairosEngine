@@ -75,20 +75,20 @@ fn load_ticket(effects: &[Effect]) -> EffectTicket {
 fn selecting_asset_focuses_inspector_and_starts_load() {
     let mut app = app_with_assets();
     app.dispatch(Action::Layout(LayoutAction::TogglePanel {
-        panel: PanelId::Inspector,
+        panel: PanelId::INSPECTOR,
     }));
-    assert!(!app.state.layout.is_open(PanelId::Inspector));
+    assert!(!app.state.layout.is_open(PanelId::INSPECTOR));
 
     let effects = app.dispatch(Action::Selection(SelectionAction::SelectAsset {
         asset: AssetId(1),
     }));
 
     assert_eq!(app.state.selection.selected_asset, Some(AssetId(1)));
-    assert_eq!(app.state.layout.focus, PanelId::Inspector);
-    assert!(app.state.layout.is_open(PanelId::Inspector));
+    assert_eq!(app.state.layout.focus, PanelId::INSPECTOR);
+    assert!(app.state.layout.is_open(PanelId::INSPECTOR));
     assert!(app.state.project.loading_assets.contains(&AssetId(1)));
     assert!(effects.contains(&Effect::FocusPanel {
-        panel: PanelId::Inspector
+        panel: PanelId::INSPECTOR
     }));
 
     let ticket = load_ticket(&effects);
@@ -398,17 +398,17 @@ fn quitting_with_unsaved_changes_requires_confirmation() {
 #[test]
 fn layout_toggle_and_persist_are_state_plus_effects() {
     let mut app = App::new();
-    assert!(app.state.layout.is_open(PanelId::Console));
+    assert!(app.state.layout.is_open(PanelId::CONSOLE));
 
     app.dispatch(Action::Layout(LayoutAction::TogglePanel {
-        panel: PanelId::Console,
+        panel: PanelId::CONSOLE,
     }));
-    assert!(!app.state.layout.is_open(PanelId::Console));
+    assert!(!app.state.layout.is_open(PanelId::CONSOLE));
 
     let effects = app.dispatch(Action::Layout(LayoutAction::PersistLayout));
     match &effects[0] {
         Effect::PersistLayout { layout } => {
-            assert!(!layout.is_open(PanelId::Console));
+            assert!(!layout.is_open(PanelId::CONSOLE));
             assert_eq!(layout.focus, app.state.layout.focus);
         }
         other => panic!("unexpected effect: {other:?}"),
@@ -458,7 +458,10 @@ fn demo_project_has_nested_paths_and_stable_ids() {
         asset.path == "assets/models/crate.material" && asset.kind == AssetKind::Material
     }));
     assert!(
-        state.assets.iter().all(|asset| asset.path.starts_with("assets/")),
+        state
+            .assets
+            .iter()
+            .all(|asset| asset.path.starts_with("assets/")),
         "demo paths are nested so the view can derive folders"
     );
 }
@@ -476,9 +479,13 @@ fn create_asset_adds_row_and_requests_persist() {
         kind: AssetKind::Folder,
     }));
     assert_eq!(effects, vec![Effect::PersistProject]);
-    assert!(app.state.project.assets.iter().any(|asset| {
-        asset.path == "imports" && asset.kind == AssetKind::Folder
-    }));
+    assert!(
+        app.state
+            .project
+            .assets
+            .iter()
+            .any(|asset| { asset.path == "imports" && asset.kind == AssetKind::Folder })
+    );
     assert_eq!(app.state.project.next_asset_id(), AssetId(10));
 
     // Duplicate paths are rejected instead of creating ambiguous rows.
@@ -507,7 +514,10 @@ fn create_asset_under_existing_folder_asset() {
         kind: AssetKind::Folder,
     }));
     assert_eq!(
-        app.state.project.asset(AssetId(2)).map(|asset| asset.path.as_str()),
+        app.state
+            .project
+            .asset(AssetId(2))
+            .map(|asset| asset.path.as_str()),
         Some("assets/new_folder")
     );
 
@@ -519,7 +529,10 @@ fn create_asset_under_existing_folder_asset() {
     }));
     assert_eq!(effects, vec![Effect::PersistProject]);
     assert_eq!(
-        app.state.project.asset(AssetId(3)).map(|asset| asset.path.as_str()),
+        app.state
+            .project
+            .asset(AssetId(3))
+            .map(|asset| asset.path.as_str()),
         Some("assets/new_folder/child")
     );
 }
@@ -567,11 +580,17 @@ fn rename_folder_rewrites_descendant_paths() {
     }));
     assert_eq!(effects, vec![Effect::PersistProject]);
     assert_eq!(
-        app.state.project.asset(AssetId(1)).map(|asset| asset.path.as_str()),
+        app.state
+            .project
+            .asset(AssetId(1))
+            .map(|asset| asset.path.as_str()),
         Some("assets/meshes")
     );
     assert_eq!(
-        app.state.project.asset(AssetId(2)).map(|asset| asset.path.as_str()),
+        app.state
+            .project
+            .asset(AssetId(2))
+            .map(|asset| asset.path.as_str()),
         Some("assets/meshes/hero.scene"),
         "descendants are rewritten so the path-derived tree stays consistent"
     );
@@ -593,4 +612,3 @@ fn documents_demo_helpers_create_material_and_text_docs() {
         Some(EditData::Toml(_))
     ));
 }
-

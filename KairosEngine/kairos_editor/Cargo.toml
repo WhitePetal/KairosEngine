@@ -7,7 +7,7 @@ license.workspace = true
 # engine subsystem. It owns the window, the UI, and the project browser; the
 # engine owns the ECS, rendering, physics, and audio it drives.
 description = "The Kairos editor: the host and authoring tool built on the Kairos engine"
-default-run = "kairos_editor"
+# default-run = "kairos_editor"
 
 [features]
 default = ["debug", "trace"]

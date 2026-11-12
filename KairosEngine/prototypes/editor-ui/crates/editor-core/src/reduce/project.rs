@@ -33,7 +33,9 @@ pub fn reduce(state: &mut EditorState, action: ProjectAction) -> Vec<Effect> {
             state.project.preview_ready.insert(asset);
             Vec::new()
         }
-        ProjectAction::CreateAsset { parent, name, kind } => create_asset(state, parent, name, kind),
+        ProjectAction::CreateAsset { parent, name, kind } => {
+            create_asset(state, parent, name, kind)
+        }
         ProjectAction::DeleteAsset { asset } => delete_asset(state, asset),
         ProjectAction::RenameAsset { asset, name } => rename_asset(state, asset, name),
     }

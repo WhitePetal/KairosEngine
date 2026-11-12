@@ -37,11 +37,11 @@ fn select_asset(state: &mut EditorState, asset: AssetId) -> Vec<Effect> {
     let ticket = state.begin_request(RequestKind::LoadAsset { asset });
     state.selection.selected_asset = Some(asset);
     state.project.loading_assets.insert(asset);
-    state.layout.open(PanelId::Inspector);
-    state.layout.focus = PanelId::Inspector;
+    state.layout.open(PanelId::INSPECTOR);
+    state.layout.focus = PanelId::INSPECTOR;
     vec![
         Effect::FocusPanel {
-            panel: PanelId::Inspector,
+            panel: PanelId::INSPECTOR,
         },
         Effect::LoadAsset {
             ticket,

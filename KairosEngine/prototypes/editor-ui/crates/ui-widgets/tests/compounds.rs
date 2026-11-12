@@ -23,10 +23,14 @@ fn themed_harness() -> Harness {
 fn all_compounds_render_without_panic() {
     let mut harness = themed_harness();
     harness.frame(Vec::new(), |ui| {
-        let mut chrome = PanelChrome::new("Project").closable(true).toolbar(Toolbar::new(vec![
-            ToolbarItem::button("new").icon(IconId::Plus).tooltip("New"),
-            ToolbarItem::toggle("select", true).icon(IconId::Dot).tooltip("Select tool"),
-        ]));
+        let mut chrome = PanelChrome::new("Project")
+            .closable(true)
+            .toolbar(Toolbar::new(vec![
+                ToolbarItem::button("new").icon(IconId::Plus).tooltip("New"),
+                ToolbarItem::toggle("select", true)
+                    .icon(IconId::Dot)
+                    .tooltip("Select tool"),
+            ]));
         let mut search_text = String::new();
         chrome.show(ui, |ui| {
             let mut search = SearchBox::new("Search assets");
@@ -36,14 +40,25 @@ fn all_compounds_render_without_panic() {
             crumbs.show(ui);
 
             let mut tree = TreeView::new("smoke").rows(vec![
-                TreeRow::new(1, "assets").expander(Expander::Expanded).icon(IconId::FolderOpen),
-                TreeRow::new(2, "models").indent(1).expander(Expander::Collapsed).icon(IconId::Folder),
-                TreeRow::new(3, "hero.scene").indent(2).icon(IconId::Scene).selected(true).suffix("1.2 KB"),
+                TreeRow::new(1, "assets")
+                    .expander(Expander::Expanded)
+                    .icon(IconId::FolderOpen),
+                TreeRow::new(2, "models")
+                    .indent(1)
+                    .expander(Expander::Collapsed)
+                    .icon(IconId::Folder),
+                TreeRow::new(3, "hero.scene")
+                    .indent(2)
+                    .icon(IconId::Scene)
+                    .selected(true)
+                    .suffix("1.2 KB"),
                 TreeRow::new(4, "locked.material").indent(2).disabled(true),
             ]);
             tree.show(ui);
 
-            let mut list_item = ListItem::new("crate.material").icon(IconId::Material).suffix("meta");
+            let mut list_item = ListItem::new("crate.material")
+                .icon(IconId::Material)
+                .suffix("meta");
             list_item.show(ui);
 
             let mut row = PropertyRow::new("Roughness").reset_enabled(true);
@@ -73,7 +88,9 @@ fn all_compounds_render_without_panic() {
         ]);
         menu.show(ui);
 
-        let mut toast = Toast::new("saved", "Document saved").tone(ToastTone::Success).dismissible(true);
+        let mut toast = Toast::new("saved", "Document saved")
+            .tone(ToastTone::Success)
+            .dismissible(true);
         toast.show(ui);
     });
 }
@@ -103,7 +120,11 @@ fn tree_click_reports_row_id() {
         .expect("row 2 must have a hit rect");
     harness.click(row_rect.center(), &mut draw);
     let output = output.borrow().clone();
-    assert_eq!(output.clicked, Some(2), "clicked row id should reach the feature component");
+    assert_eq!(
+        output.clicked,
+        Some(2),
+        "clicked row id should reach the feature component"
+    );
     assert_eq!(output.double_clicked, None);
 }
 
@@ -128,7 +149,10 @@ fn tree_expander_click_is_a_view_toggle_not_a_row_click() {
     harness.click(expander_pos, &mut draw);
     let output = output.borrow().clone();
     assert_eq!(output.expander_toggled, Some(1));
-    assert_eq!(output.clicked, None, "expander toggle must not be reported as a row selection");
+    assert_eq!(
+        output.clicked, None,
+        "expander toggle must not be reported as a row selection"
+    );
 }
 
 #[test]
@@ -139,8 +163,12 @@ fn toolbar_click_reports_item_id() {
         let output = output.clone();
         move |ui: &mut Ui| {
             let mut toolbar = Toolbar::new(vec![
-                ToolbarItem::button("save").icon(IconId::Save).tooltip("Save"),
-                ToolbarItem::button("revert").icon(IconId::Revert).tooltip("Revert"),
+                ToolbarItem::button("save")
+                    .icon(IconId::Save)
+                    .tooltip("Save"),
+                ToolbarItem::button("revert")
+                    .icon(IconId::Revert)
+                    .tooltip("Revert"),
             ]);
             *output.borrow_mut() = toolbar.show(ui);
         }
@@ -166,7 +194,8 @@ fn confirm_dialog_buttons_are_clickable() {
     let mut draw = {
         let output = output.clone();
         move |ui: &mut Ui| {
-            let mut dialog = ConfirmDialog::new("Discard changes?", "Unsaved changes will be lost.");
+            let mut dialog =
+                ConfirmDialog::new("Discard changes?", "Unsaved changes will be lost.");
             *output.borrow_mut() = dialog.show(ui);
         }
     };
@@ -177,7 +206,10 @@ fn confirm_dialog_buttons_are_clickable() {
     harness.frame(Vec::new(), &mut draw);
     harness.frame(Vec::new(), &mut draw);
     let confirm_rect = output.borrow().confirm_rect;
-    assert!(confirm_rect.is_positive(), "dialog must lay out its confirm button");
+    assert!(
+        confirm_rect.is_positive(),
+        "dialog must lay out its confirm button"
+    );
     harness.click(confirm_rect.center(), &mut draw);
     let output = output.borrow().clone();
     assert!(output.confirm, "confirm click should be reported as data");

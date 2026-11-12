@@ -441,7 +441,7 @@ impl Default for OverlayStyle {
             hovered_leaf_highlight: Default::default(),
             button_color: Color32::from_gray(140),
             button_border_stroke: Stroke::new(1.0, Color32::from_gray(60)),
-            overlay_type: OverlayType::Widgets,
+            overlay_type: OverlayType::HighlightedAreas,
             feel: Default::default(),
         }
     }

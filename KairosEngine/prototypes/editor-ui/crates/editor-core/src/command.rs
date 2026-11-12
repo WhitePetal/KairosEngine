@@ -89,7 +89,7 @@ impl CommandRegistry {
                     label: "Toggle Inspector",
                     shortcut: Some("Ctrl+I"),
                     action: Action::Layout(LayoutAction::TogglePanel {
-                        panel: PanelId::Inspector,
+                        panel: PanelId::INSPECTOR,
                     }),
                     enabled: always,
                 },
@@ -98,7 +98,7 @@ impl CommandRegistry {
                     label: "Toggle Console",
                     shortcut: Some("Ctrl+Shift+C"),
                     action: Action::Layout(LayoutAction::TogglePanel {
-                        panel: PanelId::Console,
+                        panel: PanelId::CONSOLE,
                     }),
                     enabled: always,
                 },

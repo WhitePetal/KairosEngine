@@ -26,9 +26,11 @@ pub mod effect;
 pub mod modal;
 pub mod reduce;
 pub mod state;
+pub mod viewport;
 
 pub use action::{
     Action, AppAction, DocumentAction, LayoutAction, ModalAction, ProjectAction, SelectionAction,
+    ViewportAction,
 };
 pub use command::{Command, CommandId, CommandRegistry};
 pub use document::{
@@ -39,6 +41,9 @@ pub use modal::{ConfirmDialog, Modal, ModalState};
 pub use state::{
     AssetEntry, AssetId, AssetKind, DocumentId, DocumentsState, EditorState, LayoutState, PanelId,
     ProjectState, SelectionState,
+};
+pub use viewport::{
+    CameraInput, SceneObjectId, ViewportBindResult, ViewportId, ViewportInfo, ViewportState,
 };
 
 /// Thin host around the core: owns the state tree, the command registry and the
@@ -123,6 +128,29 @@ impl App {
             (RequestKind::SpawnPreview { asset }, EffectOutcome::PreviewSpawned) => {
                 Action::Project(ProjectAction::PreviewSpawned { asset })
             }
+            (RequestKind::BindViewport { viewport }, EffectOutcome::ViewportBound) => {
+                Action::Viewport(ViewportAction::BindCompleted {
+                    viewport,
+                    ticket,
+                    result: ViewportBindResult::Ok,
+                })
+            }
+            (
+                RequestKind::BindViewport { viewport },
+                EffectOutcome::ViewportBindFailed { error },
+            ) => Action::Viewport(ViewportAction::BindCompleted {
+                viewport,
+                ticket,
+                result: ViewportBindResult::Failed { error },
+            }),
+            (
+                RequestKind::PickSceneObject { viewport },
+                EffectOutcome::SceneObjectPicked { object },
+            ) => Action::Viewport(ViewportAction::PickCompleted {
+                viewport,
+                ticket,
+                object,
+            }),
             // Ticket/outcome mismatch: host contract violation, ignore it.
             _ => return Vec::new(),
         };

@@ -9,6 +9,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::document::{Document, DocumentKind, EditData, MaterialData};
 use crate::effect::{EffectTicket, RequestKind};
 use crate::modal::ModalState;
+use crate::viewport::{SceneObjectId, ViewportState};
 
 /// Stable id of an asset entry. Plain data, copyable, hashable.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -18,16 +19,24 @@ pub struct AssetId(pub u64);
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct DocumentId(pub u64);
 
-/// Logical panels. Layout state is data, the dock tree is an implementation
-/// detail of the future host layer.
+/// Stable identity of a logical panel *kind*.
+///
+/// Deliberately a string newtype and **not** a closed enum: panel kinds are
+/// contributed by feature modules (project, inspector, viewport, console,
+/// gallery, game, preferences, plugin panels, ...). Adding one must not edit
+/// `editor-core` or `EditorApp`; the reducer treats the id as opaque data
+/// (open/focus sets) and the UI registers a factory under it. Re-exported by
+/// `editor-components` so panels share the same id vocabulary as the store.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum PanelId {
-    Hierarchy,
-    Inspector,
-    Viewport,
-    Console,
-    AssetBrowser,
-    Preferences,
+pub struct PanelId(pub &'static str);
+
+impl PanelId {
+    pub const PROJECT: Self = Self("project");
+    pub const INSPECTOR: Self = Self("inspector");
+    pub const VIEWPORT: Self = Self("viewport");
+    pub const CONSOLE: Self = Self("console");
+    pub const ASSET_BROWSER: Self = Self("asset-browser");
+    pub const PREFERENCES: Self = Self("preferences");
 }
 
 /// Asset kind as understood by the editor core (no platform file handles).
@@ -72,7 +81,14 @@ impl ProjectState {
     /// Next free asset id. The real scanner owns ids; reducers in this prototype
     /// allocate deterministically so create-asset stays a pure function.
     pub fn next_asset_id(&self) -> AssetId {
-        AssetId(self.assets.iter().map(|asset| asset.id.0).max().unwrap_or(0) + 1)
+        AssetId(
+            self.assets
+                .iter()
+                .map(|asset| asset.id.0)
+                .max()
+                .unwrap_or(0)
+                + 1,
+        )
     }
 
     /// Demo project for the merged view prototype: nested-ish asset paths so the
@@ -97,7 +113,10 @@ impl ProjectState {
             kind,
         })
         .collect();
-        Self { assets, ..Self::default() }
+        Self {
+            assets,
+            ..Self::default()
+        }
     }
 }
 
@@ -107,6 +126,8 @@ impl ProjectState {
 pub struct SelectionState {
     pub selected_asset: Option<AssetId>,
     pub active_document: Option<DocumentId>,
+    /// Scene object picked in the viewport (prototype stand-in for an entity).
+    pub selected_scene_object: Option<SceneObjectId>,
 }
 
 /// Open documents, keyed by id.
@@ -185,14 +206,14 @@ impl Default for LayoutState {
     fn default() -> Self {
         Self {
             open_panels: [
-                PanelId::Hierarchy,
-                PanelId::Inspector,
-                PanelId::Viewport,
-                PanelId::Console,
+                PanelId::PROJECT,
+                PanelId::INSPECTOR,
+                PanelId::VIEWPORT,
+                PanelId::CONSOLE,
             ]
             .into_iter()
             .collect(),
-            focus: PanelId::Viewport,
+            focus: PanelId::VIEWPORT,
         }
     }
 }
@@ -214,7 +235,7 @@ impl LayoutState {
                 .iter()
                 .next()
                 .copied()
-                .unwrap_or(PanelId::Viewport);
+                .unwrap_or(PanelId::VIEWPORT);
         }
     }
 }
@@ -227,6 +248,9 @@ pub struct EditorState {
     pub documents: DocumentsState,
     pub layout: LayoutState,
     pub modal: ModalState,
+    /// Viewports the editor knows about; GPU state and camera pose stay on the
+    /// host (see [`crate::viewport`]).
+    pub viewports: ViewportState,
     /// Host requests that have been emitted but not completed yet. This is what
     /// lets `App::complete` route an async completion back to an `Action`.
     pub inflight: BTreeMap<EffectTicket, RequestKind>,
@@ -241,6 +265,7 @@ impl Default for EditorState {
             documents: DocumentsState::default(),
             layout: LayoutState::default(),
             modal: ModalState::default(),
+            viewports: ViewportState::default(),
             inflight: BTreeMap::new(),
             next_ticket: EffectTicket(0),
         }

@@ -188,7 +188,7 @@ impl DragDropState {
             );
             let window_drop_rect = Rect::from_center_size(
                 Pos2::ZERO,
-                Vec2::splat(style.overlay.feel.center_drop_coverage),
+                Vec2::splat(style.overlay.feel.window_drop_coverage),
             );
 
             // Find out what kind of tab insertion (if any) should be used to move this widget.

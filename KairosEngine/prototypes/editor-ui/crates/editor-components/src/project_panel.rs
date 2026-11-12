@@ -16,11 +16,12 @@ use editor_core_prototype::{
 };
 use egui::{Pos2, Rect, Ui};
 use ui_widgets_prototype::{
-    Breadcrumb, Expander, IconId, PanelChrome, SearchBox, StatusBar, Toolbar, ToolbarItem,
-    ToolbarOutput, TreeOutput, TreeRow, TreeView,
+    Breadcrumb, Expander, IconId, SearchBox, StatusBar, Toolbar, ToolbarItem, ToolbarOutput,
+    TreeOutput, TreeRow, TreeView,
 };
 
 use crate::frame::{Frame, UiOut};
+use crate::panel::Panel;
 
 /// UI-only state of the project panel.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -34,7 +35,10 @@ pub struct ProjectViewState {
 impl ProjectViewState {
     /// Expand every folder derivable from the project's asset paths.
     pub fn expanded_all(project: &ProjectState) -> Self {
-        Self { search: String::new(), expanded: folder_paths(project) }
+        Self {
+            search: String::new(),
+            expanded: folder_paths(project),
+        }
     }
 }
 
@@ -69,19 +73,18 @@ impl ProjectPanel {
 
     /// Demo/tests: start with every derived folder expanded.
     pub fn expanded(project: &ProjectState) -> Self {
-        Self { view: ProjectViewState::expanded_all(project) }
+        Self {
+            view: ProjectViewState::expanded_all(project),
+        }
     }
 
-    pub fn show(
-        &mut self,
-        ui: &mut Ui,
-        frame: &Frame,
-        out: &mut UiOut,
-    ) -> ProjectPanelOutput {
+    pub fn show(&mut self, ui: &mut Ui, frame: &Frame, out: &mut UiOut) -> ProjectPanelOutput {
         let state = frame.state;
         let mut panel = ProjectPanelOutput::default();
 
-        let toolbar = Toolbar::new(vec![
+        // The host owns the tab/title bar (see crate::panel::Panel), so the body
+        // starts with the panel toolbar instead of a PanelChrome title header.
+        let mut toolbar = Toolbar::new(vec![
             ToolbarItem::button("create-folder")
                 .icon(IconId::Plus)
                 .tooltip("New folder"),
@@ -93,7 +96,13 @@ impl ProjectPanel {
                 .icon(IconId::Settings)
                 .tooltip("Focus inspector"),
         ]);
-        let mut chrome = PanelChrome::new("Project").toolbar(toolbar);
+        let toolbar_output = toolbar.show(ui);
+        panel.toolbar_rects = toolbar_output.rects.clone();
+        out.extend(actions_from_toolbar(
+            &state.project,
+            state.selection.selected_asset,
+            &toolbar_output,
+        ));
 
         let segments: Vec<&str> = match state
             .selection
@@ -107,54 +116,56 @@ impl ProjectPanel {
         let expanded = self.view.expanded.clone();
         let selected = state.selection.selected_asset;
 
-        let chrome_output = chrome.show(ui, |ui| {
-            let mut search = SearchBox::new("Search assets");
-            search.show(ui, &mut self.view.search);
+        let mut search = SearchBox::new("Search assets");
+        search.show(ui, &mut self.view.search);
 
-            if !segments.is_empty() {
-                let mut crumbs = Breadcrumb::new(segments.clone());
-                crumbs.show(ui);
-            }
-
-            let mut tree = TreeView::new("project-tree").rows(tree_rows(&nodes, &expanded, selected));
-            let tree_output = tree.show(ui);
-            panel.row_rects = tree_output.row_rects.clone();
-
-            // Folder expand/collapse is *view* state, never a domain action.
-            let toggle = tree_output.expander_toggled.or(tree_output.clicked);
-            if let Some(id) = toggle {
-                if let Some(node) = nodes.iter().find(|node| row_id(&node.path) == id) {
-                    if node.is_folder {
-                        if !self.view.expanded.remove(&node.path) {
-                            self.view.expanded.insert(node.path.clone());
-                        }
-                    }
-                }
-            }
-            if let Some(id) = tree_output.context_menu {
-                panel.context_menu = tree_output.context_menu_pos.map(|pos| (id, pos));
-            }
-
-            out.extend(actions_from_tree(&nodes, &tree_output));
-
-            let left = format!("{} assets", state.project.assets.len());
-            let right = match selected.and_then(|id| state.project.asset(id)) {
-                Some(asset) => format!("selected: {}", asset.path),
-                None => "nothing selected".to_owned(),
-            };
-            let mut status = StatusBar::new(&left, &right);
-            status.show(ui);
-        });
-
-        if let Some(toolbar_output) = &chrome_output.toolbar {
-            panel.toolbar_rects = toolbar_output.rects.clone();
-            out.extend(actions_from_toolbar(
-                &state.project,
-                state.selection.selected_asset,
-                toolbar_output,
-            ));
+        if !segments.is_empty() {
+            let mut crumbs = Breadcrumb::new(segments.clone());
+            crumbs.show(ui);
         }
+
+        let mut tree = TreeView::new("project-tree").rows(tree_rows(&nodes, &expanded, selected));
+        let tree_output = tree.show(ui);
+        panel.row_rects = tree_output.row_rects.clone();
+
+        // Folder expand/collapse is *view* state, never a domain action.
+        let toggle = tree_output.expander_toggled.or(tree_output.clicked);
+        if let Some(id) = toggle
+            && let Some(node) = nodes.iter().find(|node| row_id(&node.path) == id)
+            && node.is_folder
+            && !self.view.expanded.remove(&node.path)
+        {
+            self.view.expanded.insert(node.path.clone());
+        }
+        if let Some(id) = tree_output.context_menu {
+            panel.context_menu = tree_output.context_menu_pos.map(|pos| (id, pos));
+        }
+
+        out.extend(actions_from_tree(&nodes, &tree_output));
+
+        let left = format!("{} assets", state.project.assets.len());
+        let right = match selected.and_then(|id| state.project.asset(id)) {
+            Some(asset) => format!("selected: {}", asset.path),
+            None => "nothing selected".to_owned(),
+        };
+        let mut status = StatusBar::new(&left, &right);
+        status.show(ui);
         panel
+    }
+}
+
+impl Panel for ProjectPanel {
+    fn kind(&self) -> PanelId {
+        PanelId::PROJECT
+    }
+
+    fn title(&self, _frame: &Frame) -> String {
+        "Project".to_owned()
+    }
+
+    /// Draw the body only: the host tab bar already shows the title.
+    fn draw(&mut self, ui: &mut Ui, frame: &Frame, out: &mut UiOut) {
+        let _ = self.show(ui, frame, out);
     }
 }
 
@@ -222,9 +233,7 @@ pub fn project_nodes(project: &ProjectState, view: &ProjectViewState) -> Vec<Pro
 
     let query = view.search.trim().to_ascii_lowercase();
     let mut nodes = Vec::new();
-    walk(
-        &children, &entries, "", 0, view, &query, &mut nodes,
-    );
+    walk(&children, &entries, "", 0, view, &query, &mut nodes);
     nodes
 }
 
@@ -288,7 +297,11 @@ fn name_of(path: &str) -> &str {
 
 fn icon_for(kind: Option<AssetKind>, is_folder: bool, expanded: bool) -> IconId {
     if is_folder {
-        return if expanded { IconId::FolderOpen } else { IconId::Folder };
+        return if expanded {
+            IconId::FolderOpen
+        } else {
+            IconId::Folder
+        };
     }
     match kind {
         Some(AssetKind::Texture) => IconId::Texture,
@@ -350,21 +363,18 @@ pub fn actions_from_tree(nodes: &[ProjectNode], output: &TreeOutput) -> Vec<Acti
     let mut actions = Vec::new();
     let find = |id: u64| nodes.iter().find(|node| row_id(&node.path) == id);
 
-    if let Some(id) = output.clicked {
-        if let Some(node) = find(id) {
-            if let Some(asset) = node.asset.filter(|_| !node.is_folder) {
-                actions.push(Action::Selection(SelectionAction::SelectAsset { asset }));
-            }
-        }
+    if let Some(id) = output.clicked
+        && let Some(node) = find(id)
+        && let Some(asset) = node.asset.filter(|_| !node.is_folder)
+    {
+        actions.push(Action::Selection(SelectionAction::SelectAsset { asset }));
     }
-    if let Some(id) = output.double_clicked {
-        if let Some(node) = find(id) {
-            if !node.is_folder {
-                if let Some(action) = open_action(&node.path, node.kind) {
-                    actions.push(action);
-                }
-            }
-        }
+    if let Some(id) = output.double_clicked
+        && let Some(node) = find(id)
+        && !node.is_folder
+        && let Some(action) = open_action(&node.path, node.kind)
+    {
+        actions.push(action);
     }
     actions
 }
@@ -409,7 +419,7 @@ pub fn actions_from_toolbar(
             .map(|asset| vec![Action::Project(ProjectAction::DeleteAsset { asset })])
             .unwrap_or_default(),
         Some("focus-inspector") => vec![Action::Layout(LayoutAction::FocusPanel {
-            panel: PanelId::Inspector,
+            panel: PanelId::INSPECTOR,
         })],
         _ => Vec::new(),
     }

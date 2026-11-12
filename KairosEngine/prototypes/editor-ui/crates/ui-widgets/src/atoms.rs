@@ -149,7 +149,11 @@ impl<'a> IconButton<'a> {
     }
 
     pub fn tooltip(mut self, tooltip: &'a str) -> Self {
-        self.tooltip = if tooltip.is_empty() { None } else { Some(tooltip) };
+        self.tooltip = if tooltip.is_empty() {
+            None
+        } else {
+            Some(tooltip)
+        };
         self
     }
 
@@ -174,12 +178,17 @@ impl Widget for IconButton<'_> {
         } else {
             theme.text
         };
-        let text = RichText::new(theme.icon(self.icon)).size(theme.icon_md).color(fg);
+        let text = RichText::new(theme.icon(self.icon))
+            .size(theme.icon_md)
+            .color(fg);
         let mut button = egui::Button::new(text)
             .min_size(vec2(theme.row_height, theme.row_height))
             .corner_radius(theme.radius_sm);
         button = if self.active {
-            button.frame(true).fill(theme.active_fill()).stroke(Stroke::NONE)
+            button
+                .frame(true)
+                .fill(theme.active_fill())
+                .stroke(Stroke::NONE)
         } else {
             button.frame(false)
         };
@@ -202,7 +211,11 @@ pub struct Checkbox<'a> {
 
 impl<'a> Checkbox<'a> {
     pub fn new(checked: bool, label: &'a str) -> Self {
-        Self { checked, label, enabled: true }
+        Self {
+            checked,
+            label,
+            enabled: true,
+        }
     }
 
     pub fn enabled(mut self, enabled: bool) -> Self {
@@ -233,7 +246,13 @@ pub struct TextInput<'a> {
 
 impl<'a> TextInput<'a> {
     pub fn new(text: &'a mut String) -> Self {
-        Self { text, hint: "", mono: false, desired_width: None, enabled: true }
+        Self {
+            text,
+            hint: "",
+            mono: false,
+            desired_width: None,
+            enabled: true,
+        }
     }
 
     pub fn hint(mut self, hint: &'a str) -> Self {
@@ -284,7 +303,12 @@ pub struct SliderRow<'a> {
 
 impl<'a> SliderRow<'a> {
     pub fn new(label: &'a str, value: &'a mut f32, range: RangeInclusive<f32>) -> Self {
-        Self { label, value, range, suffix: "" }
+        Self {
+            label,
+            value,
+            range,
+            suffix: "",
+        }
     }
 
     pub fn suffix(mut self, suffix: &'a str) -> Self {
@@ -330,7 +354,13 @@ pub struct NumberRow<'a> {
 
 impl<'a> NumberRow<'a> {
     pub fn new(label: &'a str, value: &'a mut f64) -> Self {
-        Self { label, value, range: None, suffix: "", speed: 0.01 }
+        Self {
+            label,
+            value,
+            range: None,
+            suffix: "",
+            speed: 0.01,
+        }
     }
 
     pub fn range(mut self, range: RangeInclusive<f64>) -> Self {
@@ -390,7 +420,12 @@ pub struct ComboSelect<'a> {
 
 impl<'a> ComboSelect<'a> {
     pub fn new(options: &'a [&'a str], selected: &'a mut usize) -> Self {
-        Self { options, selected, width: None, enabled: true }
+        Self {
+            options,
+            selected,
+            width: None,
+            enabled: true,
+        }
     }
 
     pub fn width(mut self, width: f32) -> Self {
@@ -407,7 +442,12 @@ impl<'a> ComboSelect<'a> {
 impl Widget for ComboSelect<'_> {
     fn ui(self, ui: &mut Ui) -> Response {
         let theme = Theme::get(ui);
-        let Self { options, selected, width, enabled } = self;
+        let Self {
+            options,
+            selected,
+            width,
+            enabled,
+        } = self;
         let current = options.get(*selected).copied().unwrap_or_default();
         ui.add_enabled_ui(enabled, |ui| {
             egui::ComboBox::from_id_salt(ui.next_auto_id())
@@ -480,8 +520,14 @@ impl BadgeTone {
         match self {
             Self::Neutral => (theme.text_muted, theme.hover_fill()),
             Self::Accent => (theme.accent, theme.active_fill()),
-            Self::Success => (theme.success, crate::theme::mix(theme.panel, theme.success, 0.2)),
-            Self::Error => (theme.error, crate::theme::mix(theme.panel, theme.error, 0.2)),
+            Self::Success => (
+                theme.success,
+                crate::theme::mix(theme.panel, theme.success, 0.2),
+            ),
+            Self::Error => (
+                theme.error,
+                crate::theme::mix(theme.panel, theme.error, 0.2),
+            ),
         }
     }
 }
@@ -494,7 +540,10 @@ pub struct Badge<'a> {
 
 impl<'a> Badge<'a> {
     pub fn new(text: &'a str) -> Self {
-        Self { text, tone: BadgeTone::Neutral }
+        Self {
+            text,
+            tone: BadgeTone::Neutral,
+        }
     }
 
     pub fn tone(mut self, tone: BadgeTone) -> Self {
@@ -547,7 +596,11 @@ impl Default for Spinner {
 impl Widget for Spinner {
     fn ui(self, ui: &mut Ui) -> Response {
         let theme = Theme::get(ui);
-        ui.add(egui::Spinner::new().size(self.size.unwrap_or(theme.icon_md)).color(theme.accent))
+        ui.add(
+            egui::Spinner::new()
+                .size(self.size.unwrap_or(theme.icon_md))
+                .color(theme.accent),
+        )
     }
 }
 
@@ -606,7 +659,11 @@ pub struct Label<'a> {
 
 impl<'a> Label<'a> {
     pub fn new(text: &'a str) -> Self {
-        Self { text, tone: LabelTone::Normal, mono: false }
+        Self {
+            text,
+            tone: LabelTone::Normal,
+            mono: false,
+        }
     }
 
     pub fn muted(mut self) -> Self {
