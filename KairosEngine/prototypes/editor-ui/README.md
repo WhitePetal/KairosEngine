@@ -13,14 +13,15 @@
 >
 > **生产同步（2026-11-12）**：`kairos_editor_docking` 已重构为 **id 布局 + `TabViewer` seam**
 > （`DockState<PanelInstanceId>` 只存布局，`Docker::show` 单入口），`kairos_editor_app` 的
-> `PanelHost` 实现 `TabViewer`；生产 app 用 `PanelContext`（无 headless core），原型保留
-> `Frame/UiOut` 作为更严格的视图边界。实现时对照
-> [architecture-tour §9](docs/architecture-tour.md) 的差异清单，不要引入第二个 `Tab` trait。
+> `PanelHost` 实现 `TabViewer`。`Frame`/`UiOut` 也已按原型迁到生产：面板只读 `Frame`、
+> 把 `Action` 推进 `UiOut`，app 在最后一个 pass 后 `reduce`（`kairos_editor_core` 是唯一写入口）。
+> 实现时对照 [architecture-tour §9](docs/architecture-tour.md) 的差异清单，不要引入第二个 `Tab` trait。
 >
 > **拆分（2026-11-12）**：生产已按本原型的 crate 分层落地 `kairos_editor_core`
-> （`EditorState`/`LayoutState`/panel id，零依赖）与 `kairos_editor_component`
-> （`panel/` + `panels/` + `TabViewer` 适配），`kairos_editor_app` 只剩组合根
-> （注册表、默认布局、工具栏、窗口后端）。依赖方向 `core → component → app`。
+> （`EditorState`/`LayoutState`/panel id + layout `Action`/`reduce`，零依赖）与
+> `kairos_editor_component`（`panel/` + `panels/` + `Frame`/`UiOut`/`TabViewer` 适配），
+> `kairos_editor_app` 只剩组合根（注册表、默认布局、工具栏、窗口后端）。依赖方向
+> `core → component → app`。
 >
 > **先读**：[docs/architecture-tour.md](docs/architecture-tour.md) —— 一页回答「面板在哪里被画」、一帧的绘制阶段、交互/消息链路，以及 7 张架构图。
 > 本 README 是证据/清单；tour 是导读。

@@ -852,8 +852,8 @@ cd prototypes/editor-ui && cargo test && cargo run   # 手动窗口 smoke
 
 | 原型（`prototypes/editor-ui/`） | 生产目标 | 现状 | 说明 |
 |---|---|---|---|
-| `editor-core-prototype` | **`kairos_editor_core`（独立 crate）** | 已建（2026-11-12，仅状态层） | `EditorState`/`LayoutState`/`PanelId`/`PanelInstanceId` 已迁入；reducer/effect/command/viewport slice 仍留原型，等领域逻辑长出来再落这里。cargo 强制边界：不得依赖 egui/winit/wgpu/`World`。 |
-| `editor-components-prototype`（`Frame`/`UiOut`/面板/组件） | **`kairos_editor_component`（独立 crate）** | 已建（2026-11-12） | 已有 `Panel`/`PanelRegistry`/`PanelHost`/`TabViewer` 适配 + `panels/` 内置面板（先迁 demo 面板，真面板按 P1 逐页迁）；L2：读 core + 用 widget kit，不依赖 host（`kairos_editor_app`）、不做 IO；cargo 强制边界。 |
+| `editor-core-prototype` | **`kairos_editor_core`（独立 crate）** | 已建（2026-11-12，仅状态层） | `EditorState`/`LayoutState`/`PanelId`/`PanelInstanceId` 与 layout 的 `Action`/`reduce` 已迁入；其余 reducer/effect/command/viewport slice 仍留原型，等领域逻辑长出来再落这里。cargo 强制边界：不得依赖 egui/winit/wgpu/`World`。 |
+| `editor-components-prototype`（`Frame`/`UiOut`/面板/组件） | **`kairos_editor_component`（独立 crate）** | 已建（2026-11-12） | 已有 `Panel`/`PanelRegistry`/`PanelHost`/`TabViewer` 适配 + `Frame`/`UiOut`/`HostView` + `panels/` 内置面板（先迁 demo 面板，真面板按 P1 逐页迁）；L2：读 core + 用 widget kit，不依赖 host（`kairos_editor_app`）、不做 IO；cargo 强制边界。 |
 | `ui-widgets-prototype` | **`kairos_editor_widgets`** | 已存在（workspace 成员，骨架 `theme.rs`） | L0/L1：只依赖 egui；widget 里出现领域类型即编译失败 |
 | `editor-viewport-prototype` | **`kairos_editor_app` 的 host 侧 viewport 模块**（`ViewportHost`；将来若值得再独立成 crate） | 未建 | 唯一封装 wgpu/离屏渲染的 UI 侧模块；UI crate 不依赖它 |
 | `editor-app-prototype` | **`kairos_editor_app`** | 已存在（骨架，当前用 eframe 脚手架） | 组合根 + 帧阶段 + EffectExecutor + ViewportHost + 事件循环/窗口。生产接管 winit/wgpu 循环，eframe 只属于原型（见下） |
@@ -864,9 +864,11 @@ cd prototypes/editor-ui && cargo test && cargo run   # 手动窗口 smoke
 
 **原型与生产 crate 的现状（2026-11-09）**：原型侧已全部落地（逐项位置与测试见 §7）；主 workspace 里只有三个新 crate 的骨架——`kairos_editor_widgets`（`theme.rs` 骨架）、`kairos_editor_app`（eframe 脚手架）、`kairos_editor_docking`（空）；`kairos_editor_core` / `kairos_editor_component` 当时尚未创建（2026-11-12 已拆出，见下一段）。因此 P1 的第一件事是把原型代码按上表搬进生产 crate，而不是从零设计。
 
-**2026-11-12 更新（docking/PanelHost 已落地）**：`kairos_editor_docking` 已重构为 **id 布局 + `TabViewer` seam**（`DockState<Id>` 只存稳定 id/分割树/tab 顺序；`Docker::show(ui, &mut viewer)` 是唯一绘制/交互入口；close/focus 走 viewer 回调，不在 dock 内部改布局）。`kairos_editor_app` 已有 `Panel` / `PanelInstanceId` / `PanelRegistry` / `PanelHost`（实现 `TabViewer`）、`LayoutState`（open/focus）和 4 个 demo 面板；每帧 `host.sync → dock tab reconcile → Docker::show`。按 owner 决定**不创建独立 headless core/UI crate**：`EditorState` 与面板 trait 暂留 app，面板通过 `PanelContext` 直接读写具体 app 状态（无 `Frame`/`UiOut` 抽象）；`kairos_editor_core` / `kairos_editor_component` 仍可作为后续可选项。
+**2026-11-12 更新（docking/PanelHost 已落地；历史中间态，已被下面两段取代）**：`kairos_editor_docking` 已重构为 **id 布局 + `TabViewer` seam**（`DockState<Id>` 只存稳定 id/分割树/tab 顺序；`Docker::show(ui, &mut viewer)` 是唯一绘制/交互入口；close/focus 走 viewer 回调，不在 dock 内部改布局）。`kairos_editor_app` 已有 `Panel` / `PanelInstanceId` / `PanelRegistry` / `PanelHost`（实现 `TabViewer`）、`LayoutState`（open/focus）和 4 个 demo 面板；每帧 `host.sync → dock tab reconcile → Docker::show`。按 owner 决定**不创建独立 headless core/UI crate**：`EditorState` 与面板 trait 暂留 app，面板通过 `PanelContext` 直接读写具体 app 状态（无 `Frame`/`UiOut` 抽象）；`kairos_editor_core` / `kairos_editor_component` 仍可作为后续可选项。
 
-**2026-11-12 拆分（core / component 落地）**：面板层已按本节映射表拆成两个 crate：`kairos_editor_core`（`EditorState`/`LayoutState`/`PanelId`/`PanelInstanceId`，零依赖、不碰 egui）与 `kairos_editor_component`（`Panel` trait / `PanelRegistry` / `PanelHost` / `TabViewer` 适配 / `panels/` 内置面板）。`kairos_editor_app` 只剩组合根：注册表、默认 dock 布局、工具栏、窗口后端；每帧 `host.sync(&state.layout) → dock tab reconcile → Docker::show(ui, &mut host.viewer(&mut state))`。依赖方向 `core → component → app` 由 cargo 强制；原型的 `Frame`/`UiOut` 确认不迁（生产用 `PanelContext`）。`docs/research/` 与 ADR 中的历史名称 `kairos_editor_ui` 指同一层，生产命名为 `kairos_editor_component`。
+**2026-11-12 拆分（core / component 落地）**：面板层已按本节映射表拆成两个 crate：`kairos_editor_core`（`EditorState`/`LayoutState`/`PanelId`/`PanelInstanceId`，零依赖、不碰 egui）与 `kairos_editor_component`（`Panel` trait / `PanelRegistry` / `PanelHost` / `TabViewer` 适配 / `panels/` 内置面板）。`kairos_editor_app` 只剩组合根：注册表、默认 dock 布局、工具栏、窗口后端。依赖方向 `core → component → app` 由 cargo 强制。
+
+**2026-11-12 晚（Frame/UiOut 已迁回）**：原型的 `Frame`/`UiOut` 已按原型落到生产：面板只读 `Frame { state: &EditorState, host: &dyn HostView }`、把 `Action` 推进 `UiOut`，自身不再碰 `&mut EditorState`；`kairos_editor_core::{Action, reduce}` 是状态树唯一写入口。每帧 `sync → Docker::show(ui, &mut host.viewer(&mut out, frame)) → pump`，`pump` 只在最后一个 pass（`!ui.ctx().will_discard()`）执行、逐条 `reduce`。关闭 tab 是意图而非副作用：`CloseResponse::Close` 只让 dock 摘掉 tab，viewer 推 `LayoutAction::ClosePanel`，reducer 关布局，下一帧 `PanelHost::sync` 回收实例。宿主资源（console log）走 `HostView` 而不是 `EditorState`。`docs/research/` 与 ADR 中的历史名称 `kairos_editor_ui` 指同一层，生产命名为 `kairos_editor_component`。
 
 ### 6.2 分阶段落地清单
 

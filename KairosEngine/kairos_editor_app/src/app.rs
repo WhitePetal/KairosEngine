@@ -1,6 +1,8 @@
 use eframe::egui;
-use kairos_editor_component::{PanelHost, PanelInstanceId, PanelRegistry, panels};
-use kairos_editor_core::EditorState;
+use kairos_editor_component::{
+    Frame, HostView, PanelHost, PanelInstanceId, PanelRegistry, UiOut, panels,
+};
+use kairos_editor_core::{Action, EditorState, LayoutAction, reduce};
 use kairos_editor_docking::{
     docker::{DockState, Docker},
     split::Fraction,
@@ -8,6 +10,26 @@ use kairos_editor_docking::{
 };
 
 use crate::consts::VERSION;
+
+/// Host-owned resources a panel may display but never own (the prototype's
+/// `HostState`). The console log lives here, not in `EditorState`: it is a
+/// stream produced by the host, not serializable state.
+#[derive(Default)]
+struct AppHost {
+    log: Vec<String>,
+}
+
+impl AppHost {
+    fn log(&mut self, line: impl Into<String>) {
+        self.log.push(line.into());
+    }
+}
+
+impl HostView for AppHost {
+    fn console_lines(&self) -> &[String] {
+        &self.log
+    }
+}
 
 /// Build the first-run layout from the ids the host created for the four
 /// default panels. User drags/splits after this are pure dock-state changes.
@@ -36,6 +58,7 @@ pub struct EditorApp {
     state: EditorState,
     host: PanelHost,
     dock: DockState<PanelInstanceId>,
+    host_view: AppHost,
 }
 
 impl EditorApp {
@@ -59,7 +82,15 @@ impl EditorApp {
         host.sync(&state.layout);
         let dock = default_dock(&host);
 
-        Self { state, host, dock }
+        let mut host_view = AppHost::default();
+        host_view.log("editor booted");
+
+        Self {
+            state,
+            host,
+            dock,
+            host_view,
+        }
     }
 
     /// Align live instances (open/closed panels) and dock tabs. Both are
@@ -79,9 +110,10 @@ impl EditorApp {
         }
     }
 
-    fn show_tool_bar(&mut self, ui: &mut egui::Ui) {
+    /// Toolbar is host chrome, not a panel: it reads state and pushes actions,
+    /// exactly like a panel body would.
+    fn show_tool_bar(&self, ui: &mut egui::Ui, out: &mut UiOut) {
         let kinds: Vec<_> = self.host.kinds().collect();
-        let mut toggles = Vec::new();
 
         egui::Panel::top("editor-top-bar").show(ui, |ui| {
             ui.horizontal(|ui| {
@@ -90,11 +122,10 @@ impl EditorApp {
                 for kind in &kinds {
                     let open = self.state.layout.is_open(*kind);
                     if ui.selectable_label(open, kind.0).clicked() {
-                        toggles.push(*kind);
+                        out.push(Action::Layout(LayoutAction::TogglePanel { panel: *kind }));
                     }
                 }
                 ui.separator();
-                ui.label(format!("counter = {}", self.state.counter));
                 if let Some(focus) = self.state.layout.focus() {
                     ui.label(format!("focus: {}#{}", focus.kind, focus.serial));
                 }
@@ -103,10 +134,31 @@ impl EditorApp {
                 });
             });
         });
+    }
 
-        for kind in toggles {
-            self.state.layout.toggle(kind);
+    /// Phases 3+4 of the prototype pipeline: dispatch the actions collected
+    /// during the UI pass, then let the host-side resources record what happened.
+    ///
+    /// Called only for a committed pass (`!Context::will_discard()`): egui may
+    /// run the UI pass twice, and a discarded pass must not apply its actions.
+    fn pump(&mut self, mut out: UiOut) {
+        for action in out.take() {
+            self.host_view.log(describe(&action));
+            reduce(&mut self.state, action);
         }
+    }
+}
+
+/// Human-readable form of an action, for the host log (until there is a real
+/// logging level/target channel).
+fn describe(action: &Action) -> String {
+    match action {
+        Action::Layout(action) => match action {
+            LayoutAction::TogglePanel { panel } => format!("toggle panel: {panel}"),
+            LayoutAction::ShowPanel { panel } => format!("show panel: {panel}"),
+            LayoutAction::ClosePanel { panel } => format!("close panel: {panel}"),
+            LayoutAction::FocusPanel { panel } => format!("focus panel: {panel}"),
+        },
     }
 }
 
@@ -116,16 +168,29 @@ impl EditorApp {
         // Editor chrome is not a text document; dragging tabs must not select
         // labels in the panel bodies.
         ui.style_mut().interaction.selectable_labels = false;
-        self.show_tool_bar(ui);
+
+        let mut out = UiOut::new();
+        self.show_tool_bar(ui, &mut out);
         self.sync();
 
-        let Self { state, host, dock } = self;
         {
-            let mut viewer = host.viewer(state);
+            let Self {
+                state,
+                host,
+                dock,
+                host_view,
+            } = self;
+            let frame = Frame::with_host(state, &*host_view);
+            let mut viewer = host.viewer(&mut out, frame);
             Docker::new("kairos_editor_docker", dock).show(ui, &mut viewer);
         }
 
-        state.layout.set_focus(dock.focused_tab());
+        if !ui.ctx().will_discard() {
+            self.pump(out);
+            // Focus is instance-keyed in `LayoutState`; the dock owns the live
+            // instance ids, so the committed frame mirrors them back.
+            self.state.layout.set_focus(self.dock.focused_tab());
+        }
     }
 }
 
@@ -155,7 +220,12 @@ mod tests {
         let mut host = PanelHost::new(registry);
         host.sync(&state.layout);
         let dock = default_dock(&host);
-        EditorApp { state, host, dock }
+        EditorApp {
+            state,
+            host,
+            dock,
+            host_view: AppHost::default(),
+        }
     }
 
     #[test]
@@ -182,15 +252,47 @@ mod tests {
     }
 
     #[test]
+    fn pump_applies_layout_actions_and_logs_them() {
+        let mut app = build();
+
+        let mut out = UiOut::new();
+        out.push(Action::Layout(LayoutAction::TogglePanel {
+            panel: panels::CONSOLE,
+        }));
+        app.pump(out);
+
+        assert!(!app.state.layout.is_open(panels::CONSOLE));
+        assert_eq!(
+            app.host_view.log.last().map(String::as_str),
+            Some("toggle panel: console")
+        );
+
+        app.sync();
+        assert_eq!(app.host.ids().count(), 3);
+        assert_eq!(app.dock.tabs().len(), 3);
+    }
+
+    #[test]
     fn scene_panel_can_be_detached_into_a_window() {
         let mut app = build();
         let id = app.host.id_of(panels::SCENE).expect("scene instance");
-        let EditorApp { state, host, .. } = &mut app;
-        let mut viewer = host.viewer(state);
-        assert!(
-            viewer.allowed_in_windows(id),
-            "Scene must be draggable into a floating window"
-        );
+
+        let mut out = UiOut::new();
+        {
+            let EditorApp {
+                state,
+                host,
+                host_view,
+                ..
+            } = &mut app;
+            let frame = Frame::with_host(state, &*host_view);
+            let mut viewer = host.viewer(&mut out, frame);
+            assert!(
+                viewer.allowed_in_windows(id),
+                "Scene must be draggable into a floating window"
+            );
+        }
+        assert!(out.is_empty());
     }
 
     #[test]

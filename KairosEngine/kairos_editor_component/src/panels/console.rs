@@ -1,9 +1,18 @@
-//! Console panel: demo body reading the app-owned log lines.
+//! Console panel: renders the host-owned log snapshot.
+//!
+//! Ownership rule (prototype `console_panel.rs`): the log ring buffer is a host
+//! resource, not domain state and not panel state. The panel reads a per-frame
+//! snapshot through [`crate::HostView::console_lines`] and never consumes
+//! history: closing the console loses nothing, reopening shows the same lines.
+//!
+//! The console is read-only: it pushes no actions, which is why `ui` ignores its
+//! `UiOut` parameter.
 
 use egui::{Ui, WidgetText};
-use kairos_editor_core::{EditorState, PanelId};
+use kairos_editor_core::PanelId;
 
-use crate::panel::{Panel, PanelContext};
+use crate::frame::{Frame, UiOut};
+use crate::panel::Panel;
 
 use super::CONSOLE;
 
@@ -14,18 +23,25 @@ impl Panel for ConsolePanel {
         CONSOLE
     }
 
-    fn title(&self, _state: &EditorState) -> WidgetText {
+    fn title(&self, _frame: &Frame) -> WidgetText {
         "Console".into()
     }
 
-    fn ui(&mut self, ui: &mut Ui, ctx: &mut PanelContext) {
-        ui.heading("Console");
-        for line in &ctx.state.log {
-            ui.monospace(line);
+    fn ui(&mut self, ui: &mut Ui, frame: &Frame, _out: &mut UiOut) {
+        let lines = frame.host.console_lines();
+        if lines.is_empty() {
+            ui.weak("Console is empty");
+            return;
         }
-        if ui.button("Push log line").clicked() {
-            let n = ctx.state.log.len() + 1;
-            ctx.state.log.push(format!("log line {n}"));
-        }
+
+        egui::ScrollArea::vertical()
+            .id_salt("console-log")
+            .auto_shrink([false, false])
+            .stick_to_bottom(true)
+            .show(ui, |ui| {
+                for line in lines {
+                    ui.monospace(line);
+                }
+            });
     }
 }

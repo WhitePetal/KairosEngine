@@ -2,11 +2,16 @@
 //!
 //! The host is the single owner of `Box<dyn Panel>` objects. It does not draw:
 //! the dock does that through [`PanelHostViewer`]. Every frame the app calls
-//! [`PanelHost::sync`] and then hands `host.viewer(&mut state)` to the dock.
+//! [`PanelHost::sync`] and then hands `host.viewer(&mut out, frame)` to the dock.
+//!
+//! Closing a panel is not this type's decision: the reducer closes the layout
+//! (through an action), and the next `sync` drops the instance.
 
 use std::collections::BTreeMap;
 
-use kairos_editor_core::{EditorState, LayoutState, PanelId};
+use kairos_editor_core::{LayoutState, PanelId};
+
+use crate::frame::{Frame, UiOut};
 
 use super::{Panel, PanelHostViewer, PanelInstanceId, PanelRegistry};
 
@@ -68,8 +73,12 @@ impl PanelHost {
     }
 
     /// The dock's view of the panels: titles, bodies and close policy.
-    pub fn viewer<'a>(&'a mut self, state: &'a mut EditorState) -> PanelHostViewer<'a> {
-        PanelHostViewer::new(self, state)
+    pub fn viewer<'host, 'frame>(
+        &'host mut self,
+        out: &'host mut UiOut,
+        frame: Frame<'frame>,
+    ) -> PanelHostViewer<'host, 'frame> {
+        PanelHostViewer::new(self, out, frame)
     }
 
     pub(crate) fn panel(&self, id: PanelInstanceId) -> Option<&dyn Panel> {
@@ -78,9 +87,5 @@ impl PanelHost {
 
     pub(crate) fn panel_mut(&mut self, id: PanelInstanceId) -> Option<&mut (dyn Panel + 'static)> {
         self.instances.get_mut(&id).map(|panel| &mut **panel)
-    }
-
-    pub(crate) fn remove(&mut self, id: PanelInstanceId) {
-        self.instances.remove(&id);
     }
 }

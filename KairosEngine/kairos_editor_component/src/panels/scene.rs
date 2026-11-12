@@ -1,13 +1,14 @@
 //! Scene panel: placeholder until the wgpu/egui viewport lands.
 //!
-//! Production counterpart of the prototype's `viewport_panel.rs`: when the
-//! host side (offscreen target -> `egui::TextureId`) exists, this draws that
-//! texture and forwards camera/pick input through the host.
+//! Production counterpart of the prototype's `viewport_panel.rs`: when the host
+//! side (offscreen target -> `egui::TextureId`) exists, this draws that texture
+//! through [`crate::HostView`] and forwards camera/pick input as actions.
 
 use egui::{Ui, WidgetText};
-use kairos_editor_core::{EditorState, PanelId};
+use kairos_editor_core::PanelId;
 
-use crate::panel::{Panel, PanelContext};
+use crate::frame::{Frame, UiOut};
+use crate::panel::Panel;
 
 use super::SCENE;
 
@@ -18,11 +19,11 @@ impl Panel for ScenePanel {
         SCENE
     }
 
-    fn title(&self, _state: &EditorState) -> WidgetText {
+    fn title(&self, _frame: &Frame) -> WidgetText {
         "Scene".into()
     }
 
-    fn ui(&mut self, ui: &mut Ui, _ctx: &mut PanelContext) {
+    fn ui(&mut self, ui: &mut Ui, _frame: &Frame, _out: &mut UiOut) {
         ui.centered_and_justified(|ui| {
             ui.label("3D viewport placeholder");
         });

@@ -53,9 +53,10 @@ pub trait DockViewer {
 
 /// Adapter from the prototype `PanelHost` to a dock's viewer interface.
 ///
-/// The frame/out pair is the prototype's read-only view contract; production
-/// replaces it with `PanelContext` because it intentionally has no separate
-/// headless core. The id/panel mapping is identical.
+/// The frame/out pair is now also production's contract
+/// (`kairos_editor_component/src/panel/viewer.rs`): the dock asks for a title /
+/// body / close policy, the viewer resolves the id and emits `LayoutAction`s
+/// into `UiOut` instead of mutating state. The id/panel mapping is identical.
 pub struct PanelHostViewer<'host, 'frame> {
     pub(crate) host: &'host mut PanelHost,
     pub(crate) frame: Frame<'frame>,

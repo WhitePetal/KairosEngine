@@ -36,15 +36,17 @@
 //! on_close/allowed_in_windows/scroll_bars/on_rect_changed). The prototype
 //! keeps the four-slot host as the minimal stand-in; `Panel` remains the only
 //! panel abstraction. See `docs/architecture-tour.md` §9 for the migration
-//! checklist (including the production `PanelContext` substitution).
+//! checklist.
 //!
 //! Split-out (2026-11-12): production now has `kairos_editor_core`
 //! (`EditorState`/`LayoutState`/`PanelId`/`PanelInstanceId`) and
 //! `kairos_editor_component` — the production counterpart of this module
 //! (`Panel`/`PanelRegistry`/`PanelHost` + `TabViewer` adapter + `panels/`) —
 //! with `kairos_editor_app` left as the composition root. Same layering as this
-//! crate; `Frame`/`UiOut` are not ported (production panels get
-//! `&mut EditorState` through `PanelContext`).
+//! crate, and `Frame`/`UiOut` are ported too: production panels read `Frame`
+//! and push `Action`s into `UiOut`; the app calls `kairos_editor_core::reduce`
+//! after the last UI pass. Close is an intent (`LayoutAction::ClosePanel`),
+//! not a draw-time mutation.
 
 mod host;
 mod registry;

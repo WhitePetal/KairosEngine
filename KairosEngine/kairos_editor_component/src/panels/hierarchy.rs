@@ -1,9 +1,10 @@
 //! Hierarchy panel: demo body until the scene tree is ported.
 
 use egui::{Ui, WidgetText};
-use kairos_editor_core::{EditorState, PanelId};
+use kairos_editor_core::PanelId;
 
-use crate::panel::{Panel, PanelContext};
+use crate::frame::{Frame, UiOut};
+use crate::panel::Panel;
 
 use super::HIERARCHY;
 
@@ -14,11 +15,11 @@ impl Panel for HierarchyPanel {
         HIERARCHY
     }
 
-    fn title(&self, _state: &EditorState) -> WidgetText {
+    fn title(&self, _frame: &Frame) -> WidgetText {
         "Hierarchy".into()
     }
 
-    fn ui(&mut self, ui: &mut Ui, _ctx: &mut PanelContext) {
+    fn ui(&mut self, ui: &mut Ui, _frame: &Frame, _out: &mut UiOut) {
         ui.heading("Hierarchy");
         for item in ["World", "Main Camera", "Editor Camera", "Sun"] {
             ui.label(item);

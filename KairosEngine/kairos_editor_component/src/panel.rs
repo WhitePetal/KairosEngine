@@ -6,20 +6,24 @@
 //! There is exactly one call chain from the frame loop to a panel body:
 //!
 //! ```text
-//! kairos_editor_app/src/app.rs    EditorApp::ui
-//!   -> app sync                   host.sync(&state.layout); dock tab reconcile
-//!   -> docker::Docker::show       dock tree + tab chrome + splitter/tab drag
-//!     -> viewer::TabViewer::ui    (the dock asks for one tab body)
-//!       -> panel/viewer.rs        PanelHostViewer::ui   (id -> live instance)
-//!         -> panels/<name>.rs     <dyn Panel>::ui      (panel body only)
+//! kairos_editor_app/src/app.rs   EditorApp::ui
+//!   -> app sync                  host.sync(&state.layout); dock tab reconcile
+//!   -> docker::Docker::show      tabs/splitters/drag; asks the viewer per tab
+//!     -> panel/viewer.rs         PanelHostViewer        (id -> live instance)
+//!       -> panels/<name>.rs      <dyn Panel>::ui(ui, &Frame, &mut UiOut)
+//!   -> app pump                  reduce(state, action) for every action
 //! ```
 //!
-//! The app never draws a tab bar and never calls a concrete panel: opening a
-//! panel is a `LayoutState` change, and the dock asks the host for the content.
+//! Panels never mutate state: they read [`Frame`] and push [`Action`]s into
+//! [`UiOut`]. The app drains that buffer after the last UI pass and applies the
+//! actions through `kairos_editor_core::reduce` -- the only writer of the state
+//! tree. Closing a tab goes through the same path: the dock removes the tab,
+//! the viewer emits `LayoutAction::ClosePanel`, and the reducer closes the
+//! layout (the next `PanelHost::sync` then drops the instance).
 //!
 //! # Pieces
 //!
-//! * [`Panel`], [`PanelContext`], [`PanelInstanceId`]: what a panel is (this file).
+//! * [`Panel`], [`Frame`], [`UiOut`], [`PanelInstanceId`]: what a panel is.
 //! * [`PanelRegistry`]: `PanelId` -> factory registration (`registry` module).
 //! * [`PanelHost`]: owns the instances and reconciles them with `LayoutState`
 //!   (`host` module); [`PanelHostViewer`] adapts the host to the dock's
@@ -34,35 +38,37 @@ pub use registry::{PanelFactory, PanelRegistry};
 pub use viewer::PanelHostViewer;
 
 use egui::{Ui, WidgetText};
-use kairos_editor_core::{EditorState, PanelId};
+use kairos_editor_core::PanelId;
+
+use crate::frame::{Frame, UiOut};
 
 // Instance identity is layout vocabulary: `LayoutState` focuses by instance, so
 // the type lives in core next to `PanelId`. Re-exported here because this file
 // is where the panel framework surfaces it.
 pub use kairos_editor_core::PanelInstanceId;
 
-/// What a panel gets while drawing: the concrete editor state, mutable.
+/// One drawable panel body. The host owns the tab/title bar; the panel draws the
+/// body only.
 ///
-/// No `Frame`/`UiOut` indirection: panels can read and update editor state
-/// directly (that is the intended model for this editor). When a panel needs a
-/// command with side effects it will grow into an explicit result instead of a
-/// generic headless boundary.
-pub struct PanelContext<'a> {
-    pub state: &'a mut EditorState,
-}
-
-/// One drawable panel body. The host owns the tab/title bar.
+/// Implementations are owned by [`PanelHost`] and live across frames. They may
+/// keep UI-only view state (search text, expanded paths, ...) but never domain
+/// state: reads go through [`Frame`], writes go through [`UiOut`] as [`Action`]s.
 pub trait Panel {
+    /// Panel kind, matching the `PanelId` the factory was registered under.
     fn kind(&self) -> PanelId;
 
-    /// Title shown in the dock tab bar; may read editor state (document name,
-    /// selection, ...), unlike a title cached at construction time.
-    fn title(&self, state: &EditorState) -> WidgetText;
+    /// Title shown in the dock tab bar and in floating-window title bars.
+    fn title(&self, frame: &Frame) -> WidgetText;
 
-    fn ui(&mut self, ui: &mut Ui, ctx: &mut PanelContext);
+    /// Draw the panel body. Only the active tab of a leaf is drawn.
+    fn ui(&mut self, ui: &mut Ui, frame: &Frame, out: &mut UiOut);
 
-    fn context_menu(&mut self, _ui: &mut Ui, _ctx: &mut PanelContext) {}
+    /// Extra context-menu entries for this panel (drawn by the dock). Keep this
+    /// side-effect free as well: push actions into `out`.
+    fn context_menu(&mut self, _ui: &mut Ui, _frame: &Frame, _out: &mut UiOut) {}
 
+    /// Called when the rect available to the panel body changes (dock resize,
+    /// tab re-dock, window resize).
     fn on_rect_changed(&mut self) {}
 
     /// Whether the dock offers a close entry for this tab.
@@ -70,15 +76,21 @@ pub trait Panel {
         true
     }
 
-    /// Close callback; returning `false` vetoes the close.
-    fn on_close(&mut self, _ctx: &mut PanelContext) -> bool {
+    /// Close veto, called before the viewer emits `LayoutAction::ClosePanel`.
+    ///
+    /// Returning `false` keeps the panel open (the view should then explain why
+    /// through normal UI/state, not by blocking the reducer). The panel may push
+    /// actions of its own (e.g. open a confirm modal) into `out`.
+    fn on_close(&mut self, _frame: &Frame, _out: &mut UiOut) -> bool {
         true
     }
 
+    /// Whether the dock may detach this panel into a floating window.
     fn allowed_in_windows(&self) -> bool {
         true
     }
 
+    /// `[horizontal, vertical]` scroll bars for the panel body.
     fn scroll_bars(&self) -> [bool; 2] {
         [false, true]
     }

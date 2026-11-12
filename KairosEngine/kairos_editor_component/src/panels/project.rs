@@ -6,9 +6,10 @@
 //! prototype and composes them with the widget kit.
 
 use egui::{Ui, WidgetText};
-use kairos_editor_core::{EditorState, PanelId};
+use kairos_editor_core::PanelId;
 
-use crate::panel::{Panel, PanelContext};
+use crate::frame::{Frame, UiOut};
+use crate::panel::Panel;
 
 use super::PROJECT;
 
@@ -19,15 +20,12 @@ impl Panel for ProjectPanel {
         PROJECT
     }
 
-    fn title(&self, state: &EditorState) -> WidgetText {
-        format!("Project — {}", state.project_name).into()
+    fn title(&self, frame: &Frame) -> WidgetText {
+        format!("Project — {}", frame.state.project_name).into()
     }
 
-    fn ui(&mut self, ui: &mut Ui, ctx: &mut PanelContext) {
+    fn ui(&mut self, ui: &mut Ui, frame: &Frame, _out: &mut UiOut) {
         ui.heading("Project");
-        ui.label(format!("name: {}", ctx.state.project_name));
-        if ui.button("Rename project").clicked() {
-            ctx.state.project_name = format!("{}-renamed", ctx.state.project_name);
-        }
+        ui.label(format!("name: {}", frame.state.project_name));
     }
 }

@@ -6,8 +6,10 @@
   (not `kairos_editor_ui`). It currently carries the panel framework
   (`Panel`/`PanelRegistry`/`PanelHost`/`TabViewer` adapter) plus demo panels;
   `kairos_editor_core` currently carries only the state tree (`EditorState`/`LayoutState`/panel ids) —
-  reducers/effects/commands are still pending. Panels take `&mut EditorState` through
-  `PanelContext` for now instead of `&Frame`/`&mut UiOut`.
+  reducers/effects/commands are still pending (only the layout slice has `Action`/`reduce`).
+  The prototype's `Frame`/`UiOut` are ported: panels read a read-only `Frame` and push
+  `Action`s into `UiOut`; the app drains it after the last UI pass and calls `reduce`, the
+  only writer of `EditorState`.
 - **Context**: `kairos_editor` UI layer (~17.6k LOC / 54 files) built on a global `Messager`
   queue (57 `Message` variants, one 365-line central match) and on window structs that own
   both model and view (`Drawer`). The design blocks multi-instance views, forces interior

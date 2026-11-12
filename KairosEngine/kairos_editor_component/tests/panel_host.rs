@@ -1,30 +1,63 @@
-//! Headless tests for the panel framework: registry, instance reconciliation
-//! and the dock viewer adapter. No window, no GPU.
+//! Headless tests for the panel framework: registry, instance reconciliation,
+//! the dock viewer adapter and the close-as-intent path. No window, no GPU.
 
 use egui::{Context, Pos2, RawInput, Rect, Ui, Vec2, WidgetText};
 use kairos_editor_component::{
-    Panel, PanelContext, PanelHost, PanelId, PanelInstanceId, PanelRegistry, panels,
+    EmptyHost, Frame, HostView, Panel, PanelHost, PanelId, PanelInstanceId, PanelRegistry, UiOut,
+    panels,
 };
-use kairos_editor_core::{EditorState, LayoutState};
+use kairos_editor_core::{Action, EditorState, LayoutAction, LayoutState, reduce};
 use kairos_editor_docking::viewer::{CloseResponse, TabViewer};
 
-struct FakePanel;
+const FAKE: PanelId = PanelId("fake");
+
+struct FakePanel {
+    veto_close: bool,
+}
 
 impl Panel for FakePanel {
     fn kind(&self) -> PanelId {
-        PanelId("fake")
+        FAKE
     }
 
-    fn title(&self, _state: &EditorState) -> WidgetText {
+    fn title(&self, _frame: &Frame) -> WidgetText {
         "Fake".into()
     }
 
-    fn ui(&mut self, _ui: &mut Ui, _ctx: &mut PanelContext) {}
+    fn ui(&mut self, _ui: &mut Ui, _frame: &Frame, _out: &mut UiOut) {}
+
+    fn on_close(&mut self, _frame: &Frame, _out: &mut UiOut) -> bool {
+        !self.veto_close
+    }
 }
 
-fn host_with_fake() -> PanelHost {
+struct TogglePanel;
+
+impl Panel for TogglePanel {
+    fn kind(&self) -> PanelId {
+        PanelId("toggle")
+    }
+
+    fn title(&self, _frame: &Frame) -> WidgetText {
+        "Toggle".into()
+    }
+
+    fn ui(&mut self, _ui: &mut Ui, _frame: &Frame, out: &mut UiOut) {
+        out.push(Action::Layout(LayoutAction::TogglePanel {
+            panel: panels::CONSOLE,
+        }));
+    }
+}
+
+fn host_with_fake(veto_close: bool) -> PanelHost {
     let mut registry = PanelRegistry::new();
-    registry.register(PanelId("fake"), || Box::new(FakePanel));
+    registry.register(FAKE, move || Box::new(FakePanel { veto_close }));
+    PanelHost::new(registry)
+}
+
+fn default_host() -> PanelHost {
+    let mut registry = PanelRegistry::new();
+    panels::register_default(&mut registry);
     PanelHost::new(registry)
 }
 
@@ -42,51 +75,123 @@ fn default_state() -> EditorState {
     state
 }
 
-fn run_frame(host: &mut PanelHost, state: &mut EditorState, ids: &[PanelInstanceId]) {
+/// Run one headless UI pass: exactly what the dock does with its viewer.
+fn draw_with(
+    host: &mut PanelHost,
+    host_resources: &dyn HostView,
+    state: &EditorState,
+    ids: &[PanelInstanceId],
+) -> UiOut {
+    let mut out = UiOut::new();
     let ctx = Context::default();
     let mut input = RawInput::default();
     input.screen_rect = Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(1280.0, 820.0)));
-    let _ = ctx.run_ui(input, |ui| {
-        let mut viewer = host.viewer(state);
-        for id in ids {
-            let _ = viewer.title(*id);
-            viewer.ui(ui, *id);
-        }
-    });
+    {
+        let frame = Frame::with_host(state, host_resources);
+        let mut viewer = host.viewer(&mut out, frame);
+        let _ = ctx.run_ui(input, |ui| {
+            for id in ids {
+                let _ = viewer.title(*id);
+                viewer.ui(ui, *id);
+            }
+        });
+    }
+    out
+}
+
+fn draw(host: &mut PanelHost, state: &EditorState, ids: &[PanelInstanceId]) -> UiOut {
+    draw_with(host, &EmptyHost, state, ids)
 }
 
 #[test]
 fn sync_creates_and_drops_instances_from_layout() {
-    let mut host = host_with_fake();
+    let mut host = host_with_fake(false);
     let mut state = EditorState::new();
 
     host.sync(&state.layout);
     assert_eq!(host.ids().count(), 0);
 
-    state.layout.open(PanelId("fake"));
+    state.layout.open(FAKE);
     host.sync(&state.layout);
     assert_eq!(host.ids().count(), 1);
 
-    state.layout.close(PanelId("fake"));
+    state.layout.close(FAKE);
     host.sync(&state.layout);
     assert_eq!(host.ids().count(), 0);
 }
 
 #[test]
-fn viewer_close_updates_layout_and_drops_instance() {
-    let mut host = host_with_fake();
+fn viewer_close_defers_layout_change_to_the_reducer() {
+    let mut host = host_with_fake(false);
     let mut state = EditorState::new();
-    state.layout.open(PanelId("fake"));
+    state.layout.open(FAKE);
     host.sync(&state.layout);
-    let id = host.id_of(PanelId("fake")).expect("instance");
+    let id = host.id_of(FAKE).expect("instance");
 
+    let mut out = UiOut::new();
     {
-        let mut viewer = host.viewer(&mut state);
+        let frame = Frame::new(&state);
+        let mut viewer = host.viewer(&mut out, frame);
         assert_eq!(viewer.on_close(id), CloseResponse::Close);
     }
 
-    assert!(!state.layout.is_open(PanelId("fake")));
+    // The viewer only reports the intent; it must not touch the state tree.
+    assert!(
+        state.layout.is_open(FAKE),
+        "on_close must not mutate layout"
+    );
+    assert_eq!(
+        out.as_slice(),
+        &[Action::Layout(LayoutAction::ClosePanel { panel: FAKE })]
+    );
+
+    // The app half: dispatch the action, then the host drops the instance.
+    for action in out.take() {
+        reduce(&mut state, action);
+    }
+    assert!(!state.layout.is_open(FAKE));
+    host.sync(&state.layout);
     assert_eq!(host.ids().count(), 0);
+}
+
+#[test]
+fn close_veto_keeps_the_panel_open_and_emits_nothing() {
+    let mut host = host_with_fake(true);
+    let mut state = EditorState::new();
+    state.layout.open(FAKE);
+    host.sync(&state.layout);
+    let id = host.id_of(FAKE).expect("instance");
+
+    let mut out = UiOut::new();
+    {
+        let frame = Frame::new(&state);
+        let mut viewer = host.viewer(&mut out, frame);
+        assert_eq!(viewer.on_close(id), CloseResponse::Ignore);
+    }
+
+    assert!(out.is_empty());
+    assert!(state.layout.is_open(FAKE));
+    assert_eq!(host.ids().count(), 1);
+}
+
+#[test]
+fn panel_actions_flow_into_ui_out() {
+    let mut registry = PanelRegistry::new();
+    registry.register(PanelId("toggle"), || Box::new(TogglePanel));
+    let mut host = PanelHost::new(registry);
+    let mut state = EditorState::new();
+    state.layout.open(PanelId("toggle"));
+
+    host.sync(&state.layout);
+    let ids: Vec<PanelInstanceId> = host.ids().collect();
+    let out = draw(&mut host, &state, &ids);
+
+    assert_eq!(
+        out.as_slice(),
+        &[Action::Layout(LayoutAction::TogglePanel {
+            panel: panels::CONSOLE
+        })]
+    );
 }
 
 #[test]
@@ -112,20 +217,51 @@ fn register_default_registers_every_default_kind() {
 
 #[test]
 fn every_default_panel_draws_one_frame_headless() {
-    let mut state = default_state();
-    let mut registry = PanelRegistry::new();
-    panels::register_default(&mut registry);
-    let mut host = PanelHost::new(registry);
+    let state = default_state();
+    let mut host = default_host();
     host.sync(&state.layout);
 
     let ids: Vec<PanelInstanceId> = host.ids().collect();
     assert_eq!(ids.len(), 5);
-    run_frame(&mut host, &mut state, &ids);
+
+    let out = draw(&mut host, &state, &ids);
+    assert!(out.is_empty(), "read-only demo panels push no actions");
+}
+
+#[test]
+fn console_renders_the_host_log_snapshot() {
+    struct TestHost {
+        lines: Vec<String>,
+    }
+
+    impl HostView for TestHost {
+        fn console_lines(&self) -> &[String] {
+            &self.lines
+        }
+    }
+
+    let mut state = EditorState::new();
+    state.layout.open(panels::CONSOLE);
+    let mut host = default_host();
+    host.sync(&state.layout);
+    let ids: Vec<PanelInstanceId> = host.ids().collect();
+
+    let host_view = TestHost {
+        lines: vec![
+            "editor booted".to_owned(),
+            "toggle panel: console".to_owned(),
+        ],
+    };
+    let out = draw_with(&mut host, &host_view, &state, &ids);
+
+    assert!(out.is_empty());
+    // The console owns no history: it just consumed the host snapshot.
+    assert_eq!(host_view.lines.len(), 2);
 }
 
 #[test]
 fn viewer_unknown_id_uses_fallback_title_and_tolerates_missing_panel() {
-    let mut state = EditorState::new();
+    let state = EditorState::new();
     let mut host = PanelHost::new(PanelRegistry::new());
     host.sync(&state.layout);
     let unknown = PanelInstanceId::new(PanelId("missing"), 7);
@@ -133,12 +269,17 @@ fn viewer_unknown_id_uses_fallback_title_and_tolerates_missing_panel() {
     let ctx = Context::default();
     let mut input = RawInput::default();
     input.screen_rect = Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(400.0, 300.0)));
-    let _ = ctx.run_ui(input, |ui| {
-        let mut viewer = host.viewer(&mut state);
-        assert_eq!(viewer.title(unknown).text(), "missing#7");
-        assert!(!viewer.closeable(unknown));
-        viewer.ui(ui, unknown);
-    });
+    let mut out = UiOut::new();
+    {
+        let frame = Frame::new(&state);
+        let mut viewer = host.viewer(&mut out, frame);
+        let _ = ctx.run_ui(input, |ui| {
+            assert_eq!(viewer.title(unknown).text(), "missing#7");
+            assert!(!viewer.closeable(unknown));
+            viewer.ui(ui, unknown);
+        });
+    }
+    assert!(out.is_empty());
 }
 
 #[test]
@@ -149,15 +290,13 @@ fn default_layout_reconciles_with_the_host() {
     state.layout.open(panels::SCENE);
     state.layout.open(panels::INSPECTOR);
 
-    let mut registry = PanelRegistry::new();
-    panels::register_default(&mut registry);
-    let mut host = PanelHost::new(registry);
+    let mut host = default_host();
     host.sync(&state.layout);
 
     let ids: Vec<PanelInstanceId> = host.ids().collect();
     assert_eq!(ids.len(), 2);
     assert!(ids.iter().all(|id| state.layout.is_open(id.kind)));
-    assert!(host.kinds().count() == 5);
+    assert_eq!(host.kinds().count(), 5);
     assert_eq!(
         host.id_of(panels::SCENE).map(|id| id.kind),
         Some(panels::SCENE)

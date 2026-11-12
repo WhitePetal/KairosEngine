@@ -11,7 +11,7 @@
 //! ## Layering (enforced by cargo)
 //!
 //! ```text
-//! kairos_editor_core        (state + panel ids, no egui)
+//! kairos_editor_core        (state + actions + reducers, no egui)
 //! kairos_editor_widgets     (L1 widget kit, no domain types)
 //! kairos_editor_docking     (dock layout, only ids + egui)
 //!             \                  |                  /
@@ -19,6 +19,15 @@
 //!                              |
 //!                     kairos_editor_app   (composition root + window backend)
 //! ```
+//!
+//! ## Frame / UiOut (ported from the prototype)
+//!
+//! Panels read a read-only [`Frame`] (state + host resources) and push
+//! [`Action`]s into [`UiOut`]; they never mutate the state tree. The app drains
+//! the buffer after the last UI pass and applies every action through
+//! `kairos_editor_core::reduce` (the only writer). Host-owned display resources
+//! (console log, future viewport textures) travel through [`HostView`]; they are
+//! not state.
 //!
 //! ## Panel framework
 //!
@@ -31,23 +40,15 @@
 //! [`panels`] holds the built-in panels and their ids; adding a panel is one
 //! impl in `panels/<name>.rs` plus one registration line in
 //! [`panels::register_default`]. The app shell does not change.
-//!
-//! ## Deliberate deviation from the prototype
-//!
-//! The prototype's `Frame`/`UiOut` (read-only state + action buffer) is *not*
-//! ported: panels get `&mut EditorState` through [`PanelContext`] and mutate it
-//! directly. This editor has no headless core, so `Frame`/`UiOut` would be pure
-//! indirection (see `docs/plan/editor-ui-architecture/panel-viewport-design.md`
-//! §6.1).
 
 #![forbid(unsafe_code)]
 
+pub mod frame;
 pub mod panel;
 pub mod panels;
 
+pub use frame::{EmptyHost, Frame, HostView, UiOut};
 // Panel kinds are store vocabulary, not a component concept: re-export the core
 // newtype so panels and the app share one id type without a second import.
 pub use kairos_editor_core::PanelId;
-pub use panel::{
-    Panel, PanelContext, PanelFactory, PanelHost, PanelHostViewer, PanelInstanceId, PanelRegistry,
-};
+pub use panel::{Panel, PanelFactory, PanelHost, PanelHostViewer, PanelInstanceId, PanelRegistry};

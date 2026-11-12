@@ -1,9 +1,14 @@
 //! Inspector panel: demo body until the document inspector is ported.
+//!
+//! Read-only by construction: it renders `Frame` and pushes actions for anything
+//! the user changes. Real document editing (Material/Toml/Text) lands here when
+//! the project-tree + document slices are ported.
 
 use egui::{Ui, WidgetText};
-use kairos_editor_core::{EditorState, PanelId};
+use kairos_editor_core::PanelId;
 
-use crate::panel::{Panel, PanelContext};
+use crate::frame::{Frame, UiOut};
+use crate::panel::Panel;
 
 use super::INSPECTOR;
 
@@ -14,17 +19,14 @@ impl Panel for InspectorPanel {
         INSPECTOR
     }
 
-    fn title(&self, _state: &EditorState) -> WidgetText {
+    fn title(&self, _frame: &Frame) -> WidgetText {
         "Inspector".into()
     }
 
-    fn ui(&mut self, ui: &mut Ui, ctx: &mut PanelContext) {
+    fn ui(&mut self, ui: &mut Ui, frame: &Frame, _out: &mut UiOut) {
         ui.heading("Inspector");
-        ui.label(format!("selected project: {}", ctx.state.project_name));
+        ui.label(format!("project: {}", frame.state.project_name));
         ui.separator();
-        if ui.button("Increment shared counter").clicked() {
-            ctx.state.counter += 1;
-        }
-        ui.label(format!("counter = {}", ctx.state.counter));
+        ui.weak("The document inspector lands with the project-tree port.");
     }
 }

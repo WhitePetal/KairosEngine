@@ -6,10 +6,14 @@
 //! `kairos_editor_component`'s `PanelHost`. `LayoutState` only records the
 //! user's open/focus *intent*, and the app reconciles it with the dock every
 //! frame.
+//!
+//! The only writer is [`crate::reduce`]. The UI reads a read-only frame built by
+//! `kairos_editor_component` and pushes actions; host-owned resources (console
+//! log, future viewport textures) are not state and do not live here.
 
 use std::collections::BTreeSet;
 
-use crate::id::{PanelId, PanelInstanceId};
+use crate::panel::{PanelId, PanelInstanceId};
 
 /// Which panels are open and which panel instance has keyboard/focus.
 ///
@@ -56,15 +60,11 @@ impl LayoutState {
     }
 }
 
-/// Concrete editor state. Panels get a mutable reference to this through
-/// `PanelContext`; this crate is where the state lives, not where reducers live
-/// (for now panel bodies mutate state directly).
+/// Concrete editor state: the single tree the UI reads and the reducers write.
 #[derive(Debug)]
 pub struct EditorState {
     pub layout: LayoutState,
     pub project_name: String,
-    pub counter: u32,
-    pub log: Vec<String>,
 }
 
 impl Default for EditorState {
@@ -72,8 +72,6 @@ impl Default for EditorState {
         Self {
             layout: LayoutState::default(),
             project_name: String::from("demo-project"),
-            counter: 0,
-            log: vec![String::from("editor booted")],
         }
     }
 }
