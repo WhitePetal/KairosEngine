@@ -1,4 +1,4 @@
-use egui::{Color32, CornerRadius, Margin, Stroke};
+use egui::{Color32, CornerRadius, Margin, Shadow, Stroke};
 
 #[derive(Clone)]
 pub struct TabBodyStyle {
@@ -22,6 +22,8 @@ impl Default for TabBodyStyle {
 #[derive(Clone)]
 pub struct TabInteractionStyle {
     pub headerline_color: Color32,
+    /// Thickness of the coloured line on top of the tab.
+    pub headerline_width: f32,
     pub outline_color: Color32,
     pub corner_radius: CornerRadius,
     pub bg_fill: Color32,
@@ -32,6 +34,7 @@ impl Default for TabInteractionStyle {
     fn default() -> Self {
         Self {
             headerline_color: Color32::TRANSPARENT,
+            headerline_width: 2.0,
             outline_color: Color32::TRANSPARENT,
             corner_radius: CornerRadius {
                 nw: 4,
@@ -40,7 +43,7 @@ impl Default for TabInteractionStyle {
                 se: 0,
             },
             bg_fill: Color32::from_rgb(67, 67, 67),
-            text_color: Color32::from_rgb(196, 196, 196)
+            text_color: Color32::from_rgb(196, 196, 196),
         }
     }
 }
@@ -61,7 +64,10 @@ impl Default for TabStyle {
     fn default() -> Self {
         Self {
             active: TabInteractionStyle::default(),
-            inactive: TabInteractionStyle::default(),
+            inactive: TabInteractionStyle {
+                bg_fill: Color32::from_rgb(44, 44, 44),
+                ..Default::default()
+            },
             focused: TabInteractionStyle {
                 headerline_color: Color32::from_rgb(51, 105, 146),
                 ..Default::default()
@@ -73,7 +79,7 @@ impl Default for TabStyle {
             tab_body: TabBodyStyle::default(),
             hline_below_active_tab_name: false,
             spacing: 0.0,
-            minimum_width: None
+            minimum_width: None,
         }
     }
 }
@@ -115,7 +121,7 @@ impl Default for OverlayStyle {
             selection_color: Color32::from_rgb(0, 191, 255).linear_multiply(0.5),
             selection_stroke_width: 1.0,
             surface_fade_opacity: 0.1,
-            feel: Default::default()
+            feel: Default::default(),
         }
     }
 }
@@ -128,17 +134,53 @@ pub struct SeparatorStyle {
     pub color_idle: Color32,
     pub color_hovered: Color32,
     pub color_dragged: Color32,
+    /// Width of the soft shadow cast into the panels on both sides of the
+    /// split, so the divider reads as a shadowed gutter instead of a line.
+    pub shadow_width: f32,
+    /// Shadow colour at its densest (next to the divider); it fades outwards.
+    pub shadow_color: Color32,
 }
 
 impl Default for SeparatorStyle {
     fn default() -> Self {
         Self {
-            width: 1.0,
+            width: 2.0,
             extra_interact_width: 2.0,
             extra: 175.0,
             color_idle: Color32::BLACK,
-            color_hovered: Color32::from_rgb(67, 67, 67),
+            color_hovered: Color32::BLACK,
             color_dragged: Color32::from_rgb(126, 126, 126),
+            shadow_width: 4.0,
+            shadow_color: Color32::TRANSPARENT,
+        }
+    }
+}
+
+/// The vertical divider drawn between two adjacent tabs.
+///
+/// Unity-like tabs are separated by a 1px dark line plus a soft drop shadow
+/// that fades over the next tab, so the bar reads as layered tabs instead of
+/// one flat strip.
+#[derive(Clone)]
+pub struct TabSeparatorStyle {
+    /// Width of the dark divider line.
+    pub line_width: f32,
+    /// Width of the soft shadow cast to the right of the divider line.
+    pub shadow_width: f32,
+    /// Colour of the divider line itself.
+    pub line_color: Color32,
+    /// Shadow colour at its densest (right next to the line); it fades out
+    /// towards `shadow_width`.
+    pub shadow_color: Color32,
+}
+
+impl Default for TabSeparatorStyle {
+    fn default() -> Self {
+        Self {
+            line_width: 1.0,
+            shadow_width: 3.0,
+            line_color: Color32::from_rgb(16, 16, 16),
+            shadow_color: Color32::from_black_alpha(70),
         }
     }
 }
@@ -150,7 +192,7 @@ pub struct TabBarStyle {
     pub inner_margin: Margin,
     pub show_scroll_bar_on_overflow: bool,
     pub corner_radius: CornerRadius,
-    pub hline_color: Color32,
+    pub separator: TabSeparatorStyle,
     pub fill_tab_bar: bool,
 }
 
@@ -162,8 +204,53 @@ impl Default for TabBarStyle {
             inner_margin: Margin::ZERO,
             show_scroll_bar_on_overflow: true,
             corner_radius: CornerRadius::default(),
-            hline_color: Color32::BLACK,
+            separator: TabSeparatorStyle::default(),
             fill_tab_bar: false,
+        }
+    }
+}
+
+/// Chrome of a detached/floating dock window.
+///
+/// The window is drawn by `Docker` itself (not egui's default title bar) so the
+/// title bar, shadow and system buttons are consistent on every platform.
+#[derive(Clone)]
+pub struct WindowStyle {
+    pub bg_fill: Color32,
+    pub title_bg_fill: Color32,
+    pub border: Stroke,
+    pub shadow: Shadow,
+    pub title_height: f32,
+    /// macOS-style traffic lights: circle radius, center spacing, left margin.
+    pub traffic_light_radius: f32,
+    pub traffic_light_spacing: f32,
+    pub traffic_light_margin: f32,
+    pub close_color: Color32,
+    pub minimize_color: Color32,
+    pub maximize_color: Color32,
+    pub glyph_color: Color32,
+}
+
+impl Default for WindowStyle {
+    fn default() -> Self {
+        Self {
+            bg_fill: Color32::from_rgb(49, 49, 49),
+            title_bg_fill: Color32::from_rgb(57, 57, 57),
+            border: Stroke::new(1.0, Color32::from_rgb(24, 24, 24)),
+            shadow: Shadow {
+                offset: [3, 3],
+                blur: 10,
+                spread: 1,
+                color: Color32::from_black_alpha(120),
+            },
+            title_height: 28.0,
+            traffic_light_radius: 6.0,
+            traffic_light_spacing: 20.0,
+            traffic_light_margin: 12.0,
+            close_color: Color32::from_rgb(255, 95, 86),
+            minimize_color: Color32::from_rgb(255, 189, 46),
+            maximize_color: Color32::from_rgb(40, 200, 64),
+            glyph_color: Color32::from_black_alpha(170),
         }
     }
 }
@@ -177,6 +264,7 @@ pub struct Style {
     pub tab_bar: TabBarStyle,
     pub tab: TabStyle,
     pub overlay: OverlayStyle,
+    pub window: WindowStyle,
 }
 
 impl Default for Style {
@@ -189,6 +277,7 @@ impl Default for Style {
             tab_bar: TabBarStyle::default(),
             tab: TabStyle::default(),
             overlay: OverlayStyle::default(),
+            window: WindowStyle::default(),
         }
     }
 }

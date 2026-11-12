@@ -27,12 +27,24 @@
 //! * [`PanelHost`]: reconciles `LayoutState::open_panels` into live instances and
 //!   draws them (module `host`); [`PanelHostOutput`] is the per-frame drawing
 //!   report (drawn panels, their rects, repaint request).
+//!
+//! # Production sync (2026-11-12)
+//!
+//! Production no longer lets the host draw the four slots itself: `Docker` in
+//! `kairos_editor_docking` draws a `DockState<PanelInstanceId>`, and
+//! `PanelHost` implements the dock's `TabViewer` (title/ui/closeable/
+//! on_close/allowed_in_windows/scroll_bars/on_rect_changed). The prototype
+//! keeps the four-slot host as the minimal stand-in; `Panel` remains the only
+//! panel abstraction. See `docs/architecture-tour.md` §9 for the migration
+//! checklist (including the production `PanelContext` substitution).
 
 mod host;
 mod registry;
+mod viewer;
 
 pub use host::{PanelHost, PanelHostOutput};
 pub use registry::{PanelFactory, PanelRegistry};
+pub use viewer::{CloseResponse, DockViewer, PanelHostViewer};
 
 use editor_core_prototype::PanelId;
 use egui::Ui;
@@ -88,6 +100,34 @@ pub trait Panel {
     fn wants_continuous_repaint(&self) -> bool {
         false
     }
+
+    /// Close veto, called before the host emits `LayoutAction::ClosePanel`.
+    ///
+    /// Production uses this for dirty documents. The default allows closing;
+    /// returning false keeps the panel open (the view should then explain why
+    /// through normal UI/state, not by blocking the reducer).
+    fn on_close(&mut self, _frame: &Frame, _out: &mut UiOut) -> bool {
+        true
+    }
+
+    /// Whether a real dock may detach this panel into a floating window.
+    ///
+    /// Mirrors `kairos_editor_docking::viewer::TabViewer::allowed_in_windows`:
+    /// the panel kind decides, not the dock.
+    fn allowed_in_windows(&self) -> bool {
+        true
+    }
+
+    /// `[horizontal, vertical]` scroll bars for the panel body. Mirrors the
+    /// docking viewer's default (vertical only).
+    fn scroll_bars(&self) -> [bool; 2] {
+        [false, true]
+    }
+
+    /// Called when the rect available to the panel body changes (dock resize,
+    /// tab re-dock, window resize). Production's `TabViewer::on_rect_changed`
+    /// forwards to this hook; the four-slot prototype host does not need it yet.
+    fn on_rect_changed(&mut self) {}
 }
 
 /// Docking slot of a panel kind.

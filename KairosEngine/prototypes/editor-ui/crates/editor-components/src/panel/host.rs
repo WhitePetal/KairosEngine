@@ -202,6 +202,36 @@ impl PanelHost {
         self.instances.len()
     }
 
+    /// Create the production-dock adapter for one UI pass.
+    ///
+    /// The real editor's `Docker` calls this viewer by tab id; the four-slot
+    /// host keeps using [`PanelHost::draw`] directly.
+    pub fn dock_viewer<'host, 'frame>(
+        &'host mut self,
+        frame: Frame<'frame>,
+        out: &'host mut UiOut,
+    ) -> super::PanelHostViewer<'host, 'frame> {
+        super::PanelHostViewer {
+            host: self,
+            frame,
+            out,
+        }
+    }
+
+    pub(crate) fn panel(&self, id: PanelInstanceId) -> Option<&Box<dyn Panel>> {
+        self.instances
+            .values()
+            .find(|instance| instance.id == id)
+            .map(|instance| &instance.panel)
+    }
+
+    pub(crate) fn panel_mut(&mut self, id: PanelInstanceId) -> Option<&mut Box<dyn Panel>> {
+        self.instances
+            .values_mut()
+            .find(|instance| instance.id == id)
+            .map(|instance| &mut instance.panel)
+    }
+
     // ------------------------------------------------------------------
     // internals
     // ------------------------------------------------------------------
@@ -300,7 +330,13 @@ impl PanelHost {
         if let Some(index) = bar_output.close_clicked
             && let Some((kind, _item)) = tabs.get(index)
         {
-            out.push(Action::Layout(LayoutAction::ClosePanel { panel: *kind }));
+            let should_close = self
+                .instances
+                .get_mut(kind)
+                .is_none_or(|instance| instance.panel.on_close(frame, out));
+            if should_close {
+                out.push(Action::Layout(LayoutAction::ClosePanel { panel: *kind }));
+            }
         }
 
         self.draw_panel_body(ui, frame, out, active, output);

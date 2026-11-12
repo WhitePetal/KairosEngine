@@ -1,29 +1,41 @@
-use std::{ops::{Index, IndexMut, Range}, slice::IterMut};
+use std::{
+    ops::{Index, IndexMut, Range},
+    slice::IterMut,
+};
 
 use egui::Rect;
 
-use crate::{split::{Fraction, Split}, tab::{TabState}};
+use crate::{
+    split::{Fraction, Split},
+    viewer::TabId,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TabIndex(pub usize);
 
 #[derive(Clone)]
-pub struct LeafNode {
+pub struct LeafNode<Id: TabId> {
     /// tab bar + body
     pub rect: Rect,
     /// body rect
     pub viewport: Rect,
-    pub tabs: Vec<TabState>,
+    pub tabs: Vec<Id>,
     pub active: TabIndex,
     pub scroll: f32,
 }
 
-impl LeafNode {
-    pub fn new(tabs: Vec<TabState>) -> Self {
-        Self { rect: Rect::NOTHING, viewport: Rect::NOTHING, tabs, active: TabIndex(0), scroll: 0.0 }
+impl<Id: TabId> LeafNode<Id> {
+    pub fn new(tabs: Vec<Id>) -> Self {
+        Self {
+            rect: Rect::NOTHING,
+            viewport: Rect::NOTHING,
+            tabs,
+            active: TabIndex(0),
+            scroll: 0.0,
+        }
     }
 
-    pub fn remove_tab(&mut self, tab_index: impl Into<TabIndex>) -> TabState {
+    pub fn remove_tab(&mut self, tab_index: impl Into<TabIndex>) -> Id {
         let index = tab_index.into();
         if index <= self.active {
             self.active.0 = self.active.0.saturating_sub(1)
@@ -31,13 +43,13 @@ impl LeafNode {
         self.tabs.remove(index.0)
     }
 
-    pub fn insert_tab(&mut self, tab_index: impl Into<TabIndex>, tab: TabState) {
+    pub fn insert_tab(&mut self, tab_index: impl Into<TabIndex>, tab: Id) {
         let tab_index = tab_index.into();
         self.tabs.insert(tab_index.0, tab);
         self.active = tab_index;
     }
 
-    pub fn append_tab(&mut self, tab: TabState) {
+    pub fn append_tab(&mut self, tab: Id) {
         self.active = TabIndex(self.tabs.len());
         self.tabs.push(tab);
     }
@@ -64,12 +76,12 @@ impl SplitNode {
 }
 
 #[derive(Clone)]
-pub enum Node {
+pub enum Node<Id: TabId> {
     /// Empty Node
     Empty,
 
     /// Contains the actual tabs.
-    Leaf(LeafNode),
+    Leaf(LeafNode<Id>),
 
     /// Parent node in the vertical orientation.
     Vertical(SplitNode),
@@ -78,12 +90,12 @@ pub enum Node {
     Horizontal(SplitNode),
 }
 
-impl Node {
-    pub fn leaf(tab: TabState) -> Self {
+impl<Id: TabId> Node<Id> {
+    pub fn leaf(tab: Id) -> Self {
         Self::Leaf(LeafNode::new(vec![tab]))
     }
 
-    pub fn leaf_with(tabs: Vec<TabState>) -> Self {
+    pub fn leaf_with(tabs: Vec<Id>) -> Self {
         Self::Leaf(LeafNode::new(tabs))
     }
 
@@ -91,7 +103,7 @@ impl Node {
         let rect = Rect::NOTHING;
         let src = match split {
             Split::Left | Split::Right => Node::Horizontal(SplitNode::new(rect, fraction)),
-            Split::Top | Split::Bottom => Node::Vertical(SplitNode::new(rect, fraction))
+            Split::Top | Split::Bottom => Node::Vertical(SplitNode::new(rect, fraction)),
         };
         std::mem::replace(self, src)
     }
@@ -119,28 +131,28 @@ impl Node {
     pub fn tabs_count(&self) -> usize {
         match self {
             Node::Leaf(leaf_node) => leaf_node.tabs.len(),
-            _ => 0
+            _ => 0,
         }
     }
 
-    pub fn remove_tab(&mut self, tab_index: TabIndex) -> Option<TabState> {
+    pub fn remove_tab(&mut self, tab_index: TabIndex) -> Option<Id> {
         match self {
             Node::Leaf(leaf_node) => Some(leaf_node.remove_tab(tab_index)),
             _ => None,
         }
     }
 
-    pub fn insert_tab(&mut self, index: TabIndex, tab: TabState) {
+    pub fn insert_tab(&mut self, index: TabIndex, tab: Id) {
         match self {
             Node::Leaf(leaf_node) => leaf_node.insert_tab(index, tab),
-            _ => ()
+            _ => (),
         }
     }
 
-    pub fn append_tab(&mut self, tab: TabState) {
+    pub fn append_tab(&mut self, tab: Id) {
         match self {
             Node::Leaf(leaf_node) => leaf_node.append_tab(tab),
-            _ => ()
+            _ => (),
         }
     }
 
@@ -148,7 +160,9 @@ impl Node {
         match self {
             Node::Empty => (),
             Node::Leaf(leaf_node) => leaf_node.set_rect(new_rect),
-            Node::Vertical(split_node) | Node::Horizontal(split_node) => split_node.set_rect(new_rect),
+            Node::Vertical(split_node) | Node::Horizontal(split_node) => {
+                split_node.set_rect(new_rect)
+            }
         }
     }
 
@@ -160,21 +174,28 @@ impl Node {
         }
     }
 
-    pub fn get_leaf_mut(&mut self) -> Option<&mut LeafNode> {
+    pub fn get_leaf(&self) -> Option<&LeafNode<Id>> {
         match self {
             Node::Leaf(leaf_node) => Some(leaf_node),
             _ => None,
         }
     }
 
-    pub fn tabs_mut(&mut self) -> Option<&mut Vec<TabState>> {
+    pub fn get_leaf_mut(&mut self) -> Option<&mut LeafNode<Id>> {
         match self {
-            Node::Leaf(leaf_node) => Some(&mut leaf_node.tabs),
-            _ => None
+            Node::Leaf(leaf_node) => Some(leaf_node),
+            _ => None,
         }
     }
 
-    pub fn iter_tabs_mut(&mut self) -> impl Iterator<Item = &mut TabState> {
+    pub fn tabs_mut(&mut self) -> Option<&mut Vec<Id>> {
+        match self {
+            Node::Leaf(leaf_node) => Some(&mut leaf_node.tabs),
+            _ => None,
+        }
+    }
+
+    pub fn iter_tabs_mut(&mut self) -> impl Iterator<Item = &mut Id> {
         match self.tabs_mut() {
             Some(tabs) => tabs.iter_mut(),
             None => IterMut::default(),
@@ -252,45 +273,55 @@ impl NodeIndex {
 }
 
 #[derive(Clone)]
-pub struct Tree {
-    pub nodes: Vec<Node>,
+pub struct Tree<Id: TabId> {
+    pub nodes: Vec<Node<Id>>,
     focused_node: Option<NodeIndex>,
 }
 
-impl Index<NodeIndex> for Tree {
-    type Output = Node;
+impl<Id: TabId> Index<NodeIndex> for Tree<Id> {
+    type Output = Node<Id>;
 
     fn index(&self, index: NodeIndex) -> &Self::Output {
         &self.nodes[index.0]
     }
 }
 
-impl IndexMut<NodeIndex> for Tree {
+impl<Id: TabId> IndexMut<NodeIndex> for Tree<Id> {
     fn index_mut(&mut self, index: NodeIndex) -> &mut Self::Output {
         &mut self.nodes[index.0]
     }
 }
 
-impl Tree {
-    pub fn new(tabs: Vec<TabState>) -> Self {
+impl<Id: TabId> Tree<Id> {
+    pub fn new(tabs: Vec<Id>) -> Self {
         let root = Node::leaf_with(tabs);
-        Self { nodes: vec![root], focused_node: None }
+        Self {
+            nodes: vec![root],
+            focused_node: None,
+        }
     }
 
-    pub fn root_node_mut(&mut self) -> Option<&mut Node> {
+    pub fn root_node_mut(&mut self) -> Option<&mut Node<Id>> {
         self.nodes.first_mut()
     }
 
-    pub fn split(&mut self, parent: NodeIndex, split: Split, fraction: Fraction, new: Node) -> [NodeIndex; 2] {
+    pub fn split(
+        &mut self,
+        parent: NodeIndex,
+        split: Split,
+        fraction: Fraction,
+        new: Node<Id>,
+    ) -> [NodeIndex; 2] {
         let old = self.nodes[parent.0].split(split, fraction);
 
         let index = self.nodes.iter().rposition(|n| !n.is_empty()).unwrap_or(0);
         let level = NodeIndex(index).level();
-        self.nodes.resize_with((1 << (level + 1)) - 1, || Node::Empty);
+        self.nodes
+            .resize_with((1 << (level + 1)) - 1, || Node::Empty);
 
         let index = match split {
             Split::Left | Split::Top => [parent.right(), parent.left()],
-            Split::Right | Split::Bottom => [parent.left(), parent.right()]
+            Split::Right | Split::Bottom => [parent.left(), parent.right()],
         };
 
         if old.is_parent() {
@@ -325,7 +356,7 @@ impl Tree {
         &mut self,
         parent: NodeIndex,
         fraction: Fraction,
-        tabs: Vec<TabState>,
+        tabs: Vec<Id>,
     ) -> [NodeIndex; 2] {
         self.split(parent, Split::Right, fraction, Node::leaf_with(tabs))
     }
@@ -335,7 +366,7 @@ impl Tree {
         &mut self,
         parent: NodeIndex,
         fraction: Fraction,
-        tabs: Vec<TabState>,
+        tabs: Vec<Id>,
     ) -> [NodeIndex; 2] {
         self.split(parent, Split::Left, fraction, Node::leaf_with(tabs))
     }
@@ -344,7 +375,7 @@ impl Tree {
         &mut self,
         parent: NodeIndex,
         fraction: Fraction,
-        tabs: Vec<TabState>,
+        tabs: Vec<Id>,
     ) -> [NodeIndex; 2] {
         self.split(parent, Split::Bottom, fraction, Node::leaf_with(tabs))
     }
@@ -353,7 +384,7 @@ impl Tree {
         &mut self,
         parent: NodeIndex,
         fraction: Fraction,
-        tabs: Vec<TabState>,
+        tabs: Vec<Id>,
     ) -> [NodeIndex; 2] {
         self.split(parent, Split::Top, fraction, Node::leaf_with(tabs))
     }
@@ -363,7 +394,7 @@ impl Tree {
         parent: NodeIndex,
         split: Split,
         fraction: Fraction,
-        tabs: Vec<TabState>,
+        tabs: Vec<Id>,
     ) -> [NodeIndex; 2] {
         self.split(parent, split, fraction, Node::leaf_with(tabs))
     }
@@ -374,7 +405,7 @@ impl Tree {
 
     pub fn remove_leaf(&mut self, node_index: NodeIndex) {
         if self.is_empty() || !self[node_index].is_leaf() {
-            return
+            return;
         }
 
         let Some(parent) = node_index.parent() else {
@@ -391,7 +422,11 @@ impl Tree {
                 } else {
                     parent.left()
                 };
-                if self.nodes.get(node_index.0).is_some_and(|node_index| node_index.is_leaf()) {
+                if self
+                    .nodes
+                    .get(node_index.0)
+                    .is_some_and(|node_index| node_index.is_leaf())
+                {
                     self.focused_node = Some(next);
                     break;
                 }
@@ -441,7 +476,9 @@ impl Tree {
         }
 
         while let Some(last_index) = self.nodes.len().checked_sub(1).map(NodeIndex) {
-            if self[last_index].is_empty() && last_index.parent().is_some_and(|pi| !self[pi].is_parent()) {
+            if self[last_index].is_empty()
+                && last_index.parent().is_some_and(|pi| !self[pi].is_parent())
+            {
                 self.nodes.pop();
             } else {
                 break;
@@ -453,8 +490,8 @@ impl Tree {
         let left = top.left();
         let right = top.right();
         match (self.nodes.get(left.0), self.nodes.get(right.0)) {
-            (Some(&Node::Leaf { .. }), _) => Some(left),
-            (_, Some(&Node::Leaf { .. })) => Some(right),
+            (Some(Node::Leaf { .. }), _) => Some(left),
+            (_, Some(Node::Leaf { .. })) => Some(right),
 
             (
                 Some(Node::Horizontal { .. } | Node::Vertical { .. }),
@@ -470,7 +507,7 @@ impl Tree {
         }
     }
 
-    pub fn breadth_first_index_iter(&self) -> std::iter::Map<Range<usize>, fn (usize) -> NodeIndex> {
+    pub fn breadth_first_index_iter(&self) -> std::iter::Map<Range<usize>, fn(usize) -> NodeIndex> {
         (0..self.nodes.len()).map(NodeIndex)
     }
 
@@ -488,7 +525,7 @@ impl Tree {
         count
     }
 
-    pub fn remove_tab(&mut self, (node_index, tab_index): (NodeIndex, TabIndex)) -> Option<TabState> {
+    pub fn remove_tab(&mut self, (node_index, tab_index): (NodeIndex, TabIndex)) -> Option<Id> {
         let node = &mut self[node_index];
         let tab = node.remove_tab(tab_index);
         if node.tabs_count() == 0 {
@@ -502,6 +539,10 @@ impl Tree {
     }
 
     pub fn set_focused_node(&mut self, node_index: NodeIndex) {
-        self.focused_node = self.nodes.get(node_index.0).filter(|node| node.is_leaf()).map(|_| node_index)
+        self.focused_node = self
+            .nodes
+            .get(node_index.0)
+            .filter(|node| node.is_leaf())
+            .map(|_| node_index)
     }
 }

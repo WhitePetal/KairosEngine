@@ -269,7 +269,7 @@ egui 合成 pass（生产：同一个 render graph 的 egui pass）
 | 文档里大量 `panel.rs:285-585` 行号 | 改为模块/符号引用 | 行号每次重构都失效 |
 
 **没有改**：数据流、分层、帧阶段、trait/registry/host 的职责、所有 Action/Effect 词表、测试语义。
-`cargo test` 仍是 126 个（125 headless + 1 doctest），0 warning。
+`cargo test` 现为 127 个（126 headless + 1 doctest），0 warning（新增 1 个 dock viewer 适配测试）。
 
 ## 7. 建议的读代码顺序
 
@@ -295,3 +295,61 @@ egui 合成 pass（生产：同一个 render graph 的 egui pass）
 | 四槽 `PanelHost` | `kairos_editor_docking` | `DockSlot` 替身为 dock 树；`PanelInstanceId` 多实例 |
 
 详见 design doc §6 的 P1-P5 迁移步骤与 panel-viewport-design §7.4 的 9 条原型↔生产差异。
+
+---
+
+## 9. 生产同步（2026-11-12）：docking viewer seam
+
+> 生产侧把 docking 重构为「布局数据 + viewer」，并把 `PanelHost` 改成实现 dock 的
+> `TabViewer`。原型同步了 `Panel` trait 的关闭/浮动窗口/滚动条/rect 默认方法；四槽
+> `PanelHost` 仍然是原型的最小替身。本节是「照着原型实现生产」时的差异清单。
+
+### 9.1 生产调用链
+
+```text
+EditorApp::draw
+  -> LayoutState (open/focus 意图)
+  -> DockState<PanelInstanceId>          (布局真值：id / split / tab order，可序列化)
+  -> Docker::show(ui, &mut PanelHostViewer)
+       -> PanelHostViewer implements TabViewer
+       -> PanelHostViewer::ui(id) -> PanelHost.instances[id].draw(ui, &mut PanelContext)
+  <- 关闭/焦点：closeable / on_close / allowed_in_windows 回调
+```
+
+对应生产文件：
+
+| 生产文件 | 职责 |
+|---|---|
+| `kairos_editor_docking/src/viewer.rs` | `TabId` / `TabViewer` / `CloseResponse`（dock 唯一扩展点） |
+| `kairos_editor_docking/src/docker.rs` | `DockState<Id>`（只存布局）+ `Docker::show` 单入口 + 浮动窗口 chrome |
+| `kairos_editor_app/src/panel.rs` | `Panel` / `PanelInstanceId` / `PanelRegistry` / `PanelHost`（实现 `TabViewer`） |
+| `kairos_editor_app/src/app.rs` | 组合根：`host.sync -> dock reconcile -> Docker::show -> focus` |
+| 原型 `editor-components/src/panel/viewer.rs` | 同形状 `DockViewer` / `PanelHostViewer`（Frame/UiOut 版），验证 id→panel 解析与 close 回调；生产实现换成 `TabViewer` + `PanelContext` |
+
+### 9.2 原型 → 生产的差异
+
+| 关注点 | 原型（`prototypes/editor-ui`） | 生产（2026-11-12） |
+|---|---|---|
+| 面板 trait | `Panel` + `Frame` + `UiOut` | `Panel` + `PanelContext { state: &mut EditorState }`；仍然只有 `Panel` 一套 trait |
+| 面板实例归属 | `PanelHost`（`BTreeMap<PanelId, ...>`） | `PanelHost`（`BTreeMap<PanelInstanceId, ...>`），并实现 `TabViewer` |
+| 布局真值 | `LayoutState.open/focus` + 四槽固定 | `LayoutState.open/focus` + `DockState<PanelInstanceId>`（dock 树/顺序/比例在 app 侧可序列化） |
+| 绘制入口 | `PanelHost::draw -> draw_slot -> Panel::draw` | `Docker::show -> PanelHostViewer::ui -> Panel::ui` |
+| 关闭/浮动 | tab 点击 push Action；host 决定 close | 先经 `closeable/on_close/allowed_in_windows`，viewer 把意图交给 app，再 `host.sync` 收敛 |
+| 浮动窗口 | 无（四槽固定） | 每个 window surface 有独立标题栏（关闭/最小化/最大化）和 tab 内容 |
+| 面板默认方法 | `closable/wants_continuous_repaint/on_close/allowed_in_windows/scroll_bars/on_rect_changed` | 同左 + `context_menu` 等 viewer 钩子；本版原型已补关闭/浮动/滚动/rect 默认方法 |
+
+### 9.3 照原型写生产时的规则
+
+1. **不要引入第二个 `Tab` trait**。docking crate 只定义 `TabViewer`；面板仍然实现 `Panel`，
+   `PanelHost` 是 viewer 的实现者。`kairos_editor_docking` 不依赖 `editor-core`/`editor-ui`。
+2. `PanelHost` 的 id 是 `PanelInstanceId`；`DockState<PanelInstanceId>` 只存 id，不存
+   `Box<dyn Panel>`——这是「布局可序列化」和「core/MCP 可寻址布局」的前提。
+3. 打开/关闭/焦点先改 `LayoutState`；每帧 `host.sync(&state)` 创建/销毁实例，dock 侧只做
+   tab 增删/对齐，不在 dock 内部改 app 的 open/focus 真值。
+4. 原型用 `Frame`（只读）+ `UiOut`（Action 缓冲）作为 headless 边界；生产 owner 决定
+   **不建 headless core**，所以 `PanelContext` 直接给 `&mut EditorState`。迁移面板代码时保持
+   `Panel` 方法语义不变，只替换上下文类型；复杂命令仍可沿用原型的 Action/Effect 词表。
+5. 视觉（tab 分隔线/拖拽窗口浮层/浮动窗口 Unity 标题栏）只在 `kairos_editor_docking`，
+   原型四槽不为了视觉同步而改；原型证明的是面板 API 和帧阶段，不是最终视觉效果。
+
+详见 [panel-viewport-design.md](../../../docs/plan/editor-ui-architecture/panel-viewport-design.md) §6 的 P1-P5。

@@ -1,12 +1,20 @@
-use egui::{Color32, Context, CornerRadius, Id, LayerId, NumExt, Painter, Pos2, Rect, Stroke, Ui, Vec2, emath::{GuiRounding, inverse_lerp}};
+use egui::{
+    Context, NumExt, Pos2, Rect, Ui, Vec2,
+    emath::{GuiRounding, inverse_lerp},
+};
 
-use crate::{docker::{AllowedSplits, TabDestination, TabInsert}, styles::Style, surface::SurfaceIndex, tree::{NodeIndex, TabIndex}};
+use crate::{
+    docker::{AllowedSplits, TabDestination, TabInsert},
+    styles::Style,
+    surface::SurfaceIndex,
+    tree::{NodeIndex, TabIndex},
+};
 
 #[derive(Clone, Copy)]
 pub enum TreeComponent {
     Surface(SurfaceIndex),
     Node(SurfaceIndex, NodeIndex),
-    Tab(SurfaceIndex, NodeIndex, TabIndex)
+    Tab(SurfaceIndex, NodeIndex, TabIndex),
 }
 
 impl TreeComponent {
@@ -33,8 +41,12 @@ impl TreeComponent {
     pub fn as_tab_destination(&self) -> TabDestination {
         match *self {
             TreeComponent::Surface(surface_index) => TabDestination::EmptySurface(surface_index),
-            TreeComponent::Node(surface_index, node_index) => TabDestination::Node(surface_index, node_index, TabInsert::Append),
-            TreeComponent::Tab(surface_index, node_index, tab_index) => TabDestination::Node(surface_index, node_index, TabInsert::Insert(tab_index)),
+            TreeComponent::Node(surface_index, node_index) => {
+                TabDestination::Node(surface_index, node_index, TabInsert::Append)
+            }
+            TreeComponent::Tab(surface_index, node_index, tab_index) => {
+                TabDestination::Node(surface_index, node_index, TabInsert::Insert(tab_index))
+            }
         }
     }
 }
@@ -51,12 +63,31 @@ pub struct HoverData {
     pub rect: Rect,
     pub dst: TreeComponent,
     pub tab: Option<Rect>,
+    /// Tab-bar rect of the hovered leaf, when the pointer is over a leaf.
+    pub tab_bar: Option<Rect>,
 }
 
 #[derive(Clone, Copy)]
 pub struct DragData {
     pub src: TreeComponent,
-    pub rect: Rect
+    pub rect: Rect,
+}
+
+/// What the drag overlay should paint for the current pointer position.
+///
+/// Geometry/destination policy lives in this module; painting lives in
+/// `docker.rs` so it can use the tab title and the shared `Style`.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum DragVisual {
+    /// No overlay (not dragging over a dock target).
+    #[default]
+    None,
+    /// Insert a tab header into an existing tab bar, over `rect`.
+    Tab(Rect),
+    /// Preview panel (tab bar + body) for a prospective split region.
+    Panel(Rect),
+    /// Floating window preview, centred on the pointer.
+    Window,
 }
 
 #[derive(Clone)]
@@ -65,6 +96,8 @@ pub struct DragDropState {
     pub drag: DragData,
     pub pointer: Pos2,
     pub locked: Option<f64>,
+    /// Visual affordance for the current hover, updated by `resolve`.
+    pub visual: DragVisual,
 }
 
 impl DragDropState {
@@ -74,7 +107,7 @@ impl DragDropState {
                 let elapsed = ctx.input(|i| (i.time - lock_time) as f32);
                 ctx.request_repaint();
                 elapsed < style.overlay.feel.max_preference_time
-            },
+            }
             None => false,
         }
     }
@@ -83,14 +116,21 @@ impl DragDropState {
         self.hover.tab.is_some()
     }
 
-    pub fn resolve(&mut self, ui: &Ui, style: &Style, allowed_splits: AllowedSplits, windows_allowed: bool, window_bounds: Rect) -> Option<TabDestination> {
+    pub fn resolve(
+        &mut self,
+        ui: &Ui,
+        style: &Style,
+        allowed_splits: AllowedSplits,
+        windows_allowed: bool,
+        window_bounds: Rect,
+    ) -> Option<TabDestination> {
+        self.visual = DragVisual::None;
         if !windows_allowed && self.hover.dst.surface_address() != SurfaceIndex::main() {
             return None;
         }
-        show_highlight_rect(ui, self.hover.rect);
 
         if let Some(rect) = self.hover.tab {
-            show_drop_rect(ui, style, rect);
+            self.visual = DragVisual::Tab(rect);
             let target_lock_state = if rect.contains(self.pointer) {
                 LockState::SoftLock
             } else {
@@ -106,7 +146,7 @@ impl DragDropState {
         let (tab_insertion, overlay_rect) = {
             let a_pos = (Pos2::new(
                 inverse_lerp(hover_rect.x_range().into(), pointer.x).unwrap_or(1.0),
-                inverse_lerp(hover_rect.y_range().into(), pointer.y).unwrap_or(1.0)
+                inverse_lerp(hover_rect.y_range().into(), pointer.y).unwrap_or(1.0),
             ) - Pos2::new(0.5, 0.5))
             .to_pos2();
 
@@ -161,10 +201,15 @@ impl DragDropState {
             }
         };
 
-        let default_value = windows_allowed.then(|| TabDestination::Window(Rect::from_min_size(pointer, self.drag.rect.size())));
+        let default_value =
+            windows_allowed.then(|| TabDestination::Window(self.window_rect_at_pointer(pointer)));
         let final_result = tab_insertion.map_or(default_value, |tab| match self.hover.dst {
-            TreeComponent::Surface(surface_index) => Some(TabDestination::EmptySurface(surface_index)),
-            TreeComponent::Node(surface_index, node_index) => Some(TabDestination::Node(surface_index, node_index, tab)),
+            TreeComponent::Surface(surface_index) => {
+                Some(TabDestination::EmptySurface(surface_index))
+            }
+            TreeComponent::Node(surface_index, node_index) => {
+                Some(TabDestination::Node(surface_index, node_index, tab))
+            }
             _ => None,
         });
 
@@ -172,17 +217,26 @@ impl DragDropState {
 
         match final_result {
             Some(TabDestination::Window(rect)) => {
-                let rect = self.window_preview_rect(rect);
-                let rect_bounded = constrain_rect_to_area(ui, rect, window_bounds);
-                show_window_rect(ui, style, rect_bounded);
-            },
-            Some(_) => {
-                show_drop_rect(ui, style, hover_rect.intersect(overlay_rect));
+                let rect = constrain_rect_to_area(ui, rect, window_bounds);
+                self.visual = DragVisual::Window;
+                Some(TabDestination::Window(rect))
             }
-            None => (),
+            Some(TabDestination::Node(_, _, TabInsert::Split(_))) => {
+                self.visual = DragVisual::Panel(hover_rect.intersect(overlay_rect));
+                final_result
+            }
+            Some(TabDestination::Node(_, _, _)) => {
+                // Appending to the centre of a leaf still reads as a tab-bar
+                // insertion; the window ghost is the Unity-like affordance.
+                self.visual = DragVisual::Window;
+                final_result
+            }
+            Some(TabDestination::EmptySurface(_)) => {
+                self.visual = DragVisual::Panel(hover_rect);
+                final_result
+            }
+            None => final_result,
         }
-
-        final_result
     }
 
     fn update_lock(&mut self, target_state: LockState, style: &Style, ctx: &Context) {
@@ -200,57 +254,30 @@ impl DragDropState {
                 if target_state == LockState::Unlocked && !window_hold {
                     self.locked = None
                 }
-            },
+            }
             None => {
                 if target_state != LockState::Unlocked {
                     self.locked = Some(ctx.input(|i| i.time));
                 }
-            },
+            }
         }
     }
 
-    fn window_preview_rect(&self, rect: Rect) -> Rect {
-        if self.drag.src.surface_address() == SurfaceIndex::main() {
-            Rect::from_min_size(rect.min, rect.size() * 0.8)
+    /// Rectangle at which a detached window would be created.
+    ///
+    /// `DockState::detach_tab` uses `rect.min` as the window position and
+    /// (`rect.size() * 0.8`) as its size for main-surface tabs. Passing
+    /// `min = pointer - final_size / 2` therefore makes the created window —
+    /// like the drag preview — appear centred on the cursor.
+    fn window_rect_at_pointer(&self, pointer: Pos2) -> Rect {
+        let size = self.drag.rect.size();
+        let scale = if self.drag.src.surface_address() == SurfaceIndex::main() {
+            0.8
         } else {
-            rect
-        }
+            1.0
+        };
+        Rect::from_min_size(pointer - size * scale * 0.5, size)
     }
-}
-
-fn make_overlay_painter(ui: &Ui) -> Painter {
-    let id = Id::new("overly");
-    let layer_id = LayerId::new(egui::Order::Foreground, id);
-    ui.ctx().layer_painter(layer_id)
-}
-
-fn show_highlight_rect(ui: &Ui, rect: Rect) {
-    let painter = make_overlay_painter(ui);
-    painter.rect(
-        rect,
-        CornerRadius::same(0),
-        Color32::TRANSPARENT,
-        Stroke::NONE,
-        egui::StrokeKind::Inside
-    );
-}
-
-fn show_drop_rect(ui: &Ui, style: &Style, rect: Rect) {
-    let painter = make_overlay_painter(ui);
-    painter.rect_filled(rect, CornerRadius::same(0), style.overlay.selection_color);
-}
-
-fn show_window_rect(ui: &Ui, style: &Style, rect: Rect) {
-    let painter = make_overlay_painter(ui);
-    painter.rect_stroke(
-        rect,
-        CornerRadius::same(0),
-        Stroke::new(
-            style.overlay.selection_stroke_width,
-            style.overlay.selection_color,
-        ),
-        egui::StrokeKind::Inside
-    );
 }
 
 fn constrain_rect_to_area(ui: &Ui, rect: Rect, mut bounds: Rect) -> Rect {

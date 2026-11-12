@@ -11,6 +11,7 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
+use editor_components_prototype::panel::{CloseResponse, DockViewer};
 use editor_components_prototype::{
     ConsolePanel, DockSlot, Frame, HostView, Panel, PanelHost, PanelHostOutput, PanelRegistry,
     UiOut,
@@ -741,4 +742,37 @@ fn editor_defaults_registry_renders_builtin_panels_through_the_host() {
     host.sync(&state);
     assert_eq!(host.instance_count(), 2);
     assert!(!host.is_open(PanelId::PROJECT));
+}
+
+#[test]
+fn production_dock_viewer_resolves_panels_and_emits_close() {
+    let draws = Rc::new(Cell::new(0));
+    let mut registry = PanelRegistry::new();
+    register_fake(
+        &mut registry,
+        PANEL_A,
+        "A",
+        DockSlot::Left,
+        draws,
+        |panel| panel,
+    );
+    let mut host = PanelHost::new(registry);
+    let state = state_with(&[PANEL_A], PANEL_A);
+    host.sync(&state);
+
+    let id = host.instances().next().expect("panel instance");
+    let frame = Frame::new(&state);
+    let mut out = UiOut::new();
+    {
+        let mut viewer = host.dock_viewer(frame, &mut out);
+        assert_eq!(viewer.title(id).text(), "A");
+        assert!(viewer.closeable(id));
+        assert!(viewer.allowed_in_windows(id));
+        assert_eq!(viewer.on_close(id), CloseResponse::Close);
+    }
+
+    assert_eq!(
+        out.take(),
+        vec![Action::Layout(LayoutAction::ClosePanel { panel: PANEL_A })]
+    );
 }

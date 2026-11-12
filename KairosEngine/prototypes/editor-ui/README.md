@@ -9,7 +9,13 @@
 >
 > 依赖：`egui 0.35` + `eframe 0.35`（仅作为 throwaway window backend）+ `egui-wgpu 0.35` + `wgpu 29`（版本均 pin）。
 > 相关：`docs/adr/0008-editor-ui-architecture.md`、`docs/adr/0009-editor-panel-host-and-viewport.md`、
-> `docs/plan/editor-ui-architecture/`。日期：2026-10-30 初版；2026-11-09 面板/视口重构；2026-11-10 可读性重构（`panel/`、`app/` 模块拆分 + 架构导读）。
+> `docs/plan/editor-ui-architecture/`。日期：2026-10-30 初版；2026-11-09 面板/视口重构；2026-11-10 可读性重构（`panel/`、`app/` 模块拆分 + 架构导读）；2026-11-12 生产同步（docking viewer seam + Panel 关闭/浮动默认方法）。
+>
+> **生产同步（2026-11-12）**：`kairos_editor_docking` 已重构为 **id 布局 + `TabViewer` seam**
+> （`DockState<PanelInstanceId>` 只存布局，`Docker::show` 单入口），`kairos_editor_app` 的
+> `PanelHost` 实现 `TabViewer`；生产 app 用 `PanelContext`（无 headless core），原型保留
+> `Frame/UiOut` 作为更严格的视图边界。实现时对照
+> [architecture-tour §9](docs/architecture-tour.md) 的差异清单，不要引入第二个 `Tab` trait。
 >
 > **先读**：[docs/architecture-tour.md](docs/architecture-tour.md) —— 一页回答「面板在哪里被画」、一帧的绘制阶段、交互/消息链路，以及 7 张架构图。
 > 本 README 是证据/清单；tour 是导读。
@@ -18,7 +24,7 @@
 
 ## 0. TL;DR
 
-- **五个 crate、一个 workspace、126 个测试（125 个 headless + 1 doctest）、0 warning，全部离线可跑。**
+- **五个 crate、一个 workspace、127 个测试（126 个 headless + 1 doctest）、0 warning，全部离线可跑。**
 - **`cargo run` 打开真实窗口**：Project / Inspector / Console / **真实 3D Scene 视口** / Widget gallery 五个面板，
   由 registry 注册、四槽 PanelHost 停靠、tab bar 切换；点击/拖拽/slider/Save/Quit 都走
   `UiOut(Action) -> reducer -> Effect -> host` 真实链路。
@@ -173,8 +179,9 @@ pub struct PanelHost { /* instances + slot/tab layout */ }
 - **多实例**：`PanelInstanceId` 已存在（serial 单调分配）；当前 core 的 `open_panels` 是 kind 集合，
   所以 host 每种开一个实例。要做 "两个 Scene 视口" 时把 dock 树持久化为 `PanelInstanceId` 即可，
   trait/host/tab bar 不用改。
-- **dock**：四槽（left/center/right/bottom）+ tab bar 是 `PanelHost` 的最小实现；生产把现有
-  `DockState` 泛型化为 `PanelInstanceId` 接到 `kairos_editor_docking`，PanelHost 接口不变。
+- **dock**：四槽（left/center/right/bottom）+ tab bar 是 `PanelHost` 的最小实现；生产已把
+  `kairos_editor_docking` 做成 id 布局 + `TabViewer`，PanelHost 实现 viewer 接口（见
+  [architecture-tour §9](docs/architecture-tour.md)）。
 
 ## 2.7 3D 视口：egui + wgpu 的真实接缝
 
@@ -257,7 +264,7 @@ prototypes/editor-ui/
 | `editor-core/src/state.rs` | `EditorState`、`PanelId` 字符串 newtype、`LayoutState`、`ViewportState`、`ProjectState::demo()` |
 | `editor-core/src/viewport.rs` | `ViewportId`/`ViewportInfo`/`SceneObjectId`/`CameraInput`（相机-ready 单位） |
 | `editor-core/src/reduce/viewport.rs` | Ensure 幂等、bind/pick ticket 校验、resize 回放、pick completion → scene selection |
-| `editor-components/src/panel/{mod,registry,host}.rs` | Panel trait/ids、registry、PanelHost（四槽 dock + tab 交互 → LayoutAction；`draw` 是唯一绘制入口：`draw_slot` → `draw_panel_body` → `Panel::draw`） |
+| `editor-components/src/panel/{mod,registry,host,viewer}.rs` | Panel trait/ids、registry、PanelHost（四槽 dock + tab 交互 → LayoutAction；`draw` 是唯一绘制入口：`draw_slot` → `draw_panel_body` → `Panel::draw`）；`viewer.rs` 是生产 dock 的 `DockViewer` 适配参考 |
 | `editor-components/src/viewport_panel.rs` | 物理像素上报、TextureId 绘制、输入单位换算、NDC 计算 |
 | `editor-viewport/src/host.rs` | `ViewportHost`：bind/resize/render/destroy/camera/pick；TextureId 生命周期 |
 | `editor-app/src/app/` | `mod.rs` 组合根 + `impl eframe::App`（帧入口）；`pipeline.rs` 显式帧阶段；`effects.rs` effect executor（IO/GPU）；`shell.rs` 顶栏/快捷键/modal |
@@ -298,7 +305,7 @@ GPU 本体不做单测（headless cargo test 不建 device）；靠 `cargo run` 
 cd prototypes/editor-ui
 cargo build --offline                                   # 通过，0 warning
 cargo clippy --offline --all-targets -- -D warnings      # 通过，0 warning
-cargo test --offline                                    # 125 passed / 0 failed（+ 1 doctest passed, 1 ignored）
+cargo test --offline                                    # 126 passed / 0 failed（+ 1 doctest passed, 1 ignored）
 cargo run --offline                                     # 打开窗口 demo（本机已跑通并截图，见 §0）
 ```
 
@@ -307,12 +314,12 @@ cargo run --offline                                     # 打开窗口 demo（�
 ```text
 editor-core-prototype      lib 1 + core_flow 19 + viewport_flow 11          = 31
 editor-components-prototype lib 7 + component_actions 8 + full_stack 7
-                           + panel_host 14 + viewport_panel 3              = 39
+                           + panel_host 15 + viewport_panel 3              = 40
 ui-widgets-prototype       atoms 8 + compounds 5 + tab_bar 6 + purity 1     = 20
 editor-viewport-prototype  35（camera 17 + pick 18，纯逻辑）
 editor-app-prototype       bin 0（host smoke 由窗口运行/截图覆盖）
 ------------------------------------------------------------------------
-合计                        125 tests passed / 0 failed；0 warning
+合计                        126 tests passed / 0 failed；0 warning
 ```
 
 窗口 smoke（本机实录）：
@@ -396,7 +403,7 @@ editor-app                   840          -
 
 - 本目录由 `prototypes/editor-ui-core` 与 `prototypes/editor-ui-widgets` 合并而来（旧目录已删）；
   2026-11-09 这轮把 "两个面板写死在 app" 重构为 **Panel trait/registry/host**，并新增真实 3D 视口
-  （`editor-viewport`）与 host `gallery` 面板。旧的 49 个测试全部保留/迁移（现 126 = 125 headless + 1 doctest）。
+  （`editor-viewport`）与 host `gallery` 面板。旧的 49 个测试全部保留/迁移（现 127 = 126 headless + 1 doctest）。
 - 生产迁移：`prototypes/editor-ui` → `kairos_editor_core / kairos_editor_ui / kairos_editor_widgets /
   kairos_editor_docking / kairos_editor_app` 的逐 crate 映射、P1-P5 清单、删除项与质量门见
   [panel-viewport-design.md](../../docs/plan/editor-ui-architecture/panel-viewport-design.md) §6。

@@ -57,7 +57,8 @@ pub use inspector_panel::{
     set_material_action,
 };
 pub use panel::{
-    DockSlot, Panel, PanelFactory, PanelHost, PanelHostOutput, PanelInstanceId, PanelRegistry,
+    CloseResponse, DockSlot, DockViewer, Panel, PanelFactory, PanelHost, PanelHostOutput,
+    PanelHostViewer, PanelInstanceId, PanelRegistry,
 };
 pub use project_panel::{
     ProjectNode, ProjectPanel, ProjectPanelOutput, ProjectViewState,

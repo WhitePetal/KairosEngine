@@ -1,4 +1,4 @@
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Split {
     Left,
     Right,
@@ -8,12 +8,14 @@ pub enum Split {
 
 #[derive(Clone, Copy)]
 pub struct Fraction {
-    fraction: f32
+    fraction: f32,
 }
 
 impl Fraction {
     pub fn new(value: f32) -> Self {
-        Self { fraction: value.clamp(0.0, 1.0) }
+        Self {
+            fraction: value.clamp(0.0, 1.0),
+        }
     }
 
     pub fn value(self) -> f32 {
@@ -23,7 +25,9 @@ impl Fraction {
 
 impl From<f32> for Fraction {
     fn from(value: f32) -> Self {
-        Self { fraction: value.clamp(0.0, 1.0) }
+        Self {
+            fraction: value.clamp(0.0, 1.0),
+        }
     }
 }
 

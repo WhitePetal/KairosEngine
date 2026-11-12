@@ -857,12 +857,14 @@ cd prototypes/editor-ui && cargo test && cargo run   # 手动窗口 smoke
 | `ui-widgets-prototype` | **`kairos_editor_widgets`** | 已存在（workspace 成员，骨架 `theme.rs`） | L0/L1：只依赖 egui；widget 里出现领域类型即编译失败 |
 | `editor-viewport-prototype` | **`kairos_editor_app` 的 host 侧 viewport 模块**（`ViewportHost`；将来若值得再独立成 crate） | 未建 | 唯一封装 wgpu/离屏渲染的 UI 侧模块；UI crate 不依赖它 |
 | `editor-app-prototype` | **`kairos_editor_app`** | 已存在（骨架，当前用 eframe 脚手架） | 组合根 + 帧阶段 + EffectExecutor + ViewportHost + 事件循环/窗口。生产接管 winit/wgpu 循环，eframe 只属于原型（见下） |
-| 原型 `PanelHost` 的四槽布局（Left/Center/Right/Bottom + tab） | **`kairos_editor_docking`** 的 DockState/dock 控件（最终替身） | 已存在（空 crate） | 四槽是原型的**最小替身**，用于先证明面板 API；最终 `PanelHost` 内部把四槽换成 docking 的 `DockState<PanelInstanceId>`。docking 只负责渲染/拖拽，**布局真值在 core `LayoutState` + host 的序列化树** |
+| 原型 `PanelHost` 的四槽布局（Left/Center/Right/Bottom + tab） | **`kairos_editor_docking`** 的 DockState/dock 控件（最终替身） | 已存在（`DockState<Id>` + `TabViewer` + `Docker` 单入口；app 侧 `PanelHost` 已接线） | 四槽是原型的**最小替身**，用于先证明面板 API；最终 `PanelHost` 内部把四槽换成 docking 的 `DockState<PanelInstanceId>`。docking 只负责渲染/拖拽；tab 内容由 app 的 `TabViewer`（`PanelHost`）提供，**open/focus 意图在 app `LayoutState`，布局树在 app `DockState` 并可序列化**（core `LayoutState` 尚未建） |
 | 旧 `kairos_editor`（Drawer/`ui::Context`） | 最终收缩为 runtime/engine 胶水并退役 | 现有 | 迁移完成前保留；不再接新功能（rewrite-plan §0「旧 UI 冻结」） |
 
 **宿主形态（已拍板）**：`kairos_editor_app` **接管现有 winit + wgpu + `RenderPipeline::present` 事件循环**；**eframe 只是原型（throwaway）的 window backend，生产不得让 eframe 拥有 surface/present**。理由：真实渲染路径是 `GraphicsCommand → GraphicsGraph::build → RenderPipeline::present`，UI 只拿 `TextureId`（§3.1）；eframe 的 surface/帧序会与引擎的渲染图冲突。迁移映射：原型的 `eframe::App::{logic, ui}` 内阶段（§4.3）→ 生产的 `runtime.rs` `redraw()` 内阶段（§4.1）；原型的 `ViewportHost`（自有 `queue.submit`）→ 生产的 `RenderViewports` + `BindAttachmentToEgui` + 引擎 present；`PanelHost`/`HostView`/`Frame`/`UiOut` 接口不变。
 
 **原型与生产 crate 的现状（2026-11-09）**：原型侧已全部落地（逐项位置与测试见 §7）；主 workspace 里只有三个新 crate 的骨架——`kairos_editor_widgets`（`theme.rs` 骨架）、`kairos_editor_app`（eframe 脚手架）、`kairos_editor_docking`（空）；`kairos_editor_core` / `kairos_editor_ui` 尚未创建。因此 P1 的第一件事是把原型代码按上表搬进生产 crate，而不是从零设计。
+
+**2026-11-12 更新（docking/PanelHost 已落地）**：`kairos_editor_docking` 已重构为 **id 布局 + `TabViewer` seam**（`DockState<Id>` 只存稳定 id/分割树/tab 顺序；`Docker::show(ui, &mut viewer)` 是唯一绘制/交互入口；close/focus 走 viewer 回调，不在 dock 内部改布局）。`kairos_editor_app` 已有 `Panel` / `PanelInstanceId` / `PanelRegistry` / `PanelHost`（实现 `TabViewer`）、`LayoutState`（open/focus）和 4 个 demo 面板；每帧 `host.sync → dock tab reconcile → Docker::show`。按 owner 决定**不创建独立 headless core/UI crate**：`EditorState` 与面板 trait 暂留 app，面板通过 `PanelContext` 直接读写具体 app 状态（无 `Frame`/`UiOut` 抽象）；`kairos_editor_core` / `kairos_editor_ui` 仍可作为后续可选项。
 
 ### 6.2 分阶段落地清单
 
@@ -887,7 +889,7 @@ kairos_editor/src/ui/scene_window.rs、game_window.rs
 kairos_editor/src/ui/inspector.rs
   Inspector::render() 预览钩子 → 改为 ViewportId::Preview 视口
 kairos_editor/src/ui/docking_tab/**
-  移到 kairos_editor_docking（保留交互，换 PanelInstanceId 泛型与 TabDrawer 签名）
+  已由 kairos_editor_docking 的新实现替代（id 布局 + TabViewer；旧模块待 P5 删除）
 kairos_editor/src/ui/layout.rs、dialog.rs
   假抽屉删除；回调式 Dialog 由 core::ModalState 替代
 kairos_editor/src/lib.rs
