@@ -1,4 +1,4 @@
-//! Headless tests for the console sink: formatting, capacity and the
+//! Headless tests for the console sink: structured entries, capacity and the
 //! `HostView`-style callback access the panel uses.
 
 use kairos_editor_component::ConsoleLog;
@@ -9,20 +9,44 @@ fn record(level: Level, target: &str, message: &str) -> Record {
 }
 
 #[test]
-fn push_formats_records_for_display() {
+fn push_keeps_time_level_and_message_separate() {
     let log = ConsoleLog::new();
     log.push(&record(Level::Warning, "kairos_asset", "missing sidecar"));
 
     log.with_lines(|lines| {
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0].level, Level::Warning);
-        assert!(
-            lines[0]
-                .text
-                .ends_with("WARN  kairos_asset: missing sidecar"),
-            "{}",
-            lines[0].text
-        );
+        assert_eq!(lines[0].message, "missing sidecar");
+        assert_eq!(lines[0].target, "kairos_asset");
+        assert_eq!(lines[0].time.len(), 8, "HH:MM:SS");
+        assert!(lines[0].stack.is_empty(), "no backtrace in a bare Record");
+    });
+}
+
+#[test]
+fn entries_get_monotonic_ids() {
+    let log = ConsoleLog::new();
+    log.push(&record(Level::Info, "test", "one"));
+    log.push(&record(Level::Info, "test", "two"));
+
+    assert_eq!(log.last_id(), Some(2));
+    log.with_lines(|lines| {
+        assert_eq!(lines[0].id, 1);
+        assert_eq!(lines[1].id, 2);
+    });
+}
+
+#[test]
+fn source_location_is_the_stack_fallback() {
+    let log = ConsoleLog::new();
+    let mut record = record(Level::Error, "kairos_physics", "fixed step failed");
+    record.file = Some("src/physics.rs".to_owned());
+    record.line = Some(42);
+    log.push(&record);
+
+    log.with_lines(|lines| {
+        assert_eq!(lines[0].location.as_deref(), Some("src/physics.rs:42"));
+        assert_eq!(lines[0].stack, ["kairos_physics (at src/physics.rs:42)"]);
     });
 }
 
@@ -35,8 +59,8 @@ fn capacity_keeps_the_newest_lines() {
 
     assert_eq!(log.len(), 2);
     log.with_lines(|lines| {
-        assert!(lines[0].text.ends_with(": 1"), "{}", lines[0].text);
-        assert!(lines[1].text.ends_with(": 2"), "{}", lines[1].text);
+        assert_eq!(lines[0].message, "1");
+        assert_eq!(lines[1].message, "2");
     });
 }
 

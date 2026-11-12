@@ -19,7 +19,13 @@ impl log::Log for Logger {
         let Some(level) = Level::from_log(record.level()) else {
             return;
         };
-        let captured = Record::new(level, record.target(), record.args().to_string());
+        let captured = Record::capture(
+            level,
+            record.target(),
+            record.args().to_string(),
+            record.file(),
+            record.line(),
+        );
         sinks::write(&captured);
     }
 

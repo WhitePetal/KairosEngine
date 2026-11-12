@@ -1872,7 +1872,7 @@ impl<T: TabId> Docker<'_, T> {
                     f32::round
                 );
                 let right_separator_border = map_to_pixel(
-                    midpoint - style.separator.width * 0.5,
+                    midpoint + style.separator.width * 0.5,
                     pixels_per_point,
                     f32::round
                 );

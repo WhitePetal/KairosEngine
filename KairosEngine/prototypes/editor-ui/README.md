@@ -30,6 +30,12 @@
 > `HostState.log: Vec<String>` 是简化替身；Console 面板 API 不变，只是行数据从 `String` 升为
 > `ConsoleLine { level, text }`。
 >
+> **生产同步（2026-11-12，Console 对齐 Unity）**：生产 Console 已按真实 Unity/Tuanjie Console 重做
+> （20 px 工具栏 + 搜索 + 分级计数开关、38 px 两行交替底色行、真图标、选中行 130 px 调用堆栈
+> 详情面板；`kairos_log` 记录调用点/backtrace 并裁掉 std/winit 噪声）。原型的 Console 仍是
+> 简化版（`Vec<String>` 快照 + 平铺行），面板 API 不变；详细规格与截图见
+> `docs/research/unity-console/README.md` 与 ADR 0010 的 implementation note。
+>
 > **先读**：[docs/architecture-tour.md](docs/architecture-tour.md) —— 一页回答「面板在哪里被画」、一帧的绘制阶段、交互/消息链路，以及 7 张架构图。
 > 本 README 是证据/清单；tour 是导读。
 

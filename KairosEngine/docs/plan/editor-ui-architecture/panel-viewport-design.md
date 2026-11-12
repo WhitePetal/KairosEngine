@@ -875,6 +875,8 @@ cd prototypes/editor-ui && cargo test && cargo run   # 手动窗口 smoke
 
 **2026-11-12 日志（`kairos_log` 落地，ADR 0010）**：新增 runtime crate `kairos_log` —— 进程级 logger，实现 `log::Log`（引擎里既有的 `log::*` 调用无需改动自动汇入），Info/Warning/Error 三级（debug/trace 有意丢弃），默认 stderr + `Library/Logs/KairosEngine.log`，`KAIROS_LOG_LEVEL` / `KAIROS_LOG_FILE` / `KAIROS_LOG_TERMINAL` 覆盖；额外 sink 走 `Sink` trait + `attach()`。编辑器侧**不拆** `kairos_editor_log`：console 历史是 host 资源，`kairos_editor_component::ConsoleLog` 实现 `Sink`（1000 行环，关面板不丢），`kairos_editor_app` 持有 `Arc<ConsoleLog>` 并 attach；`HostView::console_lines` 改为回调快照 `&mut dyn FnMut(&[ConsoleLine])`，行带 `Level` 供面板按主题着色。旧 `kairos_engine::log::Log`（`&mut` 实例、stderr-only、被旧 ConsoleWindow `pop_front` 消费）暂留给旧 `kairos_editor`，随 P5 退役删除。
 
+**2026-11-12 晚（Console 面板对齐 Unity，ADR 0010 实现 note）**：`ConsoleLog` 条目升级为结构化 `ConsoleLine { id, level, time, message, target, location, stack }`；`kairos_log::Record` 记录调用点并（`RUST_BACKTRACE` 开启时）抓取 backtrace，`Record::stack_trace()` 裁掉 logger/std/winit/eframe 噪声后输出 Unity 风格 `symbol (at file:line)` 帧。Console 面板按真实 Unity/Tuanjie Console 重做：20 px 工具栏（Clear/Collapse/Error Pause/Editor、搜索框、Info/Warning/Error 计数开关）、38 px 两行交替底色行、26 px 真图标、选中行下方 130 px 调用堆栈详情面板；图标取自本机 Tuanjie/Unity 序列化资源，UI 字体用 Unity 自带 Inter（OFL）。几何/调色板/行为记录在 `docs/research/unity-console/`，落地截图 `21_*`/`22_*`。
+
 ### 6.2 分阶段落地清单
 
 | 阶段 | 交付 | 关键文件（生产） | 验收 |

@@ -34,7 +34,7 @@ pub const PROJECT: PanelId = PanelId("project");
 pub fn register_default(registry: &mut PanelRegistry) {
     registry.register(SCENE, || Box::new(scene::ScenePanel));
     registry.register(INSPECTOR, || Box::new(inspector::InspectorPanel));
-    registry.register(CONSOLE, || Box::new(console::ConsolePanel));
+    registry.register(CONSOLE, || Box::new(console::ConsolePanel::default()));
     registry.register(HIERARCHY, || Box::new(hierarchy::HierarchyPanel));
     registry.register(PROJECT, || Box::new(project::ProjectPanel));
 }

@@ -2875,6 +2875,7 @@ name = "kairos_editor_component"
 version = "0.1.0"
 dependencies = [
  "egui",
+ "image",
  "kairos_editor_core",
  "kairos_editor_docking",
  "kairos_editor_widgets",

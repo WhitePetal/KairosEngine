@@ -27,13 +27,42 @@
 use kairos_editor_core::{EditorState, action::Action};
 use kairos_log::Level;
 
-/// One host-owned console line: severity (for color) plus rendered text.
+/// One host-owned console entry, rendered by the Console panel.
+///
+/// The pieces stay separate (timestamp, message, source, stack) so the panel
+/// can lay them out like Unity's console: one line `[time] message`, then the
+/// grey stack trace below it. The panel never formats the whole entry itself.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ConsoleLine {
-    /// Severity, mirrored from the kairos_log record.
+    /// Monotonic id; the panel uses it for clear/selection bookkeeping.
+    pub id: u64,
+    /// Severity, mirrored from the `kairos_log` record.
     pub level: Level,
-    /// Formatted line: `HH:MM:SS LEVEL target: message`.
-    pub text: String,
+    /// Time of day, `HH:MM:SS`.
+    pub time: String,
+    /// Log message without the timestamp prefix.
+    pub message: String,
+    /// Emitting module; shown when no stack trace is available.
+    pub target: String,
+    /// Caller location (`file:line`) when the logger knows it.
+    pub location: Option<String>,
+    /// Trimmed stack-trace lines; empty when backtraces are disabled.
+    pub stack: Vec<String>,
+}
+
+impl ConsoleLine {
+    /// Minimal entry for tests and headless fixtures.
+    pub fn new(level: Level, message: impl Into<String>) -> Self {
+        Self {
+            id: 0,
+            level,
+            time: "00:00:00".to_owned(),
+            message: message.into(),
+            target: String::new(),
+            location: None,
+            stack: Vec::new(),
+        }
+    }
 }
 
 /// Read-only host resources a frame may display.

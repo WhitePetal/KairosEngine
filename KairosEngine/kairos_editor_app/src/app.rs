@@ -140,9 +140,8 @@ impl EditorApp {
                     }
                 }
                 ui.separator();
-                if let Some(focus) = self.state.layout.focus() {
-                    ui.label(format!("focus: {}#{}", focus.kind, focus.serial));
-                }
+                // No focus debug label here: it only exists on some passes and
+                // would shift egui's auto-id bookkeeping between passes.
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.label(format!("v{VERSION}"));
                 });
@@ -310,11 +309,8 @@ mod tests {
         host.console_lines(&mut |lines| seen = lines.to_vec());
 
         assert_eq!(seen.len(), 1);
-        assert!(
-            seen[0].text.ends_with("INFO  test: hello console"),
-            "{}",
-            seen[0].text
-        );
+        assert_eq!(seen[0].message, "hello console");
+        assert_eq!(seen[0].target, "test");
     }
 
     #[test]

@@ -67,6 +67,28 @@
     emitting thread (flushing on errors), which is acceptable at current log volume.
   - Neutral: the default file path is working-directory-relative, like `Preferences/` and
     `imported_assets/`, not a per-user data directory.
+- **Implementation note (2026-11-12, editor console)**:
+  - `Record` also carries the macro call site (`file`/`line`) and, when the process
+    enables backtraces (`RUST_BACKTRACE=1`, the repo default for `cargo run`/tests), a
+    `Backtrace`. `Record::stack_trace()` trims the logger's own frames plus std/winit/eframe
+    noise and renders Unity-style `symbol (at file:line)` frames; it is what the editor
+    console shows below a selected entry.
+  - The Console panel is rebuilt against the real Unity/Tuanjie 2022.3 console: a 20 px
+    toolbar (Clear / Collapse / Error Pause / Editor, search, per-level count toggles), 38 px
+    two-line rows with alternating `#373737`/`#313131` backgrounds, 26 px severity icons, and
+    a 130 px stack-trace detail pane for the selected entry, all in 12 px Inter. Geometry,
+    palette and behavior notes live in
+    [`docs/research/unity-console/`](../research/unity-console/README.md); the implemented
+    result is `21_kairos_console_implemented_window.png` / `22_kairos_console_implemented_panel.png`.
+  - The severity icons are the real `console.infoicon` / `warnicon` / `erroricon`
+    (`ConsoleCountBadge` for collapse) extracted from the locally installed Tuanjie/Unity
+    serialized resources; the editor UI font is Unity's bundled Inter (SIL OFL 1.1, licence
+    in `kairos_editor_widgets/assets/fonts/Inter-LICENSE.txt`). These are local-reference
+    assets: do not redistribute the Unity-extracted icon PNGs without checking Unity's terms.
+  - Fix landed with this work: a split separator used to be painted on top of the right/bottom
+    child by its full width, which hid the focused tab's blue headerline whenever the tab bar
+    sat against a split boundary (the splitter and the `compute_rect_size` right border are
+    corrected; regression test in `kairos_editor_docking/tests/docker_ui.rs`).
 - **References**:
   - Implementation: `kairos_log/src/{lib,logger,level,record,config,sink,sinks}.rs`;
     console sink `kairos_editor_component/src/{console,frame}.rs`;

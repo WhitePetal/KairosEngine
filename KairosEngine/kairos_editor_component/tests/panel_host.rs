@@ -3,11 +3,11 @@
 
 use egui::{Context, Pos2, RawInput, Rect, Ui, Vec2, WidgetText};
 use kairos_editor_component::{
-    ConsoleLine, Frame, HostView, Panel, PanelHost, PanelId, PanelInstanceId,
-    PanelRegistry, UiOut, panels,
+    ConsoleLine, Frame, HostView, Panel, PanelHost, PanelId, PanelInstanceId, PanelRegistry, UiOut,
+    panels,
 };
 use kairos_editor_core::{EditorState, LayoutState};
-use kairos_editor_docking::viewer::{TabViewer};
+use kairos_editor_docking::viewer::TabViewer;
 use kairos_log::Level;
 
 const FAKE: PanelId = PanelId("fake");
@@ -126,14 +126,8 @@ fn console_renders_the_host_log_snapshot() {
 
     let host_view = TestHost {
         lines: vec![
-            ConsoleLine {
-                level: Level::Info,
-                text: "editor booted".to_owned(),
-            },
-            ConsoleLine {
-                level: Level::Warning,
-                text: "toggle panel: console".to_owned(),
-            },
+            ConsoleLine::new(Level::Info, "editor booted"),
+            ConsoleLine::new(Level::Warning, "toggle panel: console"),
         ],
     };
     let out = draw_with(&mut host, &host_view, &state, &ids);

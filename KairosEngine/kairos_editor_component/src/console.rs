@@ -15,7 +15,10 @@
 
 use std::{
     collections::VecDeque,
-    sync::{Mutex, MutexGuard, PoisonError},
+    sync::{
+        Mutex, MutexGuard, PoisonError,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 
 use kairos_log::{Record, Sink};
@@ -25,12 +28,17 @@ use crate::frame::ConsoleLine;
 /// Lines kept before the oldest one is dropped.
 pub const DEFAULT_CAPACITY: usize = 1000;
 
+/// Stack frames kept per entry; Unity shows the full trace, but a runaway
+/// recursive stack should not make the console unusable.
+const MAX_STACK_LINES: usize = 40;
+
 const TIME_FORMAT: &str = "%H:%M:%S";
 
 /// Bounded, thread-safe console history.
 pub struct ConsoleLog {
     lines: Mutex<VecDeque<ConsoleLine>>,
     capacity: usize,
+    next_id: AtomicU64,
 }
 
 impl ConsoleLog {
@@ -45,26 +53,61 @@ impl ConsoleLog {
         Self {
             lines: Mutex::new(VecDeque::with_capacity(capacity)),
             capacity,
+            // Ids start at 1 so the panel's default clear cursor (0) keeps the
+            // very first entry visible.
+            next_id: AtomicU64::new(1),
         }
     }
 
-    /// Appends one record, formatted for display. Sinks call this via
-    /// [`Sink::write`].
+    /// Appends one record. Sinks call this via [`Sink::write`].
     pub fn push(&self, record: &Record) {
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        let mut stack: Vec<String> = record
+            .stack_trace()
+            .map(|trace| {
+                trace
+                    .lines()
+                    .map(str::trim_end)
+                    .filter(|line| !line.trim().is_empty())
+                    .take(MAX_STACK_LINES)
+                    .map(str::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default();
+        if stack.is_empty() {
+            // No backtrace: keep the source of the entry visible so the panel
+            // still answers "where did this come from".
+            if let Some(location) = record.location() {
+                stack.push(format!("{} (at {location})", record.target));
+            }
+        }
+
+        let line = ConsoleLine {
+            id,
+            level: record.level,
+            time: record.timestamp(TIME_FORMAT),
+            message: record.message.clone(),
+            target: record.target.clone(),
+            location: record.location(),
+            stack,
+        };
+
         let mut lines = self.lines();
         if lines.len() == self.capacity {
             lines.pop_front();
         }
-        lines.push_back(ConsoleLine {
-            level: record.level,
-            text: record.line(TIME_FORMAT),
-        });
+        lines.push_back(line);
     }
 
     /// Runs `f` over the current lines, oldest first.
     pub fn with_lines<R>(&self, f: impl FnOnce(&[ConsoleLine]) -> R) -> R {
         let mut lines = self.lines();
         f(lines.make_contiguous())
+    }
+
+    /// Id of the most recent entry, or `0` when empty.
+    pub fn last_id(&self) -> Option<u64> {
+        self.lines().back().map(|line| line.id)
     }
 
     /// Number of lines currently kept.
