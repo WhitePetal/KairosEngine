@@ -9,7 +9,9 @@
   reducers/effects/commands are still pending (only the layout slice has `Action`/`reduce`).
   The prototype's `Frame`/`UiOut` are ported: panels read a read-only `Frame` and push
   `Action`s into `UiOut`; the app drains it after the last UI pass and calls `reduce`, the
-  only writer of `EditorState`.
+  only writer of `EditorState`. The console history is a `kairos_log` sink
+  (`kairos_editor_component::ConsoleLog`) exposed through `HostView::console_lines`; runtime
+  logging is [ADR 0010](./0010-runtime-logging.md).
 - **Context**: `kairos_editor` UI layer (~17.6k LOC / 54 files) built on a global `Messager`
   queue (57 `Message` variants, one 365-line central match) and on window structs that own
   both model and view (`Drawer`). The design blocks multi-instance views, forces interior

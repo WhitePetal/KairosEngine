@@ -9,7 +9,7 @@
 >
 > 依赖：`egui 0.35` + `eframe 0.35`（仅作为 throwaway window backend）+ `egui-wgpu 0.35` + `wgpu 29`（版本均 pin）。
 > 相关：`docs/adr/0008-editor-ui-architecture.md`、`docs/adr/0009-editor-panel-host-and-viewport.md`、
-> `docs/plan/editor-ui-architecture/`。日期：2026-10-30 初版；2026-11-09 面板/视口重构；2026-11-10 可读性重构（`panel/`、`app/` 模块拆分 + 架构导读）；2026-11-12 生产同步（docking viewer seam + Panel 关闭/浮动默认方法）。
+> `docs/plan/editor-ui-architecture/`。日期：2026-10-30 初版；2026-11-09 面板/视口重构；2026-11-10 可读性重构（`panel/`、`app/` 模块拆分 + 架构导读）；2026-11-12 生产同步（docking viewer seam + Panel 关闭/浮动默认方法）；2026-11-12 日志模块（`kairos_log` + 结构化 Console 行）。
 >
 > **生产同步（2026-11-12）**：`kairos_editor_docking` 已重构为 **id 布局 + `TabViewer` seam**
 > （`DockState<PanelInstanceId>` 只存布局，`Docker::show` 单入口），`kairos_editor_app` 的
@@ -22,6 +22,13 @@
 > `kairos_editor_component`（`panel/` + `panels/` + `Frame`/`UiOut`/`TabViewer` 适配），
 > `kairos_editor_app` 只剩组合根（注册表、默认布局、工具栏、窗口后端）。依赖方向
 > `core → component → app`。
+>
+> **生产同步（2026-11-12，日志）**：runtime 新增 `kairos_log`（进程级 logger、Info/Warning/Error 三级、
+> 默认终端 + `Library/Logs/KairosEngine.log`、`Sink` + `attach` 扩展，见 `docs/adr/0010-runtime-logging.md`）。
+> Console 历史改由 `kairos_editor_component::ConsoleLog`（`kairos_log` sink，1000 行环，关面板不丢）提供，
+> `HostView::console_lines` 变成带 `level` 的回调快照，面板按 level 着色。原型这里的
+> `HostState.log: Vec<String>` 是简化替身；Console 面板 API 不变，只是行数据从 `String` 升为
+> `ConsoleLine { level, text }`。
 >
 > **先读**：[docs/architecture-tour.md](docs/architecture-tour.md) —— 一页回答「面板在哪里被画」、一帧的绘制阶段、交互/消息链路，以及 7 张架构图。
 > 本 README 是证据/清单；tour 是导读。
@@ -284,7 +291,7 @@ prototypes/editor-ui/
 | 瞬态控件状态 | egui `Memory`（stable Ids） | TextEdit 焦点、tab hover、popup |
 | 主题渲染缓存 | `ctx.data`（`Theme::install`） | `Theme` tokens |
 | GPU 资源 / 相机 / 拾取 | host（原型 `ViewportHost`；生产引擎 `World` + `RenderPipeline`） | offscreen texture、`TextureId`、`OrbitCamera`、raycast |
-| 宿主日志 | host ring buffer；面板只读快照 | `HostView::console_lines` |
+| 宿主日志 | host ring buffer；面板只读快照（生产：`kairos_log` sink + 带 `level` 的 `ConsoleLog`） | `HostView::console_lines` |
 | 用户意图 | `UiOut`（帧级 action 缓冲） | `Vec<Action>`，host 帧末 drain → dispatch |
 
 规则不变：面板**从不**持有领域状态副本、不修改 `EditorState`、不做 IO；只读 `&Frame`、只写 `&mut UiOut`。

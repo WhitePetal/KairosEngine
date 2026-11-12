@@ -2867,6 +2867,7 @@ dependencies = [
  "kairos_editor_core",
  "kairos_editor_docking",
  "kairos_editor_widgets",
+ "kairos_log",
 ]
 
 [[package]]
@@ -2877,6 +2878,7 @@ dependencies = [
  "kairos_editor_core",
  "kairos_editor_docking",
  "kairos_editor_widgets",
+ "kairos_log",
 ]
 
 [[package]]
@@ -2958,6 +2960,15 @@ dependencies = [
  "toml",
  "wgpu",
  "winit",
+]
+
+[[package]]
+name = "kairos_log"
+version = "0.1.0"
+dependencies = [
+ "jiff",
+ "log",
+ "tempfile",
 ]
 
 [[package]]

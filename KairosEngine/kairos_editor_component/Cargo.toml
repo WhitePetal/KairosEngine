@@ -13,5 +13,8 @@ unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)", "cfg(docsrs_dep)
 egui = "0.35.0"
 
 kairos_editor_core = { path = "../kairos_editor_core" }
+# Console lines are structured `kairos_log` records; the buffer lives next to the
+# Console panel (see src/console.rs).
+kairos_log = { path = "../kairos_log" }
 kairos_editor_docking = { path = "../kairos_editor_docking" }
 kairos_editor_widgets = { path = "../kairos_editor_widgets" }

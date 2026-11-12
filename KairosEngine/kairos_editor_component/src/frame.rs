@@ -18,13 +18,23 @@
 //!
 //! ## Host resources
 //!
-//! GPU handles (egui textures), the console log snapshot and any other
+//! GPU handles (egui textures), the structured console lines and any other
 //! host-owned read-only resource are exposed through [`HostView`]. They are not
 //! state: a texture handle is not serializable and log history is host-owned, so
 //! the frame borrows a view instead. Hosts with nothing to show use the default
 //! [`EmptyHost`] (`Frame::new`).
 
 use kairos_editor_core::{EditorState, action::Action};
+use kairos_log::Level;
+
+/// One host-owned console line: severity (for color) plus rendered text.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ConsoleLine {
+    /// Severity, mirrored from the kairos_log record.
+    pub level: Level,
+    /// Formatted line: `HH:MM:SS LEVEL target: message`.
+    pub text: String,
+}
 
 /// Read-only host resources a frame may display.
 ///
@@ -32,21 +42,15 @@ use kairos_editor_core::{EditorState, action::Action};
 /// mutate it. All methods default to "nothing available", so a host overrides
 /// only what it can actually provide.
 pub trait HostView {
-    /// Snapshot of the host-owned console/log lines for this frame.
-    fn console_lines(&self) -> &[String] {
-        &[]
-    }
+    /// Calls `f` with the host-owned console history for this frame, oldest
+    /// first.
+    ///
+    /// A callback rather than a borrowed slice because the history lives behind
+    /// the [`ConsoleLog`](crate::ConsoleLog) sink's lock: the panel sees the
+    /// lines only while drawing. The panel never consumes history — closing the
+    /// console loses nothing and reopening shows the same lines.
+    fn console_lines(&self, _f: &mut dyn FnMut(&[ConsoleLine])) {}
 }
-
-/// A host view with no resources: headless tests, panels that need no host data.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct EmptyHost;
-
-impl HostView for EmptyHost {}
-
-/// The one shared empty host. A `Frame` is `Copy`, so the default host has to
-/// live in static storage rather than in a temporary.
-static EMPTY_HOST: EmptyHost = EmptyHost;
 
 /// Read-only snapshot handed to feature components for one UI pass.
 ///
@@ -60,14 +64,6 @@ pub struct Frame<'a> {
 }
 
 impl<'a> Frame<'a> {
-    /// Frame for a host with no extra resources (headless tests, tools).
-    pub fn new(state: &'a EditorState) -> Self {
-        Self {
-            state,
-            host: &EMPTY_HOST,
-        }
-    }
-
     /// Frame carrying host resources, e.g. `Frame::with_host(&state, &self.host)`.
     pub fn with_host(state: &'a EditorState, host: &'a dyn HostView) -> Self {
         Self { state, host }

@@ -822,6 +822,9 @@ dispatch(out.take());
 按 `docs/agents/testing.md:5-24` 的约定：**改哪个 crate 就测哪个**，不跑 `cargo test-full`（~`183s`，是 merge gate，`:72-76`）。`kairos_editor_core` / `kairos_editor_component` 为**独立 crate**（ADR-0008 方案，cargo 强制边界，§6.1），已于 2026-11-12 创建：core 承载布局/状态测试，component 承载面板框架与面板绘制测试，`kairos_editor_app` 只保留组合根集成测试（dock reconcile / 整帧绘制）。注意 `kairos_editor_app` 是 bin-only crate，`cargo test-crate kairos_editor_app` 的 `--lib` 会报 no library targets，用 `cargo test -p kairos_editor_app --bins --tests`。
 
 ```sh
+# runtime log（三级、终端+文件、sink 扩展）
+cargo test-crate kairos_log
+
 # 领域（core）
 cargo test-crate kairos_editor_core        # reducer/viewport slice
 
@@ -869,6 +872,8 @@ cd prototypes/editor-ui && cargo test && cargo run   # 手动窗口 smoke
 **2026-11-12 拆分（core / component 落地）**：面板层已按本节映射表拆成两个 crate：`kairos_editor_core`（`EditorState`/`LayoutState`/`PanelId`/`PanelInstanceId`，零依赖、不碰 egui）与 `kairos_editor_component`（`Panel` trait / `PanelRegistry` / `PanelHost` / `TabViewer` 适配 / `panels/` 内置面板）。`kairos_editor_app` 只剩组合根：注册表、默认 dock 布局、工具栏、窗口后端。依赖方向 `core → component → app` 由 cargo 强制。
 
 **2026-11-12 晚（Frame/UiOut 已迁回）**：原型的 `Frame`/`UiOut` 已按原型落到生产：面板只读 `Frame { state: &EditorState, host: &dyn HostView }`、把 `Action` 推进 `UiOut`，自身不再碰 `&mut EditorState`；`kairos_editor_core::{Action, reduce}` 是状态树唯一写入口。每帧 `sync → Docker::show(ui, &mut host.viewer(&mut out, frame)) → pump`，`pump` 只在最后一个 pass（`!ui.ctx().will_discard()`）执行、逐条 `reduce`。关闭 tab 是意图而非副作用：`CloseResponse::Close` 只让 dock 摘掉 tab，viewer 推 `LayoutAction::ClosePanel`，reducer 关布局，下一帧 `PanelHost::sync` 回收实例。宿主资源（console log）走 `HostView` 而不是 `EditorState`。`docs/research/` 与 ADR 中的历史名称 `kairos_editor_ui` 指同一层，生产命名为 `kairos_editor_component`。
+
+**2026-11-12 日志（`kairos_log` 落地，ADR 0010）**：新增 runtime crate `kairos_log` —— 进程级 logger，实现 `log::Log`（引擎里既有的 `log::*` 调用无需改动自动汇入），Info/Warning/Error 三级（debug/trace 有意丢弃），默认 stderr + `Library/Logs/KairosEngine.log`，`KAIROS_LOG_LEVEL` / `KAIROS_LOG_FILE` / `KAIROS_LOG_TERMINAL` 覆盖；额外 sink 走 `Sink` trait + `attach()`。编辑器侧**不拆** `kairos_editor_log`：console 历史是 host 资源，`kairos_editor_component::ConsoleLog` 实现 `Sink`（1000 行环，关面板不丢），`kairos_editor_app` 持有 `Arc<ConsoleLog>` 并 attach；`HostView::console_lines` 改为回调快照 `&mut dyn FnMut(&[ConsoleLine])`，行带 `Level` 供面板按主题着色。旧 `kairos_engine::log::Log`（`&mut` 实例、stderr-only、被旧 ConsoleWindow `pop_front` 消费）暂留给旧 `kairos_editor`，随 P5 退役删除。
 
 ### 6.2 分阶段落地清单
 

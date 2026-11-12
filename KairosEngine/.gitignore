@@ -1,4 +1,6 @@
 /target
+# Run logs written by `kairos_log` (any editor/engine run creates them).
+/Library/Logs
 # The asset processor's write-ahead log (the processed assets under
 # `imported_assets/Default` are committed; regenerate them from the project
 # sources with `cargo run --bin bake_assets`).

@@ -1,6 +1,9 @@
+use std::sync::Arc;
+
 use eframe::egui;
 use kairos_editor_component::{
-    Frame, HostView, PanelHost, PanelInstanceId, PanelRegistry, UiOut, panels,
+    ConsoleLine, ConsoleLog, Frame, HostView, PanelHost, PanelInstanceId, PanelRegistry, UiOut,
+    panels,
 };
 use kairos_editor_core::{Action, EditorState, LayoutAction, reduce};
 use kairos_editor_docking::{
@@ -8,26 +11,36 @@ use kairos_editor_docking::{
     split::Fraction,
     tree::NodeIndex,
 };
+use kairos_log::SinkHandle;
 
 use crate::consts::VERSION;
 
 /// Host-owned resources a panel may display but never own (the prototype's
-/// `HostState`). The console log lives here, not in `EditorState`: it is a
-/// stream produced by the host, not serializable state.
-#[derive(Default)]
+/// `HostState`). The console history is a `kairos_log` sink: the process logger
+/// writes into it, the Console panel reads it through `HostView`, and neither
+/// owns it. It is not in `EditorState` because it is a host stream, not
+/// serializable state.
 struct AppHost {
-    log: Vec<String>,
+    console: Arc<ConsoleLog>,
+    /// Keeps the console attached to the process logger; dropping the app
+    /// detaches the sink.
+    _console_sink: SinkHandle,
 }
 
 impl AppHost {
-    fn log(&mut self, line: impl Into<String>) {
-        self.log.push(line.into());
+    fn new() -> Self {
+        let console = Arc::new(ConsoleLog::new());
+        let console_sink = kairos_log::attach(console.clone());
+        Self {
+            console,
+            _console_sink: console_sink,
+        }
     }
 }
 
 impl HostView for AppHost {
-    fn console_lines(&self) -> &[String] {
-        &self.log
+    fn console_lines(&self, f: &mut dyn FnMut(&[ConsoleLine])) {
+        self.console.with_lines(f);
     }
 }
 
@@ -82,8 +95,9 @@ impl EditorApp {
         host.sync(&state.layout);
         let dock = default_dock(&host);
 
-        let mut host_view = AppHost::default();
-        host_view.log("editor booted");
+        let host_view = AppHost::new();
+        // Reaches stderr, the run log and the console sink attached above.
+        kairos_log::info!(target: "kairos_editor", "editor booted");
 
         Self {
             state,
@@ -143,14 +157,13 @@ impl EditorApp {
     /// run the UI pass twice, and a discarded pass must not apply its actions.
     fn pump(&mut self, mut out: UiOut) {
         for action in out.take() {
-            self.host_view.log(describe(&action));
+            kairos_log::info!(target: "kairos_editor", "{}", describe(&action));
             reduce(&mut self.state, action);
         }
     }
 }
 
-/// Human-readable form of an action, for the host log (until there is a real
-/// logging level/target channel).
+/// Human-readable form of an action, for the editor log (`kairos_log`).
 fn describe(action: &Action) -> String {
     match action {
         Action::Layout(action) => match action {
@@ -224,7 +237,7 @@ mod tests {
             state,
             host,
             dock,
-            host_view: AppHost::default(),
+            host_view: AppHost::new(),
         }
     }
 
@@ -252,7 +265,7 @@ mod tests {
     }
 
     #[test]
-    fn pump_applies_layout_actions_and_logs_them() {
+    fn pump_applies_layout_actions() {
         let mut app = build();
 
         let mut out = UiOut::new();
@@ -262,14 +275,46 @@ mod tests {
         app.pump(out);
 
         assert!(!app.state.layout.is_open(panels::CONSOLE));
-        assert_eq!(
-            app.host_view.log.last().map(String::as_str),
-            Some("toggle panel: console")
-        );
 
         app.sync();
         assert_eq!(app.host.ids().count(), 3);
         assert_eq!(app.dock.tabs().len(), 3);
+    }
+
+    #[test]
+    fn actions_have_human_readable_log_lines() {
+        assert_eq!(
+            describe(&Action::Layout(LayoutAction::TogglePanel {
+                panel: panels::CONSOLE
+            })),
+            "toggle panel: console"
+        );
+        assert_eq!(
+            describe(&Action::Layout(LayoutAction::ClosePanel {
+                panel: panels::SCENE
+            })),
+            "close panel: scene"
+        );
+    }
+
+    #[test]
+    fn host_view_exposes_the_console_history() {
+        let host = AppHost::new();
+        host.console.push(&kairos_log::Record::new(
+            kairos_log::Level::Info,
+            "test",
+            "hello console",
+        ));
+
+        let mut seen = Vec::new();
+        host.console_lines(&mut |lines| seen = lines.to_vec());
+
+        assert_eq!(seen.len(), 1);
+        assert!(
+            seen[0].text.ends_with("INFO  test: hello console"),
+            "{}",
+            seen[0].text
+        );
     }
 
     #[test]

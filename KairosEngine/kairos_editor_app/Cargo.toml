@@ -21,4 +21,5 @@ eframe = { version = "=0.35.0", default-features = false, features = [
 kairos_editor_widgets = { path = "../kairos_editor_widgets" }
 kairos_editor_docking = { path = "../kairos_editor_docking" }
 kairos_editor_component = { path = "../kairos_editor_component" }
+kairos_log = { path = "../kairos_log" }
 kairos_editor_core = { path = "../kairos_editor_core" }

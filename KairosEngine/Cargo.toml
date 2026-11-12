@@ -15,6 +15,7 @@ members = [
     "kairos_editor_docking",
     "kairos_engine",
     "kairos_graphics",
+    "kairos_log",
     "kairos_math",
     "kairos_physics",
     "kairos_ptr",
