@@ -174,8 +174,7 @@ impl EditorApp {
         });
     }
 
-    /// Phases 3+4 of the prototype pipeline: dispatch the actions collected
-    /// during the UI pass, then let the host-side resources record what happened.
+    /// dispatch the actions collected during the UI pass, then let the host-side resources record what happened.
     ///
     /// Called only for a committed pass (`!Context::will_discard()`): egui may
     /// run the UI pass twice, and a discarded pass must not apply its actions.
