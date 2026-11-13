@@ -159,3 +159,53 @@ fn default_layout_reconciles_with_the_host() {
     assert_eq!(host.id_of(panels::CONSOLE), None);
     assert_eq!(LayoutState::default().focus(), None);
 }
+
+#[test]
+fn viewer_bridges_the_panel_icon_path_to_a_file_uri() {
+    struct NoHost;
+    impl HostView for NoHost {}
+
+    let mut state = EditorState::new();
+    state.layout.open(panels::CONSOLE);
+    let mut host = default_host();
+    host.sync(&state.layout, &Context::default());
+    let id = host.id_of(panels::CONSOLE).expect("console instance");
+
+    let mut out = UiOut::new();
+    let frame = Frame::with_host(&state, &NoHost);
+    let mut viewer = host.viewer(&mut out, frame);
+    let icon = viewer.icon(id).expect("console tab icon");
+    let uri = icon.uri().expect("URI image source");
+
+    // The panel owns the editor-relative appearance path; the viewer is the
+    // only place that turns it into something egui's loaders accept.
+    assert!(uri.starts_with("file://"), "{uri}");
+    assert!(
+        uri.ends_with("Preferences/Textures/tab_icons/console.png"),
+        "{uri}"
+    );
+}
+
+#[test]
+fn every_builtin_panel_returns_an_existing_tab_icon() {
+    let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+    let mut registry = PanelRegistry::new();
+    panels::register_default(&mut registry);
+
+    for kind in [
+        panels::SCENE,
+        panels::INSPECTOR,
+        panels::CONSOLE,
+        panels::HIERARCHY,
+        panels::PROJECT,
+    ] {
+        let panel = registry.create(kind).expect("registered factory");
+        let path = panel
+            .icon()
+            .unwrap_or_else(|| panic!("{kind} returns no tab icon"));
+        assert!(
+            workspace.join(path).is_file(),
+            "missing tab icon {path} for {kind}"
+        );
+    }
+}

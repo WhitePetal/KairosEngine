@@ -72,6 +72,10 @@ impl Panel for ConsolePanel {
         CONSOLE
     }
 
+    fn icon(&self) -> Option<&str> {
+        Some(self.style.tab_icon.as_str())
+    }
+
     fn title(&self, _frame: &Frame) -> WidgetText {
         "Console".into()
     }
@@ -84,6 +88,7 @@ impl Panel for ConsolePanel {
             }
         }
 
+        ui_image::preload(ctx, &self.style.tab_icon);
         for path in self.style.icons.all() {
             ui_image::preload(ctx, path);
         }

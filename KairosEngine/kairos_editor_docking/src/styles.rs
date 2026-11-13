@@ -28,6 +28,9 @@ pub struct TabInteractionStyle {
     pub corner_radius: CornerRadius,
     pub bg_fill: Color32,
     pub text_color: Color32,
+    /// Tint multiplied into the tab icon, so artwork can follow the tab state.
+    /// The dark-skin icons are pre-coloured; white keeps them unchanged.
+    pub icon_tint: Color32,
 }
 
 impl Default for TabInteractionStyle {
@@ -44,6 +47,7 @@ impl Default for TabInteractionStyle {
             },
             bg_fill: Color32::from_rgb(67, 67, 67),
             text_color: Color32::from_rgb(196, 196, 196),
+            icon_tint: Color32::WHITE,
         }
     }
 }
@@ -58,6 +62,14 @@ pub struct TabStyle {
     pub hline_below_active_tab_name: bool,
     pub spacing: f32,
     pub minimum_width: Option<f32>,
+    /// Square size of a tab's icon in points. `0.0` hides icons.
+    pub icon_size: f32,
+    /// Gap between the icon and the title, in points.
+    pub icon_spacing: f32,
+    /// Padding between a tab's edge and its icon/title block. Live tabs and
+    /// drag previews share the tab-header helpers in `docker.rs`, so they
+    /// cannot drift.
+    pub horizontal_padding: f32,
 }
 
 impl Default for TabStyle {
@@ -80,6 +92,9 @@ impl Default for TabStyle {
             hline_below_active_tab_name: false,
             spacing: 0.0,
             minimum_width: None,
+            icon_size: 16.0,
+            icon_spacing: 6.0,
+            horizontal_padding: 8.0,
         }
     }
 }

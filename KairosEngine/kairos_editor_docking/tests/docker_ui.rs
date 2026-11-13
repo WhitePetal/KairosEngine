@@ -1,4 +1,8 @@
-use egui::{Color32, Context, Pos2, RawInput, Rect, Shape, Ui, Vec2, WidgetText};
+use egui::load::SizedTexture;
+use egui::{
+    Color32, ColorImage, Context, ImageSource, Pos2, RawInput, Rect, Shape, TextureOptions, Ui,
+    Vec2, WidgetText,
+};
 use kairos_editor_docking::{
     docker::{DockState, Docker},
     viewer::{CloseResponse, TabViewer},
@@ -94,6 +98,96 @@ fn docker_draws_a_floating_window_surface() {
         viewer.drawn
     );
 }
+
+struct IconViewer {
+    icon: ImageSource<'static>,
+}
+
+impl TabViewer for IconViewer {
+    type Id = Id;
+
+    fn icon(&mut self, _id: Self::Id) -> Option<ImageSource<'static>> {
+        Some(self.icon.clone())
+    }
+
+    fn title(&mut self, id: Self::Id) -> WidgetText {
+        format!("tab {}", id.0).into()
+    }
+
+    fn ui(&mut self, _ui: &mut Ui, _id: Self::Id) {}
+}
+
+/// Find the rect a texture was painted into.
+///
+/// egui 0.35 paints textures as brushed rects, not meshes.
+fn find_icon(shape: &Shape, texture_id: egui::TextureId) -> Option<Rect> {
+    match shape {
+        Shape::Rect(rect)
+            if rect
+                .brush
+                .as_ref()
+                .is_some_and(|brush| brush.fill_texture_id == texture_id) =>
+        {
+            Some(rect.rect)
+        }
+        Shape::Vec(shapes) => shapes.iter().find_map(|shape| find_icon(shape, texture_id)),
+        _ => None,
+    }
+}
+
+fn find_text_pos(shape: &Shape) -> Option<Pos2> {
+    match shape {
+        Shape::Text(text) => Some(text.pos),
+        Shape::Vec(shapes) => shapes.iter().find_map(find_text_pos),
+        _ => None,
+    }
+}
+
+#[test]
+fn tab_icon_is_painted_inside_the_tab_header() {
+    let mut dock: DockState<Id> = DockState::new();
+    dock.append_tab(Id(3));
+
+    let ctx = Context::default();
+    let texture = ctx.load_texture(
+        "tab-icon",
+        ColorImage::filled([16, 16], Color32::WHITE),
+        TextureOptions::default(),
+    );
+    let mut viewer = IconViewer {
+        icon: ImageSource::Texture(SizedTexture::new(texture.id(), Vec2::splat(16.0))),
+    };
+
+    let mut input = RawInput::default();
+    input.screen_rect = Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0)));
+    let output = ctx.run_ui(input, |ui| {
+        Docker::new("dock", &mut dock).show(ui, &mut viewer);
+    });
+
+    let icon_rect = output
+        .shapes
+        .iter()
+        .find_map(|clipped| find_icon(&clipped.shape, texture.id()))
+        .expect("the tab icon should be painted");
+
+    // The icon is part of the tab header: it sits in the tab bar row and keeps
+    // its configured size.
+    assert!((icon_rect.width() - 16.0).abs() < 0.5, "{icon_rect:?}");
+    assert!((icon_rect.height() - 16.0).abs() < 0.5, "{icon_rect:?}");
+    assert!(icon_rect.center().y < 24.0, "{icon_rect:?}");
+
+    // The title starts to the right of the icon instead of overlapping it.
+    let text_pos = output
+        .shapes
+        .iter()
+        .find_map(|clipped| find_text_pos(&clipped.shape))
+        .expect("tab title should be painted");
+    assert!(
+        text_pos.x >= icon_rect.right(),
+        "icon {icon_rect:?}, title {text_pos:?}"
+    );
+}
+
 #[test]
 fn focused_tab_headerline_is_not_covered_by_the_split_separator() {
     use kairos_editor_docking::{split::Fraction, surface::SurfaceIndex, tree::NodeIndex};

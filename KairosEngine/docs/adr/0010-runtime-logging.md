@@ -84,7 +84,8 @@
     (`console_style.rs`) is loaded from `Preferences/Styles/ConsoleStyle.ron` in
     `Panel::init`. The RON file holds both the dark and light skins, colors are
     `kairos_color::Color32` values written as human-editable hex strings (`"#353535"`) by
-    that crate's serde impls, and icon file paths are part of the style.
+    that crate's serde impls, and icon file paths are part of the style (including
+    `tab_icon`, the panel icon shown in the dock tab header).
     `kairos_editor_widgets::style` provides the `Style` trait (`FILE`, `dark()`,
     `light()`), the generic `StyleFile<S>` (`load_from` / `save_to` /
     `load_or_default` / `load_or_create`) and a `export_styles` example in
@@ -104,6 +105,19 @@
     worker threads and request a repaint, and drawing samples the texture cache. Neither
     `ConsoleStyle` nor the RON file contains GPU handles: textures are device resources and
     are not part of serializable style data.
+  - The tab-header icon crosses the dock seam as an `egui::ImageSource`, not a file path.
+    Each panel owns its tab identity: `Panel::icon` returns that panel's own
+    editor-relative appearance path (the Console reads `ConsoleStyle::tab_icon`; the
+    not-yet-styled demo panels keep a module-local const next to their title), and the
+    panel's `init` preloads it with its other UI resources. `PanelHostViewer` (the only
+    adapter that knows both layers) converts the path with `ui_image::file_uri` before
+    handing the source to `TabViewer::icon`. The artwork itself is Tuanjie's window-type
+    icon set extracted from the editor resources (`docs/research/unity-editor-chrome/`).
+    `kairos_editor_docking` only lays out and paints the source inside the tab header;
+    icon size, icon/title gap, horizontal padding and per-state tint are dock appearance
+    tokens in `TabStyle` / `TabInteractionStyle`. The panel starts the load at the
+    resource-lifecycle point; the first tab render then samples the cache instead of
+    triggering file IO from the paint code.
   - Fonts are runtime files as well: `kairos_editor_widgets::fonts::FontsConfig` loads
     `Preferences/Styles/EditorFonts.ron` (Inter Regular/Medium from `Preferences/Fonts/`)
     and calls `Context::set_fonts` once when the app starts. The OFL licence moved next to
@@ -111,8 +125,9 @@
     `include_bytes!` anymore.
   - `PanelHost::sync(layout, ctx)` calls `Panel::init(ctx)` exactly once per instance,
     after construction and before the first draw. A panel loads its own UI resources
-    there (the Console preloads its icon set); no panel loads resources at process start
-    or in its per-frame `ui`. The panel keeps only UI-only session state (search,
+    there (the Console preloads its severity icons and tab icon; the demo panels preload
+    their tab icon). No panel loads resources at process start or in its per-frame `ui`. The panel keeps only UI-only
+    session state (search,
     collapse, filters, clear cursor, selection); `PanelHost` already keys the instance by
     `PanelInstanceId`, while retaining that state across close/reopen through the
     documented `ViewStates` map — and moving the hand-painted body into an L1

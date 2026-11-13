@@ -280,7 +280,7 @@ impl DragDropState {
     }
 }
 
-fn constrain_rect_to_area(ui: &Ui, rect: Rect, mut bounds: Rect) -> Rect {
+pub(crate) fn constrain_rect_to_area(ui: &Ui, rect: Rect, mut bounds: Rect) -> Rect {
     if rect.width() > bounds.width() {
         let screen_rect = ui.ctx().content_rect();
         (bounds.min.x, bounds.max.x) = (screen_rect.min.x, screen_rect.max.x);

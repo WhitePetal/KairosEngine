@@ -57,6 +57,21 @@ pub trait Panel {
     /// Panel kind, matching the `PanelId` the factory was registered under.
     fn kind(&self) -> PanelId;
 
+    /// Tab-header icon: path to a runtime image file, relative to the editor's
+    /// working directory. Each panel returns its own artwork (Console from
+    /// `ConsoleStyle::tab_icon`; the not-yet-styled demo panels from a
+    /// module-local const), so a panel stays the single owner of its tab
+    /// identity — the same seam also covers per-instance icons such as a
+    /// document tab showing its file-type icon.
+    ///
+    /// `init` should preload the path with
+    /// `kairos_editor_widgets::ui_image::preload`; `None` draws a text-only
+    /// tab. The dock never sees file paths: `PanelHostViewer` converts the
+    /// path to an `egui::ImageSource`.
+    fn icon(&self) -> Option<&str> {
+        None
+    }
+
     /// Title shown in the dock tab bar and in floating-window title bars.
     fn title(&self, frame: &Frame) -> WidgetText;
 

@@ -33,6 +33,14 @@ pub struct ConsoleStyle {
     /// Icon file locations (runtime assets, see `kairos_editor_widgets::ui_image`).
     pub icons: ConsoleIconPaths,
 
+    /// Console panel (tab header) icon, drawn left of the tab title. Runtime
+    /// appearance data: the panel preloads it with its other icons in `init`.
+    ///
+    /// The `serde(default)` keeps style files written before the tab icon
+    /// existed loadable.
+    #[serde(default = "default_tab_icon")]
+    pub tab_icon: String,
+
     // Typography.
     pub text_size: f32,
     pub badge_text_size: f32,
@@ -58,6 +66,11 @@ pub struct ConsoleStyle {
     // Stack-trace detail pane.
     pub detail_height: f32,
     pub detail_padding: f32,
+}
+
+/// Fallback for style files written before the tab icon existed.
+fn default_tab_icon() -> String {
+    "Preferences/Textures/tab_icons/console.png".to_owned()
 }
 
 impl Default for ConsoleStyle {
@@ -86,6 +99,7 @@ impl Style for ConsoleStyle {
             link: Color32::from_rgb(65, 110, 238),
             detail_bg: Color32::from_rgb(49, 49, 49),
             icons: ConsoleIconPaths::dark(),
+            tab_icon: "Preferences/Textures/tab_icons/console.png".to_owned(),
             text_size: 12.0,
             badge_text_size: 10.0,
             toolbar_height: 20.0,
@@ -126,6 +140,7 @@ impl Style for ConsoleStyle {
             link: Color32::from_rgb(0x1A, 0x5F, 0xB4),
             detail_bg: Color32::from_rgb(0xE8, 0xE8, 0xE8),
             icons: ConsoleIconPaths::light(),
+            tab_icon: "Preferences/Textures/tab_icons/light/console.png".to_owned(),
             ..Self::dark()
         }
     }
@@ -135,6 +150,18 @@ impl Style for ConsoleStyle {
 mod tests {
     use super::*;
     use kairos_editor_widgets::style::StyleFile;
+
+    #[test]
+    fn tab_icon_files_exist_for_both_skins() {
+        let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        for style in [ConsoleStyle::dark(), ConsoleStyle::light()] {
+            assert!(
+                workspace.join(&style.tab_icon).is_file(),
+                "missing tab icon {}",
+                style.tab_icon
+            );
+        }
+    }
 
     #[test]
     fn defaults_round_trip_through_ron_as_hex_colors() {

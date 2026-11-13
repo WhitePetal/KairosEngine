@@ -2,9 +2,12 @@
 //! id, the viewer resolves the id against the host's live instances.
 //!
 //! This is the only place where the panel framework meets the dock; the dock
-//! crate itself stays free of editor types.
+//! crate itself stays free of editor types. It is also the path-to-source
+//! bridge for tab icons: `Panel::icon` exposes an editor-relative appearance
+//! path, this adapter converts it to an `egui::ImageSource` with
+//! `ui_image::file_uri`, and the dock only paints that source.
 
-use egui::{Ui, WidgetText};
+use egui::{ImageSource, Ui, WidgetText};
 use kairos_editor_core::{Action, LayoutAction};
 use kairos_editor_docking::viewer::{CloseResponse, TabViewer};
 
@@ -31,6 +34,16 @@ impl<'host, 'frame> PanelHostViewer<'host, 'frame> {
 
 impl TabViewer for PanelHostViewer<'_, '_> {
     type Id = PanelInstanceId;
+
+    fn icon(&mut self, id: Self::Id) -> Option<ImageSource<'static>> {
+        // The panel owns its editor-relative appearance path; the dock must not
+        // know about file URIs, so this adapter is the single path-to-source
+        // bridge.
+        let path = self.host.panel(id)?.icon()?;
+        Some(ImageSource::Uri(
+            kairos_editor_widgets::ui_image::file_uri(path).into(),
+        ))
+    }
 
     fn title(&mut self, id: Self::Id) -> WidgetText {
         let PanelHostViewer { host, frame, .. } = self;

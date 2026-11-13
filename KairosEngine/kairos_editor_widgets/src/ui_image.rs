@@ -11,6 +11,12 @@
 //! pending, `paint` draws nothing: dense editor chrome should not show loading
 //! spinners inside rows, and egui requests a repaint when the load finishes.
 //!
+//! Preloading is not required for correctness: `egui::Image` / `ui.image`
+//! would also start the load lazily on first paint. It is the lifecycle choice
+//! from ADR 0010: a panel starts reading its own resources in `init`, before
+//! the first draw, so opening the panel does not spend its first frames with
+//! missing chrome icons.
+//!
 //! Editor UI resources are deliberately independent of `kairos_asset`: they are
 //! not project assets, have no import/meta/processing step, and must be
 //! available before the engine asset server exists. Project asset previews (once
@@ -47,6 +53,10 @@ pub fn file_uri(relative: &str) -> String {
 
 /// Start the asynchronous load of an image, e.g. from `Panel::init`. The next
 /// frames paint it once egui's loader finishes.
+///
+/// This only warms the loader and texture cache for [`paint`]'s URI; it is an
+/// optimization/lifecycle hook, not a prerequisite for drawing (a lazy
+/// `egui::Image` would load the same URI on its first paint).
 pub fn preload(ctx: &Context, relative: &str) {
     let _ = egui::Image::new(egui::ImageSource::Uri(file_uri(relative).into()))
         .load_for_size(ctx, egui::vec2(32.0, 32.0));

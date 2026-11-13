@@ -12,7 +12,7 @@
 
 use std::hash::Hash;
 
-use egui::{Response, Ui, WidgetText};
+use egui::{ImageSource, Response, Ui, WidgetText};
 
 /// Stable identity of a tab in a [`crate::docker::DockState`].
 ///
@@ -42,6 +42,17 @@ pub enum CloseResponse {
 pub trait TabViewer {
     /// The id type stored in [`crate::docker::DockState`].
     type Id: TabId;
+
+    /// Optional image drawn to the left of the tab title.
+    ///
+    /// The viewer owns the path-to-source conversion (runtime icon files go
+    /// through `kairos_editor_widgets::ui_image::file_uri`); the dock only
+    /// paints the given egui source and never interprets file paths. Returning
+    /// an owned source keeps the trait object-free and lets the dock paint the
+    /// tab header without borrowing the viewer across later callbacks.
+    fn icon(&mut self, _id: Self::Id) -> Option<ImageSource<'static>> {
+        None
+    }
 
     /// Title shown in the tab bar and in floating-window title bars.
     fn title(&mut self, id: Self::Id) -> WidgetText;

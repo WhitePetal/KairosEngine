@@ -7,17 +7,18 @@
 //!
 //! [`Docker`] is the one entry point:
 //! `Docker::new(id, &mut state).show(ui, &mut viewer)`. It never resolves a
-//! tab object itself; titles, bodies, close policy and window policy come from
-//! the app's [`TabViewer`]. Close/focus requests are reported back through the
-//! viewer instead of mutating the app's open-panel state here.
+//! tab object itself; titles, tab icons, bodies, close policy and window policy
+//! come from the app's [`TabViewer`]. Close/focus requests are reported back
+//! through the viewer instead of mutating the app's open-panel state here.
 
 use std::ops::{Index, IndexMut};
+use std::sync::Arc;
 
 use duplicate::duplicate;
 use egui::{
-    Align, Align2, Button, CentralPanel, Color32, Context, CornerRadius, CursorIcon, EventFilter,
-    FontId, Frame, Id, LayerId, Layout, NumExt, Painter, Pos2, Rect, Response, ScrollArea, Sense,
-    Stroke, TextStyle, Ui, UiBuilder, Vec2, Visuals, WidgetText,
+    Align, Button, CentralPanel, Color32, Context, CornerRadius, CursorIcon, EventFilter, Frame,
+    Galley, Id, Image, ImageSource, LayerId, Layout, NumExt, Pos2, Rect, Response, ScrollArea,
+    Sense, Stroke, StrokeKind, TextStyle, Ui, UiBuilder, Vec2, Visuals, WidgetText,
     emath::TSTransform,
     epaint::TextShape,
     lerp, pos2,
@@ -27,9 +28,12 @@ use egui::{
 use paste::paste;
 
 use crate::{
-    drag::{DragData, DragDropState, DragVisual, HoverData, TreeComponent},
+    drag::{DragData, DragDropState, DragVisual, HoverData, TreeComponent, constrain_rect_to_area},
     split::{Fraction, Split},
-    styles::{Style, TabBodyStyle, TabInteractionStyle, TabSeparatorStyle, TabStyle, WindowStyle},
+    styles::{
+        Style, TabBarStyle, TabBodyStyle, TabInteractionStyle, TabSeparatorStyle, TabStyle,
+        WindowStyle,
+    },
     surface::{Surface, SurfaceIndex, WindowState},
     translations::Translations,
     tree::{Node, NodeIndex, TabIndex, Tree},
@@ -657,34 +661,28 @@ impl<T: TabId> Docker<'_, T> {
         let TreeComponent::Tab(surface, node, tab) = drag_state.drag.src else {
             return;
         };
-        let Some(title) = self.dock_state[surface][node]
-            .get_leaf()
-            .and_then(|leaf| leaf.tabs.get(tab.0).copied())
-            .map(|tab_id| viewer.title(tab_id).text().to_string())
-        else {
+        let Some((title, icon)) = self.tab_title_and_icon(viewer, (surface, node, tab)) else {
             return;
         };
 
         let style = &self.dock_state.style;
-        let painter = ui.ctx().layer_painter(LayerId::new(
-            egui::Order::Tooltip,
-            self.id.with("drag-preview"),
-        ));
-
         match drag_state.visual {
             DragVisual::None => {}
             // Tab-bar insertion already has a live affordance: the grabbed tab
             // header follows the cursor in a tooltip layer (see `show_tabs`),
             // so do not paint a second ghost on top of it.
             DragVisual::Tab(_) => {}
-            DragVisual::Panel(rect) => paint_preview_panel(&painter, rect, &title, style),
+            DragVisual::Panel(rect) => {
+                paint_preview_panel(&self.drag_preview_ui(ui), rect, title, icon, style);
+            }
             DragVisual::Window => {
                 let pointer = state.last_hover_pos.unwrap_or(drag_state.pointer);
                 paint_window_preview(
-                    &painter,
+                    &self.drag_preview_ui(ui),
                     pointer,
                     drag_state.drag.rect.size(),
-                    &title,
+                    title,
+                    icon,
                     style,
                     ui.ctx().content_rect(),
                 );
@@ -704,26 +702,51 @@ impl<T: TabId> Docker<'_, T> {
         let TreeComponent::Tab(surface, node, tab) = source.src else {
             return;
         };
-        let Some(title) = self.dock_state[surface][node]
-            .get_leaf()
-            .and_then(|leaf| leaf.tabs.get(tab.0).copied())
-            .map(|tab_id| viewer.title(tab_id).text().to_string())
-        else {
+        let Some((title, icon)) = self.tab_title_and_icon(viewer, (surface, node, tab)) else {
             return;
         };
-
-        let painter = ui.ctx().layer_painter(LayerId::new(
-            egui::Order::Tooltip,
-            self.id.with("drag-preview"),
-        ));
         paint_window_preview(
-            &painter,
+            &self.drag_preview_ui(ui),
             pointer,
             source.rect.size(),
-            &title,
+            title,
+            icon,
             &self.dock_state.style,
             ui.ctx().content_rect(),
         );
+    }
+
+    /// Resolve a tab's title and icon once for the ghost painters.
+    ///
+    /// Both ghosts used to look the id up again and rebuild the title from
+    /// `WidgetText::text()`, which dropped rich text and styling; they now share
+    /// this lookup and pass the same title/icon a live tab would receive.
+    fn tab_title_and_icon(
+        &self,
+        viewer: &mut impl TabViewer<Id = T>,
+        (surface, node, tab): (SurfaceIndex, NodeIndex, TabIndex),
+    ) -> Option<(WidgetText, Option<ImageSource<'static>>)> {
+        let tab_id = self.dock_state[surface][node]
+            .get_leaf()
+            .and_then(|leaf| leaf.tabs.get(tab.0).copied())?;
+        Some((viewer.title(tab_id), viewer.icon(tab_id)))
+    }
+
+    /// A `Ui` that paints into the tooltip layer shared by all drag ghosts.
+    ///
+    /// Ghosts need a real `Ui` (not just a `Painter`) so the shared header
+    /// painter can load and paint the tab icon; it paints only and never takes
+    /// part in layout.
+    fn drag_preview_ui(&self, ui: &Ui) -> Ui {
+        let bounds = ui.ctx().content_rect();
+        let layer_id = LayerId::new(egui::Order::Tooltip, self.id.with("drag-preview"));
+        let mut preview = Ui::new(
+            ui.ctx().clone(),
+            self.id.with("drag-preview"),
+            UiBuilder::new().max_rect(bounds).layer_id(layer_id),
+        );
+        preview.set_clip_rect(bounds);
+        preview
     }
 
     fn fallback_main_hover(
@@ -804,17 +827,15 @@ impl<T: TabId> Docker<'_, T> {
             let rect = ui.available_rect_before_wrap();
             let response = ui.allocate_rect(rect, Sense::hover());
             if response.contains_pointer() {
-                ui.memory_mut(|mem| {
-                    mem.data.insert_temp(
-                        self.id.with("hover_data"),
-                        Some(HoverData {
-                            rect,
-                            dst: TreeComponent::Surface(surf_index),
-                            tab: None,
-                            tab_bar: None,
-                        }),
-                    );
-                });
+                self.store_hover_data(
+                    ui,
+                    HoverData {
+                        rect,
+                        dst: TreeComponent::Surface(surf_index),
+                        tab: None,
+                        tab_bar: None,
+                    },
+                );
             }
             return;
         }
@@ -913,52 +934,28 @@ impl<T: TabId> Docker<'_, T> {
                 drag_delta = drag_response.drag_delta();
             }
 
-            let minimize_response = ui.interact(
-                controls.minimize,
-                ui.id().with("window-minimize"),
-                Sense::click(),
-            );
-            let maximize_response = ui.interact(
-                controls.maximize,
-                ui.id().with("window-maximize"),
-                Sense::click(),
-            );
-            let close_response =
-                ui.interact(controls.close, ui.id().with("window-close"), Sense::click());
-
-            paint_window_control(
-                ui.painter(),
-                controls.minimize,
-                WindowControl::Minimize,
-                &window_style,
-                minimize_response.hovered(),
-                false,
-            );
-            paint_window_control(
-                ui.painter(),
-                controls.maximize,
-                WindowControl::Maximize,
-                &window_style,
-                maximize_response.hovered(),
-                maximized,
-            );
-            paint_window_control(
-                ui.painter(),
-                controls.close,
-                WindowControl::Close,
-                &window_style,
-                close_response.hovered(),
-                false,
-            );
-
-            if minimize_response.clicked() && !maximized {
-                toggle_minimize = true;
-            }
-            if maximize_response.clicked() && !minimized {
-                toggle_maximize = true;
-            }
-            if close_response.clicked() {
-                close_window = true;
+            // All three traffic lights share one interact+paint path; only the
+            // rect and the click effect differ.
+            for (control, rect) in [
+                (WindowControl::Minimize, controls.minimize),
+                (WindowControl::Maximize, controls.maximize),
+                (WindowControl::Close, controls.close),
+            ] {
+                let response = ui.interact(rect, ui.id().with(control), Sense::click());
+                paint_window_control(
+                    ui.painter(),
+                    rect,
+                    control,
+                    &window_style,
+                    response.hovered(),
+                );
+                if response.clicked() {
+                    match control {
+                        WindowControl::Minimize => toggle_minimize |= !maximized,
+                        WindowControl::Maximize => toggle_maximize |= !minimized,
+                        WindowControl::Close => close_window = true,
+                    }
+                }
             }
 
             if !minimized {
@@ -1032,6 +1029,20 @@ impl<T: TabId> Docker<'_, T> {
         }
     }
 
+    /// Park the pointer's current drop target for the next egui pass.
+    ///
+    /// Drag state is resolved before the leaves are drawn, so the hover target
+    /// found by a leaf is stored in temporary memory and read back at the start
+    /// of the following pass. Three code paths used to open-code this insert;
+    /// they share it so the memory key and "replace, don't append" semantics
+    /// cannot drift.
+    fn store_hover_data(&self, ui: &Ui, hover: HoverData) {
+        ui.memory_mut(|mem| {
+            mem.data
+                .insert_temp(self.id.with("hover_data"), Some(hover));
+        });
+    }
+
     fn show_nodes(
         &mut self,
         ui: &mut Ui,
@@ -1095,17 +1106,15 @@ impl<T: TabId> Docker<'_, T> {
             let bg = self.dock_state.style.tab.tab_body.bg_fill;
             ui.painter().rect_filled(body_rect, CornerRadius::ZERO, bg);
             if response.contains_pointer() {
-                ui.memory_mut(|mem| {
-                    mem.data.insert_temp(
-                        self.id.with("hover_data"),
-                        Some(HoverData {
-                            rect: body_rect,
-                            dst: TreeComponent::Node(surface_index, node_index),
-                            tab: None,
-                            tab_bar: None,
-                        }),
-                    );
-                });
+                self.store_hover_data(
+                    ui,
+                    HoverData {
+                        rect: body_rect,
+                        dst: TreeComponent::Node(surface_index, node_index),
+                        tab: None,
+                        tab_bar: None,
+                    },
+                );
             }
             return;
         }
@@ -1143,11 +1152,7 @@ impl<T: TabId> Docker<'_, T> {
             vec2(ui.available_width(), style.tab_bar.height),
             Sense::hover(),
         );
-        ui.painter().rect_filled(
-            tabbar_outer_rect,
-            style.tab_bar.corner_radius,
-            style.tab_bar.bg_fill,
-        );
+        paint_tab_bar(ui.painter(), tabbar_outer_rect, &style.tab_bar);
 
         let tabbar_outer_rect = tabbar_outer_rect - style.tab_bar.inner_margin;
 
@@ -1237,6 +1242,10 @@ impl<T: TabId> Docker<'_, T> {
         // separator shadows are drawn after the loop so they can fall away
         // from the active tab instead of onto it.
         let mut tab_visuals: Vec<(Rect, bool)> = Vec::with_capacity(tabs_len);
+        // One clone per frame, not one per tab: the header painter only reads
+        // the style while the loop below mutates the dock state.
+        let tab_style = fade_style.unwrap_or(&self.dock_state.style).tab.clone();
+        let draggable_tabs = self.draggable_tabs;
 
         for tab_index in 0..tabs_len {
             let tab_index = TabIndex(tab_index);
@@ -1260,27 +1269,29 @@ impl<T: TabId> Docker<'_, T> {
                 continue;
             };
 
-            let tab_style = fade_style.unwrap_or(&self.dock_state.style).tab.clone();
             let is_active_tab = self.dock_state[surface_index][node_index]
                 .get_leaf()
                 .is_some_and(|leaf| leaf.active == tab_index);
             let is_active = is_being_dragged || is_active_tab;
             let label = viewer.title(tab_id);
+            let icon = viewer.icon(tab_id);
 
             let (response, title_id) = if is_being_dragged {
                 let layer_id = LayerId::new(egui::Order::Tooltip, id);
                 let response = tabs_ui
                     .scope_builder(UiBuilder::new().layer_id(layer_id), |ui| {
-                        self.show_tab_title(
+                        show_tab_title(
                             ui,
                             &tab_style,
                             id,
+                            icon,
                             label,
                             is_active && Some((surface_index, node_index)) == focused,
                             is_active,
                             is_being_dragged,
                             preferred_width,
                             hide_dragged_header,
+                            draggable_tabs,
                         )
                     })
                     .response;
@@ -1316,16 +1327,18 @@ impl<T: TabId> Docker<'_, T> {
                 if tab_index.0 != 0 {
                     tabs_ui.allocate_space(vec2(tab_style.spacing, 0.0));
                 }
-                let response = self.show_tab_title(
+                let response = show_tab_title(
                     tabs_ui,
                     &tab_style,
                     id,
+                    icon,
                     label,
                     is_active && Some((surface_index, node_index)) == focused,
                     is_active,
                     is_being_dragged,
                     preferred_width,
                     false,
+                    draggable_tabs,
                 );
                 let title_id = response.id;
                 let is_lonely_tab = self.dock_state[surface_index].tabs_count() == 1;
@@ -1419,85 +1432,6 @@ impl<T: TabId> Docker<'_, T> {
         }
 
         tab_hovered
-    }
-
-    fn show_tab_title(
-        &mut self,
-        ui: &mut Ui,
-        tab_style: &TabStyle,
-        id: Id,
-        label: WidgetText,
-        focused: bool,
-        active: bool,
-        is_being_dragged: bool,
-        preferred_width: Option<f32>,
-        hidden: bool,
-    ) -> Response {
-        let galley = label.into_galley(ui, None, f32::INFINITY, TextStyle::Button);
-        let x_spacing = 8.0;
-        let text_width = galley.size().x + 2.0 * x_spacing;
-
-        let minimum_width = tab_style.minimum_width.unwrap_or(0.0).at_least(text_width);
-        let tab_width = preferred_width.unwrap_or(0.0).at_least(minimum_width);
-
-        let (_, tab_rect) = ui.allocate_space(vec2(tab_width, ui.available_height()));
-        let mut response = ui.interact(tab_rect, id, Sense::click_and_drag());
-        if hidden {
-            // The floating window preview is the visual for this frame; keep the
-            // interaction rect so the drag stays alive.
-            return response;
-        }
-        if ui.ctx().dragged_id().is_none() && self.draggable_tabs {
-            response = response.on_hover_cursor(egui::CursorIcon::Grab);
-        }
-
-        let tab_style = if focused || is_being_dragged {
-            &tab_style.focused
-        } else if active {
-            &tab_style.active
-        } else if response.hovered() {
-            &tab_style.hovered
-        } else {
-            &tab_style.inactive
-        };
-
-        ui.painter()
-            .rect_filled(tab_rect, tab_style.corner_radius, tab_style.bg_fill);
-        let stroke_rect = rect_stroke_box(tab_rect, 1.0);
-        ui.painter().rect_stroke(
-            stroke_rect,
-            tab_style.corner_radius,
-            Stroke::new(1.0, tab_style.outline_color),
-            egui::StrokeKind::Inside,
-        );
-        // Coloured line on top of the tab, drawn as a strip inside the tab so
-        // it cannot bleed above the tab/into the panel below.
-        let headerline = Rect::from_min_size(
-            tab_rect.min,
-            vec2(tab_rect.width(), tab_style.headerline_width),
-        );
-        ui.painter().rect_filled(
-            headerline,
-            CornerRadius {
-                nw: tab_style.corner_radius.nw,
-                ne: tab_style.corner_radius.ne,
-                sw: 0,
-                se: 0,
-            },
-            tab_style.headerline_color,
-        );
-
-        let mut text_rect = tab_rect;
-        text_rect.set_width(text_rect.width());
-        let text_pos = {
-            let pos = Align2::CENTER_CENTER.pos_in_rect(&text_rect.shrink2(vec2(x_spacing, 0.0)));
-            pos - galley.size() / 2.0
-        };
-
-        ui.painter()
-            .add(TextShape::new(text_pos, galley, tab_style.text_color));
-
-        response
     }
 
     fn show_body(
@@ -1605,17 +1539,15 @@ impl<T: TabId> Docker<'_, T> {
                     ),
                 };
 
-                ui.memory_mut(|mem| {
-                    mem.data.insert_temp(
-                        self.id.with("hover_data"),
-                        Some(HoverData {
-                            rect: leaf_rect,
-                            dst,
-                            tab,
-                            tab_bar: (tabbar_rect != Rect::NOTHING).then_some(tabbar_rect),
-                        }),
-                    )
-                });
+                self.store_hover_data(
+                    ui,
+                    HoverData {
+                        rect: leaf_rect,
+                        dst,
+                        tab,
+                        tab_bar: (tabbar_rect != Rect::NOTHING).then_some(tabbar_rect),
+                    },
+                );
             }
         }
     }
@@ -1889,7 +1821,212 @@ impl<T: TabId> Docker<'_, T> {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+// ---------------------------------------------------------------------------
+// tab header: shared by the live tab strip and every drag preview
+// ---------------------------------------------------------------------------
+//
+// A tab header is drawn from two paths: the live strip (`show_tabs` ->
+// `show_tab_title`) and the drag ghosts (split preview + floating-window
+// preview). They used to own separate geometry and painting (hard-coded 12 px
+// font, `text + 24 px` tab width, no icon), so a ghost did not match the tab it
+// stood in for. These helpers are the single definition; hit-testing and
+// interaction stay in the callers.
+
+/// Whether a tab with an optional icon actually shows the icon slot.
+///
+/// A style with `icon_size == 0` hides icons even when the viewer provides one;
+/// both sizing and painting use this so they can never disagree.
+fn has_visible_tab_icon(tab_style: &TabStyle, icon_present: bool) -> bool {
+    icon_present && tab_style.icon_size > 0.0
+}
+
+/// Lay out a tab title with the dock's tab text style.
+///
+/// The live tab and the drag ghost both call this, so the ghost cannot end up
+/// with a different font or line height than the tab it stands in for.
+fn tab_title_galley(ui: &Ui, title: WidgetText) -> Arc<Galley> {
+    title.into_galley(ui, None, f32::INFINITY, TextStyle::Button)
+}
+
+/// Full width of one tab: icon slot + title + symmetric padding, raised to the
+/// style's minimum width (and to `preferred_width` when the bar fills tabs).
+fn tab_width(
+    tab_style: &TabStyle,
+    has_icon: bool,
+    galley: &Galley,
+    preferred_width: Option<f32>,
+) -> f32 {
+    let content_width = tab_icon_slot_width(tab_style, has_icon) + galley.size().x;
+    let minimum_width = tab_style
+        .minimum_width
+        .unwrap_or(0.0)
+        .at_least(content_width + 2.0 * tab_style.horizontal_padding);
+    preferred_width.unwrap_or(0.0).at_least(minimum_width)
+}
+
+fn tab_icon_slot_width(tab_style: &TabStyle, has_icon: bool) -> f32 {
+    if has_icon {
+        tab_style.icon_size.max(0.0) + tab_style.icon_spacing
+    } else {
+        0.0
+    }
+}
+
+/// Where the icon and the title sit inside a tab rect.
+struct TabHeaderLayout {
+    icon_rect: Option<Rect>,
+    text_pos: Pos2,
+}
+
+fn tab_header_layout(
+    tab_rect: Rect,
+    tab_style: &TabStyle,
+    has_icon: bool,
+    galley: &Galley,
+) -> TabHeaderLayout {
+    let icon_size = tab_style.icon_size.max(0.0);
+    let icon_width = tab_icon_slot_width(tab_style, has_icon);
+    let content_width = icon_width + galley.size().x;
+    let content_left = tab_rect.center().x - content_width * 0.5;
+
+    let icon_rect = has_icon.then(|| {
+        Rect::from_center_size(
+            pos2(content_left + icon_size * 0.5, tab_rect.center().y),
+            Vec2::splat(icon_size),
+        )
+    });
+    let text_pos = pos2(
+        content_left + icon_width,
+        tab_rect.center().y - galley.size().y * 0.5,
+    );
+
+    TabHeaderLayout {
+        icon_rect,
+        text_pos,
+    }
+}
+
+/// Paint one tab header: fill, outline, coloured headerline and icon + title.
+///
+/// `top_inset` shifts the headerline down so a preview's window border stays
+/// visible above it; live tabs pass `0.0`.
+fn paint_tab_header(
+    ui: &Ui,
+    tab_rect: Rect,
+    tab_style: &TabStyle,
+    interaction: &TabInteractionStyle,
+    icon: Option<&ImageSource<'static>>,
+    galley: &Arc<Galley>,
+    top_inset: f32,
+) {
+    let painter = ui.painter();
+    painter.rect_filled(tab_rect, interaction.corner_radius, interaction.bg_fill);
+    painter.rect_stroke(
+        rect_stroke_box(tab_rect, 1.0),
+        interaction.corner_radius,
+        Stroke::new(1.0, interaction.outline_color),
+        StrokeKind::Inside,
+    );
+    // Coloured line on top of the tab, drawn as a strip inside the tab so it
+    // cannot bleed above the tab/into the panel below.
+    let headerline = Rect::from_min_size(
+        pos2(tab_rect.left(), tab_rect.top() + top_inset),
+        vec2(tab_rect.width(), interaction.headerline_width),
+    );
+    painter.rect_filled(
+        headerline,
+        CornerRadius {
+            nw: interaction.corner_radius.nw,
+            ne: interaction.corner_radius.ne,
+            sw: 0,
+            se: 0,
+        },
+        interaction.headerline_color,
+    );
+
+    let has_icon = has_visible_tab_icon(tab_style, icon.is_some());
+    let layout = tab_header_layout(tab_rect, tab_style, has_icon, galley);
+    if let (Some(icon), Some(icon_rect)) = (icon, layout.icon_rect) {
+        Image::new(icon.clone())
+            .tint(interaction.icon_tint)
+            .show_loading_spinner(false)
+            .paint_at(ui, icon_rect);
+    }
+    painter.add(TextShape::new(
+        layout.text_pos,
+        galley.clone(),
+        interaction.text_color,
+    ));
+}
+
+/// Background strip of a tab bar (live dock bar or preview ghost).
+fn paint_tab_bar(painter: &egui::Painter, rect: Rect, style: &TabBarStyle) {
+    painter.rect_filled(rect, style.corner_radius, style.bg_fill);
+}
+
+/// Rect of a stroke drawn *inside* `rect` (see `StrokeKind::Inside`), expanded
+/// back to the caller's coordinate space.
+fn rect_stroke_box(rect: Rect, width: f32) -> Rect {
+    rect.expand(-f32::ceil(width / 2.0))
+}
+
+/// Allocate, hit-test and paint one live tab header.
+///
+/// Interaction stays here (click/drag, cursor, context menu); the visual comes
+/// from the shared tab-header helpers above so a live tab and its drag ghost
+/// cannot drift apart.
+#[allow(clippy::too_many_arguments)]
+fn show_tab_title(
+    ui: &mut Ui,
+    tab_style: &TabStyle,
+    id: Id,
+    icon: Option<ImageSource<'static>>,
+    label: WidgetText,
+    focused: bool,
+    active: bool,
+    is_being_dragged: bool,
+    preferred_width: Option<f32>,
+    hidden: bool,
+    draggable_tabs: bool,
+) -> Response {
+    let galley = tab_title_galley(ui, label);
+    let has_icon = has_visible_tab_icon(tab_style, icon.is_some());
+    let tab_width = tab_width(tab_style, has_icon, &galley, preferred_width);
+
+    let (_, tab_rect) = ui.allocate_space(vec2(tab_width, ui.available_height()));
+    let mut response = ui.interact(tab_rect, id, Sense::click_and_drag());
+    if hidden {
+        // The floating window preview is the visual for this frame; keep the
+        // interaction rect so the drag stays alive.
+        return response;
+    }
+    if ui.ctx().dragged_id().is_none() && draggable_tabs {
+        response = response.on_hover_cursor(CursorIcon::Grab);
+    }
+
+    let interaction = if focused || is_being_dragged {
+        &tab_style.focused
+    } else if active {
+        &tab_style.active
+    } else if response.hovered() {
+        &tab_style.hovered
+    } else {
+        &tab_style.inactive
+    };
+    paint_tab_header(
+        ui,
+        tab_rect,
+        tab_style,
+        interaction,
+        icon.as_ref(),
+        &galley,
+        0.0,
+    );
+
+    response
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum WindowControl {
     Minimize,
     Maximize,
@@ -1920,7 +2057,6 @@ fn paint_window_control(
     control: WindowControl,
     style: &WindowStyle,
     hovered: bool,
-    _maximized: bool,
 ) {
     let center = rect.center();
     let radius = style.traffic_light_radius;
@@ -1988,82 +2124,66 @@ fn drag_window_preview_size(source: Vec2) -> Vec2 {
     )
 }
 
-/// Tab header used by every drag preview.
+/// Tab-bar chunk of every drag preview.
 ///
 /// Unity draws the dragged tab as the focused tab: it keeps the coloured
 /// headerline (the blue top line) even while it lives in a preview window or a
-/// split preview panel.
-fn paint_preview_tab(painter: &Painter, rect: Rect, title: &str, style: &Style, top_inset: f32) {
-    let tab_style = &style.tab.focused;
-    painter.rect_filled(rect, tab_style.corner_radius, tab_style.bg_fill);
-    let stroke_rect = rect_stroke_box(rect, 1.0);
-    painter.rect_stroke(
-        stroke_rect,
-        tab_style.corner_radius,
-        Stroke::new(1.0, tab_style.outline_color),
-        egui::StrokeKind::Inside,
-    );
-    // Leave the window border visible above the coloured line; the border is
-    // stroked on top of the preview, so the line starts below it.
-    let headerline = Rect::from_min_size(
-        pos2(rect.left(), rect.top() + top_inset),
-        vec2(rect.width(), tab_style.headerline_width),
-    );
-    painter.rect_filled(
-        headerline,
-        CornerRadius {
-            nw: tab_style.corner_radius.nw,
-            ne: tab_style.corner_radius.ne,
-            sw: 0,
-            se: 0,
-        },
-        tab_style.headerline_color,
-    );
-    painter.text(
-        rect.center(),
-        Align2::CENTER_CENTER,
-        title,
-        FontId::proportional(12.0),
-        tab_style.text_color,
+/// split preview panel. The header itself comes from the shared tab-header
+/// helpers, so the ghost has the same font, padding, icon and tab width as the
+/// tab that will replace it after the drop.
+fn paint_preview_bar(
+    ui: &Ui,
+    rect: Rect,
+    title: WidgetText,
+    icon: Option<ImageSource<'static>>,
+    style: &Style,
+) {
+    let bar = Rect::from_min_size(rect.min, vec2(rect.width(), style.tab_bar.height));
+    paint_tab_bar(ui.painter(), bar, &style.tab_bar);
+
+    let galley = tab_title_galley(ui, title);
+    let has_icon = has_visible_tab_icon(&style.tab, icon.is_some());
+    let tab_width = tab_width(&style.tab, has_icon, &galley, None).min(bar.width());
+    let tab_rect = Rect::from_min_size(bar.min, vec2(tab_width, bar.height()));
+    paint_tab_header(
+        ui,
+        tab_rect,
+        &style.tab,
+        &style.tab.focused,
+        icon.as_ref(),
+        &galley,
+        style.window.border.width,
     );
 }
 
 /// Floating-window ghost: tab bar only (no title bar, no system buttons) with
 /// a translucent body, centred on the pointer.
 fn paint_window_preview(
-    painter: &Painter,
+    ui: &Ui,
     pointer: Pos2,
     source_size: Vec2,
-    title: &str,
+    title: WidgetText,
+    icon: Option<ImageSource<'static>>,
     style: &Style,
     bounds: Rect,
 ) {
-    let rect = constrain_rect(
+    let rect = constrain_rect_to_area(
+        ui,
         Rect::from_center_size(pointer, drag_window_preview_size(source_size)),
         bounds,
     );
     let window = &style.window;
+    let painter = ui.painter();
     // Blurred drop shadow, same shape the real floating windows use.
     painter.add(window.shadow.as_shape(rect, CornerRadius::ZERO));
 
-    let bar = Rect::from_min_size(rect.min, vec2(rect.width(), style.tab_bar.height));
-    painter.rect_filled(bar, CornerRadius::ZERO, style.tab_bar.bg_fill);
-    let galley = painter.layout_no_wrap(
-        title.to_owned(),
-        FontId::proportional(12.0),
-        style.tab.active.text_color,
-    );
-    let tab_width = (galley.size().x + 24.0).clamp(72.0, bar.width().max(72.0));
-    let tab = Rect::from_min_size(bar.min, vec2(tab_width, bar.height()));
-    paint_preview_tab(painter, tab, title, style, window.border.width);
-
     // Ghost body: translucent so the dock underneath stays readable, like
-    // Unity's drag preview window. Only the tab bar is opaque.
+    // Unity's drag preview window. The opaque tab bar is painted over it.
     let body_fill = style.tab_bar.bg_fill;
     let body_fill =
         Color32::from_rgba_unmultiplied(body_fill.r(), body_fill.g(), body_fill.b(), 150);
-    let body = Rect::from_min_max(pos2(rect.left(), bar.bottom()), rect.max);
-    painter.rect_filled(body, CornerRadius::ZERO, body_fill);
+    painter.rect_filled(rect, CornerRadius::ZERO, body_fill);
+    paint_preview_bar(ui, rect, title, icon, style);
 
     painter.rect_stroke(
         rect,
@@ -2075,24 +2195,20 @@ fn paint_window_preview(
 
 /// Preview panel for a prospective split region: a real tab bar plus a body,
 /// so the drop reads as "a new panel will appear here" instead of a colour
-/// frame.
-fn paint_preview_panel(painter: &Painter, rect: Rect, title: &str, style: &Style) {
+/// frame. Only the ghost body fill and shadow differ from the window ghost.
+fn paint_preview_panel(
+    ui: &Ui,
+    rect: Rect,
+    title: WidgetText,
+    icon: Option<ImageSource<'static>>,
+    style: &Style,
+) {
     if rect.width() < 24.0 || rect.height() < style.tab_bar.height {
         return;
     }
+    let painter = ui.painter();
     painter.rect_filled(rect, CornerRadius::ZERO, style.tab.tab_body.bg_fill);
-
-    let bar = Rect::from_min_size(rect.min, vec2(rect.width(), style.tab_bar.height));
-    painter.rect_filled(bar, CornerRadius::ZERO, style.tab_bar.bg_fill);
-    let galley = painter.layout_no_wrap(
-        title.to_owned(),
-        FontId::proportional(12.0),
-        style.tab.active.text_color,
-    );
-    let tab_width = (galley.size().x + 24.0).clamp(72.0, bar.width().max(72.0));
-    let tab = Rect::from_min_size(bar.min, vec2(tab_width, bar.height()));
-    paint_preview_tab(painter, tab, title, style, style.window.border.width);
-
+    paint_preview_bar(ui, rect, title, icon, style);
     painter.rect_stroke(
         rect,
         CornerRadius::ZERO,
@@ -2109,17 +2225,9 @@ fn paint_split_separator_shadow(
     vertical_line: bool,
     style: &crate::styles::SeparatorStyle,
 ) {
-    let steps = style.shadow_width.ceil().max(1.0) as usize;
-    let base_alpha = style.shadow_color.a() as f32;
-    for step in 0..steps {
-        let t = step as f32 / steps as f32;
-        let alpha = (base_alpha * (1.0 - t)).round() as u8;
-        if alpha == 0 {
-            continue;
-        }
-        let color = Color32::from_black_alpha(alpha);
+    for (offset, color) in shadow_ramp(style.shadow_width, style.shadow_color) {
         if vertical_line {
-            let left = separator.left() - step as f32 - 1.0;
+            let left = separator.left() - offset - 1.0;
             painter.rect_filled(
                 Rect::from_min_max(
                     pos2(left, separator.top()),
@@ -2128,7 +2236,7 @@ fn paint_split_separator_shadow(
                 CornerRadius::ZERO,
                 color,
             );
-            let right = separator.right() + step as f32;
+            let right = separator.right() + offset;
             painter.rect_filled(
                 Rect::from_min_max(
                     pos2(right, separator.top()),
@@ -2138,7 +2246,7 @@ fn paint_split_separator_shadow(
                 color,
             );
         } else {
-            let top = separator.top() - step as f32 - 1.0;
+            let top = separator.top() - offset - 1.0;
             painter.rect_filled(
                 Rect::from_min_max(
                     pos2(separator.left(), top),
@@ -2147,7 +2255,7 @@ fn paint_split_separator_shadow(
                 CornerRadius::ZERO,
                 color,
             );
-            let bottom = separator.bottom() + step as f32;
+            let bottom = separator.bottom() + offset;
             painter.rect_filled(
                 Rect::from_min_max(
                     pos2(separator.left(), bottom),
@@ -2160,6 +2268,23 @@ fn paint_split_separator_shadow(
     }
 }
 
+/// Opacity ramp shared by the two soft shadows (tab separator and split
+/// separator): one 1 px column per step, densest at the source edge and fading
+/// to transparent after `width` steps.
+///
+/// Both shadows are painted as black alpha strips, so only the colour's alpha
+/// matters and the ramp is identical; before this helper each painter had its
+/// own copy of the step/alpha loop.
+fn shadow_ramp(width: f32, color: Color32) -> impl Iterator<Item = (f32, Color32)> {
+    let steps = width.ceil().max(1.0) as usize;
+    let base_alpha = color.a() as f32;
+    (0..steps).filter_map(move |step| {
+        let t = step as f32 / steps as f32;
+        let alpha = (base_alpha * (1.0 - t)).round() as u8;
+        (alpha > 0).then(|| (step as f32, Color32::from_black_alpha(alpha)))
+    })
+}
+
 fn is_drag_over_tab_bar(state: &State) -> bool {
     state.drag.as_ref().is_some_and(|drag_state| {
         drag_state.hover.tab.is_some()
@@ -2168,13 +2293,6 @@ fn is_drag_over_tab_bar(state: &State) -> bool {
                 .tab_bar
                 .is_some_and(|tab_bar| tab_bar.contains(drag_state.pointer))
     })
-}
-
-fn constrain_rect(rect: Rect, bounds: Rect) -> Rect {
-    let mut pos = rect.min;
-    pos.x = pos.x.min(bounds.right() - rect.width()).max(bounds.left());
-    pos.y = pos.y.min(bounds.bottom() - rect.height()).max(bounds.top());
-    Rect::from_min_size(pos, rect.size())
 }
 
 fn paint_tab_separator(
@@ -2200,21 +2318,14 @@ fn paint_tab_separator(
         _ => return,
     };
 
-    let steps = style.shadow_width.ceil().max(1.0) as usize;
-    let base_alpha = style.shadow_color.a() as f32;
-    for step in 0..steps {
-        let t = step as f32 / steps as f32;
-        let alpha = (base_alpha * (1.0 - t)).round() as u8;
-        if alpha == 0 {
-            continue;
-        }
+    for (offset, color) in shadow_ramp(style.shadow_width, style.shadow_color) {
         let x0 = if direction > 0.0 {
-            line.right() + step as f32
+            line.right() + offset
         } else {
-            line.left() - step as f32 - 1.0
+            line.left() - offset - 1.0
         };
         let column = Rect::from_min_max(pos2(x0, top), pos2(x0 + 1.0, bottom));
-        painter.rect_filled(column, CornerRadius::ZERO, Color32::from_black_alpha(alpha));
+        painter.rect_filled(column, CornerRadius::ZERO, color);
     }
 }
 
@@ -2238,6 +2349,7 @@ fn fade_tab_interaction_style(style: &mut TabInteractionStyle, factor: f32) {
     style.outline_color = style.outline_color.linear_multiply(factor);
     style.bg_fill = style.bg_fill.linear_multiply(factor);
     style.text_color = style.text_color.linear_multiply(factor);
+    style.icon_tint = style.icon_tint.linear_multiply(factor);
 }
 
 fn fade_tab_body_style(style: &mut TabBodyStyle, factor: f32) {
@@ -2259,10 +2371,6 @@ fn map_to_pixel_pos(mut pos: Pos2, ppi: f32, map: fn(f32) -> f32) -> Pos2 {
 
 fn map_to_pixel(point: f32, ppi: f32, map: fn(f32) -> f32) -> f32 {
     map(point * ppi) / ppi
-}
-
-fn rect_stroke_box(rect: Rect, width: f32) -> Rect {
-    rect.expand(-f32::ceil(width / 2.0))
 }
 
 fn fade_visuals(visuals: &mut Visuals, factor: f32) {
@@ -2293,4 +2401,191 @@ fn fade_widget_visuals(visuals: &mut WidgetVisuals, factor: f32) {
     visuals.weak_bg_fill = visuals.weak_bg_fill.linear_multiply(factor);
     visuals.bg_stroke.color = visuals.bg_stroke.color.linear_multiply(factor);
     visuals.fg_stroke.color = visuals.fg_stroke.color.linear_multiply(factor);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use egui::{ColorImage, FullOutput, RawInput, TextureOptions, load::SizedTexture, pos2, vec2};
+
+    fn run_paint(f: impl FnOnce(&Ui)) -> FullOutput {
+        let ctx = Context::default();
+        let mut input = RawInput::default();
+        input.screen_rect = Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0)));
+        let f = std::cell::RefCell::new(Some(f));
+        ctx.run_ui(input, |ui| {
+            if let Some(f) = f.borrow_mut().take() {
+                f(ui);
+            }
+        })
+    }
+
+    fn texture_icon(ctx: &Context, name: &str) -> (egui::TextureHandle, ImageSource<'static>) {
+        let texture = ctx.load_texture(
+            name,
+            ColorImage::filled([16, 16], Color32::WHITE),
+            TextureOptions::default(),
+        );
+        let source = ImageSource::Texture(SizedTexture::new(texture.id(), Vec2::splat(16.0)));
+        (texture, source)
+    }
+
+    fn find_icon(shape: &egui::Shape, texture_id: egui::TextureId) -> Option<Rect> {
+        match shape {
+            egui::Shape::Rect(rect)
+                if rect
+                    .brush
+                    .as_ref()
+                    .is_some_and(|brush| brush.fill_texture_id == texture_id) =>
+            {
+                Some(rect.rect)
+            }
+            egui::Shape::Vec(shapes) => {
+                shapes.iter().find_map(|shape| find_icon(shape, texture_id))
+            }
+            _ => None,
+        }
+    }
+
+    fn find_text_pos(shape: &egui::Shape) -> Option<Pos2> {
+        match shape {
+            egui::Shape::Text(text) => Some(text.pos),
+            egui::Shape::Vec(shapes) => shapes.iter().find_map(find_text_pos),
+            _ => None,
+        }
+    }
+
+    /// Both drag ghosts used to paint their own title-only tab header. They now
+    /// go through the shared tab-header helpers, so the ghost carries the same
+    /// icon+title layout as the live tab that will replace it.
+    #[test]
+    fn split_preview_paints_the_shared_header_with_icon_and_title() {
+        let ctx = Context::default();
+        let (texture, icon) = texture_icon(&ctx, "split-preview-icon");
+        let style = Style::default();
+        let rect = Rect::from_min_size(pos2(10.0, 10.0), vec2(240.0, 160.0));
+
+        let output = run_paint(|ui| {
+            paint_preview_panel(ui, rect, WidgetText::from("tab 4"), Some(icon), &style);
+        });
+
+        let icon_rect = output
+            .shapes
+            .iter()
+            .find_map(|clipped| find_icon(&clipped.shape, texture.id()))
+            .expect("split preview should paint the tab icon");
+        assert!((icon_rect.width() - 16.0).abs() < 0.5, "{icon_rect:?}");
+        assert!((icon_rect.height() - 16.0).abs() < 0.5, "{icon_rect:?}");
+        assert!(
+            rect.contains_rect(icon_rect),
+            "{icon_rect:?} not in {rect:?}"
+        );
+        assert!(
+            icon_rect.bottom() <= rect.top() + style.tab_bar.height,
+            "icon is not in the preview tab bar: {icon_rect:?}"
+        );
+
+        let text_pos = output
+            .shapes
+            .iter()
+            .find_map(|clipped| find_text_pos(&clipped.shape))
+            .expect("split preview should paint the tab title");
+        assert!(
+            text_pos.x >= icon_rect.right(),
+            "icon {icon_rect:?}, title {text_pos:?}"
+        );
+    }
+
+    #[test]
+    fn window_preview_paints_the_shared_header_with_icon_and_title() {
+        let ctx = Context::default();
+        let (texture, icon) = texture_icon(&ctx, "window-preview-icon");
+        let style = Style::default();
+        let pointer = pos2(400.0, 300.0);
+        let bounds = Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0));
+
+        let output = run_paint(|ui| {
+            paint_window_preview(
+                ui,
+                pointer,
+                Vec2::new(400.0, 300.0),
+                WidgetText::from("tab 4"),
+                Some(icon),
+                &style,
+                bounds,
+            );
+        });
+
+        let icon_rect = output
+            .shapes
+            .iter()
+            .find_map(|clipped| find_icon(&clipped.shape, texture.id()))
+            .expect("window preview should paint the tab icon");
+        assert!((icon_rect.width() - 16.0).abs() < 0.5, "{icon_rect:?}");
+        assert!((icon_rect.height() - 16.0).abs() < 0.5, "{icon_rect:?}");
+        assert!(bounds.contains_rect(icon_rect), "{icon_rect:?}");
+
+        let text_pos = output
+            .shapes
+            .iter()
+            .find_map(|clipped| find_text_pos(&clipped.shape))
+            .expect("window preview should paint the tab title");
+        assert!(
+            text_pos.x >= icon_rect.right(),
+            "icon {icon_rect:?}, title {text_pos:?}"
+        );
+    }
+
+    #[test]
+    fn tab_width_reserves_an_icon_slot_and_symmetric_padding() {
+        run_paint(|ui| {
+            let style = TabStyle::default();
+            let galley = tab_title_galley(ui, WidgetText::from("Console"));
+            let text_only = tab_width(&style, false, &galley, None);
+            let with_icon = tab_width(&style, true, &galley, None);
+
+            assert!(
+                with_icon - text_only - style.icon_size - style.icon_spacing < 0.01,
+                "text {text_only}, icon {with_icon}"
+            );
+            assert!(
+                text_only >= galley.size().x + 2.0 * style.horizontal_padding - 0.01,
+                "padding missing from {text_only}"
+            );
+        });
+    }
+
+    #[test]
+    fn tab_icon_sits_left_of_a_centered_title_block() {
+        run_paint(|ui| {
+            let style = TabStyle::default();
+            let galley = tab_title_galley(ui, WidgetText::from("Console"));
+            let tab_rect = Rect::from_min_size(pos2(100.0, 10.0), vec2(120.0, 24.0));
+            let layout = tab_header_layout(tab_rect, &style, true, &galley);
+
+            let icon_rect = layout.icon_rect.expect("icon slot");
+            assert!((icon_rect.width() - style.icon_size).abs() < 0.01);
+            assert!((icon_rect.height() - style.icon_size).abs() < 0.01);
+            assert!((icon_rect.center().y - tab_rect.center().y).abs() < 0.01);
+            assert!(layout.text_pos.x >= icon_rect.right());
+            assert!(tab_rect.contains_rect(icon_rect));
+
+            // Icon + title are centered as one block, exactly like the live tab.
+            let content_left = layout.text_pos.x - style.icon_size - style.icon_spacing;
+            let content_right = layout.text_pos.x + galley.size().x;
+            assert!(
+                ((content_left + content_right) * 0.5 - tab_rect.center().x).abs() < 0.01,
+                "content block is not centered: {content_left}..{content_right}"
+            );
+        });
+    }
+
+    #[test]
+    fn zero_icon_size_hides_the_tab_icon_slot() {
+        let mut style = TabStyle::default();
+        style.icon_size = 0.0;
+        assert!(!has_visible_tab_icon(&style, true));
+        assert!(has_visible_tab_icon(&TabStyle::default(), true));
+        assert!(!has_visible_tab_icon(&TabStyle::default(), false));
+    }
 }
