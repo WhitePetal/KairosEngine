@@ -21,5 +21,8 @@ kairos_editor_core = { path = "../kairos_editor_core" }
 # Console lines are structured `kairos_log` records; the buffer lives next to the
 # Console panel (see src/console.rs).
 kairos_log = { path = "../kairos_log" }
+# Profiling capture model: the Profiler panel is a view over host-owned frames
+# (`HostView::profiler`); the data types live in the runtime crate, not here.
+kairos_profile = { path = "../kairos_profile" }
 kairos_editor_docking = { path = "../kairos_editor_docking" }
 kairos_editor_widgets = { path = "../kairos_editor_widgets" }

@@ -1,0 +1,27 @@
+[package]
+name = "kairos_profile"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+description = "Kairos runtime profiling: low-overhead marker capture, structured frames, and trace export"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)", "cfg(docsrs_dep)"] }
+
+[dependencies]
+# The `profiling` facade is already in the graph through egui, wgpu and rapier.
+# Enabling its puffin backend unifies the feature, so every `profiling::scope!`
+# in those crates (and in Kairos code) records into the same capture. `puffin`
+# itself is reached through `profiling::puffin`, keeping the backend version in
+# lockstep with the facade.
+# Keep `procmacros` explicit: this crate re-exports the `#[function]` /
+# `#[all_functions]` attributes, which only exist with that feature.
+profiling = { version = "1.0.18", features = [
+    "procmacros",
+    "profile-with-puffin",
+] }
+# Structured export (JSON + Chrome Trace Event Format). The in-memory model is
+# plain data; serde only enters at the export boundary.
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0"

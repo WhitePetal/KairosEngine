@@ -15,6 +15,7 @@
 //! kairos_editor_widgets     (L1 widget kit, no domain types)
 //! kairos_editor_docking     (dock layout, only ids + egui)
 //! kairos_log                (runtime log: levels, terminal/file sinks)
+//! kairos_profile            (capture + structured frames, no egui)
 //!             \                  |                  /
 //!              +--► kairos_editor_component ◄--+
 //!                              |
@@ -37,6 +38,16 @@
 //! [`HostView::console_lines`]. It is deliberately not a separate
 //! `kairos_editor_log` crate — one consumer lives beside the panel, and a second
 //! one would justify extracting it.
+//!
+//! ## Profiler panel
+//!
+//! The capture is runtime infrastructure, not editor state. The app owns the
+//! process [`kairos_profile::Profiler`] (it installs the puffin sink), the frame
+//! boundary flushes it, and [`HostView::profiler`] exposes the handle to the
+//! panel. The Profiler panel reads a [`kairos_profile::ProfileSession`], caches
+//! the aggregated hierarchy per revision/frame/thread, and can toggle recording
+//! or clear the capture. It does no IO and draws no charts yet: the JSON view is
+//! produced by `kairos_profile`, and the drawing phase is planned separately.
 //!
 //! ## Panel framework
 //!

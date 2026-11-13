@@ -9,8 +9,20 @@ use kairos_editor_component::{
 use kairos_editor_core::{EditorState, LayoutState};
 use kairos_editor_docking::viewer::TabViewer;
 use kairos_log::Level;
+use kairos_profile::profiling;
 
 const FAKE: PanelId = PanelId("fake");
+
+/// The attribute expands to `profiling::function_scope!()`; the re-export above
+/// is the only `profiling` path this crate has, so compiling this function
+/// proves the documented usage works without a direct facade dependency.
+#[kairos_profile::function]
+fn profiled_probe() {}
+
+#[test]
+fn function_attribute_uses_the_profiling_reexport() {
+    profiled_probe();
+}
 
 struct FakePanel {
     veto_close: bool,
@@ -91,7 +103,7 @@ fn register_default_registers_every_default_kind() {
     panels::register_default(&mut registry);
 
     let kinds: Vec<PanelId> = registry.kinds().collect();
-    assert_eq!(kinds.len(), 5);
+    assert_eq!(kinds.len(), 6);
 
     for kind in [
         panels::SCENE,
@@ -99,6 +111,7 @@ fn register_default_registers_every_default_kind() {
         panels::CONSOLE,
         panels::HIERARCHY,
         panels::PROJECT,
+        panels::PROFILER,
     ] {
         assert!(kinds.contains(&kind), "missing {kind}");
         let panel = registry.create(kind).expect("registered factory");
@@ -151,13 +164,69 @@ fn default_layout_reconciles_with_the_host() {
     let ids: Vec<PanelInstanceId> = host.ids().collect();
     assert_eq!(ids.len(), 2);
     assert!(ids.iter().all(|id| state.layout.is_open(id.kind)));
-    assert_eq!(host.kinds().count(), 5);
+    assert_eq!(host.kinds().count(), 6);
     assert_eq!(
         host.id_of(panels::SCENE).map(|id| id.kind),
         Some(panels::SCENE)
     );
     assert_eq!(host.id_of(panels::CONSOLE), None);
     assert_eq!(LayoutState::default().focus(), None);
+}
+
+#[test]
+fn profiler_panel_renders_without_a_host_capture() {
+    struct NoProfilerHost;
+    impl HostView for NoProfilerHost {}
+
+    let mut state = EditorState::new();
+    state.layout.open(panels::PROFILER);
+    let mut host = default_host();
+    host.sync(&state.layout, &Context::default());
+    let ids: Vec<PanelInstanceId> = host.ids().collect();
+
+    let out = draw_with(&mut host, &NoProfilerHost, &state, &ids);
+
+    // The panel explains that the host is missing instead of panicking; it
+    // never owns a capture of its own.
+    assert!(out.is_empty());
+}
+
+#[test]
+fn profiler_panel_renders_a_captured_frame() {
+    struct ProfilingHost;
+    impl HostView for ProfilingHost {
+        fn profiler(&self) -> Option<&kairos_profile::Profiler> {
+            Some(kairos_profile::Profiler::global())
+        }
+    }
+
+    let profiler = kairos_profile::Profiler::global();
+    profiler.set_recording(true);
+    profiler.begin_frame();
+    {
+        kairos_profile::scope!("panel.test.outer");
+        {
+            kairos_profile::scope!("panel.test.inner", "data");
+        }
+    }
+    profiler.end_frame(true);
+    profiler.begin_frame();
+    assert!(
+        !profiler.session().is_empty(),
+        "the fixture captured one committed frame"
+    );
+
+    let mut state = EditorState::new();
+    state.layout.open(panels::PROFILER);
+    let mut host = default_host();
+    host.sync(&state.layout, &Context::default());
+    let ids: Vec<PanelInstanceId> = host.ids().collect();
+
+    let out = draw_with(&mut host, &ProfilingHost, &state, &ids);
+
+    assert!(out.is_empty());
+    profiler.set_recording(false);
+    profiler.clear();
 }
 
 #[test]
@@ -198,6 +267,7 @@ fn every_builtin_panel_returns_an_existing_tab_icon() {
         panels::CONSOLE,
         panels::HIERARCHY,
         panels::PROJECT,
+        panels::PROFILER,
     ] {
         let panel = registry.create(kind).expect("registered factory");
         let path = panel

@@ -19,6 +19,7 @@ members = [
     "kairos_log",
     "kairos_math",
     "kairos_physics",
+    "kairos_profile",
     "kairos_ptr",
     "kairos_supervisor",
     "kairos_tasks",

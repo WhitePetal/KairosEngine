@@ -12,6 +12,7 @@ use kairos_editor_docking::{
     tree::NodeIndex,
 };
 use kairos_log::SinkHandle;
+use kairos_profile::Profiler;
 
 use crate::consts::VERSION;
 
@@ -20,11 +21,18 @@ use crate::consts::VERSION;
 /// writes into it, the Console panel reads it through `HostView`, and neither
 /// owns it. It is not in `EditorState` because it is a host stream, not
 /// serializable state.
+///
+/// The profiler is the second such resource: the process owns the capture store,
+/// the app drives its frame boundary (`kairos_profile::begin_frame` /
+/// `end_frame`), and the Profiler panel reads it through `HostView::profiler`.
 struct AppHost {
     console: Arc<ConsoleLog>,
     /// Keeps the console attached to the process logger; dropping the app
     /// detaches the sink.
     _console_sink: SinkHandle,
+    /// Process-wide capture store. Initialised here, before the first frame, so
+    /// the Profiler panel has a sink to read from as soon as it opens.
+    profiler: &'static Profiler,
 }
 
 impl AppHost {
@@ -34,6 +42,7 @@ impl AppHost {
         Self {
             console,
             _console_sink: console_sink,
+            profiler: Profiler::global(),
         }
     }
 }
@@ -42,14 +51,19 @@ impl HostView for AppHost {
     fn console_lines(&self, f: &mut dyn FnMut(&[ConsoleLine])) {
         self.console.with_lines(f);
     }
+
+    fn profiler(&self) -> Option<&Profiler> {
+        Some(self.profiler)
+    }
 }
 
-/// Build the first-run layout from the ids the host created for the four
+/// Build the first-run layout from the ids the host created for the five
 /// default panels. User drags/splits after this are pure dock-state changes.
 fn default_dock(host: &PanelHost) -> DockState<PanelInstanceId> {
     let scene = host.id_of(panels::SCENE).expect("scene instance");
     let inspector = host.id_of(panels::INSPECTOR).expect("inspector instance");
     let console = host.id_of(panels::CONSOLE).expect("console instance");
+    let profiler = host.id_of(panels::PROFILER).expect("profiler instance");
     let hierarchy = host.id_of(panels::HIERARCHY).expect("hierarchy instance");
 
     let mut dock: DockState<PanelInstanceId> = DockState::new();
@@ -59,9 +73,11 @@ fn default_dock(host: &PanelHost) -> DockState<PanelInstanceId> {
         vec![inspector],
     );
     dock.main_surface_mut()[scene_leaf].append_tab(scene);
-    let [top, _bottom] =
-        dock.main_surface_mut()
-            .split_bottom(scene_leaf, Fraction::new(0.7), vec![console]);
+    let [top, _bottom] = dock.main_surface_mut().split_bottom(
+        scene_leaf,
+        Fraction::new(0.7),
+        vec![console, profiler],
+    );
     dock.main_surface_mut()
         .split_left(top, Fraction::new(0.22), vec![hierarchy]);
     dock
@@ -92,6 +108,7 @@ impl EditorApp {
             panels::SCENE,
             panels::INSPECTOR,
             panels::CONSOLE,
+            panels::PROFILER,
             panels::HIERARCHY,
         ] {
             state.layout.open(kind);
@@ -117,6 +134,7 @@ impl EditorApp {
     /// derived from `LayoutState`, so closing a panel or restoring a layout
     /// converges without special-case code in the UI.
     fn sync(&mut self, ctx: &egui::Context) {
+        kairos_profile::scope!("Kairos.Editor.Sync");
         self.host.sync(&self.state.layout, ctx);
 
         let ids: Vec<PanelInstanceId> = self.host.ids().collect();
@@ -133,6 +151,7 @@ impl EditorApp {
     /// Toolbar is host chrome, not a panel: it reads state and pushes actions,
     /// exactly like a panel body would.
     fn show_tool_bar(&self, ui: &mut egui::Ui, out: &mut UiOut) {
+        kairos_profile::scope!("Kairos.Editor.ToolBar");
         let kinds: Vec<_> = self.host.kinds().collect();
 
         egui::Panel::top("editor-top-bar").show(ui, |ui| {
@@ -161,6 +180,7 @@ impl EditorApp {
     /// Called only for a committed pass (`!Context::will_discard()`): egui may
     /// run the UI pass twice, and a discarded pass must not apply its actions.
     fn pump(&mut self, mut out: UiOut) {
+        kairos_profile::scope!("Kairos.Editor.Pump");
         for action in out.take() {
             kairos_log::info!(target: "kairos_editor", "{}", describe(&action));
             reduce(&mut self.state, action);
@@ -182,33 +202,56 @@ fn describe(action: &Action) -> String {
 
 impl EditorApp {
     /// One frame, independent of the window backend (also used by smoke tests).
+    ///
+    /// The profiling frame boundary wraps the whole pass. `begin_frame` flushes
+    /// the *previous* pass (puffin reports a thread's stream only after the
+    /// pass's outermost scope closes), and `end_frame` carries egui's discard
+    /// decision so a multi-pass layout never captures the throwaway pass.
     fn ui(&mut self, ui: &mut egui::Ui) {
-        // Editor chrome is not a text document; dragging tabs must not select
-        // labels in the panel bodies.
-        ui.style_mut().interaction.selectable_labels = false;
+        kairos_profile::begin_frame();
 
-        let mut out = UiOut::new();
-        self.show_tool_bar(ui, &mut out);
-        self.sync(ui.ctx());
+        let committed = {
+            kairos_profile::scope!("Kairos.Editor.Frame");
 
-        {
-            let Self {
-                state,
-                host,
-                dock,
-                host_view,
-            } = self;
-            let frame = Frame::with_host(state, &*host_view);
-            let mut viewer = host.viewer(&mut out, frame);
-            Docker::new("kairos_editor_docker", dock).show(ui, &mut viewer);
-        }
+            // Editor chrome is not a text document; dragging tabs must not select
+            // labels in the panel bodies.
+            ui.style_mut().interaction.selectable_labels = false;
 
-        if !ui.ctx().will_discard() {
-            self.pump(out);
-            // Focus is instance-keyed in `LayoutState`; the dock owns the live
-            // instance ids, so the committed frame mirrors them back.
-            self.state.layout.set_focus(self.dock.focused_tab());
-        }
+            let mut out = UiOut::new();
+            self.show_tool_bar(ui, &mut out);
+            self.sync(ui.ctx());
+
+            // Capture is host policy: keep it tied to the visible Profiler tab
+            // so closing the tab cannot leave the recorder running with no
+            // control surface. Frames already captured stay in the store.
+            if !self.state.layout.is_open(panels::PROFILER) && Profiler::global().is_recording() {
+                Profiler::global().set_recording(false);
+            }
+
+            {
+                kairos_profile::scope!("Kairos.Editor.Dock");
+                let Self {
+                    state,
+                    host,
+                    dock,
+                    host_view,
+                } = self;
+                let frame = Frame::with_host(state, &*host_view);
+                let mut viewer = host.viewer(&mut out, frame);
+                Docker::new("kairos_editor_docker", dock).show(ui, &mut viewer);
+            }
+
+            if !ui.ctx().will_discard() {
+                self.pump(out);
+                // Focus is instance-keyed in `LayoutState`; the dock owns the live
+                // instance ids, so the committed frame mirrors them back.
+                self.state.layout.set_focus(self.dock.focused_tab());
+            }
+
+            !ui.ctx().will_discard()
+        };
+
+        kairos_profile::end_frame(committed);
     }
 }
 
@@ -220,8 +263,23 @@ impl eframe::App for EditorApp {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Mutex;
+
     use super::*;
     use kairos_editor_docking::viewer::TabViewer;
+
+    /// The profiler test drives the real global recorder; only one test may run
+    /// a UI pass at a time while it is recording.
+    static UI_LOCK: Mutex<()> = Mutex::new(());
+
+    fn raw_input() -> egui::RawInput {
+        let mut input = egui::RawInput::default();
+        input.screen_rect = Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::Vec2::new(1280.0, 820.0),
+        ));
+        input
+    }
 
     fn build() -> EditorApp {
         let mut registry = PanelRegistry::new();
@@ -231,6 +289,7 @@ mod tests {
             panels::SCENE,
             panels::INSPECTOR,
             panels::CONSOLE,
+            panels::PROFILER,
             panels::HIERARCHY,
         ] {
             state.layout.open(kind);
@@ -247,26 +306,54 @@ mod tests {
     }
 
     #[test]
-    fn default_layout_opens_the_four_default_tabs() {
+    fn default_layout_opens_the_five_default_tabs() {
         let app = build();
-        assert_eq!(app.host.ids().count(), 4);
-        assert_eq!(app.dock.tabs().len(), 4);
+        assert_eq!(app.host.ids().count(), 5);
+        assert_eq!(app.dock.tabs().len(), 5);
     }
 
     #[test]
     fn draw_pipeline_runs_end_to_end() {
+        let _guard = UI_LOCK.lock().unwrap_or_else(|error| error.into_inner());
         let mut app = build();
         let ctx = egui::Context::default();
-        let mut input = egui::RawInput::default();
-        input.screen_rect = Some(egui::Rect::from_min_size(
-            egui::Pos2::ZERO,
-            egui::Vec2::new(1280.0, 820.0),
-        ));
 
-        let _ = ctx.run_ui(input, |ui| app.ui(ui));
+        let _ = ctx.run_ui(raw_input(), |ui| app.ui(ui));
 
-        assert_eq!(app.host.ids().count(), 4);
-        assert_eq!(app.dock.tabs().len(), 4);
+        assert_eq!(app.host.ids().count(), 5);
+        assert_eq!(app.dock.tabs().len(), 5);
+    }
+
+    #[test]
+    fn editor_frames_are_captured_when_recording() {
+        let _guard = UI_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+        let mut app = build();
+        let profiler = Profiler::global();
+        profiler.set_recording(true);
+
+        let ctx = egui::Context::default();
+        // Frame 1 is recorded between begin_frame and end_frame; the next
+        // begin_frame flushes it into the store.
+        let _ = ctx.run_ui(raw_input(), |ui| app.ui(ui));
+        let _ = ctx.run_ui(raw_input(), |ui| app.ui(ui));
+
+        let session = profiler.session();
+        assert!(
+            !session.frames.is_empty(),
+            "a committed editor pass is flushed at the next frame boundary"
+        );
+        let has_editor_frame = session.frames.iter().any(|frame| {
+            frame.threads.iter().any(|thread| {
+                thread
+                    .samples
+                    .iter()
+                    .any(|sample| session.scope_name(sample.scope) == "Kairos.Editor.Frame")
+            })
+        });
+        assert!(has_editor_frame, "Kairos.Editor.Frame is in the capture");
+
+        profiler.set_recording(false);
+        profiler.clear();
     }
 
     #[test]
@@ -282,8 +369,8 @@ mod tests {
         assert!(!app.state.layout.is_open(panels::CONSOLE));
 
         app.sync(&egui::Context::default());
-        assert_eq!(app.host.ids().count(), 3);
-        assert_eq!(app.dock.tabs().len(), 3);
+        assert_eq!(app.host.ids().count(), 4);
+        assert_eq!(app.dock.tabs().len(), 4);
     }
 
     #[test]
@@ -303,6 +390,15 @@ mod tests {
     }
 
     #[test]
+    fn host_view_exposes_the_profiler() {
+        let host = AppHost::new();
+        assert!(
+            host.profiler().is_some(),
+            "the app installs the process profiler before the first frame"
+        );
+    }
+
+    #[test]
     fn host_view_exposes_the_console_history() {
         let host = AppHost::new();
         host.console.push(&kairos_log::Record::new(
@@ -317,6 +413,27 @@ mod tests {
         assert_eq!(seen.len(), 1);
         assert_eq!(seen[0].message, "hello console");
         assert_eq!(seen[0].target, "test");
+    }
+
+    #[test]
+    fn closing_the_profiler_tab_stops_recording() {
+        let _guard = UI_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+        let mut app = build();
+        let profiler = Profiler::global();
+        profiler.set_recording(true);
+
+        let ctx = egui::Context::default();
+        let _ = ctx.run_ui(raw_input(), |ui| app.ui(ui));
+        assert!(profiler.is_recording(), "the first pass starts the capture");
+
+        app.state.layout.close(panels::PROFILER);
+        let _ = ctx.run_ui(raw_input(), |ui| app.ui(ui));
+
+        assert!(
+            !profiler.is_recording(),
+            "closing the Profiler tab stops the host capture"
+        );
+        profiler.clear();
     }
 
     #[test]
@@ -349,12 +466,12 @@ mod tests {
 
         app.state.layout.close(panels::CONSOLE);
         app.sync(&ctx);
-        assert_eq!(app.host.ids().count(), 3);
-        assert_eq!(app.dock.tabs().len(), 3);
+        assert_eq!(app.host.ids().count(), 4);
+        assert_eq!(app.dock.tabs().len(), 4);
 
         app.state.layout.open(panels::CONSOLE);
         app.sync(&ctx);
-        assert_eq!(app.host.ids().count(), 4);
-        assert_eq!(app.dock.tabs().len(), 4);
+        assert_eq!(app.host.ids().count(), 5);
+        assert_eq!(app.dock.tabs().len(), 5);
     }
 }

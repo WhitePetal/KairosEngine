@@ -32,6 +32,7 @@
 
 use kairos_editor_core::{EditorState, action::Action};
 use kairos_log::Level;
+use kairos_profile::Profiler;
 
 /// One host-owned console entry, rendered by the Console panel.
 ///
@@ -85,6 +86,16 @@ pub trait HostView {
     /// lines only while drawing. The panel never consumes history — closing the
     /// console loses nothing and reopening shows the same lines.
     fn console_lines(&self, _f: &mut dyn FnMut(&[ConsoleLine])) {}
+
+    /// The host-owned profiling capture, when the host runs one.
+    ///
+    /// The Profiler panel reads the structured session through this handle and
+    /// toggles capture here. Recording state is not `EditorState` (it is not
+    /// serializable and belongs to the host), so this is the same kind of
+    /// host-resource seam as [`HostView::console_lines`], not a state mutation.
+    fn profiler(&self) -> Option<&Profiler> {
+        None
+    }
 }
 
 /// Read-only snapshot handed to feature components for one UI pass.

@@ -1,0 +1,138 @@
+# Profiler roadmap
+
+Status: phase 1 (capture + structured data) implemented; phase 2 (drawing) not
+started.
+
+## Product target
+
+A Unity-like **Profiler Panel** inside the Kairos editor:
+
+- record CPU work as a hierarchical marker stream (the recorded call stack);
+- show it per frame and per thread;
+- draw a frame chart, hierarchy bars and a timeline;
+- later cover the engine and game, not only the editor UI.
+
+The work is split at the data boundary: `kairos_profile` records and exposes
+structured frames; the panel only renders them. That boundary lets the same
+capture feed the in-editor view, a JSON export and a Perfetto trace.
+
+## Phase 1 — capture + structured data (this change)
+
+Delivered:
+
+- **`kairos_profile` crate**: puffin-backed recorder (through the `profiling`
+  facade), frame sink, pre-order samples, scope table, bounded frame ring,
+  hierarchy aggregation, JSON and Chrome Trace exports.
+- **Frame lifecycle** in `EditorApp::ui`: `begin_frame` / `end_frame(committed)`,
+  egui multi-pass discard handling, deferred recording start (the macros turn on
+  at the next frame so the first captured frame is whole).
+- **Scopes**: editor frame, toolbar, sync, dock, panel body (with panel kind
+  data), pump; third-party egui/wgpu scopes through feature unification.
+- **`Profiler` panel**: Hierarchy / Raw / JSON views, record/clear, frame and
+  thread selectors; docked next to Console by default.
+- **Tests**: capture lifecycle, discarded pass, worker thread, capacity, byte
+  stream parser, hierarchy self-time, JSON/trace export, panel render with and
+  without a capture, end-to-end editor frame capture.
+
+Not in phase 1: any drawing (charts, bars, timeline), GPU timings, allocation
+tracking, native call stacks, async task propagation, capture files from the
+panel UI.
+
+## Structured data
+
+| Type | Contents |
+| --- | --- |
+| `ProfileSession` | revision, origin, frames (Arc), marker table, dropped/discarded counts |
+| `FrameSnapshot` | session index, puffin source index, start/end ns, threads |
+| `ThreadSnapshot` | session thread id, name, pre-order samples, optional warning |
+| `SampleSnapshot` | marker id, optional data, frame-relative start ns, duration ns, depth, parent index |
+| `ScopeInfo` | marker id, name, file:line, named/function |
+| `HierarchyRow` | marker + data, depth, total/self/max ns, calls (derived view) |
+
+Samples are pre-order: a parent always precedes its children and `parent` points
+into the same thread's `samples`. A frame's times are relative to the capture
+origin; samples are relative to their frame. This is enough for a tree now and a
+timeline later.
+
+JSON schema v1 is written by `ProfileSession::to_json` / `write_json`; the
+panel's JSON tab shows one frame plus the scope table. Additive fields are
+backwards compatible; a semantic change bumps `schemaVersion`.
+
+## Instrumentation rules
+
+- Put a scope in a block: `{ kairos_profile::scope!("Load mesh"); ... }`. The
+  guard drops at the end of the block.
+- Keep the name static per call site. The changing part goes in the second
+  argument: `kairos_profile::scope!("Load asset", path)`. Puffin registers the
+  first name it sees per call site and truncates data to 127 bytes.
+- Prefer subsystem boundaries first, then add fine scopes where the hierarchy
+  shows a cost worth explaining.
+- `#[kairos_profile::function]` instruments a whole function; `#[all_functions]`
+  covers an impl block. Their expansion names `profiling::function_scope!`, so
+  import `kairos_profile::profiling` once in that module.
+- Do not put scopes in code that runs thousands of times per frame unless the
+  cost is understood; a scope is ~60 ns when recording and ~1 ns when off.
+
+## Phase 2 — drawing
+
+All views consume the existing `ProfileSession` / `HierarchyRow`; no capture
+changes are expected.
+
+1. **Frame chart** (top strip): one CPU bar per kept frame, height ∝
+   `FrameSnapshot::duration_ns`; selected frame highlighted; slowest frames
+   marked. This is the Unity "CPU Usage" module in miniature.
+2. **Hierarchy**: the current rows plus a total/self bar per row (stacked or
+   overlaid), sort by total/self/calls/name, search, expand/collapse. Bar widths
+   are normalized to the selected frame's duration, not to the root row.
+3. **Timeline**: one row per thread, samples laid out by `start_ns` and
+   `duration_ns`; click selects a sample and syncs hierarchy/raw; hover shows
+   marker, data, duration and location; zoom/pan by frame. Color by marker id
+   (stable hash) or by category once categories exist.
+4. **Details pane**: marker, location, calls, total/self/max, parent chain; the
+   JSON escape hatch stays.
+5. **Interactions**: record/clear, frame slider, thread filter, follow-latest,
+   capture stats; no new dependencies — egui `Painter` + `Shape::rect_filled` +
+   `Sense::click_and_drag` are enough.
+6. **Performance**: compute layout once per `(revision, frame, thread, zoom)`;
+   virtualize rows; never rebuild the capture inside the paint pass.
+
+Unity parity checklist for phase 2: Hierarchy, Raw Hierarchy, Timeline, CPU
+Usage chart, frame selector, thread selector, marker details. GPU modules and
+memory modules are separate phases.
+
+## Phase 3 — coverage and depth
+
+- **Engine**: wrap `Engine::update` and the schedule stages with
+  `Kairos.Engine.*` scopes; systems use `#[function]`.
+- **Game**: same crate; the game host calls `begin_frame` / `end_frame` around
+  its frame.
+- **Async**: a `tracing` or explicit task-id bridge so spans survive task
+  migration; puffin scopes are thread-local and cannot nest across an await.
+- **GPU**: wgpu timestamp queries as their own track; marker scopes measure CPU
+  time only.
+- **Allocations**: a tracking allocator or a sampler; not part of the marker
+  path.
+- **Deep profile / native stacks**: opt-in native backtraces or sampling, with
+  symbolization; expensive and explicitly not on the default path.
+- **Capture lifecycle**: save/load JSON, name captures, record from app start,
+  export from an app menu (keep IO out of the panel).
+- **Marker metadata**: categories/colors (Unity module colors), user-registered
+  dynamic markers.
+
+## Inspecting a capture
+
+1. Run the editor and open the **Profiler** tab (bottom dock, next to Console).
+2. Press **● Record**, interact with the editor, press **■ Stop**.
+3. Use **Latest** / the frame field and the thread combo; switch between
+   **Hierarchy**, **Raw**, **JSON**.
+4. For an external view, call `Profiler::write_json(path)` or
+   `Profiler::write_chrome_trace(path)` from the host/a test; the latter opens in
+   <https://ui.perfetto.dev>.
+
+## Non-goals for now
+
+- Replacing `kairos_log`: logs are events, profiles are timings.
+- A second capture implementation beside puffin: the `profiling` facade is the
+  swap point if the backend changes.
+- Drawing before the data model is stable: phase 1 exists to make phase 2 a
+  pure renderer.

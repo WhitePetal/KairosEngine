@@ -25,4 +25,6 @@ kairos_editor_widgets = { path = "../kairos_editor_widgets" }
 kairos_editor_docking = { path = "../kairos_editor_docking" }
 kairos_editor_component = { path = "../kairos_editor_component" }
 kairos_log = { path = "../kairos_log" }
+# Frame boundary + host-owned capture store for the Profiler panel.
+kairos_profile = { path = "../kairos_profile" }
 kairos_editor_core = { path = "../kairos_editor_core" }

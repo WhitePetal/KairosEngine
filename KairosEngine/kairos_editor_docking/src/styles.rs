@@ -11,7 +11,7 @@ pub struct TabBodyStyle {
 impl Default for TabBodyStyle {
     fn default() -> Self {
         Self {
-            inner_margin: Margin::same(4),
+            inner_margin: Margin::same(0),
             stroke: Stroke::default(),
             corner_radius: CornerRadius::default(),
             bg_fill: Color32::from_rgb(67, 67, 67),

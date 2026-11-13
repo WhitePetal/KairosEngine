@@ -55,6 +55,10 @@ impl TabViewer for PanelHostViewer<'_, '_> {
     fn ui(&mut self, ui: &mut Ui, id: Self::Id) {
         let PanelHostViewer { host, out, frame } = self;
         if let Some(panel) = host.panel_mut(id) {
+            // One scope per panel body; the panel kind is the per-invocation
+            // data, so the hierarchy can separate console/scene/profiler work
+            // without a marker per panel implementation.
+            kairos_profile::scope!("Kairos.Editor.Panel", id.kind.0);
             panel.ui(ui, frame, *out);
         }
     }

@@ -20,6 +20,7 @@ mod console_style;
 pub use console_style::ConsoleStyle;
 mod hierarchy;
 mod inspector;
+mod profiler;
 mod project;
 mod scene;
 
@@ -32,6 +33,7 @@ pub const INSPECTOR: PanelId = PanelId("inspector");
 pub const CONSOLE: PanelId = PanelId("console");
 pub const HIERARCHY: PanelId = PanelId("hierarchy");
 pub const PROJECT: PanelId = PanelId("project");
+pub const PROFILER: PanelId = PanelId("profiler");
 
 /// Register the built-in panels. The app calls this once at composition time.
 pub fn register_default(registry: &mut PanelRegistry) {
@@ -40,4 +42,5 @@ pub fn register_default(registry: &mut PanelRegistry) {
     registry.register(CONSOLE, || Box::new(console::ConsolePanel::default()));
     registry.register(HIERARCHY, || Box::new(hierarchy::HierarchyPanel));
     registry.register(PROJECT, || Box::new(project::ProjectPanel));
+    registry.register(PROFILER, || Box::new(profiler::ProfilerPanel::default()));
 }

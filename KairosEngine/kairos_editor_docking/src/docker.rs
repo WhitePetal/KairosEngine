@@ -1454,16 +1454,22 @@ impl<T: TabId> Docker<'_, T> {
             return;
         };
 
+        let DockState {
+            surfaces,
+            style,
+            ..
+        } = self.dock_state;
+
         let (style, fade_factor) = fade_style
-            .map(|(style, factor)| (style.clone(), factor))
-            .unwrap_or_else(|| (self.dock_state.style.clone(), 1.0));
+            .map(|(style, factor)| (style, factor))
+            .unwrap_or_else(|| (&style, 1.0));
         let tabs_style = &style.tab;
-        let leaf_rect = self.dock_state[surface_index][node_index]
+        let leaf_rect = surfaces[surface_index][node_index]
             .rect()
             .unwrap_or(body_rect);
 
         let rect_changed = {
-            let Some(leaf) = self.dock_state[surface_index][node_index].get_leaf_mut() else {
+            let Some(leaf) = surfaces[surface_index][node_index].get_leaf_mut() else {
                 return;
             };
             let changed = leaf.viewport != body_rect;
