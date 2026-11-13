@@ -2873,6 +2873,7 @@ dependencies = [
  "eframe",
  "egui",
  "egui_extras",
+ "image",
  "kairos_editor_component",
  "kairos_editor_core",
  "kairos_editor_docking",

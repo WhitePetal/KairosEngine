@@ -10,8 +10,11 @@
 //! eframe is still the window backend while the production winit/wgpu event
 //! loop is prepared; switching it does not change panel/dock APIs.
 
+use egui::IconData;
+
 mod app;
 mod consts;
+mod paths;
 
 fn main() -> eframe::Result<()> {
     // One process logger for the whole run: stderr plus
@@ -32,7 +35,8 @@ fn main() -> eframe::Result<()> {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1280.0, 820.0])
             .with_min_inner_size([960.0, 600.0])
-            .with_title(format!("{} {}", consts::APP_NAME, consts::VERSION)),
+            .with_title(format!("{} {}", consts::APP_NAME, consts::VERSION))
+            .with_icon(load_icon()),
         ..Default::default()
     };
 
@@ -41,4 +45,17 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(|cc| Ok(Box::new(app::EditorApp::new(cc)))),
     )
+}
+
+fn load_icon() -> IconData {
+    if let Ok(rgba) = std::fs::read(paths::PATH_ENGINE_ICON) {
+        if let Ok(image) = image::load_from_memory(&rgba) {
+            let image = image.into_rgba8();
+            IconData { rgba: image.to_vec(), width: image.width(), height: image.height() }
+        } else {
+            IconData::default()
+        }
+    } else {
+        IconData::default()
+    }
 }
