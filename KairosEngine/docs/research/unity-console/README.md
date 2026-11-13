@@ -396,6 +396,11 @@ Everything below was **observed in the running editor** unless marked *(standard
    re-verified against the baseline capture: counts 39/303/5, timestamps visible, row 4 selected).
    The only side-effect is that the Console dock content sits **2 px lower** than at the very first capture
    (dock focus/layout re-flow), which does not change any measurement above.
+7. **Kairos deviation — resizable detail pane**: Unity keeps the stack-trace pane at the measured
+   130 px. Kairos lets the user drag the pane's top edge (the 1 px `#202020` chrome line at the
+   split) to resize it, and double-clicking that edge restores the 130 px style default. The
+   `detail_height` style token is therefore a *starting* height, not a fixed one, and the pane
+   always keeps one log row visible above it.
 
 ---
 

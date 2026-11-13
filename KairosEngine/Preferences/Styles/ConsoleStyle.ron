@@ -42,6 +42,7 @@
         detail_height: 130.0,
         detail_padding: 3.0,
         separator_width: 1.2,
+        splitter_grab: 3.0,
     ),
     light: (
         toolbar_bg: "#C8C8C8",
@@ -86,5 +87,6 @@
         detail_height: 130.0,
         detail_padding: 3.0,
         separator_width: 1.0,
+        splitter_grab: 3.0,
     ),
 )

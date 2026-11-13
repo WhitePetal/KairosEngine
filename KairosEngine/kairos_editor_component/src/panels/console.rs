@@ -9,7 +9,8 @@
 //! Error Pause / Editor, search, per-level count toggles) whose segments are
 //! split by 1 px chrome lines, then the log list of
 //! 38 px two-line entries with alternating backgrounds, then — for the selected
-//! entry — the 130 px stack-trace detail pane. Clearing is a view cursor
+//! entry — the stack-trace detail pane. Unity fixes that pane at 130 px; Kairos
+//! lets the user drag its top edge to resize it. Clearing is a view cursor
 //! (`cleared_through`), not a mutation of the host buffer.
 //!
 //! Appearance comes from [`ConsoleStyle`], loaded from
@@ -52,6 +53,14 @@ pub(crate) struct ConsolePanel {
     follow_latest: bool,
     /// Loaded from `Preferences/Styles/ConsoleStyle.ron` in [`Panel::init`].
     style: ConsoleStyle,
+    /// Stack-trace pane height after the user drags its top edge; `None` means
+    /// the style's `detail_height` applies.
+    detail_height: Option<f32>,
+    /// Pane height and the pointer position it was last measured against, i.e.
+    /// the current drag's anchor. The height is resolved from this pair rather
+    /// than from a per-frame delta so the drag stays idempotent when egui
+    /// re-runs this UI in one frame.
+    detail_drag: Option<(f32, f32)>,
 }
 
 impl Default for ConsolePanel {
@@ -65,6 +74,8 @@ impl Default for ConsolePanel {
             selected: None,
             follow_latest: true,
             style: ConsoleStyle::default(),
+            detail_height: None,
+            detail_drag: None,
         }
     }
 }
@@ -119,9 +130,7 @@ impl Panel for ConsolePanel {
         let detail_height = if rows.is_empty() {
             0.0
         } else {
-            self.style
-                .detail_height
-                .min((body.height() - self.style.row_height).max(0.0))
+            self.pane_height(body.height())
         };
         let list_rect = Rect::from_min_max(body.min, pos2(body.max.x, body.max.y - detail_height));
         let detail_rect =
@@ -134,11 +143,84 @@ impl Panel for ConsolePanel {
             ui.scope_builder(egui::UiBuilder::new().max_rect(detail_rect), |ui| {
                 self.detail_pane(ui, detail_rect, &lines);
             });
+            // Interact after the panes so the splitter wins the hit test against
+            // the log rows and the detail pane's scroll area: egui gives the
+            // last widget the pointer.
+            self.splitter(ui, body, detail_height);
         }
     }
 }
 
 impl ConsolePanel {
+    /// Resolved stack-trace pane height for this frame: the style default until
+    /// the user drags the splitter, then the dragged height. The clamp keeps one
+    /// log row visible above the pane and gives the pane a row's worth of height.
+    fn pane_height(&self, body_height: f32) -> f32 {
+        let max = (body_height - self.style.row_height).max(0.0);
+        let min = self.style.row_height.min(max);
+        self.detail_height
+            .unwrap_or(self.style.detail_height)
+            .clamp(min, max)
+    }
+
+    /// The draggable edge between the log list and the stack-trace pane. Unity
+    /// fixes the pane at 130 px; in Kairos it grows when the edge is dragged up,
+    /// and a double-click restores the style default (as the dock's splitters do).
+    fn splitter(&mut self, ui: &mut Ui, body: Rect, detail_height: f32) {
+        let top = body.max.y - detail_height;
+        let band = Rect::from_min_max(
+            pos2(body.min.x, top - self.style.splitter_grab),
+            pos2(body.max.x, top + self.style.splitter_grab),
+        );
+        let response = ui
+            .interact(
+                band,
+                ui.id().with("console-detail-splitter"),
+                Sense::click_and_drag(),
+            )
+            .on_hover_and_drag_cursor(egui::CursorIcon::ResizeVertical);
+
+        let pointer = response.interact_pointer_pos();
+        if response.drag_started() {
+            self.detail_drag = pointer.map(|pointer| (detail_height, pointer.y));
+        }
+        if response.dragged()
+            && let (Some((anchor_height, anchor_pointer)), Some(pointer)) =
+                (self.detail_drag, pointer)
+        {
+            let max = (body.height() - self.style.row_height).max(0.0);
+            let min = self.style.row_height.min(max);
+            let height = (anchor_height - (pointer.y - anchor_pointer)).clamp(min, max);
+            self.detail_height = Some(height);
+            // Re-anchor so dragging back from a clamp responds immediately.
+            self.detail_drag = Some((height, pointer.y));
+        }
+        if !ui.input(|input| input.pointer.any_down()) {
+            self.detail_drag = None;
+        }
+        if response.double_clicked() {
+            self.detail_height = None;
+        }
+
+        // The idle line is the measured Unity chrome; hover and drag brighten it
+        // so the 1 px edge reads as a handle.
+        let color = if response.dragged() {
+            self.style.toolbar_text
+        } else if response.hovered() {
+            self.style.toggle_bg
+        } else {
+            self.style.separator
+        };
+        ui.painter().rect_filled(
+            Rect::from_min_size(
+                pos2(body.min.x, top),
+                vec2(body.width(), self.style.separator_width),
+            ),
+            CornerRadius::ZERO,
+            color.to_egui(),
+        );
+    }
+
     fn counts(&self, lines: &[ConsoleLine]) -> [usize; 3] {
         let mut counts = [0; 3];
         for line in lines.iter().filter(|line| line.id > self.cleared_through) {
@@ -166,14 +248,20 @@ impl ConsolePanel {
         // The bar is 20 px tall and is followed by Unity's 1 px chrome line
         // above the log list, so the row reserves one extra pixel below it.
         let (row, _) = ui.allocate_exact_size(
-            vec2(width, self.style.toolbar_height + self.style.separator_width),
+            vec2(
+                width,
+                self.style.toolbar_height + self.style.separator_width,
+            ),
             Sense::hover(),
         );
         let bar = Rect::from_min_size(row.min, vec2(width, self.style.toolbar_height));
         let painter = ui.painter().clone();
         painter.rect_filled(bar, CornerRadius::ZERO, self.style.toolbar_bg.to_egui());
         painter.rect_filled(
-            Rect::from_min_size(pos2(bar.left(), bar.bottom()), vec2(width, self.style.separator_width)),
+            Rect::from_min_size(
+                pos2(bar.left(), bar.bottom()),
+                vec2(width, self.style.separator_width),
+            ),
             CornerRadius::ZERO,
             self.style.separator.to_egui(),
         );
@@ -282,8 +370,8 @@ impl ConsolePanel {
         // Search field fills the middle; the count buttons are pinned right.
         let counts = self.counts(lines);
         let count_widths = self.count_widths(&painter, &counts);
-        let counts_width: f32 =
-            count_widths.iter().sum::<f32>() + (Level::ALL.len() as f32 - 1.0) * self.style.separator_width;
+        let counts_width: f32 = count_widths.iter().sum::<f32>()
+            + (Level::ALL.len() as f32 - 1.0) * self.style.separator_width;
         let counts_left = bar.right() - counts_width;
         let search = Rect::from_min_max(
             pos2(x + 6.0, bar.top() + 2.0),
@@ -333,7 +421,12 @@ impl ConsolePanel {
         let painter = ui.painter().clone();
         // A segmented control: one separator leads into the group, then one
         // between every pair of toggles; Unity draws all of them as chrome lines.
-        let mut x = toolbar_separator(&painter, bar, counts_left - self.style.separator_width, &self.style);
+        let mut x = toolbar_separator(
+            &painter,
+            bar,
+            counts_left - self.style.separator_width,
+            &self.style,
+        );
 
         let font = FontId::new(self.style.text_size, FontFamily::Proportional);
         for (index, level) in Level::ALL.into_iter().enumerate() {
@@ -524,13 +617,10 @@ impl ConsolePanel {
     }
 
     fn detail_pane(&mut self, ui: &mut Ui, rect: Rect, lines: &[ConsoleLine]) {
-        let painter = ui.painter();
-        painter.rect_filled(rect, CornerRadius::ZERO, self.style.detail_bg.to_egui());
-        painter.rect_filled(
-            Rect::from_min_size(rect.min, vec2(rect.width(), 1.0)),
-            CornerRadius::ZERO,
-            self.style.separator.to_egui(),
-        );
+        // The 1 px edge above the pane belongs to the splitter, which paints it
+        // in its hover and drag colours.
+        ui.painter()
+            .rect_filled(rect, CornerRadius::ZERO, self.style.detail_bg.to_egui());
 
         let Some(line) = self.selected_line(lines) else {
             return;
@@ -593,7 +683,10 @@ impl ConsolePanel {
 /// toolbar segment starts.
 fn toolbar_separator(painter: &egui::Painter, bar: Rect, x: f32, style: &ConsoleStyle) -> f32 {
     painter.rect_filled(
-        Rect::from_min_size(pos2(x, bar.top()), vec2(style.separator_width, bar.height())),
+        Rect::from_min_size(
+            pos2(x, bar.top()),
+            vec2(style.separator_width, bar.height()),
+        ),
         CornerRadius::ZERO,
         style.separator.to_egui(),
     );
@@ -747,23 +840,98 @@ mod tests {
         }
     }
 
+    /// The headless canvas the harness renders into.
+    const CANVAS_WIDTH: f32 = 800.0;
+    const CANVAS_HEIGHT: f32 = 600.0;
+
+    /// A console panel run frame after frame on the same context, for tests that
+    /// need pointer state to persist across frames (drag, double click).
+    struct ConsoleHarness<'a> {
+        ctx: egui::Context,
+        state: EditorState,
+        panel: ConsolePanel,
+        host: &'a dyn HostView,
+        out: UiOut,
+    }
+
+    impl<'a> ConsoleHarness<'a> {
+        fn new(host: &'a dyn HostView) -> Self {
+            Self {
+                ctx: egui::Context::default(),
+                state: EditorState::default(),
+                panel: ConsolePanel::default(),
+                host,
+                out: UiOut::new(),
+            }
+        }
+
+        /// Runs one frame with `events` and returns every filled rect it painted.
+        fn frame(&mut self, events: Vec<egui::Event>) -> Vec<PaintedRect> {
+            let mut input = egui::RawInput::default();
+            input.screen_rect = Some(Rect::from_min_size(
+                Pos2::ZERO,
+                vec2(CANVAS_WIDTH, CANVAS_HEIGHT),
+            ));
+            input.events = events;
+
+            let Self {
+                ctx,
+                state,
+                panel,
+                host,
+                out,
+            } = self;
+            let frame = Frame::with_host(state, *host);
+            let output = ctx.run_ui(input, |ui| panel.ui(ui, &frame, &mut *out));
+
+            let mut painted = Vec::new();
+            for clipped in &output.shapes {
+                flatten(&clipped.shape, &mut painted);
+            }
+            painted
+        }
+    }
+
     /// Draws one frame of the console and returns every filled rect it painted.
     fn paint_console(host: &dyn HostView) -> Vec<PaintedRect> {
-        let state = EditorState::default();
-        let frame = Frame::with_host(&state, host);
-        let mut panel = ConsolePanel::default();
-        let mut out = UiOut::new();
+        ConsoleHarness::new(host).frame(Vec::new())
+    }
 
-        let ctx = egui::Context::default();
-        let mut input = egui::RawInput::default();
-        input.screen_rect = Some(Rect::from_min_size(Pos2::ZERO, vec2(800.0, 600.0)));
-        let output = ctx.run_ui(input, |ui| panel.ui(ui, &frame, &mut out));
+    fn pointer_move(pos: Pos2) -> egui::Event {
+        egui::Event::PointerMoved(pos)
+    }
 
-        let mut painted = Vec::new();
-        for clipped in &output.shapes {
-            flatten(&clipped.shape, &mut painted);
+    fn pointer_button(pos: Pos2, pressed: bool) -> egui::Event {
+        egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
         }
+    }
+
+    /// Host with `count` visible rows; the console needs a selection to show the
+    /// stack-trace pane.
+    fn lines_host(count: usize) -> LinesHost {
+        let mut lines: Vec<ConsoleLine> = (0..count)
+            .map(|_| ConsoleLine::new(Level::Info, "info"))
+            .collect();
+        for (index, line) in lines.iter_mut().enumerate() {
+            line.id = index as u64 + 1;
+        }
+        LinesHost(lines)
+    }
+
+    /// The stack-trace pane's painted background. `detail_bg` happens to equal
+    /// `row_even`, so take the lowermost rect of that colour: the pane sits on
+    /// the body's bottom edge.
+    fn detail_pane_rect(painted: &[PaintedRect], style: &ConsoleStyle) -> Rect {
         painted
+            .iter()
+            .filter(|painted| painted.fill == style.detail_bg.to_egui())
+            .map(|painted| painted.rect)
+            .max_by(|a, b| a.bottom().total_cmp(&b.bottom()))
+            .expect("stack-trace pane")
     }
 
     #[test]
@@ -788,7 +956,8 @@ mod tests {
             .map(|painted| painted.rect.left())
             .collect();
 
-        let count_group = style.count_widths * Level::ALL.len() as f32 + 2.0 * style.separator_width;
+        let count_group =
+            style.count_widths * Level::ALL.len() as f32 + 2.0 * style.separator_width;
         let expected = [
             bar.left() + style.clear_width,
             bar.left() + style.clear_width + style.separator_width + style.collapse_width,
@@ -805,7 +974,10 @@ mod tests {
                 + 3.0 * style.separator_width,
             bar.right() - count_group - style.separator_width,
             bar.right() - count_group + style.count_widths,
-            bar.right() - count_group + style.count_widths + style.separator_width + style.count_widths,
+            bar.right() - count_group
+                + style.count_widths
+                + style.separator_width
+                + style.count_widths,
         ];
         for x in expected {
             assert!(
@@ -856,6 +1028,104 @@ mod tests {
         assert!(
             warning_width > info_width + 4.0,
             "the 303 toggle should grow: info {info_width}, warning {warning_width}"
+        );
+    }
+
+    /// Presses the splitter at `grab` and drags the pointer to `end`, releasing
+    /// there. The first +10 px move only starts the drag, so the pane follows the
+    /// pointer from that point on.
+    fn drag_splitter(harness: &mut ConsoleHarness<'_>, grab: Pos2, end: Pos2) {
+        harness.frame(vec![pointer_move(grab), pointer_button(grab, true)]);
+        harness.frame(vec![pointer_move(pos2(grab.x, grab.y - 10.0))]);
+        harness.frame(vec![pointer_move(end)]);
+        harness.frame(vec![pointer_button(end, false)]);
+    }
+
+    #[test]
+    fn dragging_the_splitter_resizes_the_stack_pane() {
+        let style = ConsoleStyle::dark();
+        let host = lines_host(4);
+        let mut harness = ConsoleHarness::new(&host);
+
+        let before = detail_pane_rect(&harness.frame(Vec::new()), &style);
+        assert!(
+            (before.height() - style.detail_height).abs() < 0.5,
+            "the pane should start at the style height, got {}",
+            before.height()
+        );
+
+        // 30 px of movement after the drag starts grows the pane by 30 px.
+        let grab = pos2(before.center().x, before.top());
+        drag_splitter(&mut harness, grab, pos2(grab.x, grab.y - 40.0));
+        let after = detail_pane_rect(&harness.frame(Vec::new()), &style);
+        assert!(
+            (after.height() - (style.detail_height + 30.0)).abs() < 1.0,
+            "dragging 30 px up should grow the pane to {} px, got {}",
+            style.detail_height + 30.0,
+            after.height()
+        );
+    }
+
+    #[test]
+    fn dragging_the_splitter_past_the_top_clamps_without_a_dead_zone() {
+        let style = ConsoleStyle::dark();
+        let host = lines_host(4);
+        let mut harness = ConsoleHarness::new(&host);
+
+        let before = detail_pane_rect(&harness.frame(Vec::new()), &style);
+        let grab = pos2(before.center().x, before.top());
+        harness.frame(vec![pointer_move(grab), pointer_button(grab, true)]);
+        harness.frame(vec![pointer_move(pos2(grab.x, grab.y - 10.0))]);
+        // Far past the clamp: the pane stops one row short of the body, so the
+        // log list keeps its last row.
+        harness.frame(vec![pointer_move(pos2(grab.x, 0.0))]);
+        // Dragging back down moves the edge immediately instead of replaying the
+        // overshoot first.
+        harness.frame(vec![pointer_move(pos2(grab.x, 20.0))]);
+        let settled = harness.frame(vec![pointer_button(pos2(grab.x, 20.0), false)]);
+
+        let body_height = CANVAS_HEIGHT - (style.toolbar_height + style.separator_width);
+        let expected = body_height - style.row_height - 20.0;
+        let after = detail_pane_rect(&settled, &style);
+        assert!(
+            (after.height() - expected).abs() < 1.0,
+            "after clamping and reversing 20 px the pane should be {expected} px, got {}",
+            after.height()
+        );
+    }
+
+    #[test]
+    fn double_clicking_the_splitter_restores_the_style_height() {
+        let style = ConsoleStyle::dark();
+        let host = lines_host(4);
+        let mut harness = ConsoleHarness::new(&host);
+
+        let before = detail_pane_rect(&harness.frame(Vec::new()), &style);
+        let grab = pos2(before.center().x, before.top());
+        drag_splitter(&mut harness, grab, pos2(grab.x, grab.y - 40.0));
+        let dragged = detail_pane_rect(&harness.frame(Vec::new()), &style);
+        assert!(
+            dragged.height() > style.detail_height + 20.0,
+            "drag should have resized the pane, got {}",
+            dragged.height()
+        );
+
+        // Two clicks in successive frames on the moved edge are a double click.
+        let edge = pos2(grab.x, CANVAS_HEIGHT - dragged.height());
+        for pressed in [true, false, true, false] {
+            let mut events = vec![pointer_button(edge, pressed)];
+            if pressed {
+                events.insert(0, pointer_move(edge));
+            }
+            harness.frame(events);
+        }
+
+        let after = detail_pane_rect(&harness.frame(Vec::new()), &style);
+        assert!(
+            (after.height() - style.detail_height).abs() < 0.5,
+            "double-click should restore {} px, got {}",
+            style.detail_height,
+            after.height()
         );
     }
 }
