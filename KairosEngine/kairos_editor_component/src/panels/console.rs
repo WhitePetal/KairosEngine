@@ -94,11 +94,10 @@ impl Panel for ConsolePanel {
         frame
             .host
             .console_lines(&mut |entries| lines = entries.to_vec());
-        let style = self.style.clone();
 
         ui.painter()
-            .rect_filled(ui.max_rect(), CornerRadius::ZERO, style.row_even);
-        self.toolbar(ui, &lines, &style);
+            .rect_filled(ui.max_rect(), CornerRadius::ZERO, self.style.row_even);
+        self.toolbar(ui, &lines);
 
         let body = ui.available_rect_before_wrap();
         // Explicit ids keep egui's multi-pass id bookkeeping stable (the dock
@@ -110,20 +109,20 @@ impl Panel for ConsolePanel {
         let detail_height = if rows.is_empty() {
             0.0
         } else {
-            style
+            self.style
                 .detail_height
-                .min((body.height() - style.row_height).max(0.0))
+                .min((body.height() - self.style.row_height).max(0.0))
         };
         let list_rect = Rect::from_min_max(body.min, pos2(body.max.x, body.max.y - detail_height));
         let detail_rect =
             Rect::from_min_max(pos2(body.min.x, body.max.y - detail_height), body.max);
 
         ui.scope_builder(egui::UiBuilder::new().max_rect(list_rect), |ui| {
-            self.log_list(ui, &rows, &style);
+            self.log_list(ui, &rows);
         });
         if detail_height > 0.0 {
             ui.scope_builder(egui::UiBuilder::new().max_rect(detail_rect), |ui| {
-                self.detail_pane(ui, detail_rect, &lines, &style);
+                self.detail_pane(ui, detail_rect, &lines);
             });
         }
     }
@@ -138,33 +137,33 @@ impl ConsolePanel {
         counts
     }
 
-    fn toolbar(&mut self, ui: &mut Ui, lines: &[ConsoleLine], style: &ConsoleStyle) {
+    fn toolbar(&mut self, ui: &mut Ui, lines: &[ConsoleLine]) {
         let width = ui.available_width();
-        let (rect, _) = ui.allocate_exact_size(vec2(width, style.toolbar_height), Sense::hover());
+        let (rect, _) = ui.allocate_exact_size(vec2(width, self.style.toolbar_height), Sense::hover());
         let painter = ui.painter().clone();
-        painter.rect_filled(rect, CornerRadius::ZERO, style.toolbar_bg);
+        painter.rect_filled(rect, CornerRadius::ZERO, self.style.toolbar_bg);
 
-        let font = FontId::new(style.text_size, FontFamily::Proportional);
+        let font = FontId::new(self.style.text_size, FontFamily::Proportional);
         let mut x = rect.left();
 
         // Clear (split button: label + caret menu).
         let clear = Rect::from_min_size(
             pos2(x, rect.top()),
-            vec2(style.clear_width, style.toolbar_height),
+            vec2(self.style.clear_width, self.style.toolbar_height),
         );
         let response = ui.interact(clear, ui.id().with("console-clear"), Sense::click());
-        paint_hover(&painter, &response, clear, false, style);
+        paint_hover(&painter, &response, clear, false, &self.style);
         painter.text(
             pos2(clear.left() + 5.0, clear.center().y),
             Align2::LEFT_CENTER,
             "Clear",
             font.clone(),
-            style.toolbar_text,
+            self.style.toolbar_text,
         );
         paint_caret(
             &painter,
             pos2(clear.right() - 10.0, clear.center().y),
-            style.toolbar_text,
+            self.style.toolbar_text,
         );
         if response.clicked() {
             self.cleared_through = lines.last().map_or(0, |line| line.id);
@@ -176,16 +175,16 @@ impl ConsolePanel {
         // Collapse / Error Pause toggles.
         let collapse = Rect::from_min_size(
             pos2(x, rect.top()),
-            vec2(style.collapse_width, style.toolbar_height),
+            vec2(self.style.collapse_width, self.style.toolbar_height),
         );
         let response = ui.interact(collapse, ui.id().with("console-collapse"), Sense::click());
-        paint_hover(&painter, &response, collapse, self.collapse, style);
+        paint_hover(&painter, &response, collapse, self.collapse, &self.style);
         painter.text(
             collapse.center(),
             Align2::CENTER_CENTER,
             "Collapse",
             font.clone(),
-            style.toolbar_text,
+            self.style.toolbar_text,
         );
         if response.clicked() {
             self.collapse = !self.collapse;
@@ -194,16 +193,16 @@ impl ConsolePanel {
 
         let pause = Rect::from_min_size(
             pos2(x, rect.top()),
-            vec2(style.error_pause_width, style.toolbar_height),
+            vec2(self.style.error_pause_width, self.style.toolbar_height),
         );
         let response = ui.interact(pause, ui.id().with("console-error-pause"), Sense::click());
-        paint_hover(&painter, &response, pause, self.error_pause, style);
+        paint_hover(&painter, &response, pause, self.error_pause, &self.style);
         painter.text(
             pause.center(),
             Align2::CENTER_CENTER,
             "Error Pause",
             font.clone(),
-            style.toolbar_text,
+            self.style.toolbar_text,
         );
         if response.clicked() {
             self.error_pause = !self.error_pause;
@@ -213,46 +212,46 @@ impl ConsolePanel {
         // Editor/Player source filter (Unity's Editor dropdown).
         let editor = Rect::from_min_size(
             pos2(x, rect.top()),
-            vec2(style.editor_width, style.toolbar_height),
+            vec2(self.style.editor_width, self.style.toolbar_height),
         );
         let response = ui.interact(editor, ui.id().with("console-source"), Sense::click());
-        paint_hover(&painter, &response, editor, false, style);
+        paint_hover(&painter, &response, editor, false, &self.style);
         painter.text(
             pos2(editor.left() + 8.0, editor.center().y),
             Align2::LEFT_CENTER,
             "Editor",
             font.clone(),
-            style.toolbar_text,
+            self.style.toolbar_text,
         );
         paint_caret(
             &painter,
             pos2(editor.right() - 13.0, editor.center().y),
-            style.toolbar_text,
+            self.style.toolbar_text,
         );
         x = editor.right() + 1.0;
 
         // Search field fills the middle; the count buttons are pinned right.
-        let counts_width: f32 = style.count_widths.iter().sum::<f32>() + 2.0;
+        let counts_width: f32 = self.style.count_widths.iter().sum::<f32>() + 2.0;
         let counts_left = rect.right() - counts_width;
         let search = Rect::from_min_max(
             pos2(x + 6.0, rect.top() + 2.0),
-            pos2(counts_left - 8.0, rect.top() + style.toolbar_height - 2.0),
+            pos2(counts_left - 8.0, rect.top() + self.style.toolbar_height - 2.0),
         );
         painter.rect_filled(
             search,
-            CornerRadius::same(style.search_radius),
-            style.search_bg,
+            CornerRadius::same(self.style.search_radius),
+            self.style.search_bg,
         );
         painter.rect_stroke(
             search,
-            CornerRadius::same(style.search_radius),
-            Stroke::new(1.0, style.search_edge),
+            CornerRadius::same(self.style.search_radius),
+            Stroke::new(1.0, self.style.search_edge),
             egui::StrokeKind::Inside,
         );
         paint_magnifier(
             &painter,
             pos2(search.left() + 9.0, search.center().y),
-            style.toolbar_text,
+            self.style.toolbar_text,
         );
         let edit = Rect::from_min_max(
             pos2(search.left() + 18.0, search.top()),
@@ -262,13 +261,13 @@ impl ConsolePanel {
             edit,
             egui::TextEdit::singleline(&mut self.search)
                 .id(ui.id().with("console-search"))
-                .font(FontId::new(style.text_size, FontFamily::Proportional))
-                .text_color(style.toolbar_text)
+                .font(FontId::new(self.style.text_size, FontFamily::Proportional))
+                .text_color(self.style.toolbar_text)
                 .frame(egui::Frame::NONE)
                 .margin(egui::Margin::symmetric(0, 1)),
         );
 
-        self.paint_counts(ui, rect, counts_left, &self.counts(lines), style);
+        self.paint_counts(ui, rect, counts_left, &self.counts(lines));
     }
 
     fn paint_counts(
@@ -277,26 +276,25 @@ impl ConsolePanel {
         toolbar: Rect,
         counts_left: f32,
         counts: &[usize; 3],
-        style: &ConsoleStyle,
     ) {
         let painter = ui.painter().clone();
         painter.rect_filled(
             Rect::from_min_size(
                 pos2(counts_left - 1.0, toolbar.top()),
-                vec2(1.0, style.toolbar_height),
+                vec2(1.0, self.style.toolbar_height),
             ),
             CornerRadius::ZERO,
-            style.separator,
+            self.style.separator,
         );
 
-        let font = FontId::new(style.text_size, FontFamily::Proportional);
+        let font = FontId::new(self.style.text_size, FontFamily::Proportional);
         let mut x = counts_left;
         for (index, level) in Level::ALL.into_iter().enumerate() {
             let segment = Rect::from_min_size(
                 pos2(x, toolbar.top()),
-                vec2(style.count_widths[index], style.toolbar_height),
+                vec2(self.style.count_widths[index], self.style.toolbar_height),
             );
-            painter.rect_filled(segment, CornerRadius::ZERO, style.toggle_bg);
+            painter.rect_filled(segment, CornerRadius::ZERO, self.style.toggle_bg);
             let response = ui.interact(
                 segment,
                 ui.id().with(("console-level", index)),
@@ -310,14 +308,14 @@ impl ConsolePanel {
             let icon_rect = Rect::from_min_size(
                 pos2(
                     segment.left() + 5.0,
-                    segment.center().y - style.count_icon * 0.5,
+                    segment.center().y - self.style.count_icon * 0.5,
                 ),
-                vec2(style.count_icon, style.count_icon),
+                vec2(self.style.count_icon, self.style.count_icon),
             );
             ui_image::paint(
                 ui,
                 icon_rect,
-                style.icons.severity(severity(level), visible),
+                self.style.icons.severity(severity(level), visible),
                 Color32::WHITE,
             );
             painter.text(
@@ -325,22 +323,22 @@ impl ConsolePanel {
                 Align2::LEFT_CENTER,
                 counts[index].to_string(),
                 font.clone(),
-                style.toolbar_text,
+                self.style.toolbar_text,
             );
 
             x = segment.right();
             if index < 2 {
                 painter.rect_filled(
-                    Rect::from_min_size(pos2(x, toolbar.top()), vec2(1.0, style.toolbar_height)),
+                    Rect::from_min_size(pos2(x, toolbar.top()), vec2(1.0, self.style.toolbar_height)),
                     CornerRadius::ZERO,
-                    style.toolbar_bg,
+                    self.style.toolbar_bg,
                 );
                 x += 1.0;
             }
         }
     }
 
-    fn log_list(&mut self, ui: &mut Ui, rows: &[(&ConsoleLine, usize)], style: &ConsoleStyle) {
+    fn log_list(&mut self, ui: &mut Ui, rows: &[(&ConsoleLine, usize)]) {
         egui::ScrollArea::vertical()
             .id_salt("kairos-console-log")
             .auto_shrink([false, false])
@@ -348,7 +346,7 @@ impl ConsolePanel {
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
                 for (index, (line, count)) in rows.iter().enumerate() {
-                    self.row(ui, index, line, *count, style);
+                    self.row(ui, index, line, *count);
                 }
             });
     }
@@ -386,10 +384,9 @@ impl ConsolePanel {
         index: usize,
         line: &ConsoleLine,
         count: usize,
-        style: &ConsoleStyle,
     ) {
         let width = ui.available_width();
-        let (rect, _) = ui.allocate_exact_size(vec2(width, style.row_height), Sense::hover());
+        let (rect, _) = ui.allocate_exact_size(vec2(width, self.style.row_height), Sense::hover());
         let response = ui.interact(rect, ui.id().with(("console-row", line.id)), Sense::click());
         if response.clicked() {
             self.selected = Some(line.id);
@@ -398,51 +395,51 @@ impl ConsolePanel {
 
         let selected = self.selected == Some(line.id);
         let background = if selected {
-            style.row_selected
+            self.style.row_selected
         } else if index % 2 == 0 {
-            style.row_odd
+            self.style.row_odd
         } else {
-            style.row_even
+            self.style.row_even
         };
         let text_color = if selected {
-            style.text_selected
+            self.style.text_selected
         } else {
-            style.text
+            self.style.text
         };
         let painter = ui.painter();
         painter.rect_filled(rect, CornerRadius::ZERO, background);
 
         let icon_rect = Rect::from_min_size(
-            pos2(rect.left() + style.icon_left, rect.top() + 6.0),
-            vec2(style.icon_size, style.icon_size),
+            pos2(rect.left() + self.style.icon_left, rect.top() + 6.0),
+            vec2(self.style.icon_size, self.style.icon_size),
         );
         ui_image::paint(
             ui,
             icon_rect,
-            style.icons.severity(severity(line.level), true),
+            self.style.icons.severity(severity(line.level), true),
             Color32::WHITE,
         );
 
-        let font = FontId::new(style.text_size, FontFamily::Proportional);
+        let font = FontId::new(self.style.text_size, FontFamily::Proportional);
         let text = format!("[{}] {}", line.time, line.message);
         let galley = painter.layout(
             text,
             font,
             text_color,
-            rect.width() - style.text_left - 10.0,
+            rect.width() - self.style.text_left - 10.0,
         );
         let clip = Rect::from_min_max(
             pos2(
-                rect.left() + style.text_left,
-                rect.top() + style.row_text_top - 2.0,
+                rect.left() + self.style.text_left,
+                rect.top() + self.style.row_text_top - 2.0,
             ),
             pos2(rect.right() - 10.0, rect.bottom()),
         );
         let text_painter = painter.with_clip_rect(clip);
         text_painter.galley(
             pos2(
-                rect.left() + style.text_left,
-                rect.top() + style.row_text_top,
+                rect.left() + self.style.text_left,
+                rect.top() + self.style.row_text_top,
             ),
             galley,
             text_color,
@@ -451,12 +448,12 @@ impl ConsolePanel {
         if self.collapse && count > 1 {
             let badge_rect = Rect::from_min_size(
                 pos2(
-                    rect.right() - style.badge_size - 8.0,
-                    rect.center().y - style.badge_size * 0.5,
+                    rect.right() - self.style.badge_size - 8.0,
+                    rect.center().y - self.style.badge_size * 0.5,
                 ),
-                vec2(style.badge_size, style.badge_size),
+                vec2(self.style.badge_size, self.style.badge_size),
             );
-            ui_image::paint(ui, badge_rect, style.icons.badge(), Color32::WHITE);
+            ui_image::paint(ui, badge_rect, self.style.icons.badge(), Color32::WHITE);
             let badge_text = if count > 99 {
                 "99+".to_owned()
             } else {
@@ -466,8 +463,8 @@ impl ConsolePanel {
                 badge_rect.center(),
                 Align2::CENTER_CENTER,
                 badge_text,
-                FontId::new(style.badge_text_size, FontFamily::Proportional),
-                style.text,
+                FontId::new(self.style.badge_text_size, FontFamily::Proportional),
+                self.style.text,
             );
         }
     }
@@ -477,38 +474,37 @@ impl ConsolePanel {
         ui: &mut Ui,
         rect: Rect,
         lines: &[ConsoleLine],
-        style: &ConsoleStyle,
     ) {
         let painter = ui.painter();
-        painter.rect_filled(rect, CornerRadius::ZERO, style.detail_bg);
+        painter.rect_filled(rect, CornerRadius::ZERO, self.style.detail_bg);
         painter.rect_filled(
             Rect::from_min_size(rect.min, vec2(rect.width(), 1.0)),
             CornerRadius::ZERO,
-            style.separator,
+            self.style.separator,
         );
 
         let Some(line) = self.selected_line(lines) else {
             return;
         };
         ui.scope_builder(
-            egui::UiBuilder::new().max_rect(rect.shrink2(vec2(style.detail_padding, 5.0))),
+            egui::UiBuilder::new().max_rect(rect.shrink2(vec2(self.style.detail_padding, 5.0))),
             |ui| {
                 egui::ScrollArea::vertical()
                     .id_salt("kairos-console-detail")
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         ui.spacing_mut().item_spacing.y = 0.0;
-                        let font = FontId::new(style.text_size, FontFamily::Proportional);
+                        let font = FontId::new(self.style.text_size, FontFamily::Proportional);
                         ui.add(
                             egui::Label::new(
                                 egui::RichText::new(&line.message)
                                     .font(font.clone())
-                                    .color(style.text),
+                                    .color(self.style.text),
                             )
                             .wrap(),
                         );
                         for stack_line in &line.stack {
-                            paint_stack_line(ui, stack_line, style);
+                            paint_stack_line(ui, stack_line, &self.style);
                         }
                     });
             },
