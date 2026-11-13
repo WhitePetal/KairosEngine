@@ -1,8 +1,8 @@
 (
     dark: (
-        toolbar_bg: "#353535",
+        toolbar_bg: "#434343",
         toolbar_text: "#B1B1B1",
-        toggle_bg: "#464646",
+        toggle_bg: "#505050",
         search_bg: "#252525",
         search_edge: "#1D1D1D",
         separator: "#202020",
@@ -30,7 +30,7 @@
         collapse_width: 58.0,
         error_pause_width: 73.0,
         editor_width: 50.0,
-        count_widths: (40.0, 49.0, 32.0),
+        count_widths: 40.0,
         count_icon: 13.0,
         search_radius: 3,
         row_height: 38.0,
@@ -41,6 +41,7 @@
         badge_size: 20.0,
         detail_height: 130.0,
         detail_padding: 3.0,
+        separator_width: 1.2,
     ),
     light: (
         toolbar_bg: "#C8C8C8",
@@ -73,7 +74,7 @@
         collapse_width: 58.0,
         error_pause_width: 73.0,
         editor_width: 50.0,
-        count_widths: (40.0, 49.0, 32.0),
+        count_widths: 40.0,
         count_icon: 13.0,
         search_radius: 3,
         row_height: 38.0,
@@ -84,5 +85,6 @@
         badge_size: 20.0,
         detail_height: 130.0,
         detail_padding: 3.0,
+        separator_width: 1.0,
     ),
 )

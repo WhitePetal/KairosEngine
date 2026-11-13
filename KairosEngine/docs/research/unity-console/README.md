@@ -98,13 +98,21 @@ button sits at the far right (ink x 1587..1588, y 921..930).
 | **Collapse** toggle | 58×20 | x 57..114 | text `#B1B1B1`; **ON** background `#464646` (whole button rect) |
 | **Error Pause** toggle | 73×20 | x 116..188 | text `#B1B1B1`; ON background `#464646` (same style as Collapse) |
 | **Editor ▾** dropdown | 50×20 | x 190..239 | text `#B1B1B1`; caret ink x 230..233 |
-| button separators | 1 px | x 56, 115, 189 | toolbar bg `#353535` (no drawn line) |
+| button separators | 1 px × 20 px | x 56, 115, 189, 240 | **`#202020` drawn line**, full toolbar height (sampled at y 936–955) |
 | search field | 302×17 (r≈3) | x 1174..1475, y 938..954 | fill `#252525`, 1 px edge `#1D1D1D`; magnifier glyph 7×7 at (1179,943); **no placeholder text** |
 | count toggle – info | 40×20 | x 1477..1516, y 936..955 | flat **square-cornered** bg `#464646` (1 px `#202020` separator at x 1476), icon 13×13 at (1482,939), number right of icon |
 | count toggle – warning | 49×20 | x 1518..1566 | bg `#464646`, icon 13×13 at (1523,939) |
 | count toggle – error | 32×20 | x 1568..1599 | bg `#464646`, icon 13×13 at (1573,939) |
 | count numbers | 12 px | icon + 5 px gap | `#B1B1B1` (observed `39`, `303`, `5`) |
-| count toggle gaps | 1 px | x 1517, 1567 | toolbar bg |
+| count separators | 1 px × 20 px | x 1476, 1517, 1567 | **`#202020` drawn line**, full toolbar height |
+
+> **Correction (2026-11-13)**: the first pass recorded the toolbar separators as "no drawn line" because the
+> columns were sampled on the tab-strip row above the bar (y 22 in the crop) instead of inside it. Re-sampling
+> y 936–955 of shot 00 shows full-height 1 px `#202020` lines at **x 56, 115, 189, 240, 1476, 1517 and 1567**
+> — so every toolbar item is delimited by a drawn line, including the gaps inside the count toggle group.
+> Kairos implementation evidence: [`23_kairos_console_toolbar_separators_4x.png`](23_kairos_console_toolbar_separators_4x.png)
+> (4× crop of the running editor; the lines come from `ConsoleStyle::separator` via `toolbar_separator` in
+> `kairos_editor_component/src/panels/console.rs`).
 
 ### 3.3 Log list rows
 
@@ -307,6 +315,8 @@ Everything below was **observed in the running editor** unless marked *(standard
 * **Search** (302×17, rounded, `#252525`): live filter; empty state shows only the magnifier glyph
   (no “Search…” placeholder). *(Filtering behaviour is standard Unity — typing filters the list live. Not
   exercised in this capture to avoid changing the user's console.)*
+* Every toolbar item (Clear, Collapse, Error Pause, Editor, the count toggles) is delimited by a full-height
+  1 px `#202020` line; the count toggle group also has one separator before it and between its three segments.
 * **Level counts** (three 20 px-tall buttons, `#464646`, right-aligned): each is a **filter toggle**
   with icon + count. Info / warning / error counts are the number of entries of that level in the list.
   Disabled state uses the `.inactive` icon variants (extracted in `icons/`).

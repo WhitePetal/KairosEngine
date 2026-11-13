@@ -51,7 +51,9 @@ pub struct ConsoleStyle {
     pub collapse_width: f32,
     pub error_pause_width: f32,
     pub editor_width: f32,
-    pub count_widths: [f32; 3],
+    /// Floor width of each level-count toggle; the toggles grow to fit their
+    /// number (Unity: 40 px for `39`, 49 px for `303`, 32 px for `5`).
+    pub count_widths: f32,
     pub count_icon: f32,
     pub search_radius: u8,
 
@@ -66,6 +68,8 @@ pub struct ConsoleStyle {
     // Stack-trace detail pane.
     pub detail_height: f32,
     pub detail_padding: f32,
+
+    pub separator_width: f32,
 }
 
 /// Fallback for style files written before the tab icon existed.
@@ -107,7 +111,7 @@ impl Style for ConsoleStyle {
             collapse_width: 58.0,
             error_pause_width: 73.0,
             editor_width: 50.0,
-            count_widths: [40.0, 49.0, 32.0],
+            count_widths: 40.0,
             count_icon: 13.0,
             search_radius: 3,
             row_height: 38.0,
@@ -118,6 +122,7 @@ impl Style for ConsoleStyle {
             badge_size: 20.0,
             detail_height: 130.0,
             detail_padding: 3.0,
+            separator_width: 1.0,
         }
     }
 
