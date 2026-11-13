@@ -7,7 +7,7 @@
 //!
 //! ```text
 //! kairos_editor_app/src/app.rs   EditorApp::ui
-//!   -> app sync                  host.sync(&state.layout); dock tab reconcile
+//!   -> app sync                  host.sync(&state.layout, ctx); dock tab reconcile
 //!   -> docker::Docker::show      tabs/splitters/drag; asks the viewer per tab
 //!     -> panel/viewer.rs         PanelHostViewer        (id -> live instance)
 //!       -> panels/<name>.rs      <dyn Panel>::ui(ui, &Frame, &mut UiOut)
@@ -37,7 +37,7 @@ pub use host::PanelHost;
 pub use registry::{PanelFactory, PanelRegistry};
 pub use viewer::PanelHostViewer;
 
-use egui::{Ui, WidgetText};
+use egui::{Context, Ui, WidgetText};
 use kairos_editor_core::PanelId;
 
 use crate::frame::{Frame, UiOut};
@@ -59,6 +59,11 @@ pub trait Panel {
 
     /// Title shown in the dock tab bar and in floating-window title bars.
     fn title(&self, frame: &Frame) -> WidgetText;
+
+    /// Called once by the host right after the instance is created, before the
+    /// first draw. Panels load their own UI resources here (icon files, cached
+    /// textures) instead of doing it in `ui` or at application startup.
+    fn init(&mut self, _ctx: &Context) {}
 
     /// Draw the panel body. Only the active tab of a leaf is drawn.
     fn ui(&mut self, ui: &mut Ui, frame: &Frame, out: &mut UiOut);

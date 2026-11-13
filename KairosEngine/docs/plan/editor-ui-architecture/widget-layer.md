@@ -59,6 +59,13 @@ L2 与总架构（MVU）的关系：总架构里的 `Panel`/component 就是这�
 
 ### 2.1 L0：Design Tokens / Theme
 
+> **2026-11-13 实现更新**：生产里 L0 落成 **per-component serializable style**，而不是一个全局
+> `Theme` 安装：`kairos_editor_widgets::style` 提供 `Style` trait（`FILE` / `dark()` /
+> `light()`）、泛型 `StyleFile<S>`（RON load/save/defaults）和 `hex_color` serde adapter；
+> 每个 component 定义自己的 `XxxStyle` 并在 `Panel::init` 加载
+> `Preferences/Styles/<XxxStyle>.ron`（一个文件含 dark/light 两套）。`StyleState` /
+> 全局 `Theme` 不再是实现前提，见 ADR 0010 实现 note。
+
 - **唯一外观来源**：颜色（bg/panel/text/muted/accent/border/error/success/warning）、间距（xs/sm/md/lg/xl）、字号（caption/body/heading/title）、行高、圆角、图标尺寸、动效时长。
 - 现状是「每个窗口一个 `XxxStyle` TOML + 自己的 `*Style::new()` + 偏好设置反射」；目标是**一个 `Theme`**（可含 per-panel override），由 host 每帧准备，widget 只读。
 - 映射方式：现有 8 个 `Preferences/Styles/*.toml` 的字段先 1:1 映射进 `Theme`（保证视觉不变），再逐步归并重复 token。

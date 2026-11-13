@@ -11,3 +11,6 @@ unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)", "cfg(docsrs_dep)
 
 [dependencies]
 egui = "0.35.0"
+# Component styles and the font list are RON files under `Preferences/Styles`.
+ron = "0.12"
+serde = { version = "1.0.228", features = ["derive"] }

@@ -19,10 +19,16 @@
 //! ## Host resources
 //!
 //! GPU handles (egui textures), the structured console lines and any other
-//! host-owned read-only resource are exposed through [`HostView`]. They are not
-//! state: a texture handle is not serializable and log history is host-owned, so
-//! the frame borrows a view instead. Hosts with nothing to show use the default
-//! [`EmptyHost`] (`Frame::new`).
+//! host-owned read-only *dynamic* resource are exposed through [`HostView`]. They
+//! are not state: a texture handle is not serializable and log history is
+//! host-owned, so the frame borrows a view instead. Hosts with nothing to show
+//! use the default [`EmptyHost`] (`Frame::new`).
+//!
+//! Static editor appearance images (icons) are **not** `HostView` resources:
+//! they are file-backed assets under `Preferences/Textures`, preloaded by a
+//! panel's `init` through `kairos_editor_widgets::ui_image`, and cached by
+//! egui's image loaders. `HostView` is for per-frame resources the host
+//! produces (viewport textures) or owns as a stream (log history).
 
 use kairos_editor_core::{EditorState, action::Action};
 use kairos_log::Level;

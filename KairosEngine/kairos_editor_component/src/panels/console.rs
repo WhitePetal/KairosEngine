@@ -10,53 +10,30 @@
 //! 38 px two-line entries with alternating backgrounds, then — for the selected
 //! entry — the 130 px stack-trace detail pane. Clearing is a view cursor
 //! (`cleared_through`), not a mutation of the host buffer.
+//!
+//! Appearance comes from [`ConsoleStyle`], loaded from
+//! `Preferences/Styles/ConsoleStyle.ron` when this panel is initialized
+//! ([`Panel::init`]). The style file holds dark + light skins; icon file paths
+//! are part of it and are preloaded through `kairos_editor_widgets::ui_image`.
+//! This module only wires host data, view state and interaction.
 
 use std::collections::HashMap;
 
 use egui::{
-    Align2, Color32, CornerRadius, FontFamily, FontId, Pos2, Rect, Sense, Stroke, TextureHandle,
-    TextureId, Ui, WidgetText, pos2, vec2,
+    Align2, Color32, CornerRadius, FontFamily, FontId, Pos2, Rect, Sense, Stroke, Ui, WidgetText,
+    pos2, vec2,
 };
 use kairos_editor_core::PanelId;
+use kairos_editor_widgets::icons::ConsoleSeverity;
+use kairos_editor_widgets::style::StyleFile;
+use kairos_editor_widgets::ui_image;
 use kairos_log::Level;
 
 use crate::frame::{ConsoleLine, Frame, UiOut};
 use crate::panel::Panel;
 
 use super::CONSOLE;
-
-// Unity/Tuanjie 2022.3 dark-skin console palette (docs/research/unity-console §4).
-const TOOLBAR_BG: Color32 = Color32::from_rgb(53, 53, 53);
-const TOOLBAR_TEXT: Color32 = Color32::from_rgb(177, 177, 177);
-const TOGGLE_BG: Color32 = Color32::from_rgb(70, 70, 70);
-const SEARCH_BG: Color32 = Color32::from_rgb(37, 37, 37);
-const SEARCH_EDGE: Color32 = Color32::from_rgb(29, 29, 29);
-const SEPARATOR: Color32 = Color32::from_rgb(32, 32, 32);
-const ROW_ODD: Color32 = Color32::from_rgb(55, 55, 55);
-const ROW_EVEN: Color32 = Color32::from_rgb(49, 49, 49);
-const ROW_SELECTED: Color32 = Color32::from_rgb(39, 83, 124);
-const TEXT: Color32 = Color32::from_rgb(192, 192, 192);
-const TEXT_SELECTED: Color32 = Color32::from_rgb(241, 245, 247);
-const LINK: Color32 = Color32::from_rgb(65, 110, 238);
-const DETAIL_BG: Color32 = Color32::from_rgb(49, 49, 49);
-
-const UI_TEXT_SIZE: f32 = 12.0;
-const TOOLBAR_HEIGHT: f32 = 20.0;
-const ROW_HEIGHT: f32 = 38.0;
-const ROW_TEXT_TOP: f32 = 6.0;
-const ICON_SIZE: f32 = 26.0;
-const ICON_LEFT: f32 = 10.0;
-const TEXT_LEFT: f32 = 41.0;
-const DETAIL_HEIGHT: f32 = 130.0;
-const DETAIL_PADDING: f32 = 3.0;
-const COUNT_ICON: f32 = 13.0;
-const CLEAR_WIDTH: f32 = 55.0;
-const COLLAPSE_WIDTH: f32 = 58.0;
-const ERROR_PAUSE_WIDTH: f32 = 73.0;
-const EDITOR_WIDTH: f32 = 50.0;
-const COUNT_WIDTHS: [f32; 3] = [40.0, 49.0, 32.0];
-
-const UV: Rect = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
+use super::console_style::ConsoleStyle;
 
 /// Console panel view state. Everything here is disposable: losing it on a
 /// panel close resets the console UI, never the log history.
@@ -71,7 +48,8 @@ pub(crate) struct ConsolePanel {
     selected: Option<u64>,
     /// New entries become the selection until the user clicks a row.
     follow_latest: bool,
-    icons: Option<ConsoleIcons>,
+    /// Loaded from `Preferences/Styles/ConsoleStyle.ron` in [`Panel::init`].
+    style: ConsoleStyle,
 }
 
 impl Default for ConsolePanel {
@@ -84,7 +62,7 @@ impl Default for ConsolePanel {
             cleared_through: 0,
             selected: None,
             follow_latest: true,
-            icons: None,
+            style: ConsoleStyle::default(),
         }
     }
 }
@@ -98,18 +76,29 @@ impl Panel for ConsolePanel {
         "Console".into()
     }
 
+    fn init(&mut self, ctx: &egui::Context) {
+        match StyleFile::<ConsoleStyle>::load_or_default() {
+            Ok(file) => self.style = file.dark,
+            Err(error) => {
+                kairos_log::warn!(target: "kairos_editor", "console style: {error}");
+            }
+        }
+
+        for path in self.style.icons.all() {
+            ui_image::preload(ctx, path);
+        }
+    }
+
     fn ui(&mut self, ui: &mut Ui, frame: &Frame, _out: &mut UiOut) {
         let mut lines = Vec::new();
         frame
             .host
             .console_lines(&mut |entries| lines = entries.to_vec());
-        if self.icons.is_none() {
-            self.icons = Some(ConsoleIcons::load(ui.ctx()));
-        }
+        let style = self.style.clone();
 
         ui.painter()
-            .rect_filled(ui.max_rect(), CornerRadius::ZERO, ROW_EVEN);
-        self.toolbar(ui, &lines);
+            .rect_filled(ui.max_rect(), CornerRadius::ZERO, style.row_even);
+        self.toolbar(ui, &lines, &style);
 
         let body = ui.available_rect_before_wrap();
         // Explicit ids keep egui's multi-pass id bookkeeping stable (the dock
@@ -121,18 +110,20 @@ impl Panel for ConsolePanel {
         let detail_height = if rows.is_empty() {
             0.0
         } else {
-            DETAIL_HEIGHT.min((body.height() - ROW_HEIGHT).max(0.0))
+            style
+                .detail_height
+                .min((body.height() - style.row_height).max(0.0))
         };
         let list_rect = Rect::from_min_max(body.min, pos2(body.max.x, body.max.y - detail_height));
         let detail_rect =
             Rect::from_min_max(pos2(body.min.x, body.max.y - detail_height), body.max);
 
         ui.scope_builder(egui::UiBuilder::new().max_rect(list_rect), |ui| {
-            self.log_list(ui, &rows);
+            self.log_list(ui, &rows, &style);
         });
         if detail_height > 0.0 {
             ui.scope_builder(egui::UiBuilder::new().max_rect(detail_rect), |ui| {
-                self.detail_pane(ui, detail_rect, &lines);
+                self.detail_pane(ui, detail_rect, &lines, &style);
             });
         }
     }
@@ -147,30 +138,33 @@ impl ConsolePanel {
         counts
     }
 
-    fn toolbar(&mut self, ui: &mut Ui, lines: &[ConsoleLine]) {
+    fn toolbar(&mut self, ui: &mut Ui, lines: &[ConsoleLine], style: &ConsoleStyle) {
         let width = ui.available_width();
-        let (rect, _) = ui.allocate_exact_size(vec2(width, TOOLBAR_HEIGHT), Sense::hover());
+        let (rect, _) = ui.allocate_exact_size(vec2(width, style.toolbar_height), Sense::hover());
         let painter = ui.painter().clone();
-        painter.rect_filled(rect, CornerRadius::ZERO, TOOLBAR_BG);
+        painter.rect_filled(rect, CornerRadius::ZERO, style.toolbar_bg);
 
-        let font = FontId::new(UI_TEXT_SIZE, FontFamily::Proportional);
+        let font = FontId::new(style.text_size, FontFamily::Proportional);
         let mut x = rect.left();
 
         // Clear (split button: label + caret menu).
-        let clear = Rect::from_min_size(pos2(x, rect.top()), vec2(CLEAR_WIDTH, TOOLBAR_HEIGHT));
+        let clear = Rect::from_min_size(
+            pos2(x, rect.top()),
+            vec2(style.clear_width, style.toolbar_height),
+        );
         let response = ui.interact(clear, ui.id().with("console-clear"), Sense::click());
-        paint_hover(&painter, &response, clear, false);
+        paint_hover(&painter, &response, clear, false, style);
         painter.text(
             pos2(clear.left() + 5.0, clear.center().y),
             Align2::LEFT_CENTER,
             "Clear",
             font.clone(),
-            TOOLBAR_TEXT,
+            style.toolbar_text,
         );
         paint_caret(
             &painter,
             pos2(clear.right() - 10.0, clear.center().y),
-            TOOLBAR_TEXT,
+            style.toolbar_text,
         );
         if response.clicked() {
             self.cleared_through = lines.last().map_or(0, |line| line.id);
@@ -180,32 +174,36 @@ impl ConsolePanel {
         x = clear.right() + 1.0;
 
         // Collapse / Error Pause toggles.
-        let collapse =
-            Rect::from_min_size(pos2(x, rect.top()), vec2(COLLAPSE_WIDTH, TOOLBAR_HEIGHT));
+        let collapse = Rect::from_min_size(
+            pos2(x, rect.top()),
+            vec2(style.collapse_width, style.toolbar_height),
+        );
         let response = ui.interact(collapse, ui.id().with("console-collapse"), Sense::click());
-        paint_hover(&painter, &response, collapse, self.collapse);
+        paint_hover(&painter, &response, collapse, self.collapse, style);
         painter.text(
             collapse.center(),
             Align2::CENTER_CENTER,
             "Collapse",
             font.clone(),
-            TOOLBAR_TEXT,
+            style.toolbar_text,
         );
         if response.clicked() {
             self.collapse = !self.collapse;
         }
         x = collapse.right() + 1.0;
 
-        let pause =
-            Rect::from_min_size(pos2(x, rect.top()), vec2(ERROR_PAUSE_WIDTH, TOOLBAR_HEIGHT));
+        let pause = Rect::from_min_size(
+            pos2(x, rect.top()),
+            vec2(style.error_pause_width, style.toolbar_height),
+        );
         let response = ui.interact(pause, ui.id().with("console-error-pause"), Sense::click());
-        paint_hover(&painter, &response, pause, self.error_pause);
+        paint_hover(&painter, &response, pause, self.error_pause, style);
         painter.text(
             pause.center(),
             Align2::CENTER_CENTER,
             "Error Pause",
             font.clone(),
-            TOOLBAR_TEXT,
+            style.toolbar_text,
         );
         if response.clicked() {
             self.error_pause = !self.error_pause;
@@ -213,38 +211,49 @@ impl ConsolePanel {
         x = pause.right() + 1.0;
 
         // Editor/Player source filter (Unity's Editor dropdown).
-        let editor = Rect::from_min_size(pos2(x, rect.top()), vec2(EDITOR_WIDTH, TOOLBAR_HEIGHT));
+        let editor = Rect::from_min_size(
+            pos2(x, rect.top()),
+            vec2(style.editor_width, style.toolbar_height),
+        );
         let response = ui.interact(editor, ui.id().with("console-source"), Sense::click());
-        paint_hover(&painter, &response, editor, false);
+        paint_hover(&painter, &response, editor, false, style);
         painter.text(
             pos2(editor.left() + 8.0, editor.center().y),
             Align2::LEFT_CENTER,
             "Editor",
             font.clone(),
-            TOOLBAR_TEXT,
+            style.toolbar_text,
         );
         paint_caret(
             &painter,
             pos2(editor.right() - 13.0, editor.center().y),
-            TOOLBAR_TEXT,
+            style.toolbar_text,
         );
         x = editor.right() + 1.0;
 
         // Search field fills the middle; the count buttons are pinned right.
-        let counts_width: f32 = COUNT_WIDTHS.iter().sum::<f32>() + 2.0;
+        let counts_width: f32 = style.count_widths.iter().sum::<f32>() + 2.0;
         let counts_left = rect.right() - counts_width;
         let search = Rect::from_min_max(
             pos2(x + 6.0, rect.top() + 2.0),
-            pos2(counts_left - 8.0, rect.top() + TOOLBAR_HEIGHT - 2.0),
+            pos2(counts_left - 8.0, rect.top() + style.toolbar_height - 2.0),
         );
-        painter.rect_filled(search, CornerRadius::same(3), SEARCH_BG);
+        painter.rect_filled(
+            search,
+            CornerRadius::same(style.search_radius),
+            style.search_bg,
+        );
         painter.rect_stroke(
             search,
-            CornerRadius::same(3),
-            Stroke::new(1.0, SEARCH_EDGE),
+            CornerRadius::same(style.search_radius),
+            Stroke::new(1.0, style.search_edge),
             egui::StrokeKind::Inside,
         );
-        paint_magnifier(&painter, pos2(search.left() + 9.0, search.center().y));
+        paint_magnifier(
+            &painter,
+            pos2(search.left() + 9.0, search.center().y),
+            style.toolbar_text,
+        );
         let edit = Rect::from_min_max(
             pos2(search.left() + 18.0, search.top()),
             pos2(search.right() - 4.0, search.bottom()),
@@ -253,38 +262,41 @@ impl ConsolePanel {
             edit,
             egui::TextEdit::singleline(&mut self.search)
                 .id(ui.id().with("console-search"))
-                .font(FontId::new(UI_TEXT_SIZE, FontFamily::Proportional))
-                .text_color(TOOLBAR_TEXT)
+                .font(FontId::new(style.text_size, FontFamily::Proportional))
+                .text_color(style.toolbar_text)
                 .frame(egui::Frame::NONE)
                 .margin(egui::Margin::symmetric(0, 1)),
         );
 
-        self.paint_counts(ui, rect, counts_left, &self.counts(lines));
+        self.paint_counts(ui, rect, counts_left, &self.counts(lines), style);
     }
 
-    fn paint_counts(&mut self, ui: &mut Ui, toolbar: Rect, counts_left: f32, counts: &[usize; 3]) {
+    fn paint_counts(
+        &mut self,
+        ui: &mut Ui,
+        toolbar: Rect,
+        counts_left: f32,
+        counts: &[usize; 3],
+        style: &ConsoleStyle,
+    ) {
         let painter = ui.painter().clone();
         painter.rect_filled(
             Rect::from_min_size(
                 pos2(counts_left - 1.0, toolbar.top()),
-                vec2(1.0, TOOLBAR_HEIGHT),
+                vec2(1.0, style.toolbar_height),
             ),
             CornerRadius::ZERO,
-            SEPARATOR,
+            style.separator,
         );
 
-        let font = FontId::new(UI_TEXT_SIZE, FontFamily::Proportional);
-        let icons = self
-            .icons
-            .as_ref()
-            .expect("icons loaded before the toolbar");
+        let font = FontId::new(style.text_size, FontFamily::Proportional);
         let mut x = counts_left;
         for (index, level) in Level::ALL.into_iter().enumerate() {
             let segment = Rect::from_min_size(
                 pos2(x, toolbar.top()),
-                vec2(COUNT_WIDTHS[index], TOOLBAR_HEIGHT),
+                vec2(style.count_widths[index], style.toolbar_height),
             );
-            painter.rect_filled(segment, CornerRadius::ZERO, TOGGLE_BG);
+            painter.rect_filled(segment, CornerRadius::ZERO, style.toggle_bg);
             let response = ui.interact(
                 segment,
                 ui.id().with(("console-level", index)),
@@ -296,31 +308,39 @@ impl ConsolePanel {
 
             let visible = self.levels[index];
             let icon_rect = Rect::from_min_size(
-                pos2(segment.left() + 5.0, segment.center().y - COUNT_ICON * 0.5),
-                vec2(COUNT_ICON, COUNT_ICON),
+                pos2(
+                    segment.left() + 5.0,
+                    segment.center().y - style.count_icon * 0.5,
+                ),
+                vec2(style.count_icon, style.count_icon),
             );
-            painter.image(icons.icon(level, visible), icon_rect, UV, Color32::WHITE);
+            ui_image::paint(
+                ui,
+                icon_rect,
+                style.icons.severity(severity(level), visible),
+                Color32::WHITE,
+            );
             painter.text(
                 pos2(icon_rect.right() + 5.0, segment.center().y),
                 Align2::LEFT_CENTER,
                 counts[index].to_string(),
                 font.clone(),
-                TOOLBAR_TEXT,
+                style.toolbar_text,
             );
 
             x = segment.right();
             if index < 2 {
                 painter.rect_filled(
-                    Rect::from_min_size(pos2(x, toolbar.top()), vec2(1.0, TOOLBAR_HEIGHT)),
+                    Rect::from_min_size(pos2(x, toolbar.top()), vec2(1.0, style.toolbar_height)),
                     CornerRadius::ZERO,
-                    TOOLBAR_BG,
+                    style.toolbar_bg,
                 );
                 x += 1.0;
             }
         }
     }
 
-    fn log_list(&mut self, ui: &mut Ui, rows: &[(&ConsoleLine, usize)]) {
+    fn log_list(&mut self, ui: &mut Ui, rows: &[(&ConsoleLine, usize)], style: &ConsoleStyle) {
         egui::ScrollArea::vertical()
             .id_salt("kairos-console-log")
             .auto_shrink([false, false])
@@ -328,7 +348,7 @@ impl ConsolePanel {
             .show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
                 for (index, (line, count)) in rows.iter().enumerate() {
-                    self.row(ui, index, line, *count);
+                    self.row(ui, index, line, *count, style);
                 }
             });
     }
@@ -360,9 +380,16 @@ impl ConsolePanel {
         rows
     }
 
-    fn row(&mut self, ui: &mut Ui, index: usize, line: &ConsoleLine, count: usize) {
+    fn row(
+        &mut self,
+        ui: &mut Ui,
+        index: usize,
+        line: &ConsoleLine,
+        count: usize,
+        style: &ConsoleStyle,
+    ) {
         let width = ui.available_width();
-        let (rect, _) = ui.allocate_exact_size(vec2(width, ROW_HEIGHT), Sense::hover());
+        let (rect, _) = ui.allocate_exact_size(vec2(width, style.row_height), Sense::hover());
         let response = ui.interact(rect, ui.id().with(("console-row", line.id)), Sense::click());
         if response.clicked() {
             self.selected = Some(line.id);
@@ -371,43 +398,65 @@ impl ConsolePanel {
 
         let selected = self.selected == Some(line.id);
         let background = if selected {
-            ROW_SELECTED
+            style.row_selected
         } else if index % 2 == 0 {
-            ROW_ODD
+            style.row_odd
         } else {
-            ROW_EVEN
+            style.row_even
         };
-        let text_color = if selected { TEXT_SELECTED } else { TEXT };
+        let text_color = if selected {
+            style.text_selected
+        } else {
+            style.text
+        };
         let painter = ui.painter();
         painter.rect_filled(rect, CornerRadius::ZERO, background);
 
-        let icons = self.icons.as_ref().expect("icons loaded before the list");
         let icon_rect = Rect::from_min_size(
-            pos2(rect.left() + ICON_LEFT, rect.top() + 6.0),
-            vec2(ICON_SIZE, ICON_SIZE),
+            pos2(rect.left() + style.icon_left, rect.top() + 6.0),
+            vec2(style.icon_size, style.icon_size),
         );
-        painter.image(icons.icon(line.level, true), icon_rect, UV, Color32::WHITE);
+        ui_image::paint(
+            ui,
+            icon_rect,
+            style.icons.severity(severity(line.level), true),
+            Color32::WHITE,
+        );
 
-        let font = FontId::new(UI_TEXT_SIZE, FontFamily::Proportional);
+        let font = FontId::new(style.text_size, FontFamily::Proportional);
         let text = format!("[{}] {}", line.time, line.message);
-        let galley = painter.layout(text, font, text_color, rect.width() - TEXT_LEFT - 10.0);
+        let galley = painter.layout(
+            text,
+            font,
+            text_color,
+            rect.width() - style.text_left - 10.0,
+        );
         let clip = Rect::from_min_max(
-            pos2(rect.left() + TEXT_LEFT, rect.top() + ROW_TEXT_TOP - 2.0),
+            pos2(
+                rect.left() + style.text_left,
+                rect.top() + style.row_text_top - 2.0,
+            ),
             pos2(rect.right() - 10.0, rect.bottom()),
         );
         let text_painter = painter.with_clip_rect(clip);
         text_painter.galley(
-            pos2(rect.left() + TEXT_LEFT, rect.top() + ROW_TEXT_TOP),
+            pos2(
+                rect.left() + style.text_left,
+                rect.top() + style.row_text_top,
+            ),
             galley,
             text_color,
         );
 
         if self.collapse && count > 1 {
             let badge_rect = Rect::from_min_size(
-                pos2(rect.right() - 28.0, rect.center().y - 10.0),
-                vec2(20.0, 20.0),
+                pos2(
+                    rect.right() - style.badge_size - 8.0,
+                    rect.center().y - style.badge_size * 0.5,
+                ),
+                vec2(style.badge_size, style.badge_size),
             );
-            painter.image(icons.badge(), badge_rect, UV, Color32::WHITE);
+            ui_image::paint(ui, badge_rect, style.icons.badge(), Color32::WHITE);
             let badge_text = if count > 99 {
                 "99+".to_owned()
             } else {
@@ -417,43 +466,49 @@ impl ConsolePanel {
                 badge_rect.center(),
                 Align2::CENTER_CENTER,
                 badge_text,
-                FontId::new(10.0, FontFamily::Proportional),
-                TEXT,
+                FontId::new(style.badge_text_size, FontFamily::Proportional),
+                style.text,
             );
         }
     }
 
-    fn detail_pane(&mut self, ui: &mut Ui, rect: Rect, lines: &[ConsoleLine]) {
+    fn detail_pane(
+        &mut self,
+        ui: &mut Ui,
+        rect: Rect,
+        lines: &[ConsoleLine],
+        style: &ConsoleStyle,
+    ) {
         let painter = ui.painter();
-        painter.rect_filled(rect, CornerRadius::ZERO, DETAIL_BG);
+        painter.rect_filled(rect, CornerRadius::ZERO, style.detail_bg);
         painter.rect_filled(
             Rect::from_min_size(rect.min, vec2(rect.width(), 1.0)),
             CornerRadius::ZERO,
-            SEPARATOR,
+            style.separator,
         );
 
         let Some(line) = self.selected_line(lines) else {
             return;
         };
         ui.scope_builder(
-            egui::UiBuilder::new().max_rect(rect.shrink2(vec2(DETAIL_PADDING, 5.0))),
+            egui::UiBuilder::new().max_rect(rect.shrink2(vec2(style.detail_padding, 5.0))),
             |ui| {
                 egui::ScrollArea::vertical()
                     .id_salt("kairos-console-detail")
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         ui.spacing_mut().item_spacing.y = 0.0;
-                        let font = FontId::new(UI_TEXT_SIZE, FontFamily::Proportional);
+                        let font = FontId::new(style.text_size, FontFamily::Proportional);
                         ui.add(
                             egui::Label::new(
                                 egui::RichText::new(&line.message)
                                     .font(font.clone())
-                                    .color(TEXT),
+                                    .color(style.text),
                             )
                             .wrap(),
                         );
                         for stack_line in &line.stack {
-                            paint_stack_line(ui, stack_line);
+                            paint_stack_line(ui, stack_line, style);
                         }
                     });
             },
@@ -489,8 +544,8 @@ impl ConsolePanel {
     }
 }
 
-fn paint_stack_line(ui: &mut Ui, line: &str) {
-    let font = FontId::new(UI_TEXT_SIZE, FontFamily::Proportional);
+fn paint_stack_line(ui: &mut Ui, line: &str, style: &ConsoleStyle) {
+    let font = FontId::new(style.text_size, FontFamily::Proportional);
 
     // Unity colours the trailing `(at file:line)` of a frame as a source link
     // while the symbol itself stays grey.
@@ -501,21 +556,25 @@ fn paint_stack_line(ui: &mut Ui, line: &str) {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 0.0;
                 ui.add(
-                    egui::Label::new(egui::RichText::new(symbol).font(font.clone()).color(TEXT))
-                        .wrap(),
+                    egui::Label::new(
+                        egui::RichText::new(symbol)
+                            .font(font.clone())
+                            .color(style.text),
+                    )
+                    .wrap(),
                 );
                 ui.add(
                     egui::Label::new(
                         egui::RichText::new(format!(" {location}"))
                             .font(font)
-                            .color(LINK),
+                            .color(style.link),
                     )
                     .wrap(),
                 );
             });
         }
         None => {
-            ui.add(egui::Label::new(egui::RichText::new(line).font(font).color(TEXT)).wrap());
+            ui.add(egui::Label::new(egui::RichText::new(line).font(font).color(style.text)).wrap());
         }
     }
 }
@@ -528,9 +587,23 @@ fn level_index(level: Level) -> usize {
     }
 }
 
-fn paint_hover(painter: &egui::Painter, response: &egui::Response, rect: Rect, active: bool) {
+fn severity(level: Level) -> ConsoleSeverity {
+    match level {
+        Level::Info => ConsoleSeverity::Info,
+        Level::Warning => ConsoleSeverity::Warning,
+        Level::Error => ConsoleSeverity::Error,
+    }
+}
+
+fn paint_hover(
+    painter: &egui::Painter,
+    response: &egui::Response,
+    rect: Rect,
+    active: bool,
+    style: &ConsoleStyle,
+) {
     if active || response.hovered() {
-        painter.rect_filled(rect, CornerRadius::ZERO, TOGGLE_BG);
+        painter.rect_filled(rect, CornerRadius::ZERO, style.toggle_bg);
     }
 }
 
@@ -543,93 +616,10 @@ fn paint_caret(painter: &egui::Painter, center: Pos2, color: Color32) {
     painter.add(egui::Shape::convex_polygon(points, color, Stroke::NONE));
 }
 
-fn paint_magnifier(painter: &egui::Painter, center: Pos2) {
-    painter.circle_stroke(
-        center + vec2(-1.0, -1.0),
-        4.0,
-        Stroke::new(1.2, TOOLBAR_TEXT),
-    );
+fn paint_magnifier(painter: &egui::Painter, center: Pos2, color: Color32) {
+    painter.circle_stroke(center + vec2(-1.0, -1.0), 4.0, Stroke::new(1.2, color));
     painter.line_segment(
         [center + vec2(1.8, 1.8), center + vec2(4.2, 4.2)],
-        Stroke::new(1.2, TOOLBAR_TEXT),
+        Stroke::new(1.2, color),
     );
-}
-
-/// The real Unity/Tuanjie console icons, extracted from the editor's serialized
-/// resources (`docs/research/unity-console/icons/`) and embedded here so the
-/// panel renders the exact artwork instead of a lookalike.
-struct ConsoleIcons {
-    info: TextureHandle,
-    warning: TextureHandle,
-    error: TextureHandle,
-    info_off: TextureHandle,
-    warning_off: TextureHandle,
-    error_off: TextureHandle,
-    badge: TextureHandle,
-}
-
-impl ConsoleIcons {
-    fn load(ctx: &egui::Context) -> Self {
-        Self {
-            info: load_png(
-                ctx,
-                "kairos-console-info",
-                include_bytes!("../../assets/icons/console/info.png"),
-            ),
-            warning: load_png(
-                ctx,
-                "kairos-console-warning",
-                include_bytes!("../../assets/icons/console/warning.png"),
-            ),
-            error: load_png(
-                ctx,
-                "kairos-console-error",
-                include_bytes!("../../assets/icons/console/error.png"),
-            ),
-            info_off: load_png(
-                ctx,
-                "kairos-console-info-off",
-                include_bytes!("../../assets/icons/console/info_off.png"),
-            ),
-            warning_off: load_png(
-                ctx,
-                "kairos-console-warning-off",
-                include_bytes!("../../assets/icons/console/warning_off.png"),
-            ),
-            error_off: load_png(
-                ctx,
-                "kairos-console-error-off",
-                include_bytes!("../../assets/icons/console/error_off.png"),
-            ),
-            badge: load_png(
-                ctx,
-                "kairos-console-badge",
-                include_bytes!("../../assets/icons/console/count_badge.png"),
-            ),
-        }
-    }
-
-    fn icon(&self, level: Level, visible: bool) -> TextureId {
-        match (level, visible) {
-            (Level::Info, true) => self.info.id(),
-            (Level::Info, false) => self.info_off.id(),
-            (Level::Warning, true) => self.warning.id(),
-            (Level::Warning, false) => self.warning_off.id(),
-            (Level::Error, true) => self.error.id(),
-            (Level::Error, false) => self.error_off.id(),
-        }
-    }
-
-    fn badge(&self) -> TextureId {
-        self.badge.id()
-    }
-}
-
-fn load_png(ctx: &egui::Context, name: &str, bytes: &[u8]) -> TextureHandle {
-    let image = image::load_from_memory(bytes)
-        .unwrap_or_else(|error| panic!("embedded console icon {name} is not a valid PNG: {error}"))
-        .to_rgba8();
-    let size = [image.width() as usize, image.height() as usize];
-    let pixels = egui::ColorImage::from_rgba_unmultiplied(size, image.as_raw());
-    ctx.load_texture(name, pixels, egui::TextureOptions::LINEAR)
 }

@@ -76,7 +76,13 @@ pub struct EditorApp {
 
 impl EditorApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        kairos_editor_widgets::theme::Theme::dark().install(&cc.egui_ctx);
+        // egui's async image loaders back every runtime UI image: icons are
+        // plain files under `Preferences/Textures` and panels start loading
+        // them in `Panel::init`, not here.
+        egui_extras::install_image_loaders(&cc.egui_ctx);
+        if let Err(error) = kairos_editor_widgets::fonts::install(&cc.egui_ctx) {
+            kairos_log::warn!(target: "kairos_editor", "UI fonts: {error}");
+        }
 
         let mut registry = PanelRegistry::new();
         panels::register_default(&mut registry);
@@ -92,7 +98,7 @@ impl EditorApp {
         }
 
         let mut host = PanelHost::new(registry);
-        host.sync(&state.layout);
+        host.sync(&state.layout, &cc.egui_ctx);
         let dock = default_dock(&host);
 
         let host_view = AppHost::new();
@@ -110,8 +116,8 @@ impl EditorApp {
     /// Align live instances (open/closed panels) and dock tabs. Both are
     /// derived from `LayoutState`, so closing a panel or restoring a layout
     /// converges without special-case code in the UI.
-    fn sync(&mut self) {
-        self.host.sync(&self.state.layout);
+    fn sync(&mut self, ctx: &egui::Context) {
+        self.host.sync(&self.state.layout, ctx);
 
         let ids: Vec<PanelInstanceId> = self.host.ids().collect();
         for stale in self.dock.tabs().into_iter().filter(|id| !ids.contains(id)) {
@@ -183,7 +189,7 @@ impl EditorApp {
 
         let mut out = UiOut::new();
         self.show_tool_bar(ui, &mut out);
-        self.sync();
+        self.sync(ui.ctx());
 
         {
             let Self {
@@ -230,7 +236,7 @@ mod tests {
             state.layout.open(kind);
         }
         let mut host = PanelHost::new(registry);
-        host.sync(&state.layout);
+        host.sync(&state.layout, &egui::Context::default());
         let dock = default_dock(&host);
         EditorApp {
             state,
@@ -275,7 +281,7 @@ mod tests {
 
         assert!(!app.state.layout.is_open(panels::CONSOLE));
 
-        app.sync();
+        app.sync(&egui::Context::default());
         assert_eq!(app.host.ids().count(), 3);
         assert_eq!(app.dock.tabs().len(), 3);
     }
@@ -339,14 +345,15 @@ mod tests {
     #[test]
     fn close_and_reopen_a_panel_converges_instance_and_tab() {
         let mut app = build();
+        let ctx = egui::Context::default();
 
         app.state.layout.close(panels::CONSOLE);
-        app.sync();
+        app.sync(&ctx);
         assert_eq!(app.host.ids().count(), 3);
         assert_eq!(app.dock.tabs().len(), 3);
 
         app.state.layout.open(panels::CONSOLE);
-        app.sync();
+        app.sync(&ctx);
         assert_eq!(app.host.ids().count(), 4);
         assert_eq!(app.dock.tabs().len(), 4);
     }

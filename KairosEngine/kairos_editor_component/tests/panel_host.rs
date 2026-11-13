@@ -73,15 +73,15 @@ fn sync_creates_and_drops_instances_from_layout() {
     let mut host = host_with_fake(false);
     let mut state = EditorState::new();
 
-    host.sync(&state.layout);
+    host.sync(&state.layout, &Context::default());
     assert_eq!(host.ids().count(), 0);
 
     state.layout.open(FAKE);
-    host.sync(&state.layout);
+    host.sync(&state.layout, &Context::default());
     assert_eq!(host.ids().count(), 1);
 
     state.layout.close(FAKE);
-    host.sync(&state.layout);
+    host.sync(&state.layout, &Context::default());
     assert_eq!(host.ids().count(), 0);
 }
 
@@ -121,7 +121,7 @@ fn console_renders_the_host_log_snapshot() {
     let mut state = EditorState::new();
     state.layout.open(panels::CONSOLE);
     let mut host = default_host();
-    host.sync(&state.layout);
+    host.sync(&state.layout, &Context::default());
     let ids: Vec<PanelInstanceId> = host.ids().collect();
 
     let host_view = TestHost {
@@ -146,7 +146,7 @@ fn default_layout_reconciles_with_the_host() {
     state.layout.open(panels::INSPECTOR);
 
     let mut host = default_host();
-    host.sync(&state.layout);
+    host.sync(&state.layout, &Context::default());
 
     let ids: Vec<PanelInstanceId> = host.ids().collect();
     assert_eq!(ids.len(), 2);

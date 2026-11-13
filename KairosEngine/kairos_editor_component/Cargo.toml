@@ -11,13 +11,12 @@ unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)", "cfg(docsrs_dep)
 
 [dependencies]
 egui = "0.35.0"
+# Component styles derive Serialize/Deserialize (RON files under Preferences).
+serde = { version = "1.0.228", features = ["derive"] }
 
 kairos_editor_core = { path = "../kairos_editor_core" }
 # Console lines are structured `kairos_log` records; the buffer lives next to the
 # Console panel (see src/console.rs).
 kairos_log = { path = "../kairos_log" }
-# The Console panel embeds the real Unity/Tuanjie console icons (extracted from
-# the editor's serialized resources); PNG decoding happens once per panel.
-image = { version = "0.25", default-features = false, features = ["png"] }
 kairos_editor_docking = { path = "../kairos_editor_docking" }
 kairos_editor_widgets = { path = "../kairos_editor_widgets" }

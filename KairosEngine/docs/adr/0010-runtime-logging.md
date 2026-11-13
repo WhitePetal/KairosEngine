@@ -80,11 +80,45 @@
     palette and behavior notes live in
     [`docs/research/unity-console/`](../research/unity-console/README.md); the implemented
     result is `21_kairos_console_implemented_window.png` / `22_kairos_console_implemented_panel.png`.
+  - Console style is component-owned: `kairos_editor_component::panels::ConsoleStyle`
+    (`console_style.rs`) is loaded from `Preferences/Styles/ConsoleStyle.ron` in
+    `Panel::init`. The RON file holds both the dark and light skins, colors are
+    human-editable hex strings (`"#353535"`) via the `style::hex_color` serde adapter, and
+    icon file paths are part of the style. `kairos_editor_widgets::style` provides the
+    `Style` trait (`FILE`, `dark()`, `light()`), the generic `StyleFile<S>`
+    (`load_from` / `save_to` / `load_or_default` / `load_or_create`) and a
+    `export_styles` example in `kairos_editor_component` that re-seeds the RON files from the
+    code defaults. The global `Theme` install was removed: each panel loads its own style,
+    so editing the RON and reopening the panel restyles it without a rebuild.
+  - Icons are runtime assets too (`Preferences/Textures/console/`, light artwork under
+    `light/`). `Panel::init` preloads them through `kairos_editor_widgets::ui_image`;
+    egui's `egui_extras` file/image loaders (installed once by the app) read and decode on
+    worker threads and request a repaint, and drawing samples the texture cache. Neither
+    `ConsoleStyle` nor the RON file contains GPU handles: textures are device resources and
+    are not part of serializable style data.
+  - Fonts are runtime files as well: `kairos_editor_widgets::fonts::FontsConfig` loads
+    `Preferences/Styles/EditorFonts.ron` (Inter Regular/Medium from `Preferences/Fonts/`)
+    and calls `Context::set_fonts` once when the app starts. The OFL licence moved next to
+    the fonts (`Preferences/Fonts/Inter-LICENSE.txt`); no editor UI asset is embedded with
+    `include_bytes!` anymore.
+  - `PanelHost::sync(layout, ctx)` calls `Panel::init(ctx)` exactly once per instance,
+    after construction and before the first draw. A panel loads its own UI resources
+    there (the Console preloads its icon set); no panel loads resources at process start
+    or in its per-frame `ui`. The panel keeps only UI-only session state (search,
+    collapse, filters, clear cursor, selection); `PanelHost` already keys the instance by
+    `PanelInstanceId`, while retaining that state across close/reopen through the
+    documented `ViewStates` map — and moving the hand-painted body into an L1
+    `ConsoleView` widget — remain follow-ups.
+  - Editor chrome images deliberately do **not** use `kairos_asset`: they are not project
+    assets, have no import/meta/processing step, and must render before the engine asset
+    server exists (the current editor shell is not engine-hosted yet). Project asset
+    previews/thumbnails will take a separate path through `AssetServer` handles once the
+    editor is hosted by the engine; the file-backed UI path is deliberately swappable.
   - The severity icons are the real `console.infoicon` / `warnicon` / `erroricon`
     (`ConsoleCountBadge` for collapse) extracted from the locally installed Tuanjie/Unity
-    serialized resources; the editor UI font is Unity's bundled Inter (SIL OFL 1.1, licence
-    in `kairos_editor_widgets/assets/fonts/Inter-LICENSE.txt`). These are local-reference
-    assets: do not redistribute the Unity-extracted icon PNGs without checking Unity's terms.
+    serialized resources; the editor UI fonts are Unity's bundled Inter (SIL OFL 1.1, licence
+    in `Preferences/Fonts/Inter-LICENSE.txt`). These are local-reference assets: do not
+    redistribute the Unity-extracted icon PNGs without checking Unity's terms.
   - Fix landed with this work: a split separator used to be painted on top of the right/bottom
     child by its full width, which hid the focused tab's blue headerline whenever the tab bar
     sat against a split boundary (the splitter and the `compute_rect_size` right border are

@@ -283,7 +283,7 @@ pub fn sync(&mut self, state: &EditorState) {
   → Action::Layout(ShowPanel { kind }) 或 TogglePanel { kind }   （入口只发 Action）
 [PostUi]        core::reduce → LayoutState.open(kind)，focus = kind
                 → Effect::PersistLayout（可选，帧末/后台）
-[下一帧 ApplyIntents] PanelHost::sync(&state)
+[下一帧 ApplyIntents] PanelHost::sync(&state, ctx)
                 → registry.create(kind, state)（factory 唯一调用点）
                 → 按 registry.slot(kind) 放进对应四槽
                 → 生产：ViewStates.entry(instance).or_default()
@@ -298,7 +298,7 @@ pub fn sync(&mut self, state: &EditorState) {
                 → 下一帧 BuildUi 起 painter.image 才显示第一帧
 [关闭]          Action::Layout(ClosePanel { panel: kind })
                 → reducer 移除 LayoutState 项（+ 拥有视口 => DestroyViewport effect，见 §2.8）
-[ApplyIntents]  host.sync：drop 面板实例、移出槽位；生产保留 ViewStates
+[ApplyIntents]  host.sync(layout, ctx)：drop 面板实例、移出槽位；生产保留 ViewStates
 [BeginFrame]    DestroyViewport：view.size = 0（Extract 跳过）、drop EguiTextureHandle
 [下一次 Present] free_texture 真正回收
 ```
@@ -684,7 +684,7 @@ fn focus_scope(egui_ctx: &egui::Context, layout: &LayoutState, modal: &ModalStat
 | # | 阶段 | 做什么 | 可碰 | 视口相关 | 可 headless 测 |
 |---|---|---|---|---|---|
 | 1 | `BeginFrame` | drain 异步完成/纹理 oneshot/watcher/资产事件 → Action；执行上一帧遗留的 `BeforeEngineUpdate` effect | `&mut Engine`（仅经 executor）、host inbox | 相机实体绑定、`SceneView.size`、`SceneViewInput` 写入 | ✅（mock executor） |
-| 2 | `ApplyIntents` | reduce 所有 Action；`host.sync(&layout)`；纯状态迁移 | `EditorState` + host | 消费 `BindCompleted/PickCompleted`、开/关 viewport 注册 | ✅ |
+| 2 | `ApplyIntents` | reduce 所有 Action；`host.sync(&layout, ctx)`；纯状态迁移 | `EditorState` + host | 消费 `BindCompleted/PickCompleted`、开/关 viewport 注册 | ✅ |
 | 3 | `EngineUpdate` | `Engine::update()`：PostUpdate 相机控制 → Extract 重建 draws | `&mut Engine` | 相机位姿在本帧后期（Extract）生效 | ✅（bare World harness） |
 | 4 | `RenderViewports` | 为每个「可见 ∧ bound」视口生成 `GraphicsCommand`（attachment/pass/bind） | `&EditorState` + `&Engine`（只读 World） | 视口渲染图 | ⚠️ 可测命令结构（纯数据），像素需 GPU |
 | 5 | `BuildUi` | `egui_ctx.run_ui`：`host.draw(ui, frame, out)` + 模态/工具栏；只读、只收集 Action | `&EditorState` + `&World` + `&mut ViewStates` + host | 面板 `Ensure/orbit/pick`、`painter.image` | ✅（egui headless + 合成输入） |
@@ -876,6 +876,8 @@ cd prototypes/editor-ui && cargo test && cargo run   # 手动窗口 smoke
 **2026-11-12 日志（`kairos_log` 落地，ADR 0010）**：新增 runtime crate `kairos_log` —— 进程级 logger，实现 `log::Log`（引擎里既有的 `log::*` 调用无需改动自动汇入），Info/Warning/Error 三级（debug/trace 有意丢弃），默认 stderr + `Library/Logs/KairosEngine.log`，`KAIROS_LOG_LEVEL` / `KAIROS_LOG_FILE` / `KAIROS_LOG_TERMINAL` 覆盖；额外 sink 走 `Sink` trait + `attach()`。编辑器侧**不拆** `kairos_editor_log`：console 历史是 host 资源，`kairos_editor_component::ConsoleLog` 实现 `Sink`（1000 行环，关面板不丢），`kairos_editor_app` 持有 `Arc<ConsoleLog>` 并 attach；`HostView::console_lines` 改为回调快照 `&mut dyn FnMut(&[ConsoleLine])`，行带 `Level` 供面板按主题着色。旧 `kairos_engine::log::Log`（`&mut` 实例、stderr-only、被旧 ConsoleWindow `pop_front` 消费）暂留给旧 `kairos_editor`，随 P5 退役删除。
 
 **2026-11-12 晚（Console 面板对齐 Unity，ADR 0010 实现 note）**：`ConsoleLog` 条目升级为结构化 `ConsoleLine { id, level, time, message, target, location, stack }`；`kairos_log::Record` 记录调用点并（`RUST_BACKTRACE` 开启时）抓取 backtrace，`Record::stack_trace()` 裁掉 logger/std/winit/eframe 噪声后输出 Unity 风格 `symbol (at file:line)` 帧。Console 面板按真实 Unity/Tuanjie Console 重做：20 px 工具栏（Clear/Collapse/Error Pause/Editor、搜索框、Info/Warning/Error 计数开关）、38 px 两行交替底色行、26 px 真图标、选中行下方 130 px 调用堆栈详情面板；图标取自本机 Tuanjie/Unity 序列化资源，UI 字体用 Unity 自带 Inter（OFL）。几何/调色板/行为记录在 `docs/research/unity-console/`，落地截图 `21_*`/`22_*`。
+
+**2026-11-13（面板资源生命周期 + 可序列化样式 + 运行时图标/字体）**：新增 `Panel::init(&mut self, ctx)`——`PanelHost::sync(layout, ctx)` 在实例创建后、首次绘制前调用一次，面板在这里加载自己的 UI 资源；不再在 app 启动时加载所有面板资源。Appearance 改成 **per-component style**：`ConsoleStyle` 移到 `kairos_editor_component::panels`，在 `Panel::init` 从 `Preferences/Styles/ConsoleStyle.ron` 加载（一个文件含 dark/light 两套，颜色序列化为 `"#RRGGBB"`）；`kairos_editor_widgets::style` 提供 `Style` trait（`FILE`/`dark()`/`light()`）、泛型 `StyleFile<S>`（load/save/defaults）和 `hex_color` serde adapter，`kairos_editor_component` 的 `export_styles` example 负责把代码默认值写回 RON。全局 `Theme` 移除：各面板自己加载 style，因此改 RON + 重开面板即可换样式，不需要重编译。Console 图标仍是运行时文件（`Preferences/Textures/console/`，路径属于 style），`Panel::init` 通过 `kairos_editor_widgets::ui_image` 调用 egui 的 `egui_extras` file/image loader 异步预加载（后台线程读盘 + 解码 + `request_repaint`），绘制时采样 loader 缓存，不在 `ui()` 里读盘。字体也改成运行时文件：`EditorFonts.ron` + `Preferences/Fonts/Inter-*.otf`，app 启动时 `fonts::install` 一次；编辑器 chrome 图标/字体刻意不走 `kairos_asset`（不是项目资产、无 import/meta、需在 asset server 之前可用），项目资产缩略图以后单独走 `AssetServer` 句柄。
 
 ### 6.2 分阶段落地清单
 

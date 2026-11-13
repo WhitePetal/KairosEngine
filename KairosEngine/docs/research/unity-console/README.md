@@ -373,7 +373,15 @@ Everything below was **observed in the running editor** unless marked *(standard
    detail pane** and the **Log Entry line-count setting**; stock Unity 2022.3 may differ in those two
    behaviours. The colours, icons, toolbar and row anatomy are the stock Unity 2022 dark-skin values
    (identical icon assets are present in the stock Unity 2022.3.62f1 bundle).
-5. **Nothing in the user's project was modified.** Console settings were only toggled during the session to
+5. **Kairos placement**: the copied PNGs live in `Preferences/Textures/console/` (the
+   `icons/` folder here stays the research reference). They are runtime files, not
+   `include_bytes!` assets: the Console panel preloads them in `Panel::init` through
+   `kairos_editor_widgets::ui_image`, egui's async file/image loaders (installed once by the
+   host) read and cache the textures, and drawing samples that cache. Replacing an icon file
+   changes the editor appearance without a rebuild. The active light-skin variants
+   (`console.*icon.light.32x32.png`) are copied to `Preferences/Textures/console/light/` for the
+   RON `light` skin.
+6. **Nothing in the user's project was modified.** Console settings were only toggled during the session to
    capture evidence, and were restored afterwards (**Show Timestamp ON, Log Entry = 2 Lines, Collapse OFF** —
    re-verified against the baseline capture: counts 39/303/5, timestamps visible, row 4 selected).
    The only side-effect is that the Console dock content sits **2 px lower** than at the very first capture

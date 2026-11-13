@@ -33,7 +33,10 @@ impl PanelHost {
 
     /// Create instances for newly opened panels and drop instances for closed
     /// ones. Called once per frame before drawing.
-    pub fn sync(&mut self, layout: &LayoutState) {
+    ///
+    /// New instances get their [`Panel::init`] hook here, with the egui context
+    /// they will draw into, so a panel can load its own UI resources on open.
+    pub fn sync(&mut self, layout: &LayoutState, ctx: &egui::Context) {
         self.instances.retain(|id, _| layout.is_open(id.kind));
 
         for kind in self.registry.kinds() {
@@ -43,7 +46,7 @@ impl PanelHost {
             if self.instances.keys().any(|id| id.kind == kind) {
                 continue;
             }
-            let Some(panel) = self.registry.create(kind) else {
+            let Some(mut panel) = self.registry.create(kind) else {
                 continue;
             };
             debug_assert_eq!(
@@ -51,6 +54,7 @@ impl PanelHost {
                 kind,
                 "factory registered under the wrong kind"
             );
+            panel.init(ctx);
             let id = PanelInstanceId::new(kind, self.next_serial);
             self.next_serial = self.next_serial.wrapping_add(1);
             self.instances.insert(id, panel);
