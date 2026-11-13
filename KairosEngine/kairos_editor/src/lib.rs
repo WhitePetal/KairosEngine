@@ -7,6 +7,7 @@ use winit::event::KeyEvent;
 
 pub mod asset_registry;
 pub mod camera;
+mod color;
 pub mod consts;
 pub mod dialog;
 pub mod editor_assets;

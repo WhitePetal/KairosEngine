@@ -144,14 +144,15 @@ impl Drawer for ToolBar {
         Panel::top("toolbar")
             .default_size(model.style.height)
             .show(ui, |ui| {
-                ui.visuals_mut().override_text_color = Some(model.style.button_text_color.into());
+                ui.visuals_mut().override_text_color =
+                    Some(crate::color::to_egui(model.style.button_text_color));
                 menu::MenuBar::new().ui(ui, |ui| {
                     ui.set_height(model.style.height);
                     // 工具栏背景
                     ui.painter().rect_filled(
                         ui.available_rect_before_wrap(),
                         model.style.corner_radius,
-                        model.style.fill_color,
+                        crate::color::to_egui(model.style.fill_color),
                     );
 
                     // Shared menu content — only one branch executes, so FnMut is fine.

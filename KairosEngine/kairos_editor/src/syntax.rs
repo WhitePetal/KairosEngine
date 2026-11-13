@@ -211,7 +211,7 @@ fn scope_item(scope_str: &str, color: math::Color32) -> syntect::highlighting::T
     syntect::highlighting::ThemeItem {
         scope: std::str::FromStr::from_str(scope_str).unwrap_or_default(),
         style: syntect::highlighting::StyleModifier {
-            foreground: Some(color.into()),
+            foreground: Some(crate::color::to_syntect(color)),
             background: None,
             font_style: None,
         },
@@ -257,8 +257,8 @@ impl SyntaxConfig {
         syntect::highlighting::Theme {
             name: Some(self.theme.name.clone()),
             settings: syntect::highlighting::ThemeSettings {
-                foreground: Some(c.foreground.into()),
-                background: Some(c.background.into()),
+                foreground: Some(crate::color::to_syntect(c.foreground)),
+                background: Some(crate::color::to_syntect(c.background)),
                 ..Default::default()
             },
             scopes,

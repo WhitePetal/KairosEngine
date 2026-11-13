@@ -498,7 +498,7 @@ impl AudioInspector {
         let rect = resp.rect;
 
         // Background
-        painter.rect_filled(rect, 0.0, style.waveform_bg);
+        painter.rect_filled(rect, 0.0, crate::color::to_egui(style.waveform_bg));
 
         // Center line
         let mid_y = rect.center().y;
@@ -507,7 +507,7 @@ impl AudioInspector {
                 Pos2::new(rect.left(), mid_y),
                 Pos2::new(rect.right(), mid_y),
             ],
-            Stroke::new(1.0, style.grid_color),
+            Stroke::new(1.0, crate::color::to_egui(style.grid_color)),
         );
 
         // ---- played region overlay ----
@@ -519,7 +519,11 @@ impl AudioInspector {
                 Pos2::new(rect.left(), rect.top()),
                 Pos2::new(played_x, rect.bottom()),
             );
-            painter.rect_filled(played_rect, 0.0, style.waveform_played_color);
+            painter.rect_filled(
+                played_rect,
+                0.0,
+                crate::color::to_egui(style.waveform_played_color),
+            );
         }
 
         // ---- waveform peaks ----
@@ -536,7 +540,7 @@ impl AudioInspector {
                 let y_max = mid_y - peak.max * half_h;
                 painter.line_segment(
                     [Pos2::new(x, y_min), Pos2::new(x, y_max)],
-                    Stroke::new(1.0, style.waveform_color),
+                    Stroke::new(1.0, crate::color::to_egui(style.waveform_color)),
                 );
             }
         } else {
@@ -561,7 +565,7 @@ impl AudioInspector {
                     Pos2::new(playhead_x, rect.top()),
                     Pos2::new(playhead_x, rect.bottom()),
                 ],
-                Stroke::new(2.0, style.playhead_color),
+                Stroke::new(2.0, crate::color::to_egui(style.playhead_color)),
             );
 
             // Small triangle head at top
@@ -572,7 +576,7 @@ impl AudioInspector {
                     Vec2::new(tri_size * 2.0, tri_size * 2.0),
                 ),
                 2.0,
-                style.playhead_color,
+                crate::color::to_egui(style.playhead_color),
             );
         }
 
@@ -624,7 +628,7 @@ impl AudioInspector {
         let rect = resp.rect;
 
         // Background
-        painter.rect_filled(rect, 0.0, style.waveform_bg);
+        painter.rect_filled(rect, 0.0, crate::color::to_egui(style.waveform_bg));
 
         if bins.is_empty() {
             painter.text(
@@ -650,7 +654,7 @@ impl AudioInspector {
                         Vec2::new(bar_width.max(1.0), bar_h),
                     ),
                     0.0,
-                    style.spectrum_color,
+                    crate::color::to_egui(style.spectrum_color),
                 );
             }
 

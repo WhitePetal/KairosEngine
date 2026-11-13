@@ -11,6 +11,10 @@ unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)", "cfg(docsrs_dep)
 
 [dependencies]
 egui = "0.35.0"
+# Shared, UI-agnostic color value used by style structs; this crate owns the
+# editor-side egui bridge (`color::Color32Ext`). It is a leaf value crate, not a
+# domain type, so it does not violate the "widgets know no domain types" rule.
+kairos_color = { path = "../kairos_color" }
 # Component styles and the font list are RON files under `Preferences/Styles`.
 ron = "0.12"
 serde = { version = "1.0.228", features = ["derive"] }

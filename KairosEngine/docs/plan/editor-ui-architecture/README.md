@@ -225,7 +225,7 @@ Context (ui.rs:326)
 
 ### 3.1 分层与 crate
 ```
-kairos_editor_widgets  （新 crate，L0+L1 纯外观：只依赖 egui；编译期拿不到任何领域类型）
+kairos_editor_widgets  （新 crate，L0+L1 纯外观：只依赖 egui + kairos_color；编译期拿不到任何领域类型）
   theme.rs      Design tokens / Theme（颜色、间距、字号、行高、圆角、图标尺寸）
   icon.rs       IconId + IconProvider（不依赖资产系统）
   atoms.rs      Button / IconButton / Checkbox / Switch / Radio / TextInput / SearchBox
@@ -267,7 +267,7 @@ kairos_editor           （现有 crate 收缩为 host + bin）
 依赖方向（cargo 强制）：
 
 ```
-kairos_editor_widgets   （leaf，只依赖 egui）
+kairos_editor_widgets   （leaf，只依赖 egui + kairos_color）
 kairos_editor_core      （leaf，纯领域；只允许 engine 的纯数据类型）
           │                        │
           └────────► kairos_editor_component ◄───────┘   （components = widgets + core）
@@ -277,7 +277,7 @@ kairos_editor_core      （leaf，纯领域；只允许 engine 的纯数据类�
 
 **为什么拆 core**：编译期强制「领域逻辑不能碰 egui/World/IO」；单测不需要 GPU/window；MCP 查询可以直接对 `EditorState` 做快照。
 
-**为什么再拆 widgets（本轮新增）**：把「纯外观组件」物理隔离成一个只依赖 egui 的 crate，**widget 里一写业务类型就编译失败**——这比"约定先做组件再做逻辑"可靠得多。同时获得一个可复用的 widget kit（10+ 面板共享，同一种树/行/按钮只有一份实现）和 gallery 视觉评审入口。详见 [widget-layer.md](./widget-layer.md)。
+**为什么再拆 widgets（本轮新增）**：把「纯外观组件」物理隔离成一个只依赖 egui 和 UI 无关叶子值 crate `kairos_color` 的 crate，**widget 里一写业务类型就编译失败**——这比"约定先做组件再做逻辑"可靠得多。同时获得一个可复用的 widget kit（10+ 面板共享，同一种树/行/按钮只有一份实现）和 gallery 视觉评审入口。详见 [widget-layer.md](./widget-layer.md)。
 
 **拆分粒度可以分期**：`kairos_editor_core` 与 `kairos_editor_widgets` 建议从一开始就独立成 crate（两者的边界强制力正是设计价值所在）；`kairos_editor_component` 前期可以作为 `kairos_editor` 的 module 目录，等稳定后再抽 crate。
 

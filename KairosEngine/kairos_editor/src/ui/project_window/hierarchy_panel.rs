@@ -121,7 +121,8 @@ impl HierarchyPanel {
 
         ui.visuals_mut().collapsing_header_frame = true;
 
-        let header_text = RichText::new(name).color(style.hierachy.directory_header_color);
+        let header_text =
+            RichText::new(name).color(crate::color::to_egui(style.hierachy.directory_header_color));
         let header = CollapsingHeader::new(header_text).open(if should_force_open {
             Some(true)
         } else {
@@ -150,7 +151,7 @@ impl HierarchyPanel {
                 ui.label(
                     RichText::new("(empty)")
                         .size(style.hierachy.file_header_size)
-                        .color(style.hierachy.file_header_color),
+                        .color(crate::color::to_egui(style.hierachy.file_header_color)),
                 );
             })
         };
@@ -205,7 +206,7 @@ impl HierarchyPanel {
             ui.painter().rect_filled(
                 row_rect,
                 egui::CornerRadius::same(style.hierachy.selected_file_background_corner_radius),
-                style.hierachy.selected_file_background_color,
+                crate::color::to_egui(style.hierachy.selected_file_background_color),
             );
         }
 
@@ -219,13 +220,15 @@ impl HierarchyPanel {
             ui.add(icon);
 
             let name = node_data.name();
-            ui.label(RichText::new(name).color(style.hierachy.file_header_color));
+            ui.label(
+                RichText::new(name).color(crate::color::to_egui(style.hierachy.file_header_color)),
+            );
 
             if let Some(suffix) = node_data.kind.suffix() {
                 ui.label(
                     RichText::new(suffix)
                         .size(style.hierachy.file_header_size)
-                        .color(style.hierachy.file_suffix_color),
+                        .color(crate::color::to_egui(style.hierachy.file_suffix_color)),
                 );
             }
         });

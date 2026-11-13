@@ -83,13 +83,21 @@
   - Console style is component-owned: `kairos_editor_component::panels::ConsoleStyle`
     (`console_style.rs`) is loaded from `Preferences/Styles/ConsoleStyle.ron` in
     `Panel::init`. The RON file holds both the dark and light skins, colors are
-    human-editable hex strings (`"#353535"`) via the `style::hex_color` serde adapter, and
-    icon file paths are part of the style. `kairos_editor_widgets::style` provides the
-    `Style` trait (`FILE`, `dark()`, `light()`), the generic `StyleFile<S>`
-    (`load_from` / `save_to` / `load_or_default` / `load_or_create`) and a
-    `export_styles` example in `kairos_editor_component` that re-seeds the RON files from the
-    code defaults. The global `Theme` install was removed: each panel loads its own style,
-    so editing the RON and reopening the panel restyles it without a rebuild.
+    `kairos_color::Color32` values written as human-editable hex strings (`"#353535"`) by
+    that crate's serde impls, and icon file paths are part of the style.
+    `kairos_editor_widgets::style` provides the `Style` trait (`FILE`, `dark()`,
+    `light()`), the generic `StyleFile<S>` (`load_from` / `save_to` /
+    `load_or_default` / `load_or_create`) and a `export_styles` example in
+    `kairos_editor_component` that re-seeds the RON files from the code defaults. The
+    global `Theme` install was removed: each panel loads its own style, so editing the
+    RON and reopening the panel restyles it without a rebuild.
+  - The color type is shared: `kairos_color` (extracted from
+    `kairos_engine::math::color`) owns `Color32`, hex parsing/formatting and serde,
+    and stays UI-agnostic (`serde`/error code lives in `color.rs`; there is no
+    conversions module). `kairos_engine::math::Color32` re-exports the same type for
+    existing engine/editor code. Each consumer owns its conversion: the new editor
+    uses `kairos_editor_widgets::color::Color32Ext::to_egui` at paint sites, and
+    the legacy editor has `kairos_editor::color` helpers for egui/syntect.
   - Icons are runtime assets too (`Preferences/Textures/console/`, light artwork under
     `light/`). `Panel::init` preloads them through `kairos_editor_widgets::ui_image`;
     egui's `egui_extras` file/image loaders (installed once by the app) read and decode on

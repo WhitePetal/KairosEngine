@@ -3,6 +3,7 @@ members = [
     "kairos_asset",
     "kairos_audio",
     "kairos_collections",
+    "kairos_color",
     "kairos_ecs",
     "kairos_ecs/macros",
     "kairos_ecs/macro_logic",

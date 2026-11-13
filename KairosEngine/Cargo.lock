@@ -2761,6 +2761,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "kairos_color"
+version = "0.1.0"
+dependencies = [
+ "ron",
+ "serde",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "kairos_ecs"
 version = "0.1.0"
 dependencies = [
@@ -2876,6 +2885,7 @@ name = "kairos_editor_component"
 version = "0.1.0"
 dependencies = [
  "egui",
+ "kairos_color",
  "kairos_editor_core",
  "kairos_editor_docking",
  "kairos_editor_widgets",
@@ -2901,6 +2911,7 @@ name = "kairos_editor_widgets"
 version = "0.1.0"
 dependencies = [
  "egui",
+ "kairos_color",
  "ron",
  "serde",
 ]
@@ -2910,11 +2921,11 @@ name = "kairos_engine"
 version = "0.1.0"
 dependencies = [
  "criterion",
- "egui",
  "env_logger",
  "half",
  "kairos_asset",
  "kairos_audio",
+ "kairos_color",
  "kairos_ecs",
  "kairos_graphics",
  "kairos_math",
@@ -2928,7 +2939,6 @@ dependencies = [
  "rkyv",
  "serde",
  "smallvec",
- "syntect",
  "tempfile",
  "winit",
 ]

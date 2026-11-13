@@ -44,9 +44,10 @@
      `*Active` variants.
   6. View layer is split into three layers (see `docs/plan/editor-ui-architecture/widget-layer.md`):
      **Theme tokens → Widgets (pure appearance) → Components (feature views)**.
-     Widgets live in their own crate `kairos_editor_widgets` that depends only on egui, so a
-     widget cannot name a domain type (`Guid`/`Entity`/`Document`/`Action`) — the boundary is
-     enforced by cargo, not by convention. Components in `kairos_editor_ui` read
+     Widgets live in their own crate `kairos_editor_widgets` that depends only on egui and
+     the UI-agnostic leaf value crate `kairos_color` (style colors), so a widget cannot name
+     a domain type (`Guid`/`Entity`/`Document`/`Action`) — the boundary is enforced by cargo,
+     not by convention. Components in `kairos_editor_ui` read
      `&EditorState`, compose widgets and emit `Action`; the domain↔widget mapping lives in
      pure adapter functions (`state -> widget props`, `widget output -> Action`) that are
      unit-testable without egui. Ephemeral widget state stays in egui `Memory`; session state

@@ -157,7 +157,7 @@ impl Inspector for CodeInspector {
                         } else {
                             self.model.style.bright_background_color
                         };
-                        editor.background_color(background_color.into())
+                        editor.background_color(crate::color::to_egui(background_color))
                     };
                     let edit = ui.add(editor);
                     if edit.changed() {

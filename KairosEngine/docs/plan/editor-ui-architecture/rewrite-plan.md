@@ -19,7 +19,7 @@
 ## 1. 目标 crate 布局
 
 ```
-kairos_editor_widgets/      新 crate（L0+L1 纯外观：只依赖 egui）
+kairos_editor_widgets/      新 crate（L0+L1 纯外观：只依赖 egui + kairos_color）
   src/theme.rs icon.rs atoms.rs chrome.rs rows.rs overlays.rs media.rs gallery/
   tests/                    headless egui 测试（无 GPU）
 kairos_editor_core/         新 crate（纯领域）
@@ -34,7 +34,7 @@ kairos_editor/              现有 crate 收缩为 host + bin
 **依赖图**（单向 + 编译期强制）：
 
 ```
-kairos_editor_widgets      （leaf，只依赖 egui；widget 里写业务类型会编译失败）
+kairos_editor_widgets      （leaf，只依赖 egui + kairos_color；widget 里写业务类型会编译失败）
 kairos_editor_core         （leaf，纯领域；只允许 engine 纯数据类型）
          │                          │
          └──────► kairos_editor_component ◄┘
@@ -42,7 +42,7 @@ kairos_editor_core         （leaf，纯领域；只允许 engine 纯数据类�
                   kairos_editor
 ```
 
-widgets crate **不得**依赖 core/engine；ui crate **不得**依赖 host（不做 IO）。这两条由 Cargo 依赖图保证，并建议加 CI 断言（`cargo tree -p kairos_editor_widgets | grep kairos` 为空）。
+widgets crate **不得**依赖 core/engine；ui crate **不得**依赖 host（不做 IO）。这两条由 Cargo 依赖图保证，并建议加 CI 断言（`cargo tree -p kairos_editor_widgets | grep kairos | grep -v kairos_color` 为空；`kairos_color` 是 UI 无关的叶子值 crate）。
 
 core 允许依赖 `kairos_engine` 的**纯数据类型**（`Handle`、`Mesh`、`RenderState`、`TextureEdit` 等），禁止依赖 `egui`/`winit`/`wgpu` 的 API 与 `World` 操作。若后期想让 core 完全零引擎依赖，可把文档载荷换成 core 自己的 DTO，属于可延期决策。
 
@@ -80,12 +80,12 @@ core 允许依赖 `kairos_engine` 的**纯数据类型**（`Handle`、`Mesh`、`
 > **原型已验证（2026-10-30，2026-11-09 扩展）**：合并原型 [`prototypes/editor-ui/`](../../../prototypes/editor-ui/) 在 egui 0.35 上跑通 **126 个测试**（125 headless + 1 doctest，5 个 crate）；除 widget kit 纯度、components 适配函数、真实 reducer/effect 闭环外，2026-11-09 又验证了 **Panel trait/Registry/Host**（面板不写进 `EditorApp`、新增面板零 core 改动）、**四槽 tab 停靠 + Console 只读 host 日志**，以及 **egui↔wgpu 视口接缝**（offscreen RTT→`TextureId`→egui image；orbit/pan/zoom/pick→`ViewportAction`→reducer→`Effect`→host camera/raycast，11 个 viewport slice 测试 + 35 个 camera/pick 测试 + 窗口 smoke 截图）。Phase 1/2 的「App shell/视口」从「待验证」变成「有可抄形状」，见 [panel-viewport-design.md](./panel-viewport-design.md)。
 
 **交付**
-- 新 crate `kairos_editor_widgets`（只依赖 egui）：`Theme` tokens（从现有 `Preferences/Styles/*.toml` 1:1 映射，保证视觉不变）、`IconId/IconProvider`、首版 20-25 个 widget（[widget-layer.md](./widget-layer.md) §2.2 的目录）、`gallery` 开发 bin。
+- 新 crate `kairos_editor_widgets`（只依赖 egui + `kairos_color`）：`Theme` tokens（从现有 `Preferences/Styles/*.toml` 1:1 映射，保证视觉不变）、`IconId/IconProvider`、首版 20-25 个 widget（[widget-layer.md](./widget-layer.md) §2.2 的目录）、`gallery` 开发 bin。
 - `kairos_editor_component` 骨架：`Frame`/`UiOut`/`ViewStates` + 一个 **vertical slice**：只迁 ProjectPanel 一页（验证 TreeView/ContextMenu/StatusBar/PanelChrome 是否够用）。
 - widget 级 headless 测试（egui `Context::run` + 合成指针输入）；每个 widget 至少 smoke 一帧，交互控件有 click/emit 断言。
 
 **验收**
-- [ ] `cargo tree -p kairos_editor_widgets | grep kairos` 为空（widget 层零领域依赖）。
+- [ ] `cargo tree -p kairos_editor_widgets | grep kairos | grep -v kairos_color` 为空（widget 层零领域依赖；`kairos_color` 是 UI 无关的叶子值 crate）。
 - [ ] gallery 在 headless 下跑通；widget 测试无需 GPU/window。
 - [ ] Theme 映射后，ProjectPanel 外观与旧 UI 肉眼一致。
 - [ ] widget API 经一次 review 后再铺开（避免 props 过早定型）。
@@ -217,7 +217,7 @@ cargo check --workspace --all-targets
 
 **新增硬约束**（建议加进 CI/AGENTS.md）：
 - `kairos_editor_core` 不得 `use egui` / `use winit` / `use wgpu` / `use kairos_ecs::world::World`。
-- `kairos_editor_widgets` 只能依赖 egui（`cargo tree -p kairos_editor_widgets | grep kairos` 必须为空）；widget 代码里禁止 `Cell/RefCell/Mutex/unsafe` 与任何领域类型。
+- `kairos_editor_widgets` 只能依赖 egui + `kairos_color`（`cargo tree -p kairos_editor_widgets | grep kairos | grep -v kairos_color` 必须为空）；widget 代码里禁止 `Cell/RefCell/Mutex/unsafe` 与任何领域类型。
 - `kairos_editor_component` 不得依赖 `kairos_editor`（host），组件里禁止 IO / `&mut World` / `std::fs`。
 - widget 的语义状态（选中/展开/值）必须由 props 传入；组件会话态放 `ViewStates`；egui `Memory` 只放纯瞬态。
 - `kairos_editor_component` 不得 `use crate::host`（UI 不能直接做 IO）。

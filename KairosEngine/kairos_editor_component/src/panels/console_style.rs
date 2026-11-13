@@ -4,42 +4,30 @@
 //! `Preferences/Styles/ConsoleStyle.ron` (dark + light). The panel loads the file
 //! in `Panel::init`; editing it restyles the Console without a rebuild.
 
-use egui::Color32;
+use kairos_color::Color32;
 use kairos_editor_widgets::icons::ConsoleIconPaths;
-use kairos_editor_widgets::style::{Style, hex_color};
+use kairos_editor_widgets::style::Style;
 use serde::{Deserialize, Serialize};
 
 /// Appearance tokens for the Console panel: palette, icon file paths and the
-/// measured geometry. Pure data so it can be serialized to RON (colors as hex
-/// strings) and later edited from Preferences.
+/// measured geometry. Pure data so it can be serialized to RON and later edited
+/// from Preferences; colors are [`kairos_color::Color32`], written as hex strings
+/// (`"#353535"`) by that crate's serde impls.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ConsoleStyle {
     // Palette (the dark values are sampled from the reference capture).
-    #[serde(with = "hex_color")]
     pub toolbar_bg: Color32,
-    #[serde(with = "hex_color")]
     pub toolbar_text: Color32,
-    #[serde(with = "hex_color")]
     pub toggle_bg: Color32,
-    #[serde(with = "hex_color")]
     pub search_bg: Color32,
-    #[serde(with = "hex_color")]
     pub search_edge: Color32,
-    #[serde(with = "hex_color")]
     pub separator: Color32,
-    #[serde(with = "hex_color")]
     pub row_odd: Color32,
-    #[serde(with = "hex_color")]
     pub row_even: Color32,
-    #[serde(with = "hex_color")]
     pub row_selected: Color32,
-    #[serde(with = "hex_color")]
     pub text: Color32,
-    #[serde(with = "hex_color")]
     pub text_selected: Color32,
-    #[serde(with = "hex_color")]
     pub link: Color32,
-    #[serde(with = "hex_color")]
     pub detail_bg: Color32,
 
     /// Icon file locations (runtime assets, see `kairos_editor_widgets::ui_image`).
@@ -140,5 +128,35 @@ impl Style for ConsoleStyle {
             icons: ConsoleIconPaths::light(),
             ..Self::dark()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kairos_editor_widgets::style::StyleFile;
+
+    #[test]
+    fn defaults_round_trip_through_ron_as_hex_colors() {
+        let dir = std::env::temp_dir().join(format!(
+            "kairos-console-style-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let path = dir.join("ConsoleStyle.ron");
+        let _ = std::fs::remove_dir_all(&dir);
+
+        StyleFile::<ConsoleStyle>::defaults()
+            .save_to(&path)
+            .expect("save style");
+        let text = std::fs::read_to_string(&path).expect("read style");
+        assert!(text.contains("\"#353535\""), "{text}");
+        assert!(!text.contains("Color32"), "{text}");
+
+        let loaded = StyleFile::<ConsoleStyle>::load_from(&path).expect("load style");
+        assert_eq!(loaded.dark, ConsoleStyle::dark());
+        assert_eq!(loaded.light, ConsoleStyle::light());
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

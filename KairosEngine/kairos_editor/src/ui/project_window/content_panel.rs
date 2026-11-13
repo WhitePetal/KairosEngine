@@ -150,7 +150,7 @@ impl ContentPanel {
             ui.painter().rect_filled(
                 content_rect,
                 egui::CornerRadius::same(style.content.selected_background_corner_radius),
-                style.content.selected_background_color,
+                crate::color::to_egui(style.content.selected_background_color),
             );
         }
 
@@ -205,7 +205,7 @@ impl ContentPanel {
             );
             let label = RichText::new(truncated_name)
                 .size(style.content.label_font_size)
-                .color(style.content.label_color);
+                .color(crate::color::to_egui(style.content.label_color));
             cell_ui.label(label);
         }
 

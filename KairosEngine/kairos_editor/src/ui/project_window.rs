@@ -393,7 +393,7 @@ impl ProjectWindow {
                 ui.label(
                     egui::RichText::new(path)
                         .size(style.content.bottom_bar_font_size)
-                        .color(style.content.bottom_bar_text_color),
+                        .color(crate::color::to_egui(style.content.bottom_bar_text_color)),
                 );
             }
         }
@@ -494,7 +494,9 @@ impl ProjectWindow {
                                     ui.label(
                                         RichText::new(suffix)
                                             .size(style.hierachy.file_header_size)
-                                            .color(style.hierachy.file_suffix_color),
+                                            .color(crate::color::to_egui(
+                                                style.hierachy.file_suffix_color,
+                                            )),
                                     );
                                 }
                             });

@@ -19,7 +19,7 @@ L2  Components（功能组件）      ← 读 EditorState、组合 Widgets、发
 L3  Panels / Assembly（装配）   ← dock 面板注册、布局、面板实例
 ```
 
-**关键设计**：L1 独立成 crate `kairos_editor_widgets`，只依赖 egui，**不依赖 core/engine**——于是「widget 里混进业务逻辑」不是靠 review 拦，而是**编译不过**。L2 在 `kairos_editor_component`，只做「状态 → props、事件 → Action」的适配；适配函数是纯函数，可以脱离 egui 单测（这正是把逻辑从 .rs 里抽出来的落点）。
+**关键设计**：L1 独立成 crate `kairos_editor_widgets`，只依赖 egui 和 UI 无关的叶子值 crate `kairos_color`，**不依赖 core/engine**——于是「widget 里混进业务逻辑」不是靠 review 拦，而是**编译不过**。L2 在 `kairos_editor_component`，只做「状态 → props、事件 → Action」的适配；适配函数是纯函数，可以脱离 egui 单测（这正是把逻辑从 .rs 里抽出来的落点）。
 
 L2 与总架构（MVU）的关系：总架构里的 `Panel`/component 就是这里的 L2；L1 是它下面新增的一层纯外观库。**Widget 层不改变 store/reducer/effect 设计，只改变「视图内部怎么写」**。
 
@@ -61,7 +61,9 @@ L2 与总架构（MVU）的关系：总架构里的 `Panel`/component 就是这�
 
 > **2026-11-13 实现更新**：生产里 L0 落成 **per-component serializable style**，而不是一个全局
 > `Theme` 安装：`kairos_editor_widgets::style` 提供 `Style` trait（`FILE` / `dark()` /
-> `light()`）、泛型 `StyleFile<S>`（RON load/save/defaults）和 `hex_color` serde adapter；
+> `light()`）和泛型 `StyleFile<S>`（RON load/save/defaults）；style 里的颜色用共享的
+> `kairos_color::Color32`（hex 字符串解析/格式化和 serde 由该 crate 提供；egui 转换由
+> `kairos_editor_widgets::color::Color32Ext` 在绘制处完成，见 ADR 0010）；
 > 每个 component 定义自己的 `XxxStyle` 并在 `Panel::init` 加载
 > `Preferences/Styles/<XxxStyle>.ron`（一个文件含 dark/light 两套）。`StyleState` /
 > 全局 `Theme` 不再是实现前提，见 ADR 0010 实现 note。
@@ -77,7 +79,7 @@ L2 与总架构（MVU）的关系：总架构里的 `Panel`/component 就是这�
 
 **契约（硬性）**：
 
-1. 只依赖 egui；**不得**出现任何领域类型：`Guid`/`AssetKind`/`NodeIndex`/`Entity`/`Document`/`Action`/`EditorState`。
+1. 只依赖 egui 与 `kairos_color`（后者是 UI 无关的叶子值 crate，不是领域类型）；**不得**出现任何领域类型：`Guid`/`AssetKind`/`NodeIndex`/`Entity`/`Document`/`Action`/`EditorState`。
 2. **props 进、事件出**：展示数据用 struct 字段；交互结果用返回值（`egui::Response` 或自定义 `Output`），**不接收回调**（布局闭包 `PanelChrome::body(|ui| ...)` 例外，那只是组合）。
 3. **跨帧无状态**：语义状态（展开/选中/值）全部由调用方 props 传入；纯瞬态（popup 开合、滚动、文本光标、hover）允许存 egui `Memory`（稳定 `Id`）。
 4. **主题驱动**：所有视觉值来自 `Theme`。
@@ -194,17 +196,17 @@ fn save(state: &mut EditorState, id: DocumentId) -> Vec<Effect> {
 ## 3. Crate 结构与编译期约束
 
 ```
-kairos_editor_widgets（leaf，L0+L1；只依赖 egui）    kairos_editor_core（leaf，纯领域；不依赖 egui）
+kairos_editor_widgets（leaf，L0+L1；只依赖 egui + kairos_color）    kairos_editor_core（leaf，纯领域；不依赖 egui）
                     │                                             │
                     └──────────────► kairos_editor_component ◄───────────┘
                                             │
                                       kairos_editor（host + bin）
 ```
 
-- **widgets crate 的依赖只有 egui** ⇒ 想写 `use kairos_editor_core::...` 直接编译失败。这是本设计最重要的一条：**边界由 cargo 强制，不靠自觉**。
+- **widgets crate 只依赖 egui 与 `kairos_color`（UI 无关的值 crate）** ⇒ 想写 `use kairos_editor_core::...` 直接编译失败。这是本设计最重要的一条：**边界由 cargo 强制，不靠自觉**。
 - `kairos_editor_component` 不依赖 `kairos_editor`（host）⇒ 组件不可能做 IO / 改 World。
 - 工程化检查（建议进 CI / deny.toml）：
-  - `cargo tree -p kairos_editor_widgets | grep kairos` 必须为空；
+  - `cargo tree -p kairos_editor_widgets | grep kairos | grep -v kairos_color` 必须为空；
   - `kairos_editor_component` 的依赖里没有 `kairos_editor`；
   - widget 目录禁止 `Cell/RefCell/Mutex/unsafe`（clippy lint + review）。
 

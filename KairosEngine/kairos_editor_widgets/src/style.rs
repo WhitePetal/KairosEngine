@@ -17,8 +17,10 @@
 //! component writes the code defaults once, so the file is also the documented
 //! starting point for a custom skin.
 //!
-//! Colors are serialized through [`hex_color`] as `"#RRGGBB"` (or
-//! `"#RRGGBBAA"` when translucent), keeping RON human-editable.
+//! Colors in style structs are `kairos_color::Color32` values: that crate's
+//! serde impls write them as `"#RRGGBB"` (or `"#RRGGBBAA"` when translucent),
+//! keeping RON human-editable. This crate does not depend on the color crate
+//! itself; each component picks the types its style needs.
 
 use std::path::{Path, PathBuf};
 
@@ -114,101 +116,31 @@ impl<S: Style> StyleFile<S> {
     }
 }
 
-/// Serde adapter for `Color32` as a hex string.
-///
-/// Use it field-by-field:
-///
-/// ```ignore
-/// #[serde(with = "kairos_editor_widgets::style::hex_color")]
-/// pub background: Color32,
-/// ```
-pub mod hex_color {
-    use egui::Color32;
-    use serde::{Deserialize, Deserializer, Serializer};
-
-    pub fn serialize<S: Serializer>(color: &Color32, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(&to_hex(*color))
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Color32, D::Error> {
-        let text = String::deserialize(deserializer)?;
-        from_hex(&text).map_err(serde::de::Error::custom)
-    }
-
-    /// `#RRGGBB` for opaque colors, `#RRGGBBAA` for translucent ones.
-    pub fn to_hex(color: Color32) -> String {
-        // Color32 stores premultiplied sRGBA; serialize the unmultiplied form
-        // so a translucent hex string round-trips to what a human authored.
-        let [r, g, b, a] = color.to_srgba_unmultiplied();
-        if a == 255 {
-            format!("#{r:02X}{g:02X}{b:02X}")
-        } else {
-            format!("#{r:02X}{g:02X}{b:02X}{a:02X}")
-        }
-    }
-
-    /// Parse `#RRGGBB` / `#RRGGBBAA` with an optional leading `#`.
-    pub fn from_hex(text: &str) -> Result<Color32, String> {
-        let text = text.trim();
-        let hex = text.strip_prefix('#').unwrap_or(text);
-        let channel = |range: std::ops::Range<usize>| {
-            u8::from_str_radix(&hex[range], 16).map_err(|_| format!("invalid hex color {text:?}"))
-        };
-        match hex.len() {
-            6 => Ok(Color32::from_rgb(
-                channel(0..2)?,
-                channel(2..4)?,
-                channel(4..6)?,
-            )),
-            8 => Ok(Color32::from_rgba_unmultiplied(
-                channel(0..2)?,
-                channel(2..4)?,
-                channel(4..6)?,
-                channel(6..8)?,
-            )),
-            _ => Err(format!(
-                "invalid hex color {text:?}: expected #RRGGBB or #RRGGBBAA"
-            )),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use egui::Color32;
     use serde::{Deserialize, Serialize};
 
     #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
     struct TestStyle {
-        #[serde(with = "hex_color")]
-        color: Color32,
         size: f32,
+        label: String,
     }
 
     impl Style for TestStyle {
         const FILE: &'static str = "TestStyle.ron";
         fn dark() -> Self {
             Self {
-                color: Color32::from_rgb(0x12, 0x34, 0x56),
                 size: 1.0,
+                label: "dark".to_owned(),
             }
         }
         fn light() -> Self {
             Self {
-                color: Color32::from_rgba_unmultiplied(0xAB, 0xCD, 0xEF, 0x80),
                 size: 2.0,
+                label: "light".to_owned(),
             }
         }
-    }
-
-    #[test]
-    fn colors_serialize_as_hex_strings() {
-        let file = StyleFile::<TestStyle>::defaults();
-        let text = ron::ser::to_string_pretty(&file, ron::ser::PrettyConfig::default()).unwrap();
-        assert!(text.contains("\"#123456\""), "{text}");
-        assert!(text.contains("\"#ABCDEF80\""), "{text}");
-        assert!(!text.contains("Color32"), "{text}");
     }
 
     #[test]
@@ -225,22 +157,14 @@ mod tests {
         assert_eq!(created.dark, TestStyle::dark());
         assert!(path.is_file());
 
+        let text = std::fs::read_to_string(&path).expect("read style");
+        assert!(text.contains("dark:"), "{text}");
+        assert!(text.contains("light:"), "{text}");
+
         let loaded = StyleFile::<TestStyle>::load_from(&path).expect("reload");
-        assert_eq!(loaded.light.color, TestStyle::light().color);
+        assert_eq!(loaded.dark, TestStyle::dark());
+        assert_eq!(loaded.light, TestStyle::light());
 
         let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn hex_parser_accepts_short_and_alpha_forms() {
-        assert_eq!(
-            hex_color::from_hex("#123456").unwrap(),
-            Color32::from_rgb(0x12, 0x34, 0x56)
-        );
-        assert_eq!(
-            hex_color::from_hex("ABCDEF80").unwrap(),
-            Color32::from_rgba_unmultiplied(0xAB, 0xCD, 0xEF, 0x80)
-        );
-        assert!(hex_color::from_hex("#FFF").is_err());
     }
 }

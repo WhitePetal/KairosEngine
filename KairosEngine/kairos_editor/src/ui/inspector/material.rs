@@ -510,8 +510,11 @@ impl MaterialInspector {
         painter.rect(
             texture_rect,
             egui::CornerRadius::same(self.model.style.texture_corner_radius),
-            bg_color,
-            egui::Stroke::new(self.model.style.texture_stroke_width, stroke_color),
+            crate::color::to_egui(bg_color),
+            egui::Stroke::new(
+                self.model.style.texture_stroke_width,
+                crate::color::to_egui(stroke_color),
+            ),
             egui::StrokeKind::Middle,
         );
 

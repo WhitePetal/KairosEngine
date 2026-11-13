@@ -29,14 +29,13 @@ winit = { version = "0.30", features = ["android-native-activity"] }
 env_logger = "0.10"
 log = "0.4"
 serde = "1.0.228"
-# `math/color/converts.rs` converts the engine's colors to egui/syntect colors,
-# so the engine keeps these two UI-ecosystem crates even without the editor.
-egui = "0.35.0"
-syntect = { version = "5.3", default-features = false, features = ["default-fancy"] }
 pollster = "0.3"
 half = { version = "2.4", features = ["bytemuck"] }
 kairos_ecs = { path = "../kairos_ecs" }
 kairos_asset = { path = "../kairos_asset" }
+# `math::Color32` lives in `kairos_color` and is re-exported from here, so
+# `kairos_engine::math::Color32` stays the path existing code uses.
+kairos_color = { path = "../kairos_color" }
 kairos_audio = { path = "../kairos_audio" }
 kairos_graphics = { path = "../kairos_graphics" }
 kairos_math = { path = "../kairos_math", features = ["rkyv"] }

@@ -20,10 +20,10 @@
 use std::collections::HashMap;
 
 use egui::{
-    Align2, Color32, CornerRadius, FontFamily, FontId, Pos2, Rect, Sense, Stroke, Ui, WidgetText,
-    pos2, vec2,
+    Align2, CornerRadius, FontFamily, FontId, Pos2, Rect, Sense, Stroke, Ui, WidgetText, pos2, vec2,
 };
 use kairos_editor_core::PanelId;
+use kairos_editor_widgets::color::Color32Ext;
 use kairos_editor_widgets::icons::ConsoleSeverity;
 use kairos_editor_widgets::style::StyleFile;
 use kairos_editor_widgets::ui_image;
@@ -95,8 +95,11 @@ impl Panel for ConsolePanel {
             .host
             .console_lines(&mut |entries| lines = entries.to_vec());
 
-        ui.painter()
-            .rect_filled(ui.max_rect(), CornerRadius::ZERO, self.style.row_even);
+        ui.painter().rect_filled(
+            ui.max_rect(),
+            CornerRadius::ZERO,
+            self.style.row_even.to_egui(),
+        );
         self.toolbar(ui, &lines);
 
         let body = ui.available_rect_before_wrap();
@@ -139,9 +142,10 @@ impl ConsolePanel {
 
     fn toolbar(&mut self, ui: &mut Ui, lines: &[ConsoleLine]) {
         let width = ui.available_width();
-        let (rect, _) = ui.allocate_exact_size(vec2(width, self.style.toolbar_height), Sense::hover());
+        let (rect, _) =
+            ui.allocate_exact_size(vec2(width, self.style.toolbar_height), Sense::hover());
         let painter = ui.painter().clone();
-        painter.rect_filled(rect, CornerRadius::ZERO, self.style.toolbar_bg);
+        painter.rect_filled(rect, CornerRadius::ZERO, self.style.toolbar_bg.to_egui());
 
         let font = FontId::new(self.style.text_size, FontFamily::Proportional);
         let mut x = rect.left();
@@ -158,12 +162,12 @@ impl ConsolePanel {
             Align2::LEFT_CENTER,
             "Clear",
             font.clone(),
-            self.style.toolbar_text,
+            self.style.toolbar_text.to_egui(),
         );
         paint_caret(
             &painter,
             pos2(clear.right() - 10.0, clear.center().y),
-            self.style.toolbar_text,
+            self.style.toolbar_text.to_egui(),
         );
         if response.clicked() {
             self.cleared_through = lines.last().map_or(0, |line| line.id);
@@ -184,7 +188,7 @@ impl ConsolePanel {
             Align2::CENTER_CENTER,
             "Collapse",
             font.clone(),
-            self.style.toolbar_text,
+            self.style.toolbar_text.to_egui(),
         );
         if response.clicked() {
             self.collapse = !self.collapse;
@@ -202,7 +206,7 @@ impl ConsolePanel {
             Align2::CENTER_CENTER,
             "Error Pause",
             font.clone(),
-            self.style.toolbar_text,
+            self.style.toolbar_text.to_egui(),
         );
         if response.clicked() {
             self.error_pause = !self.error_pause;
@@ -221,12 +225,12 @@ impl ConsolePanel {
             Align2::LEFT_CENTER,
             "Editor",
             font.clone(),
-            self.style.toolbar_text,
+            self.style.toolbar_text.to_egui(),
         );
         paint_caret(
             &painter,
             pos2(editor.right() - 13.0, editor.center().y),
-            self.style.toolbar_text,
+            self.style.toolbar_text.to_egui(),
         );
         x = editor.right() + 1.0;
 
@@ -235,23 +239,26 @@ impl ConsolePanel {
         let counts_left = rect.right() - counts_width;
         let search = Rect::from_min_max(
             pos2(x + 6.0, rect.top() + 2.0),
-            pos2(counts_left - 8.0, rect.top() + self.style.toolbar_height - 2.0),
+            pos2(
+                counts_left - 8.0,
+                rect.top() + self.style.toolbar_height - 2.0,
+            ),
         );
         painter.rect_filled(
             search,
             CornerRadius::same(self.style.search_radius),
-            self.style.search_bg,
+            self.style.search_bg.to_egui(),
         );
         painter.rect_stroke(
             search,
             CornerRadius::same(self.style.search_radius),
-            Stroke::new(1.0, self.style.search_edge),
+            Stroke::new(1.0, self.style.search_edge.to_egui()),
             egui::StrokeKind::Inside,
         );
         paint_magnifier(
             &painter,
             pos2(search.left() + 9.0, search.center().y),
-            self.style.toolbar_text,
+            self.style.toolbar_text.to_egui(),
         );
         let edit = Rect::from_min_max(
             pos2(search.left() + 18.0, search.top()),
@@ -262,7 +269,7 @@ impl ConsolePanel {
             egui::TextEdit::singleline(&mut self.search)
                 .id(ui.id().with("console-search"))
                 .font(FontId::new(self.style.text_size, FontFamily::Proportional))
-                .text_color(self.style.toolbar_text)
+                .text_color(self.style.toolbar_text.to_egui())
                 .frame(egui::Frame::NONE)
                 .margin(egui::Margin::symmetric(0, 1)),
         );
@@ -270,13 +277,7 @@ impl ConsolePanel {
         self.paint_counts(ui, rect, counts_left, &self.counts(lines));
     }
 
-    fn paint_counts(
-        &mut self,
-        ui: &mut Ui,
-        toolbar: Rect,
-        counts_left: f32,
-        counts: &[usize; 3],
-    ) {
+    fn paint_counts(&mut self, ui: &mut Ui, toolbar: Rect, counts_left: f32, counts: &[usize; 3]) {
         let painter = ui.painter().clone();
         painter.rect_filled(
             Rect::from_min_size(
@@ -284,7 +285,7 @@ impl ConsolePanel {
                 vec2(1.0, self.style.toolbar_height),
             ),
             CornerRadius::ZERO,
-            self.style.separator,
+            self.style.separator.to_egui(),
         );
 
         let font = FontId::new(self.style.text_size, FontFamily::Proportional);
@@ -294,7 +295,7 @@ impl ConsolePanel {
                 pos2(x, toolbar.top()),
                 vec2(self.style.count_widths[index], self.style.toolbar_height),
             );
-            painter.rect_filled(segment, CornerRadius::ZERO, self.style.toggle_bg);
+            painter.rect_filled(segment, CornerRadius::ZERO, self.style.toggle_bg.to_egui());
             let response = ui.interact(
                 segment,
                 ui.id().with(("console-level", index)),
@@ -316,22 +317,25 @@ impl ConsolePanel {
                 ui,
                 icon_rect,
                 self.style.icons.severity(severity(level), visible),
-                Color32::WHITE,
+                egui::Color32::WHITE,
             );
             painter.text(
                 pos2(icon_rect.right() + 5.0, segment.center().y),
                 Align2::LEFT_CENTER,
                 counts[index].to_string(),
                 font.clone(),
-                self.style.toolbar_text,
+                self.style.toolbar_text.to_egui(),
             );
 
             x = segment.right();
             if index < 2 {
                 painter.rect_filled(
-                    Rect::from_min_size(pos2(x, toolbar.top()), vec2(1.0, self.style.toolbar_height)),
+                    Rect::from_min_size(
+                        pos2(x, toolbar.top()),
+                        vec2(1.0, self.style.toolbar_height),
+                    ),
                     CornerRadius::ZERO,
-                    self.style.toolbar_bg,
+                    self.style.toolbar_bg.to_egui(),
                 );
                 x += 1.0;
             }
@@ -378,13 +382,7 @@ impl ConsolePanel {
         rows
     }
 
-    fn row(
-        &mut self,
-        ui: &mut Ui,
-        index: usize,
-        line: &ConsoleLine,
-        count: usize,
-    ) {
+    fn row(&mut self, ui: &mut Ui, index: usize, line: &ConsoleLine, count: usize) {
         let width = ui.available_width();
         let (rect, _) = ui.allocate_exact_size(vec2(width, self.style.row_height), Sense::hover());
         let response = ui.interact(rect, ui.id().with(("console-row", line.id)), Sense::click());
@@ -395,16 +393,16 @@ impl ConsolePanel {
 
         let selected = self.selected == Some(line.id);
         let background = if selected {
-            self.style.row_selected
+            self.style.row_selected.to_egui()
         } else if index % 2 == 0 {
-            self.style.row_odd
+            self.style.row_odd.to_egui()
         } else {
-            self.style.row_even
+            self.style.row_even.to_egui()
         };
         let text_color = if selected {
-            self.style.text_selected
+            self.style.text_selected.to_egui()
         } else {
-            self.style.text
+            self.style.text.to_egui()
         };
         let painter = ui.painter();
         painter.rect_filled(rect, CornerRadius::ZERO, background);
@@ -417,7 +415,7 @@ impl ConsolePanel {
             ui,
             icon_rect,
             self.style.icons.severity(severity(line.level), true),
-            Color32::WHITE,
+            egui::Color32::WHITE,
         );
 
         let font = FontId::new(self.style.text_size, FontFamily::Proportional);
@@ -453,7 +451,12 @@ impl ConsolePanel {
                 ),
                 vec2(self.style.badge_size, self.style.badge_size),
             );
-            ui_image::paint(ui, badge_rect, self.style.icons.badge(), Color32::WHITE);
+            ui_image::paint(
+                ui,
+                badge_rect,
+                self.style.icons.badge(),
+                egui::Color32::WHITE,
+            );
             let badge_text = if count > 99 {
                 "99+".to_owned()
             } else {
@@ -464,23 +467,18 @@ impl ConsolePanel {
                 Align2::CENTER_CENTER,
                 badge_text,
                 FontId::new(self.style.badge_text_size, FontFamily::Proportional),
-                self.style.text,
+                self.style.text.to_egui(),
             );
         }
     }
 
-    fn detail_pane(
-        &mut self,
-        ui: &mut Ui,
-        rect: Rect,
-        lines: &[ConsoleLine],
-    ) {
+    fn detail_pane(&mut self, ui: &mut Ui, rect: Rect, lines: &[ConsoleLine]) {
         let painter = ui.painter();
-        painter.rect_filled(rect, CornerRadius::ZERO, self.style.detail_bg);
+        painter.rect_filled(rect, CornerRadius::ZERO, self.style.detail_bg.to_egui());
         painter.rect_filled(
             Rect::from_min_size(rect.min, vec2(rect.width(), 1.0)),
             CornerRadius::ZERO,
-            self.style.separator,
+            self.style.separator.to_egui(),
         );
 
         let Some(line) = self.selected_line(lines) else {
@@ -499,7 +497,7 @@ impl ConsolePanel {
                             egui::Label::new(
                                 egui::RichText::new(&line.message)
                                     .font(font.clone())
-                                    .color(self.style.text),
+                                    .color(self.style.text.to_egui()),
                             )
                             .wrap(),
                         );
@@ -555,7 +553,7 @@ fn paint_stack_line(ui: &mut Ui, line: &str, style: &ConsoleStyle) {
                     egui::Label::new(
                         egui::RichText::new(symbol)
                             .font(font.clone())
-                            .color(style.text),
+                            .color(style.text.to_egui()),
                     )
                     .wrap(),
                 );
@@ -563,14 +561,21 @@ fn paint_stack_line(ui: &mut Ui, line: &str, style: &ConsoleStyle) {
                     egui::Label::new(
                         egui::RichText::new(format!(" {location}"))
                             .font(font)
-                            .color(style.link),
+                            .color(style.link.to_egui()),
                     )
                     .wrap(),
                 );
             });
         }
         None => {
-            ui.add(egui::Label::new(egui::RichText::new(line).font(font).color(style.text)).wrap());
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(line)
+                        .font(font)
+                        .color(style.text.to_egui()),
+                )
+                .wrap(),
+            );
         }
     }
 }
@@ -599,11 +604,11 @@ fn paint_hover(
     style: &ConsoleStyle,
 ) {
     if active || response.hovered() {
-        painter.rect_filled(rect, CornerRadius::ZERO, style.toggle_bg);
+        painter.rect_filled(rect, CornerRadius::ZERO, style.toggle_bg.to_egui());
     }
 }
 
-fn paint_caret(painter: &egui::Painter, center: Pos2, color: Color32) {
+fn paint_caret(painter: &egui::Painter, center: Pos2, color: egui::Color32) {
     let points = vec![
         pos2(center.x - 3.5, center.y - 1.5),
         pos2(center.x + 3.5, center.y - 1.5),
@@ -612,7 +617,7 @@ fn paint_caret(painter: &egui::Painter, center: Pos2, color: Color32) {
     painter.add(egui::Shape::convex_polygon(points, color, Stroke::NONE));
 }
 
-fn paint_magnifier(painter: &egui::Painter, center: Pos2, color: Color32) {
+fn paint_magnifier(painter: &egui::Painter, center: Pos2, color: egui::Color32) {
     painter.circle_stroke(center + vec2(-1.0, -1.0), 4.0, Stroke::new(1.2, color));
     painter.line_segment(
         [center + vec2(1.8, 1.8), center + vec2(4.2, 4.2)],
