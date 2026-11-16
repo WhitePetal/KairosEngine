@@ -31,6 +31,12 @@ pub use kairos_asset as asset;
 pub use kairos_audio as audio;
 
 pub mod inputs;
+// The window and frame loop: the engine is the runtime. Hosts plug a `Layer`
+// in (the editor draws its UI there); a game build is the same loop with a
+// layer that draws nothing. Lives in the engine rather than a separate runtime
+// crate because the engine already owns the windowing, rendering and input
+// dependencies it needs.
+pub mod runtime;
 pub mod spatial;
 
 // The offline half of the asset pipeline: the entry that runs the engine's own

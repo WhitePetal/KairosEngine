@@ -750,7 +750,7 @@ impl eframe::App for EditorApp {
 | PostUi / 执行 effect | `pipeline.rs::pump` + `effects.rs::apply_effect`，只在 `!will_discard()` 时执行 | 原型 effect 同步完成（保存写临时文件、视口 bind/pick 同帧回填），生产有异步 ticket |
 | Present | eframe wgpu 后端 | 生产是 `GraphicsGraph::build` + `RenderPipeline::present` |
 
-**eframe ↔ 生产宿主（已定，不再二选一）**：eframe 只是原型的 throwaway 宿主。生产 `kairos_editor_app` **接管 `runtime.rs` 的 winit + wgpu 事件循环与 `RenderPipeline::present`**；eframe 不得拥有 surface/present（否则与引擎的渲染图/帧序冲突，§3.1）。迁移时接口不变：`PanelHost` / `HostView` / `Frame` / `UiOut` 原样使用，只把「原型的 `ViewportHost`（自有 `queue.submit`）」替换为「`RenderViewports` 生成 `GraphicsCommand` + `RenderPipeline::present` 执行 + `bind_attachment_to_egui` 回传 `TextureId`」。原型的阶段/面板 API 是生产的预演，不是另一套架构。
+**eframe ↔ 生产宿主（已定，不再二选一）**：eframe 只是原型的 throwaway 宿主。**2026-11-16 更新**：帧循环已**上移到引擎** —— `kairos_engine::runtime::EngineRunner` 拥有 winit 事件循环、窗口、`RenderPipeline` 与 `Engine`，每帧调用 `Engine::update()` 并 present；宿主通过 `Layer`（`window_created` / `window_event` / `render` / `on_exit`）接入。`kairos_editor` 与 `kairos_editor_app` 均已按此落地（egui pass 各在自己的 `src/host.rs`：生产副本归 `kairos_editor_app`，legacy 私有副本随其一起退役；见 ADR 0012），eframe 已不在依赖图中。eframe 不得拥有 surface/present（否则与引擎的渲染图/帧序冲突，§3.1）。迁移时接口不变：`PanelHost` / `HostView` / `Frame` / `UiOut` 原样使用，只把「原型的 `ViewportHost`（自有 `queue.submit`）」替换为「`RenderViewports` 生成 `GraphicsCommand` + `RenderPipeline::present` 执行 + `bind_attachment_to_egui` 回传 `TextureId`」。原型的阶段/面板 API 是生产的预演，不是另一套架构。
 
 ### 4.4 多 pass 安全与重绘
 
@@ -859,7 +859,7 @@ cd prototypes/editor-ui && cargo test && cargo run   # 手动窗口 smoke
 | `editor-components-prototype`（`Frame`/`UiOut`/面板/组件） | **`kairos_editor_component`（独立 crate）** | 已建（2026-11-12） | 已有 `Panel`/`PanelRegistry`/`PanelHost`/`TabViewer` 适配 + `Frame`/`UiOut`/`HostView` + `panels/` 内置面板（先迁 demo 面板，真面板按 P1 逐页迁）；L2：读 core + 用 widget kit，不依赖 host（`kairos_editor_app`）、不做 IO；cargo 强制边界。 |
 | `ui-widgets-prototype` | **`kairos_editor_widgets`** | 已存在（workspace 成员，骨架 `theme.rs`） | L0/L1：只依赖 egui + `kairos_color`；widget 里出现领域类型即编译失败 |
 | `editor-viewport-prototype` | **`kairos_editor_app` 的 host 侧 viewport 模块**（`ViewportHost`；将来若值得再独立成 crate） | 未建 | 唯一封装 wgpu/离屏渲染的 UI 侧模块；UI crate 不依赖它 |
-| `editor-app-prototype` | **`kairos_editor_app`** | 已存在（骨架，当前用 eframe 脚手架） | 组合根 + 帧阶段 + EffectExecutor + ViewportHost + 事件循环/窗口。生产接管 winit/wgpu 循环，eframe 只属于原型（见下） |
+| `editor-app-prototype` | **`kairos_editor_app`** | 已迁移到引擎循环（2026-11-16） | 组合根 + 帧阶段 + EffectExecutor + ViewportHost。**循环在引擎里**（`kairos_engine::runtime::EngineRunner`），app 只是它的一个 `Layer`（egui pass 在 app 自己的 `src/host.rs`）；eframe 已移出依赖图（见下） |
 | 原型 `PanelHost` 的四槽布局（Left/Center/Right/Bottom + tab） | **`kairos_editor_docking`** 的 DockState/dock 控件（最终替身） | 已存在（`DockState<Id>` + `TabViewer` + `Docker` 单入口；app 侧 `PanelHost` 已接线） | 四槽是原型的**最小替身**，用于先证明面板 API；最终 `PanelHost` 内部把四槽换成 docking 的 `DockState<PanelInstanceId>`。docking 只负责渲染/拖拽；tab 内容由 app 的 `TabViewer`（`PanelHost`）提供，**open/focus 意图在 `kairos_editor_core::LayoutState`，布局树在 app `DockState` 并可序列化** |
 | 旧 `kairos_editor`（Drawer/`ui::Context`） | 最终收缩为 runtime/engine 胶水并退役 | 现有 | 迁移完成前保留；不再接新功能（rewrite-plan §0「旧 UI 冻结」） |
 

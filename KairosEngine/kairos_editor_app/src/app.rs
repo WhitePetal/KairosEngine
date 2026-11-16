@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use eframe::egui;
 use kairos_editor_component::{
     ConsoleLine, ConsoleLog, Frame, HostView, PanelHost, PanelInstanceId, PanelRegistry, UiOut,
     panels, toolbar::ToolBar,
@@ -23,8 +22,9 @@ use crate::effects::EffectExecutor;
 /// owns it. It is not in `EditorState` because it is a host stream, not
 /// serializable state.
 ///
-/// The engine is the other: the shell hosts it, ticks it once per redraw, and
-/// the Profiler panel borrows its recorder through `HostView::profiler`.
+/// The engine is the other, but the app does not own it: the engine's loop
+/// (`kairos_engine::runtime`) does, and borrows it into each UI pass. A frame
+/// sees it through [`HostScope`], which is the `HostView` handed to the panels.
 /// `kairos_profile` has no process-global recorder, so the engine owns the one
 /// this process uses; the app never creates a second.
 struct AppHost {
@@ -32,31 +32,37 @@ struct AppHost {
     /// Keeps the console attached to the process logger; dropping the app
     /// detaches the sink.
     _console_sink: SinkHandle,
-    /// The runtime this shell drives. `Engine::update` opens the game frame
-    /// (and flushes the previous one), so frames come from the engine loop, not
-    /// from egui's repaint schedule.
-    engine: Engine,
 }
 
 impl AppHost {
-    fn new(engine: Engine) -> Self {
+    fn new() -> Self {
         let console = Arc::new(ConsoleLog::new());
         let console_sink = kairos_log::attach(console.clone());
         Self {
             console,
             _console_sink: console_sink,
-            engine,
         }
     }
 }
 
-impl HostView for AppHost {
+/// The `HostView` one UI pass hands to the panels: the host's console history
+/// plus the loop's engine recorder.
+///
+/// A separate short-lived value rather than a field on the app, because the
+/// engine belongs to the loop, not to the app — this is where that borrow is
+/// bounded.
+struct HostScope<'a> {
+    console: Arc<ConsoleLog>,
+    profiler: Option<&'a Profiler>,
+}
+
+impl HostView for HostScope<'_> {
     fn console_lines(&self, f: &mut dyn FnMut(&[ConsoleLine])) {
         self.console.with_lines(f);
     }
 
     fn profiler(&self) -> Option<&Profiler> {
-        Some(self.engine.profiler())
+        self.profiler
     }
 }
 
@@ -98,12 +104,14 @@ pub struct EditorApp {
 }
 
 impl EditorApp {
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        // egui's async image loaders back every runtime UI image: icons are
-        // plain files under `Preferences/Textures` and panels start loading
-        // them in `Panel::init`, not here.
-        egui_extras::install_image_loaders(&cc.egui_ctx);
-        if let Err(error) = kairos_editor_widgets::fonts::install(&cc.egui_ctx) {
+    /// Builds the app on an existing egui context.
+    ///
+    /// The context comes from the engine's egui layer
+    /// (`kairos_editor_egui::EguiLayer`), which owns it, installs the image
+    /// loaders and wires the repaint callback. The engine belongs to the loop
+    /// and is not passed here; it arrives with every UI pass.
+    pub fn new(egui_ctx: &egui::Context) -> Self {
+        if let Err(error) = kairos_editor_widgets::fonts::install(egui_ctx) {
             kairos_log::warn!(target: "kairos_editor", "UI fonts: {error}");
         }
 
@@ -122,26 +130,11 @@ impl EditorApp {
         }
 
         let mut host = PanelHost::new(registry);
-        host.sync(&state.layout, &cc.egui_ctx);
+        host.sync(&state.layout, egui_ctx);
         let dock = default_dock(&host);
 
-        // The engine is the runtime this shell hosts: it owns the profiling
-        // recorder and opens the frame in `Engine::update`. A machine without an
-        // audio device still gets a working editor — the engine's headless shape
-        // is the same world bootstrap minus the audio driver.
-        let engine = match Engine::new() {
-            Ok(engine) => engine,
-            Err(error) => {
-                kairos_log::warn!(
-                    target: "kairos_editor",
-                    "engine boot failed ({error}); continuing headless"
-                );
-                Engine::headless()
-            }
-        };
-        let host_view = AppHost::new(engine);
-
-        let tool_bar = ToolBar::new(&cc.egui_ctx);
+        let host_view = AppHost::new();
+        let tool_bar = ToolBar::new(egui_ctx);
 
         // Reaches stderr, the run log and the console sink attached above.
         kairos_log::info!(target: "kairos_editor", "editor booted");
@@ -214,25 +207,22 @@ fn describe(action: &Action) -> String {
 }
 
 impl EditorApp {
-    /// One frame, independent of the window backend (also used by smoke tests).
+    /// One UI pass, independent of the window backend (also used by smoke tests).
     ///
-    /// **The engine owns the frame boundary.** `Engine::update` flushes the
-    /// previous game frame and opens the next one; the UI pass drawn after it
-    /// belongs to that same frame. egui can run the pass more than once for a
-    /// multi-pass layout, but the game frame must tick exactly once per redraw,
-    /// hence the `current_pass_index() == 0` guard.
+    /// **The frame boundary is not here.** `kairos_engine::runtime::EngineRunner`
+    /// ticks the engine once per redraw, before calling the layer; the pass this
+    /// function draws belongs to the frame the loop just opened. So multi-pass
+    /// egui layouts need no guard: the engine never ticks twice.
     ///
-    /// `Profiler::end_frame` still carries egui's discard decision — for a
-    /// second pass it is the committed one, so the frame is kept.
+    /// `Profiler::end_frame` carries egui's discard decision — a discarded pass
+    /// must not store the frame, and for a second pass the committed one wins.
     ///
-    /// A frame is a host-loop iteration, not an input event: while recording,
-    /// the app asks egui for the next repaint immediately, so an editor left
-    /// alone keeps producing frames (and engine ticks) at the display rate.
-    fn ui(&mut self, ui: &mut egui::Ui) {
-        if ui.ctx().current_pass_index() == 0 {
-            self.host_view.engine.update();
-        }
-
+    /// The app asks egui for the next repaint immediately: an editor left alone
+    /// keeps producing frames at the display rate. That is also what keeps the
+    /// engine's wall-clock `Time` in step with the loop — the engine samples its
+    /// own delta in `First`, so it only needs the frames to keep coming, never a
+    /// timestamp handed in by the host.
+    pub(crate) fn ui(&mut self, engine: &Engine, ui: &mut egui::Ui) {
         let committed = {
             kairos_profile::scope!("Kairos.Editor.Frame");
 
@@ -246,11 +236,16 @@ impl EditorApp {
             // Capture is host policy: keep it tied to the visible Profiler tab
             // so closing the tab cannot leave the recorder running with no
             // control surface. Frames already captured stay in the store.
-            if !self.state.layout.is_open(panels::PROFILER)
-                && self.host_view.engine.profiler().is_recording()
-            {
-                self.host_view.engine.profiler().set_recording(false);
+            if !self.state.layout.is_open(panels::PROFILER) && engine.profiler().is_recording() {
+                engine.profiler().set_recording(false);
             }
+
+            // Built before the destructure below: it borrows the engine, not the
+            // app, so the dock pass can still take `self` apart by field.
+            let host_scope = HostScope {
+                console: self.host_view.console.clone(),
+                profiler: Some(engine.profiler()),
+            };
 
             {
                 kairos_profile::scope!("Kairos.Editor.Dock");
@@ -258,11 +253,10 @@ impl EditorApp {
                     state,
                     host,
                     dock,
-                    host_view,
                     tool_bar,
                     ..
                 } = self;
-                let frame = Frame::with_host(state, &*host_view);
+                let frame = Frame::with_host(state, &host_scope);
                 tool_bar.ui(ui, &frame, &mut out);
                 let mut viewer = host.viewer(&mut out, frame);
                 Docker::new("kairos_editor_docker", dock).show(ui, &mut viewer);
@@ -278,19 +272,13 @@ impl EditorApp {
             !ui.ctx().will_discard()
         };
 
-        self.host_view.engine.profiler().end_frame(committed);
+        engine.profiler().end_frame(committed);
 
-        if self.host_view.engine.profiler().is_recording() {
-            // Keep the host loop turning so the engine keeps ticking (and thus
-            // recording) even when the window receives no input.
-            ui.ctx().request_repaint();
-        }
-    }
-}
-
-impl eframe::App for EditorApp {
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        self.ui(ui);
+        // Keep the host loop turning whether or not the window receives input:
+        // an idle editor must still produce frames (and, when the Profiler tab
+        // is recording, record). This is the whole of the frame-pacing policy
+        // for now — repaint every frame, capped by vsync.
+        ui.ctx().request_repaint();
     }
 }
 
@@ -336,7 +324,7 @@ mod tests {
             state,
             host,
             dock,
-            host_view: AppHost::new(Engine::headless()),
+            host_view: AppHost::new(),
             tool_bar,
             pending_effects: Vec::new(),
         }
@@ -353,9 +341,10 @@ mod tests {
     fn draw_pipeline_runs_end_to_end() {
         let _guard = UI_LOCK.lock().unwrap_or_else(|error| error.into_inner());
         let mut app = build();
+        let engine = Engine::headless();
         let ctx = egui::Context::default();
 
-        let _ = ctx.run_ui(raw_input(), |ui| app.ui(ui));
+        let _ = ctx.run_ui(raw_input(), |ui| app.ui(&engine, ui));
 
         assert_eq!(app.host.ids().count(), 5);
         assert_eq!(app.dock.tabs().len(), 5);
@@ -365,15 +354,18 @@ mod tests {
     fn editor_frames_are_captured_when_recording() {
         let _guard = UI_LOCK.lock().unwrap_or_else(|error| error.into_inner());
         let mut app = build();
-        app.host_view.engine.profiler().set_recording(true);
+        let mut engine = Engine::headless();
+        engine.profiler().set_recording(true);
 
         let ctx = egui::Context::default();
-        // Frame 1 is recorded by the engine tick on the first pass; the tick on
-        // the second pass flushes it into the store.
-        let _ = ctx.run_ui(raw_input(), |ui| app.ui(ui));
-        let _ = ctx.run_ui(raw_input(), |ui| app.ui(ui));
+        // The loop ticks the engine and then draws: `update` opens the frame,
+        // the UI pass below belongs to it, and the next `update` flushes it
+        // into the store.
+        engine.update();
+        let _ = ctx.run_ui(raw_input(), |ui| app.ui(&engine, ui));
+        engine.update();
 
-        let profiler = app.host_view.engine.profiler();
+        let profiler = engine.profiler();
         let session = profiler.session();
         assert!(
             !session.frames.is_empty(),
@@ -402,8 +394,8 @@ mod tests {
             "the UI pass belongs to the same engine frame"
         );
 
-        app.host_view.engine.profiler().set_recording(false);
-        app.host_view.engine.profiler().clear();
+        engine.profiler().set_recording(false);
+        engine.profiler().clear();
     }
 
     #[test]
@@ -441,16 +433,25 @@ mod tests {
 
     #[test]
     fn host_view_exposes_the_engine_profiler() {
-        let host = AppHost::new(Engine::headless());
+        let engine = Engine::headless();
+        let host = AppHost::new();
+        let scope = HostScope {
+            console: host.console.clone(),
+            profiler: Some(engine.profiler()),
+        };
         assert!(
-            host.profiler().is_some(),
-            "the shell borrows the engine's recorder"
+            scope.profiler().is_some(),
+            "the pass borrows the loop engine's recorder"
         );
     }
 
     #[test]
     fn host_view_exposes_the_console_history() {
-        let host = AppHost::new(Engine::headless());
+        let host = AppHost::new();
+        let scope = HostScope {
+            console: host.console.clone(),
+            profiler: None,
+        };
         host.console.push(&kairos_log::Record::new(
             kairos_log::Level::Info,
             "test",
@@ -458,7 +459,7 @@ mod tests {
         ));
 
         let mut seen = Vec::new();
-        host.console_lines(&mut |lines| seen = lines.to_vec());
+        scope.console_lines(&mut |lines| seen = lines.to_vec());
 
         assert_eq!(seen.len(), 1);
         assert_eq!(seen[0].message, "hello console");
@@ -469,39 +470,40 @@ mod tests {
     fn closing_the_profiler_tab_stops_recording() {
         let _guard = UI_LOCK.lock().unwrap_or_else(|error| error.into_inner());
         let mut app = build();
-        app.host_view.engine.profiler().set_recording(true);
+        let engine = Engine::headless();
+        engine.profiler().set_recording(true);
 
         let ctx = egui::Context::default();
-        let _ = ctx.run_ui(raw_input(), |ui| app.ui(ui));
+        let _ = ctx.run_ui(raw_input(), |ui| app.ui(&engine, ui));
         assert!(
-            app.host_view.engine.profiler().is_recording(),
+            engine.profiler().is_recording(),
             "the first pass starts the capture"
         );
 
         app.state.layout.close(panels::PROFILER);
-        let _ = ctx.run_ui(raw_input(), |ui| app.ui(ui));
+        let _ = ctx.run_ui(raw_input(), |ui| app.ui(&engine, ui));
 
         assert!(
-            !app.host_view.engine.profiler().is_recording(),
+            !engine.profiler().is_recording(),
             "closing the Profiler tab stops the host capture"
         );
-        app.host_view.engine.profiler().clear();
+        engine.profiler().clear();
     }
 
     #[test]
     fn scene_panel_can_be_detached_into_a_window() {
         let mut app = build();
         let id = app.host.id_of(panels::SCENE).expect("scene instance");
+        let engine = Engine::headless();
+        let host_scope = HostScope {
+            console: app.host_view.console.clone(),
+            profiler: Some(engine.profiler()),
+        };
 
         let mut out = UiOut::new();
         {
-            let EditorApp {
-                state,
-                host,
-                host_view,
-                ..
-            } = &mut app;
-            let frame = Frame::with_host(state, &*host_view);
+            let EditorApp { state, host, .. } = &mut app;
+            let frame = Frame::with_host(state, &host_scope);
             let mut viewer = host.viewer(&mut out, frame);
             assert!(
                 viewer.allowed_in_windows(id),

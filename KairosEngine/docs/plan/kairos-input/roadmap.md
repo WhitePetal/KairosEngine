@@ -59,7 +59,7 @@ winit EventLoop（OS 原始事件）
 
 | bevy 环节 | kairos 现状 |
 |---|---|
-| `bevy_winit` 事件泵 → 消息 | **不存在**。winit 的 `ApplicationHandler` 是 `KairosEditorRuntime`（`kairos_editor/runtime.rs:475`），事件直接进 `Engine.input_engine` 字段 |
+| `bevy_winit` 事件泵 → 消息 | **不存在**。winit 的 `ApplicationHandler` 是 `kairos_engine::runtime::EngineRunner`（`kairos_engine/src/runtime.rs`）：事件先给 `Layer`（egui），`EventOutcome::consumed == false` 才转发进 `Engine.input_engine` 字段；没有消息，也没有资源 |
 | `Messages` 接线 | **完全没有**。`kairos_ecs::message` 全套机制都在（`MessageRegistry` / `message_update_system` / `MessageUpdateSystems`），但全仓库无 `add_message`、无 `register_message`、无处挂载 |
 | `ButtonInput<KeyCode>` 资源 | **不存在**。`Engine.input_engine: InputEngine` 是普通结构体字段，不是 World resource |
 | `InputSystems` 消费层 | **不存在** |
@@ -96,7 +96,7 @@ winit EventLoop（OS 原始事件）
 ## 2. 目标架构（落地后的形态）
 
 ```
-【engine 侧】winit 事件循环 —— KairosEditorRuntime::window_event (runtime.rs:505)
+【engine 侧】winit 事件循环 —— EngineRunner::window_event (kairos_engine/src/runtime.rs)
 
   1.  egui 先看：let response = egui_state.on_window_event(&window, &event)
       runtime.rs:519-524 今天只读了 response.repaint，丢掉了 response.consumed

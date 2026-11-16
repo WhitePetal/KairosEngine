@@ -12,14 +12,14 @@ unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)", "cfg(docsrs_dep)
 
 [dependencies]
 egui = "0.35.0"
-eframe = { version = "=0.35.0", default-features = false, features = [
-    "accesskit",
-    "default_fonts",
-    "wgpu",
-] }
-# Runtime image loading for editor UI assets (icons are files under
-# `Preferences/Textures`, loaded at panel init; no `include_bytes!`).
+# The app's own egui pass on the engine's loop (src/host.rs): raw input,
+# tessellation and the egui render-graph node. The engine owns the loop.
+egui-winit = "0.35.0"
+egui-wgpu = "0.35.0"
 egui_extras = { version = "0.35.0", default-features = false, features = ["file", "image"] }
+epaint = "0.35.0"
+# The window type the runtime config needs (size, min size, icon).
+winit = { version = "0.30", features = ["android-native-activity"] }
 
 kairos_editor_widgets = { path = "../kairos_editor_widgets" }
 kairos_editor_docking = { path = "../kairos_editor_docking" }
@@ -27,8 +27,8 @@ kairos_editor_component = { path = "../kairos_editor_component" }
 kairos_log = { path = "../kairos_log" }
 # The `Profiler` type in the `HostView` seam; the engine owns the recorder.
 kairos_profile = { path = "../kairos_profile" }
-# The shell hosts the engine: it ticks the runtime and borrows its profiling
-# recorder instead of creating a second one.
+# The shell hosts an engine: the loop owns it and hands it to each pass, so the
+# Profiler panel borrows the engine's recorder instead of creating a second one.
 kairos_engine = { path = "../kairos_engine" }
 kairos_editor_core = { path = "../kairos_editor_core" }
 image = "0.25.10"

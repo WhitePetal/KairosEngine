@@ -3,10 +3,11 @@ name = "kairos_editor"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-# The editor is a host/authoring tool built on top of `kairos_engine`, not an
-# engine subsystem. It owns the window, the UI, and the project browser; the
-# engine owns the ECS, rendering, physics, and audio it drives.
-description = "The Kairos editor: the host and authoring tool built on the Kairos engine"
+# The editor is the authoring layer on `kairos_engine`, not an engine
+# subsystem. It owns the UI, the panels and the project browser; the engine owns
+# the window, the frame loop, the ECS, rendering, physics and audio. The editor
+# plugs into the loop through `kairos_engine::runtime::Layer`.
+description = "The Kairos editor: the authoring layer on the Kairos engine's frame loop"
 # default-run = "kairos_editor"
 
 [features]
@@ -49,12 +50,13 @@ strum = { version = "0.26", features = ["derive"] }
 duplicate = "2.0"
 paste = "1.0"
 image = { version = "0.25.10", features = ["rayon", "serde", "png"] }
-wgpu = { version = "29.0.3", features = ["serde"] }
 pollster = "0.3"
 egui = "0.35.0"
 egui_extras = { version = "0.35.0", features = ["all_loaders", "datepicker", "syntect"] }
 emath = "0.35.0"
 epaint = "0.35.0"
+# The legacy host's own egui pass (see src/host.rs); not shared with
+# `kairos_editor_app`, which owns the same code for good.
 egui-winit = "0.35.0"
 egui-wgpu = "0.35.0"
 parking_lot = "0.12.5"

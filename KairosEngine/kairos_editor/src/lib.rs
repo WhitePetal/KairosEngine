@@ -3,7 +3,6 @@ use kairos_ecs::world::World;
 use kairos_engine::{
     Engine, graphics::graphics_graph::GraphicsCommand, kairos_game::KairosGame, log::Log,
 };
-use winit::event::KeyEvent;
 
 pub mod asset_registry;
 pub mod camera;
@@ -11,9 +10,10 @@ mod color;
 pub mod consts;
 pub mod dialog;
 pub mod editor_assets;
+/// The editor's half of the engine's frame loop: egui state and the UI pass.
+pub mod host;
 pub mod project_path_tree;
 pub mod project_watcher;
-pub mod runtime;
 pub mod syntax;
 pub mod ui;
 
@@ -25,25 +25,35 @@ pub mod ui;
 /// recorder; this variable only decides when the host starts it.
 const PROFILE_ENV: &str = "KAIROS_PROFILE";
 
+/// The editor's authoring state: the panel tree, the UI context, and the log.
+///
+/// The engine is deliberately *not* held here. The host loop
+/// (`kairos_engine::runtime::EngineRunner`) owns the engine and the frame
+/// boundary; the editor only borrows the engine while it draws. That keeps the
+/// editor a layer on the engine's loop rather than a second loop of its own.
 pub struct Editor {
-    engine: Engine,
     ui_context: ui::Context,
     log: Log,
 }
 
 impl Editor {
-    pub fn new(egui_ctx: &egui::Context) -> Result<Self, Box<dyn std::error::Error>> {
-        let mut engine = Engine::new()?;
+    /// Builds the editor on an already-booted engine.
+    ///
+    /// This is where the editor's own install and the game assembly run:
+    /// "bootstrap, then the host's additions, then assembly". The engine must
+    /// be fully constructed — see [`install`] for the ordering precondition.
+    pub fn new(
+        egui_ctx: &egui::Context,
+        engine: &mut Engine,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         // The editor's own assets and camera go on immediately after the engine
-        // rails are booted, and before the game is assembled on top. The order
-        // reads "bootstrap, then the host's additions, then assembly" — see
-        // [`install`] for why the editor owns this step rather than `Engine`.
+        // rails are booted, and before the game is assembled on top.
         install(&mut engine.world);
         // The game is a stateless assembly entry: its `new` spawns the demo
         // scene and registers the drifting-listener system into the engine's
         // rails. The value it returns is not kept — per-frame work rides the
         // schedule now.
-        let _ = KairosGame::new(&mut engine);
+        let _ = KairosGame::new(engine);
 
         if std::env::var_os(PROFILE_ENV).is_some() {
             engine.profiler().set_recording(true);
@@ -53,39 +63,25 @@ impl Editor {
             );
         }
 
-        let ui_context = ui::Context::new(egui_ctx)?;
-        let log = Log::new();
         Ok(Self {
-            engine,
-            ui_context,
-            log,
+            ui_context: ui::Context::new(egui_ctx)?,
+            log: Log::new(),
         })
     }
 
-    fn update_keyboard_input(&mut self, event: KeyEvent) {
-        self.engine.input_engine.update_keyboard_input(event)
+    pub(crate) fn handle_ui(&mut self, engine: &mut Engine, ui: &mut egui::Ui) {
+        self.ui_context.handle(engine, ui);
     }
 
-    fn update(&mut self) {
-        // Frame start: the game's per-frame work (the drifting listener, the
-        // audio driver) is scheduled into the rails, so driving the rails *is*
-        // the frame — there is no second hand-driven step.
-        self.engine.update();
-    }
-
-    fn handle_ui(&mut self, ui: &mut egui::Ui) {
-        self.ui_context.handle(&mut self.engine, ui);
-    }
-
-    fn draw_ui(&mut self, ui: &mut egui::Ui) {
+    pub(crate) fn draw_ui(&mut self, engine: &Engine, ui: &mut egui::Ui) {
         let mut visuals = Visuals::dark();
         visuals.button_frame = true;
         ui.set_visuals(visuals);
-        self.ui_context.darw(ui, &self.engine, &mut self.log);
+        self.ui_context.darw(ui, engine, &mut self.log);
     }
 
-    fn render_ui(&mut self) -> Vec<GraphicsCommand> {
-        self.ui_context.render(&mut self.engine)
+    pub(crate) fn render_ui(&mut self, engine: &mut Engine) -> Vec<GraphicsCommand> {
+        self.ui_context.render(engine)
     }
 
     /// Stop profiling and write the capture, if this run recorded anything.
@@ -93,8 +89,8 @@ impl Editor {
     /// `flush` hands the last (still open) engine frame to the sink, because the
     /// next `Engine::update` — the normal flush point — never comes. The three
     /// files land under `Library/Profiler`; their exact paths are logged.
-    fn on_exit(&mut self) {
-        let profiler = self.engine.profiler();
+    pub(crate) fn on_exit(&self, engine: &Engine) {
+        let profiler = engine.profiler();
 
         profiler.flush();
         profiler.set_recording(false);
@@ -125,8 +121,8 @@ impl Editor {
 /// # Exactly once
 ///
 /// Must be called exactly once, after [`Engine::new`] — the one caller is
-/// `Editor::new`, which installs after `Engine::new()?` and before
-/// `KairosGame::new`. There is deliberately no idempotency guard: a second call
+/// `Editor::new`, which runs on the engine the host loop already built and
+/// installs before `KairosGame::new`. There is deliberately no idempotency guard: a second call
 /// would register a second loader and system over the first, silently
 /// corrupting the world rather than panicking. The sole caller is known, so a
 /// marker resource is not worth it.

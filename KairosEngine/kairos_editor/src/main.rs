@@ -1,8 +1,6 @@
-use kairos_editor::{
-    dialog,
-    runtime::{EditorRuntime, EditorRuntimeEvent},
-};
-use winit::event_loop::EventLoop;
+use kairos_editor::{consts, dialog, host};
+use kairos_engine::{Engine, kairos_settings::EngineSettings, runtime::RuntimeConfig};
+use winit::dpi::LogicalSize;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -11,18 +9,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     )
     .init();
 
-    // --- Windowed (normal editor) mode ---
-    let event_loop = EventLoop::<EditorRuntimeEvent>::with_user_event().build()?;
-    let proxy = event_loop.create_proxy();
-    let mut runtime = EditorRuntime::new(proxy.clone()).unwrap_or_else(|error| {
+    let settings = EngineSettings::load()?;
+
+    let engine = Engine::new().unwrap_or_else(|error| {
         dialog::error_message_window(
             "Init Failed",
-            &format!("new MainEditorWindow struct Failed:\n {}", error),
+            &format!("creating the engine failed:\n{error}"),
         );
-        panic!("new MainEditorWindow Failed: {}", error);
+        panic!("creating the engine failed: {error}");
     });
 
-    event_loop.run_app(&mut runtime)?;
+    // The engine's loop owns the window, the swapchain and the frame boundary;
+    // the editor is a layer on top of it. `run` never returns while the loop is
+    // alive.
+    let config = RuntimeConfig {
+        title: format!("{} {}", consts::APP_NAME, consts::VERSION),
+        size: LogicalSize::new(800.0, 600.0),
+        min_size: None,
+        icon: host::load_icon(),
+        texture_compression: settings.texture_compression,
+    };
+
+    if let Err(error) = kairos_engine::runtime::run(engine, config, host::EditorLayer::new) {
+        dialog::error_message_window(
+            "Init Failed",
+            &format!("the editor runtime failed:\n{error}"),
+        );
+        return Err(error);
+    }
 
     Ok(())
 }

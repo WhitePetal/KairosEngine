@@ -29,7 +29,13 @@ winit = { version = "0.30", features = ["android-native-activity"] }
 env_logger = "0.10"
 log = "0.4"
 serde = "1.0.228"
+# `EngineSettings::load` reads the project's toml settings file.
+toml = "1.1.2"
 pollster = "0.3"
+# The frame loop in `runtime` matches on surface acquisition errors
+# (`CurrentSurfaceTexture`) directly; everything else goes through
+# `kairos_graphics`.
+wgpu = "29.0.3"
 half = { version = "2.4", features = ["bytemuck"] }
 kairos_ecs = { path = "../kairos_ecs" }
 kairos_asset = { path = "../kairos_asset" }

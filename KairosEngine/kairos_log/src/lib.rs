@@ -58,4 +58,4 @@ pub use sink::{Sink, SinkHandle, attach};
 
 // The three entry macros. Re-exported from `log` so call sites share the same
 // facade the rest of the workspace already uses.
-pub use log::{error, info, warn};
+pub use log::{debug, error, info, warn};

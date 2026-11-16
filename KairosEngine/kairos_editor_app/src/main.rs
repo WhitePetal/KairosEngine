@@ -7,25 +7,29 @@
 //! in `kairos_editor_core`; this crate has no panel impls and no headless core
 //! of its own.
 //!
-//! eframe is still the window backend while the production winit/wgpu event
-//! loop is prepared; switching it does not change panel/dock APIs.
-//!
-//! The shell also hosts an [`kairos_engine::Engine`]: it ticks it once per
-//! redraw, and the Profiler panel borrows the engine's recorder through
-//! `HostView::profiler`. There is no second recorder in this process.
-
-use egui::IconData;
+//! The window, the swapchain and the frame loop are the engine's
+//! (`kairos_engine::runtime`). This crate is one `Layer` on that loop: it draws
+//! panels and nothing else. The shell borrows the loop's engine for the
+//! Profiler panel — there is no second recorder in this process.
 
 mod app;
 mod consts;
 mod effects;
+mod host;
 mod paths;
 
-fn main() -> eframe::Result<()> {
+use kairos_engine::{
+    Engine,
+    kairos_settings::EngineSettings,
+    runtime::{RuntimeConfig, run},
+};
+use winit::dpi::LogicalSize;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     // One process logger for the whole run: stderr plus
-    // `Library/Logs/KairosEngine.log` by default. `EditorApp` attaches the
-    // Console panel sink when it is constructed; the guard flushes the file on
-    // exit, so it must outlive the event loop.
+    // `Library/Logs/KairosEngine.log` by default. The app attaches the Console
+    // panel sink when it is constructed; the guard flushes the file on exit, so
+    // it must outlive the event loop.
     let _log = match kairos_log::init() {
         Ok(guard) => Some(guard),
         Err(error) => {
@@ -36,35 +40,38 @@ fn main() -> eframe::Result<()> {
 
     kairos_log::info!(target: "kairos_editor", "editor starting");
 
-    let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_inner_size([1280.0, 820.0])
-            .with_min_inner_size([960.0, 600.0])
-            .with_title(format!("{} {}", consts::APP_NAME, consts::VERSION))
-            .with_icon(load_icon()),
-        ..Default::default()
+    let settings = EngineSettings::load()?;
+
+    // The shell hosts an engine; a machine without an audio device still gets a
+    // working editor, so a failed boot falls back to the headless shape.
+    let engine = match Engine::new() {
+        Ok(engine) => engine,
+        Err(error) => {
+            kairos_log::warn!(
+                target: "kairos_editor",
+                "engine boot failed ({error}); continuing headless"
+            );
+            Engine::headless()
+        }
     };
 
-    eframe::run_native(
-        consts::APP_NAME,
-        options,
-        Box::new(|cc| Ok(Box::new(app::EditorApp::new(cc)))),
-    )
+    let config = RuntimeConfig {
+        title: format!("{} {}", consts::APP_NAME, consts::VERSION),
+        size: LogicalSize::new(1280.0, 820.0),
+        min_size: Some(LogicalSize::new(960.0, 600.0)),
+        icon: load_icon(),
+        texture_compression: settings.texture_compression,
+    };
+
+    run(engine, config, |_engine, proxy| {
+        host::EditorLayer::new(proxy)
+    })
 }
 
-fn load_icon() -> IconData {
-    if let Ok(rgba) = std::fs::read(paths::PATH_ENGINE_ICON) {
-        if let Ok(image) = image::load_from_memory(&rgba) {
-            let image = image.into_rgba8();
-            IconData {
-                rgba: image.to_vec(),
-                width: image.width(),
-                height: image.height(),
-            }
-        } else {
-            IconData::default()
-        }
-    } else {
-        IconData::default()
-    }
+fn load_icon() -> Option<winit::window::Icon> {
+    let bytes = std::fs::read(paths::PATH_ENGINE_ICON).ok()?;
+    let image = image::load_from_memory(&bytes).ok()?.into_rgba8();
+    let (width, height) = image.dimensions();
+
+    winit::window::Icon::from_rgba(image.into_raw(), width, height).ok()
 }
