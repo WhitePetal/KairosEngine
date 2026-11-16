@@ -17,6 +17,14 @@ pub mod runtime;
 pub mod syntax;
 pub mod ui;
 
+/// Environment variable that starts a profiling capture for this run.
+///
+/// This is the development-build switch before the editor has a Profiler panel:
+/// set `KAIROS_PROFILE=1`, run the editor, then read the capture written under
+/// [`kairos_profile::DEFAULT_CAPTURE_DIR`] on exit. The engine owns the
+/// recorder; this variable only decides when the host starts it.
+const PROFILE_ENV: &str = "KAIROS_PROFILE";
+
 pub struct Editor {
     engine: Engine,
     ui_context: ui::Context,
@@ -36,6 +44,15 @@ impl Editor {
         // rails. The value it returns is not kept — per-frame work rides the
         // schedule now.
         let _ = KairosGame::new(&mut engine);
+
+        if std::env::var_os(PROFILE_ENV).is_some() {
+            engine.profiler().set_recording(true);
+            log::info!(
+                "profiling this run; the capture is written to {}/ when the editor exits",
+                kairos_profile::DEFAULT_CAPTURE_DIR
+            );
+        }
+
         let ui_context = ui::Context::new(egui_ctx)?;
         let log = Log::new();
         Ok(Self {
@@ -71,9 +88,24 @@ impl Editor {
         self.ui_context.render(&mut self.engine)
     }
 
+    /// Stop profiling and write the capture, if this run recorded anything.
+    ///
+    /// `flush` hands the last (still open) engine frame to the sink, because the
+    /// next `Engine::update` — the normal flush point — never comes. The three
+    /// files land under `Library/Profiler`; their exact paths are logged.
     fn on_exit(&mut self) {
-        // TODO!
-        // self.engine.world.clear();
+        let profiler = self.engine.profiler();
+
+        profiler.flush();
+        profiler.set_recording(false);
+        if profiler.session().is_empty() {
+            return;
+        }
+
+        match profiler.save_capture(kairos_profile::DEFAULT_CAPTURE_DIR) {
+            Ok(files) => log::info!("profiler capture saved: {}", files.json.display()),
+            Err(error) => log::error!("saving the profiler capture failed: {error}"),
+        }
     }
 }
 

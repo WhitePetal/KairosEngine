@@ -2840,6 +2840,7 @@ dependencies = [
  "kairos_collections",
  "kairos_ecs",
  "kairos_engine",
+ "kairos_profile",
  "kairos_tasks",
  "kairos_transform",
  "kira",
@@ -2878,6 +2879,7 @@ dependencies = [
  "kairos_editor_core",
  "kairos_editor_docking",
  "kairos_editor_widgets",
+ "kairos_engine",
  "kairos_log",
  "kairos_profile",
 ]
@@ -2933,6 +2935,7 @@ dependencies = [
  "kairos_graphics",
  "kairos_math",
  "kairos_physics",
+ "kairos_profile",
  "kairos_tasks",
  "kairos_time",
  "kairos_transform",
@@ -3026,7 +3029,9 @@ dependencies = [
 name = "kairos_profile"
 version = "0.1.0"
 dependencies = [
+ "jiff",
  "profiling",
+ "puffin",
  "serde",
  "serde_json",
 ]
@@ -3266,6 +3271,12 @@ checksum = "0fae87c125b03c1d2c0150c90365d7d6bcc53fb73a9acaef207d2d065860f062"
 dependencies = [
  "imgref",
 ]
+
+[[package]]
+name = "lz4_flex"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7ef0d4ed8669f8f8826eb00dc878084aa8f253506c4fd5e8f58f5bce72ddb97e"
 
 [[package]]
 name = "mach2"
@@ -4614,10 +4625,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "84b514d95a258be801fde8a1ff1c974f4a4841d9750f5d1d6690fc07a5ad4049"
 dependencies = [
  "anyhow",
+ "bincode",
  "byteorder",
  "cfg-if",
  "itertools 0.14.0",
+ "lz4_flex",
  "parking_lot",
+ "serde",
 ]
 
 [[package]]

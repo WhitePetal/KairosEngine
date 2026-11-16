@@ -10,6 +10,11 @@
 //! * **Raw** — pre-order samples per thread with depth indentation;
 //! * **JSON** — the serialized frame + marker table, copyable.
 //!
+//! **Save** writes the whole capture through [`Profiler::save_capture`] and
+//! shows the absolute paths it wrote: `.json` (this crate's schema), `.trace.json`
+//! (Perfetto / `chrome://tracing`) and `.puffin` (`puffin_viewer`). The panel
+//! itself performs no IO and knows no file formats.
+//!
 //! There is deliberately no chart, flame graph or timeline yet: part 1 is
 //! "record code as structured data, and show that data". The drawing phase will
 //! reuse [`kairos_profile::hierarchy`] and the same session without changing the
@@ -19,25 +24,21 @@ use std::sync::Arc;
 
 use egui::{Context, Ui, WidgetText};
 use kairos_editor_core::PanelId;
+use kairos_editor_widgets::color::Color32Ext;
+use kairos_editor_widgets::style::{Style, StyleFile};
 use kairos_editor_widgets::ui_image;
 use kairos_profile::{
-    FrameSnapshot, HierarchyRow, ProfileSession, Profiler, ScopeInfo, ThreadSnapshot, hierarchy,
+    CaptureFiles, DEFAULT_CAPTURE_DIR, FrameSnapshot, HierarchyRow, ProfileSession, Profiler,
+    ScopeInfo, ThreadSnapshot, hierarchy,
 };
 
 use crate::frame::{Frame, UiOut};
 use crate::panel::Panel;
+use crate::panels::profiler::style::ProfilerStyle;
 
 use super::PROFILER;
 
-/// Tab-header artwork, loaded as a runtime file in [`Panel::init`].
-const TAB_ICON: &str = "Preferences/Textures/tab_icons/profiler.png";
-
-/// Hard cap on rendered rows. The underlying tree is still complete; this only
-/// keeps a pathological capture from making one frame of UI expensive.
-const MAX_TREE_ROWS: usize = 4_000;
-const MAX_RAW_ROWS: usize = 4_000;
-
-const RECORDING_COLOR: egui::Color32 = egui::Color32::from_rgb(224, 82, 82);
+pub mod style;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum Tab {
@@ -58,6 +59,7 @@ struct CachedFrame {
 }
 
 pub(crate) struct ProfilerPanel {
+    style: ProfilerStyle,
     tab: Tab,
     follow_latest: bool,
     selected_frame: usize,
@@ -67,11 +69,15 @@ pub(crate) struct ProfilerPanel {
     cache_frame: usize,
     cache_thread: Option<u32>,
     cached: Option<CachedFrame>,
+    /// Result of the last Save click: the exact files written, or the error.
+    /// Kept so the panel can show where the capture went.
+    save: Option<Result<CaptureFiles, String>>,
 }
 
 impl Default for ProfilerPanel {
     fn default() -> Self {
         Self {
+            style: ProfilerStyle::dark(),
             tab: Tab::default(),
             follow_latest: true,
             selected_frame: 0,
@@ -80,6 +86,7 @@ impl Default for ProfilerPanel {
             cache_frame: usize::MAX,
             cache_thread: None,
             cached: None,
+            save: None,
         }
     }
 }
@@ -90,11 +97,26 @@ impl Panel for ProfilerPanel {
     }
 
     fn icon(&self) -> Option<&str> {
-        Some(TAB_ICON)
+        Some(&self.style.icons.tab)
     }
 
     fn init(&mut self, ctx: &Context) {
-        ui_image::preload(ctx, TAB_ICON);
+        match StyleFile::<ProfilerStyle>::load_or_default() {
+            Ok(file) => {
+                self.style = if ctx.theme() == egui::Theme::Light {
+                    file.light
+                } else {
+                    file.dark
+                };
+            }
+            Err(error) => {
+                kairos_log::warn!(target: "kairos_editor", "profiler style: {error}");
+            }
+        }
+
+        for path in self.style.icons.all() {
+            ui_image::preload(ctx, path);
+        }
     }
 
     fn title(&self, _frame: &Frame) -> WidgetText {
@@ -166,10 +188,27 @@ impl ProfilerPanel {
                 self.reset_view();
                 refresh = true;
             }
+            if ui
+                .add_enabled(!session.frames.is_empty(), egui::Button::new("Save"))
+                .on_hover_text(format!(
+                    "Write the whole capture to {DEFAULT_CAPTURE_DIR}/ as JSON, Chrome trace and .puffin"
+                ))
+                .on_disabled_hover_text("Nothing captured yet")
+                .clicked()
+            {
+                // The panel never touches the filesystem itself: `kairos_profile`
+                // owns the formats and the paths, and hands back exactly what it
+                // wrote so the panel can show it.
+                self.save = Some(
+                    profiler
+                        .save_capture(DEFAULT_CAPTURE_DIR)
+                        .map_err(|error| error.to_string()),
+                );
+            }
 
             ui.separator();
             if recording {
-                ui.colored_label(RECORDING_COLOR, "REC");
+                ui.colored_label(self.style.recording_color.to_egui(), "REC");
             }
             ui.label(format!("{} frames", session.frames.len()));
             if session.dropped_frames > 0 {
@@ -180,11 +219,38 @@ impl ProfilerPanel {
             }
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.weak("Data view · charts next");
+                ui.weak(format!("Captures → {DEFAULT_CAPTURE_DIR}/"));
             });
         });
 
+        self.save_status(ui);
         refresh
+    }
+
+    /// Show where the last Save went (or why it failed).
+    fn save_status(&self, ui: &mut Ui) {
+        let Some(result) = &self.save else {
+            return;
+        };
+
+        match result {
+            Ok(files) => {
+                ui.horizontal_wrapped(|ui| {
+                    ui.weak("Saved");
+                    if ui.small_button("Copy paths").clicked() {
+                        ui.ctx().copy_text(files_summary(files));
+                    }
+                    ui.weak("json · trace.json · puffin");
+                });
+                ui.add(
+                    egui::Label::new(egui::RichText::new(files_summary(files)).monospace()).wrap(),
+                );
+            }
+            Err(error) => {
+                let color = ui.visuals().error_fg_color;
+                ui.colored_label(color, format!("Save failed: {error}"));
+            }
+        }
     }
 
     fn empty_state(&self, ui: &mut Ui, profiler: &Profiler) {
@@ -197,9 +263,12 @@ impl ProfilerPanel {
             } else {
                 ui.heading("Profiler");
                 ui.label("No frames captured.");
-                ui.label("Press Record, then interact with the editor.");
+                ui.label("Press Record; the host keeps ticking, so frames arrive even when you leave the window alone.");
             }
             ui.add_space(8.0);
+            ui.weak(format!(
+                "Save writes JSON, Chrome trace and .puffin under {DEFAULT_CAPTURE_DIR}/."
+            ));
             ui.weak("Part 1 exposes the structured capture: hierarchy, raw samples and JSON.");
         });
     }
@@ -296,6 +365,8 @@ impl ProfilerPanel {
         self.selected_frame = 0;
         self.follow_latest = true;
         self.thread = None;
+        // A new capture invalidates the previously written files' contents.
+        self.save = None;
     }
 
     fn hierarchy_view(&self, ui: &mut Ui) {
@@ -322,7 +393,7 @@ impl ProfilerPanel {
                         ui.strong("Max ms");
                         ui.end_row();
 
-                        for row in cached.rows.iter().take(MAX_TREE_ROWS) {
+                        for row in cached.rows.iter().take(self.style.max_tree_rows) {
                             let scope = scope_info(&cached.scopes, row.scope);
                             let name = scope.map_or("<unknown scope>", |scope| scope.name.as_str());
                             let label = match &row.data {
@@ -347,9 +418,10 @@ impl ProfilerPanel {
                         }
                     });
 
-                if cached.rows.len() > MAX_TREE_ROWS {
+                if cached.rows.len() > self.style.max_tree_rows {
+                    let max_tree_rows = self.style.max_tree_rows;
                     ui.weak(format!(
-                        "Showing the first {MAX_TREE_ROWS} of {} rows.",
+                        "Showing the first {max_tree_rows} of {} rows.",
                         cached.rows.len()
                     ));
                 }
@@ -385,7 +457,7 @@ impl ProfilerPanel {
                         .default_open(true)
                         .show(ui, |ui| {
                             if let Some(warning) = &thread.warning {
-                                ui.colored_label(RECORDING_COLOR, warning);
+                                ui.colored_label(self.style.recording_color.to_egui(), warning);
                             }
 
                             egui::Grid::new(("profiler-raw-grid", thread.id))
@@ -397,7 +469,9 @@ impl ProfilerPanel {
                                     ui.strong("Time ms");
                                     ui.end_row();
 
-                                    for sample in thread.samples.iter().take(MAX_RAW_ROWS) {
+                                    for sample in
+                                        thread.samples.iter().take(self.style.max_raw_rows)
+                                    {
                                         rendered += 1;
                                         let scope = scope_info(&cached.scopes, sample.scope);
                                         let name = scope
@@ -425,9 +499,10 @@ impl ProfilerPanel {
                                     }
                                 });
 
-                            if thread.samples.len() > MAX_RAW_ROWS {
+                            if thread.samples.len() > self.style.max_raw_rows {
+                                let max_raw_rows = self.style.max_raw_rows;
                                 ui.weak(format!(
-                                    "Showing the first {MAX_RAW_ROWS} of {} samples.",
+                                    "Showing the first {max_raw_rows} of {} samples.",
                                     thread.samples.len()
                                 ));
                             }
@@ -483,4 +558,26 @@ fn thread_label(thread: &ThreadSnapshot) -> String {
     } else {
         format!("{} (#{})", thread.name, thread.id)
     }
+}
+
+/// The three saved paths, one per line, made absolute for display.
+///
+/// `save_capture` returns the paths it was given (relative to the process
+/// working directory), which is correct for IO but not for "where did my
+/// capture go". Canonicalising here answers that question with a path the user
+/// can paste into a file manager; if the file vanished in between, the joined
+/// path is still better than nothing.
+fn files_summary(files: &CaptureFiles) -> String {
+    let path = |path: &std::path::Path| {
+        std::fs::canonicalize(path)
+            .unwrap_or_else(|_| path.to_path_buf())
+            .display()
+            .to_string()
+    };
+    format!(
+        "{}\n{}\n{}",
+        path(&files.json),
+        path(&files.chrome_trace),
+        path(&files.puffin)
+    )
 }

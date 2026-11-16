@@ -21,7 +21,17 @@ profiling = { version = "1.0.18", features = [
     "procmacros",
     "profile-with-puffin",
 ] }
+# Same puffin version the facade resolves (feature unification makes this the
+# identical crate instance). Only here to turn on puffin's native capture file
+# format: `FrameData::write_into` / `read_next` (the feature also enables
+# `packing`, so retained frames stay compressed in RAM). `puffin_viewer` reads
+# the resulting `.puffin` stream.
+puffin = { version = "0.20", features = ["serialization"] }
 # Structured export (JSON + Chrome Trace Event Format). The in-memory model is
 # plain data; serde only enters at the export boundary.
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0"
+# Capture file names: `capture-YYYYMMDD-HHMMSSZ`. Already in the workspace graph
+# through `kairos_log`; a profile capture is named once per save, so the cost of
+# the time-zone-aware formatter never touches the frame loop.
+jiff = { version = "0.2", default-features = false, features = ["std"] }

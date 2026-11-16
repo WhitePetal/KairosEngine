@@ -1,25 +1,38 @@
-//! The process-global recorder: puffin sink, recording state, frame parsing.
+//! The capture recorder: puffin sink, recording state, frame parsing.
 //!
-//! One [`Profiler`] exists per process ([`Profiler::global`]). It installs a
-//! puffin frame sink once, keeps the bounded capture in [`Store`], and exposes
-//! the plain-data [`ProfileSession`]. The sink runs on the thread that calls
-//! [`Profiler::begin_frame`] (the host's UI/frame thread), never on a worker
-//! thread: worker threads only report their thread-local stream to puffin's
-//! global collector when their outermost scope closes.
+//! A [`Profiler`] is a value. The composition root creates exactly one, owns it
+//! for the life of the process, and hands out `&Profiler` to whoever displays
+//! the capture. There is no global `Profiler`, no `OnceLock`, and no `static`
+//! recorder in this crate: dropping the value removes its puffin sink, so a
+//! test or a second host never inherits a recorder it did not create.
+//!
+//! The only process-wide state left is *inside* puffin: the `set_scopes_on`
+//! macro switch and the `GlobalProfiler` frame collector. Puffin is a game
+//! profiler whose scope macros take no handle, so the backend has to be
+//! process-global; that constraint is encapsulated here instead of leaking out
+//! as a static of ours. The practical rule is one live `Profiler` per process
+//! (a second live one would receive the same frames); see the crate docs.
+//!
+//! The sink runs on the thread that calls [`Profiler::begin_frame`] (the host's
+//! frame thread), never on a worker thread: worker threads only report their
+//! thread-local stream to puffin's global collector when their outermost scope
+//! closes.
 
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
+    fs::File,
+    io::{BufWriter, Write},
     num::NonZeroU32,
-    path::Path,
+    path::{Path, PathBuf},
     sync::{
-        Arc, Mutex, MutexGuard, OnceLock, PoisonError,
+        Arc, Mutex, MutexGuard, PoisonError,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
 };
 
 use profiling::puffin::{
-    Error as PuffinError, FrameData, GlobalProfiler, NanoSecond, Reader, ScopeCollection,
-    ScopeDetails, ScopeId, ScopeType, Stream, ThreadInfo, now_ns, set_scopes_on,
+    Error as PuffinError, FrameData, FrameSinkId, GlobalProfiler, NanoSecond, Reader,
+    ScopeCollection, ScopeDetails, ScopeId, ScopeType, Stream, ThreadInfo, now_ns, set_scopes_on,
 };
 
 use crate::model::{
@@ -29,6 +42,13 @@ use crate::model::{
 /// Frames kept by default (about five seconds at 60 Hz).
 pub const DEFAULT_CAPACITY: usize = 300;
 
+/// Default directory a host saves captures into (Unity-style project cache).
+///
+/// Relative to the process working directory, like `kairos_log`'s
+/// `Library/Logs/KairosEngine.log`. A host may pass any directory to
+/// [`Profiler::save_capture`].
+pub const DEFAULT_CAPTURE_DIR: &str = "Library/Profiler";
+
 /// Per-thread guard against runaway captures: a frame with more spans than this
 /// is truncated (and the thread reports a warning) instead of exhausting RAM.
 const MAX_SAMPLES_PER_THREAD: usize = 500_000;
@@ -36,13 +56,34 @@ const MAX_SAMPLES_PER_THREAD: usize = 500_000;
 /// Deepest span nesting parsed. Deeper children are skipped and flagged.
 const MAX_DEPTH: u32 = 512;
 
-/// Process-global profiling entry point.
+/// Where a [`Profiler::save_capture`] wrote one capture.
 ///
-/// Obtain it with [`Profiler::global`]. The recorder is installed lazily on the
-/// first use; the sink lives for the process, matching `kairos_log`'s
-/// one-logger-per-process model.
+/// The three files share `stem`: the structured JSON (schema v1), the Chrome
+/// Trace Event Format view, and puffin's native stream. Absolute or relative
+/// depends on the directory the caller passed in; the panel shows the paths it
+/// gets back, so "where did it go" is never a guess.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CaptureFiles {
+    /// File-name stem shared by the three files (e.g. `capture-20261116-091500Z`).
+    pub stem: String,
+    /// Structured capture, schema v1 ([crate::ProfileSession::to_json]).
+    pub json: PathBuf,
+    /// Chrome Trace Event Format ([crate::ProfileSession::to_chrome_trace]).
+    pub chrome_trace: PathBuf,
+    /// Puffin's native capture (a `PUF0` container), readable by `puffin_viewer`.
+    pub puffin: PathBuf,
+}
+
+/// A capture recorder: one puffin sink plus the bounded structured store.
+///
+/// Obtain one with [`Profiler::new`]. The recorder is installed lazily on
+/// construction and removed on drop; see the module docs for why this is a
+/// value rather than a global.
 pub struct Profiler {
     inner: Arc<Inner>,
+    /// Puffin sink registration, removed in `Drop` so the recorder cannot
+    /// outlive its owner inside the backend.
+    sink: FrameSinkId,
 }
 
 impl std::fmt::Debug for Profiler {
@@ -54,24 +95,46 @@ impl std::fmt::Debug for Profiler {
     }
 }
 
-impl Profiler {
-    /// The process-wide profiler, installing the puffin sink on first use.
-    pub fn global() -> &'static Profiler {
-        static GLOBAL: OnceLock<Profiler> = OnceLock::new();
-        GLOBAL.get_or_init(Profiler::new)
+impl Default for Profiler {
+    fn default() -> Self {
+        Self::new()
     }
+}
 
-    fn new() -> Self {
-        let inner = Arc::new(Inner::default());
-        let sink_inner = Arc::clone(&inner);
+impl Drop for Profiler {
+    fn drop(&mut self) {
+        // Leave the backend as we found it: stop the macros if this recorder
+        // turned them on, and unregister the sink before the shared state goes
+        // away (the sink holds only a `Weak`, so this is the last reference).
+        if self.inner.recording.load(Ordering::Relaxed)
+            || self.inner.wants_recording.load(Ordering::Relaxed)
         {
-            let mut global = GlobalProfiler::lock();
-            global.add_sink(Box::new(move |frame| sink_inner.on_frame(frame)));
-            // A sink added after scopes were registered must receive a full
-            // scope delta once, or the first frames cannot resolve names.
-            global.emit_scope_snapshot();
+            set_scopes_on(false);
         }
-        Self { inner }
+        GlobalProfiler::lock().remove_sink(self.sink);
+    }
+}
+
+impl Profiler {
+    /// Create a recorder and register its frame sink with puffin.
+    ///
+    /// Call this once, at the composition root: the engine creates one for the
+    /// game frame and every host (game build, editor shell) borrows it. Puffin's
+    /// collector is process-wide, so two *live* recorders would receive the same
+    /// frames and fight over the record switch.
+    pub fn new() -> Self {
+        let inner = Arc::new(Inner::default());
+        let sink_inner = Arc::downgrade(&inner);
+        let mut global = GlobalProfiler::lock();
+        let sink = global.add_sink(Box::new(move |frame| {
+            if let Some(inner) = sink_inner.upgrade() {
+                inner.on_frame(frame);
+            }
+        }));
+        // A sink added after scopes were registered must receive a full scope
+        // delta once, or the first frames cannot resolve names.
+        global.emit_scope_snapshot();
+        Self { inner, sink }
     }
 
     /// Whether a capture is requested.
@@ -86,7 +149,7 @@ impl Profiler {
     ///
     /// Starting clears the previous capture and defers enabling the macros to
     /// the next [`Profiler::begin_frame`] so the first captured frame is whole.
-    /// Stopping takes effect immediately; the pass being drawn when the user
+    /// Stopping takes effect immediately; the frame being drawn when the user
     /// pressed Stop is dropped, while already stored frames stay visible.
     pub fn set_recording(&self, recording: bool) {
         if recording {
@@ -103,11 +166,18 @@ impl Profiler {
         }
     }
 
-    /// Begin a host frame: flush the previous pass, then honour a start request.
+    /// Begin a host frame: flush the previous frame, then honour a start request.
     ///
-    /// Puffin reports a thread's stream only after the pass's outermost scope
-    /// closes, so the previous pass is flushed here (one pass later) and the
-    /// panel reads frame N-1 while frame N is drawn. See the crate docs.
+    /// The host loop calls this once per frame — an engine tick, a game loop
+    /// iteration, a UI pass. Puffin reports a thread's stream only after the
+    /// outermost scope on that thread closes, so the frame that just ended is
+    /// flushed here (one frame later) and the UI reads frame N-1 while frame N
+    /// is drawn. See the crate docs.
+    ///
+    /// The frame stays open until the next call: work the host performs after
+    /// its tick (drawing the editor, presenting the frame) belongs to the same
+    /// recorded frame. [`Profiler::end_frame`] only records the commit
+    /// decision; it does not flush.
     pub fn begin_frame(&self) {
         let recording = self.inner.recording.load(Ordering::Relaxed);
         let wants = self.inner.wants_recording.load(Ordering::Relaxed);
@@ -121,17 +191,22 @@ impl Profiler {
         }
     }
 
-    /// End a host pass and record whether it committed.
+    /// Record whether the frame being drawn will be kept.
     ///
-    /// Pass `false` for a pass the host discards; the sink drops that frame at
-    /// the next flush. Does not flush.
+    /// Pass `false` for a frame the host will discard (egui's multi-pass
+    /// layout can run a pass twice); the sink drops that frame at the next
+    /// flush and counts it as a discarded pass. A host whose frame contains
+    /// work it cannot discard (an engine tick followed by a discarded UI pass)
+    /// must pass `true`: the frame is one unit.
+    ///
+    /// Does not flush by itself — that is [`Profiler::begin_frame`]'s job.
     pub fn end_frame(&self, committed: bool) {
         self.inner
             .pending_committed
             .store(committed, Ordering::Relaxed);
     }
 
-    /// Flush the pending puffin frame without beginning a new host pass.
+    /// Flush the pending puffin frame without beginning a new host frame.
     ///
     /// Best effort at shutdown: an outermost scope that never closed cannot be
     /// flushed.
@@ -157,15 +232,7 @@ impl Profiler {
 
     /// Snapshot of the current capture. Cheap: frames are reference counted.
     pub fn session(&self) -> ProfileSession {
-        let store = self.lock_store();
-        ProfileSession {
-            revision: store.revision,
-            origin_ns: store.origin_ns,
-            frames: store.frames.iter().cloned().collect(),
-            scopes: store.scope_table(),
-            dropped_frames: store.dropped_frames,
-            discarded_passes: store.discarded_passes,
-        }
+        self.lock_store().session()
     }
 
     /// One captured frame by session ordinal.
@@ -199,6 +266,56 @@ impl Profiler {
         self.session().write_chrome_trace(path)
     }
 
+    /// Write puffin's native capture (`.puffin`), the format `puffin_viewer` opens.
+    ///
+    /// The file is a `PUF0` container holding one `PFD4` record per kept frame,
+    /// in capture order. The frames also appear in [`Profiler::to_json`]; this
+    /// is the same capture in the backend's own container, so an external puffin
+    /// tool can read it without going through Kairos.
+    pub fn write_puffin(&self, path: impl AsRef<Path>) -> std::io::Result<()> {
+        self.lock_store().write_puffin(path.as_ref())
+    }
+
+    /// Save the capture into `dir` as JSON, Chrome trace and `.puffin`.
+    ///
+    /// Creates `dir` if needed and names the three files
+    /// `capture-YYYYMMDD-HHMMSSZ.*` (UTC, so the name sorts and is unambiguous).
+    /// Returns the exact paths written, which is what the Profiler panel shows
+    /// after a save.
+    pub fn save_capture(&self, dir: impl AsRef<Path>) -> std::io::Result<CaptureFiles> {
+        self.save_capture_as(dir, capture_stem())
+    }
+
+    /// [`Profiler::save_capture`] with an explicit file-name stem.
+    pub fn save_capture_as(
+        &self,
+        dir: impl AsRef<Path>,
+        stem: impl Into<String>,
+    ) -> std::io::Result<CaptureFiles> {
+        let dir = dir.as_ref();
+        std::fs::create_dir_all(dir)?;
+
+        let stem = stem.into();
+        let files = CaptureFiles {
+            json: dir.join(format!("{stem}.json")),
+            chrome_trace: dir.join(format!("{stem}.trace.json")),
+            puffin: dir.join(format!("{stem}.puffin")),
+            stem,
+        };
+
+        // One snapshot behind all three files: a frame ingested between two
+        // separate `session()` calls would make the JSON and the native stream
+        // describe different frame sets. The store lock is held for the write,
+        // so a concurrent frame boundary waits for this save instead of tearing
+        // the capture.
+        let store = self.lock_store();
+        let session = store.session();
+        session.write_json(&files.json)?;
+        session.write_chrome_trace(&files.chrome_trace)?;
+        store.write_puffin(&files.puffin)?;
+        Ok(files)
+    }
+
     /// Maximum number of frames kept before the oldest is evicted.
     pub fn capacity(&self) -> usize {
         self.inner.capacity.load(Ordering::Relaxed)
@@ -212,6 +329,7 @@ impl Profiler {
         let mut store = self.lock_store();
         while store.frames.len() > capacity {
             store.frames.pop_front();
+            store.raw_frames.pop_front();
             store.dropped_frames += 1;
         }
     }
@@ -231,11 +349,17 @@ impl Profiler {
     }
 }
 
+/// `capture-YYYYMMDD-HHMMSSZ`, the default stem for [`Profiler::save_capture`].
+fn capture_stem() -> String {
+    let now = jiff::Timestamp::now();
+    format!("capture-{}", now.strftime("%Y%m%d-%H%M%SZ"))
+}
+
 struct Inner {
     store: Mutex<Store>,
     wants_recording: AtomicBool,
     recording: AtomicBool,
-    /// Whether the pass whose data puffin will report next committed.
+    /// Whether the frame whose data puffin will report next committed.
     pending_committed: AtomicBool,
     capacity: AtomicUsize,
 }
@@ -277,9 +401,16 @@ impl Inner {
         let capacity = self.capacity.load(Ordering::Relaxed).max(1);
         while store.frames.len() >= capacity {
             store.frames.pop_front();
+            store.raw_frames.pop_front();
             store.dropped_frames += 1;
         }
+
+        // Keep the backend's own encoding too, so `.puffin` export needs no
+        // second capture. The packing feature lets the sink store it compressed.
+        frame.pack();
+
         store.frames.push_back(Arc::new(snapshot));
+        store.raw_frames.push_back(frame);
         store.revision = store.revision.wrapping_add(1);
     }
 }
@@ -287,6 +418,8 @@ impl Inner {
 #[derive(Default)]
 struct Store {
     frames: VecDeque<Arc<FrameSnapshot>>,
+    /// The puffin frames behind `frames`, same order; kept for `.puffin`.
+    raw_frames: VecDeque<Arc<FrameData>>,
     origin_ns: Option<i64>,
     revision: u64,
     dropped_frames: u64,
@@ -299,8 +432,21 @@ struct Store {
 }
 
 impl Store {
+    /// Clone the current capture into the plain-data view.
+    fn session(&self) -> ProfileSession {
+        ProfileSession {
+            revision: self.revision,
+            origin_ns: self.origin_ns,
+            frames: self.frames.iter().cloned().collect(),
+            scopes: self.scope_table(),
+            dropped_frames: self.dropped_frames,
+            discarded_passes: self.discarded_passes,
+        }
+    }
+
     fn clear_frames(&mut self) {
         self.frames.clear();
+        self.raw_frames.clear();
         self.origin_ns = None;
         self.dropped_frames = 0;
         self.discarded_passes = 0;
@@ -415,6 +561,27 @@ impl Store {
             end_ns: end_ns.max(start_ns),
             threads,
         })
+    }
+
+    /// Write the retained puffin frames as one native capture file.
+    ///
+    /// The container is what `puffin_viewer` and `FrameView::read` expect: a
+    /// `PUF0` magic followed by a sequence of `FrameData` records (each with its
+    /// own `PFD4` header). Writing the bare `PFD4` records was the bug — the
+    /// viewer rejects a file that does not start with `PUF0`.
+    ///
+    /// Every record is written with the full scope table rather than only the
+    /// frame's delta, so the file stays readable even when the first captured
+    /// frame was a discarded pass (whose scope snapshot never reached the store).
+    fn write_puffin(&self, path: &Path) -> std::io::Result<()> {
+        let mut writer = BufWriter::new(File::create(path)?);
+        writer.write_all(b"PUF0")?;
+        for frame in &self.raw_frames {
+            frame
+                .write_into(Some(&self.scopes), &mut writer)
+                .map_err(std::io::Error::other)?;
+        }
+        writer.flush()
     }
 
     fn scope_details(&self, id: u32) -> Option<&Arc<ScopeDetails>> {
@@ -540,6 +707,7 @@ fn fallback_scope(id: u32) -> ScopeInfo {
         kind: ScopeKind::Named,
     }
 }
+
 #[cfg(test)]
 mod tests {
     use std::num::NonZeroU32;

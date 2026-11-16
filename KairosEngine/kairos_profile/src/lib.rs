@@ -1,7 +1,30 @@
 //! # kairos_profile
 //!
 //! Kairos' runtime profiling entry point: low-overhead marker capture, a
-//! structured frame model, and JSON / Chrome-trace export.
+//! structured frame model, and JSON / Chrome-trace / puffin-native export.
+//!
+//! The crate is host-agnostic: the engine, a game build and both editor shells
+//! (winit and eframe) use the same [`Profiler`]. The engine holds the recorder
+//! for its game frame; a shell borrows it through `Engine::profiler` rather
+//! than creating a second one. Nothing here knows about egui, the ECS, or the
+//! editor.
+//!
+//! ## Ownership
+//!
+//! A [`Profiler`] is a **value owned by the composition root**, not a global.
+//! There is no `Profiler::global()`, no `static` recorder, and no `OnceLock`
+//! in this crate: whoever creates the recorder owns it, hands out `&Profiler`
+//! to the views that display the capture, and drops it at shutdown (which
+//! removes its puffin sink). A test or a second host can therefore never
+//! inherit a recorder it did not create. (A `scope!` call site does get a
+//! per-site `OnceLock<ScopeId>` from puffin's macro expansion — that is marker
+//! identity, not a recorder.)
+//!
+//! Puffin itself is process-global — its scope macros take no handle, and the
+//! `GlobalProfiler` collector is a singleton — so the backend still has one
+//! frame collector and one macro switch per process. That is an implementation
+//! detail of the backend, encapsulated by `Profiler`: create **one live
+//! recorder per process** and let everything else borrow it.
 //!
 //! ## What is recorded
 //!
@@ -30,28 +53,38 @@
 //!
 //! ## Frame lifecycle
 //!
-//! A host drives two calls around each UI pass:
+//! The **host loop** owns the frame boundary — not egui's repaint schedule. One
+//! iteration of the loop (an engine tick, a game loop update, a UI pass) is one
+//! frame:
 //!
 //! ```text
 //! frame N
-//!   begin_frame()          // flush frame N-1 (puffin needs the pass to have ended)
-//!   scope!("Editor.Frame")
-//!   ...
-//!   end_frame(committed)   // mark whether egui committed this pass
+//!   begin_frame()          // flush frame N-1 (puffin reports after it ended)
+//!   scope!("Kairos.Engine.Frame")
+//!   ... engine work, UI, present ...
+//!   end_frame(committed)   // mark whether the host will keep this frame
 //! ```
 //!
-//! `begin_frame` flushes the **previous** pass because puffin reports a thread's
-//! stream only after its outermost scope closes, which happens after the pass
-//! returns. The panel therefore shows frame N-1 while frame N is being drawn;
-//! that one-frame latency is the price of a clean frame boundary.
+//! [`Profiler::begin_frame`] flushes the **previous** frame because puffin
+//! reports a thread's stream only after its outermost scope closes, which
+//! happens after the frame returns. The panel therefore shows frame N-1 while
+//! frame N is being drawn; that one-frame latency is the price of a clean frame
+//! boundary.
 //!
-//! egui may run a pass twice and discard the first one. `end_frame(false)`
-//! marks that pass; the sink drops it at the next flush and counts it as a
-//! discarded pass. Nothing from a discarded pass reaches the structured data.
+//! The frame stays open until the next `begin_frame`, so anything the host does
+//! after its tick (drawing the editor, presenting the swapchain) lands in the
+//! same recorded frame. `kairos_engine::Engine` opens the frame in
+//! `Engine::update` for exactly this reason: a game frame is the engine tick
+//! plus whatever the host draws around it.
 //!
-//! Recording is off by default. `Profiler::set_recording(true)` requests a
-//! capture; the actual scopes turn on at the next `begin_frame`, so the first
-//! captured frame is complete.
+//! A host whose frame is one discarding pass (egui multi-pass layout) calls
+//! `end_frame(false)`; the sink drops that frame at the next flush and counts
+//! it as a discarded pass. A host whose frame also contains an engine tick must
+//! pass `true`: the frame is one unit.
+//!
+//! Recording is off by default. [`Profiler::set_recording`] requests a capture;
+//! the actual scopes turn on at the next `begin_frame`, so the first captured
+//! frame is complete.
 //!
 //! ## Structured data
 //!
@@ -59,14 +92,30 @@
 //! [`ThreadSnapshot`], [`SampleSnapshot`], [`ScopeInfo`]) as soon as puffin
 //! submits them. Samples are pre-order (parent before children) and carry
 //! `depth` + `parent`, so a tree can be rebuilt without re-parsing the byte
-//! stream. `analysis::hierarchy` turns a frame into the aggregated rows the
+//! stream. [`analysis::hierarchy`] turns a frame into the aggregated rows the
 //! Profiler panel shows.
 //!
 //! The same model exports to:
 //!
-//! * pretty JSON (`ProfileSession::to_json`, `write_json`) — the panel's JSON tab;
-//! * Chrome Trace Event Format (`to_chrome_trace`, `write_chrome_trace`) — open
-//!   it in <https://ui.perfetto.dev> or `chrome://tracing`.
+//! * pretty JSON ([`ProfileSession::to_json`], `write_json`) — the panel's JSON tab;
+//! * Chrome Trace Event Format ([`ProfileSession::to_chrome_trace`],
+//!   `write_chrome_trace`) — open it in <https://ui.perfetto.dev> or
+//!   `chrome://tracing`;
+//! * puffin's native frame stream (`Profiler::write_puffin`) — open it with
+//!   `puffin_viewer`.
+//!
+//! ## Capture files
+//!
+//! [`Profiler::save_capture`] writes all three formats into one directory and
+//! returns the exact paths. The default directory is [`DEFAULT_CAPTURE_DIR`]
+//! (`Library/Profiler`), and the files share a `capture-YYYYMMDD-HHMMSSZ` stem:
+//!
+//! ```text
+//! Library/Profiler/
+//!   capture-20261116-091500Z.json         # structured schema v1
+//!   capture-20261116-091500Z.trace.json   # Perfetto / chrome://tracing
+//!   capture-20261116-091500Z.puffin       # puffin_viewer
+//! ```
 //!
 //! ## Instrumentation guidelines
 //!
@@ -104,7 +153,7 @@ pub use analysis::{HierarchyRow, hierarchy};
 pub use model::{
     FrameSnapshot, ProfileSession, SampleSnapshot, ScopeInfo, ScopeKind, ThreadSnapshot,
 };
-pub use profiler::{DEFAULT_CAPACITY, Profiler};
+pub use profiler::{CaptureFiles, DEFAULT_CAPACITY, DEFAULT_CAPTURE_DIR, Profiler};
 
 /// The `profiling` proc-macro attribute: instrument a function with a scope
 /// named after the function.
@@ -168,31 +217,4 @@ macro_rules! function_scope {
     ($data:expr) => {
         $crate::__function_scope!($data);
     };
-}
-
-/// Begin a host frame and flush the previously recorded pass.
-///
-/// Call at the top of every UI pass / engine frame, before any `scope!`. The
-/// flush is what makes the previous pass visible to the Profiler panel. When
-/// recording is off the call is a no-op apart from the state checks.
-pub fn begin_frame() {
-    Profiler::global().begin_frame();
-}
-
-/// End a host pass and record whether it committed.
-///
-/// Pass `false` for passes the host will discard (egui's multi-pass layout can
-/// run a pass twice); the sink drops that pass at the next flush. Does not
-/// flush by itself — that is [`begin_frame`]'s job, after the pass has ended.
-pub fn end_frame(committed: bool) {
-    Profiler::global().end_frame(committed);
-}
-
-/// Flush the current puffin frame without starting a host pass (best effort).
-///
-/// Useful at shutdown: if the last pass is still pending, this hands it to the
-/// sinks. An open scope is not closed, so a frame that never ended cannot be
-/// flushed completely.
-pub fn flush() {
-    Profiler::global().flush();
 }

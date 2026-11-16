@@ -9,6 +9,10 @@
 //!
 //! eframe is still the window backend while the production winit/wgpu event
 //! loop is prepared; switching it does not change panel/dock APIs.
+//!
+//! The shell also hosts an [`kairos_engine::Engine`]: it ticks it once per
+//! redraw, and the Profiler panel borrows the engine's recorder through
+//! `HostView::profiler`. There is no second recorder in this process.
 
 use egui::IconData;
 
@@ -52,7 +56,11 @@ fn load_icon() -> IconData {
     if let Ok(rgba) = std::fs::read(paths::PATH_ENGINE_ICON) {
         if let Ok(image) = image::load_from_memory(&rgba) {
             let image = image.into_rgba8();
-            IconData { rgba: image.to_vec(), width: image.width(), height: image.height() }
+            IconData {
+                rgba: image.to_vec(),
+                width: image.width(),
+                height: image.height(),
+            }
         } else {
             IconData::default()
         }

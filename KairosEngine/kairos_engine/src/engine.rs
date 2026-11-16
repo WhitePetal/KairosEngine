@@ -1,9 +1,18 @@
 use crate::{audio::AudioEngine, graphics, inputs::InputEngine, physics, schedule, time::Time};
 use kairos_ecs::world::World;
+use kairos_profile::Profiler;
 
 pub struct Engine {
     pub world: World,
     pub input_engine: InputEngine,
+    /// The process's profiling recorder.
+    ///
+    /// The engine owns it because a development build of a game must be able to
+    /// profile itself, with no editor in the loop. It is a plain owned value
+    /// (see `kairos_profile`'s ownership notes), so a host that also draws an
+    /// editor UI borrows it through [`Engine::profiler`] instead of installing
+    /// a second recorder.
+    profiler: Profiler,
 }
 
 impl Engine {
@@ -14,12 +23,35 @@ impl Engine {
         // `AudioEngine` as a World resource. Opening a real audio device can
         // fail, so this is the one step that keeps `Engine::new` fallible.
         crate::audio::install(&mut world, AudioEngine::new()?, schedule::Update);
-        let input_engine = InputEngine::new();
+        Ok(Self::from_world(world))
+    }
 
-        Ok(Self {
+    /// Boot the engine without opening an audio device.
+    ///
+    /// The same world bootstrap as [`Engine::new`] minus the audio driver: for
+    /// hosts and tests that do not play sound (a UI shell, a headless run, a
+    /// profiler fixture). `Engine::new` falls back to this shape when the host
+    /// itself decides a missing audio device is not fatal.
+    pub fn headless() -> Self {
+        Self::from_world(build_world())
+    }
+
+    fn from_world(world: World) -> Self {
+        Self {
             world,
-            input_engine,
-        })
+            input_engine: InputEngine::new(),
+            profiler: Profiler::new(),
+        }
+    }
+
+    /// The engine's profiling recorder.
+    ///
+    /// Recording is off by default (`set_recording(true)` starts it). A host
+    /// that draws around the engine tick — the editor's panels, for instance —
+    /// reads the capture through this same handle; do not create a second
+    /// [`Profiler`], because puffin's frame collector is process-wide.
+    pub fn profiler(&self) -> &Profiler {
+        &self.profiler
     }
 
     /// Read access to the engine's per-frame virtual clock.
@@ -40,9 +72,28 @@ impl Engine {
     /// [`MainScheduleOrder`](schedule::MainScheduleOrder) (the `First` stage's
     /// `time_system` advances the [`Time`] resource first) — and then clears
     /// the world's change-detection trackers to close the frame.
+    ///
+    /// # Frame boundary
+    ///
+    /// This is where a **game frame** starts: [`Profiler::begin_frame`] flushes
+    /// the previous frame (and honours a start request), the tick runs under
+    /// `Kairos.Engine.Frame`, and the frame is left open so whatever the host
+    /// draws between two updates — editor panels, the render present — lands in
+    /// the same recorded frame. The engine is therefore profiled by its own
+    /// loop, not by a UI repaint schedule: a game build that keeps ticking keeps
+    /// producing frames with no editor attached.
+    ///
+    /// The tick marks itself committed. A host that draws inside the frame and
+    /// discards that work can call [`Profiler::end_frame`] with `false` before
+    /// the next update to drop the whole frame.
     pub fn update(&mut self) {
-        self.world.run_schedule(schedule::Main);
-        self.world.clear_trackers();
+        self.profiler.begin_frame();
+        {
+            kairos_profile::scope!("Kairos.Engine.Frame");
+            self.world.run_schedule(schedule::Main);
+            self.world.clear_trackers();
+        }
+        self.profiler.end_frame(true);
     }
 }
 

@@ -25,7 +25,10 @@ kairos_editor_widgets = { path = "../kairos_editor_widgets" }
 kairos_editor_docking = { path = "../kairos_editor_docking" }
 kairos_editor_component = { path = "../kairos_editor_component" }
 kairos_log = { path = "../kairos_log" }
-# Frame boundary + host-owned capture store for the Profiler panel.
+# The `Profiler` type in the `HostView` seam; the engine owns the recorder.
 kairos_profile = { path = "../kairos_profile" }
+# The shell hosts the engine: it ticks the runtime and borrows its profiling
+# recorder instead of creating a second one.
+kairos_engine = { path = "../kairos_engine" }
 kairos_editor_core = { path = "../kairos_editor_core" }
 image = "0.25.10"

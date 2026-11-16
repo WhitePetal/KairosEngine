@@ -1,12 +1,14 @@
 //! Capture-pipeline tests: recording lifecycle, frame parsing, analysis,
-//! JSON and Chrome-trace export.
+//! JSON / Chrome-trace / puffin-native export.
 //!
-//! Puffin's recorder is process-global, so these tests serialise on
-//! [`TEST_LOCK`] and reset the global profiler in the fixture. The parser test
-//! lives in [`crate::profiler::tests`] because it needs private internals but no
-//! global state.
+//! Puffin's collector is process-global even though [`Profiler`] is an owned
+//! value, so these tests serialise on [`TEST_LOCK`]: only one live recorder may
+//! exist at a time. The fixture owns its recorder and lets it drop, which
+//! removes the sink and turns the macros off again.
 
 use std::sync::{Mutex, MutexGuard};
+
+use profiling::puffin::FrameView;
 
 use crate::model::{FrameSnapshot, ProfileSession, SampleSnapshot, ThreadSnapshot};
 use crate::{Profiler, hierarchy};
@@ -14,21 +16,23 @@ use crate::{Profiler, hierarchy};
 static TEST_LOCK: Mutex<()> = Mutex::new(());
 
 struct TestSession {
+    profiler: Profiler,
     _guard: MutexGuard<'static, ()>,
 }
 
 impl TestSession {
     fn new() -> Self {
         let guard = TEST_LOCK.lock().unwrap_or_else(|error| error.into_inner());
-        let profiler = Profiler::global();
-        profiler.set_recording(false);
-        profiler.clear();
+        let profiler = Profiler::new();
         profiler.set_capacity(crate::DEFAULT_CAPACITY);
-        Self { _guard: guard }
+        Self {
+            profiler,
+            _guard: guard,
+        }
     }
 
-    fn profiler(&self) -> &'static Profiler {
-        Profiler::global()
+    fn profiler(&self) -> &Profiler {
+        &self.profiler
     }
 
     /// Request a capture and let `begin_frame` enable it.
@@ -38,7 +42,7 @@ impl TestSession {
         profiler.begin_frame();
     }
 
-    /// Close the current pass and flush it at the next frame boundary.
+    /// Close the current frame and flush it at the next frame boundary.
     fn commit(&self) {
         let profiler = self.profiler();
         profiler.end_frame(true);
@@ -46,11 +50,27 @@ impl TestSession {
     }
 }
 
-impl Drop for TestSession {
+/// A unique scratch directory for one test; removed when `Path` is dropped.
+struct TempDir(std::path::PathBuf);
+
+impl TempDir {
+    fn new(tag: &str) -> Self {
+        // The capture tests hold `TEST_LOCK` for their whole body, so only one
+        // scratch directory exists at a time and the tag alone is unique.
+        let path =
+            std::env::temp_dir().join(format!("kairos-profile-{}-{tag}", std::process::id()));
+        std::fs::create_dir_all(&path).expect("create scratch dir");
+        Self(path)
+    }
+
+    fn path(&self) -> &std::path::Path {
+        &self.0
+    }
+}
+
+impl Drop for TempDir {
     fn drop(&mut self) {
-        let profiler = Profiler::global();
-        profiler.set_recording(false);
-        profiler.clear();
+        let _ = std::fs::remove_dir_all(&self.0);
     }
 }
 
@@ -211,7 +231,7 @@ fn json_and_chrome_trace_include_the_capture() {
 }
 
 #[test]
-fn write_json_writes_the_capture_to_disk() {
+fn save_capture_writes_three_files_and_reports_their_paths() {
     let test = TestSession::new();
     test.start();
     {
@@ -219,16 +239,74 @@ fn write_json_writes_the_capture_to_disk() {
     }
     test.commit();
 
-    let path = std::env::temp_dir().join(format!(
-        "kairos-profile-{}-{}.json",
-        std::process::id(),
-        test.profiler().capacity()
-    ));
-    test.profiler().write_json(&path).expect("write capture");
-    let json = std::fs::read_to_string(&path).expect("read capture");
+    let dir = TempDir::new("save");
+    let files = test
+        .profiler()
+        .save_capture(dir.path())
+        .expect("save capture");
+
+    assert!(
+        files.stem.starts_with("capture-") && files.stem.ends_with('Z'),
+        "default stem is a UTC timestamp: {}",
+        files.stem
+    );
+    for path in [&files.json, &files.chrome_trace, &files.puffin] {
+        assert!(path.exists(), "{} must exist", path.display());
+        assert!(
+            path.starts_with(dir.path()),
+            "{} is under the requested directory",
+            path.display()
+        );
+    }
+
+    let json = std::fs::read_to_string(&files.json).expect("read capture");
     assert!(json.contains("test.file"));
     assert!(json.contains("\"frames\""));
-    let _ = std::fs::remove_file(&path);
+
+    let trace: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&files.chrome_trace).expect("read trace"))
+            .expect("trace json");
+    assert!(
+        trace["traceEvents"]
+            .as_array()
+            .expect("events")
+            .iter()
+            .any(|event| event["ph"] == "X" && event["name"] == "test.file")
+    );
+}
+
+#[test]
+fn puffin_export_is_readable_by_the_backend() {
+    let test = TestSession::new();
+    test.start();
+    {
+        crate::scope!("test.puffin.export", "payload");
+    }
+    test.commit();
+
+    let dir = TempDir::new("puffin");
+    let files = test
+        .profiler()
+        .save_capture_as(dir.path(), "readable")
+        .expect("save capture");
+    assert_eq!(files.stem, "readable");
+
+    // `FrameView::read` is exactly the reader `puffin_viewer` uses: it checks the
+    // `PUF0` magic and then decodes the `PFD4` frame records behind it.
+    let mut file = std::fs::File::open(&files.puffin).expect("open puffin capture");
+    let view = FrameView::read(&mut file).expect("decode a .puffin capture");
+    assert!(!view.is_empty(), "the native capture contains frames");
+    assert_eq!(
+        view.stats_full().frames(),
+        test.profiler().session().frames.len(),
+        "every kept frame is in the native capture"
+    );
+    assert!(
+        view.scope_collection()
+            .fetch_by_name("test.puffin.export")
+            .is_some(),
+        "the native capture carries the scope table the viewer resolves names through"
+    );
 }
 
 fn sample(

@@ -1,7 +1,8 @@
 # Profiler roadmap
 
 Status: phase 1 (capture + structured data) implemented; phase 2 (drawing) not
-started.
+started. The recorder is an **owned value** (no global), the engine drives the
+game frame, and a capture saves as JSON / Chrome trace / puffin-native files.
 
 ## Product target
 
@@ -22,21 +23,34 @@ Delivered:
 
 - **`kairos_profile` crate**: puffin-backed recorder (through the `profiling`
   facade), frame sink, pre-order samples, scope table, bounded frame ring,
-  hierarchy aggregation, JSON and Chrome Trace exports.
-- **Frame lifecycle** in `EditorApp::ui`: `begin_frame` / `end_frame(committed)`,
-  egui multi-pass discard handling, deferred recording start (the macros turn on
-  at the next frame so the first captured frame is whole).
-- **Scopes**: editor frame, toolbar, sync, dock, panel body (with panel kind
-  data), pump; third-party egui/wgpu scopes through feature unification.
-- **`Profiler` panel**: Hierarchy / Raw / JSON views, record/clear, frame and
-  thread selectors; docked next to Console by default.
+  hierarchy aggregation, JSON / Chrome Trace / puffin-native exports. The
+  recorder is a value (`Profiler::new`), registered with puffin on construction
+  and removed on drop; there is no global profiler.
+- **Frame lifecycle**: the host loop owns the boundary. `Engine::update` opens
+  the game frame (`begin_frame` → `Kairos.Engine.Frame` → `Kairos.Stage` per
+  schedule stage), so a development build profiles itself with no editor. Both
+  hosts do this: `kairos_editor` (winit) and `kairos_editor_app` (eframe), the
+  latter ticking the engine once per redraw on egui's first pass. The UI pass
+  only marks the frame committed (`end_frame`), and while recording the host
+  requests a repaint every pass so an idle window still produces engine frames.
+  Recording is requested through `set_recording`; the macros turn on at the next
+  frame so the first captured frame is whole.
+- **Scopes**: engine frame and stages; editor frame, toolbar, sync, dock, panel
+  body (with panel kind data), pump; third-party egui/wgpu scopes through feature
+  unification.
+- **`Profiler` panel**: Hierarchy / Raw / JSON views, record/clear/save, frame
+  and thread selectors; docked next to Console by default.
+- **Capture files**: `Profiler::save_capture` writes `capture-YYYYMMDD-HHMMSSZ`
+  under `Library/Profiler/` as `.json` (schema v1), `.trace.json` (Perfetto) and
+  `.puffin` (`puffin_viewer`); the panel shows the absolute paths it wrote.
 - **Tests**: capture lifecycle, discarded pass, worker thread, capacity, byte
-  stream parser, hierarchy self-time, JSON/trace export, panel render with and
-  without a capture, end-to-end editor frame capture.
+  stream parser, hierarchy self-time, JSON/trace/puffin export, saved paths,
+  engine frame + stage scopes, panel render with and without a capture,
+  end-to-end editor frame capture.
 
 Not in phase 1: any drawing (charts, bars, timeline), GPU timings, allocation
-tracking, native call stacks, async task propagation, capture files from the
-panel UI.
+tracking, native call stacks, async task propagation, loading a saved capture
+back into the panel.
 
 ## Structured data
 
@@ -57,6 +71,15 @@ timeline later.
 JSON schema v1 is written by `ProfileSession::to_json` / `write_json`; the
 panel's JSON tab shows one frame plus the scope table. Additive fields are
 backwards compatible; a semantic change bumps `schemaVersion`.
+
+`Profiler::save_capture` writes the same data in three files that share a
+`capture-YYYYMMDD-HHMMSSZ` stem under `Library/Profiler/`:
+
+| File | Reader |
+| --- | --- |
+| `.json` | Kairos (schema v1) — the structured capture |
+| `.trace.json` | Perfetto / `chrome://tracing` |
+| `.puffin` | `puffin_viewer` (puffin's native `PUF0` container of `PFD4` frame records) |
 
 ## Instrumentation rules
 
@@ -102,10 +125,11 @@ memory modules are separate phases.
 
 ## Phase 3 — coverage and depth
 
-- **Engine**: wrap `Engine::update` and the schedule stages with
-  `Kairos.Engine.*` scopes; systems use `#[function]`.
-- **Game**: same crate; the game host calls `begin_frame` / `end_frame` around
-  its frame.
+- **Engine**: done — `Engine::update` opens the frame and records
+  `Kairos.Engine.Frame`; `run_main` records one `Kairos.Stage` scope per
+  schedule stage. Systems still instrument themselves with `#[function]`.
+- **Game**: same crate and the same `Profiler`; a standalone game host drives
+  `Engine::update` per loop iteration, so it is profiled without the editor.
 - **Async**: a `tracing` or explicit task-id bridge so spans survive task
   migration; puffin scopes are thread-local and cannot nest across an await.
 - **GPU**: wgpu timestamp queries as their own track; marker scopes measure CPU
@@ -114,20 +138,31 @@ memory modules are separate phases.
   path.
 - **Deep profile / native stacks**: opt-in native backtraces or sampling, with
   symbolization; expensive and explicitly not on the default path.
-- **Capture lifecycle**: save/load JSON, name captures, record from app start,
-  export from an app menu (keep IO out of the panel).
+- **Capture lifecycle**: saving is done (JSON, Chrome trace, `.puffin`); loading
+  a capture back into the panel, naming captures and recording from app start
+  are open.
 - **Marker metadata**: categories/colors (Unity module colors), user-registered
   dynamic markers.
 
 ## Inspecting a capture
 
 1. Run the editor and open the **Profiler** tab (bottom dock, next to Console).
-2. Press **● Record**, interact with the editor, press **■ Stop**.
+2. Press **● Record**. The host keeps ticking while recording, so frames keep
+   arriving even if you leave the window alone. Press **■ Stop**.
 3. Use **Latest** / the frame field and the thread combo; switch between
    **Hierarchy**, **Raw**, **JSON**.
-4. For an external view, call `Profiler::write_json(path)` or
-   `Profiler::write_chrome_trace(path)` from the host/a test; the latter opens in
-   <https://ui.perfetto.dev>.
+4. Press **Save**. The panel shows the three absolute paths it wrote under
+   `Library/Profiler/`. Open the `.trace.json` in <https://ui.perfetto.dev> or
+   `chrome://tracing`, the `.puffin` in `puffin_viewer`, and the `.json` with
+   any JSON reader (schema v1 is documented above).
+5. A host can also call `Profiler::save_capture`, `write_json`,
+   `write_chrome_trace` or `write_puffin` directly with its own directory.
+
+The production winit editor (`kairos_editor`, engine + UI, no Profiler panel yet)
+uses the development-build switch instead: run it with `KAIROS_PROFILE=1`, and
+the engine records every tick; the editor writes the capture under
+`Library/Profiler` and logs the JSON path on exit. This is the same engine
+recorder a game build uses — no editor required for the capture itself.
 
 ## Non-goals for now
 

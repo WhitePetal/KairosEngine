@@ -193,14 +193,21 @@ fn profiler_panel_renders_without_a_host_capture() {
 
 #[test]
 fn profiler_panel_renders_a_captured_frame() {
-    struct ProfilingHost;
+    // The host owns the recorder; the panel only borrows it (there is no
+    // global profiler to reach for any more).
+    struct ProfilingHost {
+        profiler: kairos_profile::Profiler,
+    }
     impl HostView for ProfilingHost {
         fn profiler(&self) -> Option<&kairos_profile::Profiler> {
-            Some(kairos_profile::Profiler::global())
+            Some(&self.profiler)
         }
     }
 
-    let profiler = kairos_profile::Profiler::global();
+    let host_view = ProfilingHost {
+        profiler: kairos_profile::Profiler::new(),
+    };
+    let profiler = &host_view.profiler;
     profiler.set_recording(true);
     profiler.begin_frame();
     {
@@ -222,7 +229,7 @@ fn profiler_panel_renders_a_captured_frame() {
     host.sync(&state.layout, &Context::default());
     let ids: Vec<PanelInstanceId> = host.ids().collect();
 
-    let out = draw_with(&mut host, &ProfilingHost, &state, &ids);
+    let out = draw_with(&mut host, &host_view, &state, &ids);
 
     assert!(out.is_empty());
     profiler.set_recording(false);

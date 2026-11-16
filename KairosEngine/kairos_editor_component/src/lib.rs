@@ -41,13 +41,15 @@
 //!
 //! ## Profiler panel
 //!
-//! The capture is runtime infrastructure, not editor state. The app owns the
-//! process [`kairos_profile::Profiler`] (it installs the puffin sink), the frame
-//! boundary flushes it, and [`HostView::profiler`] exposes the handle to the
-//! panel. The Profiler panel reads a [`kairos_profile::ProfileSession`], caches
-//! the aggregated hierarchy per revision/frame/thread, and can toggle recording
-//! or clear the capture. It does no IO and draws no charts yet: the JSON view is
-//! produced by `kairos_profile`, and the drawing phase is planned separately.
+//! The capture is runtime infrastructure, not editor state. The engine owns the
+//! [`kairos_profile::Profiler`] value, the host loop opens and closes the
+//! frame in `Engine::update`, and [`HostView::profiler`] exposes
+//! `engine.profiler()` to the panel. The Profiler
+//! panel reads a [`kairos_profile::ProfileSession`], caches the aggregated
+//! hierarchy per revision/frame/thread, and can toggle recording, clear the
+//! capture, or save it. Saving, the file formats and the paths all live in
+//! `kairos_profile`; the panel only displays what it is handed. It draws no
+//! charts yet: the drawing phase is planned separately.
 //!
 //! ## Panel framework
 //!

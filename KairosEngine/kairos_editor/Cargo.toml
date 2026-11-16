@@ -25,6 +25,9 @@ unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)", "cfg(docsrs_dep)
 # The engine (and, through its re-exports, the graphics/asset/audio/physics/
 # math/log/time/kairos_ui subsystems the editor drives).
 kairos_engine = { path = "../kairos_engine" }
+# Profiling: the engine owns the recorder; the editor host decides when a run
+# records and where the capture is written.
+kairos_profile = { path = "../kairos_profile" }
 # Path crates the editor uses directly.
 kairos_collections = { path = "../kairos_collections" }
 kairos_ecs = { path = "../kairos_ecs" }

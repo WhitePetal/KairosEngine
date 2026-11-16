@@ -74,6 +74,51 @@ fn build_world_installs_every_engine_subsystem() {
 ///
 /// This is the composition contract the deleted `asset_test.rs` asserted and
 /// the one the render-cache ordering relies on.
+/// The engine owns the recorder and opens the game frame itself.
+///
+/// A development build is profiled by its own loop: two ticks produce one
+/// flushed frame containing the engine marker and the stage markers, with no
+/// editor or UI pass involved. The test builds the schedule rails without the
+/// asset/audio subsystems so it stays a profiler-boundary test.
+#[test]
+fn update_records_a_game_frame_when_recording() {
+    use crate::inputs::InputEngine;
+    use kairos_profile::Profiler;
+
+    let mut world = kairos_ecs::world::World::new();
+    crate::schedule::install(&mut world);
+    let mut engine = super::Engine {
+        world,
+        input_engine: InputEngine::new(),
+        profiler: Profiler::new(),
+    };
+
+    engine.profiler().set_recording(true);
+    // The first update enables the macros and opens frame 1; the second
+    // update's begin_frame is what flushes it into the store.
+    engine.update();
+    engine.update();
+
+    let session = engine.profiler().session();
+    let mut engine_frame = false;
+    let mut stage = false;
+    for frame in &session.frames {
+        for thread in &frame.threads {
+            for sample in &thread.samples {
+                match session.scope_name(sample.scope) {
+                    "Kairos.Engine.Frame" => engine_frame = true,
+                    "Kairos.Stage" => stage = true,
+                    _ => {}
+                }
+            }
+        }
+    }
+    assert!(engine_frame, "Engine::update records `Kairos.Engine.Frame`");
+    assert!(stage, "the main schedule stages record `Kairos.Stage`");
+
+    engine.profiler().set_recording(false);
+}
+
 #[test]
 fn build_world_mounts_the_asset_core_on_the_engine_stages() {
     let world = super::build_world();

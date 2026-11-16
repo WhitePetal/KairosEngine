@@ -11,6 +11,7 @@ use kairos_editor_docking::{
     split::Fraction,
     tree::NodeIndex,
 };
+use kairos_engine::Engine;
 use kairos_log::SinkHandle;
 use kairos_profile::Profiler;
 
@@ -22,27 +23,29 @@ use crate::effects::EffectExecutor;
 /// owns it. It is not in `EditorState` because it is a host stream, not
 /// serializable state.
 ///
-/// The profiler is the second such resource: the process owns the capture store,
-/// the app drives its frame boundary (`kairos_profile::begin_frame` /
-/// `end_frame`), and the Profiler panel reads it through `HostView::profiler`.
+/// The engine is the other: the shell hosts it, ticks it once per redraw, and
+/// the Profiler panel borrows its recorder through `HostView::profiler`.
+/// `kairos_profile` has no process-global recorder, so the engine owns the one
+/// this process uses; the app never creates a second.
 struct AppHost {
     console: Arc<ConsoleLog>,
     /// Keeps the console attached to the process logger; dropping the app
     /// detaches the sink.
     _console_sink: SinkHandle,
-    /// Process-wide capture store. Initialised here, before the first frame, so
-    /// the Profiler panel has a sink to read from as soon as it opens.
-    profiler: &'static Profiler,
+    /// The runtime this shell drives. `Engine::update` opens the game frame
+    /// (and flushes the previous one), so frames come from the engine loop, not
+    /// from egui's repaint schedule.
+    engine: Engine,
 }
 
 impl AppHost {
-    fn new() -> Self {
+    fn new(engine: Engine) -> Self {
         let console = Arc::new(ConsoleLog::new());
         let console_sink = kairos_log::attach(console.clone());
         Self {
             console,
             _console_sink: console_sink,
-            profiler: Profiler::global(),
+            engine,
         }
     }
 }
@@ -53,7 +56,7 @@ impl HostView for AppHost {
     }
 
     fn profiler(&self) -> Option<&Profiler> {
-        Some(self.profiler)
+        Some(self.engine.profiler())
     }
 }
 
@@ -122,7 +125,21 @@ impl EditorApp {
         host.sync(&state.layout, &cc.egui_ctx);
         let dock = default_dock(&host);
 
-        let host_view = AppHost::new();
+        // The engine is the runtime this shell hosts: it owns the profiling
+        // recorder and opens the frame in `Engine::update`. A machine without an
+        // audio device still gets a working editor — the engine's headless shape
+        // is the same world bootstrap minus the audio driver.
+        let engine = match Engine::new() {
+            Ok(engine) => engine,
+            Err(error) => {
+                kairos_log::warn!(
+                    target: "kairos_editor",
+                    "engine boot failed ({error}); continuing headless"
+                );
+                Engine::headless()
+            }
+        };
+        let host_view = AppHost::new(engine);
 
         let tool_bar = ToolBar::new(&cc.egui_ctx);
 
@@ -199,12 +216,22 @@ fn describe(action: &Action) -> String {
 impl EditorApp {
     /// One frame, independent of the window backend (also used by smoke tests).
     ///
-    /// The profiling frame boundary wraps the whole pass. `begin_frame` flushes
-    /// the *previous* pass (puffin reports a thread's stream only after the
-    /// pass's outermost scope closes), and `end_frame` carries egui's discard
-    /// decision so a multi-pass layout never captures the throwaway pass.
+    /// **The engine owns the frame boundary.** `Engine::update` flushes the
+    /// previous game frame and opens the next one; the UI pass drawn after it
+    /// belongs to that same frame. egui can run the pass more than once for a
+    /// multi-pass layout, but the game frame must tick exactly once per redraw,
+    /// hence the `current_pass_index() == 0` guard.
+    ///
+    /// `Profiler::end_frame` still carries egui's discard decision — for a
+    /// second pass it is the committed one, so the frame is kept.
+    ///
+    /// A frame is a host-loop iteration, not an input event: while recording,
+    /// the app asks egui for the next repaint immediately, so an editor left
+    /// alone keeps producing frames (and engine ticks) at the display rate.
     fn ui(&mut self, ui: &mut egui::Ui) {
-        kairos_profile::begin_frame();
+        if ui.ctx().current_pass_index() == 0 {
+            self.host_view.engine.update();
+        }
 
         let committed = {
             kairos_profile::scope!("Kairos.Editor.Frame");
@@ -219,8 +246,10 @@ impl EditorApp {
             // Capture is host policy: keep it tied to the visible Profiler tab
             // so closing the tab cannot leave the recorder running with no
             // control surface. Frames already captured stay in the store.
-            if !self.state.layout.is_open(panels::PROFILER) && Profiler::global().is_recording() {
-                Profiler::global().set_recording(false);
+            if !self.state.layout.is_open(panels::PROFILER)
+                && self.host_view.engine.profiler().is_recording()
+            {
+                self.host_view.engine.profiler().set_recording(false);
             }
 
             {
@@ -249,7 +278,13 @@ impl EditorApp {
             !ui.ctx().will_discard()
         };
 
-        kairos_profile::end_frame(committed);
+        self.host_view.engine.profiler().end_frame(committed);
+
+        if self.host_view.engine.profiler().is_recording() {
+            // Keep the host loop turning so the engine keeps ticking (and thus
+            // recording) even when the window receives no input.
+            ui.ctx().request_repaint();
+        }
     }
 }
 
@@ -266,8 +301,8 @@ mod tests {
     use super::*;
     use kairos_editor_docking::viewer::TabViewer;
 
-    /// The profiler test drives the real global recorder; only one test may run
-    /// a UI pass at a time while it is recording.
+    /// Puffin's frame collector is process-global even though each app owns its
+    /// recorder, so only one capture test may run a UI pass while recording.
     static UI_LOCK: Mutex<()> = Mutex::new(());
 
     fn raw_input() -> egui::RawInput {
@@ -301,7 +336,7 @@ mod tests {
             state,
             host,
             dock,
-            host_view: AppHost::new(),
+            host_view: AppHost::new(Engine::headless()),
             tool_bar,
             pending_effects: Vec::new(),
         }
@@ -330,32 +365,45 @@ mod tests {
     fn editor_frames_are_captured_when_recording() {
         let _guard = UI_LOCK.lock().unwrap_or_else(|error| error.into_inner());
         let mut app = build();
-        let profiler = Profiler::global();
-        profiler.set_recording(true);
+        app.host_view.engine.profiler().set_recording(true);
 
         let ctx = egui::Context::default();
-        // Frame 1 is recorded between begin_frame and end_frame; the next
-        // begin_frame flushes it into the store.
+        // Frame 1 is recorded by the engine tick on the first pass; the tick on
+        // the second pass flushes it into the store.
         let _ = ctx.run_ui(raw_input(), |ui| app.ui(ui));
         let _ = ctx.run_ui(raw_input(), |ui| app.ui(ui));
 
+        let profiler = app.host_view.engine.profiler();
         let session = profiler.session();
         assert!(
             !session.frames.is_empty(),
             "a committed editor pass is flushed at the next frame boundary"
         );
-        let has_editor_frame = session.frames.iter().any(|frame| {
-            frame.threads.iter().any(|thread| {
-                thread
-                    .samples
-                    .iter()
-                    .any(|sample| session.scope_name(sample.scope) == "Kairos.Editor.Frame")
+        let has_scope = |name: &str| {
+            session.frames.iter().any(|frame| {
+                frame.threads.iter().any(|thread| {
+                    thread
+                        .samples
+                        .iter()
+                        .any(|sample| session.scope_name(sample.scope) == name)
+                })
             })
-        });
-        assert!(has_editor_frame, "Kairos.Editor.Frame is in the capture");
+        };
+        assert!(
+            has_scope("Kairos.Engine.Frame"),
+            "the shell ticks the engine inside the recorded frame"
+        );
+        assert!(
+            has_scope("Kairos.Stage"),
+            "the engine's schedule stages are captured too"
+        );
+        assert!(
+            has_scope("Kairos.Editor.Frame"),
+            "the UI pass belongs to the same engine frame"
+        );
 
-        profiler.set_recording(false);
-        profiler.clear();
+        app.host_view.engine.profiler().set_recording(false);
+        app.host_view.engine.profiler().clear();
     }
 
     #[test]
@@ -392,17 +440,17 @@ mod tests {
     }
 
     #[test]
-    fn host_view_exposes_the_profiler() {
-        let host = AppHost::new();
+    fn host_view_exposes_the_engine_profiler() {
+        let host = AppHost::new(Engine::headless());
         assert!(
             host.profiler().is_some(),
-            "the app installs the process profiler before the first frame"
+            "the shell borrows the engine's recorder"
         );
     }
 
     #[test]
     fn host_view_exposes_the_console_history() {
-        let host = AppHost::new();
+        let host = AppHost::new(Engine::headless());
         host.console.push(&kairos_log::Record::new(
             kairos_log::Level::Info,
             "test",
@@ -421,21 +469,23 @@ mod tests {
     fn closing_the_profiler_tab_stops_recording() {
         let _guard = UI_LOCK.lock().unwrap_or_else(|error| error.into_inner());
         let mut app = build();
-        let profiler = Profiler::global();
-        profiler.set_recording(true);
+        app.host_view.engine.profiler().set_recording(true);
 
         let ctx = egui::Context::default();
         let _ = ctx.run_ui(raw_input(), |ui| app.ui(ui));
-        assert!(profiler.is_recording(), "the first pass starts the capture");
+        assert!(
+            app.host_view.engine.profiler().is_recording(),
+            "the first pass starts the capture"
+        );
 
         app.state.layout.close(panels::PROFILER);
         let _ = ctx.run_ui(raw_input(), |ui| app.ui(ui));
 
         assert!(
-            !profiler.is_recording(),
+            !app.host_view.engine.profiler().is_recording(),
             "closing the Profiler tab stops the host capture"
         );
-        profiler.clear();
+        app.host_view.engine.profiler().clear();
     }
 
     #[test]

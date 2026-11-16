@@ -205,6 +205,11 @@ fn run_main(world: &mut World, mut run_at_least_once: Local<bool>) {
     if !*run_at_least_once {
         world.resource_scope::<MainScheduleOrder, _>(|world, order| {
             for &label in &order.startup_labels {
+                // One marker per stage, with the stage name as per-invocation
+                // data. Evaluating the name is inside the macro's
+                // `are_scopes_on` branch, so nothing is formatted while
+                // recording is off.
+                kairos_profile::scope!("Kairos.Stage", format!("{label:?}"));
                 if let Err(error) = world.try_run_schedule(label) {
                     log::error!("skipping startup schedule `{label:?}`: {error}");
                 }
@@ -215,6 +220,7 @@ fn run_main(world: &mut World, mut run_at_least_once: Local<bool>) {
 
     world.resource_scope::<MainScheduleOrder, _>(|world, order| {
         for &label in &order.labels {
+            kairos_profile::scope!("Kairos.Stage", format!("{label:?}"));
             if let Err(error) = world.try_run_schedule(label) {
                 log::error!("skipping sub-stage schedule `{label:?}`: {error}");
             }

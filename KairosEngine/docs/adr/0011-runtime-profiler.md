@@ -2,6 +2,9 @@
 
 - **Status**: Proposed
 - **Date**: 2026-11-13
+- **Revised**: 2026-11-16 — the recorder is an owned value (no global), the
+  engine drives the game frame, and captures are saved as files. See the
+  revision note below.
 - **Context**:
   - The 0.2.0 editor (`kairos_editor_app`, eframe/egui) runs a single window: a
     toolbar, the dock, and six registered panels (five open by default). The owner wants a **Profiler Panel**
@@ -20,6 +23,36 @@
     The workspace already depends on the `profiling` facade transitively through
     egui, wgpu and rapier, but no backend feature is enabled, so those
     `profiling::scope!` calls currently compile to nothing.
+- **Revision (2026-11-16)**:
+  The first implementation bound the profiler to the eframe editor shell and
+  made it a process global: `AppHost` held a `&'static Profiler` from
+  `Profiler::global()`, `begin_frame`/`end_frame` were free functions over that
+  global, and the frame boundary was an egui pass. Three things were wrong with
+  that: `kairos_engine` could not profile a game build, the global contradicted
+  the project's "no global static objects" rule, and an idle window produced no
+  frames because eframe repaints on events. The revised decisions:
+  1. `Profiler` is an **owned value** (`Profiler::new()`), registered with puffin
+     on construction and unregistered in `Drop`. There is no `Profiler::global()`,
+     no `OnceLock` and no `static` in `kairos_profile`. The only process-wide
+     state left is inside puffin (its macro switch and frame collector), which
+     the type encapsulates; the rule is one live recorder per process, created
+     by the composition root.
+  2. `kairos_engine` depends on `kairos_profile`: `Engine` owns the recorder
+     (`Engine::profiler`), and `Engine::update` opens the frame
+     (`begin_frame` → `Kairos.Engine.Frame` → `Kairos.Stage` per stage →
+     `end_frame(true)`). A development build of a game is therefore profiled by
+     its own loop; the engine no longer needs the editor.
+  3. The **host loop owns the frame boundary**. The frame stays open between two
+     `begin_frame` calls, so editor UI drawn after the engine tick belongs to
+     the same frame. The eframe shell now hosts the engine too: it calls
+     `Engine::update` once per redraw (guarded by egui's `current_pass_index`
+     so a multi-pass layout cannot tick the game twice) and calls
+     `request_repaint()` while recording, so an idle window keeps producing
+     engine frames at the display rate instead of going silent.
+  4. Captures are **saved as files** through `Profiler::save_capture`:
+     `capacity` frames in three formats under `Library/Profiler` (JSON schema v1,
+     Chrome trace, puffin's native `.puffin` stream readable by
+     `puffin_viewer`). The panel's Save button shows the absolute paths written.
 - **Decision**:
   1. **New foundation crate `kairos_profile`.** It owns the recorder, the
      plain-data capture model, hierarchy aggregation, and JSON / Chrome-trace
@@ -44,12 +77,15 @@
      the hot path and no sampling. This matches Unity's `ProfilerMarker` /
      `Profiler.BeginSample` model. A future deep-profile module can add
      native stacks, but it does not belong on this path.
-  4. **Frame contract.** The host calls `begin_frame()` at the top of a pass and
-     `end_frame(committed)` at the bottom. `begin_frame` flushes the **previous**
-     pass because puffin reports a thread's stream only after its outermost
-     scope closes (after the pass returns). This gives a clean boundary at the
-     cost of one frame of display latency. egui can run a pass twice and discard
-     the first; `end_frame(false)` marks it and the sink drops it at the next
+  4. **Frame contract.** The host loop calls `profiler.begin_frame()` once per
+     frame and `profiler.end_frame(committed)` before the next boundary.
+     `begin_frame` flushes the **previous** frame because puffin reports a
+     thread's stream only after its outermost scope closes (after the frame
+     returns). This gives a clean boundary at the cost of one frame of display
+     latency. The frame stays open until the next call, so work the host draws
+     after its tick belongs to the same frame. `Engine::update` owns the
+     boundary for engine/game frames; a host whose frame is one discarding egui
+     pass calls `end_frame(false)` and the sink drops that frame at the next
      flush. `set_recording(true)` only requests a capture; the macros are
      enabled at the next `begin_frame`, so the first captured frame is whole.
      Recording is off by default.
@@ -65,26 +101,37 @@
      frame (optionally one thread) into Unity's Hierarchy rows: same marker +
      data under the same parent path are merged; total, self, calls and max are
      accumulated; siblings sort by total time. The panel only renders rows.
-  7. **Exports are additive views.** Schema v1 pretty JSON (`to_json`,
-     `write_json`, `frame_json`) is the panel's JSON tab and the future capture
-     loader format. Chrome Trace Event Format (`to_chrome_trace`,
+  7. **Exports are additive views, written as files.** Schema v1 pretty JSON
+     (`to_json`, `write_json`, `frame_json`) is the panel's JSON tab and the
+     capture loader format. Chrome Trace Event Format (`to_chrome_trace`,
      `write_chrome_trace`) opens in Perfetto/`chrome://tracing` with no Kairos
-     tooling.
-  8. **Panel wiring.** The app owns the process `Profiler` (installing the sink
-     before the first frame), `kairos_profile::begin_frame` / `end_frame` wrap
-     `EditorApp::ui`, and `HostView::profiler` exposes the handle to the panel.
-     The panel reads `ProfileSession`, keeps only view state (tab, selected
-     frame/thread, cached aggregate), and toggles record/clear through the
-     host handle. It does no IO; JSON is produced by `kairos_profile`. The
-     Profiler is a dock tab next to Console by default. The app stops capture
-     when that tab is closed (no invisible recording); already captured frames
-     stay in the store for a reopen.
-  9. **Coverage in 0.2.0.** Instrumented: `Kairos.Editor.Frame`, `ToolBar`,
+     tooling. Puffin's native capture (`write_puffin`) is the `PUF0` container
+     that `puffin_viewer` reads, holding one `PFD4` record per frame; the sink
+     retains the packed backend frames beside the parsed snapshots so this needs
+     no second capture. `save_capture` writes
+     all three under `Library/Profiler`, named `capture-YYYYMMDD-HHMMSSZ.*`, and
+     returns the paths.
+  8. **Panel wiring.** The app owns an `Engine` (no global, no `&'static`);
+     the engine owns the `Profiler` and opens the frame in `Engine::update`,
+     the UI pass only calls `Profiler::end_frame(committed)`, and
+     `HostView::profiler` returns `engine.profiler()` to the panel. The panel reads `ProfileSession`, keeps only view
+     state (tab, selected frame/thread, cached aggregate), and toggles
+     record/clear/save through the host handle. It does no IO and knows no file
+     format: `Profiler::save_capture` writes the files and returns the paths,
+     which the panel displays. The Profiler is a dock tab next to Console by
+     default. The app stops capture when that tab is closed (no invisible
+     recording); already captured frames stay in the store for a reopen. While
+     recording the app requests a repaint every pass, so an idle window records
+     frames instead of waiting for an event.
+  9. **Coverage in 0.2.0.** Editor shell: `Kairos.Editor.Frame`, `ToolBar`,
      `Sync`, `Dock`, `Panel` (with the panel kind as per-invocation data),
-     `Pump`. Third-party `profiling::scope!` calls in egui/wgpu are captured by
-     feature unification. The engine is not hosted by this editor yet, so
-     `Kairos.Engine.*` and game-system scopes arrive with that integration; the
-     crate and model are host-agnostic.
+     `Pump`. Engine: `Kairos.Engine.Frame` around `Engine::update`, and
+     `Kairos.Stage` per main-schedule stage (the stage label is the
+     per-invocation data). Third-party `profiling::scope!` calls in egui/wgpu
+     are captured by feature unification. The eframe shell hosts an engine and
+     ticks it once per redraw, so its capture contains both the engine and
+     editor scopes; a headless engine (`Engine::headless`) is used when no audio
+     device is available.
 - **Data model**:
   ~~~json
   {
@@ -120,14 +167,19 @@
   bumps `schemaVersion`.
 - **Frame lifecycle**:
   ~~~text
-  frame N:  begin_frame()  -> flush N-1 (puffin has reported it after N-1 returned)
-            scope!("Kairos.Editor.Frame")
-            ... panes ...
-            end_frame(committed)
-  frame N+1: begin_frame() -> sink parses N, session revision++
+  frame N:  profiler.begin_frame()  -> flush N-1 (puffin reported it after N-1 returned)
+            Engine::update:
+              scope!("Kairos.Engine.Frame")
+              scope!("Kairos.Stage", stage)  per main-schedule stage
+            ... the host draws UI / presents inside the same frame ...
+            profiler.end_frame(committed)
+  frame N+1: profiler.begin_frame() -> sink parses N, session revision++
   ~~~
-  The one-frame lag is visible in the panel as "frame N-1"; it is the price of
-  not calling puffin's `new_frame` while a pass's scopes are still open.
+  The eframe shell ticks the engine on the first egui pass and puts its
+  `Kairos.Editor.Frame` around the UI pass in the same slot; while recording it
+  requests a repaint after each pass, so an idle window still produces frames. The one-frame lag is visible in the panel
+  as "frame N-1"; it is the price of not calling puffin's `new_frame` while a
+  frame's scopes are still open.
 - **Alternatives rejected**:
   - *tracing + tracing-chrome / tracing-perfetto*: a full subscriber stack and
     string/field formatting per span, no frame sink or per-thread frame model,
@@ -165,34 +217,42 @@
     is fine at editor scale but should move to a worker for very large captures;
     the profiler panel's own drawing is part of the capture (an observer cost);
     no GPU timings, allocation tracking, categories/colors or native stacks.
-  - Neutral: one process-global profiler (like `kairos_log`); adding `puffin`
-    through `profiling` also adds its small dependency set to binaries that
-    enable the new crates; the editor gain is automatic coverage of egui/wgpu.
+  - Neutral: one live recorder per process is a puffin constraint (its macro
+    switch and frame collector are process-wide), so the crate exposes an owned
+    value rather than a global and the composition root creates exactly one;
+    adding `puffin` through `profiling` also adds its small dependency set to
+    binaries that enable the new crates; enabling puffin's `serialization` adds
+    `bincode` + `lz4` for the native capture format; the editor gain is
+    automatic coverage of egui/wgpu.
 - **Follow-ups**:
   - Phase 2 (drawing): CPU/frame chart, hierarchy bar overlays, timeline with
     per-thread tracks, selection sync, frame comparison; reuse `hierarchy` and
     `FrameSnapshot`, no capture changes.
-  - Engine/game coverage: wrap `Engine::update` and the schedule stages with
-    `Kairos.Engine.*` scopes; game systems use `#[function]`.
+  - Engine/game coverage: done for `Engine::update` and the schedule stages;
+    game systems still instrument themselves with `#[function]` / `scope!`.
   - Async: a `tracing` (or explicit task-id) bridge so spans survive task
     migration.
   - GPU: wgpu timestamp queries as a separate track; markers cannot measure GPU
     time.
-  - Capture lifecycle: save/load `.json`, name captures, record from app start,
-    export from an app menu (keeping IO out of the panel).
+  - Capture lifecycle: saving exists (`save_capture`); loading a capture back
+    into the panel, naming captures and recording from app start are open.
   - Marker metadata: categories/colors (Unity's Profiler module colors), and
     optional user-registered scopes for dynamic names.
 - **References**:
   - Implementation: `kairos_profile/src/{lib,model,profiler,analysis,export}.rs`;
-    panel `kairos_editor_component/src/panels/profiler.rs`; host seam
-    `kairos_editor_component/src/frame.rs`; frame boundary and scopes
-    `kairos_editor_app/src/app.rs`; panel-body scope
+    engine ownership and game frame `kairos_engine/src/engine.rs`, stage scopes
+    `kairos_engine/src/schedule.rs`; panel
+    `kairos_editor_component/src/panels/profiler.rs`; host seam
+    `kairos_editor_component/src/frame.rs`; editor frame boundary and capture
+    loop `kairos_editor_app/src/app.rs`; panel-body scope
     `kairos_editor_component/src/panel/viewer.rs`.
   - Tests: `cargo test-crate kairos_profile` (capture lifecycle, discard,
-    worker threads, capacity, JSON/Chrome, hierarchy, parser),
-    `cargo test-crate kairos_editor_component` (panel render with/without a
-    capture, registration/icon), `cargo test -p kairos_editor_app --bins --tests`
-    (end-to-end editor frame capture).
+    worker threads, capacity, JSON/Chrome, readable `.puffin`, saved paths,
+    hierarchy, parser), `cargo test-crate kairos_engine` (game frame + stage
+    scopes), `cargo test-crate kairos_editor_component` (panel render
+    with/without a capture, registration/icon),
+    `cargo test -p kairos_editor_app --bins --tests` (end-to-end editor frame
+    capture).
   - Related: [ADR 0008](./0008-editor-ui-architecture.md) (state tree / Frame /
     UiOut), [ADR 0009](./0009-editor-panel-host-and-viewport.md) (host-owned
     resources), [ADR 0010](./0010-runtime-logging.md) (the other process-global
