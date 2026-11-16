@@ -1,88 +1,160 @@
-use egui::{Panel, RichText, Ui, menu};
-use kairos_editor_widgets::{color::Color32Ext, style::{Style, StyleFile}, ui_image};
+//! The editor's top menu bar: host chrome, not a docked panel.
+//!
+//! It is the production counterpart of the prototype's `toolbar` component
+//! (`prototypes/editor-ui/crates/editor-components`): it reads the read-only
+//! [`Frame`], draws with the widget kit, and pushes [`Action`]s into [`UiOut`].
+//! It never mutates `EditorState` and never performs IO at draw time.
+//!
+//! Appearance comes from [`ToolBarStyle`] (loaded from
+//! `Preferences/Styles/ToolBar.ron` once, when the app builds the toolbar). The
+//! tokens are projected onto reusable widget styles
+//! (`ButtonStyle` / `MenuStyle`); the drawing itself is done by
+//! `kairos_editor_widgets::button` and `kairos_editor_widgets::menu`, so this
+//! file only wires labels, actions and the two style projections.
 
-use crate::{Frame, UiOut, toolbar::style::ToolBarStyle};
+use egui::{Panel, Ui};
+use kairos_editor_core::{Action, LayoutAction, PanelId};
+use kairos_editor_widgets::color::Color32Ext;
+use kairos_editor_widgets::menu;
+use kairos_editor_widgets::style::{Style, StyleFile};
+use kairos_editor_widgets::ui_image;
+
+use crate::toolbar::style::ToolBarStyle;
+use crate::{Frame, UiOut, panels};
 
 pub mod style;
-
 
 pub struct ToolBar {
     style: ToolBarStyle,
 }
 
-
 impl ToolBar {
     pub fn new(ctx: &egui::Context) -> Self {
         let style = match StyleFile::<ToolBarStyle>::load_or_default() {
-            Ok(file) => file.dark,
+            Ok(file) => {
+                if ctx.theme() == egui::Theme::Light {
+                    file.light
+                } else {
+                    file.dark
+                }
+            }
             Err(error) => {
                 kairos_log::warn!(target: "kairos_editor", "toolbar style: {error}");
                 ToolBarStyle::dark()
             }
         };
 
+        // Runtime images are preloaded once, before the first frame, so the
+        // first paint does not show a missing logo.
         for path in style.icons.all() {
             ui_image::preload(ctx, path);
         }
 
-        Self {
-            style
-        }
+        Self { style }
     }
 
-    pub fn ui(&mut self, ui: &mut Ui, _frame: &Frame, _out: &mut UiOut) {
+    pub fn ui(&mut self, ui: &mut Ui, _frame: &Frame, out: &mut UiOut) {
+        kairos_profile::scope!("Kairos.Editor.ToolBar");
+
+        let style = &self.style;
+        let button = style.button_style();
+        let menu_style = style.menu_style();
+
         Panel::top("toolbar")
-            .default_size(self.style.height)
+            .exact_size(style.height)
+            .frame(egui::Frame::NONE.fill(style.background_color.to_egui()))
             .show(ui, |ui| {
-                menu::MenuBar::new().ui(ui, |ui| {
-                    ui.set_height(self.style.height);
-                    ui.painter().rect_filled(ui.available_rect_before_wrap(), self.style.corner_radius, self.style.background_color.to_egui());
+                // Unity's menu bar is a row of adjacent buttons: the button's
+                // own padding creates the gap, so no item spacing is added.
+                ui.spacing_mut().item_spacing = egui::Vec2::ZERO;
+                ui.horizontal(|ui| {
+                    menu::image_menu_button(
+                        ui,
+                        &menu_style,
+                        &button,
+                        &style.icons.about,
+                        style.icon_size,
+                        "About Kairos",
+                        |ui| {
+                            if menu::menu_item(ui, "About Kairos").clicked() {
+                                todo!("需要实现 UiOut 发送 About 窗口创建逻辑")
+                            }
+                            menu::menu_separator(ui);
+                            if menu::menu_item(ui, "Quit").clicked() {
+                                todo!("需要实现 UiOut 发送 Editor程序退出逻辑")
+                            }
+                        },
+                    );
 
-                    let menu_content = |ui: &mut egui::Ui| {
-                        if ui.button("About Kairos").clicked() {
-                            todo!("需要实现 UiOut 发送 About 窗口创建逻辑")
-                        }
-                        ui.separator();
-                        if ui.button("Quit").clicked() {
-                            todo!("需要实现 UiOut 发送 Editor程序退出逻辑")
-                        }
-                    };
-
-                    ui.menu_image_button(ui_image::get_image(&self.style.icons.about), menu_content);
-
-                    ui.menu_button(RichText::new("Edit").color(self.style.text_color.to_egui()), |ui| {
-                        if ui.button("Preferences").clicked() {
+                    menu::menu_button(ui, &menu_style, &button, "Edit", |ui| {
+                        if menu::menu_item(ui, "Preferences").clicked() {
                             todo!("需要实现 UiOut 发送 创建Preferences窗口逻辑")
                         }
                     });
 
-                    ui.menu_button(RichText::new("World").color(self.style.text_color.to_egui()), |ui| {
-                        if ui.button("New World").clicked() {
+                    menu::menu_button(ui, &menu_style, &button, "World", |ui| {
+                        if menu::menu_item(ui, "New World").clicked() {
                             todo!("需要实现 UiOut 发送 创建新世界/场景逻辑")
                         }
                     });
 
-                    ui.menu_button(RichText::new("Window").color(self.style.text_color.to_egui()), |ui| {
-                        if ui.button("Inspector").clicked() {
-                            todo!("需要实现 UiOut 发送 创建Inspector窗口逻辑")
-                        }
-                        if ui.button("Hierarchy").clicked() {
-                            todo!("需要实现 UiOut 发送 创建Hierarchy窗口逻辑")
-                        }
-                        if ui.button("Project").clicked() {
-                            todo!("需要实现 UiOut 发送 创建Project窗口逻辑")
-                        }
-                        if ui.button("Console").clicked() {
-                            todo!("需要实现 UiOut 发送 创建 Console窗口逻辑")
-                        }
-                        if ui.button("Scene").clicked() {
-                            todo!("需要实现 UiOut 发送 创建Scene窗口逻辑")
-                        }
-                        if ui.button("Game").clicked() {
+                    menu::menu_button(ui, &menu_style, &button, "Window", |ui| {
+                        window_item(ui, out, "Inspector", panels::INSPECTOR);
+                        window_item(ui, out, "Hierarchy", panels::HIERARCHY);
+                        window_item(ui, out, "Project", panels::PROJECT);
+                        window_item(ui, out, "Console", panels::CONSOLE);
+                        window_item(ui, out, "Profiler", panels::PROFILER);
+                        menu::menu_separator(ui);
+                        window_item(ui, out, "Scene", panels::SCENE);
+                        if menu::menu_item(ui, "Game").clicked() {
                             todo!("需要实现 UiOut 发送 创建 Game窗口逻辑")
                         }
-                    })
+                    });
                 });
             });
+    }
+}
+
+/// A Window-menu entry for a built-in panel: toggles it through the reducer
+/// instead of opening a window behind the layout's back.
+fn window_item(ui: &mut Ui, out: &mut UiOut, label: &str, panel: PanelId) {
+    if menu::menu_item(ui, label).clicked() {
+        out.push(Action::Layout(LayoutAction::TogglePanel { panel }));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use egui::{Context, Pos2, RawInput, Rect, vec2};
+    use kairos_editor_core::EditorState;
+
+    use crate::frame::HostView;
+
+    struct EmptyHost;
+
+    impl HostView for EmptyHost {}
+
+    fn raw_input() -> RawInput {
+        RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(960.0, 240.0))),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn toolbar_draws_the_menu_bar_without_panicking() {
+        let ctx = Context::default();
+        let mut toolbar = ToolBar::new(&ctx);
+        let state = EditorState::new();
+        let host = EmptyHost;
+        let frame = Frame::with_host(&state, &host);
+        let mut out = UiOut::new();
+
+        let output = ctx.run_ui(raw_input(), |ui| toolbar.ui(ui, &frame, &mut out));
+
+        // The bar paints at least the menu buttons' labels and the engine logo.
+        assert!(!output.shapes.is_empty());
+        assert!(out.is_empty(), "the toolbar only emits actions on click");
     }
 }

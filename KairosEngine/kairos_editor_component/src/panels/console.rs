@@ -19,24 +19,23 @@
 //! are part of it and are preloaded through `kairos_editor_widgets::ui_image`.
 //! This module only wires host data, view state and interaction.
 
-
-pub mod console_style;
+pub mod style;
 
 use std::collections::HashMap;
 
-use egui::{
-    Align2, CornerRadius, FontFamily, FontId, Pos2, Rect, Sense, Stroke, Ui, WidgetInfo,
-    WidgetText, WidgetType, pos2, vec2,
-};
+use egui::{Align2, CornerRadius, Rect, Sense, Stroke, Ui, WidgetText, WidgetType, pos2, vec2};
 use kairos_editor_core::PanelId;
+use kairos_editor_widgets::button::{Button, ButtonAlign, ButtonStyle};
 use kairos_editor_widgets::color::Color32Ext;
+use kairos_editor_widgets::paint::{labelled_widget_info, magnifier};
 use kairos_editor_widgets::style::StyleFile;
+use kairos_editor_widgets::text::TextStyle;
 use kairos_editor_widgets::ui_image;
 use kairos_log::Level;
 
 use crate::frame::{ConsoleLine, Frame, UiOut};
 use crate::panel::Panel;
-use crate::panels::console::console_style::ConsoleStyle;
+use crate::panels::console::style::ConsoleStyle;
 
 use super::CONSOLE;
 
@@ -97,7 +96,13 @@ impl Panel for ConsolePanel {
 
     fn init(&mut self, ctx: &egui::Context) {
         match StyleFile::<ConsoleStyle>::load_or_default() {
-            Ok(file) => self.style = file.dark,
+            Ok(file) => {
+                self.style = if ctx.theme() == egui::Theme::Light {
+                    file.light
+                } else {
+                    file.dark
+                };
+            }
             Err(error) => {
                 kairos_log::warn!(target: "kairos_editor", "console style: {error}");
             }
@@ -231,14 +236,40 @@ impl ConsolePanel {
         counts
     }
 
+    /// Reusable text style for the Console toolbar chrome (labels, counts).
+    ///
+    /// The panel paints the same 12 px text in a handful of places; one
+    /// `TextStyle` per colour replaces the repeated `FontId + color` pairs.
+    fn toolbar_text(&self) -> TextStyle {
+        TextStyle::sized(self.style.toolbar_text.to_egui(), self.style.text_size)
+    }
+
+    /// Reusable text style for log rows and the stack-trace pane.
+    fn body_text(&self) -> TextStyle {
+        TextStyle::sized(self.style.text.to_egui(), self.style.text_size)
+    }
+
+    /// Reusable style for the Console toolbar buttons ("Clear", "Collapse",
+    /// "Error Pause", "Editor"): square, Console-hover fill, exact row height.
+    fn button_style(&self) -> ButtonStyle {
+        ButtonStyle::new(self.toolbar_text())
+            .fills(
+                egui::Color32::TRANSPARENT,
+                self.style.toggle_bg.to_egui(),
+                self.style.toggle_bg.to_egui(),
+            )
+            .corner_radius(CornerRadius::ZERO)
+            .height(self.style.toolbar_height)
+            .padding(vec2(5.0, 0.0))
+    }
+
     /// Unity sizes the three count toggles to their content (measured: 40 px for
     /// `39`, 49 px for `303`, 32 px for `5`); the style token is the floor so a
     /// toggle never paints its number over the next one.
-    fn count_widths(&self, painter: &egui::Painter, counts: &[usize; 3]) -> [f32; 3] {
-        let font = FontId::new(self.style.text_size, FontFamily::Proportional);
-        let color = self.style.toolbar_text.to_egui();
+    fn count_widths(&self, ui: &Ui, counts: &[usize; 3]) -> [f32; 3] {
+        let text_style = self.toolbar_text();
         (*counts).map(|count| {
-            let text = painter.layout_no_wrap(count.to_string(), font.clone(), color);
+            let text = text_style.layout(ui, count.to_string());
             self.style
                 .count_widths
                 .max(5.0 + self.style.count_icon + 5.0 + text.size().x + 5.0)
@@ -268,29 +299,26 @@ impl ConsolePanel {
             self.style.separator.to_egui(),
         );
 
-        let font = FontId::new(self.style.text_size, FontFamily::Proportional);
+        let button = self.button_style();
+        let text = self.toolbar_text();
         let mut x = bar.left();
 
-        // Clear (split button: label + caret menu).
+        // Clear (split button: label + caret menu). The buttons are positioned
+        // on the measured Unity grid; the reusable Button widget owns the
+        // hover/pressed fill, the label and the caret.
         let clear = Rect::from_min_size(
             pos2(x, bar.top()),
             vec2(self.style.clear_width, bar.height()),
         );
-        let response = ui.interact(clear, ui.id().with("console-clear"), Sense::click());
-        paint_hover(&painter, &response, clear, false, &self.style);
-        painter.text(
-            pos2(clear.left() + 5.0, clear.center().y),
-            Align2::LEFT_CENTER,
-            "Clear",
-            font.clone(),
-            self.style.toolbar_text.to_egui(),
+        let response = ui.put(
+            clear,
+            Button::new("Clear", &button)
+                .width(clear.width())
+                .height(clear.height())
+                .padding(vec2(5.0, 0.0))
+                .caret()
+                .id(ui.id().with("console-clear")),
         );
-        paint_caret(
-            &painter,
-            pos2(clear.right() - 10.0, clear.center().y),
-            self.style.toolbar_text.to_egui(),
-        );
-        toolbar_widget_info(&response, WidgetType::Button, "Clear", None);
         if response.clicked() {
             self.cleared_through = lines.last().map_or(0, |line| line.id);
             self.selected = None;
@@ -303,20 +331,14 @@ impl ConsolePanel {
             pos2(x, bar.top()),
             vec2(self.style.collapse_width, bar.height()),
         );
-        let response = ui.interact(collapse, ui.id().with("console-collapse"), Sense::click());
-        paint_hover(&painter, &response, collapse, self.collapse, &self.style);
-        painter.text(
-            collapse.center(),
-            Align2::CENTER_CENTER,
-            "Collapse",
-            font.clone(),
-            self.style.toolbar_text.to_egui(),
-        );
-        toolbar_widget_info(
-            &response,
-            WidgetType::SelectableLabel,
-            "Collapse",
-            Some(self.collapse),
+        let response = ui.put(
+            collapse,
+            Button::new("Collapse", &button)
+                .width(collapse.width())
+                .height(collapse.height())
+                .align(ButtonAlign::Center)
+                .selected(self.collapse)
+                .id(ui.id().with("console-collapse")),
         );
         if response.clicked() {
             self.collapse = !self.collapse;
@@ -327,20 +349,14 @@ impl ConsolePanel {
             pos2(x, bar.top()),
             vec2(self.style.error_pause_width, bar.height()),
         );
-        let response = ui.interact(pause, ui.id().with("console-error-pause"), Sense::click());
-        paint_hover(&painter, &response, pause, self.error_pause, &self.style);
-        painter.text(
-            pause.center(),
-            Align2::CENTER_CENTER,
-            "Error Pause",
-            font.clone(),
-            self.style.toolbar_text.to_egui(),
-        );
-        toolbar_widget_info(
-            &response,
-            WidgetType::SelectableLabel,
-            "Error Pause",
-            Some(self.error_pause),
+        let response = ui.put(
+            pause,
+            Button::new("Error Pause", &button)
+                .width(pause.width())
+                .height(pause.height())
+                .align(ButtonAlign::Center)
+                .selected(self.error_pause)
+                .id(ui.id().with("console-error-pause")),
         );
         if response.clicked() {
             self.error_pause = !self.error_pause;
@@ -352,26 +368,21 @@ impl ConsolePanel {
             pos2(x, bar.top()),
             vec2(self.style.editor_width, bar.height()),
         );
-        let response = ui.interact(editor, ui.id().with("console-source"), Sense::click());
-        paint_hover(&painter, &response, editor, false, &self.style);
-        painter.text(
-            pos2(editor.left() + 8.0, editor.center().y),
-            Align2::LEFT_CENTER,
-            "Editor",
-            font.clone(),
-            self.style.toolbar_text.to_egui(),
+        ui.put(
+            editor,
+            Button::new("Editor", &button)
+                .width(editor.width())
+                .height(editor.height())
+                .padding(vec2(8.0, 0.0))
+                .caret()
+                .caret_inset(13.0)
+                .id(ui.id().with("console-source")),
         );
-        paint_caret(
-            &painter,
-            pos2(editor.right() - 13.0, editor.center().y),
-            self.style.toolbar_text.to_egui(),
-        );
-        toolbar_widget_info(&response, WidgetType::Button, "Editor", None);
         x = toolbar_separator(&painter, bar, editor.right(), &self.style);
 
         // Search field fills the middle; the count buttons are pinned right.
         let counts = self.counts(lines);
-        let count_widths = self.count_widths(&painter, &counts);
+        let count_widths = self.count_widths(ui, &counts);
         let counts_width: f32 = count_widths.iter().sum::<f32>()
             + (Level::ALL.len() as f32 - 1.0) * self.style.separator_width;
         let counts_left = bar.right() - counts_width;
@@ -390,10 +401,10 @@ impl ConsolePanel {
             Stroke::new(1.0, self.style.search_edge.to_egui()),
             egui::StrokeKind::Inside,
         );
-        paint_magnifier(
+        magnifier(
             &painter,
             pos2(search.left() + 9.0, search.center().y),
-            self.style.toolbar_text.to_egui(),
+            text.text_color(),
         );
         let edit = Rect::from_min_max(
             pos2(search.left() + 18.0, search.top()),
@@ -403,8 +414,8 @@ impl ConsolePanel {
             edit,
             egui::TextEdit::singleline(&mut self.search)
                 .id(ui.id().with("console-search"))
-                .font(FontId::new(self.style.text_size, FontFamily::Proportional))
-                .text_color(self.style.toolbar_text.to_egui())
+                .font(text.font_id(ui.style()))
+                .text_color(text.text_color())
                 .frame(egui::Frame::NONE)
                 .margin(egui::Margin::symmetric(0, 1)),
         );
@@ -430,7 +441,7 @@ impl ConsolePanel {
             &self.style,
         );
 
-        let font = FontId::new(self.style.text_size, FontFamily::Proportional);
+        let text = self.toolbar_text();
         for (index, level) in Level::ALL.into_iter().enumerate() {
             let segment =
                 Rect::from_min_size(pos2(x, bar.top()), vec2(widths[index], bar.height()));
@@ -453,7 +464,7 @@ impl ConsolePanel {
             painter.rect_filled(segment, CornerRadius::ZERO, bg.to_egui());
 
             let label = format!("{} {}", level_name(level), counts[index]);
-            toolbar_widget_info(
+            labelled_widget_info(
                 &response,
                 WidgetType::SelectableLabel,
                 &label,
@@ -472,12 +483,11 @@ impl ConsolePanel {
                 self.style.icons.severity(level, visible),
                 egui::Color32::WHITE,
             );
-            painter.text(
+            text.paint(
+                ui,
                 pos2(icon_rect.right() + 5.0, segment.center().y),
                 Align2::LEFT_CENTER,
                 counts[index].to_string(),
-                font.clone(),
-                self.style.toolbar_text.to_egui(),
             );
 
             x = if index < 2 {
@@ -545,10 +555,10 @@ impl ConsolePanel {
         } else {
             self.style.row_even.to_egui()
         };
-        let text_color = if selected {
-            self.style.text_selected.to_egui()
+        let text_style = if selected {
+            TextStyle::sized(self.style.text_selected.to_egui(), self.style.text_size)
         } else {
-            self.style.text.to_egui()
+            self.body_text()
         };
         let painter = ui.painter();
         painter.rect_filled(rect, CornerRadius::ZERO, background);
@@ -564,14 +574,9 @@ impl ConsolePanel {
             egui::Color32::WHITE,
         );
 
-        let font = FontId::new(self.style.text_size, FontFamily::Proportional);
         let text = format!("[{}] {}", line.time, line.message);
-        let galley = painter.layout(
-            text,
-            font,
-            text_color,
-            rect.width() - self.style.text_left - 10.0,
-        );
+        let galley =
+            text_style.layout_wrapped(ui, text, rect.width() - self.style.text_left - 10.0);
         let clip = Rect::from_min_max(
             pos2(
                 rect.left() + self.style.text_left,
@@ -586,7 +591,7 @@ impl ConsolePanel {
                 rect.top() + self.style.row_text_top,
             ),
             galley,
-            text_color,
+            text_style.text_color(),
         );
 
         if self.collapse && count > 1 {
@@ -608,12 +613,11 @@ impl ConsolePanel {
             } else {
                 count.to_string()
             };
-            painter.text(
+            TextStyle::sized(self.style.text.to_egui(), self.style.badge_text_size).paint(
+                ui,
                 badge_rect.center(),
                 Align2::CENTER_CENTER,
                 badge_text,
-                FontId::new(self.style.badge_text_size, FontFamily::Proportional),
-                self.style.text.to_egui(),
             );
         }
     }
@@ -635,15 +639,8 @@ impl ConsolePanel {
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         ui.spacing_mut().item_spacing.y = 0.0;
-                        let font = FontId::new(self.style.text_size, FontFamily::Proportional);
-                        ui.add(
-                            egui::Label::new(
-                                egui::RichText::new(&line.message)
-                                    .font(font.clone())
-                                    .color(self.style.text.to_egui()),
-                            )
-                            .wrap(),
-                        );
+                        let text = self.body_text();
+                        ui.add(egui::Label::new(text.rich(line.message.as_str())).wrap());
                         for stack_line in &line.stack {
                             paint_stack_line(ui, stack_line, &self.style);
                         }
@@ -695,63 +692,6 @@ fn toolbar_separator(painter: &egui::Painter, bar: Rect, x: f32, style: &Console
     x + style.separator_width
 }
 
-/// Registers a hand-painted control with egui. A painter-only control is missing
-/// from the accessibility tree and from label/role queries; the built-in widgets
-/// report this automatically.
-fn toolbar_widget_info(
-    response: &egui::Response,
-    widget: WidgetType,
-    label: &str,
-    selected: Option<bool>,
-) {
-    response.widget_info(|| match selected {
-        Some(selected) => WidgetInfo::selected(widget, true, selected, label),
-        None => WidgetInfo::labeled(widget, true, label),
-    });
-}
-
-fn paint_stack_line(ui: &mut Ui, line: &str, style: &ConsoleStyle) {
-    let font = FontId::new(style.text_size, FontFamily::Proportional);
-
-    // Unity colours the trailing `(at file:line)` of a frame as a source link
-    // while the symbol itself stays grey.
-    match line.find(" (at ") {
-        Some(index) => {
-            let symbol = &line[..index];
-            let location = &line[index + 1..];
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 0.0;
-                ui.add(
-                    egui::Label::new(
-                        egui::RichText::new(symbol)
-                            .font(font.clone())
-                            .color(style.text.to_egui()),
-                    )
-                    .wrap(),
-                );
-                ui.add(
-                    egui::Label::new(
-                        egui::RichText::new(format!(" {location}"))
-                            .font(font)
-                            .color(style.link.to_egui()),
-                    )
-                    .wrap(),
-                );
-            });
-        }
-        None => {
-            ui.add(
-                egui::Label::new(
-                    egui::RichText::new(line)
-                        .font(font)
-                        .color(style.text.to_egui()),
-                )
-                .wrap(),
-            );
-        }
-    }
-}
-
 fn level_index(level: Level) -> usize {
     match level {
         Level::Info => 0,
@@ -768,41 +708,35 @@ fn level_name(level: Level) -> &'static str {
     }
 }
 
-fn paint_hover(
-    painter: &egui::Painter,
-    response: &egui::Response,
-    rect: Rect,
-    active: bool,
-    style: &ConsoleStyle,
-) {
-    if active || response.hovered() {
-        painter.rect_filled(rect, CornerRadius::ZERO, style.toggle_bg.to_egui());
+fn paint_stack_line(ui: &mut Ui, line: &str, style: &ConsoleStyle) {
+    let text = TextStyle::sized(style.text.to_egui(), style.text_size);
+    let link = TextStyle::sized(style.link.to_egui(), style.text_size);
+
+    // Unity colours the trailing `(at file:line)` of a frame as a source link
+    // while the symbol itself stays grey.
+    match line.find(" (at ") {
+        Some(index) => {
+            let symbol = &line[..index];
+            let location = &line[index + 1..];
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 0.0;
+                ui.add(egui::Label::new(text.rich(symbol)).wrap());
+                ui.add(egui::Label::new(link.rich(format!(" {location}"))).wrap());
+            });
+        }
+        None => {
+            ui.add(egui::Label::new(text.rich(line)).wrap());
+        }
     }
-}
-
-fn paint_caret(painter: &egui::Painter, center: Pos2, color: egui::Color32) {
-    let points = vec![
-        pos2(center.x - 3.5, center.y - 1.5),
-        pos2(center.x + 3.5, center.y - 1.5),
-        pos2(center.x, center.y + 2.5),
-    ];
-    painter.add(egui::Shape::convex_polygon(points, color, Stroke::NONE));
-}
-
-fn paint_magnifier(painter: &egui::Painter, center: Pos2, color: egui::Color32) {
-    painter.circle_stroke(center + vec2(-1.0, -1.0), 4.0, Stroke::new(1.2, color));
-    painter.line_segment(
-        [center + vec2(1.8, 1.8), center + vec2(4.2, 4.2)],
-        Stroke::new(1.2, color),
-    );
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::frame::HostView;
+    use egui::Pos2;
     use kairos_editor_core::EditorState;
-use kairos_editor_widgets::style::Style;
+    use kairos_editor_widgets::style::Style;
 
     struct EmptyHost;
 
@@ -987,6 +921,34 @@ use kairos_editor_widgets::style::Style;
                 && (painted.rect.width() - bar.width()).abs() < 0.5
                 && (painted.rect.top() - bar.bottom()).abs() < 0.5),
             "missing the separator below the toolbar"
+        );
+    }
+
+    #[test]
+    fn clicking_clear_hides_the_rows() {
+        let style = ConsoleStyle::dark();
+        let host = lines_host(4);
+        let mut harness = ConsoleHarness::new(&host);
+
+        let before = harness.frame(Vec::new());
+        assert!(
+            before
+                .iter()
+                .any(|painted| painted.fill == style.row_odd.to_egui()),
+            "the fixture should paint log rows before Clear"
+        );
+
+        // The Clear segment is the first measured toolbar button.
+        let clear = pos2(style.clear_width * 0.5, style.toolbar_height * 0.5);
+        harness.frame(vec![pointer_move(clear), pointer_button(clear, true)]);
+        harness.frame(vec![pointer_button(clear, false)]);
+
+        let after = harness.frame(Vec::new());
+        assert!(
+            !after
+                .iter()
+                .any(|painted| painted.fill == style.row_odd.to_egui()),
+            "Clear should hide every log row"
         );
     }
 

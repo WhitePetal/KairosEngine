@@ -71,7 +71,7 @@ pub struct ConsoleStyle {
 
     pub separator_width: f32,
 
-    pub splitter_grab: f32
+    pub splitter_grab: f32,
 }
 
 /// Fallback for style files written before the tab icon existed.

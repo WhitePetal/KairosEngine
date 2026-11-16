@@ -14,8 +14,6 @@ use kairos_editor_docking::{
 use kairos_log::SinkHandle;
 use kairos_profile::Profiler;
 
-use crate::consts::VERSION;
-
 /// Host-owned resources a panel may display but never own (the prototype's
 /// `HostState`). The console history is a `kairos_log` sink: the process logger
 /// writes into it, the Console panel reads it through `HostView`, and neither
@@ -153,32 +151,6 @@ impl EditorApp {
         }
     }
 
-    /// Toolbar is host chrome, not a panel: it reads state and pushes actions,
-    /// exactly like a panel body would.
-    fn show_tool_bar(&self, ui: &mut egui::Ui, out: &mut UiOut) {
-        kairos_profile::scope!("Kairos.Editor.ToolBar");
-        let kinds: Vec<_> = self.host.kinds().collect();
-
-        egui::Panel::top("editor-top-bar").show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.label("Kairos");
-                ui.separator();
-                for kind in &kinds {
-                    let open = self.state.layout.is_open(*kind);
-                    if ui.selectable_label(open, kind.0).clicked() {
-                        out.push(Action::Layout(LayoutAction::TogglePanel { panel: *kind }));
-                    }
-                }
-                ui.separator();
-                // No focus debug label here: it only exists on some passes and
-                // would shift egui's auto-id bookkeeping between passes.
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(format!("v{VERSION}"));
-                });
-            });
-        });
-    }
-
     /// dispatch the actions collected during the UI pass, then let the host-side resources record what happened.
     ///
     /// Called only for a committed pass (`!Context::will_discard()`): egui may
@@ -222,7 +194,6 @@ impl EditorApp {
             ui.style_mut().interaction.selectable_labels = false;
 
             let mut out = UiOut::new();
-            // self.show_tool_bar(ui, &mut out);
             self.sync(ui.ctx());
 
             // Capture is host policy: keep it tied to the visible Profiler tab
