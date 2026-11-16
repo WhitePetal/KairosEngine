@@ -99,27 +99,31 @@ impl ToolBar {
                     });
 
                     menu::menu_button(ui, &menu_style, &button, "Window", |ui| {
-                        window_item(ui, out, "Inspector", panels::INSPECTOR);
-                        window_item(ui, out, "Hierarchy", panels::HIERARCHY);
-                        window_item(ui, out, "Project", panels::PROJECT);
-                        window_item(ui, out, "Console", panels::CONSOLE);
-                        window_item(ui, out, "Profiler", panels::PROFILER);
-                        menu::menu_separator(ui);
-                        window_item(ui, out, "Scene", panels::SCENE);
-                        if menu::menu_item(ui, "Game").clicked() {
-                            todo!("需要实现 UiOut 发送 创建 Game窗口逻辑")
-                        }
+                        menu::submenu(ui, "General", |ui| {
+                            window_item(ui, out, "Inspector", panels::INSPECTOR);
+                            window_item(ui, out, "Hierarchy", panels::HIERARCHY);
+                            window_item(ui, out, "Project", panels::PROJECT);
+                            window_item(ui, out, "Console", panels::CONSOLE);
+                            window_item(ui, out, "Scene", panels::SCENE);
+                            if menu::menu_item(ui, "Game").clicked() {
+                                todo!("需要实现 UiOut 发送 创建 Game窗口逻辑")
+                            }
+                        });
+                        menu::submenu(ui, "Analysis", |ui| {
+                            window_item(ui, out, "Profiler", panels::PROFILER);
+                        });
                     });
                 });
             });
     }
 }
 
-/// A Window-menu entry for a built-in panel: toggles it through the reducer
-/// instead of opening a window behind the layout's back.
+/// A Window-menu entry for a built-in panel: shows it through the reducer. The
+/// app focuses an existing tab or opens a floating window when the panel has no
+/// tab yet, so the toolbar never manipulates the dock itself.
 fn window_item(ui: &mut Ui, out: &mut UiOut, label: &str, panel: PanelId) {
     if menu::menu_item(ui, label).clicked() {
-        out.push(Action::Layout(LayoutAction::TogglePanel { panel }));
+        out.push(Action::Layout(LayoutAction::ShowPanel { panel }));
     }
 }
 

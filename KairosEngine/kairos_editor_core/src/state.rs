@@ -32,6 +32,11 @@ impl LayoutState {
         self.open.contains(&kind)
     }
 
+    /// Mark a panel open.
+    ///
+    /// Runtime opens must go through `LayoutAction` so the layout reducer can
+    /// return a placement effect. Only bootstrapping code (which builds the
+    /// matching dock tabs itself) should call this directly.
     pub fn open(&mut self, kind: PanelId) {
         self.open.insert(kind);
     }

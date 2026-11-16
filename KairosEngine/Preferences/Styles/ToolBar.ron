@@ -12,9 +12,9 @@
         button_padding: 10.0,
         icon_size: 16.0,
         menu: (
-            background_color: "#2d2d2d",
+            background_color: "#323232",
             item_hover_color: "#505050",
-            text_color: "#dedede",
+            text_color: "#dddddd",
             separator_color: "#4f4f4f",
             item_height: 22.0,
             padding: 4.0,

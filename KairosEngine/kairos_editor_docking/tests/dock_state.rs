@@ -69,3 +69,33 @@ fn focused_tab_is_the_active_tab_of_the_focused_leaf() {
 
     assert_eq!(dock.focused_tab(), Some(Id(2)));
 }
+
+#[test]
+fn focus_tab_activates_the_leaf_and_the_surface() {
+    let mut dock: DockState<Id> = DockState::new();
+    dock.append_tab(Id(1));
+    dock.append_tab(Id(2));
+    assert_eq!(dock.focused_tab(), None);
+
+    assert!(dock.focus_tab(Id(1)));
+    assert_eq!(dock.focused_tab(), Some(Id(1)));
+
+    assert!(dock.focus_tab(Id(2)));
+    assert_eq!(dock.focused_tab(), Some(Id(2)));
+    assert!(!dock.focus_tab(Id(3)));
+    assert_eq!(dock.focused_tab(), Some(Id(2)));
+}
+
+#[test]
+fn open_in_window_creates_a_focused_floating_surface() {
+    let mut dock: DockState<Id> = DockState::new();
+    dock.append_tab(Id(1));
+    let rect = Rect::from_min_size(pos2(40.0, 50.0), vec2(320.0, 200.0));
+
+    let window = dock.open_in_window(Id(2), rect);
+
+    assert!(!window.is_main());
+    assert_eq!(dock.valid_surface_indices().len(), 2);
+    assert!(dock.contains_tab(Id(2)));
+    assert_eq!(dock.focused_tab(), Some(Id(2)));
+}

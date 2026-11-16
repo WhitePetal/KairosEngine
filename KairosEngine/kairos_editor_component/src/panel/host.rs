@@ -76,6 +76,12 @@ impl PanelHost {
         self.instances.keys().copied().find(|id| id.kind == kind)
     }
 
+    /// Whether the dock may detach this panel into a floating window.
+    pub fn allowed_in_windows(&self, id: PanelInstanceId) -> bool {
+        self.panel(id)
+            .is_some_and(|panel| panel.allowed_in_windows())
+    }
+
     /// The dock's view of the panels: titles, bodies and close policy.
     pub fn viewer<'host, 'frame>(
         &'host mut self,

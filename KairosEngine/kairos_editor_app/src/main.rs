@@ -14,6 +14,7 @@ use egui::IconData;
 
 mod app;
 mod consts;
+mod effects;
 mod paths;
 
 fn main() -> eframe::Result<()> {

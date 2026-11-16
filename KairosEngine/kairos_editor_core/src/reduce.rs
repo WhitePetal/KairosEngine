@@ -7,15 +7,15 @@
 //! the last pass (`!Context::will_discard()`) so a discarded pass cannot commit
 //! half a frame twice.
 //!
-//! The prototype's reducer also returns `Vec<Effect>` (host work as data). We do
-//! not need effects yet: the first one will be `PersistLayout`, which lands here
-//! together with the layout file format.
+//! Like the prototype, a reducer returns `Vec<Effect>`: host work as data. The
+//! first effects are panel placement/focus (the dock tree lives in the app, not
+//! in core); `PersistLayout` will join them when the layout file format lands.
 
 mod layout;
 
-use crate::{Action, EditorState};
+use crate::{Action, EditorState, Effect};
 
-pub fn reduce(state: &mut EditorState, action: Action) {
+pub fn reduce(state: &mut EditorState, action: Action) -> Vec<Effect> {
     match action {
         Action::Layout(action) => layout::reduce(state, action),
     }

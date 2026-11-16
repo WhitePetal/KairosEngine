@@ -189,6 +189,79 @@ fn tab_icon_is_painted_inside_the_tab_header() {
 }
 
 #[test]
+fn focused_floating_window_is_raised_above_other_windows() {
+    let mut dock: DockState<Id> = DockState::new();
+    dock.append_tab(Id(1));
+    let first = dock.open_in_window(
+        Id(2),
+        Rect::from_min_size(Pos2::new(20.0, 20.0), Vec2::new(240.0, 160.0)),
+    );
+    let second = dock.open_in_window(
+        Id(3),
+        Rect::from_min_size(Pos2::new(80.0, 80.0), Vec2::new(240.0, 160.0)),
+    );
+    assert_ne!(first, second);
+
+    fn run_frame(ctx: &Context, dock: &mut DockState<Id>, viewer: &mut Viewer) {
+        let mut input = RawInput::default();
+        input.screen_rect = Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0)));
+        let _ = ctx.run_ui(input, |ui| {
+            Docker::new("dock", dock).show(ui, viewer);
+        });
+    }
+
+    let mut viewer = Viewer { drawn: Vec::new() };
+    let ctx = Context::default();
+
+    // First pass creates both window layers; the last-created window is on top.
+    run_frame(&ctx, &mut dock, &mut viewer);
+    assert!(dock.focus_tab(Id(2)));
+    run_frame(&ctx, &mut dock, &mut viewer);
+
+    let expected = egui::LayerId::new(
+        egui::Order::Middle,
+        egui::Id::new("dock").with(("window", first.0)),
+    );
+    assert_eq!(
+        ctx.memory(|memory| memory.areas().top_layer_id(egui::Order::Middle)),
+        Some(expected),
+        "the focused floating window should be raised"
+    );
+}
+
+#[test]
+fn focusing_a_tab_paints_the_blue_headerline() {
+    let mut dock: DockState<Id> = DockState::new();
+    dock.append_tab(Id(1));
+    dock.append_tab(Id(2));
+    assert!(dock.focus_tab(Id(1)), "the dock has a tab for Id(1)");
+
+    let mut viewer = Viewer { drawn: Vec::new() };
+    let ctx = Context::default();
+    let mut input = RawInput::default();
+    input.screen_rect = Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(800.0, 600.0)));
+    let output = ctx.run_ui(input, |ui| {
+        Docker::new("dock", &mut dock).show(ui, &mut viewer);
+    });
+
+    fn has_fill(shape: &Shape, fill: Color32) -> bool {
+        match shape {
+            Shape::Rect(rect) => rect.fill == fill,
+            Shape::Vec(shapes) => shapes.iter().any(|shape| has_fill(shape, fill)),
+            _ => false,
+        }
+    }
+    let headerline = Color32::from_rgb(51, 105, 146);
+    assert!(
+        output
+            .shapes
+            .iter()
+            .any(|clipped| has_fill(&clipped.shape, headerline)),
+        "focusing a tab must paint the focused headerline"
+    );
+}
+
+#[test]
 fn focused_tab_headerline_is_not_covered_by_the_split_separator() {
     use kairos_editor_docking::{split::Fraction, surface::SurfaceIndex, tree::NodeIndex};
 

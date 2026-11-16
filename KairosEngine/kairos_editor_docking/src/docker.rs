@@ -321,6 +321,50 @@ impl<T: TabId> DockState<T> {
         self.tabs().contains(&id)
     }
 
+    /// Put `id` in a new floating window sized/positioned at `rect`, make it
+    /// the active tab and give the window dock focus.
+    ///
+    /// Used by the app when a panel is shown but has no tab in the dock: the
+    /// panel opens as its own window instead of being appended to whichever
+    /// leaf happens to be focused.
+    pub fn open_in_window(&mut self, id: T, rect: Rect) -> SurfaceIndex {
+        let surface_index = self.add_window(vec![id]);
+        if let Some(state) = self.get_window_state_mut(surface_index) {
+            state.set_position(rect.min);
+            state.set_size(rect.size());
+        }
+        self.set_focused_node_and_surface((surface_index, NodeIndex::root()));
+        surface_index
+    }
+
+    /// Focus the leaf holding `id` (wherever it lives: main surface or a
+    /// floating window) and make `id` its active tab.
+    ///
+    /// Returns `false` when the dock has no tab for `id`. This is the dock-side
+    /// primitive the app calls for `Effect::ShowPanel` / `Effect::FocusPanel`.
+    pub fn focus_tab(&mut self, id: T) -> bool {
+        for surface in self.valid_surface_indices().iter().copied() {
+            let found = {
+                let tree = &self[surface];
+                tree.breadth_first_index_iter().find_map(|node| {
+                    tree[node].get_leaf().and_then(|leaf| {
+                        leaf.tabs
+                            .iter()
+                            .position(|tab| *tab == id)
+                            .map(|tab| (node, tab))
+                    })
+                })
+            };
+            let Some((node, tab)) = found else { continue };
+            if let Some(leaf) = self[surface][node].get_leaf_mut() {
+                leaf.active = TabIndex(tab);
+            }
+            self.set_focused_node_and_surface((surface, node));
+            return true;
+        }
+        false
+    }
+
     /// Append a tab to the focused leaf, falling back to the first leaf of the
     /// main surface. Used when the app opens a panel that has no dock tab yet.
     pub fn append_tab(&mut self, id: T) {
@@ -536,6 +580,19 @@ impl<T: TabId> Docker<'_, T> {
                 (fade_style, style.overlay.surface_fade_opacity)
             })
         };
+
+        // Dock focus may come from the app (a Show/Focus effect) rather than a
+        // click. egui only raises a window when it is interacted with, so mirror
+        // the focused floating surface into the window z-order before drawing.
+        // A click later in this pass still raises the clicked window itself.
+        if let Some((focused_surface, _)) = self.dock_state.focused_leaf()
+            && !focused_surface.is_main()
+        {
+            ui.ctx().move_to_top(LayerId::new(
+                egui::Order::Middle,
+                self.id.with(("window", focused_surface.0)),
+            ));
+        }
 
         for &surface_index in self.dock_state.valid_surface_indices().iter() {
             self.show_surface_inside(

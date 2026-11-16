@@ -25,11 +25,13 @@
 #![forbid(unsafe_code)]
 
 pub mod action;
+pub mod effect;
 pub mod panel;
 pub mod reduce;
 pub mod state;
 
 pub use action::{Action, LayoutAction};
+pub use effect::{Effect, LayoutEffect};
 pub use panel::{PanelId, PanelInstanceId};
 pub use reduce::reduce;
 pub use state::{EditorState, LayoutState};

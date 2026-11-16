@@ -5,7 +5,7 @@ use kairos_editor_component::{
     ConsoleLine, ConsoleLog, Frame, HostView, PanelHost, PanelInstanceId, PanelRegistry, UiOut,
     panels, toolbar::ToolBar,
 };
-use kairos_editor_core::{Action, EditorState, LayoutAction, reduce};
+use kairos_editor_core::{Action, EditorState, Effect, LayoutAction, reduce};
 use kairos_editor_docking::{
     docker::{DockState, Docker},
     split::Fraction,
@@ -13,6 +13,8 @@ use kairos_editor_docking::{
 };
 use kairos_log::SinkHandle;
 use kairos_profile::Profiler;
+
+use crate::effects::EffectExecutor;
 
 /// Host-owned resources a panel may display but never own (the prototype's
 /// `HostState`). The console history is a `kairos_log` sink: the process logger
@@ -87,6 +89,9 @@ pub struct EditorApp {
     dock: DockState<PanelInstanceId>,
     host_view: AppHost,
     tool_bar: ToolBar,
+    /// Host work returned by the last committed reduce. Applied at the start of
+    /// the next frame, after the panel host has synced its instances.
+    pending_effects: Vec<Effect>,
 }
 
 impl EditorApp {
@@ -130,12 +135,14 @@ impl EditorApp {
             dock,
             host_view,
             tool_bar,
+            pending_effects: Vec::new(),
         }
     }
 
-    /// Align live instances (open/closed panels) and dock tabs. Both are
-    /// derived from `LayoutState`, so closing a panel or restoring a layout
-    /// converges without special-case code in the UI.
+    /// Align live instances (open/closed panels), dock tabs and the placement
+    /// effects returned by the reducer. Everything is derived from
+    /// `LayoutState`, so closing a panel or restoring a layout converges without
+    /// special-case code in the UI.
     fn sync(&mut self, ctx: &egui::Context) {
         kairos_profile::scope!("Kairos.Editor.Sync");
         self.host.sync(&self.state.layout, ctx);
@@ -144,11 +151,23 @@ impl EditorApp {
         for stale in self.dock.tabs().into_iter().filter(|id| !ids.contains(id)) {
             self.dock.remove_tab_by_id(stale);
         }
-        for id in ids {
-            if !self.dock.contains_tab(id) {
-                self.dock.append_tab(id);
+
+        // Effects are the only source of new dock tabs: every action that opens
+        // a panel returns a placement effect (see LayoutAction::reduce). This
+        // replaces the old "append every live instance missing a tab" fallback,
+        // which silently invented a placement in the focused leaf.
+        {
+            let effects = std::mem::take(&mut self.pending_effects);
+            let mut executor = EffectExecutor::new(&self.host, &mut self.dock);
+            for effect in effects {
+                executor.apply(effect, ctx);
             }
         }
+
+        debug_assert!(
+            ids.iter().all(|id| self.dock.contains_tab(*id)),
+            "a live panel instance has no dock tab; opening a panel must return a layout effect"
+        );
     }
 
     /// dispatch the actions collected during the UI pass, then let the host-side resources record what happened.
@@ -159,7 +178,8 @@ impl EditorApp {
         kairos_profile::scope!("Kairos.Editor.Pump");
         for action in out.take() {
             kairos_log::info!(target: "kairos_editor", "{}", describe(&action));
-            reduce(&mut self.state, action);
+            let effects = reduce(&mut self.state, action);
+            self.pending_effects.extend(effects);
         }
     }
 }
@@ -211,6 +231,7 @@ impl EditorApp {
                     dock,
                     host_view,
                     tool_bar,
+                    ..
                 } = self;
                 let frame = Frame::with_host(state, &*host_view);
                 tool_bar.ui(ui, &frame, &mut out);
@@ -282,6 +303,7 @@ mod tests {
             dock,
             host_view: AppHost::new(),
             tool_bar,
+            pending_effects: Vec::new(),
         }
     }
 
@@ -440,6 +462,87 @@ mod tests {
     }
 
     #[test]
+    fn showing_a_docked_panel_focuses_its_tab() {
+        let mut app = build();
+        let ctx = egui::Context::default();
+        let scene = app.host.id_of(panels::SCENE).expect("scene instance");
+        let console = app.host.id_of(panels::CONSOLE).expect("console instance");
+
+        assert!(app.dock.focus_tab(scene));
+        assert_eq!(app.dock.focused_tab(), Some(scene));
+
+        let mut out = UiOut::new();
+        out.push(Action::Layout(LayoutAction::ShowPanel {
+            panel: panels::CONSOLE,
+        }));
+        app.pump(out);
+        app.sync(&ctx);
+
+        assert_eq!(app.dock.focused_tab(), Some(console));
+        assert_eq!(
+            app.dock.valid_surface_indices().len(),
+            1,
+            "a panel that already has a tab must not become a second window"
+        );
+    }
+
+    #[test]
+    fn showing_a_panel_without_a_dock_tab_floats_it() {
+        let mut app = build();
+        let ctx = egui::Context::default();
+        let profiler = app.host.id_of(panels::PROFILER).expect("profiler instance");
+
+        app.state.layout.close(panels::PROFILER);
+        app.sync(&ctx);
+        assert_eq!(app.dock.tabs().len(), 4);
+        assert_eq!(app.dock.valid_surface_indices().len(), 1);
+
+        let mut out = UiOut::new();
+        out.push(Action::Layout(LayoutAction::ShowPanel {
+            panel: panels::PROFILER,
+        }));
+        app.pump(out);
+        app.sync(&ctx);
+
+        let reopened = app.host.id_of(panels::PROFILER).expect("profiler reopened");
+        assert_ne!(reopened, profiler, "reopening creates a new instance");
+        assert_eq!(app.dock.tabs().len(), 5);
+        assert_eq!(app.dock.valid_surface_indices().len(), 2);
+        assert_eq!(app.dock.focused_tab(), Some(reopened));
+        assert_eq!(
+            app.dock.main_surface().tabs_count(),
+            4,
+            "the reopened panel is a floating window, not a tab in the main surface"
+        );
+    }
+
+    #[test]
+    fn focusing_a_panel_without_a_dock_tab_docks_it() {
+        let mut app = build();
+        let ctx = egui::Context::default();
+
+        app.state.layout.close(panels::PROFILER);
+        app.sync(&ctx);
+
+        let mut out = UiOut::new();
+        out.push(Action::Layout(LayoutAction::FocusPanel {
+            panel: panels::PROFILER,
+        }));
+        app.pump(out);
+        app.sync(&ctx);
+
+        let reopened = app.host.id_of(panels::PROFILER).expect("profiler reopened");
+        assert_eq!(app.dock.tabs().len(), 5);
+        assert_eq!(
+            app.dock.valid_surface_indices().len(),
+            1,
+            "Focus docks a missing panel instead of opening a window"
+        );
+        assert_eq!(app.dock.focused_tab(), Some(reopened));
+        assert_eq!(app.dock.main_surface().tabs_count(), 5);
+    }
+
+    #[test]
     fn close_and_reopen_a_panel_converges_instance_and_tab() {
         let mut app = build();
         let ctx = egui::Context::default();
@@ -449,9 +552,19 @@ mod tests {
         assert_eq!(app.host.ids().count(), 4);
         assert_eq!(app.dock.tabs().len(), 4);
 
-        app.state.layout.open(panels::CONSOLE);
+        let mut out = UiOut::new();
+        out.push(Action::Layout(LayoutAction::TogglePanel {
+            panel: panels::CONSOLE,
+        }));
+        app.pump(out);
         app.sync(&ctx);
+
         assert_eq!(app.host.ids().count(), 5);
         assert_eq!(app.dock.tabs().len(), 5);
+        assert_eq!(
+            app.dock.focused_tab(),
+            app.host.id_of(panels::CONSOLE),
+            "opening via Toggle docks and focuses the panel"
+        );
     }
 }

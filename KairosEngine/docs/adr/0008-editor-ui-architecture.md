@@ -5,8 +5,9 @@
 - **Implementation note (2026-11-12)**: the L2 crate landed as `kairos_editor_component`
   (not `kairos_editor_ui`). It currently carries the panel framework
   (`Panel`/`PanelRegistry`/`PanelHost`/`TabViewer` adapter) plus demo panels;
-  `kairos_editor_core` currently carries only the state tree (`EditorState`/`LayoutState`/panel ids) —
-  reducers/effects/commands are still pending (only the layout slice has `Action`/`reduce`).
+  `kairos_editor_core` carries the state tree (`EditorState`/`LayoutState`/panel ids)
+  and the layout slice (`Action`/`reduce -> Vec<Effect>`; the first effects are
+  panel placement/focus). Commands are still pending.
   The prototype's `Frame`/`UiOut` are ported: panels read a read-only `Frame` and push
   `Action`s into `UiOut`; the app drains it after the last UI pass and calls `reduce`, the
   only writer of `EditorState`. The console history is a `kairos_log` sink

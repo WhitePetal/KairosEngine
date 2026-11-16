@@ -1,6 +1,8 @@
 //! Layout slice: actions are the only way the layout changes.
 
-use kairos_editor_core::{Action, EditorState, LayoutAction, PanelId, PanelInstanceId, reduce};
+use kairos_editor_core::{
+    Action, EditorState, Effect, LayoutAction, LayoutEffect, PanelId, PanelInstanceId, reduce,
+};
 
 const SCENE: PanelId = PanelId("scene");
 const CONSOLE: PanelId = PanelId("console");
@@ -31,14 +33,36 @@ fn show_and_close_are_idempotent() {
 }
 
 #[test]
-fn toggle_flips_the_open_flag() {
+fn toggle_flips_the_open_flag_and_focuses_when_opening() {
     let mut state = EditorState::new();
 
-    reduce(&mut state, toggle(CONSOLE));
+    assert_eq!(
+        reduce(&mut state, toggle(CONSOLE)),
+        vec![Effect::Layout(LayoutEffect::FocusPanel { panel: CONSOLE })]
+    );
     assert!(state.layout.is_open(CONSOLE));
 
-    reduce(&mut state, toggle(CONSOLE));
+    assert!(reduce(&mut state, toggle(CONSOLE)).is_empty());
     assert!(!state.layout.is_open(CONSOLE));
+}
+
+#[test]
+fn show_and_focus_return_host_placement_effects() {
+    let mut state = EditorState::new();
+
+    assert_eq!(
+        reduce(&mut state, show(SCENE)),
+        vec![Effect::Layout(LayoutEffect::ShowPanel { panel: SCENE })]
+    );
+
+    assert_eq!(
+        reduce(
+            &mut state,
+            Action::Layout(LayoutAction::FocusPanel { panel: CONSOLE })
+        ),
+        vec![Effect::Layout(LayoutEffect::FocusPanel { panel: CONSOLE })]
+    );
+    assert!(state.layout.is_open(CONSOLE));
 }
 
 #[test]
