@@ -67,6 +67,7 @@ pub mod console;
 pub mod frame;
 pub mod panel;
 pub mod panels;
+pub mod toolbar;
 
 pub use console::ConsoleLog;
 pub use frame::{ConsoleLine, Frame, HostView, UiOut};

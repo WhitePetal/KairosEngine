@@ -5,8 +5,8 @@
 //! in `Panel::init`; editing it restyles the Console without a rebuild.
 
 use kairos_color::Color32;
-use kairos_editor_widgets::icons::ConsoleIconPaths;
 use kairos_editor_widgets::style::Style;
+use kairos_log::Level;
 use serde::{Deserialize, Serialize};
 
 /// Appearance tokens for the Console panel: palette, icon file paths and the
@@ -154,6 +154,75 @@ impl Style for ConsoleStyle {
     }
 }
 
+/// Runtime icon file paths for the Console panel, relative to the editor's
+/// working directory.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConsoleIconPaths {
+    pub info: String,
+    pub warning: String,
+    pub error: String,
+    pub info_off: String,
+    pub warning_off: String,
+    pub error_off: String,
+    pub badge: String,
+}
+
+impl ConsoleIconPaths {
+    /// The measured Unity/Tuanjie 2022.3 dark-skin icon set.
+    pub fn dark() -> Self {
+        Self {
+            info: "Preferences/Textures/console/info.png".to_owned(),
+            warning: "Preferences/Textures/console/warning.png".to_owned(),
+            error: "Preferences/Textures/console/error.png".to_owned(),
+            info_off: "Preferences/Textures/console/info_off.png".to_owned(),
+            warning_off: "Preferences/Textures/console/warning_off.png".to_owned(),
+            error_off: "Preferences/Textures/console/error_off.png".to_owned(),
+            badge: "Preferences/Textures/console/count_badge.png".to_owned(),
+        }
+    }
+
+    /// Light-skin active icons. Unity ships separate light artwork; the dimmed
+    /// variants are grey enough to work on both skins, so they are shared.
+    pub fn light() -> Self {
+        Self {
+            info: "Preferences/Textures/console/light/info.png".to_owned(),
+            warning: "Preferences/Textures/console/light/warning.png".to_owned(),
+            error: "Preferences/Textures/console/light/error.png".to_owned(),
+            ..Self::dark()
+        }
+    }
+
+    /// The icon for one severity, active or dimmed (filtered out).
+    pub fn severity(&self, severity: Level, visible: bool) -> &str {
+        match (severity, visible) {
+            (Level::Info, true) => &self.info,
+            (Level::Info, false) => &self.info_off,
+            (Level::Warning, true) => &self.warning,
+            (Level::Warning, false) => &self.warning_off,
+            (Level::Error, true) => &self.error,
+            (Level::Error, false) => &self.error_off,
+        }
+    }
+
+    /// The collapse repeat-count badge.
+    pub fn badge(&self) -> &str {
+        &self.badge
+    }
+
+    /// All paths in deterministic order, for preloading in `Panel::init`.
+    pub fn all(&self) -> [&str; 7] {
+        [
+            &self.info,
+            &self.warning,
+            &self.error,
+            &self.info_off,
+            &self.warning_off,
+            &self.error_off,
+            &self.badge,
+        ]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -193,5 +262,26 @@ mod tests {
         assert_eq!(loaded.light, ConsoleStyle::light());
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn assert_exist(paths: ConsoleIconPaths) {
+        let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        for path in paths.all() {
+            assert!(
+                workspace.join(path).is_file(),
+                "missing console icon {path}"
+            );
+        }
+    }
+
+    #[test]
+    fn console_icons_are_external_files() {
+        // Icons are runtime files under `Preferences/Textures`, not `include_bytes!`.
+        assert_exist(ConsoleIconPaths::dark());
+    }
+
+    #[test]
+    fn light_console_icons_are_external_files() {
+        assert_exist(ConsoleIconPaths::light());
     }
 }

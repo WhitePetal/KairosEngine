@@ -62,9 +62,13 @@ pub fn preload(ctx: &Context, relative: &str) {
         .load_for_size(ctx, egui::vec2(32.0, 32.0));
 }
 
+pub fn get_image<'a>(relative: &str) -> egui::Image<'a> {
+    egui::Image::new(egui::ImageSource::Uri(file_uri(relative).into()))
+}
+
 /// Paint an image at `rect`. Missing or still-loading images paint nothing.
 pub fn paint(ui: &Ui, rect: Rect, relative: &str, tint: Color32) {
-    egui::Image::new(egui::ImageSource::Uri(file_uri(relative).into()))
+    get_image(relative)
         .tint(tint)
         .show_loading_spinner(false)
         .paint_at(ui, rect);

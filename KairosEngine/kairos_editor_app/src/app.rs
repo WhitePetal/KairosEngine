@@ -3,7 +3,7 @@ use std::sync::Arc;
 use eframe::egui;
 use kairos_editor_component::{
     ConsoleLine, ConsoleLog, Frame, HostView, PanelHost, PanelInstanceId, PanelRegistry, UiOut,
-    panels,
+    panels, toolbar::ToolBar,
 };
 use kairos_editor_core::{Action, EditorState, LayoutAction, reduce};
 use kairos_editor_docking::{
@@ -88,6 +88,7 @@ pub struct EditorApp {
     host: PanelHost,
     dock: DockState<PanelInstanceId>,
     host_view: AppHost,
+    tool_bar: ToolBar,
 }
 
 impl EditorApp {
@@ -119,6 +120,9 @@ impl EditorApp {
         let dock = default_dock(&host);
 
         let host_view = AppHost::new();
+
+        let tool_bar = ToolBar::new(&cc.egui_ctx);
+
         // Reaches stderr, the run log and the console sink attached above.
         kairos_log::info!(target: "kairos_editor", "editor booted");
 
@@ -127,6 +131,7 @@ impl EditorApp {
             host,
             dock,
             host_view,
+            tool_bar,
         }
     }
 
@@ -217,7 +222,7 @@ impl EditorApp {
             ui.style_mut().interaction.selectable_labels = false;
 
             let mut out = UiOut::new();
-            self.show_tool_bar(ui, &mut out);
+            // self.show_tool_bar(ui, &mut out);
             self.sync(ui.ctx());
 
             // Capture is host policy: keep it tied to the visible Profiler tab
@@ -234,8 +239,10 @@ impl EditorApp {
                     host,
                     dock,
                     host_view,
+                    tool_bar,
                 } = self;
                 let frame = Frame::with_host(state, &*host_view);
+                tool_bar.ui(ui, &frame, &mut out);
                 let mut viewer = host.viewer(&mut out, frame);
                 Docker::new("kairos_editor_docker", dock).show(ui, &mut viewer);
             }
@@ -294,13 +301,16 @@ mod tests {
             state.layout.open(kind);
         }
         let mut host = PanelHost::new(registry);
-        host.sync(&state.layout, &egui::Context::default());
+        let ctx = egui::Context::default();
+        host.sync(&state.layout, &ctx);
         let dock = default_dock(&host);
+        let tool_bar = ToolBar::new(&ctx);
         EditorApp {
             state,
             host,
             dock,
             host_view: AppHost::new(),
+            tool_bar,
         }
     }
 

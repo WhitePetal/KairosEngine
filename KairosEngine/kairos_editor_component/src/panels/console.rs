@@ -19,6 +19,9 @@
 //! are part of it and are preloaded through `kairos_editor_widgets::ui_image`.
 //! This module only wires host data, view state and interaction.
 
+
+pub mod console_style;
+
 use std::collections::HashMap;
 
 use egui::{
@@ -27,16 +30,15 @@ use egui::{
 };
 use kairos_editor_core::PanelId;
 use kairos_editor_widgets::color::Color32Ext;
-use kairos_editor_widgets::icons::ConsoleSeverity;
 use kairos_editor_widgets::style::StyleFile;
 use kairos_editor_widgets::ui_image;
 use kairos_log::Level;
 
 use crate::frame::{ConsoleLine, Frame, UiOut};
 use crate::panel::Panel;
+use crate::panels::console::console_style::ConsoleStyle;
 
 use super::CONSOLE;
-use super::console_style::ConsoleStyle;
 
 /// Console panel view state. Everything here is disposable: losing it on a
 /// panel close resets the console UI, never the log history.
@@ -467,7 +469,7 @@ impl ConsolePanel {
             ui_image::paint(
                 ui,
                 icon_rect,
-                self.style.icons.severity(severity(level), visible),
+                self.style.icons.severity(level, visible),
                 egui::Color32::WHITE,
             );
             painter.text(
@@ -558,7 +560,7 @@ impl ConsolePanel {
         ui_image::paint(
             ui,
             icon_rect,
-            self.style.icons.severity(severity(line.level), true),
+            self.style.icons.severity(line.level, true),
             egui::Color32::WHITE,
         );
 
@@ -766,14 +768,6 @@ fn level_name(level: Level) -> &'static str {
     }
 }
 
-fn severity(level: Level) -> ConsoleSeverity {
-    match level {
-        Level::Info => ConsoleSeverity::Info,
-        Level::Warning => ConsoleSeverity::Warning,
-        Level::Error => ConsoleSeverity::Error,
-    }
-}
-
 fn paint_hover(
     painter: &egui::Painter,
     response: &egui::Response,
@@ -808,7 +802,7 @@ mod tests {
     use super::*;
     use crate::frame::HostView;
     use kairos_editor_core::EditorState;
-    use kairos_editor_widgets::style::Style;
+use kairos_editor_widgets::style::Style;
 
     struct EmptyHost;
 

@@ -15,9 +15,6 @@
 //! `docs/plan/editor-ui-architecture/panel-viewport-design.md` §6.2 P1).
 
 mod console;
-mod console_style;
-
-pub use console_style::ConsoleStyle;
 mod hierarchy;
 mod inspector;
 mod profiler;

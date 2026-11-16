@@ -1,0 +1,20 @@
+(
+    dark: (
+        icons: (
+            about: "Preferences/Textures/engine_icon.png",
+        ),
+        background_color: "#000000",
+        text_color: "#fefefe",
+        height: 23.0,
+        corner_radius: 0.0,
+    ),
+    light: (
+        icons: (
+            about: "Preferences/Textures/engine_icon.png",
+        ),
+        background_color: "#000000",
+        text_color: "#fefefe",
+        height: 23.0,
+        corner_radius: 0.0,
+    ),
+)
