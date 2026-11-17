@@ -9,6 +9,7 @@ use slotmap::{Key, KeyData, SecondaryMap, SlotMap, new_key_type};
 use thiserror::Error;
 
 use kairos_collections::{FixedHashMap, FixedHashSet};
+use kairos_profile::Category;
 
 use crate::{
     component::{ComponentId, Components},
@@ -41,16 +42,33 @@ pub struct SystemWithAccess {
     /// The access returned by [`System::initialize`].
     /// This will be empty if the system has not been initialized yet.
     pub(crate) access: FilteredAccessSet,
+    /// The profiler category declared when the system was added; `Scripts`
+    /// (the game's own code) when it declared nothing.
+    pub(crate) category: Category,
 }
 
 impl SystemWithAccess {
     /// Constructs a new [`SystemWithAccess`] from a [`ScheduleSystem`].
     /// The `access` will initially be empty.
     pub fn new(system: ScheduleSystem) -> Self {
+        Self::with_category(system, Category::Scripts)
+    }
+
+    /// [`SystemWithAccess::new`] with an explicit profiler category.
+    pub fn with_category(system: ScheduleSystem, category: Category) -> Self {
         Self {
             system,
             access: FilteredAccessSet::new(),
+            category,
         }
+    }
+
+    /// The profiler category this system was registered under.
+    ///
+    /// Not named `category`: a system value also satisfies `IntoScheduleConfigs`,
+    /// whose `category` combinator would win method resolution by value.
+    pub fn profiler_category(&self) -> Category {
+        self.category
     }
 
     /// Returns the underlying [`ScheduleSystem`]
@@ -225,9 +243,9 @@ impl System for ConditionWithAccess {
 
 impl SystemNode {
     /// Create a new [`SystemNode`]
-    pub fn new(system: ScheduleSystem) -> Self {
+    pub fn new(system: ScheduleSystem, category: Category) -> Self {
         Self {
-            inner: Some(SystemWithAccess::new(system)),
+            inner: Some(SystemWithAccess::with_category(system, category)),
         }
     }
 
@@ -532,8 +550,9 @@ impl Systems {
         &mut self,
         system: ScheduleSystem,
         conditions: Vec<Box<dyn ReadOnlySystem<In = (), Out = bool>>>,
+        category: Category,
     ) -> SystemKey {
-        let key = self.nodes.insert(SystemNode::new(system));
+        let key = self.nodes.insert(SystemNode::new(system, category));
         self.conditions.insert(
             key,
             conditions

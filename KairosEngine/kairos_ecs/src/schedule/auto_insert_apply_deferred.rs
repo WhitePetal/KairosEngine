@@ -50,9 +50,12 @@ impl AutoInsertApplyDeferredPass {
     }
     /// add an [`ApplyDeferred`] system with no config
     fn add_auto_sync(&mut self, graph: &mut ScheduleGraph) -> SystemKey {
-        let key = graph
-            .systems
-            .insert(Box::new(IntoSystem::into_system(ApplyDeferred)), Vec::new());
+        let key = graph.systems.insert(
+            Box::new(IntoSystem::into_system(ApplyDeferred)),
+            Vec::new(),
+            // Framework bookkeeping, not game code.
+            kairos_profile::Category::Others,
+        );
 
         // ignore ambiguities with auto sync points
         // They aren't under user control, so no one should know or care.

@@ -35,7 +35,9 @@ use profiling::puffin::{
     ScopeCollection, ScopeDetails, ScopeId, ScopeType, Stream, ThreadInfo, now_ns, set_scopes_on,
 };
 
-use crate::category::{Category, SYSTEM_MARKER, is_frame_wrapper};
+use crate::category::{
+    Category, SYSTEM_MARKER, classify_marker, classify_system, is_frame_wrapper,
+};
 use crate::model::{
     FrameSnapshot, ProfileSession, SampleSnapshot, ScopeInfo, ScopeKind, ThreadSnapshot,
 };
@@ -140,6 +142,36 @@ impl Profiler {
     /// UI can show the button as active immediately.
     pub fn is_recording(&self) -> bool {
         self.inner.wants_recording.load(Ordering::Relaxed)
+    }
+
+    /// Install the callback that lists the thread lanes a new capture starts
+    /// with.
+    ///
+    /// The engine is the only component that knows its task pools: the main
+    /// thread plus every worker thread's name, whether or not the worker runs
+    /// during the capture. Without a provider the timeline shows only threads
+    /// that reported samples.
+    pub fn set_thread_lane_provider(&self, provider: fn() -> Vec<String>) {
+        *self
+            .inner
+            .lane_provider
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(provider);
+    }
+
+    /// Register one thread lane for the current capture.
+    ///
+    /// Idempotent; lanes survive `clear` (they describe threads, not frames)
+    /// and are replaced wholesale by the provider at the next capture start.
+    pub fn register_thread_lane(&self, name: impl Into<String>) {
+        let name = name.into();
+        let mut store = self.lock_store();
+        if !store.thread_lanes.contains(&name) {
+            store.thread_lanes.push(name);
+            // Lanes are part of the session; a view caching on the revision
+            // (the panel) must rebuild.
+            store.revision = store.revision.wrapping_add(1);
+        }
     }
 
     /// Request a capture (`true`) or stop the current one (`false`).
@@ -314,7 +346,21 @@ impl Profiler {
         self.inner.recording.store(true, Ordering::Relaxed);
         set_scopes_on(true);
         GlobalProfiler::lock().emit_scope_snapshot();
+
+        // Collect the lanes the host expects before taking the store lock: the
+        // provider may ask subsystems about their threads.
+        let lanes = self
+            .inner
+            .lane_provider
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+            .map(|provider| provider());
+
         let mut store = self.lock_store();
+        if let Some(lanes) = lanes {
+            store.set_thread_lanes(lanes);
+        }
         if store.origin_ns.is_none() {
             store.origin_ns = Some(now_ns());
         }
@@ -337,6 +383,11 @@ struct Inner {
     recording: AtomicBool,
     /// Whether the frame whose data puffin will report next committed.
     pending_committed: AtomicBool,
+    /// Supplies the thread lanes a capture starts with.
+    ///
+    /// The engine installs this: only it knows the task pools, whose threads
+    /// are named and may be idle for the whole capture.
+    lane_provider: Mutex<Option<fn() -> Vec<String>>>,
 }
 
 impl Default for Inner {
@@ -346,6 +397,7 @@ impl Default for Inner {
             wants_recording: AtomicBool::new(false),
             recording: AtomicBool::new(false),
             pending_committed: AtomicBool::new(true),
+            lane_provider: Mutex::new(None),
         }
     }
 }
@@ -394,6 +446,8 @@ struct Store {
     next_frame_index: u64,
     next_thread_id: u32,
     thread_ids: HashMap<ThreadInfo, u32>,
+    /// Thread lanes registered for the capture, in display order.
+    thread_lanes: Vec<String>,
     scopes: ScopeCollection,
     fallback_scopes: BTreeMap<u32, ScopeInfo>,
 }
@@ -408,7 +462,20 @@ impl Store {
             scopes: self.scope_table(),
             dropped_frames: self.dropped_frames,
             discarded_passes: self.discarded_passes,
+            thread_lanes: self.thread_lanes.clone(),
         }
+    }
+
+    /// Replace the registered lanes, keeping the first mention of each name.
+    fn set_thread_lanes(&mut self, lanes: Vec<String>) {
+        let mut seen = BTreeSet::new();
+        self.thread_lanes = lanes
+            .into_iter()
+            .filter(|lane| seen.insert(lane.clone()))
+            .collect();
+        // Lanes are part of the session view; drop a cache keyed on the
+        // revision (the panel's) even when the previous capture's frames remain.
+        self.revision = self.revision.wrapping_add(1);
     }
 
     fn clear_frames(&mut self) {
@@ -439,7 +506,9 @@ impl Store {
                     id,
                     ScopeInfo {
                         id,
-                        name: details.name().to_string(),
+                        // The category tag is marker metadata, not part of the
+                        // name the panel shows.
+                        name: crate::strip_tag(details.name()).to_string(),
                         location: details.location(),
                         kind: scope_kind(details.scope_type()),
                     },
@@ -494,12 +563,12 @@ impl Store {
             .iter()
             .map(|(id, details)| {
                 let name = details.name();
-                let class = if name == SYSTEM_MARKER {
+                let class = if crate::strip_tag(name) == SYSTEM_MARKER {
                     ScopeClass::System
                 } else if is_frame_wrapper(name) {
                     ScopeClass::FrameWrapper
                 } else {
-                    ScopeClass::Fixed(Category::of(name, &details.location(), None))
+                    ScopeClass::Fixed(classify_marker(name, &details.location()))
                 };
                 (id.0.get(), class)
             })
@@ -729,7 +798,7 @@ fn thread_snapshot(
                 Some(if let Some(category) = systems.get(system) {
                     *category
                 } else {
-                    let category = Category::of_system(system);
+                    let category = classify_system(Some(system));
                     systems.insert(system.to_owned(), category);
                     category
                 })

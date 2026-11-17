@@ -2516,6 +2516,7 @@ dependencies = [
  "indexmap",
  "kairos_collections",
  "kairos_ecs_macros",
+ "kairos_profile",
  "kairos_ptr",
  "kairos_tasks",
  "log",

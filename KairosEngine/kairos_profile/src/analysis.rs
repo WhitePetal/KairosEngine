@@ -108,7 +108,13 @@ pub fn hierarchy(frame: &FrameSnapshot, thread: Option<u32>) -> Vec<HierarchyRow
         let node = &nodes[index];
         rows.push(HierarchyRow {
             scope: node.scope,
-            data: node.data.clone(),
+            // The category tag is marker metadata; the row shows the data the
+            // call site wrote.
+            data: node
+                .data
+                .as_deref()
+                .map(crate::strip_tag)
+                .map(str::to_owned),
             depth,
             total_ns: node.total_ns,
             self_ns: node.self_ns,

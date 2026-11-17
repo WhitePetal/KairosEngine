@@ -8,7 +8,7 @@
 //! built and tested on its own.
 
 use kairos_ecs::{
-    schedule::{IntoScheduleConfigs, ScheduleLabel, Schedules},
+    schedule::{Category, IntoScheduleConfigs, ScheduleLabel, Schedules},
     world::World,
 };
 
@@ -83,13 +83,16 @@ pub fn install(world: &mut World, extract_stage: impl ScheduleLabel) {
         .get_mut(extract_stage)
         .expect("the `Extract` schedule must exist: install the schedule rails first");
 
-    extract.add_systems((
-        // Frame-start reset, so no camera carries an earlier frame's derived
-        // state into this one.
-        reset_camera_views,
-        // One rail per view, each owning its view end to end (clear, derive,
-        // draw), so no two systems write the same buffer.
-        extract_scene_view.after(reset_camera_views),
-        extract_game_view.after(reset_camera_views),
-    ));
+    extract.add_systems(
+        (
+            // Frame-start reset, so no camera carries an earlier frame's derived
+            // state into this one.
+            reset_camera_views,
+            // One rail per view, each owning its view end to end (clear, derive,
+            // draw), so no two systems write the same buffer.
+            extract_scene_view.after(reset_camera_views),
+            extract_game_view.after(reset_camera_views),
+        )
+            .category(Category::Rendering),
+    );
 }

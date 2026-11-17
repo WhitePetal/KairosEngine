@@ -1,26 +1,46 @@
-//! Which engine module a captured marker belongs to.
+//! Marker categories: the vocabulary the Profiler chart stacks, and how a
+//! captured marker is read back into it.
 //!
-//! Unity gives every `ProfilerMarker` a `ProfilerCategory` at the call site;
-//! puffin has no such concept, so the mapping is a rule table over what the
-//! capture does record: the marker's name, its source location, and — for the
-//! ECS executor's single `Kairos.System` marker — the per-sample data.
+//! Puffin has no concept of a category — a scope is registered with a name, a
+//! function name and a source location, nothing else. Inferring the category
+//! from those strings after the fact (a `Kairos.Editor.` prefix here, a crate
+//! path there) is a convention nothing checks: a new module that forgot to
+//! follow it lands in `Others` silently.
 //!
-//! The table is deliberately coarse. It answers "which engine module spent
-//! this time", not "which call site": marker-level detail belongs to the
-//! hierarchy view, and the `Scripts` category is refined by the panel into one
-//! row per ECS system.
-
-use serde::{Deserialize, Serialize};
+//! So the category travels with the marker, prepended by the macro that opens
+//! it:
+//!
+//! ```text
+//! Editor/Kairos.Editor.Panel
+//! ```
+//!
+//! The part before the `/` is the category tag, and it is written by
+//! [`crate::scope!`] from a [`Category`] value, so a call site cannot produce a
+//! marker without one. The executor's shared `Kairos.System` marker is the one
+//! scope whose category varies per invocation; it carries the tag in its
+//! `data` (next to the system name) instead:
+//!
+//! ```text
+//! Kairos.System  [Physics/kairos_physics::physics_step_system]
+//! ```
+//!
+//! The tag goes first because puffin truncates per-sample `data` to 127 bytes:
+//! a tag appended to a long generic system name would be cut off.
+//!
+//! [`strip_tag`] removes the tag for display and [`Category::from_tagged`]
+//! reads it back. Untagged markers are third-party scopes (wgpu, rapier,
+//! epaint), opened through the `profiling` facade by their own crates; the
+//! only signal available for those is the source location, so their fallback
+//! table lives here too, next to the parser that decodes it.
 
 /// The buckets the Profiler's CPU chart stacks, in legend order.
 ///
-/// The first five are the engine's core modules — their systems are folded
-/// into the module's bucket instead of getting a row of their own. `Scripts`
-/// is the rest of the ECS frame (Unity's `Scripts` category, refined by the
-/// panel into one row per system), and `Others` is the fallback: scheduler
-/// overhead, uninstrumented time, and anything no rule claims.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+/// The first five are the engine's core modules — their systems run under the
+/// module's bucket instead of getting a row of their own. `Scripts` is the rest
+/// of the ECS frame (Unity's `Scripts` category, refined by the panel into one
+/// row per system), and `Others` is the fallback: scheduler overhead,
+/// uninstrumented time, and anything no rule claims.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Category {
     /// Graphics work: wgpu/naga, the egui renderer, `kairos_graphics`.
     Rendering,
@@ -54,7 +74,7 @@ impl Category {
     pub const COUNT: usize = Self::ALL.len();
 
     /// The label shown in the legend.
-    pub fn label(self) -> &'static str {
+    pub const fn label(self) -> &'static str {
         match self {
             Self::Rendering => "Rendering",
             Self::Scripts => "Scripts",
@@ -66,79 +86,91 @@ impl Category {
         }
     }
 
-    /// Classify one marker invocation.
-    ///
-    /// `name` and `location` are the marker's static metadata (the same for
-    /// every sample of that marker); `data` is the per-invocation string, which
-    /// is how the executor reports which system ran.
-    pub fn of(name: &str, location: &str, data: Option<&str>) -> Self {
-        // The executor's single marker: the system name is the data.
-        if name == SYSTEM_MARKER {
-            return Self::of_system(data.unwrap_or_default());
-        }
-        // Presentation waits are the one rendering-adjacent thing that is not
-        // rendering: they are the frame budget being spent on the display.
-        if matches!(name, "Surface::get_current_texture" | "Surface::present") {
-            return Self::Vsync;
-        }
-        if name.starts_with("Kairos.Editor") {
-            return Self::Editor;
-        }
-
-        let krate = crate_of_location(location);
-        if krate.starts_with("wgpu") || krate.starts_with("naga") || krate.starts_with("egui-wgpu")
-        {
-            return Self::Rendering;
-        }
-        if krate.starts_with("egui") || krate.starts_with("epaint") {
-            return Self::Editor;
-        }
-        if krate.starts_with("rapier") {
-            return Self::Physics;
-        }
-        if krate.starts_with("kairos_graphics") {
-            return Self::Rendering;
-        }
-        if krate.starts_with("kairos_audio") {
-            return Self::Audio;
-        }
-        if krate.starts_with("kairos_editor") {
-            return Self::Editor;
-        }
-        Self::Others
+    /// The tag appended to a marker name (the part after the `/`).
+    pub const fn tag(self) -> &'static str {
+        self.label()
     }
 
-    /// Classify a system by its registered name.
+    /// The category a tag stands for, or `None` when it is not a category tag.
+    pub fn from_tag(tag: &str) -> Option<Self> {
+        Self::ALL
+            .iter()
+            .copied()
+            .find(|category| category.tag() == tag)
+    }
+
+    /// The category carried by a tagged string (`"Tag/detail"`), if any.
     ///
-    /// `System::name` is `core::any::type_name`, so it carries the defining
-    /// crate: `kairos_physics::physics_step_system`. Core-module systems fold
-    /// into their module; everything else is the game's `Scripts`.
-    pub fn of_system(system: &str) -> Self {
-        let krate = system.split("::").next().unwrap_or_default();
-        if krate.starts_with("kairos_graphics") {
-            return Self::Rendering;
-        }
-        if krate.starts_with("kairos_physics") {
-            return Self::Physics;
-        }
-        if krate.starts_with("kairos_audio") {
-            return Self::Audio;
-        }
-        if krate.starts_with("kairos_editor") {
-            return Self::Editor;
-        }
-        // The schedule driver and deferred-command application are framework
-        // bookkeeping: they would otherwise top the Scripts ranking with the
-        // whole frame wrapped inside them.
-        if krate == "kairos_ecs" || system.starts_with("kairos_engine::schedule") {
-            return Self::Others;
-        }
-        Self::Scripts
+    /// Used for marker names and for the ECS executor's per-sample data.
+    pub fn from_tagged(text: &str) -> Option<Self> {
+        let (tag, _) = text.split_once('/')?;
+        Self::from_tag(tag)
     }
 }
 
 /// The marker the ECS executors open around every system run.
+///
+/// It is the one marker whose category varies per invocation, so the tag lives
+/// in the sample's data (next to the system name) instead of the marker name.
 pub const SYSTEM_MARKER: &str = "Kairos.System";
+
+/// The marker name for `detail` in `category`: `Tag/detail`.
+///
+/// This is what [`crate::scope!`] passes to the backend; call it directly only
+/// when a scope's name has to be built by hand.
+pub fn tagged_name(detail: impl AsRef<str>, category: Category) -> String {
+    format!("{}/{}", category.tag(), detail.as_ref())
+}
+
+/// The detail part of a tagged string (`"Tag/detail"`), or the string itself
+/// when it carries no known category tag.
+pub fn strip_tag(text: &str) -> &str {
+    match text.split_once('/') {
+        Some((tag, detail)) if Category::from_tag(tag).is_some() => detail,
+        _ => text,
+    }
+}
+
+/// Classify one marker that is not the executor's system scope.
+///
+/// A tagged marker answers from its tag. The fallback table below only exists
+/// for untagged third-party scopes.
+pub fn classify_marker(name: &str, location: &str) -> Category {
+    if let Some(category) = Category::from_tagged(name) {
+        return category;
+    }
+    // Presentation waits are the one rendering-adjacent thing that is not
+    // rendering: they are the frame budget being spent on the display.
+    if matches!(name, "Surface::get_current_texture" | "Surface::present") {
+        return Category::Vsync;
+    }
+
+    match crate_of_location(location) {
+        krate
+            if krate.starts_with("wgpu")
+                || krate.starts_with("naga")
+                || krate.starts_with("egui-wgpu") =>
+        {
+            Category::Rendering
+        }
+        krate if krate.starts_with("egui") || krate.starts_with("epaint") => Category::Editor,
+        krate if krate.starts_with("rapier") => Category::Physics,
+        krate if krate.starts_with("kairos_graphics") => Category::Rendering,
+        krate if krate.starts_with("kairos_audio") => Category::Audio,
+        krate if krate.starts_with("kairos_editor") => Category::Editor,
+        _ => Category::Others,
+    }
+}
+
+/// Classify the executor's per-sample data, `"Tag/<system name>"`.
+///
+/// A capture recorded before the tag existed carries a bare system name; treat
+/// it as the game's own code rather than `Others`, because that is what the
+/// executor defaulted to when it had no declaration to send.
+pub fn classify_system(data: Option<&str>) -> Category {
+    data.and_then(Category::from_tagged)
+        .unwrap_or(Category::Scripts)
+}
 
 /// Markers that only group children and time the scheduler itself.
 ///
@@ -146,7 +178,7 @@ pub const SYSTEM_MARKER: &str = "Kairos.System";
 /// waiting for off-thread work (counted where that work ran) or its own
 /// bookkeeping. The panel folds the remainder into `Others`.
 pub fn is_frame_wrapper(name: &str) -> bool {
-    matches!(name, "Kairos.Engine.Frame" | "Kairos.Stage")
+    matches!(strip_tag(name), "Kairos.Engine.Frame" | "Kairos.Stage")
 }
 
 /// The crate a source location belongs to: puffin stores `crate/file.rs:line`,
@@ -157,139 +189,29 @@ fn crate_of_location(location: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use super::Category;
+    use super::{
+        Category, SYSTEM_MARKER, classify_marker, classify_system, is_frame_wrapper, strip_tag,
+        tagged_name,
+    };
 
     #[test]
-    fn presentation_waits_are_vsync() {
+    fn a_typed_marker_names_its_category() {
         assert_eq!(
-            Category::of(
-                "Surface::get_current_texture",
-                "wgpu-core-29.0.3/src/present.rs:156",
-                None
-            ),
-            Category::Vsync
+            tagged_name("Kairos.Editor.Panel", Category::Editor),
+            "Editor/Kairos.Editor.Panel"
         );
         assert_eq!(
-            Category::of(
-                "Surface::present",
-                "wgpu-core-29.0.3/src/present.rs:277",
-                None
-            ),
-            Category::Vsync
+            strip_tag("Editor/Kairos.Editor.Panel"),
+            "Kairos.Editor.Panel"
         );
-    }
-
-    #[test]
-    fn third_party_markers_follow_their_crate() {
+        assert_eq!(strip_tag("Kairos.Editor.Panel"), "Kairos.Editor.Panel");
+        // A '/' after an unknown prefix is part of the name.
+        assert_eq!(strip_tag("src/main.rs"), "src/main.rs");
         assert_eq!(
-            Category::of(
-                "CommandEncoder::finish",
-                "wgpu-core-29.0.3/src/command/mod.rs:1698",
-                None
-            ),
-            Category::Rendering
+            Category::from_tagged("Physics/kairos_physics::step"),
+            Some(Category::Physics)
         );
-        assert_eq!(
-            Category::of("tessellate", "epaint-0.35.0/src/tessellator.rs:2229", None),
-            Category::Editor
-        );
-        assert_eq!(
-            Category::of(
-                "text_layout::layout",
-                "epaint-0.35.0/src/text/text_layout.rs:102",
-                None
-            ),
-            Category::Editor
-        );
-        assert_eq!(
-            Category::of(
-                "NarrowPhase::compute_contacts",
-                "rapier3d-0.33.0/…/narrow_phase.rs:808",
-                None
-            ),
-            Category::Physics
-        );
-        assert_eq!(
-            Category::of(
-                "Kairos.Editor.Panel",
-                "kairos_editor_component/src/panel/viewer.rs:61",
-                None
-            ),
-            Category::Editor
-        );
-    }
-
-    #[test]
-    fn systems_fold_into_their_module_or_stay_scripts() {
-        let system = super::SYSTEM_MARKER;
-        assert_eq!(
-            Category::of(
-                system,
-                "kairos_ecs/src/schedule/executor/multi_threaded.rs:660",
-                Some("kairos_physics::physics_step_system")
-            ),
-            Category::Physics
-        );
-        assert_eq!(
-            Category::of(system, "", Some("kairos_audio::mix_system")),
-            Category::Audio
-        );
-        assert_eq!(
-            Category::of(system, "", Some("kairos_graphics::extract_meshes")),
-            Category::Rendering
-        );
-        assert_eq!(
-            Category::of(system, "", Some("kairos_editor_app::sync_game_view")),
-            Category::Editor
-        );
-        // A game system is the refinement of Unity's `Scripts`.
-        assert_eq!(
-            Category::of(system, "", Some("kairos_engine::kairos_game::spin_system")),
-            Category::Scripts
-        );
-        // Framework bookkeeping is not a game system, even though it is
-        // scheduled like one.
-        assert_eq!(
-            Category::of(system, "", Some("kairos_engine::schedule::run_main")),
-            Category::Others
-        );
-        assert_eq!(
-            Category::of(system, "", Some("kairos_ecs::apply_deferred")),
-            Category::Others
-        );
-        // The `debug` feature can be off, which blanks every system name.
-        assert_eq!(
-            Category::of(
-                system,
-                "",
-                Some("<Enable the debug feature to see the name>")
-            ),
-            Category::Scripts
-        );
-    }
-
-    #[test]
-    fn scheduler_wrappers_and_unknowns_are_others() {
-        assert_eq!(
-            Category::of("Kairos.Stage", "kairos_engine/src/schedule.rs:223", None),
-            Category::Others
-        );
-        assert_eq!(
-            Category::of(
-                "Kairos.Engine.Frame",
-                "kairos_engine/src/engine.rs:92",
-                None
-            ),
-            Category::Others
-        );
-        assert!(super::is_frame_wrapper("Kairos.Stage"));
-        assert!(super::is_frame_wrapper("Kairos.Engine.Frame"));
-        assert!(!super::is_frame_wrapper("Kairos.Editor.Panel"));
-        assert_eq!(Category::of("something", "", None), Category::Others);
-        assert_eq!(
-            Category::of("something", "unknown/src/lib.rs:1", None),
-            Category::Others
-        );
+        assert_eq!(Category::from_tagged("kairos_physics::step"), None);
     }
 
     #[test]
@@ -299,7 +221,104 @@ mod tests {
         assert_eq!(Category::ALL[5], Category::Vsync);
         assert_eq!(Category::ALL[Category::COUNT - 1], Category::Others);
         for category in Category::ALL {
+            assert_eq!(Category::from_tag(category.tag()), Some(category));
             assert!(!category.label().is_empty());
         }
+    }
+
+    #[test]
+    fn wrappers_are_recognised_with_and_without_their_tag() {
+        assert!(is_frame_wrapper("Others/Kairos.Stage"));
+        assert!(is_frame_wrapper("Kairos.Stage"));
+        assert!(is_frame_wrapper("Others/Kairos.Engine.Frame"));
+        assert!(!is_frame_wrapper("Editor/Kairos.Editor.Panel"));
+        assert!(!is_frame_wrapper("something"));
+    }
+
+    #[test]
+    fn tagged_markers_classify_by_tag_not_by_name() {
+        assert_eq!(
+            classify_marker("Editor/Kairos.Editor.Panel", "epaint-0.35.0/src/lib.rs:1"),
+            Category::Editor
+        );
+        // The tag wins over the location fallback.
+        assert_eq!(
+            classify_marker("Physics/Anything", "epaint-0.35.0/src/lib.rs:1"),
+            Category::Physics
+        );
+        // Our own naming convention no longer classifies anything.
+        assert_eq!(
+            classify_marker(
+                "Kairos.Editor.Panel",
+                "kairos_editor_component/src/x.rs:1"
+            ),
+            Category::Editor
+        );
+        assert_eq!(
+            classify_marker("Kairos.Editor.Loose", ""),
+            Category::Others,
+            "an untagged Kairos marker has no category"
+        );
+    }
+
+    #[test]
+    fn third_party_markers_follow_their_crate() {
+        assert_eq!(
+            classify_marker(
+                "Surface::get_current_texture",
+                "wgpu-core-29.0.3/src/present.rs:156"
+            ),
+            Category::Vsync
+        );
+        assert_eq!(
+            classify_marker("Surface::present", "wgpu-core-29.0.3/src/present.rs:277"),
+            Category::Vsync
+        );
+        assert_eq!(
+            classify_marker(
+                "CommandEncoder::finish",
+                "wgpu-core-29.0.3/src/command/mod.rs:1698"
+            ),
+            Category::Rendering
+        );
+        assert_eq!(
+            classify_marker("tessellate", "epaint-0.35.0/src/tessellator.rs:2229"),
+            Category::Editor
+        );
+        assert_eq!(
+            classify_marker(
+                "NarrowPhase::compute_contacts",
+                "rapier3d-0.33.0/…/narrow_phase.rs:808"
+            ),
+            Category::Physics
+        );
+        assert_eq!(classify_marker("something", ""), Category::Others);
+    }
+
+    #[test]
+    fn systems_take_their_category_from_the_data() {
+        assert_eq!(
+            classify_system(Some("Physics/kairos_physics::physics_step_system")),
+            Category::Physics
+        );
+        assert_eq!(
+            classify_system(Some("Scripts/kairos_game::spin_system")),
+            Category::Scripts
+        );
+        assert_eq!(
+            classify_system(Some("Others/kairos_engine::schedule::run_main")),
+            Category::Others
+        );
+        // A capture recorded before the tag existed: game code by assumption.
+        assert_eq!(
+            classify_system(Some("kairos_game::spin_system")),
+            Category::Scripts
+        );
+        assert_eq!(classify_system(None), Category::Scripts);
+        assert_eq!(
+            classify_system(Some(SYSTEM_MARKER)),
+            Category::Scripts,
+            "the marker name alone is not data"
+        );
     }
 }

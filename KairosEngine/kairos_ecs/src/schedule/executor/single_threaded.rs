@@ -62,6 +62,8 @@ impl SystemExecutor for SingleThreadedExecutor {
             .unwrap_or_default();
 
         for system_index in 0..schedule.systems.len() {
+            // Underscored: the facade discards its arguments without a backend.
+            let _category = schedule.systems[system_index].profiler_category();
             let system = &mut schedule.systems[system_index].system;
 
             #[cfg(feature = "trace")]
@@ -126,7 +128,10 @@ impl SystemExecutor for SingleThreadedExecutor {
 
             // Same marker the multi-threaded executor emits, so a capture has
             // one system vocabulary whichever executor a schedule uses.
-            profiling::scope!("Kairos.System", &*system.name());
+            profiling::scope!(
+                kairos_profile::SYSTEM_MARKER,
+                format!("{}/{}", _category.tag(), system.name())
+            );
 
             let f = AssertUnwindSafe(|| {
                 if let Err(RunSystemError::Failed(err)) =

@@ -60,7 +60,7 @@
 //! ```text
 //! frame N
 //!   begin_frame()          // flush frame N-1 (puffin reports after it ended)
-//!   scope!("Kairos.Engine.Frame")
+//!   scope!(Category::Others, "Kairos.Engine.Frame")
 //!   ... engine work, UI, present ...
 //!   end_frame(committed)   // mark whether the host will keep this frame
 //! ```
@@ -117,10 +117,27 @@
 //!   capture-20261116-091500Z.puffin       # puffin_viewer
 //! ```
 //!
+//! ## Markers and categories
+//!
+//! Every scope names the engine module it belongs to. The category is a
+//! [`Category`] value passed to [`scope!`], which prepends it to the marker
+//! name (`Rendering/Extract`); the ECS executor does the same in the data of
+//! its shared `Kairos.System` scope, where the system and its module are
+//! per-invocation. The tag is what the panel groups by: a marker cannot be
+//! emitted without one, so a new module cannot silently land in `Others`.
+//!
+//! Untagged markers are third-party scopes opened by wgpu, rapier or egui
+//! through the `profiling` facade; those are classified by their source
+//! location, which is the only signal a capture has for them
+//! ([`classify_marker`]).
+//!
 //! ## Instrumentation guidelines
 //!
 //! * Put `scope!` in a block and let the guard drop at the end of the block:
-//!   `{ kairos_profile::scope!("Load mesh"); ... }`.
+//!   `{ scope!(Category::Rendering, "Load mesh"); ... }`.
+//! * Every scope names its category; the macro appends the tag to the marker
+//!   name, and that tag — not a naming convention — is what the panel groups
+//!   by. A new module that adds markers declares its category at the call site.
 //! * Keep the name static per call site. Puffin registers the first name it sees
 //!   for a call site; put per-invocation detail in the second `data` argument
 //!   (e.g. an asset path).
@@ -137,6 +154,12 @@
 //! `kairos_profile::scope!`; third-party crates use `profiling::scope!` directly;
 //! the panel reads [`ProfileSession`]. If a different backend (tracing, Tracy,
 //! Perfetto) is chosen later, the facade and the model stay.
+//!
+//! This crate also owns the marker vocabulary ([crate::Category], [crate::scope!])
+//! because the producer side needs it: the ECS scheduler declares a system's
+//! category at registration time, so `kairos_ecs` depends on this crate rather
+//! than on a separate vocabulary crate. The recorder is part of every build (a
+//! development build profiles itself), so that dependency can be unconditional.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]
@@ -151,7 +174,10 @@ mod profiler;
 mod tests;
 
 pub use analysis::{HierarchyRow, hierarchy};
-pub use category::{Category, SYSTEM_MARKER, is_frame_wrapper};
+pub use category::{
+    Category, SYSTEM_MARKER, classify_marker, classify_system, is_frame_wrapper, strip_tag,
+    tagged_name,
+};
 pub use model::{
     FrameSnapshot, ProfileSession, SampleSnapshot, ScopeInfo, ScopeKind, ThreadSnapshot,
 };
@@ -173,38 +199,47 @@ pub use profiling;
 /// Implementation detail of `kairos_profile::function_scope!`.
 #[doc(hidden)]
 pub use profiling::function_scope as __function_scope;
-/// Implementation detail of `kairos_profile::scope!`.
-#[doc(hidden)]
-pub use profiling::scope as __scope;
 
-/// Open a profiling scope until the end of the enclosing block.
+/// Open a profiling scope in a category until the end of the enclosing block.
 ///
-/// The one-argument form uses the name as the marker. The two-argument form
-/// adds per-invocation `data` (e.g. an asset path) that is stored with each
-/// sample; puffin truncates it to 127 bytes.
+/// The category is a [`Category`] value, so the classification is part of the
+/// call site and cannot drift: a marker that forgot its category does not
+/// compile. The name is the marker's display name; the tag is prepended for
+/// you. The optional third argument is per-invocation `data` (e.g. an asset
+/// path) stored with each sample; puffin truncates it to 127 bytes.
 ///
-/// ```text
+/// ```
+/// use kairos_profile::{Category, scope};
+///
 /// {
-///     kairos_profile::scope!("Load mesh", path);
-///     load(path);
+///     scope!(Category::Rendering, "Extract");
+///     // ...
+/// }
+/// {
+///     scope!(Category::Rendering, "Load mesh", "assets/ball.mesh");
+///     // ...
 /// }
 /// ```
 ///
 /// The name is registered once per call site, so it must be effectively static;
 /// pass the changing part through `data`. When recording is off the macro costs
-/// one atomic load and no timestamp.
+/// one atomic load and no timestamp — and no tag allocation.
 ///
 /// The guard is hidden inside the expansion and lives to the end of the block,
 /// so use a block for every nested scope.
 #[macro_export]
 macro_rules! scope {
-    ($name:expr) => {
-        $crate::__scope!($name);
+    ($category:expr, $name:expr) => {
+        $crate::__scope!($crate::tagged_name($name, $category));
     };
-    ($name:expr, $data:expr) => {
-        $crate::__scope!($name, $data);
+    ($category:expr, $name:expr, $data:expr) => {
+        $crate::__scope!($crate::tagged_name($name, $category), $data);
     };
 }
+
+/// Implementation detail of [`scope!`]: the `profiling` facade itself.
+#[doc(hidden)]
+pub use profiling::scope as __scope;
 
 /// Open a scope named after the current function until the end of the block.
 ///

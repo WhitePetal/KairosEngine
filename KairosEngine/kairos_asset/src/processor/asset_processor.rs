@@ -47,7 +47,7 @@ use futures_lite::{AsyncWriteExt, StreamExt};
 use futures_util::{FutureExt, select_biased};
 use kairos_ecs::resource::Resource;
 use kairos_ecs::world::World;
-use kairos_tasks::{IoTaskPool, TaskPool};
+use kairos_tasks::{IoTaskPool, TaskPoolBuilder};
 
 use crate::io::{
     AssetReaderError, AssetSource, AssetSourceBuilders, AssetSourceEvent, AssetSourceId,
@@ -1350,7 +1350,11 @@ impl ProcessingState {
 
 /// The lazy default [`IoTaskPool`].
 fn io_task_pool() -> &'static IoTaskPool {
-    IoTaskPool::get_or_init(TaskPool::default)
+    IoTaskPool::get_or_init(|| {
+        TaskPoolBuilder::new()
+            .thread_name("Io".to_owned())
+            .build()
+    })
 }
 
 #[cfg(test)]

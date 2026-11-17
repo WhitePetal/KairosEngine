@@ -17,7 +17,7 @@
 use kairos_ecs::{
     component::Component,
     resource::Resource,
-    schedule::Schedules,
+    schedule::{Category, IntoScheduleConfigs, Schedules},
     system::{Query, Res, ResMut},
     world::World,
 };
@@ -200,7 +200,7 @@ pub fn install(world: &mut World) {
     schedules
         .get_mut(PostUpdate)
         .expect("the `PostUpdate` schedule must exist: install the schedule rails first")
-        .add_systems(editor_camera_controller_system);
+        .add_systems(editor_camera_controller_system.category(Category::Editor));
 }
 
 /// Applies this frame's accumulated input to every editor camera, then clears

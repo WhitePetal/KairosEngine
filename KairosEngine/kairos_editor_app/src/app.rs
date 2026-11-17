@@ -12,7 +12,7 @@ use kairos_editor_docking::{
 };
 use kairos_engine::Engine;
 use kairos_log::SinkHandle;
-use kairos_profile::Profiler;
+use kairos_profile::{Category, Profiler};
 
 use crate::effects::EffectExecutor;
 
@@ -154,7 +154,7 @@ impl EditorApp {
     /// `LayoutState`, so closing a panel or restoring a layout converges without
     /// special-case code in the UI.
     fn sync(&mut self, ctx: &egui::Context) {
-        kairos_profile::scope!("Kairos.Editor.Sync");
+        kairos_profile::scope!(Category::Editor, "Kairos.Editor.Sync");
         self.host.sync(&self.state.layout, ctx);
 
         let ids: Vec<PanelInstanceId> = self.host.ids().collect();
@@ -185,7 +185,7 @@ impl EditorApp {
     /// Called only for a committed pass (`!Context::will_discard()`): egui may
     /// run the UI pass twice, and a discarded pass must not apply its actions.
     fn pump(&mut self, mut out: UiOut) {
-        kairos_profile::scope!("Kairos.Editor.Pump");
+        kairos_profile::scope!(Category::Editor, "Kairos.Editor.Pump");
         for action in out.take() {
             kairos_log::info!(target: "kairos_editor", "{}", describe(&action));
             let effects = reduce(&mut self.state, action);
@@ -224,7 +224,7 @@ impl EditorApp {
     /// timestamp handed in by the host.
     pub(crate) fn ui(&mut self, engine: &Engine, ui: &mut egui::Ui) {
         let committed = {
-            kairos_profile::scope!("Kairos.Editor.Frame");
+            kairos_profile::scope!(Category::Editor, "Kairos.Editor.Frame");
 
             // Editor chrome is not a text document; dragging tabs must not select
             // labels in the panel bodies.
@@ -248,7 +248,7 @@ impl EditorApp {
             };
 
             {
-                kairos_profile::scope!("Kairos.Editor.Dock");
+                kairos_profile::scope!(Category::Editor, "Kairos.Editor.Dock");
                 let Self {
                     state,
                     host,

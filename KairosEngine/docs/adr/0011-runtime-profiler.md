@@ -3,8 +3,10 @@
 - **Status**: Proposed
 - **Date**: 2026-11-13
 - **Revised**: 2026-11-16 — the recorder is an owned value (no global), the
-  engine drives the game frame, and captures are saved as files. See the
-  revision note below.
+  engine drives the game frame, and captures are saved as files.
+- **Revised (2026-11-17)** — categories are declared by the marker (tagged
+  scopes and `.category(...)` systems), legend rows toggle chart bands, and the
+  timeline shows registered thread lanes. See the revision notes below.
 - **Context**:
   - The 0.2.0 editor (`kairos_editor_app`, eframe/egui) runs a single window: a
     toolbar, the dock, and six registered panels (five open by default). The owner wants a **Profiler Panel**
@@ -53,6 +55,32 @@
      `capacity` frames in three formats under `Library/Profiler` (JSON schema v1,
      Chrome trace, puffin's native `.puffin` stream readable by
      `puffin_viewer`). The panel's Save button shows the absolute paths written.
+- **Revision (2026-11-17)**:
+  The panel became a Unity-style three-band view (toolbar, module area, timeline),
+  which exposed three data-model gaps:
+  1. **The category is declared, not inferred.** Puffin records no category, and
+     the rule table over marker names and crates depended on a naming convention
+     nothing checked. Markers now carry a `<Category>/` prefix written by
+     `kairos_profile::scope!(Category::Physics, "Name")` (prefixing the marker with
+     `Physics/`); the ECS executor tags
+     its per-sample `data` the same way, and a system declares its module with
+     `.category(Category::Physics)` at registration (`Scripts` — the game's own
+     code — when it declares nothing). The vocabulary lives in the new
+     `kairos_profile` crate, next to the recorder: the enum, the tag format,
+     `scope!` and the fallback table for untagged third-party scopes (wgpu,
+     rapier, epaint — the only component that sees their source locations is the
+     parser). `kairos_ecs` therefore depends on the recorder to declare a
+     system's category; that is accepted because a development build profiles
+     itself and carries the recorder anyway. (A first cut put the vocabulary in
+     a separate `kairos_profiling` crate; it was folded back in because the
+     dependency direction it protected was not a real constraint here.)
+  2. **Legend rows are toggles.** Clicking a category hides its band from the
+     chart and dims its row, keeping the row and the time, like Unity's legend.
+  3. **Timeline lanes are registered.** Rows come from the capture's lane
+     registry — the frame thread plus every task-pool worker — not from the
+     selected frame's threads, so a worker that runs nothing keeps its row. The
+     engine installs a lane provider on the recorder at construction and names
+     the pools (`Compute`, `Io`) so their lanes are distinguishable.
 - **Decision**:
   1. **New foundation crate `kairos_profile`.** It owns the recorder, the
      plain-data capture model, hierarchy aggregation, and JSON / Chrome-trace

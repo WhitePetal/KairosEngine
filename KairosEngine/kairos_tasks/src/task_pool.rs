@@ -64,8 +64,11 @@ impl TaskPoolBuilder {
     }
 
     /// Override the name of the threads created for the pool. If set, threads will
-    /// be named `<thread_name> (<thread_index>)`, i.e. `MyThreadPool (2)`
-    pub fn thread_num(mut self, thread_name: String) -> Self {
+    /// be named `<thread_name> (<thread_index>)`, i.e. `MyThreadPool (2)`.
+    ///
+    /// Use a distinct name per pool: the Profiler timeline uses it as the lane
+    /// label, and two pools sharing one would be indistinguishable there.
+    pub fn thread_name(mut self, thread_name: String) -> Self {
         self.thread_name = Some(thread_name);
         self
     }
@@ -115,6 +118,8 @@ pub struct TaskPool {
 
     // The inner state of the pool.
     threads: Vec<JoinHandle<()>>,
+    /// The OS names of `threads`, in index order.
+    thread_names: Vec<String>,
     shutdown_tx: async_channel::Sender<()>,
 }
 
@@ -143,6 +148,7 @@ impl TaskPool {
             .num_threads
             .unwrap_or_else(crate::available_parallelism);
 
+        let mut thread_names = Vec::with_capacity(num_threads);
         let threads = (0..num_threads)
             .map(|i| {
                 let ex = Arc::clone(&executor);
@@ -153,6 +159,7 @@ impl TaskPool {
                 } else {
                     format!("TaskPool ({i})")
                 };
+                thread_names.push(thread_name.clone());
                 let mut thread_builder = thread::Builder::new().name(thread_name);
 
                 if let Some(stack_size) = builder.stack_size {
@@ -194,6 +201,7 @@ impl TaskPool {
         Self {
             executor,
             threads,
+            thread_names,
             shutdown_tx,
         }
     }
@@ -201,6 +209,14 @@ impl TaskPool {
     /// Return the number of threads owned by the task pool
     pub fn thread_num(&self) -> usize {
         self.threads.len()
+    }
+
+    /// The OS thread names of this pool's workers, in index order.
+    ///
+    /// The Profiler registers them as timeline lanes when a capture starts, so
+    /// a worker that runs no task during the capture still gets a row.
+    pub fn thread_names(&self) -> impl Iterator<Item = &str> {
+        self.thread_names.iter().map(String::as_str)
     }
 
     /// Allows spawning non-`'static` futures on the thread pool. The function takes a callback,

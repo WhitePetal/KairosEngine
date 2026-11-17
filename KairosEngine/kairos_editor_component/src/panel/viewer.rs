@@ -10,6 +10,7 @@
 use egui::{ImageSource, Ui, WidgetText};
 use kairos_editor_core::{Action, LayoutAction};
 use kairos_editor_docking::viewer::{CloseResponse, TabViewer};
+use kairos_profile::Category;
 
 use crate::frame::{Frame, UiOut};
 
@@ -58,7 +59,7 @@ impl TabViewer for PanelHostViewer<'_, '_> {
             // One scope per panel body; the panel kind is the per-invocation
             // data, so the hierarchy can separate console/scene/profiler work
             // without a marker per panel implementation.
-            kairos_profile::scope!("Kairos.Editor.Panel", id.kind.0);
+            kairos_profile::scope!(Category::Editor, "Kairos.Editor.Panel", id.kind.0);
             panel.ui(ui, frame, *out);
         }
     }

@@ -1,5 +1,7 @@
 use variadics_please::all_tuples;
 
+use kairos_profile::Category;
+
 use crate::{
     schedule::{
         BoxedCondition, Chain, InternedSystemSet, IntoSystemSet, SystemCondition, SystemSet,
@@ -61,6 +63,8 @@ impl Schedulable for ScheduleSystem {
                 ..Default::default()
             },
             conditions: Vec::new(),
+            // The game's own systems unless a module declares otherwise.
+            category: Category::Scripts,
         }
     }
 }
@@ -83,6 +87,7 @@ impl Schedulable for InternedSystemSet {
             node: self,
             metadata: GraphInfo::default(),
             conditions: Vec::new(),
+            category: Category::Scripts,
         }
     }
 }
@@ -97,6 +102,11 @@ pub struct ScheduleConfig<T: Schedulable> {
     pub(crate) node: T,
     pub(crate) metadata: T::Metadata,
     pub(crate) conditions: Vec<BoxedCondition>,
+    /// The profiler category the node's time is attributed to.
+    ///
+    /// Only systems use it (see [`IntoScheduleConfigs::category`]); a system set
+    /// carries the default and nothing reads it.
+    pub(crate) category: Category,
 }
 
 /// Single or nested configurations for [`Schedulable`]s.
@@ -115,6 +125,20 @@ pub enum ScheduleConfigs<T: Schedulable> {
 }
 
 impl<T: Schedulable<Metadata = GraphInfo, GroupMetadata = Chain>> ScheduleConfigs<T> {
+    /// Attributes every contained node to `category`.
+    pub fn category_inner(&mut self, category: Category) {
+        match self {
+            ScheduleConfigs::ScheduleConfig(config) => {
+                config.category = category;
+            }
+            ScheduleConfigs::Configs { configs, .. } => {
+                for config in configs {
+                    config.category_inner(category);
+                }
+            }
+        }
+    }
+
     /// Adds a new boxed system set to the systems.
     pub fn in_set_inner(&mut self, set: InternedSystemSet) {
         match self {
@@ -485,6 +509,27 @@ pub trait IntoScheduleConfigs<T: Schedulable<Metadata = GraphInfo, GroupMetadata
     fn chain_ignore_deferred(self) -> ScheduleConfigs<T> {
         self.into_configs().chain_ignore_deferred()
     }
+
+    /// Attribute these systems to a profiler category.
+    ///
+    /// The category is what the Profiler panel's CPU chart stacks, and it is
+    /// declared here rather than inferred from the system's name: an engine
+    /// module adds its systems with `.category(Category::Physics)` (or
+    /// `Rendering`, `Audio`, `Editor`, ...) and the capture records the
+    /// declaration. Systems that never call it are the game's own code, and
+    /// Unity's `Scripts` category is exactly that.
+    ///
+    /// ```
+    /// # use kairos_ecs::prelude::*;
+    /// fn physics_step_system() {}
+    /// # let mut schedule = Schedule::default();
+    /// schedule.add_systems(physics_step_system.category(Category::Physics));
+    /// ```
+    fn category(self, category: Category) -> ScheduleConfigs<T> {
+        let mut configs = self.into_configs();
+        configs.category_inner(category);
+        configs
+    }
 }
 
 impl<T: Schedulable<Metadata = GraphInfo, GroupMetadata = Chain>> IntoScheduleConfigs<T, ()>
@@ -623,3 +668,68 @@ all_tuples!(
     P,
     S
 );
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::schedule::SystemWithAccess;
+
+    /// Collects the category each contained system was registered with.
+    fn categories(configs: &ScheduleConfigs<ScheduleSystem>, out: &mut Vec<Category>) {
+        match configs {
+            ScheduleConfigs::ScheduleConfig(config) => out.push(config.category),
+            ScheduleConfigs::Configs { configs, .. } => {
+                for config in configs {
+                    categories(config, out);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn category_applies_to_every_system_in_the_group() {
+        fn physics_step_system() {}
+        fn game_system() {}
+
+        let configs = ScheduleConfigs::Configs {
+            metadata: Chain::default(),
+            configs: vec![
+                ScheduleConfigs::ScheduleConfig(ScheduleSystem::into_config(Box::new(
+                    IntoSystem::into_system(physics_step_system),
+                ))),
+                ScheduleConfigs::ScheduleConfig(ScheduleSystem::into_config(Box::new(
+                    IntoSystem::into_system(game_system),
+                ))),
+            ],
+            collective_conditions: Vec::new(),
+        };
+
+        // Without a declaration every system is the game's own code.
+        let mut out = Vec::new();
+        categories(&configs, &mut out);
+        assert_eq!(out, vec![Category::Scripts; 2]);
+
+        // The combinator reaches every nested config.
+        let configs = <ScheduleConfigs<ScheduleSystem> as IntoScheduleConfigs<
+            ScheduleSystem,
+            (),
+        >>::category(configs, Category::Physics);
+        let mut out = Vec::new();
+        categories(&configs, &mut out);
+        assert_eq!(out, vec![Category::Physics; 2]);
+    }
+
+    #[test]
+    fn a_declared_category_survives_into_the_system_node() {
+        fn physics_step_system() {}
+        let schedule_system = Box::new(IntoSystem::into_system(physics_step_system));
+        let with_access = SystemWithAccess::with_category(schedule_system, Category::Physics);
+        assert_eq!(with_access.profiler_category(), Category::Physics);
+        assert_eq!(
+            SystemWithAccess::new(Box::new(IntoSystem::into_system(physics_step_system)))
+                .profiler_category(),
+            Category::Scripts,
+            "the default is the game's own code"
+        );
+    }
+}

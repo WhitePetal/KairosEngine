@@ -23,6 +23,9 @@ struct ProfileDocument<'a> {
     dropped_frames: u64,
     discarded_passes: u64,
     scopes: &'a [ScopeInfo],
+    /// Registered thread lanes (main thread, task-pool workers), including
+    /// workers that produced no samples.
+    thread_lanes: &'a [String],
     frames: Vec<&'a FrameSnapshot>,
 }
 
@@ -42,6 +45,7 @@ impl ProfileSession {
             dropped_frames: self.dropped_frames,
             discarded_passes: self.discarded_passes,
             scopes: &self.scopes,
+            thread_lanes: &self.thread_lanes,
             frames: self.frames.iter().map(|frame| frame.as_ref()).collect(),
         }
     }

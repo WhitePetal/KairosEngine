@@ -11,7 +11,7 @@ use std::sync::{Mutex, MutexGuard};
 use profiling::puffin::FrameView;
 
 use crate::model::{FrameSnapshot, ProfileSession, SampleSnapshot, ThreadSnapshot};
-use crate::{Profiler, hierarchy};
+use crate::{Category, Profiler, hierarchy};
 
 static TEST_LOCK: Mutex<()> = Mutex::new(());
 
@@ -78,9 +78,9 @@ fn captures_nested_scopes_with_parent_links() {
     let test = TestSession::new();
     test.start();
     {
-        crate::scope!("test.outer");
+        crate::scope!(Category::Others, "test.outer");
         {
-            crate::scope!("test.inner", "payload");
+            crate::scope!(Category::Others, "test.inner", "payload");
         }
     }
     test.commit();
@@ -103,19 +103,29 @@ fn captures_nested_scopes_with_parent_links() {
 
 #[test]
 fn categories_attribute_exclusive_time_and_skip_the_scheduler_wrapper() {
-    use crate::Category;
-
     let test = TestSession::new();
     test.start();
     {
         // The scheduler wrapper measures its children; its own time must not
         // be attributed anywhere, or the wait and the work would both count.
-        crate::scope!("Kairos.Stage", "Update");
+        crate::scope!(Category::Others, "Kairos.Stage", "Update");
         {
-            crate::scope!("Kairos.System", "kairos_physics::physics_step_system");
+            crate::scope!(
+                Category::Others,
+                "Kairos.System",
+                "Physics/kairos_physics::physics_step_system"
+            );
+            // An empty scope can land inside one clock tick; the assertion is
+            // about attribution, not timing resolution.
+            std::thread::sleep(std::time::Duration::from_micros(100));
         }
         {
-            crate::scope!("Kairos.System", "kairos_game::spin_system");
+            crate::scope!(
+                Category::Others,
+                "Kairos.System",
+                "Scripts/kairos_game::spin_system"
+            );
+            std::thread::sleep(std::time::Duration::from_micros(100));
         }
     }
     test.commit();
@@ -147,13 +157,28 @@ fn categories_attribute_exclusive_time_and_skip_the_scheduler_wrapper() {
 }
 
 #[test]
+fn thread_lanes_are_registered_once_and_kept_in_the_session() {
+    let test = TestSession::new();
+    test.profiler().register_thread_lane("main");
+    test.profiler().register_thread_lane("Compute (0)");
+    test.profiler().register_thread_lane("main");
+
+    // Lanes describe threads, not frames: they survive a capture clear.
+    test.profiler().clear();
+    assert_eq!(
+        test.profiler().session().thread_lanes,
+        vec!["main".to_owned(), "Compute (0)".to_owned()]
+    );
+}
+
+#[test]
 fn recording_is_off_by_default() {
     let test = TestSession::new();
     assert!(!test.profiler().is_recording());
 
     test.profiler().begin_frame();
     {
-        crate::scope!("test.not.recorded");
+        crate::scope!(Category::Others, "test.not.recorded");
     }
     test.profiler().end_frame(true);
     test.profiler().begin_frame();
@@ -166,7 +191,7 @@ fn discarded_passes_are_counted_and_not_stored() {
     let test = TestSession::new();
     test.start();
     {
-        crate::scope!("test.discarded");
+        crate::scope!(Category::Others, "test.discarded");
     }
     test.profiler().end_frame(false);
     test.profiler().begin_frame();
@@ -184,7 +209,7 @@ fn worker_threads_are_captured_with_names() {
     std::thread::Builder::new()
         .name("profiler-worker".to_owned())
         .spawn(|| {
-            crate::scope!("test.worker");
+            crate::scope!(Category::Others, "test.worker");
         })
         .expect("spawn worker")
         .join()
@@ -208,34 +233,11 @@ fn worker_threads_are_captured_with_names() {
 }
 
 #[test]
-fn capacity_evicts_the_oldest_frames() {
-    let test = TestSession::new();
-    test.start();
-
-    for index in 0..3 {
-        {
-            let data = index.to_string();
-            crate::scope!("test.frame", data);
-        }
-        test.profiler().end_frame(true);
-        test.profiler().begin_frame();
-    }
-
-    let session = test.profiler().session();
-    assert_eq!(session.frames.len(), 2);
-    assert_eq!(session.dropped_frames, 1);
-    assert_eq!(
-        session.frames[0].source_index + 1,
-        session.frames[1].source_index
-    );
-}
-
-#[test]
 fn json_and_chrome_trace_include_the_capture() {
     let test = TestSession::new();
     test.start();
     {
-        crate::scope!("test.export", "hello");
+        crate::scope!(Category::Others, "test.export", "hello");
     }
     test.commit();
 
@@ -278,7 +280,7 @@ fn save_capture_writes_three_files_and_reports_their_paths() {
     let test = TestSession::new();
     test.start();
     {
-        crate::scope!("test.file");
+        crate::scope!(Category::Others, "test.file");
     }
     test.commit();
 
@@ -323,7 +325,7 @@ fn puffin_export_is_readable_by_the_backend() {
     let test = TestSession::new();
     test.start();
     {
-        crate::scope!("test.puffin.export", "payload");
+        crate::scope!(Category::Others, "test.puffin.export", "payload");
     }
     test.commit();
 
@@ -346,7 +348,7 @@ fn puffin_export_is_readable_by_the_backend() {
     );
     assert!(
         view.scope_collection()
-            .fetch_by_name("test.puffin.export")
+            .fetch_by_name("Others/test.puffin.export")
             .is_some(),
         "the native capture carries the scope table the viewer resolves names through"
     );

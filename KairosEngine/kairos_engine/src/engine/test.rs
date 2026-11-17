@@ -18,6 +18,17 @@ use crate::schedule::{PostUpdate, PreUpdate, Startup};
 use crate::time::Time;
 use kairos_ecs::schedule::ScheduleLabel;
 
+/// Puffin's frame collector is process-wide, so only one live recorder may
+/// exist at a time (see `kairos_profile`'s ownership notes). `Engine` owns a
+/// recorder, which means tests that create an engine must not run concurrently
+/// with each other: two recorders deadlock on puffin's global lock.
+static PROFILER_TESTS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn lock_profiler_tests() -> std::sync::MutexGuard<'static, ()> {
+    PROFILER_TESTS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 /// Every `build_world` install left its mark: one representative resource each,
 /// so a dropped `install` call (or a reordering that skips one) fails here.
 ///
@@ -82,6 +93,7 @@ fn build_world_installs_every_engine_subsystem() {
 /// asset/audio subsystems so it stays a profiler-boundary test.
 #[test]
 fn update_records_a_game_frame_when_recording() {
+    let _guard = lock_profiler_tests();
     use crate::inputs::InputEngine;
     use kairos_profile::Profiler;
 
@@ -102,14 +114,16 @@ fn update_records_a_game_frame_when_recording() {
     let session = engine.profiler().session();
     let mut engine_frame = false;
     let mut stage = false;
-    let mut system = None;
+    let mut systems = Vec::new();
     for frame in &session.frames {
         for thread in &frame.threads {
             for sample in &thread.samples {
                 match session.scope_name(sample.scope) {
                     "Kairos.Engine.Frame" => engine_frame = true,
                     "Kairos.Stage" => stage = true,
-                    "Kairos.System" => system = sample.data.clone(),
+                    // Several systems run per frame; collect them all rather
+                    // than depending on which one finished last.
+                    "Kairos.System" => systems.extend(sample.data.clone()),
                     _ => {}
                 }
             }
@@ -118,11 +132,36 @@ fn update_records_a_game_frame_when_recording() {
     assert!(engine_frame, "Engine::update records `Kairos.Engine.Frame`");
     assert!(stage, "the main schedule stages record `Kairos.Stage`");
     // The executors open one scope per scheduled system and put the system's
-    // name in the data: the panel's per-system breakdown reads it from there.
-    let system = system.expect("a scheduled system records `Kairos.System`");
+    // name (with its category) in the data: the panel's per-system breakdown
+    // reads it from there.
     assert!(
-        system.contains("time_system"),
-        "the system scope names the system it wrapped: {system}"
+        systems.iter().any(|system| system.contains("time_system")),
+        "a system scope names the system it wrapped: {systems:?}"
+    );
+
+    engine.profiler().set_recording(false);
+}
+
+/// A capture reserves a timeline row for every task-pool worker, not only the
+/// ones that happen to run.
+#[test]
+fn a_capture_reserves_a_lane_for_every_task_pool_worker() {
+    let _guard = lock_profiler_tests();
+    let mut engine = super::Engine::headless();
+    engine.profiler().set_recording(true);
+    engine.update();
+    engine.update();
+
+    let session = engine.profiler().session();
+    let lanes = &session.thread_lanes;
+    assert_eq!(
+        lanes.first().map(String::as_str),
+        std::thread::current().name(),
+        "the frame thread is the first lane: {lanes:?}"
+    );
+    assert!(
+        lanes.iter().any(|lane| lane.starts_with("Compute (")),
+        "the compute pool's workers are registered before they run: {lanes:?}"
     );
 
     engine.profiler().set_recording(false);

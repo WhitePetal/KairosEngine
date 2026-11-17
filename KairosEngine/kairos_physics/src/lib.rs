@@ -32,7 +32,7 @@ use crate::{
 use kairos_ecs::{
     lifecycle::HookContext,
     resource::Resource,
-    schedule::{ScheduleLabel, Schedules},
+    schedule::{Category, IntoScheduleConfigs, ScheduleLabel, Schedules},
     system::{Query, Res, ResMut},
     world::{DeferredWorld, World},
 };
@@ -358,7 +358,7 @@ pub fn install(world: &mut World, fixed_update_stage: impl ScheduleLabel) {
     schedules
         .get_mut(fixed_update_stage)
         .expect("the `FixedUpdate` schedule must exist: install the schedule rails first")
-        .add_systems(physics_step_system);
+        .add_systems(physics_step_system.category(Category::Physics));
 }
 
 /// Builds a rapier pose from an entity's initial transform.

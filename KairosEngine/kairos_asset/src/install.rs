@@ -32,7 +32,7 @@ use std::sync::Arc;
 use kairos_ecs::message::MessageRegistry;
 use kairos_ecs::resource::Resource;
 use kairos_ecs::schedule::{
-    InternedScheduleLabel, IntoScheduleConfigs, ScheduleLabel, Schedules, SystemSet,
+    Category, InternedScheduleLabel, IntoScheduleConfigs, ScheduleLabel, Schedules, SystemSet,
 };
 use kairos_ecs::world::{FromWorld, World};
 
@@ -348,7 +348,11 @@ pub fn install(world: &mut World, options: AssetOptions) {
         // The per-type tracking drivers run after the exclusive handler has drained
         // the load results, so they observe the freshly inserted values.
         tracking.configure_sets(AssetTrackingSystems.after(handle_internal_asset_events));
-        tracking.add_systems(handle_internal_asset_events.ambiguous_with_all());
+        tracking.add_systems(
+            handle_internal_asset_events
+                .ambiguous_with_all()
+                .category(Category::Others),
+        );
         schedules
             .entry(stages.event)
             .configure_sets(AssetEventSystems);
@@ -356,7 +360,7 @@ pub fn install(world: &mut World, options: AssetOptions) {
         // the host does not have to build the stage itself.
         let startup = schedules.entry(stages.startup);
         if has_processor {
-            startup.add_systems(AssetProcessor::start);
+            startup.add_systems(AssetProcessor::start.category(Category::Others));
         }
     }
 
@@ -459,11 +463,16 @@ impl AssetWorldExt for World {
             schedules.allow_ambiguous_resource::<Assets<A>>(world);
             schedules
                 .entry(stages.tracking)
-                .add_systems(Assets::<A>::track_assets.in_set(AssetTrackingSystems));
+                .add_systems(
+                    Assets::<A>::track_assets
+                        .in_set(AssetTrackingSystems)
+                        .category(Category::Others),
+                );
             schedules.entry(stages.event).add_systems(
                 Assets::<A>::asset_events
                     .in_set(AssetEventSystems)
-                    .run_if(Assets::<A>::asset_events_condition),
+                    .run_if(Assets::<A>::asset_events_condition)
+                    .category(Category::Others),
             );
         });
         self

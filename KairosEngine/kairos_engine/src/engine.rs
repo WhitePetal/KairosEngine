@@ -1,6 +1,7 @@
 use crate::{audio::AudioEngine, graphics, inputs::InputEngine, physics, schedule, time::Time};
 use kairos_ecs::world::World;
-use kairos_profile::Profiler;
+use kairos_profile::{Category, Profiler};
+use kairos_tasks::{AsyncComputeTaskPool, ComputeTaskPool, IoTaskPool, TaskPool};
 
 pub struct Engine {
     pub world: World,
@@ -37,10 +38,15 @@ impl Engine {
     }
 
     fn from_world(world: World) -> Self {
+        let profiler = Profiler::new();
+        // The timeline shows every task-pool worker, not only the ones that
+        // happened to run during the capture. Only the engine knows the pools,
+        // so it supplies the lanes when a capture starts.
+        profiler.set_thread_lane_provider(engine_thread_lanes);
         Self {
             world,
             input_engine: InputEngine::new(),
-            profiler: Profiler::new(),
+            profiler,
         }
     }
 
@@ -89,12 +95,37 @@ impl Engine {
     pub fn update(&mut self) {
         self.profiler.begin_frame();
         {
-            kairos_profile::scope!("Kairos.Engine.Frame");
+            kairos_profile::scope!(Category::Others, "Kairos.Engine.Frame");
             self.world.run_schedule(schedule::Main);
             self.world.clear_trackers();
         }
         self.profiler.end_frame(true);
     }
+}
+
+/// The thread lanes a capture starts with: the calling (frame) thread and every
+/// worker of every task pool that exists.
+///
+/// Called by the profiler when recording starts, on the frame thread. Pools are
+/// process-global and created lazily, so this asks for the ones that exist; a
+/// pool created later still appears once one of its threads runs, but it is
+/// not reserved a row in advance.
+fn engine_thread_lanes() -> Vec<String> {
+    let main = std::thread::current().name().unwrap_or("main").to_owned();
+    let mut lanes = vec![main];
+
+    fn push_pool(lanes: &mut Vec<String>, pool: Option<&'static TaskPool>) {
+        if let Some(pool) = pool {
+            lanes.extend(pool.thread_names().map(str::to_owned));
+        }
+    }
+    push_pool(&mut lanes, ComputeTaskPool::try_get().map(|pool| &**pool));
+    push_pool(
+        &mut lanes,
+        AsyncComputeTaskPool::try_get().map(|pool| &**pool),
+    );
+    push_pool(&mut lanes, IoTaskPool::try_get().map(|pool| &**pool));
+    lanes
 }
 
 /// Boots the World half of an [`Engine`]: the schedule rails, the asset core,

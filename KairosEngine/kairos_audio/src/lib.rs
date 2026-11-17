@@ -20,7 +20,7 @@ use crate::{
 
 use kairos_ecs::{
     resource::Resource,
-    schedule::{IntoScheduleConfigs, ScheduleLabel, Schedules, SystemSet},
+    schedule::{Category, IntoScheduleConfigs, ScheduleLabel, Schedules, SystemSet},
     world::World,
 };
 
@@ -229,5 +229,9 @@ pub fn install(world: &mut World, engine: AudioEngine, update_stage: impl Schedu
         .get_mut(update_stage)
         .expect("the `Update` schedule must exist: install the schedule rails first");
     update.configure_sets(AudioUpdateSystems);
-    update.add_systems(driver::audio_update_system.in_set(AudioUpdateSystems));
+    update.add_systems(
+        driver::audio_update_system
+            .in_set(AudioUpdateSystems)
+            .category(Category::Audio),
+    );
 }

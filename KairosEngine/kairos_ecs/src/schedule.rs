@@ -30,5 +30,12 @@ pub use pass::{FlattenedDependencies, ScheduleBuildPass};
 pub use schedule::*;
 pub use set::*;
 
+/// The profiler category a system declares when it is added
+/// (`system.category(Category::Physics)`).
+///
+/// Re-exported here because the scheduler is where a system states it; the
+/// vocabulary itself lives in `kairos_profile`.
+pub use kairos_profile::Category;
+
 #[cfg(test)]
 mod tests;

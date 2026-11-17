@@ -926,7 +926,9 @@ impl ScheduleGraph {
 
     /// Add a [`ScheduleConfig`] to the graph, including its dependencies and conditions.
     fn add_system_inner(&mut self, config: ScheduleConfig<ScheduleSystem>) -> SystemKey {
-        let key = self.systems.insert(config.node, config.conditions);
+        let key = self
+            .systems
+            .insert(config.node, config.conditions, config.category);
 
         // graph updates are immediate
         self.update_graphs(NodeId::System(key), config.metadata);

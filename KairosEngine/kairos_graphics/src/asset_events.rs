@@ -17,7 +17,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use kairos_asset::{AssetEvent, AssetId, AssetProcessor};
 use kairos_ecs::message::MessageReader;
 use kairos_ecs::resource::Resource;
-use kairos_ecs::schedule::{ScheduleLabel, Schedules};
+use kairos_ecs::schedule::{Category, IntoScheduleConfigs, ScheduleLabel, Schedules};
 use kairos_ecs::system::ResMut;
 use kairos_ecs::world::World;
 
@@ -138,7 +138,7 @@ pub fn install_assets(world: &mut World, extract_stage: impl ScheduleLabel) {
     schedules
         .get_mut(extract_stage)
         .expect("the extract schedule must exist: install the schedule rails first")
-        .add_systems(collect_graphics_asset_events);
+        .add_systems(collect_graphics_asset_events.category(Category::Rendering));
     drop(schedules);
 
     // In layout ② the host carries an `AssetProcessor`; register the graphics

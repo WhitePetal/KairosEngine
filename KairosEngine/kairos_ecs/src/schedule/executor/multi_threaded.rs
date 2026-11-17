@@ -7,7 +7,7 @@ use std::{
 use concurrent_queue::ConcurrentQueue;
 use fixedbitset::FixedBitSet;
 use kairos_ecs_macros::Resource;
-use kairos_tasks::{ComputeTaskPool, Scope, TaskPool, ThreadExecutor};
+use kairos_tasks::{ComputeTaskPool, Scope, TaskPool, TaskPoolBuilder, ThreadExecutor};
 #[cfg(feature = "trace")]
 use tracing::{Span, info_span};
 
@@ -269,21 +269,22 @@ impl SystemExecutor for MultiThreadedExecutor {
 
         let environment = &Environment::new(self, schedule, world);
 
-        ComputeTaskPool::get_or_init(TaskPool::default).scope_with_executor(
-            false,
-            thread_executor,
-            |scope| {
-                let context = Context {
-                    environment,
-                    scope,
-                    error_handler,
-                };
+        ComputeTaskPool::get_or_init(|| {
+            TaskPoolBuilder::new()
+                .thread_name("Compute".to_owned())
+                .build()
+        })
+        .scope_with_executor(false, thread_executor, |scope| {
+            let context = Context {
+                environment,
+                scope,
+                error_handler,
+            };
 
-                // The first tick won't need to process finished systems, but we still need to run the loop in
-                // tick_executor() in case a system completes while the first tick still holds the mutex.
-                context.tick_executor();
-            },
-        );
+            // The first tick won't need to process finished systems, but we still need to run the loop in
+            // tick_executor() in case a system completes while the first tick still holds the mutex.
+            context.tick_executor();
+        });
 
         // End the borrows of self and world in environment by copying out the reference to systems.
         let systems = environment.systems;
@@ -646,17 +647,24 @@ impl ExecutorState {
     ///   used by the specified system.
     unsafe fn spawn_system_task(&mut self, context: &Context, system_index: usize) {
         // SAFETY: this system is not running, no other reference exists
+        // Underscored because the `profiling` facade is empty when no backend is
+        // unified: the macro then discards its arguments and nothing reads it.
+        let _category =
+            unsafe { &*context.environment.systems[system_index].get() }.profiler_category();
         let system = &mut unsafe { &mut *context.environment.systems[system_index].get() }.system;
         // Move the full context object into the new future.
         let context = *context;
 
         let system_meta = &self.system_task_metadata[system_index];
 
-        // The system name travels as the scope's `data`: puffin registers one
-        // name per call site, and every system shares this site, so the only
-        // per-system detail a scope can carry is its data.
+        // The system name and its category travel as the scope's `data`:
+        // puffin registers one name per call site, and every system shares this
+        // site, so the only per-system detail a scope can carry is its data.
         let task = async move {
-            profiling::scope!("Kairos.System", &*system.name());
+            profiling::scope!(
+                kairos_profile::SYSTEM_MARKER,
+                format!("{}/{}", _category.tag(), system.name())
+            );
             let res = std::panic::catch_unwind(AssertUnwindSafe(|| {
                 // SAFETY:
                 // - The caller ensures that we have permission to
@@ -694,6 +702,10 @@ impl ExecutorState {
     /// Caller must ensure no systems are currently borrowed.
     unsafe fn spawn_exclusive_system_task(&mut self, context: &Context, system_index: usize) {
         // SAFETY: this system is not running, no other reference exists
+        // Underscored because the `profiling` facade is empty when no backend is
+        // unified: the macro then discards its arguments and nothing reads it.
+        let _category =
+            unsafe { &*context.environment.systems[system_index].get() }.profiler_category();
         let system = &mut unsafe { &mut *context.environment.systems[system_index].get() }.system;
         // Move the full context object into the new future.
         let context = *context;
@@ -703,7 +715,10 @@ impl ExecutorState {
             let unapplied_systems = self.unapplied_systems.clone();
             self.unapplied_systems.clear();
             let task = async move {
-                profiling::scope!("Kairos.System", &*system.name());
+                profiling::scope!(
+                    kairos_profile::SYSTEM_MARKER,
+                    format!("{}/{}", _category.tag(), system.name())
+                );
                 // SAFETY: `can_run` returned true for this system, which means
                 // that no other systems currently have access to the world.
                 let world = unsafe { context.environment.world_cell.world_mut() };
@@ -714,7 +729,10 @@ impl ExecutorState {
             context.scope.spawn_on_scope(task);
         } else {
             let task = async move {
-                profiling::scope!("Kairos.System", &*system.name());
+                profiling::scope!(
+                    kairos_profile::SYSTEM_MARKER,
+                    format!("{}/{}", _category.tag(), system.name())
+                );
                 // SAFETY: `can_run` returned true for this system, which means
                 // that no other systems currently have access to the world.
                 let world = unsafe { context.environment.world_cell.world_mut() };

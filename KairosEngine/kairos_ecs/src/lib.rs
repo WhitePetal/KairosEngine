@@ -63,7 +63,7 @@ pub mod prelude {
         relationship::RelationshipTarget,
         resource::Resource,
         schedule::{
-            ApplyDeferred, IntoScheduleConfigs, IntoSystemSet, Schedule, Schedules,
+            ApplyDeferred, Category, IntoScheduleConfigs, IntoSystemSet, Schedule, Schedules,
             SystemCondition, SystemSet, common_conditions::*,
         },
         spawn::{Spawn, SpawnIter, SpawnRelated, SpawnWith, WithOneRelated, WithRelated},

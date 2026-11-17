@@ -170,6 +170,13 @@ pub struct ProfileSession {
     /// Passes the host marked as discarded (egui multi-pass) and the sink
     /// dropped before parsing.
     pub discarded_passes: u64,
+    /// Thread lanes registered for this capture, in display order.
+    ///
+    /// A lane is a thread the host expects to see — the main thread and every
+    /// worker of a task pool — registered when the capture starts rather than
+    /// discovered from the frames. A pool thread that ran no task therefore
+    /// keeps its row in the timeline instead of the tracks shifting.
+    pub thread_lanes: Vec<String>,
 }
 
 impl ProfileSession {

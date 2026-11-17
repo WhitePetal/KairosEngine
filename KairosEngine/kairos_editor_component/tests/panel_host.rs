@@ -211,9 +211,13 @@ fn profiler_panel_renders_a_captured_frame() {
     profiler.set_recording(true);
     profiler.begin_frame();
     {
-        kairos_profile::scope!("panel.test.outer");
+        kairos_profile::scope!(kairos_profile::Category::Others, "panel.test.outer");
         {
-            kairos_profile::scope!("panel.test.inner", "data");
+            kairos_profile::scope!(
+                kairos_profile::Category::Others,
+                "panel.test.inner",
+                "data"
+            );
         }
     }
     profiler.end_frame(true);

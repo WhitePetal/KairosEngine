@@ -32,6 +32,11 @@ tracing = { version = "0.1.44", optional = true }
 # puffin process-wide). The executor opens one `Kairos.System` scope per
 # scheduled system, which is the only place that sees every system run.
 profiling = "1.0.18"
+# The profiler (recorder + marker vocabulary). A system declares its category
+# at registration (.category(...)), so the scheduler needs the Category type.
+# The development build profiles itself anyway, so this dependency is
+# unconditional; see docs/adr/0011-runtime-profiler.md.
+kairos_profile = { path = "../kairos_profile" }
 rayon = "1.12.0"
 variadics_please = "2.0.0"
 concurrent-queue = "2.5.0"

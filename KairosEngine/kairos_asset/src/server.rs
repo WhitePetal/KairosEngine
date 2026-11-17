@@ -42,7 +42,7 @@ use futures_lite::{FutureExt, StreamExt};
 use kairos_ecs::change_detection::Mut;
 use kairos_ecs::resource::Resource;
 use kairos_ecs::world::World;
-use kairos_tasks::{IoTaskPool, TaskPool};
+use kairos_tasks::{IoTaskPool, TaskPoolBuilder};
 use thiserror::Error;
 
 use crate::asset::{Asset, VisitAssetDependencies};
@@ -1881,7 +1881,11 @@ fn handle_source_event(
 /// The pool is initialized on first use so loading works without an explicit
 /// startup step (ADR 0001).
 pub(crate) fn io_task_pool() -> &'static IoTaskPool {
-    IoTaskPool::get_or_init(TaskPool::default)
+    IoTaskPool::get_or_init(|| {
+        TaskPoolBuilder::new()
+            .thread_name("Io".to_owned())
+            .build()
+    })
 }
 
 /// Appended to an asset source name for an untyped load, so the

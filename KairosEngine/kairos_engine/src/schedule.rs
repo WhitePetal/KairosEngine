@@ -40,6 +40,7 @@
 //! schedule — no user systems, no warn, and no forced first step.
 
 use crate::time::{FixedTime, Time};
+use kairos_profile::Category;
 use kairos_ecs::{
     message::{
         MessageRegistry, MessageUpdateSystems, ShouldUpdateMessages, message_update_comdition,
@@ -209,7 +210,7 @@ fn run_main(world: &mut World, mut run_at_least_once: Local<bool>) {
                 // data. Evaluating the name is inside the macro's
                 // `are_scopes_on` branch, so nothing is formatted while
                 // recording is off.
-                kairos_profile::scope!("Kairos.Stage", format!("{label:?}"));
+                kairos_profile::scope!(Category::Others, "Kairos.Stage", format!("{label:?}"));
                 if let Err(error) = world.try_run_schedule(label) {
                     log::error!("skipping startup schedule `{label:?}`: {error}");
                 }
@@ -220,7 +221,7 @@ fn run_main(world: &mut World, mut run_at_least_once: Local<bool>) {
 
     world.resource_scope::<MainScheduleOrder, _>(|world, order| {
         for &label in &order.labels {
-            kairos_profile::scope!("Kairos.Stage", format!("{label:?}"));
+            kairos_profile::scope!(Category::Others, "Kairos.Stage", format!("{label:?}"));
             if let Err(error) = world.try_run_schedule(label) {
                 log::error!("skipping sub-stage schedule `{label:?}`: {error}");
             }
@@ -325,23 +326,27 @@ pub fn install(world: &mut World) {
     let mut schedules = world.get_resource_or_init::<Schedules>();
 
     let mut first = Schedule::new(First);
-    first.add_systems((
-        // The clock advance and the message pass are independent of each other.
-        time_system.ambiguous_with(message_update_system),
-        // Messages are polled once per frame, but only once a fixed step has
-        // signalled the registry (see `FixedPostUpdate` below).
-        message_update_system
-            .in_set(MessageUpdateSystems)
-            .run_if(message_update_comdition),
-    ));
+    first.add_systems(
+        (
+            // The clock advance and the message pass are independent of each other.
+            time_system.ambiguous_with(message_update_system),
+            // Messages are polled once per frame, but only once a fixed step has
+            // signalled the registry (see `FixedPostUpdate` below).
+            message_update_system
+                .in_set(MessageUpdateSystems)
+                .run_if(message_update_comdition),
+        )
+            // Schedule rails are engine bookkeeping, not game code.
+            .category(Category::Others),
+    );
     schedules.insert(first);
 
     let mut fixed_loop = Schedule::new(RunFixedMainLoop);
-    fixed_loop.add_systems(run_fixed_main_loop);
+    fixed_loop.add_systems(run_fixed_main_loop.category(Category::Others));
     schedules.insert(fixed_loop);
 
     let mut fixed_post_update = Schedule::new(FixedPostUpdate);
-    fixed_post_update.add_systems(singnal_message_update_system);
+    fixed_post_update.add_systems(singnal_message_update_system.category(Category::Others));
     schedules.insert(fixed_post_update);
 
     for label in [
@@ -357,7 +362,7 @@ pub fn install(world: &mut World) {
     }
 
     let mut main = Schedule::new(Main);
-    main.add_systems(run_main);
+    main.add_systems(run_main.category(Category::Others));
     schedules.insert(main);
 
     world.insert_resource(MainScheduleOrder::default());

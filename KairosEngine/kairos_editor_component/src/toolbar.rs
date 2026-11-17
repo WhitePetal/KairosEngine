@@ -18,6 +18,7 @@ use kairos_editor_widgets::color::Color32Ext;
 use kairos_editor_widgets::menu;
 use kairos_editor_widgets::style::{Style, StyleFile};
 use kairos_editor_widgets::ui_image;
+use kairos_profile::Category;
 
 use crate::toolbar::style::ToolBarStyle;
 use crate::{Frame, UiOut, panels};
@@ -54,7 +55,7 @@ impl ToolBar {
     }
 
     pub fn ui(&mut self, ui: &mut Ui, _frame: &Frame, out: &mut UiOut) {
-        kairos_profile::scope!("Kairos.Editor.ToolBar");
+        kairos_profile::scope!(Category::Editor, "Kairos.Editor.ToolBar");
 
         let style = &self.style;
         let button = style.button_style();

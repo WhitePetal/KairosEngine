@@ -18,7 +18,7 @@ fn systems() {
     assert_eq!(systems.len(), 0);
 
     let system = Box::new(IntoSystem::into_system(empty_system));
-    let key = systems.insert(system, vec![]);
+    let key = systems.insert(system, vec![], kairos_profile::Category::Scripts);
 
     assert!(!systems.is_empty());
     assert_eq!(systems.len(), 1);

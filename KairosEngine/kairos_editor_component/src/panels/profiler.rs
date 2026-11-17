@@ -11,25 +11,35 @@
 //!   chart with Unity's 30/60 FPS reference lines) and a GPU row (header only:
 //!   the capture does not record GPU timings);
 //! * **timeline** — header (view selector, Live toggle, CPU/GPU summary), a time
-//!   ruler, then one sample track per thread.
+//!   ruler, then one track per registered thread lane.
 //!
 //! Layout, colours and measured geometry are [`ProfilerStyle`] tokens loaded
 //! from `Preferences/Styles/Profiler.ron`.
 //!
 //! # Categories
 //!
-//! The chart stacks the engine modules (`kairos_profile::Category`): Rendering,
-//! Scripts, Physics, Audio, Editor, VSync and Others. A marker's category comes
-//! from `Category::of`, a rule table over the marker's name and source crate —
-//! puffin records no category of its own.
+//! The chart stacks the engine modules ([`Category`]): Rendering, Scripts,
+//! Physics, Audio, Editor, VSync and Others. A marker declares its category at
+//! the call site — `kairos_profile::scope!(Category::Physics, ...)` appends a
+//! `Physics/` tag to the marker name — and the executor tags the sample data of
+//! its shared `Kairos.System` scope the same way. Classification is therefore
+//! part of the code that emits the marker; only third-party scopes (wgpu,
+//! rapier, epaint) are still read from their source crate.
 //!
 //! Core-module systems (physics, audio, rendering, editor) fold into their
 //! module's bucket: they never get a legend row of their own. Everything else is
-//! `Scripts`, and the legend refines it into one row per ECS system — the
-//! executor opens a `Kairos.System` scope per run and names the system in the
-//! scope's data. Scheduler wrappers (`Kairos.Stage`, `Kairos.Engine.Frame`)
-//! contribute no time of their own: what they measure is their children's work,
-//! counted where it ran, and the remainder becomes `Others`.
+//! `Scripts` (a system's default when it declares nothing), and the legend
+//! refines it into one row per ECS system. Legend swatches are toggles, like
+//! Unity's: a hidden category keeps its row and its time and leaves the chart.
+//! Scheduler wrappers (`Kairos.Stage`, `Kairos.Engine.Frame`) contribute no time
+//! of their own: what they measure is their children's work, counted where it
+//! ran, and the remainder becomes `Others`.
+//!
+//! # Timeline lanes
+//!
+//! Rows come from the capture's registered thread lanes — the frame thread plus
+//! every task-pool worker — not from the selected frame's threads, so a worker
+//! that ran nothing keeps its row instead of the tracks shifting between frames.
 //!
 //! # Not implemented yet (the seams are marked `TODO(profiler)` in the code)
 //!
@@ -67,7 +77,7 @@ use kairos_editor_widgets::ui_image;
 use kairos_profile::profiling::puffin::{self, GlobalFrameView, MergeScope, NanoSecond, ScopeCollection, StreamInfo, ThreadInfo, UnpackedFrameData};
 use kairos_profile::{
     CaptureFiles, Category, FrameSnapshot, HierarchyRow, ProfileSession, Profiler, SYSTEM_MARKER,
-    ScopeInfo, ThreadSnapshot, hierarchy,
+    ScopeInfo, ThreadSnapshot, hierarchy, strip_tag,
 };
 
 use crate::frame::{Frame, UiOut};
@@ -96,8 +106,34 @@ struct CachedFrame {
     /// This is the legend's second section: Unity's `Scripts` category,
     /// refined into one row per system.
     systems: Vec<(String, u64)>,
+    /// The timeline's rows: every registered thread lane (whether or not it ran
+    /// in the selected frame) followed by threads that only appeared in the
+    /// frames. Fixed per capture, so rows do not jump between frames.
+    lanes: Vec<Lane>,
     /// Filled lazily when the JSON tab is first shown; cleared on rebuild.
     json: String,
+}
+
+/// One timeline row: a thread, whether or not it reported work this frame.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Lane {
+    /// Session thread id, once the thread has reported a frame.
+    id: Option<u32>,
+    /// Thread name, or the empty string for an unnamed thread.
+    name: String,
+}
+
+impl Lane {
+    fn label(&self) -> String {
+        match (self.name.is_empty(), self.id) {
+            (false, Some(id)) => format!("{} (#{id})", self.name),
+            // Registered but never reported: the row is dimmed, the label is
+            // just the thread's name.
+            (false, None) => self.name.clone(),
+            (true, Some(id)) => format!("Thread {id}"),
+            (true, None) => "Unknown thread".to_owned(),
+        }
+    }
 }
 
 pub struct Streams {
@@ -215,6 +251,10 @@ pub(crate) struct ProfilerPanel {
     /// Result of the last Save click: the exact files written, or the error.
     /// Kept so the panel can show where the capture went.
     save: Option<Result<CaptureFiles, String>>,
+    /// Categories the user switched off in the legend, indexed by
+    /// [`Category`]. Unity's swatches are toggles: a hidden category keeps its
+    /// row and its time, and leaves the chart's stack.
+    hidden: [bool; Category::COUNT],
 }
 
 impl Default for ProfilerPanel {
@@ -232,6 +272,7 @@ impl Default for ProfilerPanel {
             cache_thread: None,
             cached: None,
             save: None,
+            hidden: [false; Category::COUNT],
         }
     }
 }
@@ -602,7 +643,7 @@ impl ProfilerPanel {
         });
     }
 
-    fn paint_cpu_module(&self, ui: &Ui, row: Rect, session: &ProfileSession) {
+    fn paint_cpu_module(&mut self, ui: &mut Ui, row: Rect, session: &ProfileSession) {
         let name_width = self.style.module_name_width.min(row.width());
         let name_col =
             Rect::from_min_max(row.min, egui::pos2(row.left() + name_width, row.bottom()));
@@ -654,17 +695,49 @@ impl ProfilerPanel {
         let mut used = 0;
         for category in Category::ALL.iter().take(visible) {
             let center = row_center(used);
+            let row_rect = Rect::from_min_max(
+                egui::pos2(name_col.left(), center.y - self.style.legend_row_height * 0.5),
+                egui::pos2(name_col.right(), center.y + self.style.legend_row_height * 0.5),
+            );
+            // Unity's legend swatches are toggles: a click takes the category
+            // out of the chart and leaves the row behind, dimmed.
+            let response = ui.interact(
+                row_rect,
+                ui.id().with(("profiler.category", *category as usize)),
+                Sense::click(),
+            );
+            if response.hovered() {
+                ui.painter().rect_filled(
+                    row_rect,
+                    CornerRadius::ZERO,
+                    self.style.hover_bg.to_egui(),
+                );
+            }
+            if response.clicked() {
+                let hidden = &mut self.hidden[*category as usize];
+                *hidden = !*hidden;
+            }
+            let hidden = self.hidden[*category as usize];
+            let swatch = self.category_color(*category);
             labels.rect_filled(
                 Rect::from_center_size(center, egui::vec2(8.0, 8.0)),
                 CornerRadius::same(1),
-                self.category_color(*category),
+                if hidden {
+                    swatch.gamma_multiply(0.3)
+                } else {
+                    swatch
+                },
             );
             labels.text(
                 egui::pos2(name_col.left() + 24.0, center.y),
                 Align2::LEFT_CENTER,
                 category.label(),
                 self.toolbar_font(),
-                self.style.timeline_text.to_egui(),
+                if hidden {
+                    self.style.ruler_text.to_egui()
+                } else {
+                    self.style.timeline_text.to_egui()
+                },
             );
             if let Some(frame) = frame {
                 labels.text(
@@ -683,7 +756,7 @@ impl ProfilerPanel {
         // the refinement of Unity's `Scripts` category.
         let systems = self.system_entries();
         let rows_left = visible.saturating_sub(used);
-        if rows_left > 0 && !systems.is_empty() {
+        if rows_left > 0 && !systems.is_empty() && !self.hidden[Category::Scripts as usize] {
             let shown = if systems.len() > rows_left {
                 rows_left.saturating_sub(1)
             } else {
@@ -858,6 +931,9 @@ impl ProfilerPanel {
             let x = bar_left(from_end);
             let mut bottom = plot.bottom();
             for category in Category::ALL.iter().rev().copied() {
+                if self.hidden[category as usize] {
+                    continue;
+                }
                 let ms = self.category_ms(frame, category);
                 if ms <= 0.0 {
                     continue;
@@ -914,6 +990,13 @@ impl ProfilerPanel {
             );
     }
 
+    /// The timeline rows: registered lanes plus threads seen in the frames.
+    fn lanes(&self) -> &[Lane] {
+        self.cached
+            .as_ref()
+            .map_or(&[], |cached| cached.lanes.as_slice())
+    }
+
     /// The selected frame's Scripts systems, highest first.
     fn system_entries(&self) -> &[(String, u64)] {
         self.cached
@@ -952,6 +1035,7 @@ impl ProfilerPanel {
     fn bar_ms(&self, frame: &FrameSnapshot) -> f32 {
         Category::ALL
             .iter()
+            .filter(|category| !self.hidden[**category as usize])
             .map(|category| self.category_ms(frame, *category))
             .sum()
     }
@@ -1018,11 +1102,19 @@ impl ProfilerPanel {
             // threads, so each one gets its own row here.
             // TODO(profiler): horizontal pan/zoom and the bottom scrollbar: the
             // track currently maps the whole frame onto the available width.
-            for thread in &frame.threads {
-                let levels = thread.depth().max(1) as f32;
-                let height = levels * self.style.level_height + 2.0 * self.style.thread_row_padding;
+            //
+            // Rows come from the capture's lane registry, not from this frame's
+            // threads: a task-pool worker that ran nothing keeps its row (an
+            // empty track) instead of the tracks shifting between frames.
+            for lane in self.lanes() {
+                let thread = lane
+                    .id
+                    .and_then(|id| frame.threads.iter().find(|thread| thread.id == id));
+                let levels = thread.map_or(1, |thread| thread.depth().max(1)) as f32;
+                let height =
+                    levels * self.style.level_height + 2.0 * self.style.thread_row_padding;
                 let (row, _) = ui.allocate_exact_size(egui::vec2(width, height), Sense::hover());
-                self.paint_thread_row(ui, row, thread, &session.scopes, &ticks, duration_ns);
+                self.paint_thread_row(ui, row, lane, thread, &session.scopes, &ticks, duration_ns);
             }
 
             // Fill the rest of the panel so the tracks read as one surface.
@@ -1152,7 +1244,8 @@ impl ProfilerPanel {
         &self,
         ui: &Ui,
         row: Rect,
-        thread: &ThreadSnapshot,
+        lane: &Lane,
+        thread: Option<&ThreadSnapshot>,
         scopes: &[ScopeInfo],
         ticks: &[RulerTick],
         duration_ns: u64,
@@ -1176,9 +1269,14 @@ impl ProfilerPanel {
                 name_col.top() + self.style.thread_row_padding,
             ),
             Align2::LEFT_TOP,
-            thread_label(thread),
+            lane.label(),
             self.toolbar_font(),
-            self.style.timeline_text.to_egui(),
+            // A lane that has not reported yet reads as idle, not active.
+            if lane.id.is_some() {
+                self.style.timeline_text.to_egui()
+            } else {
+                self.style.ruler_text.to_egui()
+            },
         );
 
         // Grid lines aligned with the labelled ruler ticks.
@@ -1205,7 +1303,7 @@ impl ProfilerPanel {
 
         if duration_ns > 0 {
             let mut labels = MAX_SAMPLE_LABELS;
-            for sample in &thread.samples {
+            for sample in thread.map_or(&[][..], |thread| thread.samples.as_slice()) {
                 let start = sample.start_ns.min(duration_ns) as f64 / duration_ns as f64;
                 let end = sample
                     .start_ns
@@ -1313,11 +1411,13 @@ impl ProfilerPanel {
         let frame = Arc::clone(&session.frames[index]);
         let rows = hierarchy(&frame, self.thread);
         let systems = system_entries(&frame, &session.scopes);
+        let lanes = collect_lanes(session);
         self.cached = Some(CachedFrame {
             frame,
             scopes: session.scopes.clone(),
             rows,
             systems,
+            lanes,
             json: String::new(),
         });
         self.cache_revision = session.revision;
@@ -1509,6 +1609,14 @@ impl ProfilerPanel {
     }
 }
 
+fn thread_label(thread: &ThreadSnapshot) -> String {
+    if thread.name.is_empty() {
+        format!("Thread {}", thread.id)
+    } else {
+        format!("{} (#{})", thread.name, thread.id)
+    }
+}
+
 fn scope_info(scopes: &[ScopeInfo], id: u32) -> Option<&ScopeInfo> {
     scopes
         .binary_search_by_key(&id, |scope| scope.id)
@@ -1520,12 +1628,46 @@ fn format_ms(ns: u64) -> String {
     format!("{:.3}", ns as f64 / 1_000_000.0)
 }
 
-fn thread_label(thread: &ThreadSnapshot) -> String {
-    if thread.name.is_empty() {
-        format!("Thread {}", thread.id)
-    } else {
-        format!("{} (#{})", thread.name, thread.id)
+/// The timeline's rows for one capture.
+///
+/// The registered lanes come first, in the order the host registered them (main
+/// thread, then every task-pool worker), each matched to its session thread id
+/// once the thread has reported. Threads that were never registered — an
+/// audio thread, a pool created after the capture started, a rayon worker —
+/// follow in id order, so nothing is hidden.
+fn collect_lanes(session: &ProfileSession) -> Vec<Lane> {
+    let mut seen: BTreeMap<u32, &str> = BTreeMap::new();
+    for frame in &session.frames {
+        for thread in &frame.threads {
+            seen.entry(thread.id).or_insert(thread.name.as_str());
+        }
     }
+
+    let mut lanes = Vec::with_capacity(session.thread_lanes.len() + seen.len());
+    let mut used = BTreeSet::new();
+    for name in &session.thread_lanes {
+        let id = seen
+            .iter()
+            .find(|(id, thread_name)| **thread_name == name.as_str() && !used.contains(*id))
+            .map(|(id, _)| *id);
+        if let Some(id) = id {
+            used.insert(id);
+        }
+        lanes.push(Lane {
+            id,
+            name: name.clone(),
+        });
+    }
+    for (id, name) in seen {
+        if used.contains(&id) {
+            continue;
+        }
+        lanes.push(Lane {
+            id: Some(id),
+            name: name.to_owned(),
+        });
+    }
+    lanes
 }
 
 /// The three saved paths, one per line, made absolute for display.
@@ -1647,12 +1789,15 @@ fn system_entries(frame: &FrameSnapshot, scopes: &[ScopeInfo]) -> Vec<(String, u
             if info.name != SYSTEM_MARKER {
                 continue;
             }
-            let Some(system) = sample.data.as_deref() else {
+            let Some(data) = sample.data.as_deref() else {
                 continue;
             };
-            if Category::of_system(system) != Category::Scripts {
+            // The executor tags the data with the system's declared category:
+            // core-module systems fold into their module and are not listed.
+            if Category::from_tagged(data) != Some(Category::Scripts) {
                 continue;
             }
+            let system = strip_tag(data);
             *totals.entry(system).or_default() = totals
                 .get(system)
                 .copied()
@@ -1718,9 +1863,9 @@ mod probe {
         profiler.set_recording(true);
         profiler.begin_frame();
         {
-            kairos_profile::scope!("profiler.test.frame");
+            kairos_profile::scope!(Category::Others, "profiler.test.frame");
             {
-                kairos_profile::scope!("profiler.test.work");
+                kairos_profile::scope!(Category::Others, "profiler.test.work");
             }
         }
         profiler.end_frame(true);
@@ -1818,6 +1963,204 @@ mod probe {
         );
     }
 
+    /// Every registered lane gets a row, including a worker that never ran:
+    /// that is what keeps the timeline's tracks from shifting between frames.
+    #[test]
+    fn lanes_reserve_a_row_for_a_worker_that_never_ran() {
+        let session = ProfileSession {
+            thread_lanes: vec![
+                "main".to_owned(),
+                "Compute (0)".to_owned(),
+                "Compute (1)".to_owned(),
+            ],
+            frames: vec![Arc::new(FrameSnapshot {
+                index: 0,
+                source_index: 0,
+                start_ns: 0,
+                end_ns: 16_000_000,
+                threads: vec![
+                    ThreadSnapshot {
+                        id: 0,
+                        name: "main".to_owned(),
+                        samples: Vec::new(),
+                        warning: None,
+                    },
+                    ThreadSnapshot {
+                        id: 3,
+                        name: "Compute (0)".to_owned(),
+                        samples: Vec::new(),
+                        warning: None,
+                    },
+                ],
+                categories: [0; Category::COUNT],
+            })],
+            ..Default::default()
+        };
+
+        let lanes = collect_lanes(&session);
+        assert_eq!(lanes.len(), 3);
+        assert_eq!(lanes[0].name, "main");
+        assert_eq!(lanes[0].id, Some(0));
+        assert_eq!(lanes[1].name, "Compute (0)");
+        assert_eq!(
+            lanes[1].id,
+            Some(3),
+            "the lane picks its thread's session id once it reports"
+        );
+        assert_eq!(lanes[2].name, "Compute (1)");
+        assert_eq!(
+            lanes[2].id, None,
+            "a worker that never ran keeps an empty row"
+        );
+    }
+
+    /// A thread that was never registered still shows up, after the lanes.
+    #[test]
+    fn unregistered_threads_follow_the_registered_lanes() {
+        let session = ProfileSession {
+            thread_lanes: vec!["main".to_owned()],
+            frames: vec![Arc::new(FrameSnapshot {
+                index: 0,
+                source_index: 0,
+                start_ns: 0,
+                end_ns: 16_000_000,
+                threads: vec![
+                    ThreadSnapshot {
+                        id: 0,
+                        name: "main".to_owned(),
+                        samples: Vec::new(),
+                        warning: None,
+                    },
+                    ThreadSnapshot {
+                        id: 1,
+                        name: "audio".to_owned(),
+                        samples: Vec::new(),
+                        warning: None,
+                    },
+                ],
+                categories: [0; Category::COUNT],
+            })],
+            ..Default::default()
+        };
+
+        let lanes = collect_lanes(&session);
+        assert_eq!(lanes.len(), 2);
+        assert_eq!(lanes[1].name, "audio");
+    }
+
+    /// Unity's legend swatch hides its band from the chart.
+    #[test]
+    fn hiding_a_category_drops_it_from_the_frame_bar() {
+        let frame = FrameSnapshot {
+            index: 0,
+            source_index: 0,
+            start_ns: 0,
+            end_ns: 10_000_000,
+            threads: Vec::new(),
+            categories: {
+                let mut categories = [0u64; Category::COUNT];
+                categories[Category::Scripts as usize] = 3_000_000;
+                categories[Category::Physics as usize] = 2_000_000;
+                categories
+            },
+        };
+
+        let mut panel = ProfilerPanel::default();
+        let full = panel.bar_ms(&frame);
+        assert!((full - 10.0).abs() < 0.01, "the bar is the frame time");
+
+        panel.hidden[Category::Physics as usize] = true;
+        let hidden = panel.bar_ms(&frame);
+        assert!(
+            (full - hidden - 2.0).abs() < 0.01,
+            "Only the physics band leaves: {full} -> {hidden}"
+        );
+        assert!(
+            (panel.category_ms(&frame, Category::Physics) - 2.0).abs() < 0.01,
+            "the legend keeps the hidden category's time"
+        );
+    }
+
+    /// The timeline draws a row for a registered lane that never reported.
+    #[test]
+    fn the_timeline_lists_idle_registered_lanes() {
+        let _guard = lock_profiler_tests();
+        let profiler = Profiler::new();
+        profiler.set_recording(true);
+        profiler.begin_frame();
+        {
+            kairos_profile::scope!(Category::Others, "work");
+        }
+        profiler.end_frame(true);
+        profiler.begin_frame();
+        profiler.register_thread_lane("Compute (7)");
+
+        let host = ProfilerHost(profiler);
+        let mut panel = ProfilerPanel::default();
+        let output = draw_panel(&mut panel, &host);
+        let text = painted_text(&output);
+        assert!(
+            text.iter().any(|line| line == "Compute (7)"),
+            "an idle lane keeps its row: {text:?}"
+        );
+    }
+
+    /// Clicking a legend swatch takes the category out of the chart, like
+    /// Unity's legend toggles.
+    #[test]
+    fn clicking_a_legend_row_hides_the_category() {
+        let _guard = lock_profiler_tests();
+        let host = ProfilerHost(captured_profiler());
+        let mut panel = ProfilerPanel::default();
+        let state = EditorState::new();
+        let mut out = UiOut::new();
+        let ctx = Context::default();
+        let mut input = egui::RawInput::default();
+        input.screen_rect = Some(Rect::from_min_size(
+            pos2(0.0, 0.0),
+            egui::vec2(900.0, 640.0),
+        ));
+
+        // The first pass lays the panel out; the click in the second pass hits
+        // the row rect the first pass registered.
+        let first = ctx.run_ui(input.clone(), |ui| {
+            panel.ui(ui, &Frame::with_host(&state, &host), &mut out);
+        });
+        let label = first
+            .shapes
+            .iter()
+            .find_map(|clipped| match &clipped.shape {
+                egui::Shape::Text(text) if text.galley.text() == "Physics" => Some(text.pos),
+                _ => None,
+            })
+            .expect("the legend paints a Physics row");
+        let clicked_at = label + egui::vec2(4.0, 4.0);
+
+        input.events = vec![
+            egui::Event::PointerMoved(clicked_at),
+            egui::Event::PointerButton {
+                pos: clicked_at,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::default(),
+            },
+            egui::Event::PointerButton {
+                pos: clicked_at,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::default(),
+            },
+        ];
+        ctx.run_ui(input, |ui| {
+            panel.ui(ui, &Frame::with_host(&state, &host), &mut out);
+        });
+
+        assert!(
+            panel.hidden[Category::Physics as usize],
+            "a click on the legend row toggles its category"
+        );
+    }
+
     /// Unity's `Scripts` category, refined: the legend lists the fixed category
     /// vocabulary, game systems get a row each, and a core-module system is
     /// folded into its category instead of getting one.
@@ -1828,16 +2171,24 @@ mod probe {
         profiler.set_recording(true);
         profiler.begin_frame();
         {
-            kairos_profile::scope!("Kairos.Stage", "Update");
+            kairos_profile::scope!(Category::Others, "Kairos.Stage", "Update");
             {
-                kairos_profile::scope!("Kairos.System", "kairos_physics::physics_step_system");
+                kairos_profile::scope!(
+                    Category::Others,
+                    "Kairos.System",
+                    "Physics/kairos_physics::physics_step_system"
+                );
                 // Give the sample a measurable duration: puffin reads the clock
                 // in nanoseconds, and back-to-back scopes can land on the same
                 // tick, which would leave the Physics band at zero height.
                 std::thread::sleep(std::time::Duration::from_millis(1));
             }
             {
-                kairos_profile::scope!("Kairos.System", "kairos_game::spin_system");
+                kairos_profile::scope!(
+                    Category::Others,
+                    "Kairos.System",
+                    "Scripts/kairos_game::spin_system"
+                );
             }
         }
         profiler.end_frame(true);
@@ -2027,7 +2378,7 @@ mod probe {
 
         profiler.begin_frame();
         {
-            kairos_profile::scope!("probe.frame");
+            kairos_profile::scope!(Category::Others, "probe.frame");
         }
         profiler.end_frame(true);
         profiler.begin_frame();
@@ -2040,7 +2391,7 @@ mod probe {
         profiler.set_recording(true);
         profiler.begin_frame();
         {
-            kairos_profile::scope!("probe.frame");
+            kairos_profile::scope!(Category::Others, "probe.frame");
         }
         profiler.end_frame(true);
         profiler.begin_frame();
