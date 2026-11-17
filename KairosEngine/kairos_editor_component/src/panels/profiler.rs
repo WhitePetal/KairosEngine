@@ -34,6 +34,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
+use egui::scroll_area::ScrollBarVisibility;
 use egui::{
     Align2, Context, CornerRadius, FontId, Rect, Response, Sense, Stroke, StrokeKind, Ui,
     WidgetText,
@@ -224,6 +225,10 @@ impl Panel for ProfilerPanel {
         Some(&self.style.icons.tab)
     }
 
+    fn scroll_bars(&self) -> [bool; 2] {
+        [false, false]
+    }
+
     fn init(&mut self, ctx: &Context) {
         match StyleFile::<ProfilerStyle>::load_or_default() {
             Ok(file) => {
@@ -363,7 +368,7 @@ impl ProfilerPanel {
         // Only the record toggle paints a state fill; every other segment is
         // transparent until hovered.
         let record_style = base_style.clone().fills(fill, hover, hover);
-        let button_style = base_style.fills(egui::Color32::TRANSPARENT, hover, hover);
+        let button_style = base_style.fills(egui::Color32::TRANSPARENT, hover, self.style.click_bg.to_egui());
         let rule = self.style.separator.to_egui();
         // Every icon toggle is the same square; the rules match the row it forms.
         let row_height = self
@@ -532,42 +537,49 @@ impl ProfilerPanel {
     /// of frame durations. The GPU row is header-only until the capture records
     /// GPU timings.
     fn module_area(&mut self, ui: &mut Ui, session: &ProfileSession) {
-        let width = ui.available_width();
-        let (area, _) = ui.allocate_exact_size(
-            egui::vec2(width, self.style.module_area_height),
-            Sense::hover(),
-        );
-
-        let rule = self.style.separator.to_egui();
-        let rule_width = self.style.separator_width;
-        let gpu_height = self.style.module_header_height;
-        let cpu_height = (area.height() - gpu_height - rule_width).max(0.0);
-        let cpu = Rect::from_min_size(area.min, egui::vec2(width, cpu_height));
-
-        self.paint_cpu_module(ui, cpu, session);
-        Divider::horizontal()
-            .thickness(rule_width)
-            .color(rule)
-            .paint_in(
-                ui,
-                Rect::from_min_size(
-                    egui::pos2(area.left(), cpu.bottom()),
-                    egui::vec2(width, rule_width),
-                ),
+        egui::ScrollArea::vertical()
+            .vscroll(true)
+            .scroll_bar_visibility(ScrollBarVisibility::AlwaysVisible)
+            .id_salt(ui.auto_id_with("module_area"))
+            .show(ui, |ui|
+        {
+            let width = ui.available_width();
+            let (area, _) = ui.allocate_exact_size(
+                egui::vec2(width, self.style.module_area_height),
+                Sense::hover(),
             );
 
-        let gpu = Rect::from_min_size(
-            egui::pos2(area.left(), cpu.bottom() + rule_width),
-            egui::vec2(width, gpu_height),
-        );
-        self.paint_gpu_module(ui, gpu);
+            let rule = self.style.separator.to_egui();
+            let rule_width = self.style.separator_width;
+            let gpu_height = self.style.module_header_height;
+            let cpu_height = (area.height() - gpu_height - rule_width).max(0.0);
+            let cpu = Rect::from_min_size(area.min, egui::vec2(width, cpu_height));
 
-        // Close the module area; the timeline header follows on the next row.
-        ui.add(
+            self.paint_cpu_module(ui, cpu, session);
             Divider::horizontal()
                 .thickness(rule_width)
-                .color(self.style.separator.to_egui()),
-        );
+                .color(rule)
+                .paint_in(
+                    ui,
+                    Rect::from_min_size(
+                        egui::pos2(area.left(), cpu.bottom()),
+                        egui::vec2(width, rule_width),
+                    ),
+                );
+
+            let gpu = Rect::from_min_size(
+                egui::pos2(area.left(), cpu.bottom() + rule_width),
+                egui::vec2(width, gpu_height),
+            );
+            self.paint_gpu_module(ui, gpu);
+
+            // Close the module area; the timeline header follows on the next row.
+            ui.add(
+                Divider::horizontal()
+                    .thickness(rule_width)
+                    .color(self.style.separator.to_egui()),
+            );
+        });
     }
 
     fn paint_cpu_module(&self, ui: &Ui, row: Rect, session: &ProfileSession) {
@@ -843,52 +855,59 @@ impl ProfilerPanel {
     /// Unity's timeline: a header (view selector, Live, CPU/GPU summary), a
     /// ruler, then one track per thread.
     fn timeline(&mut self, ui: &mut Ui, session: &ProfileSession) {
-        let width = ui.available_width();
-        let row_height = self.style.toolbar_height;
-        let rule = self.style.separator.to_egui();
+        egui::ScrollArea::vertical()
+            .scroll([true, true])
+            .scroll_bar_visibility(ScrollBarVisibility::AlwaysVisible)
+            .id_salt(ui.auto_id_with("timeline"))
+            .show(ui, |ui|
+        {
+            let width = ui.available_width();
+            let row_height = self.style.toolbar_height;
+            let rule = self.style.separator.to_egui();
 
-        let (header, _) = ui.allocate_exact_size(egui::vec2(width, row_height), Sense::hover());
-        self.paint_timeline_header(ui, header, session);
-        ui.add(
-            Divider::horizontal()
-                .thickness(self.style.separator_width)
-                .color(rule),
-        );
+            let (header, _) = ui.allocate_exact_size(egui::vec2(width, row_height), Sense::hover());
+            self.paint_timeline_header(ui, header, session);
+            ui.add(
+                Divider::horizontal()
+                    .thickness(self.style.separator_width)
+                    .color(rule),
+            );
 
-        let duration_ns = session
-            .frames
-            .get(self.selected_frame)
-            .map_or(0, |frame| frame.duration_ns());
-        let track_width = (width - self.style.timeline_name_width).max(0.0);
-        let ticks = ruler_ticks(duration_ns, track_width);
+            let duration_ns = session
+                .frames
+                .get(self.selected_frame)
+                .map_or(0, |frame| frame.duration_ns());
+            let track_width = (width - self.style.timeline_name_width).max(0.0);
+            let ticks = ruler_ticks(duration_ns, track_width);
 
-        let (ruler, _) =
-            ui.allocate_exact_size(egui::vec2(width, self.style.ruler_height), Sense::hover());
-        self.paint_ruler(ui, ruler, &ticks);
+            let (ruler, _) =
+                ui.allocate_exact_size(egui::vec2(width, self.style.ruler_height), Sense::hover());
+            self.paint_ruler(ui, ruler, &ticks);
 
-        let Some(frame) = session.frames.get(self.selected_frame) else {
-            self.paint_empty_timeline(ui);
-            return;
-        };
+            let Some(frame) = session.frames.get(self.selected_frame) else {
+                self.paint_empty_timeline(ui);
+                return;
+            };
 
-        // TODO(profiler): Unity groups threads (JOB / LOADING / SCRIPTING …)
-        // into collapsible rows with a thread count; the capture reports flat
-        // threads, so each one gets its own row here.
-        // TODO(profiler): horizontal pan/zoom and the bottom scrollbar: the
-        // track currently maps the whole frame onto the available width.
-        for thread in &frame.threads {
-            let levels = thread.depth().max(1) as f32;
-            let height = levels * self.style.level_height + 2.0 * self.style.thread_row_padding;
-            let (row, _) = ui.allocate_exact_size(egui::vec2(width, height), Sense::hover());
-            self.paint_thread_row(ui, row, thread, &session.scopes, &ticks, duration_ns);
-        }
+            // TODO(profiler): Unity groups threads (JOB / LOADING / SCRIPTING …)
+            // into collapsible rows with a thread count; the capture reports flat
+            // threads, so each one gets its own row here.
+            // TODO(profiler): horizontal pan/zoom and the bottom scrollbar: the
+            // track currently maps the whole frame onto the available width.
+            for thread in &frame.threads {
+                let levels = thread.depth().max(1) as f32;
+                let height = levels * self.style.level_height + 2.0 * self.style.thread_row_padding;
+                let (row, _) = ui.allocate_exact_size(egui::vec2(width, height), Sense::hover());
+                self.paint_thread_row(ui, row, thread, &session.scopes, &ticks, duration_ns);
+            }
 
-        // Fill the rest of the panel so the tracks read as one surface.
-        let rest = ui.available_rect_before_wrap();
-        if rest.height() > 0.0 {
-            ui.painter()
-                .rect_filled(rest, CornerRadius::ZERO, self.style.track_bg.to_egui());
-        }
+            // Fill the rest of the panel so the tracks read as one surface.
+            let rest = ui.available_rect_before_wrap();
+            if rest.height() > 0.0 {
+                ui.painter()
+                    .rect_filled(rest, CornerRadius::ZERO, self.style.track_bg.to_egui());
+            }
+        });
     }
 
     fn paint_timeline_header(&mut self, ui: &mut Ui, row: Rect, session: &ProfileSession) {

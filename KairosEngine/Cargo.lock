@@ -2646,6 +2646,7 @@ version = "0.1.0"
 dependencies = [
  "duplicate",
  "egui",
+ "kairos_log",
  "paste",
 ]
 

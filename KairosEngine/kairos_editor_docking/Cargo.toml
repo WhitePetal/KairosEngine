@@ -13,3 +13,4 @@ unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)", "cfg(docsrs_dep)
 duplicate = "2.0.1"
 egui = "0.35.0"
 paste = "1.0.15"
+kairos_log = { path = "../kairos_log" }

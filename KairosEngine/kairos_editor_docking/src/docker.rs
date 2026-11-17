@@ -1669,7 +1669,7 @@ impl<T: TabId> Docker<'_, T> {
                 );
 
                 let points_to_scroll_coefficient =
-                    overflow / (scroll_bar_handle_rect.width() - scroll_bar_handle_size);
+                    overflow / (scroll_bar_handle_rect.width() - scroll_bar_handle_size).max(0.5);
 
                 leaf.scroll -=
                     scroll_bar_handle_response.drag_delta().x * points_to_scroll_coefficient;

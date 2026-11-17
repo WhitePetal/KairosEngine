@@ -37,6 +37,7 @@ pub struct ProfilerStyle {
     pub toolbar_text_size: f32,
     /// Fill of a toolbar button under the pointer.
     pub hover_bg: Color32,
+    pub click_bg: Color32,
     /// Fill of a toggle that is on (recording).
     pub recording_bg: Color32,
     /// Fill of a toggle that is on (the timeline's Live).
@@ -118,6 +119,7 @@ impl Style for ProfilerStyle {
             toolbar_text: Color32::from_rgb(0xC4, 0xC4, 0xC4),
             toolbar_text_size: 12.0,
             hover_bg: Color32::from_rgb(0x40, 0x40, 0x40),
+            click_bg: Color32::from_rgb(74, 74, 74),
             recording_bg: Color32::from_rgb(0x49, 0x49, 0x49),
             selected_bg: Color32::from_rgb(0x2C, 0x2C, 0x2C),
 
@@ -171,6 +173,7 @@ impl Style for ProfilerStyle {
             toolbar_text: Color32::from_rgb(0x20, 0x20, 0x20),
             toolbar_text_size: 12.0,
             hover_bg: Color32::from_rgb(0xB9, 0xB9, 0xB9),
+            click_bg: Color32::from_rgb(74, 74, 74),
             recording_bg: Color32::from_rgb(0xC4, 0xC4, 0xC4),
             selected_bg: Color32::from_rgb(0xA9, 0xA9, 0xA9),
 

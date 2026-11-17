@@ -156,14 +156,11 @@ impl Profiler {
             if self.inner.wants_recording.swap(true, Ordering::Relaxed) {
                 return;
             }
-            self.inner.recording.store(false, Ordering::Relaxed);
-            set_scopes_on(false);
-            self.lock_store().clear_frames();
         } else {
             self.inner.wants_recording.store(false, Ordering::Relaxed);
-            self.inner.recording.store(false, Ordering::Relaxed);
-            set_scopes_on(false);
         }
+        self.inner.recording.store(false, Ordering::Relaxed);
+        set_scopes_on(false);
     }
 
     /// Begin a host frame: flush the previous frame, then honour a start request.
