@@ -2520,6 +2520,7 @@ dependencies = [
  "kairos_tasks",
  "log",
  "nonmax",
+ "profiling",
  "rayon",
  "serde",
  "serde_test",

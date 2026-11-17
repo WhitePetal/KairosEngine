@@ -13,6 +13,8 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
+use crate::category::Category;
+
 /// Version of the JSON schema produced by [`crate::ProfileSession::to_json`].
 ///
 /// Bump when a field changes meaning or a required field is removed. Additive
@@ -109,6 +111,17 @@ pub struct FrameSnapshot {
     pub end_ns: u64,
     /// Threads that reported work in this frame, ordered by [`ThreadSnapshot::id`].
     pub threads: Vec<ThreadSnapshot>,
+    /// Exclusive time per category, indexed by [`Category::ALL`].
+    ///
+    /// Derived from `threads` once, when the frame is parsed, so the chart can
+    /// read a frame's stack in O(1). Scheduler wrappers (`Kairos.Stage`,
+    /// `Kairos.Engine.Frame`) contribute no time of their own — what they
+    /// measure is their children's work, which is counted where it ran.
+    ///
+    /// Not serialized: it is a reduction of `threads`, and the JSON already
+    /// carries the samples it came from.
+    #[serde(default, skip_serializing)]
+    pub categories: [u64; Category::COUNT],
 }
 
 impl FrameSnapshot {
@@ -125,6 +138,11 @@ impl FrameSnapshot {
     /// The thread with session id `id`, if it reported this frame.
     pub fn thread(&self, id: u32) -> Option<&ThreadSnapshot> {
         self.threads.iter().find(|thread| thread.id == id)
+    }
+
+    /// Exclusive time attributed to one category, in nanoseconds.
+    pub fn category_ns(&self, category: Category) -> u64 {
+        self.categories[category as usize]
     }
 }
 

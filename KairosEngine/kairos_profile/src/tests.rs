@@ -24,7 +24,6 @@ impl TestSession {
     fn new() -> Self {
         let guard = TEST_LOCK.lock().unwrap_or_else(|error| error.into_inner());
         let profiler = Profiler::new();
-        profiler.set_capacity(crate::DEFAULT_CAPACITY);
         Self {
             profiler,
             _guard: guard,
@@ -103,6 +102,51 @@ fn captures_nested_scopes_with_parent_links() {
 }
 
 #[test]
+fn categories_attribute_exclusive_time_and_skip_the_scheduler_wrapper() {
+    use crate::Category;
+
+    let test = TestSession::new();
+    test.start();
+    {
+        // The scheduler wrapper measures its children; its own time must not
+        // be attributed anywhere, or the wait and the work would both count.
+        crate::scope!("Kairos.Stage", "Update");
+        {
+            crate::scope!("Kairos.System", "kairos_physics::physics_step_system");
+        }
+        {
+            crate::scope!("Kairos.System", "kairos_game::spin_system");
+        }
+    }
+    test.commit();
+
+    let session = test.profiler().session();
+    let frame = session.frame(0).expect("frame");
+    assert!(
+        frame.category_ns(Category::Physics) > 0,
+        "a physics system folds into Physics"
+    );
+    assert!(
+        frame.category_ns(Category::Scripts) > 0,
+        "a game system is Scripts"
+    );
+    assert_eq!(
+        frame.category_ns(Category::Others),
+        0,
+        "the wrapper's own time is not attributed"
+    );
+    let attributed: u64 = Category::ALL
+        .iter()
+        .map(|category| frame.category_ns(*category))
+        .sum();
+    assert!(
+        attributed <= frame.duration_ns(),
+        "exclusive time cannot exceed the frame ({attributed} > {})",
+        frame.duration_ns()
+    );
+}
+
+#[test]
 fn recording_is_off_by_default() {
     let test = TestSession::new();
     assert!(!test.profiler().is_recording());
@@ -166,7 +210,6 @@ fn worker_threads_are_captured_with_names() {
 #[test]
 fn capacity_evicts_the_oldest_frames() {
     let test = TestSession::new();
-    test.profiler().set_capacity(2);
     test.start();
 
     for index in 0..3 {
@@ -333,6 +376,7 @@ fn frame_with(threads: Vec<ThreadSnapshot>) -> FrameSnapshot {
         start_ns: 0,
         end_ns: 100,
         threads,
+        categories: [0; crate::Category::COUNT],
     }
 }
 

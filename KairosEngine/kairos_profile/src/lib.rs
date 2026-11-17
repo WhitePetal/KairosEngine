@@ -142,6 +142,7 @@
 #![deny(missing_docs)]
 
 mod analysis;
+mod category;
 mod export;
 mod model;
 mod profiler;
@@ -150,10 +151,11 @@ mod profiler;
 mod tests;
 
 pub use analysis::{HierarchyRow, hierarchy};
+pub use category::{Category, SYSTEM_MARKER, is_frame_wrapper};
 pub use model::{
     FrameSnapshot, ProfileSession, SampleSnapshot, ScopeInfo, ScopeKind, ThreadSnapshot,
 };
-pub use profiler::{CaptureFiles, DEFAULT_CAPACITY, DEFAULT_CAPTURE_DIR, Profiler};
+pub use profiler::{CaptureFiles, DEFAULT_CAPTURE_DIR, Profiler};
 
 /// The `profiling` proc-macro attribute: instrument a function with a scope
 /// named after the function.

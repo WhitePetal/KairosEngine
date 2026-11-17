@@ -60,8 +60,7 @@ pub struct ProfilerStyle {
     pub module_name_width: f32,
     /// Height of one legend row.
     pub legend_row_height: f32,
-    /// Frames the module chart remembers before the history scrolls.
-    pub chart_capacity: usize,
+    pub window_fram_count: usize,
     /// Fill of the frame-history bars.
     pub chart_bar: Color32,
     /// Horizontal target line inside the chart (16/33 ms reference).
@@ -73,6 +72,8 @@ pub struct ProfilerStyle {
     /// Marker colours, indexed by scope id. Stands in for per-marker colours
     /// until the capture records categories.
     pub palette: Vec<Color32>,
+    /// Category colours in legend order (the order of `Category::ALL`).
+    pub category_palette: Vec<Color32>,
 
     // -- Timeline -----------------------------------------------------------
     /// Width of the thread name column.
@@ -131,14 +132,15 @@ impl Style for ProfilerStyle {
             module_area_height: 190.0,
             module_header_height: 20.0,
             module_name_width: 180.0,
-            legend_row_height: 16.0,
-            chart_capacity: 300,
+            legend_row_height: 14.0,
+            window_fram_count: 300,
             chart_bar: Color32::from_rgb(0x79, 0x7B, 0x1D),
             chart_grid: Color32::from_rgb(0x57, 0x57, 0x57),
             chart_cursor: Color32::from_rgb(0xE6, 0xE6, 0xE6),
             chip_bg: Color32::from_rgb(0x2A, 0x2A, 0x2A),
             chip_text: Color32::from_rgb(0xC8, 0xC8, 0xC8),
             palette: unity_palette(),
+            category_palette: unity_category_palette(),
 
             timeline_name_width: 180.0,
             timeline_view_width: 165.0,
@@ -185,14 +187,15 @@ impl Style for ProfilerStyle {
             module_area_height: 190.0,
             module_header_height: 20.0,
             module_name_width: 180.0,
-            legend_row_height: 16.0,
-            chart_capacity: 300,
+            legend_row_height: 14.0,
+            window_fram_count: 300,
             chart_bar: Color32::from_rgb(0x7E, 0x84, 0x20),
             chart_grid: Color32::from_rgb(0xA0, 0xA0, 0xA0),
             chart_cursor: Color32::from_rgb(0x30, 0x30, 0x30),
             chip_bg: Color32::from_rgb(0xDC, 0xDC, 0xDC),
             chip_text: Color32::from_rgb(0x20, 0x20, 0x20),
             palette: unity_palette(),
+            category_palette: unity_category_palette(),
 
             timeline_name_width: 180.0,
             timeline_view_width: 165.0,
@@ -228,6 +231,17 @@ fn unity_palette() -> Vec<Color32> {
         Color32::from_rgb(0x7B, 0x5C, 0xA5),
         Color32::from_rgb(0x8A, 0x87, 0x26),
     ]
+}
+
+/// Category colours in legend order, picked from the Unity legend swatches:
+/// Rendering, Scripts, Physics, Audio (Unity's Animation swatch), Editor
+/// (Unity's UI swatch), VSync, Others.
+fn unity_category_palette() -> Vec<Color32> {
+    let unity = unity_palette();
+    [0, 1, 2, 3, 7, 5, 8]
+        .iter()
+        .filter_map(|index| unity.get(*index).copied())
+        .collect()
 }
 
 /// Runtime icon file paths for the Profiler panel, relative to the editor's

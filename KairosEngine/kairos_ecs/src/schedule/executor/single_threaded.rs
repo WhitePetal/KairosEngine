@@ -124,6 +124,10 @@ impl SystemExecutor for SingleThreadedExecutor {
                 continue;
             }
 
+            // Same marker the multi-threaded executor emits, so a capture has
+            // one system vocabulary whichever executor a schedule uses.
+            profiling::scope!("Kairos.System", &*system.name());
+
             let f = AssertUnwindSafe(|| {
                 if let Err(RunSystemError::Failed(err)) =
                     __rust_begin_short_backtrace::run_without_applying_deferred(system, world)

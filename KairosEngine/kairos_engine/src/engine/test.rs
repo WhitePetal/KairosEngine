@@ -102,12 +102,14 @@ fn update_records_a_game_frame_when_recording() {
     let session = engine.profiler().session();
     let mut engine_frame = false;
     let mut stage = false;
+    let mut system = None;
     for frame in &session.frames {
         for thread in &frame.threads {
             for sample in &thread.samples {
                 match session.scope_name(sample.scope) {
                     "Kairos.Engine.Frame" => engine_frame = true,
                     "Kairos.Stage" => stage = true,
+                    "Kairos.System" => system = sample.data.clone(),
                     _ => {}
                 }
             }
@@ -115,6 +117,13 @@ fn update_records_a_game_frame_when_recording() {
     }
     assert!(engine_frame, "Engine::update records `Kairos.Engine.Frame`");
     assert!(stage, "the main schedule stages record `Kairos.Stage`");
+    // The executors open one scope per scheduled system and put the system's
+    // name in the data: the panel's per-system breakdown reads it from there.
+    let system = system.expect("a scheduled system records `Kairos.System`");
+    assert!(
+        system.contains("time_system"),
+        "the system scope names the system it wrapped: {system}"
+    );
 
     engine.profiler().set_recording(false);
 }

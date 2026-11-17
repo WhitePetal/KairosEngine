@@ -26,7 +26,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex, MutexGuard, PoisonError,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicBool, Ordering},
     },
 };
 
@@ -35,12 +35,10 @@ use profiling::puffin::{
     ScopeCollection, ScopeDetails, ScopeId, ScopeType, Stream, ThreadInfo, now_ns, set_scopes_on,
 };
 
+use crate::category::{Category, SYSTEM_MARKER, is_frame_wrapper};
 use crate::model::{
     FrameSnapshot, ProfileSession, SampleSnapshot, ScopeInfo, ScopeKind, ThreadSnapshot,
 };
-
-/// Frames kept by default (about five seconds at 60 Hz).
-pub const DEFAULT_CAPACITY: usize = 300;
 
 /// Default directory a host saves captures into (Unity-style project cache).
 ///
@@ -90,7 +88,6 @@ impl std::fmt::Debug for Profiler {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Profiler")
             .field("recording", &self.is_recording())
-            .field("capacity", &self.capacity())
             .finish_non_exhaustive()
     }
 }
@@ -313,24 +310,6 @@ impl Profiler {
         Ok(files)
     }
 
-    /// Maximum number of frames kept before the oldest is evicted.
-    pub fn capacity(&self) -> usize {
-        self.inner.capacity.load(Ordering::Relaxed)
-    }
-
-    /// Set the frame ring capacity (clamped to at least one) and evict now if
-    /// the new capacity is smaller.
-    pub fn set_capacity(&self, frames: usize) {
-        let capacity = frames.max(1);
-        self.inner.capacity.store(capacity, Ordering::Relaxed);
-        let mut store = self.lock_store();
-        while store.frames.len() > capacity {
-            store.frames.pop_front();
-            store.raw_frames.pop_front();
-            store.dropped_frames += 1;
-        }
-    }
-
     fn start_capture(&self) {
         self.inner.recording.store(true, Ordering::Relaxed);
         set_scopes_on(true);
@@ -358,7 +337,6 @@ struct Inner {
     recording: AtomicBool,
     /// Whether the frame whose data puffin will report next committed.
     pending_committed: AtomicBool,
-    capacity: AtomicUsize,
 }
 
 impl Default for Inner {
@@ -368,7 +346,6 @@ impl Default for Inner {
             wants_recording: AtomicBool::new(false),
             recording: AtomicBool::new(false),
             pending_committed: AtomicBool::new(true),
-            capacity: AtomicUsize::new(DEFAULT_CAPACITY),
         }
     }
 }
@@ -394,13 +371,6 @@ impl Inner {
         let Some(snapshot) = store.build_snapshot(&frame) else {
             return;
         };
-
-        let capacity = self.capacity.load(Ordering::Relaxed).max(1);
-        while store.frames.len() >= capacity {
-            store.frames.pop_front();
-            store.raw_frames.pop_front();
-            store.dropped_frames += 1;
-        }
 
         // Keep the backend's own encoding too, so `.puffin` export needs no
         // second capture. The packing feature lets the sink store it compressed.
@@ -515,27 +485,39 @@ impl Store {
                 .or_insert_with(|| fallback_scope(id));
         }
 
+        // One classification per marker: its name and location are static. The
+        // executor's shared `Kairos.System` marker is the exception — which
+        // system ran is per-sample data.
+        let scope_classes: HashMap<u32, ScopeClass> = self
+            .scopes
+            .scopes_by_id()
+            .iter()
+            .map(|(id, details)| {
+                let name = details.name();
+                let class = if name == SYSTEM_MARKER {
+                    ScopeClass::System
+                } else if is_frame_wrapper(name) {
+                    ScopeClass::FrameWrapper
+                } else {
+                    ScopeClass::Fixed(Category::of(name, &details.location(), None))
+                };
+                (id.0.get(), class)
+            })
+            .collect();
+
+        let mut categories = [0u64; Category::COUNT];
         let mut threads = Vec::with_capacity(parsed.len());
         for (info, result) in parsed.drain(..) {
             let id = self.thread_id(&info);
             match result {
-                Ok(thread) => threads.push(ThreadSnapshot {
+                Ok(thread) => threads.push(thread_snapshot(
                     id,
-                    name: info.name,
-                    samples: thread
-                        .samples
-                        .into_iter()
-                        .map(|sample| SampleSnapshot {
-                            scope: sample.scope,
-                            data: sample.data,
-                            start_ns: (sample.start_ns - frame_start).max(0) as u64,
-                            duration_ns: sample.duration_ns.max(0) as u64,
-                            depth: sample.depth,
-                            parent: sample.parent,
-                        })
-                        .collect(),
-                    warning: thread.warning,
-                }),
+                    info.name,
+                    thread,
+                    frame_start,
+                    &scope_classes,
+                    &mut categories,
+                )),
                 Err(error) => threads.push(ThreadSnapshot {
                     id,
                     name: info.name,
@@ -557,6 +539,7 @@ impl Store {
             start_ns,
             end_ns: end_ns.max(start_ns),
             threads,
+            categories,
         })
     }
 
@@ -687,6 +670,92 @@ fn parse_range(
         position = next;
     }
     Ok(())
+}
+
+/// How a marker's time is attributed to a category.
+#[derive(Clone, Copy, Debug)]
+enum ScopeClass {
+    /// The marker belongs to one category for its whole life.
+    Fixed(Category),
+    /// The executor's shared marker: the owner comes from the sample's data.
+    System,
+    /// A scheduler wrapper. It measures its children, so its own time is not
+    /// attributed — it is either waiting for off-thread work (counted where
+    /// that work ran) or its own bookkeeping.
+    FrameWrapper,
+}
+
+/// Build one thread's snapshot, adding every sample's exclusive time to
+/// `categories`.
+///
+/// Exclusive time is what the category stack needs: a sample's own duration
+/// minus its children's, so nested markers are counted once, at the innermost
+/// marker that was running.
+fn thread_snapshot(
+    id: u32,
+    name: String,
+    thread: ParsedThread,
+    frame_start: NanoSecond,
+    scope_classes: &HashMap<u32, ScopeClass>,
+    categories: &mut [u64; Category::COUNT],
+) -> ThreadSnapshot {
+    // Children may appear after their parent but never before it, so one pass
+    // over the pre-order samples collects every parent's child total.
+    let mut children = vec![0u64; thread.samples.len()];
+    for sample in &thread.samples {
+        if let Some(parent) = sample.parent {
+            if let Some(slot) = children.get_mut(parent as usize) {
+                *slot = slot.saturating_add(sample.duration_ns.max(0) as u64);
+            }
+        }
+    }
+
+    // One lookup per distinct system name, not per sample.
+    let mut systems: HashMap<String, Category> = HashMap::new();
+
+    let mut samples = Vec::with_capacity(thread.samples.len());
+    for (index, sample) in thread.samples.into_iter().enumerate() {
+        let duration_ns = sample.duration_ns.max(0) as u64;
+        let self_ns = duration_ns.saturating_sub(children[index]);
+        let class = scope_classes
+            .get(&sample.scope)
+            .copied()
+            .unwrap_or(ScopeClass::Fixed(Category::Others));
+        let category = match class {
+            ScopeClass::FrameWrapper => None,
+            ScopeClass::Fixed(category) => Some(category),
+            ScopeClass::System => {
+                let system = sample.data.as_deref().unwrap_or_default();
+                Some(if let Some(category) = systems.get(system) {
+                    *category
+                } else {
+                    let category = Category::of_system(system);
+                    systems.insert(system.to_owned(), category);
+                    category
+                })
+            }
+        };
+        if let Some(category) = category {
+            let total = &mut categories[category as usize];
+            *total = total.saturating_add(self_ns);
+        }
+
+        samples.push(SampleSnapshot {
+            scope: sample.scope,
+            data: sample.data,
+            start_ns: (sample.start_ns - frame_start).max(0) as u64,
+            duration_ns,
+            depth: sample.depth,
+            parent: sample.parent,
+        });
+    }
+
+    ThreadSnapshot {
+        id,
+        name,
+        samples,
+        warning: thread.warning,
+    }
 }
 
 fn scope_kind(kind: ScopeType) -> ScopeKind {

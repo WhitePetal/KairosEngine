@@ -27,6 +27,11 @@ nonmax = "0.5.5"
 thiserror = "2.0.19"
 log = "0.4"
 tracing = { version = "0.1.44", optional = true }
+# The `profiling` facade only: no backend, so this adds no runtime dependency
+# unless a host enables a backend (the editor's `kairos_profile` enables
+# puffin process-wide). The executor opens one `Kairos.System` scope per
+# scheduled system, which is the only place that sees every system run.
+profiling = "1.0.18"
 rayon = "1.12.0"
 variadics_please = "2.0.0"
 concurrent-queue = "2.5.0"

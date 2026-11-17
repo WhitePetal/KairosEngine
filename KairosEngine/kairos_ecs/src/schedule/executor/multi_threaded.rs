@@ -652,7 +652,11 @@ impl ExecutorState {
 
         let system_meta = &self.system_task_metadata[system_index];
 
+        // The system name travels as the scope's `data`: puffin registers one
+        // name per call site, and every system shares this site, so the only
+        // per-system detail a scope can carry is its data.
         let task = async move {
+            profiling::scope!("Kairos.System", &*system.name());
             let res = std::panic::catch_unwind(AssertUnwindSafe(|| {
                 // SAFETY:
                 // - The caller ensures that we have permission to
@@ -699,6 +703,7 @@ impl ExecutorState {
             let unapplied_systems = self.unapplied_systems.clone();
             self.unapplied_systems.clear();
             let task = async move {
+                profiling::scope!("Kairos.System", &*system.name());
                 // SAFETY: `can_run` returned true for this system, which means
                 // that no other systems currently have access to the world.
                 let world = unsafe { context.environment.world_cell.world_mut() };
@@ -709,6 +714,7 @@ impl ExecutorState {
             context.scope.spawn_on_scope(task);
         } else {
             let task = async move {
+                profiling::scope!("Kairos.System", &*system.name());
                 // SAFETY: `can_run` returned true for this system, which means
                 // that no other systems currently have access to the world.
                 let world = unsafe { context.environment.world_cell.world_mut() };

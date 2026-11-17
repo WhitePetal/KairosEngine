@@ -7,14 +7,29 @@
 //!
 //! * **toolbar** — record toggle, frame transport, `Frame: n / m`, Clear,
 //!   separated into segments by 1 px rules;
-//! * **module area** — a CPU row (legend + frame-history chart with Unity's
-//!   30/60 FPS reference lines) and a GPU row (header only: the capture does not
-//!   record GPU timings);
+//! * **module area** — a CPU row (category legend + a stacked frame-history
+//!   chart with Unity's 30/60 FPS reference lines) and a GPU row (header only:
+//!   the capture does not record GPU timings);
 //! * **timeline** — header (view selector, Live toggle, CPU/GPU summary), a time
 //!   ruler, then one sample track per thread.
 //!
 //! Layout, colours and measured geometry are [`ProfilerStyle`] tokens loaded
 //! from `Preferences/Styles/Profiler.ron`.
+//!
+//! # Categories
+//!
+//! The chart stacks the engine modules (`kairos_profile::Category`): Rendering,
+//! Scripts, Physics, Audio, Editor, VSync and Others. A marker's category comes
+//! from `Category::of`, a rule table over the marker's name and source crate —
+//! puffin records no category of its own.
+//!
+//! Core-module systems (physics, audio, rendering, editor) fold into their
+//! module's bucket: they never get a legend row of their own. Everything else is
+//! `Scripts`, and the legend refines it into one row per ECS system — the
+//! executor opens a `Kairos.System` scope per run and names the system in the
+//! scope's data. Scheduler wrappers (`Kairos.Stage`, `Kairos.Engine.Frame`)
+//! contribute no time of their own: what they measure is their children's work,
+//! counted where it ran, and the remainder becomes `Others`.
 //!
 //! # Not implemented yet (the seams are marked `TODO(profiler)` in the code)
 //!
@@ -22,8 +37,11 @@
 //!   view selector — only the timeline view is rebuilt;
 //! * thread grouping (Unity's JOB / LOADING / SCRIPTING rows), timeline pan/zoom
 //!   and the bottom scrollbar;
-//! * GPU timings, per-marker colours (the palette is indexed by scope id) and
-//!   sample selection / hover details;
+//! * the full per-system ranking: the legend only has the rows the module area
+//!   leaves free, so it shows the top few and `+N more`; a details pane (Unity's
+//!   Hierarchy view) is where the whole list belongs;
+//! * GPU timings, per-marker colours (the timeline still indexes the palette by
+//!   scope id) and sample selection / hover details;
 //! * a pinned header: the panel is inside the dock's scroll area, so a long
 //!   thread list scrolls the toolbar and module area away with it (Unity keeps
 //!   them fixed; that needs an inner scroll area for the tracks only).
@@ -48,7 +66,7 @@ use kairos_editor_widgets::text::TextStyle;
 use kairos_editor_widgets::ui_image;
 use kairos_profile::profiling::puffin::{self, GlobalFrameView, MergeScope, NanoSecond, ScopeCollection, StreamInfo, ThreadInfo, UnpackedFrameData};
 use kairos_profile::{
-    CaptureFiles, DEFAULT_CAPTURE_DIR, FrameSnapshot, HierarchyRow, ProfileSession, Profiler,
+    CaptureFiles, Category, FrameSnapshot, HierarchyRow, ProfileSession, Profiler, SYSTEM_MARKER,
     ScopeInfo, ThreadSnapshot, hierarchy,
 };
 
@@ -74,8 +92,10 @@ struct CachedFrame {
     frame: Arc<FrameSnapshot>,
     scopes: Vec<ScopeInfo>,
     rows: Vec<HierarchyRow>,
-    /// Marker ids by self time: the module legend, highest first.
-    legend: Vec<(u32, u64)>,
+    /// The selected frame's Scripts systems by inclusive time, highest first.
+    /// This is the legend's second section: Unity's `Scripts` category,
+    /// refined into one row per system.
+    systems: Vec<(String, u64)>,
     /// Filled lazily when the JSON tab is first shown; cleared on rebuild.
     json: String,
 }
@@ -614,34 +634,94 @@ impl ProfilerPanel {
             .map_or_else(|| "no frames".to_owned(), |frame| frame_cost_label(frame));
         self.paint_module_header(ui, header, name_col, "CPU", "CPU Usage", &value);
 
-        // Legend: the selected frame's markers by self time. The reference uses
-        // Unity's categories; the capture does not record categories yet.
-        let legend = self.legend_entries();
+        // Legend: Unity's category rows with the selected frame's cost, then the
+        // frame's Scripts systems by cost. Zero-cost categories keep their row,
+        // like Unity: the legend is a fixed vocabulary, not a ranking.
+        let frame = session.frames.get(self.selected_frame);
         let visible = ((row.height() - self.style.module_header_height)
-            / self.style.legend_row_height)
+            / self.style.legend_row_height.max(1.0))
             .floor()
             .max(0.0) as usize;
         let labels = ui.painter().with_clip_rect(name_col);
-        for (index, (scope, _self_ns)) in legend.iter().take(visible).enumerate() {
-            let top = row.top()
-                + self.style.module_header_height
-                + index as f32 * self.style.legend_row_height;
-            let center = egui::pos2(
+        let row_center = |index: usize| {
+            egui::pos2(
                 name_col.left() + 12.0,
-                top + self.style.legend_row_height * 0.5,
-            );
+                row.top()
+                    + self.style.module_header_height
+                    + (index as f32 + 0.5) * self.style.legend_row_height,
+            )
+        };
+        let mut used = 0;
+        for category in Category::ALL.iter().take(visible) {
+            let center = row_center(used);
             labels.rect_filled(
                 Rect::from_center_size(center, egui::vec2(8.0, 8.0)),
                 CornerRadius::same(1),
-                self.sample_color(*scope),
+                self.category_color(*category),
             );
             labels.text(
                 egui::pos2(name_col.left() + 24.0, center.y),
                 Align2::LEFT_CENTER,
-                self.scope_name(*scope).unwrap_or("<unknown marker>"),
+                category.label(),
                 self.toolbar_font(),
                 self.style.timeline_text.to_egui(),
             );
+            if let Some(frame) = frame {
+                labels.text(
+                    egui::pos2(name_col.right() - 8.0, center.y),
+                    Align2::RIGHT_CENTER,
+                    format!("{:.2}ms", self.category_ms(frame, *category)),
+                    self.small_font(),
+                    self.style.ruler_text.to_egui(),
+                );
+            }
+            used += 1;
+        }
+
+        // Systems get whatever rows are left. The full ranking belongs in a
+        // details pane (Unity's Hierarchy view); this is the top of it, which is
+        // the refinement of Unity's `Scripts` category.
+        let systems = self.system_entries();
+        let rows_left = visible.saturating_sub(used);
+        if rows_left > 0 && !systems.is_empty() {
+            let shown = if systems.len() > rows_left {
+                rows_left.saturating_sub(1)
+            } else {
+                systems.len()
+            };
+            for (name, ns) in systems.iter().take(shown) {
+                let center = row_center(used);
+                labels.rect_filled(
+                    Rect::from_center_size(center, egui::vec2(8.0, 8.0)),
+                    CornerRadius::same(1),
+                    self.category_color(Category::Scripts),
+                );
+                labels.text(
+                    egui::pos2(name_col.left() + 24.0, center.y),
+                    Align2::LEFT_CENTER,
+                    name,
+                    self.toolbar_font(),
+                    self.style.timeline_text.to_egui(),
+                );
+                labels.text(
+                    egui::pos2(name_col.right() - 8.0, center.y),
+                    Align2::RIGHT_CENTER,
+                    format!("{:.2}ms", *ns as f32 / 1_000_000.0),
+                    self.small_font(),
+                    self.style.ruler_text.to_egui(),
+                );
+                used += 1;
+            }
+            if systems.len() > shown {
+                let center = row_center(used);
+                labels.text(
+                    egui::pos2(name_col.left() + 24.0, center.y),
+                    Align2::LEFT_CENTER,
+                    format!("+{} more", systems.len() - shown),
+                    self.small_font(),
+                    self.style.ruler_text.to_egui(),
+                );
+            }
         }
 
         self.paint_chart(ui, chart, session);
@@ -750,8 +830,7 @@ impl ProfilerPanel {
     /// reference lines and a cursor at the selected frame.
     fn paint_chart(&self, ui: &Ui, plot: Rect, session: &ProfileSession) {
         let painter = ui.painter().with_clip_rect(plot);
-        let capacity = self.style.chart_capacity.max(1);
-        let shown = session.frames.len().min(capacity);
+        let shown = session.frames.len();
 
         if shown == 0 {
             painter.text(
@@ -767,23 +846,33 @@ impl ProfilerPanel {
         let max_ms = session
             .frames
             .iter()
-            .map(|frame| frame_ms(frame))
+            .map(|frame| self.bar_ms(frame))
             .fold(TARGET_30_FPS_MS, f32::max)
             * 1.05;
-        let bar_width = (plot.width() / capacity as f32).max(1.0);
+        let bar_width = (plot.width() / self.style.window_fram_count.max(1) as f32).max(1.0);
         let bar_left = |from_end: usize| plot.right() - (from_end as f32 + 1.0) * bar_width;
 
+        // One stacked bar per frame. Unity anchors `Others` at the bottom and
+        // stacks up the legend, so the first row is the topmost band.
         for (from_end, frame) in session.frames.iter().rev().take(shown).enumerate() {
-            let height = (frame_ms(frame) / max_ms * plot.height()).max(1.0);
             let x = bar_left(from_end);
-            painter.rect_filled(
-                Rect::from_min_max(
-                    egui::pos2(x, plot.bottom() - height),
-                    egui::pos2(x + bar_width, plot.bottom()),
-                ),
-                CornerRadius::ZERO,
-                self.style.chart_bar.to_egui(),
-            );
+            let mut bottom = plot.bottom();
+            for category in Category::ALL.iter().rev().copied() {
+                let ms = self.category_ms(frame, category);
+                if ms <= 0.0 {
+                    continue;
+                }
+                let height = (ms / max_ms * plot.height()).max(0.5);
+                painter.rect_filled(
+                    Rect::from_min_max(
+                        egui::pos2(x, bottom - height),
+                        egui::pos2(x + bar_width, bottom),
+                    ),
+                    CornerRadius::ZERO,
+                    self.category_color(category),
+                );
+                bottom -= height;
+            }
         }
 
         // 30/60 FPS budgets, labelled the way Unity labels them. Drawn over the
@@ -825,11 +914,46 @@ impl ProfilerPanel {
             );
     }
 
-    /// Marker ids by self time (the module legend's rows).
-    fn legend_entries(&self) -> &[(u32, u64)] {
+    /// The selected frame's Scripts systems, highest first.
+    fn system_entries(&self) -> &[(String, u64)] {
         self.cached
             .as_ref()
-            .map_or(&[], |cached| cached.legend.as_slice())
+            .map_or(&[], |cached| cached.systems.as_slice())
+    }
+
+    /// Category colour from the legend palette (index = enum order).
+    fn category_color(&self, category: Category) -> egui::Color32 {
+        self.style
+            .category_palette
+            .get(category as usize)
+            .map_or_else(|| self.style.chart_bar.to_egui(), |color| color.to_egui())
+    }
+
+    /// Exclusive time in one category for one frame, in milliseconds.
+    ///
+    /// `Others` also absorbs the part of the frame no scope covered (scheduler
+    /// overhead, uninstrumented gaps), so the stacked bar reaches the frame
+    /// time the way Unity's does.
+    fn category_ms(&self, frame: &FrameSnapshot, category: Category) -> f32 {
+        let mut ns = frame.category_ns(category);
+        if category == Category::Others {
+            let attributed: u64 = Category::ALL
+                .iter()
+                .filter(|other| **other != Category::Others)
+                .map(|other| frame.category_ns(*other))
+                .sum();
+            ns = ns.saturating_add(frame.duration_ns().saturating_sub(attributed + ns));
+        }
+        ns as f32 / 1_000_000.0
+    }
+
+    /// The drawn height of a frame's bar: its categories stacked. Equal to the
+    /// frame time unless parallel work pushes the categories past it.
+    fn bar_ms(&self, frame: &FrameSnapshot) -> f32 {
+        Category::ALL
+            .iter()
+            .map(|category| self.category_ms(frame, *category))
+            .sum()
     }
 
     /// Stable marker colour: the palette entry picked by the scope id. The
@@ -1174,174 +1298,6 @@ impl ProfilerPanel {
         FontId::proportional(self.style.toolbar_text_size)
     }
 
-    // -----------------------------------------------------------------------
-    // Legacy data-phase views: the Unity-style panel above replaced their entry
-    // point. They are kept until the new views cover the same ground; note that
-    // `ensure_cache` / `reset_view` below are still used by the new panel.
-    // -----------------------------------------------------------------------
-
-    /// Draw capture controls. Returns `true` when the session changed underneath
-    /// this pass and the caller should stop drawing the previous snapshot.
-    fn toolbar(&mut self, ui: &mut Ui, profiler: &Profiler, session: &ProfileSession) -> bool {
-        let mut refresh = false;
-
-        ui.horizontal_wrapped(|ui| {
-            let recording = profiler.is_recording();
-            let label = if recording { "■ Stop" } else { "● Record" };
-            if ui.selectable_label(recording, label).clicked() {
-                profiler.set_recording(!recording);
-                self.reset_view();
-                refresh = true;
-            }
-            if ui.button("Clear").clicked() {
-                profiler.clear();
-                self.reset_view();
-                refresh = true;
-            }
-            if ui
-                .add_enabled(!session.frames.is_empty(), egui::Button::new("Save"))
-                .on_hover_text(format!(
-                    "Write the whole capture to {DEFAULT_CAPTURE_DIR}/ as JSON, Chrome trace and .puffin"
-                ))
-                .on_disabled_hover_text("Nothing captured yet")
-                .clicked()
-            {
-                // The panel never touches the filesystem itself: `kairos_profile`
-                // owns the formats and the paths, and hands back exactly what it
-                // wrote so the panel can show it.
-                self.save = Some(
-                    profiler
-                        .save_capture(DEFAULT_CAPTURE_DIR)
-                        .map_err(|error| error.to_string()),
-                );
-            }
-
-            ui.separator();
-            if recording {
-                ui.colored_label(self.style.recording_bg.to_egui(), "REC");
-            }
-            ui.label(format!("{} frames", session.frames.len()));
-            if session.dropped_frames > 0 {
-                ui.weak(format!("{} dropped", session.dropped_frames));
-            }
-            if session.discarded_passes > 0 {
-                ui.weak(format!("{} discarded passes", session.discarded_passes));
-            }
-
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.weak(format!("Captures → {DEFAULT_CAPTURE_DIR}/"));
-            });
-        });
-
-        self.save_status(ui);
-        refresh
-    }
-
-    /// Show where the last Save went (or why it failed).
-    fn save_status(&self, ui: &mut Ui) {
-        let Some(result) = &self.save else {
-            return;
-        };
-
-        match result {
-            Ok(files) => {
-                ui.horizontal_wrapped(|ui| {
-                    ui.weak("Saved");
-                    if ui.small_button("Copy paths").clicked() {
-                        ui.ctx().copy_text(files_summary(files));
-                    }
-                    ui.weak("json · trace.json · puffin");
-                });
-                ui.add(
-                    egui::Label::new(egui::RichText::new(files_summary(files)).monospace()).wrap(),
-                );
-            }
-            Err(error) => {
-                let color = ui.visuals().error_fg_color;
-                ui.colored_label(color, format!("Save failed: {error}"));
-            }
-        }
-    }
-
-    fn empty_state(&self, ui: &mut Ui, profiler: &Profiler) {
-        ui.add_space(32.0);
-        ui.vertical_centered(|ui| {
-            if profiler.is_recording() {
-                ui.spinner();
-                ui.label("Recording — waiting for the first frame…");
-                ui.weak("The first frame appears after the next UI pass is flushed.");
-            } else {
-                ui.heading("Profiler");
-                ui.label("No frames captured.");
-                ui.label("Press Record; the host keeps ticking, so frames arrive even when you leave the window alone.");
-            }
-            ui.add_space(8.0);
-            ui.weak(format!(
-                "Save writes JSON, Chrome trace and .puffin under {DEFAULT_CAPTURE_DIR}/."
-            ));
-            ui.weak("Part 1 exposes the structured capture: hierarchy, raw samples and JSON.");
-        });
-    }
-
-    fn frame_selector(&mut self, ui: &mut Ui, session: &ProfileSession) {
-        let last = session.frames.len().saturating_sub(1);
-        if self.follow_latest || self.selected_frame > last {
-            self.selected_frame = last;
-        }
-
-        ui.horizontal_wrapped(|ui| {
-            let mut latest = self.follow_latest;
-            if ui.checkbox(&mut latest, "Latest").changed() {
-                self.follow_latest = latest;
-                if latest {
-                    self.selected_frame = last;
-                }
-            }
-
-            let mut selected = self.selected_frame;
-            let response = ui.add(
-                egui::DragValue::new(&mut selected)
-                    .range(0..=last)
-                    .speed(0.25),
-            );
-            if response.changed() {
-                self.selected_frame = selected.min(last);
-                self.follow_latest = false;
-            }
-
-            let frame = &session.frames[self.selected_frame];
-            ui.label(format!(
-                "Frame {}/{} · {:.3} ms",
-                self.selected_frame + 1,
-                session.frames.len(),
-                frame.duration_ns() as f64 / 1_000_000.0,
-            ));
-
-            ui.separator();
-
-            if self.thread.is_some_and(|id| frame.thread(id).is_none()) {
-                self.thread = None;
-            }
-            let selected_text = self
-                .thread
-                .and_then(|id| frame.thread(id))
-                .map(thread_label)
-                .unwrap_or_else(|| "All threads".to_owned());
-            egui::ComboBox::from_id_salt("profiler-thread")
-                .selected_text(selected_text)
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut self.thread, None, "All threads");
-                    for thread in &frame.threads {
-                        ui.selectable_value(
-                            &mut self.thread,
-                            Some(thread.id),
-                            thread_label(thread),
-                        );
-                    }
-                });
-        });
-    }
-
     fn ensure_cache(&mut self, session: &ProfileSession) {
         let index = self
             .selected_frame
@@ -1356,12 +1312,12 @@ impl ProfilerPanel {
 
         let frame = Arc::clone(&session.frames[index]);
         let rows = hierarchy(&frame, self.thread);
-        let legend = legend_by_self_time(&rows);
+        let systems = system_entries(&frame, &session.scopes);
         self.cached = Some(CachedFrame {
             frame,
             scopes: session.scopes.clone(),
             rows,
-            legend,
+            systems,
             json: String::new(),
         });
         self.cache_revision = session.revision;
@@ -1674,17 +1630,47 @@ fn frame_cost_label(frame: &FrameSnapshot) -> String {
     }
 }
 
-/// Marker ids by self time, highest first, merged across call paths: the module
-/// legend's rows. Unity lists categories here; the capture does not record
-/// categories yet, so the legend lists markers.
-fn legend_by_self_time(rows: &[HierarchyRow]) -> Vec<(u32, u64)> {
-    let mut by_scope: std::collections::BTreeMap<u32, u64> = std::collections::BTreeMap::new();
-    for row in rows {
-        *by_scope.entry(row.scope).or_default() += row.self_ns;
+/// The selected frame's Scripts systems, by inclusive time (highest first).
+///
+/// Core-module systems (physics, audio, rendering, editor) are folded into their
+/// category and never appear here: this list is exactly the refinement of
+/// Unity's `Scripts` category into one row per system. Inclusive time matches
+/// what a system costs from its caller's point of view, and is what Unity's
+/// Hierarchy view reports.
+fn system_entries(frame: &FrameSnapshot, scopes: &[ScopeInfo]) -> Vec<(String, u64)> {
+    let mut totals: BTreeMap<&str, u64> = BTreeMap::new();
+    for thread in &frame.threads {
+        for sample in &thread.samples {
+            let Some(info) = scope_info(scopes, sample.scope) else {
+                continue;
+            };
+            if info.name != SYSTEM_MARKER {
+                continue;
+            }
+            let Some(system) = sample.data.as_deref() else {
+                continue;
+            };
+            if Category::of_system(system) != Category::Scripts {
+                continue;
+            }
+            *totals.entry(system).or_default() = totals
+                .get(system)
+                .copied()
+                .unwrap_or_default()
+                .saturating_add(sample.duration_ns);
+        }
     }
-    let mut entries: Vec<(u32, u64)> = by_scope.into_iter().collect();
-    entries.sort_by(|a, b| b.1.cmp(&a.1));
-    entries
+    let mut rows: Vec<(String, u64)> = totals
+        .into_iter()
+        .map(|(system, ns)| (short_system_name(system), ns))
+        .collect();
+    rows.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    rows
+}
+
+/// `kairos_game::spin_system` → `spin_system`.
+fn short_system_name(system: &str) -> String {
+    system.rsplit("::").next().unwrap_or(system).to_owned()
 }
 
 #[cfg(test)]
@@ -1829,6 +1815,70 @@ mod probe {
         assert!(
             horizontal.width() > record.width(),
             "the row-closing rule spans the panel, not just the button"
+        );
+    }
+
+    /// Unity's `Scripts` category, refined: the legend lists the fixed category
+    /// vocabulary, game systems get a row each, and a core-module system is
+    /// folded into its category instead of getting one.
+    #[test]
+    fn the_legend_lists_categories_and_refines_scripts_into_systems() {
+        let _guard = lock_profiler_tests();
+        let profiler = Profiler::new();
+        profiler.set_recording(true);
+        profiler.begin_frame();
+        {
+            kairos_profile::scope!("Kairos.Stage", "Update");
+            {
+                kairos_profile::scope!("Kairos.System", "kairos_physics::physics_step_system");
+                // Give the sample a measurable duration: puffin reads the clock
+                // in nanoseconds, and back-to-back scopes can land on the same
+                // tick, which would leave the Physics band at zero height.
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            {
+                kairos_profile::scope!("Kairos.System", "kairos_game::spin_system");
+            }
+        }
+        profiler.end_frame(true);
+        profiler.begin_frame();
+
+        let host = ProfilerHost(profiler);
+        let mut panel = ProfilerPanel::default();
+        let output = draw_panel(&mut panel, &host);
+        let text = painted_text(&output);
+
+        for label in [
+            "Rendering",
+            "Scripts",
+            "Physics",
+            "Audio",
+            "Editor",
+            "VSync",
+            "Others",
+        ] {
+            assert!(
+                text.iter().any(|line| line == label),
+                "legend row {label} missing: {text:?}"
+            );
+        }
+        assert!(
+            text.iter().any(|line| line == "spin_system"),
+            "a game system is the Scripts refinement, by short name: {text:?}"
+        );
+        assert!(
+            !text.iter().any(|line| line == "physics_step_system"),
+            "a core-module system folds into its category: {text:?}"
+        );
+
+        // The chart stacks the categories: the Physics colour is painted inside
+        // the plot (right of the name column), not only as an 8 px legend swatch.
+        let physics = panel.style.category_palette[Category::Physics as usize].to_egui();
+        assert!(
+            painted(&output).iter().any(
+                |(rect, fill)| *fill == physics && rect.left() >= panel.style.module_name_width
+            ),
+            "the chart stacks a Physics segment"
         );
     }
 
