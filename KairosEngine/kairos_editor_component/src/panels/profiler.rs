@@ -3,7 +3,7 @@
 //! The panel owns no capture data. It reads the
 //! [`kairos_profile::ProfileSession`] through [`crate::HostView::profiler`], keeps
 //! only view state (recording flag, selected frame, live-follow, the selected
-//! block) and draws three
+//! block, the timeline's zoom and scroll) and draws three
 //! bands, top to bottom, the way Unity lays out its Profiler window:
 //!
 //! * **toolbar** — record toggle, frame transport, `Frame: n / m`, Clear,
@@ -11,8 +11,9 @@
 //! * **module area** — a CPU row (category legend + a stacked frame-history
 //!   chart with Unity's 30/60 FPS reference lines and a 120 FPS baseline) and
 //!   a GPU row (header only: the capture does not record GPU timings);
-//! * **timeline** — header (view selector, Live toggle, CPU/GPU summary), a time
-//!   ruler, then one track per registered thread lane.
+//! * **timeline** — a pinned header (view selector, Live toggle, CPU/GPU
+//!   summary) and time ruler over one track per registered thread lane, a
+//!   zoomable time axis and Unity's two scroll bars.
 //!
 //! Layout, colours and measured geometry are [`ProfilerStyle`] tokens loaded
 //! from `Preferences/Styles/Profiler.ron`.
@@ -51,6 +52,28 @@
 //! Rows come from the capture's registered thread lanes — the frame thread plus
 //! every task-pool worker — not from the selected frame's threads, so a worker
 //! that ran nothing keeps its row instead of the tracks shifting between frames.
+//! Only the tracks scroll: the header, the ruler and the horizontal scroll bar
+//! sit outside the row viewport, and the thread names never pan.
+//!
+//! # Timeline navigation
+//!
+//! The tracks show a window into the selected frame, Unity's `ZoomableArea`:
+//! [`TimelineView`] keeps it as a fraction of the frame, so stepping frames or
+//! resizing the panel keeps the zoom. The gestures are Unity's CPU-module ones:
+//!
+//! * the wheel over the time area zooms horizontally around the pointer, down
+//!   to Unity's `minWidth` of 0.05 ms and out to the whole frame (the capture
+//!   has no neighbouring frames to reveal past the edges);
+//! * the wheel over the thread names or the vertical bar scrolls the rows;
+//! * the wheel over the horizontal bar pans;
+//! * middle-drag, or alt-drag, pans the tracks; alt+right-drag zooms;
+//! * `A` fits the whole frame again, Unity's FrameAll.
+//!
+//! The two bars are [`kairos_editor_widgets::min_max_scroll::MinMaxScroll`],
+//! Unity's min-max scroller: the horizontal one's thumb is the shown window, so
+//! dragging it pans and dragging either end resizes it — the timeline's second
+//! zoom gesture. egui's `ScrollArea` bar is a plain thumb that cannot resize a
+//! window, which is why the timeline lays out its own bars.
 //!
 //! # Timeline selection
 //!
@@ -70,8 +93,9 @@
 //!
 //! * module selection (`Profiler Modules`) and the Hierarchy / Raw / Call Stacks
 //!   view selector — only the timeline view is rebuilt;
-//! * thread grouping (Unity's JOB / LOADING / SCRIPTING rows), timeline pan/zoom
-//!   and the bottom scrollbar;
+//! * thread grouping (Unity's JOB / LOADING / SCRIPTING rows) and resizable
+//!   thread rows: the vertical bar scrolls, but the rows have no splitter and no
+//!   vertical zoom (Unity locks the timeline's vertical scale);
 //! * the full per-system ranking: the legend only has the rows the module area
 //!   leaves free, so it shows the top few and `+N more`; a details pane (Unity's
 //!   Hierarchy view) is where the whole list belongs;
@@ -82,9 +106,9 @@
 //! * the tooltip's cross-frame line (Unity's `0.53ms total over 3 frames on
 //!   thread '…'`): it needs samples that span frames to be linked, and the
 //!   capture currently parses each frame on its own;
-//! * a pinned header: the panel is inside the dock's scroll area, so a long
-//!   thread list scrolls the toolbar and module area away with it (Unity keeps
-//!   them fixed; that needs an inner scroll area for the tracks only).
+//! * Unity's range selection (drag across the tracks to measure a window), the
+//!   `F` shortcut that frames the selected block, and the ghost frames Unity
+//!   draws before and after the selected one while the timeline is panned.
 //!
 //! The data-phase views that predate the rewrite (hierarchy / raw / JSON) are
 //! still in this file but are no longer wired into [`Panel::ui`].
@@ -101,11 +125,15 @@ use kairos_editor_core::PanelId;
 use kairos_editor_widgets::button::{Button, ButtonAlign, ButtonStyle};
 use kairos_editor_widgets::color::Color32Ext;
 use kairos_editor_widgets::divider::Divider;
+use kairos_editor_widgets::min_max_scroll::{MinMaxScroll, MinMaxScrollStyle, ScrollWindow};
 use kairos_editor_widgets::paint;
 use kairos_editor_widgets::style::{Style, StyleFile};
 use kairos_editor_widgets::text::TextStyle;
 use kairos_editor_widgets::ui_image;
-use kairos_profile::profiling::puffin::{self, GlobalFrameView, MergeScope, NanoSecond, ScopeCollection, StreamInfo, ThreadInfo, UnpackedFrameData};
+use kairos_profile::profiling::puffin::{
+    self, GlobalFrameView, MergeScope, NanoSecond, ScopeCollection, StreamInfo, ThreadInfo,
+    UnpackedFrameData,
+};
 use kairos_profile::{
     CaptureFiles, Category, FrameSnapshot, HierarchyRow, ProfileSession, Profiler, SYSTEM_MARKER,
     SampleSnapshot, ScopeInfo, ThreadSnapshot, classify_system, hierarchy, strip_tag,
@@ -183,6 +211,116 @@ struct Selection {
     sample: usize,
 }
 
+/// The slice of a frame the timeline's tracks show.
+///
+/// Unity's timeline is a `ZoomableArea`: a window into the frame time that the
+/// wheel, the scroll bar's ends and the `A` key move and resize. The window is
+/// stored as fractions of the frame duration, so stepping frames, resizing the
+/// panel or recording again keeps the zoom instead of jumping to an absolute
+/// time range.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct TimelineView {
+    /// Left edge of the window, as a fraction of the frame (`0..=1`).
+    pan: f64,
+    /// Width of the window, as a fraction of the frame (`0..=1`); 1 fits the
+    /// whole frame.
+    span: f64,
+}
+
+impl Default for TimelineView {
+    fn default() -> Self {
+        Self {
+            pan: 0.0,
+            span: 1.0,
+        }
+    }
+}
+
+impl TimelineView {
+    /// The narrowest window the timeline zooms to: Unity's
+    /// `ZoomableArea.minWidth` (0.05 ms, the shortest slice its timeline reads).
+    const MIN_VISIBLE_NS: f64 = 50_000.0;
+
+    /// The narrowest `span` a frame of `duration_ns` may be shown at.
+    fn min_span(duration_ns: u64) -> f64 {
+        if duration_ns == 0 {
+            1.0
+        } else {
+            (Self::MIN_VISIBLE_NS / duration_ns as f64).clamp(1e-9, 1.0)
+        }
+    }
+
+    /// Keep the window inside the frame.
+    fn clamp(&mut self, duration_ns: u64) {
+        let min_span = Self::min_span(duration_ns);
+        self.span = self.span.clamp(min_span, 1.0);
+        self.pan = self.pan.clamp(0.0, 1.0 - self.span);
+    }
+
+    /// Zoom by `factor` (> 1 zooms in) around `focus`, a position across the
+    /// track from 0 to 1: the time under the pointer stays under it, like
+    /// Unity's `ZoomableArea.SetScaleFocused`.
+    fn zoom_around(&mut self, factor: f64, focus: f64, duration_ns: u64) {
+        let min_span = Self::min_span(duration_ns);
+        let focus = focus.clamp(0.0, 1.0);
+        let focus_time = self.pan + focus * self.span;
+        let span = (self.span / factor).clamp(min_span, 1.0);
+        self.span = span;
+        self.pan = (focus_time - focus * span).clamp(0.0, 1.0 - span);
+    }
+
+    /// Move the window by `delta` of the frame.
+    fn pan_by(&mut self, delta: f64, duration_ns: u64) {
+        self.pan += delta;
+        self.clamp(duration_ns);
+    }
+
+    /// The window in milliseconds: `(start, width)`.
+    fn window_ms(&self, duration_ns: u64) -> (f64, f64) {
+        let duration_ms = duration_ns as f64 / 1_000_000.0;
+        (duration_ms * self.pan, duration_ms * self.span)
+    }
+}
+
+/// The rectangles the timeline lays out for one pass.
+///
+/// The header and ruler are pinned; only `body` scrolls. `track_left` and
+/// `track_right` bound the zoomable time area: the thread name column ends at
+/// `track_left` (it does not pan) and the vertical scroll bar starts at
+/// `track_right`.
+#[derive(Clone, Copy, Debug)]
+struct TimelineLayout {
+    header: Rect,
+    ruler: Rect,
+    body: Rect,
+    horizontal_bar: Rect,
+    vertical_bar: Rect,
+    track_left: f32,
+    track_right: f32,
+}
+
+impl TimelineLayout {
+    fn track_width(&self) -> f32 {
+        (self.track_right - self.track_left).max(0.0)
+    }
+
+    /// Whether `pos` is over the zoomable time area (ruler or tracks).
+    fn time_area_contains(&self, pos: egui::Pos2) -> bool {
+        (self.ruler.contains(pos) || self.body.contains(pos))
+            && pos.x >= self.track_left
+            && pos.x < self.track_right
+    }
+
+    /// Whether `pos` is over any part of the timeline.
+    fn contains(&self, pos: egui::Pos2) -> bool {
+        self.header.contains(pos)
+            || self.ruler.contains(pos)
+            || self.body.contains(pos)
+            || self.horizontal_bar.contains(pos)
+            || self.vertical_bar.contains(pos)
+    }
+}
+
 pub struct Streams {
     streams: Vec<Arc<StreamInfo>>,
     merged_scopes: Vec<MergeScope<'static>>,
@@ -190,14 +328,19 @@ pub struct Streams {
 }
 
 impl Streams {
-    fn new(scope_collection: &ScopeCollection, frames: &[Arc<UnpackedFrameData>], thread_info: &ThreadInfo) -> Self {
+    fn new(
+        scope_collection: &ScopeCollection,
+        frames: &[Arc<UnpackedFrameData>],
+        thread_info: &ThreadInfo,
+    ) -> Self {
         let mut streams = vec![];
         for frame in frames {
             if let Some(stream_info) = frame.thread_streams.get(thread_info) {
                 streams.push(stream_info.clone());
             }
         }
-        let merges = puffin::merge_scopes_for_thread(scope_collection, frames, thread_info).unwrap();
+        let merges =
+            puffin::merge_scopes_for_thread(scope_collection, frames, thread_info).unwrap();
         let merges = merges.into_iter().map(|ms| ms.into_owned()).collect();
 
         let mut max_depth = 0;
@@ -221,7 +364,10 @@ pub struct SelectedFrames {
 }
 
 impl SelectedFrames {
-    fn try_from_iter(scope_collection: &ScopeCollection, frames: impl Iterator<Item = Arc<UnpackedFrameData>>) -> Option<Self> {
+    fn try_from_iter(
+        scope_collection: &ScopeCollection,
+        frames: impl Iterator<Item = Arc<UnpackedFrameData>>,
+    ) -> Option<Self> {
         let mut it = frames;
         let first = it.next()?;
         let mut frames = vec1::Vec1::new(first);
@@ -230,7 +376,10 @@ impl SelectedFrames {
         Some(Self::from_vec1(scope_collection, frames))
     }
 
-    fn from_vec1(scope_collection: &ScopeCollection, mut frames: vec1::Vec1<Arc<UnpackedFrameData>>) -> Self {
+    fn from_vec1(
+        scope_collection: &ScopeCollection,
+        mut frames: vec1::Vec1<Arc<UnpackedFrameData>>,
+    ) -> Self {
         frames.sort_by_key(|f| f.frame_index());
         frames.dedup_by_key(|f| f.frame_index());
 
@@ -305,6 +454,10 @@ pub(crate) struct ProfilerPanel {
     /// The timeline block the user clicked: it keeps an outline, and the
     /// details box describes it until another block or empty track is clicked.
     selection: Option<Selection>,
+    /// The slice of the selected frame the tracks show.
+    view: TimelineView,
+    /// Vertical offset of the timeline's rows, in points.
+    track_scroll: f32,
 }
 
 impl Default for ProfilerPanel {
@@ -324,6 +477,8 @@ impl Default for ProfilerPanel {
             save: None,
             hidden: [false; Category::COUNT],
             selection: None,
+            view: TimelineView::default(),
+            track_scroll: 0.0,
         }
     }
 }
@@ -480,7 +635,11 @@ impl ProfilerPanel {
         // Only the record toggle paints a state fill; every other segment is
         // transparent until hovered.
         let record_style = base_style.clone().fills(fill, hover, hover);
-        let button_style = base_style.fills(egui::Color32::TRANSPARENT, hover, self.style.click_bg.to_egui());
+        let button_style = base_style.fills(
+            egui::Color32::TRANSPARENT,
+            hover,
+            self.style.click_bg.to_egui(),
+        );
         let rule = self.style.separator.to_egui();
         // Every icon toggle is the same square; the rules match the row it forms.
         let row_height = self
@@ -637,6 +796,10 @@ impl ProfilerPanel {
         FontId::proportional(self.style.small_text_size)
     }
 
+    fn timeline_block_font(&self) -> FontId {
+        FontId::proportional(self.style.timeline_block_text_size)
+    }
+
     // -----------------------------------------------------------------------
     // Module area — Unity's "Profiler Modules": CPU Usage and GPU Usage rows,
     // each with a legend column and a frame-history chart.
@@ -653,45 +816,44 @@ impl ProfilerPanel {
             .vscroll(true)
             .scroll_bar_visibility(ScrollBarVisibility::AlwaysVisible)
             .id_salt(ui.auto_id_with("module_area"))
-            .show(ui, |ui|
-        {
-            let width = ui.available_width();
-            let (area, _) = ui.allocate_exact_size(
-                egui::vec2(width, self.style.module_area_height),
-                Sense::hover(),
-            );
-
-            let rule = self.style.separator.to_egui();
-            let rule_width = self.style.separator_width;
-            let gpu_height = self.style.module_header_height;
-            let cpu_height = (area.height() - gpu_height - rule_width).max(0.0);
-            let cpu = Rect::from_min_size(area.min, egui::vec2(width, cpu_height));
-
-            self.paint_cpu_module(ui, cpu, session);
-            Divider::horizontal()
-                .thickness(rule_width)
-                .color(rule)
-                .paint_in(
-                    ui,
-                    Rect::from_min_size(
-                        egui::pos2(area.left(), cpu.bottom()),
-                        egui::vec2(width, rule_width),
-                    ),
+            .show(ui, |ui| {
+                let width = ui.available_width();
+                let (area, _) = ui.allocate_exact_size(
+                    egui::vec2(width, self.style.module_area_height),
+                    Sense::hover(),
                 );
 
-            let gpu = Rect::from_min_size(
-                egui::pos2(area.left(), cpu.bottom() + rule_width),
-                egui::vec2(width, gpu_height),
-            );
-            self.paint_gpu_module(ui, gpu);
+                let rule = self.style.separator.to_egui();
+                let rule_width = self.style.separator_width;
+                let gpu_height = self.style.module_header_height;
+                let cpu_height = (area.height() - gpu_height - rule_width).max(0.0);
+                let cpu = Rect::from_min_size(area.min, egui::vec2(width, cpu_height));
 
-            // Close the module area; the timeline header follows on the next row.
-            ui.add(
+                self.paint_cpu_module(ui, cpu, session);
                 Divider::horizontal()
                     .thickness(rule_width)
-                    .color(self.style.separator.to_egui()),
-            );
-        });
+                    .color(rule)
+                    .paint_in(
+                        ui,
+                        Rect::from_min_size(
+                            egui::pos2(area.left(), cpu.bottom()),
+                            egui::vec2(width, rule_width),
+                        ),
+                    );
+
+                let gpu = Rect::from_min_size(
+                    egui::pos2(area.left(), cpu.bottom() + rule_width),
+                    egui::vec2(width, gpu_height),
+                );
+                self.paint_gpu_module(ui, gpu);
+
+                // Close the module area; the timeline header follows on the next row.
+                ui.add(
+                    Divider::horizontal()
+                        .thickness(rule_width)
+                        .color(self.style.separator.to_egui()),
+                );
+            });
     }
 
     fn paint_cpu_module(&mut self, ui: &mut Ui, row: Rect, session: &ProfileSession) {
@@ -732,8 +894,8 @@ impl ProfilerPanel {
         let frame = session.frames.get(self.selected_frame);
         let visible = ((row.height() - self.style.module_header_height)
             / self.style.legend_row_height.max(1.0))
-            .floor()
-            .max(0.0) as usize;
+        .floor()
+        .max(0.0) as usize;
         let labels = ui.painter().with_clip_rect(name_col);
         let row_center = |index: usize| {
             egui::pos2(
@@ -747,8 +909,14 @@ impl ProfilerPanel {
         for category in Category::ALL.iter().take(visible) {
             let center = row_center(used);
             let row_rect = Rect::from_min_max(
-                egui::pos2(name_col.left(), center.y - self.style.legend_row_height * 0.5),
-                egui::pos2(name_col.right(), center.y + self.style.legend_row_height * 0.5),
+                egui::pos2(
+                    name_col.left(),
+                    center.y - self.style.legend_row_height * 0.5,
+                ),
+                egui::pos2(
+                    name_col.right(),
+                    center.y + self.style.legend_row_height * 0.5,
+                ),
             );
             // Unity's legend swatches are toggles: a click takes the category
             // out of the chart and leaves the row behind, dimmed.
@@ -1097,152 +1265,411 @@ impl ProfilerPanel {
     }
 
     // -----------------------------------------------------------------------
-    // Timeline — header, ruler, thread tracks.
+    // Timeline — pinned header and ruler, scrollable tracks, zoomable time axis.
     // -----------------------------------------------------------------------
 
-    /// Unity's timeline: a header (view selector, Live, CPU/GPU summary), a
-    /// ruler, then one track per thread.
+    /// Unity's timeline: a pinned header (view selector, Live, CPU/GPU summary)
+    /// and ruler above the thread tracks, and a zoomable time axis between them.
+    ///
+    /// # Navigation
+    ///
+    /// The gestures are the CPU-usage module's in Unity's Profiler: the wheel
+    /// zooms the time area around the pointer, the wheel over the thread names or
+    /// the vertical bar scrolls the rows, the wheel over the horizontal bar pans,
+    /// dragging the bar pans, dragging either end of its thumb zooms,
+    /// middle-drag (or alt-drag) pans the tracks, and `A` fits the whole frame
+    /// again. [`TimelineView`] holds the window and [`MinMaxScroll`] draws the
+    /// bars.
     fn timeline(&mut self, ui: &mut Ui, session: &ProfileSession) {
-        egui::ScrollArea::vertical()
-            .scroll([true, true])
-            .scroll_bar_visibility(ScrollBarVisibility::AlwaysVisible)
-            .id_salt(ui.auto_id_with("timeline"))
-            .show(ui, |ui|
-        {
-            let width = ui.available_width();
-            let row_height = self.style.toolbar_height;
-            let rule = self.style.separator.to_egui();
+        let width = ui.available_width();
+        let rule = self.style.separator.to_egui();
+        let rule_width = self.style.separator_width;
 
-            let (header, _) = ui.allocate_exact_size(egui::vec2(width, row_height), Sense::hover());
-            self.paint_timeline_header(ui, header, session);
-            ui.add(
-                Divider::horizontal()
-                    .thickness(self.style.separator_width)
-                    .color(rule),
-            );
+        // The header and the ruler are pinned: only the tracks scroll. Unity
+        // keeps its toolbar, ruler and thread names outside the zoomable area.
+        let (header, _) =
+            ui.allocate_exact_size(egui::vec2(width, self.style.toolbar_height), Sense::hover());
+        self.paint_timeline_header(ui, header, session);
+        ui.add(Divider::horizontal().thickness(rule_width).color(rule));
 
-            let duration_ns = session
-                .frames
-                .get(self.selected_frame)
-                .map_or(0, |frame| frame.duration_ns());
-            let track_width = (width - self.style.timeline_name_width).max(0.0);
-            let ticks = ruler_ticks(duration_ns, track_width);
+        // Columns: the thread name column (it does not pan), the zoomable time
+        // area, and the vertical scroll bar on the right edge.
+        let name_width = self.style.timeline_name_width.min(width);
+        let scrollbar_width = self
+            .style
+            .scrollbar_width
+            .min((width - name_width).max(0.0));
+        let track_left = header.left() + name_width;
+        let track_right = (header.right() - scrollbar_width).max(track_left);
 
-            let (ruler, _) =
-                ui.allocate_exact_size(egui::vec2(width, self.style.ruler_height), Sense::hover());
-            self.paint_ruler(ui, ruler, &ticks);
+        let (ruler, _) =
+            ui.allocate_exact_size(egui::vec2(width, self.style.ruler_height), Sense::hover());
+        let remaining = ui.available_height().max(0.0);
+        let (area, _) = ui.allocate_exact_size(egui::vec2(width, remaining), Sense::hover());
+        let bottom_bar = self.style.scrollbar_width.min(area.height()).max(0.0);
+        let body = Rect::from_min_max(
+            area.min,
+            egui::pos2(track_right, area.bottom() - bottom_bar),
+        );
+        let layout = TimelineLayout {
+            header,
+            ruler,
+            body,
+            horizontal_bar: Rect::from_min_max(
+                egui::pos2(track_left, body.bottom()),
+                egui::pos2(track_right, area.bottom()),
+            ),
+            vertical_bar: Rect::from_min_max(
+                egui::pos2(track_right, area.top()),
+                egui::pos2(area.right(), body.bottom()),
+            ),
+            track_left,
+            track_right,
+        };
 
-            let Some(frame) = session.frames.get(self.selected_frame) else {
-                self.selection = None;
-                self.paint_empty_timeline(ui);
-                return;
-            };
-            let frame_index = self.selected_frame;
+        let frame = session.frames.get(self.selected_frame).map(Arc::as_ref);
+        let duration_ns = frame.map_or(0, |frame| frame.duration_ns());
+        self.view.clamp(duration_ns);
 
-            // The selection addresses one frame's samples: stepping the
-            // transport or a new capture makes it stale.
-            let stale = self.selection.is_some_and(|selection| {
-                selection.frame != frame_index || selection.lane >= self.lanes().len()
-            });
-            if stale {
-                self.selection = None;
-            }
+        // Row heights come first: the vertical offset is clamped before painting,
+        // and the wheel or the vertical bar can move it below.
+        let row_heights = self.row_heights(frame);
+        let content_height: f32 = row_heights.iter().sum();
+        let max_scroll = (content_height - layout.body.height()).max(0.0);
+        self.track_scroll = self.track_scroll.clamp(0.0, max_scroll);
 
-            // TODO(profiler): Unity groups threads (JOB / LOADING / SCRIPTING …)
-            // into collapsible rows with a thread count; the capture reports flat
-            // threads, so each one gets its own row here.
-            // TODO(profiler): horizontal pan/zoom and the bottom scrollbar: the
-            // track currently maps the whole frame onto the available width.
-            //
-            // Rows come from the capture's lane registry, not from this frame's
-            // threads: a task-pool worker that ran nothing keeps its row (an
-            // empty track) instead of the tracks shifting between frames.
-            let mut clicked: Option<(usize, usize, Rect)> = None;
-            let mut row_clicked = false;
-            let mut selected_bar = None;
-            for (lane_index, lane) in self.lanes().iter().enumerate() {
-                let thread = lane
-                    .id
-                    .and_then(|id| frame.threads.iter().find(|thread| thread.id == id));
-                let levels = thread.map_or(1, |thread| thread.depth().max(1)) as f32;
-                let height =
-                    levels * self.style.level_height + 2.0 * self.style.thread_row_padding;
-                let (row, response) =
-                    ui.allocate_exact_size(egui::vec2(width, height), Sense::click());
-                let selected = self.selection.and_then(|selection| {
-                    (selection.lane == lane_index).then_some(selection.sample)
-                });
-                let outcome = self.paint_thread_row(
-                    ui,
-                    &response,
-                    row,
-                    lane,
-                    thread,
-                    &session.scopes,
-                    &ticks,
-                    duration_ns,
-                    selected,
-                );
-                row_clicked |= response.clicked();
-                if let Some((sample, bar)) = outcome.clicked {
-                    clicked = Some((lane_index, sample, bar));
-                }
-                if let Some(bar) = outcome.selected {
-                    selected_bar = Some(bar);
-                }
-            }
+        let body_response = ui.interact(
+            layout.body,
+            ui.id().with("profiler.timeline.tracks"),
+            Sense::click_and_drag(),
+        );
+        self.navigate(ui, &layout, &body_response, duration_ns);
+        self.paint_scroll_bars(ui, &layout, content_height, duration_ns);
+        self.view.clamp(duration_ns);
+        self.track_scroll = self.track_scroll.clamp(0.0, max_scroll);
 
-            // A click selects the block under the pointer; a second click on the
-            // same block — or a click on empty track — dismisses the details box.
-            if let Some((lane, sample, bar)) = clicked {
-                let hit = Selection {
-                    frame: frame_index,
-                    lane,
-                    sample,
-                };
-                self.selection = (self.selection != Some(hit)).then_some(hit);
-                selected_bar = self.selection.is_some().then_some(bar);
-                if self.selection.is_some() {
-                    // The box describes one frame; pin the capture so the next
-                    // recorded frame cannot swap it out from under the click.
-                    self.follow_latest = false;
-                    // This pass painted the row before the click was known, so
-                    // paint the outline on the newly selected block now; the
-                    // next pass paints it from the selection.
-                    ui.painter().rect_stroke(
-                        bar,
-                        CornerRadius::same(1),
-                        Stroke::new(1.0, self.style.selection_outline.to_egui()),
-                        StrokeKind::Inside,
-                    );
-                }
-                ui.ctx().request_repaint();
-            } else if row_clicked {
-                self.selection = None;
-                ui.ctx().request_repaint();
-            }
+        let view = self.view;
+        let ticks = ruler_ticks(view, duration_ns, layout.track_width());
+        let ruler_track = Rect::from_min_max(
+            egui::pos2(layout.track_left, layout.ruler.top()),
+            egui::pos2(layout.track_right, layout.ruler.bottom()),
+        );
+        self.paint_ruler(ui, layout.ruler, ruler_track, &ticks);
 
-            // Fill the rest of the panel so the tracks read as one surface.
-            let rest = ui.available_rect_before_wrap();
-            if rest.height() > 0.0 {
-                ui.painter()
-                    .rect_filled(rest, CornerRadius::ZERO, self.style.track_bg.to_egui());
-            }
+        let Some(frame) = frame else {
+            self.selection = None;
+            self.paint_empty_timeline(ui, layout.body);
+            return;
+        };
+        let frame_index = self.selected_frame;
 
-            // The details box floats over the tracks, after the fill so the
-            // fill cannot cover it.
-            let Some(bar) = selected_bar else {
-                return;
-            };
-            let Some(selection) = self.selection else {
-                return;
-            };
-            let Some(details) = selection_details(frame, &session.scopes, self.lanes(), selection)
-            else {
-                return;
-            };
-            self.paint_selection_details(ui, bar, &details);
+        // The selection addresses one frame's samples: stepping the transport or
+        // a new capture makes it stale.
+        let stale = self.selection.is_some_and(|selection| {
+            selection.frame != frame_index || selection.lane >= self.lanes().len()
         });
+        if stale {
+            self.selection = None;
+        }
+
+        // The name column and the tracks read as one surface; the rows paint
+        // themselves over the background.
+        let name_column = Rect::from_min_max(
+            layout.body.min,
+            egui::pos2(layout.track_left, layout.body.bottom()),
+        );
+        let track_column = Rect::from_min_max(
+            egui::pos2(layout.track_left, layout.body.top()),
+            layout.body.max,
+        );
+        ui.painter().rect_filled(
+            name_column,
+            CornerRadius::ZERO,
+            self.style.timeline_name_bg.to_egui(),
+        );
+        ui.painter().rect_filled(
+            track_column,
+            CornerRadius::ZERO,
+            self.style.track_bg.to_egui(),
+        );
+
+        // A click picks the block under the pointer; a second click on the same
+        // block — or a click on empty track — dismisses the details box.
+        let clicked_at = body_response
+            .clicked_by(egui::PointerButton::Primary)
+            .then(|| body_response.interact_pointer_pos())
+            .flatten();
+        let mut clicked: Option<(usize, usize, Rect)> = None;
+        let mut selected_bar = None;
+        let mut y = layout.body.top() - self.track_scroll;
+        for (lane_index, lane) in self.lanes().iter().enumerate() {
+            let height = row_heights.get(lane_index).copied().unwrap_or(0.0);
+            let row = Rect::from_min_size(
+                egui::pos2(layout.body.left(), y),
+                egui::vec2(layout.body.width(), height),
+            );
+            y += height;
+            if !row.intersects(layout.body) {
+                continue;
+            }
+            let thread = lane
+                .id
+                .and_then(|id| frame.threads.iter().find(|thread| thread.id == id));
+            let selected = self
+                .selection
+                .and_then(|selection| (selection.lane == lane_index).then_some(selection.sample));
+            let outcome = self.paint_thread_row(
+                ui,
+                clicked_at,
+                row,
+                layout.body,
+                lane,
+                thread,
+                &session.scopes,
+                view,
+                &ticks,
+                duration_ns,
+                selected,
+            );
+            if let Some((sample, bar)) = outcome.clicked {
+                clicked = Some((lane_index, sample, bar));
+            }
+            if let Some(bar) = outcome.selected {
+                selected_bar = Some(bar);
+            }
+        }
+
+        if let Some((lane, sample, bar)) = clicked {
+            let hit = Selection {
+                frame: frame_index,
+                lane,
+                sample,
+            };
+            self.selection = (self.selection != Some(hit)).then_some(hit);
+            selected_bar = self.selection.is_some().then_some(bar);
+            if self.selection.is_some() {
+                // The box describes one frame; pin the capture so the next
+                // recorded frame cannot swap it out from under the click.
+                self.follow_latest = false;
+                // This pass painted the row before the click was known, so paint
+                // the outline on the newly selected block now; the next pass
+                // paints it from the selection.
+                ui.painter().rect_stroke(
+                    bar,
+                    CornerRadius::same(1),
+                    Stroke::new(1.0, self.style.selection_outline.to_egui()),
+                    StrokeKind::Inside,
+                );
+            }
+            ui.ctx().request_repaint();
+        } else if body_response.clicked_by(egui::PointerButton::Primary) {
+            self.selection = None;
+            ui.ctx().request_repaint();
+        }
+
+        // The details box floats over the tracks, after the fill so the fill
+        // cannot cover it.
+        let Some(bar) = selected_bar else {
+            return;
+        };
+        let Some(selection) = self.selection else {
+            return;
+        };
+        let Some(details) = selection_details(frame, &session.scopes, self.lanes(), selection)
+        else {
+            return;
+        };
+        self.paint_selection_details(ui, layout.body, bar, &details);
+    }
+
+    /// Unity's timeline navigation, applied before the pass paints so a wheel
+    /// event or a bar drag shows in the same frame.
+    fn navigate(
+        &mut self,
+        ui: &mut Ui,
+        layout: &TimelineLayout,
+        body: &Response,
+        duration_ns: u64,
+    ) {
+        let track_width = layout.track_width();
+        let pointer = ui.input(|i| i.pointer.hover_pos());
+
+        // The wheel: over the time area it zooms around the pointer (Unity's
+        // ZoomableArea), over the names or the vertical bar it scrolls the rows,
+        // over the horizontal bar it pans.
+        let wheel = ui.input(|i| i.smooth_scroll_delta);
+        if wheel != egui::Vec2::ZERO && track_width > 0.0 {
+            if let Some(pos) = pointer {
+                let used = if layout.time_area_contains(pos) {
+                    let focus =
+                        f64::from(((pos.x - layout.track_left) / track_width).clamp(0.0, 1.0));
+                    if wheel.y != 0.0 {
+                        let factor = ZOOM_PER_NOTCH.powf(f64::from(wheel.y) / WHEEL_NOTCH_POINTS);
+                        self.view.zoom_around(factor, focus, duration_ns);
+                    }
+                    if wheel.x != 0.0 {
+                        let delta = -f64::from(wheel.x) / f64::from(track_width) * self.view.span;
+                        self.view.pan_by(delta, duration_ns);
+                    }
+                    true
+                } else if layout.body.contains(pos) || layout.vertical_bar.contains(pos) {
+                    self.track_scroll -= wheel.y;
+                    true
+                } else if layout.horizontal_bar.contains(pos) {
+                    let step = f64::from(wheel.y) / WHEEL_NOTCH_POINTS * self.view.span * 0.1;
+                    self.view.pan_by(-step, duration_ns);
+                    true
+                } else {
+                    false
+                };
+                if used {
+                    // Consume the delta the way a ScrollArea does, so nothing
+                    // above the timeline scrolls as well.
+                    ui.input_mut(|i| i.smooth_scroll_delta = egui::Vec2::ZERO);
+                    ui.ctx().request_repaint();
+                }
+            }
+        }
+
+        // `A` frames the whole frame again: Unity's FrameAll shortcut.
+        let over_timeline = pointer.is_some_and(|pos| layout.contains(pos));
+        if over_timeline
+            && !ui.ctx().egui_wants_keyboard_input()
+            && ui.input(|i| i.key_pressed(egui::Key::A))
+        {
+            self.view = TimelineView::default();
+            ui.ctx().request_repaint();
+        }
+
+        // Middle-drag pans the time area; alt-drag does the same for mice without
+        // a middle button. Alt+right-drag zooms around the press point.
+        let alt = ui.input(|i| i.modifiers.alt);
+        if alt && body.dragged_by(egui::PointerButton::Secondary) {
+            let focus = ui
+                .input(|i| i.pointer.press_origin())
+                .map_or(0.5, |origin| {
+                    f64::from(((origin.x - layout.track_left) / track_width).clamp(0.0, 1.0))
+                });
+            let delta = body.drag_delta();
+            let factor = 1.0 + f64::from(delta.x + delta.y) * 0.01;
+            if factor > 0.01 {
+                self.view.zoom_around(factor, focus, duration_ns);
+            }
+            ui.ctx().request_repaint();
+        } else if body.dragged_by(egui::PointerButton::Middle)
+            || (alt && body.dragged_by(egui::PointerButton::Primary))
+        {
+            let dx = body.drag_delta().x;
+            self.view.pan_by(
+                -f64::from(dx) / f64::from(track_width) * self.view.span,
+                duration_ns,
+            );
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+            ui.ctx().request_repaint();
+        }
+    }
+
+    /// The timeline's scroll bars and the two side-pane corners Unity fills next
+    /// to them.
+    ///
+    /// The vertical bar is a plain scrollbar over the row heights. The horizontal
+    /// one is Unity's min-max scroller over the frame: its thumb is the shown
+    /// window, so dragging it pans and dragging either end zooms.
+    fn paint_scroll_bars(
+        &mut self,
+        ui: &mut Ui,
+        layout: &TimelineLayout,
+        content_height: f32,
+        duration_ns: u64,
+    ) {
+        let style = self.scroll_style();
+        let chrome = self.style.timeline_name_bg.to_egui();
+        ui.painter().rect_filled(
+            Rect::from_min_max(
+                egui::pos2(layout.header.left(), layout.body.bottom()),
+                egui::pos2(layout.track_left, layout.horizontal_bar.bottom()),
+            ),
+            CornerRadius::ZERO,
+            chrome,
+        );
+        ui.painter().rect_filled(
+            Rect::from_min_max(
+                egui::pos2(layout.track_right, layout.body.bottom()),
+                egui::pos2(layout.header.right(), layout.horizontal_bar.bottom()),
+            ),
+            CornerRadius::ZERO,
+            chrome,
+        );
+
+        // The rows: a plain scrollbar, because the timeline's vertical scale is
+        // locked (Unity's `vZoomLockedByDefault`).
+        let viewport = layout.body.height();
+        let content = content_height.max(viewport).max(1.0);
+        let mut window = ScrollWindow::new(
+            f64::from(self.track_scroll),
+            f64::from(viewport.min(content)),
+            (0.0, f64::from(content)),
+        )
+        .with_min_span(f64::from(viewport.min(content)));
+        let scrolled = MinMaxScroll::vertical(&style)
+            .show(
+                ui,
+                ui.id().with("profiler.timeline.vscroll"),
+                layout.vertical_bar,
+                &mut window,
+            )
+            .changed();
+        if scrolled {
+            self.track_scroll = window.value as f32;
+            ui.ctx().request_repaint();
+        }
+
+        // The frame time: Unity's min-max scroller. Its thumb pans, its two ends
+        // resize the window — which is how the timeline zooms.
+        let mut window = ScrollWindow::new(self.view.pan, self.view.span, (0.0, 1.0))
+            .with_min_span(TimelineView::min_span(duration_ns));
+        let zoomed = MinMaxScroll::horizontal(&style)
+            .resizable(true)
+            .show(
+                ui,
+                ui.id().with("profiler.timeline.hscroll"),
+                layout.horizontal_bar,
+                &mut window,
+            )
+            .changed();
+        if zoomed {
+            self.view.pan = window.value;
+            self.view.span = window.span;
+            ui.ctx().request_repaint();
+        }
+    }
+
+    /// The scroll bars' colours, from the panel's style tokens.
+    fn scroll_style(&self) -> MinMaxScrollStyle {
+        MinMaxScrollStyle {
+            trough: self.style.scrollbar_bg.to_egui(),
+            thumb: self.style.scrollbar_thumb.to_egui(),
+            thumb_hover: self.style.scrollbar_thumb_hover.to_egui(),
+            thumb_active: self.style.scrollbar_thumb_active.to_egui(),
+            grip: self.style.scrollbar_grip.to_egui(),
+            handle_width: self.style.scrollbar_handle_width,
+        }
+    }
+
+    /// The painted height of each timeline row, in lane order.
+    fn row_heights(&self, frame: Option<&FrameSnapshot>) -> Vec<f32> {
+        self.lanes()
+            .iter()
+            .map(|lane| {
+                let depth = frame
+                    .and_then(|frame| {
+                        lane.id
+                            .and_then(|id| frame.threads.iter().find(|thread| thread.id == id))
+                    })
+                    .map_or(1, |thread| thread.depth().max(1));
+                depth as f32 * self.style.level_height + 2.0 * self.style.thread_row_padding
+            })
+            .collect()
     }
 
     fn paint_timeline_header(&mut self, ui: &mut Ui, row: Rect, session: &ProfileSession) {
@@ -1297,9 +1724,10 @@ impl ProfilerPanel {
             Some(frame) => format!("CPU: {:.2}ms    GPU: --", frame_ms(frame)),
             None => "CPU: --    GPU: --".to_owned(),
         };
-        let track_left = row.left() + self.style.timeline_name_width;
+        let track_left = (row.left() + self.style.timeline_name_width).min(row.right());
+        let track_right = (row.right() - self.style.scrollbar_width).max(track_left);
         ui.painter().text(
-            egui::pos2((track_left + row.right()) * 0.5, row.center().y),
+            egui::pos2((track_left + track_right) * 0.5, row.center().y),
             Align2::CENTER_CENTER,
             summary,
             self.small_font(),
@@ -1307,15 +1735,24 @@ impl ProfilerPanel {
         );
     }
 
-    fn paint_ruler(&self, ui: &Ui, row: Rect, ticks: &[RulerTick]) {
+    /// The time ruler over the track column, and the name column's chrome beside
+    /// it.
+    ///
+    /// Ticks are absolute frame times from `ticks` (see [`ruler_ticks`]), so the
+    /// grid lines in the tracks line up with them at every zoom.
+    fn paint_ruler(&self, ui: &Ui, row: Rect, track: Rect, ticks: &[RulerTick]) {
         let painter = ui.painter();
-        let track_left = row.left() + self.style.timeline_name_width;
-        painter.rect_filled(row, CornerRadius::ZERO, self.style.ruler_bg.to_egui());
-        let labels = painter.with_clip_rect(row);
+        painter.rect_filled(
+            row,
+            CornerRadius::ZERO,
+            self.style.timeline_name_bg.to_egui(),
+        );
+        painter.rect_filled(track, CornerRadius::ZERO, self.style.ruler_bg.to_egui());
+        let labels = painter.with_clip_rect(track);
 
         for tick in ticks {
-            let x = track_left + tick.x;
-            if x > row.right() {
+            let x = track.left() + tick.x;
+            if x > track.right() {
                 continue;
             }
             let (height, color) = match &tick.label {
@@ -1347,6 +1784,14 @@ impl ProfilerPanel {
             }
         }
 
+        // Rule between the name column and the tracks, like the thread rows have.
+        self.paint_vertical_rule(
+            ui,
+            egui::pos2(track.left() - self.style.separator_width, row.top()),
+            row.height(),
+            self.style.separator.to_egui(),
+        );
+
         Divider::horizontal()
             .thickness(self.style.separator_width)
             .color(self.style.separator.to_egui())
@@ -1361,17 +1806,22 @@ impl ProfilerPanel {
 
     /// One thread's track: the name column, the grid and the sample blocks.
     ///
-    /// Returns what the pass produced for the timeline's selection: the block
-    /// under a click, and the selected block's rect so the details box can
-    /// anchor to it.
+    /// `clicked_at` is where the pass's click landed, when the track viewport took
+    /// one. `clip` is the row viewport: a row scrolled partly out of it is cut,
+    /// not drawn over the ruler or the horizontal bar. Returns what the pass
+    /// produced for the timeline's selection: the block under the click, and the
+    /// selected block's rect so the details box can anchor to it.
+    #[allow(clippy::too_many_arguments)]
     fn paint_thread_row(
         &self,
         ui: &Ui,
-        response: &Response,
+        clicked_at: Option<egui::Pos2>,
         row: Rect,
+        clip: Rect,
         lane: &Lane,
         thread: Option<&ThreadSnapshot>,
         scopes: &[ScopeInfo],
+        view: TimelineView,
         ticks: &[RulerTick],
         duration_ns: u64,
         selected: Option<usize>,
@@ -1381,7 +1831,7 @@ impl ProfilerPanel {
         let name_col =
             Rect::from_min_max(row.min, egui::pos2(row.left() + name_width, row.bottom()));
         let track = Rect::from_min_max(egui::pos2(name_col.right(), row.top()), row.max);
-        let painter = ui.painter();
+        let painter = ui.painter().with_clip_rect(clip);
 
         painter.rect_filled(
             name_col,
@@ -1412,19 +1862,23 @@ impl ProfilerPanel {
             if x >= track.right() - 0.5 {
                 continue;
             }
-            self.paint_vertical_rule(
-                ui,
-                egui::pos2(x, track.top()),
-                track.height(),
+            painter.rect_filled(
+                Rect::from_min_size(
+                    egui::pos2(x, track.top()),
+                    egui::vec2(self.style.separator_width, track.height()),
+                ),
+                CornerRadius::ZERO,
                 self.style.grid.to_egui(),
             );
         }
 
         // Column rule between the names and the tracks, inside the name column.
-        self.paint_vertical_rule(
-            ui,
-            egui::pos2(name_col.right() - self.style.separator_width, row.top()),
-            row.height(),
+        painter.rect_filled(
+            Rect::from_min_size(
+                egui::pos2(name_col.right() - self.style.separator_width, row.top()),
+                egui::vec2(self.style.separator_width, row.height()),
+            ),
+            CornerRadius::ZERO,
             self.style.separator.to_egui(),
         );
 
@@ -1432,25 +1886,17 @@ impl ProfilerPanel {
             let mut labels = MAX_SAMPLE_LABELS;
             let samples = thread.map_or(&[][..], |thread| thread.samples.as_slice());
             for (index, sample) in samples.iter().enumerate() {
-                let start = sample.start_ns.min(duration_ns) as f64 / duration_ns as f64;
-                let end = sample
-                    .start_ns
-                    .saturating_add(sample.duration_ns)
-                    .min(duration_ns) as f64
-                    / duration_ns as f64;
-                let x0 = track.left() + start as f32 * track.width();
-                let x1 = track.left() + end as f32 * track.width();
+                let Some((x0, x1)) = block_span(sample, track, view, duration_ns) else {
+                    continue;
+                };
                 let top = track.top()
                     + self.style.thread_row_padding
                     + sample.depth as f32 * self.style.level_height;
                 let height = (self.style.level_height - 1.0).max(1.0);
                 let bar = Rect::from_min_max(
                     egui::pos2(x0, top),
-                    egui::pos2(x1.max(x0 + 1.0).min(track.right()), top + height),
+                    egui::pos2(x1.max(x0 + 1.0), top + height),
                 );
-                if bar.width() <= 0.0 {
-                    continue;
-                }
 
                 let info = scope_info(scopes, sample.scope);
                 let category = sample_category(sample, info);
@@ -1478,11 +1924,9 @@ impl ProfilerPanel {
                 // A click picks the block under the pointer. Blocks on one row
                 // never overlap, but deeper samples are painted later, so the
                 // last match is the topmost one.
-                if response.clicked() {
-                    if let Some(pos) = response.interact_pointer_pos() {
-                        if bar.contains(pos) {
-                            outcome.clicked = Some((index, bar));
-                        }
+                if let Some(pos) = clicked_at {
+                    if bar.contains(pos) {
+                        outcome.clicked = Some((index, bar));
                     }
                 }
 
@@ -1497,7 +1941,7 @@ impl ProfilerPanel {
                             egui::pos2(clip.left() + 1.0, bar.center().y),
                             Align2::LEFT_CENTER,
                             &label,
-                            self.small_font(),
+                            self.timeline_block_font(),
                             self.style.sample_text.to_egui(),
                         );
                     }
@@ -1506,16 +1950,14 @@ impl ProfilerPanel {
         }
 
         // Rule under the row.
-        Divider::horizontal()
-            .thickness(self.style.separator_width)
-            .color(self.style.row_rule.to_egui())
-            .paint_in(
-                ui,
-                Rect::from_min_size(
-                    egui::pos2(row.left(), row.bottom() - self.style.separator_width),
-                    egui::vec2(row.width(), self.style.separator_width),
-                ),
-            );
+        painter.rect_filled(
+            Rect::from_min_size(
+                egui::pos2(row.left(), row.bottom() - self.style.separator_width),
+                egui::vec2(row.width(), self.style.separator_width),
+            ),
+            CornerRadius::ZERO,
+            self.style.row_rule.to_egui(),
+        );
 
         outcome
     }
@@ -1527,10 +1969,16 @@ impl ProfilerPanel {
     /// Unity's details box for the selected block.
     ///
     /// It floats over the tracks, anchored under the clicked block and clamped
-    /// inside the timeline viewport. The box swallows clicks (only another block
-    /// or empty track dismisses it) and its buttons are registered after it,
-    /// which keeps them on top for egui's hit test.
-    fn paint_selection_details(&self, ui: &mut Ui, anchor: Rect, details: &SelectionDetails) {
+    /// inside `viewport` (the timeline's track area). The box swallows clicks
+    /// (only another block or empty track dismisses it) and its buttons are
+    /// registered after it, which keeps them on top for egui's hit test.
+    fn paint_selection_details(
+        &self,
+        ui: &mut Ui,
+        viewport: Rect,
+        anchor: Rect,
+        details: &SelectionDetails,
+    ) {
         let style = &self.style;
         let padding = 8.0;
         let gap = 2.0;
@@ -1587,7 +2035,7 @@ impl ProfilerPanel {
         let width = (content_width + 2.0 * padding).min(style.selection_width);
         let height = content_height + section_gap + button_height + 2.0 * padding;
 
-        let viewport = ui.clip_rect();
+        let viewport = viewport.intersect(ui.clip_rect());
         if !viewport.intersects(anchor) {
             return;
         }
@@ -1660,10 +2108,8 @@ impl ProfilerPanel {
         }
         top += section_gap;
 
-        let copy_rect = Rect::from_min_size(
-            egui::pos2(left, top),
-            egui::vec2(copy_width, button_height),
-        );
+        let copy_rect =
+            Rect::from_min_size(egui::pos2(left, top), egui::vec2(copy_width, button_height));
         if self
             .paint_selection_button(ui, copy_rect, "Copy", false)
             .clicked()
@@ -1728,15 +2174,14 @@ impl ProfilerPanel {
         response
     }
 
-    fn paint_empty_timeline(&self, ui: &Ui) {
-        let rest = ui.available_rect_before_wrap();
-        if rest.height() <= 0.0 {
+    fn paint_empty_timeline(&self, ui: &Ui, area: Rect) {
+        if area.height() <= 0.0 {
             return;
         }
-        ui.painter()
-            .rect_filled(rest, CornerRadius::ZERO, self.style.track_bg.to_egui());
-        ui.painter().text(
-            rest.center(),
+        let painter = ui.painter().with_clip_rect(area);
+        painter.rect_filled(area, CornerRadius::ZERO, self.style.track_bg.to_egui());
+        painter.text(
+            area.center(),
             Align2::CENTER_CENTER,
             "No frames captured — press Record to profile the editor.",
             self.toolbar_font(),
@@ -1799,6 +2244,9 @@ impl ProfilerPanel {
         self.thread = None;
         // The selection addresses one frame of the capture being cleared.
         self.selection = None;
+        // The zoom describes a frame of the capture being cleared.
+        self.view = TimelineView::default();
+        self.track_scroll = 0.0;
         // A new capture invalidates the previously written files' contents.
         self.save = None;
     }
@@ -2035,6 +2483,32 @@ fn sample_detail(sample: &SampleSnapshot, scope: Option<&ScopeInfo>) -> String {
     }
 }
 
+/// Where a sample's block lands in `track` for the shown window: `(left, right)`
+/// in points, clamped to the track.
+///
+/// `None` when the window does not show the block. A block narrower than a
+/// hairline keeps one point so a dense frame still reads.
+fn block_span(
+    sample: &SampleSnapshot,
+    track: Rect,
+    view: TimelineView,
+    duration_ns: u64,
+) -> Option<(f32, f32)> {
+    let (start_ms, visible_ms) = view.window_ms(duration_ns);
+    if visible_ms <= 0.0 || track.width() <= 0.0 {
+        return None;
+    }
+    let to_x = |ns: u64| {
+        track.left() + (((ns as f64 / 1_000_000.0) - start_ms) / visible_ms) as f32 * track.width()
+    };
+    let x0 = to_x(sample.start_ns);
+    let x1 = to_x(sample.start_ns.saturating_add(sample.duration_ns)).max(x0 + 1.0);
+    if x1 <= track.left() || x0 >= track.right() {
+        return None;
+    }
+    Some((x0.max(track.left()), x1.min(track.right())))
+}
+
 fn format_ms(ns: u64) -> String {
     format!("{:.3}", ns as f64 / 1_000_000.0)
 }
@@ -2122,6 +2596,13 @@ const RULER_STEPS_MS: [f64; 18] = [
 /// Minimum distance between two labelled ruler ticks, in points.
 const MIN_TICK_SPACING: f32 = 80.0;
 
+/// One mouse-wheel notch in egui's points (its `line_scroll_speed`): the wheel's
+/// smooth delta is in points, so a notch is 50 of them.
+const WHEEL_NOTCH_POINTS: f64 = 50.0;
+
+/// How much one wheel notch zooms the time area over the timeline.
+const ZOOM_PER_NOTCH: f64 = 1.2;
+
 /// One tick on the timeline ruler.
 #[derive(Clone, Debug, PartialEq)]
 struct RulerTick {
@@ -2131,42 +2612,59 @@ struct RulerTick {
     label: Option<String>,
 }
 
-/// Ruler ticks for a frame lasting `duration_ns` drawn across `width` points.
+/// Ruler ticks for the window `view` of a frame lasting `duration_ns` drawn
+/// across `width` points.
 ///
-/// The step is the smallest "nice" value that keeps labels at least
-/// [`MIN_TICK_SPACING`] apart, so a 2 ms frame and a 2 s frame both read. Each
-/// major tick is followed by four unlabelled minors.
-fn ruler_ticks(duration_ns: u64, width: f32) -> Vec<RulerTick> {
-    let duration_ms = duration_ns as f64 / 1_000_000.0;
-    if duration_ms <= 0.0 || width <= 0.0 {
+/// Ticks sit at absolute frame times (multiples of the step), not at "0, step,
+/// 2·step from the left edge", so panning slides them past the pointer the way
+/// Unity's `TimeArea` ticks do. The step is the smallest "nice" value that keeps
+/// labels at least [`MIN_TICK_SPACING`] apart, so a 2 ms window and a 2 s window
+/// both read; each major tick is followed by four unlabelled minors.
+fn ruler_ticks(view: TimelineView, duration_ns: u64, width: f32) -> Vec<RulerTick> {
+    let (start_ms, visible_ms) = view.window_ms(duration_ns);
+    if visible_ms <= 0.0 || width <= 0.0 {
         return Vec::new();
     }
 
     let step = RULER_STEPS_MS
         .iter()
         .copied()
-        .find(|step| step / duration_ms * f64::from(width) >= f64::from(MIN_TICK_SPACING))
+        .find(|step| step / visible_ms * f64::from(width) >= f64::from(MIN_TICK_SPACING))
         .unwrap_or(RULER_STEPS_MS[RULER_STEPS_MS.len() - 1]);
+    let minor = step / 5.0;
 
-    let mut ticks = Vec::new();
-    let mut major = 0.0;
-    while major <= duration_ms + 1e-9 {
-        ticks.push(RulerTick {
-            x: (major / duration_ms) as f32 * width,
-            label: Some(format!("{major:.3}ms")),
-        });
-        for minor in 1..5 {
-            let at = major + step * f64::from(minor) / 5.0;
-            if at < duration_ms {
-                ticks.push(RulerTick {
-                    x: (at / duration_ms) as f32 * width,
-                    label: None,
-                });
-            }
+    // Walk the minor ticks from the first one at or after the window's left
+    // edge. At most `5 * width / MIN_TICK_SPACING` of them fit, so the count is
+    // bounded.
+    let first = (start_ms / minor).ceil() as i64;
+    let count = (visible_ms / minor).ceil() as usize + 2;
+    let mut ticks = Vec::with_capacity(count);
+    for offset in 0..count {
+        let index = first + offset as i64;
+        let at = index as f64 * minor;
+        if at > start_ms + visible_ms + 1e-9 {
+            break;
         }
-        major += step;
+        ticks.push(RulerTick {
+            x: ((at - start_ms) / visible_ms * f64::from(width)) as f32,
+            // Every fifth minor is a labelled major tick.
+            label: (index.rem_euclid(5) == 0).then(|| tick_label(at, step)),
+        });
     }
     ticks
+}
+
+/// A ruler tick's label, formatted like Unity's `FormatTickLabel`: the decimals
+/// follow the tick period (so `0.005ms` and `5ms` both read), and periods of a
+/// second or more switch to seconds.
+fn tick_label(ms: f64, step_ms: f64) -> String {
+    let period_log = step_ms.log10().floor() as i32;
+    if period_log >= 3 {
+        format!("{:.0}s", ms / 1000.0)
+    } else {
+        let decimals = (-period_log).max(0) as usize;
+        format!("{ms:.decimals$}ms")
+    }
 }
 
 /// Wall time of one frame, in milliseconds.
@@ -2422,7 +2920,6 @@ mod probe {
         }
     }
 
-
     /// Every stroked rect the pass painted, as `(rect, stroke)`.
     fn painted_strokes(output: &egui::FullOutput) -> Vec<(Rect, Stroke)> {
         output
@@ -2458,6 +2955,81 @@ mod probe {
         })
     }
 
+    /// One primary-button press at `pos`, as a pass's input.
+    fn press_events(pos: egui::Pos2) -> Vec<egui::Event> {
+        vec![
+            egui::Event::PointerMoved(pos),
+            egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::NONE,
+            },
+        ]
+    }
+
+    /// A pointer move with the primary button still down.
+    fn drag_events(pos: egui::Pos2) -> Vec<egui::Event> {
+        vec![egui::Event::PointerMoved(pos)]
+    }
+
+    /// The primary button released at `pos`.
+    fn release_events(pos: egui::Pos2) -> Vec<egui::Event> {
+        vec![egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: egui::Modifiers::NONE,
+        }]
+    }
+
+    /// A press or release of `button` at `pos`.
+    fn button_events(
+        pos: egui::Pos2,
+        button: egui::PointerButton,
+        pressed: bool,
+    ) -> Vec<egui::Event> {
+        let mut events = Vec::new();
+        if pressed {
+            events.push(egui::Event::PointerMoved(pos));
+        }
+        events.push(egui::Event::PointerButton {
+            pos,
+            button,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        });
+        events
+    }
+
+    /// A wheel event over `pos`. A four-point `Point` delta is below egui's
+    /// smoothing threshold, so it applies in the pass that carries it.
+    fn wheel_events(pos: egui::Pos2, delta: egui::Vec2) -> Vec<egui::Event> {
+        vec![
+            egui::Event::PointerMoved(pos),
+            egui::Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Point,
+                delta,
+                phase: egui::TouchPhase::Move,
+                modifiers: egui::Modifiers::NONE,
+            },
+        ]
+    }
+
+    /// A key press over `pos`.
+    fn key_events(pos: egui::Pos2, key: egui::Key) -> Vec<egui::Event> {
+        vec![
+            egui::Event::PointerMoved(pos),
+            egui::Event::Key {
+                key,
+                physical_key: Some(key),
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            },
+        ]
+    }
+
     /// One primary-button click at `pos`, as a pass's input.
     fn click_events(pos: egui::Pos2) -> Vec<egui::Event> {
         vec![
@@ -2483,9 +3055,7 @@ mod probe {
             .shapes
             .iter()
             .find_map(|clipped| match &clipped.shape {
-                egui::Shape::Text(text) if text.galley.text().starts_with(prefix) => {
-                    Some(text.pos)
-                }
+                egui::Shape::Text(text) if text.galley.text().starts_with(prefix) => Some(text.pos),
                 _ => None,
             })
             .unwrap_or_else(|| panic!("no text starting with {prefix:?} painted"))
@@ -2514,12 +3084,7 @@ mod probe {
     ) -> egui::FullOutput {
         let first = draw_pass(ctx, panel, host, Vec::new());
         let label = text_pos_starting_with(&first, prefix);
-        draw_pass(
-            ctx,
-            panel,
-            host,
-            click_events(label + egui::vec2(6.0, 5.0)),
-        )
+        draw_pass(ctx, panel, host, click_events(label + egui::vec2(6.0, 5.0)))
     }
 
     /// Every filled rect the pass painted, as `(rect, fill)`.
@@ -3068,7 +3633,6 @@ mod probe {
         );
     }
 
-
     /// Durations read like Unity's: a block label takes two decimals, the
     /// details box `{0:f2}` at or above 1 ms and `{0:f3}` below.
     #[test]
@@ -3155,7 +3719,6 @@ mod probe {
         );
     }
 
-
     /// A selection addresses one frame's samples: stepping the transport drops
     /// it instead of describing a block that is no longer there.
     #[test]
@@ -3234,9 +3797,11 @@ mod probe {
         );
         let box_fill = panel.style.selection_bg.to_egui();
         assert!(
-            painted(&selected).iter().any(|(rect, fill)| *fill == box_fill
-                && rect.width() > 100.0
-                && rect.height() > 40.0),
+            painted(&selected)
+                .iter()
+                .any(|(rect, fill)| *fill == box_fill
+                    && rect.width() > 100.0
+                    && rect.height() > 40.0),
             "the details box paints its panel fill"
         );
     }
@@ -3372,6 +3937,345 @@ mod probe {
         );
     }
 
+    /// The time area's columns at the test harness's 900 pt panel width.
+    fn track_columns(panel: &ProfilerPanel) -> (f32, f32) {
+        (
+            panel.style.timeline_name_width,
+            900.0 - panel.style.scrollbar_width,
+        )
+    }
+
+    /// The horizontal scroll bar's thumb: the widest fill in the thumb colour.
+    fn horizontal_thumb(output: &egui::FullOutput, fill: egui::Color32) -> Rect {
+        painted(output)
+            .into_iter()
+            .filter(|(rect, painted_fill)| *painted_fill == fill && rect.width() > 20.0)
+            .max_by(|a, b| a.0.width().total_cmp(&b.0.width()))
+            .map(|(rect, _)| rect)
+            .expect("the horizontal scroll bar's thumb is painted")
+    }
+
+    /// The wheel over the time area zooms around the pointer: the time under the
+    /// pointer stays under it, the way Unity's zoomable timeline behaves.
+    #[test]
+    fn the_wheel_zooms_the_time_area_around_the_pointer() {
+        let _guard = lock_profiler_tests();
+        let host = ProfilerHost(repeated_marker_profiler());
+        let mut panel = ProfilerPanel::default();
+        let ctx = Context::default();
+
+        let first = draw_pass(&ctx, &mut panel, &host, Vec::new());
+        let label = text_pos_starting_with(&first, "Others · profiler.test.repeat (");
+        let pointer = label + egui::vec2(10.0, 3.0);
+        let before = panel.view;
+        draw_pass(
+            &ctx,
+            &mut panel,
+            &host,
+            wheel_events(pointer, egui::vec2(0.0, 4.0)),
+        );
+        let after = panel.view;
+
+        assert!(
+            after.span < before.span,
+            "the wheel zooms in: {before:?} -> {after:?}"
+        );
+        let (left, right) = track_columns(&panel);
+        let focus = f64::from((pointer.x - left) / (right - left));
+        let under_pointer_before = before.pan + focus * before.span;
+        let under_pointer_after = after.pan + focus * after.span;
+        assert!(
+            (under_pointer_before - under_pointer_after).abs() < 1e-6,
+            "the time under the pointer stays put: {under_pointer_before} -> {under_pointer_after}"
+        );
+    }
+
+    /// Middle-drag pans the time area, Unity's other pan gesture.
+    #[test]
+    fn middle_drag_pans_the_time_area() {
+        let _guard = lock_profiler_tests();
+        let host = ProfilerHost(repeated_marker_profiler());
+        let mut panel = ProfilerPanel::default();
+        panel.view = TimelineView {
+            pan: 0.3,
+            span: 0.4,
+        };
+        let ctx = Context::default();
+
+        let first = draw_pass(&ctx, &mut panel, &host, Vec::new());
+        let label = text_pos_starting_with(&first, "Others · profiler.test.repeat (");
+        let from = label + egui::vec2(10.0, 3.0);
+        let to = from + egui::vec2(40.0, 0.0);
+
+        draw_pass(
+            &ctx,
+            &mut panel,
+            &host,
+            button_events(from, egui::PointerButton::Middle, true),
+        );
+        draw_pass(&ctx, &mut panel, &host, drag_events(to));
+        draw_pass(
+            &ctx,
+            &mut panel,
+            &host,
+            button_events(to, egui::PointerButton::Middle, false),
+        );
+
+        assert!(
+            panel.view.pan < 0.3,
+            "middle-drag right shows earlier time: {:?}",
+            panel.view
+        );
+    }
+
+    /// Dragging the horizontal bar's thumb pans the shown window, like Unity's
+    /// min-max scroll bar.
+    #[test]
+    fn dragging_the_horizontal_bar_pans_the_timeline() {
+        let _guard = lock_profiler_tests();
+        let host = ProfilerHost(repeated_marker_profiler());
+        let mut panel = ProfilerPanel::default();
+        panel.view = TimelineView {
+            pan: 0.25,
+            span: 0.5,
+        };
+        let ctx = Context::default();
+
+        let first = draw_pass(&ctx, &mut panel, &host, Vec::new());
+        let thumb = horizontal_thumb(&first, panel.style.scrollbar_thumb.to_egui());
+        let before = panel.view;
+        let from = thumb.center();
+        let to = from + egui::vec2(24.0, 0.0);
+
+        draw_pass(&ctx, &mut panel, &host, press_events(from));
+        draw_pass(&ctx, &mut panel, &host, drag_events(to));
+        draw_pass(&ctx, &mut panel, &host, release_events(to));
+
+        assert!(
+            panel.view.pan > before.pan,
+            "dragging the thumb right shows later time: {before:?} -> {:?}",
+            panel.view
+        );
+        assert_eq!(panel.view.span, before.span, "panning does not zoom");
+    }
+
+    /// Dragging an end of the horizontal bar's thumb resizes the window: that is
+    /// how Unity's timeline zooms from its scroll bar.
+    #[test]
+    fn dragging_the_end_of_the_horizontal_bar_zooms_the_timeline() {
+        let _guard = lock_profiler_tests();
+        let host = ProfilerHost(repeated_marker_profiler());
+        let mut panel = ProfilerPanel::default();
+        panel.view = TimelineView {
+            pan: 0.25,
+            span: 0.5,
+        };
+        let ctx = Context::default();
+
+        let first = draw_pass(&ctx, &mut panel, &host, Vec::new());
+        let thumb = horizontal_thumb(&first, panel.style.scrollbar_thumb.to_egui());
+        let from = egui::pos2(thumb.right() - 3.0, thumb.center().y);
+        let to = from - egui::vec2(80.0, 0.0);
+
+        draw_pass(&ctx, &mut panel, &host, press_events(from));
+        draw_pass(&ctx, &mut panel, &host, drag_events(to));
+        draw_pass(&ctx, &mut panel, &host, release_events(to));
+
+        assert!(
+            panel.view.span < 0.5,
+            "dragging the right end in zooms: {:?}",
+            panel.view
+        );
+        assert!(
+            (panel.view.pan - 0.25).abs() < 1e-9,
+            "the left edge stays put: {:?}",
+            panel.view
+        );
+    }
+
+    /// Dragging the vertical bar scrolls the rows, like any scrollbar.
+    #[test]
+    fn dragging_the_vertical_bar_scrolls_the_rows() {
+        let _guard = lock_profiler_tests();
+        let profiler = captured_profiler();
+        for index in 0..30 {
+            profiler.register_thread_lane(format!("Lane {index:02}"));
+        }
+        let host = ProfilerHost(profiler);
+        let mut panel = ProfilerPanel::default();
+        let ctx = Context::default();
+
+        let first = draw_pass(&ctx, &mut panel, &host, Vec::new());
+        let thumb = painted(&first)
+            .into_iter()
+            .filter(|(rect, fill)| {
+                *fill == panel.style.scrollbar_thumb.to_egui()
+                    && rect.width() < 20.0
+                    && rect.height() > 20.0
+            })
+            .max_by(|a, b| a.0.height().total_cmp(&b.0.height()))
+            .map(|(rect, _)| rect)
+            .expect("the vertical scroll bar's thumb is painted");
+        let from = thumb.center();
+        let to = from + egui::vec2(0.0, 30.0);
+
+        draw_pass(&ctx, &mut panel, &host, press_events(from));
+        draw_pass(&ctx, &mut panel, &host, drag_events(to));
+        draw_pass(&ctx, &mut panel, &host, release_events(to));
+
+        assert!(
+            panel.track_scroll > 0.0,
+            "dragging the thumb down scrolls the rows: {}",
+            panel.track_scroll
+        );
+    }
+
+    /// The header and the ruler are pinned: the wheel over the thread names
+    /// scrolls only the rows, Unity's side-column gesture.
+    #[test]
+    fn the_header_and_ruler_stay_pinned_while_the_tracks_scroll() {
+        let _guard = lock_profiler_tests();
+        let profiler = captured_profiler();
+        for index in 0..30 {
+            profiler.register_thread_lane(format!("Lane {index:02}"));
+        }
+        let host = ProfilerHost(profiler);
+        let mut panel = ProfilerPanel::default();
+        let ctx = Context::default();
+
+        let first = draw_pass(&ctx, &mut panel, &host, Vec::new());
+        let header = text_pos_starting_with(&first, "Timeline");
+        let ruler = text_pos_starting_with(&first, "0.000ms");
+        let lane = text_pos_starting_with(&first, "Lane 00");
+        let pointer = egui::pos2(50.0, lane.y + 4.0);
+        draw_pass(
+            &ctx,
+            &mut panel,
+            &host,
+            wheel_events(pointer, egui::vec2(0.0, -6.0)),
+        );
+        let scrolled = draw_pass(&ctx, &mut panel, &host, Vec::new());
+
+        assert!(
+            panel.track_scroll > 0.0,
+            "the wheel over the names scrolls the rows"
+        );
+        assert_eq!(
+            text_pos_starting_with(&scrolled, "Timeline"),
+            header,
+            "the header does not scroll"
+        );
+        assert_eq!(
+            text_pos_starting_with(&scrolled, "0.000ms"),
+            ruler,
+            "the ruler does not scroll"
+        );
+        let lane_after = text_pos_starting_with(&scrolled, "Lane 00");
+        assert!(
+            lane_after.y < lane.y - 4.0,
+            "the rows scrolled up: {} -> {}",
+            lane.y,
+            lane_after.y
+        );
+    }
+
+    /// Unity's FrameAll: `A` over the timeline fits the whole frame again.
+    #[test]
+    fn pressing_a_fits_the_whole_frame_again() {
+        let _guard = lock_profiler_tests();
+        let host = ProfilerHost(repeated_marker_profiler());
+        let mut panel = ProfilerPanel::default();
+        panel.view = TimelineView {
+            pan: 0.3,
+            span: 0.4,
+        };
+        let ctx = Context::default();
+        // One quiet pass so the timeline is laid out under the pointer.
+        draw_pass(&ctx, &mut panel, &host, Vec::new());
+        draw_pass(
+            &ctx,
+            &mut panel,
+            &host,
+            key_events(egui::pos2(400.0, 400.0), egui::Key::A),
+        );
+
+        assert_eq!(panel.view, TimelineView::default());
+    }
+
+    /// A zoomed window cuts blocks at the track's edges instead of spilling over
+    /// the thread names or the scroll bar.
+    #[test]
+    fn zoomed_blocks_are_clipped_to_the_track_column() {
+        let _guard = lock_profiler_tests();
+        let host = ProfilerHost(repeated_marker_profiler());
+        let mut panel = ProfilerPanel::default();
+        panel.view = TimelineView {
+            pan: 0.4,
+            span: 0.1,
+        };
+        let ctx = Context::default();
+        let output = draw_pass(&ctx, &mut panel, &host, Vec::new());
+
+        let (left, right) = track_columns(&panel);
+        let palette: Vec<egui::Color32> = panel
+            .style
+            .category_palette
+            .iter()
+            .map(|color| color.to_egui())
+            .collect();
+        let blocks: Vec<Rect> = painted(&output)
+            .into_iter()
+            .filter(|(rect, fill)| {
+                palette.contains(fill) && rect.height() >= 10.0 && rect.top() > 250.0
+            })
+            .map(|(rect, _)| rect)
+            .collect();
+
+        assert!(!blocks.is_empty(), "the zoomed window still shows blocks");
+        for block in &blocks {
+            assert!(
+                block.left() >= left - 0.5 && block.right() <= right + 0.5,
+                "a block is cut at the track column: {block:?}"
+            );
+        }
+        assert!(
+            blocks
+                .iter()
+                .any(|block| { block.left() <= left + 0.5 && block.right() >= right - 0.5 }),
+            "a block crossing the window is cut at both edges: {blocks:?}"
+        );
+    }
+
+    /// Clicking a block works on a zoomed window: the block under the pointer is
+    /// selected and the details box opens.
+    #[test]
+    fn clicking_a_block_after_zooming_still_selects_it() {
+        let _guard = lock_profiler_tests();
+        let host = ProfilerHost(repeated_marker_profiler());
+        let mut panel = ProfilerPanel::default();
+        panel.view = TimelineView {
+            pan: 0.0,
+            span: 0.5,
+        };
+        let ctx = Context::default();
+
+        let first = draw_pass(&ctx, &mut panel, &host, Vec::new());
+        let label = text_pos_starting_with(&first, "Others · profiler.test.repeat (");
+        let clicked = draw_pass(
+            &ctx,
+            &mut panel,
+            &host,
+            click_events(label + egui::vec2(6.0, 3.0)),
+        );
+
+        assert!(panel.selection.is_some(), "the clicked block is selected");
+        assert!(
+            painted_text(&clicked).iter().any(|line| line == "Copy"),
+            "the details box opened: {:?}",
+            painted_text(&clicked)
+        );
+    }
+
     /// Unity's Copy: the box's text lands on the clipboard.
     #[test]
     fn the_details_box_copy_button_writes_the_details_to_the_clipboard() {
@@ -3406,10 +4310,39 @@ mod probe {
             "including the thread's instance count: {clipboard:?}"
         );
     }
-    /// The ruler picks a step that keeps labels apart at any capture length.
+    /// The view stops at Unity's minimum window and at the whole frame, and
+    /// never pans outside the frame.
+    #[test]
+    fn the_timeline_view_stops_at_its_zoom_limits() {
+        let mut view = TimelineView::default();
+        assert_eq!(TimelineView::min_span(0), 1.0);
+        assert_eq!(TimelineView::min_span(45_000_000), 0.05 / 45.0);
+
+        view.zoom_around(1_000.0, 0.5, 45_000_000);
+        assert!(
+            (view.span - 0.05 / 45.0).abs() < 1e-12,
+            "the narrowest window is Unity's 0.05 ms: {view:?}"
+        );
+
+        view.pan_by(10.0, 45_000_000);
+        assert!(
+            (view.pan - (1.0 - view.span)).abs() < 1e-12,
+            "the window stops at the frame's end: {view:?}"
+        );
+
+        view.zoom_around(0.000_001, 0.5, 45_000_000);
+        assert_eq!(
+            view,
+            TimelineView::default(),
+            "zooming out stops at the whole frame"
+        );
+    }
+
+    /// The ruler picks a step that keeps labels apart at any window and zoom.
     #[test]
     fn ruler_ticks_stay_readable_at_every_frame_length() {
-        let ticks = ruler_ticks(45_000_000, 900.0);
+        let fit = TimelineView::default();
+        let ticks = ruler_ticks(fit, 45_000_000, 900.0);
         let labels: Vec<f32> = ticks
             .iter()
             .filter(|tick| tick.label.is_some())
@@ -3428,9 +4361,42 @@ mod probe {
             "minor ticks sit between the labelled ones"
         );
 
-        assert!(!ruler_ticks(2_000_000, 900.0).is_empty());
-        assert!(!ruler_ticks(2_000_000_000, 900.0).is_empty());
-        assert!(ruler_ticks(0, 900.0).is_empty());
+        // A zoomed window keeps the labels apart and starts at the window's left
+        // edge: ticks are absolute frame times, so the first one is not at zero.
+        let zoomed = TimelineView {
+            pan: 0.41,
+            span: 0.05,
+        };
+        let ticks = ruler_ticks(zoomed, 45_000_000, 900.0);
+        let labels: Vec<f32> = ticks
+            .iter()
+            .filter(|tick| tick.label.is_some())
+            .map(|tick| tick.x)
+            .collect();
+        assert!(labels.len() >= 2, "{labels:?}");
+        assert!(labels[0] > 0.0, "ticks slide with the window: {labels:?}");
+        for pair in labels.windows(2) {
+            assert!(
+                pair[1] - pair[0] >= MIN_TICK_SPACING,
+                "labels must stay apart when zoomed: {labels:?}"
+            );
+        }
+        // The label decimals follow the step: a 0.05 ms window labels in decimals.
+        assert!(
+            ticks
+                .iter()
+                .filter_map(|tick| tick.label.as_deref())
+                .all(|label| { label.ends_with("ms") || label.ends_with('s') }),
+            "{ticks:?}"
+        );
+
+        assert!(!ruler_ticks(fit, 2_000_000, 900.0).is_empty());
+        assert!(!ruler_ticks(fit, 2_000_000_000, 900.0).is_empty());
+        assert!(ruler_ticks(fit, 0, 900.0).is_empty());
+        assert_eq!(tick_label(5.0, 5.0), "5ms");
+        assert_eq!(tick_label(0.05, 0.05), "0.05ms");
+        assert_eq!(tick_label(0.005, 0.005), "0.005ms");
+        assert_eq!(tick_label(2000.0, 2000.0), "2s");
     }
 
     /// Nothing captured: the panel explains how to start instead of drawing an
@@ -3455,13 +4421,15 @@ mod probe {
         );
     }
 
-
     fn draw(panel: &mut ProfilerPanel) -> (usize, usize) {
         let ctx = Context::default();
         let state = EditorState::new();
         let host = NoHost;
         let mut input = egui::RawInput::default();
-        input.screen_rect = Some(Rect::from_min_size(pos2(0.0, 0.0), egui::vec2(800.0, 600.0)));
+        input.screen_rect = Some(Rect::from_min_size(
+            pos2(0.0, 0.0),
+            egui::vec2(800.0, 600.0),
+        ));
         let mut out = UiOut::new();
         let output = ctx.run_ui(input, |ctx| {
             egui::CentralPanel::default().show(ctx, |ui| {
@@ -3479,7 +4447,6 @@ mod probe {
     fn latest(panel: &ProfilerPanel) -> usize {
         panel.global_frame_view.lock().latest_frames(16).count()
     }
-
 
     #[test]
     fn probe_where_frames_come_from() {
@@ -3520,9 +4487,6 @@ mod probe {
         drop(late);
 
         profiler.set_recording(false);
-        eprintln!(
-            "PROBE[4] stopped       latest_frames={}",
-            latest(&panel)
-        );
+        eprintln!("PROBE[4] stopped       latest_frames={}", latest(&panel));
     }
 }

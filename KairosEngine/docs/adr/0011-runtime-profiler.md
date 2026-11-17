@@ -6,8 +6,9 @@
   engine drives the game frame, and captures are saved as files.
 - **Revised (2026-11-17)** — categories are declared by the marker (tagged
   scopes and `.category(...)` systems), legend rows toggle chart bands, the
-  timeline shows registered thread lanes, blocks report their duration, and
-  clicking a block opens Unity's details box. See the revision notes below.
+  timeline shows registered thread lanes, blocks report their duration, clicking
+  a block opens Unity's details box, and the timeline zooms and scrolls with
+  Unity's gestures. See the revision notes below.
 - **Context**:
   - The 0.2.0 editor (`kairos_editor_app`, eframe/egui) runs a single window: a
     toolbar, the dock, and six registered panels (five open by default). The owner wants a **Profiler Panel**
@@ -116,6 +117,36 @@
      placeholder until the Hierarchy / Raw views come back: Unity's menu lists
      the block there, opens its call stack and jumps to the source line.
      Clicking the same block again, or empty track, dismisses the box.
+  7. **The timeline navigates like Unity's.** The three-band view exposed that
+     the timeline could only show the whole frame: the row list scrolled the
+     header and ruler with it, and the only horizontal scrollbar was egui's
+     `ScrollArea` bar, whose thumb cannot resize. The revised timeline copies
+     `ProfilerTimelineGUI` / `ZoomableArea`:
+     - **Pinned chrome.** The header (view selector, Live, CPU/GPU summary) and
+       the time ruler are laid out once and never scroll; the vertical bar takes
+       the right edge and the horizontal bar the bottom edge, with the thread
+       names outside the zoomable time area so panning leaves them put.
+     - **The view is a frame fraction.** `TimelineView { pan, span }` stores the
+       shown window as fractions of the frame duration, so stepping frames,
+       resizing the panel or recording again keeps the zoom instead of jumping to
+       an absolute time range. The zoom stops at Unity's `ZoomableArea`
+       `minWidth` (0.05 ms) and at the whole frame: the capture has no
+       neighbouring frames to reveal in the margins yet.
+     - **Unity's gestures.** Wheel over the time area zooms around the pointer
+       (`SetScaleFocused`); wheel over the thread names or the vertical bar
+       scrolls the rows; wheel over the horizontal bar pans; middle-drag or
+       alt-drag pans; alt+right-drag zooms; `A` fits the frame again
+       (`PerformFrameAll`). Ticks are absolute frame times, so panning slides
+       them and their grid lines past the pointer, and their label decimals
+       follow the tick period (`FormatTickLabel`).
+     - **Unity's min-max scroll bar.** egui's scroll bar is a plain thumb owned
+       by a `ScrollArea` and cannot grow the resize ends, so
+       `kairos_editor_widgets::min_max_scroll::MinMaxScroll` draws Unity's
+       `EditorGUIExt.MinMaxScroller`: the thumb pans, a grip at each end resizes
+       the window (the timeline's second zoom gesture), and clicking the trough
+       snaps the thumb under the pointer. The vertical bar is its non-resizable
+       form, because the timeline's vertical scale is locked like Unity's
+       `vZoomLockedByDefault`.
 - **Decision**:
   1. **New foundation crate `kairos_profile`.** It owns the recorder, the
      plain-data capture model, hierarchy aggregation, and JSON / Chrome-trace

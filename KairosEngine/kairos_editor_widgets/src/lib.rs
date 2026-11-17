@@ -3,6 +3,7 @@ pub mod color;
 pub mod divider;
 pub mod fonts;
 pub mod menu;
+pub mod min_max_scroll;
 pub mod paint;
 pub mod style;
 pub mod text;

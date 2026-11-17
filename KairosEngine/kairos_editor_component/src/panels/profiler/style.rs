@@ -5,8 +5,9 @@
 //! `Panel::init`; editing it restyles the Profiler without a rebuild.
 //!
 //! Layout is Unity's: a 20 px toolbar, a module area whose rows show a legend and
-//! a frame-history chart, then the timeline (header, ruler, thread tracks). The
-//! tokens are grouped the same way so a skin edit reads like the panel.
+//! a frame-history chart, then the timeline (header, ruler, thread tracks and the
+//! two scroll bars). The tokens are grouped the same way so a skin edit reads like
+//! the panel.
 
 use kairos_color::Color32;
 use kairos_editor_widgets::style::Style;
@@ -86,6 +87,7 @@ pub struct ProfilerStyle {
     pub level_height: f32,
     /// Vertical padding above and below a thread's levels.
     pub thread_row_padding: f32,
+    pub timeline_block_text_size: f32,
     pub timeline_name_bg: Color32,
     pub track_bg: Color32,
     /// Vertical grid line aligned with a ruler tick.
@@ -105,6 +107,22 @@ pub struct ProfilerStyle {
     pub selection_border: Color32,
     /// Width cap of the details box; its text wraps at this width.
     pub selection_width: f32,
+
+    // -- Timeline scroll bars -----------------------------------------------
+    /// Thickness of the timeline's scroll bars (Unity's ZoomableArea uses 13 px),
+    /// and of the horizontal bar under the tracks.
+    pub scrollbar_width: f32,
+    /// The trough a scroll bar's thumb moves in.
+    pub scrollbar_bg: Color32,
+    pub scrollbar_thumb: Color32,
+    /// Thumb fill while the pointer is over it.
+    pub scrollbar_thumb_hover: Color32,
+    /// Thumb fill while it is being dragged.
+    pub scrollbar_thumb_active: Color32,
+    /// The grip lines on the horizontal bar's two zoom handles.
+    pub scrollbar_grip: Color32,
+    /// Width of each zoom handle: the drag target at the thumb's ends.
+    pub scrollbar_handle_width: f32,
 
     // -- Data views ---------------------------------------------------------
     /// Row caps of the hierarchy and raw data views.
@@ -154,8 +172,9 @@ impl Style for ProfilerStyle {
             timeline_live_width: 55.0,
             ruler_height: 20.0,
             ruler_bg: Color32::from_rgb(0x34, 0x34, 0x34),
-            level_height: 16.0,
+            level_height: 20.0,
             thread_row_padding: 2.0,
+            timeline_block_text_size: 13.0,
             timeline_name_bg: Color32::from_rgb(0x38, 0x38, 0x38),
             track_bg: Color32::from_rgb(0x28, 0x28, 0x28),
             grid: Color32::from_rgb(0x2E, 0x2E, 0x2E),
@@ -166,6 +185,14 @@ impl Style for ProfilerStyle {
             selection_bg: Color32::from_rgb(0x2C, 0x2C, 0x2C),
             selection_border: Color32::from_rgb(0x4A, 0x4A, 0x4A),
             selection_width: 320.0,
+
+            scrollbar_width: 13.0,
+            scrollbar_bg: Color32::from_rgb(0x1E, 0x1E, 0x1E),
+            scrollbar_thumb: Color32::from_rgb(0x3A, 0x3A, 0x3A),
+            scrollbar_thumb_hover: Color32::from_rgb(0x4A, 0x4A, 0x4A),
+            scrollbar_thumb_active: Color32::from_rgb(0x5A, 0x5A, 0x5A),
+            scrollbar_grip: Color32::from_rgb(0x8A, 0x8A, 0x8A),
+            scrollbar_handle_width: 6.0,
 
             max_tree_rows: 4_000,
             max_raw_rows: 4_000,
@@ -213,8 +240,9 @@ impl Style for ProfilerStyle {
             timeline_live_width: 55.0,
             ruler_height: 20.0,
             ruler_bg: Color32::from_rgb(0xC8, 0xC8, 0xC8),
-            level_height: 16.0,
+            level_height: 20.0,
             thread_row_padding: 2.0,
+            timeline_block_text_size: 13.0,
             timeline_name_bg: Color32::from_rgb(0xD2, 0xD2, 0xD2),
             track_bg: Color32::from_rgb(0xEE, 0xEE, 0xEE),
             grid: Color32::from_rgb(0xC9, 0xC9, 0xC9),
@@ -225,6 +253,14 @@ impl Style for ProfilerStyle {
             selection_bg: Color32::from_rgb(0xF2, 0xF2, 0xF2),
             selection_border: Color32::from_rgb(0xA6, 0xA6, 0xA6),
             selection_width: 320.0,
+
+            scrollbar_width: 13.0,
+            scrollbar_bg: Color32::from_rgb(0xC6, 0xC6, 0xC6),
+            scrollbar_thumb: Color32::from_rgb(0xA6, 0xA6, 0xA6),
+            scrollbar_thumb_hover: Color32::from_rgb(0x8E, 0x8E, 0x8E),
+            scrollbar_thumb_active: Color32::from_rgb(0x7A, 0x7A, 0x7A),
+            scrollbar_grip: Color32::from_rgb(0x5A, 0x5A, 0x5A),
+            scrollbar_handle_width: 6.0,
 
             max_tree_rows: 4_000,
             max_raw_rows: 4_000,
@@ -329,6 +365,8 @@ mod tests {
             assert!(style.toolbar_icon_size > 0.0);
             assert!(style.toolbar_text_size > 0.0);
             assert!(style.level_height > 0.0);
+            assert!(style.scrollbar_width > 0.0);
+            assert!(style.scrollbar_handle_width > 0.0);
             assert!(!style.category_palette.is_empty());
             for path in style.icons.all() {
                 assert!(
