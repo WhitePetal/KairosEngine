@@ -26,3 +26,4 @@ kairos_log = { path = "../kairos_log" }
 kairos_profile = { path = "../kairos_profile" }
 kairos_editor_docking = { path = "../kairos_editor_docking" }
 kairos_editor_widgets = { path = "../kairos_editor_widgets" }
+vec1 = "1.12.1"

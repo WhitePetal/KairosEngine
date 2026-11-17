@@ -26,7 +26,7 @@ profiling = { version = "1.0.18", features = [
 # format: `FrameData::write_into` / `read_next` (the feature also enables
 # `packing`, so retained frames stay compressed in RAM). `puffin_viewer` reads
 # the resulting `.puffin` stream.
-puffin = { version = "0.20", features = ["serialization"] }
+puffin = { version = "0.20", features = ["serialization", "packing"] }
 # Structured export (JSON + Chrome Trace Event Format). The in-memory model is
 # plain data; serde only enters at the export boundary.
 serde = { version = "1.0.228", features = ["derive"] }

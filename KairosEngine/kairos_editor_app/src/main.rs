@@ -13,6 +13,7 @@
 //! Profiler panel — there is no second recorder in this process.
 
 mod app;
+mod branding;
 mod consts;
 mod effects;
 mod host;
@@ -59,19 +60,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         title: format!("{} {}", consts::APP_NAME, consts::VERSION),
         size: LogicalSize::new(1280.0, 820.0),
         min_size: Some(LogicalSize::new(960.0, 600.0)),
-        icon: load_icon(),
+        icon: branding::load_icon(),
         texture_compression: settings.texture_compression,
     };
 
     run(engine, config, |_engine, proxy| {
         host::EditorLayer::new(proxy)
     })
-}
-
-fn load_icon() -> Option<winit::window::Icon> {
-    let bytes = std::fs::read(paths::PATH_ENGINE_ICON).ok()?;
-    let image = image::load_from_memory(&bytes).ok()?.into_rgba8();
-    let (width, height) = image.dimensions();
-
-    winit::window::Icon::from_rgba(image.into_raw(), width, height).ok()
 }

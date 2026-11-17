@@ -29,7 +29,7 @@ use winit::{
     window::Window,
 };
 
-use crate::app::EditorApp;
+use crate::{app::EditorApp, branding};
 
 /// The app's layer: egui state plus the panel pass.
 pub struct EditorLayer {
@@ -129,6 +129,11 @@ impl Layer for EditorLayer {
         );
         state.set_max_texture_side(max_texture_side as usize);
         self.egui_state = Some(state);
+
+        // The window exists, so the desktop can be given the app's own icon: the
+        // window icon from `RuntimeConfig` does not reach the Dock or the
+        // taskbar.
+        branding::brand_app(window);
     }
 
     fn window_event(&mut self, window: &Window, event: &WindowEvent) -> EventOutcome {

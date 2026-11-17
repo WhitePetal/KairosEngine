@@ -1,5 +1,6 @@
 pub mod button;
 pub mod color;
+pub mod divider;
 pub mod fonts;
 pub mod menu;
 pub mod paint;

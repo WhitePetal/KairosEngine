@@ -14,7 +14,7 @@ impl Default for TabBodyStyle {
             inner_margin: Margin::same(0),
             stroke: Stroke::default(),
             corner_radius: CornerRadius::default(),
-            bg_fill: Color32::from_rgb(67, 67, 67),
+            bg_fill: Color32::from_rgb(54, 54, 54),
         }
     }
 }
@@ -45,7 +45,7 @@ impl Default for TabInteractionStyle {
                 sw: 0,
                 se: 0,
             },
-            bg_fill: Color32::from_rgb(67, 67, 67),
+            bg_fill: Color32::from_rgb(54, 54, 54),
             text_color: Color32::from_rgb(196, 196, 196),
             icon_tint: Color32::WHITE,
         }

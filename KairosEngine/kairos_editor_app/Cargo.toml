@@ -32,3 +32,13 @@ kairos_profile = { path = "../kairos_profile" }
 kairos_engine = { path = "../kairos_engine" }
 kairos_editor_core = { path = "../kairos_editor_core" }
 image = "0.25.10"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# macOS shows the *application* icon in the Dock, and winit's window icon is a
+# no-op there, so the app sets it through AppKit itself (src/branding.rs).
+objc2 = "0.6.4"
+# `NSResponder` is not used by name: it is `NSApplication`'s superclass, and
+# objc2-app-kit only exports the subclass when both features are on. The legacy
+# host compiles today only because native-dialog happens to enable it.
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSApplication", "NSResponder", "NSImage"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSString"] }

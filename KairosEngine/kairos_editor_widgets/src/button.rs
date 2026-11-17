@@ -3,8 +3,10 @@
 //! The editor chrome has a few button shapes that egui's default `Button` cannot
 //! express without per-call style patching: Unity-style menu bar items (square,
 //! bar-height hover fill), Console toolbar segments (fixed width, optional caret,
-//! toggle state), and image-only buttons (the engine logo). [`Button`] takes one
-//! reusable [`ButtonStyle`] and paints all of them.
+//! toggle state), and image-only buttons (the engine logo, the Profiler's record
+//! toggle). [`Button`] takes one reusable [`ButtonStyle`] and paints all of them;
+//! [`Button::icon_only`] is the constructor for a button that is nothing but an
+//! icon.
 //!
 //! The widget is pure appearance: it returns an `egui::Response` and never emits
 //! a domain action. Components map `clicked()` to their own `Action`.
@@ -39,7 +41,7 @@ pub struct ButtonStyle {
     pub corner_radius: CornerRadius,
     /// Horizontal text padding, vertical content padding.
     pub padding: Vec2,
-    /// Default height; a button may override it.
+    /// Default height (a floor: the button also grows to fit its content).
     pub height: f32,
     /// Distance from the right edge to the centre of the optional caret.
     pub caret_inset: f32,
@@ -102,6 +104,8 @@ pub struct Button<'a> {
     padding: Option<Vec2>,
     align: ButtonAlign,
     icon: Option<Icon<'a>>,
+    /// `true` for [`Button::icon_only`]: a label-less button sized to its icon.
+    icon_only: bool,
     caret: bool,
     caret_inset: Option<f32>,
     /// `Some(true)` paints the active fill and marks the widget as selected,
@@ -122,6 +126,7 @@ impl<'a> Button<'a> {
             padding: None,
             align: ButtonAlign::Left,
             icon: None,
+            icon_only: false,
             caret: false,
             caret_inset: None,
             selected: None,
@@ -131,13 +136,37 @@ impl<'a> Button<'a> {
         }
     }
 
+    /// An image-only button: no label, centred icon, square by default.
+    ///
+    /// The rect is sized by the icon, not by the style padding: its height is
+    /// at least `size` plus the style's vertical padding, and without an
+    /// explicit [`Button::width`] it is a square of that height — Unity's
+    /// toolbar turns a 16 px icon into a 20 × 20 toggle exactly this way. A
+    /// larger icon makes the button larger instead of overhanging the fill.
+    ///
+    /// Give it a [`Button::tooltip`]: the tooltip doubles as the accessible
+    /// label, which is the only name an icon-only button has.
+    pub fn icon_only(icon: &'a str, size: f32, style: &'a ButtonStyle) -> Self {
+        let mut button = Self::new("", style)
+            .icon(icon, size)
+            .align(ButtonAlign::Center);
+        button.icon_only = true;
+        button
+    }
+
     /// Pin the width (Console segments are measured; default is text width).
+    ///
+    /// For an icon-only button the pinned width wins over the square default,
+    /// so a wide segment with a centred icon is just `width(..)`.
     pub fn width(mut self, width: f32) -> Self {
         self.width = Some(width);
         self
     }
 
-    /// Pin the height (defaults to the style height).
+    /// Set a minimum height (defaults to the style height).
+    ///
+    /// The final height is this value or the content height, whichever is
+    /// larger: an icon never overhangs the button it was added to.
     pub fn height(mut self, height: f32) -> Self {
         self.height = Some(height);
         self
@@ -205,24 +234,39 @@ impl Widget for Button<'_> {
             self.style.text.text_color().gamma_multiply(0.5)
         };
 
-        let galley = ui.painter().layout_no_wrap(
-            self.text.to_owned(),
-            self.style.text.font_id(ui.style()),
-            color,
-        );
+        // An empty label lays out no text at all: an icon-only button must not
+        // reserve a text line, and must not depend on the text style's size.
         let has_text = !self.text.is_empty();
+        let galley = has_text.then(|| {
+            ui.painter().layout_no_wrap(
+                self.text.to_owned(),
+                self.style.text.font_id(ui.style()),
+                color,
+            )
+        });
+        let text_size = galley.as_ref().map_or(Vec2::ZERO, |galley| galley.size());
         let icon_size = self.icon.as_ref().map_or(0.0, |icon| icon.size);
         let icon_gap = if has_text && self.icon.is_some() {
             ICON_GAP
         } else {
             0.0
         };
-        let content_width = icon_size + icon_gap + galley.size().x;
-        let width = self.width.unwrap_or(content_width + 2.0 * padding.x);
+        let content_width = icon_size + icon_gap + text_size.x;
+        let content_height = icon_size.max(text_size.y);
+        // The rect always covers the content: a bigger icon grows the button
+        // instead of overhanging its fill. The style height (or an explicit
+        // one) is a floor, not a cap.
         let height = self
             .height
             .unwrap_or(self.style.height)
-            .max(galley.size().y + 2.0 * padding.y);
+            .max(content_height + 2.0 * padding.y);
+        let width = self.width.unwrap_or(if self.icon_only {
+            // Unity's toolbar toggles are square: the icon plus the vertical
+            // padding is both the width and the height (16 + 2 + 2 = 20 px).
+            height
+        } else {
+            content_width + 2.0 * padding.x
+        });
 
         let (auto_id, rect) = ui.allocate_space(vec2(width, height));
         let id = self.id.unwrap_or(auto_id);
@@ -256,13 +300,22 @@ impl Widget for Button<'_> {
                 egui::pos2(content_left + icon.size * 0.5, rect.center().y),
                 Vec2::splat(icon.size),
             );
-            crate::ui_image::paint(ui, icon_rect, icon.path, Color32::WHITE);
+            // The artwork is pre-coloured for its skin, so only the tint can
+            // express "disabled" for an icon-only button.
+            let tint = if enabled {
+                Color32::WHITE
+            } else {
+                Color32::WHITE.gamma_multiply(0.5)
+            };
+            crate::ui_image::paint(ui, icon_rect, icon.path, tint);
         }
-        let text_pos = egui::pos2(
-            content_left + icon_size + icon_gap,
-            rect.center().y - galley.size().y * 0.5,
-        );
-        ui.painter().galley(text_pos, galley, color);
+        if let Some(galley) = galley {
+            let text_pos = egui::pos2(
+                content_left + icon_size + icon_gap,
+                rect.center().y - galley.size().y * 0.5,
+            );
+            ui.painter().galley(text_pos, galley, color);
+        }
 
         if self.caret {
             let inset = self.caret_inset.unwrap_or(self.style.caret_inset);
@@ -368,6 +421,42 @@ mod tests {
             rects(&output).contains(&rect),
             "a selected toggle paints its active fill over {rect:?}"
         );
+    }
+
+    /// Draw one icon-only button and read back its rect.
+    fn measured(style: &ButtonStyle, icon_size: f32, height: Option<f32>) -> Rect {
+        let ctx = Context::default();
+        let id = Id::new("kairos-icon-button");
+        let _ = ctx.run_ui(input(), |ui| {
+            let button = Button::icon_only("icon.png", icon_size, style).id(id);
+            ui.add(match height {
+                Some(height) => button.height(height),
+                None => button,
+            });
+        });
+        ctx.read_response(id).expect("button response").rect
+    }
+
+    #[test]
+    fn icon_only_buttons_are_square_and_follow_the_icon_size() {
+        let style = style();
+
+        // A small icon sits inside the style height: Unity's 16 px toolbar icon
+        // in a 20 px row is a 20 × 20 button, independent of the text padding.
+        let small = measured(&style, 16.0, None);
+        assert_eq!(small.size(), vec2(23.0, 23.0));
+
+        // A larger icon grows the button instead of overhanging the fill.
+        let large = measured(&style, 30.0, None);
+        assert_eq!(large.size(), vec2(34.0, 34.0));
+    }
+
+    #[test]
+    fn a_pinned_height_still_covers_a_larger_icon() {
+        let style = style();
+        let rect = measured(&style, 30.0, Some(23.0));
+        assert_eq!(rect.height(), 34.0);
+        assert_eq!(rect.width(), rect.height());
     }
 
     #[test]

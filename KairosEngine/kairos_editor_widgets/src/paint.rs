@@ -7,8 +7,7 @@
 //! and the *values* (colours, sizes); this module only knows how to paint.
 
 use egui::{
-    Color32, CornerRadius, Painter, Pos2, Rect, Response, Shape, Stroke, WidgetInfo, WidgetType,
-    pos2, vec2,
+    Color32, Painter, Pos2, Response, Shape, Stroke, WidgetInfo, WidgetType, pos2, vec2,
 };
 
 /// A downward-pointing caret, used by split buttons and dropdown triggers.
@@ -31,11 +30,6 @@ pub fn magnifier(painter: &Painter, center: Pos2, color: Color32) {
         [center + vec2(1.8, 1.8), center + vec2(4.2, 4.2)],
         Stroke::new(1.2, color),
     );
-}
-
-/// A 1 px vertical chrome line, e.g. a toolbar segment separator.
-pub fn vertical_line(painter: &Painter, rect: Rect, color: Color32) {
-    painter.rect_filled(rect, CornerRadius::ZERO, color);
 }
 
 /// Register a hand-painted control with egui's accessibility tree.
