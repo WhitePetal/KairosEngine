@@ -102,6 +102,34 @@ fn captures_nested_scopes_with_parent_links() {
 }
 
 #[test]
+fn scope_metadata_carries_the_marker_category() {
+    let test = TestSession::new();
+    test.start();
+    {
+        crate::scope!(Category::Editor, "Kairos.Editor.Panel");
+        // Third-party scopes open their markers directly, without a tag: the
+        // parser must still classify the known presentation waits.
+        crate::profiling::scope!("Surface::get_current_texture");
+    }
+    test.commit();
+
+    let session = test.profiler().session();
+    let editor = session
+        .scopes
+        .iter()
+        .find(|scope| scope.name == "Kairos.Editor.Panel")
+        .expect("the tagged marker is in the scope table");
+    assert_eq!(editor.category, Category::Editor);
+
+    let vsync = session
+        .scopes
+        .iter()
+        .find(|scope| scope.name == "Surface::get_current_texture")
+        .expect("the untagged marker is in the scope table");
+    assert_eq!(vsync.category, Category::Vsync);
+}
+
+#[test]
 fn categories_attribute_exclusive_time_and_skip_the_scheduler_wrapper() {
     let test = TestSession::new();
     test.start();

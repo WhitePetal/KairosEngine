@@ -17,11 +17,15 @@
 //! component writes the code defaults once, so the file is also the documented
 //! starting point for a custom skin.
 //!
+//! Tests redirect that directory with [`set_style_root`] so a test run never
+//! drops a `Preferences` tree into the crate it runs in.
+//!
 //! Colors in style structs are `kairos_color::Color32` values: that crate's
 //! serde impls write them as `"#RRGGBB"` (or `"#RRGGBBAA"` when translucent),
 //! keeping RON human-editable. This crate does not depend on the color crate
 //! itself; each component picks the types its style needs.
 
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -30,6 +34,28 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 /// directory (same convention as `Preferences/Fonts` and
 /// `Preferences/Textures`).
 pub const STYLE_DIR: &str = "Preferences/Styles";
+
+thread_local! {
+    /// Current thread's style root. Tests set it on their own thread, so
+    /// parallel test binaries/threads cannot leak a scratch directory into each
+    /// other; the editor never sets it.
+    static STYLE_ROOT: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
+}
+
+/// Redirect style files to `root` for the current thread.
+///
+/// Intended for tests and embedders that must not write into the process
+/// working directory; the editor uses [`STYLE_DIR`].
+#[doc(hidden)]
+pub fn set_style_root(root: impl AsRef<Path>) {
+    STYLE_ROOT.with(|cell| *cell.borrow_mut() = Some(root.as_ref().to_path_buf()));
+}
+
+fn style_root() -> PathBuf {
+    STYLE_ROOT
+        .with(|cell| cell.borrow().clone())
+        .unwrap_or_else(|| PathBuf::from(STYLE_DIR))
+}
 
 /// One component's style: a dark/light pair plus the file it persists to.
 ///
@@ -63,9 +89,9 @@ impl<S: Style> StyleFile<S> {
         }
     }
 
-    /// `Preferences/Styles/<S::FILE>`.
+    /// `Preferences/Styles/<S::FILE>` (or the redirected root in tests).
     pub fn path() -> PathBuf {
-        Path::new(STYLE_DIR).join(S::FILE)
+        style_root().join(S::FILE)
     }
 
     pub fn load_from(path: &Path) -> Result<Self, String> {
@@ -101,9 +127,8 @@ impl<S: Style> StyleFile<S> {
         Self::load_or_create_at(&Self::path())
     }
 
-    /// Load the style file, falling back to code defaults when it does not exist
-    /// yet. Used by components at init; use [`StyleFile::save_to`] (or the
-    /// `export_styles` example) to materialize the defaults on disk.
+    /// Load the style file, creating it from the code defaults when it does not
+    /// exist yet.
     pub fn load_or_default() -> Result<Self, String> {
         let path = Self::path();
         if path.is_file() {
@@ -166,5 +191,33 @@ mod tests {
         assert_eq!(loaded.light, TestStyle::light());
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The redirect is what keeps a test run from writing `Preferences/` into
+    /// the crate directory; `load_or_default` still seeds the file there.
+    #[test]
+    fn load_or_default_seeds_the_redirected_root() {
+        let root = std::env::temp_dir().join(format!(
+            "kairos-style-root-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        set_style_root(&root);
+        assert_eq!(
+            StyleFile::<TestStyle>::path(),
+            root.join("TestStyle.ron")
+        );
+
+        let seeded = StyleFile::<TestStyle>::load_or_default().expect("seed defaults");
+        assert_eq!(seeded.dark, TestStyle::dark());
+        assert_eq!(seeded.light, TestStyle::light());
+        assert!(
+            root.join("TestStyle.ron").is_file(),
+            "load_or_default creates the RON file when it is missing"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        set_style_root(STYLE_DIR);
     }
 }

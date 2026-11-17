@@ -2,7 +2,8 @@
 //!
 //! The panel owns no capture data. It reads the
 //! [`kairos_profile::ProfileSession`] through [`crate::HostView::profiler`], keeps
-//! only view state (recording flag, selected frame, live-follow) and draws three
+//! only view state (recording flag, selected frame, live-follow, the selected
+//! block) and draws three
 //! bands, top to bottom, the way Unity lays out its Profiler window:
 //!
 //! * **toolbar** — record toggle, frame transport, `Frame: n / m`, Clear,
@@ -35,11 +36,35 @@
 //! of their own: what they measure is their children's work, counted where it
 //! ran, and the remainder becomes `Others`.
 //!
+//! The timeline paints every block in its category's colour and labels it
+//! `Category · marker (duration)` (a system block uses the short system name
+//! from its data, and the duration is the block's inclusive time — the number
+//! Unity prints after the name). That tag is a property of each block, not a
+//! contiguous region: with ECS parallelism one module's systems can run on
+//! several workers or interleave with other work on a lane. The block still
+//! reads as its module — for example a third-party
+//! `Surface::get_current_texture` block reads as
+//! `VSync · Surface::get_current_texture (0.021ms)`.
+//!
 //! # Timeline lanes
 //!
 //! Rows come from the capture's registered thread lanes — the frame thread plus
 //! every task-pool worker — not from the selected frame's threads, so a worker
 //! that ran nothing keeps its row instead of the tracks shifting between frames.
+//!
+//! # Timeline selection
+//!
+//! Clicking a block selects it, like Unity: the block keeps a 1 px outline and a
+//! details box opens under it with `Copy` / `Show` buttons. The box reports the
+//! block's own time and, only when that adds information, the marker's
+//! accumulated time in the selected frame — like Unity's
+//! `ProfilerTimelineGUI.DoSelectionTooltip`: the section needs more than one
+//! instance in the frame, the thread line more than one instance on the block's
+//! thread, and the frame line instances on other threads too. A block that ran
+//! once on one thread therefore shows nothing but its name and time. `Copy` puts
+//! that text on the clipboard. Clicking the same block again, or empty track,
+//! dismisses it. A click also turns Live off: the box describes one frame, and a
+//! capture that is still recording would replace that frame every tick.
 //!
 //! # Not implemented yet (the seams are marked `TODO(profiler)` in the code)
 //!
@@ -50,8 +75,13 @@
 //! * the full per-system ranking: the legend only has the rows the module area
 //!   leaves free, so it shows the top few and `+N more`; a details pane (Unity's
 //!   Hierarchy view) is where the whole list belongs;
-//! * GPU timings, per-marker colours (the timeline still indexes the palette by
-//!   scope id) and sample selection / hover details;
+//! * GPU timings, per-marker colour overrides (the timeline uses the category
+//!   palette), hover details (a block reports after a click, not on hover) and
+//!   the details box's Show menu (Unity lists the block in the Hierarchy / Raw
+//!   views, opens its call stack and jumps to the source line);
+//! * the tooltip's cross-frame line (Unity's `0.53ms total over 3 frames on
+//!   thread '…'`): it needs samples that span frames to be linked, and the
+//!   capture currently parses each frame on its own;
 //! * a pinned header: the panel is inside the dock's scroll area, so a long
 //!   thread list scrolls the toolbar and module area away with it (Unity keeps
 //!   them fixed; that needs an inner scroll area for the tracks only).
@@ -71,13 +101,14 @@ use kairos_editor_core::PanelId;
 use kairos_editor_widgets::button::{Button, ButtonAlign, ButtonStyle};
 use kairos_editor_widgets::color::Color32Ext;
 use kairos_editor_widgets::divider::Divider;
+use kairos_editor_widgets::paint;
 use kairos_editor_widgets::style::{Style, StyleFile};
 use kairos_editor_widgets::text::TextStyle;
 use kairos_editor_widgets::ui_image;
 use kairos_profile::profiling::puffin::{self, GlobalFrameView, MergeScope, NanoSecond, ScopeCollection, StreamInfo, ThreadInfo, UnpackedFrameData};
 use kairos_profile::{
     CaptureFiles, Category, FrameSnapshot, HierarchyRow, ProfileSession, Profiler, SYSTEM_MARKER,
-    ScopeInfo, ThreadSnapshot, hierarchy, strip_tag,
+    SampleSnapshot, ScopeInfo, ThreadSnapshot, classify_system, hierarchy, strip_tag,
 };
 
 use crate::frame::{Frame, UiOut};
@@ -134,6 +165,22 @@ impl Lane {
             (true, None) => "Unknown thread".to_owned(),
         }
     }
+}
+
+/// The timeline block the user selected.
+///
+/// Samples carry no stable id, so the selection addresses one by position: the
+/// frame it was clicked in, the timeline row, and the index in that thread's
+/// pre-order sample list. Stepping to another frame makes it stale, so
+/// [`ProfilerPanel::timeline`] clears it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Selection {
+    /// Frame ordinal the block belongs to.
+    frame: usize,
+    /// Index into the timeline's lanes.
+    lane: usize,
+    /// Index into the lane's thread samples.
+    sample: usize,
 }
 
 pub struct Streams {
@@ -255,6 +302,9 @@ pub(crate) struct ProfilerPanel {
     /// [`Category`]. Unity's swatches are toggles: a hidden category keeps its
     /// row and its time, and leaves the chart's stack.
     hidden: [bool; Category::COUNT],
+    /// The timeline block the user clicked: it keeps an outline, and the
+    /// details box describes it until another block or empty track is clicked.
+    selection: Option<Selection>,
 }
 
 impl Default for ProfilerPanel {
@@ -273,6 +323,7 @@ impl Default for ProfilerPanel {
             cached: None,
             save: None,
             hidden: [false; Category::COUNT],
+            selection: None,
         }
     }
 }
@@ -1045,22 +1096,6 @@ impl ProfilerPanel {
             .sum()
     }
 
-    /// Stable marker colour: the palette entry picked by the scope id. The
-    /// capture does not record per-marker colours yet (Unity lets the user set
-    /// them), so the id is the only stable key.
-    fn sample_color(&self, scope: u32) -> egui::Color32 {
-        let palette = &self.style.palette;
-        let index = scope as usize % palette.len().max(1);
-        palette
-            .get(index)
-            .map_or(egui::Color32::LIGHT_GRAY, |color| color.to_egui())
-    }
-
-    fn scope_name(&self, scope: u32) -> Option<&str> {
-        let cached = self.cached.as_ref()?;
-        scope_info(&cached.scopes, scope).map(|info| info.name.as_str())
-    }
-
     // -----------------------------------------------------------------------
     // Timeline — header, ruler, thread tracks.
     // -----------------------------------------------------------------------
@@ -1098,9 +1133,20 @@ impl ProfilerPanel {
             self.paint_ruler(ui, ruler, &ticks);
 
             let Some(frame) = session.frames.get(self.selected_frame) else {
+                self.selection = None;
                 self.paint_empty_timeline(ui);
                 return;
             };
+            let frame_index = self.selected_frame;
+
+            // The selection addresses one frame's samples: stepping the
+            // transport or a new capture makes it stale.
+            let stale = self.selection.is_some_and(|selection| {
+                selection.frame != frame_index || selection.lane >= self.lanes().len()
+            });
+            if stale {
+                self.selection = None;
+            }
 
             // TODO(profiler): Unity groups threads (JOB / LOADING / SCRIPTING …)
             // into collapsible rows with a thread count; the capture reports flat
@@ -1111,15 +1157,69 @@ impl ProfilerPanel {
             // Rows come from the capture's lane registry, not from this frame's
             // threads: a task-pool worker that ran nothing keeps its row (an
             // empty track) instead of the tracks shifting between frames.
-            for lane in self.lanes() {
+            let mut clicked: Option<(usize, usize, Rect)> = None;
+            let mut row_clicked = false;
+            let mut selected_bar = None;
+            for (lane_index, lane) in self.lanes().iter().enumerate() {
                 let thread = lane
                     .id
                     .and_then(|id| frame.threads.iter().find(|thread| thread.id == id));
                 let levels = thread.map_or(1, |thread| thread.depth().max(1)) as f32;
                 let height =
                     levels * self.style.level_height + 2.0 * self.style.thread_row_padding;
-                let (row, _) = ui.allocate_exact_size(egui::vec2(width, height), Sense::hover());
-                self.paint_thread_row(ui, row, lane, thread, &session.scopes, &ticks, duration_ns);
+                let (row, response) =
+                    ui.allocate_exact_size(egui::vec2(width, height), Sense::click());
+                let selected = self.selection.and_then(|selection| {
+                    (selection.lane == lane_index).then_some(selection.sample)
+                });
+                let outcome = self.paint_thread_row(
+                    ui,
+                    &response,
+                    row,
+                    lane,
+                    thread,
+                    &session.scopes,
+                    &ticks,
+                    duration_ns,
+                    selected,
+                );
+                row_clicked |= response.clicked();
+                if let Some((sample, bar)) = outcome.clicked {
+                    clicked = Some((lane_index, sample, bar));
+                }
+                if let Some(bar) = outcome.selected {
+                    selected_bar = Some(bar);
+                }
+            }
+
+            // A click selects the block under the pointer; a second click on the
+            // same block — or a click on empty track — dismisses the details box.
+            if let Some((lane, sample, bar)) = clicked {
+                let hit = Selection {
+                    frame: frame_index,
+                    lane,
+                    sample,
+                };
+                self.selection = (self.selection != Some(hit)).then_some(hit);
+                selected_bar = self.selection.is_some().then_some(bar);
+                if self.selection.is_some() {
+                    // The box describes one frame; pin the capture so the next
+                    // recorded frame cannot swap it out from under the click.
+                    self.follow_latest = false;
+                    // This pass painted the row before the click was known, so
+                    // paint the outline on the newly selected block now; the
+                    // next pass paints it from the selection.
+                    ui.painter().rect_stroke(
+                        bar,
+                        CornerRadius::same(1),
+                        Stroke::new(1.0, self.style.selection_outline.to_egui()),
+                        StrokeKind::Inside,
+                    );
+                }
+                ui.ctx().request_repaint();
+            } else if row_clicked {
+                self.selection = None;
+                ui.ctx().request_repaint();
             }
 
             // Fill the rest of the panel so the tracks read as one surface.
@@ -1128,6 +1228,20 @@ impl ProfilerPanel {
                 ui.painter()
                     .rect_filled(rest, CornerRadius::ZERO, self.style.track_bg.to_egui());
             }
+
+            // The details box floats over the tracks, after the fill so the
+            // fill cannot cover it.
+            let Some(bar) = selected_bar else {
+                return;
+            };
+            let Some(selection) = self.selection else {
+                return;
+            };
+            let Some(details) = selection_details(frame, &session.scopes, self.lanes(), selection)
+            else {
+                return;
+            };
+            self.paint_selection_details(ui, bar, &details);
         });
     }
 
@@ -1245,16 +1359,24 @@ impl ProfilerPanel {
             );
     }
 
+    /// One thread's track: the name column, the grid and the sample blocks.
+    ///
+    /// Returns what the pass produced for the timeline's selection: the block
+    /// under a click, and the selected block's rect so the details box can
+    /// anchor to it.
     fn paint_thread_row(
         &self,
         ui: &Ui,
+        response: &Response,
         row: Rect,
         lane: &Lane,
         thread: Option<&ThreadSnapshot>,
         scopes: &[ScopeInfo],
         ticks: &[RulerTick],
         duration_ns: u64,
-    ) {
+        selected: Option<usize>,
+    ) -> RowOutcome {
+        let mut outcome = RowOutcome::default();
         let name_width = self.style.timeline_name_width.min(row.width());
         let name_col =
             Rect::from_min_max(row.min, egui::pos2(row.left() + name_width, row.bottom()));
@@ -1308,7 +1430,8 @@ impl ProfilerPanel {
 
         if duration_ns > 0 {
             let mut labels = MAX_SAMPLE_LABELS;
-            for sample in thread.map_or(&[][..], |thread| thread.samples.as_slice()) {
+            let samples = thread.map_or(&[][..], |thread| thread.samples.as_slice());
+            for (index, sample) in samples.iter().enumerate() {
                 let start = sample.start_ns.min(duration_ns) as f64 / duration_ns as f64;
                 let end = sample
                     .start_ns
@@ -1329,7 +1452,9 @@ impl ProfilerPanel {
                     continue;
                 }
 
-                let color = self.sample_color(sample.scope);
+                let info = scope_info(scopes, sample.scope);
+                let category = sample_category(sample, info);
+                let color = self.category_color(category);
                 painter.rect_filled(bar, CornerRadius::same(1), color);
                 painter.rect_stroke(
                     bar,
@@ -1338,16 +1463,40 @@ impl ProfilerPanel {
                     StrokeKind::Inside,
                 );
 
+                // Unity marks the selected block with a 1 px light frame over
+                // its category colour.
+                if selected == Some(index) {
+                    outcome.selected = Some(bar);
+                    painter.rect_stroke(
+                        bar,
+                        CornerRadius::same(1),
+                        Stroke::new(1.0, self.style.selection_outline.to_egui()),
+                        StrokeKind::Inside,
+                    );
+                }
+
+                // A click picks the block under the pointer. Blocks on one row
+                // never overlap, but deeper samples are painted later, so the
+                // last match is the topmost one.
+                if response.clicked() {
+                    if let Some(pos) = response.interact_pointer_pos() {
+                        if bar.contains(pos) {
+                            outcome.clicked = Some((index, bar));
+                        }
+                    }
+                }
+
                 // Labels are expensive; only paint them where they fit, and cap
                 // them per row so a dense frame stays interactive.
                 if labels > 0 && bar.width() >= 34.0 {
-                    if let Some(scope) = scope_info(scopes, sample.scope) {
+                    if let Some(info) = info {
                         labels -= 1;
+                        let label = sample_label(sample, Some(info));
                         let clip = bar.shrink2(egui::vec2(2.0, 0.0));
                         painter.with_clip_rect(clip).text(
                             egui::pos2(clip.left() + 1.0, bar.center().y),
                             Align2::LEFT_CENTER,
-                            &scope.name,
+                            &label,
                             self.small_font(),
                             self.style.sample_text.to_egui(),
                         );
@@ -1367,6 +1516,216 @@ impl ProfilerPanel {
                     egui::vec2(row.width(), self.style.separator_width),
                 ),
             );
+
+        outcome
+    }
+
+    // -----------------------------------------------------------------------
+    // Timeline selection — the selected block's outline and Unity's details box.
+    // -----------------------------------------------------------------------
+
+    /// Unity's details box for the selected block.
+    ///
+    /// It floats over the tracks, anchored under the clicked block and clamped
+    /// inside the timeline viewport. The box swallows clicks (only another block
+    /// or empty track dismisses it) and its buttons are registered after it,
+    /// which keeps them on top for egui's hit test.
+    fn paint_selection_details(&self, ui: &mut Ui, anchor: Rect, details: &SelectionDetails) {
+        let style = &self.style;
+        let padding = 8.0;
+        let gap = 2.0;
+        let section_gap = 8.0;
+        let body_font = FontId::proportional(style.small_text_size + 1.0);
+        let wrap = (style.selection_width - 2.0 * padding).max(80.0);
+        let painter = ui.painter();
+
+        // Measure first: the box is sized by its content, like Unity's.
+        let title = painter.layout(
+            details.title.clone(),
+            FontId::proportional(style.toolbar_text_size + 1.0),
+            style.sample_text.to_egui(),
+            wrap,
+        );
+        let duration = painter.layout(
+            duration_text(details.duration_ns),
+            body_font.clone(),
+            style.sample_text.to_egui(),
+            wrap,
+        );
+        let body: Vec<_> = details
+            .accumulated_lines()
+            .into_iter()
+            .map(|line| painter.layout(line, body_font.clone(), style.ruler_text.to_egui(), wrap))
+            .collect();
+
+        // Unity's buttons: Copy and Show (with a caret), measured from their
+        // labels so the box grows with the text.
+        let button_height = style.toolbar_height;
+        let measure = |text: &str| {
+            painter
+                .layout_no_wrap(
+                    text.to_owned(),
+                    body_font.clone(),
+                    style.toolbar_text.to_egui(),
+                )
+                .size()
+                .x
+        };
+        let copy_width = (measure("Copy") + 24.0).max(54.0);
+        let show_width = (measure("Show") + 36.0).max(54.0);
+
+        let title_size = title.size();
+        let duration_size = duration.size();
+        let body_sizes: Vec<egui::Vec2> = body.iter().map(|line| line.size()).collect();
+        let mut content_width = title_size.x.max(duration_size.x);
+        let mut content_height = title_size.y + gap + duration_size.y;
+        for (index, size) in body_sizes.iter().enumerate() {
+            content_width = content_width.max(size.x);
+            content_height += if index == 0 { section_gap } else { gap } + size.y;
+        }
+        content_width = content_width.max(copy_width + 3.0 * gap + show_width);
+        let width = (content_width + 2.0 * padding).min(style.selection_width);
+        let height = content_height + section_gap + button_height + 2.0 * padding;
+
+        let viewport = ui.clip_rect();
+        if !viewport.intersects(anchor) {
+            return;
+        }
+        let mut pos = egui::pos2(anchor.left(), anchor.bottom() + 4.0);
+        if pos.y + height > viewport.bottom() - 4.0 {
+            pos.y = anchor.top() - height - 4.0;
+        }
+        pos.y = pos.y.clamp(
+            viewport.top() + 4.0,
+            (viewport.bottom() - height - 4.0).max(viewport.top() + 4.0),
+        );
+        pos.x = pos.x.clamp(
+            viewport.left() + 4.0,
+            (viewport.right() - width - 4.0).max(viewport.left() + 4.0),
+        );
+        let box_rect = Rect::from_min_size(pos, egui::vec2(width, height));
+        let painter = painter.with_clip_rect(viewport);
+
+        // Unity's popup: a raised dark panel with a drop shadow.
+        painter.add(
+            egui::epaint::Shadow {
+                offset: [0, 3],
+                blur: 10,
+                spread: 0,
+                color: egui::Color32::from_black_alpha(120),
+            }
+            .as_shape(box_rect, CornerRadius::same(3)),
+        );
+        painter.rect_filled(
+            box_rect,
+            CornerRadius::same(3),
+            style.selection_bg.to_egui(),
+        );
+        painter.rect_stroke(
+            box_rect,
+            CornerRadius::same(3),
+            Stroke::new(1.0, style.selection_border.to_egui()),
+            StrokeKind::Inside,
+        );
+
+        // The box takes clicks away from the track rows underneath; its buttons
+        // are added after it, so they win the hit test.
+        let _ = ui.interact(
+            box_rect,
+            ui.id().with("profiler.selection.box"),
+            Sense::click(),
+        );
+
+        let left = box_rect.left() + padding;
+        let mut top = box_rect.top() + padding;
+        // Unity's title and duration are the brightest text in the box; the
+        // accumulated lines below are dim.
+        let text_color = style.sample_text.to_egui();
+        painter.galley(egui::pos2(left, top), title, text_color);
+        top += title_size.y + gap;
+        painter.galley(egui::pos2(left, top), duration, text_color);
+        top += duration_size.y;
+        // The accumulated section is optional (Unity omits it for a single
+        // instance), so only spend the gap between the time and the buttons when
+        // there is something in between.
+        if !body_sizes.is_empty() {
+            top += section_gap;
+        }
+        for (index, line) in body.into_iter().enumerate() {
+            if index > 0 {
+                top += gap;
+            }
+            painter.galley(egui::pos2(left, top), line, style.ruler_text.to_egui());
+            top += body_sizes[index].y;
+        }
+        top += section_gap;
+
+        let copy_rect = Rect::from_min_size(
+            egui::pos2(left, top),
+            egui::vec2(copy_width, button_height),
+        );
+        if self
+            .paint_selection_button(ui, copy_rect, "Copy", false)
+            .clicked()
+        {
+            ui.ctx().copy_text(details.copy_text());
+        }
+        let show_rect = copy_rect.translate(egui::vec2(copy_width + 3.0 * gap, 0.0));
+        if self
+            .paint_selection_button(ui, show_rect, "Show", true)
+            .clicked()
+        {
+            // TODO(profiler): Unity's Show menu lists the block in the Hierarchy
+            // and Raw views, opens its call stack and jumps to the source line.
+            // The capture carries each marker's `file:line`, so the menu can be
+            // wired once those views are back in the panel.
+        }
+    }
+
+    /// One button of the details box: Unity's small raised Copy / Show chips.
+    fn paint_selection_button(
+        &self,
+        ui: &mut Ui,
+        rect: Rect,
+        label: &str,
+        caret: bool,
+    ) -> Response {
+        let response = ui.interact(
+            rect,
+            ui.id().with(("profiler.selection.button", label)),
+            Sense::click(),
+        );
+        let fill = if response.is_pointer_button_down_on() {
+            self.style.click_bg.to_egui().gamma_multiply(0.85)
+        } else if response.hovered() {
+            self.style.click_bg.to_egui()
+        } else {
+            self.style.hover_bg.to_egui()
+        };
+        let color = self.style.toolbar_text.to_egui();
+        let painter = ui.painter();
+        painter.rect_filled(rect, CornerRadius::same(2), fill);
+        painter.rect_stroke(
+            rect,
+            CornerRadius::same(2),
+            Stroke::new(1.0, self.style.selection_border.to_egui()),
+            StrokeKind::Inside,
+        );
+        let font = FontId::proportional(self.style.small_text_size + 1.0);
+        let center = if caret {
+            rect.center() - egui::vec2(4.0, 0.0)
+        } else {
+            rect.center()
+        };
+        painter.text(center, Align2::CENTER_CENTER, label, font, color);
+        if caret {
+            paint::caret(
+                painter,
+                egui::pos2(rect.right() - 10.0, rect.center().y),
+                color,
+            );
+        }
+        response
     }
 
     fn paint_empty_timeline(&self, ui: &Ui) {
@@ -1438,6 +1797,8 @@ impl ProfilerPanel {
         self.selected_frame = 0;
         self.follow_latest = true;
         self.thread = None;
+        // The selection addresses one frame of the capture being cleared.
+        self.selection = None;
         // A new capture invalidates the previously written files' contents.
         self.save = None;
     }
@@ -1627,6 +1988,51 @@ fn scope_info(scopes: &[ScopeInfo], id: u32) -> Option<&ScopeInfo> {
         .binary_search_by_key(&id, |scope| scope.id)
         .ok()
         .map(|index| &scopes[index])
+}
+
+/// The module a timeline block belongs to.
+///
+/// Most markers answer from their scope metadata, which the parser filled from
+/// the call site's tag (or from the fallback table for third-party scopes). The
+/// executor's shared `Kairos.System` marker is the exception: which system ran,
+/// and therefore which module it belongs to, is per-sample data.
+fn sample_category(sample: &SampleSnapshot, scope: Option<&ScopeInfo>) -> Category {
+    match scope {
+        Some(info) if info.name == SYSTEM_MARKER => classify_system(sample.data.as_deref()),
+        Some(info) => info.category,
+        None => Category::Others,
+    }
+}
+
+/// The text painted inside a timeline block: `Category · marker (duration)`.
+///
+/// The category comes first so even a clipped label says what the block is:
+/// `Surface::get_current_texture` reads as `VSync · ...`. The duration after
+/// the name is the block's inclusive time, the number Unity prints there.
+fn sample_label(sample: &SampleSnapshot, scope: Option<&ScopeInfo>) -> String {
+    format!(
+        "{} · {} ({})",
+        sample_category(sample, scope).label(),
+        sample_detail(sample, scope),
+        block_duration_text(sample.duration_ns),
+    )
+}
+
+/// The marker's own name, without its category prefix.
+///
+/// A system sample shows the short system name from its per-call data instead of
+/// the executor's shared `Kairos.System` marker.
+fn sample_detail(sample: &SampleSnapshot, scope: Option<&ScopeInfo>) -> String {
+    match scope {
+        Some(info) if info.name == SYSTEM_MARKER => sample
+            .data
+            .as_deref()
+            .map(strip_tag)
+            .map(short_system_name)
+            .unwrap_or_else(|| info.name.clone()),
+        Some(info) => info.name.clone(),
+        None => "<unknown scope>".to_owned(),
+    }
 }
 
 fn format_ms(ns: u64) -> String {
@@ -1825,12 +2231,186 @@ fn short_system_name(system: &str) -> String {
     system.rsplit("::").next().unwrap_or(system).to_owned()
 }
 
+/// What painting one thread row produced for the timeline's selection.
+#[derive(Clone, Copy, Debug, Default)]
+struct RowOutcome {
+    /// The sample the pointer clicked, with its block's rect.
+    clicked: Option<(usize, Rect)>,
+    /// The selected sample's block, when the selection is on this row.
+    selected: Option<Rect>,
+}
+
+/// Everything Unity's details box reports about the selected block.
+///
+/// Kept apart from painting so the aggregation — and the text Copy writes — is
+/// testable without an egui context.
+#[derive(Clone, Debug, PartialEq)]
+struct SelectionDetails {
+    /// Marker name without its category tag (`spin_system`).
+    title: String,
+    /// Duration of the clicked block.
+    duration_ns: u64,
+    /// Thread the block ran on, for the "on thread '…'" line.
+    thread: String,
+    /// The marker on that thread: invocations and accumulated time.
+    thread_instances: usize,
+    thread_ns: u64,
+    /// The marker across the frame: invocations, accumulated time, threads.
+    frame_instances: usize,
+    frame_ns: u64,
+    frame_threads: usize,
+}
+
+impl SelectionDetails {
+    /// Unity's "Current frame accumulated time:" block, with Unity's conditions.
+    ///
+    /// `ProfilerTimelineGUI.DoSelectionTooltip` writes the section only when the
+    /// marker has more than one instance in the frame (on this thread or
+    /// anywhere), the thread line only when it ran more than once on the clicked
+    /// block's thread, and the frame line only when it also ran on other threads.
+    /// A marker with one instance on one thread therefore gets no section at all:
+    /// the accumulation would just repeat the block's own time.
+    fn accumulated_lines(&self) -> Vec<String> {
+        if self.thread_instances <= 1 && self.frame_instances <= 1 {
+            return Vec::new();
+        }
+        let mut lines = vec!["Current frame accumulated time:".to_owned()];
+        if self.thread_instances > 1 {
+            lines.push(format!(
+                "{} for {} {} on thread '{}'",
+                duration_text(self.thread_ns),
+                self.thread_instances,
+                plural(self.thread_instances, "instance", "instances"),
+                self.thread,
+            ));
+        }
+        if self.frame_instances > self.thread_instances {
+            lines.push(format!(
+                "{} for {} {} over {} {}",
+                duration_text(self.frame_ns),
+                self.frame_instances,
+                plural(self.frame_instances, "instance", "instances"),
+                self.frame_threads,
+                plural(self.frame_threads, "thread", "threads"),
+            ));
+        }
+        lines
+    }
+
+    /// What the box's Copy button writes: the box's text, one line per line.
+    ///
+    /// Unity's Copy writes the tooltip content plus the call stack; the capture
+    /// records no call stacks, so this is the tooltip content only.
+    fn copy_text(&self) -> String {
+        let mut lines = vec![self.title.clone(), duration_text(self.duration_ns)];
+        lines.extend(self.accumulated_lines());
+        lines.join("\n")
+    }
+}
+
+/// The details box's contents for `selection`, or `None` when the selection no
+/// longer addresses a sample.
+///
+/// Unity accumulates per marker in the selected frame: the same call site with
+/// the same per-call data, which splits the executor's shared `Kairos.System`
+/// marker per system.
+fn selection_details(
+    frame: &FrameSnapshot,
+    scopes: &[ScopeInfo],
+    lanes: &[Lane],
+    selection: Selection,
+) -> Option<SelectionDetails> {
+    let lane = lanes.get(selection.lane)?;
+    let thread = frame
+        .threads
+        .iter()
+        .find(|thread| Some(thread.id) == lane.id)?;
+    let sample = thread.samples.get(selection.sample)?;
+    let scope = scope_info(scopes, sample.scope);
+    let marker = (sample.scope, sample.data.as_deref());
+
+    let mut thread_instances = 0;
+    let mut thread_ns = 0u64;
+    for other in &thread.samples {
+        if (other.scope, other.data.as_deref()) != marker {
+            continue;
+        }
+        thread_instances += 1;
+        thread_ns = thread_ns.saturating_add(other.duration_ns);
+    }
+
+    let mut frame_instances = 0;
+    let mut frame_ns = 0u64;
+    let mut frame_threads = 0;
+    for other_thread in &frame.threads {
+        let mut ran_here = 0;
+        for other in &other_thread.samples {
+            if (other.scope, other.data.as_deref()) != marker {
+                continue;
+            }
+            ran_here += 1;
+            frame_ns = frame_ns.saturating_add(other.duration_ns);
+        }
+        if ran_here > 0 {
+            frame_instances += ran_here;
+            frame_threads += 1;
+        }
+    }
+
+    Some(SelectionDetails {
+        title: sample_detail(sample, scope),
+        duration_ns: sample.duration_ns,
+        thread: thread_display_name(thread),
+        thread_instances,
+        thread_ns,
+        frame_instances,
+        frame_ns,
+        frame_threads,
+    })
+}
+
+/// A timeline block's duration, the way Unity prints it on the block: two
+/// decimals (`0.79ms`, `1.08ms`).
+fn block_duration_text(ns: u64) -> String {
+    format!("{:.2}ms", ns as f64 / 1_000_000.0)
+}
+
+/// A duration the way Unity's timeline tooltip prints it: two decimals at or
+/// above 1 ms, three below.
+///
+/// `ProfilerTimelineGUI.DoSelectionTooltip` formats the selected sample's
+/// duration and both accumulated times with `{0:f2}ms` / `{0:f3}ms`, so a
+/// 0.261 ms block reads `0.261ms` and a 1.03 ms one reads `1.03ms`.
+fn duration_text(ns: u64) -> String {
+    let ms = ns as f64 / 1_000_000.0;
+    if ms >= 1.0 {
+        format!("{ms:.2}ms")
+    } else {
+        format!("{ms:.3}ms")
+    }
+}
+
+/// The thread name Unity quotes in the details box, without the session id.
+fn thread_display_name(thread: &ThreadSnapshot) -> String {
+    if thread.name.is_empty() {
+        format!("Thread {}", thread.id)
+    } else {
+        thread.name.clone()
+    }
+}
+
+/// `1 instance` / `9 instances`.
+fn plural<'a>(count: usize, one: &'a str, many: &'a str) -> &'a str {
+    if count == 1 { one } else { many }
+}
+
 #[cfg(test)]
 mod probe {
     use super::*;
     use crate::frame::HostView;
     use egui::pos2;
     use kairos_editor_core::EditorState;
+    use kairos_profile::ScopeKind;
 
     struct NoHost;
     impl HostView for NoHost {}
@@ -1840,6 +2420,106 @@ mod probe {
         fn profiler(&self) -> Option<&Profiler> {
             Some(&self.0)
         }
+    }
+
+
+    /// Every stroked rect the pass painted, as `(rect, stroke)`.
+    fn painted_strokes(output: &egui::FullOutput) -> Vec<(Rect, Stroke)> {
+        output
+            .shapes
+            .iter()
+            .filter_map(|clipped| match &clipped.shape {
+                egui::Shape::Rect(shape) if shape.stroke != Stroke::NONE => {
+                    Some((shape.rect, shape.stroke))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// One headless pass at 900 × 640, on a caller-owned context so a test can
+    /// click what the previous pass laid out.
+    fn draw_pass(
+        ctx: &Context,
+        panel: &mut ProfilerPanel,
+        host: &ProfilerHost,
+        events: Vec<egui::Event>,
+    ) -> egui::FullOutput {
+        let state = EditorState::new();
+        let mut out = UiOut::new();
+        let mut input = egui::RawInput::default();
+        input.screen_rect = Some(Rect::from_min_size(
+            pos2(0.0, 0.0),
+            egui::vec2(900.0, 640.0),
+        ));
+        input.events = events;
+        ctx.run_ui(input, |ui| {
+            panel.ui(ui, &Frame::with_host(&state, host), &mut out);
+        })
+    }
+
+    /// One primary-button click at `pos`, as a pass's input.
+    fn click_events(pos: egui::Pos2) -> Vec<egui::Event> {
+        vec![
+            egui::Event::PointerMoved(pos),
+            egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::default(),
+            },
+            egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::default(),
+            },
+        ]
+    }
+
+    /// Top-left of the first painted text whose content starts with `prefix`.
+    fn text_pos_starting_with(output: &egui::FullOutput, prefix: &str) -> egui::Pos2 {
+        output
+            .shapes
+            .iter()
+            .find_map(|clipped| match &clipped.shape {
+                egui::Shape::Text(text) if text.galley.text().starts_with(prefix) => {
+                    Some(text.pos)
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("no text starting with {prefix:?} painted"))
+    }
+
+    /// Centre of the first painted text equal to `text`.
+    fn text_center(output: &egui::FullOutput, text: &str) -> egui::Pos2 {
+        output
+            .shapes
+            .iter()
+            .find_map(|clipped| match &clipped.shape {
+                egui::Shape::Text(shape) if shape.galley.text() == text => {
+                    Some(shape.pos + shape.galley.size() * 0.5)
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("no text {text:?} painted"))
+    }
+
+    /// Click a timeline block and return the pass that processed the click.
+    fn click_block(
+        ctx: &Context,
+        panel: &mut ProfilerPanel,
+        host: &ProfilerHost,
+        prefix: &str,
+    ) -> egui::FullOutput {
+        let first = draw_pass(ctx, panel, host, Vec::new());
+        let label = text_pos_starting_with(&first, prefix);
+        draw_pass(
+            ctx,
+            panel,
+            host,
+            click_events(label + egui::vec2(6.0, 5.0)),
+        )
     }
 
     /// Every filled rect the pass painted, as `(rect, fill)`.
@@ -1872,7 +2552,28 @@ mod probe {
         {
             kairos_profile::scope!(Category::Others, "profiler.test.frame");
             {
-                kairos_profile::scope!(Category::Others, "profiler.test.work");
+                kairos_profile::scope!(Category::Others, "profiler.test.frame");
+            }
+        }
+        profiler.end_frame(true);
+        profiler.begin_frame();
+        assert!(
+            !profiler.session().is_empty(),
+            "the fixture captured one committed frame"
+        );
+        profiler
+    }
+
+    /// Capture one frame in which `profiler.test.repeat` runs three times on
+    /// this thread, so the details box has accumulated time to report.
+    fn repeated_marker_profiler() -> Profiler {
+        let profiler = Profiler::new();
+        profiler.set_recording(true);
+        profiler.begin_frame();
+        for _ in 0..3 {
+            {
+                kairos_profile::scope!(Category::Others, "profiler.test.repeat");
+                std::thread::sleep(std::time::Duration::from_millis(1));
             }
         }
         profiler.end_frame(true);
@@ -2289,22 +2990,422 @@ mod probe {
                 "missing header text {expected:?}: {text:?}"
             );
         }
+        let root = text
+            .iter()
+            .find(|line| line.starts_with("Others · profiler.test.frame ("))
+            .unwrap_or_else(|| {
+                panic!("the root sample is labelled with its category and duration: {text:?}")
+            });
         assert!(
-            text.iter().any(|line| line == "profiler.test.frame"),
-            "the root sample is labelled: {text:?}"
+            root.ends_with("ms)"),
+            "the block's duration follows its name: {root:?}"
         );
 
-        let palette: Vec<egui::Color32> =
-            panel.style.palette.iter().map(|color| color.to_egui()).collect();
+        let palette: Vec<egui::Color32> = panel
+            .style
+            .category_palette
+            .iter()
+            .map(|color| color.to_egui())
+            .collect();
         let track_left = panel.style.timeline_name_width;
         assert!(
             painted(&output).iter().any(|(rect, fill)| {
                 rect.left() >= track_left && rect.height() >= 10.0 && palette.contains(fill)
             }),
-            "sample bars use the marker palette inside the track column"
+            "sample bars use the category palette inside the track column"
         );
     }
 
+    /// The timeline labels each block with its module first, so a third-party
+    /// marker reads as its category (`Surface::get_current_texture` → VSync),
+    /// and paints the block in that category's colour. The category is per
+    /// block, so parallel systems on different lanes still read as one module.
+    #[test]
+    fn timeline_blocks_are_named_and_coloured_by_category() {
+        let _guard = lock_profiler_tests();
+        let profiler = Profiler::new();
+        profiler.set_recording(true);
+        profiler.begin_frame();
+        {
+            kairos_profile::scope!(Category::Vsync, "Surface::get_current_texture");
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        {
+            kairos_profile::scope!(
+                Category::Others,
+                "Kairos.System",
+                "Physics/kairos_physics::physics_step_system"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        profiler.end_frame(true);
+        profiler.begin_frame();
+
+        let host = ProfilerHost(profiler);
+        let mut panel = ProfilerPanel::default();
+        let output = draw_panel(&mut panel, &host);
+        let text = painted_text(&output);
+
+        assert!(
+            text.iter()
+                .any(|line| line.starts_with("VSync · Surface::get_current_texture (")),
+            "a third-party marker is tagged with its category: {text:?}"
+        );
+        assert!(
+            text.iter()
+                .any(|line| line.starts_with("Physics · physics_step_system (")),
+            "a system block is named by its system, not `Kairos.System`: {text:?}"
+        );
+
+        let vsync = panel.style.category_palette[Category::Vsync as usize].to_egui();
+        assert!(
+            painted(&output).iter().any(|(rect, fill)| {
+                *fill == vsync
+                    && rect.left() >= panel.style.timeline_name_width
+                    && rect.height() >= 10.0
+            }),
+            "the VSync block uses the VSync category colour"
+        );
+    }
+
+
+    /// Durations read like Unity's: a block label takes two decimals, the
+    /// details box `{0:f2}` at or above 1 ms and `{0:f3}` below.
+    #[test]
+    fn durations_read_like_unitys() {
+        assert_eq!(block_duration_text(790_000), "0.79ms");
+        assert_eq!(block_duration_text(1_080_000), "1.08ms");
+        assert_eq!(duration_text(261_000), "0.261ms");
+        assert_eq!(duration_text(1_030_000), "1.03ms");
+        assert_eq!(duration_text(4_000_000), "4.00ms");
+        assert_eq!(duration_text(0), "0.000ms");
+    }
+
+    /// The details box accumulates the marker over the frame, not just the
+    /// clicked sample: Unity's "instances on thread" and "over threads".
+    #[test]
+    fn the_details_box_accumulates_a_marker_over_the_frame() {
+        let scope = ScopeInfo {
+            id: 7,
+            name: "profiler.test.worker".to_owned(),
+            location: String::new(),
+            kind: ScopeKind::Named,
+            category: Category::Others,
+        };
+        let sample = |duration_ns: u64| SampleSnapshot {
+            scope: 7,
+            data: None,
+            start_ns: 0,
+            duration_ns,
+            depth: 0,
+            parent: None,
+        };
+        let frame = FrameSnapshot {
+            index: 0,
+            source_index: 0,
+            start_ns: 0,
+            end_ns: 16_000_000,
+            threads: vec![
+                ThreadSnapshot {
+                    id: 0,
+                    name: "Main Thread".to_owned(),
+                    samples: vec![sample(2_000_000), sample(1_000_000)],
+                    warning: None,
+                },
+                ThreadSnapshot {
+                    id: 1,
+                    name: "Compute (0)".to_owned(),
+                    samples: vec![sample(4_000_000)],
+                    warning: None,
+                },
+            ],
+            categories: [0; Category::COUNT],
+        };
+        let lanes = vec![
+            Lane {
+                id: Some(0),
+                name: "Main Thread".to_owned(),
+            },
+            Lane {
+                id: Some(1),
+                name: "Compute (0)".to_owned(),
+            },
+        ];
+        let selection = Selection {
+            frame: 0,
+            lane: 1,
+            sample: 0,
+        };
+        let details = selection_details(&frame, &[scope], &lanes, selection)
+            .expect("the selection addresses a sample");
+
+        assert_eq!(details.title, "profiler.test.worker");
+        assert_eq!(details.duration_ns, 4_000_000);
+        assert_eq!(details.thread, "Compute (0)");
+        assert_eq!(details.thread_instances, 1);
+        assert_eq!(details.thread_ns, 4_000_000);
+        assert_eq!(details.frame_instances, 3);
+        assert_eq!(details.frame_ns, 7_000_000);
+        assert_eq!(details.frame_threads, 2);
+        // Unity omits the thread line when the marker ran once on that thread.
+        assert_eq!(
+            details.copy_text(),
+            "profiler.test.worker\n4.00ms\nCurrent frame accumulated time:\n\
+             7.00ms for 3 instances over 2 threads"
+        );
+    }
+
+
+    /// A selection addresses one frame's samples: stepping the transport drops
+    /// it instead of describing a block that is no longer there.
+    #[test]
+    fn stepping_to_another_frame_drops_the_selection() {
+        let _guard = lock_profiler_tests();
+        let profiler = Profiler::new();
+        profiler.set_recording(true);
+        for _ in 0..2 {
+            profiler.begin_frame();
+            {
+                kairos_profile::scope!(Category::Others, "profiler.test.frame");
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            profiler.end_frame(true);
+        }
+        profiler.begin_frame();
+
+        let host = ProfilerHost(profiler);
+        let mut panel = ProfilerPanel::default();
+        let ctx = Context::default();
+        click_block(&ctx, &mut panel, &host, "Others · profiler.test.frame (");
+        assert_eq!(panel.selected_frame, 1, "the newest frame is selected");
+        assert!(panel.selection.is_some());
+
+        // Step back one frame: the block indices no longer address this frame.
+        panel.selected_frame = 0;
+        draw_pass(&ctx, &mut panel, &host, Vec::new());
+        assert!(
+            panel.selection.is_none(),
+            "a stale selection is dropped when the frame changes"
+        );
+    }
+
+    /// Clicking a block outlines it and opens Unity's details box; selecting
+    /// also pins the frame, so the box cannot be swapped out by a new one.
+    #[test]
+    fn clicking_a_block_selects_it_and_opens_the_details_box() {
+        let _guard = lock_profiler_tests();
+        let host = ProfilerHost(captured_profiler());
+        let mut panel = ProfilerPanel::default();
+        let ctx = Context::default();
+
+        let selected = click_block(&ctx, &mut panel, &host, "Others · profiler.test.frame (");
+        assert!(panel.selection.is_some(), "a click on a block selects it");
+        assert!(
+            !panel.follow_latest,
+            "selecting pins the displayed frame so the box cannot vanish"
+        );
+
+        let text = painted_text(&selected);
+        assert!(
+            text.iter().any(|line| line == "profiler.test.frame"),
+            "the box is titled with the marker: {text:?}"
+        );
+        for expected in ["Copy", "Show"] {
+            assert!(
+                text.iter().any(|line| line == expected),
+                "the details box paints {expected:?}: {text:?}"
+            );
+        }
+        assert!(
+            !text
+                .iter()
+                .any(|line| line == "Current frame accumulated time:"),
+            "a single instance on one thread gets no accumulated section, like Unity: {text:?}"
+        );
+
+        let outline = panel.style.selection_outline.to_egui();
+        assert!(
+            painted_strokes(&selected)
+                .iter()
+                .any(|(rect, stroke)| stroke.color == outline
+                    && rect.left() >= panel.style.timeline_name_width
+                    && rect.height() >= 10.0),
+            "the selected block keeps a 1 px outline"
+        );
+        let box_fill = panel.style.selection_bg.to_egui();
+        assert!(
+            painted(&selected).iter().any(|(rect, fill)| *fill == box_fill
+                && rect.width() > 100.0
+                && rect.height() > 40.0),
+            "the details box paints its panel fill"
+        );
+    }
+
+    /// Unity only opens the accumulated-time section when the marker ran more
+    /// than once; a marker that never left this thread gets no frame line.
+    #[test]
+    fn repeated_markers_get_unitys_accumulated_time_section() {
+        let _guard = lock_profiler_tests();
+        let host = ProfilerHost(repeated_marker_profiler());
+        let mut panel = ProfilerPanel::default();
+        let ctx = Context::default();
+
+        let selected = click_block(&ctx, &mut panel, &host, "Others · profiler.test.repeat (");
+        let text = painted_text(&selected);
+        assert!(
+            text.iter()
+                .any(|line| line == "Current frame accumulated time:"),
+            "three instances open the accumulated section: {text:?}"
+        );
+        assert!(
+            text.iter()
+                .any(|line| line.contains("for 3 instances on thread")),
+            "the thread line reports all three instances: {text:?}"
+        );
+        assert!(
+            !text.iter().any(|line| line.contains("over 1 thread")),
+            "a marker that never left this thread gets no frame line: {text:?}"
+        );
+    }
+
+    /// The accumulated section follows Unity's rules: omitted for one instance
+    /// on one thread, thread line only when the marker repeats on the thread,
+    /// frame line only when it also ran elsewhere.
+    #[test]
+    fn the_accumulated_time_section_follows_unitys_rules() {
+        let details = |thread_instances: usize,
+                       thread_ns: u64,
+                       frame_instances: usize,
+                       frame_ns: u64,
+                       frame_threads: usize| SelectionDetails {
+            title: "profiler.test.worker".to_owned(),
+            duration_ns: 1_000_000,
+            thread: "Main Thread".to_owned(),
+            thread_instances,
+            thread_ns,
+            frame_instances,
+            frame_ns,
+            frame_threads,
+        };
+
+        assert!(
+            details(1, 1_000_000, 1, 1_000_000, 1)
+                .accumulated_lines()
+                .is_empty(),
+            "one instance on one thread adds nothing to the block's own time"
+        );
+        assert_eq!(
+            details(2, 2_000_000, 2, 2_000_000, 1).accumulated_lines(),
+            vec![
+                "Current frame accumulated time:".to_owned(),
+                "2.00ms for 2 instances on thread 'Main Thread'".to_owned(),
+            ],
+            "repeats on one thread: the thread line only"
+        );
+        assert_eq!(
+            details(1, 1_000_000, 3, 7_000_000, 2).accumulated_lines(),
+            vec![
+                "Current frame accumulated time:".to_owned(),
+                "7.00ms for 3 instances over 2 threads".to_owned(),
+            ],
+            "one instance here, three over two threads: the frame line only"
+        );
+        assert_eq!(
+            details(2, 2_000_000, 5, 9_000_000, 3).accumulated_lines(),
+            vec![
+                "Current frame accumulated time:".to_owned(),
+                "2.00ms for 2 instances on thread 'Main Thread'".to_owned(),
+                "9.00ms for 5 instances over 3 threads".to_owned(),
+            ],
+            "repeats on this thread and elsewhere: both lines"
+        );
+    }
+
+    /// A second click on the selected block dismisses the box.
+    #[test]
+    fn clicking_the_selected_block_again_dismisses_the_details_box() {
+        let _guard = lock_profiler_tests();
+        let host = ProfilerHost(captured_profiler());
+        let mut panel = ProfilerPanel::default();
+        let ctx = Context::default();
+
+        let selected = click_block(&ctx, &mut panel, &host, "Others · profiler.test.frame (");
+        assert!(panel.selection.is_some());
+        let label = text_pos_starting_with(&selected, "Others · profiler.test.frame (");
+        let dismissed = draw_pass(
+            &ctx,
+            &mut panel,
+            &host,
+            click_events(label + egui::vec2(6.0, 5.0)),
+        );
+        assert!(
+            panel.selection.is_none(),
+            "a second click on the same block deselects it"
+        );
+        assert!(
+            !painted_text(&dismissed)
+                .iter()
+                .any(|line| line == "Current frame accumulated time:"),
+            "the dismissed box is no longer painted"
+        );
+    }
+
+    /// A click on a row without a block under the pointer dismisses the box.
+    #[test]
+    fn clicking_empty_track_dismisses_the_details_box() {
+        let _guard = lock_profiler_tests();
+        let profiler = captured_profiler();
+        profiler.register_thread_lane("Compute (7)");
+        let host = ProfilerHost(profiler);
+        let mut panel = ProfilerPanel::default();
+        let ctx = Context::default();
+
+        let selected = click_block(&ctx, &mut panel, &host, "Others · profiler.test.frame (");
+        assert!(panel.selection.is_some());
+
+        // The idle lane's row has no blocks at all.
+        let idle = text_center(&selected, "Compute (7)");
+        draw_pass(&ctx, &mut panel, &host, click_events(idle));
+        assert!(
+            panel.selection.is_none(),
+            "a click on empty track dismisses the box"
+        );
+    }
+
+    /// Unity's Copy: the box's text lands on the clipboard.
+    #[test]
+    fn the_details_box_copy_button_writes_the_details_to_the_clipboard() {
+        let _guard = lock_profiler_tests();
+        let host = ProfilerHost(repeated_marker_profiler());
+        let mut panel = ProfilerPanel::default();
+        let ctx = Context::default();
+
+        let selected = click_block(&ctx, &mut panel, &host, "Others · profiler.test.repeat (");
+        let copy = text_center(&selected, "Copy");
+        let copied = draw_pass(&ctx, &mut panel, &host, click_events(copy));
+
+        let clipboard = copied
+            .platform_output
+            .commands
+            .iter()
+            .find_map(|command| match command {
+                egui::OutputCommand::CopyText(text) => Some(text.clone()),
+                _ => None,
+            })
+            .expect("Copy writes the details to the clipboard");
+        assert!(
+            clipboard.starts_with("profiler.test.repeat\n"),
+            "the clipboard starts with the marker: {clipboard:?}"
+        );
+        assert!(
+            clipboard.contains("Current frame accumulated time:"),
+            "and carries the accumulated lines: {clipboard:?}"
+        );
+        assert!(
+            clipboard.contains("for 3 instances on thread"),
+            "including the thread's instance count: {clipboard:?}"
+        );
+    }
     /// The ruler picks a step that keeps labels apart at any capture length.
     #[test]
     fn ruler_ticks_stay_readable_at_every_frame_length() {
@@ -2378,6 +3479,7 @@ mod probe {
     fn latest(panel: &ProfilerPanel) -> usize {
         panel.global_frame_view.lock().latest_frames(16).count()
     }
+
 
     #[test]
     fn probe_where_frames_come_from() {

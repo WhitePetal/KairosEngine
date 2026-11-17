@@ -108,11 +108,15 @@ changes are expected.
    overlaid), sort by total/self/calls/name, search, expand/collapse. Bar widths
    are normalized to the selected frame's duration, not to the root row.
 3. **Timeline**: one row per thread, samples laid out by `start_ns` and
-   `duration_ns`; click selects a sample and syncs hierarchy/raw; hover shows
-   marker, data, duration and location; zoom/pan by frame. Color by marker id
-   (stable hash) or by category once categories exist.
-4. **Details pane**: marker, location, calls, total/self/max, parent chain; the
-   JSON escape hatch stays.
+   `duration_ns`; click selects a sample and opens its details box (below);
+   hover shows marker, data, duration and location; zoom/pan by frame. Colour by
+   category (each block is labelled `Category · marker (duration)`); a category
+   is per block, not a contiguous region, because ECS work can be parallel or
+   interleaved.
+4. **Details**: Unity's block popup reports the marker, its time and the frame's
+   accumulated time per marker, with `Copy` (done; `Show` is a TODO for the
+   Hierarchy / Raw views) — the wider pane (location, calls, total/self/max,
+   parent chain) is still open, and the JSON escape hatch stays.
 5. **Interactions**: record/clear, frame slider, thread filter, follow-latest,
    capture stats; no new dependencies — egui `Painter` + `Shape::rect_filled` +
    `Sense::click_and_drag` are enough.

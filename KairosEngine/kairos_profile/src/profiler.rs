@@ -502,15 +502,23 @@ impl Store {
             .iter()
             .map(|(id, details)| {
                 let id = id.0.get();
+                let raw_name = details.name();
+                // The category tag is marker metadata, not part of the name the
+                // panel shows. The shared system marker is the exception: its
+                // category varies per sample and lives in `data`.
+                let category = if crate::strip_tag(raw_name) == SYSTEM_MARKER {
+                    Category::Scripts
+                } else {
+                    classify_marker(raw_name, &details.location())
+                };
                 (
                     id,
                     ScopeInfo {
                         id,
-                        // The category tag is marker metadata, not part of the
-                        // name the panel shows.
-                        name: crate::strip_tag(details.name()).to_string(),
+                        name: crate::strip_tag(raw_name).to_string(),
                         location: details.location(),
                         kind: scope_kind(details.scope_type()),
+                        category,
                     },
                 )
             })
@@ -840,6 +848,7 @@ fn fallback_scope(id: u32) -> ScopeInfo {
         name: format!("scope #{id}"),
         location: String::new(),
         kind: ScopeKind::Named,
+        category: Category::Others,
     }
 }
 

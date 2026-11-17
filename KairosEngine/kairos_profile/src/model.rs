@@ -47,6 +47,14 @@ pub struct ScopeInfo {
     pub location: String,
     /// Whether the marker came from a named scope or a function scope.
     pub kind: ScopeKind,
+    /// The module the marker declared at its call site, or the fallback the
+    /// parser applied for an untagged third-party scope.
+    ///
+    /// The executor's shared `Kairos.System` marker is `Scripts` here; its
+    /// per-invocation category is in [`SampleSnapshot::data`] and must be read
+    /// with [`crate::classify_system`].
+    #[serde(default)]
+    pub category: Category,
 }
 
 /// One recorded span on one thread.

@@ -51,6 +51,18 @@ fn host_with_fake(veto_close: bool) -> PanelHost {
 }
 
 fn default_host() -> PanelHost {
+    // `PanelHost::sync` calls `Panel::init`, which seeds missing style files.
+    // Keep that write out of the crate directory: tests use a scratch root.
+    static DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+    let root = DIR.get_or_init(|| {
+        let root =
+            std::env::temp_dir().join(format!("kairos-panel-host-styles-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::create_dir_all(&root);
+        root
+    });
+    kairos_editor_widgets::style::set_style_root(root);
+
     let mut registry = PanelRegistry::new();
     panels::register_default(&mut registry);
     PanelHost::new(registry)

@@ -28,10 +28,14 @@
 //! a tag appended to a long generic system name would be cut off.
 //!
 //! [`strip_tag`] removes the tag for display and [`Category::from_tagged`]
-//! reads it back. Untagged markers are third-party scopes (wgpu, rapier,
-//! epaint), opened through the `profiling` facade by their own crates; the
-//! only signal available for those is the source location, so their fallback
-//! table lives here too, next to the parser that decodes it.
+//! reads it back. The parser resolves the category once per marker into
+//! `ScopeInfo::category`, so the panel never re-infers it. Untagged markers are
+//! third-party scopes (wgpu, rapier, epaint), opened through the `profiling`
+//! facade by their own crates; the only signal available for those is the source
+//! location, so their fallback table lives here too, next to the parser that
+//! decodes it.
+
+use serde::{Deserialize, Serialize};
 
 /// The buckets the Profiler's CPU chart stacks, in legend order.
 ///
@@ -40,7 +44,8 @@
 /// of the ECS frame (Unity's `Scripts` category, refined by the panel into one
 /// row per system), and `Others` is the fallback: scheduler overhead,
 /// uninstrumented time, and anything no rule claims.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Category {
     /// Graphics work: wgpu/naga, the egui renderer, `kairos_graphics`.
     Rendering,
@@ -56,6 +61,13 @@ pub enum Category {
     Vsync,
     /// Scheduler overhead, uninstrumented time, and unclaimed markers.
     Others,
+}
+
+/// An unrecorded or unknown category falls back to `Others`.
+impl Default for Category {
+    fn default() -> Self {
+        Self::Others
+    }
 }
 
 impl Category {

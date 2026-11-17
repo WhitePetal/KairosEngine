@@ -12,7 +12,7 @@ use kairos_color::Color32;
 use kairos_editor_widgets::style::Style;
 use serde::{Deserialize, Serialize};
 
-/// Appearance tokens for the Profiler panel: palette, toolbar/transport icons,
+/// Appearance tokens for the Profiler panel: colours, toolbar/transport icons,
 /// module-area and timeline geometry.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ProfilerStyle {
@@ -69,9 +69,6 @@ pub struct ProfilerStyle {
     pub chart_cursor: Color32,
     pub chip_bg: Color32,
     pub chip_text: Color32,
-    /// Marker colours, indexed by scope id. Stands in for per-marker colours
-    /// until the capture records categories.
-    pub palette: Vec<Color32>,
     /// Category colours in legend order (the order of `Category::ALL`).
     pub category_palette: Vec<Color32>,
 
@@ -97,6 +94,17 @@ pub struct ProfilerStyle {
     pub row_rule: Color32,
     /// Sample label text (drawn only when the bar is wide enough).
     pub sample_text: Color32,
+
+    // -- Timeline selection -------------------------------------------------
+    /// Outline that marks the selected block (Unity keeps a 1 px light frame
+    /// around it).
+    pub selection_outline: Color32,
+    /// Fill of the selected block's details box.
+    pub selection_bg: Color32,
+    /// Border of the details box, and of the buttons inside it.
+    pub selection_border: Color32,
+    /// Width cap of the details box; its text wraps at this width.
+    pub selection_width: f32,
 
     // -- Data views ---------------------------------------------------------
     /// Row caps of the hierarchy and raw data views.
@@ -139,7 +147,6 @@ impl Style for ProfilerStyle {
             chart_cursor: Color32::from_rgb(0xE6, 0xE6, 0xE6),
             chip_bg: Color32::from_rgb(0x2A, 0x2A, 0x2A),
             chip_text: Color32::from_rgb(0xC8, 0xC8, 0xC8),
-            palette: unity_palette(),
             category_palette: unity_category_palette(),
 
             timeline_name_width: 180.0,
@@ -154,6 +161,11 @@ impl Style for ProfilerStyle {
             grid: Color32::from_rgb(0x2E, 0x2E, 0x2E),
             row_rule: Color32::from_rgb(0x1C, 0x1C, 0x1C),
             sample_text: Color32::from_rgb(0xED, 0xED, 0xED),
+
+            selection_outline: Color32::from_rgb(0xE6, 0xE6, 0xE6),
+            selection_bg: Color32::from_rgb(0x2C, 0x2C, 0x2C),
+            selection_border: Color32::from_rgb(0x4A, 0x4A, 0x4A),
+            selection_width: 320.0,
 
             max_tree_rows: 4_000,
             max_raw_rows: 4_000,
@@ -194,7 +206,6 @@ impl Style for ProfilerStyle {
             chart_cursor: Color32::from_rgb(0x30, 0x30, 0x30),
             chip_bg: Color32::from_rgb(0xDC, 0xDC, 0xDC),
             chip_text: Color32::from_rgb(0x20, 0x20, 0x20),
-            palette: unity_palette(),
             category_palette: unity_category_palette(),
 
             timeline_name_width: 180.0,
@@ -209,6 +220,11 @@ impl Style for ProfilerStyle {
             grid: Color32::from_rgb(0xC9, 0xC9, 0xC9),
             row_rule: Color32::from_rgb(0xB5, 0xB5, 0xB5),
             sample_text: Color32::from_rgb(0x10, 0x10, 0x10),
+
+            selection_outline: Color32::from_rgb(0x20, 0x20, 0x20),
+            selection_bg: Color32::from_rgb(0xF2, 0xF2, 0xF2),
+            selection_border: Color32::from_rgb(0xA6, 0xA6, 0xA6),
+            selection_width: 320.0,
 
             max_tree_rows: 4_000,
             max_raw_rows: 4_000,
@@ -313,7 +329,7 @@ mod tests {
             assert!(style.toolbar_icon_size > 0.0);
             assert!(style.toolbar_text_size > 0.0);
             assert!(style.level_height > 0.0);
-            assert!(!style.palette.is_empty());
+            assert!(!style.category_palette.is_empty());
             for path in style.icons.all() {
                 assert!(
                     workspace.join(path).is_file(),

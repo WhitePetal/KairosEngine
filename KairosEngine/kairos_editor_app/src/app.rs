@@ -303,6 +303,18 @@ mod tests {
     }
 
     fn build() -> EditorApp {
+        // `PanelHost::sync` and `ToolBar::new` seed missing style files; keep
+        // them in a scratch root instead of the crate directory.
+        static DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+        let root = DIR.get_or_init(|| {
+            let root = std::env::temp_dir()
+                .join(format!("kairos-editor-app-styles-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&root);
+            let _ = std::fs::create_dir_all(&root);
+            root
+        });
+        kairos_editor_widgets::style::set_style_root(root);
+
         let mut registry = PanelRegistry::new();
         panels::register_default(&mut registry);
         let mut state = EditorState::new();

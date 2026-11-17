@@ -147,8 +147,25 @@ mod tests {
         }
     }
 
+    /// `ToolBar::new` seeds the style file on first load; point it at a scratch
+    /// directory so the test does not create `Preferences/` in the crate.
+    fn use_scratch_styles() {
+        static DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+        let root = DIR.get_or_init(|| {
+            let root = std::env::temp_dir().join(format!(
+                "kairos-component-styles-{}",
+                std::process::id()
+            ));
+            let _ = std::fs::remove_dir_all(&root);
+            let _ = std::fs::create_dir_all(&root);
+            root
+        });
+        kairos_editor_widgets::style::set_style_root(root);
+    }
+
     #[test]
     fn toolbar_draws_the_menu_bar_without_panicking() {
+        use_scratch_styles();
         let ctx = Context::default();
         let mut toolbar = ToolBar::new(&ctx);
         let state = EditorState::new();

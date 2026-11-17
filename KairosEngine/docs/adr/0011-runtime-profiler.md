@@ -5,8 +5,9 @@
 - **Revised**: 2026-11-16 — the recorder is an owned value (no global), the
   engine drives the game frame, and captures are saved as files.
 - **Revised (2026-11-17)** — categories are declared by the marker (tagged
-  scopes and `.category(...)` systems), legend rows toggle chart bands, and the
-  timeline shows registered thread lanes. See the revision notes below.
+  scopes and `.category(...)` systems), legend rows toggle chart bands, the
+  timeline shows registered thread lanes, blocks report their duration, and
+  clicking a block opens Unity's details box. See the revision notes below.
 - **Context**:
   - The 0.2.0 editor (`kairos_editor_app`, eframe/egui) runs a single window: a
     toolbar, the dock, and six registered panels (five open by default). The owner wants a **Profiler Panel**
@@ -57,7 +58,7 @@
      `puffin_viewer`). The panel's Save button shows the absolute paths written.
 - **Revision (2026-11-17)**:
   The panel became a Unity-style three-band view (toolbar, module area, timeline),
-  which exposed three data-model gaps:
+  which exposed four data-model gaps:
   1. **The category is declared, not inferred.** Puffin records no category, and
      the rule table over marker names and crates depended on a naming convention
      nothing checked. Markers now carry a `<Category>/` prefix written by
@@ -81,6 +82,40 @@
      selected frame's threads, so a worker that runs nothing keeps its row. The
      engine installs a lane provider on the recorder at construction and names
      the pools (`Compute`, `Io`) so their lanes are distinguishable.
+  4. **Timeline blocks carry their category.** The parser stores each marker's
+     category in `ScopeInfo` (resolved once from its tag, or from the fallback
+     table for third-party scopes), and the timeline paints a block in its
+     category's colour and labels it `Category · marker`. A system block is
+     named by the short system name in its per-sample data rather than by the
+     shared `Kairos.System` marker. The category is deliberately **per block,
+     not a timeline region**: ECS systems from one module can run in parallel or
+     interleave with other work on a lane, so a contiguous "Physics band" is not
+     a meaningful shape. The tag/colour still makes `Surface::get_current_texture`
+     read as VSync wherever it lands.
+  5. **Blocks report their duration and a click selects one.** A timeline label
+     is `Category · marker (duration)` — two decimals, Unity's block format — so
+     a block says what it is and what it cost without a hover. Clicking a block
+     selects it: a 1 px outline over its category colour, and Unity's details
+     box opens under it. Selecting pins the displayed frame (Live off) because
+     the box describes exactly one frame, and a capture that is still recording
+     would replace that frame on the next tick.
+  6. **The details box is a popup, not a pane.** It reports the block's marker
+     and time, then — only when that adds information — Unity's "Current frame
+     accumulated time:" lines: the marker's invocations and accumulated time on
+     the clicked block's thread, and across the frame's threads. The conditions
+     and number formats are copied from `ProfilerTimelineGUI.DoSelectionTooltip`
+     in Unity's editor source: the section needs more than one instance in the
+     frame, the thread line needs repeats on the block's thread, the frame line
+     needs instances on other threads, and times print `f2` at or above 1 ms
+     and `f3` below. Most blocks in this project's captures ran once on one
+     thread, so most boxes are just the marker and its time — without these
+     conditions every box would repeat the block's own time. Matching is by call
+     site **and per-call data**, so the executor's shared `Kairos.System`
+     marker is split per system. `Copy` writes that text to the clipboard
+     (Unity also copies the call stack; the capture records none). `Show` is a
+     placeholder until the Hierarchy / Raw views come back: Unity's menu lists
+     the block there, opens its call stack and jumps to the source line.
+     Clicking the same block again, or empty track, dismisses the box.
 - **Decision**:
   1. **New foundation crate `kairos_profile`.** It owns the recorder, the
      plain-data capture model, hierarchy aggregation, and JSON / Chrome-trace
@@ -168,7 +203,7 @@
     "droppedFrames": 0,
     "discardedPasses": 0,
     "scopes": [
-      { "id": 12, "name": "Kairos.Editor.Frame", "location": "src/app.rs:198", "kind": "named" }
+      { "id": 12, "name": "Kairos.Editor.Frame", "location": "src/app.rs:198", "kind": "named", "category": "editor" }
     ],
     "frames": [
       {
@@ -244,7 +279,8 @@
     happens in the sink at flush (holding puffin's global profiler lock), which
     is fine at editor scale but should move to a worker for very large captures;
     the profiler panel's own drawing is part of the capture (an observer cost);
-    no GPU timings, allocation tracking, categories/colors or native stacks.
+    no GPU timings, allocation tracking, per-marker colour overrides or native
+    stacks.
   - Neutral: one live recorder per process is a puffin constraint (its macro
     switch and frame collector are process-wide), so the crate exposes an owned
     value rather than a global and the composition root creates exactly one;
@@ -264,8 +300,8 @@
     time.
   - Capture lifecycle: saving exists (`save_capture`); loading a capture back
     into the panel, naming captures and recording from app start are open.
-  - Marker metadata: categories/colors (Unity's Profiler module colors), and
-    optional user-registered scopes for dynamic names.
+  - Marker metadata: category tags and colours are in place; per-marker colour
+    overrides and optional user-registered scopes for dynamic names remain.
 - **References**:
   - Implementation: `kairos_profile/src/{lib,model,profiler,analysis,export}.rs`;
     engine ownership and game frame `kairos_engine/src/engine.rs`, stage scopes
