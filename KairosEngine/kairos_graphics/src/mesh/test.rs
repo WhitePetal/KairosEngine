@@ -1,18 +1,14 @@
 use std::path::{Path, PathBuf};
 use std::{thread, time::Duration};
 
-use kairos_asset::io::{AssetSourceBuilder, AssetSourceBuilders, AssetSourceId};
 use kairos_asset::{
-    AssetAction, AssetEvent, AssetLoadFailedEvent, AssetMeta, AssetMetaDyn, AssetOptions,
-    AssetProcessor, AssetServer, Assets, FileTransactionLogFactory, UntypedAssetLoadFailedEvent,
-    handle_internal_asset_events, install,
+    AssetAction, AssetMeta, AssetMetaDyn, AssetOptions, AssetServer, Assets, install,
 };
-use kairos_ecs::message::Messages;
 use kairos_ecs::schedule::ScheduleLabel;
 use kairos_ecs::world::World;
 use kairos_math::float3;
 
-use super::{GltfMeshLoader, Mesh, MeshLoader, MeshProcessor, install as install_mesh};
+use super::{Mesh, MeshLoader, install as install_mesh};
 use crate::vertex::Vertex;
 
 /// The three committed sample models (issue #149). They are decoded

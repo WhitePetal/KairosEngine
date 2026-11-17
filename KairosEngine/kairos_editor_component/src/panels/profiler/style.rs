@@ -63,7 +63,7 @@ pub struct ProfilerStyle {
     pub window_fram_count: usize,
     /// Fill of the frame-history bars.
     pub chart_bar: Color32,
-    /// Horizontal target line inside the chart (16/33 ms reference).
+    /// Horizontal target line inside the chart (8/16/33 ms reference).
     pub chart_grid: Color32,
     /// Vertical marker at the selected frame.
     pub chart_cursor: Color32,

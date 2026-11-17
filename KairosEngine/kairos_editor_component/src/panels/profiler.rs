@@ -8,8 +8,8 @@
 //! * **toolbar** — record toggle, frame transport, `Frame: n / m`, Clear,
 //!   separated into segments by 1 px rules;
 //! * **module area** — a CPU row (category legend + a stacked frame-history
-//!   chart with Unity's 30/60 FPS reference lines) and a GPU row (header only:
-//!   the capture does not record GPU timings);
+//!   chart with Unity's 30/60 FPS reference lines and a 120 FPS baseline) and
+//!   a GPU row (header only: the capture does not record GPU timings);
 //! * **timeline** — header (view selector, Live toggle, CPU/GPU summary), a time
 //!   ruler, then one track per registered thread lane.
 //!
@@ -900,7 +900,7 @@ impl ProfilerPanel {
 
     /// The frame-history chart: durations of the last `chart_capacity` frames,
     /// right-aligned (newest at the right edge), with Unity's 30/60 FPS
-    /// reference lines and a cursor at the selected frame.
+    /// reference lines, the 120 FPS baseline and a cursor at the selected frame.
     fn paint_chart(&self, ui: &Ui, plot: Rect, session: &ProfileSession) {
         let painter = ui.painter().with_clip_rect(plot);
         let shown = session.frames.len();
@@ -951,9 +951,14 @@ impl ProfilerPanel {
             }
         }
 
-        // 30/60 FPS budgets, labelled the way Unity labels them. Drawn over the
+        // Frame budgets, labelled the way Unity labels them: its 30/60 FPS
+        // reference lines plus the engine's 120 FPS baseline. Drawn over the
         // bars so the chips stay readable.
-        for (fps, ms) in [(30.0_f32, TARGET_30_FPS_MS), (60.0, TARGET_60_FPS_MS)] {
+        for (fps, ms) in [
+            (30.0_f32, TARGET_30_FPS_MS),
+            (60.0, TARGET_60_FPS_MS),
+            (120.0, TARGET_120_FPS_MS),
+        ] {
             if ms > max_ms {
                 continue;
             }
@@ -1696,6 +1701,8 @@ fn files_summary(files: &CaptureFiles) -> String {
 /// the chart's minimum scale so a fast capture still shows them.
 const TARGET_30_FPS_MS: f32 = 1000.0 / 30.0;
 const TARGET_60_FPS_MS: f32 = 1000.0 / 60.0;
+/// The engine's 120 FPS target, drawn as the chart's baseline.
+const TARGET_120_FPS_MS: f32 = 1000.0 / 120.0;
 
 /// Sample labels are the expensive part of a track; cap them per thread row.
 const MAX_SAMPLE_LABELS: usize = 64;
@@ -2233,8 +2240,9 @@ mod probe {
         );
     }
 
-    /// The module area: CPU/GPU rows, the legend of the selected frame, Unity's
-    /// 30/60 FPS reference chips and the selected-frame cursor.
+    /// The module area: CPU/GPU rows, the legend of the selected frame, the
+    /// 30/60 FPS reference chips, the 120 FPS baseline and the selected-frame
+    /// cursor.
     #[test]
     fn module_area_draws_the_cpu_gpu_rows_and_history_chart() {
         let _guard = lock_profiler_tests();
@@ -2251,8 +2259,9 @@ mod probe {
         );
         assert!(
             text.iter().any(|line| line.contains("30FPS"))
-                && text.iter().any(|line| line.contains("60FPS")),
-            "Unity's 30/60 FPS reference chips are drawn: {text:?}"
+                && text.iter().any(|line| line.contains("60FPS"))
+                && text.iter().any(|line| line.contains("120FPS")),
+            "Unity's 30/60 FPS reference chips and the 120 FPS baseline are drawn: {text:?}"
         );
 
         let cursor = panel.style.chart_cursor.to_egui();
