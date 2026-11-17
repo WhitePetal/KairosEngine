@@ -3,14 +3,18 @@
 //! The panel owns no capture data. It reads the
 //! [`kairos_profile::ProfileSession`] through [`crate::HostView::profiler`], keeps
 //! only view state (recording flag, selected frame, live-follow, the selected
-//! block, the timeline's zoom and scroll) and draws three
-//! bands, top to bottom, the way Unity lays out its Profiler window:
+//! block, the module area's height, the timeline's zoom and scroll) and draws
+//! Unity's bands, top to bottom:
 //!
 //! * **toolbar** — record toggle, frame transport, `Frame: n / m`, Clear,
 //!   separated into segments by 1 px rules;
-//! * **module area** — a CPU row (category legend + a stacked frame-history
-//!   chart with Unity's 30/60 FPS reference lines and a 120 FPS baseline) and
-//!   a GPU row (header only: the capture does not record GPU timings);
+//! * **module area** — Unity's modules pane: fixed-height module cards over a
+//!   vertical scroll bar. CPU Usage has the category legend and a stacked
+//!   frame-history chart (Unity's 30/60 FPS reference lines and a 120 FPS
+//!   baseline); GPU Usage is a fixed-height empty card until the capture
+//!   records GPU timings;
+//! * **splitter** — the draggable rule between the module area and the
+//!   timeline, Unity's split view handle;
 //! * **timeline** — a pinned header (view selector, Live toggle, CPU/GPU
 //!   summary) and time ruler over one track per registered thread lane, a
 //!   zoomable time axis and Unity's two scroll bars.
@@ -46,6 +50,34 @@
 //! reads as its module — for example a third-party
 //! `Surface::get_current_texture` block reads as
 //! `VSync · Surface::get_current_texture (0.021ms)`.
+//!
+//! # Module area and timeline split
+//!
+//! The two bands share the space under the toolbar and are separated by a
+//! draggable splitter — Unity's `TwoPaneSplitView` in `ProfilerWindow`, which
+//! persists the fixed pane's height as `MainSplitView.FixedPaneSize`. The module
+//! pane is the fixed pane: it keeps the height the user last dragged to and the
+//! timeline takes whatever is left, so resizing the panel grows the timeline.
+//!
+//! The module pane is a **window onto a stack of fixed-height module cards**
+//! (CPU Usage, then the empty GPU Usage card), like Unity's modules list. The
+//! cards keep their heights, so dragging the splitter down reveals the modules
+//! below instead of stretching the CPU chart, and the wheel or the pane's scroll
+//! bar moves a stack taller than the pane. The splitter cannot grow the pane past
+//! the whole stack, so there is never dead space under the last card. A
+//! double-click restores the skin's `module_area_height`.
+//!
+//! Both panes have a minimum (the module pane keeps its first title row and two
+//! legend rows; the timeline needs its header, ruler, one thread row and the
+//! horizontal bar). When the panel is shorter than both, the module pane keeps
+//! its minimum and the timeline gives way first, which is what Unity's
+//! `UpdateLayout` does when the flexed pane no longer fits.
+//!
+//! The rule is [`kairos_editor_widgets::splitter::Splitter`], the shared strip
+//! widget; it reports the drag and the panel keeps the size, because the panel
+//! paints measured chrome rather than nesting layouts. Its idle line has its own
+//! token (`splitter_idle`), unlike the section rules, so the handle reads as
+//! draggable chrome at a glance.
 //!
 //! # Timeline lanes
 //!
@@ -116,7 +148,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use egui::scroll_area::ScrollBarVisibility;
 use egui::{
     Align2, Context, CornerRadius, FontId, Rect, Response, Sense, Stroke, StrokeKind, Ui,
     WidgetText,
@@ -127,6 +158,7 @@ use kairos_editor_widgets::color::Color32Ext;
 use kairos_editor_widgets::divider::Divider;
 use kairos_editor_widgets::min_max_scroll::{MinMaxScroll, MinMaxScrollStyle, ScrollWindow};
 use kairos_editor_widgets::paint;
+use kairos_editor_widgets::splitter::Splitter;
 use kairos_editor_widgets::style::{Style, StyleFile};
 use kairos_editor_widgets::text::TextStyle;
 use kairos_editor_widgets::ui_image;
@@ -454,6 +486,14 @@ pub(crate) struct ProfilerPanel {
     /// The timeline block the user clicked: it keeps an outline, and the
     /// details box describes it until another block or empty track is clicked.
     selection: Option<Selection>,
+    /// Height of the module area in points. The splitter between it and the
+    /// timeline keeps this, so the timeline gets the rest of the panel; a drag
+    /// replaces it for the session. Unity persists the same value as
+    /// `ProfilerWindow.MainSplitView.FixedPaneSize`; the editor has no per-panel
+    /// layout settings file to write it to yet.
+    module_height: f32,
+    /// Vertical offset of the module pane's card stack, in points.
+    module_scroll: f32,
     /// The slice of the selected frame the tracks show.
     view: TimelineView,
     /// Vertical offset of the timeline's rows, in points.
@@ -462,8 +502,11 @@ pub(crate) struct ProfilerPanel {
 
 impl Default for ProfilerPanel {
     fn default() -> Self {
+        let style = ProfilerStyle::dark();
         Self {
-            style: ProfilerStyle::dark(),
+            module_height: style.module_area_height,
+            module_scroll: 0.0,
+            style,
             global_frame_view: GlobalFrameView::default(),
             recording: false,
             tab: Tab::default(),
@@ -510,6 +553,10 @@ impl Panel for ProfilerPanel {
             }
         }
 
+        // A skin may size the module band differently; the splitter starts at
+        // the skin's height and a drag replaces it for the session.
+        self.module_height = self.style.module_area_height;
+
         for path in self.style.icons.all() {
             ui_image::preload(ctx, path);
         }
@@ -537,10 +584,10 @@ impl Panel for ProfilerPanel {
         // between sections are rules, not item spacing.
         ui.spacing_mut().item_spacing = egui::Vec2::ZERO;
 
-        // Unity's window, top to bottom: toolbar, module area, timeline.
+        // Unity's window, top to bottom: toolbar, module area, splitter,
+        // timeline.
         self.main_toolbar(ui, profiler, &session);
-        self.module_area(ui, &session);
-        self.timeline(ui, &session);
+        self.bands(ui, &session);
 
         // profiler.set_recording(true);
 
@@ -801,59 +848,188 @@ impl ProfilerPanel {
     }
 
     // -----------------------------------------------------------------------
-    // Module area — Unity's "Profiler Modules": CPU Usage and GPU Usage rows,
-    // each with a legend column and a frame-history chart.
+    // Bands: the module pane and the timeline share the space under the
+    // toolbar, and the splitter between them keeps the module pane's height.
     // -----------------------------------------------------------------------
 
-    /// The module area above the timeline.
+    /// The module pane, the splitter and the timeline.
     ///
-    /// The CPU row shows the selected frame's most expensive markers (our
-    /// stand-in for Unity's category legend) and a right-aligned history chart
-    /// of frame durations. The GPU row is header-only until the capture records
-    /// GPU timings.
-    fn module_area(&mut self, ui: &mut Ui, session: &ProfileSession) {
-        egui::ScrollArea::vertical()
-            .vscroll(true)
-            .scroll_bar_visibility(ScrollBarVisibility::AlwaysVisible)
-            .id_salt(ui.auto_id_with("module_area"))
-            .show(ui, |ui| {
-                let width = ui.available_width();
-                let (area, _) = ui.allocate_exact_size(
-                    egui::vec2(width, self.style.module_area_height),
-                    Sense::hover(),
+    /// The module pane is Unity's *fixed pane*: it keeps the height the user
+    /// dragged the splitter to and the timeline takes what is left. The
+    /// splitter applies its drag to `module_height` on this pass, but the pane
+    /// above it was already allocated, so the two panes move on the next pass —
+    /// the same one-pass lag a dock separator has. The pane stops growing at the
+    /// card stack's height: beyond it there is nothing more to reveal.
+    fn bands(&mut self, ui: &mut Ui, session: &ProfileSession) {
+        let width = ui.available_width();
+        let total = ui.available_height().max(0.0);
+        let min_module = self.min_module_height();
+        let min_timeline = self.min_timeline_height();
+        let cards = self.module_content_height();
+        let splitter = self.splitter();
+        let max_module = (total - splitter.thickness() - min_timeline)
+            .min(cards)
+            .max(min_module);
+        self.module_height = self.module_height.clamp(min_module, max_module);
+
+        let (module, _) =
+            ui.allocate_exact_size(egui::vec2(width, self.module_height), Sense::hover());
+        self.module_area(ui, module, session);
+
+        // The widget's own clamp must see the card stack as the far end too,
+        // or a fast drag could park the pane under the last module for one pass.
+        let splitter_total = total.min(cards + splitter.thickness() + min_timeline);
+        let response = splitter
+            .limits(min_module, min_timeline)
+            .reset_to(self.style.module_area_height)
+            .show(
+                ui,
+                ui.id().with("profiler.splitter"),
+                &mut self.module_height,
+                splitter_total,
+            );
+        if response.changed() {
+            ui.ctx().request_repaint();
+        }
+
+        self.timeline(ui, session);
+    }
+
+    /// The splitter between the module area and the timeline, in the panel skin.
+    fn splitter(&self) -> Splitter {
+        Splitter::horizontal()
+            .line(self.style.separator_width)
+            .colors(
+                self.style.splitter_idle.to_egui(),
+                self.style.splitter_hover.to_egui(),
+                self.style.splitter_active.to_egui(),
+            )
+    }
+
+    /// Smallest module pane: its first card's title row and two legend rows.
+    fn min_module_height(&self) -> f32 {
+        self.style.module_header_height + 2.0 * self.style.legend_row_height
+    }
+
+    /// The module card stack's height: the two fixed-height cards and the rule
+    /// between them. The pane is a window onto this, and the splitter stops
+    /// here so there is no dead space under the last card.
+    fn module_content_height(&self) -> f32 {
+        self.style.module_cpu_height + self.style.separator_width + self.style.module_gpu_height
+    }
+
+    /// Smallest timeline: header, ruler, one thread row, the horizontal bar and
+    /// the rules around the ruler.
+    fn min_timeline_height(&self) -> f32 {
+        self.style.toolbar_height
+            + self.style.ruler_height
+            + self.style.scrollbar_width
+            + self.style.level_height
+            + 2.0 * self.style.thread_row_padding
+            + 2.0 * self.style.separator_width
+    }
+
+    /// The module pane: a window onto the fixed-height module cards, with the
+    /// pane's scroll bar on the right edge.
+    ///
+    /// Unity's modules pane scrolls rather than stretching one chart, so dragging
+    /// the splitter down reveals the card below (GPU Usage) and the pane stops at
+    /// the whole stack ([`module_content_height`](Self::module_content_height)).
+    /// The cards keep painting at their fixed heights and are clipped to the
+    /// pane; the wheel over the pane and the pane's bar move the stack.
+    fn module_area(&mut self, ui: &mut Ui, area: Rect, session: &ProfileSession) {
+        if area.width() <= 0.0 || area.height() <= 0.0 {
+            return;
+        }
+        let bar_width = self.style.scrollbar_width.min(area.width());
+        let viewport = Rect::from_min_max(
+            area.min,
+            egui::pos2(area.right() - bar_width, area.bottom()),
+        );
+        let bar = Rect::from_min_max(egui::pos2(viewport.right(), area.top()), area.max);
+
+        let rule_width = self.style.separator_width;
+        let cpu_height = self.style.module_cpu_height.max(0.0);
+        let gpu_height = self.style.module_gpu_height.max(0.0);
+        let content_height = self.module_content_height();
+        let max_scroll = (content_height - viewport.height()).max(0.0);
+        self.module_scroll = self.module_scroll.clamp(0.0, max_scroll);
+
+        // Unity's modules pane scrolls as a list; consume the wheel so nothing
+        // behind the pane scrolls as well.
+        if ui.rect_contains_pointer(area) {
+            let wheel = ui.input(|input| input.smooth_scroll_delta.y);
+            if wheel != 0.0 {
+                self.module_scroll = (self.module_scroll - wheel).clamp(0.0, max_scroll);
+                ui.input_mut(|input| input.smooth_scroll_delta.y = 0.0);
+                ui.ctx().request_repaint();
+            }
+        }
+
+        // The bar moves the stack on this pass, so the cards below it already
+        // paint at the new offset (the timeline paints its rows after its bars
+        // for the same reason).
+        self.paint_module_scroll_bar(ui, bar, viewport.height(), content_height);
+
+        let content = Rect::from_min_size(
+            egui::pos2(viewport.left(), viewport.top() - self.module_scroll),
+            egui::vec2(viewport.width(), content_height),
+        );
+        // The pane is the clip: a card scrolled out of it is neither drawn nor
+        // clickable. `scope_builder` moves the parent cursor to the child's used
+        // rect, and the cards are painted at explicit rects rather than laid
+        // out, so reserve the pane in the child first. A child UI inherits its
+        // parent's painter clip, so shrink it to the pane explicitly — otherwise
+        // a card taller than the pane paints over the splitter and the timeline
+        // header below it.
+        let _ = ui.scope_builder(egui::UiBuilder::new().max_rect(viewport), |ui| {
+            ui.advance_cursor_after_rect(viewport);
+            ui.shrink_clip_rect(viewport);
+            let cpu = Rect::from_min_size(content.min, egui::vec2(content.width(), cpu_height));
+            self.paint_cpu_module(ui, cpu, session);
+            Divider::horizontal()
+                .thickness(rule_width)
+                .color(self.style.separator.to_egui())
+                .paint_in(
+                    ui,
+                    Rect::from_min_size(
+                        egui::pos2(content.left(), cpu.bottom()),
+                        egui::vec2(content.width(), rule_width),
+                    ),
                 );
+            let gpu = Rect::from_min_size(
+                egui::pos2(content.left(), cpu.bottom() + rule_width),
+                egui::vec2(content.width(), gpu_height),
+            );
+            self.paint_gpu_module(ui, gpu);
+        });
+    }
 
-                let rule = self.style.separator.to_egui();
-                let rule_width = self.style.separator_width;
-                let gpu_height = self.style.module_header_height;
-                let cpu_height = (area.height() - gpu_height - rule_width).max(0.0);
-                let cpu = Rect::from_min_size(area.min, egui::vec2(width, cpu_height));
-
-                self.paint_cpu_module(ui, cpu, session);
-                Divider::horizontal()
-                    .thickness(rule_width)
-                    .color(rule)
-                    .paint_in(
-                        ui,
-                        Rect::from_min_size(
-                            egui::pos2(area.left(), cpu.bottom()),
-                            egui::vec2(width, rule_width),
-                        ),
-                    );
-
-                let gpu = Rect::from_min_size(
-                    egui::pos2(area.left(), cpu.bottom() + rule_width),
-                    egui::vec2(width, gpu_height),
-                );
-                self.paint_gpu_module(ui, gpu);
-
-                // Close the module area; the timeline header follows on the next row.
-                ui.add(
-                    Divider::horizontal()
-                        .thickness(rule_width)
-                        .color(self.style.separator.to_egui()),
-                );
-            });
+    /// The module pane's vertical scroll bar: the shared non-resizable
+    /// [`MinMaxScroll`], so it looks and behaves like the timeline's bars.
+    fn paint_module_scroll_bar(
+        &mut self,
+        ui: &mut Ui,
+        bar: Rect,
+        viewport_height: f32,
+        content_height: f32,
+    ) {
+        if bar.width() <= 0.0 || bar.height() <= 0.0 {
+            return;
+        }
+        let span = f64::from(viewport_height.min(content_height).max(0.0));
+        let mut window = ScrollWindow::new(
+            f64::from(self.module_scroll),
+            span,
+            (0.0, f64::from(content_height.max(0.0))),
+        );
+        let _ = MinMaxScroll::vertical(&self.scroll_style()).show(
+            ui,
+            ui.id().with("profiler.modules.scroll"),
+            bar,
+            &mut window,
+        );
+        self.module_scroll = window.value as f32;
     }
 
     fn paint_cpu_module(&mut self, ui: &mut Ui, row: Rect, session: &ProfileSession) {
@@ -1019,13 +1195,25 @@ impl ProfilerPanel {
         self.paint_chart(ui, chart, session);
     }
 
-    fn paint_gpu_module(&self, ui: &Ui, row: Rect) {
-        let name_width = self.style.module_name_width.min(row.width());
-        let name_col =
-            Rect::from_min_max(row.min, egui::pos2(row.left() + name_width, row.bottom()));
+    /// The GPU Usage card: a title row with Unity's warning and an empty body
+    /// until the capture records GPU timings.
+    ///
+    /// The card keeps its fixed height so the module pane can reveal it by
+    /// scrolling; the body is the slot a graph will occupy once the renderer
+    /// reports GPU frame timings into the capture.
+    fn paint_gpu_module(&self, ui: &Ui, card: Rect) {
+        let name_width = self.style.module_name_width.min(card.width());
+        let header = Rect::from_min_size(
+            card.min,
+            egui::vec2(card.width(), self.style.module_header_height),
+        );
+        let name_col = Rect::from_min_max(
+            card.min,
+            egui::pos2(card.left() + name_width, header.bottom()),
+        );
         self.paint_module_header(
             ui,
-            row,
+            header,
             name_col,
             "GPU",
             "GPU Usage",
@@ -1033,7 +1221,7 @@ impl ProfilerPanel {
         );
 
         // Unity's warning triangle: this build cannot report GPU timings.
-        let center = egui::pos2(name_col.right() - 14.0, row.center().y);
+        let center = egui::pos2(name_col.right() - 14.0, header.center().y);
         ui.painter().add(egui::Shape::convex_polygon(
             vec![
                 egui::pos2(center.x, center.y - 5.0),
@@ -1044,8 +1232,16 @@ impl ProfilerPanel {
             Stroke::NONE,
         ));
 
-        // TODO(profiler): give GPU Usage a real chart once the renderer reports
-        // GPU frame timings into the capture.
+        let body = Rect::from_min_max(egui::pos2(card.left(), header.bottom()), card.max);
+        if body.height() > 0.0 {
+            ui.painter().text(
+                body.center(),
+                Align2::CENTER_CENTER,
+                "No GPU timing data",
+                self.small_font(),
+                self.style.ruler_text.to_egui(),
+            );
+        }
     }
 
     /// One module title row: badge, name, and the current-value chip.
@@ -2942,17 +3138,31 @@ mod probe {
         host: &ProfilerHost,
         events: Vec<egui::Event>,
     ) -> egui::FullOutput {
+        draw_pass_sized(ctx, panel, host, egui::vec2(900.0, 640.0), events)
+    }
+
+    /// One headless pass at a chosen window size, for the layout tests.
+    fn draw_pass_sized(
+        ctx: &Context,
+        panel: &mut ProfilerPanel,
+        host: &ProfilerHost,
+        size: egui::Vec2,
+        events: Vec<egui::Event>,
+    ) -> egui::FullOutput {
         let state = EditorState::new();
         let mut out = UiOut::new();
         let mut input = egui::RawInput::default();
-        input.screen_rect = Some(Rect::from_min_size(
-            pos2(0.0, 0.0),
-            egui::vec2(900.0, 640.0),
-        ));
+        input.screen_rect = Some(Rect::from_min_size(pos2(0.0, 0.0), size));
         input.events = events;
         ctx.run_ui(input, |ui| {
             panel.ui(ui, &Frame::with_host(&state, host), &mut out);
         })
+    }
+
+    /// Centre of the splitter strip between the module area and the timeline.
+    fn splitter_center(panel: &ProfilerPanel) -> egui::Pos2 {
+        let top = panel.style.toolbar_height + panel.style.separator_width + panel.module_height;
+        egui::pos2(400.0, top + panel.splitter().thickness() * 0.5)
     }
 
     /// One primary-button press at `pos`, as a pass's input.
@@ -3536,6 +3746,371 @@ mod probe {
                 .iter()
                 .any(|(rect, fill)| *fill == cursor && rect.height() > 10.0),
             "the selected frame has a cursor in the chart"
+        );
+    }
+
+    /// The splitter between the module area and the timeline: dragging it down
+    /// grows the module area (Unity's fixed pane) and pushes the timeline down;
+    /// dragging it up gives the timeline the room back.
+    #[test]
+    fn dragging_the_splitter_resizes_the_module_area_and_the_timeline() {
+        let _guard = lock_profiler_tests();
+        let host = ProfilerHost(captured_profiler());
+        let mut panel = ProfilerPanel::default();
+        let ctx = Context::default();
+
+        let first = draw_pass(&ctx, &mut panel, &host, Vec::new());
+        let header = text_pos_starting_with(&first, "Timeline");
+        let module_before = panel.module_height;
+        let from = splitter_center(&panel);
+
+        let _ = draw_pass(&ctx, &mut panel, &host, press_events(from));
+        let _ = draw_pass(
+            &ctx,
+            &mut panel,
+            &host,
+            drag_events(from + egui::vec2(0.0, 40.0)),
+        );
+        assert!(
+            (panel.module_height - (module_before + 40.0)).abs() < 0.5,
+            "the drag grew the module area: {module_before} -> {}",
+            panel.module_height
+        );
+        let after = draw_pass(&ctx, &mut panel, &host, Vec::new());
+        let moved = text_pos_starting_with(&after, "Timeline");
+        assert!(
+            (moved.y - header.y - 40.0).abs() < 0.5,
+            "the timeline moved down with the boundary: {} -> {}",
+            header.y,
+            moved.y
+        );
+        let _ = draw_pass(
+            &ctx,
+            &mut panel,
+            &host,
+            release_events(from + egui::vec2(0.0, 40.0)),
+        );
+    }
+
+    /// Both bands keep a minimum, and the module pane stops at its card stack:
+    /// the splitter cannot grow it past the last module, so there is no dead
+    /// space under the cards.
+    #[test]
+    fn the_splitter_stops_at_both_bands_minimum_sizes() {
+        let _guard = lock_profiler_tests();
+        let host = ProfilerHost(captured_profiler());
+        let mut panel = ProfilerPanel::default();
+        let ctx = Context::default();
+
+        let _ = draw_pass(&ctx, &mut panel, &host, Vec::new());
+        let from = splitter_center(&panel);
+        let min_module = panel.min_module_height();
+        let total = 640.0 - panel.style.toolbar_height - panel.style.separator_width;
+        let max_module = (total - panel.splitter().thickness() - panel.min_timeline_height())
+            .min(panel.module_content_height());
+
+        let _ = draw_pass(&ctx, &mut panel, &host, press_events(from));
+        let _ = draw_pass(
+            &ctx,
+            &mut panel,
+            &host,
+            drag_events(from + egui::vec2(0.0, -400.0)),
+        );
+        assert!(
+            (panel.module_height - min_module).abs() < 0.5,
+            "the module area stops at its minimum: {}",
+            panel.module_height
+        );
+        let _ = draw_pass(
+            &ctx,
+            &mut panel,
+            &host,
+            drag_events(from + egui::vec2(0.0, 1000.0)),
+        );
+        assert!(
+            (panel.module_height - max_module).abs() < 0.5,
+            "the pane stops where the card stack ends: {}",
+            panel.module_height
+        );
+        let _ = draw_pass(
+            &ctx,
+            &mut panel,
+            &host,
+            release_events(from + egui::vec2(0.0, 1000.0)),
+        );
+    }
+
+    /// Unity's module pane is a list of fixed-height cards: dragging the
+    /// splitter down reveals the GPU Usage card instead of stretching the CPU
+    /// Usage chart, and the cards keep their places.
+    #[test]
+    fn dragging_the_splitter_reveals_the_module_below() {
+        let _guard = lock_profiler_tests();
+        let host = ProfilerHost(captured_profiler());
+        let mut panel = ProfilerPanel::default();
+        let ctx = Context::default();
+
+        let first = draw_pass(&ctx, &mut panel, &host, Vec::new());
+        let cursor = panel.style.chart_cursor.to_egui();
+        let chart_height = |output: &egui::FullOutput| {
+            painted(output)
+                .into_iter()
+                .find(|(rect, fill)| *fill == cursor && rect.height() > 10.0)
+                .map(|(rect, _)| rect.height())
+                .expect("the CPU chart paints its selected-frame cursor")
+        };
+        let chart_before = chart_height(&first);
+        let cpu = text_pos_starting_with(&first, "CPU Usage");
+        let gpu = text_pos_starting_with(&first, "GPU Usage");
+        let from = splitter_center(&panel);
+
+        let _ = draw_pass(&ctx, &mut panel, &host, press_events(from));
+        let _ = draw_pass(
+            &ctx,
+            &mut panel,
+            &host,
+            drag_events(from + egui::vec2(0.0, 100.0)),
+        );
+        let after = draw_pass(&ctx, &mut panel, &host, Vec::new());
+
+        assert!(
+            (panel.module_height - panel.module_content_height()).abs() < 0.5,
+            "the drag revealed the whole card stack: {}",
+            panel.module_height
+        );
+        assert_eq!(
+            text_pos_starting_with(&after, "CPU Usage"),
+            cpu,
+            "the CPU card keeps its place"
+        );
+        assert_eq!(
+            text_pos_starting_with(&after, "GPU Usage"),
+            gpu,
+            "the GPU card keeps its place"
+        );
+        assert!(
+            (chart_height(&after) - chart_before).abs() < 0.5,
+            "the CPU chart keeps its fixed height: {chart_before} -> {}",
+            chart_height(&after)
+        );
+        let _ = draw_pass(
+            &ctx,
+            &mut panel,
+            &host,
+            release_events(from + egui::vec2(0.0, 100.0)),
+        );
+    }
+
+    /// The module pane scrolls like Unity's modules list when the cards are
+    /// taller than the pane.
+    #[test]
+    fn the_module_pane_scrolls_with_the_wheel() {
+        let _guard = lock_profiler_tests();
+        let host = ProfilerHost(captured_profiler());
+        let mut panel = ProfilerPanel::default();
+        let ctx = Context::default();
+
+        let first = draw_pass(&ctx, &mut panel, &host, Vec::new());
+        let cpu = text_pos_starting_with(&first, "CPU Usage");
+        let _ = draw_pass(
+            &ctx,
+            &mut panel,
+            &host,
+            wheel_events(egui::pos2(400.0, 60.0), egui::vec2(0.0, -4.0)),
+        );
+        assert!(
+            panel.module_scroll > 0.0,
+            "the wheel scrolls the card stack: {}",
+            panel.module_scroll
+        );
+        let scrolled = draw_pass(&ctx, &mut panel, &host, Vec::new());
+        let cpu_after = text_pos_starting_with(&scrolled, "CPU Usage");
+        assert!(
+            cpu_after.y < cpu.y - 2.0,
+            "the cards scrolled up: {} -> {}",
+            cpu.y,
+            cpu_after.y
+        );
+    }
+
+    /// The module pane has its own vertical bar; dragging its thumb scrolls
+    /// the cards like the timeline's bar scrolls the tracks.
+    #[test]
+    fn dragging_the_module_scroll_bar_scrolls_the_cards() {
+        let _guard = lock_profiler_tests();
+        let host = ProfilerHost(captured_profiler());
+        let mut panel = ProfilerPanel::default();
+        let ctx = Context::default();
+
+        let first = draw_pass(&ctx, &mut panel, &host, Vec::new());
+        let splitter_top =
+            panel.style.toolbar_height + panel.style.separator_width + panel.module_height;
+        let thumb = painted(&first)
+            .into_iter()
+            .filter(|(rect, fill)| {
+                *fill == panel.style.scrollbar_thumb.to_egui()
+                    && rect.width() < 20.0
+                    && rect.height() > 20.0
+                    && rect.top() < splitter_top
+            })
+            .map(|(rect, _)| rect)
+            .max_by(|a, b| a.height().total_cmp(&b.height()))
+            .expect("the module pane's scroll bar thumb is painted");
+        let from = thumb.center();
+        let to = from + egui::vec2(0.0, 20.0);
+
+        let _ = draw_pass(&ctx, &mut panel, &host, press_events(from));
+        let _ = draw_pass(&ctx, &mut panel, &host, drag_events(to));
+        let _ = draw_pass(&ctx, &mut panel, &host, release_events(to));
+
+        assert!(
+            panel.module_scroll > 0.0,
+            "dragging the thumb down scrolls the cards: {}",
+            panel.module_scroll
+        );
+    }
+
+    /// The module cards are windowed: a card taller than the pane must not
+    /// paint over the splitter or the transparent timeline header below it.
+    #[test]
+    fn the_module_cards_are_clipped_to_the_pane() {
+        let _guard = lock_profiler_tests();
+        let host = ProfilerHost(captured_profiler());
+        let mut panel = ProfilerPanel::default();
+        // A pane shorter than the CPU card, so the cards overflow it.
+        panel.module_height = 120.0;
+        let ctx = Context::default();
+        let output = draw_pass(&ctx, &mut panel, &host, Vec::new());
+
+        assert!(
+            panel.module_content_height() > panel.module_height,
+            "the cards overflow the pane, so clipping is what keeps them in"
+        );
+        let pane_bottom =
+            panel.style.toolbar_height + panel.style.separator_width + panel.module_height;
+        let clipped = output
+            .shapes
+            .iter()
+            .find_map(|clipped| match &clipped.shape {
+                egui::Shape::Text(text) if text.galley.text() == "CPU Usage" => {
+                    Some(clipped.clip_rect)
+                }
+                _ => None,
+            })
+            .expect("the CPU card paints its title");
+        assert!(
+            (clipped.bottom() - pane_bottom).abs() < 0.5,
+            "the module painting is clipped to its pane: {clipped:?} vs {pane_bottom}"
+        );
+    }
+    /// The splitter is chrome of its own, brighter than the section rules, so
+    /// it reads as a handle instead of another 1 px separator.
+    #[test]
+    fn the_splitter_line_is_brighter_than_the_section_rules() {
+        let _guard = lock_profiler_tests();
+        let host = ProfilerHost(captured_profiler());
+        let mut panel = ProfilerPanel::default();
+        let ctx = Context::default();
+
+        let first = draw_pass(&ctx, &mut panel, &host, Vec::new());
+        let idle = panel.style.splitter_idle.to_egui();
+        assert_ne!(
+            idle,
+            panel.style.separator.to_egui(),
+            "the splitter must not reuse the section rule colour"
+        );
+        let line = painted(&first)
+            .into_iter()
+            .find(|(rect, fill)| *fill == idle && rect.height() <= 1.0 && rect.width() > 300.0)
+            .map(|(rect, _)| rect)
+            .expect("the splitter paints its idle line across the pane");
+        let expected = panel.style.toolbar_height
+            + panel.style.separator_width
+            + panel.module_height
+            + panel.splitter().thickness() * 0.5;
+        assert!(
+            (line.center().y - expected).abs() < 1.0,
+            "the idle line sits on the pane boundary: {} vs {expected}",
+            line.center().y
+        );
+    }
+    /// Unity's split view has no reset, but this editor's dock separators reset
+    /// on a double-click; the profiler splitter follows the dock.
+    #[test]
+    fn double_clicking_the_splitter_restores_the_skin_height() {
+        let _guard = lock_profiler_tests();
+        let host = ProfilerHost(captured_profiler());
+        let mut panel = ProfilerPanel::default();
+        panel.module_height = 260.0;
+        let ctx = Context::default();
+        let _ = draw_pass(&ctx, &mut panel, &host, Vec::new());
+        let at = splitter_center(&panel);
+
+        let _ = draw_pass(&ctx, &mut panel, &host, click_events(at));
+        assert_eq!(
+            panel.module_height, 260.0,
+            "one click leaves the boundary alone"
+        );
+        let _ = draw_pass(&ctx, &mut panel, &host, click_events(at));
+        assert!(
+            (panel.module_height - panel.style.module_area_height).abs() < 0.5,
+            "the double-click restores the skin's height: {}",
+            panel.module_height
+        );
+    }
+
+    /// The splitter tint follows the pointer, like the dock separators.
+    #[test]
+    fn the_splitter_highlights_under_the_pointer() {
+        let _guard = lock_profiler_tests();
+        let host = ProfilerHost(captured_profiler());
+        let mut panel = ProfilerPanel::default();
+        let ctx = Context::default();
+        let _ = draw_pass(&ctx, &mut panel, &host, Vec::new());
+        let at = splitter_center(&panel);
+        let output = draw_pass(&ctx, &mut panel, &host, vec![egui::Event::PointerMoved(at)]);
+
+        let hover = panel.style.splitter_hover.to_egui();
+        assert!(
+            painted(&output)
+                .iter()
+                .any(|(rect, fill)| *fill == hover && (rect.center().y - at.y).abs() < 1.0),
+            "the splitter highlights under the pointer"
+        );
+    }
+
+    /// A short panel clamps the split: the module area shrinks to its minimum
+    /// before the timeline is squeezed, and a panel shorter than both minimums
+    /// still lays both bands out (the timeline gives way first, like Unity's
+    /// flexed pane).
+    #[test]
+    fn a_short_panel_keeps_both_bands_usable() {
+        let _guard = lock_profiler_tests();
+        let host = ProfilerHost(captured_profiler());
+        let ctx = Context::default();
+        let size = egui::vec2(900.0, 260.0);
+        let mut panel = ProfilerPanel::default();
+        let _ = draw_pass_sized(&ctx, &mut panel, &host, size, Vec::new());
+        let total = size.y - panel.style.toolbar_height - panel.style.separator_width;
+        let expected = total - panel.splitter().thickness() - panel.min_timeline_height();
+        assert!(
+            (panel.module_height - expected).abs() < 0.5,
+            "the module area gives room to the timeline minimum: {}",
+            panel.module_height
+        );
+        let output = draw_pass_sized(&ctx, &mut panel, &host, size, Vec::new());
+        assert!(painted_text(&output).iter().any(|line| line == "Timeline"));
+
+        let mut tiny = ProfilerPanel::default();
+        let _ = draw_pass_sized(&ctx, &mut tiny, &host, egui::vec2(900.0, 120.0), Vec::new());
+        assert!(
+            (tiny.module_height - tiny.min_module_height()).abs() < 0.5,
+            "the module area keeps its minimum: {}",
+            tiny.module_height
+        );
+        assert!(
+            tiny.min_module_height() < 190.0,
+            "a minimum can be shared by both bands"
         );
     }
 
@@ -4259,14 +4834,29 @@ mod probe {
         };
         let ctx = Context::default();
 
+        // Find the block by its category fill rather than by its label: a
+        // narrow block drops its label, and this test is about hit-testing.
         let first = draw_pass(&ctx, &mut panel, &host, Vec::new());
-        let label = text_pos_starting_with(&first, "Others · profiler.test.repeat (");
-        let clicked = draw_pass(
-            &ctx,
-            &mut panel,
-            &host,
-            click_events(label + egui::vec2(6.0, 3.0)),
-        );
+        let (left, right) = track_columns(&panel);
+        let palette: Vec<egui::Color32> = panel
+            .style
+            .category_palette
+            .iter()
+            .map(|color| color.to_egui())
+            .collect();
+        let block = painted(&first)
+            .into_iter()
+            .filter(|(rect, fill)| {
+                palette.contains(fill)
+                    && rect.height() >= 10.0
+                    && rect.top() > 250.0
+                    && rect.left() >= left - 0.5
+                    && rect.right() <= right + 0.5
+            })
+            .map(|(rect, _)| rect)
+            .max_by(|a, b| a.width().total_cmp(&b.width()))
+            .expect("a block is painted in the zoomed window");
+        let clicked = draw_pass(&ctx, &mut panel, &host, click_events(block.center()));
 
         assert!(panel.selection.is_some(), "the clicked block is selected");
         assert!(

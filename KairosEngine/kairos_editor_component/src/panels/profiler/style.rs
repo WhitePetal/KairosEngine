@@ -4,10 +4,11 @@
 //! `Preferences/Styles/Profiler.ron` (dark + light). The panel loads the file in
 //! `Panel::init`; editing it restyles the Profiler without a rebuild.
 //!
-//! Layout is Unity's: a 20 px toolbar, a module area whose rows show a legend and
-//! a frame-history chart, then the timeline (header, ruler, thread tracks and the
-//! two scroll bars). The tokens are grouped the same way so a skin edit reads like
-//! the panel.
+//! Layout is Unity's: a 20 px toolbar, a module pane of fixed-height module
+//! cards (CPU Usage, GPU Usage) over a vertical scroll bar, the splitter that
+//! resizes the two bands, then the timeline (header, ruler, thread tracks and
+//! the two scroll bars). The tokens are grouped the same way so a skin edit
+//! reads like the panel.
 
 use kairos_color::Color32;
 use kairos_editor_widgets::style::Style;
@@ -53,8 +54,18 @@ pub struct ProfilerStyle {
     pub warning: Color32,
 
     // -- Module area --------------------------------------------------------
-    /// Height reserved for the module rows above the timeline.
+    /// Default height of the module pane above the timeline: where the splitter
+    /// comes to rest and what a double-click restores. The pane is a window
+    /// onto the fixed-height module cards, so the splitter gives the rest of the
+    /// panel to the timeline.
     pub module_area_height: f32,
+    /// Fixed height of the CPU Usage card (title row + frame-history chart). The
+    /// card keeps this height while the splitter moves, so dragging the pane
+    /// down reveals the modules below instead of stretching this chart.
+    pub module_cpu_height: f32,
+    /// Fixed height of the GPU Usage card (title row + empty body until the
+    /// capture records GPU timings).
+    pub module_gpu_height: f32,
     /// Height of one module's title row.
     pub module_header_height: f32,
     /// Width of the module name/legend column.
@@ -124,6 +135,16 @@ pub struct ProfilerStyle {
     /// Width of each zoom handle: the drag target at the thumb's ends.
     pub scrollbar_handle_width: f32,
 
+    // -- Module area / timeline split ---------------------------------------
+    /// Rule colour of the splitter between the module area and the timeline.
+    /// Its own grey rather than [`separator`](Self::separator): the handle is
+    /// interactive chrome, not another section rule.
+    pub splitter_idle: Color32,
+    /// Rule colour of the splitter while the pointer is over it.
+    pub splitter_hover: Color32,
+    /// Rule colour of the splitter while it is dragged.
+    pub splitter_active: Color32,
+
     // -- Data views ---------------------------------------------------------
     /// Row caps of the hierarchy and raw data views.
     pub max_tree_rows: usize,
@@ -156,6 +177,8 @@ impl Style for ProfilerStyle {
             warning: Color32::from_rgb(0xE0, 0xB0, 0x3A),
 
             module_area_height: 190.0,
+            module_cpu_height: 169.0,
+            module_gpu_height: 120.0,
             module_header_height: 20.0,
             module_name_width: 180.0,
             legend_row_height: 14.0,
@@ -194,6 +217,10 @@ impl Style for ProfilerStyle {
             scrollbar_grip: Color32::from_rgb(0x8A, 0x8A, 0x8A),
             scrollbar_handle_width: 6.0,
 
+            splitter_idle: Color32::from_rgb(0x6A, 0x6A, 0x6A),
+            splitter_hover: Color32::from_rgb(0x9A, 0x9A, 0x9A),
+            splitter_active: Color32::from_rgb(0xC4, 0xC4, 0xC4),
+
             max_tree_rows: 4_000,
             max_raw_rows: 4_000,
         }
@@ -224,6 +251,8 @@ impl Style for ProfilerStyle {
             warning: Color32::from_rgb(0xB0, 0x78, 0x00),
 
             module_area_height: 190.0,
+            module_cpu_height: 169.0,
+            module_gpu_height: 120.0,
             module_header_height: 20.0,
             module_name_width: 180.0,
             legend_row_height: 14.0,
@@ -261,6 +290,10 @@ impl Style for ProfilerStyle {
             scrollbar_thumb_active: Color32::from_rgb(0x7A, 0x7A, 0x7A),
             scrollbar_grip: Color32::from_rgb(0x5A, 0x5A, 0x5A),
             scrollbar_handle_width: 6.0,
+
+            splitter_idle: Color32::from_rgb(0x6A, 0x6A, 0x6A),
+            splitter_hover: Color32::from_rgb(0x4A, 0x4A, 0x4A),
+            splitter_active: Color32::from_rgb(0x30, 0x30, 0x30),
 
             max_tree_rows: 4_000,
             max_raw_rows: 4_000,
@@ -365,6 +398,8 @@ mod tests {
             assert!(style.toolbar_icon_size > 0.0);
             assert!(style.toolbar_text_size > 0.0);
             assert!(style.level_height > 0.0);
+            assert!(style.module_cpu_height > 0.0);
+            assert!(style.module_gpu_height > 0.0);
             assert!(style.scrollbar_width > 0.0);
             assert!(style.scrollbar_handle_width > 0.0);
             assert!(!style.category_palette.is_empty());

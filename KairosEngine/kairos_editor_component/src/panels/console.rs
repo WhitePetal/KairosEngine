@@ -28,6 +28,7 @@ use kairos_editor_core::PanelId;
 use kairos_editor_widgets::button::{Button, ButtonAlign, ButtonStyle};
 use kairos_editor_widgets::color::Color32Ext;
 use kairos_editor_widgets::paint::{labelled_widget_info, magnifier};
+use kairos_editor_widgets::splitter::Splitter;
 use kairos_editor_widgets::style::StyleFile;
 use kairos_editor_widgets::text::TextStyle;
 use kairos_editor_widgets::ui_image;
@@ -57,11 +58,6 @@ pub(crate) struct ConsolePanel {
     /// Stack-trace pane height after the user drags its top edge; `None` means
     /// the style's `detail_height` applies.
     detail_height: Option<f32>,
-    /// Pane height and the pointer position it was last measured against, i.e.
-    /// the current drag's anchor. The height is resolved from this pair rather
-    /// than from a per-frame delta so the drag stays idempotent when egui
-    /// re-runs this UI in one frame.
-    detail_drag: Option<(f32, f32)>,
 }
 
 impl Default for ConsolePanel {
@@ -76,7 +72,6 @@ impl Default for ConsolePanel {
             follow_latest: true,
             style: ConsoleStyle::default(),
             detail_height: None,
-            detail_drag: None,
         }
     }
 }
@@ -172,60 +167,39 @@ impl ConsolePanel {
 
     /// The draggable edge between the log list and the stack-trace pane. Unity
     /// fixes the pane at 130 px; in Kairos it grows when the edge is dragged up,
-    /// and a double-click restores the style default (as the dock's splitters do).
+    /// and a double-click restores the style default (as the dock's splitters
+    /// do). The edge is a shared Splitter in its overlay form: its band is the
+    /// drag target, but it takes no room from either pane, so the 1 px line
+    /// stays exactly on the boundary the panes were laid out around.
     fn splitter(&mut self, ui: &mut Ui, body: Rect, detail_height: f32) {
         let top = body.max.y - detail_height;
-        let band = Rect::from_min_max(
-            pos2(body.min.x, top - self.style.splitter_grab),
-            pos2(body.max.x, top + self.style.splitter_grab),
-        );
-        let response = ui
-            .interact(
-                band,
-                ui.id().with("console-detail-splitter"),
-                Sense::click_and_drag(),
+        let grab = self.style.splitter_grab;
+        let band = Rect::from_min_max(pos2(body.min.x, top - grab), pos2(body.max.x, top + grab));
+        let mut list_height = body.height() - detail_height;
+        let response = Splitter::horizontal()
+            .line(self.style.separator_width)
+            .grab(2.0 * grab)
+            .limits(self.style.row_height, self.style.row_height)
+            .colors(
+                self.style.separator.to_egui(),
+                self.style.toggle_bg.to_egui(),
+                self.style.toolbar_text.to_egui(),
             )
-            .on_hover_and_drag_cursor(egui::CursorIcon::ResizeVertical);
-
-        let pointer = response.interact_pointer_pos();
-        if response.drag_started() {
-            self.detail_drag = pointer.map(|pointer| (detail_height, pointer.y));
-        }
-        if response.dragged()
-            && let (Some((anchor_height, anchor_pointer)), Some(pointer)) =
-                (self.detail_drag, pointer)
-        {
-            let max = (body.height() - self.style.row_height).max(0.0);
-            let min = self.style.row_height.min(max);
-            let height = (anchor_height - (pointer.y - anchor_pointer)).clamp(min, max);
-            self.detail_height = Some(height);
-            // Re-anchor so dragging back from a clamp responds immediately.
-            self.detail_drag = Some((height, pointer.y));
-        }
-        if !ui.input(|input| input.pointer.any_down()) {
-            self.detail_drag = None;
-        }
+            .reset_to(body.height() - self.style.detail_height)
+            .show_in(
+                ui,
+                ui.id().with("console-detail-splitter"),
+                band,
+                &mut list_height,
+                body.height(),
+            );
         if response.double_clicked() {
+            // None keeps following the style default, so a skin edit moves
+            // the restored pane too.
             self.detail_height = None;
+        } else if response.changed() {
+            self.detail_height = Some(body.height() - list_height);
         }
-
-        // The idle line is the measured Unity chrome; hover and drag brighten it
-        // so the 1 px edge reads as a handle.
-        let color = if response.dragged() {
-            self.style.toolbar_text
-        } else if response.hovered() {
-            self.style.toggle_bg
-        } else {
-            self.style.separator
-        };
-        ui.painter().rect_filled(
-            Rect::from_min_size(
-                pos2(body.min.x, top),
-                vec2(body.width(), self.style.separator_width),
-            ),
-            CornerRadius::ZERO,
-            color.to_egui(),
-        );
     }
 
     fn counts(&self, lines: &[ConsoleLine]) -> [usize; 3] {
@@ -1010,14 +984,14 @@ mod tests {
             before.height()
         );
 
-        // 30 px of movement after the drag starts grows the pane by 30 px.
+        // The pane follows the pointer from the press: 40 px up grows it 40 px.
         let grab = pos2(before.center().x, before.top());
         drag_splitter(&mut harness, grab, pos2(grab.x, grab.y - 40.0));
         let after = detail_pane_rect(&harness.frame(Vec::new()), &style);
         assert!(
-            (after.height() - (style.detail_height + 30.0)).abs() < 1.0,
-            "dragging 30 px up should grow the pane to {} px, got {}",
-            style.detail_height + 30.0,
+            (after.height() - (style.detail_height + 40.0)).abs() < 1.0,
+            "dragging 40 px up should grow the pane to {} px, got {}",
+            style.detail_height + 40.0,
             after.height()
         );
     }

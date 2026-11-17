@@ -5,6 +5,7 @@ pub mod fonts;
 pub mod menu;
 pub mod min_max_scroll;
 pub mod paint;
+pub mod splitter;
 pub mod style;
 pub mod text;
 pub mod ui_image;

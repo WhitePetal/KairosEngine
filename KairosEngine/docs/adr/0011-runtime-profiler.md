@@ -7,8 +7,9 @@
 - **Revised (2026-11-17)** — categories are declared by the marker (tagged
   scopes and `.category(...)` systems), legend rows toggle chart bands, the
   timeline shows registered thread lanes, blocks report their duration, clicking
-  a block opens Unity's details box, and the timeline zooms and scrolls with
-  Unity's gestures. See the revision notes below.
+  a block opens Unity's details box, the timeline zooms and scrolls with Unity's
+  gestures, and the module area and timeline split with a draggable rule. See
+  the revision notes below.
 - **Context**:
   - The 0.2.0 editor (`kairos_editor_app`, eframe/egui) runs a single window: a
     toolbar, the dock, and six registered panels (five open by default). The owner wants a **Profiler Panel**
@@ -147,6 +148,44 @@
        snaps the thumb under the pointer. The vertical bar is its non-resizable
        form, because the timeline's vertical scale is locked like Unity's
        `vZoomLockedByDefault`.
+  8. **The module area and the timeline split like Unity's.** The last piece of
+     Unity's window layout was the draggable rule between the two bands.
+     Unity 2022's `ProfilerWindow` hosts the charts pane and the details view in
+     a UI Toolkit `TwoPaneSplitView` (`MainSplitView`): the charts pane is the
+     *fixed* pane, its height persisted as
+     `ProfilerWindow.MainSplitView.FixedPaneSize`. The panel therefore keeps the
+     **module pane's** height, not the timeline's: `ProfilerPanel::module_height`
+     starts at the skin's `module_area_height`, the splitter drags it, and the
+     timeline takes the rest. The pane is a window onto a stack of **fixed-height
+     module cards** — CPU Usage (legend + frame chart) and an empty GPU Usage
+     card — so dragging the splitter down reveals the modules below instead of
+     stretching the CPU chart, and the cards scroll (wheel or the pane's own
+     vertical bar) when they overflow. The splitter stops at the card stack's
+     height, so there is never dead space under the last module. Unity reaches
+     the same shape whenever its modules do not fit the pane; its
+     `requiresChartHeightExpansion` path only spreads leftover height when the
+     pane is taller than the sum of every module's minimum height.
+     Both panes keep a minimum (the module pane: its first title row and two
+     legend rows; the timeline: header, ruler, one thread row and the horizontal
+     bar); when the panel is shorter than both, the module pane keeps its
+     minimum and the timeline gives way first, like Unity's `UpdateLayout`.
+     Double-clicking the rule restores the skin's height, as the dock's
+     separators and the Console already reset. The idle rule has its own token
+     (`splitter_idle`) rather than the section-rule colour, so it reads as a
+     handle instead of another separator.
+     The rule is the new shared widget
+     `kairos_editor_widgets::splitter::Splitter`: a press-anchored drag (the
+     edge follows the pointer from the press, not from egui's drag threshold),
+     clamping that re-anchors at a bound so dragging back moves immediately,
+     hover/active tints and a resize cursor. It has two forms because the
+     editor has two kinds of measured chrome: `show` allocates the strip (the
+     profiler, matching Unity's split view, which reserves the drag anchor's
+     space in the pane layout) and `show_in` overlays a caller-laid-out band
+     (the Console's stack-trace edge, which must not move the panes it
+     separates). The Console's hand-rolled splitter from the detail-pane commit
+     was migrated to it, so the two panels share one drag implementation. The
+     height is session state: Unity writes `FixedPaneSize` to `EditorPrefs`,
+     while this editor has no per-panel layout settings file yet.
 - **Decision**:
   1. **New foundation crate `kairos_profile`.** It owns the recorder, the
      plain-data capture model, hierarchy aggregation, and JSON / Chrome-trace

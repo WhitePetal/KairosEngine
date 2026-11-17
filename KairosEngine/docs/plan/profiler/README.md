@@ -113,9 +113,12 @@ changes are expected.
    category is per block, not a contiguous region, because ECS work can be
    parallel or interleaved. The header and ruler are pinned and the tracks
    scroll; the time axis zooms and pans with Unity's gestures (wheel around the
-   pointer, middle/alt drag, `A` to fit). Hover details, Unity's click-drag range
-   selection, `F` to frame a block and the ghost frames outside the selected
-   frame are still open.
+   pointer, middle/alt drag, `A` to fit). The module pane above the tracks is a
+   scrolling list of fixed-height module cards (CPU Usage, plus an empty GPU
+   Usage card): dragging the rule between the two bands reveals the modules
+   below instead of stretching one chart, and a double-click restores the skin's
+   height. Hover details, Unity's click-drag range selection, `F` to frame a
+   block and the ghost frames outside the selected frame are still open.
 4. **Details**: Unity's block popup reports the marker, its time and the frame's
    accumulated time per marker, with `Copy` (done; `Show` is a TODO for the
    Hierarchy / Raw views) — the wider pane (location, calls, total/self/max,
@@ -124,7 +127,10 @@ changes are expected.
    capture stats; no new dependencies — egui `Painter` + `Shape::rect_filled` +
    `Sense::click_and_drag` are enough. Unity's min-max scroll bar (a drag thumb
    with a resize grip at each end) cannot be built from `ScrollArea`, so the
-   shared `kairos_editor_widgets::min_max_scroll` widget draws it.
+   shared `kairos_editor_widgets::min_max_scroll` widget draws it. The rule
+   between the module area and the timeline is the shared
+   `kairos_editor_widgets::splitter` widget; the Console's stack-trace edge uses
+   its overlay form.
 6. **Performance**: compute layout once per `(revision, frame, thread, zoom)`;
    virtualize rows; never rebuild the capture inside the paint pass.
 
