@@ -113,3 +113,115 @@ impl PanelHost {
         self.instances.get_mut(&id).map(|panel| &mut **panel)
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use egui::{Ui, WidgetText};
+    use kairos_editor_core::EditorState;
+
+    use crate::frame::{Frame, UiOut};
+    use crate::{EditorInfo, PanelDef, PanelId, PanelRegister};
+
+    const FAKE: PanelId = PanelId("fake");
+
+    fn test_info() -> EditorInfo {
+        EditorInfo::new("KairosEngine", "9.9.9-test")
+    }
+
+    struct FakePanel {
+        veto_close: bool,
+    }
+
+    // Sealed: outside this crate only `#[panel]` implements the seal. A unit
+    // test is inside the crate, so it can stand in for a panel without
+    // submitting a definition to the global link-section table.
+    impl crate::__sealed::Sealed for FakePanel {}
+
+    impl PanelRegister for FakePanel {
+        fn panel_id(&self) -> PanelId {
+            FAKE
+        }
+    }
+
+    impl Panel for FakePanel {
+        fn title(&self, _frame: &Frame) -> WidgetText {
+            "Fake".into()
+        }
+
+        fn ui(&mut self, _ui: &mut Ui, _frame: &Frame, _out: &mut UiOut) {}
+
+        fn on_close(&mut self, _frame: &Frame, _out: &mut UiOut) -> bool {
+            !self.veto_close
+        }
+    }
+
+    fn fake_allow(_context: &PanelContext) -> Box<dyn Panel> {
+        Box::new(FakePanel { veto_close: false })
+    }
+
+    fn fake_veto(_context: &PanelContext) -> Box<dyn Panel> {
+        Box::new(FakePanel { veto_close: true })
+    }
+
+    static FAKE_ALLOW: [PanelDef; 1] = [PanelDef::new(FAKE, fake_allow)];
+    static FAKE_VETO: [PanelDef; 1] = [PanelDef::new(FAKE, fake_veto)];
+
+    fn host_with_fake(veto_close: bool) -> PanelHost {
+        let defs = if veto_close { &FAKE_VETO } else { &FAKE_ALLOW };
+        PanelHost::new(PanelCatalog::new(defs), PanelContext::new(test_info()))
+    }
+
+    #[test]
+    fn sync_creates_and_drops_instances_from_layout() {
+        let mut host = host_with_fake(false);
+        let mut state = EditorState::new();
+
+        host.sync(&state.layout, &egui::Context::default());
+        assert_eq!(host.ids().count(), 0);
+
+        state.layout.open(FAKE);
+        host.sync(&state.layout, &egui::Context::default());
+        assert_eq!(host.ids().count(), 1);
+
+        state.layout.close(FAKE);
+        host.sync(&state.layout, &egui::Context::default());
+        assert_eq!(host.ids().count(), 0);
+    }
+
+    /// The catalog is compile-time data, not a startup pass: a panel object
+    /// exists only while its kind is open, and later frames reuse it.
+    #[test]
+    fn a_panel_is_constructed_only_while_it_is_open() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        static BUILT: AtomicUsize = AtomicUsize::new(0);
+
+        fn counting(_context: &PanelContext) -> Box<dyn Panel> {
+            BUILT.fetch_add(1, Ordering::SeqCst);
+            Box::new(FakePanel { veto_close: false })
+        }
+
+        static COUNTING: [PanelDef; 1] = [PanelDef::new(FAKE, counting)];
+
+        let mut host = PanelHost::new(PanelCatalog::new(&COUNTING), PanelContext::new(test_info()));
+        let mut state = EditorState::new();
+        let ctx = egui::Context::default();
+
+        host.sync(&state.layout, &ctx);
+        assert_eq!(
+            BUILT.load(Ordering::SeqCst),
+            0,
+            "a closed panel is never built"
+        );
+
+        state.layout.open(FAKE);
+        host.sync(&state.layout, &ctx);
+        host.sync(&state.layout, &ctx);
+        assert_eq!(
+            BUILT.load(Ordering::SeqCst),
+            1,
+            "opening builds one instance; later syncs reuse it"
+        );
+    }
+}

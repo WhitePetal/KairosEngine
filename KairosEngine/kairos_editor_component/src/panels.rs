@@ -10,6 +10,9 @@
 //! public vocabulary at `panels::SCENE`. A file that nothing declares is never
 //! compiled, so its `#[panel]` submission never runs.
 //!
+//! Panels are defined here and nowhere else: `PanelRegister` is sealed, so only
+//! `#[panel]` can implement it, and `Panel` requires it.
+//!
 //! `about` is the first panel ported from the legacy `kairos_editor` whose
 //! body has real content (the others are still demo bodies that establish the
 //! layer). The rest of the real panels are ported one at a time from

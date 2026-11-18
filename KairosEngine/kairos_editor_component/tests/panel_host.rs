@@ -1,17 +1,15 @@
 //! Headless tests for the panel framework: registry, instance reconciliation,
 //! the dock viewer adapter and the close-as-intent path. No window, no GPU.
 
-use egui::{Context, Pos2, RawInput, Rect, Ui, Vec2, WidgetText};
+use egui::{Context, Pos2, RawInput, Rect, Vec2};
 use kairos_editor_component::{
-    ConsoleLine, EditorInfo, Frame, HostView, Panel, PanelCatalog, PanelContext, PanelDef,
-    PanelHost, PanelId, PanelInstanceId, PanelRegister, UiOut, panels,
+    ConsoleLine, EditorInfo, Frame, HostView, PanelContext, PanelHost, PanelInstanceId, UiOut,
+    panels,
 };
 use kairos_editor_core::{EditorState, LayoutState};
 use kairos_editor_docking::viewer::TabViewer;
 use kairos_log::Level;
 use kairos_profile::profiling;
-
-const FAKE: PanelId = PanelId("fake");
 
 /// The identity the composition root would inject; the real one lives in
 /// `kairos_editor_app`, which this crate cannot depend on.
@@ -28,44 +26,6 @@ fn profiled_probe() {}
 #[test]
 fn function_attribute_uses_the_profiling_reexport() {
     profiled_probe();
-}
-
-struct FakePanel {
-    veto_close: bool,
-}
-
-impl PanelRegister for FakePanel {
-    fn panel_id(&self) -> PanelId {
-        FAKE
-    }
-}
-
-impl Panel for FakePanel {
-    fn title(&self, _frame: &Frame) -> WidgetText {
-        "Fake".into()
-    }
-
-    fn ui(&mut self, _ui: &mut Ui, _frame: &Frame, _out: &mut UiOut) {}
-
-    fn on_close(&mut self, _frame: &Frame, _out: &mut UiOut) -> bool {
-        !self.veto_close
-    }
-}
-
-fn fake_allow(_context: &PanelContext) -> Box<dyn Panel> {
-    Box::new(FakePanel { veto_close: false })
-}
-
-fn fake_veto(_context: &PanelContext) -> Box<dyn Panel> {
-    Box::new(FakePanel { veto_close: true })
-}
-
-static FAKE_ALLOW: [PanelDef; 1] = [PanelDef::new(FAKE, fake_allow)];
-static FAKE_VETO: [PanelDef; 1] = [PanelDef::new(FAKE, fake_veto)];
-
-fn host_with_fake(veto_close: bool) -> PanelHost {
-    let defs = if veto_close { &FAKE_VETO } else { &FAKE_ALLOW };
-    PanelHost::new(PanelCatalog::new(defs), PanelContext::new(test_info()))
 }
 
 fn default_host() -> PanelHost {
@@ -109,23 +69,6 @@ fn draw_with(
 }
 
 #[test]
-fn sync_creates_and_drops_instances_from_layout() {
-    let mut host = host_with_fake(false);
-    let mut state = EditorState::new();
-
-    host.sync(&state.layout, &Context::default());
-    assert_eq!(host.ids().count(), 0);
-
-    state.layout.open(FAKE);
-    host.sync(&state.layout, &Context::default());
-    assert_eq!(host.ids().count(), 1);
-
-    state.layout.close(FAKE);
-    host.sync(&state.layout, &Context::default());
-    assert_eq!(host.ids().count(), 0);
-}
-
-#[test]
 fn the_catalog_declares_every_builtin_panel_once() {
     let context = PanelContext::new(test_info());
     let mut kinds = Vec::new();
@@ -152,42 +95,6 @@ fn the_catalog_declares_every_builtin_panel_once() {
     ] {
         assert!(kinds.contains(&kind), "missing {kind}");
     }
-}
-
-/// The catalog is compile-time data, not a startup pass: a panel object exists
-/// only while its kind is open, and later frames reuse it instead of rebuilding.
-#[test]
-fn a_panel_is_constructed_only_while_it_is_open() {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    static BUILT: AtomicUsize = AtomicUsize::new(0);
-
-    fn counting(_context: &PanelContext) -> Box<dyn Panel> {
-        BUILT.fetch_add(1, Ordering::SeqCst);
-        Box::new(FakePanel { veto_close: false })
-    }
-
-    static COUNTING: [PanelDef; 1] = [PanelDef::new(FAKE, counting)];
-
-    let mut host = PanelHost::new(PanelCatalog::new(&COUNTING), PanelContext::new(test_info()));
-    let mut state = EditorState::new();
-    let ctx = Context::default();
-
-    host.sync(&state.layout, &ctx);
-    assert_eq!(
-        BUILT.load(Ordering::SeqCst),
-        0,
-        "a closed panel is never built"
-    );
-
-    state.layout.open(FAKE);
-    host.sync(&state.layout, &ctx);
-    host.sync(&state.layout, &ctx);
-    assert_eq!(
-        BUILT.load(Ordering::SeqCst),
-        1,
-        "opening builds one instance; later syncs reuse it"
-    );
 }
 
 #[test]

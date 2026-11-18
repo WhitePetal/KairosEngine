@@ -83,6 +83,12 @@
 // those paths work inside the crate as well as from dependents.
 extern crate self as kairos_editor_component;
 
+/// The seal behind [`PanelRegister`]: implemented only by `#[panel]`, and
+/// unreachable outside this crate, so a panel cannot be registered by hand.
+pub(crate) mod __sealed {
+    pub trait Sealed {}
+}
+
 pub mod console;
 pub mod frame;
 pub mod panel;
@@ -102,7 +108,9 @@ pub use panel::{
 };
 
 // The panel declaration attribute: id, registration and factory from one item.
-pub use kairos_editor_component_macros::panel;
+// Panels are defined in this crate only (`PanelRegister` is sealed), so the
+// attribute is not re-exported publicly either.
+pub(crate) use kairos_editor_component_macros::panel;
 
 /// Paths `#[panel]` expands to. Not part of the public API.
 #[doc(hidden)]

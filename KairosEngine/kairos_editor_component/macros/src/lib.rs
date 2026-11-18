@@ -11,6 +11,10 @@
 //! Panels with fields are built through `Default`, or through the function
 //! named by `create = path` (`fn(&PanelContext) -> Self`), which is how About
 //! receives the injected identity.
+//!
+//! The attribute is also the only way to implement `PanelRegister`: its seal
+//! lives in a crate-private module, so a panel cannot be registered by hand and
+//! panels are defined inside `kairos_editor_component`.
 
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
@@ -138,6 +142,8 @@ fn expand(args: TokenStream2, item: ItemStruct) -> syn::Result<TokenStream2> {
 
         pub const #id_name: ::kairos_editor_component::__macro::PanelId =
             ::kairos_editor_component::__macro::PanelId(#panel_id);
+
+        impl ::kairos_editor_component::__sealed::Sealed for #ident {}
 
         impl ::kairos_editor_component::__macro::PanelRegister for #ident {
             fn panel_id(&self) -> ::kairos_editor_component::__macro::PanelId {

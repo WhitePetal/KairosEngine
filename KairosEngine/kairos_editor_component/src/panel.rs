@@ -56,9 +56,13 @@ pub use kairos_editor_core::PanelInstanceId;
 /// [`Panel`] requires this trait, so a type that implements `Panel` without
 /// declaring an id (normally through the `#[panel]` attribute) does not
 /// compile. The attribute also submits the [`PanelDef`] to the link-section
-/// table; a manual implementation is for tests, where a fake panel must not
-/// enter that table.
-pub trait PanelRegister {
+/// table.
+///
+/// **Sealed.** The supertrait is only reachable inside this crate, so a panel
+/// cannot implement this by hand, and panels are defined in this crate only.
+/// The seal is what makes "implements `Panel` but was never registered"
+/// impossible rather than merely discouraged.
+pub trait PanelRegister: crate::__sealed::Sealed {
     /// Stable kind id: the key in `LayoutState` and persisted layouts.
     fn panel_id(&self) -> PanelId;
 }
