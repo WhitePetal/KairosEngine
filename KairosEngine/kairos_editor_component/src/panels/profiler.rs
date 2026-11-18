@@ -69,15 +69,32 @@
 //! pane is the fixed pane: it keeps the height the user last dragged to and the
 //! timeline takes whatever is left, so resizing the panel grows the timeline.
 //!
-//! The module pane is a **window onto a stack of fixed-height module cards**
-//! (CPU Usage, then the empty GPU Usage card), like Unity's modules list, plus
-//! two pinned rows of its own: the clock ruler on top and the time zoom bar at
-//! the bottom. The cards keep their heights, so dragging the splitter down
-//! reveals the modules below instead of stretching the CPU chart, and the wheel
-//! over the name column or the pane's scroll bar moves a stack taller than the
-//! pane. The splitter cannot grow the pane past the whole stack plus its pinned
-//! rows, so there is never dead space under the last card. A double-click
-//! restores the skin's `module_area_height`.
+//! The module pane is a **window onto a stack of module cards** (CPU Usage, then
+//! the empty GPU Usage card), like Unity's modules list, plus two pinned rows of
+//! its own: the clock ruler on top and the time zoom bar at the bottom. The cards
+//! sit at their skin heights while the pane can show them, so dragging the
+//! splitter down reveals the modules below instead of stretching the CPU chart,
+//! and the wheel over the name column or the pane's scroll bar moves a stack
+//! taller than the pane. The splitter cannot grow the pane past the whole stack
+//! plus its pinned rows, so there is never dead space under the last card.
+//!
+//! The pane starts at the height its cards ask for: the CPU card whole plus half
+//! of the card below it, so a fresh panel shows the usage chart and the top of the
+//! next module. The default is derived from the cards (see `module_default_height`)
+//! rather than a fixed token, so a skin that resizes a card, or a later module
+//! that follows the GPU one, keeps the same relationship; a double-click on the
+//! splitter restores it. The timeline takes the rest of the panel, so on a panel
+//! too short for the cards it starts collapsed to its header and the splitter
+//! trades the two bands.
+//!
+//! The CPU chart is the pane's reason to exist, so it is never cut off: a pane
+//! shorter than the CPU card's skin height shrinks the card (and with it the
+//! chart) instead of clipping it. A usage chart is read from its zero line up —
+//! the bars grow from the plot's bottom — so a card clipped at the pane's edge
+//! would hide exactly the short bars a high frame rate produces and read as
+//! "nothing was recorded". The GPU card keeps its height below the CPU card, so a
+//! short pane scrolls to the GPU instead of shrinking the CPU card to leave the
+//! GPU room.
 //!
 //! # Module time axis
 //!
@@ -90,7 +107,10 @@
 //! left and of the restart on the right — and the tick labels are the real clock
 //! readings of the capture, not elapsed time. Per-frame timestamps already
 //! existed (`FrameSnapshot::start_ns/end_ns`), so the axis costs no per-frame
-//! work; only a stop or start adds a segment.
+//! work; only a stop or start adds a segment. The mapping and the ruler are the
+//! shared [`kairos_editor_widgets::timeline_axis`] widget; this panel supplies
+//! the capture's takes and its clock labels, so an animation or timeline panel
+//! gets the same axis without a Profiler-specific copy.
 //!
 //! The axis shows the most recent `window_fram_count` frames by default, and the
 //! header's Live toggle keeps its right edge on the newest frame. The min-max bar
@@ -107,10 +127,13 @@
 //! selected frame when it is off screen, so the transport reaches the first frame
 //! of the first take.
 //!
-//! Both panes have a minimum (the module pane keeps its pinned rows, its first
-//! title row and two legend rows; the timeline needs its header, ruler, one
-//! thread row and the horizontal bar). When the panel is shorter than both, the module pane keeps
-//! its minimum and the timeline gives way first, which is what Unity's
+//! Both panes keep a minimum. The module pane keeps its pinned rows, its first
+//! title row and two legend rows. The timeline's minimum is only its header row:
+//! dragging the splitter down collapses the band to the view selector, the Live
+//! toggle and the CPU/GPU summary, and the ruler, tracks and bars are clipped, so
+//! the module pane can take the whole panel when a capture has more modules than
+//! the panel has room for. When the panel is shorter than both minima, the module
+//! pane keeps its minimum and the timeline gives way first, which is what Unity's
 //! `UpdateLayout` does when the flexed pane no longer fits.
 //!
 //! The rule is [`kairos_editor_widgets::splitter::Splitter`], the shared strip
@@ -229,15 +252,15 @@ use kairos_editor_widgets::paint;
 use kairos_editor_widgets::splitter::Splitter;
 use kairos_editor_widgets::style::{Style, StyleFile};
 use kairos_editor_widgets::text::TextStyle;
+use kairos_editor_widgets::timeline_axis::{TimelineRuler, TimelineRulerStyle};
 use kairos_editor_widgets::ui_image;
-use kairos_profile::profiling::puffin::GlobalFrameView;
 use kairos_profile::{
-    CaptureFiles, Category, FrameSnapshot, HierarchyRow, ProfileSession, Profiler, SYSTEM_MARKER,
-    SampleSnapshot, ScopeInfo, ThreadSnapshot, classify_system, hierarchy, strip_tag,
+    CaptureFiles, Category, FrameSnapshot, HierarchyRow, ProfileSession, SYSTEM_MARKER, SampleSnapshot, ScopeInfo, ThreadSnapshot, classify_system, strip_tag
 };
 
 use crate::frame::{Frame, UiOut};
 use crate::panel::Panel;
+use crate::panels::profiler::hierarchy::{HierarchySort};
 use crate::panels::profiler::style::ProfilerStyle;
 
 use self::axis::ModuleAxis;
@@ -245,29 +268,46 @@ use self::axis::ModuleAxis;
 use super::PROFILER;
 
 mod axis;
+mod main_toolbar;
+mod hierarchy;
+mod modules;
 pub mod style;
+
+/// What the cached capture frame was built from.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct CaptureFrameState {
+    /// The capture's revision: a new capture invalidates the cached frame.
+    revision: u64,
+    /// The selected frame's index in the capture.
+    frame: usize,
+}
+
+impl Default for CaptureFrameState {
+    /// Nothing cached: the sentinels match no frame, so the first cache pass
+    /// rebuilds.
+    fn default() -> Self {
+        Self {
+            revision: u64::MAX,
+            frame: usize::MAX,
+        }
+    }
+}
 
 /// The cached reduction of one selected frame. Rebuilt when the capture
 /// revision, the selected frame or the thread filter changes.
-struct CachedFrame {
-    frame: Arc<FrameSnapshot>,
+struct CaptureFrame {
+    snapshot: Arc<FrameSnapshot>,
     scopes: Vec<ScopeInfo>,
-    /// The aggregated tree, sorted by the Hierarchy view's current column.
-    rows: Vec<HierarchyRow>,
     /// Category per full system name. The aggregation strips the category tag
     /// from the executor's data, so the Hierarchy view reads the category from
     /// the samples here instead of re-deriving it from a stripped name.
     system_categories: BTreeMap<String, Category>,
     /// The selected frame's Scripts systems by inclusive time, highest first.
-    /// This is the legend's second section: Unity's `Scripts` category,
-    /// refined into one row per system.
     systems: Vec<(String, u64)>,
     /// The timeline's rows: every registered thread lane (whether or not it ran
     /// in the selected frame) followed by threads that only appeared in the
     /// frames. Fixed per capture, so rows do not jump between frames.
     lanes: Vec<Lane>,
-    /// Filled lazily when the JSON tab is first shown; cleared on rebuild.
-    json: String,
 }
 
 /// One timeline row: a thread, whether or not it reported work this frame.
@@ -310,7 +350,7 @@ struct Selection {
 
 /// The slice of a frame the timeline's tracks show.
 ///
-/// Unity's timeline is a `ZoomableArea`: a window into the frame time that the
+/// Timeline is a `ZoomableArea`: a window into the frame time that the
 /// wheel, the scroll bar's ends and the `A` key move and resize. The window is
 /// stored as fractions of the frame duration, so stepping frames, resizing the
 /// panel or recording again keeps the zoom instead of jumping to an absolute
@@ -334,8 +374,7 @@ impl Default for TimelineView {
 }
 
 impl TimelineView {
-    /// The narrowest window the timeline zooms to: Unity's
-    /// `ZoomableArea.minWidth` (0.05 ms, the shortest slice its timeline reads).
+    /// The narrowest window the timeline zooms to: (0.05 ms, the shortest slice its timeline reads).
     const MIN_VISIBLE_NS: f64 = 50_000.0;
 
     /// The narrowest `span` a frame of `duration_ns` may be shown at.
@@ -396,178 +435,6 @@ impl PanelView {
     }
 }
 
-/// The Hierarchy view's sibling ordering: the column the user last clicked.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-enum HierarchySort {
-    #[default]
-    Total,
-    SelfTime,
-    Calls,
-    Max,
-    Name,
-}
-
-impl HierarchySort {
-    fn label(self) -> &'static str {
-        match self {
-            Self::Total => "Total",
-            Self::SelfTime => "Self",
-            Self::Calls => "Calls",
-            Self::Max => "Max",
-            Self::Name => "Hierarchy",
-        }
-    }
-}
-
-/// One row the current collapse state shows, addressed into the cached tree.
-#[derive(Clone, Debug)]
-struct VisibleHierarchyRow {
-    /// Index into the cached HierarchyRow list.
-    index: usize,
-    /// Stable identity of the row's place in the tree, for collapsing.
-    key: String,
-    /// Whether the row has children in the cached list.
-    has_children: bool,
-}
-
-/// A Hierarchy row's local key: marker id plus the per-invocation data.
-///
-/// Rows are cached pre-order and re-sorted when a column is clicked, so a
-/// collapsed row cannot be addressed by index; its path (this key per level)
-/// is stable across sorts and frames.
-fn hierarchy_row_key(row: &HierarchyRow) -> String {
-    format!("{}:{}", row.scope, row.data.as_deref().unwrap_or_default())
-}
-
-/// The name the Hierarchy view prints for a row.
-fn hierarchy_row_label(row: &HierarchyRow, scopes: &[ScopeInfo]) -> String {
-    match scope_info(scopes, row.scope) {
-        Some(info) if info.name == SYSTEM_MARKER => row
-            .data
-            .as_deref()
-            .map(strip_tag)
-            .map(short_system_name)
-            .unwrap_or_else(|| info.name.clone()),
-        Some(info) => match row.data.as_deref().map(strip_tag) {
-            Some(data) if !data.is_empty() => format!("{}[{}]", info.name, data),
-            _ => info.name.clone(),
-        },
-        None => format!("scope #{}", row.scope),
-    }
-}
-
-/// The full name the hierarchy tooltip prints; a system keeps its module path.
-fn hierarchy_row_full_name(row: &HierarchyRow, scopes: &[ScopeInfo]) -> String {
-    match scope_info(scopes, row.scope) {
-        Some(info) if info.name == SYSTEM_MARKER => {
-            strip_tag(row.data.as_deref().unwrap_or_default()).to_owned()
-        }
-        _ => hierarchy_row_label(row, scopes),
-    }
-}
-
-/// The category a Hierarchy row is painted in.
-///
-/// The aggregation strips the category tag from a system's data, so the
-/// per-system category is looked up from the frame's executor samples (the
-/// cache collects them once per frame).
-fn hierarchy_row_category(
-    row: &HierarchyRow,
-    scopes: &[ScopeInfo],
-    system_categories: &BTreeMap<String, Category>,
-) -> Category {
-    let Some(info) = scope_info(scopes, row.scope) else {
-        return Category::Others;
-    };
-    if info.name == SYSTEM_MARKER {
-        return system_categories
-            .get(row.data.as_deref().unwrap_or_default())
-            .copied()
-            .unwrap_or(Category::Scripts);
-    }
-    info.category
-}
-
-/// Re-order the aggregated rows by the chosen column, keeping every parent
-/// above its children: sibling lists are sorted and the pre-order flatten is
-/// rebuilt.
-///
-/// "Descending" is "best first": the largest Total/Self/Calls/Max, or the
-/// alphabetically first name.
-fn sort_hierarchy_rows(
-    rows: &mut Vec<HierarchyRow>,
-    sort: HierarchySort,
-    descending: bool,
-    scopes: &[ScopeInfo],
-) {
-    if rows.len() < 2 {
-        return;
-    }
-
-    // Rebuild the parent/child shape from the pre-order depths.
-    let mut children: Vec<Vec<usize>> = vec![Vec::new(); rows.len()];
-    let mut roots = Vec::new();
-    let mut stack: Vec<usize> = Vec::new();
-    for index in 0..rows.len() {
-        while stack
-            .last()
-            .is_some_and(|&top| rows[top].depth >= rows[index].depth)
-        {
-            stack.pop();
-        }
-        match stack.last() {
-            Some(&parent) => children[parent].push(index),
-            None => roots.push(index),
-        }
-        stack.push(index);
-    }
-
-    let labels: Vec<String> = rows
-        .iter()
-        .map(|row| hierarchy_row_label(row, scopes))
-        .collect();
-    let compare = |a: usize, b: usize| -> std::cmp::Ordering {
-        let natural = match sort {
-            HierarchySort::Total => rows[b].total_ns.cmp(&rows[a].total_ns),
-            HierarchySort::SelfTime => rows[b].self_ns.cmp(&rows[a].self_ns),
-            HierarchySort::Calls => rows[b].calls.cmp(&rows[a].calls),
-            HierarchySort::Max => rows[b].max_ns.cmp(&rows[a].max_ns),
-            HierarchySort::Name => labels[a].cmp(&labels[b]),
-        };
-        let natural = natural
-            .then_with(|| labels[a].cmp(&labels[b]))
-            .then_with(|| rows[a].scope.cmp(&rows[b].scope));
-        if descending {
-            natural
-        } else {
-            natural.reverse()
-        }
-    };
-
-    roots.sort_by(|a, b| compare(*a, *b));
-    for child_list in &mut children {
-        child_list.sort_by(|a, b| compare(*a, *b));
-    }
-
-    let original = rows.clone();
-    fn walk(
-        index: usize,
-        children: &[Vec<usize>],
-        original: &[HierarchyRow],
-        order: &mut Vec<HierarchyRow>,
-    ) {
-        order.push(original[index].clone());
-        for &child in &children[index] {
-            walk(child, children, original, order);
-        }
-    }
-    let mut order = Vec::with_capacity(original.len());
-    for root in roots {
-        walk(root, &children, &original, &mut order);
-    }
-    *rows = order;
-}
-
 /// A small filled triangle: the Hierarchy view's collapse caret and sort
 /// indicator (no icon assets needed).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -605,104 +472,6 @@ fn paint_triangle(
     painter.add(egui::Shape::convex_polygon(points, color, Stroke::NONE));
 }
 
-/// The right-aligned numeric columns of the Hierarchy view.
-///
-/// The name column takes the left 45% of the track, the four numbers split the
-/// rest evenly; the header and the rows share this geometry so a click on a
-/// header lands on the column it names.
-#[derive(Clone, Copy, Debug)]
-struct HierarchyColumns {
-    name_left: f32,
-    name_right: f32,
-    total_left: f32,
-    total_right: f32,
-    self_left: f32,
-    self_right: f32,
-    calls_left: f32,
-    calls_right: f32,
-    max_left: f32,
-    max_right: f32,
-}
-
-impl HierarchyColumns {
-    fn new(left: f32, right: f32) -> Self {
-        let width = (right - left).max(1.0);
-        // A narrow panel must not make the clamp bounds cross (min > max).
-        let numeric = (width * 0.55).clamp(120.0_f32.min(width), width);
-        let name_right = left + width - numeric;
-        let column = numeric / 4.0;
-        Self {
-            name_left: left,
-            name_right,
-            total_left: name_right,
-            total_right: name_right + column,
-            self_left: name_right + column,
-            self_right: name_right + 2.0 * column,
-            calls_left: name_right + 2.0 * column,
-            calls_right: name_right + 3.0 * column,
-            max_left: name_right + 3.0 * column,
-            max_right: name_right + 4.0 * column,
-        }
-    }
-
-    /// The five sortable header cells, left to right.
-    fn header_cells(&self, ruler: Rect) -> [(HierarchySort, Rect); 5] {
-        let cell = |sort: HierarchySort, left: f32, right: f32| {
-            (
-                sort,
-                Rect::from_min_max(
-                    egui::pos2(left, ruler.top()),
-                    egui::pos2(right, ruler.bottom()),
-                ),
-            )
-        };
-        [
-            cell(HierarchySort::Name, self.name_left, self.name_right),
-            cell(HierarchySort::Total, self.total_left, self.total_right),
-            cell(HierarchySort::SelfTime, self.self_left, self.self_right),
-            cell(HierarchySort::Calls, self.calls_left, self.calls_right),
-            cell(HierarchySort::Max, self.max_left, self.max_right),
-        ]
-    }
-}
-
-/// The rows the collapse state shows, with the path keys that address them.
-///
-/// A collapsed row stays visible; its descendants (deeper rows that follow it)
-/// are skipped until the next row at its depth or above.
-fn visible_hierarchy_rows(
-    rows: &[HierarchyRow],
-    collapsed: &BTreeSet<String>,
-) -> Vec<VisibleHierarchyRow> {
-    let mut visible = Vec::with_capacity(rows.len());
-    let mut path: Vec<String> = Vec::new();
-    let mut skip_under: Option<u32> = None;
-    for (index, row) in rows.iter().enumerate() {
-        if let Some(depth) = skip_under {
-            if row.depth > depth {
-                continue;
-            }
-            skip_under = None;
-        }
-        path.truncate(row.depth as usize);
-        let key = hierarchy_row_key(row);
-        path.push(key);
-        let key = path.join("/");
-        let has_children = rows
-            .get(index + 1)
-            .is_some_and(|next| next.depth > row.depth);
-        if has_children && collapsed.contains(&key) {
-            skip_under = Some(row.depth);
-        }
-        visible.push(VisibleHierarchyRow {
-            index,
-            key,
-            has_children,
-        });
-    }
-    visible
-}
-
 /// The rectangles the timeline lays out for one pass.
 ///
 /// The header and ruler are pinned; only `body` scrolls. `track_left` and
@@ -710,7 +479,7 @@ fn visible_hierarchy_rows(
 /// `track_left` (it does not pan) and the vertical scroll bar starts at
 /// `track_right`.
 #[derive(Clone, Copy, Debug)]
-struct TimelineLayout {
+pub(crate) struct TimelineLayout {
     header: Rect,
     ruler: Rect,
     body: Rect,
@@ -744,30 +513,25 @@ impl TimelineLayout {
 
 pub(crate) struct ProfilerPanel {
     style: ProfilerStyle,
-    global_frame_view: GlobalFrameView,
     recording: bool,
     follow_latest: bool,
     selected_frame: usize,
-    /// `None` aggregates all threads.
-    thread: Option<u32>,
-    /// Which view the timeline band draws (Unity's view selector).
+    /// Which view the timeline band draws (view selector).
     view_kind: PanelView,
+    /// Hierarchy rows whose subtree is collapsed, by path key.
+    collapsed: BTreeSet<String>,
+    frame_state: CaptureFrameState,
+    frame: Option<CaptureFrame>,
+    /// The aggregated tree, sorted by the Hierarchy view's current column.
+    frame_rows: Vec<HierarchyRow>,
     /// The Hierarchy view's sort column and direction.
     hierarchy_sort: HierarchySort,
     hierarchy_descending: bool,
-    /// Hierarchy rows whose subtree is collapsed, by path key.
-    collapsed: BTreeSet<String>,
-    cache_revision: u64,
-    cache_frame: usize,
-    cache_thread: Option<u32>,
-    cache_sort: HierarchySort,
-    cache_descending: bool,
-    cached: Option<CachedFrame>,
     /// Result of the last Save click: the exact files written, or the error.
     /// Kept so the panel can show where the capture went.
     save: Option<Result<CaptureFiles, String>>,
     /// Categories the user switched off in the legend, indexed by
-    /// [`Category`]. Unity's swatches are toggles: a hidden category keeps its
+    /// [`Category`]. Swatches are toggles: a hidden category keeps its
     /// row and its time, and leaves the chart's stack.
     hidden: [bool; Category::COUNT],
     /// The timeline block the user clicked: it keeps an outline, and the
@@ -775,9 +539,10 @@ pub(crate) struct ProfilerPanel {
     selection: Option<Selection>,
     /// Height of the module area in points. The splitter between it and the
     /// timeline keeps this, so the timeline gets the rest of the panel; a drag
-    /// replaces it for the session. Unity persists the same value as
-    /// `ProfilerWindow.MainSplitView.FixedPaneSize`; the editor has no per-panel
-    /// layout settings file to write it to yet.
+    /// replaces it for the session. It starts at
+    /// [`Self::module_default_height`], the height the cards ask for. Unity
+    /// persists the same value as `ProfilerWindow.MainSplitView.FixedPaneSize`;
+    /// the editor has no per-panel layout settings file to write it to yet.
     module_height: f32,
     /// Vertical offset of the module pane's card stack, in points.
     module_scroll: f32,
@@ -796,44 +561,41 @@ pub(crate) struct ProfilerPanel {
     /// Whether the next pass pans the axis window to the selected frame.
     reveal_frame: bool,
     /// The slice of the selected frame the tracks show.
-    view: TimelineView,
+    timeline_view: TimelineView,
     /// Vertical offset of the timeline's rows, in points.
     track_scroll: f32,
 }
 
 impl Default for ProfilerPanel {
     fn default() -> Self {
-        let style = ProfilerStyle::dark();
-        Self {
-            module_height: style.module_area_height,
+        let mut panel = Self {
+            style: ProfilerStyle::dark(),
+            // The module pane's height needs the style, so it is derived below.
+            module_height: 0.0,
             module_scroll: 0.0,
             module_axis: ModuleAxis::default(),
             module_view_started: false,
             module_default_window: true,
             module_scale_ms: 0.0,
             reveal_frame: false,
-            style,
-            global_frame_view: GlobalFrameView::default(),
             recording: false,
             follow_latest: true,
             selected_frame: 0,
-            thread: None,
-            cache_revision: u64::MAX,
-            cache_frame: usize::MAX,
-            cache_thread: None,
-            cache_sort: HierarchySort::Total,
-            cache_descending: true,
-            cached: None,
-            view_kind: PanelView::default(),
+            frame_state: CaptureFrameState::default(),
+            frame: None,
+            frame_rows: vec![],
             hierarchy_sort: HierarchySort::default(),
             hierarchy_descending: true,
+            view_kind: PanelView::default(),
             collapsed: BTreeSet::new(),
             save: None,
             hidden: [false; Category::COUNT],
             selection: None,
-            view: TimelineView::default(),
+            timeline_view: TimelineView::default(),
             track_scroll: 0.0,
-        }
+        };
+        panel.module_height = panel.module_default_height();
+        panel
     }
 }
 
@@ -864,9 +626,9 @@ impl Panel for ProfilerPanel {
             }
         }
 
-        // A skin may size the module band differently; the splitter starts at
-        // the skin's height and a drag replaces it for the session.
-        self.module_height = self.style.module_area_height;
+        // A skin may size the module cards differently; the pane starts at the
+        // height they ask for and a drag replaces it for the session.
+        self.module_height = self.module_default_height();
 
         for path in self.style.icons.all() {
             ui_image::preload(ctx, path);
@@ -884,311 +646,36 @@ impl Panel for ProfilerPanel {
         };
         let session = profiler.session();
         self.recording = profiler.is_recording();
-        self.follow_displayed_frame(&session);
+        // Point the panel at the newest frame while the header's Live toggle is on
+        // (and keep the index inside the capture after a clear).
+        let last = session.frames.len().saturating_sub(1);
+        if self.follow_latest || self.selected_frame > last {
+            self.selected_frame = last;
+        }
         if session.frames.is_empty() {
-            self.cached = None;
+            self.frame = None;
+            // A cleared capture has no cached frame; the next one rebuilds it.
+            self.frame_state = CaptureFrameState::default();
             // A cleared capture restarts the module area from its defaults: the
             // last-frames window and an unpinned vertical scale.
             self.module_view_started = false;
             self.module_default_window = true;
             self.module_scale_ms = 0.0;
         } else {
-            self.ensure_cache(&session);
+            self.refresh_frame_state(&session);
         }
 
         // The panel is measured chrome: Unity's rows are flush and the gaps
         // between sections are rules, not item spacing.
         ui.spacing_mut().item_spacing = egui::Vec2::ZERO;
 
-        // Unity's window, top to bottom: toolbar, module area, splitter,
-        // timeline.
+        // top to bottom: toolbar, module area, splitter, timeline.
         self.main_toolbar(ui, profiler, &session);
         self.bands(ui, &session);
-
-        // profiler.set_recording(true);
-
-        // let mut frame_view = self.global_frame_view.lock();
-        // let latest = frame_view
-        //     .latest_frames(1)
-        //     .map(|frame| frame.unpacked())
-        //     .filter_map(|unpacked| unpacked.ok());
-
-        // let scope_collection = frame_view.scope_collection();
-        // let frames = SelectedFrames::try_from_iter(scope_collection, latest);
-
-        // let Some(frames) = frames else {
-        //     return;
-        // };
-
-        // egui::containers::Frame::canvas(ui.style()).show(ui, |ui| {
-        //     ScrollArea::vertical().show(ui, |ui| {
-        //         let mut canvas = ui.available_rect_before_wrap();
-        //         canvas.max.y = f32::INFINITY;
-        //         let response = ui.interact(canvas, ui.id().with("canvas"), Sense::click_and_drag());
-
-        //         let (min_ns, max_ns) = frames.raw_range_ns;
-
-        //         let info = FlameGraphInfo {
-        //             ctx: ui.ctx().clone(),
-        //             canvas,
-        //             response,
-        //             painter: ui.painter_at(canvas),
-        //             text_height: 15.0,
-        //             start_ns: min_ns,
-        //             stop_ns: max_ns,
-        //             num_frames: frames.frames.len(),
-        //             layer_id: ui.layer_id(),
-        //             font_id: egui::TextStyle::Body.resolve(ui.style()),
-        //             scope_collection
-        //         };
-
-        //         let mut cursor_y = info.canvas.top();
-        //         let threads = frames.threads.keys().cloned().collect::<Vec<ThreadInfo>>();
-        //         for thread_info in threads {
-        //             let galley = info.ctx.fonts_mut(|f| {
-        //                 f.layout_no_wrap(
-        //                     thread_info.name.clone(), info.font_id.clone(), egui::Color32::PLACEHOLDER)
-        //             });
-
-        //             cursor_y += 4.0;
-        //             let text_pos = pos2(info.canvas.min.x, cursor_y);
-        //             let rect = Rect::from_min_size(text_pos, galley.size());
-        //             info.painter.rect_filled(rect.expand(2.0), 0.0, egui::Color32::BLACK);
-        //             info.painter.galley(rect.min, galley, egui::Color32::WHITE);
-        //         }
-        //     });
-        // });
     }
 }
 
 impl ProfilerPanel {
-    /// Point the panel at the newest frame while the header's Live toggle is on
-    /// (and keep the index inside the capture after a clear).
-    fn follow_displayed_frame(&mut self, session: &ProfileSession) {
-        let last = session.frames.len().saturating_sub(1);
-        if self.follow_latest || self.selected_frame > last {
-            self.selected_frame = last;
-        }
-    }
-
-    /// Unity's Profiler toolbar: a row of chrome segments closed by 1 px rules,
-    /// with one full-width rule under the row.
-    ///
-    /// Segments, left to right: record toggle, frame transport (previous / next /
-    /// newest), the `Frame: n / m` counter and Clear.
-    ///
-    /// The reference's other segments are not here yet because they have no
-    /// behaviour to model:
-    /// * before the record toggle — `Profiler Modules` (picks which module rows
-    ///   the module area draws) and `Play Mode` (when the capture starts), both
-    ///   text buttons with a caret;
-    /// * after Clear, pushed right — `Clear on Play`, `Deep Profile`,
-    ///   `Call Stacks` with a caret, then the save / help / overflow icon
-    ///   cluster.
-    fn main_toolbar(&mut self, ui: &mut Ui, profiler: &Profiler, session: &ProfileSession) {
-        let fill = if self.recording {
-            self.style.recording_bg.to_egui()
-        } else {
-            egui::Color32::TRANSPARENT
-        };
-        let hover = self.style.hover_bg.to_egui();
-        let base_style = ButtonStyle::new(self.toolbar_text())
-            .height(self.style.toolbar_height)
-            .padding(egui::vec2(self.style.toolbar_item_padding, 0.0));
-        // Only the record toggle paints a state fill; every other segment is
-        // transparent until hovered.
-        let record_style = base_style.clone().fills(fill, hover, hover);
-        let button_style = base_style.fills(
-            egui::Color32::TRANSPARENT,
-            hover,
-            self.style.click_bg.to_egui(),
-        );
-        let rule = self.style.separator.to_egui();
-        // Every icon toggle is the same square; the rules match the row it forms.
-        let row_height = self
-            .style
-            .toolbar_height
-            .max(self.style.toolbar_icon_size + 2.0 * button_style.padding.y);
-        let last = session.frames.len().saturating_sub(1);
-        let has_frames = !session.frames.is_empty();
-
-        ui.scope(|ui| {
-            // Unity's toolbar segments sit edge to edge: the rules are the
-            // borders, so no item spacing is added.
-            ui.spacing_mut().item_spacing = egui::Vec2::ZERO;
-            ui.horizontal(|ui| {
-                let icon = if self.recording {
-                    &self.style.icons.record_on
-                } else {
-                    &self.style.icons.record_off
-                };
-                let record = ui.add(
-                    Button::icon_only(icon, self.style.toolbar_icon_size, &record_style)
-                        .height(row_height)
-                        .tooltip("Record profiling information"),
-                );
-                if record.clicked() {
-                    self.recording = !self.recording;
-                    profiler.set_recording(self.recording);
-                }
-                self.toolbar_rule(ui, rule, row_height);
-
-                let previous = ui.add(
-                    Button::icon_only(
-                        &self.style.icons.prev_frame,
-                        self.style.toolbar_icon_size,
-                        &button_style,
-                    )
-                    .height(row_height)
-                    .enabled(has_frames && self.selected_frame > 0)
-                    .tooltip("Previous frame"),
-                );
-                if previous.clicked() {
-                    self.selected_frame = self.selected_frame.saturating_sub(1);
-                    self.follow_latest = false;
-                    self.reveal_frame = true;
-                }
-                self.toolbar_rule(ui, rule, row_height);
-
-                let next = ui.add(
-                    Button::icon_only(
-                        &self.style.icons.next_frame,
-                        self.style.toolbar_icon_size,
-                        &button_style,
-                    )
-                    .height(row_height)
-                    .enabled(has_frames && self.selected_frame < last)
-                    .tooltip("Next frame"),
-                );
-                if next.clicked() {
-                    self.selected_frame = (self.selected_frame + 1).min(last);
-                    self.follow_latest = self.selected_frame >= last;
-                    self.reveal_frame = true;
-                }
-                self.toolbar_rule(ui, rule, row_height);
-
-                let newest = ui.add(
-                    Button::icon_only(
-                        &self.style.icons.current_frame,
-                        self.style.toolbar_icon_size,
-                        &button_style,
-                    )
-                    .height(row_height)
-                    .enabled(has_frames && !self.follow_latest)
-                    .tooltip("Newest frame"),
-                );
-                if newest.clicked() {
-                    self.selected_frame = last;
-                    self.follow_latest = true;
-                }
-                self.toolbar_rule(ui, rule, row_height);
-
-                let counter = if has_frames {
-                    format!(
-                        "Frame: {} / {}",
-                        self.selected_frame + 1,
-                        session.frames.len()
-                    )
-                } else {
-                    "Frame: 0 / 0".to_owned()
-                };
-                self.toolbar_label(ui, &counter, row_height);
-                self.toolbar_rule(ui, rule, row_height);
-
-                let clear = ui.add(
-                    Button::new("Clear", &button_style)
-                        .height(row_height)
-                        .enabled(has_frames),
-                );
-                if clear.clicked() {
-                    profiler.clear();
-                    self.reset_view();
-                }
-                self.toolbar_rule(ui, rule, row_height);
-
-                // Unity's Save writes the capture; the files named in the
-                // result are shown next to the button and in the hover text, so
-                // "where did it go" is never a guess.
-                let save = ui.add(
-                    Button::new("Save", &button_style)
-                        .height(row_height)
-                        .enabled(has_frames)
-                        .tooltip("Save the capture (JSON, Chrome trace and puffin)"),
-                );
-                if save.clicked() {
-                    let written = profiler.save_capture(kairos_profile::DEFAULT_CAPTURE_DIR);
-                    if let Ok(files) = &written {
-                        kairos_log::info!(
-                            target: "kairos_editor",
-                            "profiler capture saved: {} (trace {}, puffin {})",
-                            files.json.display(),
-                            files.chrome_trace.display(),
-                            files.puffin.display(),
-                        );
-                    }
-                    self.save = Some(written.map_err(|error| error.to_string()));
-                }
-                self.toolbar_rule(ui, rule, row_height);
-
-                if let Some(result) = &self.save {
-                    let (label, tooltip) = match result {
-                        Ok(files) => (
-                            "Saved".to_owned(),
-                            format!(
-                                "{}\n{}\n{}",
-                                files.json.display(),
-                                files.chrome_trace.display(),
-                                files.puffin.display(),
-                            ),
-                        ),
-                        Err(error) => ("Save failed".to_owned(), error.clone()),
-                    };
-                    self.toolbar_label(ui, &label, row_height)
-                        .on_hover_text(tooltip);
-                }
-
-                // TODO(profiler): Unity's right-hand group — `Clear on Play`,
-                // `Deep Profile`, `Call Stacks` and the help/overflow icon
-                // cluster. It needs recording options the host does not have.
-            });
-            ui.add(
-                Divider::horizontal()
-                    .thickness(self.style.separator_width)
-                    .color(rule),
-            );
-        });
-    }
-
-    /// Close one toolbar segment with Unity's 1 px vertical rule.
-    fn toolbar_rule(&self, ui: &mut Ui, color: egui::Color32, height: f32) {
-        ui.add(
-            Divider::vertical()
-                .length(height)
-                .thickness(self.style.separator_width)
-                .color(color),
-        );
-    }
-
-    /// A non-interactive toolbar segment, e.g. Unity's `Frame: 29 / 53`.
-    fn toolbar_label(&self, ui: &mut Ui, text: &str, height: f32) -> Response {
-        let style = self.toolbar_text();
-        let galley = style.layout(ui, text);
-        let padding = self.style.toolbar_item_padding;
-        let (rect, response) = ui.allocate_exact_size(
-            egui::vec2(galley.size().x + 2.0 * padding, height),
-            Sense::hover(),
-        );
-        ui.painter().galley(
-            egui::pos2(
-                rect.left() + padding,
-                rect.center().y - galley.size().y * 0.5,
-            ),
-            galley,
-            style.text_color(),
-        );
-        response
-    }
-
     /// Toolbar typography, shared by the toolbar buttons, labels and chips.
     fn toolbar_text(&self) -> TextStyle {
         TextStyle::sized(
@@ -1218,7 +705,9 @@ impl ProfilerPanel {
     /// splitter applies its drag to `module_height` on this pass, but the pane
     /// above it was already allocated, so the two panes move on the next pass —
     /// the same one-pass lag a dock separator has. The pane stops growing at the
-    /// card stack's height: beyond it there is nothing more to reveal.
+    /// card stack's height: beyond it there is nothing more to reveal, and the
+    /// timeline stops shrinking at its header row (see
+    /// [`Self::min_timeline_height`]).
     fn bands(&mut self, ui: &mut Ui, session: &ProfileSession) {
         let width = ui.available_width();
         let total = ui.available_height().max(0.0);
@@ -1240,7 +729,7 @@ impl ProfilerPanel {
         let splitter_total = total.min(cards + splitter.thickness() + min_timeline);
         let response = splitter
             .limits(min_module, min_timeline)
-            .reset_to(self.style.module_area_height)
+            .reset_to(self.module_default_height())
             .show(
                 ui,
                 ui.id().with("profiler.splitter"),
@@ -1289,384 +778,78 @@ impl ProfilerPanel {
         self.module_axis_height() + self.style.separator_width + self.module_bar_height()
     }
 
-    /// The module card stack: the two fixed-height cards and the rule between.
+    /// The module card stack at the cards' skin heights: the two cards and the
+    /// rule between. This is the stack's preferred height; in a shorter pane the
+    /// CPU card yields first (see [`Self::module_cpu_fit`]).
     fn module_cards_height(&self) -> f32 {
         self.style.module_cpu_height + self.style.separator_width + self.style.module_gpu_height
     }
 
-    /// Everything the module pane can show: the card stack plus its pinned
-    /// chrome. The splitter stops here so there is no dead space under the last
-    /// card.
+    /// Everything the module pane shows at the stack's preferred height: the
+    /// card stack plus its pinned chrome. The splitter stops here so there is no
+    /// dead space under the last card.
     fn module_content_height(&self) -> f32 {
         self.module_cards_height() + self.module_chrome_height()
     }
 
-    /// Smallest timeline: header, ruler, one thread row, the horizontal bar and
-    /// the rules around the ruler.
-    fn min_timeline_height(&self) -> f32 {
-        self.style.toolbar_height
-            + self.style.ruler_height
-            + self.style.scrollbar_width
-            + self.style.level_height
-            + 2.0 * self.style.thread_row_padding
-            + 2.0 * self.style.separator_width
+    /// The module pane's default height: its pinned chrome, the CPU card whole,
+    /// the rule under it and half of the card below it (today the empty GPU card).
+    ///
+    /// It is derived from the cards rather than kept as a fixed token, so a skin
+    /// that resizes a card — or a module added after the GPU one — keeps the same
+    /// relationship: the default shows the usage chart whole plus the top half of
+    /// the next module. The splitter restores this height on a double-click.
+    fn module_default_height(&self) -> f32 {
+        self.module_chrome_height()
+            + self.style.module_cpu_height.max(0.0)
+            + self.style.separator_width
+            + 0.5 * self.style.module_gpu_height.max(0.0)
     }
 
-    /// The module pane: a pinned time axis on top, a pinned zoom bar at the
-    /// bottom, and between them a window onto the fixed-height module cards.
+    /// The CPU Usage card's height in a card viewport `viewport` points tall: its
+    /// skin height, or the whole viewport when the pane is shorter.
     ///
-    /// The axis labels the capture's real clock times and compresses the pause
-    /// between two takes into a break band (see the axis module). The bar under
-    /// the cards is a min-max scroller over the whole capture: its thumb pans the
-    /// axis and its ends zoom it. The cards keep painting at their fixed heights
-    /// and are clipped to the pane; the wheel over the name column and the pane's
-    /// vertical bar move the stack.
-    fn module_area(&mut self, ui: &mut Ui, area: Rect, session: &ProfileSession) {
-        if area.width() <= 0.0 || area.height() <= 0.0 {
-            return;
-        }
-        let width = area.width();
-        let bar_width = self.style.scrollbar_width.min(width);
-        let name_width = self.style.module_name_width.min(width);
-        let chart_left = (area.left() + name_width)
-            .min(area.right() - bar_width)
-            .max(area.left());
-        let chart_right = (area.right() - bar_width).max(chart_left);
-        let chart_width = (chart_right - chart_left).max(0.0);
+    /// The card yields to the pane instead of being clipped, because a usage
+    /// chart is read from its zero line up: the bars grow from the plot's bottom,
+    /// so a card cut off at the pane's edge hides the short bars a high frame rate
+    /// produces and reads as "CPU Usage recorded nothing".
+    fn module_cpu_fit(&self, viewport: f32) -> f32 {
+        self.style.module_cpu_height.clamp(0.0, viewport.max(0.0))
+    }
 
-        let axis_height = self.module_axis_height().min(area.height());
-        let axis_row =
-            Rect::from_min_max(area.min, egui::pos2(area.right(), area.top() + axis_height));
-        let bar_height = self
-            .module_bar_height()
-            .min((area.bottom() - axis_row.bottom()).max(0.0));
-        let bar_row = Rect::from_min_max(
-            egui::pos2(area.left(), area.bottom() - bar_height),
-            area.max,
-        );
-        let cards = Rect::from_min_max(
-            egui::pos2(area.left(), axis_row.bottom() + self.style.separator_width),
-            egui::pos2(chart_right, bar_row.top()),
-        );
-        let vertical_bar = Rect::from_min_max(
-            egui::pos2(chart_right, cards.top()),
-            egui::pos2(area.right(), cards.bottom()),
-        );
-        let cards_height = cards.height();
-        let max_scroll = (self.module_cards_height() - cards_height).max(0.0);
-
-        // The axis reads the takes, then places its window: the default
-        // last-frames view, or the Live follow once that window is left.
-        self.module_axis.sync(session);
-        self.module_axis.layout(chart_width);
-        if !session.frames.is_empty() && !self.module_view_started {
-            self.module_axis
-                .show_last_frames(&session.frames, self.style.window_fram_count.max(1));
-            self.module_view_started = true;
-        } else if self.follow_latest && self.module_default_window {
-            self.module_axis
-                .show_last_frames(&session.frames, self.style.window_fram_count.max(1));
-        } else if self.follow_latest {
-            self.module_axis.follow_end();
-        }
-        if self.reveal_frame {
-            self.reveal_frame = false;
-            if let Some(frame) = session.frames.get(self.selected_frame) {
-                if let Some((_, recorded)) =
-                    self.module_axis.recorded_of_capture(frame.start_ns as f64)
-                {
-                    self.module_axis.reveal(recorded);
-                }
-            }
-        }
-
-        // Chrome fills: everything here is panel chrome except the chart columns
-        // of the axis row, which carry the clock.
-        let chrome = self.style.timeline_name_bg.to_egui();
-        let rule = self.style.separator.to_egui();
-        let rule_width = self.style.separator_width;
-        ui.painter()
-            .rect_filled(axis_row, CornerRadius::ZERO, chrome);
-        ui.painter()
-            .rect_filled(bar_row, CornerRadius::ZERO, chrome);
-        if axis_height > 0.0 {
-            self.paint_module_axis(ui, axis_row, chart_left, chart_right, session);
-            Divider::horizontal()
-                .thickness(rule_width)
-                .color(rule)
-                .paint_in(
-                    ui,
-                    Rect::from_min_size(
-                        egui::pos2(area.left(), axis_row.bottom()),
-                        egui::vec2(width, rule_width),
-                    ),
-                );
-        }
-
-        // The zoom bar: a min-max scroller over the recorded time. Dragging its
-        // thumb pans the window (and stops following the newest frame); dragging
-        // either end zooms it.
-        if bar_height > 0.0 && chart_width > 0.0 && !session.frames.is_empty() {
-            let bar = Rect::from_min_max(
-                egui::pos2(chart_left, bar_row.top()),
-                egui::pos2(chart_right, bar_row.bottom()),
-            );
-            let was_left = self.module_axis.left();
-            let mut window = self.module_axis.window();
-            let changed = MinMaxScroll::horizontal(&self.scroll_style())
-                .resizable(true)
-                .show(
-                    ui,
-                    ui.id().with("profiler.modules.hscroll"),
-                    bar,
-                    &mut window,
-                )
-                .changed();
-            if changed {
-                self.module_axis.apply_window(window.value, window.span);
-                self.module_default_window = false;
-                if (self.module_axis.left() - was_left).abs() > 1.0 {
-                    self.follow_latest = false;
-                }
-                ui.ctx().request_repaint();
-            }
-        }
-
-        // The cards: the pane is the clip, and the pane's vertical bar moves the
-        // stack.
-        if cards_height > 0.0 && cards.width() > 0.0 {
-            let content_height = self.module_cards_height();
-            self.module_scroll = self.module_scroll.clamp(0.0, max_scroll);
-            self.paint_module_scroll_bar(ui, vertical_bar, cards_height, content_height);
-
-            let content = Rect::from_min_size(
-                egui::pos2(cards.left(), cards.top() - self.module_scroll),
-                egui::vec2(cards.width(), content_height),
-            );
-            let cpu_height = self.style.module_cpu_height.max(0.0);
-            let gpu_height = self.style.module_gpu_height.max(0.0);
-            // A child UI inherits its parent's painter clip; shrink it to the
-            // pane so a card taller than the pane cannot paint over the ruler or
-            // the zoom bar. Reserve the whole pane, not just the card viewport,
-            // in the child: the parent cursor must still end where the module
-            // band ends, or the splitter below would sit at the card viewport's
-            // bottom instead.
-            let _ = ui.scope_builder(egui::UiBuilder::new().max_rect(area), |ui| {
-                ui.advance_cursor_after_rect(area);
-                ui.shrink_clip_rect(cards);
-                let cpu = Rect::from_min_size(content.min, egui::vec2(content.width(), cpu_height));
-                self.paint_cpu_module(ui, cpu, session);
-                Divider::horizontal()
-                    .thickness(rule_width)
-                    .color(rule)
-                    .paint_in(
-                        ui,
-                        Rect::from_min_size(
-                            egui::pos2(content.left(), cpu.bottom()),
-                            egui::vec2(content.width(), rule_width),
-                        ),
-                    );
-                let gpu = Rect::from_min_size(
-                    egui::pos2(content.left(), cpu.bottom() + rule_width),
-                    egui::vec2(content.width(), gpu_height),
-                );
-                self.paint_gpu_module(ui, gpu);
-            });
-        }
-
-        // The selected-frame cursor: one line from the clock row down through
-        // the cards, riding the middle of the frame's bar. It is drawn after the
-        // cards so it stays visible over the bars and the break bands, and it is
-        // what the drag on the chart grabs.
-        if let Some(column) = self.module_cursor_column(session) {
-            let x = chart_left + column;
-            if x >= chart_left && x <= chart_right {
-                let bottom = if cards_height > 0.0 {
-                    cards.bottom()
-                } else {
-                    axis_row.bottom()
-                };
-                let clip = Rect::from_min_max(
-                    egui::pos2(chart_left, axis_row.top()),
-                    egui::pos2(chart_right, bottom),
-                );
-                ui.painter().with_clip_rect(clip).rect_filled(
-                    Rect::from_min_size(
-                        egui::pos2(x - 1.0, axis_row.top()),
-                        egui::vec2(2.0, bottom - axis_row.top()),
-                    ),
-                    CornerRadius::ZERO,
-                    self.style.chart_cursor.to_egui(),
-                );
-            }
-        }
-
-        // Wheel: over the chart columns it zooms the time axis around the
-        // pointer (its horizontal part pans); over the name column or the
-        // vertical bar it scrolls the cards; over the zoom bar it pans.
-        let pointer = ui.input(|input| input.pointer.hover_pos());
-        let wheel = ui.input(|input| input.smooth_scroll_delta);
-        if wheel != egui::Vec2::ZERO {
-            if let Some(pos) = pointer {
-                let over_chart = pos.x >= chart_left && pos.x < chart_right;
-                let over_time = over_chart && (axis_row.contains(pos) || cards.contains(pos));
-                let used = if over_time {
-                    if wheel.y != 0.0 {
-                        let factor = ZOOM_PER_NOTCH.powf(f64::from(wheel.y) / WHEEL_NOTCH_POINTS);
-                        self.module_axis.zoom_around(pos.x - chart_left, factor);
-                    }
-                    if wheel.x != 0.0 {
-                        self.module_axis.pan_screen(wheel.x);
-                        self.follow_latest = false;
-                    }
-                    self.module_default_window = false;
-                    true
-                } else if over_chart && bar_row.contains(pos) {
-                    let step = wheel.y / WHEEL_NOTCH_POINTS as f32 * chart_width * 0.1;
-                    self.module_axis.pan_screen(step);
-                    self.module_default_window = false;
-                    self.follow_latest = false;
-                    true
-                } else if cards.contains(pos)
-                    || vertical_bar.contains(pos)
-                    || axis_row.contains(pos)
-                {
-                    self.module_scroll = (self.module_scroll - wheel.y).clamp(0.0, max_scroll);
-                    true
-                } else {
-                    false
-                };
-                if used {
-                    ui.input_mut(|input| input.smooth_scroll_delta = egui::Vec2::ZERO);
-                    ui.ctx().request_repaint();
-                }
-            }
-        }
-
-        // Middle-drag (or alt-drag) pans the time columns, like the timeline.
-        let alt = ui.input(|input| input.modifiers.alt);
-        let panning =
-            ui.input(|input| input.pointer.middle_down() || (alt && input.pointer.primary_down()));
-        if panning {
-            if let Some(pos) = pointer {
-                let time_area = Rect::from_min_max(
-                    egui::pos2(chart_left, axis_row.top()),
-                    egui::pos2(chart_right, cards.bottom()),
-                );
-                if time_area.contains(pos) {
-                    let delta = ui.input(|input| input.pointer.delta().x);
-                    if delta != 0.0 {
-                        self.module_axis.pan_screen(delta);
-                        self.module_default_window = false;
-                        self.follow_latest = false;
-                        ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
-                        ui.ctx().request_repaint();
-                    }
-                }
-            }
-        }
-
-        // A click or drag on the clock ruler selects the frame recorded at that
-        // time; a double-click restores the default last-frames window.
-        if chart_width > 0.0 && axis_height > 0.0 && !session.frames.is_empty() {
-            let ruler_track = Rect::from_min_max(
-                egui::pos2(chart_left, axis_row.top()),
-                egui::pos2(chart_right, axis_row.bottom()),
-            );
-            let response = ui.interact(
-                ruler_track,
-                ui.id().with("profiler.modules.ruler"),
-                Sense::click_and_drag(),
-            );
-            if response.double_clicked() {
-                self.module_default_window = true;
-                self.module_view_started = true;
-                self.module_axis
-                    .show_last_frames(&session.frames, self.style.window_fram_count.max(1));
-                ui.ctx().request_repaint();
-            } else if response.clicked() || response.dragged() {
-                if let Some(pos) = response.interact_pointer_pos() {
-                    let x = (pos.x - chart_left).clamp(0.0, chart_width);
-                    self.select_module_frame_at(x, session);
-                }
-            }
-            if response.dragged() {
-                ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
-            }
-        }
+    /// Smallest timeline: its header row and the rule under it. The band gives
+    /// way to the module pane, so dragging the splitter down collapses the
+    /// timeline to the view selector, the Live toggle and the CPU/GPU summary;
+    /// the ruler, the tracks and the bars are clipped above the pane's edge.
+    fn min_timeline_height(&self) -> f32 {
+        self.style.toolbar_height + self.style.separator_width
     }
 
     /// The module area's pinned time axis: real clock ticks over the chart
     /// columns, with a break band for every pause between two takes.
-    fn paint_module_axis(
-        &self,
-        ui: &Ui,
-        row: Rect,
-        chart_left: f32,
-        chart_right: f32,
-        session: &ProfileSession,
-    ) {
-        let painter = ui.painter();
+    ///
+    /// The axis and its ruler are
+    /// [kairos_editor_widgets::timeline_axis]; this panel supplies the capture's
+    /// takes and its clock labels.
+    fn paint_module_axis(&self, ui: &Ui, row: Rect, chart_left: f32, chart_right: f32) {
         let track = Rect::from_min_max(
             egui::pos2(chart_left, row.top()),
             egui::pos2(chart_right.max(chart_left), row.bottom()),
         );
-        painter.rect_filled(track, CornerRadius::ZERO, self.style.ruler_bg.to_egui());
-        if track.width() <= 0.0 || session.frames.is_empty() || self.module_axis.is_empty() {
-            return;
-        }
-        let labels = painter.with_clip_rect(track);
-        let text = self.style.ruler_text.to_egui();
-
-        // Break bands print the pause's stop time on their left and its restart
-        // time on their right; clock labels that would collide step aside.
-        let mut reserved: Vec<(f32, f32)> = Vec::new();
-        for band in self.module_axis.breaks() {
-            let x = track.left() + band.x;
-            let band_rect = Rect::from_min_size(
-                egui::pos2(x, row.top()),
-                egui::vec2(band.width, row.height()),
-            );
-            painter.rect_filled(band_rect, CornerRadius::ZERO, self.style.break_bg.to_egui());
-            let stop = labels.layout_no_wrap(band.stop.clone(), self.small_font(), text);
-            let stop_x = x - 3.0 - stop.size().x;
-            labels.galley(egui::pos2(stop_x, row.top() + 3.0), stop, text);
-            reserved.push((stop_x - 1.0, x - 1.0));
-            let start = labels.layout_no_wrap(band.start.clone(), self.small_font(), text);
-            let start_x = x + band.width + 3.0;
-            reserved.push((start_x, start_x + start.size().x + 1.0));
-            labels.galley(egui::pos2(start_x, row.top() + 3.0), start, text);
-        }
-
-        for tick in self.module_axis.ticks() {
-            let x = track.left() + tick.x;
-            if x < track.left() - 0.5 || x > track.right() + 0.5 {
-                continue;
-            }
-            let height = if tick.label.is_some() {
-                self.style.ruler_height * 0.4
-            } else {
-                self.style.ruler_height * 0.25
-            };
-            painter.rect_filled(
-                Rect::from_min_size(
-                    egui::pos2(x, row.bottom() - height),
-                    egui::vec2(1.0, height),
-                ),
-                CornerRadius::ZERO,
-                text,
-            );
-            if let Some(label) = tick.label {
-                let galley = labels.layout_no_wrap(label, self.small_font(), text);
-                let left = x + 3.0;
-                let right = left + galley.size().x;
-                if reserved.iter().any(|(a, b)| left < *b && right > *a) {
-                    continue;
-                }
-                labels.galley(egui::pos2(left, row.top() + 3.0), galley, text);
-                reserved.push((left - 1.0, right + 1.0));
-            }
-        }
+        let style = TimelineRulerStyle {
+            background: self.style.ruler_bg.to_egui(),
+            text: self.style.ruler_text.to_egui(),
+            break_background: self.style.break_bg.to_egui(),
+            font: self.small_font(),
+        };
+        let labels = self.module_axis.labels();
+        TimelineRuler::new(
+            &self.module_axis,
+            self.module_axis.ruler_scale(),
+            &labels,
+            &style,
+        )
+        .show(ui, track);
 
         // Rule between the name column and the clock columns, like the ruler
         // over the timeline's tracks.
@@ -1710,7 +893,7 @@ impl ProfilerPanel {
     /// columns, not to a particular bar, so a GPU chart gets it for free once it
     /// has bars.
     fn select_module_frame_at(&mut self, x: f32, session: &ProfileSession) {
-        let Some((take, capture)) = self.module_axis.capture_at_screen(x) else {
+        let Some((take, capture)) = self.module_axis.source_at_screen(x) else {
             return;
         };
         let Some(index) = frame_at_capture(&self.module_axis, session, take, capture) else {
@@ -2055,7 +1238,7 @@ impl ProfilerPanel {
         let zoom = self.module_axis.zoom();
         let mut columns: Vec<ChartColumn> = Vec::new();
         for segment in self.module_axis.visible_segments() {
-            let (capture_start, capture_end) = segment.capture;
+            let (capture_start, capture_end) = segment.source;
             let frames = &session.frames;
             let lo = frames.partition_point(|frame| (frame.start_ns as f64) < capture_start);
             let hi = frames.partition_point(|frame| (frame.start_ns as f64) < capture_end);
@@ -2111,11 +1294,12 @@ impl ProfilerPanel {
         // Clock grid: a faint vertical line under every labelled ruler tick, so
         // a bar reads against the time axis above it.
         let grid = self.style.chart_grid.to_egui().gamma_multiply(0.45);
+        let ruler = self.module_axis.ruler_scale();
         for tick in self
             .module_axis
-            .ticks()
+            .ticks(&ruler)
             .into_iter()
-            .filter(|tick| tick.label.is_some())
+            .filter(|tick| tick.major)
         {
             let x = plot.left() + tick.x;
             if x <= plot.left() || x >= plot.right() {
@@ -2155,13 +1339,17 @@ impl ProfilerPanel {
         }
 
         // Unity's ms/FPS guide lines, placed under the 80% scale. They are
-        // drawn over the bars so their chips stay readable.
+        // drawn over the bars so their chips stay readable. A pane barely taller
+        // than its card header leaves a short plot that bunches the tiers up, so
+        // a chip whose label would collide with the one above it steps aside and
+        // leaves its line — the way the clock ruler drops colliding labels.
+        let mut reserved: Vec<(f32, f32)> = Vec::new();
         for (ms, label) in usage_grid(scale) {
             if *ms > f64::from(scale) {
                 continue;
             }
             let y = plot.bottom() - (*ms as f32 / scale * plot.height());
-            self.paint_chart_guide(ui, plot, y, label);
+            self.paint_chart_guide(ui, plot, y, label, &mut reserved);
         }
     }
 
@@ -2174,13 +1362,22 @@ impl ProfilerPanel {
         let start = frame.start_ns as f64;
         let end = frame.end_ns as f64;
         self.module_axis
-            .screen_of_capture(start + (end - start) * 0.5)
+            .screen_of_source(start + (end - start) * 0.5)
     }
 
     /// One usage guide: a 1 px rule across the chart with Unity's
     /// xxms (xxFPS) chip at the left edge. The line stays at its true height;
-    /// only the chip is pushed inside the plot.
-    fn paint_chart_guide(&self, ui: &Ui, plot: Rect, y: f32, label: &str) {
+    /// only the chip is pushed inside the plot, and `reserved` (the bands of the
+    /// chips already drawn) drops a chip that a shorter plot would stack on top
+    /// of another one.
+    fn paint_chart_guide(
+        &self,
+        ui: &Ui,
+        plot: Rect,
+        y: f32,
+        label: &str,
+        reserved: &mut Vec<(f32, f32)>,
+    ) {
         Divider::horizontal()
             .thickness(1.0)
             .color(self.style.chart_grid.to_egui())
@@ -2189,22 +1386,34 @@ impl ProfilerPanel {
                 Rect::from_min_size(egui::pos2(plot.left(), y), egui::vec2(plot.width(), 1.0)),
             );
         let half = self.style.legend_row_height * 0.5;
+        if plot.height() < self.style.legend_row_height {
+            // A chip is taller than the plot: its line is the whole guide.
+            return;
+        }
         let center = y.clamp(plot.top() + half, plot.bottom() - half);
+        let band = (center - half, center + half);
+        if reserved
+            .iter()
+            .any(|(top, bottom)| band.0 < *bottom && band.1 > *top)
+        {
+            return;
+        }
+        reserved.push(band);
         self.paint_chip(ui, egui::pos2(plot.left() + 6.0, center), label);
     }
 
     /// The timeline rows: registered lanes plus threads seen in the frames.
     fn lanes(&self) -> &[Lane] {
-        self.cached
+        self.frame
             .as_ref()
-            .map_or(&[], |cached| cached.lanes.as_slice())
+            .map_or(&[], |frame| frame.lanes.as_slice())
     }
 
     /// The selected frame's Scripts systems, highest first.
     fn system_entries(&self) -> &[(String, u64)] {
-        self.cached
+        self.frame
             .as_ref()
-            .map_or(&[], |cached| cached.systems.as_slice())
+            .map_or(&[], |frame| frame.systems.as_slice())
     }
 
     /// Category colour from the legend palette (index = enum order).
@@ -2307,13 +1516,13 @@ impl ProfilerPanel {
         };
 
         if self.view_kind == PanelView::Hierarchy {
-            self.hierarchy(ui, &layout);
+            self.hierarchy(ui, &layout, session);
             return;
         }
 
         let frame = session.frames.get(self.selected_frame).map(Arc::as_ref);
         let duration_ns = frame.map_or(0, |frame| frame.duration_ns());
-        self.view.clamp(duration_ns);
+        self.timeline_view.clamp(duration_ns);
 
         // Row heights come first: the vertical offset is clamped before painting,
         // and the wheel or the vertical bar can move it below.
@@ -2329,10 +1538,10 @@ impl ProfilerPanel {
         );
         self.navigate(ui, &layout, &body_response, duration_ns);
         self.paint_scroll_bars(ui, &layout, content_height, duration_ns);
-        self.view.clamp(duration_ns);
+        self.timeline_view.clamp(duration_ns);
         self.track_scroll = self.track_scroll.clamp(0.0, max_scroll);
 
-        let view = self.view;
+        let view = self.timeline_view;
         let ticks = ruler_ticks(view, duration_ns, layout.track_width());
         let ruler_track = Rect::from_min_max(
             egui::pos2(layout.track_left, layout.ruler.top()),
@@ -2466,354 +1675,6 @@ impl ProfilerPanel {
         self.paint_selection_details(ui, layout.body, bar, &details);
     }
 
-    /// Unity's Hierarchy view over the selected frame: the aggregated marker
-    /// tree with Unity's columns, click-to-sort headers and click-to-collapse
-    /// rows.
-    ///
-    /// This is where the whole frame's ranking lives: unlike the timeline (one
-    /// track per thread) it merges every thread, so a system that ran on a
-    /// worker is found here even though the stage wrapper that scheduled it has
-    /// no child blocks on the main thread.
-    fn hierarchy(&mut self, ui: &mut Ui, layout: &TimelineLayout) {
-        let body = layout.body;
-        let row_height = self.style.level_height.max(1.0);
-        ui.painter()
-            .rect_filled(body, CornerRadius::ZERO, self.style.track_bg.to_egui());
-        // The Hierarchy view has no time axis, but the band keeps the same
-        // chrome rows as the timeline so switching views does not jump.
-        ui.painter().rect_filled(
-            Rect::from_min_max(
-                egui::pos2(body.left(), body.bottom()),
-                egui::pos2(layout.track_right, layout.horizontal_bar.bottom()),
-            ),
-            CornerRadius::ZERO,
-            self.style.timeline_name_bg.to_egui(),
-        );
-        self.paint_hierarchy_header(ui, layout);
-
-        let has_rows = self
-            .cached
-            .as_ref()
-            .is_some_and(|cached| !cached.rows.is_empty());
-        if !has_rows {
-            self.paint_empty_timeline(ui, body);
-            return;
-        }
-
-        // The rows the collapse state shows. Their keys do not borrow the
-        // cache, so the scroll state can be updated before the paint.
-        let visible = {
-            let cached = self.cached.as_ref().expect("cached hierarchy rows");
-            visible_hierarchy_rows(&cached.rows, &self.collapsed)
-        };
-        let content_height = visible.len() as f32 * row_height;
-        let max_scroll = (content_height - body.height()).max(0.0);
-        self.track_scroll = self.track_scroll.clamp(0.0, max_scroll);
-
-        // The wheel over the table scrolls the rows, like the timeline names.
-        if let Some(pos) = ui.input(|input| input.pointer.hover_pos()) {
-            if body.contains(pos) {
-                let wheel = ui.input(|input| input.smooth_scroll_delta.y);
-                if wheel != 0.0 {
-                    self.track_scroll = (self.track_scroll - wheel).clamp(0.0, max_scroll);
-                    ui.input_mut(|input| input.smooth_scroll_delta = egui::Vec2::ZERO);
-                    ui.ctx().request_repaint();
-                }
-            }
-        }
-
-        // The right-edge scroll bar, same widget as the timeline's.
-        let scroll_style = self.scroll_style();
-        let viewport_height = body.height().max(1.0);
-        let content = content_height.max(viewport_height);
-        let mut window = ScrollWindow::new(
-            f64::from(self.track_scroll),
-            f64::from(viewport_height.min(content)),
-            (0.0, f64::from(content)),
-        )
-        .with_min_span(f64::from(viewport_height.min(content)));
-        let scrolled = MinMaxScroll::vertical(&scroll_style)
-            .show(
-                ui,
-                ui.id().with("profiler.hierarchy.vscroll"),
-                layout.vertical_bar,
-                &mut window,
-            )
-            .changed();
-        if scrolled {
-            self.track_scroll = window.value as f32;
-            ui.ctx().request_repaint();
-        }
-
-        let columns = HierarchyColumns::new(body.left(), layout.track_right);
-        let painter = ui.painter().with_clip_rect(body);
-        let font = self.small_font();
-        let text = self.style.timeline_text.to_egui();
-        let dim = self.style.ruler_text.to_egui();
-        let rule = self.style.separator.to_egui();
-        let hover = self.style.hover_bg.to_egui();
-        let separator_width = self.style.separator_width;
-        let rule_columns = [
-            columns.total_left,
-            columns.self_left,
-            columns.calls_left,
-            columns.max_left,
-        ];
-
-        let mut toggled = None;
-        let mut y = body.top() - self.track_scroll;
-        let cached = self.cached.as_ref().expect("cached hierarchy rows");
-        for entry in &visible {
-            let row = &cached.rows[entry.index];
-            let rect = Rect::from_min_size(
-                egui::pos2(body.left(), y),
-                egui::vec2(layout.track_right - body.left(), row_height),
-            );
-            y += row_height;
-            if !rect.intersects(body) {
-                continue;
-            }
-
-            let response = ui.interact(
-                rect,
-                ui.id().with(("profiler.hierarchy.row", entry.index)),
-                Sense::click(),
-            );
-            if response.hovered() {
-                painter.rect_filled(rect, CornerRadius::ZERO, hover);
-            }
-            painter.rect_filled(
-                Rect::from_min_size(
-                    egui::pos2(rect.left(), rect.bottom() - separator_width),
-                    egui::vec2(rect.width(), separator_width),
-                ),
-                CornerRadius::ZERO,
-                rule,
-            );
-            for x in rule_columns {
-                painter.rect_filled(
-                    Rect::from_min_size(
-                        egui::pos2(x, rect.top()),
-                        egui::vec2(separator_width, rect.height()),
-                    ),
-                    CornerRadius::ZERO,
-                    rule,
-                );
-            }
-
-            let indent = row.depth as f32 * 12.0;
-            let caret = egui::pos2(rect.left() + 9.0 + indent, rect.center().y);
-            if entry.has_children {
-                let collapsed = self.collapsed.contains(&entry.key);
-                paint_triangle(
-                    &painter,
-                    caret,
-                    7.0,
-                    if collapsed {
-                        Triangle::Right
-                    } else {
-                        Triangle::Down
-                    },
-                    dim,
-                );
-            }
-            let chip = egui::pos2(caret.x + 12.0, rect.center().y);
-            let category = hierarchy_row_category(row, &cached.scopes, &cached.system_categories);
-            painter.rect_filled(
-                Rect::from_center_size(chip, egui::vec2(8.0, 8.0)),
-                CornerRadius::same(1),
-                self.category_color(category),
-            );
-            painter
-                .with_clip_rect(Rect::from_min_max(
-                    egui::pos2(chip.x + 8.0, rect.top()),
-                    egui::pos2(columns.name_right - 4.0, rect.bottom()),
-                ))
-                .text(
-                    egui::pos2(chip.x + 9.0, rect.center().y),
-                    Align2::LEFT_CENTER,
-                    hierarchy_row_label(row, &cached.scopes),
-                    font.clone(),
-                    text,
-                );
-            painter.text(
-                egui::pos2(columns.total_right - 6.0, rect.center().y),
-                Align2::RIGHT_CENTER,
-                duration_text(row.total_ns),
-                font.clone(),
-                dim,
-            );
-            painter.text(
-                egui::pos2(columns.self_right - 6.0, rect.center().y),
-                Align2::RIGHT_CENTER,
-                duration_text(row.self_ns),
-                font.clone(),
-                dim,
-            );
-            painter.text(
-                egui::pos2(columns.calls_right - 6.0, rect.center().y),
-                Align2::RIGHT_CENTER,
-                row.calls.to_string(),
-                font.clone(),
-                dim,
-            );
-            painter.text(
-                egui::pos2(columns.max_right - 6.0, rect.center().y),
-                Align2::RIGHT_CENTER,
-                duration_text(row.max_ns),
-                font.clone(),
-                dim,
-            );
-
-            if response.clicked() && entry.has_children {
-                toggled = Some(entry.key.clone());
-            }
-            let mut tooltip = format!(
-                "{}\nTotal {}   Self {}   Max {}   Calls {}",
-                hierarchy_row_full_name(row, &cached.scopes),
-                duration_text(row.total_ns),
-                duration_text(row.self_ns),
-                duration_text(row.max_ns),
-                row.calls,
-            );
-            if let Some(info) = scope_info(&cached.scopes, row.scope) {
-                if !info.location.is_empty() {
-                    tooltip.push_str(&format!("\nLocation: {}", info.location));
-                }
-            }
-            response.on_hover_text(tooltip);
-        }
-
-        if let Some(key) = toggled {
-            if !self.collapsed.remove(&key) {
-                self.collapsed.insert(key);
-            }
-            ui.ctx().request_repaint();
-        }
-    }
-
-    /// The Hierarchy view's pinned column header row (Unity's column titles).
-    fn paint_hierarchy_header(&mut self, ui: &mut Ui, layout: &TimelineLayout) {
-        let ruler = layout.ruler;
-        ui.painter().rect_filled(
-            ruler,
-            CornerRadius::ZERO,
-            self.style.timeline_name_bg.to_egui(),
-        );
-        let columns = HierarchyColumns::new(layout.body.left(), layout.track_right);
-        let painter = ui.painter().with_clip_rect(ruler);
-        let font = self.small_font();
-        let text = self.style.timeline_text.to_egui();
-        let dim = self.style.ruler_text.to_egui();
-        let rule = self.style.separator.to_egui();
-        let separator_width = self.style.separator_width;
-
-        for (sort, cell) in columns.header_cells(ruler) {
-            let response = ui.interact(
-                cell,
-                ui.id().with(("profiler.hierarchy.head", sort.label())),
-                Sense::click(),
-            );
-            if response.clicked() {
-                if self.hierarchy_sort == sort {
-                    self.hierarchy_descending = !self.hierarchy_descending;
-                } else {
-                    self.hierarchy_sort = sort;
-                    self.hierarchy_descending = true;
-                }
-                ui.ctx().request_repaint();
-            }
-            let (label, x, align) = match sort {
-                HierarchySort::Name => (
-                    "Hierarchy".to_owned(),
-                    cell.left() + 10.0,
-                    Align2::LEFT_CENTER,
-                ),
-                HierarchySort::Total => (
-                    sort.label().to_owned(),
-                    columns.total_right - 6.0,
-                    Align2::RIGHT_CENTER,
-                ),
-                HierarchySort::SelfTime => (
-                    sort.label().to_owned(),
-                    columns.self_right - 6.0,
-                    Align2::RIGHT_CENTER,
-                ),
-                HierarchySort::Calls => (
-                    sort.label().to_owned(),
-                    columns.calls_right - 6.0,
-                    Align2::RIGHT_CENTER,
-                ),
-                HierarchySort::Max => (
-                    sort.label().to_owned(),
-                    columns.max_right - 6.0,
-                    Align2::RIGHT_CENTER,
-                ),
-            };
-            let color = if sort == self.hierarchy_sort {
-                text
-            } else {
-                dim
-            };
-            if sort == self.hierarchy_sort {
-                // Unity's sort arrow points down for the default best-first
-                // order and up after a second click on the same column.
-                let width = painter
-                    .layout_no_wrap(label.clone(), font.clone(), color)
-                    .size()
-                    .x;
-                let arrow_x = match sort {
-                    HierarchySort::Name => x + width + 6.0,
-                    _ => x - width - 6.0,
-                };
-                let direction = if self.hierarchy_descending {
-                    Triangle::Down
-                } else {
-                    Triangle::Up
-                };
-                paint_triangle(
-                    &painter,
-                    egui::pos2(arrow_x, cell.center().y),
-                    6.0,
-                    direction,
-                    color,
-                );
-            }
-            painter.text(
-                egui::pos2(x, cell.center().y),
-                align,
-                label,
-                font.clone(),
-                color,
-            );
-            response.on_hover_text(format!("Sort by {}", sort.label()));
-        }
-
-        for x in [
-            columns.total_left,
-            columns.self_left,
-            columns.calls_left,
-            columns.max_left,
-        ] {
-            painter.rect_filled(
-                Rect::from_min_size(
-                    egui::pos2(x, ruler.top()),
-                    egui::vec2(separator_width, ruler.height()),
-                ),
-                CornerRadius::ZERO,
-                rule,
-            );
-        }
-        painter.rect_filled(
-            Rect::from_min_size(
-                egui::pos2(ruler.left(), ruler.bottom() - separator_width),
-                egui::vec2(ruler.width(), separator_width),
-            ),
-            CornerRadius::ZERO,
-            rule,
-        );
-    }
-
     /// Unity's timeline navigation, applied before the pass paints so a wheel
     /// event or a bar drag shows in the same frame.
     fn navigate(
@@ -2837,19 +1698,19 @@ impl ProfilerPanel {
                         f64::from(((pos.x - layout.track_left) / track_width).clamp(0.0, 1.0));
                     if wheel.y != 0.0 {
                         let factor = ZOOM_PER_NOTCH.powf(f64::from(wheel.y) / WHEEL_NOTCH_POINTS);
-                        self.view.zoom_around(factor, focus, duration_ns);
+                        self.timeline_view.zoom_around(factor, focus, duration_ns);
                     }
                     if wheel.x != 0.0 {
-                        let delta = -f64::from(wheel.x) / f64::from(track_width) * self.view.span;
-                        self.view.pan_by(delta, duration_ns);
+                        let delta = -f64::from(wheel.x) / f64::from(track_width) * self.timeline_view.span;
+                        self.timeline_view.pan_by(delta, duration_ns);
                     }
                     true
                 } else if layout.body.contains(pos) || layout.vertical_bar.contains(pos) {
                     self.track_scroll -= wheel.y;
                     true
                 } else if layout.horizontal_bar.contains(pos) {
-                    let step = f64::from(wheel.y) / WHEEL_NOTCH_POINTS * self.view.span * 0.1;
-                    self.view.pan_by(-step, duration_ns);
+                    let step = f64::from(wheel.y) / WHEEL_NOTCH_POINTS * self.timeline_view.span * 0.1;
+                    self.timeline_view.pan_by(-step, duration_ns);
                     true
                 } else {
                     false
@@ -2869,7 +1730,7 @@ impl ProfilerPanel {
             && !ui.ctx().egui_wants_keyboard_input()
             && ui.input(|i| i.key_pressed(egui::Key::A))
         {
-            self.view = TimelineView::default();
+            self.timeline_view = TimelineView::default();
             ui.ctx().request_repaint();
         }
 
@@ -2885,15 +1746,15 @@ impl ProfilerPanel {
             let delta = body.drag_delta();
             let factor = 1.0 + f64::from(delta.x + delta.y) * 0.01;
             if factor > 0.01 {
-                self.view.zoom_around(factor, focus, duration_ns);
+                self.timeline_view.zoom_around(factor, focus, duration_ns);
             }
             ui.ctx().request_repaint();
         } else if body.dragged_by(egui::PointerButton::Middle)
             || (alt && body.dragged_by(egui::PointerButton::Primary))
         {
             let dx = body.drag_delta().x;
-            self.view.pan_by(
-                -f64::from(dx) / f64::from(track_width) * self.view.span,
+            self.timeline_view.pan_by(
+                -f64::from(dx) / f64::from(track_width) * self.timeline_view.span,
                 duration_ns,
             );
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
@@ -2958,7 +1819,7 @@ impl ProfilerPanel {
 
         // The frame time: Unity's min-max scroller. Its thumb pans, its two ends
         // resize the window — which is how the timeline zooms.
-        let mut window = ScrollWindow::new(self.view.pan, self.view.span, (0.0, 1.0))
+        let mut window = ScrollWindow::new(self.timeline_view.pan, self.timeline_view.span, (0.0, 1.0))
             .with_min_span(TimelineView::min_span(duration_ns));
         let zoomed = MinMaxScroll::horizontal(&style)
             .resizable(true)
@@ -2970,8 +1831,8 @@ impl ProfilerPanel {
             )
             .changed();
         if zoomed {
-            self.view.pan = window.value;
-            self.view.span = window.span;
+            self.timeline_view.pan = window.value;
+            self.timeline_view.span = window.span;
             ui.ctx().request_repaint();
         }
     }
@@ -3553,59 +2414,43 @@ impl ProfilerPanel {
         FontId::proportional(self.style.toolbar_text_size)
     }
 
-    fn ensure_cache(&mut self, session: &ProfileSession) {
+    fn refresh_frame_state(&mut self, session: &ProfileSession) {
         let index = self
             .selected_frame
             .min(session.frames.len().saturating_sub(1));
-        let stale = self.cached.is_none()
-            || self.cache_revision != session.revision
-            || self.cache_frame != index
-            || self.cache_thread != self.thread
-            || self.cache_sort != self.hierarchy_sort
-            || self.cache_descending != self.hierarchy_descending;
-        if !stale {
+        let current_frame_state = CaptureFrameState {
+            revision: session.revision,
+            frame: index,
+        };
+        if self.frame_state == current_frame_state {
             return;
         }
 
         let frame = Arc::clone(&session.frames[index]);
-        let mut rows = hierarchy(&frame, self.thread);
-        sort_hierarchy_rows(
-            &mut rows,
-            self.hierarchy_sort,
-            self.hierarchy_descending,
-            &session.scopes,
-        );
         let system_categories = collect_system_categories(&frame, &session.scopes);
         let systems = system_entries(&frame, &session.scopes);
         let lanes = collect_lanes(session);
-        self.cached = Some(CachedFrame {
-            frame,
+        self.frame = Some(CaptureFrame {
+            snapshot: frame,
             scopes: session.scopes.clone(),
-            rows,
             system_categories,
             systems,
             lanes,
-            json: String::new(),
         });
-        self.cache_revision = session.revision;
-        self.cache_frame = index;
-        self.cache_thread = self.thread;
-        self.cache_sort = self.hierarchy_sort;
-        self.cache_descending = self.hierarchy_descending;
+        self.sort_hierachy(session);
     }
 
     fn reset_view(&mut self) {
-        self.cached = None;
-        self.cache_revision = u64::MAX;
-        self.cache_frame = usize::MAX;
-        self.cache_thread = None;
+        self.frame = None;
+        // Nothing cached: the next capture rebuilds the frame from scratch.
+        self.frame_state = CaptureFrameState::default();
+        self.frame_rows.clear();
         self.selected_frame = 0;
         self.follow_latest = true;
-        self.thread = None;
         // The selection addresses one frame of the capture being cleared.
         self.selection = None;
         // The zoom describes a frame of the capture being cleared.
-        self.view = TimelineView::default();
+        self.timeline_view = TimelineView::default();
         self.track_scroll = 0.0;
         // A new capture invalidates the previously written files' contents.
         self.save = None;
@@ -3819,7 +2664,7 @@ fn frame_at_capture(
     }
     let in_take = |index: usize| -> bool {
         frames.get(index).is_some_and(|frame| {
-            axis.recorded_of_capture(frame.start_ns as f64)
+            axis.time_of_source(frame.start_ns as f64)
                 .is_some_and(|(frame_take, _)| frame_take == take)
         })
     };
@@ -4274,13 +3119,15 @@ fn plural<'a>(count: usize, one: &'a str, many: &'a str) -> &'a str {
 #[cfg(test)]
 mod probe {
     use super::*;
-    use crate::frame::HostView;
+    use crate::{
+        frame::HostView,
+        panels::profiler::hierarchy::{
+            HierarchySort, hierarchy_row_label, sort_hierarchy_rows, visible_hierarchy_rows
+        },
+    };
     use egui::pos2;
     use kairos_editor_core::EditorState;
-    use kairos_profile::ScopeKind;
-
-    struct NoHost;
-    impl HostView for NoHost {}
+    use kairos_profile::{Profiler, ScopeKind};
 
     struct ProfilerHost(Profiler);
     impl HostView for ProfilerHost {
@@ -4501,6 +3348,26 @@ mod probe {
         {
             kairos_profile::scope!(Category::Others, "profiler.test.frame");
             std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        profiler.end_frame(true);
+        profiler.begin_frame();
+        assert!(
+            !profiler.session().is_empty(),
+            "the fixture captured one committed frame"
+        );
+        profiler
+    }
+
+    /// Capture one committed frame that lasts at least 100 ms. The usage chart's
+    /// scale is capped at 70 ms, so any frame that long pins the guide to the slow
+    /// band (66 / 33 / 16 ms) instead of letting the machine's speed pick one.
+    fn long_frame_profiler() -> Profiler {
+        let profiler = Profiler::new();
+        profiler.set_recording(true);
+        profiler.begin_frame();
+        {
+            kairos_profile::scope!(Category::Others, "profiler.test.frame");
+            std::thread::sleep(std::time::Duration::from_millis(100));
         }
         profiler.end_frame(true);
         profiler.begin_frame();
@@ -5281,21 +4148,21 @@ mod probe {
         );
     }
 
-    /// The module cards are windowed: a card taller than the pane must not
+    /// The module panes are windowed: a stack taller than the pane must not
     /// paint over the splitter or the transparent timeline header below it.
     #[test]
     fn the_module_cards_are_clipped_to_the_pane() {
         let _guard = lock_profiler_tests();
         let host = ProfilerHost(captured_profiler());
         let mut panel = ProfilerPanel::default();
-        // A pane shorter than the CPU card, so the cards overflow it.
+        // A pane shorter than the card stack, so the stack overflows it.
         panel.module_height = 120.0;
         let ctx = Context::default();
         let output = draw_pass(&ctx, &mut panel, &host, Vec::new());
 
         assert!(
             panel.module_content_height() > panel.module_height,
-            "the cards overflow the pane, so clipping is what keeps them in"
+            "the card stack overflows the pane, so clipping is what keeps it in"
         );
         let pane_bottom =
             panel.style.toolbar_height + panel.style.separator_width + panel.module_height;
@@ -5315,6 +4182,191 @@ mod probe {
             "the module cards are clipped above the pinned zoom bar: {clipped:?} vs {cards_bottom}"
         );
     }
+
+    /// A pane shorter than the CPU card shrinks the card instead of clipping it:
+    /// the usage chart keeps its zero line at the pane's bottom. The bars grow
+    /// from that line, so a clipped chart shows nothing for the short bars a high
+    /// frame rate produces, and reads as "CPU Usage recorded nothing".
+    #[test]
+    fn a_short_module_pane_keeps_the_usage_charts_zero_line() {
+        let _guard = lock_profiler_tests();
+        let host = ProfilerHost(captured_slow_frames(3));
+        let mut panel = ProfilerPanel::default();
+        // A pane the size the editor's default bottom dock leaves the profiler:
+        // shorter than the CPU card's skin height.
+        panel.module_height = 120.0;
+        let ctx = Context::default();
+        let output = draw_pass(&ctx, &mut panel, &host, Vec::new());
+
+        let pane_top = panel.style.toolbar_height + panel.style.separator_width;
+        let pane_bottom = pane_top + panel.module_height;
+        let cards_top = pane_top + panel.module_axis_height() + panel.style.separator_width;
+        let cards_bottom = pane_bottom - panel.module_bar_height();
+        let chart_top = cards_top + panel.style.module_header_height;
+        let viewport = cards_bottom - cards_top;
+        assert!(
+            viewport < panel.style.module_cpu_height,
+            "the fixture's pane is shorter than the card's skin height: {viewport}"
+        );
+
+        let palette: Vec<egui::Color32> = panel
+            .style
+            .category_palette
+            .iter()
+            .map(|color| color.to_egui())
+            .collect();
+        let chart_left = panel.style.module_name_width;
+        let bars: Vec<Rect> = painted(&output)
+            .into_iter()
+            .filter(|(rect, fill)| {
+                palette.contains(fill)
+                    && rect.left() >= chart_left - 0.5
+                    && rect.top() >= chart_top - 0.5
+                    && rect.bottom() <= cards_bottom + 0.5
+            })
+            .map(|(rect, _)| rect)
+            .collect();
+        assert!(
+            !bars.is_empty(),
+            "the fitted chart still paints the frame's bar"
+        );
+        let baseline = bars.iter().map(|bar| bar.bottom()).fold(f32::MIN, f32::max);
+        assert!(
+            (baseline - cards_bottom).abs() < 0.5,
+            "the chart's zero line sits on the pane's bottom: {baseline} vs {cards_bottom}"
+        );
+        let tallest = bars.iter().map(|bar| bar.height()).fold(0.0_f32, f32::max);
+        assert!(
+            tallest > 1.0,
+            "the fitted chart scales the bar to its plot: {tallest}"
+        );
+
+        // The card fills the pane, so the GPU card is what a scroll reveals.
+        let gpu = text_pos_starting_with(&output, "GPU Usage");
+        assert!(
+            gpu.y >= cards_bottom - 0.5,
+            "the GPU card sits below the pane's bottom: {} vs {cards_bottom}",
+            gpu.y
+        );
+    }
+
+    /// A fresh panel's module pane is as tall as its cards ask for: the CPU card
+    /// whole, the rule under it and half of the GPU card. The timeline takes the
+    /// rest of the panel, so the default costs it nothing but the space the cards
+    /// need.
+    #[test]
+    fn the_module_pane_defaults_to_the_cpu_card_and_half_the_next() {
+        let _guard = lock_profiler_tests();
+        let host = ProfilerHost(captured_profiler());
+        let mut panel = ProfilerPanel::default();
+        let ctx = Context::default();
+        let output = draw_pass(&ctx, &mut panel, &host, Vec::new());
+
+        let expected = panel.module_chrome_height()
+            + panel.style.module_cpu_height
+            + panel.style.separator_width
+            + 0.5 * panel.style.module_gpu_height;
+        assert!(
+            (panel.module_height - expected).abs() < 0.5,
+            "the pane defaults to the CPU card and half the GPU card: {} vs {expected}",
+            panel.module_height
+        );
+        assert!(
+            panel.module_height < panel.module_content_height(),
+            "the default shows part of the stack, not all of it"
+        );
+
+        // The CPU card is whole and the GPU card's top half is inside the pane.
+        let pane_top = panel.style.toolbar_height + panel.style.separator_width;
+        let cards_top = pane_top + panel.module_axis_height() + panel.style.separator_width;
+        let cards_bottom = pane_top + panel.module_height - panel.module_bar_height();
+        let cpu_bottom = cards_top + panel.style.module_cpu_height;
+        let gpu_visible = cards_bottom - (cpu_bottom + panel.style.separator_width);
+        assert!(
+            (gpu_visible - 0.5 * panel.style.module_gpu_height).abs() < 1.0,
+            "half of the GPU card is inside the pane: {gpu_visible}"
+        );
+        let cpu = text_pos_starting_with(&output, "CPU Usage");
+        let gpu = text_pos_starting_with(&output, "GPU Usage");
+        assert!(
+            cpu.y > cards_top && cpu.y < cards_bottom,
+            "the CPU card's title is inside the pane"
+        );
+        assert!(
+            gpu.y > cards_bottom - panel.style.module_gpu_height,
+            "the GPU card starts inside the pane"
+        );
+    }
+
+    /// The timeline's minimum is its header row, so the splitter can collapse
+    /// the band and hand the panel to the module pane — the way a capture with
+    /// more modules than room needs.
+    #[test]
+    fn the_splitter_collapses_the_timeline_to_its_header() {
+        let _guard = lock_profiler_tests();
+        let host = ProfilerHost(captured_profiler());
+        let mut panel = ProfilerPanel::default();
+        let ctx = Context::default();
+        // A panel too short for the whole card stack beside the timeline: the
+        // splitter keeps handing the module pane room until the timeline is down
+        // to its header.
+        let size = egui::vec2(900.0, 340.0);
+        let _ = draw_pass_sized(&ctx, &mut panel, &host, size, Vec::new());
+        let from = splitter_center(&panel);
+        let total = size.y - panel.style.toolbar_height - panel.style.separator_width;
+        let max_module = (total - panel.splitter().thickness() - panel.min_timeline_height())
+            .min(panel.module_content_height());
+        assert!(
+            max_module < panel.module_content_height(),
+            "the fixture's panel must be too short for the whole card stack"
+        );
+        assert!(
+            panel.module_height < max_module,
+            "the fixture must leave the splitter room to grow the module pane"
+        );
+
+        let _ = draw_pass_sized(&ctx, &mut panel, &host, size, press_events(from));
+        let _ = draw_pass_sized(
+            &ctx,
+            &mut panel,
+            &host,
+            size,
+            drag_events(from + egui::vec2(0.0, 400.0)),
+        );
+        let output = draw_pass_sized(&ctx, &mut panel, &host, size, Vec::new());
+        assert!(
+            (panel.module_height - max_module).abs() < 0.5,
+            "the module pane takes the timeline's space: {} vs {max_module}",
+            panel.module_height
+        );
+        assert!(
+            (total
+                - panel.splitter().thickness()
+                - panel.module_height
+                - panel.min_timeline_height())
+            .abs()
+                < 0.5,
+            "the timeline is squeezed to its header"
+        );
+        let header = text_pos_starting_with(&output, "Timeline");
+        let band_top = panel.style.toolbar_height
+            + panel.style.separator_width
+            + panel.module_height
+            + panel.splitter().thickness();
+        assert!(
+            header.y >= band_top - 1.0 && header.y <= band_top + panel.style.toolbar_height,
+            "the collapsed timeline still paints its header at {band_top}: {}",
+            header.y
+        );
+        let _ = draw_pass_sized(
+            &ctx,
+            &mut panel,
+            &host,
+            size,
+            release_events(from + egui::vec2(0.0, 400.0)),
+        );
+    }
+
     /// The splitter is chrome of its own, brighter than the section rules, so
     /// it reads as a handle instead of another 1 px separator.
     #[test]
@@ -5349,24 +4401,24 @@ mod probe {
     /// Unity's split view has no reset, but this editor's dock separators reset
     /// on a double-click; the profiler splitter follows the dock.
     #[test]
-    fn double_clicking_the_splitter_restores_the_skin_height() {
+    fn double_clicking_the_splitter_restores_the_default_height() {
         let _guard = lock_profiler_tests();
         let host = ProfilerHost(captured_profiler());
         let mut panel = ProfilerPanel::default();
-        panel.module_height = 260.0;
+        panel.module_height = 300.0;
         let ctx = Context::default();
         let _ = draw_pass(&ctx, &mut panel, &host, Vec::new());
         let at = splitter_center(&panel);
 
         let _ = draw_pass(&ctx, &mut panel, &host, click_events(at));
         assert_eq!(
-            panel.module_height, 260.0,
+            panel.module_height, 300.0,
             "one click leaves the boundary alone"
         );
         let _ = draw_pass(&ctx, &mut panel, &host, click_events(at));
         assert!(
-            (panel.module_height - panel.style.module_area_height).abs() < 0.5,
-            "the double-click restores the skin's height: {}",
+            (panel.module_height - panel.module_default_height()).abs() < 0.5,
+            "the double-click restores the cards' default height: {}",
             panel.module_height
         );
     }
@@ -5391,10 +4443,10 @@ mod probe {
         );
     }
 
-    /// A short panel clamps the split: the module area shrinks to its minimum
-    /// before the timeline is squeezed, and a panel shorter than both minimums
-    /// still lays both bands out (the timeline gives way first, like Unity's
-    /// flexed pane).
+    /// A short panel clamps the split: the module pane's default yields to the
+    /// timeline's header minimum, and a panel shorter than both minimums still
+    /// lays both bands out (the timeline gives way first, like Unity's flexed
+    /// pane).
     #[test]
     fn a_short_panel_keeps_both_bands_usable() {
         let _guard = lock_profiler_tests();
@@ -5407,7 +4459,7 @@ mod probe {
         let expected = total - panel.splitter().thickness() - panel.min_timeline_height();
         assert!(
             (panel.module_height - expected).abs() < 0.5,
-            "the module area gives room to the timeline minimum: {}",
+            "the default module pane leaves the timeline its header: {}",
             panel.module_height
         );
         let output = draw_pass_sized(&ctx, &mut panel, &host, size, Vec::new());
@@ -5963,14 +5015,14 @@ mod probe {
         let first = draw_pass(&ctx, &mut panel, &host, Vec::new());
         let label = text_pos_starting_with(&first, "Others · profiler.test.repeat (");
         let pointer = label + egui::vec2(10.0, 3.0);
-        let before = panel.view;
+        let before = panel.timeline_view;
         draw_pass(
             &ctx,
             &mut panel,
             &host,
             wheel_events(pointer, egui::vec2(0.0, 4.0)),
         );
-        let after = panel.view;
+        let after = panel.timeline_view;
 
         assert!(
             after.span < before.span,
@@ -5992,7 +5044,7 @@ mod probe {
         let _guard = lock_profiler_tests();
         let host = ProfilerHost(repeated_marker_profiler());
         let mut panel = ProfilerPanel::default();
-        panel.view = TimelineView {
+        panel.timeline_view = TimelineView {
             pan: 0.3,
             span: 0.4,
         };
@@ -6018,9 +5070,9 @@ mod probe {
         );
 
         assert!(
-            panel.view.pan < 0.3,
+            panel.timeline_view.pan < 0.3,
             "middle-drag right shows earlier time: {:?}",
-            panel.view
+            panel.timeline_view
         );
     }
 
@@ -6031,7 +5083,7 @@ mod probe {
         let _guard = lock_profiler_tests();
         let host = ProfilerHost(repeated_marker_profiler());
         let mut panel = ProfilerPanel::default();
-        panel.view = TimelineView {
+        panel.timeline_view = TimelineView {
             pan: 0.25,
             span: 0.5,
         };
@@ -6039,7 +5091,7 @@ mod probe {
 
         let first = draw_pass(&ctx, &mut panel, &host, Vec::new());
         let thumb = horizontal_thumb(&first, panel.style.scrollbar_thumb.to_egui());
-        let before = panel.view;
+        let before = panel.timeline_view;
         let from = thumb.center();
         let to = from + egui::vec2(24.0, 0.0);
 
@@ -6048,11 +5100,11 @@ mod probe {
         draw_pass(&ctx, &mut panel, &host, release_events(to));
 
         assert!(
-            panel.view.pan > before.pan,
+            panel.timeline_view.pan > before.pan,
             "dragging the thumb right shows later time: {before:?} -> {:?}",
-            panel.view
+            panel.timeline_view
         );
-        assert_eq!(panel.view.span, before.span, "panning does not zoom");
+        assert_eq!(panel.timeline_view.span, before.span, "panning does not zoom");
     }
 
     /// Dragging an end of the horizontal bar's thumb resizes the window: that is
@@ -6062,7 +5114,7 @@ mod probe {
         let _guard = lock_profiler_tests();
         let host = ProfilerHost(repeated_marker_profiler());
         let mut panel = ProfilerPanel::default();
-        panel.view = TimelineView {
+        panel.timeline_view = TimelineView {
             pan: 0.25,
             span: 0.5,
         };
@@ -6078,14 +5130,14 @@ mod probe {
         draw_pass(&ctx, &mut panel, &host, release_events(to));
 
         assert!(
-            panel.view.span < 0.5,
+            panel.timeline_view.span < 0.5,
             "dragging the right end in zooms: {:?}",
-            panel.view
+            panel.timeline_view
         );
         assert!(
-            (panel.view.pan - 0.25).abs() < 1e-9,
+            (panel.timeline_view.pan - 0.25).abs() < 1e-9,
             "the left edge stays put: {:?}",
-            panel.view
+            panel.timeline_view
         );
     }
 
@@ -6102,12 +5154,17 @@ mod probe {
         let ctx = Context::default();
 
         let first = draw_pass(&ctx, &mut panel, &host, Vec::new());
+        // The module pane has a vertical bar of its own above the splitter; the
+        // timeline's is the one under it.
+        let splitter_top =
+            panel.style.toolbar_height + panel.style.separator_width + panel.module_height;
         let thumb = painted(&first)
             .into_iter()
             .filter(|(rect, fill)| {
                 *fill == panel.style.scrollbar_thumb.to_egui()
                     && rect.width() < 20.0
                     && rect.height() > 20.0
+                    && rect.top() > splitter_top
             })
             .max_by(|a, b| a.0.height().total_cmp(&b.0.height()))
             .map(|(rect, _)| rect)
@@ -6181,7 +5238,7 @@ mod probe {
         let _guard = lock_profiler_tests();
         let host = ProfilerHost(repeated_marker_profiler());
         let mut panel = ProfilerPanel::default();
-        panel.view = TimelineView {
+        panel.timeline_view = TimelineView {
             pan: 0.3,
             span: 0.4,
         };
@@ -6195,7 +5252,7 @@ mod probe {
             key_events(egui::pos2(400.0, 400.0), egui::Key::A),
         );
 
-        assert_eq!(panel.view, TimelineView::default());
+        assert_eq!(panel.timeline_view, TimelineView::default());
     }
 
     /// A zoomed window cuts blocks at the track's edges instead of spilling over
@@ -6205,7 +5262,7 @@ mod probe {
         let _guard = lock_profiler_tests();
         let host = ProfilerHost(repeated_marker_profiler());
         let mut panel = ProfilerPanel::default();
-        panel.view = TimelineView {
+        panel.timeline_view = TimelineView {
             pan: 0.4,
             span: 0.1,
         };
@@ -6249,7 +5306,7 @@ mod probe {
         let _guard = lock_profiler_tests();
         let host = ProfilerHost(repeated_marker_profiler());
         let mut panel = ProfilerPanel::default();
-        panel.view = TimelineView {
+        panel.timeline_view = TimelineView {
             pan: 0.0,
             span: 0.5,
         };
@@ -6509,16 +5566,18 @@ mod probe {
             .expect("the module zoom bar's thumb is painted")
     }
 
-    /// Top of the card viewport (below the pinned clock axis) and of the CPU
-    /// card's plot inside it.
+    /// Top of the chart's plot (below the pinned clock axis and the CPU card's
+    /// title row) and its bottom, which is where the bars start.
     fn module_chart_top(panel: &ProfilerPanel) -> (f32, f32) {
         let cards_top = panel.style.toolbar_height
             + panel.style.separator_width
             + panel.module_axis_height()
             + panel.style.separator_width;
+        let viewport = (panel.module_height - panel.module_chrome_height()).max(0.0);
+        let cpu_height = panel.module_cpu_fit(viewport);
         (
             cards_top + panel.style.module_header_height,
-            cards_top + panel.style.module_cpu_height,
+            cards_top + cpu_height,
         )
     }
 
@@ -6549,7 +5608,7 @@ mod probe {
         );
         let oldest = panel
             .module_axis
-            .screen_of_capture(session.frames[0].start_ns as f64)
+            .screen_of_source(session.frames[0].start_ns as f64)
             .expect("frame 0 maps onto the axis");
         assert!(oldest < 0.0, "the first frames are to the left: {oldest}");
         drop(host);
@@ -6630,7 +5689,7 @@ mod probe {
         let x = 300.0;
         let before = panel
             .module_axis
-            .capture_at_screen(x)
+            .source_at_screen(x)
             .expect("the pointer is over a frame");
         let zoom_before = panel.module_axis.zoom();
         let pointer = egui::pos2(chart_left + x, 100.0);
@@ -6647,7 +5706,7 @@ mod probe {
         );
         let after = panel
             .module_axis
-            .capture_at_screen(x)
+            .source_at_screen(x)
             .expect("the pointer is still over a frame");
         assert_eq!(before.0, after.0, "the same take stays under the pointer");
         assert!(
@@ -6683,8 +5742,8 @@ mod probe {
             wall.time_of_day_ns as f64 + session.segments[1].start_ns as f64,
             true,
         );
-        assert_eq!(breaks[0].stop, stop);
-        assert_eq!(breaks[0].start, start);
+        assert_eq!(breaks[0].stop, session.segments[0].end_ns.unwrap() as f64);
+        assert_eq!(breaks[0].restart, session.segments[1].start_ns as f64);
 
         let band = panel.style.break_bg.to_egui();
         let bands: Vec<Rect> = painted(&output)
@@ -6725,7 +5784,7 @@ mod probe {
         let (chart_top, _) = module_chart_top(&panel);
         let x = panel
             .module_axis
-            .screen_of_capture(session.frames[1].start_ns as f64)
+            .screen_of_source(session.frames[1].start_ns as f64)
             .expect("the second frame maps onto the axis");
         let at = egui::pos2(chart_left + x + 1.0, chart_top + 30.0);
         let _ = draw_pass(&ctx, &mut panel, &host, click_events(at));
@@ -6804,7 +5863,7 @@ mod probe {
         let expected_left = chart_left
             + panel
                 .module_axis
-                .screen_of_capture(frame.start_ns as f64)
+                .screen_of_source(frame.start_ns as f64)
                 .expect("the frame maps onto the axis");
         assert!(
             (bar_left - expected_left).abs() < 1.0,
@@ -6852,6 +5911,65 @@ mod probe {
                 .iter()
                 .any(|rect| (rect.top() - expected_y).abs() < 1.0),
             "the 960 FPS guide sits at {expected_y}: {lines:?}"
+        );
+    }
+
+    /// A short chart bunches the guide tiers up: a chip that would overlap the
+    /// one above it steps aside, and its line stays so the scale still reads.
+    #[test]
+    fn a_short_chart_drops_the_guide_chips_that_collide() {
+        let _guard = lock_profiler_tests();
+        let ctx = Context::default();
+        let host = ProfilerHost(long_frame_profiler());
+        let mut panel = ProfilerPanel::default();
+
+        let tall = draw_pass(&ctx, &mut panel, &host, Vec::new());
+        let session = host.0.session();
+        let frame = session.frames.last().expect("one frame");
+        let scale = (frame.duration_ns() as f32 / 1_000_000.0 / USAGE_BAR_FILL)
+            .clamp(MIN_USAGE_SCALE_MS, MAX_USAGE_SCALE_MS);
+        let tiers: Vec<&'static str> = usage_grid(scale)
+            .iter()
+            .filter(|(ms, _)| *ms <= f64::from(scale))
+            .map(|(_, label)| *label)
+            .collect();
+        assert_eq!(tiers.len(), 3, "the fixture's scale holds every tier");
+        let chips = |output: &egui::FullOutput| -> usize {
+            painted_text(output)
+                .iter()
+                .filter(|line| tiers.contains(&line.as_str()))
+                .count()
+        };
+        let grid = panel.style.chart_grid.to_egui();
+        let lines = |output: &egui::FullOutput| -> usize {
+            painted(output)
+                .into_iter()
+                .filter(|(rect, fill)| {
+                    *fill == grid && rect.height() <= 1.0 && rect.width() > 400.0
+                })
+                .count()
+        };
+        let tall_chips = chips(&tall);
+        assert_eq!(
+            tall_chips,
+            tiers.len(),
+            "the tall chart labels each tier apart: {tall_chips}"
+        );
+        assert_eq!(lines(&tall), tiers.len(), "the tall chart draws each line");
+
+        // A pane the default editor dock leaves the profiler: the CPU card is
+        // fitted to it, so the chart is too short to space the chips out.
+        panel.module_height = 100.0;
+        let short = draw_pass(&ctx, &mut panel, &host, Vec::new());
+        let short_chips = chips(&short);
+        assert!(
+            short_chips < tall_chips,
+            "a short chart drops the chips that would collide: {short_chips} of {tall_chips}"
+        );
+        assert_eq!(
+            lines(&short),
+            tiers.len(),
+            "every tier keeps its line when a chip steps aside"
         );
     }
 
@@ -6958,7 +6076,7 @@ mod probe {
         assert_eq!(panel.selected_frame, 0);
         let x = panel
             .module_axis
-            .screen_of_capture(session.frames[0].start_ns as f64)
+            .screen_of_source(session.frames[0].start_ns as f64)
             .expect("frame 0 maps onto the axis");
         assert!(x >= 0.0, "the axis revealed the frame: {x}");
         let chart_width = 900.0 - panel.style.module_name_width - panel.style.scrollbar_width;
@@ -7006,7 +6124,7 @@ mod probe {
         let expected = chart_left
             + panel
                 .module_axis
-                .screen_of_capture(mid)
+                .screen_of_source(mid)
                 .expect("the frame maps onto the axis");
         assert!(
             (cursor_rect.center().x - expected).abs() < 1.0,
@@ -7060,11 +6178,11 @@ mod probe {
         let (chart_top, _) = module_chart_top(&panel);
         let start_x = panel
             .module_axis
-            .screen_of_capture(mid(&session.frames[selected_before]))
+            .screen_of_source(mid(&session.frames[selected_before]))
             .expect("the selected frame maps onto the axis");
         let target_x = panel
             .module_axis
-            .screen_of_capture(mid(&session.frames[1]))
+            .screen_of_source(mid(&session.frames[1]))
             .expect("the second frame maps onto the axis");
 
         let start = egui::pos2(chart_left + start_x, chart_top + 30.0);
@@ -7078,75 +6196,6 @@ mod probe {
             "the drag selected the frame under the pointer"
         );
         assert!(!panel.follow_latest, "scrubbing leaves Live");
-    }
-
-    fn draw(panel: &mut ProfilerPanel) -> (usize, usize) {
-        let ctx = Context::default();
-        let state = EditorState::new();
-        let host = NoHost;
-        let mut input = egui::RawInput::default();
-        input.screen_rect = Some(Rect::from_min_size(
-            pos2(0.0, 0.0),
-            egui::vec2(800.0, 600.0),
-        ));
-        let mut out = UiOut::new();
-        let output = ctx.run_ui(input, |ctx| {
-            egui::CentralPanel::default().show(ctx, |ui| {
-                panel.ui(ui, &Frame::with_host(&state, &host), &mut out);
-            });
-        });
-        let texts = output
-            .shapes
-            .iter()
-            .filter(|clipped| matches!(clipped.shape, egui::Shape::Text(_)))
-            .count();
-        (output.shapes.len(), texts)
-    }
-
-    fn latest(panel: &ProfilerPanel) -> usize {
-        panel.global_frame_view.lock().latest_frames(16).count()
-    }
-
-    #[test]
-    fn probe_where_frames_come_from() {
-        let _guard = lock_profiler_tests();
-        let profiler = Profiler::new();
-        let mut panel = ProfilerPanel::default();
-
-        profiler.begin_frame();
-        {
-            kairos_profile::scope!(Category::Others, "probe.frame");
-        }
-        profiler.end_frame(true);
-        profiler.begin_frame();
-        eprintln!(
-            "PROBE[1] recording-off latest_frames={} draw={:?}",
-            latest(&panel),
-            draw(&mut panel)
-        );
-
-        profiler.set_recording(true);
-        profiler.begin_frame();
-        {
-            kairos_profile::scope!(Category::Others, "probe.frame");
-        }
-        profiler.end_frame(true);
-        profiler.begin_frame();
-        eprintln!(
-            "PROBE[2] recording-on  latest_frames={} draw={:?}",
-            latest(&panel),
-            draw(&mut panel)
-        );
-
-        let late = GlobalFrameView::default();
-        eprintln!(
-            "PROBE[3] late-view     latest_frames={}",
-            late.lock().latest_frames(16).count()
-        );
-        drop(late);
-
-        profiler.set_recording(false);
-        eprintln!("PROBE[4] stopped       latest_frames={}", latest(&panel));
     }
 
     /// Sibling lists re-sort, parents stay above their children, and the
@@ -7344,7 +6393,10 @@ mod probe {
         let calls = text_center(&first, "Calls");
         draw_pass(&ctx, &mut panel, &host, click_events(calls));
         assert_eq!(panel.hierarchy_sort, HierarchySort::Calls);
-        assert!(panel.hierarchy_descending, "a new column starts best-first");
+        assert!(
+            panel.hierarchy_descending,
+            "a new column starts best-first"
+        );
 
         let second = draw_pass(&ctx, &mut panel, &host, Vec::new());
         let calls = text_center(&second, "Calls");

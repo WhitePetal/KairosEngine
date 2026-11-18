@@ -126,11 +126,15 @@ origin's wall clock), recorded on start/stop rather than per frame.
    parallel or interleaved. The header and ruler are pinned and the tracks
    scroll; the time axis zooms and pans with Unity's gestures (wheel around the
    pointer, middle/alt drag, `A` to fit). The module pane above the tracks is a
-   scrolling list of fixed-height module cards (CPU Usage, plus an empty GPU
-   Usage card) with a pinned clock ruler on top and a min-max time bar at the
-   bottom: dragging the rule between the two bands reveals the modules below
-   instead of stretching one chart, and a double-click restores the skin's
-   height. The min-max bar zooms and pans the whole capture (the thumb pans, the
+   scrolling list of module cards (CPU Usage, plus an empty GPU Usage card) with
+   a pinned clock ruler on top and a min-max time bar at the bottom: the pane
+   starts at the height the cards ask for (the CPU card whole plus half of the
+   next one), dragging the rule between the two bands reveals the modules below
+   instead of stretching one chart, and the timeline collapses to its header
+   under it so a capture with more modules still fits; a pane shorter than the
+   CPU card fits that card to the viewport so the usage chart's zero line is
+   never clipped (the bars grow from it). A double-click restores the cards'
+   default height. The min-max bar zooms and pans the whole capture (the thumb pans, the
    ends zoom, the wheel zooms around the pointer), the default window is the
    most recent 300 frames and Live pins it to the newest frame, clicking a chart
    column selects the frame recorded then, dragging the chart or ruler scrubs the

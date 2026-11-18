@@ -513,7 +513,7 @@ fn hierarchy_aggregates_and_computes_self_time() {
         warning: None,
     }]);
 
-    let rows = hierarchy(&frame, None);
+    let rows = hierarchy(&frame);
     assert_eq!(rows.len(), 3);
 
     // Roots sort by total (tie on scope id): scope 1 before scope 3.
@@ -532,7 +532,6 @@ fn hierarchy_aggregates_and_computes_self_time() {
 
     assert_eq!(rows[2].scope, 3);
     assert_eq!(rows[2].depth, 0);
-    assert!(hierarchy(&frame, Some(99)).is_empty());
 }
 
 #[test]
@@ -552,16 +551,12 @@ fn hierarchy_merges_threads_by_call_path() {
         },
     ]);
 
-    let rows = hierarchy(&frame, None);
+    let rows = hierarchy(&frame);
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].scope, 1);
     assert_eq!(rows[0].total_ns, 150);
     assert_eq!(rows[0].self_ns, 150);
     assert_eq!(rows[0].calls, 2);
-
-    let only_worker = hierarchy(&frame, Some(1));
-    assert_eq!(only_worker.len(), 1);
-    assert_eq!(only_worker[0].total_ns, 50);
 }
 
 #[test]

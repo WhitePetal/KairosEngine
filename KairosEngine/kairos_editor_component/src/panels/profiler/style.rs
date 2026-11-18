@@ -4,11 +4,12 @@
 //! `Preferences/Styles/Profiler.ron` (dark + light). The panel loads the file in
 //! `Panel::init`; editing it restyles the Profiler without a rebuild.
 //!
-//! Layout is Unity's: a 20 px toolbar, a module pane of fixed-height module
-//! cards (CPU Usage, GPU Usage) over a vertical scroll bar, the splitter that
-//! resizes the two bands, then the timeline (header, ruler, thread tracks and
-//! the two scroll bars). The tokens are grouped the same way so a skin edit
-//! reads like the panel.
+//! Layout is Unity's: a 20 px toolbar, a module pane of module cards (CPU Usage,
+//! GPU Usage) over a vertical scroll bar, the splitter that resizes the two
+//! bands, then the timeline (header, ruler, thread tracks and the two scroll
+//! bars). The tokens are grouped the same way so a skin edit reads like the
+//! panel; the pane's default height is derived from the card heights rather than
+//! kept as a token of its own.
 
 use kairos_color::Color32;
 use kairos_editor_widgets::style::Style;
@@ -54,17 +55,15 @@ pub struct ProfilerStyle {
     pub warning: Color32,
 
     // -- Module area --------------------------------------------------------
-    /// Default height of the module pane above the timeline: where the splitter
-    /// comes to rest and what a double-click restores. The pane is a window
-    /// onto the fixed-height module cards plus its pinned clock ruler and zoom
-    /// bar, so the splitter gives the rest of the panel to the timeline.
-    pub module_area_height: f32,
-    /// Fixed height of the CPU Usage card (title row + frame-history chart). The
-    /// card keeps this height while the splitter moves, so dragging the pane
-    /// down reveals the modules below instead of stretching this chart.
+    /// Preferred height of the CPU Usage card (title row + frame-history chart).
+    /// The card keeps this height while the pane can show it, so dragging the
+    /// pane down reveals the modules below instead of stretching this chart; a
+    /// shorter pane shrinks the card to fit rather than clipping its chart at
+    /// the pane's edge (the bars grow from the chart's bottom).
     pub module_cpu_height: f32,
-    /// Fixed height of the GPU Usage card (title row + empty body until the
-    /// capture records GPU timings).
+    /// Height of the GPU Usage card (title row + empty body until the capture
+    /// records GPU timings). It keeps this height below the CPU card, so a pane
+    /// too short for both scrolls down to it.
     pub module_gpu_height: f32,
     /// Height of one module's title row.
     pub module_header_height: f32,
@@ -184,7 +183,6 @@ impl Style for ProfilerStyle {
             small_text_size: 10.0,
             warning: Color32::from_rgb(0xE0, 0xB0, 0x3A),
 
-            module_area_height: 224.0,
             module_cpu_height: 169.0,
             module_gpu_height: 120.0,
             module_header_height: 20.0,
@@ -259,7 +257,6 @@ impl Style for ProfilerStyle {
             small_text_size: 10.0,
             warning: Color32::from_rgb(0xB0, 0x78, 0x00),
 
-            module_area_height: 224.0,
             module_cpu_height: 169.0,
             module_gpu_height: 120.0,
             module_header_height: 20.0,

@@ -51,14 +51,13 @@ struct Node {
 ///
 /// Multi-thread merging can make children overlap in wall time; `self_ns`
 /// saturates rather than reporting a negative value. For one thread it is exact.
-pub fn hierarchy(frame: &FrameSnapshot, thread: Option<u32>) -> Vec<HierarchyRow> {
+pub fn hierarchy(frame: &FrameSnapshot) -> Vec<HierarchyRow> {
     let mut nodes: Vec<Node> = Vec::new();
     let mut roots: Vec<usize> = Vec::new();
 
     for thread_snapshot in frame
         .threads
         .iter()
-        .filter(|candidate| thread.is_none_or(|id| id == candidate.id))
     {
         // `node_of_sample[i]` is the aggregate node for sample `i`. Parent links
         // always point backwards, so a single forward pass is enough.

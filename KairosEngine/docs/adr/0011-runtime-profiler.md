@@ -14,7 +14,10 @@
   whole capture: recording takes are segments, pauses are compressed into break
   bands labelled with real clock times, a min-max bar zooms and pans the axis,
   the chart places bars at their capture times and scales the tallest to 80% of
-  the height, and clicking a chart column selects a frame. See revision note 9.
+  the height, and clicking a chart column selects a frame. The module pane's
+  default height comes from its cards (the CPU card plus half of the next) and
+  the splitter can collapse the timeline to its header, so the panel can show
+  more usage modules. See revision note 9 and the layout note after it.
 - **Context**:
   - The 0.2.0 editor (`kairos_editor_app`, eframe/egui) runs a single window: a
     toolbar, the dock, and six registered panels (five open by default). The owner wants a **Profiler Panel**
@@ -161,8 +164,8 @@
      *fixed* pane, its height persisted as
      `ProfilerWindow.MainSplitView.FixedPaneSize`. The panel therefore keeps the
      **module pane's** height, not the timeline's: `ProfilerPanel::module_height`
-     starts at the skin's `module_area_height`, the splitter drags it, and the
-     timeline takes the rest. The pane is a window onto a stack of **fixed-height
+     starts at the height its cards ask for (see the module-pane-fit revision
+     note below), the splitter drags it, and the timeline takes the rest. The pane is a window onto a stack of **fixed-height
      module cards** — CPU Usage (legend + frame chart) and an empty GPU Usage
      card — so dragging the splitter down reveals the modules below instead of
      stretching the CPU chart, and the cards scroll (wheel or the pane's own
@@ -172,10 +175,11 @@
      `requiresChartHeightExpansion` path only spreads leftover height when the
      pane is taller than the sum of every module's minimum height.
      Both panes keep a minimum (the module pane: its first title row and two
-     legend rows; the timeline: header, ruler, one thread row and the horizontal
-     bar); when the panel is shorter than both, the module pane keeps its
-     minimum and the timeline gives way first, like Unity's `UpdateLayout`.
-     Double-clicking the rule restores the skin's height, as the dock's
+     legend rows; the timeline: its header row — the band collapses to the view
+     selector, Live toggle and CPU/GPU summary); when the panel is shorter than
+     both, the module pane keeps its minimum and the timeline gives way first,
+     like Unity's `UpdateLayout`.
+     Double-clicking the rule restores the cards' default height, as the dock's
      separators and the Console already reset. The idle rule has its own token
      (`splitter_idle`) rather than the section-rule colour, so it reads as a
      handle instead of another separator.
@@ -276,6 +280,41 @@
      their own. `Others` therefore keeps meaning "no category claims this time"
      (uninstrumented work, presentation/idle gaps outside a scope, scheduler
      bookkeeping), not "the main loop's category".
+- **Revision (2026-11-18, module pane fit and the collapsible timeline)**:
+  Two problems shared one cause. Note 8's default module height was a skin token
+  (`module_area_height`), and the timeline's minimum was a full usable band
+  (header, ruler, one thread row, the horizontal bar). Together they capped the
+  module pane at `panel - splitter - timeline minimum`, so the pane could not
+  reach the CPU card plus part of the GPU card even when the user asked for it:
+  on a dock the size of the editor's default 30% bottom band the default showed a
+  clipped CPU chart and no GPU card, and a capture with more usage modules would
+  have had no way to show them.
+  1. **The module pane's default comes from its cards.**
+     `module_default_height` is the pane's pinned chrome plus the CPU card, the
+     rule under it and half of the card below (today the GPU card), so a fresh
+     panel shows the whole usage chart and the top half of the next module. The
+     `module_area_height` token is gone: a skin that resizes a card, or a module
+     added after the GPU one, keeps the same relationship, and a double-click on
+     the splitter restores it.
+  2. **The timeline's minimum is its header row.** Dragging the splitter down
+     collapses the band to the view selector, Live toggle and CPU/GPU summary and
+     hands the rest to the module pane — the ruler, tracks and bars are clipped —
+     so more usage modules can be shown without starving the module pane. The
+     splitter still stops at the whole card stack (no dead space under the last
+     module), and the module pane still keeps its minimum when the panel is
+     shorter than both.
+  3. **The CPU chart is never clipped at its zero line.** A pane shorter than the
+     CPU card (a small panel, or a deliberate drag) fits the card to the viewport
+     instead of clipping it: the usage bars grow from the plot's bottom, so the
+     old clip hid exactly the short bars a high frame rate produces and read as
+     "CPU Usage recorded nothing". The GPU card keeps its height below the CPU
+     card, so a short pane scrolls to it. On a short plot the ms/FPS guide chips
+     step aside when they would collide, leaving their lines, the way the clock
+     ruler drops colliding labels.
+  Tests: `the_module_pane_defaults_to_the_cpu_card_and_half_the_next`,
+  `the_splitter_collapses_the_timeline_to_its_header`,
+  `a_short_module_pane_keeps_the_usage_charts_zero_line`,
+  `a_short_chart_drops_the_guide_chips_that_collide`.
 - **Decision**:
   1. **New foundation crate `kairos_profile`.** It owns the recorder, the
      plain-data capture model, hierarchy aggregation, and JSON / Chrome-trace

@@ -8,4 +8,5 @@ pub mod paint;
 pub mod splitter;
 pub mod style;
 pub mod text;
+pub mod timeline_axis;
 pub mod ui_image;

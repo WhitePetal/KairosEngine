@@ -180,7 +180,8 @@ pub use category::{
     tagged_name,
 };
 pub use model::{
-    FrameSnapshot, ProfileSession, SampleSnapshot, ScopeInfo, ScopeKind, ThreadSnapshot,
+    FrameSnapshot, ProfileSession, RecordingSegment, SampleSnapshot, ScopeInfo, ScopeKind,
+    ThreadSnapshot, WallClock,
 };
 pub use profiler::{CaptureFiles, DEFAULT_CAPTURE_DIR, Profiler};
 pub use system_scope::SystemScope;
