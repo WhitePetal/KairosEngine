@@ -51,7 +51,13 @@ pub fn set_style_root(root: impl AsRef<Path>) {
     STYLE_ROOT.with(|cell| *cell.borrow_mut() = Some(root.as_ref().to_path_buf()));
 }
 
-fn style_root() -> PathBuf {
+/// The directory style files are resolved against: the redirected root in tests,
+/// `Preferences/Styles` in the editor.
+///
+/// Shared with sibling modules that persist a file next to the component styles
+/// (`fonts::FontsConfig`), so one redirect keeps a test run out of the working
+/// directory for all of them.
+pub(crate) fn style_root() -> PathBuf {
     STYLE_ROOT
         .with(|cell| cell.borrow().clone())
         .unwrap_or_else(|| PathBuf::from(STYLE_DIR))

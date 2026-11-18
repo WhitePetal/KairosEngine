@@ -3,8 +3,8 @@
 
 use egui::{Context, Pos2, RawInput, Rect, Ui, Vec2, WidgetText};
 use kairos_editor_component::{
-    ConsoleLine, Frame, HostView, Panel, PanelHost, PanelId, PanelInstanceId, PanelRegistry, UiOut,
-    panels,
+    ConsoleLine, EditorInfo, Frame, HostView, Panel, PanelHost, PanelId, PanelInstanceId,
+    PanelRegistry, UiOut, panels,
 };
 use kairos_editor_core::{EditorState, LayoutState};
 use kairos_editor_docking::viewer::TabViewer;
@@ -12,6 +12,12 @@ use kairos_log::Level;
 use kairos_profile::profiling;
 
 const FAKE: PanelId = PanelId("fake");
+
+/// The identity the composition root would inject; the real one lives in
+/// `kairos_editor_app`, which this crate cannot depend on.
+fn test_info() -> EditorInfo {
+    EditorInfo::new("KairosEngine", "9.9.9-test")
+}
 
 /// The attribute expands to `profiling::function_scope!()`; the re-export above
 /// is the only `profiling` path this crate has, so compiling this function
@@ -64,7 +70,7 @@ fn default_host() -> PanelHost {
     kairos_editor_widgets::style::set_style_root(root);
 
     let mut registry = PanelRegistry::new();
-    panels::register_default(&mut registry);
+    panels::register_default(&mut registry, test_info());
     PanelHost::new(registry)
 }
 
@@ -112,10 +118,10 @@ fn sync_creates_and_drops_instances_from_layout() {
 #[test]
 fn register_default_registers_every_default_kind() {
     let mut registry = PanelRegistry::new();
-    panels::register_default(&mut registry);
+    panels::register_default(&mut registry, test_info());
 
     let kinds: Vec<PanelId> = registry.kinds().collect();
-    assert_eq!(kinds.len(), 6);
+    assert_eq!(kinds.len(), 7);
 
     for kind in [
         panels::SCENE,
@@ -124,6 +130,7 @@ fn register_default_registers_every_default_kind() {
         panels::HIERARCHY,
         panels::PROJECT,
         panels::PROFILER,
+        panels::ABOUT,
     ] {
         assert!(kinds.contains(&kind), "missing {kind}");
         let panel = registry.create(kind).expect("registered factory");
@@ -176,7 +183,7 @@ fn default_layout_reconciles_with_the_host() {
     let ids: Vec<PanelInstanceId> = host.ids().collect();
     assert_eq!(ids.len(), 2);
     assert!(ids.iter().all(|id| state.layout.is_open(id.kind)));
-    assert_eq!(host.kinds().count(), 6);
+    assert_eq!(host.kinds().count(), 7);
     assert_eq!(
         host.id_of(panels::SCENE).map(|id| id.kind),
         Some(panels::SCENE)
@@ -282,7 +289,7 @@ fn viewer_bridges_the_panel_icon_path_to_a_file_uri() {
 fn every_builtin_panel_returns_an_existing_tab_icon() {
     let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
     let mut registry = PanelRegistry::new();
-    panels::register_default(&mut registry);
+    panels::register_default(&mut registry, test_info());
 
     for kind in [
         panels::SCENE,
@@ -291,6 +298,7 @@ fn every_builtin_panel_returns_an_existing_tab_icon() {
         panels::HIERARCHY,
         panels::PROJECT,
         panels::PROFILER,
+        panels::ABOUT,
     ] {
         let panel = registry.create(kind).expect("registered factory");
         let path = panel

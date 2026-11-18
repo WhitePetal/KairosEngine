@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use kairos_editor_component::{
-    ConsoleLine, ConsoleLog, Frame, HostView, PanelHost, PanelInstanceId, PanelRegistry, UiOut,
-    panels, toolbar::ToolBar,
+    ConsoleLine, ConsoleLog, EditorInfo, Frame, HostView, PanelHost, PanelInstanceId,
+    PanelRegistry, UiOut, panels, toolbar::ToolBar,
 };
 use kairos_editor_core::{Action, EditorState, Effect, LayoutAction, reduce};
 use kairos_editor_docking::{
@@ -14,6 +14,7 @@ use kairos_engine::Engine;
 use kairos_log::SinkHandle;
 use kairos_profile::{Category, Profiler};
 
+use crate::consts;
 use crate::effects::EffectExecutor;
 
 /// Host-owned resources a panel may display but never own (the prototype's
@@ -66,6 +67,25 @@ impl HostView for HostScope<'_> {
     }
 }
 
+/// The About panel's view model, built from this app's product constants.
+///
+/// The app owns what the editor calls itself; `kairos_editor_component` cannot
+/// reach these constants without depending on this crate, so the identity is
+/// injected where the factories are registered (see
+/// `panels::register_default`). That keeps one source of truth for the version:
+/// the title bar and About read the same constant.
+fn editor_info() -> EditorInfo {
+    EditorInfo {
+        name: consts::APP_NAME,
+        version: consts::VERSION,
+        description: consts::DESCRIPTION,
+        license: consts::LICENSE,
+        repository: consts::REPOSITORY_URL,
+        discussions: consts::DISCUSSIONS_URL,
+        credits: consts::CREDITS_URL,
+    }
+}
+
 /// Build the first-run layout from the ids the host created for the five
 /// default panels. User drags/splits after this are pure dock-state changes.
 fn default_dock(host: &PanelHost) -> DockState<PanelInstanceId> {
@@ -115,8 +135,17 @@ impl EditorApp {
             kairos_log::warn!(target: "kairos_editor", "UI fonts: {error}");
         }
 
+        // The editor chrome is authored dark-only: the dock's `Style`, the
+        // toolbar skin and the widget defaults are all dark, but each panel picks
+        // its skin from `ctx.theme()`. Left to follow the desktop, a light system
+        // theme paints a white panel inside the dark window (About is where that
+        // showed up). Pin the theme before `PanelHost::sync` runs `Panel::init`,
+        // which is where every component reads it. The per-component light skins
+        // stay in their RON files, dormant until the dock gains one too.
+        egui_ctx.set_theme(egui::Theme::Dark);
+
         let mut registry = PanelRegistry::new();
-        panels::register_default(&mut registry);
+        panels::register_default(&mut registry, editor_info());
 
         let mut state = EditorState::new();
         for kind in [
@@ -302,9 +331,9 @@ mod tests {
         input
     }
 
-    fn build() -> EditorApp {
-        // `PanelHost::sync` and `ToolBar::new` seed missing style files; keep
-        // them in a scratch root instead of the crate directory.
+    /// `PanelHost::sync` and `ToolBar::new` seed missing style files; keep them
+    /// in a scratch root instead of the crate directory.
+    fn scratch_style_root() -> &'static std::path::Path {
         static DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
         let root = DIR.get_or_init(|| {
             let root = std::env::temp_dir()
@@ -314,9 +343,14 @@ mod tests {
             root
         });
         kairos_editor_widgets::style::set_style_root(root);
+        root
+    }
+
+    fn build() -> EditorApp {
+        scratch_style_root();
 
         let mut registry = PanelRegistry::new();
-        panels::register_default(&mut registry);
+        panels::register_default(&mut registry, editor_info());
         let mut state = EditorState::new();
         for kind in [
             panels::SCENE,
@@ -342,11 +376,75 @@ mod tests {
         }
     }
 
+    /// A light desktop must not paint a white panel inside the dark chrome: the
+    /// app pins the egui theme before `PanelHost::sync` runs `Panel::init`, which
+    /// is where each panel reads `ctx.theme()` to pick its skin.
+    #[test]
+    fn a_light_desktop_still_gets_the_dark_editor() {
+        scratch_style_root();
+
+        let ctx = egui::Context::default();
+        ctx.set_theme(egui::Theme::Light);
+        let _app = EditorApp::new(&ctx);
+
+        assert_eq!(ctx.theme(), egui::Theme::Dark);
+    }
+
     #[test]
     fn default_layout_opens_the_five_default_tabs() {
         let app = build();
         assert_eq!(app.host.ids().count(), 5);
         assert_eq!(app.dock.tabs().len(), 5);
+    }
+
+    /// The About entry is an ordinary `ShowPanel`: it floats where there is no
+    /// dock tab, focuses the same instance when there is one, and closing it
+    /// takes the floating surface away again.
+    #[test]
+    fn about_opens_as_a_floating_window_and_comes_back() {
+        let mut app = build();
+        let ctx = egui::Context::default();
+
+        let mut out = UiOut::new();
+        out.push(Action::Layout(LayoutAction::ShowPanel {
+            panel: panels::ABOUT,
+        }));
+        app.pump(out);
+        app.sync(&ctx);
+
+        let about = app.host.id_of(panels::ABOUT).expect("about instance");
+        assert!(app.dock.contains_tab(about));
+        assert_eq!(
+            app.dock.valid_surface_indices().len(),
+            2,
+            "About floats instead of splitting the dock"
+        );
+        assert_eq!(
+            app.dock.main_surface().tabs_count(),
+            5,
+            "the workspace layout is untouched"
+        );
+        assert_eq!(app.dock.focused_tab(), Some(about));
+
+        // A second Show focuses the open instance instead of stacking windows.
+        let mut out = UiOut::new();
+        out.push(Action::Layout(LayoutAction::ShowPanel {
+            panel: panels::ABOUT,
+        }));
+        app.pump(out);
+        app.sync(&ctx);
+        assert_eq!(app.dock.valid_surface_indices().len(), 2);
+        assert_eq!(app.host.id_of(panels::ABOUT), Some(about));
+
+        // Closing drops the instance's tab; the empty window is removed with it.
+        let mut out = UiOut::new();
+        out.push(Action::Layout(LayoutAction::ClosePanel {
+            panel: panels::ABOUT,
+        }));
+        app.pump(out);
+        app.sync(&ctx);
+        assert_eq!(app.host.id_of(panels::ABOUT), None);
+        assert_eq!(app.dock.valid_surface_indices().len(), 1);
     }
 
     #[test]

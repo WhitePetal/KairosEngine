@@ -25,7 +25,7 @@ use std::sync::Arc;
 use egui::{Context, FontData, FontDefinitions, FontFamily};
 use serde::{Deserialize, Serialize};
 
-use crate::style::STYLE_DIR;
+use crate::style;
 
 /// Where a font sits in the fallback list.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -72,11 +72,14 @@ impl Default for FontsConfig {
 }
 
 impl FontsConfig {
-    /// File name under [`STYLE_DIR`].
+    /// File name under the style root (see `style::style_root`).
     pub const FILE: &'static str = "EditorFonts.ron";
 
+    /// The font config lives beside the component style files, so it follows
+    /// the same root: a test that redirects the root must not write
+    /// `Preferences/Styles/EditorFonts.ron` into its working directory.
     pub fn path() -> PathBuf {
-        Path::new(STYLE_DIR).join(Self::FILE)
+        style::style_root().join(Self::FILE)
     }
 
     pub fn load_from(path: &Path) -> Result<Self, String> {

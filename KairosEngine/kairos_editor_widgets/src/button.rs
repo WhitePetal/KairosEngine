@@ -12,7 +12,8 @@
 //! a domain action. Components map `clicked()` to their own `Action`.
 
 use egui::{
-    Color32, CornerRadius, Id, Response, Sense, Ui, Vec2, Widget, WidgetInfo, WidgetType, vec2,
+    Color32, CornerRadius, Id, Response, Sense, Stroke, StrokeKind, Ui, Vec2, Widget, WidgetInfo,
+    WidgetType, vec2,
 };
 
 use crate::text::TextStyle;
@@ -38,6 +39,12 @@ pub struct ButtonStyle {
     pub hover_fill: Color32,
     /// Background while pressed, open, or selected (toggle on).
     pub active_fill: Color32,
+    /// Outline drawn inside the fill.
+    ///
+    /// `Stroke::NONE` (the default) is the flat editor chrome: menu bar items
+    /// and Console toolbar segments are fills without borders. A dialog button
+    /// sets one so it reads as a button instead of a text label.
+    pub stroke: Stroke,
     pub corner_radius: CornerRadius,
     /// Horizontal text padding, vertical content padding.
     pub padding: Vec2,
@@ -55,6 +62,7 @@ impl ButtonStyle {
             fill: Color32::TRANSPARENT,
             hover_fill: Color32::TRANSPARENT,
             active_fill: Color32::TRANSPARENT,
+            stroke: Stroke::NONE,
             corner_radius: CornerRadius::ZERO,
             padding: vec2(8.0, 2.0),
             height: 20.0,
@@ -66,6 +74,12 @@ impl ButtonStyle {
         self.fill = fill;
         self.hover_fill = hover_fill;
         self.active_fill = active_fill;
+        self
+    }
+
+    /// Outline the button; see [`Self::stroke`] for the field's contract.
+    pub fn stroke(mut self, stroke: impl Into<Stroke>) -> Self {
+        self.stroke = stroke.into();
         self
     }
 
@@ -290,6 +304,17 @@ impl Widget for Button<'_> {
             ui.painter()
                 .rect_filled(rect, self.style.corner_radius, fill);
         }
+        // Inside the fill, so a bordered button keeps its exact allocated rect
+        // (callers measure these buttons) and the outline never bleeds into the
+        // neighbouring layout.
+        if self.style.stroke.width > 0.0 {
+            ui.painter().rect_stroke(
+                rect,
+                self.style.corner_radius,
+                self.style.stroke,
+                StrokeKind::Inside,
+            );
+        }
 
         let content_left = match self.align {
             ButtonAlign::Left => rect.left() + padding.x,
@@ -449,6 +474,56 @@ mod tests {
         // A larger icon grows the button instead of overhanging the fill.
         let large = measured(&style, 30.0, None);
         assert_eq!(large.size(), vec2(34.0, 34.0));
+    }
+
+    /// A bordered button (a dialog's Copy/Close) must paint its outline inside
+    /// its own rect, or it reads as a text label.
+    #[test]
+    fn a_bordered_button_paints_its_outline_inside_its_rect() {
+        let ctx = Context::default();
+        let style = style().stroke(Stroke::new(1.0, Color32::from_rgb(0x6e, 0x6e, 0x6e)));
+        let id = Id::new("kairos-button-outline");
+
+        let output = ctx.run_ui(input(), |ui| {
+            ui.add(Button::new("Close", &style).id(id));
+        });
+        let rect = ctx.read_response(id).expect("button response").rect;
+
+        let outlines: Vec<(egui::Rect, Stroke)> = output
+            .shapes
+            .iter()
+            .filter_map(|clipped| match &clipped.shape {
+                egui::Shape::Rect(shape) if shape.stroke.width > 0.0 => {
+                    Some((shape.rect, shape.stroke))
+                }
+                _ => None,
+            })
+            .collect();
+
+        assert!(
+            outlines.iter().any(|(painted, stroke)| *painted == rect
+                && *stroke == style.stroke),
+            "the outline should cover {rect:?}, painted {outlines:?}"
+        );
+    }
+
+    /// The flat chrome (menu bar, toolbar) must stay borderless: the new token
+    /// defaults to no stroke, so those buttons are unchanged.
+    #[test]
+    fn a_flat_button_paints_no_outline() {
+        let ctx = Context::default();
+        let style = style();
+        let id = Id::new("kairos-button-flat");
+
+        let output = ctx.run_ui(input(), |ui| {
+            ui.add(Button::new("Edit", &style).id(id));
+        });
+
+        let outlines = output.shapes.iter().filter(|clipped| {
+            matches!(&clipped.shape, egui::Shape::Rect(shape) if shape.stroke.width > 0.0)
+        });
+
+        assert_eq!(outlines.count(), 0, "a flat button has no outline");
     }
 
     #[test]

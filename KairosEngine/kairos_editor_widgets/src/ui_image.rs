@@ -87,6 +87,11 @@ mod tests {
         );
 
         let path = uri.strip_prefix("file://").expect("file uri");
+        // Windows keeps its drive after the scheme: `file:///D:/...` strips to
+        // `/D:/...`, which is rooted but not absolute (`Path::is_absolute` needs
+        // the drive prefix). Drop the slash the URI adds, not the drive.
+        #[cfg(windows)]
+        let path = path.trim_start_matches('/');
         assert!(std::path::Path::new(path).is_absolute(), "{uri}");
     }
 }

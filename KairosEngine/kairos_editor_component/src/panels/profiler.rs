@@ -1,29 +1,29 @@
-//! Profiler panel: Unity's Profiler window over the structured capture.
+//! Profiler panel: Profiler window over the structured capture.
 //!
 //! The panel owns no capture data. It reads the
 //! [`kairos_profile::ProfileSession`] through [`crate::HostView::profiler`], keeps
 //! only view state (recording flag, selected frame, live-follow, the selected
 //! block, the module area's height, the timeline's zoom and scroll) and draws
-//! Unity's bands, top to bottom:
+//! bands, top to bottom:
 //!
 //! * **toolbar** — record toggle, frame transport, `Frame: n / m`, Clear and
 //!   Save, separated into segments by 1 px rules. Save writes the capture to
 //!   `Library/Profiler` and the toolbar names the written files next to the
 //!   button (the exact paths are in its hover text), so a capture can be handed
 //!   to another reader without a file dialog;
-//! * **module area** — Unity's modules pane with this editor's own time axis: a
+//! * **module area** — Modules pane with this editor's own time axis: a
 //!   pinned clock ruler on top and a horizontal min-max bar at the bottom around
 //!   the fixed-height module cards. CPU Usage has the category legend and a
 //!   stacked frame chart whose bars sit at their capture times, scaled so the
-//!   tallest bar fills 80% of the chart with Unity's four ms/FPS guide tiers;
+//!   tallest bar fills 80% of the chart with four ms/FPS guide tiers;
 //!   GPU Usage is a fixed-height empty card until the capture records GPU
 //!   timings;
 //! * **splitter** — the draggable rule between the module area and the
-//!   timeline, Unity's split view handle;
+//!   timeline, split view handle;
 //! * **timeline** — a pinned header (view selector, Live toggle, CPU/GPU
 //!   summary) and time ruler over one track per registered thread lane, a
-//!   zoomable time axis and Unity's two scroll bars. The view selector switches
-//!   the band between Unity's Timeline and Hierarchy views.
+//!   zoomable time axis and two scroll bars. The view selector switches
+//!   the band between Timeline and Hierarchy views.
 //!
 //! Layout, colours and measured geometry are [`ProfilerStyle`] tokens loaded
 //! from `Preferences/Styles/Profiler.ron`.
@@ -32,7 +32,7 @@
 //!
 //! The chart stacks the engine modules ([`Category`]): Rendering, Scripts,
 //! Physics, Audio, IO, Editor, VSync and Others. `IO` is the asset server,
-//! loaders, processors and filesystem watching (Unity's `Loading`): resource
+//! loaders, processors and filesystem watching: resource
 //! loading is its own bucket instead of disappearing into `Others`. A marker
 //! declares its category at the call site — `kairos_profile::scope!(Category::Physics,
 //! ...)` appends a `Physics/` tag to the marker name — and the executor tags the
@@ -43,8 +43,8 @@
 //! Subsystem systems (physics, audio, rendering, IO, editor) fold into their
 //! module's bucket: they never get a legend row of their own. Everything else is
 //! `Scripts` (a system's default when it declares nothing), and the legend
-//! refines it into one row per ECS system. Legend swatches are toggles, like
-//! Unity's: a hidden category keeps its row and its time and leaves the chart.
+//! refines it into one row per ECS system. Legend swatches are toggles,
+//! a hidden category keeps its row and its time and leaves the chart.
 //! Scheduler wrappers (`Kairos.Stage`, `Kairos.Engine.Frame`) and the scheduler
 //! drivers (`run_main`, `run_fixed_main_loop`) contribute no time of their own:
 //! what they measure is their children's work, counted where it ran, and the
@@ -54,7 +54,7 @@
 //! The timeline paints every block in its category's colour and labels it
 //! `Category · marker (duration)` (a system block uses the short system name
 //! from its data, and the duration is the block's inclusive time — the number
-//! Unity prints after the name). That tag is a property of each block, not a
+//! prints after the name). That tag is a property of each block, not a
 //! contiguous region: with ECS parallelism one module's systems can run on
 //! several workers or interleave with other work on a lane. The block still
 //! reads as its module — for example a third-party
@@ -64,13 +64,13 @@
 //! # Module area and timeline split
 //!
 //! The two bands share the space under the toolbar and are separated by a
-//! draggable splitter — Unity's `TwoPaneSplitView` in `ProfilerWindow`, which
+//! draggable splitter — `TwoPaneSplitView` in `ProfilerWindow`, which
 //! persists the fixed pane's height as `MainSplitView.FixedPaneSize`. The module
 //! pane is the fixed pane: it keeps the height the user last dragged to and the
 //! timeline takes whatever is left, so resizing the panel grows the timeline.
 //!
 //! The module pane is a **window onto a stack of module cards** (CPU Usage, then
-//! the empty GPU Usage card), like Unity's modules list, plus two pinned rows of
+//! the empty GPU Usage card), plus two pinned rows of
 //! its own: the clock ruler on top and the time zoom bar at the bottom. The cards
 //! sit at their skin heights while the pane can show them, so dragging the
 //! splitter down reveals the modules below instead of stretching the CPU chart,
@@ -133,7 +133,7 @@
 //! toggle and the CPU/GPU summary, and the ruler, tracks and bars are clipped, so
 //! the module pane can take the whole panel when a capture has more modules than
 //! the panel has room for. When the panel is shorter than both minima, the module
-//! pane keeps its minimum and the timeline gives way first, which is what Unity's
+//! pane keeps its minimum and the timeline gives way first, which is what
 //! `UpdateLayout` does when the flexed pane no longer fits.
 //!
 //! The rule is [`kairos_editor_widgets::splitter::Splitter`], the shared strip
@@ -153,14 +153,14 @@
 //! # Hierarchy view
 //!
 //! The view selector's Hierarchy entry replaces the per-thread tracks with
-//! Unity's aggregated marker tree for the selected frame: the whole frame's
+//! aggregated marker tree for the selected frame: the whole frame's
 //! work, merged across every thread. That is where a system that ran on a task
 //! pool worker is found: the timeline shows it on its worker's track, but the
 //! stage wrapper that scheduled it has no child block on the main thread, so the
 //! stage alone never explains its time.
 //!
 //! Columns are Total, Self, Calls and Max; clicking a column header sorts the
-//! sibling lists by it (Unity's caret points down for the default best-first
+//! sibling lists by it (caret points down for the default best-first
 //! order, up after a second click). Rows with children carry a collapse caret
 //! and keep their collapse state by marker path, so a re-sort does not lose it.
 //! Hovering a row reports the full marker name (a system keeps its module path),
@@ -169,27 +169,27 @@
 //!
 //! # Timeline navigation
 //!
-//! The tracks show a window into the selected frame, Unity's `ZoomableArea`:
+//! The tracks show a window into the selected frame, `ZoomableArea`:
 //! [`TimelineView`] keeps it as a fraction of the frame, so stepping frames or
-//! resizing the panel keeps the zoom. The gestures are Unity's CPU-module ones:
+//! resizing the panel keeps the zoom. The gestures are CPU-module ones:
 //!
 //! * the wheel over the time area zooms horizontally around the pointer, down
-//!   to Unity's `minWidth` of 0.05 ms and out to the whole frame (the capture
+//!   to `minWidth` of 0.05 ms and out to the whole frame (the capture
 //!   has no neighbouring frames to reveal past the edges);
 //! * the wheel over the thread names or the vertical bar scrolls the rows;
 //! * the wheel over the horizontal bar pans;
 //! * middle-drag, or alt-drag, pans the tracks; alt+right-drag zooms;
-//! * `A` fits the whole frame again, Unity's FrameAll.
+//! * `A` fits the whole frame again, FrameAll.
 //!
 //! The two bars are [`kairos_editor_widgets::min_max_scroll::MinMaxScroll`],
-//! Unity's min-max scroller: the horizontal one's thumb is the shown window, so
+//! min-max scroller: the horizontal one's thumb is the shown window, so
 //! dragging it pans and dragging either end resizes it — the timeline's second
 //! zoom gesture. egui's `ScrollArea` bar is a plain thumb that cannot resize a
 //! window, which is why the timeline lays out its own bars.
 //!
 //! # Timeline selection
 //!
-//! Clicking a block selects it, like Unity: the block keeps a 1 px outline and a
+//! Clicking a block selects it, The block keeps a 1 px outline and a
 //! details box opens under it with `Copy` / `Show` buttons. The box names the
 //! block (`Kairos.Stage[Update]`, or a system's full module path), then reports
 //! its category, the marker's call site (`file:line`), its self time and the
@@ -199,8 +199,8 @@
 //! (`Self: 40.57ms (no child samples recorded)`) instead of leaving the block a
 //! black box.
 //!
-//! The accumulated-time section follows Unity's rules: it appears only when
-//! that adds information — like Unity's `ProfilerTimelineGUI.DoSelectionTooltip`,
+//! The accumulated-time section follows the rules: it appears only when
+//! that adds information — `ProfilerTimelineGUI.DoSelectionTooltip`,
 //! the section needs more than one instance in the frame, the thread line more
 //! than one instance on the block's thread, and the frame line instances on
 //! other threads too. A block that ran once on one thread therefore gets no
@@ -213,22 +213,19 @@
 //!
 //! * module selection (`Profiler Modules`) and the Raw / Call Stacks views: the
 //!   view selector only switches Timeline and Hierarchy;
-//! * thread grouping (Unity's JOB / LOADING / SCRIPTING rows) and resizable
+//! * thread grouping and resizable
 //!   thread rows: the vertical bar scrolls, but the rows have no splitter and no
-//!   vertical zoom (Unity locks the timeline's vertical scale);
+//!   vertical zoom;
 //! * the module legend still only has the rows the module area leaves free, so
 //!   it shows the top few and `+N more`; the Hierarchy view is where the whole
 //!   ranking lives;
 //! * GPU timings, per-marker colour overrides (the views use the category
 //!   palette), hover details on timeline blocks (they report after a click, not
 //!   on hover; Hierarchy rows do have a tooltip) and the details box's Show menu
-//!   (Unity lists the block in the Hierarchy / Raw views, opens its call stack
-//!   and jumps to the source line);
-//! * the tooltip's cross-frame line (Unity's `0.53ms total over 3 frames on
-//!   thread '…'`): it needs samples that span frames to be linked, and the
+//! * the tooltip's cross-frame line: it needs samples that span frames to be linked, and the
 //!   capture currently parses each frame on its own;
-//! * Unity's range selection (drag across the tracks to measure a window), the
-//!   `F` shortcut that frames the selected block, and the ghost frames Unity
+//! * Range selection (drag across the tracks to measure a window), the
+//!   `F` shortcut that frames the selected block, and the ghost frames
 //!   draws before and after the selected one while the timeline is panned.
 //!
 //! The JSON view that predates the rewrite (`CachedFrame::json`) is still in
@@ -394,8 +391,7 @@ impl TimelineView {
     }
 
     /// Zoom by `factor` (> 1 zooms in) around `focus`, a position across the
-    /// track from 0 to 1: the time under the pointer stays under it, like
-    /// Unity's `ZoomableArea.SetScaleFocused`.
+    /// track from 0 to 1: the time under the pointer stays under it
     fn zoom_around(&mut self, factor: f64, focus: f64, duration_ns: u64) {
         let min_span = Self::min_span(duration_ns);
         let focus = focus.clamp(0.0, 1.0);
@@ -418,7 +414,7 @@ impl TimelineView {
     }
 }
 
-/// Which view the timeline band shows - Unity's view selector.
+/// Which view the timeline band shows.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum PanelView {
     #[default]
@@ -540,8 +536,8 @@ pub(crate) struct ProfilerPanel {
     /// Height of the module area in points. The splitter between it and the
     /// timeline keeps this, so the timeline gets the rest of the panel; a drag
     /// replaces it for the session. It starts at
-    /// [`Self::module_default_height`], the height the cards ask for. Unity
-    /// persists the same value as `ProfilerWindow.MainSplitView.FixedPaneSize`;
+    /// [`Self::module_default_height`], the height the cards ask for.
+    /// Persists the same value as `ProfilerWindow.MainSplitView.FixedPaneSize`;
     /// the editor has no per-panel layout settings file to write it to yet.
     module_height: f32,
     /// Vertical offset of the module pane's card stack, in points.
@@ -665,7 +661,7 @@ impl Panel for ProfilerPanel {
             self.refresh_frame_state(&session);
         }
 
-        // The panel is measured chrome: Unity's rows are flush and the gaps
+        // The panel is measured chrome: rows are flush and the gaps
         // between sections are rules, not item spacing.
         ui.spacing_mut().item_spacing = egui::Vec2::ZERO;
 
@@ -700,7 +696,7 @@ impl ProfilerPanel {
 
     /// The module pane, the splitter and the timeline.
     ///
-    /// The module pane is Unity's *fixed pane*: it keeps the height the user
+    /// The module pane is *fixed pane*: it keeps the height the user
     /// dragged the splitter to and the timeline takes what is left. The
     /// splitter applies its drag to `module_height` on this pass, but the pane
     /// above it was already allocated, so the two panes move on the next pass —
@@ -907,7 +903,7 @@ impl ProfilerPanel {
         let name_width = self.style.module_name_width.min(row.width());
         let name_col =
             Rect::from_min_max(row.min, egui::pos2(row.left() + name_width, row.bottom()));
-        // The chart starts below the module title row, like Unity's graph.
+        // The chart starts below the module title row.
         let chart = Rect::from_min_max(
             egui::pos2(
                 name_col.right(),

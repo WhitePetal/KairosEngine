@@ -62,6 +62,17 @@
 //! [`panels`] holds the built-in panels and their ids; adding a panel is one
 //! impl in `panels/<name>.rs` plus one registration line in
 //! [`panels::register_default`]. The app shell does not change.
+//!
+//! ## About panel
+//!
+//! `panels::about` is the editor's identity card. Its content is **injected**
+//! through [`EditorInfo`]: the composition root knows what the product is
+//! called and which version it is, and this crate cannot depend on the app
+//! crate, so the identity travels through
+//! [`panels::register_default`] and is captured by the About factory. A
+//! version literal compiled into a component is how the legacy window ended up
+//! disagreeing with its own title bar; see
+//! `docs/plan/editor-ui-architecture/about-panel.md`.
 
 #![forbid(unsafe_code)]
 
@@ -76,4 +87,7 @@ pub use frame::{ConsoleLine, Frame, HostView, UiOut};
 // Panel kinds are store vocabulary, not a component concept: re-export the core
 // newtype so panels and the app share one id type without a second import.
 pub use kairos_editor_core::PanelId;
+// The composition root builds the About panel's view model, so the type has to
+// be reachable from the crate root.
+pub use panels::EditorInfo;
 pub use panel::{Panel, PanelFactory, PanelHost, PanelHostViewer, PanelInstanceId, PanelRegistry};

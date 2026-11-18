@@ -75,10 +75,16 @@ impl ToolBar {
                         &button,
                         &style.icons.about,
                         style.icon_size,
-                        "About Kairos",
+                        "Kairos",
                         |ui| {
                             if menu::menu_item(ui, "About Kairos").clicked() {
-                                todo!("需要实现 UiOut 发送 About 窗口创建逻辑")
+                                // An ordinary panel toggle: the layout reducer
+                                // opens it, and `ShowPanel` floats a panel that
+                                // has no dock tab yet. About is not special-cased
+                                // anywhere (that is the point of the panel API).
+                                out.push(Action::Layout(LayoutAction::ShowPanel {
+                                    panel: panels::ABOUT,
+                                }));
                             }
                             menu::menu_separator(ui);
                             if menu::menu_item(ui, "Quit").clicked() {
