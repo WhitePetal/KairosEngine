@@ -24,9 +24,9 @@
 //! # Pieces
 //!
 //! * [`Panel`], [`Frame`], [`UiOut`], [`PanelInstanceId`]: what a panel is.
-//! * [`PanelDef`], [`PanelCatalog`], [`PanelContext`]: the panel set, declared as
-//!   a static table, and what a factory is handed when an instance is built
-//!   (`catalog` and `context` modules).
+//! * [`PanelDef`], [`PanelCatalog`], [`PanelContext`]: the panel set, collected
+//!   from the link-section table, and what a factory is handed when an instance
+//!   is built (`catalog` and `context` modules).
 //! * [`PanelHost`]: owns the instances and reconciles them with `LayoutState`
 //!   (`host` module); [`PanelHostViewer`] adapts the host to the dock's
 //!   `TabViewer` seam (`viewer` module).
@@ -40,6 +40,28 @@ pub use catalog::{PanelCatalog, PanelDef, PanelFactory};
 pub use context::{EditorInfo, PanelContext};
 pub use host::PanelHost;
 pub use viewer::PanelHostViewer;
+
+/// Declares a panel id and submits its definition to the link-section table.
+///
+/// One call per panel, inside the panel's own module: it emits the public
+/// `PanelId` constant (`panels::SCENE`, re-exported by `panels.rs`) and the
+/// `PanelDef` that [`PanelCatalog::builtin`] collects. No central module lists
+/// the factories.
+///
+/// This is what a Bevy-style `#[derive(Panel)]` would expand to; it is a
+/// `macro_rules!` so the prototype needs no proc-macro crate.
+macro_rules! panel {
+    ($(#[$attr:meta])* $vis:vis $konst:ident = $id:literal => $create:path) => {
+        $(#[$attr])*
+        $vis const $konst: $crate::PanelId = $crate::PanelId($id);
+
+        ::inventory::submit! {
+            $crate::PanelDef::new($konst, $create)
+        }
+    };
+}
+
+pub(crate) use panel;
 
 use egui::{Context, Ui, WidgetText};
 use kairos_editor_core::PanelId;

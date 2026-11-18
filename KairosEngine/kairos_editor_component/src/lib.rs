@@ -54,18 +54,17 @@
 //! ## Panel framework
 //!
 //! [`panel`] is the docked workspace layer: [`Panel`] is the trait every panel
-//! implements, [`PanelDef`]/[`PanelCatalog`] declare the panel set as a static
-//! table of ids and `fn` factories, and [`PanelHost`] owns the live instances
-//! and implements the docking crate's `TabViewer`. The app never calls a
-//! concrete panel: it hands the host a catalog and a [`PanelContext`], syncs it
-//! with `LayoutState`, and lets `Docker::show` draw. Nothing is registered at
-//! startup, and no instance exists for a panel that is not open.
+//! implements, [`PanelDef`]/[`PanelCatalog`] describe the panel set, and
+//! [`PanelHost`] owns the live instances and implements the docking crate's
+//! `TabViewer`. The app never calls a concrete panel: it hands the host a
+//! catalog and a [`PanelContext`], syncs it with `LayoutState`, and lets
+//! `Docker::show` draw. No instance exists for a panel that is not open.
 //!
-//! [`panels`] holds the built-in panels and their ids; adding a panel is one
-//! impl in `panels/<name>.rs`, one `DEF` there, and one entry in the
-//! `panel_catalog!` table. That single entry generates the `mod` declaration,
-//! the id and the [`panels::CATALOG`] row, so the three cannot drift apart.
-//! The app shell does not change.
+//! [`panels`] holds the built-in panels and their ids. Each panel module
+//! declares its own id and submits its factory with the `panel!` macro; the
+//! submissions share a link-section table and [`panels::catalog`] collects
+//! them once, sorted by id. No central table names a panel's factory, and the
+//! app shell does not change.
 //!
 //! ## About panel
 //!

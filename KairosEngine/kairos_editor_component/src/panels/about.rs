@@ -47,10 +47,10 @@ use kairos_editor_widgets::text::TextStyle;
 use kairos_editor_widgets::ui_image;
 
 use crate::frame::{Frame, UiOut};
-use crate::panel::{EditorInfo, Panel, PanelContext, PanelDef};
+use crate::panel::panel;
+use crate::panel::{EditorInfo, Panel, PanelContext};
 
 use self::style::AboutPanelStyle;
-use super::ABOUT;
 
 /// Stable id of the Close button.
 ///
@@ -74,9 +74,11 @@ pub struct AboutPanel {
     style: AboutPanelStyle,
 }
 
-/// Catalog entry: the host builds the panel through this when it opens, with
-/// the identity the composition root injected.
-pub(super) const DEF: PanelDef = PanelDef::new(ABOUT, create);
+panel! {
+    /// The editor's identity card. Opened from the "Kairos" menu; floated by
+    /// `LayoutAction::ShowPanel` like any panel that has no dock tab yet.
+    pub ABOUT = "about" => create
+}
 
 fn create(context: &PanelContext) -> Box<dyn Panel> {
     Box::new(AboutPanel::new(context.editor))

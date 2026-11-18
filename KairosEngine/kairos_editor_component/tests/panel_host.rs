@@ -79,7 +79,7 @@ fn default_host() -> PanelHost {
     });
     kairos_editor_widgets::style::set_style_root(root);
 
-    PanelHost::new(panels::CATALOG, PanelContext::new(test_info()))
+    PanelHost::new(panels::catalog(), PanelContext::new(test_info()))
 }
 
 /// Run one headless UI pass: exactly what the dock does with its viewer.
@@ -128,10 +128,11 @@ fn the_catalog_declares_every_builtin_panel_once() {
     let context = PanelContext::new(test_info());
     let mut kinds = Vec::new();
 
-    for kind in panels::CATALOG.kinds() {
+    let catalog = panels::catalog();
+    for kind in catalog.kinds() {
         assert!(!kinds.contains(&kind), "duplicate id {kind}");
         kinds.push(kind);
-        let panel = panels::CATALOG
+        let panel = catalog
             .create(kind, &context)
             .expect("catalog factory");
         assert_eq!(panel.kind(), kind);
@@ -344,7 +345,7 @@ fn every_builtin_panel_returns_an_existing_tab_icon() {
         panels::PROFILER,
         panels::ABOUT,
     ] {
-        let panel = panels::CATALOG
+        let panel = panels::catalog()
             .create(kind, &context)
             .expect("catalog factory");
         let path = panel

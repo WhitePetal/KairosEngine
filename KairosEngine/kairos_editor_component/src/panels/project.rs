@@ -11,9 +11,8 @@ use kairos_editor_core::PanelId;
 use kairos_editor_widgets::ui_image;
 
 use crate::frame::{Frame, UiOut};
-use crate::panel::{Panel, PanelContext, PanelDef};
-
-use super::PROJECT;
+use crate::panel::panel;
+use crate::panel::{Panel, PanelContext};
 
 /// Tab-header artwork; a runtime file under `Preferences/Textures`, not an
 /// embedded asset (see `kairos_editor_widgets::ui_image`).
@@ -21,8 +20,9 @@ const TAB_ICON: &str = "Preferences/Textures/tab_icons/project.png";
 
 pub(crate) struct ProjectPanel;
 
-/// Catalog entry: the host builds the panel through this when it opens.
-pub(super) const DEF: PanelDef = PanelDef::new(PROJECT, create);
+panel! {
+    pub PROJECT = "project" => create
+}
 
 fn create(_context: &PanelContext) -> Box<dyn Panel> {
     Box::new(ProjectPanel)

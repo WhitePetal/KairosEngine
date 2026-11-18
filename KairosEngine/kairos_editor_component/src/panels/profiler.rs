@@ -256,13 +256,12 @@ use kairos_profile::{
 };
 
 use crate::frame::{Frame, UiOut};
-use crate::panel::{Panel, PanelContext, PanelDef};
+use crate::panel::panel;
+use crate::panel::{Panel, PanelContext};
 use crate::panels::profiler::hierarchy::{HierarchySort};
 use crate::panels::profiler::style::ProfilerStyle;
 
 use self::axis::ModuleAxis;
-
-use super::PROFILER;
 
 mod axis;
 mod main_toolbar;
@@ -562,8 +561,9 @@ pub(crate) struct ProfilerPanel {
     track_scroll: f32,
 }
 
-/// Catalog entry: the host builds the panel through this when it opens.
-pub(super) const DEF: PanelDef = PanelDef::new(PROFILER, create);
+panel! {
+    pub PROFILER = "profiler" => create
+}
 
 fn create(_context: &PanelContext) -> Box<dyn Panel> {
     Box::new(ProfilerPanel::default())

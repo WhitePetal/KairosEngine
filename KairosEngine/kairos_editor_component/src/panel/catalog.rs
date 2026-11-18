@@ -1,14 +1,17 @@
-//! Panel catalog: the compile-time table of panel kinds and their factories.
+//! Panel catalog: the set of panel kinds and their factories.
 //!
-//! The set of panels is fixed when the binary is linked, so it is data, not
-//! startup work: a [`PanelCatalog`] holds a `&'static [PanelDef]` and the host
-//! consults it when a kind becomes open. There is no registration call, no map
-//! built at boot and no closure to capture the environment: a definition is a
-//! `const`, and everything a factory needs arrives as a [`PanelContext`].
+//! Production fills it from the **link-section table**: every panel module
+//! submits a [`PanelDef`] through the `panel!` macro, the linker concatenates
+//! the entries, and [`PanelCatalog::builtin`] collects them once. The same
+//! mechanism Bevy 0.17 uses for `Reflect` auto-registration; see
+//! `docs/plan/editor-ui-architecture/panel-viewport-design.md`.
 //!
-//! Binding the id to the factory in one value also removes the "registered
-//! under the wrong kind" failure mode: the host keys instances by
-//! [`PanelDef::id`], and `Panel::kind` is only a consistency check.
+//! The collection order is link order, which is not source order, so
+//! `builtin` sorts by [`PanelId`]: instance serials and tests must not depend
+//! on how the linker laid the object files out. Tests and embedders that need
+//! a different set pass an explicit slice to [`PanelCatalog::new`].
+
+use std::sync::OnceLock;
 
 use kairos_editor_core::PanelId;
 
@@ -16,7 +19,7 @@ use super::{Panel, PanelContext};
 
 /// Builds one panel instance.
 ///
-/// A plain `fn` pointer, not a boxed closure: definitions are `const` values,
+/// A plain `fn` pointer, not a boxed closure: definitions are `static` values,
 /// so nothing may be captured. State a factory needs comes from its
 /// [`PanelContext`] argument.
 pub type PanelFactory = fn(&PanelContext) -> Box<dyn Panel>;
@@ -36,11 +39,13 @@ impl PanelDef {
     }
 }
 
+// Bare type: `panel!` submits `PanelDef` values from any panel module.
+inventory::collect!(PanelDef);
+
 /// The panel kinds a host knows, in declaration order.
 ///
-/// Declaration order is part of the contract: `PanelHost::sync` walks it when
-/// it allocates instance serials, so the same open set yields the same ids on
-/// every run.
+/// [`PanelCatalog::builtin`] returns them sorted by id; a catalog built with
+/// [`PanelCatalog::new`] keeps the slice order.
 #[derive(Clone, Copy)]
 pub struct PanelCatalog {
     defs: &'static [PanelDef],
@@ -49,6 +54,28 @@ pub struct PanelCatalog {
 impl PanelCatalog {
     pub const fn new(defs: &'static [PanelDef]) -> Self {
         Self { defs }
+    }
+
+    /// Every panel that submitted a [`PanelDef`] through `panel!`.
+    ///
+    /// Collected once per process and sorted by id, because inventory
+    /// iteration follows link order, which is not the order panels are
+    /// written in. Two submissions with the same id are a bug; debug builds
+    /// assert it.
+    pub fn builtin() -> Self {
+        static COLLECTED: OnceLock<Vec<PanelDef>> = OnceLock::new();
+        let defs = COLLECTED.get_or_init(|| {
+            let mut defs: Vec<PanelDef> =
+                inventory::iter::<PanelDef>.into_iter().copied().collect();
+            defs.sort_by(|left, right| left.id.cmp(&right.id));
+            debug_assert!(
+                defs.windows(2).all(|pair| pair[0].id != pair[1].id),
+                "two panels submitted the same PanelId"
+            );
+            defs
+        });
+        // A `OnceLock` in a static gives the vector a `'static` lifetime.
+        Self::new(defs.as_slice())
     }
 
     /// The definition for `id`, or `None` for a kind this host does not ship

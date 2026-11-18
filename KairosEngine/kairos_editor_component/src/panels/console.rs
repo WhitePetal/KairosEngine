@@ -35,10 +35,9 @@ use kairos_editor_widgets::ui_image;
 use kairos_log::Level;
 
 use crate::frame::{ConsoleLine, Frame, UiOut};
-use crate::panel::{Panel, PanelContext, PanelDef};
+use crate::panel::panel;
+use crate::panel::{Panel, PanelContext};
 use crate::panels::console::style::ConsoleStyle;
-
-use super::CONSOLE;
 
 /// Console panel view state. Everything here is disposable: losing it on a
 /// panel close resets the console UI, never the log history.
@@ -60,8 +59,9 @@ pub(crate) struct ConsolePanel {
     detail_height: Option<f32>,
 }
 
-/// Catalog entry: the host builds the panel through this when it opens.
-pub(super) const DEF: PanelDef = PanelDef::new(CONSOLE, create);
+panel! {
+    pub CONSOLE = "console" => create
+}
 
 fn create(_context: &PanelContext) -> Box<dyn Panel> {
     Box::new(ConsolePanel::default())

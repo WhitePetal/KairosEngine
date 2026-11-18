@@ -4,9 +4,9 @@
 //! the dock does that through [`PanelHostViewer`]. Every frame the app calls
 //! [`PanelHost::sync`] and then hands `host.viewer(&mut out, frame)` to the dock.
 //!
-//! Instances exist only while their kind is open: the catalog is a static table,
-//! so a panel nobody opens is never built and its [`Panel::init`] hook never
-//! runs. There is no registration pass at startup to match.
+//! Instances exist only while their kind is open: the catalog is collected once
+//! from the link-section table, so a panel nobody opens is never built and its
+//! [`Panel::init`] hook never runs.
 //!
 //! Closing a panel is not this type's decision: the reducer closes the layout
 //! (through an action), and the next `sync` drops the instance.
