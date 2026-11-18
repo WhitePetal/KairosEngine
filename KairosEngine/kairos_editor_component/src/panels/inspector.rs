@@ -10,7 +10,7 @@ use kairos_editor_core::PanelId;
 use kairos_editor_widgets::ui_image;
 
 use crate::frame::{Frame, UiOut};
-use crate::panel::Panel;
+use crate::panel::{Panel, PanelContext, PanelDef};
 
 use super::INSPECTOR;
 
@@ -19,6 +19,13 @@ use super::INSPECTOR;
 const TAB_ICON: &str = "Preferences/Textures/tab_icons/inspector.png";
 
 pub(crate) struct InspectorPanel;
+
+/// Catalog entry: the host builds the panel through this when it opens.
+pub(super) const DEF: PanelDef = PanelDef::new(INSPECTOR, create);
+
+fn create(_context: &PanelContext) -> Box<dyn Panel> {
+    Box::new(InspectorPanel)
+}
 
 impl Panel for InspectorPanel {
     fn kind(&self) -> PanelId {

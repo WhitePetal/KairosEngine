@@ -256,7 +256,7 @@ use kairos_profile::{
 };
 
 use crate::frame::{Frame, UiOut};
-use crate::panel::Panel;
+use crate::panel::{Panel, PanelContext, PanelDef};
 use crate::panels::profiler::hierarchy::{HierarchySort};
 use crate::panels::profiler::style::ProfilerStyle;
 
@@ -560,6 +560,13 @@ pub(crate) struct ProfilerPanel {
     timeline_view: TimelineView,
     /// Vertical offset of the timeline's rows, in points.
     track_scroll: f32,
+}
+
+/// Catalog entry: the host builds the panel through this when it opens.
+pub(super) const DEF: PanelDef = PanelDef::new(PROFILER, create);
+
+fn create(_context: &PanelContext) -> Box<dyn Panel> {
+    Box::new(ProfilerPanel::default())
 }
 
 impl Default for ProfilerPanel {

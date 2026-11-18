@@ -47,7 +47,7 @@ use kairos_editor_widgets::text::TextStyle;
 use kairos_editor_widgets::ui_image;
 
 use crate::frame::{Frame, UiOut};
-use crate::panel::Panel;
+use crate::panel::{EditorInfo, Panel, PanelContext, PanelDef};
 
 use self::style::AboutPanelStyle;
 use super::ABOUT;
@@ -67,67 +67,6 @@ fn copy_button_id() -> Id {
     Id::new("kairos.about.copy")
 }
 
-/// The editor's product identity, supplied by the composition root.
-///
-/// This is the About panel's view model: plain data, no egui, no IO. It lives
-/// here because About is its only consumer today; move it to
-/// `kairos_editor_core` if a second consumer (e.g. an MCP
-/// `get_editor_state`) needs it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct EditorInfo {
-    pub name: &'static str,
-    pub version: &'static str,
-    /// One sentence describing the product; the panel wraps it.
-    pub description: &'static str,
-    /// SPDX expression, e.g. `MIT OR Apache-2.0`.
-    pub license: &'static str,
-    /// Project home. Empty hides the row.
-    pub repository: &'static str,
-    /// Issue/discussion board. Empty hides the row.
-    pub discussions: &'static str,
-    /// Third-party acknowledgements page. Empty hides the row.
-    pub credits: &'static str,
-}
-
-impl EditorInfo {
-    /// Identity with no optional links, for tests and embedders that only know
-    /// a name and a version.
-    pub const fn new(name: &'static str, version: &'static str) -> Self {
-        Self {
-            name,
-            version,
-            description: "",
-            license: "",
-            repository: "",
-            discussions: "",
-            credits: "",
-        }
-    }
-
-    /// One-line identity for the clipboard: what a bug report should quote.
-    pub fn banner(&self) -> String {
-        format!("{} {} ({})", self.name, self.version, build_label())
-    }
-}
-
-/// Debug/Release and target of the running binary.
-///
-/// Computed from this crate's own `cfg!`/`env::consts`: the component is
-/// compiled into the same process and profile as the app, so this is the
-/// process's property, not a second source of truth.
-fn build_label() -> String {
-    let profile = if cfg!(debug_assertions) {
-        "Debug"
-    } else {
-        "Release"
-    };
-    format!(
-        "{profile} · {}-{}",
-        std::env::consts::ARCH,
-        std::env::consts::OS
-    )
-}
-
 /// The About panel. Holds the injected identity and the loaded skin; no other
 /// state, so nothing to persist and nothing to reset on reopen.
 pub struct AboutPanel {
@@ -135,9 +74,17 @@ pub struct AboutPanel {
     style: AboutPanelStyle,
 }
 
+/// Catalog entry: the host builds the panel through this when it opens, with
+/// the identity the composition root injected.
+pub(super) const DEF: PanelDef = PanelDef::new(ABOUT, create);
+
+fn create(context: &PanelContext) -> Box<dyn Panel> {
+    Box::new(AboutPanel::new(context.editor))
+}
+
 impl AboutPanel {
-    /// Build the panel for one product identity. The app registers this through
-    /// `panels::register_default`; nothing else constructs it.
+    /// Build the panel for one product identity. The catalog factory above is
+    /// the only caller; nothing else constructs it.
     pub fn new(info: EditorInfo) -> Self {
         Self {
             info,
@@ -254,7 +201,7 @@ fn header(ui: &mut Ui, style: &AboutPanelStyle, info: &EditorInfo) {
             // The running binary's properties, dimmer than the version: a bug
             // report needs them, the headline does not.
             TextStyle::sized(style.label.to_egui(), style.body_size - 1.0)
-                .label(ui, build_label());
+                .label(ui, EditorInfo::build_label());
         });
     });
 
@@ -495,7 +442,7 @@ mod tests {
         assert!(text.contains("KairosEngine"), "{text}");
         assert!(text.contains("Version 9.9.9-test"), "{text}");
         assert!(text.contains("MIT OR Apache-2.0"), "{text}");
-        assert!(text.contains(&build_label()), "{text}");
+        assert!(text.contains(&EditorInfo::build_label()), "{text}");
         assert!(text.contains("Project page"), "{text}");
         // An empty URL hides its row instead of drawing a dead label.
         assert!(!text.contains("Discussions"), "{text}");

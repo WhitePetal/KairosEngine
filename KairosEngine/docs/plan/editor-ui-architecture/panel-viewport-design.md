@@ -130,6 +130,8 @@ pub trait Panel {
 }
 
 // 原型签名是 Fn(&EditorState) -> Box<dyn Panel>：工厂可用初始状态构造会话态
+// 生产实现（2026-11-18）：fn(&PanelContext) -> Box<dyn Panel>。构造期只给注入的宿主值，
+// `&EditorState` 不进工厂——否则面板会把领域状态快照进自己的字段。
 pub type PanelFactory = Box<dyn Fn(&EditorState) -> Box<dyn Panel>>;
 ```
 
@@ -199,6 +201,8 @@ impl PanelRegistry {
 4. **registry 是菜单/命令/面板列表的唯一数据源**：`PanelId + DockSlot` 用于 tab/菜单/命令面板条目；新增面板的同时菜单自动出现，不需要第二处登记。
 5. **可测试性**：registry 是纯数据结构，测试可注册 fake 面板并断言生命周期；原型 `editor-components/tests/panel_host.rs` 即此模式（14 个测试，§7）。
 6. **确定性**：`kinds()` 按 `PanelId` 排序（BTreeMap），serial 分配/tab 顺序/测试断言与注册顺序无关。
+
+**实现更新（2026-11-18，0.2.0 `kairos_editor_component`）**：落地时没有保留可变 `PanelRegistry`。面板集合在链接期就固定，于是改成**编译期表**：`PanelDef { id, factory }`，工厂是 `fn(&PanelContext) -> Box<dyn Panel>`，`PanelCatalog` 只持 `&'static [PanelDef]`。理由三条：(1) 启动期不再有「把所有面板注册一遍」的代码路径，`PanelHost::sync` 在 kind 打开时查表构造，没人打开的面板连 `init` 都不会跑（`tests/panel_host.rs` 的 `a_panel_is_constructed_only_while_it_is_open` 钉住）；(2) 工厂不再用闭包捕获环境，需要注入的值放进 `PanelContext`（今天只有 `EditorInfo`），`PanelDef` 因此可以是 `const`；(3) id 与工厂写在同一个值里，「注册到错误的 kind」这个失败模式消失；(4) 声明侧用 `panel_catalog!` 宏把「`mod` 声明 + id 常量 + catalog 条目」合成一条；条目与模块的 `DEF` 不匹配是编译错误，只写文件不写条目由 `every_panel_file_is_declared` 测试拦住（`mod` 由宏生成，编译器看不见孤儿文件）。这是对「别忘了往清单里加一行」的正面回答：那行仍然存在，但它是唯一的一行。代价：运行期不能再 `register` 新 kind（当前无生产需求）；若将来宿主专属面板需要与内置表合并，给 `PanelCatalog` 加第二个 `&'static [PanelDef]` 扩展字段即可，仍是编译期组合。
 
 ### 2.5 `PanelHost`
 

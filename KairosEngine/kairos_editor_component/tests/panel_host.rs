@@ -3,8 +3,8 @@
 
 use egui::{Context, Pos2, RawInput, Rect, Ui, Vec2, WidgetText};
 use kairos_editor_component::{
-    ConsoleLine, EditorInfo, Frame, HostView, Panel, PanelHost, PanelId, PanelInstanceId,
-    PanelRegistry, UiOut, panels,
+    ConsoleLine, EditorInfo, Frame, HostView, Panel, PanelCatalog, PanelContext, PanelDef,
+    PanelHost, PanelId, PanelInstanceId, UiOut, panels,
 };
 use kairos_editor_core::{EditorState, LayoutState};
 use kairos_editor_docking::viewer::TabViewer;
@@ -50,10 +50,20 @@ impl Panel for FakePanel {
     }
 }
 
+fn fake_allow(_context: &PanelContext) -> Box<dyn Panel> {
+    Box::new(FakePanel { veto_close: false })
+}
+
+fn fake_veto(_context: &PanelContext) -> Box<dyn Panel> {
+    Box::new(FakePanel { veto_close: true })
+}
+
+static FAKE_ALLOW: [PanelDef; 1] = [PanelDef::new(FAKE, fake_allow)];
+static FAKE_VETO: [PanelDef; 1] = [PanelDef::new(FAKE, fake_veto)];
+
 fn host_with_fake(veto_close: bool) -> PanelHost {
-    let mut registry = PanelRegistry::new();
-    registry.register(FAKE, move || Box::new(FakePanel { veto_close }));
-    PanelHost::new(registry)
+    let defs = if veto_close { &FAKE_VETO } else { &FAKE_ALLOW };
+    PanelHost::new(PanelCatalog::new(defs), PanelContext::new(test_info()))
 }
 
 fn default_host() -> PanelHost {
@@ -69,9 +79,7 @@ fn default_host() -> PanelHost {
     });
     kairos_editor_widgets::style::set_style_root(root);
 
-    let mut registry = PanelRegistry::new();
-    panels::register_default(&mut registry, test_info());
-    PanelHost::new(registry)
+    PanelHost::new(panels::CATALOG, PanelContext::new(test_info()))
 }
 
 /// Run one headless UI pass: exactly what the dock does with its viewer.
@@ -116,13 +124,20 @@ fn sync_creates_and_drops_instances_from_layout() {
 }
 
 #[test]
-fn register_default_registers_every_default_kind() {
-    let mut registry = PanelRegistry::new();
-    panels::register_default(&mut registry, test_info());
+fn the_catalog_declares_every_builtin_panel_once() {
+    let context = PanelContext::new(test_info());
+    let mut kinds = Vec::new();
 
-    let kinds: Vec<PanelId> = registry.kinds().collect();
+    for kind in panels::CATALOG.kinds() {
+        assert!(!kinds.contains(&kind), "duplicate id {kind}");
+        kinds.push(kind);
+        let panel = panels::CATALOG
+            .create(kind, &context)
+            .expect("catalog factory");
+        assert_eq!(panel.kind(), kind);
+    }
+
     assert_eq!(kinds.len(), 7);
-
     for kind in [
         panels::SCENE,
         panels::INSPECTOR,
@@ -133,9 +148,43 @@ fn register_default_registers_every_default_kind() {
         panels::ABOUT,
     ] {
         assert!(kinds.contains(&kind), "missing {kind}");
-        let panel = registry.create(kind).expect("registered factory");
-        assert_eq!(panel.kind(), kind);
     }
+}
+
+/// The catalog is compile-time data, not a startup pass: a panel object exists
+/// only while its kind is open, and later frames reuse it instead of rebuilding.
+#[test]
+fn a_panel_is_constructed_only_while_it_is_open() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static BUILT: AtomicUsize = AtomicUsize::new(0);
+
+    fn counting(_context: &PanelContext) -> Box<dyn Panel> {
+        BUILT.fetch_add(1, Ordering::SeqCst);
+        Box::new(FakePanel { veto_close: false })
+    }
+
+    static COUNTING: [PanelDef; 1] = [PanelDef::new(FAKE, counting)];
+
+    let mut host = PanelHost::new(PanelCatalog::new(&COUNTING), PanelContext::new(test_info()));
+    let mut state = EditorState::new();
+    let ctx = Context::default();
+
+    host.sync(&state.layout, &ctx);
+    assert_eq!(
+        BUILT.load(Ordering::SeqCst),
+        0,
+        "a closed panel is never built"
+    );
+
+    state.layout.open(FAKE);
+    host.sync(&state.layout, &ctx);
+    host.sync(&state.layout, &ctx);
+    assert_eq!(
+        BUILT.load(Ordering::SeqCst),
+        1,
+        "opening builds one instance; later syncs reuse it"
+    );
 }
 
 #[test]
@@ -232,11 +281,7 @@ fn profiler_panel_renders_a_captured_frame() {
     {
         kairos_profile::scope!(kairos_profile::Category::Others, "panel.test.outer");
         {
-            kairos_profile::scope!(
-                kairos_profile::Category::Others,
-                "panel.test.inner",
-                "data"
-            );
+            kairos_profile::scope!(kairos_profile::Category::Others, "panel.test.inner", "data");
         }
     }
     profiler.end_frame(true);
@@ -288,8 +333,7 @@ fn viewer_bridges_the_panel_icon_path_to_a_file_uri() {
 #[test]
 fn every_builtin_panel_returns_an_existing_tab_icon() {
     let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
-    let mut registry = PanelRegistry::new();
-    panels::register_default(&mut registry, test_info());
+    let context = PanelContext::new(test_info());
 
     for kind in [
         panels::SCENE,
@@ -300,7 +344,9 @@ fn every_builtin_panel_returns_an_existing_tab_icon() {
         panels::PROFILER,
         panels::ABOUT,
     ] {
-        let panel = registry.create(kind).expect("registered factory");
+        let panel = panels::CATALOG
+            .create(kind, &context)
+            .expect("catalog factory");
         let path = panel
             .icon()
             .unwrap_or_else(|| panic!("{kind} returns no tab icon"));

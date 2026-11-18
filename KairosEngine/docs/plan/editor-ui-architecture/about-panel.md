@@ -14,7 +14,7 @@
 3. **版本号有三处真源**：旧 About 读 `kairos_editor::consts::VERSION`（=`env!("CARGO_PKG_VERSION")` = 0.1.0，`consts.rs:2`）、0.2.0 标题栏读 `kairos_editor_app::consts::VERSION`（硬编码 `"0.2.0"`，`consts.rs:3`）、workspace 声明 0.1.0（`Cargo.toml:37`）。About 窗口必须与标题栏同源，否则用户报障时贴的版本号是假的。
 4. **不能平移**：旧实现依赖 `Drawer`/`Messager`/`Message`/`UIReader`/`&Engine`/`&mut Log`/`show_window` 这些在 0.2.0 里已被删除的东西。新架构把旧的三件套拆成三处：**面板实例字段**（view state）、**`AboutPanelStyle` RON**（外观）、**`Action` → `reduce` → `Effect`**（开关窗口）。
 5. **落地形状**：`kairos_editor_component/src/panels/about.rs`（`ABOUT` PanelId + `AboutPanel` + `EditorInfo`）+ `about/style.rs`（`AboutPanelStyle: Style`，`Preferences/Styles/AboutPanel.ron`）；工具栏 "About Kairos" → `LayoutAction::ShowPanel` → 浮动窗口；body 内 Close → `LayoutAction::ClosePanel`。
-6. **产品身份由组合根注入**（`panels::register_default(&mut registry, info)`）：组件 crate 不得依赖 app（cargo 强制）；`HostView` 是「每帧动态宿主资源」的缝；`EditorState` 是可序列化状态（没有 action 能改一个常量）。名字/版本/文案/链接由 `kairos_editor_app::consts` 提供。
+6. **产品身份由组合根注入**（`PanelHost::new(panels::CATALOG, PanelContext::new(info))`，工厂构造时读 `context.editor`）：组件 crate 不得依赖 app（cargo 强制）；`HostView` 是「每帧动态宿主资源」的缝；`EditorState` 是可序列化状态（没有 action 能改一个常量）。名字/版本/文案/链接由 `kairos_editor_app::consts` 提供。
 7. **链接与复制不新增 Action/Effect**：`ui.hyperlink_to` / `ctx.copy_text` 只产出 egui 的 `OutputCommand::{OpenUrl, CopyText}`，app 早已把 `platform_output` 交给 `egui_winit::State::handle_platform_output`（`host.rs:169`），该函数用 `webbrowser` 打开 URL、用 arboard 写剪贴板（`egui-winit-0.35.0/src/lib.rs:1103-1115,1370-1380`，`links` 在默认 feature 里）。面板因此仍然「不碰 IO」，只是发了一条 egui 平台命令。
 
 ---
@@ -84,7 +84,7 @@
 
 ### 2.1 落点：一个 Panel，不是 modal
 
-- `panels::ABOUT: PanelId = PanelId("about")`，注册进 `PanelRegistry`；`AboutPanel { info, style }`。
+- `panels::ABOUT: PanelId = PanelId("about")`，声明在 `panels::CATALOG`（`PanelDef { id, factory }` 的编译期表，没有启动期注册步骤）；`AboutPanel { info, style }`。
 - **打开语义**：工具栏 "About Kairos" → `Action::Layout(LayoutAction::ShowPanel { panel: ABOUT })` → reducer 打开布局并返回 `LayoutEffect::ShowPanel` → `EffectExecutor::show_panel`：dock 里没有它的 tab 且 `allowed_in_windows()` → `open_in_window(id, floating_rect)`（`effects.rs:43-57`）。**这就是 0.2.0 的「About 窗口」**：一个独立浮动窗口，不需要新的 modal 层，也不需要 `egui::Window`。
 - **关闭语义**：body 的 Close 按钮 → `LayoutAction::ClosePanel { panel: ABOUT }`；tab 的 × 走 `PanelHostViewer::on_close`（`panel/viewer.rs:78-93`），推的是同一个 action。下一帧 `PanelHost::sync` 回收实例、`EditorApp::sync` 摘掉 dock tab（空浮动窗口随之销毁）。
 - **不做的**：不把 About 塞进启动布局（`app.rs:142-150` 的 5 个默认面板），不新增 `ModalState`，不记忆窗口尺寸。
@@ -92,7 +92,7 @@
 ### 2.2 身份从哪来：`EditorInfo` 由组合根注入
 
 ```rust
-// kairos_editor_component/src/panels/about.rs
+// kairos_editor_component/src/panel/context.rs
 pub struct EditorInfo {
     pub name: &'static str,
     pub version: &'static str,
@@ -113,7 +113,7 @@ pub struct EditorInfo {
 | `EditorState.info` | core 是「可序列化状态 + 唯一写者 `reduce`」；常量身份没有任何 action 能改，放进去只会让 core 背产品文案 |
 | `kairos_editor_core::EditorInfo` | 今天只有一个消费者；等 MCP 的 `get_editor_state` 也要读它时再上移到 core（见 §6） |
 
-因此唯一入口是注册时注入：`panels::register_default(&mut registry, info)`，工厂闭包捕获 `info`，`AboutPanel::new(info)`。app 侧只有一个常量文件：
+它落在 `kairos_editor_component/src/panel/context.rs`（框架层），不在 `panels/about.rs`：`PanelDef` 的工厂签名是 `fn(&PanelContext) -> Box<dyn Panel>`，而 `panel` 不能反向依赖某个具体面板模块。唯一的注入点因此在构造成本：`PanelHost::new(panels::CATALOG, PanelContext::new(info))`，About 的工厂读 `context.editor`，`AboutPanel::new(info)` 拿到的仍是 app 的那一份。没有闭包捕获，也没有启动期注册。app 侧只有一个常量文件：
 
 ```rust
 // kairos_editor_app/src/consts.rs
@@ -178,20 +178,22 @@ Credits    Thanks.md                          <- hyperlink
 
 | 文件 | 变更 | 职责 |
 |---|---|---|
-| `kairos_editor_component/src/panels/about.rs` | 新增 | `EditorInfo`、`AboutPanel`（`Panel` impl）、布局与交互、单测 |
+| `kairos_editor_component/src/panel/context.rs` | 新增 | `EditorInfo` + `PanelContext`：工厂的构造期上下文（框架层，不认识具体面板） |
+| `kairos_editor_component/src/panel/catalog.rs` | 新增 | `PanelDef`/`PanelCatalog`：编译期面板表，替代运行期 `PanelRegistry` |
+| `kairos_editor_component/src/panels/about.rs` | 新增 | `AboutPanel`（`Panel` impl）、`DEF` 工厂、布局与交互、单测 |
 | `kairos_editor_component/src/panels/about/style.rs` | 新增 | `AboutPanelStyle: Style` + `AboutIconPaths` + `button_style()` 投影 |
-| `kairos_editor_component/src/panels.rs` | 改 | `ABOUT` id；`register_default(registry, info)`；模块 doc 说明 About 是第一个真面板 |
-| `kairos_editor_component/src/lib.rs` | 改 | 导出 `EditorInfo`；模块 doc 增一行 About |
+| `kairos_editor_component/src/panels.rs` | 改 | `ABOUT` id；`register_default` 换成 `panel_catalog!` 宏（一个条目同时生成 `mod`、id 和 `CATALOG` 行）；模块 doc 说明 About 是第一个真面板 |
+| `kairos_editor_component/src/lib.rs` | 改 | 导出 `EditorInfo`/`PanelContext`；模块 doc 增一行 About |
 | `kairos_editor_component/src/toolbar.rs` | 改 | `todo!()` → `LayoutAction::ShowPanel { ABOUT }` |
-| `kairos_editor_component/tests/panel_host.rs` | 改 | 注册签名、7 个默认 kind、About 图标存在性 |
+| `kairos_editor_component/tests/panel_host.rs` | 改 | catalog 完整性、7 个默认 kind、About 图标存在性、未打开的面板不被构造 |
 | `kairos_editor_widgets/src/button.rs` | 改 | `ButtonStyle::stroke`（默认 `Stroke::NONE`）：对话框按钮的 1 px 描边；菜单栏/工具栏按钮不受影响 |
 | `kairos_editor_widgets/src/ui_image.rs` | 改 | 修掉一个 Windows-only 断言（`file:///D:/…` 反解后不是 `Path::is_absolute`），与本迁移无关但挡着这个 crate 的测试门 |
 | `kairos_editor_widgets/src/fonts.rs` | 改 | `EditorFonts.ron` 改走 `style_root()`：新增的 app 测试会调用 `EditorApp::new`（它会装字体），原实现把该文件写进进程工作目录 |
 | `kairos_editor_app/src/consts.rs` | 改 | 产品身份常量（名字/版本/文案/许可/链接） |
-| `kairos_editor_app/src/app.rs` | 改 | 构造 `EditorInfo` 并注入；集成测试：`ShowPanel` 让 About 浮起来 |
+| `kairos_editor_app/src/app.rs` | 改 | 构造 `EditorInfo`，包成 `PanelContext` 注入 `PanelHost`；集成测试：`ShowPanel` 让 About 浮起来 |
 | `Preferences/Styles/AboutPanel.ron` | 新增 | 参考皮肤（dark + light），与代码默认值逐字段相等的往返测试钉住 |
 
-**不变**：`kairos_editor_core`（0 行）、`kairos_editor_docking`（0 行）。`kairos_editor_widgets` 只加了 `ButtonStyle::stroke` 一个可选 token（默认无描边，平铺的菜单/工具栏按钮外观不变）——这正是「加一个面板 = 一个 impl + 一个 id + 一行注册」的验收点，widget kit 的扩展只发生在确有必要时。
+**不变**：`kairos_editor_core`（0 行）、`kairos_editor_docking`（0 行）。`kairos_editor_widgets` 只加了 `ButtonStyle::stroke` 一个可选 token（默认无描边，平铺的菜单/工具栏按钮外观不变）——这正是「加一个面板 = 一个 impl + 一个 `DEF` + `CATALOG` 一行」的验收点，widget kit 的扩展只发生在确有必要时。
 
 ---
 

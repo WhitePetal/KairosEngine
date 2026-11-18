@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use kairos_editor_component::{
-    ConsoleLine, ConsoleLog, EditorInfo, Frame, HostView, PanelHost, PanelInstanceId,
-    PanelRegistry, UiOut, panels, toolbar::ToolBar,
+    ConsoleLine, ConsoleLog, EditorInfo, Frame, HostView, PanelContext, PanelHost, PanelInstanceId,
+    UiOut, panels, toolbar::ToolBar,
 };
 use kairos_editor_core::{Action, EditorState, Effect, LayoutAction, reduce};
 use kairos_editor_docking::{
@@ -67,13 +67,13 @@ impl HostView for HostScope<'_> {
     }
 }
 
-/// The About panel's view model, built from this app's product constants.
+/// The panels' construction context, built from this app's product constants.
 ///
 /// The app owns what the editor calls itself; `kairos_editor_component` cannot
 /// reach these constants without depending on this crate, so the identity is
-/// injected where the factories are registered (see
-/// `panels::register_default`). That keeps one source of truth for the version:
-/// the title bar and About read the same constant.
+/// injected through the `PanelContext` the host hands to every factory (see
+/// `panels::CATALOG`). That keeps one source of truth for the version: the
+/// title bar and About read the same constant.
 fn editor_info() -> EditorInfo {
     EditorInfo {
         name: consts::APP_NAME,
@@ -84,6 +84,27 @@ fn editor_info() -> EditorInfo {
         discussions: consts::DISCUSSIONS_URL,
         credits: consts::CREDITS_URL,
     }
+}
+
+/// The first-run open set: the five panels [`default_dock`] builds tabs for.
+///
+/// Bootstrapping is the only code allowed to call `LayoutState::open` directly;
+/// runtime opens go through `LayoutAction` so the reducer can return a
+/// placement effect. This is app policy, not panel metadata: which panels a
+/// fresh editor shows is a product decision, so it does not live in the
+/// catalog.
+fn boot_state() -> EditorState {
+    let mut state = EditorState::new();
+    for kind in [
+        panels::SCENE,
+        panels::INSPECTOR,
+        panels::CONSOLE,
+        panels::PROFILER,
+        panels::HIERARCHY,
+    ] {
+        state.layout.open(kind);
+    }
+    state
 }
 
 /// Build the first-run layout from the ids the host created for the five
@@ -144,21 +165,8 @@ impl EditorApp {
         // stay in their RON files, dormant until the dock gains one too.
         egui_ctx.set_theme(egui::Theme::Dark);
 
-        let mut registry = PanelRegistry::new();
-        panels::register_default(&mut registry, editor_info());
-
-        let mut state = EditorState::new();
-        for kind in [
-            panels::SCENE,
-            panels::INSPECTOR,
-            panels::CONSOLE,
-            panels::PROFILER,
-            panels::HIERARCHY,
-        ] {
-            state.layout.open(kind);
-        }
-
-        let mut host = PanelHost::new(registry);
+        let state = boot_state();
+        let mut host = PanelHost::new(panels::CATALOG, PanelContext::new(editor_info()));
         host.sync(&state.layout, egui_ctx);
         let dock = default_dock(&host);
 
@@ -349,19 +357,8 @@ mod tests {
     fn build() -> EditorApp {
         scratch_style_root();
 
-        let mut registry = PanelRegistry::new();
-        panels::register_default(&mut registry, editor_info());
-        let mut state = EditorState::new();
-        for kind in [
-            panels::SCENE,
-            panels::INSPECTOR,
-            panels::CONSOLE,
-            panels::PROFILER,
-            panels::HIERARCHY,
-        ] {
-            state.layout.open(kind);
-        }
-        let mut host = PanelHost::new(registry);
+        let state = boot_state();
+        let mut host = PanelHost::new(panels::CATALOG, PanelContext::new(editor_info()));
         let ctx = egui::Context::default();
         host.sync(&state.layout, &ctx);
         let dock = default_dock(&host);

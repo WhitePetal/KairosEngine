@@ -24,17 +24,21 @@
 //! # Pieces
 //!
 //! * [`Panel`], [`Frame`], [`UiOut`], [`PanelInstanceId`]: what a panel is.
-//! * [`PanelRegistry`]: `PanelId` -> factory registration (`registry` module).
+//! * [`PanelDef`], [`PanelCatalog`], [`PanelContext`]: the panel set, declared as
+//!   a static table, and what a factory is handed when an instance is built
+//!   (`catalog` and `context` modules).
 //! * [`PanelHost`]: owns the instances and reconciles them with `LayoutState`
 //!   (`host` module); [`PanelHostViewer`] adapts the host to the dock's
 //!   `TabViewer` seam (`viewer` module).
 
+mod catalog;
+mod context;
 mod host;
-mod registry;
 mod viewer;
 
+pub use catalog::{PanelCatalog, PanelDef, PanelFactory};
+pub use context::{EditorInfo, PanelContext};
 pub use host::PanelHost;
-pub use registry::{PanelFactory, PanelRegistry};
 pub use viewer::PanelHostViewer;
 
 use egui::{Context, Ui, WidgetText};

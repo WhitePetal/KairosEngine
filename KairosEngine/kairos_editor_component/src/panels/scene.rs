@@ -10,7 +10,7 @@ use kairos_editor_core::PanelId;
 use kairos_editor_widgets::ui_image;
 
 use crate::frame::{Frame, UiOut};
-use crate::panel::Panel;
+use crate::panel::{Panel, PanelContext, PanelDef};
 
 use super::SCENE;
 
@@ -19,6 +19,13 @@ use super::SCENE;
 const TAB_ICON: &str = "Preferences/Textures/tab_icons/scene.png";
 
 pub(crate) struct ScenePanel;
+
+/// Catalog entry: the host builds the panel through this when it opens.
+pub(super) const DEF: PanelDef = PanelDef::new(SCENE, create);
+
+fn create(_context: &PanelContext) -> Box<dyn Panel> {
+    Box::new(ScenePanel)
+}
 
 impl Panel for ScenePanel {
     fn kind(&self) -> PanelId {

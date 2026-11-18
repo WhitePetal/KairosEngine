@@ -35,7 +35,7 @@ use kairos_editor_widgets::ui_image;
 use kairos_log::Level;
 
 use crate::frame::{ConsoleLine, Frame, UiOut};
-use crate::panel::Panel;
+use crate::panel::{Panel, PanelContext, PanelDef};
 use crate::panels::console::style::ConsoleStyle;
 
 use super::CONSOLE;
@@ -58,6 +58,13 @@ pub(crate) struct ConsolePanel {
     /// Stack-trace pane height after the user drags its top edge; `None` means
     /// the style's `detail_height` applies.
     detail_height: Option<f32>,
+}
+
+/// Catalog entry: the host builds the panel through this when it opens.
+pub(super) const DEF: PanelDef = PanelDef::new(CONSOLE, create);
+
+fn create(_context: &PanelContext) -> Box<dyn Panel> {
+    Box::new(ConsolePanel::default())
 }
 
 impl Default for ConsolePanel {
