@@ -29,4 +29,6 @@ kairos_log = { path = "../kairos_log" }
 kairos_profile = { path = "../kairos_profile" }
 kairos_editor_docking = { path = "../kairos_editor_docking" }
 kairos_editor_widgets = { path = "../kairos_editor_widgets" }
+# The #[panel] attribute: id, PanelRegister impl and link-section submission.
+kairos_editor_component_macros = { path = "macros" }
 vec1 = "1.12.1"

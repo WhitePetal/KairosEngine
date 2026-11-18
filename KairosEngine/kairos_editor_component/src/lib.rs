@@ -60,11 +60,11 @@
 //! catalog and a [`PanelContext`], syncs it with `LayoutState`, and lets
 //! `Docker::show` draw. No instance exists for a panel that is not open.
 //!
-//! [`panels`] holds the built-in panels and their ids. Each panel module
-//! declares its own id and submits its factory with the `panel!` macro; the
-//! submissions share a link-section table and [`panels::catalog`] collects
-//! them once, sorted by id. No central table names a panel's factory, and the
-//! app shell does not change.
+//! [`panels`] holds the built-in panels and their ids. Every panel struct
+//! carries the `#[panel]` attribute, which declares its id, implements
+//! [`PanelRegister`] and submits the factory; the submissions share a
+//! link-section table and [`panels::catalog`] collects them once, sorted by id.
+//! No central table names a panel's factory, and the app shell does not change.
 //!
 //! ## About panel
 //!
@@ -78,6 +78,10 @@
 //! `docs/plan/editor-ui-architecture/about-panel.md`.
 
 #![forbid(unsafe_code)]
+
+// `#[panel]` expands to absolute paths back into this crate; the alias makes
+// those paths work inside the crate as well as from dependents.
+extern crate self as kairos_editor_component;
 
 pub mod console;
 pub mod frame;
@@ -94,5 +98,16 @@ pub use kairos_editor_core::PanelId;
 // reachable from the crate root.
 pub use panel::{
     EditorInfo, Panel, PanelCatalog, PanelContext, PanelDef, PanelFactory, PanelHost,
-    PanelHostViewer, PanelInstanceId,
+    PanelHostViewer, PanelInstanceId, PanelRegister,
 };
+
+// The panel declaration attribute: id, registration and factory from one item.
+pub use kairos_editor_component_macros::panel;
+
+/// Paths `#[panel]` expands to. Not part of the public API.
+#[doc(hidden)]
+pub mod __macro {
+    pub use crate::panel::{Panel, PanelContext, PanelDef, PanelRegister};
+    pub use crate::PanelId;
+    pub use inventory;
+}

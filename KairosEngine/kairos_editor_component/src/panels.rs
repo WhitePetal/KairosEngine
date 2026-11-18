@@ -1,14 +1,14 @@
 //! Built-in panels: one file per panel, each registering itself.
 //!
-//! Every `panels/<name>.rs` declares its id and submits its `PanelDef` with
-//! the `panel!` macro; `catalog()` collects the submissions from the
-//! link-section table. Nothing here names a panel's factory, and there is no
-//! table to keep in sync with the files.
+//! Every panel struct carries the `#[panel]` attribute, which declares its
+//! id, implements `PanelRegister` and submits its `PanelDef`; `catalog()`
+//! collects the submissions from the link-section table. Nothing here names a
+//! panel's factory, and there is no table to keep in sync with the files.
 //!
 //! What remains in this module is the module plumbing Rust requires: the `mod`
 //! declaration makes the file part of the crate, and the `pub use` keeps the
 //! public vocabulary at `panels::SCENE`. A file that nothing declares is never
-//! compiled, so its `panel!` submission never runs.
+//! compiled, so its `#[panel]` submission never runs.
 //!
 //! `about` is the first panel ported from the legacy `kairos_editor` whose
 //! body has real content (the others are still demo bodies that establish the
@@ -53,7 +53,7 @@ mod tests {
     use crate::PanelId;
 
     /// `mod` is the one list inventory cannot replace: a file nothing declares
-    /// is never compiled, so its `panel!` submission never runs. Compare the
+    /// is never compiled, so its `#[panel]` submission never runs. Compare the
     /// declarations with `src/panels/` so a forgotten module is a test failure
     /// rather than a panel that silently does not exist.
     #[test]

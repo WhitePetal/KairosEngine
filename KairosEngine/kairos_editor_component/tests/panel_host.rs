@@ -4,7 +4,7 @@
 use egui::{Context, Pos2, RawInput, Rect, Ui, Vec2, WidgetText};
 use kairos_editor_component::{
     ConsoleLine, EditorInfo, Frame, HostView, Panel, PanelCatalog, PanelContext, PanelDef,
-    PanelHost, PanelId, PanelInstanceId, UiOut, panels,
+    PanelHost, PanelId, PanelInstanceId, PanelRegister, UiOut, panels,
 };
 use kairos_editor_core::{EditorState, LayoutState};
 use kairos_editor_docking::viewer::TabViewer;
@@ -34,11 +34,13 @@ struct FakePanel {
     veto_close: bool,
 }
 
-impl Panel for FakePanel {
-    fn kind(&self) -> PanelId {
+impl PanelRegister for FakePanel {
+    fn panel_id(&self) -> PanelId {
         FAKE
     }
+}
 
+impl Panel for FakePanel {
     fn title(&self, _frame: &Frame) -> WidgetText {
         "Fake".into()
     }

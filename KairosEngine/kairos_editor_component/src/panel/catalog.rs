@@ -1,7 +1,7 @@
 //! Panel catalog: the set of panel kinds and their factories.
 //!
 //! Production fills it from the **link-section table**: every panel module
-//! submits a [`PanelDef`] through the `panel!` macro, the linker concatenates
+//! submits a [`PanelDef`] through the `#[panel]` attribute, the linker concatenates
 //! the entries, and [`PanelCatalog::builtin`] collects them once. The same
 //! mechanism Bevy 0.17 uses for `Reflect` auto-registration; see
 //! `docs/plan/editor-ui-architecture/panel-viewport-design.md`.
@@ -39,7 +39,7 @@ impl PanelDef {
     }
 }
 
-// Bare type: `panel!` submits `PanelDef` values from any panel module.
+// Bare type: `#[panel]` submits `PanelDef` values from any panel module.
 inventory::collect!(PanelDef);
 
 /// The panel kinds a host knows, in declaration order.
@@ -56,7 +56,7 @@ impl PanelCatalog {
         Self { defs }
     }
 
-    /// Every panel that submitted a [`PanelDef`] through `panel!`.
+    /// Every panel that submitted a [`PanelDef`] through `#[panel]`.
     ///
     /// Collected once per process and sorted by id, because inventory
     /// iteration follows link order, which is not the order panels are

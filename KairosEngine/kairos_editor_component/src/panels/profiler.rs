@@ -239,7 +239,6 @@ use egui::{
     Align2, Context, CornerRadius, FontId, Rect, Response, Sense, Stroke, StrokeKind, Ui,
     WidgetText,
 };
-use kairos_editor_core::PanelId;
 use kairos_editor_widgets::button::{Button, ButtonAlign, ButtonStyle};
 use kairos_editor_widgets::color::Color32Ext;
 use kairos_editor_widgets::divider::Divider;
@@ -256,8 +255,7 @@ use kairos_profile::{
 };
 
 use crate::frame::{Frame, UiOut};
-use crate::panel::panel;
-use crate::panel::{Panel, PanelContext};
+use crate::panel::Panel;
 use crate::panels::profiler::hierarchy::{HierarchySort};
 use crate::panels::profiler::style::ProfilerStyle;
 
@@ -506,6 +504,7 @@ impl TimelineLayout {
     }
 }
 
+#[crate::panel(PROFILER = "profiler")]
 pub(crate) struct ProfilerPanel {
     style: ProfilerStyle,
     recording: bool,
@@ -561,14 +560,6 @@ pub(crate) struct ProfilerPanel {
     track_scroll: f32,
 }
 
-panel! {
-    pub PROFILER = "profiler" => create
-}
-
-fn create(_context: &PanelContext) -> Box<dyn Panel> {
-    Box::new(ProfilerPanel::default())
-}
-
 impl Default for ProfilerPanel {
     fn default() -> Self {
         let mut panel = Self {
@@ -603,10 +594,6 @@ impl Default for ProfilerPanel {
 }
 
 impl Panel for ProfilerPanel {
-    fn kind(&self) -> PanelId {
-        PROFILER
-    }
-
     fn icon(&self) -> Option<&str> {
         Some(&self.style.icons.tab)
     }

@@ -6,33 +6,19 @@
 //! prototype and composes them with the widget kit.
 
 use egui::{Context, Ui, WidgetText};
-use kairos_editor_core::PanelId;
-
 use kairos_editor_widgets::ui_image;
 
 use crate::frame::{Frame, UiOut};
-use crate::panel::panel;
-use crate::panel::{Panel, PanelContext};
+use crate::panel::Panel;
 
 /// Tab-header artwork; a runtime file under `Preferences/Textures`, not an
 /// embedded asset (see `kairos_editor_widgets::ui_image`).
 const TAB_ICON: &str = "Preferences/Textures/tab_icons/project.png";
 
+#[crate::panel(PROJECT = "project")]
 pub(crate) struct ProjectPanel;
 
-panel! {
-    pub PROJECT = "project" => create
-}
-
-fn create(_context: &PanelContext) -> Box<dyn Panel> {
-    Box::new(ProjectPanel)
-}
-
 impl Panel for ProjectPanel {
-    fn kind(&self) -> PanelId {
-        PROJECT
-    }
-
     fn icon(&self) -> Option<&str> {
         Some(TAB_ICON)
     }

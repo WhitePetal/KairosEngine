@@ -38,7 +38,7 @@ use egui::{
     Align, Color32, Context, CornerRadius, Hyperlink, Id, Label, Layout, Margin, Sense, Ui,
     WidgetText, vec2,
 };
-use kairos_editor_core::{Action, LayoutAction, PanelId};
+use kairos_editor_core::{Action, LayoutAction};
 use kairos_editor_widgets::button::Button;
 use kairos_editor_widgets::color::Color32Ext;
 use kairos_editor_widgets::divider::Divider;
@@ -47,7 +47,6 @@ use kairos_editor_widgets::text::TextStyle;
 use kairos_editor_widgets::ui_image;
 
 use crate::frame::{Frame, UiOut};
-use crate::panel::panel;
 use crate::panel::{EditorInfo, Panel, PanelContext};
 
 use self::style::AboutPanelStyle;
@@ -69,19 +68,16 @@ fn copy_button_id() -> Id {
 
 /// The About panel. Holds the injected identity and the loaded skin; no other
 /// state, so nothing to persist and nothing to reset on reopen.
+#[crate::panel(ABOUT = "about", create = about_panel)]
 pub struct AboutPanel {
     info: EditorInfo,
     style: AboutPanelStyle,
 }
 
-panel! {
-    /// The editor's identity card. Opened from the "Kairos" menu; floated by
-    /// `LayoutAction::ShowPanel` like any panel that has no dock tab yet.
-    pub ABOUT = "about" => create
-}
-
-fn create(context: &PanelContext) -> Box<dyn Panel> {
-    Box::new(AboutPanel::new(context.editor))
+/// Catalog factory for About: the only panel that needs the injected identity
+/// before it has a frame.
+fn about_panel(context: &PanelContext) -> AboutPanel {
+    AboutPanel::new(context.editor)
 }
 
 impl AboutPanel {
@@ -96,10 +92,6 @@ impl AboutPanel {
 }
 
 impl Panel for AboutPanel {
-    fn kind(&self) -> PanelId {
-        ABOUT
-    }
-
     fn icon(&self) -> Option<&str> {
         Some(self.style.icons.tab.as_str())
     }

@@ -41,28 +41,6 @@ pub use context::{EditorInfo, PanelContext};
 pub use host::PanelHost;
 pub use viewer::PanelHostViewer;
 
-/// Declares a panel id and submits its definition to the link-section table.
-///
-/// One call per panel, inside the panel's own module: it emits the public
-/// `PanelId` constant (`panels::SCENE`, re-exported by `panels.rs`) and the
-/// `PanelDef` that [`PanelCatalog::builtin`] collects. No central module lists
-/// the factories.
-///
-/// This is what a Bevy-style `#[derive(Panel)]` would expand to; it is a
-/// `macro_rules!` so the prototype needs no proc-macro crate.
-macro_rules! panel {
-    ($(#[$attr:meta])* $vis:vis $konst:ident = $id:literal => $create:path) => {
-        $(#[$attr])*
-        $vis const $konst: $crate::PanelId = $crate::PanelId($id);
-
-        ::inventory::submit! {
-            $crate::PanelDef::new($konst, $create)
-        }
-    };
-}
-
-pub(crate) use panel;
-
 use egui::{Context, Ui, WidgetText};
 use kairos_editor_core::PanelId;
 
@@ -73,15 +51,32 @@ use crate::frame::{Frame, UiOut};
 // is where the panel framework surfaces it.
 pub use kairos_editor_core::PanelInstanceId;
 
+/// Registration half of a panel: its stable id, implemented by `#[panel]`.
+///
+/// [`Panel`] requires this trait, so a type that implements `Panel` without
+/// declaring an id (normally through the `#[panel]` attribute) does not
+/// compile. The attribute also submits the [`PanelDef`] to the link-section
+/// table; a manual implementation is for tests, where a fake panel must not
+/// enter that table.
+pub trait PanelRegister {
+    /// Stable kind id: the key in `LayoutState` and persisted layouts.
+    fn panel_id(&self) -> PanelId;
+}
+
 /// One drawable panel body. The host owns the tab/title bar; the panel draws the
 /// body only.
 ///
 /// Implementations are owned by [`PanelHost`] and live across frames. They may
 /// keep UI-only view state (search text, expanded paths, ...) but never domain
 /// state: reads go through [`Frame`], writes go through [`UiOut`] as [`Action`]s.
-pub trait Panel {
+pub trait Panel: PanelRegister {
     /// Panel kind, matching the `PanelId` the factory was registered under.
-    fn kind(&self) -> PanelId;
+    ///
+    /// Provided: the id is whatever [`PanelRegister::panel_id`] returns, so a
+    /// panel never restates it.
+    fn kind(&self) -> PanelId {
+        self.panel_id()
+    }
 
     /// Tab-header icon: path to a runtime image file, relative to the editor's
     /// working directory. Each panel returns its own artwork (Console from
