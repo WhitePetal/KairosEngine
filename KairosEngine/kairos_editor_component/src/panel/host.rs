@@ -13,9 +13,9 @@
 
 use std::collections::BTreeMap;
 
-use kairos_editor_core::{LayoutState, PanelId, StyleValue};
+use kairos_editor_core::{EditorState, LayoutState, PanelId, StyleValue};
 
-use crate::frame::{Frame, UiOut};
+use crate::frame::{Frame, HostView, UiOut};
 
 use super::{Panel, PanelCatalog, PanelContext, PanelHostViewer, PanelInstanceId};
 use crate::skin::PanelSkin;
@@ -102,10 +102,19 @@ impl PanelHost {
     /// The app snapshots these while the Preferences editor is open. A panel
     /// that is not open has no instance and therefore no editable skin: it owns
     /// its style, and the style only exists once `Panel::init` loaded it.
-    pub fn skins(&self) -> Vec<PanelSkin> {
+    ///
+    /// `state` is only there for `Panel::title`, which names the page: the
+    /// snapshot is taken outside the UI pass, so there are no host resources to
+    /// show and the frame carries an empty host.
+    pub fn skins(&self, state: &EditorState) -> Vec<PanelSkin> {
+        struct NoHost;
+
+        impl HostView for NoHost {}
+
+        let frame = Frame::with_host(state, &NoHost);
         self.instances
             .values()
-            .filter_map(|panel| panel.skin())
+            .filter_map(|panel| panel.skin(&frame))
             .collect()
     }
 

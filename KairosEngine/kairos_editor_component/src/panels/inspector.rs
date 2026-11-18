@@ -14,9 +14,10 @@ use crate::panel::Panel;
 /// embedded asset (see `kairos_editor_widgets::ui_image`).
 const TAB_ICON: &str = "Preferences/Textures/tab_icons/inspector.png";
 
-#[crate::panel(INSPECTOR = "inspector")]
+#[derive(Default)]
 pub(crate) struct InspectorPanel;
 
+#[crate::panel(INSPECTOR = "inspector")]
 impl Panel for InspectorPanel {
     fn icon(&self) -> Option<&str> {
         Some(TAB_ICON)

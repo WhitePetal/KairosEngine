@@ -222,7 +222,7 @@ impl EditorApp {
         // while that panel is open; after the effects, so an edit applied this
         // frame is already visible in the table.
         self.skins = if self.state.layout.is_open(panels::PREFERENCES) {
-            self.host.skins()
+            self.host.skins(&self.state)
         } else {
             Vec::new()
         };
@@ -898,7 +898,7 @@ mod tests {
 
         let console = app
             .host
-            .skins()
+            .skins(&app.state)
             .into_iter()
             .find(|skin| skin.panel == panels::CONSOLE)
             .expect("console skin");

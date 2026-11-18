@@ -105,8 +105,9 @@ pub trait StyleNode {
 #[derive(Clone, Debug, PartialEq)]
 pub struct PanelSkin {
     pub panel: PanelId,
-    /// Display name of the panel ("Console"), used as the page title.
-    pub title: &'static str,
+    /// Page heading: the panel's own `Panel::title` for a frame, so a skin page
+    /// is always named exactly like the tab it belongs to.
+    pub title: String,
     /// File name under `Preferences/Styles/`, shown in the page header so the
     /// user knows which file the edits are saved to.
     pub file: &'static str,

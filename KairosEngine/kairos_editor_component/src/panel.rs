@@ -123,7 +123,11 @@ pub trait Panel: PanelRegister {
     /// returns the tokens of its live style here. Reading it is cheap and
     /// side-effect free (the app only asks while Preferences is open), so the
     /// editor always shows the style the panel is actually drawing with.
-    fn skin(&self) -> Option<PanelSkin> {
+    ///
+    /// The page heading is `self.title(frame)`: a skin page is named like the
+    /// tab, so there is no second title to keep in sync. `#[panel]` generates
+    /// this method for panels declared with `skin = StyleType`.
+    fn skin(&self, _frame: &Frame) -> Option<PanelSkin> {
         None
     }
 

@@ -38,17 +38,16 @@ use egui::{
     Align, Color32, Context, CornerRadius, Hyperlink, Id, Label, Layout, Margin, Sense, Ui,
     WidgetText, vec2,
 };
-use kairos_editor_core::{Action, LayoutAction, StyleValue};
+use kairos_editor_core::{Action, LayoutAction};
 use kairos_editor_widgets::button::Button;
 use kairos_editor_widgets::color::Color32Ext;
 use kairos_editor_widgets::divider::Divider;
-use kairos_editor_widgets::style::{Style, StyleFile};
+use kairos_editor_widgets::style::StyleFile;
 use kairos_editor_widgets::text::TextStyle;
 use kairos_editor_widgets::ui_image;
 
 use crate::frame::{Frame, UiOut};
 use crate::panel::{EditorInfo, Panel, PanelContext};
-use crate::skin::{PanelSkin, StyleFields};
 
 use self::style::AboutPanelStyle;
 
@@ -69,7 +68,6 @@ fn copy_button_id() -> Id {
 
 /// The About panel. Holds the injected identity and the loaded skin; no other
 /// state, so nothing to persist and nothing to reset on reopen.
-#[crate::panel(ABOUT = "about", create = about_panel)]
 pub struct AboutPanel {
     info: EditorInfo,
     style: AboutPanelStyle,
@@ -92,6 +90,7 @@ impl AboutPanel {
     }
 }
 
+#[crate::panel(ABOUT = "about", create = about_panel, skin = AboutPanelStyle)]
 impl Panel for AboutPanel {
     fn icon(&self) -> Option<&str> {
         Some(self.style.icons.tab.as_str())
@@ -102,22 +101,6 @@ impl Panel for AboutPanel {
     }
 
     /// The About skin, editable from Preferences like any other panel's.
-    fn skin(&self) -> Option<PanelSkin> {
-        Some(PanelSkin {
-            panel: ABOUT,
-            title: "About",
-            file: AboutPanelStyle::FILE,
-            fields: self.style.style_fields(),
-        })
-    }
-
-    fn set_skin_field(&mut self, path: &str, value: &StyleValue) -> bool {
-        self.style.set_style_field(path, value)
-    }
-
-    fn save_skin(&self, ctx: &Context) -> Result<(), String> {
-        crate::skin::save_skin::<AboutPanelStyle>(&self.style, ctx.theme())
-    }
 
     /// Load the skin and warm the two images. A missing or broken skin file is
     /// logged and falls back to the code defaults: the old window treated it as

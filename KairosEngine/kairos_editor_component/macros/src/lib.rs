@@ -4,15 +4,11 @@
 //!
 //! Two macros, both about "declare it once, next to the thing it describes":
 //!
-//! * [`macro@panel`] declares a panel and registers it in one item: the struct,
-//!   the id constant, `PanelRegister`, the factory and the `inventory`
-//!   submission. Because `Panel: PanelRegister`, a plain
-//!   `impl Panel for X` without the attribute fails to compile, so a panel
-//!   cannot exist without being registered.
+//! * [`macro@panel`] on `impl Panel for YourPanel` declares the panel's id,
+//!   registers it (`PanelRegister` + `inventory` submission), generates the
+//!   factory and — when the panel has a skin — the three `Panel::skin` methods.
 //! * `#[derive(StyleFields)]` makes a style struct describe itself field by
-//!   field, which is what the Preferences panel edits. It walks the struct's
-//!   fields and emits `skin::StyleNode` (`collect`/`write` by dotted path) and
-//!   `skin::StyleFields` (the entry point `Panel` forwards to).
+//!   field, which is what the Preferences panel edits.
 //!
 //! Both exist for the same reason: the legacy editor kept a second, hand-written
 //! list next to the real definition (`drawers` order for panels,
@@ -24,26 +20,43 @@ use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::{format_ident, quote};
 use syn::parse::Parser;
 use syn::punctuated::Punctuated;
-use syn::{Data, DeriveInput, Fields, ItemStruct, Lit, Meta, Token, parse_macro_input};
+use syn::{Data, DeriveInput, Fields, ItemImpl, Lit, Meta, Token, parse_macro_input, parse_quote};
 
 // ---------------------------------------------------------------------------
-// #[panel(NAME = "panel.id", create = path)]
+// #[panel(ID = "panel.id", create = path, skin = Style)]
 // ---------------------------------------------------------------------------
 
-/// Declares a panel and registers it: the struct, the id constant, the
-/// `PanelRegister` impl, the factory and the link-section submission.
+/// Declares and registers a panel on its `impl Panel` block.
 ///
-/// `#[panel(SCENE = "scene")]` on `ScenePanel` generates `pub const SCENE: PanelId`,
-/// `impl PanelRegister for ScenePanel` and an `inventory::submit!` entry
-/// pointing at a generated factory. A panel with fields is built through
-/// `Default`, or through `create = path` (`fn(&PanelContext) -> Self`),
-/// which is how About receives the injected identity.
+/// ```ignore
+/// #[crate::panel(SCENE = "scene")]
+/// impl Panel for ScenePanel { ... }
 ///
-/// The seal (`__sealed::Sealed`) is what makes this the only way to
-/// implement `PanelRegister`; panels are defined in this crate.
+/// #[crate::panel(ABOUT = "about", create = about_panel, skin = AboutPanelStyle)]
+/// impl Panel for AboutPanel { ... }
+/// ```
+///
+/// Generates:
+///
+/// * `pub const SCENE: PanelId` in the module;
+/// * `impl PanelRegister for ScenePanel` (the only way to implement it: the
+///   seal lives in a crate-private module) and the `inventory::submit!` entry
+///   that `panels::catalog()` collects;
+/// * the factory: `Default::default()`, or the function named by
+///   `create = path` (`fn(&PanelContext) -> Self`) for a panel that needs the
+///   injected identity;
+/// * with `skin = StyleType`, the three `Panel` methods that let Preferences
+///   edit this panel's `Preferences/Styles/*.ron` file: `skin` (the field
+///   table, titled by the panel's own `title`), `set_skin_field` (live
+///   write) and `save_skin` (persist). The style is expected in a field named
+///   `style`; the type must implement `Style + StyleFields`.
+///
+/// Putting the attribute on the impl rather than the struct is what lets it
+/// generate methods inside the trait impl; a second `impl Panel` block is not
+/// allowed in Rust.
 #[proc_macro_attribute]
 pub fn panel(args: TokenStream, item: TokenStream) -> TokenStream {
-    let item = parse_macro_input!(item as ItemStruct);
+    let item = parse_macro_input!(item as ItemImpl);
     match expand_panel(args.into(), item) {
         Ok(tokens) => tokens.into(),
         Err(error) => error.to_compile_error().into(),
@@ -66,29 +79,47 @@ fn snake_case(ident: &syn::Ident) -> String {
     out
 }
 
-fn expand_panel(args: TokenStream2, item: ItemStruct) -> syn::Result<TokenStream2> {
+fn expand_panel(args: TokenStream2, mut item: ItemImpl) -> syn::Result<TokenStream2> {
     let metas = Punctuated::<Meta, Token![,]>::parse_terminated.parse2(args)?;
     let mut id_name = None;
     let mut panel_id = None;
     let mut create = None;
+    let mut skin = None;
 
     for meta in metas {
-        match meta {
-            Meta::NameValue(name_value) if name_value.path.is_ident("create") => {
-                match name_value.value {
-                    syn::Expr::Path(expression) => create = Some(expression.path),
-                    other => {
-                        return Err(syn::Error::new_spanned(
-                            other,
-                            "create takes a function path: fn(&PanelContext) -> Self",
-                        ));
-                    }
+        let Meta::NameValue(name_value) = meta else {
+            return Err(syn::Error::new_spanned(
+                meta,
+                "expected NAME = \"panel.id\"",
+            ));
+        };
+        let Some(name) = name_value.path.get_ident().cloned() else {
+            return Err(syn::Error::new_spanned(
+                &name_value.path,
+                "expected a single identifier",
+            ));
+        };
+        let name_text = name.to_string();
+        match name_text.as_str() {
+            "create" => match name_value.value {
+                syn::Expr::Path(expression) => create = Some(expression.path),
+                other => {
+                    return Err(syn::Error::new_spanned(
+                        other,
+                        "create takes a function path: fn(&PanelContext) -> Self",
+                    ));
                 }
-            }
-            Meta::NameValue(name_value) => {
-                let ident = name_value.path.get_ident().cloned().ok_or_else(|| {
-                    syn::Error::new_spanned(&name_value.path, "expected NAME = \"panel.id\"")
-                })?;
+            },
+            "skin" => match name_value.value {
+                syn::Expr::Path(expression) => skin = Some(expression.path),
+                other => {
+                    return Err(syn::Error::new_spanned(
+                        other,
+                        "skin takes a style type path, e.g. skin = ConsoleStyle",
+                    ));
+                }
+            },
+            _ => {
                 let literal = match name_value.value {
                     syn::Expr::Lit(expression) => expression.lit,
                     other => {
@@ -107,19 +138,13 @@ fn expand_panel(args: TokenStream2, item: ItemStruct) -> syn::Result<TokenStream
                         ));
                     }
                 };
-                if id_name.replace(ident).is_some() {
+                if id_name.replace(name).is_some() {
                     return Err(syn::Error::new(
                         Span::call_site(),
                         "the panel id is declared twice",
                     ));
                 }
                 panel_id = Some(literal);
-            }
-            other => {
-                return Err(syn::Error::new_spanned(
-                    other,
-                    "expected NAME = \"panel.id\", optionally with create = path",
-                ));
             }
         }
     }
@@ -137,19 +162,88 @@ fn expand_panel(args: TokenStream2, item: ItemStruct) -> syn::Result<TokenStream
             "the panel constant must be UPPER_SNAKE_CASE",
         ));
     }
+
+    // The attribute goes on the trait impl: that is where the generated
+    // methods live, and the trait impl is what makes the type a panel.
+    let is_panel_impl = item
+        .trait_
+        .as_ref()
+        .and_then(|(_, path, _)| path.segments.last())
+        .is_some_and(|segment| segment.ident == "Panel");
+    if !is_panel_impl {
+        return Err(syn::Error::new_spanned(
+            &item,
+            "put #[panel] on the trait impl (impl Panel for YourPanel), not on the struct",
+        ));
+    }
     if !item.generics.params.is_empty() {
         return Err(syn::Error::new_spanned(
             &item.generics,
             "generic panels cannot be registered automatically",
         ));
     }
+    let ident = match &*item.self_ty {
+        syn::Type::Path(type_path) if type_path.qself.is_none() => type_path
+            .path
+            .segments
+            .last()
+            .map(|segment| segment.ident.clone())
+            .ok_or_else(|| syn::Error::new_spanned(&item.self_ty, "expected a named type"))?,
+        other => {
+            return Err(syn::Error::new_spanned(
+                other,
+                "expected a named panel type",
+            ));
+        }
+    };
 
-    let ident = &item.ident;
-    let factory = format_ident!("__create_panel_{}", snake_case(ident));
+    if let Some(style) = skin {
+        // The page title is the panel's own title: a skin page is named after
+        // the panel, so passing a second title here would be a duplicate
+        // source of truth.
+        item.items.push(parse_quote! {
+            fn skin(
+                &self,
+                frame: &::kairos_editor_component::frame::Frame,
+            ) -> ::std::option::Option<::kairos_editor_component::skin::PanelSkin> {
+                ::std::option::Option::Some(::kairos_editor_component::skin::PanelSkin {
+                    panel: #id_name,
+                    title: ::kairos_editor_component::panel::Panel::title(self, frame)
+                        .text()
+                        .to_owned(),
+                    file: <#style as ::kairos_editor_widgets::style::Style>::FILE,
+                    fields: ::kairos_editor_component::skin::StyleFields::style_fields(
+                        &self.style,
+                    ),
+                })
+            }
+        });
+        item.items.push(parse_quote! {
+            fn set_skin_field(
+                &mut self,
+                path: &str,
+                value: &::kairos_editor_core::StyleValue,
+            ) -> bool {
+                ::kairos_editor_component::skin::StyleFields::set_style_field(
+                    &mut self.style,
+                    path,
+                    value,
+                )
+            }
+        });
+        item.items.push(parse_quote! {
+            fn save_skin(
+                &self,
+                ctx: &::egui::Context,
+            ) -> ::std::result::Result<(), ::std::string::String> {
+                ::kairos_editor_component::skin::save_skin::<#style>(&self.style, ctx.theme())
+            }
+        });
+    }
+
+    let factory = format_ident!("__create_panel_{}", snake_case(&ident));
     let build = if let Some(create) = create {
         quote! { ::std::boxed::Box::new(#create(context)) }
-    } else if matches!(&item.fields, Fields::Unit) {
-        quote! { ::std::boxed::Box::new(#ident) }
     } else {
         quote! {
             ::std::boxed::Box::new(<#ident as ::core::default::Default>::default())
@@ -195,7 +289,7 @@ fn expand_panel(args: TokenStream2, item: ItemStruct) -> syn::Result<TokenStream
 ///   `Vec<StyleField>`) and `write` (write one leaf by dotted path). Nested
 ///   structs derive it too, so a group such as `icons` nests without the
 ///   parent knowing it is a group.
-/// * `skin::StyleFields` — the entry point the `Panel` trait forwards to.
+/// * `skin::StyleFields` — the entry point `Panel::skin` forwards to.
 ///
 /// Field kinds come from the field's type (`f32`, `u8`/`u16`/`u32`/`usize`,
 /// `bool`, `String`, `Color32`); the macro itself only knows names and

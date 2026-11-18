@@ -1,9 +1,10 @@
 //! Built-in panels: one file per panel, each registering itself.
 //!
-//! Every panel struct carries the `#[panel]` attribute, which declares its id,
-//! implements `PanelRegister` and submits its `PanelDef`; `catalog()` collects
-//! the submissions from the link-section table. Nothing here names a panel's
-//! factory, and there is no table to keep in sync with the files.
+//! Every panel's `impl Panel` block carries the `#[panel]` attribute, which
+//! declares its id, implements `PanelRegister`, submits its `PanelDef` and (with
+//! `skin = StyleType`) writes the three skin methods into the impl; `catalog()`
+//! collects the submissions from the link-section table. Nothing here names a
+//! panel's factory, and there is no table to keep in sync with the files.
 //!
 //! What remains in this module is the module plumbing Rust requires: the `mod`
 //! declaration makes the file part of the crate, and the `pub use` keeps the

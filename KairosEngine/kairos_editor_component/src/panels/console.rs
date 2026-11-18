@@ -24,12 +24,11 @@ pub mod style;
 use std::collections::HashMap;
 
 use egui::{Align2, CornerRadius, Rect, Sense, Stroke, Ui, WidgetText, WidgetType, pos2, vec2};
-use kairos_editor_core::StyleValue;
 use kairos_editor_widgets::button::{Button, ButtonAlign, ButtonStyle};
 use kairos_editor_widgets::color::Color32Ext;
 use kairos_editor_widgets::paint::{labelled_widget_info, magnifier};
 use kairos_editor_widgets::splitter::Splitter;
-use kairos_editor_widgets::style::{Style, StyleFile};
+use kairos_editor_widgets::style::StyleFile;
 use kairos_editor_widgets::text::TextStyle;
 use kairos_editor_widgets::ui_image;
 use kairos_log::Level;
@@ -37,11 +36,9 @@ use kairos_log::Level;
 use crate::frame::{ConsoleLine, Frame, UiOut};
 use crate::panel::Panel;
 use crate::panels::console::style::ConsoleStyle;
-use crate::skin::{PanelSkin, StyleFields};
 
 /// Console panel view state. Everything here is disposable: losing it on a
 /// panel close resets the console UI, never the log history.
-#[crate::panel(CONSOLE = "console")]
 pub(crate) struct ConsolePanel {
     search: String,
     collapse: bool,
@@ -76,6 +73,7 @@ impl Default for ConsolePanel {
     }
 }
 
+#[crate::panel(CONSOLE = "console", skin = ConsoleStyle)]
 impl Panel for ConsolePanel {
     fn icon(&self) -> Option<&str> {
         Some(self.style.tab_icon.as_str())
@@ -86,22 +84,6 @@ impl Panel for ConsolePanel {
     }
 
     /// The Console skin, editable from Preferences.
-    fn skin(&self) -> Option<PanelSkin> {
-        Some(PanelSkin {
-            panel: CONSOLE,
-            title: "Console",
-            file: ConsoleStyle::FILE,
-            fields: self.style.style_fields(),
-        })
-    }
-
-    fn set_skin_field(&mut self, path: &str, value: &StyleValue) -> bool {
-        self.style.set_style_field(path, value)
-    }
-
-    fn save_skin(&self, ctx: &egui::Context) -> Result<(), String> {
-        crate::skin::save_skin::<ConsoleStyle>(&self.style, ctx.theme())
-    }
 
     fn init(&mut self, ctx: &egui::Context) {
         match StyleFile::<ConsoleStyle>::load_or_default() {

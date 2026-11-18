@@ -295,12 +295,16 @@ fn skin_fields_are_listed_and_written_through_the_host() {
     let mut host = default_host();
     host.sync(&state.layout, &Context::default());
 
-    let skins = host.skins();
+    let skins = host.skins(&state);
     let console = skins
         .iter()
         .find(|skin| skin.panel == panels::CONSOLE)
         .expect("console skin");
     assert_eq!(console.file, "ConsoleStyle.ron");
+    assert_eq!(
+        console.title, "Console",
+        "the generated skin page is titled by Panel::title"
+    );
     assert!(
         console
             .fields
@@ -321,7 +325,7 @@ fn skin_fields_are_listed_and_written_through_the_host() {
     assert!(!host.set_skin_field(panels::CONSOLE, "toolbar_height", &StyleValue::Toggle(true)));
 
     assert!(host.set_skin_field(panels::CONSOLE, "toolbar_height", &StyleValue::Float(30.0)));
-    let updated = host.skins();
+    let updated = host.skins(&state);
     let console = updated
         .iter()
         .find(|skin| skin.panel == panels::CONSOLE)

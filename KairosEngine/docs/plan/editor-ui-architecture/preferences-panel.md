@@ -83,7 +83,7 @@
 
 ### 2.1 落点：一个 Panel
 
-- `#[crate::panel(PREFERENCES = "preferences")]` 声明在 `panels/preferences.rs` 的面板结构体上：id 常量、`PanelRegister`、工厂和 `inventory` 提交都由这一行生成（`panels::catalog()` 收集）。
+- `#[crate::panel(PREFERENCES = "preferences", skin = PreferencesPanelStyle)]` 声明在 `panels/preferences.rs` 的 `impl Panel` 上：id 常量、`PanelRegister`、工厂、`inventory` 提交和三个 skin 方法都由这一行生成（`panels::catalog()` 收集）。页面标题取自 `Panel::title`，不再手写。
 - **打开**：工具栏 “Edit → Preferences” → `LayoutAction::ShowPanel { PREFERENCES }` → dock 无 tab 时浮成窗口（与 About 同一条路）。
 - **关闭**：body 的 Close → `LayoutAction::ClosePanel`；tab × 走 `Panel::on_close`（先提交未保存编辑，再发同一个 action）。
 
@@ -133,7 +133,7 @@ StyleFields::set_style_field(path, value)
 
 ### 2.5 页面列表：活着的面板
 
-`Frame::skins` 携带 `[PanelSkin]`（`panel/title/file/fields`），由 app 在每帧 `sync` 时、仅当 Preferences 打开时调用 `PanelHost::skins()` 生成。列表因此是：
+`Frame::skins` 携带 `[PanelSkin]`（`panel/title/file/fields`；`title` 是 `Panel::title` 的文本），由 app 在每帧 `sync` 时、仅当 Preferences 打开时调用 `PanelHost::skins(&state)` 生成。列表因此是：
 
 `About`（打开过才有）、`Console`、`Profiler`、`Preferences` —— 后三者默认在场（Preferences 就是自己）。
 
@@ -198,7 +198,7 @@ StyleFields::set_style_field(path, value)
 | 每帧 `UpdateUIStyle(page)` | `SetField`（每帧预览）+ `Commit`（一次写盘） | B1/B4 消解 |
 | 每窗口 TOML 落盘 | 面板自己的 `save_skin`，交互结束写一次 | 写盘从「帧」变成「手势」 |
 | 遍历 `drawers` 生成页面 | `PanelHost::skins()`（活着的面板） | M9 消解：没有空页，没有自指页 |
-| `type_name::<T>()` 页面名 | `PanelSkin::title`（“Console”） | 用户文案 |
+| `type_name::<T>()` 页面名 | `Panel::title`（“Console”），由宏写进 `PanelSkin` | 用户文案，单一真源 |
 | 字段名手写、无说明 | 字段名 humanize + 类型决定控件 | M4 消解 |
 | 只有 `egui::Grid`（首帧 discard） | 手排的两栏 + `ScrollArea` | 多 pass 安全 |
 | 只有 tab × | body 的 Close + tab × | M2 消解 |

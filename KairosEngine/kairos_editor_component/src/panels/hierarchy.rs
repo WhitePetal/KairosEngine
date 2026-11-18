@@ -10,9 +10,10 @@ use crate::panel::Panel;
 /// embedded asset (see `kairos_editor_widgets::ui_image`).
 const TAB_ICON: &str = "Preferences/Textures/tab_icons/hierarchy.png";
 
-#[crate::panel(HIERARCHY = "hierarchy")]
+#[derive(Default)]
 pub(crate) struct HierarchyPanel;
 
+#[crate::panel(HIERARCHY = "hierarchy")]
 impl Panel for HierarchyPanel {
     fn icon(&self) -> Option<&str> {
         Some(TAB_ICON)

@@ -239,7 +239,6 @@ use egui::{
     Align2, Context, CornerRadius, FontId, Rect, Response, Sense, Stroke, StrokeKind, Ui,
     WidgetText,
 };
-use kairos_editor_core::StyleValue;
 use kairos_editor_widgets::button::{Button, ButtonAlign, ButtonStyle};
 use kairos_editor_widgets::color::Color32Ext;
 use kairos_editor_widgets::divider::Divider;
@@ -260,7 +259,6 @@ use crate::frame::{Frame, UiOut};
 use crate::panel::Panel;
 use crate::panels::profiler::hierarchy::HierarchySort;
 use crate::panels::profiler::style::ProfilerStyle;
-use crate::skin::{PanelSkin, StyleFields};
 
 use self::axis::ModuleAxis;
 
@@ -507,7 +505,6 @@ impl TimelineLayout {
     }
 }
 
-#[crate::panel(PROFILER = "profiler")]
 pub(crate) struct ProfilerPanel {
     style: ProfilerStyle,
     recording: bool,
@@ -596,6 +593,7 @@ impl Default for ProfilerPanel {
     }
 }
 
+#[crate::panel(PROFILER = "profiler", skin = ProfilerStyle)]
 impl Panel for ProfilerPanel {
     fn icon(&self) -> Option<&str> {
         Some(&self.style.icons.tab)
@@ -606,22 +604,6 @@ impl Panel for ProfilerPanel {
     }
 
     /// The Profiler skin, editable from Preferences.
-    fn skin(&self) -> Option<PanelSkin> {
-        Some(PanelSkin {
-            panel: PROFILER,
-            title: "Profiler",
-            file: ProfilerStyle::FILE,
-            fields: self.style.style_fields(),
-        })
-    }
-
-    fn set_skin_field(&mut self, path: &str, value: &StyleValue) -> bool {
-        self.style.set_style_field(path, value)
-    }
-
-    fn save_skin(&self, ctx: &Context) -> Result<(), String> {
-        crate::skin::save_skin::<ProfilerStyle>(&self.style, ctx.theme())
-    }
 
     fn init(&mut self, ctx: &Context) {
         match StyleFile::<ProfilerStyle>::load_or_default() {

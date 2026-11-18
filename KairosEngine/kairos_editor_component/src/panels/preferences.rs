@@ -36,12 +36,12 @@ use kairos_editor_core::{Action, LayoutAction, PanelId, StyleAction, StyleValue}
 use kairos_editor_widgets::button::{Button, ButtonAlign};
 use kairos_editor_widgets::color::Color32Ext;
 use kairos_editor_widgets::divider::Divider;
-use kairos_editor_widgets::style::{Style, StyleFile};
+use kairos_editor_widgets::style::StyleFile;
 use kairos_editor_widgets::text::TextStyle;
 
 use crate::frame::{Frame, UiOut};
 use crate::panel::Panel;
-use crate::skin::{PanelSkin, StyleField, StyleFields, StyleKind, humanize};
+use crate::skin::{PanelSkin, StyleField, StyleKind, humanize};
 
 use self::style::PreferencesPanelStyle;
 
@@ -67,7 +67,7 @@ struct PageState {
     /// Edited in place: a drag follows the pointer even though the owning
     /// panel's next snapshot is a frame behind.
     fields: Vec<StyleField>,
-    title: &'static str,
+    title: String,
     file: &'static str,
     /// A `SetField` was pushed since the last save.
     dirty: bool,
@@ -87,12 +87,12 @@ impl PageState {
         match selected.and_then(|panel| skins.iter().find(|skin| skin.panel == panel)) {
             Some(skin) => {
                 self.fields.clone_from(&skin.fields);
-                self.title = skin.title;
+                self.title.clone_from(&skin.title);
                 self.file = skin.file;
             }
             None => {
                 self.fields.clear();
-                self.title = "";
+                self.title.clear();
                 self.file = "";
             }
         }
@@ -113,7 +113,6 @@ impl PageState {
 }
 
 /// The Preferences panel.
-#[crate::panel(PREFERENCES = "preferences")]
 pub struct PreferencesPanel {
     style: PreferencesPanelStyle,
     /// Page list selection; falls back to the first live skin.
@@ -138,6 +137,7 @@ impl Default for PreferencesPanel {
     }
 }
 
+#[crate::panel(PREFERENCES = "preferences", skin = PreferencesPanelStyle)]
 impl Panel for PreferencesPanel {
     fn title(&self, _frame: &Frame) -> WidgetText {
         "Preferences".into()
@@ -264,22 +264,6 @@ impl Panel for PreferencesPanel {
 
     /// The editor can edit this panel's own skin too: it is just another styled
     /// panel to the page list.
-    fn skin(&self) -> Option<PanelSkin> {
-        Some(PanelSkin {
-            panel: PREFERENCES,
-            title: "Preferences",
-            file: PreferencesPanelStyle::FILE,
-            fields: self.style.style_fields(),
-        })
-    }
-
-    fn set_skin_field(&mut self, path: &str, value: &StyleValue) -> bool {
-        self.style.set_style_field(path, value)
-    }
-
-    fn save_skin(&self, ctx: &Context) -> Result<(), String> {
-        crate::skin::save_skin::<PreferencesPanelStyle>(&self.style, ctx.theme())
-    }
 
     /// Closing with an edit still pending (a value typed but never released)
     /// saves it before the panel goes away.
@@ -304,7 +288,7 @@ fn page_list(
     for skin in skins {
         let is_current = Some(skin.panel) == selected;
         let response = ui.add(
-            Button::new(skin.title, &nav)
+            Button::new(&skin.title, &nav)
                 .width(width)
                 .selected(is_current)
                 .id(nav_id(skin.panel)),
@@ -344,7 +328,7 @@ fn page_body(ui: &mut Ui, style: &PreferencesPanelStyle, page: &mut PageState, o
 
             TextStyle::sized(style.title.to_egui(), style.title_size)
                 .strong()
-                .label(ui, page.title);
+                .label(ui, page.title.clone());
             ui.add_space(2.0);
             TextStyle::sized(style.path.to_egui(), style.group_size).label(
                 ui,
@@ -623,13 +607,13 @@ mod tests {
         vec![
             PanelSkin {
                 panel: panels::CONSOLE,
-                title: "Console",
+                title: "Console".to_owned(),
                 file: "ConsoleStyle.ron",
                 fields: fields(),
             },
             PanelSkin {
                 panel: panels::PROFILER,
-                title: "Profiler",
+                title: "Profiler".to_owned(),
                 file: "Profiler.ron",
                 fields: fields(),
             },
@@ -897,9 +881,17 @@ mod tests {
         let mut harness = Harness::new(skins());
         harness.frame(Vec::new());
 
-        let own = harness.panel.skin().expect("preferences has a skin");
+        let state = EditorState::new();
+        let host = NoHost;
+        let frame = Frame::with_host(&state, &host);
+        let own = harness.panel.skin(&frame).expect("preferences has a skin");
         assert_eq!(own.panel, PREFERENCES);
         assert_eq!(own.file, "PreferencesPanel.ron");
+        assert_eq!(
+            own.title,
+            harness.panel.title(&frame).text(),
+            "the page is named by the panel's own title, not a second literal"
+        );
         assert!(own.fields.iter().any(|field| field.path == "nav_width"));
     }
 
