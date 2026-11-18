@@ -38,16 +38,17 @@ use egui::{
     Align, Color32, Context, CornerRadius, Hyperlink, Id, Label, Layout, Margin, Sense, Ui,
     WidgetText, vec2,
 };
-use kairos_editor_core::{Action, LayoutAction, PanelId};
+use kairos_editor_core::{Action, LayoutAction, PanelId, StyleValue};
 use kairos_editor_widgets::button::Button;
 use kairos_editor_widgets::color::Color32Ext;
 use kairos_editor_widgets::divider::Divider;
-use kairos_editor_widgets::style::StyleFile;
+use kairos_editor_widgets::style::{Style, StyleFile};
 use kairos_editor_widgets::text::TextStyle;
 use kairos_editor_widgets::ui_image;
 
 use crate::frame::{Frame, UiOut};
 use crate::panel::{EditorInfo, Panel, PanelContext, PanelDef};
+use crate::skin::{PanelSkin, StyleFields};
 
 use self::style::AboutPanelStyle;
 use super::ABOUT;
@@ -104,6 +105,24 @@ impl Panel for AboutPanel {
 
     fn title(&self, _frame: &Frame) -> WidgetText {
         format!("About {}", self.info.name).into()
+    }
+
+    /// The About skin, editable from Preferences like any other panel's.
+    fn skin(&self) -> Option<PanelSkin> {
+        Some(PanelSkin {
+            panel: ABOUT,
+            title: "About",
+            file: AboutPanelStyle::FILE,
+            fields: self.style.style_fields(),
+        })
+    }
+
+    fn set_skin_field(&mut self, path: &str, value: &StyleValue) -> bool {
+        self.style.set_style_field(path, value)
+    }
+
+    fn save_skin(&self, ctx: &Context) -> Result<(), String> {
+        crate::skin::save_skin::<AboutPanelStyle>(&self.style, ctx.theme())
     }
 
     /// Load the skin and warm the two images. A missing or broken skin file is

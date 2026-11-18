@@ -10,17 +10,17 @@
 
 use egui::{Context, Rect};
 use kairos_editor_component::{PanelHost, PanelInstanceId};
-use kairos_editor_core::{AppEffect, Effect, LayoutEffect, PanelId};
+use kairos_editor_core::{AppEffect, Effect, LayoutEffect, PanelId, StyleEffect};
 use kairos_editor_docking::docker::DockState;
 
 /// Runs effects in order against the live panel host and dock tree.
 pub(crate) struct EffectExecutor<'a> {
-    host: &'a PanelHost,
+    host: &'a mut PanelHost,
     dock: &'a mut DockState<PanelInstanceId>,
 }
 
 impl<'a> EffectExecutor<'a> {
-    pub(crate) fn new(host: &'a PanelHost, dock: &'a mut DockState<PanelInstanceId>) -> Self {
+    pub(crate) fn new(host: &'a mut PanelHost, dock: &'a mut DockState<PanelInstanceId>) -> Self {
         Self { host, dock }
     }
 
@@ -30,6 +30,7 @@ impl<'a> EffectExecutor<'a> {
         match effect {
             Effect::Layout(effect) => self.apply_layout(effect, ctx),
             Effect::App(effect) => self.apply_app(effect, ctx),
+            Effect::Style(effect) => self.apply_style(effect, ctx),
         }
     }
 
@@ -41,6 +42,32 @@ impl<'a> EffectExecutor<'a> {
     fn apply_app(&mut self, effect: AppEffect, ctx: &Context) {
         match effect {
             AppEffect::Quit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+        }
+    }
+
+    /// Skin edits: write the value into the owning panel's live style (the
+    /// next pass draws with it), and persist a panel's file on commit.
+    ///
+    /// The two are separate effects on purpose. `SetField` runs on every
+    /// changed value, including every frame of a drag; `Persist` runs once when
+    /// the interaction ends. Writing the file per frame is exactly the legacy
+    /// defect this editor replaces (a selected style page wrote its TOML about
+    /// 60 times a second).
+    fn apply_style(&mut self, effect: StyleEffect, ctx: &Context) {
+        match effect {
+            StyleEffect::SetField { panel, path, value } => {
+                if !self.host.set_skin_field(panel, &path, &value) {
+                    kairos_log::warn!(
+                        target: "kairos_editor",
+                        "skin {panel}: no editable field {path}"
+                    );
+                }
+            }
+            StyleEffect::Persist { panel } => {
+                if let Err(error) = self.host.save_skin(panel, ctx) {
+                    kairos_log::warn!(target: "kairos_editor", "skin {panel}: {error}");
+                }
+            }
         }
     }
 

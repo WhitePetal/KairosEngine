@@ -26,4 +26,7 @@ kairos_log = { path = "../kairos_log" }
 kairos_profile = { path = "../kairos_profile" }
 kairos_editor_docking = { path = "../kairos_editor_docking" }
 kairos_editor_widgets = { path = "../kairos_editor_widgets" }
+# `#[derive(StyleFields)]`: a style struct describes its own fields, so the
+# Preferences editor cannot drift from it.
+kairos_editor_component_macros = { path = "macros" }
 vec1 = "1.12.1"

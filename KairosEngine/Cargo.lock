@@ -2629,6 +2629,7 @@ version = "0.1.0"
 dependencies = [
  "egui",
  "kairos_color",
+ "kairos_editor_component_macros",
  "kairos_editor_core",
  "kairos_editor_docking",
  "kairos_editor_widgets",
@@ -2636,6 +2637,15 @@ dependencies = [
  "kairos_profile",
  "serde",
  "vec1",
+]
+
+[[package]]
+name = "kairos_editor_component_macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]

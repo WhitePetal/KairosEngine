@@ -11,14 +11,18 @@
 //! of growing one flat "god effect" enum.
 
 use crate::PanelId;
+use crate::style::StyleValue;
 
 /// One unit of host work returned by `reduce`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Effect {
     Layout(LayoutEffect),
     /// Lifecycle work: the host owns the window and the loop, so only it can
     /// act on "the user wants to leave".
     App(AppEffect),
+    /// Skin work: a panel's style lives in the panel instance and its file is
+    /// written by the app, so both are outside core.
+    Style(StyleEffect),
 }
 
 /// Placement/focus work owned by the layout slice.
@@ -45,4 +49,22 @@ pub enum LayoutEffect {
 pub enum AppEffect {
     /// Close the editor's window so the loop shuts down.
     Quit,
+}
+
+/// Skin work owned by the style slice.
+///
+/// A panel's skin is a host resource (it lives in the panel instance and is
+/// persisted to `Preferences/Styles/*.ron`), so the reducer routes these
+/// intents to the app instead of writing state.
+#[derive(Clone, Debug, PartialEq)]
+pub enum StyleEffect {
+    /// Write one field on the panel's live style; the panel redraws from it on
+    /// the next pass, which is what makes the edit feel immediate.
+    SetField {
+        panel: PanelId,
+        path: String,
+        value: StyleValue,
+    },
+    /// Persist the panel's live style to its RON file.
+    Persist { panel: PanelId },
 }

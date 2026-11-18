@@ -239,7 +239,7 @@ use egui::{
     Align2, Context, CornerRadius, FontId, Rect, Response, Sense, Stroke, StrokeKind, Ui,
     WidgetText,
 };
-use kairos_editor_core::PanelId;
+use kairos_editor_core::{PanelId, StyleValue};
 use kairos_editor_widgets::button::{Button, ButtonAlign, ButtonStyle};
 use kairos_editor_widgets::color::Color32Ext;
 use kairos_editor_widgets::divider::Divider;
@@ -257,6 +257,7 @@ use kairos_profile::{
 
 use crate::frame::{Frame, UiOut};
 use crate::panel::{Panel, PanelContext, PanelDef};
+use crate::skin::{PanelSkin, StyleFields};
 use crate::panels::profiler::hierarchy::{HierarchySort};
 use crate::panels::profiler::style::ProfilerStyle;
 
@@ -613,6 +614,24 @@ impl Panel for ProfilerPanel {
 
     fn scroll_bars(&self) -> [bool; 2] {
         [false, false]
+    }
+
+    /// The Profiler skin, editable from Preferences.
+    fn skin(&self) -> Option<PanelSkin> {
+        Some(PanelSkin {
+            panel: PROFILER,
+            title: "Profiler",
+            file: ProfilerStyle::FILE,
+            fields: self.style.style_fields(),
+        })
+    }
+
+    fn set_skin_field(&mut self, path: &str, value: &StyleValue) -> bool {
+        self.style.set_style_field(path, value)
+    }
+
+    fn save_skin(&self, ctx: &Context) -> Result<(), String> {
+        crate::skin::save_skin::<ProfilerStyle>(&self.style, ctx.theme())
     }
 
     fn init(&mut self, ctx: &Context) {

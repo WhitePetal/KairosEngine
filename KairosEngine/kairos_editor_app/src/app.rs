@@ -2,9 +2,11 @@ use std::sync::Arc;
 
 use kairos_editor_component::{
     ConsoleLine, ConsoleLog, EditorInfo, Frame, HostView, PanelContext, PanelHost, PanelInstanceId,
-    UiOut, panels, toolbar::ToolBar,
+    PanelSkin, UiOut, panels, toolbar::ToolBar,
 };
-use kairos_editor_core::{Action, AppAction, EditorState, Effect, LayoutAction, reduce};
+use kairos_editor_core::{
+    Action, AppAction, EditorState, Effect, LayoutAction, StyleAction, reduce,
+};
 use kairos_editor_docking::{
     docker::{DockState, Docker},
     split::Fraction,
@@ -142,6 +144,9 @@ pub struct EditorApp {
     /// Host work returned by the last committed reduce. Applied at the start of
     /// the next frame, after the panel host has synced its instances.
     pending_effects: Vec<Effect>,
+    /// Live panels' skin field tables, rebuilt each frame while the Preferences
+    /// editor is open (and empty otherwise).
+    skins: Vec<PanelSkin>,
 }
 
 impl EditorApp {
@@ -183,6 +188,7 @@ impl EditorApp {
             host_view,
             tool_bar,
             pending_effects: Vec::new(),
+            skins: Vec::new(),
         }
     }
 
@@ -205,11 +211,21 @@ impl EditorApp {
         // which silently invented a placement in the focused leaf.
         {
             let effects = std::mem::take(&mut self.pending_effects);
-            let mut executor = EffectExecutor::new(&self.host, &mut self.dock);
+            let mut executor = EffectExecutor::new(&mut self.host, &mut self.dock);
             for effect in effects {
                 executor.apply(effect, ctx);
             }
         }
+
+        // The Preferences editor draws the live panels' field tables. Building
+        // them walks every token of every open skin, so snapshots exist only
+        // while that panel is open; after the effects, so an edit applied this
+        // frame is already visible in the table.
+        self.skins = if self.state.layout.is_open(panels::PREFERENCES) {
+            self.host.skins()
+        } else {
+            Vec::new()
+        };
 
         debug_assert!(
             ids.iter().all(|id| self.dock.contains_tab(*id)),
@@ -224,7 +240,13 @@ impl EditorApp {
     fn pump(&mut self, mut out: UiOut) {
         kairos_profile::scope!(Category::Editor, "Kairos.Editor.Pump");
         for action in out.take() {
-            kairos_log::info!(target: "kairos_editor", "{}", describe(&action));
+            // A skin drag emits one `SetField` per frame; logging every frame
+            // of a gesture would flood the console the way the legacy window
+            // did with its per-frame style messages. The commit (the write) is
+            // logged; the value itself is visible in the field.
+            if !matches!(action, Action::Style(StyleAction::SetField { .. })) {
+                kairos_log::info!(target: "kairos_editor", "{}", describe(&action));
+            }
             let effects = reduce(&mut self.state, action);
             self.pending_effects.extend(effects);
         }
@@ -242,6 +264,12 @@ fn describe(action: &Action) -> String {
         },
         Action::App(action) => match action {
             AppAction::QuitRequested => "quit editor".to_owned(),
+        },
+        Action::Style(action) => match action {
+            StyleAction::SetField { panel, path, .. } => {
+                format!("set {panel} skin: {path}")
+            }
+            StyleAction::Commit { panel } => format!("save {panel} skin"),
         },
     }
 }
@@ -294,9 +322,10 @@ impl EditorApp {
                     host,
                     dock,
                     tool_bar,
+                    skins,
                     ..
                 } = self;
-                let frame = Frame::with_host(state, &host_scope);
+                let frame = Frame::with_host(state, &host_scope).with_skins(skins);
                 tool_bar.ui(ui, &frame, &mut out);
                 let mut viewer = host.viewer(&mut out, frame);
                 Docker::new("kairos_editor_docker", dock).show(ui, &mut viewer);
@@ -327,6 +356,7 @@ mod tests {
     use std::sync::Mutex;
 
     use super::*;
+    use kairos_editor_core::StyleValue;
     use kairos_editor_docking::viewer::TabViewer;
 
     /// Puffin's frame collector is process-global even though each app owns its
@@ -357,6 +387,17 @@ mod tests {
         root
     }
 
+    /// Apply one action the way a committed UI pass does, then run the effects
+    /// the way the next frame's `sync` does.
+    fn apply(app: &mut EditorApp, action: Action, ctx: &egui::Context) {
+        app.pump({
+            let mut out = UiOut::new();
+            out.push(action);
+            out
+        });
+        app.sync(ctx);
+    }
+
     fn build() -> EditorApp {
         scratch_style_root();
 
@@ -373,6 +414,7 @@ mod tests {
             host_view: AppHost::new(),
             tool_bar,
             pending_effects: Vec::new(),
+            skins: Vec::new(),
         }
     }
 
@@ -542,6 +584,20 @@ mod tests {
         assert_eq!(
             describe(&Action::App(AppAction::QuitRequested)),
             "quit editor"
+        );
+        assert_eq!(
+            describe(&Action::Style(StyleAction::SetField {
+                panel: panels::CONSOLE,
+                path: "toolbar_height".to_owned(),
+                value: StyleValue::Float(30.0),
+            })),
+            "set console skin: toolbar_height"
+        );
+        assert_eq!(
+            describe(&Action::Style(StyleAction::Commit {
+                panel: panels::CONSOLE
+            })),
+            "save console skin"
         );
     }
 
@@ -765,5 +821,128 @@ mod tests {
             app.host.id_of(panels::CONSOLE),
             "opening via Toggle docks and focuses the panel"
         );
+    }
+
+    /// Preferences is an ordinary panel: the layout reducer opens it and
+    /// ShowPanel floats it, exactly like About.
+    #[test]
+    fn preferences_opens_as_a_floating_window() {
+        let mut app = build();
+        let ctx = egui::Context::default();
+
+        apply(
+            &mut app,
+            Action::Layout(LayoutAction::ShowPanel {
+                panel: panels::PREFERENCES,
+            }),
+            &ctx,
+        );
+
+        let id = app
+            .host
+            .id_of(panels::PREFERENCES)
+            .expect("preferences instance");
+        assert!(app.dock.contains_tab(id));
+        assert_eq!(app.dock.valid_surface_indices().len(), 2);
+        assert_eq!(app.dock.focused_tab(), Some(id));
+    }
+
+    /// Opening Preferences makes the app snapshot the live panels' field tables;
+    /// they are the rows the editor draws.
+    #[test]
+    fn opening_preferences_snapshots_the_live_skins() {
+        let mut app = build();
+        let ctx = egui::Context::default();
+        assert!(app.skins.is_empty(), "nothing to draw while closed");
+
+        apply(
+            &mut app,
+            Action::Layout(LayoutAction::ShowPanel {
+                panel: panels::PREFERENCES,
+            }),
+            &ctx,
+        );
+
+        assert!(
+            app.skins.iter().any(|skin| skin.panel == panels::CONSOLE),
+            "the open console is editable"
+        );
+        assert!(
+            app.skins
+                .iter()
+                .any(|skin| skin.panel == panels::PREFERENCES),
+            "the editor can edit its own skin"
+        );
+        assert!(
+            !app.skins.iter().any(|skin| skin.panel == panels::ABOUT),
+            "About is not open, so it has no live style to edit"
+        );
+    }
+
+    /// A field edit is host work: the executor writes it into the owning
+    /// panel's live style, and the next snapshot shows the new value.
+    #[test]
+    fn a_skin_edit_reaches_the_owning_panel() {
+        let mut app = build();
+        let ctx = egui::Context::default();
+
+        apply(
+            &mut app,
+            Action::Style(StyleAction::SetField {
+                panel: panels::CONSOLE,
+                path: "toolbar_height".to_owned(),
+                value: StyleValue::Float(30.0),
+            }),
+            &ctx,
+        );
+
+        let console = app
+            .host
+            .skins()
+            .into_iter()
+            .find(|skin| skin.panel == panels::CONSOLE)
+            .expect("console skin");
+        let height = console
+            .fields
+            .iter()
+            .find(|field| field.path == "toolbar_height")
+            .expect("toolbar_height");
+        assert_eq!(height.value, StyleValue::Float(30.0));
+    }
+
+    /// The save boundary: an edit alone writes nothing; the commit writes the
+    /// panel's RON file with the new value.
+    #[test]
+    fn a_skin_commit_writes_the_panel_file() {
+        let mut app = build();
+        let dir = scratch_style_root().to_path_buf();
+        let ctx = egui::Context::default();
+        let file = dir.join("ConsoleStyle.ron");
+
+        apply(
+            &mut app,
+            Action::Style(StyleAction::SetField {
+                panel: panels::CONSOLE,
+                path: "toolbar_height".to_owned(),
+                value: StyleValue::Float(30.0),
+            }),
+            &ctx,
+        );
+        let before = std::fs::read_to_string(&file).unwrap_or_default();
+        assert!(
+            !before.contains("toolbar_height: 30.0"),
+            "a field edit must not write the file: {before}"
+        );
+
+        apply(
+            &mut app,
+            Action::Style(StyleAction::Commit {
+                panel: panels::CONSOLE,
+            }),
+            &ctx,
+        );
+
+        let text = std::fs::read_to_string(&file).expect("the commit writes the skin");
+        assert!(text.contains("toolbar_height: 30.0"), "{text}");
     }
 }

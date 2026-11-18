@@ -9,10 +9,13 @@
 //!
 //! Like the prototype, a reducer returns `Vec<Effect>`: host work as data. The
 //! first effects are panel placement/focus (the dock tree lives in the app, not
-//! in core); `PersistLayout` will join them when the layout file format lands.
+//! in core), skin edits (a panel's style lives in the panel, not in the state
+//! tree) and `PersistLayout`, which will join them when the layout file format
+//! lands.
 
 mod app;
 mod layout;
+mod style;
 
 use crate::{Action, EditorState, Effect};
 
@@ -20,5 +23,6 @@ pub fn reduce(state: &mut EditorState, action: Action) -> Vec<Effect> {
     match action {
         Action::Layout(action) => layout::reduce(state, action),
         Action::App(action) => app::reduce(state, action),
+        Action::Style(action) => style::reduce(state, action),
     }
 }

@@ -107,12 +107,27 @@ pub struct Frame<'a> {
     pub state: &'a EditorState,
     /// Host-owned display resources (textures, log lines, ...).
     pub host: &'a dyn HostView,
+    /// Field tables of the live panels' skins, for the Preferences editor.
+    ///
+    /// Empty unless Preferences is open: building them allocates a row per
+    /// token, and no other panel reads them.
+    pub skins: &'a [crate::skin::PanelSkin],
 }
 
 impl<'a> Frame<'a> {
     /// Frame carrying host resources, e.g. `Frame::with_host(&state, &self.host)`.
     pub fn with_host(state: &'a EditorState, host: &'a dyn HostView) -> Self {
-        Self { state, host }
+        Self {
+            state,
+            host,
+            skins: &[],
+        }
+    }
+
+    /// Attach the live panels' skin snapshots (the Preferences editor).
+    pub fn with_skins(mut self, skins: &'a [crate::skin::PanelSkin]) -> Self {
+        self.skins = skins;
+        self
     }
 }
 

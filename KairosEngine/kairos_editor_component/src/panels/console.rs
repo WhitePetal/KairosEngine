@@ -24,18 +24,19 @@ pub mod style;
 use std::collections::HashMap;
 
 use egui::{Align2, CornerRadius, Rect, Sense, Stroke, Ui, WidgetText, WidgetType, pos2, vec2};
-use kairos_editor_core::PanelId;
+use kairos_editor_core::{PanelId, StyleValue};
 use kairos_editor_widgets::button::{Button, ButtonAlign, ButtonStyle};
 use kairos_editor_widgets::color::Color32Ext;
 use kairos_editor_widgets::paint::{labelled_widget_info, magnifier};
 use kairos_editor_widgets::splitter::Splitter;
-use kairos_editor_widgets::style::StyleFile;
+use kairos_editor_widgets::style::{Style, StyleFile};
 use kairos_editor_widgets::text::TextStyle;
 use kairos_editor_widgets::ui_image;
 use kairos_log::Level;
 
 use crate::frame::{ConsoleLine, Frame, UiOut};
 use crate::panel::{Panel, PanelContext, PanelDef};
+use crate::skin::{PanelSkin, StyleFields};
 use crate::panels::console::style::ConsoleStyle;
 
 use super::CONSOLE;
@@ -94,6 +95,24 @@ impl Panel for ConsolePanel {
 
     fn title(&self, _frame: &Frame) -> WidgetText {
         "Console".into()
+    }
+
+    /// The Console skin, editable from Preferences.
+    fn skin(&self) -> Option<PanelSkin> {
+        Some(PanelSkin {
+            panel: CONSOLE,
+            title: "Console",
+            file: ConsoleStyle::FILE,
+            fields: self.style.style_fields(),
+        })
+    }
+
+    fn set_skin_field(&mut self, path: &str, value: &StyleValue) -> bool {
+        self.style.set_style_field(path, value)
+    }
+
+    fn save_skin(&self, ctx: &egui::Context) -> Result<(), String> {
+        crate::skin::save_skin::<ConsoleStyle>(&self.style, ctx.theme())
     }
 
     fn init(&mut self, ctx: &egui::Context) {

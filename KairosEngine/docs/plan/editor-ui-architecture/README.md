@@ -4,7 +4,7 @@
 > **日期**：2026-10-30
 > **触发**：现有 `Messager` 消息回调机制与"每窗口一个 Model+View"的 MVC 结构被认为过时、难扩展；作者明确接受完全重写。
 > **证据**：[editor-ui-messager-mvc-audit.md](../../research/editor-ui-messager-mvc-audit.md) · [rust-ui-architecture-survey.md](../../research/rust-ui-architecture-survey.md) · [editor-ui-architecture-patterns.md](../../research/editor-ui-architecture-patterns.md) · [editor-ui-engine-integration.md](../../research/editor-ui-engine-integration.md)
-> **配套**：[rewrite-plan.md](./rewrite-plan.md) · [about-panel.md](./about-panel.md)（About 窗口迁移评审，2026-11-18） · [ADR 0008](../../adr/0008-editor-ui-architecture.md)
+> **配套**：[rewrite-plan.md](./rewrite-plan.md) · [about-panel.md](./about-panel.md)（About 窗口迁移评审，2026-11-18） · [preferences-panel.md](./preferences-panel.md)（Preferences 窗口迁移评审 + 设置切片，2026-11-19） · [ADR 0008](../../adr/0008-editor-ui-architecture.md)
 
 ---
 

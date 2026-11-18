@@ -34,7 +34,10 @@
 //!
 //! `about` is the first panel ported from the legacy `kairos_editor` whose
 //! body has real content (the others are still demo bodies that establish the
-//! layer). The rest of the real panels are ported one at a time from
+//! layer). `preferences` is the second: it edits `EditorState::settings` and
+//! offers the "Reload" bridge to the per-component skins, replacing the legacy
+//! window's reflection over every drawer's style fields. The rest of the real
+//! panels are ported one at a time from
 //! `prototypes/editor-ui/crates/editor-components` (project first, see
 //! `docs/plan/editor-ui-architecture/panel-viewport-design.md` §6.2 P1).
 
@@ -94,6 +97,8 @@ panel_catalog! {
     /// The editor's identity card. Opened from the "Kairos" menu; floated by
     /// `LayoutAction::ShowPanel` like any panel that has no dock tab yet.
     ABOUT = "about" => about,
+    /// User preferences. Opened from the "Edit" menu; floats like About.
+    PREFERENCES = "preferences" => preferences,
 }
 
 #[cfg(test)]
@@ -130,8 +135,8 @@ mod tests {
     /// the directory in agreement, which the test above accepts. This number is
     /// the deliberate change signal: update it when the set changes on purpose.
     #[test]
-    fn the_table_declares_seven_panels() {
-        assert_eq!(CATALOG.len(), 7);
-        assert_eq!(PANEL_MODULES.len(), 7);
+    fn the_table_declares_eight_panels() {
+        assert_eq!(CATALOG.len(), 8);
+        assert_eq!(PANEL_MODULES.len(), 8);
     }
 }

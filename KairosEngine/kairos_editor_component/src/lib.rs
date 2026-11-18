@@ -77,13 +77,31 @@
 //! version literal compiled into a component is how the legacy window ended up
 //! disagreeing with its own title bar; see
 //! `docs/plan/editor-ui-architecture/about-panel.md`.
+//!
+//! ## Preferences panel and skins
+//!
+//! `panels::preferences` is the 0.2.0 rewrite of the legacy `PreferencesWindow`:
+//! a two-column editor that lists every open panel's `Preferences/Styles/*.ron`
+//! tokens as widgets and writes them back. Each style derives `StyleFields`
+//! ([`skin`], macro crate `macros/`), so the field table comes from the
+//! struct itself: a token and its editor row cannot drift apart, and fields are
+//! addressed by dotted path instead of a `Vec` index. A panel exposes its
+//! table and accepts writes through [`Panel::skin`],
+//! [`Panel::set_skin_field`] and [`Panel::save_skin`]; the app snapshots the
+//! live tables into `Frame::skins` while Preferences is open, applies edits to
+//! the owning panel (live preview) and persists its file when the interaction
+//! ends. See `docs/plan/editor-ui-architecture/preferences-panel.md`.
 
 #![forbid(unsafe_code)]
+
+// Lets the `StyleFields` derive name this crate from inside it.
+extern crate self as kairos_editor_component;
 
 pub mod console;
 pub mod frame;
 pub mod panel;
 pub mod panels;
+pub mod skin;
 pub mod toolbar;
 
 pub use console::ConsoleLog;
@@ -97,3 +115,6 @@ pub use panel::{
     EditorInfo, Panel, PanelCatalog, PanelContext, PanelDef, PanelFactory, PanelHost,
     PanelHostViewer, PanelInstanceId,
 };
+// The Preferences editor consumes these; a panel implementation needs
+// `StyleFields` (derive) and builds a `PanelSkin` in `Panel::skin`.
+pub use skin::{PanelSkin, StyleField, StyleFields as StyleFieldsTrait, StyleKind};

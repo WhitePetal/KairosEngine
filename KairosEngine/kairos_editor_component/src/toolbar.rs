@@ -100,7 +100,12 @@ impl ToolBar {
 
                     menu::menu_button(ui, &menu_style, &button, "Edit", |ui| {
                         if menu::menu_item(ui, "Preferences").clicked() {
-                            todo!("需要实现 UiOut 发送 创建Preferences窗口逻辑")
+                            // A panel toggle like About: the layout reducer opens
+                            // it, and `ShowPanel` floats a panel that has no dock
+                            // tab yet. Preferences is not special-cased.
+                            out.push(Action::Layout(LayoutAction::ShowPanel {
+                                panel: panels::PREFERENCES,
+                            }));
                         }
                     });
 

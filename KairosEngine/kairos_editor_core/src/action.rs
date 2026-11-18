@@ -4,11 +4,12 @@
 //! (`kairos_editor_component::UiOut`), and [`crate::reduce`] is the only thing
 //! that applies them to [`crate::EditorState`]. Panels never mutate state.
 //!
-//! Slices stay separate enums (`LayoutAction`, `AppAction`, later
+//! Slices stay separate enums (`LayoutAction`, `AppAction`, `StyleAction`, later
 //! `DocumentAction`, `SelectionAction`, `ViewportAction`, ...) routed by the
 //! aggregate [`Action`], so no slice becomes a second global message bus.
 
 use crate::panel::PanelId;
+use crate::style::StyleValue;
 
 /// Aggregate UI intent, routed by domain slice.
 #[derive(Clone, Debug, PartialEq)]
@@ -16,6 +17,8 @@ pub enum Action {
     Layout(LayoutAction),
     /// The application as a whole, not one panel or document.
     App(AppAction),
+    /// Panel skins (the Preferences panel's field editor).
+    Style(StyleAction),
 }
 
 /// Intents produced by panel chrome: tab close buttons, toolbar toggles, ...
@@ -46,4 +49,26 @@ pub enum AppAction {
     /// prototype's `QuitRequested` / `QuitConfirmed` pair) and the toolbar's
     /// call site does not change.
     QuitRequested,
+}
+
+/// Intents produced by the Preferences panel's skin editor.
+///
+/// The styles themselves are not `EditorState`: each panel owns its skin and
+/// loads it in `Panel::init`, so these intents describe *host work on a panel
+/// instance*, not a state transition. They still travel as actions so the panel
+/// stays side-effect free and the app has one command path.
+#[derive(Clone, Debug, PartialEq)]
+pub enum StyleAction {
+    /// One field of one panel's skin changed (live preview while dragging).
+    ///
+    /// `path` is the dotted field path the panel reported
+    /// (`"icons.warning"`, `"toolbar_height"`); the panel decides whether
+    /// the path and the value's kind match, and reports `false` if they do not.
+    SetField {
+        panel: PanelId,
+        path: String,
+        value: StyleValue,
+    },
+    /// The interaction that started the edit ended: write the panel's skin file.
+    Commit { panel: PanelId },
 }

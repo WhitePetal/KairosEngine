@@ -42,9 +42,10 @@ pub use host::PanelHost;
 pub use viewer::PanelHostViewer;
 
 use egui::{Context, Ui, WidgetText};
-use kairos_editor_core::PanelId;
+use kairos_editor_core::{PanelId, StyleValue};
 
 use crate::frame::{Frame, UiOut};
+use crate::skin::PanelSkin;
 
 // Instance identity is layout vocabulary: `LayoutState` focuses by instance, so
 // the type lives in core next to `PanelId`. Re-exported here because this file
@@ -94,6 +95,33 @@ pub trait Panel {
     /// Called when the rect available to the panel body changes (dock resize,
     /// tab re-dock, window resize).
     fn on_rect_changed(&mut self) {}
+
+    /// Snapshot of this panel's editable skin, for the Preferences editor.
+    ///
+    /// A panel that keeps its appearance in a `Preferences/Styles/*.ron` file
+    /// returns the tokens of its live style here. Reading it is cheap and
+    /// side-effect free (the app only asks while Preferences is open), so the
+    /// editor always shows the style the panel is actually drawing with.
+    fn skin(&self) -> Option<PanelSkin> {
+        None
+    }
+
+    /// Write one token of this panel's live skin.
+    ///
+    /// The style is view state owned by the panel, so this is how the editor
+    /// changes what the next pass draws. Returns whether the path named a token
+    /// of the matching kind; the default is "this panel has no editable skin".
+    fn set_skin_field(&mut self, _path: &str, _value: &StyleValue) -> bool {
+        false
+    }
+
+    /// Persist this panel's live style to its skin file.
+    ///
+    /// Called when the user finishes an edit (pointer release, page change,
+    /// panel close). The theme picks which half of the file is replaced.
+    fn save_skin(&self, _ctx: &Context) -> Result<(), String> {
+        Err(String::from("this panel has no skin file"))
+    }
 
     /// Whether the dock offers a close entry for this tab.
     fn closeable(&self) -> bool {

@@ -9,11 +9,13 @@ use kairos_editor_widgets::style::Style;
 use kairos_log::Level;
 use serde::{Deserialize, Serialize};
 
+use crate::skin::StyleFields;
+
 /// Appearance tokens for the Console panel: palette, icon file paths and the
 /// measured geometry. Pure data so it can be serialized to RON and later edited
 /// from Preferences; colors are [`kairos_color::Color32`], written as hex strings
 /// (`"#353535"`) by that crate's serde impls.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, StyleFields)]
 pub struct ConsoleStyle {
     // Palette (the dark values are sampled from the reference capture).
     pub toolbar_bg: Color32,
@@ -156,7 +158,7 @@ impl Style for ConsoleStyle {
 
 /// Runtime icon file paths for the Console panel, relative to the editor's
 /// working directory.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, StyleFields)]
 pub struct ConsoleIconPaths {
     pub info: String,
     pub warning: String,

@@ -4,10 +4,12 @@
 //!
 //! This is the production counterpart of the prototype's
 //! `editor-core-prototype` crate (`prototypes/editor-ui/crates/editor-core`).
-//! It currently carries the layout slice (`LayoutState` + `LayoutAction`) and
-//! the app lifecycle slice (quit: `AppAction`/`AppEffect`, no state of its
-//! own); document/selection/viewport slices land here as the editor grows, with
-//! the prototype's `reduce/` split.
+//! It currently carries the layout slice (`LayoutState` + `LayoutAction`), the
+//! app lifecycle slice (quit: `AppAction`/`AppEffect`, no state of its own)
+//! and the style slice (panel skins: `StyleAction`/`StyleEffect`, also no
+//! state — a skin belongs to the panel that draws from it);
+//! document/selection/viewport slices land here as the editor grows, with the
+//! prototype's `reduce/` split.
 //!
 //! Dependency direction (enforced by cargo):
 //!
@@ -30,9 +32,11 @@ pub mod effect;
 pub mod panel;
 pub mod reduce;
 pub mod state;
+pub mod style;
 
-pub use action::{Action, AppAction, LayoutAction};
-pub use effect::{AppEffect, Effect, LayoutEffect};
+pub use action::{Action, AppAction, LayoutAction, StyleAction};
+pub use effect::{AppEffect, Effect, LayoutEffect, StyleEffect};
 pub use panel::{PanelId, PanelInstanceId};
 pub use reduce::reduce;
 pub use state::{EditorState, LayoutState};
+pub use style::StyleValue;

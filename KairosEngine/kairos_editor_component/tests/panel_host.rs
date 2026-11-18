@@ -6,7 +6,7 @@ use kairos_editor_component::{
     ConsoleLine, EditorInfo, Frame, HostView, Panel, PanelCatalog, PanelContext, PanelDef,
     PanelHost, PanelId, PanelInstanceId, UiOut, panels,
 };
-use kairos_editor_core::{EditorState, LayoutState};
+use kairos_editor_core::{EditorState, LayoutState, StyleValue};
 use kairos_editor_docking::viewer::TabViewer;
 use kairos_log::Level;
 use kairos_profile::profiling;
@@ -137,7 +137,7 @@ fn the_catalog_declares_every_builtin_panel_once() {
         assert_eq!(panel.kind(), kind);
     }
 
-    assert_eq!(kinds.len(), 7);
+    assert_eq!(kinds.len(), 8);
     for kind in [
         panels::SCENE,
         panels::INSPECTOR,
@@ -146,6 +146,7 @@ fn the_catalog_declares_every_builtin_panel_once() {
         panels::PROJECT,
         panels::PROFILER,
         panels::ABOUT,
+        panels::PREFERENCES,
     ] {
         assert!(kinds.contains(&kind), "missing {kind}");
     }
@@ -232,7 +233,7 @@ fn default_layout_reconciles_with_the_host() {
     let ids: Vec<PanelInstanceId> = host.ids().collect();
     assert_eq!(ids.len(), 2);
     assert!(ids.iter().all(|id| state.layout.is_open(id.kind)));
-    assert_eq!(host.kinds().count(), 7);
+    assert_eq!(host.kinds().count(), 8);
     assert_eq!(
         host.id_of(panels::SCENE).map(|id| id.kind),
         Some(panels::SCENE)
@@ -331,7 +332,7 @@ fn viewer_bridges_the_panel_icon_path_to_a_file_uri() {
 }
 
 #[test]
-fn every_builtin_panel_returns_an_existing_tab_icon() {
+fn every_builtin_panel_with_a_tab_icon_points_at_an_existing_file() {
     let workspace = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
     let context = PanelContext::new(test_info());
 
@@ -355,4 +356,78 @@ fn every_builtin_panel_returns_an_existing_tab_icon() {
             "missing tab icon {path} for {kind}"
         );
     }
+}
+
+/// A text-only tab is allowed by the trait, but it has to be a decision, not a
+/// forgotten asset: this test names the only panel without artwork.
+#[test]
+fn preferences_is_the_only_text_only_tab() {
+    let context = PanelContext::new(test_info());
+    let text_only: Vec<PanelId> = panels::CATALOG
+        .kinds()
+        .filter(|kind| {
+            panels::CATALOG
+                .create(*kind, &context)
+                .expect("catalog factory")
+                .icon()
+                .is_none()
+        })
+        .collect();
+
+    assert_eq!(text_only, vec![panels::PREFERENCES]);
+}
+
+/// The Preferences editor reads live panels' skins through the host, and a
+/// write lands in the panel that owns the style.
+#[test]
+fn skin_fields_are_listed_and_written_through_the_host() {
+    let mut state = EditorState::new();
+    state.layout.open(panels::CONSOLE);
+    state.layout.open(panels::PROFILER);
+    let mut host = default_host();
+    host.sync(&state.layout, &Context::default());
+
+    let skins = host.skins();
+    let console = skins
+        .iter()
+        .find(|skin| skin.panel == panels::CONSOLE)
+        .expect("console skin");
+    assert_eq!(console.file, "ConsoleStyle.ron");
+    assert!(
+        console
+            .fields
+            .iter()
+            .any(|field| field.path == "toolbar_height"),
+        "the console exposes its tokens"
+    );
+    assert!(
+        console
+            .fields
+            .iter()
+            .any(|field| field.path == "icons.info"),
+        "nested icon paths are editable too"
+    );
+
+    // Unknown paths and wrong kinds are rejected by the panel, not applied.
+    assert!(!host.set_skin_field(panels::CONSOLE, "nope", &StyleValue::Float(1.0)));
+    assert!(!host.set_skin_field(panels::CONSOLE, "toolbar_height", &StyleValue::Toggle(true)));
+
+    assert!(host.set_skin_field(panels::CONSOLE, "toolbar_height", &StyleValue::Float(30.0)));
+    let updated = host.skins();
+    let console = updated
+        .iter()
+        .find(|skin| skin.panel == panels::CONSOLE)
+        .expect("console skin");
+    let height = console
+        .fields
+        .iter()
+        .find(|field| field.path == "toolbar_height")
+        .expect("toolbar_height");
+    assert_eq!(height.value, StyleValue::Float(30.0));
+
+    // A panel that is not open has no instance, so it has no skin to write.
+    assert!(
+        host.set_skin_field(panels::ABOUT, "title_size", &StyleValue::Float(1.0))
+            .eq(&false)
+    );
 }

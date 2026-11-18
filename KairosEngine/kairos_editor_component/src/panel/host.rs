@@ -13,11 +13,12 @@
 
 use std::collections::BTreeMap;
 
-use kairos_editor_core::{LayoutState, PanelId};
+use kairos_editor_core::{LayoutState, PanelId, StyleValue};
 
 use crate::frame::{Frame, UiOut};
 
 use super::{Panel, PanelCatalog, PanelContext, PanelHostViewer, PanelInstanceId};
+use crate::skin::PanelSkin;
 
 /// Owns live panel instances and reconciles them with the open-panel intent.
 pub struct PanelHost {
@@ -94,6 +95,39 @@ impl PanelHost {
     pub fn allowed_in_windows(&self, id: PanelInstanceId) -> bool {
         self.panel(id)
             .is_some_and(|panel| panel.allowed_in_windows())
+    }
+
+    /// Field tables of every live panel that has an editable skin.
+    ///
+    /// The app snapshots these while the Preferences editor is open. A panel
+    /// that is not open has no instance and therefore no editable skin: it owns
+    /// its style, and the style only exists once `Panel::init` loaded it.
+    pub fn skins(&self) -> Vec<PanelSkin> {
+        self.instances
+            .values()
+            .filter_map(|panel| panel.skin())
+            .collect()
+    }
+
+    /// Write one token on a live panel's skin. `false` when the panel is not
+    /// open or the path/kind did not match.
+    pub fn set_skin_field(&mut self, panel: PanelId, path: &str, value: &StyleValue) -> bool {
+        self.instances
+            .values_mut()
+            .find(|instance| instance.kind() == panel)
+            .is_some_and(|instance| instance.set_skin_field(path, value))
+    }
+
+    /// Persist one live panel's skin to its RON file.
+    pub fn save_skin(&self, panel: PanelId, ctx: &egui::Context) -> Result<(), String> {
+        let Some(instance) = self
+            .instances
+            .values()
+            .find(|instance| instance.kind() == panel)
+        else {
+            return Err(format!("{panel} is not open"));
+        };
+        instance.save_skin(ctx)
     }
 
     /// The dock's view of the panels: titles, bodies and close policy.
