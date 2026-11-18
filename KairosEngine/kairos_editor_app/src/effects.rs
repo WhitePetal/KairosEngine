@@ -1,15 +1,16 @@
 //! Executes reducer effects against host resources.
 //!
-//! This module is the only place that turns [`Effect`] data into mutations of
-//! the dock. `Effect` is a closed, domain-partitioned enum: adding an effect
-//! adds a variant and makes the dispatch match fail to compile until the arm is
+//! This module is the only place that turns [`Effect`] data into host work:
+//! mutations of the dock, and the app-level requests only the backend can
+//! fulfil. `Effect` is a closed, domain-partitioned enum: adding an effect adds
+//! a variant and makes the dispatch match fail to compile until the arm is
 //! written. Effect-specific policy belongs in the handler; never add shared
 //! preconditions to `apply` (the old single `focus_tab` preamble made every
 //! future effect depend on tab focus).
 
 use egui::{Context, Rect};
 use kairos_editor_component::{PanelHost, PanelInstanceId};
-use kairos_editor_core::{Effect, LayoutEffect, PanelId};
+use kairos_editor_core::{AppEffect, Effect, LayoutEffect, PanelId};
 use kairos_editor_docking::docker::DockState;
 
 /// Runs effects in order against the live panel host and dock tree.
@@ -28,6 +29,18 @@ impl<'a> EffectExecutor<'a> {
     pub(crate) fn apply(&mut self, effect: Effect, ctx: &Context) {
         match effect {
             Effect::Layout(effect) => self.apply_layout(effect, ctx),
+            Effect::App(effect) => self.apply_app(effect, ctx),
+        }
+    }
+
+    /// App lifecycle: the app does not own the window (the engine's loop does),
+    /// so quitting is expressed as the request the platform layer already
+    /// understands. `EditorLayer::render` reads it back as
+    /// `FrameOutput::close_requested`, and the loop runs `Layer::on_exit` and
+    /// exits — the same teardown a host-initiated exit gets.
+    fn apply_app(&mut self, effect: AppEffect, ctx: &Context) {
+        match effect {
+            AppEffect::Quit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
         }
     }
 

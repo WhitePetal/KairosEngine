@@ -4,7 +4,7 @@ use kairos_editor_component::{
     ConsoleLine, ConsoleLog, EditorInfo, Frame, HostView, PanelContext, PanelHost, PanelInstanceId,
     UiOut, panels, toolbar::ToolBar,
 };
-use kairos_editor_core::{Action, EditorState, Effect, LayoutAction, reduce};
+use kairos_editor_core::{Action, AppAction, EditorState, Effect, LayoutAction, reduce};
 use kairos_editor_docking::{
     docker::{DockState, Docker},
     split::Fraction,
@@ -239,6 +239,9 @@ fn describe(action: &Action) -> String {
             LayoutAction::ShowPanel { panel } => format!("show panel: {panel}"),
             LayoutAction::ClosePanel { panel } => format!("close panel: {panel}"),
             LayoutAction::FocusPanel { panel } => format!("focus panel: {panel}"),
+        },
+        Action::App(action) => match action {
+            AppAction::QuitRequested => "quit editor".to_owned(),
         },
     }
 }
@@ -535,6 +538,43 @@ mod tests {
                 panel: panels::SCENE
             })),
             "close panel: scene"
+        );
+        assert_eq!(
+            describe(&Action::App(AppAction::QuitRequested)),
+            "quit editor"
+        );
+    }
+
+    /// Quit is host work: the toolbar only *requests* it, the reducer answers
+    /// with an app effect, and the effect executor turns that into the close
+    /// command the backend reads as `FrameOutput::close_requested`.
+    #[test]
+    fn quitting_asks_the_window_to_close() {
+        let _guard = UI_LOCK.lock().unwrap_or_else(|error| error.into_inner());
+        let mut app = build();
+        let engine = Engine::headless();
+
+        let mut out = UiOut::new();
+        out.push(Action::App(AppAction::QuitRequested));
+        app.pump(out);
+
+        // Effects run at the start of the next pass, inside it, so the close
+        // request belongs to that pass's viewport output.
+        let ctx = egui::Context::default();
+        let output = ctx.run_ui(raw_input(), |ui| app.ui(&engine, ui));
+
+        let close_requested = output
+            .viewport_output
+            .get(&egui::ViewportId::ROOT)
+            .is_some_and(|viewport| {
+                viewport
+                    .commands
+                    .iter()
+                    .any(|command| matches!(command, egui::ViewportCommand::Close))
+            });
+        assert!(
+            close_requested,
+            "the quit action must reach the backend as a close request"
         );
     }
 

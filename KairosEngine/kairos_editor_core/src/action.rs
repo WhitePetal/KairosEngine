@@ -4,9 +4,9 @@
 //! (`kairos_editor_component::UiOut`), and [`crate::reduce`] is the only thing
 //! that applies them to [`crate::EditorState`]. Panels never mutate state.
 //!
-//! Slices stay separate enums (`LayoutAction`, later `DocumentAction`,
-//! `SelectionAction`, `ViewportAction`, ...) routed by the aggregate [`Action`],
-//! so no slice becomes a second global message bus.
+//! Slices stay separate enums (`LayoutAction`, `AppAction`, later
+//! `DocumentAction`, `SelectionAction`, `ViewportAction`, ...) routed by the
+//! aggregate [`Action`], so no slice becomes a second global message bus.
 
 use crate::panel::PanelId;
 
@@ -14,6 +14,8 @@ use crate::panel::PanelId;
 #[derive(Clone, Debug, PartialEq)]
 pub enum Action {
     Layout(LayoutAction),
+    /// The application as a whole, not one panel or document.
+    App(AppAction),
 }
 
 /// Intents produced by panel chrome: tab close buttons, toolbar toggles, ...
@@ -31,4 +33,17 @@ pub enum LayoutAction {
     /// Bring the panel to the front / focus it. Opens it docked when the dock
     /// has no tab for it.
     FocusPanel { panel: PanelId },
+}
+
+/// Intents that outlive every panel: the editor's own lifecycle.
+#[derive(Clone, Debug, PartialEq)]
+pub enum AppAction {
+    /// The user asked to leave the editor (the toolbar's Quit entry).
+    ///
+    /// A *request*, not a decision: the reducer owns the answer, so the views
+    /// never have to know whether it is safe to quit. Today it always is; when
+    /// documents land, unsaved work turns this into a confirmation here (the
+    /// prototype's `QuitRequested` / `QuitConfirmed` pair) and the toolbar's
+    /// call site does not change.
+    QuitRequested,
 }

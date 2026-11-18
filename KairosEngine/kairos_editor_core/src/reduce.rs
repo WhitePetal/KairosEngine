@@ -11,6 +11,7 @@
 //! first effects are panel placement/focus (the dock tree lives in the app, not
 //! in core); `PersistLayout` will join them when the layout file format lands.
 
+mod app;
 mod layout;
 
 use crate::{Action, EditorState, Effect};
@@ -18,5 +19,6 @@ use crate::{Action, EditorState, Effect};
 pub fn reduce(state: &mut EditorState, action: Action) -> Vec<Effect> {
     match action {
         Action::Layout(action) => layout::reduce(state, action),
+        Action::App(action) => app::reduce(state, action),
     }
 }

@@ -16,6 +16,9 @@ use crate::PanelId;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Effect {
     Layout(LayoutEffect),
+    /// Lifecycle work: the host owns the window and the loop, so only it can
+    /// act on "the user wants to leave".
+    App(AppEffect),
 }
 
 /// Placement/focus work owned by the layout slice.
@@ -31,4 +34,15 @@ pub enum LayoutEffect {
     /// Focus the panel. When the dock has no tab for it, open it docked in the
     /// dock's focused leaf.
     FocusPanel { panel: PanelId },
+}
+
+/// Lifecycle work the app executes against the window backend.
+///
+/// Core decides *that* the editor should go away; how a window closes, and
+/// which cleanup runs on the way out, belongs to `kairos_editor_app` and the
+/// engine's loop (`Layer::on_exit`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AppEffect {
+    /// Close the editor's window so the loop shuts down.
+    Quit,
 }

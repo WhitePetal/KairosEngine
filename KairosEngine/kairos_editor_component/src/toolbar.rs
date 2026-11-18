@@ -13,7 +13,7 @@
 //! file only wires labels, actions and the two style projections.
 
 use egui::{Panel, Ui};
-use kairos_editor_core::{Action, LayoutAction, PanelId};
+use kairos_editor_core::{Action, AppAction, LayoutAction, PanelId};
 use kairos_editor_widgets::color::Color32Ext;
 use kairos_editor_widgets::menu;
 use kairos_editor_widgets::style::{Style, StyleFile};
@@ -88,7 +88,12 @@ impl ToolBar {
                             }
                             menu::menu_separator(ui);
                             if menu::menu_item(ui, "Quit").clicked() {
-                                todo!("需要实现 UiOut 发送 Editor程序退出逻辑")
+                                // Host work, not a panel toggle: the reducer
+                                // answers this request with an app effect and the
+                                // app closes the window at the next frame
+                                // boundary. The toolbar never touches the event
+                                // loop, so the exit protocol has one home.
+                                out.push(Action::App(AppAction::QuitRequested));
                             }
                         },
                     );
@@ -158,10 +163,8 @@ mod tests {
     fn use_scratch_styles() {
         static DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
         let root = DIR.get_or_init(|| {
-            let root = std::env::temp_dir().join(format!(
-                "kairos-component-styles-{}",
-                std::process::id()
-            ));
+            let root = std::env::temp_dir()
+                .join(format!("kairos-component-styles-{}", std::process::id()));
             let _ = std::fs::remove_dir_all(&root);
             let _ = std::fs::create_dir_all(&root);
             root
