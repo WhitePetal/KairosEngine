@@ -39,7 +39,8 @@ use crate::category::{
     Category, SYSTEM_MARKER, classify_marker, classify_system, is_frame_wrapper,
 };
 use crate::model::{
-    FrameSnapshot, ProfileSession, SampleSnapshot, ScopeInfo, ScopeKind, ThreadSnapshot,
+    FrameSnapshot, ProfileSession, RecordingSegment, SampleSnapshot, ScopeInfo, ScopeKind,
+    ThreadSnapshot, WallClock,
 };
 
 /// Default directory a host saves captures into (Unity-style project cache).
@@ -176,10 +177,12 @@ impl Profiler {
 
     /// Request a capture (`true`) or stop the current one (`false`).
     ///
-    /// Starting clears the previous capture and defers enabling the macros to
-    /// the next [`Profiler::begin_frame`] so the first captured frame is whole.
-    /// Stopping takes effect immediately; the frame being drawn when the user
-    /// pressed Stop is dropped, while already stored frames stay visible.
+    /// Starting defers enabling the macros to the next [`Profiler::begin_frame`]
+    /// so the first captured frame is whole; stored frames stay (a second take
+    /// continues the capture, it does not clear it). Stopping takes effect
+    /// immediately and closes the take's [`RecordingSegment`]; the frame being
+    /// drawn when the user pressed Stop is dropped, while already stored frames
+    /// stay visible.
     pub fn set_recording(&self, recording: bool) {
         if recording {
             if self.inner.wants_recording.swap(true, Ordering::Relaxed) {
@@ -187,9 +190,28 @@ impl Profiler {
             }
         } else {
             self.inner.wants_recording.store(false, Ordering::Relaxed);
+            self.close_segment();
         }
         self.inner.recording.store(false, Ordering::Relaxed);
         set_scopes_on(false);
+    }
+
+    /// Close the take that is recording, if any.
+    ///
+    /// The stop is timed here rather than when the next frame is flushed: the
+    /// pause between two takes is the gap the module area's axis compresses and
+    /// labels.
+    fn close_segment(&self) {
+        let mut store = self.lock_store();
+        let Some(origin) = store.origin_ns else {
+            return;
+        };
+        let Some(segment) = store.segments.last_mut() else {
+            return;
+        };
+        if segment.end_ns.is_none() {
+            segment.end_ns = Some((now_ns() - origin).max(0) as u64);
+        }
     }
 
     /// Begin a host frame: flush the previous frame, then honour a start request.
@@ -244,15 +266,24 @@ impl Profiler {
         }
     }
 
-    /// Drop every captured frame while keeping the marker table and thread ids.
+    /// Drop every captured frame and recording segment while keeping the marker
+    /// table and thread ids.
     ///
-    /// If a capture is active its origin is reset, so the next frame starts near
-    /// zero again.
+    /// If a capture is active its origin and wall clock are reset, so the next
+    /// frame starts near zero again and the axis keeps reading as a wall clock.
     pub fn clear(&self) {
         let mut store = self.lock_store();
         store.clear_frames();
         if self.inner.recording.load(Ordering::Relaxed) {
             store.origin_ns = Some(now_ns());
+            store.wall_clock = Some(wall_clock_now());
+            store.segments = vec![RecordingSegment {
+                start_ns: 0,
+                end_ns: None,
+            }];
+        } else {
+            store.wall_clock = None;
+            store.segments.clear();
         }
     }
 
@@ -361,13 +392,34 @@ impl Profiler {
         if let Some(lanes) = lanes {
             store.set_thread_lanes(lanes);
         }
+        let now = now_ns();
         if store.origin_ns.is_none() {
-            store.origin_ns = Some(now_ns());
+            store.origin_ns = Some(now);
+            store.wall_clock = Some(wall_clock_now());
         }
+        let start_ns = (now - store.origin_ns.unwrap_or(now)).max(0) as u64;
+        store.segments.push(RecordingSegment {
+            start_ns,
+            end_ns: None,
+        });
     }
 
     fn lock_store(&self) -> MutexGuard<'_, Store> {
         self.inner.lock_store()
+    }
+}
+
+/// The local wall clock right now, as nanoseconds since midnight.
+///
+/// The capture stores one wall clock at the origin; consumers add the
+/// origin-relative frame time themselves. No time zone is kept: the axis shows
+/// the clock the capture was taken by, even when the editor's zone changes later.
+fn wall_clock_now() -> WallClock {
+    let now = jiff::Zoned::now();
+    let seconds =
+        i64::from(now.hour()) * 3_600 + i64::from(now.minute()) * 60 + i64::from(now.second());
+    WallClock {
+        time_of_day_ns: seconds * 1_000_000_000 + i64::from(now.subsec_nanosecond()),
     }
 }
 
@@ -448,6 +500,10 @@ struct Store {
     thread_ids: HashMap<ThreadInfo, u32>,
     /// Thread lanes registered for the capture, in display order.
     thread_lanes: Vec<String>,
+    /// Local wall clock read at the capture origin.
+    wall_clock: Option<WallClock>,
+    /// Takes recorded so far, oldest first; the last one is open while recording.
+    segments: Vec<RecordingSegment>,
     scopes: ScopeCollection,
     fallback_scopes: BTreeMap<u32, ScopeInfo>,
 }
@@ -463,6 +519,8 @@ impl Store {
             dropped_frames: self.dropped_frames,
             discarded_passes: self.discarded_passes,
             thread_lanes: self.thread_lanes.clone(),
+            wall_clock: self.wall_clock,
+            segments: self.segments.clone(),
         }
     }
 

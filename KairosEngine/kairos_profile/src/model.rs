@@ -154,6 +154,34 @@ impl FrameSnapshot {
     }
 }
 
+/// Local wall clock at the capture origin.
+///
+/// The module area labels its time axis with the real clock time of the capture
+/// rather than elapsed time. Storing the clock reading at the origin (rather
+/// than a full date) keeps this plain data, and the consumer adds the
+/// capture-relative time and wraps at 24 h, so a capture that runs over midnight
+/// still reads like a wall clock.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct WallClock {
+    /// Nanoseconds since local midnight at the capture origin.
+    pub time_of_day_ns: i64,
+}
+
+/// One contiguous recording on the capture timeline.
+///
+/// The capture can be stopped and started again: stored frames stay, and the
+/// next recording continues on the same origin, so its frame timestamps jump by
+/// the length of the pause. These segments are those stop/start boundaries. The
+/// module area compresses each pause into a break band and labels its two sides
+/// with the stop and start wall-clock times.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RecordingSegment {
+    /// Start relative to the capture origin, in nanoseconds.
+    pub start_ns: u64,
+    /// Stop relative to the capture origin; `None` while this take is recording.
+    pub end_ns: Option<u64>,
+}
+
 /// One capture session: the frames kept plus the marker metadata they reference.
 ///
 /// Cloning a session is cheap: frames are `Arc`s. The session is produced by
@@ -185,6 +213,13 @@ pub struct ProfileSession {
     /// discovered from the frames. A pool thread that ran no task therefore
     /// keeps its row in the timeline instead of the tracks shifting.
     pub thread_lanes: Vec<String>,
+    /// Local wall clock read when the capture started, if the capture was
+    /// recorded by a live [`Profiler`](crate::Profiler). A synthetic session
+    /// (`Default`) has none, and its consumer falls back to elapsed labels.
+    pub wall_clock: Option<WallClock>,
+    /// Takes recorded so far, oldest first: the stop/start boundaries of the
+    /// capture. Empty for a synthetic session.
+    pub segments: Vec<RecordingSegment>,
 }
 
 impl ProfileSession {

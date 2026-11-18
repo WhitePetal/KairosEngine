@@ -23,7 +23,7 @@
         ruler_text: "#8A8A8A",
         small_text_size: 10.0,
         warning: "#E0B03A",
-        module_area_height: 190.0,
+        module_area_height: 224.0,
         module_cpu_height: 169.0,
         module_gpu_height: 120.0,
         module_header_height: 20.0,
@@ -33,6 +33,7 @@
         chart_bar: "#797B1D",
         chart_grid: "#888888",
         chart_cursor: "#E6E6E6",
+        break_bg: "#3A3A3A",
         chip_bg: "#2A2A2A",
         chip_text: "#C8C8C8",
         category_palette: [
@@ -98,7 +99,7 @@
         ruler_text: "#4A4A4A",
         small_text_size: 10.0,
         warning: "#B07800",
-        module_area_height: 190.0,
+        module_area_height: 224.0,
         module_cpu_height: 169.0,
         module_gpu_height: 120.0,
         module_header_height: 20.0,
@@ -108,6 +109,7 @@
         chart_bar: "#7E8420",
         chart_grid: "#888888",
         chart_cursor: "#303030",
+        break_bg: "#C0C0C0",
         chip_bg: "#DCDCDC",
         chip_text: "#202020",
         category_palette: [

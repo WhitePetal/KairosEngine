@@ -56,7 +56,7 @@ back into the panel.
 
 | Type | Contents |
 | --- | --- |
-| `ProfileSession` | revision, origin, frames (Arc), marker table, dropped/discarded counts |
+| `ProfileSession` | revision, origin, frames (Arc), marker table, dropped/discarded counts, recording segments, origin wall clock |
 | `FrameSnapshot` | session index, puffin source index, start/end ns, threads |
 | `ThreadSnapshot` | session thread id, name, pre-order samples, optional warning |
 | `SampleSnapshot` | marker id, optional data, frame-relative start ns, duration ns, depth, parent index |
@@ -98,12 +98,16 @@ backwards compatible; a semantic change bumps `schemaVersion`.
 
 ## Phase 2 — drawing
 
-All views consume the existing `ProfileSession` / `HierarchyRow`; no capture
-changes are expected.
+All views consume the existing `ProfileSession` / `HierarchyRow`. The module
+area's time axis needed only additive capture fields (recording segments and the
+origin's wall clock), recorded on start/stop rather than per frame.
 
 1. **Frame chart** (top strip): one CPU bar per kept frame, height ∝
-   `FrameSnapshot::duration_ns`; selected frame highlighted; slowest frames
-   marked. This is the Unity "CPU Usage" module in miniature.
+   `FrameSnapshot::duration_ns`, placed on a real-clock time axis; selected frame
+   highlighted; the tallest visible bar fills 80% of the chart with Unity's
+   four ms/FPS guide tiers. Recording takes are laid end to end with each pause
+   compressed into a labelled break band (done, see the module axis below).
+   This is the Unity "CPU Usage" module plus this editor's capture-gap axis.
 2. **Hierarchy**: the current rows plus a total/self bar per row (stacked or
    overlaid), sort by total/self/calls/name, search, expand/collapse. Bar widths
    are normalized to the selected frame's duration, not to the root row.
@@ -115,10 +119,17 @@ changes are expected.
    scroll; the time axis zooms and pans with Unity's gestures (wheel around the
    pointer, middle/alt drag, `A` to fit). The module pane above the tracks is a
    scrolling list of fixed-height module cards (CPU Usage, plus an empty GPU
-   Usage card): dragging the rule between the two bands reveals the modules
-   below instead of stretching one chart, and a double-click restores the skin's
-   height. Hover details, Unity's click-drag range selection, `F` to frame a
-   block and the ghost frames outside the selected frame are still open.
+   Usage card) with a pinned clock ruler on top and a min-max time bar at the
+   bottom: dragging the rule between the two bands reveals the modules below
+   instead of stretching one chart, and a double-click restores the skin's
+   height. The min-max bar zooms and pans the whole capture (the thumb pans, the
+   ends zoom, the wheel zooms around the pointer), the default window is the
+   most recent 300 frames and Live pins it to the newest frame, clicking a chart
+   column selects the frame recorded then, dragging the chart or ruler scrubs the
+   selection (the cursor line runs from the clock row through the cards, centred
+   on the frame's bar), and frame transport pans the window to the selected
+   frame. Hover details, Unity's click-drag range selection, `F` to
+   frame a block and the ghost frames outside the selected frame are still open.
 4. **Details**: Unity's block popup reports the marker, its time and the frame's
    accumulated time per marker, with `Copy` (done; `Show` is a TODO for the
    Hierarchy / Raw views) — the wider pane (location, calls, total/self/max,

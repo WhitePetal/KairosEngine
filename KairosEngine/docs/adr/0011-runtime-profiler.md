@@ -10,6 +10,11 @@
   a block opens Unity's details box, the timeline zooms and scrolls with Unity's
   gestures, and the module area and timeline split with a draggable rule. See
   the revision notes below.
+- **Revised (2026-11-18)** — the module area gained its own time axis over the
+  whole capture: recording takes are segments, pauses are compressed into break
+  bands labelled with real clock times, a min-max bar zooms and pans the axis,
+  the chart places bars at their capture times and scales the tallest to 80% of
+  the height, and clicking a chart column selects a frame. See revision note 9.
 - **Context**:
   - The 0.2.0 editor (`kairos_editor_app`, eframe/egui) runs a single window: a
     toolbar, the dock, and six registered panels (five open by default). The owner wants a **Profiler Panel**
@@ -186,6 +191,50 @@
      was migrated to it, so the two panels share one drag implementation. The
      height is session state: Unity writes `FixedPaneSize` to `EditorPrefs`,
      while this editor has no per-panel layout settings file yet.
+  9. **The module area has a time axis over the whole capture.** Unity's module
+     chart is a fixed-history bar chart with no time labels, which cannot show a
+     capture that was stopped and restarted: the frames stay, the next take jumps
+     ahead on the same clock, and the chart has no way to say so. The module area
+     therefore draws its own axis:
+     - **Takes are capture data.** `Profiler::set_recording` records a
+       `RecordingSegment` on start (relative to the origin) and closes it on
+       stop; `ProfileSession` carries the segments and a `WallClock` (local time
+       of day at the origin). Per-frame timestamps already existed
+       (`FrameSnapshot::start_ns/end_ns`), so no per-frame work was added: a
+       start or stop costs one segment, and a view caches nothing extra.
+     - **The axis is compressed.** The takes are laid end to end and every pause
+       becomes one fixed-width break band, so a long pause cannot squeeze the
+       recorded data out of the chart (the band is data-independent; with very
+       many takes it shrinks to a budget). The ruler is therefore not continuous:
+       each band prints the stop clock on its left and the restart clock on its
+       right, and the ticks are the real clock readings of the capture
+       (`HH:MM:SS[.mmm]`, wrapped at 24 h), stepped by the same label-spacing
+       rule as the timeline ruler. The pinning is what makes the bars line up
+       with the ticks: the clock row sits at the top of the module pane, spanning
+       the chart columns rather than the legend or the scroll bar.
+     - **The zoom bar is the timeline's min-max scroller.** It runs over the
+       recorded time: the thumb pans, a grip at each end zooms, the wheel over
+       the chart columns zooms around the pointer, middle-drag or alt-drag pans,
+       and a double-click on the ruler restores the default window — the most
+       recent `window_fram_count` frames (300), matching the fixed-history chart
+       it replaces. The header's Live toggle pins the window's right edge to the
+       newest frame, so a recording chart keeps advancing; a frame-transport step
+       pans the window to the selected frame when it is off screen, which is how
+       Previous reaches the first frame of the first take.
+     - **The chart follows the axis.** A bar's left edge is its frame's capture
+       time and its width is the frame's duration, so zooming shows more or fewer
+       frames instead of stretching a fixed column count. The vertical scale is
+       the tallest visible bar divided by 80%, clamped to Unity's module-chart
+       range (0.11–70 ms) and eased towards its target like Unity's
+       `ChartModelBuilder.ComputeChartScaleValue`; the guide lines are Unity's
+       four ms/FPS tiers, with the engine's refresh targets in the two faster
+       bands (60/120/240 FPS and 120/240/960 FPS) instead of Unity's 100/200/250
+       FPS readings. Clicking a chart column selects the frame recorded at that
+       time: the gesture is about the time column, not about hitting a bar, so
+       the GPU chart can reuse it. Dragging on the chart or the ruler scrubs the
+       selection, and the selected-frame cursor is one line from the clock row
+       through the cards, centred on the frame's bar so the bar it addresses is
+       unambiguous.
 - **Decision**:
   1. **New foundation crate `kairos_profile`.** It owns the recorder, the
      plain-data capture model, hierarchy aggregation, and JSON / Chrome-trace
@@ -229,7 +278,11 @@
      to its frame while a frame's start is relative to the capture origin. This
      supports a tree view now and a timeline later without re-parsing puffin's
      byte stream. The ring keeps 300 frames by default and reports evicted
-     (`dropped_frames`) and discarded passes.
+     (`dropped_frames`) and discarded passes. A capture also records its takes
+     (`RecordingSegment`: start and stop relative to the origin) and the local
+     wall clock read at the origin, because stopping keeps the frames and a
+     second take continues the same origin — the module area's time axis needs
+     those boundaries.
   6. **Aggregation lives in the data layer.** `kairos_profile::hierarchy` folds a
      frame (optionally one thread) into Unity's Hierarchy rows: same marker +
      data under the same parent path are merged; total, self, calls and max are

@@ -8,11 +8,13 @@
 //!
 //! * **toolbar** — record toggle, frame transport, `Frame: n / m`, Clear,
 //!   separated into segments by 1 px rules;
-//! * **module area** — Unity's modules pane: fixed-height module cards over a
-//!   vertical scroll bar. CPU Usage has the category legend and a stacked
-//!   frame-history chart (Unity's 30/60 FPS reference lines and a 120 FPS
-//!   baseline); GPU Usage is a fixed-height empty card until the capture
-//!   records GPU timings;
+//! * **module area** — Unity's modules pane with this editor's own time axis: a
+//!   pinned clock ruler on top and a horizontal min-max bar at the bottom around
+//!   the fixed-height module cards. CPU Usage has the category legend and a
+//!   stacked frame chart whose bars sit at their capture times, scaled so the
+//!   tallest bar fills 80% of the chart with Unity's four ms/FPS guide tiers;
+//!   GPU Usage is a fixed-height empty card until the capture records GPU
+//!   timings;
 //! * **splitter** — the draggable rule between the module area and the
 //!   timeline, Unity's split view handle;
 //! * **timeline** — a pinned header (view selector, Live toggle, CPU/GPU
@@ -60,16 +62,46 @@
 //! timeline takes whatever is left, so resizing the panel grows the timeline.
 //!
 //! The module pane is a **window onto a stack of fixed-height module cards**
-//! (CPU Usage, then the empty GPU Usage card), like Unity's modules list. The
-//! cards keep their heights, so dragging the splitter down reveals the modules
-//! below instead of stretching the CPU chart, and the wheel or the pane's scroll
-//! bar moves a stack taller than the pane. The splitter cannot grow the pane past
-//! the whole stack, so there is never dead space under the last card. A
-//! double-click restores the skin's `module_area_height`.
+//! (CPU Usage, then the empty GPU Usage card), like Unity's modules list, plus
+//! two pinned rows of its own: the clock ruler on top and the time zoom bar at
+//! the bottom. The cards keep their heights, so dragging the splitter down
+//! reveals the modules below instead of stretching the CPU chart, and the wheel
+//! over the name column or the pane's scroll bar moves a stack taller than the
+//! pane. The splitter cannot grow the pane past the whole stack plus its pinned
+//! rows, so there is never dead space under the last card. A double-click
+//! restores the skin's `module_area_height`.
 //!
-//! Both panes have a minimum (the module pane keeps its first title row and two
-//! legend rows; the timeline needs its header, ruler, one thread row and the
-//! horizontal bar). When the panel is shorter than both, the module pane keeps
+//! # Module time axis
+//!
+//! A capture can be stopped and started again: the stored frames stay, and the
+//! next take continues on the same clock, so the capture has pauses in it.
+//! [`kairos_profile`] records those takes as `RecordingSegment`s and the local
+//! wall clock at the capture origin, and the module area's axis flattens the
+//! recorded time: the takes end to end, every pause compressed to a fixed-width
+//! break band. A band prints its two sides — the clock time of the stop on the
+//! left and of the restart on the right — and the tick labels are the real clock
+//! readings of the capture, not elapsed time. Per-frame timestamps already
+//! existed (`FrameSnapshot::start_ns/end_ns`), so the axis costs no per-frame
+//! work; only a stop or start adds a segment.
+//!
+//! The axis shows the most recent `window_fram_count` frames by default, and the
+//! header's Live toggle keeps its right edge on the newest frame. The min-max bar
+//! under the cards is the same widget as the timeline's: dragging its thumb pans
+//! the window (and turns Live off), dragging either end zooms it, the wheel over
+//! the chart columns zooms around the pointer, and a double-click on the ruler
+//! restores the default window. Clicking a chart column selects the frame
+//! recorded at that time — the gesture belongs to the time column rather than to
+//! a bar, so a GPU chart gets it for free once it has bars. Dragging on the
+//! chart or on the ruler scrubs the selection, which is also how the
+//! selected-frame cursor is moved: the cursor is one line from the clock row
+//! through the cards, riding the middle of the frame's bar so the bar it selects
+//! is unambiguous. Stepping frames with the toolbar pans the window to the
+//! selected frame when it is off screen, so the transport reaches the first frame
+//! of the first take.
+//!
+//! Both panes have a minimum (the module pane keeps its pinned rows, its first
+//! title row and two legend rows; the timeline needs its header, ruler, one
+//! thread row and the horizontal bar). When the panel is shorter than both, the module pane keeps
 //! its minimum and the timeline gives way first, which is what Unity's
 //! `UpdateLayout` does when the flexed pane no longer fits.
 //!
@@ -162,10 +194,7 @@ use kairos_editor_widgets::splitter::Splitter;
 use kairos_editor_widgets::style::{Style, StyleFile};
 use kairos_editor_widgets::text::TextStyle;
 use kairos_editor_widgets::ui_image;
-use kairos_profile::profiling::puffin::{
-    self, GlobalFrameView, MergeScope, NanoSecond, ScopeCollection, StreamInfo, ThreadInfo,
-    UnpackedFrameData,
-};
+use kairos_profile::profiling::puffin::GlobalFrameView;
 use kairos_profile::{
     CaptureFiles, Category, FrameSnapshot, HierarchyRow, ProfileSession, Profiler, SYSTEM_MARKER,
     SampleSnapshot, ScopeInfo, ThreadSnapshot, classify_system, hierarchy, strip_tag,
@@ -175,8 +204,11 @@ use crate::frame::{Frame, UiOut};
 use crate::panel::Panel;
 use crate::panels::profiler::style::ProfilerStyle;
 
+use self::axis::ModuleAxis;
+
 use super::PROFILER;
 
+mod axis;
 pub mod style;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -353,116 +385,6 @@ impl TimelineLayout {
     }
 }
 
-pub struct Streams {
-    streams: Vec<Arc<StreamInfo>>,
-    merged_scopes: Vec<MergeScope<'static>>,
-    max_depth: usize,
-}
-
-impl Streams {
-    fn new(
-        scope_collection: &ScopeCollection,
-        frames: &[Arc<UnpackedFrameData>],
-        thread_info: &ThreadInfo,
-    ) -> Self {
-        let mut streams = vec![];
-        for frame in frames {
-            if let Some(stream_info) = frame.thread_streams.get(thread_info) {
-                streams.push(stream_info.clone());
-            }
-        }
-        let merges =
-            puffin::merge_scopes_for_thread(scope_collection, frames, thread_info).unwrap();
-        let merges = merges.into_iter().map(|ms| ms.into_owned()).collect();
-
-        let mut max_depth = 0;
-        for stream_info in &streams {
-            max_depth = stream_info.depth.max(max_depth);
-        }
-
-        Self {
-            streams,
-            merged_scopes: merges,
-            max_depth,
-        }
-    }
-}
-
-pub struct SelectedFrames {
-    pub frames: vec1::Vec1<Arc<UnpackedFrameData>>,
-    pub raw_range_ns: (NanoSecond, NanoSecond),
-    pub merged_range_ns: (NanoSecond, NanoSecond),
-    pub threads: BTreeMap<ThreadInfo, Streams>,
-}
-
-impl SelectedFrames {
-    fn try_from_iter(
-        scope_collection: &ScopeCollection,
-        frames: impl Iterator<Item = Arc<UnpackedFrameData>>,
-    ) -> Option<Self> {
-        let mut it = frames;
-        let first = it.next()?;
-        let mut frames = vec1::Vec1::new(first);
-        frames.extend(it);
-
-        Some(Self::from_vec1(scope_collection, frames))
-    }
-
-    fn from_vec1(
-        scope_collection: &ScopeCollection,
-        mut frames: vec1::Vec1<Arc<UnpackedFrameData>>,
-    ) -> Self {
-        frames.sort_by_key(|f| f.frame_index());
-        frames.dedup_by_key(|f| f.frame_index());
-
-        let mut threads = BTreeSet::new();
-        for frame in &frames {
-            for ti in frame.thread_streams.keys() {
-                threads.insert(ti.clone());
-            }
-        }
-
-        let threads = threads
-            .iter()
-            .map(|ti| (ti.clone(), Streams::new(scope_collection, &frames, ti)))
-            .collect::<BTreeMap<ThreadInfo, Streams>>();
-
-        let mut merged_min_ns = NanoSecond::MAX;
-        let mut merged_max_ns = NanoSecond::MIN;
-        for stream in threads.values() {
-            for scope in &stream.merged_scopes {
-                let scope_start = scope.relative_start_ns;
-                let scope_end = scope_start + scope.duration_per_frame_ns;
-                merged_min_ns = merged_min_ns.min(scope_start);
-                merged_max_ns = merged_max_ns.max(scope_end);
-            }
-        }
-
-        let raw_range_ns = (frames.first().range_ns().0, frames.last().range_ns().1);
-
-        Self {
-            frames,
-            raw_range_ns,
-            merged_range_ns: (merged_min_ns, merged_max_ns),
-            threads,
-        }
-    }
-}
-
-struct FlameGraphInfo<'a> {
-    ctx: egui::Context,
-    canvas: Rect,
-    response: Response,
-    painter: egui::Painter,
-    text_height: f32,
-    start_ns: NanoSecond,
-    stop_ns: NanoSecond,
-    num_frames: usize,
-    layer_id: egui::LayerId,
-    font_id: FontId,
-    scope_collection: &'a ScopeCollection,
-}
-
 pub(crate) struct ProfilerPanel {
     style: ProfilerStyle,
     global_frame_view: GlobalFrameView,
@@ -494,6 +416,20 @@ pub(crate) struct ProfilerPanel {
     module_height: f32,
     /// Vertical offset of the module pane's card stack, in points.
     module_scroll: f32,
+    /// The module area's compressed time axis: the capture's takes and the
+    /// window over them that the zoom bar pans and resizes.
+    module_axis: ModuleAxis,
+    /// Whether the axis has been given its first window (the last frames).
+    module_view_started: bool,
+    /// Whether the axis still shows the default last-N-frames window and tracks
+    /// it while Live is on. The wheel and the zoom bar leave this mode; a
+    /// double-click on the ruler restores it.
+    module_default_window: bool,
+    /// The usage chart's vertical scale in ms: the tallest visible bar fills
+    /// 80% of the chart. Eased towards its target instead of snapping.
+    module_scale_ms: f32,
+    /// Whether the next pass pans the axis window to the selected frame.
+    reveal_frame: bool,
     /// The slice of the selected frame the tracks show.
     view: TimelineView,
     /// Vertical offset of the timeline's rows, in points.
@@ -506,6 +442,11 @@ impl Default for ProfilerPanel {
         Self {
             module_height: style.module_area_height,
             module_scroll: 0.0,
+            module_axis: ModuleAxis::default(),
+            module_view_started: false,
+            module_default_window: true,
+            module_scale_ms: 0.0,
+            reveal_frame: false,
             style,
             global_frame_view: GlobalFrameView::default(),
             recording: false,
@@ -576,6 +517,11 @@ impl Panel for ProfilerPanel {
         self.follow_displayed_frame(&session);
         if session.frames.is_empty() {
             self.cached = None;
+            // A cleared capture restarts the module area from its defaults: the
+            // last-frames window and an unpinned vertical scale.
+            self.module_view_started = false;
+            self.module_default_window = true;
+            self.module_scale_ms = 0.0;
         } else {
             self.ensure_cache(&session);
         }
@@ -730,6 +676,7 @@ impl ProfilerPanel {
                 if previous.clicked() {
                     self.selected_frame = self.selected_frame.saturating_sub(1);
                     self.follow_latest = false;
+                    self.reveal_frame = true;
                 }
                 self.toolbar_rule(ui, rule, row_height);
 
@@ -746,6 +693,7 @@ impl ProfilerPanel {
                 if next.clicked() {
                     self.selected_frame = (self.selected_frame + 1).min(last);
                     self.follow_latest = self.selected_frame >= last;
+                    self.reveal_frame = true;
                 }
                 self.toolbar_rule(ui, rule, row_height);
 
@@ -906,16 +854,40 @@ impl ProfilerPanel {
             )
     }
 
-    /// Smallest module pane: its first card's title row and two legend rows.
+    /// Smallest module pane: its first card's title row, two legend rows, and
+    /// the pinned time axis and zoom bar around them.
     fn min_module_height(&self) -> f32 {
-        self.style.module_header_height + 2.0 * self.style.legend_row_height
+        self.module_chrome_height()
+            + self.style.module_header_height
+            + 2.0 * self.style.legend_row_height
     }
 
-    /// The module card stack's height: the two fixed-height cards and the rule
-    /// between them. The pane is a window onto this, and the splitter stops
-    /// here so there is no dead space under the last card.
-    fn module_content_height(&self) -> f32 {
+    /// Height of the pinned time axis row at the top of the module pane.
+    fn module_axis_height(&self) -> f32 {
+        self.style.ruler_height
+    }
+
+    /// Height of the pinned zoom bar at the bottom of the module pane.
+    fn module_bar_height(&self) -> f32 {
+        self.style.scrollbar_width
+    }
+
+    /// The module pane's fixed chrome: the time axis row, the rule under it, and
+    /// the horizontal zoom bar.
+    fn module_chrome_height(&self) -> f32 {
+        self.module_axis_height() + self.style.separator_width + self.module_bar_height()
+    }
+
+    /// The module card stack: the two fixed-height cards and the rule between.
+    fn module_cards_height(&self) -> f32 {
         self.style.module_cpu_height + self.style.separator_width + self.style.module_gpu_height
+    }
+
+    /// Everything the module pane can show: the card stack plus its pinned
+    /// chrome. The splitter stops here so there is no dead space under the last
+    /// card.
+    fn module_content_height(&self) -> f32 {
+        self.module_cards_height() + self.module_chrome_height()
     }
 
     /// Smallest timeline: header, ruler, one thread row, the horizontal bar and
@@ -929,84 +901,374 @@ impl ProfilerPanel {
             + 2.0 * self.style.separator_width
     }
 
-    /// The module pane: a window onto the fixed-height module cards, with the
-    /// pane's scroll bar on the right edge.
+    /// The module pane: a pinned time axis on top, a pinned zoom bar at the
+    /// bottom, and between them a window onto the fixed-height module cards.
     ///
-    /// Unity's modules pane scrolls rather than stretching one chart, so dragging
-    /// the splitter down reveals the card below (GPU Usage) and the pane stops at
-    /// the whole stack ([`module_content_height`](Self::module_content_height)).
-    /// The cards keep painting at their fixed heights and are clipped to the
-    /// pane; the wheel over the pane and the pane's bar move the stack.
+    /// The axis labels the capture's real clock times and compresses the pause
+    /// between two takes into a break band (see the axis module). The bar under
+    /// the cards is a min-max scroller over the whole capture: its thumb pans the
+    /// axis and its ends zoom it. The cards keep painting at their fixed heights
+    /// and are clipped to the pane; the wheel over the name column and the pane's
+    /// vertical bar move the stack.
     fn module_area(&mut self, ui: &mut Ui, area: Rect, session: &ProfileSession) {
         if area.width() <= 0.0 || area.height() <= 0.0 {
             return;
         }
-        let bar_width = self.style.scrollbar_width.min(area.width());
-        let viewport = Rect::from_min_max(
-            area.min,
-            egui::pos2(area.right() - bar_width, area.bottom()),
+        let width = area.width();
+        let bar_width = self.style.scrollbar_width.min(width);
+        let name_width = self.style.module_name_width.min(width);
+        let chart_left = (area.left() + name_width)
+            .min(area.right() - bar_width)
+            .max(area.left());
+        let chart_right = (area.right() - bar_width).max(chart_left);
+        let chart_width = (chart_right - chart_left).max(0.0);
+
+        let axis_height = self.module_axis_height().min(area.height());
+        let axis_row =
+            Rect::from_min_max(area.min, egui::pos2(area.right(), area.top() + axis_height));
+        let bar_height = self
+            .module_bar_height()
+            .min((area.bottom() - axis_row.bottom()).max(0.0));
+        let bar_row = Rect::from_min_max(
+            egui::pos2(area.left(), area.bottom() - bar_height),
+            area.max,
         );
-        let bar = Rect::from_min_max(egui::pos2(viewport.right(), area.top()), area.max);
+        let cards = Rect::from_min_max(
+            egui::pos2(area.left(), axis_row.bottom() + self.style.separator_width),
+            egui::pos2(chart_right, bar_row.top()),
+        );
+        let vertical_bar = Rect::from_min_max(
+            egui::pos2(chart_right, cards.top()),
+            egui::pos2(area.right(), cards.bottom()),
+        );
+        let cards_height = cards.height();
+        let max_scroll = (self.module_cards_height() - cards_height).max(0.0);
 
+        // The axis reads the takes, then places its window: the default
+        // last-frames view, or the Live follow once that window is left.
+        self.module_axis.sync(session);
+        self.module_axis.layout(chart_width);
+        if !session.frames.is_empty() && !self.module_view_started {
+            self.module_axis
+                .show_last_frames(&session.frames, self.style.window_fram_count.max(1));
+            self.module_view_started = true;
+        } else if self.follow_latest && self.module_default_window {
+            self.module_axis
+                .show_last_frames(&session.frames, self.style.window_fram_count.max(1));
+        } else if self.follow_latest {
+            self.module_axis.follow_end();
+        }
+        if self.reveal_frame {
+            self.reveal_frame = false;
+            if let Some(frame) = session.frames.get(self.selected_frame) {
+                if let Some((_, recorded)) =
+                    self.module_axis.recorded_of_capture(frame.start_ns as f64)
+                {
+                    self.module_axis.reveal(recorded);
+                }
+            }
+        }
+
+        // Chrome fills: everything here is panel chrome except the chart columns
+        // of the axis row, which carry the clock.
+        let chrome = self.style.timeline_name_bg.to_egui();
+        let rule = self.style.separator.to_egui();
         let rule_width = self.style.separator_width;
-        let cpu_height = self.style.module_cpu_height.max(0.0);
-        let gpu_height = self.style.module_gpu_height.max(0.0);
-        let content_height = self.module_content_height();
-        let max_scroll = (content_height - viewport.height()).max(0.0);
-        self.module_scroll = self.module_scroll.clamp(0.0, max_scroll);
+        ui.painter()
+            .rect_filled(axis_row, CornerRadius::ZERO, chrome);
+        ui.painter()
+            .rect_filled(bar_row, CornerRadius::ZERO, chrome);
+        if axis_height > 0.0 {
+            self.paint_module_axis(ui, axis_row, chart_left, chart_right, session);
+            Divider::horizontal()
+                .thickness(rule_width)
+                .color(rule)
+                .paint_in(
+                    ui,
+                    Rect::from_min_size(
+                        egui::pos2(area.left(), axis_row.bottom()),
+                        egui::vec2(width, rule_width),
+                    ),
+                );
+        }
 
-        // Unity's modules pane scrolls as a list; consume the wheel so nothing
-        // behind the pane scrolls as well.
-        if ui.rect_contains_pointer(area) {
-            let wheel = ui.input(|input| input.smooth_scroll_delta.y);
-            if wheel != 0.0 {
-                self.module_scroll = (self.module_scroll - wheel).clamp(0.0, max_scroll);
-                ui.input_mut(|input| input.smooth_scroll_delta.y = 0.0);
+        // The zoom bar: a min-max scroller over the recorded time. Dragging its
+        // thumb pans the window (and stops following the newest frame); dragging
+        // either end zooms it.
+        if bar_height > 0.0 && chart_width > 0.0 && !session.frames.is_empty() {
+            let bar = Rect::from_min_max(
+                egui::pos2(chart_left, bar_row.top()),
+                egui::pos2(chart_right, bar_row.bottom()),
+            );
+            let was_left = self.module_axis.left();
+            let mut window = self.module_axis.window();
+            let changed = MinMaxScroll::horizontal(&self.scroll_style())
+                .resizable(true)
+                .show(
+                    ui,
+                    ui.id().with("profiler.modules.hscroll"),
+                    bar,
+                    &mut window,
+                )
+                .changed();
+            if changed {
+                self.module_axis.apply_window(window.value, window.span);
+                self.module_default_window = false;
+                if (self.module_axis.left() - was_left).abs() > 1.0 {
+                    self.follow_latest = false;
+                }
                 ui.ctx().request_repaint();
             }
         }
 
-        // The bar moves the stack on this pass, so the cards below it already
-        // paint at the new offset (the timeline paints its rows after its bars
-        // for the same reason).
-        self.paint_module_scroll_bar(ui, bar, viewport.height(), content_height);
+        // The cards: the pane is the clip, and the pane's vertical bar moves the
+        // stack.
+        if cards_height > 0.0 && cards.width() > 0.0 {
+            let content_height = self.module_cards_height();
+            self.module_scroll = self.module_scroll.clamp(0.0, max_scroll);
+            self.paint_module_scroll_bar(ui, vertical_bar, cards_height, content_height);
 
-        let content = Rect::from_min_size(
-            egui::pos2(viewport.left(), viewport.top() - self.module_scroll),
-            egui::vec2(viewport.width(), content_height),
-        );
-        // The pane is the clip: a card scrolled out of it is neither drawn nor
-        // clickable. `scope_builder` moves the parent cursor to the child's used
-        // rect, and the cards are painted at explicit rects rather than laid
-        // out, so reserve the pane in the child first. A child UI inherits its
-        // parent's painter clip, so shrink it to the pane explicitly — otherwise
-        // a card taller than the pane paints over the splitter and the timeline
-        // header below it.
-        let _ = ui.scope_builder(egui::UiBuilder::new().max_rect(viewport), |ui| {
-            ui.advance_cursor_after_rect(viewport);
-            ui.shrink_clip_rect(viewport);
-            let cpu = Rect::from_min_size(content.min, egui::vec2(content.width(), cpu_height));
-            self.paint_cpu_module(ui, cpu, session);
-            Divider::horizontal()
-                .thickness(rule_width)
-                .color(self.style.separator.to_egui())
-                .paint_in(
-                    ui,
-                    Rect::from_min_size(
-                        egui::pos2(content.left(), cpu.bottom()),
-                        egui::vec2(content.width(), rule_width),
-                    ),
-                );
-            let gpu = Rect::from_min_size(
-                egui::pos2(content.left(), cpu.bottom() + rule_width),
-                egui::vec2(content.width(), gpu_height),
+            let content = Rect::from_min_size(
+                egui::pos2(cards.left(), cards.top() - self.module_scroll),
+                egui::vec2(cards.width(), content_height),
             );
-            self.paint_gpu_module(ui, gpu);
-        });
+            let cpu_height = self.style.module_cpu_height.max(0.0);
+            let gpu_height = self.style.module_gpu_height.max(0.0);
+            // A child UI inherits its parent's painter clip; shrink it to the
+            // pane so a card taller than the pane cannot paint over the ruler or
+            // the zoom bar. Reserve the whole pane, not just the card viewport,
+            // in the child: the parent cursor must still end where the module
+            // band ends, or the splitter below would sit at the card viewport's
+            // bottom instead.
+            let _ = ui.scope_builder(egui::UiBuilder::new().max_rect(area), |ui| {
+                ui.advance_cursor_after_rect(area);
+                ui.shrink_clip_rect(cards);
+                let cpu = Rect::from_min_size(content.min, egui::vec2(content.width(), cpu_height));
+                self.paint_cpu_module(ui, cpu, session);
+                Divider::horizontal()
+                    .thickness(rule_width)
+                    .color(rule)
+                    .paint_in(
+                        ui,
+                        Rect::from_min_size(
+                            egui::pos2(content.left(), cpu.bottom()),
+                            egui::vec2(content.width(), rule_width),
+                        ),
+                    );
+                let gpu = Rect::from_min_size(
+                    egui::pos2(content.left(), cpu.bottom() + rule_width),
+                    egui::vec2(content.width(), gpu_height),
+                );
+                self.paint_gpu_module(ui, gpu);
+            });
+        }
+
+        // The selected-frame cursor: one line from the clock row down through
+        // the cards, riding the middle of the frame's bar. It is drawn after the
+        // cards so it stays visible over the bars and the break bands, and it is
+        // what the drag on the chart grabs.
+        if let Some(column) = self.module_cursor_column(session) {
+            let x = chart_left + column;
+            if x >= chart_left && x <= chart_right {
+                let bottom = if cards_height > 0.0 {
+                    cards.bottom()
+                } else {
+                    axis_row.bottom()
+                };
+                let clip = Rect::from_min_max(
+                    egui::pos2(chart_left, axis_row.top()),
+                    egui::pos2(chart_right, bottom),
+                );
+                ui.painter().with_clip_rect(clip).rect_filled(
+                    Rect::from_min_size(
+                        egui::pos2(x - 1.0, axis_row.top()),
+                        egui::vec2(2.0, bottom - axis_row.top()),
+                    ),
+                    CornerRadius::ZERO,
+                    self.style.chart_cursor.to_egui(),
+                );
+            }
+        }
+
+        // Wheel: over the chart columns it zooms the time axis around the
+        // pointer (its horizontal part pans); over the name column or the
+        // vertical bar it scrolls the cards; over the zoom bar it pans.
+        let pointer = ui.input(|input| input.pointer.hover_pos());
+        let wheel = ui.input(|input| input.smooth_scroll_delta);
+        if wheel != egui::Vec2::ZERO {
+            if let Some(pos) = pointer {
+                let over_chart = pos.x >= chart_left && pos.x < chart_right;
+                let over_time = over_chart && (axis_row.contains(pos) || cards.contains(pos));
+                let used = if over_time {
+                    if wheel.y != 0.0 {
+                        let factor = ZOOM_PER_NOTCH.powf(f64::from(wheel.y) / WHEEL_NOTCH_POINTS);
+                        self.module_axis.zoom_around(pos.x - chart_left, factor);
+                    }
+                    if wheel.x != 0.0 {
+                        self.module_axis.pan_screen(wheel.x);
+                        self.follow_latest = false;
+                    }
+                    self.module_default_window = false;
+                    true
+                } else if over_chart && bar_row.contains(pos) {
+                    let step = wheel.y / WHEEL_NOTCH_POINTS as f32 * chart_width * 0.1;
+                    self.module_axis.pan_screen(step);
+                    self.module_default_window = false;
+                    self.follow_latest = false;
+                    true
+                } else if cards.contains(pos)
+                    || vertical_bar.contains(pos)
+                    || axis_row.contains(pos)
+                {
+                    self.module_scroll = (self.module_scroll - wheel.y).clamp(0.0, max_scroll);
+                    true
+                } else {
+                    false
+                };
+                if used {
+                    ui.input_mut(|input| input.smooth_scroll_delta = egui::Vec2::ZERO);
+                    ui.ctx().request_repaint();
+                }
+            }
+        }
+
+        // Middle-drag (or alt-drag) pans the time columns, like the timeline.
+        let alt = ui.input(|input| input.modifiers.alt);
+        let panning =
+            ui.input(|input| input.pointer.middle_down() || (alt && input.pointer.primary_down()));
+        if panning {
+            if let Some(pos) = pointer {
+                let time_area = Rect::from_min_max(
+                    egui::pos2(chart_left, axis_row.top()),
+                    egui::pos2(chart_right, cards.bottom()),
+                );
+                if time_area.contains(pos) {
+                    let delta = ui.input(|input| input.pointer.delta().x);
+                    if delta != 0.0 {
+                        self.module_axis.pan_screen(delta);
+                        self.module_default_window = false;
+                        self.follow_latest = false;
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+                        ui.ctx().request_repaint();
+                    }
+                }
+            }
+        }
+
+        // A click or drag on the clock ruler selects the frame recorded at that
+        // time; a double-click restores the default last-frames window.
+        if chart_width > 0.0 && axis_height > 0.0 && !session.frames.is_empty() {
+            let ruler_track = Rect::from_min_max(
+                egui::pos2(chart_left, axis_row.top()),
+                egui::pos2(chart_right, axis_row.bottom()),
+            );
+            let response = ui.interact(
+                ruler_track,
+                ui.id().with("profiler.modules.ruler"),
+                Sense::click_and_drag(),
+            );
+            if response.double_clicked() {
+                self.module_default_window = true;
+                self.module_view_started = true;
+                self.module_axis
+                    .show_last_frames(&session.frames, self.style.window_fram_count.max(1));
+                ui.ctx().request_repaint();
+            } else if response.clicked() || response.dragged() {
+                if let Some(pos) = response.interact_pointer_pos() {
+                    let x = (pos.x - chart_left).clamp(0.0, chart_width);
+                    self.select_module_frame_at(x, session);
+                }
+            }
+            if response.dragged() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+            }
+        }
+    }
+
+    /// The module area's pinned time axis: real clock ticks over the chart
+    /// columns, with a break band for every pause between two takes.
+    fn paint_module_axis(
+        &self,
+        ui: &Ui,
+        row: Rect,
+        chart_left: f32,
+        chart_right: f32,
+        session: &ProfileSession,
+    ) {
+        let painter = ui.painter();
+        let track = Rect::from_min_max(
+            egui::pos2(chart_left, row.top()),
+            egui::pos2(chart_right.max(chart_left), row.bottom()),
+        );
+        painter.rect_filled(track, CornerRadius::ZERO, self.style.ruler_bg.to_egui());
+        if track.width() <= 0.0 || session.frames.is_empty() || self.module_axis.is_empty() {
+            return;
+        }
+        let labels = painter.with_clip_rect(track);
+        let text = self.style.ruler_text.to_egui();
+
+        // Break bands print the pause's stop time on their left and its restart
+        // time on their right; clock labels that would collide step aside.
+        let mut reserved: Vec<(f32, f32)> = Vec::new();
+        for band in self.module_axis.breaks() {
+            let x = track.left() + band.x;
+            let band_rect = Rect::from_min_size(
+                egui::pos2(x, row.top()),
+                egui::vec2(band.width, row.height()),
+            );
+            painter.rect_filled(band_rect, CornerRadius::ZERO, self.style.break_bg.to_egui());
+            let stop = labels.layout_no_wrap(band.stop.clone(), self.small_font(), text);
+            let stop_x = x - 3.0 - stop.size().x;
+            labels.galley(egui::pos2(stop_x, row.top() + 3.0), stop, text);
+            reserved.push((stop_x - 1.0, x - 1.0));
+            let start = labels.layout_no_wrap(band.start.clone(), self.small_font(), text);
+            let start_x = x + band.width + 3.0;
+            reserved.push((start_x, start_x + start.size().x + 1.0));
+            labels.galley(egui::pos2(start_x, row.top() + 3.0), start, text);
+        }
+
+        for tick in self.module_axis.ticks() {
+            let x = track.left() + tick.x;
+            if x < track.left() - 0.5 || x > track.right() + 0.5 {
+                continue;
+            }
+            let height = if tick.label.is_some() {
+                self.style.ruler_height * 0.4
+            } else {
+                self.style.ruler_height * 0.25
+            };
+            painter.rect_filled(
+                Rect::from_min_size(
+                    egui::pos2(x, row.bottom() - height),
+                    egui::vec2(1.0, height),
+                ),
+                CornerRadius::ZERO,
+                text,
+            );
+            if let Some(label) = tick.label {
+                let galley = labels.layout_no_wrap(label, self.small_font(), text);
+                let left = x + 3.0;
+                let right = left + galley.size().x;
+                if reserved.iter().any(|(a, b)| left < *b && right > *a) {
+                    continue;
+                }
+                labels.galley(egui::pos2(left, row.top() + 3.0), galley, text);
+                reserved.push((left - 1.0, right + 1.0));
+            }
+        }
+
+        // Rule between the name column and the clock columns, like the ruler
+        // over the timeline's tracks.
+        self.paint_vertical_rule(
+            ui,
+            egui::pos2(track.left() - self.style.separator_width, row.top()),
+            row.height(),
+            self.style.separator.to_egui(),
+        );
     }
 
     /// The module pane's vertical scroll bar: the shared non-resizable
-    /// [`MinMaxScroll`], so it looks and behaves like the timeline's bars.
+    /// MinMaxScroll, so it looks and behaves like the timeline's bars.
     fn paint_module_scroll_bar(
         &mut self,
         ui: &mut Ui,
@@ -1030,6 +1292,21 @@ impl ProfilerPanel {
             &mut window,
         );
         self.module_scroll = window.value as f32;
+    }
+
+    /// Select the frame under a chart column: clicking a usage chart at a time
+    /// selects the frame recorded then. The gesture belongs to the chart
+    /// columns, not to a particular bar, so a GPU chart gets it for free once it
+    /// has bars.
+    fn select_module_frame_at(&mut self, x: f32, session: &ProfileSession) {
+        let Some((take, capture)) = self.module_axis.capture_at_screen(x) else {
+            return;
+        };
+        let Some(index) = frame_at_capture(&self.module_axis, session, take, capture) else {
+            return;
+        };
+        self.selected_frame = index;
+        self.follow_latest = false;
     }
 
     fn paint_cpu_module(&mut self, ui: &mut Ui, row: Rect, session: &ProfileSession) {
@@ -1192,6 +1469,31 @@ impl ProfilerPanel {
             }
         }
 
+        // Clicking or dragging the chart selects the frame recorded at that
+        // time: the gesture is about the time column, not about hitting a bar,
+        // so a GPU chart gets it for free once it has bars. Dragging scrubs the
+        // selection, which is also how the selected-frame cursor moves.
+        let response = ui.interact(
+            chart,
+            ui.id().with("profiler.module.cpu"),
+            Sense::click_and_drag(),
+        );
+        if response.clicked() || response.dragged() {
+            if let Some(pos) = response.interact_pointer_pos() {
+                let x = (pos.x - chart.left()).clamp(0.0, chart.width());
+                self.select_module_frame_at(x, session);
+            }
+        }
+        if response.dragged() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+        } else if response.hovered() {
+            let pointer = ui.input(|input| input.pointer.hover_pos());
+            if let (Some(pointer), Some(cursor)) = (pointer, self.module_cursor_column(session)) {
+                if (pointer.x - chart.left() - cursor).abs() <= 3.0 {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+                }
+            }
+        }
         self.paint_chart(ui, chart, session);
     }
 
@@ -1313,37 +1615,112 @@ impl ProfilerPanel {
         rect
     }
 
-    /// The frame-history chart: durations of the last `chart_capacity` frames,
-    /// right-aligned (newest at the right edge), with Unity's 30/60 FPS
-    /// reference lines, the 120 FPS baseline and a cursor at the selected frame.
-    fn paint_chart(&self, ui: &Ui, plot: Rect, session: &ProfileSession) {
+    /// The usage chart: one stacked bar per frame, positioned on the module
+    /// area's time axis so the bars line up with the clock ruler above them,
+    /// with Unity's ms/FPS guide lines and the selected-frame cursor.
+    ///
+    /// The vertical scale is the tallest visible bar divided by the 80% fill
+    /// target (clamped to Unity's module-chart range), so the graph uses the
+    /// chart's height whatever the frame rate is.
+    fn paint_chart(&mut self, ui: &Ui, plot: Rect, session: &ProfileSession) {
+        if plot.width() <= 0.0 || plot.height() <= 0.0 {
+            return;
+        }
         let painter = ui.painter().with_clip_rect(plot);
-        let shown = session.frames.len();
-
-        if shown == 0 {
+        let text = self.style.ruler_text.to_egui();
+        if session.frames.is_empty() || self.module_axis.is_empty() {
             painter.text(
                 plot.center(),
                 Align2::CENTER_CENTER,
                 "Waiting for the first captured frame…",
                 self.small_font(),
-                self.style.ruler_text.to_egui(),
+                text,
             );
             return;
         }
 
-        let max_ms = session
-            .frames
-            .iter()
-            .map(|frame| self.bar_ms(frame))
-            .fold(TARGET_30_FPS_MS, f32::max)
-            * 1.05;
-        let bar_width = (plot.width() / self.style.window_fram_count.max(1) as f32).max(1.0);
-        let bar_left = |from_end: usize| plot.right() - (from_end as f32 + 1.0) * bar_width;
+        // Where every visible frame's column is. A bar's left edge follows its
+        // frame start, so the bars sit at the times the ruler labels.
+        let zoom = self.module_axis.zoom();
+        let mut columns: Vec<ChartColumn> = Vec::new();
+        for segment in self.module_axis.visible_segments() {
+            let (capture_start, capture_end) = segment.capture;
+            let frames = &session.frames;
+            let lo = frames.partition_point(|frame| (frame.start_ns as f64) < capture_start);
+            let hi = frames.partition_point(|frame| (frame.start_ns as f64) < capture_end);
+            for (offset, frame) in frames[lo..hi].iter().enumerate() {
+                let x = segment.x.0 + ((frame.start_ns as f64 - capture_start) * zoom) as f32;
+                let width = (((frame.end_ns - frame.start_ns) as f64 * zoom) as f32).max(1.0);
+                columns.push(ChartColumn {
+                    frame: lo + offset,
+                    x,
+                    width,
+                    ms: self.bar_ms(frame),
+                });
+            }
+        }
 
-        // One stacked bar per frame. Unity anchors `Others` at the bottom and
+        // While recording, the tallest bar can change every pass; the scale
+        // eases towards its target instead of snapping. Its first measurement
+        // snaps, and a cleared capture resets it to that state.
+        let tallest = columns
+            .iter()
+            .map(|column| column.ms)
+            .fold(0.0_f32, f32::max);
+        let target =
+            (tallest.max(0.001) / USAGE_BAR_FILL).clamp(MIN_USAGE_SCALE_MS, MAX_USAGE_SCALE_MS);
+        if self.module_scale_ms <= 0.0 {
+            self.module_scale_ms = target;
+        } else {
+            let next = self.module_scale_ms + (target - self.module_scale_ms) * USAGE_SCALE_EASE;
+            self.module_scale_ms = if (next - target).abs() < 0.005 {
+                target
+            } else {
+                next
+            };
+            if (self.module_scale_ms - target).abs() > 0.005 {
+                ui.ctx().request_repaint();
+            }
+        }
+        let scale = self.module_scale_ms.max(0.001);
+
+        // Break bands first: they are the compressed pauses, and two takes'
+        // bars never touch across them.
+        for band in self.module_axis.breaks() {
+            painter.rect_filled(
+                Rect::from_min_size(
+                    egui::pos2(plot.left() + band.x, plot.top()),
+                    egui::vec2(band.width, plot.height()),
+                ),
+                CornerRadius::ZERO,
+                self.style.break_bg.to_egui(),
+            );
+        }
+
+        // Clock grid: a faint vertical line under every labelled ruler tick, so
+        // a bar reads against the time axis above it.
+        let grid = self.style.chart_grid.to_egui().gamma_multiply(0.45);
+        for tick in self
+            .module_axis
+            .ticks()
+            .into_iter()
+            .filter(|tick| tick.label.is_some())
+        {
+            let x = plot.left() + tick.x;
+            if x <= plot.left() || x >= plot.right() {
+                continue;
+            }
+            painter.rect_filled(
+                Rect::from_min_size(egui::pos2(x, plot.top()), egui::vec2(1.0, plot.height())),
+                CornerRadius::ZERO,
+                grid,
+            );
+        }
+
+        // One stacked bar per frame. Unity anchors Others at the bottom and
         // stacks up the legend, so the first row is the topmost band.
-        for (from_end, frame) in session.frames.iter().rev().take(shown).enumerate() {
-            let x = bar_left(from_end);
+        for column in &columns {
+            let frame = &session.frames[column.frame];
             let mut bottom = plot.bottom();
             for category in Category::ALL.iter().rev().copied() {
                 if self.hidden[category as usize] {
@@ -1353,11 +1730,11 @@ impl ProfilerPanel {
                 if ms <= 0.0 {
                     continue;
                 }
-                let height = (ms / max_ms * plot.height()).max(0.5);
+                let height = (ms / scale * plot.height()).max(0.5);
                 painter.rect_filled(
                     Rect::from_min_max(
-                        egui::pos2(x, bottom - height),
-                        egui::pos2(x + bar_width, bottom),
+                        egui::pos2(plot.left() + column.x, bottom - height),
+                        egui::pos2(plot.left() + column.x + column.width, bottom),
                     ),
                     CornerRadius::ZERO,
                     self.category_color(category),
@@ -1366,48 +1743,43 @@ impl ProfilerPanel {
             }
         }
 
-        // Frame budgets, labelled the way Unity labels them: its 30/60 FPS
-        // reference lines plus the engine's 120 FPS baseline. Drawn over the
-        // bars so the chips stay readable.
-        for (fps, ms) in [
-            (30.0_f32, TARGET_30_FPS_MS),
-            (60.0, TARGET_60_FPS_MS),
-            (120.0, TARGET_120_FPS_MS),
-        ] {
-            if ms > max_ms {
+        // Unity's ms/FPS guide lines, placed under the 80% scale. They are
+        // drawn over the bars so their chips stay readable.
+        for (ms, label) in usage_grid(scale) {
+            if *ms > f64::from(scale) {
                 continue;
             }
-            let half_chip = self.style.legend_row_height * 0.5;
-            let y = (plot.bottom() - ms / max_ms * plot.height())
-                .clamp(plot.top() + half_chip, plot.bottom() - half_chip);
-            Divider::horizontal()
-                .thickness(1.0)
-                .color(self.style.chart_grid.to_egui())
-                .paint_in(
-                    ui,
-                    Rect::from_min_size(egui::pos2(plot.left(), y), egui::vec2(plot.width(), 1.0)),
-                );
-            self.paint_chip(
-                ui,
-                egui::pos2(plot.left() + 6.0, y),
-                &format!("{ms:.0}ms ({fps:.0}FPS)"),
-            );
+            let y = plot.bottom() - (*ms as f32 / scale * plot.height());
+            self.paint_chart_guide(ui, plot, y, label);
         }
+    }
 
-        // Selected-frame cursor.
-        let selected = self.selected_frame.min(session.frames.len() - 1);
-        let from_end = session.frames.len() - 1 - selected;
-        let center = bar_left(from_end) + bar_width * 0.5;
-        Divider::vertical()
-            .thickness(2.0)
-            .color(self.style.chart_cursor.to_egui())
+    /// The selected frame's centre column on the module time axis.
+    ///
+    /// The cursor rides the middle of the frame's bar, not its left edge, so the
+    /// bar under the line is unambiguous.
+    fn module_cursor_column(&self, session: &ProfileSession) -> Option<f32> {
+        let frame = session.frames.get(self.selected_frame)?;
+        let start = frame.start_ns as f64;
+        let end = frame.end_ns as f64;
+        self.module_axis
+            .screen_of_capture(start + (end - start) * 0.5)
+    }
+
+    /// One usage guide: a 1 px rule across the chart with Unity's
+    /// xxms (xxFPS) chip at the left edge. The line stays at its true height;
+    /// only the chip is pushed inside the plot.
+    fn paint_chart_guide(&self, ui: &Ui, plot: Rect, y: f32, label: &str) {
+        Divider::horizontal()
+            .thickness(1.0)
+            .color(self.style.chart_grid.to_egui())
             .paint_in(
                 ui,
-                Rect::from_min_size(
-                    egui::pos2(center - 1.0, plot.top()),
-                    egui::vec2(2.0, plot.height()),
-                ),
+                Rect::from_min_size(egui::pos2(plot.left(), y), egui::vec2(plot.width(), 1.0)),
             );
+        let half = self.style.legend_row_height * 0.5;
+        let center = y.clamp(plot.top() + half, plot.bottom() - half);
+        self.paint_chip(ui, egui::pos2(plot.left() + 6.0, center), label);
     }
 
     /// The timeline rows: registered lanes plus threads seen in the frames.
@@ -2446,185 +2818,6 @@ impl ProfilerPanel {
         // A new capture invalidates the previously written files' contents.
         self.save = None;
     }
-
-    fn hierarchy_view(&self, ui: &mut Ui) {
-        let Some(cached) = &self.cached else {
-            return;
-        };
-        if cached.rows.is_empty() {
-            ui.weak("No samples in this frame.");
-            return;
-        }
-
-        egui::ScrollArea::vertical()
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                egui::Grid::new("profiler-hierarchy")
-                    .striped(true)
-                    .num_columns(5)
-                    .min_col_width(52.0)
-                    .show(ui, |ui| {
-                        ui.strong("Marker");
-                        ui.strong("Calls");
-                        ui.strong("Total ms");
-                        ui.strong("Self ms");
-                        ui.strong("Max ms");
-                        ui.end_row();
-
-                        for row in cached.rows.iter().take(self.style.max_tree_rows) {
-                            let scope = scope_info(&cached.scopes, row.scope);
-                            let name = scope.map_or("<unknown scope>", |scope| scope.name.as_str());
-                            let label = match &row.data {
-                                Some(data) => format!("{name}  [{data}]"),
-                                None => name.to_owned(),
-                            };
-
-                            ui.horizontal(|ui| {
-                                ui.add_space(row.depth as f32 * 14.0);
-                                let response = ui.label(label);
-                                if let Some(scope) =
-                                    scope.filter(|scope| !scope.location.is_empty())
-                                {
-                                    response.on_hover_text(scope.location.clone());
-                                }
-                            });
-                            ui.monospace(row.calls.to_string());
-                            ui.monospace(format_ms(row.total_ns));
-                            ui.monospace(format_ms(row.self_ns));
-                            ui.monospace(format_ms(row.max_ns));
-                            ui.end_row();
-                        }
-                    });
-
-                if cached.rows.len() > self.style.max_tree_rows {
-                    let max_tree_rows = self.style.max_tree_rows;
-                    ui.weak(format!(
-                        "Showing the first {max_tree_rows} of {} rows.",
-                        cached.rows.len()
-                    ));
-                }
-            });
-    }
-
-    fn raw_view(&self, ui: &mut Ui) {
-        let Some(cached) = &self.cached else {
-            return;
-        };
-
-        let mut rendered = 0usize;
-        egui::ScrollArea::vertical()
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                for thread in &cached.frame.threads {
-                    if self.thread.is_some_and(|id| id != thread.id) {
-                        continue;
-                    }
-
-                    let title = format!(
-                        "{} · {} samples{}",
-                        thread_label(thread),
-                        thread.samples.len(),
-                        if thread.warning.is_some() {
-                            " · warning"
-                        } else {
-                            ""
-                        },
-                    );
-                    egui::CollapsingHeader::new(title)
-                        .id_salt(("profiler-raw-thread", thread.id))
-                        .default_open(true)
-                        .show(ui, |ui| {
-                            if let Some(warning) = &thread.warning {
-                                ui.colored_label(self.style.recording_bg.to_egui(), warning);
-                            }
-
-                            egui::Grid::new(("profiler-raw-grid", thread.id))
-                                .striped(true)
-                                .num_columns(3)
-                                .show(ui, |ui| {
-                                    ui.strong("Sample");
-                                    ui.strong("Start ms");
-                                    ui.strong("Time ms");
-                                    ui.end_row();
-
-                                    for sample in
-                                        thread.samples.iter().take(self.style.max_raw_rows)
-                                    {
-                                        rendered += 1;
-                                        let scope = scope_info(&cached.scopes, sample.scope);
-                                        let name = scope
-                                            .map_or("<unknown scope>", |scope| scope.name.as_str());
-                                        let mut label = format!(
-                                            "{}{}",
-                                            "  ".repeat(sample.depth as usize),
-                                            name
-                                        );
-                                        if let Some(data) = &sample.data {
-                                            label.push_str("  [");
-                                            label.push_str(data);
-                                            label.push(']');
-                                        }
-
-                                        let response = ui.monospace(label);
-                                        if let Some(scope) =
-                                            scope.filter(|scope| !scope.location.is_empty())
-                                        {
-                                            response.on_hover_text(scope.location.clone());
-                                        }
-                                        ui.monospace(format_ms(sample.start_ns));
-                                        ui.monospace(format_ms(sample.duration_ns));
-                                        ui.end_row();
-                                    }
-                                });
-
-                            if thread.samples.len() > self.style.max_raw_rows {
-                                let max_raw_rows = self.style.max_raw_rows;
-                                ui.weak(format!(
-                                    "Showing the first {max_raw_rows} of {} samples.",
-                                    thread.samples.len()
-                                ));
-                            }
-                        });
-                }
-            });
-
-        if rendered == 0 {
-            ui.weak("No samples for this thread.");
-        }
-    }
-
-    fn json_view(&mut self, ui: &mut Ui, profiler: &Profiler) {
-        let Some(cached) = &mut self.cached else {
-            return;
-        };
-        if cached.json.is_empty() {
-            cached.json = profiler
-                .frame_json(self.cache_frame)
-                .unwrap_or_else(|| "{}".to_owned());
-        }
-
-        ui.horizontal(|ui| {
-            if ui.button("Copy JSON").clicked() {
-                ui.ctx().copy_text(cached.json.clone());
-            }
-            ui.weak(format!("{} bytes", cached.json.len()));
-            ui.weak("schema v1");
-        });
-
-        egui::ScrollArea::vertical()
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                ui.monospace(&cached.json);
-            });
-    }
-}
-
-fn thread_label(thread: &ThreadSnapshot) -> String {
-    if thread.name.is_empty() {
-        format!("Thread {}", thread.id)
-    } else {
-        format!("{} (#{})", thread.name, thread.id)
-    }
 }
 
 fn scope_info(scopes: &[ScopeInfo], id: u32) -> Option<&ScopeInfo> {
@@ -2705,10 +2898,6 @@ fn block_span(
     Some((x0.max(track.left()), x1.min(track.right())))
 }
 
-fn format_ms(ns: u64) -> String {
-    format!("{:.3}", ns as f64 / 1_000_000.0)
-}
-
 /// The timeline's rows for one capture.
 ///
 /// The registered lanes come first, in the order the host registered them (main
@@ -2751,34 +2940,99 @@ fn collect_lanes(session: &ProfileSession) -> Vec<Lane> {
     lanes
 }
 
-/// The three saved paths, one per line, made absolute for display.
-///
-/// `save_capture` returns the paths it was given (relative to the process
-/// working directory), which is correct for IO but not for "where did my
-/// capture go". Canonicalising here answers that question with a path the user
-/// can paste into a file manager; if the file vanished in between, the joined
-/// path is still better than nothing.
-fn files_summary(files: &CaptureFiles) -> String {
-    let path = |path: &std::path::Path| {
-        std::fs::canonicalize(path)
-            .unwrap_or_else(|_| path.to_path_buf())
-            .display()
-            .to_string()
-    };
-    format!(
-        "{}\n{}\n{}",
-        path(&files.json),
-        path(&files.chrome_trace),
-        path(&files.puffin)
-    )
+/// How much of the usage chart's height the tallest visible bar fills.
+const USAGE_BAR_FILL: f32 = 0.8;
+/// The chart's vertical scale clamps into this range, like Unity's module chart
+/// (0.11 ms to 70 ms): one hitch cannot flatten the whole graph.
+const MIN_USAGE_SCALE_MS: f32 = 0.11;
+const MAX_USAGE_SCALE_MS: f32 = 70.0;
+/// How much of the remaining gap the chart's scale closes per pass. Unity eases
+/// its module chart's scale the same way (0.4) instead of snapping it.
+const USAGE_SCALE_EASE: f32 = 0.4;
+
+/// Unity's module-chart guide lines: four bands chosen by the chart's maximum,
+/// each with three ms/FPS readings. The two faster bands use the engine's
+/// refresh targets (60/120/240 FPS, 120/240/960 FPS); the slowest keeps Unity's.
+const USAGE_GRID_FAST: [(f64, &str); 3] = [
+    (1.0, "1ms (1000FPS)"),
+    (0.25, "0.25ms (4000FPS)"),
+    (0.1, "0.1ms (10000FPS)"),
+];
+const USAGE_GRID_10MS: [(f64, &str); 3] = [
+    (1000.0 / 120.0, "8ms (120FPS)"),
+    (1000.0 / 240.0, "4ms (240FPS)"),
+    (1000.0 / 960.0, "1ms (960FPS)"),
+];
+const USAGE_GRID_30MS: [(f64, &str); 3] = [
+    (1000.0 / 60.0, "16ms (60FPS)"),
+    (1000.0 / 120.0, "8ms (120FPS)"),
+    (1000.0 / 240.0, "4ms (240FPS)"),
+];
+const USAGE_GRID_SLOW: [(f64, &str); 3] = [
+    (1000.0 / 15.0, "66ms (15FPS)"),
+    (1000.0 / 30.0, "33ms (30FPS)"),
+    (1000.0 / 60.0, "16ms (60FPS)"),
+];
+
+/// The guide lines for a chart whose vertical scale is `scale_ms`.
+fn usage_grid(scale_ms: f32) -> &'static [(f64, &'static str)] {
+    if scale_ms < 1.5 {
+        &USAGE_GRID_FAST
+    } else if scale_ms < 10.0 {
+        &USAGE_GRID_10MS
+    } else if scale_ms < 30.0 {
+        &USAGE_GRID_30MS
+    } else {
+        &USAGE_GRID_SLOW
+    }
 }
 
-/// 30 FPS / 60 FPS frame budgets, drawn as chart reference lines and used as
-/// the chart's minimum scale so a fast capture still shows them.
-const TARGET_30_FPS_MS: f32 = 1000.0 / 30.0;
-const TARGET_60_FPS_MS: f32 = 1000.0 / 60.0;
-/// The engine's 120 FPS target, drawn as the chart's baseline.
-const TARGET_120_FPS_MS: f32 = 1000.0 / 120.0;
+/// One frame's column on the module area's usage chart.
+struct ChartColumn {
+    /// Index into ProfileSession::frames.
+    frame: usize,
+    /// Left edge, in chart columns (the plot starts at zero).
+    x: f32,
+    /// Column width: the frame's wall time at the axis' zoom.
+    width: f32,
+    /// Stacked height of the frame's visible categories, in ms.
+    ms: f32,
+}
+
+/// The frame recorded at `capture` inside the take with index `take`, for a
+/// click on a module chart.
+///
+/// A click between two frames (or in the margin before a take's first frame)
+/// falls back to the neighbouring frame of the same take; a click that maps to
+/// another take selects nothing. The axis already rejected clicks on a break
+/// band.
+fn frame_at_capture(
+    axis: &ModuleAxis,
+    session: &ProfileSession,
+    take: usize,
+    capture: f64,
+) -> Option<usize> {
+    let frames = &session.frames;
+    if frames.is_empty() {
+        return None;
+    }
+    let in_take = |index: usize| -> bool {
+        frames.get(index).is_some_and(|frame| {
+            axis.recorded_of_capture(frame.start_ns as f64)
+                .is_some_and(|(frame_take, _)| frame_take == take)
+        })
+    };
+    let next = frames.partition_point(|frame| (frame.start_ns as f64) <= capture);
+    if let Some(index) = next.checked_sub(1) {
+        if in_take(index) {
+            return Some(index);
+        }
+    }
+    if in_take(next) {
+        return Some(next);
+    }
+    None
+}
 
 /// Sample labels are the expensive part of a track; cap them per thread row.
 const MAX_SAMPLE_LABELS: usize = 64;
@@ -3319,6 +3573,25 @@ mod probe {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
+    /// Capture one committed frame that lasts a few milliseconds, so the module
+    /// clock axis has whole-millisecond ticks to label.
+    fn slow_captured_profiler() -> Profiler {
+        let profiler = Profiler::new();
+        profiler.set_recording(true);
+        profiler.begin_frame();
+        {
+            kairos_profile::scope!(Category::Others, "profiler.test.frame");
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        profiler.end_frame(true);
+        profiler.begin_frame();
+        assert!(
+            !profiler.session().is_empty(),
+            "the fixture captured one committed frame"
+        );
+        profiler
+    }
+
     /// Capture one committed frame with two nested scopes on this thread.
     fn captured_profiler() -> Profiler {
         let profiler = Profiler::new();
@@ -3634,7 +3907,7 @@ mod probe {
                 modifiers: egui::Modifiers::default(),
             },
         ];
-        ctx.run_ui(input, |ui| {
+        let _ = ctx.run_ui(input, |ui| {
             panel.ui(ui, &Frame::with_host(&state, &host), &mut out);
         });
 
@@ -3716,13 +3989,13 @@ mod probe {
         );
     }
 
-    /// The module area: CPU/GPU rows, the legend of the selected frame, the
-    /// 30/60 FPS reference chips, the 120 FPS baseline and the selected-frame
-    /// cursor.
+    /// The module area: CPU/GPU cards, the pinned clock axis over the chart
+    /// columns, the legend of the selected frame, a usage guide chip and the
+    /// selected-frame cursor.
     #[test]
     fn module_area_draws_the_cpu_gpu_rows_and_history_chart() {
         let _guard = lock_profiler_tests();
-        let host = ProfilerHost(captured_profiler());
+        let host = ProfilerHost(slow_captured_profiler());
         let mut panel = ProfilerPanel::default();
         let output = draw_panel(&mut panel, &host);
 
@@ -3733,11 +4006,36 @@ mod probe {
             text.iter().any(|line| line.contains("profiler.test.frame")),
             "the legend lists the selected frame's markers: {text:?}"
         );
+
+        // The pinned clock axis labels real wall-clock times over the chart
+        // columns, above the cards.
+        let clock = output
+            .shapes
+            .iter()
+            .find_map(|clipped| match &clipped.shape {
+                egui::Shape::Text(shape)
+                    if shape.galley.text().matches(':').count() == 2
+                        && shape.galley.text().contains('.') =>
+                {
+                    Some(shape.pos)
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("a clock tick label is painted: {text:?}"));
         assert!(
-            text.iter().any(|line| line.contains("30FPS"))
-                && text.iter().any(|line| line.contains("60FPS"))
-                && text.iter().any(|line| line.contains("120FPS")),
-            "Unity's 30/60 FPS reference chips and the 120 FPS baseline are drawn: {text:?}"
+            clock.x >= panel.style.module_name_width,
+            "the clock labels sit over the chart columns: {clock:?}"
+        );
+        let cpu_title = text_pos_starting_with(&output, "CPU Usage");
+        assert!(
+            clock.y < cpu_title.y,
+            "the clock axis is pinned above the cards: {} vs {}",
+            clock.y,
+            cpu_title.y
+        );
+        assert!(
+            text.iter().any(|line| line.contains("FPS")),
+            "a usage guide chip is drawn: {text:?}"
         );
 
         let cursor = panel.style.chart_cursor.to_egui();
@@ -3851,15 +4149,24 @@ mod probe {
         let ctx = Context::default();
 
         let first = draw_pass(&ctx, &mut panel, &host, Vec::new());
-        let cursor = panel.style.chart_cursor.to_egui();
+        let palette: Vec<egui::Color32> = panel
+            .style
+            .category_palette
+            .iter()
+            .map(|color| color.to_egui())
+            .collect();
+        let chart_left = panel.style.module_name_width;
         let chart_height = |output: &egui::FullOutput| {
             painted(output)
                 .into_iter()
-                .find(|(rect, fill)| *fill == cursor && rect.height() > 10.0)
+                .filter(|(rect, fill)| {
+                    palette.contains(fill) && rect.height() > 5.0 && rect.left() >= chart_left
+                })
                 .map(|(rect, _)| rect.height())
-                .expect("the CPU chart paints its selected-frame cursor")
+                .fold(0.0_f32, f32::max)
         };
         let chart_before = chart_height(&first);
+        assert!(chart_before > 0.0, "the CPU chart paints its tallest bar");
         let cpu = text_pos_starting_with(&first, "CPU Usage");
         let gpu = text_pos_starting_with(&first, "GPU Usage");
         let from = splitter_center(&panel);
@@ -3912,11 +4219,13 @@ mod probe {
 
         let first = draw_pass(&ctx, &mut panel, &host, Vec::new());
         let cpu = text_pos_starting_with(&first, "CPU Usage");
+        // The chart columns zoom the module time axis, so the wheel over the
+        // legend (the name column) is what scrolls the card stack.
         let _ = draw_pass(
             &ctx,
             &mut panel,
             &host,
-            wheel_events(egui::pos2(400.0, 60.0), egui::vec2(0.0, -4.0)),
+            wheel_events(egui::pos2(60.0, 60.0), egui::vec2(0.0, -4.0)),
         );
         assert!(
             panel.module_scroll > 0.0,
@@ -3988,6 +4297,7 @@ mod probe {
         );
         let pane_bottom =
             panel.style.toolbar_height + panel.style.separator_width + panel.module_height;
+        let cards_bottom = pane_bottom - panel.module_bar_height();
         let clipped = output
             .shapes
             .iter()
@@ -3999,8 +4309,8 @@ mod probe {
             })
             .expect("the CPU card paints its title");
         assert!(
-            (clipped.bottom() - pane_bottom).abs() < 0.5,
-            "the module painting is clipped to its pane: {clipped:?} vs {pane_bottom}"
+            (clipped.bottom() - cards_bottom).abs() < 0.5,
+            "the module cards are clipped above the pinned zoom bar: {clipped:?} vs {cards_bottom}"
         );
     }
     /// The splitter is chrome of its own, brighter than the section rules, so
@@ -4525,7 +4835,9 @@ mod probe {
         painted(output)
             .into_iter()
             .filter(|(rect, painted_fill)| *painted_fill == fill && rect.width() > 20.0)
-            .max_by(|a, b| a.0.width().total_cmp(&b.0.width()))
+            // The module area has a horizontal zoom bar of its own above the
+            // timeline's; the timeline's is the lower one.
+            .max_by(|a, b| a.0.top().total_cmp(&b.0.top()))
             .map(|(rect, _)| rect)
             .expect("the horizontal scroll bar's thumb is painted")
     }
@@ -5009,6 +5321,654 @@ mod probe {
                 .any(|line| line.contains("Waiting for the first captured frame")),
             "the module chart has an empty state: {text:?}"
         );
+    }
+
+    /// Capture `count` committed frames as fast as the host can flush them.
+    fn captured_frames(count: usize) -> Profiler {
+        let profiler = Profiler::new();
+        profiler.set_recording(true);
+        profiler.begin_frame();
+        for _ in 0..count {
+            {
+                kairos_profile::scope!(Category::Others, "profiler.test.frame");
+            }
+            profiler.end_frame(true);
+            profiler.begin_frame();
+        }
+        profiler
+    }
+
+    /// Capture `count` frames that last about a millisecond each, so they have
+    /// distinct wall times on the module axis.
+    fn captured_slow_frames(count: usize) -> Profiler {
+        let profiler = Profiler::new();
+        profiler.set_recording(true);
+        profiler.begin_frame();
+        for _ in 0..count {
+            {
+                kairos_profile::scope!(Category::Others, "profiler.test.frame");
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            profiler.end_frame(true);
+            profiler.begin_frame();
+        }
+        profiler
+    }
+
+    /// Capture two takes with a pause between them: two recording segments, so
+    /// the module axis has one break band to draw.
+    fn two_take_profiler() -> Profiler {
+        let profiler = Profiler::new();
+        profiler.set_recording(true);
+        profiler.begin_frame();
+        {
+            kairos_profile::scope!(Category::Others, "profiler.test.frame");
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        profiler.end_frame(true);
+        profiler.begin_frame();
+        profiler.set_recording(false);
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        profiler.set_recording(true);
+        profiler.begin_frame();
+        {
+            kairos_profile::scope!(Category::Others, "profiler.test.frame");
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        profiler.end_frame(true);
+        profiler.begin_frame();
+        profiler
+    }
+
+    /// The module area's horizontal zoom bar thumb (the timeline's own bar is
+    /// below the module band).
+    fn module_thumb(output: &egui::FullOutput, panel: &ProfilerPanel) -> Rect {
+        let module_bottom =
+            panel.style.toolbar_height + panel.style.separator_width + panel.module_height;
+        let thumb_fills = [
+            panel.style.scrollbar_thumb.to_egui(),
+            panel.style.scrollbar_thumb_hover.to_egui(),
+            panel.style.scrollbar_thumb_active.to_egui(),
+        ];
+        painted(output)
+            .into_iter()
+            .filter(|(rect, fill)| {
+                thumb_fills.contains(fill) && rect.width() > 20.0 && rect.top() < module_bottom
+            })
+            .max_by(|a, b| a.0.width().total_cmp(&b.0.width()))
+            .map(|(rect, _)| rect)
+            .expect("the module zoom bar's thumb is painted")
+    }
+
+    /// Top of the card viewport (below the pinned clock axis) and of the CPU
+    /// card's plot inside it.
+    fn module_chart_top(panel: &ProfilerPanel) -> (f32, f32) {
+        let cards_top = panel.style.toolbar_height
+            + panel.style.separator_width
+            + panel.module_axis_height()
+            + panel.style.separator_width;
+        (
+            cards_top + panel.style.module_header_height,
+            cards_top + panel.style.module_cpu_height,
+        )
+    }
+
+    /// The module axis places its default window on the most recent frames: the
+    /// split view opens on the tail of a long capture, and on all of a short one.
+    #[test]
+    fn the_module_axis_defaults_to_the_last_frames_window() {
+        let _guard = lock_profiler_tests();
+        let ctx = Context::default();
+
+        let host = ProfilerHost(captured_frames(320));
+        let mut panel = ProfilerPanel::default();
+        let _ = draw_pass(&ctx, &mut panel, &host, Vec::new());
+        let session = host.0.session();
+        let count = session.frames.len();
+        assert!(count > 300, "the fixture captured a long capture: {count}");
+
+        let window = panel.module_axis.window();
+        let first_shown = session.frames[count - 300].start_ns as f64;
+        assert!(
+            (window.value - first_shown).abs() < 1.0,
+            "the default window starts at the 300th frame from the end: {} vs {first_shown}",
+            window.value
+        );
+        assert!(
+            (window.value + window.span - window.bounds.1).abs() < 1.0,
+            "the default window is pinned to the newest data: {window:?}"
+        );
+        let oldest = panel
+            .module_axis
+            .screen_of_capture(session.frames[0].start_ns as f64)
+            .expect("frame 0 maps onto the axis");
+        assert!(oldest < 0.0, "the first frames are to the left: {oldest}");
+        drop(host);
+
+        // A capture shorter than the window fits entirely.
+        let host = ProfilerHost(captured_frames(3));
+        let mut small = ProfilerPanel::default();
+        let _ = draw_pass(&ctx, &mut small, &host, Vec::new());
+        assert!(small.module_axis.window().value.abs() < 1e-9);
+    }
+
+    /// The module area's min-max bar: dragging an end zooms the clock axis (Live
+    /// keeps the newest frame on the right), dragging the thumb pans it.
+    #[test]
+    fn the_module_zoom_bar_zooms_and_pans_the_axis() {
+        let _guard = lock_profiler_tests();
+        let ctx = Context::default();
+        let host = ProfilerHost(captured_slow_frames(30));
+        let mut panel = ProfilerPanel::default();
+
+        let first = draw_pass(&ctx, &mut panel, &host, Vec::new());
+        let before = panel.module_axis.window();
+        let thumb = module_thumb(&first, &panel);
+        let from = egui::pos2(thumb.right() - 3.0, thumb.center().y);
+        let to = from - egui::vec2(120.0, 0.0);
+        let _ = draw_pass(&ctx, &mut panel, &host, press_events(from));
+        let _ = draw_pass(&ctx, &mut panel, &host, drag_events(to));
+        let _ = draw_pass(&ctx, &mut panel, &host, release_events(to));
+        let zoomed = panel.module_axis.window();
+        assert!(
+            zoomed.span < before.span * 0.9,
+            "dragging the right end in zooms the axis: {before:?} -> {zoomed:?}"
+        );
+        assert!(
+            !panel.module_default_window,
+            "manual zoom leaves the default window"
+        );
+        let _ = draw_pass(&ctx, &mut panel, &host, Vec::new());
+        let live = panel.module_axis.window();
+        assert!(
+            (live.value + live.span - live.bounds.1).abs() < 1.0,
+            "Live keeps the newest frame on the right edge: {live:?}"
+        );
+
+        let pan_output = draw_pass(&ctx, &mut panel, &host, Vec::new());
+        let thumb = module_thumb(&pan_output, &panel);
+        let from = thumb.center();
+        let to = from - egui::vec2(40.0, 0.0);
+        let _ = draw_pass(&ctx, &mut panel, &host, press_events(from));
+        let _ = draw_pass(&ctx, &mut panel, &host, drag_events(to));
+        let _ = draw_pass(&ctx, &mut panel, &host, release_events(to));
+        let panned = panel.module_axis.window();
+        assert!(
+            panned.value + 1.0 < live.value,
+            "dragging the thumb left pans towards earlier frames: {live:?} -> {panned:?}"
+        );
+        assert!(
+            (panned.span - live.span).abs() < 1.0,
+            "panning does not zoom"
+        );
+        assert!(
+            !panel.follow_latest,
+            "panning stops following the newest frame"
+        );
+    }
+
+    /// The wheel over the chart columns zooms the clock axis around the pointer:
+    /// the time under the pointer stays put, like the timeline's zoom.
+    #[test]
+    fn the_module_wheel_zooms_the_clock_axis_around_the_pointer() {
+        let _guard = lock_profiler_tests();
+        let ctx = Context::default();
+        let host = ProfilerHost(captured_slow_frames(40));
+        let mut panel = ProfilerPanel::default();
+        let _ = draw_pass(&ctx, &mut panel, &host, Vec::new());
+
+        let chart_left = panel.style.module_name_width;
+        let x = 300.0;
+        let before = panel
+            .module_axis
+            .capture_at_screen(x)
+            .expect("the pointer is over a frame");
+        let zoom_before = panel.module_axis.zoom();
+        let pointer = egui::pos2(chart_left + x, 100.0);
+        let _ = draw_pass(
+            &ctx,
+            &mut panel,
+            &host,
+            wheel_events(pointer, egui::vec2(0.0, 4.0)),
+        );
+
+        assert!(
+            panel.module_axis.zoom() > zoom_before,
+            "the wheel zooms the clock axis"
+        );
+        let after = panel
+            .module_axis
+            .capture_at_screen(x)
+            .expect("the pointer is still over a frame");
+        assert_eq!(before.0, after.0, "the same take stays under the pointer");
+        assert!(
+            (before.1 - after.1).abs() < 1.0,
+            "the time under the pointer stays: {} -> {}",
+            before.1,
+            after.1
+        );
+        assert!(!panel.module_default_window);
+    }
+
+    /// A pause between two takes is a break band, with the stop clock on its left
+    /// and the restart clock on its right.
+    #[test]
+    fn a_pause_is_a_break_band_with_its_clock_times() {
+        let _guard = lock_profiler_tests();
+        let host = ProfilerHost(two_take_profiler());
+        let mut panel = ProfilerPanel::default();
+        let output = draw_panel(&mut panel, &host);
+        let session = host.0.session();
+
+        assert_eq!(session.segments.len(), 2, "two takes were recorded");
+        let breaks = panel.module_axis.breaks();
+        assert_eq!(breaks.len(), 1, "the pause is one break band");
+        let wall = session
+            .wall_clock
+            .expect("the live capture has a wall clock");
+        let stop = super::axis::clock_label(
+            wall.time_of_day_ns as f64 + session.segments[0].end_ns.unwrap() as f64,
+            true,
+        );
+        let start = super::axis::clock_label(
+            wall.time_of_day_ns as f64 + session.segments[1].start_ns as f64,
+            true,
+        );
+        assert_eq!(breaks[0].stop, stop);
+        assert_eq!(breaks[0].start, start);
+
+        let band = panel.style.break_bg.to_egui();
+        let bands: Vec<Rect> = painted(&output)
+            .into_iter()
+            .filter(|(_, fill)| *fill == band)
+            .map(|(rect, _)| rect)
+            .collect();
+        assert!(
+            bands
+                .iter()
+                .any(|rect| (rect.height() - panel.style.ruler_height).abs() < 0.5),
+            "the band shows on the clock row: {bands:?}"
+        );
+        assert!(
+            bands.iter().any(|rect| rect.height() > 50.0),
+            "the band runs through the chart: {bands:?}"
+        );
+
+        let text = painted_text(&output);
+        assert!(
+            text.iter().any(|line| line == &stop) && text.iter().any(|line| line == &start),
+            "the band's two sides print their clock times: {text:?}"
+        );
+    }
+
+    /// Clicking a chart column selects the frame recorded at that time.
+    #[test]
+    fn clicking_a_chart_column_selects_the_frame_at_that_time() {
+        let _guard = lock_profiler_tests();
+        let ctx = Context::default();
+        let host = ProfilerHost(captured_slow_frames(3));
+        let mut panel = ProfilerPanel::default();
+        let _ = draw_pass(&ctx, &mut panel, &host, Vec::new());
+        let session = host.0.session();
+        assert!(session.frames.len() >= 3);
+
+        let chart_left = panel.style.module_name_width;
+        let (chart_top, _) = module_chart_top(&panel);
+        let x = panel
+            .module_axis
+            .screen_of_capture(session.frames[1].start_ns as f64)
+            .expect("the second frame maps onto the axis");
+        let at = egui::pos2(chart_left + x + 1.0, chart_top + 30.0);
+        let _ = draw_pass(&ctx, &mut panel, &host, click_events(at));
+
+        assert_eq!(
+            panel.selected_frame, 1,
+            "the click selected the second frame"
+        );
+        assert!(!panel.follow_latest, "clicking a frame leaves Live");
+    }
+
+    /// A click on a break band is a click on the pause, not on a frame.
+    #[test]
+    fn clicking_a_break_band_selects_nothing() {
+        let _guard = lock_profiler_tests();
+        let ctx = Context::default();
+        let host = ProfilerHost(two_take_profiler());
+        let mut panel = ProfilerPanel::default();
+        let _ = draw_pass(&ctx, &mut panel, &host, Vec::new());
+        let before = panel.selected_frame;
+        let breaks = panel.module_axis.breaks();
+        let band = breaks[0].x + breaks[0].width * 0.5;
+
+        let chart_left = panel.style.module_name_width;
+        let (chart_top, _) = module_chart_top(&panel);
+        let at = egui::pos2(chart_left + band, chart_top + 30.0);
+        let _ = draw_pass(&ctx, &mut panel, &host, click_events(at));
+        assert_eq!(panel.selected_frame, before, "the pause holds no frame");
+    }
+
+    /// The tallest bar fills 80% of the chart, and the ms/FPS guide line is
+    /// placed by that same scale.
+    #[test]
+    fn the_tallest_bar_fills_eighty_percent_of_the_chart() {
+        let _guard = lock_profiler_tests();
+        let host = ProfilerHost(slow_captured_profiler());
+        let mut panel = ProfilerPanel::default();
+        let output = draw_panel(&mut panel, &host);
+        let session = host.0.session();
+        let frame = session.frames.last().expect("one frame");
+
+        let chart_left = panel.style.module_name_width;
+        let (chart_top, plot_bottom) = module_chart_top(&panel);
+        let plot_height = plot_bottom - chart_top;
+        let palette: Vec<egui::Color32> = panel
+            .style
+            .category_palette
+            .iter()
+            .map(|color| color.to_egui())
+            .collect();
+        let mut columns: BTreeMap<i32, f32> = BTreeMap::new();
+        let mut bar_left = f32::MAX;
+        for (rect, fill) in painted(&output) {
+            if !palette.contains(&fill)
+                || rect.left() < chart_left - 0.5
+                || rect.top() < chart_top - 0.5
+                || rect.bottom() > plot_bottom + 0.5
+                || rect.height() <= 0.0
+            {
+                continue;
+            }
+            *columns
+                .entry((rect.left() * 4.0).round() as i32)
+                .or_default() += rect.height();
+            bar_left = bar_left.min(rect.left());
+        }
+        let tallest = columns.values().copied().fold(0.0_f32, f32::max);
+        assert!(tallest > 0.0, "the chart paints a bar");
+        let fill = tallest / plot_height;
+        assert!(
+            (fill - 0.8).abs() < 0.01,
+            "the tallest bar fills 80% of the chart: {tallest} / {plot_height} = {fill}"
+        );
+
+        // The bar starts at the frame's time on the clock axis.
+        let expected_left = chart_left
+            + panel
+                .module_axis
+                .screen_of_capture(frame.start_ns as f64)
+                .expect("the frame maps onto the axis");
+        assert!(
+            (bar_left - expected_left).abs() < 1.0,
+            "the bar lines up with the clock axis: {bar_left} vs {expected_left}"
+        );
+
+        // The guide chips are the tier for this scale; the engine's 960 FPS
+        // reading labels the 10 ms band.
+        let scale = frame.duration_ns() as f32 / 1_000_000.0 / 0.8;
+        let text = painted_text(&output);
+        let expected_labels: Vec<&str> = usage_grid(scale)
+            .iter()
+            .filter(|(ms, _)| *ms <= f64::from(scale))
+            .map(|(_, label)| *label)
+            .collect();
+        assert!(
+            expected_labels
+                .iter()
+                .any(|label| text.iter().any(|line| line.contains(label))),
+            "the chart labels its guide for this scale ({scale} ms): {text:?}"
+        );
+        if scale < 10.0 {
+            assert!(
+                text.iter().any(|line| line.contains("960FPS")),
+                "the 10 ms tier uses the engine's 960 FPS reading: {text:?}"
+            );
+        }
+
+        // The smallest guide is drawn at the scale's 80%-based position.
+        let expected_y = plot_bottom - (1000.0 / 960.0 / scale) * plot_height;
+        let grid = panel.style.chart_grid.to_egui();
+        let lines: Vec<Rect> = painted(&output)
+            .into_iter()
+            .filter(|(rect, fill)| {
+                *fill == grid
+                    && rect.height() <= 1.0
+                    && rect.width() > 400.0
+                    && rect.top() > chart_top
+                    && rect.top() < plot_bottom
+            })
+            .map(|(rect, _)| rect)
+            .collect();
+        assert!(
+            lines
+                .iter()
+                .any(|rect| (rect.top() - expected_y).abs() < 1.0),
+            "the 960 FPS guide sits at {expected_y}: {lines:?}"
+        );
+    }
+
+    /// The usage guide tiers are Unity's four bands, with the engine's refresh
+    /// targets in the two faster ones.
+    #[test]
+    fn the_usage_grid_uses_the_refresh_rate_tiers() {
+        let labels = |scale: f32| -> Vec<&'static str> {
+            usage_grid(scale).iter().map(|(_, label)| *label).collect()
+        };
+        assert_eq!(
+            labels(1.0),
+            vec!["1ms (1000FPS)", "0.25ms (4000FPS)", "0.1ms (10000FPS)"]
+        );
+        assert_eq!(
+            labels(4.0),
+            vec!["8ms (120FPS)", "4ms (240FPS)", "1ms (960FPS)"]
+        );
+        assert_eq!(
+            labels(20.0),
+            vec!["16ms (60FPS)", "8ms (120FPS)", "4ms (240FPS)"]
+        );
+        assert_eq!(
+            labels(50.0),
+            vec!["66ms (15FPS)", "33ms (30FPS)", "16ms (60FPS)"]
+        );
+        assert!((usage_grid(20.0)[0].0 - 1000.0 / 60.0).abs() < 1e-9);
+        assert!((usage_grid(4.0)[0].0 - 1000.0 / 120.0).abs() < 1e-9);
+        assert!((usage_grid(4.0)[1].0 - 1000.0 / 240.0).abs() < 1e-9);
+        assert!((usage_grid(4.0)[2].0 - 1000.0 / 960.0).abs() < 1e-9);
+    }
+
+    /// A double-click on the clock ruler restores the default last-frames window.
+    #[test]
+    fn double_clicking_the_clock_ruler_restores_the_default_window() {
+        let _guard = lock_profiler_tests();
+        let ctx = Context::default();
+        let host = ProfilerHost(captured_frames(320));
+        let mut panel = ProfilerPanel::default();
+        let _ = draw_pass(&ctx, &mut panel, &host, Vec::new());
+
+        let chart_left = panel.style.module_name_width;
+        let _ = draw_pass(
+            &ctx,
+            &mut panel,
+            &host,
+            wheel_events(egui::pos2(chart_left + 300.0, 100.0), egui::vec2(0.0, 20.0)),
+        );
+        assert!(!panel.module_default_window, "the wheel zoomed the axis");
+
+        let ruler_y = panel.style.toolbar_height
+            + panel.style.separator_width
+            + panel.module_axis_height() * 0.5;
+        let at = egui::pos2(chart_left + 300.0, ruler_y);
+        let _ = draw_pass(&ctx, &mut panel, &host, click_events(at));
+        let _ = draw_pass(&ctx, &mut panel, &host, click_events(at));
+
+        assert!(
+            panel.module_default_window,
+            "the double-click restored the window"
+        );
+        let session = host.0.session();
+        let count = session.frames.len();
+        let restored = panel.module_axis.window();
+        let first_shown = session.frames[count - 300].start_ns as f64;
+        assert!(
+            (restored.value - first_shown).abs() < 1.0,
+            "the restored window shows the last frames again: {} vs {first_shown}",
+            restored.value
+        );
+    }
+
+    /// Stepping back to a frame the module window has scrolled past pans the
+    /// axis to it, so the transport reaches the first recorded frame.
+    #[test]
+    fn stepping_to_an_older_frame_reveals_it_on_the_axis() {
+        let _guard = lock_profiler_tests();
+        let ctx = Context::default();
+        let host = ProfilerHost(captured_frames(320));
+        let mut panel = ProfilerPanel::default();
+        let toolbar = draw_pass(&ctx, &mut panel, &host, Vec::new());
+        let session = host.0.session();
+        assert!(session.frames.len() > 300);
+
+        // Frame 0 is left of the default window; pin the selection to frame 1 so
+        // Previous is enabled, then step back. The record toggle's state fill is
+        // how the toolbar's segment geometry is read back from the painting.
+        panel.selected_frame = 1;
+        panel.follow_latest = false;
+        let record = painted(&toolbar)
+            .into_iter()
+            .find(|(rect, fill)| {
+                *fill == panel.style.recording_bg.to_egui()
+                    && rect.top() < panel.style.toolbar_height
+            })
+            .map(|(rect, _)| rect)
+            .expect("the recording toggle paints its state fill");
+        let previous = egui::pos2(
+            record.right() + panel.style.separator_width + record.width() * 0.5,
+            record.center().y,
+        );
+        let _ = draw_pass(&ctx, &mut panel, &host, click_events(previous));
+
+        assert_eq!(panel.selected_frame, 0);
+        let x = panel
+            .module_axis
+            .screen_of_capture(session.frames[0].start_ns as f64)
+            .expect("frame 0 maps onto the axis");
+        assert!(x >= 0.0, "the axis revealed the frame: {x}");
+        let chart_width = 900.0 - panel.style.module_name_width - panel.style.scrollbar_width;
+        assert!(
+            x >= 0.0 && x < 5.0,
+            "the first frame is revealed at the start of the axis: {x}"
+        );
+        assert!(
+            x <= chart_width,
+            "the revealed frame is inside the chart columns"
+        );
+    }
+
+    /// The selected-frame cursor runs from the clock row down through the cards
+    /// and rides the middle of the frame's bar.
+    #[test]
+    fn the_cursor_spans_the_clock_and_sits_on_the_bar_centre() {
+        let _guard = lock_profiler_tests();
+        let host = ProfilerHost(slow_captured_profiler());
+        let mut panel = ProfilerPanel::default();
+        let output = draw_panel(&mut panel, &host);
+        let session = host.0.session();
+        let frame = session.frames.last().expect("one frame");
+
+        let cursor = panel.style.chart_cursor.to_egui();
+        let cursor_rect = painted(&output)
+            .into_iter()
+            .find(|(rect, fill)| *fill == cursor && rect.height() > 20.0)
+            .map(|(rect, _)| rect)
+            .expect("the selected-frame cursor is painted");
+        let chart_left = panel.style.module_name_width;
+        let (chart_top, plot_bottom) = module_chart_top(&panel);
+        let axis_top = panel.style.toolbar_height + panel.style.separator_width;
+        assert!(
+            cursor_rect.top() <= axis_top + panel.module_axis_height() * 0.5,
+            "the cursor reaches into the pinned clock row: {cursor_rect:?}"
+        );
+        assert!(
+            cursor_rect.bottom() >= plot_bottom - 1.0,
+            "the cursor runs through the whole chart: {cursor_rect:?} vs {plot_bottom}"
+        );
+
+        // The clock reading of the frame's middle is where the line sits.
+        let mid = frame.start_ns as f64 + (frame.end_ns - frame.start_ns) as f64 * 0.5;
+        let expected = chart_left
+            + panel
+                .module_axis
+                .screen_of_capture(mid)
+                .expect("the frame maps onto the axis");
+        assert!(
+            (cursor_rect.center().x - expected).abs() < 1.0,
+            "the cursor rides the frame's middle: {} vs {expected}",
+            cursor_rect.center().x
+        );
+
+        // And that is the middle of the painted bar, not its left edge.
+        let palette: Vec<egui::Color32> = panel
+            .style
+            .category_palette
+            .iter()
+            .map(|color| color.to_egui())
+            .collect();
+        let bar = painted(&output)
+            .into_iter()
+            .find(|(rect, fill)| {
+                palette.contains(fill)
+                    && rect.height() > 20.0
+                    && rect.left() >= chart_left
+                    && rect.top() >= chart_top
+                    && rect.bottom() <= plot_bottom + 0.5
+            })
+            .map(|(rect, _)| rect)
+            .expect("the chart paints the frame's bar");
+        let bar_centre = bar.left() + bar.width() * 0.5;
+        assert!(
+            (cursor_rect.center().x - bar_centre).abs() < 1.0,
+            "the cursor sits on the bar's centre: {} vs {bar_centre}",
+            cursor_rect.center().x
+        );
+    }
+
+    /// Dragging the cursor (or anywhere on the chart) scrubs the selected frame.
+    #[test]
+    fn dragging_the_cursor_scrubs_the_selected_frame() {
+        let _guard = lock_profiler_tests();
+        let ctx = Context::default();
+        let host = ProfilerHost(captured_slow_frames(5));
+        let mut panel = ProfilerPanel::default();
+        let _ = draw_pass(&ctx, &mut panel, &host, Vec::new());
+        let session = host.0.session();
+        assert!(session.frames.len() >= 5, "five frames captured");
+        let selected_before = panel.selected_frame;
+        assert!(selected_before > 1, "the newest frame starts selected");
+
+        let mid = |frame: &FrameSnapshot| {
+            frame.start_ns as f64 + (frame.end_ns - frame.start_ns) as f64 * 0.5
+        };
+        let chart_left = panel.style.module_name_width;
+        let (chart_top, _) = module_chart_top(&panel);
+        let start_x = panel
+            .module_axis
+            .screen_of_capture(mid(&session.frames[selected_before]))
+            .expect("the selected frame maps onto the axis");
+        let target_x = panel
+            .module_axis
+            .screen_of_capture(mid(&session.frames[1]))
+            .expect("the second frame maps onto the axis");
+
+        let start = egui::pos2(chart_left + start_x, chart_top + 30.0);
+        let target = egui::pos2(chart_left + target_x, chart_top + 30.0);
+        let _ = draw_pass(&ctx, &mut panel, &host, press_events(start));
+        let _ = draw_pass(&ctx, &mut panel, &host, drag_events(target));
+        let _ = draw_pass(&ctx, &mut panel, &host, release_events(target));
+
+        assert_eq!(
+            panel.selected_frame, 1,
+            "the drag selected the frame under the pointer"
+        );
+        assert!(!panel.follow_latest, "scrubbing leaves Live");
     }
 
     fn draw(panel: &mut ProfilerPanel) -> (usize, usize) {

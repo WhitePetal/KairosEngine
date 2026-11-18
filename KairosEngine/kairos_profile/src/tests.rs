@@ -10,7 +10,9 @@ use std::sync::{Mutex, MutexGuard};
 
 use profiling::puffin::FrameView;
 
-use crate::model::{FrameSnapshot, ProfileSession, SampleSnapshot, ThreadSnapshot};
+use crate::model::{
+    FrameSnapshot, ProfileSession, RecordingSegment, SampleSnapshot, ThreadSnapshot,
+};
 use crate::{Category, Profiler, hierarchy};
 
 static TEST_LOCK: Mutex<()> = Mutex::new(());
@@ -227,6 +229,93 @@ fn discarded_passes_are_counted_and_not_stored() {
     let session = test.profiler().session();
     assert!(session.is_empty());
     assert_eq!(session.discarded_passes, 1);
+}
+
+/// Stopping and starting again keeps the capture and records a boundary: the
+/// frames jump over the pause, and the session carries the two takes so a view
+/// can draw the break and label its sides with real clock times.
+#[test]
+fn recording_takes_are_segments_with_a_stop_and_a_restart() {
+    let test = TestSession::new();
+    test.start();
+    {
+        crate::scope!(Category::Others, "test.first.take");
+    }
+    test.commit();
+    test.profiler().set_recording(false);
+
+    // The pause the module area's axis compresses into a break band.
+    std::thread::sleep(std::time::Duration::from_millis(2));
+    test.start();
+    {
+        crate::scope!(Category::Others, "test.second.take");
+    }
+    test.commit();
+
+    let session = test.profiler().session();
+    assert_eq!(session.frames.len(), 2, "both takes stay in the capture");
+    assert_eq!(session.segments.len(), 2);
+    let first = session.segments[0];
+    let second = session.segments[1];
+    let stop = first
+        .end_ns
+        .expect("the first take closed when recording stopped");
+    assert!(stop >= first.start_ns);
+    assert_eq!(second.end_ns, None, "the second take is still recording");
+    assert!(
+        second.start_ns >= stop,
+        "the restart starts after the stop: {first:?} then {second:?}"
+    );
+    assert!(
+        session.frames[1].start_ns >= session.frames[0].end_ns,
+        "the frames jump over the pause instead of being contiguous"
+    );
+    let wall = session
+        .wall_clock
+        .expect("a live capture records its wall clock");
+    assert!(
+        (0..86_400_000_000_000).contains(&wall.time_of_day_ns),
+        "the wall clock is a time of day: {wall:?}"
+    );
+}
+
+/// Clearing drops the takes too; clearing while recording starts a fresh one at
+/// the new origin, so the axis reads from zero again.
+#[test]
+fn clear_resets_the_recording_segments() {
+    let test = TestSession::new();
+    test.start();
+    {
+        crate::scope!(Category::Others, "test.before.clear");
+    }
+    test.commit();
+    test.profiler().set_recording(false);
+    assert_eq!(test.profiler().session().segments.len(), 1);
+    assert!(test.profiler().session().segments[0].end_ns.is_some());
+
+    test.profiler().clear();
+    let cleared = test.profiler().session();
+    assert!(cleared.segments.is_empty());
+    assert!(cleared.wall_clock.is_none());
+    assert!(cleared.frames.is_empty());
+
+    test.start();
+    {
+        crate::scope!(Category::Others, "test.cleared.while.recording");
+    }
+    test.commit();
+    test.profiler().clear();
+    let session = test.profiler().session();
+    assert_eq!(
+        session.segments,
+        vec![RecordingSegment {
+            start_ns: 0,
+            end_ns: None
+        }],
+        "clearing while recording reopens one take at the new origin"
+    );
+    assert!(session.wall_clock.is_some());
+    assert!(session.frames.is_empty());
 }
 
 #[test]

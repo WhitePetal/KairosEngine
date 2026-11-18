@@ -56,8 +56,8 @@ pub struct ProfilerStyle {
     // -- Module area --------------------------------------------------------
     /// Default height of the module pane above the timeline: where the splitter
     /// comes to rest and what a double-click restores. The pane is a window
-    /// onto the fixed-height module cards, so the splitter gives the rest of the
-    /// panel to the timeline.
+    /// onto the fixed-height module cards plus its pinned clock ruler and zoom
+    /// bar, so the splitter gives the rest of the panel to the timeline.
     pub module_area_height: f32,
     /// Fixed height of the CPU Usage card (title row + frame-history chart). The
     /// card keeps this height while the splitter moves, so dragging the pane
@@ -72,13 +72,20 @@ pub struct ProfilerStyle {
     pub module_name_width: f32,
     /// Height of one legend row.
     pub legend_row_height: f32,
+    /// How many frames the module area's time axis shows by default (the most
+    /// recent ones); the wheel or the zoom bar widens the window to the whole
+    /// capture.
     pub window_fram_count: usize,
     /// Fill of the frame-history bars.
     pub chart_bar: Color32,
-    /// Horizontal target line inside the chart (8/16/33 ms reference).
+    /// Horizontal guide line inside the usage chart (Unity's ms/FPS tiers) and
+    /// the faint vertical grid under the clock ticks.
     pub chart_grid: Color32,
     /// Vertical marker at the selected frame.
     pub chart_cursor: Color32,
+    /// Fill of a break band: the compressed pause between two takes on the
+    /// module area's time axis.
+    pub break_bg: Color32,
     pub chip_bg: Color32,
     pub chip_text: Color32,
     /// Category colours in legend order (the order of `Category::ALL`).
@@ -91,7 +98,8 @@ pub struct ProfilerStyle {
     pub timeline_view_width: f32,
     /// Width of the header's Live toggle.
     pub timeline_live_width: f32,
-    /// Height of the ruler above the thread rows.
+    /// Height of the ruler above the thread rows, and of the module area's
+    /// pinned clock axis.
     pub ruler_height: f32,
     pub ruler_bg: Color32,
     /// Height of one nesting level inside a thread track.
@@ -176,7 +184,7 @@ impl Style for ProfilerStyle {
             small_text_size: 10.0,
             warning: Color32::from_rgb(0xE0, 0xB0, 0x3A),
 
-            module_area_height: 190.0,
+            module_area_height: 224.0,
             module_cpu_height: 169.0,
             module_gpu_height: 120.0,
             module_header_height: 20.0,
@@ -186,6 +194,7 @@ impl Style for ProfilerStyle {
             chart_bar: Color32::from_rgb(0x79, 0x7B, 0x1D),
             chart_grid: Color32::from_rgb(0x57, 0x57, 0x57),
             chart_cursor: Color32::from_rgb(0xE6, 0xE6, 0xE6),
+            break_bg: Color32::from_rgb(0x3A, 0x3A, 0x3A),
             chip_bg: Color32::from_rgb(0x2A, 0x2A, 0x2A),
             chip_text: Color32::from_rgb(0xC8, 0xC8, 0xC8),
             category_palette: unity_category_palette(),
@@ -250,7 +259,7 @@ impl Style for ProfilerStyle {
             small_text_size: 10.0,
             warning: Color32::from_rgb(0xB0, 0x78, 0x00),
 
-            module_area_height: 190.0,
+            module_area_height: 224.0,
             module_cpu_height: 169.0,
             module_gpu_height: 120.0,
             module_header_height: 20.0,
@@ -260,6 +269,7 @@ impl Style for ProfilerStyle {
             chart_bar: Color32::from_rgb(0x7E, 0x84, 0x20),
             chart_grid: Color32::from_rgb(0xA0, 0xA0, 0xA0),
             chart_cursor: Color32::from_rgb(0x30, 0x30, 0x30),
+            break_bg: Color32::from_rgb(0xC0, 0xC0, 0xC0),
             chip_bg: Color32::from_rgb(0xDC, 0xDC, 0xDC),
             chip_text: Color32::from_rgb(0x20, 0x20, 0x20),
             category_palette: unity_category_palette(),
