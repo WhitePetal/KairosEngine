@@ -1,33 +1,19 @@
 //! Hierarchy panel: demo body until the scene tree is ported.
 
 use egui::{Context, Ui, WidgetText};
-use kairos_editor_core::PanelId;
-
 use kairos_editor_widgets::ui_image;
 
 use crate::frame::{Frame, UiOut};
-use crate::panel::{Panel, PanelContext, PanelDef};
-
-use super::HIERARCHY;
+use crate::panel::Panel;
 
 /// Tab-header artwork; a runtime file under `Preferences/Textures`, not an
 /// embedded asset (see `kairos_editor_widgets::ui_image`).
 const TAB_ICON: &str = "Preferences/Textures/tab_icons/hierarchy.png";
 
+#[crate::panel(HIERARCHY = "hierarchy")]
 pub(crate) struct HierarchyPanel;
 
-/// Catalog entry: the host builds the panel through this when it opens.
-pub(super) const DEF: PanelDef = PanelDef::new(HIERARCHY, create);
-
-fn create(_context: &PanelContext) -> Box<dyn Panel> {
-    Box::new(HierarchyPanel)
-}
-
 impl Panel for HierarchyPanel {
-    fn kind(&self) -> PanelId {
-        HIERARCHY
-    }
-
     fn icon(&self) -> Option<&str> {
         Some(TAB_ICON)
     }

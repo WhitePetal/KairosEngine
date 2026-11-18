@@ -54,18 +54,17 @@
 //! ## Panel framework
 //!
 //! [`panel`] is the docked workspace layer: [`Panel`] is the trait every panel
-//! implements, [`PanelDef`]/[`PanelCatalog`] declare the panel set as a static
-//! table of ids and `fn` factories, and [`PanelHost`] owns the live instances
-//! and implements the docking crate's `TabViewer`. The app never calls a
-//! concrete panel: it hands the host a catalog and a [`PanelContext`], syncs it
-//! with `LayoutState`, and lets `Docker::show` draw. Nothing is registered at
-//! startup, and no instance exists for a panel that is not open.
+//! implements, [`PanelDef`]/[`PanelCatalog`] describe the panel set, and
+//! [`PanelHost`] owns the live instances and implements the docking crate's
+//! `TabViewer`. The app never calls a concrete panel: it hands the host a
+//! catalog and a [`PanelContext`], syncs it with `LayoutState`, and lets
+//! `Docker::show` draw. No instance exists for a panel that is not open.
 //!
-//! [`panels`] holds the built-in panels and their ids; adding a panel is one
-//! impl in `panels/<name>.rs`, one `DEF` there, and one entry in the
-//! `panel_catalog!` table. That single entry generates the `mod` declaration,
-//! the id and the [`panels::CATALOG`] row, so the three cannot drift apart.
-//! The app shell does not change.
+//! [`panels`] holds the built-in panels and their ids. Every panel struct
+//! carries the `#[panel]` attribute, which declares its id, implements
+//! [`PanelRegister`] and submits the factory; the submissions share a
+//! link-section table and [`panels::catalog`] collects them once, sorted by id.
+//! No central table names a panel's factory, and the app shell does not change.
 //!
 //! ## About panel
 //!
@@ -94,9 +93,15 @@
 
 #![forbid(unsafe_code)]
 
-// Lets the `StyleFields` derive name this crate from inside it.
+// Both macros expand to absolute paths back into this crate; the alias makes
+// those paths work inside the crate as well as from dependents.
 extern crate self as kairos_editor_component;
 
+/// The seal behind PanelRegister: implemented only by `#[panel]`, and
+/// unreachable outside this crate, so a panel cannot be registered by hand.
+pub(crate) mod __sealed {
+    pub trait Sealed {}
+}
 pub mod console;
 pub mod frame;
 pub mod panel;
@@ -113,8 +118,21 @@ pub use kairos_editor_core::PanelId;
 // reachable from the crate root.
 pub use panel::{
     EditorInfo, Panel, PanelCatalog, PanelContext, PanelDef, PanelFactory, PanelHost,
-    PanelHostViewer, PanelInstanceId,
+    PanelHostViewer, PanelInstanceId, PanelRegister,
 };
 // The Preferences editor consumes these; a panel implementation needs
 // `StyleFields` (derive) and builds a `PanelSkin` in `Panel::skin`.
 pub use skin::{PanelSkin, StyleField, StyleFields as StyleFieldsTrait, StyleKind};
+
+// The panel declaration attribute: id, registration and factory from one item.
+// Panels are defined in this crate only (`PanelRegister` is sealed), so the
+// attribute is not re-exported publicly either.
+pub(crate) use kairos_editor_component_macros::panel;
+
+/// Paths `#[panel]` expands to. Not part of the public API.
+#[doc(hidden)]
+pub mod __macro {
+    pub use crate::PanelId;
+    pub use crate::panel::{Panel, PanelContext, PanelDef, PanelRegister};
+    pub use inventory;
+}

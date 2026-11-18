@@ -11,6 +11,9 @@ unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)", "cfg(docsrs_dep)
 
 [dependencies]
 egui = "0.35.0"
+# Panels submit their PanelDef to a link-section table and the host collects
+# them once; the same mechanism Bevy 0.17 uses for Reflect auto-registration.
+inventory = "0.3"
 # Component styles derive Serialize/Deserialize (RON files under Preferences).
 serde = { version = "1.0.228", features = ["derive"] }
 
@@ -26,7 +29,7 @@ kairos_log = { path = "../kairos_log" }
 kairos_profile = { path = "../kairos_profile" }
 kairos_editor_docking = { path = "../kairos_editor_docking" }
 kairos_editor_widgets = { path = "../kairos_editor_widgets" }
-# `#[derive(StyleFields)]`: a style struct describes its own fields, so the
-# Preferences editor cannot drift from it.
+# `#[panel]` (id + registration) and `#[derive(StyleFields)]` (the style editor's
+# field table): both keep the declaration next to the thing it describes.
 kairos_editor_component_macros = { path = "macros" }
 vec1 = "1.12.1"

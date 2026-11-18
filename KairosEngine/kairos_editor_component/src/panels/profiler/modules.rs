@@ -4,8 +4,6 @@ use kairos_profile::ProfileSession;
 
 use crate::panels::profiler::{ProfilerPanel, WHEEL_NOTCH_POINTS, ZOOM_PER_NOTCH};
 
-
-
 impl ProfilerPanel {
     /// The module pane: a pinned time axis on top, a pinned zoom bar at the
     /// bottom, and between them a window onto the module cards.

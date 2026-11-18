@@ -239,7 +239,7 @@ use egui::{
     Align2, Context, CornerRadius, FontId, Rect, Response, Sense, Stroke, StrokeKind, Ui,
     WidgetText,
 };
-use kairos_editor_core::{PanelId, StyleValue};
+use kairos_editor_core::StyleValue;
 use kairos_editor_widgets::button::{Button, ButtonAlign, ButtonStyle};
 use kairos_editor_widgets::color::Color32Ext;
 use kairos_editor_widgets::divider::Divider;
@@ -252,22 +252,21 @@ use kairos_editor_widgets::text::TextStyle;
 use kairos_editor_widgets::timeline_axis::{TimelineRuler, TimelineRulerStyle};
 use kairos_editor_widgets::ui_image;
 use kairos_profile::{
-    CaptureFiles, Category, FrameSnapshot, HierarchyRow, ProfileSession, SYSTEM_MARKER, SampleSnapshot, ScopeInfo, ThreadSnapshot, classify_system, strip_tag
+    CaptureFiles, Category, FrameSnapshot, HierarchyRow, ProfileSession, SYSTEM_MARKER,
+    SampleSnapshot, ScopeInfo, ThreadSnapshot, classify_system, strip_tag,
 };
 
 use crate::frame::{Frame, UiOut};
-use crate::panel::{Panel, PanelContext, PanelDef};
-use crate::skin::{PanelSkin, StyleFields};
-use crate::panels::profiler::hierarchy::{HierarchySort};
+use crate::panel::Panel;
+use crate::panels::profiler::hierarchy::HierarchySort;
 use crate::panels::profiler::style::ProfilerStyle;
+use crate::skin::{PanelSkin, StyleFields};
 
 use self::axis::ModuleAxis;
 
-use super::PROFILER;
-
 mod axis;
-mod main_toolbar;
 mod hierarchy;
+mod main_toolbar;
 mod modules;
 pub mod style;
 
@@ -508,6 +507,7 @@ impl TimelineLayout {
     }
 }
 
+#[crate::panel(PROFILER = "profiler")]
 pub(crate) struct ProfilerPanel {
     style: ProfilerStyle,
     recording: bool,
@@ -563,13 +563,6 @@ pub(crate) struct ProfilerPanel {
     track_scroll: f32,
 }
 
-/// Catalog entry: the host builds the panel through this when it opens.
-pub(super) const DEF: PanelDef = PanelDef::new(PROFILER, create);
-
-fn create(_context: &PanelContext) -> Box<dyn Panel> {
-    Box::new(ProfilerPanel::default())
-}
-
 impl Default for ProfilerPanel {
     fn default() -> Self {
         let mut panel = Self {
@@ -604,10 +597,6 @@ impl Default for ProfilerPanel {
 }
 
 impl Panel for ProfilerPanel {
-    fn kind(&self) -> PanelId {
-        PROFILER
-    }
-
     fn icon(&self) -> Option<&str> {
         Some(&self.style.icons.tab)
     }
@@ -1723,7 +1712,8 @@ impl ProfilerPanel {
                         self.timeline_view.zoom_around(factor, focus, duration_ns);
                     }
                     if wheel.x != 0.0 {
-                        let delta = -f64::from(wheel.x) / f64::from(track_width) * self.timeline_view.span;
+                        let delta =
+                            -f64::from(wheel.x) / f64::from(track_width) * self.timeline_view.span;
                         self.timeline_view.pan_by(delta, duration_ns);
                     }
                     true
@@ -1731,7 +1721,8 @@ impl ProfilerPanel {
                     self.track_scroll -= wheel.y;
                     true
                 } else if layout.horizontal_bar.contains(pos) {
-                    let step = f64::from(wheel.y) / WHEEL_NOTCH_POINTS * self.timeline_view.span * 0.1;
+                    let step =
+                        f64::from(wheel.y) / WHEEL_NOTCH_POINTS * self.timeline_view.span * 0.1;
                     self.timeline_view.pan_by(-step, duration_ns);
                     true
                 } else {
@@ -1841,8 +1832,9 @@ impl ProfilerPanel {
 
         // The frame time: Unity's min-max scroller. Its thumb pans, its two ends
         // resize the window — which is how the timeline zooms.
-        let mut window = ScrollWindow::new(self.timeline_view.pan, self.timeline_view.span, (0.0, 1.0))
-            .with_min_span(TimelineView::min_span(duration_ns));
+        let mut window =
+            ScrollWindow::new(self.timeline_view.pan, self.timeline_view.span, (0.0, 1.0))
+                .with_min_span(TimelineView::min_span(duration_ns));
         let zoomed = MinMaxScroll::horizontal(&style)
             .resizable(true)
             .show(
@@ -3144,7 +3136,7 @@ mod probe {
     use crate::{
         frame::HostView,
         panels::profiler::hierarchy::{
-            HierarchySort, hierarchy_row_label, sort_hierarchy_rows, visible_hierarchy_rows
+            HierarchySort, hierarchy_row_label, sort_hierarchy_rows, visible_hierarchy_rows,
         },
     };
     use egui::pos2;
@@ -5126,7 +5118,10 @@ mod probe {
             "dragging the thumb right shows later time: {before:?} -> {:?}",
             panel.timeline_view
         );
-        assert_eq!(panel.timeline_view.span, before.span, "panning does not zoom");
+        assert_eq!(
+            panel.timeline_view.span, before.span,
+            "panning does not zoom"
+        );
     }
 
     /// Dragging an end of the horizontal bar's thumb resizes the window: that is
@@ -6415,10 +6410,7 @@ mod probe {
         let calls = text_center(&first, "Calls");
         draw_pass(&ctx, &mut panel, &host, click_events(calls));
         assert_eq!(panel.hierarchy_sort, HierarchySort::Calls);
-        assert!(
-            panel.hierarchy_descending,
-            "a new column starts best-first"
-        );
+        assert!(panel.hierarchy_descending, "a new column starts best-first");
 
         let second = draw_pass(&ctx, &mut panel, &host, Vec::new());
         let calls = text_center(&second, "Calls");

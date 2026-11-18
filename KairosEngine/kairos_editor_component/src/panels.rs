@@ -1,104 +1,55 @@
-//! Built-in panels: one file per panel, declared in one static catalog.
+//! Built-in panels: one file per panel, each registering itself.
 //!
-//! Adding a panel is:
+//! Every panel struct carries the `#[panel]` attribute, which declares its id,
+//! implements `PanelRegister` and submits its `PanelDef`; `catalog()` collects
+//! the submissions from the link-section table. Nothing here names a panel's
+//! factory, and there is no table to keep in sync with the files.
 //!
-//! 1. implement [`Panel`](crate::Panel) in `panels/<name>.rs`, with a
-//!    `pub(super) const DEF` that names its id and its factory;
-//! 2. add one entry to the `panel_catalog!` table below.
+//! What remains in this module is the module plumbing Rust requires: the `mod`
+//! declaration makes the file part of the crate, and the `pub use` keeps the
+//! public vocabulary at `panels::SCENE`. A file that nothing declares is never
+//! compiled, so its `#[panel]` submission never runs.
 //!
-//! That entry is the only declaration: the macro emits the `mod` statement, the
-//! [`PanelId`] constant and the [`CATALOG`] row from the same line, so none of
-//! the three can exist without the others. `scene::DEF` is written against
-//! `super::SCENE`, which only exists because the table generated it.
-//!
-//! One line per panel is the floor, not an oversight: Rust requires every file
-//! to be reachable through a `mod` declaration, so even a link-section registry
-//! (`inventory`) would still need this statement somewhere. The table makes it
-//! the *only* one.
-//!
-//! The table also takes over the compiler's usual "declared but not compiled"
-//! check, so a test covers the other direction: `every_panel_file_is_declared`
-//! fails when `src/panels/` holds a panel file the table never mentions. Every
-//! top-level file in `src/panels/` is a panel; helper modules live in
-//! subdirectories (`about/`, `profiler/`).
-//!
-//! Keep the macro in this file: the `mod` it emits resolves relative to the
-//! file that defines the macro, not the one that invokes it.
-//!
-//! There is no registration step and no startup pass. [`CATALOG`] is a
-//! compile-time table; `PanelHost` consults it when a kind becomes open and
-//! builds the instance then, so a panel nobody opens is never constructed and
-//! never runs `init`. The app shell does not change: it toggles `PanelId`s in
-//! `LayoutState` and builds the default dock out of the ids it knows (About is
-//! never in that boot set: it opens from the menu, and `ShowPanel` floats it).
+//! Panels are defined here and nowhere else: `PanelRegister` is sealed, so only
+//! `#[panel]` can implement it, and `Panel` requires it.
 //!
 //! `about` is the first panel ported from the legacy `kairos_editor` whose
 //! body has real content (the others are still demo bodies that establish the
-//! layer). `preferences` is the second: it edits `EditorState::settings` and
-//! offers the "Reload" bridge to the per-component skins, replacing the legacy
-//! window's reflection over every drawer's style fields. The rest of the real
-//! panels are ported one at a time from
+//! layer). `preferences` is the second: it edits every open panel's skin
+//! (`Preferences/Styles/*.ron`) through the same field protocol that the
+//! styles derive, replacing the legacy window's reflection over every drawer's
+//! style fields. The rest of the real panels are ported one at a time from
 //! `prototypes/editor-ui/crates/editor-components` (project first, see
 //! `docs/plan/editor-ui-architecture/panel-viewport-design.md` §6.2 P1).
 
-use kairos_editor_core::PanelId;
+mod about;
+mod console;
+mod hierarchy;
+mod inspector;
+mod preferences;
+mod profiler;
+mod project;
+mod scene;
+
+pub use about::ABOUT;
+pub use console::CONSOLE;
+pub use hierarchy::HIERARCHY;
+pub use inspector::INSPECTOR;
+pub use preferences::PREFERENCES;
+pub use profiler::PROFILER;
+pub use project::PROJECT;
+pub use scene::SCENE;
 
 use crate::panel::PanelCatalog;
 
-/// Declares a built-in panel once: file, id and catalog row.
+/// Every built-in panel, collected from the panel files themselves.
 ///
-/// Each entry expands to `mod <module>;`, the `PanelId` constant and the
-/// [`PanelCatalog`] row that points at `<module>::DEF`. A `DEF` cannot name a
-/// constant the table did not generate, and an entry whose module lacks a
-/// `DEF` fails to resolve it. A *file* with no entry is invisible to the
-/// compiler (nothing declares it), so `every_panel_file_is_declared` compares
-/// the table with `src/panels/` on disk.
-macro_rules! panel_catalog {
-    ($(
-        $(#[$attr:meta])*
-        $konst:ident = $id:literal => $module:ident
-    ),+ $(,)?) => {
-        $(
-            $(#[$attr])*
-            mod $module;
-
-            $(#[$attr])*
-            pub const $konst: PanelId = PanelId($id);
-        )+
-
-        /// Every built-in panel, declared once.
-        ///
-        /// Each entry's id and constructor live together in its module's `DEF`,
-        /// and this table is generated from the same declaration as the ids and
-        /// the `mod` statements, so the three cannot drift apart. It is a
-        /// `static`, not a value filled at boot: the host reads it when a panel
-        /// opens, and nothing in it runs before that.
-        ///
-        /// `PanelHost::sync` walks it in declaration order when it allocates
-        /// instance serials, so the same open set yields the same ids on every
-        /// run.
-        pub static CATALOG: PanelCatalog = PanelCatalog::new(&[$($module::DEF),+]);
-
-        /// Module names in table order. Test-only: it is how
-        /// `every_panel_file_is_declared` compares the table against the files
-        /// on disk.
-        #[cfg(test)]
-        const PANEL_MODULES: &[&str] = &[$(stringify!($module)),+];
-    };
-}
-
-panel_catalog! {
-    SCENE = "scene" => scene,
-    INSPECTOR = "inspector" => inspector,
-    CONSOLE = "console" => console,
-    HIERARCHY = "hierarchy" => hierarchy,
-    PROJECT = "project" => project,
-    PROFILER = "profiler" => profiler,
-    /// The editor's identity card. Opened from the "Kairos" menu; floated by
-    /// `LayoutAction::ShowPanel` like any panel that has no dock tab yet.
-    ABOUT = "about" => about,
-    /// User preferences. Opened from the "Edit" menu; floats like About.
-    PREFERENCES = "preferences" => preferences,
+/// The submissions share a link-section table; `PanelCatalog::builtin` reads
+/// it once and sorts by id, because link order is not source order. The app
+/// passes this to `PanelHost::new`, and nothing is constructed until a panel
+/// opens.
+pub fn catalog() -> PanelCatalog {
+    PanelCatalog::builtin()
 }
 
 #[cfg(test)]
@@ -107,36 +58,58 @@ mod tests {
     use std::path::Path;
 
     use super::*;
+    use crate::PanelId;
 
-    /// The table generates the `mod` statements, so an undeclared panel file
-    /// would simply never be compiled and nothing would report it. Compare the
-    /// table with the directory instead.
+    /// `mod` is the one list inventory cannot replace: a file nothing declares
+    /// is never compiled, so its `#[panel]` submission never runs. Compare the
+    /// declarations with `src/panels/` so a forgotten module is a test failure
+    /// rather than a panel that silently does not exist.
     #[test]
     fn every_panel_file_is_declared() {
-        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/panels");
-        let on_disk: BTreeSet<String> = std::fs::read_dir(&dir)
-            .expect("src/panels")
-            .map(|entry| entry.expect("directory entry").path())
-            .filter(|path| path.extension().is_some_and(|extension| extension == "rs"))
-            .filter_map(|path| Some(path.file_stem()?.to_str()?.to_owned()))
+        let declared: BTreeSet<String> = include_str!("panels.rs")
+            .lines()
+            .filter_map(|line| line.trim().strip_prefix("mod "))
+            .filter_map(|line| line.strip_suffix(';'))
+            .map(str::to_owned)
             .collect();
-        let declared: BTreeSet<String> = PANEL_MODULES
-            .iter()
-            .map(|name| (*name).to_owned())
-            .collect();
+        let on_disk: BTreeSet<String> =
+            std::fs::read_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("src/panels"))
+                .expect("src/panels")
+                .map(|entry| entry.expect("directory entry").path())
+                .filter(|path| path.extension().is_some_and(|extension| extension == "rs"))
+                .filter_map(|path| Some(path.file_stem()?.to_str()?.to_owned()))
+                .collect();
 
         assert_eq!(
             on_disk, declared,
-            "every src/panels/*.rs needs a panel_catalog! entry, and vice versa"
+            "every src/panels/*.rs needs a `mod` line, and vice versa"
         );
     }
 
-    /// A panel disappearing (file and entry both deleted) leaves the table and
-    /// the directory in agreement, which the test above accepts. This number is
-    /// the deliberate change signal: update it when the set changes on purpose.
     #[test]
-    fn the_table_declares_eight_panels() {
-        assert_eq!(CATALOG.len(), 8);
-        assert_eq!(PANEL_MODULES.len(), 8);
+    fn every_builtin_panel_is_collected_once() {
+        let catalog = catalog();
+        assert_eq!(catalog.len(), 8);
+
+        let mut kinds: Vec<PanelId> = catalog.kinds().collect();
+        kinds.sort_unstable();
+        let collected = kinds.len();
+        kinds.dedup();
+        assert_eq!(
+            kinds.len(),
+            collected,
+            "two panel modules submitted the same PanelId"
+        );
+    }
+
+    #[test]
+    fn the_collection_is_sorted_by_id() {
+        let kinds: Vec<PanelId> = catalog().kinds().collect();
+        let mut sorted = kinds.clone();
+        sorted.sort_unstable();
+        assert_eq!(
+            kinds, sorted,
+            "link order is unspecified; the catalog must sort"
+        );
     }
 }

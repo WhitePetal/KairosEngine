@@ -83,7 +83,7 @@
 
 ### 2.1 落点：一个 Panel
 
-- `panels::PREFERENCES: PanelId = PanelId("preferences")`，声明在 `panels::CATALOG`。
+- `#[crate::panel(PREFERENCES = "preferences")]` 声明在 `panels/preferences.rs` 的面板结构体上：id 常量、`PanelRegister`、工厂和 `inventory` 提交都由这一行生成（`panels::catalog()` 收集）。
 - **打开**：工具栏 “Edit → Preferences” → `LayoutAction::ShowPanel { PREFERENCES }` → dock 无 tab 时浮成窗口（与 About 同一条路）。
 - **关闭**：body 的 Close → `LayoutAction::ClosePanel`；tab × 走 `Panel::on_close`（先提交未保存编辑，再发同一个 action）。
 

@@ -1,10 +1,12 @@
 use egui::{Response, Sense, Ui};
-use kairos_editor_widgets::{button::{Button, ButtonStyle}, color::Color32Ext, divider::Divider};
+use kairos_editor_widgets::{
+    button::{Button, ButtonStyle},
+    color::Color32Ext,
+    divider::Divider,
+};
 use kairos_profile::{ProfileSession, Profiler};
 
 use crate::panels::profiler::ProfilerPanel;
-
-
 
 impl ProfilerPanel {
     /// Unity's Profiler toolbar: a row of chrome segments closed by 1 px rules,
@@ -21,7 +23,12 @@ impl ProfilerPanel {
     /// * after Clear, pushed right — `Clear on Play`, `Deep Profile`,
     ///   `Call Stacks` with a caret, then the save / help / overflow icon
     ///   cluster.
-    pub(super) fn main_toolbar(&mut self, ui: &mut Ui, profiler: &Profiler, session: &ProfileSession) {
+    pub(super) fn main_toolbar(
+        &mut self,
+        ui: &mut Ui,
+        profiler: &Profiler,
+        session: &ProfileSession,
+    ) {
         let fill = if self.recording {
             self.style.recording_bg.to_egui()
         } else {
@@ -162,14 +169,14 @@ impl ProfilerPanel {
                                 files.chrome_trace.display(),
                                 files.puffin.display(),
                             );
-                        },
+                        }
                         Err(error) => {
                             kairos_log::error!(
                                 target: "kairos_editor",
                                 "profiler capture save failed, error: {}",
                                 error
                             );
-                        },
+                        }
                     }
                     self.save = Some(written.map_err(|error| error.to_string()));
                 }

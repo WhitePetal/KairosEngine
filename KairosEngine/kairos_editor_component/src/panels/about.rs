@@ -38,7 +38,7 @@ use egui::{
     Align, Color32, Context, CornerRadius, Hyperlink, Id, Label, Layout, Margin, Sense, Ui,
     WidgetText, vec2,
 };
-use kairos_editor_core::{Action, LayoutAction, PanelId, StyleValue};
+use kairos_editor_core::{Action, LayoutAction, StyleValue};
 use kairos_editor_widgets::button::Button;
 use kairos_editor_widgets::color::Color32Ext;
 use kairos_editor_widgets::divider::Divider;
@@ -47,11 +47,10 @@ use kairos_editor_widgets::text::TextStyle;
 use kairos_editor_widgets::ui_image;
 
 use crate::frame::{Frame, UiOut};
-use crate::panel::{EditorInfo, Panel, PanelContext, PanelDef};
+use crate::panel::{EditorInfo, Panel, PanelContext};
 use crate::skin::{PanelSkin, StyleFields};
 
 use self::style::AboutPanelStyle;
-use super::ABOUT;
 
 /// Stable id of the Close button.
 ///
@@ -70,17 +69,16 @@ fn copy_button_id() -> Id {
 
 /// The About panel. Holds the injected identity and the loaded skin; no other
 /// state, so nothing to persist and nothing to reset on reopen.
+#[crate::panel(ABOUT = "about", create = about_panel)]
 pub struct AboutPanel {
     info: EditorInfo,
     style: AboutPanelStyle,
 }
 
-/// Catalog entry: the host builds the panel through this when it opens, with
-/// the identity the composition root injected.
-pub(super) const DEF: PanelDef = PanelDef::new(ABOUT, create);
-
-fn create(context: &PanelContext) -> Box<dyn Panel> {
-    Box::new(AboutPanel::new(context.editor))
+/// Catalog factory for About: the only panel that needs the injected identity
+/// before it has a frame.
+fn about_panel(context: &PanelContext) -> AboutPanel {
+    AboutPanel::new(context.editor)
 }
 
 impl AboutPanel {
@@ -95,10 +93,6 @@ impl AboutPanel {
 }
 
 impl Panel for AboutPanel {
-    fn kind(&self) -> PanelId {
-        ABOUT
-    }
-
     fn icon(&self) -> Option<&str> {
         Some(self.style.icons.tab.as_str())
     }
@@ -158,8 +152,11 @@ impl Panel for AboutPanel {
 
         // The dock paints a body colour behind every tab; a floating window uses
         // the panel's own. Painting it here keeps the two cases identical.
-        ui.painter()
-            .rect_filled(ui.max_rect(), CornerRadius::ZERO, style.background.to_egui());
+        ui.painter().rect_filled(
+            ui.max_rect(),
+            CornerRadius::ZERO,
+            style.background.to_egui(),
+        );
 
         egui::Frame::NONE
             .inner_margin(Margin::same(style.padding.round() as i8))
@@ -185,7 +182,13 @@ impl Panel for AboutPanel {
                         "Project page",
                         self.info.repository,
                     );
-                    link_row(ui, style, "Discussions", "Discussions", self.info.discussions);
+                    link_row(
+                        ui,
+                        style,
+                        "Discussions",
+                        "Discussions",
+                        self.info.discussions,
+                    );
                     link_row(ui, style, "Credits", "Thanks", self.info.credits);
                 }
 
@@ -409,11 +412,7 @@ mod tests {
             .expect("the widget was laid out in a previous pass")
             .rect;
 
-        draw(
-            ctx,
-            panel,
-            vec![egui::Event::PointerMoved(rect.center())],
-        );
+        draw(ctx, panel, vec![egui::Event::PointerMoved(rect.center())]);
         draw(ctx, panel, vec![pointer(rect.center(), true)]);
         let (_, out) = draw(ctx, panel, vec![pointer(rect.center(), false)]);
         out
@@ -448,7 +447,10 @@ mod tests {
         }
 
         assert!(filled >= 2, "Copy and Close paint their fill: {filled}");
-        assert!(outlined >= 2, "Copy and Close paint their border: {outlined}");
+        assert!(
+            outlined >= 2,
+            "Copy and Close paint their border: {outlined}"
+        );
     }
 
     #[test]

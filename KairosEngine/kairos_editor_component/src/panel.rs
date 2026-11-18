@@ -24,9 +24,9 @@
 //! # Pieces
 //!
 //! * [`Panel`], [`Frame`], [`UiOut`], [`PanelInstanceId`]: what a panel is.
-//! * [`PanelDef`], [`PanelCatalog`], [`PanelContext`]: the panel set, declared as
-//!   a static table, and what a factory is handed when an instance is built
-//!   (`catalog` and `context` modules).
+//! * [`PanelDef`], [`PanelCatalog`], [`PanelContext`]: the panel set, collected
+//!   from the link-section table, and what a factory is handed when an instance
+//!   is built (`catalog` and `context` modules).
 //! * [`PanelHost`]: owns the instances and reconciles them with `LayoutState`
 //!   (`host` module); [`PanelHostViewer`] adapts the host to the dock's
 //!   `TabViewer` seam (`viewer` module).
@@ -52,15 +52,36 @@ use crate::skin::PanelSkin;
 // is where the panel framework surfaces it.
 pub use kairos_editor_core::PanelInstanceId;
 
+/// Registration half of a panel: its stable id, implemented by `#[panel]`.
+///
+/// [`Panel`] requires this trait, so a type that implements `Panel` without
+/// declaring an id (normally through the `#[panel]` attribute) does not
+/// compile. The attribute also submits the [`PanelDef`] to the link-section
+/// table.
+///
+/// **Sealed.** The supertrait is only reachable inside this crate, so a panel
+/// cannot implement this by hand, and panels are defined in this crate only.
+/// The seal is what makes "implements `Panel` but was never registered"
+/// impossible rather than merely discouraged.
+pub trait PanelRegister: crate::__sealed::Sealed {
+    /// Stable kind id: the key in `LayoutState` and persisted layouts.
+    fn panel_id(&self) -> PanelId;
+}
+
 /// One drawable panel body. The host owns the tab/title bar; the panel draws the
 /// body only.
 ///
 /// Implementations are owned by [`PanelHost`] and live across frames. They may
 /// keep UI-only view state (search text, expanded paths, ...) but never domain
 /// state: reads go through [`Frame`], writes go through [`UiOut`] as [`Action`]s.
-pub trait Panel {
+pub trait Panel: PanelRegister {
     /// Panel kind, matching the `PanelId` the factory was registered under.
-    fn kind(&self) -> PanelId;
+    ///
+    /// Provided: the id is whatever [`PanelRegister::panel_id`] returns, so a
+    /// panel never restates it.
+    fn kind(&self) -> PanelId {
+        self.panel_id()
+    }
 
     /// Tab-header icon: path to a runtime image file, relative to the editor's
     /// working directory. Each panel returns its own artwork (Console from

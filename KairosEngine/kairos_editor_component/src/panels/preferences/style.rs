@@ -218,19 +218,22 @@ impl PreferencesPanelStyle {
     /// The boolean control: a filled button whose selected fill is the accent,
     /// so "On" is visible at a glance instead of being a tick mark.
     pub fn toggle_style(&self) -> ButtonStyle {
-        ButtonStyle::new(TextStyle::sized(self.control_value.to_egui(), self.body_size))
-            .fills(
-                self.button_fill.to_egui(),
-                self.button_hover.to_egui(),
-                self.accent.to_egui(),
-            )
-            .stroke(egui::Stroke::new(
-                self.button_border_width,
-                self.button_border.to_egui(),
-            ))
-            .corner_radius(CornerRadius::same(self.button_corner_radius as u8))
-            .padding(Vec2::new(self.button_padding, 0.0))
-            .height(self.button_height)
+        ButtonStyle::new(TextStyle::sized(
+            self.control_value.to_egui(),
+            self.body_size,
+        ))
+        .fills(
+            self.button_fill.to_egui(),
+            self.button_hover.to_egui(),
+            self.accent.to_egui(),
+        )
+        .stroke(egui::Stroke::new(
+            self.button_border_width,
+            self.button_border.to_egui(),
+        ))
+        .corner_radius(CornerRadius::same(self.button_corner_radius as u8))
+        .padding(Vec2::new(self.button_padding, 0.0))
+        .height(self.button_height)
     }
 }
 
@@ -283,6 +286,10 @@ mod tests {
 
         assert!(fields.iter().any(|field| field.path == "nav_width"));
         assert!(fields.iter().any(|field| field.path == "background"));
-        assert!(fields.iter().any(|field| field.path == "button_corner_radius"));
+        assert!(
+            fields
+                .iter()
+                .any(|field| field.path == "button_corner_radius")
+        );
     }
 }

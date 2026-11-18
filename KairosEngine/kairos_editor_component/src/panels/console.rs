@@ -24,7 +24,7 @@ pub mod style;
 use std::collections::HashMap;
 
 use egui::{Align2, CornerRadius, Rect, Sense, Stroke, Ui, WidgetText, WidgetType, pos2, vec2};
-use kairos_editor_core::{PanelId, StyleValue};
+use kairos_editor_core::StyleValue;
 use kairos_editor_widgets::button::{Button, ButtonAlign, ButtonStyle};
 use kairos_editor_widgets::color::Color32Ext;
 use kairos_editor_widgets::paint::{labelled_widget_info, magnifier};
@@ -35,14 +35,13 @@ use kairos_editor_widgets::ui_image;
 use kairos_log::Level;
 
 use crate::frame::{ConsoleLine, Frame, UiOut};
-use crate::panel::{Panel, PanelContext, PanelDef};
-use crate::skin::{PanelSkin, StyleFields};
+use crate::panel::Panel;
 use crate::panels::console::style::ConsoleStyle;
-
-use super::CONSOLE;
+use crate::skin::{PanelSkin, StyleFields};
 
 /// Console panel view state. Everything here is disposable: losing it on a
 /// panel close resets the console UI, never the log history.
+#[crate::panel(CONSOLE = "console")]
 pub(crate) struct ConsolePanel {
     search: String,
     collapse: bool,
@@ -59,13 +58,6 @@ pub(crate) struct ConsolePanel {
     /// Stack-trace pane height after the user drags its top edge; `None` means
     /// the style's `detail_height` applies.
     detail_height: Option<f32>,
-}
-
-/// Catalog entry: the host builds the panel through this when it opens.
-pub(super) const DEF: PanelDef = PanelDef::new(CONSOLE, create);
-
-fn create(_context: &PanelContext) -> Box<dyn Panel> {
-    Box::new(ConsolePanel::default())
 }
 
 impl Default for ConsolePanel {
@@ -85,10 +77,6 @@ impl Default for ConsolePanel {
 }
 
 impl Panel for ConsolePanel {
-    fn kind(&self) -> PanelId {
-        CONSOLE
-    }
-
     fn icon(&self) -> Option<&str> {
         Some(self.style.tab_icon.as_str())
     }

@@ -1,12 +1,18 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use egui::{Align2, CornerRadius, Rect, Sense, Ui};
-use kairos_editor_widgets::{color::Color32Ext, min_max_scroll::{MinMaxScroll, ScrollWindow}};
-use kairos_profile::{Category, HierarchyRow, ProfileSession, SYSTEM_MARKER, ScopeInfo, hierarchy, strip_tag};
+use kairos_editor_widgets::{
+    color::Color32Ext,
+    min_max_scroll::{MinMaxScroll, ScrollWindow},
+};
+use kairos_profile::{
+    Category, HierarchyRow, ProfileSession, SYSTEM_MARKER, ScopeInfo, hierarchy, strip_tag,
+};
 
-use crate::panels::profiler::{ProfilerPanel, TimelineLayout, Triangle, duration_text, paint_triangle, scope_info, short_system_name};
-
-
+use crate::panels::profiler::{
+    ProfilerPanel, TimelineLayout, Triangle, duration_text, paint_triangle, scope_info,
+    short_system_name,
+};
 
 /// The Hierarchy view's sibling ordering: the column the user last clicked.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -278,7 +284,6 @@ pub(super) fn visible_hierarchy_rows(
     visible
 }
 
-
 impl ProfilerPanel {
     /// Unity's Hierarchy view over the selected frame: the aggregated marker
     /// tree with Unity's columns, click-to-sort headers and click-to-collapse
@@ -288,7 +293,12 @@ impl ProfilerPanel {
     /// track per thread) it merges every thread, so a system that ran on a
     /// worker is found here even though the stage wrapper that scheduled it has
     /// no child blocks on the main thread.
-    pub(super) fn hierarchy(&mut self, ui: &mut Ui, layout: &TimelineLayout, session: &ProfileSession) {
+    pub(super) fn hierarchy(
+        &mut self,
+        ui: &mut Ui,
+        layout: &TimelineLayout,
+        session: &ProfileSession,
+    ) {
         let body = layout.body;
         let row_height = self.style.level_height.max(1.0);
         ui.painter()
@@ -313,9 +323,7 @@ impl ProfilerPanel {
 
         // The rows the collapse state shows. Their keys do not borrow the
         // cache, so the scroll state can be updated before the paint.
-        let visible = {
-            visible_hierarchy_rows(&self.frame_rows, &self.collapsed)
-        };
+        let visible = { visible_hierarchy_rows(&self.frame_rows, &self.collapsed) };
         let content_height = visible.len() as f32 * row_height;
         let max_scroll = (content_height - body.height()).max(0.0);
         self.track_scroll = self.track_scroll.clamp(0.0, max_scroll);
@@ -503,7 +511,12 @@ impl ProfilerPanel {
     }
 
     /// The Hierarchy view's pinned column header row (Unity's column titles).
-    pub(super) fn paint_hierarchy_header(&mut self, ui: &mut Ui, layout: &TimelineLayout, session: &ProfileSession) {
+    pub(super) fn paint_hierarchy_header(
+        &mut self,
+        ui: &mut Ui,
+        layout: &TimelineLayout,
+        session: &ProfileSession,
+    ) {
         let ruler = layout.ruler;
         ui.painter().rect_filled(
             ruler,

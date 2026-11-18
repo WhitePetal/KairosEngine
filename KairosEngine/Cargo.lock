@@ -2246,6 +2246,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "inventory"
+version = "0.3.25"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6928282826c822ad91bf1c9a1cb90a30ba1c26770749929b4656cd6be829cd7c"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "is-docker"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2628,6 +2637,7 @@ name = "kairos_editor_component"
 version = "0.1.0"
 dependencies = [
  "egui",
+ "inventory",
  "kairos_color",
  "kairos_editor_component_macros",
  "kairos_editor_core",

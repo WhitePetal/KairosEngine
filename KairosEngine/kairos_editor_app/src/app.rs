@@ -74,7 +74,7 @@ impl HostView for HostScope<'_> {
 /// The app owns what the editor calls itself; `kairos_editor_component` cannot
 /// reach these constants without depending on this crate, so the identity is
 /// injected through the `PanelContext` the host hands to every factory (see
-/// `panels::CATALOG`). That keeps one source of truth for the version: the
+/// `panels::catalog`). That keeps one source of truth for the version: the
 /// title bar and About read the same constant.
 fn editor_info() -> EditorInfo {
     EditorInfo {
@@ -171,7 +171,7 @@ impl EditorApp {
         egui_ctx.set_theme(egui::Theme::Dark);
 
         let state = boot_state();
-        let mut host = PanelHost::new(panels::CATALOG, PanelContext::new(editor_info()));
+        let mut host = PanelHost::new(panels::catalog(), PanelContext::new(editor_info()));
         host.sync(&state.layout, egui_ctx);
         let dock = default_dock(&host);
 
@@ -402,7 +402,7 @@ mod tests {
         scratch_style_root();
 
         let state = boot_state();
-        let mut host = PanelHost::new(panels::CATALOG, PanelContext::new(editor_info()));
+        let mut host = PanelHost::new(panels::catalog(), PanelContext::new(editor_info()));
         let ctx = egui::Context::default();
         host.sync(&state.layout, &ctx);
         let dock = default_dock(&host);

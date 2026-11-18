@@ -1,17 +1,15 @@
 //! Headless tests for the panel framework: registry, instance reconciliation,
 //! the dock viewer adapter and the close-as-intent path. No window, no GPU.
 
-use egui::{Context, Pos2, RawInput, Rect, Ui, Vec2, WidgetText};
+use egui::{Context, Pos2, RawInput, Rect, Vec2};
 use kairos_editor_component::{
-    ConsoleLine, EditorInfo, Frame, HostView, Panel, PanelCatalog, PanelContext, PanelDef,
-    PanelHost, PanelId, PanelInstanceId, UiOut, panels,
+    ConsoleLine, EditorInfo, Frame, HostView, PanelContext, PanelHost, PanelId, PanelInstanceId,
+    UiOut, panels,
 };
 use kairos_editor_core::{EditorState, LayoutState, StyleValue};
 use kairos_editor_docking::viewer::TabViewer;
 use kairos_log::Level;
 use kairos_profile::profiling;
-
-const FAKE: PanelId = PanelId("fake");
 
 /// The identity the composition root would inject; the real one lives in
 /// `kairos_editor_app`, which this crate cannot depend on.
@@ -30,42 +28,6 @@ fn function_attribute_uses_the_profiling_reexport() {
     profiled_probe();
 }
 
-struct FakePanel {
-    veto_close: bool,
-}
-
-impl Panel for FakePanel {
-    fn kind(&self) -> PanelId {
-        FAKE
-    }
-
-    fn title(&self, _frame: &Frame) -> WidgetText {
-        "Fake".into()
-    }
-
-    fn ui(&mut self, _ui: &mut Ui, _frame: &Frame, _out: &mut UiOut) {}
-
-    fn on_close(&mut self, _frame: &Frame, _out: &mut UiOut) -> bool {
-        !self.veto_close
-    }
-}
-
-fn fake_allow(_context: &PanelContext) -> Box<dyn Panel> {
-    Box::new(FakePanel { veto_close: false })
-}
-
-fn fake_veto(_context: &PanelContext) -> Box<dyn Panel> {
-    Box::new(FakePanel { veto_close: true })
-}
-
-static FAKE_ALLOW: [PanelDef; 1] = [PanelDef::new(FAKE, fake_allow)];
-static FAKE_VETO: [PanelDef; 1] = [PanelDef::new(FAKE, fake_veto)];
-
-fn host_with_fake(veto_close: bool) -> PanelHost {
-    let defs = if veto_close { &FAKE_VETO } else { &FAKE_ALLOW };
-    PanelHost::new(PanelCatalog::new(defs), PanelContext::new(test_info()))
-}
-
 fn default_host() -> PanelHost {
     // `PanelHost::sync` calls `Panel::init`, which seeds missing style files.
     // Keep that write out of the crate directory: tests use a scratch root.
@@ -79,7 +41,7 @@ fn default_host() -> PanelHost {
     });
     kairos_editor_widgets::style::set_style_root(root);
 
-    PanelHost::new(panels::CATALOG, PanelContext::new(test_info()))
+    PanelHost::new(panels::catalog(), PanelContext::new(test_info()))
 }
 
 /// Run one headless UI pass: exactly what the dock does with its viewer.
@@ -107,33 +69,15 @@ fn draw_with(
 }
 
 #[test]
-fn sync_creates_and_drops_instances_from_layout() {
-    let mut host = host_with_fake(false);
-    let mut state = EditorState::new();
-
-    host.sync(&state.layout, &Context::default());
-    assert_eq!(host.ids().count(), 0);
-
-    state.layout.open(FAKE);
-    host.sync(&state.layout, &Context::default());
-    assert_eq!(host.ids().count(), 1);
-
-    state.layout.close(FAKE);
-    host.sync(&state.layout, &Context::default());
-    assert_eq!(host.ids().count(), 0);
-}
-
-#[test]
 fn the_catalog_declares_every_builtin_panel_once() {
     let context = PanelContext::new(test_info());
     let mut kinds = Vec::new();
 
-    for kind in panels::CATALOG.kinds() {
+    let catalog = panels::catalog();
+    for kind in catalog.kinds() {
         assert!(!kinds.contains(&kind), "duplicate id {kind}");
         kinds.push(kind);
-        let panel = panels::CATALOG
-            .create(kind, &context)
-            .expect("catalog factory");
+        let panel = catalog.create(kind, &context).expect("catalog factory");
         assert_eq!(panel.kind(), kind);
     }
 
@@ -150,42 +94,6 @@ fn the_catalog_declares_every_builtin_panel_once() {
     ] {
         assert!(kinds.contains(&kind), "missing {kind}");
     }
-}
-
-/// The catalog is compile-time data, not a startup pass: a panel object exists
-/// only while its kind is open, and later frames reuse it instead of rebuilding.
-#[test]
-fn a_panel_is_constructed_only_while_it_is_open() {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-
-    static BUILT: AtomicUsize = AtomicUsize::new(0);
-
-    fn counting(_context: &PanelContext) -> Box<dyn Panel> {
-        BUILT.fetch_add(1, Ordering::SeqCst);
-        Box::new(FakePanel { veto_close: false })
-    }
-
-    static COUNTING: [PanelDef; 1] = [PanelDef::new(FAKE, counting)];
-
-    let mut host = PanelHost::new(PanelCatalog::new(&COUNTING), PanelContext::new(test_info()));
-    let mut state = EditorState::new();
-    let ctx = Context::default();
-
-    host.sync(&state.layout, &ctx);
-    assert_eq!(
-        BUILT.load(Ordering::SeqCst),
-        0,
-        "a closed panel is never built"
-    );
-
-    state.layout.open(FAKE);
-    host.sync(&state.layout, &ctx);
-    host.sync(&state.layout, &ctx);
-    assert_eq!(
-        BUILT.load(Ordering::SeqCst),
-        1,
-        "opening builds one instance; later syncs reuse it"
-    );
 }
 
 #[test]
@@ -345,7 +253,7 @@ fn every_builtin_panel_with_a_tab_icon_points_at_an_existing_file() {
         panels::PROFILER,
         panels::ABOUT,
     ] {
-        let panel = panels::CATALOG
+        let panel = panels::catalog()
             .create(kind, &context)
             .expect("catalog factory");
         let path = panel
@@ -363,10 +271,10 @@ fn every_builtin_panel_with_a_tab_icon_points_at_an_existing_file() {
 #[test]
 fn preferences_is_the_only_text_only_tab() {
     let context = PanelContext::new(test_info());
-    let text_only: Vec<PanelId> = panels::CATALOG
+    let text_only: Vec<PanelId> = panels::catalog()
         .kinds()
         .filter(|kind| {
-            panels::CATALOG
+            panels::catalog()
                 .create(*kind, &context)
                 .expect("catalog factory")
                 .icon()

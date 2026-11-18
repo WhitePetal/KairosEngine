@@ -40,11 +40,10 @@ use kairos_editor_widgets::style::{Style, StyleFile};
 use kairos_editor_widgets::text::TextStyle;
 
 use crate::frame::{Frame, UiOut};
-use crate::panel::{Panel, PanelContext, PanelDef};
+use crate::panel::Panel;
 use crate::skin::{PanelSkin, StyleField, StyleFields, StyleKind, humanize};
 
 use self::style::PreferencesPanelStyle;
-use super::PREFERENCES;
 
 fn nav_id(panel: PanelId) -> Id {
     Id::new(("kairos.preferences.nav", panel))
@@ -114,18 +113,12 @@ impl PageState {
 }
 
 /// The Preferences panel.
+#[crate::panel(PREFERENCES = "preferences")]
 pub struct PreferencesPanel {
     style: PreferencesPanelStyle,
     /// Page list selection; falls back to the first live skin.
     selected: Option<PanelId>,
     page: PageState,
-}
-
-/// Catalog entry: the host builds the panel through this when it opens.
-pub(super) const DEF: PanelDef = PanelDef::new(PREFERENCES, create);
-
-fn create(_context: &PanelContext) -> Box<dyn Panel> {
-    Box::new(PreferencesPanel::new())
 }
 
 impl PreferencesPanel {
@@ -146,10 +139,6 @@ impl Default for PreferencesPanel {
 }
 
 impl Panel for PreferencesPanel {
-    fn kind(&self) -> PanelId {
-        PREFERENCES
-    }
-
     fn title(&self, _frame: &Frame) -> WidgetText {
         "Preferences".into()
     }
@@ -185,8 +174,11 @@ impl Panel for PreferencesPanel {
 
         // The dock paints a body colour behind every tab; a floating window uses
         // the panel's own. Painting it here keeps both cases identical.
-        ui.painter()
-            .rect_filled(ui.max_rect(), CornerRadius::ZERO, style.background.to_egui());
+        ui.painter().rect_filled(
+            ui.max_rect(),
+            CornerRadius::ZERO,
+            style.background.to_egui(),
+        );
 
         let skins = frame.skins;
         let mut current = match *selected {
@@ -204,17 +196,17 @@ impl Panel for PreferencesPanel {
                 let body_height = (available.y - style.footer_gap - style.footer_height).max(0.0);
                 let (body, _) =
                     ui.allocate_exact_size(vec2(available.x, body_height), Sense::hover());
-                let (footer_rect, _) = ui.allocate_exact_size(
-                    vec2(available.x, style.footer_height),
-                    Sense::hover(),
-                );
+                let (footer_rect, _) =
+                    ui.allocate_exact_size(vec2(available.x, style.footer_height), Sense::hover());
 
                 // The footer is pinned: the page scrolls, the action never does.
                 let rule_y = footer_rect.top() - style.footer_gap * 0.5;
-                Divider::horizontal().color(style.divider.to_egui()).paint_in(
-                    ui,
-                    Rect::from_min_size(pos2(body.left(), rule_y), vec2(body.width(), 1.0)),
-                );
+                Divider::horizontal()
+                    .color(style.divider.to_egui())
+                    .paint_in(
+                        ui,
+                        Rect::from_min_size(pos2(body.left(), rule_y), vec2(body.width(), 1.0)),
+                    );
 
                 let nav_rect = Rect::from_min_size(
                     body.min,
@@ -432,11 +424,8 @@ impl PageWriter<'_> {
                 let field = &self.page.fields[index];
                 (field.path.clone(), field.value.clone())
             };
-            self.out.push(Action::Style(StyleAction::SetField {
-                panel,
-                path,
-                value,
-            }));
+            self.out
+                .push(Action::Style(StyleAction::SetField { panel, path, value }));
             self.page.dirty = true;
         }
     }
@@ -465,7 +454,9 @@ fn footer(ui: &mut Ui, style: &PreferencesPanelStyle, rect: Rect, out: &mut UiOu
                 .add(Button::new("Close", &style.button_style()).id(close_id()))
                 .clicked()
             {
-                out.push(Action::Layout(LayoutAction::ClosePanel { panel: PREFERENCES }));
+                out.push(Action::Layout(LayoutAction::ClosePanel {
+                    panel: PREFERENCES,
+                }));
             }
         });
     });
@@ -751,13 +742,19 @@ mod tests {
         assert!(text.contains("Console"), "{text}");
         assert!(text.contains("Profiler"), "{text}");
         // The first page's heading, file and rows.
-        assert!(text.contains("Preferences/Styles/ConsoleStyle.ron"), "{text}");
+        assert!(
+            text.contains("Preferences/Styles/ConsoleStyle.ron"),
+            "{text}"
+        );
         assert!(text.contains("Height"), "{text}");
         assert!(text.contains("Enabled"), "{text}");
         // Nested tokens get a group heading and a leaf row.
         assert!(text.contains("Icons"), "{text}");
         assert!(text.contains("Warning"), "{text}");
-        assert!(actions.is_empty(), "a plain pass emits nothing: {actions:?}");
+        assert!(
+            actions.is_empty(),
+            "a plain pass emits nothing: {actions:?}"
+        );
     }
 
     #[test]
@@ -799,10 +796,7 @@ mod tests {
             ]
         );
         assert!(
-            matches!(
-                harness.panel.page.fields[1].value,
-                StyleValue::Toggle(true)
-            ),
+            matches!(harness.panel.page.fields[1].value, StyleValue::Toggle(true)),
             "the page keeps the edited value between frames"
         );
     }
@@ -838,14 +832,20 @@ mod tests {
         let frame = Frame::with_host(&state, &host);
         let mut out = UiOut::new();
 
-        assert!(harness.panel.on_close(&frame, &mut out), "close is not vetoed");
+        assert!(
+            harness.panel.on_close(&frame, &mut out),
+            "close is not vetoed"
+        );
         assert_eq!(
             out.as_slice(),
             &[Action::Style(StyleAction::Commit {
                 panel: panels::CONSOLE,
             })]
         );
-        assert!(!harness.panel.page.dirty, "the same edit is not committed twice");
+        assert!(
+            !harness.panel.page.dirty,
+            "the same edit is not committed twice"
+        );
     }
 
     #[test]
@@ -857,7 +857,9 @@ mod tests {
 
         assert_eq!(
             actions,
-            vec![Action::Layout(LayoutAction::ClosePanel { panel: PREFERENCES })]
+            vec![Action::Layout(LayoutAction::ClosePanel {
+                panel: PREFERENCES
+            })]
         );
     }
 

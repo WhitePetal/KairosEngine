@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
-description = "Derive macros for kairos_editor_component (StyleFields)"
+description = "Macros for kairos_editor_component (#[panel], StyleFields)"
 
 [lib]
 proc-macro = true

@@ -5,33 +5,19 @@
 //! through [`crate::HostView`] and forwards camera/pick input as actions.
 
 use egui::{Context, Ui, WidgetText};
-use kairos_editor_core::PanelId;
-
 use kairos_editor_widgets::ui_image;
 
 use crate::frame::{Frame, UiOut};
-use crate::panel::{Panel, PanelContext, PanelDef};
-
-use super::SCENE;
+use crate::panel::Panel;
 
 /// Tab-header artwork; a runtime file under `Preferences/Textures`, not an
 /// embedded asset (see `kairos_editor_widgets::ui_image`).
 const TAB_ICON: &str = "Preferences/Textures/tab_icons/scene.png";
 
+#[crate::panel(SCENE = "scene")]
 pub(crate) struct ScenePanel;
 
-/// Catalog entry: the host builds the panel through this when it opens.
-pub(super) const DEF: PanelDef = PanelDef::new(SCENE, create);
-
-fn create(_context: &PanelContext) -> Box<dyn Panel> {
-    Box::new(ScenePanel)
-}
-
 impl Panel for ScenePanel {
-    fn kind(&self) -> PanelId {
-        SCENE
-    }
-
     fn icon(&self) -> Option<&str> {
         Some(TAB_ICON)
     }

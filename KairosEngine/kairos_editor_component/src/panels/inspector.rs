@@ -5,33 +5,19 @@
 //! the project-tree + document slices are ported.
 
 use egui::{Context, Ui, WidgetText};
-use kairos_editor_core::PanelId;
-
 use kairos_editor_widgets::ui_image;
 
 use crate::frame::{Frame, UiOut};
-use crate::panel::{Panel, PanelContext, PanelDef};
-
-use super::INSPECTOR;
+use crate::panel::Panel;
 
 /// Tab-header artwork; a runtime file under `Preferences/Textures`, not an
 /// embedded asset (see `kairos_editor_widgets::ui_image`).
 const TAB_ICON: &str = "Preferences/Textures/tab_icons/inspector.png";
 
+#[crate::panel(INSPECTOR = "inspector")]
 pub(crate) struct InspectorPanel;
 
-/// Catalog entry: the host builds the panel through this when it opens.
-pub(super) const DEF: PanelDef = PanelDef::new(INSPECTOR, create);
-
-fn create(_context: &PanelContext) -> Box<dyn Panel> {
-    Box::new(InspectorPanel)
-}
-
 impl Panel for InspectorPanel {
-    fn kind(&self) -> PanelId {
-        INSPECTOR
-    }
-
     fn icon(&self) -> Option<&str> {
         Some(TAB_ICON)
     }
