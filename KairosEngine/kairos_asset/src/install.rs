@@ -351,7 +351,7 @@ pub fn install(world: &mut World, options: AssetOptions) {
         tracking.add_systems(
             handle_internal_asset_events
                 .ambiguous_with_all()
-                .category(Category::Others),
+                .category(Category::IO),
         );
         schedules
             .entry(stages.event)
@@ -360,7 +360,7 @@ pub fn install(world: &mut World, options: AssetOptions) {
         // the host does not have to build the stage itself.
         let startup = schedules.entry(stages.startup);
         if has_processor {
-            startup.add_systems(AssetProcessor::start.category(Category::Others));
+            startup.add_systems(AssetProcessor::start.category(Category::IO));
         }
     }
 
@@ -461,18 +461,16 @@ impl AssetWorldExt for World {
         let stages = *self.resource::<AssetStages>();
         self.resource_scope::<Schedules, _>(|world, mut schedules| {
             schedules.allow_ambiguous_resource::<Assets<A>>(world);
-            schedules
-                .entry(stages.tracking)
-                .add_systems(
-                    Assets::<A>::track_assets
-                        .in_set(AssetTrackingSystems)
-                        .category(Category::Others),
-                );
+            schedules.entry(stages.tracking).add_systems(
+                Assets::<A>::track_assets
+                    .in_set(AssetTrackingSystems)
+                    .category(Category::IO),
+            );
             schedules.entry(stages.event).add_systems(
                 Assets::<A>::asset_events
                     .in_set(AssetEventSystems)
                     .run_if(Assets::<A>::asset_events_condition)
-                    .category(Category::Others),
+                    .category(Category::IO),
             );
         });
         self

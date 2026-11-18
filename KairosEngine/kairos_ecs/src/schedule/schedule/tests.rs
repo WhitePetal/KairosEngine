@@ -10,10 +10,10 @@ use crate::{
     schedule::{
         ApplyDeferred, FlattenedDependencies, IntoScheduleConfigs, IntoSystemSet, NodeId, Schedule,
         ScheduleBuildError, ScheduleBuildPass, ScheduleBuildSettings, ScheduleCleanupPolicy,
-        Schedules, SystemKey, SystemSet, SystemSetKey, graph::DiGraph,
+        Schedules, SystemKey, SystemSet, SystemSetKey, SystemWithAccess, graph::DiGraph,
         passes::AutoInsertApplyDeferredPass,
     },
-    system::Commands,
+    system::{Commands, IntoSystem, ScheduleSystem},
     world::World,
 };
 
@@ -922,5 +922,109 @@ fn build_pass_iteration_order() {
             TypeId::of::<Pass<1>>(),
             TypeId::of::<Pass<2>>()
         ]
+    );
+}
+
+/// Adds a system from a `#[track_caller]` helper and returns the caller's
+/// location, the way the schedule itself captures the registration site.
+#[track_caller]
+fn add_systems_here(schedule: &mut Schedule) -> &'static std::panic::Location<'static> {
+    schedule.add_systems(|| {});
+    std::panic::Location::caller()
+}
+
+/// The registration site recorded on the only system a test added.
+fn single_system_location(schedule: &Schedule) -> &'static std::panic::Location<'static> {
+    let systems = &schedule.graph.systems;
+    let mut found = None;
+    for (key, _system, _conditions) in systems.iter() {
+        if let Some(location) = systems
+            .get(key)
+            .and_then(|system| system.profiler_location())
+        {
+            found = Some(location);
+        }
+    }
+    found.expect("add_systems records the registration site")
+}
+
+#[test]
+fn add_systems_records_the_call_site_as_the_system_location() {
+    let mut schedule = Schedule::default();
+    let expected = add_systems_here(&mut schedule);
+
+    let location = single_system_location(&schedule);
+    assert_eq!(location.file(), expected.file());
+    assert_eq!(location.line(), expected.line());
+}
+
+/// The location of the calling line, for the `Schedules` entry point as well.
+#[track_caller]
+fn add_to_schedules_here(schedules: &mut Schedules) -> &'static std::panic::Location<'static> {
+    schedules.add_systems(TestSchedule, || {});
+    std::panic::Location::caller()
+}
+
+#[test]
+fn schedules_add_systems_attributes_the_call_site_through_to_the_schedule() {
+    let mut schedules = Schedules::default();
+    let expected = add_to_schedules_here(&mut schedules);
+
+    let schedule = schedules
+        .get(TestSchedule)
+        .expect("the schedule was created");
+    let location = single_system_location(schedule);
+    assert_eq!(location.file(), expected.file());
+    assert_eq!(location.line(), expected.line());
+}
+
+#[test]
+fn a_system_inserted_without_a_location_reports_none() {
+    let system: ScheduleSystem = Box::new(IntoSystem::into_system(|| {}));
+    let with_access = SystemWithAccess::new(system);
+    assert_eq!(
+        with_access.profiler_location(),
+        None,
+        "the framework inserts its own systems without a caller location"
+    );
+}
+
+/// The executor reports the registration site as the system scope's location,
+/// end to end through a real capture.
+#[test]
+fn the_executor_reports_the_registration_site_in_the_capture() {
+    use kairos_profile::{Profiler, SYSTEM_MARKER};
+
+    let mut schedule = Schedule::default();
+    let expected = add_systems_here(&mut schedule);
+
+    let mut world = World::new();
+    let profiler = Profiler::new();
+    profiler.set_recording(true);
+    profiler.begin_frame();
+    schedule.run(&mut world);
+    profiler.end_frame(true);
+    // The worker reports its stream when its outermost scope closes; the next
+    // frame boundary hands it to the sink.
+    profiler.begin_frame();
+
+    let session = profiler.session();
+    let want = format!("{}:{}", expected.file(), expected.line());
+    let mut reported = Vec::new();
+    for frame in &session.frames {
+        for thread in &frame.threads {
+            for sample in &thread.samples {
+                if session.scope_name(sample.scope) != SYSTEM_MARKER {
+                    continue;
+                }
+                if let Some(scope) = session.scope(sample.scope) {
+                    reported.push(scope.location.clone());
+                }
+            }
+        }
+    }
+    assert!(
+        reported.iter().any(|location| *location == want),
+        "the system scope reports its registration site {want}; got {reported:?}"
     );
 }

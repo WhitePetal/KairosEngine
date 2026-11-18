@@ -64,6 +64,11 @@ impl SystemExecutor for SingleThreadedExecutor {
         for system_index in 0..schedule.systems.len() {
             // Underscored: the facade discards its arguments without a backend.
             let _category = schedule.systems[system_index].profiler_category();
+            // The system's registration site; the executor line is the fallback
+            // for framework-inserted systems (the auto-inserted `ApplyDeferred`).
+            let _location = schedule.systems[system_index]
+                .profiler_location()
+                .unwrap_or_else(|| std::panic::Location::caller());
             let system = &mut schedule.systems[system_index].system;
 
             #[cfg(feature = "trace")]
@@ -126,12 +131,10 @@ impl SystemExecutor for SingleThreadedExecutor {
                 continue;
             }
 
-            // Same marker the multi-threaded executor emits, so a capture has
-            // one system vocabulary whichever executor a schedule uses.
-            profiling::scope!(
-                kairos_profile::SYSTEM_MARKER,
-                format!("{}/{}", _category.tag(), system.name())
-            );
+            // One system scope per registration site, named by the same shared
+            // marker both executors use: the data is the system's category tag
+            // and full name, the location is where it was added to a schedule.
+            kairos_profile::system_scope!(_category, system.name(), Some(_location));
 
             let f = AssertUnwindSafe(|| {
                 if let Err(RunSystemError::Failed(err)) =

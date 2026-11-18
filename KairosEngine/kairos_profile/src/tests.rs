@@ -570,3 +570,90 @@ fn profiler_and_session_are_send_and_sync() {
     assert_send_sync::<Profiler>();
     assert_send_sync::<ProfileSession>();
 }
+
+/// The location of the calling line, the way `add_systems` records a system's
+/// registration site with `#[track_caller]`.
+#[track_caller]
+fn registration_site() -> &'static std::panic::Location<'static> {
+    std::panic::Location::caller()
+}
+
+#[test]
+fn a_system_scope_reports_its_registration_site_and_tagged_data() {
+    let test = TestSession::new();
+    test.start();
+
+    let location = registration_site();
+    {
+        let _first = crate::system_scope::begin(
+            Category::Physics,
+            "kairos_physics::physics_step_system",
+            Some(location),
+        );
+        std::thread::sleep(std::time::Duration::from_micros(100));
+        // The same registration site on the same thread reuses the registered
+        // scope id: a system that runs every frame does not grow the table.
+        let _second = crate::system_scope::begin(
+            Category::Physics,
+            "kairos_physics::physics_step_system",
+            Some(location),
+        );
+        std::thread::sleep(std::time::Duration::from_micros(100));
+    }
+    test.commit();
+
+    let session = test.profiler().session();
+    let frame = session.frame(0).expect("frame");
+    let samples = &frame.threads[0].samples;
+    assert_eq!(samples.len(), 2);
+    assert_eq!(
+        samples[0].data.as_deref(),
+        Some("Physics/kairos_physics::physics_step_system"),
+        "the sample keeps the `Tag/name` data the panel parses"
+    );
+    assert_eq!(
+        samples[0].scope, samples[1].scope,
+        "one scope id per (thread, registration site)"
+    );
+
+    let scope = session
+        .scope(samples[0].scope)
+        .expect("the system scope is in the table");
+    assert_eq!(scope.name, crate::SYSTEM_MARKER);
+    assert_eq!(
+        scope.location,
+        format!("{}:{}", location.file(), location.line()),
+        "the scope points at the registration site, not the executor"
+    );
+    assert_eq!(
+        scope.category,
+        Category::Scripts,
+        "the marker metadata stays Scripts; the sample data carries the real category"
+    );
+}
+
+#[test]
+fn a_system_scope_without_a_location_keeps_the_shared_marker() {
+    let test = TestSession::new();
+    test.start();
+    {
+        let _scope = crate::system_scope::begin(
+            Category::Others,
+            "kairos_ecs::schedule::ApplyDeferred",
+            None,
+        );
+        std::thread::sleep(std::time::Duration::from_micros(100));
+    }
+    test.commit();
+
+    let session = test.profiler().session();
+    let frame = session.frame(0).expect("frame");
+    let sample = &frame.threads[0].samples[0];
+    let scope = session.scope(sample.scope).expect("scope");
+    assert_eq!(scope.name, crate::SYSTEM_MARKER);
+    assert_eq!(scope.location, "", "no registration site is recorded");
+    assert_eq!(
+        sample.data.as_deref(),
+        Some("Others/kairos_ecs::schedule::ApplyDeferred")
+    );
+}

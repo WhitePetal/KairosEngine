@@ -39,11 +39,13 @@ use serde::{Deserialize, Serialize};
 
 /// The buckets the Profiler's CPU chart stacks, in legend order.
 ///
-/// The first five are the engine's core modules — their systems run under the
-/// module's bucket instead of getting a row of their own. `Scripts` is the rest
-/// of the ECS frame (Unity's `Scripts` category, refined by the panel into one
-/// row per system), and `Others` is the fallback: scheduler overhead,
-/// uninstrumented time, and anything no rule claims.
+/// `Rendering`, `Physics`, `Audio`, `IO` and `Editor` are the engine's
+/// subsystems: their systems run under the subsystem's bucket instead of getting
+/// a row of their own. `Scripts` is the rest of the ECS frame (Unity's
+/// `Scripts` category, refined by the panel into one row per system), `Vsync`
+/// is frame time spent waiting for the presentation engine, and `Others` is the
+/// fallback: scheduler overhead, uninstrumented time, and anything no rule
+/// claims.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Category {
@@ -55,6 +57,9 @@ pub enum Category {
     Physics,
     /// `kairos_audio`.
     Audio,
+    /// Asset loading and file IO (Unity's `Loading`): the `kairos_asset`
+    /// server/loader/processor and file-watching scopes.
+    IO,
     /// The editor host: egui/epaint and `Kairos.Editor.*` markers.
     Editor,
     /// Waiting for the presentation engine (surface acquire/present).
@@ -72,11 +77,12 @@ impl Default for Category {
 
 impl Category {
     /// Every category, in legend order.
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 8] = [
         Self::Rendering,
         Self::Scripts,
         Self::Physics,
         Self::Audio,
+        Self::IO,
         Self::Editor,
         Self::Vsync,
         Self::Others,
@@ -92,6 +98,7 @@ impl Category {
             Self::Scripts => "Scripts",
             Self::Physics => "Physics",
             Self::Audio => "Audio",
+            Self::IO => "IO",
             Self::Editor => "Editor",
             Self::Vsync => "VSync",
             Self::Others => "Others",
@@ -156,6 +163,14 @@ pub fn classify_marker(name: &str, location: &str) -> Category {
     if matches!(name, "Surface::get_current_texture" | "Surface::present") {
         return Category::Vsync;
     }
+    // Asset-server markers are the loading budget even when they are recorded
+    // as untagged function scopes: the caller's category would otherwise win.
+    if name.starts_with("AssetServer::")
+        || name.starts_with("AssetLoader::")
+        || name.starts_with("AssetProcessor::")
+    {
+        return Category::IO;
+    }
 
     match crate_of_location(location) {
         krate
@@ -167,6 +182,10 @@ pub fn classify_marker(name: &str, location: &str) -> Category {
         }
         krate if krate.starts_with("egui") || krate.starts_with("epaint") => Category::Editor,
         krate if krate.starts_with("rapier") => Category::Physics,
+        krate if krate.starts_with("kairos_asset") => Category::IO,
+        // The debounced filesystem watcher behind asset hot reload: a source
+        // scan is asset IO, not editor or rendering work.
+        krate if krate.starts_with("notify") => Category::IO,
         krate if krate.starts_with("kairos_graphics") => Category::Rendering,
         krate if krate.starts_with("kairos_audio") => Category::Audio,
         krate if krate.starts_with("kairos_editor") => Category::Editor,
@@ -193,6 +212,20 @@ pub fn is_frame_wrapper(name: &str) -> bool {
     matches!(strip_tag(name), "Kairos.Engine.Frame" | "Kairos.Stage")
 }
 
+/// Systems that only drive a schedule: `run_main`, `run_fixed_main_loop`.
+///
+/// They are wrappers like the markers [`is_frame_wrapper`] recognises: what they
+/// measure is their children's work, already counted where it ran. Their
+/// registrations stay `Category::Others` (they are engine rails), so category
+/// time drops them by name — the per-invocation data is the only place that
+/// name appears, because every system shares the executor's marker.
+pub fn is_scheduler_driver(system_name: &str) -> bool {
+    matches!(
+        strip_tag(system_name),
+        "kairos_engine::schedule::run_main" | "kairos_engine::schedule::run_fixed_main_loop"
+    )
+}
+
 /// The crate a source location belongs to: puffin stores `crate/file.rs:line`,
 /// with the registry path shortened to `crate-version`.
 fn crate_of_location(location: &str) -> &str {
@@ -202,8 +235,8 @@ fn crate_of_location(location: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::{
-        Category, SYSTEM_MARKER, classify_marker, classify_system, is_frame_wrapper, strip_tag,
-        tagged_name,
+        Category, SYSTEM_MARKER, classify_marker, classify_system, is_frame_wrapper,
+        is_scheduler_driver, strip_tag, tagged_name,
     };
 
     #[test]
@@ -223,6 +256,15 @@ mod tests {
             Category::from_tagged("Physics/kairos_physics::step"),
             Some(Category::Physics)
         );
+        assert_eq!(
+            tagged_name("Load mesh", Category::IO),
+            "IO/Load mesh",
+            "asset loading has its own tag"
+        );
+        assert_eq!(
+            Category::from_tagged("IO/kairos_asset::server::load"),
+            Some(Category::IO)
+        );
         assert_eq!(Category::from_tagged("kairos_physics::step"), None);
     }
 
@@ -230,12 +272,29 @@ mod tests {
     fn the_category_order_is_the_legend_order() {
         assert_eq!(Category::ALL.len(), Category::COUNT);
         assert_eq!(Category::ALL[1], Category::Scripts);
-        assert_eq!(Category::ALL[5], Category::Vsync);
+        assert_eq!(Category::ALL[4], Category::IO, "IO sits after Audio");
+        assert_eq!(Category::ALL[6], Category::Vsync);
         assert_eq!(Category::ALL[Category::COUNT - 1], Category::Others);
         for category in Category::ALL {
             assert_eq!(Category::from_tag(category.tag()), Some(category));
             assert!(!category.label().is_empty());
         }
+        assert_eq!(Category::IO.tag(), "IO");
+    }
+
+    #[test]
+    fn scheduler_drivers_are_wrappers_not_category_owners() {
+        assert!(is_scheduler_driver(
+            "Others/kairos_engine::schedule::run_main"
+        ));
+        assert!(is_scheduler_driver(
+            "kairos_engine::schedule::run_fixed_main_loop"
+        ));
+        assert!(!is_scheduler_driver(
+            "Others/kairos_ecs::message::update::message_update_system"
+        ));
+        assert!(!is_scheduler_driver("Scripts/kairos_game::spin_system"));
+        assert!(!is_scheduler_driver(""));
     }
 
     #[test]
@@ -260,10 +319,7 @@ mod tests {
         );
         // Our own naming convention no longer classifies anything.
         assert_eq!(
-            classify_marker(
-                "Kairos.Editor.Panel",
-                "kairos_editor_component/src/x.rs:1"
-            ),
+            classify_marker("Kairos.Editor.Panel", "kairos_editor_component/src/x.rs:1"),
             Category::Editor
         );
         assert_eq!(
@@ -304,6 +360,23 @@ mod tests {
             ),
             Category::Physics
         );
+        // Asset work keeps its own budget even when the scope is untagged.
+        assert_eq!(
+            classify_marker(
+                "load_internal",
+                "kairos_asset-0.1.0/src/server/loaders.rs:42"
+            ),
+            Category::IO
+        );
+        assert_eq!(
+            classify_marker("handle_event", "notify-8.2.0/src/inotify.rs:1"),
+            Category::IO
+        );
+        assert_eq!(
+            classify_marker("AssetServer::load", ""),
+            Category::IO,
+            "an asset-server marker is loading, not Others"
+        );
         assert_eq!(classify_marker("something", ""), Category::Others);
     }
 
@@ -320,6 +393,12 @@ mod tests {
         assert_eq!(
             classify_system(Some("Others/kairos_engine::schedule::run_main")),
             Category::Others
+        );
+        assert_eq!(
+            classify_system(Some(
+                "IO/kairos_asset::server::handle_internal_asset_events"
+            )),
+            Category::IO
         );
         // A capture recorded before the tag existed: game code by assumption.
         assert_eq!(

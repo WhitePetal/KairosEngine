@@ -37,6 +37,7 @@ use profiling::puffin::{
 
 use crate::category::{
     Category, SYSTEM_MARKER, classify_marker, classify_system, is_frame_wrapper,
+    is_scheduler_driver,
 };
 use crate::model::{
     FrameSnapshot, ProfileSession, RecordingSegment, SampleSnapshot, ScopeInfo, ScopeKind,
@@ -813,6 +814,10 @@ enum ScopeClass {
     /// The marker belongs to one category for its whole life.
     Fixed(Category),
     /// The executor's shared marker: the owner comes from the sample's data.
+    ///
+    /// A scheduler driver's sample (`run_main`, `run_fixed_main_loop`) names a
+    /// wrapper rather than an owner, so it is dropped like
+    /// [`Self::FrameWrapper`].
     System,
     /// A scheduler wrapper. It measures its children, so its own time is not
     /// attributed — it is either waiting for off-thread work (counted where
@@ -845,8 +850,9 @@ fn thread_snapshot(
         }
     }
 
-    // One lookup per distinct system name, not per sample.
-    let mut systems: HashMap<String, Category> = HashMap::new();
+    // One lookup per distinct system name, not per sample. `None` is a
+    // scheduler driver: a wrapper, so its own time belongs to no category.
+    let mut systems: HashMap<String, Option<Category>> = HashMap::new();
 
     let mut samples = Vec::with_capacity(thread.samples.len());
     for (index, sample) in thread.samples.into_iter().enumerate() {
@@ -861,13 +867,17 @@ fn thread_snapshot(
             ScopeClass::Fixed(category) => Some(category),
             ScopeClass::System => {
                 let system = sample.data.as_deref().unwrap_or_default();
-                Some(if let Some(category) = systems.get(system) {
+                if let Some(category) = systems.get(system) {
                     *category
                 } else {
-                    let category = classify_system(Some(system));
+                    let category = if is_scheduler_driver(system) {
+                        None
+                    } else {
+                        Some(classify_system(Some(system)))
+                    };
                     systems.insert(system.to_owned(), category);
                     category
-                })
+                }
             }
         };
         if let Some(category) = category {
@@ -912,11 +922,12 @@ fn fallback_scope(id: u32) -> ScopeInfo {
 
 #[cfg(test)]
 mod tests {
-    use std::num::NonZeroU32;
+    use std::{collections::HashMap, num::NonZeroU32};
 
     use profiling::puffin::{ScopeId, Stream};
 
-    use super::parse_stream;
+    use super::{ParsedThread, RawSample, ScopeClass, parse_stream, thread_snapshot};
+    use crate::category::Category;
 
     fn scope_id(value: u32) -> ScopeId {
         ScopeId(NonZeroU32::new(value).expect("non-zero scope id"))
@@ -948,5 +959,83 @@ mod tests {
         assert_eq!(inner.data.as_deref(), Some("mesh"));
         assert_eq!(inner.start_ns, 110);
         assert_eq!(inner.duration_ns, 30);
+    }
+
+    /// A scheduler driver's own time is a wrapper's time, like `Kairos.Stage`'s:
+    /// it must not reach a category, or the wait for the workers would be
+    /// counted a second time next to the workers' work. The other engine rails
+    /// (the clock and message passes) stay `Others`, and an `IO/`-tagged asset
+    /// system is the loading budget.
+    #[test]
+    fn scheduler_drivers_contribute_no_category_time() {
+        let system = |start_ns, duration_ns, depth, parent, data: &str| RawSample {
+            scope: 2,
+            data: Some(data.to_owned()),
+            start_ns,
+            duration_ns,
+            depth,
+            parent,
+        };
+        let thread = ParsedThread {
+            samples: vec![
+                // Everything below runs inside the stage wrapper, which is why
+                // its own 1 ms is not attributed either.
+                RawSample {
+                    scope: 1,
+                    data: None,
+                    start_ns: 0,
+                    duration_ns: 1_000,
+                    depth: 0,
+                    parent: None,
+                },
+                // The main-schedule driver: 950 µs of stages plus 350 µs of its
+                // own bookkeeping. The bookkeeping is the wrapper time.
+                system(
+                    0,
+                    950,
+                    1,
+                    Some(0),
+                    "Others/kairos_engine::schedule::run_main",
+                ),
+                system(
+                    0,
+                    200,
+                    2,
+                    Some(1),
+                    "IO/kairos_asset::server::handle_internal_asset_events",
+                ),
+                system(
+                    300,
+                    400,
+                    2,
+                    Some(1),
+                    "Physics/kairos_physics::physics_step_system",
+                ),
+                // A system of the `First` stage, outside the driver's 0..950
+                // window: an engine rail, so it stays `Others`.
+                system(
+                    950,
+                    50,
+                    1,
+                    Some(0),
+                    "Others/kairos_engine::schedule::time_system",
+                ),
+            ],
+            warning: None,
+        };
+        let classes = HashMap::from([(1, ScopeClass::FrameWrapper), (2, ScopeClass::System)]);
+        let mut categories = [0u64; Category::COUNT];
+
+        let snapshot = thread_snapshot(0, "main".to_owned(), thread, 0, &classes, &mut categories);
+
+        assert_eq!(snapshot.samples.len(), 5);
+        assert_eq!(categories[Category::IO as usize], 200);
+        assert_eq!(categories[Category::Physics as usize], 400);
+        assert_eq!(
+            categories[Category::Others as usize],
+            50,
+            "the clock pass is Others; the driver's own 350 µs must not be"
+        );
+        assert_eq!(categories[Category::Scripts as usize], 0);
     }
 }

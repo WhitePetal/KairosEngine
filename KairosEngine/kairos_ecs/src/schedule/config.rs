@@ -1,3 +1,5 @@
+use std::panic::Location;
+
 use variadics_please::all_tuples;
 
 use kairos_profile::Category;
@@ -65,6 +67,8 @@ impl Schedulable for ScheduleSystem {
             conditions: Vec::new(),
             // The game's own systems unless a module declares otherwise.
             category: Category::Scripts,
+            // Filled in by `Schedule::add_systems`, which knows the call site.
+            location: None,
         }
     }
 }
@@ -88,6 +92,7 @@ impl Schedulable for InternedSystemSet {
             metadata: GraphInfo::default(),
             conditions: Vec::new(),
             category: Category::Scripts,
+            location: None,
         }
     }
 }
@@ -107,6 +112,15 @@ pub struct ScheduleConfig<T: Schedulable> {
     /// Only systems use it (see [`IntoScheduleConfigs::category`]); a system set
     /// carries the default and nothing reads it.
     pub(crate) category: Category,
+    /// The source location that registered this node, captured with
+    /// [`Location::caller`] by the schedule's `add_systems`.
+    ///
+    /// The executors put it in the system's profiling scope, so the Profiler
+    /// panel reports the code that scheduled the system instead of the executor
+    /// frame that ran it. `None` for the framework's own insertions (the
+    /// auto-inserted `ApplyDeferred` sync points), whose scopes fall back to the
+    /// executor's call site.
+    pub(crate) location: Option<&'static Location<'static>>,
 }
 
 /// Single or nested configurations for [`Schedulable`]s.
@@ -134,6 +148,23 @@ impl<T: Schedulable<Metadata = GraphInfo, GroupMetadata = Chain>> ScheduleConfig
             ScheduleConfigs::Configs { configs, .. } => {
                 for config in configs {
                     config.category_inner(category);
+                }
+            }
+        }
+    }
+
+    /// Records `location` as the registration site of every contained system.
+    ///
+    /// The schedule's `add_systems` calls this with its `#[track_caller]`
+    /// location; nested tuples receive the same site.
+    pub(crate) fn location_inner(&mut self, location: Option<&'static Location<'static>>) {
+        match self {
+            ScheduleConfigs::ScheduleConfig(config) => {
+                config.location = location;
+            }
+            ScheduleConfigs::Configs { configs, .. } => {
+                for config in configs {
+                    config.location_inner(location);
                 }
             }
         }

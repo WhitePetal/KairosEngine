@@ -6,8 +6,11 @@
 //! block, the module area's height, the timeline's zoom and scroll) and draws
 //! Unity's bands, top to bottom:
 //!
-//! * **toolbar** — record toggle, frame transport, `Frame: n / m`, Clear,
-//!   separated into segments by 1 px rules;
+//! * **toolbar** — record toggle, frame transport, `Frame: n / m`, Clear and
+//!   Save, separated into segments by 1 px rules. Save writes the capture to
+//!   `Library/Profiler` and the toolbar names the written files next to the
+//!   button (the exact paths are in its hover text), so a capture can be handed
+//!   to another reader without a file dialog;
 //! * **module area** — Unity's modules pane with this editor's own time axis: a
 //!   pinned clock ruler on top and a horizontal min-max bar at the bottom around
 //!   the fixed-height module cards. CPU Usage has the category legend and a
@@ -19,7 +22,8 @@
 //!   timeline, Unity's split view handle;
 //! * **timeline** — a pinned header (view selector, Live toggle, CPU/GPU
 //!   summary) and time ruler over one track per registered thread lane, a
-//!   zoomable time axis and Unity's two scroll bars.
+//!   zoomable time axis and Unity's two scroll bars. The view selector switches
+//!   the band between Unity's Timeline and Hierarchy views.
 //!
 //! Layout, colours and measured geometry are [`ProfilerStyle`] tokens loaded
 //! from `Preferences/Styles/Profiler.ron`.
@@ -27,21 +31,25 @@
 //! # Categories
 //!
 //! The chart stacks the engine modules ([`Category`]): Rendering, Scripts,
-//! Physics, Audio, Editor, VSync and Others. A marker declares its category at
-//! the call site — `kairos_profile::scope!(Category::Physics, ...)` appends a
-//! `Physics/` tag to the marker name — and the executor tags the sample data of
-//! its shared `Kairos.System` scope the same way. Classification is therefore
-//! part of the code that emits the marker; only third-party scopes (wgpu,
-//! rapier, epaint) are still read from their source crate.
+//! Physics, Audio, IO, Editor, VSync and Others. `IO` is the asset server,
+//! loaders, processors and filesystem watching (Unity's `Loading`): resource
+//! loading is its own bucket instead of disappearing into `Others`. A marker
+//! declares its category at the call site — `kairos_profile::scope!(Category::Physics,
+//! ...)` appends a `Physics/` tag to the marker name — and the executor tags the
+//! sample data of its shared `Kairos.System` scope the same way. Classification
+//! is therefore part of the code that emits the marker; only third-party scopes
+//! (wgpu, rapier, epaint) are still read from their source crate.
 //!
-//! Core-module systems (physics, audio, rendering, editor) fold into their
+//! Subsystem systems (physics, audio, rendering, IO, editor) fold into their
 //! module's bucket: they never get a legend row of their own. Everything else is
 //! `Scripts` (a system's default when it declares nothing), and the legend
 //! refines it into one row per ECS system. Legend swatches are toggles, like
 //! Unity's: a hidden category keeps its row and its time and leaves the chart.
-//! Scheduler wrappers (`Kairos.Stage`, `Kairos.Engine.Frame`) contribute no time
-//! of their own: what they measure is their children's work, counted where it
-//! ran, and the remainder becomes `Others`.
+//! Scheduler wrappers (`Kairos.Stage`, `Kairos.Engine.Frame`) and the scheduler
+//! drivers (`run_main`, `run_fixed_main_loop`) contribute no time of their own:
+//! what they measure is their children's work, counted where it ran, and the
+//! remainder becomes `Others` — uninstrumented time, presentation waits and the
+//! engine's own bookkeeping, i.e. the part no category claims.
 //!
 //! The timeline paints every block in its category's colour and labels it
 //! `Category · marker (duration)` (a system block uses the short system name
@@ -119,6 +127,23 @@
 //! Only the tracks scroll: the header, the ruler and the horizontal scroll bar
 //! sit outside the row viewport, and the thread names never pan.
 //!
+//! # Hierarchy view
+//!
+//! The view selector's Hierarchy entry replaces the per-thread tracks with
+//! Unity's aggregated marker tree for the selected frame: the whole frame's
+//! work, merged across every thread. That is where a system that ran on a task
+//! pool worker is found: the timeline shows it on its worker's track, but the
+//! stage wrapper that scheduled it has no child block on the main thread, so the
+//! stage alone never explains its time.
+//!
+//! Columns are Total, Self, Calls and Max; clicking a column header sorts the
+//! sibling lists by it (Unity's caret points down for the default best-first
+//! order, up after a second click). Rows with children carry a collapse caret
+//! and keep their collapse state by marker path, so a re-sort does not lose it.
+//! Hovering a row reports the full marker name (a system keeps its module path),
+//! its totals and its `file:line`. The wheel scrolls the rows and the right-hand
+//! bar is the same scrollbar widget as the timeline's.
+//!
 //! # Timeline navigation
 //!
 //! The tracks show a window into the selected frame, Unity's `ZoomableArea`:
@@ -142,31 +167,40 @@
 //! # Timeline selection
 //!
 //! Clicking a block selects it, like Unity: the block keeps a 1 px outline and a
-//! details box opens under it with `Copy` / `Show` buttons. The box reports the
-//! block's own time and, only when that adds information, the marker's
-//! accumulated time in the selected frame — like Unity's
-//! `ProfilerTimelineGUI.DoSelectionTooltip`: the section needs more than one
-//! instance in the frame, the thread line more than one instance on the block's
-//! thread, and the frame line instances on other threads too. A block that ran
-//! once on one thread therefore shows nothing but its name and time. `Copy` puts
-//! that text on the clipboard. Clicking the same block again, or empty track,
-//! dismisses it. A click also turns Live off: the box describes one frame, and a
-//! capture that is still recording would replace that frame every tick.
+//! details box opens under it with `Copy` / `Show` buttons. The box names the
+//! block (`Kairos.Stage[Update]`, or a system's full module path), then reports
+//! its category, the marker's call site (`file:line`), its self time and the
+//! recorded call stack (the enclosing marker chain on that thread). The self
+//! line is what explains a wrapper: when no child sample was recorded,
+//! `Kairos.Stage`'s whole block is unattributed time and the box says so
+//! (`Self: 40.57ms (no child samples recorded)`) instead of leaving the block a
+//! black box.
+//!
+//! The accumulated-time section follows Unity's rules: it appears only when
+//! that adds information — like Unity's `ProfilerTimelineGUI.DoSelectionTooltip`,
+//! the section needs more than one instance in the frame, the thread line more
+//! than one instance on the block's thread, and the frame line instances on
+//! other threads too. A block that ran once on one thread therefore gets no
+//! accumulated section. `Copy` puts the whole box text on the clipboard.
+//! Clicking the same block again, or empty track, dismisses the box. A click
+//! also turns Live off: the box describes one frame, and a capture that is
+//! still recording would replace that frame every tick.
 //!
 //! # Not implemented yet (the seams are marked `TODO(profiler)` in the code)
 //!
-//! * module selection (`Profiler Modules`) and the Hierarchy / Raw / Call Stacks
-//!   view selector — only the timeline view is rebuilt;
+//! * module selection (`Profiler Modules`) and the Raw / Call Stacks views: the
+//!   view selector only switches Timeline and Hierarchy;
 //! * thread grouping (Unity's JOB / LOADING / SCRIPTING rows) and resizable
 //!   thread rows: the vertical bar scrolls, but the rows have no splitter and no
 //!   vertical zoom (Unity locks the timeline's vertical scale);
-//! * the full per-system ranking: the legend only has the rows the module area
-//!   leaves free, so it shows the top few and `+N more`; a details pane (Unity's
-//!   Hierarchy view) is where the whole list belongs;
-//! * GPU timings, per-marker colour overrides (the timeline uses the category
-//!   palette), hover details (a block reports after a click, not on hover) and
-//!   the details box's Show menu (Unity lists the block in the Hierarchy / Raw
-//!   views, opens its call stack and jumps to the source line);
+//! * the module legend still only has the rows the module area leaves free, so
+//!   it shows the top few and `+N more`; the Hierarchy view is where the whole
+//!   ranking lives;
+//! * GPU timings, per-marker colour overrides (the views use the category
+//!   palette), hover details on timeline blocks (they report after a click, not
+//!   on hover; Hierarchy rows do have a tooltip) and the details box's Show menu
+//!   (Unity lists the block in the Hierarchy / Raw views, opens its call stack
+//!   and jumps to the source line);
 //! * the tooltip's cross-frame line (Unity's `0.53ms total over 3 frames on
 //!   thread '…'`): it needs samples that span frames to be linked, and the
 //!   capture currently parses each frame on its own;
@@ -174,8 +208,9 @@
 //!   `F` shortcut that frames the selected block, and the ghost frames Unity
 //!   draws before and after the selected one while the timeline is panned.
 //!
-//! The data-phase views that predate the rewrite (hierarchy / raw / JSON) are
-//! still in this file but are no longer wired into [`Panel::ui`].
+//! The JSON view that predates the rewrite (`CachedFrame::json`) is still in
+//! this file but is no longer wired into [`Panel::ui`]; its marker table is
+//! what the capture's JSON export carries.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -188,6 +223,7 @@ use kairos_editor_core::PanelId;
 use kairos_editor_widgets::button::{Button, ButtonAlign, ButtonStyle};
 use kairos_editor_widgets::color::Color32Ext;
 use kairos_editor_widgets::divider::Divider;
+use kairos_editor_widgets::menu::MenuStyle;
 use kairos_editor_widgets::min_max_scroll::{MinMaxScroll, MinMaxScrollStyle, ScrollWindow};
 use kairos_editor_widgets::paint;
 use kairos_editor_widgets::splitter::Splitter;
@@ -211,20 +247,17 @@ use super::PROFILER;
 mod axis;
 pub mod style;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-enum Tab {
-    #[default]
-    Hierarchy,
-    Raw,
-    Json,
-}
-
 /// The cached reduction of one selected frame. Rebuilt when the capture
 /// revision, the selected frame or the thread filter changes.
 struct CachedFrame {
     frame: Arc<FrameSnapshot>,
     scopes: Vec<ScopeInfo>,
+    /// The aggregated tree, sorted by the Hierarchy view's current column.
     rows: Vec<HierarchyRow>,
+    /// Category per full system name. The aggregation strips the category tag
+    /// from the executor's data, so the Hierarchy view reads the category from
+    /// the samples here instead of re-deriving it from a stripped name.
+    system_categories: BTreeMap<String, Category>,
     /// The selected frame's Scripts systems by inclusive time, highest first.
     /// This is the legend's second section: Unity's `Scripts` category,
     /// refined into one row per system.
@@ -346,6 +379,330 @@ impl TimelineView {
     }
 }
 
+/// Which view the timeline band shows - Unity's view selector.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum PanelView {
+    #[default]
+    Timeline,
+    Hierarchy,
+}
+
+impl PanelView {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Timeline => "Timeline",
+            Self::Hierarchy => "Hierarchy",
+        }
+    }
+}
+
+/// The Hierarchy view's sibling ordering: the column the user last clicked.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum HierarchySort {
+    #[default]
+    Total,
+    SelfTime,
+    Calls,
+    Max,
+    Name,
+}
+
+impl HierarchySort {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Total => "Total",
+            Self::SelfTime => "Self",
+            Self::Calls => "Calls",
+            Self::Max => "Max",
+            Self::Name => "Hierarchy",
+        }
+    }
+}
+
+/// One row the current collapse state shows, addressed into the cached tree.
+#[derive(Clone, Debug)]
+struct VisibleHierarchyRow {
+    /// Index into the cached HierarchyRow list.
+    index: usize,
+    /// Stable identity of the row's place in the tree, for collapsing.
+    key: String,
+    /// Whether the row has children in the cached list.
+    has_children: bool,
+}
+
+/// A Hierarchy row's local key: marker id plus the per-invocation data.
+///
+/// Rows are cached pre-order and re-sorted when a column is clicked, so a
+/// collapsed row cannot be addressed by index; its path (this key per level)
+/// is stable across sorts and frames.
+fn hierarchy_row_key(row: &HierarchyRow) -> String {
+    format!("{}:{}", row.scope, row.data.as_deref().unwrap_or_default())
+}
+
+/// The name the Hierarchy view prints for a row.
+fn hierarchy_row_label(row: &HierarchyRow, scopes: &[ScopeInfo]) -> String {
+    match scope_info(scopes, row.scope) {
+        Some(info) if info.name == SYSTEM_MARKER => row
+            .data
+            .as_deref()
+            .map(strip_tag)
+            .map(short_system_name)
+            .unwrap_or_else(|| info.name.clone()),
+        Some(info) => match row.data.as_deref().map(strip_tag) {
+            Some(data) if !data.is_empty() => format!("{}[{}]", info.name, data),
+            _ => info.name.clone(),
+        },
+        None => format!("scope #{}", row.scope),
+    }
+}
+
+/// The full name the hierarchy tooltip prints; a system keeps its module path.
+fn hierarchy_row_full_name(row: &HierarchyRow, scopes: &[ScopeInfo]) -> String {
+    match scope_info(scopes, row.scope) {
+        Some(info) if info.name == SYSTEM_MARKER => {
+            strip_tag(row.data.as_deref().unwrap_or_default()).to_owned()
+        }
+        _ => hierarchy_row_label(row, scopes),
+    }
+}
+
+/// The category a Hierarchy row is painted in.
+///
+/// The aggregation strips the category tag from a system's data, so the
+/// per-system category is looked up from the frame's executor samples (the
+/// cache collects them once per frame).
+fn hierarchy_row_category(
+    row: &HierarchyRow,
+    scopes: &[ScopeInfo],
+    system_categories: &BTreeMap<String, Category>,
+) -> Category {
+    let Some(info) = scope_info(scopes, row.scope) else {
+        return Category::Others;
+    };
+    if info.name == SYSTEM_MARKER {
+        return system_categories
+            .get(row.data.as_deref().unwrap_or_default())
+            .copied()
+            .unwrap_or(Category::Scripts);
+    }
+    info.category
+}
+
+/// Re-order the aggregated rows by the chosen column, keeping every parent
+/// above its children: sibling lists are sorted and the pre-order flatten is
+/// rebuilt.
+///
+/// "Descending" is "best first": the largest Total/Self/Calls/Max, or the
+/// alphabetically first name.
+fn sort_hierarchy_rows(
+    rows: &mut Vec<HierarchyRow>,
+    sort: HierarchySort,
+    descending: bool,
+    scopes: &[ScopeInfo],
+) {
+    if rows.len() < 2 {
+        return;
+    }
+
+    // Rebuild the parent/child shape from the pre-order depths.
+    let mut children: Vec<Vec<usize>> = vec![Vec::new(); rows.len()];
+    let mut roots = Vec::new();
+    let mut stack: Vec<usize> = Vec::new();
+    for index in 0..rows.len() {
+        while stack
+            .last()
+            .is_some_and(|&top| rows[top].depth >= rows[index].depth)
+        {
+            stack.pop();
+        }
+        match stack.last() {
+            Some(&parent) => children[parent].push(index),
+            None => roots.push(index),
+        }
+        stack.push(index);
+    }
+
+    let labels: Vec<String> = rows
+        .iter()
+        .map(|row| hierarchy_row_label(row, scopes))
+        .collect();
+    let compare = |a: usize, b: usize| -> std::cmp::Ordering {
+        let natural = match sort {
+            HierarchySort::Total => rows[b].total_ns.cmp(&rows[a].total_ns),
+            HierarchySort::SelfTime => rows[b].self_ns.cmp(&rows[a].self_ns),
+            HierarchySort::Calls => rows[b].calls.cmp(&rows[a].calls),
+            HierarchySort::Max => rows[b].max_ns.cmp(&rows[a].max_ns),
+            HierarchySort::Name => labels[a].cmp(&labels[b]),
+        };
+        let natural = natural
+            .then_with(|| labels[a].cmp(&labels[b]))
+            .then_with(|| rows[a].scope.cmp(&rows[b].scope));
+        if descending {
+            natural
+        } else {
+            natural.reverse()
+        }
+    };
+
+    roots.sort_by(|a, b| compare(*a, *b));
+    for child_list in &mut children {
+        child_list.sort_by(|a, b| compare(*a, *b));
+    }
+
+    let original = rows.clone();
+    fn walk(
+        index: usize,
+        children: &[Vec<usize>],
+        original: &[HierarchyRow],
+        order: &mut Vec<HierarchyRow>,
+    ) {
+        order.push(original[index].clone());
+        for &child in &children[index] {
+            walk(child, children, original, order);
+        }
+    }
+    let mut order = Vec::with_capacity(original.len());
+    for root in roots {
+        walk(root, &children, &original, &mut order);
+    }
+    *rows = order;
+}
+
+/// A small filled triangle: the Hierarchy view's collapse caret and sort
+/// indicator (no icon assets needed).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Triangle {
+    Down,
+    Right,
+    Up,
+}
+
+fn paint_triangle(
+    painter: &egui::Painter,
+    center: egui::Pos2,
+    size: f32,
+    triangle: Triangle,
+    color: egui::Color32,
+) {
+    let half = size * 0.5;
+    let points = match triangle {
+        Triangle::Down => vec![
+            egui::pos2(center.x - half, center.y - half * 0.6),
+            egui::pos2(center.x + half, center.y - half * 0.6),
+            egui::pos2(center.x, center.y + half * 0.7),
+        ],
+        Triangle::Up => vec![
+            egui::pos2(center.x - half, center.y + half * 0.6),
+            egui::pos2(center.x + half, center.y + half * 0.6),
+            egui::pos2(center.x, center.y - half * 0.7),
+        ],
+        Triangle::Right => vec![
+            egui::pos2(center.x - half * 0.7, center.y - half),
+            egui::pos2(center.x + half * 0.7, center.y),
+            egui::pos2(center.x - half * 0.7, center.y + half),
+        ],
+    };
+    painter.add(egui::Shape::convex_polygon(points, color, Stroke::NONE));
+}
+
+/// The right-aligned numeric columns of the Hierarchy view.
+///
+/// The name column takes the left 45% of the track, the four numbers split the
+/// rest evenly; the header and the rows share this geometry so a click on a
+/// header lands on the column it names.
+#[derive(Clone, Copy, Debug)]
+struct HierarchyColumns {
+    name_left: f32,
+    name_right: f32,
+    total_left: f32,
+    total_right: f32,
+    self_left: f32,
+    self_right: f32,
+    calls_left: f32,
+    calls_right: f32,
+    max_left: f32,
+    max_right: f32,
+}
+
+impl HierarchyColumns {
+    fn new(left: f32, right: f32) -> Self {
+        let width = (right - left).max(1.0);
+        // A narrow panel must not make the clamp bounds cross (min > max).
+        let numeric = (width * 0.55).clamp(120.0_f32.min(width), width);
+        let name_right = left + width - numeric;
+        let column = numeric / 4.0;
+        Self {
+            name_left: left,
+            name_right,
+            total_left: name_right,
+            total_right: name_right + column,
+            self_left: name_right + column,
+            self_right: name_right + 2.0 * column,
+            calls_left: name_right + 2.0 * column,
+            calls_right: name_right + 3.0 * column,
+            max_left: name_right + 3.0 * column,
+            max_right: name_right + 4.0 * column,
+        }
+    }
+
+    /// The five sortable header cells, left to right.
+    fn header_cells(&self, ruler: Rect) -> [(HierarchySort, Rect); 5] {
+        let cell = |sort: HierarchySort, left: f32, right: f32| {
+            (
+                sort,
+                Rect::from_min_max(
+                    egui::pos2(left, ruler.top()),
+                    egui::pos2(right, ruler.bottom()),
+                ),
+            )
+        };
+        [
+            cell(HierarchySort::Name, self.name_left, self.name_right),
+            cell(HierarchySort::Total, self.total_left, self.total_right),
+            cell(HierarchySort::SelfTime, self.self_left, self.self_right),
+            cell(HierarchySort::Calls, self.calls_left, self.calls_right),
+            cell(HierarchySort::Max, self.max_left, self.max_right),
+        ]
+    }
+}
+
+/// The rows the collapse state shows, with the path keys that address them.
+///
+/// A collapsed row stays visible; its descendants (deeper rows that follow it)
+/// are skipped until the next row at its depth or above.
+fn visible_hierarchy_rows(
+    rows: &[HierarchyRow],
+    collapsed: &BTreeSet<String>,
+) -> Vec<VisibleHierarchyRow> {
+    let mut visible = Vec::with_capacity(rows.len());
+    let mut path: Vec<String> = Vec::new();
+    let mut skip_under: Option<u32> = None;
+    for (index, row) in rows.iter().enumerate() {
+        if let Some(depth) = skip_under {
+            if row.depth > depth {
+                continue;
+            }
+            skip_under = None;
+        }
+        path.truncate(row.depth as usize);
+        let key = hierarchy_row_key(row);
+        path.push(key);
+        let key = path.join("/");
+        let has_children = rows
+            .get(index + 1)
+            .is_some_and(|next| next.depth > row.depth);
+        if has_children && collapsed.contains(&key) {
+            skip_under = Some(row.depth);
+        }
+        visible.push(VisibleHierarchyRow {
+            index,
+            key,
+            has_children,
+        });
+    }
+    visible
+}
+
 /// The rectangles the timeline lays out for one pass.
 ///
 /// The header and ruler are pinned; only `body` scrolls. `track_left` and
@@ -389,14 +746,22 @@ pub(crate) struct ProfilerPanel {
     style: ProfilerStyle,
     global_frame_view: GlobalFrameView,
     recording: bool,
-    tab: Tab,
     follow_latest: bool,
     selected_frame: usize,
     /// `None` aggregates all threads.
     thread: Option<u32>,
+    /// Which view the timeline band draws (Unity's view selector).
+    view_kind: PanelView,
+    /// The Hierarchy view's sort column and direction.
+    hierarchy_sort: HierarchySort,
+    hierarchy_descending: bool,
+    /// Hierarchy rows whose subtree is collapsed, by path key.
+    collapsed: BTreeSet<String>,
     cache_revision: u64,
     cache_frame: usize,
     cache_thread: Option<u32>,
+    cache_sort: HierarchySort,
+    cache_descending: bool,
     cached: Option<CachedFrame>,
     /// Result of the last Save click: the exact files written, or the error.
     /// Kept so the panel can show where the capture went.
@@ -450,14 +815,19 @@ impl Default for ProfilerPanel {
             style,
             global_frame_view: GlobalFrameView::default(),
             recording: false,
-            tab: Tab::default(),
             follow_latest: true,
             selected_frame: 0,
             thread: None,
             cache_revision: u64::MAX,
             cache_frame: usize::MAX,
             cache_thread: None,
+            cache_sort: HierarchySort::Total,
+            cache_descending: true,
             cached: None,
+            view_kind: PanelView::default(),
+            hierarchy_sort: HierarchySort::default(),
+            hierarchy_descending: true,
+            collapsed: BTreeSet::new(),
             save: None,
             hidden: [false; Category::COUNT],
             selection: None,
@@ -736,10 +1106,50 @@ impl ProfilerPanel {
                 }
                 self.toolbar_rule(ui, rule, row_height);
 
+                // Unity's Save writes the capture; the files named in the
+                // result are shown next to the button and in the hover text, so
+                // "where did it go" is never a guess.
+                let save = ui.add(
+                    Button::new("Save", &button_style)
+                        .height(row_height)
+                        .enabled(has_frames)
+                        .tooltip("Save the capture (JSON, Chrome trace and puffin)"),
+                );
+                if save.clicked() {
+                    let written = profiler.save_capture(kairos_profile::DEFAULT_CAPTURE_DIR);
+                    if let Ok(files) = &written {
+                        kairos_log::info!(
+                            target: "kairos_editor",
+                            "profiler capture saved: {} (trace {}, puffin {})",
+                            files.json.display(),
+                            files.chrome_trace.display(),
+                            files.puffin.display(),
+                        );
+                    }
+                    self.save = Some(written.map_err(|error| error.to_string()));
+                }
+                self.toolbar_rule(ui, rule, row_height);
+
+                if let Some(result) = &self.save {
+                    let (label, tooltip) = match result {
+                        Ok(files) => (
+                            "Saved".to_owned(),
+                            format!(
+                                "{}\n{}\n{}",
+                                files.json.display(),
+                                files.chrome_trace.display(),
+                                files.puffin.display(),
+                            ),
+                        ),
+                        Err(error) => ("Save failed".to_owned(), error.clone()),
+                    };
+                    self.toolbar_label(ui, &label, row_height)
+                        .on_hover_text(tooltip);
+                }
+
                 // TODO(profiler): Unity's right-hand group — `Clear on Play`,
-                // `Deep Profile`, `Call Stacks` and the save/help/overflow icon
-                // cluster. It needs recording options and capture commands that
-                // the host does not expose yet.
+                // `Deep Profile`, `Call Stacks` and the help/overflow icon
+                // cluster. It needs recording options the host does not have.
             });
             ui.add(
                 Divider::horizontal()
@@ -760,11 +1170,11 @@ impl ProfilerPanel {
     }
 
     /// A non-interactive toolbar segment, e.g. Unity's `Frame: 29 / 53`.
-    fn toolbar_label(&self, ui: &mut Ui, text: &str, height: f32) {
+    fn toolbar_label(&self, ui: &mut Ui, text: &str, height: f32) -> Response {
         let style = self.toolbar_text();
         let galley = style.layout(ui, text);
         let padding = self.style.toolbar_item_padding;
-        let (rect, _) = ui.allocate_exact_size(
+        let (rect, response) = ui.allocate_exact_size(
             egui::vec2(galley.size().x + 2.0 * padding, height),
             Sense::hover(),
         );
@@ -776,6 +1186,7 @@ impl ProfilerPanel {
             galley,
             style.text_color(),
         );
+        response
     }
 
     /// Toolbar typography, shared by the toolbar buttons, labels and chips.
@@ -1895,6 +2306,11 @@ impl ProfilerPanel {
             track_right,
         };
 
+        if self.view_kind == PanelView::Hierarchy {
+            self.hierarchy(ui, &layout);
+            return;
+        }
+
         let frame = session.frames.get(self.selected_frame).map(Arc::as_ref);
         let duration_ns = frame.map_or(0, |frame| frame.duration_ns());
         self.view.clamp(duration_ns);
@@ -2048,6 +2464,354 @@ impl ProfilerPanel {
             return;
         };
         self.paint_selection_details(ui, layout.body, bar, &details);
+    }
+
+    /// Unity's Hierarchy view over the selected frame: the aggregated marker
+    /// tree with Unity's columns, click-to-sort headers and click-to-collapse
+    /// rows.
+    ///
+    /// This is where the whole frame's ranking lives: unlike the timeline (one
+    /// track per thread) it merges every thread, so a system that ran on a
+    /// worker is found here even though the stage wrapper that scheduled it has
+    /// no child blocks on the main thread.
+    fn hierarchy(&mut self, ui: &mut Ui, layout: &TimelineLayout) {
+        let body = layout.body;
+        let row_height = self.style.level_height.max(1.0);
+        ui.painter()
+            .rect_filled(body, CornerRadius::ZERO, self.style.track_bg.to_egui());
+        // The Hierarchy view has no time axis, but the band keeps the same
+        // chrome rows as the timeline so switching views does not jump.
+        ui.painter().rect_filled(
+            Rect::from_min_max(
+                egui::pos2(body.left(), body.bottom()),
+                egui::pos2(layout.track_right, layout.horizontal_bar.bottom()),
+            ),
+            CornerRadius::ZERO,
+            self.style.timeline_name_bg.to_egui(),
+        );
+        self.paint_hierarchy_header(ui, layout);
+
+        let has_rows = self
+            .cached
+            .as_ref()
+            .is_some_and(|cached| !cached.rows.is_empty());
+        if !has_rows {
+            self.paint_empty_timeline(ui, body);
+            return;
+        }
+
+        // The rows the collapse state shows. Their keys do not borrow the
+        // cache, so the scroll state can be updated before the paint.
+        let visible = {
+            let cached = self.cached.as_ref().expect("cached hierarchy rows");
+            visible_hierarchy_rows(&cached.rows, &self.collapsed)
+        };
+        let content_height = visible.len() as f32 * row_height;
+        let max_scroll = (content_height - body.height()).max(0.0);
+        self.track_scroll = self.track_scroll.clamp(0.0, max_scroll);
+
+        // The wheel over the table scrolls the rows, like the timeline names.
+        if let Some(pos) = ui.input(|input| input.pointer.hover_pos()) {
+            if body.contains(pos) {
+                let wheel = ui.input(|input| input.smooth_scroll_delta.y);
+                if wheel != 0.0 {
+                    self.track_scroll = (self.track_scroll - wheel).clamp(0.0, max_scroll);
+                    ui.input_mut(|input| input.smooth_scroll_delta = egui::Vec2::ZERO);
+                    ui.ctx().request_repaint();
+                }
+            }
+        }
+
+        // The right-edge scroll bar, same widget as the timeline's.
+        let scroll_style = self.scroll_style();
+        let viewport_height = body.height().max(1.0);
+        let content = content_height.max(viewport_height);
+        let mut window = ScrollWindow::new(
+            f64::from(self.track_scroll),
+            f64::from(viewport_height.min(content)),
+            (0.0, f64::from(content)),
+        )
+        .with_min_span(f64::from(viewport_height.min(content)));
+        let scrolled = MinMaxScroll::vertical(&scroll_style)
+            .show(
+                ui,
+                ui.id().with("profiler.hierarchy.vscroll"),
+                layout.vertical_bar,
+                &mut window,
+            )
+            .changed();
+        if scrolled {
+            self.track_scroll = window.value as f32;
+            ui.ctx().request_repaint();
+        }
+
+        let columns = HierarchyColumns::new(body.left(), layout.track_right);
+        let painter = ui.painter().with_clip_rect(body);
+        let font = self.small_font();
+        let text = self.style.timeline_text.to_egui();
+        let dim = self.style.ruler_text.to_egui();
+        let rule = self.style.separator.to_egui();
+        let hover = self.style.hover_bg.to_egui();
+        let separator_width = self.style.separator_width;
+        let rule_columns = [
+            columns.total_left,
+            columns.self_left,
+            columns.calls_left,
+            columns.max_left,
+        ];
+
+        let mut toggled = None;
+        let mut y = body.top() - self.track_scroll;
+        let cached = self.cached.as_ref().expect("cached hierarchy rows");
+        for entry in &visible {
+            let row = &cached.rows[entry.index];
+            let rect = Rect::from_min_size(
+                egui::pos2(body.left(), y),
+                egui::vec2(layout.track_right - body.left(), row_height),
+            );
+            y += row_height;
+            if !rect.intersects(body) {
+                continue;
+            }
+
+            let response = ui.interact(
+                rect,
+                ui.id().with(("profiler.hierarchy.row", entry.index)),
+                Sense::click(),
+            );
+            if response.hovered() {
+                painter.rect_filled(rect, CornerRadius::ZERO, hover);
+            }
+            painter.rect_filled(
+                Rect::from_min_size(
+                    egui::pos2(rect.left(), rect.bottom() - separator_width),
+                    egui::vec2(rect.width(), separator_width),
+                ),
+                CornerRadius::ZERO,
+                rule,
+            );
+            for x in rule_columns {
+                painter.rect_filled(
+                    Rect::from_min_size(
+                        egui::pos2(x, rect.top()),
+                        egui::vec2(separator_width, rect.height()),
+                    ),
+                    CornerRadius::ZERO,
+                    rule,
+                );
+            }
+
+            let indent = row.depth as f32 * 12.0;
+            let caret = egui::pos2(rect.left() + 9.0 + indent, rect.center().y);
+            if entry.has_children {
+                let collapsed = self.collapsed.contains(&entry.key);
+                paint_triangle(
+                    &painter,
+                    caret,
+                    7.0,
+                    if collapsed {
+                        Triangle::Right
+                    } else {
+                        Triangle::Down
+                    },
+                    dim,
+                );
+            }
+            let chip = egui::pos2(caret.x + 12.0, rect.center().y);
+            let category = hierarchy_row_category(row, &cached.scopes, &cached.system_categories);
+            painter.rect_filled(
+                Rect::from_center_size(chip, egui::vec2(8.0, 8.0)),
+                CornerRadius::same(1),
+                self.category_color(category),
+            );
+            painter
+                .with_clip_rect(Rect::from_min_max(
+                    egui::pos2(chip.x + 8.0, rect.top()),
+                    egui::pos2(columns.name_right - 4.0, rect.bottom()),
+                ))
+                .text(
+                    egui::pos2(chip.x + 9.0, rect.center().y),
+                    Align2::LEFT_CENTER,
+                    hierarchy_row_label(row, &cached.scopes),
+                    font.clone(),
+                    text,
+                );
+            painter.text(
+                egui::pos2(columns.total_right - 6.0, rect.center().y),
+                Align2::RIGHT_CENTER,
+                duration_text(row.total_ns),
+                font.clone(),
+                dim,
+            );
+            painter.text(
+                egui::pos2(columns.self_right - 6.0, rect.center().y),
+                Align2::RIGHT_CENTER,
+                duration_text(row.self_ns),
+                font.clone(),
+                dim,
+            );
+            painter.text(
+                egui::pos2(columns.calls_right - 6.0, rect.center().y),
+                Align2::RIGHT_CENTER,
+                row.calls.to_string(),
+                font.clone(),
+                dim,
+            );
+            painter.text(
+                egui::pos2(columns.max_right - 6.0, rect.center().y),
+                Align2::RIGHT_CENTER,
+                duration_text(row.max_ns),
+                font.clone(),
+                dim,
+            );
+
+            if response.clicked() && entry.has_children {
+                toggled = Some(entry.key.clone());
+            }
+            let mut tooltip = format!(
+                "{}\nTotal {}   Self {}   Max {}   Calls {}",
+                hierarchy_row_full_name(row, &cached.scopes),
+                duration_text(row.total_ns),
+                duration_text(row.self_ns),
+                duration_text(row.max_ns),
+                row.calls,
+            );
+            if let Some(info) = scope_info(&cached.scopes, row.scope) {
+                if !info.location.is_empty() {
+                    tooltip.push_str(&format!("\nLocation: {}", info.location));
+                }
+            }
+            response.on_hover_text(tooltip);
+        }
+
+        if let Some(key) = toggled {
+            if !self.collapsed.remove(&key) {
+                self.collapsed.insert(key);
+            }
+            ui.ctx().request_repaint();
+        }
+    }
+
+    /// The Hierarchy view's pinned column header row (Unity's column titles).
+    fn paint_hierarchy_header(&mut self, ui: &mut Ui, layout: &TimelineLayout) {
+        let ruler = layout.ruler;
+        ui.painter().rect_filled(
+            ruler,
+            CornerRadius::ZERO,
+            self.style.timeline_name_bg.to_egui(),
+        );
+        let columns = HierarchyColumns::new(layout.body.left(), layout.track_right);
+        let painter = ui.painter().with_clip_rect(ruler);
+        let font = self.small_font();
+        let text = self.style.timeline_text.to_egui();
+        let dim = self.style.ruler_text.to_egui();
+        let rule = self.style.separator.to_egui();
+        let separator_width = self.style.separator_width;
+
+        for (sort, cell) in columns.header_cells(ruler) {
+            let response = ui.interact(
+                cell,
+                ui.id().with(("profiler.hierarchy.head", sort.label())),
+                Sense::click(),
+            );
+            if response.clicked() {
+                if self.hierarchy_sort == sort {
+                    self.hierarchy_descending = !self.hierarchy_descending;
+                } else {
+                    self.hierarchy_sort = sort;
+                    self.hierarchy_descending = true;
+                }
+                ui.ctx().request_repaint();
+            }
+            let (label, x, align) = match sort {
+                HierarchySort::Name => (
+                    "Hierarchy".to_owned(),
+                    cell.left() + 10.0,
+                    Align2::LEFT_CENTER,
+                ),
+                HierarchySort::Total => (
+                    sort.label().to_owned(),
+                    columns.total_right - 6.0,
+                    Align2::RIGHT_CENTER,
+                ),
+                HierarchySort::SelfTime => (
+                    sort.label().to_owned(),
+                    columns.self_right - 6.0,
+                    Align2::RIGHT_CENTER,
+                ),
+                HierarchySort::Calls => (
+                    sort.label().to_owned(),
+                    columns.calls_right - 6.0,
+                    Align2::RIGHT_CENTER,
+                ),
+                HierarchySort::Max => (
+                    sort.label().to_owned(),
+                    columns.max_right - 6.0,
+                    Align2::RIGHT_CENTER,
+                ),
+            };
+            let color = if sort == self.hierarchy_sort {
+                text
+            } else {
+                dim
+            };
+            if sort == self.hierarchy_sort {
+                // Unity's sort arrow points down for the default best-first
+                // order and up after a second click on the same column.
+                let width = painter
+                    .layout_no_wrap(label.clone(), font.clone(), color)
+                    .size()
+                    .x;
+                let arrow_x = match sort {
+                    HierarchySort::Name => x + width + 6.0,
+                    _ => x - width - 6.0,
+                };
+                let direction = if self.hierarchy_descending {
+                    Triangle::Down
+                } else {
+                    Triangle::Up
+                };
+                paint_triangle(
+                    &painter,
+                    egui::pos2(arrow_x, cell.center().y),
+                    6.0,
+                    direction,
+                    color,
+                );
+            }
+            painter.text(
+                egui::pos2(x, cell.center().y),
+                align,
+                label,
+                font.clone(),
+                color,
+            );
+            response.on_hover_text(format!("Sort by {}", sort.label()));
+        }
+
+        for x in [
+            columns.total_left,
+            columns.self_left,
+            columns.calls_left,
+            columns.max_left,
+        ] {
+            painter.rect_filled(
+                Rect::from_min_size(
+                    egui::pos2(x, ruler.top()),
+                    egui::vec2(separator_width, ruler.height()),
+                ),
+                CornerRadius::ZERO,
+                rule,
+            );
+        }
+        painter.rect_filled(
+            Rect::from_min_size(
+                egui::pos2(ruler.left(), ruler.bottom() - separator_width),
+                egui::vec2(ruler.width(), separator_width),
+            ),
+            CornerRadius::ZERO,
+            rule,
+        );
     }
 
     /// Unity's timeline navigation, applied before the pass paints so a wheel
@@ -2251,21 +3015,37 @@ impl ProfilerPanel {
             .height(row.height())
             .padding(egui::vec2(self.style.toolbar_item_padding, 0.0));
 
-        // View selector. Unity's menu holds Timeline / Hierarchy / Call Stacks;
-        // only the timeline is rebuilt so far.
+        // View selector: Unity's Timeline / Hierarchy / Call Stacks menu. The
+        // Raw and Call Stacks views are still open; Timeline and Hierarchy share
+        // this band.
         let view = Rect::from_min_size(
             row.min,
             egui::vec2(self.style.timeline_view_width, row.height()),
         );
-        ui.put(
+        let response = ui.put(
             view,
-            Button::new("Timeline", &style)
+            Button::new(self.view_kind.label(), &style)
                 .width(view.width())
                 .height(view.height())
                 .caret(),
         );
-        // TODO(profiler): open the view menu here and draw the Hierarchy / Raw /
-        // Call Stacks views through the same selector.
+        let menu_style = MenuStyle::default();
+        egui::Popup::menu(&response)
+            .style(menu_style.style_modifier())
+            .info(egui::UiStackInfo::new(egui::UiKind::Menu).with_tag_value(
+                egui::containers::menu::MenuConfig::MENU_CONFIG_TAG,
+                menu_style.config(),
+            ))
+            .show(|ui| {
+                for kind in [PanelView::Timeline, PanelView::Hierarchy] {
+                    if ui
+                        .selectable_label(self.view_kind == kind, kind.label())
+                        .clicked()
+                    {
+                        self.view_kind = kind;
+                    }
+                }
+            });
         self.paint_vertical_rule(ui, egui::pos2(view.right(), row.top()), row.height(), rule);
 
         let live = Rect::from_min_size(
@@ -2569,7 +3349,7 @@ impl ProfilerPanel {
             wrap,
         );
         let body: Vec<_> = details
-            .accumulated_lines()
+            .body_lines()
             .into_iter()
             .map(|line| painter.layout(line, body_font.clone(), style.ruler_text.to_egui(), wrap))
             .collect();
@@ -2780,19 +3560,29 @@ impl ProfilerPanel {
         let stale = self.cached.is_none()
             || self.cache_revision != session.revision
             || self.cache_frame != index
-            || self.cache_thread != self.thread;
+            || self.cache_thread != self.thread
+            || self.cache_sort != self.hierarchy_sort
+            || self.cache_descending != self.hierarchy_descending;
         if !stale {
             return;
         }
 
         let frame = Arc::clone(&session.frames[index]);
-        let rows = hierarchy(&frame, self.thread);
+        let mut rows = hierarchy(&frame, self.thread);
+        sort_hierarchy_rows(
+            &mut rows,
+            self.hierarchy_sort,
+            self.hierarchy_descending,
+            &session.scopes,
+        );
+        let system_categories = collect_system_categories(&frame, &session.scopes);
         let systems = system_entries(&frame, &session.scopes);
         let lanes = collect_lanes(session);
         self.cached = Some(CachedFrame {
             frame,
             scopes: session.scopes.clone(),
             rows,
+            system_categories,
             systems,
             lanes,
             json: String::new(),
@@ -2800,6 +3590,8 @@ impl ProfilerPanel {
         self.cache_revision = session.revision;
         self.cache_frame = index;
         self.cache_thread = self.thread;
+        self.cache_sort = self.hierarchy_sort;
+        self.cache_descending = self.hierarchy_descending;
     }
 
     fn reset_view(&mut self) {
@@ -2817,6 +3609,9 @@ impl ProfilerPanel {
         self.track_scroll = 0.0;
         // A new capture invalidates the previously written files' contents.
         self.save = None;
+        // Row keys address the cleared frame's tree; a new capture re-uses
+        // marker ids, so keep no collapse state across it.
+        self.collapsed.clear();
     }
 }
 
@@ -2867,7 +3662,13 @@ fn sample_detail(sample: &SampleSnapshot, scope: Option<&ScopeInfo>) -> String {
             .map(strip_tag)
             .map(short_system_name)
             .unwrap_or_else(|| info.name.clone()),
-        Some(info) => info.name.clone(),
+        // A wrapper carries its identity in the per-invocation data
+        // (`Kairos.Stage` + "Update"), so a stage block reads as
+        // `Kairos.Stage[Update]` instead of an anonymous wrapper.
+        Some(info) => match sample.data.as_deref().map(strip_tag) {
+            Some(data) if !data.is_empty() => format!("{}[{}]", info.name, data),
+            _ => info.name.clone(),
+        },
         None => "<unknown scope>".to_owned(),
     }
 }
@@ -3179,6 +3980,37 @@ fn short_system_name(system: &str) -> String {
     system.rsplit("::").next().unwrap_or(system).to_owned()
 }
 
+/// The category of every system that ran in the frame, keyed by its full name.
+///
+/// The executor's data carries the category tag (`Physics/kairos_physics::…`),
+/// but the Hierarchy aggregation strips tags for display; the view therefore
+/// reads the per-system category from the frame's samples once per frame.
+fn collect_system_categories(
+    frame: &FrameSnapshot,
+    scopes: &[ScopeInfo],
+) -> BTreeMap<String, Category> {
+    let mut categories = BTreeMap::new();
+    for thread in &frame.threads {
+        for sample in &thread.samples {
+            let Some(info) = scope_info(scopes, sample.scope) else {
+                continue;
+            };
+            if info.name != SYSTEM_MARKER {
+                continue;
+            }
+            let data = sample.data.as_deref().unwrap_or_default();
+            let name = strip_tag(data);
+            if name.is_empty() {
+                continue;
+            }
+            categories
+                .entry(name.to_owned())
+                .or_insert_with(|| classify_system(Some(data)));
+        }
+    }
+    categories
+}
+
 /// What painting one thread row produced for the timeline's selection.
 #[derive(Clone, Copy, Debug, Default)]
 struct RowOutcome {
@@ -3194,10 +4026,22 @@ struct RowOutcome {
 /// testable without an egui context.
 #[derive(Clone, Debug, PartialEq)]
 struct SelectionDetails {
-    /// Marker name without its category tag (`spin_system`).
+    /// Marker name without its category tag, with per-invocation data when the
+    /// call site recorded some: `Kairos.Stage[Update]`, or the full system path
+    /// for an executor sample.
     title: String,
     /// Duration of the clicked block.
     duration_ns: u64,
+    /// The category the block is painted as.
+    category: Category,
+    /// The marker's call site (`file:line`), empty when the capture has none.
+    location: String,
+    /// Time inside the block, minus its recorded children.
+    self_ns: u64,
+    /// Direct child samples recorded inside the block (0 = none).
+    children: usize,
+    /// Enclosing samples on the same thread, outermost first.
+    parents: Vec<String>,
     /// Thread the block ran on, for the "on thread '…'" line.
     thread: String,
     /// The marker on that thread: invocations and accumulated time.
@@ -3210,6 +4054,39 @@ struct SelectionDetails {
 }
 
 impl SelectionDetails {
+    /// The block's own facts: category, source location, self time and the
+    /// recorded call stack. The capture doesn't sample native stacks, so the
+    /// call stack is the enclosing marker chain puffin recorded on this thread.
+    ///
+    /// The self line is what explains a wrapper like `Kairos.Stage`: when no
+    /// child sample was recorded, its whole block is unattributed time, and the
+    /// line says so instead of leaving the 40 ms a mystery.
+    fn body_lines(&self) -> Vec<String> {
+        let mut lines = vec![format!("Category: {}", self.category.label())];
+        if !self.location.is_empty() {
+            lines.push(format!("Location: {}", self.location));
+        }
+        if self.children == 0 {
+            lines.push(format!(
+                "Self: {} (no child samples recorded)",
+                duration_text(self.self_ns)
+            ));
+        } else {
+            lines.push(format!(
+                "Self: {} over {} {}",
+                duration_text(self.self_ns),
+                self.children,
+                plural(self.children, "child sample", "child samples")
+            ));
+        }
+        if !self.parents.is_empty() {
+            lines.push("Call stack:".to_owned());
+            lines.extend(self.parents.iter().map(|parent| format!("  {parent}")));
+        }
+        lines.extend(self.accumulated_lines());
+        lines
+    }
+
     /// Unity's "Current frame accumulated time:" block, with Unity's conditions.
     ///
     /// `ProfilerTimelineGUI.DoSelectionTooltip` writes the section only when the
@@ -3251,7 +4128,7 @@ impl SelectionDetails {
     /// records no call stacks, so this is the tooltip content only.
     fn copy_text(&self) -> String {
         let mut lines = vec![self.title.clone(), duration_text(self.duration_ns)];
-        lines.extend(self.accumulated_lines());
+        lines.extend(self.body_lines());
         lines.join("\n")
     }
 }
@@ -3305,9 +4182,51 @@ fn selection_details(
         }
     }
 
+    // A system sample's full path lives in its data; the executor's shared
+    // marker name says nothing useful. Everything else is titled the way its
+    // timeline block is (`Kairos.Stage[Update]`).
+    let title = match scope {
+        Some(info) if info.name == SYSTEM_MARKER => {
+            strip_tag(sample.data.as_deref().unwrap_or("<unknown system>")).to_owned()
+        }
+        _ => sample_detail(sample, scope),
+    };
+    // Self time: the block minus the children this thread recorded inside it.
+    // A wrapper with no child samples therefore reports its whole duration as
+    // unattributed instead of hiding it.
+    let mut self_ns = sample.duration_ns;
+    let mut children = 0usize;
+    for other in &thread.samples {
+        if other.parent == Some(selection.sample as u32) {
+            children += 1;
+            self_ns = self_ns.saturating_sub(other.duration_ns);
+        }
+    }
+    // The call stack is the enclosing marker chain puffin recorded on this
+    // thread, outermost first.
+    let mut parents = Vec::new();
+    let mut enclosing = sample.parent;
+    while let Some(index) = enclosing {
+        let Some(parent) = thread.samples.get(index as usize) else {
+            break;
+        };
+        parents.push(format!(
+            "{} ({})",
+            sample_detail(parent, scope_info(scopes, parent.scope)),
+            block_duration_text(parent.duration_ns)
+        ));
+        enclosing = parent.parent;
+    }
+    parents.reverse();
+
     Some(SelectionDetails {
-        title: sample_detail(sample, scope),
+        title,
         duration_ns: sample.duration_ns,
+        category: sample_category(sample, scope),
+        location: scope.map(|info| info.location.clone()).unwrap_or_default(),
+        self_ns,
+        children,
+        parents,
         thread: thread_display_name(thread),
         thread_instances,
         thread_ns,
@@ -3658,6 +4577,89 @@ mod probe {
                 _ => None,
             })
             .collect()
+    }
+
+    /// A system sample's details name the system's full module path and point
+    /// at the `add_systems` call site the executor recorded in its scope, not at
+    /// the executor frame that ran it.
+    #[test]
+    fn a_system_block_reports_its_module_path_and_registration_site() {
+        let scope = ScopeInfo {
+            id: 9,
+            name: SYSTEM_MARKER.to_owned(),
+            location: "kairos_engine/src/schedule.rs:365".to_owned(),
+            kind: ScopeKind::Named,
+            category: Category::Scripts,
+        };
+        let frame = FrameSnapshot {
+            index: 0,
+            source_index: 0,
+            start_ns: 0,
+            end_ns: 1_000_000,
+            threads: vec![ThreadSnapshot {
+                id: 0,
+                name: "main".to_owned(),
+                samples: vec![SampleSnapshot {
+                    scope: 9,
+                    data: Some("Others/kairos_engine::schedule::run_main".to_owned()),
+                    start_ns: 0,
+                    duration_ns: 900_000,
+                    depth: 0,
+                    parent: None,
+                }],
+                warning: None,
+            }],
+            categories: [0; Category::COUNT],
+        };
+        let lanes = vec![Lane {
+            id: Some(0),
+            name: "main".to_owned(),
+        }];
+        let details = selection_details(
+            &frame,
+            &[scope],
+            &lanes,
+            Selection {
+                frame: 0,
+                lane: 0,
+                sample: 0,
+            },
+        )
+        .expect("the selection addresses a sample");
+
+        assert_eq!(details.title, "kairos_engine::schedule::run_main");
+        assert_eq!(details.category, Category::Others);
+        assert_eq!(details.location, "kairos_engine/src/schedule.rs:365");
+        let lines = details.body_lines();
+        assert!(
+            lines.contains(&"Location: kairos_engine/src/schedule.rs:365".to_owned()),
+            "{lines:?}"
+        );
+    }
+
+    /// Save writes the capture; the toolbar reports the result and the hover
+    /// text carries the exact files, so the user can hand a capture over.
+    #[test]
+    fn the_toolbar_has_a_save_button_and_reports_the_written_files() {
+        let _guard = lock_profiler_tests();
+        let host = ProfilerHost(Profiler::new());
+        let mut panel = ProfilerPanel::default();
+        panel.save = Some(Ok(CaptureFiles {
+            stem: "capture-test".to_owned(),
+            json: std::path::PathBuf::from("Library/Profiler/capture-test.json"),
+            chrome_trace: std::path::PathBuf::from("Library/Profiler/capture-test.trace.json"),
+            puffin: std::path::PathBuf::from("Library/Profiler/capture-test.puffin"),
+        }));
+        let output = draw_panel(&mut panel, &host);
+        let text = painted_text(&output);
+        assert!(
+            text.iter().any(|line| line == "Save"),
+            "the toolbar paints Save: {text:?}"
+        );
+        assert!(
+            text.iter().any(|line| line == "Saved"),
+            "the toolbar reports the save: {text:?}"
+        );
     }
 
     /// The Unity toolbar contract: a square record toggle, one vertical rule
@@ -4596,11 +5598,113 @@ mod probe {
         assert_eq!(details.frame_instances, 3);
         assert_eq!(details.frame_ns, 7_000_000);
         assert_eq!(details.frame_threads, 2);
+        assert_eq!(details.category, Category::Others);
+        assert_eq!(details.location, "");
+        assert_eq!(details.self_ns, 4_000_000);
+        assert_eq!(details.children, 0);
         // Unity omits the thread line when the marker ran once on that thread.
         assert_eq!(
             details.copy_text(),
-            "profiler.test.worker\n4.00ms\nCurrent frame accumulated time:\n\
-             7.00ms for 3 instances over 2 threads"
+            "profiler.test.worker\n4.00ms\nCategory: Others\n\
+             Self: 4.00ms (no child samples recorded)\n\
+             Current frame accumulated time:\n7.00ms for 3 instances over 2 threads"
+        );
+    }
+
+    /// A wrapper block is a black box in the timeline: nothing was recorded
+    /// inside it, so the details box is the only place that can say what it is,
+    /// where its marker is opened and how much time no child sample covered.
+    #[test]
+    fn a_wrapper_block_reports_its_stage_location_and_unaccounted_time() {
+        let scopes = vec![
+            ScopeInfo {
+                id: 1,
+                name: "Kairos.Engine.Frame".to_owned(),
+                location: "kairos_engine/src/engine.rs:98".to_owned(),
+                kind: ScopeKind::Named,
+                category: Category::Others,
+            },
+            ScopeInfo {
+                id: 2,
+                name: "Kairos.Stage".to_owned(),
+                location: "kairos_engine/src/schedule.rs:224".to_owned(),
+                kind: ScopeKind::Named,
+                category: Category::Others,
+            },
+        ];
+        let frame = FrameSnapshot {
+            index: 0,
+            source_index: 0,
+            start_ns: 0,
+            end_ns: 5_000_000,
+            threads: vec![ThreadSnapshot {
+                id: 0,
+                name: "main".to_owned(),
+                samples: vec![
+                    SampleSnapshot {
+                        scope: 1,
+                        data: None,
+                        start_ns: 0,
+                        duration_ns: 5_000_000,
+                        depth: 0,
+                        parent: None,
+                    },
+                    SampleSnapshot {
+                        scope: 2,
+                        data: Some("Update".to_owned()),
+                        start_ns: 0,
+                        duration_ns: 4_000_000,
+                        depth: 1,
+                        parent: Some(0),
+                    },
+                ],
+                warning: None,
+            }],
+            categories: [0; Category::COUNT],
+        };
+        let lanes = vec![Lane {
+            id: Some(0),
+            name: "main".to_owned(),
+        }];
+        let details = selection_details(
+            &frame,
+            &scopes,
+            &lanes,
+            Selection {
+                frame: 0,
+                lane: 0,
+                sample: 1,
+            },
+        )
+        .expect("the selection addresses a sample");
+
+        assert_eq!(
+            details.title, "Kairos.Stage[Update]",
+            "the stage's data names the stage, like Unity's blocks"
+        );
+        assert_eq!(details.category, Category::Others);
+        assert_eq!(details.location, "kairos_engine/src/schedule.rs:224");
+        assert_eq!(
+            details.self_ns, 4_000_000,
+            "no child sample explains the block"
+        );
+        assert_eq!(details.children, 0);
+        assert_eq!(
+            details.parents,
+            vec!["Kairos.Engine.Frame (5.00ms)".to_owned()]
+        );
+        let lines = details.body_lines();
+        assert!(
+            lines.contains(&"Self: 4.00ms (no child samples recorded)".to_owned()),
+            "{lines:?}"
+        );
+        assert!(
+            lines.contains(&"  Kairos.Engine.Frame (5.00ms)".to_owned()),
+            "{lines:?}"
+        );
+        assert_eq!(
+            details.copy_text().lines().next(),
+            Some("Kairos.Stage[Update]")
         );
     }
 
@@ -4730,6 +5834,11 @@ mod probe {
                        frame_threads: usize| SelectionDetails {
             title: "profiler.test.worker".to_owned(),
             duration_ns: 1_000_000,
+            category: Category::Others,
+            location: String::new(),
+            self_ns: 1_000_000,
+            children: 0,
+            parents: Vec::new(),
             thread: "Main Thread".to_owned(),
             thread_instances,
             thread_ns,
@@ -6038,5 +7147,248 @@ mod probe {
 
         profiler.set_recording(false);
         eprintln!("PROBE[4] stopped       latest_frames={}", latest(&panel));
+    }
+
+    /// Sibling lists re-sort, parents stay above their children, and the
+    /// direction toggle reverses every sibling list rather than the flatten.
+    #[test]
+    fn hierarchy_sorting_keeps_parents_above_children() {
+        let scopes = vec![
+            ScopeInfo {
+                id: 1,
+                name: "root.a".to_owned(),
+                location: String::new(),
+                kind: ScopeKind::Named,
+                category: Category::Others,
+            },
+            ScopeInfo {
+                id: 2,
+                name: "child.a1".to_owned(),
+                location: String::new(),
+                kind: ScopeKind::Named,
+                category: Category::Others,
+            },
+            ScopeInfo {
+                id: 3,
+                name: "child.a2".to_owned(),
+                location: String::new(),
+                kind: ScopeKind::Named,
+                category: Category::Others,
+            },
+            ScopeInfo {
+                id: 4,
+                name: "root.b".to_owned(),
+                location: String::new(),
+                kind: ScopeKind::Named,
+                category: Category::Others,
+            },
+        ];
+        let row = |scope: u32, depth: u32, total: u64, self_ns: u64| HierarchyRow {
+            scope,
+            data: None,
+            depth,
+            total_ns: total,
+            self_ns,
+            calls: 1,
+            max_ns: total,
+        };
+        let mut rows = vec![
+            row(1, 0, 10, 1),
+            row(3, 1, 4, 4),
+            row(2, 1, 6, 6),
+            row(4, 0, 20, 20),
+        ];
+
+        sort_hierarchy_rows(&mut rows, HierarchySort::Total, true, &scopes);
+        assert_eq!(
+            rows.iter().map(|row| row.scope).collect::<Vec<_>>(),
+            vec![4, 1, 2, 3],
+            "roots by total descending, A's children by total descending"
+        );
+        assert_eq!(
+            rows.iter().map(|row| row.depth).collect::<Vec<_>>(),
+            vec![0, 0, 1, 1],
+            "depth tags still address the tree"
+        );
+
+        sort_hierarchy_rows(&mut rows, HierarchySort::Total, false, &scopes);
+        assert_eq!(
+            rows.iter().map(|row| row.scope).collect::<Vec<_>>(),
+            vec![1, 3, 2, 4],
+            "ascending reverses every sibling list, not the flattening"
+        );
+
+        sort_hierarchy_rows(&mut rows, HierarchySort::Name, true, &scopes);
+        assert_eq!(
+            rows.iter().map(|row| row.scope).collect::<Vec<_>>(),
+            vec![1, 2, 3, 4],
+            "name ascending: root.a with its children, then root.b"
+        );
+    }
+
+    /// A collapsed row keeps its own row and hides only its subtree.
+    #[test]
+    fn a_collapsed_hierarchy_row_hides_only_its_subtree() {
+        let scopes = [
+            ScopeInfo {
+                id: 1,
+                name: "root".to_owned(),
+                location: String::new(),
+                kind: ScopeKind::Named,
+                category: Category::Others,
+            },
+            ScopeInfo {
+                id: 2,
+                name: "branch".to_owned(),
+                location: String::new(),
+                kind: ScopeKind::Named,
+                category: Category::Others,
+            },
+            ScopeInfo {
+                id: 3,
+                name: "leaf".to_owned(),
+                location: String::new(),
+                kind: ScopeKind::Named,
+                category: Category::Others,
+            },
+        ];
+        let row = |scope: u32, depth: u32| HierarchyRow {
+            scope,
+            data: None,
+            depth,
+            total_ns: 1,
+            self_ns: 1,
+            calls: 1,
+            max_ns: 1,
+        };
+        let rows = vec![row(1, 0), row(2, 1), row(3, 2), row(2, 1), row(1, 0)];
+
+        let visible = visible_hierarchy_rows(&rows, &BTreeSet::new());
+        assert_eq!(visible.len(), 5);
+        assert!(visible[0].has_children, "the root has a child row");
+        assert!(!visible[2].has_children, "the leaf is the deepest row");
+
+        let branch_key = "1:/2:";
+        let collapsed = BTreeSet::from([branch_key.to_owned()]);
+        let visible = visible_hierarchy_rows(&rows, &collapsed);
+        assert_eq!(
+            visible.iter().map(|entry| entry.index).collect::<Vec<_>>(),
+            vec![0, 1, 3, 4],
+            "the branch stays, the leaf under it hides, the rest stays"
+        );
+        assert!(visible[1].has_children);
+        assert!(!visible[2].has_children);
+        assert_eq!(hierarchy_row_label(&rows[0], &scopes), "root");
+    }
+
+    /// The Hierarchy view is the whole-frame ranking: headers, rows and the
+    /// active view in the selector.
+    #[test]
+    fn the_hierarchy_view_paints_the_ranked_tree() {
+        let _guard = lock_profiler_tests();
+        let host = ProfilerHost(slow_captured_profiler());
+        let mut panel = ProfilerPanel::default();
+        panel.view_kind = PanelView::Hierarchy;
+        let output = draw_panel(&mut panel, &host);
+        let text = painted_text(&output);
+        for header in ["Total", "Self", "Calls", "Max"] {
+            assert!(
+                text.iter().any(|line| line == header),
+                "the {header} column header paints: {text:?}"
+            );
+        }
+        assert!(
+            text.iter().any(|line| line == "profiler.test.frame"),
+            "the aggregated row paints: {text:?}"
+        );
+        assert!(
+            text.iter().any(|line| line.ends_with("ms")),
+            "the row's time paints: {text:?}"
+        );
+        assert_eq!(panel.view_kind.label(), "Hierarchy");
+    }
+
+    /// The Hierarchy view must survive a panel narrower than its numeric
+    /// columns; a clamp over crossed bounds would panic there.
+    #[test]
+    fn the_hierarchy_view_survives_a_narrow_panel() {
+        let _guard = lock_profiler_tests();
+        let host = ProfilerHost(captured_profiler());
+        let mut panel = ProfilerPanel::default();
+        panel.view_kind = PanelView::Hierarchy;
+        let ctx = Context::default();
+        let output = draw_pass_sized(
+            &ctx,
+            &mut panel,
+            &host,
+            egui::vec2(200.0, 180.0),
+            Vec::new(),
+        );
+        assert!(
+            !painted_text(&output).is_empty(),
+            "the narrow view still paints its chrome"
+        );
+    }
+
+    /// Clicking a column header sorts by it; clicking the active column flips
+    /// the direction.
+    #[test]
+    fn clicking_a_hierarchy_column_sorts_it() {
+        let _guard = lock_profiler_tests();
+        let host = ProfilerHost(captured_profiler());
+        let mut panel = ProfilerPanel::default();
+        panel.view_kind = PanelView::Hierarchy;
+        let ctx = Context::default();
+
+        let first = draw_pass(&ctx, &mut panel, &host, Vec::new());
+        let calls = text_center(&first, "Calls");
+        draw_pass(&ctx, &mut panel, &host, click_events(calls));
+        assert_eq!(panel.hierarchy_sort, HierarchySort::Calls);
+        assert!(panel.hierarchy_descending, "a new column starts best-first");
+
+        let second = draw_pass(&ctx, &mut panel, &host, Vec::new());
+        let calls = text_center(&second, "Calls");
+        draw_pass(&ctx, &mut panel, &host, click_events(calls));
+        assert!(
+            !panel.hierarchy_descending,
+            "clicking the active column flips the direction"
+        );
+    }
+
+    /// Clicking a row with children collapses its subtree.
+    #[test]
+    fn clicking_a_hierarchy_row_collapses_its_subtree() {
+        let _guard = lock_profiler_tests();
+        let host = ProfilerHost(captured_profiler());
+        let mut panel = ProfilerPanel::default();
+        panel.view_kind = PanelView::Hierarchy;
+        let ctx = Context::default();
+
+        let first = draw_pass(&ctx, &mut panel, &host, Vec::new());
+        let row = text_center(&first, "profiler.test.frame");
+        draw_pass(&ctx, &mut panel, &host, click_events(row));
+        assert!(
+            !panel.collapsed.is_empty(),
+            "the row with a child row collapses"
+        );
+    }
+
+    /// The header's view selector opens Unity's menu and switches the band to
+    /// the Hierarchy view.
+    #[test]
+    fn the_view_selector_switches_to_the_hierarchy_view() {
+        let _guard = lock_profiler_tests();
+        let host = ProfilerHost(captured_profiler());
+        let mut panel = ProfilerPanel::default();
+        let ctx = Context::default();
+
+        let first = draw_pass(&ctx, &mut panel, &host, Vec::new());
+        let selector = text_center(&first, "Timeline");
+        draw_pass(&ctx, &mut panel, &host, click_events(selector));
+
+        let second = draw_pass(&ctx, &mut panel, &host, Vec::new());
+        let hierarchy_item = text_center(&second, "Hierarchy");
+        draw_pass(&ctx, &mut panel, &host, click_events(hierarchy_item));
+        assert_eq!(panel.view_kind, PanelView::Hierarchy);
     }
 }

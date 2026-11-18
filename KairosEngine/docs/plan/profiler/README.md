@@ -1,8 +1,12 @@
 # Profiler roadmap
 
-Status: phase 1 (capture + structured data) implemented; phase 2 (drawing) not
-started. The recorder is an **owned value** (no global), the engine drives the
+Status: phase 1 (capture + structured data) and most of phase 2 (drawing) are
+implemented: the frame chart with the capture-time module axis, the timeline
+with per-thread tracks and a draggable details box, the Hierarchy view, and
+Save. The recorder is an **owned value** (no global), the engine drives the
 game frame, and a capture saves as JSON / Chrome trace / puffin-native files.
+Still open: the Raw / Call Stacks views, GPU timings, deep profile and loading
+a saved capture back.
 
 ## Product target
 
@@ -108,10 +112,14 @@ origin's wall clock), recorded on start/stop rather than per frame.
    four ms/FPS guide tiers. Recording takes are laid end to end with each pause
    compressed into a labelled break band (done, see the module axis below).
    This is the Unity "CPU Usage" module plus this editor's capture-gap axis.
-2. **Hierarchy**: the current rows plus a total/self bar per row (stacked or
-   overlaid), sort by total/self/calls/name, search, expand/collapse. Bar widths
-   are normalized to the selected frame's duration, not to the root row.
-3. **Timeline**: one row per thread, samples laid out by `start_ns` and
+2. **Hierarchy** (done): the timeline band's view selector opens Unity's
+   Hierarchy view over the selected frame. It merges every thread into one
+   tree with Total / Self / Calls / Max columns, Unity's click-to-sort sibling
+   ordering (caret points down for best-first, up after a second click) and
+   collapse-by-marker-path; hovering a row reports the full marker name (a
+   system keeps its module path) and its `file:line`. Still open: a total/self
+   bar per row, search and row virtualization for very large frames.
+3. **Timeline** (done): one row per thread, samples laid out by `start_ns` and
    `duration_ns`; click selects a sample and opens its details box (below);
    colour by category (each block is labelled `Category · marker (duration)`); a
    category is per block, not a contiguous region, because ECS work can be
@@ -130,12 +138,17 @@ origin's wall clock), recorded on start/stop rather than per frame.
    on the frame's bar), and frame transport pans the window to the selected
    frame. Hover details, Unity's click-drag range selection, `F` to
    frame a block and the ghost frames outside the selected frame are still open.
-4. **Details**: Unity's block popup reports the marker, its time and the frame's
-   accumulated time per marker, with `Copy` (done; `Show` is a TODO for the
-   Hierarchy / Raw views) — the wider pane (location, calls, total/self/max,
-   parent chain) is still open, and the JSON escape hatch stays.
-5. **Interactions**: record/clear, frame slider, thread filter, follow-latest,
-   capture stats; no new dependencies — egui `Painter` + `Shape::rect_filled` +
+4. **Details** (done): Unity's block popup names the block
+   (`Kairos.Stage[Update]`, or a system's full module path), then reports its
+   category, the marker's `file:line`, its self time and the recorded call
+   stack (the enclosing marker chain on that thread); a wrapper with no child
+   samples says so (`Self: 40.57ms (no child samples recorded)`). Unity's
+   accumulated-time section follows Unity's conditions, and `Copy` writes the
+   box. `Show` remains open (it should jump to the Hierarchy row and the
+   source line), and the JSON escape hatch stays.
+5. **Interactions** (done): record/clear/save, frame transport and slider,
+   follow-latest, the Timeline/Hierarchy view selector, capture stats; no new
+   dependencies — egui `Painter` + `Shape::rect_filled` +
    `Sense::click_and_drag` are enough. Unity's min-max scroll bar (a drag thumb
    with a resize grip at each end) cannot be built from `ScrollArea`, so the
    shared `kairos_editor_widgets::min_max_scroll` widget draws it. The rule
@@ -151,9 +164,13 @@ memory modules are separate phases.
 
 ## Phase 3 — coverage and depth
 
-- **Engine**: done — `Engine::update` opens the frame and records
+- **Engine** (done): `Engine::update` opens the frame and records
   `Kairos.Engine.Frame`; `run_main` records one `Kairos.Stage` scope per
-  schedule stage. Systems still instrument themselves with `#[function]`.
+  schedule stage. The ECS executors open one scope per system run, so a
+  system needs no instrumentation for system-level visibility; `add_systems`
+  captures its `#[track_caller]` location, and the scope records that
+  registration site (`file:line`) instead of the executor frame that ran it.
+  `#[function]` / `scope!` remain for detail inside a system.
 - **Game**: same crate and the same `Profiler`; a standalone game host drives
   `Engine::update` per loop iteration, so it is profiled without the editor.
 - **Async**: a `tracing` or explicit task-id bridge so spans survive task
@@ -175,12 +192,15 @@ memory modules are separate phases.
 1. Run the editor and open the **Profiler** tab (bottom dock, next to Console).
 2. Press **● Record**. The host keeps ticking while recording, so frames keep
    arriving even if you leave the window alone. Press **■ Stop**.
-3. Use **Latest** / the frame field and the thread combo; switch between
-   **Hierarchy**, **Raw**, **JSON**.
-4. Press **Save**. The panel shows the three absolute paths it wrote under
-   `Library/Profiler/`. Open the `.trace.json` in <https://ui.perfetto.dev> or
-   `chrome://tracing`, the `.puffin` in `puffin_viewer`, and the `.json` with
-   any JSON reader (schema v1 is documented above).
+3. Use **Latest** / the frame field; the timeline header's view selector
+   switches between **Timeline** and **Hierarchy**.
+4. Press **Save**: it writes the three files under `Library/Profiler/` and
+   the toolbar names them (hover for the absolute paths), so a capture can be
+   handed over for analysis. Open the `.trace.json` in
+   <https://ui.perfetto.dev> or `chrome://tracing`, the `.puffin` in
+   `puffin_viewer`, and the `.json` with any JSON reader (schema v1 is
+   documented above). To diagnose a one-off hitch, Save right after it: the
+   Hierarchy view then ranks every marker in that frame across all threads.
 5. A host can also call `Profiler::save_capture`, `write_json`,
    `write_chrome_trace` or `write_puffin` directly with its own directory.
 

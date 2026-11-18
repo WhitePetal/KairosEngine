@@ -169,6 +169,7 @@ mod category;
 mod export;
 mod model;
 mod profiler;
+pub mod system_scope;
 
 #[cfg(test)]
 mod tests;
@@ -182,6 +183,7 @@ pub use model::{
     FrameSnapshot, ProfileSession, SampleSnapshot, ScopeInfo, ScopeKind, ThreadSnapshot,
 };
 pub use profiler::{CaptureFiles, DEFAULT_CAPTURE_DIR, Profiler};
+pub use system_scope::SystemScope;
 
 /// The `profiling` proc-macro attribute: instrument a function with a scope
 /// named after the function.

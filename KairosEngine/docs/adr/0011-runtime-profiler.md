@@ -118,10 +118,11 @@
      thread, so most boxes are just the marker and its time — without these
      conditions every box would repeat the block's own time. Matching is by call
      site **and per-call data**, so the executor's shared `Kairos.System`
-     marker is split per system. `Copy` writes that text to the clipboard
-     (Unity also copies the call stack; the capture records none). `Show` is a
-     placeholder until the Hierarchy / Raw views come back: Unity's menu lists
-     the block there, opens its call stack and jumps to the source line.
+     marker is split per system. `Copy` writes the whole box to the clipboard
+     (title, time, category, `file:line`, self time, recorded call stack and
+     the accumulated lines). `Show` is still a placeholder: the Hierarchy view
+     exists now, so its menu can list the block there; opening the call stack
+     as a pane and jumping to the source line remain open.
      Clicking the same block again, or empty track, dismisses the box.
   7. **The timeline navigates like Unity's.** The three-band view exposed that
      the timeline could only show the whole frame: the row list scrolled the
@@ -235,6 +236,46 @@
        selection, and the selected-frame cursor is one line from the clock row
        through the cards, centred on the frame's bar so the bar it addresses is
        unambiguous.
+- **Revision (2026-11-18)**:
+  A capture where `Kairos.Stage` showed 40 ms and no child blocks exposed how
+  much of the tree the panel could not explain, and the panel gained the views
+  that explain it:
+  1. **A system scope's location is its registration site.** The executors used
+     to open one shared `Kairos.System` scope at the executor call site, so every
+     system sample's `file:line` pointed at `multi_threaded.rs`. `add_systems`
+     now captures `std::panic::Location::caller()` and carries it on
+     `SystemWithAccess`; `kairos_profile::system_scope!` registers one puffin
+     scope id per (thread, registration site) - the marker name and the
+     `Tag/system::name` data format stay the same, so existing captures and the
+     panel's category-from-data rule are unchanged - and the capture's
+     `ScopeInfo.location` now says where the system was scheduled.
+  2. **The details box explains the block instead of just naming it.** It leads
+     with the block's identity (`Kairos.Stage[Update]`; a system's full module
+     path), then its category, its `file:line`, its self time and the recorded
+     call stack (the enclosing marker chain on that thread). A wrapper with no
+     child samples reports its whole duration as unattributed time (`Self:
+     40.57ms (no child samples recorded)`), which answers "why is Kairos.Stage
+     slow": nothing inside it was instrumented, and the profiler now says so
+     instead of hiding the gap. `Copy` carries the whole box.
+  3. **The timeline band has a view selector with Unity's Hierarchy view.** The
+     aggregation (`hierarchy`) existed but had no view: the header's selector now
+     opens Timeline / Hierarchy. The Hierarchy view merges every thread into one
+     sortable tree (Total/Self/Calls/Max columns, click-to-sort siblings,
+     collapse-by-path, hover with the full marker name and location). It is where
+     a system that ran on a task-pool worker is found with its cost: the timeline
+     keeps one track per thread (the block is painted where it ran), while the
+     stage wrapper that scheduled it has no child block on the main thread.
+  4. **The toolbar saves the capture.** Save writes the three files under
+     `Library/Profiler` and names them next to the button (the exact paths are in
+     the hover text), so a capture can be handed to another reader without a
+     file dialog.
+  5. **Categories were calibrated.** Resource loading got its own `IO` bucket
+     (asset server/loader/processor, filesystem watching - Unity's `Loading`)
+     instead of landing in `Others`; `run_main` and `run_fixed_main_loop` are
+     scheduler wrappers like `Kairos.Stage` and contribute no category time of
+     their own. `Others` therefore keeps meaning "no category claims this time"
+     (uninstrumented work, presentation/idle gaps outside a scope, scheduler
+     bookkeeping), not "the main loop's category".
 - **Decision**:
   1. **New foundation crate `kairos_profile`.** It owns the recorder, the
      plain-data capture model, hierarchy aggregation, and JSON / Chrome-trace
@@ -412,9 +453,10 @@
     `bincode` + `lz4` for the native capture format; the editor gain is
     automatic coverage of egui/wgpu.
 - **Follow-ups**:
-  - Phase 2 (drawing): CPU/frame chart, hierarchy bar overlays, timeline with
-    per-thread tracks, selection sync, frame comparison; reuse `hierarchy` and
-    `FrameSnapshot`, no capture changes.
+  - Phase 2 (drawing): the CPU/frame chart, the timeline with per-thread tracks
+    and selection sync, the details box, the Hierarchy view and the capture Save
+    are in place; hierarchy bar overlays, frame comparison, the Raw / Call Stacks
+    views and the details box's Show menu remain.
   - Engine/game coverage: done for `Engine::update` and the schedule stages;
     game systems still instrument themselves with `#[function]` / `scope!`.
   - Async: a `tracing` (or explicit task-id) bridge so spans survive task
@@ -426,7 +468,7 @@
   - Marker metadata: category tags and colours are in place; per-marker colour
     overrides and optional user-registered scopes for dynamic names remain.
 - **References**:
-  - Implementation: `kairos_profile/src/{lib,model,profiler,analysis,export}.rs`;
+  - Implementation: `kairos_profile/src/{lib,model,profiler,analysis,export,system_scope}.rs`;
     engine ownership and game frame `kairos_engine/src/engine.rs`, stage scopes
     `kairos_engine/src/schedule.rs`; panel
     `kairos_editor_component/src/panels/profiler.rs`; host seam
@@ -435,9 +477,11 @@
     `kairos_editor_component/src/panel/viewer.rs`.
   - Tests: `cargo test-crate kairos_profile` (capture lifecycle, discard,
     worker threads, capacity, JSON/Chrome, readable `.puffin`, saved paths,
-    hierarchy, parser), `cargo test-crate kairos_engine` (game frame + stage
-    scopes), `cargo test-crate kairos_editor_component` (panel render
-    with/without a capture, registration/icon),
+    hierarchy, parser, system-scope registration site), `cargo test-crate
+    kairos_ecs` (add_systems location, executor end-to-end capture), `cargo
+    test-crate kairos_engine` (game frame + stage scopes), `cargo test-crate
+    kairos_editor_component` (panel render with/without a capture, hierarchy
+    view, details box, registration/icon),
     `cargo test -p kairos_editor_app --bins --tests` (end-to-end editor frame
     capture).
   - Related: [ADR 0008](./0008-editor-ui-architecture.md) (state tree / Frame /

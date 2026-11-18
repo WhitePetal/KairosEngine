@@ -651,20 +651,22 @@ impl ExecutorState {
         // unified: the macro then discards its arguments and nothing reads it.
         let _category =
             unsafe { &*context.environment.systems[system_index].get() }.profiler_category();
+        // The system's registration site; the executor line is the fallback for
+        // framework-inserted systems (the auto-inserted `ApplyDeferred`).
+        let _location = unsafe { &*context.environment.systems[system_index].get() }
+            .profiler_location()
+            .unwrap_or_else(|| std::panic::Location::caller());
         let system = &mut unsafe { &mut *context.environment.systems[system_index].get() }.system;
         // Move the full context object into the new future.
         let context = *context;
 
         let system_meta = &self.system_task_metadata[system_index];
 
-        // The system name and its category travel as the scope's `data`:
-        // puffin registers one name per call site, and every system shares this
-        // site, so the only per-system detail a scope can carry is its data.
+        // One system scope per registration site: the sample data is the
+        // system's category tag and full name, and the scope's location is the
+        // site that added the system to its schedule.
         let task = async move {
-            profiling::scope!(
-                kairos_profile::SYSTEM_MARKER,
-                format!("{}/{}", _category.tag(), system.name())
-            );
+            kairos_profile::system_scope!(_category, system.name(), Some(_location));
             let res = std::panic::catch_unwind(AssertUnwindSafe(|| {
                 // SAFETY:
                 // - The caller ensures that we have permission to
@@ -706,6 +708,11 @@ impl ExecutorState {
         // unified: the macro then discards its arguments and nothing reads it.
         let _category =
             unsafe { &*context.environment.systems[system_index].get() }.profiler_category();
+        // The system's registration site; the executor line is the fallback for
+        // framework-inserted systems (the auto-inserted `ApplyDeferred`).
+        let _location = unsafe { &*context.environment.systems[system_index].get() }
+            .profiler_location()
+            .unwrap_or_else(|| std::panic::Location::caller());
         let system = &mut unsafe { &mut *context.environment.systems[system_index].get() }.system;
         // Move the full context object into the new future.
         let context = *context;
@@ -715,10 +722,7 @@ impl ExecutorState {
             let unapplied_systems = self.unapplied_systems.clone();
             self.unapplied_systems.clear();
             let task = async move {
-                profiling::scope!(
-                    kairos_profile::SYSTEM_MARKER,
-                    format!("{}/{}", _category.tag(), system.name())
-                );
+                kairos_profile::system_scope!(_category, system.name(), Some(_location));
                 // SAFETY: `can_run` returned true for this system, which means
                 // that no other systems currently have access to the world.
                 let world = unsafe { context.environment.world_cell.world_mut() };
@@ -729,10 +733,7 @@ impl ExecutorState {
             context.scope.spawn_on_scope(task);
         } else {
             let task = async move {
-                profiling::scope!(
-                    kairos_profile::SYSTEM_MARKER,
-                    format!("{}/{}", _category.tag(), system.name())
-                );
+                kairos_profile::system_scope!(_category, system.name(), Some(_location));
                 // SAFETY: `can_run` returned true for this system, which means
                 // that no other systems currently have access to the world.
                 let world = unsafe { context.environment.world_cell.world_mut() };

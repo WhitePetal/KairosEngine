@@ -45,6 +45,13 @@ pub struct SystemWithAccess {
     /// The profiler category declared when the system was added; `Scripts`
     /// (the game's own code) when it declared nothing.
     pub(crate) category: Category,
+    /// The source location that added the system to a schedule, when known.
+    ///
+    /// Captured by the schedule's `add_systems` with
+    /// [`std::panic::Location::caller`] and reported by the executors as the
+    /// system's profiling scope location. The framework's own insertions (the
+    /// auto-inserted `ApplyDeferred` sync points) have none.
+    pub(crate) location: Option<&'static std::panic::Location<'static>>,
 }
 
 impl SystemWithAccess {
@@ -56,10 +63,20 @@ impl SystemWithAccess {
 
     /// [`SystemWithAccess::new`] with an explicit profiler category.
     pub fn with_category(system: ScheduleSystem, category: Category) -> Self {
+        Self::with_category_and_location(system, category, None)
+    }
+
+    /// [`SystemWithAccess::with_category`] with the system's registration site.
+    pub fn with_category_and_location(
+        system: ScheduleSystem,
+        category: Category,
+        location: Option<&'static std::panic::Location<'static>>,
+    ) -> Self {
         Self {
             system,
             access: FilteredAccessSet::new(),
             category,
+            location,
         }
     }
 
@@ -69,6 +86,15 @@ impl SystemWithAccess {
     /// whose `category` combinator would win method resolution by value.
     pub fn profiler_category(&self) -> Category {
         self.category
+    }
+
+    /// The source location that added this system to a schedule, when known.
+    ///
+    /// The executors pass it to the system's profiling scope so the capture
+    /// reports the registration site (`file:line`) instead of the executor's
+    /// call site. `None` for systems the framework inserted itself.
+    pub fn profiler_location(&self) -> Option<&'static std::panic::Location<'static>> {
+        self.location
     }
 
     /// Returns the underlying [`ScheduleSystem`]
@@ -242,10 +268,16 @@ impl System for ConditionWithAccess {
 }
 
 impl SystemNode {
-    /// Create a new [`SystemNode`]
-    pub fn new(system: ScheduleSystem, category: Category) -> Self {
+    /// Create a new [`SystemNode`] that remembers where the system was added.
+    pub fn with_location(
+        system: ScheduleSystem,
+        category: Category,
+        location: Option<&'static std::panic::Location<'static>>,
+    ) -> Self {
         Self {
-            inner: Some(SystemWithAccess::with_category(system, category)),
+            inner: Some(SystemWithAccess::with_category_and_location(
+                system, category, location,
+            )),
         }
     }
 
@@ -552,7 +584,23 @@ impl Systems {
         conditions: Vec<Box<dyn ReadOnlySystem<In = (), Out = bool>>>,
         category: Category,
     ) -> SystemKey {
-        let key = self.nodes.insert(SystemNode::new(system, category));
+        self.insert_with_location(system, conditions, category, None)
+    }
+
+    /// Inserts a system that remembers the source location it was added from.
+    ///
+    /// [`Systems::insert`] is the same with no location; the schedule's
+    /// `add_systems` uses this one to record its `#[track_caller]` site.
+    pub fn insert_with_location(
+        &mut self,
+        system: ScheduleSystem,
+        conditions: Vec<Box<dyn ReadOnlySystem<In = (), Out = bool>>>,
+        category: Category,
+        location: Option<&'static std::panic::Location<'static>>,
+    ) -> SystemKey {
+        let key = self
+            .nodes
+            .insert(SystemNode::with_location(system, category, location));
         self.conditions.insert(
             key,
             conditions

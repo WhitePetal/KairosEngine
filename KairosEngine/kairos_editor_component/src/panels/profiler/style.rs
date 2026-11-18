@@ -329,11 +329,12 @@ fn unity_palette() -> Vec<Color32> {
 }
 
 /// Category colours in legend order, picked from the Unity legend swatches:
-/// Rendering, Scripts, Physics, Audio (Unity's Animation swatch), Editor
-/// (Unity's UI swatch), VSync, Others.
+/// Rendering, Scripts, Physics, Audio (Unity's Animation swatch), IO (Unity's
+/// Global Illumination swatch standing in for Loading), Editor (Unity's UI
+/// swatch), VSync, Others.
 fn unity_category_palette() -> Vec<Color32> {
     let unity = unity_palette();
-    [0, 1, 2, 3, 7, 5, 8]
+    [0, 1, 2, 3, 6, 7, 5, 8]
         .iter()
         .filter_map(|index| unity.get(*index).copied())
         .collect()
@@ -412,13 +413,30 @@ mod tests {
             assert!(style.module_gpu_height > 0.0);
             assert!(style.scrollbar_width > 0.0);
             assert!(style.scrollbar_handle_width > 0.0);
-            assert!(!style.category_palette.is_empty());
+            assert_eq!(
+                style.category_palette.len(),
+                kairos_profile::Category::COUNT,
+                "the shipped skin paints one swatch per category"
+            );
             for path in style.icons.all() {
                 assert!(
                     workspace.join(path).is_file(),
                     "missing profiler icon {path}"
                 );
             }
+        }
+    }
+
+    /// The code defaults paint every category: the panel indexes the palette by
+    /// the category's discriminant, so a short palette would paint the missing
+    /// categories with the chart colour.
+    #[test]
+    fn the_category_palette_covers_every_category() {
+        for style in [ProfilerStyle::dark(), ProfilerStyle::light()] {
+            assert_eq!(
+                style.category_palette.len(),
+                kairos_profile::Category::COUNT
+            );
         }
     }
 }

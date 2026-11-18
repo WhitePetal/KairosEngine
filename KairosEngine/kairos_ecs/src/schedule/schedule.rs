@@ -218,6 +218,10 @@ impl Schedules {
     }
 
     /// Adds one or more systems to the [`Schedule`] matching the provided [`ScheduleLabel`].
+    ///
+    /// `#[track_caller]` so the added systems' profiling scopes report this
+    /// call site as their registration location.
+    #[track_caller]
     pub fn add_systems<M>(
         &mut self,
         schedule: impl ScheduleLabel,
@@ -430,11 +434,18 @@ impl Schedule {
     }
 
     /// Add a collection of systems to the schedule.
+    ///
+    /// The systems remember where they were added: the `#[track_caller]`
+    /// location is stored on each system and reported by the executors as the
+    /// location of its profiling scope.
+    #[track_caller]
     pub fn add_systems<M>(
         &mut self,
         systems: impl IntoScheduleConfigs<ScheduleSystem, M>,
     ) -> &mut Self {
-        self.graph.process_configs(systems.into_configs(), false);
+        let mut configs = systems.into_configs();
+        configs.location_inner(Some(std::panic::Location::caller()));
+        self.graph.process_configs(configs, false);
         self
     }
 
@@ -926,9 +937,12 @@ impl ScheduleGraph {
 
     /// Add a [`ScheduleConfig`] to the graph, including its dependencies and conditions.
     fn add_system_inner(&mut self, config: ScheduleConfig<ScheduleSystem>) -> SystemKey {
-        let key = self
-            .systems
-            .insert(config.node, config.conditions, config.category);
+        let key = self.systems.insert_with_location(
+            config.node,
+            config.conditions,
+            config.category,
+            config.location,
+        );
 
         // graph updates are immediate
         self.update_graphs(NodeId::System(key), config.metadata);
