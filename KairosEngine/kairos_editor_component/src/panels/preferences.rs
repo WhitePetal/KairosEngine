@@ -46,7 +46,10 @@ use egui::{
 use kairos_color::ColorUsage;
 use kairos_editor_core::{Action, LayoutAction, PanelId, StyleAction, StyleValue};
 use kairos_editor_widgets::button::Button;
-use kairos_editor_widgets::color_picker::{ColorField, ColorProperty, color_popup_id};
+use kairos_editor_widgets::color_picker::{
+    ColorField, ColorProperty, ColorSwatches, any_color_picker_open, close_all_color_pickers,
+    is_color_picker_open,
+};
 use kairos_editor_widgets::divider::Divider;
 use kairos_editor_widgets::paint::labelled_widget_info;
 use kairos_editor_widgets::style::StyleFile;
@@ -140,6 +143,10 @@ struct PageState {
     /// A numeric token being edited as text.
     edit: Option<FieldEdit>,
     drag: DragState,
+    /// Last page scroll offset. While a floating color picker is open we keep
+    /// this offset fixed so a TextEdit focus inside the picker cannot scroll
+    /// the page behind it.
+    scroll_offset: egui::Vec2,
 }
 
 impl PageState {
@@ -196,6 +203,9 @@ pub struct PreferencesPanel {
     /// A color popup was open when the panel closed; close it on the next
     /// draw so reopening Preferences does not resurrect it.
     close_popups: bool,
+    /// Shared swatch groups. Loaded from Library/ColorSwatches.ron in init and
+    /// saved by the picker whenever a group or swatch changes.
+    swatches: ColorSwatches,
 }
 
 impl PreferencesPanel {
@@ -206,6 +216,7 @@ impl PreferencesPanel {
             selected: None,
             page: PageState::default(),
             close_popups: false,
+            swatches: ColorSwatches::default(),
         }
     }
 }
@@ -238,6 +249,13 @@ impl Panel for PreferencesPanel {
                 kairos_log::warn!(target: "kairos_editor", "preferences style: {error}");
             }
         }
+        match ColorSwatches::load("Library/ColorSwatches.ron") {
+            Ok(book) => self.swatches = book,
+            Err(error) => {
+                kairos_log::warn!(target: "kairos_editor", "color swatches: {error}");
+                self.swatches.set_path("Library/ColorSwatches.ron");
+            }
+        }
     }
 
     fn ui(&mut self, ui: &mut Ui, frame: &Frame, out: &mut UiOut) {
@@ -246,6 +264,7 @@ impl Panel for PreferencesPanel {
             selected,
             page,
             close_popups,
+            swatches,
         } = self;
 
         // The dock builds a body Ui from the context style, so the app's
@@ -253,6 +272,7 @@ impl Panel for PreferencesPanel {
         ui.style_mut().interaction.selectable_labels = false;
         if *close_popups {
             egui::Popup::close_all(ui.ctx());
+            close_all_color_pickers(ui.ctx());
             *close_popups = false;
         }
 
@@ -327,10 +347,11 @@ impl Panel for PreferencesPanel {
                     // A color popup belongs to the page that opened it; leaving
                     // the page must not leave it floating over the new one.
                     egui::Popup::close_all(ui.ctx());
+                    close_all_color_pickers(ui.ctx());
                 }
 
                 ui.scope_builder(UiBuilder::new().max_rect(page_rect), |ui| {
-                    page_body(ui, style, page, out);
+                    page_body(ui, style, page, swatches, out);
                 });
 
                 footer(ui, style, footer_rect, out);
@@ -360,6 +381,9 @@ impl Panel for PreferencesPanel {
     /// saves it before the panel goes away.
     fn on_close(&mut self, _frame: &Frame, out: &mut UiOut) -> bool {
         self.page.commit(out);
+        if let Err(error) = self.swatches.save_if_dirty() {
+            kairos_log::warn!(target: "kairos_editor", "color swatches: {error}");
+        }
         self.close_popups = true;
         true
     }
@@ -403,8 +427,15 @@ fn page_list(
 }
 
 /// One page: heading, the file being written, rule, grouped rows.
-fn page_body(ui: &mut Ui, style: &PreferencesPanelStyle, page: &mut PageState, out: &mut UiOut) {
-    egui::ScrollArea::vertical()
+fn page_body(
+    ui: &mut Ui,
+    style: &PreferencesPanelStyle,
+    page: &mut PageState,
+    swatches: &mut ColorSwatches,
+    out: &mut UiOut,
+) {
+    let picker_before = any_color_picker_open(ui.ctx());
+    let mut scroll = egui::ScrollArea::vertical()
         .id_salt("kairos-preferences-page")
         .auto_shrink([false, false])
         .show(ui, |ui| {
@@ -437,11 +468,22 @@ fn page_body(ui: &mut Ui, style: &PreferencesPanelStyle, page: &mut PageState, o
                 style,
                 panel,
                 page,
+                swatches,
                 out,
                 clicked: false,
             };
             writer.rows(ui);
         });
+    let picker_after = any_color_picker_open(ui.ctx());
+    if picker_before || picker_after {
+        // Keep the page under the floating picker still. A TextEdit focus in
+        // the picker emits scroll_to_rect, and this ScrollArea would otherwise
+        // consume it and slide the Preferences page while the user types.
+        scroll.state.offset = page.scroll_offset;
+        scroll.state.store(ui.ctx(), scroll.id);
+    } else {
+        page.scroll_offset = scroll.state.offset;
+    }
 }
 
 /// Draws one page's field tree.
@@ -449,6 +491,7 @@ struct PageWriter<'a> {
     style: &'a PreferencesPanelStyle,
     panel: PanelId,
     page: &'a mut PageState,
+    swatches: &'a mut ColorSwatches,
     out: &'a mut UiOut,
     /// A row, a field name or a foldout consumed this pass's click. Without
     /// one, a click elsewhere on the page ends the current selection.
@@ -624,6 +667,7 @@ impl PageWriter<'_> {
             selected,
             edit,
             drag,
+            self.swatches,
             &mut self.clicked,
             value_rect,
         );
@@ -693,6 +737,7 @@ fn draw_value(
     selected: &mut Option<String>,
     edit: &mut Option<FieldEdit>,
     drag: &mut DragState,
+    swatches: &mut ColorSwatches,
     clicked: &mut bool,
     rect: Rect,
 ) -> ValueOutcome {
@@ -737,9 +782,9 @@ fn draw_value(
         StyleKind::Toggle => draw_toggle(
             ui, style, field, selected, clicked, rect, panel, &path, active,
         ),
-        StyleKind::Color | StyleKind::HdrColor => {
-            draw_color(ui, style, field, selected, clicked, rect, id, &path, active)
-        }
+        StyleKind::Color | StyleKind::HdrColor => draw_color(
+            ui, style, field, selected, clicked, swatches, rect, id, &path, active,
+        ),
     }
 }
 
@@ -1072,6 +1117,7 @@ fn draw_color(
     field: &mut StyleField,
     selected: &mut Option<String>,
     clicked: &mut bool,
+    swatches: &mut ColorSwatches,
     rect: Rect,
     id: Id,
     path: &str,
@@ -1090,7 +1136,8 @@ fn draw_color(
         rect,
         ColorField::new(id, &mut color, &picker_style)
             .selected(active)
-            .height(rect.height()),
+            .height(rect.height())
+            .swatches(swatches),
     );
 
     let mut changed = false;
@@ -1103,7 +1150,7 @@ fn draw_color(
         *clicked = true;
     }
 
-    let popup_open = egui::Popup::is_id_open(ui.ctx(), color_popup_id(id));
+    let popup_open = is_color_picker_open(ui.ctx(), id);
 
     ValueOutcome {
         changed,

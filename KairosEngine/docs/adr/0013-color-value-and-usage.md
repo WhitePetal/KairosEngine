@@ -30,7 +30,8 @@
   3. **Linear storage, sRGB edges.** `Color::from_srgb8` / `to_srgb8`,
      `from_srgb_f32` / `to_srgb_f32`, and `from_hex` / `to_hex` are the only
      sRGB conversions. HDR picker editing uses an sRGB base plus an exposure in
-     stops.
+     stops; the exposure is normalized to Unity's 191/255 base so HDR field
+     values match Unity/Tuanjie.
   4. **Serialization follows the value, not the usage.** A displayable value is
      written as sRGB hex; an HDR or out-of-range value as `[r, g, b, a]` linear
      floats. Field-aware serializers may force the float form for data colors.

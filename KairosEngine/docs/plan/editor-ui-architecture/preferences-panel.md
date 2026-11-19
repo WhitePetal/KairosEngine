@@ -1,6 +1,6 @@
 # Preferences 窗口迁移评审：`kairos_editor::PreferencesWindow` → 0.2.0 `panels/preferences`
 
-> **状态**：评审 + 实现（2026-11-19）；UI 重做为 Unity Inspector 样式，并加入自有 LDR/HDR 取色器（2026-11-19 续）；颜色值改为 8 字节 linear `Color` + `ColorProperty` 字段策略（2026-11-19 再续）
+> **状态**：评审 + 实现（2026-11-19）；UI 重做为 Unity Inspector 样式，并加入自有 LDR/HDR 取色器（2026-11-19 续）；颜色值改为 8 字节 linear `Color` + `ColorProperty` 字段策略（2026-11-19 再续）；取色器改为 260 px 浮动窗、HDR 0-Inf/191 曝光基准、Library swatch groups，menu button/浮层菜单对齐 Unity popup field（2026-11-19 完善）
 > **范围**：把 0.1.0 的 `kairos_editor/src/ui/preferences_window.rs`（414 行）与它依赖的样式反射通道（`ui_style_fields.rs`、`ui.rs:468-514`）迁到 0.2.0 的面板架构。目标与旧窗口一致：**把各个组件的 `Preferences/Styles/*.ron` 以 UI 控件的形式列出来，直接在 Preferences 里改**。
 > **配套**：[about-panel.md](./about-panel.md)（同一套评审口径）· [ADR 0008](../adr/0008-editor-ui-architecture.md) · [ADR 0009](../adr/0009-editor-panel-host-and-viewport.md) · [widget-layer.md](./widget-layer.md) · [editor-ui-widget-catalog.md](../../research/editor-ui-widget-catalog.md) §C17
 > **证据口径**：`path:line` 为本次（2026-11-19）工作区 HEAD 实读；「每帧写盘」「多 pass 重复发消息」沿用 `docs/research/editor-ui-messager-mvc-audit.md` 的静态推断口径（该文已给调用链）。
@@ -166,8 +166,10 @@ StyleFields::set_style_field(path, value)
 - **Zebra 行**：每条叶子行铺满整行背景，`row_odd` / `row_even` 交替；组头用 `group_background`，悬停 `group_hover`。`row_gap = 0`，条带连续。
 - **Unity 值框**：`control_rail` 暗底、`control_edge` 1 px 框、0 圆角、文字左对齐并留 `field_padding`；悬停时框线变 `control_edge_hover`。Float/Integer 点击进入行内文本编辑（全选、Esc 还原、Enter/失焦提交），拖动仍然是 scrub；Text 直接是单行 `TextEdit`；Toggle 是 Unity 的方形 checkbox（`checkbox_size`）。
 - **颜色字段**：`Color` 是 Unity Inspector 的整条 swatch + 右侧吸管槽（不再在行内重复 hex）；`ColorProperty` 额外带字段策略，HDR 行的 swatch 右上角叠一个对比色 `HDR` 角标。透明色先画棋盘格再叠色。点 swatch 选中该行并打开 picker；点字段名只选中。`Color` 是 8 字节 linear f16×4；HDR/LDR 不是值类型，而是 `ColorUsage`。
-- **取色器（自有 widget）**：标题随值类型为 `Color` / `HDR Color`；色相环 + 内部 SV 方块、RGB 0-1.0 / RGB 0-255 / HSV 三个通道模式、R/G/B/A 渐变滑杆与可键入数值、Hexadecimal、HDR 的 Intensity 与 `-2/-1/0/+1/+2` 预设、Swatches 调色板。LDR 不显示 Intensity。拖动实时 `SetField`，指针抬起/Enter/Esc 时 `Commit`；点外部或标题栏 × 关闭。
-- **吸管**：swatch 右侧与 picker 左上保留 Unity 的吸管位置，但当前宿主没有 framebuffer readback，点击只给提示；hex 与 Swatches 是可用替代。接入屏幕采样时只需替换这个按钮的回调。
+- **取色器（自有 widget）**：不是 dock panel，而是字段拥有的浮动工具窗；固定宽 260、高度随内容、标题栏可拖、同时只开一个。标题随值类型为 `Color` / `HDR Color`；232 px 色相环（26 px 环宽，程序生成抗锯齿纹理）+ 约 116 px SV 方块（128² HSV 纹理，消除四顶点网格的 45° 斜线）、通道滑杆与可键入数值、Hexadecimal、HDR 的 Intensity 与 `-2/-1/0/+1/+2` 预设、Swatches 调色板。LDR 模式为 `RGB 0-255` / `RGB 0-1.0` / `HSV`，HDR 为 `RGB 0-255` / `RGB 0-Inf` / `HSV`；HSV 的标签是 H/S/V，S/V/Alpha 用 0–100。LDR 不显示 Intensity，HDR 不显示 Hexadecimal。通道模式按钮与 Swatches 组按钮共用 Unity popup field 样式：`field` 灰底 + 1 px 边框 + 左对齐文字 + 右端 caret，不再是透明文字式 `Button`；通道滑杆 14 px 高、184 px 宽、thumb 7×18，点击某行后 label 用柔和的 `label_active` 蓝、value 框变 accent 描边，数值左对齐并保留 5 px 内边距。编辑数值时选中文字是接近 Unity 的实心蓝蒙版（160/255），并强制用 `selection.stroke` 保留白色数字，不能因为 `Stroke::NONE` 把数字一起隐掉；蒙版重但 value 始终可读。拖动实时 `SetField`，指针抬起/Enter/Esc 时 `Commit`；Esc 先还原到打开时的颜色再关闭，点外部或标题栏 × 关闭。
+- **HDR 曝光基准**：Intensity 使用 Unity 的 191/255 基准（`ColorProperty::HDR_BASE_MAX`），最大通道 4.0 打开时约为 2.42 stops，而不是 2.0；`RGB 0-Inf` 直接编辑绝对 linear 通道。
+- **吸管**：swatch 右侧与 picker 左上使用从本机 Unity/Tuanjie 包提取的 `EyeDropper.Large` 图标（运行时资源 `Preferences/Textures/color_picker/eyedropper.png`，按皮肤 tint）。当前宿主没有屏幕采样，点击只给提示；hex 与 Swatches 是可用替代。
+- **Swatches**：共享一份 `ColorSwatches`，存在 `Library/ColorSwatches.ron`（运行时用户数据，不随样式文件走）。标题行是折叠箭头 + `Swatches`，右侧是 `Default v` 组菜单按钮，按钮与模式按钮同款 Unity popup field。点击后在按钮下方、向右展开浮层菜单（组列表 + New/Rename/Delete），菜单用 `egui::Area` 而不占 header 布局，因此不会把下方 swatch rect 推下去；每个 action 独占 20 px 一行，选中/悬停使用项目菜单的 Unity 蓝 `#2C5D87`。Rename/New 的输入框也是浮层对话框，不改变网格位置。网格 14 px、1 px gap，末尾 New tile 保存当前颜色，空组显示 `Click to add new preset`。菜单打开时页面滚动偏移保持不变，避免 Rename 输入框触发背景滚动。
 - **选中态**：点字段名或值框都会选中该行——字段名变 `label_active`（Unity 的蓝色 label），值框画 `accent` 1 px 外框。点页面空白或标题清除选中；点组头只折叠，不改变选中。
 - **滚动条间距**：页面右侧预留 `scrollbar_gap`；值框的右边界停在它左边，图标路径这类长值不会压到 scrollbar 上（有测试）。
 - **字体层级**：标题 15（strong）、正文与组头 12、文件路径 12；组头用更亮的 `group` 色 + 全宽底色区分，不依赖粗体（编辑器字体没有单独注册的 bold family）。
@@ -242,11 +244,14 @@ StyleFields::set_style_field(path, value)
 15. 滚动条：长页面里图标路径值框的右边界停在 `scrollbar_gap` 左侧。
 16. 颜色字段：LDR 行不出现 `HDR`，`ColorProperty` 的 HDR usage 行出现角标；点 swatch 打开自有 picker，点 Swatches 里的黑块 → 恰好 `[SetField(Color), Commit]`，且行仍保持选中。
 17. 取色器：LDR 标题 `Color` 且无 `Intensity`；HDR 标题 `HDR Color` 且有 `Intensity`/预设；色相环点击改变颜色；通道数值可键入；hex 可替换颜色；`RGB 0-255` 模式切换生效。
+18. 浮动窗：picker 固定宽 260（232 wheel / 26 ring / 20 row / 14 swatch / 14 track），标题栏拖动会移动；点外部关闭；Esc 还原并关闭；同时只开一个。
+19. HSV/ HDR：HSV 标签为 H/S/V 且 S/V/Alpha 为 0–100；HDR 菜单含 `RGB 0-Inf`，`RGB 0-Inf` 可键入超过 1 的绝对 linear 值；HDR 不显示 Hexadecimal。
+20. Swatches：New tile 追加当前颜色；组菜单可新建/选择/重命名/删除，菜单与 Rename 对话框均浮在网格上方且不改变 swatch rect；`ColorSwatches` 经 `Library/ColorSwatches.ron` 往返。
 
-**app（20 个）**
+**app**
 
-18. Preferences 通过 `ShowPanel` 浮成第二个 surface；打开时 `app.skins` 含 Console/Profiler/Preferences，不含未打开的 About；关闭时不快照。
-19. `SetField{console, toolbar_height, 30.0}` → Console 的 live style 变成 30；**不写文件**；`Commit` 后 `ConsoleStyle.ron` 里出现 `toolbar_height: 30.0`。
+21. Preferences 通过 `ShowPanel` 浮成第二个 surface；打开时 `app.skins` 含 Console/Profiler/Preferences，不含未打开的 About；关闭时不快照。
+22. `SetField{console, toolbar_height, 30.0}` → Console 的 live style 变成 30；**不写文件**；`Commit` 后 `ConsoleStyle.ron` 里出现 `toolbar_height: 30.0`。
 
 **静态门**：`cargo check --workspace --all-targets` 干净；四个 crate 的 `fmt --check` 干净；clippy 无新增告警。
 
@@ -261,7 +266,7 @@ StyleFields::set_style_field(path, value)
 5. **键盘提交点**：键入触发 `SetField`（宿主下一帧生效）；`Commit` 在指针抬起、行内数字编辑结束（Enter / 失焦）、color hex/数值的 Enter/Esc、关窗或切页时发生。纯键盘编辑文本字段（不点鼠标）仍要等失焦/关窗才写盘。
 6. **拖拽速度是启发式的**：`speed = clamp(|value| / 50, 0.01, 1.0)`，对大多数尺寸合适；某些 token（颜色分量之外的极小值）可能偏慢，后续可以按字段加 hint。
 7. **面板列表的花费**：Preferences 打开时每帧重新快照所有字段（现在约 3 个面板、~180 个字段）。这些分配只在编辑器自己的设置窗口开着时发生；若将来面板/字段数量上来了，改成「页面切换时刷新」即可。
-8. **吸管不能采屏**：picker 的位置和图标已经按 Unity 留好，但 `egui_winit` 的 screenshot 请求目前被宿主忽略（没有 framebuffer readback），所以点击只显示说明。要真正采屏，需要宿主把 screenshot 结果回灌为 `egui::Event::Screenshot`，或引擎暴露颜色附件读回。
+8. **吸管不能采屏**：picker 的位置和 Unity 的 `EyeDropper.Large` 图标已经接入，但 `egui_winit` 的 screenshot 请求目前被宿主忽略（没有 framebuffer readback），所以点击只显示说明。要真正采屏，需要宿主把 screenshot 结果回灌为 `egui::Event::Screenshot`，或引擎暴露颜色附件读回。
 9. **HDR 数据面**：`Color` / `ColorProperty` 已经端到端打通并有组件测试；`StyleValue::HdrColor` / `StyleKind::HdrColor` 仍是皮肤协议里的线性颜色 kind。现有面板皮肤都是 LDR，所以正常 Preferences 页面暂时看不到 HDR 行；它会在材质/发射色 token 接入后出现。
 
 ---

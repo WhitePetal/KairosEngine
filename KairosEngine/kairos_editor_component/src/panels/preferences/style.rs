@@ -275,8 +275,8 @@ impl PreferencesPanelStyle {
             .height(self.nav_row_height)
     }
 
-    /// The color field and its picker share the panel's palette: the popup is
-    /// another surface of this panel, not a second skin to keep in sync.
+    /// The color field and its floating picker share the panel's palette: the
+    /// window is another surface of this panel, not a second skin to keep in sync.
     pub fn color_picker_style(&self) -> ColorPickerStyle {
         ColorPickerStyle {
             text: TextStyle::sized(self.control_value.to_egui(), self.body_size),
@@ -285,21 +285,42 @@ impl PreferencesPanelStyle {
             header: self.group_background.to_egui(),
             border: self.control_edge.to_egui(),
             label: self.label.to_egui(),
+            label_active: self.label_active.to_egui(),
             value: self.control_value.to_egui(),
             field: self.control_rail.to_egui(),
             field_hover: self.control_hover.to_egui(),
             field_edge: self.control_edge.to_egui(),
             accent: self.accent.to_egui(),
+            menu_button_fill: self.control_active.to_egui(),
+            menu_button_hover: self.button_hover.to_egui(),
+            close: egui::Color32::from_rgb(0xC4, 0x3B, 0x3B),
+            close_hover: egui::Color32::from_rgb(0xD9, 0x4A, 0x4A),
             checker_light: Color::from_srgb8([0xC8, 0xC8, 0xC8, 255]).to_egui(),
             checker_dark: Color::from_srgb8([0x8C, 0x8C, 0x8C, 255]).to_egui(),
+            eyedropper_icon: "Preferences/Textures/color_picker/eyedropper.png",
             border_width: 1.0,
-            corner_radius: 4,
-            popup_width: 318.0,
-            header_height: 24.0,
-            wheel_size: 196.0,
-            row_height: 22.0,
+            corner_radius: 0,
+            window_width: 260.0,
+            title_height: 22.0,
+            padding: 6.0,
+            section_gap: 10.0,
+            row_height: 20.0,
+            row_gap: 6.0,
             field_height: self.field_height,
-            padding: 10.0,
+            wheel_size: 232.0,
+            ring_thickness: 26.0,
+            square_padding: 6.0,
+            mode_width: 94.0,
+            hex_width: 94.0,
+            channel_label_width: 14.0,
+            channel_value_width: 42.0,
+            channel_track_height: 14.0,
+            preview_swatch_width: 42.0,
+            preview_swatch_height: 26.0,
+            eyedropper_width: 42.0,
+            swatch_size: 14.0,
+            swatch_gap: 1.0,
+            swatch_header_height: 20.0,
         }
     }
 
@@ -356,6 +377,20 @@ mod tests {
         assert_eq!(nav.fill, egui::Color32::TRANSPARENT);
         assert_eq!(nav.hover_fill, style.nav_hover.to_egui());
         assert_eq!(nav.active_fill, style.nav_selected.to_egui());
+    }
+
+    /// The picker is another surface of the panel: its active row and popup
+    /// triggers use the panel's selected-label and raised-control tokens.
+    #[test]
+    fn the_picker_reuses_the_panels_active_and_raised_control_tokens() {
+        let style = PreferencesPanelStyle::dark();
+        let picker = style.color_picker_style();
+
+        assert_eq!(picker.label_active, style.label_active.to_egui());
+        assert_eq!(picker.menu_button_fill, style.control_active.to_egui());
+        assert_eq!(picker.menu_button_hover, style.button_hover.to_egui());
+        assert_eq!(picker.window_width, 260.0);
+        assert_eq!(picker.channel_track_height, 14.0);
     }
 
     /// The property list is a Unity-style Zebra: two greys, one per row, and a

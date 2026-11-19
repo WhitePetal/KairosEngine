@@ -1,0 +1,18 @@
+(
+    groups: [
+        (
+            name: "Default",
+            colors: [
+                "#FFFFFF",
+                "#BFBFBF",
+                "#7F7F7F",
+                "#404040",
+                "#000000",
+                "#DB143D",
+                "#5C8FF0",
+                "#3BB854",
+            ],
+        ),
+    ],
+    active: 0,
+)
