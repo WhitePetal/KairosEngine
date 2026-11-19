@@ -438,6 +438,286 @@ pub fn close_all_color_pickers(ctx: &egui::Context) {
     close_color_picker(ctx);
 }
 
+/// Host-driven screen picking for the eyedropper ("取色器").
+///
+/// The widget layer cannot read the screen: `kairos_editor_widgets` is pure egui
+/// and the pixels live with the host (on Windows, the OS cursor and the
+/// desktop). The split is therefore:
+///
+/// * the widget owns the **session** — which field is picking, and the value to
+///   restore if the user cancels — and applies what the host sends;
+/// * the host owns the **pointer** — while a session exists it samples the
+///   desktop under the OS cursor and publishes one [`Update`] per frame.
+///
+/// An update is sRGB bytes plus an outcome, which is all the widget needs, so
+/// nothing here depends on wgpu or the platform. A host that cannot sample
+/// publishes nothing, and the eyedropper stays the "not available" affordance.
+///
+/// The confirming click belongs to the host and is normally masked before egui
+/// sees it, so the pick reports its own end of gesture ([`take_committed`])
+/// for a panel that saves an edit on pointer release.
+pub mod eyedropper {
+    use super::*;
+
+    /// How one host sample ends.
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    pub enum Outcome {
+        /// The pointer is over a color; the pick continues.
+        #[default]
+        Picking,
+        /// The user confirmed: the sampled color is final.
+        Committed,
+        /// The user cancelled; the value from before the pick comes back.
+        Cancelled,
+    }
+
+    /// One frame of a pick, published by the host.
+    #[derive(Clone, Copy, Debug)]
+    pub struct Update {
+        /// Matches [`Session::id`]; an update with a stale id is ignored.
+        pub id: u64,
+        pub field: Id,
+        /// sRGB bytes under the pointer, `None` while the host has no sample.
+        pub srgb: Option<[u8; 4]>,
+        pub outcome: Outcome,
+    }
+
+    /// A pick the widget started and the host is serving.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub struct Session {
+        pub id: u64,
+        pub field: Id,
+    }
+
+    /// The widget-side state: the value before the pick and its exposure.
+    ///
+    /// The exposure is captured once, at the start: an HDR pick rebuilds the
+    /// base color at that same intensity, so moving the eyedropper never drifts
+    /// the brightness it started with.
+    #[derive(Clone, Copy, Debug)]
+    pub(super) struct Pending {
+        pub id: u64,
+        pub field: Id,
+        pub original: ColorProperty,
+        pub intensity: f32,
+        pub started: std::time::Instant,
+    }
+
+    /// A pick that outlives this with no field drawing it (the panel closed
+    /// mid-pick) must not leave the loupe on the desktop forever.
+    const PICK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
+    fn support_id() -> Id {
+        Id::new("kairos.color_picker.eyedropper.support")
+    }
+
+    fn session_id() -> Id {
+        Id::new("kairos.color_picker.eyedropper.session")
+    }
+
+    fn update_id() -> Id {
+        Id::new("kairos.color_picker.eyedropper.update")
+    }
+
+    fn committed_id() -> Id {
+        Id::new("kairos.color_picker.eyedropper.committed")
+    }
+
+    fn counter_id() -> Id {
+        Id::new("kairos.color_picker.eyedropper.counter")
+    }
+
+    /// Tell the widgets whether this host can sample the screen.
+    ///
+    /// The editor host publishes this once at boot. `false` is the default, and
+    /// keeps the "not available" tooltip the field has always shown.
+    pub fn set_supported(ctx: &egui::Context, supported: bool) {
+        ctx.data_mut(|data| data.insert_temp(support_id(), supported));
+    }
+
+    /// Whether this host can sample the screen.
+    pub fn supported(ctx: &egui::Context) -> bool {
+        ctx.data(|data| data.get_temp::<bool>(support_id()).unwrap_or(false))
+    }
+
+    /// The pick in progress, if any. The host reads this once per frame.
+    pub fn session(ctx: &egui::Context) -> Option<Session> {
+        let pending = ctx.data(|data| data.get_temp::<Pending>(session_id()))?;
+        if pending.started.elapsed() > PICK_TIMEOUT {
+            clear(ctx);
+            return None;
+        }
+        Some(Session {
+            id: pending.id,
+            field: pending.field,
+        })
+    }
+
+    /// Whether any field is picking.
+    pub fn any_active(ctx: &egui::Context) -> bool {
+        session(ctx).is_some()
+    }
+
+    /// Whether `field` is the one picking.
+    pub fn active(ctx: &egui::Context, field: Id) -> bool {
+        session(ctx).is_some_and(|session| session.field == field)
+    }
+
+    /// Publish one host sample. The widget applies it on its next frame.
+    pub fn publish(ctx: &egui::Context, update: Update) {
+        ctx.data_mut(|data| data.insert_temp(update_id(), update));
+    }
+
+    /// Whether a pick committed in this frame, for the field that drew it.
+    ///
+    /// The confirming click belongs to the host: it is masked (or consumed)
+    /// before egui sees it, so a panel that saves on pointer release would
+    /// otherwise keep the committed colour only until the next click. This is
+    /// the pick's own end-of-gesture beat, taken once by the owning field.
+    pub fn take_committed(ctx: &egui::Context) -> bool {
+        let frame = ctx.cumulative_frame_nr();
+        ctx.data_mut(|data| data.remove_temp::<u64>(committed_id()) == Some(frame))
+    }
+
+    /// Start a pick for `field`. Returns false when the host has no sampler.
+    pub(super) fn begin(ctx: &egui::Context, field: Id, value: ColorProperty) -> bool {
+        if !supported(ctx) {
+            return false;
+        }
+
+        let id = ctx.data_mut(|data| {
+            let next = data
+                .get_temp::<u64>(counter_id())
+                .unwrap_or(0)
+                .wrapping_add(1);
+            data.insert_temp(counter_id(), next);
+            next
+        });
+        // The picker's Intensity row is the authority while its window is open;
+        // a field without the window falls back to the value's own exposure.
+        let intensity = ctx
+            .data(|data| data.get_temp::<PickerState>(field.with("picker-state")))
+            .map_or_else(|| value.intensity(), |state| state.intensity);
+        ctx.data_mut(|data| {
+            data.insert_temp(
+                session_id(),
+                Pending {
+                    id,
+                    field,
+                    original: value,
+                    intensity,
+                    started: std::time::Instant::now(),
+                },
+            );
+        });
+        true
+    }
+
+    /// End the pick without touching the value.
+    pub(super) fn clear(ctx: &egui::Context) {
+        ctx.data_mut(|data| {
+            data.remove::<Pending>(session_id());
+            data.remove::<Update>(update_id());
+        });
+    }
+
+    /// Apply this frame's host sample to `value`; returns whether it changed.
+    ///
+    /// Called by the field that owns the session. A `Committed` update keeps the
+    /// sampled color and ends the session; a `Cancelled` update restores the
+    /// value from before the pick.
+    pub(super) fn apply(ctx: &egui::Context, field: Id, value: &mut ColorProperty) -> bool {
+        let Some(pending) = ctx.data(|data| data.get_temp::<Pending>(session_id())) else {
+            return false;
+        };
+        if pending.field != field {
+            return false;
+        }
+
+        let update = ctx.data_mut(|data| {
+            let update = data.get_temp::<Update>(update_id());
+            if update.is_some() {
+                data.remove::<Update>(update_id());
+            }
+            update
+        });
+        let Some(update) = update else {
+            return false;
+        };
+        if update.id != pending.id {
+            return false;
+        }
+
+        let mut changed = false;
+        if let Some(srgb) = update.srgb {
+            // Only the base color moves: alpha and (for HDR) the exposure are
+            // the field's policy, and the screen has neither.
+            let next = pending.original.with_base(
+                [
+                    srgb[0] as f32 / 255.0,
+                    srgb[1] as f32 / 255.0,
+                    srgb[2] as f32 / 255.0,
+                    pending.original.alpha(),
+                ],
+                pending.intensity,
+            );
+            if next != *value {
+                *value = next;
+                changed = true;
+            }
+        }
+
+        match update.outcome {
+            Outcome::Picking => {}
+            Outcome::Committed => {
+                let frame = ctx.cumulative_frame_nr();
+                ctx.data_mut(|data| data.insert_temp(committed_id(), frame));
+                clear(ctx);
+            }
+            Outcome::Cancelled => {
+                if *value != pending.original {
+                    *value = pending.original;
+                    changed = true;
+                }
+                clear(ctx);
+            }
+        }
+
+        changed
+    }
+
+    /// Cancel the pick for `field`, restoring its value.
+    ///
+    /// The Esc fallback for a host that publishes nothing (and for a window that
+    /// never sees the key): the picker closes on Esc, so the value must come back.
+    pub(super) fn cancel(ctx: &egui::Context, field: Id, value: &mut ColorProperty) -> bool {
+        let Some(pending) = ctx.data(|data| data.get_temp::<Pending>(session_id())) else {
+            return false;
+        };
+        if pending.field != field {
+            return false;
+        }
+        let mut changed = false;
+        if *value != pending.original {
+            *value = pending.original;
+            changed = true;
+        }
+        clear(ctx);
+        changed
+    }
+
+    /// The hover text for the eyedropper slot.
+    pub(super) fn hint(ctx: &egui::Context, active: bool) -> &'static str {
+        if !supported(ctx) {
+            "Screen color picking is not available on this platform; use the wheel, sliders or hex."
+        } else if active {
+            "Picking… click to take the color under the pointer. Esc or right click cancels."
+        } else {
+            "Pick a color from the screen."
+        }
+    }
+}
+
 fn picker_position(ctx: &egui::Context, anchor: Rect, style: &ColorPickerStyle) -> Pos2 {
     let screen = ctx.content_rect();
     let width = style.window_width;
@@ -552,6 +832,7 @@ impl Widget for ColorField<'_> {
             pos2(rect.right(), rect.bottom()),
         );
 
+        let mut changed = false;
         let mut swatch_response = ui
             .interact(swatch_rect, id, Sense::click())
             .on_hover_cursor(CursorIcon::PointingHand);
@@ -563,12 +844,47 @@ impl Widget for ColorField<'_> {
         );
 
         if eyedropper {
+            let picking = eyedropper::active(ui.ctx(), id);
+            let can_pick = eyedropper::supported(ui.ctx());
             let eye = ui
-                .interact(eye_rect, color_eye_id(id), Sense::hover())
-                .on_hover_cursor(CursorIcon::Default);
-            let _ = eye.on_hover_text(
-                "Screen color picking is not available yet; use the wheel, sliders or hex.",
-            );
+                .interact(
+                    eye_rect,
+                    color_eye_id(id),
+                    if can_pick {
+                        Sense::click()
+                    } else {
+                        Sense::hover()
+                    },
+                )
+                .on_hover_cursor(if picking {
+                    CursorIcon::Crosshair
+                } else if can_pick {
+                    CursorIcon::PointingHand
+                } else {
+                    CursorIcon::Default
+                });
+            let _ = eye
+                .clone()
+                .on_hover_text(eyedropper::hint(ui.ctx(), picking));
+            if eye.clicked() {
+                changed |= if picking {
+                    eyedropper::cancel(ui.ctx(), id, value)
+                } else {
+                    eyedropper::begin(ui.ctx(), id, *value);
+                    false
+                };
+            }
+        }
+
+        // The host samples the screen while this field's session exists. Apply
+        // the sample before drawing, so the field and the open picker show it in
+        // the frame it arrives.
+        changed |= eyedropper::apply(ui.ctx(), id, value);
+        if eyedropper::active(ui.ctx(), id) {
+            ui.ctx().set_cursor_icon(CursorIcon::Crosshair);
+            if ui.input(|input| input.key_pressed(Key::Escape)) {
+                changed |= eyedropper::cancel(ui.ctx(), id, value);
+            }
         }
 
         let was_open = is_color_picker_open(ui.ctx(), id);
@@ -580,9 +896,10 @@ impl Widget for ColorField<'_> {
             }
         }
 
-        let mut changed = false;
         if is_color_picker_open(ui.ctx(), id) {
-            changed = show_color_picker(
+            // Accumulate: a pick and a wheel drag can both move the value in one
+            // frame, and the caller must hear about either.
+            changed |= show_color_picker(
                 ui,
                 id,
                 value,
@@ -603,6 +920,7 @@ impl Widget for ColorField<'_> {
             style,
             selected,
             eyedropper,
+            eyedropper::active(ui.ctx(), id),
         );
 
         swatch_response
@@ -617,6 +935,7 @@ fn paint_color_field(
     style: &ColorPickerStyle,
     selected: bool,
     eyedropper: bool,
+    picking: bool,
 ) {
     let painter = ui.painter();
     let alpha = value.alpha();
@@ -652,7 +971,15 @@ fn paint_color_field(
 
     if eyedropper {
         let hovered = ui.rect_contains_pointer(eye_rect);
-        if hovered {
+        if picking {
+            painter.rect_filled(eye_rect, CornerRadius::same(2), style.field_hover);
+            painter.rect_stroke(
+                eye_rect,
+                CornerRadius::same(2),
+                Stroke::new(style.border_width, style.accent),
+                StrokeKind::Inside,
+            );
+        } else if hovered {
             painter.rect_filled(eye_rect, CornerRadius::same(2), style.field_hover);
         }
         let icon = Rect::from_center_size(
@@ -663,7 +990,11 @@ fn paint_color_field(
             ui,
             icon,
             &style.eyedropper_icon,
-            if hovered { style.value } else { style.label },
+            if picking || hovered {
+                style.value
+            } else {
+                style.label
+            },
         );
     }
 }
@@ -1048,6 +1379,22 @@ impl PickerState {
         self.hex = None;
     }
 
+    /// Re-seed the base after an external base-only edit (the eyedropper),
+    /// keeping the exposure the pick started with.
+    ///
+    /// `sync` re-derives the intensity from the color, which is right for a value
+    /// the editor did not compose — but a pick moves the base at a fixed
+    /// exposure, exactly like the wheel does, so the Intensity row must not jump.
+    fn refresh_base(&mut self, value: ColorProperty) {
+        self.base = value.base_srgb(self.intensity);
+        let hsv = rgb_to_hsv(self.base);
+        if hsv[1] > 1e-6 {
+            self.hue = hsv[0];
+        }
+        self.hdr_max = self.hdr_max.max(value.color.max_rgb());
+        self.source = Some(value);
+    }
+
     fn hsv(&self) -> [f32; 3] {
         let hsv = rgb_to_hsv(self.base);
         [
@@ -1401,6 +1748,9 @@ fn show_color_picker(
     let mut close = header_close || picker.close;
     if !close
         && !picker.keep_open
+        // A pick hands the pointer to the host: the host's click confirms it, so
+        // it must not also dismiss the window.
+        && !eyedropper::any_active(ui.ctx())
         && ui.input(|input| input.pointer.any_pressed())
         && let Some(pos) = ui.input(|input| input.pointer.interact_pos())
         && !open.rect.contains(pos)
@@ -1410,7 +1760,9 @@ fn show_color_picker(
         close = true;
     }
 
+    let mut changed = changed;
     if close {
+        changed |= eyedropper::cancel(ui.ctx(), field, value);
         close_color_picker(ui.ctx());
     } else {
         ui.data_mut(|data| data.insert_temp(open_picker_id(), open));
@@ -1445,7 +1797,11 @@ fn color_picker(
         state.group_menu_open = false;
         state.group_edit = None;
     } else if state.source != Some(*value) {
-        state.sync(*value);
+        if eyedropper::active(ui.ctx(), field) {
+            state.refresh_base(*value);
+        } else {
+            state.sync(*value);
+        }
     }
 
     let editing_at_start = state.edit.is_some() || state.hex.is_some();
@@ -1466,6 +1822,8 @@ fn color_picker(
         && !editing_at_start
         && !menu_open
         && !group_editing
+        // A pick owns Esc: it cancels the pick and keeps the picker open.
+        && !eyedropper::any_active(ui.ctx())
     {
         if group_menu_open {
             state.group_menu_open = false;
@@ -1611,13 +1969,37 @@ fn preview_row(
     let mut changed = false;
 
     if value.usage.eyedropper {
+        let picking = eyedropper::active(ui.ctx(), field);
+        let can_pick = eyedropper::supported(ui.ctx());
         let eye_rect = Rect::from_min_size(rect.min, vec2(style.eyedropper_width, rect.height()));
         let eye = ui
-            .interact(eye_rect, color_picker_eye_id(field), Sense::hover())
-            .on_hover_cursor(CursorIcon::Default);
-        if eye.hovered() {
+            .interact(
+                eye_rect,
+                color_picker_eye_id(field),
+                if can_pick {
+                    Sense::click()
+                } else {
+                    Sense::hover()
+                },
+            )
+            .on_hover_cursor(if picking {
+                CursorIcon::Crosshair
+            } else if can_pick {
+                CursorIcon::PointingHand
+            } else {
+                CursorIcon::Default
+            });
+        if picking || eye.hovered() {
             ui.painter()
                 .rect_filled(eye_rect, CornerRadius::same(2), style.field_hover);
+        }
+        if picking {
+            ui.painter().rect_stroke(
+                eye_rect,
+                CornerRadius::same(2),
+                Stroke::new(style.border_width, style.accent),
+                StrokeKind::Inside,
+            );
         }
         let icon = Rect::from_center_size(
             eye_rect.center(),
@@ -1630,15 +2012,23 @@ fn preview_row(
             ui,
             icon,
             &style.eyedropper_icon,
-            if eye.hovered() {
+            if picking || eye.hovered() {
                 style.value
             } else {
                 style.label
             },
         );
-        let _ = eye.on_hover_text(
-            "Screen color picking is not available yet; use the wheel, sliders or hex.",
-        );
+        let _ = eye
+            .clone()
+            .on_hover_text(eyedropper::hint(ui.ctx(), picking));
+        if eye.clicked() {
+            changed |= if picking {
+                eyedropper::cancel(ui.ctx(), field, value)
+            } else {
+                eyedropper::begin(ui.ctx(), field, *value);
+                false
+            };
+        }
     }
 
     let current = Rect::from_min_size(
@@ -3247,6 +3637,9 @@ mod tests {
         style: ColorPickerStyle,
         field: Id,
         swatches: ColorSwatches,
+        /// Whether the last frame reported the eyedropper's end of gesture,
+        /// as a panel that saves on release would read it.
+        committed: bool,
     }
 
     impl Harness {
@@ -3257,6 +3650,7 @@ mod tests {
                 style: ColorPickerStyle::dark(),
                 field: Id::new("color-field"),
                 swatches: ColorSwatches::default(),
+                committed: false,
             }
         }
 
@@ -3275,7 +3669,9 @@ mod tests {
                 style,
                 field,
                 swatches,
+                committed,
             } = self;
+            *committed = false;
             ctx.run_ui(input, |ui| {
                 ui.add_space(20.0);
                 ui.horizontal(|ui| {
@@ -3287,6 +3683,7 @@ mod tests {
                             .swatches(swatches),
                     );
                 });
+                *committed = eyedropper::take_committed(ui.ctx());
             })
         }
 
@@ -4233,6 +4630,181 @@ mod tests {
             icon.exists(),
             "the picker icon should live under Preferences/Textures: {}",
             icon.display()
+        );
+    }
+
+    fn update(
+        session: eyedropper::Session,
+        srgb: [u8; 4],
+        outcome: eyedropper::Outcome,
+    ) -> eyedropper::Update {
+        eyedropper::Update {
+            id: session.id,
+            field: session.field,
+            srgb: Some(srgb),
+            outcome,
+        }
+    }
+
+    #[test]
+    fn the_eyedropper_starts_a_pick_and_applies_live_samples() {
+        let mut harness = Harness::new(ColorProperty::ldr(Color::from_srgb8([20, 140, 220, 255])));
+        eyedropper::set_supported(&harness.ctx, true);
+        harness.frame(Vec::new());
+        harness.click(color_eye_id(harness.field));
+
+        let session = eyedropper::session(&harness.ctx).expect("clicking the eye starts a pick");
+        assert_eq!(session.field, harness.field);
+
+        eyedropper::publish(
+            &harness.ctx,
+            update(session, [255, 0, 0, 255], eyedropper::Outcome::Picking),
+        );
+        harness.frame(Vec::new());
+        assert_eq!(harness.value.color.to_srgb8(), [255, 0, 0, 255]);
+        assert!(
+            eyedropper::session(&harness.ctx).is_some(),
+            "a live sample keeps the pick open"
+        );
+
+        eyedropper::publish(
+            &harness.ctx,
+            update(session, [0, 255, 0, 255], eyedropper::Outcome::Committed),
+        );
+        harness.frame(Vec::new());
+        assert_eq!(harness.value.color.to_srgb8(), [0, 255, 0, 255]);
+        assert!(
+            eyedropper::session(&harness.ctx).is_none(),
+            "a commit ends the pick"
+        );
+    }
+
+    #[test]
+    fn a_commit_reports_the_end_of_the_gesture_once() {
+        let mut harness = Harness::new(ColorProperty::ldr(Color::from_srgb8([20, 140, 220, 255])));
+        eyedropper::set_supported(&harness.ctx, true);
+        harness.frame(Vec::new());
+        harness.click(color_eye_id(harness.field));
+        let session = eyedropper::session(&harness.ctx).expect("pick");
+
+        eyedropper::publish(
+            &harness.ctx,
+            update(session, [0, 255, 0, 255], eyedropper::Outcome::Committed),
+        );
+        harness.frame(Vec::new());
+        assert!(
+            harness.committed,
+            "the field that applied the commit reports the end of the gesture"
+        );
+        harness.frame(Vec::new());
+        assert!(
+            !harness.committed,
+            "a beat from an earlier frame must not commit a later one"
+        );
+    }
+
+    #[test]
+    fn cancelling_the_pick_restores_the_value_from_before_it() {
+        let original = ColorProperty::ldr(Color::from_srgb8([20, 140, 220, 255]));
+        let mut harness = Harness::new(original);
+        eyedropper::set_supported(&harness.ctx, true);
+        harness.frame(Vec::new());
+        harness.click(color_eye_id(harness.field));
+
+        let session = eyedropper::session(&harness.ctx).expect("pick");
+        eyedropper::publish(
+            &harness.ctx,
+            update(session, [255, 0, 0, 255], eyedropper::Outcome::Picking),
+        );
+        harness.frame(Vec::new());
+        assert_eq!(harness.value.color.to_srgb8(), [255, 0, 0, 255]);
+
+        eyedropper::publish(
+            &harness.ctx,
+            update(session, [255, 0, 0, 255], eyedropper::Outcome::Cancelled),
+        );
+        harness.frame(Vec::new());
+        assert_eq!(harness.value, original);
+        assert!(eyedropper::session(&harness.ctx).is_none());
+    }
+
+    fn picker_state(harness: &Harness) -> PickerState {
+        harness
+            .ctx
+            .data(|data| data.get_temp::<PickerState>(harness.field.with("picker-state")))
+            .expect("the picker was opened")
+    }
+
+    #[test]
+    fn an_hdr_pick_keeps_the_picker_intensity_and_only_moves_the_base() {
+        let original = ColorProperty::hdr(Color::new(4.0, 2.0, 1.0, 1.0));
+        let mut harness = Harness::new(original);
+        eyedropper::set_supported(&harness.ctx, true);
+        harness.open();
+        for _ in 0..3 {
+            harness.frame(Vec::new());
+        }
+        let intensity = picker_state(&harness).intensity;
+
+        harness.click(color_picker_eye_id(harness.field));
+        let session = eyedropper::session(&harness.ctx).expect("pick");
+        eyedropper::publish(
+            &harness.ctx,
+            update(session, [128, 64, 32, 255], eyedropper::Outcome::Picking),
+        );
+        harness.frame(Vec::new());
+
+        let expected =
+            original.with_base([128.0 / 255.0, 64.0 / 255.0, 32.0 / 255.0, 1.0], intensity);
+        assert_eq!(harness.value, expected);
+        assert!(
+            (picker_state(&harness).intensity - intensity).abs() < 1e-3,
+            "the Intensity row must not jump: {} vs {intensity}",
+            picker_state(&harness).intensity
+        );
+        assert!(
+            harness.value.color.r() > 1.0,
+            "an HDR pick keeps its headroom: {}",
+            harness.value.color.r()
+        );
+    }
+
+    #[test]
+    fn the_eyedropper_stays_inert_without_a_host_sampler() {
+        let original = ColorProperty::ldr(Color::from_srgb8([20, 140, 220, 255]));
+        let mut harness = Harness::new(original);
+        harness.frame(Vec::new());
+        harness.click(color_eye_id(harness.field));
+
+        assert!(
+            eyedropper::session(&harness.ctx).is_none(),
+            "a host without a sampler must not start a pick"
+        );
+        assert_eq!(harness.value, original);
+    }
+
+    #[test]
+    fn a_pick_keeps_the_picker_open_when_the_pointer_clicks_outside() {
+        let mut harness = Harness::new(ColorProperty::ldr(Color::from_srgb8([20, 140, 220, 255])));
+        eyedropper::set_supported(&harness.ctx, true);
+        harness.open();
+        for _ in 0..3 {
+            harness.frame(Vec::new());
+        }
+        harness.click(color_picker_eye_id(harness.field));
+        assert!(
+            eyedropper::session(&harness.ctx).is_some(),
+            "the picker's eyedropper starts a pick too"
+        );
+
+        harness.click_at(pos2(10.0, 740.0));
+        assert!(
+            is_color_picker_open(&harness.ctx, harness.field),
+            "a click that confirms the pick must not dismiss the picker"
+        );
+        assert!(
+            eyedropper::session(&harness.ctx).is_some(),
+            "the pick survives a click outside the window"
         );
     }
 }

@@ -12,6 +12,7 @@
 use std::error::Error;
 
 use egui::ViewportId;
+use kairos_editor_widgets::color_picker::eyedropper::{self, Outcome, Update};
 use kairos_engine::{
     Engine,
     graphics::{
@@ -29,6 +30,7 @@ use winit::{
     window::Window,
 };
 
+use crate::eyedropper::ScreenPicker;
 use crate::{app::EditorApp, branding};
 
 /// The app's layer: egui state plus the panel pass.
@@ -36,6 +38,13 @@ pub struct EditorLayer {
     app: EditorApp,
     egui_ctx: egui::Context,
     egui_state: Option<egui_winit::State>,
+    /// The host half of the color picker's eyedropper: the OS pointer, the
+    /// desktop input mask and the loupe. The widget half owns the pick itself.
+    eyedropper: ScreenPicker,
+    /// The pick ends on a press; the release that follows may still arrive
+    /// once the mask is gone. Keep it away from egui until the button is up:
+    /// the pointer position egui holds is the one from before the pick.
+    swallow_mouse: bool,
 }
 
 impl EditorLayer {
@@ -62,11 +71,83 @@ impl EditorLayer {
 
         let app = EditorApp::new(&egui_ctx);
 
+        // Tell the color fields whether this host can read the screen; without
+        // it the eyedropper keeps its "not available" tooltip.
+        eyedropper::set_supported(&egui_ctx, ScreenPicker::available());
+
         Ok(Self {
             app,
             egui_ctx,
             egui_state: None,
+            eyedropper: ScreenPicker::new(),
+            swallow_mouse: false,
         })
+    }
+
+    /// Serve the color field's pick with the OS pointer.
+    ///
+    /// One `Update` per frame feeds the widget's live preview; a `Committed` or
+    /// `Cancelled` update ends the pick and hides the loupe. The widget owns the
+    /// session, so a pick that disappears (Esc in the window, the picker closing)
+    /// stops the sampler here.
+    fn publish_eyedropper(&mut self, window: &Window) -> bool {
+        let Some(session) = eyedropper::session(&self.egui_ctx) else {
+            if self.eyedropper.is_running() {
+                kairos_log::debug!(target: "kairos_editor", "eyedropper: no session, stopping");
+            }
+            self.eyedropper.stop(Some(window));
+            return false;
+        };
+
+        if !self.eyedropper.is_running() {
+            kairos_log::debug!(
+                target: "kairos_editor",
+                "eyedropper: start session {} for {:?}",
+                session.id,
+                session.field
+            );
+        }
+        if !self.eyedropper.is_running() && !self.eyedropper.start(window) {
+            eyedropper::publish(
+                &self.egui_ctx,
+                Update {
+                    id: session.id,
+                    field: session.field,
+                    srgb: None,
+                    outcome: Outcome::Cancelled,
+                },
+            );
+            return false;
+        }
+
+        let Some(sample) = self.eyedropper.poll() else {
+            return false;
+        };
+        eyedropper::publish(
+            &self.egui_ctx,
+            Update {
+                id: session.id,
+                field: session.field,
+                srgb: Some(sample.srgb),
+                outcome: sample.outcome,
+            },
+        );
+        if sample.outcome == Outcome::Picking {
+            return false;
+        }
+        kairos_log::debug!(
+            target: "kairos_editor",
+            "eyedropper: {:?} session {} at {:02X}{:02X}{:02X}",
+            sample.outcome,
+            session.id,
+            sample.srgb[0],
+            sample.srgb[1],
+            sample.srgb[2]
+        );
+        self.eyedropper.stop(Some(window));
+        // The click that ended the pick still has a release pending.
+        self.swallow_mouse = true;
+        sample.outcome == Outcome::Committed
     }
 
     /// Builds the egui frame's graphics command: one render pass that loads the
@@ -137,6 +218,31 @@ impl Layer for EditorLayer {
     }
 
     fn window_event(&mut self, window: &Window, event: &WindowEvent) -> EventOutcome {
+        // A pick owns the mouse: the click that confirms it must not also press
+        // whatever widget sits under the pointer. The platform mask discards
+        // button events before the window sees them, and the moves that keep
+        // the cursor alive arrive here with the capture held - none of them may
+        // reach egui. This filter also keeps the *release* that follows out:
+        // egui's pointer never moved during the pick, so a stray release would
+        // land on the eyedropper button and start a new pick.
+        if self.swallow_mouse && !self.eyedropper.any_button_down() {
+            self.swallow_mouse = false;
+        }
+        if (self.eyedropper.is_running() || self.swallow_mouse)
+            && matches!(
+                event,
+                WindowEvent::MouseInput { .. }
+                    | WindowEvent::CursorMoved { .. }
+                    | WindowEvent::CursorEntered { .. }
+                    | WindowEvent::CursorLeft { .. }
+            )
+        {
+            return EventOutcome {
+                consumed: true,
+                repaint: false,
+            };
+        }
+
         let Some(state) = self.egui_state.as_mut() else {
             return EventOutcome::default();
         };
@@ -156,9 +262,18 @@ impl Layer for EditorLayer {
         size_in_pixels: [u32; 2],
         out: &mut Vec<GraphicsCommand>,
     ) -> FrameOutput {
-        let Some(state) = self.egui_state.as_mut() else {
+        if self.egui_state.is_none() {
             return FrameOutput::default();
-        };
+        }
+
+        // A pick reads the OS pointer, not egui's: the pointer may be over
+        // another window entirely, and the sample feeds this frame's UI.
+        self.publish_eyedropper(window);
+
+        let state = self
+            .egui_state
+            .as_mut()
+            .expect("the egui state was checked above");
 
         let raw_input = state.take_egui_input(window);
 

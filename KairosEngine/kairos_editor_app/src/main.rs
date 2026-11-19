@@ -16,6 +16,7 @@ mod app;
 mod branding;
 mod consts;
 mod effects;
+mod eyedropper;
 mod host;
 mod paths;
 

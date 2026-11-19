@@ -55,7 +55,7 @@ use kairos_editor_core::{
 use kairos_editor_widgets::button::Button;
 use kairos_editor_widgets::color_picker::{
     ColorField, ColorPickerStyle, ColorProperty, ColorSwatches, any_color_picker_open,
-    close_all_color_pickers, is_color_picker_open,
+    close_all_color_pickers, eyedropper, is_color_picker_open,
 };
 use kairos_editor_widgets::divider::Divider;
 use kairos_editor_widgets::paint::labelled_widget_info;
@@ -1258,6 +1258,10 @@ fn draw_color(
             .height(rect.height())
             .swatches(swatches),
     );
+    // A pick's confirming click never reaches egui (the host masks it), so
+    // the eyedropper reports its own end of gesture; without that the page
+    // would keep the committed colour only until the next pointer release.
+    let committed = eyedropper::take_committed(ui.ctx());
 
     let mut changed = false;
     if response.changed() {
@@ -1273,7 +1277,7 @@ fn draw_color(
 
     ValueOutcome {
         changed,
-        finished_edit: false,
+        finished_edit: committed,
         popup_open,
     }
 }

@@ -11,6 +11,7 @@
 | `editor-ui-engine-integration.md` | kairos_engine 帧循环、World 资源、线程/资产时序约束，以及对新 UI 架构的 must/should/must-not 集成要求 |
 | `ui-widget-component-layer-survey.md` | 纯外观 widgets 与功能 components 的分层/契约/主题/测试调研：React/Flutter/Atomic Design + Rerun re_ui / Zed ui / egui Widget / egui_kittest |
 | `editor-ui-widget-catalog.md` | 现状 UI 逐文件审计 + 25 个纯 widget 目录 + 22 个 component 目录 + Theme token 清单 + 三个代表文件 before/after |
+| `color-picker-eyedropper/README.md` | **取色器（吸管）调研**：egui 无现成能力、wgpu 帧回读 vs 桌面截屏库（xcap/scap/windows-capture）对比、Unity/Blender/Godot 做法、HDR 与 DPI 约束、落点清单 |
 
 ## Texture Encoding
 
