@@ -14,6 +14,7 @@ log = "0.4"
 # Wall-clock timestamps for every record. "std" for formatting, "tz-system" for
 # the host's local time zone (log files are read by humans, not UTC parsers).
 jiff = { version = "0.2", default-features = false, features = ["std", "tz-system"] }
+strum = { version = "0.28.0", features = ["derive"] }
 
 [dev-dependencies]
 log = "0.4"

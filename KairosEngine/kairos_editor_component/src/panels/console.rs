@@ -32,6 +32,7 @@ use kairos_editor_widgets::style::StyleFile;
 use kairos_editor_widgets::text::TextStyle;
 use kairos_editor_widgets::ui_image;
 use kairos_log::Level;
+use strum::{EnumCount, IntoEnumIterator};
 
 use crate::frame::{ConsoleLine, Frame, UiOut};
 use crate::panel::Panel;
@@ -354,7 +355,7 @@ impl ConsolePanel {
         let counts = self.counts(lines);
         let count_widths = self.count_widths(ui, &counts);
         let counts_width: f32 = count_widths.iter().sum::<f32>()
-            + (Level::ALL.len() as f32 - 1.0) * self.style.separator_width;
+            + (Level::COUNT as f32 - 1.0) * self.style.separator_width;
         let counts_left = bar.right() - counts_width;
         let search = Rect::from_min_max(
             pos2(x + 6.0, bar.top() + 2.0),
@@ -412,7 +413,7 @@ impl ConsolePanel {
         );
 
         let text = self.toolbar_text();
-        for (index, level) in Level::ALL.into_iter().enumerate() {
+        for (index, level) in Level::iter().enumerate() {
             let segment =
                 Rect::from_min_size(pos2(x, bar.top()), vec2(widths[index], bar.height()));
             let response = ui.interact(
@@ -855,7 +856,7 @@ mod tests {
             .collect();
 
         let count_group =
-            style.count_widths * Level::ALL.len() as f32 + 2.0 * style.separator_width;
+            style.count_widths * Level::COUNT as f32 + 2.0 * style.separator_width;
         let expected = [
             bar.left() + style.clear_width,
             bar.left() + style.clear_width + style.separator_width + style.collapse_width,

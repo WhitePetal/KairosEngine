@@ -84,6 +84,8 @@ pub struct ProfilerStyle {
     pub module_name_width: f32,
     /// Height of one legend row.
     pub legend_row_height: f32,
+    /// How much of the usage chart's height the tallest visible bar fills.
+    pub usage_bar_fill: f32,
     /// How many frames the module area's time axis shows by default (the most
     /// recent ones); the wheel or the zoom bar widens the window to the whole
     /// capture.
@@ -205,6 +207,7 @@ impl Style for ProfilerStyle {
             module_badge_gap: 5.0,
             module_name_width: 180.0,
             legend_row_height: 14.0,
+            usage_bar_fill: 0.8,
             window_fram_count: 300,
             chart_bar: Color32::from_rgb(0x79, 0x7B, 0x1D),
             chart_grid: Color32::from_rgb(0x57, 0x57, 0x57),
@@ -283,6 +286,7 @@ impl Style for ProfilerStyle {
             module_badge_gap: 5.0,
             module_name_width: 180.0,
             legend_row_height: 14.0,
+            usage_bar_fill: 0.8,
             window_fram_count: 300,
             chart_bar: Color32::from_rgb(0x7E, 0x84, 0x20),
             chart_grid: Color32::from_rgb(0xA0, 0xA0, 0xA0),
@@ -422,6 +426,7 @@ impl ProfilerIconPaths {
 mod tests {
     use super::*;
     use kairos_editor_widgets::style::StyleFile;
+use strum::EnumCount;
 
     /// The shipped skin is user-editable: it must keep parsing (a missing field
     /// falls back to the code defaults and silently drops the edit) and its

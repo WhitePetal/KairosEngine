@@ -37,3 +37,4 @@ serde_json = "1.0"
 # capture record the local wall clock it started at, which is what the module
 # area's time axis labels its ticks with.
 jiff = { version = "0.2", default-features = false, features = ["std", "tz-system"] }
+strum = { version = "0.28.0", features = ["derive"] }

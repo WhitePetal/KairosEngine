@@ -253,6 +253,7 @@ use kairos_profile::{
     CaptureFiles, Category, FrameSnapshot, HierarchyRow, ProfileSession, SYSTEM_MARKER,
     SampleSnapshot, ScopeInfo, ThreadSnapshot, classify_system, strip_tag,
 };
+use strum::{EnumCount, IntoEnumIterator};
 
 use crate::frame::{Frame, UiOut};
 use crate::panel::Panel;
@@ -830,150 +831,6 @@ impl ProfilerPanel {
         rect
     }
 
-    /// The usage chart: one stacked bar per frame, positioned on the module
-    /// area's time axis so the bars line up with the clock ruler above them,
-    /// with Unity's ms/FPS guide lines and the selected-frame cursor.
-    ///
-    /// The vertical scale is the tallest visible bar divided by the 80% fill
-    /// target (clamped to Unity's module-chart range), so the graph uses the
-    /// chart's height whatever the frame rate is.
-    fn paint_chart(&mut self, ui: &Ui, plot: Rect, session: &ProfileSession) {
-        if plot.width() <= 0.0 || plot.height() <= 0.0 {
-            return;
-        }
-        let painter = ui.painter().with_clip_rect(plot);
-        let text = self.style.ruler_text.to_egui();
-        if session.frames.is_empty() || self.module_axis.is_empty() {
-            painter.text(
-                plot.center(),
-                Align2::CENTER_CENTER,
-                "Waiting for the first captured frame…",
-                self.small_font(),
-                text,
-            );
-            return;
-        }
-
-        // Where every visible frame's column is. A bar's left edge follows its
-        // frame start, so the bars sit at the times the ruler labels.
-        let zoom = self.module_axis.zoom();
-        let mut columns: Vec<ChartColumn> = Vec::new();
-        for segment in self.module_axis.visible_segments() {
-            let (capture_start, capture_end) = segment.source;
-            let frames = &session.frames;
-            let lo = frames.partition_point(|frame| (frame.start_ns as f64) < capture_start);
-            let hi = frames.partition_point(|frame| (frame.start_ns as f64) < capture_end);
-            for (offset, frame) in frames[lo..hi].iter().enumerate() {
-                let x = segment.x.0 + ((frame.start_ns as f64 - capture_start) * zoom) as f32;
-                let width = (((frame.end_ns - frame.start_ns) as f64 * zoom) as f32).max(1.0);
-                columns.push(ChartColumn {
-                    frame: lo + offset,
-                    x,
-                    width,
-                    ms: self.bar_ms(frame),
-                });
-            }
-        }
-
-        // While recording, the tallest bar can change every pass; the scale
-        // eases towards its target instead of snapping. Its first measurement
-        // snaps, and a cleared capture resets it to that state.
-        let tallest = columns
-            .iter()
-            .map(|column| column.ms)
-            .fold(0.0_f32, f32::max);
-        let target =
-            (tallest.max(0.001) / USAGE_BAR_FILL).clamp(MIN_USAGE_SCALE_MS, MAX_USAGE_SCALE_MS);
-        if self.module_scale_ms <= 0.0 {
-            self.module_scale_ms = target;
-        } else {
-            let next = self.module_scale_ms + (target - self.module_scale_ms) * USAGE_SCALE_EASE;
-            self.module_scale_ms = if (next - target).abs() < 0.005 {
-                target
-            } else {
-                next
-            };
-            if (self.module_scale_ms - target).abs() > 0.005 {
-                ui.ctx().request_repaint();
-            }
-        }
-        let scale = self.module_scale_ms.max(0.001);
-
-        // Break bands first: they are the compressed pauses, and two takes'
-        // bars never touch across them.
-        for band in self.module_axis.breaks() {
-            painter.rect_filled(
-                Rect::from_min_size(
-                    egui::pos2(plot.left() + band.x, plot.top()),
-                    egui::vec2(band.width, plot.height()),
-                ),
-                CornerRadius::ZERO,
-                self.style.break_bg.to_egui(),
-            );
-        }
-
-        // Clock grid: a faint vertical line under every labelled ruler tick, so
-        // a bar reads against the time axis above it.
-        let grid = self.style.chart_grid.to_egui().gamma_multiply(0.45);
-        let ruler = self.module_axis.ruler_scale();
-        for tick in self
-            .module_axis
-            .ticks(&ruler)
-            .into_iter()
-            .filter(|tick| tick.major)
-        {
-            let x = plot.left() + tick.x;
-            if x <= plot.left() || x >= plot.right() {
-                continue;
-            }
-            painter.rect_filled(
-                Rect::from_min_size(egui::pos2(x, plot.top()), egui::vec2(1.0, plot.height())),
-                CornerRadius::ZERO,
-                grid,
-            );
-        }
-
-        // One stacked bar per frame. Unity anchors Others at the bottom and
-        // stacks up the legend, so the first row is the topmost band.
-        for column in &columns {
-            let frame = &session.frames[column.frame];
-            let mut bottom = plot.bottom();
-            for category in Category::ALL.iter().rev().copied() {
-                if self.hidden[category as usize] {
-                    continue;
-                }
-                let ms = self.category_ms(frame, category);
-                if ms <= 0.0 {
-                    continue;
-                }
-                let height = (ms / scale * plot.height()).max(0.5);
-                painter.rect_filled(
-                    Rect::from_min_max(
-                        egui::pos2(plot.left() + column.x, bottom - height),
-                        egui::pos2(plot.left() + column.x + column.width, bottom),
-                    ),
-                    CornerRadius::ZERO,
-                    self.category_color(category),
-                );
-                bottom -= height;
-            }
-        }
-
-        // Unity's ms/FPS guide lines, placed under the 80% scale. They are
-        // drawn over the bars so their chips stay readable. A pane barely taller
-        // than its card header leaves a short plot that bunches the tiers up, so
-        // a chip whose label would collide with the one above it steps aside and
-        // leaves its line — the way the clock ruler drops colliding labels.
-        let mut reserved: Vec<(f32, f32)> = Vec::new();
-        for (ms, label) in usage_grid(scale) {
-            if *ms > f64::from(scale) {
-                continue;
-            }
-            let y = plot.bottom() - (*ms as f32 / scale * plot.height());
-            self.paint_chart_guide(ui, plot, y, label, &mut reserved);
-        }
-    }
-
     /// The selected frame's centre column on the module time axis.
     ///
     /// The cursor rides the middle of the frame's bar, not its left edge, so the
@@ -1030,13 +887,6 @@ impl ProfilerPanel {
             .map_or(&[], |frame| frame.lanes.as_slice())
     }
 
-    /// The selected frame's Scripts systems, highest first.
-    fn system_entries(&self) -> &[(String, u64)] {
-        self.frame
-            .as_ref()
-            .map_or(&[], |frame| frame.systems.as_slice())
-    }
-
     /// Category colour from the legend palette (index = enum order).
     fn category_color(&self, category: Category) -> egui::Color32 {
         self.style
@@ -1053,10 +903,9 @@ impl ProfilerPanel {
     fn category_ms(&self, frame: &FrameSnapshot, category: Category) -> f32 {
         let mut ns = frame.category_ns(category);
         if category == Category::Others {
-            let attributed: u64 = Category::ALL
-                .iter()
-                .filter(|other| **other != Category::Others)
-                .map(|other| frame.category_ns(*other))
+            let attributed: u64 = Category::iter()
+                .filter(|other| *other != Category::Others)
+                .map(|other| frame.category_ns(other))
                 .sum();
             ns = ns.saturating_add(frame.duration_ns().saturating_sub(attributed + ns));
         }
@@ -1066,10 +915,9 @@ impl ProfilerPanel {
     /// The drawn height of a frame's bar: its categories stacked. Equal to the
     /// frame time unless parallel work pushes the categories past it.
     fn bar_ms(&self, frame: &FrameSnapshot) -> f32 {
-        Category::ALL
-            .iter()
-            .filter(|category| !self.hidden[**category as usize])
-            .map(|category| self.category_ms(frame, *category))
+        Category::iter()
+            .filter(|category| !self.hidden[*category as usize])
+            .map(|category| self.category_ms(frame, category))
             .sum()
     }
 
@@ -2210,65 +2058,6 @@ fn collect_lanes(session: &ProfileSession) -> Vec<Lane> {
     lanes
 }
 
-/// How much of the usage chart's height the tallest visible bar fills.
-const USAGE_BAR_FILL: f32 = 0.8;
-/// The chart's vertical scale clamps into this range, like Unity's module chart
-/// (0.11 ms to 70 ms): one hitch cannot flatten the whole graph.
-const MIN_USAGE_SCALE_MS: f32 = 0.11;
-const MAX_USAGE_SCALE_MS: f32 = 70.0;
-/// How much of the remaining gap the chart's scale closes per pass. Unity eases
-/// its module chart's scale the same way (0.4) instead of snapping it.
-const USAGE_SCALE_EASE: f32 = 0.4;
-
-/// Unity's module-chart guide lines: four bands chosen by the chart's maximum,
-/// each with three ms/FPS readings. The two faster bands use the engine's
-/// refresh targets (60/120/240 FPS, 120/240/960 FPS); the slowest keeps Unity's.
-const USAGE_GRID_FAST: [(f64, &str); 3] = [
-    (1.0, "1ms (1000FPS)"),
-    (0.25, "0.25ms (4000FPS)"),
-    (0.1, "0.1ms (10000FPS)"),
-];
-const USAGE_GRID_10MS: [(f64, &str); 3] = [
-    (1000.0 / 120.0, "8ms (120FPS)"),
-    (1000.0 / 240.0, "4ms (240FPS)"),
-    (1000.0 / 960.0, "1ms (960FPS)"),
-];
-const USAGE_GRID_30MS: [(f64, &str); 3] = [
-    (1000.0 / 60.0, "16ms (60FPS)"),
-    (1000.0 / 120.0, "8ms (120FPS)"),
-    (1000.0 / 240.0, "4ms (240FPS)"),
-];
-const USAGE_GRID_SLOW: [(f64, &str); 3] = [
-    (1000.0 / 15.0, "66ms (15FPS)"),
-    (1000.0 / 30.0, "33ms (30FPS)"),
-    (1000.0 / 60.0, "16ms (60FPS)"),
-];
-
-/// The guide lines for a chart whose vertical scale is `scale_ms`.
-fn usage_grid(scale_ms: f32) -> &'static [(f64, &'static str)] {
-    if scale_ms < 1.5 {
-        &USAGE_GRID_FAST
-    } else if scale_ms < 10.0 {
-        &USAGE_GRID_10MS
-    } else if scale_ms < 30.0 {
-        &USAGE_GRID_30MS
-    } else {
-        &USAGE_GRID_SLOW
-    }
-}
-
-/// One frame's column on the module area's usage chart.
-struct ChartColumn {
-    /// Index into ProfileSession::frames.
-    frame: usize,
-    /// Left edge, in chart columns (the plot starts at zero).
-    x: f32,
-    /// Column width: the frame's wall time at the axis' zoom.
-    width: f32,
-    /// Stacked height of the frame's visible categories, in ms.
-    ms: f32,
-}
-
 /// Sample labels are the expensive part of a track; cap them per thread row.
 const MAX_SAMPLE_LABELS: usize = 64;
 
@@ -2926,26 +2715,6 @@ mod probe {
         {
             kairos_profile::scope!(Category::Others, "profiler.test.frame");
             std::thread::sleep(std::time::Duration::from_millis(2));
-        }
-        profiler.end_frame(true);
-        profiler.begin_frame();
-        assert!(
-            !profiler.session().is_empty(),
-            "the fixture captured one committed frame"
-        );
-        profiler
-    }
-
-    /// Capture one committed frame that lasts at least 100 ms. The usage chart's
-    /// scale is capped at 70 ms, so any frame that long pins the guide to the slow
-    /// band (66 / 33 / 16 ms) instead of letting the machine's speed pick one.
-    fn long_frame_profiler() -> Profiler {
-        let profiler = Profiler::new();
-        profiler.set_recording(true);
-        profiler.begin_frame();
-        {
-            kairos_profile::scope!(Category::Others, "profiler.test.frame");
-            std::thread::sleep(std::time::Duration::from_millis(100));
         }
         profiler.end_frame(true);
         profiler.begin_frame();
@@ -5431,193 +5200,6 @@ mod probe {
         let at = egui::pos2(chart_left + band, chart_top + 30.0);
         let _ = draw_pass(&ctx, &mut panel, &host, click_events(at));
         assert_eq!(panel.selected_frame, before, "the pause holds no frame");
-    }
-
-    /// The tallest bar fills 80% of the chart, and the ms/FPS guide line is
-    /// placed by that same scale.
-    #[test]
-    fn the_tallest_bar_fills_eighty_percent_of_the_chart() {
-        let _guard = lock_profiler_tests();
-        let host = ProfilerHost(slow_captured_profiler());
-        let mut panel = ProfilerPanel::default();
-        let output = draw_panel(&mut panel, &host);
-        let session = host.0.session();
-        let frame = session.frames.last().expect("one frame");
-
-        let chart_left = panel.style.module_name_width;
-        let (chart_top, plot_bottom) = module_chart_top(&panel);
-        let plot_height = plot_bottom - chart_top;
-        let palette: Vec<egui::Color32> = panel
-            .style
-            .category_palette
-            .iter()
-            .map(|color| color.to_egui())
-            .collect();
-        let mut columns: BTreeMap<i32, f32> = BTreeMap::new();
-        let mut bar_left = f32::MAX;
-        for (rect, fill) in painted(&output) {
-            if !palette.contains(&fill)
-                || rect.left() < chart_left - 0.5
-                || rect.top() < chart_top - 0.5
-                || rect.bottom() > plot_bottom + 0.5
-                || rect.height() <= 0.0
-            {
-                continue;
-            }
-            *columns
-                .entry((rect.left() * 4.0).round() as i32)
-                .or_default() += rect.height();
-            bar_left = bar_left.min(rect.left());
-        }
-        let tallest = columns.values().copied().fold(0.0_f32, f32::max);
-        assert!(tallest > 0.0, "the chart paints a bar");
-        let fill = tallest / plot_height;
-        assert!(
-            (fill - 0.8).abs() < 0.01,
-            "the tallest bar fills 80% of the chart: {tallest} / {plot_height} = {fill}"
-        );
-
-        // The bar starts at the frame's time on the clock axis.
-        let expected_left = chart_left
-            + panel
-                .module_axis
-                .screen_of_source(frame.start_ns as f64)
-                .expect("the frame maps onto the axis");
-        assert!(
-            (bar_left - expected_left).abs() < 1.0,
-            "the bar lines up with the clock axis: {bar_left} vs {expected_left}"
-        );
-
-        // The guide chips are the tier for this scale; the engine's 960 FPS
-        // reading labels the 10 ms band.
-        let scale = frame.duration_ns() as f32 / 1_000_000.0 / 0.8;
-        let text = painted_text(&output);
-        let expected_labels: Vec<&str> = usage_grid(scale)
-            .iter()
-            .filter(|(ms, _)| *ms <= f64::from(scale))
-            .map(|(_, label)| *label)
-            .collect();
-        assert!(
-            expected_labels
-                .iter()
-                .any(|label| text.iter().any(|line| line.contains(label))),
-            "the chart labels its guide for this scale ({scale} ms): {text:?}"
-        );
-        if scale < 10.0 {
-            assert!(
-                text.iter().any(|line| line.contains("960FPS")),
-                "the 10 ms tier uses the engine's 960 FPS reading: {text:?}"
-            );
-        }
-
-        // The smallest guide is drawn at the scale's 80%-based position.
-        let expected_y = plot_bottom - (1000.0 / 960.0 / scale) * plot_height;
-        let grid = panel.style.chart_grid.to_egui();
-        let lines: Vec<Rect> = painted(&output)
-            .into_iter()
-            .filter(|(rect, fill)| {
-                *fill == grid
-                    && rect.height() <= 1.0
-                    && rect.width() > 400.0
-                    && rect.top() > chart_top
-                    && rect.top() < plot_bottom
-            })
-            .map(|(rect, _)| rect)
-            .collect();
-        assert!(
-            lines
-                .iter()
-                .any(|rect| (rect.top() - expected_y).abs() < 1.0),
-            "the 960 FPS guide sits at {expected_y}: {lines:?}"
-        );
-    }
-
-    /// A short chart bunches the guide tiers up: a chip that would overlap the
-    /// one above it steps aside, and its line stays so the scale still reads.
-    #[test]
-    fn a_short_chart_drops_the_guide_chips_that_collide() {
-        let _guard = lock_profiler_tests();
-        let ctx = Context::default();
-        let host = ProfilerHost(long_frame_profiler());
-        let mut panel = ProfilerPanel::default();
-
-        let tall = draw_pass(&ctx, &mut panel, &host, Vec::new());
-        let session = host.0.session();
-        let frame = session.frames.last().expect("one frame");
-        let scale = (frame.duration_ns() as f32 / 1_000_000.0 / USAGE_BAR_FILL)
-            .clamp(MIN_USAGE_SCALE_MS, MAX_USAGE_SCALE_MS);
-        let tiers: Vec<&'static str> = usage_grid(scale)
-            .iter()
-            .filter(|(ms, _)| *ms <= f64::from(scale))
-            .map(|(_, label)| *label)
-            .collect();
-        assert_eq!(tiers.len(), 3, "the fixture's scale holds every tier");
-        let chips = |output: &egui::FullOutput| -> usize {
-            painted_text(output)
-                .iter()
-                .filter(|line| tiers.contains(&line.as_str()))
-                .count()
-        };
-        let grid = panel.style.chart_grid.to_egui();
-        let lines = |output: &egui::FullOutput| -> usize {
-            painted(output)
-                .into_iter()
-                .filter(|(rect, fill)| {
-                    *fill == grid && rect.height() <= 1.0 && rect.width() > 400.0
-                })
-                .count()
-        };
-        let tall_chips = chips(&tall);
-        assert_eq!(
-            tall_chips,
-            tiers.len(),
-            "the tall chart labels each tier apart: {tall_chips}"
-        );
-        assert_eq!(lines(&tall), tiers.len(), "the tall chart draws each line");
-
-        // A pane the default editor dock leaves the profiler: the CPU card is
-        // fitted to it, so the chart is too short to space the chips out.
-        panel.module_height = 100.0;
-        let short = draw_pass(&ctx, &mut panel, &host, Vec::new());
-        let short_chips = chips(&short);
-        assert!(
-            short_chips < tall_chips,
-            "a short chart drops the chips that would collide: {short_chips} of {tall_chips}"
-        );
-        assert_eq!(
-            lines(&short),
-            tiers.len(),
-            "every tier keeps its line when a chip steps aside"
-        );
-    }
-
-    /// The usage guide tiers are Unity's four bands, with the engine's refresh
-    /// targets in the two faster ones.
-    #[test]
-    fn the_usage_grid_uses_the_refresh_rate_tiers() {
-        let labels = |scale: f32| -> Vec<&'static str> {
-            usage_grid(scale).iter().map(|(_, label)| *label).collect()
-        };
-        assert_eq!(
-            labels(1.0),
-            vec!["1ms (1000FPS)", "0.25ms (4000FPS)", "0.1ms (10000FPS)"]
-        );
-        assert_eq!(
-            labels(4.0),
-            vec!["8ms (120FPS)", "4ms (240FPS)", "1ms (960FPS)"]
-        );
-        assert_eq!(
-            labels(20.0),
-            vec!["16ms (60FPS)", "8ms (120FPS)", "4ms (240FPS)"]
-        );
-        assert_eq!(
-            labels(50.0),
-            vec!["66ms (15FPS)", "33ms (30FPS)", "16ms (60FPS)"]
-        );
-        assert!((usage_grid(20.0)[0].0 - 1000.0 / 60.0).abs() < 1e-9);
-        assert!((usage_grid(4.0)[0].0 - 1000.0 / 120.0).abs() < 1e-9);
-        assert!((usage_grid(4.0)[1].0 - 1000.0 / 240.0).abs() < 1e-9);
-        assert!((usage_grid(4.0)[2].0 - 1000.0 / 960.0).abs() < 1e-9);
     }
 
     /// A double-click on the clock ruler restores the default last-frames window.

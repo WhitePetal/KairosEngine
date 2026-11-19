@@ -34,6 +34,7 @@ use profiling::puffin::{
     Error as PuffinError, FrameData, FrameSinkId, GlobalProfiler, NanoSecond, Reader,
     ScopeCollection, ScopeDetails, ScopeId, ScopeType, Stream, ThreadInfo, now_ns, set_scopes_on,
 };
+use strum::EnumCount;
 
 use crate::category::{
     Category, SYSTEM_MARKER, classify_marker, classify_system, is_frame_wrapper,
@@ -925,6 +926,7 @@ mod tests {
     use std::{collections::HashMap, num::NonZeroU32};
 
     use profiling::puffin::{ScopeId, Stream};
+use strum::EnumCount;
 
     use super::{ParsedThread, RawSample, ScopeClass, parse_stream, thread_snapshot};
     use crate::category::Category;

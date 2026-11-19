@@ -232,6 +232,7 @@ fn elapsed_label(capture_ns: f64) -> String {
 mod tests {
     use super::*;
     use kairos_profile::{Category, RecordingSegment};
+use strum::EnumCount;
 
     const MS: f64 = 1_000_000.0;
     const TEN_AM_NS: f64 = 10.0 * 3_600.0 * 1e9;

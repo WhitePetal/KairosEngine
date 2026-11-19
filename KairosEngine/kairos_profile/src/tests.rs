@@ -9,6 +9,7 @@
 use std::sync::{Mutex, MutexGuard};
 
 use profiling::puffin::FrameView;
+use strum::{EnumCount, IntoEnumIterator};
 
 use crate::model::{
     FrameSnapshot, ProfileSession, RecordingSegment, SampleSnapshot, ThreadSnapshot,
@@ -175,9 +176,8 @@ fn categories_attribute_exclusive_time_and_skip_the_scheduler_wrapper() {
         0,
         "the wrapper's own time is not attributed"
     );
-    let attributed: u64 = Category::ALL
-        .iter()
-        .map(|category| frame.category_ns(*category))
+    let attributed: u64 = Category::iter()
+        .map(|category| frame.category_ns(category))
         .sum();
     assert!(
         attributed <= frame.duration_ns(),

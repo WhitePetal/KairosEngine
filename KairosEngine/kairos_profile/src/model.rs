@@ -12,6 +12,7 @@
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
+use strum::EnumCount;
 
 use crate::category::Category;
 

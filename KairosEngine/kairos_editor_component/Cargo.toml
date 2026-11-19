@@ -16,6 +16,7 @@ egui = "0.35.0"
 inventory = "0.3"
 # Component styles derive Serialize/Deserialize (RON files under Preferences).
 serde = { version = "1.0.228", features = ["derive"] }
+strum = { version = "0.28.0", features = ["derive"] }
 
 # Style colors are the shared `kairos_color::Color32`; `color.rs` converts them
 # to egui colors when painting (the shared color crate stays UI-agnostic).
@@ -32,4 +33,3 @@ kairos_editor_widgets = { path = "../kairos_editor_widgets" }
 # `#[panel]` (id + registration) and `#[derive(StyleFields)]` (the style editor's
 # field table): both keep the declaration next to the thing it describes.
 kairos_editor_component_macros = { path = "macros" }
-vec1 = "1.12.1"

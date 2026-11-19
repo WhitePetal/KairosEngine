@@ -2444,7 +2444,7 @@ dependencies = [
 
 [[package]]
 name = "kairos_asset"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-broadcast",
  "async-channel",
@@ -2471,7 +2471,7 @@ dependencies = [
 
 [[package]]
 name = "kairos_audio"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-fs",
@@ -2492,7 +2492,7 @@ dependencies = [
 
 [[package]]
 name = "kairos_collections"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "foldhash 0.2.0",
  "hashbrown 0.17.1",
@@ -2503,7 +2503,7 @@ dependencies = [
 
 [[package]]
 name = "kairos_color"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ron",
  "serde",
@@ -2512,7 +2512,7 @@ dependencies = [
 
 [[package]]
 name = "kairos_ecs"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "arrayvec",
  "bitflags 2.13.1",
@@ -2545,7 +2545,7 @@ dependencies = [
 
 [[package]]
 name = "kairos_ecs_macro_logic"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "kairos_macro_utils",
  "proc-macro2",
@@ -2555,7 +2555,7 @@ dependencies = [
 
 [[package]]
 name = "kairos_ecs_macros"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "kairos_ecs_macro_logic",
  "kairos_macro_utils",
@@ -2600,7 +2600,7 @@ dependencies = [
  "pollster",
  "rustfft",
  "serde",
- "strum",
+ "strum 0.26.3",
  "syntect",
  "tempfile",
  "tokio",
@@ -2611,7 +2611,7 @@ dependencies = [
 
 [[package]]
 name = "kairos_editor_app"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "egui",
  "egui-wgpu",
@@ -2634,7 +2634,7 @@ dependencies = [
 
 [[package]]
 name = "kairos_editor_component"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "egui",
  "inventory",
@@ -2646,12 +2646,12 @@ dependencies = [
  "kairos_log",
  "kairos_profile",
  "serde",
- "vec1",
+ "strum 0.28.0",
 ]
 
 [[package]]
 name = "kairos_editor_component_macros"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2660,11 +2660,11 @@ dependencies = [
 
 [[package]]
 name = "kairos_editor_core"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "kairos_editor_docking"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "duplicate",
  "egui",
@@ -2674,7 +2674,7 @@ dependencies = [
 
 [[package]]
 name = "kairos_editor_widgets"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "egui",
  "kairos_color",
@@ -2684,7 +2684,7 @@ dependencies = [
 
 [[package]]
 name = "kairos_engine"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "criterion",
  "env_logger",
@@ -2714,7 +2714,7 @@ dependencies = [
 
 [[package]]
 name = "kairos_graphics"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-fs",
@@ -2737,7 +2737,7 @@ dependencies = [
  "rayon",
  "rkyv",
  "serde",
- "strum",
+ "strum 0.26.3",
  "tempfile",
  "tokio",
  "toml",
@@ -2747,16 +2747,17 @@ dependencies = [
 
 [[package]]
 name = "kairos_log"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "jiff",
  "log",
+ "strum 0.28.0",
  "tempfile",
 ]
 
 [[package]]
 name = "kairos_macro_utils"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2766,7 +2767,7 @@ dependencies = [
 
 [[package]]
 name = "kairos_math"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "bytemuck",
  "criterion",
@@ -2778,7 +2779,7 @@ dependencies = [
 
 [[package]]
 name = "kairos_physics"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "kairos_ecs",
  "kairos_math",
@@ -2790,18 +2791,19 @@ dependencies = [
 
 [[package]]
 name = "kairos_profile"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "jiff",
  "profiling",
  "puffin",
  "serde",
  "serde_json",
+ "strum 0.28.0",
 ]
 
 [[package]]
 name = "kairos_ptr"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "kairos_supervisor"
@@ -2823,14 +2825,14 @@ dependencies = [
 
 [[package]]
 name = "kairos_time"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "kairos_ecs",
 ]
 
 [[package]]
 name = "kairos_transform"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "derive_more",
  "kairos_ecs",
@@ -5261,7 +5263,16 @@ version = "0.26.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8fec0f0aef304996cf250b31b5a10dee7980c85da9d759361292b8bca5a18f06"
 dependencies = [
- "strum_macros",
+ "strum_macros 0.26.4",
+]
+
+[[package]]
+name = "strum"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9628de9b8791db39ceda2b119bbe13134770b56c138ec1d3af810d045c04f9bd"
+dependencies = [
+ "strum_macros 0.28.0",
 ]
 
 [[package]]
@@ -5274,6 +5285,18 @@ dependencies = [
  "proc-macro2",
  "quote",
  "rustversion",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "strum_macros"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab85eea0270ee17587ed4156089e10b9e6880ee688791d45a905f5b1ca36f664"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
  "syn 2.0.119",
 ]
 
@@ -5981,12 +6004,6 @@ dependencies = [
  "quote",
  "unsynn",
 ]
-
-[[package]]
-name = "vec1"
-version = "1.12.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eab68b56840f69efb0fefbe3ab6661499217ffdc58e2eef7c3f6f69835386322"
 
 [[package]]
 name = "vello_common"

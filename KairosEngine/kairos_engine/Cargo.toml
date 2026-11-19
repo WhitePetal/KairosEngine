@@ -1,9 +1,9 @@
 [package]
 name = "kairos_engine"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
 description = "A Game Engine"
-license = "MIT OR Apache-2.0"
 
 [dev-dependencies]
 criterion = { version = "0.8.2", features = ["html_reports"] }

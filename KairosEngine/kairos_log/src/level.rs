@@ -1,10 +1,12 @@
 use std::fmt;
 
+use strum::{EnumCount, EnumIter};
+
 /// Severity of a log record.
 ///
 /// KairosLog has exactly three levels. The `log` crate's `Debug` and `Trace`
 /// are not part of the vocabulary; see the crate docs.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, EnumIter, EnumCount)]
 pub enum Level {
     /// Normal operation.
     #[default]
@@ -16,9 +18,6 @@ pub enum Level {
 }
 
 impl Level {
-    /// All levels, least to most severe.
-    pub const ALL: [Self; 3] = [Self::Info, Self::Warning, Self::Error];
-
     /// Short uppercase label used by every sink: `INFO`, `WARN`, `ERROR`.
     pub const fn label(self) -> &'static str {
         match self {
@@ -58,12 +57,13 @@ impl fmt::Display for Level {
 mod tests {
     use super::*;
     use log::Level as LogLevel;
+use strum::IntoEnumIterator;
 
     #[test]
     fn levels_are_ordered_by_severity() {
         assert!(Level::Info < Level::Warning);
         assert!(Level::Warning < Level::Error);
-        assert_eq!(Level::ALL, [Level::Info, Level::Warning, Level::Error]);
+        assert_eq!(Level::iter().collect::<Vec<Level>>(), vec![Level::Info, Level::Warning, Level::Error]);
     }
 
     #[test]

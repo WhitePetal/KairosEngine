@@ -1,6 +1,6 @@
 [package]
 name = "kairos_editor"
-version.workspace = true
+version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 # The editor is the authoring layer on `kairos_engine`, not an engine
