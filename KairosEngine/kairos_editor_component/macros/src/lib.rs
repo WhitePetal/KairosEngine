@@ -8,7 +8,9 @@
 //!   registers it (`PanelRegister` + `inventory` submission), generates the
 //!   factory and — when the panel has a skin — the three `Panel::skin` methods.
 //! * `#[derive(StyleFields)]` makes a style struct describe itself field by
-//!   field, which is what the Preferences panel edits.
+//!   field, which is what the Preferences panel edits. The optional
+//!   `#[SharedStyle(...)]` helper declaration additionally seals the type as a
+//!   `SharedStyle` and submits its `SharedStyleDef`.
 //!
 //! Both exist for the same reason: the legacy editor kept a second, hand-written
 //! list next to the real definition (`drawers` order for panels,
@@ -20,7 +22,9 @@ use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::{format_ident, quote};
 use syn::parse::Parser;
 use syn::punctuated::Punctuated;
-use syn::{Data, DeriveInput, Fields, ItemImpl, Lit, Meta, Token, parse_macro_input, parse_quote};
+use syn::{
+    Data, DeriveInput, Fields, ItemImpl, Lit, LitStr, Meta, Token, parse_macro_input, parse_quote,
+};
 
 // ---------------------------------------------------------------------------
 // #[panel(ID = "panel.id", create = path, skin = Style)]
@@ -294,7 +298,35 @@ fn expand_panel(args: TokenStream2, mut item: ItemImpl) -> syn::Result<TokenStre
 /// Field kinds come from the field's type (`f32`, `u8`/`u16`/`u32`/`usize`,
 /// `bool`, `String`, `Color`, `ColorProperty`); the macro itself only knows names
 /// and accessors. `#[style(skip)]` leaves a field out.
-#[proc_macro_derive(StyleFields, attributes(style))]
+///
+/// # Shared styles
+///
+/// `#[SharedStyle(CONST = "style.id", title = "Page title")]` additionally
+/// declares the type as a shared style:
+///
+/// * emits `pub const CONST: SharedStyleId`, so the id lives next to the style;
+/// * implements the crate-private `SharedStyleSealed` erasure trait, so
+///   `SharedStyle` cannot be implemented without this attribute;
+/// * submits a `SharedStyleDef` to the inventory table. The submission
+///   requires `SharedStyle`, so the attribute without the trait impl does not
+///   compile either.
+///
+/// `SharedStyle` is a helper attribute of this derive, not a separate macro:
+/// the derive supplies the field table, and the helper supplies the id and the
+/// Preferences page title. `#[style(skip)]` stays the field-level helper.
+///
+/// The type then writes only the `preload` hook:
+///
+/// ```ignore
+/// #[derive(StyleFields)]
+/// #[SharedStyle(TOOLBAR = "toolbar", title = "Toolbar")]
+/// struct ToolBarStyle { /* ... */ }
+///
+/// impl SharedStyle for ToolBarStyle {
+///     fn preload(&self, ctx: &egui::Context) { /* ... */ }
+/// }
+/// ```
+#[proc_macro_derive(StyleFields, attributes(style, SharedStyle))]
 pub fn style_fields(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     match expand_style_fields(input) {
@@ -322,6 +354,32 @@ fn expand_style_fields(input: DeriveInput) -> syn::Result<TokenStream2> {
                 "every style field must be named",
             ));
         }
+    };
+
+    let shared = shared_decl(&input)?;
+    let shared_items = match shared {
+        Some(SharedDecl {
+            constant,
+            id,
+            title,
+        }) => quote! {
+            impl ::kairos_editor_component::__sealed::SharedStyleSealed for #name {
+                fn as_any(&self) -> &dyn ::std::any::Any {
+                    self
+                }
+            }
+
+            pub const #constant: ::kairos_editor_component::__macro::SharedStyleId =
+                ::kairos_editor_component::__macro::SharedStyleId(#id);
+
+            ::kairos_editor_component::__macro::inventory::submit! {
+                ::kairos_editor_component::__macro::SharedStyleDef::new::<#name>(
+                    #constant,
+                    #title,
+                )
+            }
+        },
+        None => quote! {},
     };
 
     let mut collects = Vec::new();
@@ -390,7 +448,83 @@ fn expand_style_fields(input: DeriveInput) -> syn::Result<TokenStream2> {
                 ::kairos_editor_component::skin::StyleNode::write(self, path, value)
             }
         }
+
+        #shared_items
     })
+}
+
+struct SharedDecl {
+    constant: syn::Ident,
+    id: LitStr,
+    title: LitStr,
+}
+
+/// Reads the optional `#[SharedStyle(CONST = "style.id", title = "Page title")]`.
+///
+/// It is a helper attribute of the `StyleFields` derive: the derive is what
+/// generates the field table the type needs to be a shared style, so the
+/// declaration cannot stand alone. Absence is the normal case: most
+/// `StyleFields` structs are field tables (a nested group such as the toolbar
+/// menu), not shell-owned styles.
+fn shared_decl(input: &DeriveInput) -> syn::Result<Option<SharedDecl>> {
+    let mut found = None;
+    for attr in &input.attrs {
+        if !attr.path().is_ident("SharedStyle") {
+            continue;
+        }
+        if found.is_some() {
+            return Err(syn::Error::new_spanned(
+                attr,
+                "`SharedStyle` is declared twice",
+            ));
+        }
+
+        let mut constant = None;
+        let mut title = None;
+        attr.parse_nested_meta(|item| {
+            if item.path.is_ident("title") {
+                if title.is_some() {
+                    return Err(item.error("`title` is declared twice"));
+                }
+                title = Some(item.value()?.parse::<LitStr>()?);
+                return Ok(());
+            }
+            let Some(name) = item.path.get_ident().cloned() else {
+                return Err(item.error("expected CONST = \"style.id\""));
+            };
+            if constant.is_some() {
+                return Err(item.error("the shared style id is declared twice"));
+            }
+            constant = Some((name, item.value()?.parse::<LitStr>()?));
+            Ok(())
+        })?;
+
+        let Some((constant, id)) = constant else {
+            return Err(syn::Error::new_spanned(
+                attr,
+                "expected SharedStyle(CONST = \"style.id\", title = \"Page title\")",
+            ));
+        };
+        let Some(title) = title else {
+            return Err(syn::Error::new_spanned(
+                attr,
+                "expected title = \"Preferences page title\"",
+            ));
+        };
+        let constant_text = constant.to_string();
+        if constant_text != constant_text.to_ascii_uppercase() {
+            return Err(syn::Error::new_spanned(
+                &constant,
+                "the shared style constant must be UPPER_SNAKE_CASE",
+            ));
+        }
+        found = Some(SharedDecl {
+            constant,
+            id,
+            title,
+        });
+    }
+    Ok(found)
 }
 
 fn is_skipped(field: &syn::Field) -> bool {
@@ -407,4 +541,59 @@ fn is_skipped(field: &syn::Field) -> bool {
         });
         skipped
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use syn::parse_quote;
+
+    use super::*;
+
+    fn expand(input: DeriveInput) -> String {
+        expand_style_fields(input)
+            .expect("the declaration expands")
+            .to_string()
+    }
+
+    #[test]
+    fn a_shared_declaration_emits_the_id_the_seal_and_the_submission() {
+        let tokens = expand(parse_quote! {
+            #[SharedStyle(TOOLBAR = "toolbar", title = "Toolbar")]
+            struct ToolBarStyle {
+                height: f32,
+            }
+        });
+
+        assert!(tokens.contains("SharedStyleSealed"));
+        assert!(tokens.contains("TOOLBAR"));
+        assert!(tokens.contains("SharedStyleDef"));
+        assert!(tokens.contains("toolbar"));
+        assert!(tokens.contains("Toolbar"));
+    }
+
+    #[test]
+    fn a_plain_style_fields_struct_submits_nothing() {
+        let tokens = expand(parse_quote! {
+            struct ToolBarMenuStyle {
+                item_height: f32,
+            }
+        });
+
+        assert!(!tokens.contains("SharedStyleSealed"));
+        assert!(!tokens.contains("SharedStyleDef"));
+        assert!(!tokens.contains("inventory"));
+    }
+
+    #[test]
+    fn a_shared_declaration_requires_a_title() {
+        let error = expand_style_fields(parse_quote! {
+            #[SharedStyle(TOOLBAR = "toolbar")]
+            struct ToolBarStyle {
+                height: f32,
+            }
+        })
+        .expect_err("a Preferences page heading is required");
+
+        assert!(error.to_string().contains("title"));
+    }
 }

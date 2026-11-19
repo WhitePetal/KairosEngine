@@ -90,6 +90,19 @@
 //! live tables into `Frame::skins` while Preferences is open, applies edits to
 //! the owning panel (live preview) and persists its file when the interaction
 //! ends. See `docs/plan/editor-ui-architecture/preferences-panel.md`.
+//!
+//! ## Shared styles
+//!
+//! The toolbar and the color picker are not panels, so they have no instance to
+//! load a skin into. They declare `#[SharedStyle(...)]` next to their
+//! `#[derive(StyleFields)]`: the derive emits the id constant, the sealed erasure
+//! impl and a [`SharedStyleDef`](shared_style::SharedStyleDef) submission (the
+//! same inventory mechanism as panels). The app loads the
+//! [`StyleCatalog`](shared_style::StyleCatalog) once at boot into a
+//! [`SharedStyles`](shared_style::SharedStyles) registry, and [`Frame::shared`]
+//! hands the live values to every panel. Preferences appends their pages after
+//! the panel skins and edits them through the separate
+//! `SharedStyleAction`/`SharedStyleEffect` path.
 
 #![forbid(unsafe_code)]
 
@@ -97,15 +110,22 @@
 // those paths work inside the crate as well as from dependents.
 extern crate self as kairos_editor_component;
 
-/// The seal behind PanelRegister: implemented only by `#[panel]`, and
-/// unreachable outside this crate, so a panel cannot be registered by hand.
+/// The seals behind the declaration macros: unreachable outside this crate, so
+/// a panel or shared style cannot be registered by hand.
 pub(crate) mod __sealed {
     pub trait Sealed {}
+
+    /// The erasure half of `SharedStyle`, implemented only by the
+    /// `StyleFields` derive for `#[SharedStyle(...)]`.
+    pub trait SharedStyleSealed {
+        fn as_any(&self) -> &dyn std::any::Any;
+    }
 }
 pub mod console;
 pub mod frame;
 pub mod panel;
 pub mod panels;
+pub mod shared_style;
 pub mod skin;
 pub mod toolbar;
 
@@ -129,10 +149,12 @@ pub use skin::{PanelSkin, StyleField, StyleFields as StyleFieldsTrait, StyleKind
 // attribute is not re-exported publicly either.
 pub(crate) use kairos_editor_component_macros::panel;
 
-/// Paths `#[panel]` expands to. Not part of the public API.
+/// Paths the declaration macros expand to. Not part of the public API.
 #[doc(hidden)]
 pub mod __macro {
     pub use crate::PanelId;
     pub use crate::panel::{Panel, PanelContext, PanelDef, PanelRegister};
+    pub use crate::shared_style::SharedStyleDef;
     pub use inventory;
+    pub use kairos_editor_core::SharedStyleId;
 }

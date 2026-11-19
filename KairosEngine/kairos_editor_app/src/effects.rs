@@ -9,19 +9,27 @@
 //! future effect depend on tab focus).
 
 use egui::{Context, Rect};
-use kairos_editor_component::{PanelHost, PanelInstanceId};
-use kairos_editor_core::{AppEffect, Effect, LayoutEffect, PanelId, StyleEffect};
+use kairos_editor_component::{PanelHost, PanelInstanceId, shared_style::SharedStyles};
+use kairos_editor_core::{
+    AppEffect, Effect, LayoutEffect, PanelId, SharedStyleEffect, StyleEffect,
+};
 use kairos_editor_docking::docker::DockState;
 
-/// Runs effects in order against the live panel host and dock tree.
+/// Runs effects in order against the live panel host, dock tree and shared
+/// style registry.
 pub(crate) struct EffectExecutor<'a> {
     host: &'a mut PanelHost,
     dock: &'a mut DockState<PanelInstanceId>,
+    shared: &'a mut SharedStyles,
 }
 
 impl<'a> EffectExecutor<'a> {
-    pub(crate) fn new(host: &'a mut PanelHost, dock: &'a mut DockState<PanelInstanceId>) -> Self {
-        Self { host, dock }
+    pub(crate) fn new(
+        host: &'a mut PanelHost,
+        dock: &'a mut DockState<PanelInstanceId>,
+        shared: &'a mut SharedStyles,
+    ) -> Self {
+        Self { host, dock, shared }
     }
 
     /// Dispatch one effect. Compiler-enforced extension point: a new `Effect`
@@ -31,6 +39,7 @@ impl<'a> EffectExecutor<'a> {
             Effect::Layout(effect) => self.apply_layout(effect, ctx),
             Effect::App(effect) => self.apply_app(effect, ctx),
             Effect::Style(effect) => self.apply_style(effect, ctx),
+            Effect::SharedStyle(effect) => self.apply_shared_style(effect, ctx),
         }
     }
 
@@ -67,6 +76,36 @@ impl<'a> EffectExecutor<'a> {
                 if let Err(error) = self.host.save_skin(panel, ctx) {
                     kairos_log::warn!(target: "kairos_editor", "skin {panel}: {error}");
                 }
+            }
+        }
+    }
+
+    /// Shared-style edits: live write, then persist/reload on the app-owned
+    /// registry. Same gesture boundary as a panel skin, different owner.
+    fn apply_shared_style(&mut self, effect: SharedStyleEffect, ctx: &Context) {
+        match effect {
+            SharedStyleEffect::SetField { style, path, value } => {
+                if !self.shared.set_field(style, &path, &value) {
+                    kairos_log::warn!(
+                        target: "kairos_editor",
+                        "shared skin {style}: no editable field {path}"
+                    );
+                }
+            }
+            SharedStyleEffect::Persist { style } => {
+                if let Err(error) = self.shared.save(style, ctx.theme()) {
+                    kairos_log::warn!(target: "kairos_editor", "shared skin {style}: {error}");
+                }
+                self.shared.preload(ctx);
+            }
+            SharedStyleEffect::Reload { style } => {
+                if !self.shared.reload(style, ctx.theme()) {
+                    kairos_log::warn!(
+                        target: "kairos_editor",
+                        "shared skin {style}: not registered"
+                    );
+                }
+                self.shared.preload(ctx);
             }
         }
     }

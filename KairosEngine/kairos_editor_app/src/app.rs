@@ -2,10 +2,11 @@ use std::sync::Arc;
 
 use kairos_editor_component::{
     ConsoleLine, ConsoleLog, EditorInfo, Frame, HostView, PanelContext, PanelHost, PanelInstanceId,
-    PanelSkin, UiOut, panels, toolbar::ToolBar,
+    PanelSkin, UiOut, panels, shared_style::SharedStyles, shared_style::StyleCatalog,
+    toolbar::ToolBar,
 };
 use kairos_editor_core::{
-    Action, AppAction, EditorState, Effect, LayoutAction, StyleAction, reduce,
+    Action, AppAction, EditorState, Effect, LayoutAction, SharedStyleAction, StyleAction, reduce,
 };
 use kairos_editor_docking::{
     docker::{DockState, Docker},
@@ -147,6 +148,9 @@ pub struct EditorApp {
     /// Live panels' skin field tables, rebuilt each frame while the Preferences
     /// editor is open (and empty otherwise).
     skins: Vec<PanelSkin>,
+    /// Appearance owned by the editor shell (toolbar, color picker). Loaded
+    /// once at boot, edited live from the Preferences panel's shared pages.
+    shared: SharedStyles,
 }
 
 impl EditorApp {
@@ -170,13 +174,19 @@ impl EditorApp {
         // stay in their RON files, dormant until the dock gains one too.
         egui_ctx.set_theme(egui::Theme::Dark);
 
+        // Shared styles are editor chrome, not panel instances: one load at
+        // boot, before the first frame. A missing file is seeded in place, so
+        // the editor works on a fresh checkout without a build step.
+        let shared = SharedStyles::load(&StyleCatalog::builtin(), egui_ctx.theme());
+        shared.preload(egui_ctx);
+
         let state = boot_state();
         let mut host = PanelHost::new(panels::catalog(), PanelContext::new(editor_info()));
         host.sync(&state.layout, egui_ctx);
         let dock = default_dock(&host);
 
         let host_view = AppHost::new();
-        let tool_bar = ToolBar::new(egui_ctx);
+        let tool_bar = ToolBar::new();
 
         // Reaches stderr, the run log and the console sink attached above.
         kairos_log::info!(target: "kairos_editor", "editor booted");
@@ -189,6 +199,7 @@ impl EditorApp {
             tool_bar,
             pending_effects: Vec::new(),
             skins: Vec::new(),
+            shared,
         }
     }
 
@@ -211,7 +222,8 @@ impl EditorApp {
         // which silently invented a placement in the focused leaf.
         {
             let effects = std::mem::take(&mut self.pending_effects);
-            let mut executor = EffectExecutor::new(&mut self.host, &mut self.dock);
+            let mut executor =
+                EffectExecutor::new(&mut self.host, &mut self.dock, &mut self.shared);
             for effect in effects {
                 executor.apply(effect, ctx);
             }
@@ -244,7 +256,11 @@ impl EditorApp {
             // of a gesture would flood the console the way the legacy window
             // did with its per-frame style messages. The commit (the write) is
             // logged; the value itself is visible in the field.
-            if !matches!(action, Action::Style(StyleAction::SetField { .. })) {
+            if !matches!(
+                action,
+                Action::Style(StyleAction::SetField { .. })
+                    | Action::SharedStyle(SharedStyleAction::SetField { .. })
+            ) {
                 kairos_log::info!(target: "kairos_editor", "{}", describe(&action));
             }
             let effects = reduce(&mut self.state, action);
@@ -270,6 +286,13 @@ fn describe(action: &Action) -> String {
                 format!("set {panel} skin: {path}")
             }
             StyleAction::Commit { panel } => format!("save {panel} skin"),
+        },
+        Action::SharedStyle(action) => match action {
+            SharedStyleAction::SetField { style, path, .. } => {
+                format!("set {style} shared skin: {path}")
+            }
+            SharedStyleAction::Commit { style } => format!("save {style} shared skin"),
+            SharedStyleAction::Reload { style } => format!("reload {style} shared skin"),
         },
     }
 }
@@ -323,9 +346,12 @@ impl EditorApp {
                     dock,
                     tool_bar,
                     skins,
+                    shared,
                     ..
                 } = self;
-                let frame = Frame::with_host(state, &host_scope).with_skins(skins);
+                let frame = Frame::with_host(state, &host_scope)
+                    .with_skins(skins)
+                    .with_shared(shared);
                 tool_bar.ui(ui, &frame, &mut out);
                 let mut viewer = host.viewer(&mut out, frame);
                 Docker::new("kairos_editor_docker", dock).show(ui, &mut viewer);
@@ -356,6 +382,7 @@ mod tests {
     use std::sync::Mutex;
 
     use super::*;
+    use kairos_editor_component::shared_style::COLOR_PICKER;
     use kairos_editor_core::StyleValue;
     use kairos_editor_docking::viewer::TabViewer;
 
@@ -406,7 +433,7 @@ mod tests {
         let ctx = egui::Context::default();
         host.sync(&state.layout, &ctx);
         let dock = default_dock(&host);
-        let tool_bar = ToolBar::new(&ctx);
+        let tool_bar = ToolBar::new();
         EditorApp {
             state,
             host,
@@ -415,6 +442,7 @@ mod tests {
             tool_bar,
             pending_effects: Vec::new(),
             skins: Vec::new(),
+            shared: SharedStyles::default(),
         }
     }
 
@@ -599,6 +627,82 @@ mod tests {
             })),
             "save console skin"
         );
+        assert_eq!(
+            describe(&Action::SharedStyle(SharedStyleAction::SetField {
+                style: COLOR_PICKER,
+                path: "border_width".to_owned(),
+                value: StyleValue::Float(0.9),
+            })),
+            "set color_picker shared skin: border_width"
+        );
+        assert_eq!(
+            describe(&Action::SharedStyle(SharedStyleAction::Commit {
+                style: COLOR_PICKER
+            })),
+            "save color_picker shared skin"
+        );
+        assert_eq!(
+            describe(&Action::SharedStyle(SharedStyleAction::Reload {
+                style: COLOR_PICKER
+            })),
+            "reload color_picker shared skin"
+        );
+    }
+
+    /// A shared style lives in the app registry, so the effect executor writes
+    /// it there rather than on a panel instance.
+    #[test]
+    fn a_shared_skin_edit_reaches_the_registry() {
+        let mut app = build();
+        let ctx = egui::Context::default();
+
+        apply(
+            &mut app,
+            Action::SharedStyle(SharedStyleAction::SetField {
+                style: COLOR_PICKER,
+                path: "border_width".to_owned(),
+                value: StyleValue::Float(0.9),
+            }),
+            &ctx,
+        );
+
+        assert_eq!(
+            app.shared
+                .color_picker()
+                .expect("the color picker skin is registered")
+                .border_width,
+            0.9
+        );
+    }
+
+    /// The separate Commit path writes the shared file, not a panel's.
+    #[test]
+    fn a_shared_skin_commit_writes_its_file() {
+        let root = scratch_style_root();
+        let mut app = build();
+        let ctx = egui::Context::default();
+        let path = root.join("ColorPicker.ron");
+        let _ = std::fs::remove_file(&path);
+
+        apply(
+            &mut app,
+            Action::SharedStyle(SharedStyleAction::SetField {
+                style: COLOR_PICKER,
+                path: "border_width".to_owned(),
+                value: StyleValue::Float(0.9),
+            }),
+            &ctx,
+        );
+        apply(
+            &mut app,
+            Action::SharedStyle(SharedStyleAction::Commit {
+                style: COLOR_PICKER,
+            }),
+            &ctx,
+        );
+
+        let text = std::fs::read_to_string(&path).expect("the shared style file was written");
+        assert!(text.contains("border_width: 0.9"), "{text}");
     }
 
     /// Quit is host work: the toolbar only *requests* it, the reducer answers

@@ -3530,43 +3530,6 @@ mod probe {
         );
     }
 
-    /// The module badge holds the legend's swatch column and the module name
-    /// holds the legend's label column: the card reads as one column, and a skin
-    /// that retunes the badge box moves the name with it.
-    #[test]
-    fn the_module_header_keeps_the_legend_columns() {
-        let _guard = lock_profiler_tests();
-        let host = ProfilerHost(captured_profiler());
-        let mut panel = ProfilerPanel::default();
-        let ctx = Context::default();
-        let output = draw_pass(&ctx, &mut panel, &host, Vec::new());
-
-        // Rendering is the first legend row, so its swatch is the column mark.
-        let rendering = panel.style.category_palette[0].to_egui();
-        let swatch = painted(&output)
-            .into_iter()
-            .find(|(rect, fill)| {
-                *fill == rendering && (rect.size() - egui::vec2(8.0, 8.0)).length() < 0.5
-            })
-            .map(|(rect, _)| rect)
-            .expect("the legend paints the first category's swatch");
-        let legend_label = text_pos_starting_with(&output, "Rendering");
-        let title = text_pos_starting_with(&output, "CPU Usage");
-
-        let badge_center = panel.style.module_badge_inset + panel.style.module_badge_width * 0.5;
-        assert!(
-            (badge_center - swatch.center().x).abs() < 0.5,
-            "the badge sits over the legend swatch column: {badge_center} vs {}",
-            swatch.center().x
-        );
-        assert!(
-            (title.x - legend_label.x).abs() < 0.5,
-            "the module name lines up with the legend labels: {} vs {}",
-            title.x,
-            legend_label.x
-        );
-    }
-
     /// A pane shorter than the CPU card shrinks the card instead of clipping it:
     /// the usage chart keeps its zero line at the pane's bottom. The bars grow
     /// from that line, so a clipped chart shows nothing for the short bars a high

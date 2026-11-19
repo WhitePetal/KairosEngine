@@ -67,6 +67,14 @@ L2 与总架构（MVU）的关系：总架构里的 `Panel`/component 就是这�
 > 每个 component 定义自己的 `XxxStyle` 并在 `Panel::init` 加载
 > `Preferences/Styles/<XxxStyle>.ron`（一个文件含 dark/light 两套）。`StyleState` /
 > 全局 `Theme` 不再是实现前提，见 ADR 0010 实现 note。
+>
+> **2026-11-19 补充**：不属于任何面板实例的 editor-shell 外观（Toolbar、Color Picker）
+> 走 **shared style**：`#[derive(StyleFields)]` + `#[SharedStyle(...)]` 生成并提交
+> `SharedStyleDef`（对应 `#[panel]` 的 `PanelDef`），app 启动时
+> `SharedStyles::load(&StyleCatalog::builtin(), theme)` 一次，`Frame::shared`
+> 下发给所有面板；Preferences 固定追加它们的页，写路径是独立的
+> `SharedStyleAction`/`SharedStyleEffect`（含显式 `Reload`）。面板样式仍是 per-instance、
+> `Panel::init` 加载，两者不混用。
 
 - **唯一外观来源**：颜色（bg/panel/text/muted/accent/border/error/success/warning）、间距（xs/sm/md/lg/xl）、字号（caption/body/heading/title）、行高、圆角、图标尺寸、动效时长。
 - 现状是「每个窗口一个 `XxxStyle` TOML + 自己的 `*Style::new()` + 偏好设置反射」；目标是**一个 `Theme`**（可含 per-panel override），由 host 每帧准备，widget 只读。

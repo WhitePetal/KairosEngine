@@ -4,12 +4,13 @@
 //! (`kairos_editor_component::UiOut`), and [`crate::reduce`] is the only thing
 //! that applies them to [`crate::EditorState`]. Panels never mutate state.
 //!
-//! Slices stay separate enums (`LayoutAction`, `AppAction`, `StyleAction`, later
-//! `DocumentAction`, `SelectionAction`, `ViewportAction`, ...) routed by the
-//! aggregate [`Action`], so no slice becomes a second global message bus.
+//! Slices stay separate enums (`LayoutAction`, `AppAction`, `StyleAction`,
+//! `SharedStyleAction`, later `DocumentAction`, `SelectionAction`,
+//! `ViewportAction`, ...) routed by the aggregate [`Action`], so no slice
+//! becomes a second global message bus.
 
 use crate::panel::PanelId;
-use crate::style::StyleValue;
+use crate::style::{SharedStyleId, StyleValue};
 
 /// Aggregate UI intent, routed by domain slice.
 #[derive(Clone, Debug, PartialEq)]
@@ -19,6 +20,8 @@ pub enum Action {
     App(AppAction),
     /// Panel skins (the Preferences panel's field editor).
     Style(StyleAction),
+    /// Shared styles: editor-shell appearance that no panel instance owns.
+    SharedStyle(SharedStyleAction),
 }
 
 /// Intents produced by panel chrome: tab close buttons, toolbar toggles, ...
@@ -71,4 +74,25 @@ pub enum StyleAction {
     },
     /// The interaction that started the edit ended: write the panel's skin file.
     Commit { panel: PanelId },
+}
+
+/// Intents produced by the Preferences panel's shared-style pages.
+///
+/// The toolbar and the color picker are loaded once by the editor shell, not by
+/// a panel instance, so their files cannot travel through the panel-skin path
+/// above. They still share the same gesture boundary: set while dragging or
+/// typing, persist when the interaction ends. Reload re-reads the file so a
+/// hand edit can be picked up without restarting the editor.
+#[derive(Clone, Debug, PartialEq)]
+pub enum SharedStyleAction {
+    /// One field of one shared style changed (live preview).
+    SetField {
+        style: SharedStyleId,
+        path: String,
+        value: StyleValue,
+    },
+    /// The interaction ended: write the shared style's RON file.
+    Commit { style: SharedStyleId },
+    /// Re-read the shared style's file into the live value.
+    Reload { style: SharedStyleId },
 }

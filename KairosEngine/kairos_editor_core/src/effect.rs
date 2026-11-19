@@ -8,10 +8,11 @@
 //!
 //! Effects are partitioned by domain exactly like `Action` (see ADR 0008), so a
 //! new feature area adds a variant here and an executor arm in the app instead
-//! of growing one flat "god effect" enum.
+//! of growing one flat "god effect" enum. Panel skins and editor-shell shared
+//! styles are separate slices because they have different owners.
 
 use crate::PanelId;
-use crate::style::StyleValue;
+use crate::style::{SharedStyleId, StyleValue};
 
 /// One unit of host work returned by `reduce`.
 #[derive(Clone, Debug, PartialEq)]
@@ -23,6 +24,8 @@ pub enum Effect {
     /// Skin work: a panel's style lives in the panel instance and its file is
     /// written by the app, so both are outside core.
     Style(StyleEffect),
+    /// Shared-style work: the editor shell owns these styles, not a panel.
+    SharedStyle(SharedStyleEffect),
 }
 
 /// Placement/focus work owned by the layout slice.
@@ -67,4 +70,22 @@ pub enum StyleEffect {
     },
     /// Persist the panel's live style to its RON file.
     Persist { panel: PanelId },
+}
+
+/// Host work for the editor's shared styles.
+///
+/// These are the same three steps as a panel skin, but the value lives in the
+/// app's shared-style registry instead of a panel instance.
+#[derive(Clone, Debug, PartialEq)]
+pub enum SharedStyleEffect {
+    /// Write one field on the live shared style.
+    SetField {
+        style: SharedStyleId,
+        path: String,
+        value: StyleValue,
+    },
+    /// Persist the live shared style to its RON file.
+    Persist { style: SharedStyleId },
+    /// Re-read the shared style's file into the live value.
+    Reload { style: SharedStyleId },
 }

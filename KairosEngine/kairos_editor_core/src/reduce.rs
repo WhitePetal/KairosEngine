@@ -15,6 +15,7 @@
 
 mod app;
 mod layout;
+mod shared_style;
 mod style;
 
 use crate::{Action, EditorState, Effect};
@@ -24,5 +25,6 @@ pub fn reduce(state: &mut EditorState, action: Action) -> Vec<Effect> {
         Action::Layout(action) => layout::reduce(state, action),
         Action::App(action) => app::reduce(state, action),
         Action::Style(action) => style::reduce(state, action),
+        Action::SharedStyle(action) => shared_style::reduce(state, action),
     }
 }

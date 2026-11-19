@@ -30,9 +30,16 @@
 //! egui's image loaders. `HostView` is for per-frame resources the host
 //! produces (viewport textures) or owns as a stream (log history).
 
+use std::sync::LazyLock;
+
 use kairos_editor_core::{EditorState, action::Action};
+use kairos_editor_widgets::color_picker::ColorPickerStyle;
+use kairos_editor_widgets::style::Style;
 use kairos_log::{Level, StackFrame};
 use kairos_profile::Profiler;
+
+use crate::shared_style::{ColorPickerSkin, SharedStyles};
+use crate::toolbar::style::ToolBarStyle;
 
 /// One host-owned console entry, rendered by the Console panel.
 ///
@@ -113,6 +120,10 @@ pub struct Frame<'a> {
     /// Empty unless Preferences is open: building them allocates a row per
     /// token, and no other panel reads them.
     pub skins: &'a [crate::skin::PanelSkin],
+    /// Appearance owned by the editor shell (toolbar, color picker), shared by
+    /// every panel. `with_host` points this at the pure code defaults so tests
+    /// and embedders do not need to own a registry.
+    pub shared: &'a SharedStyles,
 }
 
 impl<'a> Frame<'a> {
@@ -122,6 +133,7 @@ impl<'a> Frame<'a> {
             state,
             host,
             skins: &[],
+            shared: SharedStyles::default_ref(),
         }
     }
 
@@ -129,6 +141,27 @@ impl<'a> Frame<'a> {
     pub fn with_skins(mut self, skins: &'a [crate::skin::PanelSkin]) -> Self {
         self.skins = skins;
         self
+    }
+
+    /// Attach the app-owned shared styles. Without this, the frame carries the
+    /// pure code defaults (tests, headless embedders).
+    pub fn with_shared(mut self, shared: &'a SharedStyles) -> Self {
+        self.shared = shared;
+        self
+    }
+
+    /// The live toolbar skin.
+    pub fn toolbar_style(&self) -> &ToolBarStyle {
+        static FALLBACK: LazyLock<ToolBarStyle> = LazyLock::new(ToolBarStyle::dark);
+        self.shared.toolbar().unwrap_or(&FALLBACK)
+    }
+
+    /// The color picker's runtime tokens, projected from the shared skin.
+    pub fn color_picker_style(&self) -> ColorPickerStyle {
+        self.shared
+            .color_picker()
+            .map(ColorPickerSkin::tokens)
+            .unwrap_or_default()
     }
 }
 

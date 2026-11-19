@@ -16,6 +16,11 @@
 //! panels' field tables into Frame::skins while this panel is open; this panel
 //! draws them and never touches another panel directly.
 //!
+//! Editor-shell styles (the toolbar and the color picker) have no panel
+//! instance. They live in the app's crate::shared_style registry and are
+//! appended as fixed pages after the panel pages; their writes travel through
+//! the separate SharedStyleAction path, including an explicit Reload.
+//!
 //! # The field tree
 //!
 //! Dotted token paths are a tree (icons.console.info), and the page draws it
@@ -44,11 +49,13 @@ use egui::{
     StrokeKind, TextEdit, Ui, UiBuilder, WidgetText, WidgetType, pos2, vec2,
 };
 use kairos_color::ColorUsage;
-use kairos_editor_core::{Action, LayoutAction, PanelId, StyleAction, StyleValue};
+use kairos_editor_core::{
+    Action, LayoutAction, PanelId, SharedStyleAction, SharedStyleId, StyleAction, StyleValue,
+};
 use kairos_editor_widgets::button::Button;
 use kairos_editor_widgets::color_picker::{
-    ColorField, ColorProperty, ColorSwatches, any_color_picker_open, close_all_color_pickers,
-    is_color_picker_open,
+    ColorField, ColorPickerStyle, ColorProperty, ColorSwatches, any_color_picker_open,
+    close_all_color_pickers, is_color_picker_open,
 };
 use kairos_editor_widgets::divider::Divider;
 use kairos_editor_widgets::paint::labelled_widget_info;
@@ -57,39 +64,94 @@ use kairos_editor_widgets::text::TextStyle;
 
 use crate::frame::{Frame, UiOut};
 use crate::panel::Panel;
-use crate::skin::{PanelSkin, StyleField, StyleKind, humanize};
+use crate::shared_style::SharedSkin;
+use crate::skin::{StyleField, StyleKind, humanize};
 
 use self::style::PreferencesPanelStyle;
 
-fn nav_id(panel: PanelId) -> Id {
-    Id::new(("kairos.preferences.nav", panel))
+/// One page in the Preferences editor: a live panel's skin or a shared style.
+///
+/// Panel skins stay keyed by PanelId; shared styles have their own stable id
+/// and their own action path. A local enum keeps the two lists in one nav
+/// without teaching core about a second kind of skin.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum PageKey {
+    Panel(PanelId),
+    Shared(SharedStyleId),
+}
+
+impl From<PanelId> for PageKey {
+    fn from(panel: PanelId) -> Self {
+        Self::Panel(panel)
+    }
+}
+
+impl From<SharedStyleId> for PageKey {
+    fn from(style: SharedStyleId) -> Self {
+        Self::Shared(style)
+    }
+}
+
+/// One page's borrowed metadata for this pass.
+struct PageInfo<'a> {
+    key: PageKey,
+    title: &'a str,
+    file: &'static str,
+    fields: &'a [StyleField],
+    /// Shared styles bump this when their file is re-read. A panel page is
+    /// always zero: its snapshot is the live style it just edited.
+    revision: u64,
+}
+
+fn nav_id(page: impl Into<PageKey>) -> Id {
+    Id::new(("kairos.preferences.nav", page.into()))
 }
 
 /// Stable id of a foldout band, keyed by its dotted group path.
-fn group_id(panel: PanelId, path: &str) -> Id {
-    Id::new(("kairos.preferences.group", panel, path))
+fn group_id(page: impl Into<PageKey>, path: &str) -> Id {
+    Id::new(("kairos.preferences.group", page.into(), path))
 }
 
 /// Stable id of a field's name, so tests (and egui's click routing) can find
 /// the left-hand label without a layout index.
-fn label_id(panel: PanelId, path: &str) -> Id {
-    Id::new(("kairos.preferences.label", panel, path))
+fn label_id(page: impl Into<PageKey>, path: &str) -> Id {
+    Id::new(("kairos.preferences.label", page.into(), path))
 }
 
 /// Stable id of a field's value box. The box, its drag/click interaction and
 /// its inline text editor all share this id: only one of them is live at a
 /// time, and keyboard focus must follow the field from one mode to the other.
-fn field_id(panel: PanelId, path: &str) -> Id {
-    Id::new(("kairos.preferences.field", panel, path))
+fn field_id(page: impl Into<PageKey>, path: &str) -> Id {
+    Id::new(("kairos.preferences.field", page.into(), path))
 }
 
 /// Stable id of a boolean checkbox; see field_id.
-fn toggle_id(panel: PanelId, path: &str) -> Id {
-    Id::new(("kairos.preferences.toggle", panel, path))
+fn toggle_id(page: impl Into<PageKey>, path: &str) -> Id {
+    Id::new(("kairos.preferences.toggle", page.into(), path))
+}
+
+/// The action that writes one field on whichever page owns it.
+fn set_field_action(page: PageKey, path: &str, value: &StyleValue) -> Action {
+    match page {
+        PageKey::Panel(panel) => Action::Style(StyleAction::SetField {
+            panel,
+            path: path.to_owned(),
+            value: value.clone(),
+        }),
+        PageKey::Shared(style) => Action::SharedStyle(SharedStyleAction::SetField {
+            style,
+            path: path.to_owned(),
+            value: value.clone(),
+        }),
+    }
 }
 
 fn close_id() -> Id {
     Id::new("kairos.preferences.close")
+}
+
+fn reload_id(style: SharedStyleId) -> Id {
+    Id::new(("kairos.preferences.reload", style))
 }
 
 /// A numeric token being typed into its value box.
@@ -122,12 +184,15 @@ struct DragState {
     remainder: f32,
 }
 
-/// The page being edited: a snapshot of one panel's field table, plus the
+/// The page being edited: a snapshot of one page's field table, plus the
 /// bookkeeping that decides when its file is written.
 #[derive(Default)]
 struct PageState {
-    /// The panel the fields belong to.
-    panel: Option<PanelId>,
+    /// The page the fields belong to.
+    key: Option<PageKey>,
+    /// Shared-style revision this snapshot came from. A reload bumps the
+    /// registry revision, and the next pass re-reads the field table.
+    revision: u64,
     /// Edited in place: a drag follows the pointer even though the owning
     /// panel's next snapshot is a frame behind.
     fields: Vec<StyleField>,
@@ -150,29 +215,52 @@ struct PageState {
 }
 
 impl PageState {
-    /// Show the selected panel's field table, committing a pending edit on the
-    /// page being left.
-    fn select(&mut self, skins: &[PanelSkin], selected: Option<PanelId>, out: &mut UiOut) {
-        let same = self.panel == selected && (selected.is_none() || !self.fields.is_empty());
-        if same {
+    /// Show the selected page's field table, committing a pending edit on the
+    /// page being left. A shared page is re-read when its file was reloaded
+    /// (the registry revision changed); a panel page never is, because its
+    /// snapshot is the live value this editor just wrote.
+    fn select(&mut self, pages: &[PageInfo<'_>], selected: Option<PageKey>, out: &mut UiOut) {
+        let page = selected.and_then(|key| pages.iter().find(|page| page.key == key));
+
+        if self.key == selected {
+            let Some(page) = page else {
+                return;
+            };
+            if self.revision == page.revision {
+                return;
+            }
+            // The file was reloaded under this page: take the new values but
+            // keep the selection and foldout state, and drop a text edit whose
+            // original value no longer belongs to the new snapshot.
+            self.fields = page.fields.to_vec();
+            self.title = page.title.to_owned();
+            self.file = page.file;
+            self.revision = page.revision;
+            self.edit = None;
+            self.drag = DragState::default();
+            // The reloaded file is now the truth; the discarded pre-reload
+            // edit must not be written by a later release pass.
+            self.dirty = false;
             return;
         }
 
         self.commit(out);
 
-        match selected.and_then(|panel| skins.iter().find(|skin| skin.panel == panel)) {
-            Some(skin) => {
-                self.fields.clone_from(&skin.fields);
-                self.title.clone_from(&skin.title);
-                self.file = skin.file;
+        match page {
+            Some(page) => {
+                self.fields = page.fields.to_vec();
+                self.title = page.title.to_owned();
+                self.file = page.file;
+                self.revision = page.revision;
             }
             None => {
                 self.fields.clear();
                 self.title.clear();
                 self.file = "";
+                self.revision = 0;
             }
         }
-        self.panel = selected;
+        self.key = selected;
         // A new page starts unfolded and unselected. Carrying either over
         // would highlight a path that only happens to have the same name.
         self.selected = None;
@@ -187,8 +275,14 @@ impl PageState {
         if !self.dirty {
             return;
         }
-        if let Some(panel) = self.panel {
-            out.push(Action::Style(StyleAction::Commit { panel }));
+        match self.key {
+            Some(PageKey::Panel(panel)) => {
+                out.push(Action::Style(StyleAction::Commit { panel }));
+            }
+            Some(PageKey::Shared(style)) => {
+                out.push(Action::SharedStyle(SharedStyleAction::Commit { style }));
+            }
+            None => {}
         }
         self.dirty = false;
     }
@@ -197,8 +291,8 @@ impl PageState {
 /// The Preferences panel.
 pub struct PreferencesPanel {
     style: PreferencesPanelStyle,
-    /// Page list selection; falls back to the first live skin.
-    selected: Option<PanelId>,
+    /// Page list selection; falls back to the first available page.
+    selected: Option<PageKey>,
     page: PageState,
     /// A color popup was open when the panel closed; close it on the next
     /// draw so reopening Preferences does not resurrect it.
@@ -284,10 +378,32 @@ impl Panel for PreferencesPanel {
             style.background.to_egui(),
         );
 
-        let skins = frame.skins;
+        // Panel pages first (the existing editor order), then the shared
+        // styles, which are always present even when no panel is open.
+        let shared_skins: Vec<SharedSkin> = frame.shared.skins();
+        let mut pages: Vec<PageInfo<'_>> = frame
+            .skins
+            .iter()
+            .map(|skin| PageInfo {
+                key: PageKey::Panel(skin.panel),
+                title: &skin.title,
+                file: skin.file,
+                fields: &skin.fields,
+                revision: 0,
+            })
+            .collect();
+        pages.extend(shared_skins.iter().map(|skin| PageInfo {
+            key: PageKey::Shared(skin.id),
+            title: &skin.title,
+            file: skin.file,
+            fields: &skin.fields,
+            revision: frame.shared.revision(),
+        }));
+
+        let picker_style = frame.color_picker_style();
         let mut current = match *selected {
-            Some(panel) if skins.iter().any(|skin| skin.panel == panel) => Some(panel),
-            _ => skins.first().map(|skin| skin.panel),
+            Some(page) if pages.iter().any(|entry| entry.key == page) => Some(page),
+            _ => pages.first().map(|page| page.key),
         };
 
         egui::Frame::NONE
@@ -338,12 +454,12 @@ impl Panel for PreferencesPanel {
                     );
 
                 ui.scope_builder(UiBuilder::new().max_rect(nav_rect.shrink(4.0)), |ui| {
-                    current = page_list(ui, style, skins, current);
+                    current = page_list(ui, style, &pages, current);
                 });
 
-                let previous_panel = page.panel;
-                page.select(skins, current, out);
-                if previous_panel.is_some() && page.panel != previous_panel {
+                let previous_page = page.key;
+                page.select(&pages, current, out);
+                if previous_page.is_some() && page.key != previous_page {
                     // A color popup belongs to the page that opened it; leaving
                     // the page must not leave it floating over the new one.
                     egui::Popup::close_all(ui.ctx());
@@ -351,10 +467,10 @@ impl Panel for PreferencesPanel {
                 }
 
                 ui.scope_builder(UiBuilder::new().max_rect(page_rect), |ui| {
-                    page_body(ui, style, page, swatches, out);
+                    page_body(ui, style, &picker_style, page, swatches, out);
                 });
 
-                footer(ui, style, footer_rect, out);
+                footer(ui, style, footer_rect, page.key, out);
             });
 
         // A click ends the interaction: one write per gesture, however many
@@ -389,25 +505,26 @@ impl Panel for PreferencesPanel {
     }
 }
 
-/// The page list: one entry per panel with an editable skin.
+/// The page list: one entry per panel with an editable skin, then the shared
+/// styles (toolbar, color picker), which are always present.
 fn page_list(
     ui: &mut Ui,
     style: &PreferencesPanelStyle,
-    skins: &[PanelSkin],
-    selected: Option<PanelId>,
-) -> Option<PanelId> {
+    pages: &[PageInfo<'_>],
+    selected: Option<PageKey>,
+) -> Option<PageKey> {
     let mut chosen = selected;
     ui.spacing_mut().item_spacing = vec2(0.0, 1.0);
     let width = ui.available_width();
     let nav = style.nav_style();
 
-    for skin in skins {
-        let is_current = Some(skin.panel) == selected;
+    for page in pages {
+        let is_current = Some(page.key) == selected;
         let response = ui.add(
-            Button::new(&skin.title, &nav)
+            Button::new(page.title, &nav)
                 .width(width)
                 .selected(is_current)
-                .id(nav_id(skin.panel)),
+                .id(nav_id(page.key)),
         );
         if is_current {
             // A 2 px accent stripe reads as "this page" even when the pointer
@@ -419,7 +536,7 @@ fn page_list(
             );
         }
         if response.clicked() {
-            chosen = Some(skin.panel);
+            chosen = Some(page.key);
         }
     }
 
@@ -430,24 +547,26 @@ fn page_list(
 fn page_body(
     ui: &mut Ui,
     style: &PreferencesPanelStyle,
+    picker_style: &ColorPickerStyle,
     page: &mut PageState,
     swatches: &mut ColorSwatches,
     out: &mut UiOut,
 ) {
     let picker_before = any_color_picker_open(ui.ctx());
+    let page_key = page.key;
     let mut scroll = egui::ScrollArea::vertical()
         .id_salt("kairos-preferences-page")
         .auto_shrink([false, false])
         .show(ui, |ui| {
             ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
 
-            let Some(panel) = page.panel else {
+            if page_key.is_none() {
                 TextStyle::sized(style.path.to_egui(), style.body_size).label(
                     ui,
-                    "No panel skins to edit yet. Open a panel, then reopen Preferences.",
+                    "No skins to edit yet. Open a panel, then reopen Preferences.",
                 );
                 return;
-            };
+            }
 
             TextStyle::sized(style.title.to_egui(), style.title_size)
                 .strong()
@@ -466,7 +585,8 @@ fn page_body(
 
             let mut writer = PageWriter {
                 style,
-                panel,
+                key: page_key.expect("a page body is only drawn for a selected page"),
+                picker: picker_style,
                 page,
                 swatches,
                 out,
@@ -489,7 +609,8 @@ fn page_body(
 /// Draws one page's field tree.
 struct PageWriter<'a> {
     style: &'a PreferencesPanelStyle,
-    panel: PanelId,
+    key: PageKey,
+    picker: &'a ColorPickerStyle,
     page: &'a mut PageState,
     swatches: &'a mut ColorSwatches,
     out: &'a mut UiOut,
@@ -559,7 +680,7 @@ impl PageWriter<'_> {
         let style = self.style;
         let (rect, _) = ui.allocate_exact_size(vec2(row_width, style.group_height), Sense::hover());
         let response = ui
-            .interact(rect, group_id(self.panel, path), Sense::click())
+            .interact(rect, group_id(self.key, path), Sense::click())
             .on_hover_cursor(CursorIcon::PointingHand);
 
         let collapsed = self.page.collapsed.contains(path);
@@ -606,7 +727,7 @@ impl PageWriter<'_> {
     /// One leaf row: alternating band, left name, value box.
     fn row(&mut self, ui: &mut Ui, index: usize, depth: usize, row_width: f32, row_number: usize) {
         let style = self.style;
-        let panel = self.panel;
+        let key = self.key;
         let (rect, _) = ui.allocate_exact_size(vec2(row_width, style.row_height), Sense::hover());
         ui.painter().rect_filled(
             rect,
@@ -642,12 +763,12 @@ impl PageWriter<'_> {
 
         // The name is an interaction, not just paint: clicking it selects the
         // field, and a text field takes keyboard focus so typing starts.
-        let label_response = ui.interact(label_rect, label_id(panel, &path), Sense::click());
+        let label_response = ui.interact(label_rect, label_id(key, &path), Sense::click());
         if label_response.clicked() {
             self.page.selected = Some(path.clone());
             self.clicked = true;
             if matches!(kind, StyleKind::Text) {
-                ui.memory_mut(|memory| memory.request_focus(field_id(panel, &path)));
+                ui.memory_mut(|memory| memory.request_focus(field_id(key, &path)));
             }
         }
 
@@ -662,7 +783,8 @@ impl PageWriter<'_> {
         let outcome = draw_value(
             ui,
             style,
-            panel,
+            key,
+            self.picker,
             field,
             selected,
             edit,
@@ -681,11 +803,8 @@ impl PageWriter<'_> {
 
         if outcome.changed {
             let field = &self.page.fields[index];
-            self.out.push(Action::Style(StyleAction::SetField {
-                panel,
-                path: field.path.clone(),
-                value: field.value.clone(),
-            }));
+            self.out
+                .push(set_field_action(key, &field.path, &field.value));
             self.page.dirty = true;
         }
         if outcome.finished_edit && self.page.dirty {
@@ -694,7 +813,7 @@ impl PageWriter<'_> {
 
         // Paint the name after the value: a click on the value updates the
         // selection, and the blue label should appear in the same pass.
-        let focused = ui.memory(|memory| memory.has_focus(field_id(panel, &path)));
+        let focused = ui.memory(|memory| memory.has_focus(field_id(key, &path)));
         let editing = self
             .page
             .edit
@@ -732,7 +851,8 @@ struct ValueOutcome {
 fn draw_value(
     ui: &mut Ui,
     style: &PreferencesPanelStyle,
-    panel: PanelId,
+    key: PageKey,
+    picker: &ColorPickerStyle,
     field: &mut StyleField,
     selected: &mut Option<String>,
     edit: &mut Option<FieldEdit>,
@@ -743,7 +863,7 @@ fn draw_value(
 ) -> ValueOutcome {
     let path = field.path.clone();
     let kind = field.kind;
-    let id = field_id(panel, &path);
+    let id = field_id(key, &path);
     let hovered = ui.rect_contains_pointer(rect);
     let editing = edit.as_ref().is_some_and(|current| current.path == path);
     let active = selected.as_deref() == Some(path.as_str())
@@ -780,10 +900,10 @@ fn draw_value(
             ui, style, field, selected, clicked, rect, id, &path, active, hovered,
         ),
         StyleKind::Toggle => draw_toggle(
-            ui, style, field, selected, clicked, rect, panel, &path, active,
+            ui, style, field, selected, clicked, rect, key, &path, active,
         ),
         StyleKind::Color | StyleKind::HdrColor => draw_color(
-            ui, style, field, selected, clicked, swatches, rect, id, &path, active,
+            ui, picker, field, selected, clicked, swatches, rect, id, &path, active,
         ),
     }
 }
@@ -1064,7 +1184,7 @@ fn draw_toggle(
     selected: &mut Option<String>,
     clicked: &mut bool,
     rect: Rect,
-    panel: PanelId,
+    key: PageKey,
     path: &str,
     active: bool,
 ) -> ValueOutcome {
@@ -1074,7 +1194,7 @@ fn draw_toggle(
         pos2(rect.left() + side * 0.5, rect.center().y),
         vec2(side, side),
     );
-    let response = ui.interact(box_rect, toggle_id(panel, path), Sense::click());
+    let response = ui.interact(box_rect, toggle_id(key, path), Sense::click());
     labelled_widget_info(&response, WidgetType::Checkbox, &field.name, Some(on));
 
     let active_now = active || selected.as_deref() == Some(path);
@@ -1113,7 +1233,7 @@ fn draw_toggle(
 #[allow(clippy::too_many_arguments)]
 fn draw_color(
     ui: &mut Ui,
-    style: &PreferencesPanelStyle,
+    picker_style: &ColorPickerStyle,
     field: &mut StyleField,
     selected: &mut Option<String>,
     clicked: &mut bool,
@@ -1131,10 +1251,9 @@ fn draw_color(
         return ValueOutcome::default();
     };
 
-    let picker_style = style.color_picker_style();
     let response = ui.put(
         rect,
-        ColorField::new(id, &mut color, &picker_style)
+        ColorField::new(id, &mut color, picker_style)
             .selected(active)
             .height(rect.height())
             .swatches(swatches),
@@ -1297,9 +1416,16 @@ fn drag_speed(value: f32) -> f64 {
     (value.abs() / 50.0).clamp(0.01, 1.0) as f64
 }
 
-/// Close, right-aligned. Every edit is already written when the interaction
-/// ends, so there is nothing to apply or cancel here.
-fn footer(ui: &mut Ui, style: &PreferencesPanelStyle, rect: Rect, out: &mut UiOut) {
+/// Close, right-aligned, plus Reload on a shared page. Every edit is already
+/// written when the interaction ends, so there is nothing to apply or cancel
+/// here; Reload is the explicit "the file changed, read it again" path.
+fn footer(
+    ui: &mut Ui,
+    style: &PreferencesPanelStyle,
+    rect: Rect,
+    page: Option<PageKey>,
+    out: &mut UiOut,
+) {
     ui.scope_builder(UiBuilder::new().max_rect(rect), |ui| {
         ui.spacing_mut().item_spacing.x = 8.0;
         ui.with_layout(egui::Layout::right_to_left(Align::Center), |ui| {
@@ -1309,6 +1435,20 @@ fn footer(ui: &mut Ui, style: &PreferencesPanelStyle, rect: Rect, out: &mut UiOu
             {
                 out.push(Action::Layout(LayoutAction::ClosePanel {
                     panel: PREFERENCES,
+                }));
+            }
+
+            if let Some(PageKey::Shared(shared)) = page
+                && ui
+                    .add(Button::new("Reload", &style.button_style()).id(reload_id(shared)))
+                    .clicked()
+            {
+                // The open picker was drawn from the old file; close it
+                // rather than leave a stale window over the refreshed page.
+                egui::Popup::close_all(ui.ctx());
+                close_all_color_pickers(ui.ctx());
+                out.push(Action::SharedStyle(SharedStyleAction::Reload {
+                    style: shared,
                 }));
             }
         });
@@ -1324,6 +1464,9 @@ mod tests {
     use kairos_editor_core::EditorState;
     use kairos_editor_widgets::color_picker::color_swatch_id;
     use kairos_editor_widgets::style::Style;
+
+    use crate::shared_style::COLOR_PICKER;
+    use crate::skin::PanelSkin;
 
     struct NoHost;
 
@@ -1599,6 +1742,9 @@ mod tests {
 
         assert!(text.contains("Console"), "{text}");
         assert!(text.contains("Profiler"), "{text}");
+        // Shared styles are always listed after the live panel skins.
+        assert!(text.contains("Toolbar"), "{text}");
+        assert!(text.contains("Color Picker"), "{text}");
         // The first page's heading, file and rows.
         assert!(
             text.contains("Preferences/Styles/ConsoleStyle.ron"),
@@ -1723,16 +1869,88 @@ mod tests {
         );
     }
 
+    /// Shared styles are always available: they are pages even when no panel
+    /// is open, which is the point of moving them out of panel instances.
     #[test]
-    fn an_empty_skin_list_explains_itself() {
+    fn shared_styles_are_editable_without_any_panel_open() {
         let mut harness = Harness::new(Vec::new());
 
         let (output, _) = harness.frame(Vec::new());
+        let text = painted_text(&output);
+
+        assert!(text.contains("Color Picker"), "{text}");
+        assert!(text.contains("Toolbar"), "{text}");
+        assert!(
+            text.contains("Preferences/Styles/ColorPicker.ron"),
+            "the first shared page shows its file: {text}"
+        );
+        assert!(!text.contains("No skins to edit"), "{text}");
+    }
+
+    /// Choosing a shared page is view state, like choosing a panel page.
+    #[test]
+    fn clicking_a_shared_style_shows_its_file() {
+        let mut harness = Harness::new(skins());
+        harness.frame(Vec::new());
+
+        let (output, actions) = harness.click(nav_id(COLOR_PICKER));
+        let text = painted_text(&output);
 
         assert!(
-            painted_text(&output).contains("No panel skins to edit"),
-            "{}",
-            painted_text(&output)
+            text.contains("Preferences/Styles/ColorPicker.ron"),
+            "{text}"
+        );
+        assert!(
+            actions.is_empty(),
+            "choosing a page is view state, not an action: {actions:?}"
+        );
+    }
+
+    /// Shared edits use the separate action path: they have no panel instance
+    /// to route a SetField or Commit to.
+    #[test]
+    fn a_dirty_shared_page_commits_through_the_shared_action() {
+        let mut out = UiOut::new();
+        let mut page = PageState {
+            key: Some(PageKey::Shared(COLOR_PICKER)),
+            dirty: true,
+            ..PageState::default()
+        };
+
+        page.commit(&mut out);
+
+        assert_eq!(
+            out.take(),
+            vec![Action::SharedStyle(SharedStyleAction::Commit {
+                style: COLOR_PICKER
+            })]
+        );
+
+        let value = StyleValue::Float(0.9);
+        assert_eq!(
+            set_field_action(PageKey::Shared(COLOR_PICKER), "border_width", &value),
+            Action::SharedStyle(SharedStyleAction::SetField {
+                style: COLOR_PICKER,
+                path: "border_width".to_owned(),
+                value,
+            })
+        );
+    }
+
+    /// Reload is the explicit refresh path for a shared page whose file was
+    /// edited outside the editor.
+    #[test]
+    fn a_shared_page_reload_button_asks_the_registry_to_re_read_the_file() {
+        let mut harness = Harness::new(Vec::new());
+        harness.frame(Vec::new());
+
+        let (_, actions) = harness.click(reload_id(COLOR_PICKER));
+
+        assert_eq!(
+            actions,
+            vec![Action::SharedStyle(SharedStyleAction::Reload {
+                style: COLOR_PICKER
+            })]
         );
     }
 

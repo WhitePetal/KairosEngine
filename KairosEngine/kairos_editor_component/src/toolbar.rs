@@ -5,9 +5,10 @@
 //! [`Frame`], draws with the widget kit, and pushes [`Action`]s into [`UiOut`].
 //! It never mutates `EditorState` and never performs IO at draw time.
 //!
-//! Appearance comes from [`ToolBarStyle`] (loaded from
-//! `Preferences/Styles/ToolBar.ron` once, when the app builds the toolbar). The
-//! tokens are projected onto reusable widget styles
+//! Appearance comes from [`ToolBarStyle`], a shared style the app loads once
+//! from `Preferences/Styles/ToolBar.ron` and hands down through [`Frame`]. The
+//! toolbar never owns the skin, so a Preferences edit is visible on the next
+//! pass. The tokens are projected onto reusable widget styles
 //! (`ButtonStyle` / `MenuStyle`); the drawing itself is done by
 //! `kairos_editor_widgets::button` and `kairos_editor_widgets::menu`, so this
 //! file only wires labels, actions and the two style projections.
@@ -16,48 +17,27 @@ use egui::{Panel, Ui};
 use kairos_editor_core::{Action, AppAction, LayoutAction, PanelId};
 use kairos_editor_widgets::color::ColorExt;
 use kairos_editor_widgets::menu;
-use kairos_editor_widgets::style::{Style, StyleFile};
-use kairos_editor_widgets::ui_image;
 use kairos_profile::Category;
 
-use crate::toolbar::style::ToolBarStyle;
 use crate::{Frame, UiOut, panels};
 
 pub mod style;
 
-pub struct ToolBar {
-    style: ToolBarStyle,
-}
+#[derive(Default)]
+pub struct ToolBar;
 
 impl ToolBar {
-    pub fn new(ctx: &egui::Context) -> Self {
-        let style = match StyleFile::<ToolBarStyle>::load_or_default() {
-            Ok(file) => {
-                if ctx.theme() == egui::Theme::Light {
-                    file.light
-                } else {
-                    file.dark
-                }
-            }
-            Err(error) => {
-                kairos_log::warn!(target: "kairos_editor", "toolbar style: {error}");
-                ToolBarStyle::dark()
-            }
-        };
-
-        // Runtime images are preloaded once, before the first frame, so the
-        // first paint does not show a missing logo.
-        for path in style.icons.all() {
-            ui_image::preload(ctx, path);
-        }
-
-        Self { style }
+    pub fn new() -> Self {
+        Self
     }
 
-    pub fn ui(&mut self, ui: &mut Ui, _frame: &Frame, out: &mut UiOut) {
+    pub fn ui(&mut self, ui: &mut Ui, frame: &Frame, out: &mut UiOut) {
         kairos_profile::scope!(Category::Editor, "Kairos.Editor.ToolBar");
 
-        let style = &self.style;
+        // The style lives in the app's shared-style registry, so a Preferences
+        // edit is visible on the next pass without telling the toolbar to
+        // reload anything.
+        let style = frame.toolbar_style();
         let button = style.button_style();
         let menu_style = style.menu_style();
 
@@ -163,25 +143,10 @@ mod tests {
         }
     }
 
-    /// `ToolBar::new` seeds the style file on first load; point it at a scratch
-    /// directory so the test does not create `Preferences/` in the crate.
-    fn use_scratch_styles() {
-        static DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
-        let root = DIR.get_or_init(|| {
-            let root = std::env::temp_dir()
-                .join(format!("kairos-component-styles-{}", std::process::id()));
-            let _ = std::fs::remove_dir_all(&root);
-            let _ = std::fs::create_dir_all(&root);
-            root
-        });
-        kairos_editor_widgets::style::set_style_root(root);
-    }
-
     #[test]
     fn toolbar_draws_the_menu_bar_without_panicking() {
-        use_scratch_styles();
         let ctx = Context::default();
-        let mut toolbar = ToolBar::new(&ctx);
+        let mut toolbar = ToolBar::new();
         let state = EditorState::new();
         let host = EmptyHost;
         let frame = Frame::with_host(&state, &host);

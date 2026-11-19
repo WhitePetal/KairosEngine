@@ -1,9 +1,9 @@
 //! Toolbar appearance tokens.
 //!
 //! Kept as pure data so it can be persisted to
-//! `Preferences/Styles/ToolBar.ron` (dark + light) and later edited from
-//! Preferences. The component projects these tokens onto the widget-layer
-//! [`kairos_editor_widgets::button::ButtonStyle`] and
+//! `Preferences/Styles/ToolBar.ron` (dark + light) and edited from the
+//! Preferences panel's shared-style page. The component projects these tokens
+//! onto the widget-layer [`kairos_editor_widgets::button::ButtonStyle`] and
 //! [`kairos_editor_widgets::menu::MenuStyle`] at draw time; the widgets never
 //! read this file themselves.
 
@@ -14,10 +14,15 @@ use kairos_editor_widgets::color::ColorExt;
 use kairos_editor_widgets::menu::MenuStyle;
 use kairos_editor_widgets::style::Style;
 use kairos_editor_widgets::text::TextStyle;
+use kairos_editor_widgets::ui_image;
 use serde::{Deserialize, Serialize};
 
+use crate::shared_style::SharedStyle;
+use crate::skin::StyleFields;
+
 /// Appearance of the editor's top menu bar and its dropdown menus.
-#[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize, StyleFields)]
+#[SharedStyle(TOOLBAR = "toolbar", title = "Toolbar")]
 pub struct ToolBarStyle {
     pub icons: ToolBarIconPaths,
 
@@ -47,7 +52,7 @@ pub struct ToolBarStyle {
 /// Dropdown appearance. Values mirror Unity/Tuanjie 2022.3 dark: a #2d2d2d
 /// square popup, 22 px rows, 1 px #4f4f4f separators and the Unity blue
 /// selection highlight.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, StyleFields)]
 pub struct ToolBarMenuStyle {
     pub background_color: Color,
     pub item_hover_color: Color,
@@ -170,6 +175,14 @@ impl ToolBarStyle {
     }
 }
 
+impl SharedStyle for ToolBarStyle {
+    fn preload(&self, ctx: &egui::Context) {
+        for path in self.icons.all() {
+            ui_image::preload(ctx, path);
+        }
+    }
+}
+
 fn default_hover_color() -> Color {
     Color::from_srgb8([0x46, 0x46, 0x46, 255])
 }
@@ -186,7 +199,7 @@ fn default_icon_size() -> f32 {
     16.0
 }
 
-#[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize, StyleFields)]
 pub struct ToolBarIconPaths {
     pub about: String,
 }

@@ -147,6 +147,11 @@ fn channel_u8(channel: f32) -> u8 {
 }
 
 /// Visual tokens for a color field and its picker.
+///
+/// Editor call sites should take this from the shared skin
+/// (`Frame::color_picker_style()`) rather than building one, so the project has
+/// one picker look. The fields stay public for widget tests and standalone
+/// consumers.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ColorPickerStyle {
     pub text: TextStyle,
@@ -174,7 +179,7 @@ pub struct ColorPickerStyle {
     pub checker_light: Color32,
     pub checker_dark: Color32,
     /// Runtime image under `Preferences/Textures`, tinted by the style.
-    pub eyedropper_icon: &'static str,
+    pub eyedropper_icon: String,
     pub border_width: f32,
     pub corner_radius: u8,
     pub window_width: f32,
@@ -227,8 +232,8 @@ impl ColorPickerStyle {
             window_controls: WindowControlsStyle::default(),
             checker_light: Color32::from_rgb(0xC8, 0xC8, 0xC8),
             checker_dark: Color32::from_rgb(0x8C, 0x8C, 0x8C),
-            eyedropper_icon: "Preferences/Textures/color_picker/eyedropper.png",
-            border_width: 1.0,
+            eyedropper_icon: "Preferences/Textures/color_picker/eyedropper.png".to_owned(),
+            border_width: 0.7,
             corner_radius: 0,
             window_width: 260.0,
             title_height: 28.0,
@@ -657,7 +662,7 @@ fn paint_color_field(
         crate::ui_image::paint(
             ui,
             icon,
-            style.eyedropper_icon,
+            &style.eyedropper_icon,
             if hovered { style.value } else { style.label },
         );
     }
@@ -1624,7 +1629,7 @@ fn preview_row(
         crate::ui_image::paint(
             ui,
             icon,
-            style.eyedropper_icon,
+            &style.eyedropper_icon,
             if eye.hovered() {
                 style.value
             } else {

@@ -30,6 +30,11 @@ use kairos_editor_widgets::color_picker::ColorProperty;
 use kairos_editor_widgets::style::{Style, StyleFile};
 
 /// Derive macro: generates [`StyleNode`] and [`StyleFields`] for a style struct.
+///
+/// With `#[SharedStyle(...)]` it also declares the type as a
+/// [`SharedStyle`](crate::shared_style::SharedStyle): id constant, sealed
+/// erasure and the `SharedStyleDef` submission are generated, and the type
+/// implements only `preload`.
 pub use kairos_editor_component_macros::StyleFields;
 
 /// The editor a field needs.

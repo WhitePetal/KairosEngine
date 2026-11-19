@@ -6,8 +6,10 @@
 //! `editor-core-prototype` crate (`prototypes/editor-ui/crates/editor-core`).
 //! It currently carries the layout slice (`LayoutState` + `LayoutAction`), the
 //! app lifecycle slice (quit: `AppAction`/`AppEffect`, no state of its own)
-//! and the style slice (panel skins: `StyleAction`/`StyleEffect`, also no
-//! state — a skin belongs to the panel that draws from it);
+//! and the style slices (panel skins and editor-shell shared styles:
+//! `StyleAction`/`StyleEffect` and `SharedStyleAction`/`SharedStyleEffect`,
+//! also no state — a skin belongs to the panel or shell value that draws from
+//! it);
 //! document/selection/viewport slices land here as the editor grows, with the
 //! prototype's `reduce/` split.
 //!
@@ -34,9 +36,9 @@ pub mod reduce;
 pub mod state;
 pub mod style;
 
-pub use action::{Action, AppAction, LayoutAction, StyleAction};
-pub use effect::{AppEffect, Effect, LayoutEffect, StyleEffect};
+pub use action::{Action, AppAction, LayoutAction, SharedStyleAction, StyleAction};
+pub use effect::{AppEffect, Effect, LayoutEffect, SharedStyleEffect, StyleEffect};
 pub use panel::{PanelId, PanelInstanceId};
 pub use reduce::reduce;
 pub use state::{EditorState, LayoutState};
-pub use style::StyleValue;
+pub use style::{SharedStyleId, StyleValue};

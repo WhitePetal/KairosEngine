@@ -101,6 +101,7 @@ StyleFields::set_style_field(path, value)
 - 每个字段生成 `"父路径.字段名"` 和一个 `match` 分支；嵌套结构体（`icons`）自己也要 derive，于是 `icons.warning` 自然出现，父结构体不需要知道 `icons` 是分组。
 - **控件种类由字段类型决定**：`f32` → Float（DragValue，速度按数量级）、`u8/u16/u32/usize` → Integer（带类型上限）、`bool` → Toggle、`String` → Text、`Color` → Color、`ColorProperty` → Color 或 HDR Color（看 usage）、`Vec<T>` → 按下标展开（Profiler 的 `category_palette`），`#[style(skip)]` 排除非 token 字段。
 - 旧实现的「字段名 + 手工范围」不见了：名字来自字段名（`toolbar_bg` → “Toolbar bg”），范围来自类型。
+- `#[SharedStyle(CONST = "id", title = "Page")]` 是可选声明：额外生成 id 常量、crate-private seal 和 `SharedStyleDef` 提交；类型只写 `preload`。见 §2.5。
 
 **为什么用 derive 而不是手写字段列表**：手写列表每加一个 token 就要同步一次，正是旧 `get_style_fileds`/`update_style` 漂移的根源。宏在编译期从结构体本身生成，漏写不可能发生。
 
@@ -129,19 +130,31 @@ StyleFields::set_style_field(path, value)
 
 - 面板的规则：**有未保存编辑 + 指针抬起** → 发 `Commit`；切页前、关闭前各提交一次（`Panel::on_close` 兜底键盘输入）。
 - `Panel::save_skin` 只写**当前主题那一半**：先读文件的另一半，替换本半再写回，所以编辑 dark 不会丢掉手改过的 light；文件不存在就用代码默认值补一份。
+- shared 样式（Toolbar / Color Picker）走同一套手势边界，但 effect 是 `Effect::SharedStyle`：`SetField` 写 `SharedStyles` 的 live 值，`Persist` 写 `<Style>.ron`，`Reload` 重读文件并 bump revision。它们没有面板实例，所以 action 的目标是 `SharedStyleId` 而不是 `PanelId`。
 - `SetField` 不写 console 日志（一次拖动 60 行），`Commit` 写；`describe` 仍为每个 action 提供人读文本。
 
-### 2.5 页面列表：活着的面板
+### 2.5 共享样式页：Toolbar / Color Picker
 
-`Frame::skins` 携带 `[PanelSkin]`（`panel/title/file/fields`；`title` 是 `Panel::title` 的文本），由 app 在每帧 `sync` 时、仅当 Preferences 打开时调用 `PanelHost::skins(&state)` 生成。列表因此是：
+工具栏和取色器不是 `Panel`（没有实例，也没有 `Panel::init`），但它们的样式同样需要一份 RON、一份 live 值和 Preferences 页。它们走 **shared style** 路径，而不是 `PanelSkin` 路径：
 
-`About`（打开过才有）、`Console`、`Profiler`、`Preferences` —— 后三者默认在场（Preferences 就是自己）。
+- `kairos_editor_component/src/shared_style.rs` + `shared_style/`：根文件放 `SharedStyle` trait 与 re-export；`catalog.rs` 放 `SharedStyleDef` / `StyleCatalog`（inventory 注册，对应 `#[panel]` 的 `PanelDef`）；`registry.rs` 放 `SharedStyles` 注册表和 `SharedSkin` 字段表；`color_picker.rs` 放取色器 skin。
+- `ToolBarStyle` 与 `ColorPickerSkin` 在 `#[derive(StyleFields)]` 上加 `#[SharedStyle(TOOLBAR = "toolbar", title = "Toolbar")]`：宏生成 id 常量、sealed erasure impl 和 `inventory` 提交；类型只写 `impl SharedStyle for <Style> { fn preload(...) }`，`as_any` 不再手写。文件仍是 `Preferences/Styles/ToolBar.ron` / `ColorPicker.ron`（dark + light）。取色器的 42 个运行期 token 先落成 serde 友好的 `ColorPickerSkin`，再由 `tokens()` 投影到 widget 层。
+- app 在 `EditorApp::new` 的 `set_theme(Dark)` 之后 `SharedStyles::load(&StyleCatalog::builtin(), theme)` 一次；`Frame::shared` 把 live 值下发给所有面板，工具栏用 `frame.toolbar_style()`，取色器用 `frame.color_picker_style()`。
+- Preferences 在面板页之后固定追加 shared 页（Toolbar、Color Picker）；字段表来自 `SharedStyles::skins()`，不依赖任何面板实例，所以没有打开面板时也能编辑。
+- 写路径是独立的 `Action::SharedStyle(SharedStyleAction::{SetField, Commit, Reload})` → `Effect::SharedStyle` → `SharedStyles::{set_field, save, reload}`。`Commit` 仍然一次手势写一次文件；`Reload` 是显式刷新（页脚 Reload 按钮），reload 会 bump `SharedStyles::revision`，Preferences 下一帧重新取字段表。
+- 取色器的 `window_controls`（红黄绿）不进 `ColorPicker.ron`：继续用共享的 `WindowControlsStyle::default()`，和 dock 浮动窗一致，直到 window-controls 自己有 skin。
 
-**为什么不是「所有组件」**：0.2.0 的样式只在 `Panel::init` 时载入并属于实例；没打开的面板没有实例可改。旧窗口能列出关闭的窗口，是因为它在启动时就实例化了所有 drawer，而这正是 0.2.0 刻意去掉的（「没人打开的面板不构造」）。要覆盖「未打开的面板」，需要把样式从实例里拆出来（catalog §C17 的 `StyleState`），不在本次范围。
+### 2.6 页面列表：活着的面板 + 固定 shared 页
 
-**没有 ToolBar 页**：工具栏是 app chrome，不是 `Panel`，没有 `skin()` 入口；它仍然可以通过 `Preferences/Styles/ToolBar.ron` 手改。这是与旧窗口唯一的功能差集，记为后续（把 `ToolBar` 也接进同一个字段协议即可，接口已经就绪）。
+`Frame::skins` 携带活着的面板的 `[PanelSkin]`（`panel/title/file/fields`；`title` 是 `Panel::title` 的文本），由 app 在每帧 `sync` 时、仅当 Preferences 打开时调用 `PanelHost::skins(&state)` 生成。`Frame::shared` 携带 `SharedStyles`，Preferences 把它的 `SharedSkin` 页固定追加在面板页之后。列表因此是：
 
-### 2.6 版面与交互（Unity Inspector 样式）
+面板页：`About`（打开过才有）、`Console`、`Profiler`、`Preferences` —— 后三者默认在场（Preferences 就是自己）；shared 页：`Toolbar`、`Color Picker`，始终在场。
+
+**为什么不是「所有面板」**：0.2.0 的面板样式只在 `Panel::init` 时载入并属于实例；没打开的面板没有实例可改。旧窗口能列出关闭的窗口，是因为它在启动时就实例化了所有 drawer，而这正是 0.2.0 刻意去掉的（「没人打开的面板不构造」）。shared 样式没有实例，所以它们的页始终可编辑；未打开的面板仍需要把样式从实例里拆出来（catalog §C17 的 `StyleState`），不在本次范围。
+
+**Toolbar 现在是 shared 页**：工具栏不是 `Panel`，但它实现 `SharedStyle`，由 app 启动时加载，Preferences 通过 shared 页编辑；工具栏本身每帧从 `Frame` 读，不再自己加载或持有皮肤。
+
+### 2.7 版面与交互（Unity Inspector 样式）
 
 ```text
 ┌─ 页面列表 (118) ─┬─ 页面 ────────────────────────────────┐
@@ -181,24 +194,27 @@ StyleFields::set_style_field(path, value)
 
 | 文件 | 变更 | 职责 |
 |---|---|---|
-| `kairos_editor_component/macros/`（新 crate） | 新增 | `#[derive(StyleFields)]`：从结构体字段生成字段表与按路径写入 |
+| `kairos_editor_component/macros/`（新 crate） | 新增 | `#[derive(StyleFields)]`：从结构体字段生成字段表与按路径写入；`#[SharedStyle(...)]` 生成 id 常量、sealed erasure 和 `SharedStyleDef` 提交 |
 | `kairos_editor_component/src/skin.rs` | 新增 | `StyleValue` 桥接、`StyleField`/`StyleKind`、`StyleNode`/`StyleFields` 与叶子类型实现、`PanelSkin`、`save_skin`、`humanize` |
-| `kairos_editor_core/src/style.rs` | 新增 | `StyleValue`（core 只认识值，不认识 egui） |
-| `kairos_editor_core/src/action.rs` / `effect.rs` / `reduce/style.rs` | 改/新增 | `Action::Style`、`StyleAction::{SetField,Commit}`、`Effect::Style`、`StyleEffect::{SetField,Persist}`、路由 |
+| `kairos_editor_core/src/style.rs` | 新增 | `StyleValue` + `SharedStyleId`（core 只认识值，不认识 egui） |
+| `kairos_editor_core/src/action.rs` / `effect.rs` / `reduce/{style,shared_style}.rs` | 改/新增 | `Action::Style`、`StyleAction::{SetField,Commit}`、`Effect::Style`、`StyleEffect::{SetField,Persist}`；shared 样式另有 `SharedStyleAction::{SetField,Commit,Reload}` / `SharedStyleEffect::{SetField,Persist,Reload}` |
 | `kairos_editor_component/src/panel.rs` | 改 | `Panel::{skin,set_skin_field,save_skin}`（默认无皮肤） |
 | `kairos_editor_component/src/panel/host.rs` | 改 | `skins`/`set_skin_field`/`save_skin` |
-| `kairos_editor_component/src/frame.rs` | 改 | `Frame::skins` + `with_skins` |
-| `kairos_editor_component/src/panels/preferences.rs` | 新增 | 页面列表、页、分组行、控件、保存边界、单测 |
-| `kairos_editor_component/src/panels/preferences/style.rs` | 新增 | `PreferencesPanelStyle`（自身也 derive，可编辑自己）+ 参考皮肤往返测试；颜色 token 映射到 `ColorPickerStyle` |
+| `kairos_editor_component/src/shared_style.rs` + `shared_style/{catalog,registry,color_picker}.rs` | 新增 | `SharedStyle`；`SharedStyleDef` / `StyleCatalog`；`SharedStyles` / `SharedSkin`；`ColorPickerSkin`（serde + `StyleFields` + `tokens()` 投影） |
+| `kairos_editor_component/src/frame.rs` | 改 | `Frame::skins` + `with_skins`；`Frame::shared` + `with_shared`；`toolbar_style()` / `color_picker_style()` |
+| `kairos_editor_component/src/panels/preferences.rs` | 新增/改 | 页面列表（面板页 + 固定 shared 页）、页、分组行、控件、保存边界、shared 页的 Reload、单测 |
+| `kairos_editor_component/src/panels/preferences/style.rs` | 新增/改 | `PreferencesPanelStyle`（自身也 derive，可编辑自己）+ 参考皮肤往返测试；不再投影 `ColorPickerStyle` |
 | `kairos_editor_widgets/src/color_picker.rs` | 新增 | 自有的 Unity 风格 LDR/HDR 颜色字段与取色器：色相环、SV 方块、通道滑杆、hex、Intensity、Swatches |
 | `kairos_color/src/linear.rs` | 新增 | `Color`（8 字节 linear f16×4，可超过 1）、`ColorUsage`/`ColorProperty`/`ColorSpace`、sRGB 传输函数与 round-trip 测试 |
 | `kairos_editor_component/src/panels/{about,console,profiler}.rs` + `*/style.rs` | 改 | 样式 derive；三个 `Panel` 方法（皮肤快照 / 写字段 / 存文件） |
 | `kairos_editor_component/src/panels.rs` | 改 | `PREFERENCES` 条目；面板数量 7 → 8 |
-| `kairos_editor_component/src/toolbar.rs` | 改 | `todo!()` → `ShowPanel { PREFERENCES }` |
-| `kairos_editor_component/src/lib.rs` | 改 | 导出 `skin` 类型；`extern crate self` 供 derive 使用；模块文档 |
-| `kairos_editor_app/src/{app,effects}.rs` | 改 | 快照 `Frame::skins`（仅 Preferences 打开时）；`Effect::Style` 执行；`describe` |
+| `kairos_editor_component/src/toolbar.rs` | 改 | `todo!()` → `ShowPanel { PREFERENCES }`；工具栏改为从 `Frame` 读 shared 皮肤，不再自己加载 |
+| `kairos_editor_component/src/toolbar/style.rs` | 改 | `ToolBarStyle` derive `StyleFields` + `#[SharedStyle(...)]`；只保留 `preload` |
+| `kairos_editor_component/src/lib.rs` | 改 | 导出 `skin` / `shared_style` 类型；`extern crate self` 供 derive 使用；模块文档 |
+| `kairos_editor_app/src/{app,effects}.rs` | 改 | 启动时 `SharedStyles::load` + preload；快照 `Frame::skins`（仅 Preferences 打开时）；`Frame::shared` 下发；`Effect::Style` / `Effect::SharedStyle` 执行；`describe` |
 | `KairosEngine/Cargo.toml` | 改 | 新成员 `kairos_editor_component/macros` |
 | `Preferences/Styles/PreferencesPanel.ron` | 新增 | 参考皮肤（dark + light），与代码默认值逐字段相等的往返测试钉住 |
+| `Preferences/Styles/ColorPicker.ron` | 新增 | 取色器的共享参考皮肤（dark + light），与 `ColorPickerSkin` 代码默认值逐字段相等 |
 
 ---
 
@@ -222,9 +238,10 @@ StyleFields::set_style_field(path, value)
 
 ## 5. 测试与验收
 
-**core（12 个）**
+**core（12 个 + shared）**
 
 1. `SetField` → 恰好一条 `Effect::Style(SetField)`；`Commit` → `Persist`；两个 action 都不改 `EditorState`。
+1b. `SharedStyleAction::{SetField,Commit,Reload}` → 对应 `Effect::SharedStyle`；同样不改 `EditorState`。
 
 **component**
 
@@ -236,6 +253,8 @@ StyleFields::set_style_field(path, value)
 7. Preferences 自己的 `skin()` 可列出 `nav_width`、`row_odd` 等 token（可编辑自己）。
 8. host：`skins()` 只包含活着的面板；未知路径/错误类型被拒绝；写入后快照反映新值；未打开的面板没有皮肤。
 9. 参考皮肤 `PreferencesPanel.ron` 与代码默认值逐字段相等。
+9b. `StyleCatalog::builtin()` 注册 Toolbar / Color Picker；`SharedStyles::skins()` 给出两页字段表；`ColorPicker.ron` 与 `ColorPickerSkin` 默认值逐字段相等；`tokens()` 保持 0.7 边框、13 px 标题和共享 traffic lights。
+9c. 所有面板关闭时 shared 页仍然存在且可编辑；shared 编辑发 `Action::SharedStyle(SetField)`/`Commit`；Reload 按钮发 `Reload`，reload 后 `revision` 让页面重新取字段表。
 10. foldout：每个嵌套 struct 是整行可点的组头；点 `icons` 只隐藏该组，点 `icons.textures` 只隐藏 Tint，动作列表为空。
 11. Zebra：叶子行按 `row_odd` / `row_even` 交替；组头用 `group_background`，不参与交替。
 12. 对齐：不同宽度的 root 标签左边缘一致；组内标签按 `group_indent` 逐级缩进；值列左边缘不随深度改变；窄面板仍是两列且在窗口内。
@@ -250,7 +269,7 @@ StyleFields::set_style_field(path, value)
 
 **app**
 
-21. Preferences 通过 `ShowPanel` 浮成第二个 surface；打开时 `app.skins` 含 Console/Profiler/Preferences，不含未打开的 About；关闭时不快照。
+21. Preferences 通过 `ShowPanel` 浮成第二个 surface；打开时 `app.skins` 含 Console/Profiler/Preferences，不含未打开的 About；关闭时不快照。shared 样式在 `EditorApp::new` 里 load + preload；`Effect::SharedStyle` 的 SetField 写进 `SharedStyles`，Commit 写 `ColorPicker.ron`/`ToolBar.ron`。
 22. `SetField{console, toolbar_height, 30.0}` → Console 的 live style 变成 30；**不写文件**；`Commit` 后 `ConsoleStyle.ron` 里出现 `toolbar_height: 30.0`。
 
 **静态门**：`cargo check --workspace --all-targets` 干净；四个 crate 的 `fmt --check` 干净；clippy 无新增告警。
@@ -259,13 +278,13 @@ StyleFields::set_style_field(path, value)
 
 ## 6. 已知边界 / 后续
 
-1. **ToolBar 不在页面列表里**：它是 app chrome，不是 `Panel`。接进来的方式很直接（给 `ToolBar` 同样的三个方法，并由 app 把它的 `PanelSkin` 追加到 `Frame::skins`），但工具栏的生命周期在 app 而不是 host，本次没做。
-2. **只能编辑已打开的面板**：原因见 §2.5。要覆盖关闭的面板需要 `StyleState`（状态树持有样式文档），属 catalog §C17。
-3. **只显示当前主题的那一半皮肤**：面板在 `init` 里按 `ctx.theme()` 选 skin（主题被 app 钉为 Dark）。页面编辑 dark；保存时保留 light。等浅色皮肤启用后再做主题切换。
+1. **ToolBar / Color Picker 是 shared 页，不是 `PanelSkin` 页**：它们没有面板实例，由 `SharedStyles` 注册表持有，Preferences 固定追加它们的页。将来第三个 chrome 样式（例如 window controls）只需 `#[derive(StyleFields)]` + `#[SharedStyle(...)]` 并写 `preload`，页面和保存路径自动出现（若面板要读它，再在 `Frame` 加一个 typed accessor）。
+2. **面板页仍只能编辑已打开的面板**：原因见 §2.6。要覆盖关闭的面板需要 `StyleState`（状态树持有样式文档），属 catalog §C17；shared 页不受这个限制。
+3. **只显示当前主题的那一半皮肤**：面板在 `init` 里、shared 在 `SharedStyles::load` 里按 `ctx.theme()` 选 skin（主题被 app 钉为 Dark）。页面编辑 dark；保存时保留 light。等浅色皮肤启用后再做主题切换（shared 需要重新 load/选半套）。
 4. **没有单字段「恢复默认」**：需要 `StyleEffect::ResetField`（把代码默认值与字段路径对齐），等有第二个使用场景再加。
 5. **键盘提交点**：键入触发 `SetField`（宿主下一帧生效）；`Commit` 在指针抬起、行内数字编辑结束（Enter / 失焦）、color hex/数值的 Enter/Esc、关窗或切页时发生。纯键盘编辑文本字段（不点鼠标）仍要等失焦/关窗才写盘。
 6. **拖拽速度是启发式的**：`speed = clamp(|value| / 50, 0.01, 1.0)`，对大多数尺寸合适；某些 token（颜色分量之外的极小值）可能偏慢，后续可以按字段加 hint。
-7. **面板列表的花费**：Preferences 打开时每帧重新快照所有字段（现在约 3 个面板、~180 个字段）。这些分配只在编辑器自己的设置窗口开着时发生；若将来面板/字段数量上来了，改成「页面切换时刷新」即可。
+7. **页面列表的花费**：Preferences 打开时每帧重新快照所有字段（现在约 3 个面板 + 2 个 shared 页、~240 个字段；shared 字段表由 `SharedStyles::skins()` 即时生成）。这些分配只在编辑器自己的设置窗口开着时发生；若将来面板/字段数量上来了，改成「页面切换时刷新」即可。
 8. **吸管不能采屏**：picker 的位置和 Unity 的 `EyeDropper.Large` 图标已经接入，但 `egui_winit` 的 screenshot 请求目前被宿主忽略（没有 framebuffer readback），所以点击只显示说明。要真正采屏，需要宿主把 screenshot 结果回灌为 `egui::Event::Screenshot`，或引擎暴露颜色附件读回。
 9. **HDR 数据面**：`Color` / `ColorProperty` 已经端到端打通并有组件测试；`StyleValue::HdrColor` / `StyleKind::HdrColor` 仍是皮肤协议里的线性颜色 kind。现有面板皮肤都是 LDR，所以正常 Preferences 页面暂时看不到 HDR 行；它会在材质/发射色 token 接入后出现。
 
