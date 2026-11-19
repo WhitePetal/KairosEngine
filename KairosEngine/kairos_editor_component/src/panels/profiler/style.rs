@@ -69,6 +69,17 @@ pub struct ProfilerStyle {
     pub module_gpu_height: f32,
     /// Height of one module's title row.
     pub module_header_height: f32,
+    /// Box of a module's badge, the CPU/GPU mark in its title row, and the
+    /// inset/gap that place it. The badge's centre lines up with the legend
+    /// swatches below it and the title with the legend labels, so a card reads
+    /// as one column. The artwork is the @2x file for this box, and both marks
+    /// are drawn to the same optical size inside it — the chip fills the box,
+    /// the display is as wide and shorter by its stand — so CPU and GPU read as
+    /// a pair instead of one icon looking smaller than the other.
+    pub module_badge_width: f32,
+    pub module_badge_height: f32,
+    pub module_badge_inset: f32,
+    pub module_badge_gap: f32,
     /// Width of the module name/legend column.
     pub module_name_width: f32,
     /// Height of one legend row.
@@ -188,6 +199,10 @@ impl Style for ProfilerStyle {
             module_cpu_height: 169.0,
             module_gpu_height: 120.0,
             module_header_height: 20.0,
+            module_badge_width: 14.0,
+            module_badge_height: 14.0,
+            module_badge_inset: 5.0,
+            module_badge_gap: 5.0,
             module_name_width: 180.0,
             legend_row_height: 14.0,
             window_fram_count: 300,
@@ -262,6 +277,10 @@ impl Style for ProfilerStyle {
             module_cpu_height: 169.0,
             module_gpu_height: 120.0,
             module_header_height: 20.0,
+            module_badge_width: 14.0,
+            module_badge_height: 14.0,
+            module_badge_inset: 5.0,
+            module_badge_gap: 5.0,
             module_name_width: 180.0,
             legend_row_height: 14.0,
             window_fram_count: 300,
@@ -340,7 +359,8 @@ fn unity_category_palette() -> Vec<Color32> {
 }
 
 /// Runtime icon file paths for the Profiler panel, relative to the editor's
-/// working directory (Unity's toolbar transport artwork, both skins).
+/// working directory: Unity's toolbar transport artwork plus the module badges
+/// (the editor's own marks, which replace the painted CPU/GPU letters).
 #[derive(Clone, Serialize, Deserialize, StyleFields)]
 pub struct ProfilerIconPaths {
     pub tab: String,
@@ -349,6 +369,11 @@ pub struct ProfilerIconPaths {
     pub prev_frame: String,
     pub next_frame: String,
     pub current_frame: String,
+    /// The CPU/GPU mark in each module's title row. Unity ships this artwork
+    /// per module; these are the editor's own @2x badge files, pre-coloured
+    /// for their skin like every other icon here.
+    pub cpu_badge: String,
+    pub gpu_badge: String,
 }
 
 impl ProfilerIconPaths {
@@ -360,6 +385,8 @@ impl ProfilerIconPaths {
             prev_frame: "Preferences/Textures/anim/prev_frame.png".to_owned(),
             next_frame: "Preferences/Textures/anim/next_frame.png".to_owned(),
             current_frame: "Preferences/Textures/anim/current_frame.png".to_owned(),
+            cpu_badge: "Preferences/Textures/profiler/cpu.png".to_owned(),
+            gpu_badge: "Preferences/Textures/profiler/gpu.png".to_owned(),
         }
     }
 
@@ -371,11 +398,13 @@ impl ProfilerIconPaths {
             prev_frame: "Preferences/Textures/anim/light/prev_frame.png".to_owned(),
             next_frame: "Preferences/Textures/anim/light/next_frame.png".to_owned(),
             current_frame: "Preferences/Textures/anim/light/current_frame.png".to_owned(),
+            cpu_badge: "Preferences/Textures/profiler/light/cpu.png".to_owned(),
+            gpu_badge: "Preferences/Textures/profiler/light/gpu.png".to_owned(),
         }
     }
 
     /// All paths in deterministic order, for preloading in `Panel::init`.
-    pub fn all(&self) -> [&str; 6] {
+    pub fn all(&self) -> [&str; 8] {
         [
             &self.tab,
             &self.record_on,
@@ -383,6 +412,8 @@ impl ProfilerIconPaths {
             &self.prev_frame,
             &self.next_frame,
             &self.current_frame,
+            &self.cpu_badge,
+            &self.gpu_badge,
         ]
     }
 }
@@ -410,6 +441,13 @@ mod tests {
             assert!(style.level_height > 0.0);
             assert!(style.module_cpu_height > 0.0);
             assert!(style.module_gpu_height > 0.0);
+            // A badge taller than its title row would paint over the legend
+            // below it; a zero-width one would drop the module's identity.
+            assert!(style.module_badge_width > 0.0);
+            assert!(style.module_badge_height > 0.0);
+            assert!(style.module_badge_height <= style.module_header_height);
+            assert!(style.module_badge_gap >= 0.0);
+            assert!(style.module_badge_inset >= 0.0);
             assert!(style.scrollbar_width > 0.0);
             assert!(style.scrollbar_handle_width > 0.0);
             assert_eq!(

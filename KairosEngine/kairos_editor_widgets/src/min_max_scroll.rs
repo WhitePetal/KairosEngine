@@ -144,7 +144,7 @@ impl<'a> MinMaxScroll<'a> {
         }
     }
 
-    /// Give the thumb a resize grip at each end (Unity's zoom handles).
+    /// Give the thumb a resize grip at each end.
     pub fn resizable(mut self, resizable: bool) -> Self {
         self.resizable = resizable;
         self

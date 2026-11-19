@@ -1,8 +1,16 @@
-use egui::{CornerRadius, Rect, Sense, Ui};
-use kairos_editor_widgets::{color::Color32Ext, divider::Divider, min_max_scroll::MinMaxScroll};
-use kairos_profile::ProfileSession;
+use egui::{Align2, CornerRadius, Rect, Sense, Stroke, Ui};
+use kairos_editor_widgets::{
+    color::Color32Ext,
+    divider::Divider,
+    min_max_scroll::{MinMaxScroll, ScrollWindow},
+    timeline_axis::{TimelineRuler, TimelineRulerStyle},
+    ui_image,
+};
+use kairos_profile::{Category, FrameSnapshot, ProfileSession};
 
-use crate::panels::profiler::{ProfilerPanel, WHEEL_NOTCH_POINTS, ZOOM_PER_NOTCH};
+use crate::panels::profiler::{
+    ProfilerPanel, WHEEL_NOTCH_POINTS, ZOOM_PER_NOTCH, axis::ModuleAxis, frame_ms,
+};
 
 impl ProfilerPanel {
     /// The module pane: a pinned time axis on top, a pinned zoom bar at the
@@ -86,7 +94,7 @@ impl ProfilerPanel {
         // Chrome fills: everything here is panel chrome except the chart columns
         // of the axis row, which carry the clock.
         let chrome = self.style.timeline_name_bg.to_egui();
-        let rule = self.style.separator.to_egui();
+        let separator_color = self.style.separator.to_egui();
         ui.painter()
             .rect_filled(axis_row, CornerRadius::ZERO, chrome);
         ui.painter()
@@ -95,7 +103,7 @@ impl ProfilerPanel {
             self.paint_module_axis(ui, axis_row, chart_left, chart_right);
             Divider::horizontal()
                 .thickness(separator_width)
-                .color(rule)
+                .color(separator_color)
                 .paint_in(
                     ui,
                     Rect::from_min_size(
@@ -157,7 +165,7 @@ impl ProfilerPanel {
                 self.paint_cpu_module(ui, cpu, session);
                 Divider::horizontal()
                     .thickness(separator_width)
-                    .color(rule)
+                    .color(separator_color)
                     .paint_in(
                         ui,
                         Rect::from_min_size(
@@ -205,7 +213,7 @@ impl ProfilerPanel {
         // vertical bar it scrolls the cards; over the zoom bar it pans.
         let pointer = ui.input(|input| input.pointer.hover_pos());
         let wheel = ui.input(|input| input.smooth_scroll_delta);
-        if wheel != egui::Vec2::ZERO {
+        if !session.frames.is_empty() && wheel != egui::Vec2::ZERO {
             if let Some(pos) = pointer {
                 let over_chart = pos.x >= chart_left && pos.x < chart_right;
                 let over_time = over_chart && (axis_row.contains(pos) || cards.contains(pos));
@@ -294,4 +302,424 @@ impl ProfilerPanel {
             }
         }
     }
+
+    /// The module pane's vertical scroll bar: the shared non-resizable
+    /// MinMaxScroll, so it looks and behaves like the timeline's bars.
+    fn paint_module_scroll_bar(
+        &mut self,
+        ui: &mut Ui,
+        bar: Rect,
+        viewport_height: f32,
+        content_height: f32,
+    ) {
+        if bar.width() <= 0.0 || bar.height() <= 0.0 {
+            return;
+        }
+        let span = f64::from(viewport_height.min(content_height).max(0.0));
+        let mut window = ScrollWindow::new(
+            f64::from(self.module_scroll),
+            span,
+            (0.0, f64::from(content_height.max(0.0))),
+        );
+        let _ = MinMaxScroll::vertical(&self.scroll_style()).show(
+            ui,
+            ui.id().with("profiler.modules.scroll"),
+            bar,
+            &mut window,
+        );
+        self.module_scroll = window.value as f32;
+    }
+
+    /// The CPU Usage card's height in a card viewport `viewport` points tall: its
+    /// skin height, or the whole viewport when the pane is shorter.
+    ///
+    /// The card yields to the pane instead of being clipped, because a usage
+    /// chart is read from its zero line up: the bars grow from the plot's bottom,
+    /// so a card cut off at the pane's edge hides the short bars a high frame rate
+    /// produces and reads as "CPU Usage recorded nothing".
+    pub(super) fn module_cpu_fit(&self, viewport: f32) -> f32 {
+        self.style.module_cpu_height.clamp(0.0, viewport.max(0.0))
+    }
+
+    /// The module area's pinned time axis: real clock ticks over the chart
+    /// columns, with a break band for every pause between two takes.
+    ///
+    /// The axis and its ruler are
+    /// [kairos_editor_widgets::timeline_axis]; this panel supplies the capture's
+    /// takes and its clock labels.
+    fn paint_module_axis(&self, ui: &Ui, row: Rect, chart_left: f32, chart_right: f32) {
+        let track = Rect::from_min_max(
+            egui::pos2(chart_left, row.top()),
+            egui::pos2(chart_right.max(chart_left), row.bottom()),
+        );
+        let style = TimelineRulerStyle {
+            background: self.style.ruler_bg.to_egui(),
+            text: self.style.ruler_text.to_egui(),
+            break_background: self.style.break_bg.to_egui(),
+            font: self.small_font(),
+        };
+        let labels = self.module_axis.labels();
+        TimelineRuler::new(
+            &self.module_axis,
+            self.module_axis.ruler_scale(),
+            &labels,
+            &style,
+        )
+        .show(ui, track);
+
+        // Rule between the name column and the clock columns, like the ruler
+        // over the timeline's tracks.
+        self.paint_vertical_rule(
+            ui,
+            egui::pos2(track.left() - self.style.separator_width, row.top()),
+            row.height(),
+            self.style.separator.to_egui(),
+        );
+    }
+
+    /// Select the frame under a chart column: clicking a usage chart at a time
+    /// selects the frame recorded then. The gesture belongs to the chart
+    /// columns, not to a particular bar, so a GPU chart gets it for free once it
+    /// has bars.
+    fn select_module_frame_at(&mut self, x: f32, session: &ProfileSession) {
+        let Some((take, capture)) = self.module_axis.source_at_screen(x) else {
+            return;
+        };
+        let Some(index) = frame_at_capture(&self.module_axis, session, take, capture) else {
+            return;
+        };
+        self.selected_frame = index;
+        self.follow_latest = false;
+    }
+
+    /// One module title row: badge artwork, name, and the current-value chip.
+    ///
+    /// The badge is a skin texture (`icons.cpu_badge` / `icons.gpu_badge`): the
+    /// mark's box and placement are style tokens, so the artwork itself decides
+    /// what the module's identity looks like and a skin can swap it without
+    /// touching this row.
+    fn paint_module_header(
+        &self,
+        ui: &Ui,
+        header: Rect,
+        name_col: Rect,
+        badge: &str,
+        title: &str,
+        value: &str,
+    ) {
+        let painter = ui.painter();
+        let badge_rect = Rect::from_min_size(
+            egui::pos2(
+                header.left() + self.style.module_badge_inset,
+                header.center().y - self.style.module_badge_height * 0.5,
+            ),
+            egui::vec2(
+                self.style.module_badge_width.max(0.0),
+                self.style.module_badge_height.max(0.0),
+            ),
+        );
+        // The artwork is pre-coloured for its skin, so the tint is white.
+        ui_image::paint(ui, badge_rect, badge, egui::Color32::WHITE);
+        painter.text(
+            egui::pos2(
+                badge_rect.right() + self.style.module_badge_gap,
+                header.center().y,
+            ),
+            Align2::LEFT_CENTER,
+            title,
+            self.toolbar_font(),
+            self.style.timeline_text.to_egui(),
+        );
+
+        // Value chip at the start of the chart area, like the reference.
+        self.paint_chip(
+            ui,
+            egui::pos2(name_col.right() + 8.0, header.center().y),
+            value,
+        );
+    }
+
+    fn paint_cpu_module(&mut self, ui: &mut Ui, row: Rect, session: &ProfileSession) {
+        let name_width = self.style.module_name_width.min(row.width());
+        let name_col =
+            Rect::from_min_max(row.min, egui::pos2(row.left() + name_width, row.bottom()));
+        // The chart starts below the module title row.
+        let chart = Rect::from_min_max(egui::pos2(name_col.right(), row.top()), row.max);
+        let header = Rect::from_min_size(
+            row.min,
+            egui::vec2(row.width(), self.style.module_header_height),
+        );
+        let separator_color = self.style.separator.to_egui();
+
+        // Column rule between the legend and the chart, inside the name column.
+        self.paint_vertical_rule(
+            ui,
+            egui::pos2(name_col.right() - self.style.separator_width, row.top()),
+            row.height(),
+            separator_color,
+        );
+
+        let value = session
+            .frames
+            .get(self.selected_frame)
+            .map_or_else(|| "no frames".to_owned(), |frame| frame_cost_label(frame));
+        self.paint_module_header(
+            ui,
+            header,
+            name_col,
+            &self.style.icons.cpu_badge,
+            "CPU Usage",
+            &value,
+        );
+
+        // Legend: Unity's category rows with the selected frame's cost, then the
+        // frame's Scripts systems by cost. Zero-cost categories keep their row,
+        // like Unity: the legend is a fixed vocabulary, not a ranking.
+        let frame = session.frames.get(self.selected_frame);
+        let visible = ((row.height() - self.style.module_header_height)
+            / self.style.legend_row_height.max(1.0))
+        .floor()
+        .max(0.0) as usize;
+        let labels = ui.painter().with_clip_rect(name_col);
+        let row_center = |index: usize| {
+            egui::pos2(
+                name_col.left() + 12.0,
+                row.top()
+                    + self.style.module_header_height
+                    + (index as f32 + 0.5) * self.style.legend_row_height,
+            )
+        };
+        let mut used = 0;
+        for category in Category::ALL.iter().take(visible) {
+            let center = row_center(used);
+            let row_rect = Rect::from_min_max(
+                egui::pos2(
+                    name_col.left(),
+                    center.y - self.style.legend_row_height * 0.5,
+                ),
+                egui::pos2(
+                    name_col.right(),
+                    center.y + self.style.legend_row_height * 0.5,
+                ),
+            );
+            // Unity's legend swatches are toggles: a click takes the category
+            // out of the chart and leaves the row behind, dimmed.
+            let response = ui.interact(
+                row_rect,
+                ui.id().with(("profiler.category", *category as usize)),
+                Sense::click(),
+            );
+            if response.hovered() {
+                ui.painter().rect_filled(
+                    row_rect,
+                    CornerRadius::ZERO,
+                    self.style.hover_bg.to_egui(),
+                );
+            }
+            if response.clicked() {
+                let hidden = &mut self.hidden[*category as usize];
+                *hidden = !*hidden;
+            }
+            let hidden = self.hidden[*category as usize];
+            let swatch = self.category_color(*category);
+            labels.rect_filled(
+                Rect::from_center_size(center, egui::vec2(8.0, 8.0)),
+                CornerRadius::same(1),
+                if hidden {
+                    swatch.gamma_multiply(0.3)
+                } else {
+                    swatch
+                },
+            );
+            labels.text(
+                egui::pos2(name_col.left() + 24.0, center.y),
+                Align2::LEFT_CENTER,
+                category.label(),
+                self.toolbar_font(),
+                if hidden {
+                    self.style.ruler_text.to_egui()
+                } else {
+                    self.style.timeline_text.to_egui()
+                },
+            );
+            if let Some(frame) = frame {
+                labels.text(
+                    egui::pos2(name_col.right() - 8.0, center.y),
+                    Align2::RIGHT_CENTER,
+                    format!("{:.2}ms", self.category_ms(frame, *category)),
+                    self.small_font(),
+                    self.style.ruler_text.to_egui(),
+                );
+            }
+            used += 1;
+        }
+
+        // Systems get whatever rows are left. The full ranking belongs in a
+        // details pane (Unity's Hierarchy view); this is the top of it, which is
+        // the refinement of Unity's `Scripts` category.
+        let systems = self.system_entries();
+        let rows_left = visible.saturating_sub(used);
+        if rows_left > 0 && !systems.is_empty() && !self.hidden[Category::Scripts as usize] {
+            let shown = if systems.len() > rows_left {
+                rows_left.saturating_sub(1)
+            } else {
+                systems.len()
+            };
+            for (name, ns) in systems.iter().take(shown) {
+                let center = row_center(used);
+                labels.rect_filled(
+                    Rect::from_center_size(center, egui::vec2(8.0, 8.0)),
+                    CornerRadius::same(1),
+                    self.category_color(Category::Scripts),
+                );
+                labels.text(
+                    egui::pos2(name_col.left() + 24.0, center.y),
+                    Align2::LEFT_CENTER,
+                    name,
+                    self.toolbar_font(),
+                    self.style.timeline_text.to_egui(),
+                );
+                labels.text(
+                    egui::pos2(name_col.right() - 8.0, center.y),
+                    Align2::RIGHT_CENTER,
+                    format!("{:.2}ms", *ns as f32 / 1_000_000.0),
+                    self.small_font(),
+                    self.style.ruler_text.to_egui(),
+                );
+                used += 1;
+            }
+            if systems.len() > shown {
+                let center = row_center(used);
+                labels.text(
+                    egui::pos2(name_col.left() + 24.0, center.y),
+                    Align2::LEFT_CENTER,
+                    format!("+{} more", systems.len() - shown),
+                    self.small_font(),
+                    self.style.ruler_text.to_egui(),
+                );
+            }
+        }
+
+        // Clicking or dragging the chart selects the frame recorded at that
+        // time: the gesture is about the time column, not about hitting a bar,
+        // so a GPU chart gets it for free once it has bars. Dragging scrubs the
+        // selection, which is also how the selected-frame cursor moves.
+        let response = ui.interact(
+            chart,
+            ui.id().with("profiler.module.cpu"),
+            Sense::click_and_drag(),
+        );
+        if response.clicked() || response.dragged() {
+            if let Some(pos) = response.interact_pointer_pos() {
+                let x = (pos.x - chart.left()).clamp(0.0, chart.width());
+                self.select_module_frame_at(x, session);
+            }
+        }
+        if response.dragged() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+        } else if response.hovered() {
+            let pointer = ui.input(|input| input.pointer.hover_pos());
+            if let (Some(pointer), Some(cursor)) = (pointer, self.module_cursor_column(session)) {
+                if (pointer.x - chart.left() - cursor).abs() <= 3.0 {
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+                }
+            }
+        }
+        self.paint_chart(ui, chart, session);
+    }
+
+    /// The GPU Usage card: a title row with Unity's warning and an empty body
+    /// until the capture records GPU timings.
+    ///
+    /// The card keeps its fixed height so the module pane can reveal it by
+    /// scrolling; the body is the slot a graph will occupy once the renderer
+    /// reports GPU frame timings into the capture.
+    fn paint_gpu_module(&self, ui: &Ui, card: Rect) {
+        let name_width = self.style.module_name_width.min(card.width());
+        let header = Rect::from_min_size(
+            card.min,
+            egui::vec2(card.width(), self.style.module_header_height),
+        );
+        let name_col = Rect::from_min_max(
+            card.min,
+            egui::pos2(card.left() + name_width, header.bottom()),
+        );
+        self.paint_module_header(
+            ui,
+            header,
+            name_col,
+            &self.style.icons.gpu_badge,
+            "GPU Usage",
+            "timings not captured",
+        );
+
+        // Unity's warning triangle: this build cannot report GPU timings.
+        let center = egui::pos2(name_col.right() - 14.0, header.center().y);
+        ui.painter().add(egui::Shape::convex_polygon(
+            vec![
+                egui::pos2(center.x, center.y - 5.0),
+                egui::pos2(center.x + 5.0, center.y + 4.0),
+                egui::pos2(center.x - 5.0, center.y + 4.0),
+            ],
+            self.style.warning.to_egui(),
+            Stroke::NONE,
+        ));
+
+        let body = Rect::from_min_max(egui::pos2(card.left(), header.bottom()), card.max);
+        if body.height() > 0.0 {
+            ui.painter().text(
+                body.center(),
+                Align2::CENTER_CENTER,
+                "No GPU timing data",
+                self.small_font(),
+                self.style.ruler_text.to_egui(),
+            );
+        }
+    }
+}
+
+/// Unity's module chip: `6.2ms (161FPS)`. Sub-0.1 ms frames are reported as
+/// `<0.1ms`: the FPS equivalent would be noise.
+fn frame_cost_label(frame: &FrameSnapshot) -> String {
+    let ms = frame_ms(frame);
+    if ms < 0.1 {
+        "<0.1ms".to_owned()
+    } else {
+        format!("{ms:.1}ms ({:.0}FPS)", 1000.0 / ms)
+    }
+}
+
+/// The frame recorded at `capture` inside the take with index `take`, for a
+/// click on a module chart.
+///
+/// A click between two frames (or in the margin before a take's first frame)
+/// falls back to the neighbouring frame of the same take; a click that maps to
+/// another take selects nothing. The axis already rejected clicks on a break
+/// band.
+fn frame_at_capture(
+    axis: &ModuleAxis,
+    session: &ProfileSession,
+    take: usize,
+    capture: f64,
+) -> Option<usize> {
+    let frames = &session.frames;
+    if frames.is_empty() {
+        return None;
+    }
+    let in_take = |index: usize| -> bool {
+        frames.get(index).is_some_and(|frame| {
+            axis.time_of_source(frame.start_ns as f64)
+                .is_some_and(|(frame_take, _)| frame_take == take)
+        })
+    };
+    let next = frames.partition_point(|frame| (frame.start_ns as f64) <= capture);
+    if let Some(index) = next.checked_sub(1) {
+        if in_take(index) {
+            return Some(index);
+        }
+    }
+    if in_take(next) {
+        return Some(next);
+    }
+    None
 }
