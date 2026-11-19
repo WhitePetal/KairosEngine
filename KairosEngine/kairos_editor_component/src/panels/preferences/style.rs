@@ -17,6 +17,7 @@ use kairos_editor_widgets::color::ColorExt;
 use kairos_editor_widgets::color_picker::ColorPickerStyle;
 use kairos_editor_widgets::style::Style;
 use kairos_editor_widgets::text::TextStyle;
+use kairos_editor_widgets::window_controls::WindowControlsStyle;
 use serde::{Deserialize, Serialize};
 
 use crate::skin::StyleFields;
@@ -293,15 +294,15 @@ impl PreferencesPanelStyle {
             accent: self.accent.to_egui(),
             menu_button_fill: self.control_active.to_egui(),
             menu_button_hover: self.button_hover.to_egui(),
-            close: egui::Color32::from_rgb(0xC4, 0x3B, 0x3B),
-            close_hover: egui::Color32::from_rgb(0xD9, 0x4A, 0x4A),
+            error: egui::Color32::from_rgb(0xFF, 0x5F, 0x56),
+            window_controls: WindowControlsStyle::default(),
             checker_light: Color::from_srgb8([0xC8, 0xC8, 0xC8, 255]).to_egui(),
             checker_dark: Color::from_srgb8([0x8C, 0x8C, 0x8C, 255]).to_egui(),
             eyedropper_icon: "Preferences/Textures/color_picker/eyedropper.png",
             border_width: 1.0,
             corner_radius: 0,
             window_width: 260.0,
-            title_height: 22.0,
+            title_height: 28.0,
             padding: 6.0,
             section_gap: 10.0,
             row_height: 20.0,
@@ -391,6 +392,17 @@ mod tests {
         assert_eq!(picker.menu_button_hover, style.button_hover.to_egui());
         assert_eq!(picker.window_width, 260.0);
         assert_eq!(picker.channel_track_height, 14.0);
+    }
+
+    /// The picker uses the same three-light widget and tokens as a dock
+    /// window, rather than a second close-button implementation.
+    #[test]
+    fn the_picker_uses_the_dock_window_controls_widget() {
+        let style = PreferencesPanelStyle::dark();
+        let picker = style.color_picker_style();
+
+        assert_eq!(picker.title_height, 28.0);
+        assert_eq!(picker.window_controls, WindowControlsStyle::default());
     }
 
     /// The property list is a Unity-style Zebra: two greys, one per row, and a

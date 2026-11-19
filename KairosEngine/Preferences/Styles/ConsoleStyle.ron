@@ -1,7 +1,7 @@
 (
     dark: (
         toolbar_bg: "#434343",
-        toolbar_text: "#B1B1B1",
+        toolbar_text: "#B1B1B3",
         toggle_bg: "#505050",
         search_bg: "#252525",
         search_edge: "#1D1D1D",

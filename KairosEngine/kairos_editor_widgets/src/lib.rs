@@ -11,3 +11,4 @@ pub mod style;
 pub mod text;
 pub mod timeline_axis;
 pub mod ui_image;
+pub mod window_controls;

@@ -33,6 +33,9 @@ use crate::button::{Button, ButtonAlign, ButtonStyle};
 use crate::color::ColorExt;
 use crate::paint::labelled_widget_info;
 use crate::text::TextStyle;
+use crate::window_controls::{
+    WindowControl, WindowControlsEnabled, WindowControlsStyle, window_controls,
+};
 
 /// A color value plus the field policy that says how to edit it.
 ///
@@ -164,8 +167,10 @@ pub struct ColorPickerStyle {
     /// the picker body, like Unity's enum/object fields.
     pub menu_button_fill: Color32,
     pub menu_button_hover: Color32,
-    pub close: Color32,
-    pub close_hover: Color32,
+    /// Validation text in the group dialog.
+    pub error: Color32,
+    /// The three macOS traffic lights, shared with dock windows.
+    pub window_controls: WindowControlsStyle,
     pub checker_light: Color32,
     pub checker_dark: Color32,
     /// Runtime image under `Preferences/Textures`, tinted by the style.
@@ -218,15 +223,15 @@ impl ColorPickerStyle {
             accent: Color32::from_rgb(0x4A, 0x90, 0xD9),
             menu_button_fill: Color32::from_rgb(0x4A, 0x4A, 0x4A),
             menu_button_hover: Color32::from_rgb(0x56, 0x56, 0x56),
-            close: Color32::from_rgb(0xC4, 0x3B, 0x3B),
-            close_hover: Color32::from_rgb(0xD9, 0x4A, 0x4A),
+            error: Color32::from_rgb(0xFF, 0x5F, 0x56),
+            window_controls: WindowControlsStyle::default(),
             checker_light: Color32::from_rgb(0xC8, 0xC8, 0xC8),
             checker_dark: Color32::from_rgb(0x8C, 0x8C, 0x8C),
             eyedropper_icon: "Preferences/Textures/color_picker/eyedropper.png",
             border_width: 1.0,
             corner_radius: 0,
             window_width: 260.0,
-            title_height: 22.0,
+            title_height: 28.0,
             padding: 6.0,
             section_gap: 10.0,
             row_height: 20.0,
@@ -306,9 +311,14 @@ pub fn color_mode_id(field: Id) -> Id {
     field.with("mode")
 }
 
+/// Stable id of the picker's window-control strip.
+pub fn color_window_controls_id(field: Id) -> Id {
+    field.with("window-controls")
+}
+
 /// Stable id of the popup's close button.
 pub fn color_close_id(field: Id) -> Id {
-    field.with("close")
+    color_window_controls_id(field).with(WindowControl::Close)
 }
 
 /// Stable id of one channel track.
@@ -1541,10 +1551,22 @@ fn picker_header(
     );
     ui.painter()
         .rect_filled(rect, CornerRadius::ZERO, style.header);
+    ui.painter().hline(
+        rect.x_range(),
+        rect.bottom() - 1.0,
+        Stroke::new(1.0, style.border),
+    );
 
-    let close_rect =
-        Rect::from_center_size(pos2(rect.right() - 12.0, rect.center().y), vec2(16.0, 16.0));
-    let drag_rect = Rect::from_min_max(rect.min, pos2(close_rect.left() - 2.0, rect.bottom()));
+    // All three dock traffic lights stay visible. The popup has no minimize or
+    // maximize action, so those two are painted grey and do not react.
+    let controls = window_controls(
+        ui,
+        color_window_controls_id(field),
+        rect,
+        &style.window_controls,
+        WindowControlsEnabled::CLOSE_ONLY,
+    );
+    let drag_rect = Rect::from_min_max(pos2(controls.rect.right() + 4.0, rect.top()), rect.max);
     let drag = ui
         .interact(drag_rect, field.with("title-drag"), Sense::click_and_drag())
         .on_hover_cursor(if ui.input(|input| input.pointer.any_down()) {
@@ -1559,33 +1581,12 @@ fn picker_header(
     };
 
     let title = if value.is_hdr() { "HDR Color" } else { "Color" };
-    style.title.paint(
-        ui,
-        pos2(rect.left() + 8.0, rect.center().y),
-        Align2::LEFT_CENTER,
-        title,
-    );
-
-    let close = ui
-        .interact(close_rect, color_close_id(field), Sense::click())
-        .on_hover_cursor(CursorIcon::PointingHand);
-    let close_fill = if close.hovered() {
-        style.close_hover
-    } else {
-        style.close
-    };
-    ui.painter()
-        .rect_filled(close_rect, CornerRadius::same(2), close_fill);
-    let center = close_rect.center();
-    let x = 3.5;
-    let stroke = Stroke::new(1.2, Color32::WHITE);
-    ui.painter()
-        .line_segment([center + vec2(-x, -x), center + vec2(x, x)], stroke);
-    ui.painter()
-        .line_segment([center + vec2(-x, x), center + vec2(x, -x)], stroke);
+    style
+        .title
+        .paint(ui, rect.center(), Align2::CENTER_CENTER, title);
 
     HeaderResponse {
-        close: close.clicked(),
+        close: controls.close,
         drag_delta,
     }
 }
@@ -2049,7 +2050,7 @@ fn channel_row(
         ),
     );
     let value_rect = Rect::from_min_size(
-        pos2(rect.right() - value_width, rect.top() + 1.0),
+        pos2(rect.right() - value_width + 7.0, rect.top() + 1.0),
         vec2(value_width, rect.height() - 2.0),
     );
 
@@ -2893,7 +2894,7 @@ fn swatches_row(
                         if !edit.error.is_empty() {
                             ui.label(
                                 egui::RichText::new(edit.error.clone())
-                                    .color(style.close)
+                                    .color(style.error)
                                     .size(11.0),
                             );
                         }
@@ -3357,6 +3358,46 @@ mod tests {
             .any(|clipped| walk(&clipped.shape, fill, at))
     }
 
+    fn painted_circle_fill(output: &egui::FullOutput, fill: Color32, at: Pos2) -> bool {
+        fn walk(shape: &egui::Shape, fill: Color32, at: Pos2) -> bool {
+            match shape {
+                egui::Shape::Circle(circle) => {
+                    circle.fill == fill && circle.center.distance(at) <= circle.radius
+                }
+                egui::Shape::Vec(shapes) => shapes.iter().any(|shape| walk(shape, fill, at)),
+                _ => false,
+            }
+        }
+        output
+            .shapes
+            .iter()
+            .any(|clipped| walk(&clipped.shape, fill, at))
+    }
+
+    fn painted_text_rect(output: &egui::FullOutput, wanted: &str) -> Option<egui::Rect> {
+        fn walk(shape: &egui::Shape, wanted: &str, out: &mut Option<egui::Rect>) {
+            if out.is_some() {
+                return;
+            }
+            match shape {
+                egui::Shape::Text(text) if text.galley.text() == wanted => {
+                    *out = Some(egui::Rect::from_min_size(text.pos, text.galley.size()));
+                }
+                egui::Shape::Vec(shapes) => {
+                    for shape in shapes {
+                        walk(shape, wanted, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut out = None;
+        for clipped in &output.shapes {
+            walk(&clipped.shape, wanted, &mut out);
+        }
+        out
+    }
+
     fn assert_near(actual: f32, expected: f32) {
         assert!(
             (actual - expected).abs() < 0.02,
@@ -3545,6 +3586,7 @@ mod tests {
         harness.frame(Vec::new());
         harness.click(color_mode_id(harness.field));
         harness.frame(Vec::new());
+        harness.frame(Vec::new());
         harness.click(color_mode_item_id(harness.field, 1));
         let output = harness.frame(Vec::new());
         let texts = painted_texts(&output);
@@ -3573,6 +3615,7 @@ mod tests {
         harness.open();
         harness.frame(Vec::new());
         harness.click(color_mode_id(harness.field));
+        harness.frame(Vec::new());
         harness.frame(Vec::new());
         harness.click(color_mode_item_id(harness.field, 2));
         let output = harness.frame(Vec::new());
@@ -3785,6 +3828,7 @@ mod tests {
         let texts = painted_texts(&output);
         assert!(texts.iter().any(|text| text == "RGB 0-Inf"), "{texts:?}");
 
+        harness.frame(Vec::new());
         harness.click(color_mode_item_id(harness.field, 1));
         let output = harness.frame(Vec::new());
         assert!(
@@ -3814,7 +3858,7 @@ mod tests {
         let before = harness
             .ctx
             .data(|data| data.get_temp::<OpenPicker>(open_picker_id()).unwrap().pos);
-        let start = before + vec2(40.0, 10.0);
+        let start = before + vec2(80.0, 10.0);
         harness.frame(vec![egui::Event::PointerMoved(start)]);
         harness.frame(vec![pointer(start, true)]);
         harness.frame(vec![egui::Event::PointerMoved(start + vec2(30.0, 20.0))]);
@@ -3829,6 +3873,74 @@ mod tests {
         assert!(
             after.y > before.y + 5.0,
             "before {before:?}, after {after:?}"
+        );
+    }
+
+    #[test]
+    fn the_header_keeps_three_dock_lights_and_a_centred_title() {
+        let mut harness = Harness::new(ColorProperty::ldr(Color::from_srgb8([20, 140, 220, 255])));
+        harness.open();
+        harness.frame(Vec::new());
+        harness.frame(Vec::new());
+        let output = harness.frame(Vec::new());
+        let window = harness
+            .ctx
+            .read_response(color_popup_id(harness.field))
+            .unwrap()
+            .rect;
+        let controls_id = color_window_controls_id(harness.field);
+        let close = harness
+            .ctx
+            .read_response(controls_id.with(WindowControl::Close))
+            .unwrap()
+            .rect;
+        let minimize = harness
+            .ctx
+            .read_response(controls_id.with(WindowControl::Minimize))
+            .unwrap()
+            .rect;
+        let maximize = harness
+            .ctx
+            .read_response(controls_id.with(WindowControl::Maximize))
+            .unwrap()
+            .rect;
+        let title = painted_text_rect(&output, "Color").expect("the title is painted");
+
+        assert!(
+            close.center().x > window.left() + 8.0 && close.center().x < window.left() + 30.0,
+            "the close control must lead the title bar: {close:?} in {window:?}"
+        );
+        assert!(
+            close.center().x < minimize.center().x && minimize.center().x < maximize.center().x,
+            "the lights must keep dock order: {close:?}, {minimize:?}, {maximize:?}"
+        );
+        assert!(
+            close.center().y < window.top() + 20.0,
+            "the lights must sit in the title bar: {close:?} in {window:?}"
+        );
+        assert!(
+            painted_circle_fill(&output, harness.style.window_controls.close, close.center()),
+            "the close control must be the dock traffic light, not an X"
+        );
+        assert!(
+            painted_circle_fill(
+                &output,
+                harness.style.window_controls.disabled,
+                minimize.center()
+            ),
+            "the unavailable minimize light must stay visible in grey"
+        );
+        assert!(
+            painted_circle_fill(
+                &output,
+                harness.style.window_controls.disabled,
+                maximize.center()
+            ),
+            "the unavailable maximize light must stay visible in grey"
+        );
+        assert!(
+            (title.center().x - window.center().x).abs() < 1.0,
+            "the title must be centred: {title:?} in {window:?}"
         );
     }
 

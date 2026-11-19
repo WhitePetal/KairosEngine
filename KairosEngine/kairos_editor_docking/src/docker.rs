@@ -25,15 +25,13 @@ use egui::{
     style::{WidgetVisuals, Widgets},
     vec2,
 };
+use kairos_editor_widgets::window_controls::{WindowControlsEnabled, window_controls};
 use paste::paste;
 
 use crate::{
     drag::{DragData, DragDropState, DragVisual, HoverData, TreeComponent, constrain_rect_to_area},
     split::{Fraction, Split},
-    styles::{
-        Style, TabBarStyle, TabBodyStyle, TabInteractionStyle, TabSeparatorStyle, TabStyle,
-        WindowStyle,
-    },
+    styles::{Style, TabBarStyle, TabBodyStyle, TabInteractionStyle, TabSeparatorStyle, TabStyle},
     surface::{Surface, SurfaceIndex, WindowState},
     translations::Translations,
     tree::{Node, NodeIndex, TabIndex, Tree},
@@ -975,9 +973,15 @@ impl<T: TabId> Docker<'_, T> {
                 Stroke::new(1.0, window_style.border.color),
             );
 
-            let controls = window_control_rects(bar_rect, &window_style);
+            let controls = window_controls(
+                ui,
+                ui.id().with("window-controls"),
+                bar_rect,
+                &window_style.controls,
+                WindowControlsEnabled::ALL,
+            );
             let drag_rect = Rect::from_min_max(
-                pos2(controls.maximize.right() + 4.0, bar_rect.top()),
+                pos2(controls.rect.right() + 4.0, bar_rect.top()),
                 bar_rect.max,
             );
             let drag_response = ui
@@ -991,29 +995,9 @@ impl<T: TabId> Docker<'_, T> {
                 drag_delta = drag_response.drag_delta();
             }
 
-            // All three traffic lights share one interact+paint path; only the
-            // rect and the click effect differ.
-            for (control, rect) in [
-                (WindowControl::Minimize, controls.minimize),
-                (WindowControl::Maximize, controls.maximize),
-                (WindowControl::Close, controls.close),
-            ] {
-                let response = ui.interact(rect, ui.id().with(control), Sense::click());
-                paint_window_control(
-                    ui.painter(),
-                    rect,
-                    control,
-                    &window_style,
-                    response.hovered(),
-                );
-                if response.clicked() {
-                    match control {
-                        WindowControl::Minimize => toggle_minimize |= !maximized,
-                        WindowControl::Maximize => toggle_maximize |= !minimized,
-                        WindowControl::Close => close_window = true,
-                    }
-                }
-            }
+            toggle_minimize |= controls.minimize && !maximized;
+            toggle_maximize |= controls.maximize && !minimized;
+            close_window |= controls.close;
 
             if !minimized {
                 self.show_nodes(ui, state, surf_index, None, viewer);
@@ -2087,92 +2071,6 @@ fn show_tab_title(
     );
 
     response
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-enum WindowControl {
-    Minimize,
-    Maximize,
-    Close,
-}
-
-#[derive(Clone, Copy)]
-struct WindowControlRects {
-    minimize: Rect,
-    maximize: Rect,
-    close: Rect,
-}
-
-fn window_control_rects(bar: Rect, style: &WindowStyle) -> WindowControlRects {
-    let y = bar.center().y;
-    let start = bar.left() + style.traffic_light_margin + style.traffic_light_radius;
-    let hit = Vec2::splat((style.traffic_light_radius * 2.0).max(18.0));
-    WindowControlRects {
-        minimize: Rect::from_center_size(pos2(start + style.traffic_light_spacing, y), hit),
-        maximize: Rect::from_center_size(pos2(start + style.traffic_light_spacing * 2.0, y), hit),
-        close: Rect::from_center_size(pos2(start, y), hit),
-    }
-}
-
-fn paint_window_control(
-    painter: &egui::Painter,
-    rect: Rect,
-    control: WindowControl,
-    style: &WindowStyle,
-    hovered: bool,
-) {
-    let center = rect.center();
-    let radius = style.traffic_light_radius;
-    let fill = match control {
-        WindowControl::Close => style.close_color,
-        WindowControl::Minimize => style.minimize_color,
-        WindowControl::Maximize => style.maximize_color,
-    };
-    painter.circle_filled(center, radius, fill);
-
-    if !hovered {
-        return;
-    }
-
-    let stroke = Stroke::new(1.2, style.glyph_color);
-    let arm = radius * 0.48;
-    match control {
-        WindowControl::Close => {
-            painter.line_segment(
-                [
-                    pos2(center.x - arm, center.y - arm),
-                    pos2(center.x + arm, center.y + arm),
-                ],
-                stroke,
-            );
-            painter.line_segment(
-                [
-                    pos2(center.x + arm, center.y - arm),
-                    pos2(center.x - arm, center.y + arm),
-                ],
-                stroke,
-            );
-        }
-        WindowControl::Minimize => {
-            painter.hline((center.x - arm)..=(center.x + arm), center.y, stroke);
-        }
-        WindowControl::Maximize => {
-            painter.line_segment(
-                [
-                    pos2(center.x - arm, center.y),
-                    pos2(center.x + arm, center.y),
-                ],
-                stroke,
-            );
-            painter.line_segment(
-                [
-                    pos2(center.x, center.y - arm),
-                    pos2(center.x, center.y + arm),
-                ],
-                stroke,
-            );
-        }
-    }
 }
 
 /// Size of the floating-window drag ghost.

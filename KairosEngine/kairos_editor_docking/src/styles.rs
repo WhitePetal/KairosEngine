@@ -1,4 +1,5 @@
 use egui::{Color32, CornerRadius, Margin, Shadow, Stroke};
+use kairos_editor_widgets::window_controls::WindowControlsStyle;
 
 #[derive(Clone)]
 pub struct TabBodyStyle {
@@ -228,7 +229,9 @@ impl Default for TabBarStyle {
 /// Chrome of a detached/floating dock window.
 ///
 /// The window is drawn by `Docker` itself (not egui's default title bar) so the
-/// title bar, shadow and system buttons are consistent on every platform.
+/// title bar, shadow and system buttons are consistent on every platform. The
+/// three traffic lights are the shared `window_controls` widget, the same one
+/// the color picker uses.
 #[derive(Clone)]
 pub struct WindowStyle {
     pub bg_fill: Color32,
@@ -236,14 +239,8 @@ pub struct WindowStyle {
     pub border: Stroke,
     pub shadow: Shadow,
     pub title_height: f32,
-    /// macOS-style traffic lights: circle radius, center spacing, left margin.
-    pub traffic_light_radius: f32,
-    pub traffic_light_spacing: f32,
-    pub traffic_light_margin: f32,
-    pub close_color: Color32,
-    pub minimize_color: Color32,
-    pub maximize_color: Color32,
-    pub glyph_color: Color32,
+    /// macOS-style traffic lights: geometry, colors and disabled fill.
+    pub controls: WindowControlsStyle,
 }
 
 impl Default for WindowStyle {
@@ -259,13 +256,7 @@ impl Default for WindowStyle {
                 color: Color32::from_black_alpha(120),
             },
             title_height: 28.0,
-            traffic_light_radius: 6.0,
-            traffic_light_spacing: 20.0,
-            traffic_light_margin: 12.0,
-            close_color: Color32::from_rgb(255, 95, 86),
-            minimize_color: Color32::from_rgb(255, 189, 46),
-            maximize_color: Color32::from_rgb(40, 200, 64),
-            glyph_color: Color32::from_black_alpha(170),
+            controls: WindowControlsStyle::default(),
         }
     }
 }

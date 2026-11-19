@@ -2673,6 +2673,7 @@ version = "0.2.0"
 dependencies = [
  "duplicate",
  "egui",
+ "kairos_editor_widgets",
  "kairos_log",
  "paste",
 ]
