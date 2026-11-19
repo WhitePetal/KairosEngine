@@ -3,13 +3,15 @@ name = "kairos_color"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Shared RGBA color type for the Kairos engine and editor: hex parsing/formatting and serde"
+description = "Shared linear Color (f16 x4), sRGB encoding helpers, and color usage metadata"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)", "cfg(docsrs_dep)"] }
 
 [dependencies]
-serde = "1.0.228"
+bytemuck = { version = "1.25.0", features = ["derive"] }
+half = { version = "2.4", features = ["bytemuck"] }
+serde = { version = "1.0.228", features = ["derive"] }
 thiserror = "2.0"
 
 [dev-dependencies]

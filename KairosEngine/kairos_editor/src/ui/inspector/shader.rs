@@ -23,8 +23,8 @@ use kairos_engine::math;
 struct ShaderStyle {
     save_button_height: f32,
     desired_rows: usize,
-    dark_background_color: math::Color32,
-    bright_background_color: math::Color32,
+    dark_background_color: math::Color,
+    bright_background_color: math::Color,
 }
 impl ShaderStyle {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {

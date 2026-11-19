@@ -14,7 +14,7 @@
 
 use egui::{Panel, Ui};
 use kairos_editor_core::{Action, AppAction, LayoutAction, PanelId};
-use kairos_editor_widgets::color::Color32Ext;
+use kairos_editor_widgets::color::ColorExt;
 use kairos_editor_widgets::menu;
 use kairos_editor_widgets::style::{Style, StyleFile};
 use kairos_editor_widgets::ui_image;

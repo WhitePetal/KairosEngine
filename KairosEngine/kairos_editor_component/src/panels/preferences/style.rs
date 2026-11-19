@@ -11,9 +11,10 @@
 //! dialog skin — not before.
 
 use egui::{CornerRadius, Vec2};
-use kairos_color::Color32;
+use kairos_color::Color;
 use kairos_editor_widgets::button::ButtonStyle;
-use kairos_editor_widgets::color::Color32Ext;
+use kairos_editor_widgets::color::ColorExt;
+use kairos_editor_widgets::color_picker::ColorPickerStyle;
 use kairos_editor_widgets::style::Style;
 use kairos_editor_widgets::text::TextStyle;
 use serde::{Deserialize, Serialize};
@@ -25,35 +26,47 @@ use crate::skin::StyleFields;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, StyleFields)]
 pub struct PreferencesPanelStyle {
     /// Panel body, behind everything.
-    pub background: Color32,
+    pub background: Color,
     /// Left-hand page list column.
-    pub nav_background: Color32,
-    pub nav_hover: Color32,
+    pub nav_background: Color,
+    pub nav_hover: Color,
     /// Fill of the current page's list entry.
-    pub nav_selected: Color32,
-    pub nav_text: Color32,
+    pub nav_selected: Color,
+    pub nav_text: Color,
 
     /// Page heading (the panel being edited).
-    pub title: Color32,
+    pub title: Color,
     /// The RON file the page writes to, under the heading.
-    pub path: Color32,
-    /// Group heading inside a page ("Icons").
-    pub group: Color32,
+    pub path: Color,
+    /// Foldout header text (a group of tokens, named "Icons").
+    pub group: Color,
+    /// Foldout header band. A band, not a label: the header is clickable.
+    pub group_background: Color,
+    pub group_hover: Color,
     /// Row name (the token).
-    pub label: Color32,
+    pub label: Color,
+    /// Row name while its value is selected: Unity's blue label.
+    pub label_active: Color,
     /// Rules between the heading, the rows and the footer.
-    pub divider: Color32,
+    pub divider: Color,
 
-    /// Background of a numeric field and slider rail.
-    pub control_rail: Color32,
-    pub control_hover: Color32,
-    pub control_active: Color32,
-    /// Field outline.
-    pub control_edge: Color32,
+    /// The two field-row greys, alternating row by row. Unity's inspector
+    /// stripes its property list to keep long pages readable.
+    pub row_odd: Color,
+    pub row_even: Color,
+
+    /// Background of a value box.
+    pub control_rail: Color,
+    pub control_hover: Color,
+    pub control_active: Color,
+    /// Value-box outline.
+    pub control_edge: Color,
+    /// Value-box outline under the pointer, before it is selected.
+    pub control_edge_hover: Color,
     /// Text of a control (numbers, token values).
-    pub control_value: Color32,
-    /// Filled part of a slider; also the selected-toggle fill.
-    pub accent: Color32,
+    pub control_value: Color,
+    /// Selected outline, active slider fill, and the page-list stripe.
+    pub accent: Color,
 
     pub title_size: f32,
     pub body_size: f32,
@@ -69,26 +82,47 @@ pub struct PreferencesPanelStyle {
     pub column_gap: f32,
     /// Space above and below the rule under a page heading.
     pub section_spacing: f32,
-    /// Space between two rows.
+    /// Space between rows. The default is zero: rows are contiguous bands.
     pub row_gap: f32,
-    /// Width of a row's label column; the control starts after it.
+    /// Ideal width of a row's label column; the value box starts after it.
     pub label_width: f32,
-    /// Width of a numeric/text field.
+    /// Minimum width left for the value box; below it the label column
+    /// shrinks instead of the box clipping off the right edge.
     pub field_width: f32,
-    /// Height of one row (label and control share it).
+    /// Gap between the label column and the value box.
+    pub label_gap: f32,
+    /// Height of one field row.
     pub row_height: f32,
+    /// Height of a value box (centred in its row).
+    pub field_height: f32,
+    /// Horizontal inner padding of a value box.
+    pub field_padding: f32,
+    pub control_border_width: f32,
+    pub control_corner_radius: f32,
+
+    /// Height of a foldout header row.
+    pub group_height: f32,
+    /// Indent of one nesting level in the token tree.
+    pub group_indent: f32,
+    /// Left and right content inset inside a row band.
+    pub row_inset: f32,
+    /// Right-hand gutter kept clear of the page scroll bar.
+    pub scrollbar_gap: f32,
+    /// Side of the square boolean checkbox.
+    pub checkbox_size: f32,
+
     /// Space between the last row and the rule above the footer.
     pub footer_gap: f32,
     pub footer_height: f32,
 
     /// Dialog buttons (Close): filled and outlined, so they do not read as
     /// labels on the panel background.
-    pub button_fill: Color32,
-    pub button_hover: Color32,
-    pub button_active: Color32,
-    pub button_border: Color32,
+    pub button_fill: Color,
+    pub button_hover: Color,
+    pub button_active: Color,
+    pub button_border: Color,
     pub button_border_width: f32,
-    pub button_text: Color32,
+    pub button_text: Color,
     pub button_height: f32,
     pub button_padding: f32,
     pub button_corner_radius: f32,
@@ -105,28 +139,35 @@ impl Style for PreferencesPanelStyle {
 
     fn dark() -> Self {
         Self {
-            background: Color32::from_rgb(0x36, 0x36, 0x36),
-            nav_background: Color32::from_rgb(0x2E, 0x2E, 0x2E),
-            nav_hover: Color32::from_rgb(0x3E, 0x3E, 0x3E),
-            nav_selected: Color32::from_rgb(0x45, 0x45, 0x45),
-            nav_text: Color32::from_rgb(0xC8, 0xC8, 0xC8),
+            background: Color::from_srgb8([0x36, 0x36, 0x36, 255]),
+            nav_background: Color::from_srgb8([0x2E, 0x2E, 0x2E, 255]),
+            nav_hover: Color::from_srgb8([0x3E, 0x3E, 0x3E, 255]),
+            nav_selected: Color::from_srgb8([0x45, 0x45, 0x45, 255]),
+            nav_text: Color::from_srgb8([0xC8, 0xC8, 0xC8, 255]),
 
-            title: Color32::from_rgb(0xEE, 0xEE, 0xEE),
-            path: Color32::from_rgb(0x8C, 0x8C, 0x8C),
-            group: Color32::from_rgb(0x9A, 0x9A, 0x9A),
-            label: Color32::from_rgb(0xC8, 0xC8, 0xC8),
-            divider: Color32::from_rgb(0x2A, 0x2A, 0x2A),
+            title: Color::from_srgb8([0xEE, 0xEE, 0xEE, 255]),
+            path: Color::from_srgb8([0x8C, 0x8C, 0x8C, 255]),
+            group: Color::from_srgb8([0xDC, 0xDC, 0xDC, 255]),
+            group_background: Color::from_srgb8([0x3C, 0x3C, 0x3C, 255]),
+            group_hover: Color::from_srgb8([0x46, 0x46, 0x46, 255]),
+            label: Color::from_srgb8([0xC8, 0xC8, 0xC8, 255]),
+            label_active: Color::from_srgb8([0x8F, 0xB4, 0xD9, 255]),
+            divider: Color::from_srgb8([0x2A, 0x2A, 0x2A, 255]),
 
-            control_rail: Color32::from_rgb(0x2A, 0x2A, 0x2A),
-            control_hover: Color32::from_rgb(0x44, 0x44, 0x44),
-            control_active: Color32::from_rgb(0x56, 0x56, 0x56),
-            control_edge: Color32::from_rgb(0x4E, 0x4E, 0x4E),
-            control_value: Color32::from_rgb(0xDC, 0xDC, 0xDC),
-            accent: Color32::from_rgb(0x4A, 0x90, 0xD9),
+            row_odd: Color::from_srgb8([0x38, 0x38, 0x38, 255]),
+            row_even: Color::from_srgb8([0x33, 0x33, 0x33, 255]),
+
+            control_rail: Color::from_srgb8([0x28, 0x28, 0x28, 255]),
+            control_hover: Color::from_srgb8([0x3E, 0x3E, 0x3E, 255]),
+            control_active: Color::from_srgb8([0x4A, 0x4A, 0x4A, 255]),
+            control_edge: Color::from_srgb8([0x20, 0x20, 0x20, 255]),
+            control_edge_hover: Color::from_srgb8([0x5A, 0x5A, 0x5A, 255]),
+            control_value: Color::from_srgb8([0xDC, 0xDC, 0xDC, 255]),
+            accent: Color::from_srgb8([0x4A, 0x90, 0xD9, 255]),
 
             title_size: 15.0,
             body_size: 12.0,
-            group_size: 11.0,
+            group_size: 12.0,
 
             padding: 14.0,
             nav_width: 118.0,
@@ -134,19 +175,31 @@ impl Style for PreferencesPanelStyle {
             nav_corner_radius: 2.0,
             column_gap: 14.0,
             section_spacing: 8.0,
-            row_gap: 4.0,
+            row_gap: 0.0,
             label_width: 170.0,
             field_width: 120.0,
+            label_gap: 8.0,
             row_height: 20.0,
+            field_height: 18.0,
+            field_padding: 6.0,
+            control_border_width: 1.0,
+            control_corner_radius: 0.0,
+
+            group_height: 20.0,
+            group_indent: 16.0,
+            row_inset: 8.0,
+            scrollbar_gap: 8.0,
+            checkbox_size: 15.0,
+
             footer_gap: 10.0,
             footer_height: 22.0,
 
-            button_fill: Color32::from_rgb(0x45, 0x45, 0x45),
-            button_hover: Color32::from_rgb(0x56, 0x56, 0x56),
-            button_active: Color32::from_rgb(0x33, 0x33, 0x33),
-            button_border: Color32::from_rgb(0x6E, 0x6E, 0x6E),
+            button_fill: Color::from_srgb8([0x45, 0x45, 0x45, 255]),
+            button_hover: Color::from_srgb8([0x56, 0x56, 0x56, 255]),
+            button_active: Color::from_srgb8([0x33, 0x33, 0x33, 255]),
+            button_border: Color::from_srgb8([0x6E, 0x6E, 0x6E, 255]),
             button_border_width: 1.0,
-            button_text: Color32::from_rgb(0xDC, 0xDC, 0xDC),
+            button_text: Color::from_srgb8([0xDC, 0xDC, 0xDC, 255]),
             button_height: 22.0,
             button_padding: 10.0,
             button_corner_radius: 2.0,
@@ -155,30 +208,37 @@ impl Style for PreferencesPanelStyle {
 
     fn light() -> Self {
         Self {
-            background: Color32::from_rgb(0xEB, 0xEB, 0xEB),
-            nav_background: Color32::from_rgb(0xE0, 0xE0, 0xE0),
-            nav_hover: Color32::from_rgb(0xD5, 0xD5, 0xD5),
-            nav_selected: Color32::from_rgb(0xC8, 0xC8, 0xC8),
-            nav_text: Color32::from_rgb(0x2A, 0x2A, 0x2A),
+            background: Color::from_srgb8([0xEB, 0xEB, 0xEB, 255]),
+            nav_background: Color::from_srgb8([0xE0, 0xE0, 0xE0, 255]),
+            nav_hover: Color::from_srgb8([0xD5, 0xD5, 0xD5, 255]),
+            nav_selected: Color::from_srgb8([0xC8, 0xC8, 0xC8, 255]),
+            nav_text: Color::from_srgb8([0x2A, 0x2A, 0x2A, 255]),
 
-            title: Color32::from_rgb(0x1E, 0x1E, 0x1E),
-            path: Color32::from_rgb(0x6E, 0x6E, 0x6E),
-            group: Color32::from_rgb(0x5A, 0x5A, 0x5A),
-            label: Color32::from_rgb(0x1E, 0x1E, 0x1E),
-            divider: Color32::from_rgb(0xC4, 0xC4, 0xC4),
+            title: Color::from_srgb8([0x1E, 0x1E, 0x1E, 255]),
+            path: Color::from_srgb8([0x6E, 0x6E, 0x6E, 255]),
+            group: Color::from_srgb8([0x1E, 0x1E, 0x1E, 255]),
+            group_background: Color::from_srgb8([0xDC, 0xDC, 0xDC, 255]),
+            group_hover: Color::from_srgb8([0xD2, 0xD2, 0xD2, 255]),
+            label: Color::from_srgb8([0x1E, 0x1E, 0x1E, 255]),
+            label_active: Color::from_srgb8([0x2C, 0x5D, 0x87, 255]),
+            divider: Color::from_srgb8([0xC4, 0xC4, 0xC4, 255]),
 
-            control_rail: Color32::from_rgb(0xF5, 0xF5, 0xF5),
-            control_hover: Color32::from_rgb(0xDE, 0xDE, 0xDE),
-            control_active: Color32::from_rgb(0xC8, 0xC8, 0xC8),
-            control_edge: Color32::from_rgb(0xA8, 0xA8, 0xA8),
-            control_value: Color32::from_rgb(0x1E, 0x1E, 0x1E),
-            accent: Color32::from_rgb(0x2C, 0x5D, 0x87),
+            row_odd: Color::from_srgb8([0xF6, 0xF6, 0xF6, 255]),
+            row_even: Color::from_srgb8([0xED, 0xED, 0xED, 255]),
 
-            button_fill: Color32::from_rgb(0xF5, 0xF5, 0xF5),
-            button_hover: Color32::WHITE,
-            button_active: Color32::from_rgb(0xDC, 0xDC, 0xDC),
-            button_border: Color32::from_rgb(0xA8, 0xA8, 0xA8),
-            button_text: Color32::from_rgb(0x20, 0x20, 0x20),
+            control_rail: Color::WHITE,
+            control_hover: Color::from_srgb8([0xF0, 0xF0, 0xF0, 255]),
+            control_active: Color::from_srgb8([0xE0, 0xE0, 0xE0, 255]),
+            control_edge: Color::from_srgb8([0xA8, 0xA8, 0xA8, 255]),
+            control_edge_hover: Color::from_srgb8([0x7A, 0x7A, 0x7A, 255]),
+            control_value: Color::from_srgb8([0x1E, 0x1E, 0x1E, 255]),
+            accent: Color::from_srgb8([0x2C, 0x5D, 0x87, 255]),
+
+            button_fill: Color::from_srgb8([0xF5, 0xF5, 0xF5, 255]),
+            button_hover: Color::WHITE,
+            button_active: Color::from_srgb8([0xDC, 0xDC, 0xDC, 255]),
+            button_border: Color::from_srgb8([0xA8, 0xA8, 0xA8, 255]),
+            button_text: Color::from_srgb8([0x20, 0x20, 0x20, 255]),
             ..Self::dark()
         }
     }
@@ -215,25 +275,62 @@ impl PreferencesPanelStyle {
             .height(self.nav_row_height)
     }
 
-    /// The boolean control: a filled button whose selected fill is the accent,
-    /// so "On" is visible at a glance instead of being a tick mark.
-    pub fn toggle_style(&self) -> ButtonStyle {
-        ButtonStyle::new(TextStyle::sized(
-            self.control_value.to_egui(),
-            self.body_size,
-        ))
-        .fills(
-            self.button_fill.to_egui(),
-            self.button_hover.to_egui(),
-            self.accent.to_egui(),
-        )
-        .stroke(egui::Stroke::new(
-            self.button_border_width,
-            self.button_border.to_egui(),
-        ))
-        .corner_radius(CornerRadius::same(self.button_corner_radius as u8))
-        .padding(Vec2::new(self.button_padding, 0.0))
-        .height(self.button_height)
+    /// The color field and its picker share the panel's palette: the popup is
+    /// another surface of this panel, not a second skin to keep in sync.
+    pub fn color_picker_style(&self) -> ColorPickerStyle {
+        ColorPickerStyle {
+            text: TextStyle::sized(self.control_value.to_egui(), self.body_size),
+            title: TextStyle::sized(self.title.to_egui(), self.body_size + 1.0),
+            background: self.background.to_egui(),
+            header: self.group_background.to_egui(),
+            border: self.control_edge.to_egui(),
+            label: self.label.to_egui(),
+            value: self.control_value.to_egui(),
+            field: self.control_rail.to_egui(),
+            field_hover: self.control_hover.to_egui(),
+            field_edge: self.control_edge.to_egui(),
+            accent: self.accent.to_egui(),
+            checker_light: Color::from_srgb8([0xC8, 0xC8, 0xC8, 255]).to_egui(),
+            checker_dark: Color::from_srgb8([0x8C, 0x8C, 0x8C, 255]).to_egui(),
+            border_width: 1.0,
+            corner_radius: 4,
+            popup_width: 318.0,
+            header_height: 24.0,
+            wheel_size: 196.0,
+            row_height: 22.0,
+            field_height: self.field_height,
+            padding: 10.0,
+        }
+    }
+
+    /// The band behind a field row: two greys, alternating row by row.
+    pub fn row_fill(&self, row: usize) -> Color {
+        if row.is_multiple_of(2) {
+            self.row_odd
+        } else {
+            self.row_even
+        }
+    }
+
+    /// Outline of a value box: blue while selected, a lighter edge under the
+    /// pointer, the quiet edge otherwise.
+    pub fn value_edge(&self, selected: bool, hovered: bool) -> Color {
+        if selected {
+            self.accent
+        } else if hovered {
+            self.control_edge_hover
+        } else {
+            self.control_edge
+        }
+    }
+
+    /// Row name colour: Unity turns the label blue while the field is active.
+    pub fn label_color(&self, active: bool) -> Color {
+        if active {
+            self.label_active
+        } else {
+            self.label
+        }
     }
 }
 
@@ -243,7 +340,7 @@ mod tests {
     use kairos_editor_widgets::style::StyleFile;
 
     #[test]
-    fn the_preferences_style_projects_three_button_shapes() {
+    fn the_preferences_style_projects_its_button_shapes() {
         let style = PreferencesPanelStyle::dark();
 
         let button = style.button_style();
@@ -259,9 +356,32 @@ mod tests {
         assert_eq!(nav.fill, egui::Color32::TRANSPARENT);
         assert_eq!(nav.hover_fill, style.nav_hover.to_egui());
         assert_eq!(nav.active_fill, style.nav_selected.to_egui());
+    }
 
-        let toggle = style.toggle_style();
-        assert_eq!(toggle.active_fill, style.accent.to_egui());
+    /// The property list is a Unity-style Zebra: two greys, one per row, and a
+    /// blue outline only once the field is selected.
+    #[test]
+    fn field_rows_alternate_and_selected_values_get_the_accent_edge() {
+        let style = PreferencesPanelStyle::dark();
+
+        assert_eq!(style.row_fill(0), style.row_odd);
+        assert_eq!(style.row_fill(1), style.row_even);
+        assert_eq!(style.row_fill(2), style.row_odd);
+        assert_ne!(style.row_odd, style.row_even);
+
+        assert_eq!(style.value_edge(false, false), style.control_edge);
+        assert_eq!(
+            style.value_edge(false, true),
+            style.control_edge_hover,
+            "hover lightens the edge before the field is selected"
+        );
+        assert_eq!(
+            style.value_edge(true, false),
+            style.accent,
+            "a selected field keeps its blue outline regardless of hover"
+        );
+        assert_eq!(style.label_color(true), style.label_active);
+        assert_eq!(style.label_color(false), style.label);
     }
 
     /// The checked-in reference skin and the code defaults are the same skin.

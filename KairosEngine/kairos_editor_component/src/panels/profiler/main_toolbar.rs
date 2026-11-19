@@ -1,7 +1,7 @@
 use egui::{Response, Sense, Ui};
 use kairos_editor_widgets::{
     button::{Button, ButtonStyle},
-    color::Color32Ext,
+    color::ColorExt,
     divider::Divider,
 };
 use kairos_profile::{ProfileSession, Profiler};

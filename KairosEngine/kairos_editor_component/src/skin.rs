@@ -24,8 +24,9 @@
 //! `Panel::save_skin` writes the file. This module only describes and
 //! persists; it does not know about the Preferences panel.
 
-use kairos_color::Color32;
+use kairos_color::Color;
 use kairos_editor_core::{PanelId, StyleValue};
+use kairos_editor_widgets::color_picker::ColorProperty;
 use kairos_editor_widgets::style::{Style, StyleFile};
 
 /// Derive macro: generates [`StyleNode`] and [`StyleFields`] for a style struct.
@@ -45,6 +46,8 @@ pub enum StyleKind {
     Text,
     /// A straight sRGBA color.
     Color,
+    /// A linear-light HDR color (channels may exceed 1).
+    HdrColor,
 }
 
 /// One editable token of a panel's skin.
@@ -61,8 +64,7 @@ pub struct StyleField {
 }
 
 impl StyleField {
-    /// First path segment (`"icons"`), or `""` for a root-level token. The
-    /// editor groups rows by this.
+    /// First path segment (`"icons"`), or `""` for a root-level token.
     pub fn group(&self) -> &str {
         self.path.split_once('.').map_or("", |(group, _)| group)
     }
@@ -286,20 +288,45 @@ impl<T: StyleNode> StyleNode for Vec<T> {
     }
 }
 
-impl StyleNode for Color32 {
+impl StyleNode for Color {
     fn collect(&self, path: &str, out: &mut Vec<StyleField>) {
         out.push(StyleField {
             path: path.to_owned(),
             name: humanize(path),
-            value: StyleValue::Color([self.r, self.g, self.b, self.a]),
+            value: StyleValue::Color(*self),
             kind: StyleKind::Color,
         });
     }
 
     fn write(&mut self, path: &str, value: &StyleValue) -> bool {
         match value {
-            StyleValue::Color([r, g, b, a]) if path.is_empty() => {
-                *self = Color32::new(*r, *g, *b, *a);
+            StyleValue::Color(color) if path.is_empty() => {
+                *self = *color;
+                true
+            }
+            _ => false,
+        }
+    }
+}
+
+impl StyleNode for ColorProperty {
+    fn collect(&self, path: &str, out: &mut Vec<StyleField>) {
+        out.push(StyleField {
+            path: path.to_owned(),
+            name: humanize(path),
+            value: StyleValue::Color(self.color),
+            kind: if self.usage.hdr {
+                StyleKind::HdrColor
+            } else {
+                StyleKind::Color
+            },
+        });
+    }
+
+    fn write(&mut self, path: &str, value: &StyleValue) -> bool {
+        match value {
+            StyleValue::Color(color) if path.is_empty() => {
+                self.color = *color;
                 true
             }
             _ => false,
@@ -322,7 +349,7 @@ mod tests {
         height: f32,
         radius: u8,
         enabled: bool,
-        background: Color32,
+        background: Color,
         #[style(skip)]
         cache: u32,
         icons: TestIcons,
@@ -333,7 +360,7 @@ mod tests {
             height: 20.0,
             radius: 3,
             enabled: true,
-            background: Color32::new(1, 2, 3, 255),
+            background: Color::from_srgb8([1, 2, 3, 255]),
             cache: 7,
             icons: TestIcons {
                 warning: "w.png".to_owned(),
@@ -387,11 +414,34 @@ mod tests {
     fn colors_round_trip_as_straight_srgba() {
         let mut style = style();
 
-        assert!(style.set_style_field("background", &StyleValue::Color([9, 8, 7, 128])));
-        assert_eq!(style.background, Color32::new(9, 8, 7, 128));
+        let color = Color::from_srgb8([9, 8, 7, 128]);
+        assert!(style.set_style_field("background", &StyleValue::Color(color)));
+        assert_eq!(style.background, color);
+        assert_eq!(style.style_fields()[3].value, StyleValue::Color(color));
+    }
+
+    #[derive(Clone, Debug, PartialEq, StyleFields)]
+    struct HdrStyle {
+        glow: ColorProperty,
+    }
+
+    #[test]
+    fn hdr_colors_are_their_own_kind() {
+        let mut style = HdrStyle {
+            glow: ColorProperty::hdr(Color::new(4.0, 1.5, 0.25, 1.0)),
+        };
+        let fields = style.style_fields();
+        assert_eq!(fields.len(), 1);
+        assert_eq!(fields[0].kind, StyleKind::HdrColor);
         assert_eq!(
-            style.style_fields()[3].value,
-            StyleValue::Color([9, 8, 7, 128])
+            fields[0].value,
+            StyleValue::Color(Color::new(4.0, 1.5, 0.25, 1.0))
+        );
+
+        assert!(style.set_style_field("glow", &StyleValue::Color(Color::new(2.0, 0.5, 0.0, 0.5))));
+        assert_eq!(
+            style.glow,
+            ColorProperty::hdr(Color::new(2.0, 0.5, 0.0, 0.5))
         );
     }
 

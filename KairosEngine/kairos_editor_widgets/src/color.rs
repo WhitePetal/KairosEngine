@@ -1,26 +1,27 @@
-//! `kairos_color::Color32` → egui conversions for the editor.
+//! `kairos_color::Color` → egui conversions for the editor.
 //!
-//! `kairos_color` is an engine-side, UI-agnostic value crate, so the egui bridge
-//! belongs to the editor's appearance layer (L0/L1) rather than to the color
-//! crate. Components and the app shell share this one conversion.
+//! `kairos_color` is an engine-side, UI-agnostic value crate, so the egui
+//! bridge belongs to the editor's appearance layer (L0/L1) rather than to the
+//! color crate. Components and the app shell share this conversion.
 //!
 //! Rust's orphan rules are why this is an extension trait instead of
-//! `impl From<Color32> for egui::Color32`: both `From` and `egui::Color32` are
-//! foreign here, and `Color32` is defined in `kairos_color`, so only that crate
+//! `impl From<Color> for egui::Color32`: both `From` and `egui::Color32` are
+//! foreign here, and `Color` is defined in `kairos_color`, so only that crate
 //! could write the `From` impl.
 
 use egui::Color32 as EguiColor;
-use kairos_color::Color32;
+use kairos_color::Color;
 
-/// Extension methods for painting shared style colors.
-pub trait Color32Ext {
-    /// Straight (unmultiplied) sRGBA → egui's premultiplied color.
+/// Extension methods for painting canonical linear colors.
+pub trait ColorExt {
+    /// Linear color → displayable sRGB → egui's premultiplied color.
     fn to_egui(self) -> EguiColor;
 }
 
-impl Color32Ext for Color32 {
+impl ColorExt for Color {
     fn to_egui(self) -> EguiColor {
-        EguiColor::from_rgba_unmultiplied(self.r, self.g, self.b, self.a)
+        let [r, g, b, a] = self.to_srgb8();
+        EguiColor::from_rgba_unmultiplied(r, g, b, a)
     }
 }
 
@@ -29,13 +30,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn converts_straight_rgba_to_egui() {
+    fn converts_linear_color_to_displayable_egui() {
         assert_eq!(
-            Color32::new(20, 40, 60, 255).to_egui(),
+            Color::from_srgb8([20, 40, 60, 255]).to_egui(),
             EguiColor::from_rgb(20, 40, 60)
         );
         assert_eq!(
-            Color32::new(200, 150, 100, 128).to_egui(),
+            Color::from_srgb8([200, 150, 100, 128]).to_egui(),
             EguiColor::from_rgba_unmultiplied(200, 150, 100, 128)
         );
     }

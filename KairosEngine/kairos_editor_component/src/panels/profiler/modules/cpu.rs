@@ -1,12 +1,11 @@
 use egui::{Align2, CornerRadius, Rect, Sense, Ui};
-use kairos_editor_widgets::color::Color32Ext;
+use kairos_editor_widgets::color::ColorExt;
 use kairos_profile::{Category, FrameSnapshot, ProfileSession};
 use strum::IntoEnumIterator;
 
+use crate::panels::profiler::ProfilerPanel;
 use crate::panels::profiler::frame_ms;
-use crate::panels::profiler::{ProfilerPanel};
 use crate::panels::profiler::modules::ChartColumn;
-
 
 /// The chart's vertical scale clamps into this range, (0.11 ms to 70 ms):
 /// one hitch cannot flatten the whole graph.
@@ -52,7 +51,6 @@ fn usage_grid(scale_ms: f32) -> &'static [(f64, &'static str)] {
         &USAGE_GRID_SLOW
     }
 }
-
 
 impl ProfilerPanel {
     pub(super) fn paint_cpu_module(&mut self, ui: &mut Ui, row: Rect, session: &ProfileSession) {
@@ -298,8 +296,8 @@ impl ProfilerPanel {
             .iter()
             .map(|column| column.ms)
             .fold(0.0_f32, f32::max);
-        let target =
-            (tallest.max(0.001) / self.style.usage_bar_fill.max(0.1)).clamp(MIN_USAGE_SCALE_MS, MAX_USAGE_SCALE_MS);
+        let target = (tallest.max(0.001) / self.style.usage_bar_fill.max(0.1))
+            .clamp(MIN_USAGE_SCALE_MS, MAX_USAGE_SCALE_MS);
         if self.module_scale_ms <= 0.0 {
             self.module_scale_ms = target;
         } else {

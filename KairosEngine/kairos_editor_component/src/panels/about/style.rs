@@ -11,9 +11,9 @@
 //! without shipping a second RON file per language.
 
 use egui::{CornerRadius, Vec2};
-use kairos_color::Color32;
+use kairos_color::Color;
 use kairos_editor_widgets::button::ButtonStyle;
-use kairos_editor_widgets::color::Color32Ext;
+use kairos_editor_widgets::color::ColorExt;
 use kairos_editor_widgets::style::Style;
 use kairos_editor_widgets::text::TextStyle;
 use serde::{Deserialize, Serialize};
@@ -27,16 +27,16 @@ pub struct AboutPanelStyle {
     /// Big product mark and the (small) tab artwork.
     pub icons: AboutIconPaths,
 
-    pub background: Color32,
-    pub title: Color32,
-    pub subtitle: Color32,
-    pub body: Color32,
+    pub background: Color,
+    pub title: Color,
+    pub subtitle: Color,
+    pub body: Color,
     /// Key column of the identity rows (Build/License/Repository/...).
-    pub label: Color32,
+    pub label: Color,
     /// Value column of the identity rows.
-    pub value: Color32,
-    pub link: Color32,
-    pub divider: Color32,
+    pub value: Color,
+    pub link: Color,
+    pub divider: Color,
 
     pub title_size: f32,
     pub subtitle_size: f32,
@@ -59,12 +59,12 @@ pub struct AboutPanelStyle {
 
     /// Body-button chrome: filled and outlined, so a dialog action reads as a
     /// button instead of a text label on the panel background.
-    pub button_fill: Color32,
-    pub button_hover: Color32,
-    pub button_active: Color32,
-    pub button_border: Color32,
+    pub button_fill: Color,
+    pub button_hover: Color,
+    pub button_active: Color,
+    pub button_border: Color,
     pub button_border_width: f32,
-    pub button_text: Color32,
+    pub button_text: Color,
     pub button_height: f32,
     /// Horizontal padding of a body button.
     pub button_padding: f32,
@@ -84,14 +84,14 @@ impl Style for AboutPanelStyle {
         Self {
             icons: AboutIconPaths::dark(),
 
-            background: Color32::from_rgb(0x36, 0x36, 0x36),
-            title: Color32::from_rgb(0xee, 0xee, 0xee),
-            subtitle: Color32::from_rgb(0xa0, 0xa0, 0xa0),
-            body: Color32::from_rgb(0xc8, 0xc8, 0xc8),
-            label: Color32::from_rgb(0x8c, 0x8c, 0x8c),
-            value: Color32::from_rgb(0xdc, 0xdc, 0xdc),
-            link: Color32::from_rgb(0x4a, 0x90, 0xd9),
-            divider: Color32::from_rgb(0x2a, 0x2a, 0x2a),
+            background: Color::from_srgb8([0x36, 0x36, 0x36, 255]),
+            title: Color::from_srgb8([0xee, 0xee, 0xee, 255]),
+            subtitle: Color::from_srgb8([0xa0, 0xa0, 0xa0, 255]),
+            body: Color::from_srgb8([0xc8, 0xc8, 0xc8, 255]),
+            label: Color::from_srgb8([0x8c, 0x8c, 0x8c, 255]),
+            value: Color::from_srgb8([0xdc, 0xdc, 0xdc, 255]),
+            link: Color::from_srgb8([0x4a, 0x90, 0xd9, 255]),
+            divider: Color::from_srgb8([0x2a, 0x2a, 0x2a, 255]),
 
             title_size: 20.0,
             subtitle_size: 12.0,
@@ -106,12 +106,12 @@ impl Style for AboutPanelStyle {
             logo_size: 72.0,
             logo_gap: 14.0,
 
-            button_fill: Color32::from_rgb(0x45, 0x45, 0x45),
-            button_hover: Color32::from_rgb(0x56, 0x56, 0x56),
-            button_active: Color32::from_rgb(0x33, 0x33, 0x33),
-            button_border: Color32::from_rgb(0x6e, 0x6e, 0x6e),
+            button_fill: Color::from_srgb8([0x45, 0x45, 0x45, 255]),
+            button_hover: Color::from_srgb8([0x56, 0x56, 0x56, 255]),
+            button_active: Color::from_srgb8([0x33, 0x33, 0x33, 255]),
+            button_border: Color::from_srgb8([0x6e, 0x6e, 0x6e, 255]),
             button_border_width: 1.0,
-            button_text: Color32::from_rgb(0xdc, 0xdc, 0xdc),
+            button_text: Color::from_srgb8([0xdc, 0xdc, 0xdc, 255]),
             button_height: 22.0,
             button_padding: 10.0,
             button_corner_radius: 2.0,
@@ -122,21 +122,21 @@ impl Style for AboutPanelStyle {
         Self {
             icons: AboutIconPaths::light(),
 
-            background: Color32::from_rgb(0xeb, 0xeb, 0xeb),
-            title: Color32::from_rgb(0x1e, 0x1e, 0x1e),
-            subtitle: Color32::from_rgb(0x5a, 0x5a, 0x5a),
-            body: Color32::from_rgb(0x33, 0x33, 0x33),
-            label: Color32::from_rgb(0x6e, 0x6e, 0x6e),
-            value: Color32::from_rgb(0x1e, 0x1e, 0x1e),
-            link: Color32::from_rgb(0x2c, 0x5d, 0x87),
-            divider: Color32::from_rgb(0xc4, 0xc4, 0xc4),
+            background: Color::from_srgb8([0xeb, 0xeb, 0xeb, 255]),
+            title: Color::from_srgb8([0x1e, 0x1e, 0x1e, 255]),
+            subtitle: Color::from_srgb8([0x5a, 0x5a, 0x5a, 255]),
+            body: Color::from_srgb8([0x33, 0x33, 0x33, 255]),
+            label: Color::from_srgb8([0x6e, 0x6e, 0x6e, 255]),
+            value: Color::from_srgb8([0x1e, 0x1e, 0x1e, 255]),
+            link: Color::from_srgb8([0x2c, 0x5d, 0x87, 255]),
+            divider: Color::from_srgb8([0xc4, 0xc4, 0xc4, 255]),
 
-            button_fill: Color32::from_rgb(0xf5, 0xf5, 0xf5),
-            button_hover: Color32::WHITE,
-            button_active: Color32::from_rgb(0xdc, 0xdc, 0xdc),
-            button_border: Color32::from_rgb(0xa8, 0xa8, 0xa8),
+            button_fill: Color::from_srgb8([0xf5, 0xf5, 0xf5, 255]),
+            button_hover: Color::WHITE,
+            button_active: Color::from_srgb8([0xdc, 0xdc, 0xdc, 255]),
+            button_border: Color::from_srgb8([0xa8, 0xa8, 0xa8, 255]),
             button_border_width: 1.0,
-            button_text: Color32::from_rgb(0x20, 0x20, 0x20),
+            button_text: Color::from_srgb8([0x20, 0x20, 0x20, 255]),
             ..Self::dark()
         }
     }

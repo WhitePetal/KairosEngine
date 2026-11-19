@@ -165,17 +165,17 @@ struct AudioInspectorStyle {
     /// FFT window size (power of 2).
     fft_size: usize,
     /// Background color for the waveform area.
-    waveform_bg: math::Color32,
+    waveform_bg: math::Color,
     /// Waveform line color.
-    waveform_color: math::Color32,
+    waveform_color: math::Color,
     /// Color for the played region overlay.
-    waveform_played_color: math::Color32,
+    waveform_played_color: math::Color,
     /// Color for the playhead cursor.
-    playhead_color: math::Color32,
+    playhead_color: math::Color,
     /// Spectrum bar color.
-    spectrum_color: math::Color32,
+    spectrum_color: math::Color,
     /// Grid line color.
-    grid_color: math::Color32,
+    grid_color: math::Color,
 }
 
 impl AudioInspectorStyle {

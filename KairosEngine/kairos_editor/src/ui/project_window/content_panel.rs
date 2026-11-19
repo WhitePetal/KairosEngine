@@ -20,8 +20,8 @@ use kairos_engine::math;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ContentStyle {
-    pub label_color: math::Color32,
-    pub selected_background_color: math::Color32,
+    pub label_color: math::Color,
+    pub selected_background_color: math::Color,
     pub selected_background_corner_radius: u8,
     pub icon_size: f32,
     pub label_font_size: f32,
@@ -33,8 +33,8 @@ pub struct ContentStyle {
     pub cell_spacing_y: f32,
     // ---- 底部栏（选中文件路径）----
     pub bottom_bar_height: f32,
-    pub bottom_bar_background_color: math::Color32,
-    pub bottom_bar_text_color: math::Color32,
+    pub bottom_bar_background_color: math::Color,
+    pub bottom_bar_text_color: math::Color,
     pub bottom_bar_font_size: f32,
 }
 

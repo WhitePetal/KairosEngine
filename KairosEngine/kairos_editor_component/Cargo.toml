@@ -18,8 +18,8 @@ inventory = "0.3"
 serde = { version = "1.0.228", features = ["derive"] }
 strum = { version = "0.28.0", features = ["derive"] }
 
-# Style colors are the shared `kairos_color::Color32`; `color.rs` converts them
-# to egui colors when painting (the shared color crate stays UI-agnostic).
+# Style colors are the shared linear `kairos_color::Color`; the editor's
+# `ColorExt` converts them to egui colors when painting.
 kairos_color = { path = "../kairos_color" }
 kairos_editor_core = { path = "../kairos_editor_core" }
 # Console lines are structured `kairos_log` records; the buffer lives next to the

@@ -4,7 +4,7 @@
 //! `Preferences/Styles/ConsoleStyle.ron` (dark + light). The panel loads the file
 //! in `Panel::init`; editing it restyles the Console without a rebuild.
 
-use kairos_color::Color32;
+use kairos_color::Color;
 use kairos_editor_widgets::style::Style;
 use kairos_log::Level;
 use serde::{Deserialize, Serialize};
@@ -13,24 +13,24 @@ use crate::skin::StyleFields;
 
 /// Appearance tokens for the Console panel: palette, icon file paths and the
 /// measured geometry. Pure data so it can be serialized to RON and later edited
-/// from Preferences; colors are [`kairos_color::Color32`], written as hex strings
+/// from Preferences; colors are [`kairos_color::Color`], written as hex strings
 /// (`"#353535"`) by that crate's serde impls.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, StyleFields)]
 pub struct ConsoleStyle {
     // Palette (the dark values are sampled from the reference capture).
-    pub toolbar_bg: Color32,
-    pub toolbar_text: Color32,
-    pub toggle_bg: Color32,
-    pub search_bg: Color32,
-    pub search_edge: Color32,
-    pub separator: Color32,
-    pub row_odd: Color32,
-    pub row_even: Color32,
-    pub row_selected: Color32,
-    pub text: Color32,
-    pub text_selected: Color32,
-    pub link: Color32,
-    pub detail_bg: Color32,
+    pub toolbar_bg: Color,
+    pub toolbar_text: Color,
+    pub toggle_bg: Color,
+    pub search_bg: Color,
+    pub search_edge: Color,
+    pub separator: Color,
+    pub row_odd: Color,
+    pub row_even: Color,
+    pub row_selected: Color,
+    pub text: Color,
+    pub text_selected: Color,
+    pub link: Color,
+    pub detail_bg: Color,
 
     /// Icon file locations (runtime assets, see `kairos_editor_widgets::ui_image`).
     pub icons: ConsoleIconPaths,
@@ -93,19 +93,19 @@ impl Style for ConsoleStyle {
     /// The measured Unity/Tuanjie 2022.3 dark-skin console.
     fn dark() -> Self {
         Self {
-            toolbar_bg: Color32::from_rgb(53, 53, 53),
-            toolbar_text: Color32::from_rgb(177, 177, 177),
-            toggle_bg: Color32::from_rgb(70, 70, 70),
-            search_bg: Color32::from_rgb(37, 37, 37),
-            search_edge: Color32::from_rgb(29, 29, 29),
-            separator: Color32::from_rgb(32, 32, 32),
-            row_odd: Color32::from_rgb(55, 55, 55),
-            row_even: Color32::from_rgb(49, 49, 49),
-            row_selected: Color32::from_rgb(39, 83, 124),
-            text: Color32::from_rgb(192, 192, 192),
-            text_selected: Color32::from_rgb(241, 245, 247),
-            link: Color32::from_rgb(65, 110, 238),
-            detail_bg: Color32::from_rgb(49, 49, 49),
+            toolbar_bg: Color::from_srgb8([53, 53, 53, 255]),
+            toolbar_text: Color::from_srgb8([177, 177, 177, 255]),
+            toggle_bg: Color::from_srgb8([70, 70, 70, 255]),
+            search_bg: Color::from_srgb8([37, 37, 37, 255]),
+            search_edge: Color::from_srgb8([29, 29, 29, 255]),
+            separator: Color::from_srgb8([32, 32, 32, 255]),
+            row_odd: Color::from_srgb8([55, 55, 55, 255]),
+            row_even: Color::from_srgb8([49, 49, 49, 255]),
+            row_selected: Color::from_srgb8([39, 83, 124, 255]),
+            text: Color::from_srgb8([192, 192, 192, 255]),
+            text_selected: Color::from_srgb8([241, 245, 247, 255]),
+            link: Color::from_srgb8([65, 110, 238, 255]),
+            detail_bg: Color::from_srgb8([49, 49, 49, 255]),
             icons: ConsoleIconPaths::dark(),
             tab_icon: "Preferences/Textures/tab_icons/console.png".to_owned(),
             text_size: 12.0,
@@ -136,19 +136,19 @@ impl Style for ConsoleStyle {
     /// against a light-skin capture before being called final.
     fn light() -> Self {
         Self {
-            toolbar_bg: Color32::from_rgb(0xC8, 0xC8, 0xC8),
-            toolbar_text: Color32::from_rgb(0x20, 0x20, 0x20),
-            toggle_bg: Color32::from_rgb(0xB4, 0xB4, 0xB4),
-            search_bg: Color32::from_rgb(0xFF, 0xFF, 0xFF),
-            search_edge: Color32::from_rgb(0x9A, 0x9A, 0x9A),
-            separator: Color32::from_rgb(0xA6, 0xA6, 0xA6),
-            row_odd: Color32::from_rgb(0xF4, 0xF4, 0xF4),
-            row_even: Color32::from_rgb(0xEC, 0xEC, 0xEC),
-            row_selected: Color32::from_rgb(0x3B, 0x6E, 0xA5),
-            text: Color32::from_rgb(0x1E, 0x1E, 0x1E),
-            text_selected: Color32::from_rgb(0xFF, 0xFF, 0xFF),
-            link: Color32::from_rgb(0x1A, 0x5F, 0xB4),
-            detail_bg: Color32::from_rgb(0xE8, 0xE8, 0xE8),
+            toolbar_bg: Color::from_srgb8([0xC8, 0xC8, 0xC8, 255]),
+            toolbar_text: Color::from_srgb8([0x20, 0x20, 0x20, 255]),
+            toggle_bg: Color::from_srgb8([0xB4, 0xB4, 0xB4, 255]),
+            search_bg: Color::from_srgb8([0xFF, 0xFF, 0xFF, 255]),
+            search_edge: Color::from_srgb8([0x9A, 0x9A, 0x9A, 255]),
+            separator: Color::from_srgb8([0xA6, 0xA6, 0xA6, 255]),
+            row_odd: Color::from_srgb8([0xF4, 0xF4, 0xF4, 255]),
+            row_even: Color::from_srgb8([0xEC, 0xEC, 0xEC, 255]),
+            row_selected: Color::from_srgb8([0x3B, 0x6E, 0xA5, 255]),
+            text: Color::from_srgb8([0x1E, 0x1E, 0x1E, 255]),
+            text_selected: Color::from_srgb8([0xFF, 0xFF, 0xFF, 255]),
+            link: Color::from_srgb8([0x1A, 0x5F, 0xB4, 255]),
+            detail_bg: Color::from_srgb8([0xE8, 0xE8, 0xE8, 255]),
             icons: ConsoleIconPaths::light(),
             tab_icon: "Preferences/Textures/tab_icons/light/console.png".to_owned(),
             ..Self::dark()
@@ -257,7 +257,7 @@ mod tests {
             .expect("save style");
         let text = std::fs::read_to_string(&path).expect("read style");
         assert!(text.contains("\"#353535\""), "{text}");
-        assert!(!text.contains("Color32"), "{text}");
+        assert!(!text.contains("Color"), "{text}");
 
         let loaded = StyleFile::<ConsoleStyle>::load_from(&path).expect("load style");
         assert_eq!(loaded.dark, ConsoleStyle::dark());

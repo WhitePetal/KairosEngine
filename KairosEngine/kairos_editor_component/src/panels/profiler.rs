@@ -232,6 +232,7 @@
 //! this file but is no longer wired into [`Panel::ui`]; its marker table is
 //! what the capture's JSON export carries.
 
+use kairos_editor_widgets::color::ColorExt;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
@@ -240,7 +241,6 @@ use egui::{
     WidgetText,
 };
 use kairos_editor_widgets::button::{Button, ButtonAlign, ButtonStyle};
-use kairos_editor_widgets::color::Color32Ext;
 use kairos_editor_widgets::divider::Divider;
 use kairos_editor_widgets::menu::MenuStyle;
 use kairos_editor_widgets::min_max_scroll::{MinMaxScroll, MinMaxScrollStyle, ScrollWindow};

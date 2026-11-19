@@ -21,11 +21,11 @@
 
 pub mod style;
 
+use kairos_editor_widgets::color::ColorExt;
 use std::collections::HashMap;
 
 use egui::{Align2, CornerRadius, Rect, Sense, Stroke, Ui, WidgetText, WidgetType, pos2, vec2};
 use kairos_editor_widgets::button::{Button, ButtonAlign, ButtonStyle};
-use kairos_editor_widgets::color::Color32Ext;
 use kairos_editor_widgets::paint::{labelled_widget_info, magnifier};
 use kairos_editor_widgets::splitter::Splitter;
 use kairos_editor_widgets::style::StyleFile;
@@ -855,8 +855,7 @@ mod tests {
             .map(|painted| painted.rect.left())
             .collect();
 
-        let count_group =
-            style.count_widths * Level::COUNT as f32 + 2.0 * style.separator_width;
+        let count_group = style.count_widths * Level::COUNT as f32 + 2.0 * style.separator_width;
         let expected = [
             bar.left() + style.clear_width,
             bar.left() + style.clear_width + style.separator_width + style.collapse_width,

@@ -241,11 +241,14 @@ impl TomlTableInspector {
         row.col(|ui| {
             match value {
                 Value::String(s) => {
-                    if let Ok(color) = math::Color32::from_hex(s) {
-                        let mut color_ar = color.to_rgb_array();
+                    if let Ok(color) = math::Color::from_hex(s) {
+                        let [r, g, b, a] = color.to_srgb8();
+                        let mut color_ar = [r, g, b];
                         let resp = ui.color_edit_button_srgb(&mut color_ar);
                         if resp.changed() {
-                            *s = math::Color32::from(color_ar).to_hex();
+                            *s =
+                                math::Color::from_srgb8([color_ar[0], color_ar[1], color_ar[2], a])
+                                    .to_hex();
                             *changed = true;
                         }
                     } else {

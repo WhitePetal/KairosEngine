@@ -8,9 +8,9 @@
 //! read this file themselves.
 
 use egui::{CornerRadius, Margin, Vec2};
-use kairos_color::Color32;
+use kairos_color::Color;
 use kairos_editor_widgets::button::ButtonStyle;
-use kairos_editor_widgets::color::Color32Ext;
+use kairos_editor_widgets::color::ColorExt;
 use kairos_editor_widgets::menu::MenuStyle;
 use kairos_editor_widgets::style::Style;
 use kairos_editor_widgets::text::TextStyle;
@@ -21,12 +21,12 @@ use serde::{Deserialize, Serialize};
 pub struct ToolBarStyle {
     pub icons: ToolBarIconPaths,
 
-    pub background_color: Color32,
-    pub text_color: Color32,
+    pub background_color: Color,
+    pub text_color: Color,
     /// Hover / pressed fill of a menu bar button. Matches the Console panel's
     /// toolbar hover (`ConsoleStyle::toggle_bg`) so both bars read as one skin.
     #[serde(default = "default_hover_color")]
-    pub hover_color: Color32,
+    pub hover_color: Color,
 
     #[serde(default = "default_text_size")]
     pub text_size: f32,
@@ -49,10 +49,10 @@ pub struct ToolBarStyle {
 /// selection highlight.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ToolBarMenuStyle {
-    pub background_color: Color32,
-    pub item_hover_color: Color32,
-    pub text_color: Color32,
-    pub separator_color: Color32,
+    pub background_color: Color,
+    pub item_hover_color: Color,
+    pub text_color: Color,
+    pub separator_color: Color,
     pub item_height: f32,
     /// Vertical padding between the popup edge and the item column.
     pub padding: f32,
@@ -70,10 +70,10 @@ impl Default for ToolBarMenuStyle {
 impl ToolBarMenuStyle {
     pub fn dark() -> Self {
         Self {
-            background_color: Color32::from_rgb(0x2d, 0x2d, 0x2d),
-            item_hover_color: Color32::from_rgb(0x2c, 0x5d, 0x87),
-            text_color: Color32::from_rgb(0xde, 0xde, 0xde),
-            separator_color: Color32::from_rgb(0x4f, 0x4f, 0x4f),
+            background_color: Color::from_srgb8([0x2d, 0x2d, 0x2d, 255]),
+            item_hover_color: Color::from_srgb8([0x2c, 0x5d, 0x87, 255]),
+            text_color: Color::from_srgb8([0xde, 0xde, 0xde, 255]),
+            separator_color: Color::from_srgb8([0x4f, 0x4f, 0x4f, 255]),
             item_height: 22.0,
             padding: 4.0,
             item_padding: 11.0,
@@ -83,10 +83,10 @@ impl ToolBarMenuStyle {
 
     pub fn light() -> Self {
         Self {
-            background_color: Color32::from_rgb(0xf0, 0xf0, 0xf0),
-            item_hover_color: Color32::from_rgb(0x3a, 0x72, 0xb0),
-            text_color: Color32::from_rgb(0x20, 0x20, 0x20),
-            separator_color: Color32::from_rgb(0xc0, 0xc0, 0xc0),
+            background_color: Color::from_srgb8([0xf0, 0xf0, 0xf0, 255]),
+            item_hover_color: Color::from_srgb8([0x3a, 0x72, 0xb0, 255]),
+            text_color: Color::from_srgb8([0x20, 0x20, 0x20, 255]),
+            separator_color: Color::from_srgb8([0xc0, 0xc0, 0xc0, 255]),
             ..Self::dark()
         }
     }
@@ -99,9 +99,9 @@ impl Style for ToolBarStyle {
         Self {
             icons: ToolBarIconPaths::dark(),
 
-            background_color: Color32::from_rgb(0x19, 0x19, 0x19),
-            text_color: Color32::from_rgb(0xfe, 0xfe, 0xfe),
-            hover_color: Color32::from_rgb(0x46, 0x46, 0x46),
+            background_color: Color::from_srgb8([0x19, 0x19, 0x19, 255]),
+            text_color: Color::from_srgb8([0xfe, 0xfe, 0xfe, 255]),
+            hover_color: Color::from_srgb8([0x46, 0x46, 0x46, 255]),
 
             text_size: 12.0,
             height: 23.0,
@@ -117,9 +117,9 @@ impl Style for ToolBarStyle {
         Self {
             icons: ToolBarIconPaths::light(),
 
-            background_color: Color32::from_rgb(0xc8, 0xc8, 0xc8),
-            text_color: Color32::from_rgb(0x20, 0x20, 0x20),
-            hover_color: Color32::from_rgb(0xb4, 0xb4, 0xb4),
+            background_color: Color::from_srgb8([0xc8, 0xc8, 0xc8, 255]),
+            text_color: Color::from_srgb8([0x20, 0x20, 0x20, 255]),
+            hover_color: Color::from_srgb8([0xb4, 0xb4, 0xb4, 255]),
 
             text_size: 12.0,
             height: 23.0,
@@ -170,8 +170,8 @@ impl ToolBarStyle {
     }
 }
 
-fn default_hover_color() -> Color32 {
-    Color32::from_rgb(0x46, 0x46, 0x46)
+fn default_hover_color() -> Color {
+    Color::from_srgb8([0x46, 0x46, 0x46, 255])
 }
 
 fn default_text_size() -> f32 {

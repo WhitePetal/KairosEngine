@@ -18,10 +18,10 @@ use kairos_engine::math;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct HierarchyStyle {
-    pub directory_header_color: math::Color32,
-    pub file_header_color: math::Color32,
-    pub selected_file_background_color: math::Color32,
-    pub file_suffix_color: math::Color32,
+    pub directory_header_color: math::Color,
+    pub file_header_color: math::Color,
+    pub selected_file_background_color: math::Color,
+    pub file_suffix_color: math::Color,
     pub file_header_size: f32,
     pub file_icon_size: f32,
     pub selected_file_background_corner_radius: u8,

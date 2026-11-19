@@ -39,8 +39,8 @@ wgpu = "29.0.3"
 half = { version = "2.4", features = ["bytemuck"] }
 kairos_ecs = { path = "../kairos_ecs" }
 kairos_asset = { path = "../kairos_asset" }
-# `math::Color32` lives in `kairos_color` and is re-exported from here, so
-# `kairos_engine::math::Color32` stays the path existing code uses.
+# `Color` lives in `kairos_color` and is re-exported from here, so
+# `kairos_engine::math::Color` stays the path engine/editor code uses.
 kairos_color = { path = "../kairos_color" }
 kairos_audio = { path = "../kairos_audio" }
 kairos_graphics = { path = "../kairos_graphics" }

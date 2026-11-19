@@ -10,3 +10,4 @@ description = "kairos editor's core state (no egui, no IO)"
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(docsrs)", "cfg(docsrs_dep)"] }
 
 [dependencies]
+kairos_color = { path = "../kairos_color" }

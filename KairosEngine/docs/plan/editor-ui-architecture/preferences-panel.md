@@ -1,6 +1,6 @@
 # Preferences 窗口迁移评审：`kairos_editor::PreferencesWindow` → 0.2.0 `panels/preferences`
 
-> **状态**：评审 + 实现（2026-11-19）
+> **状态**：评审 + 实现（2026-11-19）；UI 重做为 Unity Inspector 样式，并加入自有 LDR/HDR 取色器（2026-11-19 续）；颜色值改为 8 字节 linear `Color` + `ColorProperty` 字段策略（2026-11-19 再续）
 > **范围**：把 0.1.0 的 `kairos_editor/src/ui/preferences_window.rs`（414 行）与它依赖的样式反射通道（`ui_style_fields.rs`、`ui.rs:468-514`）迁到 0.2.0 的面板架构。目标与旧窗口一致：**把各个组件的 `Preferences/Styles/*.ron` 以 UI 控件的形式列出来，直接在 Preferences 里改**。
 > **配套**：[about-panel.md](./about-panel.md)（同一套评审口径）· [ADR 0008](../adr/0008-editor-ui-architecture.md) · [ADR 0009](../adr/0009-editor-panel-host-and-viewport.md) · [widget-layer.md](./widget-layer.md) · [editor-ui-widget-catalog.md](../../research/editor-ui-widget-catalog.md) §C17
 > **证据口径**：`path:line` 为本次（2026-11-19）工作区 HEAD 实读；「每帧写盘」「多 pass 重复发消息」沿用 `docs/research/editor-ui-messager-mvc-audit.md` 的静态推断口径（该文已给调用链）。
@@ -99,7 +99,7 @@ StyleFields::set_style_field(path, value)
 ```
 
 - 每个字段生成 `"父路径.字段名"` 和一个 `match` 分支；嵌套结构体（`icons`）自己也要 derive，于是 `icons.warning` 自然出现，父结构体不需要知道 `icons` 是分组。
-- **控件种类由字段类型决定**：`f32` → Float（DragValue，速度按数量级）、`u8/u16/u32/usize` → Integer（带类型上限）、`bool` → Toggle、`String` → Text、`Color32` → Color、`Vec<T>` → 按下标展开（Profiler 的 `category_palette`），`#[style(skip)]` 排除非 token 字段。
+- **控件种类由字段类型决定**：`f32` → Float（DragValue，速度按数量级）、`u8/u16/u32/usize` → Integer（带类型上限）、`bool` → Toggle、`String` → Text、`Color` → Color、`ColorProperty` → Color 或 HDR Color（看 usage）、`Vec<T>` → 按下标展开（Profiler 的 `category_palette`），`#[style(skip)]` 排除非 token 字段。
 - 旧实现的「字段名 + 手工范围」不见了：名字来自字段名（`toolbar_bg` → “Toolbar bg”），范围来自类型。
 
 **为什么用 derive 而不是手写字段列表**：手写列表每加一个 token 就要同步一次，正是旧 `get_style_fileds`/`update_style` 漂移的根源。宏在编译期从结构体本身生成，漏写不可能发生。
@@ -141,28 +141,36 @@ StyleFields::set_style_field(path, value)
 
 **没有 ToolBar 页**：工具栏是 app chrome，不是 `Panel`，没有 `skin()` 入口；它仍然可以通过 `Preferences/Styles/ToolBar.ron` 手改。这是与旧窗口唯一的功能差集，记为后续（把 `ToolBar` 也接进同一个字段协议即可，接口已经就绪）。
 
-### 2.6 版面与交互
+### 2.6 版面与交互（Unity Inspector 样式）
 
 ```text
 ┌─ 页面列表 (118) ─┬─ 页面 ────────────────────────────────┐
 │ ▍Console         │ Console                                │
 │  Profiler        │ Preferences/Styles/ConsoleStyle.ron …  │
 │  Preferences     │ ─────────────────────────────────────  │
-│                  │ Toolbar bg          [color]            │
-│                  │ Toolbar height      [ 20 ]             │
+│                  │ Toolbar bg       [████████████████ ◔]   │
+│                  │ Toolbar height            [ 20 ]       │
 │                  │ …                                      │
-│                  │ Icons                                  │
-│                  │   Info              [path text]        │
+│                  │ ▼ Icons                                │
+│                  │   Info      [Preferences/…/info.png]   │
+│                  │   Warning   [Preferences/…/warning.png]│
+│                  │ ▼ Textures                             │
+│                  │   Tint      [Preferences/…/tint.png]   │
 ├──────────────────┴────────────────────────────────────────┤
 │                                                  [Close]  │
 └───────────────────────────────────────────────────────────┘
 ```
 
-- **两栏**：左侧页面列表（选中行填充 + 2 px accent 竖条），右侧页面在 `ScrollArea` 里滚动；footer 用 `allocate_exact_size` 钉在底部，窗口再矮也先丢页面内容、不丢按钮（有测试）。
-- **窄了就换行**：页面宽度不足 `label_width + field_width + 24` 时，控件落到标签下面，而不是被右边缘裁掉——dock 里的 Preferences 可以比浮窗窄得多（有测试）。
-- **分组**：点分路径的第一段作为分组标题（`Icons`），行内显示叶子名（`Warning`）；根级 token 不显示分组标题。
-- **控件**：Float/Integer → `DragValue`（整数带类型上限、文本右对齐宽度固定）；Toggle → On/Off 按钮（选中填充 accent，与 Console 工具栏一致）；Text → 单行 `TextEdit`（图标路径）；Color → egui 色板按钮。所有控件共用 `control_visuals()` 的 token（rail/hover/active/accent/文字），不会在暗面板里露出 egui 默认灰。
-- **字体层级**：标题 15（strong）、正文 12、分组与文件路径 11；色板与 About/Console 同源（`#363636` 底、`#2A2A2A` 分隔线）。
+- **.ron 的嵌套结构就是折叠区域**：点分路径的每一级（`icons`、`icons.textures`）画成 Unity 的 foldout band——整行可点、左侧三角；折叠状态属于视图（`PageState::collapsed`），不写回文件。组头与根 token 左对齐，组内 token 按层级缩进 `group_indent`，左侧画 1 px 树引导线。
+- **两栏、左对齐**：标签列从行内边距开始左对齐（不再用 `add_sized` 的居中布局）；值列从同一列起点铺满剩余宽度。`label_width` 是理想值，页面窄了先缩标签列，`field_width` 是值列的下限——不再把控件堆到标签下面（Unity 的 inspector 也保持两列，有测试）。
+- **Zebra 行**：每条叶子行铺满整行背景，`row_odd` / `row_even` 交替；组头用 `group_background`，悬停 `group_hover`。`row_gap = 0`，条带连续。
+- **Unity 值框**：`control_rail` 暗底、`control_edge` 1 px 框、0 圆角、文字左对齐并留 `field_padding`；悬停时框线变 `control_edge_hover`。Float/Integer 点击进入行内文本编辑（全选、Esc 还原、Enter/失焦提交），拖动仍然是 scrub；Text 直接是单行 `TextEdit`；Toggle 是 Unity 的方形 checkbox（`checkbox_size`）。
+- **颜色字段**：`Color` 是 Unity Inspector 的整条 swatch + 右侧吸管槽（不再在行内重复 hex）；`ColorProperty` 额外带字段策略，HDR 行的 swatch 右上角叠一个对比色 `HDR` 角标。透明色先画棋盘格再叠色。点 swatch 选中该行并打开 picker；点字段名只选中。`Color` 是 8 字节 linear f16×4；HDR/LDR 不是值类型，而是 `ColorUsage`。
+- **取色器（自有 widget）**：标题随值类型为 `Color` / `HDR Color`；色相环 + 内部 SV 方块、RGB 0-1.0 / RGB 0-255 / HSV 三个通道模式、R/G/B/A 渐变滑杆与可键入数值、Hexadecimal、HDR 的 Intensity 与 `-2/-1/0/+1/+2` 预设、Swatches 调色板。LDR 不显示 Intensity。拖动实时 `SetField`，指针抬起/Enter/Esc 时 `Commit`；点外部或标题栏 × 关闭。
+- **吸管**：swatch 右侧与 picker 左上保留 Unity 的吸管位置，但当前宿主没有 framebuffer readback，点击只给提示；hex 与 Swatches 是可用替代。接入屏幕采样时只需替换这个按钮的回调。
+- **选中态**：点字段名或值框都会选中该行——字段名变 `label_active`（Unity 的蓝色 label），值框画 `accent` 1 px 外框。点页面空白或标题清除选中；点组头只折叠，不改变选中。
+- **滚动条间距**：页面右侧预留 `scrollbar_gap`；值框的右边界停在它左边，图标路径这类长值不会压到 scrollbar 上（有测试）。
+- **字体层级**：标题 15（strong）、正文与组头 12、文件路径 12；组头用更亮的 `group` 色 + 全宽底色区分，不依赖粗体（编辑器字体没有单独注册的 bold family）。
 - **没有 Apply/Cancel**：每个交互结束即写，文件就是记录；Close 只关窗。
 
 ---
@@ -179,7 +187,9 @@ StyleFields::set_style_field(path, value)
 | `kairos_editor_component/src/panel/host.rs` | 改 | `skins`/`set_skin_field`/`save_skin` |
 | `kairos_editor_component/src/frame.rs` | 改 | `Frame::skins` + `with_skins` |
 | `kairos_editor_component/src/panels/preferences.rs` | 新增 | 页面列表、页、分组行、控件、保存边界、单测 |
-| `kairos_editor_component/src/panels/preferences/style.rs` | 新增 | `PreferencesPanelStyle`（自身也 derive，可编辑自己）+ 参考皮肤往返测试 |
+| `kairos_editor_component/src/panels/preferences/style.rs` | 新增 | `PreferencesPanelStyle`（自身也 derive，可编辑自己）+ 参考皮肤往返测试；颜色 token 映射到 `ColorPickerStyle` |
+| `kairos_editor_widgets/src/color_picker.rs` | 新增 | 自有的 Unity 风格 LDR/HDR 颜色字段与取色器：色相环、SV 方块、通道滑杆、hex、Intensity、Swatches |
+| `kairos_color/src/linear.rs` | 新增 | `Color`（8 字节 linear f16×4，可超过 1）、`ColorUsage`/`ColorProperty`/`ColorSpace`、sRGB 传输函数与 round-trip 测试 |
 | `kairos_editor_component/src/panels/{about,console,profiler}.rs` + `*/style.rs` | 改 | 样式 derive；三个 `Panel` 方法（皮肤快照 / 写字段 / 存文件） |
 | `kairos_editor_component/src/panels.rs` | 改 | `PREFERENCES` 条目；面板数量 7 → 8 |
 | `kairos_editor_component/src/toolbar.rs` | 改 | `todo!()` → `ShowPanel { PREFERENCES }` |
@@ -214,21 +224,29 @@ StyleFields::set_style_field(path, value)
 
 1. `SetField` → 恰好一条 `Effect::Style(SetField)`；`Commit` → `Persist`；两个 action 都不改 `EditorState`。
 
-**component（140 个）**
+**component**
 
 2. derive：字段顺序、点分路径、`#[style(skip)]`、类型种类、整数 clamp、颜色 round-trip、`humanize`。
 3. 三个真实样式（About/Console/Profiler/Preferences）都能列出字段，且字段路径可达（`toolbar_height`、`icons.info`、…）。
-4. 面板：页面列表显示所有活着的皮肤、首屏画第一页的文件路径与字段、嵌套字段有分组标题；点另一个面板换页且**不产生 action**。
+4. 面板：页面列表显示所有活着的皮肤、首屏画第一页的文件路径与字段；点另一个面板换页且**不产生 action**。
 5. 点 toggle → 恰好 `[SetField, Commit]`（同一个 release pass），页面本地值同步更新。
 6. 切页/关窗时把未保存编辑提交一次；Close 按钮 → `ClosePanel`；没有皮肤时给出说明；180 px 高的窗口里 Close 仍在面板内。
-7. Preferences 自己的 `skin()` 可列出 `nav_width` 等 token（可编辑自己）。
+7. Preferences 自己的 `skin()` 可列出 `nav_width`、`row_odd` 等 token（可编辑自己）。
 8. host：`skins()` 只包含活着的面板；未知路径/错误类型被拒绝；写入后快照反映新值；未打开的面板没有皮肤。
 9. 参考皮肤 `PreferencesPanel.ron` 与代码默认值逐字段相等。
+10. foldout：每个嵌套 struct 是整行可点的组头；点 `icons` 只隐藏该组，点 `icons.textures` 只隐藏 Tint，动作列表为空。
+11. Zebra：叶子行按 `row_odd` / `row_even` 交替；组头用 `group_background`，不参与交替。
+12. 对齐：不同宽度的 root 标签左边缘一致；组内标签按 `group_indent` 逐级缩进；值列左边缘不随深度改变；窄面板仍是两列且在窗口内。
+13. 选中：点字段名 → `label_active` 蓝色 + 值框 `accent` 外框；点页面空白 → 清空。
+14. 数字编辑：点数值框进入行内编辑，输入替换选中值，Enter 结束并额外发 `Commit`；Esc 还原。
+15. 滚动条：长页面里图标路径值框的右边界停在 `scrollbar_gap` 左侧。
+16. 颜色字段：LDR 行不出现 `HDR`，`ColorProperty` 的 HDR usage 行出现角标；点 swatch 打开自有 picker，点 Swatches 里的黑块 → 恰好 `[SetField(Color), Commit]`，且行仍保持选中。
+17. 取色器：LDR 标题 `Color` 且无 `Intensity`；HDR 标题 `HDR Color` 且有 `Intensity`/预设；色相环点击改变颜色；通道数值可键入；hex 可替换颜色；`RGB 0-255` 模式切换生效。
 
 **app（20 个）**
 
-10. Preferences 通过 `ShowPanel` 浮成第二个 surface；打开时 `app.skins` 含 Console/Profiler/Preferences，不含未打开的 About；关闭时不快照。
-11. `SetField{console, toolbar_height, 30.0}` → Console 的 live style 变成 30；**不写文件**；`Commit` 后 `ConsoleStyle.ron` 里出现 `toolbar_height: 30.0`。
+18. Preferences 通过 `ShowPanel` 浮成第二个 surface；打开时 `app.skins` 含 Console/Profiler/Preferences，不含未打开的 About；关闭时不快照。
+19. `SetField{console, toolbar_height, 30.0}` → Console 的 live style 变成 30；**不写文件**；`Commit` 后 `ConsoleStyle.ron` 里出现 `toolbar_height: 30.0`。
 
 **静态门**：`cargo check --workspace --all-targets` 干净；四个 crate 的 `fmt --check` 干净；clippy 无新增告警。
 
@@ -240,9 +258,11 @@ StyleFields::set_style_field(path, value)
 2. **只能编辑已打开的面板**：原因见 §2.5。要覆盖关闭的面板需要 `StyleState`（状态树持有样式文档），属 catalog §C17。
 3. **只显示当前主题的那一半皮肤**：面板在 `init` 里按 `ctx.theme()` 选 skin（主题被 app 钉为 Dark）。页面编辑 dark；保存时保留 light。等浅色皮肤启用后再做主题切换。
 4. **没有单字段「恢复默认」**：需要 `StyleEffect::ResetField`（把代码默认值与字段路径对齐），等有第二个使用场景再加。
-5. **文本字段没有实时提交**：键入触发 `SetField`（宿主下一帧生效），但 `Commit` 依赖指针抬起或关窗；纯键盘流程的保存点只有关窗/切页。
+5. **键盘提交点**：键入触发 `SetField`（宿主下一帧生效）；`Commit` 在指针抬起、行内数字编辑结束（Enter / 失焦）、color hex/数值的 Enter/Esc、关窗或切页时发生。纯键盘编辑文本字段（不点鼠标）仍要等失焦/关窗才写盘。
 6. **拖拽速度是启发式的**：`speed = clamp(|value| / 50, 0.01, 1.0)`，对大多数尺寸合适；某些 token（颜色分量之外的极小值）可能偏慢，后续可以按字段加 hint。
 7. **面板列表的花费**：Preferences 打开时每帧重新快照所有字段（现在约 3 个面板、~180 个字段）。这些分配只在编辑器自己的设置窗口开着时发生；若将来面板/字段数量上来了，改成「页面切换时刷新」即可。
+8. **吸管不能采屏**：picker 的位置和图标已经按 Unity 留好，但 `egui_winit` 的 screenshot 请求目前被宿主忽略（没有 framebuffer readback），所以点击只显示说明。要真正采屏，需要宿主把 screenshot 结果回灌为 `egui::Event::Screenshot`，或引擎暴露颜色附件读回。
+9. **HDR 数据面**：`Color` / `ColorProperty` 已经端到端打通并有组件测试；`StyleValue::HdrColor` / `StyleKind::HdrColor` 仍是皮肤协议里的线性颜色 kind。现有面板皮肤都是 LDR，所以正常 Preferences 页面暂时看不到 HDR 行；它会在材质/发射色 token 接入后出现。
 
 ---
 

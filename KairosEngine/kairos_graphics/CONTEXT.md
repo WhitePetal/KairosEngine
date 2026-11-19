@@ -23,6 +23,14 @@ Convert a single mip level of compressed/uncompressed data in a `TextureFormat`'
 **HDR pixel data**:
 HDR formats (Float, Ufloat, ASTC HDR) use `PixelDatas::F16` as the input/output intermediate representation, following the target format's native precision. Native f32 formats (e.g. `Rgba32Float`) use `PixelDatas::F32`.
 
+**Color**:
+The canonical color value: four `f16` channels in linear light, straight alpha, eight bytes, RGB unbounded. HDR is not a value type; it is field policy (`ColorUsage`). sRGB is an encoding applied at display/serialization edges, never the storage form.
+*Avoid*: Color32 as the engine color, storing sRGB channels, a per-value HDR tag
+
+**Color usage**:
+The field-level policy (`ColorUsage`) that says whether a color is HDR, whether alpha is shown, and which encoding the editor uses. It mirrors Unity's `[ColorUsage]` attribute and never enters a uniform buffer.
+*Avoid*: HDR color type, per-value usage flag
+
 **Source color space**:
 A `source_srgb: bool` parameter on encode that tells whether the input data is in sRGB (gamma-corrected) space or linear space. The encode function converts as needed based on the target format: `(source_srgb, target_is_srgb)` determines whether to apply gamma correction. PNG files produce sRGB-encoded data; procedural textures may be linear.
 *Avoid*: Hardcoded assumptions about input color space

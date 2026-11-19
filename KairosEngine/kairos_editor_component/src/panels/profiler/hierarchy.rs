@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use egui::{Align2, CornerRadius, Rect, Sense, Ui};
 use kairos_editor_widgets::{
-    color::Color32Ext,
+    color::ColorExt,
     min_max_scroll::{MinMaxScroll, ScrollWindow},
 };
 use kairos_profile::{

@@ -1,4 +1,4 @@
-use kairos_engine::math::{Color32, float2, float3, float4};
+use kairos_engine::math::{Color, float2, float3, float4};
 
 #[derive(Clone, Copy)]
 pub enum StyleField {
@@ -57,10 +57,10 @@ impl FloatStyleField {
 #[derive(Clone, Copy)]
 pub struct ColorStyleField {
     pub name: &'static str,
-    pub color: Color32,
+    pub color: Color,
 }
 impl ColorStyleField {
-    pub fn new(name: &'static str, color: Color32) -> Self {
+    pub fn new(name: &'static str, color: Color) -> Self {
         Self { name, color }
     }
 }

@@ -102,43 +102,43 @@ pub struct SyntaxThemeSection {
 pub struct SyntaxThemeColorFields {
     /// Default text color.
     #[serde(default = "default_foreground")]
-    pub foreground: math::Color32,
+    pub foreground: math::Color,
     /// Editor background color.
     #[serde(default = "default_background")]
-    pub background: math::Color32,
+    pub background: math::Color,
     /// Keywords: `fn`, `let`, `if`, `return`, …
     #[serde(default = "default_keyword")]
-    pub keyword: math::Color32,
+    pub keyword: math::Color,
     /// Types: `f32`, `vec3`, `bool`, `texture_2d`, …
     #[serde(default = "default_type")]
-    pub r#type: math::Color32,
+    pub r#type: math::Color,
     /// Built-in functions: `dot`, `normalize`, `textureSample`, …
     #[serde(default = "default_function")]
-    pub function: math::Color32,
+    pub function: math::Color,
     /// String literals.
     #[serde(default = "default_string")]
-    pub string: math::Color32,
+    pub string: math::Color,
     /// Comments.
     #[serde(default = "default_comment")]
-    pub comment: math::Color32,
+    pub comment: math::Color,
     /// Numeric literals.
     #[serde(default = "default_number")]
-    pub number: math::Color32,
+    pub number: math::Color,
     /// Attributes / decorators: `@vertex`, `@group`, `#[derive(…)]`, …
     #[serde(default = "default_attribute")]
-    pub attribute: math::Color32,
+    pub attribute: math::Color,
     /// Built-in variables: `position`, `vertex_index`, …
     #[serde(default = "default_builtin")]
-    pub builtin_variable: math::Color32,
+    pub builtin_variable: math::Color,
     /// User-defined variables / identifiers.
     #[serde(default = "default_variable")]
-    pub variable: math::Color32,
+    pub variable: math::Color,
     /// Operators: `+`, `-`, `&&`, `==`, …
     #[serde(default = "default_operator")]
-    pub operator: math::Color32,
+    pub operator: math::Color,
     /// Punctuation: `{ } ( ) [ ] ; , .`
     #[serde(default = "default_punctuation")]
-    pub punctuation: math::Color32,
+    pub punctuation: math::Color,
 }
 
 impl SyntaxThemeColorFields {
@@ -163,51 +163,51 @@ impl SyntaxThemeColorFields {
 
 // ---- defaults (dark theme) ------------------------------------------------
 
-fn default_foreground() -> math::Color32 {
-    math::Color32::from_hex("#D0D0D0").unwrap_or_default()
+fn default_foreground() -> math::Color {
+    math::Color::from_hex("#D0D0D0").unwrap_or_default()
 }
-fn default_background() -> math::Color32 {
-    math::Color32::from_hex("#1E1E1E").unwrap_or_default()
+fn default_background() -> math::Color {
+    math::Color::from_hex("#1E1E1E").unwrap_or_default()
 }
-fn default_keyword() -> math::Color32 {
-    math::Color32::from_hex("#FF6464").unwrap_or_default()
+fn default_keyword() -> math::Color {
+    math::Color::from_hex("#FF6464").unwrap_or_default()
 }
-fn default_type() -> math::Color32 {
-    math::Color32::from_hex("#57A5AB").unwrap_or_default()
+fn default_type() -> math::Color {
+    math::Color::from_hex("#57A5AB").unwrap_or_default()
 }
-fn default_function() -> math::Color32 {
-    math::Color32::from_hex("#6D93E2").unwrap_or_default()
+fn default_function() -> math::Color {
+    math::Color::from_hex("#6D93E2").unwrap_or_default()
 }
-fn default_string() -> math::Color32 {
-    math::Color32::from_hex("#6D93E2").unwrap_or_default()
+fn default_string() -> math::Color {
+    math::Color::from_hex("#6D93E2").unwrap_or_default()
 }
-fn default_comment() -> math::Color32 {
-    math::Color32::from_hex("#787878").unwrap_or_default()
+fn default_comment() -> math::Color {
+    math::Color::from_hex("#787878").unwrap_or_default()
 }
-fn default_number() -> math::Color32 {
-    math::Color32::from_hex("#1E1E1E").unwrap_or_default()
+fn default_number() -> math::Color {
+    math::Color::from_hex("#1E1E1E").unwrap_or_default()
 }
-fn default_attribute() -> math::Color32 {
-    math::Color32::from_hex("#FFD700").unwrap_or_default()
+fn default_attribute() -> math::Color {
+    math::Color::from_hex("#FFD700").unwrap_or_default()
 }
-fn default_builtin() -> math::Color32 {
-    math::Color32::from_hex("#DCDCAA").unwrap_or_default()
+fn default_builtin() -> math::Color {
+    math::Color::from_hex("#DCDCAA").unwrap_or_default()
 }
-fn default_variable() -> math::Color32 {
-    math::Color32::from_hex("#909090").unwrap_or_default()
+fn default_variable() -> math::Color {
+    math::Color::from_hex("#909090").unwrap_or_default()
 }
-fn default_operator() -> math::Color32 {
-    math::Color32::from_hex("#D0D0D0").unwrap_or_default()
+fn default_operator() -> math::Color {
+    math::Color::from_hex("#D0D0D0").unwrap_or_default()
 }
-fn default_punctuation() -> math::Color32 {
-    math::Color32::from_hex("#C0C0C0").unwrap_or_default()
+fn default_punctuation() -> math::Color {
+    math::Color::from_hex("#C0C0C0").unwrap_or_default()
 }
 
 // ---------------------------------------------------------------------------
 // TOML → syntect::highlighting::Theme
 // ---------------------------------------------------------------------------
 
-fn scope_item(scope_str: &str, color: math::Color32) -> syntect::highlighting::ThemeItem {
+fn scope_item(scope_str: &str, color: math::Color) -> syntect::highlighting::ThemeItem {
     syntect::highlighting::ThemeItem {
         scope: std::str::FromStr::from_str(scope_str).unwrap_or_default(),
         style: syntect::highlighting::StyleModifier {

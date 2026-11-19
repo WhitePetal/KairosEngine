@@ -26,8 +26,8 @@ pub struct ToolBarStyle {
     pub button_width: f32,
     pub corner_radius: f32,
     pub icon_size: u32,
-    pub fill_color: math::Color32,
-    pub button_text_color: math::Color32,
+    pub fill_color: math::Color,
+    pub button_text_color: math::Color,
     pub about_icon_path: String,
 }
 

@@ -33,11 +33,14 @@
 | `Vec2` / `[f32; 2]` | `vec2<f32>` | [DragValue × 2] |
 | `Vec3` / `[f32; 3]` | `vec3<f32>` | [DragValue × 3] |
 | `Vec4` / `[f32; 4]` | `vec4<f32>` | [DragValue × 4] |
+| `Color` / `ColorProperty` | `vec4<f32>`（`@color`） | ColorPicker（HDR/LDR 由 `ColorUsage` 决定） |
 | `i32` | `i32` | DragValue (integer) |
 | `u32` | `u32` | DragValue (unsigned) |
 | `bool` | `bool` | Checkbox |
 | `TextureHandle` | `texture_2d<f32>` | 拖拽目标框 |
 | `TextureHandle` | `texture_cube<f32>` | 拖拽目标框 |
+
+颜色属性用 `// @color` 标记；`@hdr` 表示 HDR usage，`@linear` 表示数据型线性颜色，`@no-alpha` 隐藏 alpha。字段策略由 `ColorUsage` 携带，不进入 uniform 值；`@linear` 属性在序列化时强制写 `[r, g, b, a]` 线性数组，避免把数据颜色写成 sRGB hex。
 
 暂不支持：矩阵、数组、结构体嵌套。
 
@@ -101,7 +104,9 @@ depth_test = "LessEqual"
 [material.properties]
 roughness = 0.5
 metallic = 0.0
-albedo = [1.0, 0.5, 0.2, 1.0]
+# LDR colors are written as sRGB hex; HDR/linear data as [r, g, b, a].
+albedo = "#FF8033"
+emission = [4.0, 2.0, 1.0, 1.0]
 
 [material.textures]
 albedo_map = "res/textures/albedo.texture"

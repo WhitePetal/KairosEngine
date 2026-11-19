@@ -20,10 +20,10 @@
 //! Tests redirect that directory with [`set_style_root`] so a test run never
 //! drops a `Preferences` tree into the crate it runs in.
 //!
-//! Colors in style structs are `kairos_color::Color32` values: that crate's
-//! serde impls write them as `"#RRGGBB"` (or `"#RRGGBBAA"` when translucent),
-//! keeping RON human-editable. This crate does not depend on the color crate
-//! itself; each component picks the types its style needs.
+//! Colors in style structs are `kairos_color::Color` values: that crate's
+//! serde impl writes displayable colors as `"#RRGGBB"` (or `"#RRGGBBAA"` when
+//! translucent) and HDR/out-of-range colors as linear floats, keeping RON
+//! human-editable.
 
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
@@ -210,10 +210,7 @@ mod tests {
         ));
         let _ = std::fs::remove_dir_all(&root);
         set_style_root(&root);
-        assert_eq!(
-            StyleFile::<TestStyle>::path(),
-            root.join("TestStyle.ron")
-        );
+        assert_eq!(StyleFile::<TestStyle>::path(), root.join("TestStyle.ron"));
 
         let seeded = StyleFile::<TestStyle>::load_or_default().expect("seed defaults");
         assert_eq!(seeded.dark, TestStyle::dark());

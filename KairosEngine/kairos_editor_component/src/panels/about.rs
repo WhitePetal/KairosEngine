@@ -40,7 +40,7 @@ use egui::{
 };
 use kairos_editor_core::{Action, LayoutAction};
 use kairos_editor_widgets::button::Button;
-use kairos_editor_widgets::color::Color32Ext;
+use kairos_editor_widgets::color::ColorExt;
 use kairos_editor_widgets::divider::Divider;
 use kairos_editor_widgets::style::StyleFile;
 use kairos_editor_widgets::text::TextStyle;

@@ -11,7 +11,7 @@
 //! panel; the pane's default height is derived from the card heights rather than
 //! kept as a token of its own.
 
-use kairos_color::Color32;
+use kairos_color::Color;
 use kairos_editor_widgets::style::Style;
 use serde::{Deserialize, Serialize};
 
@@ -25,7 +25,7 @@ pub struct ProfilerStyle {
 
     // -- Chrome shared by every section -------------------------------------
     /// 1 px rules: under the toolbar, between toolbar segments, between rows.
-    pub separator: Color32,
+    pub separator: Color,
     pub separator_width: f32,
 
     // -- Toolbar ------------------------------------------------------------
@@ -38,23 +38,23 @@ pub struct ProfilerStyle {
     /// Unity ships a 16 pt slot; the files are the @2x 32 px artwork.
     pub toolbar_icon_size: f32,
     /// Toolbar label colour and size (Unity dark skin: #C4C4C4 at 12 px).
-    pub toolbar_text: Color32,
+    pub toolbar_text: Color,
     pub toolbar_text_size: f32,
     /// Fill of a toolbar button under the pointer.
-    pub hover_bg: Color32,
-    pub click_bg: Color32,
+    pub hover_bg: Color,
+    pub click_bg: Color,
     /// Fill of a toggle that is on (recording).
-    pub recording_bg: Color32,
+    pub recording_bg: Color,
     /// Fill of a toggle that is on (the timeline's Live).
-    pub selected_bg: Color32,
+    pub selected_bg: Color,
 
     // -- Text shared by the module and timeline areas -----------------------
-    pub timeline_text: Color32,
-    pub ruler_text: Color32,
+    pub timeline_text: Color,
+    pub ruler_text: Color,
     /// Small captions: chips, sample labels, ruler ticks.
     pub small_text_size: f32,
     /// Warning glyph next to a module that cannot report (GPU).
-    pub warning: Color32,
+    pub warning: Color,
 
     // -- Module area --------------------------------------------------------
     /// Preferred height of the CPU Usage card (title row + frame-history chart).
@@ -91,19 +91,19 @@ pub struct ProfilerStyle {
     /// capture.
     pub window_fram_count: usize,
     /// Fill of the frame-history bars.
-    pub chart_bar: Color32,
+    pub chart_bar: Color,
     /// Horizontal guide line inside the usage chart (Unity's ms/FPS tiers) and
     /// the faint vertical grid under the clock ticks.
-    pub chart_grid: Color32,
+    pub chart_grid: Color,
     /// Vertical marker at the selected frame.
-    pub chart_cursor: Color32,
+    pub chart_cursor: Color,
     /// Fill of a break band: the compressed pause between two takes on the
     /// module area's time axis.
-    pub break_bg: Color32,
-    pub chip_bg: Color32,
-    pub chip_text: Color32,
+    pub break_bg: Color,
+    pub chip_bg: Color,
+    pub chip_text: Color,
     /// Category colours in legend order (the order of `Category::ALL`).
-    pub category_palette: Vec<Color32>,
+    pub category_palette: Vec<Color>,
 
     // -- Timeline -----------------------------------------------------------
     /// Width of the thread name column.
@@ -115,29 +115,29 @@ pub struct ProfilerStyle {
     /// Height of the ruler above the thread rows, and of the module area's
     /// pinned clock axis.
     pub ruler_height: f32,
-    pub ruler_bg: Color32,
+    pub ruler_bg: Color,
     /// Height of one nesting level inside a thread track.
     pub level_height: f32,
     /// Vertical padding above and below a thread's levels.
     pub thread_row_padding: f32,
     pub timeline_block_text_size: f32,
-    pub timeline_name_bg: Color32,
-    pub track_bg: Color32,
+    pub timeline_name_bg: Color,
+    pub track_bg: Color,
     /// Vertical grid line aligned with a ruler tick.
-    pub grid: Color32,
+    pub grid: Color,
     /// Rule between two thread rows.
-    pub row_rule: Color32,
+    pub row_rule: Color,
     /// Sample label text (drawn only when the bar is wide enough).
-    pub sample_text: Color32,
+    pub sample_text: Color,
 
     // -- Timeline selection -------------------------------------------------
     /// Outline that marks the selected block (Unity keeps a 1 px light frame
     /// around it).
-    pub selection_outline: Color32,
+    pub selection_outline: Color,
     /// Fill of the selected block's details box.
-    pub selection_bg: Color32,
+    pub selection_bg: Color,
     /// Border of the details box, and of the buttons inside it.
-    pub selection_border: Color32,
+    pub selection_border: Color,
     /// Width cap of the details box; its text wraps at this width.
     pub selection_width: f32,
 
@@ -146,14 +146,14 @@ pub struct ProfilerStyle {
     /// and of the horizontal bar under the tracks.
     pub scrollbar_width: f32,
     /// The trough a scroll bar's thumb moves in.
-    pub scrollbar_bg: Color32,
-    pub scrollbar_thumb: Color32,
+    pub scrollbar_bg: Color,
+    pub scrollbar_thumb: Color,
     /// Thumb fill while the pointer is over it.
-    pub scrollbar_thumb_hover: Color32,
+    pub scrollbar_thumb_hover: Color,
     /// Thumb fill while it is being dragged.
-    pub scrollbar_thumb_active: Color32,
+    pub scrollbar_thumb_active: Color,
     /// The grip lines on the horizontal bar's two zoom handles.
-    pub scrollbar_grip: Color32,
+    pub scrollbar_grip: Color,
     /// Width of each zoom handle: the drag target at the thumb's ends.
     pub scrollbar_handle_width: f32,
 
@@ -161,11 +161,11 @@ pub struct ProfilerStyle {
     /// Rule colour of the splitter between the module area and the timeline.
     /// Its own grey rather than [`separator`](Self::separator): the handle is
     /// interactive chrome, not another section rule.
-    pub splitter_idle: Color32,
+    pub splitter_idle: Color,
     /// Rule colour of the splitter while the pointer is over it.
-    pub splitter_hover: Color32,
+    pub splitter_hover: Color,
     /// Rule colour of the splitter while it is dragged.
-    pub splitter_active: Color32,
+    pub splitter_active: Color,
 
     // -- Data views ---------------------------------------------------------
     /// Row caps of the hierarchy and raw data views.
@@ -180,23 +180,23 @@ impl Style for ProfilerStyle {
         Self {
             icons: ProfilerIconPaths::dark(),
 
-            separator: Color32::from_rgb(0x25, 0x25, 0x25),
+            separator: Color::from_srgb8([0x25, 0x25, 0x25, 255]),
             separator_width: 1.0,
 
             toolbar_height: 20.0,
             toolbar_item_padding: 8.0,
             toolbar_icon_size: 16.0,
-            toolbar_text: Color32::from_rgb(0xC4, 0xC4, 0xC4),
+            toolbar_text: Color::from_srgb8([0xC4, 0xC4, 0xC4, 255]),
             toolbar_text_size: 12.0,
-            hover_bg: Color32::from_rgb(0x40, 0x40, 0x40),
-            click_bg: Color32::from_rgb(74, 74, 74),
-            recording_bg: Color32::from_rgb(0x49, 0x49, 0x49),
-            selected_bg: Color32::from_rgb(0x2C, 0x2C, 0x2C),
+            hover_bg: Color::from_srgb8([0x40, 0x40, 0x40, 255]),
+            click_bg: Color::from_srgb8([74, 74, 74, 255]),
+            recording_bg: Color::from_srgb8([0x49, 0x49, 0x49, 255]),
+            selected_bg: Color::from_srgb8([0x2C, 0x2C, 0x2C, 255]),
 
-            timeline_text: Color32::from_rgb(0xC4, 0xC4, 0xC4),
-            ruler_text: Color32::from_rgb(0x8A, 0x8A, 0x8A),
+            timeline_text: Color::from_srgb8([0xC4, 0xC4, 0xC4, 255]),
+            ruler_text: Color::from_srgb8([0x8A, 0x8A, 0x8A, 255]),
             small_text_size: 10.0,
-            warning: Color32::from_rgb(0xE0, 0xB0, 0x3A),
+            warning: Color::from_srgb8([0xE0, 0xB0, 0x3A, 255]),
 
             module_cpu_height: 169.0,
             module_gpu_height: 120.0,
@@ -209,44 +209,44 @@ impl Style for ProfilerStyle {
             legend_row_height: 14.0,
             usage_bar_fill: 0.8,
             window_fram_count: 300,
-            chart_bar: Color32::from_rgb(0x79, 0x7B, 0x1D),
-            chart_grid: Color32::from_rgb(0x57, 0x57, 0x57),
-            chart_cursor: Color32::from_rgb(0xE6, 0xE6, 0xE6),
-            break_bg: Color32::from_rgb(0x3A, 0x3A, 0x3A),
-            chip_bg: Color32::from_rgb(0x2A, 0x2A, 0x2A),
-            chip_text: Color32::from_rgb(0xC8, 0xC8, 0xC8),
+            chart_bar: Color::from_srgb8([0x79, 0x7B, 0x1D, 255]),
+            chart_grid: Color::from_srgb8([0x57, 0x57, 0x57, 255]),
+            chart_cursor: Color::from_srgb8([0xE6, 0xE6, 0xE6, 255]),
+            break_bg: Color::from_srgb8([0x3A, 0x3A, 0x3A, 255]),
+            chip_bg: Color::from_srgb8([0x2A, 0x2A, 0x2A, 255]),
+            chip_text: Color::from_srgb8([0xC8, 0xC8, 0xC8, 255]),
             category_palette: unity_category_palette(),
 
             timeline_name_width: 180.0,
             timeline_view_width: 165.0,
             timeline_live_width: 55.0,
             ruler_height: 20.0,
-            ruler_bg: Color32::from_rgb(0x34, 0x34, 0x34),
+            ruler_bg: Color::from_srgb8([0x34, 0x34, 0x34, 255]),
             level_height: 20.0,
             thread_row_padding: 2.0,
             timeline_block_text_size: 13.0,
-            timeline_name_bg: Color32::from_rgb(0x38, 0x38, 0x38),
-            track_bg: Color32::from_rgb(0x28, 0x28, 0x28),
-            grid: Color32::from_rgb(0x2E, 0x2E, 0x2E),
-            row_rule: Color32::from_rgb(0x1C, 0x1C, 0x1C),
-            sample_text: Color32::from_rgb(0xED, 0xED, 0xED),
+            timeline_name_bg: Color::from_srgb8([0x38, 0x38, 0x38, 255]),
+            track_bg: Color::from_srgb8([0x28, 0x28, 0x28, 255]),
+            grid: Color::from_srgb8([0x2E, 0x2E, 0x2E, 255]),
+            row_rule: Color::from_srgb8([0x1C, 0x1C, 0x1C, 255]),
+            sample_text: Color::from_srgb8([0xED, 0xED, 0xED, 255]),
 
-            selection_outline: Color32::from_rgb(0xE6, 0xE6, 0xE6),
-            selection_bg: Color32::from_rgb(0x2C, 0x2C, 0x2C),
-            selection_border: Color32::from_rgb(0x4A, 0x4A, 0x4A),
+            selection_outline: Color::from_srgb8([0xE6, 0xE6, 0xE6, 255]),
+            selection_bg: Color::from_srgb8([0x2C, 0x2C, 0x2C, 255]),
+            selection_border: Color::from_srgb8([0x4A, 0x4A, 0x4A, 255]),
             selection_width: 320.0,
 
             scrollbar_width: 13.0,
-            scrollbar_bg: Color32::from_rgb(0x1E, 0x1E, 0x1E),
-            scrollbar_thumb: Color32::from_rgb(0x3A, 0x3A, 0x3A),
-            scrollbar_thumb_hover: Color32::from_rgb(0x4A, 0x4A, 0x4A),
-            scrollbar_thumb_active: Color32::from_rgb(0x5A, 0x5A, 0x5A),
-            scrollbar_grip: Color32::from_rgb(0x8A, 0x8A, 0x8A),
+            scrollbar_bg: Color::from_srgb8([0x1E, 0x1E, 0x1E, 255]),
+            scrollbar_thumb: Color::from_srgb8([0x3A, 0x3A, 0x3A, 255]),
+            scrollbar_thumb_hover: Color::from_srgb8([0x4A, 0x4A, 0x4A, 255]),
+            scrollbar_thumb_active: Color::from_srgb8([0x5A, 0x5A, 0x5A, 255]),
+            scrollbar_grip: Color::from_srgb8([0x8A, 0x8A, 0x8A, 255]),
             scrollbar_handle_width: 6.0,
 
-            splitter_idle: Color32::from_rgb(0x6A, 0x6A, 0x6A),
-            splitter_hover: Color32::from_rgb(0x9A, 0x9A, 0x9A),
-            splitter_active: Color32::from_rgb(0xC4, 0xC4, 0xC4),
+            splitter_idle: Color::from_srgb8([0x6A, 0x6A, 0x6A, 255]),
+            splitter_hover: Color::from_srgb8([0x9A, 0x9A, 0x9A, 255]),
+            splitter_active: Color::from_srgb8([0xC4, 0xC4, 0xC4, 255]),
 
             max_tree_rows: 4_000,
             max_raw_rows: 4_000,
@@ -259,23 +259,23 @@ impl Style for ProfilerStyle {
         Self {
             icons: ProfilerIconPaths::light(),
 
-            separator: Color32::from_rgb(0xA6, 0xA6, 0xA6),
+            separator: Color::from_srgb8([0xA6, 0xA6, 0xA6, 255]),
             separator_width: 1.0,
 
             toolbar_height: 20.0,
             toolbar_item_padding: 8.0,
             toolbar_icon_size: 16.0,
-            toolbar_text: Color32::from_rgb(0x20, 0x20, 0x20),
+            toolbar_text: Color::from_srgb8([0x20, 0x20, 0x20, 255]),
             toolbar_text_size: 12.0,
-            hover_bg: Color32::from_rgb(0xB9, 0xB9, 0xB9),
-            click_bg: Color32::from_rgb(74, 74, 74),
-            recording_bg: Color32::from_rgb(0xC4, 0xC4, 0xC4),
-            selected_bg: Color32::from_rgb(0xA9, 0xA9, 0xA9),
+            hover_bg: Color::from_srgb8([0xB9, 0xB9, 0xB9, 255]),
+            click_bg: Color::from_srgb8([74, 74, 74, 255]),
+            recording_bg: Color::from_srgb8([0xC4, 0xC4, 0xC4, 255]),
+            selected_bg: Color::from_srgb8([0xA9, 0xA9, 0xA9, 255]),
 
-            timeline_text: Color32::from_rgb(0x1E, 0x1E, 0x1E),
-            ruler_text: Color32::from_rgb(0x4A, 0x4A, 0x4A),
+            timeline_text: Color::from_srgb8([0x1E, 0x1E, 0x1E, 255]),
+            ruler_text: Color::from_srgb8([0x4A, 0x4A, 0x4A, 255]),
             small_text_size: 10.0,
-            warning: Color32::from_rgb(0xB0, 0x78, 0x00),
+            warning: Color::from_srgb8([0xB0, 0x78, 0x00, 255]),
 
             module_cpu_height: 169.0,
             module_gpu_height: 120.0,
@@ -288,44 +288,44 @@ impl Style for ProfilerStyle {
             legend_row_height: 14.0,
             usage_bar_fill: 0.8,
             window_fram_count: 300,
-            chart_bar: Color32::from_rgb(0x7E, 0x84, 0x20),
-            chart_grid: Color32::from_rgb(0xA0, 0xA0, 0xA0),
-            chart_cursor: Color32::from_rgb(0x30, 0x30, 0x30),
-            break_bg: Color32::from_rgb(0xC0, 0xC0, 0xC0),
-            chip_bg: Color32::from_rgb(0xDC, 0xDC, 0xDC),
-            chip_text: Color32::from_rgb(0x20, 0x20, 0x20),
+            chart_bar: Color::from_srgb8([0x7E, 0x84, 0x20, 255]),
+            chart_grid: Color::from_srgb8([0xA0, 0xA0, 0xA0, 255]),
+            chart_cursor: Color::from_srgb8([0x30, 0x30, 0x30, 255]),
+            break_bg: Color::from_srgb8([0xC0, 0xC0, 0xC0, 255]),
+            chip_bg: Color::from_srgb8([0xDC, 0xDC, 0xDC, 255]),
+            chip_text: Color::from_srgb8([0x20, 0x20, 0x20, 255]),
             category_palette: unity_category_palette(),
 
             timeline_name_width: 180.0,
             timeline_view_width: 165.0,
             timeline_live_width: 55.0,
             ruler_height: 20.0,
-            ruler_bg: Color32::from_rgb(0xC8, 0xC8, 0xC8),
+            ruler_bg: Color::from_srgb8([0xC8, 0xC8, 0xC8, 255]),
             level_height: 20.0,
             thread_row_padding: 2.0,
             timeline_block_text_size: 13.0,
-            timeline_name_bg: Color32::from_rgb(0xD2, 0xD2, 0xD2),
-            track_bg: Color32::from_rgb(0xEE, 0xEE, 0xEE),
-            grid: Color32::from_rgb(0xC9, 0xC9, 0xC9),
-            row_rule: Color32::from_rgb(0xB5, 0xB5, 0xB5),
-            sample_text: Color32::from_rgb(0x10, 0x10, 0x10),
+            timeline_name_bg: Color::from_srgb8([0xD2, 0xD2, 0xD2, 255]),
+            track_bg: Color::from_srgb8([0xEE, 0xEE, 0xEE, 255]),
+            grid: Color::from_srgb8([0xC9, 0xC9, 0xC9, 255]),
+            row_rule: Color::from_srgb8([0xB5, 0xB5, 0xB5, 255]),
+            sample_text: Color::from_srgb8([0x10, 0x10, 0x10, 255]),
 
-            selection_outline: Color32::from_rgb(0x20, 0x20, 0x20),
-            selection_bg: Color32::from_rgb(0xF2, 0xF2, 0xF2),
-            selection_border: Color32::from_rgb(0xA6, 0xA6, 0xA6),
+            selection_outline: Color::from_srgb8([0x20, 0x20, 0x20, 255]),
+            selection_bg: Color::from_srgb8([0xF2, 0xF2, 0xF2, 255]),
+            selection_border: Color::from_srgb8([0xA6, 0xA6, 0xA6, 255]),
             selection_width: 320.0,
 
             scrollbar_width: 13.0,
-            scrollbar_bg: Color32::from_rgb(0xC6, 0xC6, 0xC6),
-            scrollbar_thumb: Color32::from_rgb(0xA6, 0xA6, 0xA6),
-            scrollbar_thumb_hover: Color32::from_rgb(0x8E, 0x8E, 0x8E),
-            scrollbar_thumb_active: Color32::from_rgb(0x7A, 0x7A, 0x7A),
-            scrollbar_grip: Color32::from_rgb(0x5A, 0x5A, 0x5A),
+            scrollbar_bg: Color::from_srgb8([0xC6, 0xC6, 0xC6, 255]),
+            scrollbar_thumb: Color::from_srgb8([0xA6, 0xA6, 0xA6, 255]),
+            scrollbar_thumb_hover: Color::from_srgb8([0x8E, 0x8E, 0x8E, 255]),
+            scrollbar_thumb_active: Color::from_srgb8([0x7A, 0x7A, 0x7A, 255]),
+            scrollbar_grip: Color::from_srgb8([0x5A, 0x5A, 0x5A, 255]),
             scrollbar_handle_width: 6.0,
 
-            splitter_idle: Color32::from_rgb(0x6A, 0x6A, 0x6A),
-            splitter_hover: Color32::from_rgb(0x4A, 0x4A, 0x4A),
-            splitter_active: Color32::from_rgb(0x30, 0x30, 0x30),
+            splitter_idle: Color::from_srgb8([0x6A, 0x6A, 0x6A, 255]),
+            splitter_hover: Color::from_srgb8([0x4A, 0x4A, 0x4A, 255]),
+            splitter_active: Color::from_srgb8([0x30, 0x30, 0x30, 255]),
 
             max_tree_rows: 4_000,
             max_raw_rows: 4_000,
@@ -336,17 +336,17 @@ impl Style for ProfilerStyle {
 /// The Profiler legend palette, sampled from the Unity/Tuanjie capture
 /// (Rendering, Scripts, Physics, Animation, GarbageCollector, VSync, Global
 /// Illumination, UI, Others).
-fn unity_palette() -> Vec<Color32> {
+fn unity_palette() -> Vec<Color> {
     vec![
-        Color32::from_rgb(0xA6, 0xB6, 0x2B),
-        Color32::from_rgb(0x4A, 0x90, 0xB8),
-        Color32::from_rgb(0xC7, 0x78, 0x26),
-        Color32::from_rgb(0x2E, 0x8E, 0x9E),
-        Color32::from_rgb(0x8A, 0x7D, 0x14),
-        Color32::from_rgb(0xB3, 0x9A, 0x1C),
-        Color32::from_rgb(0xA3, 0x34, 0x10),
-        Color32::from_rgb(0x7B, 0x5C, 0xA5),
-        Color32::from_rgb(0x8A, 0x87, 0x26),
+        Color::from_srgb8([0xA6, 0xB6, 0x2B, 255]),
+        Color::from_srgb8([0x4A, 0x90, 0xB8, 255]),
+        Color::from_srgb8([0xC7, 0x78, 0x26, 255]),
+        Color::from_srgb8([0x2E, 0x8E, 0x9E, 255]),
+        Color::from_srgb8([0x8A, 0x7D, 0x14, 255]),
+        Color::from_srgb8([0xB3, 0x9A, 0x1C, 255]),
+        Color::from_srgb8([0xA3, 0x34, 0x10, 255]),
+        Color::from_srgb8([0x7B, 0x5C, 0xA5, 255]),
+        Color::from_srgb8([0x8A, 0x87, 0x26, 255]),
     ]
 }
 
@@ -354,7 +354,7 @@ fn unity_palette() -> Vec<Color32> {
 /// Rendering, Scripts, Physics, Audio (Unity's Animation swatch), IO (Unity's
 /// Global Illumination swatch standing in for Loading), Editor (Unity's UI
 /// swatch), VSync, Others.
-fn unity_category_palette() -> Vec<Color32> {
+fn unity_category_palette() -> Vec<Color> {
     let unity = unity_palette();
     [0, 1, 2, 3, 6, 7, 5, 8]
         .iter()
@@ -426,7 +426,7 @@ impl ProfilerIconPaths {
 mod tests {
     use super::*;
     use kairos_editor_widgets::style::StyleFile;
-use strum::EnumCount;
+    use strum::EnumCount;
 
     /// The shipped skin is user-editable: it must keep parsing (a missing field
     /// falls back to the code defaults and silently drops the edit) and its

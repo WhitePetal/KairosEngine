@@ -1,27 +1,22 @@
-//! The shared color type for the Kairos engine and editor.
+//! The shared color types for the Kairos engine and editor.
 //!
-//! [`Color32`] is a straight (unmultiplied) sRGBA color stored as four `u8`
-//! channels, matching how colors are authored in TOML/RON and passed through
-//! the engine API. It parses and formats `#RRGGBB` / `#RRGGBBAA` strings (the
-//! leading `#` is optional and hex digits are case-insensitive), and its serde
-//! impls use that form so style files stay human-editable:
+//! Color is the canonical color: four half-float channels in linear light,
+//! straight (unmultiplied) alpha, and an eight-byte layout. RGB is not clamped,
+//! so emissive values may exceed white. HDR versus LDR is field policy
+//! (ColorUsage), not a storage variant.
 //!
-//! ```ron
-//! ( toolbar_bg: "#353535", row_selected: "#27537C", ... )
-//! ```
-//!
-//! The crate deliberately stays UI-agnostic: conversions to `egui::Color32` or
-//! `syntect::highlighting::Color` live in the modules that consume them (the
+//! The crate deliberately stays UI-agnostic: conversions to egui::Color32 or
+//! syntect::highlighting::Color live in the modules that consume them (the
 //! editor), not here. That is what keeps the engine/editor color type free of
 //! UI-library dependencies.
 //!
-//! Extracted from `kairos_engine::math::color` as a standalone crate;
-//! `kairos_engine` re-exports [`Color32`] under `kairos_engine::math::Color32`
-//! for existing engine and editor code.
+//! Extracted from kairos_engine::math::color as a standalone crate;
+//! kairos_engine re-exports the types under kairos_engine::math for existing
+//! engine and editor code.
 
-mod color;
+mod linear;
 
-pub use color::{Color32, Color32ParseError};
+pub use linear::{Color, ColorParseError, ColorSpace, ColorUsage, linear_to_srgb, srgb_to_linear};
 
 #[cfg(test)]
 mod tests;

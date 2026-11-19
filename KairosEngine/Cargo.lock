@@ -2505,6 +2505,8 @@ dependencies = [
 name = "kairos_color"
 version = "0.2.0"
 dependencies = [
+ "bytemuck",
+ "half",
  "ron",
  "serde",
  "thiserror 2.0.20",
@@ -2661,6 +2663,9 @@ dependencies = [
 [[package]]
 name = "kairos_editor_core"
 version = "0.2.0"
+dependencies = [
+ "kairos_color",
+]
 
 [[package]]
 name = "kairos_editor_docking"

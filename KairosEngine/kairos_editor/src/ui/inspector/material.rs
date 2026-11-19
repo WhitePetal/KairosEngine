@@ -61,11 +61,11 @@ struct MaterialInspectorStyle {
     shader_selector_submenu_width_factor: f32,
 
     texture_label_height: f32,
-    texture_background_color: math::Color32,
-    texture_drag_hover_background_color: math::Color32,
-    texture_empty_stroke_color: math::Color32,
-    texture_fill_stroke_color: math::Color32,
-    texture_drag_hover_stroke_color: math::Color32,
+    texture_background_color: math::Color,
+    texture_drag_hover_background_color: math::Color,
+    texture_empty_stroke_color: math::Color,
+    texture_fill_stroke_color: math::Color,
+    texture_drag_hover_stroke_color: math::Color,
     texture_corner_radius: u8,
     texture_stroke_width: f32,
 

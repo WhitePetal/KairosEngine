@@ -1,9 +1,7 @@
 use egui::{Align2, Rect, Stroke, Ui};
-use kairos_editor_widgets::color::Color32Ext;
+use kairos_editor_widgets::color::ColorExt;
 
 use crate::panels::profiler::ProfilerPanel;
-
-
 
 impl ProfilerPanel {
     /// The GPU Usage card: a title row with Unity's warning and an empty body

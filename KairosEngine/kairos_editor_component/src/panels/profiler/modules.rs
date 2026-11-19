@@ -1,15 +1,15 @@
 use egui::{Align2, CornerRadius, Rect, Sense, Ui};
 use kairos_editor_widgets::{
-    color::Color32Ext,
+    color::ColorExt,
     divider::Divider,
     min_max_scroll::{MinMaxScroll, ScrollWindow},
     timeline_axis::{TimelineRuler, TimelineRulerStyle},
     ui_image,
 };
-use kairos_profile::{ProfileSession};
+use kairos_profile::ProfileSession;
 
 use crate::panels::profiler::{
-    ProfilerPanel, WHEEL_NOTCH_POINTS, ZOOM_PER_NOTCH, axis::ModuleAxis
+    ProfilerPanel, WHEEL_NOTCH_POINTS, ZOOM_PER_NOTCH, axis::ModuleAxis,
 };
 
 mod cpu;

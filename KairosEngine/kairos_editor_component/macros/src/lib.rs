@@ -292,8 +292,8 @@ fn expand_panel(args: TokenStream2, mut item: ItemImpl) -> syn::Result<TokenStre
 /// * `skin::StyleFields` — the entry point `Panel::skin` forwards to.
 ///
 /// Field kinds come from the field's type (`f32`, `u8`/`u16`/`u32`/`usize`,
-/// `bool`, `String`, `Color32`); the macro itself only knows names and
-/// accessors. `#[style(skip)]` leaves a field out.
+/// `bool`, `String`, `Color`, `ColorProperty`); the macro itself only knows names
+/// and accessors. `#[style(skip)]` leaves a field out.
 #[proc_macro_derive(StyleFields, attributes(style))]
 pub fn style_fields(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
