@@ -31,7 +31,7 @@
 //! produces (viewport textures) or owns as a stream (log history).
 
 use kairos_editor_core::{EditorState, action::Action};
-use kairos_log::Level;
+use kairos_log::{Level, StackFrame};
 use kairos_profile::Profiler;
 
 /// One host-owned console entry, rendered by the Console panel.
@@ -53,8 +53,9 @@ pub struct ConsoleLine {
     pub target: String,
     /// Caller location (`file:line`) when the logger knows it.
     pub location: Option<String>,
-    /// Trimmed stack-trace lines; empty when backtraces are disabled.
-    pub stack: Vec<String>,
+    /// Trimmed caller frames; empty when backtraces are disabled and the
+    /// record has no call site either.
+    pub stack: Vec<StackFrame>,
 }
 
 impl ConsoleLine {

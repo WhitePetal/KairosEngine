@@ -2,7 +2,7 @@
 //! `HostView`-style callback access the panel uses.
 
 use kairos_editor_component::ConsoleLog;
-use kairos_log::{Level, Record, Sink};
+use kairos_log::{Level, Record, Sink, SourceLocation, StackFrame};
 
 fn record(level: Level, target: &str, message: &str) -> Record {
     Record::new(level, target, message)
@@ -46,7 +46,16 @@ fn source_location_is_the_stack_fallback() {
 
     log.with_lines(|lines| {
         assert_eq!(lines[0].location.as_deref(), Some("src/physics.rs:42"));
-        assert_eq!(lines[0].stack, ["kairos_physics (at src/physics.rs:42)"]);
+        assert_eq!(
+            lines[0].stack,
+            [StackFrame {
+                symbol: "kairos_physics".to_owned(),
+                source: Some(SourceLocation {
+                    file: "src/physics.rs".to_owned(),
+                    line: Some(42),
+                }),
+            }]
+        );
     });
 }
 

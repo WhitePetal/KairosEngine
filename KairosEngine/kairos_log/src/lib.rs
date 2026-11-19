@@ -44,6 +44,7 @@
 #![forbid(unsafe_code)]
 
 mod config;
+mod frame;
 mod level;
 mod logger;
 mod record;
@@ -51,6 +52,7 @@ mod sink;
 mod sinks;
 
 pub use config::{Config, DEFAULT_LOG_FILE};
+pub use frame::{SourceLocation, StackFrame};
 pub use level::Level;
 pub use logger::{Guard, InitError, flush, init, init_with, set_level};
 pub use record::Record;

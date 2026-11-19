@@ -70,8 +70,10 @@
 - **Implementation note (2026-11-12, editor console)**:
   - `Record` also carries the macro call site (`file`/`line`) and, when the process
     enables backtraces (`RUST_BACKTRACE=1`, the repo default for `cargo run`/tests), a
-    `Backtrace`. `Record::stack_trace()` trims the logger's own frames plus std/winit/eframe
-    noise and renders Unity-style `symbol (at file:line)` frames; it is what the editor
+    `Backtrace`. `Record::stack_frames()` trims the logger's own frames plus std/winit/eframe
+    noise and returns structured frames (`StackFrame { symbol, source }`), so the console
+    composes Unity-style `symbol (at file:line)` lines without parsing text; the
+    platform-specific `at path:line[:col]` text is parsed once, here. It is what the editor
     console shows below a selected entry.
   - The Console panel is rebuilt against the real Unity/Tuanjie 2022.3 console: a 20 px
     toolbar (Clear / Collapse / Error Pause / Editor, search, per-level count toggles), 38 px

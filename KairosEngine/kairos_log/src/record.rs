@@ -5,7 +5,14 @@ use std::{
 
 use jiff::Timestamp;
 
-use crate::Level;
+use crate::{
+    Level,
+    frame::{SourceLocation, StackFrame},
+};
+
+/// Frames kept per entry; Unity shows the full trace, but a runaway recursive
+/// stack should not make the console unusable.
+const MAX_STACK_FRAMES: usize = 40;
 
 /// The host's local time zone, resolved once per process (it is read for every
 /// record by every sink).
@@ -33,7 +40,7 @@ pub struct Record {
     /// Source line of the macro call.
     pub line: Option<u32>,
     /// Captured backtrace. Only populated when the process enables backtraces
-    /// (`RUST_BACKTRACE=1`); [`Record::stack_trace`] renders and trims it.
+    /// (`RUST_BACKTRACE=1`); [`Record::stack_frames`] trims and structures it.
     pub stack: Option<Arc<Backtrace>>,
 }
 
@@ -101,15 +108,22 @@ impl Record {
         )
     }
 
-    /// The captured backtrace as text, with the logger's own frames and the
-    /// runtime entry-point tail removed: what remains is the caller's stack,
-    /// which is what Unity's console shows under a log entry.
+    /// The caller frames of the captured backtrace, with the logger's own
+    /// frames and the runtime entry-point tail removed: what remains is the
+    /// caller's stack, which is what Unity's console shows under a log entry.
     ///
-    /// Returns `None` when backtraces are disabled or nothing was captured.
-    pub fn stack_trace(&self) -> Option<String> {
-        let stack = self.stack.as_ref()?;
+    /// A record without a captured backtrace keeps its own call site as the
+    /// single frame, so the console still answers "where did this come from".
+    ///
+    /// Frames are structured rather than pre-formatted lines: a renderer gets
+    /// the symbol and its source position separately, so it never scans text
+    /// to decide which part is a link.
+    pub fn stack_frames(&self) -> Vec<StackFrame> {
+        let Some(stack) = &self.stack else {
+            return self.call_site_frame().into_iter().collect();
+        };
+
         let text = stack.to_string();
-        let frames = split_frames(&text);
 
         // Keep the caller frames only: the logger's own frames, the `log`
         // facade, std/core/alloc and the host framework (winit/eframe/egui)
@@ -117,38 +131,55 @@ impl Record {
         // event loop and shows the managed frames. Once the caller stack ends
         // (we hit the first trampoline/harness frame after a caller frame)
         // the rest of the runtime is dropped.
-        let mut output = String::new();
+        let mut frames = Vec::new();
         let mut started = false;
-        for frame in &frames {
-            if frame_is_internal(frame) {
+        for frame in split_frames(&text) {
+            if frame_is_internal(&frame) {
                 continue;
             }
 
             let symbol = strip_frame_index(frame.first().copied().unwrap_or_default());
-            if symbol.is_empty() || frame_is_noise(frame) || is_trampoline(symbol) {
+            if symbol.is_empty() || frame_is_noise(&frame) || is_trampoline(symbol) {
                 if started {
                     break;
                 }
                 continue;
             }
             started = true;
-            output.push_str(symbol);
+            if frames.len() == MAX_STACK_FRAMES {
+                break;
+            }
 
-            // Frames carry `at file:line:col` on the next line; Unity puts the
-            // source link on the same line as `(at file:line)`.
-            if let Some(location) = frame
+            // The source position sits on the next line as
+            // `at file:line[:col]`; the renderer shows it as `(at file:line)`.
+            let source = frame
                 .get(1)
                 .and_then(|line| line.trim().strip_prefix("at "))
-                .and_then(source_location)
-            {
-                output.push_str(" (at ");
-                output.push_str(&location);
-                output.push(')');
-            }
-            output.push('\n');
+                .and_then(source_location);
+            frames.push(StackFrame {
+                symbol: symbol.to_owned(),
+                source,
+            });
         }
 
-        (!output.is_empty()).then_some(output)
+        if frames.is_empty() {
+            self.call_site_frame().into_iter().collect()
+        } else {
+            frames
+        }
+    }
+
+    /// The log call itself as a frame, for records whose backtrace was
+    /// disabled or whose captured frames were all noise.
+    fn call_site_frame(&self) -> Option<StackFrame> {
+        let file = self.file.as_ref()?;
+        Some(StackFrame {
+            symbol: self.target.clone(),
+            source: Some(SourceLocation {
+                file: file.clone(),
+                line: self.line,
+            }),
+        })
     }
 }
 
@@ -201,16 +232,29 @@ fn strip_frame_index(line: &str) -> &str {
     }
 }
 
-/// `path:line:col` → `path:line`; the column is noise in the console.
-fn source_location(location: &str) -> Option<String> {
-    let mut parts = location.rsplitn(3, ':');
-    let column = parts.next()?;
-    let line = parts.next()?;
-    let path = parts.next()?;
-    if column.parse::<u32>().is_err() || line.parse::<u32>().is_err() {
-        return None;
-    }
-    Some(format!("{}:{line}", path.trim_start_matches("./")))
+/// A frame's `at` line → its source position; the column is noise in the
+/// console.
+///
+/// The formats differ by platform: Unix renders `path:line:col`, while the
+/// Windows (MSVC) backtrace renders `path:line` with no column at all and may
+/// prefix the path with a drive letter, whose colon is not a separator. Peel
+/// the numbers off the right and only treat the second-to-last one as a column
+/// when it parses as one.
+fn source_location(location: &str) -> Option<SourceLocation> {
+    let (rest, last) = location.rsplit_once(':')?;
+    let last: u32 = last.parse().ok()?;
+    let (path, line) = match rest.rsplit_once(':') {
+        Some((path, line)) => match line.parse::<u32>() {
+            Ok(line) => (path, line),
+            Err(_) => (rest, last),
+        },
+        None => (rest, last),
+    };
+    let file = path.trim_start_matches("./").trim_start_matches(".\\");
+    Some(SourceLocation {
+        file: file.to_owned(),
+        line: Some(line),
+    })
 }
 
 /// Host/standard-library frames that are not useful in a console entry.
@@ -286,5 +330,71 @@ mod tests {
         assert!(frame_is_internal(&[
             "   0: kairos_log::logger::Logger::log"
         ]));
+    }
+
+    /// A parsed source position with a line, for the location tests.
+    fn source(file: &str, line: u32) -> Option<SourceLocation> {
+        Some(SourceLocation {
+            file: file.to_owned(),
+            line: Some(line),
+        })
+    }
+
+    #[test]
+    fn source_location_drops_the_unix_column() {
+        assert_eq!(
+            source_location("kairos_log/src/record.rs:205:26"),
+            source("kairos_log/src/record.rs", 205)
+        );
+        assert_eq!(
+            source_location("./tests/stack_shape.rs:28:5"),
+            source("tests/stack_shape.rs", 28)
+        );
+        assert_eq!(source_location("src/lib.rs:42"), source("src/lib.rs", 42));
+    }
+
+    #[test]
+    fn source_location_reads_windows_frames_without_a_column() {
+        // The MSVC backtrace prints no column, and `.\` is the Windows `./`.
+        assert_eq!(
+            source_location(r".\tests\stack_shape.rs:28"),
+            source(r"tests\stack_shape.rs", 28)
+        );
+        // A drive letter's colon is not the line/column separator.
+        assert_eq!(
+            source_location(r"C:\work\kairos\tests\stack_shape.rs:28"),
+            source(r"C:\work\kairos\tests\stack_shape.rs", 28)
+        );
+        assert_eq!(
+            source_location(r"C:\work\kairos\tests\stack_shape.rs:28:5"),
+            source(r"C:\work\kairos\tests\stack_shape.rs", 28)
+        );
+    }
+
+    #[test]
+    fn source_location_needs_a_line_number() {
+        assert_eq!(source_location("kairos_log/src/record.rs"), None);
+        assert_eq!(source_location(""), None);
+    }
+
+    #[test]
+    fn a_record_without_a_backtrace_keeps_its_call_site() {
+        let mut record = Record::new(Level::Error, "kairos_physics", "fixed step failed");
+        record.file = Some("src/physics.rs".to_owned());
+        record.line = Some(42);
+
+        assert_eq!(
+            record.stack_frames(),
+            [StackFrame {
+                symbol: "kairos_physics".to_owned(),
+                source: source("src/physics.rs", 42),
+            }]
+        );
+    }
+
+    #[test]
+    fn a_record_without_a_call_site_has_no_frames() {
+        let record = Record::new(Level::Info, "test", "hello");
+        assert!(record.stack_frames().is_empty());
     }
 }

@@ -31,7 +31,7 @@ use kairos_editor_widgets::splitter::Splitter;
 use kairos_editor_widgets::style::StyleFile;
 use kairos_editor_widgets::text::TextStyle;
 use kairos_editor_widgets::ui_image;
-use kairos_log::Level;
+use kairos_log::{Level, StackFrame};
 use strum::{EnumCount, IntoEnumIterator};
 
 use crate::frame::{ConsoleLine, Frame, UiOut};
@@ -612,8 +612,8 @@ impl ConsolePanel {
                         ui.spacing_mut().item_spacing.y = 0.0;
                         let text = self.body_text();
                         ui.add(egui::Label::new(text.rich(line.message.as_str())).wrap());
-                        for stack_line in &line.stack {
-                            paint_stack_line(ui, stack_line, &self.style);
+                        for frame in &line.stack {
+                            paint_stack_frame(ui, frame, &self.style);
                         }
                     });
             },
@@ -679,26 +679,21 @@ fn level_name(level: Level) -> &'static str {
     }
 }
 
-fn paint_stack_line(ui: &mut Ui, line: &str, style: &ConsoleStyle) {
+/// Paints one caller frame: the symbol in body text and — when the toolchain
+/// resolved a source position — Unity's `(at file:line)` suffix as a link.
+fn paint_stack_frame(ui: &mut Ui, frame: &StackFrame, style: &ConsoleStyle) {
     let text = TextStyle::sized(style.text.to_egui(), style.text_size);
-    let link = TextStyle::sized(style.link.to_egui(), style.text_size);
+    let Some(source) = frame.source.as_ref() else {
+        ui.add(egui::Label::new(text.rich(frame.symbol.as_str())).wrap());
+        return;
+    };
 
-    // Unity colours the trailing `(at file:line)` of a frame as a source link
-    // while the symbol itself stays grey.
-    match line.find(" (at ") {
-        Some(index) => {
-            let symbol = &line[..index];
-            let location = &line[index + 1..];
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 0.0;
-                ui.add(egui::Label::new(text.rich(symbol)).wrap());
-                ui.add(egui::Label::new(link.rich(format!(" {location}"))).wrap());
-            });
-        }
-        None => {
-            ui.add(egui::Label::new(text.rich(line)).wrap());
-        }
-    }
+    let link = TextStyle::sized(style.link.to_egui(), style.text_size);
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 0.0;
+        ui.add(egui::Label::new(text.rich(frame.symbol.as_str())).wrap());
+        ui.add(egui::Label::new(link.rich(format!(" (at {source})"))).wrap());
+    });
 }
 
 #[cfg(test)]
@@ -708,6 +703,7 @@ mod tests {
     use egui::Pos2;
     use kairos_editor_core::EditorState;
     use kairos_editor_widgets::style::Style;
+    use kairos_log::SourceLocation;
 
     struct EmptyHost;
 
@@ -739,6 +735,35 @@ mod tests {
         }
     }
 
+    #[derive(Clone, Debug)]
+    struct PaintedText {
+        text: String,
+        color: egui::Color32,
+    }
+
+    /// Every text run a frame painted, with the colour it was laid out in.
+    fn painted_texts(output: &egui::FullOutput) -> Vec<PaintedText> {
+        fn walk(shape: &egui::Shape, out: &mut Vec<PaintedText>) {
+            match shape {
+                egui::Shape::Text(text) => out.push(PaintedText {
+                    text: text.galley.text().to_owned(),
+                    color: text.galley.job.sections.first().map_or_else(
+                        || text.override_text_color.unwrap_or(text.fallback_color),
+                        |section| section.format.color,
+                    ),
+                }),
+                egui::Shape::Vec(shapes) => shapes.iter().for_each(|shape| walk(shape, out)),
+                _ => {}
+            }
+        }
+
+        let mut out = Vec::new();
+        for clipped in &output.shapes {
+            walk(&clipped.shape, &mut out);
+        }
+        out
+    }
+
     /// The headless canvas the harness renders into.
     const CANVAS_WIDTH: f32 = 800.0;
     const CANVAS_HEIGHT: f32 = 600.0;
@@ -764,8 +789,8 @@ mod tests {
             }
         }
 
-        /// Runs one frame with `events` and returns every filled rect it painted.
-        fn frame(&mut self, events: Vec<egui::Event>) -> Vec<PaintedRect> {
+        /// Runs one frame with `events` and returns its complete output.
+        fn frame_output(&mut self, events: Vec<egui::Event>) -> egui::FullOutput {
             let mut input = egui::RawInput::default();
             input.screen_rect = Some(Rect::from_min_size(
                 Pos2::ZERO,
@@ -781,8 +806,12 @@ mod tests {
                 out,
             } = self;
             let frame = Frame::with_host(state, *host);
-            let output = ctx.run_ui(input, |ui| panel.ui(ui, &frame, &mut *out));
+            ctx.run_ui(input, |ui| panel.ui(ui, &frame, &mut *out))
+        }
 
+        /// Runs one frame with `events` and returns every filled rect it painted.
+        fn frame(&mut self, events: Vec<egui::Event>) -> Vec<PaintedRect> {
+            let output = self.frame_output(events);
             let mut painted = Vec::new();
             for clipped in &output.shapes {
                 flatten(&clipped.shape, &mut painted);
@@ -1053,5 +1082,35 @@ mod tests {
             style.detail_height,
             after.height()
         );
+    }
+
+    #[test]
+    fn a_frame_with_a_source_paints_the_source_as_a_link() {
+        let style = ConsoleStyle::dark();
+        let mut line = ConsoleLine::new(Level::Error, "step failed");
+        line.id = 1;
+        line.stack = vec![StackFrame {
+            symbol: "kairos_editor::step".to_owned(),
+            source: Some(SourceLocation {
+                file: "kairos_editor/src/step.rs".to_owned(),
+                line: Some(42),
+            }),
+        }];
+        let host = LinesHost(vec![line]);
+        let mut harness = ConsoleHarness::new(&host);
+
+        let texts = painted_texts(&harness.frame_output(Vec::new()));
+
+        let symbol = texts
+            .iter()
+            .find(|painted| painted.text == "kairos_editor::step")
+            .expect("the frame symbol");
+        assert_eq!(symbol.color, style.text.to_egui());
+
+        let source = texts
+            .iter()
+            .find(|painted| painted.text == " (at kairos_editor/src/step.rs:42)")
+            .expect("the source link");
+        assert_eq!(source.color, style.link.to_egui());
     }
 }

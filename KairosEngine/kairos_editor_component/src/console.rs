@@ -28,10 +28,6 @@ use crate::frame::ConsoleLine;
 /// Lines kept before the oldest one is dropped.
 pub const DEFAULT_CAPACITY: usize = 1000;
 
-/// Stack frames kept per entry; Unity shows the full trace, but a runaway
-/// recursive stack should not make the console unusable.
-const MAX_STACK_LINES: usize = 40;
-
 const TIME_FORMAT: &str = "%H:%M:%S";
 
 /// Bounded, thread-safe console history.
@@ -62,26 +58,6 @@ impl ConsoleLog {
     /// Appends one record. Sinks call this via [`Sink::write`].
     pub fn push(&self, record: &Record) {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let mut stack: Vec<String> = record
-            .stack_trace()
-            .map(|trace| {
-                trace
-                    .lines()
-                    .map(str::trim_end)
-                    .filter(|line| !line.trim().is_empty())
-                    .take(MAX_STACK_LINES)
-                    .map(str::to_owned)
-                    .collect()
-            })
-            .unwrap_or_default();
-        if stack.is_empty() {
-            // No backtrace: keep the source of the entry visible so the panel
-            // still answers "where did this come from".
-            if let Some(location) = record.location() {
-                stack.push(format!("{} (at {location})", record.target));
-            }
-        }
-
         let line = ConsoleLine {
             id,
             level: record.level,
@@ -89,7 +65,7 @@ impl ConsoleLog {
             message: record.message.clone(),
             target: record.target.clone(),
             location: record.location(),
-            stack,
+            stack: record.stack_frames(),
         };
 
         let mut lines = self.lines();
