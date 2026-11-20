@@ -13,11 +13,16 @@ impl ScreenPicker {
         Self
     }
 
-    pub const fn available() -> bool {
+    pub const fn available_for(_window: &Window) -> bool {
         false
     }
 
     pub const fn is_running(&self) -> bool {
+        false
+    }
+
+    /// No click was masked, so the host has nothing to swallow afterwards.
+    pub const fn masks_pointer(&self) -> bool {
         false
     }
 

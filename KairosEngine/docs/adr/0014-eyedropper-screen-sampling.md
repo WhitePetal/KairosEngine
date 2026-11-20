@@ -48,7 +48,8 @@
      its clicks from that record (a failed hook falls back to capture plus the
      key state). Keyboard input stays live so Esc can cancel (and so the pick
      cannot trap the user).
-     `unsupported.rs` reports `available() == false` on other platforms.
+     `unsupported.rs` reports `available_for(window) == false` on platforms
+     without a backend.
   3. **A pick changes only the base colour.** The sample is re-composed at the
      session's exposure (`ColorProperty::with_base`, alpha preserved), and the
      picker's Intensity row is refreshed base-only while a pick runs, so an HDR
@@ -91,9 +92,64 @@
   - The loupe is the near-cursor feedback; the egui field and picker also show
     the live value when they are visible, one frame behind the sample.
   - A pick can outlive its field (the panel closes mid-pick). The session times
-    out after 60 s and the host stops the sampler.
+    out after 60 s and the host stops the sampler. If the host already published
+    the pick's terminal update and no field consumed it, it does not start a
+    second sampler for that session: it waits for a field to draw the update or
+    for the session timeout.
   - HDR eyedropping stays LDR: the sample is the displayed sRGB byte. Sampling
     scene-linear HDR values needs a float render target and is out of scope.
-  - Wayland cannot sample outside the window by protocol; a future Linux backend
-    needs the ScreenCast portal, and macOS would use `NSColorSampler` or
-    `CGDisplayCreateImageForRect` (screen-recording permission).
+  - Wayland cannot sample outside the window by protocol; its ScreenCast
+    portal remains the only route and is not implemented. macOS uses
+    ScreenCaptureKit when it is available, falling back to the permission-free
+    system sampler (see the update below); X11 uses a private X connection.
+
+- **Update (2026-11-20): macOS and X11 backends**:
+  - **macOS samples with ScreenCaptureKit, with the system sampler as a
+    fallback.** The backend asks for Screen Recording directly with
+    `CGRequestScreenCaptureAccess` on first use, then requests the displays
+    from `SCShareableContent`. While
+    the pick runs, one transparent full-screen window per screen carries a 15x15
+    loupe, and the view under the pointer draws the pixel grid, `#RRGGBB`, RGB
+    and a swatch. The live sRGB sample is published every frame, so the editor
+    field follows the pointer just as it does on Windows/X11. A capture asks for
+    exactly the 15 screen pixels around the pointer: `sourceRect` is in
+    display-local points, sized `15 / pointPixelScale` and snapped to the
+    device-pixel grid, with `scalesToFit = false`; the image is drawn into an
+    sRGB bitmap context for the byte order and P3 conversion. Left click
+    commits; right click and Esc cancel. The overlay consumes the confirming
+    click, so the host's release guard applies on this path too. The overlay's
+    flip from AppKit's bottom-left frames to the top-left points used by the
+    capture and the loupe is anchored to the menu-bar screen (the screen whose
+    frame origin is `(0, 0)`, always `NSScreen.screens[0]`), never to
+    `NSScreen.mainScreen`: the latter is the screen with the keyboard focus,
+    so anchoring to it would shift every point as soon as the editor window
+    moves to another display and a pick there would sample the wrong screen at
+    the wrong place. If
+    `SCScreenshotManager` is unavailable (macOS before 14), the content request
+    fails, or the user denies Screen Recording, the pick falls back to
+    `NSColorSampler` — AppKit's permission-free system eyedropper. That fallback
+    is usable but reports only at the end and has no right-click cancel. The
+    ScreenCaptureKit framework link makes macOS 12.3 the effective runtime
+    floor; on 12.3–13 the fallback is the only path.
+  - **Linux samples X11 directly.** The backend opens its own X connection,
+    reads the pointer with `QueryPointer`, copies a clipped 15x15 `GetImage`
+    block around it, and draws the loupe in an override-redirect window (a
+    comparable layout, painted into an X image instead of a GDI DIB). A
+    `GrabPointer` with only button events selected discards the desktop's
+    buttons for the pick while the cursor keeps moving (motion is not selected
+    and is not needed); the confirming press is read from the grab's event
+    queue and from the button state, and Esc is polled with `QueryKeymap` so
+    the keyboard stays live. Wayland is
+    unavailable: there is no global pointer and no cross-window pixels without
+    the ScreenCast portal. XWayland is treated the same way, since its root
+    window does not contain Wayland clients' pixels.
+  - **The release guard is now frame-based.** Windows and X11 hide the
+    confirming press from every window, so the host must also swallow the
+    release that follows: egui's pointer never moved during the pick, and a
+    release at that stale position lands on the eyedropper button (the earlier
+    implementation measured it starting a new pick). The host stops swallowing
+    only after two consecutive frames observe no mouse button down (the X11
+    backend keeps its connection just long enough to answer that question).
+    macOS's ScreenCaptureKit overlay consumes the confirming click, so it arms
+    the guard like Windows/X11; the `NSColorSampler` fallback owns the whole
+    click and does not.

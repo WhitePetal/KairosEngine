@@ -53,5 +53,68 @@ objc2 = "0.6.4"
 # `NSResponder` is not used by name: it is `NSApplication`'s superclass, and
 # objc2-app-kit only exports the subclass when both features are on. The legacy
 # host compiles today only because native-dialog happens to enable it.
-objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSApplication", "NSResponder", "NSImage"] }
-objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSString"] }
+#
+# The eyedropper (src/eyedropper/macos.rs) draws its own loupe with AppKit
+# and reads pixels through ScreenCaptureKit. The system colour sampler is the
+# fallback when Screen Recording permission is missing. `block2` carries both
+# the sampler's selection handler and the asynchronous capture callbacks.
+objc2-app-kit = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "NSApplication",
+    "NSResponder",
+    "NSView",
+    "NSWindow",
+    "NSEvent",
+    "NSScreen",
+    "NSCursor",
+    "NSImage",
+    "NSColor",
+    "NSColorSampler",
+    "NSColorSpace",
+    "NSFont",
+    "NSFontDescriptor",
+    "NSBezierPath",
+    "NSGraphics",
+    "NSGraphicsContext",
+    "NSTrackingArea",
+    "NSAttributedString",
+    "NSStringDrawing",
+    "block2",
+    "objc2-core-foundation",
+] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "NSString",
+    "NSArray",
+    "NSDictionary",
+    "NSAttributedString",
+    "NSError",
+] }
+objc2-core-foundation = "0.3.2"
+objc2-core-graphics = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "CGImage",
+    "CGContext",
+    "CGBitmapContext",
+    "CGColorSpace",
+    "CGDirectDisplay",
+    "CGWindow",
+] }
+objc2-screen-capture-kit = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "SCShareableContent",
+    "SCScreenshotManager",
+    "SCStream",
+    "block2",
+    "objc2-core-foundation",
+    "objc2-core-graphics",
+] }
+block2 = "0.6.2"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# The eyedropper's X11 sampler (src/eyedropper/linux.rs): QueryPointer and
+# GetImage on a private connection, plus the loupe's override-redirect window.
+# x11rb's RustConnection speaks the protocol directly, so this adds no system
+# library beyond what winit already needs; Wayland is reported unavailable by
+# the same backend.
+x11rb = { version = "0.13.2", features = ["image"] }

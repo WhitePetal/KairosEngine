@@ -3,7 +3,7 @@
 > 目标：给 KairosEngine 编辑器的颜色字段补上真正的"吸管"能力——今天点击只弹提示。
 > 本文所有非显然结论都附一手来源（crate 源码 / 官方文档 / 规范）；**未核实**的条目显式标注。
 > 调研日期：2026-11-20。仓库版本：`egui 0.35.0` / `egui-winit 0.35.0` / `egui-wgpu 0.35.0` / `wgpu 29.0.3` / `winit 0.30.13`（`Cargo.lock` 实测）。
-> **实现更新（2026-11-20）**：功能已落地，最终选择**桌面级取色（Windows 先行）**，不是 §5 推荐的帧回读；原因、契约与踩坑见 §8。
+> **实现更新（2026-11-20）**：功能已落地，最终选择**桌面级取色**（Windows、macOS、Linux X11），不是 §5 推荐的帧回读；原因、契约与踩坑见 §8。
 
 ---
 
@@ -255,12 +255,14 @@ pub trait ColorSampler: Send + Sync {
 **做成了什么**
 
 - **桌面级取色（Unity 语义）**：拾取态下 `GetCursorPos` 取屏幕物理坐标，`BitBlt` 从屏幕 DC 拷 15×15 块；单击（任意窗口之上）确认，Esc/右键取消。不依赖 framebuffer readback，也不接 egui 的 screenshot。
+- **macOS（2026-11-20 最终）**：ScreenCaptureKit 主路径 + `NSColorSampler` 回退。首次使用先 `CGRequestScreenCaptureAccess` 触发系统屏幕录制授权，再取 `SCShareableContent`；`SCScreenshotManager.captureImageWithFilter` 取 15×15 像素，`sourceRect` 用 `pointPixelScale` 对齐设备像素、`scalesToFit = false`，结果画进 sRGB 位图上下文。每块屏幕一个透明浮层，光标所在屏的视图画放大镜、hex/RGB 与色块；左键确认、右键/Esc 取消，字段逐帧跟随。无权限、旧系统或采集失败时回退系统吸管（只在确认时给色、无右键取消）。ScreenCaptureKit 的硬链接把运行时下限抬到 macOS 12.3；12.3–13 只有回退路径。
+- **Linux X11（2026-11-20 补）**：私有 X 连接 `QueryPointer` 取全局坐标、`GetImage` 拷 15×15 块，override-redirect 窗口画放大镜，`GrabPointer`（只选按键事件，移动放行）遮罩桌面按键，`QueryKeymap` 轮询 Esc；行为与 Windows 对齐。Wayland（含 XWayland）报告不可用：没有全局指针与跨窗口像素，只能走 ScreenCast portal。
 - **放大镜浮层**：置顶、点击穿透、无激活的 popup，GDI 画 15×15 像素约 8× 放大（中心格高亮 + 白描边）、`#RRGGBB`、RGB 与色块；跟随光标，靠近屏幕边缘自动翻面。
-- **widget/host 契约**：`color_picker::eyedropper` 只暴露会话（`session`）、能力位（`set_supported`）和每帧一条 `Update { id, field, srgb, outcome }`；widget 侧零平台、零 wgpu 依赖。没有采样器的平台 `available() == false`，保留原「not available」提示。
+- **widget/host 契约**：`color_picker::eyedropper` 只暴露会话（`session`）、能力位（`set_supported`）和每帧一条 `Update { id, field, srgb, outcome }`；widget 侧零平台、零 wgpu 依赖。没有采样器的平台 `available_for(window) == false`，保留原「not available」提示。
 - **HDR**：只改基色，用会话开始时捕获的曝光 `with_base` 重组（alpha 保留）；拾取期间 picker 的 Intensity 行走 base-only 刷新，不会跳。
 - **桌面输入遮罩**：拾取期间宿主装 `WH_MOUSE_LL` 低层鼠标钩子，丢掉鼠标**按键和滚轮**；**移动必须放行**——系统是在投递移动事件时更新光标的，吞掉移动会把整个系统的光标冻住（实测，见下）。于是确认点击不会按到编辑器自己的标题栏按钮（缩小/放大/关闭），也不会激活别的程序或任务栏；拾取时窗口仍持有 capture，移动事件被路由到编辑器并被宿主吞掉，不进 egui。放大镜和采样都靠 `GetCursorPos`/`BitBlt`，不需要被丢掉的按键消息。钩子丢弃的事件 `GetAsyncKeyState` 也看不到，所以确认/取消的按键由钩子自己记进原子位、pick 从记录里读；钩子装不上时退回 capture + 按键状态。
 - **落盘时机**：确认点击永远不会到 egui，Preferences 原本「指针抬起才写盘」的约定会漏掉这一下；widget 侧加了 `eyedropper::take_committed`（拾取结束信号，帧内一次性），`draw_color` 把它当作 `finished_edit`，落盘和普通点击一样即时。
-- **落点**：`kairos_editor_widgets/src/color_picker.rs`（会话/交互 + `take_committed`）、`kairos_editor_app/src/eyedropper/{win32,unsupported}.rs`（采样 + 浮层 + 输入遮罩）、`kairos_editor_app/src/host.rs`（每帧 poll/publish、吞鼠标、停止）、`kairos_editor_component/src/panels/preferences.rs`（`take_committed` → 页面写盘）、ADR `docs/adr/0014-eyedropper-screen-sampling.md`。
+- **落点**：`kairos_editor_widgets/src/color_picker.rs`（会话/交互 + `take_committed`）、`kairos_editor_app/src/eyedropper/{win32,macos,linux}.rs`（采样、浮层、输入遮罩；`loupe.rs` 是 X11/macOS 共用的布局，macOS 用原生文字）、`kairos_editor_app/src/host.rs`（每帧 poll/publish、吞鼠标、停止）、`kairos_editor_component/src/panels/preferences.rs`（`take_committed` → 页面写盘）、ADR `docs/adr/0014-eyedropper-screen-sampling.md`。
 
 ![Windows 放大镜：15×15 像素放大、中心格高亮、hex/RGB 与色块](loupe-windows.png)
 
@@ -279,7 +281,8 @@ pub trait ColorSampler: Send + Sync {
 
 **尚未做**
 
-- macOS（`NSColorSampler` 或 `CGDisplayCreateImageForRect`，需屏幕录制权限）、Linux（X11 `XGetImage`；Wayland 只能走 ScreenCast portal）。
+- Wayland：只能走 ScreenCast portal（+ PipeWire 帧流），本次未做；XWayland 也不支持。
+- macOS 跨 Space 拾取：每块屏幕一个浮层，但一个窗口只能属于一个 Space；从主屏开始拾取再移到独立 Space 的第二块屏时，放大镜可能不出现。权限被拒时回退系统吸管，只有确认时给色；macOS 15 的月度屏幕录制提示是系统行为，应用无法关闭。
 - 全屏取色时的 HDR：LDR 屏幕采样拿不到 >1 的数值，需要场景 float 目标，单独立项。
 - 放大镜当前是 GDI 自绘，未接入 `ColorPickerStyle` 皮肤；外观 token 化留作后续。
 - 拾取期间的键盘遮罩：现在只遮鼠标；`Alt+F4`、任务栏缩略图的关闭按钮不是桌面鼠标事件，仍可用。需要完全模态时另做（例如暂时禁用系统菜单），但别遮 `Alt+Tab`/Win 键，否则会把用户困住。

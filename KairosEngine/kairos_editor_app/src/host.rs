@@ -39,12 +39,67 @@ pub struct EditorLayer {
     egui_ctx: egui::Context,
     egui_state: Option<egui_winit::State>,
     /// The host half of the color picker's eyedropper: the OS pointer, the
-    /// desktop input mask and the loupe. The widget half owns the pick itself.
+    /// desktop input mask and the loupe. Windows, X11 and macOS's
+    /// ScreenCaptureKit path draw the loupe; the macOS fallback hands the pick
+    /// to AppKit.
     eyedropper: ScreenPicker,
-    /// The pick ends on a press; the release that follows may still arrive
-    /// once the mask is gone. Keep it away from egui until the button is up:
-    /// the pointer position egui holds is the one from before the pick.
-    swallow_mouse: bool,
+    /// Keeps the release that ends a pick away from egui (see
+    /// [`ReleaseGuard`]).
+    release: ReleaseGuard,
+    /// The session whose terminal update was already published. If the field
+    /// stopped drawing (its panel closed mid-pick), the widget has not consumed
+    /// that update yet; starting a second sampler for the same session would
+    /// show the pick again. Wait for a field or the session timeout instead.
+    finished: Option<u64>,
+}
+
+/// Keeps the release that ends a pick away from egui.
+///
+/// Windows, X11 and macOS's ScreenCaptureKit overlay hide the confirming press
+/// from every window, but the matching release is still pending when the pick
+/// stops. egui's pointer never
+/// moved during the pick, so a release at that stale position lands on the
+/// eyedropper button (an earlier implementation measured it starting a new
+/// pick). The guard swallows pointer events until two consecutive frames see no
+/// mouse button down: the first clear frame catches a release still in flight,
+/// the second guarantees the event loop has drained it.
+#[derive(Default)]
+struct ReleaseGuard {
+    swallowing: bool,
+    settling: bool,
+}
+
+impl ReleaseGuard {
+    /// Hold pointer events from the end of a masked pick.
+    fn arm(&mut self) {
+        self.swallowing = true;
+        self.settling = false;
+    }
+
+    /// Let pointer events through at once; used when the backend consumed the
+    /// whole click itself (the macOS NSColorSampler fallback).
+    fn disarm(&mut self) {
+        self.swallowing = false;
+        self.settling = false;
+    }
+
+    /// One frame of the guard's life: feed it the current mouse-button state.
+    fn update(&mut self, button_down: bool) {
+        if !self.swallowing {
+            return;
+        }
+        if button_down {
+            self.settling = false;
+        } else if self.settling {
+            self.disarm();
+        } else {
+            self.settling = true;
+        }
+    }
+
+    fn swallows(&self) -> bool {
+        self.swallowing
+    }
 }
 
 impl EditorLayer {
@@ -71,33 +126,36 @@ impl EditorLayer {
 
         let app = EditorApp::new(&egui_ctx);
 
-        // Tell the color fields whether this host can read the screen; without
-        // it the eyedropper keeps its "not available" tooltip.
-        eyedropper::set_supported(&egui_ctx, ScreenPicker::available());
-
         Ok(Self {
             app,
             egui_ctx,
             egui_state: None,
             eyedropper: ScreenPicker::new(),
-            swallow_mouse: false,
+            release: ReleaseGuard::default(),
+            finished: None,
         })
     }
 
     /// Serve the color field's pick with the OS pointer.
     ///
-    /// One `Update` per frame feeds the widget's live preview; a `Committed` or
-    /// `Cancelled` update ends the pick and hides the loupe. The widget owns the
-    /// session, so a pick that disappears (Esc in the window, the picker closing)
-    /// stops the sampler here.
+    /// One `Update` per frame feeds the widget: a live colour on Windows, X11
+    /// and macOS's ScreenCaptureKit path, the result only at the end on the
+    /// macOS system-sampler fallback. A `Committed` or `Cancelled` update ends
+    /// the pick and hides the loupe. The widget owns the session, so a pick that disappears (Esc
+    /// in the window, the picker closing) stops the sampler here.
     fn publish_eyedropper(&mut self, window: &Window) -> bool {
         let Some(session) = eyedropper::session(&self.egui_ctx) else {
             if self.eyedropper.is_running() {
                 kairos_log::debug!(target: "kairos_editor", "eyedropper: no session, stopping");
             }
             self.eyedropper.stop(Some(window));
+            self.finished = None;
             return false;
         };
+        if self.finished == Some(session.id) {
+            // The terminal update is still waiting for the field that owns it.
+            return false;
+        }
 
         if !self.eyedropper.is_running() {
             kairos_log::debug!(
@@ -117,6 +175,7 @@ impl EditorLayer {
                     outcome: Outcome::Cancelled,
                 },
             );
+            self.finished = Some(session.id);
             return false;
         }
 
@@ -128,25 +187,35 @@ impl EditorLayer {
             Update {
                 id: session.id,
                 field: session.field,
-                srgb: Some(sample.srgb),
+                srgb: sample.srgb,
                 outcome: sample.outcome,
             },
         );
         if sample.outcome == Outcome::Picking {
             return false;
         }
+        let hex = sample.srgb.map_or_else(
+            || "no colour".to_owned(),
+            |[red, green, blue, _]| format!("#{red:02X}{green:02X}{blue:02X}"),
+        );
         kairos_log::debug!(
             target: "kairos_editor",
-            "eyedropper: {:?} session {} at {:02X}{:02X}{:02X}",
+            "eyedropper: {:?} session {} at {}",
             sample.outcome,
             session.id,
-            sample.srgb[0],
-            sample.srgb[1],
-            sample.srgb[2]
+            hex
         );
         self.eyedropper.stop(Some(window));
-        // The click that ended the pick still has a release pending.
-        self.swallow_mouse = true;
+        // The click that ended the pick may still have a release pending. The
+        // Windows/X11 masks and the macOS ScreenCaptureKit overlay consume it,
+        // so their release must not reach egui; the NSColorSampler fallback
+        // owns the whole click.
+        if self.eyedropper.masks_pointer() {
+            self.release.arm();
+        } else {
+            self.release.disarm();
+        }
+        self.finished = Some(session.id);
         sample.outcome == Outcome::Committed
     }
 
@@ -211,6 +280,19 @@ impl Layer for EditorLayer {
         state.set_max_texture_side(max_texture_side as usize);
         self.egui_state = Some(state);
 
+        // Tell the color fields whether this host can read the screen; without
+        // it the eyedropper keeps its "not available" tooltip. This runs after
+        // the window exists because the Linux backend can only tell Wayland
+        // apart by its raw window handle.
+        let supported = ScreenPicker::available_for(window);
+        eyedropper::set_supported(&self.egui_ctx, supported);
+        if !supported {
+            kairos_log::debug!(
+                target: "kairos_editor",
+                "eyedropper: this display has no desktop sampler"
+            );
+        }
+
         // The window exists, so the desktop can be given the app's own icon: the
         // window icon from `RuntimeConfig` does not reach the Dock or the
         // taskbar.
@@ -219,16 +301,13 @@ impl Layer for EditorLayer {
 
     fn window_event(&mut self, window: &Window, event: &WindowEvent) -> EventOutcome {
         // A pick owns the mouse: the click that confirms it must not also press
-        // whatever widget sits under the pointer. The platform mask discards
-        // button events before the window sees them, and the moves that keep
-        // the cursor alive arrive here with the capture held - none of them may
-        // reach egui. This filter also keeps the *release* that follows out:
+        // whatever widget sits under the pointer. The platform mask/overlay (or
+        // the macOS system-sampler fallback) discards button events, and the moves that
+        // keep the cursor alive arrive here with the capture held - none of them
+        // may reach egui. This filter also keeps the *release* that follows out:
         // egui's pointer never moved during the pick, so a stray release would
         // land on the eyedropper button and start a new pick.
-        if self.swallow_mouse && !self.eyedropper.any_button_down() {
-            self.swallow_mouse = false;
-        }
-        if (self.eyedropper.is_running() || self.swallow_mouse)
+        if (self.eyedropper.is_running() || self.release.swallows())
             && matches!(
                 event,
                 WindowEvent::MouseInput { .. }
@@ -269,6 +348,10 @@ impl Layer for EditorLayer {
         // A pick reads the OS pointer, not egui's: the pointer may be over
         // another window entirely, and the sample feeds this frame's UI.
         self.publish_eyedropper(window);
+        if self.release.swallows() {
+            let button_down = self.eyedropper.any_button_down();
+            self.release.update(button_down);
+        }
 
         let state = self
             .egui_state
@@ -329,5 +412,45 @@ impl Layer for EditorLayer {
         ));
 
         output
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ReleaseGuard;
+
+    #[test]
+    fn the_release_guard_swallows_until_two_clear_frames_after_the_button_is_up() {
+        let mut guard = ReleaseGuard::default();
+        guard.arm();
+
+        guard.update(true);
+        assert!(guard.swallows());
+
+        // The first clear frame may still be followed by a release event that
+        // was already in flight, so it does not release the guard by itself.
+        guard.update(false);
+        assert!(guard.swallows());
+
+        // A button that goes down again restarts the count.
+        guard.update(true);
+        guard.update(false);
+        assert!(guard.swallows());
+        guard.update(false);
+        assert!(!guard.swallows());
+    }
+
+    #[test]
+    fn the_release_guard_is_inert_when_disarmed() {
+        let mut guard = ReleaseGuard::default();
+        guard.update(true);
+        assert!(!guard.swallows());
+        guard.update(false);
+        assert!(!guard.swallows());
+
+        guard.arm();
+        guard.disarm();
+        guard.update(false);
+        assert!(!guard.swallows());
     }
 }

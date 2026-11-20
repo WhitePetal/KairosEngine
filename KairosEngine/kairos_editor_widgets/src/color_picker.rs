@@ -441,8 +441,9 @@ pub fn close_all_color_pickers(ctx: &egui::Context) {
 /// Host-driven screen picking for the eyedropper ("取色器").
 ///
 /// The widget layer cannot read the screen: `kairos_editor_widgets` is pure egui
-/// and the pixels live with the host (on Windows, the OS cursor and the
-/// desktop). The split is therefore:
+/// and the pixels live with the host (the OS cursor and the desktop on
+/// Windows/X11; ScreenCaptureKit with AppKit's system sampler as fallback on
+/// macOS). The split is therefore:
 ///
 /// * the widget owns the **session** — which field is picking, and the value to
 ///   restore if the user cancels — and applies what the host sends;
@@ -453,9 +454,11 @@ pub fn close_all_color_pickers(ctx: &egui::Context) {
 /// nothing here depends on wgpu or the platform. A host that cannot sample
 /// publishes nothing, and the eyedropper stays the "not available" affordance.
 ///
-/// The confirming click belongs to the host and is normally masked before egui
-/// sees it, so the pick reports its own end of gesture ([`take_committed`])
-/// for a panel that saves an edit on pointer release.
+/// The confirming click belongs to the host on Windows/X11 and on macOS's
+/// ScreenCaptureKit path, and is masked or consumed before egui sees it; the
+/// macOS system-sampler fallback hands the whole pick to AppKit, which consumes
+/// the click itself. Either way the pick reports its own end of gesture
+/// ([`take_committed`]) for a panel that saves an edit on pointer release.
 pub mod eyedropper {
     use super::*;
 
@@ -709,7 +712,7 @@ pub mod eyedropper {
     /// The hover text for the eyedropper slot.
     pub(super) fn hint(ctx: &egui::Context, active: bool) -> &'static str {
         if !supported(ctx) {
-            "Screen color picking is not available on this platform; use the wheel, sliders or hex."
+            "Screen color picking is not available on this system; use the wheel, sliders or hex."
         } else if active {
             "Picking… click to take the color under the pointer. Esc or right click cancels."
         } else {

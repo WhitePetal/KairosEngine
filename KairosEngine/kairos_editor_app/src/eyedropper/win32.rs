@@ -84,12 +84,18 @@ impl ScreenPicker {
     }
 
     /// Windows can sample the whole desktop.
-    pub const fn available() -> bool {
+    pub const fn available_for(_window: &Window) -> bool {
         true
     }
 
     pub const fn is_running(&self) -> bool {
         self.running
+    }
+
+    /// The confirming click was masked from every window, so its release must
+    /// be kept away from egui until the button is up.
+    pub const fn masks_pointer(&self) -> bool {
+        true
     }
 
     /// Whether any mouse button is physically down right now.
@@ -209,7 +215,10 @@ impl ScreenPicker {
         }
         self.previous = keys;
 
-        Some(Sample { srgb, outcome })
+        Some(Sample {
+            srgb: Some(srgb),
+            outcome,
+        })
     }
 
     /// Stop reading the pointer and hide the loupe.
